@@ -233,7 +233,7 @@ describe.skipIf(!URL_)("cliente nuevo de punta a punta: Empresa Demo Elephant 01
   });
 
   it("paso 13: crear presupuesto (sin enviar correo al cliente)", async () => {
-    const r = await s.m(one.tenantId, "crm.quotes.createDirect", { clientName: "Cliente Demo Uno", clientEmail: "cliente-uno@demo-01.example", title: "Presupuesto Demo 01", items: [{ description: "Servicio Demo 01", quantity: 2, unitPrice: 50, total: 100, taxRate: 21, productId: one.productId }], subtotal: 100, taxRate: 21, total: 121, sendNow: false }, one.cookie);
+    const r = await s.m(one.tenantId, "crm.quotes.createDirect", { clientName: "Cliente Demo Uno", clientEmail: "cliente-uno@demo-01.example", title: "Presupuesto Demo 01", items: [{ description: "Servicio Demo 01", quantity: 2, unitPrice: 50, total: 100, taxRate: 21, productId: one.productId }], subtotal: 100, taxRate: 21, total: 121, pricesIncludeTax: false, sendNow: false }, one.cookie);
     const out = ok200(r, "crm.quotes.createDirect");
     expect(out).toMatchObject({ success: true, sent: false });
     one.quoteId = Number(out.quoteId);

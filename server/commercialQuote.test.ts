@@ -36,24 +36,26 @@ describe("las seis simulaciones de la especificación (§14)", () => {
     expect(q(P, { plan: "essential", interval: "month", items: [{ key: "connect-tax" }] }).recurring.monthlyCents).toBe(eur(48));
     expect(q(P, { plan: "essential", interval: "year", items: [{ key: "connect-tax" }] }).recurring.annualizedCents).toBe(eur(507));
   });
-  it("2. servicios: Business + Finance = 124 €, aunque se pidan también las incluidas", () => {
+  // Elephant People no se incluye en ningún plan (01/11/2026): se cobra aparte, 19 €, también en Business y Enterprise
+  it("2. servicios: Business + Finance + People = 143 €, aunque se pidan también las incluidas", () => {
     const r = q(P, { plan: "business", interval: "month", users: 10, employees: 10, items: [{ key: "connect-pack-finance" }, { key: "connect-people" }, { key: "connect-automations" }, { key: "extra-contracts-esign" }] });
     expect(r.errors).toEqual([]);
-    expect(r.recurring.monthlyCents).toBe(eur(124));
+    expect(r.recurring.monthlyCents).toBe(eur(79 + 45 + 19));
     expect(line(r, "connect-automations")?.status).toBe("included_in_plan");
     expect(line(r, "extra-contracts-esign")?.status).toBe("included_in_plan");
-    expect(line(r, "connect-people")?.status).toBe("partially_included");
-    expect(r.discounts.planInclusionCents).toBe(eur(63));
+    expect(line(r, "connect-people")).toMatchObject({ status: "charged", amountCents: eur(19) });
+    expect(r.discounts.planInclusionCents).toBe(eur(29 + 15));
     expect(q(P, { plan: "business", interval: "year", users: 10, items: [{ key: "connect-pack-finance" }] }).recurring.annualizedCents).toBe(eur(1299));
   });
   it("3. comercio: Essential + 1 usuario + Campaigns = 54 €; con POS, 79 €", () => {
     expect(q(P, { plan: "essential", interval: "month", users: 4, items: [{ key: "connect-campaigns" }] }).recurring.monthlyCents).toBe(eur(54));
     expect(q(P, { plan: "essential", interval: "month", users: 4, items: [{ key: "connect-campaigns" }, { key: "connect-pos" }] }).recurring.monthlyCents).toBe(eur(79));
   });
-  it("4. restaurante: Essential + Reservas + People = 67 €; Business, 98 € (People incluido para 8 empleados)", () => {
+  it("4. restaurante: Essential + Reservas + People = 67 €; Business, 117 € (People se cobra aparte)", () => {
     expect(q(P, { plan: "essential", interval: "month", users: 3, employees: 8, items: [{ key: "restaurant-net-bookings" }, { key: "connect-people" }] }).recurring.monthlyCents).toBe(eur(67));
     const b = q(P, { plan: "business", interval: "month", users: 3, employees: 8, items: [{ key: "restaurant-net-bookings" }, { key: "connect-people" }] });
-    expect(b.recurring.monthlyCents).toBe(eur(98));
+    expect(b.recurring.monthlyCents).toBe(eur(79 + 19 + 19));
+    expect(line(b, "connect-people")).toMatchObject({ status: "charged", amountCents: eur(19) });
     // Desde el 27/10/2026 la solución Elephant Net completa incluye Elephant Core Essential: 59 + 19 (antes 29 + 59 + 19 = 107)
     expect(q(P, { plan: "essential", interval: "month", users: 3, items: [{ key: "restaurant-net-complete" }, { key: "connect-people" }] }).recurring.monthlyCents).toBe(eur(78));
   });
@@ -71,7 +73,13 @@ describe("las seis simulaciones de la especificación (§14)", () => {
     expect(q(P, { plan: "enterprise", interval: "year", users: 25, sites: 3, items: [{ key: "connect-pos", quantity: 3 }] }).recurring.annualizedCents).toBe(eur(2799));
     const b = q(P, { plan: "business", interval: "month", users: 25, sites: 3, employees: 25, items: [{ key: "connect-pos", quantity: 3 }, { key: "connect-pack-finance" }, { key: "extra-accounting" }] });
     expect(b.recurring.monthlyCents).toBe(eur(278));
-    expect(line(b, "connect-people")?.status).toBe("partially_included");
+    // Ningún plan añade People por tener empleados: solo si se pide, y se cobra
+    expect(line(b, "connect-people")).toBeUndefined();
+    expect(line(e, "connect-people")).toBeUndefined();
+    const ep = q(P, { plan: "enterprise", interval: "month", users: 25, sites: 3, employees: 25, items: [{ key: "connect-pos", quantity: 3 }, { key: "connect-people" }] });
+    expect(ep.errors).toEqual([]);
+    expect(ep.recurring.monthlyCents).toBe(eur(274 + 19));
+    expect(line(ep, "connect-people")).toMatchObject({ status: "charged", amountCents: eur(19) });
   });
 });
 
@@ -112,17 +120,30 @@ describe("paquetes con componentes incluidos (regla min2, propuesta)", () => {
 });
 
 describe("no cobrar dos veces, cupos y ampliaciones", () => {
-  it("una extensión ya contratada que el plan incluye deja de cobrarse", () => {
+  it("una extensión ya contratada que el plan incluye deja de cobrarse (People no: ningún plan lo incluye)", () => {
     const r = q(P, { plan: "business", interval: "month", owned: ["connect-people", "connect-automations"] });
-    expect(r.absorbedByPlan.sort()).toEqual(["connect-automations", "connect-people"]);
+    expect(r.absorbedByPlan.sort()).toEqual(["connect-automations"]);
     expect(r.recurring.monthlyCents).toBe(eur(79));
   });
-  it("People en Business: por encima de 15 + usuarios adicionales se contrata completo (19 €)", () => {
-    expect(q(P, { plan: "business", interval: "month", users: 15, employees: 15 }).recurring.monthlyCents).toBe(eur(79));
-    const r = q(P, { plan: "business", interval: "month", users: 15, employees: 30 });
-    expect(r.recurring.monthlyCents).toBe(eur(79 + 19));
-    expect(line(r, "connect-people")?.status).toBe("charged");
+  it("People en cualquier plan: 19 € por empresa si se contrata, sin tope de empleados ni parte incluida", () => {
+    for (const employees of [15, 30]) {
+      const r = q(P, { plan: "business", interval: "month", users: 15, employees });
+      expect(r.recurring.monthlyCents).toBe(eur(79));
+      expect(line(r, "connect-people")).toBeUndefined();
+    }
+    for (const [plan, base] of [["essential", 29], ["business", 79], ["enterprise", 199]] as const) {
+      const r = q(P, { plan, interval: "month", employees: 40, items: [{ key: "connect-people" }] });
+      expect(r.errors, plan).toEqual([]);
+      expect(r.recurring.monthlyCents, plan).toBe(eur(base + 19));
+      expect(line(r, "connect-people"), plan).toMatchObject({ status: "charged", amountCents: eur(19) });
+    }
     expect(q(P, { plan: "business", interval: "month", users: 20, employees: 20 }).recurring.monthlyCents).toBe(eur(79 + 25));
+  });
+  it("ningún plan incluye People en la política propuesta ni en la vigente", () => {
+    for (const pol of [P, CATALOG_POLICY]) {
+      expect(pol.inclusions.filter((i) => i.key === "connect-people")).toEqual([]);
+      for (const plan of ["essential", "business", "enterprise"]) expect(inclusionsOf(CAT, pol, plan).has("connect-people")).toBe(false);
+    }
   });
   it("Enterprise por encima de la base: por presupuesto, sin inventar tarifa", () => {
     const r = q(P, { plan: "enterprise", interval: "month", users: 40, sites: 12 });
@@ -138,7 +159,7 @@ describe("no cobrar dos veces, cupos y ampliaciones", () => {
     for (const i of P.inclusions) expect(keys.has(i.key)).toBe(true);
     expect(pendingRules(P)).toContain("regla de paquetes min2");
     expect(pendingRules(P)).toContain("cupo enterprise:users");
-    expect(pendingRules(P)).toContain("tope business:connect-people");
+    expect(pendingRules(P).filter((r) => r.includes("connect-people"))).toEqual([]);
     expect(pendingRules(CATALOG_POLICY)).toEqual([]);
   });
   it("implantación y consumos van aparte de la cuota", () => {
@@ -159,18 +180,19 @@ describe("cambios de plan y recomendación", () => {
     const pv = previewPlanChange(CAT, P, { plan: "essential", interval: "month", items: [{ key: "connect-people" }, { key: "connect-automations" }] }, "business");
     expect(pv.direction).toBe("upgrade");
     expect(pv.effective).toBe("immediate");
-    expect(pv.gained).toEqual(expect.arrayContaining(["connect-automations", "connect-people", "extra-contracts-esign"]));
+    expect(pv.gained.sort()).toEqual(["connect-automations", "extra-contracts-esign"]);
     expect(pv.current.recurring.monthlyCents).toBe(eur(77));
-    expect(pv.droppingAll.recurring.monthlyCents).toBe(eur(79));
+    // People sigue cobrándose en Business: 79 + 19
+    expect(pv.droppingAll.recurring.monthlyCents).toBe(eur(79 + 19));
   });
   it("Business → Essential: bloqueo por sedes y coste de conservar lo que deja de estar incluido", () => {
     const pv = previewPlanChange(CAT, P, { plan: "business", interval: "month", users: 12, sites: 2 }, "essential");
     expect(pv.effective).toBe("period_end");
     expect(pv.blockers.length).toBe(1);
-    expect(pv.lost.sort()).toEqual(["connect-automations", "connect-people", "extra-contracts-esign"]);
+    expect(pv.lost.sort()).toEqual(["connect-automations", "extra-contracts-esign"]);
     const one = previewPlanChange(CAT, P, { plan: "business", interval: "month", users: 12, sites: 1 }, "essential");
     expect(one.blockers).toEqual([]);
-    expect(one.keepingAll.recurring.monthlyCents).toBe(eur(29 + 9 * 6 + 29 + 19 + 15));
+    expect(one.keepingAll.recurring.monthlyCents).toBe(eur(29 + 9 * 6 + 29 + 15));
     expect(one.droppingAll.recurring.monthlyCents).toBe(eur(29 + 9 * 6));
   });
   it("Enterprise → Business: bloqueo con más de una sociedad", () => {

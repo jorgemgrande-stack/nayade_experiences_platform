@@ -12,12 +12,14 @@
  */
 import { useState, useRef } from "react";
 import { trpc } from "@/lib/trpc";
+import { formatEur } from "@shared/creditNoteForm";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { toast } from "sonner";
 import { Printer, Mail, ShoppingCart } from "lucide-react";
 import { displayWebsite } from "@/hooks/usePanelBrand";
+import { ticketHeaderLines } from "@shared/ticketHeaderLines";
 
 interface SaleItem {
   productName: string;
@@ -73,7 +75,7 @@ const METHOD_LABELS: Record<string, string> = {
 // Formateador seguro: nunca devuelve NaN
 const fmt = (v: unknown): string => {
   const n = parseFloat(String(v ?? 0));
-  return Number.isFinite(n) ? n.toFixed(2) : "0.00";
+  return formatEur(Number.isFinite(n) ? n : 0);
 };
 
 // Total de línea robusto: usa `subtotal`, si no `lineTotal`, si no calcula
@@ -215,6 +217,7 @@ ${innerHtml}
 
 export default function TpvTicket({ open, sale, onClose }: Props) {
   const { data: company } = trpc.config.ticketHeader.useQuery(undefined, { enabled: open, staleTime: 300_000 });
+  const header = ticketHeaderLines(company);
   const [emailInput, setEmailInput] = useState(sale.sale.customerEmail ?? "");
   const [showEmailInput, setShowEmailInput] = useState(false);
   const ticketRef = useRef<HTMLDivElement>(null);
@@ -250,15 +253,15 @@ export default function TpvTicket({ open, sale, onClose }: Props) {
       <div class="row"><span>${new Date().toLocaleString("es-ES")}</span><span class="bold">TEST</span></div>
       <div class="line"></div>
       <div class="item-name">Producto de prueba con nombre largo para validar el salto de linea</div>
-      <div class="row"><span>1 x 12.34€</span><span>12.34€</span></div>
+      <div class="row"><span>1 x 12,34 €</span><span>12,34 €</span></div>
       <div class="item-name">Otro concepto</div>
-      <div class="row"><span>2 x 5.00€</span><span>10.00€</span></div>
+      <div class="row"><span>2 x 5,00 €</span><span>10,00 €</span></div>
       <div class="line"></div>
-      <div class="row"><span>Subtotal</span><span>22.34€</span></div>
+      <div class="row"><span>Subtotal</span><span>22,34 €</span></div>
       <div class="line"></div>
-      <div class="row total"><span>TOTAL</span><span>22.34€</span></div>
+      <div class="row total"><span>TOTAL</span><span>22,34 €</span></div>
       <div class="line"></div>
-      <div class="row"><span>Tarjeta</span><span>22.34€</span></div>
+      <div class="row"><span>Tarjeta</span><span>22,34 €</span></div>
       <div class="line"></div>
       <div class="center" style="margin-top:4px;">— Prueba OK —</div>
       <div class="center small">Si lees esto centrado y completo, el ancho es correcto</div>
@@ -303,10 +306,10 @@ export default function TpvTicket({ open, sale, onClose }: Props) {
               )}
             </div>
             {company?.name && <div className="center bold text-sm" style={{ fontSize: "14px" }}>{company.name.toUpperCase()}</div>}
-            {(company?.address || company?.city) && <div className="center text-xs" style={{ fontSize: "12px" }}>{[company.address, company.city].filter(Boolean).join(" · ")}</div>}
+            {header.commercial && <div className="center text-xs" style={{ fontSize: "12px" }}>{header.commercial}</div>}
             <div className="line" style={{ borderTop: "1px dashed #000", margin: "4px 0" }} />
-            {(company?.legalName || company?.taxId) && <div className="center small" style={{ fontSize: "11px" }}>{[company.legalName, company.taxId ? `CIF: ${company.taxId}` : null].filter(Boolean).join(" · ")}</div>}
-            <div className="center small" style={{ fontSize: "11px" }}>C/ Corazón de María 57, 1º D · 28002 Madrid</div>
+            {header.fiscal && <div className="center small" style={{ fontSize: "11px" }}>{header.fiscal}</div>}
+            {header.fiscalAddress && <div className="center small" style={{ fontSize: "11px" }}>{header.fiscalAddress}</div>}
             <div className="line" style={{ borderTop: "1px dashed #000", margin: "4px 0" }} />
             <div className="row" style={{ display: "flex", justifyContent: "space-between" }}>
               <span>{dateStr} {timeStr}</span>
@@ -325,8 +328,8 @@ export default function TpvTicket({ open, sale, onClose }: Props) {
                     {item.productName}
                   </div>
                   <div className="row" style={{ display: "flex", justifyContent: "space-between" }}>
-                    <span>{item.quantity} x {fmt(item.unitPrice)}€</span>
-                    <span>{fmt(lineTotal)}€</span>
+                    <span>{item.quantity} x {fmt(item.unitPrice)}</span>
+                    <span>{fmt(lineTotal)}</span>
                   </div>
                   {disc > 0 && (
                     <div className="small" style={{ fontSize: "11px" }}>
@@ -339,18 +342,18 @@ export default function TpvTicket({ open, sale, onClose }: Props) {
             <div className="line" style={{ borderTop: "1px dashed #000", margin: "4px 0" }} />
             <div className="row" style={{ display: "flex", justifyContent: "space-between" }}>
               <span>Subtotal</span>
-              <span>{fmt(s.subtotal)}€</span>
+              <span>{fmt(s.subtotal)}</span>
             </div>
             {parseFloat(String(s.discountAmount ?? 0)) > 0 && (
               <div className="row" style={{ display: "flex", justifyContent: "space-between" }}>
                 <span>Descuento</span>
-                <span>-{fmt(s.discountAmount)}€</span>
+                <span>-{fmt(s.discountAmount)}</span>
               </div>
             )}
             <div className="line" style={{ borderTop: "1px dashed #000", margin: "4px 0" }} />
             <div className="row total" style={{ display: "flex", justifyContent: "space-between", fontSize: "17px", fontWeight: 700, padding: "4px 0" }}>
               <span>TOTAL</span>
-              <span>{fmt(s.total)}€</span>
+              <span>{fmt(s.total)}</span>
             </div>
             {/* Desglose fiscal */}
             {(s.taxBase || s.reavMargin) && (
@@ -360,19 +363,19 @@ export default function TpvTicket({ open, sale, onClose }: Props) {
                   {s.fiscalSummary !== "reav_only" && s.taxBase && parseFloat(String(s.taxBase)) > 0 && (
                     <div className="row" style={{ display: "flex", justifyContent: "space-between" }}>
                       <span>Base IVA {s.taxRate ?? 21}%</span>
-                      <span>{fmt(s.taxBase)}€</span>
+                      <span>{fmt(s.taxBase)}</span>
                     </div>
                   )}
                   {s.fiscalSummary !== "reav_only" && s.taxAmount && parseFloat(String(s.taxAmount)) > 0 && (
                     <div className="row" style={{ display: "flex", justifyContent: "space-between" }}>
                       <span>IVA {s.taxRate ?? 21}%</span>
-                      <span>{fmt(s.taxAmount)}€</span>
+                      <span>{fmt(s.taxAmount)}</span>
                     </div>
                   )}
                   {(s.fiscalSummary === "reav_only" || s.fiscalSummary === "mixed") && s.reavMargin && parseFloat(String(s.reavMargin)) > 0 && (
                     <div className="row" style={{ display: "flex", justifyContent: "space-between" }}>
                       <span>Margen REAV (Rég. Especial Ag.)</span>
-                      <span>{fmt(s.reavMargin)}€</span>
+                      <span>{fmt(s.reavMargin)}</span>
                     </div>
                   )}
                 </div>
@@ -382,7 +385,7 @@ export default function TpvTicket({ open, sale, onClose }: Props) {
             {salePayments.map((p, i) => (
               <div key={i} className="row" style={{ display: "flex", justifyContent: "space-between" }}>
                 <span>{METHOD_LABELS[p.method] ?? p.method}{p.payerName ? ` (${p.payerName})` : ""}</span>
-                <span>{fmt(p.amount)}€</span>
+                <span>{fmt(p.amount)}</span>
               </div>
             ))}
             <div className="line" style={{ borderTop: "1px dashed #000", margin: "4px 0" }} />

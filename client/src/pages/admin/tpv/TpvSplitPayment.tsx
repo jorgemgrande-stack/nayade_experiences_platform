@@ -3,6 +3,7 @@
  */
 import { useState } from "react";
 import { trpc } from "@/lib/trpc";
+import { formatEur } from "@shared/creditNoteForm";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -172,7 +173,7 @@ export default function TpvSplitPayment({
           {/* Total */}
           <div className="bg-gray-800 rounded-lg p-3 flex justify-between items-center">
             <span className="text-gray-400 text-sm">Total a cobrar</span>
-            <span className="text-xl font-bold text-violet-400">{total.toFixed(2)}€</span>
+            <span className="text-xl font-bold text-violet-400">{formatEur(total)}</span>
           </div>
 
           {/* Quick split */}
@@ -264,7 +265,7 @@ export default function TpvSplitPayment({
               {isValid ? (
                 <CheckCircle className="w-4 h-4 inline" />
               ) : (
-                `${remaining > 0 ? "" : "+"}${Math.abs(remaining).toFixed(2)}€`
+                `${remaining > 0 ? "" : "+"}${formatEur(Math.abs(remaining))}`
               )}
             </span>
           </div>

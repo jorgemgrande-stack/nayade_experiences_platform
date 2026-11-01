@@ -86,3 +86,27 @@ export function lastClosedQuarter(now: Date = new Date()): { year: number; quart
   const current = Math.ceil(m / 3);
   return current === 1 ? { year: y - 1, quarter: 4 } : { year: y, quarter: current - 1 };
 }
+
+function quarterOfDay(key: string): { year: number; quarter: number } {
+  const [y, m] = key.split("-").map(Number);
+  return { year: y, quarter: Math.ceil(m / 3) };
+}
+
+/**
+ * Trimestre que propone el diálogo: el trimestre en curso si ya tiene facturas (o si aún no hay ninguna) y, si no,
+ * el último trimestre con facturas (el de la factura más reciente). Fechas de Madrid.
+ */
+export function suggestedExportQuarter(now: Date, latestIssuedAt: Date | string | null | undefined): { year: number; quarter: number } {
+  const current = quarterOfDay(madridDayKey(now));
+  if (!latestIssuedAt) return current;
+  const at = new Date(latestIssuedAt);
+  if (!Number.isFinite(at.getTime())) return current;
+  const latest = quarterOfDay(madridDayKey(at));
+  const beforeCurrent = latest.year < current.year || (latest.year === current.year && latest.quarter < current.quarter);
+  return beforeCurrent ? latest : current;
+}
+
+/** Exportación sin ningún documento: no se descarga (sería un ZIP vacío). */
+export function isEmptyExport(r: { invoices: number; creditNotes: number }): boolean {
+  return r.invoices + r.creditNotes === 0;
+}

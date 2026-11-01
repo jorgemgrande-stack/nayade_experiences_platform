@@ -6,6 +6,7 @@
  */
 import { useState } from "react";
 import { trpc } from "@/lib/trpc";
+import { formatEur } from "@shared/creditNoteForm";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -70,35 +71,35 @@ export default function TpvCloseSession({ open, sessionId, onClose, onClosed }: 
             <div className="bg-gray-800 rounded-lg p-3 space-y-2 text-sm">
               <div className="flex justify-between text-gray-400">
                 <span>Fondo inicial</span>
-                <span>{openingAmt.toFixed(2)}€</span>
+                <span>{formatEur(openingAmt)}</span>
               </div>
               <div className="flex justify-between text-gray-400">
                 <span>Ventas en efectivo</span>
-                <span className="text-green-400">+{totalCash.toFixed(2)}€</span>
+                <span className="text-green-400">+{formatEur(totalCash)}</span>
               </div>
               <div className="flex justify-between text-gray-400">
                 <span>Entradas manuales</span>
-                <span className="text-green-400">+{totalIn.toFixed(2)}€</span>
+                <span className="text-green-400">+{formatEur(totalIn)}</span>
               </div>
               <div className="flex justify-between text-gray-400">
                 <span>Salidas de caja</span>
-                <span className="text-red-400">-{totalOut.toFixed(2)}€</span>
+                <span className="text-red-400">-{formatEur(totalOut)}</span>
               </div>
               <div className="flex justify-between font-bold text-white border-t border-gray-700 pt-2">
                 <span>Efectivo esperado</span>
-                <span>{expectedCash.toFixed(2)}€</span>
+                <span>{formatEur(expectedCash)}</span>
               </div>
               <div className="flex justify-between text-gray-500 text-xs pt-1 border-t border-gray-800">
                 <span>Cobros tarjeta</span>
-                <span>{totalCard.toFixed(2)}€</span>
+                <span>{formatEur(totalCard)}</span>
               </div>
               <div className="flex justify-between text-gray-500 text-xs">
                 <span>Cobros Bizum</span>
-                <span>{totalBizum.toFixed(2)}€</span>
+                <span>{formatEur(totalBizum)}</span>
               </div>
               <div className="flex justify-between text-gray-400">
                 <span>Total ventas (todos métodos)</span>
-                <span className="text-violet-400">{totalSales.toFixed(2)}€</span>
+                <span className="text-violet-400">{formatEur(totalSales)}</span>
               </div>
               <div className="flex justify-between text-gray-400">
                 <span>Nº ventas</span>
@@ -132,7 +133,7 @@ export default function TpvCloseSession({ open, sessionId, onClose, onClosed }: 
               <span>
                 {Math.abs(difference) < 0.01
                   ? "Cuadre perfecto"
-                  : `Diferencia: ${difference > 0 ? "+" : ""}${difference.toFixed(2)}€`}
+                  : `Diferencia: ${difference > 0 ? "+" : ""}${formatEur(difference)}`}
               </span>
             </div>
           )}

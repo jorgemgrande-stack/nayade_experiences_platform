@@ -10,6 +10,7 @@
 import { and, gte, lt, lte, ne, or, isNull, isNotNull, inArray } from "drizzle-orm";
 import { invoices, reavExpedients, expenses, hrIrpfLedger } from "../drizzle/schema";
 import { calcGeneralTax } from "./taxUtils";
+import { reportTaxBreakdown } from "./invoiceCalc";
 import { madridMonthsRange, madridQuarterRange } from "./utils/timezone";
 import { legacyDb, legacyPool } from "./_core/legacyDb";
 
@@ -65,6 +66,8 @@ export async function compute303(periodKey: string): Promise<Vat303> {
       subtotal: invoices.subtotal,
       taxRate: invoices.taxRate,
       taxAmount: invoices.taxAmount,
+      total: invoices.total,
+      itemsJson: invoices.itemsJson,
       invoiceType: invoices.invoiceType,
     })
     .from(invoices)
@@ -73,9 +76,9 @@ export async function compute303(periodKey: string): Promise<Vat303> {
   const byRate = new Map<number, { base: number; amount: number }>();
   for (const inv of invRows) {
     const sign = inv.invoiceType === "abono" ? -1 : 1;
-    const breakdown = inv.taxBreakdown && inv.taxBreakdown.length > 0
-      ? inv.taxBreakdown
-      : [{ rate: Number(inv.taxRate ?? 21), base: Number(inv.subtotal ?? 0), amount: Number(inv.taxAmount ?? 0) }];
+    // El desglose guardado; en documentos antiguos sin él, el de sus líneas (cada base a su tipo; la parte
+    // sin IVA repercutido no cuenta como base del tipo general)
+    const breakdown = reportTaxBreakdown(inv as any);
     for (const line of breakdown) {
       const rate = Number(line.rate) || 0;
       const cur = byRate.get(rate) ?? { base: 0, amount: 0 };

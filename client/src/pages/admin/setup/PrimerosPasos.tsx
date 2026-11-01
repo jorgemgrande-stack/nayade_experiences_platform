@@ -19,7 +19,7 @@ import {
   Landmark, Loader2, Mail, Package, Palette, PartyPopper, Receipt, SkipForward, Star, UserPlus, Users,
 } from "lucide-react";
 import { BrandIdentityEditor } from "@/components/brand/BrandIdentityEditor";
-import { STEP_LABELS, activityInfo, configurationStepNumber, configurationSteps, type SetupStep } from "@shared/setupWizard";
+import { STEP_LABELS, activityInfo, configurationStepNumber, configurationSteps, stepAfter, type SetupStep } from "@shared/setupWizard";
 import {
   ActivityStep, ClientStep, CommsStep, FinishStep, FiscalStep, IdentityStep, OperationStep, ProductStep, SectorStep, WebStep, WelcomeStep, errMsg,
 } from "./PrimerosPasosSteps";
@@ -108,7 +108,8 @@ export default function PrimerosPasos() {
   const idx = Math.max(0, steps.findIndex((s) => s.id === shown));
   const step = steps[idx];
   const go = (s: SetupStep) => setCurrent(s);
-  const goNext = () => setCurrent(steps[Math.min(idx + 1, steps.length - 1)].id);
+  // Siguiente sobre el plan más reciente (tras guardar, el servidor puede haber reordenado los pasos)
+  const goNext = () => setCurrent(stepAfter(utils.setupWizard.status.getData()?.plan.steps ?? steps, shown));
   const goPrev = () => setCurrent(steps[Math.max(idx - 1, 0)].id);
   // Pasos «de hacer»: el dato real los completa; aun así queda registrado el avance
   const advance = (s: SetupStep) => async () => {
