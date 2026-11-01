@@ -86,3 +86,13 @@ describe("ficha premium del canal real → panel", () => {
     expect(parseMarketplaceHeaders(cat.marketplace)).toEqual({});
   });
 });
+
+describe("activación del canal real (#578) → panel", () => {
+  it("cada elemento trae su activación; null (consulta fallida) no rompe nada", () => {
+    const cat = (activation: ReadonlyMap<string, { state: "error"; retryable: boolean; updatedAt: number | null }> | null) =>
+      JSON.parse(JSON.stringify(panelCatalog(quoteCatalogFromSite(site).products, { version: "v", purchasesEnabled: false, site, activation }))) as { items: ChannelCatalogItem[] };
+    expect(people(cat(new Map([["connect-people", { state: "error", retryable: true, updatedAt: NOW }]]))).activation).toEqual({ state: "error", retryable: true, updatedAt: new Date(NOW).toISOString() });
+    expect(people(cat(null)).activation).toBeNull();
+    expect(people(cat(new Map())).activation?.state).toBe("none");
+  });
+});

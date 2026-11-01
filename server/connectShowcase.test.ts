@@ -138,6 +138,8 @@ describe("lectura tolerante: contenido y composición", () => {
   it("cabeceras de marca: brands como objeto, como lista o la forma anterior", () => {
     expect(parseMarketplaceHeaders({ brands: { connect: { title: "C", intro: "I" } } })).toEqual({ connect: { title: "C", intro: "I" } });
     expect(parseMarketplaceHeaders({ brands: [{ id: "net", title: "N", intro: null }, { id: "otra", title: "Z" }] })).toEqual({ net: { title: "N", intro: null } });
+    // Forma definitiva del canal: [{key, title, subtitle, background?}]
+    expect(parseMarketplaceHeaders({ brands: [{ key: "connect", title: "Connect", subtitle: "Sub", background: img("b") }] })).toEqual({ connect: { title: "Connect", intro: "Sub" } });
     // Lista vacía (lo que llega hoy) → la forma anterior o nada
     expect(parseMarketplaceHeaders({ brands: [], connect: { title: "Antiguo" } })).toEqual({ connect: { title: "Antiguo", intro: null } });
     expect(parseMarketplaceHeaders({ slides: [], settings: { autoplayMs: 6000 }, brands: [] })).toEqual({});
@@ -328,5 +330,15 @@ describe("activación del canal y acción (compra en curso, rechazada o vigente)
     const s = parseMarketplaceRoot({ slides: [{ id: "x", title: "T", primaryCta: { label: "Contratar", target: { type: "product", value: "connect-a" } } }] }).slides;
     const items = [{ key: "connect-a", family: "connect", kind: "module" as const, state: "available" as const, purchasable: true, activation: act("pending") }];
     expect(resolveSlides(s, { items, canPurchase: true, now: Date.now() })[0].primaryCta?.label).toBe(VIEW_SHEET_LABEL);
+  });
+});
+
+describe("carrusel con la forma definitiva del canal (#580)", () => {
+  it("sin `order`: se respeta el orden de llegada; overlay none|light|dark; fechas null", () => {
+    const raw = ["c", "a", "b"].map((id) => ({ id, title: `T${id}`, subtitle: "", description: "", background: { src: `https://cdn.bigelephant.es/${id}.webp`, alt: "Fondo", position: "center" }, overlay: "dark", primaryCta: { label: "Ver", target: { type: "section", value: "connect" } }, startsAt: null, endsAt: null, tags: [] }));
+    const r = parseMarketplaceRoot({ slides: raw, settings: { autoplayMs: 6000 }, brands: [] });
+    expect(r.slides.map((s) => s.id)).toEqual(["c", "a", "b"]);
+    expect(r.slides[0]).toMatchObject({ overlay: 0.6, startsAt: null, endsAt: null, subtitle: null });
+    expect(resolveSlides(r.slides, { items: [], canPurchase: true, now: Date.now() }).map((s) => s.id)).toEqual(["c", "a", "b"]);
   });
 });

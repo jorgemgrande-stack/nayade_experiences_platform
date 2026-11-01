@@ -236,7 +236,7 @@ export function parseConnectOffer(raw: unknown): ConnectOffer | null {
   return r.success ? r.data : null;
 }
 
-const headerSchema = loose({ title: text(120), intro: text() });
+const headerSchema = loose({ title: text(120), intro: text(), subtitle: text() });
 
 /** Cabeceras de la entrada `marketplace` del catálogo (`{connect:{title,intro}, net:{…}}`). */
 export function parseMarketplaceHeaders(raw: unknown): Partial<Record<ConnectBrand, { title: string | null; intro: string | null }>> {
@@ -247,7 +247,7 @@ export function parseMarketplaceHeaders(raw: unknown): Partial<Record<ConnectBra
     ? Object.fromEntries(
         rawBrands
           .filter((b): b is Record<string, unknown> => !!b && typeof b === "object")
-          .map((b) => [typeof b.id === "string" ? b.id : typeof b.brand === "string" ? b.brand : "", b] as const)
+          .map((b) => [typeof b.key === "string" ? b.key : typeof b.id === "string" ? b.id : "", b] as const)
           .filter(([k]) => k === "connect" || k === "net"),
       )
     : rawBrands;
@@ -258,7 +258,7 @@ export function parseMarketplaceHeaders(raw: unknown): Partial<Record<ConnectBra
   const out: Partial<Record<ConnectBrand, { title: string | null; intro: string | null }>> = {};
   for (const b of ["connect", "net"] as const) {
     const h = headerSchema.safeParse((raw as Record<string, unknown>)[b]);
-    if (h.success && h.data) out[b] = { title: h.data.title ?? null, intro: h.data.intro ?? null };
+    if (h.success && h.data) out[b] = { title: h.data.title ?? null, intro: h.data.intro ?? h.data.subtitle ?? null };
   }
   return out;
 }
