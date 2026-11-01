@@ -1,0 +1,114 @@
+/*
+ * Escenario del marketplace de Elephant Connect y Elephant Net: fondo oscuro con el rojo corporativo de Big Elephant,
+ * igual en modo claro y en oscuro (el escaparate es de Big Elephant, no de la marca de la empresa).
+ *
+ * Redefine las variables del tema DENTRO del escenario, así los componentes de siempre (botones, insignias, campos)
+ * toman estos colores sin clases fijas. Contraste AA comprobado: texto principal 16,2:1 y secundario 9,9:1 sobre las
+ * tarjetas; texto blanco sobre el rojo de los botones 5,1:1; rojo de texto sobre el fondo 7,9:1; textos de acento ≥ 9:1.
+ */
+.cx-stage {
+  color-scheme: dark;
+  --background: #110c0e;
+  --foreground: #f6f1f2;
+  --card: #1b1417;
+  --card-foreground: #f6f1f2;
+  --popover: #1b1417;
+  --popover-foreground: #f6f1f2;
+  --primary: #d42430;
+  --primary-foreground: #ffffff;
+  --secondary: #2a1f23;
+  --secondary-foreground: #f6f1f2;
+  --muted: #241b1e;
+  --muted-foreground: #c9bdc0;
+  --accent: #2a1f23;
+  --accent-foreground: #f6f1f2;
+  --destructive: #ff8a8f;
+  --destructive-foreground: #110c0e;
+  --border: #3b2c31;
+  --input: #4a383e;
+  --ring: #ff8a8f;
+  --success: #6ee7b7;
+  --warning: #fcd34d;
+  --danger: #fca5a5;
+  --info: #7dd3fc;
+  /* Rojo para textos e iconos sobre el fondo oscuro (el de los botones no llega a AA en texto pequeño) */
+  --cx-red-text: #ff7d84;
+  /* Color de acento de la ficha (lo elige el catálogo); por defecto, el rojo corporativo */
+  --cx-accent: #d42430;
+  --cx-accent-text: #ff7d84;
+  --cx-accent-glow: rgba(212, 36, 48, 0.32);
+  --cx-net: #3b82c4;
+  --cx-net-text: #8cc8f5;
+  background-color: var(--background);
+  background-image:
+    radial-gradient(60rem 28rem at 85% -10%, rgba(212, 36, 48, 0.22), transparent 60%),
+    radial-gradient(40rem 24rem at -10% 30%, rgba(212, 36, 48, 0.12), transparent 60%);
+  color: var(--foreground);
+}
+
+.cx-stage[data-accent="blue"] { --cx-accent: #2f6fd6; --cx-accent-text: #93c0ff; --cx-accent-glow: rgba(47, 111, 214, 0.32); }
+.cx-stage[data-accent="teal"] { --cx-accent: #0f8f86; --cx-accent-text: #6fe0d3; --cx-accent-glow: rgba(15, 143, 134, 0.32); }
+.cx-stage[data-accent="violet"] { --cx-accent: #7a4fd6; --cx-accent-text: #c7b0ff; --cx-accent-glow: rgba(122, 79, 214, 0.32); }
+.cx-stage[data-accent="amber"] { --cx-accent: #b86e00; --cx-accent-text: #ffd27a; --cx-accent-glow: rgba(184, 110, 0, 0.32); }
+.cx-stage[data-accent="rose"] { --cx-accent: #c02a68; --cx-accent-text: #ff9cc4; --cx-accent-glow: rgba(192, 42, 104, 0.32); }
+.cx-stage[data-accent="slate"] { --cx-accent: #56657a; --cx-accent-text: #c3cfdd; --cx-accent-glow: rgba(86, 101, 122, 0.32); }
+
+.cx-red-text { color: var(--cx-red-text); }
+.cx-accent-text { color: var(--cx-accent-text); }
+
+/* Superficies con brillo suave del acento (cabeceras, panel de contratación) */
+.cx-glow {
+  background-image: radial-gradient(34rem 18rem at 100% 0%, var(--cx-accent-glow), transparent 65%);
+}
+
+/* Marcador elegante cuando no hay imagen publicada: degradado de la línea y su icono, sin imágenes externas */
+.cx-placeholder {
+  background-color: #1f1519;
+  background-image:
+    radial-gradient(18rem 10rem at 80% 10%, rgba(212, 36, 48, 0.55), transparent 70%),
+    radial-gradient(14rem 9rem at 10% 100%, rgba(120, 20, 40, 0.5), transparent 70%),
+    linear-gradient(135deg, #2a1218 0%, #160d10 100%);
+}
+.cx-placeholder[data-line="net"] {
+  background-color: #111a24;
+  background-image:
+    radial-gradient(18rem 10rem at 80% 10%, rgba(59, 130, 196, 0.5), transparent 70%),
+    radial-gradient(14rem 9rem at 10% 100%, rgba(212, 36, 48, 0.28), transparent 70%),
+    linear-gradient(135deg, #122030 0%, #0d1218 100%);
+}
+.cx-placeholder-grid {
+  background-image:
+    linear-gradient(rgba(255, 255, 255, 0.05) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.05) 1px, transparent 1px);
+  background-size: 22px 22px;
+  mask-image: radial-gradient(circle at 70% 40%, #000 0%, transparent 75%);
+}
+
+/* Botón de la línea seleccionada (accesos del marketplace) */
+.cx-tile-active {
+  background-image: linear-gradient(135deg, #d42430 0%, #9c1520 100%);
+  border-color: #ff5a64;
+  color: #ffffff;
+}
+
+/* Foco visible y claro sobre el fondo oscuro */
+.cx-stage :focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+}
+
+/* Barra de contratación fija en móvil: deja sitio al final de la ficha para no tapar contenido */
+.cx-mobile-bar-space { padding-bottom: 6.5rem; }
+@media (min-width: 1024px) {
+  .cx-mobile-bar-space { padding-bottom: 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .cx-stage *,
+  .cx-stage *::before,
+  .cx-stage *::after {
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
