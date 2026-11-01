@@ -1,6 +1,7 @@
 /**
  * Elephant Connect — «Amplía tu empresa» (/admin/ampliar): catálogo de módulos y ampliaciones con su estado real para
- * la empresa (connect.catalog), búsqueda, categorías y filtros. Cada tarjeta abre su ficha (/admin/ampliar/:clave).
+ * la empresa (connect.catalog), búsqueda, categorías y filtros, con Elephant Connect y Elephant Net en secciones
+ * separadas. Cada tarjeta abre su ficha (/admin/ampliar/:clave).
  */
 import { useMemo, useState } from "react";
 import { Link } from "wouter";
@@ -10,7 +11,7 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { PanelError, PanelLoading } from "@/components/admin/PanelStates";
 import { cn } from "@/lib/utils";
-import { CONNECT_CATEGORIES, PURCHASE_BLOCK_TEXT, categoryOf, filterConnectItems, type ConnectCategoryId, type ConnectStateFilter } from "@shared/connectMarketplace";
+import { CONNECT_BRANDS, CONNECT_CATEGORIES, PURCHASE_BLOCK_TEXT, brandOf, categoryOf, filterConnectItems, type ConnectCategoryId, type ConnectStateFilter } from "@shared/connectMarketplace";
 import type { PurchaseAttempt } from "@shared/connectPurchase";
 import { Price, StateBadge } from "@/components/connect/ConnectParts";
 import { LockedFeature, fichaPath } from "@/components/connect/LockedFeature";
@@ -20,6 +21,7 @@ const STATE_FILTERS: Array<{ id: ConnectStateFilter; label: string }> = [
   { id: "all", label: "Todo" },
   { id: "mine", label: "Contratado" },
   { id: "available", label: "Disponible" },
+  { id: "on_request", label: "Bajo solicitud" },
   { id: "upcoming", label: "Próximamente" },
 ];
 
@@ -129,29 +131,47 @@ export default function ConnectPage() {
               </div>
             </div>
 
-            {shown.length === 0 && <p className="text-sm text-muted-foreground">No hay nada que coincida con tu búsqueda.</p>}
+            {items.length === 0 ? (
+              <p className="text-sm text-muted-foreground">Todavía no hay módulos publicados para tu empresa.</p>
+            ) : (
+              shown.length === 0 && <p className="text-sm text-muted-foreground">No hay nada que coincida con tu búsqueda.</p>
+            )}
 
-            <ul className="grid gap-3 md:grid-cols-2">
-              {shown.map((i) => (
-                <li key={i.key}>
-                  <Link href={fichaPath(i.key)} className={cn("flex h-full flex-col gap-2 rounded-2xl border border-border bg-card p-4 hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring")}>
-                    <div className="flex items-start gap-3">
-                      <div className="min-w-0 flex-1">
-                        <h3 className="font-semibold text-foreground">{i.name}</h3>
-                        {i.tagline && <p className="text-sm text-muted-foreground">{i.tagline}</p>}
-                      </div>
-                      <StateBadge state={i.state} />
-                    </div>
-                    <div className="mt-auto flex items-center justify-between gap-3">
-                      {i.state === "active" ? <span className="text-xs text-muted-foreground">Ya forma parte de tu plataforma.</span> : <Price item={i} />}
-                      <span className="inline-flex items-center text-sm text-foreground">
-                        Ver ficha <ChevronRight className="w-4 h-4" aria-hidden="true" />
-                      </span>
-                    </div>
-                  </Link>
-                </li>
-              ))}
-            </ul>
+            {CONNECT_BRANDS.map((b) => {
+              const group = shown.filter((i) => brandOf(i) === b.id);
+              if (group.length === 0) return null;
+              return (
+                <section key={b.id} className="space-y-3" aria-labelledby={`cx-brand-${b.id}`}>
+                  <div>
+                    <h2 id={`cx-brand-${b.id}`} className="text-lg font-semibold text-foreground">
+                      {b.title}
+                    </h2>
+                    <p className="text-sm text-muted-foreground">{b.subtitle}</p>
+                  </div>
+                  <ul className="grid gap-3 md:grid-cols-2">
+                    {group.map((i) => (
+                      <li key={i.key}>
+                        <Link href={fichaPath(i.key)} className={cn("flex h-full flex-col gap-2 rounded-2xl border border-border bg-card p-4 hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring")}>
+                          <div className="flex items-start gap-3">
+                            <div className="min-w-0 flex-1">
+                              <h3 className="font-semibold text-foreground">{i.name}</h3>
+                              {i.tagline && <p className="text-sm text-muted-foreground">{i.tagline}</p>}
+                            </div>
+                            <StateBadge state={i.state} />
+                          </div>
+                          <div className="mt-auto flex items-center justify-between gap-3">
+                            {i.state === "active" ? <span className="text-xs text-muted-foreground">Ya forma parte de tu plataforma.</span> : <Price item={i} />}
+                            <span className="inline-flex items-center text-sm text-foreground">
+                              Ver ficha <ChevronRight className="w-4 h-4" aria-hidden="true" />
+                            </span>
+                          </div>
+                        </Link>
+                      </li>
+                    ))}
+                  </ul>
+                </section>
+              );
+            })}
           </>
         )}
       </div>

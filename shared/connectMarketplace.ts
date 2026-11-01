@@ -158,11 +158,23 @@ export function categoryOf(item: { family: string; kind: "module" | "quantity" }
   return CONNECT_CATEGORIES.find((c) => (c.families as readonly string[]).includes(item.family))?.id ?? "other";
 }
 
-export type ConnectStateFilter = "all" | "mine" | "available" | "upcoming";
+/**
+ * Línea de producto en el escaparate: Elephant Net (módulos sectoriales y sus paquetes) se presenta aparte de Elephant
+ * Connect (herramientas, paquetes, extras y ampliaciones para cualquier empresa).
+ */
+export type ConnectBrand = "connect" | "net";
+export const CONNECT_BRANDS: ReadonlyArray<{ id: ConnectBrand; title: string; subtitle: string }> = [
+  { id: "connect", title: "Elephant Connect", subtitle: "Herramientas, conectores, paquetes y ampliaciones para cualquier empresa." },
+  { id: "net", title: "Elephant Net", subtitle: "Módulos sectoriales según el tipo de negocio." },
+];
+export const brandOf = (item: { family: string; kind: "module" | "quantity" }): ConnectBrand => (categoryOf(item) === "sector" ? "net" : "connect");
+
+export type ConnectStateFilter = "all" | "mine" | "available" | "on_request" | "upcoming";
 
 const FILTER_STATES: Record<Exclude<ConnectStateFilter, "all">, ConnectState[]> = {
   mine: ["active", "pending_setup", "activating", "incident"],
-  available: ["available", "on_request"],
+  available: ["available"],
+  on_request: ["on_request"],
   upcoming: ["coming_soon"],
 };
 
