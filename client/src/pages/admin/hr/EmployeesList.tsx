@@ -34,6 +34,9 @@ export default function EmployeesList() {
     isActive: statusFilter === "all" ? undefined : statusFilter === "active",
     search: search || undefined,
   });
+  // Sin ninguna ficha todavía (sin filtros que valgan): estado vacío con el alta del primero
+  const { data: employeeCounters } = trpc.hr.employees.counters.useQuery();
+  const noEmployeesYet = employeeCounters?.total === 0;
 
   // ── Alta de empleado ──
   const [createOpen, setCreateOpen] = useState(false);
@@ -52,6 +55,8 @@ export default function EmployeesList() {
       setNFullName(""); setNDni(""); setNEmail(""); setNPhone("");
       setNPosition(""); setNDepartment(""); setNContractType("temporal");
       utils.hr.employees.list.invalidate();
+      utils.hr.onboarding.status.invalidate();
+      utils.hr.employees.counters.invalidate();
       navigate(`/admin/personal/empleados/${data.id}`);
     },
     onError: (e) => toast.error(e.message),
@@ -159,9 +164,18 @@ export default function EmployeesList() {
           {isLoading && (
             <div className="text-center py-12 text-foreground/40 text-sm">Cargando empleados…</div>
           )}
-          {!isLoading && filtered.length === 0 && (
+          {!isLoading && filtered.length === 0 && !noEmployeesYet && (
             <div className="text-center py-12 text-foreground/40 text-sm">
               No se encontraron empleados con esos filtros.
+            </div>
+          )}
+          {!isLoading && filtered.length === 0 && noEmployeesYet && (
+            <div className="text-center py-12 space-y-3">
+              <p className="text-sm text-foreground/60">Todavía no hay empleados. Da de alta al primero para empezar a llevar fichajes, vacaciones y nóminas.</p>
+              <Button onClick={() => setCreateOpen(true)} className="bg-orange-600 hover:bg-orange-700 text-white">
+                <Plus className="w-4 h-4 mr-1.5" />
+                Dar de alta el primer empleado
+              </Button>
             </div>
           )}
           {!isLoading && filtered.length > 0 && (

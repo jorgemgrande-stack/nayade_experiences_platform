@@ -35,6 +35,7 @@ export default function HRSettings() {
     onSuccess: () => {
       toast.success("Configuración guardada");
       utils.hr.settings.get.invalidate();
+      utils.hr.onboarding.status.invalidate();
     },
     onError: (e) => toast.error(e.message),
   });
