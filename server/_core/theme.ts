@@ -13,6 +13,7 @@
  *   la web y el acceso: el fondo, por defecto, es la imagen principal de la web (`brand_hero_image_url`);
  *   `login_background_url` lo sustituye por otra imagen o, con «none», lo retira.
  */
+import { normalizeWhatsapp } from "../../shared/whatsappButton";
 
 /** Ajustes que forman el tema público (lectura de `public.getTheme`). */
 export const PUBLIC_THEME_KEYS = [
@@ -77,11 +78,11 @@ export function safeHttpUrl(v: string | undefined | null): string | null {
 
 /**
  * Número para el enlace de WhatsApp (wa.me): solo dígitos con prefijo internacional, sin «+» ni «00».
- * Un teléfono que no da entre 8 y 15 dígitos no se usa (mejor sin botón que con un enlace roto).
+ * Un móvil español sin prefijo se completa con el 34; un fijo o un número no válido no se usa (mejor sin botón que
+ * con un enlace roto). Reglas en `shared/whatsappButton.ts`.
  */
 export function whatsappNumber(v: string | undefined | null): string | null {
-  const digits = (v ?? "").trim().replace(/^\+/, "").replace(/[\s().-]/g, "").replace(/^00/, "");
-  return /^\d{8,15}$/.test(digits) ? digits : null;
+  return normalizeWhatsapp(v);
 }
 
 /**
@@ -212,8 +213,8 @@ export function buildTheme(
       phone: text(get("brand_phone"), 40),
       email: text(get("email_reservations") ?? get("site_business_email"), 160),
       address: text(get("brand_location"), 200),
-      // WhatsApp de la empresa: su ajuste propio o, si no lo tiene, su teléfono de marca
-      whatsapp: whatsappNumber(get("brand_whatsapp") ?? get("brand_phone")),
+      // WhatsApp de la empresa: solo el que configuró expresamente (nunca su teléfono de contacto, que puede ser fijo)
+      whatsapp: whatsappNumber(get("brand_whatsapp")),
     },
     login: buildLogin(get, opts.multi),
     // Solo en multiempresa y solo con el identificador de la propia empresa

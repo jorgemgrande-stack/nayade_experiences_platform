@@ -10,7 +10,8 @@ import fs from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { buildTheme, whatsappNumber } from "./_core/theme";
-import { LEGACY_WHATSAPP_PHONE, LEGACY_WHATSAPP_URL, whatsappTarget } from "../shared/whatsappButton";
+import { LEGACY_WHATSAPP_PHONE, LEGACY_WHATSAPP_URL, boxesOverlap, normalizeWhatsapp, whatsappHidden, whatsappTarget } from "../shared/whatsappButton";
+import { commsSchema } from "../shared/setupWizard";
 import { validateCashRegisterForm } from "../shared/formValidation";
 import { authBrand, LEGACY_AUTH_BRAND } from "../shared/authBrand";
 import { LEGACY_SECTIONS, TASK_NAV, resolveNav, type NavContext } from "../shared/adminNav";
@@ -29,21 +30,25 @@ describe("botón de WhatsApp de la web pública", () => {
   });
 
   it("multi: el número y el nombre de la empresa; nada de Náyade", () => {
-    const t = whatsappTarget(themeOf({ brand_name: "Montaña Ejemplo", brand_phone: "+34 600 11 22 33" }, true));
+    const t = whatsappTarget(themeOf({ brand_name: "Montaña Ejemplo", brand_whatsapp: "+34 600 11 22 33" }, true));
     expect(t?.phone).toBe("34600112233");
     expect(decodeURIComponent(t!.url)).toBe("https://wa.me/34600112233?text=Hola Montaña Ejemplo, me gustaría recibir información");
     expect(t!.url).not.toMatch(/nayade|639576627/i);
   });
 
-  it("multi: el ajuste propio de WhatsApp manda sobre el teléfono", () => {
+  it("multi: solo el WhatsApp configurado; el teléfono de contacto no se usa como WhatsApp", () => {
     const t = whatsappTarget(themeOf({ brand_name: "Costa", brand_phone: "+34 911 000 000", brand_whatsapp: "0034 622 000 111" }, true));
     expect(t?.phone).toBe("34622000111");
+    // Antes salía wa.me/910000000 (el fijo, sin prefijo): un enlace roto
+    expect(whatsappTarget(themeOf({ brand_name: "Taller", brand_phone: "910 000 000" }, true))).toBeNull();
+    expect(whatsappTarget(themeOf({ brand_name: "Taller", brand_phone: "+34 600 11 22 33" }, true))).toBeNull();
   });
 
   it("multi sin número configurado (o no válido): no hay botón", () => {
     expect(whatsappTarget(themeOf({ brand_name: "Sin teléfono" }, true))).toBeNull();
-    expect(whatsappTarget(themeOf({ brand_name: "Mal", brand_phone: "llámanos" }, true))).toBeNull();
-    expect(whatsappTarget(themeOf({ brand_name: "Corto", brand_phone: "1234" }, true))).toBeNull();
+    expect(whatsappTarget(themeOf({ brand_name: "Mal", brand_whatsapp: "llámanos" }, true))).toBeNull();
+    expect(whatsappTarget(themeOf({ brand_name: "Corto", brand_whatsapp: "1234" }, true))).toBeNull();
+    expect(whatsappTarget(themeOf({ brand_name: "Fijo", brand_whatsapp: "910 000 000" }, true))).toBeNull();
   });
 
   it("sin tema (cargando o error): sin botón", () => {
@@ -56,6 +61,42 @@ describe("botón de WhatsApp de la web pública", () => {
     expect(whatsappNumber("0034600112233")).toBe("34600112233");
     expect(whatsappNumber("<script>")).toBeNull();
     expect(whatsappNumber("")).toBeNull();
+  });
+
+  it("un móvil español sin prefijo se completa con el 34; un fijo no es un WhatsApp", () => {
+    expect(normalizeWhatsapp("600 11 22 33")).toBe("34600112233");
+    expect(normalizeWhatsapp("712345678")).toBe("34712345678");
+    expect(normalizeWhatsapp("34 600 11 22 33")).toBe("34600112233");
+    expect(normalizeWhatsapp("910000000")).toBeNull();
+    expect(normalizeWhatsapp("+34 910 000 000")).toBeNull();
+    expect(normalizeWhatsapp("0034 810 000 000")).toBeNull();
+    // Otros países, con prefijo
+    expect(normalizeWhatsapp("+351 912 345 678")).toBe("351912345678");
+    expect(normalizeWhatsapp("+44 7700 900123")).toBe("447700900123");
+    // Sin prefijo y sin ser un móvil español: ambiguo, no se adivina
+    expect(normalizeWhatsapp("912345678901")).toBeNull();
+    expect(normalizeWhatsapp("+0 1234 5678")).toBeNull();
+    expect(normalizeWhatsapp("600-11-22-33 ext 4")).toBeNull();
+  });
+
+  it("el paso «Comunicaciones» aplica el mismo criterio al guardar", () => {
+    expect(commsSchema.safeParse({ whatsapp: "910 000 000" }).success).toBe(false);
+    expect(commsSchema.safeParse({ whatsapp: "600 11 22 33" }).success).toBe(true);
+    expect(commsSchema.safeParse({ whatsapp: "+351 912 345 678" }).success).toBe(true);
+    expect(commsSchema.safeParse({ whatsapp: "" }).success).toBe(true);
+  });
+
+  it("en móvil el botón se aparta del precio y del botón de compra de la ficha", () => {
+    const button = { left: 320, top: 774, right: 372, bottom: 826 };
+    const compra = { left: 16, top: 500, right: 374, bottom: 980 };
+    expect(whatsappHidden(button, [compra], 390)).toBe(true);
+    expect(whatsappHidden(button, [{ ...compra, bottom: 700 }], 390)).toBe(false);
+    // En pantallas anchas el botón no tapa la columna de compra: siempre visible
+    expect(whatsappHidden(button, [compra], 1280)).toBe(false);
+    expect(boxesOverlap({ left: 0, top: 0, right: 10, bottom: 10 }, { left: 15, top: 0, right: 20, bottom: 10 }, 8)).toBe(true);
+    expect(boxesOverlap({ left: 0, top: 0, right: 10, bottom: 10 }, { left: 30, top: 0, right: 40, bottom: 10 }, 8)).toBe(false);
+    const src = fs.readFileSync(path.join(__dirname, "../client/src/pages/ProductDetail.tsx"), "utf8");
+    expect(src).toContain("data-whatsapp-avoid");
   });
 });
 

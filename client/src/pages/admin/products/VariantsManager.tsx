@@ -22,6 +22,15 @@ const PRICE_TYPE_LABELS: Record<string, string> = {
   percentage: "Porcentaje sobre base (%)",
 };
 
+/** Pyme sin reservas: el precio de la variante es el de cada unidad; «por persona» no aplica. */
+const SME_PRICE_TYPE_LABELS: Record<string, string> = {
+  fixed: "Precio (€)",
+  per_person: "Por persona (€)",
+  percentage: "Porcentaje sobre el precio base (%)",
+};
+
+const amount = (v: string | null | undefined) => parseFloat(v ?? "0").toLocaleString("es-ES", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
 type FormState = {
   experienceId: number;
   name: string;
@@ -52,6 +61,7 @@ export default function VariantsManager() {
   // Pyme: «producto o servicio»; instalación propia: «experiencia»
   const item = voc.licensed ? "producto o servicio" : "experiencia";
   const Item = voc.licensed ? "Producto o servicio" : "Experiencia";
+  const priceTypeLabels = voc.licensed ? SME_PRICE_TYPE_LABELS : PRICE_TYPE_LABELS;
 
   const utils = trpc.useUtils();
   const { data: experiences, isLoading: loadingExp } = trpc.products.getAll.useQuery();
@@ -99,7 +109,7 @@ export default function VariantsManager() {
 
   const openCreate = (expId?: number) => {
     setEditId(null);
-    setForm({ ...emptyForm(), experienceId: expId ?? 0 });
+    setForm({ ...emptyForm(), priceType: voc.catalog.defaultVariantPriceType, experienceId: expId ?? 0 });
     setOpen(true);
   };
 
@@ -141,12 +151,12 @@ export default function VariantsManager() {
   const isPending = createMutation.isPending || updateMutation.isPending;
 
   return (
-    <AdminLayout title="Variantes de Precio">
+    <AdminLayout title="Variantes y precios">
       <div className="flex items-center justify-between mb-6">
         <div>
-          <h2 className="text-xl font-semibold text-foreground">Variantes y Precios</h2>
+          <h2 className="text-xl font-semibold text-foreground">Variantes y precios</h2>
           <p className="text-sm text-muted-foreground mt-1">
-            Define variantes de precio por producto (adulto, niño, grupo, etc.). {voc.licensed ? "Al comprar, el cliente elige una y se cobra su precio." : "Al reservar, el cliente elige una y se cobra su precio."}
+            {voc.licensed ? "Define variantes de precio por producto (talla, formato, tamaño, etc.)." : "Define variantes de precio por producto (adulto, niño, grupo, etc.)."} {voc.licensed ? "Al comprar, el cliente elige una y se cobra su precio." : "Al reservar, el cliente elige una y se cobra su precio."}
           </p>
         </div>
         <div className="flex gap-3">
@@ -173,7 +183,9 @@ export default function VariantsManager() {
         <div>
           <strong>Cómo funcionan las variantes:</strong> {voc.licensed ? "Al añadir variantes a un producto o servicio, el cliente elige una al comprarlo." : "Al añadir variantes a una experiencia, el cliente elige una al reservarla."} El precio de la variante elegida sustituye al precio base en el total del pago.
           <br />
-          <strong>Tipos:</strong> <em>Precio fijo</em> = precio total por persona; <em>Por persona</em> = igual que fijo; <em>Porcentaje</em> = ajuste sobre el precio base.
+          {voc.licensed
+            ? <><strong>Tipos:</strong> <em>Precio</em> = lo que paga el cliente por cada unidad; <em>Porcentaje</em> = ajuste sobre el precio base.</>
+            : <><strong>Tipos:</strong> <em>Precio fijo</em> = precio total por persona; <em>Por persona</em> = igual que fijo; <em>Porcentaje</em> = ajuste sobre el precio base.</>}
         </div>
       </div>
 
@@ -223,12 +235,12 @@ export default function VariantsManager() {
                             <p className="text-xs text-muted-foreground overflow-hidden text-ellipsis whitespace-nowrap">{v.description}</p>
                           )}
                           <p className="text-xs text-muted-foreground mt-0.5">
-                            {PRICE_TYPE_LABELS[v.priceType] ?? v.priceType}
+                            {priceTypeLabels[v.priceType] ?? v.priceType}
                           </p>
                         </div>
                         <div className="flex items-center gap-1 text-primary font-bold text-base">
                           <Euro className="w-4 h-4" />
-                          <span>{parseFloat(v.priceModifier ?? "0").toFixed(2)}</span>
+                          <span>{amount(v.priceModifier)}</span>
                           {v.priceType === "percentage" && <span className="text-sm font-normal text-muted-foreground">%</span>}
                         </div>
                         {v.isRequired && (
@@ -304,7 +316,7 @@ export default function VariantsManager() {
               <Input
                 value={form.name}
                 onChange={(e) => setForm(f => ({ ...f, name: e.target.value }))}
-                placeholder="Ej: Adulto, Niño, Grupo 10 pax"
+                placeholder={voc.catalog.variantExample}
               />
             </div>
 
@@ -313,7 +325,7 @@ export default function VariantsManager() {
               <Textarea
                 value={form.description}
                 onChange={(e) => setForm(f => ({ ...f, description: e.target.value }))}
-                placeholder="Ej: Para mayores de 14 años"
+                placeholder={voc.catalog.variantDescriptionExample}
                 rows={2}
               />
             </div>
@@ -329,8 +341,8 @@ export default function VariantsManager() {
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="fixed">Precio fijo (€)</SelectItem>
-                    <SelectItem value="per_person">Por persona (€/pax)</SelectItem>
+                    <SelectItem value="fixed">{priceTypeLabels.fixed}</SelectItem>
+                    {(voc.catalog.showPerPersonVariant || form.priceType === "per_person") && <SelectItem value="per_person">{priceTypeLabels.per_person}</SelectItem>}
                     <SelectItem value="percentage">Porcentaje (%)</SelectItem>
                   </SelectContent>
                 </Select>

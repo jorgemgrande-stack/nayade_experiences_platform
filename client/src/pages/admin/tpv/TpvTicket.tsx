@@ -36,6 +36,8 @@ interface SalePayment {
   method: string;
   amount: string | number;
   payerName?: string | null;
+  amountTendered?: string | number | null;
+  changeGiven?: string | number | null;
 }
 
 interface Sale {
@@ -370,11 +372,11 @@ export default function TpvTicket({ open, sale, onClose }: Props) {
                     <React.Fragment key={b.rate}>
                       <div className="row" style={{ display: "flex", justifyContent: "space-between" }}>
                         <span>Base IVA {fmtRate(b.rate)}%</span>
-                        <span>{fmt(b.base)}€</span>
+                        <span>{fmt(b.base)}</span>
                       </div>
                       <div className="row" style={{ display: "flex", justifyContent: "space-between" }}>
                         <span>IVA {fmtRate(b.rate)}%</span>
-                        <span>{fmt(b.amount)}€</span>
+                        <span>{fmt(b.amount)}</span>
                       </div>
                     </React.Fragment>
                   ))}
@@ -405,6 +407,19 @@ export default function TpvTicket({ open, sale, onClose }: Props) {
                 <span>{METHOD_LABELS[p.method] ?? p.method}{p.payerName ? ` (${p.payerName})` : ""}</span>
                 <span>{fmt(p.amount)}</span>
               </div>
+            ))}
+            {/* Efectivo: lo entregado y el cambio, como en cualquier ticket de caja */}
+            {salePayments.filter((p) => p.method === "cash" && parseFloat(String(p.amountTendered ?? 0)) > 0).map((p, i) => (
+              <React.Fragment key={`cambio-${i}`}>
+                <div className="row" style={{ display: "flex", justifyContent: "space-between" }}>
+                  <span>Entregado</span>
+                  <span>{fmt(p.amountTendered)}</span>
+                </div>
+                <div className="row" style={{ display: "flex", justifyContent: "space-between" }}>
+                  <span>Cambio</span>
+                  <span>{fmt(p.changeGiven)}</span>
+                </div>
+              </React.Fragment>
             ))}
             <div className="line" style={{ borderTop: "1px dashed #000", margin: "4px 0" }} />
             <div className="center" style={{ marginTop: "4px" }}>¡Gracias por su visita!</div>
