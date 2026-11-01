@@ -11,6 +11,7 @@
  *  - lo que no existe se dice («sin desarrollo», «se porta desde…»), nunca se presenta como activación inmediata;
  *  - las referencias F-… son las del MAPA_FUNCIONAL_Y_SOLUCIONES_SECTORIALES_BIG_ELEPHANT.md.
  */
+import type { ACCENT_COLORS, HERO_STYLES, SHEET_BLOCKS } from "../../web/schemas";
 
 export type SpecCategory = "plan" | "sector_module" | "sector_bundle" | "extension" | "extension_bundle" | "extra" | "capacity" | "service";
 /** 1 activable (código en el Core) · 2 portable (desarrollo en otro repositorio o parcial) · 3 desarrollo nuevo. */
@@ -51,6 +52,12 @@ export interface MarketplaceSpec {
   related?: string[];
   /** Solo imágenes reales en https de un almacén público. */
   media?: { cover?: { src: string; alt: string }; screenshots?: Array<{ src: string; alt: string; caption?: string }> };
+  /** Cómo funciona, hasta 4 pasos. */
+  howItWorks?: Array<{ title: string; text: string }>;
+  /** Etiqueta promocional breve (≤30). */
+  promoLabel?: string;
+  /** Diseño de la ficha; normalmente se ajusta en el CRM. */
+  layout?: { blocks?: Array<{ id: (typeof SHEET_BLOCKS)[number]; visible: boolean }>; accentColor?: (typeof ACCENT_COLORS)[number]; heroStyle?: (typeof HERO_STYLES)[number] };
 }
 
 const COMMS = ["connect-whatsapp-ai", "connect-voice", "connect-reception-ai"];

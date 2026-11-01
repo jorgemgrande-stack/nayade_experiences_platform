@@ -30,7 +30,7 @@ const RETAINED = "Texto retenido hasta aprobar y activar la regla: ";
 const PENDING_TEXT = "Texto pendiente de completar: ";
 /** Marca de contenido por completar en una propuesta (en mayúsculas: «pendiente» es una palabra normal en las fichas). */
 export const PENDING_MARK = /\bPENDIENTE\b/;
-const MARKETPLACE_KEYS = ["valueProposition", "coreIntegration", "terms", "faq", "related", "media"] as const;
+const MARKETPLACE_KEYS = ["valueProposition", "coreIntegration", "terms", "faq", "related", "media", "howItWorks", "promoLabel", "layout"] as const;
 
 const clip = (t: string, n: number) => (t.length <= n ? t : `${t.slice(0, n - 1)}…`);
 
@@ -116,8 +116,15 @@ function marketplaceFields(draft: ProductDraft, spec: ProductSpec, keep: (t: str
   const faq = (m.faq ?? []).filter((f) => keep(f.q) && keep(f.a));
   if (faq.length) out.faq = faq;
   if (m.related?.length) out.related = m.related;
+  const steps = (m.howItWorks ?? []).filter((s) => keep(s.title) && keep(s.text));
+  if (steps.length) out.howItWorks = steps;
+  if (m.promoLabel && keep(m.promoLabel)) out.promoLabel = m.promoLabel;
+  // Imágenes y diseño se gestionan en el CRM: sin ellos en la especificación, se conserva lo que ya tenga el borrador
   const media = { ...(m.media?.cover ? { cover: m.media.cover } : {}), ...(m.media?.screenshots?.length ? { screenshots: m.media.screenshots } : {}) };
   if (Object.keys(media).length) out.media = media;
+  else if (current.media !== undefined) out.media = current.media;
+  if (m.layout) out.layout = m.layout;
+  else if (current.layout !== undefined) out.layout = current.layout;
   return out;
 }
 

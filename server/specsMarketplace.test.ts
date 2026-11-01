@@ -78,6 +78,30 @@ describe("especificaciones con ficha del marketplace", () => {
   });
 });
 
+describe("campos premium desde la especificación", () => {
+  it("aplica pasos y etiqueta con las mismas reglas; las imágenes y el diseño del CRM se conservan si la especificación no los trae", () => {
+    const e = entry("connect-people");
+    const media = { hero: { src: "https://media.example/cabecera.webp", alt: "Cabecera" } };
+    const layout = { accentColor: "teal" as const };
+    const withCrm = productDraft.parse({ ...e.draft, commercial: { ...(e.draft.commercial ?? {}), media, layout } }) as ProductDraft;
+    const s: ProductSpec = {
+      ...spec("connect-people"),
+      marketplace: {
+        valueProposition: "Tu equipo organizado desde el mismo panel.",
+        howItWorks: [
+          { title: "Solicítalo", text: "Nos cuentas cómo trabaja tu equipo." },
+          { title: "Lo configuramos", text: "PENDIENTE" },
+        ],
+        promoLabel: "Nuevo",
+      },
+    };
+    const d = draftWithSpec(withCrm, e.family, s);
+    expect(d.commercial).toMatchObject({ howItWorks: [{ title: "Solicítalo", text: "Nos cuentas cómo trabaja tu equipo." }], promoLabel: "Nuevo", media, layout });
+    expect(JSON.stringify(d.commercial)).not.toMatch(/PENDIENTE/);
+    expect(draftWithSpec(d, e.family, s)).toEqual(d);
+  });
+});
+
 describe("marca «PENDIENTE»", () => {
   it("solo en mayúsculas: «pendientes» en un texto normal no lo retiene", () => {
     const e = entry("connect-tax");

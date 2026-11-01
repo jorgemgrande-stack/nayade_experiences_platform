@@ -150,7 +150,10 @@ function publicTexts(d: ProductDraft, opts: { withExcludes?: boolean } = {}): st
     ...(m.coreIntegration ?? []),
     ...Object.values(m.terms ?? {}),
     ...(m.faq ?? []).flatMap((f) => [f.q, f.a]),
-    ...[m.media?.cover, ...(m.media?.screenshots ?? [])].flatMap((i) => (i ? [i.alt, (i as { caption?: string }).caption ?? ""] : [])),
+    ...[m.media?.cover, ...(m.media?.screenshots ?? []), m.media?.card, m.media?.hero, m.media?.icon, ...(m.media?.gallery ?? [])].flatMap((i) => (i ? [i.alt, (i as { caption?: string }).caption ?? ""] : [])),
+    m.media?.video?.title ?? "",
+    ...(m.howItWorks ?? []).flatMap((s) => [s.title, s.text]),
+    m.promoLabel ?? "",
   ].filter((t): t is string => !!t);
 }
 

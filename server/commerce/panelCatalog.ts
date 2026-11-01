@@ -15,7 +15,7 @@ import { opsLog } from "../_core/ops/log";
 import { quoteCatalogFromSite } from "../catalog/snapshot";
 import type { QuoteCatalogProduct } from "../catalog/quote";
 import { withoutInternal, type SiteDocument } from "../web/service";
-import type { CommercialBlock } from "../web/schemas";
+import { videoEmbedUrl, type CommercialBlock } from "../web/schemas";
 
 export interface PanelCatalogItem {
   key: string;
@@ -35,7 +35,25 @@ export interface PanelCatalogItem {
   card: PanelCard | null;
 }
 
-type Img = { src: string; alt: string; caption?: string };
+type Img = { src: string; alt: string; caption?: string; mobileSrc?: string; focal?: { x: number; y: number }; kind?: "screenshot" | "illustration" };
+
+/** Ficha del marketplace: imágenes y vídeo. `cover` y `screenshots` se mantienen para el panel actual (reserva de hero y galería). */
+export interface PanelMedia {
+  card: Img | null;
+  hero: Img | null;
+  icon: Img | null;
+  gallery: Img[];
+  video: { url: string; embedUrl: string; title: string } | null;
+  cover: Img | null;
+  screenshots: Img[];
+}
+
+/** Carrusel y cabeceras de marca del marketplace (vacío hasta que se publiquen campañas). */
+export interface PanelMarketplace {
+  slides: Array<Record<string, unknown>>;
+  settings: { autoplayMs: number };
+  brands: Array<Record<string, unknown>>;
+}
 
 /** Ficha del marketplace: solo contenido publicado; los campos que falten llegan vacíos y el panel usa su reserva. */
 export interface PanelCard {
@@ -62,7 +80,10 @@ export interface PanelCard {
     terms: { commitment: string | null; cancellation: string | null; activation: string | null };
     faq: Array<{ q: string; a: string }>;
     related: string[];
-    media: { cover: Img | null; screenshots: Img[] };
+    media: PanelMedia;
+    howItWorks: Array<{ title: string; text: string }>;
+    promoLabel: string | null;
+    layout: { blocks: Array<{ id: string; visible: boolean }>; accentColor: string | null; heroStyle: string | null };
     cta: string;
     seo: { slug: string; title: string; description: string } | null;
   } | null;
@@ -78,8 +99,34 @@ const strs = (v: unknown): string[] => (Array.isArray(v) ? v.filter((x): x is st
 const img = (v: unknown): Img | null => {
   const o = v as Partial<Img> | null | undefined;
   if (!o || typeof o.src !== "string" || !/^https:\/\//.test(o.src) || typeof o.alt !== "string") return null;
-  return { src: o.src, alt: o.alt, ...(typeof o.caption === "string" && o.caption ? { caption: o.caption } : {}) };
+  const f = o.focal;
+  return {
+    src: o.src,
+    alt: o.alt,
+    ...(typeof o.caption === "string" && o.caption ? { caption: o.caption } : {}),
+    ...(typeof o.mobileSrc === "string" && /^https:\/\//.test(o.mobileSrc) ? { mobileSrc: o.mobileSrc } : {}),
+    ...(f && typeof f.x === "number" && typeof f.y === "number" ? { focal: { x: f.x, y: f.y } } : {}),
+    ...(o.kind === "screenshot" || o.kind === "illustration" ? { kind: o.kind } : {}),
+  };
 };
+const imgs = (v: unknown): Img[] => (Array.isArray(v) ? v.map(img).filter((x): x is Img => !!x) : []);
+
+function panelMedia(media: Record<string, unknown>): PanelMedia {
+  const cover = img(media.cover);
+  const screenshots = imgs(media.screenshots);
+  const gallery = imgs(media.gallery);
+  const v = media.video as { url?: unknown; title?: unknown } | undefined;
+  const embedUrl = v && typeof v.url === "string" ? videoEmbedUrl(v.url) : null;
+  return {
+    card: img(media.card),
+    hero: img(media.hero) ?? cover,
+    icon: img(media.icon),
+    gallery: gallery.length ? gallery : screenshots.map((s) => ({ ...s, kind: "screenshot" as const })),
+    video: embedUrl && typeof v?.title === "string" ? { url: v.url as string, embedUrl, title: v.title } : null,
+    cover,
+    screenshots,
+  };
+}
 
 /**
  * Ficha del panel a partir de un producto PUBLICADO del sitio. `visible`: claves que esta empresa ve en el panel
@@ -92,6 +139,7 @@ export function panelCard(p: Record<string, unknown>, visible: ReadonlySet<strin
   const onlyVisible = (keys: unknown) => strs(keys).filter((k) => visible.has(k) && k !== p.key);
   const terms = (m?.terms ?? {}) as Record<string, unknown>;
   const media = (m?.media ?? {}) as Record<string, unknown>;
+  const layout = (m?.layout ?? {}) as Record<string, unknown>;
   return {
     tagline: str(p.tagline),
     description: str(p.description),
@@ -117,7 +165,14 @@ export function panelCard(p: Record<string, unknown>, visible: ReadonlySet<strin
           terms: { commitment: strOrNull(terms.commitment), cancellation: strOrNull(terms.cancellation), activation: strOrNull(terms.activation) },
           faq: (Array.isArray(m.faq) ? m.faq : []).filter((f): f is { q: string; a: string } => !!f && typeof f.q === "string" && typeof f.a === "string"),
           related: onlyVisible(m.related),
-          media: { cover: img(media.cover), screenshots: (Array.isArray(media.screenshots) ? media.screenshots : []).map(img).filter((x): x is Img => !!x) },
+          media: panelMedia(media),
+          howItWorks: (Array.isArray(m.howItWorks) ? m.howItWorks : []).filter((s): s is { title: string; text: string } => !!s && typeof s.title === "string" && typeof s.text === "string"),
+          promoLabel: strOrNull(m.promoLabel),
+          layout: {
+            blocks: (Array.isArray(layout.blocks) ? layout.blocks : []).filter((b): b is { id: string; visible: boolean } => !!b && typeof b.id === "string" && typeof b.visible === "boolean"),
+            accentColor: strOrNull(layout.accentColor),
+            heroStyle: strOrNull(layout.heroStyle),
+          },
           cta: str(m.cta) || "contact",
           seo: m.seo && typeof m.seo === "object" ? { slug: str(m.seo.slug), title: str(m.seo.title), description: str(m.seo.description) } : null,
         }
@@ -133,7 +188,11 @@ export interface PanelCatalog {
   version: string;
   purchasesEnabled: boolean;
   items: PanelCatalogItem[];
+  marketplace: PanelMarketplace;
 }
+
+/** Ritmo del carrusel por defecto mientras no haya ajuste publicado. */
+export const DEFAULT_AUTOPLAY_MS = 6000;
 
 /**
  * Familias que tienen sentido en el panel: módulos (Net, Connect, sectoriales, paquetes) y ampliaciones. Los planes se
@@ -172,7 +231,7 @@ export function panelCatalog(products: QuoteCatalogProduct[], o: { version: stri
     if (p) i.card = panelCard(p, visible);
   }
   items.sort((a, b) => a.kind.localeCompare(b.kind) || a.family.localeCompare(b.family) || a.name.localeCompare(b.name, "es"));
-  return { version: o.version, purchasesEnabled: o.purchasesEnabled, items };
+  return { version: o.version, purchasesEnabled: o.purchasesEnabled, items, marketplace: { slides: [], settings: { autoplayMs: DEFAULT_AUTOPLAY_MS }, brands: [] } };
 }
 
 const tenant = z.string().regex(/^[a-z0-9][a-z0-9-]{1,62}$/);
