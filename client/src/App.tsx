@@ -10,7 +10,7 @@ import MaintenanceGate from "./components/MaintenanceGate";
 import { MetaPixelLoader } from "./components/MetaPixelLoader";
 import { GA4Loader } from "./components/GA4Loader";
 import { ThemeProvider } from "./contexts/ThemeContext";
-import { HomeGate, SingleOnlyPage, SiteRouteGate, SlugGate, TenantThemeLoader } from "./components/TenantTheme";
+import { HomeGate, PageOrDefault, SingleOnlyPage, SiteRouteGate, SlugGate, TenantThemeLoader } from "./components/TenantTheme";
 import AdminRouteGate from "./components/admin/AdminRouteGate";
 
 // ── PUBLIC PAGES (carga inmediata — visibles sin autenticación) ──────────────
@@ -67,6 +67,7 @@ const AdminDashboard = lazy(() => import("./pages/admin/AdminDashboard"));
 const SlideshowManager = lazy(() => import("./pages/admin/cms/SlideshowManager"));
 const MenusManager = lazy(() => import("./pages/admin/cms/MenusManager"));
 const PagesManager = lazy(() => import("./pages/admin/cms/PagesManager"));
+const PagePreview = lazy(() => import("./pages/admin/cms/PagePreview"));
 const MultimediaManager = lazy(() => import("./pages/admin/cms/MultimediaManager"));
 const HomeModulesManager = lazy(() => import("./pages/admin/cms/HomeModulesManager"));
 const GalleryManager = lazy(() => import("./pages/admin/cms/GalleryManager"));
@@ -247,7 +248,7 @@ function Router() {
       <Route path="/solicitar-anulacion">{() => <Suspense fallback={<AdminLoadingFallback />}><SolicitarAnulacion /></Suspense>}</Route>
       <Route path="/presupuesto/:token" component={QuoteAcceptance} />
       <Route path="/propuesta/:token" component={ProposalView} />
-      <Route path="/contacto" component={Contact} />
+      <Route path="/contacto">{() => <PageOrDefault slug="contacto" Default={Contact} />}</Route>
       <Route path="/ubicaciones">{() => <SingleOnlyPage Single={Locations} slug="ubicaciones" Tenant={TenantLocations} />}</Route>
       <Route path="/ubicaciones/:slug">{() => <SingleOnlyPage Single={Locations} slug="ubicaciones" Tenant={TenantLocations} />}</Route>
       <Route path="/lego-packs">{() => <SiteRouteGate><LegoPacksHome /></SiteRouteGate>}</Route>
@@ -309,6 +310,7 @@ function Router() {
       <Route path="/admin/cms">{() => <Suspense fallback={<AdminLoadingFallback />}><SlideshowManager /></Suspense>}</Route>
       <Route path="/admin/cms/slideshow">{() => <Suspense fallback={<AdminLoadingFallback />}><SlideshowManager /></Suspense>}</Route>
       <Route path="/admin/cms/menus">{() => <Suspense fallback={<AdminLoadingFallback />}><MenusManager /></Suspense>}</Route>
+      <Route path="/admin/cms/paginas/vista-previa/:slug">{(p) => <Suspense fallback={<AdminLoadingFallback />}><PagePreview slug={p.slug} /></Suspense>}</Route>
       <Route path="/admin/cms/paginas">{() => <Suspense fallback={<AdminLoadingFallback />}><PagesManager /></Suspense>}</Route>
       <Route path="/admin/cms/multimedia">{() => <Suspense fallback={<AdminLoadingFallback />}><MultimediaManager /></Suspense>}</Route>
       <Route path="/admin/cms/modulos-home">{() => <Suspense fallback={<AdminLoadingFallback />}><HomeModulesManager /></Suspense>}</Route>

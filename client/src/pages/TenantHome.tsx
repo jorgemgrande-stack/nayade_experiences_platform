@@ -8,7 +8,9 @@ import { trpc } from "@/lib/trpc";
 import PublicLayout from "@/components/PublicLayout";
 import { Button } from "@/components/ui/button";
 import { HOME_PAGE_SLUG } from "@/lib/homeRoute";
-import { RICH_TEXT_CLASS } from "@/components/TenantTheme";
+import { RICH_TEXT_CLASS } from "@/components/site/richText";
+import { PageBlocksView } from "@/components/site/PageBlocksView";
+import { useMetaDescription } from "@/components/TenantTheme";
 import { useStorefront } from "@/components/StorefrontRoute";
 import { productPath } from "@shared/storefront";
 
@@ -30,7 +32,10 @@ export default function TenantHome() {
   // Ficha de cada destacado: la de tienda en una pyme, la sectorial con su módulo
   const kind = useStorefront().storefront?.kind ?? "generic";
 
-  const hero = ((slides.data ?? []) as Slide[]).find((s) => s.imageUrl);
+  const blocks = page.data?.blocks ?? null;
+  useMetaDescription(page.data?.metaDescription);
+  // Portada hecha con el constructor que ya empieza con su propia cabecera: sin la del carrusel encima
+  const hero = blocks?.[0]?.type === "hero" ? undefined : ((slides.data ?? []) as Slide[]).find((s) => s.imageUrl);
   const products = (featured.data ?? []) as Product[];
 
   return (
@@ -54,7 +59,9 @@ export default function TenantHome() {
         </section>
       )}
 
-      {page.data && (
+      {blocks && <PageBlocksView blocks={blocks} pageTitle={page.data?.title} />}
+
+      {page.data && !blocks && (
         <article className={`container py-10 md:py-14 max-w-3xl ${RICH_TEXT_CLASS}`}>
           {/* HTML saneado en servidor con lista blanca (server/_core/htmlSanitize.ts) */}
           <div dangerouslySetInnerHTML={{ __html: page.data.html }} />
