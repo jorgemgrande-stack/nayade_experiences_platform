@@ -184,9 +184,10 @@ describe("páginas y enlaces", () => {
     expect(app).toContain('<Route path="/tienda">{() => <CatalogRoute Sector={Experiences} Generic={Shop} />}</Route>');
   });
 
-  it("portada y listado enlazan a la ficha de la empresa; la consulta es pública", () => {
+  it("portada y listado enlazan a la ficha de la empresa; viaja con la identidad pública, sin rutas públicas nuevas", () => {
     expect(read("client/src/pages/TenantHome.tsx")).toContain("href={productPath(p.slug, kind)}");
     expect(shop).toContain("href={productPath(p.slug)}");
-    expect(read("server/authGuard.ts")).toContain('"public.getStorefront",');
+    expect(read("server/authGuard.ts")).not.toContain("getStorefront");
+    expect(read("client/src/components/StorefrontRoute.tsx")).toContain("trpc.public.getTheme.useQuery");
   });
 });

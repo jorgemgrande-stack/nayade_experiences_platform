@@ -318,12 +318,6 @@ export const appRouter = router({
         return exp;
       }),
 
-    // Ficha pública de producto: sectorial (instalación propia) o genérica de tienda (pyme)
-    getStorefront: publicProcedure.query(async () => {
-      const { getStorefront } = await import("./storefront");
-      return getStorefront();
-    }),
-
     getVariantsByExperience: publicProcedure
       .input(z.object({ experienceId: z.number() }))
       .query(async ({ input }) => {
@@ -355,14 +349,16 @@ export const appRouter = router({
       return getPublicCategories();
     }),
 
-    // Identidad corporativa pública del tenant (marca, logotipo, colores, contacto)
+    // Identidad corporativa pública del tenant (marca, logotipo, colores, contacto) y tipo de ficha de producto
+    // (sectorial o genérica de tienda; solo presentación, ver server/storefront.ts)
     getTheme: publicProcedure.query(async () => {
       const { getSystemSetting } = await import("./config");
       const { buildTheme, PUBLIC_THEME_KEYS } = await import("./_core/theme");
       const { isMultiTenant } = await import("./_core/tenant");
       const vals: Record<string, string> = {};
       await Promise.all(PUBLIC_THEME_KEYS.map(async (k) => { vals[k] = await getSystemSetting(k, ""); }));
-      return buildTheme((k) => vals[k] || undefined, { multi: isMultiTenant() });
+      const { getStorefront } = await import("./storefront");
+      return { ...buildTheme((k) => vals[k] || undefined, { multi: isMultiTenant() }), storefront: await getStorefront() };
     }),
 
     // Página estática del tenant, con HTML saneado (lista blanca)

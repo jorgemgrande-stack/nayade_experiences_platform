@@ -36,7 +36,6 @@ const PUBLIC_TRPC_ROUTES = new Set([
   "public.getExperiences",
   "public.getExperienceBySlug",
   "public.getVariantsByExperience",
-  "public.getStorefront",
   "public.setPassword",
   "public.getCategories",
   "public.getLocations",

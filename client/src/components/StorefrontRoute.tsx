@@ -9,9 +9,10 @@ import { trpc } from "@/lib/trpc";
 import { canonicalCatalogPath, FALLBACK_GENERIC_STOREFRONT, type Storefront } from "@shared/storefront";
 
 export function useStorefront(): { storefront: Storefront | null; isLoading: boolean } {
-  const q = trpc.public.getStorefront.useQuery(undefined, { staleTime: 5 * 60_000, retry: false, refetchOnWindowFocus: false });
+  // Viaja con la identidad pública (`public.getTheme`), que ya carga toda página pública
+  const q = trpc.public.getTheme.useQuery(undefined, { staleTime: 5 * 60_000, retry: false, refetchOnWindowFocus: false });
   if (q.isLoading) return { storefront: null, isLoading: true };
-  return { storefront: q.data ?? FALLBACK_GENERIC_STOREFRONT, isLoading: false };
+  return { storefront: q.data?.storefront ?? FALLBACK_GENERIC_STOREFRONT, isLoading: false };
 }
 
 export function CatalogRoute({ Sector, Generic }: { Sector: ComponentType; Generic: ComponentType }) {
