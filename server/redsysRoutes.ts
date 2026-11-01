@@ -19,7 +19,7 @@ import { logActivity } from "./db";
 import { buildConfirmationHtml } from "./emailTemplates";
 import { sendEmail } from "./mailer";
 import { sendManagedEmail, logDirectEmail } from "./emailManager";
-import { groupTaxBreakdown, totalTaxAmount } from "./taxUtils";
+import { chargedInvoiceAmounts, QUOTE_DISCOUNT_REASON } from "./invoiceCalc";
 import { reservationProductFromQuoteItems } from "./reservationUtils";
 import { getBusinessEmail } from "./config";
 import { brandName, brandSetting } from "./tenantBrand";
@@ -360,11 +360,12 @@ redsysRouter.post("/api/redsys/notification", express.urlencoded({ extended: tru
             const now = new Date();
             const invoiceNumber = await generateDocumentNumber("factura", "redsys:ipn", "system");
             const items = (quote.items as { description: string; quantity: number; unitPrice: number; total: number; fiscalRegime?: string; taxRate?: number }[]) ?? [];
-            const total = Number(quote.total);
-            const subtotal = Number(quote.subtotal);
-            const bdRedsys = groupTaxBreakdown(items.filter(i => i.fiscalRegime !== "reav"));
-            const taxAmount = totalTaxAmount(bdRedsys);
-            const taxRateRedsys = bdRedsys.length === 1 ? bdRedsys[0].rate : 21;
+            // La factura es lo cobrado: el descuento del presupuesto reduce base e IVA de cada tipo
+            const chargedRedsys = (updatedReservation.amountPaid ?? 0) > 0 ? Number(updatedReservation.amountPaid) / 100 : Number(quote.total);
+            const amountsRedsys = chargedInvoiceAmounts(items, chargedRedsys);
+            const { total, subtotal, taxAmount } = amountsRedsys;
+            const bdRedsys = amountsRedsys.taxBreakdown;
+            const taxRateRedsys = amountsRedsys.taxRate;
 
             // Producto principal + actividades extra del presupuesto. Garantiza
             // que una reserva multi-línea conserve TODAS sus actividades en
@@ -381,8 +382,11 @@ redsysRouter.post("/api/redsys/notification", express.urlencoded({ extended: tru
               clientPhone: lead?.phone ?? updatedReservation.customerPhone,
               itemsJson: items as any,
               subtotal: String(subtotal),
+              discount: String(amountsRedsys.discount),
+              discountReason: amountsRedsys.discount > 0 ? QUOTE_DISCOUNT_REASON : null,
               taxRate: String(taxRateRedsys),
               taxAmount: String(taxAmount),
+              taxBreakdown: bdRedsys.length > 0 ? bdRedsys : undefined,
               total: String(total),
               status: "cobrada",
               paymentMethod: "tarjeta_redsys",
@@ -1155,11 +1159,13 @@ redsysRouter.post("/api/admin/recover-order/:merchantOrder", async (req, res) =>
           const now = new Date();
           const invoiceNumber = await generateDocumentNumber("factura", "recovery:admin", "system");
           const items = (quote.items as { description: string; quantity: number; unitPrice: number; total: number; fiscalRegime?: string; taxRate?: number }[]) ?? [];
-          const total = Number(quote.total);
-          const subtotal = Number(quote.subtotal);
-          const bd = groupTaxBreakdown(items.filter(i => i.fiscalRegime !== "reav"));
-          const taxAmount = totalTaxAmount(bd);
-          const taxRate = bd.length === 1 ? bd[0].rate : 21;
+          // La factura es lo cobrado: el descuento del presupuesto reduce base e IVA de cada tipo
+          const [paidNow] = await _db.select({ amountPaid: reservations.amountPaid }).from(reservations).where(eq(reservations.id, primary.id)).limit(1);
+          const charged = (paidNow?.amountPaid ?? 0) > 0 ? Number(paidNow!.amountPaid) / 100 : Number(quote.total);
+          const amounts = chargedInvoiceAmounts(items, charged);
+          const { total, subtotal, taxAmount } = amounts;
+          const bd = amounts.taxBreakdown;
+          const taxRate = amounts.taxRate;
           const mainProductId = (items as { productId?: number }[]).find(i => i.productId)?.productId ?? primary.productId ?? 0;
 
           const [invRes] = await _db.insert(invoices).values({
@@ -1171,8 +1177,11 @@ redsysRouter.post("/api/admin/recover-order/:merchantOrder", async (req, res) =>
             clientPhone: lead?.phone ?? primary.customerPhone,
             itemsJson: items as any,
             subtotal: String(subtotal),
+            discount: String(amounts.discount),
+            discountReason: amounts.discount > 0 ? QUOTE_DISCOUNT_REASON : null,
             taxRate: String(taxRate),
             taxAmount: String(taxAmount),
+            taxBreakdown: bd.length > 0 ? bd : undefined,
             total: String(total),
             status: "cobrada",
             paymentMethod: "tarjeta_redsys",

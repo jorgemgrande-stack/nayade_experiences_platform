@@ -201,7 +201,7 @@ describe.skipIf(!ON)("rendimiento de Essential (opt-in PERF=1, MySQL en Docker)"
     const c = await s.tenantConn(t.id);
     try {
       const productId = Number((await c.query<mysql.RowDataPacket[]>("SELECT id FROM experiences WHERE slug = 'servicio-perf'"))[0][0].id);
-      await measure(`presupuesto (crm.quotes.createDirect)`, N_DOCS, 10, (i) => s.m(t.id, "crm.quotes.createDirect", { clientName: `Cliente Q${i}`, clientEmail: `q${i}@perf.example`, title: `Presupuesto ${i}`, items: [{ description: "Servicio Perf", quantity: 1, unitPrice: 100, total: 100, taxRate: 21 }], subtotal: 100, taxRate: 21, total: 121, sendNow: false }, t.cookie).then((r) => track(r, "quotes")), is200);
+      await measure(`presupuesto (crm.quotes.createDirect)`, N_DOCS, 10, (i) => s.m(t.id, "crm.quotes.createDirect", { clientName: `Cliente Q${i}`, clientEmail: `q${i}@perf.example`, title: `Presupuesto ${i}`, items: [{ description: "Servicio Perf", quantity: 1, unitPrice: 100, total: 100, taxRate: 21 }], subtotal: 100, taxRate: 21, total: 121, pricesIncludeTax: false, sendNow: false }, t.cookie).then((r) => track(r, "quotes")), is200);
       await measure(`venta con factura (crm.reservations.createManual)`, N_DOCS, 10, (i) => s.m(t.id, "crm.reservations.createManual", { customerName: `Cliente F${i}`, customerEmail: `f${i}@perf.example`, productId, productName: "Servicio Perf", bookingDate: "2030-05-01", people: 1, amountTotal: 121, amountPaid: 121, sendConfirmationEmail: false }, t.cookie).then((r) => track(r, "createManual")), is200);
       const [q] = await c.query<mysql.RowDataPacket[]>("SELECT COUNT(*) AS n, COUNT(DISTINCT quoteNumber) AS d FROM quotes");
       expect({ n: Number(q[0].n), d: Number(q[0].d) }).toEqual({ n: N_DOCS, d: N_DOCS });

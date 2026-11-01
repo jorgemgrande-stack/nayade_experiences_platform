@@ -76,7 +76,7 @@ describe.skipIf(!URL_)("pago fraccionado por el enlace del presupuesto (aplicaci
     await ess.markPaid("a");
     ok(await ess.m("a", "integrations.save", { provider: "redsys", values: { environment: "test", merchantCode: "999008881", merchantTerminal: "1", merchantKey: KEY_A } }, admA), "pasarela");
     const r = ok(
-      await ess.m("a", "crm.quotes.createDirect", { clientName: "Lucía Plazos", clientEmail: "lucia@cliente-a.example", title: "Proyecto en tres pagos", items: [{ description: "Proyecto", quantity: 1, unitPrice: 120, total: 120, taxRate: 21 }], subtotal: 120, taxRate: 21, total: 145.2, sendNow: false }, agA),
+      await ess.m("a", "crm.quotes.createDirect", { clientName: "Lucía Plazos", clientEmail: "lucia@cliente-a.example", title: "Proyecto en tres pagos", items: [{ description: "Proyecto", quantity: 1, unitPrice: 145.2, total: 145.2, taxRate: 21 }], subtotal: 120, taxRate: 21, total: 145.2, sendNow: false }, agA),
       "presupuesto",
     );
     quoteId = Number(r.quoteId);
@@ -135,9 +135,12 @@ describe.skipIf(!URL_)("pago fraccionado por el enlace del presupuesto (aplicaci
     const [q] = await waitFor(() => ess.sql("a", "SELECT paidAt, invoiceNumber FROM quotes WHERE id = ?", [quoteId]), (rows) => !!rows[0]?.invoiceNumber);
     expect(q.paidAt).not.toBeNull();
     expect((await installments()).map((r) => r.status)).toEqual(["paid", "paid", "paid"]);
-    const inv = await ess.sql("a", "SELECT total FROM invoices WHERE quoteId = ?", [quoteId]);
+    const inv = await ess.sql("a", "SELECT subtotal, taxAmount, total, taxBreakdown FROM invoices WHERE quoteId = ?", [quoteId]);
     expect(inv.length).toBe(1);
-    expect(Number(inv[0].total)).toBeCloseTo(145.2, 2);
+    // Lo facturado es lo cobrado en las tres cuotas, con base + IVA cuadrando y el desglose guardado
+    expect([Number(inv[0].subtotal), Number(inv[0].taxAmount), Number(inv[0].total)]).toEqual([120, 25.2, 145.2]);
+    const bd = typeof inv[0].taxBreakdown === "string" ? JSON.parse(inv[0].taxBreakdown) : inv[0].taxBreakdown;
+    expect(bd).toEqual([{ rate: 21, base: 120, amount: 25.2 }]);
     // Todo cobrado: el enlace no inicia más pagos, pero sigue mostrando el presupuesto pagado
     expect(errCode(await pay())).toBe("BAD_REQUEST");
     const view = ok(await ess.q("a", "crm.quotes.getByToken", { token }), "ver pagado");

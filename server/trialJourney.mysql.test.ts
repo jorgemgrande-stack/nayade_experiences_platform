@@ -396,7 +396,7 @@ describe.skipIf(!URL_)("prueba gratuita de Essential de punta a punta (MySQL rea
     expect(prod.status).toBe(200);
     expect((await m(tenantId, "setupWizard.setStep", { step: "product", status: "done" }, cookie)).status).toBe(200);
     // Primera operación: borrador de presupuesto con el primer cliente y producto (sin enviar)
-    const quote = await m(tenantId, "crm.quotes.createDirect", { clientName: "Cliente Uno", clientEmail: "cliente@uno.example", title: "Presupuesto para Cliente Uno", items: [{ description: "Martillo", quantity: 1, unitPrice: 12.5, total: 12.5, taxRate: 21 }], subtotal: 12.5, taxRate: 21, total: 15.13, sendNow: false }, cookie);
+    const quote = await m(tenantId, "crm.quotes.createDirect", { clientName: "Cliente Uno", clientEmail: "cliente@uno.example", title: "Presupuesto para Cliente Uno", items: [{ description: "Martillo", quantity: 1, unitPrice: 12.5, total: 12.5, taxRate: 21 }], subtotal: 12.5, taxRate: 21, total: 15.13, pricesIncludeTax: false, sendNow: false }, cookie);
     expect(quote.status).toBe(200);
     expect(data(quote)).toMatchObject({ success: true, sent: false });
     expect(appMail.some((x) => x.to === "cliente@uno.example")).toBe(false);

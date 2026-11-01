@@ -136,6 +136,8 @@ export async function buildInvoiceHtml(rawInvoice: InvoiceHtmlParams): Promise<s
     ? invoice.taxBreakdown
     : groupTaxBreakdown(invoice.itemsJson);
   const isMultiRate = breakdown.length > 1;
+  // Con descuento global: suma de conceptos, descuento y después las bases y cuotas ya descontadas
+  const hasDiscount = Number(invoice.discount ?? 0) > 0;
 
   const buildItemRows = (items: typeof invoice.itemsJson, isReav: boolean) =>
     items.map((item) =>
@@ -251,7 +253,8 @@ export async function buildInvoiceHtml(rawInvoice: InvoiceHtmlParams): Promise<s
     ${hasGeneral && hasReav ? `
     <tr><td style="color:#6b7280;font-size:13px;">Subtotal rég. general</td><td>${generalItems.reduce((s,i) => s+i.total,0).toFixed(2)} €</td></tr>
     <tr><td style="color:#6b7280;font-size:13px;">Subtotal REAV (sin IVA)</td><td>${reavItems.reduce((s,i) => s+i.total,0).toFixed(2)} €</td></tr>
-    ` : `<tr><td>Subtotal</td><td>${Number(invoice.subtotal).toFixed(2)} €</td></tr>`}
+    ` : `<tr><td>Subtotal</td><td>${(hasDiscount ? invoice.itemsJson.reduce((s, i) => s + Number(i.total), 0) : Number(invoice.subtotal)).toFixed(2)} €</td></tr>`}
+    ${hasDiscount ? `<tr><td style="color:#15803d;font-size:13px;">Descuento${invoice.discountReason ? ` <span style="color:#9ca3af;font-size:11px;">— ${invoice.discountReason}</span>` : ""}</td><td style="color:#15803d;font-weight:600;">-${Number(invoice.discount).toFixed(2)} €</td></tr>` : ""}
     ${hasGeneral && isMultiRate ? breakdown.map(b =>
       `<tr><td style="color:#6b7280;font-size:12px;">Base imponible IVA ${b.rate}%</td><td>${b.base.toFixed(2)} €</td></tr>` +
       `<tr><td>IVA ${b.rate}%</td><td>${b.amount.toFixed(2)} €</td></tr>`
@@ -261,7 +264,6 @@ export async function buildInvoiceHtml(rawInvoice: InvoiceHtmlParams): Promise<s
     <tr><td>IVA (${breakdown[0].rate}%)</td><td>${breakdown[0].amount.toFixed(2)} €</td></tr>` : ""}
     ${hasGeneral && breakdown.length === 0 ? `<tr><td>IVA (${invoice.taxRate}%)</td><td>${Number(invoice.taxAmount).toFixed(2)} €</td></tr>` : ""}
     ${hasReav && !hasGeneral ? `<tr><td style="font-size:12px;color:#6b7280;font-style:italic;" colspan="2">Operación sujeta al Régimen Especial de Agencias de Viaje (REAV). No procede repercusión de IVA al cliente.</td></tr>` : ''}
-    ${Number(invoice.discount ?? 0) > 0 ? `<tr><td style="color:#15803d;font-size:13px;">Descuento${invoice.discountReason ? ` <span style="color:#9ca3af;font-size:11px;">— ${invoice.discountReason}</span>` : ""}</td><td style="color:#15803d;font-weight:600;">-${Number(invoice.discount).toFixed(2)} €</td></tr>` : ""}
     <tr class="total-row"><td>TOTAL</td><td>${Number(invoice.total).toFixed(2)} €</td></tr>
   </table></div>
   </div>

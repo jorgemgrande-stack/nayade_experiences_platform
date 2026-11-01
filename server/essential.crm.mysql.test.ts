@@ -184,7 +184,7 @@ describe.skipIf(!URL_)("Essential — CRM (aplicación real, dos empresas nuevas
     const r = await ess.m(
       "a",
       "crm.quotes.createDirect",
-      { clientName: "Cliente Presupuesto", clientEmail: "presu@cliente-a.example", title: "Servicio de prueba", items: [{ description: "Servicio", quantity: 2, unitPrice: 50, total: 100 }], subtotal: 100, total: 121 },
+      { clientName: "Cliente Presupuesto", clientEmail: "presu@cliente-a.example", title: "Servicio de prueba", items: [{ description: "Servicio", quantity: 2, unitPrice: 50, total: 100 }], subtotal: 100, total: 121, pricesIncludeTax: false },
       agA,
     );
     expect(r.status).toBe(200);
@@ -202,7 +202,7 @@ describe.skipIf(!URL_)("Essential — CRM (aplicación real, dos empresas nuevas
     // La numeración de B es independiente y B no ve el presupuesto de A
     expect(data(await ess.q("b", "crm.quotes.list", {}, agB)).total).toBe(0);
     expect(errCode(await ess.q("b", "crm.quotes.get", { id: quoteId }, agB))).toBe("NOT_FOUND");
-    const rb = await ess.m("b", "crm.quotes.createDirect", { clientName: "Cliente B", clientEmail: "b@cliente-b.example", title: "B", items: [{ description: "S", quantity: 1, unitPrice: 10, total: 10 }], subtotal: 10, total: 12.1 }, agB);
+    const rb = await ess.m("b", "crm.quotes.createDirect", { clientName: "Cliente B", clientEmail: "b@cliente-b.example", title: "B", items: [{ description: "S", quantity: 1, unitPrice: 10, total: 10 }], subtotal: 10, total: 12.1, pricesIncludeTax: false }, agB);
     expect(data(rb).quoteNumber).toMatch(/^PRES-\d{4}-0001$/);
 
     const lic = await licenseMatrix(ess, "crm-quotes", {
