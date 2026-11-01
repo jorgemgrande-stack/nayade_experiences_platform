@@ -20,6 +20,8 @@ interface ReviewSectionProps {
    * "auto"  → sigue el modo oscuro/claro de la página (default para Experience, Pack)
    */
   theme?: "dark" | "light" | "auto";
+  /** Textos de tienda (productos y servicios de una pyme) en lugar de los de visita o actividad. */
+  generic?: boolean;
 }
 
 // ─── HELPERS DE ESTILO ────────────────────────────────────────────────────────
@@ -268,11 +270,13 @@ function ReviewForm({
   entityId,
   s,
   onSuccess,
+  generic = false,
 }: {
   entityType: EntityType;
   entityId: number;
   s: ReturnType<typeof styles>;
   onSuccess: () => void;
+  generic?: boolean;
 }) {
   const [rating, setRating] = useState(0);
   const [form, setForm] = useState({
@@ -362,7 +366,7 @@ function ReviewForm({
           />
         </div>
         <div>
-          <Label className={s.labelCls}>Fecha de la visita</Label>
+          <Label className={s.labelCls}>{generic ? "Fecha de compra" : "Fecha de la visita"}</Label>
           <Input
             type="date"
             className={`mt-1 ${s.inputCls}`}
@@ -376,7 +380,7 @@ function ReviewForm({
         <Label className={s.labelCls}>Tu opinión *</Label>
         <Textarea
           className={`mt-1 min-h-[100px] resize-none ${s.inputCls}`}
-          placeholder="Cuéntanos tu experiencia con detalle (mínimo 10 caracteres)..."
+          placeholder={generic ? "Cuéntanos tu opinión con detalle (mínimo 10 caracteres)..." : "Cuéntanos tu experiencia con detalle (mínimo 10 caracteres)..."}
           value={form.body}
           onChange={(e) => setForm({ ...form, body: e.target.value })}
           required
@@ -406,6 +410,7 @@ export function ReviewSection({
   entityType,
   entityId,
   theme = "auto",
+  generic = false,
 }: ReviewSectionProps) {
   const [showForm, setShowForm] = useState(false);
   const [page, setPage] = useState(0);
@@ -473,12 +478,13 @@ export function ReviewSection({
       {showForm && (
         <div className={`mb-8 ${s.formBg}`}>
           <h3 className={`text-lg font-semibold mb-4 ${s.formHeading}`}>
-            Comparte tu experiencia
+            {generic ? "Comparte tu opinión" : "Comparte tu experiencia"}
           </h3>
           <ReviewForm
             entityType={entityType}
             entityId={entityId}
             s={s}
+            generic={generic}
             onSuccess={() => { setShowForm(false); refetch(); }}
           />
         </div>
@@ -495,7 +501,7 @@ export function ReviewSection({
         <div className={`text-center py-12 ${s.emptyIcon}`}>
           <MessageSquare className="w-10 h-10 mx-auto mb-3 opacity-30" />
           <p className="font-medium">Aún no hay opiniones</p>
-          <p className="text-sm mt-1">Sé el primero en compartir tu experiencia</p>
+          <p className="text-sm mt-1">{generic ? "Sé el primero en dar tu opinión" : "Sé el primero en compartir tu experiencia"}</p>
         </div>
       ) : (
         <>
