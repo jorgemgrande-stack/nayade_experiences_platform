@@ -121,7 +121,7 @@ export default function ProductDetail() {
         </ol>
       </nav>
 
-      <div className="container pb-16">
+      <div className="container pb-16 text-foreground">
         <div className="grid grid-cols-1 lg:grid-cols-5 gap-8 lg:gap-10">
           {/* Imágenes */}
           <div className="lg:col-span-3 min-w-0">

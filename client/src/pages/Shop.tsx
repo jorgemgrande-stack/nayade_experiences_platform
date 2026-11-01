@@ -55,7 +55,7 @@ export default function Shop() {
         )}
       </section>
 
-      <section className="container pb-16">
+      <section className="container pb-16 text-foreground">
         {isLoading ? (
           <div className="py-16 flex justify-center" role="status" aria-label="Cargando">
             <div className="w-8 h-8 border-2 border-primary border-t-transparent rounded-full animate-spin" />
