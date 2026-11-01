@@ -182,15 +182,18 @@ sitemapRouter.get("/sitemap.xml", async (_req, res) => {
       if (!multi && ((u.path === "/hotel" && !hotelOn) || (u.path === "/spa" && !spaOn) || (u.path === "/restaurantes" && !restaurantsOn))) continue;
       add(u.path, undefined, u.changefreq, u.priority);
     }
+    // Pyme: su tienda y su formulario de presupuesto solo si los tiene contratados; nada de Lego Packs (shared/publicSite.ts)
+    const site = await (await import("./publicSite")).readPublicSiteFeatures();
     if (multi) {
       if (expRows.length > 0) {
-        add("/experiencias", undefined, "weekly", "0.8");
-        add("/presupuesto", undefined, "weekly", "0.8");
+        if (!site.licensed) add("/experiencias", undefined, "weekly", "0.8");
+        else if (site.store) add("/tienda", undefined, "weekly", "0.8");
+        if (site.quotes) add("/presupuesto", undefined, "weekly", "0.8");
       }
       if (hotelOn && roomRows.length > 0) add("/hotel", undefined, "weekly", "0.8");
       if (spaOn && spaRows.length > 0) add("/spa", undefined, "weekly", "0.8");
       if (restaurantsOn && restaurantRows.length > 0) add("/restaurantes", undefined, "weekly", "0.8");
-      if (legoRows.length > 0) add("/lego-packs", undefined, "weekly", "0.8");
+      if (legoRows.length > 0 && !site.licensed) add("/lego-packs", undefined, "weekly", "0.8");
       if (locationRows.length > 0) add("/ubicaciones", undefined, "weekly", "0.8");
     }
 
@@ -210,12 +213,12 @@ sitemapRouter.get("/sitemap.xml", async (_req, res) => {
     }
 
     // /lego-packs/:category (DISTINCT)
-    for (const r of legoCategories) {
+    for (const r of site.licensed ? [] : legoCategories) {
       add(`/lego-packs/${r.category}`);
     }
 
     // /lego-packs/detalle/:slug
-    for (const r of legoRows) {
+    for (const r of site.licensed ? [] : legoRows) {
       add(`/lego-packs/detalle/${r.slug}`, formatDate(r.updatedAt));
     }
 

@@ -9,12 +9,17 @@
  *   - `/pagina/:slug`: página CMS publicada (o con bloques).
  *   - `/blog` y `/blog/:slug`: blog contratado y, para una entrada, publicada.
  *   - secciones sectoriales (`/hotel`, `/spa`, `/restaurantes`) en multiempresa: solo con su módulo.
+ *   - secciones que dependen de lo contratado (`/tienda`, `/experiencias`, `/lego-packs`, `/canjear-cupon`,
+ *     `/presupuesto`) en multiempresa: según shared/publicSite.ts (una redirección del cliente cuenta como existente).
  * Si una comprobación falla (base de datos caída), se sirve la página: nunca se rompe la navegación por un 404 falso.
  */
+
+import { isSiteGatedPath, publicRouteAccess, type PublicSiteFeatures } from "../../shared/publicSite";
 
 export const CLIENT_ROUTES: readonly string[] = [
   "/",
   "/experiencias", "/experiencias/:slug",
+  "/tienda",
   "/galeria",
   "/presupuesto", "/presupuesto/:token", "/propuesta/:token",
   "/colegios", "/grupos",
@@ -55,6 +60,7 @@ const COMPILED = CLIENT_ROUTES.map((r) => ({
 export type PublicPathKind =
   | { kind: "app" }
   | { kind: "sector"; moduleId: string }
+  | { kind: "site"; path: string }
   | { kind: "notFound" }
   | { kind: "tenantPage"; slug: string }
   | { kind: "dynamicPage"; slug: string }
@@ -88,7 +94,8 @@ export function classifyPublicPath(rawPathname: string, multi: boolean): PublicP
   if (multi && TENANT_PAGE_ALIASES[p]) return { kind: "tenantPage", slug: TENANT_PAGE_ALIASES[p] };
   if (COMPILED.some((c) => c.re.test(p))) {
     const sector = multi ? Object.keys(SECTOR_ROUTES).find((x) => p === x || p.startsWith(`${x}/`)) : undefined;
-    return sector ? { kind: "sector", moduleId: SECTOR_ROUTES[sector] } : { kind: "app" };
+    if (sector) return { kind: "sector", moduleId: SECTOR_ROUTES[sector] };
+    return multi && isSiteGatedPath(p) ? { kind: "site", path: p } : { kind: "app" };
   }
   const one = /^\/([^/]+)$/.exec(p);
   if (one && multi) {
@@ -115,6 +122,8 @@ export interface PublicRouteDeps {
   blogPostPublished: (slug: string) => Promise<boolean>;
   /** Módulo sectorial contratado y activo para la empresa. */
   moduleAvailable: (moduleId: string) => Promise<boolean>;
+  /** Secciones de la web según lo contratado (shared/publicSite.ts). Sin ella, existen todas. */
+  siteFeatures?: () => Promise<PublicSiteFeatures>;
 }
 
 export interface PublicRouteResult {
@@ -133,6 +142,9 @@ export async function resolvePublicRoute(pathname: string, deps: PublicRouteDeps
         return { status: 404 };
       case "sector":
         return { status: (await deps.moduleAvailable(k.moduleId)) ? 200 : 404 };
+      case "site":
+        if (!deps.siteFeatures) return { status: 200 };
+        return { status: publicRouteAccess(k.path, await deps.siteFeatures()).kind === "notFound" ? 404 : 200 };
       case "tenantPage": {
         const page = await deps.tenantPage(k.slug);
         return page ? { status: 200, page } : { status: 404 };
@@ -154,6 +166,9 @@ export function defaultPublicRouteDeps(multi: boolean): PublicRouteDeps {
   return {
     multi,
     async tenantPage(slug) {
+      // Portada y textos legales iniciales: se crean una vez si faltan (igual que al leerlos desde la web)
+      const { ensureStarterPages } = await import("../starterSiteDb");
+      await ensureStarterPages();
       const { getPageBySlug } = await import("../db");
       const { isLegalPlaceholder } = await import("../../shared/tenantNav");
       const row = await getPageBySlug(slug);
@@ -169,6 +184,10 @@ export function defaultPublicRouteDeps(multi: boolean): PublicRouteDeps {
     async blogLicensed() {
       const { getCapabilityAccess } = await import("./capabilities/access");
       return (await getCapabilityAccess().check("cms-blog", { write: false })).allowed;
+    },
+    async siteFeatures() {
+      const { readPublicSiteFeatures } = await import("../publicSite");
+      return readPublicSiteFeatures();
     },
     async moduleAvailable(moduleId) {
       const { getModuleAccess } = await import("./modules/runtime");

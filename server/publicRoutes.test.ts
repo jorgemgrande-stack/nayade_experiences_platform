@@ -70,11 +70,28 @@ describe("resolución", () => {
     expect((await resolvePublicRoute("/hotel", deps())).status).toBe(404);
   });
 
+  it("secciones según lo contratado (multi): sin tienda ni Lego Packs ni cupones, 404; la redirección a la tienda existe", async () => {
+    const essential = { licensed: true, store: true, checkout: true, quotes: true, coupons: false, hotel: false, spa: false, restaurants: false };
+    const d = deps({ siteFeatures: async () => essential });
+    expect(classifyPublicPath("/lego-packs/dia", true)).toEqual({ kind: "site", path: "/lego-packs/dia" });
+    expect(classifyPublicPath("/lego-packs/dia", false).kind).toBe("app");
+    expect(classifyPublicPath("/experiencias/camiseta", true).kind).toBe("app");
+    for (const p of ["/lego-packs", "/lego-packs/dia", "/canjear-cupon"]) expect((await resolvePublicRoute(p, d)).status, p).toBe(404);
+    for (const p of ["/tienda", "/experiencias", "/presupuesto", "/experiencias/camiseta"]) expect((await resolvePublicRoute(p, d)).status, p).toBe(200);
+    const sinTienda = deps({ siteFeatures: async () => ({ ...essential, store: false, quotes: false }) });
+    for (const p of ["/tienda", "/experiencias", "/presupuesto"]) expect((await resolvePublicRoute(p, sinTienda)).status, p).toBe(404);
+    // Instalación propia o sin la comprobación: todo existe como siempre
+    const legacy = deps({ siteFeatures: async () => ({ licensed: false, store: true, checkout: true, quotes: true, coupons: true, hotel: true, spa: true, restaurants: true }) });
+    for (const p of ["/lego-packs", "/canjear-cupon", "/tienda"]) expect((await resolvePublicRoute(p, legacy)).status, p).toBe(200);
+    expect((await resolvePublicRoute("/lego-packs", deps())).status).toBe(200);
+  });
+
   it("si la comprobación falla se sirve la página (nunca un 404 falso)", async () => {
     const boom = async () => {
       throw new Error("BD caída");
     };
     expect((await resolvePublicRoute("/servicios", deps({ tenantPage: boom }))).status).toBe(200);
+    expect((await resolvePublicRoute("/lego-packs", deps({ siteFeatures: boom }))).status).toBe(200);
   });
 });
 

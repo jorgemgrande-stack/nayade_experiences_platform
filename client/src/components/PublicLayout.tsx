@@ -5,6 +5,7 @@ import WhatsAppFloatingButton from "./WhatsAppFloatingButton";
 import { useTheme } from "@/contexts/ThemeContext";
 import { cn } from "@/lib/utils";
 import { useTenantTheme } from "./TenantTheme";
+import { brandTokens } from "@shared/loginBrand";
 
 interface PublicLayoutProps {
   children: React.ReactNode;
@@ -22,7 +23,10 @@ export default function PublicLayout({
 }: PublicLayoutProps) {
   const { adminTheme, publicTheme } = useTheme();
   // Web neutra de una empresa: sin la barra superior de la instalación propia (32 px menos de cabecera)
-  const neutral = !!useTenantTheme().theme?.neutralSite;
+  const { theme } = useTenantTheme();
+  const neutral = !!theme?.neutralSite;
+  // Marca de la empresa también dentro del modo claro forzado (force-light redefine los colores de la instalación propia)
+  const brand = neutral ? brandTokens(theme) : null;
 
   // Cuando forcePublicLight=true: retirar dark de <html> mientras la página esté montada.
   // Al desmontar, restablecer si el admin estaba en oscuro.
@@ -47,8 +51,10 @@ export default function PublicLayout({
         className={cn(
           "min-h-screen flex flex-col",
           forceLight && "force-light",
-          darkContent ? "bg-slate-900" : "bg-background"
+          // El texto hereda el color del tema de esta sección (no el del panel): contraste correcto sobre su fondo
+          darkContent ? "bg-slate-900" : "bg-background text-foreground"
         )}
+        style={brand ?? undefined}
       >
         <PublicNav />
         <main className={cn("flex-1", !fullWidthHero && (neutral ? "pt-20" : "pt-20 lg:pt-[112px]"))}>
