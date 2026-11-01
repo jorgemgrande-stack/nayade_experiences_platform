@@ -182,6 +182,24 @@ describe.skipIf(!URL_)("Stripe y conciliación con MySQL real (CRM 0036)", () =>
     expect([4_100, 5_100]).toContain(rest.pendingCents);
   });
 
+  it("lectura de la API de Stripe: misma deduplicación que el CSV y búsqueda por factura de Stripe", async () => {
+    const store = new MysqlFinanceStripeStore(pool);
+    expect((await store.transactionsByStripeInvoice(["in_test_1"])).map((t) => t.balanceTransactionId).sort()).toEqual(["txn_test_c1", "txn_test_d1", "txn_test_d2"]);
+    expect(await store.transactionsByStripeInvoice([])).toEqual([]);
+    const known = (await store.transactionsByStripeInvoice(["in_test_2"]))[0];
+    const fresh = { ...known, balanceTransactionId: "txn_api_1", chargeId: "ch_api_1", sourceId: "ch_api_1", stripeInvoiceId: "in_api_1", payoutArrivalOn: null };
+    const entries = await count("SELECT COUNT(*) n FROM fin_entries");
+    const first = await stripe.importFromApi({ txns: [known, fresh], payouts: [] }, ACTOR);
+    expect(first.balance).toMatchObject({ inserted: 1, duplicates: 1 });
+    // La misma lectura otra vez no crea otra importación
+    expect(await stripe.importFromApi({ txns: [known, fresh], payouts: [] }, ACTOR)).toEqual({ balance: null, payouts: null });
+    expect(await count("SELECT COUNT(*) n FROM fin_stripe_transactions WHERE balance_transaction_id = 'txn_api_1'")).toBe(1);
+    await stripe.post("2026-10-31", ACTOR);
+    await stripe.post("2026-10-31", ACTOR);
+    expect(await count("SELECT COUNT(*) n FROM fin_entries")).toBe(entries + 1);
+    expect(await count("SELECT COUNT(*) n FROM fin_entries WHERE source_key = 'stripe-txn:txn_api_1'")).toBe(1);
+  });
+
   it("facturas propias sin tope: lectura paginada desde la tabla (solo lectura)", async () => {
     const dir = new MysqlOwnInvoiceDirectory(pool, "test");
     const all = await dir.list({ limit: 500, offset: 0 });

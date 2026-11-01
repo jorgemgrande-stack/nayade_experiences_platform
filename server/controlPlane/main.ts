@@ -125,6 +125,11 @@ import { MysqlFinanceTaxStore, finFiscalTablesReady, finTaxTablesReady } from ".
 import { MysqlFiscalInvoiceSource } from "../finance/taxSources";
 import { runTaxReminders, taxRemindersEnabled } from "../finance/taxReminders";
 import { FinanceAnalysisService } from "../finance/analysisService";
+import { FinanceAutomation, startFinanceAutomation } from "../finance/automation";
+import { FinanceIntegrity } from "../finance/integrity";
+import { StripeApiBalanceReader } from "../finance/stripeBalanceApi";
+import { InvoicingService } from "../invoicing/service";
+import type { CompanyFiscal } from "../invoicing/rules";
 import { MysqlFinanceAnalysisStore, MysqlPaymentEventSource, finAnalysisTablesReady } from "../finance/analysisStore";
 import { ISSUER } from "../stripe/issuer";
 import { ConsentService, MysqlConsentStore, commsTablesReady } from "../communications/consent";
@@ -647,14 +652,39 @@ async function main() {
       : null;
   if (financeOps) console.log(JSON.stringify({ ctx: "FinanceTax", mounted: !!financeTax, ...(financeTax ? { reminders: taxRemindersEnabled(process.env) } : { reason: "migration_0037_missing" }) }));
   if (financeOps && financeTax) financeOps.useTaxDocumentOwners((type, id) => financeTax.documentOwnerExists(type, id));
+  // Automatización contable: ejercicio inicial, configuración fiscal confirmada (sin validar), borradores de factura de
+  // los servicios externos (nunca expide), facturas expedidas al libro y Stripe por API en solo lectura
+  const crmStore = crm?.store;
+  const financeAutomation =
+    finance && crmPool
+      ? new FinanceAutomation({
+          finance,
+          ledger: new MysqlFinanceStore(crmPool),
+          stripe: financeStripe,
+          stripeApi: financeStripe && stripe ? new StripeApiBalanceReader({ apiKey: stripe.config.apiKey }) : null,
+          tax: financeTax,
+          invoicing:
+            invoicing && crmStore
+              ? new InvoicingService({ store: invoicing.store, external: external?.store, company: async (id) => (await crmStore.get("companies", id)) as CompanyFiscal | null, issuer: { legalName: ISSUER.legalName, taxId: ISSUER.taxId, address: `${ISSUER.address.line1}, ${ISSUER.address.line2}`, postalCode: ISSUER.address.postalCode, city: ISSUER.address.city, country: ISSUER.address.country }, seriesCode: invoicing.seriesCode, issueEnabled: false })
+              : null,
+          issuer: { legalName: ISSUER.legalName, taxId: ISSUER.taxId },
+        })
+      : null;
+  // Integridad: hechos confirmados (webhooks de Stripe) frente al libro y estado de las fuentes, para el control diario y el panel
+  const financeIntegrity =
+    finance && financeOps && crmPool
+      ? new FinanceIntegrity({ finance, ledger: new MysqlFinanceStore(crmPool), ops: new MysqlFinanceOpsStore(crmPool, { fiscal: finFiscal }), external: external?.store ?? null, invoices: invoicing ? new MysqlOwnInvoiceDirectory(crmPool, external?.store.mode ?? "test") : null, invoiceStore: invoicing?.store ?? null, issueEnabled: !!invoicing?.issueEnabled, stripe: financeStripe ? { service: financeStripe, store: new MysqlFinanceStripeStore(crmPool) } : null, tax: financeTax, automation: financeAutomation })
+      : null;
   // Control diario, informes y análisis (CRM 0038): lectura de las fases 1–3; solo guarda la revisión diaria y la marca de coste directo
   const financeAnalysis =
     financeOps && finance && crmPool && (await finAnalysisTablesReady(crmPool))
-      ? new FinanceAnalysisService({ store: new MysqlFinanceAnalysisStore(crmPool, { fiscal: finFiscal }), finance, ledger: new MysqlFinanceStore(crmPool), ops: new MysqlFinanceOpsStore(crmPool, { fiscal: finFiscal }), fiscal: finFiscal, stripe: financeStripe ? { service: financeStripe, store: new MysqlFinanceStripeStore(crmPool) } : null, tax: financeTax, invoices: invoicing ? new MysqlOwnInvoiceDirectory(crmPool, external?.store.mode ?? "test") : null, paymentEvents: new MysqlPaymentEventSource(crmPool, commercialEnvironment) })
+      ? new FinanceAnalysisService({ store: new MysqlFinanceAnalysisStore(crmPool, { fiscal: finFiscal }), finance, ledger: new MysqlFinanceStore(crmPool), ops: new MysqlFinanceOpsStore(crmPool, { fiscal: finFiscal }), fiscal: finFiscal, stripe: financeStripe ? { service: financeStripe, store: new MysqlFinanceStripeStore(crmPool) } : null, tax: financeTax, invoices: invoicing ? new MysqlOwnInvoiceDirectory(crmPool, external?.store.mode ?? "test") : null, paymentEvents: new MysqlPaymentEventSource(crmPool, commercialEnvironment), integrity: financeIntegrity })
       : null;
   if (financeOps) console.log(JSON.stringify({ ctx: "FinanceAnalysis", mounted: !!financeAnalysis, ...(financeAnalysis ? {} : { reason: "migration_0038_missing" }) }));
   // CRM 0039: la conciliación bancaria resuelve la naturaleza de una comisión con la configuración del análisis
   if (financeOps && financeAnalysis && finFiscal) financeOps.useBankFeeNatures((n) => financeAnalysis.natureAccount(n));
+  // Automatización contable cada 15 minutos (una réplica por tick, GET_LOCK)
+  if (financeAutomation && crmPool) startFinanceAutomation({ automation: financeAutomation, lock: mysqlAdvisoryLock(crmPool) });
   // Borradores de gastos recurrentes: tarea APAGADA salvo CP_FINANCE_RECURRING_ENABLED=1 (una réplica por tick, GET_LOCK)
   if (financeOps && crmPool) startFinanceRecurringScheduler({ ops: financeOps, lock: mysqlAdvisoryLock(crmPool), env: process.env });
   if (crm && crmPool && (await settingsTablesReady(crmPool))) {

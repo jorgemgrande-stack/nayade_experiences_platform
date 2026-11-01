@@ -3,6 +3,7 @@
  * (./permissions.ts): lectura = finance:read; marcar la revisión diaria = finance:post + sesión de operador; CSV =
  * finance:export; la marca de coste directo de las categorías = finance:expenses (en PATCH /categories/:id, ./opsApi.ts).
  *
+ *   GET  /overview                                                     lectura        panel: indicadores con estado
  *   GET  /daily?date                                                   lectura        control diario
  *   GET  /daily/reviews?from&to&limit&offset                           lectura        revisiones
  *   POST /daily/:date/review { note? }                                 operador       revisar (idempotente; edita la nota)
@@ -73,8 +74,10 @@ export function mountFinanceAnalysisRoutes(r: Router, svc: FinanceAnalysisServic
       res.json({ item: await svc.saveAnalysisSettings(b, actorOf(req)) });
     }));
   }
+  // Panel financiero con el estado de cada indicador
+  r.get("/overview", ...canRead, wrap(async (_req, res) => void res.json(await svc.overview())));
   // Control diario
-  r.get("/daily", ...canRead, wrap(async (req, res) => void res.json(await svc.daily(z.object({ date: date.optional() }).strict().parse(req.query).date))));
+  r.get("/daily",...canRead, wrap(async (req, res) => void res.json(await svc.daily(z.object({ date: date.optional() }).strict().parse(req.query).date))));
   r.get("/daily/reviews", ...canRead, wrap(async (req, res) => {
     const q = z.object({ ...range, limit: z.coerce.number().int().min(1).max(366).optional(), offset: z.coerce.number().int().min(0).optional() }).strict().parse(req.query);
     res.json(await svc.reviews(q));

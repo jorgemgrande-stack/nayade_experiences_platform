@@ -143,6 +143,7 @@ const EXPECTED: Record<string, FinanceCapability> = {
   "GET /analysis/settings": "read",
   "PATCH /analysis/settings": "config",
   // Análisis (fase 4)
+  "GET /overview": "read",
   "GET /daily": "read",
   "GET /daily/reviews": "read",
   "POST /daily/:date/review": "post",

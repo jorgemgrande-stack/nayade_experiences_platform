@@ -36,8 +36,8 @@ import {
   type ReconciliationStatus,
   type StripeMatchSuggestion,
 } from "./stripeRules";
-import { isPayoutType, LIVE_PAYOUT_STATUSES, type FinanceStripeStore, type PayoutQuery, type TxnQuery } from "./stripeStore";
-import { FEE_VAT_MODES, type FeeVatMode, type ParsedStripeTxn, type ResolvedFeeVat, type StripeImport, type StripeImportKind, type StripeIssue, type StripePayout, type StripeSettings, type StripeTxn, type StripeTxnStatus } from "./stripeTypes";
+import { isPayoutType, LIVE_PAYOUT_STATUSES, type FinanceStripeStore, type NewStripeImport, type PayoutQuery, type TxnQuery } from "./stripeStore";
+import { FEE_VAT_MODES, type FeeVatMode, type ParsedPayout, type ParsedStripeTxn, type ResolvedFeeVat, type StripeImport, type StripeImportKind, type StripeIssue, type StripePayout, type StripeSettings, type StripeTxn, type StripeTxnStatus } from "./stripeTypes";
 import { isEu } from "./taxRules";
 import { FinanceError, type EntryDraft, type FinanceActor } from "./types";
 
@@ -364,6 +364,26 @@ export class FinanceStripeService implements BankReconciliationExtension {
     }
     await this.audit(actor, "stripe_import.create", "stripe_import", imp.id, { kind: i.kind, rows: imp.rows, inserted: imp.inserted, duplicates: imp.duplicates, refreshed: imp.refreshed, nonEur: imp.nonEur, errors: imp.errors, sha256: sha });
     return imp;
+  }
+
+  /**
+   * Importa lo leído por la API de Stripe (`StripeApiBalanceReader`) con el mismo almacén que los informes CSV: cada
+   * transacción y cada payout entra una sola vez (`UNIQUE(provider, id)`), venga de la API o de un fichero. Una lectura
+   * idéntica a una ya importada no crea otra importación. Devuelve las importaciones creadas.
+   */
+  async importFromApi(r: { txns: ParsedStripeTxn[]; payouts: ParsedPayout[] }, actor: FinanceActor): Promise<{ balance: StripeImport | null; payouts: StripeImport | null }> {
+    const day = this.today();
+    const one = async <T extends { currency: string }>(kind: StripeImportKind, rows: T[], key: (x: T) => string, save: (base: NewStripeImport) => Promise<StripeImport>) => {
+      if (!rows.length) return null;
+      const sha = sha256Hex(Buffer.from(JSON.stringify(rows.map(key).sort())));
+      if (await this.s.findImport(kind, sha)) return null;
+      const imp = await save({ kind, filename: `api-stripe-${kind}-${day}`, sha256: sha, importedBy: actor.by, createdAt: this.now(), rows: rows.length, nonEur: rows.filter((x) => x.currency !== "EUR").length, errors: 0, problems: [] });
+      await this.audit(actor, "stripe_import.api", "stripe_import", imp.id, { kind, rows: imp.rows, inserted: imp.inserted, duplicates: imp.duplicates, refreshed: imp.refreshed, nonEur: imp.nonEur });
+      return imp;
+    };
+    const balance = await one("balance", r.txns, (t) => t.balanceTransactionId, (base) => this.s.importTransactions(base, r.txns, (t) => this.initialStatus(t)));
+    const payouts = await one("payouts", r.payouts, (p) => `${p.payoutId}:${p.status}:${p.arrivalOn}`, (base) => this.s.importPayouts(base, r.payouts));
+    return { balance, payouts };
   }
 
   imports() {
