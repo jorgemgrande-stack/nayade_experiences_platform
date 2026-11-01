@@ -7,7 +7,7 @@
  */
 
 /** Versión semántica publicada (MAJOR.MINOR.PATCH). */
-export const CORE_VERSION = "1.0.0";
+export const CORE_VERSION = "1.1.0";
 
 /** Fecha de publicación de `CORE_VERSION` (AAAA-MM-DD), la misma que su sección del CHANGELOG. */
-export const CORE_RELEASED_AT = "2026-10-31";
+export const CORE_RELEASED_AT = "2026-11-01";

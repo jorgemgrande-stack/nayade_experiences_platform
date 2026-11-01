@@ -20,29 +20,67 @@ Todos los cambios relevantes de Elephant Core se anotan aquí, con el formato
 
 ## [Sin publicar]
 
+Nada todavía.
+
+## [1.1.0] - 2026-11-01
+
+Primera entrega de la evolución hacia Elephant Core 2.0 (PR #526 a #537).
+
 ### Añadido
 
-- Versión de Elephant Core visible en el panel de la empresa (Centro de ayuda → «Acerca de Elephant
-  Core»), con su fecha; los administradores ven además el commit desplegado.
-- Etiquetado de versiones `core-vX.Y.Z` con comprobación del registro de cambios.
+- **Elephant Connect — Amplía tu empresa** (`/admin/ampliar`): catálogo de extensiones con categorías,
+  búsqueda, filtros, ficha comercial con el precio del catálogo y estado real (disponible, contratada,
+  pendiente de configuración, en activación, no disponible para tu plan, bajo solicitud, próximamente,
+  suspendida). La contratación usa el flujo existente del plano de control y Stripe, con clave de
+  idempotencia; la licencia solo se activa con la confirmación del servidor, nunca al volver del pago.
+- Candados discretos de extensiones no contratadas en CRM, seguimiento comercial, comunicaciones,
+  usuarios y ajustes, que abren su ficha.
+- Menú dinámico por extensiones: los módulos declaran en su manifiesto (contrato 1.2) sus secciones,
+  entradas, pestañas, ajustes, rutas y API; el panel las muestra según licencia, rol y `coreRange`, y se
+  actualiza al contratar o suspender sin cerrar sesión.
+- Bienvenida a Elephant Core y asistente de configuración nuevo, persistente y recuperable, adaptado al
+  tipo de actividad y a lo contratado; portada con estado de configuración, actividad reciente, tareas,
+  clientes, ventas y accesos rápidos, solo con datos reales.
+- Factura libre con líneas e IVA 21/10/4/0 %; importar y exportar clientes en CSV con detección de
+  duplicados y revisión previa.
+- Pantalla única «Datos de la empresa»; aviso «No incluido en tu plan» en rutas no contratadas.
+- Versión visible en el Centro de ayuda («Acerca de Elephant Core»); `CHANGELOG.md` y etiquetas
+  `core-vX.Y.Z`.
 
 ### Cambiado
 
-- La web pública de cada empresa sirve su nombre y descripción como título de la portada.
-- El mapa del sitio de cada empresa solo incluye lo que tiene publicado y contratado: portada,
-  contacto, sus páginas, su blog y, con su módulo, las secciones sectoriales.
+- Vocabulario genérico para las empresas por licencias (pedidos, oportunidades, productos o servicios);
+  los textos sectoriales solo aparecen con su módulo. La instalación de una sola empresa no cambia.
+- TPV: categorías propias de la empresa, selector de caja, diseño para tablet y móvil, búsqueda de
+  cliente existente y venta enlazada a su ficha.
+- Ajustes filtrados por plan, sin opciones técnicas; mensajes de error en español y sin detalles internos.
+- Anular una factura emite un abono total (la factura queda «abonada»); los abonos copian el desglose de
+  IVA y admiten importe parcial o por líneas.
+- En una pyme, los documentos nuevos toman los datos fiscales de «Datos de la empresa».
+- Web pública: título de portada con el nombre de la empresa, mapa del sitio según lo publicado y
+  contratado.
 
 ### Corregido
 
-- Las direcciones que no existen en la web pública responden «no encontrada» (404) en lugar de 200.
+- El panel ya no muestra el menú ni el logotipo de Náyade cuando falla la consulta del plan.
+- El contador de facturas y abonos no puede retroceder; la numeración usa el año de Madrid y salta
+  números ocupados.
+- El cierre de caja cuadra con ventas anuladas; las ventas del TPV son atómicas e idempotentes.
+- Los correos programados no se envían dos veces; los tokens de recuperación e invitación se guardan
+  con hash; límite de peticiones por procedimiento público.
+- Presupuestos y cobros no admiten líneas a 0 €; el enlace de un presupuesto pagado sigue mostrándolo.
+- Las direcciones inexistentes de la web pública responden 404; `/admin/spa` se bloquea sin licencia.
 
 ### Migraciones
 
-- Ninguna.
+- `0018_tpv_idempotencia_cliente` (aditiva): `tpv_sales.idempotencyKey` y `tpv_sales.clientId`,
+  `reservations.client_id`. Se aplica antes del código.
 
 ### Compatibilidad de módulos
 
-- Sin cambios: los módulos que declaran `coreRange ^1.0.0` siguen siendo compatibles.
+- Contrato de módulo 1.2.0, compatible con 1.1 (campos nuevos opcionales). Los módulos con
+  `coreRange ^1.0.0` siguen siendo compatibles. En multiempresa, `hotel`, `spa` y `restaurants` exigen
+  además su capacidad.
 
 ## [1.0.0] - 2026-10-31
 

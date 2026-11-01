@@ -9,6 +9,7 @@ import type { AddressInfo } from "node:net";
 import { BUILTIN_MODULES } from "./_core/modules/builtin";
 import { MODULE_CONTRACT_VERSION, ModuleError, type ModuleManifest } from "./_core/modules/contract";
 import { validateManifest } from "./_core/modules/registry";
+import { CORE_VERSION } from "../shared/version";
 import { assertCanActivate, assertCanDeactivate, buildCatalog, tenantModules } from "./_core/modules/catalog";
 import type { Entitlement } from "./_core/modules/entitlements";
 import { createControlPlaneApp } from "./controlPlane/api";
@@ -168,7 +169,7 @@ describe("API del catálogo", () => {
     expect(by.hotel.activeTenants).toBe(1);
     expect(by.spa.activeTenants).toBe(0); // suspendido no cuenta
     expect(by.cms.activeTenants).toBe(2);
-    expect(r.json).toMatchObject({ contractVersion: "1.2.0", coreVersion: "1.0.0", commercialCatalog: false });
+    expect(r.json).toMatchObject({ contractVersion: "1.2.0", coreVersion: CORE_VERSION, commercialCatalog: false });
   });
 
   it("estado de módulos de un tenant", async () => {
