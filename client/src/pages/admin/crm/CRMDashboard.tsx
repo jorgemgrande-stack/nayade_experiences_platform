@@ -1936,11 +1936,12 @@ function DirectQuoteModal({ onClose }: { onClose: () => void }) {
 
   return (
     <>
-    <DialogContent className="w-[95vw] max-w-2xl bg-[#0d1526] border-foreground/[0.12] text-white max-h-[90vh] overflow-y-auto">
+    {/* *:min-w-0: la tabla de conceptos (con su propio scroll horizontal) no ensancha el diálogo en el móvil */}
+    <DialogContent className="w-[95vw] max-w-2xl bg-[#0d1526] border-foreground/[0.12] text-white max-h-[90vh] overflow-y-auto *:min-w-0">
       <DialogHeader>
-        <DialogTitle className="text-white flex items-center gap-2">
+        <DialogTitle className="text-white flex items-center gap-2 pr-6">
           <Plus className="w-5 h-5 text-orange-400" /> {voc.licensed ? "Nuevo presupuesto" : "Nuevo Presupuesto"}
-          <span className="text-foreground/50 text-sm font-normal ml-1">sin {voc.lead} previ{voc.agreeLead("o", "a")}</span>
+          <span className="hidden sm:inline text-foreground/50 text-sm font-normal ml-1">sin {voc.lead} previ{voc.agreeLead("o", "a")}</span>
         </DialogTitle>
       </DialogHeader>
 

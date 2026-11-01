@@ -40,6 +40,13 @@ describe("pantallas de un usuario nuevo", () => {
     expect(src).toContain("{voc.leadOrigin}");
   });
 
+  it("nuevo presupuesto en el móvil: la tabla de conceptos no ensancha el diálogo", () => {
+    const crm = read("client/src/pages/admin/crm/CRMDashboard.tsx");
+    const modal = crm.slice(crm.indexOf("function DirectQuoteModal"));
+    expect(modal).toMatch(/<DialogContent className="[^"]*\*:min-w-0[^"]*">/);
+    expect(modal).toContain('className="hidden sm:inline text-foreground/50 text-sm font-normal ml-1">sin {voc.lead}');
+  });
+
   it("enviar o reenviar un presupuesto muestra lo que ha pasado con el correo, nunca un «enviado» fijo", () => {
     const crm = read("client/src/pages/admin/crm/CRMDashboard.tsx");
     expect(crm).not.toMatch(/toast\.success\("Presupuesto (enviado|reenviado)/);
