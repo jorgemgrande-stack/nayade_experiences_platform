@@ -142,7 +142,9 @@ describe("intervalos mixtos", () => {
   });
 
   it("3) Enterprise anual + complemento mensual: el complemento renueva cada mes sin duplicar facturas", async () => {
-    const s = await create("enterprise", "year", ["connect-people"]);
+    // Elephant People solo se contrata con Essential o Business (01/11/2026): otra extensión mensual del mismo precio
+    await expect(create("enterprise", "year", ["connect-people"])).rejects.toThrow(/no es compatible con el plan/);
+    const s = await create("enterprise", "year", ["connect-tax"]);
     clock = month(2) + DAY;
     const a = await shadow.simulateCurrent(s.id, A);
     const b = await shadow.simulateCurrent(s.id, A);
@@ -155,7 +157,7 @@ describe("intervalos mixtos", () => {
       ["renewal", "interval:month", "2026-03-15", "2026-04-15", 1900],
     ]);
     const r = await licensing.apply(s.id, { activate: true, actor: A });
-    expect(r.desired.map((x) => x.capabilityId)).toEqual(expect.arrayContaining([...capabilitiesOfTier("enterprise"), "people-hr"]));
+    expect(r.desired.map((x) => x.capabilityId)).toEqual(expect.arrayContaining([...capabilitiesOfTier("enterprise"), "tax-filings"]));
     expect((await caps.list("acme")).every((g) => g.status === "active" && g.validUntil === null)).toBe(true);
   });
 
