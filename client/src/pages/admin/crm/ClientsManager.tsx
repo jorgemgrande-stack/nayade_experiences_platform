@@ -1,919 +1,75 @@
-import { useState, useMemo, useEffect, useId, type ReactNode } from "react";
-import { validateEmail, validatePhone, validatePostalCodeES, validateTaxId } from "@shared/formValidation";
+import { useState, useMemo, useEffect } from "react";
 import { errorMessage } from "@/components/admin/PanelStates";
 import { trpc } from "@/lib/trpc";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { toast } from "sonner";
 import {
-  Users, Plus, Search, Pencil, Trash2, RefreshCw, Phone, Mail,
-  Building2, FileText, ChevronRight, UserCheck, UserPlus, ArrowRight,
-  MapPin, CreditCard, Calendar, Globe, Tag, Ticket,
-  History, FileCheck, Ban, BadgePercent, Activity,
-  TrendingUp, ShoppingBag, Receipt, AlertCircle, CheckCircle2,
-  Clock, Eye, ChevronDown, ChevronUp, Euro, MessageCircle, Bot, Mic, Download, Upload,
+  Users, Plus, Search, RefreshCw, Phone, Mail, Building2, MapPin, Tag, AlertCircle, Download, Upload, User, Loader2,
 } from "lucide-react";
 import ClientImportDialog, { downloadTextFile } from "@/components/admin/crm/ClientImportDialog";
 import AdminLayout from "@/components/AdminLayout";
-import { Link } from "wouter";
-import { ClipboardList } from "lucide-react";
+import { Link, useLocation } from "wouter";
 import { usePanelSubscription } from "@/hooks/usePanelSubscription";
-import { EntityTagsDialog, TagChip, useCrmCanWrite } from "@/components/admin/crm/CrmParts";
+import { TagChip, selectClass, useCrmCanWrite } from "@/components/admin/crm/CrmParts";
+import { ClientFormDialog } from "@/components/admin/crm/ClientFormDialog";
 import { toastError } from "@/lib/errorMessage";
-import { useVocabulary } from "@/lib/vocabulary";
+import { CLIENT_KIND_LABELS, clientDisplayName, clientKind, type ClientKind } from "@shared/clientProfile";
 
 // ─── TYPES ───────────────────────────────────────────────────────────────────
 
 type ClientRow = {
   id: number;
-  leadId: number | null;
-  source: string;
   name: string;
   email: string;
   phone: string | null;
   company: string | null;
   nif: string | null;
-  address: string | null;
   city: string | null;
-  postalCode: string | null;
-  country: string | null;
-  birthDate: string | null;
-  notes: string | null;
-  isConverted: boolean;
-  totalBookings: number;
-  totalSpent: string | null;
-  lastBookingAt: Date | null;
   createdAt: Date;
-  updatedAt: Date;
 };
 
-// ─── EXPAND DATA MODAL (cuando se convierte en reserva) ─────────────────────
-
-function ExpandDataModal({
-  client,
-  onClose,
-}: {
-  client: ClientRow;
-  onClose: () => void;
-}) {
-  const utils = trpc.useUtils();
-  const [form, setForm] = useState({
-    nif: client.nif ?? "",
-    address: client.address ?? "",
-    city: client.city ?? "",
-    postalCode: client.postalCode ?? "",
-    country: client.country ?? "ES",
-    birthDate: client.birthDate ?? "",
-    notes: client.notes ?? "",
-  });
-
-  const set = (k: keyof typeof form, v: string) => setForm((p) => ({ ...p, [k]: v }));
-
-  const expand = trpc.crm.clients.expand.useMutation({
-    onSuccess: () => {
-      toast.success("Datos del cliente ampliados. ¡Cliente convertido!");
-      utils.crm.clients.list.invalidate();
-      onClose();
-    },
-    onError: (e) => toastError(e),
-  });
-
-  return (
-    <DialogContent className="max-w-lg bg-[#0d1526] border-white/10 text-white">
-      <DialogHeader>
-        <DialogTitle className="text-white flex items-center gap-2">
-          <UserCheck className="w-5 h-5 text-green-400" />
-          Ampliar datos del cliente
-        </DialogTitle>
-      </DialogHeader>
-
-      {/* Info del cliente */}
-      <div className="flex items-center gap-3 p-3 rounded-xl bg-white/5 border border-white/10 mb-2">
-        <div className="w-9 h-9 rounded-full bg-blue-500/20 border border-blue-500/30 flex items-center justify-center text-blue-300 font-bold text-sm">
-          {client.name.charAt(0).toUpperCase()}
-        </div>
-        <div>
-          <div className="text-white font-medium text-sm">{client.name}</div>
-          <div className="text-white/40 text-xs">{client.email}</div>
-        </div>
-        <div className="ml-auto">
-          <span className="px-2 py-0.5 rounded-full bg-orange-500/15 border border-orange-500/25 text-orange-300 text-xs">
-            Convirtiendo a cliente
-          </span>
-        </div>
-      </div>
-
-      <p className="text-white/40 text-xs mb-3">
-        Estos datos se guardarán en el perfil del cliente para futuras reservas y facturas.
-      </p>
-
-      <div className="space-y-3">
-        <div className="grid grid-cols-2 gap-3">
-          <div>
-            <Label className="text-white/60 text-xs flex items-center gap-1">
-              <CreditCard className="w-3 h-3" /> NIF / CIF
-            </Label>
-            <Input value={form.nif} onChange={(e) => set("nif", e.target.value)}
-              placeholder="12345678A"
-              className="bg-white/5 border-white/10 text-white placeholder:text-white/20 mt-1 text-sm" />
-          </div>
-          <div>
-            <Label className="text-white/60 text-xs flex items-center gap-1">
-              <Calendar className="w-3 h-3" /> Fecha de nacimiento
-            </Label>
-            <Input type="date" value={form.birthDate} onChange={(e) => set("birthDate", e.target.value)}
-              className="bg-white/5 border-white/10 text-white mt-1 text-sm" />
-          </div>
-          <div className="col-span-2">
-            <Label className="text-white/60 text-xs flex items-center gap-1">
-              <MapPin className="w-3 h-3" /> Dirección
-            </Label>
-            <Input value={form.address} onChange={(e) => set("address", e.target.value)}
-              placeholder="Calle, número, piso..."
-              className="bg-white/5 border-white/10 text-white placeholder:text-white/20 mt-1 text-sm" />
-          </div>
-          <div>
-            <Label className="text-white/60 text-xs">Ciudad</Label>
-            <Input value={form.city} onChange={(e) => set("city", e.target.value)}
-              placeholder="Madrid"
-              className="bg-white/5 border-white/10 text-white placeholder:text-white/20 mt-1 text-sm" />
-          </div>
-          <div>
-            <Label className="text-white/60 text-xs">Código postal</Label>
-            <Input value={form.postalCode} onChange={(e) => set("postalCode", e.target.value)}
-              placeholder="28001"
-              className="bg-white/5 border-white/10 text-white placeholder:text-white/20 mt-1 text-sm" />
-          </div>
-          <div>
-            <Label className="text-white/60 text-xs flex items-center gap-1">
-              <Globe className="w-3 h-3" /> País
-            </Label>
-            <Input value={form.country} onChange={(e) => set("country", e.target.value)}
-              placeholder="ES"
-              className="bg-white/5 border-white/10 text-white placeholder:text-white/20 mt-1 text-sm" />
-          </div>
-          <div>
-            <Label className="text-white/60 text-xs flex items-center gap-1">
-              <Tag className="w-3 h-3" /> Notas internas
-            </Label>
-            <Input value={form.notes} onChange={(e) => set("notes", e.target.value)}
-              placeholder="Observaciones..."
-              className="bg-white/5 border-white/10 text-white placeholder:text-white/20 mt-1 text-sm" />
-          </div>
-        </div>
-      </div>
-
-      <DialogFooter>
-        <Button variant="outline" size="sm" onClick={onClose} className="border-white/15 text-white/60">
-          Cancelar
-        </Button>
-        <Button size="sm" onClick={() => expand.mutate({ id: client.id, ...form })}
-          disabled={expand.isPending}
-          className="bg-gradient-to-r from-green-600 to-green-700 hover:from-green-700 hover:to-green-800 text-white">
-          {expand.isPending ? <RefreshCw className="w-4 h-4 animate-spin mr-1" /> : <UserCheck className="w-4 h-4 mr-1" />}
-          Guardar y convertir
-        </Button>
-      </DialogFooter>
-    </DialogContent>
-  );
-}
-
-// ─── CLIENT FORM MODAL (crear / editar) ─────────────────────────────────────
-
-function ClientFormModal({
-  client,
-  onClose,
-}: {
-  client?: ClientRow | null;
-  onClose: () => void;
-}) {
-  const utils = trpc.useUtils();
-  const isEdit = !!client;
-
-  const [form, setForm] = useState({
-    name: client?.name ?? "",
-    email: client?.email ?? "",
-    phone: client?.phone ?? "",
-    company: client?.company ?? "",
-    nif: client?.nif ?? "",
-    address: client?.address ?? "",
-    city: client?.city ?? "",
-    postalCode: client?.postalCode ?? "",
-    country: client?.country ?? "ES",
-    birthDate: client?.birthDate ?? "",
-    notes: client?.notes ?? "",
-  });
-
-  const set = (k: keyof typeof form, v: string) => setForm((p) => ({ ...p, [k]: v }));
-  // Errores por campo (se muestran tras el primer intento de guardar) y error del servidor.
-  // Ante un error el formulario NO se cierra ni se vacía: lo escrito se conserva.
-  const [submitted, setSubmitted] = useState(false);
-  const [serverError, setServerError] = useState<string | null>(null);
-  // Al editar, los datos ya guardados no se revalidan (fichas antiguas con formatos distintos):
-  // solo lo que se cambia.
-  const changed = (k: keyof typeof form) => !isEdit || form[k] !== ((client as Record<string, unknown> | null | undefined)?.[k] ?? "");
-  const isES = form.country === "ES" || !form.country;
-  const errors: Partial<Record<keyof typeof form, string | null>> = {
-    name: !form.name.trim() ? "Indica el nombre del cliente." : form.name.trim().length < 2 ? "El nombre es demasiado corto." : null,
-    email: changed("email") ? validateEmail(form.email, true) : null,
-    phone: changed("phone") ? validatePhone(form.phone) : null,
-    nif: isES && changed("nif") ? validateTaxId(form.nif) : null,
-    postalCode: isES && changed("postalCode") ? validatePostalCodeES(form.postalCode) : null,
-  };
-  const hasErrors = Object.values(errors).some(Boolean);
-  const shown = (k: keyof typeof form) => (submitted ? errors[k] ?? null : null);
-  const uid = useId();
-
-  const create = trpc.crm.clients.create.useMutation({
-    onSuccess: () => { toast.success("Cliente creado"); utils.crm.clients.list.invalidate(); onClose(); },
-    onError: (e) => { setServerError(errorMessage(e, e.message || "No se ha podido crear el cliente.")); toast.error("No se ha podido crear el cliente"); },
-  });
-
-  const update = trpc.crm.clients.update.useMutation({
-    onSuccess: () => { toast.success("Cliente actualizado"); utils.crm.clients.list.invalidate(); onClose(); },
-    onError: (e) => { setServerError(errorMessage(e, e.message || "No se han podido guardar los cambios.")); toast.error("No se han podido guardar los cambios"); },
-  });
-
-  const handleSubmit = () => {
-    setSubmitted(true);
-    setServerError(null);
-    if (hasErrors) {
-      // Lleva el foco al primer campo con error
-      const first = (["name", "email", "phone", "nif", "postalCode"] as const).find((k) => errors[k]);
-      if (first) document.getElementById(`${uid}-${first}`)?.focus();
-      return;
-    }
-    const payload = { ...form, nif: changed("nif") ? form.nif.toUpperCase().replace(/[\s.-]/g, "") : form.nif, email: form.email.trim(), name: form.name.trim() };
-    if (isEdit && client) {
-      update.mutate({ id: client.id, ...payload });
-    } else {
-      create.mutate(payload);
-    }
-  };
-
-  const isPending = create.isPending || update.isPending;
-  const inputCls = "bg-white/5 border-white/10 text-white placeholder:text-white/40 mt-1 aria-[invalid=true]:border-red-400";
-  const field = (k: keyof typeof form, label: string, opts: { type?: string; required?: boolean; placeholder?: string; autoComplete?: string; col2?: boolean; inputMode?: "numeric" | "tel" | "email" } = {}) => {
-    const id = `${uid}-${k}`;
-    const err = shown(k);
-    return (
-      <div className={opts.col2 ? "sm:col-span-2" : ""}>
-        <Label htmlFor={id} className="text-white/70 text-xs">
-          {label}{opts.required && <span aria-hidden="true"> *</span>}
-        </Label>
-        <Input
-          id={id}
-          type={opts.type ?? "text"}
-          value={form[k]}
-          onChange={(e) => set(k, e.target.value)}
-          placeholder={opts.placeholder}
-          autoComplete={opts.autoComplete}
-          inputMode={opts.inputMode}
-          required={opts.required}
-          aria-required={opts.required || undefined}
-          aria-invalid={err ? true : undefined}
-          aria-describedby={err ? `${id}-error` : undefined}
-          className={inputCls}
-        />
-        {err && <p id={`${id}-error`} className="text-xs text-red-300 mt-1">{err}</p>}
-      </div>
-    );
-  };
-
-  return (
-    <DialogContent className="max-w-lg bg-[#0d1526] border-white/10 text-white">
-      <DialogHeader>
-        <DialogTitle className="text-white flex items-center gap-2">
-          <Users className="w-5 h-5 text-blue-400" />
-          {isEdit ? "Editar cliente" : "Nuevo cliente"}
-        </DialogTitle>
-      </DialogHeader>
-
-      <form
-        id={`${uid}-form`}
-        noValidate
-        className="space-y-3"
-        onSubmit={(e) => { e.preventDefault(); handleSubmit(); }}
-      >
-        <p className="text-xs text-white/60">Los campos marcados con * son obligatorios.</p>
-        {serverError && (
-          <div role="alert" className="rounded-lg border border-red-400/40 bg-red-500/10 px-3 py-2 text-sm text-red-200">
-            {serverError} Tus datos siguen en el formulario: corrígelos y vuelve a intentarlo.
-          </div>
-        )}
-        {submitted && hasErrors && (
-          <p role="alert" className="text-xs text-red-300">Revisa los campos marcados antes de guardar.</p>
-        )}
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          {field("name", "Nombre completo", { required: true, col2: true, autoComplete: "name" })}
-          {field("email", "Email", { type: "email", required: true, autoComplete: "email", inputMode: "email", placeholder: "nombre@empresa.com" })}
-          {field("phone", "Teléfono", { type: "tel", autoComplete: "tel", inputMode: "tel", placeholder: "+34 600 000 000" })}
-          {field("company", "Empresa", { autoComplete: "organization" })}
-          {field("nif", "NIF / CIF", { placeholder: "12345678Z o B12345674" })}
-          {field("address", "Dirección", { col2: true, autoComplete: "street-address" })}
-          {field("city", "Ciudad", { autoComplete: "address-level2" })}
-          {field("postalCode", "Código postal", { inputMode: "numeric", autoComplete: "postal-code", placeholder: "28001" })}
-          {field("notes", "Notas internas", { col2: true, placeholder: "Observaciones sobre el cliente..." })}
-        </div>
-      </form>
-
-      <DialogFooter>
-        <Button variant="outline" size="sm" onClick={onClose} className="border-white/15 text-white/60">
-          Cancelar
-        </Button>
-        <Button size="sm" type="submit" form={`${uid}-form`} disabled={isPending}
-          className="bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white">
-          {isPending ? <RefreshCw className="w-4 h-4 animate-spin mr-1" aria-hidden="true" /> : <Users className="w-4 h-4 mr-1" aria-hidden="true" />}
-          {isPending ? "Guardando…" : isEdit ? "Guardar cambios" : "Crear cliente"}
-        </Button>
-      </DialogFooter>
-    </DialogContent>
-  );
-}
-
-// ─── CLIENT HISTORY MODAL ────────────────────────────────────────────────────
-
-type HistoryTab = "resumen" | "timeline" | "actividad";
-
-function fmtDate(d: Date | string | number | null | undefined): string {
-  if (!d) return "—";
-  const date = d instanceof Date ? d : new Date(d);
-  return date.toLocaleDateString("es-ES", { day: "2-digit", month: "short", year: "numeric" });
-}
-
-function fmtEuros(cents: number): string {
-  return new Intl.NumberFormat("es-ES", { style: "currency", currency: "EUR" }).format(cents / 100);
-}
-
-type QuoteStatus = "borrador" | "enviado" | "aceptado" | "rechazado" | "convertido_carrito" | string;
-
-function quoteStatusLabel(s: QuoteStatus): { label: string; color: string } {
-  const map: Record<string, { label: string; color: string }> = {
-    borrador: { label: "Borrador", color: "text-white/40 bg-white/5 border-white/10" },
-    enviado: { label: "Enviado", color: "text-blue-300 bg-blue-500/10 border-blue-500/20" },
-    aceptado: { label: "Aceptado", color: "text-green-300 bg-green-500/10 border-green-500/20" },
-    rechazado: { label: "Rechazado", color: "text-red-300 bg-red-500/10 border-red-500/20" },
-    convertido_carrito: { label: "Reservado", color: "text-purple-300 bg-purple-500/10 border-purple-500/20" },
-  };
-  return map[s] ?? { label: s, color: "text-white/40 bg-white/5 border-white/10" };
-}
-
-function resStatusLabel(s: string): { label: string; color: string } {
-  const map: Record<string, { label: string; color: string }> = {
-    paid: { label: "Pagada", color: "text-green-300 bg-green-500/10 border-green-500/20" },
-    pending_payment: { label: "Pendiente pago", color: "text-yellow-300 bg-yellow-500/10 border-yellow-500/20" },
-    draft: { label: "Borrador", color: "text-white/40 bg-white/5 border-white/10" },
-    failed: { label: "Fallida", color: "text-red-300 bg-red-500/10 border-red-500/20" },
-    cancelled: { label: "Cancelada", color: "text-red-300 bg-red-500/10 border-red-500/20" },
-  };
-  return map[s] ?? { label: s, color: "text-white/40 bg-white/5 border-white/10" };
-}
-
-function TimelineDot({ color }: { color: string }) {
-  return (
-    <div className={`w-3 h-3 rounded-full border-2 flex-shrink-0 ${color}`} />
-  );
-}
-
-function ClientHistoryModal({ client, onClose, onStartWhatsApp }: { client: ClientRow; onClose: () => void; onStartWhatsApp?: (phone: string, name: string) => void }) {
-  const [tab, setTab] = useState<HistoryTab>("resumen");
-  const voc = useVocabulary();
-  const { data, isLoading } = trpc.crm.clients.getHistory.useQuery({ id: client.id });
-
-  const tabs: { id: HistoryTab; label: string; icon: ReactNode }[] = [
-    { id: "resumen", label: "Resumen", icon: <TrendingUp className="w-3.5 h-3.5" /> },
-    { id: "timeline", label: "Historial", icon: <History className="w-3.5 h-3.5" /> },
-    { id: "actividad", label: "Actividad", icon: <Activity className="w-3.5 h-3.5" /> },
-  ];
-
-  // Build unified timeline
-  const timeline = useMemo(() => {
-    if (!data) return [];
-    const events: Array<{
-      id: string;
-      date: Date;
-      type: "lead" | "quote" | "reservation" | "invoice" | "cancellation" | "discount" | "whatsapp" | "vapi";
-      title: string;
-      subtitle: string;
-      color: string;
-      dotColor: string;
-      icon: ReactNode;
-      href?: string;
-    }> = [];
-
-    if (data.lead) {
-      events.push({
-        id: `lead-${data.lead.id}`,
-        date: new Date(data.lead.createdAt),
-        type: "lead",
-        title: `${voc.Lead} #${data.lead.id} — ${data.lead.opportunityName ?? data.lead.name}`,
-        subtitle: `Origen: ${data.lead.source ?? "—"} · Estado: ${data.lead.opportunityStatus ?? "—"}`,
-        color: "border-l-blue-500",
-        dotColor: "bg-blue-500 border-blue-300",
-        icon: <UserPlus className="w-3.5 h-3.5 text-blue-400" />,
-        href: `/admin/crm?lead=${data.lead.id}`,
-      });
-    }
-
-    for (const q of data.quotes) {
-      const st = quoteStatusLabel(q.status);
-      events.push({
-        id: `quote-${q.id}`,
-        date: new Date(q.createdAt),
-        type: "quote",
-        title: `Presupuesto ${q.quoteNumber ?? `#${q.id}`} — ${q.title ?? "Sin título"}`,
-        subtitle: `${st.label} · Total: ${q.total ? `${parseFloat(q.total).toFixed(2)} €` : "—"}`,
-        color: "border-l-indigo-500",
-        dotColor: "bg-indigo-500 border-indigo-300",
-        icon: <FileText className="w-3.5 h-3.5 text-indigo-400" />,
-      });
-    }
-
-    for (const r of data.reservations) {
-      const st = resStatusLabel(r.status ?? "pending");
-      events.push({
-        id: `res-${r.id}`,
-        date: new Date(r.createdAt),
-        type: "reservation",
-        title: `Reserva ${r.merchantOrder ?? `#${r.id}`} — ${r.productName ?? "—"}`,
-        subtitle: `${st.label} · Pagado: ${r.amountPaid ? `${(r.amountPaid / 100).toFixed(2)} €` : "0 €"}`,
-        color: "border-l-green-500",
-        dotColor: "bg-green-500 border-green-300",
-        icon: <CheckCircle2 className="w-3.5 h-3.5 text-green-400" />,
-      });
-    }
-
-    for (const inv of data.invoices) {
-      events.push({
-        id: `inv-${inv.id}`,
-        date: new Date(inv.createdAt),
-        type: "invoice",
-        title: `Factura ${inv.invoiceNumber}`,
-        subtitle: `Total: ${inv.total ? `${parseFloat(inv.total).toFixed(2)} €` : "—"} · ${inv.pdfUrl ? "PDF disponible" : "Sin PDF"}`,
-        color: "border-l-yellow-500",
-        dotColor: "bg-yellow-500 border-yellow-300",
-        icon: <Receipt className="w-3.5 h-3.5 text-yellow-400" />,
-      });
-    }
-
-    for (const c of data.cancellations) {
-      events.push({
-        id: `cancel-${c.id}`,
-        date: new Date(c.createdAt),
-        type: "cancellation",
-        title: `Anulación ${c.cancellationNumber ?? `#${c.id}`}`,
-        subtitle: `${c.operationalStatus} · ${c.resolutionStatus} · ${c.refundableAmount ? `Reembolso: ${parseFloat(c.refundableAmount).toFixed(2)} €` : "Sin reembolso"}`,
-        color: "border-l-red-500",
-        dotColor: "bg-red-500 border-red-300",
-        icon: <Ban className="w-3.5 h-3.5 text-red-400" />,
-      });
-    }
-
-    for (const d of data.discountUses) {
-      events.push({
-        id: `disc-${d.id}`,
-        date: new Date(d.appliedAt),
-        type: "discount",
-        title: `Cupón aplicado: ${d.code}`,
-        subtitle: `Descuento: ${d.discountPercent}% · Ahorro: ${d.discountAmount ? `${parseFloat(d.discountAmount).toFixed(2)} €` : "—"}`,
-        color: "border-l-purple-500",
-        dotColor: "bg-purple-500 border-purple-300",
-        icon: <BadgePercent className="w-3.5 h-3.5 text-purple-400" />,
-      });
-    }
-
-    for (const wa of (data as any).whatsappConversations ?? []) {
-      if (!wa.lastMessageAt) continue;
-      events.push({
-        id: `wa-${wa.ghlConversationId}`,
-        date: new Date(wa.lastMessageAt),
-        type: "whatsapp",
-        title: `WhatsApp — ${wa.customerName ?? wa.phone ?? "—"}`,
-        subtitle: wa.lastMessagePreview
-          ? `${wa.lastMessagePreview.slice(0, 80)}${wa.lastMessagePreview.length > 80 ? "…" : ""}`
-          : `Estado: ${wa.status ?? "—"}`,
-        color: "border-l-emerald-500",
-        dotColor: "bg-emerald-500 border-emerald-300",
-        icon: <MessageCircle className="w-3.5 h-3.5 text-emerald-400" />,
-        href: "/admin/atencion-comercial/whatsapp",
-      });
-    }
-
-    for (const call of (data as any).vapiCalls ?? []) {
-      if (!call.startedAt) continue;
-      const dur = call.durationSeconds ? `${Math.floor(call.durationSeconds / 60)}m ${call.durationSeconds % 60}s` : "—";
-      events.push({
-        id: `vapi-${call.vapiCallId}`,
-        date: new Date(call.startedAt),
-        type: "vapi",
-        title: `Llamada IA Vapi — ${call.customerName ?? call.phoneNumber ?? "—"}`,
-        subtitle: call.summary
-          ? call.summary.slice(0, 100)
-          : `Duración: ${dur} · ${call.endedReason ?? call.status ?? "—"}`,
-        color: "border-l-violet-500",
-        dotColor: "bg-violet-500 border-violet-300",
-        icon: <Mic className="w-3.5 h-3.5 text-violet-400" />,
-        href: "/admin/atencion-comercial/agente-ia",
-      });
-    }
-
-    return events.sort((a, b) => b.date.getTime() - a.date.getTime());
-  }, [data]);
-
-  return (
-    <DialogContent className="max-w-3xl bg-[#0d1526] border-white/10 text-white max-h-[90vh] flex flex-col p-0">
-      {/* Header */}
-      <div className="flex items-center gap-4 p-6 pb-4 border-b border-white/10 flex-shrink-0">
-        <div className="w-12 h-12 rounded-full bg-gradient-to-br from-blue-500/30 to-indigo-500/30 border border-blue-500/30 flex items-center justify-center text-blue-300 font-bold text-lg">
-          {client.name.charAt(0).toUpperCase()}
-        </div>
-        <div className="flex-1 min-w-0">
-          <h2 className="text-lg font-bold text-white leading-tight">{client.name}</h2>
-          <div className="flex items-center gap-3 mt-0.5">
-            <span className="text-white/40 text-xs flex items-center gap-1"><Mail className="w-3 h-3" />{client.email}</span>
-            {client.phone && <span className="text-white/40 text-xs flex items-center gap-1"><Phone className="w-3 h-3" />{client.phone}</span>}
-          </div>
-        </div>
-        <div className="flex items-center gap-2">
-          {client.phone && onStartWhatsApp && (
-            <button
-              onClick={() => onStartWhatsApp(client.phone!, client.name)}
-              title={`Iniciar WhatsApp con ${client.name}`}
-              className="px-2 py-0.5 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-emerald-300 text-xs flex items-center gap-1 hover:bg-emerald-500/20 transition-colors"
-            >
-              <MessageCircle className="w-3 h-3" /> WhatsApp
-            </button>
-          )}
-          {client.isConverted ? (
-            <span className="px-2 py-0.5 rounded-full bg-green-500/10 border border-green-500/20 text-green-300 text-xs flex items-center gap-1">
-              <UserCheck className="w-3 h-3" /> Cliente
-            </span>
-          ) : (
-            <span className="px-2 py-0.5 rounded-full bg-orange-500/10 border border-orange-500/20 text-orange-300 text-xs flex items-center gap-1">
-              <UserPlus className="w-3 h-3" /> {voc.Lead}
-            </span>
-          )}
-        </div>
-      </div>
-
-      {/* Tabs */}
-      <div className="flex items-center gap-1 px-6 pt-3 flex-shrink-0">
-        {tabs.map((t) => (
-          <button
-            key={t.id}
-            onClick={() => setTab(t.id)}
-            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
-              tab === t.id
-                ? "bg-blue-500/15 text-blue-300 border border-blue-500/25"
-                : "text-white/40 hover:text-white/70 hover:bg-white/5"
-            }`}
-          >
-            {t.icon}{t.label}
-          </button>
-        ))}
-      </div>
-
-      {/* Content */}
-      <div className="flex-1 overflow-y-auto px-6 py-4 space-y-4">
-        {isLoading ? (
-          <div className="flex items-center justify-center py-12">
-            <RefreshCw className="w-6 h-6 text-white/20 animate-spin" />
-          </div>
-        ) : !data ? (
-          <div className="text-center py-12 text-white/30">No se pudo cargar el historial</div>
-        ) : (
-          <>
-            {/* ── RESUMEN ── */}
-            {tab === "resumen" && (
-              <div className="space-y-4">
-                {/* KPI grid */}
-                <div className="grid grid-cols-3 gap-3">
-                  <div className="rounded-xl p-4 bg-indigo-500/5 border border-indigo-500/15">
-                    <div className="text-2xl font-bold text-indigo-400">{data.kpis.totalQuotes}</div>
-                    <div className="text-white/40 text-xs mt-0.5 flex items-center gap-1"><FileText className="w-3 h-3" />Presupuestos</div>
-                  </div>
-                  <div className="rounded-xl p-4 bg-green-500/5 border border-green-500/15">
-                    <div className="text-2xl font-bold text-green-400">{data.kpis.paidReservations}</div>
-                    <div className="text-white/40 text-xs mt-0.5 flex items-center gap-1"><CheckCircle2 className="w-3 h-3" />Reservas pagadas</div>
-                  </div>
-                  <div className="rounded-xl p-4 bg-yellow-500/5 border border-yellow-500/15">
-                    <div className="text-2xl font-bold text-yellow-400">{data.kpis.totalInvoices}</div>
-                    <div className="text-white/40 text-xs mt-0.5 flex items-center gap-1"><Receipt className="w-3 h-3" />Facturas</div>
-                  </div>
-                  <div className="col-span-2 rounded-xl p-4 bg-blue-500/5 border border-blue-500/15">
-                    <div className="text-2xl font-bold text-blue-400">{fmtEuros(data.kpis.totalSpentCents)}</div>
-                    <div className="text-white/40 text-xs mt-0.5 flex items-center gap-1"><Euro className="w-3 h-3" />Total gastado (reservas pagadas)</div>
-                  </div>
-                  <div className="rounded-xl p-4 bg-red-500/5 border border-red-500/15">
-                    <div className="text-2xl font-bold text-red-400">{data.kpis.totalCancellations}</div>
-                    <div className="text-white/40 text-xs mt-0.5 flex items-center gap-1"><Ban className="w-3 h-3" />Anulaciones</div>
-                  </div>
-                  <div className="rounded-xl p-4 bg-emerald-500/5 border border-emerald-500/15">
-                    <div className="text-2xl font-bold text-emerald-400">{(data as any).kpis?.totalWhatsApp ?? 0}</div>
-                    <div className="text-white/40 text-xs mt-0.5 flex items-center gap-1"><MessageCircle className="w-3 h-3" />Convs. WhatsApp</div>
-                  </div>
-                  <div className="rounded-xl p-4 bg-violet-500/5 border border-violet-500/15">
-                    <div className="text-2xl font-bold text-violet-400">{(data as any).kpis?.totalVapiCalls ?? 0}</div>
-                    <div className="text-white/40 text-xs mt-0.5 flex items-center gap-1"><Mic className="w-3 h-3" />Llamadas Vapi</div>
-                  </div>
-                </div>
-
-                {/* Lead info */}
-                {data.lead && (
-                  <div className="rounded-xl p-4 bg-white/[0.03] border border-white/10 space-y-2">
-                    <div className="text-white/50 text-xs font-medium uppercase tracking-wider mb-2">{voc.leadOrigin}</div>
-                    <div className="flex items-center gap-3">
-                      <div className="p-2 rounded-lg bg-blue-500/10 border border-blue-500/20">
-                        <UserPlus className="w-4 h-4 text-blue-400" />
-                      </div>
-                      <div>
-                        <div className="text-white text-sm font-medium">{data.lead.opportunityName ?? data.lead.name}</div>
-                        <div className="text-white/40 text-xs">{voc.Lead} #{data.lead.id} · {fmtDate(data.lead.createdAt)} · {data.lead.source ?? "—"}</div>
-                      </div>
-                      <Link href={`/admin/crm?lead=${data.lead.id}`} className="ml-auto">
-                        <Button size="sm" variant="ghost" className="text-blue-400 hover:text-blue-300 h-7 px-2 text-xs">
-                          <ArrowRight className="w-3.5 h-3.5 mr-1" />Ver lead
-                        </Button>
-                      </Link>
-                    </div>
-                  </div>
-                )}
-
-                {/* Quick lists */}
-                {data.quotes.length > 0 && (
-                  <div className="rounded-xl overflow-hidden border border-white/10">
-                    <div className="px-4 py-2.5 bg-white/[0.03] border-b border-white/10 text-white/50 text-xs font-medium uppercase tracking-wider flex items-center gap-2">
-                      <FileText className="w-3.5 h-3.5" />Presupuestos ({data.quotes.length})
-                    </div>
-                    <div className="divide-y divide-white/5">
-                      {data.quotes.map((q) => {
-                        const st = quoteStatusLabel(q.status);
-                        return (
-                          <div key={q.id} className="flex items-center gap-3 px-4 py-2.5 hover:bg-white/[0.02]">
-                            <div className="flex-1 min-w-0">
-                              <div className="text-white text-sm font-medium truncate">{q.quoteNumber ?? `#${q.id}`} — {q.title ?? "Sin título"}</div>
-                              <div className="text-white/30 text-xs">{fmtDate(q.createdAt)}</div>
-                            </div>
-                            <div className="flex items-center gap-2">
-                              {q.total && <span className="text-white/60 text-xs">{parseFloat(q.total).toFixed(2)} €</span>}
-                              <span className={`px-1.5 py-0.5 rounded-full border text-[10px] ${st.color}`}>{st.label}</span>
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </div>
-                )}
-
-                {data.reservations.length > 0 && (
-                  <div className="rounded-xl overflow-hidden border border-white/10">
-                    <div className="px-4 py-2.5 bg-white/[0.03] border-b border-white/10 text-white/50 text-xs font-medium uppercase tracking-wider flex items-center gap-2">
-                      <CheckCircle2 className="w-3.5 h-3.5 text-green-400" />Reservas ({data.reservations.length})
-                    </div>
-                    <div className="divide-y divide-white/5">
-                      {data.reservations.map((r) => {
-                        const st = resStatusLabel(r.status ?? "pending");
-                        return (
-                          <div key={r.id} className="flex items-center gap-3 px-4 py-2.5 hover:bg-white/[0.02]">
-                            <div className="flex-1 min-w-0">
-                              <div className="text-white text-sm font-medium">{r.reservationNumber ?? r.merchantOrder ?? `#${r.id}`} — {r.productName ?? "—"}</div>
-                              <div className="text-white/30 text-xs">{fmtDate(r.createdAt)} · {r.people ? `${r.people} pax` : ""}</div>
-                            </div>
-                            <div className="flex items-center gap-2">
-                              {r.amountTotal != null && (
-                                <span className="text-white/60 text-xs flex items-center gap-1">
-                                  {Number((r as any).discountAmount ?? (r as any).discount_amount ?? 0) > 0 && (
-                                    <span
-                                      className="text-emerald-400 text-[10px]"
-                                      title={(r as any).discountReason ?? (r as any).discount_reason ?? "Descuento aplicado"}
-                                    >
-                                      −{Number((r as any).discountAmount ?? (r as any).discount_amount).toFixed(2)} €
-                                    </span>
-                                  )}
-                                  <span>{(r.amountTotal / 100).toFixed(2)} €</span>
-                                </span>
-                              )}
-                              <span className={`px-1.5 py-0.5 rounded-full border text-[10px] ${st.color}`}>{st.label}</span>
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </div>
-                )}
-
-                {data.invoices.length > 0 && (
-                  <div className="rounded-xl overflow-hidden border border-white/10">
-                    <div className="px-4 py-2.5 bg-white/[0.03] border-b border-white/10 text-white/50 text-xs font-medium uppercase tracking-wider flex items-center gap-2">
-                      <Receipt className="w-3.5 h-3.5" />Facturas ({data.invoices.length})
-                    </div>
-                    <div className="divide-y divide-white/5">
-                      {data.invoices.map((inv) => {
-                        const viewUrl = inv.pdfUrl ?? `/api/invoices/preview?n=${encodeURIComponent(inv.invoiceNumber)}`;
-                        return (
-                          <div key={inv.id} className="flex items-center gap-3 px-4 py-2.5 hover:bg-white/[0.02]">
-                            <div className="flex-1 min-w-0">
-                              <div className="text-white text-sm font-medium">{inv.invoiceNumber}</div>
-                              <div className="text-white/30 text-xs">{fmtDate(inv.createdAt)}</div>
-                            </div>
-                            <div className="flex items-center gap-2">
-                              {inv.total && <span className="text-white/60 text-xs">{parseFloat(inv.total).toFixed(2)} €</span>}
-                              <a href={viewUrl} target="_blank" rel="noreferrer">
-                                <Button size="sm" variant="ghost" className="text-yellow-400 hover:text-yellow-300 h-6 px-2 text-xs">
-                                  <FileCheck className="w-3 h-3 mr-1" />PDF
-                                </Button>
-                              </a>
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </div>
-                )}
-
-                {data.cancellations.length > 0 && (
-                  <div className="rounded-xl overflow-hidden border border-white/10">
-                    <div className="px-4 py-2.5 bg-white/[0.03] border-b border-white/10 text-white/50 text-xs font-medium uppercase tracking-wider flex items-center gap-2">
-                      <Ban className="w-3.5 h-3.5 text-red-400" />Anulaciones ({data.cancellations.length})
-                    </div>
-                    <div className="divide-y divide-white/5">
-                      {data.cancellations.map((c) => (
-                        <div key={c.id} className="flex items-center gap-3 px-4 py-2.5 hover:bg-white/[0.02]">
-                          <div className="flex-1 min-w-0">
-                            <div className="text-white text-sm font-medium">{c.cancellationNumber ?? `Anulación #${c.id}`}</div>
-                            <div className="text-white/30 text-xs">{fmtDate(c.createdAt)} · {c.reason}</div>
-                          </div>
-                          <div className="flex items-center gap-2">
-                            <span className={`px-1.5 py-0.5 rounded-full border text-[10px] ${c.resolutionStatus === "aceptada_total" ? "text-green-300 bg-green-500/10 border-green-500/20" : c.resolutionStatus === "rechazada" ? "text-red-300 bg-red-500/10 border-red-500/20" : "text-yellow-300 bg-yellow-500/10 border-yellow-500/20"}`}>
-                              {c.resolutionStatus}
-                            </span>
-                            {c.refundableAmount && <span className="text-white/50 text-xs">{parseFloat(c.refundableAmount).toFixed(2)} €</span>}
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-              </div>
-            )}
-
-            {/* ── TIMELINE ── */}
-            {tab === "timeline" && (
-              <div className="space-y-1">
-                {timeline.length === 0 ? (
-                  <div className="text-center py-12 text-white/30">No hay eventos registrados</div>
-                ) : (
-                  <div className="relative">
-                    {/* Vertical line */}
-                    <div className="absolute left-[7px] top-3 bottom-3 w-px bg-white/10" />
-                    <div className="space-y-0">
-                      {timeline.map((event, i) => (
-                        <div key={event.id} className="relative flex items-start gap-4 py-3">
-                          <TimelineDot color={event.dotColor} />
-                          <div className={`flex-1 min-w-0 rounded-xl p-3 bg-white/[0.03] border border-white/10 border-l-2 ${event.color} hover:bg-white/[0.05] transition-colors`}>
-                            <div className="flex items-start gap-2">
-                              <div className="p-1 rounded-md bg-white/5 mt-0.5">{event.icon}</div>
-                              <div className="flex-1 min-w-0">
-                                <div className="flex items-center gap-2 flex-wrap">
-                                  <span className="text-white text-sm font-medium">{event.title}</span>
-                                  {event.href && (
-                                    <Link href={event.href}>
-                                      <span className="text-blue-400/70 text-xs hover:text-blue-300 flex items-center gap-0.5">
-                                        <Eye className="w-3 h-3" />Ver
-                                      </span>
-                                    </Link>
-                                  )}
-                                </div>
-                                <div className="text-white/40 text-xs mt-0.5">{event.subtitle}</div>
-                              </div>
-                              <div className="text-white/25 text-xs flex-shrink-0 flex items-center gap-1">
-                                <Clock className="w-3 h-3" />{fmtDate(event.date)}
-                              </div>
-                            </div>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-              </div>
-            )}
-
-            {/* ── ACTIVIDAD ── */}
-            {tab === "actividad" && (
-              <div className="space-y-1">
-                {data.activityLog.length === 0 ? (
-                  <div className="text-center py-12 text-white/30">No hay registros de actividad</div>
-                ) : (
-                  data.activityLog.map((entry) => {
-                    const entityColors: Record<string, string> = {
-                      lead: "text-blue-300 bg-blue-500/10 border-blue-500/20",
-                      quote: "text-indigo-300 bg-indigo-500/10 border-indigo-500/20",
-                      reservation: "text-green-300 bg-green-500/10 border-green-500/20",
-                      invoice: "text-yellow-300 bg-yellow-500/10 border-yellow-500/20",
-                    };
-                    const badgeClass = entityColors[entry.entityType] ?? "text-white/40 bg-white/5 border-white/10";
-                    return (
-                      <div key={entry.id} className="flex items-start gap-3 py-2.5 border-b border-white/5 last:border-0">
-                        <div className="w-1.5 h-1.5 rounded-full bg-white/20 mt-2 flex-shrink-0" />
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-2 flex-wrap">
-                            <span className={`px-1.5 py-0.5 rounded-full border text-[10px] ${badgeClass}`}>
-                              {entry.entityType} #{entry.entityId}
-                            </span>
-                            <span className="text-white/70 text-sm">{entry.action}</span>
-                          </div>
-                          {entry.actorName && (
-                            <div className="text-white/30 text-xs mt-0.5">por {entry.actorName}</div>
-                          )}
-                          {entry.details && Object.keys(entry.details).length > 0 && (
-                            <div className="mt-1 text-white/25 text-xs font-mono bg-white/[0.03] rounded p-2 max-h-20 overflow-y-auto">
-                              {JSON.stringify(entry.details, null, 2)}
-                            </div>
-                          )}
-                        </div>
-                        <div className="text-white/25 text-xs flex-shrink-0 flex items-center gap-1">
-                          <Clock className="w-3 h-3" />{fmtDate(entry.createdAt)}
-                        </div>
-                      </div>
-                    );
-                  })
-                )}
-              </div>
-            )}
-          </>
-        )}
-      </div>
-
-      {/* Footer */}
-      <div className="flex items-center justify-between px-6 py-4 border-t border-white/10 flex-shrink-0">
-        <div className="text-white/30 text-xs">
-          Cliente desde {fmtDate(client.createdAt)}
-        </div>
-        <Button variant="outline" size="sm" onClick={onClose} className="border-white/15 text-white/60">
-          Cerrar
-        </Button>
-      </div>
-    </DialogContent>
-  );
-}
-
-// ─── SOURCE BADGE ─────────────────────────────────────────────────────────────
-
-function SourceBadge({ source, leadId }: { source: string; leadId: number | null }) {
-  const voc = useVocabulary();
-  if (source === "lead" && leadId) {
-    return (
-      <Link href={`/admin/crm?lead=${leadId}`}>
-        <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-blue-500/10 border border-blue-500/20 text-blue-300 text-[10px] cursor-pointer hover:bg-blue-500/20 transition-colors">
-          <ArrowRight className="w-2.5 h-2.5" /> {voc.Lead} #{leadId}
-        </span>
-      </Link>
-    );
-  }
-  if (source === "manual") {
-    return (
-      <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-white/5 border border-white/10 text-white/30 text-[10px]">
-        Manual
-      </span>
-    );
-  }
-  return null;
-}
+const PAGE_SIZE = 50;
 
 // ─── MAIN PAGE ────────────────────────────────────────────────────────────────
 
 export default function ClientsManager() {
-  const voc = useVocabulary();
+  const [, setLocation] = useLocation();
   const [search, setSearch] = useState("");
-  const [editClient, setEditClient] = useState<ClientRow | null | undefined>(undefined);
-  const [expandClient, setExpandClient] = useState<ClientRow | null>(null);
-  const [historyClient, setHistoryClient] = useState<ClientRow | null>(null);
-  const [deleteClientId, setDeleteClientId] = useState<number | null>(null);
+  const [typeFilter, setTypeFilter] = useState<ClientKind | "">("");
+  const [page, setPage] = useState(0);
+  const [creating, setCreating] = useState(false);
+  const [editClient, setEditClient] = useState<ClientRow | null>(null);
+  const [deleteClient, setDeleteClient] = useState<ClientRow | null>(null);
 
-  const searchInput = useMemo(() => ({ q: search, limit: 50 }), [search]);
-  // Etiquetas (crm-tags) y tareas (crm-tasks): empresas con licencias por capacidad cuyo plan las
-  // incluye (la instalación de siempre no las muestra hasta tener aplicada la migración 0008)
+  // Etiquetas (crm-tags): empresas con licencias por capacidad cuyo plan las incluye
+  // (la instalación de siempre no las muestra hasta tener aplicada la migración 0008)
   const sub = usePanelSubscription();
   const canTags = sub.isLicensed && sub.can("crm-tags");
-  const canTasks = sub.isLicensed && sub.can("crm-tasks");
-  const canWriteTags = useCrmCanWrite("crm-tags");
-  // Importar/exportar CSV: equipo con «Clientes y contactos» activo (exportar también en solo lectura)
-  const canImportClients = useCrmCanWrite("crm-contacts");
+  const canEdit = useCrmCanWrite("crm-contacts");
+  const canImportClients = canEdit;
   const [importOpen, setImportOpen] = useState(false);
   const [exporting, setExporting] = useState(false);
   const [tagFilter, setTagFilter] = useState<number | null>(() => {
     const n = Number(new URLSearchParams(window.location.search).get("etiqueta"));
     return Number.isInteger(n) && n > 0 ? n : null;
   });
-  const [tagsClient, setTagsClient] = useState<ClientRow | null>(null);
   const tagCatalog = trpc.crmTags.list.useQuery(undefined, { enabled: canTags });
-  const { data: clientsData, isLoading, isError, error: listError, refetch } = trpc.crm.clients.list.useQuery(
-    { search, limit: 50, ...(canTags && tagFilter ? { tagId: tagFilter } : {}) }
+  const filters = useMemo(
+    () => ({
+      ...(search.trim() ? { search } : {}),
+      ...(canTags && tagFilter ? { tagId: tagFilter } : {}),
+      ...(typeFilter ? { type: typeFilter } : {}),
+    }),
+    [search, canTags, tagFilter, typeFilter],
   );
+  const hasFilters = Object.keys(filters).length > 0;
+  useEffect(() => setPage(0), [filters]);
+  const { data: clientsData, isLoading, isError, error: listError, refetch } = trpc.crm.clients.list.useQuery({ ...filters, limit: PAGE_SIZE, offset: page * PAGE_SIZE });
+  const stats = trpc.crm.clients.stats.useQuery();
   const clientsList = clientsData?.items as ClientRow[] | undefined;
+  const total = clientsData?.total ?? 0;
   const visibleIds = useMemo(() => (clientsList ?? []).map((c) => c.id), [clientsList]);
   const clientTags = trpc.crmTags.forEntities.useQuery(
     { entityType: "client", ids: visibleIds },
@@ -926,35 +82,21 @@ export default function ClientsManager() {
   useEffect(() => {
     const url = new URL(window.location.href);
     if (url.searchParams.get("nuevo") !== "1") return;
-    setEditClient(null);
+    setCreating(true);
     url.searchParams.delete("nuevo");
     window.history.replaceState({}, "", url.toString());
   }, []);
 
-  // Auto-open client modal when URL has ?clientId=X
+  // Enlaces antiguos con ?clientId=X: abren la ficha del cliente
   useEffect(() => {
-    if (!clientsList) return;
-    const params = new URLSearchParams(window.location.search);
-    const clientIdParam = params.get("clientId");
-    if (!clientIdParam) return;
-    const targetId = parseInt(clientIdParam, 10);
-    const found = clientsList.find((c) => c.id === targetId);
-    if (found) {
-      setEditClient(found);
-      // Clean up URL param without page reload
-      const url = new URL(window.location.href);
-      url.searchParams.delete("clientId");
-      window.history.replaceState({}, "", url.toString());
-    }
-  }, [clientsList]);
-
-  const convertedCount = clientsList?.filter((c) => c.isConverted).length ?? 0;
-  const fromLeadCount = clientsList?.filter((c) => c.source === "lead").length ?? 0;
+    const n = Number(new URLSearchParams(window.location.search).get("clientId"));
+    if (Number.isInteger(n) && n > 0) setLocation(`/admin/crm/clientes/${n}`, { replace: true });
+  }, [setLocation]);
 
   const exportClients = async () => {
     setExporting(true);
     try {
-      const r = await utils.crm.clients.exportCsv.fetch();
+      const r = await utils.crm.clients.exportCsv.fetch(hasFilters ? filters : undefined);
       downloadTextFile(`clientes-${new Date().toISOString().slice(0, 10)}.csv`, r.csv);
       toast.success(`${r.count} ${r.count === 1 ? "cliente exportado" : "clientes exportados"}`);
     } catch (e) {
@@ -964,408 +106,273 @@ export default function ClientsManager() {
     }
   };
 
-  const deleteClient = trpc.crm.clients.delete.useMutation({
-    onSuccess: () => { toast.success("Cliente eliminado"); utils.crm.clients.list.invalidate(); setDeleteClientId(null); },
+  const removeClient = trpc.crm.clients.delete.useMutation({
+    onSuccess: () => { toast.success("Cliente eliminado"); utils.crm.clients.list.invalidate(); utils.crm.clients.stats.invalidate(); setDeleteClient(null); },
     onError: (e) => toastError(e),
   });
 
-  // ── WhatsApp: iniciar conversación directamente desde CRM ─────────────────
-  const [waPhone, setWaPhone] = useState("");
-  const [waName, setWaName] = useState("");
-  const [waSending, setWaSending] = useState(false);
+  const clearFilters = () => { setSearch(""); setTagFilter(null); setTypeFilter(""); };
+  const fichaHref = (c: ClientRow) => `/admin/crm/clientes/${c.id}`;
 
-  async function startWhatsApp(phone: string, name: string) {
-    setWaSending(true);
-    try {
-      const res = await fetch("/api/ghl/conversations/new", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ phone, contactName: name }),
-      });
-      const data = await res.json();
-      if (data.ok) {
-        // Navegar directamente a la bandeja de WhatsApp para escribir el mensaje
-        window.location.href = "/admin/atencion-comercial/whatsapp";
-      } else {
-        toast.error("No se pudo abrir la conversación", {
-          description: data.message?.slice(0, 100) ?? "Error desconocido",
-          action: { label: "Abrir WA", onClick: () => { window.location.href = "/admin/atencion-comercial/whatsapp"; } },
-        });
-      }
-    } catch (e: any) {
-      toastError(e);
-    } finally {
-      setWaSending(false);
-    }
-  }
+  const actions = (client: ClientRow) => (
+    <div className="flex flex-wrap items-center justify-end gap-1">
+      <Button size="sm" variant="ghost" asChild className="h-8 px-2 text-primary">
+        <Link href={fichaHref(client)} aria-label={`Ver la ficha de ${clientDisplayName(client)}`}>Ver ficha</Link>
+      </Button>
+      {canEdit && (
+        <Button size="sm" variant="ghost" className="h-8 px-2" onClick={() => setEditClient(client)} aria-label={`Editar ${clientDisplayName(client)}`}>
+          Editar
+        </Button>
+      )}
+      {canEdit && (
+        <Button size="sm" variant="ghost" className="h-8 px-2 text-destructive hover:text-destructive" onClick={() => setDeleteClient(client)} aria-label={`Eliminar ${clientDisplayName(client)}`}>
+          Eliminar
+        </Button>
+      )}
+    </div>
+  );
+
+  const tagsOf = (client: ClientRow) =>
+    canTags && (clientTags.data?.[client.id]?.length ?? 0) > 0 ? (
+      <div className="mt-1 flex flex-wrap gap-1">
+        {clientTags.data![client.id].map((t) => <TagChip key={t.id} name={t.name} color={t.color} />)}
+      </div>
+    ) : null;
+
+  const kindBadge = (client: ClientRow) => {
+    const k = clientKind(client);
+    return (
+      <span className="inline-flex items-center gap-1 rounded-full border border-border px-2 py-0.5 text-xs text-foreground">
+        {k === "empresa" ? <Building2 className="h-3 w-3" aria-hidden="true" /> : <User className="h-3 w-3" aria-hidden="true" />}
+        {CLIENT_KIND_LABELS[k]}
+      </span>
+    );
+  };
+
+  const emptyState = (
+    <div className="flex flex-col items-center gap-3 px-4 py-16 text-center">
+      <div className="rounded-full bg-muted p-4" aria-hidden="true">
+        <Users className="h-8 w-8 text-muted-foreground" />
+      </div>
+      {hasFilters ? (
+        <>
+          <p className="text-sm text-foreground">
+            {search.trim() ? `Ningún cliente coincide con «${search.trim()}»` : tagFilter && canTags ? `Ningún cliente tiene la etiqueta ${tagFilterName ? `«${tagFilterName}»` : "elegida"}` : "Ningún cliente coincide con los filtros"}
+          </p>
+          <Button size="sm" variant="outline" onClick={clearFilters}>Quitar filtros</Button>
+        </>
+      ) : (
+        <>
+          <p className="text-sm font-medium text-foreground">Todavía no tienes clientes</p>
+          <p className="max-w-sm text-xs text-muted-foreground">
+            Da de alta tu primer cliente para preparar presupuestos, registrar ventas y emitir facturas. También se crean solos cuando alguien te escribe desde tu web.
+          </p>
+          {canEdit && (
+            <Button size="sm" onClick={() => setCreating(true)}>
+              <Plus className="mr-1.5 h-4 w-4" aria-hidden="true" /> Crear el primer cliente
+            </Button>
+          )}
+        </>
+      )}
+    </div>
+  );
 
   return (
     <AdminLayout>
-      <div className="min-h-screen bg-[#080e1c] text-white px-4 sm:px-6 py-6">
+      <div className="mx-auto w-full max-w-7xl px-4 py-6 sm:px-6">
         {/* Header */}
-        <div className="flex flex-wrap items-center justify-between gap-3 mb-6 pb-5 border-b border-white/10">
+        <div className="mb-6 flex flex-wrap items-center justify-between gap-3 border-b border-border pb-5">
           <div className="flex items-center gap-3">
-            <div className="p-2.5 rounded-xl bg-blue-500/15 border border-blue-500/25">
-              <Users className="w-5 h-5 text-blue-400" />
+            <div className="rounded-xl bg-primary/10 p-2.5" aria-hidden="true">
+              <Users className="h-5 w-5 text-primary" />
             </div>
             <div>
-              <div className="flex items-center gap-2 text-white/30 text-xs mb-0.5">
-                <Link href="/admin/crm" className="hover:text-white/60 transition-colors">CRM</Link>
-                <ChevronRight className="w-3 h-3" />
-                <span>Clientes</span>
-              </div>
-              <h1 className="text-xl font-bold text-white leading-none">Gestión de Clientes</h1>
-              <p className="text-xs text-white/60 mt-0.5">Se crean automáticamente al recibir una solicitud, o puedes darlos de alta tú</p>
+              <h1 className="text-xl font-bold leading-none text-foreground">Clientes</h1>
+              <p className="mt-1 text-xs text-muted-foreground">Tus clientes, particulares y empresas. Pulsa un nombre para ver su ficha.</p>
             </div>
           </div>
           <div className="flex flex-wrap items-center gap-2">
-            <Button variant="outline" onClick={exportClients} disabled={exporting} className="border-white/20 text-white">
-              {exporting ? <RefreshCw className="w-4 h-4 mr-2 animate-spin" /> : <Download className="w-4 h-4 mr-2" />} Exportar
+            <Button variant="outline" onClick={exportClients} disabled={exporting}>
+              {exporting ? <RefreshCw className="mr-2 h-4 w-4 animate-spin" aria-hidden="true" /> : <Download className="mr-2 h-4 w-4" aria-hidden="true" />}
+              {hasFilters ? "Exportar filtrados" : "Exportar"}
             </Button>
             {canImportClients && (
-              <Button variant="outline" onClick={() => setImportOpen(true)} className="border-white/20 text-white">
-                <Upload className="w-4 h-4 mr-2" /> Importar
+              <Button variant="outline" onClick={() => setImportOpen(true)}>
+                <Upload className="mr-2 h-4 w-4" aria-hidden="true" /> Importar
               </Button>
             )}
-            <Button
-              onClick={() => setEditClient(null)}
-              className="bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white"
-            >
-              <Plus className="w-4 h-4 mr-2" /> Nuevo cliente
-            </Button>
+            {canEdit && (
+              <Button onClick={() => setCreating(true)}>
+                <Plus className="mr-2 h-4 w-4" aria-hidden="true" /> Nuevo cliente
+              </Button>
+            )}
           </div>
         </div>
 
         {/* Stats strip */}
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-          <div className="rounded-xl p-4 bg-blue-500/5 border border-blue-500/15">
-            <div className="flex items-center gap-3">
-              <div className="p-2 rounded-lg bg-blue-500/10 border border-blue-500/20">
-                <Users className="w-4 h-4 text-blue-400" />
-              </div>
-              <div>
-                <div className="text-2xl font-bold text-blue-400">{clientsData?.total ?? 0}</div>
-                <div className="text-white/40 text-xs">Total clientes</div>
-              </div>
+        <div className="mb-6 grid grid-cols-2 gap-3 lg:grid-cols-4">
+          {[
+            { label: "Total clientes", value: stats.data?.total },
+            { label: "Empresas", value: stats.data?.companies },
+            { label: "Particulares", value: stats.data?.individuals },
+            { label: "Altas este mes", value: stats.data?.newThisMonth },
+          ].map((s) => (
+            <div key={s.label} className="rounded-xl border border-border bg-card p-4">
+              <div className="text-2xl font-bold tabular-nums text-foreground">{s.value ?? "—"}</div>
+              <div className="text-xs text-muted-foreground">{s.label}</div>
             </div>
-          </div>
-          <div className="rounded-xl p-4 bg-green-500/5 border border-green-500/15">
-            <div className="flex items-center gap-3">
-              <div className="p-2 rounded-lg bg-green-500/10 border border-green-500/20">
-                <UserCheck className="w-4 h-4 text-green-400" />
-              </div>
-              <div>
-                <div className="text-2xl font-bold text-green-400">{convertedCount}</div>
-                <div className="text-white/40 text-xs">Convertidos</div>
-              </div>
-            </div>
-          </div>
-          <div className="rounded-xl p-4 bg-orange-500/5 border border-orange-500/15">
-            <div className="flex items-center gap-3">
-              <div className="p-2 rounded-lg bg-orange-500/10 border border-orange-500/20">
-                <UserPlus className="w-4 h-4 text-orange-400" />
-              </div>
-              <div>
-                <div className="text-2xl font-bold text-orange-400">{fromLeadCount}</div>
-                <div className="text-white/40 text-xs">Desde {voc.lead}</div>
-              </div>
-            </div>
-          </div>
-          <div className="rounded-xl p-4 bg-purple-500/5 border border-purple-500/15">
-            <div className="flex items-center gap-3">
-              <div className="p-2 rounded-lg bg-purple-500/10 border border-purple-500/20">
-                <Building2 className="w-4 h-4 text-purple-400" />
-              </div>
-              <div>
-                <div className="text-2xl font-bold text-purple-400">
-                  {clientsList?.filter((c) => c.company).length ?? 0}
-                </div>
-                <div className="text-white/40 text-xs">Con empresa</div>
-              </div>
-            </div>
-          </div>
+          ))}
         </div>
 
-        {/* Search */}
-        <div className="flex flex-col sm:flex-row gap-3 mb-4">
+        {/* Filtros */}
+        <div className="mb-4 flex flex-col gap-3 md:flex-row">
           <div className="relative flex-1">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-white/30" />
+            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
             <Input
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              placeholder="Buscar por nombre, email o empresa..."
-              aria-label="Buscar clientes por nombre, email o empresa"
-              className="pl-9 bg-white/5 border-white/10 text-white placeholder:text-white/30"
+              placeholder="Buscar por nombre, email, empresa o NIF..."
+              aria-label="Buscar clientes por nombre, email, empresa o NIF"
+              className="pl-9"
             />
           </div>
-          {canTags && (
-            <div className="flex items-center gap-2 sm:w-64">
-              <label htmlFor="clients-tag-filter" className="sr-only">Filtrar por etiqueta</label>
-              <Tag className="w-4 h-4 text-white/40 shrink-0" aria-hidden="true" />
-              <select
-                id="clients-tag-filter"
-                value={tagFilter ?? ""}
-                onChange={(e) => setTagFilter(e.target.value ? Number(e.target.value) : null)}
-                className="h-9 w-full rounded-md border border-white/10 bg-[#0d1526] px-3 text-sm text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400"
-              >
-                <option value="">Todas las etiquetas</option>
-                {(tagCatalog.data ?? []).map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 md:flex">
+            <div className="md:w-44">
+              <label htmlFor="clients-type-filter" className="sr-only">Filtrar por tipo</label>
+              <select id="clients-type-filter" value={typeFilter} onChange={(e) => setTypeFilter(e.target.value as ClientKind | "")} className={selectClass}>
+                <option value="">Todos los tipos</option>
+                <option value="empresa">Empresas</option>
+                <option value="particular">Particulares</option>
               </select>
             </div>
-          )}
+            {canTags && (
+              <div className="flex items-center gap-2 md:w-56">
+                <label htmlFor="clients-tag-filter" className="sr-only">Filtrar por etiqueta</label>
+                <Tag className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+                <select
+                  id="clients-tag-filter"
+                  value={tagFilter ?? ""}
+                  onChange={(e) => setTagFilter(e.target.value ? Number(e.target.value) : null)}
+                  className={selectClass}
+                >
+                  <option value="">Todas las etiquetas</option>
+                  {(tagCatalog.data ?? []).map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
+                </select>
+              </div>
+            )}
+          </div>
         </div>
 
-        {/* Table */}
-        <div className="rounded-xl border border-white/10 overflow-x-auto">
-          <table className="w-full text-sm min-w-[720px]">
-            <caption className="sr-only">Listado de clientes</caption>
-            <thead>
-              <tr className="border-b border-white/10 bg-white/[0.03]">
-                <th scope="col" className="text-left px-4 py-3 text-white/60 font-medium">Cliente</th>
-                <th scope="col" className="text-left px-4 py-3 text-white/60 font-medium">Contacto</th>
-                <th scope="col" className="text-left px-4 py-3 text-white/60 font-medium">Empresa</th>
-                <th scope="col" className="text-left px-4 py-3 text-white/60 font-medium">Estado</th>
-                <th scope="col" className="text-right px-4 py-3 text-white/60 font-medium">Acciones</th>
-              </tr>
-            </thead>
-            <tbody>
-              {isLoading ? (
-                <tr><td colSpan={5} className="text-center py-12 text-white/60" role="status">Cargando clientes…</td></tr>
-              ) : isError ? (
-                <tr>
-                  <td colSpan={5} className="text-center py-12">
-                    <div role="alert" className="flex flex-col items-center gap-3">
-                      <AlertCircle className="w-7 h-7 text-red-300" aria-hidden="true" />
-                      <p className="text-white/80 text-sm">{errorMessage(listError, "No se han podido cargar los clientes.")}</p>
-                      <Button size="sm" variant="outline" onClick={() => refetch()} className="border-white/20 text-white">
-                        <RefreshCw className="w-4 h-4 mr-1.5" aria-hidden="true" /> Reintentar
-                      </Button>
-                    </div>
-                  </td>
-                </tr>
-              ) : !clientsList || clientsList.length === 0 ? (
-                <tr>
-                  <td colSpan={5} className="text-center py-16">
-                    <div className="flex flex-col items-center gap-3 px-4">
-                      <div className="p-4 rounded-full bg-white/5" aria-hidden="true">
-                        <Users className="w-8 h-8 text-white/40" />
-                      </div>
-                      {search.trim() ? (
-                        <>
-                          <p className="text-white/80 text-sm">Ningún cliente coincide con «{search.trim()}»</p>
-                          <Button size="sm" variant="outline" onClick={() => setSearch("")} className="border-white/20 text-white">
-                            Borrar búsqueda
-                          </Button>
-                        </>
-                      ) : canTags && tagFilter ? (
-                        <>
-                          <p className="text-white/80 text-sm">Ningún cliente tiene la etiqueta {tagFilterName ? `«${tagFilterName}»` : "elegida"}</p>
-                          <Button size="sm" variant="outline" onClick={() => setTagFilter(null)} className="border-white/20 text-white">
-                            Quitar filtro de etiqueta
-                          </Button>
-                        </>
-                      ) : (
-                        <>
-                          <p className="text-white/80 text-sm font-medium">Todavía no tienes clientes</p>
-                          <p className="text-white/60 text-xs max-w-sm">
-                            Da de alta tu primer cliente para preparar presupuestos, registrar pedidos y emitir facturas. También se crean solos cuando alguien te escribe desde tu web.
-                          </p>
-                          <Button size="sm" onClick={() => setEditClient(null)} className="bg-blue-600 hover:bg-blue-700 text-white">
-                            <Plus className="w-4 h-4 mr-1.5" aria-hidden="true" /> Crear el primer cliente
-                          </Button>
-                        </>
-                      )}
-                    </div>
-                  </td>
-                </tr>
-              ) : clientsList.map((client) => (
-                <tr key={client.id} className="border-b border-white/5 hover:bg-white/[0.02] transition-colors">
-                  <td className="px-4 py-3">
-                    <div className="flex items-center gap-3">
-                      <div className="w-8 h-8 rounded-full bg-blue-500/20 border border-blue-500/30 flex items-center justify-center text-blue-300 font-bold text-sm flex-shrink-0">
-                        {client.name.charAt(0).toUpperCase()}
-                      </div>
-                      <div>
-                        <div className="text-white font-medium">{client.name}</div>
-                        <div className="flex items-center gap-1.5 mt-0.5">
-                          <SourceBadge source={client.source} leadId={client.leadId} />
-                          {client.nif && (
-                            <span className="text-white/25 text-[10px]">NIF: {client.nif}</span>
-                          )}
-                        </div>
-                        {canTags && (clientTags.data?.[client.id]?.length ?? 0) > 0 && (
-                          <div className="flex flex-wrap gap-1 mt-1">
-                            {clientTags.data![client.id].map((t) => <TagChip key={t.id} name={t.name} color={t.color} />)}
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  </td>
-                  <td className="px-4 py-3">
-                    <div className="space-y-0.5">
-                      <div className="flex items-center gap-1.5 text-white/60 text-xs">
-                        <Mail className="w-3 h-3" /> {client.email}
-                      </div>
-                      {client.phone && (
-                        <div className="flex items-center gap-1.5 text-white/60 text-xs">
-                          <Phone className="w-3 h-3" /> {client.phone}
-                        </div>
-                      )}
-                      {client.city && (
-                        <div className="flex items-center gap-1.5 text-white/40 text-xs">
-                          <MapPin className="w-3 h-3" /> {client.city}
-                        </div>
-                      )}
-                    </div>
-                  </td>
-                  <td className="px-4 py-3">
-                    {client.company ? (
-                      <div className="flex items-center gap-1.5 text-white/70 text-sm">
-                        <Building2 className="w-3.5 h-3.5 text-white/30" /> {client.company}
-                      </div>
-                    ) : <span className="text-white/20 text-xs">—</span>}
-                  </td>
-                  <td className="px-4 py-3">
-                    {client.isConverted ? (
-                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-green-500/10 border border-green-500/20 text-green-300 text-xs">
-                        <UserCheck className="w-3 h-3" /> Cliente
-                      </span>
-                    ) : client.source === "cupon" ? (
-                      <span
-                        className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-violet-500/10 border border-violet-500/20 text-violet-300 text-xs"
-                        title="Cliente captado desde cupón de plataforma externa"
-                      >
-                        <Ticket className="w-3 h-3" /> {voc.Lead} (cupón)
-                      </span>
-                    ) : (
-                      <button
-                        onClick={() => setExpandClient(client)}
-                        className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-orange-500/10 border border-orange-500/20 text-orange-300 text-xs hover:bg-orange-500/20 transition-colors cursor-pointer"
-                        title="Ampliar datos para convertir en cliente"
-                      >
-                        <UserPlus className="w-3 h-3" /> {voc.Lead}
-                      </button>
-                    )}
-                  </td>
-                  <td className="px-4 py-3">
-                    <div className="flex items-center justify-end gap-1">
-                      {client.phone && (
-                        <Button size="sm" variant="ghost"
-                          className="text-emerald-400 hover:text-emerald-300 h-7 px-2"
-                          onClick={() => startWhatsApp(client.phone!, client.name)}
-                          title="Iniciar WhatsApp"
-                          disabled={waSending}>
-                          <MessageCircle className="w-3.5 h-3.5" />
-                        </Button>
-                      )}
-                      <Button size="sm" variant="ghost"
-                        className="text-purple-400 hover:text-purple-300 h-7 px-2"
-                        onClick={() => setHistoryClient(client)}
-                        title="Ver historial completo">
-                        <History className="w-3.5 h-3.5" />
-                      </Button>
-                      {canTags && (
-                        <Button size="sm" variant="ghost"
-                          className="text-sky-300 hover:text-sky-200 h-7 px-2"
-                          onClick={() => setTagsClient(client)}
-                          title="Etiquetas"
-                          aria-label={`Etiquetas de ${client.name}`}>
-                          <Tag className="w-3.5 h-3.5" aria-hidden="true" />
-                        </Button>
-                      )}
-                      {canTasks && (
-                        <Link
-                          href={`/admin/crm/tareas?vinculo=client&id=${client.id}&nombre=${encodeURIComponent(client.name)}`}
-                          className="inline-flex items-center h-7 px-2 rounded-md text-amber-300 hover:text-amber-200 hover:bg-white/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400"
-                          title="Tareas"
-                          aria-label={`Tareas de ${client.name}`}>
-                          <ClipboardList className="w-3.5 h-3.5" aria-hidden="true" />
+        {/* Listado */}
+        <div className="rounded-xl border border-border bg-card">
+          {isLoading ? (
+            <p className="py-12 text-center text-muted-foreground" role="status">Cargando clientes…</p>
+          ) : isError ? (
+            <div role="alert" className="flex flex-col items-center gap-3 py-12">
+              <AlertCircle className="h-7 w-7 text-destructive" aria-hidden="true" />
+              <p className="text-sm text-foreground">{errorMessage(listError, "No se han podido cargar los clientes.")}</p>
+              <Button size="sm" variant="outline" onClick={() => refetch()}>
+                <RefreshCw className="mr-1.5 h-4 w-4" aria-hidden="true" /> Reintentar
+              </Button>
+            </div>
+          ) : !clientsList || clientsList.length === 0 ? (
+            emptyState
+          ) : (
+            <>
+              {/* Escritorio: tabla */}
+              <table className="hidden w-full text-sm md:table">
+                <caption className="sr-only">Listado de clientes</caption>
+                <thead>
+                  <tr className="border-b border-border text-left text-muted-foreground">
+                    <th scope="col" className="px-4 py-3 font-medium">Cliente</th>
+                    <th scope="col" className="px-4 py-3 font-medium">Tipo</th>
+                    <th scope="col" className="px-4 py-3 font-medium">Contacto</th>
+                    <th scope="col" className="px-4 py-3 font-medium">Población</th>
+                    <th scope="col" className="px-4 py-3 text-right font-medium">Acciones</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {clientsList.map((client) => (
+                    <tr key={client.id} className="border-b border-border/60 last:border-0 hover:bg-muted/40" data-client-row>
+                      <td className="px-4 py-3 align-top">
+                        <Link href={fichaHref(client)} className="font-medium text-foreground underline-offset-4 hover:text-primary hover:underline">
+                          {clientDisplayName(client)}
                         </Link>
-                      )}
-                      {!client.isConverted && (
-                        <Button size="sm" variant="ghost"
-                          className="text-green-400 hover:text-green-300 h-7 px-2"
-                          onClick={() => setExpandClient(client)}
-                          title="Ampliar datos del cliente">
-                          <UserCheck className="w-3.5 h-3.5" />
-                        </Button>
-                      )}
-                      <Button size="sm" variant="ghost"
-                        className="text-blue-400 hover:text-blue-300 h-7 px-2"
-                        onClick={() => setEditClient(client)}
-                        title="Editar">
-                        <Pencil className="w-3.5 h-3.5" />
-                      </Button>
-                      <Button size="sm" variant="ghost"
-                        className="text-red-400/60 hover:text-red-400 h-7 px-2"
-                        onClick={() => setDeleteClientId(client.id)}
-                        title="Eliminar">
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </Button>
+                        {clientKind(client) === "empresa" && client.name !== client.company && <div className="text-xs text-muted-foreground">{client.name}</div>}
+                        {client.nif && <div className="text-xs text-muted-foreground">NIF: {client.nif}</div>}
+                        {tagsOf(client)}
+                      </td>
+                      <td className="px-4 py-3 align-top">{kindBadge(client)}</td>
+                      <td className="px-4 py-3 align-top">
+                        <div className="flex items-center gap-1.5 break-all text-xs text-muted-foreground"><Mail className="h-3 w-3 shrink-0" aria-hidden="true" /> {client.email}</div>
+                        {client.phone && <div className="flex items-center gap-1.5 text-xs text-muted-foreground"><Phone className="h-3 w-3 shrink-0" aria-hidden="true" /> {client.phone}</div>}
+                      </td>
+                      <td className="px-4 py-3 align-top text-xs text-muted-foreground">{client.city || "—"}</td>
+                      <td className="px-4 py-3 align-top">{actions(client)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+
+              {/* Móvil: tarjetas */}
+              <ul className="divide-y divide-border md:hidden" aria-label="Listado de clientes">
+                {clientsList.map((client) => (
+                  <li key={client.id} className="space-y-1.5 p-4" data-client-row>
+                    <div className="flex items-start justify-between gap-2">
+                      <Link href={fichaHref(client)} className="min-w-0 break-words font-medium text-foreground underline-offset-4 hover:text-primary hover:underline">
+                        {clientDisplayName(client)}
+                      </Link>
+                      {kindBadge(client)}
                     </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+                    <div className="flex items-center gap-1.5 break-all text-xs text-muted-foreground"><Mail className="h-3 w-3 shrink-0" aria-hidden="true" /> {client.email}</div>
+                    {client.phone && <div className="flex items-center gap-1.5 text-xs text-muted-foreground"><Phone className="h-3 w-3 shrink-0" aria-hidden="true" /> {client.phone}</div>}
+                    {client.city && <div className="flex items-center gap-1.5 text-xs text-muted-foreground"><MapPin className="h-3 w-3 shrink-0" aria-hidden="true" /> {client.city}</div>}
+                    {tagsOf(client)}
+                    {actions(client)}
+                  </li>
+                ))}
+              </ul>
+
+              {total > PAGE_SIZE && (
+                <div className="flex flex-wrap items-center justify-between gap-2 border-t border-border px-4 py-3 text-xs text-muted-foreground">
+                  <span>Mostrando {page * PAGE_SIZE + 1}–{Math.min(total, (page + 1) * PAGE_SIZE)} de {total}</span>
+                  <div className="flex gap-2">
+                    <Button size="sm" variant="outline" disabled={page === 0} onClick={() => setPage((p) => p - 1)}>Anterior</Button>
+                    <Button size="sm" variant="outline" disabled={(page + 1) * PAGE_SIZE >= total} onClick={() => setPage((p) => p + 1)}>Siguiente</Button>
+                  </div>
+                </div>
+              )}
+            </>
+          )}
         </div>
       </div>
 
-      {tagsClient && (
-        <EntityTagsDialog
-          open
-          onOpenChange={(o) => !o && setTagsClient(null)}
-          entityType="client"
-          entityId={tagsClient.id}
-          entityName={tagsClient.name}
-          current={(clientTags.data?.[tagsClient.id] ?? []).map((t) => t.id)}
-          readOnly={!canWriteTags}
-        />
-      )}
-
-      {/* Client History Modal */}
-      <Dialog open={historyClient !== null} onOpenChange={(o) => !o && setHistoryClient(null)}>
-        {historyClient && (
-          <ClientHistoryModal client={historyClient} onClose={() => setHistoryClient(null)} onStartWhatsApp={startWhatsApp} />
-        )}
-      </Dialog>
-
-      {/* Expand Data Modal */}
-      <Dialog open={expandClient !== null} onOpenChange={(o) => !o && setExpandClient(null)}>
-        {expandClient && (
-          <ExpandDataModal client={expandClient} onClose={() => setExpandClient(null)} />
-        )}
-      </Dialog>
-
-      {/* Create / Edit Modal */}
-      <Dialog open={editClient !== undefined} onOpenChange={(o) => !o && setEditClient(undefined)}>
-        {editClient !== undefined && (
-          <ClientFormModal client={editClient} onClose={() => setEditClient(undefined)} />
+      {/* Alta y edición */}
+      <Dialog open={creating || editClient !== null} onOpenChange={(o) => { if (!o) { setCreating(false); setEditClient(null); } }}>
+        {(creating || editClient) && (
+          <ClientFormDialog
+            client={editClient}
+            onClose={() => { setCreating(false); setEditClient(null); }}
+            onSaved={(id) => { if (creating) setLocation(`/admin/crm/clientes/${id}`); }}
+          />
         )}
       </Dialog>
 
       <ClientImportDialog open={importOpen} onClose={() => setImportOpen(false)} />
 
-      {/* Delete Confirm */}
-      <Dialog open={deleteClientId !== null} onOpenChange={(o) => !o && setDeleteClientId(null)}>
-        <DialogContent className="max-w-sm bg-[#0d1526] border-white/10 text-white">
+      {/* Confirmar borrado */}
+      <Dialog open={deleteClient !== null} onOpenChange={(o) => !o && setDeleteClient(null)}>
+        <DialogContent className="max-w-sm">
           <DialogHeader>
-            <DialogTitle className="text-white flex items-center gap-2">
-              <Trash2 className="w-5 h-5 text-red-400" /> Eliminar cliente
-            </DialogTitle>
+            <DialogTitle>Eliminar cliente</DialogTitle>
+            <DialogDescription>
+              ¿Seguro que quieres eliminar a {deleteClient ? clientDisplayName(deleteClient) : "este cliente"}? Sus facturas y presupuestos se conservan. Esta acción no se puede deshacer.
+            </DialogDescription>
           </DialogHeader>
-          <p className="text-white/60 text-sm">
-            ¿Seguro que quieres eliminar este cliente? Esta acción no se puede deshacer.
-          </p>
-          <DialogFooter>
-            <Button variant="outline" size="sm" onClick={() => setDeleteClientId(null)}
-              className="border-white/15 text-white/60">Cancelar</Button>
-            <Button size="sm"
-              onClick={() => deleteClientId && deleteClient.mutate({ id: deleteClientId })}
-              disabled={deleteClient.isPending}
-              className="bg-red-600 hover:bg-red-700 text-white">
-              {deleteClient.isPending ? <RefreshCw className="w-4 h-4 animate-spin mr-1" /> : <Trash2 className="w-4 h-4 mr-1" />}
-              Eliminar
+          <DialogFooter className="gap-2">
+            <Button variant="outline" onClick={() => setDeleteClient(null)}>Cancelar</Button>
+            <Button variant="destructive" onClick={() => deleteClient && removeClient.mutate({ id: deleteClient.id })} disabled={removeClient.isPending}>
+              {removeClient.isPending && <Loader2 className="mr-1 h-4 w-4 animate-spin" aria-hidden="true" />} Eliminar
             </Button>
           </DialogFooter>
         </DialogContent>
