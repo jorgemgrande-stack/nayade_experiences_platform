@@ -83,7 +83,7 @@ import { groupTaxBreakdown, totalTaxAmount } from "../taxUtils";
 import { reservationProductFromQuoteItems } from "../reservationUtils";
 import { buildGestoriaInvoiceZip, ExportTooLargeError, MAX_EXPORT_DOCUMENTS } from "../gestoriaInvoiceExport";
 import { listInvoicesForExport, originalInvoiceNumbers, storedInvoicePdf, toExportRow } from "../gestoriaInvoiceExportDb";
-import { ExportPeriodError, resolveExportPeriod } from "../../shared/gestoriaExportPeriod";
+import { ExportPeriodError, emptyExportMessage, resolveExportPeriod } from "../../shared/gestoriaExportPeriod";
 
 // DB helper — usa la misma pool que el resto del servidor
 const _pool = legacyPool();
@@ -5658,6 +5658,8 @@ export const crmRouter = router({
           throw e;
         }
         const stored = await listInvoicesForExport(period);
+        // Periodo sin documentos: se rechaza sin montar nada (un ZIP vacío no sirve a la gestoría)
+        if (stored.length === 0) throw new TRPCError({ code: "BAD_REQUEST", message: emptyExportMessage(period.label) });
         if (stored.length > MAX_EXPORT_DOCUMENTS) {
           throw new TRPCError({ code: "BAD_REQUEST", message: `El periodo tiene ${stored.length} documentos y el máximo por exportación es ${MAX_EXPORT_DOCUMENTS}. Exporta por meses o con un rango más corto.` });
         }
