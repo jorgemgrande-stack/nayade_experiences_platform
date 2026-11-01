@@ -131,6 +131,107 @@ function fixCents(comps: TaxComponent[], target: number) {
   biggest.base = round2(biggest.base + diff);
 }
 
+// ─── Factura de un presupuesto cobrado ───────────────────────────────────────
+
+/** Línea de presupuesto tal como se guarda: `total` es el importe CON IVA incluido y SIN el descuento global. */
+export type QuoteLineForInvoice = { total: number; fiscalRegime?: string; taxRate?: number | null };
+
+/** Motivo que figura en la factura cuando lo cobrado es menor que la suma de las líneas del presupuesto. */
+export const QUOTE_DISCOUNT_REASON = "Descuento del presupuesto";
+
+export interface ChargedInvoiceAmounts {
+  /** Base y cuota por tipo de IVA, ya con el descuento aplicado. Sin las partes sin IVA repercutido (REAV). */
+  taxBreakdown: TaxBreakdownLine[];
+  /** Base imponible total (incluida la parte sin IVA repercutido). subtotal + taxAmount = total. */
+  subtotal: number;
+  taxAmount: number;
+  /** Lo cobrado. */
+  total: number;
+  /** Tipo único de la factura (el de su desglose si solo tiene uno; 21 si mezcla tipos; 0 si no lleva IVA). */
+  taxRate: number;
+  /** Diferencia entre la suma de las líneas y lo cobrado (descuento promocional del presupuesto), si la hay. */
+  discount: number;
+}
+
+/**
+ * Importes de la factura de un presupuesto por lo cobrado (`chargedTotal`). Las líneas llevan el IVA
+ * incluido y no reflejan el descuento global, así que el descuento se aplica ANTES de desglosar: el importe
+ * de cada tipo de IVA (y la parte sin IVA repercutido) se reduce en proporción a lo cobrado, y de cada
+ * parte se extraen base y cuota con la regla de `prorate`. Así base + IVA = total al céntimo y cada tipo
+ * conserva su peso. Ejemplo: 121 € al 21 % con un 10 % de descuento → 108,90 € = 90,00 + 18,90.
+ */
+export function chargedInvoiceAmounts(items: QuoteLineForInvoice[], chargedTotal: number): ChargedInvoiceAmounts {
+  const target = round2(Math.max(0, Number(chargedTotal) || 0));
+  const parts = new Map<string, TaxComponent>();
+  for (const it of items ?? []) {
+    const rate = isReavLine(it) ? null : Number(it.taxRate ?? 21);
+    const k = keyOf(rate);
+    const cur = parts.get(k) ?? { rate, base: 0, amount: 0 };
+    cur.base += Number(it.total) || 0;
+    parts.set(k, cur);
+  }
+  let comps = Array.from(parts.values()).filter((c) => c.base > 0);
+  if (!comps.length) comps = [{ rate: 21, base: target, amount: 0 }];
+  const linesGross = round2(comps.reduce((s, c) => s + c.base, 0));
+  const out = target > 0 ? prorate(comps, target) : [];
+  const taxBreakdown = out
+    .filter((c) => c.rate !== null && gross(c) > 0.004)
+    .map((c) => ({ rate: c.rate as number, base: round2(c.base), amount: round2(c.amount) }))
+    .sort((a, b) => b.rate - a.rate);
+  const taxAmount = round2(out.reduce((s, c) => s + c.amount, 0));
+  return {
+    taxBreakdown,
+    subtotal: round2(target - taxAmount),
+    taxAmount,
+    total: target,
+    taxRate: taxBreakdown.length === 1 ? taxBreakdown[0].rate : taxBreakdown.length === 0 ? 0 : 21,
+    discount: round2(Math.max(0, linesGross - target)),
+  };
+}
+
+/**
+ * Desglose por tipo de IVA de un documento emitido para los informes fiscales (modelo 303, libro de
+ * facturas). El guardado si lo hay. Si no (documentos antiguos): con un solo tipo y sin partes sin IVA
+ * repercutido, los importes guardados del documento a ese tipo; con varios tipos o con partes REAV, el
+ * total del documento repartido entre los tipos de sus líneas (nunca todo al tipo general ni la parte
+ * REAV como base del 21 %). Importes en positivo; el signo lo pone quien lo usa.
+ */
+export function reportTaxBreakdown(inv: InvoiceForCredit): TaxBreakdownLine[] {
+  const stored = Array.isArray(inv.taxBreakdown) ? inv.taxBreakdown.filter((b) => b && Number.isFinite(Number(b.rate))) : [];
+  if (stored.length) return stored.map((b) => ({ rate: Number(b.rate), base: Math.abs(Number(b.base) || 0), amount: Math.abs(Number(b.amount) || 0) }));
+  const fallback = Number(inv.taxRate ?? 21);
+  const docRate = Number.isFinite(fallback) ? fallback : 21;
+  const items = Array.isArray(inv.itemsJson) ? inv.itemsJson : [];
+  const rates = new Set(items.filter((i) => !isReavLine(i)).map((i) => Number(i.taxRate ?? docRate)));
+  const hasReav = items.some((i) => isReavLine(i));
+  if (!items.length || (rates.size === 1 && !hasReav)) {
+    const rate = rates.size === 1 ? Array.from(rates)[0] : docRate;
+    return [{ rate, base: Math.abs(Number(inv.subtotal ?? 0) || 0), amount: Math.abs(Number(inv.taxAmount ?? 0) || 0) }];
+  }
+  const lines = items.map((i) => ({ ...i, total: Math.abs(Number(i.total) || 0), taxRate: i.taxRate ?? docRate }));
+  return chargedInvoiceAmounts(lines, Math.abs(Number(inv.total) || 0)).taxBreakdown;
+}
+
+/**
+ * Importe con IVA de cada línea de la factura tal como se cobró. Si las líneas no suman el total (factura
+ * de un presupuesto con descuento global), cada una se reduce en la misma proporción y el céntimo de
+ * redondeo va a la línea mayor, de modo que suman exactamente el total. Base de los abonos por líneas.
+ */
+export function chargedLineTotals(inv: InvoiceForCredit): number[] {
+  const items = inv.itemsJson ?? [];
+  const raw = items.map((i) => round2(Math.abs(Number(i.total) || 0)));
+  const sum = round2(raw.reduce((s, n) => s + n, 0));
+  const total = round2(Math.abs(Number(inv.total) || 0));
+  if (!(sum > 0) || Math.abs(sum - total) < 0.005) return raw;
+  const out = raw.map((n) => round2((n * total) / sum));
+  const diff = round2(total - out.reduce((s, n) => s + n, 0));
+  if (diff !== 0) {
+    const i = out.reduce((best, n, idx) => (n > out[best] ? idx : best), 0);
+    out[i] = round2(out[i] + diff);
+  }
+  return out;
+}
+
 export interface CreditNoteAmounts {
   items: InvoiceItem[];
   /** Importes en negativo, como el resto de la fila del abono. */
@@ -240,14 +341,18 @@ export interface CreditNoteLineStatus {
 export function creditNoteLineStatus(original: InvoiceForCredit, previous: InvoiceForCredit[]): CreditNoteLineStatus[] {
   const credited = creditedByLine(previous);
   const fallbackRate = Number(original.taxRate ?? 21);
+  const charged = chargedLineTotals(original);
   return (original.itemsJson ?? []).map((it, itemIndex) => {
-    const total = round2(Math.abs(Number(it.total) || 0));
+    const listed = round2(Math.abs(Number(it.total) || 0));
+    const total = charged[itemIndex];
     const done = credited.get(itemIndex) ?? 0;
+    const quantity = Math.abs(Number(it.quantity) || 0);
     return {
       itemIndex,
       description: it.description,
-      quantity: Math.abs(Number(it.quantity) || 0),
-      unitPrice: Math.abs(Number(it.unitPrice) || 0),
+      quantity,
+      // Con descuento global, el precio cobrado (el de la línea reducido en la misma proporción)
+      unitPrice: total === listed || !(quantity > 0) ? Math.abs(Number(it.unitPrice) || 0) : round2(total / quantity),
       total,
       taxRate: isReavLine(it) ? null : Number(it.taxRate ?? (Number.isFinite(fallbackRate) ? fallbackRate : 21)),
       credited: done,
@@ -273,6 +378,8 @@ export function computeCreditNoteFromLines(original: InvoiceForCredit, selection
   const seen = new Set<number>();
   const fallbackRate = Number(original.taxRate ?? 21);
   const credited = creditedByLine(previous);
+  // Importe cobrado de cada línea (con el descuento global de la factura repartido, si lo hay)
+  const charged = chargedLineTotals(original);
   const picked = selection.map((sel) => {
     const orig = origItems[sel.itemIndex];
     if (!orig) throw new CreditNoteSelectionError(`La línea ${sel.itemIndex + 1} no existe en la factura`);
@@ -282,7 +389,9 @@ export function computeCreditNoteFromLines(original: InvoiceForCredit, selection
       throw new CreditNoteSelectionError(`En «${orig.description}» indica unidades o importe, no las dos cosas`);
     }
     const origQty = Math.abs(Number(orig.quantity) || 0);
-    const origTotal = Math.abs(Number(orig.total) || 0);
+    const origTotal = charged[sel.itemIndex];
+    const discounted = origTotal !== round2(Math.abs(Number(orig.total) || 0));
+    const origUnit = discounted && origQty > 0 ? round2(origTotal / origQty) : Math.abs(Number(orig.unitPrice) || 0);
     const lineLeft = round2(Math.max(0, origTotal - (credited.get(sel.itemIndex) ?? 0)));
     if (!(lineLeft > 0)) throw new CreditNoteSelectionError(`«${orig.description}» ya está abonada por completo`);
     const taxRate = isReavLine(orig) ? undefined : orig.taxRate ?? (Number.isFinite(fallbackRate) ? fallbackRate : 21);
@@ -299,7 +408,7 @@ export function computeCreditNoteFromLines(original: InvoiceForCredit, selection
     // La línea entera (o lo que le queda) sin cantidad; con cantidad, en proporción a las unidades
     const total = sel.quantity === undefined ? lineLeft : qty === origQty ? origTotal : round2((origTotal / origQty) * qty);
     if (total - lineLeft > 0.005) throw new CreditNoteSelectionError(`De «${orig.description}» solo quedan ${eur(lineLeft)} por abonar`);
-    return { ...orig, quantity: sel.quantity === undefined && lineLeft < origTotal ? 1 : qty, unitPrice: sel.quantity === undefined && lineLeft < origTotal ? -lineLeft : -Math.abs(Number(orig.unitPrice) || 0), total: -total, ...rate, creditedFromLine: sel.itemIndex };
+    return { ...orig, quantity: sel.quantity === undefined && lineLeft < origTotal ? 1 : qty, unitPrice: sel.quantity === undefined && lineLeft < origTotal ? -lineLeft : -origUnit, total: -total, ...rate, creditedFromLine: sel.itemIndex };
   });
   const target = round2(picked.reduce((s, i) => s + Math.abs(i.total), 0));
   const comps: TaxComponent[] = groupTaxBreakdown(picked.map((i) => ({ ...i, total: Math.abs(i.total) })))

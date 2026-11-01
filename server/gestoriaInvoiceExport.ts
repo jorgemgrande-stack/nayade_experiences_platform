@@ -9,6 +9,7 @@
  */
 import JSZip from "jszip";
 import { groupTaxBreakdown } from "./taxUtils";
+import { chargedInvoiceAmounts } from "./invoiceCalc";
 import { formatDateKeyEs, madridDayKey, type ResolvedExportPeriod } from "../shared/gestoriaExportPeriod";
 
 /** Tope de documentos por ZIP: cada uno lleva su PDF; un periodo mayor se divide (mes o rango). */
@@ -62,7 +63,9 @@ const STATUS_LABEL: Record<string, string> = {
 
 /**
  * Desglose por tipo de IVA del documento: el guardado; si no lo hay (documentos antiguos), el de sus
- * líneas cuando cuadra con el total guardado; si tampoco, un único tipo con la cuota guardada.
+ * líneas cuando cuadra con el total guardado; si no cuadra (descuento global) y mezcla tipos o partes sin
+ * IVA repercutido, el total repartido entre los tipos de sus líneas (nunca todo a un tipo); si no, un único
+ * tipo con la cuota guardada.
  */
 export function storedBreakdown(inv: ExportInvoiceRow): { rate: number; base: number; amount: number }[] {
   const stored = Array.isArray(inv.taxBreakdown) ? inv.taxBreakdown.filter((b) => b && Number.isFinite(Number(b.rate))) : [];
@@ -74,6 +77,10 @@ export function storedBreakdown(inv: ExportInvoiceRow): { rate: number; base: nu
     const sum = fromLines.reduce((s, b) => s + Math.abs(b.base) + Math.abs(b.amount), 0);
     const reav = items.filter((i) => i.fiscalRegime === "reav").reduce((s, i) => s + Math.abs(num(i.total)), 0);
     if (fromLines.length && Math.abs(sum + reav - Math.abs(total)) <= 0.02) return fromLines;
+    if (fromLines.length > 1 || (fromLines.length && reav > 0)) {
+      const lines = items.map((i) => ({ ...i, total: Math.abs(num(i.total)) }));
+      return chargedInvoiceAmounts(lines, Math.abs(total)).taxBreakdown;
+    }
   }
   const tax = num(inv.taxAmount);
   return [{ rate: num(inv.taxRate ?? 0), base: r2(Math.abs(total) - Math.abs(tax)), amount: Math.abs(tax) }];
