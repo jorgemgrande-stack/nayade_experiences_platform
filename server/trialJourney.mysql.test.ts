@@ -380,12 +380,13 @@ describe.skipIf(!URL_)("prueba gratuita de Essential de punta a punta (MySQL rea
 
     const bad = await m(tenantId, "setupWizard.saveCompany", { tradeName: "", legalName: "x", taxId: "1", address: "", country: "XX", currency: "EUR", timezone: "Europe/Madrid" }, cookie);
     expect(bad.status).toBe(400);
-    const company = { tradeName: "Ferretería Sol", legalName: "Ferretería Sol, S.L.", taxId: "B12345678", address: "Calle Mayor 1", postalCode: "28001", city: "Madrid", province: "Madrid", country: "ES", currency: "EUR", timezone: "Europe/Madrid" };
+    const company = { tradeName: "Ferretería Sol", legalName: "Ferretería Sol, S.L.", taxId: "B12345674", address: "Calle Mayor 1", postalCode: "28001", city: "Madrid", province: "Madrid", country: "ES", currency: "EUR", timezone: "Europe/Madrid" };
     expect((await m(tenantId, "setupWizard.saveCompany", company, cookie)).status).toBe(200);
     expect((await m(tenantId, "setupWizard.saveActivity", { activity: "comercio" }, cookie)).status).toBe(200);
     // Marca (web y pantalla de acceso)
     expect((await m(tenantId, "integrations.themeSave", { values: { theme_primary_color: "#c2410c" } }, cookie)).status).toBe(200);
-    expect((await m(tenantId, "setupWizard.setStep", { step: "brand", status: "done" }, cookie)).status).toBe(200);
+    // Sin logotipo el paso no se completa: el asistente lo deja omitido para retomarlo
+    expect((await m(tenantId, "setupWizard.setStep", { step: "brand", status: "skipped" }, cookie)).status).toBe(200);
 
     // Primer cliente y primer producto con los procedimientos existentes
     expect((await m(tenantId, "crm.clients.create", { name: "Cliente Uno", email: "cliente@uno.example" }, cookie)).status).toBe(200);
@@ -405,14 +406,14 @@ describe.skipIf(!URL_)("prueba gratuita de Essential de punta a punta (MySQL rea
 
     // Continuar más tarde: otra sesión ve el mismo progreso y los datos guardados en sus ajustes
     const again = data(await q(tenantId, "setupWizard.status", undefined, cookie));
-    // Comercio: tras productos, ventas y CRM viene la web
+    // Marca omitida, cliente, producto y presupuesto hechos: lo siguiente pendiente es la web
     expect(again.nextStep).toBe("web");
-    expect(again.company).toMatchObject({ tradeName: "Ferretería Sol", legalName: "Ferretería Sol, S.L.", taxId: "B12345678", currency: "EUR", timezone: "Europe/Madrid", country: "ES" });
+    expect(again.company).toMatchObject({ tradeName: "Ferretería Sol", legalName: "Ferretería Sol, S.L.", taxId: "B12345674", currency: "EUR", timezone: "Europe/Madrid", country: "ES" });
     expect(again.activity).toBe("comercio");
     const c = await tenantConn(tenantId);
     try {
       const [s] = await c.query<mysql.RowDataPacket[]>("SELECT `key`, value FROM system_settings WHERE `key` IN ('brand_name','brand_nif','site_legal_name')");
-      expect(Object.fromEntries(s.map((r) => [r.key, r.value]))).toEqual({ brand_name: "Ferretería Sol", brand_nif: "B12345678", site_legal_name: "Ferretería Sol, S.L." });
+      expect(Object.fromEntries(s.map((r) => [r.key, r.value]))).toEqual({ brand_name: "Ferretería Sol", brand_nif: "B12345674", site_legal_name: "Ferretería Sol, S.L." });
       const [e] = await c.query<mysql.RowDataPacket[]>("SELECT title, basePrice, taxRate FROM experiences");
       expect(e).toHaveLength(1);
       expect(Number(e[0].taxRate)).toBe(21);

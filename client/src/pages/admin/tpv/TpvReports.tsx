@@ -192,8 +192,12 @@ export default function TpvReports() {
           <PanelEmpty
             icon={<BarChart3 className="w-6 h-6" />}
             title="No hay ventas ni cierres en este periodo"
-            description="Prueba con otras fechas o con todas las cajas."
-          />
+            description="Prueba con otras fechas o con todas las cajas. El informe se llena con cada venta cobrada en el terminal de venta y con cada cierre de caja."
+          >
+            <Button asChild size="sm">
+              <Link href="/admin/tpv">Abrir el terminal de venta</Link>
+            </Button>
+          </PanelEmpty>
         ) : (
           <>
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">

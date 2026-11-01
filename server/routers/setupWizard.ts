@@ -47,6 +47,7 @@ import {
   fiscalSchema,
   identitySchema,
   markStep,
+  spanishFiscalErrors,
   type CommsData,
   type CompanyData,
   type SetupProgress,
@@ -150,7 +151,7 @@ export async function loadState() {
     brand: filled(settings[BRAND_LOGO_KEY]),
     activity: activityProfile(activity) !== null,
     ...counts,
-    comms: filled(comms.replyTo) || filled(comms.whatsapp),
+    comms: filled(comms.fromName) || filled(comms.replyTo) || filled(comms.whatsapp),
   };
   const plan = buildSetupPlan({ progress, activity, capabilities, facts });
   return { progress, company, comms, activity, capabilities, facts, plan, fiscalFromRegistry: fiscal !== null };
@@ -160,6 +161,19 @@ export async function loadState() {
 async function after(progress: SetupProgress) {
   const s = await loadState();
   return { progress, nextStep: s.plan.nextStep, plan: s.plan };
+}
+
+/** NIF/CIF y código postal de una empresa española: se comprueban también en el servidor, no solo en el formulario. */
+async function assertSpanishFiscal(country: string | null | undefined, v: { taxId?: string; postalCode?: string }) {
+  const errors = spanishFiscalErrors(country, v);
+  // El NIF de la entidad fiscal registrada (el de las facturas) ya lo validó quien la dio de alta: se acepta tal cual
+  if (errors.taxId) {
+    const registry = await registryFiscal().catch(() => null);
+    const norm = (x: string | null | undefined) => (x ?? "").toUpperCase().replace(/[\s.-]/g, "");
+    if (registry && norm(registry.taxId) === norm(v.taxId)) delete errors.taxId;
+  }
+  const first = errors.taxId ?? errors.postalCode;
+  if (first) throw new TRPCError({ code: "BAD_REQUEST", message: first });
 }
 
 function saveCompanyFields(fields: ReadonlyArray<keyof CompanyData>, input: Partial<Record<keyof CompanyData, string>>) {
@@ -205,24 +219,27 @@ export const setupWizardRouter = router({
 
   /** Identidad y datos fiscales de una vez (compatibilidad con la versión anterior del asistente). */
   saveCompany: adminProcedure.input(companySchema).mutation(async ({ input, ctx }) => {
+    await assertSpanishFiscal(input.country, input);
     await saveCompanyFields(Object.keys(COMPANY_SETTING_KEYS) as Array<keyof CompanyData>, input);
     const now = Date.now();
     return after(await changeProgress(ctx, (p) => markStep(markStep(p, "company", "done", now), "fiscal", "done", now)));
   }),
 
-  /** Paso «Identidad de empresa». */
+  /** Paso «Datos de la empresa». */
   saveIdentity: adminProcedure.input(identitySchema).mutation(async ({ input, ctx }) => {
     await saveCompanyFields(IDENTITY_FIELDS, input);
     return after(await changeProgress(ctx, (p) => markStep(p, "company", "done", Date.now())));
   }),
 
-  /** Paso «Datos fiscales y comerciales». */
+  /** Paso «Datos fiscales». */
   saveFiscal: adminProcedure.input(fiscalSchema).mutation(async ({ input, ctx }) => {
+    // El país es el del paso «Datos de la empresa»; sin él, se da por España
+    await assertSpanishFiscal((await readSettings([COMPANY_SETTING_KEYS.country]))[COMPANY_SETTING_KEYS.country], input);
     await saveCompanyFields(FISCAL_FIELDS, input);
     return after(await changeProgress(ctx, (p) => markStep(p, "fiscal", "done", Date.now())));
   }),
 
-  /** Paso «Tipo de actividad». Ordena los pasos y adapta textos; no activa módulos ni contrata nada. */
+  /** Paso «Tipo de actividad». Destaca los pasos prioritarios y adapta textos; no activa módulos ni contrata nada. */
   saveActivity: adminProcedure.input(z.object({ activity: z.enum(activityIds, { message: "Elige una actividad de la lista" }) })).mutation(async ({ input, ctx }) => {
     if (!availableActivities(await contractedSetupCapabilities()).some((a) => a.id === input.activity)) {
       throw new TRPCError({ code: "BAD_REQUEST", message: "Tu empresa no tiene contratado ningún módulo sectorial: elige otro tipo de actividad" });
