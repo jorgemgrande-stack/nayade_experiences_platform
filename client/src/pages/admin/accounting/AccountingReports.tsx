@@ -36,12 +36,18 @@ const FISCAL_COLORS: Record<string, string> = {
 const CHANNEL_LABELS: Record<string, string> = {
   tpv: "Caja", web: "Web", online: "Web", crm: "Presupuestos", admin: "Panel", delegado: "Venta delegada", otro: "Otro",
 };
+// Canales de los pedidos (rentabilidad por canal)
+const PROFIT_CHANNEL_LABELS: Record<string, string> = {
+  web: "Web", online: "Web", tpv: "Caja", crm: "Presupuestos", phone: "Teléfono", agency: "Agencia", direct: "Directo", admin: "Panel",
+  TPV_FISICO: "Caja", ONLINE_DIRECTO: "Web", ONLINE_ASISTIDO: "Web (con ayuda)", VENTA_DELEGADA: "Venta delegada",
+  TELEFONO: "Teléfono", EMAIL: "Correo electrónico", PARTNER: "Colaboradores", TICKETING: "Cupones", MANUAL: "Panel", API: "Otra aplicación",
+};
 const METHOD_LABELS: Record<string, string> = {
   efectivo: "Efectivo", tarjeta: "Tarjeta", tarjeta_fisica: "Tarjeta (datáfono)", bizum: "Bizum",
   redsys: "Tarjeta online", tarjeta_redsys: "Tarjeta online", link_pago: "Enlace de pago", transferencia: "Transferencia", otro: "Otro",
 };
 const FISCAL_LABELS: Record<string, string> = {
-  general: "IVA 21%", general_21: "IVA 21%", reav: "REAV", mixed: "Mixto",
+  general: "Régimen general (IVA)", general_21: "Régimen general (IVA)", reav: "REAV", mixed: "Mixto",
 };
 
 // ─── Formateador de moneda ────────────────────────────────────────────────────
@@ -71,8 +77,10 @@ export default function AccountingReports() {
   const sub = usePanelSubscription();
   const canBank = (sub.mode === "legacy" || sub.mode === "tasks") && sub.can("bank-import-pos");
   const today = new Date();
-  const firstOfMonth = new Date(today.getFullYear(), today.getMonth(), 1).toISOString().slice(0, 10);
-  const todayStr = today.toISOString().slice(0, 10);
+  // Fechas del calendario local (toISOString las pasaría a UTC: el día 1 saldría como el último del mes anterior)
+  const ymd = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  const firstOfMonth = ymd(new Date(today.getFullYear(), today.getMonth(), 1));
+  const todayStr = ymd(today);
 
   const [fromDate, setFromDate] = useState(firstOfMonth);
   const [toDate, setToDate]     = useState(todayStr);
@@ -495,7 +503,7 @@ export default function AccountingReports() {
                           return (
                             <tr key={r.channel} className="border-b border-border/50 hover:bg-muted/20">
                               <td className="py-2 px-3 font-medium">
-                                {({ web: "Web", online: "Web", tpv: "Caja", crm: "Presupuestos", phone: "Teléfono", agency: "Agencia", direct: "Directo", admin: "Panel" } as Record<string,string>)[r.channel] ?? r.channel}
+                                {PROFIT_CHANNEL_LABELS[r.channel] ?? r.channel}
                               </td>
                               <td className="py-2 px-3 text-right font-semibold text-green-700">{fmtEurLocal(r.amount)}</td>
                               <td className="py-2 px-3 text-right text-muted-foreground">{r.count}</td>

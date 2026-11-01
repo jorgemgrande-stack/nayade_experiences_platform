@@ -489,6 +489,11 @@ export default function AccountingDashboard() {
           <h3 className="font-display font-semibold text-foreground">Últimos cobros</h3>
           <Badge variant="outline" className="text-xs">{(transactions ?? []).length} registros</Badge>
         </div>
+        {(transactions ?? []).length === 0 ? (
+          <p className="text-center py-10 px-5 text-muted-foreground text-sm">
+            Todavía no hay cobros registrados. Aparecen aquí al cobrar una venta, un pedido o una factura.
+          </p>
+        ) : (
         <div className="overflow-x-auto">
           <table className="w-full">
             <thead>
@@ -502,13 +507,7 @@ export default function AccountingDashboard() {
               </tr>
             </thead>
             <tbody>
-              {(transactions ?? []).length === 0 ? (
-                <tr>
-                  <td colSpan={6} className="text-center py-10 text-muted-foreground text-sm">
-                    Todavía no hay cobros registrados. Aparecen aquí al cobrar una venta, un pedido o una factura.
-                  </td>
-                </tr>
-              ) : (
+              {(
                 (transactions ?? []).map((tx) => {
                   const StatusIcon = paymentStatusIcons[tx.status] ?? Clock;
                   return (
@@ -537,6 +536,7 @@ export default function AccountingDashboard() {
             </tbody>
           </table>
         </div>
+        )}
       </div>
     </AdminLayout>
   );
