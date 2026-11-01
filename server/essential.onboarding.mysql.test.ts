@@ -2,7 +2,7 @@
  * Onboarding de Elephant Core (asistente «Primeros pasos» v2 e Inicio) con la aplicación real sobre MySQL (opt-in,
  * REGISTRY_TEST_DATABASE_URL). Dos empresas nuevas desde la baseline:
  *  - progreso persistente y reanudación (otra sesión ve lo mismo; «explorar primero» no vuelve a mostrar la bienvenida);
- *  - adaptación por tipo de actividad y por licencias (pasos ocultos sin capacidad, sectorial solo con módulo);
+ *  - orden de negocio fijo, pasos destacados por tipo de actividad y por licencias (ocultos sin capacidad, sectorial solo con módulo);
  *  - no se piden datos existentes (lo que consta en el registro o en los ajustes llega relleno y cuenta como hecho);
  *  - pasos «de hacer» completados por datos reales, no por clic;
  *  - separación de datos entre las dos empresas (progreso, ajustes y actividad reciente).
@@ -43,7 +43,7 @@ describe.skipIf(!URL_)("Onboarding de Elephant Core (aplicación real, dos empre
     expect(st.progress.updatedAt).toBeNull();
     expect(st.nextStep).toBe("welcome");
     // Essential: sin módulo sectorial ni «sectorial» entre los tipos de actividad
-    expect(stepIds(st.plan)).toEqual(["welcome", "company", "fiscal", "brand", "activity", "client", "product", "web", "operation", "comms", "finish"]);
+    expect(stepIds(st.plan)).toEqual(["welcome", "company", "fiscal", "activity", "brand", "web", "client", "product", "operation", "document", "comms", "finish"]);
     expect(st.plan.hidden).toContain("sector");
     expect(st.activities).toEqual(["comercio", "servicios", "web"]);
     // Entidad fiscal del registro: llega rellena y el paso fiscal cuenta como hecho
@@ -68,12 +68,12 @@ describe.skipIf(!URL_)("Onboarding de Elephant Core (aplicación real, dos empre
     expect(JSON.parse(row.value).steps.welcome.status).toBe("skipped");
   });
 
-  it("identidad guardada en los ajustes de siempre; se reanuda en el siguiente paso pendiente (el fiscal ya consta)", async () => {
+  it("datos de la empresa guardados en los ajustes de siempre; se reanuda en el siguiente paso pendiente (el fiscal ya consta)", async () => {
     const bad = await ess.m("a", "setupWizard.saveIdentity", { tradeName: "", country: "XX", currency: "EUR", timezone: "Europe/Madrid" }, admA);
     expect(errCode(bad)).toBe("BAD_REQUEST");
     const ok = await ess.m("a", "setupWizard.saveIdentity", { tradeName: "Ferretería Sol", country: "ES", currency: "EUR", timezone: "Europe/Madrid" }, admA);
     expect(ok.status).toBe(200);
-    expect(data(ok).nextStep).toBe("brand");
+    expect(data(ok).nextStep).toBe("activity");
     const rows = await ess.sql("a", "SELECT `key`, value FROM system_settings WHERE `key` IN ('brand_name','site_legal_country','site_timezone','site_payment_currency')");
     expect(Object.fromEntries(rows.map((r) => [r.key, r.value]))).toEqual({ brand_name: "Ferretería Sol", site_legal_country: "ES", site_timezone: "Europe/Madrid", site_payment_currency: "EUR" });
     const st = await status("a", admA);
@@ -84,10 +84,11 @@ describe.skipIf(!URL_)("Onboarding de Elephant Core (aplicación real, dos empre
     expect((await status("a", admA)).company).toMatchObject({ tradeName: "Ferretería Sol Madrid", timezone: "Atlantic/Canary" });
   });
 
-  it("el tipo de actividad reordena y prioriza los pasos; «sectorial» solo con un módulo sectorial contratado", async () => {
+  it("el tipo de actividad destaca pasos sin cambiar el orden de negocio; «sectorial» solo con un módulo sectorial contratado", async () => {
+    const order = stepIds((await status("a", admA)).plan);
     expect((await ess.m("a", "setupWizard.saveActivity", { activity: "comercio" }, admA)).status).toBe(200);
     let st = await status("a", admA);
-    expect(stepIds(st.plan).slice(5, 10)).toEqual(["product", "operation", "client", "web", "comms"]);
+    expect(stepIds(st.plan)).toEqual(order);
     expect(st.plan.steps.filter((s: Plan["steps"][number]) => s.recommended).map((s: Plan["steps"][number]) => s.id)).toEqual(["product", "operation"]);
 
     expect(errCode(await ess.m("a", "setupWizard.saveActivity", { activity: "sectorial" }, admA))).toBe("BAD_REQUEST");
@@ -98,14 +99,18 @@ describe.skipIf(!URL_)("Onboarding de Elephant Core (aplicación real, dos empre
       expect(st.sectorModules.map((m: { id: string }) => m.id)).toEqual(["hotel-net"]);
       expect(stepIds(st.plan)).toContain("sector");
       expect((await ess.m("a", "setupWizard.saveActivity", { activity: "sectorial" }, admA)).status).toBe(200);
-      expect(stepIds(await status("a", admA).then((s) => s.plan))[5]).toBe("sector");
+      const sec = (await status("a", admA)).plan;
+      expect(stepIds(sec).slice(-2)).toEqual(["sector", "finish"]);
+      expect(stepOf(sec, "sector")?.recommended).toBe(true);
     } finally {
       await ess.setCapability("a", "hotel-net", null);
     }
     st = await status("a", admA);
     expect(stepIds(st.plan)).not.toContain("sector");
     expect((await ess.m("a", "setupWizard.saveActivity", { activity: "servicios" }, admA)).status).toBe(200);
-    expect(stepIds((await status("a", admA)).plan).slice(5, 7)).toEqual(["client", "product"]);
+    const serv = (await status("a", admA)).plan;
+    expect(stepIds(serv)).toEqual(order);
+    expect(serv.steps.filter((s: Plan["steps"][number]) => s.recommended).map((s: Plan["steps"][number]) => s.id)).toEqual(["client", "document"]);
   });
 
   it("pasos ocultos si la capacidad no está contratada (web sin CMS)", async () => {
@@ -185,7 +190,7 @@ describe.skipIf(!URL_)("Onboarding de Elephant Core (aplicación real, dos empre
     expect(after.activity).toBe("servicios");
     expect((await ess.sql("a", "SELECT value FROM system_settings WHERE `key` = 'brand_name'"))[0].value).toBe("Ferretería Sol Madrid");
     expect((await ess.sql("b", "SELECT value FROM system_settings WHERE `key` = 'brand_name'"))[0].value).toBe("Librería Luna");
-    expect(stepIds((await status("b", admB)).plan)[5]).toBe("web");
+    expect(stepOf((await status("b", admB)).plan, "web")?.recommended).toBe(true);
   });
 
   it("puesta en marcha: queda registrada y el progreso persiste", async () => {

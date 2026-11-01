@@ -4,7 +4,7 @@
  * Cada fuente se incluye solo si su capacidad está contratada (activa o en solo lectura): quien no tiene caja no ve
  * ventas en caja, aunque existieran filas de antes. Nunca mezcla empresas: `getDb()` resuelve la BD del tenant.
  */
-import { desc } from "drizzle-orm";
+import { and, count, desc, eq, gte, inArray, sql, sum } from "drizzle-orm";
 import { clients, invoices, leads, quotes, reservations, tpvSales } from "../drizzle/schema";
 import { getDb } from "./db";
 import { getCapabilityAccess } from "./_core/capabilities/access";
@@ -99,4 +99,109 @@ export async function recentActivity(limit = 8): Promise<RecentItem[]> {
     );
   }
   return mergeRecent(await Promise.all(tasks), limit);
+}
+
+// ── Indicadores del Inicio ────────────────────────────────────────────────────
+
+/**
+ * Cifras del Inicio, todas de la BD de la empresa en curso. Cada bloque es null si su capacidad no está contratada
+ * (no se enseña), y un número (0 incluido) si lo está: nunca se inventa ni se estima nada.
+ *  - Ventas de hoy y del mes: pedidos cobrados (los tickets de caja generan su pedido), por la fecha de cobro y con
+ *    el importe cobrado, en hora de Madrid; la misma regla que Informes › Resumen.
+ *  - Facturas pendientes de cobro: facturas emitidas o enviadas sin marcar como cobradas (ni anuladas ni abonos) y
+ *    que no son de un pedido ya cobrado (la venta en caja o el pedido manual cobrado generan su factura sin marcarla).
+ *  - Presupuestos enviados sin respuesta: enviados o vistos por el cliente, sin aceptar ni rechazar.
+ *  - Clientes nuevos: dados de alta este mes.
+ *  - Pedidos online pendientes: de la tienda online, cobrados y aún sin finalizar.
+ */
+export interface HomeIndicators {
+  sales: { today: { amount: number; count: number }; month: { amount: number; count: number } } | null;
+  unpaidInvoices: { count: number; amount: number } | null;
+  awaitingQuotes: { count: number; amount: number } | null;
+  newClients: { count: number } | null;
+  pendingOnlineOrders: { count: number } | null;
+}
+
+const MADRID_PARTS = new Intl.DateTimeFormat("en-GB", { timeZone: "Europe/Madrid", year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", second: "2-digit", hourCycle: "h23" });
+
+/** Inicio del día y del mes en curso en hora de Madrid (ms). Pura: la usan las pruebas. */
+export function madridPeriodStarts(now: number): { dayStart: number; monthStart: number } {
+  const p = Object.fromEntries(MADRID_PARTS.formatToParts(new Date(now)).map((x) => [x.type, x.value]));
+  const [y, m, d] = [Number(p.year), Number(p.month), Number(p.day)];
+  // Diferencia entre la hora de Madrid y UTC en este instante (1 h en invierno, 2 h en verano)
+  const offset = Date.UTC(y, m - 1, d, Number(p.hour), Number(p.minute), Number(p.second)) - Math.floor(now / 1000) * 1000;
+  return { dayStart: Date.UTC(y, m - 1, d) - offset, monthStart: Date.UTC(y, m - 1, 1) - offset };
+}
+
+/** Suma de ventas cobradas (importes en céntimos) de hoy y del mes. Pura: la usan las pruebas. */
+export function summarizeSales(rows: Array<{ at: number; amountTotal: number | null; amountPaid: number | null }>, starts: { dayStart: number; monthStart: number }) {
+  const out = { today: { amount: 0, count: 0 }, month: { amount: 0, count: 0 } };
+  for (const r of rows) {
+    if (!(r.at >= starts.monthStart)) continue;
+    const cents = Number(r.amountPaid) > 0 ? Number(r.amountPaid) : Number(r.amountTotal) || 0;
+    out.month.amount += cents;
+    out.month.count++;
+    if (r.at >= starts.dayStart) {
+      out.today.amount += cents;
+      out.today.count++;
+    }
+  }
+  out.today.amount = Math.round(out.today.amount) / 100;
+  out.month.amount = Math.round(out.month.amount) / 100;
+  return out;
+}
+
+async function allowed(cap: string): Promise<boolean> {
+  try {
+    return (await getCapabilityAccess().check(cap, { write: false })).allowed;
+  } catch {
+    // Sin poder verificar la licencia, ese bloque no se muestra
+    return false;
+  }
+}
+
+export async function homeIndicators(now = Date.now()): Promise<HomeIndicators> {
+  const empty: HomeIndicators = { sales: null, unpaidInvoices: null, awaitingQuotes: null, newClients: null, pendingOnlineOrders: null };
+  const db = await getDb();
+  if (!db) return empty;
+  const [orders, cash, inv, quo, cli] = await Promise.all(["shop-orders", "bill-cash", "bill-invoices", "crm-quotes", "crm-contacts"].map(allowed));
+  const starts = madridPeriodStarts(now);
+  const paidAt = sql<number>`COALESCE(${reservations.paidAt}, ${reservations.createdAt})`;
+  const num = (v: unknown) => (Number.isFinite(Number(v)) ? Number(v) : 0);
+  const [salesRows, invRow, quoRow, cliRow, onlineRow] = await Promise.all([
+    orders || cash
+      ? db.select({ at: paidAt, amountTotal: reservations.amountTotal, amountPaid: reservations.amountPaid }).from(reservations).where(and(eq(reservations.status, "paid"), sql`${paidAt} >= ${starts.monthStart}`))
+      : null,
+    inv
+      ? db
+          .select({ n: count(), total: sum(invoices.total) })
+          .from(invoices)
+          .where(and(
+            inArray(invoices.status, ["generada", "enviada"]),
+            eq(invoices.invoiceType, "factura"),
+            sql`NOT EXISTS (SELECT 1 FROM ${reservations} WHERE ${reservations.status} = 'paid' AND (${reservations.id} = ${invoices.reservationId} OR ${reservations.invoiceId} = ${invoices.id}))`,
+          ))
+          .then((r) => r[0])
+      : null,
+    quo ? db.select({ n: count(), total: sum(quotes.total) }).from(quotes).where(inArray(quotes.status, ["enviado", "visualizado"])).then((r) => r[0]) : null,
+    cli ? db.select({ n: count() }).from(clients).where(gte(clients.createdAt, new Date(starts.monthStart))).then((r) => r[0]) : null,
+    orders
+      ? db
+          .select({ n: count() })
+          .from(reservations)
+          .where(and(
+            inArray(reservations.channel, ["ONLINE_DIRECTO", "ONLINE_ASISTIDO"]),
+            eq(reservations.status, "paid"),
+            inArray(reservations.statusReservation, ["PENDIENTE_CONFIRMACION", "CONFIRMADA", "EN_CURSO"]),
+          ))
+          .then((r) => r[0])
+      : null,
+  ]);
+  return {
+    sales: salesRows ? summarizeSales(salesRows.map((r) => ({ at: num(r.at), amountTotal: r.amountTotal, amountPaid: r.amountPaid })), starts) : null,
+    unpaidInvoices: invRow ? { count: num(invRow.n), amount: num(invRow.total) } : null,
+    awaitingQuotes: quoRow ? { count: num(quoRow.n), amount: num(quoRow.total) } : null,
+    newClients: cliRow ? { count: num(cliRow.n) } : null,
+    pendingOnlineOrders: onlineRow ? { count: num(onlineRow.n) } : null,
+  };
 }

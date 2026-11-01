@@ -1,13 +1,13 @@
 /**
  * Inicio del panel para empresas con licencias por capacidad (Elephant Core).
- * Estado de configuración (el del asistente), avisos, pendientes, clientes y oportunidades, ventas y facturación,
- * actividad reciente y accesos rápidos, con datos reales del servidor: no hay métricas inventadas; si una cifra no
- * se puede leer se dice y se ofrece reintentar. Cada consulta se hace solo si el plan incluye la capacidad y el rol
- * tiene acceso. La primera vez, el administrador ve la bienvenida en lugar del panel.
+ * Accesos rápidos, avisos, estado de configuración (el del asistente), indicadores del negocio, pendientes y actividad
+ * reciente, con datos reales del servidor (coreHome.indicators y compañía): no hay métricas inventadas; una cifra a
+ * cero explica qué hacer y lleva a hacerlo, y si no se puede leer se dice y se ofrece reintentar. Cada consulta se hace
+ * solo si el plan incluye la capacidad y el rol tiene acceso. La primera vez, el administrador ve la bienvenida.
  */
 import { Link } from "wouter";
 import {
-  AlertTriangle, ArrowRight, Building2, FilePlus2, FileText, Inbox, PackagePlus, Receipt, Rocket, ShoppingCart, Sparkles, Target, UserPlus, Users,
+  AlertTriangle, ArrowRight, FilePlus2, FileText, Globe, Inbox, PackagePlus, Receipt, ReceiptText, Rocket, ShoppingCart, Sparkles, Target, UserPlus, Users,
 } from "lucide-react";
 import AdminLayout from "@/components/AdminLayout";
 import { useAuth } from "@/_core/hooks/useAuth";
@@ -47,23 +47,47 @@ function Section({ id, title, description, children, className, action }: { id: 
   );
 }
 
-function Stat({ label, value, href, loading }: { label: string; value: number | undefined; href: string; loading: boolean }) {
+const eur = new Intl.NumberFormat("es-ES", { style: "currency", currency: "EUR" });
+
+/**
+ * Indicador real. Con valor, enlaza al listado; a cero, explica qué hacer y ofrece la acción (si el plan y el rol la
+ * permiten).
+ */
+function Indicator({ label, value, detail, href, empty, cta }: {
+  label: string;
+  value: string | null;
+  detail?: string | null;
+  href: string;
+  /** Texto cuando la cifra es cero (null = la cifra no es cero). */
+  empty: string | null;
+  cta?: { label: string; href: string } | null;
+}) {
   return (
-    <Link
-      href={href}
-      className="group rounded-xl border border-border p-4 hover:bg-muted/50 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-    >
-      <p className="text-2xl font-semibold text-foreground tabular-nums" aria-hidden={loading || undefined}>
-        {loading ? <span className="inline-block h-7 w-10 rounded bg-muted animate-pulse align-middle" /> : (value ?? 0)}
-      </p>
-      <p className="text-sm text-muted-foreground mt-1 flex items-center gap-1">
-        {label}
-        <ArrowRight className="w-3.5 h-3.5 opacity-0 group-hover:opacity-100 transition-opacity" aria-hidden="true" />
-      </p>
-      {loading && <span className="sr-only">Cargando {label}</span>}
-    </Link>
+    <div className="min-w-0 rounded-xl border border-border p-4 flex flex-col">
+      <p className="text-sm text-muted-foreground">{label}</p>
+      <p className="mt-1 text-2xl font-semibold text-foreground tabular-nums break-words">{value}</p>
+      {empty === null ? (
+        <>
+          {detail && <p className="text-xs text-muted-foreground mt-0.5">{detail}</p>}
+          <Link href={href} className="mt-auto pt-2 inline-flex items-center gap-1 text-sm font-medium text-primary underline-offset-4 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded">
+            Ver detalle <ArrowRight className="w-3.5 h-3.5" aria-hidden="true" />
+          </Link>
+        </>
+      ) : (
+        <>
+          <p className="text-xs text-muted-foreground mt-1">{empty}</p>
+          {cta && (
+            <Link href={cta.href} className="mt-auto pt-2 inline-flex items-center gap-1 text-sm font-medium text-primary underline-offset-4 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded">
+              {cta.label} <ArrowRight className="w-3.5 h-3.5" aria-hidden="true" />
+            </Link>
+          )}
+        </>
+      )}
+    </div>
   );
 }
+
+const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
 
 const dateFmt = new Intl.DateTimeFormat("es-ES", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
 
@@ -77,18 +101,16 @@ export default function EssentialHome() {
   // Estado de configuración: una sola fuente, el asistente (solo quien configura la empresa)
   const wizard = trpc.setupWizard.status.useQuery(undefined, { enabled: isAdmin, retry: false, staleTime: 60_000 });
 
-  const canCrm = isSales && sub.can("crm-leads");
   const canClients = isSales && sub.can("crm-contacts");
   const canQuotes = isSales && sub.can("crm-quotes");
   const canOrders = isSales && sub.can("shop-orders");
   const canInvoices = isSales && sub.can("bill-invoices");
+  // La caja (TPV) es de administración (como en el menú)
+  const canCash = isAdmin && sub.can("bill-cash");
   const canCatalog = isAdmin && sub.can("shop-catalog");
-  const canSettings = isAdmin && sub.can("admin-panel");
+  const canWeb = isAdmin && (sub.can("cms-pages-forms") || sub.can("cms-editor"));
 
-  const leadCounters = trpc.crm.leads.counters.useQuery(undefined, { enabled: canCrm, retry: 1 });
-  const quoteCounters = trpc.crm.quotes.counters.useQuery(undefined, { enabled: canCrm && canQuotes, retry: 1 });
-  const resCounters = trpc.crm.reservations.counters.useQuery(undefined, { enabled: canCrm && (canOrders || canInvoices), retry: 1 });
-  const clients = trpc.crm.clients.list.useQuery({ limit: 1, offset: 0 }, { enabled: canCrm && canClients, retry: 1 });
+  const indicators = trpc.coreHome.indicators.useQuery(undefined, { enabled: isSales, retry: 1, staleTime: 30_000 });
   const feed = trpc.notifications.feed.useQuery(undefined, { enabled: isSales, refetchInterval: 60_000, refetchIntervalInBackground: false });
   const canTasks = isSales && sub.can("crm-tasks");
   const taskSummary = trpc.crmTasks.summary.useQuery(undefined, { enabled: canTasks, retry: 1 });
@@ -102,11 +124,23 @@ export default function EssentialHome() {
   const w = wizard.data;
   const showSetup = !!w && !(w.plan.completedAt !== null && w.plan.steps.every((s) => s.status === "done"));
 
+  // Acción de venta: la caja si se tiene; si no, un pedido
+  const saleAction =
+    canCash && sub.canWrite("bill-cash") ? { label: "Nueva venta", href: "/admin/tpv" }
+      : canOrders && sub.canWrite("shop-orders") ? { label: "Nueva venta", href: "/admin/crm?tab=reservations&nuevo=1" }
+        : null;
+  const invoiceAction = canInvoices && sub.canWrite("bill-invoices") ? { label: "Nueva factura", href: "/admin/crm?tab=invoices&nuevo=1" } : null;
+  const quoteAction = canQuotes && sub.canWrite("crm-quotes") ? { label: "Nuevo presupuesto", href: "/admin/crm?tab=quotes&nuevo=1" } : null;
+  const clientAction = canClients && sub.canWrite("crm-contacts") ? { label: "Nuevo cliente", href: "/admin/crm/clientes?nuevo=1" } : null;
+  const productAction = canCatalog && sub.canWrite("shop-catalog") ? { label: "Nuevo producto", href: "/admin/productos/experiencias?nuevo=1" } : null;
+  const webAction = canWeb ? { label: "Editar mi web", href: "/admin/cms/paginas" } : null;
   const quick = [
-    canClients && sub.canWrite("crm-contacts") && { label: "Nuevo cliente", href: "/admin/crm/clientes?nuevo=1", icon: UserPlus },
-    canCatalog && sub.canWrite("shop-catalog") && { label: "Nuevo producto", href: "/admin/productos/experiencias?nuevo=1", icon: PackagePlus },
-    canQuotes && sub.canWrite("crm-quotes") && { label: "Nuevo presupuesto", href: "/admin/crm?tab=quotes&nuevo=1", icon: FilePlus2 },
-    canSettings && { label: "Datos de la empresa", href: "/admin/configuracion/sitio", icon: Building2 },
+    saleAction && { ...saleAction, icon: ShoppingCart },
+    invoiceAction && { ...invoiceAction, icon: ReceiptText },
+    quoteAction && { ...quoteAction, icon: FilePlus2 },
+    clientAction && { ...clientAction, icon: UserPlus },
+    productAction && { ...productAction, icon: PackagePlus },
+    webAction && { ...webAction, icon: Globe },
   ].filter(Boolean) as Array<{ label: string; href: string; icon: typeof UserPlus }>;
 
   // Avisos: solo lo que requiere atención, con datos reales
@@ -138,11 +172,54 @@ export default function EssentialHome() {
     notices.push({ key: "fiscal", tone: "warn", text: "Faltan los datos fiscales de tu empresa: sin ellos no podrás emitir facturas.", href: SETUP_WIZARD_PATH, cta: "Completarlos" });
   }
 
-  const salesError = [quoteCounters, resCounters].find((q) => q.isError);
-  const salesValues = [quoteCounters.data?.enviado, quoteCounters.data?.borrador, resCounters.data?.pendientePago, resCounters.data?.confirmadas, resCounters.data?.facturas];
-  const noSales = !quoteCounters.isLoading && !resCounters.isLoading && !salesError && salesValues.every((v) => !v);
-  const crmError = [leadCounters, clients].find((q) => q.isError);
-  const showSales = canCrm && (canQuotes || canOrders || canInvoices);
+  // Indicadores: solo los contratados (el servidor devuelve null en los que no) y visibles para el rol
+  const ind = indicators.data;
+  const cards: Array<React.ComponentProps<typeof Indicator> & { key: string }> = [];
+  if (ind?.sales && (canOrders || canCash)) {
+    const { today, month } = ind.sales;
+    cards.push({
+      key: "today", label: "Ventas de hoy", value: eur.format(today.amount), href: "/admin/crm?tab=reservations",
+      detail: plural(today.count, "venta cobrada", "ventas cobradas"),
+      empty: today.count === 0 ? "Aún no has cobrado ninguna venta hoy." : null, cta: saleAction,
+    });
+    cards.push({
+      key: "month", label: "Ventas del mes", value: eur.format(month.amount), href: sub.can("bill-reports") && isAdmin ? "/admin/contabilidad/dashboard" : "/admin/crm?tab=reservations",
+      detail: plural(month.count, "venta cobrada", "ventas cobradas"),
+      empty: month.count === 0 ? "Este mes aún no hay ventas cobradas. Cada venta en caja o pedido cobrado suma aquí." : null, cta: saleAction,
+    });
+  }
+  if (ind?.unpaidInvoices && canInvoices) {
+    const x = ind.unpaidInvoices;
+    cards.push({
+      key: "invoices", label: "Facturas pendientes de cobro", value: String(x.count), href: "/admin/crm?tab=invoices",
+      detail: `${eur.format(x.amount)} por cobrar`,
+      empty: x.count === 0 ? "No tienes facturas por cobrar. Las facturas emitidas que aún no se han pagado aparecen aquí." : null, cta: invoiceAction,
+    });
+  }
+  if (ind?.awaitingQuotes && canQuotes) {
+    const x = ind.awaitingQuotes;
+    cards.push({
+      key: "quotes", label: "Presupuestos sin respuesta", value: String(x.count), href: "/admin/crm?tab=quotes",
+      detail: `${eur.format(x.amount)} en presupuestos enviados`,
+      empty: x.count === 0 ? "No hay presupuestos enviados esperando respuesta del cliente." : null, cta: quoteAction,
+    });
+  }
+  if (ind?.newClients && canClients) {
+    const x = ind.newClients;
+    cards.push({
+      key: "clients", label: "Clientes nuevos este mes", value: String(x.count), href: "/admin/crm/clientes",
+      empty: x.count === 0 ? "Este mes aún no has dado de alta clientes." : null, cta: clientAction,
+    });
+  }
+  if (ind?.pendingOnlineOrders && canOrders) {
+    const x = ind.pendingOnlineOrders;
+    cards.push({
+      key: "online", label: "Pedidos online pendientes", value: String(x.count), href: "/admin/crm?tab=reservations",
+      detail: "Cobrados y aún sin finalizar",
+      empty: x.count === 0 ? "No hay pedidos de tu tienda online por completar. Cuando un cliente compre en tu web, lo verás aquí." : null,
+      cta: productAction ? { label: "Revisar mis productos", href: "/admin/productos/experiencias" } : null,
+    });
+  }
 
   // Primera entrada del administrador de una empresa nueva: bienvenida a pantalla completa
   if (isAdmin && w && shouldOpenSetupWizard(w.progress)) {
@@ -179,7 +256,7 @@ export default function EssentialHome() {
 
         {/* Accesos rápidos */}
         {quick.length > 0 && (
-          <nav aria-label="Accesos rápidos" className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+          <nav aria-label="Accesos rápidos" className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-6 gap-3">
             {quick.map((q) => (
               <Link
                 key={q.href}
@@ -193,6 +270,24 @@ export default function EssentialHome() {
               </Link>
             ))}
           </nav>
+        )}
+
+        {/* Indicadores del negocio (solo los contratados; a cero, con la acción que toca) */}
+        {isSales && (indicators.isLoading || indicators.isError || cards.length > 0) && (
+          <Section id="home-indicators" title="Tu negocio" description="Cifras reales de tu empresa. Las ventas y los clientes nuevos cuentan desde el día 1 del mes.">
+            {indicators.isError ? (
+              <PanelError error={indicators.error} onRetry={() => indicators.refetch()} title="No se han podido cargar las cifras" />
+            ) : indicators.isLoading ? (
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3" aria-busy="true">
+                <span className="sr-only">Cargando cifras…</span>
+                {[0, 1, 2].map((i) => <div key={i} className="h-28 rounded-xl bg-muted animate-pulse" />)}
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                {cards.map(({ key, ...c }) => <Indicator key={key} {...c} />)}
+              </div>
+            )}
+          </Section>
         )}
 
         <div className="grid gap-6 lg:grid-cols-2">
@@ -257,39 +352,6 @@ export default function EssentialHome() {
                     </li>
                   ))}
                 </ul>
-              )}
-            </Section>
-          )}
-
-          {/* Clientes y oportunidades */}
-          {canCrm && (
-            <Section id="home-crm" title="Clientes y oportunidades">
-              {crmError ? (
-                <PanelError error={crmError.error} onRetry={() => { leadCounters.refetch(); clients.refetch(); }} title="No se han podido cargar los clientes" />
-              ) : (
-                <div className="grid grid-cols-2 gap-3">
-                  {canClients && <Stat label="Clientes" value={clients.data?.total} href="/admin/crm/clientes" loading={clients.isLoading} />}
-                  <Stat label="Oportunidades nuevas" value={leadCounters.data?.nueva} href="/admin/crm?tab=leads" loading={leadCounters.isLoading} />
-                </div>
-              )}
-            </Section>
-          )}
-
-          {/* Ventas y facturación (si procede) */}
-          {showSales && (
-            <Section id="home-sales" title="Ventas y facturación" description="Cifras reales de tu cuenta.">
-              {salesError ? (
-                <PanelError error={salesError.error} onRetry={() => { quoteCounters.refetch(); resCounters.refetch(); }} title="No se han podido cargar las ventas" />
-              ) : (
-                <>
-                  <div className="grid grid-cols-2 gap-3">
-                    {canQuotes && <Stat label="Presupuestos enviados" value={quoteCounters.data?.enviado} href="/admin/crm?tab=quotes" loading={quoteCounters.isLoading} />}
-                    {canOrders && <Stat label="Pedidos pendientes de pago" value={resCounters.data?.pendientePago} href="/admin/crm?tab=reservations" loading={resCounters.isLoading} />}
-                    {canOrders && <Stat label="Pedidos confirmados" value={resCounters.data?.confirmadas} href="/admin/crm?tab=reservations" loading={resCounters.isLoading} />}
-                    {canInvoices && <Stat label="Facturas emitidas" value={resCounters.data?.facturas} href="/admin/crm?tab=invoices" loading={resCounters.isLoading} />}
-                  </div>
-                  {noSales && <p className="text-sm text-muted-foreground mt-4">Aún no hay ventas. En cuanto prepares presupuestos o recibas pedidos, verás aquí la evolución.</p>}
-                </>
               )}
             </Section>
           )}

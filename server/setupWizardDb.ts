@@ -6,7 +6,7 @@
  * migraciones, y una empresa nunca puede leer ni escribir el de otra.
  */
 import { TRPCError } from "@trpc/server";
-import { and, count, eq, gt, inArray, sql } from "drizzle-orm";
+import { and, count, eq, gt, inArray, isNull, notInArray, or, sql } from "drizzle-orm";
 import { clients, experiences, invoices, pageBlocks, quotes, reservations, staticPages, systemSettings, tpvSales, users } from "../drizzle/schema";
 import { getDb } from "./db";
 import { invalidateConfigCache } from "./config";
@@ -74,21 +74,28 @@ export async function updateProgress(change: (p: SetupProgress) => SetupProgress
  * Cuántos datos reales tiene la empresa en curso (su propia BD): completan los pasos «de hacer» del asistente
  * y alimentan el estado de configuración del Inicio. La web cuenta como revisada si alguna página se ha editado
  * después de crearse o tiene bloques propios (las páginas de la plantilla inicial no cuentan).
+ *
+ * Primera venta: un pedido cobrado, un pedido registrado pendiente de cobro (no un pago online que se quedó a medias)
+ * o una venta en caja cobrada. Primer presupuesto o factura: cualquier presupuesto (también un borrador) o factura.
  */
-export async function readSetupCounts(): Promise<{ clients: number; products: number; sales: number; webEdited: boolean }> {
+export async function readSetupCounts(): Promise<{ clients: number; products: number; sales: number; documents: number; webEdited: boolean }> {
   const db = await requireDb();
   const n = async (q: Promise<Array<{ n: number | string }>>) => Number((await q)[0]?.n ?? 0);
+  const orderPlaced = or(
+    eq(reservations.status, "paid"),
+    and(eq(reservations.status, "pending_payment"), or(isNull(reservations.channel), notInArray(reservations.channel, ["ONLINE_DIRECTO", "ONLINE_ASISTIDO"]))),
+  );
   const [cl, pr, qu, re, inv, tpv, blocks, edited] = await Promise.all([
     n(db.select({ n: count() }).from(clients)),
     n(db.select({ n: count() }).from(experiences)),
     n(db.select({ n: count() }).from(quotes)),
-    n(db.select({ n: count() }).from(reservations)),
+    n(db.select({ n: count() }).from(reservations).where(orderPlaced)),
     n(db.select({ n: count() }).from(invoices)),
-    n(db.select({ n: count() }).from(tpvSales)),
+    n(db.select({ n: count() }).from(tpvSales).where(eq(tpvSales.status, "paid"))),
     n(db.select({ n: count() }).from(pageBlocks)),
     n(db.select({ n: count() }).from(staticPages).where(gt(staticPages.updatedAt, staticPages.createdAt))),
   ]);
-  return { clients: cl, products: pr, sales: qu + re + inv + tpv, webEdited: blocks + edited > 0 };
+  return { clients: cl, products: pr, sales: re + tpv, documents: qu + inv, webEdited: blocks + edited > 0 };
 }
 
 /**

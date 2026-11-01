@@ -68,7 +68,7 @@ describe.skipIf(!URL_)("cliente nuevo de punta a punta: Empresa Demo Elephant 01
   let run = "";
   const one = { trialId: 0, tenantId: "", owner: "", pass: "", cookie: "", empEmail: "", empPass: "", empCookie: "", clientId: 0, productId: 0, productSlug: "", quoteId: 0, quoteNumber: "", orderReservationId: 0, checkoutReservationId: 0, merchantOrder: "", invoiceId: 0, invoiceNumber: "", orderId: 0, subId: 0, payment: null as any };
   const two = { trialId: 0, tenantId: "", owner: "", pass: "", cookie: "" };
-  const TAX_ID = "B99000001";
+  const TAX_ID = "B99000002";
   const COMPANY_01 = "Empresa Demo Elephant 01";
   const COMPANY_02 = "Empresa Demo Elephant 02";
   // Marcas inconfundibles de los datos de la 01 (no deben aparecer nunca en la 02)
@@ -202,12 +202,13 @@ describe.skipIf(!URL_)("cliente nuevo de punta a punta: Empresa Demo Elephant 01
     expect(st.nextStep).toBe("brand");
     // Paso «Marca»: la misma marca alimenta su web y su pantalla de acceso
     ok200(await s.m(one.tenantId, "integrations.themeSave", { values: { theme_primary_color: "#0b3d91", login_welcome_title: `Hola, equipo de ${COMPANY_01}` } }, one.cookie), "themeSave");
-    ok200(await s.m(one.tenantId, "setupWizard.setStep", { step: "brand", status: "done" }, one.cookie), "setStep brand");
+    // Sin logotipo el paso «Marca» no se da por hecho: el asistente lo deja omitido para retomarlo
+    ok200(await s.m(one.tenantId, "setupWizard.setStep", { step: "brand", status: "skipped" }, one.cookie), "setStep brand");
     const theme = data(await s.q(one.tenantId, "public.getTheme"));
     expect(theme.primaryColor).toBe("#0b3d91");
     expect(theme.login.title).toBe(`Hola, equipo de ${COMPANY_01}`);
     const after = data(await s.q(one.tenantId, "setupWizard.status", undefined, one.cookie));
-    expect(after.nextStep).toBe("client");
+    expect(after.nextStep).toBe("web");
     note("10 asistente", `empresa, actividad y marca guardadas (acceso con su color y titular); siguiente paso «${after.nextStep}» (los pasos 11–17 completan el resto)`);
   });
 

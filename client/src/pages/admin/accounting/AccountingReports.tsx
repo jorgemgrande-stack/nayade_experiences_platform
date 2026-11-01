@@ -4,7 +4,8 @@
  */
 import { useState } from "react";
 import AdminLayout from "@/components/AdminLayout";
-import { PanelError } from "@/components/admin/PanelStates";
+import { Link } from "wouter";
+import { PanelEmpty, PanelError } from "@/components/admin/PanelStates";
 import { trpc } from "@/lib/trpc";
 import { useVocabulary } from "@/lib/vocabulary";
 import { usePanelSubscription } from "@/hooks/usePanelSubscription";
@@ -187,6 +188,18 @@ export default function AccountingReports() {
         </div>
       ) : (
         <>
+          {/* Sin ventas en el periodo (empresa nueva o fechas sin actividad): qué hacer para que se llene */}
+          {sub.mode === "tasks" && (totals?.count ?? 0) === 0 && (
+            <PanelEmpty
+              className="mb-6"
+              icon={<BarChart2 className="w-5 h-5" />}
+              title="No hay ventas en este periodo"
+              description="Los informes se llenan solos con tus ventas cobradas: cada venta en caja y cada pedido cobrado aparecen aquí por día, canal y forma de pago. Prueba con otras fechas o registra tu primera venta."
+            >
+              {sub.canWrite("bill-cash") && <Button asChild size="sm"><Link href="/admin/tpv">Nueva venta en caja</Link></Button>}
+              {sub.canWrite("shop-orders") && <Button asChild size="sm" variant="outline"><Link href="/admin/crm?tab=reservations&nuevo=1">Registrar un pedido</Link></Button>}
+            </PanelEmpty>
+          )}
           {/* KPIs globales */}
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
             <Card>
