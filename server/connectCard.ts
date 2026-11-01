@@ -10,8 +10,9 @@
  *  - Lo interno (`internal`) se descarta aunque llegara.
  */
 import { z } from "zod";
-import type { ConnectFaq, ConnectMedia, ConnectPrice } from "../shared/connectCard";
-import type { ConnectBrand } from "../shared/connectMarketplace";
+import { SHEET_ACCENTS, SHEET_BLOCK_IDS, SHEET_HERO_STYLES, type ConnectFaq, type ConnectGalleryItem, type ConnectHowStep, type ConnectImage, type ConnectLayout, type ConnectMedia, type ConnectPrice, type ConnectVideo } from "../shared/connectCard";
+import { CONNECT_CATEGORIES, type ConnectBrand } from "../shared/connectMarketplace";
+import { SLIDE_SECTIONS, type ConnectActivation, type ConnectSlide, type SlideCta, type SlideImage } from "../shared/connectShowcase";
 
 const MAX_TEXT = 600;
 const MAX_LONG = 4000;
@@ -54,6 +55,85 @@ const media = z.unknown().transform((v): ConnectMedia | null => {
   if (!HTTPS.test(src) || src.length > 2000 || !alt) return null;
   const caption = typeof o.caption === "string" && o.caption.trim() ? o.caption.trim().slice(0, 300) : null;
   return { src, alt, caption };
+});
+
+/** Imagen resuelta por el canal: https, con texto alternativo; `srcset` solo si todas sus fuentes son https. */
+const num = (v: unknown, min: number, max: number) => (typeof v === "number" && Number.isFinite(v) && v >= min && v <= max ? v : null);
+function readImage(v: unknown): ConnectImage | null {
+  if (!v || typeof v !== "object" || Array.isArray(v)) return null;
+  const o = v as Record<string, unknown>;
+  const src = typeof o.src === "string" ? o.src.trim() : "";
+  const alt = typeof o.alt === "string" ? o.alt.trim().slice(0, 300) : "";
+  if (!HTTPS.test(src) || src.length > 2000 || !alt) return null;
+  let srcset: string | null = null;
+  if (typeof o.srcset === "string" && o.srcset.trim() && o.srcset.length <= 4000) {
+    const parts = o.srcset.split(",").map((p) => p.trim()).filter(Boolean);
+    if (parts.length > 0 && parts.every((p) => /^https:\/\/[^\s"'<>,]+ \d{1,5}(w|(\.\d+)?x)$/.test(p))) srcset = parts.join(", ");
+  }
+  const width = num(o.width, 1, 10_000);
+  const height = num(o.height, 1, 10_000);
+  const f = o.focal && typeof o.focal === "object" ? (o.focal as Record<string, unknown>) : null;
+  const fx = f ? num(f.x, 0, 100) : null;
+  const fy = f ? num(f.y, 0, 100) : null;
+  const kind = o.kind === "screenshot" || o.kind === "illustration" ? o.kind : null;
+  const mobile = typeof o.mobileSrc === "string" ? o.mobileSrc.trim() : "";
+  const mobileSrc = HTTPS.test(mobile) && mobile.length <= 2000 ? mobile : null;
+  return { src, srcset, mobileSrc, width: width === null ? null : Math.round(width), height: height === null ? null : Math.round(height), alt, focal: fx !== null && fy !== null ? { x: fx, y: fy } : null, kind };
+}
+const image = z.unknown().transform(readImage);
+
+const galleryList = z.unknown().transform((v): ConnectGalleryItem[] | null =>
+  Array.isArray(v)
+    ? v
+        .map((x): ConnectGalleryItem | null => {
+          const img = readImage(x);
+          if (!img) return null;
+          const o = x as Record<string, unknown>;
+          // Sin saber si es captura o ilustración no se muestra: la ficha tiene que poder decirlo
+          if (!img.kind) return null;
+          const caption = typeof o.caption === "string" && o.caption.trim() ? o.caption.trim().slice(0, 300) : null;
+          return { ...img, caption, kind: img.kind };
+        })
+        .filter((x): x is ConnectGalleryItem => x !== null)
+        .slice(0, 12)
+    : null,
+);
+
+/** Vídeo: SOLO la dirección de inserción ya normalizada (youtube-nocookie o player.vimeo) y con título. */
+const EMBED = /^https:\/\/(www\.youtube-nocookie\.com\/embed\/[A-Za-z0-9_-]{6,20}|player\.vimeo\.com\/video\/\d{1,15})(\?[A-Za-z0-9_=&%.-]{0,200})?$/;
+const video = z.unknown().transform((v): ConnectVideo | null => {
+  if (!v || typeof v !== "object" || Array.isArray(v)) return null;
+  const o = v as Record<string, unknown>;
+  const embedUrl = typeof o.embedUrl === "string" ? o.embedUrl.trim() : "";
+  const title = typeof o.title === "string" ? o.title.trim().slice(0, 160) : "";
+  return EMBED.test(embedUrl) && title ? { embedUrl, title } : null;
+});
+
+const howList = z.unknown().transform((v): ConnectHowStep[] | null =>
+  Array.isArray(v)
+    ? nonEmpty(
+        v
+          .map((x) => (x && typeof x === "object" ? { title: text(60).parse((x as { title?: unknown }).title), text: text(240).parse((x as { text?: unknown }).text) } : null))
+          .filter((x): x is ConnectHowStep => !!x && !!x.title && !!x.text)
+          .slice(0, 4),
+      )
+    : null,
+);
+
+type BlockId = ConnectLayout["blocks"][number]["id"];
+const layout = z.unknown().transform((v): ConnectLayout | null => {
+  if (!v || typeof v !== "object" || Array.isArray(v)) return null;
+  const o = v as Record<string, unknown>;
+  const blocks = Array.isArray(o.blocks)
+    ? o.blocks
+        .filter((b): b is { id: BlockId; visible?: unknown } => !!b && typeof b === "object" && (SHEET_BLOCK_IDS as readonly unknown[]).includes((b as { id?: unknown }).id))
+        // Solo se oculta lo que el catálogo marca expresamente como no visible
+        .map((b) => ({ id: b.id, visible: b.visible !== false }))
+        .slice(0, 24)
+    : [];
+  const accentColor = (SHEET_ACCENTS as readonly unknown[]).includes(o.accentColor) ? (o.accentColor as ConnectLayout["accentColor"]) : null;
+  const heroStyle = (SHEET_HERO_STYLES as readonly unknown[]).includes(o.heroStyle) ? (o.heroStyle as ConnectLayout["heroStyle"]) : null;
+  return { blocks, accentColor, heroStyle };
 });
 
 const price = z.unknown().transform((v): ConnectPrice | null => {
@@ -121,7 +201,19 @@ const cardSchema = loose({
     terms: loose({ commitment: text(), cancellation: text(), activation: text() }),
     faq: faqList,
     related: keyList,
-    media: loose({ cover: media, screenshots: z.unknown().transform((v) => (Array.isArray(v) ? v.map((m) => media.parse(m)).filter((m): m is ConnectMedia => m !== null).slice(0, 12) : null)) }),
+    media: loose({
+      card: image,
+      hero: image,
+      icon: image,
+      gallery: galleryList,
+      video,
+      // Forma anterior (portada y capturas): solo como reserva mientras llegue
+      cover: media,
+      screenshots: z.unknown().transform((v) => (Array.isArray(v) ? v.map((m) => media.parse(m)).filter((m): m is ConnectMedia => m !== null).slice(0, 12) : null)),
+    }),
+    howItWorks: howList,
+    promoLabel: text(30),
+    layout,
   }),
 });
 
@@ -149,6 +241,20 @@ const headerSchema = loose({ title: text(120), intro: text() });
 /** Cabeceras de la entrada `marketplace` del catálogo (`{connect:{title,intro}, net:{…}}`). */
 export function parseMarketplaceHeaders(raw: unknown): Partial<Record<ConnectBrand, { title: string | null; intro: string | null }>> {
   if (!raw || typeof raw !== "object") return {};
+  // Forma acordada: `marketplace.brands.{connect,net}`; si no trae ninguna, la anterior (`marketplace.{connect,net}`)
+  const rawBrands = (raw as { brands?: unknown }).brands;
+  const brands = Array.isArray(rawBrands)
+    ? Object.fromEntries(
+        rawBrands
+          .filter((b): b is Record<string, unknown> => !!b && typeof b === "object")
+          .map((b) => [typeof b.id === "string" ? b.id : typeof b.brand === "string" ? b.brand : "", b] as const)
+          .filter(([k]) => k === "connect" || k === "net"),
+      )
+    : rawBrands;
+  if (brands && typeof brands === "object" && !Array.isArray(brands)) {
+    const fromBrands = parseMarketplaceHeaders(brands);
+    if (Object.keys(fromBrands).length > 0) return fromBrands;
+  }
   const out: Partial<Record<ConnectBrand, { title: string | null; intro: string | null }>> = {};
   for (const b of ["connect", "net"] as const) {
     const h = headerSchema.safeParse((raw as Record<string, unknown>)[b]);
@@ -169,4 +275,108 @@ export function advertisesRequests(raw: unknown): boolean {
   if (c.requests === true || (c.requests && typeof c.requests === "object" && (c.requests as { enabled?: unknown }).enabled === true)) return true;
   if (Array.isArray(c.features)) return c.features.includes("requests");
   return !!c.features && typeof c.features === "object" && (c.features as { requests?: unknown }).requests === true;
+}
+
+// ── Escaparate: carrusel del catálogo raíz (`marketplace.slides`) y estado de activación ──────────────
+
+/** Enlaces externos de una diapositiva: solo páginas propias (https de *.bigelephant.es). */
+const SLIDE_URL = /^https:\/\/([a-z0-9-]+\.)*bigelephant\.es(\/[^\s"'<>]*)?$/;
+const FAMILIES = new Set<string>(CONNECT_CATEGORIES.flatMap((c) => c.families as readonly string[]));
+
+function readCta(v: unknown): SlideCta | null {
+  if (!v || typeof v !== "object" || Array.isArray(v)) return null;
+  const o = v as Record<string, unknown>;
+  const label = text(40).parse(o.label);
+  const t = o.target && typeof o.target === "object" ? (o.target as Record<string, unknown>) : null;
+  const value = t && typeof t.value === "string" ? t.value.trim() : "";
+  if (!label || !t || !value) return null;
+  switch (t.type) {
+    case "section":
+      return (SLIDE_SECTIONS as readonly string[]).includes(value) ? { label, target: { type: "section", value } } : null;
+    case "category":
+      return FAMILIES.has(value) ? { label, target: { type: "category", value } } : null;
+    case "product":
+      return /^[a-z0-9][a-z0-9_-]{0,79}$/.test(value) ? { label, target: { type: "product", value } } : null;
+    case "url":
+      return SLIDE_URL.test(value) && value.length <= 500 ? { label, target: { type: "url", value } } : null;
+    default:
+      return null;
+  }
+}
+
+function readSlideImage(v: unknown): SlideImage | null {
+  const img = readImage(v);
+  if (!img) return null;
+  const o = v as Record<string, unknown>;
+  const position = typeof o.position === "string" && /^[a-z0-9% .-]{1,40}$/i.test(o.position) ? o.position : null;
+  return { ...img, position };
+}
+
+const when = (v: unknown) => {
+  if (typeof v !== "string" && typeof v !== "number") return null;
+  const t = new Date(v).getTime();
+  return Number.isFinite(t) ? t : null;
+};
+
+const OVERLAYS: Record<string, number> = { none: 0, light: 0.35, dark: 0.6, strong: 0.75 };
+
+function readSlide(v: unknown, index: number): ConnectSlide | null {
+  if (!v || typeof v !== "object" || Array.isArray(v)) return null;
+  const o = v as Record<string, unknown>;
+  const id = typeof o.id === "string" && /^[A-Za-z0-9_-]{1,64}$/.test(o.id) ? o.id : null;
+  const title = text(90).parse(o.title);
+  if (!id || !title) return null;
+  const overlay = typeof o.overlay === "number" ? num(o.overlay, 0, 0.9) : typeof o.overlay === "string" && o.overlay in OVERLAYS ? OVERLAYS[o.overlay] : null;
+  const productKey = typeof o.productKey === "string" && /^[a-z0-9][a-z0-9_-]{0,79}$/.test(o.productKey) ? o.productKey : null;
+  return {
+    id,
+    title,
+    subtitle: text(140).parse(o.subtitle),
+    description: text(280).parse(o.description),
+    background: readSlideImage(o.background),
+    visual: readImage(o.visual),
+    overlay,
+    primaryCta: readCta(o.primaryCta),
+    secondaryCta: readCta(o.secondaryCta),
+    productKey,
+    order: typeof o.order === "number" && Number.isFinite(o.order) ? o.order : index,
+    tags: (textList.parse(o.tags) ?? []).map((t) => t.slice(0, 30)).slice(0, 6),
+    startsAt: when(o.startsAt),
+    endsAt: when(o.endsAt),
+  };
+}
+
+export interface MarketplaceRoot {
+  slides: ConnectSlide[];
+  /** Rotación automática pedida por el catálogo (ms); null = la de por defecto; 0 = sin rotación. */
+  autoplayMs: number | null;
+}
+
+/** Diapositivas y ajustes del carrusel (`marketplace.slides` y `marketplace.settings`). Nunca lanza. */
+export function parseMarketplaceRoot(raw: unknown): MarketplaceRoot {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return { slides: [], autoplayMs: null };
+  const m = raw as Record<string, unknown>;
+  const ids = new Set<string>();
+  const slides = (Array.isArray(m.slides) ? m.slides : [])
+    .slice(0, 24)
+    .map((x, i) => readSlide(x, i))
+    .filter((x): x is ConnectSlide => {
+      if (!x || ids.has(x.id)) return false;
+      ids.add(x.id);
+      return true;
+    });
+  const settings = m.settings && typeof m.settings === "object" && !Array.isArray(m.settings) ? (m.settings as Record<string, unknown>) : {};
+  const ms = num(settings.autoplayMs, 0, 120_000);
+  return { slides, autoplayMs: ms === null ? null : Math.round(ms) };
+}
+
+const ACTIVATION_STATES = ["none", "pending", "processing", "active", "error"] as const;
+
+/** Estado de activación que publica el canal para cada producto (`activation`), o null si no llega o es raro. */
+export function parseActivation(raw: unknown): ConnectActivation | null {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
+  const o = raw as Record<string, unknown>;
+  if (!(ACTIVATION_STATES as readonly unknown[]).includes(o.state)) return null;
+  const at = when(o.updatedAt);
+  return { state: o.state as ConnectActivation["state"], retryable: o.retryable === true, updatedAt: at === null ? null : new Date(at).toISOString() };
 }
