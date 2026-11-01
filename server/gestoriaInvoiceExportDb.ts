@@ -9,6 +9,8 @@ import { legacyDb } from "./_core/legacyDb";
 import { madridEndOfDayUtc, madridStartOfDayUtc } from "./utils/timezone";
 import { madridDayKey, type ResolvedExportPeriod } from "../shared/gestoriaExportPeriod";
 import type { ExportInvoiceRow } from "./gestoriaInvoiceExport";
+import type { FiscalDocument } from "./fiscalDocuments";
+import { listTicketDocuments, madridDayRange } from "./fiscalDocumentsDb";
 
 const db = legacyDb();
 
@@ -26,6 +28,14 @@ export async function listInvoicesForExport(period: ResolvedExportPeriod): Promi
     const day = madridDayKey(r.issuedAt);
     return day >= period.from && day <= period.to;
   });
+}
+
+/**
+ * Tickets de caja (facturas simplificadas) del periodo, para el libro: con la misma regla que Informes y el
+ * Modelo 303; el de una venta que tiene factura completa figura como sustituido, sin importe.
+ */
+export async function listTicketsForExport(period: ResolvedExportPeriod): Promise<FiscalDocument[]> {
+  return listTicketDocuments(madridDayRange(period.from, period.to));
 }
 
 /** Número de las facturas que rectifican los abonos (pueden ser de un periodo anterior). */
@@ -55,6 +65,7 @@ export function toExportRow(r: StoredInvoice): ExportInvoiceRow {
     clientName: r.clientName,
     clientNif: r.clientNif,
     itemsJson: parseJson(r.itemsJson),
+    subtotal: r.subtotal,
     taxRate: r.taxRate,
     taxAmount: r.taxAmount,
     taxBreakdown: parseJson(r.taxBreakdown),

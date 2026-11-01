@@ -4,7 +4,7 @@
  * Cada fuente se incluye solo si su capacidad está contratada (activa o en solo lectura): quien no tiene caja no ve
  * ventas en caja, aunque existieran filas de antes. Nunca mezcla empresas: `getDb()` resuelve la BD del tenant.
  */
-import { and, count, countDistinct, desc, eq, gte, inArray, isNull, sql, sum } from "drizzle-orm";
+import { and, count, countDistinct, desc, eq, gte, inArray, isNull, ne, sql, sum } from "drizzle-orm";
 import { clients, invoices, leads, quotes, reservations, tpvSales } from "../drizzle/schema";
 import { getDb } from "./db";
 import { getCapabilityAccess } from "./_core/capabilities/access";
@@ -107,9 +107,11 @@ export async function recentActivity(limit = 8): Promise<RecentItem[]> {
  * Cifras del Inicio, todas de la BD de la empresa en curso. Cada bloque es null si su capacidad no está contratada
  * (no se enseña), y un número (0 incluido) si lo está: nunca se inventa ni se estima nada.
  *  - Ventas de hoy y del mes: pedidos cobrados (los tickets de caja generan su pedido), por la fecha de cobro y con
- *    el importe cobrado, en hora de Madrid; la misma regla que Informes › Resumen.
+ *    el importe cobrado, en hora de Madrid; la misma regla que Informes › Resumen. Se cuentan operaciones, no
+ *    líneas: las líneas de un pedido de la tienda comparten número de pedido y son una sola venta.
  *  - Facturas pendientes de cobro: facturas emitidas o enviadas sin marcar como cobradas (ni anuladas ni abonos) y
- *    que no son de un pedido ya cobrado (la venta en caja o el pedido manual cobrado generan su factura sin marcarla).
+ *    que no son de un pedido ya cobrado (la venta en caja o el pedido manual cobrado generan su factura sin marcarla),
+ *    por lo que queda de cada una después de sus abonos (un abono parcial reduce lo pendiente).
  *  - Presupuestos enviados sin respuesta: enviados o vistos por el cliente, sin aceptar ni rechazar.
  *  - Clientes nuevos: dados de alta este mes.
  *  - Pedidos online pendientes: de la tienda online, cobrados y aún sin finalizar.
@@ -133,19 +135,43 @@ export function madridPeriodStarts(now: number): { dayStart: number; monthStart:
   return { dayStart: Date.UTC(y, m - 1, d) - offset, monthStart: Date.UTC(y, m - 1, 1) - offset };
 }
 
+/** Lo pendiente de cobro de cada factura después de sus abonos (que se guardan en negativo). Pura: la usan las pruebas. */
+export function unpaidAfterCredits(pending: Array<{ id: number; total: unknown }>, credits: Array<{ creditNoteForId: number | null; total: unknown }>) {
+  const credited = new Map<number, number>();
+  for (const c of credits) {
+    if (c.creditNoteForId == null) continue;
+    credited.set(c.creditNoteForId, (credited.get(c.creditNoteForId) ?? 0) + Math.abs(Number(c.total) || 0));
+  }
+  let n = 0;
+  let cents = 0;
+  for (const p of pending) {
+    const left = Math.round((Number(p.total) || 0) * 100) - Math.round((credited.get(p.id) ?? 0) * 100);
+    if (left <= 0) continue;
+    n++;
+    cents += left;
+  }
+  return { count: n, amount: cents / 100 };
+}
+
 /** Suma de ventas cobradas (importes en céntimos) de hoy y del mes. Pura: la usan las pruebas. */
-export function summarizeSales(rows: Array<{ at: number; amountTotal: number | null; amountPaid: number | null }>, starts: { dayStart: number; monthStart: number }) {
+export function summarizeSales(rows: Array<{ at: number; amountTotal: number | null; amountPaid: number | null; key?: string | null }>, starts: { dayStart: number; monthStart: number }) {
   const out = { today: { amount: 0, count: 0 }, month: { amount: 0, count: 0 } };
-  for (const r of rows) {
-    if (!(r.at >= starts.monthStart)) continue;
+  // Una venta por operación: las líneas con la misma clave (el número de pedido) cuentan una vez
+  const monthKeys = new Set<string>();
+  const todayKeys = new Set<string>();
+  rows.forEach((r, idx) => {
+    if (!(r.at >= starts.monthStart)) return;
+    const key = r.key ?? `#${idx}`;
     const cents = Number(r.amountPaid) > 0 ? Number(r.amountPaid) : Number(r.amountTotal) || 0;
     out.month.amount += cents;
-    out.month.count++;
+    monthKeys.add(key);
     if (r.at >= starts.dayStart) {
       out.today.amount += cents;
-      out.today.count++;
+      todayKeys.add(key);
     }
-  }
+  });
+  out.month.count = monthKeys.size;
+  out.today.count = todayKeys.size;
   out.today.amount = Math.round(out.today.amount) / 100;
   out.month.amount = Math.round(out.month.amount) / 100;
   return out;
@@ -170,18 +196,27 @@ export async function homeIndicators(now = Date.now()): Promise<HomeIndicators> 
   const num = (v: unknown) => (Number.isFinite(Number(v)) ? Number(v) : 0);
   const [salesRows, invRow, quoRow, cliRow, onlineRow] = await Promise.all([
     orders || cash
-      ? db.select({ at: paidAt, amountTotal: reservations.amountTotal, amountPaid: reservations.amountPaid }).from(reservations).where(and(eq(reservations.status, "paid"), sql`${paidAt} >= ${starts.monthStart}`))
+      ? db.select({ id: reservations.id, merchantOrder: reservations.merchantOrder, at: paidAt, amountTotal: reservations.amountTotal, amountPaid: reservations.amountPaid }).from(reservations).where(and(eq(reservations.status, "paid"), sql`${paidAt} >= ${starts.monthStart}`))
       : null,
     inv
       ? db
-          .select({ n: count(), total: sum(invoices.total) })
+          .select({ id: invoices.id, total: invoices.total })
           .from(invoices)
           .where(and(
             inArray(invoices.status, ["generada", "enviada"]),
             eq(invoices.invoiceType, "factura"),
             sql`NOT EXISTS (SELECT 1 FROM ${reservations} WHERE ${reservations.status} = 'paid' AND (${reservations.id} = ${invoices.reservationId} OR ${reservations.invoiceId} = ${invoices.id}))`,
           ))
-          .then((r) => r[0])
+          .then(async (pending) => {
+            const ids = pending.map((p) => p.id);
+            const credits = ids.length
+              ? await db
+                  .select({ creditNoteForId: invoices.creditNoteForId, total: invoices.total })
+                  .from(invoices)
+                  .where(and(eq(invoices.invoiceType, "abono"), ne(invoices.status, "anulada"), inArray(invoices.creditNoteForId, ids)))
+              : [];
+            return unpaidAfterCredits(pending, credits);
+          })
       : null,
     quo ? db.select({ n: count(), total: sum(quotes.total) }).from(quotes).where(inArray(quotes.status, ["enviado", "visualizado"])).then((r) => r[0]) : null,
     cli ? db.select({ n: count() }).from(clients).where(gte(clients.createdAt, new Date(starts.monthStart))).then((r) => r[0]) : null,
@@ -200,8 +235,8 @@ export async function homeIndicators(now = Date.now()): Promise<HomeIndicators> 
       : null,
   ]);
   return {
-    sales: salesRows ? summarizeSales(salesRows.map((r) => ({ at: num(r.at), amountTotal: r.amountTotal, amountPaid: r.amountPaid })), starts) : null,
-    unpaidInvoices: invRow ? { count: num(invRow.n), amount: num(invRow.total) } : null,
+    sales: salesRows ? summarizeSales(salesRows.map((r) => ({ at: num(r.at), amountTotal: r.amountTotal, amountPaid: r.amountPaid, key: r.merchantOrder ? `p:${r.merchantOrder}` : `r:${r.id}` })), starts) : null,
+    unpaidInvoices: invRow,
     awaitingQuotes: quoRow ? { count: num(quoRow.n), amount: num(quoRow.total) } : null,
     newClients: cliRow ? { count: num(cliRow.n) } : null,
     pendingOnlineOrders: onlineRow ? { count: num(onlineRow.n) } : null,

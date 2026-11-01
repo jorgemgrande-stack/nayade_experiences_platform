@@ -2,9 +2,11 @@
  * Resumen contable del panel (Contabilidad › Resumen) con los datos reales de la empresa, sin acceso a BD.
  *
  * Series por mes (hora de Madrid) de los últimos meses:
- *  - ventas: pedidos y tickets de caja cobrados (importe cobrado, por la fecha de cobro);
+ *  - ventas: pedidos y tickets de caja cobrados (importe cobrado, por la fecha de cobro); se cuentan
+ *    operaciones, no líneas: un pedido de la tienda con varios artículos es una venta;
  *  - cobros: entradas del libro de cobros (ingresos completados menos devoluciones);
- *  - facturado: facturas emitidas menos abonos (las anuladas no cuentan);
+ *  - facturado: documentos fiscales emitidos — facturas y tickets de caja menos abonos (las anuladas no
+ *    cuentan, y un ticket con su factura completa cuenta una sola vez: server/fiscalDocuments.ts);
  *  - gastos: gastos registrados (solo si la empresa tiene alguno).
  * Ventas por categoría: la categoría real del producto vendido; las líneas sin producto, «Sin categoría».
  */
@@ -47,12 +49,12 @@ export function monthLabel(key: string): string {
 
 export interface SummaryInput {
   now: number;
-  /** Pedidos y tickets cobrados: importe cobrado en euros. */
-  sales: Array<{ at: number; amount: number }>;
+  /** Pedidos y tickets cobrados: importe cobrado en euros. `key` agrupa las líneas de una misma operación. */
+  sales: Array<{ at: number; amount: number; key?: string }>;
   /** Libro de cobros: importe en euros con signo (las devoluciones en negativo). */
   payments: Array<{ at: number; amount: number }>;
-  /** Facturas y abonos emitidos: total en euros con signo (abonos en negativo). */
-  invoices: Array<{ at: number; amount: number }>;
+  /** Documentos fiscales emitidos: total en euros con signo (abonos en negativo). */
+  invoices: Array<{ at: number; amount: number; kind?: "factura" | "abono" | "ticket" }>;
   /** Gastos registrados (null = la empresa no lleva gastos). */
   expenses: Array<{ month: string; amount: number }> | null;
   /** Importe vendido por categoría de producto (null = sin categoría). */
@@ -63,7 +65,7 @@ export interface SummaryInput {
 
 export interface AccountingSummary {
   months: Array<{ key: string; label: string; sales: number; payments: number; invoiced: number; expenses: number }>;
-  totals: { sales: number; salesCount: number; averageTicket: number; payments: number; invoiced: number; invoiceCount: number; expenses: number };
+  totals: { sales: number; salesCount: number; averageTicket: number; payments: number; invoiced: number; invoiceCount: number; ticketCount: number; expenses: number };
   categories: Array<{ name: string; amount: number; percent: number }>;
   hasExpenses: boolean;
   /** Hay algún dato en el periodo (si no, la pantalla muestra la guía para empezar). */
@@ -75,8 +77,9 @@ export function buildAccountingSummary(input: SummaryInput): AccountingSummary {
   const keys = lastMonthKeys(input.now);
   const inPeriod = new Set(keys);
   const rows = new Map(keys.map((k) => [k, { key: k, label: monthLabel(k), sales: 0, payments: 0, invoiced: 0, expenses: 0 }]));
-  let salesCount = 0;
+  const saleKeys = new Set<string>();
   let invoiceCount = 0;
+  let ticketCount = 0;
   const add = (at: number, field: "sales" | "payments" | "invoiced", amount: number) => {
     const k = madridMonthKey(at);
     const r = rows.get(k);
@@ -84,9 +87,16 @@ export function buildAccountingSummary(input: SummaryInput): AccountingSummary {
     r[field] = round2(r[field] + amount);
     return true;
   };
-  for (const s of input.sales) if (add(s.at, "sales", s.amount)) salesCount += 1;
+  input.sales.forEach((s, idx) => {
+    if (add(s.at, "sales", s.amount)) saleKeys.add(s.key ?? `#${idx}`);
+  });
+  const salesCount = saleKeys.size;
   for (const p of input.payments) add(p.at, "payments", p.amount);
-  for (const i of input.invoices) if (add(i.at, "invoiced", i.amount) && i.amount > 0) invoiceCount += 1;
+  for (const i of input.invoices) {
+    if (!add(i.at, "invoiced", i.amount)) continue;
+    if (i.kind === "ticket") ticketCount += 1;
+    else if (i.kind ? i.kind === "factura" : i.amount > 0) invoiceCount += 1;
+  }
   for (const e of input.expenses ?? []) {
     const r = inPeriod.has(e.month) ? rows.get(e.month) : undefined;
     if (r && Number.isFinite(e.amount)) r.expenses = round2(r.expenses + e.amount);
@@ -100,6 +110,7 @@ export function buildAccountingSummary(input: SummaryInput): AccountingSummary {
     payments: sum("payments"),
     invoiced: sum("invoiced"),
     invoiceCount,
+    ticketCount,
     expenses: sum("expenses"),
   };
 

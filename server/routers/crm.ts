@@ -82,7 +82,7 @@ import { getSystemSettingSync, getBusinessEmail, internalNoticeEmail } from "../
 import { groupTaxBreakdown, totalTaxAmount } from "../taxUtils";
 import { reservationProductFromQuoteItems } from "../reservationUtils";
 import { buildGestoriaInvoiceZip, ExportTooLargeError, MAX_EXPORT_DOCUMENTS } from "../gestoriaInvoiceExport";
-import { listInvoicesForExport, originalInvoiceNumbers, storedInvoicePdf, toExportRow } from "../gestoriaInvoiceExportDb";
+import { listInvoicesForExport, listTicketsForExport, originalInvoiceNumbers, storedInvoicePdf, toExportRow } from "../gestoriaInvoiceExportDb";
 import { ExportPeriodError, emptyExportMessage, resolveExportPeriod } from "../../shared/gestoriaExportPeriod";
 
 // DB helper — usa la misma pool que el resto del servidor
@@ -5658,9 +5658,9 @@ export const crmRouter = router({
           if (e instanceof ExportPeriodError) throw new TRPCError({ code: "BAD_REQUEST", message: e.message });
           throw e;
         }
-        const stored = await listInvoicesForExport(period);
-        // Periodo sin documentos: se rechaza sin montar nada (un ZIP vacío no sirve a la gestoría)
-        if (stored.length === 0) throw new TRPCError({ code: "BAD_REQUEST", message: emptyExportMessage(period.label) });
+        const [stored, tickets] = await Promise.all([listInvoicesForExport(period), listTicketsForExport(period)]);
+        // Periodo sin documentos (ni facturas ni tickets de caja): se rechaza sin montar nada
+        if (stored.length === 0 && tickets.length === 0) throw new TRPCError({ code: "BAD_REQUEST", message: emptyExportMessage(period.label) });
         if (stored.length > MAX_EXPORT_DOCUMENTS) {
           throw new TRPCError({ code: "BAD_REQUEST", message: `El periodo tiene ${stored.length} documentos y el máximo por exportación es ${MAX_EXPORT_DOCUMENTS}. Exporta por meses o con un rango más corto.` });
         }
@@ -5671,6 +5671,7 @@ export const crmRouter = router({
             period,
             rows: stored.map(toExportRow),
             originalNumbers: await originalInvoiceNumbers(stored),
+            tickets,
             pdfFor: (row) => storedInvoicePdf(byId.get(row.id)!),
           });
           return {
@@ -5680,6 +5681,7 @@ export const crmRouter = router({
             period: { from: period.from, to: period.to, label: period.label },
             invoices: zip.invoices,
             creditNotes: zip.creditNotes,
+            tickets: zip.tickets,
             missingPdfs: zip.missingPdfs,
           };
         } catch (e) {
