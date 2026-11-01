@@ -136,7 +136,22 @@ export function shapeProblems(family: string, d: ProductDraft): string[] {
 function publicTexts(d: ProductDraft, opts: { withExcludes?: boolean } = {}): string[] {
   const m = d.commercial;
   if (!m) return [];
-  return [m.headline, m.longDescription, m.problem, m.forWho ?? "", ...m.benefits, ...(opts.withExcludes === false ? [] : m.excludes), ...m.capacityRules, ...m.integrations, ...(m.seo ? [m.seo.title, m.seo.description] : [])].filter(Boolean);
+  return [
+    m.headline,
+    m.longDescription,
+    m.problem,
+    m.forWho ?? "",
+    ...m.benefits,
+    ...(opts.withExcludes === false ? [] : m.excludes),
+    ...m.capacityRules,
+    ...m.integrations,
+    ...(m.seo ? [m.seo.title, m.seo.description] : []),
+    m.valueProposition ?? "",
+    ...(m.coreIntegration ?? []),
+    ...Object.values(m.terms ?? {}),
+    ...(m.faq ?? []).flatMap((f) => [f.q, f.a]),
+    ...[m.media?.cover, ...(m.media?.screenshots ?? [])].flatMap((i) => (i ? [i.alt, (i as { caption?: string }).caption ?? ""] : [])),
+  ].filter((t): t is string => !!t);
 }
 
 /** Revisión completa de un producto frente al resto del catálogo (borradores). */
@@ -206,6 +221,12 @@ export function commercialChecks(entry: CheckEntry, all: readonly CheckEntry[], 
       else if (!INCLUDABLE.includes(p.family ?? "")) blocking.push(`«${k}» no es una extensión`);
       else if (p.draft.catalog.internalOnly) blocking.push(`«${k}» es interno`);
       if (k === entry.key) blocking.push("se declara compatible consigo mismo");
+    }
+    for (const k of m.related ?? []) {
+      const p = byKey.get(k);
+      if (!p) blocking.push(`el producto relacionado «${k}» no existe`);
+      else if (p.draft.catalog.internalOnly) blocking.push(`el producto relacionado «${k}» es interno`);
+      if (k === entry.key) blocking.push("se relaciona consigo mismo");
     }
     if (!m.seo) warnings.push("sin título ni descripción SEO");
     else {
