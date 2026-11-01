@@ -318,6 +318,12 @@ export const appRouter = router({
         return exp;
       }),
 
+    // Ficha pública de producto: sectorial (instalación propia) o genérica de tienda (pyme)
+    getStorefront: publicProcedure.query(async () => {
+      const { getStorefront } = await import("./storefront");
+      return getStorefront();
+    }),
+
     getVariantsByExperience: publicProcedure
       .input(z.object({ experienceId: z.number() }))
       .query(async ({ input }) => {

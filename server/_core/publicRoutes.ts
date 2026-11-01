@@ -15,6 +15,7 @@
 export const CLIENT_ROUTES: readonly string[] = [
   "/",
   "/experiencias", "/experiencias/:slug",
+  "/tienda", "/tienda/:slug",
   "/galeria",
   "/presupuesto", "/presupuesto/:token", "/propuesta/:token",
   "/colegios", "/grupos",
