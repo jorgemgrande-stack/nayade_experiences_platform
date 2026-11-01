@@ -1,6 +1,8 @@
 /**
  * Diálogo «Nueva factura»: factura libre, sin venta, reserva, caja ni presupuesto previos.
- * Cliente existente o datos escritos a mano; líneas con concepto, cantidad, precio sin IVA y tipo de IVA.
+ * Cliente existente o datos escritos a mano; líneas con concepto, cantidad, precio y tipo de IVA. Los precios se
+ * escriben con IVA incluido (por defecto, como en productos y presupuestos) o sin IVA; con IVA al 0 % se pide
+ * el motivo de la exención, que figura en la factura.
  * Los importes se calculan con la misma regla que usa el servidor al emitir (shared/directInvoice).
  */
 import React, { useMemo, useState } from "react";
@@ -12,11 +14,11 @@ import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "
 import { toast } from "sonner";
 import { toastError } from "@/lib/errorMessage";
 import { Plus, RefreshCw, Trash2 } from "lucide-react";
-import { computeDirectInvoice, DIRECT_INVOICE_TAX_RATES, parseAmount, validateNewInvoice, type DirectInvoiceTaxRate, type InvoiceClientDraft as ClientDraft, type InvoiceFormErrors as Errors, type InvoiceLineDraft as LineDraft } from "@shared/directInvoice";
+import { computeDirectInvoice, convertUnitPrice, DIRECT_INVOICE_TAX_RATES, EXEMPTION_REASON_SUGGESTIONS, parseAmount, validateNewInvoice, type DirectInvoiceTaxRate, type InvoiceClientDraft as ClientDraft, type InvoiceFormErrors as Errors, type InvoiceLineDraft as LineDraft } from "@shared/directInvoice";
 import { normalizeTaxId } from "@shared/formValidation";
 
 
-const emptyLine = (): LineDraft => ({ description: "", quantity: "1", unitPrice: "", taxRate: 21 });
+const emptyLine = (): LineDraft => ({ description: "", quantity: "1", unitPrice: "", taxRate: 21, exemptionReason: "" });
 const emptyClient = (): ClientDraft => ({ name: "", nif: "", email: "", phone: "", address: "" });
 const money = (n: number) => n.toLocaleString("es-ES", { style: "currency", currency: "EUR" });
 export default function NewInvoiceDialog({ open, onOpenChange, onCreated }: { open: boolean; onOpenChange: (o: boolean) => void; onCreated?: () => void }) {
@@ -25,6 +27,8 @@ export default function NewInvoiceDialog({ open, onOpenChange, onCreated }: { op
   const [clientId, setClientId] = useState<number | null>(null);
   const [client, setClient] = useState<ClientDraft>(emptyClient);
   const [lines, setLines] = useState<LineDraft[]>([emptyLine()]);
+  // Como el resto del producto: precios con IVA incluido salvo que se elija lo contrario
+  const [pricesIncludeTax, setPricesIncludeTax] = useState(true);
   const [errors, setErrors] = useState<Errors>({});
   const utils = trpc.useUtils();
 
@@ -33,10 +37,10 @@ export default function NewInvoiceDialog({ open, onOpenChange, onCreated }: { op
 
   const amounts = useMemo(() => {
     const valid = lines
-      .map((l) => ({ description: l.description, quantity: parseAmount(l.quantity), unitPrice: parseAmount(l.unitPrice), taxRate: l.taxRate }))
+      .map((l) => ({ description: l.description, quantity: parseAmount(l.quantity), unitPrice: parseAmount(l.unitPrice), taxRate: l.taxRate, exemptionReason: l.exemptionReason }))
       .filter((l) => l.quantity > 0 && l.unitPrice >= 0);
-    return computeDirectInvoice(valid);
-  }, [lines]);
+    return computeDirectInvoice(valid, { pricesIncludeTax });
+  }, [lines, pricesIncludeTax]);
 
   const reset = () => {
     setMode("existing");
@@ -44,7 +48,18 @@ export default function NewInvoiceDialog({ open, onOpenChange, onCreated }: { op
     setClientId(null);
     setClient(emptyClient());
     setLines([emptyLine()]);
+    setPricesIncludeTax(true);
     setErrors({});
+  };
+
+  // Al cambiar de modo, los precios escritos se convierten para que el total no cambie
+  const switchPrices = (include: boolean) => {
+    if (include === pricesIncludeTax) return;
+    setLines((ls) => ls.map((l) => {
+      const p = parseAmount(l.unitPrice);
+      return Number.isFinite(p) ? { ...l, unitPrice: String(convertUnitPrice(p, l.taxRate, include)).replace(".", ",") } : l;
+    }));
+    setPricesIncludeTax(include);
   };
 
   const create = trpc.crm.invoices.createDirect.useMutation({
@@ -70,7 +85,8 @@ export default function NewInvoiceDialog({ open, onOpenChange, onCreated }: { op
       ...(mode === "existing"
         ? { clientId: clientId! }
         : { client: { name: client.name.trim(), nif: client.nif.trim() ? normalizeTaxId(client.nif) : undefined, email: client.email.trim() || undefined, phone: client.phone.trim() || undefined, address: client.address.trim() || undefined } }),
-      lines: lines.map((l) => ({ description: l.description.trim(), quantity: parseAmount(l.quantity), unitPrice: parseAmount(l.unitPrice), taxRate: l.taxRate })),
+      pricesIncludeTax,
+      lines: lines.map((l) => ({ description: l.description.trim(), quantity: parseAmount(l.quantity), unitPrice: parseAmount(l.unitPrice), taxRate: l.taxRate, ...(l.taxRate === 0 ? { exemptionReason: (l.exemptionReason ?? "").trim() } : {}) })),
     });
   };
 
@@ -143,7 +159,20 @@ export default function NewInvoiceDialog({ open, onOpenChange, onCreated }: { op
         </section>
 
         <section className="space-y-2 mt-4">
-          <h3 className="text-sm font-semibold text-foreground/80">Conceptos</h3>
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <h3 className="text-sm font-semibold text-foreground/80">Conceptos</h3>
+            <div className="flex gap-2" role="radiogroup" aria-label="Cómo escribes los precios">
+              {([true, false] as const).map((inc) => (
+                <button key={String(inc)} type="button" role="radio" aria-checked={pricesIncludeTax === inc} onClick={() => switchPrices(inc)}
+                  className={`px-3 py-1 rounded-full text-xs font-medium border ${pricesIncludeTax === inc ? "bg-orange-600 text-white border-orange-600" : "bg-foreground/[0.05] text-foreground/60 border-foreground/[0.12]"}`}>
+                  {inc ? "Precios con IVA incluido" : "Precios sin IVA"}
+                </button>
+              ))}
+            </div>
+          </div>
+          <datalist id="ni-exemption-reasons">
+            {EXEMPTION_REASON_SUGGESTIONS.map((r) => <option key={r} value={r} />)}
+          </datalist>
           {lines.map((l, i) => (
             <div key={i} className="grid grid-cols-12 gap-2 items-start">
               <div className="col-span-12 sm:col-span-5">
@@ -157,7 +186,7 @@ export default function NewInvoiceDialog({ open, onOpenChange, onCreated }: { op
                 {err(`line${i}.quantity`)}
               </div>
               <div className="col-span-4 sm:col-span-2">
-                <Label htmlFor={`ni-price-${i}`} className="text-xs text-foreground/60">Precio sin IVA</Label>
+                <Label htmlFor={`ni-price-${i}`} className="text-xs text-foreground/60">{pricesIncludeTax ? "Precio con IVA" : "Precio sin IVA"}</Label>
                 <Input id={`ni-price-${i}`} inputMode="decimal" className={fieldClass} value={l.unitPrice} onChange={(e) => setLine(i, { unitPrice: e.target.value })} placeholder="0,00" />
                 {err(`line${i}.unitPrice`)}
               </div>
@@ -174,6 +203,13 @@ export default function NewInvoiceDialog({ open, onOpenChange, onCreated }: { op
                   <Trash2 className="w-4 h-4" />
                 </Button>
               </div>
+              {l.taxRate === 0 && (
+                <div className="col-span-12">
+                  <Label htmlFor={`ni-exempt-${i}`} className="text-xs text-foreground/60">Motivo de la exención (IVA 0 %) *</Label>
+                  <Input id={`ni-exempt-${i}`} list="ni-exemption-reasons" className={fieldClass} value={l.exemptionReason ?? ""} onChange={(e) => setLine(i, { exemptionReason: e.target.value })} placeholder="Elige uno o escribe el motivo" />
+                  {err(`line${i}.exemptionReason`)}
+                </div>
+              )}
             </div>
           ))}
           {err("lines")}

@@ -53,6 +53,9 @@ import { sendManagedEmail, logDirectEmail } from "../emailManager";
 import { generateDocumentNumber } from "../documentNumbers";
 import { nextCreditNoteNumber, withCreditNoteNumberRetry } from "../creditNoteNumber";
 import { QUOTE_DISCOUNT_DESCRIPTION, QUOTE_LINE_TOTAL_DESCRIPTION, QUOTE_TOTAL_DESCRIPTION, QUOTE_UNIT_PRICE_DESCRIPTION, linesToTaxIncluded, pricesIncludeTaxSchema, quoteTotalMismatch } from "../quoteTaxConvention";
+import { invoiceClientForQuote } from "../invoiceClient";
+import { needsExemptionReason } from "../../shared/directInvoice";
+import { ordersWithoutInvoice } from "../invoiceAudit";
 import { alreadyCredited, chargedInvoiceAmounts, computeDirectInvoice, creditNoteLineStatus, CreditNoteSelectionError, DIRECT_INVOICE_TAX_RATES, planCreditNote, QUOTE_DISCOUNT_REASON, round2, type CreditNoteLineSelection } from "../invoiceCalc";
 import { htmlToPdf } from "../pdfGenerator";
 import { buildRedsysForm, generateMerchantOrder } from "../redsys";
@@ -691,16 +694,14 @@ export async function checkAndConfirmInstallmentPlan(quoteId: number, userId: nu
       .limit(1);
 
     const invoiceNumber = await generateInvoiceNumber("crm:installments", String(userId));
+    // Datos fiscales del cliente vinculado al presupuesto (NIF, nombre fiscal y dirección)
+    const billTo = await invoiceClientForQuote(db, quote, { name: lead?.name ?? quote.title, email: lead?.email ?? "", phone: lead?.phone ?? null });
     let pdfUrl: string | null = null;
     let pdfKey: string | null = null;
     try {
       const pdf = await generateInvoicePdf({
         invoiceNumber,
-        clientName: lead?.name ?? quote.title,
-        clientEmail: lead?.email ?? "",
-        clientPhone: lead?.phone ?? null,
-        clientNif: null,
-        clientAddress: null,
+        ...billTo,
         itemsJson: items as any,
         subtotal: String(subtotal),
         discount: amountsInst.discount,
@@ -721,9 +722,7 @@ export async function checkAndConfirmInstallmentPlan(quoteId: number, userId: nu
       invoiceNumber,
       quoteId: quote.id,
       reservationId: reservation?.id ?? null,
-      clientName: lead?.name ?? quote.title,
-      clientEmail: lead?.email ?? "",
-      clientPhone: lead?.phone ?? null,
+      ...billTo,
       itemsJson: items as any,
       subtotal: String(subtotal),
       discount: String(amountsInst.discount),
@@ -2035,6 +2034,8 @@ export const crmRouter = router({
 
         // Generate invoice
         const invoiceNumber = await generateInvoiceNumber("crm:invoice", String(ctx.user.id));
+        // Datos fiscales del cliente vinculado al presupuesto (NIF, nombre fiscal y dirección)
+        const billTo = await invoiceClientForQuote(db, quote, { name: lead.name, email: lead.email, phone: lead.phone });
         const items = (quote.items as { description: string; quantity: number; unitPrice: number; total: number; fiscalRegime?: "reav" | "general" }[]) ?? [];
         // Lo facturado es lo cobrado: el total del presupuesto. El descuento reduce base e IVA de cada tipo.
         const amountsInv = chargedInvoiceAmounts(items, Number(quote.total));
@@ -2047,9 +2048,7 @@ export const crmRouter = router({
         try {
           const pdf = await generateInvoicePdf({
             invoiceNumber,
-            clientName: lead.name,
-            clientEmail: lead.email,
-            clientPhone: lead.phone,
+            ...billTo,
             itemsJson: items,
             subtotal: String(subtotal),
             discount: amountsInv.discount,
@@ -2072,9 +2071,7 @@ export const crmRouter = router({
         const [invResult] = await db.insert(invoices).values({
           invoiceNumber,
           quoteId: quote.id,
-          clientName: lead.name,
-          clientEmail: lead.email,
-          clientPhone: lead.phone,
+          ...billTo,
           itemsJson: items,
           subtotal: String(subtotal),
           discount: String(amountsInv.discount),
@@ -2629,6 +2626,8 @@ export const crmRouter = router({
         assertPaidAmountMatchesQuote(input.paidAmount, quote.total);
         const now = new Date();
         const invoiceNumber = await generateInvoiceNumber("crm:invoice", String(ctx.user.id));
+        // Datos fiscales del cliente vinculado al presupuesto (NIF, nombre fiscal y dirección)
+        const billTo = await invoiceClientForQuote(db, quote, { name: lead.name, email: lead.email, phone: lead.phone });
         const items = (quote.items as { description: string; quantity: number; unitPrice: number; total: number; fiscalRegime?: "reav" | "general" }[]) ?? [];
         // Lo facturado es lo cobrado: el total del presupuesto. El descuento reduce base e IVA de cada tipo.
         const amountsT = chargedInvoiceAmounts(items, Number(quote.total));
@@ -2640,9 +2639,7 @@ export const crmRouter = router({
         try {
           const pdf = await generateInvoicePdf({
             invoiceNumber,
-            clientName: lead.name,
-            clientEmail: lead.email,
-            clientPhone: lead.phone,
+            ...billTo,
             itemsJson: items,
             subtotal: String(subtotal),
             discount: amountsT.discount,
@@ -2664,9 +2661,7 @@ export const crmRouter = router({
         const [invResult] = await db.insert(invoices).values({
           invoiceNumber,
           quoteId: quote.id,
-          clientName: lead.name,
-          clientEmail: lead.email,
-          clientPhone: lead.phone,
+          ...billTo,
           itemsJson: items,
           subtotal: String(subtotal),
           discount: String(amountsT.discount),
@@ -4581,18 +4576,15 @@ export const crmRouter = router({
             )
         : [];
 
-      const invoicedResIds = new Set<number>();
-      for (const inv of linkedInvoices) {
-        if (inv.reservationId) invoicedResIds.add(inv.reservationId);
-      }
-      // También cubrir la relación por quoteId: si la factura tiene quoteId, marcar todas las reservas de ese quote
-      const invoicedQuoteIds = new Set(linkedInvoices.map(i => i.quoteId).filter((q): q is number => q != null));
-      for (const r of paidRes) {
-        if (r.quoteId && invoicedQuoteIds.has(r.quoteId)) invoicedResIds.add(r.id);
-        if (r.invoiceId) invoicedResIds.add(r.id); // campo directo en la reserva
-      }
+      // Ventas de caja cobradas con su ticket (factura simplificada): documentadas, no son una incidencia
+      const ticketed = paidIds.length > 0
+        ? await db.select({ reservationId: tpvSales.reservationId })
+            .from(tpvSales)
+            .where(and(inArray(tpvSales.reservationId, paidIds), eq(tpvSales.status, "paid"), sql`${tpvSales.ticketNumber} <> ''`))
+        : [];
 
-      const sinFactura = paidRes.filter(r => !invoicedResIds.has(r.id)).map(r => ({
+      // Documentada: factura por la reserva, por su presupuesto o enlazada en la reserva, o ticket de caja
+      const sinFactura = ordersWithoutInvoice(paidRes, linkedInvoices, ticketed.map(t => t.reservationId).filter((id): id is number => id != null)).map(r => ({
         id: r.id,
         reservationNumber: r.reservationNumber,
         customerName: r.customerName,
@@ -6238,7 +6230,11 @@ export const crmRouter = router({
           quantity: z.number().positive("La cantidad debe ser mayor que cero").max(1_000_000),
           unitPrice: z.number().min(0, "El precio no puede ser negativo").max(10_000_000),
           taxRate: z.union([z.literal(21), z.literal(10), z.literal(4), z.literal(0)], { error: `Tipo de IVA no válido (${DIRECT_INVOICE_TAX_RATES.join(", ")} %)` }),
-        })).min(1, "Añade al menos una línea").max(100, "Máximo 100 líneas por factura"),
+          // Con IVA al 0 %: motivo de la exención (figura en la factura)
+          exemptionReason: z.string().trim().max(300).optional(),
+        }).refine((l) => !needsExemptionReason(l), { message: "Con IVA al 0 % indica el motivo de la exención", path: ["exemptionReason"] })).min(1, "Añade al menos una línea").max(100, "Máximo 100 líneas por factura"),
+        // true: los precios llevan el IVA incluido (como productos y presupuestos); false o sin indicar: sin IVA
+        pricesIncludeTax: z.boolean().default(false),
       }).refine((v) => v.clientId !== undefined || v.client !== undefined, { message: "Elige un cliente o escribe sus datos", path: ["client"] }))
       .mutation(async ({ input, ctx }) => {
         // Cliente: uno existente de esta empresa o los datos escritos en la factura
@@ -6251,7 +6247,7 @@ export const crmRouter = router({
           const c = input.client!;
           client = { name: c.name, email: c.email ?? "", phone: c.phone || null, nif: c.nif || null, address: c.address || null };
         }
-        const amounts = computeDirectInvoice(input.lines);
+        const amounts = computeDirectInvoice(input.lines, { pricesIncludeTax: input.pricesIncludeTax });
         if (!(amounts.total > 0)) throw new TRPCError({ code: "BAD_REQUEST", message: "El total de la factura debe ser mayor que cero" });
 
         // Número de la serie oficial de facturas (mismo contador que el resto de facturas de la empresa)
@@ -6305,7 +6301,7 @@ export const crmRouter = router({
           updatedAt: now,
         });
         const invoiceId = (res as { insertId: number }).insertId;
-        await logActivity("invoice", invoiceId, "invoice_created_direct", ctx.user.id, ctx.user.name, { invoiceNumber, total: amounts.total, clientId: input.clientId ?? null });
+        await logActivity("invoice", invoiceId, "invoice_created_direct", ctx.user.id, ctx.user.name, { invoiceNumber, total: amounts.total, clientId: input.clientId ?? null, pricesIncludeTax: input.pricesIncludeTax });
         return { success: true, invoiceId, invoiceNumber, total: amounts.total, pdfUrl };
       }),
 

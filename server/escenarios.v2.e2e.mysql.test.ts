@@ -339,7 +339,7 @@ describe.skipIf(!URL_)("Escenarios v2 de usuario nuevo (aplicación real, dos em
 
     it("factura libre a un cliente con dos tipos de IVA → numeración correlativa; anularla emite un abono total", async () => {
       const r = ok(
-        await ess.m("a", "crm.invoices.createDirect", { clientId: A.clientId, lines: [{ description: "Gestión de nóminas (mes)", quantity: 1, unitPrice: 100, taxRate: 21 }, { description: "Curso de formación", quantity: 2, unitPrice: 50, taxRate: 0 }] }, agA),
+        await ess.m("a", "crm.invoices.createDirect", { clientId: A.clientId, lines: [{ description: "Gestión de nóminas (mes)", quantity: 1, unitPrice: 100, taxRate: 21 }, { description: "Curso de formación", quantity: 2, unitPrice: 50, taxRate: 0, exemptionReason: "Operación exenta de IVA (art. 20 de la Ley 37/1992 del IVA)" }] }, agA),
         "factura libre",
       );
       expect(r.invoiceNumber).toBe(`FAC-${YEAR}-0002`);
