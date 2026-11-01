@@ -120,7 +120,7 @@ export default function PagesManager() {
                     <Badge variant={p.isPublished ? "default" : "secondary"} className="text-[11px]">
                       {p.isPublished ? "Publicada" : "Sin publicar"}
                     </Badge>
-                    {p.hasDraft && p.isPublished && <Badge variant="outline" className="text-[11px] border-amber-300 bg-amber-50 text-amber-800 dark:border-amber-700 dark:bg-amber-950/50 dark:text-amber-200">Cambios sin publicar</Badge>}
+                    {p.hasDraft && p.isPublished && <Badge variant="outline" className="text-[11px] border-warning/40 bg-warning/10 text-warning">Cambios sin publicar</Badge>}
                     {p.isLegal && <Badge variant="outline" className="text-[11px]">Texto legal</Badge>}
                     {(p.inHeader || p.inFooter) && <Badge variant="outline" className="text-[11px]">{p.inHeader ? "En el menú" : "En el pie"}</Badge>}
                   </div>
@@ -266,7 +266,7 @@ function CreatePageDialog({ open, pages, onClose, onCreated }: { open: boolean; 
           <div className="space-y-1.5">
             <Label htmlFor="np-meta">Descripción para buscadores (opcional)</Label>
             <Textarea id="np-meta" rows={2} value={metaDescription} maxLength={300} onChange={(e) => setMetaDescription(e.target.value)} />
-            <span className={cn("text-xs", metaDescription.length > SEO_LIMITS.description ? "text-amber-700" : "text-muted-foreground")}>
+            <span className={cn("text-xs", metaDescription.length > SEO_LIMITS.description ? "text-warning" : "text-muted-foreground")}>
               {metaDescription.length} de {SEO_LIMITS.description} caracteres
             </span>
           </div>
@@ -313,7 +313,7 @@ function DeletePageDialog({ page, onClose }: { page: SitePage | null; onClose: (
             <div className="space-y-2">
               <p>Se borrará la página con todo su contenido y su enlace en el menú. No se puede deshacer.</p>
               {page?.isLegal && (
-                <p className="rounded-md border px-3 py-2 border-amber-300 bg-amber-50 text-amber-800 dark:border-amber-700 dark:bg-amber-950/50 dark:text-amber-200">
+                <p className="rounded-md border px-3 py-2 border-warning/40 bg-warning/10 text-warning">
                   Es un texto legal. Tu web debe informar a sus visitantes y el pie de página lo enlaza: si lo eliminas, ese enlace dejará de funcionar. Si solo
                   quieres cambiarlo, edítalo en lugar de eliminarlo.
                 </p>

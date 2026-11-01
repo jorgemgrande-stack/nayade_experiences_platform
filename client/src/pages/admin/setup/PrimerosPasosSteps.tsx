@@ -52,8 +52,8 @@ const selectClass =
 function AlreadyDone({ children, onContinue, extra }: { children: React.ReactNode; onContinue: () => void; extra?: React.ReactNode }) {
   return (
     <div className="space-y-4 text-sm">
-      <p className="flex items-start gap-2 rounded-lg border border-emerald-600/30 bg-emerald-600/5 p-3 text-foreground">
-        <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-emerald-600 dark:text-emerald-400" aria-hidden="true" />
+      <p className="flex items-start gap-2 rounded-lg border border-success/30 bg-success/5 p-3 text-foreground">
+        <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-success" aria-hidden="true" />
         <span>{children}</span>
       </p>
       <div className="flex flex-wrap items-center gap-3">
@@ -91,7 +91,7 @@ export function WelcomeStep({ tradeName, planName, steps, disabled, onStart }: {
         {rest.map((s) => (
           <li key={s.id} className="flex items-center gap-2 rounded-lg border border-border p-2.5">
             {s.status === "done" ? (
-              <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-600 dark:text-emerald-400" aria-hidden="true" />
+              <CheckCircle2 className="h-4 w-4 shrink-0 text-success" aria-hidden="true" />
             ) : (
               <CircleDashed className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden="true" />
             )}
@@ -480,7 +480,7 @@ export function ProductStep({ noun, example, currency, count, disabled, onDone }
 function LegalNotice({ missing }: { missing: string[] }) {
   if (!missing.length) return null;
   return (
-    <p role="note" className="rounded-lg border border-amber-500/40 bg-amber-500/10 p-3 text-sm text-foreground">
+    <p role="note" className="rounded-lg border border-warning/40 bg-warning/10 p-3 text-sm text-foreground">
       Tu aviso legal y tu política de privacidad ya están publicados, pero les faltan estos datos: <strong>{missing.join(", ")}</strong>. Mientras
       no los completes, esas líneas no se muestran en tu web.{" "}
       <Link href="/admin/configuracion" className="text-primary underline underline-offset-4">
@@ -811,7 +811,7 @@ export function FinishStep({ steps, completedAt, showTeam, disabled, onGo }: { s
   return (
     <div className="space-y-5 text-sm">
       {completedAt ? (
-        <p className="flex items-center gap-2 font-medium text-emerald-700 dark:text-emerald-400">
+        <p className="flex items-center gap-2 font-medium text-success">
           <CheckCircle2 className="h-4 w-4" aria-hidden="true" /> Tu empresa está en marcha.
           {pending.length > 0 && <span className="font-normal text-muted-foreground"> Te queda{pending.length === 1 ? "" : "n"} {pending.length} paso{pending.length === 1 ? "" : "s"} opcional{pending.length === 1 ? "" : "es"}.</span>}
         </p>
@@ -825,13 +825,13 @@ export function FinishStep({ steps, completedAt, showTeam, disabled, onGo }: { s
           <li key={s.id} className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-border p-3">
             <span className="flex min-w-0 items-center gap-2">
               {s.status === "done" ? (
-                <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-600 dark:text-emerald-400" aria-hidden="true" />
+                <CheckCircle2 className="h-4 w-4 shrink-0 text-success" aria-hidden="true" />
               ) : s.status === "skipped" ? (
                 <SkipForward className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden="true" />
               ) : (
                 <CircleDashed className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden="true" />
               )}
-              <span className="truncate">{STEP_LABELS[s.id].title}</span>
+              <span className="overflow-hidden text-ellipsis whitespace-nowrap">{STEP_LABELS[s.id].title}</span>
               <span className="text-muted-foreground">({s.status === "done" ? "hecho" : s.status === "skipped" ? "omitido" : "pendiente"})</span>
             </span>
             <Button type="button" size="sm" variant="outline" onClick={() => onGo(s.id)}>

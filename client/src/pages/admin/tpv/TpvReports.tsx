@@ -32,12 +32,12 @@ function downloadCsv(filename: string, csv: string) {
 }
 
 function Kpi({ label, value, hint, tone }: { label: string; value: string; hint?: string; tone?: "bad" | "good" }) {
-  const color = tone === "bad" ? "text-red-400" : tone === "good" ? "text-emerald-400" : "text-white";
+  const color = tone === "bad" ? "text-danger" : tone === "good" ? "text-success" : "text-foreground";
   return (
-    <div className="rounded-xl border border-gray-800 bg-gray-900 p-4">
-      <p className="text-xs text-gray-400">{label}</p>
+    <div className="rounded-xl border border-border bg-card p-4">
+      <p className="text-xs text-muted-foreground">{label}</p>
       <p className={`text-xl font-semibold mt-1 ${color}`}>{value}</p>
-      {hint && <p className="text-xs text-gray-500 mt-0.5">{hint}</p>}
+      {hint && <p className="text-xs text-muted-foreground mt-0.5">{hint}</p>}
     </div>
   );
 }
@@ -47,9 +47,9 @@ function ReportCard({ title, section, onExport, exporting, empty, children }: {
 }) {
   const id = `tpv-informe-${section}`;
   return (
-    <section aria-labelledby={id} className="rounded-xl border border-gray-800 bg-gray-900 print:break-inside-avoid">
-      <div className="flex items-center justify-between gap-3 px-4 py-3 border-b border-gray-800">
-        <h2 id={id} className="text-sm font-semibold text-white">{title}</h2>
+    <section aria-labelledby={id} className="rounded-xl border border-border bg-card print:break-inside-avoid">
+      <div className="flex items-center justify-between gap-3 px-4 py-3 border-b border-border">
+        <h2 id={id} className="text-sm font-semibold text-foreground">{title}</h2>
         <Button
           size="sm" variant="outline" disabled={empty || exporting === section}
           onClick={() => onExport(section)}
@@ -60,7 +60,7 @@ function ReportCard({ title, section, onExport, exporting, empty, children }: {
           {exporting === section ? "Preparando…" : "CSV"}
         </Button>
       </div>
-      {empty ? <p className="px-4 py-6 text-sm text-gray-500">Sin datos en este periodo.</p> : <div className="overflow-x-auto">{children}</div>}
+      {empty ? <p className="px-4 py-6 text-sm text-muted-foreground">Sin datos en este periodo.</p> : <div className="overflow-x-auto">{children}</div>}
     </section>
   );
 }
@@ -69,13 +69,13 @@ function Table({ head, rows, right = [] }: { head: string[]; rows: ReactNode[][]
   return (
     <table className="w-full text-sm">
       <thead>
-        <tr className="text-left text-xs text-gray-400">
+        <tr className="text-left text-xs text-muted-foreground">
           {head.map((h, i) => <th key={h} scope="col" className={`px-4 py-2 font-medium ${right.includes(i) ? "text-right" : ""}`}>{h}</th>)}
         </tr>
       </thead>
       <tbody>
         {rows.map((r, ri) => (
-          <tr key={ri} className="border-t border-gray-800 text-gray-200">
+          <tr key={ri} className="border-t border-border text-foreground">
             {r.map((c, ci) => <td key={ci} className={`px-4 py-2 ${right.includes(ci) ? "text-right tabular-nums" : ""}`}>{c}</td>)}
           </tr>
         ))}
@@ -120,11 +120,11 @@ export default function TpvReports() {
       <div className="p-6 space-y-6">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
-            <h1 className="text-2xl font-bold text-white flex items-center gap-2">
-              <BarChart3 className="w-6 h-6 text-violet-400" aria-hidden="true" />
+            <h1 className="text-2xl font-bold text-foreground flex items-center gap-2">
+              <BarChart3 className="w-6 h-6 text-primary" aria-hidden="true" />
               Informes de caja
             </h1>
-            <p className="text-gray-400 text-sm mt-1">Ventas en caja, anulaciones y cierres de caja del periodo (hora peninsular española).</p>
+            <p className="text-muted-foreground text-sm mt-1">Ventas en caja, anulaciones y cierres de caja del periodo (hora peninsular española).</p>
           </div>
           <div className="flex gap-2 print:hidden">
             <Button variant="outline" onClick={() => window.print()} disabled={!r} className="gap-2">
@@ -142,7 +142,7 @@ export default function TpvReports() {
 
         {/* Filtros */}
         <form
-          className="rounded-xl border border-gray-800 bg-gray-900 p-4 space-y-3 print:hidden"
+          className="rounded-xl border border-border bg-card p-4 space-y-3 print:hidden"
           onSubmit={(e) => { e.preventDefault(); apply(); }}
           noValidate
         >
@@ -174,9 +174,9 @@ export default function TpvReports() {
                 ))}
               </select>
             </div>
-            <Button type="submit" disabled={!!draftError} className="bg-violet-600 hover:bg-violet-500 text-white">Ver informe</Button>
+            <Button type="submit" disabled={!!draftError} className="bg-primary hover:bg-primary/90 text-primary-foreground">Ver informe</Button>
           </div>
-          {draftError && <p role="alert" className="text-sm text-red-400">{draftError}</p>}
+          {draftError && <p role="alert" className="text-sm text-danger">{draftError}</p>}
         </form>
 
         <p className="hidden print:block text-sm text-gray-700">
@@ -240,7 +240,7 @@ export default function TpvReports() {
                   head={["Tipo", "Base imponible", "Cuota", "Total"]} right={[1, 2, 3]}
                   rows={r.byTaxRate.map((t) => [t.label, formatEur(t.taxBase), formatEur(t.taxAmount), formatEur(t.amount)])}
                 />
-                <p className="px-4 py-2 text-xs text-gray-500">Orientativo: los importes fiscales oficiales son los de las facturas emitidas.</p>
+                <p className="px-4 py-2 text-xs text-muted-foreground">Orientativo: los importes fiscales oficiales son los de las facturas emitidas.</p>
               </ReportCard>
               <ReportCard title="Ventas por producto" section="productos" empty={r.byProduct.length === 0} {...card}>
                 <Table
@@ -269,14 +269,14 @@ export default function TpvReports() {
                 right={[3, 4, 5, 6, 7, 8]}
                 rows={r.closures.sessions.map((s) => [
                   s.register, s.cashier, formatMadridDateTime(s.closedAt), formatEur(s.openingAmount), formatEur(s.expectedCash), formatEur(s.countedCash),
-                  <span key="d" className={Math.abs(s.difference) >= 0.01 ? (s.difference < 0 ? "text-red-400 font-medium" : "text-amber-400 font-medium") : "text-emerald-400"}>
+                  <span key="d" className={Math.abs(s.difference) >= 0.01 ? (s.difference < 0 ? "text-danger font-medium" : "text-warning font-medium") : "text-success"}>
                     {Math.abs(s.difference) >= 0.01 ? formatEur(s.difference) : "Cuadrada"}
                   </span>,
                   formatEur(s.totalCard), formatEur(s.totalBizum),
                 ])}
               />
             </ReportCard>
-            <p className="text-xs text-gray-500">
+            <p className="text-xs text-muted-foreground">
               Cuentan las ventas cobradas en el periodo por su fecha de cobro. Las anuladas o devueltas se muestran aparte y no suman en las ventas netas.
               Los cierres se agrupan por la fecha en que se cerró la caja.
             </p>

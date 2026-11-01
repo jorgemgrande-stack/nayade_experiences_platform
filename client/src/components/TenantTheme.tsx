@@ -14,6 +14,7 @@ import { HOME_PAGE_SLUG, resolveHome } from "@/lib/homeRoute";
 import PublicLayout from "@/components/PublicLayout";
 import NotFound from "@/pages/NotFound";
 import { brandTokens } from "@shared/loginBrand";
+import { PANEL_PALETTE_KEYS, panelPalette, panelPaletteCss } from "@shared/panelTheme";
 import { composePageTitle, publicRouteAccess } from "@shared/publicSite";
 import { pageSlugOfUrl } from "@shared/tenantNav";
 import { usePublicSite } from "@/hooks/usePublicSite";
@@ -43,8 +44,22 @@ export function TenantThemeLoader() {
     // Multiempresa: identidad de la empresa en toda su experiencia (Big Elephant hasta que configure la suya), en modo
     // claro y oscuro. En línea sobre <html>, así manda sobre los valores de :root y .dark de index.css.
     const tokens = brandTokens(theme);
-    if (tokens) for (const [k, v] of Object.entries(tokens)) root.style.setProperty(k, v);
-    else if (theme.primaryColor) {
+    const palette = panelPalette(theme);
+    if (tokens) {
+      // El color principal va en una hoja de estilos con un valor para el modo claro y otro para el oscuro (contraste
+      // AA en los dos); el resto de la identidad, en línea como siempre.
+      for (const [k, v] of Object.entries(tokens)) if (!palette || !PANEL_PALETTE_KEYS.includes(k)) root.style.setProperty(k, v);
+      if (palette) {
+        for (const k of PANEL_PALETTE_KEYS) root.style.removeProperty(k);
+        let style = document.getElementById("tenant-panel-palette");
+        if (!style) {
+          style = document.createElement("style");
+          style.id = "tenant-panel-palette";
+          document.head.appendChild(style);
+        }
+        style.textContent = panelPaletteCss(palette);
+      }
+    } else if (theme.primaryColor) {
       root.style.setProperty("--primary", theme.primaryColor);
       root.style.setProperty("--ring", theme.primaryColor);
       const fg = contrast(theme.primaryColor);

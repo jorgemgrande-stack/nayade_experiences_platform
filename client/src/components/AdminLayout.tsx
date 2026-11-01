@@ -119,6 +119,12 @@ export default function AdminLayout({ children, title }: AdminLayoutProps) {
   // Cerrar menú móvil al cambiar de ruta
   useEffect(() => { setMobileMenuOpen(false); }, [location]);
 
+  // Marca el documento como panel: index.css ajusta ahí los tonos claros heredados para que se lean en modo claro
+  useEffect(() => {
+    document.documentElement.dataset.adminPanel = "1";
+    return () => { delete document.documentElement.dataset.adminPanel; };
+  }, []);
+
   // Menú móvil como diálogo: foco dentro al abrir, Tab no sale del panel, Escape cierra y el foco
   // vuelve al botón que lo abrió
   useEffect(() => {
@@ -372,7 +378,7 @@ export default function AdminLayout({ children, title }: AdminLayoutProps) {
                         "flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-medium transition-all",
                         focusRing,
                         childActive
-                          ? "bg-sidebar-accent text-accent"
+                          ? "bg-sidebar-accent text-sidebar-accent-foreground font-semibold shadow-[inset_2px_0_0_var(--sidebar-primary)]"
                           : "text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-foreground",
                       )}
                     >
@@ -477,7 +483,7 @@ export default function AdminLayout({ children, title }: AdminLayoutProps) {
             )}
             {showLabels && (
               isTaskNav || !isSingleInstall ? (
-                <span className="text-sm font-display font-semibold text-sidebar-foreground truncate">{brandName}</span>
+                <span className="text-sm font-display font-semibold text-sidebar-foreground overflow-hidden text-ellipsis whitespace-nowrap">{brandName}</span>
               ) : (
                 <span className="text-xs text-accent tracking-widest uppercase font-display font-bold shrink-0">
                   {userRole === "adminrest" ? "Restaurantes" : userRole === "controler" ? "Control" : "Admin"}
@@ -577,7 +583,7 @@ export default function AdminLayout({ children, title }: AdminLayoutProps) {
             </div>
             {showLabels && (
               <div className="flex-1 min-w-0">
-                <Link href="/admin/mi-cuenta" className="block text-xs font-semibold text-sidebar-foreground hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sidebar-ring rounded truncate" title="Mi cuenta: correo y dispositivos">{user?.name ?? "Usuario"}</Link>
+                <Link href="/admin/mi-cuenta" className="block text-xs font-semibold text-sidebar-foreground hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sidebar-ring rounded overflow-hidden text-ellipsis whitespace-nowrap" title="Mi cuenta: correo y dispositivos">{user?.name ?? "Usuario"}</Link>
                 <p className={cn("text-xs font-medium capitalize", roleMeta.color)}>{roleMeta.label}</p>
               </div>
             )}
@@ -611,7 +617,7 @@ export default function AdminLayout({ children, title }: AdminLayoutProps) {
             <Menu className="w-5 h-5" aria-hidden="true" />
           </button>
           {title && (
-            <h1 className="font-display font-semibold text-base sm:text-lg text-foreground truncate min-w-0">{title}</h1>
+            <h1 className="font-display font-semibold text-base sm:text-lg text-foreground overflow-hidden text-ellipsis whitespace-nowrap min-w-0">{title}</h1>
           )}
           <div className="ml-auto flex items-center gap-2 sm:gap-3 shrink-0">
             {/* Prueba gratuita: días restantes (dato del servidor) */}
@@ -709,7 +715,7 @@ export default function AdminLayout({ children, title }: AdminLayoutProps) {
                             onClick={() => { navigate(item.ctaPath); setNotifOpen(false); }}
                           >
                             <div className="flex items-center justify-between gap-2">
-                              <span className="text-sm font-medium text-foreground truncate">
+                              <span className="text-sm font-medium text-foreground overflow-hidden text-ellipsis whitespace-nowrap">
                                 {item.title}
                               </span>
                               {item.amount != null && (
@@ -719,7 +725,7 @@ export default function AdminLayout({ children, title }: AdminLayoutProps) {
                               )}
                             </div>
                             {item.subtitle && (
-                              <div className="text-xs text-muted-foreground truncate">
+                              <div className="text-xs text-muted-foreground overflow-hidden text-ellipsis whitespace-nowrap">
                                 {item.subtitle}
                               </div>
                             )}

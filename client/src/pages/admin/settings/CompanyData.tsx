@@ -165,7 +165,7 @@ export default function CompanyData() {
         </p>
       )}
       {readOnly && (
-        <p role="status" className="rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 text-xs text-amber-700 dark:text-amber-300">
+        <p role="status" className="rounded-lg border border-warning/30 bg-warning/10 p-3 text-xs text-warning">
           Tu suscripción está en solo lectura: puedes consultar los datos, pero no cambiarlos.
         </p>
       )}
