@@ -12,6 +12,7 @@
 import type { CrmStore } from "../crm/store";
 import type { OrderStore } from "../orchestrator/store";
 import type { CommercialOrder, OrderState } from "../orchestrator/types";
+import { planFromOrders } from "./panelMarketplace";
 
 export type ActivationState = "none" | "pending" | "processing" | "active" | "error";
 export interface PanelActivation {
@@ -43,6 +44,14 @@ export function activationFromOrders(orders: readonly CommercialOrder[], tenantI
     for (const k of keysOf(o)) if (out.get(k)?.state !== "active") out.set(k, { state, retryable: state === "error", updatedAt: at(o) });
   }
   return out;
+}
+
+/** Plan vigente de la empresa del tenant (audiencia de las campañas del carrusel), o null. */
+export function orderPlan(d: { crm: CrmStore; orders: OrderStore }) {
+  return async (tenantId: string): Promise<string | null> => {
+    const company = (await d.crm.list("companies", { tenantId }, { limit: 2 }))[0] as { id: number } | undefined;
+    return company ? planFromOrders(await d.orders.list({ companyId: company.id }), tenantId) : null;
+  };
 }
 
 /** Lector para el catálogo del panel: empresa del tenant → sus pedidos → estado por producto. */
