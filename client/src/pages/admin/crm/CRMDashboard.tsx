@@ -7,7 +7,7 @@ import AdminLayout from "@/components/AdminLayout";
 import { WorkplaceLocks } from "@/components/connect/WorkplaceLocks";
 import { usePanelSubscription } from "@/hooks/usePanelSubscription";
 import { errorMessage } from "@/components/admin/PanelStates";
-import { useVocabulary, visibleCrmTabs } from "@/lib/vocabulary";
+import { useVocabulary, useVocabularyDefault, visibleCrmTabs } from "@/lib/vocabulary";
 import { errorToastMessage } from "@/lib/errorMessage";
 import { validateContact, validateOrder, validateQuote, hasErrors, type FieldErrors } from "@shared/crmForms";
 import { quoteMailNotice, type QuoteMailResult } from "@shared/quoteMailNotice";
@@ -1801,7 +1801,7 @@ function DirectQuoteModal({ onClose }: { onClose: () => void }) {
 
   // Paso 2: líneas de presupuesto
   const [title, setTitle] = useState("Presupuesto");
-  const [conditions, setConditions] = useState("Presupuesto válido por 15 días. Sujeto a disponibilidad.");
+  const [conditions, setConditions] = useVocabularyDefault(voc.quoteConditions);
   const [validUntil, setValidUntil] = useState(() => {
     const d = new Date();
     d.setDate(d.getDate() + 15);
@@ -2281,7 +2281,7 @@ function QuoteBuilderModal({
   const voc = useVocabulary();
   const [title, setTitle] = useState(`Presupuesto - ${leadName}`);
   const [description, setDescription] = useState("");
-  const [conditions, setConditions] = useState("Presupuesto válido por 15 días. Sujeto a disponibilidad.");
+  const [conditions, setConditions] = useVocabularyDefault(voc.quoteConditions);
   const [validUntil, setValidUntil] = useState(() => {
     const d = new Date();
     d.setDate(d.getDate() + 15);

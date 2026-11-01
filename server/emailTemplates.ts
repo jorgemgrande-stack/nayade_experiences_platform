@@ -1278,7 +1278,7 @@ export function buildQuotePdfHtml(d: QuotePdfData): string {
         ${getBrandLogo() ? `<img src="${escAttr(getBrandLogo())}" alt="${escAttr(getBrandShort())}" width="90" height="90" style="display:block;border-radius:50%;border:3px solid rgba(255,255,255,0.85);object-fit:cover;" />` : ""}
         <div>
           <div style="color:#fff;font-size:20px;font-weight:900;letter-spacing:2px;text-transform:uppercase;line-height:1.1;">${getBrandShort()}</div>
-          <div style="color:rgba(255,255,255,0.65);font-size:10px;letter-spacing:3px;text-transform:uppercase;margin-top:3px;">${getBrandName().replace(getBrandShort(), "").trim() || "Experiences"}</div>
+          <div style="color:rgba(255,255,255,0.65);font-size:10px;letter-spacing:3px;text-transform:uppercase;margin-top:3px;">${getBrandName().replace(getBrandShort(), "").trim() || ew("Experiences", "")}</div>
         </div>
       </div>
       <div style="text-align:right;color:rgba(255,255,255,0.80);font-size:11.5px;line-height:1.7;">

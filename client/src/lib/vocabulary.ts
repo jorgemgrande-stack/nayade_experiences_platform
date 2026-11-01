@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { usePanelSubscription } from "@/hooks/usePanelSubscription";
 import { buildVocabulary, type Vocabulary } from "@shared/vocabulary";
 
@@ -15,4 +15,18 @@ export function useVocabulary(): Vocabulary {
   // `can` cambia en cada render; el vocabulario solo depende del modo y de las licencias visibles
   // eslint-disable-next-line react-hooks/exhaustive-deps
   return useMemo(() => buildVocabulary({ licensed: isLicensed, can }), [isLicensed, data]);
+}
+
+/**
+ * Valor inicial de un campo que sale del vocabulario (p. ej. las condiciones de un presupuesto): sigue al vocabulario
+ * mientras el usuario no lo cambie, porque las licencias de la empresa llegan después del primer pintado.
+ */
+export function useVocabularyDefault(value: string): [string, (v: string) => void] {
+  const [state, setState] = useState(value);
+  const last = useRef(value);
+  useEffect(() => {
+    setState((cur) => (cur === last.current ? value : cur));
+    last.current = value;
+  }, [value]);
+  return [state, setState];
 }
