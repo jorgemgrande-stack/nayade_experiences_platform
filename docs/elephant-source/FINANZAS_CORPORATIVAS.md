@@ -753,6 +753,46 @@ y acumulado); el panel fiscal avisa `tax_config_not_validated` y `fee_vat_unset`
 `stripe_fee_invoice_difference`. Errores nuevos: 409 `tax_config_not_validated`, 409 `corporate_year_unset`, 400
 `vat_id_required`, 400 `invalid_rule`, 400 `invalid_stripe_fee_invoice`.
 
+## Automatización e integridad (01/11/2026)
+
+Motivo: el primer cobro real (Nextair, 1.210 € el 01/11/2026) llegó a Stripe y al webhook, pero la contabilidad seguía a
+cero. La cadena se cortaba en la factura propia: nadie lanzaba la generación de borradores (solo un botón), la
+expedición está apagada hasta decidir DF-2, no había ejercicio dado de alta y la clave restringida de Stripe no tiene
+permiso de lectura de saldo ni de payouts.
+
+**Tarea automática** (`server/finance/automation.ts`, cada 15 minutos, una réplica con `GET_LOCK`, sin interruptor:
+solo escribe en el libro propio y en borradores). Pasos idempotentes, el fallo de uno no detiene los demás:
+
+1. Ejercicio: si no hay ninguno, da de alta el del año en curso (sin saldos; la apertura queda pendiente).
+2. Configuración fiscal: si nadie la ha guardado, guarda los datos confirmados del emisor (razón social, NIF, ejercicio
+   natural) con lo que falta por confirmar en las notas. Queda **sin validar**.
+3. Borradores de factura de los servicios externos y su estado de cobro (`InvoicingService.generateExternal`). Nunca expide.
+4. Facturas expedidas al libro (`invoice:<id>`), solo si hay pendientes.
+5. Stripe por API (`server/finance/stripeBalanceApi.ts`): GET de transacciones de saldo, payouts y la factura de cada cobro
+   (por su PaymentIntent) con la clave del plano de control; se importan con la misma deduplicación que el CSV
+   (`stripe-txn:<id>`, `stripe-payout:<id>`; una lectura idéntica no crea otra importación) y se contabiliza lo pendiente.
+   Sin permisos, el paso queda `unavailable` con los permisos que faltan (`balance_read`, `payout_read`). El CSV sigue
+   como vía complementaria de conciliación y recuperación.
+
+Cada pasada se guarda en la auditoría (`automation.run`) si cambia algo o cada hora.
+
+**Integridad** (`server/finance/integrity.ts`, solo lectura). Contrasta los hechos confirmados por el webhook
+(`external_subscription_events`: `invoice_paid`, `invoice_payment_failed`, `charge_refunded`, `charge_dispute`) con la
+factura propia, la transacción de Stripe contabilizada, el ejercicio, la apertura, la configuración fiscal, los bancos,
+los gastos y la última pasada. Sus incidencias (con `source`, `action` y `amountCents`) se suman a las del control diario
+de hoy: `automation_stale`, `automation_errors`, `stripe_source_unavailable`, `confirmed_payment_unposted`,
+`confirmed_payment_without_invoice`, `invoice_drafts_due`, `payment_failed`, `subscription_overdue`, `refund_unposted`,
+`dispute_open`, `fiscal_year_missing`, `opening_entry_pending`, `fiscal_config_missing`, `fiscal_config_unvalidated`,
+`bank_not_configured`, `bank_without_statements`, `expenses_unposted`, `expenses_uncategorized` y
+`stripe_ledger_difference`.
+
+`GET /finance/overview` (`finance:read`): doce indicadores (ingresos devengados, facturación emitida, cobros recibidos y
+pendientes, saldo en Stripe, saldo bancario, gastos devengados y pagados, IVA repercutido y soportado, resultado y
+tesorería) con `state`: `value`, `zero` (cero real: la fuente está completa), `pending` (hay hechos confirmados sin
+llevar al libro o a la factura, en `pendingCents`) o `unavailable` (falta la fuente). Además el estado del ejercicio, la
+apertura, la configuración fiscal, los bancos, la fuente de Stripe y la expedición, las listas `pendingSync` y
+`unavailable`, los cobros confirmados del año y `definitive` (false mientras falte la apertura o haya algo pendiente).
+
 ## Permisos
 
 Cada capacidad tiene su ámbito propio (`finance:*`, en `server/controlPlane/auth.ts`), centralizado en

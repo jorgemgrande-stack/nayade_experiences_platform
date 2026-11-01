@@ -93,6 +93,8 @@ export interface FinanceStripeStore {
   transactionsByCharge(chargeIds: string[]): Promise<StripeTxn[]>;
   transactionsByPayout(stripePayoutIds: string[]): Promise<StripeTxn[]>;
   transactionsByInvoice(ownInvoiceIds: number[]): Promise<StripeTxn[]>;
+  /** Por factura de Stripe (`in_…`): para saber si un cobro confirmado por el webhook ya está importado y contabilizado. */
+  transactionsByStripeInvoice(stripeInvoiceIds: string[]): Promise<StripeTxn[]>;
   markTransaction(id: number, m: TxnMark): Promise<void>;
   /** Marca revisada la incidencia (con nota); false si no la tenía o ya estaba revisada. */
   reviewIssue(id: number, by: string, at: number, note: string): Promise<boolean>;
@@ -253,6 +255,9 @@ export class MemoryFinanceStripeStore implements FinanceStripeStore {
   }
   async transactionsByInvoice(ids: number[]) {
     return this.c(this.txns.filter((x) => x.ownInvoiceId !== null && ids.includes(x.ownInvoiceId)));
+  }
+  async transactionsByStripeInvoice(ids: string[]) {
+    return this.c(this.txns.filter((x) => x.stripeInvoiceId !== null && ids.includes(x.stripeInvoiceId)));
   }
   async markTransaction(id: number, m: TxnMark) {
     const x = this.txns.find((r) => r.id === id);
@@ -575,6 +580,9 @@ export class MysqlFinanceStripeStore implements FinanceStripeStore {
   }
   async transactionsByInvoice(ids: number[]) {
     return ids.length ? this.rows(`SELECT ${TXN_COLS} FROM fin_stripe_transactions WHERE own_invoice_id IN (?)`, [ids], txnRow) : [];
+  }
+  async transactionsByStripeInvoice(ids: string[]) {
+    return ids.length ? this.rows(`SELECT ${TXN_COLS} FROM fin_stripe_transactions WHERE stripe_invoice_id IN (?)`, [ids], txnRow) : [];
   }
   async markTransaction(id: number, m: TxnMark) {
     const fields: Record<keyof TxnMark, string> = { status: "status", entryId: "entry_id", ownInvoiceId: "own_invoice_id", issue: "issue", issueDetail: "issue_detail", postedAt: "posted_at" };

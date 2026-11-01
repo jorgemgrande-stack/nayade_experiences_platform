@@ -951,6 +951,10 @@ export interface DailyAlert {
   severity: "info" | "warning" | "critical";
   message: string;
   count: number;
+  /** Incidencias de integridad: origen, acción correctiva e importe afectado. */
+  source?: string;
+  action?: string;
+  amountCents?: number | null;
 }
 
 /** Avisos del control diario a partir de los recuentos (los null no avisan). */

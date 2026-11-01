@@ -13,6 +13,7 @@ import type { OwnInvoiceDirectory } from "./ownInvoices";
 import type { FinanceOpsStore } from "./opsStore";
 import { addDays } from "./opsRules";
 import { isValidDate } from "./rules";
+import type { FinanceIntegrity } from "./integrity";
 import type { FinanceService } from "./service";
 import type { FinanceStore } from "./store";
 import type { FinanceStripeService } from "./stripeService";
@@ -94,6 +95,8 @@ export interface FinanceAnalysisDeps {
   paymentEvents?: PaymentEventSource | null;
   /** Migración 0039 aplicada: configuración del análisis (comisiones de Stripe y naturalezas bancarias). */
   fiscal?: boolean;
+  /** Integridad (hechos confirmados frente al libro y estado de las fuentes); sin ella, solo los recuentos del día. */
+  integrity?: Pick<FinanceIntegrity, "alerts" | "overview"> | null;
   now?: () => number;
 }
 
@@ -205,6 +208,12 @@ export class FinanceAnalysisService {
 
   // ── Control diario ────────────────────────────────────────────────────────────────────────────────────────────
 
+  /** Panel financiero: indicadores con su estado (valor, cero real, pendiente o no disponible). */
+  async overview() {
+    if (!this.d.integrity) throw new FinanceError("unavailable", "El panel de integridad no está montado en este entorno");
+    return this.d.integrity.overview();
+  }
+
   async daily(date?: string) {
     const day = this.day(date);
     const today = this.today();
@@ -247,11 +256,13 @@ export class FinanceAnalysisService {
       taxOverdue: taxLate ? taxLate.total : null,
       draftEntries: drafts.total,
     };
+    // Integridad (estado actual, solo para hoy): hechos confirmados sin llevar al libro y fuentes sin sincronizar
+    const integrity = this.d.integrity && day === today ? await this.d.integrity.alerts() : [];
     return {
       date: day,
       today,
       counts,
-      alerts: dailyAlerts(counts),
+      alerts: [...dailyAlerts(counts), ...integrity],
       invoices: invoicePage ? { count: invoicePage.total, totalCents: sum(invoicePage.items.map((i) => i.totalCents)), items: invoicePage.items.slice(0, 50).map((i) => ({ id: i.id, number: i.number, customerName: i.customerName, totalCents: i.totalCents, paymentStatus: i.paymentStatus })) } : null,
       stripe: aggregates && issues ? { charges: { count: charges.count, grossCents: charges.grossCents, feeCents: charges.feeCents, netCents: charges.netCents }, refunds, issuesOpen: issues.open, disputesOpen: issues.disputes } : null,
       payouts:
