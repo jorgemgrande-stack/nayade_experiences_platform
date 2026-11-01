@@ -182,6 +182,9 @@ export default function QuoteAcceptance() {
   const installmentPlan = quote.installmentPlan ?? null;
   const firstRequiredCents = installmentPlan?.firstRequiredAmountCents ?? null;
   const payAmountCents = firstRequiredCents ?? Math.round(Number(quote.total) * 100);
+  const nextInstallmentNumber = installmentPlan?.nextInstallment?.installmentNumber ?? 1;
+  // Ya confirmado con alguna cuota pagada: quedan cuotas por pagar, pero ya no se puede rechazar
+  const alreadyAccepted = quote.status === "aceptado";
   const payAmountEuros = payAmountCents / 100;
 
   function formatInstallmentStatus(s: string) {
@@ -636,7 +639,7 @@ export default function QuoteAcceptance() {
               {payMutation.isPending ? (
                 <><Loader2 className="w-5 h-5 mr-2 animate-spin" /> Preparando pago...</>
               ) : installmentPlan ? (
-                <><CreditCard className="w-5 h-5 mr-2" /> Pagar 1ª cuota: {formatCurrency(payAmountEuros)}</>
+                <><CreditCard className="w-5 h-5 mr-2" /> Pagar cuota {nextInstallmentNumber}: {formatCurrency(payAmountEuros)}</>
               ) : (
                 <><CreditCard className="w-5 h-5 mr-2" /> Aceptar y pagar {formatCurrency(quote.total)}</>
               )}
@@ -648,7 +651,7 @@ export default function QuoteAcceptance() {
             )}
 
             {/* Reject */}
-            {!showRejectForm ? (
+            {alreadyAccepted ? null : !showRejectForm ? (
               <button
                 className="w-full text-sm text-gray-400 hover:text-red-500 transition-colors py-2"
                 onClick={() => setShowRejectForm(true)}

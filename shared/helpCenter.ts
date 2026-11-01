@@ -181,7 +181,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
     steps: [
       "Las facturas se emiten al crear un pedido o al confirmarse su pago. Si un pedido no tiene factura, usa «Generar factura» desde el pedido.",
       "En Facturación › Facturas tienes, para cada factura: visualizar, descargar, generar el PDF, reenviar por email y confirmar un pago manual («Confirmar cobro»).",
-      "Para devolver dinero o corregir una factura cobrada, usa «Generar factura de abono», indica el «Motivo del abono» y pulsa «Generar abono». La factura original queda abonada.",
+      "Para devolver dinero o corregir una factura emitida, usa «Emitir abono»: elige «Todo lo pendiente» o «Solo una parte» (marca las líneas y abona unidades o un importe), revisa la vista previa con la base, el IVA de cada tipo y el total, indica el «Motivo del abono» y confirma. El abono lleva su propio número y la factura original no se modifica; cuando los abonos cubren todo lo facturado, queda abonada.",
       "«Anular factura» no se puede deshacer; para reembolsos usa el abono.",
       "En Facturación › Cobros pendientes (pestaña «Pagos Pendientes») puedes confirmar pagos, reenviar recordatorios o cancelarlos.",
       "En Facturación › Anulaciones y abonos (pestaña «Anulaciones») se gestionan las solicitudes de cancelación de pedidos.",

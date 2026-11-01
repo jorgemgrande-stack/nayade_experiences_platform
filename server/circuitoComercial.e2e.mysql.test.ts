@@ -196,7 +196,7 @@ describe.skipIf(!URL_)("circuito comercial de punta a punta (MySQL real, Stripe 
       if (op.op === "create_product") gw.addProduct({ id: `prod_test_${op.productKey}`, name: op.params.name, metadata: op.params.metadata });
       else gw.addPrice({ id: `price_test_${op.params.metadata.es_web_price_id}`, productId: `prod_test_${op.productKey}`, lookupKey: op.params.lookup_key, unitAmount: op.params.unit_amount, interval: op.params.recurring.interval, metadata: op.params.metadata });
     }
-    expect((await syncCatalog(desired, gw, stripeStore, clock)).linked).toHaveLength(4 + FOR_SALE.length);
+    expect((await syncCatalog(desired, gw, stripeStore, clock)).linked.filter((l) => l.sellable)).toHaveLength(4 + FOR_SALE.length);
 
     const registry = new MemoryTenantRegistryStore();
     const ring = keyringFromEnv({ REGISTRY_KEYS: `k1:${crypto.randomBytes(32).toString("base64")}`, REGISTRY_ACTIVE_KEY_ID: "k1" } as NodeJS.ProcessEnv);

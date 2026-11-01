@@ -200,6 +200,7 @@ export const LEGACY_NAV: NavItem[] = [
     children: [
       { label: "Terminal de venta", href: "/admin/tpv" },
       { label: "Historial de cajas", href: "/admin/tpv/cajas" },
+      { label: "Informes de caja", href: "/admin/tpv/informes" },
     ],
   },
   {
@@ -316,7 +317,14 @@ export const TASK_NAV: NavSection[] = [
       { label: "Facturas", href: "/admin/crm?tab=invoices", key: "t-facturas", icon: "receipt", roles: SALES, capabilities: ["bill-invoices"] },
       { label: "Anulaciones y abonos", href: "/admin/crm?tab=anulaciones", key: "t-abonos", icon: "receipt", roles: SALES, capabilities: ["bill-invoices"] },
       { label: "Cobros pendientes", href: "/admin/crm?tab=pagos_pendientes", key: "t-cobros", icon: "creditCard", roles: SALES, capabilities: ["bill-payments"] },
-      { label: "Caja", href: "/admin/tpv", key: "t-caja", icon: "monitor", roles: ADMIN, capabilities: ["bill-cash"], flagKey: "tpv_enabled" },
+      {
+        label: "Caja", href: "/admin/tpv", key: "t-caja", icon: "monitor", roles: ADMIN, capabilities: ["bill-cash"], flagKey: "tpv_enabled",
+        children: [
+          { label: "Terminal de venta", href: "/admin/tpv", capabilities: ["bill-cash"] },
+          { label: "Historial de cajas", href: "/admin/tpv/cajas", capabilities: ["bill-cash"] },
+          { label: "Informes de caja", href: "/admin/tpv/informes", capabilities: ["bill-cash"] },
+        ],
+      },
       {
         label: "Informes", href: "/admin/contabilidad/informes", key: "t-informes", icon: "chart", roles: ADMIN, capabilities: ["bill-reports"],
         children: [
