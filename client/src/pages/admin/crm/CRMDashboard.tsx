@@ -5570,13 +5570,14 @@ export default function CRMDashboard() {
   const { data: quotesData, isLoading: quotesLoading, error: quotesError, refetch: refetchQuotesList } = trpc.crm.quotes.list.useQuery(quotesFilter, { enabled: tab === "quotes" });
   const { data: resData, isLoading: resLoading, error: resError, refetch: refetchResList } = trpc.crm.reservations.list.useQuery(resFilter, { enabled: tab === "reservations" });
 
-  // Accesos directos desde el inicio del panel: ?tab=quotes&nuevo=1, ?tab=reservations&nuevo=1, ?tab=leads&nuevo=1
+  // Accesos directos desde el inicio del panel: ?tab=quotes&nuevo=1, ?tab=reservations&nuevo=1, ?tab=invoices&nuevo=1, ?tab=leads&nuevo=1
   useEffect(() => {
     const url = new URL(window.location.href);
     if (url.searchParams.get("nuevo") !== "1") return;
     const t = url.searchParams.get("tab");
     if (t === "quotes") setShowDirectQuoteModal(true);
     else if (t === "reservations") setShowNewReservationModal(true);
+    else if (t === "invoices") setNewInvoiceOpen(true);
     else if (t === "leads" || !t) setShowNewLeadModal(true);
     url.searchParams.delete("nuevo");
     window.history.replaceState({}, "", url.toString());
@@ -7802,7 +7803,9 @@ export default function CRMDashboard() {
                         filtered={invoiceStatusFilter !== "all" || invoiceTypeFilter !== "all" || !!invoiceSearch || !!invoiceDateFrom || !!invoiceDateTo}
                         onClearFilters={() => { setInvoiceStatusFilter("all"); setInvoiceTypeFilter("all"); setInvoiceSearch(""); setInvoiceDateFrom(""); setInvoiceDateTo(""); }}
                         emptyTitle="Todavía no has emitido facturas"
-                        emptyHint={`Las facturas se generan desde un presupuesto aceptado o un pedido cobrado. Revisa antes los datos fiscales de tu empresa en Organización → Datos de la empresa.`}
+                        emptyHint={`Emite una factura a mano o genérala desde un presupuesto aceptado o un pedido cobrado. Revisa antes los datos fiscales de tu empresa en Organización › Datos de la empresa.`}
+                        actionLabel="Nueva factura"
+                        onAction={() => setNewInvoiceOpen(true)}
                       />
                     ) : invoicesData.items.map((inv: any) => (
                       <tr key={inv.id} className={`border-t border-foreground/[0.08] hover:bg-foreground/[0.03] transition-colors ${inv.invoiceType === "abono" ? "bg-violet-500/3" : ""}`}>
