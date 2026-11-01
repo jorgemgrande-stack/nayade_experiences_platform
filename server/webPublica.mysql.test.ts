@@ -79,7 +79,7 @@ describe.skipIf(!URL_)("Web pública por empresa (aplicación real, dos empresas
     const a = (await ess.call("a", "GET", "/sitemap.xml")).text;
     const base = `https://${ess.host("a")}`;
     for (const p of ["/", "/contacto", "/servicios", "/blog", "/blog/novedades"]) expect(a, p).toContain(`<loc>${base}${p}</loc>`);
-    expect(a).not.toMatch(/\/experiencias|\/presupuesto<|\/hotel|\/spa|\/restaurantes|lego-packs|\/borrador/);
+    expect(a).not.toMatch(/\/experiencias|\/tienda|\/presupuesto<|\/hotel|\/spa|\/restaurantes|lego-packs|\/borrador/);
     expect(a.match(/<loc>[^<]+\/contacto<\/loc>/g)?.length).toBe(1);
     const b = (await ess.call("b", "GET", "/sitemap.xml")).text;
     expect(b).not.toContain(ess.host("a"));
@@ -90,8 +90,10 @@ describe.skipIf(!URL_)("Web pública por empresa (aplicación real, dos empresas
     const [loc] = await ess.sql<{ id: number }>("a", "SELECT id FROM locations LIMIT 1");
     await ess.sql("a", "INSERT INTO experiences (slug, title, categoryId, locationId, basePrice, isActive, isPublished) VALUES ('visita-guiada', 'Visita guiada', ?, ?, 10, 1, 1)", [cat?.id ?? 1, loc?.id ?? 1]);
     const a2 = (await ess.call("a", "GET", "/sitemap.xml")).text;
-    expect(a2).toContain(`<loc>${base}/experiencias</loc>`);
-    expect(a2).toContain(`<loc>${base}/experiencias/visita-guiada</loc>`);
-    expect((await ess.call("b", "GET", "/sitemap.xml")).text).not.toContain("/experiencias");
+    // Una pyme: en la dirección de su tienda, no en la de la ficha sectorial
+    expect(a2).toContain(`<loc>${base}/tienda</loc>`);
+    expect(a2).toContain(`<loc>${base}/tienda/visita-guiada</loc>`);
+    expect(a2).not.toContain("/experiencias");
+    expect((await ess.call("b", "GET", "/sitemap.xml")).text).not.toMatch(/\/experiencias|\/tienda/);
   });
 });

@@ -12,7 +12,9 @@ vi.mock("./_core/publicUrl", () => ({ getTrustedBaseUrl: () => "https://empresa-
 import { dueReminder, runOnboardingReminders, type ReminderDeps } from "./onboardingReminders";
 import { onboardingReminder } from "./onboardingNotices";
 import { parseReminderState, type OnboardingReminderState } from "./setupWizardDb";
-import { emptyProgress, markStep, type SetupProgress } from "../shared/setupWizard";
+import { buildSetupPlan, emptyProgress, markStep, type SetupFacts, type SetupProgress } from "../shared/setupWizard";
+
+const NO_FACTS: SetupFacts = { identity: false, fiscal: false, brand: false, activity: false, clients: 0, products: 0, sales: 0, webEdited: false, comms: false };
 
 const DAY = 86_400_000;
 const T0 = Date.UTC(2026, 9, 1, 9);
@@ -22,9 +24,12 @@ const who = { email: "ana@empresa-demo.example", name: "Ana Demo" };
 function company(o: { firstAccessAt?: number | null; userId?: number | null; progress?: SetupProgress } = {}) {
   let state: OnboardingReminderState | null = o.firstAccessAt === null ? null : { firstAccessAt: o.firstAccessAt ?? T0, userId: o.userId === undefined ? 1 : o.userId, sent: {} };
   let progress = o.progress ?? emptyProgress();
+  let facts = NO_FACTS;
   const deps: ReminderDeps = {
     readState: async () => (state ? structuredClone(state) : null),
     readProgress: async () => progress,
+    // El recorrido real (el del asistente): los pasos «de hacer» se completan con datos
+    readPlan: async () => buildSetupPlan({ progress, activity: null, capabilities: null, facts }),
     contact: async (id) => (id === 1 ? who : null),
     claim: async (days, earlier, now) => {
       if (!state || state.sent[String(days)] !== undefined) return false;
@@ -37,7 +42,7 @@ function company(o: { firstAccessAt?: number | null; userId?: number | null; pro
     },
     send: onboardingReminder,
   };
-  return { deps, get state() { return state; }, setProgress: (p: SetupProgress) => void (progress = p) };
+  return { deps, get state() { return state; }, setProgress: (p: SetupProgress) => void (progress = p), setFacts: (f: Partial<SetupFacts>) => void (facts = { ...NO_FACTS, ...f }) };
 }
 
 beforeEach(() => {
@@ -70,6 +75,7 @@ describe("recordatorios de primeros pasos", () => {
     let p = markStep(emptyProgress(), "company", "done", T0 + DAY);
     p = markStep(p, "activity", "skipped", T0 + DAY);
     c.setProgress(p);
+    c.setFacts({ identity: true });
     expect(await runOnboardingReminders(T0 + 3 * DAY, c.deps)).toBe(3);
     expect(sent[0].html).not.toContain(">Identidad de empresa<");
     expect(sent[0].html).toContain("CRM");

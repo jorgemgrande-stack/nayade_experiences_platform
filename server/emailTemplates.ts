@@ -21,6 +21,7 @@ import { brandSetting } from "./tenantBrand";
 import { BIG_ELEPHANT, contrastRatio } from "../shared/loginBrand";
 import { isMultiTenant } from "./_core/tenant";
 import { publicBaseUrl } from "./_core/productIdentity";
+import { roleLabel as roleLabelOf } from "../shared/roleLabels";
 
 // ─── Dynamic brand helpers (read from config cache at call time) ──────────────
 const getContactEmail = () => brandSetting("email_reservations", "");
@@ -641,17 +642,8 @@ export interface InviteEmailData {
   setPasswordUrl: string;
 }
 
-const ROLE_LABELS: Record<string, string> = {
-  admin:     "Administrador",
-  adminrest: "Responsable de Restaurante",
-  monitor:   "Monitor",
-  agente:    "Agente Comercial",
-  user:      "Usuario",
-  readonly:  "Solo lectura",
-};
-
 export function buildInviteHtml(d: InviteEmailData): string {
-  const roleLabel = ROLE_LABELS[d.role] ?? d.role;
+  const roleLabel = roleLabelOf(d.role);
   const body = `
     ${emailHeader("Bienvenido al Equipo", `Plataforma de Gesti&oacute;n de ${escAttr(getBrandName())}`)}
     <tr><td style="padding:28px 32px 0;">

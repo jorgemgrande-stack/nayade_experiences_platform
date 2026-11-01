@@ -11,7 +11,8 @@
  * Flag por empresa: `onboarding_reminder_job_enabled` (activo por defecto).
  */
 import { scheduleTenantInterval } from "./_core/tenantRegistry/scheduler";
-import { onboardingReminder } from "./onboardingNotices";
+import { onboardingReminder, type OnboardingPlan } from "./onboardingNotices";
+import { loadState } from "./routers/setupWizard";
 import {
   activeUserContact,
   claimOnboardingReminder,
@@ -39,15 +40,18 @@ export function dueReminder(state: OnboardingReminderState | null, progress: Set
 export interface ReminderDeps {
   readState: () => Promise<OnboardingReminderState | null>;
   readProgress: () => Promise<SetupProgress>;
+  /** Recorrido real de la empresa (el mismo del asistente): pasos visibles y su estado. */
+  readPlan: () => Promise<OnboardingPlan>;
   contact: (userId: number) => Promise<{ email: string; name: string | null } | null>;
   claim: (days: number, earlier: number[], now: number) => Promise<boolean>;
   release: (days: number, earlier: number[], claimedAt: number) => Promise<void>;
-  send: (p: SetupProgress, to: { email: string; name: string | null }, days: number) => Promise<boolean>;
+  send: (p: OnboardingPlan, to: { email: string; name: string | null }, days: number) => Promise<boolean>;
 }
 
 const defaultDeps: ReminderDeps = {
   readState: readOnboardingReminderState,
   readProgress,
+  readPlan: async () => (await loadState()).plan,
   contact: activeUserContact,
   claim: claimOnboardingReminder,
   release: releaseOnboardingReminder,
@@ -65,7 +69,7 @@ export async function runOnboardingReminders(now = Date.now(), d: ReminderDeps =
   if (!to) return null;
   const earlier = ONBOARDING_REMINDER_DAYS.filter((x) => x < days);
   if (!(await d.claim(days, earlier, now))) return null;
-  const ok = await d.send(progress, to, days).catch(() => false);
+  const ok = await d.readPlan().then((plan) => d.send(plan, to, days)).catch(() => false);
   if (!ok) {
     await d.release(days, earlier, now);
     return null;

@@ -160,6 +160,9 @@ describe.skipIf(!URL_)("Escenarios v2 de usuario nuevo (aplicación real, dos em
 
   beforeAll(async () => {
     fs.copyFileSync(path.join(__dirname, "..", "client", "index.html"), path.join(dist, "index.html"));
+    // Autenticación local como en el despliegue multiempresa y en la CI (la usan también las subidas de archivos):
+    // la prueba la fija ella misma para pasar sin variables externas
+    process.env.LOCAL_AUTH = "true";
     ess = await startEssentialApp(URL_!, "esc", { webDist: dist });
     // Archivos en disco local temporal (el banco de pruebas deja la empresa sin S3)
     for (const k of ["S3_ENDPOINT", "S3_ACCESS_KEY", "S3_SECRET_KEY", "S3_BUCKET"]) delete process.env[k];

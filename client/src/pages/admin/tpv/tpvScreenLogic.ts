@@ -1,6 +1,7 @@
 /**
  * Lógica pura de la pantalla de venta del TPV (sin React: la usan la pantalla y las pruebas).
  */
+import { randomId } from "@shared/randomId";
 
 export type ProductKind = "experience" | "pack" | "spa" | "hotel" | "restaurant" | "extra" | "legoPack";
 
@@ -94,6 +95,6 @@ export function pickInitialRegister(
  * Clave de un intento de cobro (el servidor la usa para no grabar dos veces la misma venta). La pantalla genera una
  * por carrito: un doble clic o un reintento del MISMO carrito reenvía la misma; un carrito distinto, otra.
  */
-export function newSaleAttemptKey(rand: () => string = () => globalThis.crypto.randomUUID()): string {
+export function newSaleAttemptKey(rand: () => string = () => randomId()): string {
   return rand().replace(/[^A-Za-z0-9_-]/g, "").slice(0, 64);
 }

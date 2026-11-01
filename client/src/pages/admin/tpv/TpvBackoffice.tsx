@@ -4,6 +4,8 @@
  */
 import { useState } from "react";
 import { trpc } from "@/lib/trpc";
+import { formatEur } from "@shared/creditNoteForm";
+import { formatDayEs } from "@shared/formatDay";
 import AdminLayout from "@/components/AdminLayout";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -270,7 +272,7 @@ export default function TpvBackoffice() {
                       <div className="flex items-center justify-between mt-2">
                         <span className="text-xs text-gray-500">{session.salesCount ?? 0} ventas</span>
                         <span className="text-sm font-bold text-violet-400">
-                          {parseFloat(String(session.totalSales ?? 0)).toFixed(2)}€
+                          {formatEur(parseFloat(String(session.totalSales ?? 0)))}
                         </span>
                       </div>
                     </button>
@@ -293,9 +295,9 @@ export default function TpvBackoffice() {
                 {/* Summary cards */}
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
                   {[
-                    { label: "Total ventas", value: `${(sessionDetail.totalSales ?? 0).toFixed(2)}€`, icon: <TrendingUp className="w-4 h-4" />, color: "text-violet-400" },
-                    { label: "Entradas", value: `${(sessionDetail.totalIn ?? 0).toFixed(2)}€`, icon: <Banknote className="w-4 h-4" />, color: "text-green-400" },
-                    { label: "Salidas", value: `${(sessionDetail.totalOut ?? 0).toFixed(2)}€`, icon: <CreditCard className="w-4 h-4" />, color: "text-red-400" },
+                    { label: "Total ventas", value: `${formatEur((sessionDetail.totalSales ?? 0))}`, icon: <TrendingUp className="w-4 h-4" />, color: "text-violet-400" },
+                    { label: "Entradas", value: `${formatEur((sessionDetail.totalIn ?? 0))}`, icon: <Banknote className="w-4 h-4" />, color: "text-green-400" },
+                    { label: "Salidas", value: `${formatEur((sessionDetail.totalOut ?? 0))}`, icon: <CreditCard className="w-4 h-4" />, color: "text-red-400" },
                     { label: "Ventas", value: String(sessionDetail.sales?.length ?? 0), icon: <Receipt className="w-4 h-4" />, color: "text-cyan-400" },
                   ].map((stat) => (
                     <Card key={stat.label} className="bg-gray-900 border-gray-800">
@@ -316,11 +318,11 @@ export default function TpvBackoffice() {
                     <div className="grid grid-cols-3 gap-4 text-sm">
                       <div>
                         <span className="text-gray-400">Fondo inicial</span>
-                        <div className="font-bold text-white">{parseFloat(String(sessionDetail.session.openingAmount ?? 0)).toFixed(2)}€</div>
+                        <div className="font-bold text-white">{formatEur(parseFloat(String(sessionDetail.session.openingAmount ?? 0)))}</div>
                       </div>
                       <div>
                         <span className="text-gray-400">Mov. entradas</span>
-                        <div className="font-bold text-green-400">+{(sessionDetail.totalIn ?? 0).toFixed(2)}€</div>
+                        <div className="font-bold text-green-400">+{formatEur((sessionDetail.totalIn ?? 0))}</div>
                       </div>
                       {sessionDetail.session.status === "closed" && (
                         <div>
@@ -330,7 +332,7 @@ export default function TpvBackoffice() {
                               ? "text-green-400"
                               : "text-amber-400"
                           }`}>
-                            {parseFloat(String(sessionDetail.session.countedCash ?? 0)).toFixed(2)}€
+                            {formatEur(parseFloat(String(sessionDetail.session.countedCash ?? 0)))}
                           </div>
                         </div>
                       )}
@@ -352,7 +354,7 @@ export default function TpvBackoffice() {
                           <div key={sale.id} className="bg-gray-900 border border-gray-800 rounded-lg p-3">
                             <div className="flex items-center justify-between mb-1">
                               <span className="text-xs font-mono font-bold text-violet-400">{sale.ticketNumber}</span>
-                              <span className="text-sm font-bold text-white">{parseFloat(String(sale.total)).toFixed(2)}€</span>
+                              <span className="text-sm font-bold text-white">{formatEur(parseFloat(String(sale.total)))}</span>
                             </div>
                             <div className="flex items-center gap-2 text-xs text-gray-400">
                               <Clock className="w-3 h-3" />
@@ -373,7 +375,7 @@ export default function TpvBackoffice() {
                               {sale.payments?.map((p: any, i: number) => (
                                 <Badge key={i} variant="outline" className="text-xs border-gray-700 text-gray-400 gap-1">
                                   {METHOD_ICONS[p.method]}
-                                  {parseFloat(String(p.amount)).toFixed(2)}€
+                                  {formatEur(parseFloat(String(p.amount)))}
                                 </Badge>
                               ))}
                             </div>
@@ -403,7 +405,7 @@ export default function TpvBackoffice() {
                               </p>
                             </div>
                             <span className={`text-sm font-bold ${mov.type === "in" ? "text-green-400" : "text-red-400"}`}>
-                              {mov.type === "in" ? "+" : "-"}{parseFloat(String(mov.amount)).toFixed(2)}€
+                              {mov.type === "in" ? "+" : "-"}{formatEur(parseFloat(String(mov.amount)))}
                             </span>
                           </div>
                         ))}
@@ -467,7 +469,7 @@ function TpvReservationsToday() {
                 {res.merchantOrder}
               </span>
               <Badge variant="outline" className="text-xs border-emerald-800 text-emerald-400">
-                {(res.amountTotal / 100).toFixed(2)}€
+                {formatEur((res.amountTotal / 100))}
               </Badge>
             </div>
             <p className="text-xs font-medium text-white truncate">{res.productName}</p>
@@ -491,7 +493,7 @@ function TpvReservationsToday() {
             <div className="mt-1 text-xs text-gray-500">
               <Clock className="w-3 h-3 inline mr-1" />
               {new Date(res.createdAt).toLocaleTimeString("es-ES", { hour: "2-digit", minute: "2-digit" })}
-              {res.bookingDate && <span className="ml-2">Fecha: {res.bookingDate}</span>}
+              {res.bookingDate && <span className="ml-2">Fecha: {formatDayEs(res.bookingDate)}</span>}
             </div>
           </div>
         ))}

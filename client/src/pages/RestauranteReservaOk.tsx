@@ -12,6 +12,7 @@ import {
 } from "lucide-react";
 import PublicLayout from "@/components/PublicLayout";
 import { trpc } from "@/lib/trpc";
+import { formatEur } from "@shared/creditNoteForm";
 import { usePublicContact } from "@/hooks/usePublicPhone";
 
 export default function RestauranteReservaOk() {
@@ -186,7 +187,7 @@ export default function RestauranteReservaOk() {
   }
 
   // -- Estado: CONFIRMADA ? -------------------------------------------------
-  const depositEuros = data.depositAmount ? Number(data.depositAmount).toFixed(2) : null;
+  const depositEuros = data.depositAmount ? formatEur(Number(data.depositAmount)) : null;
   const formattedDate = data.date
     ? new Date(data.date + "T12:00:00").toLocaleDateString("es-ES", {
         weekday: "long", year: "numeric", month: "long", day: "numeric"
@@ -242,10 +243,10 @@ export default function RestauranteReservaOk() {
               <span className="text-muted-foreground">Email</span>
               <span className="font-medium text-foreground">{data.guestEmail}</span>
             </div>
-            {depositEuros && Number(depositEuros) > 0 && (
+            {depositEuros && Number(data.depositAmount) > 0 && (
               <div className="flex justify-between items-center pt-3 border-t border-border">
                 <span className="font-semibold text-foreground">Depósito pagado</span>
-                <span className="font-bold text-emerald-600 text-lg">{depositEuros}€</span>
+                <span className="font-bold text-emerald-600 text-lg">{depositEuros}</span>
               </div>
             )}
             <div className="flex justify-between items-center text-xs text-muted-foreground">
