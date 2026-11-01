@@ -251,9 +251,9 @@ export default function ClientDetail({ id }: { id: number }) {
               </dl>
               {!client.nif && canInvoices && <p className="mt-2 text-xs text-muted-foreground">Añade el NIF para emitirle facturas completas.</p>}
             </Card>
-            {data.lead && canLeads && (
+            {data.lead && client.leadId && canLeads && (
               <Card title={voc.leadOrigin} icon={User}>
-                <p className="text-sm text-foreground">{data.lead.opportunityName ?? data.lead.name} · {fmtDate(data.lead.createdAt as unknown as string)}</p>
+                <p className="text-sm text-foreground">{data.lead.name} ·{fmtDate(data.lead.createdAt as unknown as string)}</p>
                 <Link href={`/admin/crm?tab=leads&search=${encodeURIComponent(data.lead.email ?? data.lead.name)}`} className="mt-1 inline-block text-xs font-medium text-primary underline-offset-4 hover:underline">
                   Ver en {voc.leads}
                 </Link>
