@@ -74,6 +74,7 @@ export const CIRCUIT: Readonly<Record<string, TemplateCircuit>> = {
   // Envíos de una persona del equipo desde el CRM
   "contract.invitation": "manual",
   "contract.payment_setup": "manual",
+  "external.payment_request": "manual",
   "implementation.available": "manual",
   // Centro de envíos del CRM (server/communications): servicio, encuesta de soporte y comerciales con consentimiento
   "product.update": "manual",
@@ -162,6 +163,7 @@ export const TEMPLATES: readonly TemplateEntry[] = [
   e("tenant.domain_connected", "Dominio propio conectado", "empresas", "transactional", "controlplane", "Dominio propio activado en la plataforma", "conectada", () => x.domainConnected({ domain: "www.empresa-demo.example" })),
   e("tenant.domain_pending", "Dominio pendiente de validación", "empresas", "transactional", "controlplane", "Alta de un dominio propio pendiente de validar", "conectada", () => x.domainPending({ domain: "www.empresa-demo.example", record: "CNAME", value: "empresa-demo.app.bigelephant.example" })),
   e("external.changed", "Servicio externo modificado o renovado", "empresas", "transactional", "controlplane", "Cambio confirmado del servicio: decisión sobre la fecha del primer cargo o versión nueva del contrato aceptada", "conectada", () => x.externalChanged({ ...ext, effectiveAt: PREVIEW_NOW + 10 * DAY, change: "first_charge", contractVersion: null })),
+  e("external.payment_request", "Nota de cobro de un servicio externo", "facturacion", "transactional", "controlplane", "Envío de la nota de cobro (cobro único o periodo de infraestructura) desde el CRM", "conectada", () => x.externalPaymentRequest({ companyName: ext.companyName, recipientName: ext.signerName, title: "Infraestructura gestionada", periodLabel: "noviembre de 2026", lines: [{ label: "Servidor dedicado", cents: 30_000 }, { label: "Railway (consumo + 15 %)", cents: 11_500 }], adjustment: { label: "Descuento comercial del 10 %", cents: -4_150 }, baseCents: 37_350, taxRateBp: 2100, taxCents: 7_844, totalCents: 45_194, currency: "EUR", dueAt: PREVIEW_NOW + 15 * DAY, invoiceNumber: null, url: "https://checkout.stripe.example/c/pay/demo" })),
   e("data.export_ready", "Exportación de datos lista", "empresas", "security", "core", "Exportación generada", "conectada", P("data.export_ready")),
   e("data.export_failed", "Exportación de datos fallida", "empresas", "security", "core", "Exportación fallida", "conectada", P("data.export_failed")),
   // ── F. Producto y operaciones ──

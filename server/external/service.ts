@@ -334,6 +334,8 @@ export class ExternalService {
   async updateDraft(id: number, input: Omit<CreateExternalInput, "companyId" | "testClock" | "draft">, actor: string, opts: { canAuthorize?: boolean } = {}): Promise<ExternalSubscription> {
     const x = await this.must(id);
     if (x.status !== "draft") throw new ExternalError("invalid_state", "Solo se edita una contratación en borrador");
+    // Sin el campo, el ajuste vigente se conserva (quien no puede autorizar no lo borra sin querer); null lo quita
+    if (input.adjustment === undefined) input = { ...input, adjustment: x.adjustment ? { type: x.adjustment.type, mode: x.adjustment.mode, value: x.adjustment.value, reason: x.adjustment.reason } : null };
     // Un ajuste ya autorizado se puede conservar tal cual sin volver a autorizarlo
     const same = !!input.adjustment && !!x.adjustment && JSON.stringify(cleanAdjustment(input.adjustment, "")) === JSON.stringify(cleanAdjustment(x.adjustment, "")) && input.amountCents === x.baseAmountCents;
     const terms = this.terms(input, same ? (x.adjustment!.authorizedBy ?? actor) : actor, opts.canAuthorize === true || same);

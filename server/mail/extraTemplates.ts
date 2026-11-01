@@ -37,6 +37,35 @@ export const extraTemplates = {
           : `Las condiciones de ${i.serviceName} para ${i.companyName} se han actualizado conforme al contrato vigente.`;
     return e({ family: "transactional", eyebrow: "Servicio externo", hero: "contrato", title: "Hemos actualizado tu servicio", subject: `Cambios en tu servicio ${i.serviceName}`, ...(i.signerName ? { greeting: `Hola, ${i.signerName}:` } : {}), intro: [intro], blocks: [{ card: { status: { label: "Actualizado", tone: "info" }, rows: [{ label: "Servicio", value: i.serviceName }, ...(i.contractVersion ? [{ label: "Versión del contrato", value: String(i.contractVersion) }] : []), { label: "Cuota mensual", value: fmt.money(i.amountCents, i.currency) }, { label: `IVA (${i.taxRateBp / 100} %)`, value: fmt.money(tax, i.currency) }], total: { label: "Total mensual", value: fmt.money(i.amountCents + tax, i.currency) }, foot: { label: "Primer cargo", value: fmt.date(i.effectiveAt) } } }] });
   },
+  /** Nota de cobro de un servicio externo (cobro único o periodo de infraestructura) con el enlace de pago de Stripe. */
+  externalPaymentRequest: (i: { companyName: string; recipientName?: string | null; title: string; periodLabel?: string | null; lines: Array<{ label: string; cents: number }>; adjustment?: { label: string; cents: number } | null; baseCents: number; taxRateBp: number; taxCents: number; totalCents: number; currency: string; dueAt: number; invoiceNumber?: string | null; url: string }) =>
+    e({
+      family: "transactional",
+      eyebrow: "Nota de cobro",
+      hero: "pago",
+      title: "Tienes un pago pendiente",
+      subject: `Nota de cobro: ${i.title}${i.periodLabel ? ` · ${i.periodLabel}` : ""}`,
+      ...(i.recipientName ? { greeting: `Hola, ${i.recipientName}:` } : {}),
+      intro: [`Te enviamos la nota de cobro de ${i.title} para ${i.companyName}${i.periodLabel ? ` (${i.periodLabel})` : ""}. Puedes pagarla en línea con el enlace seguro.`],
+      blocks: [
+        {
+          card: {
+            status: { label: "Pendiente de pago", tone: "info" },
+            rows: [
+              ...(i.invoiceNumber ? [{ label: "Factura", value: i.invoiceNumber }] : []),
+              ...i.lines.map((l) => ({ label: l.label, value: fmt.money(l.cents, i.currency) })),
+              ...(i.adjustment ? [{ label: i.adjustment.label, value: fmt.money(i.adjustment.cents, i.currency) }] : []),
+              { label: "Base imponible", value: fmt.money(i.baseCents, i.currency) },
+              { label: `IVA (${i.taxRateBp / 100} %)`, value: fmt.money(i.taxCents, i.currency) },
+            ],
+            total: { label: "Total a pagar", value: fmt.money(i.totalCents, i.currency) },
+            foot: { label: "Vencimiento", value: fmt.date(i.dueAt) },
+          },
+        },
+        { notice: { tone: "info", text: "El pago se hace en Stripe, la plataforma de pagos segura. Es un pago único: no autoriza ningún cobro futuro." } },
+      ],
+      cta: { label: "Pagar de forma segura", url: i.url },
+    }),
   productUpdate: (i: { title: string; points: string[]; url: string }) =>
     e({ family: "experiential", eyebrow: "Actualización importante", hero: "novedades", title: i.title, subject: `Big Elephant: ${i.title}`, intro: ["Hemos mejorado Big Elephant. Esto es lo que cambia para ti:"], blocks: [{ steps: i.points.map((p) => ({ title: p, text: "Ya disponible en tu plataforma" })) }], cta: { label: "Ver las novedades", url: i.url } }),
   maintenance: (i: { start: number; minutes: number }) =>

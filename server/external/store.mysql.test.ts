@@ -26,6 +26,11 @@ const base = (contractId: number): NewExternal => ({
   currency: "EUR",
   taxRateBp: 2100,
   interval: "month",
+  intervalCount: 1,
+  durationPeriods: null,
+  endsAt: null,
+  baseAmountCents: null,
+  adjustment: null,
   billingDay: 1,
   billingHour: 8,
   timezone: "Europe/Madrid",
@@ -87,6 +92,11 @@ describe.skipIf(!URL_)("servicios externos con MySQL real (CRM 0026)", () => {
     await expect(test.update(b.id, 1, { stripeSubscriptionId: "sub_test_1" }, T + 3)).rejects.toMatchObject({ code: "conflict" });
     expect((await test.byStripeSubscription("sub_test_1"))!.id).toBe(a.id);
     expect((await test.bySetupSession("cs_test_1"))!.id).toBe(a.id);
+    // 0041: periodicidad, duración y ajuste comercial (las filas de siempre, mensuales y sin ajuste)
+    expect(a).toMatchObject({ intervalCount: 1, durationPeriods: null, adjustment: null });
+    const q = await test.insert({ ...base(103), interval: "year", durationPeriods: 2, endsAt: T + 1000, baseAmountCents: 120_000, adjustment: { type: "discount", mode: "percent", value: 1000, reason: "Piloto", authorizedBy: "operator:jefa" } });
+    expect(q).toMatchObject({ interval: "year", intervalCount: 1, durationPeriods: 2, endsAt: T + 1000, baseAmountCents: 120_000, adjustment: { type: "discount", value: 1000, authorizedBy: "operator:jefa" } });
+    expect((await test.update(q.id, 1, { status: "draft", adjustment: null, baseAmountCents: null }, T + 4)).adjustment).toBeNull();
     // Las filas de pruebas no existen para el entorno live
     expect(await live.get(a.id)).toBeNull();
     expect(await live.list()).toEqual([]);

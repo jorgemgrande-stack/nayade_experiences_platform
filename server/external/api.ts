@@ -60,19 +60,19 @@ const wrap =
 
 const adjustmentBody = z.object({ type: z.enum(["discount", "surcharge"]), mode: z.enum(["percent", "amount"]), value: z.number().int(), reason: z.string().max(300) }).strict();
 const termsBody = {
-    service: z.object({ key: z.string().max(50), name: z.string().max(160) }).strict(),
-    amountCents: z.number().int(),
-    currency: z.string().length(3).optional(),
-    taxRateBp: z.number().int(),
-    billingDay: z.number().int().optional(),
-    firstChargeDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
-    graceDays: z.number().int().optional(),
-    externalRef: z.string().max(200).nullable().optional(),
-    conditions: z.string().max(15000),
-    noticeDays: z.number().int().min(0).max(365).optional(),
-    interval: z.enum(["month", "quarter", "year"]).optional(),
-    durationPeriods: z.number().int().nullable().optional(),
-    adjustment: adjustmentBody.nullable().optional(),
+  service: z.object({ key: z.string().max(50), name: z.string().max(160) }).strict(),
+  amountCents: z.number().int(),
+  currency: z.string().length(3).optional(),
+  taxRateBp: z.number().int(),
+  billingDay: z.number().int().optional(),
+  firstChargeDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  graceDays: z.number().int().optional(),
+  externalRef: z.string().max(200).nullable().optional(),
+  conditions: z.string().max(15000),
+  noticeDays: z.number().int().min(0).max(365).optional(),
+  interval: z.enum(["month", "quarter", "year"]).optional(),
+  durationPeriods: z.number().int().nullable().optional(),
+  adjustment: adjustmentBody.nullable().optional(),
 };
 const createBody = z
   .object({
