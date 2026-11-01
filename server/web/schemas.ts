@@ -81,6 +81,8 @@ export type PlanInclusionDraft = z.infer<typeof planInclusion>;
 export const COMMERCIAL_CTA = ["demo", "contact", "waitlist"] as const;
 /** Estado funcional verificado en el ecosistema (interno): en uso, parcial, prototipo, sin desarrollo. */
 export const FUNCTIONAL_GRADES = ["in_use", "partial", "prototype", "none"] as const;
+/** Imagen real de la ficha: solo https de un almacén público, con texto alternativo. */
+const mediaImage = z.object({ src: z.string().trim().max(500).regex(/^https:\/\/[^\s]+$/), alt: text(160).min(1) }).strict();
 /** Ficha comercial pública (contenido, sin precios: los importes solo viven en los precios aprobados). */
 const commercialBlock = z
   .object({
@@ -96,6 +98,20 @@ const commercialBlock = z
     integrations: z.array(text(200).min(1)).max(12).default([]),
     cta: z.enum(COMMERCIAL_CTA).default("contact"),
     seo: z.object({ slug: entryKey, title: text(70).min(1), description: text(160).min(1) }).strict().nullable().default(null),
+    // ── Ficha del marketplace del panel (Elephant Connect y Net). Opcional y SIN valor por defecto, como forWho: las
+    // versiones publicadas antes de estos campos se reconstruyen igual (publicación por lotes y reversión) ──
+    /** Propuesta de valor en una frase. */
+    valueProposition: text(300).optional(),
+    /** Qué conecta con tu Elephant Core. */
+    coreIntegration: z.array(text(160).min(1)).max(8).optional(),
+    /** Condiciones: permanencia, baja y puesta en marcha. */
+    terms: z.object({ commitment: text(300).optional(), cancellation: text(300).optional(), activation: text(300).optional() }).strict().optional(),
+    /** Preguntas frecuentes de la ficha. */
+    faq: z.array(z.object({ q: text(200).min(3), a: text(1000).min(1) }).strict()).max(10).optional(),
+    /** Productos relacionados (claves del catálogo). */
+    related: z.array(entryKey).max(6).optional(),
+    /** Portada y capturas reales (nunca imágenes inventadas). */
+    media: z.object({ cover: mediaImage.optional(), screenshots: z.array(mediaImage.extend({ caption: text(160).optional() }).strict()).max(8).optional() }).strict().optional(),
   })
   .strict();
 export type CommercialBlock = z.infer<typeof commercialBlock>;
