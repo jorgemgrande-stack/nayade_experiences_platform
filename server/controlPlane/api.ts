@@ -146,6 +146,7 @@ import { ISSUER } from "../stripe/issuer";
 import { createBillingPortalRouter, createPurchasesRouter } from "../stripe/purchasesApi";
 import { createPanelCatalogRouter } from "../commerce/panelCatalog";
 import { orderActivation, orderPlan } from "../commerce/panelActivation";
+import { createPanelEventsRouter, createPanelStatsRouter, type PanelEventStore } from "../commerce/panelEvents";
 import { createPanelRequestsRouter } from "../commerce/panelRequests";
 import { createPanelUsageRouter } from "../commerce/panelUsage";
 import { BillingPortalService } from "../stripe/billingPortal";
@@ -279,7 +280,7 @@ export interface ControlPlaneDeps {
    * Web comercial: catálogo y contenidos administrados desde el CRM (BD del CRM, migración 0004).
    * La lectura pública (/cp/v1/public/site) además requiere `publicIntake` (orígenes y secreto).
    */
-  web?: { store: WebStore; onPublish?: (version: string) => void; /** Imágenes del marketplace (migración 0042). */ media?: MediaStore };
+  web?: { store: WebStore; onPublish?: (version: string) => void; /** Imágenes y medición del marketplace (migración 0042). */ media?: MediaStore; events?: PanelEventStore };
   /**
    * Suscripciones v1 en MODO SOMBRA (BD del CRM, migración 0006). Requiere `crm` y `web` (precios
    * aprobados del catálogo). Nunca cobra, emite facturas fiscales ni toca licencias.
@@ -1843,6 +1844,7 @@ export function createControlPlaneApp(d: ControlPlaneDeps): Express {
   }
 
   if (webAdmin && d.web?.media) router.use("/web/media", createMediaAdminRouter(new MediaService({ store: d.web.media, web: d.web.store })));
+  if (webAdmin && d.web?.events) router.use("/web/marketplace-stats", createPanelStatsRouter(d.web.events));
   if (webAdmin) {
     router.use(
       "/web",
@@ -2188,6 +2190,8 @@ export function createControlPlaneApp(d: ControlPlaneDeps): Express {
         const wa = webAdmin;
         router.use("/commerce", createPanelCatalogRouter({ site: () => wa.site("published"), purchasesEnabled: !!d.stripe?.purchases?.enabled, internalTenants: d.stripe?.purchases?.internalTenants, activation: d.orders ? orderActivation({ crm: d.crm.store, orders: d.orders.store, now: d.subscriptions.now }) : undefined, marketplace: () => wa.marketplace("published"), planOf: d.orders ? orderPlan({ crm: d.crm.store, orders: d.orders.store }) : undefined }));
         // Solicitudes del marketplace del panel («Solicitar información» y «Me interesa») como solicitudes del CRM
+        // Medición del marketplace (agregada, sin datos personales): sin la migración 0042, 202 y se descarta
+        router.use("/commerce", createPanelEventsRouter({ store: d.web?.events ?? null }));
         if (webRequests) router.use("/commerce", createPanelRequestsRouter({ site: () => wa.site("published"), requests: webRequests, crm: d.crm.store, internalTenants: d.stripe?.purchases?.internalTenants }));
       }
       // Servicios externos en un entorno sin Stripe: contrato, aceptación y seguimiento (sin autorización de pago ni cobros)

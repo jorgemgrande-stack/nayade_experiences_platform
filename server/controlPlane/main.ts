@@ -40,6 +40,7 @@ import { MysqlBackupCopyLedger } from "../_core/ops/backupCopies";
 import { SupportAdmin } from "../_core/support/grants";
 import { MysqlWebStore } from "../web/store";
 import { MysqlMediaStore } from "../web/media";
+import { MysqlPanelEventStore } from "../commerce/panelEvents";
 import { MysqlSubscriptionStore } from "../subscriptions/store";
 import { MysqlCapabilityStore } from "../_core/capabilities/store";
 import { MysqlTenantLimitStore } from "../_core/limits/store";
@@ -348,7 +349,7 @@ async function main() {
   console.log(JSON.stringify({ ctx: "OperatorAuth", enabled: !!operators.service, ...(operators.reason ? { reason: operators.reason } : {}), passwordReset: !!operators.service?.resetAvailable, resetTransport: operators.resetTransport ?? null, ...(operators.service && !operators.service.resetAvailable ? { resetUnavailable: resetUnavailableReason({ resetUrl: process.env.CP_RESET_URL, smtp: !!(process.env.CP_RESET_SMTP_URL && process.env.CP_RESET_FROM), mailer: !!platformMail.mailer, policy: mailPolicy }) } : {}), mfa: operators.mfa ?? null, emailChange: !!operators.service?.emailChangeAvailable }));
 
   // Web comercial (catálogo y contenidos): misma BD del CRM; solo si la migración 0004 está aplicada
-  let web: { store: MysqlWebStore; onPublish?: (version: string) => void; media?: MysqlMediaStore } | undefined;
+  let web: { store: MysqlWebStore; onPublish?: (version: string) => void; media?: MysqlMediaStore; events?: MysqlPanelEventStore } | undefined;
   if (crmPool) {
     const webPool = crmPool;
     const ready = await webPool.query("SELECT 1 FROM web_entries LIMIT 0").then(() => true, () => false);
@@ -360,7 +361,7 @@ async function main() {
       const mediaReady = await webPool.query("SELECT 1 FROM marketplace_media LIMIT 0").then(() => true, () => false);
       web = {
         store: new MysqlWebStore(webPool),
-        ...(mediaReady ? { media: new MysqlMediaStore(webPool) } : {}),
+        ...(mediaReady ? { media: new MysqlMediaStore(webPool), events: new MysqlPanelEventStore(webPool) } : {}),
         // Aviso de publicación (p. ej. hook de regeneración de la web); nunca bloquea ni deshace nada
         onPublish: hookOk
           ? (version) =>
