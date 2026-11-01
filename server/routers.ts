@@ -16,6 +16,7 @@ import {
 } from "./galleryDb";
 import { getSessionCookieOptions } from "./_core/cookies";
 import { systemRouter } from "./_core/systemRouter";
+import { shopOrderProcedures } from "./routers/shopOrders";
 import { publicProcedure, protectedProcedure, staffProcedure, router, permissionProcedure } from "./_core/trpc";
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
@@ -71,6 +72,7 @@ import {
   setHomeModuleItems,
   createReservation,
   getReservationByMerchantOrder,
+  getAllReservationsByMerchantOrder,
   getAllReservations,
   getReservationById,
   getVariantsByExperience,
@@ -315,6 +317,8 @@ export const appRouter = router({
         locationSlug: z.string().optional(),
         limit: z.number().min(1).max(50).default(12),
         offset: z.number().min(0).default(0),
+        /** Tienda de una pyme: también los publicados que no están a la venta, para mostrarlos como agotados. */
+        includeSoldOut: z.boolean().optional(),
       }))
       .query(async ({ input }) => {
         return getPublicExperiences(input);
@@ -371,7 +375,9 @@ export const appRouter = router({
       const theme = buildTheme((k) => vals[k] || undefined, { multi: isMultiTenant() });
       // Secciones de la web según lo contratado (tienda, presupuesto, cupones) para su menú, sus textos y sus rutas
       const { readPublicSiteFeatures } = await import("./publicSite");
-      return { ...theme, storefront: await getStorefront(), siteFeatures: theme.neutralSite ? await readPublicSiteFeatures() : null };
+      // Con los correos a compradores bloqueados (prueba gratuita) la tienda no promete la confirmación por correo
+      const { buyerEmailsEnabled } = await import("./shopOrdersDb");
+      return { ...theme, storefront: { ...(await getStorefront()), buyerEmails: await buyerEmailsEnabled() }, siteFeatures: theme.neutralSite ? await readPublicSiteFeatures() : null };
     }),
 
     // Página estática del tenant, con HTML saneado (lista blanca)
@@ -1905,6 +1911,8 @@ export const appRouter = router({
 
   // ─── RESERVATIONS (Redsys) ─────────────────────────────────────────────────────
   reservations: router({
+    // Pedidos de la tienda online en el panel (server/routers/shopOrders.ts)
+    ...shopOrderProcedures,
     /**
      * Crea una pre-reserva con estado pending_payment y devuelve los datos
      * necesarios para redirigir al TPV Redsys.
@@ -2040,7 +2048,15 @@ export const appRouter = router({
       .query(async ({ input }) => {
         const reservation = await getReservationByMerchantOrder(input.merchantOrder);
         if (!reservation) throw new TRPCError({ code: "NOT_FOUND" });
+        // Todas las líneas del pedido (un carrito con varios artículos) y si el comprador recibe los correos
+        const lines = await getAllReservationsByMerchantOrder(input.merchantOrder);
+        const { buyerEmailsEnabled } = await import("./shopOrdersDb");
         return {
+          lines: lines.map((l) => ({ productName: l.productName, quantity: l.people ?? 1, amountCents: l.amountTotal ?? 0 })),
+          orderTotalCents: lines.reduce((s, l) => s + (l.amountTotal ?? 0), 0),
+          orderPaidCents: lines.reduce((s, l) => s + (l.amountPaid ?? 0), 0),
+          invoiceNumber: reservation.invoiceNumber ?? null,
+          buyerEmails: await buyerEmailsEnabled(),
           status: reservation.status,
           productName: reservation.productName,
           bookingDate: reservation.bookingDate,
@@ -2102,10 +2118,19 @@ export const appRouter = router({
         // Meta CAPI attribution (solo si el cliente aceptó marketing consent)
         fbp: z.string().max(255).optional(),
         fbc: z.string().max(255).optional(),
+        // Comentarios del comprador y datos fiscales para la factura (opcionales)
+        comments: z.string().max(1000).optional(),
+        billing: z.object({ nif: z.string().max(32), name: z.string().max(200).optional(), address: z.string().max(300).optional() }).optional(),
       }))
       .mutation(async ({ input, ctx }) => {
         if (!isRedsysConfigured()) throw new TRPCError({ code: "PRECONDITION_FAILED", message: "El pago online no está configurado en esta empresa." });
+        const { validateBuyer, normalizeSpanishTaxId, soldOutMessage, isPurchasable, orderNotes } = await import("../shared/shopOrders");
+        const buyerErrors = validateBuyer({ name: input.customerName, email: input.customerEmail, phone: input.customerPhone, wantsInvoice: !!input.billing, nif: input.billing?.nif, billingName: input.billing?.name, billingAddress: input.billing?.address });
+        const firstBuyerError = Object.values(buyerErrors)[0];
+        if (firstBuyerError) throw new TRPCError({ code: "BAD_REQUEST", message: firstBuyerError });
+        const billing = input.billing ? { nif: normalizeSpanishTaxId(input.billing.nif)!, ...(input.billing.name?.trim() ? { name: input.billing.name.trim() } : {}), ...(input.billing.address?.trim() ? { address: input.billing.address.trim() } : {}) } : null;
         const { getExperienceById: getExpById, getVariantsByExperience: getVariants } = await import("./db");
+        const storefront = await (await import("./storefront")).getStorefront();
         // 1. Calcular el importe total de todos los artículos en backend
         let totalAmountCents = 0;
         const itemsWithPrices: Array<{
@@ -2163,10 +2188,13 @@ export const appRouter = router({
             productNames.push(packRow.title);
             continue;
           }
+          // Agotado, retirado o sin publicar: no se vende aunque siga en un carrito guardado
+          if (!isPurchasable(product)) throw new TRPCError({ code: "BAD_REQUEST", message: soldOutMessage(product.title) });
           if (!product.basePrice) throw new TRPCError({ code: "BAD_REQUEST", message: `El producto ${product.title} no tiene precio fijo` });
           const basePrice = parseFloat(String(product.basePrice));
           if (!(basePrice > 0)) throw new TRPCError({ code: "BAD_REQUEST", message: `El producto ${product.title} no tiene un precio válido (debe ser > 0)` });
           let pricePerPerson = basePrice;
+          let lineName = product.title;
           if (item.variantId) {
             const variants = await getVariants(item.productId);
             const variant = variants.find(v => v.id === item.variantId);
@@ -2175,7 +2203,13 @@ export const appRouter = router({
               pricePerPerson = variant.priceType === "percentage"
                 ? basePrice + (basePrice * mod / 100)
                 : mod;
+              // Tienda de una pyme: la opción elegida (talla, color…) figura en el pedido y en la factura
+              if (storefront.kind === "generic") lineName = `${product.title} · ${variant.name}`;
+            } else if (storefront.kind === "generic") {
+              throw new TRPCError({ code: "BAD_REQUEST", message: `La opción elegida de «${product.title}» ya no está disponible. Vuelve a añadirlo al carrito.` });
             }
+          } else if (storefront.kind === "generic" && (await getVariants(item.productId)).some(v => v.isRequired)) {
+            throw new TRPCError({ code: "BAD_REQUEST", message: `Elige una opción de «${product.title}» antes de pagar.` });
           }
           const extrasTotal = item.extras.reduce((s, e) => s + e.price * e.quantity, 0);
           const itemPricingType = (product as any).pricingType ?? "per_person";
@@ -2191,7 +2225,7 @@ export const appRouter = router({
           totalAmountCents += itemAmountCents;
           itemsWithPrices.push({
             productId: item.productId,
-            productName: product.title,
+            productName: lineName,
             bookingDate: item.bookingDate,
             people: item.people,
             extrasJson: JSON.stringify(item.extras),
@@ -2200,7 +2234,7 @@ export const appRouter = router({
             unitCapacity: itemUnitCap ?? undefined,
             unitsBooked: itemUnits || undefined,
           });
-          productNames.push(product.title);
+          productNames.push(lineName);
         }
         // 1b. Un descuento por id exige conocer el código (el id es enumerable). Se valida
         // ANTES de crear reservas para no dejar pre-reservas huérfanas si se rechaza.
@@ -2237,7 +2271,7 @@ export const appRouter = router({
             customerEmail: input.customerEmail,
             customerPhone: input.customerPhone,
             merchantOrder,
-            notes: `Carrito: ${productNames.join(", ")}`,
+            notes: orderNotes(productNames, input.comments),
             pricingType: item.pricingType,
             unitCapacity: item.unitCapacity,
             unitsBooked: item.unitsBooked,
@@ -2267,6 +2301,8 @@ export const appRouter = router({
             }
           }
         }
+        // Datos fiscales del comprador: pasan a la factura y a su ficha del CRM cuando se confirma el pago
+        if (billing) await (await import("./shopOrdersDb")).recordCheckoutDetails(merchantOrder, billing);
         // 3b. Aplicar descuento por código si se proporcionó — validar SIEMPRE en servidor
         let finalAmountCents = totalAmountCents;
         if (input.discountCodeId) {
@@ -2295,7 +2331,9 @@ export const appRouter = router({
         // 4. Construir el formulario Redsys con el importe total
         const description = productNames.length === 1
           ? productNames[0]
-          : `${productNames.length} experiencias — ${companyName()}`;
+          : storefront.kind === "generic"
+            ? `Pedido de ${productNames.length} artículos — ${companyName()}`
+            : `${productNames.length} experiencias — ${companyName()}`;
         const redsysForm = await buildRedsysForm({
           amount: finalAmountCents,
           merchantOrder,
