@@ -11,6 +11,9 @@
  *    catálogo deja «por contrato», ampliación por presupuesto (propuesta) y regla de paquetes en los paquetes de
  *    extensiones.
  *  - Interno: estado funcional verificado, orígenes y decisiones pendientes. La evidencia ya registrada se respeta.
+ *  - Marketplace del panel (`spec.marketplace`): propuesta de valor, integración con Core, condiciones, preguntas,
+ *    relacionados y medios, con las mismas reglas de texto. Lo marcado «PENDIENTE» nunca se publica: va a decisiones
+ *    pendientes. Sin `spec.marketplace` se conserva lo que ya tenga el borrador (lo escrito en el CRM).
  *
  * Idempotente: lo que ya coincide no se toca. Por defecto solo simula. Barrera: si al aplicar la ficha cambiara algo
  * fuera de esos campos (precios, cupos, estado, familia, textos del catálogo…), ese producto NO se guarda.
@@ -24,6 +27,10 @@ import { PRODUCT_SPECS, type ProductSpec } from "./specs";
 
 export const IMPORT_AUTHOR = "catalogo:especificaciones-comerciales";
 const RETAINED = "Texto retenido hasta aprobar y activar la regla: ";
+const PENDING_TEXT = "Texto pendiente de completar: ";
+/** Marca de contenido por completar en una propuesta (en mayúsculas: «pendiente» es una palabra normal en las fichas). */
+export const PENDING_MARK = /\bPENDIENTE\b/;
+const MARKETPLACE_KEYS = ["valueProposition", "coreIntegration", "terms", "faq", "related", "media"] as const;
 
 const clip = (t: string, n: number) => (t.length <= n ? t : `${t.slice(0, n - 1)}…`);
 
@@ -38,11 +45,12 @@ export function draftWithSpec(draft: ProductDraft, family: string, spec: Product
   for (let p = draft.catalog.inherits; p && !chain.includes(p); p = PARENT[p] ?? null) chain.push(p);
   const planInclusions = family === "core_plan" ? policy.inclusions.filter((i) => chain.includes(i.plan)).map((i) => i.key) : [];
   const approvedQuotas = family === "core_plan" ? draft.catalog.quotas : [];
+  const pendingTexts: string[] = [];
   const ok = (t: string, inclusions = planInclusions) => textProblems(t, { approvedQuotas, planInclusions: inclusions }).length === 0;
-  const keep = (t: string) => (ok(t) ? true : (retained.push(t), false));
+  const keep = (t: string) => (PENDING_MARK.test(t) ? (pendingTexts.push(t), false) : ok(t) ? true : (retained.push(t), false));
   const list = (xs: string[]) => xs.filter(keep);
   // Las exclusiones pueden nombrar extensiones del plan para decir que no están incluidas
-  const keepExcluded = (t: string) => (ok(t, []) ? true : (retained.push(t), false));
+  const keepExcluded = (t: string) => (PENDING_MARK.test(t) ? (pendingTexts.push(t), false) : ok(t, []) ? true : (retained.push(t), false));
   // La descripción completa se filtra frase a frase
   const longDescription = spec.longDescription
     .split(/(?<=\.)\s+/)
@@ -73,8 +81,9 @@ export function draftWithSpec(draft: ProductDraft, family: string, spec: Product
     integrations: list(spec.integrations),
     cta: spec.publicContent.cta,
     seo: { slug: spec.seo.slug, title: spec.seo.title, description: spec.seo.description },
+    ...marketplaceFields(draft, spec, keep),
   };
-  const pendingDecisions = [...spec.admin.pendingDecisions, ...retained.map((t) => RETAINED + t)].map((t) => clip(t, 200)).slice(0, 20);
+  const pendingDecisions = [...spec.admin.pendingDecisions, ...retained.map((t) => RETAINED + t), ...pendingTexts.map((t) => PENDING_TEXT + t)].map((t) => clip(t, 200)).slice(0, 20);
   return productDraft.parse({
     ...draft,
     catalog: cat,
@@ -87,6 +96,29 @@ export function draftWithSpec(draft: ProductDraft, family: string, spec: Product
       ...(pendingDecisions.length ? { pendingDecisions } : {}),
     },
   });
+}
+
+/**
+ * Campos del marketplace para la ficha. Sin `spec.marketplace`: los del borrador tal cual. Con él: solo lo que pase las
+ * reglas de texto y no esté marcado «PENDIENTE»; lo que queda vacío no se escribe (campos sin valor por defecto).
+ */
+function marketplaceFields(draft: ProductDraft, spec: ProductSpec, keep: (t: string) => boolean): Record<string, unknown> {
+  const m = spec.marketplace;
+  const current = (draft.commercial ?? {}) as Record<string, unknown>;
+  if (!m) return Object.fromEntries(MARKETPLACE_KEYS.filter((k) => current[k] !== undefined).map((k) => [k, current[k]]));
+  const out: Record<string, unknown> = {};
+  if (m.valueProposition && keep(m.valueProposition)) out.valueProposition = m.valueProposition;
+  const core = (m.coreIntegration ?? []).filter(keep);
+  if (core.length) out.coreIntegration = core;
+  const terms = Object.fromEntries(Object.entries(m.terms ?? {}).filter(([, t]) => !!t && keep(t as string)));
+  if (Object.keys(terms).length) out.terms = terms;
+  // Una pregunta solo va con su respuesta: si cualquiera de las dos no pasa, se retiene entera
+  const faq = (m.faq ?? []).filter((f) => keep(f.q) && keep(f.a));
+  if (faq.length) out.faq = faq;
+  if (m.related?.length) out.related = m.related;
+  const media = { ...(m.media?.cover ? { cover: m.media.cover } : {}), ...(m.media?.screenshots?.length ? { screenshots: m.media.screenshots } : {}) };
+  if (Object.keys(media).length) out.media = media;
+  return out;
 }
 
 /** Campos que escribe la importación; todo lo demás del borrador debe quedar igual. */
