@@ -299,6 +299,7 @@ export async function getOnlineOrder(merchantOrder: string) {
   return {
     ...s,
     stageChanges: allowedStageChanges(s.stage),
+    buyerEmails: await buyerEmailsEnabled(),
     customerPhone: first.customerPhone ?? null,
     billing: rows.map((r) => billingFromLog(r.changesLog)).find(Boolean) ?? null,
     comments: buyerCommentsFromNotes(first.notes),

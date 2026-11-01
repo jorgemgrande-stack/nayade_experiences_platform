@@ -120,7 +120,8 @@ export function OnlineOrderDetail({ merchantOrder }: { merchantOrder: string }) 
   const q = trpc.reservations.onlineOrder.useQuery({ merchantOrder }, { retry: false });
   const setStage = trpc.reservations.setOnlineOrderStage.useMutation({
     onSuccess: (r) => {
-      toast.success(`Pedido: ${ORDER_STAGE_LABELS[r.stage].toLowerCase()}${STAGES_NOTIFIED.includes(r.stage) ? (r.emailed ? ". Hemos avisado al cliente por correo." : ". El correo al cliente no se ha enviado.") : "."}`);
+      const mailNote = !STAGES_NOTIFIED.includes(r.stage) ? "." : r.emailed ? ". Hemos avisado al cliente por correo." : q.data?.buyerEmails ? ". El aviso al cliente no se ha podido enviar." : ". Durante la prueba gratuita el aviso no se envía al cliente.";
+      toast.success(`Pedido: ${ORDER_STAGE_LABELS[r.stage].toLowerCase()}${mailNote}`);
       utils.reservations.onlineOrder.invalidate({ merchantOrder });
       utils.reservations.onlineOrders.invalidate();
     },
@@ -165,7 +166,7 @@ export function OnlineOrderDetail({ merchantOrder }: { merchantOrder: string }) 
               {o.stageChanges.length ? (
                 <div className="flex flex-wrap gap-2">
                   {o.stageChanges.map((s) => (
-                    <Button key={s} size="sm" variant={s === "cancelled" ? "outline" : "default"} disabled={setStage.isPending} onClick={() => setStage.mutate({ merchantOrder: o.merchantOrder, stage: s })}>
+                    <Button key={s} size="sm" variant={s === "cancelled" || ORDER_STAGE_FLOW.indexOf(s) < ORDER_STAGE_FLOW.indexOf(o.stage) ? "outline" : "default"} disabled={setStage.isPending} onClick={() => setStage.mutate({ merchantOrder: o.merchantOrder, stage: s })}>
                       {STAGE_ACTION_LABELS[s]}
                     </Button>
                   ))}
@@ -175,7 +176,7 @@ export function OnlineOrderDetail({ merchantOrder }: { merchantOrder: string }) 
               )}
               {(o.stage === "paid" || o.stage === "prepared" || o.stage === "delivered") && (
                 <p className="mt-3 text-xs text-muted-foreground">
-                  Al marcarlo preparado o entregado avisamos al cliente por correo. {CANCEL_PAID_ORDER_HINT}{" "}
+                  {o.buyerEmails ? "Al marcarlo preparado o entregado avisamos al cliente por correo. " : "Durante la prueba gratuita los avisos por correo no llegan al cliente. "}{CANCEL_PAID_ORDER_HINT}{" "}
                   <Link href={`/admin/crm?tab=reservations&resId=${o.firstLineId}`} className="font-medium text-primary hover:underline">Abrir la ficha completa</Link>
                 </p>
               )}
