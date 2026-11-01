@@ -10,7 +10,7 @@
  *   Si se necesita corte forzado vía software, hay que usar el driver "Generic /
  *   Text Only" o un puente WebUSB — fuera del alcance de esta vista.
  */
-import { useState, useRef } from "react";
+import React, { useState, useRef } from "react";
 import { trpc } from "@/lib/trpc";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
@@ -53,6 +53,8 @@ interface Sale {
   reavCost?: string | number | null;
   reavTax?: string | number | null;
   fiscalSummary?: string | null;
+  /** Base y cuota por tipo de IVA de lo cobrado (con el descuento del ticket repartido). */
+  taxBreakdown?: { rate: number; base: number; amount: number }[];
   sellerName?: string | null;
   reservationId?: number | null;
 }
@@ -69,6 +71,9 @@ const METHOD_LABELS: Record<string, string> = {
   bizum: "Bizum",
   other: "Otro",
 };
+
+// Tipo de IVA sin decimales de sobra: 21, 10, 5,5
+const fmtRate = (r: number): string => Number(r).toLocaleString("es-ES", { maximumFractionDigits: 2 });
 
 // Formateador seguro: nunca devuelve NaN
 const fmt = (v: unknown): string => {
@@ -357,13 +362,26 @@ export default function TpvTicket({ open, sale, onClose }: Props) {
               <>
                 <div className="line" style={{ borderTop: "1px dashed #000", margin: "4px 0" }} />
                 <div className="small" style={{ fontSize: "11px" }}>
-                  {s.fiscalSummary !== "reav_only" && s.taxBase && parseFloat(String(s.taxBase)) > 0 && (
+                  {/* Por tipo de IVA, ya con el descuento del ticket (ventas con varios tipos) */}
+                  {s.fiscalSummary !== "reav_only" && (s.taxBreakdown?.length ?? 0) > 0 && s.taxBreakdown!.map((b) => (
+                    <React.Fragment key={b.rate}>
+                      <div className="row" style={{ display: "flex", justifyContent: "space-between" }}>
+                        <span>Base IVA {fmtRate(b.rate)}%</span>
+                        <span>{fmt(b.base)}€</span>
+                      </div>
+                      <div className="row" style={{ display: "flex", justifyContent: "space-between" }}>
+                        <span>IVA {fmtRate(b.rate)}%</span>
+                        <span>{fmt(b.amount)}€</span>
+                      </div>
+                    </React.Fragment>
+                  ))}
+                  {s.fiscalSummary !== "reav_only" && !s.taxBreakdown?.length && s.taxBase && parseFloat(String(s.taxBase)) > 0 && (
                     <div className="row" style={{ display: "flex", justifyContent: "space-between" }}>
                       <span>Base IVA {s.taxRate ?? 21}%</span>
                       <span>{fmt(s.taxBase)}€</span>
                     </div>
                   )}
-                  {s.fiscalSummary !== "reav_only" && s.taxAmount && parseFloat(String(s.taxAmount)) > 0 && (
+                  {s.fiscalSummary !== "reav_only" && !s.taxBreakdown?.length && s.taxAmount && parseFloat(String(s.taxAmount)) > 0 && (
                     <div className="row" style={{ display: "flex", justifyContent: "space-between" }}>
                       <span>IVA {s.taxRate ?? 21}%</span>
                       <span>{fmt(s.taxAmount)}€</span>

@@ -6,6 +6,7 @@
  *  - Facturas de presupuestos (pago por enlace, cuotas, confirmación de pago y de transferencia) con el NIF,
  *    el nombre fiscal y la dirección del cliente vinculado.
  *  - Revisión de facturación: una venta de caja con ticket no es una incidencia.
+ *  - Caja con descuento global e IVA mixto: el descuento se reparte por tipo antes de desglosar.
  *
  *   REGISTRY_TEST_DATABASE_URL=mysql://root:root@127.0.0.1:33441/registro_test \
  *     pnpm vitest run server/contabilidadFacturacionEssential.e2e.mysql.test.ts
@@ -224,6 +225,35 @@ describe.skipIf(!URL_)("contabilidad y facturación Essential (aplicación real)
       const audit2 = ok(await ess.q("a", "crm.reservations.auditOrphans", undefined, agA), "revisión 2");
       expect(audit2.sinFactura.map((x: any) => x.reservationNumber)).toEqual(["RES-SINFACT"]);
       expect(audit2.sinFactura.map((x: any) => x.reservationNumber)).not.toContain(r.reservation_number);
+    });
+  });
+
+  describe("caja con descuento global e IVA mixto", () => {
+    it("venta con tarjeta: venta, asiento y factura con el IVA ya descontado y su desglose; el informe de caja cuadra", async () => {
+      const sid = await openSession();
+      // 121 € al 21 % + 2 × 55 € al 10 %, 23,10 € de descuento → 207,90 €
+      const r = ok(await ess.m("a", "tpv.createSale", { sessionId: sid, discountAmount: 23.1, discountReason: "Cliente habitual", items: [item(), item({ productId: product10Id, productName: "Curso", quantity: 2, unitPrice: 55 })], payments: [{ method: "card", amount: 207.9 }] }, agA), "venta con tarjeta");
+      await ess.m("a", "tpv.closeSession", { sessionId: sid, countedCash: 0 }, agA);
+      const saleId = r.sale.id as number;
+      const [sale] = await ess.sql("a", "SELECT total, taxBase, taxAmount, taxRate, invoiceId FROM tpv_sales WHERE id = ?", [saleId]);
+      expect([Number(sale.total), Number(sale.taxBase), Number(sale.taxAmount), Number(sale.taxRate)]).toEqual([207.9, 180, 27.9, 15.5]);
+      // El ticket recibe el desglose por tipo
+      expect(r.sale.taxBreakdown).toEqual([{ rate: 21, base: 90, amount: 18.9 }, { rate: 10, base: 90, amount: 9 }]);
+      expect(ok(await ess.q("a", "tpv.getSale", { saleId }, agA), "ticket").sale.taxBreakdown).toEqual(r.sale.taxBreakdown);
+      // Asiento del libro de cobros
+      const [tx] = await ess.sql("a", "SELECT amount, taxBase, taxAmount FROM transactions WHERE tpvSaleId = ?", [saleId]);
+      expect([Number(tx.amount), Number(tx.taxBase), Number(tx.taxAmount)]).toEqual([207.9, 180, 27.9]);
+      // Factura: lo cobrado, base + IVA cuadran y desglose guardado
+      const [inv] = await ess.sql("a", "SELECT subtotal, discount, taxAmount, taxBreakdown, total FROM invoices WHERE id = ?", [sale.invoiceId]);
+      expect([Number(inv.subtotal), Number(inv.discount), Number(inv.taxAmount), Number(inv.total)]).toEqual([180, 23.1, 27.9, 207.9]);
+      expect(json(inv.taxBreakdown)).toEqual([{ rate: 21, base: 90, amount: 18.9 }, { rate: 10, base: 90, amount: 9 }]);
+      // Las líneas conservan su fiscalidad sin descontar y el informe de caja reparte el descuento una sola vez
+      const today = new Intl.DateTimeFormat("sv", { timeZone: "Europe/Madrid" }).format(new Date());
+      const rep = ok(await ess.q("a", "tpv.reports.summary", { dateFrom: today, dateTo: today }, admA), "informe de caja");
+      const byRate = Object.fromEntries(rep.byTaxRate.map((t: any) => [t.label, [t.taxBase, t.taxAmount]]));
+      // Ventas del día: la de efectivo del resumen y esta (207,90 € cada una, con descuento) y la de 121 € sin descuento
+      expect(byRate["IVA 21 %"]).toEqual([280, 58.8]);
+      expect(byRate["IVA 10 %"]).toEqual([180, 18]);
     });
   });
 });
