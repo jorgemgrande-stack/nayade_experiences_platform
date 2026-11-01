@@ -250,8 +250,22 @@ export class FinanceIntegrity {
     push("collected", "Cobros recibidos", "Stripe (webhooks firmados)", !c.ext ? { state: "unavailable", cents: null, detail: "Servicios externos no montados" } : collected ? { state: unpostedCents ? "pending" : "value", cents: collected, pendingCents: unpostedCents || null, detail: `${plural(paidYear.length, "cobro confirmado", "cobros confirmados")} por Stripe${unpostedCents ? `; ${eur(unpostedCents)} sin contabilizar` : "; todos contabilizados"}` } : { state: "zero", cents: 0, detail: "Ningún cobro confirmado este año" });
     const failedOpen = c.facts.filter((f) => f.kind === "failed" && !c.paid.some((p) => p.stripeInvoiceId === f.stripeInvoiceId));
     const failedCents = sum(Array.from(new Map(failedOpen.map((f) => [f.stripeInvoiceId, f.totalCents])).values()));
-    const receivable430 = net(lines, "430");
-    push("receivablePending", "Cobros pendientes", "Stripe (impagos) y libro (430)", !c.ext ? { state: "unavailable", cents: null, detail: "Servicios externos no montados" } : failedCents || receivable430 > 0 ? { state: "value", cents: failedCents + Math.max(receivable430, 0), detail: `${eur(failedCents)} de cobros fallidos sin recuperar${receivable430 > 0 ? ` y ${eur(receivable430)} de clientes en el libro` : ""}` } : { state: "zero", cents: 0, detail: "Ningún cobro fallido sin recuperar ni saldo de clientes" });
+    // Lo facturado y ya cobrado en Stripe, pero sin el asiento del cobro, sigue en el 430: no es un cobro pendiente
+    const collectedNotPosted = sum(paidYear.filter((f) => !c.postedCharge(f.stripeInvoiceId) && c.issuedRefs.has(`stripe:in:${f.stripeInvoiceId}`)).map((f) => f.totalCents));
+    const receivable430 = Math.max(net(lines, "430") - collectedNotPosted, 0);
+    const owed = failedCents + receivable430;
+    push(
+      "receivablePending",
+      "Cobros pendientes",
+      "Stripe (impagos) y libro (430)",
+      !c.ext
+        ? { state: "unavailable", cents: null, detail: "Servicios externos no montados" }
+        : owed
+          ? { state: collectedNotPosted ? "pending" : "value", cents: owed, pendingCents: collectedNotPosted || null, detail: `${eur(failedCents)} de cobros fallidos sin recuperar${receivable430 ? ` y ${eur(receivable430)} de clientes en el libro` : ""}${collectedNotPosted ? `; ${eur(collectedNotPosted)} ya cobrados en Stripe falta contabilizarlos` : ""}` }
+          : collectedNotPosted
+            ? { state: "pending", cents: 0, pendingCents: collectedNotPosted, detail: `Nada pendiente de cobro: ${eur(collectedNotPosted)} ya cobrados en Stripe, falta contabilizar el cobro` }
+            : { state: "zero", cents: 0, detail: "Ningún cobro fallido sin recuperar ni saldo de clientes" },
+    );
     push("stripeBalance", "Saldo en Stripe", "Libro (5720) e importaciones de Stripe", !c.fy ? noFy : !stripeKnown ? { state: "unavailable", cents: null, detail: c.stripeSource === "permission_missing" ? "La clave de Stripe no tiene permiso de lectura de saldo y no se ha importado ningún informe" : "No se ha sincronizado ni importado Stripe" } : ledgerValue(net(lines, "5720"), { when: unpostedCents > 0, cents: unpostedCents, detail: `${eur(unpostedCents)} cobrados aún sin contabilizar` }, "Sin saldo pendiente de liquidar"));
     const bankCents = net(lines, "57200");
     push("bankBalance", "Saldo bancario conocido", "Libro (572000NN) y extractos", !c.fy ? noFy : !c.banks.length ? { state: "unavailable", cents: null, detail: "Sin cuentas bancarias dadas de alta ni extractos importados" } : { state: c.openingPosted ? (bankCents ? "value" : "zero") : "pending", cents: bankCents, detail: c.openingPosted ? "Según el libro" : "Sin asiento de apertura: solo movimientos del ejercicio" });
