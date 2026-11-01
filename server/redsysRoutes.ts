@@ -34,6 +34,7 @@ import { integrationEnv } from "./_core/tenantConfig";
 import { applyPaymentToInventoryHolds } from "./inventoryHoldsDb";
 import { isMultiTenant } from "./_core/tenant";
 import { finalizePaidShopOrder, isGenericShopOrder, sendShopOrderConfirmation, sendShopOrderFailed } from "./shopOrdersDb";
+import { issuerSnapshotForNewInvoice } from "./issuerSnapshot";
 
 // Pool de BD compartido para todo el módulo — evita crear/destruir conexiones por cada IPN
 const _sharedPool = legacyPool();
@@ -378,6 +379,7 @@ redsysRouter.post("/api/redsys/notification", express.urlencoded({ extended: tru
             // Datos fiscales del cliente vinculado al presupuesto (NIF, nombre fiscal y dirección)
             const billToRedsys = await invoiceClientForQuote(_db, quote, { name: lead?.name ?? updatedReservation.customerName, email: lead?.email ?? updatedReservation.customerEmail, phone: lead?.phone ?? updatedReservation.customerPhone });
             const [invResRedsys] = await _db.insert(invoices).values({
+              issuerSnapshot: await issuerSnapshotForNewInvoice(),
               invoiceNumber,
               quoteId: quote.id,
               reservationId: updatedReservation.id,
@@ -591,6 +593,7 @@ redsysRouter.post("/api/redsys/notification", express.urlencoded({ extended: tru
             const now = new Date();
 
             const [invResult] = await _db.insert(invoices).values({
+              issuerSnapshot: await issuerSnapshotForNewInvoice(),
               invoiceNumber,
               reservationId: resv.id,
               clientName: resv.customerName ?? "Cliente",
@@ -1186,6 +1189,7 @@ redsysRouter.post("/api/admin/recover-order/:merchantOrder", async (req, res) =>
           // Datos fiscales del cliente vinculado al presupuesto (NIF, nombre fiscal y dirección)
           const billTo = await invoiceClientForQuote(_db, quote, { name: lead?.name ?? primary.customerName, email: lead?.email ?? primary.customerEmail ?? "", phone: lead?.phone ?? primary.customerPhone });
           const [invRes] = await _db.insert(invoices).values({
+            issuerSnapshot: await issuerSnapshotForNewInvoice(),
             invoiceNumber,
             quoteId: quote.id,
             reservationId: primary.id,

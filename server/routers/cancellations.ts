@@ -40,6 +40,7 @@ import { createGHLContact, updateGHLContact } from "../ghl";
 import { getBusinessEmail } from "../config";
 import { legacyDb, legacyPool } from "../_core/legacyDb";
 import { releaseInventoryHold } from "../inventoryHoldsDb";
+import { issuerSnapshotForNewInvoice } from "../issuerSnapshot";
 const _pool = legacyPool();
 const db = legacyDb();
 
@@ -102,6 +103,8 @@ async function propagateCancellation(params: {
   // Si hay factura vinculada, pre-generar el número de abono también fuera de la tx
   let creditNoteNumber: string | undefined;
   let originalInvoice: typeof invoices.$inferSelect | null = null;
+  // Copia del emisor del abono, también fuera de la tx (no ocupa otra conexión con la transacción abierta)
+  let issuerSnapshot: Awaited<ReturnType<typeof issuerSnapshotForNewInvoice>> = null;
 
   const reservationId = req.linkedReservationId;
   if (reservationId) {
@@ -119,6 +122,7 @@ async function propagateCancellation(params: {
           `cancellations:creditNote:${requestId}`,
           String(adminUserId)
         );
+        issuerSnapshot = await issuerSnapshotForNewInvoice();
       }
     }
   }
@@ -206,6 +210,7 @@ async function propagateCancellation(params: {
 
         // Crear factura de abono (importe negativo en cuenta de resultados)
         await tx.insert(invoices).values({
+          issuerSnapshot,
           invoiceNumber: creditNoteNumber,
           reservationId,
           clientName: originalInvoice.clientName,

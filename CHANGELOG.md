@@ -20,7 +20,22 @@ Todos los cambios relevantes de Elephant Core se anotan aquí, con el formato
 
 ## [Sin publicar]
 
-Nada todavía.
+### Corregido
+
+- La empresa puede corregir su razón social, NIF y domicilio en «Datos de la empresa»: se usan en las facturas,
+  abonos y tickets que emita desde ese momento y en los textos legales de su web (los datos del alta solo como valor
+  inicial). NIF/CIF, código postal, correo, teléfono e IBAN se validan también en el servidor.
+- Cada factura nueva guarda una copia de los datos del emisor y de su marca: las facturas emitidas no cambian aunque
+  la empresa cambie después sus datos. Las anteriores se siguen viendo exactamente como antes.
+- El abono nuevo es una factura rectificativa: título, factura rectificada (número y fecha), motivo, importes en
+  negativo por tipo de IVA y mención del art. 15 del Reglamento de facturación. Facturas y abonos nuevos con los
+  colores de la marca. En el listado, el abono muestra la forma de pago de la factura que rectifica.
+- Al facturar un ticket de caja, cada línea conserva su tipo de IVA y el desglose es el del ticket.
+
+### Migraciones
+
+- `0020_invoice_issuer_snapshot` (aditiva): `invoices.issuerSnapshot` (JSON, NULL en las facturas ya emitidas) y la
+  tabla `invoice_issuer_baseline` con los ajustes fiscales y de marca al aplicarla. Se aplica antes del código.
 
 ## [1.1.0] - 2026-11-01
 

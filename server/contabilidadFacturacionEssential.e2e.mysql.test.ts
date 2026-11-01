@@ -297,4 +297,23 @@ describe.skipIf(!URL_)("contabilidad y facturación Essential (aplicación real)
       expect(after).toEqual(before);
     });
   });
+
+  // Al final: añade una venta del día que los informes anteriores no cuentan
+  describe("canje de un ticket de caja por factura", () => {
+    it("ticket en efectivo canjeado por factura: cada línea conserva su IVA y el desglose es el del ticket", async () => {
+      const sid = await openSession();
+      // 121 € al 21 % + 2 × 55 € al 10 %, 23,10 € de descuento → 207,90 € en efectivo (sin factura automática)
+      const r = ok(await ess.m("a", "tpv.createSale", { sessionId: sid, customerName: "Cliente canje", discountAmount: 23.1, discountReason: "Cliente habitual", items: [item(), item({ productId: product10Id, productName: "Curso", quantity: 2, unitPrice: 55 })], payments: [{ method: "cash", amount: 207.9 }] }, agA), "venta en efectivo");
+      await ess.m("a", "tpv.closeSession", { sessionId: sid, countedCash: 207.9 }, agA);
+      const resId = r.sale.reservationId as number;
+      expect((await ess.sql("a", "SELECT invoiceId FROM reservations WHERE id = ?", [resId]))[0].invoiceId).toBeNull();
+      const done = ok(await ess.m("a", "crm.reservations.generateInvoice", { reservationId: resId }, agA), "canje por factura");
+      const [inv] = await ess.sql("a", "SELECT i.itemsJson, i.subtotal, i.taxAmount, i.taxBreakdown, i.total, i.discount FROM invoices i JOIN reservations r ON r.invoiceId = i.id WHERE r.id = ?", [resId]);
+      expect(done).toBeTruthy();
+      expect(json(inv.itemsJson).map((l: any) => [l.description, l.taxRate])).toEqual([["Asesoría fiscal", 21], ["Curso", 10]]);
+      expect(json(inv.taxBreakdown)).toEqual(r.sale.taxBreakdown);
+      expect(json(inv.taxBreakdown)).toEqual([{ rate: 21, base: 90, amount: 18.9 }, { rate: 10, base: 90, amount: 9 }]);
+      expect([Number(inv.subtotal), Number(inv.taxAmount), Number(inv.total), Number(inv.discount)]).toEqual([180, 27.9, 207.9, 23.1]);
+    });
+  });
 });

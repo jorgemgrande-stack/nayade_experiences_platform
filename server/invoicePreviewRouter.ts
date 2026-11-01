@@ -65,6 +65,10 @@ invoicePreviewRouter.get("/api/invoices/preview", async (req, res) => {
       taxBreakdown: (invoice.taxBreakdown as any) ?? undefined,
       total: invoice.total,
       issuedAt: invoice.issuedAt,
+      // Copia del emisor y, si es un abono, la factura que rectifica y el motivo (factura rectificativa)
+      issuerSnapshot: invoice.issuerSnapshot ?? null,
+      invoiceType: invoice.invoiceType,
+      creditNoteReason: invoice.creditNoteReason ?? null,
     });
 
     res.setHeader("Content-Type", "text/html; charset=utf-8");

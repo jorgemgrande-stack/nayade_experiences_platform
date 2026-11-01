@@ -165,18 +165,92 @@ export async function readOwnLegalSettings(): Promise<Record<string, string>> {
 }
 
 /**
- * Emisor de liquidaciones y lotes de facturación (multi): entidad fiscal del registro y contacto de
- * los ajustes de la empresa, con el domicilio en una línea. Se generan y guardan al pedirlos: mandan los ajustes propios.
+ * Emisor de los documentos que se emiten A PARTIR DE AHORA (facturas, abonos, tickets, textos legales, liquidaciones).
+ *  - multi: lo que la empresa guardó en «Datos de la empresa» o en el asistente (`own`) manda, campo a campo. Lo que
+ *    no haya guardado sale de su entidad fiscal en el registro (su alta como cliente de Elephant Source) y, si tampoco
+ *    está, de los ajustes antiguos `legalCompany*`. Antes la entidad del registro ganaba siempre y la empresa no podía
+ *    corregir su razón social ni su NIF.
+ *  - single: sus ajustes `legalCompany*`, sin cambios.
+ * Los documentos ya emitidos NO usan esto: llevan su copia del emisor (o, los anteriores a la copia, la fuente de antes).
+ */
+export function resolveCurrentLegalCompany(
+  legacy: Record<string, string>,
+  own: Record<string, string>,
+  opts: { multi: boolean; fiscal: TenantFiscalIdentity | null },
+): LegalCompany {
+  if (!opts.multi) return resolveLegalCompany(legacy, { multi: false, fiscal: null });
+  const o = (k: string) => (own[k] ?? "").trim();
+  const l = (k: string) => (legacy[k] ?? "").trim();
+  const f = opts.fiscal;
+  const merged = preferOwnLegalSettings(legacy, own);
+  // El domicilio va entero de una sola fuente (calle, CP, ciudad y provincia), para no mezclar dos direcciones
+  const place = o("legalCompanyAddress")
+    ? { address: o("legalCompanyAddress"), city: o("legalCompanyCity"), zip: o("legalCompanyZip"), province: o("legalCompanyProvince") }
+    : (f?.address ?? "").trim()
+      ? { address: (f!.address ?? "").trim(), city: "", zip: "", province: "" }
+      : { address: l("legalCompanyAddress"), city: l("legalCompanyCity"), zip: l("legalCompanyZip"), province: l("legalCompanyProvince") };
+  return {
+    name: o("legalCompanyName") || (f?.legalName ?? "").trim() || l("legalCompanyName"),
+    cif: o("legalCompanyCif") || (f?.taxId ?? "").trim() || l("legalCompanyCif"),
+    ...place,
+    email: merged.legalCompanyEmail || "",
+    phone: merged.legalCompanyPhone || "",
+    iban: merged.legalCompanyIban || "",
+  };
+}
+
+/**
+ * Emisor de liquidaciones y lotes de facturación (multi): el mismo que el de las facturas nuevas, con el domicilio en
+ * una línea. Se generan y guardan al pedirlos.
  */
 export async function tenantIssuerData(s: Record<string, string>): Promise<{ name: string; cif: string; address: string; email: string; phone: string }> {
   await warmTenantIdentity();
-  const l = resolveLegalCompany(preferOwnLegalSettings(s, await readOwnLegalSettings()), { multi: true, fiscal: tenantFiscalIdentity() });
+  const l = resolveCurrentLegalCompany(s, await readOwnLegalSettings(), { multi: true, fiscal: tenantFiscalIdentity() });
   return { name: l.name, cif: l.cif, address: formatLegalAddress(l), email: l.email, phone: l.phone };
 }
 
-/** Razón social del emisor: la entidad fiscal del registro (multi), su razón social configurada o su nombre. */
+/** Razón social del emisor: la que guardó la empresa, la de su entidad fiscal en el registro (multi) o su nombre. */
 export function issuerName(): string {
-  return (isMultiTenant() ? tenantFiscalIdentity()?.legalName : "") || getSystemSettingSync("site_legal_name", "") || brandName();
+  return getSystemSettingSync("site_legal_name", "").trim() || (isMultiTenant() ? tenantFiscalIdentity()?.legalName : "") || brandName();
+}
+
+// ── Colores de los documentos ─────────────────────────────────────────────
+
+const DOC_HEX = /^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/;
+/** Tinta neutra cuando la empresa no tiene color o no se lee con texto blanco encima (contraste < 4,5:1). */
+export const DOCUMENT_NEUTRAL_INK = "#171d28";
+
+function docLuminance(hex: string): number {
+  let h = hex.slice(1);
+  if (h.length === 3) h = h.split("").map((c) => c + c).join("");
+  const lin = (v: number) => (v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4);
+  const [r, g, b] = [0, 2, 4].map((i) => lin(parseInt(h.slice(i, i + 2), 16) / 255));
+  return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+}
+
+/** ¿Se lee texto blanco sobre este color (WCAG AA, 4,5:1)? */
+export function readableOnWhiteText(hex: string): boolean {
+  if (!DOC_HEX.test(hex)) return false;
+  return 1.05 / (docLuminance(hex) + 0.05) >= 4.5;
+}
+
+/**
+ * Colores de las facturas, abonos y tickets nuevos: los de la marca de la empresa (color principal y de acento, de
+ * «Marca» o de los ajustes antiguos). Sin ellos, o si el texto blanco no se leería encima, una tinta neutra; el acento
+ * cae en el principal. Solo presentación: nunca cambia el contenido fiscal.
+ */
+export async function documentBrandColors(): Promise<{ primary: string; accent: string }> {
+  const pick = async (...keys: string[]) => {
+    for (const k of keys) {
+      const v = (await getSystemSetting(k, "").catch(() => "")).trim();
+      if (DOC_HEX.test(v)) return v;
+    }
+    return "";
+  };
+  const p = await pick("theme_primary_color", "brand_primary_color");
+  const primary = p && readableOnWhiteText(p) ? p : DOCUMENT_NEUTRAL_INK;
+  const a = await pick("theme_accent_color", "brand_accent_color");
+  return { primary, accent: a && readableOnWhiteText(a) ? a : primary };
 }
 
 /** Obsoleto (usar `issuerName()`). */

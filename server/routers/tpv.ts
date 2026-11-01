@@ -92,6 +92,7 @@ import { tpvSaleTax } from "../tpvSaleTax";
 import { chargedInvoiceAmounts } from "../invoiceCalc";
 import { legacyDb, legacyPool } from "../_core/legacyDb";
 import { integrationEnv } from "../_core/tenantConfig";
+import { issuerSnapshotForNewInvoice } from "../issuerSnapshot";
 
 type FiscalData = { fiscalRegime: "reav" | "general" | "mixed"; taxRate: number; providerPercent: number; agencyMarginPercent: number };
 
@@ -1397,6 +1398,7 @@ export const tpvRouter = router({
           const invAmounts = chargedInvoiceAmounts(invoiceItems, total);
           const now = new Date();
           const [invResult] = await db.insert(invoices).values({
+            issuerSnapshot: await issuerSnapshotForNewInvoice(),
             invoiceNumber,
             reservationId:  reservationId ?? undefined,
             clientName:     input.customerName || "Cliente TPV",

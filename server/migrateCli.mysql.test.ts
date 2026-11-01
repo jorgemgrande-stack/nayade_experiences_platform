@@ -201,6 +201,10 @@ d("ejecutor de migraciones contra MySQL real", () => {
     await t.pool.query("ALTER TABLE users ADD COLUMN `role` enum('user','admin') NOT NULL DEFAULT 'user'");
     // 0018 amplía `tpv_sales` (clave de cobro y cliente): basta con que exista
     await t.pool.query("CREATE TABLE tpv_sales (id INT PRIMARY KEY)");
+    // 0020 amplía `invoices` y copia los ajustes fiscales de `system_settings` y `site_settings`: basta con que existan
+    await t.pool.query("CREATE TABLE invoices (id INT PRIMARY KEY)");
+    await t.pool.query("CREATE TABLE system_settings (id INT PRIMARY KEY, `key` VARCHAR(128) NOT NULL, value TEXT NULL)");
+    await t.pool.query("CREATE TABLE site_settings (id INT PRIMARY KEY, `key` VARCHAR(128) NOT NULL, value TEXT NULL)");
     const args = (cmd: string) => [cmd, "--dir", "db/migrations", "--apply", "--confirm-database", t.db];
     const up = await cli(t.url, args("up"));
     expect(up.status, up.stderr).toBe(0);

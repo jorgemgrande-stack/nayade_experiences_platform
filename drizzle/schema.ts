@@ -470,6 +470,8 @@ export const invoices = mysqlTable("invoices", {
   // Credit note (abono) fields
   creditNoteForId: int("creditNoteForId"),          // FK to original invoice if this is a credit note
   creditNoteReason: text("creditNoteReason"),
+  // Copia de los datos del emisor al emitirse (db/migrations/0020). NULL en las emitidas antes: no se rellenan.
+  issuerSnapshot: json("issuerSnapshot").$type<{ v: 1; capturedAt: string; name: string; cif: string; address: string; city: string; zip: string; province: string; email: string; phone: string; iban: string }>(),
   // Email tracking
   sentAt: timestamp("sentAt"),
   lastSentAt: timestamp("lastSentAt"),

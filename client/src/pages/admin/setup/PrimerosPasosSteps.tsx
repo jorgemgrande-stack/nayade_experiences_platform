@@ -242,7 +242,7 @@ export function FiscalStep({ initial, country, done, fiscalFromRegistry, disable
     >
       {fiscalFromRegistry && (
         <p className="rounded-lg border border-border bg-muted/40 p-3 text-xs text-muted-foreground">
-          Tu empresa ya tiene una entidad fiscal registrada: es la que figura en las facturas. Lo que guardes aquí se usa como datos de contacto y respaldo.
+          Hemos rellenado los datos de tu alta. Si los corriges, se aplicarán a las facturas que emitas a partir de ahora; las ya emitidas conservan los datos con los que se emitieron.
         </p>
       )}
       <div className="grid gap-4 sm:grid-cols-2">

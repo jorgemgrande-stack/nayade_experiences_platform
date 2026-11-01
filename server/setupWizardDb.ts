@@ -32,6 +32,18 @@ export async function readSettings(keys: string[]): Promise<Record<string, strin
   return out;
 }
 
+/** Última vez que cambió alguno de esos ajustes con valor (null si no hay ninguno guardado). */
+export async function settingsUpdatedAt(keys: string[]): Promise<Date | null> {
+  if (!keys.length) return null;
+  const db = await requireDb();
+  const [row] = await db
+    .select({ ms: sql<number | string | null>`UNIX_TIMESTAMP(MAX(${systemSettings.updatedAt})) * 1000` })
+    .from(systemSettings)
+    .where(and(inArray(systemSettings.key, keys), sql`TRIM(COALESCE(${systemSettings.value}, '')) <> ''`));
+  const ms = Number(row?.ms);
+  return row?.ms != null && Number.isFinite(ms) ? new Date(ms) : null;
+}
+
 /** Crea o actualiza ajustes (los que falten se crean con su etiqueta y categoría). */
 export async function upsertSettings(entries: Array<{ key: string; value: string; label: string; category: string; valueType?: "string" | "json" }>): Promise<void> {
   if (!entries.length) return;

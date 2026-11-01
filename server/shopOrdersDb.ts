@@ -29,6 +29,7 @@ import {
 } from "../shared/shopOrders";
 import { formatEuros } from "../shared/storefront";
 import { chargedInvoiceAmounts } from "./invoiceCalc";
+import { issuerSnapshotForNewInvoice } from "./issuerSnapshot";
 
 type Row = typeof reservations.$inferSelect;
 
@@ -131,6 +132,7 @@ export async function finalizePaidShopOrder(merchantOrder: string): Promise<Fina
   const now = new Date();
   const first = rows[0];
   const [res] = await db.insert(invoices).values({
+    issuerSnapshot: await issuerSnapshotForNewInvoice(),
     invoiceNumber,
     reservationId: first.id,
     clientName: billing?.name || first.customerName || "Cliente",

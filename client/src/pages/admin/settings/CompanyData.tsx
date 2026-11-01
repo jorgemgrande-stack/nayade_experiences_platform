@@ -4,8 +4,9 @@
  * Lee y guarda exactamente los mismos campos que el paso «Datos de la empresa» del asistente «Primeros pasos»
  * (setupWizard.status / setupWizard.saveCompany → ajustes de la empresa, COMPANY_SETTING_KEYS). No hay otro
  * almacenamiento: lo que se cambia aquí lo ve el asistente y lo usan presupuestos, facturas y tickets.
- * Los datos de contacto fiscal opcionales (email, teléfono e IBAN de las facturas) son los ajustes de la empresa que
- * ya usan las facturas como respaldo.
+ * Los datos de contacto fiscal opcionales (email, teléfono e IBAN de las facturas) son ajustes de la empresa.
+ * Lo que se guarda aquí manda sobre los datos del alta en los documentos que se emitan desde ese momento; las facturas
+ * ya emitidas conservan su copia del emisor.
  */
 import { useEffect, useState } from "react";
 import { Link } from "wouter";
@@ -77,7 +78,7 @@ export default function CompanyData() {
 
   const save = trpc.setupWizard.saveCompany.useMutation({
     onSuccess: async () => {
-      toast.success("Datos de la empresa guardados");
+      toast.success("Datos de la empresa guardados. Se aplicarán a las facturas que emitas a partir de ahora.");
       await utils.setupWizard.status.invalidate();
     },
     onError: (e) => toast.error(errMsg(e)),
@@ -133,6 +134,7 @@ export default function CompanyData() {
         if ((extra[x.key] ?? "") !== before) await saveExtra.mutateAsync({ key: x.key, value: extra[x.key] ?? "" });
       }
       await utils.config.listSystemSettings.invalidate();
+      await utils.setupWizard.status.invalidate();
     } catch (err) {
       toast.error(errMsg(err));
     }
@@ -155,14 +157,28 @@ export default function CompanyData() {
     </Field>
   );
   const pending = save.isPending || saveExtra.isPending;
+  const issuer = status.data?.issuer ?? null;
 
   return (
     <form onSubmit={submit} noValidate className="space-y-6">
-      {status.data?.fiscalFromRegistry && (
-        <p className="flex gap-2 rounded-lg border border-border bg-muted/40 p-3 text-xs text-muted-foreground">
-          <Info className="w-4 h-4 shrink-0" aria-hidden="true" />
-          Tu empresa ya tiene una entidad fiscal registrada por el equipo de Elephant Source: es la que figura en las facturas. Lo que guardes aquí se usa como datos de contacto y respaldo.
-        </p>
+      {issuer && (
+        <section aria-labelledby="co-issuer-title" className="flex gap-3 rounded-lg border border-border bg-muted/40 p-3 text-xs text-muted-foreground">
+          <Info className="w-4 h-4 shrink-0 mt-0.5" aria-hidden="true" />
+          <div className="min-w-0 space-y-1">
+            <h2 id="co-issuer-title" className="text-sm font-medium text-foreground">Datos que figuran en tus documentos</h2>
+            <p className="break-words text-foreground/80">
+              <strong>{issuer.name || "Sin razón social"}</strong>
+              {issuer.taxId ? <> · NIF {issuer.taxId}</> : null}
+              {issuer.address ? <> · {issuer.address}</> : null}
+            </p>
+            <p>
+              {issuer.fromSignup
+                ? "Son los de tu alta. Si los corriges y guardas, se aplicarán a las facturas, abonos y tickets que emitas a partir de ahora."
+                : `Guardados el ${new Date(issuer.since!).toLocaleString("es-ES", { dateStyle: "long", timeStyle: "short" })}. Se aplican a las facturas, abonos y tickets que emitas a partir de ahora.`}
+              {" "}Las facturas ya emitidas conservan los datos con los que se emitieron. También aparecen en el aviso legal y la política de privacidad de tu web.
+            </p>
+          </div>
+        </section>
       )}
       {readOnly && (
         <p role="status" className="rounded-lg border border-warning/30 bg-warning/10 p-3 text-xs text-warning">
