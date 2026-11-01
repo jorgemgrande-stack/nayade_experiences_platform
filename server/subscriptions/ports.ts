@@ -12,6 +12,8 @@ export interface CatalogProduct {
   family: Family;
   /** Familia del catálogo de Elephant Source (`connect`, `addon`, `net_module`…), antes de traducirla a la contractual. */
   catalogFamily?: string;
+  /** Configuración comercial: preparar su Product y su Price en Stripe aunque siga «bajo solicitud» (sin venderse). */
+  stripePrepared?: boolean;
   technicalStatus: "available" | "partial" | "planned";
   /** Estado comercial del catálogo de Elephant Source (las entradas anteriores: «on_request»). */
   commercialStatus: "unpublished" | "coming_soon" | "in_preparation" | "on_request" | "available";
@@ -92,7 +94,7 @@ export function catalogFromWebStore(store: WebStore): CatalogPort {
       activation: { kind: string; ref: string | null };
       dependencies?: string[];
       compatibleWith?: string[];
-      catalog?: { commercialStatus?: CatalogProduct["commercialStatus"]; internalOnly?: boolean; bundleOf?: string[]; addonFor?: { metric: string; step: number } | null; quotas?: Array<{ metric: string; included: number | null }> };
+      catalog?: { commercialStatus?: CatalogProduct["commercialStatus"]; internalOnly?: boolean; stripePrepared?: boolean; bundleOf?: string[]; addonFor?: { metric: string; step: number } | null; quotas?: Array<{ metric: string; included: number | null }> };
       billingModel?: string;
     };
     // Un «servicio» con cuota recurrente (alojamiento web) se contrata como complemento recurrente;
@@ -107,6 +109,7 @@ export function catalogFromWebStore(store: WebStore): CatalogPort {
       technicalStatus: p.technicalStatus,
       commercialStatus: p.catalog?.commercialStatus ?? "on_request",
       internalOnly: p.catalog?.internalOnly === true,
+      ...(typeof p.catalog?.stripePrepared === "boolean" ? { stripePrepared: p.catalog.stripePrepared } : {}),
       activationKind: p.activation?.kind ?? "none",
       activationRef: p.activation?.ref ?? null,
       dependencies: p.dependencies ?? [],

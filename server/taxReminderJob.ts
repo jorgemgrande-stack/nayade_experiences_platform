@@ -20,6 +20,7 @@ import { sendEmail } from "./mailer";
 import { getBusinessEmail } from "./config";
 import { legacyDb, legacyPool } from "./_core/legacyDb";
 import { scheduleTenantCron } from "./_core/tenantRegistry/scheduler";
+import { madridDateKey } from "./utils/timezone";
 
 const _pool = legacyPool();
 const db = legacyDb();
@@ -36,15 +37,14 @@ const MODEL_NAME: Record<string, string> = {
   "202": "Modelo 202 (pago fraccionado IS)",
 };
 
+/** Hoy en Madrid (el servidor va en UTC: entre las 00:00 y las 02:00 de España daría el día anterior). */
 function todayISO(): string {
-  return new Date().toISOString().slice(0, 10);
+  return madridDateKey();
 }
 
+/** Días naturales que faltan hasta `date` (YYYY-MM-DD), contados desde hoy en Madrid. */
 function daysUntil(date: string): number {
-  const d = new Date(date + "T00:00:00");
-  const t = new Date();
-  t.setHours(0, 0, 0, 0);
-  return Math.round((d.getTime() - t.getTime()) / 86_400_000);
+  return Math.round((Date.parse(`${date}T00:00:00Z`) - Date.parse(`${todayISO()}T00:00:00Z`)) / 86_400_000);
 }
 
 function reminderHtml(o: { model: string; periodLabel: string; dueDate: string; estimatedAmount: string | null }, days: number): string {

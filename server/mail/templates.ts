@@ -325,14 +325,14 @@ export function platformTemplates(o: PlatformTemplateOptions = {}) {
      * Invitación al representante para revisar y aceptar el contrato de un servicio. El enlace es personal, de un solo
      * uso y caduca. En la misma página, tras aceptar, se autoriza el método de pago (sin cargo en ese momento).
      */
-    contractInvitation(i: { companyName: string; serviceName: string; signerName: string; url: string; expiresAt: number; amountCents: number; taxRateBp: number; currency: string; firstChargeAt: number }) {
+    contractInvitation(i: { companyName: string; serviceName: string; signerName: string; url: string; expiresAt: number; amountCents: number; taxRateBp: number; currency: string; firstChargeAt: number; period?: string }) {
       const tax = Math.round((i.amountCents * i.taxRateBp) / 10_000);
       return e({
         family: "transactional", eyebrow: "Contrato disponible", hero: "contrato", title: "Tu contrato está listo para revisar", subject: `Contrato de ${i.serviceName} para ${i.companyName}`,
         greeting: `Hola, ${i.signerName}:`,
         intro: [`Te enviamos el contrato de ${i.serviceName} para ${i.companyName}, para que lo revises y, si estás de acuerdo, lo aceptes en línea.`],
         blocks: [
-          { card: { status: { label: "Pendiente de aceptación", tone: "info" }, rows: [{ label: "Servicio", value: i.serviceName }, { label: "Cliente", value: i.companyName }, { label: "Cuota mensual", value: fmtMoney(i.amountCents, i.currency) }, { label: `IVA (${i.taxRateBp / 100} %)`, value: fmtMoney(tax, i.currency) }], total: { label: "Total mensual", value: fmtMoney(i.amountCents + tax, i.currency) }, foot: { label: "Primer cobro previsto", value: fmtDate(i.firstChargeAt) } } },
+          { card: { status: { label: "Pendiente de aceptación", tone: "info" }, rows: [{ label: "Servicio", value: i.serviceName }, { label: "Cliente", value: i.companyName }, { label: `Cuota ${i.period ?? "mensual"}`, value: fmtMoney(i.amountCents, i.currency) }, { label: `IVA (${i.taxRateBp / 100} %)`, value: fmtMoney(tax, i.currency) }], total: { label: `Total ${i.period ?? "mensual"}`, value: fmtMoney(i.amountCents + tax, i.currency) }, foot: { label: "Primer cobro previsto", value: fmtDate(i.firstChargeAt) } } },
           { h2: "¿Cómo funciona?" },
           { timeline: [{ label: "Revisar el contrato", state: "current" }, { label: "Aceptar en línea", state: "todo" }, { label: "Autorizar el pago", date: "sin cargo", state: "todo" }, { label: "Primer cobro", date: fmtShort(i.firstChargeAt), state: "todo" }] },
           { notice: { tone: "info", text: `Después de aceptar, en la misma página autorizas el método de pago en Stripe, sin ningún cargo en ese momento. El enlace es personal, solo sirve una vez y caduca el ${fmtDate(i.expiresAt)}.` } },
@@ -341,14 +341,14 @@ export function platformTemplates(o: PlatformTemplateOptions = {}) {
       });
     },
     /** Acceso a la autorización del método de pago (reenvío manual del equipo desde el CRM). */
-    contractPaymentSetup(i: { companyName: string; serviceName: string; signerName: string; contractReference: string; url: string; expiresAt: number; amountCents: number; taxRateBp: number; currency: string; firstChargeAt: number }) {
+    contractPaymentSetup(i: { companyName: string; serviceName: string; signerName: string; contractReference: string; url: string; expiresAt: number; amountCents: number; taxRateBp: number; currency: string; firstChargeAt: number; period?: string }) {
       const tax = Math.round((i.amountCents * i.taxRateBp) / 10_000);
       return e({
         family: "transactional", eyebrow: "Autorización del método de pago", hero: "pago", title: "Autoriza tu método de pago", subject: `Autoriza el método de pago · contrato ${i.contractReference}`,
         greeting: `Hola, ${i.signerName}:`,
         intro: [`Tu aceptación del contrato ${i.contractReference} de ${i.serviceName} para ${i.companyName} está registrada. Falta autorizar el método de pago en Stripe.`],
         blocks: [
-          { card: { status: { label: "Contrato aceptado", tone: "success" }, rows: [{ label: "Servicio", value: i.serviceName }, { label: "Cuota mensual", value: fmtMoney(i.amountCents, i.currency) }, { label: `IVA (${i.taxRateBp / 100} %)`, value: fmtMoney(tax, i.currency) }], total: { label: "Total mensual", value: fmtMoney(i.amountCents + tax, i.currency) }, foot: { label: "Primer cobro previsto", value: fmtDate(i.firstChargeAt) } } },
+          { card: { status: { label: "Contrato aceptado", tone: "success" }, rows: [{ label: "Servicio", value: i.serviceName }, { label: `Cuota ${i.period ?? "mensual"}`, value: fmtMoney(i.amountCents, i.currency) }, { label: `IVA (${i.taxRateBp / 100} %)`, value: fmtMoney(tax, i.currency) }], total: { label: `Total ${i.period ?? "mensual"}`, value: fmtMoney(i.amountCents + tax, i.currency) }, foot: { label: "Primer cobro previsto", value: fmtDate(i.firstChargeAt) } } },
           { notice: { tone: "info", text: `Al autorizarlo hoy no se realiza ningún cargo. El enlace sirve hasta el ${fmtDate(i.expiresAt)} y puedes abrirlo de nuevo si no terminas.` } },
         ],
         cta: { label: "Autorizar método de pago", url: i.url },
@@ -358,21 +358,21 @@ export function platformTemplates(o: PlatformTemplateOptions = {}) {
      * Servicio externo contratado: Stripe confirmó la autorización del método de pago y la suscripción quedó creada y
      * programada para el primer cobro pactado. Solo con hechos confirmados (estado programado en Big Elephant).
      */
-    externalScheduled(i: { signerName: string | null; companyName: string; serviceName: string; amountCents: number; taxRateBp: number; currency: string; firstChargeAt: number; acceptedAt: number | null; authorizedAt: number | null }) {
+    externalScheduled(i: { signerName: string | null; companyName: string; serviceName: string; amountCents: number; taxRateBp: number; currency: string; firstChargeAt: number; acceptedAt: number | null; authorizedAt: number | null; period?: string }) {
       const tax = Math.round((i.amountCents * i.taxRateBp) / 10_000);
       return e({
         family: "transactional", eyebrow: "Confirmación de contratación", hero: "contrato", title: "Tu servicio está contratado", subject: `Tu servicio ${i.serviceName} está contratado`,
         ...(i.signerName ? { greeting: `Hola, ${i.signerName}:` } : {}),
         intro: [`Hemos registrado correctamente la contratación de ${i.serviceName} para ${stop(i.companyName)}`],
         blocks: [
-          { card: { status: { label: "Programada", tone: "success" }, rows: [{ label: "Servicio", value: i.serviceName }, { label: "Cliente", value: i.companyName }, { label: "Cuota mensual", value: fmtMoney(i.amountCents, i.currency) }, { label: `IVA (${i.taxRateBp / 100} %)`, value: fmtMoney(tax, i.currency) }], total: { label: "Total mensual", value: fmtMoney(i.amountCents + tax, i.currency) }, foot: { label: "Primer cobro previsto", value: fmtDate(i.firstChargeAt) } } },
+          { card: { status: { label: "Programada", tone: "success" }, rows: [{ label: "Servicio", value: i.serviceName }, { label: "Cliente", value: i.companyName }, { label: `Cuota ${i.period ?? "mensual"}`, value: fmtMoney(i.amountCents, i.currency) }, { label: `IVA (${i.taxRateBp / 100} %)`, value: fmtMoney(tax, i.currency) }], total: { label: `Total ${i.period ?? "mensual"}`, value: fmtMoney(i.amountCents + tax, i.currency) }, foot: { label: "Primer cobro previsto", value: fmtDate(i.firstChargeAt) } } },
           { notice: { tone: "info", text: `No se ha realizado ningún cargo en este momento. El cobro se efectuará automáticamente el ${fmtDate(i.firstChargeAt)} con el método de pago autorizado.` } },
           { h2: "¿Qué sucede ahora?" },
           { timeline: [
             { label: "Contrato firmado", ...(i.acceptedAt ? { date: fmtShort(i.acceptedAt) } : {}), state: "done" },
             { label: "Método de pago autorizado", ...(i.authorizedAt ? { date: fmtShort(i.authorizedAt) } : {}), state: "done" },
             { label: "Primer cobro", date: fmtShort(i.firstChargeAt), state: "current" },
-            { label: "Facturas mensuales", date: `desde ${fmtShort(i.firstChargeAt)}`, state: "todo" },
+            { label: `Facturas ${i.period ? `${i.period}es` : "mensuales"}`, date: `desde ${fmtShort(i.firstChargeAt)}`, state: "todo" },
           ] },
         ],
       });

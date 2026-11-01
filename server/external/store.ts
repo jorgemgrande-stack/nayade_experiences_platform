@@ -139,8 +139,12 @@ const COLS: Array<[keyof ExternalSubscription, string]> = [
   ["currentPeriodEnd", "current_period_end"],
   ["graceUntil", "grace_until"],
   ["decisionReason", "decision_reason"],
+  ["intervalCount", "interval_count"],
+  ["durationPeriods", "duration_periods"],
+  ["endsAt", "ends_at"],
+  ["baseAmountCents", "base_amount_cents"],
 ];
-const NUMERIC = new Set<keyof ExternalSubscription>(["amountCents", "taxRateBp", "billingDay", "billingHour", "graceDays", "firstChargeAt", "currentPeriodStart", "currentPeriodEnd", "graceUntil"]);
+const NUMERIC = new Set<keyof ExternalSubscription>(["amountCents", "taxRateBp", "billingDay", "billingHour", "graceDays", "firstChargeAt", "currentPeriodStart", "currentPeriodEnd", "graceUntil", "intervalCount", "durationPeriods", "endsAt", "baseAmountCents"]);
 
 export class MysqlExternalStore implements ExternalStore {
   private readonly lm: 0 | 1;
@@ -153,6 +157,9 @@ export class MysqlExternalStore implements ExternalStore {
   private row = (r: Row): ExternalSubscription => {
     const out: Record<string, unknown> = { id: Number(r.id), contractId: Number(r.contract_id), companyId: Number(r.company_id), version: Number(r.version), createdBy: String(r.created_by), createdAt: Number(r.created_at), updatedAt: Number(r.updated_at) };
     for (const [k, c] of COLS) out[k] = NUMERIC.has(k) ? num(r[c]) : str(r[c]);
+    // Filas anteriores a la 0041: mensuales, sin ajuste
+    out.intervalCount = (out.intervalCount as number | null) ?? 1;
+    out.adjustment = r.adjustment_json ? (typeof r.adjustment_json === "string" ? JSON.parse(r.adjustment_json) : r.adjustment_json) : null;
     return out as unknown as ExternalSubscription;
   };
   private async one(where: string, args: unknown[]) {
@@ -160,8 +167,8 @@ export class MysqlExternalStore implements ExternalStore {
     return rows[0] ? this.row(rows[0]) : null;
   }
   async insert(x: NewExternal) {
-    const cols = ["livemode", "contract_id", "company_id", "created_by", "created_at", "updated_at", ...COLS.map(([, c]) => c)];
-    const vals = [this.lm, x.contractId, x.companyId, x.createdBy, x.createdAt, x.createdAt, ...COLS.map(([k]) => (x as unknown as Record<string, unknown>)[k] ?? null)];
+    const cols = ["livemode", "contract_id", "company_id", "created_by", "created_at", "updated_at", "adjustment_json", ...COLS.map(([, c]) => c)];
+    const vals = [this.lm, x.contractId, x.companyId, x.createdBy, x.createdAt, x.createdAt, x.adjustment ? JSON.stringify(x.adjustment) : null, ...COLS.map(([k]) => (x as unknown as Record<string, unknown>)[k] ?? null)];
     try {
       const [r] = await this.pool.query<mysql.ResultSetHeader>(`INSERT INTO external_subscriptions (${cols.join(", ")}) VALUES (${cols.map(() => "?").join(", ")})`, vals);
       return (await this.get(r.insertId))!;
@@ -194,6 +201,7 @@ export class MysqlExternalStore implements ExternalStore {
     const sets: string[] = [];
     const args: unknown[] = [];
     for (const [k, c] of COLS) if (k in patch) (sets.push(`${c} = ?`), args.push((patch as Record<string, unknown>)[k] ?? null));
+    if ("adjustment" in patch) (sets.push("adjustment_json = ?"), args.push(patch.adjustment ? JSON.stringify(patch.adjustment) : null));
     try {
       const [r] = await this.pool.query<mysql.ResultSetHeader>(`UPDATE external_subscriptions SET ${[...sets, "version = version + 1", "updated_at = ?"].join(", ")} WHERE id = ? AND version = ? AND livemode = ?`, [...args, now, id, expectedVersion, this.lm]);
       if (r.affectedRows !== 1) {

@@ -3,7 +3,10 @@
  * (`/cp/v1/public/contract-acceptance`, sin sesión: solo con el token de un solo uso del enlace).
  *
  *   GET  /external?companyId=                 crm:read        contrataciones externas
- *   POST /external                            orders:write    nueva contratación (contrato del CRM + calendario)
+ *   POST /external                            orders:write    nueva contratación (contrato del CRM + calendario), o borrador
+ *   PATCH /external/:id                       orders:write    edición del borrador
+ *   POST /external/:id/cancel                 orders:write    cancelación antes de Stripe (borrador, aceptación o autorización pendientes)
+ *   (un descuento o recargo comercial exige además orders:approve)
  *   GET  /external/:id                        crm:read        detalle: contrato, aceptaciones, cobros e historial
  *   GET  /external/:id/document               crm:read        documento contractual exacto y su huella
  *   POST /external/:id/acceptance             orders:write    enlace de aceptación para el representante
@@ -37,7 +40,7 @@ function acceptanceSummaryHtml(p: Presentation): string {
   return `<section class="accept"><h3>${esc(b.title)}</h3>${b.lines.map((l) => `<p>${esc(l)}</p>`).join("")}</section>`;
 }
 
-const STATUS: Record<ExternalError["code"], number> = { not_found: 404, invalid_input: 400, invalid_state: 409, conflict: 409, unavailable: 503 };
+const STATUS: Record<ExternalError["code"], number> = { forbidden: 403, not_found: 404, invalid_input: 400, invalid_state: 409, conflict: 409, unavailable: 503 };
 
 const wrap =
   (fn: (req: Request, res: Response) => Promise<void>) =>
@@ -55,23 +58,34 @@ const wrap =
     });
   };
 
+const adjustmentBody = z.object({ type: z.enum(["discount", "surcharge"]), mode: z.enum(["percent", "amount"]), value: z.number().int(), reason: z.string().max(300) }).strict();
+const termsBody = {
+  service: z.object({ key: z.string().max(50), name: z.string().max(160) }).strict(),
+  amountCents: z.number().int(),
+  currency: z.string().length(3).optional(),
+  taxRateBp: z.number().int(),
+  billingDay: z.number().int().optional(),
+  firstChargeDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  graceDays: z.number().int().optional(),
+  externalRef: z.string().max(200).nullable().optional(),
+  conditions: z.string().max(15000),
+  noticeDays: z.number().int().min(0).max(365).optional(),
+  interval: z.enum(["month", "quarter", "year"]).optional(),
+  durationPeriods: z.number().int().nullable().optional(),
+  adjustment: adjustmentBody.nullable().optional(),
+};
 const createBody = z
   .object({
     companyId: z.number().int().positive(),
-    service: z.object({ key: z.string().max(50), name: z.string().max(160) }).strict(),
-    amountCents: z.number().int(),
-    currency: z.string().length(3).optional(),
-    taxRateBp: z.number().int(),
-    billingDay: z.number().int().optional(),
-    firstChargeDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
-    graceDays: z.number().int().optional(),
-    externalRef: z.string().max(200).nullable().optional(),
-    conditions: z.string().max(15000),
-    noticeDays: z.number().int().min(0).max(365).optional(),
+    ...termsBody,
+    draft: z.boolean().optional(),
     /** SOLO sandbox: fecha simulada inicial del reloj de prueba de Stripe (ms). */
     testClock: z.object({ frozenTime: z.number().int() }).strict().optional(),
   })
   .strict();
+const updateBody = z.object(termsBody).strict();
+/** ¿Puede autorizar ajustes comerciales (descuentos o recargos)? */
+const canAuthorize = (req: Request) => !!getAuth(req)?.scopes.has("orders:approve");
 const id = (req: Request) => z.coerce.number().int().positive().parse(req.params.id);
 const actor = (req: Request) => `${getAuth(req)!.actor.type}:${getAuth(req)!.actor.id}`.slice(0, 100);
 
@@ -83,11 +97,18 @@ export function createExternalRouter(svc: ExternalService): Router {
   }));
   r.post("/evaluate", requireScope("ops:write"), wrap(async (_req, res) => void res.json({ overdue: await svc.evaluateOverdue() })));
   r.post("/", requireScope("orders:write"), wrap(async (req, res) => {
-    const x = await svc.create(createBody.parse(req.body ?? {}), actor(req));
+    const x = await svc.create(createBody.parse(req.body ?? {}), actor(req), { canAuthorize: canAuthorize(req) });
     opsLog("info", "External", "created", { externalId: x.id, companyId: x.companyId });
     res.status(201).json({ external: x });
   }));
   r.get("/:id", requireScope("crm:read"), wrap(async (req, res) => void res.json(await svc.detail(id(req)))));
+  r.patch("/:id", requireScope("orders:write"), wrap(async (req, res) => void res.json({ external: await svc.updateDraft(id(req), updateBody.parse(req.body ?? {}), actor(req), { canAuthorize: canAuthorize(req) }) })));
+  r.post("/:id/cancel", requireScope("orders:write"), wrap(async (req, res) => {
+    const b = z.object({ reason: z.string().max(300) }).strict().parse(req.body ?? {});
+    const x = await svc.cancel(id(req), b.reason, actor(req));
+    opsLog("info", "External", "canceled", { externalId: x.id });
+    res.json({ external: x });
+  }));
   r.get("/:id/document", requireScope("crm:read"), wrap(async (req, res) => {
     const d = await svc.detail(id(req));
     const doc = await svc.document(d.external);
@@ -136,9 +157,9 @@ const madridDateTime = (ms: number) => new Intl.DateTimeFormat("es-ES", { timeZo
 const money = (cents: number, currency: string) => new Intl.NumberFormat("es-ES", { style: "currency", currency, useGrouping: "always" }).format(cents / 100);
 
 /** Condiciones económicas aceptadas (las del contrato; aquí no se calcula nada nuevo). */
-function termsHtml(t: { amountCents: number; taxCents: number; currency: string; billingDay: number; firstChargeAt: number; timezone: string }): string {
+function termsHtml(t: { amountCents: number; taxCents: number; currency: string; billingDay: number; firstChargeAt: number; timezone: string; period?: string }): string {
   const first = new Intl.DateTimeFormat("es-ES", { timeZone: t.timezone, dateStyle: "long" }).format(new Date(t.firstChargeAt));
-  return `<section class="accept"><h3>Condiciones de cobro</h3><p>Cuota mensual: <strong>${esc(money(t.amountCents, t.currency))}</strong> + IVA ${esc(money(t.taxCents, t.currency))} = <strong>${esc(money(t.amountCents + t.taxCents, t.currency))} al mes</strong>.</p><p>Se cobra el día ${t.billingDay} de cada mes. Primer cobro previsto: <strong>${esc(first)}</strong>.</p></section>`;
+  return `<section class="accept"><h3>Condiciones de cobro</h3><p>Cuota ${esc(t.period ?? "mensual")}: <strong>${esc(money(t.amountCents, t.currency))}</strong> + IVA ${esc(money(t.taxCents, t.currency))} = <strong>${esc(money(t.amountCents + t.taxCents, t.currency))} ${t.period === "anual" ? "al año" : t.period === "trimestral" ? "al trimestre" : "al mes"}</strong>.</p><p>Se cobra el día ${t.billingDay} ${t.period ? "del mes en que empieza cada periodo" : "de cada mes"}. Primer cobro previsto: <strong>${esc(first)}</strong>.</p></section>`;
 }
 
 function send(res: Response, status: number, html: string) {

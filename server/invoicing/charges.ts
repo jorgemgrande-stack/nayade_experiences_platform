@@ -6,11 +6,13 @@
  *    el servidor: nunca se escribe a mano.
  *  - Borrador → aprobado (una persona con `orders:approve`) → nace su factura por devengo (`charge:<id>`, fecha de
  *    operación = la pactada). Anular solo antes de aprobar: lo aprobado ya tiene factura y se corrige con rectificativa.
+ *  - Un extraordinario puede llevar desglose (`detail.lines`, notas de cobro de servicios externos): la suma de sus
+ *    líneas es el importe y la factura nace con esas líneas (el IVA, sobre la base total, como en el cobro de Stripe).
  *  - El cobro NO se hace aquí (parte de pagos, I-4): queda el método (`payment_link` por defecto) y, para cobrar con la
  *    tarjeta autorizada, la referencia de la autorización expresa (`mandateRef`, obligatoria).
  */
 import type mysql from "mysql2/promise";
-import { customerOf, lineOf, totals, type CompanyFiscal } from "./rules";
+import { customerOf, lineOf, taxOf, totals, type CompanyFiscal } from "./rules";
 import type { InvoicingStore } from "./store";
 import { InvoicingError, type Invoice } from "./types";
 
@@ -27,6 +29,14 @@ export interface ChargeDetail {
   /** Margen pactado: porcentaje (puntos básicos) o importe fijo. */
   marginBp?: number;
   marginCents?: number;
+  /** Desglose de un extraordinario: cantidad × precio unitario (céntimos sin IVA; negativo en un descuento). */
+  lines?: ChargeLine[];
+}
+
+export interface ChargeLine {
+  concept: string;
+  quantity: number;
+  unitCents: number;
 }
 
 export interface Charge {
@@ -94,6 +104,18 @@ export function validateCharge(i: NewChargeInput): { amountCents: number; proble
     amountCents = i.amountCents ?? 0;
     if (!Number.isInteger(amountCents) || amountCents <= 0) p.push("el importe debe ser positivo (céntimos)");
     if (i.detail?.costCents !== undefined) p.push("un cargo extraordinario no lleva coste de proveedor (usa un gasto variable)");
+    const lines = i.detail?.lines;
+    if (lines !== undefined) {
+      if (!Array.isArray(lines) || !lines.length || lines.length > 50) p.push("el desglose debe tener entre 1 y 50 líneas");
+      else {
+        for (const l of lines)
+          if (!l || typeof l.concept !== "string" || l.concept.trim().length < 3 || l.concept.length > 200 || !Number.isInteger(l.quantity) || l.quantity < 1 || l.quantity > 100_000 || !Number.isInteger(l.unitCents) || l.unitCents === 0) {
+            p.push("línea del desglose no válida (concepto de 3 a 200 caracteres, cantidad entera y precio distinto de cero)");
+            break;
+          }
+        if (lines.reduce((a, l) => a + (l?.quantity ?? 0) * (l?.unitCents ?? 0), 0) !== amountCents) p.push("la suma del desglose no coincide con el importe");
+      }
+    }
   } else if (i.kind === "variable_cost") {
     const d = i.detail ?? {};
     if (i.amountCents !== undefined) p.push("el importe de un gasto variable se calcula: coste + margen");
@@ -240,6 +262,17 @@ export function invoiceConcept(c: Pick<Charge, "kind" | "concept" | "detail">): 
   return `${c.concept} — ${d.provider ?? ""}${period}`.slice(0, 300);
 }
 
+/**
+ * Líneas de factura de un cargo con desglose. El IVA se calcula sobre la base total (como lo cobra Stripe en el enlace
+ * de pago); la diferencia de redondeo entre líneas se ajusta en la última, para que la factura y el cobro coincidan.
+ */
+export function breakdownLines(c: Pick<Charge, "amountCents" | "taxRateBp" | "detail">) {
+  const ls = (c.detail?.lines ?? []).map((l, k) => lineOf(k + 1, l.concept.slice(0, 300), l.quantity, l.unitCents, c.taxRateBp));
+  const diff = taxOf(c.amountCents, c.taxRateBp) - ls.reduce((a, l) => a + l.taxCents, 0);
+  if (diff && ls.length) ls[ls.length - 1] = { ...ls[ls.length - 1], taxCents: ls[ls.length - 1].taxCents + diff };
+  return ls;
+}
+
 export class ChargeService {
   private now: () => number;
   constructor(private d: ChargeDeps) {
@@ -261,7 +294,7 @@ export class ChargeService {
       dueDate: i.dueDate,
       method: i.method ?? "payment_link",
       mandateRef: i.mandateRef?.trim() || null,
-      detail: i.kind === "variable_cost" ? (i.detail ?? null) : null,
+      detail: i.kind === "variable_cost" ? (i.detail ?? null) : i.detail?.lines?.length ? { lines: i.detail.lines.map((l) => ({ concept: l.concept.trim(), quantity: l.quantity, unitCents: l.unitCents })) } : null,
       idempotencyKey: i.idempotencyKey.trim(),
       createdBy: actor,
       createdAt: this.now(),
@@ -275,7 +308,7 @@ export class ChargeService {
     if (c.status === "approved" && c.invoiceId) return { charge: c, invoice: (await this.d.invoices.get(c.invoiceId))! };
     const now = this.now();
     const company = await this.d.company(c.companyId);
-    const lines = [lineOf(1, invoiceConcept(c), 1, c.amountCents, c.taxRateBp)];
+    const lines = c.detail?.lines?.length ? breakdownLines(c) : [lineOf(1, invoiceConcept(c), 1, c.amountCents, c.taxRateBp)];
     const { invoice } = await this.d.invoices.insertDraft({
       sourceKey: `charge:${c.id}`,
       kind: "invoice",

@@ -15,7 +15,7 @@
  *  - El descuento sobre el ticket completo se reparte entre sus líneas en proporción a su importe, de modo que la suma
  *    por producto, por categoría o por IVA coincide con las ventas netas.
  */
-import { madridDateKey } from "./utils/timezone";
+import { madridDateKey, madridMidnightMs, nextDateKey } from "./utils/timezone";
 
 export interface ReportSaleRow {
   id: number;
@@ -117,32 +117,8 @@ const eur = (cents: number) => cents / 100;
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
-/** Día siguiente de una fecha YYYY-MM-DD (calendario, sin zona). */
-export function nextDateKey(dateKey: string): string {
-  const d = new Date(`${dateKey}T12:00:00Z`);
-  d.setUTCDate(d.getUTCDate() + 1);
-  return d.toISOString().slice(0, 10);
-}
-
-const MADRID_PARTS = new Intl.DateTimeFormat("en-GB", {
-  timeZone: "Europe/Madrid", hourCycle: "h23", year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", second: "2-digit",
-});
-/** Desfase de Madrid respecto a UTC (ms) en un instante dado. */
-function madridOffsetMs(ms: number): number {
-  const p = Object.fromEntries(MADRID_PARTS.formatToParts(new Date(ms)).map((x) => [x.type, x.value]));
-  const asUtc = Date.UTC(Number(p.year), Number(p.month) - 1, Number(p.day), Number(p.hour), Number(p.minute), Number(p.second));
-  return asUtc - (ms - (ms % 1000));
-}
-
-/**
- * Instante de las 00:00 en Madrid de un día. Se calcula con el desfase vigente a esa hora (no al mediodía), así que
- * es exacto también los días de cambio de hora (`madridStartOfDayUtc` usa el del mediodía y se desvía una hora).
- */
-export function madridMidnightMs(dateKey: string): number {
-  const utcMidnight = Date.parse(`${dateKey}T00:00:00Z`);
-  const guess = utcMidnight - madridOffsetMs(utcMidnight);
-  return utcMidnight - madridOffsetMs(guess);
-}
+// El día siguiente y la medianoche de Madrid se comparten con el resto del servidor (utils/timezone).
+export { nextDateKey, madridMidnightMs };
 
 /**
  * Instantes [desde, hasta) en milisegundos del rango de días de Madrid. El final es el inicio del día siguiente: así

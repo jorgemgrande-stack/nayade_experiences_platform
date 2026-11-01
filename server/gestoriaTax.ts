@@ -10,6 +10,7 @@
 import { and, gte, lt, lte, ne, or, isNull, isNotNull, inArray } from "drizzle-orm";
 import { invoices, reavExpedients, expenses, hrIrpfLedger } from "../drizzle/schema";
 import { calcGeneralTax } from "./taxUtils";
+import { madridMonthsRange, madridQuarterRange } from "./utils/timezone";
 import { legacyDb, legacyPool } from "./_core/legacyDb";
 
 const _pool = legacyPool();
@@ -44,15 +45,9 @@ function signed(sign: number, v: unknown): number {
   return sign < 0 ? -Math.abs(n) : n;
 }
 
-/** Rango de fechas de un trimestre (q = 1..4) de un ejercicio. */
+/** Rango de fechas de un trimestre (q = 1..4) de un ejercicio, en hora de Madrid (no la del servidor, en UTC). */
 function quarterRange(year: number, q: number) {
-  const startMonth = (q - 1) * 3; // 0-indexed
-  const start = new Date(year, startMonth, 1);
-  const endExcl = new Date(year, startMonth + 3, 1);
-  const lastDay = new Date(year, startMonth + 3, 0).getDate();
-  const startStr = `${year}-${String(startMonth + 1).padStart(2, "0")}-01`;
-  const endStr = `${year}-${String(startMonth + 3).padStart(2, "0")}-${String(lastDay).padStart(2, "0")}`;
-  return { start, endExcl, startStr, endStr };
+  return madridQuarterRange(year, q);
 }
 
 /** Calcula el Modelo 303 de un trimestre. periodKey = 'YYYY-TX'. */
@@ -301,11 +296,8 @@ async function plUpToMonth(
   year: number,
   monthInclusive: number
 ): Promise<{ income: number; expenses: number; expensesOperational: number }> {
-  const start = new Date(year, 0, 1);
-  const endExcl = new Date(year, monthInclusive, 1);
-  const startStr = `${year}-01-01`;
-  const lastDay = new Date(year, monthInclusive, 0).getDate();
-  const endStr = `${year}-${String(monthInclusive).padStart(2, "0")}-${String(lastDay).padStart(2, "0")}`;
+  // Enero..monthInclusive en hora de Madrid (no la del servidor, en UTC).
+  const { start, endExcl, startStr, endStr } = madridMonthsRange(year, 0, monthInclusive);
 
   const invRows = await db
     .select({ subtotal: invoices.subtotal, invoiceType: invoices.invoiceType })

@@ -41,6 +41,7 @@ import {
 } from "../gestoriaTax";
 import { legacyDb, legacyPool } from "../_core/legacyDb";
 import { buildNoticeHtml } from "../emailTemplates";
+import { madridDateKey } from "../utils/timezone";
 
 /** Línea de desglose para persistir en tax_obligation_lines. */
 type EstimateLine = { concept: string; base: string; rate: string | null; amount: string; sourceType: string };
@@ -134,8 +135,9 @@ async function ensureYearObligations(year: number): Promise<number> {
   return toInsert.length;
 }
 
+/** Hoy en Madrid (el servidor va en UTC: entre las 00:00 y las 02:00 de España daría el día anterior). */
 function todayISO() {
-  return new Date().toISOString().slice(0, 10);
+  return madridDateKey();
 }
 function addMonthsISO(dateStr: string, n: number): string {
   const d = new Date(dateStr + "T00:00:00");
