@@ -37,6 +37,9 @@ describe("pantallas de un usuario nuevo", () => {
     const src = read("client/src/pages/admin/crm/ClientsManager.tsx");
     expect(src).not.toMatch(/>\s*(Desde lead|Lead origen)\s*</);
     expect(src).not.toMatch(/\/> Lead #|>Lead #/);
+    // Insignias de la lista y de la ficha («Lead», «Lead Cupón») y título del historial
+    expect(src).not.toMatch(/\/> Lead( Cupón)?\s*\r?\n/);
+    expect(src).not.toContain("`Lead #");
     expect(src).toContain("{voc.leadOrigin}");
   });
 

@@ -407,7 +407,7 @@ function ClientHistoryModal({ client, onClose, onStartWhatsApp }: { client: Clie
         id: `lead-${data.lead.id}`,
         date: new Date(data.lead.createdAt),
         type: "lead",
-        title: `Lead #${data.lead.id} — ${data.lead.opportunityName ?? data.lead.name}`,
+        title: `${voc.Lead} #${data.lead.id} — ${data.lead.opportunityName ?? data.lead.name}`,
         subtitle: `Origen: ${data.lead.source ?? "—"} · Estado: ${data.lead.opportunityStatus ?? "—"}`,
         color: "border-l-blue-500",
         dotColor: "bg-blue-500 border-blue-300",
@@ -551,7 +551,7 @@ function ClientHistoryModal({ client, onClose, onStartWhatsApp }: { client: Clie
             </span>
           ) : (
             <span className="px-2 py-0.5 rounded-full bg-orange-500/10 border border-orange-500/20 text-orange-300 text-xs flex items-center gap-1">
-              <UserPlus className="w-3 h-3" /> Lead
+              <UserPlus className="w-3 h-3" /> {voc.Lead}
             </span>
           )}
         </div>
@@ -1207,7 +1207,7 @@ export default function ClientsManager() {
                         className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-violet-500/10 border border-violet-500/20 text-violet-300 text-xs"
                         title="Cliente captado desde cupón de plataforma externa"
                       >
-                        <Ticket className="w-3 h-3" /> Lead Cupón
+                        <Ticket className="w-3 h-3" /> {voc.Lead} (cupón)
                       </span>
                     ) : (
                       <button
@@ -1215,7 +1215,7 @@ export default function ClientsManager() {
                         className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-orange-500/10 border border-orange-500/20 text-orange-300 text-xs hover:bg-orange-500/20 transition-colors cursor-pointer"
                         title="Ampliar datos para convertir en cliente"
                       >
-                        <UserPlus className="w-3 h-3" /> Lead
+                        <UserPlus className="w-3 h-3" /> {voc.Lead}
                       </button>
                     )}
                   </td>
