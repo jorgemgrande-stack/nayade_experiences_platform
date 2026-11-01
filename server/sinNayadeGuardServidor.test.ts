@@ -10,9 +10,9 @@
 import { describe, it, expect } from "vitest";
 import fs from "node:fs";
 import path from "node:path";
+import { ORIGINAL } from "../shared/sinNayade";
 
 const ROOT = __dirname;
-const ORIGINAL = /N[aá]yade|N&[aA]acute;[yY][aA][dD][eE]|nayadeexperiences|skicenter\.es|639 ?57 ?66 ?27|34639576627|San Rafael/;
 
 // Solo queda la guardia que BLOQUEA enlaces al dominio de la instalación original en correos de otras empresas
 const BASELINE: Record<string, number> = {

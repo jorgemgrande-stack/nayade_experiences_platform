@@ -18,6 +18,7 @@ import { configureLimitAccess } from "../limits/access";
 import { configureQuotaExceptions } from "../erm/exceptionAccess";
 import { withQuotaExceptions } from "../erm/quota";
 import { warmConfigCache } from "../../config";
+import { warmEmailVocabulary } from "../../emailVocabulary";
 import { warmIntegrationCreds } from "../credentials/runtime";
 import { configureTenantIdentity, warmTenantIdentity } from "../tenantIdentity";
 import { configureSupport, createSupportRouter, supportReadOnlyGuard } from "../support/session";
@@ -136,7 +137,7 @@ export function installTenantResolution(app: Express, env: NodeJS.ProcessEnv = p
       setJobLockProvider(mysqlJobLockProvider(() => mysql.createConnection({ uri, connectTimeout: 5_000 })));
     }
     // Las tareas también necesitan las credenciales del tenant en curso
-    setJobPrelude(() => Promise.all([warmConfigCache(), warmIntegrationCreds(), warmTenantIdentity()]).then(() => undefined));
+    setJobPrelude(() => Promise.all([warmConfigCache(), warmIntegrationCreds(), warmTenantIdentity(), warmEmailVocabulary()]).then(() => undefined));
     // Marca, URL pública y entidad fiscal de cada empresa (registro, solo lectura)
     configureTenantIdentity(rt.identity);
     // Las licencias de módulos se leen del registro (solo lectura)
@@ -168,7 +169,7 @@ export function installTenantBinding(app: Express): void {
   if (erm) app.use(erm.guard);
   // Precarga los ajustes y la identidad del tenant (lecturas síncronas: Redsys, remitente, URL pública…)
   app.use((_req, _res, next) => {
-    Promise.all([warmConfigCache(), warmIntegrationCreds(), warmTenantIdentity()]).then(() => next(), () => next());
+    Promise.all([warmConfigCache(), warmIntegrationCreds(), warmTenantIdentity(), warmEmailVocabulary()]).then(() => next(), () => next());
   });
   // Soporte: lectura impuesta en el borde y puerta de entrada
   app.use(supportReadOnlyGuard());

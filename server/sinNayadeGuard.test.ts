@@ -10,9 +10,9 @@
 import { describe, it, expect } from "vitest";
 import fs from "node:fs";
 import path from "node:path";
+import { ORIGINAL } from "../shared/sinNayade";
 
 const ROOT = path.join(__dirname, "../client/src");
-const ORIGINAL = /N[aá]yade|N&[aA]acute;[yY][aA][dD][eE]|nayadeexperiences|skicenter\.es|639 ?57 ?66 ?27|34639576627|San Rafael/;
 
 const BASELINE: Record<string, number> = {
   // Solo en la instalación original o detrás de la condición de web propia
