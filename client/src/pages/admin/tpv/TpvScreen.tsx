@@ -792,7 +792,7 @@ export default function TpvScreen() {
                       )}
                       {product.variants && product.variants.length > 0 && (
                         <div className="absolute top-1 left-1 bg-primary text-primary-foreground text-[9px] font-bold px-1.5 py-0.5 rounded-full">
-                          {product.variants.length} opciones
+                          {product.variants.length} {product.variants.length === 1 ? "opción" : "opciones"}
                         </div>
                       )}
                       <div className="absolute bottom-1 left-1">
