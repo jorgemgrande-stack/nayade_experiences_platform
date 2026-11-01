@@ -67,15 +67,16 @@ export const lookupKeyFor = (productKey: string, kind: string, currency: string,
 export const PURCHASABLE_FAMILIES: ReadonlySet<string> = new Set(["extension", "industry_module"]);
 
 /**
- * Familias del catálogo cuyas extensiones de pago «bajo solicitud» llevan ya su Product y su Price (no vendibles):
- * las extensiones de Elephant Connect y sus paquetes (regla del propietario, 01/11/2026). Ampliaciones por
- * cantidad, servicios y módulos sectoriales no entran hasta que se decida.
+ * Familias del catálogo cuyos productos «bajo solicitud» llevan ya su Product y su Price (no vendibles) si su
+ * configuración comercial no dice otra cosa: las extensiones de Elephant Connect y sus paquetes (regla del
+ * propietario, 01/11/2026). Cualquier otro producto comprable (Net, ampliaciones, alojamiento…) se prepara con
+ * `catalog.stripePrepared: true` en su ficha del CRM, sin tocar el código; `false` lo deja fuera.
  */
 export const PREPARED_CATALOG_FAMILIES: ReadonlySet<string> = new Set(["connect", "connect_bundle"]);
 
 /** ¿Extensión de pago «bajo solicitud» cuyo Price se prepara antes de abrir la venta? */
-const isPrepared = (p: { family: string; catalogFamily?: string; commercialStatus: string }) =>
-  p.commercialStatus === "on_request" && p.family === "extension" && !!p.catalogFamily && PREPARED_CATALOG_FAMILIES.has(p.catalogFamily);
+const isPrepared = (p: { family: string; catalogFamily?: string; commercialStatus: string; stripePrepared?: boolean }) =>
+  p.commercialStatus === "on_request" && PURCHASABLE_FAMILIES.has(p.family) && (p.stripePrepared ?? (p.family === "extension" && !!p.catalogFamily && PREPARED_CATALOG_FAMILIES.has(p.catalogFamily)));
 
 /** Extensión «bajo solicitud» que se queda fuera del catálogo deseado y por qué. */
 export interface SkippedProduct {

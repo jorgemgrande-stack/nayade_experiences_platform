@@ -83,6 +83,35 @@ describe("catálogo de Stripe", () => {
     expect(plan.operations.filter((o) => o.op === "create_product").map((o) => o.productKey)).toEqual(["essential", "business", "mod-ok", "users"]);
   });
 
+  it("configuración comercial: cualquier producto comprable «bajo solicitud» se prepara con stripePrepared, sin lista en el código", async () => {
+    const base = await catalogOf().offer();
+    const p = (key: string, family: string, catalogFamily: string, extra: Record<string, unknown>, cents = 900) => ({ ...product(key, [price(40 + key.length, key, "monthly", cents)]), family, catalogFamily, commercialStatus: "on_request", ...extra });
+    const catalog = {
+      product: async () => null,
+      price: async () => null,
+      offer: async () => [
+        ...base,
+        // Ampliación, módulo Net y alojamiento web (servicio recurrente) habilitados desde su ficha
+        p("users-extra", "extension", "addon", { stripePrepared: true }, 500),
+        p("hotel-net-pms", "industry_module", "net_module", { stripePrepared: true }, 5900),
+        p("hosting", "extension", "service", { stripePrepared: true }, 1500),
+        // Connect por defecto se prepara; con stripePrepared: false queda fuera
+        p("connect-people", "extension", "connect", {}, 1900),
+        p("connect-tax", "extension", "connect", { stripePrepared: false }, 1900),
+        // Sin indicador y fuera de Connect: no se prepara; un servicio de pago único nunca, ni con el indicador
+        p("storage-extra", "extension", "addon", {}),
+        p("puesta-en-marcha", "service", "service", { stripePrepared: true }),
+      ],
+    } as unknown as CatalogPort;
+    const d = await desiredCatalog(catalog);
+    expect(d.slice(4).map((x) => [x.productKey, x.amountCents, x.sellable])).toEqual([
+      ["users-extra", 500, false],
+      ["hotel-net-pms", 5900, false],
+      ["hosting", 1500, false],
+      ["connect-people", 1900, false],
+    ]);
+  });
+
   it("extensiones de Connect «bajo solicitud» con mensual aprobado: su Product y su Price se preparan, marcados como no vendibles", async () => {
     const base = await catalogOf().offer();
     const ext = (key: string, commercialStatus: string, prices: unknown[], catalogFamily = "connect") => ({ ...product(key, prices), name: key === "connect-people" ? "Elephant People" : key, family: "extension", catalogFamily, commercialStatus });
