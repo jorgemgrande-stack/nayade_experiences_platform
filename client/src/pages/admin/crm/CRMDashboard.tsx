@@ -42,6 +42,7 @@ import { toast } from "sonner";
 import CancellationDetailModal from "./CancellationDetailModal";
 import ReservationTicket from "./ReservationTicket";
 import NewInvoiceDialog from "./NewInvoiceDialog";
+import CreditNoteDialog from "./CreditNoteDialog";
 import GestoriaExportDialog from "./GestoriaExportDialog";
 import { ProposalLeadButton } from "./ProposalsManager";
 import { CatalogConceptSelector, type CatalogProduct } from "@/components/CatalogConceptSelector";
@@ -5593,7 +5594,6 @@ export default function CRMDashboard() {
   const [gestoriaExportOpen, setGestoriaExportOpen] = useState(false);
   const [deleteInvoiceId, setDeleteInvoiceId] = useState<number | null>(null);
   const [paymentMethod, setPaymentMethod] = useState<"transferencia" | "efectivo" | "otro">("transferencia");
-  const [creditNoteReason, setCreditNoteReason] = useState("");
 
   // Reset paginación cuando cambian los filtros de facturas
   useEffect(() => { setInvoicesPage(0); }, [invoiceStatusFilter, invoiceTypeFilter, invoiceSearch, invoiceDateFrom, invoiceDateTo]);
@@ -5966,17 +5966,6 @@ export default function CRMDashboard() {
       setConfirmPaymentInvoiceId(null);
       utils.crm.invoices.listAll.invalidate();
       utils.crm.reservations.list.invalidate();
-      refetchInvoices();
-    },
-    onError: (e) => toast.error(errorToastMessage(e)),
-  });
-
-  const createCreditNoteMutation = trpc.crm.invoices.createCreditNote.useMutation({
-    onSuccess: (data) => {
-      toast.success(`Abono ${data.creditNoteNumber} generado correctamente`);
-      setCreditNoteInvoiceId(null);
-      setCreditNoteReason("");
-      utils.crm.invoices.listAll.invalidate();
       refetchInvoices();
     },
     onError: (e) => toast.error(errorToastMessage(e)),
@@ -7940,9 +7929,9 @@ export default function CRMDashboard() {
                                 <CreditCard className="w-4 h-4" />
                               </button>
                             )}
-                            {/* Generar abono */}
-                            {inv.status === "cobrada" && inv.invoiceType !== "abono" && (
-                              <button onClick={() => setCreditNoteInvoiceId(inv.id)} title="Generar factura de abono"
+                            {/* Emitir abono (total o parcial) */}
+                            {["generada", "enviada", "cobrada"].includes(inv.status) && inv.invoiceType !== "abono" && (
+                              <button onClick={() => setCreditNoteInvoiceId(inv.id)} title="Emitir abono"
                                 className="p-1.5 rounded-lg hover:bg-foreground/[0.08] text-foreground/50 hover:text-violet-400 transition-colors">
                                 <RotateCcw className="w-4 h-4" />
                               </button>
@@ -8293,39 +8282,8 @@ export default function CRMDashboard() {
         </DialogContent>
       </Dialog>
 
-      {/* Generar abono */}
-      <Dialog open={creditNoteInvoiceId !== null} onOpenChange={(o) => { if (!o) { setCreditNoteInvoiceId(null); setCreditNoteReason(""); } }}>
-        <DialogContent className="max-w-sm bg-[#0d1526] border-foreground/[0.12] text-white">
-          <DialogHeader>
-            <DialogTitle className="text-white flex items-center gap-2">
-              <RotateCcw className="w-5 h-5 text-violet-400" /> Generar factura de abono
-            </DialogTitle>
-          </DialogHeader>
-          <div className="space-y-4 py-2">
-            <div>
-              <Label className="text-foreground/65 text-xs mb-1.5 block">Motivo del abono *</Label>
-              <Textarea
-                value={creditNoteReason}
-                onChange={(e) => setCreditNoteReason(e.target.value)}
-                placeholder="Ej: Cancelación por condiciones meteorológicas"
-                className="bg-foreground/[0.05] border-foreground/[0.12] text-white placeholder:text-foreground/40 resize-none"
-                rows={3}
-              />
-            </div>
-            <p className="text-xs text-foreground/50">Se generará una factura de abono por el importe total. La factura original quedará marcada como abonada.</p>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" size="sm" onClick={() => { setCreditNoteInvoiceId(null); setCreditNoteReason(""); }} className="border-foreground/[0.15] text-foreground/65">Cancelar</Button>
-            <Button size="sm"
-              onClick={() => creditNoteInvoiceId !== null && creditNoteReason.trim() && createCreditNoteMutation.mutate({ invoiceId: creditNoteInvoiceId, reason: creditNoteReason })}
-              disabled={createCreditNoteMutation.isPending || !creditNoteReason.trim()}
-              className="bg-violet-600 hover:bg-violet-700 text-white">
-              {createCreditNoteMutation.isPending ? <RefreshCw className="w-4 h-4 animate-spin mr-1" /> : <RotateCcw className="w-4 h-4 mr-1" />}
-              Generar abono
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      {/* Emitir abono (total o parcial) */}
+      <CreditNoteDialog invoiceId={creditNoteInvoiceId} onClose={() => setCreditNoteInvoiceId(null)} onIssued={() => refetchInvoices()} />
 
       {/* Anular factura */}
       <Dialog open={voidInvoiceId !== null} onOpenChange={(o) => !o && setVoidInvoiceId(null)}>
