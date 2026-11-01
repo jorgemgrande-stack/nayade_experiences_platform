@@ -7761,7 +7761,7 @@ export default function CRMDashboard() {
                     <div className="text-lg font-bold text-sky-400">{formatEur(invoicesData.summary.subtotal)}</div>
                   </div>
                   <div className="bg-orange-500/10 border border-orange-500/20 rounded-xl p-3 text-center">
-                    <div className="text-xs text-orange-300/60 mb-1">Bruto (IVA incl.)</div>
+                    <div className="text-xs text-warning mb-1">Bruto (IVA incl.)</div>
                     <div className="text-lg font-bold text-orange-400">{formatEur(invoicesData.summary.grandTotal)}</div>
                     <div className="text-xs text-foreground/40">IVA: {formatEur(invoicesData.summary.tax)}</div>
                   </div>

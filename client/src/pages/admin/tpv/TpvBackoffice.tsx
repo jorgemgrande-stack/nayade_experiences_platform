@@ -43,7 +43,7 @@ const METHOD_LABELS: Record<string, string> = {
 
 const STATUS_COLORS: Record<string, string> = {
   open: "bg-success/10 text-success border-success/40",
-  closed: "bg-gray-800 text-gray-400 border-gray-700",
+  closed: "bg-muted text-muted-foreground border-border",
   cancelled: "bg-danger/10 text-danger border-danger/40",
 };
 
@@ -104,11 +104,11 @@ export default function TpvBackoffice() {
         {/* Header */}
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-2xl font-bold text-white flex items-center gap-2">
+            <h1 className="text-2xl font-bold text-foreground flex items-center gap-2">
               <Receipt className="w-6 h-6 text-primary" />
               TPV — Cajas
             </h1>
-            <p className="text-gray-400 text-sm mt-1">
+            <p className="text-muted-foreground text-sm mt-1">
               Historial de sesiones de caja y ventas presenciales
             </p>
           </div>
@@ -131,7 +131,7 @@ export default function TpvBackoffice() {
         {/* Cajas */}
         <section aria-labelledby="tpv-cajas" className="space-y-3">
           <div className="flex flex-wrap items-center justify-between gap-3">
-            <h2 id="tpv-cajas" className="text-sm font-semibold text-gray-400 uppercase tracking-wider">Cajas</h2>
+            <h2 id="tpv-cajas" className="text-sm font-semibold text-muted-foreground uppercase tracking-wider">Cajas</h2>
             <Button
               onClick={openNewRegister}
               disabled={!canManageCash}
@@ -160,10 +160,10 @@ export default function TpvBackoffice() {
           ) : (
             <ul className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2">
               {registers.map((r) => (
-                <li key={r.id} className="rounded-xl p-3 border border-gray-800 bg-gray-900">
-                  <p className="text-sm font-medium text-white">{r.name}</p>
+                <li key={r.id} className="rounded-xl p-3 border border-border bg-card">
+                  <p className="text-sm font-medium text-foreground">{r.name}</p>
                   {r.location && (
-                    <p className="flex items-center gap-1 text-xs text-gray-400 mt-0.5">
+                    <p className="flex items-center gap-1 text-xs text-muted-foreground mt-0.5">
                       <MapPin className="w-3 h-3" aria-hidden="true" />
                       {r.location}
                     </p>
@@ -228,7 +228,7 @@ export default function TpvBackoffice() {
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           {/* Sessions list */}
           <div className="space-y-3">
-            <h2 className="text-sm font-semibold text-gray-400 uppercase tracking-wider">
+            <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider">
               Sesiones de Caja
             </h2>
             <ScrollArea className="h-[600px]">
@@ -243,11 +243,11 @@ export default function TpvBackoffice() {
                       className={`w-full text-left rounded-xl p-3 border transition-all ${
                         isSelected
                           ? "border-primary bg-primary/15"
-                          : "border-gray-800 bg-gray-900 hover:border-gray-700"
+                          : "border-border bg-card hover:border-primary/40"
                       }`}
                     >
                       <div className="flex items-center justify-between mb-1">
-                        <span className="text-xs font-medium text-white">
+                        <span className="text-xs font-medium text-foreground">
                           Caja #{session.registerId}
                         </span>
                         <Badge
@@ -257,20 +257,20 @@ export default function TpvBackoffice() {
                           {session.status === "open" ? "Abierta" : "Cerrada"}
                         </Badge>
                       </div>
-                      <div className="flex items-center gap-1 text-xs text-gray-400">
+                      <div className="flex items-center gap-1 text-xs text-muted-foreground">
                         <Calendar className="w-3 h-3" />
                         {openedAt.toLocaleDateString("es-ES")}
                         <Clock className="w-3 h-3 ml-1" />
                         {openedAt.toLocaleTimeString("es-ES", { hour: "2-digit", minute: "2-digit" })}
                       </div>
                       {session.openedByName && (
-                        <div className="flex items-center gap-1 text-xs text-gray-500 mt-0.5">
+                        <div className="flex items-center gap-1 text-xs text-muted-foreground mt-0.5">
                           <User className="w-3 h-3" />
                           {session.openedByName}
                         </div>
                       )}
                       <div className="flex items-center justify-between mt-2">
-                        <span className="text-xs text-gray-500">{session.salesCount ?? 0} ventas</span>
+                        <span className="text-xs text-muted-foreground">{session.salesCount ?? 0} ventas</span>
                         <span className="text-sm font-bold text-primary">
                           {formatEur(parseFloat(String(session.totalSales ?? 0)))}
                         </span>
@@ -306,9 +306,9 @@ export default function TpvBackoffice() {
                     { label: "Salidas", value: `${formatEur((sessionDetail.totalOut ?? 0))}`, icon: <CreditCard className="w-4 h-4" />, color: "text-danger" },
                     { label: "Ventas", value: String(sessionDetail.sales?.length ?? 0), icon: <Receipt className="w-4 h-4" />, color: "text-info" },
                   ].map((stat) => (
-                    <Card key={stat.label} className="bg-gray-900 border-gray-800">
+                    <Card key={stat.label} className="bg-card border-border">
                       <CardContent className="p-3">
-                        <div className={`flex items-center gap-1 text-xs text-gray-400 mb-1`}>
+                        <div className={`flex items-center gap-1 text-xs text-muted-foreground mb-1`}>
                           {stat.icon}
                           {stat.label}
                         </div>
@@ -319,20 +319,20 @@ export default function TpvBackoffice() {
                 </div>
 
                 {/* Cash balance */}
-                <Card className="bg-gray-900 border-gray-800">
+                <Card className="bg-card border-border">
                   <CardContent className="p-4">
                     <div className="grid grid-cols-3 gap-4 text-sm">
                       <div>
-                        <span className="text-gray-400">Fondo inicial</span>
-                        <div className="font-bold text-white">{formatEur(parseFloat(String(sessionDetail.session.openingAmount ?? 0)))}</div>
+                        <span className="text-muted-foreground">Fondo inicial</span>
+                        <div className="font-bold text-foreground">{formatEur(parseFloat(String(sessionDetail.session.openingAmount ?? 0)))}</div>
                       </div>
                       <div>
-                        <span className="text-gray-400">Mov. entradas</span>
+                        <span className="text-muted-foreground">Mov. entradas</span>
                         <div className="font-bold text-success">+{formatEur((sessionDetail.totalIn ?? 0))}</div>
                       </div>
                       {sessionDetail.session.status === "closed" && (
                         <div>
-                          <span className="text-gray-400">Efectivo real</span>
+                          <span className="text-muted-foreground">Efectivo real</span>
                           <div className={`font-bold ${
                             Math.abs(parseFloat(String(sessionDetail.session.countedCash ?? 0)) - parseFloat(String(sessionDetail.session.closingAmount ?? 0))) < 0.01
                               ? "text-success"
@@ -347,7 +347,7 @@ export default function TpvBackoffice() {
                 </Card>
 
                 <Tabs defaultValue="sales">
-                  <TabsList className="bg-gray-800 border border-gray-700">
+                  <TabsList className="bg-muted border border-border">
                     <TabsTrigger value="sales" className="text-xs">Ventas ({sessionDetail.sales?.length ?? 0})</TabsTrigger>
                     <TabsTrigger value="movements" className="text-xs">Movimientos ({sessionDetail.movements?.length ?? 0})</TabsTrigger>
                     <TabsTrigger value="reservations" className="text-xs flex items-center gap-1"><BookOpen className="w-3 h-3" />Reservas hoy</TabsTrigger>
@@ -357,12 +357,12 @@ export default function TpvBackoffice() {
                     <ScrollArea className="h-80">
                       <div className="space-y-2 pr-2">
                         {sessionDetail.sales?.map((sale: any) => (
-                          <div key={sale.id} className="bg-gray-900 border border-gray-800 rounded-lg p-3">
+                          <div key={sale.id} className="bg-card border border-border rounded-lg p-3">
                             <div className="flex items-center justify-between mb-1">
                               <span className="text-xs font-mono font-bold text-primary">{sale.ticketNumber}</span>
-                              <span className="text-sm font-bold text-white">{formatEur(parseFloat(String(sale.total)))}</span>
+                              <span className="text-sm font-bold text-foreground">{formatEur(parseFloat(String(sale.total)))}</span>
                             </div>
-                            <div className="flex items-center gap-2 text-xs text-gray-400">
+                            <div className="flex items-center gap-2 text-xs text-muted-foreground">
                               <Clock className="w-3 h-3" />
                               {new Date(sale.createdAt).toLocaleTimeString("es-ES", { hour: "2-digit", minute: "2-digit" })}
                               {sale.customerName && (
@@ -379,7 +379,7 @@ export default function TpvBackoffice() {
                             </div>
                             <div className="flex gap-1 mt-1">
                               {sale.payments?.map((p: any, i: number) => (
-                                <Badge key={i} variant="outline" className="text-xs border-gray-700 text-gray-400 gap-1">
+                                <Badge key={i} variant="outline" className="text-xs border-border text-muted-foreground gap-1">
                                   {METHOD_ICONS[p.method]}
                                   {formatEur(parseFloat(String(p.amount)))}
                                 </Badge>
@@ -388,7 +388,7 @@ export default function TpvBackoffice() {
                           </div>
                         ))}
                         {(!sessionDetail.sales || sessionDetail.sales.length === 0) && (
-                          <div className="text-center py-8 text-gray-600 text-sm">No hay ventas en esta sesión</div>
+                          <div className="text-center py-8 text-muted-foreground text-sm">No hay ventas en esta sesión</div>
                         )}
                       </div>
                     </ScrollArea>
@@ -398,15 +398,15 @@ export default function TpvBackoffice() {
                     <ScrollArea className="h-80">
                       <div className="space-y-2 pr-2">
                         {sessionDetail.movements?.map((mov: any) => (
-                          <div key={mov.id} className="bg-gray-900 border border-gray-800 rounded-lg p-3 flex items-center gap-3">
+                          <div key={mov.id} className="bg-card border border-border rounded-lg p-3 flex items-center gap-3">
                             <div className={`w-8 h-8 rounded-full flex items-center justify-center ${
                               mov.type === "in" ? "bg-success/10 text-success" : "bg-danger/10 text-danger"
                             }`}>
                               {mov.type === "in" ? <ArrowDownLeft className="w-4 h-4" /> : <ArrowUpRight className="w-4 h-4" />}
                             </div>
                             <div className="flex-1 min-w-0">
-                              <p className="text-xs font-medium text-white overflow-hidden text-ellipsis whitespace-nowrap">{mov.reason ?? "Sin motivo"}</p>
-                              <p className="text-xs text-gray-400">
+                              <p className="text-xs font-medium text-foreground overflow-hidden text-ellipsis whitespace-nowrap">{mov.reason ?? "Sin motivo"}</p>
+                              <p className="text-xs text-muted-foreground">
                                 {new Date(mov.createdAt).toLocaleTimeString("es-ES", { hour: "2-digit", minute: "2-digit" })}
                               </p>
                             </div>
@@ -416,7 +416,7 @@ export default function TpvBackoffice() {
                           </div>
                         ))}
                         {(!sessionDetail.movements || sessionDetail.movements.length === 0) && (
-                          <div className="text-center py-8 text-gray-600 text-sm">No hay movimientos en esta sesión</div>
+                          <div className="text-center py-8 text-muted-foreground text-sm">No hay movimientos en esta sesión</div>
                         )}
                       </div>
                     </ScrollArea>
@@ -428,7 +428,7 @@ export default function TpvBackoffice() {
                 </Tabs>
               </div>
             ) : (
-              <div className="flex items-center justify-center h-full text-gray-600 min-h-64">
+              <div className="flex items-center justify-center h-full text-muted-foreground min-h-64">
                 <div className="text-center">
                   <Receipt className="w-12 h-12 mx-auto mb-3 opacity-30" />
                   <p>Selecciona una sesión para ver el detalle</p>
@@ -450,7 +450,7 @@ function TpvReservationsToday() {
     return (
       <div className="space-y-2 py-4">
         {[1,2,3].map(i => (
-          <div key={i} className="h-16 bg-gray-800 rounded-lg animate-pulse" />
+          <div key={i} className="h-16 bg-muted rounded-lg animate-pulse" />
         ))}
       </div>
     );
@@ -458,7 +458,7 @@ function TpvReservationsToday() {
 
   if (!reservations || reservations.length === 0) {
     return (
-      <div className="text-center py-10 text-gray-600">
+      <div className="text-center py-10 text-muted-foreground">
         <BookOpen className="w-10 h-10 mx-auto mb-2 opacity-30" />
         <p className="text-sm">No hay reservas TPV generadas hoy</p>
       </div>
@@ -469,7 +469,7 @@ function TpvReservationsToday() {
     <ScrollArea className="h-80">
       <div className="space-y-2 pr-2">
         {reservations.map((res: any) => (
-          <div key={res.id} className="bg-gray-900 border border-gray-800 rounded-lg p-3">
+          <div key={res.id} className="bg-card border border-border rounded-lg p-3">
             <div className="flex items-center justify-between mb-1">
               <span className="text-xs font-mono font-bold text-success">
                 {res.merchantOrder}
@@ -478,8 +478,8 @@ function TpvReservationsToday() {
                 {formatEur((res.amountTotal / 100))}
               </Badge>
             </div>
-            <p className="text-xs font-medium text-white overflow-hidden text-ellipsis whitespace-nowrap">{res.productName}</p>
-            <div className="flex items-center gap-3 mt-1 text-xs text-gray-400">
+            <p className="text-xs font-medium text-foreground overflow-hidden text-ellipsis whitespace-nowrap">{res.productName}</p>
+            <div className="flex items-center gap-3 mt-1 text-xs text-muted-foreground">
               {res.customerName && (
                 <span className="flex items-center gap-1">
                   <User className="w-3 h-3" />{res.customerName}
@@ -496,7 +496,7 @@ function TpvReservationsToday() {
                 </span>
               )}
             </div>
-            <div className="mt-1 text-xs text-gray-500">
+            <div className="mt-1 text-xs text-muted-foreground">
               <Clock className="w-3 h-3 inline mr-1" />
               {new Date(res.createdAt).toLocaleTimeString("es-ES", { hour: "2-digit", minute: "2-digit" })}
               {res.bookingDate && <span className="ml-2">Fecha: {formatDayEs(res.bookingDate)}</span>}
