@@ -58,11 +58,11 @@ export const HELP_ARTICLES: HelpArticle[] = [
     summary: "Da de alta clientes desde Clientes y ventas › Clientes con el botón «Nuevo cliente».",
     contexts: [{ path: "/admin/crm/clientes" }],
     steps: [
-      "En el menú, ve a Clientes y ventas › Clientes (pantalla «Gestión de Clientes»).",
+      "En el menú, ve a Clientes y ventas › Clientes.",
       "Pulsa «Nuevo cliente» (si aún no tienes ninguno, «Crear el primer cliente»).",
       "Rellena los campos obligatorios: Nombre completo y Email. El resto es opcional: Teléfono, Empresa, NIF / CIF, Dirección, Ciudad, Código postal y Notas internas.",
       "Pulsa «Crear cliente». Verás el aviso «Cliente creado».",
-      "Para modificarlo, usa «Editar cliente» y después «Guardar cambios».",
+      "Para modificarlo, abre su ficha (pulsa su nombre), usa «Editar datos» y después «Guardar cambios».",
     ],
     notes: [
       "Los clientes también se crean automáticamente cuando llega una solicitud, y puedes crear uno al vuelo al registrar un pedido.",

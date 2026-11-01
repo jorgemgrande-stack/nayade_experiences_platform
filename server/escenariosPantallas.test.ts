@@ -34,7 +34,8 @@ describe("pantallas de un usuario nuevo", () => {
   });
 
   it("clientes: sin la palabra «lead» a la vista de una pyme (vocabulario de oportunidades)", () => {
-    const src = read("client/src/pages/admin/crm/ClientsManager.tsx");
+    // Listado y ficha del cliente (el origen de la oportunidad se muestra en la ficha)
+    const src = read("client/src/pages/admin/crm/ClientsManager.tsx") + read("client/src/pages/admin/crm/ClientDetail.tsx");
     expect(src).not.toMatch(/>\s*(Desde lead|Lead origen)\s*</);
     expect(src).not.toMatch(/\/> Lead #|>Lead #/);
     // Insignias de la lista y de la ficha («Lead», «Lead Cupón») y título del historial
