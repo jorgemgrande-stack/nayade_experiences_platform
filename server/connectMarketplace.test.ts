@@ -105,7 +105,8 @@ describe("búsqueda, categorías y filtros", () => {
     expect(categoryOf(items[2])).toBe("capacity");
     expect(filterConnectItems(items, { category: "bundles" }).map((i) => i.key)).toEqual(["d"]);
     expect(filterConnectItems(items, { state: "mine" }).map((i) => i.key)).toEqual(["a"]);
-    expect(filterConnectItems(items, { state: "available" }).map((i) => i.key)).toEqual(["b", "c"]);
+    expect(filterConnectItems(items, { state: "available" }).map((i) => i.key)).toEqual(["c"]);
+    expect(filterConnectItems(items, { state: "on_request" }).map((i) => i.key)).toEqual(["b"]);
     expect(filterConnectItems(items, { state: "upcoming" }).map((i) => i.key)).toEqual(["d"]);
   });
   it("un pedido en curso oculta la compra; si las licencias ya dicen algo, mandan ellas", () => {

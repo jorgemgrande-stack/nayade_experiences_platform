@@ -189,9 +189,8 @@ describe("Elephant Connect: ciclo completo de contratación", () => {
     await expect(as(B, () => app.createCaller(ctxFor("user")).connect.catalog())).rejects.toMatchObject({ code: "FORBIDDEN" });
   });
 
-  it("sin canal con el plano de control: nada contratable y contacto", async () => {
+  it("sin canal con el plano de control: error recuperable, nunca un catálogo vacío", async () => {
     fake.state.channel = false;
-    const view = await as(B, () => app.createCaller(ctxFor("admin")).connect.catalog());
-    expect([view.available, view.canPurchase, view.items.length, view.supportEmail]).toEqual([false, false, 0, "ayuda@elephant.example"]);
+    await expect(as(B, () => app.createCaller(ctxFor("admin")).connect.catalog())).rejects.toMatchObject({ code: "SERVICE_UNAVAILABLE" });
   });
 });
