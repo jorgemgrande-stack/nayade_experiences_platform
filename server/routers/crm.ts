@@ -4450,6 +4450,7 @@ export const crmRouter = router({
             .select({
               ...getTableColumns(reservations),
               invoicePdfUrl: invoices.pdfUrl,
+              invoiceClientName: invoices.clientName,
               clientId: clients.id,
               tpvOperationNumber: ctoAgg.operationNumber,
             })

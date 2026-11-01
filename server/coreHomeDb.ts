@@ -8,6 +8,7 @@ import { and, count, countDistinct, desc, eq, gte, inArray, isNull, ne, sql, sum
 import { clients, invoices, leads, quotes, reservations, tpvSales } from "../drizzle/schema";
 import { getDb } from "./db";
 import { getCapabilityAccess } from "./_core/capabilities/access";
+import { orderActivityTitle } from "../shared/cashSaleLabel";
 
 export type RecentKind = "client" | "lead" | "quote" | "order" | "invoice" | "sale";
 export interface RecentItem {
@@ -82,8 +83,9 @@ export async function recentActivity(limit = 8): Promise<RecentItem[]> {
   }
   if (kinds.has("order")) {
     tasks.push(
-      db.select({ customer: reservations.customerName, product: reservations.productName, at: reservations.createdAt }).from(reservations).orderBy(desc(reservations.createdAt)).limit(PER_SOURCE)
-        .then((rows) => rows.map((r) => ({ kind: "order" as const, title: `Pedido de ${r.customer}`, detail: r.product, at: ts(r.at), href: "/admin/crm?tab=reservations" }))),
+      db.select({ customer: reservations.customerName, invoiceClient: invoices.clientName, product: reservations.productName, at: reservations.createdAt })
+        .from(reservations).leftJoin(invoices, eq(invoices.id, reservations.invoiceId)).orderBy(desc(reservations.createdAt)).limit(PER_SOURCE)
+        .then((rows) => rows.map((r) => ({ kind: "order" as const, title: orderActivityTitle({ customerName: r.customer, invoiceClientName: r.invoiceClient }), detail: r.product, at: ts(r.at), href: "/admin/crm?tab=reservations" }))),
     );
   }
   if (kinds.has("invoice")) {

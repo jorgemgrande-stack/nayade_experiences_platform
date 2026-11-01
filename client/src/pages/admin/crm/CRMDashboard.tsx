@@ -4,6 +4,7 @@ import { trpc } from "@/lib/trpc";
 import { formatEur } from "@shared/creditNoteForm";
 import { formatDayEs } from "@shared/formatDay";
 import { validateTicketInvoiceRecipient, type TicketInvoiceRecipient } from "@shared/ticketInvoice";
+import { orderCustomerLabel } from "@shared/cashSaleLabel";
 import AdminLayout from "@/components/AdminLayout";
 import { WorkplaceLocks } from "@/components/connect/WorkplaceLocks";
 import { usePanelSubscription } from "@/hooks/usePanelSubscription";
@@ -7420,9 +7421,9 @@ export default function CRMDashboard() {
                             href={`/admin/crm/clientes?clientId=${(res as typeof res & { clientId?: number }).clientId}`}
                             onClick={(e) => e.stopPropagation()}
                             className="text-sm font-medium text-foreground hover:text-blue-300 hover:underline transition-colors block overflow-hidden text-ellipsis whitespace-nowrap"
-                          >{res.customerName}</a>
+                          >{orderCustomerLabel({ customerName: res.customerName, invoiceClientName: (res as { invoiceClientName?: string | null }).invoiceClientName })}</a>
                         ) : (
-                          <div className="text-sm font-medium text-foreground overflow-hidden text-ellipsis whitespace-nowrap">{res.customerName}</div>
+                          <div className="text-sm font-medium text-foreground overflow-hidden text-ellipsis whitespace-nowrap">{orderCustomerLabel({ customerName: res.customerName, invoiceClientName: (res as { invoiceClientName?: string | null }).invoiceClientName })}</div>
                         )}
                         <div className="text-xs text-foreground/50 overflow-hidden text-ellipsis whitespace-nowrap">{res.customerEmail}</div>
                         {res.customerPhone && <div className="text-xs text-foreground/40 mt-0.5 overflow-hidden text-ellipsis whitespace-nowrap">{res.customerPhone}</div>}
