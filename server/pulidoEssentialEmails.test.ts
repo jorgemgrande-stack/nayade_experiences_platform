@@ -87,6 +87,8 @@ describe("instalación de una sola empresa: la misma identidad que cualquier emp
     const invite = buildInviteHtml({ name: "Eva", role: "agente", setPasswordUrl: "https://example.com/x" });
     expect(invite).toContain("Plataforma de Gesti&oacute;n de Empresa Única");
     expect(invite).toContain("<strong>Empresa Única</strong>");
+    expect(invite).toContain("Comercial");
+    expect(invite).not.toContain("Agente Comercial");
     for (const h of [html, invite]) expect(h).not.toMatch(/N&Aacute;YADE|N&aacute;yade|EXPERIENCES<\/td>|Vive el verano/);
   });
 });

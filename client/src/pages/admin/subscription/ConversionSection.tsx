@@ -3,6 +3,7 @@
  * facturación y condiciones → pago en Stripe. Solo la administración y solo en prueba. El acceso de pago se activa
  * cuando Stripe confirma el cobro (no al volver del pago); los datos de la prueba se conservan.
  */
+import { randomId } from "@shared/randomId";
 import { useEffect, useMemo, useState } from "react";
 import { CreditCard, Loader2 } from "lucide-react";
 import { toast } from "sonner";
@@ -28,7 +29,7 @@ const PLANS: Array<{ id: Plan; name: string }> = [
   { id: "business", name: "Business" },
 ];
 const money = (cents: number, currency = "EUR") => new Intl.NumberFormat("es-ES", { style: "currency", currency }).format(cents / 100);
-const newKey = () => crypto.randomUUID();
+const newKey = () => randomId();
 
 export function ConversionSection() {
   const status = trpc.subscription.conversionStatus.useQuery(undefined, { retry: false, staleTime: 60_000 });
