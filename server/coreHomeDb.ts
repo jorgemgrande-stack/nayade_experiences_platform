@@ -4,7 +4,7 @@
  * Cada fuente se incluye solo si su capacidad está contratada (activa o en solo lectura): quien no tiene caja no ve
  * ventas en caja, aunque existieran filas de antes. Nunca mezcla empresas: `getDb()` resuelve la BD del tenant.
  */
-import { and, count, desc, eq, gte, inArray, sql, sum } from "drizzle-orm";
+import { and, count, countDistinct, desc, eq, gte, inArray, isNull, sql, sum } from "drizzle-orm";
 import { clients, invoices, leads, quotes, reservations, tpvSales } from "../drizzle/schema";
 import { getDb } from "./db";
 import { getCapabilityAccess } from "./_core/capabilities/access";
@@ -187,10 +187,12 @@ export async function homeIndicators(now = Date.now()): Promise<HomeIndicators> 
     cli ? db.select({ n: count() }).from(clients).where(gte(clients.createdAt, new Date(starts.monthStart))).then((r) => r[0]) : null,
     orders
       ? db
-          .select({ n: count() })
+          // Pedidos (no líneas) de la tienda, igual que «Pedidos de la tienda»: pagados o preparados (shared/shopOrders.ts)
+          .select({ n: countDistinct(reservations.merchantOrder) })
           .from(reservations)
           .where(and(
-            inArray(reservations.channel, ["ONLINE_DIRECTO", "ONLINE_ASISTIDO"]),
+            eq(reservations.channel, "ONLINE_DIRECTO"),
+            isNull(reservations.quoteId),
             eq(reservations.status, "paid"),
             inArray(reservations.statusReservation, ["PENDIENTE_CONFIRMACION", "CONFIRMADA", "EN_CURSO"]),
           ))

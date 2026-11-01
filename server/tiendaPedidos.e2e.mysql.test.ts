@@ -168,12 +168,16 @@ describe.skipIf(!URL_)("Tienda online: pedido completo, agotado, estados y aisla
     expect(detail).toMatchObject({ stage: "paid", clientId: client.id, billing: { nif: "B12345674" }, comments: "Dejar en conserjería", totalCents: 10920 });
     expect(detail.invoices.map((x: any) => x.invoiceNumber)).toEqual([inv[0].invoiceNumber]);
     expect(detail.stageChanges).toEqual(["prepared", "delivered"]);
+    // Inicio: «Pedidos online pendientes» cuenta el pedido (no sus dos líneas) mientras está pagado
+    expect(data(await ess.q("a", "coreHome.indicators", undefined, agA)).pendingOnlineOrders).toEqual({ count: 1 });
   });
 
   it("estados en el panel: preparado → entregado con aviso al comprador; cambios no permitidos rechazados", async () => {
     const before = ess.mails.length;
     const prep = await ess.m("a", "reservations.setOnlineOrderStage", { merchantOrder: order, stage: "prepared" }, agA);
     expect(data(prep)).toEqual({ stage: "prepared", emailed: true });
+    // Preparado o enviado sigue «sin finalizar» en el Inicio
+    expect(data(await ess.q("a", "coreHome.indicators", undefined, agA)).pendingOnlineOrders).toEqual({ count: 1 });
     expect((await ess.sql("a", "SELECT DISTINCT status_reservation AS s FROM reservations WHERE merchant_order = ?", [order])).map((x) => x.s)).toEqual(["EN_CURSO"]);
     expect(data(await ess.m("a", "reservations.setOnlineOrderStage", { merchantOrder: order, stage: "delivered" }, agA)).stage).toBe("delivered");
     const notices = ess.mails.slice(before).filter((m) => m.to.some((t) => t.email === "lucia@comprador-a.example"));
@@ -186,6 +190,8 @@ describe.skipIf(!URL_)("Tienda online: pedido completo, agotado, estados y aisla
     const d = data(await ess.q("a", "reservations.onlineOrder", { merchantOrder: order }, agA));
     expect(d.stage).toBe("delivered");
     expect(d.history.map((h: any) => h.to)).toEqual(["prepared", "delivered"]);
+    // Entregado: ya no está pendiente en el Inicio
+    expect(data(await ess.q("a", "coreHome.indicators", undefined, agA)).pendingOnlineOrders).toEqual({ count: 0 });
 
     // Un pedido sin pagar sí se cancela; el listado cuenta cada estado
     const p = await ess.m("a", "reservations.cartCheckout", { customerName: "Otro Comprador", customerEmail: "otro@comprador-a.example", origin: origin(), items: [{ productId: ids.camiseta, bookingDate: "", people: 3 }] });
