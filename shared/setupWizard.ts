@@ -8,15 +8,16 @@
  *    contratado y los datos que ya tiene (un paso «de hacer» está hecho cuando el dato existe, no por un clic).
  */
 import { z } from "zod";
+import { validatePostalCodeES, validateTaxId } from "./formValidation";
 
 /**
- * Pasos guardables, en el orden de referencia. Compatibilidad: «brand» llegó después de la primera versión y
- * «welcome», «fiscal», «web», «comms» y «sector» en la v2; un progreso guardado sin ellos los lee pendientes
- * (parseProgress). «client», «product» y «operation» conservan su identificador y ahora se presentan como
- * «CRM», «Productos o servicios» y «Ventas, facturación y TPV». «users» ya no es un paso del recorrido: el equipo
- * se invita en «Resumen y puesta en marcha»; se sigue aceptando para no romper progresos guardados.
+ * Pasos guardables, en el orden de negocio (el mismo para todas las empresas). Compatibilidad: «brand» llegó después
+ * de la primera versión, «welcome», «fiscal», «web», «comms» y «sector» en la v2 y «document» en la v3; un progreso
+ * guardado sin ellos los lee pendientes (parseProgress). «operation» conserva su identificador y ahora es «Primera
+ * venta» (pedido o caja); los presupuestos y facturas tienen su propio paso («document»). «users» ya no es un paso del
+ * recorrido: el equipo se invita en «Resumen y puesta en marcha»; se sigue aceptando para no romper progresos guardados.
  */
-export const SETUP_STEPS = ["welcome", "company", "fiscal", "brand", "activity", "client", "product", "web", "operation", "comms", "sector", "finish", "users"] as const;
+export const SETUP_STEPS = ["welcome", "company", "fiscal", "activity", "brand", "web", "client", "product", "operation", "document", "comms", "sector", "finish", "users"] as const;
 export type SetupStep = (typeof SETUP_STEPS)[number];
 export type StepStatus = "pending" | "done" | "skipped";
 /** Pasos que cuentan en el progreso guardado (todos menos el heredado «users»). */
@@ -24,22 +25,24 @@ export const FLOW_STEPS: readonly SetupStep[] = SETUP_STEPS.filter((s) => s !== 
 
 export const STEP_LABELS: Record<SetupStep, { title: string; summary: string }> = {
   welcome: { title: "Bienvenida", summary: "Qué vas a configurar y cómo funciona el asistente." },
-  company: { title: "Identidad de empresa", summary: "Nombre comercial, país, moneda y zona horaria." },
-  fiscal: { title: "Datos fiscales y comerciales", summary: "Razón social, NIF, dirección fiscal y contacto público." },
+  company: { title: "Datos de la empresa", summary: "Nombre comercial, país, moneda y zona horaria." },
+  fiscal: { title: "Datos fiscales", summary: "Razón social, NIF, dirección fiscal y contacto público." },
+  activity: { title: "Tipo de actividad", summary: "Para destacar los pasos más útiles y adaptar los textos a tu negocio." },
   brand: { title: "Logotipo y colores", summary: "Tu imagen en la web, en los documentos y en la pantalla de acceso." },
-  activity: { title: "Tipo de actividad", summary: "Para ordenar los pasos y adaptar los textos a tu negocio." },
-  client: { title: "CRM", summary: "Da de alta a tu primer cliente." },
-  product: { title: "Productos o servicios", summary: "Lo que vendes, con su precio e impuesto." },
-  web: { title: "Página web", summary: "Revisa y personaliza las páginas de tu web." },
-  operation: { title: "Ventas, facturación y TPV", summary: "Tu primer presupuesto, pedido, factura o venta en caja." },
-  comms: { title: "Comunicaciones", summary: "Cómo te ven y te responden tus clientes por correo y WhatsApp." },
+  web: { title: "Página web", summary: "Revisa y personaliza las páginas de tu web en el editor." },
+  client: { title: "Primer cliente", summary: "Da de alta a tu primer cliente." },
+  product: { title: "Primer producto o servicio", summary: "Lo que vendes, con su precio e impuesto." },
+  operation: { title: "Primera venta", summary: "Tu primer pedido de la tienda o tu primera venta en caja." },
+  document: { title: "Primer presupuesto o factura", summary: "Tu primer presupuesto para un cliente o tu primera factura." },
+  comms: { title: "Correo de la empresa", summary: "Con qué nombre salen tus correos y dónde recibes las respuestas." },
   sector: { title: "Tu módulo sectorial", summary: "Primeros pasos del módulo específico de tu sector." },
   finish: { title: "Resumen y puesta en marcha", summary: "Lo que queda pendiente, tu equipo y los siguientes pasos." },
   users: { title: "Tu equipo", summary: "Invita a tu equipo dentro del límite de tu plan." },
 };
 
 /**
- * Tipos de actividad. Ordenan y priorizan los pasos y adaptan los textos: NO activan módulos ni contratan nada.
+ * Tipos de actividad. Destacan los pasos prioritarios y adaptan los textos: NO cambian el orden del recorrido, NO
+ * activan módulos ni contratan nada.
  * «sectorial» solo se ofrece si la empresa tiene contratado un módulo sectorial.
  */
 export const BUSINESS_ACTIVITIES = [
@@ -137,6 +140,21 @@ export const identitySchema = companySchema.pick({ tradeName: true, country: tru
 export const FISCAL_FIELDS = ["legalName", "taxId", "address", "postalCode", "city", "province", "publicPhone", "publicEmail", "publicLocation"] as const satisfies ReadonlyArray<keyof CompanyData>;
 export const fiscalSchema = companySchema.pick({ legalName: true, taxId: true, address: true, postalCode: true, city: true, province: true, publicPhone: true, publicEmail: true, publicLocation: true });
 
+/**
+ * Comprobaciones de una empresa española (país España o sin país aún): NIF, NIE o CIF con su dígito de control y
+ * código postal de 5 cifras de una provincia real (si se indica). Fuera de España solo se aplica el formato general
+ * de `companySchema`. Las usan el asistente, «Datos de la empresa» y el servidor al guardar.
+ */
+export function spanishFiscalErrors(country: string | null | undefined, v: { taxId?: string | null; postalCode?: string | null }): Partial<Record<"taxId" | "postalCode", string>> {
+  if ((country || "ES") !== "ES") return {};
+  const out: Partial<Record<"taxId" | "postalCode", string>> = {};
+  const tax = validateTaxId(v.taxId ?? "", true);
+  if (tax) out.taxId = tax;
+  const zip = validatePostalCodeES(v.postalCode ?? "");
+  if (zip) out.postalCode = zip;
+  return out;
+}
+
 /** Clave de ajuste (system_settings) de cada dato de empresa: los mismos que usa Configuración. */
 export const COMPANY_SETTING_KEYS: Record<keyof CompanyData, string> = {
   tradeName: "brand_name",
@@ -212,6 +230,9 @@ export function parseProgress(raw: string | null | undefined): SetupProgress {
     // los datos fiscales
     if (!stored.welcome && base.updatedAt !== null) base.steps.welcome = { status: "done", at: base.updatedAt };
     if (!stored.fiscal && base.steps.company.status !== "pending") base.steps.fiscal = { ...base.steps.company };
+    // «Ventas, facturación y TPV» se ha dividido en «Primera venta» y «Primer presupuesto o factura»: lo omitido antes
+    // sigue omitido en los dos
+    if (!stored.document && base.steps.operation.status === "skipped") base.steps.document = { ...base.steps.operation };
     return base;
   } catch {
     return base;
@@ -267,7 +288,8 @@ export const STEP_CAPABILITIES: Partial<Record<SetupStep, readonly string[]>> = 
   client: ["crm-contacts"],
   product: ["shop-catalog"],
   web: ["cms-editor", "cms-pages-forms"],
-  operation: ["crm-quotes", "shop-orders", "bill-invoices", "bill-cash"],
+  operation: ["shop-orders", "bill-cash"],
+  document: ["crm-quotes", "bill-invoices"],
   comms: ["comms-email", "comms-whatsapp-links"],
   sector: SECTOR_MODULES.map((m) => m.id),
   users: ["admin-users"],
@@ -285,23 +307,27 @@ export interface SetupFacts {
   activity: boolean;
   clients: number;
   products: number;
-  /** Presupuestos + pedidos + facturas + ventas en caja. */
+  /** Pedidos registrados (cobrados, o pendientes de cobro si no son un pago online a medias) y ventas en caja cobradas. */
   sales: number;
+  /** Presupuestos + facturas. */
+  documents: number;
   /** Alguna página editada o con bloques propios. */
   webEdited: boolean;
-  /** Dirección de respuesta o WhatsApp guardados. */
+  /** Nombre del remitente, dirección de respuesta o WhatsApp guardados. */
   comms: boolean;
 }
 
-const HEAD: readonly SetupStep[] = ["welcome", "company", "fiscal", "brand", "activity"];
-/** Orden de los pasos tras «Tipo de actividad» según el tipo elegido (los dos primeros se marcan como prioritarios). */
-const TAIL: Record<BusinessActivity | "none", readonly SetupStep[]> = {
-  none: ["client", "product", "web", "operation", "comms", "sector"],
-  comercio: ["product", "operation", "client", "web", "comms", "sector"],
-  servicios: ["client", "product", "operation", "comms", "web", "sector"],
-  web: ["web", "product", "client", "comms", "operation", "sector"],
-  sectorial: ["sector", "client", "product", "operation", "web", "comms"],
+/** Orden de negocio del recorrido: el mismo para todas las empresas (los pasos no contratados se ocultan). */
+export const FLOW_ORDER: readonly SetupStep[] = ["welcome", "company", "fiscal", "activity", "brand", "web", "client", "product", "operation", "document", "comms", "sector", "finish"];
+/** Pasos prioritarios según el tipo de actividad: se destacan los dos primeros visibles; el orden no cambia. */
+const PRIORITY: Record<BusinessActivity, readonly SetupStep[]> = {
+  comercio: ["product", "operation", "client"],
+  servicios: ["client", "document", "product"],
+  web: ["web", "product", "operation"],
+  sectorial: ["sector", "client", "product"],
 };
+/** Pasos que solo se completan con el dato real de la empresa (marcarlos «hechos» sin el dato no cuenta). */
+export const DATA_STEPS: readonly SetupStep[] = ["company", "fiscal", "activity", "brand", "web", "client", "product", "operation", "document", "comms"];
 
 export interface PlanStep {
   id: SetupStep;
@@ -337,13 +363,21 @@ export function configurationStepNumber(steps: readonly { id: SetupStep }[], id:
   return i < 0 ? null : i + 1;
 }
 
-/**
- * Paso siguiente a `from` en el recorrido indicado (el último si no hay más). Se calcula sobre el plan ya
- * actualizado: al elegir el tipo de actividad el servidor reordena los pasos y el índice anterior deja de valer.
- */
+/** Paso siguiente a `from` en el recorrido indicado (el último si no hay más). */
 export function stepAfter(steps: readonly { id: SetupStep }[], from: SetupStep): SetupStep {
   const i = steps.findIndex((s) => s.id === from);
   return steps[Math.min(i + 1, steps.length - 1)]?.id ?? "finish";
+}
+
+/**
+ * A dónde ir al terminar u omitir `from`, sobre el plan ya actualizado: el siguiente paso PENDIENTE (lo hecho y lo
+ * omitido no se repiten); si no queda ninguno detrás, el primero pendiente desde el principio; si no hay ninguno, el
+ * resumen final.
+ */
+export function nextOpenStep(steps: readonly { id: SetupStep; status: StepStatus }[], from: SetupStep): SetupStep {
+  const i = steps.findIndex((s) => s.id === from);
+  const open = (s: { id: SetupStep; status: StepStatus }) => s.status === "pending" && s.id !== from && s.id !== "finish" && s.id !== "welcome";
+  return steps.slice(i + 1).find(open)?.id ?? steps.find(open)?.id ?? "finish";
 }
 
 /** Contratado (activa o en solo lectura) o, sin licencias por capacidad (null), todo salvo lo sectorial. */
@@ -361,17 +395,17 @@ export function availableActivities(capabilities: ReadonlySet<string> | null) {
 }
 
 /**
- * Recorrido de la empresa: pasos visibles en su orden, estado real y siguiente paso.
- *  - Identidad, datos fiscales, tipo de actividad, CRM, productos, web y ventas están hechos si el dato existe
- *    (un clic en «hecho» no basta); si no, cuentan como omitidos si se omitieron.
- *  - Logotipo y colores, comunicaciones y módulo sectorial: hechos al guardarlos (o si el dato ya existe).
+ * Recorrido de la empresa: pasos visibles en el orden de negocio, estado real y siguiente paso.
+ *  - Los pasos de DATA_STEPS están hechos solo si el dato existe en la BD de la empresa (un clic en «hecho» no
+ *    basta); si no, cuentan como omitidos si se omitieron.
+ *  - Módulo sectorial: hecho al confirmarlo (cada módulo tiene su propia configuración).
  *  - Bienvenida: resuelta en cuanto la empresa empieza o elige «explorar primero».
  */
 export function buildSetupPlan(input: { progress: SetupProgress; activity: string | null | undefined; capabilities: ReadonlySet<string> | null; facts: SetupFacts }): SetupPlan {
   const { progress: p, capabilities, facts } = input;
   const profile = activityProfile(input.activity);
-  const order = [...HEAD, ...TAIL[profile ?? "none"], "finish" as const];
-  const recommended = new Set(profile ? TAIL[profile].filter((s) => stepVisible(s, capabilities)).slice(0, 2) : []);
+  const order = FLOW_ORDER;
+  const recommended = new Set(profile ? PRIORITY[profile].filter((s) => stepVisible(s, capabilities)).slice(0, 2) : []);
   const byData: Partial<Record<SetupStep, boolean>> = {
     company: facts.identity,
     fiscal: facts.fiscal,
@@ -380,10 +414,11 @@ export function buildSetupPlan(input: { progress: SetupProgress; activity: strin
     product: facts.products > 0,
     web: facts.webEdited,
     operation: facts.sales > 0,
+    document: facts.documents > 0,
     brand: facts.brand,
     comms: facts.comms,
   };
-  const dataOnly = new Set<SetupStep>(["company", "fiscal", "activity", "client", "product", "web", "operation"]);
+  const dataOnly = new Set<SetupStep>(DATA_STEPS);
   const statusOf = (s: SetupStep): { status: StepStatus; byData: boolean } => {
     const stored = p.steps[s].status;
     if (s === "finish") return { status: p.completedAt !== null ? "done" : "pending", byData: false };
@@ -402,11 +437,14 @@ export function buildSetupPlan(input: { progress: SetupProgress; activity: strin
     steps.push({ id, ...statusOf(id), recommended: recommended.has(id) });
   }
   const resolved = steps.filter((s) => s.status !== "pending").length;
+  // Avance: pasos de configuración HECHOS sobre los que se cuentan («X de N pasos hechos»): lo omitido no suma
+  const counted = configurationSteps(steps);
+  const doneCount = counted.filter((s) => s.status === "done").length;
   return {
     steps,
     hidden,
     nextStep: steps.find((s) => s.status === "pending")?.id ?? null,
-    percent: steps.length ? Math.round((resolved / steps.length) * 100) : 100,
+    percent: counted.length ? Math.round((doneCount / counted.length) * 100) : 100,
     done: resolved,
     total: steps.length,
     completedAt: p.completedAt,

@@ -14,7 +14,7 @@ import { onboardingReminder } from "./onboardingNotices";
 import { parseReminderState, type OnboardingReminderState } from "./setupWizardDb";
 import { buildSetupPlan, emptyProgress, markStep, type SetupFacts, type SetupProgress } from "../shared/setupWizard";
 
-const NO_FACTS: SetupFacts = { identity: false, fiscal: false, brand: false, activity: false, clients: 0, products: 0, sales: 0, webEdited: false, comms: false };
+const NO_FACTS: SetupFacts = { identity: false, fiscal: false, brand: false, activity: false, clients: 0, products: 0, sales: 0, documents: 0, webEdited: false, comms: false };
 
 const DAY = 86_400_000;
 const T0 = Date.UTC(2026, 9, 1, 9);
@@ -77,9 +77,9 @@ describe("recordatorios de primeros pasos", () => {
     c.setProgress(p);
     c.setFacts({ identity: true });
     expect(await runOnboardingReminders(T0 + 3 * DAY, c.deps)).toBe(3);
-    expect(sent[0].html).not.toContain(">Identidad de empresa<");
-    expect(sent[0].html).toContain("CRM");
-    expect(sent[0].html).toContain("Datos fiscales y comerciales");
+    expect(sent[0].html).not.toContain(">Datos de la empresa<");
+    expect(sent[0].html).toContain("Primer cliente");
+    expect(sent[0].html).toContain(">Datos fiscales<");
     expect(sent[0].html).not.toContain("Bienvenida");
     // Asistente completado antes del día 3: no se envía nada
     const done = company();

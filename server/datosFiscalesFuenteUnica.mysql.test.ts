@@ -17,7 +17,7 @@ describe.skipIf(!URL_)("Datos fiscales: fuente única del asistente en documento
   let admA: string;
   let admB: string;
 
-  const company = (o: Record<string, string>) => ({ tradeName: "Taller Nuevo", legalName: "Taller Nuevo SL", taxId: "B12345678", address: "Calle Nueva 1", postalCode: "28001", city: "Madrid", province: "Madrid", country: "ES", currency: "EUR", timezone: "Europe/Madrid", ...o });
+  const company = (o: Record<string, string>) => ({ tradeName: "Taller Nuevo", legalName: "Taller Nuevo SL", taxId: "B12345674", address: "Calle Nueva 1", postalCode: "28001", city: "Madrid", province: "Madrid", country: "ES", currency: "EUR", timezone: "Europe/Madrid", ...o });
   const legacy = async (co: "a" | "b", kv: Record<string, string>) => {
     for (const [k, v] of Object.entries(kv)) {
       await ess.sql(co, "INSERT INTO site_settings (`key`, value, type, updatedAt) VALUES (?, ?, 'text', NOW()) ON DUPLICATE KEY UPDATE value = VALUES(value)", [k, v]);
@@ -57,7 +57,7 @@ describe.skipIf(!URL_)("Datos fiscales: fuente única del asistente en documento
 
     const nueva = await preview("b", "FAC-NUEVA-0001", admB);
     expect(nueva).toContain("Taller Nuevo SL");
-    expect(nueva).toContain("CIF: B12345678");
+    expect(nueva).toContain("CIF: B12345674");
     expect(nueva).toContain("Calle Nueva 1");
     expect(nueva).toContain("ES11 NUEVO");
     expect(nueva).not.toMatch(/Antigua Razón|B99999999|ES00 VIEJO/);

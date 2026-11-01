@@ -226,7 +226,8 @@ describe.skipIf(!URL_)("Escenarios v2 de usuario nuevo (aplicación real, dos em
       // Servicios: el cliente va antes que el producto
       const ids = st.plan.steps.map((s: { id: string }) => s.id);
       expect(ids.indexOf("client")).toBeLessThan(ids.indexOf("product"));
-      expect(act.nextStep).toBe("client");
+      // Orden de negocio: tras la marca va la web
+      expect(act.nextStep).toBe("web");
       note(`1 asistente: identidad, fiscales, marca (logotipo ${A.logoUrl.split("/").pop()}) y actividad «${label}»; siguiente «${act.nextStep}»`);
     });
 

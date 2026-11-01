@@ -281,7 +281,11 @@ export default function TpvBackoffice() {
                 {(!sessions || sessions.length === 0) && (
                   <div className="text-center py-12 text-gray-600">
                     <Receipt className="w-10 h-10 mx-auto mb-2 opacity-30" />
-                    <p className="text-sm">No hay sesiones registradas</p>
+                    <p className="text-sm">Todavía no hay sesiones de caja</p>
+                    <p className="text-xs mt-1 px-4">Cada vez que abres la caja en el terminal de venta empieza una sesión; al cerrarla, aquí verás sus ventas y el arqueo.</p>
+                    <Button asChild size="sm" className="mt-3 bg-violet-600 hover:bg-violet-500 text-white">
+                      <Link href="/admin/tpv">Abrir el terminal de venta</Link>
+                    </Button>
                   </div>
                 )}
               </div>
