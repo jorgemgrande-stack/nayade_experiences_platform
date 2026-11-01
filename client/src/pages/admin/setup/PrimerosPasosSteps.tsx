@@ -119,7 +119,7 @@ export function IdentityStep({ initial, done, disabled, onSaved }: { initial: Re
   const [errors, setErrors] = useState<Partial<Record<keyof typeof v, string>>>({});
   const save = trpc.setupWizard.saveIdentity.useMutation({
     onSuccess: async () => {
-      toast.success("Identidad de la empresa guardada");
+      toast.success("Datos de la empresa guardados");
       await utils.setupWizard.status.invalidate();
       onSaved();
     },
@@ -199,7 +199,7 @@ export function FiscalStep({ initial, country, done, fiscalFromRegistry, disable
   const [errors, setErrors] = useState<Partial<Record<FiscalKey, string>>>({});
   const save = trpc.setupWizard.saveFiscal.useMutation({
     onSuccess: async () => {
-      toast.success("Datos fiscales y comerciales guardados");
+      toast.success("Datos fiscales guardados");
       await utils.setupWizard.status.invalidate();
       onSaved();
     },
@@ -639,7 +639,7 @@ export function CommsStep({ initial, tradeName, done, can, disabled, onSaved }: 
   const [errors, setErrors] = useState<Partial<Record<keyof typeof v, string>>>({});
   const save = trpc.setupWizard.saveComms.useMutation({
     onSuccess: async () => {
-      toast.success("Comunicaciones guardadas");
+      toast.success("Correo de la empresa guardado");
       await utils.setupWizard.status.invalidate();
       onSaved();
     },

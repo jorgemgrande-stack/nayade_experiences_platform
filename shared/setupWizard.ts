@@ -437,11 +437,14 @@ export function buildSetupPlan(input: { progress: SetupProgress; activity: strin
     steps.push({ id, ...statusOf(id), recommended: recommended.has(id) });
   }
   const resolved = steps.filter((s) => s.status !== "pending").length;
+  // Avance: pasos de configuración HECHOS sobre los que se cuentan («X de N pasos hechos»): lo omitido no suma
+  const counted = configurationSteps(steps);
+  const doneCount = counted.filter((s) => s.status === "done").length;
   return {
     steps,
     hidden,
     nextStep: steps.find((s) => s.status === "pending")?.id ?? null,
-    percent: steps.length ? Math.round((resolved / steps.length) * 100) : 100,
+    percent: counted.length ? Math.round((doneCount / counted.length) * 100) : 100,
     done: resolved,
     total: steps.length,
     completedAt: p.completedAt,

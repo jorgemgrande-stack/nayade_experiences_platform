@@ -173,7 +173,10 @@ describe("reanudación y puesta en marcha", () => {
     expect(plan({ progress }).nextStep).toBe("finish");
     progress = markStep(progress, "finish", "done", NOW + 1);
     const p = plan({ progress });
-    expect(p).toMatchObject({ nextStep: null, percent: 100, completedAt: NOW + 1 });
+    // Puesta en marcha registrada, pero el avance solo cuenta lo hecho de verdad (lo omitido no suma)
+    expect(p).toMatchObject({ nextStep: null, percent: 0, completedAt: NOW + 1 });
+    const all = plan({ progress, facts: { identity: true, fiscal: true, activity: true, brand: true, webEdited: true, clients: 1, products: 1, sales: 1, documents: 1, comms: true } });
+    expect(all.percent).toBe(100);
   });
   it("progreso de la versión anterior: no vuelve a ver la bienvenida y conserva lo hecho", () => {
     const old = JSON.stringify({ version: 1, steps: { company: { status: "done", at: 1 }, activity: { status: "done", at: 2 }, users: { status: "skipped", at: 3 } }, completedAt: null, updatedAt: 3 });
