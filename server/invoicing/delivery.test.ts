@@ -152,6 +152,24 @@ describe("factura definitiva tras el cobro", () => {
   });
 });
 
+describe("cargo extraordinario", () => {
+  it("proforma en cuanto nace el borrador (antes del enlace de pago); factura al cobrar por el enlace, sin contraste de factura de Stripe", async () => {
+    const t = setup();
+    t.at(NOV + 10 * DAY);
+    const lines = [{ position: 1, concept: "Migración de datos", quantity: 1, unitCents: 50_000, baseCents: 50_000, taxRateBp: 2100, taxCents: 10_500 }];
+    const { invoice } = await t.store.insertDraft({ sourceKey: "charge:5", kind: "invoice", paymentStatus: "pending", companyId: 7, billingRef: "charge:5", paymentRef: null, originalInvoiceId: null, operationDate: "2026-11-11", periodStart: null, periodEnd: null, periodLabel: null, currency: "EUR", baseCents: 50_000, taxCents: 10_500, totalCents: 60_500, customer: { legalName: CLIENT.legalName!, taxId: CLIENT.taxId!, address: CLIENT.address!, postalCode: CLIENT.postalCode!, city: CLIENT.city!, country: "ES", email: "facturas@cliente.example" }, notes: null, createdBy: "operator", createdAt: NOV + 10 * DAY, lines });
+    expect(await t.auto.sendProformas()).toEqual({ sent: 1, skipped: [] });
+    expect(t.sent[0]).toMatchObject({ key: "invoicing:proforma:charge:5:60500", category: "quote_sent", subject: "Proforma de Migración de datos · Big Elephant" });
+    expect(await t.auto.issueDue()).toEqual({ issued: [], waiting: 1, blocked: [] });
+    // Cobrado por el enlace de Stripe (la sesión ya se releyó al confirmar el pago)
+    await t.store.setPayment(invoice.id, { paymentStatus: "paid", paymentRef: "stripe:pi:pi_cargo", paidAt: NOV + 10 * DAY + 1 }, NOV + 10 * DAY + 1);
+    const r = await t.auto.issueDue();
+    expect(r.issued).toEqual([{ id: invoice.id, number: "EB-2026-00001", totalCents: 60_500, delivery: "pending" }]);
+    expect(await t.auto.sendProformas()).toEqual({ sent: 0, skipped: [] });
+    expect(t.sent.map((x) => x.category)).toEqual(["quote_sent", "invoice_available"]);
+  });
+});
+
 describe("operaciones a crédito", () => {
   it("con el cobro fallido, se expide el día 10 del mes siguiente y queda pendiente de cobro", async () => {
     const t = setup();

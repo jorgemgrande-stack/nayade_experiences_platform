@@ -172,7 +172,7 @@ export default function VariantsManager() {
             </SelectContent>
           </Select>
           <Button onClick={() => openCreate()} className="bg-primary hover:bg-primary/90">
-            <Plus className="w-4 h-4 mr-2" /> Nueva Variante
+            <Plus className="w-4 h-4 mr-2" /> Nueva variante
           </Button>
         </div>
       </div>
@@ -289,7 +289,7 @@ export default function VariantsManager() {
       <Dialog open={open} onOpenChange={(v) => { if (!isPending) setOpen(v); }}>
         <DialogContent className="max-w-md">
           <DialogHeader>
-            <DialogTitle>{editId ? "Editar Variante" : "Nueva Variante de Precio"}</DialogTitle>
+            <DialogTitle>{editId ? "Editar Variante" : "Nueva variante de precio"}</DialogTitle>
           </DialogHeader>
           <div className="space-y-4 py-2">
             {!editId && (
@@ -389,7 +389,7 @@ export default function VariantsManager() {
               Cancelar
             </Button>
             <Button onClick={handleSave} disabled={isPending}>
-              {isPending ? "Guardando..." : editId ? "Guardar Cambios" : "Crear Variante"}
+              {isPending ? "Guardando..." : editId ? "Guardar Cambios" : "Crear variante"}
             </Button>
           </DialogFooter>
         </DialogContent>

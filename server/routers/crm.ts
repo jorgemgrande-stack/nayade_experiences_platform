@@ -28,6 +28,7 @@ import {
   siteSettings,
   tpvSales,
   tpvSaleItems,
+  tpvSalePayments,
   legoPacks,
   packs,
   pendingPayments,
@@ -56,6 +57,7 @@ import { nextCreditNoteNumber, withCreditNoteNumberRetry } from "../creditNoteNu
 import { QUOTE_DISCOUNT_DESCRIPTION, QUOTE_LINE_TOTAL_DESCRIPTION, QUOTE_TOTAL_DESCRIPTION, QUOTE_UNIT_PRICE_DESCRIPTION, linesToTaxIncluded, pricesIncludeTaxSchema, quoteTotalMismatch } from "../quoteTaxConvention";
 import { invoiceClientForQuote } from "../invoiceClient";
 import { needsExemptionReason } from "../../shared/directInvoice";
+import { formatRecipientAddress, invoicePaymentMethodFromTicket, proposeTicketInvoiceRecipient, validateTicketInvoiceRecipient } from "../../shared/ticketInvoice";
 import { ordersWithoutInvoice } from "../invoiceAudit";
 import { alreadyCredited, chargedInvoiceAmounts, computeDirectInvoice, creditNoteLineStatus, CreditNoteSelectionError, DIRECT_INVOICE_TAX_RATES, planCreditNote, QUOTE_DISCOUNT_REASON, round2, type CreditNoteLineSelection } from "../invoiceCalc";
 import { htmlToPdf } from "../pdfGenerator";
@@ -4926,18 +4928,46 @@ export const crmRouter = router({
         return { ok: true, sentTo: res.customerEmail ?? "" };
       }),
 
+    // --- Destinatario propuesto para canjear el ticket por factura ----------
+    invoiceRecipient: staff
+      .input(z.object({ reservationId: z.number() }))
+      .query(async ({ input }) => {
+        const [res] = await db.select().from(reservations).where(eq(reservations.id, input.reservationId));
+        if (!res) throw new TRPCError({ code: "NOT_FOUND", message: "Pedido no encontrado" });
+        const [sale] = await db.select({ clientId: tpvSales.clientId }).from(tpvSales).where(eq(tpvSales.reservationId, input.reservationId)).limit(1);
+        const clientId = res.clientId ?? sale?.clientId ?? null;
+        const [client] = clientId ? await db.select().from(clients).where(eq(clients.id, clientId)).limit(1) : [];
+        return proposeTicketInvoiceRecipient(client ?? null, res.customerName);
+      }),
+
     // --- Generar factura desde reserva TPV --------------------------------
+    // Factura completa: exige nombre o razón social, NIF y domicilio del destinatario (art. 6 RD 1619/2012).
     generateInvoice: staff
       .input(z.object({
         reservationId: z.number(),
-        clientNif: z.string().optional(),
-        clientAddress: z.string().optional(),
+        clientName: z.string().max(256).optional(),
+        clientNif: z.string().max(32).optional(),
+        clientAddress: z.string().max(512).optional(),
+        clientPostalCode: z.string().max(16).optional(),
+        clientCity: z.string().max(128).optional(),
       }))
       .mutation(async ({ input, ctx }) => {
+        const recipient = {
+          name: (input.clientName ?? "").trim(),
+          nif: (input.clientNif ?? "").trim().toUpperCase(),
+          address: (input.clientAddress ?? "").trim(),
+          postalCode: (input.clientPostalCode ?? "").trim(),
+          city: (input.clientCity ?? "").trim(),
+        };
+        const recipientAddress = formatRecipientAddress(recipient);
         // 1. Load reservation
         const [res] = await db.select().from(reservations).where(eq(reservations.id, input.reservationId));
         if (!res) throw new TRPCError({ code: "NOT_FOUND", message: "Reserva no encontrada" });
         if (res.invoiceId) throw new TRPCError({ code: "PRECONDITION_FAILED", message: "Esta reserva ya tiene factura generada" });
+        const recipientErrors = Object.values(validateTicketInvoiceRecipient(recipient));
+        if (recipientErrors.length) {
+          throw new TRPCError({ code: "BAD_REQUEST", message: `No se puede emitir la factura: ${recipientErrors.join(" ")}` });
+        }
         // ?? GUARD: Reservas Groupon/Smartbox/etc. (canje de cupón) no son
         // facturables desde el CRM — su liquidación pertenece al flujo de
         // conciliación del proveedor. Tras la normalización del canal, el
@@ -4995,6 +5025,13 @@ export const crmRouter = router({
           subtotal = charged.subtotal;
         }
         const ticketDiscount = tpvSale ? Number(tpvSale.discountAmount ?? 0) : 0;
+        // El ticket ya está cobrado: la factura nace «cobrada», con la forma de pago del ticket
+        const alreadyPaid = tpvSale ? tpvSale.status === "paid" : res.statusPayment === "PAGADO";
+        const ticketPayments = tpvSale
+          ? await db.select({ method: tpvSalePayments.method, amount: tpvSalePayments.amount }).from(tpvSalePayments).where(eq(tpvSalePayments.saleId, tpvSale.id))
+          : [];
+        const paymentMethod = invoicePaymentMethodFromTicket(ticketPayments, res.paymentMethod);
+        const paidAtMs = tpvSale?.paidAt ?? res.paidAt ?? null;
 
         // 3. Generate PDF
         let pdfUrl: string | null = null;
@@ -5002,11 +5039,11 @@ export const crmRouter = router({
         try {
           const pdf = await generateInvoicePdf({
             invoiceNumber,
-            clientName: res.customerName,
+            clientName: recipient.name,
             clientEmail: res.customerEmail ?? "",
             clientPhone: res.customerPhone,
-            clientNif: input.clientNif,
-            clientAddress: input.clientAddress,
+            clientNif: recipient.nif,
+            clientAddress: recipientAddress,
             itemsJson: items,
             subtotal: String(subtotal.toFixed(2)),
             taxRate: String(taxRate),
@@ -5028,7 +5065,7 @@ export const crmRouter = router({
           issuerSnapshot: await issuerSnapshotForNewInvoice(),
           invoiceNumber,
           reservationId: input.reservationId,
-          clientName: res.customerName,
+          clientName: recipient.name,
           clientEmail: res.customerEmail ?? "",
           clientPhone: res.customerPhone,
           itemsJson: items,
@@ -5040,10 +5077,11 @@ export const crmRouter = router({
           ...(ticketDiscount > 0 ? { discount: ticketDiscount.toFixed(2), discountReason: tpvSale?.discountReason ?? null } : {}),
           pdfUrl,
           pdfKey,
-          clientNif: input.clientNif ?? null,
-          clientAddress: input.clientAddress ?? null,
+          clientNif: recipient.nif,
+          clientAddress: recipientAddress,
           isAutomatic: false,
-          status: "generada",
+          status: alreadyPaid ? "cobrada" : "generada",
+          ...(alreadyPaid ? { paymentMethod, paymentValidatedAt: paidAtMs ? new Date(Number(paidAtMs)) : now } : {}),
           issuedAt: now,
           createdAt: now,
           updatedAt: now,

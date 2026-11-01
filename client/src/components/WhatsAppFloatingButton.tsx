@@ -1,6 +1,7 @@
 import { trackWhatsAppClick } from '@/lib/ga4';
 import { trpc } from "@/lib/trpc";
 import { useEffect, useRef, useState } from "react";
+import { useCart } from "@/contexts/CartContext";
 import { WHATSAPP_AVOID_ATTR, whatsappHidden, whatsappTarget } from "@shared/whatsappButton";
 
 export default function WhatsAppFloatingButton() {
@@ -8,6 +9,8 @@ export default function WhatsAppFloatingButton() {
   // (misma consulta y caché que useTenantTheme; sin importarlo para no crear un ciclo con PublicLayout)
   const { data: theme } = trpc.public.getTheme.useQuery(undefined, { staleTime: 5 * 60_000, retry: false, refetchOnWindowFocus: false });
   const target = whatsappTarget(theme);
+  // Con el carrito abierto se oculta a cualquier anchura (no tapa su pie ni «Finalizar compra»)
+  const { isOpen: cartOpen } = useCart();
   // En móvil no tapa el precio ni el botón de compra (zonas marcadas con data-whatsapp-avoid): se aparta mientras los pisa
   const ref = useRef<HTMLAnchorElement>(null);
   const [hidden, setHidden] = useState(false);
@@ -20,7 +23,7 @@ export default function WhatsAppFloatingButton() {
         const el = ref.current;
         if (!el) return;
         const avoid = Array.from(document.querySelectorAll(`[${WHATSAPP_AVOID_ATTR}]`)).map((n) => n.getBoundingClientRect());
-        setHidden(whatsappHidden(el.getBoundingClientRect(), avoid, window.innerWidth));
+        setHidden(whatsappHidden(el.getBoundingClientRect(), avoid, window.innerWidth, cartOpen));
       });
     };
     check();
@@ -34,7 +37,7 @@ export default function WhatsAppFloatingButton() {
       window.removeEventListener("resize", check);
       observer.disconnect();
     };
-  }, [target?.url]);
+  }, [target?.url, cartOpen]);
   if (!target) return null;
   return (
     <a
