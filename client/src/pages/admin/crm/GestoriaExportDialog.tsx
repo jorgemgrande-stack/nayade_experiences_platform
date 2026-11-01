@@ -3,7 +3,7 @@
  * el PDF de cada factura y abono emitidos en el periodo y el libro de facturas emitidas (CSV).
  * Las fechas son las de Madrid; el servidor prepara el fichero con los documentos tal como se emitieron.
  */
-import React, { useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { trpc } from "@/lib/trpc";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -12,7 +12,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { toast } from "sonner";
 import { toastError } from "@/lib/errorMessage";
 import { Download, RefreshCw } from "lucide-react";
-import { lastClosedQuarter, madridDayKey, resolveExportPeriod, type GestoriaExportPeriod } from "@shared/gestoriaExportPeriod";
+import { isEmptyExport, madridDayKey, resolveExportPeriod, suggestedExportQuarter, type GestoriaExportPeriod } from "@shared/gestoriaExportPeriod";
 
 const MONTHS = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"];
 const selectClass = "h-9 w-full rounded-md border border-input bg-transparent px-3 text-sm";
@@ -30,10 +30,19 @@ function downloadBase64(fileName: string, mimeType: string, contentBase64: strin
 export default function GestoriaExportDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (o: boolean) => void }) {
   const today = madridDayKey(new Date());
   const thisYear = Number(today.slice(0, 4));
-  const last = lastClosedQuarter();
+  // Propuesta: el trimestre en curso o, si aún no tiene facturas, el último que sí las tiene
+  const latest = trpc.crm.invoices.listAll.useQuery({ limit: 1, offset: 0 }, { enabled: open, staleTime: 60_000 });
+  const initial = suggestedExportQuarter(new Date(), null);
   const [kind, setKind] = useState<GestoriaExportPeriod["kind"]>("quarter");
-  const [year, setYear] = useState(last.year);
-  const [quarter, setQuarter] = useState(last.quarter);
+  const [year, setYear] = useState(initial.year);
+  const [quarter, setQuarter] = useState(initial.quarter);
+  const touched = useRef(false);
+  useEffect(() => {
+    if (touched.current || !latest.data) return;
+    const s = suggestedExportQuarter(new Date(), latest.data.items[0]?.issuedAt ?? null);
+    setYear(s.year);
+    setQuarter(s.quarter);
+  }, [latest.data]);
   const [month, setMonth] = useState(Number(today.slice(5, 7)));
   const [from, setFrom] = useState(`${today.slice(0, 7)}-01`);
   const [to, setTo] = useState(today);
@@ -56,6 +65,11 @@ export default function GestoriaExportDialog({ open, onOpenChange }: { open: boo
     setBusy(true);
     try {
       const res = await utils.crm.invoices.exportForGestoria.fetch(period, { staleTime: 0, gcTime: 0 });
+      if (isEmptyExport(res)) {
+        // Un ZIP vacío no sirve a la gestoría: se avisa y no se descarga nada
+        toast.warning(`No hay facturas ni abonos emitidos en ${res.period.label}. Elige otro periodo.`);
+        return;
+      }
       downloadBase64(res.fileName, res.mimeType, res.contentBase64);
       const what = `${res.invoices} ${res.invoices === 1 ? "factura" : "facturas"} y ${res.creditNotes} ${res.creditNotes === 1 ? "abono" : "abonos"}`;
       if (res.missingPdfs.length) {
@@ -103,14 +117,14 @@ export default function GestoriaExportDialog({ open, onOpenChange }: { open: boo
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1">
                 <Label htmlFor="gx-year">Año</Label>
-                <select id="gx-year" className={selectClass} value={year} onChange={(e) => setYear(Number(e.target.value))}>
+                <select id="gx-year" className={selectClass} value={year} onChange={(e) => { touched.current = true; setYear(Number(e.target.value)); }}>
                   {years.map((y) => <option key={y} value={y}>{y}</option>)}
                 </select>
               </div>
               {kind === "quarter" ? (
                 <div className="space-y-1">
                   <Label htmlFor="gx-quarter">Trimestre</Label>
-                  <select id="gx-quarter" className={selectClass} value={quarter} onChange={(e) => setQuarter(Number(e.target.value))}>
+                  <select id="gx-quarter" className={selectClass} value={quarter} onChange={(e) => { touched.current = true; setQuarter(Number(e.target.value)); }}>
                     <option value={1}>1.er trimestre (ene-mar)</option>
                     <option value={2}>2.º trimestre (abr-jun)</option>
                     <option value={3}>3.er trimestre (jul-sep)</option>

@@ -3,6 +3,7 @@
  * confirmación expresa y justificante con referencia, fecha y hora. Es distinto de cancelar la suscripción (que
  * termina al final del periodo pagado, sin reembolso). Todo lo decide y registra el servidor.
  */
+import { randomId } from "@shared/randomId";
 import { useMemo, useState } from "react";
 import { FileCheck2, Undo2 } from "lucide-react";
 import { toast } from "sonner";
@@ -37,7 +38,7 @@ const STATUS_LABEL: Record<string, string> = {
   completed: "Completada",
 };
 const fmt = (ms: number) => new Date(ms).toLocaleString("es-ES", { timeZone: "Europe/Madrid", dateStyle: "long", timeStyle: "short" });
-const newKey = () => (crypto.randomUUID?.() ?? `${Date.now()}-${Math.random()}`).replace(/[^A-Za-z0-9_-]/g, "").slice(0, 64);
+const newKey = () => randomId().replace(/[^A-Za-z0-9_-]/g, "").slice(0, 64);
 
 export function WithdrawalSection() {
   const utils = trpc.useUtils();

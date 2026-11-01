@@ -6376,14 +6376,18 @@ export const crmRouter = router({
       company: z.string().optional(),
       nif: z.string().optional(),
       address: z.string().optional(),
+      city: z.string().max(128).optional(),
+      postalCode: z.string().max(16).optional(),
+      country: z.string().max(64).optional(),
+      birthDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).or(z.literal("")).optional(),
       notes: z.string().optional(),
     })).mutation(async ({ input }) => {
       // Cuota de contactos del plan (solo el alta manual: reservas, compras y formularios nunca se bloquean)
       await assertBusinessQuota("contacts", async () => Number((await db.select({ n: count() }).from(clients))[0]?.n ?? 0));
       try {
         const [result] = await db.execute(sql`
-          INSERT INTO \`clients\` (\`name\`, \`email\`, \`phone\`, \`company\`, \`nif\`, \`address\`, \`notes\`, \`source\`)
-          VALUES (${input.name}, ${input.email}, ${input.phone ?? ""}, ${input.company ?? ""}, ${input.nif ?? ""}, ${input.address ?? null}, ${input.notes ?? null}, 'manual')
+          INSERT INTO \`clients\` (\`name\`, \`email\`, \`phone\`, \`company\`, \`nif\`, \`address\`, \`city\`, \`postalCode\`, \`country\`, \`birthDate\`, \`notes\`, \`source\`)
+          VALUES (${input.name}, ${input.email}, ${input.phone ?? ""}, ${input.company ?? ""}, ${input.nif ?? ""}, ${input.address ?? null}, ${input.city ?? ""}, ${input.postalCode ?? ""}, ${input.country || "ES"}, ${input.birthDate || null}, ${input.notes ?? null}, 'manual')
         `);
         return { id: (result as any).insertId };
       } catch (e: any) {

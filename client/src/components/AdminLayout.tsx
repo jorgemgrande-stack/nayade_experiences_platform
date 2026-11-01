@@ -25,6 +25,7 @@ import {
   type NavIcon, type ResolvedItem, type ResolvedSection,
 } from "@shared/adminNav";
 import { helpForLocation } from "@shared/helpCenter";
+import { ROLE_LABELS } from "@shared/roleLabels";
 import { AuthRequired, PanelSpinner } from "@/components/auth/AuthRequired";
 
 /** El plegado del menú lateral se recuerda entre pantallas (cada página monta su propio AdminLayout). */
@@ -55,13 +56,13 @@ const NAV_ICONS: Record<NavIcon, React.ComponentType<{ className?: string }>> = 
 
 /** Etiqueta y color por rol */
 const ROLE_META: Record<string, { label: string; color: string }> = {
-  admin:     { label: "Administrador",         color: "text-red-400" },
-  agente:    { label: "Agente Comercial",       color: "text-blue-400" },
-  monitor:   { label: "Monitor",               color: "text-green-400" },
-  adminrest: { label: "Gestor Restaurantes",   color: "text-orange-400" },
-  controler: { label: "Controler",             color: "text-purple-400" },
-  user:      { label: "Usuario",               color: "text-gray-400" },
-  readonly:  { label: "Solo lectura",          color: "text-gray-400" },
+  admin:     { label: ROLE_LABELS.admin,     color: "text-red-400" },
+  agente:    { label: ROLE_LABELS.agente,    color: "text-blue-400" },
+  monitor:   { label: ROLE_LABELS.monitor,   color: "text-green-400" },
+  adminrest: { label: ROLE_LABELS.adminrest, color: "text-orange-400" },
+  controler: { label: ROLE_LABELS.controler, color: "text-purple-400" },
+  user:      { label: ROLE_LABELS.user,      color: "text-gray-400" },
+  readonly:  { label: ROLE_LABELS.readonly,  color: "text-gray-400" },
 };
 
 interface AdminLayoutProps {

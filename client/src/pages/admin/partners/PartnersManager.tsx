@@ -1,3 +1,4 @@
+import { randomId } from "@shared/randomId";
 import { useState } from "react";
 import { trpc } from "@/lib/trpc";
 import AdminLayout from "@/components/AdminLayout";
@@ -1184,7 +1185,7 @@ function PartnerAnnouncementsPanel({ partnerId }: { partnerId: number }) {
     const expiresAt = newDuration === "0"
       ? null
       : new Date(Date.now() + parseInt(newDuration) * 24 * 60 * 60 * 1000).toISOString();
-    const note: Announcement = { id: crypto.randomUUID(), text: newText.trim(), isNew: true, createdAt: new Date().toISOString(), expiresAt };
+    const note: Announcement = { id: randomId(), text: newText.trim(), isNew: true, createdAt: new Date().toISOString(), expiresAt };
     const updated = [...announcements, note];
     setAnnouncements(updated);
     saveMut.mutate({ partnerId, announcements: updated });

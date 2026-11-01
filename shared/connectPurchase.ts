@@ -8,6 +8,8 @@
  *  - Lo guardado es solo una comodidad de esta persona (clave y número de pedido); la verdad está en el backend.
  */
 
+import { randomId } from "./randomId";
+
 export type PurchaseStatus = "applied" | "payment_pending" | "processing" | "expired" | "failed";
 
 export interface PurchaseAttempt {
@@ -34,7 +36,7 @@ export const DRAFT_TTL_MS = 24 * 60 * 60 * 1000;
 
 const slot = (scope: string, productKey: string) => `${PREFIX}${scope}:${productKey}`;
 
-export function newIdempotencyKey(random: () => string = () => globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(36).slice(2)}`): string {
+export function newIdempotencyKey(random: () => string = () => randomId()): string {
   return random().replace(/[^A-Za-z0-9_-]/g, "").slice(0, 64).padEnd(16, "0");
 }
 

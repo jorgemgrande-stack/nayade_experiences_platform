@@ -91,9 +91,10 @@ const recipient = (ctx: Who) => ({ email: ctx.user.email ?? null, name: ctx.user
 
 /** Cambia el progreso y, si cruza la mitad de los pasos, avisa del progreso (sin esperar al correo). */
 async function changeProgress(ctx: Who, change: Parameters<typeof updateProgress>[0]) {
-  const before = await readProgress();
+  // El aviso cuenta los pasos con el mismo recorrido que el asistente (plan), no con el progreso guardado
+  const before = (await loadState()).plan;
   const progress = await updateProgress(change);
-  void onboardingProgressed(before, progress, recipient(ctx));
+  void loadState().then((s) => onboardingProgressed(before, s.plan, recipient(ctx))).catch(() => undefined);
   return progress;
 }
 
@@ -107,7 +108,7 @@ async function registryFiscal() {
 }
 
 /** Estado completo: progreso guardado, datos ya existentes (rellenos) y el recorrido adaptado. */
-async function loadState() {
+export async function loadState() {
   const keys = [...Object.values(COMPANY_SETTING_KEYS), ...Object.values(COMMS_SETTING_KEYS), ACTIVITY_SETTING_KEY, BRAND_LOGO_KEY];
   const [progress, settings, counts, capabilities, fiscal] = await Promise.all([
     readProgress(),
