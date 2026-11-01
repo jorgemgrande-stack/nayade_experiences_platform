@@ -1,4 +1,4 @@
-# Módulo Personal / RRHH — Náyade Experiences
+# Módulo Personal / RRHH (Elephant People)
 
 Documentación técnica del módulo de Recursos Humanos. Construido en 9 fases
 (migraciones `0100`–`0110`).
@@ -149,5 +149,35 @@ Verificación de integridad de datos: `scripts/verify-hr-integrity.cjs`.
 Módulo completo (Fases 1–9). Todas las migraciones aplicadas en producción.
 Pendiente, fuera de alcance:
 - Migración `0098` (drop de tablas legacy `commercial_communications`) — aplazada.
-- UI de gestión del calendario teórico (`hr_schedule_templates`) — las tablas y
-  endpoints existen; falta pantalla de edición.
+- ~~UI de gestión del calendario teórico~~: hecha (pestaña «Horario» de la ficha
+  del empleado, `hr.schedule.setWeek`).
+
+---
+
+## 9. Elephant People: extensión contratable de Elephant Connect
+
+En multiempresa, Personal es la extensión `people` (manifiesto en
+`server/_core/modules/builtin.ts`, paneles en `shared/panelExtensions.ts`) y se
+licencia por la capacidad `people-hr` (producto `connect-people` del catálogo).
+
+- **Tablas**: todas están en la baseline de empresa
+  (`db/baseline/0000_baseline.sql`); una empresa nueva las tiene desde el alta,
+  vacías y en su propia BD. No hace falta migración de empresa.
+- **Licencia en servidor**: todo `hr.*` (panel, portal del empleado y activación
+  de la invitación), las lecturas heredadas `operations.monitors.*` y las subidas
+  `/api/upload/monitor-photo` y `/api/upload/monitor-doc` exigen `people-hr`
+  (`server/_core/capabilities/routeGuard.ts` y `restGuard.ts`). En solo lectura se
+  consulta, no se modifica.
+- **Sin la extensión**: no hay entrada de menú; `/admin/personal/*` muestra
+  «No incluido en tu plan»; el portal del empleado muestra un aviso en lugar de
+  errores.
+- **Primeros pasos** (`hr.onboarding.status`, tarjeta en el resumen de Personal):
+  configuración básica, primer empleado, su horario e invitación al portal. Se
+  marcan solos con los datos de la empresa.
+- **Desactivar no borra nada**: los datos se conservan en la BD de la empresa y
+  reaparecen al reactivar.
+- **Invitación al portal**: categoría de correo `user_invite`; nunca convierte una
+  cuenta del panel (admin, agente…) en acceso de empleado.
+
+Pruebas: `server/people.contratable.test.ts` y
+`server/people.contratable.e2e.mysql.test.ts` (dos empresas nuevas sobre MySQL).

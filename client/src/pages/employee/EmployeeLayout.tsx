@@ -51,7 +51,11 @@ function EmployeeLayoutInner({ user, location, navigate, logout, children }: {
   const { neutral, phone, brandName } = usePublicContact();
   const contactPhone = neutral ? phone : NAYADE_PHONE;
   const { data: publicSettings } = trpc.config.getPublicSettings.useQuery(undefined, { staleTime: 5 * 60 * 1000 });
-  const { data: me } = trpc.hr.portal.me.useQuery();
+  const { data: me, error: meError } = trpc.hr.portal.me.useQuery(undefined, { retry: false });
+  // Sin la extensión Personal activa (o con el usuario sin ficha): aviso claro en lugar de pantallas con errores
+  const meErrorData = meError?.data as { code?: string; capability?: string } | undefined;
+  const portalUnavailable = meErrorData?.capability === "people-hr";
+  const notLinked = !portalUnavailable && meErrorData?.code === "FORBIDDEN";
 
   const brandLogo = (publicSettings as any)?.brand_logo_url || (neutral ? "" : LOGO_FALLBACK);
   const employeeName = me?.fullName ?? (user as any).name ?? (user as any).email ?? "Empleado";
@@ -116,7 +120,19 @@ function EmployeeLayoutInner({ user, location, navigate, logout, children }: {
         </div>
       </header>
 
-      <main className="max-w-5xl mx-auto px-4 py-8">{children}</main>
+      <main className="max-w-5xl mx-auto px-4 py-8">
+        {portalUnavailable ? (
+          <PortalNotice title="El portal del empleado no está disponible">
+            Tu empresa no tiene activo el portal en este momento. Tus datos se conservan; si lo necesitas, consúltalo con la persona responsable de personal.
+          </PortalNotice>
+        ) : notLinked ? (
+          <PortalNotice title="Tu acceso aún no está vinculado">
+            Tu usuario no está asociado a ninguna ficha de empleado. Pide a tu empresa que revise tu acceso al portal.
+          </PortalNotice>
+        ) : (
+          children
+        )}
+      </main>
 
       <footer className="border-t border-white/[0.06] py-4 mt-8">
         <div className="max-w-5xl mx-auto px-4 flex flex-col sm:flex-row items-center justify-between gap-2 text-[11px] text-white/25">
@@ -128,6 +144,15 @@ function EmployeeLayoutInner({ user, location, navigate, logout, children }: {
           )}
         </div>
       </footer>
+    </div>
+  );
+}
+
+function PortalNotice({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <div role="status" className="max-w-lg mx-auto text-center rounded-xl border border-white/10 bg-white/[0.03] px-6 py-10">
+      <h1 className="text-lg font-semibold text-white mb-2">{title}</h1>
+      <p className="text-sm text-white/60">{children}</p>
     </div>
   );
 }

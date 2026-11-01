@@ -12,6 +12,7 @@ import {
 import AdminLayout from "@/components/AdminLayout";
 import { KpiCard } from "@/components/KpiCard";
 import { trpc } from "@/lib/trpc";
+import PeopleFirstSteps from "@/components/people/PeopleFirstSteps";
 
 function fmtBonusPending(amount: number | null | undefined): string {
   if (!amount) return "Ninguno pendiente";
@@ -53,6 +54,10 @@ export default function HRDashboard() {
               Ver empleados →
             </Link>
           </div>
+        </div>
+
+        <div className="px-4 sm:px-6 pt-5 empty:hidden">
+          <PeopleFirstSteps />
         </div>
 
         {/* Sección 1: Plantilla */}

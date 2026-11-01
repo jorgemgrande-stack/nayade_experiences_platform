@@ -5,6 +5,7 @@ import { sdk } from "./_core/sdk";
 import { createMediaFile } from "./db";
 import { getUserFromRequest } from "./localAuth";
 import { isMultiTenant } from "./_core/tenant";
+import { requireCapability } from "./_core/capabilities/restGuard";
 
 const USE_LOCAL_AUTH = process.env.LOCAL_AUTH === "true";
 
@@ -211,6 +212,7 @@ const monitorPhotoUpload = multer({
 router.post(
   "/api/upload/monitor-photo",
   (req, res, next) => requireAdmin(req, res, next),
+  requireCapability("people-hr"),
   monitorPhotoUpload.single("photo"),
   async (req: Request, res: Response) => {
     try {
@@ -255,6 +257,7 @@ const monitorDocUpload = multer({
 router.post(
   "/api/upload/monitor-doc",
   (req, res, next) => requireAdmin(req, res, next),
+  requireCapability("people-hr"),
   monitorDocUpload.single("file"),
   async (req: Request, res: Response) => {
     try {
