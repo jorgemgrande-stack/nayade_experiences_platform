@@ -32,7 +32,7 @@ function downloadCsv(filename: string, csv: string) {
 }
 
 function Kpi({ label, value, hint, tone }: { label: string; value: string; hint?: string; tone?: "bad" | "good" }) {
-  const color = tone === "bad" ? "text-red-400" : tone === "good" ? "text-emerald-400" : "text-white";
+  const color = tone === "bad" ? "text-danger" : tone === "good" ? "text-success" : "text-white";
   return (
     <div className="rounded-xl border border-gray-800 bg-gray-900 p-4">
       <p className="text-xs text-gray-400">{label}</p>
@@ -121,7 +121,7 @@ export default function TpvReports() {
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
             <h1 className="text-2xl font-bold text-white flex items-center gap-2">
-              <BarChart3 className="w-6 h-6 text-violet-400" aria-hidden="true" />
+              <BarChart3 className="w-6 h-6 text-primary" aria-hidden="true" />
               Informes de caja
             </h1>
             <p className="text-gray-400 text-sm mt-1">Ventas del TPV, anulaciones y cierres de caja del periodo (hora peninsular española).</p>
@@ -174,9 +174,9 @@ export default function TpvReports() {
                 ))}
               </select>
             </div>
-            <Button type="submit" disabled={!!draftError} className="bg-violet-600 hover:bg-violet-500 text-white">Ver informe</Button>
+            <Button type="submit" disabled={!!draftError} className="bg-primary hover:bg-primary/90 text-primary-foreground">Ver informe</Button>
           </div>
-          {draftError && <p role="alert" className="text-sm text-red-400">{draftError}</p>}
+          {draftError && <p role="alert" className="text-sm text-danger">{draftError}</p>}
         </form>
 
         <p className="hidden print:block text-sm text-gray-700">
@@ -269,7 +269,7 @@ export default function TpvReports() {
                 right={[3, 4, 5, 6, 7, 8]}
                 rows={r.closures.sessions.map((s) => [
                   s.register, s.cashier, formatMadridDateTime(s.closedAt), formatEur(s.openingAmount), formatEur(s.expectedCash), formatEur(s.countedCash),
-                  <span key="d" className={Math.abs(s.difference) >= 0.01 ? (s.difference < 0 ? "text-red-400 font-medium" : "text-amber-400 font-medium") : "text-emerald-400"}>
+                  <span key="d" className={Math.abs(s.difference) >= 0.01 ? (s.difference < 0 ? "text-danger font-medium" : "text-warning font-medium") : "text-success"}>
                     {Math.abs(s.difference) >= 0.01 ? formatEur(s.difference) : "Cuadrada"}
                   </span>,
                   formatEur(s.totalCard), formatEur(s.totalBizum),

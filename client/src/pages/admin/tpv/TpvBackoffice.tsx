@@ -42,9 +42,9 @@ const METHOD_LABELS: Record<string, string> = {
 };
 
 const STATUS_COLORS: Record<string, string> = {
-  open: "bg-green-900/30 text-green-400 border-green-800",
+  open: "bg-success/10 text-success border-success/40",
   closed: "bg-gray-800 text-gray-400 border-gray-700",
-  cancelled: "bg-red-900/30 text-red-400 border-red-800",
+  cancelled: "bg-danger/10 text-danger border-danger/40",
 };
 
 export default function TpvBackoffice() {
@@ -105,7 +105,7 @@ export default function TpvBackoffice() {
         <div className="flex items-center justify-between">
           <div>
             <h1 className="text-2xl font-bold text-white flex items-center gap-2">
-              <Receipt className="w-6 h-6 text-violet-400" />
+              <Receipt className="w-6 h-6 text-primary" />
               TPV — Cajas
             </h1>
             <p className="text-gray-400 text-sm mt-1">
@@ -120,7 +120,7 @@ export default function TpvBackoffice() {
               </Button>
             </Link>
             <Link href="/admin/tpv">
-              <Button className="bg-violet-600 hover:bg-violet-500 text-white gap-2">
+              <Button className="bg-primary hover:bg-primary/90 text-primary-foreground gap-2">
                 <ExternalLink className="w-4 h-4" />
                 Abrir TPV
               </Button>
@@ -136,7 +136,7 @@ export default function TpvBackoffice() {
               onClick={openNewRegister}
               disabled={!canManageCash}
               title={canManageCash ? undefined : "Tu plan está en solo lectura: no se pueden crear cajas"}
-              className="bg-violet-600 hover:bg-violet-500 text-white gap-2 focus-visible:ring-2 focus-visible:ring-violet-300"
+              className="bg-primary hover:bg-primary/90 text-primary-foreground gap-2 focus-visible:ring-2 focus-visible:ring-ring"
             >
               <Plus className="w-4 h-4" aria-hidden="true" />
               Nueva caja
@@ -152,7 +152,7 @@ export default function TpvBackoffice() {
               title="Todavía no hay ninguna caja"
               description="Crea tu primera caja para poder abrir sesión en el TPV y cobrar ventas presenciales."
             >
-              <Button onClick={openNewRegister} disabled={!canManageCash} className="bg-violet-600 hover:bg-violet-500 text-white gap-2">
+              <Button onClick={openNewRegister} disabled={!canManageCash} className="bg-primary hover:bg-primary/90 text-primary-foreground gap-2">
                 <Plus className="w-4 h-4" aria-hidden="true" />
                 Crear la primera caja
               </Button>
@@ -198,7 +198,7 @@ export default function TpvBackoffice() {
                   aria-describedby={showRegErr("name") ? "register-name-error" : undefined}
                   onChange={(e) => setRegForm((f) => ({ ...f, name: e.target.value }))}
                 />
-                {showRegErr("name") && <p id="register-name-error" role="alert" className="text-sm text-red-600">{showRegErr("name")}</p>}
+                {showRegErr("name") && <p id="register-name-error" role="alert" className="text-sm text-danger">{showRegErr("name")}</p>}
               </div>
               <div className="space-y-1.5">
                 <Label htmlFor="register-location">Ubicación (opcional)</Label>
@@ -212,12 +212,12 @@ export default function TpvBackoffice() {
                   aria-describedby={showRegErr("location") ? "register-location-error" : undefined}
                   onChange={(e) => setRegForm((f) => ({ ...f, location: e.target.value }))}
                 />
-                {showRegErr("location") && <p id="register-location-error" role="alert" className="text-sm text-red-600">{showRegErr("location")}</p>}
+                {showRegErr("location") && <p id="register-location-error" role="alert" className="text-sm text-danger">{showRegErr("location")}</p>}
               </div>
-              {regServerError && <p role="alert" className="text-sm text-red-600">{regServerError}</p>}
+              {regServerError && <p role="alert" className="text-sm text-danger">{regServerError}</p>}
               <DialogFooter>
                 <Button type="button" variant="outline" onClick={() => setShowNewRegister(false)} disabled={createRegister.isPending}>Cancelar</Button>
-                <Button type="submit" disabled={createRegister.isPending} className="bg-violet-600 hover:bg-violet-500 text-white">
+                <Button type="submit" disabled={createRegister.isPending} className="bg-primary hover:bg-primary/90 text-primary-foreground">
                   {createRegister.isPending ? "Creando…" : "Crear caja"}
                 </Button>
               </DialogFooter>
@@ -242,7 +242,7 @@ export default function TpvBackoffice() {
                       onClick={() => setSelectedSessionId(session.id)}
                       className={`w-full text-left rounded-xl p-3 border transition-all ${
                         isSelected
-                          ? "border-violet-500 bg-violet-900/20"
+                          ? "border-primary bg-primary/15"
                           : "border-gray-800 bg-gray-900 hover:border-gray-700"
                       }`}
                     >
@@ -271,7 +271,7 @@ export default function TpvBackoffice() {
                       )}
                       <div className="flex items-center justify-between mt-2">
                         <span className="text-xs text-gray-500">{session.salesCount ?? 0} ventas</span>
-                        <span className="text-sm font-bold text-violet-400">
+                        <span className="text-sm font-bold text-primary">
                           {formatEur(parseFloat(String(session.totalSales ?? 0)))}
                         </span>
                       </div>
@@ -279,14 +279,16 @@ export default function TpvBackoffice() {
                   );
                 })}
                 {(!sessions || sessions.length === 0) && (
-                  <div className="text-center py-12 text-gray-600">
-                    <Receipt className="w-10 h-10 mx-auto mb-2 opacity-30" />
-                    <p className="text-sm">Todavía no hay sesiones de caja</p>
-                    <p className="text-xs mt-1 px-4">Cada vez que abres la caja en el terminal de venta empieza una sesión; al cerrarla, aquí verás sus ventas y el arqueo.</p>
-                    <Button asChild size="sm" className="mt-3 bg-violet-600 hover:bg-violet-500 text-white">
+                  <PanelEmpty
+                    className="border-0 bg-transparent p-4 md:p-6"
+                    icon={<Receipt className="w-6 h-6" />}
+                    title="Todavía no hay sesiones de caja"
+                    description="Cada vez que abres la caja en el terminal de venta empieza una sesión; al cerrarla, aquí verás sus ventas y el arqueo."
+                  >
+                    <Button asChild size="sm">
                       <Link href="/admin/tpv">Abrir el terminal de venta</Link>
                     </Button>
-                  </div>
+                  </PanelEmpty>
                 )}
               </div>
             </ScrollArea>
@@ -299,10 +301,10 @@ export default function TpvBackoffice() {
                 {/* Summary cards */}
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
                   {[
-                    { label: "Total ventas", value: `${formatEur((sessionDetail.totalSales ?? 0))}`, icon: <TrendingUp className="w-4 h-4" />, color: "text-violet-400" },
-                    { label: "Entradas", value: `${formatEur((sessionDetail.totalIn ?? 0))}`, icon: <Banknote className="w-4 h-4" />, color: "text-green-400" },
-                    { label: "Salidas", value: `${formatEur((sessionDetail.totalOut ?? 0))}`, icon: <CreditCard className="w-4 h-4" />, color: "text-red-400" },
-                    { label: "Ventas", value: String(sessionDetail.sales?.length ?? 0), icon: <Receipt className="w-4 h-4" />, color: "text-cyan-400" },
+                    { label: "Total ventas", value: `${formatEur((sessionDetail.totalSales ?? 0))}`, icon: <TrendingUp className="w-4 h-4" />, color: "text-primary" },
+                    { label: "Entradas", value: `${formatEur((sessionDetail.totalIn ?? 0))}`, icon: <Banknote className="w-4 h-4" />, color: "text-success" },
+                    { label: "Salidas", value: `${formatEur((sessionDetail.totalOut ?? 0))}`, icon: <CreditCard className="w-4 h-4" />, color: "text-danger" },
+                    { label: "Ventas", value: String(sessionDetail.sales?.length ?? 0), icon: <Receipt className="w-4 h-4" />, color: "text-info" },
                   ].map((stat) => (
                     <Card key={stat.label} className="bg-gray-900 border-gray-800">
                       <CardContent className="p-3">
@@ -326,15 +328,15 @@ export default function TpvBackoffice() {
                       </div>
                       <div>
                         <span className="text-gray-400">Mov. entradas</span>
-                        <div className="font-bold text-green-400">+{formatEur((sessionDetail.totalIn ?? 0))}</div>
+                        <div className="font-bold text-success">+{formatEur((sessionDetail.totalIn ?? 0))}</div>
                       </div>
                       {sessionDetail.session.status === "closed" && (
                         <div>
                           <span className="text-gray-400">Efectivo real</span>
                           <div className={`font-bold ${
                             Math.abs(parseFloat(String(sessionDetail.session.countedCash ?? 0)) - parseFloat(String(sessionDetail.session.closingAmount ?? 0))) < 0.01
-                              ? "text-green-400"
-                              : "text-amber-400"
+                              ? "text-success"
+                              : "text-warning"
                           }`}>
                             {formatEur(parseFloat(String(sessionDetail.session.countedCash ?? 0)))}
                           </div>
@@ -357,7 +359,7 @@ export default function TpvBackoffice() {
                         {sessionDetail.sales?.map((sale: any) => (
                           <div key={sale.id} className="bg-gray-900 border border-gray-800 rounded-lg p-3">
                             <div className="flex items-center justify-between mb-1">
-                              <span className="text-xs font-mono font-bold text-violet-400">{sale.ticketNumber}</span>
+                              <span className="text-xs font-mono font-bold text-primary">{sale.ticketNumber}</span>
                               <span className="text-sm font-bold text-white">{formatEur(parseFloat(String(sale.total)))}</span>
                             </div>
                             <div className="flex items-center gap-2 text-xs text-gray-400">
@@ -370,7 +372,7 @@ export default function TpvBackoffice() {
                                 </>
                               )}
                               {sale.serviceDate && (
-                                <span className="ml-1 text-violet-300 font-medium">
+                                <span className="ml-1 text-primary font-medium">
                                   📅 {sale.serviceDate}
                                 </span>
                               )}
@@ -398,17 +400,17 @@ export default function TpvBackoffice() {
                         {sessionDetail.movements?.map((mov: any) => (
                           <div key={mov.id} className="bg-gray-900 border border-gray-800 rounded-lg p-3 flex items-center gap-3">
                             <div className={`w-8 h-8 rounded-full flex items-center justify-center ${
-                              mov.type === "in" ? "bg-green-900/30 text-green-400" : "bg-red-900/30 text-red-400"
+                              mov.type === "in" ? "bg-success/10 text-success" : "bg-danger/10 text-danger"
                             }`}>
                               {mov.type === "in" ? <ArrowDownLeft className="w-4 h-4" /> : <ArrowUpRight className="w-4 h-4" />}
                             </div>
                             <div className="flex-1 min-w-0">
-                              <p className="text-xs font-medium text-white truncate">{mov.reason ?? "Sin motivo"}</p>
+                              <p className="text-xs font-medium text-white overflow-hidden text-ellipsis whitespace-nowrap">{mov.reason ?? "Sin motivo"}</p>
                               <p className="text-xs text-gray-400">
                                 {new Date(mov.createdAt).toLocaleTimeString("es-ES", { hour: "2-digit", minute: "2-digit" })}
                               </p>
                             </div>
-                            <span className={`text-sm font-bold ${mov.type === "in" ? "text-green-400" : "text-red-400"}`}>
+                            <span className={`text-sm font-bold ${mov.type === "in" ? "text-success" : "text-danger"}`}>
                               {mov.type === "in" ? "+" : "-"}{formatEur(parseFloat(String(mov.amount)))}
                             </span>
                           </div>
@@ -469,14 +471,14 @@ function TpvReservationsToday() {
         {reservations.map((res: any) => (
           <div key={res.id} className="bg-gray-900 border border-gray-800 rounded-lg p-3">
             <div className="flex items-center justify-between mb-1">
-              <span className="text-xs font-mono font-bold text-emerald-400">
+              <span className="text-xs font-mono font-bold text-success">
                 {res.merchantOrder}
               </span>
-              <Badge variant="outline" className="text-xs border-emerald-800 text-emerald-400">
+              <Badge variant="outline" className="text-xs border-success/40 text-success">
                 {formatEur((res.amountTotal / 100))}
               </Badge>
             </div>
-            <p className="text-xs font-medium text-white truncate">{res.productName}</p>
+            <p className="text-xs font-medium text-white overflow-hidden text-ellipsis whitespace-nowrap">{res.productName}</p>
             <div className="flex items-center gap-3 mt-1 text-xs text-gray-400">
               {res.customerName && (
                 <span className="flex items-center gap-1">

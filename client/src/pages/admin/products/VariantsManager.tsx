@@ -168,8 +168,8 @@ export default function VariantsManager() {
       </div>
 
       {/* Info box */}
-      <div className="mb-6 p-4 bg-blue-50 border border-blue-200 rounded-xl flex gap-3 text-sm text-blue-800">
-        <Info className="w-4 h-4 mt-0.5 shrink-0 text-blue-500" />
+      <div className="mb-6 p-4 bg-info/10 border border-info/30 rounded-xl flex gap-3 text-sm text-foreground">
+        <Info className="w-4 h-4 mt-0.5 shrink-0 text-info" />
         <div>
           <strong>Cómo funcionan las variantes:</strong> {voc.licensed ? "Al añadir variantes a un producto o servicio, el cliente elige una al comprarlo." : "Al añadir variantes a una experiencia, el cliente elige una al reservarla."} El precio de la variante elegida sustituye al precio base en el total del pago.
           <br />
@@ -203,7 +203,7 @@ export default function VariantsManager() {
                     <span className="font-semibold text-foreground">{exp.title}</span>
                     {!voc.licensed && <Badge variant="outline" className="text-xs">{exp.difficulty ?? "facil"}</Badge>}
                     {variants.length > 0 && (
-                      <Badge className="text-xs bg-green-100 text-green-700 border-green-200">
+                      <Badge className="text-xs bg-success/10 text-success border-success/40">
                         {variants.length} variante{variants.length !== 1 ? "s" : ""}
                       </Badge>
                     )}
@@ -220,7 +220,7 @@ export default function VariantsManager() {
                         <div className="flex-1 min-w-0">
                           <p className="font-medium text-foreground text-sm">{v.name}</p>
                           {v.description && (
-                            <p className="text-xs text-muted-foreground truncate">{v.description}</p>
+                            <p className="text-xs text-muted-foreground overflow-hidden text-ellipsis whitespace-nowrap">{v.description}</p>
                           )}
                           <p className="text-xs text-muted-foreground mt-0.5">
                             {PRICE_TYPE_LABELS[v.priceType] ?? v.priceType}
@@ -247,7 +247,7 @@ export default function VariantsManager() {
                               </DropdownMenuItem>
                               <DropdownMenuSeparator />
                               <DropdownMenuItem
-                                className="text-red-600 focus:text-red-600"
+                                className="text-destructive focus:text-destructive"
                                 onClick={() => setDeleteConfirm(v.id)}
                               >
                                 <Trash2 className="w-3.5 h-3.5 mr-2" /> Borrar

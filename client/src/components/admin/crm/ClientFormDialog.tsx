@@ -143,7 +143,7 @@ export function ClientFormDialog({ client, onClose, onSaved }: { client?: Client
         )}
         {submitted && hasErrors && <p role="alert" className="text-sm text-destructive">Revisa los campos marcados antes de guardar.</p>}
         {duplicates.length > 0 && (
-          <div role="alert" className="space-y-2 rounded-md border border-amber-400/50 bg-amber-500/10 px-3 py-2 text-sm text-foreground">
+          <div role="alert" className="space-y-2 rounded-md border border-warning/50 bg-warning/10 px-3 py-2 text-sm text-foreground">
             {duplicates.map((d) => (
               <p key={d.id}>
                 {duplicateMessage(d)}{" "}

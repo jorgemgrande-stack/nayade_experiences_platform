@@ -39,10 +39,10 @@ export default function TpvOpenSession({ open, registerId, onClose, onOpened }: 
 
   return (
     <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
-      <DialogContent className="bg-gray-900 border-gray-700 text-white max-w-sm">
+      <DialogContent className="dark bg-gray-900 border-gray-700 text-white max-w-sm">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2 text-white">
-            <Lock className="w-5 h-5 text-violet-400" />
+            <Lock className="w-5 h-5 text-primary" />
             Abrir caja
           </DialogTitle>
         </DialogHeader>
@@ -80,7 +80,7 @@ export default function TpvOpenSession({ open, registerId, onClose, onOpened }: 
               Cancelar
             </Button>
             <Button
-              className="flex-1 bg-violet-600 hover:bg-violet-500 text-white font-semibold"
+              className="flex-1 bg-primary hover:bg-primary/90 text-primary-foreground font-semibold"
               onClick={handleOpen}
               disabled={openMut.isPending}
             >

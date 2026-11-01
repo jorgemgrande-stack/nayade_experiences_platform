@@ -109,13 +109,13 @@ function saveLastRegister(id: number) {
 // ─── Category colors ──────────────────────────────────────────────────────────
 
 const TYPE_COLORS: Record<ProductType, string> = {
-  experience: "from-cyan-600 to-blue-700",
-  pack: "from-violet-600 to-purple-700",
-  spa: "from-rose-600 to-pink-700",
-  hotel: "from-amber-600 to-orange-700",
-  restaurant: "from-green-600 to-emerald-700",
+  experience: "from-primary/70 to-primary",
+  pack: "from-primary/70 to-primary",
+  spa: "from-primary/70 to-primary",
+  hotel: "from-primary/70 to-primary",
+  restaurant: "from-primary/70 to-primary",
   extra: "from-gray-600 to-slate-700",
-  legoPack: "from-emerald-600 to-teal-700",
+  legoPack: "from-primary/70 to-primary",
 };
 
 const FILTER_ICONS: Record<string, React.ReactNode> = {
@@ -501,16 +501,16 @@ export default function TpvScreen() {
     const noRegisters = registersQ.isSuccess && registers.length === 0;
     const mustChoose = choosingRegister || (registerId === null && registers.length > 0);
     return (
-      <div className="fixed inset-0 bg-gray-950 flex flex-col items-center justify-center z-50 overflow-y-auto py-8">
+      <div className="dark fixed inset-0 bg-gray-950 flex flex-col items-center justify-center z-50 overflow-y-auto py-8">
         <div className="text-center space-y-6 w-full max-w-md px-4">
-          <div className="w-20 h-20 rounded-2xl bg-gradient-to-br from-violet-600 to-purple-800 flex items-center justify-center mx-auto shadow-2xl">
-            <Receipt className="w-10 h-10 text-white" />
+          <div className="w-20 h-20 rounded-2xl bg-primary flex items-center justify-center mx-auto shadow-2xl">
+            <Receipt className="w-10 h-10 text-primary-foreground" />
           </div>
           <h1 className="text-3xl font-bold text-white tracking-tight">Punto de venta</h1>
 
           {registersQ.isLoading && <p className="text-gray-400">Cargando cajas…</p>}
           {registersQ.isError && (
-            <p role="alert" className="text-red-400">No se han podido cargar las cajas. Comprueba la conexión e inténtalo de nuevo.</p>
+            <p role="alert" className="text-danger">No se han podido cargar las cajas. Comprueba la conexión e inténtalo de nuevo.</p>
           )}
 
           {/* Sin ninguna caja: guiar a crearla */}
@@ -534,7 +534,7 @@ export default function TpvScreen() {
                     maxLength={100}
                     className="h-12 bg-gray-800 border-gray-700 text-white"
                   />
-                  <Button type="submit" disabled={!newRegisterName.trim() || createRegisterMut.isPending} className="w-full h-12 bg-violet-600 hover:bg-violet-500 text-white">
+                  <Button type="submit" disabled={!newRegisterName.trim() || createRegisterMut.isPending} className="w-full h-12 bg-primary hover:bg-primary/90 text-primary-foreground">
                     Crear caja
                   </Button>
                 </form>
@@ -554,16 +554,16 @@ export default function TpvScreen() {
                   type="button"
                   onClick={() => chooseRegister(r.id)}
                   className={`w-full min-h-14 flex items-center gap-3 rounded-xl border px-4 py-3 text-left transition-colors ${
-                    r.id === registerId ? "border-violet-500 bg-violet-900/30" : "border-gray-700 bg-gray-900 hover:border-violet-500"
+                    r.id === registerId ? "border-primary bg-primary/15" : "border-gray-700 bg-gray-900 hover:border-primary"
                   }`}
                 >
-                  <Store className="w-5 h-5 text-violet-400 shrink-0" />
+                  <Store className="w-5 h-5 text-primary shrink-0" />
                   <span className="flex-1 min-w-0">
-                    <span className="block text-white font-medium truncate">{r.name}</span>
-                    {r.location && <span className="block text-xs text-gray-400 truncate">{r.location}</span>}
+                    <span className="block text-white font-medium overflow-hidden text-ellipsis whitespace-nowrap">{r.name}</span>
+                    {r.location && <span className="block text-xs text-gray-400 overflow-hidden text-ellipsis whitespace-nowrap">{r.location}</span>}
                   </span>
                   {r.openSession ? (
-                    <Badge variant="outline" className="text-green-400 border-green-700 text-xs shrink-0">Abierta · {r.openSession.cashierName}</Badge>
+                    <Badge variant="outline" className="text-success border-success/40 text-xs shrink-0">Abierta · {r.openSession.cashierName}</Badge>
                   ) : (
                     <span className="text-xs text-gray-500 shrink-0">Cerrada</span>
                   )}
@@ -578,13 +578,13 @@ export default function TpvScreen() {
               <p className="text-gray-400">Caja: <span className="text-white font-medium">{currentRegister.name}</span></p>
               <Button
                 size="lg"
-                className="w-full bg-violet-600 hover:bg-violet-500 text-white font-semibold text-lg h-14 rounded-xl"
+                className="w-full bg-primary hover:bg-primary/90 text-primary-foreground font-semibold text-lg h-14 rounded-xl"
                 onClick={() => setShowOpenSession(true)}
               >
                 Abrir caja
               </Button>
               {registers.length > 1 && (
-                <Button variant="ghost" className="w-full h-11 text-violet-300 hover:text-violet-200" onClick={() => setChoosingRegister(true)}>
+                <Button variant="ghost" className="w-full h-11 text-primary hover:text-foreground" onClick={() => setChoosingRegister(true)}>
                   Cambiar de caja
                 </Button>
               )}
@@ -617,12 +617,12 @@ export default function TpvScreen() {
   }
 
   return (
-    <div className="fixed inset-0 bg-gray-950 flex flex-col overflow-hidden z-50 text-white">
+    <div className="dark fixed inset-0 bg-gray-950 flex flex-col overflow-hidden z-50 text-white">
       {/* ── Header ── */}
       <header className="flex items-center justify-between gap-2 px-2 sm:px-4 py-1.5 bg-gray-900 border-b border-gray-800 shrink-0">
         <div className="flex items-center gap-2 min-w-0">
-          <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-violet-600 to-purple-700 flex items-center justify-center shrink-0">
-            <Receipt className="w-4 h-4 text-white" />
+          <div className="w-8 h-8 rounded-lg bg-primary flex items-center justify-center shrink-0">
+            <Receipt className="w-4 h-4 text-primary-foreground" />
           </div>
           <button
             type="button"
@@ -630,9 +630,9 @@ export default function TpvScreen() {
             className="min-h-11 min-w-0 flex items-center gap-2 rounded-lg px-2 hover:bg-gray-800"
             title="Cambiar de caja"
           >
-            <span className="font-bold text-white text-sm truncate">{currentRegister?.name ?? "Caja"}</span>
+            <span className="font-bold text-white text-sm overflow-hidden text-ellipsis whitespace-nowrap">{currentRegister?.name ?? "Caja"}</span>
             {activeSession && (
-              <Badge variant="outline" className="hidden sm:inline-flex text-green-400 border-green-700 text-xs">
+              <Badge variant="outline" className="hidden sm:inline-flex text-success border-success/40 text-xs">
                 Caja abierta
               </Badge>
             )}
@@ -645,7 +645,7 @@ export default function TpvScreen() {
             <Button
               size="sm"
               variant="ghost"
-              className="text-violet-400 hover:text-violet-300 h-11 px-2 text-xs gap-1"
+              className="text-primary hover:text-primary/80 h-11 px-2 text-xs gap-1"
               title={licensed ? "Ventas y cierres de caja" : "Historial de ventas y reservas del día"}
               aria-label={licensed ? "Ventas y cierres de caja" : "Backoffice"}
             >
@@ -658,7 +658,7 @@ export default function TpvScreen() {
               <Button
                 size="sm"
                 variant="ghost"
-                className="text-violet-400 hover:text-violet-300 h-11 px-2 text-xs gap-1"
+                className="text-primary hover:text-primary/80 h-11 px-2 text-xs gap-1"
                 title="Control de operaciones diario"
                 aria-label="Control de operaciones diario"
               >
@@ -690,7 +690,7 @@ export default function TpvScreen() {
           <Button
             size="sm"
             variant="ghost"
-            className="text-amber-400 hover:text-amber-300 h-11 px-2 text-xs"
+            className="text-warning hover:text-warning h-11 px-2 text-xs"
             onClick={() => setShowCloseSession(true)}
           >
             Cerrar caja
@@ -729,7 +729,7 @@ export default function TpvScreen() {
                 aria-pressed={filter === f.key}
                 className={`h-11 px-3 text-xs gap-1 shrink-0 ${
                   filter === f.key
-                    ? "bg-violet-600 text-white hover:bg-violet-500"
+                    ? "bg-primary text-primary-foreground hover:bg-primary/90"
                     : "text-gray-400 hover:text-white"
                 }`}
                 onClick={() => setFilter(f.key)}
@@ -747,13 +747,13 @@ export default function TpvScreen() {
               {user?.role === "admin" && (
                 <button
                   onClick={() => { setManualConcept(""); setManualPrice(""); setShowManualModal(true); }}
-                  className="group relative bg-gray-900 rounded-xl overflow-hidden border border-dashed border-violet-600 hover:border-violet-400 transition-all hover:scale-[1.02] active:scale-[0.98] text-left"
+                  className="group relative bg-gray-900 rounded-xl overflow-hidden border border-dashed border-primary hover:border-primary transition-all hover:scale-[1.02] active:scale-[0.98] text-left"
                 >
-                  <div className="h-28 bg-gradient-to-br from-violet-900/60 to-purple-900/60 flex items-center justify-center">
-                    <PenLine className="w-10 h-10 text-violet-400 group-hover:text-violet-300 transition-colors" />
+                  <div className="h-28 bg-primary/15 flex items-center justify-center">
+                    <PenLine className="w-10 h-10 text-primary group-hover:text-primary/80 transition-colors" />
                   </div>
                   <div className="p-2">
-                    <p className="text-xs font-medium text-violet-300 line-clamp-2 leading-tight mb-1">Producto flexible</p>
+                    <p className="text-xs font-medium text-primary line-clamp-2 leading-tight mb-1">Producto flexible</p>
                     <p className="text-[10px] text-gray-500">Concepto + precio libre</p>
                   </div>
                 </button>
@@ -766,7 +766,7 @@ export default function TpvScreen() {
                   <button
                     key={`${product.productType}-${product.id}`}
                     onClick={() => addToCart(product)}
-                    className="group relative bg-gray-900 rounded-xl overflow-hidden border border-gray-800 hover:border-violet-500 transition-all hover:scale-[1.02] active:scale-[0.98] text-left"
+                    className="group relative bg-gray-900 rounded-xl overflow-hidden border border-gray-800 hover:border-primary transition-all hover:scale-[1.02] active:scale-[0.98] text-left"
                   >
                     {/* Image */}
                     <div className={`h-28 bg-gradient-to-br ${TYPE_COLORS[product.productType]} relative overflow-hidden`}>
@@ -782,12 +782,12 @@ export default function TpvScreen() {
                         </div>
                       )}
                       {discount > 0 && (
-                        <div className="absolute top-1 right-1 bg-red-500 text-white text-xs font-bold px-1.5 py-0.5 rounded-full">
+                        <div className="absolute top-1 right-1 bg-destructive text-white text-xs font-bold px-1.5 py-0.5 rounded-full">
                           -{discount.toFixed(0)}%
                         </div>
                       )}
                       {product.variants && product.variants.length > 0 && (
-                        <div className="absolute top-1 left-1 bg-violet-600/90 text-white text-[9px] font-bold px-1.5 py-0.5 rounded-full">
+                        <div className="absolute top-1 left-1 bg-primary text-primary-foreground text-[9px] font-bold px-1.5 py-0.5 rounded-full">
                           {product.variants.length} opciones
                         </div>
                       )}
@@ -806,11 +806,11 @@ export default function TpvScreen() {
                         {discount > 0 && (
                           <span className="text-xs text-gray-500 line-through">{formatEur(price)}</span>
                         )}
-                        <span className="text-sm font-bold text-violet-400">{formatEur(finalPrice)}</span>
+                        <span className="text-sm font-bold text-primary">{formatEur(finalPrice)}</span>
                       </div>
                     </div>
                     {/* Add overlay */}
-                    <div className="absolute inset-0 bg-violet-600/0 group-hover:bg-violet-600/10 transition-colors flex items-center justify-center">
+                    <div className="absolute inset-0 bg-transparent group-hover:bg-primary/10 transition-colors flex items-center justify-center">
                       <Plus className="w-8 h-8 text-white opacity-0 group-hover:opacity-100 transition-opacity drop-shadow-lg" />
                     </div>
                   </button>
@@ -823,7 +823,7 @@ export default function TpvScreen() {
                   {licensed && user?.role === "admin" && (
                     <p className="text-xs mt-2">
                       Activa «Vendible en TPV» en la ficha de tus productos, en{" "}
-                      <Link href="/admin/productos/experiencias" className="underline underline-offset-4 text-violet-300">Productos y servicios</Link>.
+                      <Link href="/admin/productos/experiencias" className="underline underline-offset-4 text-primary">Productos y servicios</Link>.
                     </p>
                   )}
                 </div>
@@ -842,10 +842,10 @@ export default function TpvScreen() {
           {/* Cart header */}
           <div className="flex items-center justify-between px-4 py-3 border-b border-gray-800">
             <div className="flex items-center gap-2">
-              <ShoppingCart className="w-4 h-4 text-violet-400" />
+              <ShoppingCart className="w-4 h-4 text-primary" />
               <span className="font-semibold text-sm">Carrito</span>
               {cart.length > 0 && (
-                <Badge className="bg-violet-600 text-white text-xs">{cart.reduce((a, i) => a + i.quantity, 0)}</Badge>
+                <Badge className="bg-primary text-primary-foreground text-xs">{cart.reduce((a, i) => a + i.quantity, 0)}</Badge>
               )}
             </div>
             <div className="flex items-center gap-1">
@@ -853,7 +853,7 @@ export default function TpvScreen() {
                 <Button
                   size="sm"
                   variant="ghost"
-                  className="text-red-400 hover:text-red-300 h-11 px-3 text-xs"
+                  className="text-danger hover:text-danger h-11 px-3 text-xs"
                   onClick={() => setCart([])}
                 >
                   Vaciar
@@ -874,17 +874,17 @@ export default function TpvScreen() {
           {/* ── Datos del cliente (siempre visible) ── */}
           <div className="px-3 py-2 border-b border-gray-800 bg-gray-900/80">
             <div className="flex items-center gap-1.5 mb-2">
-              <User className="w-3.5 h-3.5 text-violet-400" />
+              <User className="w-3.5 h-3.5 text-primary" />
               <span className="text-xs font-semibold text-gray-300">Datos del cliente</span>
               <span className="text-[10px] text-gray-600 ml-1">(opcional)</span>
             </div>
             <div className="space-y-1.5">
               {/* Cliente existente: búsqueda por nombre, email o teléfono */}
               {selectedClient ? (
-                <div className="flex items-center justify-between gap-2 bg-green-900/30 border border-green-700/40 rounded px-2 py-1 min-h-11">
-                  <span className="flex items-center gap-1 text-xs text-green-300 min-w-0">
+                <div className="flex items-center justify-between gap-2 bg-success/10 border border-success/40 rounded px-2 py-1 min-h-11">
+                  <span className="flex items-center gap-1 text-xs text-success min-w-0">
                     <CheckCircle2 className="w-3.5 h-3.5 shrink-0" />
-                    <span className="truncate">Cliente existente: {selectedClient.name}</span>
+                    <span className="overflow-hidden text-ellipsis whitespace-nowrap">Cliente existente: {selectedClient.name}</span>
                   </span>
                   <button type="button" onClick={clearCustomer} className="text-xs text-gray-400 hover:text-white h-11 px-2 shrink-0">Quitar</button>
                 </div>
@@ -912,8 +912,8 @@ export default function TpvScreen() {
                             onClick={() => pickClient(c)}
                             className="w-full text-left px-3 py-2 min-h-11 hover:bg-gray-700"
                           >
-                            <span className="block text-xs text-white truncate">{c.name}</span>
-                            <span className="block text-[11px] text-gray-400 truncate">{[c.email, c.phone].filter(Boolean).join(" · ")}</span>
+                            <span className="block text-xs text-white overflow-hidden text-ellipsis whitespace-nowrap">{c.name}</span>
+                            <span className="block text-[11px] text-gray-400 overflow-hidden text-ellipsis whitespace-nowrap">{[c.email, c.phone].filter(Boolean).join(" · ")}</span>
                           </button>
                         ))
                       )}
@@ -970,13 +970,13 @@ export default function TpvScreen() {
                           <p className="text-xs font-medium text-white line-clamp-1">{item.product.title}</p>
                           <p className="text-xs text-gray-400">{formatEur(item.unitPrice)}/ud</p>
                           {item.variantName && (
-                            <p className="text-xs text-cyan-400 flex items-center gap-0.5 mt-0.5">
+                            <p className="text-xs text-info flex items-center gap-0.5 mt-0.5">
                               <Tag className="w-2.5 h-2.5" />
                               {item.variantName}
                             </p>
                           )}
                           {item.selectedTimeSlotLabel && (
-                            <p className="text-xs text-violet-400 flex items-center gap-0.5 mt-0.5">
+                            <p className="text-xs text-primary flex items-center gap-0.5 mt-0.5">
                               <AlarmClock className="w-2.5 h-2.5" />
                               {item.selectedTimeSlotLabel}
                               {item.selectedTime && ` · ${item.selectedTime}`}
@@ -985,7 +985,7 @@ export default function TpvScreen() {
                         </div>
                         <button
                           onClick={() => removeItem(item.id)}
-                          className="text-gray-500 hover:text-red-400 transition-colors w-11 h-11 -m-2 flex items-center justify-center shrink-0"
+                          className="text-gray-500 hover:text-danger transition-colors w-11 h-11 -m-2 flex items-center justify-center shrink-0"
                           aria-label={`Quitar ${item.product.title}`}
                         >
                           <X className="w-4 h-4" />
@@ -1009,7 +1009,7 @@ export default function TpvScreen() {
                             <Plus className="w-3 h-3" />
                           </button>
                         </div>
-                        <span className="text-sm font-bold text-violet-400">{formatEur(lineTotal)}</span>
+                        <span className="text-sm font-bold text-primary">{formatEur(lineTotal)}</span>
                       </div>
 
                       {/* Desglose de líneas para Lego Pack */}
@@ -1038,10 +1038,10 @@ export default function TpvScreen() {
             {cart.length > 0 && (
               <div className="px-0 pb-2 space-y-1 border-t border-gray-800 pt-2">
                 {promoCodeData ? (
-                  <div className="flex items-center justify-between bg-green-900/30 border border-green-700/40 rounded px-2 py-1">
-                    <span className="text-xs text-green-400 font-mono font-bold">{promoCodeData.code}</span>
-                    <span className="text-xs text-green-400">-{promoCodeData.discountPercent}% (-{formatEur(promoDiscount)})</span>
-                    <button onClick={removePromoCode} aria-label="Quitar código" className="text-gray-500 hover:text-red-400 ml-1 w-11 h-11 -my-2 flex items-center justify-center"><X className="w-4 h-4" /></button>
+                  <div className="flex items-center justify-between bg-success/10 border border-success/40 rounded px-2 py-1">
+                    <span className="text-xs text-success font-mono font-bold">{promoCodeData.code}</span>
+                    <span className="text-xs text-success">-{promoCodeData.discountPercent}% (-{formatEur(promoDiscount)})</span>
+                    <button onClick={removePromoCode} aria-label="Quitar código" className="text-gray-500 hover:text-danger ml-1 w-11 h-11 -my-2 flex items-center justify-center"><X className="w-4 h-4" /></button>
                   </div>
                 ) : (
                   <div className="flex gap-1">
@@ -1055,7 +1055,7 @@ export default function TpvScreen() {
                     />
                     <Button
                       size="sm"
-                      className="h-11 md:h-8 px-3 text-xs bg-violet-700 hover:bg-violet-600 text-white"
+                      className="h-11 md:h-8 px-3 text-xs bg-primary hover:bg-primary/90 text-primary-foreground"
                       onClick={applyPromoCode}
                       disabled={promoCodeLoading || !promoCodeInput.trim()}
                     >
@@ -1112,7 +1112,7 @@ export default function TpvScreen() {
               type="date"
               value={serviceDate}
               onChange={(e) => setServiceDate(e.target.value)}
-              className="w-full h-11 md:h-8 text-xs bg-gray-800 border border-gray-700 text-white rounded px-2 focus:outline-none focus:border-violet-500"
+              className="w-full h-11 md:h-8 text-xs bg-gray-800 border border-gray-700 text-white rounded px-2 focus:outline-none focus:border-primary"
             />
           </div>}
 
@@ -1123,20 +1123,20 @@ export default function TpvScreen() {
               <span>{formatEur(cartSubtotal)}</span>
             </div>
             {promoDiscount > 0 && (
-              <div className="flex justify-between text-xs text-green-400">
+              <div className="flex justify-between text-xs text-success">
                 <span>Promo {promoCodeData?.code}</span>
                 <span>-{formatEur(promoDiscount)}</span>
               </div>
             )}
             {discountAmount > 0 && (
-              <div className="flex justify-between text-xs text-green-400">
+              <div className="flex justify-between text-xs text-success">
                 <span>Descuento manual</span>
                 <span>-{formatEur(discountAmount)}</span>
               </div>
             )}
             <div className="flex justify-between text-lg font-bold text-white">
               <span>TOTAL</span>
-              <span className="text-violet-400">{formatEur(cartTotal)}</span>
+              <span className="text-primary">{formatEur(cartTotal)}</span>
             </div>
           </div>
 
@@ -1145,7 +1145,7 @@ export default function TpvScreen() {
             {cart.length > 0 && (
               <>
                 <Button
-                  className="w-full h-11 bg-violet-600 hover:bg-violet-500 text-white font-semibold gap-2"
+                  className="w-full h-11 bg-primary hover:bg-primary/90 text-primary-foreground font-semibold gap-2"
                   onClick={() => setShowSplitPayment(true)}
                   disabled={createSaleMut.isPending}
                 >
@@ -1154,7 +1154,7 @@ export default function TpvScreen() {
                 </Button>
                 <div className="grid grid-cols-3 gap-2">
                   <Button
-                    className="h-12 bg-green-700 hover:bg-green-600 text-white flex-col gap-0.5 text-xs font-medium"
+                    className="h-12 bg-primary hover:bg-primary/90 text-primary-foreground flex-col gap-0.5 text-xs font-medium"
                     onClick={() => handleQuickPay("cash")}
                     disabled={createSaleMut.isPending}
                   >
@@ -1162,7 +1162,7 @@ export default function TpvScreen() {
                     Efectivo
                   </Button>
                   <Button
-                    className="h-12 bg-blue-700 hover:bg-blue-600 text-white flex-col gap-0.5 text-xs font-medium"
+                    className="h-12 bg-primary hover:bg-primary/90 text-primary-foreground flex-col gap-0.5 text-xs font-medium"
                     onClick={() => handleQuickPay("card")}
                     disabled={createSaleMut.isPending}
                   >
@@ -1170,7 +1170,7 @@ export default function TpvScreen() {
                     Tarjeta
                   </Button>
                   <Button
-                    className="h-12 bg-cyan-700 hover:bg-cyan-600 text-white flex-col gap-0.5 text-xs font-medium"
+                    className="h-12 bg-primary hover:bg-primary/90 text-primary-foreground flex-col gap-0.5 text-xs font-medium"
                     onClick={() => handleQuickPay("bizum")}
                     disabled={createSaleMut.isPending}
                   >
@@ -1188,7 +1188,7 @@ export default function TpvScreen() {
       {!cartOpen && (
         <div className="md:hidden fixed inset-x-0 bottom-0 z-30 p-2 bg-gray-950/95 border-t border-gray-800">
           <Button
-            className="w-full h-14 bg-violet-600 hover:bg-violet-500 text-white font-semibold text-base justify-between px-4"
+            className="w-full h-14 bg-primary hover:bg-primary/90 text-primary-foreground font-semibold text-base justify-between px-4"
             onClick={() => setCartOpen(true)}
           >
             <span className="flex items-center gap-2">
@@ -1267,10 +1267,10 @@ export default function TpvScreen() {
 
       {/* Modal de concepto libre (solo admin) */}
       <Dialog open={showManualModal} onOpenChange={setShowManualModal}>
-        <DialogContent className="bg-gray-900 border border-gray-700 text-white max-w-sm">
+        <DialogContent className="dark bg-gray-900 border border-gray-700 text-white max-w-sm">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2 text-white">
-              <PenLine className="w-4 h-4 text-violet-400" />
+              <PenLine className="w-4 h-4 text-primary" />
               Producto flexible
             </DialogTitle>
           </DialogHeader>
@@ -1315,7 +1315,7 @@ export default function TpvScreen() {
               <p className="text-[10px] text-gray-500">Mín 0.01 € · Máx 10.000 €</p>
             </div>
             <Button
-              className="w-full bg-violet-600 hover:bg-violet-500 text-white"
+              className="w-full bg-primary hover:bg-primary/90 text-primary-foreground"
               disabled={!manualConcept.trim() || parseFloat(manualPrice) < 0.01 || parseFloat(manualPrice) > 10000 || isNaN(parseFloat(manualPrice))}
               onClick={() => {
                 const price = parseFloat(manualPrice);
@@ -1407,8 +1407,8 @@ export default function TpvScreen() {
                 setShowLegoPackSelector(false);
                 setPendingLegoPackId(null);
               }}
-              gradientClass="from-emerald-600 to-teal-700"
-              textColorClass="text-emerald-700"
+              gradientClass="from-primary/70 to-primary"
+              textColorClass="text-success"
               isModal={true}
             />
           </DialogContent>
@@ -1447,10 +1447,10 @@ function TpvVariantsModal({
 
   return (
     <Dialog open onOpenChange={onCancel}>
-      <DialogContent className="max-w-sm bg-gray-900 border-gray-700 text-white">
+      <DialogContent className="dark max-w-sm bg-gray-900 border-gray-700 text-white">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2 text-white">
-            <Layers className="w-5 h-5 text-violet-400" />
+            <Layers className="w-5 h-5 text-primary" />
             Seleccionar opción
           </DialogTitle>
         </DialogHeader>
@@ -1466,12 +1466,12 @@ function TpvVariantsModal({
                   onClick={() => setSelected(variant.id)}
                   className={`px-4 py-3 rounded-xl border text-sm transition-all text-left flex items-center justify-between ${
                     selected === variant.id
-                      ? "border-violet-500 bg-violet-900/40 text-violet-200 font-semibold"
-                      : "border-gray-700 text-gray-300 hover:border-violet-500/50 hover:bg-gray-800"
+                      ? "border-primary bg-primary/15 text-foreground font-semibold"
+                      : "border-gray-700 text-gray-300 hover:border-primary/50 hover:bg-gray-800"
                   }`}
                 >
                   <span className="font-medium">{variant.name}</span>
-                  <span className={`text-base font-bold ${selected === variant.id ? "text-violet-300" : "text-violet-400"}`}>
+                  <span className={`text-base font-bold ${selected === variant.id ? "text-primary" : "text-primary"}`}>
                     {formatEur(price)}
                   </span>
                 </button>
@@ -1487,7 +1487,7 @@ function TpvVariantsModal({
               Cancelar
             </Button>
             <Button
-              className="flex-1 bg-violet-700 hover:bg-violet-600 text-white"
+              className="flex-1 bg-primary hover:bg-primary/90 text-primary-foreground"
               onClick={handleConfirm}
               disabled={selected === null}
             >
@@ -1540,10 +1540,10 @@ function TpvTimeSlotsModal({
 
   return (
     <Dialog open onOpenChange={onCancel}>
-      <DialogContent className="max-w-sm bg-gray-900 border-gray-700 text-white">
+      <DialogContent className="dark max-w-sm bg-gray-900 border-gray-700 text-white">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2 text-white">
-            <AlarmClock className="w-5 h-5 text-violet-400" />
+            <AlarmClock className="w-5 h-5 text-primary" />
             Seleccionar horario
           </DialogTitle>
         </DialogHeader>
@@ -1560,8 +1560,8 @@ function TpvTimeSlotsModal({
                   onClick={() => setSelectedSlotId(slot.id)}
                   className={`px-3 py-2.5 rounded-xl border text-sm transition-all text-left ${
                     selectedSlotId === slot.id
-                      ? "border-violet-500 bg-violet-900/40 text-violet-200 font-semibold"
-                      : "border-gray-700 text-gray-300 hover:border-violet-500/50 hover:bg-gray-800"
+                      ? "border-primary bg-primary/15 text-foreground font-semibold"
+                      : "border-gray-700 text-gray-300 hover:border-primary/50 hover:bg-gray-800"
                   }`}
                 >
                   <span className="block text-xs font-medium">{slot.label}</span>
@@ -1571,7 +1571,7 @@ function TpvTimeSlotsModal({
                     </span>
                   )}
                   {slot.priceOverride && (
-                    <span className="block text-xs text-violet-400 font-bold mt-0.5">
+                    <span className="block text-xs text-primary font-bold mt-0.5">
                       {parseFloat(slot.priceOverride).toFixed(0)}€
                     </span>
                   )}
@@ -1586,7 +1586,7 @@ function TpvTimeSlotsModal({
                 type="time"
                 value={selectedTime}
                 onChange={(e) => setSelectedTime(e.target.value)}
-                className="w-full h-8 text-sm bg-gray-800 border border-gray-700 text-white rounded px-2 focus:outline-none focus:border-violet-500"
+                className="w-full h-8 text-sm bg-gray-800 border border-gray-700 text-white rounded px-2 focus:outline-none focus:border-primary"
               />
             </div>
           )}
@@ -1599,7 +1599,7 @@ function TpvTimeSlotsModal({
               Cancelar
             </Button>
             <Button
-              className="flex-1 bg-violet-700 hover:bg-violet-600 text-white"
+              className="flex-1 bg-primary hover:bg-primary/90 text-primary-foreground"
               onClick={handleConfirm}
               disabled={!selectedSlotId}
             >

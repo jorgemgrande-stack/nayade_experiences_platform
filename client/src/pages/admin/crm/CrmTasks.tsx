@@ -19,6 +19,7 @@ import { PanelEmpty, PanelError, PanelLoading } from "@/components/admin/PanelSt
 import { FormField, describedBy, selectClass, useCrmCanWrite } from "@/components/admin/crm/CrmParts";
 import { useAuth } from "@/_core/hooks/useAuth";
 import { cn } from "@/lib/utils";
+import { TONE_BADGE } from "@/lib/panelTones";
 import {
   TASK_ENTITY_LABELS, TASK_ENTITY_TYPES, TASK_PRIORITIES, TASK_PRIORITY_LABELS, TASK_TITLE_MAX,
   isTaskDueToday, isTaskOverdue, localYmd, taskEntityHref, validateTaskForm,
@@ -48,9 +49,9 @@ const fmtDate = (ymd: string) => {
 };
 
 const PRIORITY_CLASSES: Record<TaskPriority, string> = {
-  alta: "bg-red-100 text-red-900 dark:bg-red-500/20 dark:text-red-100",
-  media: "bg-sky-100 text-sky-900 dark:bg-sky-500/20 dark:text-sky-100",
-  baja: "bg-slate-100 text-slate-900 dark:bg-slate-500/20 dark:text-slate-100",
+  alta: TONE_BADGE.danger,
+  media: TONE_BADGE.info,
+  baja: TONE_BADGE.neutral,
 };
 
 /** Buscador del elemento a vincular (cliente, oportunidad o presupuesto). */
@@ -321,7 +322,7 @@ export default function CrmTasks() {
               const dueToday = isTaskDueToday(t, today);
               const href = taskEntityHref(t.entityType, t.entityId, t.entityLabel);
               return (
-                <li key={t.id} className={cn("flex flex-col gap-3 rounded-xl border bg-card p-4 sm:flex-row sm:items-start", late ? "border-red-400 dark:border-red-500/60" : "border-border")}>
+                <li key={t.id} className={cn("flex flex-col gap-3 rounded-xl border bg-card p-4 sm:flex-row sm:items-start", late ? "border-danger/60" : "border-border")}>
                   {canWrite ? (
                     <button
                       type="button"
@@ -331,11 +332,11 @@ export default function CrmTasks() {
                       aria-label={t.status === "hecha" ? `Reabrir la tarea «${t.title}»` : `Marcar como hecha la tarea «${t.title}»`}
                     >
                       {t.status === "hecha"
-                        ? <CheckCircle2 className="h-5 w-5 text-emerald-600 dark:text-emerald-400" aria-hidden="true" />
+                        ? <CheckCircle2 className="h-5 w-5 text-success" aria-hidden="true" />
                         : <Circle className="h-5 w-5 text-muted-foreground" aria-hidden="true" />}
                     </button>
                   ) : t.status === "hecha" ? (
-                    <CheckCircle2 className="h-5 w-5 text-emerald-600 dark:text-emerald-400" aria-label="Hecha" />
+                    <CheckCircle2 className="h-5 w-5 text-success" aria-label="Hecha" />
                   ) : (
                     <Circle className="h-5 w-5 text-muted-foreground" aria-label="Pendiente" />
                   )}
@@ -343,14 +344,14 @@ export default function CrmTasks() {
                     <p className={cn("font-medium text-foreground break-words", t.status === "hecha" && "text-muted-foreground line-through")}>{t.title}</p>
                     {t.description && <p className="text-sm text-muted-foreground whitespace-pre-line break-words">{t.description}</p>}
                     <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
-                      <span className={cn("rounded px-1.5 py-0.5 font-medium", PRIORITY_CLASSES[t.priority])}>Prioridad {TASK_PRIORITY_LABELS[t.priority].toLowerCase()}</span>
+                      <span className={cn("rounded border px-1.5 py-0.5 font-medium", PRIORITY_CLASSES[t.priority])}>Prioridad {TASK_PRIORITY_LABELS[t.priority].toLowerCase()}</span>
                       {t.dueDate ? (
                         late ? (
-                          <span className="inline-flex items-center gap-1 font-semibold text-red-700 dark:text-red-300">
+                          <span className="inline-flex items-center gap-1 font-semibold text-danger">
                             <AlertTriangle className="h-3.5 w-3.5" aria-hidden="true" /> Vencida · {fmtDate(t.dueDate)}
                           </span>
                         ) : (
-                          <span className={cn("inline-flex items-center gap-1", dueToday && "font-semibold text-amber-800 dark:text-amber-300")}>
+                          <span className={cn("inline-flex items-center gap-1", dueToday && "font-semibold text-warning")}>
                             <CalendarClock className="h-3.5 w-3.5" aria-hidden="true" /> {dueToday ? "Vence hoy" : `Vence el ${fmtDate(t.dueDate)}`}
                           </span>
                         )

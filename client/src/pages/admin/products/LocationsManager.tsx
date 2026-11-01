@@ -140,7 +140,7 @@ export default function LocationsManager() {
                   <p className="font-semibold text-foreground">{loc.name}</p>
                   <Badge variant="outline" className="text-xs">{loc.isActive ? "Activa" : "Inactiva"}</Badge>
                 </div>
-                {loc.address && <p className="text-sm text-muted-foreground truncate">{loc.address}</p>}
+                {loc.address && <p className="text-sm text-muted-foreground overflow-hidden text-ellipsis whitespace-nowrap">{loc.address}</p>}
                 {loc.description && <p className="text-xs text-muted-foreground line-clamp-1 mt-0.5">{loc.description}</p>}
               </div>
               <div className="flex gap-2 shrink-0">
@@ -164,7 +164,7 @@ export default function LocationsManager() {
                     </DropdownMenuItem>
                     <DropdownMenuSeparator />
                     <DropdownMenuItem
-                      className="text-red-600 focus:text-red-600"
+                      className="text-destructive focus:text-destructive"
                       onClick={() => { if (confirm("¿Eliminar permanentemente esta ubicación?")) hardDeleteMut.mutate({ id: loc.id }); }}
                     >
                       <Trash2 className="w-3.5 h-3.5 mr-2" /> Borrar

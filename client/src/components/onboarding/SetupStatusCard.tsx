@@ -41,7 +41,7 @@ export function SetupStatusCard({ plan }: { plan: SetupPlan }) {
         </ul>
       )}
       {pending.length === 0 && (
-        <p className="mt-4 flex items-center gap-2 text-sm text-emerald-700 dark:text-emerald-400">
+        <p className="mt-4 flex items-center gap-2 text-sm text-success">
           <CheckCircle2 className="h-4 w-4" aria-hidden="true" /> Tu empresa tiene lo básico listo.
         </p>
       )}

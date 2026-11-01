@@ -156,7 +156,7 @@ export default function AccountingDashboard() {
             </div>
             <div className="text-2xl font-display font-bold text-foreground mb-1">{kpi.value}</div>
             <div className="text-sm text-muted-foreground">{kpi.label}</div>
-            <div className="text-[11px] text-muted-foreground/70 mt-0.5">{kpi.sub}</div>
+            <div className="text-[11px] text-muted-foreground mt-0.5">{kpi.sub}</div>
           </div>
         ))}
       </div>
@@ -468,7 +468,7 @@ export default function AccountingDashboard() {
                     <div className="flex items-center justify-between mb-1">
                       <div className="flex items-center gap-2 min-w-0">
                         <div className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ background: CATEGORY_COLORS[i % CATEGORY_COLORS.length] }} />
-                        <span className="text-foreground truncate">{cat.name}</span>
+                        <span className="text-foreground overflow-hidden text-ellipsis whitespace-nowrap">{cat.name}</span>
                       </div>
                       <span className="font-semibold text-foreground whitespace-nowrap ml-2">{fmtEur(cat.amount)} · {cat.percent.toLocaleString("es-ES")} %</span>
                     </div>

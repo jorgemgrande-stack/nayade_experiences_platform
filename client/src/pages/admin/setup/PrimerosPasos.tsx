@@ -170,7 +170,7 @@ export default function PrimerosPasos() {
             <span className="w-12 text-right text-sm tabular-nums text-muted-foreground">{d.plan.percent}%</span>
           </div>
           {readOnly && (
-            <div role="alert" className="flex gap-3 rounded-xl border border-amber-300 bg-amber-50 p-4 text-sm text-amber-900 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-100">
+            <div role="alert" className="flex gap-3 rounded-xl border border-warning/50 bg-warning/10 p-4 text-sm text-foreground">
               <AlertTriangle className="h-4 w-4 shrink-0" aria-hidden="true" />
               <p>Tu periodo de prueba ha terminado: la cuenta está en solo lectura. Tus datos se conservan; contrata un plan para seguir trabajando.</p>
             </div>
@@ -198,7 +198,7 @@ export default function PrimerosPasos() {
                     >
                       <span
                         className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-xs font-bold ${
-                          s.status === "done" ? "bg-emerald-600 text-white" : active ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground"
+                          s.status === "done" ? "bg-success text-background" : active ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground"
                         }`}
                         aria-hidden="true"
                       >
@@ -206,7 +206,7 @@ export default function PrimerosPasos() {
                       </span>
                       <span className="flex items-center gap-1.5">
                         {STEP_LABELS[s.id].title}
-                        {s.recommended && s.status !== "done" && <Star className="h-3 w-3 text-amber-500" aria-hidden="true" />}
+                        {s.recommended && s.status !== "done" && <Star className="h-3 w-3 text-warning" aria-hidden="true" />}
                         <span className="sr-only">
                           {s.status === "done" ? " (hecho)" : s.status === "skipped" ? " (omitido)" : " (pendiente)"}
                           {s.recommended ? ", recomendado para tu actividad" : ""}
