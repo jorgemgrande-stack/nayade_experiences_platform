@@ -1,11 +1,17 @@
-import { useState } from "react";
+/**
+ * Contabilidad › Resumen: solo datos reales de la empresa (ventas, cobros, facturas y gastos por mes y
+ * por categoría de producto). Cada bloque de un módulo aparte (impuestos, bancos y TPV, proveedores) solo
+ * aparece, y solo se consulta, si la empresa lo tiene contratado. Sin datos, una guía para empezar.
+ */
 import { Link } from "wouter";
-import { BarChart3, Euro, Calendar, Filter, CreditCard, CheckCircle, Clock, XCircle, AlertTriangle, Banknote, Package, Zap, TrendingDown as ExpenseIcon, Link2 } from "lucide-react";
+import { BarChart3, Euro, CreditCard, CheckCircle, Clock, XCircle, AlertTriangle, Banknote, Package, Link2, FileText, ShoppingCart, Receipt } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, LineChart, Line, PieChart, Pie, Cell } from "recharts";
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from "recharts";
 import AdminLayout from "@/components/AdminLayout";
-import { PanelError } from "@/components/admin/PanelStates";
+import { PanelEmpty, PanelError } from "@/components/admin/PanelStates";
+import { usePanelSubscription } from "@/hooks/usePanelSubscription";
+import { useVocabulary } from "@/lib/vocabulary";
 import { trpc } from "@/lib/trpc";
 import { cn } from "@/lib/utils";
 
@@ -13,97 +19,82 @@ function fmtEur(v: number): string {
   return v.toLocaleString("es-ES", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + " €";
 }
 
-const COLORS = ["#d4a017", "#2563eb", "#10b981", "#8b5cf6", "#ef4444"];
-
-const monthlyData = [
-  { mes: "Oct", ingresos: 12400, gastos: 4200 },
-  { mes: "Nov", ingresos: 15800, gastos: 5100 },
-  { mes: "Dic", ingresos: 22100, gastos: 7300 },
-  { mes: "Ene", ingresos: 9800, gastos: 3400 },
-  { mes: "Feb", ingresos: 13200, gastos: 4800 },
-  { mes: "Mar", ingresos: 18600, gastos: 6200 },
-];
-
-const categoryData = [
-  { name: "Nieve & Ski", value: 42 },
-  { name: "Acuático", value: 28 },
-  { name: "Multiaventura", value: 18 },
-  { name: "Premium", value: 8 },
-  { name: "Otros", value: 4 },
-];
+const CATEGORY_COLORS = ["#2563eb", "#10b981", "#d4a017", "#8b5cf6", "#ef4444", "#0ea5e9", "#f97316", "#6b7280"];
 
 const statusColors: Record<string, string> = {
   completado: "bg-emerald-100 text-emerald-700",
   pendiente: "bg-amber-100 text-amber-700",
-  cancelado: "bg-red-100 text-red-700",
+  fallido: "bg-red-100 text-red-700",
   reembolsado: "bg-blue-100 text-blue-700",
+};
+
+const statusLabels: Record<string, string> = {
+  completado: "Cobrado",
+  pendiente: "Pendiente",
+  fallido: "Fallido",
+  reembolsado: "Devuelto",
 };
 
 const paymentStatusIcons: Record<string, any> = {
   completado: CheckCircle,
   pendiente: Clock,
-  cancelado: XCircle,
+  fallido: XCircle,
 };
 
 export default function AccountingDashboard() {
-  const [reportType, setReportType] = useState("ventas");
+  const sub = usePanelSubscription();
+  const voc = useVocabulary();
+  // Solo se consulta lo contratado (en la instalación propia, todo): ningún bloque pide datos sin licencia
+  const ready = sub.mode === "legacy" || sub.mode === "tasks";
+  const canTax = ready && sub.can("tax-filings");
+  const canBank = ready && sub.can("bank-import-pos");
+  const canPartners = ready && sub.can("supplier-settlements");
+  const canQuotes = ready && sub.can("crm-quotes");
+  const canCash = ready && sub.can("bill-cash");
+  const canInvoices = ready && sub.can("bill-invoices");
 
-  const metricsQ = trpc.accounting.getDashboardMetrics.useQuery();
-  const transactionsQ = trpc.accounting.getTransactions.useQuery({ limit: 20, offset: 0 });
-  const metrics = metricsQ.data;
+  const summaryQ = trpc.accounting.getSummary.useQuery({ withQuotes: canQuotes }, { enabled: ready });
+  const transactionsQ = trpc.accounting.getTransactions.useQuery({ limit: 20, offset: 0 }, { enabled: ready });
+  const summary = summaryQ.data;
   const transactions = transactionsQ.data;
-  const mainError = metricsQ.error ?? transactionsQ.error;
+  const mainError = summaryQ.error ?? transactionsQ.error;
+  // Devengo de proveedores y colaboradores: solo con ese módulo
+  const { data: metrics } = trpc.accounting.getDashboardMetrics.useQuery(undefined, { enabled: canPartners });
   const { data: reconStats } = trpc.cardTerminalBatches.getReconciliationStats.useQuery(undefined, {
     staleTime: 5 * 60 * 1000,
+    enabled: canBank,
   });
   const { data: expenseStats } = trpc.bankMovements.getExpenseStats.useQuery(undefined, {
     staleTime: 5 * 60 * 1000,
+    enabled: canBank,
   });
   const { data: cashflow } = trpc.bankMovements.getCashflowForecast.useQuery(undefined, {
     staleTime: 5 * 60 * 1000,
+    enabled: canBank,
   });
-  // Foto económica consolidada (resultado + laboral + fiscal).
+  // Foto económica consolidada (resultado + laboral + fiscal): módulo de impuestos y gestoría
   const execYear = new Date().getFullYear();
   const { data: exec } = trpc.gestoria.executiveSummary.useQuery(
     { year: execYear },
-    { staleTime: 5 * 60 * 1000 },
+    { staleTime: 5 * 60 * 1000, enabled: canTax },
   );
-  // KPI de distorsión fiscal — gastos solo fiscales (mes y año en curso).
+  // KPI de distorsión fiscal — gastos solo fiscales (mes y año en curso)
   const { data: distortion } = trpc.financial.expenses.distortionKpi.useQuery(
     {},
-    { staleTime: 60_000 },
+    { staleTime: 60_000, enabled: canTax },
   );
 
+  const totals = summary?.totals;
   const kpis = [
-    {
-      label: "Ingresos Totales",
-      value: `${((metrics?.totalRevenue ?? 0)).toLocaleString("es-ES")}€`,
-      icon: Euro,
-      color: "text-emerald-500",
-      bg: "bg-emerald-50",
-    },
-    {
-      label: "Reservas Completadas",
-      value: String(metrics?.totalBookings ?? 0),
-      icon: CheckCircle,
-      color: "text-blue-500",
-      bg: "bg-blue-50",
-    },
-    {
-      label: "Ticket Medio",
-      value: `${(metrics?.totalRevenue && metrics?.totalBookings ? (metrics.totalRevenue / metrics.totalBookings) : 0).toFixed(0)}€`,
-      icon: CreditCard,
-      color: "text-purple-500",
-      bg: "bg-purple-50",
-    },
-    {
-      label: "Presupuestos Pendientes",
-      value: String(metrics?.pendingQuotes ?? 0),
-      icon: Clock,
-      color: "text-amber-500",
-      bg: "bg-amber-50",
-    },
+    { label: "Ventas (6 meses)", value: fmtEur(totals?.sales ?? 0), sub: `${totals?.salesCount ?? 0} ${voc.ordersLower} y tickets cobrados`, icon: Euro, color: "text-emerald-500", bg: "bg-emerald-50" },
+    { label: "Cobrado", value: fmtEur(totals?.payments ?? 0), sub: "Entradas registradas en cobros", icon: Banknote, color: "text-blue-500", bg: "bg-blue-50" },
+    { label: "Facturado", value: fmtEur(totals?.invoiced ?? 0), sub: `${totals?.invoiceCount ?? 0} facturas, descontados los abonos`, icon: FileText, color: "text-purple-500", bg: "bg-purple-50" },
+    summary?.pendingQuotes != null
+      ? { label: "Presupuestos sin respuesta", value: String(summary.pendingQuotes), sub: "Enviados y pendientes de aceptar", icon: Clock, color: "text-amber-500", bg: "bg-amber-50" }
+      : { label: "Ticket medio", value: fmtEur(totals?.averageTicket ?? 0), sub: "Venta media cobrada", icon: CreditCard, color: "text-amber-500", bg: "bg-amber-50" },
   ];
+  const monthly = summary?.months ?? [];
+  const categories = summary?.categories ?? [];
 
   return (
     <AdminLayout title="Contabilidad e Informes">
@@ -112,10 +103,11 @@ export default function AccountingDashboard() {
           className="mb-6"
           title="No se han podido cargar los datos del resumen"
           error={mainError}
-          onRetry={() => { void metricsQ.refetch(); void transactionsQ.refetch(); }}
+          onRetry={() => { void summaryQ.refetch(); void transactionsQ.refetch(); }}
         />
       )}
-      {/* ── Salud de la empresa: foto económica consolidada ──────────────── */}
+      {/* ── Salud de la empresa: foto económica consolidada (módulo de impuestos) ── */}
+      {canTax && (
       <div className="mb-8 rounded-2xl border border-amber-300/40 bg-amber-50/40 dark:bg-amber-500/[0.04] p-5">
         <div className="flex items-center justify-between mb-3">
           <h2 className="text-sm font-semibold text-foreground flex items-center gap-1.5">
@@ -151,6 +143,7 @@ export default function AccountingDashboard() {
             tone={distortion && distortion.year_.count > 0 ? "amber" : undefined} />
         </div>
       </div>
+      )}
 
       {/* KPI Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5 mb-8">
@@ -163,6 +156,7 @@ export default function AccountingDashboard() {
             </div>
             <div className="text-2xl font-display font-bold text-foreground mb-1">{kpi.value}</div>
             <div className="text-sm text-muted-foreground">{kpi.label}</div>
+            <div className="text-[11px] text-muted-foreground/70 mt-0.5">{kpi.sub}</div>
           </div>
         ))}
       </div>
@@ -212,7 +206,7 @@ export default function AccountingDashboard() {
             <div className="bg-card rounded-2xl border border-emerald-200/60 p-4">
               <p className="text-xs text-muted-foreground mb-1">Ingresos pendientes</p>
               <p className="text-xl font-bold text-emerald-700">{fmtEur(cashflow.pendingIncome)}</p>
-              <p className="text-[10px] text-muted-foreground mt-0.5">{cashflow.pendingReservationCount} reservas</p>
+              <p className="text-[10px] text-muted-foreground mt-0.5">{cashflow.pendingReservationCount} {voc.ordersLower}</p>
             </div>
             <div className="bg-card rounded-2xl border border-amber-200/60 p-4">
               <p className="text-xs text-muted-foreground mb-1">Gastos pendientes</p>
@@ -223,6 +217,8 @@ export default function AccountingDashboard() {
         </div>
       )}
 
+      {canBank && (
+      <>
       {/* ── Control de conciliación ──────────────────────────────────────── */}
       <div className="mb-8">
         <div className="flex items-center gap-2 mb-4">
@@ -261,7 +257,7 @@ export default function AccountingDashboard() {
                 {reconStats?.pendingBatches ?? "—"}
               </div>
               <div className="text-xs text-muted-foreground">Remesas pendientes</div>
-              <div className="text-[10px] text-muted-foreground/60 mt-0.5">pending / suggested / auto_ready</div>
+              <div className="text-[10px] text-muted-foreground/60 mt-0.5">Pendientes o por revisar</div>
             </div>
           </Link>
 
@@ -325,7 +321,7 @@ export default function AccountingDashboard() {
                 {reconStats?.unlinkedOps ?? "—"}
               </div>
               <div className="text-xs text-muted-foreground">Ops TPV sin vincular</div>
-              <div className="text-[10px] text-muted-foreground/60 mt-0.5">Sin reserva/factura</div>
+              <div className="text-[10px] text-muted-foreground/60 mt-0.5">Sin pedido ni factura</div>
             </div>
           </Link>
         </div>
@@ -414,60 +410,90 @@ export default function AccountingDashboard() {
           </Link>
         </div>
       </div>
+      </>
+      )}
 
-      {/* Charts */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
-        {/* Revenue Chart */}
-        <div className="lg:col-span-2 bg-card rounded-2xl border border-border/50 p-5">
-          <h3 className="font-display font-semibold text-foreground mb-5">Ingresos vs Gastos (6 meses)</h3>
-          <ResponsiveContainer width="100%" height={240}>
-            <BarChart data={monthlyData} margin={{ top: 0, right: 0, left: -20, bottom: 0 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
-              <XAxis dataKey="mes" tick={{ fontSize: 12, fill: "hsl(var(--muted-foreground))" }} />
-              <YAxis tick={{ fontSize: 12, fill: "hsl(var(--muted-foreground))" }} />
-              <Tooltip
-                contentStyle={{ background: "hsl(var(--card))", border: "1px solid hsl(var(--border))", borderRadius: "8px" }}
-                formatter={(value: number) => [`${value.toLocaleString("es-ES")}€`]}
-              />
-              <Bar dataKey="ingresos" fill="#d4a017" radius={[4, 4, 0, 0]} name="Ingresos" />
-              <Bar dataKey="gastos" fill="#e5e7eb" radius={[4, 4, 0, 0]} name="Gastos" />
-            </BarChart>
-          </ResponsiveContainer>
-        </div>
+      {/* ── Evolución mensual y ventas por categoría (datos reales) ───────── */}
+      {summary && !summary.hasData ? (
+        <PanelEmpty
+          className="mb-8"
+          icon={<BarChart3 className="w-5 h-5" />}
+          title="Todavía no hay ventas, cobros ni facturas en los últimos 6 meses"
+          description="El resumen se llena solo con la actividad de tu empresa: cada venta cobrada, cada factura emitida y cada gasto aparecen aquí por mes y por categoría de producto."
+        >
+          {canCash && (
+            <Button asChild size="sm"><Link href="/admin/tpv"><ShoppingCart className="w-4 h-4 mr-1" /> Cobrar una venta en caja</Link></Button>
+          )}
+          {canInvoices && (
+            <Button asChild size="sm" variant="outline"><Link href="/admin/crm?tab=invoices"><Receipt className="w-4 h-4 mr-1" /> Emitir una factura</Link></Button>
+          )}
+          {canQuotes && (
+            <Button asChild size="sm" variant="outline"><Link href="/admin/crm?tab=quotes"><FileText className="w-4 h-4 mr-1" /> Enviar un presupuesto</Link></Button>
+          )}
+        </PanelEmpty>
+      ) : summary ? (
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
+          <div className="lg:col-span-2 bg-card rounded-2xl border border-border/50 p-5">
+            <h3 className="font-display font-semibold text-foreground mb-5">
+              {summary.hasExpenses ? "Ventas, cobros, facturas y gastos (6 meses)" : "Ventas, cobros y facturas (6 meses)"}
+            </h3>
+            <ResponsiveContainer width="100%" height={240}>
+              <BarChart data={monthly} margin={{ top: 0, right: 0, left: -10, bottom: 0 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
+                <XAxis dataKey="label" tick={{ fontSize: 12, fill: "var(--muted-foreground)" }} />
+                <YAxis tick={{ fontSize: 12, fill: "var(--muted-foreground)" }} />
+                <Tooltip
+                  contentStyle={{ background: "var(--card)", border: "1px solid var(--border)", borderRadius: "8px" }}
+                  formatter={(value: number, name: string) => [fmtEur(value), name]}
+                />
+                <Legend wrapperStyle={{ fontSize: 12 }} />
+                <Bar dataKey="sales" fill="#10b981" radius={[4, 4, 0, 0]} name="Ventas" />
+                <Bar dataKey="payments" fill="#2563eb" radius={[4, 4, 0, 0]} name="Cobros" />
+                <Bar dataKey="invoiced" fill="#8b5cf6" radius={[4, 4, 0, 0]} name="Facturado" />
+                {summary.hasExpenses && <Bar dataKey="expenses" fill="#ef4444" radius={[4, 4, 0, 0]} name="Gastos" />}
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
 
-        {/* Category Breakdown */}
-        <div className="bg-card rounded-2xl border border-border/50 p-5">
-          <h3 className="font-display font-semibold text-foreground mb-5">Ventas por Categoría</h3>
-          <ResponsiveContainer width="100%" height={160}>
-            <PieChart>
-              <Pie data={categoryData} cx="50%" cy="50%" innerRadius={45} outerRadius={70} dataKey="value">
-                {categoryData.map((_, index) => (
-                  <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+          <div className="bg-card rounded-2xl border border-border/50 p-5">
+            <h3 className="font-display font-semibold text-foreground mb-5">Ventas por categoría</h3>
+            {categories.length === 0 ? (
+              <p className="text-sm text-muted-foreground">
+                Sin ventas cobradas en los últimos 6 meses. Asigna una categoría a tus productos para ver aquí qué vende más.
+              </p>
+            ) : (
+              <div className="space-y-3">
+                {categories.slice(0, 8).map((cat, i) => (
+                  <div key={cat.name} className="text-xs">
+                    <div className="flex items-center justify-between mb-1">
+                      <div className="flex items-center gap-2 min-w-0">
+                        <div className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ background: CATEGORY_COLORS[i % CATEGORY_COLORS.length] }} />
+                        <span className="text-foreground truncate">{cat.name}</span>
+                      </div>
+                      <span className="font-semibold text-foreground whitespace-nowrap ml-2">{fmtEur(cat.amount)} · {cat.percent.toLocaleString("es-ES")} %</span>
+                    </div>
+                    <div className="h-1.5 rounded-full bg-muted overflow-hidden">
+                      <div className="h-full rounded-full" style={{ width: `${cat.percent}%`, background: CATEGORY_COLORS[i % CATEGORY_COLORS.length] }} />
+                    </div>
+                  </div>
                 ))}
-              </Pie>
-              <Tooltip formatter={(value: number) => [`${value}%`]} />
-            </PieChart>
-          </ResponsiveContainer>
-          <div className="space-y-2 mt-3">
-            {categoryData.map((cat, i) => (
-              <div key={cat.name} className="flex items-center justify-between text-xs">
-                <div className="flex items-center gap-2">
-                  <div className="w-2.5 h-2.5 rounded-full" style={{ background: COLORS[i % COLORS.length] }} />
-                  <span className="text-muted-foreground">{cat.name}</span>
-                </div>
-                <span className="font-semibold text-foreground">{cat.value}%</span>
               </div>
-            ))}
+            )}
           </div>
         </div>
-      </div>
+      ) : null}
 
       {/* Transactions Table */}
       <div className="bg-card rounded-2xl border border-border/50 overflow-hidden">
         <div className="flex items-center justify-between px-5 py-4 border-b border-border">
-          <h3 className="font-display font-semibold text-foreground">Últimas Transacciones</h3>
+          <h3 className="font-display font-semibold text-foreground">Últimos cobros</h3>
           <Badge variant="outline" className="text-xs">{(transactions ?? []).length} registros</Badge>
         </div>
+        {(transactions ?? []).length === 0 ? (
+          <p className="text-center py-10 px-5 text-muted-foreground text-sm">
+            Todavía no hay cobros registrados. Aparecen aquí al cobrar una venta, un pedido o una factura.
+          </p>
+        ) : (
         <div className="overflow-x-auto">
           <table className="w-full">
             <thead>
@@ -481,29 +507,23 @@ export default function AccountingDashboard() {
               </tr>
             </thead>
             <tbody>
-              {(transactions ?? []).length === 0 ? (
-                <tr>
-                  <td colSpan={6} className="text-center py-10 text-muted-foreground text-sm">
-                    No hay transacciones registradas.
-                  </td>
-                </tr>
-              ) : (
+              {(
                 (transactions ?? []).map((tx) => {
                   const StatusIcon = paymentStatusIcons[tx.status] ?? Clock;
                   return (
                     <tr key={tx.id} className="border-b border-border/50 hover:bg-muted/20 transition-colors">
                       <td className="px-5 py-4 text-sm font-mono text-foreground">{tx.transactionNumber}</td>
-                      <td className="px-4 py-4 text-sm text-foreground">{tx.externalRef ?? "—"}</td>
-                      <td className="px-4 py-4 text-sm text-muted-foreground">{tx.description ?? "Reserva"}</td>
+                      <td className="px-4 py-4 text-sm text-foreground">{tx.clientName || "—"}</td>
+                      <td className="px-4 py-4 text-sm text-muted-foreground">{tx.description ?? "Venta"}</td>
                       <td className="px-4 py-4">
                         <span className={cn("font-semibold text-sm", tx.type === "ingreso" ? "text-emerald-600" : "text-red-600")}>
-                          {tx.type === "ingreso" ? "+" : "-"}{parseFloat(tx.amount).toFixed(2)}€
+                          {tx.type === "ingreso" ? "+" : "-"}{fmtEur(Math.abs(parseFloat(tx.amount)))}
                         </span>
                       </td>
                       <td className="px-4 py-4">
                         <Badge className={cn("text-xs flex items-center gap-1 w-fit", statusColors[tx.status] ?? "bg-gray-100 text-gray-700")}>
                           <StatusIcon className="w-3 h-3" />
-                          {tx.status}
+                          {statusLabels[tx.status] ?? tx.status}
                         </Badge>
                       </td>
                       <td className="px-4 py-4 text-sm text-muted-foreground">
@@ -516,6 +536,7 @@ export default function AccountingDashboard() {
             </tbody>
           </table>
         </div>
+        )}
       </div>
     </AdminLayout>
   );

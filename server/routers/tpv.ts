@@ -70,9 +70,13 @@ async function generateReservationRef(userId?: string): Promise<string> {
 
 /** Venta con sus líneas y cobros (respuesta de createSale, también al repetir un cobro ya grabado). */
 async function loadSaleResult(saleId: number) {
-  const [sale] = await db.select().from(tpvSales).where(eq(tpvSales.id, saleId));
+  const [row] = await db.select().from(tpvSales).where(eq(tpvSales.id, saleId));
   const items = await db.select().from(tpvSaleItems).where(eq(tpvSaleItems.saleId, saleId));
   const payments = await db.select().from(tpvSalePayments).where(eq(tpvSalePayments.saleId, saleId));
+  // Desglose por tipo de IVA de lo cobrado (con el descuento del ticket repartido), para el ticket
+  const sale = row
+    ? { ...row, taxBreakdown: tpvSaleTax(items.map((i) => ({ lineSubtotal: Number(i.subtotal), fiscalRegime: i.fiscalRegime, taxRate: i.taxRate })), Number(row.total)).taxBreakdown }
+    : row;
   return { sale, items, payments };
 }
 
@@ -84,6 +88,8 @@ function generateTransactionNumber(): string {
 }
 
 import { normalizeRegime, calcGeneralTax } from "../taxUtils";
+import { tpvSaleTax } from "../tpvSaleTax";
+import { chargedInvoiceAmounts } from "../invoiceCalc";
 import { legacyDb, legacyPool } from "../_core/legacyDb";
 import { integrationEnv } from "../_core/tenantConfig";
 
@@ -922,16 +928,18 @@ export const tpvRouter = router({
         linesFiscal.push({ fiscalRegime: fiscalData.fiscalRegime, ...fiscal, lineSubtotal });
       }
 
-      // Totales fiscales agregados
-      const totalTaxBase   = linesFiscal.reduce((s, l) => s + l.taxBase,   0);
-      const totalTaxAmount = linesFiscal.reduce((s, l) => s + l.taxAmount, 0);
-      const totalReavMargin= linesFiscal.reduce((s, l) => s + l.reavMargin,0);
-      const totalReavCost  = linesFiscal.reduce((s, l) => s + l.reavCost,  0);
-      const totalReavTax   = linesFiscal.reduce((s, l) => s + l.reavTax,   0);
+      // Totales fiscales de lo cobrado: el descuento global se reparte por tipo de IVA antes de desglosar
+      // (mismo criterio que las facturas de presupuestos); las líneas conservan su fiscalidad sin descontar.
+      const saleTax = tpvSaleTax(linesFiscal, total);
+      const totalTaxBase   = saleTax.taxBase;
+      const totalTaxAmount = saleTax.taxAmount;
+      const totalReavMargin= linesFiscal.reduce((s, l) => s + l.reavMargin,0) * saleTax.ratio;
+      const totalReavCost  = linesFiscal.reduce((s, l) => s + l.reavCost,  0) * saleTax.ratio;
+      const totalReavTax   = linesFiscal.reduce((s, l) => s + l.reavTax,   0) * saleTax.ratio;
       const hasReav = linesFiscal.some(l => l.fiscalRegime === "reav");
       const hasIva  = linesFiscal.some(l => l.fiscalRegime === "general");
       const fiscalSummary = hasReav && hasIva ? "mixed" : hasReav ? "reav_only" : "iva_only";
-      const effectiveTaxRatePct = totalTaxBase > 0 ? (totalTaxAmount / totalTaxBase * 100) : 21;
+      const effectiveTaxRatePct = saleTax.taxBreakdown.length > 0 ? saleTax.taxRate : 0;
 
       // Cliente del CRM elegido por el cajero: tiene que existir en esta empresa
       let linkedClientId: number | null = null;
@@ -1377,6 +1385,8 @@ export const tpvRouter = router({
             productId:   item.productId,
           }));
 
+          // La factura es lo cobrado: base e IVA de cada tipo ya con el descuento del ticket, y su desglose
+          const invAmounts = chargedInvoiceAmounts(invoiceItems, total);
           const now = new Date();
           const [invResult] = await db.insert(invoices).values({
             invoiceNumber,
@@ -1385,12 +1395,13 @@ export const tpvRouter = router({
             clientEmail:    input.customerEmail || "",
             clientPhone:    input.customerPhone || null,
             itemsJson:      invoiceItems,
-            subtotal:       String(subtotal.toFixed(2)),
+            subtotal:       String(invAmounts.subtotal.toFixed(2)),
             discount:       String(input.discountAmount.toFixed(2)),
             discountReason: input.discountReason ?? null,
-            taxRate:        String(effectiveTaxRatePct.toFixed(2)),
-            taxAmount:      String(totalTaxAmount.toFixed(2)),
-            total:          String(total.toFixed(2)),
+            taxRate:        String(invAmounts.taxRate.toFixed(2)),
+            taxAmount:      String(invAmounts.taxAmount.toFixed(2)),
+            taxBreakdown:   invAmounts.taxBreakdown.length > 0 ? invAmounts.taxBreakdown : undefined,
+            total:          String(invAmounts.total.toFixed(2)),
             status:         "cobrada",
             paymentMethod:  invoicePayMethod,
             issuedAt:       now,
@@ -1570,11 +1581,9 @@ export const tpvRouter = router({
   getSale: tpvAccessProc
     .input(z.object({ saleId: z.number() }))
     .query(async ({ input }) => {
-      const [sale] = await db.select().from(tpvSales).where(eq(tpvSales.id, input.saleId));
-      if (!sale) throw new TRPCError({ code: "NOT_FOUND", message: "Venta no encontrada" });
-      const items = await db.select().from(tpvSaleItems).where(eq(tpvSaleItems.saleId, input.saleId));
-      const payments = await db.select().from(tpvSalePayments).where(eq(tpvSalePayments.saleId, input.saleId));
-      return { sale, items, payments };
+      const result = await loadSaleResult(input.saleId);
+      if (!result.sale) throw new TRPCError({ code: "NOT_FOUND", message: "Venta no encontrada" });
+      return result;
     }),
 
   getSessionSales: tpvAccessProc

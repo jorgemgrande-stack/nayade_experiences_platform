@@ -20,6 +20,7 @@ import { buildConfirmationHtml } from "./emailTemplates";
 import { sendEmail } from "./mailer";
 import { sendManagedEmail, logDirectEmail } from "./emailManager";
 import { chargedInvoiceAmounts, QUOTE_DISCOUNT_REASON } from "./invoiceCalc";
+import { invoiceClientForQuote } from "./invoiceClient";
 import { reservationProductFromQuoteItems } from "./reservationUtils";
 import { getBusinessEmail } from "./config";
 import { brandName, brandSetting } from "./tenantBrand";
@@ -373,13 +374,13 @@ redsysRouter.post("/api/redsys/notification", express.urlencoded({ extended: tru
             const resProdRedsys = reservationProductFromQuoteItems(
               items, (items as { productId?: number }[]).find(i => i.productId)?.productId ?? updatedReservation.productId ?? 0);
 
+            // Datos fiscales del cliente vinculado al presupuesto (NIF, nombre fiscal y dirección)
+            const billToRedsys = await invoiceClientForQuote(_db, quote, { name: lead?.name ?? updatedReservation.customerName, email: lead?.email ?? updatedReservation.customerEmail, phone: lead?.phone ?? updatedReservation.customerPhone });
             const [invResRedsys] = await _db.insert(invoices).values({
               invoiceNumber,
               quoteId: quote.id,
               reservationId: updatedReservation.id,
-              clientName: lead?.name ?? updatedReservation.customerName,
-              clientEmail: lead?.email ?? updatedReservation.customerEmail,
-              clientPhone: lead?.phone ?? updatedReservation.customerPhone,
+              ...billToRedsys,
               itemsJson: items as any,
               subtotal: String(subtotal),
               discount: String(amountsRedsys.discount),
@@ -1168,13 +1169,13 @@ redsysRouter.post("/api/admin/recover-order/:merchantOrder", async (req, res) =>
           const taxRate = amounts.taxRate;
           const mainProductId = (items as { productId?: number }[]).find(i => i.productId)?.productId ?? primary.productId ?? 0;
 
+          // Datos fiscales del cliente vinculado al presupuesto (NIF, nombre fiscal y dirección)
+          const billTo = await invoiceClientForQuote(_db, quote, { name: lead?.name ?? primary.customerName, email: lead?.email ?? primary.customerEmail ?? "", phone: lead?.phone ?? primary.customerPhone });
           const [invRes] = await _db.insert(invoices).values({
             invoiceNumber,
             quoteId: quote.id,
             reservationId: primary.id,
-            clientName: lead?.name ?? primary.customerName,
-            clientEmail: lead?.email ?? primary.customerEmail ?? "",
-            clientPhone: lead?.phone ?? primary.customerPhone,
+            ...billTo,
             itemsJson: items as any,
             subtotal: String(subtotal),
             discount: String(amounts.discount),

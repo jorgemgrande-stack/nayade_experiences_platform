@@ -22,7 +22,8 @@ export interface InvoiceHtmlParams {
   clientPhone?: string | null;
   clientNif?: string | null;
   clientAddress?: string | null;
-  itemsJson: { description: string; quantity: number; unitPrice: number; total: number; fiscalRegime?: string; taxRate?: number }[];
+  /** `exemptionReason`: motivo de la exención de una línea al 0 % (factura libre). */
+  itemsJson: { description: string; quantity: number; unitPrice: number; total: number; fiscalRegime?: string; taxRate?: number; exemptionReason?: string }[];
   subtotal: string;
   /** Descuento global aplicado sobre el subtotal (origen: TPV o promoción). null/0 = sin descuento. */
   discount?: string | number | null;
@@ -112,7 +113,7 @@ function escapeInvoiceParams(p: InvoiceHtmlParams): InvoiceHtmlParams {
     clientNif: p.clientNif == null ? p.clientNif : escapeHtml(p.clientNif),
     clientAddress: p.clientAddress == null ? p.clientAddress : escapeHtml(p.clientAddress),
     discountReason: p.discountReason == null ? p.discountReason : escapeHtml(p.discountReason),
-    itemsJson: (p.itemsJson ?? []).map((i) => ({ ...i, description: escapeHtml(i.description) })),
+    itemsJson: (p.itemsJson ?? []).map((i) => ({ ...i, description: escapeHtml(i.description), ...(i.exemptionReason ? { exemptionReason: escapeHtml(i.exemptionReason) } : {}) })),
   };
 }
 
@@ -138,6 +139,8 @@ export async function buildInvoiceHtml(rawInvoice: InvoiceHtmlParams): Promise<s
   const isMultiRate = breakdown.length > 1;
   // Con descuento global: suma de conceptos, descuento y después las bases y cuotas ya descontadas
   const hasDiscount = Number(invoice.discount ?? 0) > 0;
+  // Mención obligatoria de las líneas al 0 %: el motivo de la exención (solo si se indicó al emitir)
+  const exemptionReasons = Array.from(new Set(invoice.itemsJson.map((i) => (i.exemptionReason ?? "").trim()).filter(Boolean)));
 
   const buildItemRows = (items: typeof invoice.itemsJson, isReav: boolean) =>
     items.map((item) =>
@@ -264,6 +267,7 @@ export async function buildInvoiceHtml(rawInvoice: InvoiceHtmlParams): Promise<s
     <tr><td>IVA (${breakdown[0].rate}%)</td><td>${breakdown[0].amount.toFixed(2)} €</td></tr>` : ""}
     ${hasGeneral && breakdown.length === 0 ? `<tr><td>IVA (${invoice.taxRate}%)</td><td>${Number(invoice.taxAmount).toFixed(2)} €</td></tr>` : ""}
     ${hasReav && !hasGeneral ? `<tr><td style="font-size:12px;color:#6b7280;font-style:italic;" colspan="2">Operación sujeta al Régimen Especial de Agencias de Viaje (REAV). No procede repercusión de IVA al cliente.</td></tr>` : ''}
+    ${exemptionReasons.map((r) => `<tr><td style="font-size:12px;color:#6b7280;font-style:italic;" colspan="2">IVA 0 %: ${r}</td></tr>`).join("")}
     <tr class="total-row"><td>TOTAL</td><td>${Number(invoice.total).toFixed(2)} €</td></tr>
   </table></div>
   </div>
