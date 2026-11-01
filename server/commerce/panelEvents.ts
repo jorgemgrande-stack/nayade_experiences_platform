@@ -16,8 +16,6 @@ export const PANEL_EVENT_TYPES = ["card_view", "sheet_view", "cta_click", "slide
 export type PanelEventType = (typeof PANEL_EVENT_TYPES)[number];
 const MAX_AGE_MS = 24 * 3600 * 1000;
 const MAX_SKEW_MS = 5 * 60 * 1000;
-/** Los ids ya contados se guardan unos días (más que la antigüedad máxima admitida). */
-export const KEY_RETENTION_MS = 3 * 24 * 3600 * 1000;
 
 const key = z.string().regex(/^[a-z0-9][a-z0-9-]{0,62}$/);
 const event = z
@@ -45,7 +43,6 @@ export interface PanelEventStore {
   /** Cuenta los eventos cuyo id no se había visto; devuelve cuántos contó. */
   record(tenantId: string, events: Array<{ id: string; type: PanelEventType; productKey: string; slideId: string; day: string }>, now: number): Promise<number>;
   counts(f: { from: string; to: string }): Promise<CountRow[]>;
-  purgeKeys(before: number): Promise<number>;
 }
 
 export class MemoryPanelEventStore implements PanelEventStore {
@@ -66,11 +63,6 @@ export class MemoryPanelEventStore implements PanelEventStore {
   }
   async counts(f: { from: string; to: string }) {
     return Array.from(this.rows.values()).filter((r) => r.day >= f.from && r.day <= f.to);
-  }
-  async purgeKeys(before: number) {
-    let n = 0;
-    for (const [id, at] of Array.from(this.seen.entries())) if (at < before) (this.seen.delete(id), n++);
-    return n;
   }
 }
 
@@ -105,10 +97,6 @@ export class MysqlPanelEventStore implements PanelEventStore {
       [f.from, f.to],
     );
     return rows.map((r) => ({ day: String(r.day), tenantId: r.tenant_id, type: r.event_type as PanelEventType, productKey: r.product_key, slideId: r.slide_id, count: Number(r.count) }));
-  }
-  async purgeKeys(before: number) {
-    const [r] = await this.pool.query<mysql.ResultSetHeader>("DELETE FROM marketplace_event_keys WHERE received_at < ? LIMIT 5000", [new Date(before)]);
-    return r.affectedRows;
   }
 }
 
@@ -156,7 +144,6 @@ function requireCore(req: Request, res: Response, next: NextFunction) {
 export function createPanelEventsRouter(d: { store: PanelEventStore | null; now?: () => number }): Router {
   const r = express.Router();
   const now = d.now ?? Date.now;
-  let lastPurge = 0;
   r.post("/tenants/:tenantId/events", requireCore, express.json({ limit: "32kb" }), (req: Request, res: Response) => {
     const t = tenant.safeParse(req.params.tenantId);
     if (!t.success) return void res.status(400).json({ error: "invalid_request", message: "tenantId" });
@@ -164,10 +151,6 @@ export function createPanelEventsRouter(d: { store: PanelEventStore | null; now?
     recordPanelEvents(d.store, t.data, req.body, at).then(
       (out) => {
         res.status(202).json(out);
-        if (d.store && at - lastPurge > 3600_000) {
-          lastPurge = at;
-          void d.store.purgeKeys(at - KEY_RETENTION_MS).catch(() => undefined);
-        }
       },
       (e) => {
         if (e instanceof z.ZodError) return void res.status(400).json({ error: "invalid_request", message: e.issues.map((i) => `${i.path.join(".")}: ${i.message}`).join("; ").slice(0, 300) });

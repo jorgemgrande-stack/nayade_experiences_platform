@@ -7,7 +7,8 @@
  *    `GET /cp/v1/public/media/:id/:variant` con caché de un año: la URL es estable y no cambia nunca su contenido.
  *    Sustituir una imagen = subir otra y cambiar la referencia en la ficha (la anterior sigue sirviéndose).
  *  - Texto alternativo obligatorio. Solo JPEG, PNG, WebP o AVIF reales (se comprueba el contenido, no el nombre).
- *  - Borrado seguro: solo si ningún borrador ni publicación del catálogo la usa.
+ *  - Uso: qué entradas del catálogo (borrador o publicación) la referencian. El borrado de las que nadie usa llega en un
+ *    cambio aparte por el procedimiento protegido (todo borrado de datos lo es).
  */
 import crypto from "node:crypto";
 import express, { type Request, type Response, type Router } from "express";
@@ -47,7 +48,6 @@ export interface MediaStore {
   insert(m: MediaRecord, files: MediaFile[]): Promise<{ created: boolean }>;
   file(id: string, variant: string): Promise<Pick<MediaFile, "contentType" | "data"> | null>;
   setAlt(id: string, alt: string): Promise<boolean>;
-  delete(id: string): Promise<boolean>;
 }
 
 export class MemoryMediaStore implements MediaStore {
@@ -72,9 +72,6 @@ export class MemoryMediaStore implements MediaStore {
     if (!r) return false;
     r.m.alt = alt;
     return true;
-  }
-  async delete(id: string) {
-    return this.rows.delete(id);
   }
 }
 
@@ -119,10 +116,6 @@ export class MysqlMediaStore implements MediaStore {
   }
   async setAlt(id: string, alt: string) {
     const [res] = await this.pool.query<mysql.ResultSetHeader>("UPDATE marketplace_media SET alt = ? WHERE id = ?", [alt, id]);
-    return res.affectedRows > 0;
-  }
-  async delete(id: string) {
-    const [res] = await this.pool.query<mysql.ResultSetHeader>("DELETE FROM marketplace_media WHERE id = ?", [id]);
     return res.affectedRows > 0;
   }
 }
@@ -223,13 +216,6 @@ export class MediaService {
     const entries = await this.d.web.listEntries();
     return entries.filter((e) => JSON.stringify([e.draft, e.published]).includes(`/cp/v1/public/media/${id}/`)).map((e) => `${e.kind}:${e.key}`);
   }
-
-  async delete(id: string) {
-    if (!(await this.d.store.get(id))) throw new MediaError("not_found", "Imagen no encontrada");
-    const used = await this.usage(id);
-    if (used.length) throw new MediaError("in_use", `La imagen se usa en: ${used.join(", ")}`, { usedBy: used });
-    await this.d.store.delete(id);
-  }
 }
 
 const STATUS = { invalid_input: 400, not_found: 404, in_use: 409 } as const;
@@ -243,7 +229,7 @@ const fail = (res: Response, e: unknown) => {
 const publicBase = (req: Request) => `https://${req.get("host")}`;
 const view = (base: string, m: MediaRecord) => ({ ...m, src: mediaUrl(base, m.id), srcset: mediaSrcset(mediaUrl(base, m.id)) });
 
-/** Rutas del CRM (montar bajo /web/media): subir, listar, cambiar el texto alternativo y borrar si no se usa. */
+/** Rutas del CRM (montar bajo /web/media): subir, listar, ver dónde se usa y cambiar el texto alternativo. */
 export function createMediaAdminRouter(svc: MediaService): Router {
   const r = express.Router();
   const who = (req: Request) => `${getAuth(req)!.actor.type}:${getAuth(req)!.actor.id}`;
@@ -265,10 +251,6 @@ export function createMediaAdminRouter(svc: MediaService): Router {
   r.patch("/:id", requireScope("web:write"), express.json({ limit: "4kb" }), (req, res) => {
     if (!ID_RE.test(req.params.id)) return void res.status(400).json({ error: "invalid_input", message: "id" });
     svc.setAlt(req.params.id, String((req.body as { alt?: unknown })?.alt ?? "")).then(() => res.json({ ok: true }), (e) => fail(res, e));
-  });
-  r.delete("/:id", requireScope("web:write"), (req, res) => {
-    if (!ID_RE.test(req.params.id)) return void res.status(400).json({ error: "invalid_input", message: "id" });
-    svc.delete(req.params.id).then(() => res.status(204).end(), (e) => fail(res, e));
   });
   return r;
 }

@@ -49,17 +49,15 @@ describe("subida de imágenes del marketplace", () => {
     await expect(svc.upload({ data: broken, alt: "x", author: "o" })).rejects.toBeInstanceOf(MediaError);
   });
 
-  it("solo se borra si ningún borrador ni publicación del catálogo la usa", async () => {
+  it("sabe qué borradores o publicaciones del catálogo la usan", async () => {
     const { svc, web } = setup();
     const { media } = await svc.upload({ data: png, alt: "Cabecera", author: "o" });
     const src = mediaUrl("https://admin.bigelephant.es", media.id);
     await web.createEntry({ kind: "marketplace_slide", key: "campana", family: null, sortOrder: 0, publication: "draft", draft: { background: { src, alt: "Cabecera" } }, draftVersion: 1, published: null, publishedVersion: null, createdAt: 1, createdBy: "o", updatedAt: 1, updatedBy: "o", publishedAt: null, publishedBy: null });
     expect(await svc.usage(media.id)).toEqual(["marketplace_slide:campana"]);
-    await expect(svc.delete(media.id)).rejects.toMatchObject({ code: "in_use" });
     const e = (await web.getEntry("marketplace_slide", "campana"))!;
     await web.saveDraft(e.id, e.draftVersion, { background: { src: "https://otra.example/a.webp", alt: "x" } }, 0, "o", 2);
-    await svc.delete(media.id);
-    expect(await svc.list()).toEqual([]);
+    expect(await svc.usage(media.id)).toEqual([]);
   });
 
   it("el texto alternativo se puede corregir, nunca vaciar", async () => {

@@ -39,11 +39,4 @@ describe("medición del marketplace", () => {
     expect(r).toEqual({ accepted: 3, counted: 1, stale: 2 });
     expect(await recordPanelEvents(null, "t9-demo", { events: [ev("card_view")] }, NOW)).toEqual({ accepted: 1, counted: 0, stale: 0 });
   });
-
-  it("los ids ya contados se purgan pasados unos días", async () => {
-    const store = new MemoryPanelEventStore();
-    await recordPanelEvents(store, "t9-demo", { events: [ev("card_view")] }, NOW);
-    expect(await store.purgeKeys(NOW - 1)).toBe(0);
-    expect(await store.purgeKeys(NOW + 1)).toBe(1);
-  });
 });
