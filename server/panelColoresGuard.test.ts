@@ -43,6 +43,9 @@ const MIGRATED = [
   "pages/admin/settings/CompanyData.tsx",
   "pages/admin/settings/Settings.tsx",
   "pages/admin/settings/BrandTheme.tsx",
+  "components/connect/ConnectParts.tsx",
+  "pages/admin/connect/ConnectPage.tsx",
+  "pages/admin/connect/ConnectDetailPage.tsx",
   "pages/admin/crm/ProposalsPage.tsx",
   "pages/admin/crm/CrmTags.tsx",
 ];
