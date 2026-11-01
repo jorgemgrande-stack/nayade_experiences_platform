@@ -45,7 +45,7 @@ export interface ConnectStateInput {
   capabilities: string[];
   /** Productos que hay que tener antes (claves del catálogo). */
   dependencies: string[];
-  /** Planes para los que existe (ampliaciones por unidades). Vacío = cualquiera. */
+  /** Planes para los que existe (ampliaciones por unidades, o módulos solo para ciertos planes). Vacío = cualquiera. */
   plans: string[];
 }
 
@@ -94,6 +94,10 @@ export function deriveConnectState(item: ConnectStateInput, ctx: ConnectStateCon
   // 3. No contratado: estado comercial del catálogo
   if (item.commercialStatus === "coming_soon") return { state: "coming_soon", reasons: [] };
   if (item.commercialStatus === "in_preparation") return { state: "coming_soon", reasons: ["Está en preparación."] };
+  // Un módulo que solo existe para ciertos planes no se ofrece a otro plan, ni siquiera bajo solicitud
+  if (item.kind === "module" && item.plans.length > 0 && ctx.plan && !item.plans.includes(ctx.plan)) {
+    return { state: "not_eligible", reasons: [`Disponible para el plan ${item.plans.map((p) => PLAN_NAMES[p] ?? p).join(" o ")}.`] };
+  }
   if (item.commercialStatus === "on_request") return { state: "on_request", reasons: ["Lo activa nuestro equipo contigo (implantación acompañada)."] };
 
   // 4. A la venta: ¿la empresa puede tenerlo?

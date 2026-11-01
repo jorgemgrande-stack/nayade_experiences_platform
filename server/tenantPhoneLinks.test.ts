@@ -17,9 +17,9 @@ describe("teléfono y email de contacto de la empresa", () => {
     expect(src).toContain("usePublicContact()");
   });
 
-  it("portal de empleados: el teléfono de la instalación original solo fuera de la web neutra", () => {
+  it("portal de empleados: solo el teléfono de la propia empresa", () => {
     const src = read("employee/EmployeeLayout.tsx");
-    expect(src).toContain("const contactPhone = neutral ? phone : NAYADE_PHONE;");
-    expect(src).not.toMatch(/\{NAYADE_PHONE\}|tel:\$\{NAYADE_PHONE\}/);
+    expect(src).toContain("href={look.phoneTel}");
+    expect(src).not.toMatch(/NAYADE_PHONE/);
   });
 });

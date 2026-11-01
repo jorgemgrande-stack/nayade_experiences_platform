@@ -68,7 +68,8 @@ export function buildConnectCatalog(catalog: { items: PanelCatalogItemView[] }, 
     const d = seed?.draft;
     const capabilities = item.kind === "module" ? capsOf(item.key) : [];
     const dependencies = d?.dependencies ?? [];
-    const plans = d?.catalog.addonFor?.plans ?? [];
+    // Ampliaciones: los planes a los que amplían; módulos: los planes con los que se pueden contratar
+    const plans = d?.catalog.addonFor?.plans ?? (item.kind === "module" ? d?.compatibleWith ?? [] : []);
     const { state, reasons } = deriveConnectState(
       { kind: item.kind, commercialStatus: item.commercialStatus, capabilities, dependencies, plans },
       { capabilityStatus, plan, productActive, productName },

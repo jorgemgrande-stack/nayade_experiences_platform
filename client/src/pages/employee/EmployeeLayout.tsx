@@ -6,18 +6,18 @@
  *   - 'monitor'  (rol legacy — compatibilidad con accesos previos)
  *
  * Cualquier otro rol es redirigido a /admin. Si no hay sesión, a /login.
+ *
+ * Identidad: nombre, logotipo, teléfono y color de la empresa que sirve el dominio (`usePortalLook`), sobre fondo
+ * claro. Sin marca configurada, aspecto neutro; nunca la de otra empresa.
  */
 import { useEffect } from "react";
 import { Link, useLocation } from "wouter";
 import { useAuth } from "@/_core/hooks/useAuth";
 import { trpc } from "@/lib/trpc";
-import { usePublicContact } from "@/hooks/usePublicPhone";
 import {
   LayoutDashboard, User, FileText, LogOut, Loader2, Phone, Clock, Banknote, CalendarOff,
 } from "lucide-react";
-
-const LOGO_FALLBACK = "https://d2xsxph8kpxj0f.cloudfront.net/310519663410228097/AV298FS8t5SaTurBBRqhgQ/nayade_blue_e9563f49.png";
-const NAYADE_PHONE = "+34 639 57 66 27";
+import { usePortalLook } from "./usePortalLook";
 
 export default function EmployeeLayout({ children }: { children: React.ReactNode }) {
   const { user, loading, logout } = useAuth();
@@ -32,8 +32,8 @@ export default function EmployeeLayout({ children }: { children: React.ReactNode
 
   if (loading || !user) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-[#080e1c]">
-        <Loader2 className="w-8 h-8 text-orange-500 animate-spin" />
+      <div className="min-h-screen flex items-center justify-center bg-slate-50">
+        <Loader2 className="w-8 h-8 text-slate-500 animate-spin" />
       </div>
     );
   }
@@ -47,49 +47,62 @@ export default function EmployeeLayout({ children }: { children: React.ReactNode
 function EmployeeLayoutInner({ user, location, navigate, logout, children }: {
   user: any; location: string; navigate: any; logout: any; children: React.ReactNode;
 }) {
-  // Web neutra de cada empresa: su teléfono, nunca el de la instalación original
-  const { neutral, phone, brandName } = usePublicContact();
-  const contactPhone = neutral ? phone : NAYADE_PHONE;
-  const { data: publicSettings } = trpc.config.getPublicSettings.useQuery(undefined, { staleTime: 5 * 60 * 1000 });
+  const look = usePortalLook();
   const { data: me, error: meError } = trpc.hr.portal.me.useQuery(undefined, { retry: false });
   // Sin la extensión Personal activa (o con el usuario sin ficha): aviso claro en lugar de pantallas con errores
   const meErrorData = meError?.data as { code?: string; capability?: string } | undefined;
   const portalUnavailable = meErrorData?.capability === "people-hr";
   const notLinked = !portalUnavailable && meErrorData?.code === "FORBIDDEN";
 
-  const brandLogo = (publicSettings as any)?.brand_logo_url || (neutral ? "" : LOGO_FALLBACK);
   const employeeName = me?.fullName ?? (user as any).name ?? (user as any).email ?? "Empleado";
 
+  // Los diálogos se pintan fuera de este bloque: el color de la empresa también en <html> mientras el portal esté abierto
+  useEffect(() => {
+    const root = document.documentElement;
+    for (const [k, v] of Object.entries(look.vars)) root.style.setProperty(k, v);
+    return () => { for (const k of Object.keys(look.vars)) root.style.removeProperty(k); };
+  }, [look.accent, look.accentFg]);
+
   return (
-    <div className="min-h-screen text-white" style={{ backgroundColor: "#080e1c" }}>
+    <div className="min-h-screen bg-slate-50 text-slate-900 overflow-x-hidden" style={look.style}>
       {/* Header */}
-      <header className="sticky top-0 z-40 bg-[#0a1628]/95 border-b border-white/[0.07] backdrop-blur-md">
+      <header className="sticky top-0 z-40 bg-white/95 border-b border-slate-200 backdrop-blur-md">
+        {look.branded && <div className="h-1 bg-[var(--portal-accent)]" aria-hidden="true" />}
         <div className="max-w-5xl mx-auto px-4">
-          {/* Fila superior: logo + empleado + acciones */}
-          <div className="flex items-center justify-between h-14">
-            <Link href="/empleado" className="flex items-center gap-2.5">
-              {brandLogo ? <img src={brandLogo} alt={brandName} className="h-7 w-auto object-contain" /> : <span className="font-semibold text-white text-sm">{brandName}</span>}
+          {/* Fila superior: marca + empleado + acciones */}
+          <div className="flex items-center justify-between gap-3 h-14">
+            <Link href="/empleado" className="flex items-center gap-2.5 min-w-0">
+              {look.logoUrl ? (
+                <img src={look.logoUrl} alt={look.name || "Inicio"} className="h-8 w-auto max-w-[160px] object-contain" />
+              ) : look.initial ? (
+                <span className="w-8 h-8 shrink-0 rounded-lg bg-[var(--portal-accent)] text-[var(--portal-accent-fg)] flex items-center justify-center text-sm font-bold" aria-hidden="true">
+                  {look.initial}
+                </span>
+              ) : null}
+              {(!look.logoUrl && look.name) && <span className="font-semibold text-slate-900 text-sm truncate">{look.name}</span>}
+              {(!look.logoUrl && !look.name) && <span className="font-semibold text-slate-900 text-sm">Portal del empleado</span>}
             </Link>
 
-            <div className="hidden sm:flex flex-col items-center">
-              <span className="text-xs font-bold text-orange-400 uppercase tracking-wider">Portal del Empleado</span>
-              <span className="text-[11px] text-white/40">{employeeName}</span>
+            <div className="hidden sm:flex flex-col items-center min-w-0">
+              <span className="text-xs font-bold text-[var(--portal-accent)] uppercase tracking-wider">Portal del empleado</span>
+              <span className="text-[11px] text-slate-500 truncate max-w-[220px]">{employeeName}</span>
             </div>
 
-            <div className="flex items-center gap-2">
-              {contactPhone && (
-                <a href={`tel:${contactPhone}`}
-                  className="hidden sm:flex items-center gap-1.5 text-xs text-white/50 hover:text-orange-400 transition-colors border border-white/10 hover:border-orange-500/30 rounded-lg px-2.5 py-1.5"
-                  title={brandName ? `Llamar a ${brandName}` : "Llamar"}
+            <div className="flex items-center gap-2 shrink-0">
+              {look.phoneTel && (
+                <a href={look.phoneTel}
+                  className="hidden sm:flex items-center gap-1.5 text-xs text-slate-600 hover:text-slate-900 transition-colors border border-slate-200 hover:border-slate-300 rounded-lg px-2.5 py-1.5"
+                  title={look.name ? `Llamar a ${look.name}` : "Llamar"}
                 >
                   <Phone className="w-3.5 h-3.5" />
-                  {contactPhone}
+                  {look.phone}
                 </a>
               )}
               <button
                 onClick={() => logout().then(() => navigate("/login"))}
-                className="text-white/30 hover:text-white/70 transition-colors p-1.5"
+                className="text-slate-500 hover:text-slate-900 transition-colors p-1.5"
                 title="Cerrar sesión"
+                aria-label="Cerrar sesión"
               >
                 <LogOut className="w-4 h-4" />
               </button>
@@ -134,12 +147,12 @@ function EmployeeLayoutInner({ user, location, navigate, logout, children }: {
         )}
       </main>
 
-      <footer className="border-t border-white/[0.06] py-4 mt-8">
-        <div className="max-w-5xl mx-auto px-4 flex flex-col sm:flex-row items-center justify-between gap-2 text-[11px] text-white/25">
-          <span>Portal del Empleado{brandName && ` · ${brandName}`}</span>
-          {contactPhone && (
-            <a href={`tel:${contactPhone}`} className="hover:text-white/50 transition-colors flex items-center gap-1">
-              <Phone className="w-3 h-3" /> {contactPhone}
+      <footer className="border-t border-slate-200 py-4 mt-8">
+        <div className="max-w-5xl mx-auto px-4 flex flex-col sm:flex-row items-center justify-between gap-2 text-[11px] text-slate-500">
+          <span>Portal del empleado{look.name && ` · ${look.name}`}</span>
+          {look.phoneTel && (
+            <a href={look.phoneTel} className="hover:text-slate-900 transition-colors flex items-center gap-1">
+              <Phone className="w-3 h-3" /> {look.phone}
             </a>
           )}
         </div>
@@ -150,9 +163,9 @@ function EmployeeLayoutInner({ user, location, navigate, logout, children }: {
 
 function PortalNotice({ title, children }: { title: string; children: React.ReactNode }) {
   return (
-    <div role="status" className="max-w-lg mx-auto text-center rounded-xl border border-white/10 bg-white/[0.03] px-6 py-10">
-      <h1 className="text-lg font-semibold text-white mb-2">{title}</h1>
-      <p className="text-sm text-white/60">{children}</p>
+    <div role="status" className="max-w-lg mx-auto text-center rounded-xl border border-slate-200 bg-white px-6 py-10">
+      <h1 className="text-lg font-semibold text-slate-900 mb-2">{title}</h1>
+      <p className="text-sm text-slate-600">{children}</p>
     </div>
   );
 }
@@ -164,8 +177,8 @@ function NavTab({ href, active, icon, children }: {
     <Link href={href}>
       <button className={`flex items-center gap-1.5 px-3 py-2.5 text-xs font-medium border-b-2 transition-colors whitespace-nowrap ${
         active
-          ? "border-orange-500 text-orange-400"
-          : "border-transparent text-white/40 hover:text-white/70 hover:border-white/20"
+          ? "border-[var(--portal-accent)] text-[var(--portal-accent)]"
+          : "border-transparent text-slate-600 hover:text-slate-900 hover:border-slate-300"
       }`}>
         {icon}
         {children}

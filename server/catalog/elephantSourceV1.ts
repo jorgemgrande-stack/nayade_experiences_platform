@@ -72,6 +72,8 @@ interface P {
   limits?: Array<{ label: string; value: string; metric?: string }>;
   addonFor?: { metric: string; step: number; plans?: string[] };
   dependencies?: string[];
+  /** Planes de Elephant Core con los que se puede contratar (vacío = cualquiera). */
+  compatibleWith?: string[];
   includes?: string[];
   forWho?: string;
   thirdPartyCosts?: string;
@@ -109,7 +111,7 @@ function product(p: P): SeedProduct {
     billingNote: null,
     limits: (p.limits ?? []).map((l) => ({ label: l.label, value: l.value, metric: l.metric ?? null })),
     dependencies: p.dependencies ?? [],
-    compatibleWith: [],
+    compatibleWith: p.compatibleWith ?? [],
     requirements: p.requirements ?? [],
     thirdPartyCosts: p.thirdPartyCosts ?? null,
     includes: p.includes ?? [],
@@ -273,7 +275,22 @@ const CONNECT: SeedProduct[] = [
   connect({ key: "connect-whatsapp-ai", name: "Elephant WhatsApp AI", group: "communications", tagline: "WhatsApp Business automatizado con IA.", tech: "partial", commercial: "in_preparation", monthly: 29, capabilities: ["whatsapp-ai"], thirdPartyCosts: "Las conversaciones de WhatsApp (Meta) y el consumo de IA se facturan aparte según uso.", icon: "message", notes: "Hoy existe la bandeja de WhatsApp a través de GoHighLevel, sin IA ni API directa." }),
   connect({ key: "connect-voice", name: "Elephant Voice", group: "communications", tagline: "Centralita y llamadas con IA.", tech: "partial", commercial: "on_request", monthly: 39, capabilities: ["voice-ai"], thirdPartyCosts: "Los minutos de telefonía y el consumo de IA se facturan aparte según uso.", icon: "phone" }),
   connect({ key: "connect-reception-ai", name: "Elephant Reception AI", group: "communications", tagline: "Recepcionista virtual con IA.", tech: "planned", commercial: "coming_soon", monthly: 49, capabilities: ["reception-ai"], thirdPartyCosts: "Telefonía, mensajería y consumo de IA aparte según uso.", icon: "bot" }),
-  connect({ key: "connect-people", name: "Elephant People", group: "people", tagline: "Empleados, fichajes, horarios y nóminas.", tech: "partial", commercial: "on_request", monthly: 19, capabilities: ["people-hr"], icon: "id-card" }),
+  // Ficha aprobada por la dirección comercial (01/11/2026): extensión de pago solo para Essential y Business, por empresa
+  connect({
+    key: "connect-people",
+    name: "Elephant People",
+    group: "people",
+    tagline: "Gestión de empleados y control horario, integrada en tu empresa.",
+    description: "Organiza la información de tu equipo desde Elephant Core, sin utilizar herramientas separadas. El precio es por empresa. Importante: Elephant People permite registrar y consultar nóminas, pero no calcula salarios según convenios ni presenta modelos fiscales o laborales automáticamente. La activación añadirá las funcionalidades contratadas al administrador de tu empresa.",
+    tech: "partial",
+    commercial: "on_request",
+    monthly: 19,
+    capabilities: ["people-hr"],
+    compatibleWith: ["essential", "business"],
+    includes: ["Fichas de empleados y documentación", "Control horario y registro de fichajes", "Horarios semanales", "Gestión de ausencias", "Registro y consulta de nóminas", "Portal del empleado", "Acceso protegido según permisos"],
+    requirements: ["Disponible como extensión de Elephant Connect para clientes Essential y Business."],
+    icon: "id-card",
+  }),
   connect({ key: "connect-tax", name: "Elephant Tax", group: "finance", tagline: "Declaraciones y modelos fiscales con tu gestoría.", tech: "partial", commercial: "on_request", monthly: 19, capabilities: ["tax-filings"], icon: "file-text" }),
   connect({ key: "connect-partners", name: "Elephant Partners", group: "finance", tagline: "Liquidaciones de proveedores y colaboradores.", tech: "partial", commercial: "on_request", monthly: 19, capabilities: ["supplier-settlements"], icon: "handshake" }),
   connect({ key: "connect-pos", name: "Elephant POS", group: "pos", scope: "site", tagline: "TPV físico avanzado por sede.", tech: "partial", commercial: "on_request", monthly: 25, capabilities: ["pos-advanced"], chargeUnit: "por sede", icon: "credit-card" }),
