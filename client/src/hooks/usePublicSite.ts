@@ -10,7 +10,7 @@ export function usePublicSite(): { features: PublicSiteFeatures | null; isLoadin
   // Misma consulta y caché que useTenantTheme (components/TenantTheme.tsx)
   const theme = trpc.public.getTheme.useQuery(undefined, { staleTime: 5 * 60_000, retry: false, refetchOnWindowFocus: false });
   const neutral = !!theme.data?.neutralSite;
-  const q = trpc.public.siteFeatures.useQuery(undefined, { enabled: neutral, staleTime: 5 * 60_000, retry: false, refetchOnWindowFocus: false });
-  const features = !theme.data ? null : neutral ? (q.data ?? null) : LEGACY_SITE_FEATURES;
-  return { features, isLoading: theme.isLoading || (neutral && q.isLoading), text: publicSiteText(features) };
+  // Las secciones viajan con la identidad pública (sin consulta ni ruta pública aparte)
+  const features = !theme.data ? null : neutral ? (theme.data.siteFeatures ?? null) : LEGACY_SITE_FEATURES;
+  return { features, isLoading: theme.isLoading, text: publicSiteText(features) };
 }

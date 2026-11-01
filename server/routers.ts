@@ -358,13 +358,10 @@ export const appRouter = router({
       const vals: Record<string, string> = {};
       await Promise.all(PUBLIC_THEME_KEYS.map(async (k) => { vals[k] = await getSystemSetting(k, ""); }));
       const { getStorefront } = await import("./storefront");
-      return { ...buildTheme((k) => vals[k] || undefined, { multi: isMultiTenant() }), storefront: await getStorefront() };
-    }),
-
-    // Secciones de la web según lo contratado (tienda, presupuesto, cupones) para su menú y sus textos
-    siteFeatures: publicProcedure.query(async () => {
+      const theme = buildTheme((k) => vals[k] || undefined, { multi: isMultiTenant() });
+      // Secciones de la web según lo contratado (tienda, presupuesto, cupones) para su menú, sus textos y sus rutas
       const { readPublicSiteFeatures } = await import("./publicSite");
-      return readPublicSiteFeatures();
+      return { ...theme, storefront: await getStorefront(), siteFeatures: theme.neutralSite ? await readPublicSiteFeatures() : null };
     }),
 
     // Página estática del tenant, con HTML saneado (lista blanca)

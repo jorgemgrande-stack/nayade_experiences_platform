@@ -58,7 +58,7 @@ describe.skipIf(!URL_)("Essential — Web y CMS (aplicación real, dos empresas 
     expect(data(await ess.q("b", "cms.getPages", undefined, admB)).map((p: any) => p.slug)).not.toContain("politica-de-cookies");
 
     // Secciones de su web según lo contratado (Essential): tienda y presupuesto; nada sectorial
-    expect(data(await ess.q("b", "public.siteFeatures"))).toEqual({ licensed: true, store: true, checkout: true, quotes: true, coupons: false, hotel: false, spa: false, restaurants: false });
+    expect(data(await ess.q("b", "public.getTheme")).siteFeatures).toEqual({ licensed: true, store: true, checkout: true, quotes: true, coupons: false, hotel: false, spa: false, restaurants: false });
   });
 
   it("páginas iniciales en una empresa anterior: el texto legal de relleno se sustituye por el genérico; lo redactado no se toca", async () => {
