@@ -13,8 +13,9 @@ import {
   MapPin, CreditCard, Calendar, Globe, Tag, Ticket,
   History, FileCheck, Ban, BadgePercent, Activity,
   TrendingUp, ShoppingBag, Receipt, AlertCircle, CheckCircle2,
-  Clock, Eye, ChevronDown, ChevronUp, Euro, MessageCircle, Bot, Mic,
+  Clock, Eye, ChevronDown, ChevronUp, Euro, MessageCircle, Bot, Mic, Download, Upload,
 } from "lucide-react";
+import ClientImportDialog, { downloadTextFile } from "@/components/admin/crm/ClientImportDialog";
 import AdminLayout from "@/components/AdminLayout";
 import { Link } from "wouter";
 import { ClipboardList } from "lucide-react";
@@ -899,6 +900,10 @@ export default function ClientsManager() {
   const canTags = sub.isLicensed && sub.can("crm-tags");
   const canTasks = sub.isLicensed && sub.can("crm-tasks");
   const canWriteTags = useCrmCanWrite("crm-tags");
+  // Importar/exportar CSV: equipo con «Clientes y contactos» activo (exportar también en solo lectura)
+  const canImportClients = useCrmCanWrite("crm-contacts");
+  const [importOpen, setImportOpen] = useState(false);
+  const [exporting, setExporting] = useState(false);
   const [tagFilter, setTagFilter] = useState<number | null>(() => {
     const n = Number(new URLSearchParams(window.location.search).get("etiqueta"));
     return Number.isInteger(n) && n > 0 ? n : null;
@@ -945,6 +950,19 @@ export default function ClientsManager() {
 
   const convertedCount = clientsList?.filter((c) => c.isConverted).length ?? 0;
   const fromLeadCount = clientsList?.filter((c) => c.source === "lead").length ?? 0;
+
+  const exportClients = async () => {
+    setExporting(true);
+    try {
+      const r = await utils.crm.clients.exportCsv.fetch();
+      downloadTextFile(`clientes-${new Date().toISOString().slice(0, 10)}.csv`, r.csv);
+      toast.success(`${r.count} ${r.count === 1 ? "cliente exportado" : "clientes exportados"}`);
+    } catch (e) {
+      toastError(e);
+    } finally {
+      setExporting(false);
+    }
+  };
 
   const deleteClient = trpc.crm.clients.delete.useMutation({
     onSuccess: () => { toast.success("Cliente eliminado"); utils.crm.clients.list.invalidate(); setDeleteClientId(null); },
@@ -1000,12 +1018,22 @@ export default function ClientsManager() {
               <p className="text-xs text-white/60 mt-0.5">Se crean automáticamente al recibir una solicitud, o puedes darlos de alta tú</p>
             </div>
           </div>
-          <Button
-            onClick={() => setEditClient(null)}
-            className="bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white"
-          >
-            <Plus className="w-4 h-4 mr-2" /> Nuevo cliente
-          </Button>
+          <div className="flex flex-wrap items-center gap-2">
+            <Button variant="outline" onClick={exportClients} disabled={exporting} className="border-white/20 text-white">
+              {exporting ? <RefreshCw className="w-4 h-4 mr-2 animate-spin" /> : <Download className="w-4 h-4 mr-2" />} Exportar
+            </Button>
+            {canImportClients && (
+              <Button variant="outline" onClick={() => setImportOpen(true)} className="border-white/20 text-white">
+                <Upload className="w-4 h-4 mr-2" /> Importar
+              </Button>
+            )}
+            <Button
+              onClick={() => setEditClient(null)}
+              className="bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white"
+            >
+              <Plus className="w-4 h-4 mr-2" /> Nuevo cliente
+            </Button>
+          </div>
         </div>
 
         {/* Stats strip */}
@@ -1315,6 +1343,8 @@ export default function ClientsManager() {
           <ClientFormModal client={editClient} onClose={() => setEditClient(undefined)} />
         )}
       </Dialog>
+
+      <ClientImportDialog open={importOpen} onClose={() => setImportOpen(false)} />
 
       {/* Delete Confirm */}
       <Dialog open={deleteClientId !== null} onOpenChange={(o) => !o && setDeleteClientId(null)}>

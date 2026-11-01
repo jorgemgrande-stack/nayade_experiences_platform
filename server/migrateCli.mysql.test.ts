@@ -199,6 +199,8 @@ d("ejecutor de migraciones contra MySQL real", () => {
     await t.pool.query("CREATE TABLE document_counters (id INT PRIMARY KEY, document_type VARCHAR(32) NOT NULL, `year` INT NOT NULL)");
     // 0006 amplía el ENUM `users.role`: la columna debe existir (como en la baseline)
     await t.pool.query("ALTER TABLE users ADD COLUMN `role` enum('user','admin') NOT NULL DEFAULT 'user'");
+    // 0018 amplía `tpv_sales` (clave de cobro y cliente): basta con que exista
+    await t.pool.query("CREATE TABLE tpv_sales (id INT PRIMARY KEY)");
     const args = (cmd: string) => [cmd, "--dir", "db/migrations", "--apply", "--confirm-database", t.db];
     const up = await cli(t.url, args("up"));
     expect(up.status, up.stderr).toBe(0);

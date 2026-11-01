@@ -10,7 +10,7 @@
  * Las lecturas son síncronas sobre cachés por empresa que precarga el borde (ver
  * `installTenantBinding`): `warmConfigCache()` y `warmTenantIdentity()`.
  */
-import { getSystemSettingSync } from "./config";
+import { getSystemSetting, getSystemSettingSync } from "./config";
 import { isMultiTenant } from "./_core/tenant";
 import { publicBaseUrl } from "./_core/productIdentity";
 import { peekTenantIdentity, warmTenantIdentity, type TenantFiscalIdentity } from "./_core/tenantIdentity";
@@ -129,12 +129,48 @@ export function resolveLegalCompany(
 }
 
 /**
+ * Ajustes que guardan «Datos de la empresa» y el asistente de alta (`system_settings`), equivalentes a las claves
+ * heredadas `legalCompany*` de `site_settings`.
+ */
+export const OWN_LEGAL_SETTING_KEYS: Readonly<Record<string, string>> = {
+  legalCompanyName: "site_legal_name",
+  legalCompanyCif: "brand_nif",
+  legalCompanyAddress: "brand_address",
+  legalCompanyCity: "site_legal_city",
+  legalCompanyZip: "site_legal_zip",
+  legalCompanyProvince: "site_legal_province",
+  legalCompanyEmail: "site_legal_email",
+  legalCompanyPhone: "site_legal_phone",
+  legalCompanyIban: "site_legal_iban",
+};
+
+/**
+ * Fuente única de una pyme (multi): lo que guardó en «Datos de la empresa» o en el asistente manda; las claves
+ * heredadas `legalCompany*` solo rellenan lo que esté vacío. Antes era al revés y un valor antiguo ganaba siempre.
+ */
+export function preferOwnLegalSettings(legacy: Record<string, string>, own: Record<string, string>): Record<string, string> {
+  const out = { ...legacy };
+  for (const k of Object.keys(OWN_LEGAL_SETTING_KEYS)) {
+    const v = (own[k] ?? "").trim();
+    if (v) out[k] = v;
+  }
+  return out;
+}
+
+/** Ajustes propios (`system_settings`) con las claves `legalCompany*`. */
+export async function readOwnLegalSettings(): Promise<Record<string, string>> {
+  const own: Record<string, string> = {};
+  for (const [k, sys] of Object.entries(OWN_LEGAL_SETTING_KEYS)) own[k] = await getSystemSetting(sys, "");
+  return own;
+}
+
+/**
  * Emisor de liquidaciones y lotes de facturación (multi): entidad fiscal del registro y contacto de
- * los ajustes de la empresa, con el domicilio en una línea.
+ * los ajustes de la empresa, con el domicilio en una línea. Se generan y guardan al pedirlos: mandan los ajustes propios.
  */
 export async function tenantIssuerData(s: Record<string, string>): Promise<{ name: string; cif: string; address: string; email: string; phone: string }> {
   await warmTenantIdentity();
-  const l = resolveLegalCompany(s, { multi: true, fiscal: tenantFiscalIdentity() });
+  const l = resolveLegalCompany(preferOwnLegalSettings(s, await readOwnLegalSettings()), { multi: true, fiscal: tenantFiscalIdentity() });
   return { name: l.name, cif: l.cif, address: formatLegalAddress(l), email: l.email, phone: l.phone };
 }
 

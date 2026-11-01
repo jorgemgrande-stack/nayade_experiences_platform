@@ -44,6 +44,7 @@ import { eq, and, or, like, desc, sql, gte, lte, inArray } from "drizzle-orm";
 import { TRPCError } from "@trpc/server";
 import { generateDocumentNumber } from "../documentNumbers";
 import { currentTpvScope } from "../tpvCatalogScope";
+import { IDEMPOTENCY_KEY_RE, withSaleKeyLock, findSaleByIdempotencyKey, resolveExistingSale, isIdempotencyKeyConflict } from "../tpvSaleIdempotency";
 import { computeSessionPaymentTotals, receivedSaleCondition } from "../tpvSessionTotals";
 
 const _pool = legacyPool();
@@ -64,6 +65,14 @@ async function generateTicketNumber(userId?: string): Promise<string> {
 }
 async function generateReservationRef(userId?: string): Promise<string> {
   return generateDocumentNumber("reserva", "tpv:createSale", userId ?? "system");
+}
+
+/** Venta con sus líneas y cobros (respuesta de createSale, también al repetir un cobro ya grabado). */
+async function loadSaleResult(saleId: number) {
+  const [sale] = await db.select().from(tpvSales).where(eq(tpvSales.id, saleId));
+  const items = await db.select().from(tpvSaleItems).where(eq(tpvSaleItems.saleId, saleId));
+  const payments = await db.select().from(tpvSalePayments).where(eq(tpvSalePayments.saleId, saleId));
+  return { sale, items, payments };
 }
 
 function generateTransactionNumber(): string {
@@ -828,6 +837,10 @@ export const tpvRouter = router({
         discountCodeId: z.number().optional(),
         notes: z.string().optional(),
         serviceDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(), // YYYY-MM-DD fecha de la actividad
+        // Clave del intento de cobro (la genera el TPV): un reintento con la misma clave devuelve la venta ya grabada
+        idempotencyKey: z.string().regex(IDEMPOTENCY_KEY_RE).optional(),
+        // Cliente del CRM elegido por el cajero (tpv.searchClients)
+        clientId: z.number().int().positive().optional(),
         items: z.array(
           z.object({
             productType: z.enum(["experience", "pack", "spa", "hotel", "restaurant", "extra", "legoPack"]),
@@ -919,24 +932,37 @@ export const tpvRouter = router({
       const fiscalSummary = hasReav && hasIva ? "mixed" : hasReav ? "reav_only" : "iva_only";
       const effectiveTaxRatePct = totalTaxBase > 0 ? (totalTaxAmount / totalTaxBase * 100) : 21;
 
+      // Cliente del CRM elegido por el cajero: tiene que existir en esta empresa
+      let linkedClientId: number | null = null;
+      if (input.clientId) {
+        const [chosen] = await db.select({ id: clients.id }).from(clients).where(eq(clients.id, input.clientId)).limit(1);
+        if (!chosen) throw new TRPCError({ code: "NOT_FOUND", message: "El cliente elegido ya no existe. Búscalo de nuevo o cobra sin cliente." });
+        linkedClientId = chosen.id;
+      }
+
+      const sellerName = (ctx as any).user?.name ?? null;
+      const sellerUserId = (ctx as any).user?.id ?? null;
+      const mainItemForDate = input.items[0]; // usado para serviceDate fallback
+      const idempotencyKey = input.idempotencyKey ?? null;
+
+      // -- 3. Numerar e insertar la venta con datos fiscales ----------------------
+      // Se inserta 'pending' y pasa a 'paid' DENTRO de la transacción del núcleo (pasos 4–7). Si el núcleo falla, la
+      // venta queda anulada con motivo (ticket documentado, sin hueco de numeración) y el cajero recibe un error.
+      const claimSale = async () => {
       // Solo se cobra en una sesión abierta (antes de numerar: un rechazo no deja hueco en la numeración)
       const [saleSession] = await db.select({ status: cashSessions.status }).from(cashSessions).where(eq(cashSessions.id, input.sessionId));
       if (!saleSession) throw new TRPCError({ code: "NOT_FOUND", message: "Sesión de caja no encontrada" });
       if (saleSession.status !== "open") throw new TRPCError({ code: "CONFLICT", message: "La caja está cerrada. Ábrela de nuevo para cobrar." });
 
       const ticketNumber = await generateTicketNumber(String((ctx as any).user?.id ?? "system"));
-      const sellerName = (ctx as any).user?.name ?? null;
-      const sellerUserId = (ctx as any).user?.id ?? null;
       // Numeración y consultas se resuelven antes de la transacción: dentro solo hay escrituras
       const preReservationNumber = input.items[0]
         ? await generateReservationRef(String((ctx as any).user?.id ?? "system"))
         : null;
 
-      // -- 3. Insertar venta con datos fiscales ---------------------------------
-      // Se inserta 'pending' y pasa a 'paid' DENTRO de la transacción del núcleo (pasos 4–7). Si el núcleo falla, la
-      // venta queda anulada con motivo (ticket documentado, sin hueco de numeración) y el cajero recibe un error.
-      const mainItemForDate = input.items[0]; // usado para serviceDate fallback
-      const [saleResult] = await db.insert(tpvSales).values({
+      let saleResult: unknown;
+      try {
+      [saleResult] = await db.insert(tpvSales).values({
         ticketNumber,
         sessionId: input.sessionId,
         customerName: input.customerName,
@@ -961,8 +987,36 @@ export const tpvRouter = router({
         saleChannel:    "tpv",
         sellerUserId,
         sellerName,
+        idempotencyKey,
+        clientId: linkedClientId,
       } as any);
-      const saleId = (saleResult as any).insertId as number;
+      } catch (e) {
+        // Última barrera (índice único) si dos intentos con la misma clave llegaran sin bloqueo
+        if (isIdempotencyKeyConflict(e)) {
+          throw new TRPCError({ code: "CONFLICT", message: "Este cobro ya se ha registrado. Revisa las ventas de la caja antes de repetirlo." });
+        }
+        throw e;
+      }
+      return { saleId: (saleResult as any).insertId as number, ticketNumber, preReservationNumber };
+      };
+
+      let claimed: Awaited<ReturnType<typeof claimSale>>;
+      if (idempotencyKey) {
+        // Intentos con la misma clave en serie: el segundo ve la venta del primero antes de numerar nada
+        const outcome = await withSaleKeyLock(idempotencyKey, async () => {
+          const existing = await findSaleByIdempotencyKey(idempotencyKey);
+          const replayId = existing ? await resolveExistingSale(idempotencyKey, existing, input.sessionId) : null;
+          return replayId != null ? { replayId, claimed: null } : { replayId: null, claimed: await claimSale() };
+        });
+        if (outcome.replayId != null) {
+          const prev = await loadSaleResult(outcome.replayId);
+          return { ...prev, reservationId: prev.sale?.reservationId ?? null, reavExpedientId: undefined as number | undefined, reavExpedientNumber: undefined as string | undefined, replayed: true };
+        }
+        claimed = outcome.claimed!;
+      } else {
+        claimed = await claimSale();
+      }
+      const { saleId, ticketNumber, preReservationNumber } = claimed;
 
       // -- 4–7. NÚCLEO ATÓMICO ---------------------------------------------------
       // Líneas, cobros, reserva y asiento contable se graban en UNA transacción junto con el estado 'paid': o queda
@@ -1053,7 +1107,8 @@ export const tpvRouter = router({
           const productSummary = input.items.length > 1
             ? `${mainItem.productName} (+${input.items.length - 1} más)`
             : mainItem.productName;
-          const [resResult] = await db.insert(reservations).values({
+          // Dentro de la transacción: si falla un paso posterior, la reserva también se deshace
+          const [resResult] = await tx.insert(reservations).values({
             productId: mainItem.productId,
             productName: productSummary,
             bookingDate: mainItem.eventDate ?? new Date().toISOString().slice(0, 10),
@@ -1067,6 +1122,7 @@ export const tpvRouter = router({
             customerName: input.customerName || "Cliente TPV",
             customerEmail: input.customerEmail || null,
             customerPhone: input.customerPhone || null,
+            clientId: linkedClientId,
             merchantOrder,
             reservationNumber,
             notes: [
@@ -1138,6 +1194,8 @@ export const tpvRouter = router({
         try {
           await db.update(tpvSales).set({
             status: "cancelled",
+            // La clave se libera: repetir el cobro con ella crea una venta nueva
+            idempotencyKey: null,
             notes: [input.notes, `[VENTA NO REGISTRADA] ${ticketNumber}: error al grabarla; se deshizo por completo (sin líneas, cobros, reservas ni asientos).`].filter(Boolean).join(" · "),
           } as any).where(and(eq(tpvSales.id, saleId), eq(tpvSales.status, "pending")));
         } catch (markErr) {
@@ -1162,6 +1220,18 @@ export const tpvRouter = router({
           });
         } catch (e) {
           console.error("[TPV] Error vinculando el cliente CRM a la venta:", e);
+        }
+      }
+      // Sin cliente elegido, el del CRM con ese correo (recién creado o existente) queda enlazado a la venta
+      if (!linkedClientId && input.customerEmail) {
+        try {
+          const [byEmail] = await db.select({ id: clients.id }).from(clients).where(eq(clients.email, input.customerEmail)).limit(1);
+          if (byEmail) {
+            await db.update(tpvSales).set({ clientId: byEmail.id } as any).where(eq(tpvSales.id, saleId));
+            if (reservationId) await db.update(reservations).set({ clientId: byEmail.id } as any).where(eq(reservations.id, reservationId));
+          }
+        } catch (e) {
+          console.error("[TPV] Error enlazando el cliente CRM a la venta:", e);
         }
       }
 
@@ -1493,10 +1563,7 @@ export const tpvRouter = router({
       }
 
       // -- 10. Devolver venta completa -----------------------------------------------------------
-      const [sale] = await db.select().from(tpvSales).where(eq(tpvSales.id, saleId));
-      const items = await db.select().from(tpvSaleItems).where(eq(tpvSaleItems.saleId, saleId));
-      const payments = await db.select().from(tpvSalePayments).where(eq(tpvSalePayments.saleId, saleId));
-      return { sale, items, payments, reservationId, reavExpedientId, reavExpedientNumber };
+      return { ...(await loadSaleResult(saleId)), reservationId, reavExpedientId, reavExpedientNumber, replayed: false };
     }),
 
   getSale: tpvAccessProc
