@@ -9,8 +9,12 @@ import type { NextFunction, Request, RequestHandler, Response } from "express";
 import type { ModuleAccess } from "./entitlements";
 import { opsLog } from "../ops/log";
 import { recordFailure } from "../ops/failureAlerts";
+import { extensionModuleRoutes } from "./panelNavigation";
 
-/** router tRPC → módulo que lo licencia. Lo no listado pertenece al Core. */
+/**
+ * router tRPC → módulo que lo licencia. Lo no listado pertenece al Core. Se completa con los namespaces que
+ * declaran los manifiestos (`panel.api`) de los módulos con licencia propia.
+ */
 export const TRPC_ROUTER_MODULES: Record<string, string> = {
   hotel: "hotel",
   spa: "spa",
@@ -22,14 +26,14 @@ export function procedureNames(path: string): string[] {
   return p ? p.split(",").map((x) => x.trim()).filter(Boolean) : [];
 }
 
-export function moduleRouteGuard(
-  getAccess: () => ModuleAccess,
-  map: Record<string, string> = TRPC_ROUTER_MODULES,
-): RequestHandler {
+export function moduleRouteGuard(getAccess: () => ModuleAccess, map?: Record<string, string>): RequestHandler {
+  // Sin mapa explícito: el fijo más lo que declaran los manifiestos (se calcula en la primera petición, con todo registrado)
+  let routes: Record<string, string> | null = map ?? null;
   return async (req: Request, res: Response, next: NextFunction) => {
+    routes ??= { ...extensionModuleRoutes(), ...TRPC_ROUTER_MODULES };
     const needed = new Set<string>();
     for (const proc of procedureNames(req.url ?? "")) {
-      const mod = map[proc.split(".")[0]];
+      const mod = routes[proc.split(".")[0]];
       if (mod) needed.add(mod);
     }
     if (needed.size === 0) return next();

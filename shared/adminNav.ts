@@ -8,13 +8,25 @@
  *    entrada declara las capacidades que la habilitan (basta una) y solo aparece si alguna está
  *    activa o en solo lectura. Lo no contratado no aparece como activo.
  *
+ * Las extensiones (módulos Net, extras Connect…) no están aquí: declaran sus entradas en su manifiesto
+ * (shared/panelExtensions.ts) y el servidor devuelve solo las contratadas (`panel.navigation`), que
+ * `resolveNav` fusiona con TASK_NAV.
+ *
  * Esto es solo presentación: la autorización real se hace en el servidor en cada operación.
  */
 
-export type NavIcon =
-  | "dashboard" | "image" | "package" | "file" | "building" | "target" | "calendar" | "briefcase" | "chart"
-  | "receipt" | "monitor" | "truck" | "bed" | "sparkles" | "utensils" | "tag" | "users" | "settings"
-  | "globe" | "creditCard" | "shoppingCart" | "rocket" | "message" | "bot" | "mail" | "help";
+import {
+  CORE_EXTENSION_ROUTES,
+  DEFAULT_EXTENSION_SECTION,
+  type NavIcon,
+  type PanelNavEntry,
+  type PanelNavItem,
+  type PanelNavLeaf,
+  type PanelRoute,
+  type PanelTargets,
+} from "./panelExtensions";
+
+export type { NavIcon };
 
 export interface NavLeaf {
   label: string;
@@ -320,7 +332,6 @@ export const TASK_NAV: NavSection[] = [
     id: "contratados",
     label: "Módulos contratados",
     items: [
-      { label: "Personal", href: "/admin/personal", key: "x-personal", icon: "briefcase", roles: ADMIN, capabilities: ["people-hr"] },
       { label: "Impuestos y gestoría", href: "/admin/gestoria", key: "x-gestoria", icon: "receipt", roles: ADMIN, capabilities: ["tax-filings"] },
       {
         label: "Bancos y TPV", href: "/admin/contabilidad/movimientos-bancarios", key: "x-bancos", icon: "creditCard", roles: ADMIN, capabilities: ["bank-import-pos"],
@@ -341,8 +352,6 @@ export const TASK_NAV: NavSection[] = [
           { label: "Liquidaciones", href: "/admin/settlements", capabilities: ["supplier-settlements"] },
         ],
       },
-      { label: "Hotel", href: "/admin/hotel", key: "x-hotel", icon: "bed", roles: ADMIN, capabilities: ["hotel-net"], moduleKey: "hotel" },
-      { label: "Restaurantes", href: "/admin/restaurantes", key: "x-restaurantes", icon: "utensils", roles: ["admin", "adminrest"], capabilities: ["restaurant-net"], moduleKey: "restaurants" },
       { label: "Viajes (REAV)", href: "/admin/fiscal/reav", key: "x-reav", icon: "receipt", roles: ADMIN, capabilities: ["travel-net"] },
     ],
   },
@@ -401,8 +410,109 @@ function capsState(caps: string[] | undefined, ctx: NavContext): "active" | "rea
 export const READONLY_ROLE = "readonly";
 const navRoleOf = (role: string) => (role === READONLY_ROLE ? "agente" : role);
 
-/** Aplica rol, flags, módulos y licencias. Un grupo sin entradas visibles desaparece. */
-export function resolveNav(sections: NavSection[], ctx: NavContext): ResolvedSection[] {
+// ── Aportaciones de extensiones ───────────────────────────────────────────────
+
+const pathOf = (href: string) => href.split("?")[0].split("#")[0].replace(/\/+$/, "") || "/";
+const itemKey = (i: NavLeaf) => i.key ?? i.href;
+const leafFromPanel = (l: PanelNavLeaf): NavLeaf => ({ label: l.label, href: l.href, key: l.key, capabilities: l.capabilities, roles: l.roles, ...(l.icon ? { icon: l.icon } : {}) });
+const itemFromPanel = (i: PanelNavItem): NavItem => ({
+  label: i.label,
+  href: i.href,
+  key: i.key,
+  icon: i.icon,
+  roles: i.roles,
+  capabilities: i.capabilities,
+  ...(i.children?.length ? { children: i.children.map(leafFromPanel) } : {}),
+});
+
+/** Sección delante de la que se colocan las secciones propias de las extensiones. */
+const EXTENSION_SECTIONS_BEFORE = "organizacion";
+
+/**
+ * Fusiona las aportaciones de extensiones (respuesta de `panel.navigation`) con un menú:
+ *  - `item`: en su sección (o «Módulos contratados» si no existe), por `order` (las del Core cuentan 10, 20, 30…);
+ *  - `tab`: subentrada de la entrada `parent` (si no tenía submenú, la propia entrada pasa a ser la primera);
+ *  - `section`: sección propia, delante de «Organización», por `order`.
+ * Una clave repetida o un destino desconocido se descartan. No modifica `sections`.
+ */
+export function mergeExtensions(sections: readonly NavSection[], entries: readonly PanelNavEntry[] = []): NavSection[] {
+  const out: NavSection[] = sections.map((s) => ({ ...s, items: s.items.map((i) => ({ ...i, ...(i.children ? { children: i.children.slice() } : {}) })) }));
+  if (!entries.length) return out;
+  const keys = new Set<string>();
+  for (const s of out) {
+    for (const i of s.items) {
+      keys.add(itemKey(i));
+      for (const ch of i.children ?? []) keys.add(itemKey(ch));
+    }
+  }
+  const fresh = (k: string) => {
+    if (keys.has(k)) return false;
+    keys.add(k);
+    return true;
+  };
+  const byOrder = <T extends { order: number }>(xs: T[]) => xs.slice().sort((a, b) => a.order - b.order);
+
+  // Entradas en secciones existentes
+  const extra = new Map<string, Array<{ order: number; item: NavItem }>>();
+  for (const e of byOrder(entries.filter((x): x is Extract<PanelNavEntry, { kind: "item" }> => x.kind === "item"))) {
+    const target = out.find((s) => s.id === e.sectionId) ?? out.find((s) => s.id === DEFAULT_EXTENSION_SECTION);
+    if (!target || !fresh(e.item.key)) continue;
+    const list = extra.get(target.id) ?? [];
+    list.push({ order: e.order, item: itemFromPanel(e.item) });
+    extra.set(target.id, list);
+  }
+  for (const s of out) {
+    const add = extra.get(s.id);
+    if (!add) continue;
+    const merged = [...s.items.map((item, i) => ({ order: (i + 1) * 10, item, core: 0 })), ...add.map((x) => ({ ...x, core: 1 }))];
+    // A igual orden, primero la del Core
+    s.items = merged.sort((a, b) => a.order - b.order || a.core - b.core).map((x) => x.item);
+  }
+
+  // Pestañas y apartados de ajustes
+  for (const e of byOrder(entries.filter((x): x is Extract<PanelNavEntry, { kind: "tab" }> => x.kind === "tab"))) {
+    const parent = out.flatMap((s) => s.items).find((i) => itemKey(i) === e.parent);
+    if (!parent || !fresh(e.leaf.key)) continue;
+    if (!parent.children) parent.children = [{ label: parent.label, href: parent.href, key: `${itemKey(parent)}-inicio`, capabilities: parent.capabilities }];
+    parent.children.push(leafFromPanel(e.leaf));
+  }
+
+  // Secciones propias
+  const own: NavSection[] = [];
+  const sectionEntries = entries.filter((x): x is Extract<PanelNavEntry, { kind: "section" }> => x.kind === "section");
+  for (const e of sectionEntries.slice().sort((a, b) => a.section.order - b.section.order)) {
+    if (out.some((s) => s.id === e.section.id) || own.some((s) => s.id === e.section.id)) continue;
+    const items = e.items.filter((i) => fresh(i.key)).map(itemFromPanel);
+    if (items.length) own.push({ id: e.section.id, label: e.section.label, items });
+  }
+  if (own.length) {
+    const at = out.findIndex((s) => s.id === EXTENSION_SECTIONS_BEFORE);
+    out.splice(at < 0 ? out.length : at, 0, ...own);
+  }
+  return out;
+}
+
+/** Destinos válidos del menú por tareas para las aportaciones de extensiones (validación de manifiestos). */
+export function panelTargets(): PanelTargets {
+  const sections = new Set(TASK_NAV.map((s) => s.id));
+  const itemKeys = new Set<string>();
+  const corePaths = new Set<string>();
+  for (const s of TASK_NAV) {
+    for (const i of s.items) {
+      itemKeys.add(itemKey(i));
+      corePaths.add(pathOf(i.href));
+      for (const ch of i.children ?? []) corePaths.add(pathOf(ch.href));
+    }
+  }
+  return { sections, itemKeys, corePaths };
+}
+
+/**
+ * Aplica rol, flags, módulos y licencias. Un grupo sin entradas visibles desaparece. `extensions`: aportaciones
+ * contratadas de las extensiones (`panel.navigation`), que se fusionan con `sections` antes de filtrar.
+ */
+export function resolveNav(sections: NavSection[], ctx: NavContext, extensions?: readonly PanelNavEntry[]): ResolvedSection[] {
+  if (extensions?.length) sections = mergeExtensions(sections, extensions);
   const out: ResolvedSection[] = [];
   const role = navRoleOf(ctx.role);
   const forceReadOnly = ctx.role === READONLY_ROLE;
@@ -500,8 +610,6 @@ export const EXTRA_ROUTE_CAPABILITIES: ReadonlyArray<{ path: string; capabilitie
   { path: "/admin/onboarding", capabilities: ["admin-panel"] },
 ];
 
-const pathOf = (href: string) => href.split("?")[0].split("#")[0].replace(/\/+$/, "") || "/";
-
 /** Ruta del panel → capacidades que la licencian (unión si varias entradas comparten ruta). */
 function buildRouteCapabilities(): Map<string, Set<string>> {
   const map = new Map<string, Set<string>>();
@@ -519,19 +627,37 @@ function buildRouteCapabilities(): Map<string, Set<string>> {
     }
   }
   for (const r of EXTRA_ROUTE_CAPABILITIES) add(r.path, r.capabilities);
+  // Extensiones del Core: se bloquean aunque el servidor aún no haya respondido
+  for (const r of CORE_EXTENSION_ROUTES) add(r.path, r.capabilities);
   return map;
 }
 const ROUTE_CAPABILITIES = buildRouteCapabilities();
 
+/** Tabla de rutas con las de extensiones que da el servidor (`panel.navigation.routes`). */
+function routeTable(extra?: readonly PanelRoute[]): Map<string, Set<string>> {
+  if (!extra?.length) return ROUTE_CAPABILITIES;
+  const map = new Map(Array.from(ROUTE_CAPABILITIES, ([k, v]) => [k, new Set(v)] as [string, Set<string>]));
+  for (const r of extra) {
+    if (!r.capabilities?.length) continue;
+    const p = pathOf(r.path);
+    const set = map.get(p) ?? new Set<string>();
+    for (const c of r.capabilities) set.add(c);
+    map.set(p, set);
+  }
+  return map;
+}
+
 /**
  * Capacidades que licencian una ruta del panel: la entrada más específica que la contiene
  * (`/admin/personal/empleados/7` → la de `/admin/personal`). null = la ruta no depende de
- * ninguna capacidad (inicio, suscripción, ayuda, mi cuenta…).
+ * ninguna capacidad (inicio, suscripción, ayuda, mi cuenta…). `extensionRoutes`: rutas de
+ * extensiones que da el servidor (las del Core ya están en la tabla).
  */
-export function routeCapabilities(pathname: string): string[] | null {
+export function routeCapabilities(pathname: string, extensionRoutes?: readonly PanelRoute[]): string[] | null {
+  const table = routeTable(extensionRoutes);
   let p = pathOf(pathname);
   while (p.startsWith("/admin/")) {
-    const caps = ROUTE_CAPABILITIES.get(p);
+    const caps = table.get(p);
     if (caps) return Array.from(caps);
     p = p.slice(0, p.lastIndexOf("/"));
   }
@@ -543,8 +669,12 @@ export function routeCapabilities(pathname: string): string[] | null {
  * "read_only" (se ve sin poder modificar) o "not_included" (no contratada: se muestra
  * «No incluido en tu plan»). Solo presentación: el servidor sigue autorizando cada operación.
  */
-export function routeAccess(pathname: string, capabilityState: (id: string) => "active" | "read_only" | null): "allowed" | "read_only" | "not_included" {
-  const caps = routeCapabilities(pathname);
+export function routeAccess(
+  pathname: string,
+  capabilityState: (id: string) => "active" | "read_only" | null,
+  extensionRoutes?: readonly PanelRoute[],
+): "allowed" | "read_only" | "not_included" {
+  const caps = routeCapabilities(pathname, extensionRoutes);
   if (!caps) return "allowed";
   let readOnly = false;
   for (const c of caps) {

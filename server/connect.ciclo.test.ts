@@ -2,7 +2,8 @@
  * Elephant Connect de punta a punta en el Core, con un doble del plano de control (compra idempotente por clave,
  * cobro pendiente y licencias aplicadas por el «webhook») y las licencias reales en memoria:
  *
- *   contratar → pedido en espera → licencia concedida → purchaseStatus = applied → el catálogo y el menú la muestran
+ *   contratar → pedido en espera → licencia concedida → purchaseStatus = applied → el catálogo y el menú (entrada
+ *   declarada en el manifiesto de la extensión, servida por `panel.navigation`) la muestran
  *   sin cerrar sesión; repetir con la misma clave no duplica; suspender → desaparece del menú y queda «con incidencia».
  *
  * Además: solo la administración compra, cada empresa ve SOLO sus licencias y sus pedidos, y el estado prudente
@@ -58,14 +59,15 @@ vi.mock("./supportContact", () => ({ resolveSupportContact: async () => ({ email
 import { router } from "./_core/trpc";
 import { subscriptionRouter } from "./routers/subscriptionRouter";
 import { connectRouter } from "./routers/connectRouter";
+import { panelRouter } from "./routers/panelRouter";
 import { configureCapabilityAccess, _resetCapabilityAccessForTests } from "./_core/capabilities/access";
 import { MemoryCapabilityStore } from "./_core/capabilities/store";
 import { capabilitiesOfTier } from "./catalog/capabilities";
 import { runWithTenant } from "./_core/tenant";
-import { capabilityStateFrom, resolveNav, TASK_NAV } from "../shared/adminNav";
+import { capabilityStateFrom, resolveNav, routeAccess, TASK_NAV } from "../shared/adminNav";
 import { beginAttempt, memoryAttemptStorage, openOrders, recordResult } from "../shared/connectPurchase";
 
-const app = router({ subscription: subscriptionRouter, connect: connectRouter });
+const app = router({ subscription: subscriptionRouter, connect: connectRouter, panel: panelRouter });
 const ctxFor = (role: string, id = 1): TrpcContext => ({
   user: { id, openId: "o", email: "ana@empresa.example", name: "Ana", loginMethod: "local", role, createdAt: new Date(), updatedAt: new Date(), lastSignedIn: new Date() } as NonNullable<TrpcContext["user"]>,
   req: { protocol: "https", headers: {} } as TrpcContext["req"],
@@ -78,10 +80,17 @@ const store = new MemoryCapabilityStore();
 const env = { ...process.env };
 
 const as = <T>(tenant: string, fn: () => Promise<T>) => runWithTenant(tenant, fn);
-const menuHrefs = async (tenant: string) => {
-  const ov = await as(tenant, () => app.createCaller(ctxFor("admin")).subscription.overview());
-  const nav = resolveNav(TASK_NAV, { role: "admin", isFlagVisible: () => true, isModuleVisible: () => true, capabilityState: capabilityStateFrom(ov) });
-  return nav.flatMap((s) => s.items.map((i) => i.href));
+/** Menú como lo pinta el panel: TASK_NAV + aportaciones de extensiones de `panel.navigation` (licencias de la sesión). */
+const menu = async (tenant: string) => {
+  const caller = app.createCaller(ctxFor("admin"));
+  const [ov, nav] = await as(tenant, () => Promise.all([caller.subscription.overview(), caller.panel.navigation()]));
+  const state = capabilityStateFrom(ov);
+  return { nav, state, sections: resolveNav(TASK_NAV, { role: "admin", isFlagVisible: () => true, isModuleVisible: () => true, capabilityState: state }, nav.entries) };
+};
+const menuHrefs = async (tenant: string) => (await menu(tenant)).sections.flatMap((s) => s.items.map((i) => i.href));
+const routeOf = async (tenant: string, path: string) => {
+  const m = await menu(tenant);
+  return routeAccess(path, m.state, m.nav.routes);
 };
 const stateOf = async (tenant: string, key: string, role = "admin") => (await as(tenant, () => app.createCaller(ctxFor(role)).connect.catalog())).items.find((i) => i.key === key)!;
 
@@ -146,10 +155,18 @@ describe("Elephant Connect: ciclo completo de contratación", () => {
     const after = await stateOf(A, "connect-people");
     expect([after.state, after.purchasable]).toEqual(["active", false]);
     expect(await menuHrefs(A)).toContain("/admin/personal");
+    // La entrada viene del manifiesto de la extensión (Elephant People), con sus submenús, y la ruta se abre
+    const { nav, sections } = await menu(A);
+    expect(nav.entries.map((e) => e.moduleId)).toEqual(["people"]);
+    const people = sections.find((s) => s.id === "contratados")!.items.find((i) => i.key === "x-people-personal")!;
+    expect(people.children!.map((c) => c.href)).toContain("/admin/personal/nominas");
+    expect(await routeOf(A, "/admin/personal/empleados/7")).toBe("allowed");
 
     // Aislamiento: la otra empresa ni lo tiene ni ve el pedido
     expect((await stateOf(B, "connect-people")).state).toBe("available");
     expect(await menuHrefs(B)).not.toContain("/admin/personal");
+    expect((await menu(B)).nav.entries).toEqual([]);
+    expect(await routeOf(B, "/admin/personal/empleados/7")).toBe("not_included");
     await expect(as(B, () => app.createCaller(ctxFor("admin")).subscription.purchaseStatus({ orderId: r1.orderId }))).rejects.toMatchObject({ code: "NOT_FOUND" });
   });
 
@@ -157,6 +174,9 @@ describe("Elephant Connect: ciclo completo de contratación", () => {
     await store.apply(A, [{ capabilityId: "people-hr", siteId: "", status: "suspended", validUntil: null, source: "operator" }], { actor: "operador", reason: "impago", now: clock });
     clock += 31_000; // la caché de licencias se renueva sola
     expect(await menuHrefs(A)).not.toContain("/admin/personal");
+    // Ruta bloqueada (sin borrar datos: solo cambia la licencia)
+    expect((await menu(A)).nav.entries).toEqual([]);
+    expect(await routeOf(A, "/admin/personal/nominas")).toBe("not_included");
     const s = await stateOf(A, "connect-people");
     expect([s.state, s.purchasable]).toEqual(["incident", false]);
   });

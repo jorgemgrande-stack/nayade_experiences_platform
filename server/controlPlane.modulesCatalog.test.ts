@@ -28,7 +28,7 @@ const MANIFESTS: ModuleManifest[] = [
 
 describe("contrato de módulos 1.1", () => {
   it("es compatible hacia atrás: un manifiesto 1.0 sin campos nuevos sigue siendo válido", () => {
-    expect(MODULE_CONTRACT_VERSION).toBe("1.1.0");
+    expect(MODULE_CONTRACT_VERSION).toBe("1.2.0");
     expect(() => validateManifest({ id: "legacy", name: "Legacy", version: "1.0.0", kind: "addon", coreRange: "^1.0.0" })).not.toThrow();
     for (const m of BUILTIN_MODULES) expect(() => validateManifest(m)).not.toThrow();
   });
@@ -48,7 +48,7 @@ describe("catálogo", () => {
       activeCounts: new Map([["hotel", 3]]),
       tenantCount: 5,
     });
-    expect(c.contractVersion).toBe("1.1.0");
+    expect(c.contractVersion).toBe("1.2.0");
     expect(c.modules.slice(0, 3).map((m) => m.kind)).toEqual(["core", "core", "core"]);
     const by = Object.fromEntries(c.modules.map((m) => [m.id, m]));
     expect(by.commerce.dependents).toEqual(["hotel", "restaurants", "ski", "spa"]);
@@ -168,7 +168,7 @@ describe("API del catálogo", () => {
     expect(by.hotel.activeTenants).toBe(1);
     expect(by.spa.activeTenants).toBe(0); // suspendido no cuenta
     expect(by.cms.activeTenants).toBe(2);
-    expect(r.json).toMatchObject({ contractVersion: "1.1.0", coreVersion: "1.0.0", commercialCatalog: false });
+    expect(r.json).toMatchObject({ contractVersion: "1.2.0", coreVersion: "1.0.0", commercialCatalog: false });
   });
 
   it("estado de módulos de un tenant", async () => {

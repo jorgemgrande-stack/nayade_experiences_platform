@@ -216,7 +216,7 @@ export default function AdminLayout({ children, title }: AdminLayoutProps) {
           isFlagVisible,
           isModuleVisible,
           capabilityState: subscription.mode === "tasks" ? subscription.capabilityState : () => "active",
-        });
+        }, subscription.extensions);
   const isTaskNav = subscription.mode === "tasks";
   // Ayuda contextual de la pantalla actual (contenido en shared/helpCenter.ts)
   const contextHelp = isTaskNav ? helpForLocation(location, currentSearch) : undefined;

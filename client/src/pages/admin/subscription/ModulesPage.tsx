@@ -112,6 +112,7 @@ function PurchaseDialog({ module, current, onClose }: { module: PanelModule; cur
         toast.success(quantity ? "Ampliación aplicada" : `${module.name} ya está activo`);
         void utils.subscription.catalog.invalidate();
         void utils.subscription.overview.invalidate();
+        void utils.panel.navigation.invalidate();
       }
     },
     onError: (e) => toast.error(e.message),
