@@ -8,6 +8,8 @@ import { seedElephantSource } from "./catalog/seed";
 import { WebAdminService, WebError, slideProducts } from "./web/service";
 import { MemoryWebStore } from "./web/store";
 import { BUILTIN_MODULES } from "./_core/modules/builtin";
+import { panelCatalog } from "./commerce/panelCatalog";
+import { quoteCatalogFromSite } from "./catalog/snapshot";
 import { EMPTY_MARKETPLACE, panelMarketplace, planFromOrders } from "./commerce/panelMarketplace";
 
 const DAY = 24 * 3600 * 1000;
@@ -151,5 +153,20 @@ describe("carrusel para el panel de una empresa", () => {
     const o = (id: number, state: string, plan: string, tenantId = "t9-demo") => ({ id, state, tenantId, request: { plan, interval: "month", items: [] } }) as never;
     expect(planFromOrders([o(1, "superseded", "essential"), o(2, "active", "business"), o(3, "active", "enterprise", "otra")], "t9-demo")).toBe("business");
     expect(planFromOrders([o(1, "cancelled", "essential")], "t9-demo")).toBeNull();
+  });
+});
+
+describe("catálogo del panel con carrusel", () => {
+  it("el catálogo de la empresa lleva sus campañas filtradas y los ajustes publicados", async () => {
+    await create("todos");
+    await create("enterprise", { audience: { plans: ["enterprise"] } });
+    for (const k of ["todos", "enterprise"]) await publish(k);
+    const e = await web.create({ kind: "marketplace", key: "settings", draft: { autoplayMs: 9000, brands: [{ key: "net", title: "Elephant Net" }] } }, "operador:test");
+    await web.publish("marketplace", "settings", e.draftVersion, "operador:test");
+    const site = await web.site("published");
+    const cat = panelCatalog(quoteCatalogFromSite(site).products, { version: "v", purchasesEnabled: false, site, marketplace: { doc: await web.marketplace(), plan: "business" } });
+    expect(cat.marketplace.slides.map((s) => s.id)).toEqual(["todos"]);
+    expect(cat.marketplace.settings).toEqual({ autoplayMs: 9000 });
+    expect(cat.marketplace.brands).toEqual([{ key: "net", title: "Elephant Net", subtitle: "" }]);
   });
 });
