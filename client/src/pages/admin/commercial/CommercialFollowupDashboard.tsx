@@ -2,6 +2,7 @@ import React, { useState, useMemo, useEffect } from "react";
 import { useSearch } from "wouter";
 import { trpc } from "@/lib/trpc";
 import AdminLayout from "@/components/AdminLayout";
+import { WorkplaceLocks } from "@/components/connect/WorkplaceLocks";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -326,6 +327,7 @@ export default function CommercialFollowupDashboard() {
             <RefreshCw className="w-4 h-4" />
           </button>
         </div>
+        <WorkplaceLocks place="crm" className="mb-6" />
 
         {/* Tab nav */}
         <div className="flex gap-1 mb-6 border-b border-foreground/[0.08] pb-0">

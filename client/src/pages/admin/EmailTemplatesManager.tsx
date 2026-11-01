@@ -1,5 +1,6 @@
 import { useState } from "react";
 import AdminLayout from "@/components/AdminLayout";
+import { WorkplaceLocks } from "@/components/connect/WorkplaceLocks";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
 import { useVocabulary } from "@/lib/vocabulary";
@@ -169,6 +170,7 @@ export default function EmailTemplatesManager() {
           </Button>
         </div>
       </div>
+      <WorkplaceLocks place="comms" className="border-b bg-background px-6 py-3 shrink-0" />
 
       <div className="flex flex-1 overflow-hidden">
         <div className="flex w-72 shrink-0 flex-col border-r bg-muted/20 overflow-hidden">
