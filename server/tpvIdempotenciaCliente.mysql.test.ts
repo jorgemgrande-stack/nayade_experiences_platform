@@ -47,12 +47,12 @@ describe.skipIf(!URL_)("TPV — cobro sin duplicados y cliente enlazado (aplicac
   });
 
   it("dos cobros simultáneos con la misma clave graban UNA venta (un ticket, un cobro, una reserva, un asiento)", async () => {
-    const key = "doble-clic-0001";
+    const intento = "doble-clic-0001";
     const before = await count("SELECT COUNT(*) AS n FROM tpv_sales");
     const counterBefore = await count("SELECT COALESCE(MAX(current_number), 0) AS n FROM document_counters WHERE document_type = 'tpv'");
     const [r1, r2] = await Promise.all([
-      ess.m("a", "tpv.createSale", sale({ idempotencyKey: key }), agA),
-      ess.m("a", "tpv.createSale", sale({ idempotencyKey: key }), agA),
+      ess.m("a", "tpv.createSale", sale({ idempotencyKey: intento }), agA),
+      ess.m("a", "tpv.createSale", sale({ idempotencyKey: intento }), agA),
     ]);
     expect([r1.status, r2.status]).toEqual([200, 200]);
     expect(data(r1).sale.id).toBe(data(r2).sale.id);
@@ -69,7 +69,7 @@ describe.skipIf(!URL_)("TPV — cobro sin duplicados y cliente enlazado (aplicac
     expect(await count("SELECT COALESCE(MAX(current_number), 0) AS n FROM document_counters WHERE document_type = 'tpv'")).toBe(counterBefore + 1);
 
     // Reintento posterior (respuesta perdida): misma venta; con otra clave, venta nueva
-    const again = await ess.m("a", "tpv.createSale", sale({ idempotencyKey: key }), agA);
+    const again = await ess.m("a", "tpv.createSale", sale({ idempotencyKey: intento }), agA);
     expect([data(again).sale.id, data(again).replayed]).toEqual([saleId, true]);
     const other = await ess.m("a", "tpv.createSale", sale({ idempotencyKey: "otro-carrito-0002" }), agA);
     expect(data(other).sale.id).not.toBe(saleId);
@@ -81,19 +81,19 @@ describe.skipIf(!URL_)("TPV — cobro sin duplicados y cliente enlazado (aplicac
   });
 
   it("la clave es de su caja y de su empresa: B no recibe la venta de A con la misma clave", async () => {
-    const key = "clave-compartida-03";
-    const a1 = data(await ess.m("a", "tpv.createSale", sale({ idempotencyKey: key }), agA));
+    const intento = "intento-compartido-03";
+    const a1 = data(await ess.m("a", "tpv.createSale", sale({ idempotencyKey: intento }), agA));
     // Otra caja de la misma empresa con la misma clave: error claro, sin venta nueva
     const reg2 = data(await ess.m("a", "tpv.createRegister", { name: "Terraza" }, admA)).id;
     const s2 = data(await ess.m("a", "tpv.openSession", { registerId: reg2, openingAmount: 0 }, agA)).id;
     const n = await count("SELECT COUNT(*) AS n FROM tpv_sales");
-    expect(errCode(await ess.m("a", "tpv.createSale", sale({ sessionId: s2, idempotencyKey: key }), agA))).toBe("CONFLICT");
+    expect(errCode(await ess.m("a", "tpv.createSale", sale({ sessionId: s2, idempotencyKey: intento }), agA))).toBe("CONFLICT");
     expect(await count("SELECT COUNT(*) AS n FROM tpv_sales")).toBe(n);
     // Empresa B: su propia BD; la clave de A no le devuelve nada de A
     const admB = await ess.login("b", "admin");
     const regB = data(await ess.m("b", "tpv.createRegister", { name: "Caja B" }, admB)).id;
     const sB = data(await ess.m("b", "tpv.openSession", { registerId: regB, openingAmount: 0 }, agB)).id;
-    const rB = await ess.m("b", "tpv.createSale", { sessionId: sB, idempotencyKey: key, items: [{ productType: "extra", productId: 0, productName: "Concepto", quantity: 1, unitPrice: 10, isManual: true, conceptText: "Concepto" }], payments: [{ method: "cash", amount: 10 }] }, admB);
+    const rB = await ess.m("b", "tpv.createSale", { sessionId: sB, idempotencyKey: intento, items: [{ productType: "extra", productId: 0, productName: "Concepto", quantity: 1, unitPrice: 10, isManual: true, conceptText: "Concepto" }], payments: [{ method: "cash", amount: 10 }] }, admB);
     expect(rB.status).toBe(200);
     expect(data(rB).replayed).toBe(false);
     expect(Number(data(rB).sale.total)).toBe(10);
@@ -101,12 +101,12 @@ describe.skipIf(!URL_)("TPV — cobro sin duplicados y cliente enlazado (aplicac
   });
 
   it("si el cobro falla al grabarse, la clave se libera y el reintento graba la venta", async () => {
-    const key = "falla-y-reintenta-04";
-    const bad = await ess.m("a", "tpv.createSale", sale({ idempotencyKey: key, items: [{ productType: "experience", productId, productName: "Revisión", quantity: 1, unitPrice: 50, eventTime: "x".repeat(40) }] }), agA);
+    const intento = "falla-y-reintenta-04";
+    const bad = await ess.m("a", "tpv.createSale", sale({ idempotencyKey: intento, items: [{ productType: "experience", productId, productName: "Revisión", quantity: 1, unitPrice: 50, eventTime: "x".repeat(40) }] }), agA);
     expect(errCode(bad)).toBe("INTERNAL_SERVER_ERROR");
     const [failed] = await ess.sql("a", "SELECT status_ts AS status, idempotencyKey FROM tpv_sales ORDER BY id DESC LIMIT 1");
     expect([failed.status, failed.idempotencyKey]).toEqual(["cancelled", null]);
-    const ok = await ess.m("a", "tpv.createSale", sale({ idempotencyKey: key }), agA);
+    const ok = await ess.m("a", "tpv.createSale", sale({ idempotencyKey: intento }), agA);
     expect(ok.status).toBe(200);
     expect([data(ok).sale.status, data(ok).replayed]).toEqual(["paid", false]);
   });
