@@ -27,6 +27,7 @@ import type { StripeStore } from "../stripe/store";
 import { billingTerms, eur, renderContract, sha256, taxCents } from "./document";
 import { contractView } from "./presentation";
 import { chargeInstant, graceEnd, localDate, periodLabel } from "./schedule";
+import { adjustmentCents, adjustmentProblem, cadence, cleanAdjustment, endOfTerm, isMonthly, recurrenceOf, type Adjustment, type IntervalChoice } from "./cadence";
 import type { ExternalStore } from "./store";
 import { ExternalError, type ContractAcceptance, type ExternalStatus, type ExternalSubscription } from "./types";
 
@@ -42,7 +43,7 @@ export interface ExternalUrls {
 
 export interface ExternalDeps {
   store: ExternalStore;
-  crm: Pick<CrmService, "createContract" | "setContractStatus" | "log">;
+  crm: Pick<CrmService, "createContract" | "updateContract" | "setContractStatus" | "log">;
   crmStore: Pick<CrmStore, "get" | "list">;
   stripeStore?: Pick<StripeStore, "customerByCompany" | "linkCustomer">;
   gateway?: StripeGateway;
@@ -74,6 +75,8 @@ export interface ContractInvitation {
   taxRateBp: number;
   currency: string;
   firstChargeAt: number;
+  /** Periodicidad si no es mensual («trimestral», «anual»). */
+  period?: string;
 }
 /** Correo al firmante tras aceptar: enlace para autorizar el método de pago (sin cargo). */
 export interface PaymentSetupMail {
@@ -87,6 +90,7 @@ export interface PaymentSetupMail {
   taxRateBp: number;
   currency: string;
   firstChargeAt: number;
+  period?: string;
 }
 export interface ExternalMail {
   /** Estado actual de un mensaje de la bandeja (entregado, rebotado…). */
@@ -132,6 +136,7 @@ export interface ScheduledMail {
   firstChargeAt: number;
   acceptedAt: number | null;
   authorizedAt: number | null;
+  period?: string;
 }
 
 export interface CreateExternalInput {
@@ -152,6 +157,12 @@ export interface CreateExternalInput {
   noticeDays?: number;
   /** SOLO PRUEBAS: reloj de prueba de Stripe para el Customer (validación en sandbox). */
   testClock?: { frozenTime: number };
+  /** Guardar como borrador: no se envía nada al cliente hasta pedir la aceptación. */
+  draft?: boolean;
+  /** Periodicidad (mensual por defecto), duración fija en periodos (null: indefinida) y ajuste comercial autorizado. */
+  interval?: IntervalChoice;
+  durationPeriods?: number | null;
+  adjustment?: Adjustment | null;
 }
 
 const KEY_RE = /^[a-z0-9][a-z0-9-]{1,48}$/;
@@ -160,7 +171,7 @@ const TOKEN_TTL_MS = 14 * 86_400_000;
 const SETUP_TTL_MS = 23 * 3600_000;
 /** Vigencia del enlace de continuación tras la aceptación (abre solo la autorización del método de pago). */
 const CONTINUE_TTL_MS = 30 * 86_400_000;
-const LIVE_STATES: ExternalStatus[] = ["awaiting_acceptance", "awaiting_payment_method", "scheduled", "active", "past_due", "needs_decision"];
+const LIVE_STATES: ExternalStatus[] = ["draft", "awaiting_acceptance", "awaiting_payment_method", "scheduled", "active", "past_due", "needs_decision"];
 
 export class ExternalService {
   private now: () => number;
@@ -197,16 +208,15 @@ export class ExternalService {
 
   // ── 1. Contratación ────────────────────────────────────────────────────────
 
-  async create(input: CreateExternalInput, actor: string): Promise<ExternalSubscription> {
-    const company = await this.d.crmStore.get("companies", input.companyId);
-    if (!company) throw new ExternalError("not_found", "Empresa no encontrada");
-    // Un cliente de la plataforma Elephant no se factura como externo (lo haría dos veces)
-    if (company.tenantId) throw new ExternalError("invalid_state", "La empresa ya es cliente de Elephant Core: sus servicios se contratan desde Contrataciones");
+  /** Valida y calcula las condiciones de una contratación (alta o edición del borrador). */
+  private terms(input: Omit<CreateExternalInput, "companyId" | "testClock" | "draft">, actor: string, canAuthorize: boolean) {
     if (!KEY_RE.test(input.service.key ?? "")) throw new ExternalError("invalid_input", "Clave de servicio no válida (minúsculas, números y guiones)");
     const name = String(input.service.name ?? "").trim();
     if (name.length < 3 || name.length > 160) throw new ExternalError("invalid_input", "Nombre del servicio no válido");
     if (!Number.isInteger(input.amountCents) || input.amountCents < 100 || input.amountCents > 10_000_000) throw new ExternalError("invalid_input", "Importe no válido");
     if (!Number.isInteger(input.taxRateBp) || input.taxRateBp < 0 || input.taxRateBp > 3000) throw new ExternalError("invalid_input", "IVA no válido");
+    if (input.interval !== undefined && !["month", "quarter", "year"].includes(input.interval)) throw new ExternalError("invalid_input", "Periodicidad no válida");
+    const recurrence = recurrenceOf(input.interval);
     const billingDay = input.billingDay ?? 1;
     if (!Number.isInteger(billingDay) || billingDay < 1 || billingDay > 28) throw new ExternalError("invalid_input", "El día de cobro debe estar entre el 1 y el 28");
     const billingHour = input.billingHour ?? 8;
@@ -224,47 +234,72 @@ export class ExternalService {
     if (firstChargeAt <= this.now()) throw new ExternalError("invalid_input", "El primer vencimiento ya ha pasado");
     const conditions = String(input.conditions ?? "").trim();
     if (conditions.length < 20) throw new ExternalError("invalid_input", "Indica las condiciones del servicio");
+    const durationPeriods = input.durationPeriods ?? null;
+    if (durationPeriods !== null && (!Number.isInteger(durationPeriods) || durationPeriods < 1 || durationPeriods > 120)) throw new ExternalError("invalid_input", "La duración debe estar entre 1 y 120 periodos");
+    // Descuento o recargo comercial: solo lo autoriza quien aprueba contrataciones, y queda en el contrato
+    const adj = input.adjustment ?? null;
+    if (adj && !canAuthorize) throw new ExternalError("forbidden", "Un descuento o recargo comercial requiere la autorización de un administrador (orders:approve)");
+    const problem = adjustmentProblem(input.amountCents, adj);
+    if (problem) throw new ExternalError("invalid_input", problem);
+    const amountCents = input.amountCents + adjustmentCents(input.amountCents, adj);
+    if (amountCents < 100 || amountCents > 10_000_000) throw new ExternalError("invalid_input", "La cuota resultante no es válida");
+    return {
+      serviceName: name,
+      amountCents,
+      baseAmountCents: adj ? input.amountCents : null,
+      adjustment: adj ? cleanAdjustment(adj, actor) : null,
+      currency: (input.currency ?? "EUR").toUpperCase(),
+      taxRateBp: input.taxRateBp,
+      ...recurrence,
+      durationPeriods,
+      endsAt: durationPeriods ? endOfTerm(firstChargeAt, durationPeriods, recurrence, billingHour, timezone) : null,
+      billingDay,
+      billingHour,
+      timezone,
+      graceDays,
+      firstChargeAt,
+      conditions,
+    };
+  }
+
+  /** Datos del contrato del CRM para unas condiciones (las económicas también van en el texto y en su versión). */
+  private contractInput(t: ReturnType<ExternalService["terms"]>, noticeDays?: number) {
+    return {
+      amountCents: t.amountCents,
+      currency: t.currency,
+      billingInterval: t.interval,
+      startDate: t.firstChargeAt,
+      autoRenew: t.durationPeriods === null,
+      ...(noticeDays !== undefined ? { noticeDays } : {}),
+      conditions: [...billingTerms(t), "", t.conditions].join("\n"),
+    };
+  }
+
+  async create(input: CreateExternalInput, actor: string, opts: { canAuthorize?: boolean } = {}): Promise<ExternalSubscription> {
+    const company = await this.d.crmStore.get("companies", input.companyId);
+    if (!company) throw new ExternalError("not_found", "Empresa no encontrada");
+    // Un cliente de la plataforma Elephant no se factura como externo (lo haría dos veces)
+    if (company.tenantId) throw new ExternalError("invalid_state", "La empresa ya es cliente de Elephant Core: sus servicios se contratan desde Contrataciones");
+    const terms = this.terms(input, actor, opts.canAuthorize === true);
     // Sin duplicados: una contratación viva por empresa y servicio
     const dup = (await this.d.store.list({ companyId: company.id })).find((x) => x.serviceKey === input.service.key && LIVE_STATES.includes(x.status));
     if (dup) throw new ExternalError("conflict", `La empresa ya tiene una contratación viva de «${dup.serviceName}» (#${dup.id})`);
 
-    const terms = { serviceName: name, amountCents: input.amountCents, currency: (input.currency ?? "EUR").toUpperCase(), taxRateBp: input.taxRateBp, billingDay, billingHour, timezone, graceDays, firstChargeAt };
-    const contract = await this.d.crm.createContract(
-      {
-        companyId: company.id,
-        amountCents: terms.amountCents,
-        currency: terms.currency,
-        billingInterval: "month",
-        startDate: firstChargeAt,
-        autoRenew: true,
-        ...(input.noticeDays !== undefined ? { noticeDays: input.noticeDays } : {}),
-        // Las condiciones económicas también van en el texto del contrato (y en su versión inmutable)
-        conditions: [...billingTerms(terms), "", conditions].join("\n"),
-      },
-      actor,
-    );
+    const contract = await this.d.crm.createContract({ companyId: company.id, ...this.contractInput(terms, input.noticeDays) }, actor);
     let testClockId: string | null = null;
     if (input.testClock) {
       if (this.d.mode !== "test" || !this.d.gateway?.createTestClock) throw new ExternalError("invalid_state", "Los relojes de prueba solo existen en el sandbox de Stripe");
       testClockId = (await this.d.gateway.createTestClock(Math.floor(input.testClock.frozenTime / 1000), `Elephant ${company.name} ${input.service.key}`)).id;
     }
     const now = this.now();
+    const { conditions: _conditions, ...row } = terms;
     const x = await this.d.store.insert({
       contractId: contract.id,
       companyId: company.id,
       serviceKey: input.service.key,
-      serviceName: name,
-      amountCents: terms.amountCents,
-      currency: terms.currency,
-      taxRateBp: terms.taxRateBp,
-      interval: "month",
-      billingDay,
-      billingHour,
-      timezone,
-      graceDays,
-      firstChargeAt,
+      ...row,
       externalRef: input.externalRef?.trim() || null,
-      status: "awaiting_acceptance",
+      status: input.draft ? "draft" : "awaiting_acceptance",
       stripeCustomerId: null,
       stripeSetupSessionId: null,
       stripePaymentMethodId: null,
@@ -279,9 +314,56 @@ export class ExternalService {
       createdBy: actor,
       createdAt: now,
     });
-    await this.d.store.event({ externalId: x.id, kind: "created", ref: null, detail: { contractId: contract.id, amountCents: x.amountCents, taxRateBp: x.taxRateBp, firstChargeAt }, actor, at: now });
-    await this.d.crm.log("contract", contract.id, "note", `Servicio externo ${name}: ${x.amountCents / 100} ${x.currency} + IVA ${x.taxRateBp / 100} %, cobro el día ${billingDay}. Sin aprovisionamiento en Elephant Core`, actor);
+    await this.d.store.event({ externalId: x.id, kind: "created", ref: null, detail: { contractId: contract.id, amountCents: x.amountCents, taxRateBp: x.taxRateBp, firstChargeAt: x.firstChargeAt, ...this.extraDetail(x), ...(input.draft ? { draft: true } : {}) }, actor, at: now });
+    if (x.adjustment) await this.d.store.event({ externalId: x.id, kind: "adjustment_authorized", ref: `v${contract.version}`, detail: { ...x.adjustment, baseAmountCents: x.baseAmountCents, amountCents: x.amountCents }, actor, at: now });
+    const c = cadence(x);
+    await this.d.crm.log("contract", contract.id, "note", `Servicio externo ${x.serviceName}: ${x.amountCents / 100} ${x.currency} + IVA ${x.taxRateBp / 100} %, cobro ${c.adj} el día ${x.billingDay}. Sin aprovisionamiento en Elephant Core`, actor);
     return x;
+  }
+
+  /** Periodicidad, duración y ajuste (solo si no son los de siempre), para el historial. */
+  private extraDetail(x: ExternalSubscription) {
+    return {
+      ...(isMonthly(x) ? {} : { interval: x.interval, intervalCount: x.intervalCount }),
+      ...(x.durationPeriods ? { durationPeriods: x.durationPeriods, endsAt: x.endsAt } : {}),
+      ...(x.adjustment ? { baseAmountCents: x.baseAmountCents } : {}),
+    };
+  }
+
+  /** Edición de un borrador: nuevas condiciones (y nueva versión del contrato, que sigue en borrador). */
+  async updateDraft(id: number, input: Omit<CreateExternalInput, "companyId" | "testClock" | "draft">, actor: string, opts: { canAuthorize?: boolean } = {}): Promise<ExternalSubscription> {
+    const x = await this.must(id);
+    if (x.status !== "draft") throw new ExternalError("invalid_state", "Solo se edita una contratación en borrador");
+    // Un ajuste ya autorizado se puede conservar tal cual sin volver a autorizarlo
+    const same = !!input.adjustment && !!x.adjustment && JSON.stringify(cleanAdjustment(input.adjustment, "")) === JSON.stringify(cleanAdjustment(x.adjustment, "")) && input.amountCents === x.baseAmountCents;
+    const terms = this.terms(input, same ? (x.adjustment!.authorizedBy ?? actor) : actor, opts.canAuthorize === true || same);
+    if (input.service.key !== x.serviceKey) {
+      const dup = (await this.d.store.list({ companyId: x.companyId })).find((o) => o.id !== x.id && o.serviceKey === input.service.key && LIVE_STATES.includes(o.status));
+      if (dup) throw new ExternalError("conflict", `La empresa ya tiene una contratación viva de «${dup.serviceName}» (#${dup.id})`);
+    }
+    const contract = await this.d.crm.updateContract(x.contractId, { ...this.contractInput(terms, input.noticeDays), reason: "Edición del borrador del servicio externo" }, actor);
+    const now = this.now();
+    const { conditions: _conditions, ...row } = terms;
+    const cur = await this.d.store.update(x.id, x.version, { ...row, serviceKey: input.service.key, externalRef: input.externalRef?.trim() || null }, now);
+    await this.d.store.event({ externalId: x.id, kind: "draft_updated", ref: `v${contract.version}`, detail: { amountCents: cur.amountCents, taxRateBp: cur.taxRateBp, firstChargeAt: cur.firstChargeAt, ...this.extraDetail(cur) }, actor, at: now });
+    if (cur.adjustment && !same) await this.d.store.event({ externalId: x.id, kind: "adjustment_authorized", ref: `v${contract.version}`, detail: { ...cur.adjustment, baseAmountCents: cur.baseAmountCents, amountCents: cur.amountCents }, actor, at: now });
+    return cur;
+  }
+
+  /** Cancelación antes de Stripe (borrador, aceptación o autorización pendientes): sin cargos que deshacer. */
+  async cancel(id: number, reason: string, actor: string): Promise<ExternalSubscription> {
+    const x = await this.must(id);
+    if (!["draft", "awaiting_acceptance", "awaiting_payment_method"].includes(x.status))
+      throw new ExternalError("invalid_state", x.status === "canceled" ? "La contratación ya está cancelada" : "La suscripción ya está en Stripe: la baja se gestiona conforme al contrato desde el portal de facturación");
+    const why = String(reason ?? "").trim();
+    if (why.length < 5 || why.length > 300) throw new ExternalError("invalid_input", "Indica el motivo de la cancelación (5 a 300 caracteres)");
+    for (const a of await this.d.store.acceptances(x.contractId)) if (a.status === "pending") await this.d.store.setAcceptanceStatus(a.id, "revoked");
+    await this.d.crm.setContractStatus(x.contractId, "cancelled", actor).catch(() => opsLog("warn", "External", "contract_cancel_skipped", { externalId: x.id }));
+    const now = this.now();
+    const cur = await this.d.store.update(x.id, x.version, { status: "canceled", decisionReason: why }, now);
+    await this.d.store.event({ externalId: x.id, kind: "canceled", ref: null, detail: { from: x.status, reason: why }, actor, at: now });
+    await this.d.crm.log("contract", x.contractId, "note", `Servicio externo ${x.serviceName} cancelado antes de cobrar: ${why}`, actor);
+    return cur;
   }
 
   // ── 2. Aceptación digital ──────────────────────────────────────────────────
@@ -289,7 +371,7 @@ export class ExternalService {
   /** Prepara (o renueva) el enlace de aceptación para el representante. Revoca los enlaces anteriores sin usar. */
   async requestAcceptance(id: number, signer: { name: string; email: string; role?: string | null; taxId?: string | null }, actor: string, opts: { send?: boolean } = {}) {
     const x = await this.must(id);
-    if (x.status !== "awaiting_acceptance") throw new ExternalError("invalid_state", "El contrato ya está aceptado");
+    if (x.status !== "awaiting_acceptance" && x.status !== "draft") throw new ExternalError("invalid_state", x.status === "canceled" ? "La contratación está cancelada" : "El contrato ya está aceptado");
     const name = String(signer.name ?? "").trim();
     const email = String(signer.email ?? "").trim().toLowerCase();
     if (name.length < 3 || name.length > 160 || !EMAIL_RE.test(email)) throw new ExternalError("invalid_input", "Indica el nombre y el correo del representante autorizado");
@@ -320,6 +402,8 @@ export class ExternalService {
       createdBy: actor,
       createdAt: now,
     });
+    // Enviar la solicitud saca la contratación del borrador
+    if (x.status === "draft") await this.d.store.update(x.id, x.version, { status: "awaiting_acceptance" }, now);
     await this.d.store.event({ externalId: x.id, kind: "acceptance_requested", ref: String(a.id), detail: { signerEmail: email, version: doc.version, documentSha256: doc.sha256 }, actor, at: now });
     const url = `${this.d.urls.acceptance}?token=${token}`;
     // Envío por correo al representante: una invitación por enlace (reenviar = enlace nuevo, que revoca el anterior)
@@ -328,7 +412,7 @@ export class ExternalService {
       if (!this.d.mail) mail = { status: "unavailable", reason: "El correo de plataforma no está configurado en este entorno" };
       else {
         try {
-          const r = await this.d.mail.invite(email, `contract-invite:${this.d.namespace}:${a.id}`, { companyName: doc.company.legalName ?? doc.company.name, serviceName: x.serviceName, signerName: name, url, expiresAt: a.expiresAt, amountCents: x.amountCents, taxRateBp: x.taxRateBp, currency: x.currency, firstChargeAt: x.firstChargeAt });
+          const r = await this.d.mail.invite(email, `contract-invite:${this.d.namespace}:${a.id}`, { companyName: doc.company.legalName ?? doc.company.name, serviceName: x.serviceName, signerName: name, url, expiresAt: a.expiresAt, amountCents: x.amountCents, taxRateBp: x.taxRateBp, currency: x.currency, firstChargeAt: x.firstChargeAt, ...periodOf(x) });
           mail = { status: r.status, reason: r.reason, ...(r.id ? { outboxId: r.id } : {}) };
         } catch (e) {
           mail = { status: "failed", reason: (e instanceof Error ? e.message : "error").slice(0, 200) };
@@ -381,7 +465,7 @@ export class ExternalService {
   }
 
   private declaration(x: ExternalSubscription, a: Pick<ContractAcceptance, "signerName">) {
-    return `Yo, ${a.signerName}, declaro que tengo poder suficiente para obligar al cliente y acepto el contrato anterior (versión y huella indicadas), incluido el cobro recurrente de ${eur(x.amountCents, x.currency)} más IVA cada mes.`;
+    return `Yo, ${a.signerName}, declaro que tengo poder suficiente para obligar al cliente y acepto el contrato anterior (versión y huella indicadas), incluido el cobro recurrente de ${eur(x.amountCents, x.currency)} más IVA ${cadence(x).per.replace(/^al /, "cada ")}.`;
   }
 
   /** Aceptación del firmante: evidencias (identidad declarada, fecha, versión, huella, IP seudonimizada y navegador). */
@@ -431,7 +515,7 @@ export class ExternalService {
       documentSha256: doc.sha256,
       acceptedAt: now,
       continueUrl,
-      terms: { amountCents: x.amountCents, taxCents: taxCents(x), currency: x.currency, billingDay: x.billingDay, firstChargeAt: x.firstChargeAt, timezone: x.timezone },
+      terms: { amountCents: x.amountCents, taxCents: taxCents(x), currency: x.currency, billingDay: x.billingDay, firstChargeAt: x.firstChargeAt, timezone: x.timezone, ...periodOf(x) },
     };
   }
 
@@ -539,7 +623,7 @@ export class ExternalService {
     if (!this.d.mail?.paymentSetup) mail = { status: "unavailable", reason: "El correo de plataforma no está configurado en este entorno" };
     else {
       try {
-        const r = await this.d.mail.paymentSetup(a.signerEmail, `external-setup:${this.d.namespace}:${a.id}:${n}`, { companyName, serviceName: x.serviceName, signerName: a.acceptedName ?? a.signerName, contractReference: reference, url, expiresAt, amountCents: x.amountCents, taxRateBp: x.taxRateBp, currency: x.currency, firstChargeAt: x.firstChargeAt });
+        const r = await this.d.mail.paymentSetup(a.signerEmail, `external-setup:${this.d.namespace}:${a.id}:${n}`, { companyName, serviceName: x.serviceName, signerName: a.acceptedName ?? a.signerName, contractReference: reference, url, expiresAt, amountCents: x.amountCents, taxRateBp: x.taxRateBp, currency: x.currency, firstChargeAt: x.firstChargeAt, ...periodOf(x) });
         mail = { status: r.status, reason: r.reason, ...(r.id ? { outboxId: r.id } : {}) };
       } catch (e) {
         mail = { status: "failed", reason: (e instanceof Error ? e.message : "error").slice(0, 200) };
@@ -567,8 +651,8 @@ export class ExternalService {
     const n = (await this.d.store.events(x.id)).filter((e) => e.kind === "setup_session").length + 1;
     const tax = taxCents(x);
     const notice = [
-      `Autorizas a ${"Big Elephant"} a cobrar en este método de pago las cuotas recurrentes de ${x.serviceName}: ${(x.amountCents / 100).toFixed(2)} € + IVA (${(tax / 100).toFixed(2)} €) = ${((x.amountCents + tax) / 100).toFixed(2)} € al mes,`,
-      `el día ${x.billingDay} de cada mes desde el ${new Intl.DateTimeFormat("es-ES", { timeZone: x.timezone, dateStyle: "long" }).format(new Date(x.firstChargeAt))}. Hoy no se cobra nada.`,
+      `Autorizas a ${"Big Elephant"} a cobrar en este método de pago las cuotas recurrentes de ${x.serviceName}: ${(x.amountCents / 100).toFixed(2)} € + IVA (${(tax / 100).toFixed(2)} €) = ${((x.amountCents + tax) / 100).toFixed(2)} € ${cadence(x).per},`,
+      `el día ${x.billingDay} ${isMonthly(x) ? "de cada mes" : `del mes en que empieza cada periodo ${cadence(x).adj}`}${x.endsAt ? ` hasta el ${new Intl.DateTimeFormat("es-ES", { timeZone: x.timezone, dateStyle: "long" }).format(new Date(x.endsAt))}` : ""} desde el ${new Intl.DateTimeFormat("es-ES", { timeZone: x.timezone, dateStyle: "long" }).format(new Date(x.firstChargeAt))}. Hoy no se cobra nada.`,
       "Podrás consultar facturas, cambiar el método de pago o solicitar la baja conforme al contrato desde el portal de facturación.",
     ].join(" ");
     const s = await g.createSetupSession(
@@ -645,12 +729,14 @@ export class ExternalService {
         productId,
         unitAmount: x.amountCents,
         currency: x.currency,
-        interval: "month",
+        interval: x.interval,
+        ...(x.intervalCount !== 1 ? { intervalCount: x.intervalCount } : {}),
+        ...(x.endsAt ? { cancelAt: Math.floor(x.endsAt / 1000) } : {}),
         taxRateId,
         trialEnd: Math.floor(x.firstChargeAt / 1000),
         defaultPaymentMethod: x.stripePaymentMethodId!,
         metadata: { es_external_id: String(x.id), es_contract_id: String(x.contractId), es_company_id: String(x.companyId), es_env: this.d.namespace },
-        description: `${x.serviceName} — cuota mensual (contrato #${x.contractId})`,
+        description: `${x.serviceName} — cuota ${cadence(x).adj} (contrato #${x.contractId})`,
       },
       // Una suscripción por contrato y fecha de primer cargo: repetir nunca crea otra
       `es-${this.d.namespace}-ext-${x.id}-sub-${x.firstChargeAt}`,
@@ -684,6 +770,7 @@ export class ExternalService {
         firstChargeAt: x.firstChargeAt,
         acceptedAt: a.acceptedAt,
         authorizedAt: authorized?.at ?? null,
+        ...periodOf(x),
       });
       mail = { status: r.status, reason: r.reason, ...(r.id ? { outboxId: r.id } : {}) };
     } catch (e) {
@@ -901,6 +988,9 @@ export class ExternalService {
  * una factura de Stripe es otra cosa (desde cuándo admite partidas: en la de una suscripción mira un periodo atrás), y
  * con él la factura del 01/11 se llamaría «octubre» y el margen del día 5 contaría desde el periodo anterior.
  */
+/** Periodicidad para los correos: solo si no es mensual (sin ella, los textos de siempre). */
+const periodOf = (x: ExternalSubscription) => (isMonthly(x) ? {} : { period: cadence(x).adj });
+
 function servicePeriod(inv: GwInvoice): { start: number | null; end: number | null } {
   const lines = (inv.lines ?? []).filter((l) => !l.proration && l.periodStart !== null && l.periodEnd !== null);
   if (!lines.length) return { start: inv.periodStart !== null ? inv.periodStart * 1000 : null, end: null };

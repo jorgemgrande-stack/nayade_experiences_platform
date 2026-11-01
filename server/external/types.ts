@@ -3,8 +3,11 @@
  * digital, autorización del método de pago sin cargo y cobro recurrente con Stripe Billing. Ver
  * docs/elephant-source/CLIENTES_EXTERNOS.md.
  */
+import type { Adjustment } from "./cadence";
 
 export type ExternalStatus =
+  /** Borrador: guardado sin enviar nada al cliente (editable; nunca cobra). */
+  | "draft"
   /** Contrato preparado, pendiente de enviar o de aceptar. */
   | "awaiting_acceptance"
   /** Contrato aceptado; falta que el cliente autorice el método de pago. */
@@ -30,7 +33,15 @@ export interface ExternalSubscription {
   currency: string;
   /** IVA en puntos básicos (2100 = 21 %). */
   taxRateBp: number;
-  interval: "month";
+  /** Periodicidad: mensual (month·1), trimestral (month·3) o anual (year·1). */
+  interval: "month" | "year";
+  intervalCount: number;
+  /** Duración fija en periodos (null: indefinida, con renovación automática) y su fin (ms). */
+  durationPeriods: number | null;
+  endsAt: number | null;
+  /** Cuota de lista antes del ajuste comercial (null: sin ajuste; amountCents es la cuota final). */
+  baseAmountCents: number | null;
+  adjustment: Adjustment | null;
   billingDay: number;
   billingHour: number;
   timezone: string;
@@ -97,7 +108,7 @@ export interface ExternalEvent {
 
 export class ExternalError extends Error {
   constructor(
-    public readonly code: "not_found" | "invalid_input" | "invalid_state" | "conflict" | "unavailable",
+    public readonly code: "not_found" | "invalid_input" | "invalid_state" | "conflict" | "unavailable" | "forbidden",
     message: string,
   ) {
     super(message);
