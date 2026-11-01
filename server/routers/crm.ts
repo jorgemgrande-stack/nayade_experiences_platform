@@ -52,7 +52,7 @@ import { sendEmail as sharedSendEmail } from "../mailer";
 import { sendManagedEmail, logDirectEmail } from "../emailManager";
 import { generateDocumentNumber } from "../documentNumbers";
 import { nextCreditNoteNumber, withCreditNoteNumberRetry } from "../creditNoteNumber";
-import { computeCreditNote, computeCreditNoteFromLines, computeDirectInvoice, CreditNoteSelectionError, DIRECT_INVOICE_TAX_RATES, round2, type CreditNoteLineSelection } from "../invoiceCalc";
+import { alreadyCredited, computeDirectInvoice, creditNoteLineStatus, CreditNoteSelectionError, DIRECT_INVOICE_TAX_RATES, planCreditNote, round2, type CreditNoteLineSelection } from "../invoiceCalc";
 import { htmlToPdf } from "../pdfGenerator";
 import { buildRedsysForm, generateMerchantOrder } from "../redsys";
 import { storagePut, hasExternalStorage, externalFileUrl } from "../storage";
@@ -356,7 +356,17 @@ async function sendTransferConfirmationEmail(data: {
  * y nunca abonan entre los dos más de lo facturado. Si otro abono simultáneo (de otra factura) toma el
  * mismo número, el índice único lo rechaza y la transacción completa se reintenta.
  */
-async function issueCreditNote(input: { invoiceId: number; reason: string; partialAmount?: number; lines?: CreditNoteLineSelection[] }) {
+/** Qué se abona (createCreditNote y su vista previa): nada = lo pendiente; o un importe; o unas líneas. */
+const creditNoteSelectionShape = {
+  partialAmount: z.number().positive("El importe del abono debe ser mayor que cero").optional(),
+  lines: z.array(z.object({
+    itemIndex: z.number().int().min(0),
+    quantity: z.number().positive("La cantidad debe ser mayor que cero").optional(),
+    amount: z.number().positive("El importe debe ser mayor que cero").optional(),
+  })).max(200).optional(),
+};
+
+async function issueCreditNote(input:{ invoiceId: number; reason: string; partialAmount?: number; lines?: CreditNoteLineSelection[] }) {
   return withCreditNoteNumberRetry(() => db.transaction(async (tx) => {
     const [original] = await tx.select().from(invoices).where(eq(invoices.id, input.invoiceId)).for("update");
     if (!original) throw new TRPCError({ code: "NOT_FOUND" });
@@ -367,27 +377,20 @@ async function issueCreditNote(input: { invoiceId: number; reason: string; parti
     // Lo ya abonado de esta factura: el total abonado nunca supera lo facturado
     const previous = await tx.select().from(invoices)
       .where(and(eq(invoices.creditNoteForId, original.id), eq(invoices.invoiceType, "abono")));
-    const alreadyCredited = previous.reduce((a, r) => a + Math.abs(Number(r.total)), 0);
-    const remaining = round2(Number(original.total) - alreadyCredited);
-    if (remaining <= 0) throw new TRPCError({ code: "BAD_REQUEST", message: "Esta factura ya está abonada por completo" });
-    // Abono por líneas elegidas, por importe (repartido entre los tipos de IVA) o total
-    let byLines: ReturnType<typeof computeCreditNoteFromLines> | null = null;
-    if (input.lines?.length) {
-      try {
-        byLines = computeCreditNoteFromLines(original as any, input.lines);
-      } catch (e) {
-        if (e instanceof CreditNoteSelectionError) throw new TRPCError({ code: "BAD_REQUEST", message: e.message });
-        throw e;
-      }
+    // Abono por líneas elegidas, por importe (repartido entre los tipos de IVA) o total; la suma de abonos
+    // nunca supera lo facturado (ni por línea). Las mismas reglas que la vista previa (`planCreditNote`).
+    let plan: ReturnType<typeof planCreditNote>;
+    try {
+      plan = planCreditNote(original as any, previous as any[], { partialAmount: input.partialAmount, lines: input.lines });
+    } catch (e) {
+      if (e instanceof CreditNoteSelectionError) throw new TRPCError({ code: "BAD_REQUEST", message: e.message });
+      throw e;
     }
-    const creditTotal = byLines ? -byLines.total : input.partialAmount !== undefined ? round2(input.partialAmount) : remaining;
-    if (!(creditTotal > 0)) throw new TRPCError({ code: "BAD_REQUEST", message: "El importe del abono debe ser mayor que cero" });
-    if (creditTotal - remaining > 0.005) throw new TRPCError({ code: "BAD_REQUEST", message: `El abono (${creditTotal.toFixed(2)}) supera lo pendiente de abonar (${remaining.toFixed(2)})` });
+    const { amounts, creditTotal } = plan;
 
     // Numeración en la serie vigente ABO-AAAA-MM-nnnn: máximo del mes + 1, único por índice (nunca un
     // recuento de filas, que con dos abonos simultáneos daba el mismo número)
     const creditNoteNumber = await nextCreditNoteNumber(tx, now);
-    const amounts = byLines ?? computeCreditNote(original as any, previous as any[], creditTotal);
 
     const [result] = await tx.insert(invoices).values({
       invoiceNumber: creditNoteNumber,
@@ -417,7 +420,7 @@ async function issueCreditNote(input: { invoiceId: number; reason: string; parti
     const creditNoteId = (result as any).insertId as number;
 
     // Abonada solo cuando el total abonado cubre la factura (un abono parcial no la cierra)
-    if (creditTotal - remaining > -0.005) {
+    if (plan.closesInvoice) {
       await tx.update(invoices).set({ status: "abonada", updatedAt: now }).where(eq(invoices.id, input.invoiceId));
     }
 
@@ -5965,13 +5968,62 @@ export const crmRouter = router({
       .input(z.object({
         invoiceId: z.number(),
         reason: z.string().trim().min(1, "Indica el motivo del abono"),
-        partialAmount: z.number().positive("El importe del abono debe ser mayor que cero").optional(), // sin importe ni líneas: abono total
-        lines: z.array(z.object({ itemIndex: z.number().int().min(0), quantity: z.number().positive("La cantidad debe ser mayor que cero").optional() })).max(200).optional(),
+        ...creditNoteSelectionShape,
       }).refine((v) => !(v.partialAmount !== undefined && v.lines?.length), { message: "Abona por importe o por líneas, no ambas cosas", path: ["lines"] }))
       .mutation(async ({ input, ctx }) => {
         const done = await issueCreditNote(input);
         await logActivity("invoice", input.invoiceId, "credit_note_created", ctx.user.id, ctx.user.name, { creditNoteId: done.creditNoteId, creditNoteNumber: done.creditNoteNumber, reason: input.reason, amount: done.creditTotal });
         return { success: true, creditNoteId: done.creditNoteId, creditNoteNumber: done.creditNoteNumber };
+      }),
+
+    // --- Vista previa del abono (no emite nada ni consume numeración) ------------
+    // Devuelve la factura, sus líneas con lo que queda por abonar de cada una, los abonos ya emitidos y el
+    // abono que saldría con la selección dada (las mismas reglas que createCreditNote) o el motivo por el
+    // que no se puede emitir.
+    creditNotePreview: staff
+      .input(z.object({ invoiceId: z.number(), ...creditNoteSelectionShape }))
+      .query(async ({ input }) => {
+        const [original] = await db.select().from(invoices).where(eq(invoices.id, input.invoiceId)).limit(1);
+        if (!original) throw new TRPCError({ code: "NOT_FOUND", message: "Factura no encontrada" });
+        const previous = await db.select().from(invoices)
+          .where(and(eq(invoices.creditNoteForId, original.id), eq(invoices.invoiceType, "abono")))
+          .orderBy(invoices.id);
+        const credited = alreadyCredited(previous as any[]);
+        const invoice = {
+          id: original.id,
+          invoiceNumber: original.invoiceNumber,
+          clientName: original.clientName,
+          issuedAt: original.issuedAt,
+          status: original.status,
+          total: round2(Number(original.total)),
+          credited,
+          remaining: round2(Math.max(0, Number(original.total) - credited)),
+        };
+        const lines = creditNoteLineStatus(original as any, previous as any[]);
+        const previousNotes = previous.map((p) => ({ invoiceNumber: p.invoiceNumber, total: round2(Math.abs(Number(p.total))), reason: p.creditNoteReason ?? "", issuedAt: p.issuedAt }));
+        let error: string | null = null;
+        if (original.invoiceType === "abono") error = "No se puede abonar una factura de abono";
+        else if (original.status === "anulada") error = "La factura ya está anulada";
+        let preview: null | { subtotal: number; taxAmount: number; total: number; taxBreakdown: { rate: number; base: number; amount: number }[]; items: { description: string; quantity: number; total: number; taxRate?: number }[]; closesInvoice: boolean; remainingAfter: number } = null;
+        if (!error) {
+          try {
+            const plan = planCreditNote(original as any, previous as any[], { partialAmount: input.partialAmount, lines: input.lines });
+            const a = plan.amounts;
+            preview = {
+              subtotal: a.subtotal,
+              taxAmount: a.taxAmount,
+              total: a.total,
+              taxBreakdown: a.taxBreakdown,
+              items: a.items.map((i) => ({ description: i.description, quantity: i.quantity, total: i.total, ...(i.taxRate !== undefined ? { taxRate: i.taxRate } : {}) })),
+              closesInvoice: plan.closesInvoice,
+              remainingAfter: plan.remainingAfter,
+            };
+          } catch (e) {
+            if (!(e instanceof CreditNoteSelectionError)) throw e;
+            error = e.message;
+          }
+        }
+        return { invoice, lines, previous: previousNotes, preview, error };
       }),
 
     // --- Reenviar factura por email --------------------------------------------

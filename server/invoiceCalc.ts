@@ -20,6 +20,8 @@ export type InvoiceItem = {
   fiscalRegime?: "reav" | "general";
   taxRate?: number;
   productId?: number;
+  /** Solo en líneas de abono por líneas: índice de la línea de la factura original que abonan. */
+  creditedFromLine?: number;
 };
 
 // ─── Factura libre ───────────────────────────────────────────────────────────
@@ -194,14 +196,65 @@ export function computeCreditNote(original: InvoiceForCredit, previous: InvoiceF
 
 // ─── Abono por líneas ────────────────────────────────────────────────────────
 
-/** Línea de la factura original que se abona (índice en `itemsJson`) y cantidad; sin cantidad, la línea entera. */
+/**
+ * Línea de la factura original que se abona (índice en `itemsJson`) y cuánto: una cantidad de unidades o un
+ * importe con IVA (`amount`); sin ninguno de los dos, lo que quede por abonar de la línea.
+ */
 export interface CreditNoteLineSelection {
   itemIndex: number;
   quantity?: number;
+  amount?: number;
 }
 
 /** Rechazo de una selección de líneas que no corresponde a la factura. */
 export class CreditNoteSelectionError extends Error {}
+
+const eur = (n: number) => `${round2(n).toFixed(2).replace(".", ",")} €`;
+
+/** Importe con IVA ya abonado de cada línea de la factura por abonos por líneas anteriores (índice → importe). */
+export function creditedByLine(previous: InvoiceForCredit[]): Map<number, number> {
+  const out = new Map<number, number>();
+  for (const p of previous) {
+    for (const it of p.itemsJson ?? []) {
+      if (typeof it.creditedFromLine !== "number") continue;
+      out.set(it.creditedFromLine, round2((out.get(it.creditedFromLine) ?? 0) + Math.abs(Number(it.total) || 0)));
+    }
+  }
+  return out;
+}
+
+/** Estado de abono de cada línea de la factura: lo facturado, lo ya abonado por líneas y lo que queda. */
+export interface CreditNoteLineStatus {
+  itemIndex: number;
+  description: string;
+  quantity: number;
+  unitPrice: number;
+  /** Importe de la línea con IVA. */
+  total: number;
+  /** Tipo de IVA de la línea; null si no lleva IVA repercutido. */
+  taxRate: number | null;
+  credited: number;
+  remaining: number;
+}
+
+export function creditNoteLineStatus(original: InvoiceForCredit, previous: InvoiceForCredit[]): CreditNoteLineStatus[] {
+  const credited = creditedByLine(previous);
+  const fallbackRate = Number(original.taxRate ?? 21);
+  return (original.itemsJson ?? []).map((it, itemIndex) => {
+    const total = round2(Math.abs(Number(it.total) || 0));
+    const done = credited.get(itemIndex) ?? 0;
+    return {
+      itemIndex,
+      description: it.description,
+      quantity: Math.abs(Number(it.quantity) || 0),
+      unitPrice: Math.abs(Number(it.unitPrice) || 0),
+      total,
+      taxRate: isReavLine(it) ? null : Number(it.taxRate ?? (Number.isFinite(fallbackRate) ? fallbackRate : 21)),
+      credited: done,
+      remaining: round2(Math.max(0, total - done)),
+    };
+  });
+}
 
 /**
  * Abono parcial por líneas: solo los conceptos y cantidades elegidos, cada uno con el importe de su línea
@@ -209,25 +262,44 @@ export class CreditNoteSelectionError extends Error {}
  * esas líneas (las que no lo indiquen usan el tipo de la factura) y el céntimo de redondeo se asigna a la
  * base del tipo mayor, así que líneas, desglose y total cuadran. Adaptado de Skicenter
  * (`server/creditNoteLogic.ts`: `buildCreditNoteItems`, `computeCreditNoteTotals`).
+ *
+ * Con `previous` (abonos ya emitidos de la factura) cada línea solo admite lo que le quede por abonar: una
+ * línea no se abona dos veces. Por importe (`amount`), la línea del abono lleva ese importe con IVA en una
+ * unidad, al tipo de IVA de la línea original. Cada línea del abono guarda de qué línea procede.
  */
-export function computeCreditNoteFromLines(original: InvoiceForCredit, selection: CreditNoteLineSelection[]): CreditNoteAmounts {
+export function computeCreditNoteFromLines(original: InvoiceForCredit, selection: CreditNoteLineSelection[], previous: InvoiceForCredit[] = []): CreditNoteAmounts {
   const origItems = original.itemsJson ?? [];
   if (!selection.length) throw new CreditNoteSelectionError("Elige al menos una línea que abonar");
   const seen = new Set<number>();
   const fallbackRate = Number(original.taxRate ?? 21);
+  const credited = creditedByLine(previous);
   const picked = selection.map((sel) => {
     const orig = origItems[sel.itemIndex];
     if (!orig) throw new CreditNoteSelectionError(`La línea ${sel.itemIndex + 1} no existe en la factura`);
     if (seen.has(sel.itemIndex)) throw new CreditNoteSelectionError(`La línea ${sel.itemIndex + 1} está repetida`);
     seen.add(sel.itemIndex);
+    if (sel.quantity !== undefined && sel.amount !== undefined) {
+      throw new CreditNoteSelectionError(`En «${orig.description}» indica unidades o importe, no las dos cosas`);
+    }
     const origQty = Math.abs(Number(orig.quantity) || 0);
+    const origTotal = Math.abs(Number(orig.total) || 0);
+    const lineLeft = round2(Math.max(0, origTotal - (credited.get(sel.itemIndex) ?? 0)));
+    if (!(lineLeft > 0)) throw new CreditNoteSelectionError(`«${orig.description}» ya está abonada por completo`);
+    const taxRate = isReavLine(orig) ? undefined : orig.taxRate ?? (Number.isFinite(fallbackRate) ? fallbackRate : 21);
+    const rate = taxRate !== undefined ? { taxRate } : {};
+    if (sel.amount !== undefined) {
+      const amount = round2(sel.amount);
+      if (!(amount > 0)) throw new CreditNoteSelectionError(`El importe a abonar de «${orig.description}» debe ser mayor que cero`);
+      if (amount - lineLeft > 0.005) throw new CreditNoteSelectionError(`De «${orig.description}» solo quedan ${eur(lineLeft)} por abonar`);
+      return { ...orig, quantity: 1, unitPrice: -amount, total: -amount, ...rate, creditedFromLine: sel.itemIndex };
+    }
     const qty = sel.quantity ?? origQty;
     if (!(qty > 0)) throw new CreditNoteSelectionError(`La cantidad a abonar de «${orig.description}» debe ser mayor que cero`);
     if (qty - origQty > 1e-9) throw new CreditNoteSelectionError(`No se pueden abonar más de ${origQty} unidades de «${orig.description}»`);
-    const origTotal = Math.abs(Number(orig.total) || 0);
-    const total = qty === origQty ? origTotal : round2((origTotal / origQty) * qty);
-    const taxRate = isReavLine(orig) ? undefined : orig.taxRate ?? (Number.isFinite(fallbackRate) ? fallbackRate : 21);
-    return { ...orig, quantity: qty, unitPrice: -Math.abs(Number(orig.unitPrice) || 0), total: -total, ...(taxRate !== undefined ? { taxRate } : {}) };
+    // La línea entera (o lo que le queda) sin cantidad; con cantidad, en proporción a las unidades
+    const total = sel.quantity === undefined ? lineLeft : qty === origQty ? origTotal : round2((origTotal / origQty) * qty);
+    if (total - lineLeft > 0.005) throw new CreditNoteSelectionError(`De «${orig.description}» solo quedan ${eur(lineLeft)} por abonar`);
+    return { ...orig, quantity: sel.quantity === undefined && lineLeft < origTotal ? 1 : qty, unitPrice: sel.quantity === undefined && lineLeft < origTotal ? -lineLeft : -Math.abs(Number(orig.unitPrice) || 0), total: -total, ...rate, creditedFromLine: sel.itemIndex };
   });
   const target = round2(picked.reduce((s, i) => s + Math.abs(i.total), 0));
   const comps: TaxComponent[] = groupTaxBreakdown(picked.map((i) => ({ ...i, total: Math.abs(i.total) })))
@@ -244,4 +316,46 @@ export function computeCreditNoteFromLines(original: InvoiceForCredit, selection
     total: -target,
     closesInvoice: false,
   };
+}
+
+// ─── Plan del abono (vista previa y emisión) ─────────────────────────────────
+
+/** Qué se abona: lo pendiente (sin nada), un importe repartido entre los tipos de IVA o unas líneas. */
+export interface CreditNoteRequest {
+  partialAmount?: number;
+  lines?: CreditNoteLineSelection[];
+}
+
+export interface CreditNotePlan {
+  amounts: CreditNoteAmounts;
+  /** Importe del abono con IVA, en positivo. */
+  creditTotal: number;
+  /** Lo que quedaba por abonar de la factura antes de este abono. */
+  remaining: number;
+  /** Lo que quedará por abonar después. */
+  remainingAfter: number;
+  closesInvoice: boolean;
+}
+
+/** Lo ya abonado de una factura (suma de sus abonos, en positivo). */
+export function alreadyCredited(previous: InvoiceForCredit[]): number {
+  return round2(previous.reduce((a, r) => a + Math.abs(Number(r.total) || 0), 0));
+}
+
+/**
+ * Calcula el abono de `request` sobre `original` con sus abonos previos y aplica TODAS las reglas: la factura
+ * debe tener algo pendiente, el abono debe ser mayor que cero y la suma de abonos nunca supera lo facturado
+ * (ni, por líneas, lo facturado en cada línea). La misma función da la vista previa y el abono que se emite.
+ */
+export function planCreditNote(original: InvoiceForCredit, previous: InvoiceForCredit[], request: CreditNoteRequest): CreditNotePlan {
+  if (request.partialAmount !== undefined && request.lines?.length) throw new CreditNoteSelectionError("Abona por importe o por líneas, no ambas cosas");
+  const remaining = round2(Math.abs(Number(original.total) || 0) - alreadyCredited(previous));
+  if (remaining <= 0) throw new CreditNoteSelectionError("Esta factura ya está abonada por completo");
+  const byLines = request.lines?.length ? computeCreditNoteFromLines(original, request.lines, previous) : null;
+  const creditTotal = byLines ? -byLines.total : request.partialAmount !== undefined ? round2(request.partialAmount) : remaining;
+  if (!(creditTotal > 0)) throw new CreditNoteSelectionError("El importe del abono debe ser mayor que cero");
+  if (creditTotal - remaining > 0.005) throw new CreditNoteSelectionError(`El abono (${eur(creditTotal)}) supera lo pendiente de abonar (${eur(remaining)})`);
+  const amounts = byLines ?? computeCreditNote(original, previous, creditTotal);
+  const closesInvoice = creditTotal - remaining > -0.005;
+  return { amounts: { ...amounts, closesInvoice }, creditTotal, remaining, remainingAfter: round2(Math.max(0, remaining - creditTotal)), closesInvoice };
 }
