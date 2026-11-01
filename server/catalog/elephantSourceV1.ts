@@ -275,7 +275,7 @@ const CONNECT: SeedProduct[] = [
   connect({ key: "connect-whatsapp-ai", name: "Elephant WhatsApp AI", group: "communications", tagline: "WhatsApp Business automatizado con IA.", tech: "partial", commercial: "in_preparation", monthly: 29, capabilities: ["whatsapp-ai"], thirdPartyCosts: "Las conversaciones de WhatsApp (Meta) y el consumo de IA se facturan aparte según uso.", icon: "message", notes: "Hoy existe la bandeja de WhatsApp a través de GoHighLevel, sin IA ni API directa." }),
   connect({ key: "connect-voice", name: "Elephant Voice", group: "communications", tagline: "Centralita y llamadas con IA.", tech: "partial", commercial: "on_request", monthly: 39, capabilities: ["voice-ai"], thirdPartyCosts: "Los minutos de telefonía y el consumo de IA se facturan aparte según uso.", icon: "phone" }),
   connect({ key: "connect-reception-ai", name: "Elephant Reception AI", group: "communications", tagline: "Recepcionista virtual con IA.", tech: "planned", commercial: "coming_soon", monthly: 49, capabilities: ["reception-ai"], thirdPartyCosts: "Telefonía, mensajería y consumo de IA aparte según uso.", icon: "bot" }),
-  // Ficha aprobada por la dirección comercial (01/11/2026): extensión de pago solo para Essential y Business, por empresa
+  // Ficha aprobada por la dirección comercial (01/11/2026): extensión de pago para Essential, Business y Enterprise, por empresa; ningún plan la incluye
   connect({
     key: "connect-people",
     name: "Elephant People",
@@ -286,9 +286,9 @@ const CONNECT: SeedProduct[] = [
     commercial: "on_request",
     monthly: 19,
     capabilities: ["people-hr"],
-    compatibleWith: ["essential", "business"],
+    compatibleWith: ["essential", "business", "enterprise"],
     includes: ["Fichas de empleados y documentación", "Control horario y registro de fichajes", "Horarios semanales", "Gestión de ausencias", "Registro y consulta de nóminas", "Portal del empleado", "Acceso protegido según permisos"],
-    requirements: ["Disponible como extensión de Elephant Connect para clientes Essential y Business."],
+    requirements: ["Disponible como extensión de Elephant Connect para clientes Essential, Business y Enterprise."],
     icon: "id-card",
   }),
   connect({ key: "connect-tax", name: "Elephant Tax", group: "finance", tagline: "Declaraciones y modelos fiscales con tu gestoría.", tech: "partial", commercial: "on_request", monthly: 19, capabilities: ["tax-filings"], icon: "file-text" }),
