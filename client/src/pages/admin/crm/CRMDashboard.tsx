@@ -2094,10 +2094,10 @@ function DirectQuoteModal({ onClose }: { onClose: () => void }) {
                 </Button>
               </div>
               <div className="flex items-center gap-2 pl-1">
-                <label htmlFor={`new-quote-line-date-${idx}`} className="text-[11px] text-foreground/45 whitespace-nowrap">Fecha de servicio (opcional):</label>
+                <label htmlFor={`new-quote-line-date-${idx}`} className="text-[11px] text-muted-foreground whitespace-nowrap">{voc.serviceDateLabel} (opcional):</label>
                 <Input id={`new-quote-line-date-${idx}`} type="date" value={item.serviceDate ?? ""} onChange={(e) => updateItem(idx, "serviceDate", e.target.value)}
                   className="h-7 w-auto bg-foreground/[0.05] border-foreground/[0.12] text-white text-xs [color-scheme:dark]" />
-                <span className="text-[10px] text-foreground/30">vacío = usa la {voc.serviceDateLabel.toLowerCase()} del presupuesto</span>
+                <span className="text-[10px] text-muted-foreground">vacío = usa la {voc.serviceDateLabel.toLowerCase()} del presupuesto</span>
               </div>
               </div>
             ))}
@@ -2564,10 +2564,10 @@ function QuoteBuilderModal({
                 </Button>
               </div>
               <div className="flex items-center gap-2 pl-1">
-                <span className="text-[11px] text-foreground/45 whitespace-nowrap">Fecha de servicio (opcional):</span>
+                <span className="text-[11px] text-muted-foreground whitespace-nowrap">{voc.serviceDateLabel} (opcional):</span>
                 <Input type="date" value={item.serviceDate ?? ""} onChange={(e) => updateItem(idx, "serviceDate", e.target.value)}
                   className="h-7 w-auto bg-foreground/[0.05] border-foreground/[0.12] text-white text-xs [color-scheme:dark]" />
-                <span className="text-[10px] text-foreground/30">vacío = usa la {voc.serviceDateLabel.toLowerCase()} del presupuesto</span>
+                <span className="text-[10px] text-muted-foreground">vacío = usa la {voc.serviceDateLabel.toLowerCase()} del presupuesto</span>
               </div>
               </div>
             ))}
@@ -3077,10 +3077,10 @@ function QuoteEditModal({
                 </Button>
               </div>
               <div className="flex items-center gap-2 pl-1">
-                <span className="text-[11px] text-foreground/45 whitespace-nowrap">Fecha de servicio (opcional):</span>
+                <span className="text-[11px] text-muted-foreground whitespace-nowrap">{voc.serviceDateLabel} (opcional):</span>
                 <Input type="date" value={item.serviceDate ?? ""} onChange={(e) => updateItem(idx, "serviceDate", e.target.value)}
                   className="h-7 w-auto bg-foreground/[0.05] border-foreground/[0.12] text-white text-xs [color-scheme:dark]" />
-                <span className="text-[10px] text-foreground/30">vacío = usa la {voc.serviceDateLabel.toLowerCase()} del presupuesto</span>
+                <span className="text-[10px] text-muted-foreground">vacío = usa la {voc.serviceDateLabel.toLowerCase()} del presupuesto</span>
               </div>
               </div>
             ))}
@@ -6026,11 +6026,11 @@ export default function CRMDashboard() {
 
   const getInvoiceStatusBadge = (status: string) => {
     const map: Record<string, { label: string; cls: string }> = {
-      generada: { label: "Generada", cls: "bg-slate-500/15 text-slate-300 border-slate-500/30" },
-      enviada: { label: "Enviada", cls: "bg-sky-500/15 text-sky-400 border-sky-500/30" },
-      cobrada: { label: "Cobrada", cls: "bg-emerald-500/15 text-emerald-400 border-emerald-500/30" },
-      anulada: { label: "Anulada", cls: "bg-red-500/15 text-red-400 border-red-500/30" },
-      abonada: { label: "Abonada", cls: "bg-violet-500/15 text-violet-400 border-violet-500/30" },
+      generada: { label: "Generada", cls: "bg-muted text-muted-foreground border-border" },
+      enviada: { label: "Enviada", cls: "bg-info/10 text-info border-info/40" },
+      cobrada: { label: "Cobrada", cls: "bg-success/10 text-success border-success/40" },
+      anulada: { label: "Anulada", cls: "bg-danger/10 text-danger border-danger/40" },
+      abonada: { label: "Abonada", cls: "bg-info/10 text-info border-info/40" },
     };
     const s = map[status] ?? { label: status, cls: "bg-foreground/[0.08] text-foreground/60 border-foreground/[0.12]" };
     return <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium border ${s.cls}`}>{s.label}</span>;
@@ -6182,7 +6182,7 @@ export default function CRMDashboard() {
               <span className="text-xs font-bold uppercase tracking-[0.15em] text-foreground/50">{voc.licensed ? "Embudo de oportunidades" : "Pipeline de Oportunidades"}</span>
               <div className="flex-1 h-px bg-foreground/[0.05]" />
               {(leadCounters?.total ?? 0) > 0 && (
-                <span className="text-xs text-foreground/40">{leadCounters?.total ?? 0} {voc.licensed ? "oportunidades en total" : "leads totales"}</span>
+                <span className="text-xs text-muted-foreground">{leadCounters?.total ?? 0} {voc.licensed ? ((leadCounters?.total ?? 0) === 1 ? "oportunidad en total" : "oportunidades en total") : "leads totales"}</span>
               )}
             </div>
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
@@ -6296,7 +6296,7 @@ export default function CRMDashboard() {
               <span className="text-xs font-bold uppercase tracking-[0.15em] text-foreground/50">{voc.orders}</span>
               <div className="flex-1 h-px bg-foreground/[0.05]" />
               {(resCounters?.confirmadas ?? 0) > 0 && (
-                <span className="text-xs text-foreground/40">{resCounters?.confirmadas ?? 0} confirmadas</span>
+                <span className="text-xs text-muted-foreground">{resCounters?.confirmadas ?? 0} {(resCounters?.confirmadas ?? 0) === 1 ? voc.agree("confirmado", "confirmada") : voc.agree("confirmados", "confirmadas")}</span>
               )}
             </div>
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
@@ -6559,7 +6559,7 @@ export default function CRMDashboard() {
                   <span className="text-emerald-400 font-bold text-sm">
                     {leadCounters?.total ? Math.round(((leadCounters.ganada ?? 0) / leadCounters.total) * 100) : 0}%
                   </span>
-                  <span>{leadCounters?.ganada ?? 0} ganadas de {leadCounters?.total ?? 0} {voc.leadsLower}</span>
+                  <span>{leadCounters?.ganada ?? 0} {(leadCounters?.ganada ?? 0) === 1 ? voc.agreeLead("ganado", "ganada") : voc.agreeLead("ganados", "ganadas")} de {leadCounters?.total ?? 0} {(leadCounters?.total ?? 0) === 1 ? voc.lead : voc.leadsLower}</span>
                 </div>
               </div>
               {/* Barra segmentada */}
@@ -7758,23 +7758,23 @@ export default function CRMDashboard() {
                   </div>
                   <div className="bg-foreground/[0.03] border border-foreground/[0.10] rounded-xl p-3 text-center">
                     <div className="text-xs text-foreground/50 mb-1">Base imponible</div>
-                    <div className="text-lg font-bold text-sky-400">{formatEur(invoicesData.summary.subtotal)}</div>
+                    <div className="text-lg font-bold text-info">{formatEur(invoicesData.summary.subtotal)}</div>
                   </div>
-                  <div className="bg-orange-500/10 border border-orange-500/20 rounded-xl p-3 text-center">
+                  <div className="bg-warning/10 border border-warning/40 rounded-xl p-3 text-center">
                     <div className="text-xs text-warning mb-1">Bruto (IVA incl.)</div>
-                    <div className="text-lg font-bold text-orange-400">{formatEur(invoicesData.summary.grandTotal)}</div>
-                    <div className="text-xs text-foreground/40">IVA: {formatEur(invoicesData.summary.tax)}</div>
+                    <div className="text-lg font-bold text-warning">{formatEur(invoicesData.summary.grandTotal)}</div>
+                    <div className="text-xs text-muted-foreground">IVA: {formatEur(invoicesData.summary.tax)}</div>
                   </div>
                   {(invoicesData.summary as any).abonosTotal > 0 && (
-                    <div className="bg-violet-500/10 border border-violet-500/20 rounded-xl p-3 text-center">
-                      <div className="text-xs text-violet-300/60 mb-1">Total abonos</div>
-                      <div className="text-lg font-bold text-violet-400">-{formatEur((invoicesData.summary as any).abonosTotal)}</div>
+                    <div className="bg-info/10 border border-info/40 rounded-xl p-3 text-center">
+                      <div className="text-xs text-info mb-1">Total abonos</div>
+                      <div className="text-lg font-bold text-info">-{formatEur((invoicesData.summary as any).abonosTotal)}</div>
                     </div>
                   )}
                   {(invoicesData.summary as any).abonosTotal > 0 && (
-                    <div className="bg-emerald-500/10 border border-emerald-500/20 rounded-xl p-3 text-center">
-                      <div className="text-xs text-emerald-300/60 mb-1">Neto real</div>
-                      <div className="text-lg font-bold text-emerald-400">{formatEur((invoicesData.summary as any).netTotal)}</div>
+                    <div className="bg-success/10 border border-success/40 rounded-xl p-3 text-center">
+                      <div className="text-xs text-success mb-1">Neto real</div>
+                      <div className="text-lg font-bold text-success">{formatEur((invoicesData.summary as any).netTotal)}</div>
                     </div>
                   )}
                 </div>
@@ -7808,12 +7808,12 @@ export default function CRMDashboard() {
                         onAction={() => setNewInvoiceOpen(true)}
                       />
                     ) : invoicesData.items.map((inv: any) => (
-                      <tr key={inv.id} className={`border-t border-foreground/[0.08] hover:bg-foreground/[0.03] transition-colors ${inv.invoiceType === "abono" ? "bg-violet-500/3" : ""}`}>
+                      <tr key={inv.id} className={`border-t border-foreground/[0.08] hover:bg-foreground/[0.03] transition-colors ${inv.invoiceType === "abono" ? "bg-info/[0.03]" : ""}`}>
                         <td className="px-4 py-3">
-                          <div className="flex items-center gap-1.5">
-                            <span className="text-sm font-mono font-bold text-foreground">{inv.invoiceNumber}</span>
+                          <div className="flex flex-wrap items-center gap-1.5">
+                            <span className="text-sm font-mono font-bold text-foreground whitespace-nowrap">{inv.invoiceNumber}</span>
                             {inv.invoiceType === "abono" && (
-                              <span className="inline-flex items-center text-[9px] font-bold text-violet-400 bg-violet-500/10 border border-violet-500/20 px-1.5 py-0.5 rounded">ABONO</span>
+                              <span className="inline-flex items-center text-[10px] font-bold text-info bg-info/10 border border-info/40 px-1.5 py-0.5 rounded whitespace-nowrap">ABONO</span>
                             )}
                           </div>
                           {/* Factura abonada → mostrar el nº del abono emitido */}
@@ -7821,7 +7821,7 @@ export default function CRMDashboard() {
                             <div className="mt-0.5">
                               <button
                                 onClick={() => setInvoiceSearch(inv.creditNoteNumber)}
-                                className="text-[10px] text-violet-400 hover:text-violet-300 transition-colors flex items-center gap-1"
+                                className="text-[11px] text-info hover:underline transition-colors flex items-center gap-1 whitespace-nowrap"
                                 title="Ver factura de abono"
                               >
                                 <RotateCcw className="w-2.5 h-2.5" />
@@ -7834,7 +7834,7 @@ export default function CRMDashboard() {
                             <div className="mt-0.5">
                               <button
                                 onClick={() => setInvoiceSearch(inv.originalInvoiceNumber)}
-                                className="text-[10px] text-orange-400/70 hover:text-orange-300 transition-colors flex items-center gap-1"
+                                className="text-[11px] text-warning hover:underline transition-colors flex items-center gap-1 whitespace-nowrap"
                                 title="Ver factura original"
                               >
                                 <Receipt className="w-2.5 h-2.5" />
@@ -7855,7 +7855,7 @@ export default function CRMDashboard() {
                                 href={inv.transferProofUrl}
                                 target="_blank"
                                 rel="noopener noreferrer"
-                                className="inline-flex items-center gap-1 text-xs text-sky-400 hover:text-sky-300 transition-colors"
+                                className="inline-flex items-center gap-1 text-xs text-info hover:underline transition-colors"
                                 title="Ver justificante de transferencia"
                               >
                                 <Paperclip className="w-3 h-3" />
@@ -7868,7 +7868,7 @@ export default function CRMDashboard() {
                           {getInvoiceStatusBadge(inv.status)}
                           {inv.invoiceType === "abono" && (
                             <div className="mt-1">
-                              <span className="inline-flex items-center text-[9px] font-bold text-violet-400/70 border border-violet-500/20 px-1.5 py-0.5 rounded">
+                              <span className="inline-flex items-center text-[10px] font-bold text-info border border-info/40 px-1.5 py-0.5 rounded whitespace-nowrap">
                                 Fact. rectificativa
                               </span>
                             </div>
@@ -7876,9 +7876,9 @@ export default function CRMDashboard() {
                         </td>
                         <td className="px-4 py-3 text-right">
                           {inv.invoiceType === "abono" ? (
-                            <span className="text-sm font-bold text-violet-400">{formatEur(Number(inv.total))}</span>
+                            <span className="text-sm font-bold text-info whitespace-nowrap">{formatEur(Number(inv.total))}</span>
                           ) : (
-                            <span className="text-sm font-bold text-orange-400">{formatEur(Number(inv.total))}</span>
+                            <span className="text-sm font-bold text-foreground whitespace-nowrap">{formatEur(Number(inv.total))}</span>
                           )}
                         </td>
                         <td className="px-4 py-3 hidden sm:table-cell">
