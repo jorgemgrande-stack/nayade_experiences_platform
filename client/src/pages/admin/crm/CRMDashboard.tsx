@@ -3,6 +3,7 @@ import { useSearch } from "wouter";
 import { trpc } from "@/lib/trpc";
 import { formatEur } from "@shared/creditNoteForm";
 import { formatDayEs } from "@shared/formatDay";
+import { validateTicketInvoiceRecipient, type TicketInvoiceRecipient } from "@shared/ticketInvoice";
 import AdminLayout from "@/components/AdminLayout";
 import { WorkplaceLocks } from "@/components/connect/WorkplaceLocks";
 import { usePanelSubscription } from "@/hooks/usePanelSubscription";
@@ -5929,14 +5930,24 @@ export default function CRMDashboard() {
 
   // ─── Generar factura desde reserva TPV ─────────────────────────────────────
   const [genInvoiceResId, setGenInvoiceResId] = useState<number | null>(null);
-  const [genInvoiceNif, setGenInvoiceNif] = useState("");
-  const [genInvoiceAddress, setGenInvoiceAddress] = useState("");
+  const emptyRecipient: TicketInvoiceRecipient = { name: "", nif: "", address: "", postalCode: "", city: "" };
+  const [genInvoiceRecipient, setGenInvoiceRecipient] = useState<TicketInvoiceRecipient>(emptyRecipient);
+  const [genInvoiceTried, setGenInvoiceTried] = useState(false);
+  const genInvoiceProposal = trpc.crm.reservations.invoiceRecipient.useQuery(
+    { reservationId: genInvoiceResId ?? 0 },
+    { enabled: genInvoiceResId !== null, refetchOnWindowFocus: false },
+  );
+  useEffect(() => {
+    if (genInvoiceResId === null || !genInvoiceProposal.data) return;
+    const { fromClient: _fromClient, ...proposed } = genInvoiceProposal.data;
+    setGenInvoiceRecipient(proposed);
+  }, [genInvoiceResId, genInvoiceProposal.data]);
+  const closeGenInvoice = () => { setGenInvoiceResId(null); setGenInvoiceRecipient(emptyRecipient); setGenInvoiceTried(false); };
+  const genInvoiceErrors = validateTicketInvoiceRecipient(genInvoiceRecipient);
   const generateInvoiceMutation = trpc.crm.reservations.generateInvoice.useMutation({
     onSuccess: (data) => {
       toast.success(`✅ Factura ${data.invoiceNumber} generada correctamente`);
-      setGenInvoiceResId(null);
-      setGenInvoiceNif("");
-      setGenInvoiceAddress("");
+      closeGenInvoice();
       utils.crm.reservations.list.invalidate();
       utils.crm.invoices.listAll.invalidate();
     },
@@ -9026,7 +9037,7 @@ export default function CRMDashboard() {
       </Dialog>
 
       {/* ─── Diálogo: Generar Factura desde reserva ──────────────────────────── */}
-      <Dialog open={genInvoiceResId !== null} onOpenChange={(o) => { if (!o) { setGenInvoiceResId(null); setGenInvoiceNif(""); setGenInvoiceAddress(""); } }}>
+      <Dialog open={genInvoiceResId !== null} onOpenChange={(o) => { if (!o) closeGenInvoice(); }}>
         <DialogContent className="max-w-md bg-[#0d1526] border-foreground/[0.12] text-white">
           <DialogHeader>
             <DialogTitle className="text-white flex items-center gap-2">
@@ -9034,35 +9045,70 @@ export default function CRMDashboard() {
             </DialogTitle>
           </DialogHeader>
           <div className="space-y-4 py-2">
-            <p className="text-sm text-foreground/65">Se generará una factura formal a partir de los datos {voc.licensed ? "del pedido" : "de la reserva"}.</p>
-            <div className="space-y-2">
-              <Label className="text-foreground/70 text-xs">NIF / DNI del cliente (opcional)</Label>
-              <Input
-                value={genInvoiceNif}
-                onChange={(e) => setGenInvoiceNif(e.target.value)}
-                placeholder="12345678A"
-                className="bg-foreground/[0.05] border-foreground/[0.15] text-white text-sm"
-              />
-            </div>
-            <div className="space-y-2">
-              <Label className="text-foreground/70 text-xs">Dirección de facturación (opcional)</Label>
-              <Input
-                value={genInvoiceAddress}
-                onChange={(e) => setGenInvoiceAddress(e.target.value)}
-                placeholder="Calle, número, CP, ciudad"
-                className="bg-foreground/[0.05] border-foreground/[0.15] text-white text-sm"
-              />
+            <p className="text-sm text-foreground/65">
+              Se emitirá una factura completa a partir de los datos {voc.licensed ? "del pedido" : "de la reserva"}. Indica a nombre de quién se hace: la factura debe llevar el nombre o la razón social, el NIF y la dirección del destinatario.
+            </p>
+            {genInvoiceProposal.data?.fromClient && (
+              <p className="text-xs text-foreground/65">Datos propuestos del cliente vinculado a la venta. Revísalos antes de emitir.</p>
+            )}
+            {([
+              { k: "name", label: "Nombre o razón social", ph: "Transportes Ruiz SL", ac: "organization" },
+              { k: "nif", label: "NIF", ph: "B12345674", ac: "off" },
+              { k: "address", label: "Dirección", ph: "Calle Mayor 4", ac: "street-address" },
+            ] as const).map((f) => (
+              <div key={f.k} className="space-y-1">
+                <Label htmlFor={`gen-inv-${f.k}`} className="text-foreground/70 text-xs">{f.label} <span className="text-red-400">*</span></Label>
+                <Input
+                  id={`gen-inv-${f.k}`}
+                  required
+                  autoComplete={f.ac}
+                  value={genInvoiceRecipient[f.k]}
+                  onChange={(e) => setGenInvoiceRecipient((r) => ({ ...r, [f.k]: e.target.value }))}
+                  placeholder={f.ph}
+                  className="bg-foreground/[0.05] border-foreground/[0.15] text-white text-sm"
+                  {...invalidProps(genInvoiceTried ? genInvoiceErrors[f.k] : undefined, `gen-inv-${f.k}-error`)}
+                />
+                <FieldError id={`gen-inv-${f.k}-error`} msg={genInvoiceTried ? genInvoiceErrors[f.k] : null} />
+              </div>
+            ))}
+            <div className="grid grid-cols-[minmax(0,2fr)_minmax(0,3fr)] gap-3">
+              {([
+                { k: "postalCode", label: "Código postal", ph: "28901", ac: "postal-code" },
+                { k: "city", label: "Población", ph: "Getafe", ac: "address-level2" },
+              ] as const).map((f) => (
+                <div key={f.k} className="space-y-1">
+                  <Label htmlFor={`gen-inv-${f.k}`} className="text-foreground/70 text-xs">{f.label} <span className="text-red-400">*</span></Label>
+                  <Input
+                    id={`gen-inv-${f.k}`}
+                    required
+                    autoComplete={f.ac}
+                    value={genInvoiceRecipient[f.k]}
+                    onChange={(e) => setGenInvoiceRecipient((r) => ({ ...r, [f.k]: e.target.value }))}
+                    placeholder={f.ph}
+                    className="bg-foreground/[0.05] border-foreground/[0.15] text-white text-sm"
+                    {...invalidProps(genInvoiceTried ? genInvoiceErrors[f.k] : undefined, `gen-inv-${f.k}-error`)}
+                  />
+                  <FieldError id={`gen-inv-${f.k}-error`} msg={genInvoiceTried ? genInvoiceErrors[f.k] : null} />
+                </div>
+              ))}
             </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" size="sm" onClick={() => { setGenInvoiceResId(null); setGenInvoiceNif(""); setGenInvoiceAddress(""); }} className="border-foreground/[0.15] text-foreground/65">Cancelar</Button>
+            <Button variant="outline" size="sm" onClick={closeGenInvoice} className="border-foreground/[0.15] text-foreground/65">Cancelar</Button>
             <Button
               size="sm"
-              onClick={() => genInvoiceResId !== null && generateInvoiceMutation.mutate({
-                reservationId: genInvoiceResId,
-                clientNif: genInvoiceNif || undefined,
-                clientAddress: genInvoiceAddress || undefined,
-              })}
+              onClick={() => {
+                setGenInvoiceTried(true);
+                if (genInvoiceResId === null || Object.keys(genInvoiceErrors).length) return;
+                generateInvoiceMutation.mutate({
+                  reservationId: genInvoiceResId,
+                  clientName: genInvoiceRecipient.name,
+                  clientNif: genInvoiceRecipient.nif,
+                  clientAddress: genInvoiceRecipient.address,
+                  clientPostalCode: genInvoiceRecipient.postalCode,
+                  clientCity: genInvoiceRecipient.city,
+                });
+              }}
               disabled={generateInvoiceMutation.isPending}
               className="bg-primary hover:bg-primary/90 text-primary-foreground">
               {generateInvoiceMutation.isPending ? <RefreshCw className="w-4 h-4 animate-spin mr-1" /> : <FilePlus className="w-4 h-4 mr-1" />}

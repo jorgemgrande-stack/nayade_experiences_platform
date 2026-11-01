@@ -144,7 +144,7 @@ describe.skipIf(!URL_)("IVA de informes, 303, resumen, libro e Inicio cuadran y 
     const swapped = await sale([line(ids.p21, "Escobillas", 24.2)], "cash", 24.2);
     ok(await ess.m("a", "tpv.closeSession", { sessionId: sid, countedCash: 69.4 }, agA), "cerrar caja");
     expect((await ess.sql("a", "SELECT invoiceId FROM tpv_sales WHERE id = ?", [cardSale.id]))[0].invoiceId).toBeGreaterThan(0);
-    ok(await ess.m("a", "crm.reservations.generateInvoice", { reservationId: swapped.reservationId }, agA), "canje del ticket por factura");
+    ok(await ess.m("a", "crm.reservations.generateInvoice", { reservationId: swapped.reservationId, clientName: "Cliente canje SL", clientNif: "B12345674", clientAddress: "Calle Mayor 4", clientPostalCode: "28901", clientCity: "Getafe" }, agA), "canje del ticket por factura");
 
     // Empresa B: un ticket propio de 12,10 € (no debe aparecer en A)
     ok(await ess.m("b", "products.createCategory", { slug: "general", name: "General" }, admB), "categoría B");

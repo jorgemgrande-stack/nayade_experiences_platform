@@ -307,7 +307,7 @@ describe.skipIf(!URL_)("contabilidad y facturación Essential (aplicación real)
       await ess.m("a", "tpv.closeSession", { sessionId: sid, countedCash: 207.9 }, agA);
       const resId = r.sale.reservationId as number;
       expect((await ess.sql("a", "SELECT invoiceId FROM reservations WHERE id = ?", [resId]))[0].invoiceId).toBeNull();
-      const done = ok(await ess.m("a", "crm.reservations.generateInvoice", { reservationId: resId }, agA), "canje por factura");
+      const done = ok(await ess.m("a", "crm.reservations.generateInvoice", { reservationId: resId, clientName: "Cliente canje SL", clientNif: "B12345674", clientAddress: "Calle Mayor 4", clientPostalCode: "28901", clientCity: "Getafe" }, agA), "canje por factura");
       const [inv] = await ess.sql("a", "SELECT i.itemsJson, i.subtotal, i.taxAmount, i.taxBreakdown, i.total, i.discount FROM invoices i JOIN reservations r ON r.invoiceId = i.id WHERE r.id = ?", [resId]);
       expect(done).toBeTruthy();
       expect(json(inv.itemsJson).map((l: any) => [l.description, l.taxRate])).toEqual([["Asesoría fiscal", 21], ["Curso", 10]]);
