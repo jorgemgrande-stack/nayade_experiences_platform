@@ -81,6 +81,18 @@ export function readableOn(bg: string): string {
   return (contrastRatio(bg, WHITE) ?? 0) >= (contrastRatio(bg, NEUTRAL_INK) ?? 0) ? WHITE : NEUTRAL_INK;
 }
 
+/**
+ * Muestra y avisos de un campo de color del editor de marca: la muestra enseña SIEMPRE el color que se está usando
+ * (el elegido o, sin elegir, el predeterminado `fallback`), nunca un blanco que no existe.
+ */
+export function colorFieldState(value: string, fallback: string): { swatch: string; note: string | null; error: string | null } {
+  const v = value.trim();
+  if (!v) return { swatch: fallback, note: `Sin elegir: se usa el color predeterminado (${fallback}).`, error: null };
+  if (!HEX.test(v)) return { swatch: fallback, note: null, error: "Escribe el color con # y 6 cifras o letras de la a a la f (por ejemplo, #1f3a5f)." };
+  const six = v.length === 4 ? "#" + v.slice(1).split("").map((c) => c + c).join("") : v;
+  return { swatch: six.toLowerCase(), note: null, error: null };
+}
+
 /** Solo hex: los colores funcionales (rgb, hsl, oklch) no se pueden comprobar aquí y no se usan en el acceso. */
 const hex = (c: string | null | undefined) => (c && HEX.test(c) ? c : null);
 

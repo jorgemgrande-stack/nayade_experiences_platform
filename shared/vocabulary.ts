@@ -74,6 +74,8 @@ export interface Vocabulary {
   serviceDateShort: string;
   serviceDateColumn: string;
   newServiceDate: string;
+  /** Condiciones por defecto de un presupuesto («Sujeto a disponibilidad» solo con plazas o reservas). */
+  quoteConditions: string;
   // Pestañas y apartados
   quotes: string;
   invoices: string;
@@ -155,6 +157,7 @@ export function buildVocabulary(input: VocabularyInput): Vocabulary {
       serviceDateShort: "F. Actividad",
       serviceDateColumn: "Fecha actividad",
       newServiceDate: "Nueva fecha de actividad *",
+      quoteConditions: "Presupuesto válido por 15 días. Sujeto a disponibilidad.",
       quotes: "Presupuestos",
       invoices: "Facturas",
       cancellations: "Anulaciones",
@@ -210,6 +213,7 @@ export function buildVocabulary(input: VocabularyInput): Vocabulary {
     serviceDateShort: "F. servicio",
     serviceDateColumn: "Fecha de servicio",
     newServiceDate: "Nueva fecha de servicio *",
+    quoteConditions: can("bookings-generic") ? "Presupuesto válido por 15 días. Sujeto a disponibilidad." : "Presupuesto válido por 15 días.",
     quotes: "Presupuestos",
     invoices: "Facturas",
     cancellations: "Anulaciones y abonos",
