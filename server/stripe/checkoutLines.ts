@@ -10,7 +10,8 @@
  *    y mismo importe aprobado) y, al activarse el pedido, la partida mensual se añade sin prorrateo a la misma
  *    suscripción (modo flexible) para que Stripe la cobre cada mes (`deferredItems.ts`). Así el primer pago cubre
  *    todo lo contratado: ningún derecho se concede sin cobrar.
- *  - No se cobra por Checkout: lo presupuestado aparte (sin tarifa), los productos internos de pruebas, más de
+ *  - No se cobra por Checkout: lo presupuestado aparte (sin tarifa), los productos internos de pruebas, los
+ *    complementos que no están «available» (aunque tengan Price enlazado), más de
  *    20 partidas (límite de Stripe) o una partida anual en un plan mensual.
  */
 import type { QuoteResult } from "../catalog/quote";
@@ -77,6 +78,9 @@ export async function planCheckoutLines(d: CheckoutLinesDeps, order: Pick<Commer
     const product = offer.find((p) => p.key === l.key);
     if (!product) throw new CheckoutLinesError("unavailable", `«${l.name}» no está publicado en el catálogo`);
     if (product.internalOnly) throw new CheckoutLinesError("unsupported", `«${l.name}» es un producto interno de pruebas: no se vende por Checkout`);
+    // Un complemento solo se cobra en línea si está «available»: una extensión «bajo solicitud» puede tener ya su
+    // Price enlazado (preparado antes de abrir la venta) y aun así no se vende
+    if (l.key !== order.request.plan && product.commercialStatus !== "available") throw new CheckoutLinesError("unavailable", `«${l.name}» todavía no se contrata en línea (no está disponible para venta libre)`);
     const kind = l.interval === "year" ? "yearly" : "monthly";
     const approved = product.prices.filter((p) => p.kind === kind && p.status === "approved" && p.currency.toUpperCase() === "EUR");
     if (approved.length !== 1) throw new CheckoutLinesError("unavailable", `«${l.name}» no tiene un único precio ${kind === "yearly" ? "anual" : "mensual"} aprobado`);

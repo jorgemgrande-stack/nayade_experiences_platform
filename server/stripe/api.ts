@@ -33,7 +33,7 @@ import { getAuth, requireScope } from "../controlPlane/auth";
 import { opsLog } from "../_core/ops/log";
 import { recordFailure } from "../_core/ops/failureAlerts";
 import type { CatalogPort } from "../subscriptions/ports";
-import { StripeCatalogError, desiredCatalog, planCatalogWrites, syncCatalog } from "./catalog";
+import { StripeCatalogError, desiredCatalog, planCatalogWrites, syncCatalog, type SkippedProduct } from "./catalog";
 import { StripeCheckoutError, type StripeCheckoutService } from "./checkout";
 import type { OrderStore } from "../orchestrator/store";
 import { BuyerProfileError, FISCAL_SCENARIOS, buildConsent, buyerProfileInput, consentInput, toBuyerProfile, type ConsentVersions, type FiscalScenario, type TaxTreatment } from "./buyerProfile";
@@ -178,8 +178,10 @@ export function createStripeRouter(d: StripeRouterDeps): Router {
     res.json({ configurationId: current?.id ?? null, differences, applicable: differences.filter((x) => !x.pending).length, writeParams: portalWriteParams(differences, input) });
   }));
   r.get("/catalog/plan", requireScope("ops:read"), wrap(async (_req, res) => {
-    const desired = await desiredCatalog(d.catalog, { includeInternal: d.config.mode === "test" });
-    res.json({ desired, ...(await planCatalogWrites(desired, d.gateway)) });
+    // Las extensiones «bajo solicitud» van con `sellable: false`: su Price se prepara, pero no se venden
+    const skipped: SkippedProduct[] = [];
+    const desired = await desiredCatalog(d.catalog, { includeInternal: d.config.mode === "test", onSkip: (s) => skipped.push(s) });
+    res.json({ desired, ...(await planCatalogWrites(desired, d.gateway)), skipped });
   }));
   // Propuestas de precio anual (decisión A): solo lectura; crearlas pasa por aprobar el catálogo y por una persona en Stripe
   r.get("/catalog/yearly-proposals", requireScope("ops:read"), wrap(async (_req, res) => {
