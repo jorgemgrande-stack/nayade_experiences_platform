@@ -6020,19 +6020,23 @@ export default function CRMDashboard() {
     }
   };
 
+  // Descarga el PDF real del documento (el mismo del ZIP de la gestoría), también para los abonos
+  const [downloadingInvoiceId, setDownloadingInvoiceId] = useState<number | null>(null);
   const downloadInvoicePdf = async (invoice: any) => {
-    if (!invoice.pdfUrl) { toast.error("No hay PDF disponible para esta factura"); return; }
+    setDownloadingInvoiceId(invoice.id);
     try {
-      const res = await fetch(invoice.pdfUrl);
-      const blob = await res.blob();
-      const url = URL.createObjectURL(blob);
+      const res = await utils.crm.invoices.downloadPdf.fetch({ invoiceId: invoice.id }, { staleTime: 0, gcTime: 0 });
+      const bytes = Uint8Array.from(atob(res.contentBase64), (c) => c.charCodeAt(0));
+      const url = URL.createObjectURL(new Blob([bytes], { type: res.mimeType }));
       const a = document.createElement("a");
       a.href = url;
-      a.download = `${invoice.invoiceNumber ?? "factura"}.pdf`;
+      a.download = res.fileName;
       a.click();
-      URL.revokeObjectURL(url);
-    } catch {
-      window.open(invoice.pdfUrl, "_blank");
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+    } catch (e) {
+      toast.error(errorToastMessage(e));
+    } finally {
+      setDownloadingInvoiceId(null);
     }
   };
 
@@ -7899,18 +7903,20 @@ export default function CRMDashboard() {
                         </td>
                         <td className="px-4 py-3">
                           <div className="flex items-center justify-end gap-1">
-                            {/* PDF: Generar si no existe, ver+descargar si existe */}
+                            {/* PDF: ver si existe (o generarlo); descargar siempre, también los abonos */}
+                            <button onClick={() => downloadInvoicePdf(inv)} disabled={downloadingInvoiceId === inv.id}
+                              title={inv.invoiceType === "abono" ? "Descargar abono" : "Descargar factura"}
+                              aria-label={`Descargar ${inv.invoiceType === "abono" ? "abono" : "factura"} ${inv.invoiceNumber} en PDF`}
+                              className="p-1.5 rounded-lg hover:bg-foreground/[0.08] text-foreground/50 hover:text-emerald-400 transition-colors disabled:opacity-40">
+                              {downloadingInvoiceId === inv.id
+                                ? <RefreshCw className="w-4 h-4 animate-spin" />
+                                : <FileDown className="w-4 h-4" />}
+                            </button>
                             {inv.pdfUrl ? (
-                              <>
-                                <button onClick={() => viewInvoicePdf(inv)} title="Visualizar factura"
-                                  className="p-1.5 rounded-lg hover:bg-foreground/[0.08] text-foreground/50 hover:text-sky-400 transition-colors">
-                                  <Eye className="w-4 h-4" />
-                                </button>
-                                <button onClick={() => downloadInvoicePdf(inv)} title="Descargar factura"
-                                  className="p-1.5 rounded-lg hover:bg-foreground/[0.08] text-foreground/50 hover:text-emerald-400 transition-colors">
-                                  <FileDown className="w-4 h-4" />
-                                </button>
-                              </>
+                              <button onClick={() => viewInvoicePdf(inv)} title={inv.invoiceType === "abono" ? "Visualizar abono" : "Visualizar factura"}
+                                className="p-1.5 rounded-lg hover:bg-foreground/[0.08] text-foreground/50 hover:text-sky-400 transition-colors">
+                                <Eye className="w-4 h-4" />
+                              </button>
                             ) : (
                               <button
                                 onClick={() => regenerateInvoicePdfMutation.mutate({ invoiceId: inv.id })}
