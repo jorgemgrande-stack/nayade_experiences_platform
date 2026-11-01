@@ -46,6 +46,7 @@ import { generateDocumentNumber } from "../documentNumbers";
 import { currentTpvScope } from "../tpvCatalogScope";
 import { IDEMPOTENCY_KEY_RE, withSaleKeyLock, findSaleByIdempotencyKey, resolveExistingSale, isIdempotencyKeyConflict } from "../tpvSaleIdempotency";
 import { computeSessionPaymentTotals, receivedSaleCondition } from "../tpvSessionTotals";
+import { tpvReportsRouter } from "./tpvReports";
 
 const _pool = legacyPool();
 const db = legacyDb();
@@ -1635,6 +1636,9 @@ export const tpvRouter = router({
         totalSales: salesBySession.get(s.id)?.total ?? 0,
       }));
     }),
+
+  // Informes del periodo (ventas por día, producto, pago, cajero, anulaciones y cierres): routers/tpvReports.ts
+  reports: tpvReportsRouter,
 
   getBackofficeSalesByProduct: tpvBackofficeProc
     .input(z.object({ sessionId: z.number().optional() }))

@@ -4,7 +4,7 @@
  */
 
 
-import { router, protectedProcedure, publicProcedure, staffProcedure, adminProcedure } from "../_core/trpc";
+import { router, protectedProcedure, publicProcedure, staffProcedure, adminProcedure, permissionProcedure } from "../_core/trpc";
 import { publicBaseUrl } from "../_core/productIdentity";
 import { brandSetting, companyName } from "../tenantBrand";
 import { invoicePreviewPath } from "../_core/signedLinks";
@@ -76,6 +76,9 @@ import { syncLeadUrlsToGHL, createGHLContact, getGHLTagsFromSource, triggerGHLWo
 import { getSystemSettingSync, getBusinessEmail, internalNoticeEmail } from "../config";
 import { groupTaxBreakdown, totalTaxAmount } from "../taxUtils";
 import { reservationProductFromQuoteItems } from "../reservationUtils";
+import { buildGestoriaInvoiceZip, ExportTooLargeError, MAX_EXPORT_DOCUMENTS } from "../gestoriaInvoiceExport";
+import { listInvoicesForExport, originalInvoiceNumbers, storedInvoicePdf, toExportRow } from "../gestoriaInvoiceExportDb";
+import { ExportPeriodError, resolveExportPeriod } from "../../shared/gestoriaExportPeriod";
 
 // DB helper — usa la misma pool que el resto del servidor
 const _pool = legacyPool();
@@ -5574,6 +5577,51 @@ export const crmRouter = router({
         const [invoice] = await db.select().from(invoices).where(eq(invoices.id, input.id));
         if (!invoice) throw new TRPCError({ code: "NOT_FOUND" });
         return invoice;
+      }),
+
+    // --- Exportar para la gestoría: ZIP con los PDF y el libro de facturas emitidas ----
+    // Consulta (no cambia nada): con la facturación en solo lectura se sigue pudiendo exportar. Solo quien
+    // ve los informes contables (administración por defecto). Datos de la empresa en curso, nunca de otra.
+    exportForGestoria: permissionProcedure("accounting.reports.view", ["admin"])
+      .input(z.discriminatedUnion("kind", [
+        z.object({ kind: z.literal("month"), year: z.number().int(), month: z.number().int() }),
+        z.object({ kind: z.literal("quarter"), year: z.number().int(), quarter: z.number().int() }),
+        z.object({ kind: z.literal("range"), from: z.string().max(10), to: z.string().max(10) }),
+      ]))
+      .query(async ({ input }) => {
+        let period;
+        try {
+          period = resolveExportPeriod(input);
+        } catch (e) {
+          if (e instanceof ExportPeriodError) throw new TRPCError({ code: "BAD_REQUEST", message: e.message });
+          throw e;
+        }
+        const stored = await listInvoicesForExport(period);
+        if (stored.length > MAX_EXPORT_DOCUMENTS) {
+          throw new TRPCError({ code: "BAD_REQUEST", message: `El periodo tiene ${stored.length} documentos y el máximo por exportación es ${MAX_EXPORT_DOCUMENTS}. Exporta por meses o con un rango más corto.` });
+        }
+        const byId = new Map(stored.map((r) => [r.id, r]));
+        try {
+          const zip = await buildGestoriaInvoiceZip({
+            companyName: companyName(),
+            period,
+            rows: stored.map(toExportRow),
+            originalNumbers: await originalInvoiceNumbers(stored),
+            pdfFor: (row) => storedInvoicePdf(byId.get(row.id)!),
+          });
+          return {
+            fileName: zip.fileName,
+            mimeType: "application/zip",
+            contentBase64: zip.buffer.toString("base64"),
+            period: { from: period.from, to: period.to, label: period.label },
+            invoices: zip.invoices,
+            creditNotes: zip.creditNotes,
+            missingPdfs: zip.missingPdfs,
+          };
+        } catch (e) {
+          if (e instanceof ExportTooLargeError) throw new TRPCError({ code: "BAD_REQUEST", message: e.message });
+          throw e;
+        }
       }),
 
     // --- Regenerar PDF de factura existente -----------------------------------
