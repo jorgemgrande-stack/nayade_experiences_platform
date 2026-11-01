@@ -70,7 +70,7 @@ describe("resolución", () => {
     expect((await resolvePublicRoute("/hotel", deps())).status).toBe(404);
   });
 
-  it("secciones según lo contratado (multi): sin tienda ni Lego Packs ni cupones, 404; la redirección a la tienda existe", async () => {
+  it("secciones según lo contratado (multi): sin Lego Packs ni cupones ni presupuesto, 404; la tienda existe", async () => {
     const essential = { licensed: true, store: true, checkout: true, quotes: true, coupons: false, hotel: false, spa: false, restaurants: false };
     const d = deps({ siteFeatures: async () => essential });
     expect(classifyPublicPath("/lego-packs/dia", true)).toEqual({ kind: "site", path: "/lego-packs/dia" });
@@ -78,8 +78,8 @@ describe("resolución", () => {
     expect(classifyPublicPath("/experiencias/camiseta", true).kind).toBe("app");
     for (const p of ["/lego-packs", "/lego-packs/dia", "/canjear-cupon"]) expect((await resolvePublicRoute(p, d)).status, p).toBe(404);
     for (const p of ["/tienda", "/experiencias", "/presupuesto", "/experiencias/camiseta"]) expect((await resolvePublicRoute(p, d)).status, p).toBe(200);
-    const sinTienda = deps({ siteFeatures: async () => ({ ...essential, store: false, quotes: false }) });
-    for (const p of ["/tienda", "/experiencias", "/presupuesto"]) expect((await resolvePublicRoute(p, sinTienda)).status, p).toBe(404);
+    const sinPresupuesto = deps({ siteFeatures: async () => ({ ...essential, quotes: false }) });
+    expect((await resolvePublicRoute("/presupuesto", sinPresupuesto)).status).toBe(404);
     // Instalación propia o sin la comprobación: todo existe como siempre
     const legacy = deps({ siteFeatures: async () => ({ licensed: false, store: true, checkout: true, quotes: true, coupons: true, hotel: true, spa: true, restaurants: true }) });
     for (const p of ["/lego-packs", "/canjear-cupon", "/tienda"]) expect((await resolvePublicRoute(p, legacy)).status, p).toBe(200);

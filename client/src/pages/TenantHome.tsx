@@ -9,6 +9,8 @@ import PublicLayout from "@/components/PublicLayout";
 import { Button } from "@/components/ui/button";
 import { HOME_PAGE_SLUG } from "@/lib/homeRoute";
 import { RICH_TEXT_CLASS } from "@/components/TenantTheme";
+import { useStorefront } from "@/components/StorefrontRoute";
+import { productPath } from "@shared/storefront";
 
 type Slide = { id: number; imageUrl: string; badge?: string | null; title?: string | null; subtitle?: string | null; ctaText?: string | null; ctaUrl?: string | null };
 type Product = { id: number; slug: string; title: string; shortDescription?: string | null; image1?: string | null; basePrice?: string | null };
@@ -25,6 +27,8 @@ export default function TenantHome() {
   const page = trpc.public.getTenantPage.useQuery({ slug: HOME_PAGE_SLUG }, { retry: false });
   const slides = trpc.public.getSlideshowItems.useQuery(undefined, { retry: false });
   const featured = trpc.public.getFeaturedExperiences.useQuery(undefined, { retry: false });
+  // Ficha de cada destacado: la de tienda en una pyme, la sectorial con su módulo
+  const kind = useStorefront().storefront?.kind ?? "generic";
 
   const hero = ((slides.data ?? []) as Slide[]).find((s) => s.imageUrl);
   const products = (featured.data ?? []) as Product[];
@@ -64,7 +68,7 @@ export default function TenantHome() {
           </h2>
           <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
             {products.map((p) => (
-              <Link key={p.id} href={`/experiencias/${p.slug}`} className="group block rounded-2xl border border-border/50 overflow-hidden bg-card shadow-sm hover:shadow-md transition-shadow">
+              <Link key={p.id} href={productPath(p.slug, kind)} className="group block rounded-2xl border border-border/50 overflow-hidden bg-card shadow-sm hover:shadow-md transition-shadow">
                 {p.image1 && <img src={p.image1} alt={p.title} className="w-full h-40 object-cover" loading="lazy" />}
                 <div className="p-4 space-y-1">
                   <h3 className="font-heading font-semibold group-hover:text-primary">{p.title}</h3>

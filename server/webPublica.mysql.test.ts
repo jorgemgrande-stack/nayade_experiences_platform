@@ -63,10 +63,9 @@ describe.skipIf(!URL_)("Web pública por empresa (aplicación real, dos empresas
     // Secciones según lo contratado (Essential): la tienda sí; Lego Packs y cupones de plataformas, no
     for (const p of ["/tienda", "/experiencias", "/presupuesto"]) expect((await ess.call("a", "GET", p)).status, p).toBe(200);
     for (const p of ["/lego-packs", "/lego-packs/dia", "/canjear-cupon"]) expect((await ess.call("a", "GET", p)).status, p).toBe(404);
-    await ess.setCapability("b", "shop-store", null);
-    expect((await ess.call("b", "GET", "/tienda")).status).toBe(404);
-    expect((await ess.call("b", "GET", "/experiencias")).status).toBe(404);
-    await ess.setCapability("b", "shop-store", "active");
+    await ess.setCapability("b", "crm-leads", null);
+    expect((await ess.call("b", "GET", "/presupuesto")).status).toBe(404);
+    await ess.setCapability("b", "crm-leads", "active");
     // Rutas del cliente y áreas privadas: se sirven
     for (const p of ["/contacto", "/login", "/admin", "/admin/ayuda"]) expect((await ess.call("a", "GET", p)).status, p).toBe(200);
     // Secciones sectoriales sin su módulo: no existen
@@ -89,7 +88,7 @@ describe.skipIf(!URL_)("Web pública por empresa (aplicación real, dos empresas
     const a = (await ess.call("a", "GET", "/sitemap.xml")).text;
     const base = `https://${ess.host("a")}`;
     for (const p of ["/", "/contacto", "/servicios", "/blog", "/blog/novedades"]) expect(a, p).toContain(`<loc>${base}${p}</loc>`);
-    expect(a).not.toMatch(/\/experiencias|\/presupuesto<|\/hotel|\/spa|\/restaurantes|lego-packs|\/borrador/);
+    expect(a).not.toMatch(/\/experiencias|\/tienda|\/presupuesto<|\/hotel|\/spa|\/restaurantes|lego-packs|\/borrador/);
     expect(a.match(/<loc>[^<]+\/contacto<\/loc>/g)?.length).toBe(1);
     const b = (await ess.call("b", "GET", "/sitemap.xml")).text;
     expect(b).not.toContain(ess.host("a"));
@@ -100,10 +99,10 @@ describe.skipIf(!URL_)("Web pública por empresa (aplicación real, dos empresas
     const [loc] = await ess.sql<{ id: number }>("a", "SELECT id FROM locations LIMIT 1");
     await ess.sql("a", "INSERT INTO experiences (slug, title, categoryId, locationId, basePrice, isActive, isPublished) VALUES ('visita-guiada', 'Visita guiada', ?, ?, 10, 1, 1)", [cat?.id ?? 1, loc?.id ?? 1]);
     const a2 = (await ess.call("a", "GET", "/sitemap.xml")).text;
-    // La tienda de la pyme (no el catálogo de experiencias de la instalación propia)
+    // Una pyme: en la dirección de su tienda, no en la de la ficha sectorial
     expect(a2).toContain(`<loc>${base}/tienda</loc>`);
-    expect(a2).not.toContain(`<loc>${base}/experiencias</loc>`);
-    expect(a2).toContain(`<loc>${base}/experiencias/visita-guiada</loc>`);
-    expect((await ess.call("b", "GET", "/sitemap.xml")).text).not.toContain("/experiencias");
+    expect(a2).toContain(`<loc>${base}/tienda/visita-guiada</loc>`);
+    expect(a2).not.toContain("/experiencias");
+    expect((await ess.call("b", "GET", "/sitemap.xml")).text).not.toMatch(/\/experiencias|\/tienda/);
   });
 });

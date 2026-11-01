@@ -36,24 +36,21 @@ describe("secciones de la web según lo contratado", () => {
   it("instalación propia (sin licencias por capacidad): todo como siempre", () => {
     expect(siteFeaturesFrom({ licensed: false, can: () => false })).toBe(LEGACY_SITE_FEATURES);
     for (const p of ["/experiencias", "/lego-packs", "/lego-packs/dia", "/canjear-cupon", "/presupuesto"]) expect(publicRouteAccess(p, LEGACY_SITE_FEATURES)).toEqual({ kind: "allow" });
-    // La tienda genérica no existe allí: lleva a su catálogo
-    expect(publicRouteAccess(SHOP_PATH, LEGACY_SITE_FEATURES)).toEqual({ kind: "redirect", to: "/experiencias" });
   });
 
-  it("pyme: /experiencias lleva a la tienda; Lego Packs no existe; cupones y presupuesto solo contratados", () => {
-    expect(publicRouteAccess("/experiencias", essential)).toEqual({ kind: "redirect", to: SHOP_PATH });
-    expect(publicRouteAccess("/experiencias/", essential)).toEqual({ kind: "redirect", to: SHOP_PATH });
-    expect(publicRouteAccess(SHOP_PATH, essential)).toEqual({ kind: "allow" });
+  it("pyme: Lego Packs no existe; cupones y presupuesto solo contratados; la tienda la decide el catálogo", () => {
+    for (const p of ["/experiencias", SHOP_PATH, "/tienda/x"]) expect(publicRouteAccess(p, none).kind).toBe("allow");
     for (const p of ["/lego-packs", "/lego-packs/dia", "/lego-packs/detalle/x", "/canjear-cupon"]) expect(publicRouteAccess(p, essential).kind).toBe("notFound");
     expect(publicRouteAccess("/presupuesto", essential).kind).toBe("allow");
     expect(publicRouteAccess("/canjear-cupon", { ...essential, coupons: true }).kind).toBe("allow");
-    for (const p of ["/experiencias", SHOP_PATH, "/presupuesto"]) expect(publicRouteAccess(p, none).kind).toBe("notFound");
+    expect(publicRouteAccess("/presupuesto", none).kind).toBe("notFound");
     // La ficha de producto, el enlace de un presupuesto y el resto no dependen de esto
     for (const p of ["/experiencias/camiseta", "/presupuesto/abc", "/contacto", "/checkout", "/"]) {
       expect(publicRouteAccess(p, none).kind).toBe("allow");
       expect(isSiteGatedPath(p)).toBe(false);
     }
-    for (const p of ["/experiencias", SHOP_PATH, "/lego-packs/dia", "/canjear-cupon", "/presupuesto"]) expect(isSiteGatedPath(p)).toBe(true);
+    for (const p of ["/lego-packs/dia", "/canjear-cupon", "/presupuesto"]) expect(isSiteGatedPath(p)).toBe(true);
+    for (const p of ["/experiencias", SHOP_PATH]) expect(isSiteGatedPath(p)).toBe(false);
   });
 
   it("hotel, spa y restaurantes: solo con su módulo (como el 404 del servidor)", () => {
@@ -101,9 +98,9 @@ describe("secciones de la web según lo contratado", () => {
 });
 
 describe("la web pública usa estas decisiones", () => {
-  it("rutas: /tienda, y las secciones contratables pasan por SiteRouteGate", () => {
+  it("rutas: las secciones contratables pasan por SiteRouteGate", () => {
     const app = read("client/src/App.tsx");
-    for (const p of ["/experiencias", "/tienda", "/presupuesto", "/canjear-cupon", "/lego-packs", "/lego-packs/detalle/:slug", "/lego-packs/:category", "/hotel", "/hotel/:slug", "/spa", "/spa/:slug", "/restaurantes", "/restaurantes/:slug"]) {
+    for (const p of ["/presupuesto", "/canjear-cupon", "/lego-packs", "/lego-packs/detalle/:slug", "/lego-packs/:category", "/hotel", "/hotel/:slug", "/spa", "/spa/:slug", "/restaurantes", "/restaurantes/:slug"]) {
       expect(app).toContain(`<Route path="${p}">{() => <SiteRouteGate>`);
     }
     expect(read("client/src/components/TenantTheme.tsx")).toMatch(/export function SiteRouteGate[\s\S]*publicRouteAccess\(location, features\)/);
@@ -125,7 +122,6 @@ describe("la web pública usa estas decisiones", () => {
     const budget = read("client/src/pages/BudgetRequest.tsx");
     expect(budget).toMatch(/features && !features\.licensed \? <LegacyBudgetRequest \/> : <TenantBudgetRequest \/>/);
     expect(read("client/src/pages/TenantBudgetRequest.tsx")).not.toMatch(NAYADE);
-    expect(read("client/src/pages/TenantShop.tsx")).not.toMatch(/n[aá]yade|actividad|reserva|lego|hotel|\bspa\b/i);
   });
 
   it("404 en español y con la marca de la empresa", () => {

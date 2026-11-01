@@ -60,7 +60,8 @@ export function siteFeaturesFrom(o: { licensed: boolean; can: (capabilityId: str
 }
 
 /** Tienda genérica de una pyme (la ficha de cada producto sigue en /experiencias/:slug). */
-export const SHOP_PATH = "/tienda";
+export { SHOP_PATH } from "./storefront";
+import { SHOP_PATH } from "./storefront";
 
 export type PublicRouteAccess = { kind: "allow" } | { kind: "notFound" } | { kind: "redirect"; to: string };
 
@@ -73,13 +74,8 @@ const NOT_FOUND: PublicRouteAccess = { kind: "notFound" };
  */
 export function publicRouteAccess(rawPath: string, f: PublicSiteFeatures): PublicRouteAccess {
   const p = (rawPath.split(/[?#]/)[0] || "/").replace(/\/+$/, "") || "/";
-  if (p === SHOP_PATH) {
-    if (!f.licensed) return { kind: "redirect", to: "/experiencias" };
-    return f.store ? ALLOW : NOT_FOUND;
-  }
+  // La tienda (/tienda y /experiencias) la resuelve el catálogo según la ficha de la empresa (shared/storefront.ts)
   if (!f.licensed) return ALLOW;
-  // Catálogo de experiencias de la instalación propia: en una pyme, su tienda
-  if (p === "/experiencias") return f.store ? { kind: "redirect", to: SHOP_PATH } : NOT_FOUND;
   // Lego Packs: producto propio de la instalación original, sin equivalente contratable
   if (p === "/lego-packs" || p.startsWith("/lego-packs/")) return NOT_FOUND;
   if (p === "/canjear-cupon") return f.coupons ? ALLOW : NOT_FOUND;
@@ -192,5 +188,5 @@ export function composePageTitle(page: string | null | undefined, brand: string 
 /** Rutas cuya existencia depende de lo contratado (las demás no necesitan consultar nada). */
 export function isSiteGatedPath(rawPath: string): boolean {
   const p = (rawPath.split(/[?#]/)[0] || "/").replace(/\/+$/, "") || "/";
-  return p === SHOP_PATH || p === "/experiencias" || p === "/lego-packs" || p.startsWith("/lego-packs/") || p === "/canjear-cupon" || p === "/presupuesto";
+  return p === "/lego-packs" || p.startsWith("/lego-packs/") || p === "/canjear-cupon" || p === "/presupuesto";
 }
