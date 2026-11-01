@@ -84,15 +84,16 @@ La publicación del Core no basta: compila la web **antes** de que se apliquen l
 
 ## Reglas comerciales preparadas (desactivadas)
 
-`server/catalog/commercial/rules.ts` reúne las siete reglas de la fase de cierre, con su estado, dónde viven y qué falta para activarlas. `GET /cp/v1/web/commercial/review` las devuelve en `rules`; ninguna está activa.
+`server/catalog/commercial/rules.ts` reúne las reglas de la fase de cierre, con su estado, dónde viven y qué falta para activarlas. `GET /cp/v1/web/commercial/review` las devuelve en `rules`; ninguna está activa.
 
 1. Cupos base de Enterprise.
-2. People en Business con 15 empleados.
-3. POS con caja básica en el plan.
-4. Paquetes con descuento solo sobre lo facturable.
-5. Copilot con consumo medido. Su límite es `null` hasta que se decida.
-6. Implantación separada de la cuota.
-7. Ampliaciones de Enterprise por presupuesto.
+2. POS con caja básica en el plan.
+3. Paquetes con descuento solo sobre lo facturable.
+4. Copilot con consumo medido. Su límite es `null` hasta que se decida.
+5. Implantación separada de la cuota.
+6. Ampliaciones de Enterprise por presupuesto.
+
+Elephant People no se incluye en ningún plan (decisión del 01/11/2026): es una extensión de pago por empresa para Essential, Business y Enterprise. La regla «People en Business con 15 empleados» se retiró.
 
 ## Elephant Net completo con Elephant Core incluido (decisión del 27/10/2026)
 

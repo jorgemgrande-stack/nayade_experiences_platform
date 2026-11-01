@@ -86,22 +86,15 @@ export const CATALOG_POLICY: CommercialPolicy = {
   quoteOnRequestPlans: [],
 };
 
-/** Escenario equilibrado (decidido el 26/10/2026) con las reglas propuestas de la especificación definitiva. */
+/**
+ * Escenario equilibrado (decidido el 26/10/2026) con las reglas propuestas de la especificación definitiva. Elephant People
+ * no se incluye en ningún plan: es una extensión de pago para Essential, Business y Enterprise (decisión del 01/11/2026).
+ */
 export const PROPOSED_POLICY: CommercialPolicy = {
   id: "escenario-equilibrado-2026-10",
   inclusions: [
     { plan: "business", key: "connect-automations", mode: "full", status: "approved", excludes: "Envíos de marketing (Elephant Campaigns)" },
-    {
-      plan: "business",
-      key: "connect-people",
-      mode: "partial",
-      status: "approved",
-      cap: { metric: "employees", base: 15, plusExtraOf: "users", status: "proposed" },
-      overflowKey: "connect-people",
-      excludes: "Por encima del tope de empleados se contrata Elephant People completo",
-    },
     { plan: "business", key: "extra-contracts-esign", mode: "full", status: "approved", excludes: "Firma avanzada o cualificada: por uso, con proveedor" },
-    { plan: "enterprise", key: "connect-people", mode: "full", status: "proposed" },
     { plan: "enterprise", key: "connect-pack-finance", mode: "full", status: "approved" },
     { plan: "enterprise", key: "extra-accounting", mode: "full", status: "approved" },
     { plan: "enterprise", key: "connect-copilot", mode: "full", status: "approved", excludes: "Consumo de IA por encima del límite mensual" },

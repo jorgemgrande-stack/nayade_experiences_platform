@@ -167,12 +167,13 @@ describe("importación de fichas comerciales", () => {
       }
     }
     const biz = draftWithSpec(productDraft.parse(PRODUCTS.find((p) => p.key === "business")!.draft), "core_plan", PRODUCT_SPECS.find((s) => s.key === "business")!);
-    expect(biz.internal.pendingDecisions?.some((t) => /Texto retenido/.test(t) && /People incluido hasta 15/.test(t))).toBe(true);
-    expect(biz.catalog.inclusions?.map((i) => `${i.key}:${i.status}`)).toEqual(["connect-automations:approved", "connect-people:approved", "extra-contracts-esign:approved"]);
-    expect(biz.catalog.inclusions?.find((i) => i.key === "connect-people")?.cap).toMatchObject({ base: 15, status: "proposed" });
+    expect(biz.internal.pendingDecisions?.some((t) => /Texto retenido/.test(t) && /Automatizaciones avanzadas incluidas/.test(t))).toBe(true);
+    // Elephant People no se incluye en ningún plan (01/11/2026)
+    expect(biz.catalog.inclusions?.map((i) => `${i.key}:${i.status}`)).toEqual(["connect-automations:approved", "extra-contracts-esign:approved"]);
     const ent = draftWithSpec(productDraft.parse(PRODUCTS.find((p) => p.key === "enterprise")!.draft), "core_plan", PRODUCT_SPECS.find((s) => s.key === "enterprise")!);
     expect(ent.catalog.quotaProposals).toContainEqual({ metric: "users", included: 25 });
     expect(ent.catalog.quoteOnRequest).toEqual({ status: "proposed" });
+    expect(ent.catalog.inclusions?.some((i) => i.key === "connect-people")).toBe(false);
   });
 
   it("repetir la semilla no borra la ficha ni la política importadas", async () => {
@@ -202,7 +203,8 @@ describe("política desde los borradores (simulador)", () => {
       { plan: "enterprise", interval: "month" as const, users: 25, sites: 3, employees: 25, items: [{ key: "connect-pos", quantity: 3 }] },
       { plan: "business", interval: "month" as const, items: [{ key: "connect-pack-ai" }] },
     ];
-    const expected = [48, 124, 79, 98, null, 274, null];
+    // Con People cobrado aparte en todos los planes: Business + Finance + People = 143; restaurante en Business = 117
+    const expected = [48, 143, 79, 117, null, 274, null];
     reqs.forEach((r, i) => {
       const fromDrafts = commercialQuote(catalog, policy, r);
       const fromSpec = commercialQuote(catalog, PROPOSED_POLICY, r);
@@ -211,7 +213,8 @@ describe("política desde los borradores (simulador)", () => {
       if (expected[i] !== null) expect(fromDrafts.recurring.monthlyCents).toBe(eur(expected[i]!));
     });
     // Y marca las reglas propuestas que intervienen
-    expect(commercialQuote(catalog, policy, reqs[5]).pendingRules).toEqual(expect.arrayContaining(["inclusión enterprise:connect-people", "cupo enterprise:users"]));
+    expect(commercialQuote(catalog, policy, reqs[5]).pendingRules).toEqual(expect.arrayContaining(["cupo enterprise:users"]));
+    expect(commercialQuote(catalog, policy, reqs[5]).pendingRules.filter((x) => x.includes("connect-people"))).toEqual([]);
   });
 });
 
@@ -312,7 +315,7 @@ describe("validaciones comerciales", () => {
     const biz = r.products.find((p) => p.key === "business")!;
     // El SEO de Business nombra extensiones cuya inclusión aún no se aplica: no se publica tal cual
     expect(biz.blocking.join(" ")).toMatch(/connect-automations/);
-    expect(biz.pending).toEqual(expect.arrayContaining(["Tope propuesto de connect-people: 15 empleados más los usuarios adicionales"]));
+    expect(biz.pending.filter((t) => /connect-people|People/.test(t))).toEqual([]);
     expect(biz.warnings.some((w) => /sin efecto todavía/.test(w))).toBe(true);
     // Solo los dos planes con inclusiones y Copilot (límite de IA sin decidir) quedan bloqueados
     expect(r.products.filter((p) => p.blocking.length).map((p) => p.key).sort()).toEqual(["business", "connect-copilot", "enterprise"]);

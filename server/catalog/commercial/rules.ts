@@ -32,14 +32,6 @@ export const COMMERCIAL_RULES: readonly CommercialRule[] = [
     requires: ["Ratificar los cupos base (decisiones 1 y 2)", "Licencias y límites leen el cupo del pedido o contrato (contrato Stripe, cupos de Enterprise)"],
   },
   {
-    id: "people-business-15",
-    title: "People en Business: 15 empleados incluidos más uno por usuario adicional; por encima, Elephant People completo",
-    status: "proposed",
-    where: "catalog.inclusions de business: connect-people parcial (inclusión aprobada, tope propuesto) con ampliación connect-people",
-    todayEffect: "Ninguno: Elephant People se cobra aparte",
-    requires: ["Aprobar el tope de empleados (decisión 3)", "Métrica employees en límites y uso", "Partidas plan_inclusion a 0 € en la suscripción interna"],
-  },
-  {
     id: "pos-caja-basica",
     title: "Elephant POS: caja básica incluida en el plan; varias cajas, cajero y backoffice como extensión",
     status: "proposed",
