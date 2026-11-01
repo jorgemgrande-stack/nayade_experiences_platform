@@ -15,7 +15,7 @@
 import type { ExternalEvent, ExternalSubscription } from "../external/types";
 import type { Invoice } from "../invoicing/types";
 import { madridDateKey } from "../utils/timezone";
-import type { AutomationReport, FinanceAutomation } from "./automation";
+import { AUTOMATION_STEPS, type AutomationReport, type FinanceAutomation } from "./automation";
 import type { FinanceOpsStore } from "./opsStore";
 import type { OwnInvoiceDirectory } from "./ownInvoices";
 import type { FinanceService } from "./service";
@@ -153,10 +153,13 @@ export class FinanceIntegrity {
     const out: IntegrityAlert[] = [];
     const add = (a: IntegrityAlert) => void (a.count > 0 && out.push(a));
     const stale = !c.last || this.now() - c.last.at > AUTOMATION_STALE_MS;
-    const stepErrors = c.last ? (["fiscalYear", "taxSettings", "invoiceDrafts", "invoiceSync", "stripe"] as const).filter((k) => c.last![k].status === "error") : [];
+    const stepErrors = c.last ? AUTOMATION_STEPS.filter((k) => c.last![k]?.status === "error") : [];
 
     add({ code: "automation_stale", severity: "critical", count: stale ? 1 : 0, source: "Automatización contable", message: c.last ? "La automatización contable no se ejecuta desde hace más de 2 horas: los datos pueden estar desactualizados" : "La automatización contable aún no se ha ejecutado: los datos no están sincronizados", action: "Comprobar el registro del plano de control (ctx FinanceAutomation)" });
-    add({ code: "automation_errors", severity: "critical", count: stepErrors.length, source: "Automatización contable", message: `La última pasada falló en: ${stepErrors.map((k) => `${STEP_LABEL[k]} (${c.last![k].detail ?? "error"})`).join("; ")}`, action: "Revisar el error indicado; la pasada se repite cada 15 minutos" });
+    add({ code: "automation_errors", severity: "critical", count: stepErrors.length, source: "Automatización contable", message: `La última pasada falló en: ${stepErrors.map((k) => `${STEP_LABEL[k]} (${c.last![k]?.detail ?? "error"})`).join("; ")}`, action: "Revisar el error indicado; la pasada se repite cada 15 minutos" });
+
+    const blocked = (c.last?.invoiceIssue?.blocked as Array<{ id: number; reason: string }> | undefined) ?? [];
+    add({ code: "invoice_issue_blocked", severity: "critical", count: blocked.length, source: "Facturación fiscal automática", message: `${plural(blocked.length, "factura no se ha podido expedir", "facturas no se han podido expedir")} sola${blocked.length === 1 ? "" : "s"}: ${blocked.slice(0, 3).map((b) => `#${b.id} ${b.reason}`).join("; ")}`, action: "Corregir el dato indicado (ficha fiscal del cliente o cobro en Stripe); la siguiente pasada la expide y la envía" });
 
     const missing = c.last?.stripe.missing?.length ? c.last.stripe.missing.join(", ") : "balance_read, payout_read";
     add({ code: "stripe_source_unavailable", severity: "critical", count: c.stripeSource && c.stripeSource !== "ok" ? 1 : 0, source: "Stripe (API de saldo)", message: `Stripe no se sincroniza por API (${c.stripeSource === "permission_missing" ? `a la clave restringida le faltan los permisos ${missing}` : (c.last?.stripe.detail ?? "sin lector")}): comisiones, neto y liquidaciones no entran solos en el libro`, action: c.stripeSource === "permission_missing" ? `En el Dashboard de Stripe, dar a la clave restringida del plano de control los permisos de lectura ${missing}; mientras tanto, importar el informe «Balance change from activity» en Contabilidad › Stripe` : "Importar los informes CSV de Stripe en Contabilidad › Stripe" });
@@ -288,4 +291,4 @@ export class FinanceIntegrity {
   }
 }
 
-const STEP_LABEL: Record<keyof Omit<AutomationReport, "at">, string> = { fiscalYear: "ejercicio", taxSettings: "configuración fiscal", invoiceDrafts: "borradores de factura", invoiceSync: "facturas al libro", stripe: "Stripe" };
+const STEP_LABEL: Record<keyof Omit<AutomationReport, "at">, string> = { fiscalYear: "ejercicio", taxSettings: "configuración fiscal", invoiceDrafts: "borradores de factura", invoiceIssue: "emisión de facturas", invoiceSync: "facturas al libro", stripe: "Stripe" };

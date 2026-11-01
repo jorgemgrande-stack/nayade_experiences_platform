@@ -134,6 +134,17 @@ export class StripeApiBalanceReader {
     return { items, truncated: true };
   }
 
+  /** Factura de Stripe (solo lectura) para contrastar un cobro antes de expedir la factura propia; null si no se puede leer. */
+  async invoice(id: string): Promise<{ status: string; amountPaid: number; currency: string } | null> {
+    if (!this.o.apiKey || !/^in_[A-Za-z0-9]+$/.test(id)) return null;
+    try {
+      const j = await this.get(`invoices/${id}`);
+      return { status: String(j.status ?? ""), amountPaid: int(j.amount_paid), currency: String(j.currency ?? "").toUpperCase() };
+    } catch {
+      return null;
+    }
+  }
+
   /** Transacciones de saldo y payouts creados desde `sinceTs` (segundos). Nunca lanza: el estado va en el resultado. */
   async read(sinceTs: number): Promise<StripeApiReadResult> {
     const empty = { txns: [], payouts: [], truncated: false };
@@ -155,8 +166,18 @@ export class StripeApiBalanceReader {
     try {
       const since = `&created[gte]=${Math.floor(sinceTs)}`;
       const payouts = await attempt(() => this.list("payouts", since));
-      const bts = await attempt(() => this.list("balance_transactions", `${since}&expand[]=data.source`));
+      // Sin expandir el origen (exigiría otro permiso): el cargo se lee aparte con la lectura de cargos
+      const bts = await attempt(() => this.list("balance_transactions", since));
       if (!bts || !payouts) return { status: "permission_missing", missing: Array.from(missing), message, ...empty };
+      const ENDPOINT: Array<[string, string]> = [["ch_", "charges"], ["py_", "charges"], ["re_", "refunds"], ["pyr_", "refunds"], ["dp_", "disputes"], ["du_", "disputes"]];
+      for (const bt of bts.items) {
+        if (typeof bt.source !== "string") continue;
+        const src = bt.source;
+        const ep = ENDPOINT.find(([p]) => src.startsWith(p))?.[1];
+        if (!ep) continue;
+        const obj = await this.get(`${ep}/${encodeURIComponent(src)}`).catch(() => null);
+        if (obj) bt.source = obj;
+      }
       // Payout automático de cada transacción (el informe CSV lo trae en `automatic_payout_id`)
       const payoutOf = new Map<string, string>();
       for (const p of payouts.items) {

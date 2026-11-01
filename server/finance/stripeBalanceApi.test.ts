@@ -72,9 +72,11 @@ describe("StripeApiBalanceReader", () => {
       if (u.pathname.endsWith("/balance_transactions") && u.searchParams.get("payout") === "po_1") return { body: { data: [{ id: "txn_1" }], has_more: false } };
       if (u.pathname.endsWith("/balance_transactions")) {
         expect(u.searchParams.get("created[gte]")).toBe(String(CREATED - 86_400));
-        expect(u.searchParams.get("expand[]")).toBe("data.source");
-        return { body: { data: [bt], has_more: false } };
+        // Sin expandir el origen (exigiría el permiso de orígenes): el cargo se lee aparte
+        expect(u.searchParams.get("expand[]")).toBeNull();
+        return { body: { data: [{ ...bt, source: "ch_1" }], has_more: false } };
       }
+      if (u.pathname.endsWith("/charges/ch_1")) return { body: bt.source };
       if (u.pathname.endsWith("/invoice_payments")) {
         expect(u.searchParams.get("payment[payment_intent]")).toBe("pi_1");
         return { body: { data: [{ id: "inpay_1", invoice: "in_1" }] } };

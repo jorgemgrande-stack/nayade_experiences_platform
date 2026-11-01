@@ -30,6 +30,8 @@ export interface InvoicingDeps {
   issueEnabled: boolean;
   /** Tras expedir una factura o rectificativa (avisos). Un fallo del aviso nunca deshace la expedición. */
   onIssued?: (invoice: Invoice) => Promise<void>;
+  /** Días antes del cobro en que nace el borrador de la mensualidad (su proforma); 0 = el día del vencimiento. */
+  proformaLeadDays?: number;
   now?: () => number;
 }
 
@@ -59,7 +61,9 @@ export class InvoicingService {
       }
       const company = await this.d.company(x.companyId);
       const customer = company ? customerOf(company).party : null;
-      for (const p of externalPeriods(x, now)) {
+      for (const p of externalPeriods(x, now, 36, Math.max(0, this.d.proformaLeadDays ?? 0) * 86_400_000)) {
+        // Nunca un periodo posterior al fin del contrato
+        if (x.endsAt && p.start >= x.endsAt) continue;
         const lines = [lineOf(1, `${x.serviceName} — ${p.label}`, 1, x.amountCents, x.taxRateBp)];
         const r = await this.d.store.insertDraft({
           sourceKey: externalSourceKey(x.id, p.month),

@@ -18,6 +18,7 @@
  * es lo que leen el control diario y el panel para no presentar como «sin alertas» una fuente que no se sincroniza.
  */
 import type { SchedulerLock } from "../trials/scheduler";
+import type { InvoicingAutomation } from "../invoicing/delivery";
 import type { GenerateReport } from "../invoicing/service";
 import { madridDateKey } from "../utils/timezone";
 import type { FinanceService } from "./service";
@@ -49,6 +50,8 @@ export interface AutomationReport {
   fiscalYear: StepResult;
   taxSettings: StepResult;
   invoiceDrafts: StepResult;
+  /** Proformas, expedición de lo cobrado y envío (DF-2). Ausente en las pasadas anteriores a esta versión. */
+  invoiceIssue: StepResult;
   invoiceSync: StepResult;
   stripe: StepResult & { source?: StripeApiStatus; missing?: string[] };
 }
@@ -59,6 +62,9 @@ export const SEEDED_TAX_NOTES = [
   "Pendiente de validar con la gestoría: régimen de IVA (general), periodicidad trimestral (sin REDEME ni SII), tipo del Impuesto sobre Sociedades (25 % general o 15 % de entidad de nueva creación y su primer ejercicio con base positiva), método de los pagos fraccionados, empleados y retenciones (111/115), operaciones intracomunitarias (349) y el tratamiento del IVA de las comisiones de Stripe (exenta o inversión del sujeto pasivo).",
 ].join("\n");
 
+/** Pasos de cada pasada, en orden. */
+export const AUTOMATION_STEPS = ["fiscalYear", "taxSettings", "invoiceDrafts", "invoiceIssue", "invoiceSync", "stripe"] as const;
+
 export interface FinanceAutomationDeps {
   finance: FinanceService;
   ledger: Pick<FinanceStore, "addAudit" | "lastAudit">;
@@ -66,6 +72,8 @@ export interface FinanceAutomationDeps {
   stripeApi?: Pick<StripeApiBalanceReader, "read"> | null;
   tax?: Pick<FinanceTaxService, "settings" | "saveSettings"> | null;
   invoicing?: { generateExternal(actor: string): Promise<GenerateReport> } | null;
+  /** Facturación fiscal automática (DF-2): proformas, expedición contrastada con Stripe y envío. */
+  issuing?: Pick<InvoicingAutomation, "sendProformas" | "issueDue" | "redeliver"> | null;
   issuer: { legalName: string; taxId: string };
   now?: () => number;
 }
@@ -109,6 +117,22 @@ export class FinanceAutomation {
       const r = await this.d.invoicing.generateExternal(actor.by);
       return { status: "ok", detail: `${r.created.length} borradores nuevos, ${r.existing} ya existentes, ${r.payments.length} cobros actualizados`, created: r.created.length, payments: r.payments.length, warnings: r.warnings.slice(0, 10), changed: r.created.length + r.payments.length > 0 };
     });
+    const invoiceIssue = await this.step(async () => {
+      if (!this.d.issuing) return { status: "skipped", detail: "Facturación fiscal automática no montada" };
+      const pro = await this.d.issuing.sendProformas();
+      const iss = await this.d.issuing.issueDue();
+      const re = await this.d.issuing.redeliver();
+      const parts = [
+        `${pro.sent} proformas enviadas`,
+        `${iss.issued.length} facturas expedidas${iss.issued.length ? ` (${iss.issued.map((x) => `${x.number}: ${x.delivery}`).join(", ")})` : ""}`,
+        `${iss.waiting} a la espera del cobro`,
+        ...(iss.blocked.length ? [`${iss.blocked.length} sin expedir: ${iss.blocked.map((b) => `#${b.id} ${b.reason}`).join("; ")}`] : []),
+        ...(pro.skipped.length ? [`${pro.skipped.length} proformas sin enviar: ${pro.skipped.map((s) => `#${s.id} ${s.reason}`).join("; ")}`] : []),
+        ...(re ? [`${re} envíos reintentados`] : []),
+      ];
+      // Lo que no se puede expedir solo es una incidencia del control diario (`invoice_issue_blocked`), no un fallo del paso
+      return { status: "ok", detail: parts.join("; "), proformas: pro.sent, issued: iss.issued, blocked: iss.blocked, changed: pro.sent + iss.issued.length + re > 0 };
+    });
     const invoiceSync = await this.step(async () => {
       const st = await this.d.finance.syncStatus();
       if (st.pending === null) return { status: "skipped", detail: "Facturación propia no montada" };
@@ -139,7 +163,7 @@ export class FinanceAutomation {
         changed: inserted + posted.posted > 0,
       };
     });
-    return { at: this.now(), fiscalYear, taxSettings, invoiceDrafts, invoiceSync, stripe };
+    return { at: this.now(), fiscalYear, taxSettings, invoiceDrafts, invoiceIssue, invoiceSync, stripe };
   }
 
   /** Una pasada y su registro: se guarda si cambió algo, si cambió el estado de algún paso o cada hora. */
@@ -147,7 +171,7 @@ export class FinanceAutomation {
     const r = await this.run();
     const last = await this.d.ledger.lastAudit("automation.run");
     const prev = last?.summary as Partial<AutomationReport> | undefined;
-    const steps = ["fiscalYear", "taxSettings", "invoiceDrafts", "invoiceSync", "stripe"] as const;
+    const steps = AUTOMATION_STEPS;
     const changed = steps.some((k) => r[k].changed || prev?.[k]?.status !== r[k].status || prev?.[k]?.detail !== r[k].detail);
     if (!last || changed || r.at - last.at >= PERSIST_EVERY_MS) {
       await this.d.ledger.addAudit({ at: r.at, actor: FINANCE_AUTOMATION_ACTOR.by, action: "automation.run", entity: "automation", entityId: null, summary: r as unknown as Record<string, unknown>, requestId: null });
@@ -181,8 +205,8 @@ export function startFinanceAutomation(o: {
       if (!release) return;
       try {
         const r = await o.automation.tick();
-        const summary = Object.fromEntries((["fiscalYear", "taxSettings", "invoiceDrafts", "invoiceSync", "stripe"] as const).map((k) => [k, r[k].status]));
-        if (Object.values(summary).some((s) => s === "error") || (["fiscalYear", "taxSettings", "invoiceDrafts", "invoiceSync", "stripe"] as const).some((k) => r[k].changed)) log({ event: "tick", ...summary });
+        const summary = Object.fromEntries(AUTOMATION_STEPS.map((k) => [k, r[k].status]));
+        if (Object.values(summary).some((s) => s === "error") || AUTOMATION_STEPS.some((k) => r[k].changed)) log({ event: "tick", ...summary });
       } finally {
         await release();
       }

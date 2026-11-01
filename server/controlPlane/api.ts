@@ -132,6 +132,7 @@ import type { ExternalStore } from "../external/store";
 import { createContractAcceptanceRouter, createExternalRouter } from "../external/api";
 import { InvoicingService } from "../invoicing/service";
 import type { InvoicingStore } from "../invoicing/store";
+import type { Invoice } from "../invoicing/types";
 import { ChargeService, type ChargeStore } from "../invoicing/charges";
 import { createInvoicingRouter } from "../invoicing/api";
 import { invoiceHtml } from "../invoicing/document";
@@ -317,7 +318,7 @@ export interface ControlPlaneDeps {
    * Facturación propia (server/invoicing, CRM 0027): facturas por devengo de los servicios externos con el estado de
    * cobro leído de su historial. Sin `issueEnabled` solo prepara borradores (nunca expide).
    */
-  invoicing?: { store: InvoicingStore; issueEnabled: boolean; seriesCode: string; charges?: ChargeStore; chargePayments?: ChargePaymentStore; operations?: OperationStore };
+  invoicing?: { store: InvoicingStore; issueEnabled: boolean; seriesCode: string; charges?: ChargeStore; chargePayments?: ChargePaymentStore; operations?: OperationStore; automation?: { sendIssued(inv: Invoice): Promise<string> } };
   /**
    * Motor de transiciones temporales (server/lifecycle). Requiere `orders`. El plan (solo lectura) siempre
    * se puede consultar; la tarea periódica solo con `policy.enabled` y aplica solo en modo «apply».
@@ -2433,6 +2434,8 @@ export function createControlPlaneApp(d: ControlPlaneDeps): Express {
           const company = ((await crmStore.get("companies", inv.companyId)) as { name?: string } | null)?.name ?? null;
           await adminAlerts?.raise("admin.invoice_issued", { key: `invoice:${inv.id}:issued`, occurredAt: inv.issuedAt ?? Date.now(), companyId: inv.companyId, company, summary: `${inv.kind === "rectification" ? "Factura rectificativa" : "Factura"} ${inv.number ?? ""} expedida.`.replace("  ", " "), status: { label: "Expedida", tone: "success" }, reference: inv.number, amount: { cents: inv.totalCents, currency: inv.currency }, link: "#/comercial/facturacion" });
           if (inv.kind === "rectification" && inv.number && customerNotices) await creditNoteNotice(customerNotices, { invoiceId: inv.id, companyId: inv.companyId, number: inv.number });
+          // Factura expedida a mano: el mismo envío del PDF al correo de facturación que la automática (idempotente)
+          if (inv.kind === "invoice") await d.invoicing?.automation?.sendIssued(inv);
         },
         now: d.subscriptions.now,
       });
