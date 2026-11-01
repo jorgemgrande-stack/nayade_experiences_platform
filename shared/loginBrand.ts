@@ -81,6 +81,18 @@ export function readableOn(bg: string): string {
   return (contrastRatio(bg, WHITE) ?? 0) >= (contrastRatio(bg, NEUTRAL_INK) ?? 0) ? WHITE : NEUTRAL_INK;
 }
 
+/**
+ * Muestra y avisos de un campo de color del editor de marca: la muestra enseña SIEMPRE el color que se está usando
+ * (el elegido o, sin elegir, el predeterminado `fallback`), nunca un blanco que no existe.
+ */
+export function colorFieldState(value: string, fallback: string): { swatch: string; note: string | null; error: string | null } {
+  const v = value.trim();
+  if (!v) return { swatch: fallback, note: `Sin elegir: se usa el color predeterminado (${fallback}).`, error: null };
+  if (!HEX.test(v)) return { swatch: fallback, note: null, error: "Escribe el color con # y 6 cifras o letras de la a a la f (por ejemplo, #1f3a5f)." };
+  const six = v.length === 4 ? "#" + v.slice(1).split("").map((c) => c + c).join("") : v;
+  return { swatch: six.toLowerCase(), note: null, error: null };
+}
+
 /** Solo hex: los colores funcionales (rgb, hsl, oklch) no se pueden comprobar aquí y no se usan en el acceso. */
 const hex = (c: string | null | undefined) => (c && HEX.test(c) ? c : null);
 
@@ -108,11 +120,12 @@ export function loginLook(theme: LoginThemeInput | null | undefined): LoginLook 
   const backgroundUrl = theme?.login?.backgroundUrl ?? null;
 
   // Empresa sin ninguna personalización (ni logotipo, ni colores, ni fondo): identidad predeterminada de Big Elephant
-  // (decisión del propietario, 23/10/2026). En cuanto configure algo propio, se usa lo suyo.
+  // (decisión del propietario, 23/10/2026). En cuanto configure algo propio, se usa lo suyo. El logotipo de Big Elephant
+  // no se presenta como el de la empresa: con nombre, un marcador neutro con su inicial; solo sin nombre, el de Big Elephant.
   if (theme && !theme.logoUrl && !primary && !accent && !backgroundUrl) {
     const name = brand.name;
     return {
-      brand: { ...brand, logoUrl: BIG_ELEPHANT.logoUrl, logoAlt: "Big Elephant" },
+      brand: name ? { ...brand, logoUrl: null } : { ...brand, logoUrl: BIG_ELEPHANT.logoUrl, logoAlt: "Big Elephant" },
       panelBg: BIG_ELEPHANT.ink,
       panelFg: WHITE,
       panelMuted: "rgba(255,255,255,0.78)",
