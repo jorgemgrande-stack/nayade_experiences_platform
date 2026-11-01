@@ -14,6 +14,7 @@ import { Plus, Pencil, Trash2, Tag, Euro, Info, MoreVertical } from "lucide-reac
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { PanelEmpty } from "@/components/admin/PanelStates";
 import { Link } from "wouter";
+import { useVocabulary } from "@/lib/vocabulary";
 
 const PRICE_TYPE_LABELS: Record<string, string> = {
   fixed: "Precio fijo (€)",
@@ -47,6 +48,10 @@ export default function VariantsManager() {
   const [editId, setEditId] = useState<number | null>(null);
   const [form, setForm] = useState<FormState>(emptyForm());
   const [deleteConfirm, setDeleteConfirm] = useState<number | null>(null);
+  const voc = useVocabulary();
+  // Pyme: «producto o servicio»; instalación propia: «experiencia»
+  const item = voc.licensed ? "producto o servicio" : "experiencia";
+  const Item = voc.licensed ? "Producto o servicio" : "Experiencia";
 
   const utils = trpc.useUtils();
   const { data: experiences, isLoading: loadingExp } = trpc.products.getAll.useQuery();
@@ -115,7 +120,7 @@ export default function VariantsManager() {
   const handleSave = () => {
     if (!form.name.trim()) { toast.error("El nombre es obligatorio"); return; }
     if (!form.priceModifier || isNaN(parseFloat(form.priceModifier))) { toast.error("Introduce un precio válido"); return; }
-    if (!editId && !form.experienceId) { toast.error("Selecciona una experiencia"); return; }
+    if (!editId && !form.experienceId) { toast.error(`Selecciona ${voc.licensed ? "un producto o servicio" : "una experiencia"}`); return; }
 
     const payload = {
       name: form.name.trim(),
@@ -141,16 +146,16 @@ export default function VariantsManager() {
         <div>
           <h2 className="text-xl font-semibold text-foreground">Variantes y Precios</h2>
           <p className="text-sm text-muted-foreground mt-1">
-            Define variantes de precio por producto (adulto, niño, grupo, etc.). El BookingModal y Redsys usarán el precio de la variante seleccionada.
+            Define variantes de precio por producto (adulto, niño, grupo, etc.). {voc.licensed ? "Al comprar, el cliente elige una y se cobra su precio." : "Al reservar, el cliente elige una y se cobra su precio."}
           </p>
         </div>
         <div className="flex gap-3">
           <Select value={selectedExp} onValueChange={setSelectedExp}>
             <SelectTrigger className="w-56">
-              <SelectValue placeholder="Filtrar por experiencia" />
+              <SelectValue placeholder={`Filtrar por ${item}`} />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="all">Todas las experiencias</SelectItem>
+              <SelectItem value="all">{voc.licensed ? "Todos los productos y servicios" : "Todas las experiencias"}</SelectItem>
               {experiences?.map(e => (
                 <SelectItem key={e.id} value={String(e.id)}>{e.title}</SelectItem>
               ))}
@@ -166,7 +171,7 @@ export default function VariantsManager() {
       <div className="mb-6 p-4 bg-blue-50 border border-blue-200 rounded-xl flex gap-3 text-sm text-blue-800">
         <Info className="w-4 h-4 mt-0.5 shrink-0 text-blue-500" />
         <div>
-          <strong>Cómo funcionan las variantes:</strong> Al añadir variantes a una experiencia, el cliente podrá elegir entre ellas en el modal de reserva. El precio de la variante seleccionada sustituye al precio base en el total del pago.
+          <strong>Cómo funcionan las variantes:</strong> {voc.licensed ? "Al añadir variantes a un producto o servicio, el cliente elige una al comprarlo." : "Al añadir variantes a una experiencia, el cliente elige una al reservarla."} El precio de la variante elegida sustituye al precio base en el total del pago.
           <br />
           <strong>Tipos:</strong> <em>Precio fijo</em> = precio total por persona; <em>Por persona</em> = igual que fijo; <em>Porcentaje</em> = ajuste sobre el precio base.
         </div>
@@ -196,7 +201,7 @@ export default function VariantsManager() {
                   <div className="flex items-center gap-3">
                     <Tag className="w-4 h-4 text-primary" />
                     <span className="font-semibold text-foreground">{exp.title}</span>
-                    <Badge variant="outline" className="text-xs">{exp.difficulty ?? "facil"}</Badge>
+                    {!voc.licensed && <Badge variant="outline" className="text-xs">{exp.difficulty ?? "facil"}</Badge>}
                     {variants.length > 0 && (
                       <Badge className="text-xs bg-green-100 text-green-700 border-green-200">
                         {variants.length} variante{variants.length !== 1 ? "s" : ""}
@@ -277,13 +282,13 @@ export default function VariantsManager() {
           <div className="space-y-4 py-2">
             {!editId && (
               <div>
-                <Label>Experiencia *</Label>
+                <Label>{Item} *</Label>
                 <Select
                   value={form.experienceId ? String(form.experienceId) : ""}
                   onValueChange={(v) => setForm(f => ({ ...f, experienceId: parseInt(v) }))}
                 >
                   <SelectTrigger>
-                    <SelectValue placeholder="Seleccionar experiencia" />
+                    <SelectValue placeholder={`Seleccionar ${item}`} />
                   </SelectTrigger>
                   <SelectContent>
                     {experiences?.map(e => (

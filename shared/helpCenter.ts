@@ -10,7 +10,7 @@
  * Si cambia una pantalla, actualiza aquí el artículo correspondiente y la fecha de revisión.
  */
 
-export const HELP_REVIEWED_AT = "2026-10-16";
+export const HELP_REVIEWED_AT = "2026-11-01";
 
 export interface HelpLink {
   label: string;
@@ -143,7 +143,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
     steps: [
       "En el menú, ve a Clientes y ventas › Presupuestos (pestaña «Presupuestos»).",
       "Pulsa «Nuevo Presupuesto». Puedes «Buscar cliente existente» o escribir los datos del cliente.",
-      "Campos obligatorios: Nombre, Email, «Asunto del presupuesto» y al menos un concepto en «Conceptos» (escribe el concepto o busca un producto del catálogo). Opcionales: Teléfono, Empresa, Fecha de actividad, Válido hasta, Notas para el cliente, Condiciones y «Plan de pago fraccionado».",
+      "Campos obligatorios: Nombre, Email, «Asunto del presupuesto» y al menos un concepto en «Conceptos» (escribe el concepto o busca un producto del catálogo). Opcionales: Teléfono, Empresa, Fecha de servicio, Válido hasta, Notas para el cliente, Condiciones y «Plan de pago fraccionado».",
       "Pulsa «Guardar borrador» para revisarlo más tarde o «Crear y Enviar al cliente» para enviarlo ya.",
       "Desde la lista puedes, entre otras acciones: Enviar al cliente (los borradores), Reenviar, Descargar en PDF, Duplicar o Marcar como perdido.",
     ],
@@ -155,13 +155,13 @@ export const HELP_ARTICLES: HelpArticle[] = [
   {
     id: "crear-pedidos",
     title: "Crear pedidos",
-    summary: "Registra pedidos en Clientes y ventas › Pedidos (pestaña «Reservas») con «Nueva Reserva»; al guardar se genera también la factura.",
+    summary: "Registra pedidos en Clientes y ventas › Pedidos con «Nuevo pedido»; al guardar se genera también la factura.",
     contexts: [{ path: "/admin/crm", tab: "reservations" }],
     steps: [
-      "En el menú, ve a Clientes y ventas › Pedidos. La pestaña se llama «Reservas».",
-      "Pulsa «Nueva Reserva» (si la lista está vacía, «Nuevo pedido»).",
-      "Campos obligatorios: Nombre completo, Email, el producto («Experiencia o pack»), Fecha del servicio e Importe total (€). Opcionales: número de personas, importe cobrado, método de pago, canal y notas internas.",
-      "Pulsa «Crear Reserva». El aviso indica el número del pedido y el de la factura creada.",
+      "En el menú, ve a Clientes y ventas › Pedidos (pestaña «Pedidos»).",
+      "Pulsa «Nuevo pedido».",
+      "Campos obligatorios: Nombre completo, Email, «Producto o servicio», «Fecha de servicio» e Importe total (€). Opcionales: número de personas, importe cobrado, método de pago, canal y notas internas.",
+      "Pulsa «Crear pedido». El aviso indica el número del pedido y el de la factura creada.",
     ],
     notes: [
       "Los pedidos también llegan solos cuando un cliente acepta y paga un presupuesto, o cuando conviertes un presupuesto en pedido pendiente de cobro.",

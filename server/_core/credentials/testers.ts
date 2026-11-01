@@ -112,11 +112,11 @@ async function testProviderRaw(provider: string, v: Record<string, string>, fetc
     }
     case "redsys": {
       // Sin red: Redsys no ofrece un ping; se valida que la configuración sea utilizable
-      if (!v.merchantCode || !v.merchantKey) return { ok: false, message: "Faltan código de comercio o clave" };
+      if (!v.merchantCode || !v.merchantKey) return { ok: false, message: "Faltan el número de comercio o la clave secreta" };
       const raw = Buffer.from(v.merchantKey, "base64");
-      if (raw.length < 16) return { ok: false, message: "La clave de firma no tiene la longitud esperada" };
-      if (!["test", "production"].includes(v.environment ?? "test")) return { ok: false, message: "Entorno no válido" };
-      return { ok: true, message: `Configuración válida (${v.environment ?? "test"}). El cobro real se verifica con una operación de prueba.` };
+      if (raw.length < 16) return { ok: false, message: "La clave secreta no tiene la longitud esperada: cópiala de nuevo tal cual te la dio el banco" };
+      if (!["test", "production"].includes(v.environment ?? "test")) return { ok: false, message: "Elige «Modo pruebas» o «Modo real»" };
+      return { ok: true, message: `Datos correctos (${(v.environment ?? "test") === "production" ? "modo real" : "modo pruebas"}). El banco confirma la conexión con el primer pago; haz uno de prueba para asegurarte.` };
     }
     default:
       return { ok: false, message: "Proveedor sin prueba disponible", outcome: "unsupported" };

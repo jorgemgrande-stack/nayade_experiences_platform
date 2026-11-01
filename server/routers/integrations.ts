@@ -12,6 +12,10 @@ import { getVault } from "../_core/credentials/runtime";
 import { getProvider } from "../_core/credentials/catalog";
 import { testProvider } from "../_core/credentials/testers";
 import { integrationHealth, recordCheck } from "../_core/credentials/health";
+import { fieldProblems, panelIntegrations, type VisibilityInput } from "../_core/credentials/presentation";
+import { getTenantMode } from "../_core/tenant";
+import { getCapabilityAccess } from "../_core/capabilities/access";
+import { buildSubscriptionOverview } from "../subscriptionOverview";
 import { getDb } from "../db";
 import { sql } from "drizzle-orm";
 import { getSystemSetting, invalidateConfigCache } from "../config";
@@ -37,7 +41,24 @@ function requireMulti() {
   }
 }
 
-const providerSchema = z.string().regex(/^[a-z]{2,16}$/);
+// Identificadores del catálogo (`ghl`, `imap_tpv`, `mail_smtp`…)
+const providerSchema = z.string().regex(/^[a-z][a-z_]{1,31}$/);
+
+/**
+ * Qué integraciones le sirven a la empresa (mismo criterio que el menú). Si no se pueden leer las licencias, todas las
+ * no heredadas: solo decide qué se muestra, no autoriza nada.
+ */
+async function integrationVisibility(): Promise<VisibilityInput> {
+  try {
+    const access = getCapabilityAccess();
+    const o = buildSubscriptionOverview({ mode: getTenantMode(), enforcing: access.enforcing(), grants: await access.list(), now: access.currentTime() });
+    if (o.licensing !== "capabilities") return { licensed: false, can: () => true };
+    const visible = new Set(o.visible);
+    return { licensed: true, can: (id) => visible.has(id) };
+  } catch {
+    return { licensed: false, can: () => true };
+  }
+}
 
 export const integrationsRouter = router({
   /** Identidad corporativa pública (marca, logotipo, colores, tipografía). */
@@ -71,16 +92,26 @@ export const integrationsRouter = router({
     }),
   available: adminProcedure.query(() => ({ available: isMultiTenant() })),
 
+  /** Integraciones que le sirven a la empresa, agrupadas, con textos para no técnicos y su estado real. */
   list: adminProcedure.query(async () => {
     requireMulti();
-    return getVault().status();
+    const [statuses, visibility, health] = await Promise.all([
+      getVault().status(),
+      integrationVisibility(),
+      integrationHealth().catch(() => ({ available: false, providers: [] })),
+    ]);
+    return panelIntegrations(statuses, visibility, health.providers);
   }),
 
   save: adminProcedure
     .input(z.object({ provider: providerSchema, values: z.record(z.string().max(64), z.string().max(1024)) }))
     .mutation(async ({ ctx, input }) => {
       requireMulti();
-      if (!getProvider(input.provider)) throw new TRPCError({ code: "BAD_REQUEST", message: "Proveedor desconocido" });
+      const provider = getProvider(input.provider);
+      if (!provider) throw new TRPCError({ code: "BAD_REQUEST", message: "Proveedor desconocido" });
+      // Avisos en español con el nombre que ve el usuario (la bóveda vuelve a validar al guardar)
+      const problems = fieldProblems(provider, input.values);
+      if (problems.length) throw new TRPCError({ code: "BAD_REQUEST", message: problems.join(" ") });
       try {
         const r = await getVault().save(input.provider, input.values, `user:${ctx.user.id}`);
         // Auditoría sin valores: solo qué proveedor y qué campos

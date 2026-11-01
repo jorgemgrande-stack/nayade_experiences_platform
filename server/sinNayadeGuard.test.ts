@@ -65,3 +65,43 @@ describe("independencia de Náyade en el cliente", () => {
     expect(over).toEqual([]);
   });
 });
+
+/**
+ * Vocabulario de la instalación propia y jerga técnica en el panel (trinquete). Jerga de desarrollo que nunca debe
+ * verse, y textos sectoriales (reservas, experiencias, bonos) que en una pyme deben salir del vocabulario
+ * (`shared/vocabulary.ts`) o de una condición de capacidad: aquí se cuenta cuántas veces aparecen como texto fijo.
+ */
+describe("vocabulario sectorial y jerga en el panel", () => {
+  const PANEL = [path.join(ROOT, "pages/admin"), path.join(ROOT, "components/brand")];
+  const HELP = fs.readFileSync(path.join(__dirname, "../shared/helpCenter.ts"), "utf8");
+  const panelFiles = PANEL.flatMap(walk).filter((f) => /\.tsx?$/.test(f) && !/\.test\.tsx?$/.test(f));
+  const rel = (f: string) => path.relative(ROOT, f).split(path.sep).join("/");
+  const count = (text: string, re: RegExp) => text.split(/\r?\n/).filter((l) => re.test(l) && !/^\s*(\/\/|\*|\/\*)/.test(l)).length;
+
+  it("sin jerga de desarrollo en textos del panel ni en la ayuda", () => {
+    const JARGON = /\bBookingModal\b|modal de reserva|propio tenant|del tenant\b/;
+    expect(panelFiles.filter((f) => count(fs.readFileSync(f, "utf8"), JARGON) > 0).map(rel)).toEqual([]);
+    expect(count(HELP, JARGON)).toBe(0);
+  });
+
+  // Textos sectoriales fijos que se han sustituido por el vocabulario: no pueden volver a aparecer sin condición
+  // (no cuentan las líneas que ya eligen el texto según `licensed`)
+  const SECTORAL: Array<[string, RegExp, number]> = [
+    ["pages/admin/products/VariantsManager.tsx", /Todas las experiencias|Selecciona una experiencia"|placeholder="(Filtrar por|Seleccionar) experiencia"|<Label>Experiencia \*<\/Label>/, 0],
+    ["pages/admin/cms/HomeModulesManager.tsx", /Nuestras Experiencias/, 1],
+    ["pages/admin/tpv/TpvScreen.tsx", /Fecha del servicio/, 1],
+  ];
+  it.each(SECTORAL)("%s: textos sectoriales fijos dentro de la línea base", (file, re, max) => {
+    const unguarded = fs.readFileSync(path.join(ROOT, file), "utf8").split(/\r?\n/).filter((l) => !/licensed/.test(l)).join("\n");
+    expect(count(unguarded, re)).toBeLessThanOrEqual(max);
+  });
+
+  it("los textos sectoriales que quedan van detrás del vocabulario o de una capacidad", () => {
+    expect(fs.readFileSync(path.join(ROOT, "pages/admin/cms/HomeModulesManager.tsx"), "utf8")).toContain("GENERIC_LABELS[m.key]");
+    expect(fs.readFileSync(path.join(ROOT, "pages/admin/tpv/TpvScreen.tsx"), "utf8")).toContain('can("bookings-generic")');
+  });
+
+  it("la ayuda describe el panel de una pyme (pedidos, no reservas)", () => {
+    expect(count(HELP, /«Reservas»|«Nueva Reserva»|«Crear Reserva»|«Experiencia o pack»/)).toBe(0);
+  });
+});

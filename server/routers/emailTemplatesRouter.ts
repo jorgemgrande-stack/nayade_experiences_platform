@@ -390,21 +390,105 @@ export function brandedTemplateTexts(tpl: Pick<SeedTemplate, "subject" | "header
   return { subject: brand(tpl.subject), headerTitle: brand(tpl.headerTitle), headerSubtitle: brand(tpl.headerSubtitle) };
 }
 
+// --- Textos genéricos para una pyme sin reservas -----------------------------
+type TemplateTexts = Pick<SeedTemplate, "name" | "description" | "subject" | "headerTitle" | "headerSubtitle">;
+
+/**
+ * Nombre, descripción, asunto y cabecera de las plantillas del sistema que hablan de reservas, experiencias o bonos,
+ * en genérico (pedido, vale de compra) para una empresa con licencias por capacidad y sin «Reservas y citas».
+ */
+export const GENERIC_TEMPLATE_TEXTS: Record<string, Partial<TemplateTexts>> = {
+  reservation_confirm: {
+    name: "Confirmación de Pedido",
+    description: "Email enviado al cliente cuando su pedido se confirma con el pago.",
+    subject: "Pedido confirmado · {{marca}}",
+    headerTitle: "¡Pedido Confirmado!", headerSubtitle: "Hemos recibido tu pago",
+  },
+  reservation_failed: {
+    name: "Pago No Completado",
+    description: "Email enviado al cliente cuando el pago de su pedido no se ha podido procesar.",
+  },
+  confirmation: {
+    name: "Confirmación Completa de Pedido",
+    description: "Email completo con todos los detalles del pedido.",
+    subject: "Tu pedido está confirmado · {{marca}}",
+    headerSubtitle: "Aquí tienes todos los detalles de tu pedido",
+  },
+  cancellation_accepted_voucher: {
+    name: "Anulación Aceptada — Vale de compra",
+    description: "Email enviado al cliente cuando se le entrega un vale de compra como compensación.",
+    subject: "Tu vale de compra · {{marca}}",
+    headerTitle: "Vale de Compra", headerSubtitle: "Úsalo en tu próxima compra",
+  },
+  commercial_reminder_3: {
+    subject: "Tu propuesta caduca pronto · {{marca}}",
+  },
+  pending_payment: {
+    description: "Email enviado cuando un pedido queda confirmado con pago diferido.",
+    subject: "Pedido confirmado — Pago pendiente · {{marca}}",
+    headerSubtitle: "Tu pedido está confirmado",
+  },
+};
+
+/** Textos con los que se siembra (o restaura) una plantilla del sistema, con la marca de la empresa. */
+export function templateSeedTexts(tpl: SeedTemplate, generic: boolean): TemplateTexts {
+  const t = { ...tpl, ...(generic ? GENERIC_TEMPLATE_TEXTS[tpl.id] : undefined) };
+  return { name: t.name, description: t.description, ...brandedTemplateTexts(t) };
+}
+
+/**
+ * true si la plantilla guardada conserva exactamente los textos de siempre (la empresa no la ha personalizado) y
+ * tiene versión genérica: solo entonces se renombra.
+ */
+export function upgradeableToGeneric(row: Partial<Record<keyof TemplateTexts, string | null>>, tpl: SeedTemplate): boolean {
+  if (!GENERIC_TEMPLATE_TEXTS[tpl.id]) return false;
+  const legacy = templateSeedTexts(tpl, false);
+  const generic = templateSeedTexts(tpl, true);
+  const keys = Object.keys(legacy) as Array<keyof TemplateTexts>;
+  return keys.every((k) => (row[k] ?? "") === legacy[k]) && keys.some((k) => legacy[k] !== generic[k]);
+}
+
+/**
+ * Empresa con licencias por capacidad y sin «Reservas y citas»: plantillas con textos genéricos. Instalación propia o
+ * empresa anterior al motor de licencias: los de siempre. Si no se pueden leer las licencias, genéricos.
+ */
+async function usesGenericTemplateTexts(): Promise<boolean> {
+  const mode = getTenantMode();
+  if (mode !== "multi") return false;
+  try {
+    const access = getCapabilityAccess();
+    const o = buildSubscriptionOverview({ mode, enforcing: access.enforcing(), grants: await access.list(), now: access.currentTime() });
+    if (o.licensing !== "capabilities") return false;
+    return !o.visible.includes("bookings-generic");
+  } catch {
+    return true;
+  }
+}
+
 // --- Helper: seed templates — inserta las que faltan, no sobrescribe edits ---
 async function ensureTemplatesSeeded() {
-  const existingRows = await db.select({ id: emailTemplates.id }).from(emailTemplates);
-  const existingIds = new Set(existingRows.map(r => r.id));
+  const existingRows = await db.select({
+    id: emailTemplates.id, name: emailTemplates.name, description: emailTemplates.description, subject: emailTemplates.subject,
+    headerTitle: emailTemplates.headerTitle, headerSubtitle: emailTemplates.headerSubtitle,
+  }).from(emailTemplates);
+  const existing = new Map(existingRows.map(r => [r.id, r]));
+  const generic = await usesGenericTemplateTexts();
 
   for (const tpl of SYSTEM_TEMPLATES) {
-    if (existingIds.has(tpl.id)) continue;
+    const row = existing.get(tpl.id);
+    if (row) {
+      // Sin personalizar: se pasa a los textos genéricos (lo editado por la empresa no se toca)
+      if (generic && upgradeableToGeneric(row, tpl)) {
+        await db.update(emailTemplates).set(templateSeedTexts(tpl, true)).where(eq(emailTemplates.id, tpl.id));
+      }
+      continue;
+    }
     try {
       await db.insert(emailTemplates).values({
         id: tpl.id,
-        name: tpl.name,
-        description: tpl.description,
         category: tpl.category,
         recipient: tpl.recipient,
-        ...brandedTemplateTexts(tpl),
+        ...templateSeedTexts(tpl, generic),
         bodyHtml: tpl.buildHtml(),
         variables: tpl.variables,
         isCustom: false,
@@ -567,9 +651,7 @@ export const emailTemplatesRouter = router({
       if (!systemTpl) throw new TRPCError({ code: "NOT_FOUND", message: "Plantilla del sistema no encontrada" });
 
       await db.update(emailTemplates).set({
-        name: systemTpl.name,
-        description: systemTpl.description,
-        ...brandedTemplateTexts(systemTpl),
+        ...templateSeedTexts(systemTpl, await usesGenericTemplateTexts()),
         bodyHtml: systemTpl.buildHtml(),
         isActive: true,
       }).where(eq(emailTemplates.id, input.id));

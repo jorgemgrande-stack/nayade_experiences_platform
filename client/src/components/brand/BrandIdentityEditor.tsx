@@ -17,7 +17,7 @@ import { Textarea } from "@/components/ui/textarea";
 import ImageUploader from "@/components/ImageUploader";
 import { AuthShell } from "@/components/auth/AuthShell";
 import { LoginForm } from "@/pages/Login";
-import { loginLook, contrastRatio, type LoginThemeInput } from "@shared/loginBrand";
+import { loginLook, contrastRatio, brandTokens, colorFieldState, NEUTRAL_INK, type LoginThemeInput } from "@shared/loginBrand";
 
 type Values = Record<string, string>;
 type Background = "web" | "custom" | "none";
@@ -47,7 +47,10 @@ function previewTheme(v: Values, bg: Background, base: { neutralSite: boolean; p
   };
 }
 
-function ColorField({ id, label, value, onChange, hint }: { id: string; label: string; value: string; onChange: (v: string) => void; hint?: string }) {
+function ColorField({ id, label, value, fallback, onChange }: { id: string; label: string; value: string; fallback: string; onChange: (v: string) => void }) {
+  // La muestra enseña el color que se usa de verdad: el elegido o, sin elegir, el predeterminado
+  const state = colorFieldState(value, fallback);
+  const hint = state.error ?? state.note;
   return (
     <div className="space-y-1.5">
       <Label htmlFor={id}>{label}</Label>
@@ -55,13 +58,20 @@ function ColorField({ id, label, value, onChange, hint }: { id: string; label: s
         <input
           type="color"
           aria-label={`${label}: selector`}
-          value={HEX6.test(value) ? value : "#ffffff"}
+          value={state.swatch}
           onChange={(e) => onChange(e.target.value)}
           className="h-10 w-12 shrink-0 rounded border border-border bg-transparent"
         />
-        <Input id={id} value={value} placeholder="#1f3a5f" onChange={(e) => onChange(e.target.value)} aria-describedby={hint ? `${id}-hint` : undefined} />
+        <Input
+          id={id}
+          value={value}
+          placeholder="Sin elegir"
+          onChange={(e) => onChange(e.target.value)}
+          aria-invalid={state.error ? true : undefined}
+          aria-describedby={hint ? `${id}-hint` : undefined}
+        />
       </div>
-      {hint && <p id={`${id}-hint`} className="text-xs text-muted-foreground">{hint}</p>}
+      {hint && <p id={`${id}-hint`} className={`text-xs ${state.error ? "text-red-600 dark:text-red-400" : "text-muted-foreground"}`}>{hint}</p>}
     </div>
   );
 }
@@ -131,6 +141,9 @@ export function BrandIdentityEditor({ variant = "full", onSaved }: { variant?: "
   );
   const primary = (v.theme_primary_color ?? "").trim();
   const lowContrast = HEX6.test(primary) && (contrastRatio(primary, "#ffffff") ?? 21) < 3;
+  // Colores que se usan cuando el campo está vacío (los mismos que aplica el panel)
+  const tokens = brandTokens({ neutralSite: true, primaryColor: primary || null, accentColor: (v.theme_accent_color ?? "").trim() || null });
+  const fallbackColors = { primary: tokens?.["--primary"] ?? NEUTRAL_INK, accent: tokens?.["--accent"] ?? NEUTRAL_INK };
   const dirty = JSON.stringify(v) !== JSON.stringify(saved);
 
   async function persist(values: Values, message: string) {
@@ -162,8 +175,8 @@ export function BrandIdentityEditor({ variant = "full", onSaved }: { variant?: "
           </div>
           <ImageUploader label="Logotipo" value={v.brand_logo_url ?? ""} onChange={(u) => set("brand_logo_url", u)} />
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-            <ColorField id="theme_primary_color" label="Color principal" value={v.theme_primary_color ?? ""} onChange={(c) => set("theme_primary_color", c)} />
-            <ColorField id="theme_accent_color" label="Color de acento" value={v.theme_accent_color ?? ""} onChange={(c) => set("theme_accent_color", c)} />
+            <ColorField id="theme_primary_color" label="Color principal" value={v.theme_primary_color ?? ""} fallback={fallbackColors.primary} onChange={(c) => set("theme_primary_color", c)} />
+            <ColorField id="theme_accent_color" label="Color de acento" value={v.theme_accent_color ?? ""} fallback={fallbackColors.accent} onChange={(c) => set("theme_accent_color", c)} />
           </div>
           {lowContrast && (
             <p className="text-sm text-amber-800 dark:text-amber-300" role="status">
