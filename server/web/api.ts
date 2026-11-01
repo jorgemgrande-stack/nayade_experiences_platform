@@ -166,6 +166,11 @@ export function createWebAdminRouter(svc: WebAdminService, opts: { previewSecret
     const q = z.object({ mode: z.enum(["published", "preview"]).default("published") }).parse(req.query);
     res.json(await svc.site(q.mode));
   }));
+  // Carrusel y ajustes del marketplace del panel (vista previa: borradores sin filtro de fechas)
+  r.get("/marketplace", requireScope("web:read"), wrap(async (req, res) => {
+    const q = z.object({ mode: z.enum(["published", "preview"]).default("published") }).parse(req.query);
+    res.json(await svc.marketplace(q.mode));
+  }));
 
   return r;
 }

@@ -144,7 +144,7 @@ import type { CompanyFiscal } from "../invoicing/rules";
 import { ISSUER } from "../stripe/issuer";
 import { createBillingPortalRouter, createPurchasesRouter } from "../stripe/purchasesApi";
 import { createPanelCatalogRouter } from "../commerce/panelCatalog";
-import { orderActivation } from "../commerce/panelActivation";
+import { orderActivation, orderPlan } from "../commerce/panelActivation";
 import { createPanelRequestsRouter } from "../commerce/panelRequests";
 import { createPanelUsageRouter } from "../commerce/panelUsage";
 import { BillingPortalService } from "../stripe/billingPortal";
@@ -2182,7 +2182,7 @@ export function createControlPlaneApp(d: ControlPlaneDeps): Express {
       // Catálogo de módulos y ampliaciones para el panel de cada empresa (solo lectura, mismo token que la compra)
       if (webAdmin) {
         const wa = webAdmin;
-        router.use("/commerce", createPanelCatalogRouter({ site: () => wa.site("published"), purchasesEnabled: !!d.stripe?.purchases?.enabled, internalTenants: d.stripe?.purchases?.internalTenants, activation: d.orders ? orderActivation({ crm: d.crm.store, orders: d.orders.store, now: d.subscriptions.now }) : undefined }));
+        router.use("/commerce", createPanelCatalogRouter({ site: () => wa.site("published"), purchasesEnabled: !!d.stripe?.purchases?.enabled, internalTenants: d.stripe?.purchases?.internalTenants, activation: d.orders ? orderActivation({ crm: d.crm.store, orders: d.orders.store, now: d.subscriptions.now }) : undefined, marketplace: () => wa.marketplace("published"), planOf: d.orders ? orderPlan({ crm: d.crm.store, orders: d.orders.store }) : undefined }));
         // Solicitudes del marketplace del panel («Solicitar información» y «Me interesa») como solicitudes del CRM
         if (webRequests) router.use("/commerce", createPanelRequestsRouter({ site: () => wa.site("published"), requests: webRequests, crm: d.crm.store, internalTenants: d.stripe?.purchases?.internalTenants }));
       }
