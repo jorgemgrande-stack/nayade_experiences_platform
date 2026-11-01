@@ -63,11 +63,13 @@ export function boxesOverlap(a: Box, b: Box, gap = 0): boolean {
 
 /**
  * En móvil el botón flotante no puede tapar lo que se marca con `data-whatsapp-avoid` (precio, opciones y botón de
- * compra de la ficha de producto): se oculta mientras se pisan.
+ * compra de la ficha de producto): se oculta mientras se pisan. Mientras el carrito está abierto se oculta siempre.
  */
 export const WHATSAPP_AVOID_ATTR = "data-whatsapp-avoid";
 export const WHATSAPP_MOBILE_MAX = 767;
-export function whatsappHidden(button: Box, avoid: Box[], viewportWidth: number): boolean {
+export function whatsappHidden(button: Box, avoid: Box[], viewportWidth: number, cartOpen = false): boolean {
+  // Con el carrito abierto, a cualquier anchura: no tapa su pie ni «Finalizar compra»
+  if (cartOpen) return true;
   if (viewportWidth > WHATSAPP_MOBILE_MAX) return false;
   return avoid.some((b) => boxesOverlap(button, b, 8));
 }

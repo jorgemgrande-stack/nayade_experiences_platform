@@ -664,7 +664,7 @@ export default function AdminLayout({ children, title }: AdminLayoutProps) {
                 >
                   <Bell className="w-4 h-4" aria-hidden="true" />
                   {totalAlerts > 0 && (
-                    <span className="absolute top-1 right-1 min-w-[16px] h-[16px] rounded-full bg-red-500 text-white text-[9px] font-bold flex items-center justify-center px-0.5 leading-none">
+                    <span className="absolute top-1 right-1 min-w-[16px] h-[16px] rounded-full bg-danger text-background text-[9px] font-bold flex items-center justify-center px-0.5 leading-none">
                       {totalAlerts > 99 ? "99+" : totalAlerts}
                     </span>
                   )}
@@ -679,7 +679,7 @@ export default function AdminLayout({ children, title }: AdminLayoutProps) {
                 <div className="flex items-center justify-between px-4 py-3 border-b border-border sticky top-0 bg-card z-10">
                   <span className="text-sm font-semibold text-foreground">Notificaciones</span>
                   {totalAlerts > 0 && (
-                    <span className="text-xs bg-red-500 text-white rounded-full px-2 py-0.5 font-bold">
+                    <span className="text-xs bg-danger text-background rounded-full px-2 py-0.5 font-bold">
                       {totalAlerts}
                     </span>
                   )}

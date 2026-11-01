@@ -13,6 +13,7 @@ import { PanelEmpty, PanelError } from "@/components/admin/PanelStates";
 import { usePanelSubscription } from "@/hooks/usePanelSubscription";
 import { useVocabulary } from "@/lib/vocabulary";
 import { trpc } from "@/lib/trpc";
+import { transactionDescription } from "@shared/transactionText";
 import { cn } from "@/lib/utils";
 
 function fmtEur(v: number): string {
@@ -514,7 +515,7 @@ export default function AccountingDashboard() {
                     <tr key={tx.id} className="border-b border-border/50 hover:bg-muted/20 transition-colors">
                       <td className="px-5 py-4 text-sm font-mono text-foreground">{tx.transactionNumber}</td>
                       <td className="px-4 py-4 text-sm text-foreground">{tx.clientName || "—"}</td>
-                      <td className="px-4 py-4 text-sm text-muted-foreground">{tx.description ?? "Venta"}</td>
+                      <td className="px-4 py-4 text-sm text-muted-foreground">{transactionDescription(tx.description) ?? "Venta"}</td>
                       <td className="px-4 py-4">
                         <span className={cn("font-semibold text-sm", tx.type === "ingreso" ? "text-emerald-600" : "text-red-600")}>
                           {tx.type === "ingreso" ? "+" : "-"}{fmtEur(Math.abs(parseFloat(tx.amount)))}

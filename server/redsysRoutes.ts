@@ -512,7 +512,7 @@ redsysRouter.post("/api/redsys/notification", express.urlencoded({ extended: tru
             paymentMethod: "tarjeta_redsys",
             saleChannel: "online",
             reservationRef: resv.merchantOrder,
-            description: `Pago online Redsys — ${resv.merchantOrder} — ${resv.productName}`,
+            description: `Pago con tarjeta — ${resv.merchantOrder} — ${resv.productName}`,
             quoteId: resv.quoteId ?? null,
             sourceChannel: "redsys",
           });

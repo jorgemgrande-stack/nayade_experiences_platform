@@ -76,7 +76,7 @@ export function invoicePdfBlocks(inv: Invoice, issuerDraft: FiscalParty, o: { pr
   });
   blocks.push({ kind: "keyValue", rows: [["Base imponible", money(inv.baseCents, inv.currency)], ["Cuota de IVA", money(inv.taxCents, inv.currency)], ["Total", money(inv.totalCents, inv.currency)]] });
   const paid = inv.paymentStatus === "paid";
-  blocks.push({ kind: "paragraph", muted: true, text: [proforma ? "Cobro previsto mediante el método de pago autorizado en Stripe." : paid ? `Cobrada${inv.paymentRef?.startsWith("stripe:") ? " mediante Stripe" : ""}.` : "Pendiente de cobro.", inv.notes ?? ""].filter(Boolean).join(" ") });
+  blocks.push({ kind: "paragraph", muted: true, text: [proforma ? (inv.sourceKey.startsWith("charge:") ? "Pago mediante el enlace de pago seguro de Stripe." : "Cobro previsto mediante el método de pago autorizado en Stripe.") : paid ? `Cobrada${inv.paymentRef?.startsWith("stripe:") ? " mediante Stripe" : ""}.` : "Pendiente de cobro.", inv.notes ?? ""].filter(Boolean).join(" ") });
   return blocks;
 }
 
@@ -107,9 +107,9 @@ export function proformaMail(inv: Invoice, supportEmail: string | null): MailCon
     family: "transactional",
     eyebrow: "Proforma",
     hero: "calendario",
-    title: "Tu próximo cargo",
-    subject: `Proforma de ${inv.periodLabel ?? "tu próximo cargo"} · Big Elephant`,
-    intro: [`Te enviamos la proforma del próximo cargo de tu servicio, que se cobrará el ${date(inv.operationDate)} con tu método de pago autorizado.`],
+    title: inv.sourceKey.startsWith("charge:") ? "Proforma de tu cargo" : "Tu próximo cargo",
+    subject: `Proforma de ${inv.periodLabel ?? concept(inv)} · Big Elephant`,
+    intro: [inv.sourceKey.startsWith("charge:") ? "Te enviamos la proforma del cargo acordado. Recibirás el enlace de pago seguro de Stripe para abonarlo." : `Te enviamos la proforma del próximo cargo de tu servicio, que se cobrará el ${date(inv.operationDate)} con tu método de pago autorizado.`],
     blocks: [{ card: { status: { label: "Programado", tone: "info" }, rows: [{ label: "Concepto", value: concept(inv) }, { label: "Base imponible", value: fmt.money(inv.baseCents, inv.currency) }, { label: "IVA", value: fmt.money(inv.taxCents, inv.currency) }], total: { label: "Total", value: fmt.money(inv.totalCents, inv.currency) }, foot: { label: "Fecha del cargo", value: date(inv.operationDate) } } }, { notice: { tone: "info", text: `${PROFORMA_LEGEND}: la factura definitiva te llegará cuando se confirme el cobro.` } }],
   });
 }
@@ -173,7 +173,10 @@ export class InvoicingAutomation {
     const today = this.today();
     const out = { sent: 0, skipped: [] as Array<{ id: number; reason: string }> };
     for (const inv of await this.d.store.list({ status: "draft", limit: 500 })) {
-      if (inv.kind !== "invoice" || inv.operationDate <= today || inv.paymentStatus === "paid") continue;
+      // Mensualidades: solo periodos futuros (nunca retroactiva). Cargos extraordinarios (`charge:`): en cuanto nace el
+      // borrador al aprobarlos, antes de presentar el enlace de pago
+      const charge = inv.sourceKey.startsWith("charge:");
+      if (inv.kind !== "invoice" || inv.paymentStatus === "paid" || (!charge && inv.operationDate <= today)) continue;
       if (!inv.customer) {
         out.skipped.push({ id: inv.id, reason: "faltan los datos fiscales del cliente" });
         continue;

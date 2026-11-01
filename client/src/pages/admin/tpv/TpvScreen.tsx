@@ -579,7 +579,7 @@ export default function TpvScreen() {
           {/* Caja elegida y cerrada: abrirla */}
           {!mustChoose && currentRegister && !sessionId && (
             <div className="space-y-3">
-              <p className="text-gray-400">Caja: <span className="text-white font-medium">{currentRegister.name}</span></p>
+              <p className="text-muted-foreground">Caja: <span className="text-foreground font-medium">{currentRegister.name}</span></p>
               <Button
                 size="lg"
                 className="w-full bg-primary hover:bg-primary/90 text-primary-foreground font-semibold text-lg h-14 rounded-xl"
