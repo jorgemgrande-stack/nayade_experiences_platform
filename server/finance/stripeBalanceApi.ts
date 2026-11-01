@@ -134,6 +134,17 @@ export class StripeApiBalanceReader {
     return { items, truncated: true };
   }
 
+  /** Factura de Stripe (solo lectura) para contrastar un cobro antes de expedir la factura propia; null si no se puede leer. */
+  async invoice(id: string): Promise<{ status: string; amountPaid: number; currency: string } | null> {
+    if (!this.o.apiKey || !/^in_[A-Za-z0-9]+$/.test(id)) return null;
+    try {
+      const j = await this.get(`invoices/${id}`);
+      return { status: String(j.status ?? ""), amountPaid: int(j.amount_paid), currency: String(j.currency ?? "").toUpperCase() };
+    } catch {
+      return null;
+    }
+  }
+
   /** Transacciones de saldo y payouts creados desde `sinceTs` (segundos). Nunca lanza: el estado va en el resultado. */
   async read(sinceTs: number): Promise<StripeApiReadResult> {
     const empty = { txns: [], payouts: [], truncated: false };

@@ -2,6 +2,7 @@
  * Facturación propia (`/cp/v1/invoicing/*`, operadores del CRM). Contrato: docs/elephant-source/CONTRATO_COBROS_FACTURACION.md §5.
  *
  *   GET  /invoicing/invoices?companyId=&status=&billingRef=   billing:read   facturas (borradores y expedidas)
+ *   GET  /invoicing/invoices/:id/pdf                         billing:read   PDF de la factura (o proforma del borrador)
  *   GET  /invoicing/fiscal-check?companyId=                   billing:read   ¿bastan los datos fiscales de la empresa para facturar?
  *   GET  /invoicing/invoices/:id                              billing:read   factura y lo que falta para expedirla
  *   GET  /invoicing/invoices/:id/document                     billing:read   documento imprimible (HTML)
@@ -19,6 +20,8 @@ import { z } from "zod";
 import { getAuth, requireScope } from "../controlPlane/auth";
 import { opsLog } from "../_core/ops/log";
 import { invoiceHtml } from "./document";
+import { documentName, renderInvoicePdf } from "./delivery";
+import { fetchBrandLogo } from "../documents/brandPdf";
 import { registerCsv } from "./register";
 import type { InvoicingService } from "./service";
 import type { ChargeService } from "./charges";
@@ -110,6 +113,14 @@ export function createInvoicingRouter(svc: InvoicingService, issuer: FiscalParty
     const inv = await svc.must(id.parse(req.params.id));
     res.type("html").setHeader("Content-Security-Policy", "default-src 'none'; style-src 'unsafe-inline'");
     res.send(invoiceHtml(inv, issuer));
+  }));
+  // PDF corporativo: factura expedida o, si es un borrador, proforma («PROFORMA — SIN VALIDEZ FISCAL»)
+  r.get("/invoices/:id/pdf", requireScope("billing:read"), wrap(async (req, res) => {
+    const inv = await svc.must(id.parse(req.params.id));
+    const proforma = inv.status === "draft";
+    const pdf = await renderInvoicePdf(inv, issuer, { proforma, logoPng: await fetchBrandLogo().catch(() => null) });
+    res.type("application/pdf").setHeader("Content-Disposition", `inline; filename="${documentName(inv, proforma)}"`);
+    res.send(Buffer.from(pdf));
   }));
   r.post("/generate", requireScope("billing:write"), wrap(async (req, res) => {
     const b = z.object({ companyId: id.optional() }).parse(req.body ?? {});

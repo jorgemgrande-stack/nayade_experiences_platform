@@ -108,11 +108,14 @@ export interface Period {
   month: string;
 }
 
-/** Periodos devengados de un servicio externo hasta `now` (incluido el que vence justo ahora). */
-export function externalPeriods(x: ExternalSchedule, now: number, max = 36): Period[] {
+/**
+ * Periodos devengados de un servicio externo hasta `now` (incluido el que vence justo ahora). Con `leadMs`, también el
+ * que vence dentro de ese margen (su borrador es la proforma previa al cobro).
+ */
+export function externalPeriods(x: ExternalSchedule, now: number, max = 36, leadMs = 0): Period[] {
   const out: Period[] = [];
   let start = x.firstChargeAt;
-  while (start <= now && out.length < max) {
+  while (start <= now + leadMs && out.length < max) {
     const end = nextChargeAfter(start, x.billingDay, x.billingHour, x.timezone);
     const operationDate = ymd(start, x.timezone);
     out.push({ start, end, label: periodLabel(start, x.timezone), operationDate, month: operationDate.slice(0, 7) });

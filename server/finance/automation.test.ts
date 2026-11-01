@@ -7,6 +7,7 @@
 import { describe, expect, it } from "vitest";
 import { chargeInstant } from "../external/schedule";
 import type { ExternalEvent, ExternalSubscription } from "../external/types";
+import { InvoicingAutomation } from "../invoicing/delivery";
 import { InvoicingService } from "../invoicing/service";
 import { MemoryInvoicingStore } from "../invoicing/store";
 import { ISSUER } from "../stripe/issuer";
@@ -49,7 +50,7 @@ const charge: ParsedStripeTxn = { balanceTransactionId: "txn_sint_1", type: "cha
 const denied: StripeApiReadResult = { status: "permission_missing", missing: ["balance_read", "payout_read"], message: "Permission denied", txns: [], payouts: [], truncated: false };
 const granted = (txns: ParsedStripeTxn[] = [charge]): StripeApiReadResult => ({ status: "ok", missing: [], message: null, txns, payouts: [], truncated: false });
 
-function setup() {
+function setup(o: { issueEnabled?: boolean } = {}) {
   let now = NOW;
   const clock = () => now;
   const ledger = new MemoryFinanceStore(seededPlan());
@@ -64,13 +65,15 @@ function setup() {
   const tax = new FinanceTaxService({ store: new MemoryFinanceTaxStore(), finance, ledger, ops: opsStore, documents: ops, stripe: stripeStore, issuer: { legalName: ISSUER.legalName, taxId: ISSUER.taxId }, now: clock });
   const events = [paidEvent];
   const ext = { list: async () => [external], events: async (id: number) => events.filter((e) => e.externalId === id) };
-  const invoicing = new InvoicingService({ store: invoicesStore, external: ext, company: async () => ({ name: "Nextair", legalName: "NEXTAIR SL", taxId: "B12345674", address: "Calle Ejemplo 1", postalCode: "18006", city: "Granada", country: "ES", billingEmail: null }), issuer: { legalName: ISSUER.legalName, taxId: ISSUER.taxId, address: "Calle", postalCode: "28002", city: "Madrid", country: "ES" }, seriesCode: "EB", issueEnabled: false, now: clock });
+  const invoicing = new InvoicingService({ store: invoicesStore, external: ext, company: async () => ({ name: "Nextair", legalName: "NEXTAIR SL", taxId: "B12345674", address: "Calle Ejemplo 1", postalCode: "18006", city: "Granada", country: "ES", billingEmail: null }), issuer: { legalName: ISSUER.legalName, taxId: ISSUER.taxId, address: "Calle", postalCode: "28002", city: "Madrid", country: "ES" }, seriesCode: "EB", issueEnabled: !!o.issueEnabled, now: clock });
+  const mails: Array<{ key: string; category: string; to: string }> = [];
+  const issuing = new InvoicingAutomation({ svc: invoicing, store: invoicesStore, issueEnabled: !!o.issueEnabled, stripeInvoice: async () => ({ status: "paid", amountPaid: 121_000, currency: "EUR" }), delivery: { send: async (m) => (mails.push({ key: m.key, category: m.category, to: m.to }), { status: "pending", duplicate: false }), recipient: async () => "facturas@nextair.example", issuer: { legalName: ISSUER.legalName, taxId: ISSUER.taxId, address: "Calle", postalCode: "28002", city: "Madrid", country: "ES" }, supportEmail: null }, now: clock });
   let read: StripeApiReadResult = denied;
   const reads: number[] = [];
-  const automation = new FinanceAutomation({ finance, ledger, stripe, stripeApi: { read: async (since) => (reads.push(since), read) }, tax, invoicing, issuer: { legalName: ISSUER.legalName, taxId: ISSUER.taxId }, now: clock });
+  const automation = new FinanceAutomation({ finance, ledger, stripe, stripeApi: { read: async (since) => (reads.push(since), read) }, tax, invoicing, issuing, issuer: { legalName: ISSUER.legalName, taxId: ISSUER.taxId }, now: clock });
   const integrity = new FinanceIntegrity({ finance, ledger, ops: opsStore, external: ext, invoices: own, invoiceStore: invoicesStore, issueEnabled: false, stripe: { service: stripe, store: stripeStore }, tax, automation, now: clock });
   const analysis = new FinanceAnalysisService({ store: new MemoryFinanceAnalysisStore({ ledger, ops: opsStore, stripe: stripeStore }), finance, ledger, ops: opsStore, stripe: { service: stripe, store: stripeStore }, tax, invoices: own, integrity, now: clock });
-  return { ledger, finance, ops, opsStore, stripe, stripeStore, tax, invoicesStore, events, automation, integrity, analysis, reads, setRead: (r: StripeApiReadResult) => (read = r), at: (t: number) => (now = t) };
+  return { mails, ledger, finance, ops, opsStore, stripe, stripeStore, tax, invoicesStore, events, automation, integrity, analysis, reads, setRead: (r: StripeApiReadResult) => (read = r), at: (t: number) => (now = t) };
 }
 
 const codes = (xs: Array<{ code: string }>) => xs.map((x) => x.code);
@@ -174,6 +177,35 @@ describe("automatización contable: el estado real de Nextair el 01/11/2026", ()
     await t.automation.tick();
     t.at(NOW + 3 * 3_600_000);
     expect(codes(await t.integrity.alerts())).toContain("automation_stale");
+  });
+});
+
+describe("facturación fiscal automática (DF-2) en la pasada contable", () => {
+  it("con la emisión real habilitada: una factura, un envío y un asiento de venta; el cobro casa con ella", async () => {
+    const t = setup({ issueEnabled: true });
+    t.setRead(granted());
+    const r = await t.automation.tick();
+    expect(r.invoiceIssue).toMatchObject({ status: "ok", issued: [{ number: "EB-2026-00001", totalCents: 121_000, delivery: "pending" }] });
+    expect(t.mails).toEqual([{ key: expect.stringMatching(/^invoicing:invoice:[0-9]+:EB-2026-00001$/), category: "invoice_available", to: "facturas@nextair.example" }]);
+    expect(r.invoiceSync).toMatchObject({ posted: 1 });
+    const entries = (await t.ledger.listEntries({})).items;
+    const sale = entries.find((e) => e.sourceKey?.startsWith("invoice:"))!;
+    expect(sale.lines.map((l) => [l.accountCode, l.debitCents, l.creditCents])).toEqual(expect.arrayContaining([["430", 121_000, 0], ["705", 0, 100_000], ["477", 0, 21_000]]));
+    // El cobro de Stripe se contabiliza contra la misma empresa y la factura deja de figurar sin expedir
+    expect(entries.map((e) => e.sourceKey).sort()).toEqual([sale.sourceKey, "stripe-txn:txn_sint_1"].sort());
+    const alerts = await t.integrity.alerts();
+    expect(codes(alerts)).not.toContain("confirmed_payment_without_invoice");
+    expect(codes(alerts)).not.toContain("confirmed_payment_unposted");
+    // Otra pasada no expide, no envía ni contabiliza nada nuevo
+    t.at(NOW + 15 * 60_000);
+    const r2 = await t.automation.tick();
+    expect(r2.invoiceIssue).toMatchObject({ issued: [] });
+    expect(t.mails).toHaveLength(1);
+    expect((await t.ledger.listEntries({})).total).toBe(2);
+    const o = await t.integrity.overview();
+    expect(o.indicators.find((i) => i.key === "accruedRevenue")).toMatchObject({ state: "value", cents: 100_000 });
+    expect(o.indicators.find((i) => i.key === "vatOutput")).toMatchObject({ state: "value", cents: 21_000 });
+    expect(o.facts[0]).toMatchObject({ posted: true, invoiced: true });
   });
 });
 

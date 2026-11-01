@@ -129,6 +129,9 @@ import { FinanceAutomation, startFinanceAutomation } from "../finance/automation
 import { FinanceIntegrity } from "../finance/integrity";
 import { StripeApiBalanceReader } from "../finance/stripeBalanceApi";
 import { InvoicingService } from "../invoicing/service";
+import { DEFAULT_PROFORMA_LEAD_DAYS, InvoicingAutomation } from "../invoicing/delivery";
+import { billingContact } from "../notifications/customerTriggers";
+import { fetchBrandLogo } from "../documents/brandPdf";
 import type { CompanyFiscal } from "../invoicing/rules";
 import { MysqlFinanceAnalysisStore, MysqlPaymentEventSource, finAnalysisTablesReady } from "../finance/analysisStore";
 import { ISSUER } from "../stripe/issuer";
@@ -579,7 +582,7 @@ async function main() {
 
   // Facturación propia (CRM 0027): borradores por devengo; expedir solo con CP_INVOICING_ISSUE_ENABLED=1. Mismo entorno
   // (livemode) que los servicios externos cuyos cobros lee
-  let invoicing: { store: MysqlInvoicingStore; issueEnabled: boolean; seriesCode: string; charges?: MysqlChargeStore; chargePayments?: MysqlChargePaymentStore; operations?: MysqlOperationStore } | undefined;
+  let invoicing: { store: MysqlInvoicingStore; issueEnabled: boolean; seriesCode: string; charges?: MysqlChargeStore; chargePayments?: MysqlChargePaymentStore; operations?: MysqlOperationStore; automation?: InvoicingAutomation } | undefined;
   if (crmPool && crm) {
     const pool = crmPool;
     const has = (t: string) => pool.query(`SELECT 1 FROM ${t} LIMIT 0`).then(() => true, () => false);
@@ -652,24 +655,66 @@ async function main() {
       : null;
   if (financeOps) console.log(JSON.stringify({ ctx: "FinanceTax", mounted: !!financeTax, ...(financeTax ? { reminders: taxRemindersEnabled(process.env) } : { reason: "migration_0037_missing" }) }));
   if (financeOps && financeTax) financeOps.useTaxDocumentOwners((type, id) => financeTax.documentOwnerExists(type, id));
-  // Automatización contable: ejercicio inicial, configuración fiscal confirmada (sin validar), borradores de factura de
-  // los servicios externos (nunca expide), facturas expedidas al libro y Stripe por API en solo lectura
+  // Automatización contable: ejercicio inicial, configuración fiscal confirmada (sin validar), borradores y proformas de
+  // los servicios externos, expedición de lo cobrado (contrastado con Stripe y solo con la emisión real habilitada en el
+  // entorno), envío de la factura, facturas expedidas al libro y Stripe por API en solo lectura
   const crmStore = crm?.store;
+  const stripeReader = financeStripe && stripe ? new StripeApiBalanceReader({ apiKey: stripe.config.apiKey }) : null;
+  const issuerParty = { legalName: ISSUER.legalName, taxId: ISSUER.taxId, address: `${ISSUER.address.line1}, ${ISSUER.address.line2}`, postalCode: ISSUER.address.postalCode, city: ISSUER.address.city, country: ISSUER.address.country };
+  const proformaDays = Number(process.env.CP_INVOICING_PROFORMA_DAYS ?? DEFAULT_PROFORMA_LEAD_DAYS);
+  const invoicingAuto =
+    invoicing && crmStore
+      ? new InvoicingService({
+          store: invoicing.store,
+          external: external?.store,
+          company: async (id) => (await crmStore.get("companies", id)) as CompanyFiscal | null,
+          issuer: issuerParty,
+          seriesCode: invoicing.seriesCode,
+          issueEnabled: invoicing.issueEnabled,
+          proformaLeadDays: Number.isInteger(proformaDays) && proformaDays >= 0 && proformaDays <= 30 ? proformaDays : DEFAULT_PROFORMA_LEAD_DAYS,
+          onIssued: async (inv) => {
+            const company = ((await crmStore.get("companies", inv.companyId)) as { name?: string } | null)?.name ?? null;
+            await adminAlerts?.raise("admin.invoice_issued", { key: `invoice:${inv.id}:issued`, occurredAt: inv.issuedAt ?? Date.now(), companyId: inv.companyId, company, summary: `Factura ${inv.number ?? ""} expedida automáticamente.`, status: { label: "Expedida", tone: "success" }, reference: inv.number, amount: { cents: inv.totalCents, currency: inv.currency }, link: "#/comercial/facturacion" });
+          },
+        })
+      : null;
+  const mailService = platformMail.mailer?.service;
+  const invoiceIssuing =
+    invoicing && invoicingAuto && crmStore
+      ? new InvoicingAutomation({
+          svc: invoicingAuto,
+          store: invoicing.store,
+          issueEnabled: invoicing.issueEnabled,
+          stripeInvoice: stripeReader ? (id) => stripeReader.invoice(id) : null,
+          delivery: mailService
+            ? {
+                send: async (m) => {
+                  const r = await mailService.send({ tenantId: "platform", idempotencyKey: m.key, category: m.category, to: m.to, subject: m.content.subject, html: m.content.html, text: m.content.text, attachments: m.attachments, sender: { lane: "platform" } });
+                  return { status: r.status, duplicate: r.duplicate };
+                },
+                recipient: async (inv) => inv.customer?.email ?? (await billingContact(crmStore, { companyId: inv.companyId })),
+                issuer: issuerParty,
+                supportEmail: mailPolicy.supportEmail ?? null,
+                logo: () => fetchBrandLogo(),
+              }
+            : null,
+        })
+      : null;
+  if (invoicing) invoicing.automation = invoiceIssuing ?? undefined;
   const financeAutomation =
     finance && crmPool
       ? new FinanceAutomation({
           finance,
           ledger: new MysqlFinanceStore(crmPool),
           stripe: financeStripe,
-          stripeApi: financeStripe && stripe ? new StripeApiBalanceReader({ apiKey: stripe.config.apiKey }) : null,
+          stripeApi: stripeReader,
           tax: financeTax,
-          invoicing:
-            invoicing && crmStore
-              ? new InvoicingService({ store: invoicing.store, external: external?.store, company: async (id) => (await crmStore.get("companies", id)) as CompanyFiscal | null, issuer: { legalName: ISSUER.legalName, taxId: ISSUER.taxId, address: `${ISSUER.address.line1}, ${ISSUER.address.line2}`, postalCode: ISSUER.address.postalCode, city: ISSUER.address.city, country: ISSUER.address.country }, seriesCode: invoicing.seriesCode, issueEnabled: false })
-              : null,
+          invoicing: invoicingAuto,
+          issuing: invoiceIssuing,
           issuer: { legalName: ISSUER.legalName, taxId: ISSUER.taxId },
         })
       : null;
+  if (invoicing) console.log(JSON.stringify({ ctx: "InvoicingAutomation", mounted: !!invoiceIssuing, issueEnabled: invoicing.issueEnabled, proformaLeadDays: invoicingAuto ? (Number.isInteger(proformaDays) && proformaDays >= 0 && proformaDays <= 30 ? proformaDays : DEFAULT_PROFORMA_LEAD_DAYS) : null, mail: !!mailService, stripeCheck: !!stripeReader }));
   // Integridad: hechos confirmados (webhooks de Stripe) frente al libro y estado de las fuentes, para el control diario y el panel
   const financeIntegrity =
     finance && financeOps && crmPool
