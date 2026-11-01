@@ -91,7 +91,7 @@ function InlineUrl({ value, onSave }: { value: string | null; onSave: (v: string
           onChange={(e) => setDraft(e.target.value)}
           onKeyDown={(e) => { if (e.key === "Enter") save(); if (e.key === "Escape") cancel(); }}
           className="h-6 text-xs px-2 w-48"
-          placeholder="/ruta o https://..."
+          placeholder="/contacto o https://…"
         />
         <button onClick={save} className="text-green-600 hover:text-green-700"><Check className="w-3.5 h-3.5" /></button>
         <button onClick={cancel} className="text-muted-foreground hover:text-foreground"><X className="w-3.5 h-3.5" /></button>
@@ -102,10 +102,10 @@ function InlineUrl({ value, onSave }: { value: string | null; onSave: (v: string
     <span
       className="cursor-pointer text-xs text-muted-foreground hover:text-primary transition-colors group/url flex items-center gap-1"
       onClick={start}
-      title="Clic para editar URL"
+      title="Pulsa para cambiar a dónde lleva"
     >
       <Link2 className="w-3 h-3" />
-      {value ?? <span className="italic opacity-60">sin URL</span>}
+      {value ?? <span className="italic opacity-60">sin enlace</span>}
       <Edit2 className="w-2.5 h-2.5 opacity-0 group-hover/url:opacity-60 transition-opacity" />
     </span>
   );
@@ -149,14 +149,14 @@ function AddItemRow({
         value={label}
         onChange={(e) => setLabel(e.target.value)}
         onKeyDown={(e) => { if (e.key === "Enter") submit(); if (e.key === "Escape") setOpen(false); }}
-        placeholder="Etiqueta"
+        placeholder="Texto"
         className="h-7 text-xs px-2 w-32"
       />
       <Input
         value={url}
         onChange={(e) => setUrl(e.target.value)}
         onKeyDown={(e) => { if (e.key === "Enter") submit(); if (e.key === "Escape") setOpen(false); }}
-        placeholder="/ruta"
+        placeholder="/contacto"
         className="h-7 text-xs px-2 w-36"
       />
       <button onClick={submit} className="text-green-600 hover:text-green-700"><Check className="w-4 h-4" /></button>
@@ -167,7 +167,8 @@ function AddItemRow({
 
 // ── Main component ───────────────────────────────────────────────────────────
 export default function MenusManager() {
-  const [zone] = useState<"header" | "footer">("header");
+  // Menú de arriba o enlaces del pie de página (los textos legales del pie se añaden solos)
+  const [zone, setZone] = useState<"header" | "footer">("header");
   const utils = trpc.useUtils();
 
   const { data: allItems = [], isLoading } = trpc.cms.getMenuItems.useQuery({ zone });
@@ -251,9 +252,9 @@ export default function MenusManager() {
             <Navigation className="w-5 h-5 text-orange-400" />
           </div>
           <div>
-            <h1 className="text-xl font-bold text-foreground leading-none">Estructura del Menú de Navegación</h1>
+            <h1 className="text-xl font-bold text-foreground leading-none">Menú de tu web</h1>
             <p className="text-xs text-muted-foreground mt-1">
-              Edita etiquetas y URLs haciendo clic sobre ellas · Usa las flechas para reordenar · Los cambios se guardan automáticamente
+              Pulsa un texto o un enlace para cambiarlo · Usa las flechas para ordenar · Los cambios se guardan solos
             </p>
           </div>
         </div>
@@ -272,6 +273,15 @@ export default function MenusManager() {
             </Button>
           </a>
         </div>
+      </div>
+
+      {/* Menú de arriba o pie de página */}
+      <div className="mb-4 flex flex-wrap gap-2" role="tablist" aria-label="Qué menú">
+        {(["header", "footer"] as const).map((z) => (
+          <Button key={z} size="sm" role="tab" aria-selected={zone === z} variant={zone === z ? "default" : "outline"} onClick={() => setZone(z)}>
+            {z === "header" ? "Menú de arriba" : "Pie de página"}
+          </Button>
+        ))}
       </div>
 
       {/* Legend */}
@@ -441,13 +451,13 @@ export default function MenusManager() {
       <div className="mt-4 p-4 border-2 border-dashed border-border rounded-xl">
         <AddItemRow
           onAdd={addRoot}
-          placeholder="Añadir ítem de menú principal"
+          placeholder={zone === "header" ? "Añadir enlace al menú" : "Añadir enlace al pie"}
         />
       </div>
 
       {/* Info */}
-      <div className="mt-4 p-3 bg-blue-500/10 border border-blue-500/20 rounded-xl text-xs text-blue-300">
-        <strong>Tip:</strong> Los cambios se persisten en la base de datos en tiempo real. El menú de navegación del sitio público se actualiza automáticamente al recargar la página.
+      <div className="mt-4 p-3 bg-blue-500/10 border border-blue-500/20 rounded-xl text-xs text-blue-800 dark:text-blue-300">
+        <strong>Consejo:</strong> los cambios se guardan al momento y se ven en tu web al volver a cargarla. Las páginas sin publicar no aparecen en el menú aunque estén en esta lista. El pie de página muestra además los datos de tu empresa y los textos legales.
       </div>
       </div>
     </AdminLayout>
