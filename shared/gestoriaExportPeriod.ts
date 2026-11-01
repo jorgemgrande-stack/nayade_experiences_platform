@@ -110,3 +110,15 @@ export function suggestedExportQuarter(now: Date, latestIssuedAt: Date | string 
 export function isEmptyExport(r: { invoices: number; creditNotes: number }): boolean {
   return r.invoices + r.creditNotes === 0;
 }
+
+const EMPTY_EXPORT_PREFIX = "No hay facturas ni abonos emitidos en ";
+
+/** Aviso de un periodo sin documentos (el servidor lo rechaza sin montar nada). */
+export function emptyExportMessage(label: string): string {
+  return `${EMPTY_EXPORT_PREFIX}${label}. Elige otro periodo.`;
+}
+
+/** true si el mensaje de error es el de un periodo sin documentos (se muestra como aviso, no como fallo). */
+export function isEmptyExportMessage(message: unknown): boolean {
+  return typeof message === "string" && message.startsWith(EMPTY_EXPORT_PREFIX);
+}

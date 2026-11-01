@@ -14,7 +14,7 @@ import {
 
 const CATEGORY_LABELS: Record<string, string> = {
   facturacion: "Facturación", presupuestos: "Presupuestos",
-  tpv: "TPV", proveedores: "Proveedores", general: "General",
+  tpv: "Caja", proveedores: "Proveedores", general: "General",
 };
 const CATEGORY_COLORS: Record<string, string> = {
   facturacion: "bg-blue-100 text-blue-800", presupuestos: "bg-purple-100 text-purple-800",

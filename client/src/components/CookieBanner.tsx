@@ -35,6 +35,25 @@ function saveConsent(state: ConsentState) {
 const NO_BANNER = /^\/(admin(\/|$)|login\/?$|establecer-contrasena\/?$|recuperar-contrasena\/?$|nueva-contrasena\/?$)/;
 export const showsCookieBanner = (path: string) => !NO_BANNER.test(path);
 
+/**
+ * Textos del aviso, válidos para cualquier empresa (art. 22.2 LSSI y guía de la AEPD): qué cookies se usan y para qué,
+ * que las no necesarias solo se instalan con consentimiento, aceptar y rechazar al mismo nivel, configurar por
+ * categorías y enlace a la política de cookies de la empresa.
+ */
+export const COOKIE_TEXTS = {
+  title: "Esta web utiliza cookies",
+  body: "Usamos cookies propias necesarias para que la web funcione y, solo si nos das tu consentimiento, cookies propias y de terceros para analizar su uso, recordar tus preferencias y mostrarte publicidad adaptada a tus intereses. Puedes aceptarlas, rechazarlas o",
+  configure: "elegir cuáles permites",
+  policy: "Política de cookies",
+  necessary: "Imprescindibles para que la web funcione (sesión, carrito y seguridad). No necesitan tu consentimiento.",
+  analytics: "Nos permiten medir cómo se usa la web para mejorarla.",
+  marketing: "Permiten mostrarte publicidad adaptada a tus intereses en otras webs y redes sociales.",
+  preferences: "Recuerdan tus ajustes, como el idioma o la región.",
+  reject: "Rechazar",
+  accept: "Aceptar todas",
+} as const;
+export const COOKIE_POLICY_PATH = "/cookies";
+
 export default function CookieBanner() {
   const [location] = useLocation();
   const [visible, setVisible] = useState(false);
@@ -108,20 +127,20 @@ export default function CookieBanner() {
               <Cookie className="h-5 w-5" style={{ color: "var(--brand-accent, oklch(0.70 0.20 42))" }} />
             </div>
             <div className="min-w-0">
-              <p className="text-white font-semibold text-sm mb-1">Usamos cookies para mejorar tu experiencia</p>
+              <p className="text-white font-semibold text-sm mb-1">{COOKIE_TEXTS.title}</p>
               <p className="text-white/60 text-xs leading-relaxed">
-                Utilizamos cookies propias y de terceros para analizar el uso del sitio, personalizar contenido y mostrarte publicidad relevante.
-                Puedes aceptar todas, solo las necesarias o{" "}
+                {COOKIE_TEXTS.body}{" "}
                 <button
                   onClick={() => setExpanded(v => !v)}
                   className="underline underline-offset-2 text-white/80 hover:text-white transition-colors"
                 >
-                  configurar tus preferencias
+                  {COOKIE_TEXTS.configure}
                 </button>.
                 {" "}
-                <Link href="/cookies" className="underline underline-offset-2 text-white/80 hover:text-white transition-colors">
-                  Más información
-                </Link>
+                Más información en nuestra{" "}
+                <Link href={COOKIE_POLICY_PATH} className="underline underline-offset-2 text-white/80 hover:text-white transition-colors">
+                  {COOKIE_TEXTS.policy}
+                </Link>.
               </p>
             </div>
           </div>
@@ -138,16 +157,16 @@ export default function CookieBanner() {
             </button>
             <button
               onClick={handleNecessaryOnly}
-              className="rounded-lg px-4 py-2 text-xs font-medium text-white/80 hover:text-white hover:bg-white/10 transition-colors border border-white/20"
+              className="rounded-lg px-5 py-2 text-xs font-semibold text-white hover:bg-white/10 transition-colors border border-white/40"
             >
-              Solo necesarias
+              {COOKIE_TEXTS.reject}
             </button>
             <button
               onClick={handleAcceptAll}
               className="rounded-lg px-5 py-2 text-xs font-semibold text-white transition-all hover:opacity-90 active:scale-95"
               style={{ background: "var(--brand-accent, oklch(0.70 0.20 42))", boxShadow: `0 2px 12px color-mix(in srgb, var(--brand-accent, oklch(0.70 0.20 42)) 35%, transparent)` }}
             >
-              Aceptar todas
+              {COOKIE_TEXTS.accept}
             </button>
           </div>
         </div>
@@ -164,7 +183,7 @@ export default function CookieBanner() {
                 <Shield className="h-4 w-4 mt-0.5 shrink-0" style={{ color: "var(--brand-accent, oklch(0.70 0.20 42))" }} />
                 <div>
                   <p className="text-white text-xs font-semibold">Necesarias <span className="ml-1 rounded-full bg-white/10 px-1.5 py-0.5 text-[10px] text-white/60">Siempre activas</span></p>
-                  <p className="text-white/50 text-xs mt-0.5">Imprescindibles para el funcionamiento del sitio: sesión, carrito, seguridad y preferencias básicas.</p>
+                  <p className="text-white/50 text-xs mt-0.5">{COOKIE_TEXTS.necessary}</p>
                 </div>
               </div>
               <div className="shrink-0">
@@ -182,7 +201,7 @@ export default function CookieBanner() {
                 <BarChart2 className="h-4 w-4 mt-0.5 shrink-0" style={{ color: "var(--brand-icon, oklch(0.65 0.15 200))" }} />
                 <div>
                   <p className="text-white text-xs font-semibold">Analíticas</p>
-                  <p className="text-white/50 text-xs mt-0.5">Nos ayudan a entender cómo usas el sitio para mejorar la experiencia (Google Analytics, Hotjar).</p>
+                  <p className="text-white/50 text-xs mt-0.5">{COOKIE_TEXTS.analytics}</p>
                 </div>
               </div>
               <button
@@ -202,7 +221,7 @@ export default function CookieBanner() {
                 <Megaphone className="h-4 w-4 mt-0.5 shrink-0" style={{ color: "var(--brand-accent, oklch(0.70 0.20 42))" }} />
                 <div>
                   <p className="text-white text-xs font-semibold">Marketing</p>
-                  <p className="text-white/50 text-xs mt-0.5">Permiten mostrarte anuncios personalizados en redes sociales y plataformas de publicidad (Meta Pixel, Google Ads).</p>
+                  <p className="text-white/50 text-xs mt-0.5">{COOKIE_TEXTS.marketing}</p>
                 </div>
               </div>
               <button
@@ -222,7 +241,7 @@ export default function CookieBanner() {
                 <Settings className="h-4 w-4 mt-0.5 shrink-0" style={{ color: "var(--brand-icon, oklch(0.75 0.12 280))" }} />
                 <div>
                   <p className="text-white text-xs font-semibold">Preferencias</p>
-                  <p className="text-white/50 text-xs mt-0.5">Recuerdan tus ajustes personales como idioma, moneda o región para ofrecerte una experiencia más personalizada.</p>
+                  <p className="text-white/50 text-xs mt-0.5">{COOKIE_TEXTS.preferences}</p>
                 </div>
               </div>
               <button

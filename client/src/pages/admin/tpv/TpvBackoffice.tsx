@@ -106,7 +106,7 @@ export default function TpvBackoffice() {
           <div>
             <h1 className="text-2xl font-bold text-white flex items-center gap-2">
               <Receipt className="w-6 h-6 text-violet-400" />
-              TPV — Cajas
+              Cajas
             </h1>
             <p className="text-gray-400 text-sm mt-1">
               Historial de sesiones de caja y ventas presenciales
@@ -122,7 +122,7 @@ export default function TpvBackoffice() {
             <Link href="/admin/tpv">
               <Button className="bg-violet-600 hover:bg-violet-500 text-white gap-2">
                 <ExternalLink className="w-4 h-4" />
-                Abrir TPV
+                Abrir la caja
               </Button>
             </Link>
           </div>
@@ -150,7 +150,7 @@ export default function TpvBackoffice() {
             <PanelEmpty
               icon={<Receipt className="w-6 h-6" />}
               title="Todavía no hay ninguna caja"
-              description="Crea tu primera caja para poder abrir sesión en el TPV y cobrar ventas presenciales."
+              description="Crea tu primera caja para poder abrir sesión y cobrar ventas presenciales."
             >
               <Button onClick={openNewRegister} disabled={!canManageCash} className="bg-violet-600 hover:bg-violet-500 text-white gap-2">
                 <Plus className="w-4 h-4" aria-hidden="true" />

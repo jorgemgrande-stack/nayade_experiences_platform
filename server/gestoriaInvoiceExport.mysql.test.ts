@@ -11,6 +11,12 @@ import JSZip from "jszip";
 import { startEssentialApp, data, errCode, licenseMatrix, isLicenseDenied, type EssentialApp } from "./essentialApp.testkit";
 import { madridDayKey } from "../shared/gestoriaExportPeriod";
 
+// Cuenta los ZIP montados: un periodo vacío no debe montar ninguno
+const zips = vi.hoisted(() => ({ built: 0 }));
+vi.mock("./gestoriaInvoiceExport", async (orig) => {
+  const m = await orig<typeof import("./gestoriaInvoiceExport")>();
+  return { ...m, buildGestoriaInvoiceZip: (...args: Parameters<typeof m.buildGestoriaInvoiceZip>) => ((zips.built += 1), m.buildGestoriaInvoiceZip(...args)) };
+});
 vi.mock("./pdfGenerator", async (orig) => ({
   ...(await orig<typeof import("./pdfGenerator")>()),
   htmlToPdf: async (html: string) => Buffer.from(`%PDF-prueba\n${html}`, "utf8"),
@@ -113,6 +119,15 @@ describe.skipIf(!URL_)("Exportar para la gestoría (aplicación real, dos empres
   it("periodo no válido: error claro, sin fichero", async () => {
     const r = await ess.q("a", "crm.invoices.exportForGestoria", { kind: "range", from: "2026-10-15", to: "2026-10-01" }, admA);
     expect(errCode(r)).toBe("BAD_REQUEST");
+  });
+
+  it("periodo sin facturas ni abonos: error claro en español y sin montar ningún ZIP", async () => {
+    const before = zips.built;
+    const r = await ess.q("a", "crm.invoices.exportForGestoria", { kind: "month", year: 2025, month: 1 }, admA);
+    expect(errCode(r)).toBe("BAD_REQUEST");
+    expect(r.text).toContain("No hay facturas ni abonos emitidos en enero de 2025. Elige otro periodo.");
+    expect(data(r)).toBeUndefined();
+    expect(zips.built).toBe(before);
   });
 
   it("licencia: en solo lectura se sigue exportando; sin facturación contratada, no", async () => {

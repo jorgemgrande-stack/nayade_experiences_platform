@@ -8,6 +8,7 @@ import { Bold, Heading2, Italic, Link2, List, ListOrdered, Unlink } from "lucide
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
+import { badgesToTokens, tokensToBadges } from "@shared/siteTokenLabels";
 
 const TOOLS = [
   { cmd: "bold", label: "Negrita", icon: Bold },
@@ -23,14 +24,15 @@ export function RichTextEditor({ value, onChange, id, ariaLabel }: { value: stri
   const [linkOpen, setLinkOpen] = useState(false);
   const [link, setLink] = useState("");
 
-  // El contenido solo se escribe desde fuera cuando cambia de verdad (no mientras se escribe: el cursor no salta)
+  // El contenido solo se escribe desde fuera cuando cambia de verdad (no mientras se escribe: el cursor no salta).
+  // Los datos de la empresa ({{telefono}}…) se ven como distintivos legibles y se guardan como marcadores.
   useEffect(() => {
     const el = ref.current;
-    if (el && el.innerHTML !== value && document.activeElement !== el) el.innerHTML = value;
+    if (el && badgesToTokens(el.innerHTML) !== value && document.activeElement !== el) el.innerHTML = tokensToBadges(value);
   }, [value]);
 
   const emit = () => {
-    if (ref.current) onChange(ref.current.innerHTML);
+    if (ref.current) onChange(badgesToTokens(ref.current.innerHTML));
   };
 
   const run = (cmd: string) => {
