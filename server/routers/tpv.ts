@@ -82,7 +82,8 @@ async function loadSaleResult(saleId: number) {
   const [invoice] = invoiceId
     ? await db.select({ id: invoices.id, invoiceNumber: invoices.invoiceNumber, clientName: invoices.clientName, pdfUrl: invoices.pdfUrl }).from(invoices).where(eq(invoices.id, invoiceId))
     : [];
-  return { sale, items, payments, invoice: invoice ?? null };
+  // Sin PDF guardado (empresa sin almacenamiento de ficheros), la vista de la factura
+  return { sale, items, payments, invoice: invoice ? { ...invoice, pdfUrl: invoice.pdfUrl || invoicePreviewPath(invoice.invoiceNumber) } : null };
 }
 
 function generateTransactionNumber(): string {
@@ -95,6 +96,7 @@ function generateTransactionNumber(): string {
 import { normalizeRegime, calcGeneralTax } from "../taxUtils";
 import { tpvSaleTax } from "../tpvSaleTax";
 import { chargedInvoiceAmounts } from "../invoiceCalc";
+import { invoicePreviewPath } from "../_core/signedLinks";
 import { legacyDb, legacyPool } from "../_core/legacyDb";
 import { integrationEnv } from "../_core/tenantConfig";
 import { issuerSnapshotForNewInvoice } from "../issuerSnapshot";

@@ -111,6 +111,7 @@ describe.skipIf(!URL_)("documento fiscal de las ventas de caja (aplicación real
     expect(inv.issuerSnapshot).toBeTruthy();
     // El diálogo de cobro menciona la factura emitida (número y destinatario), no solo el ticket
     expect(s.invoiceRef).toMatchObject({ id: row.invoiceId, invoiceNumber: inv.invoiceNumber, clientName: "Transportes Ruiz SL" });
+    expect(s.invoiceRef.pdfUrl).toContain(`/api/invoices/preview?n=${encodeURIComponent(inv.invoiceNumber)}`);
     expect(json(inv.taxBreakdown)).toEqual([{ rate: 21, base: 20, amount: 4.2 }]);
     const html = await preview(inv.invoiceNumber);
     expect(html).toContain("Transportes Ruiz SL");
