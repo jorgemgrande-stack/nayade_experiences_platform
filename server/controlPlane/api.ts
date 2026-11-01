@@ -95,6 +95,7 @@ import { creditNoteNotice, domainConnectedNotice, domainPendingNotice, purchaseP
 import { WebAdminService } from "../web/service";
 import type { WebStore } from "../web/store";
 import { createWebAdminRouter } from "../web/api";
+import { createMediaAdminRouter, createPublicMediaRouter, MediaService, type MediaStore } from "../web/media";
 import { createPublicSiteRouter } from "../web/publicSite";
 import { createSubscriptionsRouter } from "../subscriptions/api";
 import { catalogFromWebStore, crmFromStore } from "../subscriptions/ports";
@@ -278,7 +279,7 @@ export interface ControlPlaneDeps {
    * Web comercial: catálogo y contenidos administrados desde el CRM (BD del CRM, migración 0004).
    * La lectura pública (/cp/v1/public/site) además requiere `publicIntake` (orígenes y secreto).
    */
-  web?: { store: WebStore; onPublish?: (version: string) => void };
+  web?: { store: WebStore; onPublish?: (version: string) => void; /** Imágenes del marketplace (migración 0042). */ media?: MediaStore };
   /**
    * Suscripciones v1 en MODO SOMBRA (BD del CRM, migración 0006). Requiere `crm` y `web` (precios
    * aprobados del catálogo). Nunca cobra, emite facturas fiscales ni toca licencias.
@@ -664,6 +665,8 @@ export function createControlPlaneApp(d: ControlPlaneDeps): Express {
     : undefined;
   // Lectura pública del sitio (solo lo publicado): antes del router de captación, que exige Origin
   if (webAdmin && d.publicIntake) router.use("/public/site", createPublicSiteRouter({ service: webAdmin, secret: d.publicIntake.secret }));
+  // Imágenes oficiales del marketplace: lectura pública de variantes inmutables (sin secreto: se usan en <img>)
+  if (d.web?.media) router.use("/public/media", createPublicMediaRouter(d.web.media));
   // Captación pública desde la web: única ruta sin autenticación que escribe (solo solicitudes)
   // Prueba gratuita pública: reservada ANTES del router de captación (que responde 404 a lo demás);
   // el router real se asigna más abajo, cuando existen suscripciones y licencias.
@@ -1839,6 +1842,7 @@ export function createControlPlaneApp(d: ControlPlaneDeps): Express {
     );
   }
 
+  if (webAdmin && d.web?.media) router.use("/web/media", createMediaAdminRouter(new MediaService({ store: d.web.media, web: d.web.store })));
   if (webAdmin) {
     router.use(
       "/web",
