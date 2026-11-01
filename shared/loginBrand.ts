@@ -120,12 +120,11 @@ export function loginLook(theme: LoginThemeInput | null | undefined): LoginLook 
   const backgroundUrl = theme?.login?.backgroundUrl ?? null;
 
   // Empresa sin ninguna personalización (ni logotipo, ni colores, ni fondo): identidad predeterminada de Big Elephant
-  // (decisión del propietario, 23/10/2026). En cuanto configure algo propio, se usa lo suyo. El logotipo de Big Elephant
-  // no se presenta como el de la empresa: con nombre, un marcador neutro con su inicial; solo sin nombre, el de Big Elephant.
+  // (decisión del propietario, 23/10/2026). En cuanto configure algo propio, se usa lo suyo.
   if (theme && !theme.logoUrl && !primary && !accent && !backgroundUrl) {
     const name = brand.name;
     return {
-      brand: name ? { ...brand, logoUrl: null } : { ...brand, logoUrl: BIG_ELEPHANT.logoUrl, logoAlt: "Big Elephant" },
+      brand: { ...brand, logoUrl: BIG_ELEPHANT.logoUrl, logoAlt: "Big Elephant" },
       panelBg: BIG_ELEPHANT.ink,
       panelFg: WHITE,
       panelMuted: "rgba(255,255,255,0.78)",

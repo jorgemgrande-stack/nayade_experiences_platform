@@ -44,7 +44,7 @@ describe("qué integraciones ve una pyme Essential", () => {
     expect(integrationVisible(getProvider("vapi")!, false, essential)).toBe(false);
     expect(integrationVisible(getProvider("vapi")!, false, { licensed: true, can: (c) => c === "voice-ai" })).toBe(true);
     expect(integrationVisible(getProvider("imap_tpv")!, false, { licensed: true, can: (c) => c === "bank-import-pos" })).toBe(true);
-    const withGhl = panelIntegrations(all({ ghl: { apiKey: "clave-de-prueba-123" } }), essential).map((p) => p.id);
+    const withGhl = panelIntegrations(all({ ghl: { apiKey: "x" } }), essential).map((p) => p.id);
     expect(withGhl).toContain("ghl");
   });
 

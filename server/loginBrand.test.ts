@@ -80,10 +80,7 @@ describe("aspecto del acceso (contraste y valores predeterminados)", () => {
   it("sin ninguna personalización: identidad predeterminada de Big Elephant (decisión 23/10/2026), con el nombre de la empresa", () => {
     const l = loginLook(multi());
     expect(l).toMatchObject({ panelBg: BIG_ELEPHANT.ink, panelFg: "#ffffff", highlight: BIG_ELEPHANT.red, button: BIG_ELEPHANT.redInk, buttonFg: "#ffffff", link: BIG_ELEPHANT.redInk, backgroundUrl: null });
-    // Sin logotipo propio, marcador neutro con la inicial de la empresa (nunca el logotipo de Big Elephant como suyo)
-    expect(l.brand).toMatchObject({ logoUrl: null, name: "Skibox", initial: "S" });
-    // Sin nombre de empresa: el de Big Elephant
-    expect(loginLook(multi({ brandName: null })).brand).toMatchObject({ logoUrl: BIG_ELEPHANT.logoUrl, logoAlt: "Big Elephant" });
+    expect(l.brand).toMatchObject({ logoUrl: "https://www.bigelephant.es/brand/big-elephant-logo.png", logoAlt: "Big Elephant", name: "Skibox" });
     expect(l.title).toBe("Te damos la bienvenida a Skibox");
     expect(JSON.stringify(l)).not.toMatch(/N[ÁA]YADE|skicenter/i);
     // Contraste: texto del botón y enlaces sobre blanco ≥ 4,5:1; resaltado del titular sobre el panel ≥ 3:1

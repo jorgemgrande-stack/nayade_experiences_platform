@@ -24,5 +24,3 @@ bf42ef9f309b5d73b7fd9c5c08bce2a3e05ed331:server/oneTimeToken.mysql.test.ts:gener
 bf42ef9f309b5d73b7fd9c5c08bce2a3e05ed331:server/oneTimeToken.mysql.test.ts:generic-api-key:138
 bf42ef9f309b5d73b7fd9c5c08bce2a3e05ed331:server/oneTimeToken.test.ts:generic-api-key:3
 64394cc58fda3d330e36e3a6ce5a2a2a29b256bf:server/tpvIdempotenciaCliente.mysql.test.ts:generic-api-key:84
-# 01/11/2026: clave ficticia de GoHighLevel en una prueba unitaria (no es un secreto)
-2357d0166d15108172bbc54861855590d98589aa:server/integracionesPanel.test.ts:generic-api-key:46
