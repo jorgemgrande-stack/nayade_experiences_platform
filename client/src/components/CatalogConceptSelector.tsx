@@ -184,7 +184,7 @@ function CatalogModal({
                       }`}
                     >
                       <div className="flex-1 min-w-0">
-                        <div className="text-sm text-foreground font-medium truncate">{p.title}</div>
+                        <div className="text-sm text-foreground font-medium overflow-hidden text-ellipsis whitespace-nowrap">{p.title}</div>
                         <div className="flex items-center gap-2 mt-0.5">
                           <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium ${
                             p.productType === "experience"
@@ -243,9 +243,9 @@ function CatalogModal({
                               className="w-full text-left px-4 py-2.5 hover:bg-primary/10 transition-colors flex items-center justify-between gap-3 border-b border-foreground/[0.06] last:border-0"
                             >
                               <div className="flex-1 min-w-0">
-                                <div className="text-sm text-foreground font-medium truncate">{v.name}</div>
+                                <div className="text-sm text-foreground font-medium overflow-hidden text-ellipsis whitespace-nowrap">{v.name}</div>
                                 {v.description && (
-                                  <div className="text-[11px] text-muted-foreground truncate mt-0.5">{v.description}</div>
+                                  <div className="text-[11px] text-muted-foreground overflow-hidden text-ellipsis whitespace-nowrap mt-0.5">{v.description}</div>
                                 )}
                                 {v.isRequired && (
                                   <span className="text-[10px] text-danger">Obligatoria</span>
@@ -381,7 +381,7 @@ export function CatalogConceptSelector({
                   className="w-full text-left px-3 py-2 hover:bg-foreground/[0.08] text-sm text-foreground flex justify-between items-center gap-2"
                 >
                   <div className="flex-1 min-w-0">
-                    <span className="truncate block">{p.title}</span>
+                    <span className="overflow-hidden text-ellipsis whitespace-nowrap block">{p.title}</span>
                     <div className="flex items-center gap-1.5 mt-0.5">
                       <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium ${
                         p.productType === "experience"
