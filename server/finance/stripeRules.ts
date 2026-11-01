@@ -87,9 +87,14 @@ export const STRIPE_ACCOUNTS = {
   customers: "430",
   /** Comisiones y servicios bancarios (también las de Stripe por otros servicios). */
   fees: "626",
+  /** Comisiones de Stripe pendientes de clasificación fiscal (IVA sin decidir): «Partidas pendientes de aplicación». */
+  feesPending: "555",
   vatInput: "472",
   vatOutput: "477",
 } as const;
+
+/** Reclasificación de una comisión provisional (555 → 626, con su IVA) cuando se decide su tratamiento. */
+export const stripeFeeClassSourceKey = (balanceTransactionId: string) => `stripe-fee-class:${balanceTransactionId}`;
 
 export const MAX_STRIPE_ROWS = 50_000;
 /** Ventana de las sugerencias banco ↔ payout: ±3 días hábiles. */
@@ -393,7 +398,13 @@ export const SELF_POSTED_TYPES: readonly StripeTxnType[] = ["charge", "refund", 
  * IVA de la comisión con inversión del sujeto pasivo: Debe 472 / Haber 477 al tipo configurado sobre la comisión
  * (autoliquidación, sin efecto en el saldo); exenta, sin líneas de IVA.
  */
-export function stripeTxnEntry(t: Pick<ParsedStripeTxn, "balanceTransactionId" | "type" | "createdOn" | "currency" | "grossCents" | "feeCents" | "netCents" | "description" | "chargeId">, settings: Pick<StripeSettings, "stripeFeeVat" | "feeVatRateBp" | "disputeAccountCode">, invoice: InvoiceRef | null, fee?: ResolvedFeeVat): EntryDraft {
+export function stripeTxnEntry(
+  t: Pick<ParsedStripeTxn, "balanceTransactionId" | "type" | "createdOn" | "currency" | "grossCents" | "feeCents" | "netCents" | "description" | "chargeId">,
+  settings: Pick<StripeSettings, "stripeFeeVat" | "feeVatRateBp" | "disputeAccountCode">,
+  invoice: InvoiceRef | null,
+  fee?: ResolvedFeeVat,
+  o: { provisionalFee?: boolean } = {},
+): EntryDraft {
   if (!SELF_POSTED_TYPES.includes(t.type)) throw bad(`La transacción ${t.balanceTransactionId} (${TYPE_LABEL[t.type]}) no se contabiliza con su propio asiento`);
   if (t.currency !== "EUR") throw bad(`La transacción ${t.balanceTransactionId} no está en euros`);
   if (!isValidDate(t.createdOn)) throw bad(`La transacción ${t.balanceTransactionId} no tiene una fecha válida`);
@@ -407,18 +418,50 @@ export function stripeTxnEntry(t: Pick<ParsedStripeTxn, "balanceTransactionId" |
   const feeBase = feeBaseOf(t);
   // CRM 0039: el tratamiento lo da la regla por tipo de comisión y periodo (o el modo global); sin decidir, no se contabiliza
   const f: ResolvedFeeVat = fee ?? { treatment: settings.stripeFeeVat, rateBp: settings.feeVatRateBp, rule: null, source: "global" };
-  if (f.treatment === "unset" && feeBase !== 0) throw bad(`La transacción ${t.balanceTransactionId}: el IVA de la comisión de Stripe no está configurado (fee_vat_unset)`);
+  // Sin decidir el IVA: o no se contabiliza, o (provisional) la comisión va a 555 sin IVA hasta su clasificación fiscal
+  const provisional = f.treatment === "unset" && feeBase !== 0;
+  if (provisional && !o.provisionalFee) throw bad(`La transacción ${t.balanceTransactionId}: el IVA de la comisión de Stripe no está configurado (fee_vat_unset)`);
+  const feeAccount = provisional ? STRIPE_ACCOUNTS.feesPending : STRIPE_ACCOUNTS.fees;
+  const feeText = provisional ? short(`Comisión Stripe ${t.balanceTransactionId} pendiente de clasificación fiscal`, 300) : short(`Comisión Stripe ${t.balanceTransactionId}`, 300);
+  const cp = counterpart === STRIPE_ACCOUNTS.fees ? feeAccount : counterpart;
   const vat = f.treatment === "reverse_charge" ? signedTaxOf(feeBase, f.rateBp) : 0;
   const issuer = f.rule?.issuerVatId ? ` · ${issuerMark(f.rule.issuerName, f.rule.issuerVatId)}` : "";
   const vatText = short(`IVA comisión Stripe ${f.rateBp / 100} % (inversión del sujeto pasivo)${issuer}`, 300);
   const lines: EntryLineInput[] = [
     ...signed(STRIPE_ACCOUNTS.balance, t.netCents, "debit", { description: label }),
-    ...signed(STRIPE_ACCOUNTS.fees, t.feeCents, "debit", { description: short(`Comisión Stripe ${t.balanceTransactionId}`, 300) }),
-    ...signed(counterpart, t.grossCents, "credit", { ...(counterpart === STRIPE_ACCOUNTS.fees ? {} : ref), description: label }),
+    ...signed(feeAccount, t.feeCents, "debit", { description: feeText }),
+    ...signed(cp, t.grossCents, "credit", { ...(cp === feeAccount ? { description: feeText } : { ...ref, description: label }) }),
     ...signed(STRIPE_ACCOUNTS.vatInput, vat, "debit", { description: vatText, taxRateBp: f.rateBp, taxBaseCents: feeBase }),
     ...signed(STRIPE_ACCOUNTS.vatOutput, vat, "credit", { description: vatText, taxRateBp: f.rateBp, taxBaseCents: feeBase }),
   ];
   return { journalCode: "STR", date: t.createdOn, description: short(`Stripe: ${what} ${t.balanceTransactionId}${inv}${t.description ? ` · ${t.description}` : ""}`, 500), origin: "stripe", sourceKey: stripeTxnSourceKey(t.balanceTransactionId), lines };
+}
+
+/**
+ * Clasificación fiscal de una comisión contabilizada provisionalmente en 555: Debe 626 · Haber 555 por el mismo importe
+ * y, con inversión del sujeto pasivo, la autoliquidación (Debe 472 · Haber 477). Un asiento por transacción
+ * (`stripe-fee-class:<id>`); el asiento del cobro no se toca.
+ */
+export function stripeFeeClassEntry(t: Pick<ParsedStripeTxn, "balanceTransactionId" | "type" | "feeCents" | "grossCents">, f: ResolvedFeeVat, date: string): EntryDraft {
+  if (f.treatment === "unset") throw bad(`La comisión de ${t.balanceTransactionId} sigue sin tratamiento fiscal`);
+  const base = feeBaseOf(t);
+  if (!base) throw bad(`La transacción ${t.balanceTransactionId} no tiene comisión que clasificar`);
+  const vat = f.treatment === "reverse_charge" ? signedTaxOf(base, f.rateBp) : 0;
+  const label = short(`Clasificación fiscal de la comisión Stripe ${t.balanceTransactionId} (${f.treatment === "reverse_charge" ? `inversión del sujeto pasivo ${f.rateBp / 100} %` : "exenta"})`, 300);
+  const vatText = short(`IVA comisión Stripe ${f.rateBp / 100} % (inversión del sujeto pasivo)${f.rule?.issuerVatId ? ` · ${issuerMark(f.rule.issuerName, f.rule.issuerVatId)}` : ""}`, 300);
+  return {
+    journalCode: "STR",
+    date,
+    description: label,
+    origin: "stripe",
+    sourceKey: stripeFeeClassSourceKey(t.balanceTransactionId),
+    lines: [
+      ...signed(STRIPE_ACCOUNTS.fees, base, "debit", { description: label }),
+      ...signed(STRIPE_ACCOUNTS.feesPending, base, "credit", { description: label }),
+      ...signed(STRIPE_ACCOUNTS.vatInput, vat, "debit", { description: vatText, taxRateBp: f.rateBp, taxBaseCents: base }),
+      ...signed(STRIPE_ACCOUNTS.vatOutput, vat, "credit", { description: vatText, taxRateBp: f.rateBp, taxBaseCents: base }),
+    ],
+  };
 }
 
 /** Payout (diario STR, fecha = llegada): Debe 572000NN del banco de destino · Haber 5720. */

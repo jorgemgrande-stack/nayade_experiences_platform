@@ -793,6 +793,14 @@ llevar al libro o a la factura, en `pendingCents`) o `unavailable` (falta la fue
 apertura, la configuración fiscal, los bancos, la fuente de Stripe y la expedición, las listas `pendingSync` y
 `unavailable`, los cobros confirmados del año y `definitive` (false mientras falte la apertura o haya algo pendiente).
 
+**Comisión de Stripe con el IVA sin decidir (02/11/2026).** El cobro ya no espera a esa decisión. Se contabiliza
+`stripe-txn:<id>` con Debe 5720 (neto), Debe **555** (comisión, sin IVA) y Haber 430 (bruto), y la transacción queda
+marcada `fee_vat_pending`. Cuando hay regla o modo global decidido, `classifyProvisionalFees` (en cada contabilización)
+genera `stripe-fee-class:<id>`: Debe 626 / Haber 555 y, con inversión del sujeto pasivo, la autoliquidación 472 / 477.
+La fecha es la del cobro si su periodo sigue abierto; si no, la de ese día. El asiento del cobro no se toca. El control
+diario sigue avisando (`fee_vat_unset`) y el panel muestra la 555 como «provisional». Un payout llegado sin cuenta
+bancaria de destino no se contabiliza ni se da por recibido: queda pendiente (`payout_awaiting_bank`).
+
 ## Permisos
 
 Cada capacidad tiene su ámbito propio (`finance:*`, en `server/controlPlane/auth.ts`), centralizado en

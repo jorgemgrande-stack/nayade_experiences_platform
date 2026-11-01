@@ -80,10 +80,10 @@ describe("contabilización", () => {
     const { stripe, entries, balance, txn, bank, inv1 } = await setup();
     await stripe.importFile({ kind: "balance", filename: "b.csv", contentBase64: b64(stripeBalanceSample()) }, ACTOR);
 
-    // Sin cuenta bancaria configurada el payout no se contabiliza (error explicado), el resto sí
+    // Sin cuenta bancaria configurada el payout no se contabiliza ni se da por recibido: queda pendiente; el resto sí
     const first = await stripe.post("2026-10-31", ACTOR);
-    expect(first).toMatchObject({ posted: 6, skipped: 1, truncated: false });
-    expect(first.errors).toEqual([{ transactionId: "po_test_1", message: "Configura la cuenta bancaria a la que llegan los payouts de Stripe" }]);
+    expect(first).toMatchObject({ posted: 6, skipped: 2, truncated: false, payoutsAwaitingBank: 1 });
+    expect(first.errors).toEqual([]);
     expect(await txn("txn_test_c1")).toMatchObject({ status: "posted", ownInvoiceId: inv1.id, ownInvoiceNumber: inv1.number, issue: null, payoutArrivalOn: "2026-10-08" });
     expect(await txn("txn_test_c2")).toMatchObject({ status: "posted", ownInvoiceId: null, issue: "no_invoice" });
     expect(await txn("txn_test_r2")).toMatchObject({ status: "posted", issue: "refund" });

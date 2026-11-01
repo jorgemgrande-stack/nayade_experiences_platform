@@ -50,7 +50,7 @@ const charge: ParsedStripeTxn = { balanceTransactionId: "txn_sint_1", type: "cha
 const denied: StripeApiReadResult = { status: "permission_missing", missing: ["balance_read", "payout_read"], message: "Permission denied", txns: [], payouts: [], truncated: false };
 const granted = (txns: ParsedStripeTxn[] = [charge]): StripeApiReadResult => ({ status: "ok", missing: [], message: null, txns, payouts: [], truncated: false });
 
-function setup(o: { issueEnabled?: boolean } = {}) {
+function setup(o: { issueEnabled?: boolean; fiscal?: boolean } = {}) {
   let now = NOW;
   const clock = () => now;
   const ledger = new MemoryFinanceStore(seededPlan());
@@ -60,7 +60,7 @@ function setup(o: { issueEnabled?: boolean } = {}) {
   const ops = new FinanceOpsService({ store: opsStore, finance, ledger, now: clock });
   const stripeStore = new MemoryFinanceStripeStore();
   const own = ownInvoicesFromStore(invoicesStore);
-  const stripe = new FinanceStripeService({ store: stripeStore, finance, ops: opsStore, ledger, invoices: own, now: clock });
+  const stripe = new FinanceStripeService({ store: stripeStore, finance, ops: opsStore, ledger, invoices: own, now: clock, fiscal: !!o.fiscal });
   ops.useReconciliation(stripe);
   const tax = new FinanceTaxService({ store: new MemoryFinanceTaxStore(), finance, ledger, ops: opsStore, documents: ops, stripe: stripeStore, issuer: { legalName: ISSUER.legalName, taxId: ISSUER.taxId }, now: clock });
   const events = [paidEvent];
@@ -72,7 +72,7 @@ function setup(o: { issueEnabled?: boolean } = {}) {
   const reads: number[] = [];
   const automation = new FinanceAutomation({ finance, ledger, stripe, stripeApi: { read: async (since) => (reads.push(since), read) }, tax, invoicing, issuing, issuer: { legalName: ISSUER.legalName, taxId: ISSUER.taxId }, now: clock });
   const integrity = new FinanceIntegrity({ finance, ledger, ops: opsStore, external: ext, invoices: own, invoiceStore: invoicesStore, issueEnabled: false, stripe: { service: stripe, store: stripeStore }, tax, automation, now: clock });
-  const analysis = new FinanceAnalysisService({ store: new MemoryFinanceAnalysisStore({ ledger, ops: opsStore, stripe: stripeStore }), finance, ledger, ops: opsStore, stripe: { service: stripe, store: stripeStore }, tax, invoices: own, integrity, now: clock });
+  const analysis = new FinanceAnalysisService({ store: new MemoryFinanceAnalysisStore({ ledger, ops: opsStore, stripe: stripeStore }), finance, ledger, ops: opsStore, stripe: { service: stripe, store: stripeStore }, tax, invoices: own, integrity, fiscal: !!o.fiscal, now: clock });
   return { mails, ledger, finance, ops, opsStore, stripe, stripeStore, tax, invoicesStore, events, automation, integrity, analysis, reads, setRead: (r: StripeApiReadResult) => (read = r), at: (t: number) => (now = t) };
 }
 
@@ -120,7 +120,7 @@ describe("automatización contable: el estado real de Nextair el 01/11/2026", ()
     expect(ind("accruedExpenses")).toMatchObject({ state: "pending" });
     expect(ind("receivablePending")).toMatchObject({ state: "zero", cents: 0 });
     // Ningún indicador presenta un 0,00 € como cero real salvo que la fuente esté completa
-    expect(o.indicators.filter((i) => i.state === "zero").map((i) => i.key)).toEqual(["receivablePending"]);
+    expect(o.indicators.filter((i) => i.state === "zero").map((i) => i.key)).toEqual(["receivablePending", "stripeFeesPending"]);
     expect(o.facts).toEqual([expect.objectContaining({ stripeInvoiceId: STRIPE_INVOICE, totalCents: 121_000, posted: false, invoiced: false })]);
 
     // El control diario de hoy no dice «sin alertas»; un día pasado solo lleva sus recuentos
@@ -227,6 +227,37 @@ describe("panel con la factura expedida y el cobro aún sin asiento (estado real
   });
 });
 
+describe("comisión de Stripe con el IVA sin decidir (estado real de production)", () => {
+  it("el cobro se contabiliza una vez: neto a 5720, comisión a 555 sin IVA y 1.210 € contra el cliente; nada al resultado", async () => {
+    const t = setup({ issueEnabled: true, fiscal: true });
+    await t.stripe.saveSettings({ stripeFeeVat: "unset" }, FINANCE_AUTOMATION_ACTOR);
+    t.setRead(granted([{ ...charge, feeCents: 3_413, netCents: 117_587 }]));
+    const r = await t.automation.tick();
+    expect(r.stripe).toMatchObject({ status: "ok", posted: 1, pendingFeeVat: 1 });
+    const entries = (await t.ledger.listEntries({})).items;
+    const pay = entries.find((e) => e.sourceKey === "stripe-txn:txn_sint_1")!;
+    expect(pay.lines.map((l) => [l.accountCode, l.debitCents, l.creditCents])).toEqual([["5720", 117_587, 0], ["555", 3_413, 0], ["430", 0, 121_000]]);
+    expect(pay.lines.find((l) => l.accountCode === "430")!.companyId).toBe(7);
+    const own = (await t.stripeStore.listTransactions({ limit: 10 })).items[0];
+    expect(own).toMatchObject({ status: "posted", issue: null, issueDetail: expect.stringMatching(/^fee_vat_pending/) });
+    expect(own.ownInvoiceId).not.toBeNull();
+    const o = await t.integrity.overview();
+    const ind = (k: string) => o.indicators.find((i) => i.key === k)!;
+    expect(ind("collected")).toMatchObject({ state: "value", cents: 121_000 });
+    expect(ind("receivablePending")).toMatchObject({ state: "zero", cents: 0 });
+    expect(ind("stripeBalance")).toMatchObject({ state: "reconciliation", cents: 117_587 });
+    expect(ind("stripeFeesPending")).toMatchObject({ state: "provisional", cents: 3_413 });
+    expect(o.facts[0]).toMatchObject({ posted: true, invoiced: true });
+    const alerts = await t.integrity.alerts();
+    expect(codes(alerts)).not.toContain("confirmed_payment_unposted");
+    expect(codes((await t.analysis.daily()).alerts)).toContain("fee_vat_unset");
+    // Otra pasada no contabiliza nada más
+    t.at(NOW + 61 * 60_000);
+    await t.automation.tick();
+    expect((await t.ledger.listEntries({})).total).toBe(entries.length);
+  });
+});
+
 describe("automatización contable: con la fuente de Stripe sincronizada", () => {
   it("contabiliza el cobro una sola vez (bruto, comisión y neto) y el panel lo refleja", async () => {
     const t = setup();
@@ -260,7 +291,7 @@ describe("automatización contable: con la fuente de Stripe sincronizada", () =>
     const o = await t.integrity.overview();
     const ind = (k: string) => o.indicators.find((i) => i.key === k)!;
     expect(ind("collected")).toMatchObject({ state: "value", cents: 121_000 });
-    expect(ind("stripeBalance")).toMatchObject({ state: "value", cents: 119_160 - 12_100 });
+    expect(ind("stripeBalance")).toMatchObject({ state: "reconciliation", cents: 119_160 - 12_100 });
     expect(ind("accruedRevenue")).toMatchObject({ state: "pending", cents: 0 });
     expect(o.facts[0]).toMatchObject({ posted: true, invoiced: false });
   });

@@ -55,7 +55,12 @@ export interface PaymentFact {
   ref: string | null;
 }
 
-export type IndicatorState = "value" | "zero" | "pending" | "unavailable";
+/**
+ * value: contabilizado · provisional: contabilizado con partidas transitorias (p. ej. comisiones en 555) ·
+ * reconciliation: contabilizado y pendiente de conciliar con el banco · pending: hechos confirmados sin llevar al libro ·
+ * unavailable: falta la fuente · zero: cero real con la fuente completa.
+ */
+export type IndicatorState = "value" | "provisional" | "reconciliation" | "zero" | "pending" | "unavailable";
 export interface Indicator {
   key: string;
   label: string;
@@ -79,7 +84,7 @@ export interface FinanceIntegrityDeps {
   invoiceStore?: { list(f?: { status?: string; limit?: number }): Promise<Invoice[]> } | null;
   /** Expedición real habilitada en el entorno (interruptor de la facturación propia, decisión DF-2). */
   issueEnabled: boolean;
-  stripe?: { service: Pick<FinanceStripeService, "summary" | "pendingFeeVatCount">; store: Pick<FinanceStripeStore, "transactionsByStripeInvoice"> } | null;
+  stripe?: { service: Pick<FinanceStripeService, "summary" | "pendingFeeVatCount">; store: Pick<FinanceStripeStore, "transactionsByStripeInvoice"> & Partial<Pick<FinanceStripeStore, "listPayouts">> } | null;
   tax?: Pick<FinanceTaxService, "settings"> | null;
   automation?: Pick<FinanceAutomation, "last"> | null;
   now?: () => number;
@@ -193,6 +198,8 @@ export class FinanceIntegrity {
     add({ code: "opening_entry_pending", severity: "warning", count: c.fy && !c.openingPosted ? 1 : 0, source: "Ejercicios contables", message: `Asiento de apertura de ${c.year} pendiente: balance y tesorería son provisionales (solo operaciones del ejercicio)`, action: "Registrar los saldos iniciales reales (diario APE) con el balance de cierre anterior de la gestoría" });
     add({ code: "fiscal_config_missing", severity: "critical", count: this.d.tax && c.settings && !c.settings.configured ? 1 : 0, source: "Configuración fiscal", message: "No hay configuración fiscal guardada", action: "Guardarla en Gestoría › Configuración fiscal (la automatización guarda los datos confirmados del emisor)" });
     add({ code: "fiscal_config_unvalidated", severity: "warning", count: c.settings?.configured && !c.settings.validatedAt ? 1 : 0, source: "Configuración fiscal", message: "La configuración fiscal está pendiente de validar con la gestoría: los modelos se calculan pero no se revisan ni se presentan", action: "Validarla con la gestoría en Gestoría › Configuración fiscal (ver las notas: qué falta por confirmar)" });
+    const awaiting = this.d.stripe?.store.listPayouts ? (await this.d.stripe.store.listPayouts({ limit: 200 })).items.filter((p) => p.entryId === null && p.arrivalOn <= c.today && (p.status === "paid" || p.status === "in_transit")) : [];
+    add({ code: "payout_awaiting_bank", severity: "warning", count: c.banks.length ? 0 : awaiting.length, amountCents: sum(awaiting.map((p) => p.amountCents)), source: "Stripe → banco", message: `${plural(awaiting.length, "liquidación de Stripe llegada", "liquidaciones de Stripe llegadas")} sin contabilizar: falta la cuenta bancaria de destino (no se dan por recibidas)`, action: "Dar de alta la cuenta bancaria en Contabilidad › Bancos y fijarla como destino de los payouts en Contabilidad › Stripe; después importar el extracto y vincular el abono" });
     add({ code: "bank_not_configured", severity: "warning", count: c.banks.length ? 0 : 1, source: "Bancos", message: "No hay cuentas bancarias dadas de alta: el saldo bancario y la conciliación de liquidaciones no están disponibles", action: "Dar de alta la cuenta bancaria real en Contabilidad › Bancos e importar su extracto (Norma 43 o CSV)" });
     if (c.banks.length) {
       const movements = await this.d.ops.listMovements({ limit: 1 });
@@ -266,7 +273,23 @@ export class FinanceIntegrity {
             ? { state: "pending", cents: 0, pendingCents: collectedNotPosted, detail: `Nada pendiente de cobro: ${eur(collectedNotPosted)} ya cobrados en Stripe, falta contabilizar el cobro` }
             : { state: "zero", cents: 0, detail: "Ningún cobro fallido sin recuperar ni saldo de clientes" },
     );
-    push("stripeBalance", "Saldo en Stripe", "Libro (5720) e importaciones de Stripe", !c.fy ? noFy : !stripeKnown ? { state: "unavailable", cents: null, detail: c.stripeSource === "permission_missing" ? "La clave de Stripe no tiene permiso de lectura de saldo y no se ha importado ningún informe" : "No se ha sincronizado ni importado Stripe" } : ledgerValue(net(lines, "5720"), { when: unpostedCents > 0, cents: unpostedCents, detail: `${eur(unpostedCents)} cobrados aún sin contabilizar` }, "Sin saldo pendiente de liquidar"));
+    const stripeCents = net(lines, "5720");
+    push(
+      "stripeBalance",
+      "Saldo en Stripe",
+      "Libro (5720) e importaciones de Stripe",
+      !c.fy
+        ? noFy
+        : !stripeKnown
+          ? { state: "unavailable", cents: null, detail: c.stripeSource === "permission_missing" ? "La clave de Stripe no tiene permiso de lectura de saldo y no se ha importado ningún informe" : "No se ha sincronizado ni importado Stripe" }
+          : unpostedCents > 0
+            ? { state: "pending", cents: stripeCents, pendingCents: unpostedCents, detail: `${eur(unpostedCents)} cobrados aún sin contabilizar` }
+            : stripeCents
+              ? { state: "reconciliation", cents: stripeCents, detail: "Contabilizado; pendiente de liquidar al banco y conciliar el payout con el extracto" }
+              : { state: "zero", cents: 0, detail: "Sin saldo pendiente de liquidar" },
+    );
+    const feesPending = net(lines, "555");
+    push("stripeFeesPending", "Comisiones pendientes de clasificación fiscal", "Libro (555)", !c.fy ? noFy : feesPending ? { state: "provisional", cents: feesPending, detail: "Comisiones de Stripe contabilizadas en 555 sin IVA hasta que la gestoría decida su tratamiento (exentas o inversión del sujeto pasivo)" } : { state: "zero", cents: 0, detail: "Ninguna comisión pendiente de clasificar" });
     const bankCents = net(lines, "57200");
     push("bankBalance", "Saldo bancario conocido", "Libro (572000NN) y extractos", !c.fy ? noFy : !c.banks.length ? { state: "unavailable", cents: null, detail: "Sin cuentas bancarias dadas de alta ni extractos importados" } : { state: c.openingPosted ? (bankCents ? "value" : "zero") : "pending", cents: bankCents, detail: c.openingPosted ? "Según el libro" : "Sin asiento de apertura: solo movimientos del ejercicio" });
     const expenses = net(yearLines, "6");
@@ -278,7 +301,7 @@ export class FinanceIntegrity {
     const vatIn = net(yearLines, "472");
     push("vatInput", "IVA soportado", "Libro (472)", c.fy ? ledgerValue(vatIn, { when: noExpenses, detail: "Ninguna factura recibida registrada este año" }, "Sin IVA soportado") : noFy);
     const result = revenue - expenses;
-    push("result", "Resultado contable", "Libro (grupos 6 y 7)", c.fy ? (pendingRevenue.when || noExpenses ? { state: "pending", cents: result, detail: "Provisional: hay ingresos sin facturar o gastos sin incorporar" } : ledgerValue(result, { when: false, detail: "" }, "Resultado nulo")) : noFy);
+    push("result", "Resultado contable", "Libro (grupos 6 y 7)", c.fy ? (pendingRevenue.when || noExpenses ? { state: "pending", cents: result, detail: `Provisional: hay ingresos sin facturar o gastos sin incorporar${feesPending ? `; ${eur(feesPending)} de comisiones de Stripe aún en 555` : ""}` } : feesPending ? { state: "provisional", cents: result, detail: `${eur(feesPending)} de comisiones de Stripe aún en 555 (fuera del resultado hasta su clasificación)` } : ledgerValue(result, { when: false, detail: "" }, "Resultado nulo")) : noFy);
     const treasury = net(lines, "57");
     const partial = !c.banks.length || !stripeKnown || !c.openingPosted;
     push("treasury", "Tesorería disponible", "Libro (grupo 57)", !c.fy ? noFy : partial ? { state: "unavailable", cents: null, detail: `No se puede calcular: ${[!c.banks.length && "sin bancos", !stripeKnown && "Stripe sin sincronizar", !c.openingPosted && "sin apertura"].filter(Boolean).join(", ")}` } : { state: treasury ? "value" : "zero", cents: treasury, detail: "Bancos, caja y Stripe según el libro" });
@@ -286,7 +309,7 @@ export class FinanceIntegrity {
     return {
       asOf: c.today,
       year: c.year,
-      definitive: !!c.fy && c.openingPosted && !out.some((i) => i.state === "pending" || i.state === "unavailable"),
+      definitive: !!c.fy && c.openingPosted && !out.some((i) => i.state === "pending" || i.state === "unavailable" || i.state === "provisional"),
       status: {
         fiscalYear: c.fy ? (c.fy.status === "open" ? "open" : "closed") : "missing",
         openingEntry: !c.fy ? "missing" : c.openingPosted ? "posted" : "pending",

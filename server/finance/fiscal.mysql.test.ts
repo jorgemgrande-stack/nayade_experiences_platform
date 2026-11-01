@@ -147,10 +147,12 @@ describe.skipIf(!URL_)("parametrización fiscal con MySQL real (CRM 0039)", () =
   it("reglas de IVA de las comisiones: alta, contabilización con la regla y anulación (sin edición)", async () => {
     await s.stripe.importFile({ kind: "balance", filename: "balance.csv", contentBase64: b64(stripeBalanceSample()) }, ACTOR);
     expect((await s.stripe.post("2026-10-31", ACTOR)).pendingFeeVat).toBe(5);
-    expect(await count("SELECT COUNT(*) AS n FROM fin_stripe_transactions WHERE status = 'pending' AND issue_detail LIKE 'fee_vat_unset%'")).toBe(5);
+    // Contabilizadas en provisional: la comisión en 555, sin IVA
+    expect(await count("SELECT COUNT(*) AS n FROM fin_entry_lines l JOIN fin_entries e ON e.id = l.entry_id WHERE e.origin = 'stripe' AND e.source_key LIKE 'stripe-txn:%' AND l.account_code = '555'")).toBe(5);
     const r = await s.stripe.createFeeVatRule({ feeKind: "*", issuerName: "Stripe Payments Europe, Limited", issuerCountry: "IE", issuerVatId: "IE3206488LH", treatment: "reverse_charge", rateBp: 2100, validFrom: "2026-01-01", validTo: "2026-12-31", documentRef: "Factura 2026-10" }, ACTOR);
     expect(r).toMatchObject({ validFrom: "2026-01-01", validTo: "2026-12-31", voidedAt: null });
-    expect((await s.stripe.post("2026-10-31", ACTOR)).pendingFeeVat).toBe(0);
+    expect((await s.stripe.post("2026-10-31", ACTOR))).toMatchObject({ pendingFeeVat: 0, feesClassified: 5 });
+    expect(await count("SELECT COALESCE(SUM(l.debit_cents) - SUM(l.credit_cents), 0) AS n FROM fin_entry_lines l JOIN fin_entries e ON e.id = l.entry_id WHERE e.status = 'posted' AND l.account_code = '555'")).toBe(0);
     expect(await count("SELECT COUNT(*) AS n FROM fin_entry_lines l JOIN fin_entries e ON e.id = l.entry_id WHERE e.origin = 'stripe' AND l.account_code = '477' AND l.description LIKE '%emisor: Stripe Payments Europe, Limited (IE3206488LH)%'")).toBe(5);
     await s.stripe.voidFeeVatRule(r.id, "Sustituida", ACTOR);
     await expect(s.stripe.voidFeeVatRule(r.id, "Sustituida", ACTOR)).rejects.toMatchObject({ code: "invalid_state" });
