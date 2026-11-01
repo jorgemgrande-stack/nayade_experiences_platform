@@ -2,6 +2,7 @@ import { useState } from "react";
 import { trpc } from "@/lib/trpc";
 import AdminLayout from "@/components/AdminLayout";
 import { LayoutGrid, CheckCircle, Loader2, ArrowUp, ArrowDown, X, Plus } from "lucide-react";
+import { useVocabulary } from "@/lib/vocabulary";
 
 // ─── Constantes de módulos disponibles ───────────────────────────────────────
 const HOME_MODULES = [
@@ -18,6 +19,12 @@ const HOME_MODULES = [
     icon: "📦",
   },
 ];
+
+/** Mismas secciones con nombres genéricos para una pyme (sin el vocabulario de actividades de la instalación propia). */
+const GENERIC_LABELS: Record<string, { label: string; description: string; icon: string }> = {
+  experiences_featured: { label: "Productos destacados", description: "Productos o servicios que aparecen en la sección principal de la portada", icon: "⭐" },
+  packs_day: { label: "Paquetes", description: "Productos que aparecen en la sección de paquetes de la portada", icon: "📦" },
+};
 
 // ─── Componente de selección para un módulo ───────────────────────────────────
 function ModuleEditor({ moduleKey, label, description, icon }: { moduleKey: string; label: string; description: string; icon: string }) {
@@ -192,8 +199,10 @@ function ModuleEditor({ moduleKey, label, description, icon }: { moduleKey: stri
 
 // ─── Página principal ─────────────────────────────────────────────────────────
 export default function HomeModulesManager() {
+  const { licensed } = useVocabulary();
+  const title = licensed ? "Módulos de portada" : "Módulos de la Home";
   return (
-    <AdminLayout title="Módulos de la Home">
+    <AdminLayout title={title}>
       <div className="px-6 py-6">
         {/* Page header */}
         <div className="flex items-center gap-3 mb-6 pb-5 border-b border-border/50">
@@ -201,7 +210,7 @@ export default function HomeModulesManager() {
             <LayoutGrid className="w-5 h-5 text-orange-400" />
           </div>
           <div>
-            <h1 className="text-xl font-bold text-foreground leading-none">Módulos de la Home</h1>
+            <h1 className="text-xl font-bold text-foreground leading-none">{title}</h1>
             <p className="text-xs text-muted-foreground mt-1">
               Selecciona qué productos aparecen en cada sección de la página principal. El orden de la lista determina el orden en la web.
             </p>
@@ -209,7 +218,7 @@ export default function HomeModulesManager() {
         </div>
 
         {/* Módulos */}
-        {HOME_MODULES.map((mod) => (
+        {HOME_MODULES.map((m) => (licensed ? { ...m, ...GENERIC_LABELS[m.key] } : m)).map((mod) => (
           <ModuleEditor
             key={mod.key}
             moduleKey={mod.key}
