@@ -12,6 +12,7 @@ import { procedureNames } from "../modules/routeGuard";
 import type { CapabilityAccess } from "./access";
 import { opsLog } from "../ops/log";
 import { recordFailure } from "../ops/failureAlerts";
+import { extensionCapabilityRoutes } from "../modules/panelNavigation";
 
 /** procedimiento, sub-router o namespace tRPC → capacidad (ids de server/catalog/capabilities.ts). */
 export const TRPC_ROUTER_CAPABILITIES: Record<string, string> = {
@@ -92,11 +93,17 @@ export function capabilityForProcedure(proc: string, map: Record<string, string>
   return map[proc] ?? (parts.length > 2 ? map[`${parts[0]}.${parts[1]}`] : undefined) ?? map[parts[0]];
 }
 
-export function capabilityRouteGuard(getAccess: () => CapabilityAccess, map: Record<string, string> = TRPC_ROUTER_CAPABILITIES): RequestHandler {
+/**
+ * Sin mapa explícito se usa TRPC_ROUTER_CAPABILITIES completado con los namespaces que declaran las extensiones en
+ * su manifiesto (`panel.api`, contrato 1.2); la tabla fija gana si ambas definen el mismo.
+ */
+export function capabilityRouteGuard(getAccess: () => CapabilityAccess, map?: Record<string, string>): RequestHandler {
+  let routes: Record<string, string> | null = map ?? null;
   return async (req: Request, res: Response, next: NextFunction) => {
+    routes ??= { ...extensionCapabilityRoutes(), ...TRPC_ROUTER_CAPABILITIES };
     const needed = new Set<string>();
     for (const proc of procedureNames(req.url ?? "")) {
-      const cap = capabilityForProcedure(proc, map);
+      const cap = capabilityForProcedure(proc, routes);
       if (cap) needed.add(cap);
     }
     if (needed.size === 0) return next();

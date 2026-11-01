@@ -37,11 +37,11 @@ function PanelGate({ location, children }: { location: string; children: ReactNo
   const role = (user as { role?: string } | null)?.role ?? "user";
   let screen: "error" | "not_included" | null = null;
   if (sub.mode === "error") screen = "error";
-  else if (sub.mode === "tasks" && routeAccess(location, sub.capabilityState) === "not_included") screen = "not_included";
+  else if (sub.mode === "tasks" && routeAccess(location, sub.capabilityState, sub.extensionRoutes) === "not_included") screen = "not_included";
   if (!screen) return <>{children}</>;
   return (
     <Suspense fallback={null}>
-      <AdminGateScreen kind={screen} error={sub.error} onRetry={sub.retry} canUpgrade={role === "admin"} capabilities={routeCapabilities(location) ?? []} />
+      <AdminGateScreen kind={screen} error={sub.error} onRetry={sub.retry} canUpgrade={role === "admin"} capabilities={routeCapabilities(location, sub.extensionRoutes) ?? []} />
     </Suspense>
   );
 }

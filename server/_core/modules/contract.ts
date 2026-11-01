@@ -5,7 +5,15 @@
  * corresponda) que se declara con un manifiesto. El Core no conoce módulos concretos: lee
  * manifiestos y aplica licencia, permisos, navegación y migraciones de forma uniforme.
  */
-export const MODULE_CONTRACT_VERSION = "1.1.0";
+import type { PanelContributions } from "../../../shared/panelExtensions";
+
+export type { PanelContributions };
+
+/**
+ * 1.2 (compatible con 1.1): campos opcionales `capability` (capacidad del catálogo que lo licencia) y `panel`
+ * (aportaciones declarativas al menú, rutas y APIs del panel; ver shared/panelExtensions.ts).
+ */
+export const MODULE_CONTRACT_VERSION = "1.2.0";
 
 export type ModuleKind = "core" | "sector" | "addon";
 
@@ -49,6 +57,10 @@ export interface ModuleManifest {
   resources?: string[];
   /** (1.1) Dónde vive el código: dentro del Core o en un repositorio propio. */
   source?: { location: "core" | "external"; repository?: string };
+  /** (1.2) Capacidad del catálogo (`server/catalog/capabilities.ts`) que licencia el módulo. */
+  capability?: string;
+  /** (1.2) Aportaciones al panel: entradas de menú, pestañas, ajustes, sección propia, rutas y APIs. */
+  panel?: PanelContributions;
 }
 
 export const MODULE_ID_RE = /^[a-z][a-z0-9_]{1,31}$/;

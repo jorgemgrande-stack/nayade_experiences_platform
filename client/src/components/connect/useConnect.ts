@@ -59,6 +59,7 @@ export function useRefreshLicences() {
   const utils = trpc.useUtils();
   return useCallback(() => {
     void utils.subscription.overview.invalidate();
+    void utils.panel.navigation.invalidate();
     void utils.connect.catalog.invalidate();
     void utils.subscription.catalog.invalidate();
   }, [utils]);
