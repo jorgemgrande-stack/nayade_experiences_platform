@@ -19,6 +19,12 @@ import { describe, it, expect, beforeAll, afterAll, vi } from "vitest";
 import { startEssentialApp, data, type EssentialApp, type Res } from "./essentialApp.testkit";
 import { madridMonth, madridYear } from "./utils/timezone";
 
+// Fecha de un documento como la lee la empresa: día de calendario de Madrid (también cerca de medianoche). El
+// documento la pinta con la zona del proceso, así que la prueba fija Madrid para no depender de la máquina (la CI
+// va en UTC y entre las 00:00 y la 01:00 de Madrid, o las 02:00 en verano, daría el día anterior).
+process.env.TZ = "Europe/Madrid";
+const madridDateEs = (ms: number) => new Date(ms).toLocaleDateString("es-ES", { timeZone: "Europe/Madrid" });
+
 const URL_ = process.env.REGISTRY_TEST_DATABASE_URL;
 vi.setConfig({ testTimeout: 90_000 });
 const ABO = `ABO-${madridYear()}-${String(madridMonth()).padStart(2, "0")}-`;
@@ -145,8 +151,9 @@ describe.skipIf(!URL_)("datos del emisor y factura rectificativa (aplicación re
       original = await direct("a", agA);
       // Forma de pago de la factura original «Otro» (para el listado)
       await ess.sql("a", "UPDATE invoices SET paymentMethod = 'otro' WHERE id = ?", [original.invoiceId]);
-      const [r] = await ess.sql("a", "SELECT issuedAt FROM invoices WHERE id = ?", [original.invoiceId]);
-      issuedDate = new Date(r.issuedAt).toLocaleDateString("es-ES");
+      // El instante exacto (UNIX_TIMESTAMP): leer el DATETIME con el driver lo interpreta en la zona local y lo desplaza
+      const [r] = await ess.sql("a", "SELECT UNIX_TIMESTAMP(issuedAt) * 1000 AS issuedMs FROM invoices WHERE id = ?", [original.invoiceId]);
+      issuedDate = madridDateEs(Number(r.issuedMs));
     });
 
     it("parcial con IVA mixto: título, referencia, motivo, negativos por tipo, mención legal y colores de la marca", async () => {
