@@ -3,7 +3,7 @@
  * exportación de lo filtrado y datos extra del historial (tickets de caja y correos enviados).
  *
  * Todo se lee y escribe en la BD de la empresa (`getDb()` resuelve la del tenant): una empresa nunca ve los
- * clientes, notas ni documentos de otra. La tabla de notas es de db/migrations/0020_client_notes.
+ * clientes, notas ni documentos de otra. La tabla de notas es de db/migrations/0019_client_notes.
  */
 import { TRPCError } from "@trpc/server";
 import { and, asc, count, desc, eq, inArray, like, or, sql, type SQL } from "drizzle-orm";
