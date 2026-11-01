@@ -6,6 +6,7 @@ import { buildQuotePdfHtml } from "../emailTemplates";
 import { legacyDb, legacyPool } from "../_core/legacyDb";
 import { brandSetting, companyName, legacySiteHost } from "../tenantBrand";
 import { sampleUrl } from "../_core/productIdentity";
+import { ew, renderEmailAs, resolveGenericEmails } from "../emailVocabulary";
 
 const _pool = legacyPool();
 const db = legacyDb();
@@ -15,7 +16,7 @@ export const SYSTEM_PDF_TEMPLATES = [
   {
     id: "invoice",
     name: "Factura",
-    description: "Documento de factura emitido al cliente tras confirmar el pago de una reserva.",
+    description: "Documento de factura emitido al cliente tras confirmar el pago.",
     category: "facturacion",
     headerColor: "#0a1628",
     accentColor: "#f97316",
@@ -62,8 +63,7 @@ export const SYSTEM_PDF_TEMPLATES = [
 <div class="page">
   <div class="header">
     <div class="logo-area">
-      <h1>NÁYADE</h1>
-      <p>EXPERIENCES</p>
+      <h1>{{marca}}</h1>
     </div>
     <div class="invoice-meta">
       <div class="invoice-number">{{invoiceNumber}}</div>
@@ -117,7 +117,10 @@ export const SYSTEM_PDF_TEMPLATES = [
     companyPhone: "{{telefono}}",
     companyEmail: "{{email}}",
     footerText: "{{marca}}{{web}}",
-    legalText: "Presupuesto válido según condiciones indicadas. Sujeto a disponibilidad.",
+    // «Sujeto a disponibilidad» solo con reservas (vocabulario de la empresa)
+    get legalText() {
+      return ew("Presupuesto válido según condiciones indicadas. Sujeto a disponibilidad.", "Presupuesto válido según las condiciones indicadas.");
+    },
     showLogo: true,
     showWatermark: false,
     variables: JSON.stringify(["quoteNumber","title","clientName","clientEmail","items","subtotal","discount","tax","total","validUntil","notes","conditions","paymentLinkUrl","issuerName","issuerCif","issuerAddress"]),
@@ -125,21 +128,21 @@ export const SYSTEM_PDF_TEMPLATES = [
     get bodyHtml() {
       return buildQuotePdfHtml({
       quoteNumber: "PRE-2026-001",
-      title: "Pack Experiencia + Restaurante",
+      title: ew("Pack Experiencia + Restaurante", "Mantenimiento anual de equipos"),
       clientName: "Carlos Pedraza",
       clientEmail: "carlos@ejemplo.es",
       clientPhone: "+34 600 000 000",
       items: [
-        { description: "Pack Experiencia (5 pax)", quantity: 5, unitPrice: 35, total: 175 },
-        { description: "Menú del día (8 pax)", quantity: 8, unitPrice: 28, total: 224 },
+        { description: ew("Pack Experiencia (5 pax)", "Revisión de equipos (5 uds)"), quantity: 5, unitPrice: 35, total: 175 },
+        { description: ew("Menú del día (8 pax)", "Material de repuesto (8 uds)"), quantity: 8, unitPrice: 28, total: 224 },
       ],
       subtotal: "399",
       discount: "0",
       tax: "83.79",
       total: "482.79",
       validUntil: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
-      notes: "Precio especial por grupo. Incluye alquiler de neopreno.",
-      conditions: "Reserva sujeta a disponibilidad. Cancelación gratuita hasta 48h antes.",
+      notes: ew("Precio especial por grupo. Incluye alquiler de neopreno.", "Precio especial por volumen. Incluye desplazamiento."),
+      conditions: ew("Reserva sujeta a disponibilidad. Cancelación gratuita hasta 48h antes.", "Presupuesto válido por 15 días."),
       paymentLinkUrl: sampleUrl("/pago/PRE-2026-001"),
       createdAt: new Date(),
       issuerName: "{{marca}}",
@@ -193,8 +196,7 @@ export const SYSTEM_PDF_TEMPLATES = [
 <body>
 <div class="ticket">
   <div class="ticket-header">
-    <h1>NÁYADE</h1>
-    <p>EXPERIENCES</p>
+    <h1>{{marca}}</h1>
     <div class="ticket-badge">Ticket de Compra</div>
   </div>
   <div class="ticket-body">
@@ -270,8 +272,7 @@ export const SYSTEM_PDF_TEMPLATES = [
 <div class="page">
   <div class="header">
     <div class="logo-area">
-      <h1>NÁYADE</h1>
-      <p>EXPERIENCES</p>
+      <h1>{{marca}}</h1>
     </div>
     <div class="doc-meta">
       <div class="doc-number">{{settlementNumber}}</div>
@@ -295,7 +296,7 @@ export const SYSTEM_PDF_TEMPLATES = [
     </div>
   </div>
   <table>
-    <thead><tr><th>Servicio</th><th>Fecha</th><th>Pax</th><th style="text-align:right">Venta</th><th style="text-align:right">Comisión</th><th style="text-align:right">Neto</th></tr></thead>
+    <thead><tr><th>Servicio</th><th>Fecha</th><th>Cant.</th><th style="text-align:right">Venta</th><th style="text-align:right">Comisión</th><th style="text-align:right">Neto</th></tr></thead>
     <tbody>{{settlementRows}}</tbody>
   </table>
   <div class="summary-box">
@@ -347,8 +348,9 @@ export function brandedPdfTemplate<T extends Pick<SystemPdfTemplate, "companyNam
 async function ensurePdfTemplatesSeeded() {
   const existing = await db.select({ id: pdfTemplates.id }).from(pdfTemplates).limit(1);
   if (existing.length > 0) return;
+  const generic = await resolveGenericEmails();
   for (const system of SYSTEM_PDF_TEMPLATES) {
-    const tpl = brandedPdfTemplate(system);
+    const tpl = renderEmailAs(generic, () => brandedPdfTemplate(system));
     await db.insert(pdfTemplates).values({
       id: tpl.id,
       name: tpl.name,
@@ -476,7 +478,7 @@ export const pdfTemplatesRouter = router({
     .mutation(async ({ input }) => {
       const system = SYSTEM_PDF_TEMPLATES.find(t => t.id === input.id);
       if (!system) throw new Error("No hay datos originales para esta plantilla");
-      const original = brandedPdfTemplate(system);
+      const original = renderEmailAs(await resolveGenericEmails(), () => brandedPdfTemplate(system));
       await db.update(pdfTemplates)
         .set({
           name: original.name,

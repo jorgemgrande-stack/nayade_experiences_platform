@@ -22,6 +22,7 @@ import { BIG_ELEPHANT, contrastRatio } from "../shared/loginBrand";
 import { isMultiTenant } from "./_core/tenant";
 import { publicBaseUrl } from "./_core/productIdentity";
 import { roleLabel as roleLabelOf } from "../shared/roleLabels";
+import { ew, emailsAreGeneric } from "./emailVocabulary";
 
 // ─── Dynamic brand helpers (read from config cache at call time) ──────────────
 const getContactEmail = () => brandSetting("email_reservations", "");
@@ -40,6 +41,8 @@ const getBrandLogo  = () => brandSetting("brand_logo_url", "");
 const getBrandHero  = () => brandSetting("brand_hero_image_url", "");
 const getBrandName  = () => brandSetting("brand_name", "");
 const getBrandShort = () => brandSetting("brand_short_name", "") || getBrandName();
+/** Web de la empresa para el pie: «www.» solo delante de un dominio raíz (no de un subdominio). */
+const webHost = (d: string) => (d.startsWith("www.") || d.split(".").length > 2 ? d : `www.${d}`);
 const escAttr = (v: string) => v.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 /** Logotipo de la cabecera: en multi, sin logotipo propio no se pinta (nunca el de otra empresa). */
 function headerLogo(mso: boolean): string {
@@ -304,7 +307,7 @@ function detailsCard(rows: string, cardTitle?: string): string {
     <table width="100%" cellpadding="0" cellspacing="0" style="background:#f8fafc;border-radius:10px;border:1px solid #e8eef7;">
       <tr><td style="padding:18px 22px;">
         <p style="color:${BRAND_MID_BLUE()};font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:2px;margin:0 0 12px;font-family:Arial,sans-serif;">
-          ${cardTitle ?? "DETALLES DE TU EXPERIENCIA"}
+          ${cardTitle ?? ew("DETALLES DE TU EXPERIENCIA", "DETALLES")}
         </p>
         <table width="100%" cellpadding="0" cellspacing="0">${rows}</table>
       </td></tr>
@@ -352,21 +355,21 @@ export interface ReservationConfirmData {
 
 export function buildReservationConfirmHtml(d: ReservationConfirmData): string {
   const body = `
-    ${emailHeader("Reserva Confirmada", "Tu experiencia perfecta empieza aqu&iacute;")}
+    ${emailHeader(ew("Reserva Confirmada", "Pedido Confirmado"), ew("Tu experiencia perfecta empieza aqu&iacute;", "Gracias por tu compra"))}
     <tr><td style="padding:28px 32px 0;">
       <p style="color:#1e293b;font-size:17px;margin:0 0 8px;font-family:Arial,sans-serif;">Hola <strong>${d.customerName}</strong>,</p>
       <p style="color:#6b7280;font-size:15px;margin:0 0 16px;line-height:1.7;font-family:Arial,sans-serif;">
-        Tu reserva ha sido <strong style="color:#166534;">confirmada</strong>${d.paymentPending ? "" : " y el pago procesado correctamente"}.
-        &#161;Te esperamos!
+        ${ew("Tu reserva ha sido", "Tu pedido ha sido")} <strong style="color:#166534;">${ew("confirmada", "confirmado")}</strong>${d.paymentPending ? "" : " y el pago procesado correctamente"}.
+        ${ew("&#161;Te esperamos!", "Gracias por confiar en nosotros.")}
       </p>
       ${d.paymentPending
-        ? statusBlock("success", "Reserva confirmada", "Tu plaza est&aacute; reservada. El pago queda pendiente de gesti&oacute;n con nuestro equipo.")
-        : statusBlock("success", "Pago procesado correctamente", "Tu plaza est&aacute; reservada. Recibir&aacute;s toda la informaci&oacute;n necesaria para el d&iacute;a de tu visita.")}
+        ? statusBlock("success", ew("Reserva confirmada", "Pedido confirmado"), ew("Tu plaza est&aacute; reservada. El pago queda pendiente de gesti&oacute;n con nuestro equipo.", "El pago queda pendiente de gesti&oacute;n con nuestro equipo."))
+        : statusBlock("success", "Pago procesado correctamente", ew("Tu plaza est&aacute; reservada. Recibir&aacute;s toda la informaci&oacute;n necesaria para el d&iacute;a de tu visita.", "Hemos recibido tu pago. Te avisaremos de cualquier novedad sobre tu pedido."))}
     </td></tr>
     ${detailsCard(`
-      ${detailRow(SVG.star,     "Experiencia",  d.productName)}
+      ${detailRow(SVG.star,     ew("Experiencia", "Producto o servicio"),  d.productName)}
       ${detailRow(SVG.calendar, "Fecha",        d.date)}
-      ${detailRow(SVG.users,    "Personas",     `${d.people} persona${d.people !== 1 ? "s" : ""}`)}
+      ${detailRow(SVG.users,    ew("Personas", "Cantidad"),     emailsAreGeneric() ? String(d.people) : `${d.people} persona${d.people !== 1 ? "s" : ""}`)}
       ${d.extras && d.extras !== "Ninguno" ? detailRow(SVG.tag, "Extras", d.extras) : ""}
     `)}
     ${(d.quantity != null && d.unitPrice != null && d.subtotal != null) ? `
@@ -407,28 +410,28 @@ export function buildReservationConfirmHtml(d: ReservationConfirmData): string {
       <table width="100%" cellpadding="0" cellspacing="0" style="background:#fff7ed;border-left:4px solid ${BRAND_ORANGE()};border-radius:0 8px 8px 0;">
         <tr><td style="padding:14px 18px;">
           <p style="color:#374151;font-size:13px;margin:0;line-height:1.6;font-family:Arial,sans-serif;">
-            ${SVG.ref}&nbsp;<strong>Referencia de reserva:</strong> <span style="color:${BRAND_ORANGE()};font-weight:700;">${d.merchantOrder}</span><br/>
+            ${SVG.ref}&nbsp;<strong>${ew("Referencia de reserva", "Referencia del pedido")}:</strong> <span style="color:${BRAND_ORANGE()};font-weight:700;">${d.merchantOrder}</span><br/>
             <span style="color:#9ca3af;font-size:12px;">Guarda este n&uacute;mero para cualquier consulta.</span>
           </p>
         </td></tr>
       </table>
     </td></tr>
     ${d.reservationUrl ? `<tr><td style="padding:8px 32px 24px;text-align:center;">
-        ${ctaButton("Ver tu reserva", d.reservationUrl)}
+        ${ctaButton(ew("Ver tu reserva", "Ver tu pedido"), d.reservationUrl)}
         <p style="color:#9ca3af;font-size:11px;margin:10px 0 0;font-family:Arial,sans-serif;">
-          Accede a los detalles, descarga tu factura y consulta tu reserva en cualquier momento
+          Accede a los detalles, descarga tu factura y consulta ${ew("tu reserva", "tu pedido")} en cualquier momento
         </p>
       </td></tr>` : ""}
-    ${emotionalBlock("El agua, la naturaleza y la emoci&oacute;n te esperan. &#161;Nos vemos pronto!")}
+    ${emotionalBlock(ew("El agua, la naturaleza y la emoci&oacute;n te esperan. &#161;Nos vemos pronto!", "Gracias por confiar en nosotros."))}
     <tr><td style="padding:0 32px 28px;">
       <p style="color:#9ca3af;font-size:13px;margin:0;line-height:1.6;font-family:Arial,sans-serif;">
-        &iquest;Necesitas modificar tu reserva? Escr&iacute;benos a
+        &iquest;Necesitas modificar ${ew("tu reserva", "tu pedido")}? Escr&iacute;benos a
         <a href="mailto:${getContactEmail()}" style="color:${BRAND_ORANGE()};text-decoration:none;font-weight:600;">${getContactEmail()}</a>
         ${callUs("o ll&aacute;manos al ", BRAND_ORANGE(), 600, "&nbsp;(tambi&eacute;n WhatsApp).")}
       </p>
     </td></tr>
     ${emailFooter()}`;
-  return emailWrapper("Reserva Confirmada — " + getBrandName(), body);
+  return emailWrapper(ew("Reserva Confirmada", "Pedido Confirmado") + " — " + getBrandName(), body);
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -451,25 +454,25 @@ export interface PartnerReservationConfirmData {
 
 export function buildPartnerReservationConfirmHtml(d: PartnerReservationConfirmData): string {
   const body = `
-    ${emailHeader("Reserva Confirmada", "Tu experiencia perfecta empieza aqu&iacute;")}
+    ${emailHeader(ew("Reserva Confirmada", "Pedido Confirmado"), ew("Tu experiencia perfecta empieza aqu&iacute;", "Gracias por tu compra"))}
     <tr><td style="padding:28px 32px 0;">
       <p style="color:#1e293b;font-size:17px;margin:0 0 8px;font-family:Arial,sans-serif;">Hola <strong>${d.customerName}</strong>,</p>
       <p style="color:#6b7280;font-size:15px;margin:0 0 16px;line-height:1.7;font-family:Arial,sans-serif;">
-        Tu reserva ha sido <strong style="color:#166534;">confirmada</strong>.
-        &#161;Te esperamos!
+        ${ew("Tu reserva ha sido", "Tu pedido ha sido")} <strong style="color:#166534;">${ew("confirmada", "confirmado")}</strong>.
+        ${ew("&#161;Te esperamos!", "Gracias por confiar en nosotros.")}
       </p>
-      ${statusBlock("success", "Reserva confirmada", `Tu reserva ha sido gestionada a trav&eacute;s de <strong>${d.partnerName}</strong>. El pago se tramita directamente con ellos; para cualquier cuesti&oacute;n sobre el cobro, contacta con <strong>${d.partnerName}</strong>. Recibir&aacute;s toda la informaci&oacute;n necesaria para el d&iacute;a de tu visita.`)}
+      ${statusBlock("success", ew("Reserva confirmada", "Pedido confirmado"), `${ew("Tu reserva ha sido gestionada", "Tu pedido ha sido gestionado")} a trav&eacute;s de <strong>${d.partnerName}</strong>. El pago se tramita directamente con ellos; para cualquier cuesti&oacute;n sobre el cobro, contacta con <strong>${d.partnerName}</strong>${ew(". Recibir&aacute;s toda la informaci&oacute;n necesaria para el d&iacute;a de tu visita.", ".")}`)}
     </td></tr>
     ${detailsCard(`
-      ${detailRow(SVG.star,     "Experiencia",    d.productName)}
+      ${detailRow(SVG.star,     ew("Experiencia", "Producto o servicio"),    d.productName)}
       ${detailRow(SVG.calendar, "Fecha",          d.date)}
-      ${detailRow(SVG.users,    "Personas",       `${d.people} persona${d.people !== 1 ? "s" : ""}`)}
+      ${detailRow(SVG.users,    ew("Personas", "Cantidad"),       emailsAreGeneric() ? String(d.people) : `${d.people} persona${d.people !== 1 ? "s" : ""}`)}
       ${detailRow(SVG.tag,      "Gestionada por", d.partnerName)}
     `)}
     ${d.detailHtml ? `<tr><td style="padding:0 32px 12px;">
       <table width="100%" cellpadding="0" cellspacing="0" style="border:1px solid #e5e7eb;border-radius:10px;">
         <tr><td style="padding:14px 18px;color:#374151;font-size:13px;line-height:1.7;font-family:Arial,sans-serif;">
-          <strong>Detalle de actividades:</strong><br/>${d.detailHtml}
+          <strong>${ew("Detalle de actividades", "Detalle")}:</strong><br/>${d.detailHtml}
         </td></tr>
       </table>
     </td></tr>` : ""}
@@ -477,28 +480,28 @@ export function buildPartnerReservationConfirmHtml(d: PartnerReservationConfirmD
       <table width="100%" cellpadding="0" cellspacing="0" style="background:#fff7ed;border-left:4px solid ${BRAND_ORANGE()};border-radius:0 8px 8px 0;">
         <tr><td style="padding:14px 18px;">
           <p style="color:#374151;font-size:13px;margin:0;line-height:1.6;font-family:Arial,sans-serif;">
-            ${SVG.ref}&nbsp;<strong>Referencia de reserva:</strong> <span style="color:${BRAND_ORANGE()};font-weight:700;">${d.merchantOrder}</span><br/>
+            ${SVG.ref}&nbsp;<strong>${ew("Referencia de reserva", "Referencia del pedido")}:</strong> <span style="color:${BRAND_ORANGE()};font-weight:700;">${d.merchantOrder}</span><br/>
             <span style="color:#9ca3af;font-size:12px;">Guarda este n&uacute;mero para cualquier consulta.</span>
           </p>
         </td></tr>
       </table>
     </td></tr>
     ${d.reservationUrl ? `<tr><td style="padding:8px 32px 24px;text-align:center;">
-        ${ctaButton("Ver tu reserva", d.reservationUrl)}
+        ${ctaButton(ew("Ver tu reserva", "Ver tu pedido"), d.reservationUrl)}
         <p style="color:#9ca3af;font-size:11px;margin:10px 0 0;font-family:Arial,sans-serif;">
-          Accede a los detalles de tu reserva en cualquier momento
+          Accede a los detalles de ${ew("tu reserva", "tu pedido")} en cualquier momento
         </p>
       </td></tr>` : ""}
-    ${emotionalBlock("El agua, la naturaleza y la emoci&oacute;n te esperan. &#161;Nos vemos pronto!")}
+    ${emotionalBlock(ew("El agua, la naturaleza y la emoci&oacute;n te esperan. &#161;Nos vemos pronto!", "Gracias por confiar en nosotros."))}
     <tr><td style="padding:0 32px 28px;">
       <p style="color:#9ca3af;font-size:13px;margin:0;line-height:1.6;font-family:Arial,sans-serif;">
-        &iquest;Necesitas modificar tu reserva? Escr&iacute;benos a
+        &iquest;Necesitas modificar ${ew("tu reserva", "tu pedido")}? Escr&iacute;benos a
         <a href="mailto:${getContactEmail()}" style="color:${BRAND_ORANGE()};text-decoration:none;font-weight:600;">${getContactEmail()}</a>
         ${callUs("o ll&aacute;manos al ", BRAND_ORANGE(), 600, "&nbsp;(tambi&eacute;n WhatsApp).")}
       </p>
     </td></tr>
     ${emailFooter()}`;
-  return emailWrapper("Reserva Confirmada — " + getBrandName(), body);
+  return emailWrapper(ew("Reserva Confirmada", "Pedido Confirmado") + " — " + getBrandName(), body);
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -517,12 +520,12 @@ export function buildReservationFailedHtml(d: ReservationFailedData): string {
     <tr><td style="padding:28px 32px 24px;">
       <p style="color:#1e293b;font-size:17px;margin:0 0 8px;font-family:Arial,sans-serif;">Hola <strong>${d.customerName}</strong>,</p>
       <p style="color:#6b7280;font-size:15px;margin:0 0 16px;line-height:1.7;font-family:Arial,sans-serif;">
-        Lamentablemente no hemos podido procesar el pago de tu reserva para
+        Lamentablemente no hemos podido procesar el pago de ${ew("tu reserva para", "tu pedido de")}
         <strong>${d.productName}</strong>. Esto puede deberse a un problema temporal con tu banco.
       </p>
       ${statusBlock("error", "Pago no procesado", `Referencia: <strong>${d.merchantOrder}</strong> &middot; C&oacute;digo: ${d.responseCode}`)}
       <p style="color:#6b7280;font-size:14px;margin:16px 0 0;line-height:1.7;font-family:Arial,sans-serif;">
-        Puedes intentarlo de nuevo o contactarnos y te ayudamos a completar la reserva:
+        Puedes intentarlo de nuevo o contactarnos y te ayudamos a completar ${ew("la reserva", "el pedido")}:
       </p>
       ${ctaButton("Contactar ahora", `mailto:${getContactEmail()}`)}
     </td></tr>
@@ -746,7 +749,7 @@ function buildActivitiesBlock(activities: ActivityEmailEntry[]): string {
   return `<tr><td style="padding:0 32px 12px;">
     <table width="100%" cellpadding="0" cellspacing="0" style="background:linear-gradient(135deg,#eff6ff,#dbeafe);border-radius:10px;border:1px solid #bfdbfe;">
       <tr><td style="padding:18px 22px;">
-        <p style="color:#1e40af;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:2px;margin:0 0 12px;font-family:Arial,sans-serif;">Actividades solicitadas</p>
+        <p style="color:#1e40af;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:2px;margin:0 0 12px;font-family:Arial,sans-serif;">${ew("Actividades solicitadas", "Productos o servicios solicitados")}</p>
         <table width="100%" cellpadding="0" cellspacing="0">${rows}</table>
       </td></tr>
     </table>
@@ -789,12 +792,12 @@ function safeBudget(d: BudgetRequestEmailData): BudgetRequestEmailData {
 export function buildBudgetRequestUserHtml(raw: BudgetRequestEmailData): string {
   const d = safeBudget(raw);
   const body = `
-    ${emailHeader("Solicitud Recibida", "Tu experiencia perfecta empieza aqu&iacute;")}
+    ${emailHeader("Solicitud Recibida", ew("Tu experiencia perfecta empieza aqu&iacute;", "Te responderemos muy pronto"))}
     <tr><td style="padding:28px 32px 0;">
       <h2 style="color:${BRAND_BLUE()};font-size:22px;margin:0 0 12px;font-weight:700;font-family:Georgia,serif;">&#161;Hola ${escAttr(d.name)}!</h2>
       <p style="color:#6b7280;font-size:15px;line-height:1.7;margin:0 0 16px;font-family:Arial,sans-serif;">
         Hemos recibido tu solicitud de presupuesto y ya estamos preparando una propuesta personalizada
-        para que vivas una jornada inolvidable${getBrandName() ? ` con ${escAttr(getBrandName())}` : ""}.
+        ${ew("para que vivas una jornada inolvidable", "a tu medida")}${emailsAreGeneric() ? "" : getBrandName() ? ` con ${escAttr(getBrandName())}` : ""}.
       </p>
       ${statusBlock("success", "Solicitud recibida correctamente",
         "Te contactaremos en menos de 24 horas.")}
@@ -804,7 +807,7 @@ export function buildBudgetRequestUserHtml(raw: BudgetRequestEmailData): string 
       ${detailRow(SVG.users,    "Adultos",                 String(d.adults))}
       ${detailRow(SVG.child,    "Ni&ntilde;os",            String(d.children))}
       ${detailRow(SVG.tag,      "Categor&iacute;a",        d.selectedCategory)}
-      ${!d.activitiesJson?.length ? detailRow(SVG.star, "Experiencia solicitada", d.selectedProduct) : ""}
+      ${!d.activitiesJson?.length ? detailRow(SVG.star, ew("Experiencia solicitada", "Producto o servicio solicitado"), d.selectedProduct) : ""}
       ${d.comments ? detailRow(SVG.chat, "Comentarios", d.comments) : ""}
       ${detailRow(SVG.phone,    "Tel&eacute;fono de contacto", d.phone)}
     `)}
@@ -834,11 +837,11 @@ export function buildBudgetRequestAdminHtml(raw: BudgetRequestEmailData): string
       ${detailRow(SVG.person,   "Nombre",                  d.name)}
       ${detailRow(SVG.mail,     "Email",                   d.email)}
       ${detailRow(SVG.phone,    "Tel&eacute;fono",         d.phone)}
-      ${detailRow(SVG.calendar, "D&iacute;a de llegada",   d.arrivalDate)}
+      ${detailRow(SVG.calendar, ew("D&iacute;a de llegada", "Fecha prevista"),   d.arrivalDate)}
       ${detailRow(SVG.users,    "Adultos",                 String(d.adults))}
       ${detailRow(SVG.child,    "Ni&ntilde;os",            String(d.children))}
       ${detailRow(SVG.tag,      "Categor&iacute;a",        d.selectedCategory)}
-      ${!d.activitiesJson?.length ? detailRow(SVG.star, "Experiencia solicitada", d.selectedProduct) : ""}
+      ${!d.activitiesJson?.length ? detailRow(SVG.star, ew("Experiencia solicitada", "Producto o servicio solicitado"), d.selectedProduct) : ""}
       ${d.comments ? detailRow(SVG.chat, "Comentarios", d.comments) : ""}
       ${detailRow(SVG.clock,    "Fecha de env&iacute;o",   d.submittedAt)}
     `)}
@@ -983,7 +986,7 @@ export function buildQuoteHtml(d: QuoteEmailData): string {
     ? `<tr><td style="padding:0 32px 12px;">
         <table width="100%" cellpadding="0" cellspacing="0" style="background:#fff7ed;border:2px solid #fed7aa;border-radius:10px;">
           <tr><td style="padding:24px;text-align:center;">
-            <p style="color:#9a3412;font-size:14px;font-weight:700;margin:0 0 6px;font-family:Arial,sans-serif;">&#128274; Tu reserva est&aacute; a un clic</p>
+            <p style="color:#9a3412;font-size:14px;font-weight:700;margin:0 0 6px;font-family:Arial,sans-serif;">&#128274; ${ew("Tu reserva", "Tu pedido")} est&aacute; a un clic</p>
             <p style="color:#c2410c;font-size:13px;margin:0 0 16px;font-family:Arial,sans-serif;">Haz clic en el bot&oacute;n para confirmar y pagar de forma segura</p>
             ${ctaButton("Confirmar y Pagar Ahora", d.paymentLinkUrl)}
             <p style="color:#9ca3af;font-size:12px;margin:0;font-family:Arial,sans-serif;">&#128274; Pago 100% seguro &middot; SSL</p>
@@ -994,7 +997,7 @@ export function buildQuoteHtml(d: QuoteEmailData): string {
         <table width="100%" cellpadding="0" cellspacing="0" style="background:#f8fafc;border:1px solid #e5e7eb;border-radius:10px;">
           <tr><td style="padding:18px;text-align:center;">
             <p style="color:#374151;font-size:14px;margin:0;font-family:Arial,sans-serif;">
-              Para confirmar tu reserva, contacta con nosotros:<br/>
+              Para confirmar ${ew("tu reserva", "el presupuesto")}, contacta con nosotros:<br/>
               <a href="mailto:${getContactEmail()}" style="color:${BRAND_ORANGE()};font-weight:700;text-decoration:none;">${getContactEmail()}</a>
               ${callUs("&nbsp;&middot;&nbsp;", BRAND_ORANGE(), 700, "&nbsp;(WhatsApp)")}
             </p>
@@ -1028,7 +1031,7 @@ export function buildQuoteHtml(d: QuoteEmailData): string {
     ${notesBlock}
     ${ctaBlock}
     ${conditionsBlock}
-    ${emotionalBlock("Una experiencia &uacute;nica te espera. &#161;Conf&iacute;a en nosotros para hacerla inolvidable!")}
+    ${emotionalBlock(ew("Una experiencia &uacute;nica te espera. &#161;Conf&iacute;a en nosotros para hacerla inolvidable!", "Gracias por confiar en nosotros."))}
     <tr><td style="padding:0 32px 28px;">
       <p style="color:#9ca3af;font-size:13px;margin:0;line-height:1.6;font-family:Arial,sans-serif;">
         &iquest;Necesitas modificar algo? Escr&iacute;benos a
@@ -1088,9 +1091,9 @@ export function buildConfirmationHtml(d: ConfirmationEmailData): string {
   const publicUrl = d.reservationUrl ?? d.quoteUrl;
   const reservationButtonBlock = publicUrl
     ? `<tr><td style="padding:0 32px 24px;text-align:center;">
-        ${ctaButton("Ver tu reserva", publicUrl)}
+        ${ctaButton(ew("Ver tu reserva", "Ver tu pedido"), publicUrl)}
         <p style="color:#9ca3af;font-size:11px;margin:10px 0 0;font-family:Arial,sans-serif;">
-          Accede a los detalles, descarga tu factura y consulta tu reserva en cualquier momento
+          Accede a los detalles, descarga tu factura y consulta ${ew("tu reserva", "tu pedido")} en cualquier momento
         </p>
       </td></tr>`
     : "";
@@ -1108,7 +1111,7 @@ export function buildConfirmationHtml(d: ConfirmationEmailData): string {
     ? `<tr><td style="padding:0 32px 12px;">
         <table width="100%" cellpadding="0" cellspacing="0" style="background:#fffbeb;border-left:4px solid ${BRAND_ORANGE()};border-radius:0 8px 8px 0;">
           <tr><td style="padding:12px 18px;">
-            <p style="color:#374151;font-size:13px;margin:0;font-family:Arial,sans-serif;">&#128197; <strong>Fecha de la actividad:</strong> <span style="color:${BRAND_ORANGE()};font-weight:700;">${d.bookingDate}</span>${d.selectedTime ? ` &nbsp;&#128336; <strong>Horario:</strong> <span style="color:${BRAND_ORANGE()};font-weight:700;">${d.selectedTime}</span>` : ""}</p>
+            <p style="color:#374151;font-size:13px;margin:0;font-family:Arial,sans-serif;">&#128197; <strong>${ew("Fecha de la actividad", "Fecha de servicio")}:</strong> <span style="color:${BRAND_ORANGE()};font-weight:700;">${d.bookingDate}</span>${d.selectedTime ? ` &nbsp;&#128336; <strong>Horario:</strong> <span style="color:${BRAND_ORANGE()};font-weight:700;">${d.selectedTime}</span>` : ""}</p>
           </td></tr>
         </table>
       </td></tr>`
@@ -1144,7 +1147,7 @@ export function buildConfirmationHtml(d: ConfirmationEmailData): string {
             <tr style="background:#6d28d9;">
               <td colspan="4" style="padding:14px 18px;">
                 <p style="color:#fff;font-size:13px;font-weight:700;margin:0;font-family:Arial,sans-serif;">&#x1F4B3; Plan de Pago Fraccionado</p>
-                <p style="color:#ede9fe;font-size:11px;margin:6px 0 0;font-family:Arial,sans-serif;">Tu reserva se ha confirmado con el pago de la cuota inicial. Recuerda abonar las cuotas pendientes en las fechas indicadas.</p>
+                <p style="color:#ede9fe;font-size:11px;margin:6px 0 0;font-family:Arial,sans-serif;">${ew("Tu reserva se ha confirmado", "Tu pedido se ha confirmado")} con el pago de la cuota inicial. Recuerda abonar las cuotas pendientes en las fechas indicadas.</p>
               </td>
             </tr>
             ${rows}
@@ -1159,7 +1162,7 @@ export function buildConfirmationHtml(d: ConfirmationEmailData): string {
             </tr>
             <tr><td colspan="4" style="background:#ede9fe;padding:12px 18px;border-top:1px solid #ddd6fe;">
               <p style="color:#5b21b6;font-size:11px;margin:0;line-height:1.6;font-family:Arial,sans-serif;">
-                &#x26A0;&#xFE0F; <strong>Compromiso de pago:</strong> Al confirmar esta reserva, te comprometes a abonar las cuotas pendientes en las fechas indicadas seg&uacute;n el plan acordado.
+                &#x26A0;&#xFE0F; <strong>Compromiso de pago:</strong> Al confirmar ${ew("esta reserva", "este pedido")}, te comprometes a abonar las cuotas pendientes en las fechas indicadas seg&uacute;n el plan acordado.
               </p>
             </td></tr>
           </table>
@@ -1168,14 +1171,14 @@ export function buildConfirmationHtml(d: ConfirmationEmailData): string {
     : "";
 
   const body = `
-    ${emailHeader("Reserva Confirmada", "Tu experiencia perfecta empieza aqu&iacute;")}
+    ${emailHeader(ew("Reserva Confirmada", "Pedido Confirmado"), ew("Tu experiencia perfecta empieza aqu&iacute;", "Gracias por tu compra"))}
     <tr><td style="padding:28px 32px 0;">
       <p style="color:#1e293b;font-size:17px;margin:0 0 8px;font-family:Arial,sans-serif;">Hola <strong>${d.clientName}</strong>,</p>
       <p style="color:#6b7280;font-size:15px;margin:0 0 16px;line-height:1.7;font-family:Arial,sans-serif;">
-        Tu reserva ha sido <strong style="color:#166534;">confirmada</strong> y el pago procesado correctamente.
-        &#161;Te esperamos!
+        ${ew("Tu reserva ha sido", "Tu pedido ha sido")} <strong style="color:#166534;">${ew("confirmada", "confirmado")}</strong> y el pago procesado correctamente.
+        ${ew("&#161;Te esperamos!", "Gracias por confiar en nosotros.")}
       </p>
-      ${statusBlock("success", "Pago procesado correctamente", "Tu plaza est&aacute; reservada. Recibir&aacute;s toda la informaci&oacute;n necesaria para el d&iacute;a de tu visita.")}
+      ${statusBlock("success", "Pago procesado correctamente", ew("Tu plaza est&aacute; reservada. Recibir&aacute;s toda la informaci&oacute;n necesaria para el d&iacute;a de tu visita.", "Hemos recibido tu pago. Te avisaremos de cualquier novedad sobre tu pedido."))}
     </td></tr>
     ${bookingDateRow}
     <tr><td style="padding:0 32px 12px;">
@@ -1210,13 +1213,13 @@ export function buildConfirmationHtml(d: ConfirmationEmailData): string {
     ${emotionalBlock("&#161;Te esperamos! Gracias por confiar en nosotros.")}
     <tr><td style="padding:0 32px 28px;">
       <p style="color:#9ca3af;font-size:13px;margin:0;line-height:1.6;font-family:Arial,sans-serif;">
-        &iquest;Necesitas modificar tu reserva? Escr&iacute;benos a
+        &iquest;Necesitas modificar ${ew("tu reserva", "tu pedido")}? Escr&iacute;benos a
         <a href="mailto:${contactEmail}" style="color:${BRAND_ORANGE()};text-decoration:none;font-weight:600;">${contactEmail}</a>
         o ll&aacute;manos al <a href="tel:${contactPhone.replace(/\s/g,"")}" style="color:${BRAND_ORANGE()};text-decoration:none;font-weight:600;">${contactPhone}</a>.
       </p>
     </td></tr>
     ${emailFooter()}`;
-  return emailWrapper(`Reserva Confirmada ${d.reservationRef} — ${getBrandName()}`, body);
+  return emailWrapper(`${ew("Reserva Confirmada", "Pedido Confirmado")} ${d.reservationRef} — ${getBrandName()}`, body);
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -1277,7 +1280,7 @@ export function buildQuotePdfHtml(d: QuotePdfData): string {
         ${getBrandLogo() ? `<img src="${escAttr(getBrandLogo())}" alt="${escAttr(getBrandShort())}" width="90" height="90" style="display:block;border-radius:50%;border:3px solid rgba(255,255,255,0.85);object-fit:cover;" />` : ""}
         <div>
           <div style="color:#fff;font-size:20px;font-weight:900;letter-spacing:2px;text-transform:uppercase;line-height:1.1;">${getBrandShort()}</div>
-          <div style="color:rgba(255,255,255,0.65);font-size:10px;letter-spacing:3px;text-transform:uppercase;margin-top:3px;">${getBrandName().replace(getBrandShort(), "").trim() || "Experiences"}</div>
+          <div style="color:rgba(255,255,255,0.65);font-size:10px;letter-spacing:3px;text-transform:uppercase;margin-top:3px;">${getBrandName().replace(getBrandShort(), "").trim() || ew("Experiences", "")}</div>
         </div>
       </div>
       <div style="text-align:right;color:rgba(255,255,255,0.80);font-size:11.5px;line-height:1.7;">
@@ -1330,7 +1333,7 @@ export function buildQuotePdfHtml(d: QuotePdfData): string {
 
     <!-- Footer -->
     <div style="padding:16px 40px;border-top:2px solid #1a3a6b;text-align:center;color:#9ca3af;font-size:11px;line-height:1.8;">
-      <p style="margin:0;">Gracias por confiar en ${brandSetting('brand_name', '')}${brandSetting('brand_domain', '') ? ` &middot; www.${brandSetting('brand_domain', '')}` : ''}</p>
+      <p style="margin:0;">Gracias por confiar en ${brandSetting('brand_name', '')}${brandSetting('brand_domain', '') ? ` &middot; ${webHost(brandSetting('brand_domain', ''))}` : ''}</p>
       <p style="margin:0;">${getSupportPhone() ? `${escAttr(getSupportPhone())} &nbsp;&middot;&nbsp; ` : ''}${escAttr(getContactEmail())}${brandSetting('brand_location', '') ? ` &nbsp;&middot;&nbsp; ${brandSetting('brand_location', '')}` : ''}</p>
     </div>
   </div>
@@ -1378,9 +1381,9 @@ export function buildTransferConfirmationHtml(d: TransferConfirmationEmailData):
   // ofrece descarga de factura cuando está disponible.
   const invoiceButtonBlock = d.reservationUrl
     ? `<tr><td style="padding:0 32px 24px;text-align:center;">
-        ${ctaButton("Ver tu reserva", d.reservationUrl)}
+        ${ctaButton(ew("Ver tu reserva", "Ver tu pedido"), d.reservationUrl)}
         <p style="color:#9ca3af;font-size:11px;margin:10px 0 0;font-family:Arial,sans-serif;">
-          Accede a los detalles, descarga tu factura y consulta tu reserva en cualquier momento
+          Accede a los detalles, descarga tu factura y consulta ${ew("tu reserva", "tu pedido")} en cualquier momento
         </p>
       </td></tr>`
     : "";
@@ -1399,7 +1402,7 @@ export function buildTransferConfirmationHtml(d: TransferConfirmationEmailData):
       <p style="color:#1e293b;font-size:17px;margin:0 0 8px;font-family:Arial,sans-serif;">Hola <strong>${d.clientName}</strong>,</p>
       <p style="color:#6b7280;font-size:15px;margin:0 0 16px;line-height:1.7;font-family:Arial,sans-serif;">
         Hemos recibido y <strong style="color:#166534;">validado correctamente</strong> tu pago por transferencia bancaria.
-        Tu reserva queda confirmada y ya puedes disfrutar de tu experiencia${getBrandName() ? ` con ${escAttr(getBrandName())}` : ""}.
+        ${ew("Tu reserva queda confirmada y ya puedes disfrutar de tu experiencia", "Tu pedido queda confirmado")}${emailsAreGeneric() ? "" : getBrandName() ? ` con ${escAttr(getBrandName())}` : ""}.
       </p>
       ${statusBlock("success", "Transferencia bancaria validada",
         `Pago confirmado el <strong>${confirmedDate}</strong>. Tu factura est&aacute; disponible para descargar.`)}
@@ -1445,7 +1448,7 @@ export function buildTransferConfirmationHtml(d: TransferConfirmationEmailData):
     ${emotionalBlock("&#161;Te esperamos! Gracias por confiar en nosotros.")}
     <tr><td style="padding:0 32px 28px;">
       <p style="color:#9ca3af;font-size:13px;margin:0;line-height:1.6;font-family:Arial,sans-serif;">
-        &iquest;Tienes alguna pregunta sobre tu reserva? Escr&iacute;benos a
+        &iquest;Tienes alguna pregunta sobre ${ew("tu reserva", "tu pedido")}? Escr&iacute;benos a
         <a href="mailto:${getContactEmail()}" style="color:${BRAND_ORANGE()};text-decoration:none;font-weight:600;">${getContactEmail()}</a>
         ${callUs("o ll&aacute;manos al ", BRAND_ORANGE(), 600, "&nbsp;(tambi&eacute;n WhatsApp).")}
       </p>
@@ -1481,7 +1484,7 @@ export function buildCancellationReceivedHtml(d: {
         <tr><td style="padding:18px 22px;">
           <p style="color:${BRAND_MID_BLUE()};font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:2px;margin:0 0 12px;font-family:Arial,sans-serif;">Datos de tu solicitud</p>
           ${detailRow(SVG.ref, "Número de solicitud", `#${d.requestId}`)}
-          ${d.locator ? detailRow(SVG.tag, "Localizador de reserva", d.locator) : ""}
+          ${d.locator ? detailRow(SVG.tag, ew("Localizador de reserva", "Referencia del pedido"), d.locator) : ""}
           ${d.reason ? detailRow(SVG.alert, "Motivo indicado", d.reason) : ""}
         </td></tr>
       </table>
@@ -1567,7 +1570,7 @@ export function buildCancellationAcceptedRefundHtml(d: {
     </td></tr>
     <tr><td style="padding:0 32px 28px;">
       <p style="color:#9ca3af;font-size:13px;margin:0;line-height:1.6;font-family:Arial,sans-serif;">
-        La devolución se realizará por el mismo medio de pago utilizado en la reserva original.
+        La devolución se realizará por el mismo medio de pago utilizado en ${ew("la reserva original", "la compra original")}.
       </p>
     </td></tr>
     ${emailFooter()}`;
@@ -1588,20 +1591,20 @@ export function buildCancellationAcceptedVoucherHtml(d: {
   // multi: la URL pública de la empresa (el APP_URL del proceso no es suyo)
   const appUrl = isMultiTenant() ? publicBaseUrl() : process.env.APP_URL ?? brandSetting('brand_website_url', '');
   const verifyUrl = `${appUrl}/verificar-bono`;
-  const bookUrl = `${appUrl}/experiencias`;
+  const bookUrl = `${appUrl}${ew("/experiencias", "/tienda")}`;
   const body = `
-    ${emailHeader("Bono de Compensación", "Tu anulación ha sido resuelta")}
+    ${emailHeader(ew("Bono de Compensación", "Vale de Compra"), "Tu anulación ha sido resuelta")}
     <tr><td style="padding:28px 32px 0;">
       <p style="color:#1e293b;font-size:17px;margin:0 0 8px;font-family:Arial,sans-serif;">Hola <strong>${d.fullName}</strong>,</p>
       <p style="color:#6b7280;font-size:15px;margin:0 0 16px;line-height:1.7;font-family:Arial,sans-serif;">
-        Tu solicitud de anulación ha sido resuelta de forma <strong>${tipo}</strong> mediante un bono de actividades.
+        Tu solicitud de anulación ha sido resuelta de forma <strong>${tipo}</strong> mediante ${ew("un bono de actividades", "un vale de compra")}.
       </p>
-      ${statusBlock("success", `Bono de compensación ${tipo}`, "Tu bono está listo para ser utilizado.")}
+      ${statusBlock("success", `${ew("Bono de compensación", "Vale de compra")} ${tipo}`, ew("Tu bono está listo para ser utilizado.", "Tu vale está listo para usarse."))}
     </td></tr>
     <tr><td style="padding:0 32px 12px;">
       <table width="100%" cellpadding="0" cellspacing="0" style="background:${BRAND_BLUE()};border-radius:12px;text-align:center;">
         <tr><td style="padding:28px 32px;">
-          <p style="color:rgba(255,255,255,0.6);font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:3px;margin:0 0 8px;font-family:Arial,sans-serif;">Código de bono</p>
+          <p style="color:rgba(255,255,255,0.6);font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:3px;margin:0 0 8px;font-family:Arial,sans-serif;">${ew("Código de bono", "Código del vale")}</p>
           <p style="color:${BRAND_ORANGE()};font-size:32px;font-weight:900;letter-spacing:4px;margin:0 0 12px;font-family:Georgia,serif;">${d.voucherCode}</p>
           <p style="color:#ffffff;font-size:15px;font-weight:600;margin:0 0 4px;font-family:Arial,sans-serif;">${d.activityName}</p>
           <p style="color:rgba(255,255,255,0.6);font-size:13px;margin:0;font-family:Arial,sans-serif;">
@@ -1612,18 +1615,18 @@ export function buildCancellationAcceptedVoucherHtml(d: {
     </td></tr>
     <tr><td style="padding:12px 32px 4px;">
       <p style="color:#374151;font-size:14px;margin:0 0 12px;line-height:1.7;font-family:Arial,sans-serif;">
-        <strong>¿Cómo usar tu bono?</strong><br>
-        Entra en nuestra web, elige la experiencia que quieras y aplica el código en el paso de pago.
-        El importe se descontará automáticamente de tu reserva.
+        <strong>${ew("¿Cómo usar tu bono?", "¿Cómo usar tu vale?")}</strong><br>
+        ${ew("Entra en nuestra web, elige la experiencia que quieras y aplica el código en el paso de pago.", "Entra en nuestra tienda online, elige lo que quieras y aplica el código en el paso de pago.")}
+        El importe se descontará automáticamente de ${ew("tu reserva", "tu compra")}.
       </p>
       <table cellpadding="0" cellspacing="0" style="width:100%;">
         <tr>
           <td style="padding-right:6px;width:50%;">
-            ${ctaButton("Reservar experiencia", bookUrl)}
+            ${ctaButton(ew("Reservar experiencia", "Ir a la tienda"), bookUrl)}
           </td>
           <td style="padding-left:6px;width:50%;">
             <a href="${verifyUrl}?code=${d.voucherCode}" style="display:block;text-align:center;background:#f3f4f6;color:#374151;font-size:13px;font-weight:600;padding:12px 20px;border-radius:8px;text-decoration:none;font-family:Arial,sans-serif;border:1px solid #e5e7eb;">
-              Verificar bono
+              ${ew("Verificar bono", "Comprobar vale")}
             </a>
           </td>
         </tr>
@@ -1631,15 +1634,15 @@ export function buildCancellationAcceptedVoucherHtml(d: {
     </td></tr>
     <tr><td style="padding:12px 32px 28px;">
       <p style="color:#9ca3af;font-size:12px;margin:0;line-height:1.6;font-family:Arial,sans-serif;">
-        También puedes consultar el estado de tu bono en cualquier momento en
-        <a href="${verifyUrl}" style="color:${BRAND_ORANGE()};text-decoration:none;font-weight:600;">${verifyUrl}</a>.
+        También puedes consultar el estado de ${ew("tu bono", "tu vale")} en cualquier momento en
+        <a href="${verifyUrl}" style="color:${BRAND_ORANGE()};text-decoration:none;font-weight:600;">${ew(verifyUrl, "nuestra web")}</a>.
         Si tienes dudas, contacta en
         <a href="mailto:${getContactEmail()}" style="color:${BRAND_ORANGE()};text-decoration:none;font-weight:600;">${getContactEmail()}</a>
         indicando el código <strong>${d.voucherCode}</strong>.
       </p>
     </td></tr>
     ${emailFooter()}`;
-  return emailWrapper(`Bono de compensación ${d.voucherCode} · ${getBrandName()}`, body);
+  return emailWrapper(`${ew("Bono de compensación", "Vale de compra")} ${d.voucherCode} · ${getBrandName()}`, body);
 }
 
 // PLANTILLA 16: Solicitud de documentación adicional
@@ -1753,7 +1756,7 @@ export function buildTpvTicketHtml(d: {
   const ts = typeof d.createdAt === "number" ? d.createdAt : (d.createdAt as Date).getTime();
   const dateStr = new Date(ts).toLocaleString("es-ES");
   const body = `
-    ${emailHeader("Ticket de Compra", "Gracias por tu visita")}
+    ${emailHeader("Ticket de Compra", ew("Gracias por tu visita", "Gracias por tu compra"))}
     <tr><td style="padding:28px 32px 0;">
       <p style="color:#1e293b;font-size:17px;margin:0 0 8px;font-family:Arial,sans-serif;">
         ${d.customerName ? `Hola <strong>${d.customerName}</strong>,` : "¡Gracias por tu compra!"}
@@ -1792,7 +1795,7 @@ export function buildTpvTicketHtml(d: {
         </td></tr>
       </table>
     </td></tr>
-    ${emotionalBlock("¡Gracias por tu visita! Esperamos verte pronto de nuevo.")}
+    ${emotionalBlock(ew("¡Gracias por tu visita! Esperamos verte pronto de nuevo.", "¡Gracias por tu compra! Esperamos verte pronto de nuevo."))}
     <tr><td style="padding:0 32px 28px;">
       <p style="color:#9ca3af;font-size:11px;margin:0;line-height:1.6;font-family:Arial,sans-serif;text-align:center;">
         NEXTAIR, S.L. &middot; CIF: B16408031 &middot; C/JOSE LUIS PEREZ PUJADAS, Nº 14, PLTA.1, PUERTA D EDIFICIO FORUM &middot; 18006 GRANADA
@@ -1845,7 +1848,7 @@ export function buildCouponRedemptionReceivedHtml(d: {
         </td></tr>
       </table>
     </td></tr>
-    ${emotionalBlock("¡Nos vemos pronto! Tu experiencia está a punto de comenzar.")}
+    ${emotionalBlock(ew("¡Nos vemos pronto! Tu experiencia está a punto de comenzar.", "Gracias. Te avisaremos en cuanto revisemos tu solicitud."))}
     ${emailFooter()}`;
   return emailWrapper("Solicitud de canje recibida · " + getBrandName(), body);
 }
@@ -1872,7 +1875,7 @@ export function buildCouponPostponedHtml(d: {
         <tr><td style="padding:18px 22px;">
           ${detailRow(SVG.tag, "Código de cupón", d.couponCode)}
           ${detailRow(SVG.ref, "Proveedor", d.provider)}
-          ${detailRow(SVG.wave, "Actividad", d.productName)}
+          ${detailRow(SVG.wave, ew("Actividad", "Producto o servicio"), d.productName)}
         </td></tr>
       </table>
     </td></tr>
@@ -1953,22 +1956,22 @@ export interface PendingPaymentEmailData {
 
 export function buildPendingPaymentHtml(d: PendingPaymentEmailData): string {
   const body = `
-    ${emailHeader("Pago Pendiente", "Tu reserva está confirmada")}
+    ${emailHeader("Pago Pendiente", ew("Tu reserva está confirmada", "Tu pedido está confirmado"))}
     <tr><td style="padding:28px 32px 8px;">
       <h2 style="color:${BRAND_MID_BLUE()};font-size:22px;font-weight:800;margin:0 0 6px;font-family:Arial,sans-serif;">
-        Reserva confirmada — Pago pendiente
+        ${ew("Reserva confirmada", "Pedido confirmado")} — Pago pendiente
       </h2>
       <p style="color:#64748b;font-size:14px;margin:0;font-family:Arial,sans-serif;">
-        Hola ${d.clientName}, tu reserva está confirmada. El pago queda pendiente hasta la fecha indicada.
+        Hola ${d.clientName}, ${ew("tu reserva está confirmada", "tu pedido está confirmado")}. El pago queda pendiente hasta la fecha indicada.
       </p>
     </td></tr>
     <tr><td style="padding:16px 32px 8px;">
       <table width="100%" cellpadding="0" cellspacing="0" style="background:#f0f7ff;border-radius:10px;border:1px solid #bfdbfe;">
         <tr><td style="padding:20px 22px;">
-          <p style="color:${BRAND_MID_BLUE()};font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:2px;margin:0 0 14px;font-family:Arial,sans-serif;">Detalle de la reserva</p>
+          <p style="color:${BRAND_MID_BLUE()};font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:2px;margin:0 0 14px;font-family:Arial,sans-serif;">${ew("Detalle de la reserva", "Detalle del pedido")}</p>
           <table width="100%" cellpadding="0" cellspacing="0">
             <tr>
-              <td style="color:#64748b;font-size:13px;padding:4px 0;font-family:Arial,sans-serif;">Actividad</td>
+              <td style="color:#64748b;font-size:13px;padding:4px 0;font-family:Arial,sans-serif;">${ew("Actividad", "Producto o servicio")}</td>
               <td style="color:${BRAND_MID_BLUE()};font-size:13px;font-weight:700;text-align:right;font-family:Arial,sans-serif;">${d.productName}</td>
             </tr>
             <tr>
@@ -1998,7 +2001,7 @@ export function buildPendingPaymentHtml(d: PendingPaymentEmailData): string {
       </p>
     </td></tr>
     ${emailFooter()}`;
-  return emailWrapper(`Reserva confirmada — Pago pendiente hasta el ${d.dueDate}`, body);
+  return emailWrapper(`${ew("Reserva confirmada", "Pedido confirmado")} — Pago pendiente hasta el ${d.dueDate}`, body);
 }
 
 // ─── PAGO PENDIENTE: Recordatorio 5 días antes ────────────────────────────────
@@ -2010,8 +2013,8 @@ export function buildPendingPaymentReminderHtml(d: PendingPaymentEmailData): str
         Recordatorio urgente de pago
       </h2>
       <p style="color:#64748b;font-size:14px;margin:0;font-family:Arial,sans-serif;">
-        Hola ${d.clientName}, quedan <strong>5 días</strong> para la fecha límite de pago de tu reserva.
-        Si no se recibe el pago antes del <strong>${d.dueDate}</strong>, la reserva podría ser cancelada.
+        Hola ${d.clientName}, quedan <strong>5 días</strong> para la fecha límite de pago de ${ew("tu reserva", "tu pedido")}.
+        Si no se recibe el pago antes del <strong>${d.dueDate}</strong>, ${ew("la reserva podría ser cancelada", "el pedido podría anularse")}.
       </p>
     </td></tr>
     <tr><td style="padding:16px 32px 8px;">
@@ -2020,7 +2023,7 @@ export function buildPendingPaymentReminderHtml(d: PendingPaymentEmailData): str
           <p style="color:#dc2626;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:2px;margin:0 0 14px;font-family:Arial,sans-serif;">Pago pendiente</p>
           <table width="100%" cellpadding="0" cellspacing="0">
             <tr>
-              <td style="color:#64748b;font-size:13px;padding:4px 0;font-family:Arial,sans-serif;">Actividad</td>
+              <td style="color:#64748b;font-size:13px;padding:4px 0;font-family:Arial,sans-serif;">${ew("Actividad", "Producto o servicio")}</td>
               <td style="color:${BRAND_MID_BLUE()};font-size:13px;font-weight:700;text-align:right;font-family:Arial,sans-serif;">${d.productName}</td>
             </tr>
             <tr>
@@ -2401,7 +2404,7 @@ export function buildCashCloseHtml(d: CashCloseParams): string {
               ${kpiTile("Pendiente de cobro", eur(d.dailyControl.kpis.pendienteCobro), d.dailyControl.kpis.pendienteCobro > 0 ? "#d97706" : "#64748b")}
             </tr>
             <tr>
-              ${kpiTile("Operaciones totales", `${d.dailyControl.kpis.nReservasEjecutadas + d.dailyControl.kpis.nOperacionesTPV}`, "${BRAND_MID_BLUE()}", `${d.dailyControl.kpis.nReservasEjecutadas} reservas · ${d.dailyControl.kpis.nOperacionesTPV} TPV`)}
+              ${kpiTile("Operaciones totales", `${d.dailyControl.kpis.nReservasEjecutadas + d.dailyControl.kpis.nOperacionesTPV}`, "${BRAND_MID_BLUE()}", `${d.dailyControl.kpis.nReservasEjecutadas} ${ew("reservas", "pedidos")} · ${d.dailyControl.kpis.nOperacionesTPV} TPV`)}
               ${kpiTile("Personas atendidas", `${d.dailyControl.kpis.nPersonasAtendidas}`, "${BRAND_MID_BLUE()}")}
               ${kpiTile("Ticket medio", eur(d.dailyControl.kpis.ticketMedio), "${BRAND_MID_BLUE()}", "Por operación")}
             </tr>
@@ -2654,7 +2657,7 @@ export function buildProposalHtml(d: ProposalEmailData): string {
     ${notesBlock}
     ${ctaBlock}
     ${conditionsBlock}
-    ${emotionalBlock("Una experiencia &uacute;nica te espera. &#161;Conf&iacute;a en nosotros para hacerla inolvidable!")}
+    ${emotionalBlock(ew("Una experiencia &uacute;nica te espera. &#161;Conf&iacute;a en nosotros para hacerla inolvidable!", "Gracias por confiar en nosotros."))}
     <tr><td style="padding:0 32px 28px;">
       <p style="color:#9ca3af;font-size:13px;margin:0;line-height:1.6;font-family:Arial,sans-serif;">
         &iquest;Necesitas modificar algo? Escr&iacute;benos a
@@ -2713,7 +2716,7 @@ function buildCommercialReminderHtml(
         </td></tr>
       </table>
     </td></tr>
-    ${emotionalBlock("Cada experiencia es única. Estamos aquí para hacer la tuya inolvidable.")}
+    ${emotionalBlock(ew("Cada experiencia es única. Estamos aquí para hacer la tuya inolvidable.", "Gracias por confiar en nosotros."))}
     ${emailFooter()}`;
   return emailWrapper(`${d.customSubject ?? subtitle} — ${getBrandName()}`, body);
 }
@@ -2729,13 +2732,13 @@ export function buildCommercialReminder1Html(d: CommercialReminderEmailData): st
       <strong style="color:${BRAND_MID_BLUE()};">${getBrandName()}</strong>.
     </p>
     <p style="color:#374151;font-size:15px;line-height:1.8;margin:12px 0 0;font-family:Arial,sans-serif;">
-      Si tienes cualquier duda, podemos ayudarte a terminar la reserva o ajustar
-      la experiencia a lo que necesitas. Solo tienes que decirnos.
+      ${ew(`Si tienes cualquier duda, podemos ayudarte a terminar la reserva o ajustar
+      la experiencia a lo que necesitas.`, "Si tienes cualquier duda, podemos ayudarte a confirmarla o a ajustarla a lo que necesitas.")} Solo tienes que decirnos.
     </p>`;
   return buildCommercialReminderHtml(
     d,
     "Tu propuesta te está esperando",
-    "Queremos que disfrutes de una experiencia única",
+    ew("Queremos que disfrutes de una experiencia única", "Seguimos a tu disposición"),
     d.customBody
       ? `<p style="color:#374151;font-size:15px;line-height:1.8;margin:0;font-family:Arial,sans-serif;">${escHtml(d.customBody).replace(/\n/g, "<br>")}</p>`
       : bodyHtml,
@@ -2745,16 +2748,16 @@ export function buildCommercialReminder1Html(d: CommercialReminderEmailData): st
 export function buildCommercialReminder2Html(d: CommercialReminderEmailData): string {
   const bodyHtml = `
     <p style="color:#374151;font-size:15px;line-height:1.8;margin:0;font-family:Arial,sans-serif;">
-      Tu propuesta sigue activa, pero te recomendamos confirmarla cuanto antes
-      para asegurar <strong>disponibilidad en la fecha seleccionada</strong>.
+      ${ew(`Tu propuesta sigue activa, pero te recomendamos confirmarla cuanto antes
+      para asegurar <strong>disponibilidad en la fecha seleccionada</strong>.`, "Tu propuesta sigue activa. En cuanto la confirmes, nos ponemos con ella.")}
     </p>
     <p style="color:#374151;font-size:15px;line-height:1.8;margin:12px 0 0;font-family:Arial,sans-serif;">
-      Las plazas son limitadas y no queremos que te quedes sin tu experiencia.
+      ${ew("Las plazas son limitadas y no queremos que te quedes sin tu experiencia.", "Si tienes cualquier duda, estamos a tu disposición.")}
     </p>`;
   return buildCommercialReminderHtml(
     d,
     "Tu propuesta sigue disponible",
-    "Confirma antes de que se agoten las plazas",
+    ew("Confirma antes de que se agoten las plazas", "Confírmala cuando quieras"),
     d.customBody
       ? `<p style="color:#374151;font-size:15px;line-height:1.8;margin:0;font-family:Arial,sans-serif;">${escHtml(d.customBody).replace(/\n/g, "<br>")}</p>`
       : bodyHtml,
@@ -2768,12 +2771,12 @@ export function buildCommercialReminder3Html(d: CommercialReminderEmailData): st
       pendiente de confirmación.
     </p>
     <p style="color:#374151;font-size:15px;line-height:1.8;margin:12px 0 0;font-family:Arial,sans-serif;">
-      Si quieres mantener la fecha y la disponibilidad, puedes revisarla y confirmarla
+      ${ew("Si quieres mantener la fecha y la disponibilidad, puedes revisarla y confirmarla", "Si quieres seguir adelante, puedes revisarla y confirmarla")}
       desde aquí. Si has cambiado de planes, no te preocupes — entendemos perfectamente.
     </p>`;
   return buildCommercialReminderHtml(
     d,
-    "Última llamada para tu experiencia",
+    ew("Última llamada para tu experiencia", "Último recordatorio de tu propuesta"),
     "No queremos que te la pierdas",
     d.customBody
       ? `<p style="color:#374151;font-size:15px;line-height:1.8;margin:0;font-family:Arial,sans-serif;">${escHtml(d.customBody).replace(/\n/g, "<br>")}</p>`

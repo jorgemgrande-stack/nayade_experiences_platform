@@ -5,7 +5,7 @@
 import { describe, it, expect } from "vitest";
 import fs from "node:fs";
 import path from "node:path";
-import { isEmptyExport, suggestedExportQuarter } from "../shared/gestoriaExportPeriod";
+import { emptyExportMessage, isEmptyExport, isEmptyExportMessage, resolveExportPeriod, suggestedExportQuarter } from "../shared/gestoriaExportPeriod";
 
 const NOW = new Date("2026-11-01T10:00:00Z");
 
@@ -40,5 +40,24 @@ describe("periodo vacío", () => {
     expect(src).toContain("No hay facturas ni abonos emitidos en");
     expect(src).toContain("suggestedExportQuarter(");
     expect(src).not.toContain("lastClosedQuarter");
+  });
+});
+
+describe("periodo vacío en el servidor", () => {
+  it("mensaje claro en español con el periodo, reconocible por el diálogo", () => {
+    const label = resolveExportPeriod({ kind: "quarter", year: 2026, quarter: 1 }).label;
+    expect(emptyExportMessage(label)).toBe(`No hay facturas ni abonos emitidos en ${label}. Elige otro periodo.`);
+    expect(isEmptyExportMessage(emptyExportMessage(label))).toBe(true);
+    expect(isEmptyExportMessage("El periodo tiene 300 documentos")).toBe(false);
+    expect(isEmptyExportMessage(undefined)).toBe(false);
+  });
+  it("exportForGestoria lo rechaza antes de montar el ZIP y el diálogo lo muestra como aviso", () => {
+    const crm = fs.readFileSync(path.resolve(__dirname, "routers/crm.ts"), "utf8");
+    const proc = crm.slice(crm.indexOf("exportForGestoria:"));
+    const empty = proc.indexOf("if (stored.length === 0) throw new TRPCError({ code: \"BAD_REQUEST\", message: emptyExportMessage(period.label) });");
+    expect(empty).toBeGreaterThan(0);
+    expect(empty).toBeLessThan(proc.indexOf("buildGestoriaInvoiceZip("));
+    const dialog = fs.readFileSync(path.resolve(__dirname, "../client/src/pages/admin/crm/GestoriaExportDialog.tsx"), "utf8");
+    expect(dialog).toContain("if (isEmptyExportMessage(message)) toast.warning(message as string);");
   });
 });

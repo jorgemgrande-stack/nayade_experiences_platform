@@ -12,7 +12,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { toast } from "sonner";
 import { toastError } from "@/lib/errorMessage";
 import { Download, RefreshCw } from "lucide-react";
-import { isEmptyExport, madridDayKey, resolveExportPeriod, suggestedExportQuarter, type GestoriaExportPeriod } from "@shared/gestoriaExportPeriod";
+import { isEmptyExport, isEmptyExportMessage, madridDayKey, resolveExportPeriod, suggestedExportQuarter, type GestoriaExportPeriod } from "@shared/gestoriaExportPeriod";
 
 const MONTHS = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"];
 const selectClass = "h-9 w-full rounded-md border border-input bg-transparent px-3 text-sm";
@@ -79,7 +79,10 @@ export default function GestoriaExportDialog({ open, onOpenChange }: { open: boo
       }
       onOpenChange(false);
     } catch (e) {
-      toastError(e, "No se pudo preparar la exportación");
+      // Periodo sin documentos: el servidor lo rechaza sin montar nada; es un aviso, no un fallo
+      const message = (e as { message?: unknown })?.message;
+      if (isEmptyExportMessage(message)) toast.warning(message as string);
+      else toastError(e, "No se pudo preparar la exportación");
     } finally {
       setBusy(false);
     }

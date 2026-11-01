@@ -124,7 +124,7 @@ export default function TpvReports() {
               <BarChart3 className="w-6 h-6 text-primary" aria-hidden="true" />
               Informes de caja
             </h1>
-            <p className="text-muted-foreground text-sm mt-1">Ventas del TPV, anulaciones y cierres de caja del periodo (hora peninsular española).</p>
+            <p className="text-muted-foreground text-sm mt-1">Ventas en caja, anulaciones y cierres de caja del periodo (hora peninsular española).</p>
           </div>
           <div className="flex gap-2 print:hidden">
             <Button variant="outline" onClick={() => window.print()} disabled={!r} className="gap-2">

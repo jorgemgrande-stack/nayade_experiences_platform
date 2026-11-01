@@ -23,6 +23,7 @@ import {
   Tag, Calendar, Users, Percent, Eye,
 } from "lucide-react";
 import { toastError } from "@/lib/errorMessage";
+import { useVocabulary } from "@/lib/vocabulary";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 interface DiscountCode {
@@ -69,6 +70,7 @@ function StatusBadge({ status }: { status: string }) {
 
 // ─── Main component ───────────────────────────────────────────────────────────
 export default function DiscountCodesManager() {
+  const voc = useVocabulary();
   const utils = trpc.useUtils();
 
   // Filters
@@ -185,7 +187,9 @@ export default function DiscountCodesManager() {
               Códigos de Descuento
             </h1>
             <p className="text-muted-foreground text-sm mt-1">
-              Gestiona los códigos promocionales aplicables en TPV, tienda online y venta delegada.
+              {voc.licensed
+                ? "Gestiona los códigos promocionales que tus clientes pueden usar en la caja y en la tienda online."
+                : "Gestiona los códigos promocionales aplicables en TPV, tienda online y venta delegada."}
             </p>
           </div>
           <Button onClick={openCreate} className="bg-violet-600 hover:bg-violet-700 text-white gap-2">

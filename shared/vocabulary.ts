@@ -56,6 +56,10 @@ export interface Vocabulary {
   theOrder: string;
   upcomingOrders: string;
   ordersToday: string;
+  /** Indicadores de la cabecera de Ventas: «Servicio hoy» solo con reservas o en la instalación propia. */
+  todayCounter: string;
+  todayCounterSubtitle: string;
+  upcomingCounterSubtitle: string;
   // Catálogo
   product: string;
   productRequired: string;
@@ -143,6 +147,9 @@ export function buildVocabulary(input: VocabularyInput): Vocabulary {
       theOrder: "la reserva",
       upcomingOrders: "Reservas mañana",
       ordersToday: "Reservas Hoy",
+      todayCounter: "Servicio Hoy",
+      todayCounterSubtitle: "Actividades programadas",
+      upcomingCounterSubtitle: "Servicios confirmados",
       product: "Experiencia o pack",
       productRequired: "Experiencia o pack *",
       productLower: "experiencia",
@@ -199,6 +206,9 @@ export function buildVocabulary(input: VocabularyInput): Vocabulary {
     theOrder: "el pedido",
     upcomingOrders: "Pedidos para mañana",
     ordersToday: "Pedidos de hoy",
+    todayCounter: can("bookings-generic") ? "Servicio hoy" : "Para hoy",
+    todayCounterSubtitle: can("bookings-generic") ? "Servicios programados" : "Pedidos con fecha de hoy",
+    upcomingCounterSubtitle: can("bookings-generic") ? "Servicios confirmados" : "Pedidos confirmados",
     product: "Producto o servicio",
     productRequired: "Producto o servicio *",
     productLower: "producto o servicio",

@@ -52,6 +52,7 @@ import { buildSubscriptionOverview } from "../subscriptionOverview";
 import { templatesForCapabilities } from "../../shared/emailTemplateCapabilities";
 import { brandName } from "../tenantBrand";
 import { sampleUrl } from "../_core/productIdentity";
+import { ew, renderEmailAs, resolveGenericEmails } from "../emailVocabulary";
 
 // --- Admin guard --------------------------------------------------------------
 const adminProcedure = permissionProcedure("settings.manage", ["admin"]);
@@ -79,7 +80,7 @@ export const SYSTEM_TEMPLATES: SeedTemplate[] = [
     subject: "Reserva confirmada · {{marca}}",
     headerTitle: "¡Reserva Confirmada!", headerSubtitle: "Tu reserva está asegurada",
     variables: JSON.stringify(["merchantOrder","productName","customerName","date","people","amount"]),
-    buildHtml: () => buildReservationConfirmHtml({ merchantOrder:"RES-2026-0042", productName:"Visita guiada", customerName:"María García López", date:"15 de agosto de 2026", people:2, amount:"89.00" }),
+    buildHtml: () => buildReservationConfirmHtml({ merchantOrder:"RES-2026-0042", productName:ew("Visita guiada", "Revisión anual"), customerName:"María García López", date:"15 de agosto de 2026", people:2, amount:"89.00" }),
   },
   {
     id: "reservation_failed",
@@ -89,7 +90,7 @@ export const SYSTEM_TEMPLATES: SeedTemplate[] = [
     subject: "Pago no completado · {{marca}}",
     headerTitle: "Pago No Completado", headerSubtitle: "No hemos podido procesar tu pago",
     variables: JSON.stringify(["merchantOrder","productName","customerName","responseCode"]),
-    buildHtml: () => buildReservationFailedHtml({ merchantOrder:"RES-2026-0043", productName:"Ruta guiada", customerName:"Carlos Martínez", responseCode:"0190" }),
+    buildHtml: () => buildReservationFailedHtml({ merchantOrder:"RES-2026-0043", productName:ew("Ruta guiada", "Revisión anual"), customerName:"Carlos Martínez", responseCode:"0190" }),
   },
   {
     id: "confirmation",
@@ -109,7 +110,7 @@ export const SYSTEM_TEMPLATES: SeedTemplate[] = [
     subject: "Transferencia recibida · {{marca}}",
     headerTitle: "Transferencia Recibida", headerSubtitle: "Estamos verificando tu pago",
     variables: JSON.stringify(["clientName","invoiceNumber","reservationRef","quoteTitle","total"]),
-    buildHtml: () => buildTransferConfirmationHtml({ clientName:"Pedro Sánchez", invoiceNumber:"FAC-2026-0045", reservationRef:"RES-2026-0045", quoteTitle:"Curso de vela ligera", items:[{description:"Curso de vela ligera (3 personas)",quantity:3,unitPrice:70,total:210}], subtotal:"210.00", taxAmount:"0.00", total:"210.00" }),
+    buildHtml: () => buildTransferConfirmationHtml({ clientName:"Pedro Sánchez", invoiceNumber:"FAC-2026-0045", reservationRef:"RES-2026-0045", quoteTitle:ew("Curso de vela ligera", "Servicio de mantenimiento"), items:[{description:ew("Curso de vela ligera (3 personas)", "Servicio de mantenimiento (3 equipos)"),quantity:3,unitPrice:70,total:210}], subtotal:"210.00", taxAmount:"0.00", total:"210.00" }),
   },
   {
     id: "restaurant_confirm",
@@ -139,7 +140,7 @@ export const SYSTEM_TEMPLATES: SeedTemplate[] = [
     subject: "Solicitud recibida · {{marca}}",
     headerTitle: "Solicitud Recibida", headerSubtitle: "Tu experiencia perfecta empieza aquí",
     variables: JSON.stringify(["name","email","phone","arrivalDate","adults","children","selectedCategory"]),
-    buildHtml: () => buildBudgetRequestUserHtml({ name:"Laura Fernández", email:"laura@empresa.com", phone:"612 345 678", arrivalDate:"15 de noviembre de 2026", adults:25, children:0, selectedCategory:"Team Building", selectedProduct:"Actividad de team building", comments:"Somos un grupo de empresa.", submittedAt:new Date().toLocaleDateString("es-ES") }),
+    buildHtml: () => buildBudgetRequestUserHtml({ name:"Laura Fernández", email:"laura@empresa.com", phone:"612 345 678", arrivalDate:"15 de noviembre de 2026", adults:25, children:0, selectedCategory:ew("Team Building", "Mantenimiento"), selectedProduct:ew("Actividad de team building", "Servicio de mantenimiento"), comments:"Somos un grupo de empresa.", submittedAt:new Date().toLocaleDateString("es-ES") }),
   },
   {
     id: "budget_request_admin",
@@ -149,7 +150,7 @@ export const SYSTEM_TEMPLATES: SeedTemplate[] = [
     subject: "Nueva solicitud de presupuesto",
     headerTitle: "Nueva Solicitud", headerSubtitle: "Nuevo lead en el sistema",
     variables: JSON.stringify(["name","email","phone","arrivalDate","adults","children","selectedCategory"]),
-    buildHtml: () => buildBudgetRequestAdminHtml({ name:"Laura Fernández", email:"laura@empresa.com", phone:"612 345 678", arrivalDate:"15 de noviembre de 2026", adults:25, children:0, selectedCategory:"Team Building", selectedProduct:"Actividad de team building", comments:"Somos un grupo de empresa.", submittedAt:new Date().toLocaleDateString("es-ES") }),
+    buildHtml: () => buildBudgetRequestAdminHtml({ name:"Laura Fernández", email:"laura@empresa.com", phone:"612 345 678", arrivalDate:"15 de noviembre de 2026", adults:25, children:0, selectedCategory:ew("Team Building", "Mantenimiento"), selectedProduct:ew("Actividad de team building", "Servicio de mantenimiento"), comments:"Somos un grupo de empresa.", submittedAt:new Date().toLocaleDateString("es-ES") }),
   },
   {
     id: "quote",
@@ -159,7 +160,7 @@ export const SYSTEM_TEMPLATES: SeedTemplate[] = [
     subject: "Tu presupuesto personalizado · {{marca}}",
     headerTitle: "Tu Presupuesto", headerSubtitle: "Hemos preparado una propuesta a tu medida",
     variables: JSON.stringify(["quoteNumber","title","clientName","items","total","validUntil","paymentLinkUrl"]),
-    buildHtml: () => buildQuoteHtml({ quoteNumber:"PRE-2026-0015", title:"Jornada de team building", clientName:"Laura Fernández", items:[{description:"Alquiler de material (12 uds)",quantity:12,unitPrice:35,total:420},{description:"SUP (8 uds)",quantity:8,unitPrice:30,total:240}], subtotal:"660.00", discount:"0", tax:"138.60", total:"798.60", validUntil:new Date("2026-10-30"), paymentLinkUrl:sampleUrl("/pago/PRE-2026-0015") }),
+    buildHtml: () => buildQuoteHtml({ quoteNumber:"PRE-2026-0015", title:ew("Jornada de team building", "Mantenimiento anual de equipos"), clientName:"Laura Fernández", items:[{description:ew("Alquiler de material (12 uds)", "Revisión de equipos (12 uds)"),quantity:12,unitPrice:35,total:420},{description:ew("SUP (8 uds)", "Material de repuesto (8 uds)"),quantity:8,unitPrice:30,total:240}], subtotal:"660.00", discount:"0", tax:"138.60", total:"798.60", validUntil:new Date("2026-10-30"), paymentLinkUrl:sampleUrl("/pago/PRE-2026-0015") }),
   },
   {
     id: "cancellation_received",
@@ -199,7 +200,7 @@ export const SYSTEM_TEMPLATES: SeedTemplate[] = [
     subject: "Bono compensatorio generado · {{marca}}",
     headerTitle: "Bono Generado", headerSubtitle: "Úsalo en tu próxima visita",
     variables: JSON.stringify(["fullName","requestId","voucherCode","activityName","value","expiresAt"]),
-    buildHtml: () => buildCancellationAcceptedVoucherHtml({ fullName:"Roberto Jiménez", requestId:23, voucherCode:"BON-2026-XK7F2A", activityName:"Visita guiada", value:"89.00", expiresAt:"31 de diciembre de 2026", isPartial:false }),
+    buildHtml: () => buildCancellationAcceptedVoucherHtml({ fullName:"Roberto Jiménez", requestId:23, voucherCode:"BON-2026-XK7F2A", activityName:ew("Visita guiada", "Revisión anual"), value:"89.00", expiresAt:"31 de diciembre de 2026", isPartial:false }),
   },
   {
     id: "cancellation_documentation",
@@ -219,7 +220,7 @@ export const SYSTEM_TEMPLATES: SeedTemplate[] = [
     subject: "Tu ticket de compra · {{marca}}",
     headerTitle: "Ticket de Compra", headerSubtitle: "Gracias por tu compra en {{marca}}",
     variables: JSON.stringify(["ticketNumber","customerName","items","total","paymentMethod"]),
-    buildHtml: () => buildTpvTicketHtml({ ticketNumber:"T-2026-0847", customerName:"Isabel Torres", createdAt:Date.now(), items:[{name:"Visita guiada (1 h)",quantity:2,unitPrice:35,total:70},{name:"Alquiler de neopreno",quantity:2,unitPrice:8,total:16}], payments:[{method:"card",amount:86}], total:86, subtotal:71.07, taxAmount:14.93 }),
+    buildHtml: () => buildTpvTicketHtml({ ticketNumber:"T-2026-0847", customerName:"Isabel Torres", createdAt:Date.now(), items:[{name:ew("Visita guiada (1 h)", "Revisión anual"),quantity:2,unitPrice:35,total:70},{name:ew("Alquiler de neopreno", "Material de repuesto"),quantity:2,unitPrice:8,total:16}], payments:[{method:"card",amount:86}], total:86, subtotal:71.07, taxAmount:14.93 }),
   },
   {
     id: "coupon_received",
@@ -239,7 +240,7 @@ export const SYSTEM_TEMPLATES: SeedTemplate[] = [
     subject: "Sin disponibilidad para tu fecha · {{marca}}",
     headerTitle: "Sin Disponibilidad", headerSubtitle: "Propón otra fecha",
     variables: JSON.stringify(["customerName","couponCode","provider","productName","requestedDate"]),
-    buildHtml: () => buildCouponPostponedHtml({ customerName:"Miguel Ángel Ruiz", couponCode:"GV-2026-ABC123", provider:"Groupon", productName:"Visita guiada (1 hora)", requestedDate:"22 de agosto de 2026" }),
+    buildHtml: () => buildCouponPostponedHtml({ customerName:"Miguel Ángel Ruiz", couponCode:"GV-2026-ABC123", provider:"Groupon", productName:ew("Visita guiada (1 hora)", "Revisión anual"), requestedDate:"22 de agosto de 2026" }),
   },
   {
     id: "coupon_internal_alert",
@@ -269,7 +270,7 @@ export const SYSTEM_TEMPLATES: SeedTemplate[] = [
     subject: "Tu propuesta te está esperando · {{marca}}",
     headerTitle: "Tu Propuesta Te Espera", headerSubtitle: "Queremos que disfrutes de una experiencia única",
     variables: JSON.stringify(["clientName","quoteNumber","quoteTitle","total","paymentLinkUrl"]),
-    buildHtml: () => buildCommercialReminder1Html({ clientName:"Laura Fernández", quoteNumber:"PRE-2026-0015", quoteTitle:"Jornada de team building", total:"798.60", paymentLinkUrl:sampleUrl("/pago/PRE-2026-0015") }),
+    buildHtml: () => buildCommercialReminder1Html({ clientName:"Laura Fernández", quoteNumber:"PRE-2026-0015", quoteTitle:ew("Jornada de team building", "Mantenimiento anual de equipos"), total:"798.60", paymentLinkUrl:sampleUrl("/pago/PRE-2026-0015") }),
   },
   {
     id: "commercial_reminder_2",
@@ -279,7 +280,7 @@ export const SYSTEM_TEMPLATES: SeedTemplate[] = [
     subject: "Tu propuesta sigue disponible · {{marca}}",
     headerTitle: "Plazas Limitadas", headerSubtitle: "Confirma antes de que se agoten",
     variables: JSON.stringify(["clientName","quoteNumber","quoteTitle","total","paymentLinkUrl"]),
-    buildHtml: () => buildCommercialReminder2Html({ clientName:"Laura Fernández", quoteNumber:"PRE-2026-0015", quoteTitle:"Jornada de team building", total:"798.60", paymentLinkUrl:sampleUrl("/pago/PRE-2026-0015") }),
+    buildHtml: () => buildCommercialReminder2Html({ clientName:"Laura Fernández", quoteNumber:"PRE-2026-0015", quoteTitle:ew("Jornada de team building", "Mantenimiento anual de equipos"), total:"798.60", paymentLinkUrl:sampleUrl("/pago/PRE-2026-0015") }),
   },
   {
     id: "commercial_reminder_3",
@@ -289,7 +290,7 @@ export const SYSTEM_TEMPLATES: SeedTemplate[] = [
     subject: "Última llamada para tu experiencia · {{marca}}",
     headerTitle: "Última Oportunidad", headerSubtitle: "No queremos que te la pierdas",
     variables: JSON.stringify(["clientName","quoteNumber","quoteTitle","total","paymentLinkUrl"]),
-    buildHtml: () => buildCommercialReminder3Html({ clientName:"Laura Fernández", quoteNumber:"PRE-2026-0015", quoteTitle:"Jornada de team building", total:"798.60", paymentLinkUrl:sampleUrl("/pago/PRE-2026-0015") }),
+    buildHtml: () => buildCommercialReminder3Html({ clientName:"Laura Fernández", quoteNumber:"PRE-2026-0015", quoteTitle:ew("Jornada de team building", "Mantenimiento anual de equipos"), total:"798.60", paymentLinkUrl:sampleUrl("/pago/PRE-2026-0015") }),
   },
   {
     id: "proposal",
@@ -299,7 +300,7 @@ export const SYSTEM_TEMPLATES: SeedTemplate[] = [
     subject: "Tu propuesta personalizada · {{marca}}",
     headerTitle: "Tu Propuesta", headerSubtitle: "Hemos preparado varias opciones para ti",
     variables: JSON.stringify(["proposalNumber","title","clientName","total","publicUrl"]),
-    buildHtml: () => buildProposalHtml({ proposalNumber:"PROP-2026-0003", title:"Jornada de team building", clientName:"Laura Fernández", mode:"configurable", items:[{description:"Alquiler de material (12 uds)",quantity:12,unitPrice:35,total:420},{description:"SUP (8 uds)",quantity:8,unitPrice:30,total:240}], subtotal:"660.00", discount:"0", tax:"138.60", total:"798.60", publicUrl:sampleUrl("/propuesta/PROP-2026-0003") }),
+    buildHtml: () => buildProposalHtml({ proposalNumber:"PROP-2026-0003", title:ew("Jornada de team building", "Mantenimiento anual de equipos"), clientName:"Laura Fernández", mode:"configurable", items:[{description:ew("Alquiler de material (12 uds)", "Revisión de equipos (12 uds)"),quantity:12,unitPrice:35,total:420},{description:ew("SUP (8 uds)", "Material de repuesto (8 uds)"),quantity:8,unitPrice:30,total:240}], subtotal:"660.00", discount:"0", tax:"138.60", total:"798.60", publicUrl:sampleUrl("/propuesta/PROP-2026-0003") }),
   },
   {
     id: "pending_payment",
@@ -309,7 +310,7 @@ export const SYSTEM_TEMPLATES: SeedTemplate[] = [
     subject: "Reserva confirmada — Pago pendiente · {{marca}}",
     headerTitle: "Pago Pendiente", headerSubtitle: "Tu reserva está confirmada",
     variables: JSON.stringify(["clientName","productName","amountFormatted","dueDate","ibanInfo"]),
-    buildHtml: () => buildPendingPaymentHtml({ clientName:"María García", productName:"Visita guiada", amountFormatted:"89,00 €", dueDate:"30 de mayo de 2026", origin:"crm", ibanInfo:"ES12 3456 7890 1234 5678 9012\nConcepto: RES-2026-0042" }),
+    buildHtml: () => buildPendingPaymentHtml({ clientName:"María García", productName:ew("Visita guiada", "Revisión anual"), amountFormatted:"89,00 €", dueDate:"30 de mayo de 2026", origin:"crm", ibanInfo:"ES12 3456 7890 1234 5678 9012\nConcepto: RES-2026-0042" }),
   },
   {
     id: "pending_payment_reminder",
@@ -319,7 +320,7 @@ export const SYSTEM_TEMPLATES: SeedTemplate[] = [
     subject: "Pago pendiente — Fecha límite próxima · {{marca}}",
     headerTitle: "Recordatorio de Pago", headerSubtitle: "Fecha límite próxima",
     variables: JSON.stringify(["clientName","productName","amountFormatted","dueDate"]),
-    buildHtml: () => buildPendingPaymentReminderHtml({ clientName:"María García", productName:"Visita guiada", amountFormatted:"89,00 €", dueDate:"30 de mayo de 2026", origin:"crm" }),
+    buildHtml: () => buildPendingPaymentReminderHtml({ clientName:"María García", productName:ew("Visita guiada", "Revisión anual"), amountFormatted:"89,00 €", dueDate:"30 de mayo de 2026", origin:"crm" }),
   },
   {
     id: "installment_reminder",
@@ -423,6 +424,16 @@ export const GENERIC_TEMPLATE_TEXTS: Record<string, Partial<TemplateTexts>> = {
   commercial_reminder_3: {
     subject: "Tu propuesta caduca pronto · {{marca}}",
   },
+  tpv_ticket: {
+    name: "Ticket de Compra",
+    description: "Email con el ticket de compra enviado al cliente tras una venta presencial en caja.",
+  },
+  cash_open: {
+    description: "Notificación interna enviada al abrir una sesión de caja.",
+  },
+  cash_close: {
+    description: "Resumen de la sesión de caja enviado al equipo al cerrarla.",
+  },
   pending_payment: {
     description: "Email enviado cuando un pedido queda confirmado con pago diferido.",
     subject: "Pedido confirmado — Pago pendiente · {{marca}}",
@@ -452,24 +463,29 @@ export function upgradeableToGeneric(row: Partial<Record<keyof TemplateTexts, st
  * Empresa con licencias por capacidad y sin «Reservas y citas»: plantillas con textos genéricos. Instalación propia o
  * empresa anterior al motor de licencias: los de siempre. Si no se pueden leer las licencias, genéricos.
  */
-async function usesGenericTemplateTexts(): Promise<boolean> {
-  const mode = getTenantMode();
-  if (mode !== "multi") return false;
-  try {
-    const access = getCapabilityAccess();
-    const o = buildSubscriptionOverview({ mode, enforcing: access.enforcing(), grants: await access.list(), now: access.currentTime() });
-    if (o.licensing !== "capabilities") return false;
-    return !o.visible.includes("bookings-generic");
-  } catch {
-    return true;
-  }
+const usesGenericTemplateTexts = resolveGenericEmails;
+
+/** Cuerpo de una plantilla del sistema con el vocabulario indicado (datos de ejemplo incluidos). */
+export function templateSeedBody(tpl: SeedTemplate, generic: boolean): string {
+  return renderEmailAs(generic, tpl.buildHtml);
+}
+
+/**
+ * Cuerpo genérico para una plantilla guardada que conserva exactamente el cuerpo de siempre (la empresa no lo ha
+ * editado); null si está personalizada o no cambia.
+ */
+export function genericBodyUpgrade(bodyHtml: string | null | undefined, tpl: SeedTemplate): string | null {
+  const legacy = templateSeedBody(tpl, false);
+  if ((bodyHtml ?? "") !== legacy) return null;
+  const generic = templateSeedBody(tpl, true);
+  return generic !== legacy ? generic : null;
 }
 
 // --- Helper: seed templates — inserta las que faltan, no sobrescribe edits ---
 async function ensureTemplatesSeeded() {
   const existingRows = await db.select({
     id: emailTemplates.id, name: emailTemplates.name, description: emailTemplates.description, subject: emailTemplates.subject,
-    headerTitle: emailTemplates.headerTitle, headerSubtitle: emailTemplates.headerSubtitle,
+    headerTitle: emailTemplates.headerTitle, headerSubtitle: emailTemplates.headerSubtitle, bodyHtml: emailTemplates.bodyHtml,
   }).from(emailTemplates);
   const existing = new Map(existingRows.map(r => [r.id, r]));
   const generic = await usesGenericTemplateTexts();
@@ -481,6 +497,8 @@ async function ensureTemplatesSeeded() {
       if (generic && upgradeableToGeneric(row, tpl)) {
         await db.update(emailTemplates).set(templateSeedTexts(tpl, true)).where(eq(emailTemplates.id, tpl.id));
       }
+      const body = generic ? genericBodyUpgrade(row.bodyHtml, tpl) : null;
+      if (body) await db.update(emailTemplates).set({ bodyHtml: body }).where(eq(emailTemplates.id, tpl.id));
       continue;
     }
     try {
@@ -489,7 +507,7 @@ async function ensureTemplatesSeeded() {
         category: tpl.category,
         recipient: tpl.recipient,
         ...templateSeedTexts(tpl, generic),
-        bodyHtml: tpl.buildHtml(),
+        bodyHtml: templateSeedBody(tpl, generic),
         variables: tpl.variables,
         isCustom: false,
         isActive: true,
@@ -556,7 +574,7 @@ export const emailTemplatesRouter = router({
       if (!row) throw new TRPCError({ code: "NOT_FOUND", message: `Plantilla '${input.id}' no encontrada` });
       // Las plantillas de sistema siempre se renderizan desde código para reflejar cambios de branding
       const systemTpl = !row.isCustom ? SYSTEM_TEMPLATES.find(t => t.id === input.id) : undefined;
-      const html = systemTpl ? systemTpl.buildHtml() : row.bodyHtml;
+      const html = systemTpl ? templateSeedBody(systemTpl, await usesGenericTemplateTexts()) : row.bodyHtml;
       return { id: row.id, name: row.name, subject: row.subject, html };
     }),
 
@@ -650,9 +668,10 @@ export const emailTemplatesRouter = router({
       const systemTpl = SYSTEM_TEMPLATES.find(t => t.id === input.id);
       if (!systemTpl) throw new TRPCError({ code: "NOT_FOUND", message: "Plantilla del sistema no encontrada" });
 
+      const generic = await usesGenericTemplateTexts();
       await db.update(emailTemplates).set({
-        ...templateSeedTexts(systemTpl, await usesGenericTemplateTexts()),
-        bodyHtml: systemTpl.buildHtml(),
+        ...templateSeedTexts(systemTpl, generic),
+        bodyHtml: templateSeedBody(systemTpl, generic),
         isActive: true,
       }).where(eq(emailTemplates.id, input.id));
 

@@ -154,6 +154,14 @@ function calcLineFiscal(
 // --- EMAIL DE CIERRE DE CAJA -------------------------------------------------
 
 /**
+ * Concepto de un cobro de caja en contabilidad («Venta en caja T-… — producto»). Solo para los cobros nuevos: los
+ * asientos ya escritos conservan el suyo.
+ */
+export function cashSaleConcept(ticketNumber: string, productName?: string | null): string {
+  return `Venta en caja ${ticketNumber}${productName ? ` — ${productName}` : ""}`;
+}
+
+/**
  * Compone y envía el email de cierre de caja para una sesión TPV ya cerrada.
  *
  * Reutilizable desde:
@@ -1172,7 +1180,7 @@ export const tpvRouter = router({
           currency: "EUR",
           paymentMethod: txMethod as any,
           status: "completado",
-          description: `Venta TPV ${ticketNumber}${mainItem ? ` — ${mainItem.productName}` : ""}`,
+          description: cashSaleConcept(ticketNumber, mainItem?.productName),
           processedAt: new Date(),
           clientName: input.customerName ?? null,
           clientEmail: input.customerEmail ?? null,
@@ -1340,7 +1348,7 @@ export const tpvRouter = router({
           taxAmount: totalTaxAmount,
           reavMargin: totalReavMargin,
           fiscalRegime: fiscalRegimeForOp,
-          description: `Venta TPV ${ticketNumber}${mainItem ? ` — ${mainItem.productName}` : ""}`,
+          description: cashSaleConcept(ticketNumber, mainItem?.productName),
           quoteId: null,
           sourceChannel: opPaymentMethod,
         });

@@ -19,7 +19,7 @@ type Category = "all" | "reservas" | "presupuestos" | "anulaciones" | "tpv" | "t
 
 const CATEGORY_LABELS: Record<string, string> = {
   reservas: "Reservas", presupuestos: "Presupuestos", anulaciones: "Anulaciones",
-  tpv: "TPV", ticketing: "Ticketing", sistema: "Sistema", general: "General",
+  tpv: "Caja", ticketing: "Ticketing", sistema: "Sistema", general: "General",
 };
 const CATEGORY_COLORS: Record<string, string> = {
   reservas: "bg-blue-100 text-blue-800", presupuestos: "bg-purple-100 text-purple-800",
