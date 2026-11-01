@@ -24,6 +24,7 @@ import {
 } from "../drizzle/schema";
 import { KB_PUBLIC_SETTING_KEYS, pickPublicKbSettings } from "./kbPublicSettings";
 import { legacyDb, legacyPool } from "./_core/legacyDb";
+import { companyName } from "./tenantBrand";
 
 const _pool = legacyPool();
 const db = legacyDb();
@@ -102,7 +103,7 @@ kbRouter.get("/kb", async (_req, res) => {
     const sep = "-".repeat(60);
 
     lines.push("=".repeat(60));
-    lines.push("NAYADE EXPERIENCES — BASE DE CONOCIMIENTO");
+    lines.push(`${companyName() ? `${companyName().toUpperCase()} — ` : ""}BASE DE CONOCIMIENTO`);
     lines.push(`Actualizado: ${new Date().toLocaleString("es-ES", { timeZone: "Europe/Madrid" })}`);
     lines.push("=".repeat(60));
     lines.push("");

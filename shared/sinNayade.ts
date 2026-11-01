@@ -5,7 +5,7 @@
  *  - `SECTORAL`: vocabulario sectorial (reservas, experiencias, actividades, monitores, temporada, hotel, spa, bonos…)
  *    que una empresa sin módulo sectorial no debe ver.
  */
-export const ORIGINAL = /N[aá]yade|N&[aA]acute;[yY][aA][dD][eE]|nayadeexperiences|skicenter\.es|639 ?57 ?66 ?27|34639576627|San Rafael/;
+export const ORIGINAL = /N[aá]yade|N[AÁ]YADE(?=[ <])|N&[aA]acute;[yY][aA][dD][eE]|nayadeexperiences|skicenter\.es|639 ?57 ?66 ?27|34639576627|San Rafael/;
 
 export const SECTORAL =
   /reserv|experienc|actividad|monitor|temporada|hotel|\bspa\b|\bbonos?\b|\bplazas?\b|agua|naturaleza|\blago\b|aventura|jornada|inolvidable|\bpax\b|llegada|vela ligera|neopreno|team building|alojamiento/i;

@@ -17,6 +17,8 @@ const ROOT = __dirname;
 // Solo queda la guardia que BLOQUEA enlaces al dominio de la instalación original en correos de otras empresas
 const BASELINE: Record<string, number> = {
   "mail/policy.ts": 1,
+  // Lectura de los avisos del banco de la instalación original (texto del comercio en el correo del TPV)
+  "services/emailTpvIngestionService.ts": 1,
 };
 
 function walk(dir: string): string[] {

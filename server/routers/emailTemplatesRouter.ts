@@ -424,6 +424,16 @@ export const GENERIC_TEMPLATE_TEXTS: Record<string, Partial<TemplateTexts>> = {
   commercial_reminder_3: {
     subject: "Tu propuesta caduca pronto · {{marca}}",
   },
+  tpv_ticket: {
+    name: "Ticket de Compra",
+    description: "Email con el ticket de compra enviado al cliente tras una venta presencial en caja.",
+  },
+  cash_open: {
+    description: "Notificación interna enviada al abrir una sesión de caja.",
+  },
+  cash_close: {
+    description: "Resumen de la sesión de caja enviado al equipo al cerrarla.",
+  },
   pending_payment: {
     description: "Email enviado cuando un pedido queda confirmado con pago diferido.",
     subject: "Pedido confirmado — Pago pendiente · {{marca}}",

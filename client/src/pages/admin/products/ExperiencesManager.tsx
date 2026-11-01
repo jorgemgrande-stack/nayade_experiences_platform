@@ -719,7 +719,7 @@ export default function ExperiencesManager() {
               </div>
               <div className="flex items-center gap-3">
                 <Switch checked={form.isPresentialSale} onCheckedChange={(v) => setForm({ ...form, isPresentialSale: v })} />
-                <Label className="flex items-center gap-1.5"><span className="text-violet-600 font-bold">&#9679;</span> Vendible en TPV</Label>
+                <Label className="flex items-center gap-1.5"><span className="text-violet-600 font-bold">&#9679;</span> {voc.licensed ? "Vendible en caja" : "Vendible en TPV"}</Label>
               </div>
 
               {/* Descuento */}

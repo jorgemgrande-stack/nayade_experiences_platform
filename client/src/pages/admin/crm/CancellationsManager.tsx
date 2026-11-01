@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useVocabulary } from "@/lib/vocabulary";
 import AdminLayout from "@/components/AdminLayout";
 import { trpc } from "@/lib/trpc";
 import { Button } from "@/components/ui/button";
@@ -257,6 +258,7 @@ function NewRequestModal({ onClose, onCreated }: { onClose: () => void; onCreate
 
 // ─── Main Component ───────────────────────────────────────────────────────────
 export default function CancellationsManager() {
+  const voc = useVocabulary();
   const [search, setSearch] = useState("");
   const [opFilter, setOpFilter] = useState("all");
   const [resFilter, setResFilter] = useState("all");
@@ -373,7 +375,7 @@ export default function CancellationsManager() {
           <KpiCard label="Aceptadas total" value={kpis.resueltasTotal} color="border-green-500/20" />
           <KpiCard label="Aceptadas parcial" value={kpis.resueltasParcial} color="border-teal-500/20" />
           <KpiCard label="Rechazadas" value={kpis.rechazadas} color="border-red-500/20" />
-          <KpiCard label="Bonos enviados" value={kpis.compensadasBono} color="border-purple-500/20" />
+          <KpiCard label={voc.licensed ? "Vales enviados" : "Bonos enviados"} value={kpis.compensadasBono} color="border-purple-500/20" />
         </div>
       )}
 

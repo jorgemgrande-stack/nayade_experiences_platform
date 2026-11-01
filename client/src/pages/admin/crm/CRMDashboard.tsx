@@ -4995,7 +4995,7 @@ function ReservationDetailModal({
           {/* Info de ticket TPV si aplica */}
           {res.channel === "TPV_FISICO" && res.notes?.includes("[ORIGEN_TPV]") && (
             <div className="bg-violet-500/10 border border-violet-500/20 rounded-xl p-3">
-              <div className="text-xs font-semibold text-violet-300 mb-1">🖥️ Venta TPV</div>
+              <div className="text-xs font-semibold text-violet-300 mb-1">🖥️ Venta en caja</div>
               <div className="text-xs text-violet-200/70">
                 {res.notes.replace("[ORIGEN_TPV] ", "")}
               </div>
@@ -6321,11 +6321,11 @@ export default function CRMDashboard() {
                 onClick={() => handleTabChange("reservations")}
               />
               <CounterCard
-                label="Servicio Hoy"
+                label={voc.todayCounter}
                 value={resCounters?.servicioHoy ?? 0}
                 icon={CalendarCheck}
                 color="green"
-                subtitle={voc.licensed ? "Servicios programados" : "Actividades programadas"}
+                subtitle={voc.todayCounterSubtitle}
                 amount={resCounters?.importeServicioHoy}
                 active={tab === "reservations"}
                 onClick={() => handleTabChange("reservations")}
@@ -6335,7 +6335,7 @@ export default function CRMDashboard() {
                 value={resCounters?.proximasSemana ?? 0}
                 icon={Calendar}
                 color="green"
-                subtitle="Servicios confirmados"
+                subtitle={voc.upcomingCounterSubtitle}
                 amount={resCounters?.importeProximasSemana}
                 active={tab === "reservations"}
                 onClick={() => handleTabChange("reservations")}
@@ -7997,7 +7997,7 @@ export default function CRMDashboard() {
                     { label: "Aceptadas total", value: anulKpis.resueltasTotal, color: "border-green-500/20" },
                     { label: "Aceptadas parcial", value: anulKpis.resueltasParcial, color: "border-teal-500/20" },
                     { label: "Rechazadas", value: anulKpis.rechazadas, color: "border-red-500/20" },
-                    { label: "Bonos enviados", value: anulKpis.compensadasBono, color: "border-purple-500/20" },
+                    { label: voc.licensed ? "Vales enviados" : "Bonos enviados", value: anulKpis.compensadasBono, color: "border-purple-500/20" },
                   ].map(({ label, value, color }) => (
                     <div key={label} className={`bg-foreground/[0.03] border ${color} rounded-xl p-4`}>
                       <p className="text-foreground/50 text-xs font-medium uppercase tracking-wide mb-1">{label}</p>
