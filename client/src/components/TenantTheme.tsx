@@ -17,6 +17,8 @@ import { brandTokens } from "@shared/loginBrand";
 import { composePageTitle, publicRouteAccess } from "@shared/publicSite";
 import { pageSlugOfUrl } from "@shared/tenantNav";
 import { usePublicSite } from "@/hooks/usePublicSite";
+import { PageBlocksView } from "@/components/site/PageBlocksView";
+import { RICH_TEXT_CLASS } from "@/components/site/richText";
 
 export function useTenantTheme() {
   const q = trpc.public.getTheme.useQuery(undefined, { staleTime: 5 * 60_000, retry: false, refetchOnWindowFocus: false });
@@ -98,20 +100,7 @@ export const LEGAL_FOOTER_LINKS = [
   { label: "Cookies", url: "/cookies" },
 ] as const;
 
-/**
- * Estilo de lectura de las páginas de la empresa: texto con el color de texto del tema sobre su fondo (contraste AA
- * en claro y en oscuro), títulos principales con su color de marca (texto grande) y enlaces subrayados con ese color.
- */
-export const RICH_TEXT_CLASS =
-  "break-words text-base leading-relaxed text-foreground " +
-  "[&_h1]:font-heading [&_h1]:text-3xl md:[&_h1]:text-4xl [&_h1]:font-bold [&_h1]:leading-tight [&_h1]:text-primary [&_h1]:mb-6 " +
-  "[&_h2]:font-heading [&_h2]:text-2xl [&_h2]:font-semibold [&_h2]:text-foreground [&_h2]:mt-10 [&_h2]:mb-3 " +
-  "[&_h3]:text-xl [&_h3]:font-semibold [&_h3]:text-foreground [&_h3]:mt-8 [&_h3]:mb-2 " +
-  "[&_p]:my-4 [&_ul]:my-4 [&_ul]:list-disc [&_ul]:pl-6 [&_ol]:my-4 [&_ol]:list-decimal [&_ol]:pl-6 [&_li]:my-1.5 " +
-  "[&_a]:text-foreground [&_a]:underline [&_a]:decoration-primary [&_a]:decoration-2 [&_a]:underline-offset-4 " +
-  "[&_strong]:font-semibold [&_b]:font-semibold [&_img]:my-6 [&_img]:h-auto [&_img]:max-w-full [&_img]:rounded-xl " +
-  "[&_blockquote]:my-6 [&_blockquote]:border-l-4 [&_blockquote]:border-primary [&_blockquote]:pl-4 [&_blockquote]:italic " +
-  "[&_table]:my-6 [&_table]:block [&_table]:max-w-full [&_table]:overflow-x-auto [&_td]:border [&_td]:border-border [&_td]:p-2 [&_th]:border [&_th]:border-border [&_th]:p-2 [&_th]:text-left";
+export { RICH_TEXT_CLASS };
 
 /** El contenido ya empieza por su propio título (h1): no se repite el de la página. */
 export const startsWithHeading = (html: string) => /^\s*<h1[\s>]/i.test(html);
@@ -201,9 +190,31 @@ function Spinner() {
   );
 }
 
+/** Descripción para buscadores de la página que se está viendo (la de la empresa, si la ha escrito). */
+export function useMetaDescription(text: string | null | undefined) {
+  useEffect(() => {
+    const value = text?.trim();
+    if (!value) return;
+    let tag = document.querySelector<HTMLMetaElement>('meta[name="description"]');
+    const created = !tag;
+    if (!tag) {
+      tag = document.createElement("meta");
+      tag.name = "description";
+      document.head.appendChild(tag);
+    }
+    const prev = tag.content;
+    tag.content = value;
+    return () => {
+      if (created) tag?.remove();
+      else if (tag) tag.content = prev;
+    };
+  }, [text]);
+}
+
 export function TenantPage({ slug }: { slug: string }) {
   const q = trpc.public.getTenantPage.useQuery({ slug }, { retry: false });
-  usePageTitle(slug === HOME_PAGE_SLUG ? null : q.data?.title);
+  usePageTitle(slug === HOME_PAGE_SLUG ? null : q.data?.metaTitle || q.data?.title);
+  useMetaDescription(q.data?.metaDescription);
   if (q.isLoading) {
     return (
       <PublicLayout>
@@ -212,6 +223,14 @@ export function TenantPage({ slug }: { slug: string }) {
     );
   }
   if (!q.data) return <NotFound />;
+  // Página hecha con el constructor: sus bloques (el mismo componente que la vista previa del panel)
+  if (q.data.blocks) {
+    return (
+      <PublicLayout>
+        <PageBlocksView blocks={q.data.blocks} pageTitle={q.data.title} />
+      </PublicLayout>
+    );
+  }
   return (
     <PublicLayout>
       <article className={`container py-10 md:py-14 max-w-3xl ${RICH_TEXT_CLASS}`}>
@@ -250,6 +269,19 @@ export function SingleOnlyPage({ Single, slug, Tenant }: { Single: ComponentType
   if (isLoading) return <Spinner />;
   if (theme?.neutralSite) return Tenant ? <Tenant /> : <TenantPage slug={slug} />;
   return <Single />;
+}
+
+/**
+ * Sección de la web con una versión genérica (p. ej. «/contacto» y su formulario): si la empresa ha publicado su propia
+ * página con esa dirección (hecha con el constructor), se muestra la suya; si no, la genérica.
+ */
+export function PageOrDefault({ slug, Default }: { slug: string; Default: ComponentType }) {
+  const { theme, isLoading } = useTenantTheme();
+  const neutral = !!theme?.neutralSite;
+  const page = trpc.public.getTenantPage.useQuery({ slug }, { retry: false, enabled: neutral });
+  if (isLoading || (neutral && page.isLoading)) return <Spinner />;
+  if (neutral && page.data) return <TenantPage slug={slug} />;
+  return <Default />;
 }
 
 /** "/:slug" tras todas las rutas conocidas: páginas del tenant; en single, 404 como siempre. */

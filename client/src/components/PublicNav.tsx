@@ -211,6 +211,8 @@ export default function PublicNav() {
 
   // Tienda de la pyme: accesible desde el menú aunque la empresa aún no la haya añadido a sus enlaces
   const showShopLink = !!site?.licensed && site.store && !navLinks.some((l) => l.href === siteText.shopHref);
+  // Contacto siempre a mano, salvo que la empresa ya lo tenga en su menú (sin repetirlo)
+  const showContactLink = !navLinks.some((l) => l.href === "/contacto");
 
   const mobileNavigate = (to: string) => {
     setIsOpen(false);
@@ -312,11 +314,13 @@ export default function PublicNav() {
                 </Button>
               </Link>
             )}
+            {showContactLink && (
             <Link href="/contacto">
               <Button variant="ghost" size="sm" className="font-display font-medium rounded-full text-foreground hover:text-primary">
                 Contacto
               </Button>
             </Link>
+            )}
             {showCoupon && (
             <Link href="/canjear-cupon">
               <Button variant="ghost" size="sm" className="font-display font-medium rounded-full gap-1.5 text-orange-500 hover:text-orange-600 hover:bg-orange-50">
@@ -348,6 +352,8 @@ export default function PublicNav() {
           {/* Botón hamburguesa mobile */}
           <button
             onClick={() => setIsOpen(!isOpen)}
+            aria-label={isOpen ? "Cerrar el menú" : "Abrir el menú"}
+            aria-expanded={isOpen}
             className="lg:hidden p-2 rounded-lg transition-colors text-foreground hover:bg-muted"
           >
             {isOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
@@ -430,9 +436,11 @@ export default function PublicNav() {
                 {siteText.shopLabel}
               </Button>
             )}
+            {showContactLink && (
             <Button variant="outline" className="w-full font-display font-medium rounded-full" onClick={() => mobileNavigate("/contacto")}>
               Contacto
             </Button>
+            )}
             {showCoupon && (
             <Button variant="outline" className="w-full font-display font-medium rounded-full border-orange-200 text-orange-500 hover:bg-orange-50 gap-2" onClick={() => mobileNavigate("/canjear-cupon")}>
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-4 h-4 flex-shrink-0"><path d="M20 12V22H4V12"/><path d="M22 7H2v5h20V7z"/><path d="M12 22V7"/><path d="M12 7H7.5a2.5 2.5 0 0 1 0-5C11 2 12 7 12 7z"/><path d="M12 7h4.5a2.5 2.5 0 0 0 0-5C13 2 12 7 12 7z"/></svg>
