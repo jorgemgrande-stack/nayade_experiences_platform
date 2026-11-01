@@ -6,6 +6,7 @@
  * Solo empresas sintéticas nuevas; ningún cobro real.
  */
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
+import mysql from "mysql2/promise";
 import { startEssentialApp, data, errCode, type EssentialApp } from "./essentialApp.testkit";
 
 const URL_ = process.env.REGISTRY_TEST_DATABASE_URL;
@@ -135,5 +136,29 @@ describe.skipIf(!URL_)("TPV — cobro sin duplicados y cliente enlazado (aplicac
     const n = await count("SELECT COUNT(*) AS n FROM tpv_sales");
     expect(errCode(await ess.m("a", "tpv.createSale", sale({ clientId: 999_999 }), agA))).toBe("NOT_FOUND");
     expect(await count("SELECT COUNT(*) AS n FROM tpv_sales")).toBe(n);
+  });
+
+  it("si falla un paso posterior a la reserva (el asiento contable), tampoco queda la reserva", async () => {
+    // Fallo forzado al grabar el asiento: el paso 7, después de crear la reserva dentro de la transacción
+    const root = await mysql.createConnection({ uri: URL_! });
+    await root.query("SET GLOBAL log_bin_trust_function_creators = 1");
+    await root.end();
+    await ess.sql("a", "CREATE TRIGGER prueba_falla_asiento BEFORE INSERT ON transactions FOR EACH ROW SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'fallo de prueba'");
+    try {
+      const resBefore = await count("SELECT COUNT(*) AS n FROM reservations");
+      const r = await ess.m("a", "tpv.createSale", sale({ customerName: "Rosa Mora", idempotencyKey: "falla-asiento-06" }), agA);
+      expect(errCode(r)).toBe("INTERNAL_SERVER_ERROR");
+      const [failed] = await ess.sql("a", "SELECT id, status_ts AS status, reservationId FROM tpv_sales ORDER BY id DESC LIMIT 1");
+      expect([failed.status, failed.reservationId]).toEqual(["cancelled", null]);
+      expect(await count("SELECT COUNT(*) AS n FROM reservations")).toBe(resBefore);
+      expect(await count("SELECT COUNT(*) AS n FROM reservations WHERE customer_name = 'Rosa Mora'")).toBe(0);
+      expect(await count("SELECT COUNT(*) AS n FROM tpv_sale_items WHERE saleId = ?", [failed.id])).toBe(0);
+    } finally {
+      await ess.sql("a", "DROP TRIGGER IF EXISTS prueba_falla_asiento");
+    }
+    // Sin el fallo, el mismo cobro se graba entero
+    const ok = await ess.m("a", "tpv.createSale", sale({ customerName: "Rosa Mora", idempotencyKey: "falla-asiento-06" }), agA);
+    expect(data(ok).sale.status).toBe("paid");
+    expect(await count("SELECT COUNT(*) AS n FROM reservations WHERE customer_name = 'Rosa Mora'")).toBe(1);
   });
 });

@@ -1107,7 +1107,8 @@ export const tpvRouter = router({
           const productSummary = input.items.length > 1
             ? `${mainItem.productName} (+${input.items.length - 1} más)`
             : mainItem.productName;
-          const [resResult] = await db.insert(reservations).values({
+          // Dentro de la transacción: si falla un paso posterior, la reserva también se deshace
+          const [resResult] = await tx.insert(reservations).values({
             productId: mainItem.productId,
             productName: productSummary,
             bookingDate: mainItem.eventDate ?? new Date().toISOString().slice(0, 10),
