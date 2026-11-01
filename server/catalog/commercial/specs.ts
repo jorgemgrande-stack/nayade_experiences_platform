@@ -36,6 +36,21 @@ export interface ProductSpec {
   publicContent: { headline: string; benefits: string[]; cta: Cta };
   seo: { slug: string; title: string; description: string };
   admin: { pendingDecisions: string[]; notes?: string };
+  /**
+   * Ficha del marketplace del panel (Elephant Connect y Net). Opcional: sin ella, la importación conserva lo que ya
+   * tenga el borrador. Un texto que contenga «PENDIENTE» nunca va a la ficha pública: queda como decisión pendiente.
+   */
+  marketplace?: MarketplaceSpec;
+}
+
+export interface MarketplaceSpec {
+  valueProposition?: string;
+  coreIntegration?: string[];
+  terms?: { commitment?: string; cancellation?: string; activation?: string };
+  faq?: Array<{ q: string; a: string }>;
+  related?: string[];
+  /** Solo imágenes reales en https de un almacén público. */
+  media?: { cover?: { src: string; alt: string }; screenshots?: Array<{ src: string; alt: string; caption?: string }> };
 }
 
 const COMMS = ["connect-whatsapp-ai", "connect-voice", "connect-reception-ai"];
