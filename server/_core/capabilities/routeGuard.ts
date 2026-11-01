@@ -64,6 +64,8 @@ export const TRPC_ROUTER_CAPABILITIES: Record<string, string> = {
   coreHome: "admin-panel",
   // Elephant Connect y extras
   hr: "people-hr",
+  // Lecturas heredadas de la ficha de empleado (datos personales, documentos y nóminas): misma licencia que Personal
+  "operations.monitors": "people-hr",
   gestoria: "tax-filings",
   fiscalAudit: "tax-filings",
   bankMovements: "bank-import-pos",

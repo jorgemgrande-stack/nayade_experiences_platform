@@ -43,6 +43,11 @@ import { getDefaultCashAccountId, createCashMovementIfNotExists } from "./cashRe
 import { legacyDb, legacyPool } from "../_core/legacyDb";
 import { isAcceptableFileUrl } from "../_core/files/service";
 import { buildNoticeHtml } from "../emailTemplates";
+import { scheduleErrors } from "../../shared/peopleOnboarding";
+import { employeeExists, getPeopleOnboarding, markPeopleSettingsReviewed, replaceEmployeeSchedule } from "../peopleDb";
+
+/** Roles del panel: su cuenta nunca se convierte en acceso al portal del empleado. */
+const PANEL_ROLES = new Set(["admin", "agente", "adminrest", "controler", "partner_admin", "partner_user", "supplier", "gestoria"]);
 
 // Permisos: lecturas RRHH accesibles para admin (con fallback a rol legacy).
 const hrViewProc = permissionProcedure("hr.view", ["admin"]);
@@ -350,6 +355,13 @@ const employeesRouter = router({
         .where(eq(users.email, employee.email))
         .limit(1);
 
+      if (existing && PANEL_ROLES.has(String(existing.role))) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: "Ese correo ya pertenece a un usuario del panel. Usa otro correo para el acceso al portal del empleado.",
+        });
+      }
+
       let userId: number;
       if (existing) {
         // Reutilizar el user existente: re-emitir token y ascender a rol employee
@@ -396,12 +408,13 @@ const employeesRouter = router({
       let emailSent = false;
       if (input.sendEmailNow) {
         try {
-          await sendEmail({
+          // Invitación de acceso (como la de usuarios del panel): sendEmail devuelve si se ha enviado de verdad
+          emailSent = await sendEmail({
             to: employee.email,
+            category: "user_invite",
             subject: `Acceso al Portal del Empleado — ${companyName()}`,
-            html: buildNoticeHtml({ badge: "Acceso", title: "Bienvenido al Portal del Empleado", greetingName: employee.fullName, paragraphs: [`Te damos acceso al portal interno de ${companyName()}, donde podrás consultar tu información personal, tus documentos y las próximas funcionalidades (fichaje, nóminas, vacaciones).`], cta: { label: "Activar mi cuenta", url: inviteUrl }, note: "Este enlace caduca en 7 días." }),
+            html: buildNoticeHtml({ badge: "Acceso", title: "Bienvenido al Portal del Empleado", greetingName: employee.fullName, paragraphs: [`Te damos acceso al portal interno de ${companyName()}, donde podrás fichar, consultar tus datos, nóminas y documentos y solicitar vacaciones o permisos.`], cta: { label: "Activar mi cuenta", url: inviteUrl }, note: "Este enlace caduca en 7 días." }),
           });
-          emailSent = true;
         } catch (e) {
           console.warn("[hr.createPortalAccess] Email no enviado:", e);
         }
@@ -923,6 +936,24 @@ const scheduleRouter = router({
         .where(eq(hrScheduleTemplates.employeeId, input.employeeId))
         .orderBy(asc(hrScheduleTemplates.weekday), asc(hrScheduleTemplates.startTime));
       return tramos;
+    }),
+
+  /** Sustituye el horario semanal del empleado (uno o varios tramos por día; lista vacía = sin horario). */
+  setWeek: hrViewProc
+    .input(z.object({
+      employeeId: z.number().int(),
+      slots: z.array(z.object({
+        weekday: z.number().int().min(0).max(6),
+        startTime: z.string(),
+        endTime: z.string(),
+      })).max(28),
+    }))
+    .mutation(async ({ input }) => {
+      if (!(await employeeExists(input.employeeId))) throw new TRPCError({ code: "NOT_FOUND", message: "Empleado no encontrado" });
+      const errors = scheduleErrors(input.slots);
+      if (errors.length) throw new TRPCError({ code: "BAD_REQUEST", message: errors[0] });
+      await replaceEmployeeSchedule(input.employeeId, input.slots);
+      return { ok: true, slots: input.slots.length };
     }),
 
   listExceptions: hrViewProc
@@ -1765,6 +1796,8 @@ const settingsRouter = router({
       if (input.defaultHolidayDays !== undefined) patch.defaultHolidayDays = input.defaultHolidayDays;
       if (input.defaultWeeklyHours !== undefined) patch.defaultWeeklyHours = String(input.defaultWeeklyHours);
       if (input.irpfDefaultPercent !== undefined) patch.irpfDefaultPercent = input.irpfDefaultPercent === null ? null : String(input.irpfDefaultPercent);
+      // Guardar (aunque no cambie nada) completa el paso «Revisa la configuración básica»
+      await markPeopleSettingsReviewed();
       if (Object.keys(patch).length === 0) return { ok: true, noChanges: true };
       await db.update(hrSettings).set(patch).where(eq(hrSettings.id, 1));
       return { ok: true };
@@ -2358,7 +2391,13 @@ const leavesRouter = router({
   }),
 });
 
+/** Primeros pasos de Personal al activar la extensión (se calculan con los datos de la empresa). */
+const onboardingRouter = router({
+  status: hrViewProc.query(async () => await getPeopleOnboarding()),
+});
+
 export const hrRouter = router({
+  onboarding: onboardingRouter,
   employees: employeesRouter,
   portal: portalRouter,
   timeClock: timeClockRouter,

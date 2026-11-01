@@ -381,7 +381,7 @@ export default function BonusManager() {
               <div>
                 <Label className="text-foreground/50 text-[10px] uppercase tracking-wider">Concepto *</Label>
                 <Input value={formConcept} onChange={e => setFormConcept(e.target.value)}
-                  placeholder="Ej: Cierre exitoso temporada verano 2026"
+                  placeholder="Ej: Objetivos del trimestre cumplidos"
                   className="bg-foreground/[0.05] border-foreground/[0.12] text-white mt-1" />
               </div>
               <div className="grid grid-cols-2 gap-3">

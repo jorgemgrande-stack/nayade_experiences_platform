@@ -1,7 +1,7 @@
 /**
  * EmployeeDetail — Ficha de empleado con edición in-place (Fase 10 RRHH).
  *
- * Tabs: Datos personales · Contrato · Documentos · Nóminas.
+ * Tabs: Datos personales · Contrato · Horario · Documentos · Nóminas.
  * Toda la gestión (editar datos, foto, subir/eliminar documentos, eliminar
  * empleado) se hace aquí — ya no se depende de la versión clásica.
  * Las mutaciones usan hr.employees.* (migradas desde operations.monitors).
@@ -24,8 +24,9 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "sonner";
+import EmployeeScheduleEditor from "@/components/people/EmployeeScheduleEditor";
 
-type TabKey = "datos" | "contrato" | "documentos" | "nominas";
+type TabKey = "datos" | "contrato" | "horario" | "documentos" | "nominas";
 
 function TabButton({ active, onClick, icon: Icon, label, badge }: {
   active: boolean; onClick: () => void; icon: React.ElementType; label: string; badge?: number;
@@ -285,6 +286,7 @@ export default function EmployeeDetail() {
       else if (data.emailSent) toast.success("Email de invitación enviado");
       else toast.success("Acceso al portal creado");
       utils.hr.employees.get.invalidate({ id: employeeId });
+      utils.hr.onboarding.status.invalidate();
     },
     onError: (e) => toast.error(e.message),
   });
@@ -387,6 +389,7 @@ export default function EmployeeDetail() {
           <div className="flex overflow-x-auto">
             <TabButton active={tab === "datos"} onClick={() => setTab("datos")} icon={User} label="Datos personales" />
             <TabButton active={tab === "contrato"} onClick={() => setTab("contrato")} icon={Briefcase} label="Contrato" />
+            <TabButton active={tab === "horario"} onClick={() => setTab("horario")} icon={Clock} label="Horario" />
             <TabButton active={tab === "documentos"} onClick={() => setTab("documentos")} icon={FileText} label="Documentos" badge={employee.documents?.length ?? 0} />
             <TabButton active={tab === "nominas"} onClick={() => setTab("nominas")} icon={Banknote} label="Nóminas" badge={employee.payrolls?.length ?? 0} />
           </div>
@@ -648,6 +651,8 @@ export default function EmployeeDetail() {
           )}
 
           {/* TAB NÓMINAS */}
+          {tab === "horario" && <EmployeeScheduleEditor employeeId={employeeId} />}
+
           {tab === "nominas" && (
             <div className="max-w-3xl">
               <div className="mb-3 px-3 py-2 rounded-lg border border-blue-500/20 bg-blue-500/5 text-xs text-foreground/70">
