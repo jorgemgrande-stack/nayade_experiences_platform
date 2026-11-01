@@ -113,8 +113,8 @@ export function deriveConnectState(item: ConnectStateInput, ctx: ConnectStateCon
   return { state: "available", reasons: [] };
 }
 
-/** Qué puede hacer la persona desde la ficha. */
-export type ConnectAction = "purchase" | "expand" | "request" | "contact" | "none";
+/** Qué puede hacer la persona desde la ficha (`interest`: «Me interesa», solo con el canal de solicitudes). */
+export type ConnectAction = "purchase" | "expand" | "request" | "interest" | "contact" | "none";
 
 /** Por qué no se puede contratar en línea aunque esté a la venta. */
 export type PurchaseBlock = "role" | "trial" | "closed" | "unavailable" | null;
@@ -126,8 +126,15 @@ export const PURCHASE_BLOCK_TEXT: Record<Exclude<PurchaseBlock, null>, string> =
   unavailable: "La contratación en línea no está disponible en este momento. Envíanos una solicitud y te contactamos.",
 };
 
-export function connectAction(o: { state: ConnectState; kind: "module" | "quantity"; purchasable: boolean; canPurchase: boolean }): ConnectAction {
+/**
+ * Acción de la ficha según el estado. «Contratar» solo si el producto se vende en línea y esta persona puede comprar
+ * ahora (compras abiertas, administración, fuera de la prueba). «Me interesa» (lo que aún no existe) solo si el plano
+ * de control acepta solicitudes; sin él, lo próximo no ofrece acción.
+ */
+export function connectAction(o: { state: ConnectState; kind: "module" | "quantity"; purchasable: boolean; canPurchase: boolean; interestEnabled?: boolean }): ConnectAction {
   switch (o.state) {
+    case "coming_soon":
+      return o.interestEnabled ? "interest" : "none";
     case "available":
       if (o.purchasable && o.canPurchase) return o.kind === "quantity" ? "expand" : "purchase";
       return "request";
@@ -168,6 +175,29 @@ export const CONNECT_BRANDS: ReadonlyArray<{ id: ConnectBrand; title: string; su
   { id: "net", title: "Elephant Net", subtitle: "Módulos sectoriales según el tipo de negocio." },
 ];
 export const brandOf = (item: { family: string; kind: "module" | "quantity" }): ConnectBrand => (categoryOf(item) === "sector" ? "net" : "connect");
+
+/** Cabeceras de cada línea en el escaparate (del catálogo central; si no vienen, las de `CONNECT_BRANDS`). */
+export type ConnectBrandHeaders = Record<ConnectBrand, { title: string; intro: string }>;
+export function brandHeaders(fromCatalog: Partial<Record<ConnectBrand, { title?: string | null; intro?: string | null } | null>> | null | undefined): ConnectBrandHeaders {
+  const out = {} as ConnectBrandHeaders;
+  for (const b of CONNECT_BRANDS) {
+    const c = fromCatalog?.[b.id];
+    out[b.id] = { title: c?.title?.trim() || b.title, intro: c?.intro?.trim() || b.subtitle };
+  }
+  return out;
+}
+
+/** Estado breve para tarjetas e insignias (la ficha explica el detalle con `reasons`). */
+export const CONNECT_STATE_SHORT: Record<ConnectState, string> = {
+  available: "Disponible",
+  active: "Contratado",
+  pending_setup: "Contratado · falta configurar",
+  activating: "Activándose",
+  not_eligible: "No disponible para tu plan",
+  on_request: "Bajo solicitud",
+  coming_soon: "Próximamente",
+  incident: "Con incidencia",
+};
 
 export type ConnectStateFilter = "all" | "mine" | "available" | "on_request" | "upcoming";
 

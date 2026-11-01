@@ -30,6 +30,15 @@ export interface ConversionSelection {
   add?: string[];
 }
 
+/** Solicitud desde el panel: quien la hace es SIEMPRE el usuario de la sesión (nunca un dato libre del navegador). */
+export interface ModuleRequestInput {
+  type: "info" | "waitlist";
+  interest: string;
+  message?: string;
+  requester: { name: string; email: string };
+  idempotencyKey: string;
+}
+
 export class CommerceError extends Error {
   constructor(
     public readonly status: number,
@@ -62,6 +71,8 @@ export interface CommerceClient {
   reopenTicket(tenantId: string, id: number, input: { reason: string; requestedBy: string }): Promise<unknown>;
   /** Catálogo de módulos y ampliaciones para el panel de la empresa (solo lectura). */
   catalog(tenantId: string): Promise<unknown>;
+  /** Solicitud de información o «me interesa» sobre un producto → oportunidad en el CRM (idempotente por clave). */
+  request(tenantId: string, input: ModuleRequestInput): Promise<unknown>;
   /** Consumo de la empresa frente a los límites de su plan (Elephant Resource Manager). */
   usage(tenantId: string): Promise<unknown>;
   /** «Mi plan»: contrato vigente, periodo, cobro y facturas de la empresa (solo lectura). */
@@ -82,7 +93,9 @@ export interface CommerceClient {
   changePlan(tenantId: string, input: { plan: "essential" | "business"; interval: "month" | "year"; idempotencyKey: string; user: string }): Promise<unknown>;
 }
 
-type Fetch = (url: string, init: { method: string; headers: Record<string, string>; body?: string; signal?: AbortSignal }) => Promise<{ status: number; json(): Promise<unknown> }>;
+const DEFAULT_ERROR = "No se pudo completar la operación";
+
+type Fetch =(url: string, init: { method: string; headers: Record<string, string>; body?: string; signal?: AbortSignal }) => Promise<{ status: number; json(): Promise<unknown> }>;
 
 export function commerceClientFromEnv(env: NodeJS.ProcessEnv = process.env, fetchImpl: Fetch = fetch as unknown as Fetch): CommerceClient | null {
   const base = (env.CP_COMMERCE_URL ?? "").trim().replace(/\/+$/, "");
@@ -103,7 +116,7 @@ export function commerceClientFromEnv(env: NodeJS.ProcessEnv = process.env, fetc
         signal: ctrl.signal,
       });
       const json = (await r.json().catch(() => null)) as { error?: string; message?: string } | null;
-      if (r.status >= 400) throw new CommerceError(r.status, json?.error ?? "error", json?.message ?? "No se pudo completar la operación");
+      if (r.status >= 400) throw new CommerceError(r.status, json?.error ?? "error", json?.message ?? DEFAULT_ERROR);
       return json;
     } catch (e) {
       if (e instanceof CommerceError) throw e;
@@ -127,7 +140,22 @@ export function commerceClientFromEnv(env: NodeJS.ProcessEnv = process.env, fetc
     openTicket: async (tenantId, input) => await call("POST", `${seg(tenantId)}/tickets`, input),
     replyTicket: async (tenantId, id, input) => await call("POST", `${seg(tenantId)}/tickets/${id}/comments`, input),
     reopenTicket: async (tenantId, id, input) => await call("POST", `${seg(tenantId)}/tickets/${id}/reopen`, input),
-    catalog: async (tenantId) => ((await call("GET", `${seg(tenantId)}/catalog`)) as { catalog: unknown }).catalog,
+    catalog: async (tenantId) => {
+      const r = (await call("GET", `${seg(tenantId)}/catalog`)) as { catalog: unknown; marketplace?: unknown; requests?: unknown };
+      // Las cabeceras del escaparate y el aviso de solicitudes pueden venir junto al catálogo: se adjuntan a él
+      if (!r.catalog || typeof r.catalog !== "object") return r.catalog;
+      const extra = Object.fromEntries((["marketplace", "requests"] as const).filter((k) => r[k] !== undefined && !(k in (r.catalog as object))).map((k) => [k, r[k]]));
+      return Object.keys(extra).length > 0 ? { ...(r.catalog as object), ...extra } : r.catalog;
+    },
+    request: async (tenantId, input) => {
+      try {
+        return ((await call("POST", `${seg(tenantId)}/requests`, input)) as { request: unknown }).request;
+      } catch (e) {
+        // 404 sin explicación = la ruta no existe todavía (un producto no visible responde 404 con su mensaje)
+        if (e instanceof CommerceError && e.status === 404 && e.message === DEFAULT_ERROR) throw new CommerceError(404, "route_missing", e.message);
+        throw e;
+      }
+    },
     usage: async (tenantId) => ((await call("GET", `${seg(tenantId)}/usage`)) as { usage: unknown }).usage,
     plan: async (tenantId) => ((await call("GET", `${seg(tenantId)}/plan`)) as { plan: unknown }).plan,
     invoiceDocument: async (tenantId, id) => ((await call("GET", `${seg(tenantId)}/invoices/${id}/document`)) as { html: string }).html,
