@@ -66,8 +66,10 @@ function readImage(v: unknown): ConnectImage | null {
   const alt = typeof o.alt === "string" ? o.alt.trim().slice(0, 300) : "";
   if (!HTTPS.test(src) || src.length > 2000 || !alt) return null;
   let srcset: string | null = null;
-  if (typeof o.srcset === "string" && o.srcset.trim() && o.srcset.length <= 4000) {
-    const parts = o.srcset.split(",").map((p) => p.trim()).filter(Boolean);
+  // El almacén del catálogo envía `srcset: {webp, avif}`; se usa la variante WebP (todos los navegadores la admiten)
+  const rawSrcset = o.srcset && typeof o.srcset === "object" && !Array.isArray(o.srcset) ? (o.srcset as Record<string, unknown>).webp : o.srcset;
+  if (typeof rawSrcset === "string" && rawSrcset.trim() && rawSrcset.length <= 4000) {
+    const parts = rawSrcset.split(",").map((p) => p.trim()).filter(Boolean);
     if (parts.length > 0 && parts.every((p) => /^https:\/\/[^\s"'<>,]+ \d{1,5}(w|(\.\d+)?x)$/.test(p))) srcset = parts.join(", ");
   }
   const width = num(o.width, 1, 10_000);
