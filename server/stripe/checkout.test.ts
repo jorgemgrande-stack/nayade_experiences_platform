@@ -60,25 +60,92 @@ describe("catálogo de Stripe", () => {
   it("productos comprables: solo módulos y ampliaciones «available» con mensual aprobado; el anual solo si existe", async () => {
     const base = await catalogOf().offer();
     const extra = (offer: unknown[]) => ({ product: async () => null, price: async () => null, offer: async () => [...base, ...offer] }) as unknown as CatalogPort;
-    const mod = (key: string, family: string, commercialStatus: string, prices: unknown[]) => ({ ...product(key, prices), family, commercialStatus });
+    const mod = (key: string, family: string, commercialStatus: string, prices: unknown[], catalogFamily?: string) => ({ ...product(key, prices), family, commercialStatus, ...(catalogFamily ? { catalogFamily } : {}) });
     const d = await desiredCatalog(
       extra([
         mod("mod-ok", "extension", "available", [price(21, "mod-ok", "monthly", 1900)]),
         mod("users", "extension", "available", [price(22, "users", "monthly", 500), price(23, "users", "yearly", 5000)]),
-        mod("mod-on-request", "extension", "on_request", [price(24, "mod-on-request", "monthly", 900)]),
+        // Ampliación «bajo solicitud»: no es una extensión de Connect, sin Price todavía
+        mod("mod-on-request", "extension", "on_request", [price(24, "mod-on-request", "monthly", 900)], "addon"),
         mod("mod-soon", "industry_module", "coming_soon", [price(25, "mod-soon", "monthly", 900)]),
         mod("svc", "service", "available", [price(26, "svc", "monthly", 900)]),
       ]),
     );
-    expect(d.slice(4).map((x) => [x.productKey, x.kind, x.amountCents, x.productName])).toEqual([
-      ["mod-ok", "monthly", 1900, "mod-ok"],
-      ["users", "monthly", 500, "users"],
-      ["users", "yearly", 5000, "users"],
+    expect(d.slice(4).map((x) => [x.productKey, x.kind, x.amountCents, x.productName, x.sellable])).toEqual([
+      ["mod-ok", "monthly", 1900, "mod-ok", true],
+      ["users", "monthly", 500, "users", true],
+      ["users", "yearly", 5000, "users", true],
     ]);
+    expect(d.slice(0, 4).every((x) => x.sellable)).toBe(true);
     await expect(desiredCatalog(extra([mod("sin-mensual", "extension", "available", [price(27, "sin-mensual", "yearly", 9000)])]))).rejects.toThrow(/mensual aprobado/);
     const gw = new FakeStripeGateway();
     const plan = await planCatalogWrites(d, gw);
     expect(plan.operations.filter((o) => o.op === "create_product").map((o) => o.productKey)).toEqual(["essential", "business", "mod-ok", "users"]);
+  });
+
+  it("extensiones de Connect «bajo solicitud» con mensual aprobado: su Product y su Price se preparan, marcados como no vendibles", async () => {
+    const base = await catalogOf().offer();
+    const ext = (key: string, commercialStatus: string, prices: unknown[], catalogFamily = "connect") => ({ ...product(key, prices), name: key === "connect-people" ? "Elephant People" : key, family: "extension", catalogFamily, commercialStatus });
+    const catalog = {
+      product: async () => null,
+      price: async () => null,
+      offer: async () => [
+        ...base,
+        ext("connect-people", "on_request", [price(31, "connect-people", "monthly", 1900)]),
+        ext("connect-pack-finance", "on_request", [price(32, "connect-pack-finance", "monthly", 4500)], "connect_bundle"),
+        // Fuera: próximamente, en preparación, sin mensual aprobado, otra moneda, con IVA incluido o módulo sectorial
+        ext("connect-soon", "coming_soon", [price(33, "connect-soon", "monthly", 2900)]),
+        ext("connect-prep", "in_preparation", [price(34, "connect-prep", "monthly", 2900)]),
+        ext("connect-sin-precio", "on_request", [price(35, "connect-sin-precio", "monthly", 1900, { status: "draft" })]),
+        ext("connect-usd", "on_request", [price(36, "connect-usd", "monthly", 1900, { currency: "USD" })]),
+        ext("connect-iva", "on_request", [price(37, "connect-iva", "monthly", 1900, { taxIncluded: true })]),
+        { ...ext("hotel-net", "on_request", [price(38, "hotel-net", "monthly", 5900)], "net_module"), family: "industry_module" },
+      ],
+    } as unknown as CatalogPort;
+    const skipped: Array<{ productKey: string; reason: string }> = [];
+    const d = await desiredCatalog(catalog, { onSkip: (s) => skipped.push(s) });
+    expect(d.slice(4).map((x) => [x.productKey, x.kind, x.amountCents, x.currency, x.interval, x.sellable, x.commercialStatus])).toEqual([
+      ["connect-people", "monthly", 1900, "EUR", "month", false, "on_request"],
+      ["connect-pack-finance", "monthly", 4500, "EUR", "month", false, "on_request"],
+    ]);
+    // Un fallo en lo que aún no se vende no bloquea el catálogo de los planes: se informa y se deja fuera
+    expect(skipped.map((s) => s.productKey).sort()).toEqual(["connect-iva", "connect-sin-precio", "connect-usd"]);
+    expect(skipped.find((s) => s.productKey === "connect-iva")!.reason).toMatch(/incluye IVA/);
+
+    // Plan de escrituras: Product propio y Price propio, mensual, sin IVA, con la lookup_key versionada
+    const gw = new FakeStripeGateway();
+    const plan = await planCatalogWrites(d, gw);
+    const people = plan.operations.filter((o) => o.productKey === "connect-people");
+    expect(people).toEqual([
+      { op: "create_product", productKey: "connect-people", sellable: false, params: { name: "Elephant People", metadata: { es_product_key: "connect-people", es_catalog: "elephant-source" } } },
+      {
+        op: "create_price",
+        lookupKey: "es:connect-people:monthly:eur:v31",
+        productKey: "connect-people",
+        sellable: false,
+        params: {
+          product: "PRODUCT:connect-people",
+          currency: "eur",
+          unit_amount: 1900,
+          recurring: { interval: "month", interval_count: 1 },
+          tax_behavior: "exclusive",
+          lookup_key: "es:connect-people:monthly:eur:v31",
+          nickname: "Elephant People · mensual",
+          metadata: { es_product_key: "connect-people", es_web_price_id: "31", es_kind: "monthly" },
+        },
+      },
+    ]);
+    // Nada en Stripe dice si se vende: ni el Product ni el Price llevan el estado comercial
+    expect(JSON.stringify(people.map((o) => o.params))).not.toMatch(/on_request|sellable|available/);
+    // Creado como dice el plan y sincronizado: enlazado (no vendible) y el plan siguiente, vacío
+    await applyPlan(gw, catalog);
+    const store = new MemoryStripeStore();
+    const r = await syncCatalog(d, gw, store, 1);
+    expect(r.missing).toEqual([]);
+    expect(r.conflicts).toEqual([]);
+    expect(r.linked.filter((l) => !l.sellable).map((l) => l.lookupKey)).toEqual(["es:connect-people:monthly:eur:v31", "es:connect-pack-finance:monthly:eur:v32"]);
+    expect((await store.priceForWebPrice(31))).toMatchObject({ lookupKey: "es:connect-people:monthly:eur:v31", status: "active" });
+    expect((await planCatalogWrites(d, gw)).operations).toEqual([]);
   });
 
   it("rechaza precios con IVA incluido o sin precio aprobado", async () => {

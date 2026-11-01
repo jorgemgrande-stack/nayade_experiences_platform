@@ -31,7 +31,7 @@ import { opsLog } from "../_core/ops/log";
 import { recordFailure } from "../_core/ops/failureAlerts";
 import type { SubscriptionService } from "../subscriptions/service";
 import type { SubscriptionStore } from "../subscriptions/store";
-import { PURCHASABLE_FAMILIES } from "./catalog";
+import { PURCHASABLE_FAMILIES, SELF_SERVICE_PLANS } from "./catalog";
 import type { StripeBillingMode, StripeMode } from "./config";
 import type { GwInvoice, GwSubscription, StripeGateway } from "./gateway";
 import { intervalCompatible, itemChanges, supportsPendingUpdate } from "./multipart";
@@ -208,6 +208,8 @@ export class ModulePurchaseService {
 
   /** Petición nueva (la vigente + lo pedido), validada con el catálogo y el cotizador. */
   private async plan(current: CommercialOrder, sub: GwSubscription, input: PurchaseInput) {
+    // Un complemento se añade a Essential o Business (nunca sustituye al plan ni va sin él)
+    if (!(SELF_SERVICE_PLANS as readonly string[]).includes(current.request.plan)) throw new PurchaseError("unavailable", "Los complementos en línea se añaden a Essential o Business: con tu plan los contrata tu gestor");
     const add = Array.from(new Set((input.add ?? []).map((k) => String(k).trim()).filter(Boolean)));
     if (add.length > 20) throw new PurchaseError("invalid_input", "Demasiados productos en una compra");
     const have = new Set(current.request.items.map((i) => i.key));

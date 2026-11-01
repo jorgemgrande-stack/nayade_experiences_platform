@@ -5,7 +5,13 @@
  *    tiene Price de autoservicio.
  *  - Comprables desde la plataforma (módulos y ampliaciones por cantidad): SOLO los productos en estado
  *    comercial «available» (terminados, probados y aprobados para venta libre) con precio mensual aprobado;
- *    el anual solo si está aprobado (nunca se inventa). Lo «bajo solicitud» o «próximamente» no tiene Price.
+ *    el anual solo si está aprobado (nunca se inventa).
+ *  - Extensiones de pago «bajo solicitud» (regla del propietario, 01/11/2026): cada una tiene su propio Product
+ *    y su propio Price recurrente, que se crean y enlazan ANTES de abrir la venta, siempre que tengan un precio
+ *    mensual aprobado en EUR. Entran marcadas como NO vendibles (`sellable: false`): tener el Price enlazado no
+ *    las hace comprables; quién puede comprar lo decide el servidor con el estado comercial del catálogo (nunca
+ *    Stripe). Lo «próximamente», «en preparación», los módulos sectoriales no disponibles y lo que no tenga
+ *    precio aprobado siguen sin Price.
  *  - La fuente del importe es el precio APROBADO (`web_prices`). En Stripe, el Price se identifica por
  *    una `lookup_key` estable derivada de ese precio: es:<producto>:<kind>:<moneda>:v<web_price_id>.
  *    Un precio aprobado nuevo es otra clave y otro Price; nunca se reutiliza un Price con otro importe.
@@ -29,7 +35,7 @@ export const STRIPE_PRODUCT_NAME: Record<SelfServicePlan, string> = {
 const KIND_INTERVAL = { monthly: "month", yearly: "year" } as const;
 
 export interface DesiredPrice {
-  /** Plan de autoservicio o producto comprable («available»). */
+  /** Plan de autoservicio, producto comprable («available») o extensión «bajo solicitud» preparada. */
   productKey: string;
   productName: string;
   webPriceId: number;
@@ -38,6 +44,14 @@ export interface DesiredPrice {
   amountCents: number;
   currency: string;
   lookupKey: string;
+  /**
+   * ¿Se cobra en línea? Planes: sí (Checkout del pedido contratado; el autoservicio público exige además el
+   * plan «available»). Productos: solo los «available». Una extensión «bajo solicitud» tiene Price enlazado
+   * pero NO es vendible.
+   */
+  sellable: boolean;
+  /** Estado comercial del producto en el catálogo publicado cuando se calculó. */
+  commercialStatus: string;
 }
 
 export class StripeCatalogError extends Error {
@@ -53,10 +67,30 @@ export const lookupKeyFor = (productKey: string, kind: string, currency: string,
 export const PURCHASABLE_FAMILIES: ReadonlySet<string> = new Set(["extension", "industry_module"]);
 
 /**
- * Precios que deben existir en Stripe, sacados del catálogo publicado y aprobado. Exige los cuatro de los
- * planes; añade los de los productos comprables («available»).
+ * Familias del catálogo cuyas extensiones de pago «bajo solicitud» llevan ya su Product y su Price (no vendibles):
+ * las extensiones de Elephant Connect y sus paquetes (regla del propietario, 01/11/2026). Ampliaciones por
+ * cantidad, servicios y módulos sectoriales no entran hasta que se decida.
  */
-export async function desiredCatalog(catalog: CatalogPort, opts: { includeInternal?: boolean } = {}): Promise<DesiredPrice[]> {
+export const PREPARED_CATALOG_FAMILIES: ReadonlySet<string> = new Set(["connect", "connect_bundle"]);
+
+/** ¿Extensión de pago «bajo solicitud» cuyo Price se prepara antes de abrir la venta? */
+const isPrepared = (p: { family: string; catalogFamily?: string; commercialStatus: string }) =>
+  p.commercialStatus === "on_request" && p.family === "extension" && !!p.catalogFamily && PREPARED_CATALOG_FAMILIES.has(p.catalogFamily);
+
+/** Extensión «bajo solicitud» que se queda fuera del catálogo deseado y por qué. */
+export interface SkippedProduct {
+  productKey: string;
+  reason: string;
+}
+
+/**
+ * Precios que deben existir en Stripe, sacados del catálogo publicado y aprobado. Exige los cuatro de los
+ * planes; añade los de los productos comprables («available», vendibles) y los de las extensiones de pago
+ * «bajo solicitud» con mensual aprobado (no vendibles, para crear y enlazar su Price antes de abrir la venta).
+ * Un error en un producto vendible lo detiene todo (no se cobra nada dudoso); uno en una extensión «bajo
+ * solicitud» solo la deja fuera (`onSkip`), para no bloquear el cobro de los planes por algo que aún no se vende.
+ */
+export async function desiredCatalog(catalog: CatalogPort, opts: { includeInternal?: boolean; onSkip?: (s: SkippedProduct) => void } = {}): Promise<DesiredPrice[]> {
   const offer = await catalog.offer();
   const out: DesiredPrice[] = [];
   for (const plan of SELF_SERVICE_PLANS) {
@@ -68,24 +102,34 @@ export async function desiredCatalog(catalog: CatalogPort, opts: { includeIntern
       const p = approved[0];
       if (p.taxIncluded) throw new StripeCatalogError(`El precio ${p.id} incluye IVA: los Prices de Stripe se crean sin IVA (tax_behavior exclusive)`);
       if (!Number.isInteger(p.amountCents) || p.amountCents <= 0) throw new StripeCatalogError(`Importe no válido en el precio ${p.id}`);
-      out.push({ productKey: plan, productName: STRIPE_PRODUCT_NAME[plan], webPriceId: p.id, kind, interval: KIND_INTERVAL[kind], amountCents: p.amountCents, currency: "EUR", lookupKey: lookupKeyFor(plan, kind, "EUR", p.id) });
+      out.push({ productKey: plan, productName: STRIPE_PRODUCT_NAME[plan], webPriceId: p.id, kind, interval: KIND_INTERVAL[kind], amountCents: p.amountCents, currency: "EUR", lookupKey: lookupKeyFor(plan, kind, "EUR", p.id), sellable: true, commercialStatus: product.commercialStatus });
     }
   }
   // Productos internos de pruebas: solo si se piden expresamente (catálogo del sandbox), nunca en live
-  for (const product of offer.filter((p) => p.commercialStatus === "available" && PURCHASABLE_FAMILIES.has(p.family) && (!p.internalOnly || opts.includeInternal))) {
-    for (const kind of ["monthly", "yearly"] as const) {
-      const approved = product.prices.filter((p) => p.kind === kind && p.status === "approved" && p.currency.toUpperCase() === "EUR");
-      // Sin mensual aprobado no se vende; el anual es opcional (decisión A: nunca se inventa un importe)
-      if (!approved.length) {
-        if (kind === "monthly") throw new StripeCatalogError(`«${product.key}» está disponible pero no tiene precio mensual aprobado en EUR`);
-        continue;
+  const listed = offer.filter((p) => PURCHASABLE_FAMILIES.has(p.family) && (p.commercialStatus === "available" || isPrepared(p)) && (!p.internalOnly || opts.includeInternal));
+  for (const product of listed) {
+    const sellable = product.commercialStatus === "available";
+    const entries: DesiredPrice[] = [];
+    try {
+      for (const kind of ["monthly", "yearly"] as const) {
+        const approved = product.prices.filter((p) => p.kind === kind && p.status === "approved" && p.currency.toUpperCase() === "EUR");
+        // Sin mensual aprobado no se vende ni se prepara; el anual es opcional (decisión A: nunca se inventa un importe)
+        if (!approved.length) {
+          if (kind === "monthly") throw new StripeCatalogError(`«${product.key}» está ${sellable ? "disponible" : "bajo solicitud"} pero no tiene precio mensual aprobado en EUR`);
+          continue;
+        }
+        if (approved.length > 1) throw new StripeCatalogError(`«${product.key}» tiene ${approved.length} precios ${kind} aprobados en EUR`);
+        const p = approved[0];
+        if (p.taxIncluded) throw new StripeCatalogError(`El precio ${p.id} incluye IVA: los Prices de Stripe se crean sin IVA (tax_behavior exclusive)`);
+        if (!Number.isInteger(p.amountCents) || p.amountCents <= 0) throw new StripeCatalogError(`Importe no válido en el precio ${p.id}`);
+        entries.push({ productKey: product.key, productName: product.name, webPriceId: p.id, kind, interval: KIND_INTERVAL[kind], amountCents: p.amountCents, currency: "EUR", lookupKey: lookupKeyFor(product.key, kind, "EUR", p.id), sellable, commercialStatus: product.commercialStatus });
       }
-      if (approved.length > 1) throw new StripeCatalogError(`«${product.key}» tiene ${approved.length} precios ${kind} aprobados en EUR`);
-      const p = approved[0];
-      if (p.taxIncluded) throw new StripeCatalogError(`El precio ${p.id} incluye IVA: los Prices de Stripe se crean sin IVA (tax_behavior exclusive)`);
-      if (!Number.isInteger(p.amountCents) || p.amountCents <= 0) throw new StripeCatalogError(`Importe no válido en el precio ${p.id}`);
-      out.push({ productKey: product.key, productName: product.name, webPriceId: p.id, kind, interval: KIND_INTERVAL[kind], amountCents: p.amountCents, currency: "EUR", lookupKey: lookupKeyFor(product.key, kind, "EUR", p.id) });
+    } catch (e) {
+      if (sellable || !(e instanceof StripeCatalogError)) throw e;
+      opts.onSkip?.({ productKey: product.key, reason: e.message });
+      continue;
     }
+    out.push(...entries);
   }
   return out;
 }
@@ -109,8 +153,8 @@ export function checkPrice(d: DesiredPrice, p: GwPrice): PriceCheck {
 export interface CatalogWritePlan {
   /** Operaciones exactas que debe ejecutar una persona (en el sandbox). Vacío si no falta nada. */
   operations: Array<
-    | { op: "create_product"; productKey: string; params: { name: string; metadata: Record<string, string> } }
-    | { op: "create_price"; lookupKey: string; productKey: string; params: { product: string; currency: string; unit_amount: number; recurring: { interval: "month" | "year"; interval_count: 1 }; tax_behavior: "exclusive"; lookup_key: string; nickname: string; metadata: Record<string, string> } }
+    | { op: "create_product"; productKey: string; sellable: boolean; params: { name: string; metadata: Record<string, string> } }
+    | { op: "create_price"; lookupKey: string; productKey: string; sellable: boolean; params: { product: string; currency: string; unit_amount: number; recurring: { interval: "month" | "year"; interval_count: 1 }; tax_behavior: "exclusive"; lookup_key: string; nickname: string; metadata: Record<string, string> } }
   >;
   /** Prices que ya existen y coinciden. */
   ready: string[];
@@ -135,8 +179,8 @@ export async function planCatalogWrites(desired: DesiredPrice[], gw: StripeGatew
   }
   for (const key of Array.from(new Set(desired.map((d) => d.productKey)))) {
     if (productIdOf.has(key)) continue;
-    const name = desired.find((d) => d.productKey === key)!.productName;
-    plan.operations.push({ op: "create_product", productKey: key, params: { name, metadata: { es_product_key: key, es_catalog: "elephant-source" } } });
+    const first = desired.find((d) => d.productKey === key)!;
+    plan.operations.push({ op: "create_product", productKey: key, sellable: first.sellable, params: { name: first.productName, metadata: { es_product_key: key, es_catalog: "elephant-source" } } });
   }
   for (const d of desired) {
     const p = byKey.get(d.lookupKey);
@@ -150,6 +194,8 @@ export async function planCatalogWrites(desired: DesiredPrice[], gw: StripeGatew
       op: "create_price",
       lookupKey: d.lookupKey,
       productKey: d.productKey,
+      // Informativo para quien lo ejecuta: NO va a Stripe (la venta la abre el estado comercial del catálogo)
+      sellable: d.sellable,
       params: {
         product: productIdOf.get(d.productKey) ?? `PRODUCT:${d.productKey}`,
         currency: d.currency.toLowerCase(),
@@ -166,7 +212,7 @@ export async function planCatalogWrites(desired: DesiredPrice[], gw: StripeGatew
 }
 
 export interface CatalogSyncReport {
-  linked: Array<{ lookupKey: string; webPriceId: number; stripePriceId: string; stripeProductId: string }>;
+  linked: Array<{ lookupKey: string; webPriceId: number; stripePriceId: string; stripeProductId: string; sellable: boolean }>;
   missing: string[];
   conflicts: Array<{ lookupKey: string; priceId: string; reasons: string[] }>;
 }
@@ -196,7 +242,7 @@ export async function syncCatalog(desired: DesiredPrice[], gw: StripeGateway, st
       continue;
     }
     await store.upsertPrice({ webPriceId: d.webPriceId, stripeProductId: p.productId, stripePriceId: p.id, lookupKey: d.lookupKey, now });
-    report.linked.push({ lookupKey: d.lookupKey, webPriceId: d.webPriceId, stripePriceId: p.id, stripeProductId: p.productId });
+    report.linked.push({ lookupKey: d.lookupKey, webPriceId: d.webPriceId, stripePriceId: p.id, stripeProductId: p.productId, sellable: d.sellable });
   }
   return report;
 }

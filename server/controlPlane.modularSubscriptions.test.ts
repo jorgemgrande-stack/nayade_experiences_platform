@@ -150,7 +150,7 @@ beforeAll(async () => {
     else gw.addPrice({ id: `price_test_${op.params.metadata.es_web_price_id}`, productId: `prod_test_${op.productKey}`, lookupKey: op.params.lookup_key, unitAmount: op.params.unit_amount, interval: op.params.recurring.interval, metadata: op.params.metadata });
   }
   // 4 de los planes + 4 mensuales de los productos en venta + el anual de connect-people
-  expect((await syncCatalog(desired, gw, stripeStore, clock)).linked).toHaveLength(4 + FOR_SALE.length + 1);
+  expect((await syncCatalog(desired, gw, stripeStore, clock)).linked.filter((l) => l.sellable)).toHaveLength(4 + FOR_SALE.length + 1);
   crm = new CrmService({ store: crmStore, activation: createContractActivation({ provisioning, platformDomain: "elephant.test", actor: { type: "operator", id: "test" } }), now: () => clock });
   const all = ["crm:read", "crm:write", "web:read", "provisioning:write", "subscriptions:read", "subscriptions:write", "entitlements:write", "tenants:read", "orders:read", "orders:write", "orders:approve", "billing:write", "ops:read"] as const;
   const app = createControlPlaneApp({
@@ -359,11 +359,11 @@ describe("suscripciones modulares: plan + módulos + ampliaciones en una suscrip
   });
 
   it("salvaguardas: producto sin precio enlazado, suscripción en modo clásico y aislamiento entre empresas", async () => {
-    // Un módulo «bajo solicitud» no tiene precio en Stripe: no hay enlace de pago (nada se cobra distinto de lo contratado)
+    // Un módulo «bajo solicitud» no se cobra en línea aunque tenga su Price preparado y enlazado: no hay enlace de pago
     const pos = await contracted("Modular Bajo Solicitud SL", { plan: "essential", interval: "month", items: [{ key: "connect-pos" }] });
     const blocked = await call("POST", `/stripe/orders/${pos.orderId}/checkout`);
     expect(blocked.status).toBe(409);
-    expect(blocked.json.message).toMatch(/«Elephant POS[^»]*» no tiene precio enlazado en Stripe/);
+    expect(blocked.json.message).toMatch(/«Elephant POS[^»]*» todavía no se contrata en línea/);
     // Una suscripción anual antigua en modo clásico no admite partidas mensuales: se explica y no se toca Stripe
     const { orderId } = await contracted("Modular Clásica SL", { plan: "essential", interval: "year", items: [] });
     const s = await ok(call("POST", `/stripe/orders/${orderId}/checkout`));

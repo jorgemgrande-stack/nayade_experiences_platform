@@ -10,6 +10,8 @@ export interface CatalogProduct {
   key: string;
   name: string;
   family: Family;
+  /** Familia del catálogo de Elephant Source (`connect`, `addon`, `net_module`…), antes de traducirla a la contractual. */
+  catalogFamily?: string;
   technicalStatus: "available" | "partial" | "planned";
   /** Estado comercial del catálogo de Elephant Source (las entradas anteriores: «on_request»). */
   commercialStatus: "unpublished" | "coming_soon" | "in_preparation" | "on_request" | "available";
@@ -101,6 +103,7 @@ export function catalogFromWebStore(store: WebStore): CatalogPort {
       key: e.key,
       name: p.name,
       family,
+      catalogFamily: e.family,
       technicalStatus: p.technicalStatus,
       commercialStatus: p.catalog?.commercialStatus ?? "on_request",
       internalOnly: p.catalog?.internalOnly === true,
