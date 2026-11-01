@@ -817,7 +817,7 @@ export default function TpvScreen() {
                   <p>No hay productos disponibles</p>
                   {licensed && user?.role === "admin" && (
                     <p className="text-xs mt-2">
-                      Marca tus productos como «venta presencial» en{" "}
+                      Activa «Vendible en TPV» en la ficha de tus productos, en{" "}
                       <Link href="/admin/productos/experiencias" className="underline underline-offset-4 text-violet-300">Productos y servicios</Link>.
                     </p>
                   )}

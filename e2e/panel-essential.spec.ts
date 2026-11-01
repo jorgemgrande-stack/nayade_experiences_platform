@@ -32,9 +32,28 @@ const licensed = (endsAt: number) => ({
   ],
   upgradeUrl: "https://elephant.example/planes",
 });
+/** Asistente de una empresa nueva: `explored` = ya pasó la bienvenida («Explorar primero»). */
+const wizardStatus = (explored: boolean) => {
+  const ids = ["welcome", "company", "fiscal", "brand", "activity", "client", "product", "web", "operation", "comms", "finish"];
+  const done = new Set(explored ? ["welcome", "fiscal"] : ["fiscal"]);
+  const steps = ids.map((id) => ({ id, status: done.has(id) ? "done" : "pending", recommended: false, byData: id === "fiscal" }));
+  const plan = { steps, hidden: ["sector"], nextStep: explored ? "company" : "welcome", percent: explored ? 18 : 9, done: done.size, total: ids.length, completedAt: null };
+  const stepMap = Object.fromEntries(ids.map((id) => [id, { status: done.has(id) ? "done" : "pending", at: null }]));
+  return {
+    progress: { version: 1, steps: stepMap, completedAt: null, updatedAt: explored ? Date.now() : null },
+    nextStep: plan.nextStep, percent: plan.percent, plan,
+    facts: { identity: false, fiscal: true, brand: false, activity: false, clients: 0, products: 0, quotes: 0, comms: false },
+    company: { tradeName: "Taller Ejemplo", legalName: "Taller Ejemplo SL", taxId: "B00000000", address: "", postalCode: "", city: "", province: "", country: "ES", currency: "EUR", timezone: "Europe/Madrid", publicPhone: "", publicEmail: "", publicLocation: "" },
+    comms: { fromName: "", replyTo: "", whatsapp: "" },
+    activity: null, profile: null, activities: ["comercio", "servicios", "web"], sectorModules: [],
+    seats: { used: 1, limit: 3 },
+    licence: { plan: "essential", userLimit: 3, endsAt: null, daysLeft: 10, readOnly: false },
+    fiscalFromRegistry: true,
+  };
+};
 const single = { mode: "single", licensing: "legacy", plan: null, state: "none", trial: null, capabilities: [], visible: [], readOnly: [], limits: [], upgradeUrl: null };
 
-async function mockTrpc(page: Page, overview: unknown, opts: { install?: "single" | "multi"; failing?: string[]; navigation?: unknown } = {}) {
+async function mockTrpc(page: Page, overview: unknown, opts: { install?: "single" | "multi"; failing?: string[]; navigation?: unknown; wizard?: unknown } = {}) {
   const failing = new Set(opts.failing ?? []);
   const data: Record<string, unknown> = {
     "auth.me": { id: 1, openId: "o", name: "Ana Pérez", email: "ana@empresa.example", role: "admin" },
@@ -53,6 +72,7 @@ async function mockTrpc(page: Page, overview: unknown, opts: { install?: "single
     "products.getLocations": [],
     "admin.getUsers": [{ id: 1, name: "Ana Pérez", email: "ana@empresa.example", role: "admin", isActive: true }],
     "cms.getSiteSettings": {},
+    "setupWizard.status": opts.wizard ?? null,
   };
   await page.route("**/api/trpc/**", async (route) => {
     const url = new URL(route.request().url());
@@ -67,8 +87,8 @@ async function mockTrpc(page: Page, overview: unknown, opts: { install?: "single
 }
 
 test.describe("Panel Essential (empresa nueva con licencias)", () => {
-  test("menú por tareas, sin módulos no contratados, e inicio con primeros pasos", async ({ page }) => {
-    await mockTrpc(page, licensed(Date.now() + 10 * DAY));
+  test("menú por tareas, sin módulos no contratados, e inicio con el estado de la configuración", async ({ page }) => {
+    await mockTrpc(page, licensed(Date.now() + 10 * DAY), { wizard: wizardStatus(true) });
     await page.setViewportSize({ width: 1366, height: 900 });
     await page.goto("/admin");
     const nav = page.getByRole("navigation", { name: "Menú del panel" });
@@ -77,10 +97,22 @@ test.describe("Panel Essential (empresa nueva con licencias)", () => {
     for (const hidden of ["Lego Packs", "Gestoría e Impuestos", "Personal", "Hotel", "Contabilidad"]) await expect(nav.getByText(hidden, { exact: true })).toHaveCount(0);
     await expect(page.getByRole("link", { name: /Prueba: 10 días/ })).toBeVisible();
     await expect(page.getByRole("heading", { name: "Hola, Ana" })).toBeVisible();
-    await expect(page.getByRole("heading", { name: "Primeros pasos" })).toBeVisible();
+    // Desde el onboarding nuevo, el Inicio muestra el estado del asistente (ya no un bloque «Primeros pasos»)
+    await expect(page.getByRole("heading", { name: "Estado de la configuración" })).toBeVisible();
+    await expect(page.getByRole("link", { name: /Continuar: Identidad de empresa/ })).toHaveAttribute("href", "/admin/primeros-pasos");
     await expect(page.getByRole("navigation", { name: "Accesos rápidos" }).getByRole("link", { name: "Nuevo cliente" })).toBeVisible();
     await expect(page.getByText("No tienes nada pendiente.")).toBeVisible();
     await page.screenshot({ path: "test-results/panel-essential-inicio-escritorio.png", fullPage: true });
+  });
+
+  test("primera entrada del administrador: bienvenida a pantalla completa con «Configurar mi empresa» y «Explorar primero»", async ({ page }) => {
+    await mockTrpc(page, licensed(Date.now() + 10 * DAY), { wizard: wizardStatus(false) });
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.goto("/admin");
+    await expect(page.getByRole("button", { name: /Configurar mi empresa/ }).or(page.getByRole("link", { name: /Configurar mi empresa/ }))).toBeVisible();
+    await expect(page.getByRole("button", { name: "Explorar primero" })).toBeVisible();
+    await expect(page.getByText(/Taller Ejemplo/).first()).toBeVisible();
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
   });
 
   test("página Suscripción: plan, prueba, límites y ampliar", async ({ page }) => {
