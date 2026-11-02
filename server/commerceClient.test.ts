@@ -106,9 +106,9 @@ describe("cliente de compras del Core", () => {
   it("reintento de la activación: ruta con el tenant de la sesión, solo la clave; 200 → active, 202 → resumed o in_progress", async () => {
     const seen: Array<{ url: string; method: string; headers: Record<string, string>; body?: string }> = [];
     const replies: Array<{ status: number; body: unknown }> = [
-      { status: 200, body: { activation: { state: "active" } } },
-      { status: 202, body: { outcome: "resumed" } },
-      { status: 202, body: { outcome: "in_progress" } },
+      { status: 200, body: { status: "active", orderId: 7, state: "active", error: null, retryAt: null } },
+      { status: 202, body: { status: "resumed", orderId: 7, state: "licensed", error: null, retryAt: null } },
+      { status: 202, body: { status: "in_progress", orderId: 7, state: "subscribed", error: null, retryAt: null } },
       { status: 202, body: null },
     ];
     const c = commerceClientFromEnv(env(), async (url, init) => {

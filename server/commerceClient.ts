@@ -104,11 +104,10 @@ export interface CommerceClient {
 const DEFAULT_ERROR = "No se pudo completar la operación";
 
 /** 202 del reintento: `resumed` (reanudada ahora) o `in_progress` (ya en marcha). Sin dato reconocible, en marcha. */
+/** 202 del canal (#597): `status` es «resumed» o «in_progress»; el estado visible se lee después en el catálogo del panel. */
 function retryOutcome(json: unknown): "resumed" | "in_progress" {
-  const o = (json && typeof json === "object" ? json : {}) as Record<string, unknown>;
-  const nested = [o.retry, o.activation].filter((x): x is Record<string, unknown> => !!x && typeof x === "object");
-  const said = [o, ...nested].flatMap((x) => [x.outcome, x.result, x.status]);
-  return said.includes("resumed") ? "resumed" : "in_progress";
+  const status = json && typeof json === "object" ? (json as { status?: unknown }).status : undefined;
+  return status === "resumed" ? "resumed" : "in_progress";
 }
 
 type Fetch =(url: string, init: { method: string; headers: Record<string, string>; body?: string; signal?: AbortSignal }) => Promise<{ status: number; json(): Promise<unknown> }>;
