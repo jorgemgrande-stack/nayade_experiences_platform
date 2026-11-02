@@ -77,10 +77,12 @@ import type { FinanceTaxStore, ObligationQuery } from "./taxStore";
 import {
   ADJUSTMENT_KINDS,
   INFORMATIVE_MODELS,
+  OUTCOMES,
   MODEL_NAMES,
   OPEN_STATUSES,
   PAYMENT_ACCOUNT,
   PRESENTED_STATUSES,
+  type Outcome,
   type AdjustmentKind,
   type CorporateEntryOrigin,
   type CorporateEntryRecord,
@@ -171,6 +173,24 @@ export interface PresentInput {
   refund?: boolean;
   /** Resultado a ingresar domiciliado en la cuenta (queda «domiciliado» hasta registrar el cargo). */
   directDebit?: boolean;
+}
+
+/**
+ * Declaración ya presentada fuera del sistema (por la gestoría) que se registra a posteriori con los importes DECLARADOS
+ * y su justificante oficial: no se recalcula nada desde el libro (que puede no tener aún la actividad de ese periodo).
+ */
+export interface FiledInput {
+  presentedOn: string;
+  receiptNumber: string;
+  resultCents: number;
+  outcome: Outcome;
+  /** 303: bases y cuotas declaradas (devengado − deducible − compensado = resultado). */
+  vat?: { salesBaseCents: number; outputVatCents: number; purchasesBaseCents: number; inputVatCents: number; compensatedCents?: number } | null;
+  /** 111/115: perceptores, base y retenciones declaradas (retenciones = resultado). */
+  withholding?: { recipients: number; baseCents: number; withheldCents: number } | null;
+  directDebit?: boolean;
+  note?: string | null;
+  document?: { filename: string; contentBase64: string } | null;
 }
 
 export interface PaymentInput {
@@ -802,6 +822,50 @@ export class FinanceTaxService {
     if (!ok) throw new FinanceError("conflict", "La obligación ha cambiado: recárgala");
     await this.log(o, actor, "present", to, text(i.note, 500), { receiptNumber: receipt, documentId, settlementEntryId, hash: draft.hash, resultCents: draft.resultCents });
     await this.audit(actor, "tax.obligation.present", "tax_obligation", id, { key: o.key, receiptNumber: receipt, settlementEntryId, resultCents: draft.resultCents });
+    return (await this.s.getObligation(id))!;
+  }
+
+  /**
+   * Registra una declaración presentada fuera del sistema con los importes declarados y su justificante oficial (sin
+   * borrador calculado ni puerta de validación: ya está presentada). En un 303 contabiliza su liquidación con lo
+   * declarado (`tax:303:<año>:<periodo>`: Debe 477 devengado · Haber 472 deducible · Haber 4750 resultado), que es lo
+   * que el pago salda; ingresos y gastos NO se generan desde la declaración. Idempotente por obligación.
+   */
+  async registerFiled(id: number, i: FiledInput, actor: FinanceActor) {
+    const o = await this.mustObligation(id);
+    if (PRESENTED_STATUSES.includes(o.status) || o.status === "pagado" || o.status === "aplazado") throw new FinanceError("invalid_state", "La obligación ya está presentada");
+    if (!["pendiente", "borrador", "revisado"].includes(o.status)) throw new FinanceError("invalid_state", `No se registra una presentación sobre una obligación ${o.status}`);
+    if (!isValidDate(i.presentedOn) || i.presentedOn > this.today()) throw bad("Fecha de presentación no válida (AAAA-MM-DD, no futura)");
+    const receipt = text(i.receiptNumber, 100);
+    if (!receipt) throw bad("Indica el número de justificante de la presentación");
+    if (!Number.isSafeInteger(i.resultCents)) throw bad("El resultado es un importe en céntimos");
+    if (!OUTCOMES.includes(i.outcome)) throw bad("Resultado de la declaración no válido");
+    if (i.outcome === "a_ingresar" && i.resultCents <= 0) throw bad("Un resultado a ingresar es mayor que cero");
+    let settlementEntryId: number | null = null;
+    const declared: Record<string, unknown> = { declared: true, resultCents: i.resultCents, outcome: i.outcome };
+    if (o.model === "303") {
+      const v = i.vat;
+      if (!v) throw bad("En un 303 indica las bases y cuotas declaradas");
+      const comp = v.compensatedCents ?? 0;
+      for (const x of [v.salesBaseCents, v.outputVatCents, v.purchasesBaseCents, v.inputVatCents, comp]) if (!Number.isSafeInteger(x)) throw bad("Los importes del 303 son céntimos enteros");
+      if (v.outputVatCents - v.inputVatCents - comp !== i.resultCents) throw bad("El IVA devengado menos el deducible (y lo compensado) no es el resultado declarado");
+      Object.assign(declared, { salesBaseCents: v.salesBaseCents, outputVatCents: v.outputVatCents, purchasesBaseCents: v.purchasesBaseCents, inputVatCents: v.inputVatCents, compensatedCents: comp });
+      const e = vatSettlementEntry({ year: o.year, period: o.period, date: o.periodTo, devengadoCents: v.outputVatCents, deducibleCents: v.inputVatCents, compensadoCents: comp, resultCents: i.resultCents });
+      if (e) settlementEntryId = (await this.d.finance.postGenerated(e, actor)).entry.id;
+    } else if (o.model === "111" || o.model === "115") {
+      const w = i.withholding;
+      if (!w) throw bad(`En un ${o.model} indica los perceptores, la base y las retenciones declaradas`);
+      if (!Number.isSafeInteger(w.recipients) || w.recipients < 0 || !Number.isSafeInteger(w.baseCents) || !Number.isSafeInteger(w.withheldCents)) throw bad("Perceptores, base y retenciones son enteros (céntimos)");
+      if (w.withheldCents !== i.resultCents) throw bad("Las retenciones declaradas no son el resultado");
+      Object.assign(declared, { recipients: w.recipients, baseCents: w.baseCents, withheldCents: w.withheldCents });
+    }
+    let documentId: number | null = null;
+    if (i.document) documentId = (await this.d.documents.uploadDocument({ ownerType: "tax_obligation", ownerId: id, filename: i.document.filename, contentBase64: i.document.contentBase64 }, actor)).id;
+    const to: ObligationStatus = INFORMATIVE_MODELS.includes(o.model) ? "presentado" : i.outcome === "a_ingresar" ? (i.directDebit ? "domiciliado" : "presentado") : i.outcome === "a_compensar" ? "a_compensar" : i.outcome === "sin_actividad" ? "sin_actividad" : "presentado";
+    const ok = await this.s.transition(id, [o.status], to, { presentedAt: this.now(), presentedBy: actor.by, presentedOn: i.presentedOn, presentedAmountCents: i.resultCents, receiptRef: receipt, receiptDocumentId: documentId, settlementEntryId, amountCents: i.resultCents, outcome: i.outcome }, this.now());
+    if (!ok) throw new FinanceError("conflict", "La obligación ha cambiado: recárgala");
+    await this.log(o, actor, "present", to, text(i.note, 500) ?? "Presentación registrada a posteriori con los importes declarados", { receiptNumber: receipt, documentId, settlementEntryId, ...declared });
+    await this.audit(actor, "tax.obligation.register_filed", "tax_obligation", id, { key: o.key, receiptNumber: receipt, settlementEntryId, resultCents: i.resultCents });
     return (await this.s.getObligation(id))!;
   }
 
