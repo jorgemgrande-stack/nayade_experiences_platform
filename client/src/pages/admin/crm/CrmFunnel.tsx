@@ -131,7 +131,7 @@ function StagesDialog({ open, onClose, stages }: { open: boolean; onClose: () =>
               {stages.map((s, i) => (
                 <li key={s.id} className="flex items-center gap-2 px-3 py-2 text-sm">
                   <StageDot color={s.color} />
-                  <span className="min-w-0 flex-1 truncate font-medium text-foreground">{s.name}</span>
+                  <span className="min-w-0 flex-1 font-medium text-foreground truncate">{s.name}</span>
                   <span className="text-xs text-muted-foreground">{STAGE_KIND_LABELS[s.kind]} · {s.probability} %</span>
                   <Button size="sm" variant="ghost" disabled={i === 0 || reorder.isPending} onClick={() => move(i, -1)} aria-label={`Subir la etapa ${s.name}`}><ArrowUp className="h-4 w-4" aria-hidden="true" /></Button>
                   <Button size="sm" variant="ghost" disabled={i === stages.length - 1 || reorder.isPending} onClick={() => move(i, 1)} aria-label={`Bajar la etapa ${s.name}`}><ArrowDown className="h-4 w-4" aria-hidden="true" /></Button>
@@ -276,7 +276,7 @@ export default function CrmFunnel() {
                     <header className="space-y-1 border-b border-border px-3 py-2">
                       <div className="flex items-center gap-2">
                         <StageDot color={s.color} />
-                        <h2 className="min-w-0 flex-1 truncate text-sm font-semibold text-foreground">{s.name}</h2>
+                        <h2 className="min-w-0 flex-1 text-sm font-semibold text-foreground truncate">{s.name}</h2>
                         <span className="text-xs text-muted-foreground">{s.probability} %</span>
                       </div>
                       <p className="text-xs text-muted-foreground tabular-nums">
@@ -297,14 +297,14 @@ export default function CrmFunnel() {
                           onDragEnd={() => setDragging(null)}
                           className={cn("rounded-xl border border-border bg-card p-3 text-sm shadow-sm", canMove && "cursor-grab active:cursor-grabbing", dragging === c.id && "opacity-50")}
                         >
-                          <Link href={`/admin/crm?tab=leads&search=${encodeURIComponent(c.email)}`} className="block truncate font-medium text-foreground underline-offset-4 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                          <Link href={`/admin/crm?tab=leads&search=${encodeURIComponent(c.email)}`} className="block font-medium text-foreground underline-offset-4 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring truncate">
                             {c.name}
                           </Link>
-                          {c.company && <p className="truncate text-xs text-muted-foreground">{c.company}</p>}
+                          {c.company && <p className="text-xs text-muted-foreground truncate">{c.company}</p>}
                           <p className="mt-1 text-xs tabular-nums text-foreground">
                             {money(c.amount)} <span className="text-muted-foreground">· {c.probability} %</span>
                           </p>
-                          {c.ownerName && <p className="truncate text-xs text-muted-foreground">Responsable: {c.ownerName}</p>}
+                          {c.ownerName && <p className="text-xs text-muted-foreground truncate">Responsable: {c.ownerName}</p>}
                           {s.kind === "perdida" && c.lostReason && <p className="mt-1 line-clamp-2 text-xs text-muted-foreground">Motivo: {c.lostReason}</p>}
                           {canMove && (
                             <label className="mt-2 block text-xs text-muted-foreground">
