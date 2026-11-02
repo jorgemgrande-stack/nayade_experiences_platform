@@ -36,7 +36,7 @@ import type { TenantStatusSync } from "./tenantStatus";
 import { nextOrderState, type OrderAction } from "./machine";
 import type { TestPaymentPort } from "./payments";
 import type { OrderStore } from "./store";
-import { activationRecovery, classifyStepError, POST_CONFIRM, recoveryDue, type ActivationRecovery } from "./recovery";
+import { activationRecovery, classifyStepError, POST_CONFIRM, recoveryDue, type ActivationRecovery, type ExpiryMode } from "./recovery";
 import { opsLog } from "../_core/ops/log";
 import { recordFailure } from "../_core/ops/failureAlerts";
 import { APPROVAL_CATEGORIES, OrderError, REJECT_CODES, rejectCodeOf, type ApprovalCategory, type RejectCode, type CommercialOrder, type Confirmation, type OrderPatch, type OrderPayment, type OrderQuote, type OrderState, type PaymentMode, type PaymentPurpose } from "./types";
@@ -1064,14 +1064,23 @@ export class CommercialOrchestrator {
    * Vence los pedidos SIN cobro (creados a mano en el CRM, o abandonados) que siguen en requested, quoted o contracted
    * sin cambios desde hace `maxIdleMs`: pasan a rechazados con motivo `expired` («Pago caducado» en el panel). Nunca
    * uno con algún pago registrado (en curso, cobrado o fallido: lo resuelve su proveedor).
+   *
+   * Modo «report» (POR DEFECTO): no cambia nada; solo registra cada candidato (pedido, estado, días sin cambios y
+   * empresa, sin datos personales). Solo «apply» rechaza: cambiar estados comerciales exige decisión explícita.
    */
-  async expireStaleOrders(actor: string, maxIdleMs: number, opts: { limit?: number } = {}) {
+  async expireStaleOrders(actor: string, maxIdleMs: number, opts: { limit?: number; mode?: ExpiryMode } = {}) {
     const now = this.now();
-    const out = { checked: 0, expired: 0, errors: [] as Array<{ orderId: number; error: string }> };
+    const mode: ExpiryMode = opts.mode === "apply" ? "apply" : "report";
+    const out = { mode, checked: 0, candidates: 0, expired: 0, errors: [] as Array<{ orderId: number; error: string }> };
     for (const o of await this.d.store.list({ states: ["requested", "quoted", "contracted"], limit: opts.limit ?? 500 })) {
       out.checked++;
       if (now - (o.updatedAt ?? o.createdAt) < maxIdleMs) continue;
       if ((await this.d.store.payments(o.id)).length) continue;
+      out.candidates++;
+      if (mode === "report") {
+        opsLog("info", "OrdersRecovery", "expiry_candidate", { orderId: o.id, state: o.state, idleDays: Math.floor((now - (o.updatedAt ?? o.createdAt)) / DAY), companyId: o.companyId });
+        continue;
+      }
       try {
         await this.reject(o.id, { reason: `Pedido sin cobro durante ${Math.round(maxIdleMs / DAY)} días: caducado`, code: "expired" }, actor);
         out.expired++;
@@ -1087,9 +1096,9 @@ export class CommercialOrchestrator {
    * Conciliación diaria de respaldo: reanuda TODAS las activaciones reanudables (sin esperar) y vence los pedidos sin
    * cobro inactivos. Idempotente: repetirla no repite nada.
    */
-  async reconcile(actor: string, opts: { maxIdleMs: number }) {
+  async reconcile(actor: string, opts: { maxIdleMs: number; expiryMode?: ExpiryMode }) {
     const activations = await this.recoverActivations(actor, { ignoreBackoff: true });
-    const expiry = await this.expireStaleOrders(actor, opts.maxIdleMs);
+    const expiry = await this.expireStaleOrders(actor, opts.maxIdleMs, { mode: opts.expiryMode });
     return { activations, expiry };
   }
 

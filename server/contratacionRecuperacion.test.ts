@@ -229,23 +229,33 @@ describe("conciliación diaria", () => {
     expect((await c.svc.must(ch.id)).state).toBe("active");
     expect((await c.svc.must(manual.id)).state).toBe("contracted"); // aún dentro del plazo
     c.t.clock += 30 * DAY;
-    const r = await c.svc.reconcile(ACTOR, { maxIdleMs: 30 * DAY });
-    expect(r.expiry).toMatchObject({ expired: 1, errors: [] });
+    // Modo «report» (por defecto): solo informa del candidato; ningún pedido cambia (ni estado, ni versión, ni eventos)
+    const snapshot = async () => JSON.stringify(await Promise.all([manual.id, withPayment.order.id].map(async (id) => [await c.svc.must(id), (await c.orders.events(id)).length])));
+    const before = await snapshot();
+    const report = await c.svc.reconcile(ACTOR, { maxIdleMs: 30 * DAY });
+    expect(report.expiry).toMatchObject({ mode: "report", candidates: 1, expired: 0, errors: [] });
+    expect(await c.svc.reconcile(ACTOR, { maxIdleMs: 30 * DAY, expiryMode: "report" })).toMatchObject({ expiry: { candidates: 1, expired: 0 } });
+    expect(await snapshot()).toBe(before);
+    expect(await c.activationOf(idle.tenantId!)).toMatchObject({ state: "pending" });
+    // Modo «apply»: lo rechaza con el motivo «expired»
+    const r = await c.svc.reconcile(ACTOR, { maxIdleMs: 30 * DAY, expiryMode: "apply" });
+    expect(r.expiry).toMatchObject({ mode: "apply", candidates: 1, expired: 1, errors: [] });
     expect(await c.svc.detail(manual.id)).toMatchObject({ order: { state: "rejected" }, rejectCode: "expired" });
     expect((await c.svc.must(withPayment.order.id)).state).toBe("contracted");
     expect(await c.activationOf(idle.tenantId!)).toMatchObject({ state: "error", payment: "expired", error: { kind: "payment" }, retryable: true });
     expect((await c.access(idle.tenantId!)).allowed).toBe(false);
     expect(await c.corePlan(idle.subscriptionId!)).toBe("business");
     // Repetirla no repite nada
-    expect((await c.svc.reconcile(ACTOR, { maxIdleMs: 30 * DAY })).expiry.expired).toBe(0);
+    expect((await c.svc.reconcile(ACTOR, { maxIdleMs: 30 * DAY, expiryMode: "apply" })).expiry.expired).toBe(0);
   });
 });
 
 describe("tareas periódicas", () => {
   it("política por entorno: encendida por defecto, intervalos con mínimo y máximo, vencimiento configurable", () => {
-    expect(orderRecoveryPolicyFromEnv({} as NodeJS.ProcessEnv)).toEqual({ enabled: true, intervalMs: MIN, reconcileMs: DAY, expiryDays: 30 });
-    expect(orderRecoveryPolicyFromEnv({ CP_ORDERS_RECOVERY_ENABLED: "0", CP_ORDERS_RECOVERY_INTERVAL_MS: "5", CP_ORDERS_RECONCILE_INTERVAL_MS: "10", CP_ORDERS_EXPIRY_DAYS: "0" } as NodeJS.ProcessEnv)).toEqual({ enabled: false, intervalMs: 30_000, reconcileMs: 3600_000, expiryDays: 0 });
-    expect(orderRecoveryPolicyFromEnv({ CP_ORDERS_RECOVERY_INTERVAL_MS: "x", CP_ORDERS_EXPIRY_DAYS: "-3" } as NodeJS.ProcessEnv)).toMatchObject({ intervalMs: MIN, expiryDays: 30 });
+    expect(orderRecoveryPolicyFromEnv({} as NodeJS.ProcessEnv)).toEqual({ enabled: true, intervalMs: MIN, reconcileMs: DAY, expiryDays: 30, expiryMode: "report" });
+    expect(orderRecoveryPolicyFromEnv({ CP_ORDERS_RECOVERY_ENABLED: "0", CP_ORDERS_RECOVERY_INTERVAL_MS: "5", CP_ORDERS_RECONCILE_INTERVAL_MS: "10", CP_ORDERS_EXPIRY_DAYS: "0", CP_ORDERS_EXPIRY_MODE: "apply" } as NodeJS.ProcessEnv)).toEqual({ enabled: false, intervalMs: 30_000, reconcileMs: 3600_000, expiryDays: 0, expiryMode: "apply" });
+    expect(orderRecoveryPolicyFromEnv({ CP_ORDERS_RECOVERY_INTERVAL_MS: "x", CP_ORDERS_EXPIRY_DAYS: "-3" } as NodeJS.ProcessEnv)).toMatchObject({ intervalMs: MIN, expiryDays: 30, expiryMode: "report" });
+    expect(orderRecoveryPolicyFromEnv({ CP_ORDERS_EXPIRY_MODE: "aplicar" } as NodeJS.ProcessEnv).expiryMode).toBe("report");
   });
 
   it("una réplica por tick (bloqueo), fallo registrado sin romper, temporizadores con unref; apagada no arranca", async () => {
@@ -258,19 +268,19 @@ describe("tareas periódicas", () => {
         if (fail) throw new Error("BD caída");
         return { resumed: 1, activated: 1, failed: 0, errors: [] };
       },
-      reconcile: async (_a: string, o: { maxIdleMs: number }) => {
-        calls.push(`daily:${o.maxIdleMs}`);
-        return { activations: { resumed: 0, activated: 0, failed: 0, errors: [] }, expiry: { expired: 2, errors: [] } };
+      reconcile: async (_a: string, o: { maxIdleMs: number; expiryMode?: string }) => {
+        calls.push(`daily:${o.maxIdleMs}:${o.expiryMode}`);
+        return { activations: { resumed: 0, activated: 0, failed: 0, errors: [] }, expiry: { candidates: 2, expired: 0, errors: [] } };
       },
     };
     const unref = vi.fn();
     const timers = { setInterval: vi.fn(() => ({ unref })), clearInterval: vi.fn(), setTimeout: vi.fn(() => ({ unref })), clearTimeout: vi.fn() } as never;
     const lock = memoryLock();
-    const s = startOrderRecovery({ orchestrator, policy: { enabled: true, intervalMs: MIN, reconcileMs: DAY, expiryDays: 30 }, lock, timers, log: (_l, e) => void logs.push(e) });
+    const s = startOrderRecovery({ orchestrator, policy: { enabled: true, intervalMs: MIN, reconcileMs: DAY, expiryDays: 30, expiryMode: "report" as const }, lock, timers, log: (_l, e) => void logs.push(e) });
     expect(unref).toHaveBeenCalledTimes(3);
     await s.tick();
     await s.daily();
-    expect(calls).toEqual(["tick", `daily:${30 * DAY}`]);
+    expect(calls).toEqual(["tick", `daily:${30 * DAY}:report`]);
     // Otra réplica tiene el bloqueo: no hace nada
     const held = await lock.acquire("cp:orders:recovery");
     await s.tick();
@@ -281,7 +291,7 @@ describe("tareas periódicas", () => {
     expect(logs).toEqual(["recovery_tick", "reconcile", "recovery_failed"]);
     expect(lock.held.size).toBe(0);
     s.stop();
-    expect(startOrderRecovery({ orchestrator, policy: { enabled: false, intervalMs: MIN, reconcileMs: DAY, expiryDays: 30 } }).enabled).toBe(false);
+    expect(startOrderRecovery({ orchestrator, policy: { enabled: false, intervalMs: MIN, reconcileMs: DAY, expiryDays: 30, expiryMode: "report" as const } }).enabled).toBe(false);
   });
 });
 

@@ -2194,7 +2194,7 @@ export function createControlPlaneApp(d: ControlPlaneDeps): Express {
       // Recuperación de activaciones tras el cobro (reintentos progresivos) y conciliación diaria (server/orchestrator/recovery.ts)
       if (d.ordersRecovery) {
         const rec = startOrderRecovery({ orchestrator, policy: d.ordersRecovery.policy, lock: d.ordersRecovery.lock, log: (level, event, data) => opsLog(level, "OrdersRecovery", event, data) });
-        opsLog("info", "OrdersRecovery", "started", { enabled: rec.enabled, intervalMs: d.ordersRecovery.policy.intervalMs, reconcileMs: d.ordersRecovery.policy.reconcileMs, expiryDays: d.ordersRecovery.policy.expiryDays });
+        opsLog("info", "OrdersRecovery", "started", { enabled: rec.enabled, intervalMs: d.ordersRecovery.policy.intervalMs, reconcileMs: d.ordersRecovery.policy.reconcileMs, expiryDays: d.ordersRecovery.policy.expiryDays, expiryMode: d.ordersRecovery.policy.expiryMode });
       }
       // Catálogo de módulos y ampliaciones para el panel de cada empresa (solo lectura, mismo token que la compra)
       if (webAdmin) {

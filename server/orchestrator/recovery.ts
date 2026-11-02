@@ -123,7 +123,13 @@ export interface OrderRecoveryPolicy {
   reconcileMs: number;
   /** Días sin cambios tras los que vence un pedido sin cobro (CP_ORDERS_EXPIRY_DAYS; 1–365; 0 = no vence). */
   expiryDays: number;
+  /**
+   * CP_ORDERS_EXPIRY_MODE: «report» (POR DEFECTO) solo registra los candidatos al vencimiento; «apply» los rechaza
+   * (code «expired»). Cualquier otro valor es «report»: nunca se cambian estados comerciales sin decisión explícita.
+   */
+  expiryMode: ExpiryMode;
 }
+export type ExpiryMode = "report" | "apply";
 const clampEnv = (raw: string | undefined, fallback: number, min: number, max: number) => {
   const n = Number(raw ?? fallback);
   return Number.isFinite(n) ? Math.min(max, Math.max(min, Math.round(n))) : fallback;
@@ -135,6 +141,7 @@ export function orderRecoveryPolicyFromEnv(env: NodeJS.ProcessEnv, defaultExpiry
     intervalMs: clampEnv(env.CP_ORDERS_RECOVERY_INTERVAL_MS, MIN, 30_000, 60 * MIN),
     reconcileMs: clampEnv(env.CP_ORDERS_RECONCILE_INTERVAL_MS, DAY, 60 * MIN, 7 * DAY),
     expiryDays: Number.isInteger(rawExpiry) && rawExpiry >= 0 && rawExpiry <= 365 ? rawExpiry : defaultExpiryDays,
+    expiryMode: (env.CP_ORDERS_EXPIRY_MODE ?? "").trim().toLowerCase() === "apply" ? "apply" : "report",
   };
 }
 
@@ -144,7 +151,7 @@ const RECONCILE_LOCK = "cp:orders:reconcile";
 type Lock = { acquire(name: string): Promise<(() => Promise<void>) | null> };
 interface RecoveryTarget {
   recoverActivations(actor: string): Promise<{ resumed: number; activated: number; failed: number; errors: unknown[] }>;
-  reconcile(actor: string, opts: { maxIdleMs: number }): Promise<{ activations: { resumed: number; activated: number; failed: number; errors: unknown[] }; expiry: { expired: number; errors: unknown[] } }>;
+  reconcile(actor: string, opts: { maxIdleMs: number; expiryMode?: ExpiryMode }): Promise<{ activations: { resumed: number; activated: number; failed: number; errors: unknown[] }; expiry: { candidates: number; expired: number; errors: unknown[] } }>;
 }
 type Timers = { setInterval: typeof setInterval; clearInterval: typeof clearInterval; setTimeout: typeof setTimeout; clearTimeout: typeof clearTimeout };
 
@@ -181,8 +188,8 @@ export function startOrderRecovery(o: { orchestrator: RecoveryTarget; policy: Or
     });
   const daily = () =>
     guarded("daily", RECONCILE_LOCK, async () => {
-      const r = await o.orchestrator.reconcile(RECOVERY_ACTOR, { maxIdleMs: o.policy.expiryDays > 0 ? o.policy.expiryDays * DAY : Number.POSITIVE_INFINITY });
-      return { resumed: r.activations.resumed, activated: r.activations.activated, failed: r.activations.failed, expired: r.expiry.expired, errors: r.activations.errors.length + r.expiry.errors.length };
+      const r = await o.orchestrator.reconcile(RECOVERY_ACTOR, { maxIdleMs: o.policy.expiryDays > 0 ? o.policy.expiryDays * DAY : Number.POSITIVE_INFINITY, expiryMode: o.policy.expiryMode });
+      return { resumed: r.activations.resumed, activated: r.activations.activated, failed: r.activations.failed, expiryMode: o.policy.expiryMode, expiryCandidates: r.expiry.candidates, expired: r.expiry.expired, errors: r.activations.errors.length + r.expiry.errors.length };
     });
   const every = timers.setInterval(() => void tick(), o.policy.intervalMs);
   const first = timers.setTimeout(() => void daily(), Math.min(o.policy.intervalMs, 5 * MIN));

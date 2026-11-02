@@ -105,9 +105,11 @@ es mensual.
 - Tarea frecuente (`CP_ORDERS_RECOVERY_INTERVAL_MS`, por defecto 1 min, mínimo 30 s): reanuda los reintentos
   vencidos y los pedidos en activación sin fallos parados más de 2 minutos.
 - Conciliación de respaldo (`CP_ORDERS_RECONCILE_INTERVAL_MS`, por defecto 24 h; también a los pocos minutos de
-  arrancar): reanuda todas las activaciones reanudables sin esperar y vence los pedidos sin ningún pago en
-  `requested`, `quoted` o `contracted` sin cambios en `CP_ORDERS_EXPIRY_DAYS` días (por defecto 30): `reject`
-  con `code: "expired"` («Pago caducado» en el panel).
+  arrancar): reanuda todas las activaciones reanudables sin esperar y revisa los pedidos sin ningún pago en
+  `requested`, `quoted` o `contracted` sin cambios en `CP_ORDERS_EXPIRY_DAYS` días (por defecto 30). Con
+  `CP_ORDERS_EXPIRY_MODE=report` (POR DEFECTO) solo registra cada candidato en el log (`expiry_candidate`: pedido,
+  estado, días sin cambios y empresa; sin datos personales) y no cambia nada. Solo con `CP_ORDERS_EXPIRY_MODE=apply`
+  los rechaza con `code: "expired"` («Pago caducado» en el panel). Cambiar estados comerciales exige decisión explícita.
 - Botón «Reintentar»: `POST /cp/v1/commerce/tenants/:t/activation/retry` (`{ key? }`, token del Core con
   `commerce:purchase`). Solo pedidos de esa empresa en activación con algún fallo y base válida; 200 si ya está
   activo, 202 si se reanudó o hay otra ejecución en curso, 429 si se repite antes de 1 minuto por pedido (o de 5 s
@@ -203,6 +205,7 @@ Contrato aditivo de `activation` en el catálogo del panel (`GET /commerce/tenan
 | `CP_ORDERS_RECOVERY_INTERVAL_MS` | Intervalo de los reintentos (30 s – 1 h; por defecto 60 000) |
 | `CP_ORDERS_RECONCILE_INTERVAL_MS` | Intervalo de la conciliación (1 h – 7 días; por defecto 24 h) |
 | `CP_ORDERS_EXPIRY_DAYS` | Días sin cambios para vencer un pedido sin cobro (0 = no vencen; por defecto 30) |
+| `CP_ORDERS_EXPIRY_MODE` | `report` (por defecto: solo registra los candidatos) o `apply` (los rechaza con `code: "expired"`) |
 
 ## Decisiones sobre los huecos del PR #101
 
