@@ -71,6 +71,8 @@ export const CIRCUIT: Readonly<Record<string, TemplateCircuit>> = {
   "admin.suspension_near": "programada",
   "admin.ticket_unanswered": "programada",
   "admin.ticket_escalated": "programada",
+  // Traza de las altas de pago (vigilancia periódica tras el primer cobro)
+  "admin.sale_trace": "programada",
   // Envíos de una persona del equipo desde el CRM
   "contract.invitation": "manual",
   "contract.payment_setup": "manual",

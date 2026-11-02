@@ -110,6 +110,8 @@ import { AdminAlertService } from "../adminAlerts/service";
 import { MysqlAdminAlertStore, adminAlertTablesReady } from "../adminAlerts/store";
 import { CommercialEventWatcher, ConsumptionWatcher, usageThresholdsFromEnv, withExternalAlerts } from "../adminAlerts/sources";
 import { startAlertCycle } from "../adminAlerts/runtime";
+import { SaleTraceService, SaleTraceWatcher } from "../commerce/saleTrace";
+import { MysqlSaleTraceReader } from "../commerce/saleTraceStore";
 import { DeployWatcher, RestoreDrillWatcher, SERVED_STATUSES, UptimeMonitor, githubGet, isTestTenant } from "../adminAlerts/operations";
 import { DataRequestService, operatorAssignees } from "../dataRequests/service";
 import { MysqlDataRequestStore, dataRequestTablesReady } from "../dataRequests/store";
@@ -133,6 +135,7 @@ import { BankAutoReconciler } from "../finance/bankAutoReconcile";
 import { FinanceIntegrity } from "../finance/integrity";
 import { StripeApiBalanceReader } from "../finance/stripeBalanceApi";
 import { InvoicingService } from "../invoicing/service";
+import { StripeSalesInvoicing } from "../invoicing/stripeSales";
 import { DEFAULT_PROFORMA_LEAD_DAYS, InvoicingAutomation } from "../invoicing/delivery";
 import { billingContact } from "../notifications/customerTriggers";
 import { fetchBrandLogo } from "../documents/brandPdf";
@@ -602,7 +605,7 @@ async function main() {
 
   // Facturación propia (CRM 0027): borradores por devengo; expedir solo con CP_INVOICING_ISSUE_ENABLED=1. Mismo entorno
   // (livemode) que los servicios externos cuyos cobros lee
-  let invoicing: { store: MysqlInvoicingStore; issueEnabled: boolean; seriesCode: string; charges?: MysqlChargeStore; chargePayments?: MysqlChargePaymentStore; operations?: MysqlOperationStore; automation?: InvoicingAutomation } | undefined;
+  let invoicing: { store: MysqlInvoicingStore; issueEnabled: boolean; seriesCode: string; charges?: MysqlChargeStore; chargePayments?: MysqlChargePaymentStore; operations?: MysqlOperationStore; automation?: InvoicingAutomation; stripeSales?: StripeSalesInvoicing } | undefined;
   if (crmPool && crm) {
     const pool = crmPool;
     const has = (t: string) => pool.query(`SELECT 1 FROM ${t} LIMIT 0`).then(() => true, () => false);
@@ -684,6 +687,16 @@ async function main() {
   const stripeReader = financeStripe && stripe ? new StripeApiBalanceReader({ apiKey: stripe.config.apiKey }) : null;
   const issuerParty = { legalName: ISSUER.legalName, taxId: ISSUER.taxId, address: `${ISSUER.address.line1}, ${ISSUER.address.line2}`, postalCode: ISSUER.address.postalCode, city: ISSUER.address.city, country: ISSUER.address.country };
   const proformaDays = Number(process.env.CP_INVOICING_PROFORMA_DAYS ?? DEFAULT_PROFORMA_LEAD_DAYS);
+  // Ventas cobradas por Stripe desde el panel (pedidos comerciales): factura propia de cada cobro verificado. Solo con el
+  // registro de Stripe y los pedidos montados, y en el mismo entorno (pruebas o real) que la facturación propia
+  const salesOrders = orders?.store;
+  const salesMode = external?.store.mode ?? "test";
+  const stripeSales =
+    invoicing && stripe && salesOrders && crmStore && stripe.store.mode === salesMode
+      ? new StripeSalesInvoicing({ stripe: stripe.store, lines: stripe.invoiceLines ?? null, orderCompany: async (id) => (await salesOrders.get(id))?.companyId ?? null, company: async (id) => (await crmStore.get("companies", id)) as CompanyFiscal | null })
+      : null;
+  if (invoicing && stripeSales) invoicing.stripeSales = stripeSales;
+  const stripeSalesReason = stripeSales ? null : !stripe ? "stripe_not_mounted" : !salesOrders ? "orders_not_mounted" : stripe.store.mode !== salesMode ? "mode_mismatch" : "crm_not_mounted";
   const invoicingAuto =
     invoicing && crmStore
       ? new InvoicingService({
@@ -694,6 +707,7 @@ async function main() {
           seriesCode: invoicing.seriesCode,
           issueEnabled: invoicing.issueEnabled,
           proformaLeadDays: Number.isInteger(proformaDays) && proformaDays >= 0 && proformaDays <= 30 ? proformaDays : DEFAULT_PROFORMA_LEAD_DAYS,
+          stripeSales,
           onIssued: async (inv) => {
             const company = ((await crmStore.get("companies", inv.companyId)) as { name?: string } | null)?.name ?? null;
             await adminAlerts?.raise("admin.invoice_issued", { key: `invoice:${inv.id}:issued`, occurredAt: inv.issuedAt ?? Date.now(), companyId: inv.companyId, company, summary: `Factura ${inv.number ?? ""} expedida automáticamente.`, status: { label: "Expedida", tone: "success" }, reference: inv.number, amount: { cents: inv.totalCents, currency: inv.currency }, link: "#/comercial/facturacion" });
@@ -739,7 +753,7 @@ async function main() {
           bankRules,
         })
       : null;
-  if (invoicing) console.log(JSON.stringify({ ctx: "InvoicingAutomation", mounted: !!invoiceIssuing, issueEnabled: invoicing.issueEnabled, proformaLeadDays: invoicingAuto ? (Number.isInteger(proformaDays) && proformaDays >= 0 && proformaDays <= 30 ? proformaDays : DEFAULT_PROFORMA_LEAD_DAYS) : null, mail: !!mailService, stripeCheck: !!stripeReader }));
+  if (invoicing) console.log(JSON.stringify({ ctx: "InvoicingAutomation", mounted: !!invoiceIssuing, issueEnabled: invoicing.issueEnabled, proformaLeadDays: invoicingAuto ? (Number.isInteger(proformaDays) && proformaDays >= 0 && proformaDays <= 30 ? proformaDays : DEFAULT_PROFORMA_LEAD_DAYS) : null, mail: !!mailService, stripeCheck: !!stripeReader, stripeSales: !!stripeSales, ...(stripeSalesReason ? { stripeSalesReason } : {}) }));
   // Integridad: hechos confirmados (webhooks de Stripe) frente al libro y estado de las fuentes, para el control diario y el panel
   const financeIntegrity =
     finance && financeOps && crmPool
@@ -757,6 +771,22 @@ async function main() {
   if (financeAutomation && crmPool) startFinanceAutomation({ automation: financeAutomation, lock: mysqlAdvisoryLock(crmPool) });
   // Borradores de gastos recurrentes: tarea APAGADA salvo CP_FINANCE_RECURRING_ENABLED=1 (una réplica por tick, GET_LOCK)
   if (financeOps && crmPool) startFinanceRecurringScheduler({ ops: financeOps, lock: mysqlAdvisoryLock(crmPool), env: process.env });
+  // Traza de extremo a extremo de las altas de pago (solo lectura): API de operador y alerta admin.sale_trace
+  const saleTrace =
+    orders && crmPool
+      ? new SaleTraceService({
+          orders: orders.store,
+          reader: new MysqlSaleTraceReader(crmPool, ordersMode),
+          mode: ordersMode,
+          capabilities: capabilities ?? null,
+          subscriptions: subscriptions?.store ?? null,
+          trials: trials?.store ?? null,
+          companyTenant: crm ? async (id) => ((await crm.store.get("companies", id)) as { tenantId?: string | null } | null)?.tenantId ?? null : null,
+          tenantName: async (id) => (await store.getTenant(id))?.displayName ?? null,
+          internalTenants: stripe?.purchases?.internalTenants,
+        })
+      : null;
+  console.log(JSON.stringify({ ctx: "SaleTrace", mounted: !!saleTrace, ...(saleTrace ? { mode: ordersMode } : { reason: !orders ? "orders_disabled" : "crm_not_configured" }) }));
   if (crm && crmPool && (await settingsTablesReady(crmPool))) {
     const alertPool = crmPool;
     const alertStore = new MysqlAdminAlertStore(alertPool);
@@ -846,6 +876,8 @@ async function main() {
           ...(copiesReady ? [{ name: "restoreDrills", run: () => new RestoreDrillWatcher({ restores: () => copiesLedger.listRestores(50), store: alertStore, raise }).tick() }] : []),
           ...(uptime ? [{ name: "uptime", run: async () => (await uptime.tick()).down }] : []),
           ...(deploys ? [{ name: "deploys", run: () => deploys.tick() }] : []),
+          // Traza de las altas de pago: al detectar el primer cobro, a los 20 minutos y a las 48 horas (factura)
+          ...(saleTrace ? [{ name: "saleTraces", run: () => new SaleTraceWatcher({ traces: saleTrace, store: alertStore, raise, companyName }).tick() }] : []),
           // Tareas en segundo plano en cortocircuito para una empresa (Core, por el canal interno): un aviso por apertura
           ...(jobCircuitsClient
             ? [{ name: "jobCircuits", run: async () => { const v = await collectJobCircuits({ client: jobCircuitsClient, listTenants: () => store.listTenants(), operator: "system:admin-alerts" }); const list = jobCircuitAlerts(v.circuits, Date.now()); for (const a of list) await raise(a.id, a.facts); return list.length; } }]
@@ -949,6 +981,7 @@ async function main() {
     commercialEvents,
     leadNotices,
     adminAlerts,
+    saleTrace,
     commerceCircuits: () =>
       commerceCircuits({
         stripe: stripeConfig,

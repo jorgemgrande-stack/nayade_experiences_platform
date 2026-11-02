@@ -34,6 +34,8 @@ export const TRPC_ROUTER_CAPABILITIES: Record<string, string> = {
   commercialFollowup: "crm-tasks",
   crmTags: "crm-tags",
   crmTasks: "crm-tasks",
+  // Business: embudo configurable (etapas, tablero y previsión); Essential sigue con crm.pipeline y crm.leads
+  crmFunnel: "crm-funnel-advanced",
   products: "shop-catalog",
   packs: "shop-catalog",
   timeSlots: "shop-catalog",
