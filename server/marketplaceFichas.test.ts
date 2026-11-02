@@ -12,7 +12,7 @@ import { WebAdminService, type SiteDocument } from "./web/service";
 import { MemoryWebStore } from "./web/store";
 import { BUILTIN_MODULES } from "./_core/modules/builtin";
 import { panelCatalog } from "./commerce/panelCatalog";
-import { receivePanelRequest, PANEL_REQUEST_SOURCE } from "./commerce/panelRequests";
+import { receivePanelRequest, panelIdempotencyKey, PANEL_REQUEST_SOURCE } from "./commerce/panelRequests";
 import { CrmService } from "./crm/service";
 import { MemoryCrmStore } from "./crm/store";
 import { WebRequestService } from "./crm/webRequests";
@@ -153,6 +153,18 @@ describe("solicitudes del marketplace del panel", () => {
     await expect(receivePanelRequest({ ...t.d, site: s }, "t9-demo", body({ interest: "connect-voice" }))).rejects.toMatchObject({ status: 404 });
     await flush();
     expect(t.created).toHaveLength(0);
+  });
+
+  it("la clave guardada cabe en la columna del CRM (CHAR(36)) con la clave real del Core y empresas largas", async () => {
+    const t = await setup();
+    const tenant = "t9-demo";
+    const coreKey = "cx-" + "a".repeat(40);
+    await receivePanelRequest(t.d, tenant, body({ idempotencyKey: coreKey }));
+    await flush();
+    expect(t.created[0].idempotencyKey).toBe(panelIdempotencyKey(tenant, coreKey));
+    expect(t.created[0].idempotencyKey.length).toBeLessThanOrEqual(36);
+    expect(panelIdempotencyKey("e".repeat(63), coreKey)).toHaveLength(36);
+    expect(panelIdempotencyKey("otra-empresa", coreKey)).not.toBe(panelIdempotencyKey(tenant, coreKey));
   });
 
   it("la clave de idempotencia se aísla por empresa", async () => {

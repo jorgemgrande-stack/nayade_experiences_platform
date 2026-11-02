@@ -15,6 +15,7 @@
  *
  * Ámbito: `commerce:support` o `commerce:purchase` (el token del Core).
  */
+import crypto from "node:crypto";
 import express, { type NextFunction, type Request, type Response, type Router } from "express";
 import { z } from "zod";
 import { getAuth } from "../controlPlane/auth";
@@ -41,6 +42,12 @@ export const panelRequestBody = z
   })
   .strict();
 export type PanelRequestBody = z.infer<typeof panelRequestBody>;
+
+/**
+ * Clave de idempotencia guardada en el CRM, aislada por empresa: huella de empresa + clave del Core. La columna del CRM
+ * es CHAR(36) (pensada para UUID): la clave compuesta en claro (`panel:<empresa>:<clave>`) no cabía y MySQL la rechazaba.
+ */
+export const panelIdempotencyKey = (tenantId: string, key: string) => "panel-" + crypto.createHash("sha256").update(`${tenantId}:${key}`).digest("hex").slice(0, 30);
 
 export class PanelRequestError extends Error {
   constructor(
@@ -85,7 +92,7 @@ export async function receivePanelRequest(
         privacyVersion: PANEL_PRIVACY_VERSION,
       },
       // La clave del Core, aislada por empresa: la de otra empresa nunca devuelve esta solicitud
-      { idempotencyKey: `panel:${tenantId}:${b.idempotencyKey}`, ipHash: null },
+      { idempotencyKey: panelIdempotencyKey(tenantId, b.idempotencyKey), ipHash: null },
     );
     return { outcome, reference: request.reference, status: request.status };
   } catch (e) {
