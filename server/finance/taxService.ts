@@ -16,7 +16,7 @@ import JSZip from "jszip";
 import { registerCsv } from "../invoicing/register";
 import type { Invoice } from "../invoicing/types";
 import { madridDateKey } from "../utils/timezone";
-import { addDays, isStripeFeeExpense, reverseChargeAmounts } from "./opsRules";
+import { addDays, isOutOfTaxLists, reverseChargeAmounts } from "./opsRules";
 import type { FinanceOpsService } from "./opsService";
 import type { ExpenseRow, FinanceOpsStore } from "./opsStore";
 import { VAT_TREATMENT_LABELS, vatTreatmentOf, type DocumentOwner, type Supplier, type VatTreatment } from "./opsTypes";
@@ -198,7 +198,8 @@ export interface DeferralInput {
   reference?: string | null;
   requestedOn: string;
   notes?: string | null;
-  installments: Array<{ n: number; dueDate: string; amountCents: number }>;
+  /** Cuotas con su principal y, si el calendario oficial los da, sus intereses exactos (no se recalculan). */
+  installments: Array<{ n: number; dueDate: string; amountCents: number; interestCents?: number }>;
 }
 
 export interface DossierInput {
@@ -439,7 +440,7 @@ export class FinanceTaxService {
       out.push(...page.items);
       if (out.length >= page.total || page.items.length === 0) break;
     }
-    return out.filter((e) => !isStripeFeeExpense(e));
+    return out.filter((e) => !isOutOfTaxLists(e));
   }
 
   /** Gastos registrados con fecha de DEVENGO (o de factura) en el rango. */
@@ -1044,6 +1045,22 @@ export class FinanceTaxService {
     return this.s.listDeferrals(q);
   }
 
+  /** Obligaciones de un modelo presentadas y sin pagar con resultado a ingresar (conciliación bancaria por reglas). */
+  async obligationsAwaitingPayment(model: TaxModel): Promise<Array<{ id: number; amountCents: number }>> {
+    const page = await this.s.listObligations({ model, statuses: ["presentado", "domiciliado"], limit: 500 });
+    return page.items.filter((o) => o.outcome === "a_ingresar").map((o) => ({ id: o.id, amountCents: o.presentedAmountCents ?? o.amountCents ?? 0 }));
+  }
+
+  /** Cuotas pendientes de los aplazamientos vivos con su total (principal + intereses), para casar el cargo del banco. */
+  async deferralsAwaitingPayment(): Promise<Array<{ deferralId: number; number: number; amountCents: number; interestCents: number; totalCents: number; dueDate: string }>> {
+    const out: Array<{ deferralId: number; number: number; amountCents: number; interestCents: number; totalCents: number; dueDate: string }> = [];
+    for (const d of await this.s.listDeferrals({})) {
+      if (d.status === "denegado" || d.status === "cancelado" || d.status === "pagado") continue;
+      for (const x of d.installments) if (x.status === "pendiente") out.push({ deferralId: d.id, number: x.number, amountCents: x.amountCents, interestCents: x.interestCents, totalCents: x.amountCents + x.interestCents, dueDate: x.dueDate });
+    }
+    return out;
+  }
+
   /** Aplazamiento o fraccionamiento de una obligación presentada: la obligación pasa a «aplazado». */
   async createDeferral(i: DeferralInput, actor: FinanceActor): Promise<Deferral> {
     const o = await this.mustObligation(i.obligationId);
@@ -1057,8 +1074,11 @@ export class FinanceTaxService {
     if (!inst.length || inst.length > 60) throw bad("Indica de 1 a 60 cuotas");
     if (inst.some((x, k) => x.n !== k + 1)) throw bad("Las cuotas se numeran 1, 2, 3…");
     if (inst.some((x) => !isValidDate(x.dueDate) || !Number.isSafeInteger(x.amountCents) || x.amountCents <= 0)) throw bad("Cada cuota lleva fecha (AAAA-MM-DD) e importe mayor que cero");
+    if (inst.some((x) => x.interestCents !== undefined && (!Number.isSafeInteger(x.interestCents) || x.interestCents < 0))) throw bad("Los intereses de cada cuota son un importe en céntimos no negativo");
     if (sumOf(inst.map((x) => x.amountCents)) !== i.principalCents) throw bad("Las cuotas deben sumar el principal");
-    const d = await this.s.insertDeferral({ obligationId: o.id, status: "solicitado", requestedOn: i.requestedOn, resolutionOn: null, reference: text(i.reference, 60), principalCents: i.principalCents, interestCents: interest, notes: text(i.notes, 500), createdBy: actor.by, createdAt: this.now() }, inst.map((x) => ({ number: x.n, dueDate: x.dueDate, amountCents: x.amountCents, interestCents: 0 })));
+    // Intereses por cuota (calendario oficial): si se dan, deben sumar los intereses del aplazamiento
+    if (inst.some((x) => x.interestCents !== undefined) && sumOf(inst.map((x) => x.interestCents ?? 0)) !== interest) throw bad("Los intereses de las cuotas deben sumar los intereses del aplazamiento");
+    const d = await this.s.insertDeferral({ obligationId: o.id, status: "solicitado", requestedOn: i.requestedOn, resolutionOn: null, reference: text(i.reference, 60), principalCents: i.principalCents, interestCents: interest, notes: text(i.notes, 500), createdBy: actor.by, createdAt: this.now() }, inst.map((x) => ({ number: x.n, dueDate: x.dueDate, amountCents: x.amountCents, interestCents: x.interestCents ?? 0 })));
     if (!(await this.s.transition(o.id, ["presentado", "domiciliado"], "aplazado", {}, this.now()))) throw new FinanceError("conflict", "La obligación ha cambiado: recárgala");
     await this.log(o, actor, "defer", "aplazado", d.reference, { deferralId: d.id, installments: inst.length });
     await this.audit(actor, "tax.deferral.create", "tax_deferral", d.id, { obligationId: o.id, principalCents: i.principalCents, installments: inst.length });

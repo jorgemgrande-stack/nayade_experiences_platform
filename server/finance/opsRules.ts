@@ -124,6 +124,11 @@ export const stripeFeeExpenseSourceKey = (balanceTransactionId: string) => `${ST
 export const isStripeFeeExpense = (e: { sourceKey: string | null }) => !!e.sourceKey?.startsWith(STRIPE_FEE_EXPENSE_PREFIX);
 /** Transacción de saldo de Stripe de un gasto automático (null si no lo es). */
 export const stripeTxnOfExpense = (e: { sourceKey: string | null }) => (isStripeFeeExpense(e) ? e.sourceKey!.slice(STRIPE_FEE_EXPENSE_PREFIX.length) : null);
+/**
+ * Gastos que no entran en las listas de recibidas de los modelos: los de Stripe (su IVA sale del libro) y los cargos
+ * bancarios aún sin factura (`bank-charge:<movimiento>`, sin IVA hasta tenerla).
+ */
+export const isOutOfTaxLists = (e: { sourceKey: string | null; invoiceNumber: string | null }) => isStripeFeeExpense(e) || (!!e.sourceKey?.startsWith("bank-charge:") && !e.invoiceNumber);
 
 // ── Asientos ──────────────────────────────────────────────────────────────────────────────────────────────────────
 

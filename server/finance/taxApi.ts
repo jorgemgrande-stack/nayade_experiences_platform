@@ -436,7 +436,7 @@ export function mountFinanceTaxRoutes(r: Router, tax: FinanceTaxService, fiscal 
         reference: z.string().max(60).nullable().optional(),
         requestedOn: date,
         notes: z.string().max(500).nullable().optional(),
-        installments: z.array(z.object({ n: z.number().int().positive(), dueDate: date, amountCents: z.number().int().positive() }).strict()).min(1).max(60),
+        installments: z.array(z.object({ n: z.number().int().positive(), dueDate: date, amountCents: z.number().int().positive(), interestCents: z.number().int().min(0).optional() }).strict()).min(1).max(60),
       })
       .strict()
       .parse(body(req));

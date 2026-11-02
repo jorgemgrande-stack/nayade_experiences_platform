@@ -1112,6 +1112,21 @@ export class FinanceOpsService {
     return this.movement(m.id);
   }
 
+  /**
+   * Vincula un movimiento con un pago ya contabilizado en otro módulo (el de una obligación o una cuota de aplazamiento
+   * de Gestoría, con su asiento propio): sin asiento nuevo. Desvincularlo solo deshace el vínculo; el pago y su asiento
+   * se gestionan en su módulo.
+   */
+  async linkExistingEntry(id: number, i: { type: AccountMatchType; matchId: number; entryId: number | null; note?: string }, actor: FinanceActor): Promise<BankMovement> {
+    const m = await this.movement(id);
+    if (m.status !== "pending") throw new FinanceError("invalid_state", "El movimiento ya no está pendiente");
+    const claimed = await this.s.claimMovement(m.id, { from: "pending", to: "matched", matchType: i.type, by: actor.by, at: this.now(), bump: false });
+    if (!claimed) throw new FinanceError("conflict", "El movimiento ya no está pendiente (otra persona lo ha conciliado)");
+    await this.s.setMovementMatch(m.id, i.matchId, null);
+    await this.audit(actor, "bank_movement.link", "bank_movement", m.id, { type: i.type, matchId: i.matchId, entryId: i.entryId, note: i.note ?? null });
+    return this.movement(m.id);
+  }
+
   /** Vincula un pago registrado a mano con su movimiento: mismo importe y misma cuenta; sin asiento nuevo. */
   private async linkPayment(m: BankMovement, paymentId: number, actor: FinanceActor) {
     const p = await this.s.getPayment(paymentId);
