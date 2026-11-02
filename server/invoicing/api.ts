@@ -20,7 +20,7 @@ import { z } from "zod";
 import { getAuth, requireScope } from "../controlPlane/auth";
 import { opsLog } from "../_core/ops/log";
 import { invoiceHtml } from "./document";
-import { documentName, renderInvoicePdf } from "./delivery";
+import { documentName, rectifiedOf, renderInvoicePdf } from "./delivery";
 import { fetchBrandLogo } from "../documents/brandPdf";
 import { registerCsv } from "./register";
 import type { InvoicingService } from "./service";
@@ -118,7 +118,8 @@ export function createInvoicingRouter(svc: InvoicingService, issuer: FiscalParty
   r.get("/invoices/:id/pdf", requireScope("billing:read"), wrap(async (req, res) => {
     const inv = await svc.must(id.parse(req.params.id));
     const proforma = inv.status === "draft";
-    const pdf = await renderInvoicePdf(inv, issuer, { proforma, logoPng: await fetchBrandLogo().catch(() => null) });
+    const original = await rectifiedOf(inv, (x) => svc.must(x));
+    const pdf = await renderInvoicePdf(inv, issuer, { proforma, logoPng: await fetchBrandLogo().catch(() => null), original });
     res.type("application/pdf").setHeader("Content-Disposition", `inline; filename="${documentName(inv, proforma)}"`);
     res.send(Buffer.from(pdf));
   }));

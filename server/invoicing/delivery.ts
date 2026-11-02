@@ -36,7 +36,8 @@ export const CREDIT_ISSUE_DAY = 10;
 const REDELIVER_DAYS = 45;
 export const INVOICING_ACTOR = "system:invoicing";
 
-const money = (cents: number, currency: string) => new Intl.NumberFormat("es-ES", { style: "currency", currency }).format(cents / 100);
+// Separador de miles también con cuatro cifras («1.000,00 €»): el español de Intl no agrupa por debajo de 10.000
+const money = (cents: number, currency: string) => new Intl.NumberFormat("es-ES", { style: "currency", currency, useGrouping: "always" }).format(cents / 100);
 const date = (d: string | null) => (d ? `${d.slice(8, 10)}/${d.slice(5, 7)}/${d.slice(0, 4)}` : "—");
 const pct = (bp: number) => `${(bp / 100).toLocaleString("es-ES")} %`;
 const partyLines = (p: FiscalParty | null) => (p ? [p.legalName, `NIF ${p.taxId}`, p.address, `${p.postalCode} ${p.city} (${p.country})`] : ["Datos fiscales pendientes de verificar"]);
@@ -53,8 +54,14 @@ export function creditIssueDate(operationDate: string): string {
 /** Nombre del PDF: el número de la factura o, en la proforma, su mensualidad. */
 export const documentName = (inv: Invoice, proforma: boolean) => (proforma ? `proforma-${inv.operationDate.slice(0, 7)}-${inv.id}.pdf` : `factura-${inv.number}.pdf`);
 
+/** Factura que rectifica una rectificativa: su serie y número y su fecha de expedición (art. 15 del RD 1619/2012). */
+export type RectifiedRef = Pick<Invoice, "number" | "issueDate"> | null;
+
+const rectifies = (inv: Invoice, original: RectifiedRef | undefined) =>
+  original?.number ? `factura ${original.number}${original.issueDate ? ` de ${date(original.issueDate)}` : ""}` : `factura de referencia interna #${inv.originalInvoiceId}`;
+
 /** Bloques del PDF: contenido del art. 6 del RD 1619/2012; la proforma lleva la leyenda y ningún número. */
-export function invoicePdfBlocks(inv: Invoice, issuerDraft: FiscalParty, o: { proforma?: boolean } = {}): PdfBlock[] {
+export function invoicePdfBlocks(inv: Invoice, issuerDraft: FiscalParty, o: { proforma?: boolean; original?: RectifiedRef } = {}): PdfBlock[] {
   const proforma = !!o.proforma || inv.status === "draft";
   const title = proforma ? "Factura proforma" : inv.kind === "rectification" ? "Factura rectificativa" : "Factura";
   const blocks: PdfBlock[] = [{ kind: "title", text: title, subtitle: proforma ? PROFORMA_LEGEND : `${inv.number}` }];
@@ -64,7 +71,7 @@ export function invoicePdfBlocks(inv: Invoice, issuerDraft: FiscalParty, o: { pr
     rows: [
       ...(proforma ? [] : ([["Número", inv.number ?? "—"], ["Fecha de expedición", date(inv.issueDate)]] as Array<[string, string]>)),
       ["Fecha de operación", `${date(inv.operationDate)}${inv.periodLabel ? ` · periodo: ${inv.periodLabel}` : ""}`],
-      ...(inv.kind === "rectification" && inv.originalInvoiceId ? ([["Rectifica", `factura n.º ${inv.originalInvoiceId}`]] as Array<[string, string]>) : []),
+      ...(inv.kind === "rectification" && inv.originalInvoiceId ? ([["Rectifica", rectifies(inv, o.original)]] as Array<[string, string]>) : []),
     ],
   });
   blocks.push({ kind: "box", title: "Emisor", lines: partyLines(inv.issuer ?? issuerDraft) }, { kind: "box", title: "Cliente", lines: partyLines(inv.customer) });
@@ -80,12 +87,20 @@ export function invoicePdfBlocks(inv: Invoice, issuerDraft: FiscalParty, o: { pr
   return blocks;
 }
 
-export async function renderInvoicePdf(inv: Invoice, issuerDraft: FiscalParty, o: { proforma?: boolean; logoPng?: Uint8Array | null } = {}): Promise<Uint8Array> {
+/** PDF auténtico (pdf-lib, cabecera «%PDF-») de la factura, su proforma o su rectificativa (con la factura que rectifica). */
+export async function renderInvoicePdf(inv: Invoice, issuerDraft: FiscalParty, o: { proforma?: boolean; logoPng?: Uint8Array | null; original?: RectifiedRef } = {}): Promise<Uint8Array> {
   const { renderBrandPdf } = await import("../documents/brandPdf");
   const iss = inv.issuer ?? issuerDraft;
   const issuer: BrandIssuer = { legalName: iss.legalName, taxId: iss.taxId, address: `${iss.address}, ${iss.postalCode} ${iss.city}` };
   const proforma = !!o.proforma || inv.status === "draft";
-  return renderBrandPdf({ title: proforma ? `Proforma · ${inv.periodLabel ?? inv.operationDate}` : `Factura ${inv.number}`, issuer, logoPng: o.logoPng ?? null, footerNote: proforma ? PROFORMA_LEGEND : `Factura ${inv.number} · huella ${inv.hash?.slice(0, 16) ?? "—"}`, blocks: invoicePdfBlocks(inv, issuerDraft, { proforma }) });
+  return renderBrandPdf({ title: proforma ? `Proforma · ${inv.periodLabel ?? inv.operationDate}` : `Factura ${inv.number}`, issuer, logoPng: o.logoPng ?? null, footerNote: proforma ? PROFORMA_LEGEND : `Factura ${inv.number} · huella ${inv.hash?.slice(0, 16) ?? "—"}`, blocks: invoicePdfBlocks(inv, issuerDraft, { proforma, original: o.original }) });
+}
+
+/** La factura original de una rectificativa (null si no lo es o no se encuentra). */
+export async function rectifiedOf(inv: Invoice, get: ((id: number) => Promise<Invoice | null>) | undefined): Promise<RectifiedRef> {
+  if (inv.kind !== "rectification" || !inv.originalInvoiceId || !get) return null;
+  const o = await get(inv.originalInvoiceId).catch(() => null);
+  return o ? { number: o.number, issueDate: o.issueDate } : null;
 }
 
 const concept = (inv: Invoice) => inv.lines[0]?.concept ?? inv.periodLabel ?? "Servicio";
@@ -129,7 +144,7 @@ export type StripeInvoiceCheck = (stripeInvoiceId: string) => Promise<{ status: 
 
 export interface InvoicingAutomationDeps {
   svc: Pick<InvoicingService, "issue" | "readiness">;
-  store: Pick<InvoicingStore, "list">;
+  store: Pick<InvoicingStore, "list"> & Partial<Pick<InvoicingStore, "get">>;
   issueEnabled: boolean;
   delivery: DeliveryDeps | null;
   stripeInvoice?: StripeInvoiceCheck | null;
@@ -162,7 +177,13 @@ export class InvoicingAutomation {
     if (this.done.has(key)) return "ya enviada";
     const to = await dl.recipient(inv);
     if (!to) return "sin correo de facturación";
-    const pdf = await renderInvoicePdf(inv, dl.issuer, { proforma, logoPng: dl.logo ? await dl.logo().catch(() => null) : null });
+    // Un fallo del PDF no afecta a la expedición ni al cobro: no se envía y se reintenta en la pasada siguiente
+    let pdf: Uint8Array;
+    try {
+      pdf = await renderInvoicePdf(inv, dl.issuer, { proforma, logoPng: dl.logo ? await dl.logo().catch(() => null) : null, original: await rectifiedOf(inv, this.d.store.get?.bind(this.d.store)) });
+    } catch (e) {
+      return `pdf_error: ${(e instanceof Error ? e.message : String(e)).slice(0, 120)}`;
+    }
     const r = await dl.send({ key: key.slice(0, 160), category: proforma ? "quote_sent" : "invoice_available", to, content: proforma ? proformaMail(inv, dl.supportEmail) : invoiceMail(inv, dl.supportEmail), attachments: [{ name: documentName(inv, proforma), url: "", content: Buffer.from(pdf).toString("base64") }] });
     if (r.status !== "failed") this.done.add(key);
     return r.duplicate ? "ya enviada" : r.status;
