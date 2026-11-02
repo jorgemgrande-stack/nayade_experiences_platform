@@ -180,6 +180,41 @@ export const MODULES: readonly ModuleDef[] = [
     { key: "secondaryLabel", label: "Segundo botón (opcional)", kind: "text", max: 80, inline: true },
     { key: "secondaryUrl", label: "A dónde lleva el segundo botón", kind: "link" },
   ]),
+  mod("pricing", "marketing", "pricing", "precios tarifas planes tabla comparador", [
+    { key: "title", label: "Título", kind: "text", max: 200, inline: true },
+    { key: "intro", label: "Introducción (opcional)", kind: "text", max: 500, multiline: true, inline: true },
+    {
+      key: "plans", label: "Planes", kind: "list", max: 6, itemLabel: "Plan",
+      newItem: { name: "Nuevo plan", price: "0 €", period: "al mes", description: "", features: "Una ventaja", buttonLabel: "Lo quiero", buttonUrl: "/contacto", highlighted: "off" },
+      fields: [
+        { key: "name", label: "Nombre del plan", kind: "text", max: 80 },
+        { key: "price", label: "Precio", kind: "text", max: 40, hint: "Tal como quieres que se vea: «49 €», «Desde 20 €», «Consúltanos»…" },
+        { key: "period", label: "Periodo (opcional)", kind: "text", max: 40 },
+        { key: "description", label: "Descripción breve (opcional)", kind: "text", max: 200 },
+        { key: "features", label: "Características (una por línea)", kind: "text", max: 1500, multiline: true },
+        { key: "buttonLabel", label: "Texto del botón", kind: "text", max: 60 },
+        { key: "buttonUrl", label: "A dónde lleva el botón", kind: "link" },
+        { key: "highlighted", label: "Destacar este plan", kind: "select", options: ON_OFF },
+      ],
+    },
+  ], { note: "Los precios son textos que escribes tú: no se cobran desde aquí. Para vender, usa los productos de tu tienda." }),
+  mod("stats", "marketing", "stats", "cifras numeros contador estadisticas datos", [
+    { key: "title", label: "Título (opcional)", kind: "text", max: 200, inline: true },
+    {
+      key: "items", label: "Cifras", kind: "list", max: 6, itemLabel: "Cifra", newItem: { value: "100", suffix: "", label: "Lo que cuenta esta cifra" },
+      fields: [
+        { key: "value", label: "Número", kind: "text", max: 15, hint: "Solo cifras (por ejemplo 2500)." },
+        { key: "suffix", label: "Detrás del número (opcional)", kind: "text", max: 20, hint: "Por ejemplo «+», «%» o «años»." },
+        { key: "label", label: "Qué significa", kind: "text", max: 120 },
+      ],
+    },
+    { key: "animate", label: "Contar al aparecer", kind: "select", options: ON_OFF },
+  ]),
+  mod("logos", "marketing", "logos", "logos clientes marcas partners confian", [
+    { key: "title", label: "Título (opcional)", kind: "text", max: 200, inline: true },
+    { key: "logos", label: "Logos", kind: "images", max: 24 },
+    { key: "grayscale", label: "En gris (color al pasar el ratón)", kind: "select", options: ON_OFF },
+  ]),
   mod("form", "marketing", "form-builder", "formulario a medida campos encuesta inscripcion solicitud presupuesto", [
     { key: "title", label: "Título", kind: "text", max: 200, inline: true },
     { key: "intro", label: "Texto de introducción", kind: "text", max: 500, multiline: true, inline: true },

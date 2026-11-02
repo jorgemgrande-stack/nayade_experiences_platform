@@ -275,6 +275,25 @@ describe("presentaciones, carruseles y animaciones", () => {
   });
 });
 
+describe("tabla de precios, cifras y logos", () => {
+  it("precios: textos libres saneados, enlaces seguros, destacado de la lista y máximo de 6 planes", () => {
+    const b = one("pricing", { plans: [{ name: "Pro", price: "49 €", features: "Uno\nDos", buttonUrl: "javascript:x", highlighted: "quizá" }] });
+    expect(b.data.plans[0]).toMatchObject({ name: "Pro", price: "49 €", features: "Uno\nDos", buttonUrl: "", highlighted: "off" });
+    expect(() => one("pricing", { plans: Array.from({ length: 7 }, () => ({ name: "x" })) })).toThrow(/hasta 6/);
+  });
+
+  it("cifras y logos: valores de la lista y resumen en HTML", () => {
+    const s = one("stats", { animate: "no", items: [{ value: "2500", suffix: "+", label: "clientes" }] });
+    expect(s.data.animate).toBe("on");
+    const l = one("logos", { logos: [{ url: "javascript:x", alt: "" }, { url: "/files/x.png", alt: "Marca" }], grayscale: "off" });
+    expect(l.data.logos).toEqual([{ url: "/files/x.png", alt: "Marca" }]);
+    const html = blocksToHtml(normalizeBlocks([createBlock("pricing"), createBlock("stats")]));
+    expect(html).toContain("<h3>Completo</h3>");
+    expect(html).toContain("<li>Todo lo del plan básico</li>");
+    expect(html).toContain("2500+ clientes atendidos");
+  });
+});
+
 describe("mensajes del lienzo", () => {
   it("solo se aceptan arrastres de módulos, secciones o bloques con un identificador válido", () => {
     expect(parseDragPayload("module:faq")).toEqual({ what: "module", value: "faq" });

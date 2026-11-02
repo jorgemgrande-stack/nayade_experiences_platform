@@ -70,7 +70,7 @@ export default function StudioCanvas() {
         return;
       }
       if (t?.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t?.tagName ?? "")) return;
-      if (["delete", "backspace", "escape"].includes(k) || (ctrl && ["z", "y", "s", "d"].includes(k))) {
+      if (["delete", "backspace", "escape"].includes(k) || (ctrl && ["z", "y", "s", "d", "c", "v"].includes(k) && !(k === "c" && window.getSelection()?.toString()))) {
         e.preventDefault();
         post({ kind: "key", key: k, ctrl, shift: e.shiftKey });
       }
