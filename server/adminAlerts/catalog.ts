@@ -1,6 +1,6 @@
 /**
  * Catálogo de las alertas administrativas (familia D · Administración Big Elephant). Cada alerta tiene un id
- * ESTABLE, su número del catálogo aprobado (1–42, más la 43 de vencimientos fiscales de la fase 3 de finanzas), el hecho que la activa, la fuente técnica de ese hecho, la
+ * ESTABLE, su número del catálogo aprobado (1–42, más la 43 de vencimientos fiscales de la fase 3 de finanzas y la 44 de la traza de las altas de pago), el hecho que la activa, la fuente técnica de ese hecho, la
  * prioridad por defecto, si requiere intervención, la frecuencia por defecto y unos datos FICTICIOS para la vista
  * previa y las pruebas.
  *
@@ -128,6 +128,8 @@ export const ADMIN_ALERTS: readonly AdminAlertSpec[] = [
   a({ id: "admin.deploy_failed", n: 42, section: "operaciones", name: "Error de despliegue que afecte a clientes", trigger: "Fallo de la publicación automática en live o en production", source: "DeployWatcher: API pública de GitHub Actions (publicacion.yml y ci.yml, trabajos «Publicar en live/production»)", severity: "critical", intervention: true, sample: { ...DEMO, tenantId: null, company: null, summary: "La publicación en production ha fallado.", status: bad("Fallida"), link: "#/dashboard" } }),
   // ── Finanzas corporativas (fase 3: gestoría e impuestos) ──
   a({ id: "admin.tax_deadline", n: 43, section: "facturacion", name: "Vencimiento fiscal próximo", trigger: "Obligación fiscal o laboral de Big Elephant sin presentar a 15, 7 y 3 días de su vencimiento (solo con CP_FINANCE_TAX_REMINDERS_ENABLED=1)", source: "FinanceTaxService.dueReminders: calendario fiscal (CRM 0037), umbral avisado guardado en la obligación", severity: "important", intervention: true, sample: { ...DEMO, tenantId: null, company: null, summary: "Vence el modelo 303 (3.er trimestre) el 20/10/2026: quedan 7 días y aún no consta presentado.", status: warn("Próximo vencimiento"), reference: "Modelo 303 · 3T 2026", link: "#/gestoria/calendario" } }),
+  // ── Traza de las altas de pago ──
+  a({ id: "admin.sale_trace", n: 44, section: "facturacion", name: "Traza de un alta de pago", trigger: "Primer cobro verificado de un alta, una conversión de prueba o una compra de módulo (sin empresas internas de pruebas): evaluación al detectarlo, a los 20 minutos y a las 48 horas (factura); una vez por pedido y fase", source: "SaleTraceWatcher: pagos verificados (commercial_payments) y traza de extremo a extremo (server/commerce/saleTrace.ts, GET /cp/v1/orders/:id/trace)", severity: "info", intervention: false, sample: { ...DEMO, summary: "Traza del alta de pago (conversión de prueba), revisión 20 minutos después del cobro: 6 de 6 pasos completados; todo correcto.", status: ok("Todo correcto"), reference: "PED-2026-0042", amount: { cents: 12100, currency: "EUR" }, details: [{ label: "Pago confirmado en Stripe", value: "Correcto · Cobro verificado de 121,00 EUR (primer periodo)" }, { label: "Licencias aplicadas", value: "Correcto · 5 de 5 capacidades del presupuesto activas" }, { label: "Traza completa", value: "GET /cp/v1/orders/42/trace" }], link: "#/comercial/contrataciones/42" } }),
 ];
 
 const BY_ID = new Map(ADMIN_ALERTS.map((x) => [x.id, x]));
