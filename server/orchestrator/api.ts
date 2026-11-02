@@ -19,7 +19,7 @@ import { PaymentSignatureError } from "./payments";
 import type { CommercialOrchestrator } from "./service";
 import { opsLog } from "../_core/ops/log";
 import { recordFailure } from "../_core/ops/failureAlerts";
-import { APPROVAL_CATEGORIES, ORDER_STATES, OrderError } from "./types";
+import { APPROVAL_CATEGORIES, ORDER_STATES, OrderError, REJECT_CODES } from "./types";
 
 const STATUS: Record<string, number> = { not_found: 404, invalid_input: 400, invalid_state: 409, conflict: 409, forbidden: 403, unavailable: 409, version_conflict: 409, limit: 429 };
 const wrap =
@@ -89,7 +89,7 @@ export function createOrdersRouter(svc: CommercialOrchestrator): Router {
     res.json(await svc.cancel(id.parse(req.params.id), b, who(req)));
   }));
   r.post("/:id/reject", requireScope("orders:write"), wrap(async (req, res) => {
-    const b = z.object({ reason: z.string().trim().min(3).max(300) }).strict().parse(req.body);
+    const b = z.object({ reason: z.string().trim().min(3).max(300), code: z.enum(REJECT_CODES).optional() }).strict().parse(req.body);
     res.json({ order: await svc.reject(id.parse(req.params.id), b, who(req)) });
   }));
   r.post("/:id/renew", requireScope("orders:write"), ...ACTIVATION, wrap(async (req, res) => void res.json(await svc.renew(id.parse(req.params.id), who(req)))));

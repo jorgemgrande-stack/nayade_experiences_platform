@@ -17,7 +17,7 @@ import type { QuoteCatalogProduct } from "../catalog/quote";
 import { withoutInternal, type SiteDocument } from "../web/service";
 import { videoEmbedUrl, type CommercialBlock } from "../web/schemas";
 import { mediaSrcset } from "../web/media";
-import type { PanelActivation } from "./panelActivation";
+import { NO_ACTIVATION, type PanelActivation } from "./panelActivation";
 import { panelMarketplace, type PanelMarketplace } from "./panelMarketplace";
 import type { MarketplaceDocument } from "../web/service";
 
@@ -233,8 +233,6 @@ export function panelCatalog(products: QuoteCatalogProduct[], o: { version: stri
   items.sort((a, b) => a.kind.localeCompare(b.kind) || a.family.localeCompare(b.family) || a.name.localeCompare(b.name, "es"));
   return { version: o.version, purchasesEnabled: o.purchasesEnabled, items, marketplace: panelMarketplace(o.marketplace?.doc ?? null, { visible, plan: o.marketplace?.plan ?? null }) };
 }
-
-const NO_ACTIVATION: PanelActivation = { state: "none", retryable: false, updatedAt: null };
 
 const tenant = z.string().regex(/^[a-z0-9][a-z0-9-]{1,62}$/);
 

@@ -38,7 +38,7 @@ import type { TestPaymentPort } from "./payments";
 import type { OrderStore } from "./store";
 import { opsLog } from "../_core/ops/log";
 import { recordFailure } from "../_core/ops/failureAlerts";
-import { APPROVAL_CATEGORIES, OrderError, type ApprovalCategory, type CommercialOrder, type Confirmation, type OrderPatch, type OrderPayment, type OrderQuote, type OrderState, type PaymentMode, type PaymentPurpose } from "./types";
+import { APPROVAL_CATEGORIES, OrderError, REJECT_CODES, rejectCodeOf, type ApprovalCategory, type RejectCode, type CommercialOrder, type Confirmation, type OrderPatch, type OrderPayment, type OrderQuote, type OrderState, type PaymentMode, type PaymentPurpose } from "./types";
 
 export const GRACE_DAYS = 7;
 /** Días de solo lectura (consulta y exportación) tras el fin del periodo pagado, por los dos caminos. */
@@ -176,7 +176,7 @@ export class CommercialOrchestrator {
   async detail(id: number) {
     const order = await this.must(id);
     const [events, payments] = await Promise.all([this.d.store.events(id), this.d.store.payments(id)]);
-    return { order, events, payments, waitingFor: this.waiting(order, payments) };
+    return { order, events, payments, waitingFor: this.waiting(order, payments), rejectCode: order.state === "rejected" ? rejectCodeOf(events) : null };
   }
   list(f: Parameters<OrderStore["list"]>[0]) {
     return this.d.store.list(f);
@@ -758,7 +758,7 @@ export class CommercialOrchestrator {
         return { order: r.order, created: false, noop: false, error: r.error };
       }
       // Otro destino posterior en Stripe: el cambio abierto ya no es lo que tiene el cliente
-      if (o.state === "requested" || o.state === "quoted" || o.state === "contracted") await this.reject(o.id, { reason: `Sustituido por otro cambio hecho en Stripe (${target.plan}/${target.interval})` }, actor);
+      if (o.state === "requested" || o.state === "quoted" || o.state === "contracted") await this.reject(o.id, { reason: `Sustituido por otro cambio hecho en Stripe (${target.plan}/${target.interval})`, code: "conflict" }, actor);
     }
     // Una clave por pedido de origen, destino y número de cambio: un destino al que se vuelve crea otro pedido
     const created = await this.create(
@@ -859,15 +859,19 @@ export class CommercialOrchestrator {
     return this.move(o, "cancel", actor, {}, { reason, cancelAt: after.cancelAt });
   }
 
-  /** Abandono antes de confirmar: el contrato se cancela y no se activa nada. */
-  async reject(id: number, input: { reason: string }, actor: string) {
+  /**
+   * Abandono antes de confirmar: el contrato se cancela y no se activa nada. `code` (opcional) tipifica el motivo y
+   * queda en el evento `reject` (`detail.code`); el panel lo usa para mostrar un pago fallido o caducado.
+   */
+  async reject(id: number, input: { reason: string; code?: RejectCode }, actor: string) {
     const reason = (input.reason ?? "").trim();
     if (reason.length < 3) throw new OrderError("invalid_input", "Indica el motivo");
+    if (input.code !== undefined && !REJECT_CODES.includes(input.code)) throw new OrderError("invalid_input", "Motivo de rechazo no admitido");
     const o = await this.must(id);
     if (await this.stripeBilled(o)) throw new OrderError("invalid_state", "Este pedido se cobra en Stripe: cancélalo en Stripe (Customer Portal o Dashboard del sandbox) y el cambio se reflejará solo");
     const contract = o.contractId ? await this.d.crmStore.get("contracts", o.contractId) : null;
     if (nextOrderState(o.state, "reject") && contract && contract.status !== "cancelled" && contract.status !== "active") await this.d.crm.setContractStatus(contract.id, "cancelled", actor);
-    return this.move(o, "reject", actor, {}, { reason });
+    return this.move(o, "reject", actor, {}, { reason, ...(input.code ? { code: input.code } : {}) });
   }
 
   /**
