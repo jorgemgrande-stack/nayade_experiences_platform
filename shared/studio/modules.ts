@@ -180,6 +180,41 @@ export const MODULES: readonly ModuleDef[] = [
     { key: "secondaryLabel", label: "Segundo botón (opcional)", kind: "text", max: 80, inline: true },
     { key: "secondaryUrl", label: "A dónde lleva el segundo botón", kind: "link" },
   ]),
+  mod("form", "marketing", "form-builder", "formulario a medida campos encuesta inscripcion solicitud presupuesto", [
+    { key: "title", label: "Título", kind: "text", max: 200, inline: true },
+    { key: "intro", label: "Texto de introducción", kind: "text", max: 500, multiline: true, inline: true },
+    {
+      key: "fields", label: "Campos", kind: "list", max: 20, itemLabel: "Campo",
+      newItem: { kind: "text", label: "Nuevo campo", placeholder: "", options: "", required: "off", role: "none", width: "full", value: "" },
+      fields: [
+        {
+          key: "kind", label: "Tipo de campo", kind: "select",
+          options: [
+            { value: "text", label: "Texto corto" }, { value: "textarea", label: "Texto largo" }, { value: "email", label: "Correo electrónico" },
+            { value: "phone", label: "Teléfono" }, { value: "number", label: "Número" }, { value: "date", label: "Fecha" }, { value: "time", label: "Hora" },
+            { value: "select", label: "Desplegable" }, { value: "radio", label: "Una opción (botones)" }, { value: "multi", label: "Varias opciones" },
+            { value: "checkbox", label: "Casilla de sí/no" }, { value: "hidden", label: "Oculto (dato fijo)" },
+          ],
+        },
+        { key: "label", label: "Pregunta o etiqueta", kind: "text", max: 200 },
+        { key: "required", label: "Obligatorio", kind: "select", options: ON_OFF },
+        { key: "options", label: "Opciones (una por línea)", kind: "text", max: 1500, multiline: true, hint: "Para desplegables, botones de opción y varias opciones." },
+        { key: "placeholder", label: "Texto de ayuda dentro del campo (opcional)", kind: "text", max: 150, advanced: true },
+        {
+          key: "role", label: "Dato del contacto para el CRM", kind: "select",
+          options: [{ value: "none", label: "Ninguno" }, { value: "name", label: "Nombre" }, { value: "email", label: "Correo" }, { value: "phone", label: "Teléfono" }],
+        },
+        { key: "width", label: "Ancho", kind: "select", options: [{ value: "full", label: "Completo" }, { value: "half", label: "Mitad" }], advanced: true },
+        { key: "value", label: "Valor fijo (solo campos ocultos)", kind: "text", max: 200, advanced: true },
+      ],
+    },
+    { key: "submitLabel", label: "Texto del botón de envío", kind: "text", max: 60 },
+    { key: "successMessage", label: "Mensaje tras enviar", kind: "text", max: 500, multiline: true },
+    { key: "redirectUrl", label: "Después de enviar, llevar a (opcional)", kind: "link", advanced: true },
+    { key: "consent", label: "Pedir aceptar la política de privacidad", kind: "select", options: ON_OFF },
+  ], {
+    note: "Cada envío entra en tu CRM como oportunidad nueva, con su cliente y todas las respuestas. Necesita un campo marcado como «Correo» para poder responder. Está protegido contra envíos automáticos. Los adjuntos de archivos aún no están disponibles.",
+  }),
   mod("contact_form", "marketing", "form", "formulario contacto crm", [
     { key: "title", label: "Título", kind: "text", max: 200, inline: true },
     { key: "intro", label: "Texto de introducción", kind: "text", max: 500, multiline: true, inline: true },

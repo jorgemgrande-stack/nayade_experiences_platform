@@ -22,6 +22,7 @@ import { FEATURE_ICON_COMPONENTS } from "@/components/site/featureIcons";
 import { Carousel, prefersReducedMotion } from "@/components/site/Carousel";
 import { Slideshow } from "@/components/site/Slideshow";
 import { Lightbox } from "@/components/site/Lightbox";
+import { StudioFormFields } from "@/components/site/StudioForm";
 import { blockLabel, DEFAULT_BLOCK_STYLE, type BlockOf, type BlockStyle, type Device, type GalleryImage, type PageBlock } from "@shared/pageBlocks";
 import { formatEuros, productPath } from "@shared/storefront";
 import { isPurchasable } from "@shared/shopOrders";
@@ -568,6 +569,26 @@ function ContactFormBlock({ b, first, preview, pageTitle }: { b: BlockOf<"contac
   );
 }
 
+/** Formulario a medida: los campos los configura la empresa; cada envío entra en su CRM. */
+function FormBlock({ b, first, preview, pageTitle }: { b: BlockOf<"form">; first: boolean; preview?: boolean; pageTitle?: string }) {
+  const ed = useContext(StudioEditContext);
+  const noEmail = !b.data.fields.some((f) => f.role === "email");
+  return (
+    <section className="container py-8 md:py-12">
+      <div className="mx-auto max-w-2xl rounded-2xl border border-border bg-card p-5 text-card-foreground shadow-sm md:p-8">
+        <Txt k="title" value={b.data.title} as={first ? "h1" : "h2"} className={cn(headingClass(first), "mb-2 block")} placeholder="Título" />
+        <Txt k="intro" value={b.data.intro} as="p" multiline className="mb-6 block text-muted-foreground" placeholder="Texto de introducción" />
+        {ed && noEmail && (
+          <p role="note" className="mb-4 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 font-sans text-sm text-amber-900">
+            Marca un campo como «Correo» en el panel de la derecha: sin él, no podrás responder a quien te escriba y el formulario no se enviará.
+          </p>
+        )}
+        <StudioFormFields blockId={b.id} form={b.data} preview={preview || !!ed} pageTitle={pageTitle} />
+      </div>
+    </section>
+  );
+}
+
 function SeparatorBlock({ b }: { b: BlockOf<"separator"> }) {
   if (b.data.kind === "space") return <div className="h-10 md:h-16" aria-hidden />;
   return (
@@ -1102,6 +1123,8 @@ function renderBlock(b: PageBlock, first: boolean, preview?: boolean, pageTitle?
       return <CarouselBlock b={b} first={first} />;
     case "cards":
       return <CardsBlock b={b} first={first} preview={preview} />;
+    case "form":
+      return <FormBlock b={b} first={first} preview={preview} pageTitle={pageTitle} />;
     default:
       return null;
   }

@@ -221,6 +221,15 @@ export async function publishPage(slug: string, raw?: unknown, author?: string |
   return { success: true };
 }
 
+/** Formulario a medida de una página PUBLICADA (para validar sus envíos), o null. */
+export async function getPublishedFormBlock(slug: string, blockId: string) {
+  const target = await resolvePublicSlug(slug);
+  const page = await getPage(target);
+  if (!page?.isPublished) return null;
+  const block = (await getPublishedBlocks(target))?.find((b) => b.id === blockId);
+  return block?.type === "form" ? { slug: target, data: block.data } : null;
+}
+
 // ─── Historial de versiones ───────────────────────────────────────────────────
 
 async function versionRows(slug: string) {
