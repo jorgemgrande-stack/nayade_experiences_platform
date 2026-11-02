@@ -128,6 +128,7 @@ import { MysqlFiscalInvoiceSource } from "../finance/taxSources";
 import { runTaxReminders, taxRemindersEnabled } from "../finance/taxReminders";
 import { FinanceAnalysisService } from "../finance/analysisService";
 import { FinanceAutomation, startFinanceAutomation } from "../finance/automation";
+import { BankAutoReconciler } from "../finance/bankAutoReconcile";
 import { FinanceIntegrity } from "../finance/integrity";
 import { StripeApiBalanceReader } from "../finance/stripeBalanceApi";
 import { InvoicingService } from "../invoicing/service";
@@ -715,6 +716,8 @@ async function main() {
         })
       : null;
   if (invoicing) invoicing.automation = invoiceIssuing ?? undefined;
+  // Conciliación bancaria automática por reglas deterministas (comisiones, cargos de proveedores conocidos y pagos a la AEAT)
+  const bankRules = financeOps && crmPool ? new BankAutoReconciler({ ops: financeOps, store: new MysqlFinanceOpsStore(crmPool, { fiscal: finFiscal, supplierInvoiceRef: finInvoiceRef }), tax: financeTax }) : null;
   const financeAutomation =
     finance && crmPool
       ? new FinanceAutomation({
@@ -726,6 +729,7 @@ async function main() {
           invoicing: invoicingAuto,
           issuing: invoiceIssuing,
           issuer: { legalName: ISSUER.legalName, taxId: ISSUER.taxId },
+          bankRules,
         })
       : null;
   if (invoicing) console.log(JSON.stringify({ ctx: "InvoicingAutomation", mounted: !!invoiceIssuing, issueEnabled: invoicing.issueEnabled, proformaLeadDays: invoicingAuto ? (Number.isInteger(proformaDays) && proformaDays >= 0 && proformaDays <= 30 ? proformaDays : DEFAULT_PROFORMA_LEAD_DAYS) : null, mail: !!mailService, stripeCheck: !!stripeReader }));
@@ -963,6 +967,7 @@ async function main() {
     financeTax,
     financeAnalysis,
     financeFiscal: finFiscal,
+    financeBankRules: bankRules,
     communications,
     notifications: notificationsFromEnv(process.env),
     mail: {

@@ -827,6 +827,29 @@ contabilización de Stripe (y por tanto en la tarea automática):
   aviso `fee_vat_unset` cuenta también esos gastos. La API de gastos añade `origin` (`stripe`, `recurring`, `manual`)
   y `stripeBalanceTransactionId`.
 
+**Conciliación bancaria por reglas (02/11/2026).** `server/finance/bankRules.ts` define reglas deterministas por
+concepto EXACTO del extracto (normalizado) y signo; `BankAutoReconciler` (`bankAutoReconcile.ts`) las aplica a los
+movimientos pendientes en cada pasada de la tarea automática (paso `bankRules`) y bajo demanda con
+`POST /finance/bank/auto-reconcile { bankAccountId?, dryRun? }` (`GET /finance/bank/rules` lista las reglas). Reutiliza la
+conciliación manual, así que cada conciliación tiene su asiento idempotente, su auditoría con la regla y la evidencia, y
+se deshace con «Desvincular».
+
+- `bank_fee` (comisiones del TPV, mantenimiento, extractos, transferencias, tarjeta de CaixaBank): asiento contra la
+  cuenta de la naturaleza (626) por el importe del banco, sin gasto ni IVA.
+- `supplier_charge` (OpenAI, Anthropic, Railway, Postmark, Brevo, Microsoft, Google Ads, Meta): tique «pendiente de
+  factura» del proveedor (`bank-charge:<movimiento>`, sin IVA, fuera de las listas de los modelos mientras no tenga
+  número de factura) y su pago por banco (Debe 410 · Haber banco). El proveedor se da de alta una vez, sin NIF-IVA ni
+  domicilio hasta tener su factura. Las devoluciones (abonos) se quedan pendientes.
+- `tax_payment` (303, 111, 115 y cuotas de aplazamiento): SOLO contra una obligación presentada y sin pagar con el mismo
+  importe, o la cuota pendiente cuyo principal más intereses sea el cargo. Registra el pago en Gestoría (su asiento;
+  en la cuota, principal a la cuenta del modelo e intereses a 669) y vincula el movimiento sin otro asiento.
+  Desvincularlo solo deshace el vínculo. Sin obligación que case, el movimiento espera.
+- Todo lo demás (cobros de clientes sin factura en el sistema, cargos con tarjeta de comercios, reintegros, traspasos)
+  se queda pendiente de revisión: nada se concilia por parecido de texto ni se convierte en gasto deducible.
+
+Los aplazamientos aceptan el interés exacto de cada cuota del calendario oficial (`installments[].interestCents`, que
+deben sumar el interés del aplazamiento): no se recalcula nada.
+
 ## Permisos
 
 Cada capacidad tiene su ámbito propio (`finance:*`, en `server/controlPlane/auth.ts`), centralizado en

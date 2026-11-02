@@ -141,6 +141,8 @@ const EXPECTED: Record<string, FinanceCapability> = {
   "POST /stripe/fee-vat-rules": "config",
   "POST /stripe/fee-vat-rules/:id/void": "config",
   "POST /stripe/fee-expenses/link": "post",
+  "GET /bank/rules": "read",
+  "POST /bank/auto-reconcile": "post",
   "GET /analysis/settings": "read",
   "PATCH /analysis/settings": "config",
   // Análisis (fase 4)
@@ -163,7 +165,7 @@ type Layer = { route?: { path: string; methods: Record<string, boolean>; stack: 
 /** Router completo con servicios de mentira (las rutas no se ejecutan: solo se inspecciona el montaje), con la 0039. */
 function fullRouter(): Router {
   const fake = {} as never;
-  return createFinanceRouter(fake, fake, fake, fake, fake, fake, true);
+  return createFinanceRouter(fake, fake, fake, fake, fake, fake, true, fake);
 }
 
 function routesOf(r: Router): { key: string; caps: FinanceCapability[]; handlers: unknown[] }[] {

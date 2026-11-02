@@ -335,4 +335,4 @@ export class FinanceIntegrity {
   }
 }
 
-const STEP_LABEL: Record<keyof Omit<AutomationReport, "at">, string> = { fiscalYear: "ejercicio", taxSettings: "configuración fiscal", invoiceDrafts: "borradores de factura", invoiceIssue: "emisión de facturas", invoiceSync: "facturas al libro", stripe: "Stripe" };
+const STEP_LABEL: Record<keyof Omit<AutomationReport, "at">, string> = { fiscalYear: "ejercicio", taxSettings: "configuración fiscal", invoiceDrafts: "borradores de factura", invoiceIssue: "emisión de facturas", invoiceSync: "facturas al libro", stripe: "Stripe", bankRules: "conciliación bancaria por reglas" };
