@@ -189,7 +189,7 @@ function Studio({ routeSlug }: { routeSlug: string | null }) {
   };
 
   const setText = (id: string, key: string, value: string) => {
-    doc.change(blocks.map((b) => (b.id === id ? ({ ...b, data: { ...b.data, [key]: value } } as PageBlock) : b)), `${id}:${key}`);
+    doc.updateBlock(id, (b) => ({ ...b, data: { ...b.data, [key]: value } }) as PageBlock, `${id}:${key}`);
   };
 
   const openPage = async (target: string) => {
@@ -266,6 +266,12 @@ function Studio({ routeSlug }: { routeSlug: string | null }) {
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
       const t = e.target as HTMLElement | null;
+      // Ctrl+S guarda también mientras se escribe en un campo (si no, el navegador abre «Guardar página como»)
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "s") {
+        e.preventDefault();
+        keyRef.current("s", true, e.shiftKey);
+        return;
+      }
       if (t?.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t?.tagName ?? "") || t?.closest("[role=dialog]")) return;
       const ctrl = e.ctrlKey || e.metaKey;
       const k = e.key.toLowerCase();
@@ -315,7 +321,7 @@ function Studio({ routeSlug }: { routeSlug: string | null }) {
     if (!slug) return;
     try {
       await publish.mutateAsync({ slug, blocks });
-      doc.markSaved();
+      doc.markSaved(false);
       setConfirmPublish(false);
       const url = page?.isHome ? "/" : `/${slug}`;
       toast.success("Publicado. Ya se ve en tu web.", { action: { label: "Ver", onClick: () => window.open(url, "_blank", "noopener") } });
@@ -331,7 +337,7 @@ function Studio({ routeSlug }: { routeSlug: string | null }) {
     try {
       const r = await restore.mutateAsync({ slug, id });
       doc.change(r.blocks as PageBlock[]);
-      doc.markSaved();
+      doc.markSaved(true);
       setViewing(null);
       setVersionsOpen(false);
       setConfirmRestore(null);
@@ -361,7 +367,7 @@ function Studio({ routeSlug }: { routeSlug: string | null }) {
 
   // ── Estado de la página ──
   const source = doc.editor.data?.source;
-  const pendingPublish = !!page && (doc.dirty || page.hasDraft || !page.isPublished || source === "converted");
+  const pendingPublish = !!page && (doc.dirty || doc.hasDraft || !page.isPublished || source === "converted");
   const status = !page
     ? null
     : doc.status === "saving"
@@ -370,7 +376,7 @@ function Studio({ routeSlug }: { routeSlug: string | null }) {
         ? { label: "No se ha guardado", tone: "error" as const, icon: CircleAlert }
         : doc.dirty
           ? { label: "Cambios sin guardar", tone: "muted" as const, icon: null }
-          : page.hasDraft
+          : doc.hasDraft
             ? { label: page.isPublished ? "Borrador · sin publicar" : "Borrador guardado", tone: "draft" as const, icon: null }
             : page.isPublished
               ? { label: "Publicada", tone: "ok" as const, icon: Check }
@@ -429,7 +435,7 @@ function Studio({ routeSlug }: { routeSlug: string | null }) {
           <span className="flex h-7 w-7 items-center justify-center rounded-lg text-[13px] font-bold text-white" style={{ background: `linear-gradient(135deg, ${ACCENT}, #8b5cf6)` }} aria-hidden>
             S
           </span>
-          <span className="text-sm font-semibold tracking-tight">Elephant Studio</span>
+          <span className="hidden text-sm font-semibold tracking-tight xl:inline">Elephant Studio</span>
         </div>
         <span className="hidden h-6 w-px bg-border md:block" aria-hidden />
         <Button variant="ghost" size="icon" className={cn("h-9 w-9 shrink-0", leftOpen && "bg-muted")} onClick={() => setLeftOpen((v) => !v)} aria-label={leftOpen ? "Ocultar panel izquierdo" : "Mostrar panel izquierdo"} title="Panel izquierdo">
@@ -437,7 +443,7 @@ function Studio({ routeSlug }: { routeSlug: string | null }) {
         </Button>
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <Button variant="ghost" className="h-9 min-w-0 max-w-[220px] gap-1.5 px-2.5">
+            <Button variant="ghost" className="h-9 min-w-0 max-w-[150px] gap-1.5 px-2.5 lg:max-w-[220px]">
               <span className="min-w-0 overflow-hidden text-ellipsis whitespace-nowrap text-sm font-medium">{page?.title ?? "Página"}</span>
               <ChevronDown className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
             </Button>
@@ -461,7 +467,7 @@ function Studio({ routeSlug }: { routeSlug: string | null }) {
         {status && (
           <span
             className={cn(
-              "hidden shrink-0 items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium sm:inline-flex",
+              "inline-flex shrink-0 items-center gap-1 rounded-full px-1.5 py-1 text-[11px] font-medium lg:px-2 lg:py-0.5",
               status.tone === "ok" && "bg-emerald-50 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300",
               status.tone === "draft" && "bg-amber-50 text-amber-800 dark:bg-amber-950/60 dark:text-amber-200",
               status.tone === "error" && "bg-red-50 text-red-700 dark:bg-red-950/60 dark:text-red-300",
@@ -470,9 +476,14 @@ function Studio({ routeSlug }: { routeSlug: string | null }) {
             title={doc.error ?? (doc.savedAt ? `Borrador guardado a las ${doc.savedAt.toLocaleTimeString("es-ES", { hour: "2-digit", minute: "2-digit" })}` : undefined)}
             role="status"
           >
-            {status.icon && <status.icon className={cn("h-3 w-3", status.icon === Loader2 && "animate-spin")} />}
-            {status.label}
+            {status.icon ? <status.icon className={cn("h-3 w-3", status.icon === Loader2 && "animate-spin")} /> : <span className="h-2 w-2 rounded-full bg-current lg:hidden" aria-hidden />}
+            <span className="sr-only lg:not-sr-only">{status.label}</span>
           </span>
+        )}
+        {doc.status === "error" && (
+          <Button variant="outline" size="sm" className="h-7 shrink-0 px-2 text-xs" onClick={() => void doc.save().then((ok) => ok && toast.success("Borrador guardado"))} title={doc.error ?? undefined}>
+            Reintentar
+          </Button>
         )}
 
         <div className="flex flex-1 items-center justify-center gap-1">
@@ -539,7 +550,7 @@ function Studio({ routeSlug }: { routeSlug: string | null }) {
             <DropdownMenuItem onSelect={() => setShortcuts(true)}>
               <Keyboard className="mr-2 h-4 w-4" /> Atajos de teclado
             </DropdownMenuItem>
-            {page?.isPublished && page.hasDraft && (
+            {page?.isPublished && doc.hasDraft && (
               <>
                 <DropdownMenuSeparator />
                 <DropdownMenuItem className="text-destructive focus:text-destructive" onSelect={() => setConfirmDiscard(true)}>
@@ -549,10 +560,17 @@ function Studio({ routeSlug }: { routeSlug: string | null }) {
             )}
           </DropdownMenuContent>
         </DropdownMenu>
-        <Button variant="outline" size="sm" className="hidden h-9 sm:inline-flex" onClick={openPreview} disabled={!page}>
-          <Eye className="mr-1.5 h-4 w-4" /> Vista previa
+        <Button variant="outline" size="sm" className="hidden h-9 sm:inline-flex" onClick={openPreview} disabled={!page} aria-label="Vista previa" title="Vista previa del borrador">
+          <Eye className="h-4 w-4 xl:mr-1.5" /> <span className="hidden xl:inline">Vista previa</span>
         </Button>
-        <Button size="sm" className="h-9 text-white hover:opacity-90" style={{ background: ACCENT }} onClick={() => setConfirmPublish(true)} disabled={!page || !!viewing || !pendingPublish || publish.isPending}>
+        <Button
+          size="sm"
+          className="h-9 text-white hover:opacity-90"
+          style={{ background: ACCENT }}
+          onClick={() => setConfirmPublish(true)}
+          disabled={!page || !!viewing || !pendingPublish || publish.isPending}
+          title={viewing ? "Vuelve a tu borrador para publicar" : !pendingPublish ? "No hay cambios pendientes: tu web ya muestra esta versión" : "Publicar los cambios en tu web"}
+        >
           <Upload className="mr-1.5 h-4 w-4" /> Publicar
         </Button>
         <Button variant="ghost" size="icon" className={cn("h-9 w-9 shrink-0", rightOpen && "bg-muted")} onClick={() => setRightOpen((v) => !v)} aria-label={rightOpen ? "Ocultar inspector" : "Mostrar inspector"} title="Inspector">
@@ -669,7 +687,7 @@ function Studio({ routeSlug }: { routeSlug: string | null }) {
               {viewing ? (
                 <p className="text-sm text-muted-foreground">Mientras ves una versión anterior no se puede editar.</p>
               ) : selected ? (
-                <BlockInspector key={selected.id} block={selected} onChange={(b, k) => doc.change(blocks.map((x) => (x.id === b.id ? b : x)), k)} targets={targets} pro={pro} tab={inspTab} onTab={setInspTab} />
+                <BlockInspector key={selected.id} block={selected} update={(fn, k) => doc.updateBlock(selected.id, fn, k)} targets={targets} pro={pro} tab={inspTab} onTab={setInspTab} />
               ) : page ? (
                 <div className="space-y-5">
                   <p className="rounded-lg bg-muted px-3 py-2 text-xs leading-relaxed text-muted-foreground">

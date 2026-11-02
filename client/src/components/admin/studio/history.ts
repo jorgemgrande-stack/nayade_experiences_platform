@@ -20,6 +20,8 @@ export interface DocState {
 export type DocAction =
   | { type: "load"; blocks: PageBlock[] }
   | { type: "change"; blocks: PageBlock[]; coalesceKey?: string; now?: number }
+  /** Cambio calculado sobre el documento VIGENTE (no sobre una copia antigua de quien lo pide: subidas, diálogos) */
+  | { type: "apply"; fn: (blocks: PageBlock[]) => PageBlock[]; coalesceKey?: string; now?: number }
   | { type: "undo" }
   | { type: "redo" };
 
@@ -29,6 +31,10 @@ export function docReducer(s: DocState, a: DocAction): DocState {
   switch (a.type) {
     case "load":
       return { ...initialDoc, blocks: a.blocks };
+    case "apply": {
+      const blocks = a.fn(s.blocks);
+      return blocks === s.blocks ? s : docReducer(s, { type: "change", blocks, coalesceKey: a.coalesceKey, now: a.now });
+    }
     case "change": {
       const now = a.now ?? Date.now();
       const merge = !!a.coalesceKey && a.coalesceKey === s.coalesceKey && now - s.coalesceAt < COALESCE_MS;

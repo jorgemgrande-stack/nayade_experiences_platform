@@ -60,11 +60,25 @@ async function requireAdmin(req: Request, res: Response, next: () => void) {
   }
 }
 
+/**
+ * Los rechazos de multer (formato no admitido, más de 10 MB) se responden en JSON con su motivo: sin esto llegaban
+ * como una página de error y el panel solo podía decir «error de conexión».
+ */
+export function singleImage(field: string) {
+  const mw = upload.single(field);
+  return (req: Request, res: Response, next: (err?: unknown) => void) =>
+    mw(req, res, (err?: unknown) => {
+      if (!err) return next();
+      const tooBig = err instanceof multer.MulterError && err.code === "LIMIT_FILE_SIZE";
+      res.status(tooBig ? 413 : 400).json({ error: tooBig ? "La imagen pesa más de 10 MB. Redúcela e inténtalo de nuevo." : err instanceof Error ? err.message : "Archivo no válido." });
+    });
+}
+
 // POST /api/upload/image — sube una imagen a S3, la registra en media_files y devuelve la URL
 router.post(
   "/api/upload/image",
   (req, res, next) => requireAdmin(req, res, next),
-  upload.single("image"),
+  singleImage("image"),
   async (req: Request, res: Response) => {
     try {
       if (!req.file) {

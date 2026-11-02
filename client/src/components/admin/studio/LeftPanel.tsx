@@ -5,7 +5,7 @@
  *   - Estructura: los bloques de la página en orden; se seleccionan, se reordenan arrastrando, se duplican y se quitan.
  *   - Sitio: las páginas de la web y los ajustes globales (menús, marca, blog, multimedia).
  */
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { Link } from "wouter";
 import { Copy, EyeOff, FileText, GripVertical, Home, Image as ImageIcon, LayoutPanelTop, Newspaper, Palette, Plus, Search, Settings2, Trash2 } from "lucide-react";
 import { Input } from "@/components/ui/input";
@@ -138,8 +138,18 @@ function Library({ modules, presets, onInsert }: { modules: ModuleDef[]; presets
 }
 
 function Structure({ blocks, selectedId, device, onSelect, onMove, onDuplicate, onDelete }: { blocks: PageBlock[]; selectedId: string | null; device: Device; onSelect: (id: string) => void; onMove: (id: string, index: number) => void; onDuplicate: (id: string) => void; onDelete: (id: string) => void }) {
-  const [dragId, setDragId] = useState<string | null>(null);
+  const [dragId, setDragIdState] = useState<string | null>(null);
   const [over, setOver] = useState<{ index: number } | null>(null);
+  // El bloque arrastrado también en una referencia: los eventos del arrastre llegan antes de que React repinte
+  const dragRef = useRef<string | null>(null);
+  const setDragId = (id: string | null) => {
+    dragRef.current = id;
+    setDragIdState(id);
+  };
+  const dropIndex = (e: React.DragEvent<HTMLElement>, i: number) => {
+    const r = e.currentTarget.getBoundingClientRect();
+    return e.clientY < r.top + r.height / 2 ? i : i + 1;
+  };
   if (!blocks.length) return <p className="p-4 text-sm text-muted-foreground">La página aún no tiene bloques. Añádelos desde «Añadir».</p>;
   return (
     <ol className="space-y-0.5 p-2" aria-label="Bloques de la página">
@@ -161,14 +171,13 @@ function Structure({ blocks, selectedId, device, onSelect, onMove, onDuplicate, 
               setOver(null);
             }}
             onDragOver={(e) => {
-              if (!dragId) return;
+              if (!dragRef.current) return;
               e.preventDefault();
-              const r = e.currentTarget.getBoundingClientRect();
-              setOver({ index: e.clientY < r.top + r.height / 2 ? i : i + 1 });
+              setOver({ index: dropIndex(e, i) });
             }}
             onDrop={(e) => {
               e.preventDefault();
-              if (dragId && over) onMove(dragId, over.index);
+              if (dragRef.current) onMove(dragRef.current, dropIndex(e, i));
               setDragId(null);
               setOver(null);
             }}

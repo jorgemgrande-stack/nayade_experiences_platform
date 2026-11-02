@@ -20,18 +20,31 @@ import { LinkPicker, type LinkTarget } from "@/components/admin/pageBuilder/Bloc
 import { FEATURE_ICON_COMPONENTS } from "@/components/site/featureIcons";
 import { ANCHOR_RE, DEFAULT_BLOCK_STYLE, isDefaultStyle, type BlockStyle, type Device, type PageBlock } from "@shared/pageBlocks";
 import { FEATURE_ICONS, moduleDef, type FieldDef } from "@shared/studio/modules";
+import { siteRelativeFileUrl } from "@shared/imageUpload";
 
-type SetField = (key: string, value: unknown, coalesce?: boolean) => void;
+/** Valor nuevo de un campo, o una función que lo calcula a partir del valor VIGENTE (listas, subidas que terminan tarde). */
+type FieldValue = unknown | ((current: unknown) => unknown);
+type SetField = (key: string, value: FieldValue, coalesce?: boolean) => void;
 
-export function BlockInspector({ block, onChange, targets, pro, tab, onTab }: { block: PageBlock; onChange: (b: PageBlock, coalesceKey?: string) => void; targets: LinkTarget[]; pro: boolean; tab: "content" | "design"; onTab: (t: "content" | "design") => void }) {
+/**
+ * `update` cambia el bloque a partir de su versión vigente en el documento: lo que llega tarde (una imagen que
+ * termina de subirse, un diálogo) nunca deshace lo que la persona ha editado mientras tanto.
+ */
+export function BlockInspector({ block, update, targets, pro, tab, onTab }: { block: PageBlock; update: (fn: (b: PageBlock) => PageBlock, coalesceKey?: string) => void; targets: LinkTarget[]; pro: boolean; tab: "content" | "design"; onTab: (t: "content" | "design") => void }) {
   const def = moduleDef(block.type);
   const data = block.data as unknown as Record<string, unknown>;
-  const set: SetField = (key, value, coalesce = true) => onChange({ ...block, data: { ...data, [key]: value } } as PageBlock, coalesce ? `${block.id}:${key}` : undefined);
-  const setStyle = (patch: Partial<BlockStyle>) => {
-    const next = { ...DEFAULT_BLOCK_STYLE, ...block.style, ...patch };
-    const { style: _old, ...rest } = block;
-    onChange((isDefaultStyle(next) ? rest : { ...rest, style: next }) as PageBlock, `${block.id}:style:${Object.keys(patch).join()}`);
-  };
+  const set: SetField = (key, value, coalesce = true) =>
+    update((b) => {
+      const cur = b.data as unknown as Record<string, unknown>;
+      const next = typeof value === "function" ? (value as (c: unknown) => unknown)(cur[key]) : value;
+      return { ...b, data: { ...cur, [key]: next } } as PageBlock;
+    }, coalesce ? `${block.id}:${key}` : undefined);
+  const setStyle = (patch: Partial<BlockStyle>) =>
+    update((b) => {
+      const next = { ...DEFAULT_BLOCK_STYLE, ...b.style, ...patch };
+      const { style: _old, ...rest } = b;
+      return (isDefaultStyle(next) ? rest : { ...rest, style: next }) as PageBlock;
+    }, `${block.id}:style:${Object.keys(patch).join()}`);
   if (!def) return <p className="text-sm text-muted-foreground">Este bloque no tiene opciones.</p>;
   const altKeys = new Set(def.fields.flatMap((f) => (f.kind === "image" && f.altKey ? [f.altKey] : [])));
   const fields = def.fields.filter((f) => (pro || !f.advanced) && !altKeys.has(f.key));
@@ -126,7 +139,7 @@ function FieldControl({ field: f, value, set, targets, blockId }: { field: Field
         </div>
       );
     case "image":
-      return <ImageUploader label={f.label} value={str} onChange={(url) => set(f.key, url, false)} />;
+      return <ImageUploader label={f.label} value={str} onChange={(url) => set(f.key, siteRelativeFileUrl(url), false)} />;
     case "link":
       return <LinkPicker label={f.label} value={str} onChange={(url) => set(f.key, url)} targets={targets} />;
     case "select":
@@ -195,8 +208,11 @@ function CategoryPicker({ label, value, onChange }: { label: string; value: stri
   );
 }
 
-function ImagesEditor({ field, value, set }: { field: Extract<FieldDef, { kind: "images" }>; value: Array<{ url: string; alt: string }>; set: SetField }) {
-  const update = (i: number, patch: Partial<{ url: string; alt: string }>) => set(field.key, value.map((g, j) => (j === i ? { ...g, ...patch } : g)), !("url" in patch));
+type Img = { url: string; alt: string };
+const asImages = (v: unknown): Img[] => (Array.isArray(v) ? (v as Img[]) : []);
+
+function ImagesEditor({ field, value, set }: { field: Extract<FieldDef, { kind: "images" }>; value: Img[]; set: SetField }) {
+  const update = (i: number, patch: Partial<Img>) => set(field.key, (cur: unknown) => asImages(cur).map((g, j) => (j === i ? { ...g, ...patch } : g)), !("url" in patch));
   return (
     <div className="space-y-3">
       <span className="text-sm font-medium">{field.label}</span>
@@ -204,16 +220,16 @@ function ImagesEditor({ field, value, set }: { field: Extract<FieldDef, { kind: 
         <div key={i} className="space-y-2 rounded-lg border border-border p-3">
           <div className="flex items-center justify-between">
             <span className="text-xs font-medium text-muted-foreground">Imagen {i + 1}</span>
-            <Button type="button" variant="ghost" size="sm" className="h-7 text-destructive" onClick={() => set(field.key, value.filter((_, j) => j !== i), false)}>
+            <Button type="button" variant="ghost" size="sm" className="h-7 text-destructive" onClick={() => set(field.key, (cur: unknown) => asImages(cur).filter((_, j) => j !== i), false)}>
               <Trash2 className="mr-1 h-3.5 w-3.5" /> Quitar
             </Button>
           </div>
-          <ImageUploader value={g.url} onChange={(url) => update(i, { url })} />
+          <ImageUploader value={g.url} onChange={(url) => update(i, { url: siteRelativeFileUrl(url) })} />
           <PlainInput aria-label={`Descripción de la imagen ${i + 1}`} placeholder="Descripción de la imagen" value={g.alt} maxLength={300} onChange={(e) => update(i, { alt: e.target.value })} />
         </div>
       ))}
       {value.length < field.max && (
-        <Button type="button" variant="outline" size="sm" className="w-full" onClick={() => set(field.key, [...value, { url: "", alt: "" }], false)}>
+        <Button type="button" variant="outline" size="sm" className="w-full" onClick={() => set(field.key, (cur: unknown) => [...asImages(cur), { url: "", alt: "" }], false)}>
           <Plus className="mr-1 h-4 w-4" /> Añadir imagen
         </Button>
       )}
@@ -223,13 +239,17 @@ function ImagesEditor({ field, value, set }: { field: Extract<FieldDef, { kind: 
 
 function ListEditor({ field, value, set, targets, blockId }: { field: Extract<FieldDef, { kind: "list" }>; value: Array<Record<string, string>>; set: SetField; targets: LinkTarget[]; blockId: string }) {
   const [open, setOpen] = useState<number | null>(null);
-  const write = (next: Array<Record<string, string>>, coalesce = false) => set(field.key, next, coalesce);
+  type Items = Array<Record<string, string>>;
+  const asItems = (v: unknown): Items => (Array.isArray(v) ? (v as Items) : []);
+  const write = (fn: (cur: Items) => Items, coalesce = false) => set(field.key, (cur: unknown) => fn(asItems(cur)), coalesce);
   const move = (i: number, dir: -1 | 1) => {
     const j = i + dir;
     if (j < 0 || j >= value.length) return;
-    const next = [...value];
-    [next[i], next[j]] = [next[j], next[i]];
-    write(next);
+    write((cur) => {
+      const next = [...cur];
+      [next[i], next[j]] = [next[j], next[i]];
+      return next;
+    });
     setOpen(j);
   };
   const firstText = field.fields.find((f) => f.kind === "text")?.key;
@@ -251,7 +271,7 @@ function ListEditor({ field, value, set, targets, blockId }: { field: Extract<Fi
               <Button type="button" variant="ghost" size="icon" className="h-7 w-7" aria-label="Bajar" disabled={i === value.length - 1} onClick={() => move(i, 1)}>
                 <ArrowDown className="h-3.5 w-3.5" />
               </Button>
-              <Button type="button" variant="ghost" size="icon" className="h-7 w-7 text-destructive hover:text-destructive" aria-label={`Quitar ${field.itemLabel.toLowerCase()}`} onClick={() => write(value.filter((_, j) => j !== i))}>
+              <Button type="button" variant="ghost" size="icon" className="h-7 w-7 text-destructive hover:text-destructive" aria-label={`Quitar ${field.itemLabel.toLowerCase()}`} onClick={() => write((cur) => cur.filter((_, j) => j !== i))}>
                 <Trash2 className="h-3.5 w-3.5" />
               </Button>
             </div>
@@ -264,7 +284,9 @@ function ListEditor({ field, value, set, targets, blockId }: { field: Extract<Fi
                     value={item[sub.key]}
                     targets={targets}
                     blockId={`${blockId}-${i}`}
-                    set={(k, v, coalesce = true) => set(field.key, value.map((it, j) => (j === i ? { ...it, [k]: v } : it)), coalesce)}
+                    set={(k, v, coalesce = true) =>
+                      write((cur) => cur.map((it, j) => (j === i ? { ...it, [k]: (typeof v === "function" ? (v as (c: unknown) => unknown)(it[k]) : v) as string } : it)), coalesce)
+                    }
                   />
                 ))}
               </div>
@@ -279,7 +301,7 @@ function ListEditor({ field, value, set, targets, blockId }: { field: Extract<Fi
           size="sm"
           className="w-full border-dashed"
           onClick={() => {
-            write([...value, { ...field.newItem }]);
+            write((cur) => [...cur, { ...field.newItem }]);
             setOpen(value.length);
           }}
         >

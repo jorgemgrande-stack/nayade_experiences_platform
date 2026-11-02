@@ -13,6 +13,7 @@ import {
   type BlockStyle, type BlockType, type GalleryImage, type PageBlock,
 } from "../../shared/pageBlocks";
 import { FEATURE_ICON_KEYS, moduleDef, type FieldDef } from "../../shared/studio/modules";
+import { siteRelativeFileUrl } from "../../shared/imageUpload";
 
 export class PageBlocksError extends Error {}
 
@@ -39,10 +40,16 @@ export function safeLink(v: unknown): string {
   return "";
 }
 
-/** Imagen: subida a la web (ruta propia) o http(s). */
+/**
+ * Imagen: subida a la web (ruta propia) o http(s). Un fichero de Multimedia de la empresa se guarda como ruta
+ * (`/files/<id>/<nombre>`): se ve igual en cualquiera de sus dominios (el de la plataforma, el propio, la vista
+ * previa) y no depende del dominio desde el que se subió.
+ */
 export function safeImage(v: unknown): string {
   const s = str(v, PAGE_LIMITS.url).replace(/\s+/g, "");
   if (!s) return "";
+  const own = siteRelativeFileUrl(s);
+  if (own !== s) return own;
   if (/^\/(?!\/)/.test(s) || /^https?:\/\/[^\s]+$/i.test(s)) return s;
   return "";
 }
