@@ -152,7 +152,6 @@ export function activationOf(item: { state: ConnectState; activation?: ConnectAc
   if (item.activation && item.activation.state !== "none") return item.activation;
   if (item.state === "pending_setup") return { state: "pending", retryable: false, updatedAt: null };
   if (item.state === "activating") return { state: "processing", retryable: false, updatedAt: null };
-  if (item.state === "incident") return { state: "error", retryable: false, updatedAt: null };
   return { state: "none", retryable: false, updatedAt: null };
 }
 
