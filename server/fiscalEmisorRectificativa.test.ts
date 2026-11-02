@@ -197,3 +197,35 @@ describe("correo de la factura rectificativa", () => {
     expect(html).not.toMatch(/factura de abono/i);
   });
 });
+
+describe("fecha de los documentos nuevos en hora de Madrid", () => {
+  const { timeZone: _omit, ...oldSnap } = snap as typeof snap & { timeZone?: string };
+  const at = (iso: string) => ({ ...invoice, issuedAt: new Date(iso), invoiceType: "factura" as const });
+
+  it("la copia nueva guarda la zona de Madrid", () => {
+    expect(snap.timeZone).toBe("Europe/Madrid");
+  });
+
+  it("invierno y verano: la emisión de madrugada en Madrid sale con el día de Madrid", async () => {
+    expect(await buildInvoiceHtml({ ...at("2026-11-01T23:30:00Z"), issuerSnapshot: snap })).toContain("2/11/2026");
+    expect(await buildInvoiceHtml({ ...at("2026-07-14T22:30:00Z"), issuerSnapshot: snap })).toContain("15/7/2026");
+    expect(await buildInvoiceHtml({ ...at("2026-07-14T21:30:00Z"), issuerSnapshot: snap })).toContain("14/7/2026");
+  });
+
+  it("documentos ya emitidos (copia sin zona): la fecha de siempre, sin cambios", async () => {
+    const d = new Date("2026-11-01T23:30:00Z");
+    const html = await buildInvoiceHtml({ ...at("2026-11-01T23:30:00Z"), issuerSnapshot: oldSnap });
+    expect(html).toContain(d.toLocaleDateString("es-ES"));
+  });
+
+  it("el abono cita la factura rectificada con la fecha que lleva impresa", async () => {
+    const base = { ...invoice, issuerSnapshot: snap, invoiceType: "abono" as const, creditNoteReason: "Error" };
+    const orig = new Date("2026-11-01T23:30:00Z");
+    const nuevo = await buildInvoiceHtml({ ...base, rectifies: { invoiceNumber: "FAC-1", issuedAt: orig, timeZone: "Europe/Madrid" } });
+    expect(nuevo).toContain("de fecha 2/11/2026");
+    const antiguo = await buildInvoiceHtml({ ...base, rectifies: { invoiceNumber: "FAC-1", issuedAt: orig } });
+    expect(antiguo).toContain(`de fecha ${orig.toLocaleDateString("es-ES")}`);
+    const correo = buildInvoiceEmailHtml({ clientName: "C", invoiceNumber: "ABO-1", isCreditNote: true, items: [], subtotal: 0, taxRate: 21, taxAmount: 0, total: 0, pdfUrl: null, rectifies: { invoiceNumber: "FAC-1", issuedAt: orig, timeZone: "Europe/Madrid" } });
+    expect(correo).toContain("de fecha 2/11/2026");
+  });
+});

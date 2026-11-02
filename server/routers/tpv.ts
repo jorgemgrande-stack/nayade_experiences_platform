@@ -1335,7 +1335,7 @@ export const tpvRouter = router({
             title: `Ticket TPV ${ticketNumber}`,
             fileUrl: ticketViewUrl,
             mimeType: "text/html",
-            notes: `Ticket de venta TPV generado automáticamente. Fecha: ${new Date().toLocaleDateString("es-ES")}. Cajero: ${sellerName}.`,
+            notes: `Ticket de venta TPV generado automáticamente. Fecha: ${new Date().toLocaleDateString("es-ES", { timeZone: "Europe/Madrid" })}. Cajero: ${sellerName}.`,
           });
           console.log(`[TPV] Expediente REAV ${reavExpedientNumber} creado para venta ${ticketNumber}`);
         } catch (e) {
@@ -1488,7 +1488,7 @@ export const tpvRouter = router({
           merchantOrder: ticketNumber,
           productName: mainItem?.productName ?? input.items.map(i => i.productName).join(", "),
           customerName: input.customerName || "Cliente TPV",
-          date: new Date().toLocaleDateString("es-ES"),
+          date: new Date().toLocaleDateString("es-ES", { timeZone: "Europe/Madrid" }),
           people: totalPeople,
           amount: `${total.toFixed(2).replace(".", ",")} €`,
           reservationUrl,
