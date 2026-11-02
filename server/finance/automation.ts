@@ -24,6 +24,7 @@ import { madridDateKey } from "../utils/timezone";
 import type { FinanceService } from "./service";
 import type { FinanceStore } from "./store";
 import type { StripeApiBalanceReader, StripeApiStatus } from "./stripeBalanceApi";
+import type { BankAutoReconciler } from "./bankAutoReconcile";
 import type { FinanceStripeService } from "./stripeService";
 import type { FinanceTaxService } from "./taxService";
 import type { FinanceActor } from "./types";
@@ -54,6 +55,8 @@ export interface AutomationReport {
   invoiceIssue: StepResult;
   invoiceSync: StepResult;
   stripe: StepResult & { source?: StripeApiStatus; missing?: string[] };
+  /** Conciliación bancaria por reglas deterministas. Ausente en las pasadas anteriores a esta versión. */
+  bankRules: StepResult;
 }
 
 /** Notas de la configuración fiscal sembrada: qué está confirmado y qué debe validar la gestoría. */
@@ -63,7 +66,7 @@ export const SEEDED_TAX_NOTES = [
 ].join("\n");
 
 /** Pasos de cada pasada, en orden. */
-export const AUTOMATION_STEPS = ["fiscalYear", "taxSettings", "invoiceDrafts", "invoiceIssue", "invoiceSync", "stripe"] as const;
+export const AUTOMATION_STEPS = ["fiscalYear", "taxSettings", "invoiceDrafts", "invoiceIssue", "invoiceSync", "stripe", "bankRules"] as const;
 
 export interface FinanceAutomationDeps {
   finance: FinanceService;
@@ -75,6 +78,8 @@ export interface FinanceAutomationDeps {
   /** Facturación fiscal automática (DF-2): proformas, expedición contrastada con Stripe y envío. */
   issuing?: Pick<InvoicingAutomation, "sendProformas" | "issueDue" | "redeliver"> | null;
   issuer: { legalName: string; taxId: string };
+  /** Conciliación bancaria automática por reglas (movimientos pendientes de los extractos importados). */
+  bankRules?: Pick<BankAutoReconciler, "run"> | null;
   now?: () => number;
 }
 
@@ -163,7 +168,22 @@ export class FinanceAutomation {
         changed: inserted + posted.posted > 0,
       };
     });
-    return { at: this.now(), fiscalYear, taxSettings, invoiceDrafts, invoiceIssue, invoiceSync, stripe };
+    // Después de Stripe (los payouts y cobros ya contabilizados): las reglas solo tocan movimientos pendientes
+    const bankRules = await this.step(async () => {
+      if (!this.d.bankRules) return { status: "skipped", detail: "Conciliación por reglas no montada" };
+      const r = await this.d.bankRules.run(actor);
+      if (!r.scanned) return { status: "ok", detail: "Ningún movimiento bancario pendiente", changed: false };
+      return {
+        status: r.errors ? "error" : "ok",
+        detail: `${r.scanned} movimientos pendientes revisados: ${r.applied} conciliados por reglas, ${r.skipped} a la espera de su registro (p. ej. la obligación), ${r.unmatched} sin regla (revisión)${r.errors ? `; ${r.errors} con error: ${r.items.find((x) => x.outcome === "error")?.detail ?? ""}` : ""}`,
+        applied: r.applied,
+        skipped: r.skipped,
+        unmatched: r.unmatched,
+        errors: r.errors,
+        changed: r.applied > 0,
+      };
+    });
+    return { at: this.now(), fiscalYear, taxSettings, invoiceDrafts, invoiceIssue, invoiceSync, stripe, bankRules };
   }
 
   /** Una pasada y su registro: se guarda si cambió algo, si cambió el estado de algún paso o cada hora. */

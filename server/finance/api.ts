@@ -28,6 +28,7 @@
 import express, { type Response, type Router } from "express";
 import { z } from "zod";
 import { mountFinanceAnalysisRoutes } from "./analysisApi";
+import { BankAutoReconciler } from "./bankAutoReconcile";
 import type { CommercialSources, FinanceAnalysisService } from "./analysisService";
 import { actorOf, wrap } from "./http";
 import { mountFinanceOpsRoutes } from "./opsApi";
@@ -117,7 +118,7 @@ function sendCsv(res: Response, name: string, csv: string) {
  * de Stripe y vista previa de importaciones, validación de la configuración fiscal, Impuesto sobre Sociedades por
  * ejercicio y su asiento, configuración del análisis); sin ella responden 404 y lo demás funciona como antes.
  */
-export function createFinanceRouter(svc: FinanceService, ops?: FinanceOpsService | null, stripe?: FinanceStripeService | null, tax?: FinanceTaxService | null, analysis?: FinanceAnalysisService | null, commercial?: CommercialSources | null, fiscal = false): Router {
+export function createFinanceRouter(svc: FinanceService, ops?: FinanceOpsService | null, stripe?: FinanceStripeService | null, tax?: FinanceTaxService | null, analysis?: FinanceAnalysisService | null, commercial?: CommercialSources | null, fiscal = false, bankRules?: BankAutoReconciler | null): Router {
   const r = express.Router();
   const names = async () => new Map((await svc.accounts()).map((a) => [a.code, a.name]));
   const one = async (e: Entry) => entryDto(e, await names());
@@ -223,6 +224,14 @@ export function createFinanceRouter(svc: FinanceService, ops?: FinanceOpsService
   if (ops && tax) mountFinanceTaxRoutes(r, tax, fiscal);
   // Fase 4: control diario, informes y análisis (sin montar, /daily responde 404 y el CRM oculta esas páginas)
   if (ops && analysis) mountFinanceAnalysisRoutes(r, analysis, commercial, fiscal);
+  // Conciliación bancaria automática por reglas deterministas: las reglas vigentes y su ejecución (o simulación)
+  if (ops && bankRules) {
+    r.get("/bank/rules", ...canRead, wrap(async (_req, res) => void res.json({ items: BankAutoReconciler.rules() })));
+    r.post("/bank/auto-reconcile", ...canPost, wrap(async (req, res) => {
+      const b = z.object({ bankAccountId: z.number().int().positive().optional(), dryRun: z.boolean().optional() }).strict().parse(req.body ?? {});
+      res.json({ item: await bankRules.run(actorOf(req), b) });
+    }));
+  }
 
   return r;
 }

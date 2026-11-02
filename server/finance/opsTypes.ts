@@ -147,10 +147,15 @@ export interface Expense {
    * `per_invoice` o `domestic`): su asiento solo lleva el IVA, nace pagada (con el saldo de Stripe) y no admite pagos.
    */
   settlesStripeFees: boolean;
+  /**
+   * CRM 0044: factura del proveedor que agrupa varios gastos ya registrados (la mensual de Stripe para sus gastos
+   * automáticos `stripe-fee:<id>`): no es su número propio (único por proveedor), sino el documento que los justifica.
+   */
+  supplierInvoiceRef?: string | null;
   status: ExpenseStatus;
   entryId: number | null;
   paymentStatus: ExpensePaymentStatus;
-  /** Solo los borradores de gastos recurrentes: `recurring:<plantilla>:<periodo>`. */
+  /** Borradores de gastos recurrentes (`recurring:<plantilla>:<periodo>`) y gastos de Stripe (`stripe-fee:<transacción>`). */
   sourceKey: string | null;
   createdBy: string;
   createdAt: number;

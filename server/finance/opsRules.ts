@@ -115,6 +115,20 @@ export const expensePaymentSourceKey = (id: number) => `expense-payment:${id}`;
 export const bankMovementSourceKey = (id: number, matchCount: number) => (matchCount <= 1 ? `bankmov:${id}` : `bankmov:${id}:${matchCount}`);
 export const cashMovementSourceKey = (id: number) => `cash:${id}`;
 export const recurringSourceKey = (templateId: number, period: string) => `recurring:${templateId}:${period}`;
+/**
+ * Gasto automático de Stripe: un cargo real (la comisión de un cobro o un servicio de Stripe) leído de su saldo, ya
+ * contabilizado y pagado con el saldo de Stripe. Se gestiona desde Contabilidad › Stripe: no se edita, paga ni anula aquí.
+ */
+export const STRIPE_FEE_EXPENSE_PREFIX = "stripe-fee:";
+export const stripeFeeExpenseSourceKey = (balanceTransactionId: string) => `${STRIPE_FEE_EXPENSE_PREFIX}${balanceTransactionId}`;
+export const isStripeFeeExpense = (e: { sourceKey: string | null }) => !!e.sourceKey?.startsWith(STRIPE_FEE_EXPENSE_PREFIX);
+/** Transacción de saldo de Stripe de un gasto automático (null si no lo es). */
+export const stripeTxnOfExpense = (e: { sourceKey: string | null }) => (isStripeFeeExpense(e) ? e.sourceKey!.slice(STRIPE_FEE_EXPENSE_PREFIX.length) : null);
+/**
+ * Gastos que no entran en las listas de recibidas de los modelos: los de Stripe (su IVA sale del libro) y los cargos
+ * bancarios aún sin factura (`bank-charge:<movimiento>`, sin IVA hasta tenerla).
+ */
+export const isOutOfTaxLists = (e: { sourceKey: string | null; invoiceNumber: string | null }) => isStripeFeeExpense(e) || (!!e.sourceKey?.startsWith("bank-charge:") && !e.invoiceNumber);
 
 // ── Asientos ──────────────────────────────────────────────────────────────────────────────────────────────────────
 

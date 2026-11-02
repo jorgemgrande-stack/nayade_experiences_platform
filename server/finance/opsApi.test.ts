@@ -173,6 +173,8 @@ describe("API /cp/v1/finance, fase 1B: permisos y formas del CRM", () => {
     expect(list.json.total).toBe(1);
     expect(list.json.items[0]).toMatchObject({ supplierName: "Hosting Nube SL", paidCents: 21_000, pendingCents: 100_000 });
     expect((await call("GET", "/expenses?due=overdue", READ)).json.total).toBe(0);
+    expect((await call("GET", "/expenses?origin=stripe", READ)).json.total).toBe(0);
+    expect((await call("GET", "/expenses?origin=manual", READ)).status).toBe(400);
     expect((await call("GET", "/expenses?sort=amount", READ)).status).toBe(400);
 
     const st = await call("GET", `/suppliers/${ids.supplier}/statement?from=2026-01-01&to=2026-12-31`, READ);
