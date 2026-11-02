@@ -424,8 +424,20 @@ export default function TpvScreen() {
 
   const removeItem = (id: string) => setCart((prev) => prev.filter((i) => i.id !== id));
 
-  const cartSubtotal = cart.reduce((acc, item) => {
-    return acc + item.unitPrice * item.quantity * (1 - item.discountPercent / 100);
+  // Reglas de precios de la empresa (Business): el servidor calcula el precio por unidad que cobrará createSale. La
+  // caja envía siempre el precio de catálogo; sin reglas no cambia nada.
+  const rulePreview = trpc.tpv.pricingPreview.useQuery(
+    {
+      serviceDate,
+      items: cart.map((i) => ({ productType: i.product.productType, productId: i.product.id, unitPrice: i.unitPrice, quantity: i.quantity, participants: i.participants, eventDate: i.eventDate, isManual: i.isManual ?? false })),
+    },
+    { enabled: cart.length > 0, retry: false },
+  );
+  const ruleOf = (index: number) => (rulePreview.data && rulePreview.data.length === cart.length ? rulePreview.data[index] ?? null : null);
+  const pricingPending = cart.length > 0 && rulePreview.isFetching;
+  const unitOf = (item: CartItem, index: number) => ruleOf(index)?.unitPrice ?? item.unitPrice;
+  const cartSubtotal = cart.reduce((acc, item, index) => {
+    return acc + unitOf(item, index) * item.quantity * (1 - item.discountPercent / 100);
   }, 0);
   // Promo code discount applied on subtotal
   const promoDiscount = promoCodeData ? Math.round(cartSubtotal * promoCodeData.discountPercent) / 100 : 0;
@@ -476,6 +488,7 @@ export default function TpvScreen() {
   const handleQuickPay = (method: PaymentMethod, amountTendered?: number) => {
     if (!sessionId) return toast.error("No hay sesión de caja abierta");
     if (cart.length === 0) return toast.error("El carrito está vacío");
+    if (pricingPending) return toast.error("Calculando los precios del carrito. Inténtalo de nuevo en un momento.");
     if (!checkSaleDocument()) return;
 
     createSaleMut.mutate({
@@ -1018,8 +1031,9 @@ export default function TpvScreen() {
                   <p className="text-xs mt-1">Toca un producto para añadirlo</p>
                 </div>
               ) : (
-                cart.map((item) => {
-                  const lineTotal = item.unitPrice * item.quantity * (1 - item.discountPercent / 100);
+                cart.map((item, index) => {
+                  const rule = ruleOf(index);
+                  const lineTotal = unitOf(item, index) * item.quantity * (1 - item.discountPercent / 100);
                   return (
                     <div key={item.id} className="bg-gray-800 rounded-lg p-3 space-y-2">
                       <div className="flex items-start gap-2">
@@ -1028,7 +1042,11 @@ export default function TpvScreen() {
                         </div>
                         <div className="flex-1 min-w-0">
                           <p className="text-xs font-medium text-white line-clamp-1">{item.product.title}</p>
-                          <p className="text-xs text-muted-foreground">{formatEur(item.unitPrice)}/ud</p>
+                          <p className="text-xs text-muted-foreground">
+                            {rule && <span className="line-through mr-1">{formatEur(rule.baseUnitPrice)}</span>}
+                            {formatEur(unitOf(item, index))}/ud
+                          </p>
+                          {rule && <p className="text-xs text-success mt-0.5">{rule.rules.join(" + ")}</p>}
                           {item.variantName && (
                             <p className="text-xs text-info flex items-center gap-0.5 mt-0.5">
                               <Tag className="w-2.5 h-2.5" />
@@ -1207,7 +1225,7 @@ export default function TpvScreen() {
                 <Button
                   className="w-full h-11 bg-primary hover:bg-primary/90 text-primary-foreground font-semibold gap-2"
                   onClick={() => { if (checkSaleDocument()) setShowSplitPayment(true); }}
-                  disabled={createSaleMut.isPending}
+                  disabled={createSaleMut.isPending || pricingPending}
                 >
                   <SplitSquareHorizontal className="w-4 h-4" />
                   Dividir cuenta
@@ -1221,7 +1239,7 @@ export default function TpvScreen() {
                       if (!checkSaleDocument()) return;
                       setShowCashPayment(true);
                     }}
-                    disabled={createSaleMut.isPending}
+                    disabled={createSaleMut.isPending || pricingPending}
                   >
                     <Banknote className="w-4 h-4" />
                     Efectivo

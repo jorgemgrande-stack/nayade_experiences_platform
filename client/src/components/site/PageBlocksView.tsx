@@ -569,6 +569,136 @@ function ContactFormBlock({ b, first, preview, pageTitle }: { b: BlockOf<"contac
   );
 }
 
+const PRICE_COLS: Record<number, string> = { 1: "max-w-md mx-auto", 2: "md:grid-cols-2 max-w-4xl mx-auto", 3: "md:grid-cols-3", 4: "md:grid-cols-2 lg:grid-cols-4", 5: "md:grid-cols-3", 6: "md:grid-cols-3" };
+
+/** Tabla de precios: los importes son textos de la empresa (no se cobra desde aquí). */
+function PricingBlock({ b, first, preview }: { b: BlockOf<"pricing">; first: boolean; preview?: boolean }) {
+  const d = b.data;
+  const ed = useContext(StudioEditContext);
+  return (
+    <section className="container py-10 md:py-14">
+      {(d.title || d.intro || ed) && (
+        <div className="mx-auto mb-8 max-w-2xl text-center md:mb-10">
+          <Txt k="title" value={d.title} as={first ? "h1" : "h2"} className={headingClass(first)} placeholder="Título" />
+          <Txt k="intro" value={d.intro} as="p" multiline className="mt-3 text-muted-foreground" placeholder="Introducción (opcional)" />
+        </div>
+      )}
+      <div className={cn("grid items-stretch gap-6", PRICE_COLS[d.plans.length] ?? PRICE_COLS[3])}>
+        {d.plans.map((p, i) => {
+          const hl = p.highlighted === "on";
+          const feats = p.features.split(/\n/).map((x) => x.trim()).filter(Boolean);
+          return (
+            <article key={i} className={cn("relative flex flex-col rounded-2xl border bg-card p-6 text-card-foreground shadow-sm", hl ? "border-primary shadow-lg ring-1 ring-primary md:-translate-y-2" : "border-border")}>
+              {hl && <span className="absolute -top-3 left-1/2 -translate-x-1/2 rounded-full bg-primary px-3 py-1 text-xs font-semibold text-primary-foreground">Recomendado</span>}
+              <h3 className="font-heading text-lg font-semibold text-foreground">{p.name}</h3>
+              {p.description && <p className="mt-1 text-sm text-muted-foreground">{p.description}</p>}
+              <p className="mt-4 flex items-baseline gap-1.5">
+                <span className="font-heading text-3xl font-bold text-foreground">{p.price}</span>
+                {p.period && <span className="text-sm text-muted-foreground">{p.period}</span>}
+              </p>
+              {feats.length > 0 && (
+                <ul className="mt-5 flex-1 space-y-2 text-sm">
+                  {feats.map((x, j) => (
+                    <li key={j} className="flex items-start gap-2">
+                      <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-primary" aria-hidden />
+                      <span className="text-foreground">{x}</span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+              {p.buttonLabel && p.buttonUrl && (
+                <Button asChild className="mt-6 w-full" variant={hl ? "default" : "outline"}>
+                  <SmartLink href={p.buttonUrl} preview={preview}>
+                    {p.buttonLabel}
+                  </SmartLink>
+                </Button>
+              )}
+            </article>
+          );
+        })}
+      </div>
+    </section>
+  );
+}
+
+/** Una cifra que se cuenta desde cero al hacerse visible (sin animación si se prefiere menos movimiento). */
+function CountUp({ value, animate }: { value: string; animate: boolean }) {
+  const target = Number(value.replace(/[^\d.]/g, "")) || 0;
+  const ref = useRef<HTMLSpanElement>(null);
+  const [shown, setShown] = useState(animate ? 0 : target);
+  useEffect(() => {
+    if (!animate || !target) return setShown(target);
+    const el = ref.current;
+    if (!el || typeof IntersectionObserver === "undefined" || prefersReducedMotion()) return setShown(target);
+    let raf = 0;
+    const io = new IntersectionObserver(([e]) => {
+      if (!e.isIntersecting) return;
+      io.disconnect();
+      const t0 = performance.now();
+      const step = (t: number) => {
+        const k = Math.min(1, (t - t0) / 1400);
+        setShown(Math.round(target * (1 - Math.pow(1 - k, 3))));
+        if (k < 1) raf = requestAnimationFrame(step);
+      };
+      raf = requestAnimationFrame(step);
+    }, { threshold: 0.3 });
+    io.observe(el);
+    return () => {
+      io.disconnect();
+      cancelAnimationFrame(raf);
+    };
+  }, [animate, target]);
+  return (
+    <span ref={ref} aria-label={value}>
+      {target ? shown.toLocaleString("es-ES") : value}
+    </span>
+  );
+}
+
+function StatsBlock({ b, first }: { b: BlockOf<"stats">; first: boolean }) {
+  const d = b.data;
+  const ed = useContext(StudioEditContext);
+  return (
+    <section className="container py-10 md:py-14">
+      <Txt k="title" value={d.title} as={first ? "h1" : "h2"} className={cn(headingClass(first), "mb-8 block text-center")} placeholder="Título (opcional)" />
+      <dl className={cn("grid gap-6 text-center", d.items.length > 1 && "sm:grid-cols-2", d.items.length > 2 && "lg:grid-cols-3", d.items.length > 3 && "lg:grid-cols-4")}>
+        {d.items.map((s, i) => (
+          <div key={i} className="rounded-2xl border border-border bg-card p-6 text-card-foreground">
+            <dt className="sr-only">{s.label}</dt>
+            <dd className="font-heading text-4xl font-bold text-primary md:text-5xl">
+              <CountUp value={s.value} animate={d.animate === "on" && !ed} />
+              {/^[A-Za-zÀ-ÿ]/.test(s.suffix) ? ` ${s.suffix}` : s.suffix}
+            </dd>
+            <dd className="mt-2 text-sm text-muted-foreground">{s.label}</dd>
+          </div>
+        ))}
+      </dl>
+    </section>
+  );
+}
+
+function LogosBlock({ b, first }: { b: BlockOf<"logos">; first: boolean }) {
+  const d = b.data;
+  const ed = useContext(StudioEditContext);
+  if (!d.logos.length && !ed) return null;
+  return (
+    <section className="container py-10 md:py-12">
+      <Txt k="title" value={d.title} as={first ? "h1" : "h2"} className="mb-6 block text-center text-sm font-semibold uppercase tracking-[0.16em] text-muted-foreground" placeholder="Título (opcional)" />
+      {d.logos.length ? (
+        <ul className="flex flex-wrap items-center justify-center gap-x-10 gap-y-6">
+          {d.logos.map((g, i) => (
+            <li key={i}>
+              <img src={g.url} alt={g.alt} className={cn("h-10 w-auto max-w-[160px] object-contain md:h-12", d.grayscale === "on" && "opacity-70 grayscale transition hover:opacity-100 hover:grayscale-0")} loading="lazy" decoding="async" />
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <EmptyMedia>Añade los logos en el panel de la derecha</EmptyMedia>
+      )}
+    </section>
+  );
+}
+
 /** Formulario a medida: los campos los configura la empresa; cada envío entra en su CRM. */
 function FormBlock({ b, first, preview, pageTitle }: { b: BlockOf<"form">; first: boolean; preview?: boolean; pageTitle?: string }) {
   const ed = useContext(StudioEditContext);
@@ -1125,6 +1255,12 @@ function renderBlock(b: PageBlock, first: boolean, preview?: boolean, pageTitle?
       return <CardsBlock b={b} first={first} preview={preview} />;
     case "form":
       return <FormBlock b={b} first={first} preview={preview} pageTitle={pageTitle} />;
+    case "pricing":
+      return <PricingBlock b={b} first={first} preview={preview} />;
+    case "stats":
+      return <StatsBlock b={b} first={first} />;
+    case "logos":
+      return <LogosBlock b={b} first={first} />;
     default:
       return null;
   }

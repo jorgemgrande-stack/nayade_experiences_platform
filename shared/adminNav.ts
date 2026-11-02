@@ -304,6 +304,7 @@ export const TASK_NAV: NavSection[] = [
       { label: "Variantes y precios", href: "/admin/productos/variantes", key: "t-variantes", icon: "tag", roles: ADMIN, capabilities: ["shop-variants"] },
       { label: "Lugares de servicio", href: "/admin/productos/ubicaciones", key: "t-lugares", icon: "building", roles: ADMIN, capabilities: ["shop-catalog"] },
       { label: "Descuentos y cupones", href: "/admin/marketing/descuentos", key: "t-descuentos", icon: "tag", roles: ADMIN, capabilities: ["shop-coupons"] },
+      { label: "Reglas de precios", href: "/admin/productos/reglas-precios", key: "t-reglas-precios", icon: "tag", roles: ADMIN, capabilities: ["pricing-rules"] },
     ],
   },
   {

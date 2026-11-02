@@ -39,6 +39,8 @@ import { BlockInspector } from "@/components/admin/studio/Inspector";
 import { LeftPanel, type LeftTab } from "@/components/admin/studio/LeftPanel";
 import { PageSettings, type SitePage } from "@/components/admin/studio/PageSettings";
 import { VersionsPanel } from "@/components/admin/studio/VersionsPanel";
+import { BrandIdentityEditor } from "@/components/brand/BrandIdentityEditor";
+import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { moduleIcon } from "@/components/admin/studio/icons";
 import { STUDIO_CANVAS_PATH, isFromCanvas, parseDragPayload, type FromCanvas, type ToCanvas } from "@/components/admin/studio/protocol";
 import { useStudioDocument } from "@/components/admin/studio/useStudioDocument";
@@ -49,6 +51,7 @@ const DEVICES: ReadonlyArray<{ key: Device; label: string; width: number; icon: 
   { key: "mobile", label: "Móvil", width: 390, icon: Smartphone },
 ];
 const MODE_KEY = "elephant-studio-modo";
+const CLIPBOARD_KEY = "elephant-studio-portapapeles";
 const ACCENT = "#5b5bf6";
 
 function readMode(): boolean {
@@ -75,7 +78,8 @@ function Studio({ routeSlug }: { routeSlug: string | null }) {
   const homeSlug = pages.find((p) => p.isHome)?.slug ?? null;
   const slug = routeSlug ?? homeSlug;
   const page = pages.find((p) => p.slug === slug);
-  const doc = useStudioDocument(slug && (!pagesQ.data || page) ? slug : null);
+  // La página se carga por su dirección (una recién creada puede no estar aún en la lista de páginas en caché)
+  const doc = useStudioDocument(slug);
   const tokens = trpc.cms.studioTokens.useQuery(undefined, { staleTime: 60_000, refetchOnWindowFocus: false });
   const subscription = usePanelSubscription();
   const subReady = subscription.mode !== "loading";
@@ -96,6 +100,9 @@ function Studio({ routeSlug }: { routeSlug: string | null }) {
   const [confirmDiscard, setConfirmDiscard] = useState(false);
   const [confirmRestore, setConfirmRestore] = useState<number | null>(null);
   const [shortcuts, setShortcuts] = useState(false);
+  const [globalOpen, setGlobalOpen] = useState(false);
+  // Al cambiar el estilo global se vuelve a cargar el lienzo para verlo aplicado
+  const [canvasKey, setCanvasKey] = useState(0);
   const [canvasReady, setCanvasReady] = useState(false);
   const iframeRef = useRef<HTMLIFrameElement>(null);
 
@@ -142,7 +149,7 @@ function Studio({ routeSlug }: { routeSlug: string | null }) {
 
   const insert = (payload: string, at?: number) => {
     const p = parseDragPayload(payload);
-    if (!p || viewing) return;
+    if (!p || viewing || !doc.loaded) return;
     let added: PageBlock[] = [];
     if (p.what === "module") {
       if (!modules.some((m) => m.type === p.value)) return toast.error("Ese módulo no está disponible en tu plan.");
@@ -188,6 +195,26 @@ function Studio({ routeSlug }: { routeSlug: string | null }) {
     toast(`«${blockLabel(b.type)}» eliminado`, { action: { label: "Deshacer", onClick: () => doc.undo() } });
   };
 
+  /** Pega el bloque copiado (Ctrl+C), con otro identificador, detrás del seleccionado. */
+  const pasteBlock = () => {
+    if (!doc.loaded || viewing) return;
+    let copied: PageBlock | null = null;
+    try {
+      copied = JSON.parse(window.localStorage.getItem(CLIPBOARD_KEY) ?? "null");
+    } catch {
+      copied = null;
+    }
+    if (!copied || typeof copied !== "object" || !moduleDef(copied.type)) return toast.info("No hay ningún bloque copiado. Selecciona uno y pulsa Ctrl+C.");
+    if (!modules.some((m) => m.type === copied!.type)) return toast.error("Ese módulo no está disponible en tu plan.");
+    if (blocks.length >= PAGE_LIMITS.blocks) return toast.error(`Una página admite hasta ${PAGE_LIMITS.blocks} bloques.`);
+    const copy = duplicateBlock(copied);
+    const i = blocks.findIndex((b) => b.id === selectedId);
+    const at = i >= 0 ? i + 1 : blocks.length;
+    doc.change([...blocks.slice(0, at), copy, ...blocks.slice(at)]);
+    select(copy.id);
+    toast.success(`«${blockLabel(copy.type)}» pegado.`);
+  };
+
   const setText = (id: string, key: string, value: string) => {
     doc.updateBlock(id, (b) => ({ ...b, data: { ...b.data, [key]: value } }) as PageBlock, `${id}:${key}`);
   };
@@ -201,11 +228,23 @@ function Studio({ routeSlug }: { routeSlug: string | null }) {
   };
 
   const onKey = (key: string, ctrl: boolean, shift: boolean) => {
+    // Nada se edita hasta que la página está cargada (si no, la carga lo pisaría)
+    if (!doc.loaded) return;
     if (ctrl && key === "z") return shift ? doc.redo() : doc.undo();
     if (ctrl && key === "y") return doc.redo();
     if (ctrl && key === "s") return void doc.save().then((ok) => ok && toast.success("Borrador guardado. Tu web no cambia hasta que publiques."));
     if (viewing) return;
     if (ctrl && key === "d" && selectedId) return duplicate(selectedId);
+    if (ctrl && key === "c" && selected) {
+      try {
+        window.localStorage.setItem(CLIPBOARD_KEY, JSON.stringify(selected));
+        toast.success(`«${blockLabel(selected.type)}» copiado. Pégalo con Ctrl+V, también en otra página.`);
+      } catch {
+        toast.error("No se ha podido copiar el bloque en este navegador.");
+      }
+      return;
+    }
+    if (ctrl && key === "v") return pasteBlock();
     if ((key === "delete" || key === "backspace") && selectedId) return remove(selectedId);
     if (key === "escape") setSelectedId(null);
   };
@@ -275,7 +314,7 @@ function Studio({ routeSlug }: { routeSlug: string | null }) {
       if (t?.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t?.tagName ?? "") || t?.closest("[role=dialog]")) return;
       const ctrl = e.ctrlKey || e.metaKey;
       const k = e.key.toLowerCase();
-      if (["delete", "backspace", "escape"].includes(k) || (ctrl && ["z", "y", "s", "d"].includes(k))) {
+      if (["delete", "backspace", "escape"].includes(k) || (ctrl && ["z", "y", "s", "d", "c", "v"].includes(k) && !(k === "c" && window.getSelection()?.toString()))) {
         e.preventDefault();
         keyRef.current(k, ctrl, e.shiftKey);
       }
@@ -419,7 +458,7 @@ function Studio({ routeSlug }: { routeSlug: string | null }) {
     );
   }
 
-  const notFound = !!pagesQ.data && !!routeSlug && !page;
+  const notFound = !!pagesQ.data && !pagesQ.isFetching && !!routeSlug && !page && doc.editor.data === null;
   const ModuleIcon = selected ? moduleIcon(moduleDef(selected.type)?.icon) : null;
 
   return (
@@ -598,6 +637,7 @@ function Studio({ routeSlug }: { routeSlug: string | null }) {
               pages={pages}
               currentSlug={slug ?? ""}
               onOpenPage={(s) => void openPage(s)}
+              onGlobalStyle={() => setGlobalOpen(true)}
             />
           </aside>
         )}
@@ -640,6 +680,7 @@ function Studio({ routeSlug }: { routeSlug: string | null }) {
                 style={{ width: dev.width * scale, height: frameH }}
               >
                 <iframe
+                  key={canvasKey}
                   ref={iframeRef}
                   src={STUDIO_CANVAS_PATH}
                   title={`Lienzo de ${page?.title ?? "la página"}`}
@@ -790,6 +831,28 @@ function Studio({ routeSlug }: { routeSlug: string | null }) {
         </AlertDialogContent>
       </AlertDialog>
 
+      <Sheet open={globalOpen} onOpenChange={setGlobalOpen}>
+        <SheetContent side="right" className="w-full overflow-y-auto sm:max-w-3xl">
+          <SheetHeader>
+            <SheetTitle>Estilo global de tu web</SheetTitle>
+            <SheetDescription>Colores, tipografía, bordes y logotipo de toda tu web. Cada bloque puede tener además su propio fondo en «Diseño».</SheetDescription>
+          </SheetHeader>
+          <p role="note" className="mx-4 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900 dark:border-amber-700 dark:bg-amber-950/50 dark:text-amber-100">
+            Atención: este estilo es común a todas las páginas. Al pulsar «Guardar» se aplica al momento en toda tu web publicada y en la pantalla de acceso de tu equipo; no espera a «Publicar».
+          </p>
+          <div className="px-4 pb-6">
+            <BrandIdentityEditor
+              variant="full"
+              onSaved={() => {
+                setCanvasReady(false);
+                setCanvasKey((k) => k + 1);
+                toast.success("Estilo global guardado: ya se ve en toda tu web.");
+              }}
+            />
+          </div>
+        </SheetContent>
+      </Sheet>
+
       <Dialog open={shortcuts} onOpenChange={setShortcuts}>
         <DialogContent className="max-w-sm">
           <DialogHeader>
@@ -802,6 +865,7 @@ function Studio({ routeSlug }: { routeSlug: string | null }) {
               ["Ctrl + Mayús + Z", "Rehacer"],
               ["Ctrl + S", "Guardar el borrador"],
               ["Ctrl + D", "Duplicar el bloque"],
+              ["Ctrl + C / Ctrl + V", "Copiar y pegar un bloque (también entre páginas)"],
               ["Supr", "Eliminar el bloque"],
               ["Esc", "Quitar la selección"],
             ].map(([k, v]) => (

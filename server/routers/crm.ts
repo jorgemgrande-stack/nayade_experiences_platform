@@ -112,6 +112,7 @@ import { addClientNote, clientListConditions, clientStats, deleteClientNote, del
 import { CLIENT_KINDS, NOTE_MAX } from "../../shared/clientProfile";
 import { isValidSpanishTaxId } from "../../shared/formValidation";
 import { issuerSnapshotForNewInvoice } from "../issuerSnapshot";
+import { applyQuotePricingRules } from "../pricingRulesDb";
 
 // generateInvoiceNumber y generateQuoteNumber reemplazadas por el helper centralizado
 // Ver server/documentNumbers.ts
@@ -1150,6 +1151,8 @@ export const crmRouter = router({
 
         // 2. Resolver precios para cada actividad
         const quoteItems: { description: string; quantity: number; unitPrice: number; total: number; fiscalRegime?: "reav" | "general"; taxRate?: number; productId?: number }[] = [];
+        // Líneas que salen de un producto del catálogo (las reglas de precios solo se aplican a esas)
+        const catalogLineIds = new Set<number>();
 
         // -- Fallback: si no hay activitiesJson, buscar por selectedProduct en packs/experiences/legoPacks --
         if (activities.length === 0) {
@@ -1204,6 +1207,7 @@ export const crmRouter = router({
 
               if (foundExp) {
                 const unitPrice = parseFloat(String(foundExp.basePrice));
+                catalogLineIds.add(foundExp.id);
                 quoteItems.push({
                   description: foundExp.title,
                   quantity: qty,
@@ -1277,7 +1281,10 @@ export const crmRouter = router({
           const itemFiscalRegime = exp?.fiscalRegime === "reav" ? "reav" : "general";
           const itemTaxRate = exp?.taxRate != null ? parseFloat(String(exp.taxRate)) : 21;
           quoteItems.push({ description, quantity, unitPrice: parseFloat(unitPrice.toFixed(2)), total, fiscalRegime: itemFiscalRegime, taxRate: itemTaxRate, productId: act.experienceId });
+          if (exp) catalogLineIds.add(act.experienceId);
         }
+        // 2b. Reglas de precios de la empresa (Business) sobre las líneas del catálogo; sin reglas, nada cambia
+        quoteItems.splice(0, quoteItems.length, ...(await applyQuotePricingRules(quoteItems, { catalogIds: catalogLineIds, serviceDate: lead.preferredDate ? new Date(lead.preferredDate).toISOString().slice(0, 10) : null })));
         // 3. Calcular totales — IVA ya incluido en precios, se extrae con groupTaxBreakdown
         const subtotal = parseFloat(quoteItems.reduce((s, i) => s + i.total, 0).toFixed(2));
         const taxBreakdown = groupTaxBreakdown(quoteItems);
@@ -1327,6 +1334,7 @@ export const crmRouter = router({
       .query(async ({ input }) => {
         const [lead] = await db.select().from(leads).where(eq(leads.id, input.leadId));
         if (!lead) throw new TRPCError({ code: "NOT_FOUND", message: "Lead no encontrado" });
+        const previewServiceDate = lead.preferredDate ? new Date(lead.preferredDate).toISOString().slice(0, 10) : null;
         const activities = (lead.activitiesJson as {
           experienceId: number;
           experienceTitle: string;
@@ -1356,13 +1364,16 @@ export const crmRouter = router({
             .where(and(eq(experiences.title, productName), eq(experiences.isActive, true))).limit(1);
           if (foundExp) {
             const unitPrice = parseFloat(String(foundExp.basePrice));
-            return { items: [{ description: foundExp.title, quantity: qty, unitPrice, total: parseFloat((unitPrice * qty).toFixed(2)), fiscalRegime: (foundExp.fiscalRegime === "reav" ? "reav" : "general") as "reav" | "general", productId: foundExp.id }], hasActivities: true, fromSelectedProduct: true };
+            const expItems = [{ description: foundExp.title, quantity: qty, unitPrice, total: parseFloat((unitPrice * qty).toFixed(2)), fiscalRegime: (foundExp.fiscalRegime === "reav" ? "reav" : "general") as "reav" | "general", productId: foundExp.id }];
+            return { items: await applyQuotePricingRules(expItems, { catalogIds: new Set([foundExp.id]), serviceDate: previewServiceDate }), hasActivities: true, fromSelectedProduct: true };
           }
           return { items: [{ description: productName, quantity: qty, unitPrice: 0, total: 0, fiscalRegime: "general" as const }], hasActivities: true, fromSelectedProduct: true };
         }
         const quoteItems: { description: string; quantity: number; unitPrice: number; total: number; fiscalRegime?: "reav" | "general"; productId?: number }[] = [];
+        const catalogLineIds = new Set<number>();
         for (const act of activities) {
           const [exp] = await db.select().from(experiences).where(eq(experiences.id, act.experienceId));
+          if (exp) catalogLineIds.add(act.experienceId);
           const basePrice = exp ? parseFloat(String(exp.basePrice)) : 0;
           const variants = await db.select().from(experienceVariants).where(eq(experienceVariants.experienceId, act.experienceId));
           const selectedVariantName = act.details?.variante as string | undefined;
@@ -1396,7 +1407,8 @@ export const crmRouter = router({
           const itemFiscalRegime = exp?.fiscalRegime === "reav" ? "reav" : "general";
           quoteItems.push({ description, quantity, unitPrice: parseFloat(unitPrice.toFixed(2)), total, fiscalRegime: itemFiscalRegime, productId: act.experienceId });
         }
-        return { items: quoteItems, hasActivities: true };
+        // Reglas de precios de la empresa (Business) sobre las líneas del catálogo; sin reglas, nada cambia
+        return { items: await applyQuotePricingRules(quoteItems, { catalogIds: catalogLineIds, serviceDate: previewServiceDate }), hasActivities: true };
       }),
 
     create: staff

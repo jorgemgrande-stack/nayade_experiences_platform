@@ -101,6 +101,7 @@ import { legacyDb, legacyPool } from "../_core/legacyDb";
 import { integrationEnv } from "../_core/tenantConfig";
 import { issuerSnapshotForNewInvoice } from "../issuerSnapshot";
 import { cashSaleDocument, formatRecipientAddress, invoicePaymentMethodFromTicket, proposeTicketInvoiceRecipient } from "../../shared/ticketInvoice";
+import { applyTpvPricingRules, tpvLinePrices } from "../pricingRulesDb";
 
 type FiscalData = { fiscalRegime: "reav" | "general" | "mixed"; taxRate: number; providerPercent: number; agencyMarginPercent: number };
 
@@ -853,6 +854,28 @@ export const tpvRouter = router({
     };
   }),
 
+  /**
+   * Precio por unidad de las líneas del carrito con las reglas de precios de la empresa (Business), para que la caja
+   * enseñe el total que cobrará createSale (que lo recalcula siempre). Sin reglas, ninguna línea cambia.
+   */
+  pricingPreview: tpvAccessProc
+    .input(z.object({
+      serviceDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+      items: z.array(z.object({
+        productType: z.string().max(32),
+        productId: z.number().min(0),
+        unitPrice: z.number().min(0).max(10000),
+        quantity: z.number().int().positive(),
+        participants: z.number().int().positive().default(1),
+        eventDate: z.string().optional(),
+        isManual: z.boolean().optional(),
+      })).max(200),
+    }))
+    .query(async ({ input }) => {
+      const priced = await tpvLinePrices(input.items, input.serviceDate ?? null);
+      return priced.map((p) => (p && p.applied.length ? { unitPrice: p.unitPrice, baseUnitPrice: p.baseUnitPrice, rules: p.applied.map((r) => r.name) } : null));
+    }),
+
   // -- SALES ------------------------------------------------------------------
   createSale: tpvSellProc
     .input(
@@ -907,6 +930,10 @@ export const tpvRouter = router({
       })
     )
     .mutation(async ({ input, ctx }) => {
+      // -- 0. Reglas de precios (Business): ajustan el precio por unidad de los productos del catálogo antes de los
+      // descuentos de siempre; la línea guarda el precio resultante y la nota de la regla. Sin reglas, nada cambia.
+      input.items = await applyTpvPricingRules(input.items, input.serviceDate ?? null);
+
       // -- 1. Calcular totales básicos ----------------------------------------
       const subtotal = input.items.reduce((acc, item) => {
         const lineTotal = item.unitPrice * item.quantity * (1 - item.discountPercent / 100);
