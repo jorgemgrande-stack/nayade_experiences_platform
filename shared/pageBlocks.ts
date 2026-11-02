@@ -14,6 +14,8 @@ export const BLOCK_TYPES = [
   "heading", "features", "testimonials", "faq", "cta", "video", "products",
   // Carruseles y presentación
   "slideshow", "carousel", "cards",
+  // Formularios
+  "form",
 ] as const;
 export type BlockType = (typeof BLOCK_TYPES)[number];
 
@@ -63,6 +65,24 @@ export interface BlockDataMap {
   carousel: { title: string; images: GalleryImage[]; perView: "2" | "3" | "4"; autoplay: OnOff; lightbox: OnOff };
   /** Tarjetas con imagen, título, texto y botón, en rejilla o en carrusel */
   cards: { title: string; intro: string; layout: "grid" | "carousel"; columns: "2" | "3" | "4"; items: CardItem[] };
+  /** Formulario a medida: cada envío entra en el CRM de la empresa como oportunidad, con todas las respuestas */
+  form: { title: string; intro: string; fields: FormFieldItem[]; submitLabel: string; successMessage: string; redirectUrl: string; consent: OnOff };
+}
+
+export const FORM_FIELD_KINDS = ["text", "email", "phone", "number", "date", "time", "select", "radio", "multi", "checkbox", "textarea", "hidden"] as const;
+export type FormFieldKind = (typeof FORM_FIELD_KINDS)[number];
+export interface FormFieldItem {
+  kind: FormFieldKind;
+  label: string;
+  placeholder: string;
+  /** Opciones (selector, botones de opción, selección múltiple): una por línea */
+  options: string;
+  required: OnOff;
+  /** Qué dato del contacto es (para el CRM): nombre, correo o teléfono */
+  role: "none" | "name" | "email" | "phone";
+  width: "full" | "half";
+  /** Valor fijo de un campo oculto (por ejemplo, la campaña) */
+  value: string;
 }
 
 export type OnOff = "on" | "off";
@@ -165,6 +185,7 @@ export const BLOCK_CATALOG: ReadonlyArray<{ type: BlockType; label: string; desc
   { type: "slideshow", label: "Presentación de diapositivas", description: "Portada a todo lo ancho con varias diapositivas, botones y transiciones" },
   { type: "carousel", label: "Carrusel de imágenes", description: "Varias imágenes a la vista que se desplazan, con visor a pantalla completa" },
   { type: "cards", label: "Tarjetas", description: "Tarjetas con imagen, título, texto y botón, en rejilla o en carrusel" },
+  { type: "form", label: "Formulario a medida", description: "Elige los campos; cada respuesta llega a tu CRM" },
 ];
 
 export const blockLabel = (t: string): string => BLOCK_CATALOG.find((b) => b.type === t)?.label ?? "Bloque";
@@ -233,6 +254,20 @@ export function defaultBlockData<K extends BlockType>(type: K): BlockDataMap[K] 
       columns: "3",
       items: [newCard("Primera tarjeta"), newCard("Segunda tarjeta"), newCard("Tercera tarjeta")],
     },
+    form: {
+      title: "Pide información",
+      intro: "Rellena el formulario y te responderemos lo antes posible.",
+      fields: [
+        newFormField("text", "Nombre", { required: "on", role: "name", width: "half" }),
+        newFormField("email", "Correo electrónico", { required: "on", role: "email", width: "half" }),
+        newFormField("phone", "Teléfono", { role: "phone" }),
+        newFormField("textarea", "Mensaje"),
+      ],
+      submitLabel: "Enviar",
+      successMessage: "¡Gracias! Hemos recibido tu mensaje y te responderemos lo antes posible.",
+      redirectUrl: "",
+      consent: "on",
+    },
   };
   return structuredCloneSafe(d[type]) as BlockDataMap[K];
 }
@@ -240,6 +275,11 @@ export function defaultBlockData<K extends BlockType>(type: K): BlockDataMap[K] 
 /** Diapositiva nueva con textos genéricos para adaptar. */
 export function newSlide(title = "Nueva diapositiva", text = "Escribe aquí el texto de la diapositiva"): SlideItem {
   return { imageUrl: "", mobileImageUrl: "", imageAlt: "", eyebrow: "", title, text, buttonLabel: "Más información", buttonUrl: "/contacto", button2Label: "", button2Url: "", align: "left", valign: "center" };
+}
+
+/** Campo de formulario nuevo. */
+export function newFormField(kind: FormFieldKind = "text", label = "Nuevo campo", extra: Partial<FormFieldItem> = {}): FormFieldItem {
+  return { kind, label, placeholder: "", options: "", required: "off", role: "none", width: "full", value: "", ...extra };
 }
 
 /** Tarjeta nueva con textos genéricos para adaptar. */

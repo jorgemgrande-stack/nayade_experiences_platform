@@ -143,7 +143,11 @@ function FieldControl({ field: f, value, set, targets, blockId, pro = false }: {
     case "link":
       return <LinkPicker label={f.label} value={str} onChange={(url) => set(f.key, url)} targets={targets} />;
     case "select":
-      return <Segmented label={f.label} value={str} options={f.options} onChange={(v) => set(f.key, v, false)} />;
+      return f.options.length > 4 ? (
+        <SelectField label={f.label} value={str} options={f.options} onChange={(v) => set(f.key, v, false)} />
+      ) : (
+        <Segmented label={f.label} value={str} options={f.options} onChange={(v) => set(f.key, v, false)} />
+      );
     case "icon":
       return <IconPicker label={f.label} value={str} onChange={(v) => set(f.key, v, false)} />;
     case "category":
@@ -153,6 +157,27 @@ function FieldControl({ field: f, value, set, targets, blockId, pro = false }: {
     case "list":
       return <ListEditor field={f} value={Array.isArray(value) ? (value as Array<Record<string, string>>) : []} set={set} targets={targets} blockId={blockId} pro={pro} />;
   }
+}
+
+function SelectField({ label, value, options, onChange }: { label: string; value: string; options: ReadonlyArray<{ value: string; label: string }>; onChange: (v: string) => void }) {
+  const id = useId();
+  return (
+    <div className="space-y-1.5">
+      <Label htmlFor={id}>{label}</Label>
+      <Select value={value} onValueChange={onChange}>
+        <SelectTrigger id={id} className="w-full">
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          {options.map((o) => (
+            <SelectItem key={o.value} value={o.value}>
+              {o.label}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+    </div>
+  );
 }
 
 function IconPicker({ label, value, onChange }: { label: string; value: string; onChange: (v: string) => void }) {

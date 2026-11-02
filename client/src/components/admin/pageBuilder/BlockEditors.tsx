@@ -93,5 +93,7 @@ export function blockSummary(b: PageBlock): string {
       return b.data.title || `${b.data.images.length} imágenes`;
     case "cards":
       return b.data.title || `${b.data.items.length} tarjetas`;
+    case "form":
+      return `${b.data.title || "Formulario"} · ${b.data.fields.length} campos`;
   }
 }

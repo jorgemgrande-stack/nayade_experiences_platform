@@ -278,6 +278,9 @@ export function blocksToHtml(blocks: PageBlock[]): string {
         parts.push(h(2, b.data.title), b.data.intro ? `<p>${esc(b.data.intro)}</p>` : "");
         b.data.items.forEach((c) => parts.push(h(3, c.title), c.text ? `<p>${esc(c.text)}</p>` : "", img(c.imageUrl, c.imageAlt), link(c.buttonUrl, c.buttonLabel)));
         break;
+      case "form":
+        parts.push(h(2, b.data.title), b.data.intro ? `<p>${esc(b.data.intro)}</p>` : "");
+        break;
     }
   });
   return sanitizeRichHtml(parts.join(""));

@@ -452,8 +452,43 @@ export const appRouter = router({
         selectedCategory: z.string().optional(),
         selectedProduct: z.string().optional(),
         source: z.string().optional(),
+        /**
+         * Formulario a medida de Elephant Studio (server/_core/studioForms.ts): se valida contra el formulario
+         * PUBLICADO y la oportunidad sale de sus respuestas (nombre, correo y mensaje de arriba se ignoran).
+         */
+        studioForm: z.object({
+          slug: z.string().regex(/^[a-z0-9-]{1,64}$/),
+          blockId: z.string().regex(/^[a-z0-9-]{1,40}$/i),
+          values: z.record(z.string().regex(/^f\d{1,2}$/), z.union([z.string().max(4000), z.array(z.string().max(200)).max(50), z.boolean()])).refine((v) => Object.keys(v).length <= 25),
+          consent: z.boolean().optional(),
+          website: z.string().max(500).optional(),
+          elapsedMs: z.number().int().min(0).optional(),
+        }).optional(),
       }))
-      .mutation(async ({ input }) => {
+      .mutation(async ({ input, ctx }) => {
+        if (input.studioForm) {
+          const sf = input.studioForm;
+          const { getPublishedFormBlock } = await import("./pageBuilderDb");
+          const { evaluateFormSubmission, allowFormSubmit, formRedirect, FormSubmitError } = await import("./_core/studioForms");
+          const form = await getPublishedFormBlock(sf.slug, sf.blockId);
+          if (!form) throw new TRPCError({ code: "NOT_FOUND", message: "Este formulario ya no está disponible." });
+          const ip = ctx.req.ip || ctx.req.socket.remoteAddress || "desconocida";
+          const { peekTenantContext } = await import("./_core/tenant");
+          if (!allowFormSubmit(`${peekTenantContext()?.tenantId ?? "single"}:${form.slug}:${ip}`)) {
+            throw new TRPCError({ code: "TOO_MANY_REQUESTS", message: "Has enviado varios formularios seguidos. Espera unos minutos e inténtalo de nuevo." });
+          }
+          let result;
+          try {
+            result = evaluateFormSubmission(form.data, sf, { slug: form.slug });
+          } catch (e) {
+            if (e instanceof FormSubmitError) throw new TRPCError({ code: "BAD_REQUEST", message: e.message });
+            throw e;
+          }
+          if (result.kind === "invalid") return { success: false, studio: { ok: false as const, errors: result.errors } };
+          // A un envío automático se le responde igual que a uno bueno, sin guardarlo
+          const lead = result.kind === "ok" ? await createLead({ ...result.lead, source: "web_formulario", leadSourceCode: "HOME_FORM" }) : null;
+          return { id: lead?.id ?? 0, success: true, studio: { ok: true as const, message: form.data.successMessage, redirectUrl: formRedirect(form.data.redirectUrl) } };
+        }
         return createLead({
           ...input,
           source: input.source ?? "web_experiencia",
