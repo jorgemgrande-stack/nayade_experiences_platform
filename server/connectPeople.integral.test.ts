@@ -322,7 +322,7 @@ describe("Elephant People: contratación automática de punta a punta (Stripe si
     for (const t of [A, B]) {
       expect((await readActivation(t.tenantId)).has(PEOPLE)).toBe(false);
       const item = await panelItem(t.tenantId);
-      expect(item.activation).toEqual({ state: "none", retryable: false, updatedAt: null });
+      expect(item.activation).toEqual({ state: "none", retryable: false, updatedAt: null, payment: null, error: null, nextRetryAt: null, activeUntil: null, renewal: null, canReactivate: false });
       expect(item).toMatchObject({ purchasable: true, capabilities: ["people-hr"], monthly: { amountCents: 1900, currency: "EUR", taxIncluded: false } });
       expect(await activeCaps(t.tenantId)).not.toContain("people-hr");
     }
@@ -504,7 +504,7 @@ describe("Elephant People: contratación automática de punta a punta (Stripe si
     expect((await panelItem(D.tenantId)).activation.state).toBe("error");
     clock += 120_000;
     expect((await readActivation(D.tenantId)).has(PEOPLE)).toBe(false);
-    expect((await panelItem(D.tenantId)).activation).toEqual({ state: "none", retryable: false, updatedAt: null });
+    expect((await panelItem(D.tenantId)).activation).toEqual({ state: "none", retryable: false, updatedAt: null, payment: null, error: null, nextRetryAt: null, activeUntil: null, renewal: null, canReactivate: false });
     expect(await activeCaps(D.tenantId)).not.toContain("people-hr");
   });
 });
