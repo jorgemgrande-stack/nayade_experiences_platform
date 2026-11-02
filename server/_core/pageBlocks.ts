@@ -9,7 +9,7 @@
 import { sanitizeRichHtml } from "./htmlSanitize";
 import { renderSiteTokens, type SiteTokenData } from "./templates/starterSite";
 import {
-  ANCHOR_RE, BLOCK_BACKGROUNDS, BLOCK_SPACINGS, BLOCK_TYPES, DEVICES, PAGE_LIMITS, defaultBlockData, isDefaultStyle, newBlockId,
+  ANCHOR_RE, BLOCK_ANIMATIONS, BLOCK_BACKGROUNDS, BLOCK_SPACINGS, BLOCK_TYPES, DEVICES, PAGE_LIMITS, defaultBlockData, isDefaultStyle, newBlockId,
   type BlockStyle, type BlockType, type GalleryImage, type PageBlock,
 } from "../../shared/pageBlocks";
 import { FEATURE_ICON_KEYS, moduleDef, type FieldDef } from "../../shared/studio/modules";
@@ -81,7 +81,10 @@ function normalizeData(type: BlockType, d: Record<string, unknown>): PageBlock["
       const images: GalleryImage[] = raw
         .map((i) => (typeof i === "string" ? { url: safeImage(i), alt: "" } : isObj(i) ? { url: safeImage(i.url), alt: str(i.alt) } : null))
         .filter((i): i is GalleryImage => !!i && !!i.url);
-      return { title: str(d.title, PAGE_LIMITS.title), images };
+      return {
+        title: str(d.title, PAGE_LIMITS.title), images,
+        layout: oneOf(d.layout, ["grid", "masonry", "carousel"] as const, "grid"), lightbox: oneOf(d.lightbox, ["on", "off"] as const, "on"),
+      };
     }
     case "button":
       return { label: str(d.label, 80), url: safeLink(d.url), variant: oneOf(d.variant, ["primary", "outline"] as const, "primary"), align: oneOf(d.align, ["left", "center"] as const, "center") };
@@ -162,6 +165,7 @@ export function normalizeStyle(v: unknown): BlockStyle | undefined {
     padBottom: oneOf(v.padBottom, BLOCK_SPACINGS, "0"),
     hideOn: DEVICES.filter((d) => hide.includes(d)),
     anchor: typeof v.anchor === "string" && ANCHOR_RE.test(v.anchor) ? v.anchor : "",
+    animation: oneOf(v.animation, BLOCK_ANIMATIONS, "none"),
   };
   return isDefaultStyle(style) ? undefined : style;
 }
@@ -261,6 +265,21 @@ export function blocksToHtml(blocks: PageBlock[]): string {
         break;
       case "products":
         parts.push(h(2, b.data.title), b.data.intro ? `<p>${esc(b.data.intro)}</p>` : "", link("/tienda", b.data.buttonLabel));
+        break;
+      case "slideshow":
+        b.data.slides.forEach((s, n) =>
+          parts.push(h(n === 0 && i === 0 ? 1 : 2, s.title), s.text ? `<p>${esc(s.text)}</p>` : "", img(s.imageUrl, s.imageAlt), link(s.buttonUrl, s.buttonLabel), link(s.button2Url, s.button2Label)),
+        );
+        break;
+      case "carousel":
+        parts.push(h(2, b.data.title), ...b.data.images.map((g) => img(g.url, g.alt)));
+        break;
+      case "cards":
+        parts.push(h(2, b.data.title), b.data.intro ? `<p>${esc(b.data.intro)}</p>` : "");
+        b.data.items.forEach((c) => parts.push(h(3, c.title), c.text ? `<p>${esc(c.text)}</p>` : "", img(c.imageUrl, c.imageAlt), link(c.buttonUrl, c.buttonLabel)));
+        break;
+      case "form":
+        parts.push(h(2, b.data.title), b.data.intro ? `<p>${esc(b.data.intro)}</p>` : "");
         break;
     }
   });
@@ -393,7 +412,7 @@ export function htmlToBlocks(input: string): PageBlock[] {
     if (imgs && !(s.tag === "a")) {
       flush();
       if (imgs.length === 1) blocks.push({ id: newBlockId(), type: "image", data: { url: imgs[0].url, alt: imgs[0].alt, caption: "", size: "medium" } });
-      else blocks.push({ id: newBlockId(), type: "gallery", data: { title: "", images: imgs.slice(0, PAGE_LIMITS.galleryImages) } });
+      else blocks.push({ id: newBlockId(), type: "gallery", data: { title: "", images: imgs.slice(0, PAGE_LIMITS.galleryImages), layout: "grid", lightbox: "on" } });
       continue;
     }
     body += s.tag === null ? `<p>${s.outer.trim()}</p>` : s.outer;
@@ -436,8 +455,10 @@ export function renderBlockTokens(blocks: PageBlock[], data: SiteTokenData): Pag
     }
     if (b.type === "gallery") d.images = b.data.images.map((g) => ({ ...g, alt: plainTokens(g.alt, data) }));
     // Listas de los módulos (ventajas, opiniones, preguntas): texto simple en cada elemento
-    if (b.type === "features" || b.type === "testimonials" || b.type === "faq") {
-      d.items = (b.data.items as unknown as Array<Record<string, string>>).map((it) => Object.fromEntries(Object.entries(it).map(([k, v]) => [k, plainTokens(v, data)])));
+    // Listas de los módulos (ventajas, opiniones, preguntas, diapositivas, tarjetas…): texto simple en cada elemento
+    for (const [k, v] of Object.entries(d)) {
+      if (k === "images" || !Array.isArray(v)) continue;
+      d[k] = v.map((it) => (isObj(it) ? Object.fromEntries(Object.entries(it).map(([ik, iv]) => [ik, typeof iv === "string" ? plainTokens(iv, data) : iv])) : it));
     }
     return { ...b, data: d } as PageBlock;
   });

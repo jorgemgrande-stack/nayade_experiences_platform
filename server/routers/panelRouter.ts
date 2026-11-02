@@ -17,7 +17,7 @@ import { capabilityStateFrom } from "../../shared/adminNav";
 import { panelExtensionSources, resolvePanelNavigation } from "../_core/modules/panelNavigation";
 import { buildSubscriptionOverview } from "../subscriptionOverview";
 import { PANEL_ROLES } from "../subscriptionDb";
-import { checkRbacOrLegacy } from "../_core/rbac";
+import { checkPermission } from "../customRolesAccess";
 
 export const panelRouter = router({
   navigation: protectedProcedure.query(async ({ ctx }) => {
@@ -42,7 +42,7 @@ export const panelRouter = router({
       role,
       capabilityState,
       moduleAvailable: (id) => modules.isModuleAvailable(id).catch(() => false),
-      hasPermission: (key) => checkRbacOrLegacy(ctx.user.id, role, key, ["admin"]),
+      hasPermission: (key) => checkPermission(ctx.user.id, role, key, ["admin"]),
     });
   }),
 });

@@ -6,7 +6,7 @@
 import { router, protectedProcedure, publicProcedure } from "../_core/trpc";
 import { brandSetting, companyName } from "../tenantBrand";
 import { publicBaseUrl } from "../_core/productIdentity";
-import { checkRbacOrLegacy } from "../_core/rbac";
+import { checkPermission } from "../customRolesAccess";
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 import {
@@ -68,7 +68,7 @@ async function sendEmail(opts: { to: string; subject: string; html: string }) {
 // assertModuleEnabled preserved. Zero changes to individual procedure definitions.
 const adminProc = protectedProcedure.use(async ({ ctx, next }) => {
   await assertModuleEnabled("ticketing_module_enabled");
-  const allowed = await checkRbacOrLegacy(
+  const allowed = await checkPermission(
     ctx.user.id,
     ctx.user.role as string,
     "ticketing.manage",

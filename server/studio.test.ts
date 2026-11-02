@@ -106,7 +106,7 @@ describe("diseño de cada bloque", () => {
 
   it("fondo, espacios, visibilidad y ancla válidos se conservan", () => {
     const s = normalizeStyle({ background: "brand", padTop: "l", padBottom: "s", hideOn: ["mobile", "mobile", "desktop"], anchor: "servicios", color: "red" });
-    expect(s).toEqual({ background: "brand", padTop: "l", padBottom: "s", hideOn: ["desktop", "mobile"], anchor: "servicios" });
+    expect(s).toEqual({ background: "brand", padTop: "l", padBottom: "s", hideOn: ["desktop", "mobile"], anchor: "servicios", animation: "none" });
   });
 
   it("el diseño viaja con el bloque al validar y un bloque sin diseño queda igual que antes", () => {
@@ -227,6 +227,51 @@ describe("regresiones de la revisión funcional (imágenes y guardado)", () => {
     } finally {
       server.close();
     }
+  }, 30_000);
+});
+
+describe("presentaciones, carruseles y animaciones", () => {
+  const ID = "01hzx0v6k2m8q9r3s4t5u6v7w8";
+  it("diapositivas: enlaces e imágenes saneados, opciones de la lista y máximo de 10", () => {
+    const b = one("slideshow", {
+      slides: [{ title: "Hola", imageUrl: `https://skibox.es/files/${ID}/a.jpg`, buttonLabel: "Ir", buttonUrl: "javascript:alert(1)", button2Url: "/tienda", align: "derecha", valign: "bottom", onload: "x" }],
+      height: "gigante", transition: "fade", autoplay: "off", interval: "7",
+    });
+    expect(b.data.slides[0]).toMatchObject({ title: "Hola", imageUrl: `/files/${ID}/a.jpg`, buttonUrl: "", button2Url: "/tienda", align: "left", valign: "bottom" });
+    expect(b.data.slides[0]).not.toHaveProperty("onload");
+    expect(b.data).toMatchObject({ height: "l", transition: "fade", autoplay: "off", interval: "6" });
+    expect(() => one("slideshow", { slides: Array.from({ length: 11 }, () => ({ title: "x" })) })).toThrow(/hasta 10/);
+  });
+
+  it("galería guardada antes de Studio: rejilla y ampliar por defecto; mosaico y carrusel válidos", () => {
+    expect(one("gallery", { title: "", images: [{ url: "/x.jpg", alt: "" }] }).data).toMatchObject({ layout: "grid", lightbox: "on" });
+    expect(one("gallery", { images: [], layout: "masonry", lightbox: "off" }).data).toMatchObject({ layout: "masonry", lightbox: "off" });
+    expect(one("gallery", { images: [], layout: "<script>" }).data.layout).toBe("grid");
+  });
+
+  it("opiniones: foto y valoración; tarjetas y carrusel con sus opciones", () => {
+    const t = one("testimonials", { layout: "carousel", items: [{ quote: "Bien", author: "Ana", photoUrl: "javascript:x", rating: "9" }] });
+    expect(t.data.layout).toBe("carousel");
+    expect(t.data.items[0]).toMatchObject({ photoUrl: "", rating: "0" });
+    const c = one("cards", { layout: "carousel", columns: "4", items: [{ title: "T", buttonUrl: "www.ejemplo.es" }] });
+    expect(c.data).toMatchObject({ layout: "carousel", columns: "4" });
+    expect(c.data.items[0].buttonUrl).toBe("https://www.ejemplo.es");
+    expect(one("carousel", { perView: "5", autoplay: "on" }).data).toMatchObject({ perView: "3", autoplay: "on", lightbox: "on" });
+  });
+
+  it("animación al aparecer: lista cerrada; sin animación no se guarda diseño", () => {
+    expect(normalizeStyle({ animation: "up" })).toMatchObject({ animation: "up" });
+    expect(normalizeStyle({ animation: "explosion" })).toBeUndefined();
+    expect(isDefaultStyle({ animation: "none" })).toBe(true);
+  });
+
+  it("resumen en HTML de diapositivas y tarjetas; datos de la empresa también en las diapositivas", () => {
+    const blocks = normalizeBlocks([createBlock("slideshow", { slides: [{ ...defaultBlockData("slideshow").slides[0], title: "Bienvenidos a {{nombre}}" }] }), createBlock("cards")]);
+    const html = blocksToHtml(blocks);
+    expect(html).toContain("<h1>Bienvenidos a {{nombre}}</h1>");
+    expect(html).toContain("<h3>Primera tarjeta</h3>");
+    const rendered = renderBlockTokens(blocks, { nombre: "Skibox" }) as any;
+    expect(rendered[0].data.slides[0].title).toBe("Bienvenidos a Skibox");
   });
 });
 

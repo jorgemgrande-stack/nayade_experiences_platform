@@ -12,7 +12,7 @@
  * Añadir un módulo: su tipo y sus datos en shared/pageBlocks.ts (BLOCK_TYPES, BlockDataMap, defaultBlockData), su
  * entrada aquí y su componente en PageBlocksView. Nada más: ni el editor ni el servidor cambian.
  */
-import { BLOCK_CATALOG, createBlock, type BlockType, type PageBlock } from "../pageBlocks";
+import { BLOCK_CATALOG, DEFAULT_BLOCK_STYLE, createBlock, type BlockType, type PageBlock } from "../pageBlocks";
 
 export type FieldDef =
   | { key: string; label: string; kind: "text"; max: number; multiline?: boolean; inline?: boolean; hint?: string; placeholder?: string; advanced?: boolean }
@@ -76,6 +76,19 @@ const ALIGN = [
   { value: "center", label: "Centrado" },
 ] as const;
 const ALT = "Descripción de la imagen";
+const ON_OFF = [
+  { value: "on", label: "Sí" },
+  { value: "off", label: "No" },
+] as const;
+const LAYOUT_GRID_CAROUSEL = [
+  { value: "grid", label: "Rejilla" },
+  { value: "carousel", label: "Carrusel" },
+] as const;
+const COLUMNS_2_4 = [
+  { value: "2", label: "2" },
+  { value: "3", label: "3" },
+  { value: "4", label: "4" },
+] as const;
 
 const info = (type: BlockType) => BLOCK_CATALOG.find((b) => b.type === type)!;
 const mod = (type: BlockType, family: ModuleFamily, icon: string, keywords: string, fields: FieldDef[], extra: { capability?: string; note?: string } = {}): ModuleDef => ({
@@ -115,6 +128,33 @@ export const MODULES: readonly ModuleDef[] = [
   mod("separator", "basicos", "separator", "separador linea espacio", [
     { key: "kind", label: "Tipo", kind: "select", options: [{ value: "line", label: "Línea" }, { value: "space", label: "Solo espacio" }] },
   ]),
+  mod("slideshow", "secciones", "slideshow", "slideshow slider diapositivas presentacion portada hero carrusel", [
+    {
+      key: "slides", label: "Diapositivas", kind: "list", max: 10, itemLabel: "Diapositiva",
+      newItem: { imageUrl: "", mobileImageUrl: "", imageAlt: "", eyebrow: "", title: "Nueva diapositiva", text: "Escribe aquí el texto de la diapositiva", buttonLabel: "Más información", buttonUrl: "/contacto", button2Label: "", button2Url: "", align: "left", valign: "center" },
+      fields: [
+        { key: "imageUrl", label: "Imagen de fondo", kind: "image" },
+        { key: "imageAlt", label: ALT, kind: "text", max: 300 },
+        { key: "mobileImageUrl", label: "Imagen para móvil (opcional)", kind: "image", advanced: true },
+        { key: "eyebrow", label: "Antetítulo (opcional)", kind: "text", max: 80 },
+        { key: "title", label: "Titular", kind: "text", max: 200 },
+        { key: "text", label: "Texto", kind: "text", max: 400, multiline: true },
+        { key: "buttonLabel", label: "Texto del botón (opcional)", kind: "text", max: 80 },
+        { key: "buttonUrl", label: "A dónde lleva el botón", kind: "link" },
+        { key: "button2Label", label: "Segundo botón (opcional)", kind: "text", max: 80 },
+        { key: "button2Url", label: "A dónde lleva el segundo botón", kind: "link" },
+        { key: "align", label: "Texto a la", kind: "select", options: [{ value: "left", label: "Izquierda" }, { value: "center", label: "Centro" }, { value: "right", label: "Derecha" }] },
+        { key: "valign", label: "Altura del texto", kind: "select", options: [{ value: "top", label: "Arriba" }, { value: "center", label: "Centro" }, { value: "bottom", label: "Abajo" }], advanced: true },
+      ],
+    },
+    { key: "height", label: "Altura", kind: "select", options: [{ value: "s", label: "Baja" }, { value: "m", label: "Media" }, { value: "l", label: "Alta" }, { value: "full", label: "Pantalla" }] },
+    { key: "overlay", label: "Oscurecer la imagen", kind: "select", options: [{ value: "none", label: "No" }, { value: "light", label: "Poco" }, { value: "medium", label: "Medio" }, { value: "strong", label: "Mucho" }] },
+    { key: "autoplay", label: "Avance automático", kind: "select", options: ON_OFF },
+    { key: "interval", label: "Segundos por diapositiva", kind: "select", options: [{ value: "4", label: "4" }, { value: "6", label: "6" }, { value: "8", label: "8" }, { value: "10", label: "10" }] },
+    { key: "transition", label: "Transición", kind: "select", options: [{ value: "slide", label: "Deslizar" }, { value: "fade", label: "Fundido" }], advanced: true },
+    { key: "arrows", label: "Flechas", kind: "select", options: ON_OFF, advanced: true },
+    { key: "dots", label: "Indicadores", kind: "select", options: ON_OFF, advanced: true },
+  ], { note: "Se pasa de diapositiva con las flechas, los indicadores, el dedo o el teclado. El avance automático se detiene al pasar el ratón o al tocar, y no se activa si la persona prefiere menos movimiento. Mientras editas, la presentación no avanza sola." }),
   mod("hero", "secciones", "hero", "cabecera portada banner imagen grande", [
     { key: "title", label: "Titular", kind: "text", max: 200, inline: true },
     { key: "subtitle", label: "Subtítulo", kind: "text", max: 300, multiline: true, inline: true },
@@ -140,6 +180,41 @@ export const MODULES: readonly ModuleDef[] = [
     { key: "secondaryLabel", label: "Segundo botón (opcional)", kind: "text", max: 80, inline: true },
     { key: "secondaryUrl", label: "A dónde lleva el segundo botón", kind: "link" },
   ]),
+  mod("form", "marketing", "form-builder", "formulario a medida campos encuesta inscripcion solicitud presupuesto", [
+    { key: "title", label: "Título", kind: "text", max: 200, inline: true },
+    { key: "intro", label: "Texto de introducción", kind: "text", max: 500, multiline: true, inline: true },
+    {
+      key: "fields", label: "Campos", kind: "list", max: 20, itemLabel: "Campo",
+      newItem: { kind: "text", label: "Nuevo campo", placeholder: "", options: "", required: "off", role: "none", width: "full", value: "" },
+      fields: [
+        {
+          key: "kind", label: "Tipo de campo", kind: "select",
+          options: [
+            { value: "text", label: "Texto corto" }, { value: "textarea", label: "Texto largo" }, { value: "email", label: "Correo electrónico" },
+            { value: "phone", label: "Teléfono" }, { value: "number", label: "Número" }, { value: "date", label: "Fecha" }, { value: "time", label: "Hora" },
+            { value: "select", label: "Desplegable" }, { value: "radio", label: "Una opción (botones)" }, { value: "multi", label: "Varias opciones" },
+            { value: "checkbox", label: "Casilla de sí/no" }, { value: "hidden", label: "Oculto (dato fijo)" },
+          ],
+        },
+        { key: "label", label: "Pregunta o etiqueta", kind: "text", max: 200 },
+        { key: "required", label: "Obligatorio", kind: "select", options: ON_OFF },
+        { key: "options", label: "Opciones (una por línea)", kind: "text", max: 1500, multiline: true, hint: "Para desplegables, botones de opción y varias opciones." },
+        { key: "placeholder", label: "Texto de ayuda dentro del campo (opcional)", kind: "text", max: 150, advanced: true },
+        {
+          key: "role", label: "Dato del contacto para el CRM", kind: "select",
+          options: [{ value: "none", label: "Ninguno" }, { value: "name", label: "Nombre" }, { value: "email", label: "Correo" }, { value: "phone", label: "Teléfono" }],
+        },
+        { key: "width", label: "Ancho", kind: "select", options: [{ value: "full", label: "Completo" }, { value: "half", label: "Mitad" }], advanced: true },
+        { key: "value", label: "Valor fijo (solo campos ocultos)", kind: "text", max: 200, advanced: true },
+      ],
+    },
+    { key: "submitLabel", label: "Texto del botón de envío", kind: "text", max: 60 },
+    { key: "successMessage", label: "Mensaje tras enviar", kind: "text", max: 500, multiline: true },
+    { key: "redirectUrl", label: "Después de enviar, llevar a (opcional)", kind: "link", advanced: true },
+    { key: "consent", label: "Pedir aceptar la política de privacidad", kind: "select", options: ON_OFF },
+  ], {
+    note: "Cada envío entra en tu CRM como oportunidad nueva, con su cliente y todas las respuestas. Necesita un campo marcado como «Correo» para poder responder. Está protegido contra envíos automáticos. Los adjuntos de archivos aún no están disponibles.",
+  }),
   mod("contact_form", "marketing", "form", "formulario contacto crm", [
     { key: "title", label: "Título", kind: "text", max: 200, inline: true },
     { key: "intro", label: "Texto de introducción", kind: "text", max: 500, multiline: true, inline: true },
@@ -148,6 +223,32 @@ export const MODULES: readonly ModuleDef[] = [
   mod("gallery", "contenido", "gallery", "galeria fotos imagenes", [
     { key: "title", label: "Título (opcional)", kind: "text", max: 200, inline: true },
     { key: "images", label: "Imágenes", kind: "images", max: 24 },
+    { key: "layout", label: "Presentación", kind: "select", options: [{ value: "grid", label: "Rejilla" }, { value: "masonry", label: "Mosaico" }, { value: "carousel", label: "Carrusel" }] },
+    { key: "lightbox", label: "Ampliar al pulsar", kind: "select", options: ON_OFF },
+  ]),
+  mod("carousel", "contenido", "carousel", "carrusel slider imagenes fotos deslizar", [
+    { key: "title", label: "Título (opcional)", kind: "text", max: 200, inline: true },
+    { key: "images", label: "Imágenes", kind: "images", max: 24 },
+    { key: "perView", label: "Imágenes a la vista en ordenador", kind: "select", options: COLUMNS_2_4 },
+    { key: "autoplay", label: "Avance automático", kind: "select", options: ON_OFF },
+    { key: "lightbox", label: "Ampliar al pulsar", kind: "select", options: ON_OFF },
+  ], { note: "En móvil se ve una imagen y en tableta dos; se desplazan con el dedo, con las flechas o con el teclado." }),
+  mod("cards", "contenido", "cards", "tarjetas cards servicios destacados carrusel", [
+    { key: "title", label: "Título", kind: "text", max: 200, inline: true },
+    { key: "intro", label: "Introducción (opcional)", kind: "text", max: 500, multiline: true, inline: true },
+    { key: "layout", label: "Presentación", kind: "select", options: LAYOUT_GRID_CAROUSEL },
+    { key: "columns", label: "Tarjetas por fila en ordenador", kind: "select", options: COLUMNS_2_4 },
+    {
+      key: "items", label: "Tarjetas", kind: "list", max: 12, itemLabel: "Tarjeta", newItem: { imageUrl: "", imageAlt: "", title: "Nueva tarjeta", text: "Describe en una o dos frases lo que quieres destacar.", buttonLabel: "", buttonUrl: "" },
+      fields: [
+        { key: "imageUrl", label: "Imagen", kind: "image" },
+        { key: "imageAlt", label: ALT, kind: "text", max: 300 },
+        { key: "title", label: "Título", kind: "text", max: 120 },
+        { key: "text", label: "Texto", kind: "text", max: 500, multiline: true },
+        { key: "buttonLabel", label: "Texto del botón (opcional)", kind: "text", max: 80 },
+        { key: "buttonUrl", label: "A dónde lleva el botón", kind: "link" },
+      ],
+    },
   ]),
   mod("features", "contenido", "features", "ventajas servicios iconos rejilla caracteristicas", [
     { key: "title", label: "Título", kind: "text", max: 200, inline: true },
@@ -164,12 +265,18 @@ export const MODULES: readonly ModuleDef[] = [
   ]),
   mod("testimonials", "contenido", "testimonials", "opiniones testimonios reseñas clientes", [
     { key: "title", label: "Título", kind: "text", max: 200, inline: true },
+    { key: "layout", label: "Presentación", kind: "select", options: LAYOUT_GRID_CAROUSEL },
     {
-      key: "items", label: "Opiniones", kind: "list", max: 12, itemLabel: "Opinión", newItem: { quote: "Escribe aquí la opinión.", author: "Nombre del cliente", role: "" },
+      key: "items", label: "Opiniones", kind: "list", max: 12, itemLabel: "Opinión", newItem: { quote: "Escribe aquí la opinión.", author: "Nombre del cliente", role: "", photoUrl: "", rating: "0" },
       fields: [
         { key: "quote", label: "Opinión", kind: "text", max: 600, multiline: true },
         { key: "author", label: "Nombre", kind: "text", max: 120 },
         { key: "role", label: "Empresa o cargo (opcional)", kind: "text", max: 120 },
+        { key: "photoUrl", label: "Foto (opcional)", kind: "image" },
+        {
+          key: "rating", label: "Valoración", kind: "select",
+          options: [{ value: "0", label: "Sin" }, { value: "3", label: "3★" }, { value: "4", label: "4★" }, { value: "5", label: "5★" }],
+        },
       ],
     },
   ]),
@@ -189,6 +296,7 @@ export const MODULES: readonly ModuleDef[] = [
     { key: "categorySlug", label: "Qué productos", kind: "category" },
     { key: "limit", label: "Cuántos", kind: "select", options: [{ value: "4", label: "4" }, { value: "8", label: "8" }, { value: "12", label: "12" }] },
     { key: "buttonLabel", label: "Botón a la tienda (opcional)", kind: "text", max: 80, inline: true },
+    { key: "layout", label: "Presentación", kind: "select", options: LAYOUT_GRID_CAROUSEL },
   ], { capability: "shop-catalog", note: "Muestra los productos publicados en tu tienda, con su foto y su precio reales. Cuando cambias un producto en el catálogo, la web lo refleja sola." }),
 ];
 
@@ -225,6 +333,22 @@ export interface SectionPreset {
 /** Combinaciones de módulos listas para insertar de una vez. Textos genéricos para adaptar; nada inventado. */
 export const SECTION_PRESETS: readonly SectionPreset[] = [
   {
+    key: "portada-presentacion",
+    label: "Portada con presentación",
+    description: "Diapositivas a todo lo ancho, tarjetas destacadas y llamada a la acción",
+    build: () => [
+      createBlock("slideshow"),
+      createBlock("cards", { title: "Lo que hacemos" }),
+      { ...createBlock("cta"), style: { ...DEFAULT_BLOCK_STYLE, background: "brand" } },
+    ],
+  },
+  {
+    key: "opiniones-carrusel",
+    label: "Opiniones en carrusel",
+    description: "Opiniones de clientes que se desplazan, con foto y valoración",
+    build: () => [{ ...createBlock("testimonials", { layout: "carousel" }), style: { ...DEFAULT_BLOCK_STYLE, background: "soft" } }],
+  },
+  {
     key: "portada",
     label: "Portada completa",
     description: "Cabecera, ventajas, texto e imagen y llamada a la acción",
@@ -232,7 +356,7 @@ export const SECTION_PRESETS: readonly SectionPreset[] = [
       createBlock("hero", { title: "Tu titular principal", subtitle: "Explica en una frase qué ofreces y a quién", buttonLabel: "Contacta con nosotros", buttonUrl: "/contacto" }),
       createBlock("features"),
       createBlock("columns", { title: "Cómo trabajamos", html: "<p>Cuenta cómo es trabajar contigo, paso a paso.</p>" }),
-      { ...createBlock("cta"), style: { background: "brand", padTop: "0", padBottom: "0", hideOn: [], anchor: "" } },
+      { ...createBlock("cta"), style: { ...DEFAULT_BLOCK_STYLE, background: "brand" } },
     ],
   },
   {
@@ -248,7 +372,7 @@ export const SECTION_PRESETS: readonly SectionPreset[] = [
     key: "confianza",
     label: "Confianza",
     description: "Opiniones de clientes y preguntas frecuentes",
-    build: () => [{ ...createBlock("testimonials"), style: { background: "soft", padTop: "0", padBottom: "0", hideOn: [], anchor: "" } }, createBlock("faq")],
+    build: () => [{ ...createBlock("testimonials"), style: { ...DEFAULT_BLOCK_STYLE, background: "soft" } }, createBlock("faq")],
   },
   {
     key: "contacto",

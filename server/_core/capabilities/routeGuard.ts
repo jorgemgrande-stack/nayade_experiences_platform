@@ -38,6 +38,8 @@ export const TRPC_ROUTER_CAPABILITIES: Record<string, string> = {
   crmFunnel: "crm-funnel-advanced",
   // Business: reglas de precios (gestión y simulación); su aplicación al cobrar la comprueba pricingRulesDb
   pricingRules: "pricing-rules",
+  // Business: roles personalizados (los procedimientos lo comprueban además en el servidor)
+  customRoles: "roles-custom",
   products: "shop-catalog",
   packs: "shop-catalog",
   timeSlots: "shop-catalog",

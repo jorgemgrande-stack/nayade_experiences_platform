@@ -6,10 +6,10 @@
  * El texto con formato llega ya saneado del servidor (lista blanca, server/_core/pageBlocks.ts). Sin contexto de
  * edición, un bloque sin diseño propio se pinta exactamente igual que antes de Elephant Studio.
  */
-import { createContext, Fragment, useContext, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
+import { createContext, Fragment, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { Link } from "wouter";
 import { toast } from "sonner";
-import { ArrowDown, ArrowUp, ChevronDown, Copy, EyeOff, GripVertical, Play, Quote, ShoppingBag, Trash2 } from "lucide-react";
+import { ArrowDown, ArrowUp, ChevronDown, Copy, EyeOff, GripVertical, Play, Quote, ShoppingBag, Star, Trash2 } from "lucide-react";
 import { trpc } from "@/lib/trpc";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -19,7 +19,11 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { cn } from "@/lib/utils";
 import { RICH_TEXT_CLASS } from "@/components/site/richText";
 import { FEATURE_ICON_COMPONENTS } from "@/components/site/featureIcons";
-import { blockLabel, DEFAULT_BLOCK_STYLE, type BlockOf, type BlockStyle, type Device, type PageBlock } from "@shared/pageBlocks";
+import { Carousel, prefersReducedMotion } from "@/components/site/Carousel";
+import { Slideshow } from "@/components/site/Slideshow";
+import { Lightbox } from "@/components/site/Lightbox";
+import { StudioFormFields } from "@/components/site/StudioForm";
+import { blockLabel, DEFAULT_BLOCK_STYLE, type BlockOf, type BlockStyle, type Device, type GalleryImage, type PageBlock } from "@shared/pageBlocks";
 import { formatEuros, productPath } from "@shared/storefront";
 import { isPurchasable } from "@shared/shopOrders";
 
@@ -272,20 +276,164 @@ function ImageBlock({ b }: { b: BlockOf<"image"> }) {
   );
 }
 
+/** Imagen de galería: si se puede ampliar, es un botón que abre el visor (en el editor solo se selecciona). */
+function GalleryThumb({ g, className, onOpen }: { g: GalleryImage; className: string; onOpen?: () => void }) {
+  const img = <img src={g.url} alt={g.alt} className={className} loading="lazy" decoding="async" />;
+  if (!onOpen) return img;
+  return (
+    <button type="button" onClick={onOpen} className="group block w-full overflow-hidden rounded-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary" aria-label={g.alt ? `Ampliar: ${g.alt}` : "Ampliar imagen"}>
+      {img}
+    </button>
+  );
+}
+
 function GalleryBlock({ b, first }: { b: BlockOf<"gallery">; first: boolean }) {
   const ed = useContext(StudioEditContext);
-  if (!b.data.images.length && !ed) return null;
+  const [open, setOpen] = useState<number | null>(null);
+  const { images, layout } = b.data;
+  if (!images.length && !ed) return null;
+  const zoom = b.data.lightbox === "on" && !ed;
+  const thumb = (g: GalleryImage, i: number, cls: string) => <GalleryThumb key={i} g={g} className={cls} onOpen={zoom ? () => setOpen(i) : undefined} />;
   return (
     <section className="container py-8 md:py-10">
-      <Txt k="title" value={b.data.title} as={first ? "h1" : "h2"} className={cn(headingClass(first), "mb-6")} placeholder="Título de la galería (opcional)" />
-      {b.data.images.length ? (
-        <div className="grid grid-cols-2 gap-3 md:grid-cols-3 md:gap-4">
-          {b.data.images.map((g, i) => (
-            <img key={i} src={g.url} alt={g.alt} className="aspect-square w-full rounded-xl object-cover" loading="lazy" />
+      <Txt k="title" value={b.data.title} as={first ? "h1" : "h2"} className={cn(headingClass(first), "mb-6 block")} placeholder="Título de la galería (opcional)" />
+      {!images.length ? (
+        <EmptyMedia>Añade las imágenes en el panel de la derecha</EmptyMedia>
+      ) : layout === "masonry" ? (
+        <div className="columns-2 gap-3 md:columns-3 md:gap-4 [&>*]:mb-3 md:[&>*]:mb-4">
+          {images.map((g, i) => (
+            <div key={i} className="break-inside-avoid">
+              {thumb(g, i, "h-auto w-full rounded-xl object-cover transition duration-300 group-hover:scale-[1.03]")}
+            </div>
           ))}
         </div>
+      ) : layout === "carousel" ? (
+        <Carousel perView={{ mobile: 1, tablet: 2, desktop: 3 }} label={b.data.title || "Galería"}>
+          {images.map((g, i) => thumb(g, i, "aspect-[4/3] w-full rounded-xl object-cover transition duration-300 group-hover:scale-[1.03]"))}
+        </Carousel>
+      ) : (
+        <div className="grid grid-cols-2 gap-3 md:grid-cols-3 md:gap-4">
+          {images.map((g, i) => thumb(g, i, "aspect-square w-full rounded-xl object-cover transition duration-300 group-hover:scale-[1.03]"))}
+        </div>
+      )}
+      {zoom && <Lightbox images={images} index={open} onIndex={setOpen} onClose={() => setOpen(null)} />}
+    </section>
+  );
+}
+
+/** Carrusel de imágenes con visor a pantalla completa opcional. */
+function CarouselBlock({ b, first }: { b: BlockOf<"carousel">; first: boolean }) {
+  const ed = useContext(StudioEditContext);
+  const [open, setOpen] = useState<number | null>(null);
+  const d = b.data;
+  if (!d.images.length && !ed) return null;
+  const zoom = d.lightbox === "on" && !ed;
+  const per = Number(d.perView) || 3;
+  return (
+    <section className="container py-8 md:py-12">
+      <Txt k="title" value={d.title} as={first ? "h1" : "h2"} className={cn(headingClass(first), "mb-6 block")} placeholder="Título (opcional)" />
+      {d.images.length ? (
+        <Carousel perView={{ mobile: 1, tablet: Math.min(2, per), desktop: per }} label={d.title || "Carrusel de imágenes"} autoplay={d.autoplay === "on" && !ed}>
+          {d.images.map((g, i) => (
+            <GalleryThumb key={i} g={g} className="aspect-[4/3] w-full rounded-xl object-cover transition duration-300 group-hover:scale-[1.03]" onOpen={zoom ? () => setOpen(i) : undefined} />
+          ))}
+        </Carousel>
       ) : (
         <EmptyMedia>Añade las imágenes en el panel de la derecha</EmptyMedia>
+      )}
+      {zoom && <Lightbox images={d.images} index={open} onIndex={setOpen} onClose={() => setOpen(null)} />}
+    </section>
+  );
+}
+
+/** Presentación de diapositivas: el contenido de cada una se pinta aquí (enlaces seguros como en el resto). */
+function SlideshowBlock({ b, first, preview }: { b: BlockOf<"slideshow">; first: boolean; preview?: boolean }) {
+  const ed = useContext(StudioEditContext);
+  const d = b.data;
+  if (!d.slides.length) {
+    return ed ? <EmptyMedia>Añade diapositivas en el panel de la derecha</EmptyMedia> : null;
+  }
+  return (
+    <Slideshow
+      slides={d.slides}
+      height={d.height}
+      transition={d.transition}
+      autoplay={d.autoplay === "on"}
+      intervalMs={(Number(d.interval) || 6) * 1000}
+      arrows={d.arrows === "on"}
+      dots={d.dots === "on"}
+      overlay={d.overlay}
+      editing={!!ed}
+      renderContent={(s, i) => {
+        const Title = first && i === 0 ? "h1" : "h2";
+        return (
+          <>
+            {s.eyebrow && <p className="text-sm font-semibold uppercase tracking-[0.18em] text-white/85">{s.eyebrow}</p>}
+            {s.title && <Title className="break-words font-heading text-3xl font-bold leading-tight md:text-5xl lg:text-6xl">{s.title}</Title>}
+            {s.text && <p className="whitespace-pre-line text-lg text-white/90 md:text-xl">{s.text}</p>}
+            {((s.buttonLabel && s.buttonUrl) || (s.button2Label && s.button2Url)) && (
+              <div className="mt-2 flex flex-wrap gap-3">
+                {s.buttonLabel && s.buttonUrl && (
+                  <Button asChild size="lg">
+                    <SmartLink href={s.buttonUrl} preview={preview}>
+                      {s.buttonLabel}
+                    </SmartLink>
+                  </Button>
+                )}
+                {s.button2Label && s.button2Url && (
+                  <Button asChild size="lg" variant="outline" className="border-white/70 bg-white/10 text-white backdrop-blur hover:bg-white/20 hover:text-white">
+                    <SmartLink href={s.button2Url} preview={preview}>
+                      {s.button2Label}
+                    </SmartLink>
+                  </Button>
+                )}
+              </div>
+            )}
+          </>
+        );
+      }}
+    />
+  );
+}
+
+const CARD_COLS: Record<string, string> = { "2": "sm:grid-cols-2", "3": "sm:grid-cols-2 lg:grid-cols-3", "4": "sm:grid-cols-2 lg:grid-cols-4" };
+
+function CardsBlock({ b, first, preview }: { b: BlockOf<"cards">; first: boolean; preview?: boolean }) {
+  const ed = useContext(StudioEditContext);
+  const d = b.data;
+  const cards = d.items.map((c, i) => (
+    <article key={i} className="flex h-full flex-col overflow-hidden rounded-2xl border border-border bg-card text-card-foreground shadow-sm transition hover:shadow-md">
+      {c.imageUrl ? <img src={c.imageUrl} alt={c.imageAlt} className="aspect-[4/3] w-full object-cover" loading="lazy" decoding="async" /> : <div className="aspect-[4/3] w-full bg-gradient-to-br from-primary/15 to-primary/5" aria-hidden />}
+      <div className="flex flex-1 flex-col gap-2 p-5">
+        {c.title && <h3 className="font-heading text-lg font-semibold text-foreground">{c.title}</h3>}
+        {c.text && <p className="flex-1 whitespace-pre-line text-sm leading-relaxed text-muted-foreground">{c.text}</p>}
+        {c.buttonLabel && c.buttonUrl && (
+          <div className="pt-2">
+            <Button asChild variant="outline" size="sm">
+              <SmartLink href={c.buttonUrl} preview={preview}>
+                {c.buttonLabel}
+              </SmartLink>
+            </Button>
+          </div>
+        )}
+      </div>
+    </article>
+  ));
+  const per = Number(d.columns) || 3;
+  return (
+    <section className="container py-10 md:py-14">
+      {(d.title || d.intro || ed) && (
+        <div className="mx-auto mb-8 max-w-2xl text-center md:mb-10">
+          <Txt k="title" value={d.title} as={first ? "h1" : "h2"} className={headingClass(first)} placeholder="Título" />
+          <Txt k="intro" value={d.intro} as="p" multiline className="mt-3 text-muted-foreground" placeholder="Introducción (opcional)" />
+        </div>
+      )}
+      {d.layout === "carousel" ? (
+        <Carousel perView={{ mobile: 1, tablet: Math.min(2, per), desktop: per }} label={d.title || "Tarjetas"}>
+          {cards}
+        </Carousel>
+      ) : (
+        <div className={cn("grid gap-5 md:gap-6", CARD_COLS[d.columns] ?? CARD_COLS["3"])}>{cards}</div>
       )}
     </section>
   );
@@ -421,6 +569,26 @@ function ContactFormBlock({ b, first, preview, pageTitle }: { b: BlockOf<"contac
   );
 }
 
+/** Formulario a medida: los campos los configura la empresa; cada envío entra en su CRM. */
+function FormBlock({ b, first, preview, pageTitle }: { b: BlockOf<"form">; first: boolean; preview?: boolean; pageTitle?: string }) {
+  const ed = useContext(StudioEditContext);
+  const noEmail = !b.data.fields.some((f) => f.role === "email");
+  return (
+    <section className="container py-8 md:py-12">
+      <div className="mx-auto max-w-2xl rounded-2xl border border-border bg-card p-5 text-card-foreground shadow-sm md:p-8">
+        <Txt k="title" value={b.data.title} as={first ? "h1" : "h2"} className={cn(headingClass(first), "mb-2 block")} placeholder="Título" />
+        <Txt k="intro" value={b.data.intro} as="p" multiline className="mb-6 block text-muted-foreground" placeholder="Texto de introducción" />
+        {ed && noEmail && (
+          <p role="note" className="mb-4 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 font-sans text-sm text-amber-900">
+            Marca un campo como «Correo» en el panel de la derecha: sin él, no podrás responder a quien te escriba y el formulario no se enviará.
+          </p>
+        )}
+        <StudioFormFields blockId={b.id} form={b.data} preview={preview || !!ed} pageTitle={pageTitle} />
+      </div>
+    </section>
+  );
+}
+
 function SeparatorBlock({ b }: { b: BlockOf<"separator"> }) {
   if (b.data.kind === "space") return <div className="h-10 md:h-16" aria-hidden />;
   return (
@@ -479,23 +647,42 @@ function FeaturesBlock({ b, first }: { b: BlockOf<"features">; first: boolean })
 
 function TestimonialsBlock({ b, first }: { b: BlockOf<"testimonials">; first: boolean }) {
   const d = b.data;
+  const cards = d.items.map((it, i) => {
+    const stars = Number(it.rating) || 0;
+    return (
+      <figure key={i} className="flex h-full flex-col rounded-2xl border border-border bg-card p-6 text-card-foreground shadow-sm">
+        {stars > 0 ? (
+          <p className="mb-3 flex gap-0.5 text-amber-500" role="img" aria-label={`Valoración: ${stars} de 5`}>
+            {Array.from({ length: 5 }, (_, s) => (
+              <Star key={s} className={cn("h-4 w-4", s < stars ? "fill-current" : "opacity-30")} aria-hidden />
+            ))}
+          </p>
+        ) : (
+          <Quote className="mb-3 h-6 w-6 text-primary/60" aria-hidden />
+        )}
+        <blockquote className="flex-1 whitespace-pre-line text-base leading-relaxed text-foreground">{it.quote}</blockquote>
+        {(it.author || it.role) && (
+          <figcaption className="mt-5 flex items-center gap-3 border-t border-border pt-4 text-sm">
+            {it.photoUrl && <img src={it.photoUrl} alt="" className="h-10 w-10 shrink-0 rounded-full object-cover" loading="lazy" />}
+            <span>
+              {it.author && <span className="block font-semibold text-foreground">{it.author}</span>}
+              {it.role && <span className="block text-muted-foreground">{it.role}</span>}
+            </span>
+          </figcaption>
+        )}
+      </figure>
+    );
+  });
   return (
     <section className="container py-10 md:py-14">
       <Txt k="title" value={d.title} as={first ? "h1" : "h2"} className={cn(headingClass(first), "mb-8 block text-center")} placeholder="Título" />
-      <div className={cn("grid gap-5", d.items.length > 1 && "md:grid-cols-2", d.items.length > 2 && "lg:grid-cols-3")}>
-        {d.items.map((it, i) => (
-          <figure key={i} className="flex flex-col rounded-2xl border border-border bg-card p-6 text-card-foreground shadow-sm">
-            <Quote className="mb-3 h-6 w-6 text-primary/60" aria-hidden />
-            <blockquote className="flex-1 whitespace-pre-line text-base leading-relaxed text-foreground">{it.quote}</blockquote>
-            {(it.author || it.role) && (
-              <figcaption className="mt-5 border-t border-border pt-4 text-sm">
-                {it.author && <span className="block font-semibold text-foreground">{it.author}</span>}
-                {it.role && <span className="block text-muted-foreground">{it.role}</span>}
-              </figcaption>
-            )}
-          </figure>
-        ))}
-      </div>
+      {d.layout === "carousel" ? (
+        <Carousel perView={{ mobile: 1, tablet: 2, desktop: 3 }} label={d.title || "Opiniones"}>
+          {cards}
+        </Carousel>
+      ) : (
+        <div className={cn("grid gap-5", d.items.length > 1 && "md:grid-cols-2", d.items.length > 2 && "lg:grid-cols-3")}>{cards}</div>
+      )}
     </section>
   );
 }
@@ -632,13 +819,13 @@ function ProductsBlock({ b, first, preview }: { b: BlockOf<"products">; first: b
           Aquí aparecerán tus productos publicados en la tienda. Ahora mismo no hay ninguno {d.categorySlug ? "en esta categoría" : "publicado"}.
         </div>
       ) : (
-        <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-4">
-          {items.map((p) => {
+        (() => {
+          const tiles = items.map((p) => {
             const img = p.image1 || p.coverImageUrl;
             const price = Number(p.basePrice) > 0 ? formatEuros(p.basePrice) : null;
             const soldOut = !isPurchasable(p);
             return (
-              <SmartLink key={p.id} href={productPath(p.slug)} preview={preview} className="group block overflow-hidden rounded-2xl border border-border/50 bg-card text-card-foreground shadow-sm transition-shadow hover:shadow-md">
+              <SmartLink key={p.id} href={productPath(p.slug)} preview={preview} className="group block h-full overflow-hidden rounded-2xl border border-border/50 bg-card text-card-foreground shadow-sm transition-shadow hover:shadow-md">
                 <div className="relative">
                   {img ? <img src={img} alt={p.title} className={cn("h-44 w-full object-cover", soldOut && "opacity-60")} loading="lazy" /> : <div className="h-44 w-full bg-muted" aria-hidden="true" />}
                   {soldOut && <span className="absolute left-3 top-3 rounded-full bg-foreground/80 px-2.5 py-1 text-xs font-semibold text-background">Agotado</span>}
@@ -650,8 +837,15 @@ function ProductsBlock({ b, first, preview }: { b: BlockOf<"products">; first: b
                 </div>
               </SmartLink>
             );
-          })}
-        </div>
+          });
+          return d.layout === "carousel" ? (
+            <Carousel perView={{ mobile: 1, tablet: 2, desktop: 4 }} label={d.title || "Productos"}>
+              {tiles}
+            </Carousel>
+          ) : (
+            <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-4">{tiles}</div>
+          );
+        })()
       )}
       {showButton && (
         <div className="mt-8 text-center">
@@ -699,7 +893,38 @@ function StyleFrame({ style, edit, children }: { style?: BlockStyle; edit: boole
   const inner = s.background === "brand" ? BRAND_INNER : s.background === "dark" ? DARK_INNER : undefined;
   return (
     <div id={s.anchor || undefined} className={cn("scroll-mt-24", s.background === "soft" && "bg-muted/60", PAD_TOP[s.padTop], PAD_BOTTOM[s.padBottom], !edit && hiddenClasses(s))} style={outer}>
-      {inner ? <div style={inner}>{children}</div> : children}
+      <AnimateIn kind={edit ? "none" : s.animation}>{inner ? <div style={inner}>{children}</div> : children}</AnimateIn>
+    </div>
+  );
+}
+
+const ANIM_FROM: Record<string, string> = { fade: "opacity-0", up: "opacity-0 translate-y-8", zoom: "opacity-0 scale-95" };
+
+/**
+ * Animación al aparecer en pantalla: el bloque entra una sola vez al hacerse visible. Sin animación si la persona
+ * prefiere menos movimiento, en el editor o si el navegador no sabe detectar la visibilidad (se muestra tal cual).
+ */
+function AnimateIn({ kind, children }: { kind: BlockStyle["animation"]; children: ReactNode }) {
+  const ref = useRef<HTMLDivElement>(null);
+  const [shown, setShown] = useState(false);
+  const active = kind !== "none";
+  useEffect(() => {
+    if (!active) return;
+    const el = ref.current;
+    if (!el || typeof IntersectionObserver === "undefined" || prefersReducedMotion()) return setShown(true);
+    const io = new IntersectionObserver(([e]) => {
+      if (e.isIntersecting) {
+        setShown(true);
+        io.disconnect();
+      }
+    }, { threshold: 0.12 });
+    io.observe(el);
+    return () => io.disconnect();
+  }, [active]);
+  if (!active) return <>{children}</>;
+  return (
+    <div ref={ref} data-animate={kind} className={cn("transition-all duration-700 ease-out motion-reduce:transition-none", shown ? "translate-y-0 scale-100 opacity-100" : ANIM_FROM[kind])}>
+      {children}
     </div>
   );
 }
@@ -855,6 +1080,8 @@ function EndDropZone({ ed, index, empty }: { ed: StudioEdit; index: number; empt
 
 /** Si el bloque muestra un título (para que el primero de la página sea el h1). */
 function hasTitle(b: PageBlock): boolean {
+  // La presentación aporta el titular de su primera diapositiva
+  if (b.type === "slideshow") return !!b.data.slides[0]?.title;
   return b.type !== "heading" && "title" in b.data && !!(b.data as { title?: string }).title;
 }
 
@@ -890,6 +1117,14 @@ function renderBlock(b: PageBlock, first: boolean, preview?: boolean, pageTitle?
       return <VideoBlock b={b} first={first} />;
     case "products":
       return <ProductsBlock b={b} first={first} preview={preview} />;
+    case "slideshow":
+      return <SlideshowBlock b={b} first={first} preview={preview} />;
+    case "carousel":
+      return <CarouselBlock b={b} first={first} />;
+    case "cards":
+      return <CardsBlock b={b} first={first} preview={preview} />;
+    case "form":
+      return <FormBlock b={b} first={first} preview={preview} pageTitle={pageTitle} />;
     default:
       return null;
   }

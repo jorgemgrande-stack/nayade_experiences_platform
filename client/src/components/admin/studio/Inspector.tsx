@@ -68,9 +68,9 @@ export function BlockInspector({ block, update, targets, pro, tab, onTab }: { bl
         <div className="space-y-4">
           {fields.map((f) => (
             <div key={f.key} className="space-y-3">
-              <FieldControl field={f} value={data[f.key]} set={set} targets={targets} blockId={block.id} />
+              <FieldControl field={f} value={data[f.key]} set={set} targets={targets} blockId={block.id} pro={pro} />
               {f.kind === "image" && f.altKey && !!data[f.key] && (
-                <FieldControl field={def.fields.find((x) => x.key === f.altKey)!} value={data[f.altKey]} set={set} targets={targets} blockId={block.id} />
+                <FieldControl field={def.fields.find((x) => x.key === f.altKey)!} value={data[f.altKey]} set={set} targets={targets} blockId={block.id} pro={pro} />
               )}
             </div>
           ))}
@@ -116,7 +116,7 @@ function Segmented({ label, value, options, onChange }: { label: string; value: 
   );
 }
 
-function FieldControl({ field: f, value, set, targets, blockId }: { field: FieldDef; value: unknown; set: SetField; targets: LinkTarget[]; blockId: string }) {
+function FieldControl({ field: f, value, set, targets, blockId, pro = false }: { field: FieldDef; value: unknown; set: SetField; targets: LinkTarget[]; blockId: string; pro?: boolean }) {
   const str = typeof value === "string" ? value : "";
   switch (f.kind) {
     case "text":
@@ -143,7 +143,11 @@ function FieldControl({ field: f, value, set, targets, blockId }: { field: Field
     case "link":
       return <LinkPicker label={f.label} value={str} onChange={(url) => set(f.key, url)} targets={targets} />;
     case "select":
-      return <Segmented label={f.label} value={str} options={f.options} onChange={(v) => set(f.key, v, false)} />;
+      return f.options.length > 4 ? (
+        <SelectField label={f.label} value={str} options={f.options} onChange={(v) => set(f.key, v, false)} />
+      ) : (
+        <Segmented label={f.label} value={str} options={f.options} onChange={(v) => set(f.key, v, false)} />
+      );
     case "icon":
       return <IconPicker label={f.label} value={str} onChange={(v) => set(f.key, v, false)} />;
     case "category":
@@ -151,8 +155,29 @@ function FieldControl({ field: f, value, set, targets, blockId }: { field: Field
     case "images":
       return <ImagesEditor field={f} value={Array.isArray(value) ? (value as Array<{ url: string; alt: string }>) : []} set={set} />;
     case "list":
-      return <ListEditor field={f} value={Array.isArray(value) ? (value as Array<Record<string, string>>) : []} set={set} targets={targets} blockId={blockId} />;
+      return <ListEditor field={f} value={Array.isArray(value) ? (value as Array<Record<string, string>>) : []} set={set} targets={targets} blockId={blockId} pro={pro} />;
   }
+}
+
+function SelectField({ label, value, options, onChange }: { label: string; value: string; options: ReadonlyArray<{ value: string; label: string }>; onChange: (v: string) => void }) {
+  const id = useId();
+  return (
+    <div className="space-y-1.5">
+      <Label htmlFor={id}>{label}</Label>
+      <Select value={value} onValueChange={onChange}>
+        <SelectTrigger id={id} className="w-full">
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          {options.map((o) => (
+            <SelectItem key={o.value} value={o.value}>
+              {o.label}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+    </div>
+  );
 }
 
 function IconPicker({ label, value, onChange }: { label: string; value: string; onChange: (v: string) => void }) {
@@ -237,7 +262,7 @@ function ImagesEditor({ field, value, set }: { field: Extract<FieldDef, { kind: 
   );
 }
 
-function ListEditor({ field, value, set, targets, blockId }: { field: Extract<FieldDef, { kind: "list" }>; value: Array<Record<string, string>>; set: SetField; targets: LinkTarget[]; blockId: string }) {
+function ListEditor({ field, value, set, targets, blockId, pro }: { field: Extract<FieldDef, { kind: "list" }>; value: Array<Record<string, string>>; set: SetField; targets: LinkTarget[]; blockId: string; pro: boolean }) {
   const [open, setOpen] = useState<number | null>(null);
   type Items = Array<Record<string, string>>;
   const asItems = (v: unknown): Items => (Array.isArray(v) ? (v as Items) : []);
@@ -252,7 +277,10 @@ function ListEditor({ field, value, set, targets, blockId }: { field: Extract<Fi
     });
     setOpen(j);
   };
-  const firstText = field.fields.find((f) => f.kind === "text")?.key;
+  // Nombre de cada elemento en la lista: su titular, pregunta, nombre… (no la descripción de la imagen)
+  const textKeys = field.fields.filter((f) => f.kind === "text").map((f) => f.key);
+  const NAME_KEYS = ["title", "label", "question", "quote", "author", "text"];
+  const itemName = (item: Record<string, string>) => [...NAME_KEYS.filter((k) => textKeys.includes(k)), ...textKeys].map((k) => item[k]).find((v) => v && v.trim());
   return (
     <div className="space-y-2">
       <span className="text-sm font-medium">{field.label}</span>
@@ -263,7 +291,7 @@ function ListEditor({ field, value, set, targets, blockId }: { field: Extract<Fi
             <div className="flex items-center gap-1 px-2 py-1.5">
               <button type="button" className="flex min-w-0 flex-1 items-center gap-2 py-1 text-left text-sm" aria-expanded={expanded} onClick={() => setOpen(expanded ? null : i)}>
                 <ChevronDown className={cn("h-3.5 w-3.5 shrink-0 text-muted-foreground transition-transform", expanded && "rotate-180")} />
-                <span className="min-w-0 overflow-hidden text-ellipsis whitespace-nowrap">{(firstText && item[firstText]) || `${field.itemLabel} ${i + 1}`}</span>
+                <span className="min-w-0 overflow-hidden text-ellipsis whitespace-nowrap">{itemName(item) || `${field.itemLabel} ${i + 1}`}</span>
               </button>
               <Button type="button" variant="ghost" size="icon" className="h-7 w-7" aria-label="Subir" disabled={i === 0} onClick={() => move(i, -1)}>
                 <ArrowUp className="h-3.5 w-3.5" />
@@ -277,7 +305,7 @@ function ListEditor({ field, value, set, targets, blockId }: { field: Extract<Fi
             </div>
             {expanded && (
               <div className="space-y-3 border-t border-border bg-muted/20 p-3">
-                {field.fields.map((sub) => (
+                {field.fields.filter((sub) => pro || !sub.advanced).map((sub) => (
                   <FieldControl
                     key={sub.key}
                     field={sub}
@@ -356,6 +384,20 @@ function StyleEditor({ style, setStyle, pro }: { style: BlockStyle; setStyle: (p
           ))}
         </div>
         <p className="text-xs text-muted-foreground">Los colores salen de la marca de tu web, así que siempre combinan.</p>
+      </div>
+      <div className="space-y-1">
+        <Segmented
+          label="Animación al aparecer"
+          value={style.animation}
+          options={[
+            { value: "none", label: "Ninguna" },
+            { value: "fade", label: "Fundido" },
+            { value: "up", label: "Subir" },
+            { value: "zoom", label: "Acercar" },
+          ]}
+          onChange={(v) => setStyle({ animation: v as BlockStyle["animation"] })}
+        />
+        <p className="text-xs text-muted-foreground">Se ve en tu web al llegar al bloque (no mientras editas) y nunca si el visitante prefiere menos movimiento.</p>
       </div>
       {pro ? (
         <>
