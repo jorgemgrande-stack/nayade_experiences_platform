@@ -23,9 +23,13 @@
  *  - renewal: active (se renueva), cancelled (baja programada) o null.
  *  - canReactivate: la baja programada de TODA la suscripción se puede deshacer (Stripe, `cancel_at_period_end`).
  */
+import express, { type Request, type Response, type Router } from "express";
+import { z } from "zod";
+import { getAuth } from "../controlPlane/auth";
+import { opsLog } from "../_core/ops/log";
 import type { CrmStore } from "../crm/store";
 import type { OrderStore } from "../orchestrator/store";
-import { rejectCodeOf, type CommercialOrder, type OrderEvent, type OrderPayment, type OrderState } from "../orchestrator/types";
+import { OrderError, rejectCodeOf, type CommercialOrder, type OrderEvent, type OrderPayment, type OrderState } from "../orchestrator/types";
 import type { SubscriptionItem } from "../subscriptions/types";
 import { planFromOrders } from "./panelMarketplace";
 
@@ -65,6 +69,8 @@ export interface ProcessingView {
   transient: boolean | null;
   retryable: boolean;
   nextRetryAt: number | null;
+  /** `payment_reversed`: el cobro se revirtió (reembolso o disputa): es un error de pago, no de activación. */
+  code?: string | null;
 }
 type ItemView = Pick<SubscriptionItem, "productKey" | "family" | "effectiveFrom" | "effectiveTo">;
 
@@ -153,6 +159,7 @@ function rejectedActivation(o: CommercialOrder, ctx: ActivationContext): PanelAc
 function processingActivation(o: CommercialOrder, ctx: ActivationContext): PanelActivation {
   const p = ctx.processing?.(o) ?? null;
   const base: PanelActivation = { ...NO_ACTIVATION, payment: confirmedBy(o), updatedAt: at(o) };
+  if (p?.failed && p.code === "payment_reversed") return { ...base, state: "error", payment: "failed", error: { kind: "payment", transient: false }, retryable: false };
   if (p?.failed) return { ...base, state: "error", error: { kind: "activation", transient: p.transient ?? false }, retryable: p.retryable };
   return { ...base, state: "processing", retryable: !!p?.retryable, nextRetryAt: p?.nextRetryAt ?? null };
 }
@@ -256,4 +263,52 @@ export function orderActivation(d: ActivationReaderDeps) {
     if (processing) ctx.processing = (o) => processing(o, events.get(o.id) ?? [], now);
     return activationFromOrders(orders, tenantId, now, ctx);
   };
+}
+
+// ── Botón «Reintentar» del panel ───────────────────────────────────────────────
+
+/** Reanudación de una activación (lo implementa el orquestador: `retryActivation`). */
+export type RetryActivation = (tenantId: string, input: { key?: string }, actor: string) => Promise<{ status: "resumed" | "active" | "in_progress" | "throttled"; order: CommercialOrder; error: string | null; retryAt: number | null }>;
+
+const tenantParam = z.string().regex(/^[a-z0-9][a-z0-9-]{1,62}$/);
+const retryBody = z.object({ key: z.string().regex(/^[a-z0-9][a-z0-9-]{0,62}$/).optional() }).strict();
+/** Una petición por empresa cada este tiempo como mucho (además del límite por pedido del orquestador). */
+export const RETRY_TENANT_INTERVAL_MS = 5_000;
+
+/**
+ * `POST /commerce/tenants/:t/activation/retry` (token del Core con `commerce:purchase`): reanuda la activación tras el
+ * cobro de un producto de ESA empresa (`key`) o la más reciente reintentable. Nunca cobra ni crea otro pedido.
+ * Respuestas: 200 `active` (ya estaba o quedó activo) · 202 `resumed`/`in_progress` · 429 `throttled` · 409 sin nada
+ * que reintentar · 404 empresa o producto sin pedido.
+ */
+export function createPanelRetryRouter(d: { retry: RetryActivation; now?: () => number }): Router {
+  const r = express.Router();
+  const now = d.now ?? Date.now;
+  const last = new Map<string, number>();
+  r.post("/tenants/:tenantId/activation/retry", express.json({ limit: "4kb" }), (req: Request, res: Response) => {
+    res.setHeader("Cache-Control", "no-store");
+    const scopes = getAuth(req)?.scopes;
+    if (!scopes?.has("commerce:purchase")) return void res.status(403).json({ error: "forbidden", scope: "commerce:purchase" });
+    const t = tenantParam.safeParse(req.params.tenantId);
+    const b = retryBody.safeParse(req.body ?? {});
+    if (!t.success || !b.success) return void res.status(400).json({ error: "invalid_request", message: t.success ? "key" : "tenantId" });
+    const at = now();
+    const prev = last.get(t.data);
+    if (prev !== undefined && at - prev < RETRY_TENANT_INTERVAL_MS) return void res.status(429).json({ error: "throttled", retryAt: prev + RETRY_TENANT_INTERVAL_MS });
+    last.set(t.data, at);
+    if (last.size > 5000) last.clear();
+    const actor = getAuth(req)!.actor;
+    d.retry(t.data, b.data, `${actor.type}:${actor.id}`).then(
+      (x) => {
+        const body = { status: x.status, orderId: x.order.id, state: x.order.state, error: x.error, retryAt: x.retryAt };
+        res.status(x.status === "throttled" ? 429 : x.status === "active" ? 200 : 202).json(body);
+      },
+      (e) => {
+        if (e instanceof OrderError) return void res.status(e.code === "not_found" ? 404 : 409).json({ error: e.code, message: e.message });
+        opsLog("error", "Commerce", "activation_retry_failed", { error: e instanceof Error ? e.name : "error" });
+        res.status(500).json({ error: "internal_error", message: "Error interno" });
+      },
+    );
+  });
+  return r;
 }

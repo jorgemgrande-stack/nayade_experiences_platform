@@ -59,6 +59,7 @@ import { brevoDiagnostics, mailProviderConfig } from "../mail/providers";
 import { MysqlOrganizationStore } from "../organization/service";
 import { MysqlOrderStore } from "../orchestrator/store";
 import { testPaymentsFromEnv, type TestPaymentPort } from "../orchestrator/payments";
+import { orderRecoveryPolicyFromEnv } from "../orchestrator/recovery";
 import { checkoutBlockedReason, describeStripeConfig, liveStartupProblem, stripeConfigFromEnv } from "../stripe/config";
 import { stripeGateway, stripeWebhookVerifier } from "../stripe/gateway";
 import { MysqlStripeStore } from "../stripe/store";
@@ -460,6 +461,12 @@ async function main() {
   // réplica trabaja en cada tick (GET_LOCK). Nunca borra datos ni convierte pruebas a pago.
   const lifecyclePolicy = lifecyclePolicyFromEnv(process.env);
   const lifecycle = orders && crmPool ? { policy: lifecyclePolicy, lock: mysqlAdvisoryLock(crmPool) } : undefined;
+  // Recuperación de activaciones tras el cobro: ENCENDIDA con los pedidos (CP_ORDERS_RECOVERY_ENABLED=0 la apaga).
+  // Reintentos progresivos cada CP_ORDERS_RECOVERY_INTERVAL_MS (mínimo 30 s) y conciliación diaria con el vencimiento de
+  // pedidos sin cobro (CP_ORDERS_EXPIRY_DAYS, 0 = no vencen). Una réplica por tick (GET_LOCK); un fallo solo se registra.
+  const ordersRecoveryPolicy = orderRecoveryPolicyFromEnv(process.env);
+  const ordersRecovery = orders && crmPool ? { policy: ordersRecoveryPolicy, lock: mysqlAdvisoryLock(crmPool) } : undefined;
+  console.log(JSON.stringify({ ctx: "OrdersRecovery", mounted: !!ordersRecovery, ...ordersRecoveryPolicy }));
   console.log(JSON.stringify({ ctx: "Lifecycle", mounted: !!lifecycle, enabled: lifecyclePolicy.enabled, mode: lifecyclePolicy.mode, ...(lifecyclePolicy.modeReason ? { reason: lifecyclePolicy.modeReason } : {}), intervalMs: lifecyclePolicy.intervalMs }));
 
   // Escenarios fiscales aprobados y versiones de consentimiento. Un valor no admitido impide arrancar (nunca a medias)
@@ -929,6 +936,7 @@ async function main() {
     orders,
     withdrawals,
     lifecycle,
+    ordersRecovery,
     stripe,
     external,
     invoicing,

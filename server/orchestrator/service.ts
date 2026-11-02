@@ -36,11 +36,16 @@ import type { TenantStatusSync } from "./tenantStatus";
 import { nextOrderState, type OrderAction } from "./machine";
 import type { TestPaymentPort } from "./payments";
 import type { OrderStore } from "./store";
+import { activationRecovery, classifyStepError, POST_CONFIRM, recoveryDue, type ActivationRecovery } from "./recovery";
 import { opsLog } from "../_core/ops/log";
 import { recordFailure } from "../_core/ops/failureAlerts";
 import { APPROVAL_CATEGORIES, OrderError, REJECT_CODES, rejectCodeOf, type ApprovalCategory, type RejectCode, type CommercialOrder, type Confirmation, type OrderPatch, type OrderPayment, type OrderQuote, type OrderState, type PaymentMode, type PaymentPurpose } from "./types";
 
 export const GRACE_DAYS = 7;
+/** Frecuencia mínima del botón «Reintentar» del panel, por pedido. */
+export const RETRY_MIN_INTERVAL_MS = 60_000;
+/** Días sin cambios tras los que vence un pedido sin cobro (requested, quoted o contracted). */
+export const STALE_ORDER_DAYS = 30;
 /** Días de solo lectura (consulta y exportación) tras el fin del periodo pagado, por los dos caminos. */
 export const READ_ONLY_DAYS = 30;
 /** Proveedor de los pagos verificados en Stripe Billing (modo pruebas). Sus pedidos no reciben recibos simulados. */
@@ -321,14 +326,33 @@ export class CommercialOrchestrator {
     return { order: o, waitingFor: this.waiting(o, await this.d.store.payments(o.id)), error };
   }
 
-  /** Avanza todo lo posible. Se detiene a la espera de la aceptación o de la confirmación, o en un fallo (registrado). */
-  async advance(id: number, actor: string, acceptance?: { signatureRef: string; approvalReason?: string }): Promise<AdvanceResult> {
+  /**
+   * Avanza todo lo posible. Se detiene a la espera de la aceptación o de la confirmación, o en un fallo (registrado y
+   * clasificado: transitorio o definitivo, ver ./recovery.ts). Dos avances del mismo pedido en este proceso nunca
+   * corren a la vez (el segundo espera y relee); entre réplicas, la versión optimista y la unicidad de la suscripción
+   * viva por contrato impiden duplicar nada.
+   */
+  advance(id: number, actor: string, acceptance?: { signatureRef: string; approvalReason?: string }): Promise<AdvanceResult> {
+    const prev = this.running.get(id) ?? Promise.resolve();
+    const run = prev.then(() => this.advanceNow(id, actor, acceptance));
+    const tail = run.catch(() => undefined);
+    this.running.set(id, tail);
+    void tail.then(() => {
+      if (this.running.get(id) === tail) this.running.delete(id);
+    });
+    return run;
+  }
+  private running = new Map<number, Promise<unknown>>();
+
+  private async advanceNow(id: number, actor: string, acceptance?: { signatureRef: string; approvalReason?: string }): Promise<AdvanceResult> {
     for (let guard = 0; guard < 12; guard++) {
       const o = await this.must(id);
+      let held = false;
       try {
         // Un pago revertido en Stripe no da de alta ni activa nada (tampoco desde /review o /advance)
         if ((o.state === "confirmed" || o.state === "subscribed" || o.state === "licensed") && this.d.coverageHeld && (await this.d.coverageHeld(o.id))) {
-          throw new OrderError("invalid_state", "El cobro de este pedido se revirtió en Stripe (reembolso o disputa): no se activa");
+          held = true;
+          throw new OrderError("forbidden", "El cobro de este pedido se revirtió en Stripe (reembolso o disputa): no se activa");
         }
         switch (o.state) {
           case "requested":
@@ -356,7 +380,18 @@ export class CommercialOrchestrator {
         // Otro proceso avanzó el mismo pedido: se relee y se sigue
         if (e instanceof OrderError && e.code === "conflict" && /cambió mientras tanto/.test(e.message)) continue;
         const cur = await this.must(id);
-        const failed = await this.note(cur, "step_failed", actor, { step: cur.state, error: message(e) }, { attempts: cur.attempts + 1, lastError: message(e) });
+        // Otra réplica movió el pedido mientras tanto: su fallo aquí no es un fallo del pedido
+        if (cur.state !== o.state) continue;
+        const c = classifyStepError(e);
+        const detail = { step: cur.state, error: message(e), transient: held ? false : c.transient, retryable: held ? false : c.retryable, ...(held ? { code: "payment_reversed" } : {}) };
+        let failed: CommercialOrder;
+        try {
+          failed = await this.note(cur, "step_failed", actor, detail, { attempts: cur.attempts + 1, lastError: message(e) });
+        } catch (n) {
+          if (n instanceof OrderError && n.code === "conflict") continue;
+          throw n;
+        }
+        if (POST_CONFIRM.includes(cur.state)) opsLog(detail.transient ? "warn" : "error", "Orders", "activation_step_failed", { orderId: cur.id, step: cur.state, transient: detail.transient, retryable: detail.retryable });
         return this.result(failed, message(e));
       }
     }
@@ -600,6 +635,8 @@ export class CommercialOrchestrator {
     };
     const changePlan = async () => {
       if (core.productKey === o.request.plan) return;
+      // Reintento tras un fallo posterior: la bajada ya quedó programada a fin de periodo (no se programa dos veces)
+      if ((await this.d.subscriptionStore.items(sub.id)).some((i) => i.family === "core_plan" && i.productKey === o.request.plan && i.effectiveFrom > now)) return;
       const plan = { productKey: o.request.plan, priceId: await this.priceFor(o.request.plan, sub.interval, true) };
       // Ya aplicado en Stripe (también una bajada): desde ahora; si no, el cliente pagaría un plan y tendría otro
       const external = reflectsStripe(o) ? { when: "now" as const, external: true } : {};
@@ -965,9 +1002,14 @@ export class CommercialOrchestrator {
         }
       });
     }
-    // Recuperación: pedidos confirmados o con pago verificado que no llegaron al final
+    // Recuperación: pedidos confirmados o con pago verificado que no llegaron al final. Revisión explícita: no espera
+    // entre reintentos, pero nunca reintenta sola un fallo definitivo o agotado (./recovery.ts; queda para «Reintentar»)
     for (const o of await this.d.store.list({ states: ["contracted", "confirmed", "subscribed", "licensed"], limit: 1000 })) {
       if (o.state === "contracted" && !(await this.d.store.payments(o.id)).some((p) => this.verifiedPayment(p))) continue;
+      if (o.state !== "contracted") {
+        const ev = await this.d.store.events(o.id);
+        if ((activationRecovery(o, ev)?.attempts ?? 0) > 0 && !recoveryDue(o, ev, now, { ignoreBackoff: true })) continue;
+      }
       await run(o, async () => {
         const r = await this.advance(o.id, actor);
         if (r.error) throw new OrderError("invalid_state", r.error);
@@ -985,6 +1027,118 @@ export class CommercialOrchestrator {
     }
     return out;
   }
+
+  // ── Recuperación de activaciones y vencimiento de pedidos sin cobro ─────────
+
+  /** Estado de recuperación de un pedido en activación (null si no lo está). */
+  async recovery(id: number): Promise<ActivationRecovery | null> {
+    const o = await this.must(id);
+    return activationRecovery(o, await this.d.store.events(id));
+  }
+
+  /**
+   * Reanuda las activaciones posteriores al cobro que tocan: las que vencieron su espera tras un fallo transitorio y
+   * las atascadas sin fallo (proceso caído a medias). Nunca las que fallaron de forma definitiva o agotaron los
+   * reintentos (esas esperan al botón «Reintentar» o a un operador). `ignoreBackoff` (conciliación diaria): no espera.
+   */
+  async recoverActivations(actor: string, opts: { ignoreBackoff?: boolean; limit?: number } = {}) {
+    const now = this.now();
+    const out = { checked: 0, resumed: 0, activated: 0, failed: 0, errors: [] as Array<{ orderId: number; error: string }> };
+    for (const o of await this.d.store.list({ states: [...POST_CONFIRM], limit: opts.limit ?? 500 })) {
+      out.checked++;
+      if (!recoveryDue(o, await this.d.store.events(o.id), now, opts)) continue;
+      try {
+        const r = await this.advance(o.id, actor);
+        out.resumed++;
+        if (r.order.state === "active") out.activated++;
+        if (r.error) {
+          out.failed++;
+          out.errors.push({ orderId: o.id, error: r.error });
+        }
+      } catch (e) {
+        out.errors.push({ orderId: o.id, error: message(e) });
+      }
+    }
+    return out;
+  }
+
+  /**
+   * Vence los pedidos SIN cobro (creados a mano en el CRM, o abandonados) que siguen en requested, quoted o contracted
+   * sin cambios desde hace `maxIdleMs`: pasan a rechazados con motivo `expired` («Pago caducado» en el panel). Nunca
+   * uno con algún pago registrado (en curso, cobrado o fallido: lo resuelve su proveedor).
+   */
+  async expireStaleOrders(actor: string, maxIdleMs: number, opts: { limit?: number } = {}) {
+    const now = this.now();
+    const out = { checked: 0, expired: 0, errors: [] as Array<{ orderId: number; error: string }> };
+    for (const o of await this.d.store.list({ states: ["requested", "quoted", "contracted"], limit: opts.limit ?? 500 })) {
+      out.checked++;
+      if (now - (o.updatedAt ?? o.createdAt) < maxIdleMs) continue;
+      if ((await this.d.store.payments(o.id)).length) continue;
+      try {
+        await this.reject(o.id, { reason: `Pedido sin cobro durante ${Math.round(maxIdleMs / DAY)} días: caducado`, code: "expired" }, actor);
+        out.expired++;
+      } catch (e) {
+        if (e instanceof OrderError && e.code === "conflict") continue;
+        out.errors.push({ orderId: o.id, error: message(e) });
+      }
+    }
+    return out;
+  }
+
+  /**
+   * Conciliación diaria de respaldo: reanuda TODAS las activaciones reanudables (sin esperar) y vence los pedidos sin
+   * cobro inactivos. Idempotente: repetirla no repite nada.
+   */
+  async reconcile(actor: string, opts: { maxIdleMs: number }) {
+    const activations = await this.recoverActivations(actor, { ignoreBackoff: true });
+    const expiry = await this.expireStaleOrders(actor, opts.maxIdleMs);
+    return { activations, expiry };
+  }
+
+  /**
+   * Botón «Reintentar» del panel: reanuda la activación de UN pedido de la empresa (o el más reciente reintentable).
+   * Solo pedidos de ese tenant, en activación tras el cobro, con algún fallo y base de pago válida. Idempotente: si ya
+   * está activo, no hace nada; con una ejecución en curso (otra petición o réplica), no lanza otra. Limita la
+   * frecuencia por pedido con el último evento `retry_requested` (`minIntervalMs`).
+   */
+  async retryActivation(tenantId: string, input: { key?: string; orderId?: number; minIntervalMs?: number }, actor: string): Promise<{ status: "resumed" | "active" | "in_progress" | "throttled"; order: CommercialOrder; error: string | null; retryAt: number | null }> {
+    const company = (await this.d.crmStore.list("companies", { tenantId }, { limit: 2 }))[0] as { id: number } | undefined;
+    if (!company) throw new OrderError("not_found", "Empresa no encontrada");
+    const mine = (await this.d.store.list({ companyId: company.id, limit: 200 })).filter((o) => o.tenantId === tenantId || o.tenantId === null);
+    let target: CommercialOrder | undefined;
+    if (input.orderId !== undefined || input.key !== undefined) {
+      // El pedido indicado, o el más reciente que incluye ese producto
+      target = input.orderId !== undefined ? mine.find((o) => o.id === input.orderId) : mine.filter((o) => o.request.items.some((i) => i.key === input.key)).sort((a, b) => b.id - a.id)[0];
+      if (!target) throw new OrderError("not_found", "Pedido no encontrado");
+      // Ya activo (p. ej. un segundo clic tras el reintento que funcionó): nada que hacer
+      if (LIVE.includes(target.state) || target.state === "cancel_scheduled" || target.state === "superseded") return { status: "active", order: target, error: null, retryAt: null };
+    } else {
+      for (const o of mine.filter((x) => POST_CONFIRM.includes(x.state)).sort((a, b) => b.id - a.id)) {
+        if (activationRecovery(o, await this.d.store.events(o.id))?.retryable) {
+          target = o;
+          break;
+        }
+      }
+      if (!target) throw new OrderError("invalid_state", "No hay ninguna activación pendiente de reintentar");
+    }
+    const events = await this.d.store.events(target.id);
+    const r = activationRecovery(target, events);
+    if (!r || !r.retryable || r.attempts === 0) throw new OrderError("invalid_state", "Este pedido no tiene una activación que se pueda reintentar");
+    const now = this.now();
+    const minInterval = input.minIntervalMs ?? RETRY_MIN_INTERVAL_MS;
+    const last = events.filter((e) => e.kind === "retry_requested").pop();
+    if (last && now - last.createdAt < minInterval) return { status: "throttled", order: target, error: null, retryAt: last.createdAt + minInterval };
+    // La nota con la versión leída reserva el reintento: con otra petición simultánea, solo una sigue
+    try {
+      await this.note(target, "retry_requested", actor, { attempts: r.attempts, transient: r.transient });
+    } catch (e) {
+      if (e instanceof OrderError && e.code === "conflict") return { status: "in_progress", order: await this.must(target.id), error: null, retryAt: null };
+      throw e;
+    }
+    const out = await this.advance(target.id, actor);
+    return { status: out.order.state === "active" ? "active" : "resumed", order: out.order, error: out.error, retryAt: null };
+  }
+
   // ── Cobro externo verificado (Stripe Billing) ───────────────────────────────
 
   /**

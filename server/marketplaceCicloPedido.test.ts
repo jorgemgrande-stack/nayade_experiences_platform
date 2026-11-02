@@ -37,6 +37,7 @@ import { quote } from "./catalog/quote";
 import { quoteCatalogFromSite } from "./catalog/snapshot";
 import { panelCatalog } from "./commerce/panelCatalog";
 import { NO_ACTIVATION, orderActivation, orderPlan } from "./commerce/panelActivation";
+import { activationRecovery } from "./orchestrator/recovery";
 
 const SECRET = "secreto-del-proveedor-de-pruebas-0123456789abcdef";
 const PRODUCT = "connect-people";
@@ -127,7 +128,7 @@ describe(`ciclo del pedido de ${PRODUCT} y estado de activación en el panel`, (
   // ── Lectura del panel (lo mismo que monta server/controlPlane/api.ts para GET /commerce/tenants/:t/catalog) ──
 
   const panelItem = async (tenantId: string) => {
-    const activation = await orderActivation({ crm: crmStore, orders, now: () => clock, subscriptions: subsStore })(tenantId);
+    const activation = await orderActivation({ crm: crmStore, orders, now: () => clock, subscriptions: subsStore, processing: (o, ev) => activationRecovery(o, ev) })(tenantId);
     const cat = panelCatalog(quoteCatalogFromSite(site).products, { version: "v", purchasesEnabled: false, site, activation });
     return cat.items.find((i) => i.key === PRODUCT)!;
   };
@@ -201,11 +202,12 @@ describe(`ciclo del pedido de ${PRODUCT} y estado de activación en el panel`, (
     await svc.accept(retry.id, { signatureRef: "firma-people-2", approvalReason: "Aprobado por producto" }, actor);
     const p2 = (await svc.requestPayment(retry.id, actor)).payment;
 
-    // confirmed: cobro verificado, pero la cobertura está retenida (reembolso/disputa) → se queda en «confirmed»
+    // confirmed: cobro verificado, pero la cobertura está retenida (reembolso/disputa) → se queda en «confirmed» y el
+    // panel lo muestra como pago fallido que no se reintenta (nunca se activa con un cobro revertido)
     coverageHeld = true;
     await paymentEvent(p2, "payment.succeeded");
     expect((await svc.must(retry.id)).state).toBe("confirmed");
-    expect(await activationOf(t)).toMatchObject({ state: "processing", retryable: false });
+    expect(await activationOf(t)).toMatchObject({ state: "error", payment: "failed", error: { kind: "payment", transient: false }, retryable: false });
     expect((await access(t)).status).toBe("not_contracted");
 
     // subscribed: el registro de capacidades falla al conceder la licencia
@@ -214,15 +216,15 @@ describe(`ciclo del pedido de ${PRODUCT} y estado de activación en el panel`, (
     const r1 = await svc.advance(retry.id, actor);
     expect(r1.order).toMatchObject({ state: "subscribed" });
     expect(r1.order.lastError).toMatch(/capacidades/);
-    // Hueco: el fallo está anotado (lastError) pero el panel sigue en «procesando», sin error ni reintento
-    expect(await activationOf(t)).toMatchObject({ state: "processing", retryable: false });
+    // Fallo transitorio (el 2.º tras el cobro): el panel sigue en «procesando» con el próximo reintento automático (5 min)
+    expect(await activationOf(t)).toMatchObject({ state: "processing", payment: "confirmed", error: null, retryable: true, nextRetryAt: clock + 5 * 60_000 });
     expect((await access(t)).status).toBe("not_contracted");
 
     // licensed: la licencia ya está concedida y el pedido se detiene antes de «active»
     failActivateLog = 1;
     const r2 = await svc.advance(retry.id, actor);
     expect(r2.order.state).toBe("licensed");
-    expect(await activationOf(t)).toMatchObject({ state: "processing" });
+    expect(await activationOf(t)).toMatchObject({ state: "processing", retryable: true });
     // Licencia activa con el panel aún en «procesando» (transitorio hasta que `review` lo reanuda)
     expect(await access(t)).toEqual({ allowed: true, status: "active" });
 
