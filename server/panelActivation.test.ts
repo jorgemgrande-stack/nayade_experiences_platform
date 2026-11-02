@@ -3,7 +3,7 @@
  * licencia solo cuenta cuando el pedido queda vigente. Nunca se mezcla con pedidos de otra empresa. Datos sintéticos.
  */
 import { beforeAll, describe, expect, it } from "vitest";
-import { activationFromOrders, ERROR_WINDOW_MS } from "./commerce/panelActivation";
+import { activationFromOrders, ERROR_WINDOW_MS, NO_ACTIVATION } from "./commerce/panelActivation";
 import { panelCatalog } from "./commerce/panelCatalog";
 import { seedElephantSource } from "./catalog/seed";
 import { quoteCatalogFromSite } from "./catalog/snapshot";
@@ -62,10 +62,10 @@ describe("activación en el catálogo del panel", () => {
 
   it("cada producto lleva su estado; sin dato es «none»; si no se pudo consultar, null; nunca cambia lo comprable", () => {
     const products = quoteCatalogFromSite(site).products;
-    const act = new Map([["connect-people", { state: "pending" as const, retryable: false, updatedAt: NOW }]]);
+    const act = new Map([["connect-people", { ...NO_ACTIVATION, state: "pending" as const, payment: "pending" as const, updatedAt: NOW }]]);
     const cat = panelCatalog(products, { version: "v", purchasesEnabled: false, site, activation: act });
-    expect(cat.items.find((i) => i.key === "connect-people")!.activation).toEqual({ state: "pending", retryable: false, updatedAt: NOW });
-    expect(cat.items.find((i) => i.key === "connect-tax")!.activation).toEqual({ state: "none", retryable: false, updatedAt: null });
+    expect(cat.items.find((i) => i.key === "connect-people")!.activation).toEqual({ ...NO_ACTIVATION, state: "pending", payment: "pending", updatedAt: NOW });
+    expect(cat.items.find((i) => i.key === "connect-tax")!.activation).toEqual(NO_ACTIVATION);
     expect(cat.items.every((i) => i.purchasable === false)).toBe(true);
     expect(panelCatalog(products, { version: "v", purchasesEnabled: false, site, activation: null }).items.every((i) => i.activation === null)).toBe(true);
   });

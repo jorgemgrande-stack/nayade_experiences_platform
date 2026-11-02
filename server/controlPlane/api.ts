@@ -146,7 +146,8 @@ import type { CompanyFiscal } from "../invoicing/rules";
 import { ISSUER } from "../stripe/issuer";
 import { createBillingPortalRouter, createPurchasesRouter } from "../stripe/purchasesApi";
 import { createPanelCatalogRouter } from "../commerce/panelCatalog";
-import { orderActivation, orderPlan } from "../commerce/panelActivation";
+import { createPanelRetryRouter, orderActivation, orderPlan } from "../commerce/panelActivation";
+import { activationRecovery, startOrderRecovery, type OrderRecoveryPolicy } from "../orchestrator/recovery";
 import { createPanelEventsRouter, createPanelStatsRouter, type PanelEventStore } from "../commerce/panelEvents";
 import { createPanelRequestsRouter } from "../commerce/panelRequests";
 import { createPanelUsageRouter } from "../commerce/panelUsage";
@@ -328,6 +329,11 @@ export interface ControlPlaneDeps {
    * se puede consultar; la tarea periódica solo con `policy.enabled` y aplica solo en modo «apply».
    */
   lifecycle?: { policy: LifecyclePolicy; lock?: SchedulerLock };
+  /**
+   * Recuperación de las activaciones tras el cobro y conciliación diaria (server/orchestrator/recovery.ts). Requiere
+   * `orders`. Sin ella, todo sigue como antes (solo `review` reanuda).
+   */
+  ordersRecovery?: { policy: OrderRecoveryPolicy; lock?: SchedulerLock };
   /**
    * Stripe Billing en modo pruebas o live (`config.mode`; server/stripe, CRM 0012 y 0013). Rutas de operador
    * en /stripe; Checkout solo con `checkoutEnabled`, URL de vuelta y, en live, una política fiscal decidida.
@@ -2188,10 +2194,29 @@ export function createControlPlaneApp(d: ControlPlaneDeps): Express {
           }),
         );
       }
+      // Recuperación de activaciones tras el cobro (reintentos progresivos) y conciliación diaria (server/orchestrator/recovery.ts)
+      if (d.ordersRecovery) {
+        const rec = startOrderRecovery({ orchestrator, policy: d.ordersRecovery.policy, lock: d.ordersRecovery.lock, log: (level, event, data) => opsLog(level, "OrdersRecovery", event, data) });
+        opsLog("info", "OrdersRecovery", "started", { enabled: rec.enabled, intervalMs: d.ordersRecovery.policy.intervalMs, reconcileMs: d.ordersRecovery.policy.reconcileMs, expiryDays: d.ordersRecovery.policy.expiryDays, expiryMode: d.ordersRecovery.policy.expiryMode });
+      }
       // Catálogo de módulos y ampliaciones para el panel de cada empresa (solo lectura, mismo token que la compra)
       if (webAdmin) {
         const wa = webAdmin;
-        router.use("/commerce", createPanelCatalogRouter({ site: () => wa.site("published"), purchasesEnabled: !!d.stripe?.purchases?.enabled, internalTenants: d.stripe?.purchases?.internalTenants, activation: d.orders ? orderActivation({ crm: d.crm.store, orders: d.orders.store, now: d.subscriptions.now }) : undefined, marketplace: () => wa.marketplace("published"), planOf: d.orders ? orderPlan({ crm: d.crm.store, orders: d.orders.store }) : undefined }));
+        // Baja programada: el fin del servicio lo fija la suscripción de Stripe de la empresa (segundos → ms)
+        const stripeStore = d.stripe?.store;
+        const panelBilling = stripeStore
+          ? async (o: { companyId: number; tenantId: string | null }) => {
+              for (const sid of await stripeStore.subscriptionsOfCompany(o.companyId)) {
+                const s = await stripeStore.subscription(sid);
+                if (!s || (s.tenantId !== null && s.tenantId !== o.tenantId)) continue;
+                return { cancelAt: s.cancelAt === null ? null : s.cancelAt * 1000, cancelAtPeriodEnd: s.cancelAtPeriodEnd, currentPeriodEnd: s.currentPeriodEnd === null ? null : s.currentPeriodEnd * 1000 };
+              }
+              return null;
+            }
+          : undefined;
+        router.use("/commerce", createPanelCatalogRouter({ site: () => wa.site("published"), purchasesEnabled: !!d.stripe?.purchases?.enabled, internalTenants: d.stripe?.purchases?.internalTenants, activation: d.orders ? orderActivation({ crm: d.crm.store, orders: d.orders.store, now: d.subscriptions.now, subscriptions: d.subscriptions.store, billing: panelBilling, processing: (o, ev) => activationRecovery(o, ev) }) : undefined, marketplace: () => wa.marketplace("published"), planOf: d.orders ? orderPlan({ crm: d.crm.store, orders: d.orders.store }) : undefined }));
+        // Botón «Reintentar» del panel: reanuda la activación tras el cobro (solo de esa empresa; nunca cobra)
+        router.use("/commerce", createPanelRetryRouter({ retry: (t, b, who) => orchestrator.retryActivation(t, b, who), now: d.subscriptions.now }));
         // Solicitudes del marketplace del panel («Solicitar información» y «Me interesa») como solicitudes del CRM
         // Medición del marketplace (agregada, sin datos personales): sin la migración 0042, 202 y se descarta
         router.use("/commerce", createPanelEventsRouter({ store: d.web?.events ?? null }));

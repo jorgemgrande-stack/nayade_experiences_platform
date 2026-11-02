@@ -27,6 +27,7 @@ import { MemoryProvisioningStore } from "./_core/provisioning/ports";
 import { BUILTIN_MODULES } from "./_core/modules/builtin";
 import { seedElephantSource } from "./catalog/seed";
 import { MemoryOrderStore } from "./orchestrator/store";
+import { rejectCodeOf } from "./orchestrator/types";
 import type { TrialNotifier } from "./trials/onboarding";
 import { desiredCatalog, planCatalogWrites, syncCatalog } from "./stripe/catalog";
 import type { StripeConfig } from "./stripe/config";
@@ -236,6 +237,8 @@ describe("contratación desde el panel de una empresa en prueba (doble de Stripe
     expect(second.sessionId).not.toBe(first.sessionId);
     const all = await orders.list({ trialId: t.id, limit: 10 });
     expect(all.map((o) => o.state).sort()).toEqual(["contracted", "rejected"]);
+    // La selección sustituida queda rechazada con el motivo tipificado «conflict»
+    expect(rejectCodeOf(await orders.events(all.find((o) => o.state === "rejected")!.id))).toBe("conflict");
     expect(all.find((o) => o.state === "contracted")!.request).toMatchObject({ interval: "year" });
   });
 

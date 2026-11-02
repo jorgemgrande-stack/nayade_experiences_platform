@@ -103,6 +103,35 @@ describe("cliente de compras del Core", () => {
     expect(JSON.parse(seen[5].body!)).toEqual({ plan: "business", interval: "month", idempotencyKey: "p".repeat(20), user: "user:4" });
   });
 
+  it("reintento de la activación: ruta con el tenant de la sesión, solo la clave; 200 → active, 202 → resumed o in_progress", async () => {
+    const seen: Array<{ url: string; method: string; headers: Record<string, string>; body?: string }> = [];
+    const replies: Array<{ status: number; body: unknown }> = [
+      { status: 200, body: { status: "active", orderId: 7, state: "active", error: null, retryAt: null } },
+      { status: 202, body: { status: "resumed", orderId: 7, state: "licensed", error: null, retryAt: null } },
+      { status: 202, body: { status: "in_progress", orderId: 7, state: "subscribed", error: null, retryAt: null } },
+      { status: 202, body: null },
+    ];
+    const c = commerceClientFromEnv(env(), async (url, init) => {
+      seen.push({ url, ...init });
+      const r = replies.shift()!;
+      return { status: r.status, json: async () => r.body };
+    })!;
+    expect(await c.retryActivation!("acme-01", "connect-people")).toEqual({ outcome: "active" });
+    expect(await c.retryActivation!("acme-01", "connect-people")).toEqual({ outcome: "resumed" });
+    expect(await c.retryActivation!("acme-01", "connect-people")).toEqual({ outcome: "in_progress" });
+    expect(await c.retryActivation!("acme-01", "connect-people")).toEqual({ outcome: "in_progress" });
+    expect(seen[0]).toMatchObject({ url: "https://cp.example/cp/v1/commerce/tenants/acme-01/activation/retry", method: "POST" });
+    expect(seen[0].headers.authorization).toBe(`Bearer ${"t".repeat(40)}`);
+    expect(JSON.parse(seen[0].body!)).toEqual({ key: "connect-people" });
+  });
+
+  it("reintento de la activación: 409, 429 y 404 llegan como errores con su código", async () => {
+    for (const [status, error] of [[409, "nothing_to_retry"], [429, "too_soon"], [404, "not_found"]] as const) {
+      const c = commerceClientFromEnv(env(), async () => ({ status, json: async () => ({ error, message: "x" }) }))!;
+      await expect(c.retryActivation!("acme-01", "connect-people")).rejects.toMatchObject({ status, code: error });
+    }
+  });
+
   it("errores del plano de control con su código; una caída es 503 sin detalles", async () => {
     const c = commerceClientFromEnv(env(), async () => ({ status: 409, json: async () => ({ error: "async_payment_method", message: "Tu método de pago no permite comprar en línea" }) }))!;
     await expect(c.preview("acme-01", { users: 5 })).rejects.toMatchObject({ status: 409, code: "async_payment_method" });

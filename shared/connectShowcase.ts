@@ -123,37 +123,105 @@ export function resolveSlides(slides: ConnectSlide[], ctx: { items: SlideProduct
 
 // ── Activación ─────────────────────────────────────────────────────────────────
 
+/** Estado del cobro que publica el canal: esperando, rechazado o revertido, caducado, verificado o impagado. */
+export type ConnectActivationPayment = "pending" | "failed" | "expired" | "confirmed" | "overdue";
+
 /**
  * Estado de activación que publica el canal para cada producto: `pending` (compra iniciada, a la espera del cobro),
- * `processing` (cobro verificado, concediendo la licencia), `active` (parte del pedido vigente) o `error` (compra
- * rechazada hace menos de 7 días; `retryable`: se puede volver a intentar).
+ * `processing` (cobro verificado, concediendo la licencia), `active` (parte del pedido vigente), `suspended`
+ * (impago tras la gracia: sin acceso) o `error` (compra rechazada hace menos de 7 días o activación fallida;
+ * `retryable`: se puede volver a intentar).
+ *
+ * Los campos opcionales son la ampliación ADITIVA del contrato (#596): si el canal no los envía, el panel se comporta
+ * como antes. Las fechas van en ISO.
  */
 export interface ConnectActivation {
-  state: "none" | "pending" | "processing" | "active" | "error";
+  state: "none" | "pending" | "processing" | "active" | "suspended" | "error";
   retryable: boolean;
   updatedAt: string | null;
+  payment?: ConnectActivationPayment | null;
+  error?: { kind: "activation" | "payment"; transient: boolean } | null;
+  /** Próximo reintento automático de la activación (processing). Los cobros nunca se reintentan solos. */
+  nextRetryAt?: string | null;
+  /** Fin del acceso con la renovación cancelada. */
+  activeUntil?: string | null;
+  renewal?: "active" | "cancelled" | null;
+  /** La renovación cancelada se puede reactivar desde la gestión de la suscripción. */
+  canReactivate?: boolean;
 }
 
 export const ACTIVATION_LABELS: Record<Exclude<ConnectActivation["state"], "none">, string> = {
   pending: "Pendiente",
-  processing: "Activándose",
+  processing: "Procesando",
   active: "Activo",
+  suspended: "Suspendido",
   error: "Con incidencia",
 };
 
 /**
- * Activación que se muestra: las licencias mandan cuando dicen «activo»; si no, lo que publica el canal y, si no
- * publica nada, lo que se deduce del estado (contratado sin configurar, activándose o con incidencia).
+ * Activación que se muestra: una licencia local activa o con incidencia manda sobre el canal (#593): activa, con los
+ * datos del canal si también dice «activo» (renovación cancelada, incidencia de cobro); con incidencia, el acceso
+ * está cortado aunque el pedido siga vigente en el canal (salvo que el canal lo dé por suspendido). Si no, lo que
+ * publica el canal y, si no publica nada, lo que se deduce del estado.
  */
 export function activationOf(item: { state: ConnectState; activation?: ConnectActivation | null }): ConnectActivation {
-  if (item.state === "active") return { state: "active", retryable: false, updatedAt: item.activation?.updatedAt ?? null };
-  // Licencia suspendida o con incidencia: el acceso está cortado aunque el pedido siga vigente en el canal
-  if (item.state === "incident") return { state: "error", retryable: false, updatedAt: item.activation?.updatedAt ?? null };
-  if (item.activation && item.activation.state !== "none") return item.activation;
+  const ch = item.activation ?? null;
+  if (item.state === "active") return ch?.state === "active" ? ch : { state: "active", retryable: false, updatedAt: ch?.updatedAt ?? null };
+  if (item.state === "incident") return ch?.state === "suspended" ? ch : { state: "error", retryable: false, updatedAt: ch?.updatedAt ?? null };
+  if (ch && ch.state !== "none") return ch;
   if (item.state === "pending_setup") return { state: "pending", retryable: false, updatedAt: null };
   if (item.state === "activating") return { state: "processing", retryable: false, updatedAt: null };
   return { state: "none", retryable: false, updatedAt: null };
 }
+
+const MADRID_DATE = new Intl.DateTimeFormat("es-ES", { timeZone: "Europe/Madrid", day: "2-digit", month: "2-digit", year: "numeric" });
+const MADRID_TIME = new Intl.DateTimeFormat("es-ES", { timeZone: "Europe/Madrid", hour: "2-digit", minute: "2-digit", hourCycle: "h23" });
+const validDate = (iso: string | null | undefined) => (iso && Number.isFinite(new Date(iso).getTime()) ? new Date(iso) : null);
+/** DD/MM/AAAA en hora de Madrid. */
+export const madridDate = (d: Date) => MADRID_DATE.format(d);
+/** hh:mm en hora de Madrid. */
+export const madridTime = (d: Date) => MADRID_TIME.format(d);
+
+/** Texto del estado de activación para el panel. */
+export function activationLabel(a: ConnectActivation): string {
+  if (a.state === "none") return "";
+  if (a.state === "suspended") return "Suspendido";
+  if (a.state === "processing") return "Procesando";
+  if (a.state === "active") {
+    if (a.payment === "overdue") return "Activo · incidencia de cobro";
+    const until = validDate(a.activeUntil);
+    if (until && a.renewal !== "active") return `Activo hasta ${madridDate(until)} · renovación cancelada`;
+    return "Activo";
+  }
+  if (a.payment === "failed") return "Error de pago";
+  if (a.payment === "expired") return "Pago caducado";
+  if (a.state === "pending") return a.payment === "pending" ? "Pago pendiente" : "Pendiente";
+  return a.error?.kind === "activation" ? "Error de activación" : "Con incidencia";
+}
+
+/** Gestión de la suscripción existente: ahí se deshace la baja programada («Mantener la suscripción»). */
+export const REACTIVATE_RENEWAL_PATH = "/admin/suscripcion#sub-cancel";
+
+/**
+ * Acciones junto al estado: «Reintentar» la activación (solo pasos idempotentes con el cobro ya hecho: nunca cobra
+ * otra vez) y «Reactivar renovación» (lleva a la gestión de la suscripción existente; nunca a contratar de nuevo).
+ */
+export interface ActivationActions {
+  retry: boolean;
+  /** «Siguiente intento hh:mm» (hora de Madrid) mientras la activación se reintenta sola. */
+  nextRetry: string | null;
+  reactivate: { label: string; href: string } | null;
+}
+
+export function activationActions(a: ConnectActivation): ActivationActions {
+  const next = a.state === "processing" ? validDate(a.nextRetryAt) : null;
+  const retry = (a.retryable && a.error?.kind === "activation") || next !== null;
+  const reactivate = a.state === "active" && a.canReactivate === true && !!validDate(a.activeUntil) ? { label: "Reactivar renovación", href: REACTIVATE_RENEWAL_PATH } : null;
+  return { retry, nextRetry: next ? `Siguiente intento ${madridTime(next)}` : null, reactivate };
+}
+
+/** Resultado de «Reintentar» tal como lo devuelve el Core. */
+export type ActivationRetryOutcome = "active" | "resumed" | "in_progress";
 
 // ── Acción principal ───────────────────────────────────────────────────────────
 
@@ -183,9 +251,11 @@ export function primaryAction(
   const open = item.openPath ?? null;
   if (item.state === "active") return open ? { kind: "open", label: "Abrir módulo", href: open } : { kind: "manage", label: "Gestionar", href: MODULES_PATH };
   if (item.state === "pending_setup" && open) return { kind: "manage", label: "Gestionar", href: open };
-  // Una compra en curso (a la espera del cobro o concediendo la licencia) o ya en el pedido vigente nunca se ofrece otra vez
+  // Una compra en curso (a la espera del cobro o concediendo la licencia), ya en el pedido vigente o suspendida nunca se
+  // ofrece otra vez; tras una activación fallida tampoco: se reintenta la activación (sin cobrar), no la compra
   const act = item.activation?.state;
-  if (act === "pending" || act === "processing" || act === "active") return { kind: "none", label: "", href: null };
+  if (act === "pending" || act === "processing" || act === "active" || act === "suspended") return { kind: "none", label: "", href: null };
+  if (act === "error" && item.activation?.error?.kind === "activation") return { kind: "none", label: "", href: null };
   const a = connectAction({ state: item.state, kind: item.kind, purchasable: item.purchasable, canPurchase: view.canPurchase, interestEnabled: view.interestEnabled });
   switch (a) {
     case "purchase":

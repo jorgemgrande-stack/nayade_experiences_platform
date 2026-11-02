@@ -93,9 +93,22 @@ export interface CommerceClient {
   planChangeStatus(tenantId: string): Promise<unknown>;
   planChangePreview(tenantId: string, input: { plan: "essential" | "business"; interval: "month" | "year" }): Promise<unknown>;
   changePlan(tenantId: string, input: { plan: "essential" | "business"; interval: "month" | "year"; idempotencyKey: string; user: string }): Promise<unknown>;
+  /**
+   * Reintento de la activación de un producto ya cobrado (ámbito commerce:purchase): solo repite pasos idempotentes,
+   * nunca cobra. 200 → `active`; 202 → `resumed` o `in_progress`; 409 (nada que reintentar), 429 (demasiado pronto)
+   * y 404 llegan como CommerceError. Opcional en los dobles de prueba.
+   */
+  retryActivation?(tenantId: string, key: string): Promise<{ outcome: "active" | "resumed" | "in_progress" }>;
 }
 
 const DEFAULT_ERROR = "No se pudo completar la operación";
+
+/** 202 del reintento: `resumed` (reanudada ahora) o `in_progress` (ya en marcha). Sin dato reconocible, en marcha. */
+/** 202 del canal (#597): `status` es «resumed» o «in_progress»; el estado visible se lee después en el catálogo del panel. */
+function retryOutcome(json: unknown): "resumed" | "in_progress" {
+  const status = json && typeof json === "object" ? (json as { status?: unknown }).status : undefined;
+  return status === "resumed" ? "resumed" : "in_progress";
+}
 
 type Fetch =(url: string, init: { method: string; headers: Record<string, string>; body?: string; signal?: AbortSignal }) => Promise<{ status: number; json(): Promise<unknown> }>;
 
@@ -107,7 +120,8 @@ export function commerceClientFromEnv(env: NodeJS.ProcessEnv = process.env, fetc
   if (!/^https:\/\//.test(base) && !privateNet && !(env.NODE_ENV !== "production" && /^http:\/\/(127\.0\.0\.1|localhost)(:\d+)?(\/|$)/.test(base))) {
     throw new Error("CP_COMMERCE_URL debe ser https, la red privada de Railway (http://<servicio>.railway.internal:<puerto>) o localhost fuera de producción");
   }
-  const call = async (method: string, path: string, body?: unknown) => {
+  const call = async (method: string, path: string, body?: unknown) => (await exchange(method, path, body)).json;
+  const exchange = async (method: string, path: string, body?: unknown) => {
     const ctrl = new AbortController();
     const t = setTimeout(() => ctrl.abort(), 20_000);
     try {
@@ -119,7 +133,7 @@ export function commerceClientFromEnv(env: NodeJS.ProcessEnv = process.env, fetc
       });
       const json = (await r.json().catch(() => null)) as { error?: string; message?: string } | null;
       if (r.status >= 400) throw new CommerceError(r.status, json?.error ?? "error", json?.message ?? DEFAULT_ERROR);
-      return json;
+      return { status: r.status, json };
     } catch (e) {
       if (e instanceof CommerceError) throw e;
       throw new CommerceError(503, "unreachable", "El servicio de compras no responde. Inténtalo de nuevo en unos minutos.");
@@ -172,5 +186,9 @@ export function commerceClientFromEnv(env: NodeJS.ProcessEnv = process.env, fetc
     planChangeStatus: async (tenantId) => ((await call("GET", `${seg(tenantId)}/plan-change`)) as { planChange: unknown }).planChange,
     planChangePreview: async (tenantId, input) => ((await call("POST", `${seg(tenantId)}/plan-change/preview`, input)) as { preview: unknown }).preview,
     changePlan: async (tenantId, input) => ((await call("POST", `${seg(tenantId)}/plan-change`, input)) as { planChange: unknown }).planChange,
+    retryActivation: async (tenantId, key) => {
+      const r = await exchange("POST", `${seg(tenantId)}/activation/retry`, { key });
+      return { outcome: r.status === 200 ? "active" : retryOutcome(r.json) };
+    },
   };
 }
