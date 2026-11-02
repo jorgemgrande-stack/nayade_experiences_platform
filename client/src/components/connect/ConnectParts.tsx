@@ -412,7 +412,7 @@ export function ProductCard({
   };
   const hasAction = action.kind !== "none";
   return (
-    <article ref={viewRef} className="group relative flex h-full flex-col overflow-hidden rounded-2xl border border-border bg-card shadow-lg shadow-black/30 transition hover:border-primary/70 focus-within:border-primary/70">
+    <article ref={viewRef} className="group relative flex h-full flex-col overflow-hidden rounded-2xl border border-border bg-card cx-shadow transition hover:border-primary/70 focus-within:border-primary/70">
       <div className="relative aspect-[16/9] shrink-0 overflow-hidden border-b border-border bg-background">
         <ProductMedia item={item} image={item.sheet.media.card} sizes="(min-width: 1536px) 22rem, (min-width: 768px) 45vw, 100vw" className="transition-transform duration-300 motion-safe:group-hover:scale-[1.03]" />
         {item.sheet.promoLabel && <span className="absolute left-3 top-3 rounded-full bg-primary px-2.5 py-1 text-xs font-semibold text-primary-foreground shadow">{item.sheet.promoLabel}</span>}
@@ -497,7 +497,7 @@ export function RequestDialog({
   const done = send.data;
   return (
     <Dialog open onOpenChange={(o) => !o && onClose()}>
-      <DialogContent>
+      <DialogContent className="cx-stage">
         <DialogHeader>
           <DialogTitle>{waitlist ? `Me interesa ${item.name}` : kind === "contact" ? `Contactar sobre ${item.name}` : `Solicitar información de ${item.name}`}</DialogTitle>
           <DialogDescription>
@@ -654,7 +654,7 @@ export function PurchaseDialog({ item, onClose }: { item: ConnectCatalogItem; on
 
   return (
     <Dialog open onOpenChange={(o) => !o && onClose()}>
-      <DialogContent>
+      <DialogContent className="cx-stage">
         <DialogHeader>
           <DialogTitle>Contratar {item.name}</DialogTitle>
           <DialogDescription>Revisa el importe antes de confirmar. Lo calcula nuestro sistema de cobros según los días que quedan de tu periodo actual.</DialogDescription>

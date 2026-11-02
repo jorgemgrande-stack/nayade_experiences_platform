@@ -1,12 +1,59 @@
 /*
- * Escenario del marketplace de Elephant Connect y Elephant Net: fondo oscuro con el rojo corporativo de Big Elephant,
- * igual en modo claro y en oscuro (el escaparate es de Big Elephant, no de la marca de la empresa).
+ * Escenario del marketplace de Elephant Connect y Elephant Net con el rojo corporativo de Big Elephant (el escaparate
+ * es de Big Elephant, no de la marca de la empresa). Sigue el tema del administrador (`html.dark`, ThemeContext):
+ * claro por defecto y la estética oscura premium con el modo noche. Cambia al instante, sin recargar.
  *
  * Redefine las variables del tema DENTRO del escenario, así los componentes de siempre (botones, insignias, campos)
- * toman estos colores sin clases fijas. Contraste AA comprobado: texto principal 16,2:1 y secundario 9,9:1 sobre las
- * tarjetas; texto blanco sobre el rojo de los botones 5,1:1; rojo de texto sobre el fondo 7,9:1; textos de acento ≥ 9:1.
+ * toman estos colores sin clases fijas. Contraste AA comprobado en los dos modos:
+ *  - Claro: texto principal 17,1:1 y secundario 7,3:1 sobre blanco; blanco sobre el rojo de los botones 5,9:1;
+ *    rojo de texto 7,0:1 sobre blanco.
+ *  - Oscuro: texto principal 16,2:1 y secundario 9,9:1 sobre las tarjetas; blanco sobre el rojo 5,1:1; rojo de
+ *    texto 7,9:1; textos de acento ≥ 9:1.
+ *
+ * `.cx-on-image`: bandas con texto sobre una fotografía oscurecida (carrusel, cabecera con imagen). Llevan siempre
+ * la paleta oscura, porque el oscurecido de la imagen no cambia con el tema.
  */
 .cx-stage {
+  color-scheme: light;
+  --background: #f7f3f4;
+  --foreground: #1d1517;
+  --card: #ffffff;
+  --card-foreground: #1d1517;
+  --popover: #ffffff;
+  --popover-foreground: #1d1517;
+  --primary: #c81e2a;
+  --primary-foreground: #ffffff;
+  --secondary: #f1e9eb;
+  --secondary-foreground: #1d1517;
+  --muted: #f3edef;
+  --muted-foreground: #5c4f53;
+  --accent: #f4ebee;
+  --accent-foreground: #1d1517;
+  --destructive: #b91c1c;
+  --destructive-foreground: #ffffff;
+  --border: #e4d8dc;
+  --input: #d6c7cc;
+  --ring: #c81e2a;
+  --success: #046c4e;
+  --warning: #92400e;
+  --danger: #b91c1c;
+  --info: #0369a1;
+  --cx-red-text: #b0121e;
+  --cx-accent: #c81e2a;
+  --cx-accent-text: #b0121e;
+  --cx-accent-glow: rgba(200, 30, 42, 0.12);
+  --cx-net: #2f6fb0;
+  --cx-net-text: #1d5a92;
+  --cx-shadow: rgba(60, 20, 30, 0.1);
+  background-color: var(--background);
+  background-image:
+    radial-gradient(60rem 28rem at 85% -10%, rgba(200, 30, 42, 0.08), transparent 60%),
+    radial-gradient(40rem 24rem at -10% 30%, rgba(200, 30, 42, 0.05), transparent 60%);
+  color: var(--foreground);
+}
+
+.dark .cx-stage,
+.cx-on-image {
   color-scheme: dark;
   --background: #110c0e;
   --foreground: #f6f1f2;
@@ -39,19 +86,38 @@
   --cx-accent-glow: rgba(212, 36, 48, 0.32);
   --cx-net: #3b82c4;
   --cx-net-text: #8cc8f5;
+  --cx-shadow: rgba(0, 0, 0, 0.4);
+  color: var(--foreground);
+}
+.dark .cx-stage {
   background-color: var(--background);
   background-image:
     radial-gradient(60rem 28rem at 85% -10%, rgba(212, 36, 48, 0.22), transparent 60%),
     radial-gradient(40rem 24rem at -10% 30%, rgba(212, 36, 48, 0.12), transparent 60%);
-  color: var(--foreground);
 }
 
-.cx-stage[data-accent="blue"] { --cx-accent: #2f6fd6; --cx-accent-text: #93c0ff; --cx-accent-glow: rgba(47, 111, 214, 0.32); }
-.cx-stage[data-accent="teal"] { --cx-accent: #0f8f86; --cx-accent-text: #6fe0d3; --cx-accent-glow: rgba(15, 143, 134, 0.32); }
-.cx-stage[data-accent="violet"] { --cx-accent: #7a4fd6; --cx-accent-text: #c7b0ff; --cx-accent-glow: rgba(122, 79, 214, 0.32); }
-.cx-stage[data-accent="amber"] { --cx-accent: #b86e00; --cx-accent-text: #ffd27a; --cx-accent-glow: rgba(184, 110, 0, 0.32); }
-.cx-stage[data-accent="rose"] { --cx-accent: #c02a68; --cx-accent-text: #ff9cc4; --cx-accent-glow: rgba(192, 42, 104, 0.32); }
-.cx-stage[data-accent="slate"] { --cx-accent: #56657a; --cx-accent-text: #c3cfdd; --cx-accent-glow: rgba(86, 101, 122, 0.32); }
+/* Acento de la ficha: tono base y texto legible en cada modo */
+.cx-stage[data-accent="blue"] { --cx-accent: #2f6fd6; --cx-accent-text: #1d4ed8; --cx-accent-glow: rgba(47, 111, 214, 0.12); }
+.cx-stage[data-accent="teal"] { --cx-accent: #0f8f86; --cx-accent-text: #0f766e; --cx-accent-glow: rgba(15, 143, 134, 0.12); }
+.cx-stage[data-accent="violet"] { --cx-accent: #7a4fd6; --cx-accent-text: #6d28d9; --cx-accent-glow: rgba(122, 79, 214, 0.12); }
+.cx-stage[data-accent="amber"] { --cx-accent: #b86e00; --cx-accent-text: #92400e; --cx-accent-glow: rgba(184, 110, 0, 0.12); }
+.cx-stage[data-accent="rose"] { --cx-accent: #c02a68; --cx-accent-text: #be185d; --cx-accent-glow: rgba(192, 42, 104, 0.12); }
+.cx-stage[data-accent="slate"] { --cx-accent: #56657a; --cx-accent-text: #475569; --cx-accent-glow: rgba(86, 101, 122, 0.12); }
+.dark .cx-stage[data-accent="blue"],
+.cx-stage[data-accent="blue"] .cx-on-image { --cx-accent-text: #93c0ff; --cx-accent-glow: rgba(47, 111, 214, 0.32); }
+.dark .cx-stage[data-accent="teal"],
+.cx-stage[data-accent="teal"] .cx-on-image { --cx-accent-text: #6fe0d3; --cx-accent-glow: rgba(15, 143, 134, 0.32); }
+.dark .cx-stage[data-accent="violet"],
+.cx-stage[data-accent="violet"] .cx-on-image { --cx-accent-text: #c7b0ff; --cx-accent-glow: rgba(122, 79, 214, 0.32); }
+.dark .cx-stage[data-accent="amber"],
+.cx-stage[data-accent="amber"] .cx-on-image { --cx-accent-text: #ffd27a; --cx-accent-glow: rgba(184, 110, 0, 0.32); }
+.dark .cx-stage[data-accent="rose"],
+.cx-stage[data-accent="rose"] .cx-on-image { --cx-accent-text: #ff9cc4; --cx-accent-glow: rgba(192, 42, 104, 0.32); }
+.dark .cx-stage[data-accent="slate"],
+.cx-stage[data-accent="slate"] .cx-on-image { --cx-accent-text: #c3cfdd; --cx-accent-glow: rgba(86, 101, 122, 0.32); }
+
+/* Sombra de tarjetas y paneles: suave en claro, profunda en oscuro */
+.cx-shadow { box-shadow: 0 10px 30px -12px var(--cx-shadow); }
 
 .cx-red-text { color: var(--cx-red-text); }
 .cx-accent-text { color: var(--cx-accent-text); }
@@ -91,7 +157,7 @@
   color: #ffffff;
 }
 
-/* Foco visible y claro sobre el fondo oscuro */
+/* Foco visible en los dos modos */
 .cx-stage :focus-visible {
   outline: 2px solid var(--ring);
   outline-offset: 2px;

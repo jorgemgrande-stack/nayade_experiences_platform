@@ -6,6 +6,7 @@
  * tiene que poder ver su estado y cómo contratar.
  */
 import { TRPCError } from "@trpc/server";
+import crypto from "node:crypto";
 import { z } from "zod";
 import { protectedProcedure, router } from "../_core/trpc";
 import { getTenantMode } from "../_core/tenant";
@@ -23,6 +24,8 @@ import { LIMIT_METRICS } from "../_core/limits/store";
 import type { PanelUsage } from "../commerce/panelUsage";
 import type { TenantPlanSummary } from "../commerce/tenantPlan";
 import { isTrialTenant, TRIAL_PURCHASES_MESSAGE } from "../trialPayments";
+import { parsePanelPlans } from "../../shared/subscriptionPlans";
+import type { PlanRequestView } from "../../shared/subscriptionPlans";
 import type { CancellationView as SelfServiceCancellation, PlanChangeView as SelfServicePlanChange } from "../stripe/subscriptionSelfService";
 
 /** Qué se quiere comprar: solo claves y totales. Importes y derechos los calcula el plano de control. */
@@ -137,7 +140,7 @@ export const subscriptionRouter = router({
     if (getTenantMode() !== "multi" || !client) return null;
     const access = getCapabilityAccess();
     try {
-      const [catalog, grants] = await Promise.all([client.catalog(getTenantId()) as Promise<{ purchasesEnabled: boolean; items: PanelCatalogItemView[] }>, access.list()]);
+      const [catalog, grants] = await Promise.all([client.catalog(getTenantId()) as Promise<{ purchasesEnabled: boolean; items: PanelCatalogItemView[]; plans?: unknown }>, access.list()]);
       // Solo la administración compra: al resto se le muestra el catálogo sin el botón
       const out = panelModules(catalog, grants, access.currentTime());
       // Totales contratados hoy (plan + ampliaciones): la compra de unidades pide el NUEVO total. null = sin tope.
@@ -147,7 +150,8 @@ export const subscriptionRouter = router({
         const v = limitAccess ? await limitAccess.limit(m).catch(() => undefined) : undefined;
         if (v !== undefined) totals[m] = v;
       }
-      return { ...out, totals, usedUsers: await countPanelUsers().catch(() => null), canPurchase: String(ctx.user.role) === "admin" && out.purchasesEnabled && !(await isTrialTenant()) };
+      // Planes publicados (comparador de «Suscripción»): solo lectura; un plano de control anterior no los envía → []
+      return { ...out, plans: parsePanelPlans(catalog.plans), totals, usedUsers: await countPanelUsers().catch(() => null), canPurchase: String(ctx.user.role) === "admin" && out.purchasesEnabled && !(await isTrialTenant()) };
     } catch {
       throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "No se pudo consultar el catálogo de módulos. Inténtalo de nuevo en unos minutos." });
     }
@@ -286,6 +290,45 @@ export const subscriptionRouter = router({
       if (r.paymentUrl && !/^https:\/\/(invoice\.stripe\.com|pay\.stripe\.com)\//.test(r.paymentUrl)) return { ...r, paymentUrl: null };
       return r;
     }),
+  /**
+   * Solicitud comercial de un plan que no se completa en línea (contratación asistida, ampliación o cambio sin
+   * autoservicio): el plano de control abre una oportunidad en el CRM central con origen «Suscripción — Elephant Core».
+   * Solo la administración; la empresa es SIEMPRE la de la sesión. No toca Stripe, precios ni la suscripción.
+   */
+  planRequest: protectedProcedure
+    .input(z.object({ plan: z.string().regex(/^[a-z0-9][a-z0-9_-]{0,63}$/), kind: z.enum(["contract", "upgrade", "change"]), message: z.string().trim().max(2000).optional() }).strict())
+    .mutation(async ({ ctx, input }) => {
+      const email = typeof ctx.user.email === "string" ? ctx.user.email.trim() : "";
+      if (!z.string().email().safeParse(email).success) throw new TRPCError({ code: "PRECONDITION_FAILED", message: "Tu usuario no tiene un correo válido para que podamos responderte." });
+      const name = ((typeof ctx.user.name === "string" && ctx.user.name.trim()) || email).slice(0, 160);
+      const access = getCapabilityAccess();
+      const overview = buildSubscriptionOverview({ mode: "multi", enforcing: access.enforcing(), grants: await access.list(), now: access.currentTime() });
+      const trial = overview.state === "trial";
+      const day = new Date().toISOString().slice(0, 10);
+      return commerce(
+        String(ctx.user.role),
+        async (c, t) => {
+          if (!c.planRequest) throw new TRPCError({ code: "PRECONDITION_FAILED", message: "Las solicitudes de plan no están disponibles todavía: escríbenos y te contactamos." });
+          // Misma persona, mismo plan y mismo día = la misma solicitud (doble clic o reintento)
+          const idempotencyKey = "pl-" + crypto.createHash("sha256").update([t, ctx.user.id, input.plan, input.kind, input.message ?? "", day].join("|")).digest("hex").slice(0, 40);
+          return c.planRequest(t, { plan: input.plan, kind: input.kind, currentPlan: overview.plan?.key ?? null, trial, ...(input.message ? { message: input.message } : {}), requester: { name, email, userId: String(ctx.user.id).slice(0, 64) }, idempotencyKey }) as Promise<{ outcome: "created" | "duplicate" | "replayed"; request: PlanRequestView }>;
+        },
+        "Solo la administración de la empresa puede solicitar un plan",
+      );
+    }),
+  /** Solicitudes de plan de la empresa y su estado (recibida, en curso, completada o cerrada). */
+  planRequests: protectedProcedure.query(async ({ ctx }) => {
+    if (!(PANEL_ROLES as readonly string[]).includes(String(ctx.user.role))) throw new TRPCError({ code: "FORBIDDEN" });
+    if (getTenantMode() !== "multi") return [] as PlanRequestView[];
+    const client = commerceClientFromEnv();
+    if (!client?.planRequests) return [] as PlanRequestView[];
+    try {
+      const r = await client.planRequests(getTenantId());
+      return (Array.isArray(r) ? r : []) as PlanRequestView[];
+    } catch {
+      return [] as PlanRequestView[];
+    }
+  }),
   supportContact: protectedProcedure.query(async ({ ctx }) => {
     if (!(PANEL_ROLES as readonly string[]).includes(String(ctx.user.role))) throw new TRPCError({ code: "FORBIDDEN" });
     return resolveSupportContact();

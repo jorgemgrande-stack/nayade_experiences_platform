@@ -150,6 +150,7 @@ import { createPanelRetryRouter, orderActivation, orderPlan } from "../commerce/
 import { activationRecovery, startOrderRecovery, type OrderRecoveryPolicy } from "../orchestrator/recovery";
 import { createPanelEventsRouter, createPanelStatsRouter, type PanelEventStore } from "../commerce/panelEvents";
 import { createPanelRequestsRouter } from "../commerce/panelRequests";
+import { createPlanRequestsRouter } from "../commerce/planRequests";
 import { createPanelUsageRouter } from "../commerce/panelUsage";
 import { BillingPortalService } from "../stripe/billingPortal";
 import { SubscriptionSelfService, createSubscriptionSelfServiceRouter, type SelfServiceSubscriptionFlags } from "../stripe/subscriptionSelfService";
@@ -2221,6 +2222,8 @@ export function createControlPlaneApp(d: ControlPlaneDeps): Express {
         // Medición del marketplace (agregada, sin datos personales): sin la migración 0042, 202 y se descarta
         router.use("/commerce", createPanelEventsRouter({ store: d.web?.events ?? null }));
         if (webRequests) router.use("/commerce", createPanelRequestsRouter({ site: () => wa.site("published"), requests: webRequests, crm: d.crm.store, internalTenants: d.stripe?.purchases?.internalTenants }));
+        // Solicitudes de plan desde Suscripción: oportunidad del CRM de la empresa (o solicitud web si aún no tiene ficha)
+        if (webRequests && d.crm) router.use("/commerce", createPlanRequestsRouter({ site: () => wa.site("published"), crm: d.crm.service, store: d.crm.store, requests: webRequests }));
       }
       // Servicios externos en un entorno sin Stripe: contrato, aceptación y seguimiento (sin autorización de pago ni cobros)
       if (d.external && !d.stripe) {

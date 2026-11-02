@@ -28,7 +28,7 @@ import {
 
 type Plan = "essential" | "business";
 type Interval = "month" | "year";
-interface PlanOption {
+export interface PlanOption {
   plan: Plan;
   interval: Interval;
   direction: "upgrade" | "downgrade";
@@ -55,7 +55,7 @@ const fmtDate = (ms: number) => new Date(ms).toLocaleDateString("es-ES", { day: 
 const money = (cents: number, currency: string) => new Intl.NumberFormat("es-ES", { style: "currency", currency }).format(cents / 100);
 const newKey = () => randomId().replace(/[^A-Za-z0-9_-]/g, "").slice(0, 64).padEnd(16, "0");
 
-function PlanChangeDialog({ current, option, onClose }: { current: { plan: string; interval: Interval }; option: PlanOption; onClose: () => void }) {
+export function PlanChangeDialog({ current, option, onClose }: { current: { plan: string; interval: Interval }; option: PlanOption; onClose: () => void }) {
   const utils = trpc.useUtils();
   const [key] = useState(newKey);
   const [result, setResult] = useState<PlanResult | null>(null);
