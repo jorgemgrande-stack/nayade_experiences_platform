@@ -6,7 +6,7 @@
  * Ningún texto comercial vive aquí: títulos, imágenes, precios y ofertas salen del catálogo. Sin diapositivas
  * publicadas, la cabecera es la de la página (sin carrusel ni textos comerciales inventados).
  */
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "wouter";
 import { Layers, PackagePlus, Plug, Search, Sparkles } from "lucide-react";
 import AdminLayout from "@/components/AdminLayout";
@@ -109,6 +109,15 @@ export default function ConnectPage() {
     },
     [select],
   );
+  // Enlaces desde otras páginas («Suscripción»): /admin/ampliar#cx-brand-connect, #cx-brand-net, #cx-bundles o #cx-mine
+  const fromHash = useRef(false);
+  useEffect(() => {
+    if (fromHash.current || !data) return;
+    fromHash.current = true;
+    const h = window.location.hash.slice(1);
+    const id: AccessId | null = h === "cx-brand-connect" ? "connect" : h === "cx-brand-net" ? "net" : h === "cx-bundles" ? "bundles" : h === "cx-mine" ? "mine" : null;
+    if (id) select(id);
+  }, [data, select]);
   const openDialog = useCallback((it: ConnectCatalogItem, kind: RequestKind) => setDialog({ item: it, kind }), []);
 
   return (
