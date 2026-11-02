@@ -1,0 +1,52 @@
+/**
+ * Elephant Studio: mensajes entre el editor y su lienzo.
+ *
+ * El lienzo es la propia web de la empresa (cabecera, pie, colores y tipografía) dentro de un marco del mismo
+ * origen, para que el ancho de tableta o móvil active su diseño adaptable real. El editor le envía el documento y el
+ * lienzo le devuelve lo que la persona hace sobre la página. Solo se aceptan mensajes del mismo origen y de la
+ * ventana esperada (el marco o su editor).
+ */
+import type { Device, PageBlock } from "@shared/pageBlocks";
+import type { SiteTokens } from "./tokens";
+
+export const STUDIO_CANVAS_PATH = "/admin/studio-lienzo";
+/** Tipo de los datos que arrastra la biblioteca (módulo o sección prediseñada). */
+export const DRAG_MIME = "application/x-elephant-studio";
+
+export type BlockAction = "duplicate" | "delete" | "up" | "down";
+
+/** Del editor al lienzo */
+export type ToCanvas = {
+  kind: "state";
+  blocks: PageBlock[];
+  selectedId: string | null;
+  device: Device;
+  tokens: SiteTokens;
+  pageTitle: string;
+  readOnly: boolean;
+};
+
+/** Del lienzo al editor */
+export type FromCanvas =
+  | { kind: "ready" }
+  | { kind: "select"; id: string | null }
+  | { kind: "text"; id: string; key: string; value: string }
+  | { kind: "action"; id: string; action: BlockAction }
+  | { kind: "drop"; payload: string; index: number }
+  | { kind: "move"; id: string; index: number }
+  | { kind: "navigate"; href: string }
+  | { kind: "key"; key: string; ctrl: boolean; shift: boolean };
+
+export function isFromCanvas(v: unknown): v is FromCanvas {
+  return !!v && typeof v === "object" && typeof (v as { kind?: unknown }).kind === "string" && (v as { studio?: unknown }).studio === 1;
+}
+
+export function isToCanvas(v: unknown): v is ToCanvas {
+  return !!v && typeof v === "object" && (v as { kind?: unknown }).kind === "state" && (v as { studio?: unknown }).studio === 1;
+}
+
+/** Datos del arrastre: `module:<tipo>`, `preset:<clave>` o `block:<id>` (reordenar). */
+export function parseDragPayload(p: string): { what: "module" | "preset" | "block"; value: string } | null {
+  const m = /^(module|preset|block):([a-z0-9_-]{1,64})$/i.exec(p);
+  return m ? { what: m[1] as "module" | "preset" | "block", value: m[2] } : null;
+}

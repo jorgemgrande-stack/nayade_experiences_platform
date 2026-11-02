@@ -882,10 +882,39 @@ export const appRouter = router({
 
     publishPage: adminProcedure
       .input(z.object({ slug: z.string().regex(/^[a-z0-9-]{1,64}$/), blocks: z.array(z.unknown()).max(200).optional() }))
-      .mutation(async ({ input }) => {
+      .mutation(async ({ input, ctx }) => {
         const { publishPage } = await import("./pageBuilderDb");
-        return pageBuilderCall(() => publishPage(input.slug, input.blocks));
+        return pageBuilderCall(() => publishPage(input.slug, input.blocks, ctx.user?.name ?? ctx.user?.email ?? null));
       }),
+
+    // ── Elephant Studio: historial de versiones publicadas y datos de la empresa para el lienzo
+    pageVersions: adminProcedure
+      .input(z.object({ slug: z.string().regex(/^[a-z0-9-]{1,64}$/) }))
+      .query(async ({ input }) => {
+        const { listPageVersions } = await import("./pageBuilderDb");
+        return pageBuilderCall(() => listPageVersions(input.slug));
+      }),
+
+    pageVersionPreview: adminProcedure
+      .input(z.object({ slug: z.string().regex(/^[a-z0-9-]{1,64}$/), id: z.number().int().positive() }))
+      .query(async ({ input }) => {
+        const { getPageVersionPreview } = await import("./pageBuilderDb");
+        const { readSiteTokenData } = await import("./starterSiteDb");
+        const tokens = await readSiteTokenData();
+        return pageBuilderCall(() => getPageVersionPreview(input.slug, input.id, tokens));
+      }),
+
+    restorePageVersion: adminProcedure
+      .input(z.object({ slug: z.string().regex(/^[a-z0-9-]{1,64}$/), id: z.number().int().positive() }))
+      .mutation(async ({ input }) => {
+        const { restorePageVersion } = await import("./pageBuilderDb");
+        return pageBuilderCall(() => restorePageVersion(input.slug, input.id));
+      }),
+
+    studioTokens: adminProcedure.query(async () => {
+      const { readSiteTokenData } = await import("./starterSiteDb");
+      return readSiteTokenData();
+    }),
 
     discardPageDraft: adminProcedure
       .input(z.object({ slug: z.string().regex(/^[a-z0-9-]{1,64}$/) }))

@@ -1,0 +1,383 @@
+/**
+ * Elephant Studio — inspector del bloque seleccionado. Los formularios salen del esquema de campos de cada módulo
+ * (shared/studio/modules.ts): un módulo nuevo no necesita código aquí. Dos niveles con los mismos datos:
+ *   - modo sencillo: los campos esenciales y el fondo;
+ *   - modo profesional: además, los campos avanzados, los espacios, la visibilidad por dispositivo y el ancla.
+ */
+import { useId, useState, type ReactNode } from "react";
+import { ArrowDown, ArrowUp, ChevronDown, Monitor, Plus, Smartphone, Tablet, Trash2 } from "lucide-react";
+import ImageUploader from "@/components/ImageUploader";
+import { trpc } from "@/lib/trpc";
+import { Button } from "@/components/ui/button";
+import { Label } from "@/components/ui/label";
+import { Switch } from "@/components/ui/switch";
+import { Input as PlainInput } from "@/components/ui/input";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { cn } from "@/lib/utils";
+import { TokenInput as Input, TokenTextarea as Textarea } from "@/components/admin/pageBuilder/TokenFields";
+import { RichTextEditor } from "@/components/admin/pageBuilder/RichTextEditor";
+import { LinkPicker, type LinkTarget } from "@/components/admin/pageBuilder/BlockEditors";
+import { FEATURE_ICON_COMPONENTS } from "@/components/site/featureIcons";
+import { ANCHOR_RE, DEFAULT_BLOCK_STYLE, isDefaultStyle, type BlockStyle, type Device, type PageBlock } from "@shared/pageBlocks";
+import { FEATURE_ICONS, moduleDef, type FieldDef } from "@shared/studio/modules";
+
+type SetField = (key: string, value: unknown, coalesce?: boolean) => void;
+
+export function BlockInspector({ block, onChange, targets, pro, tab, onTab }: { block: PageBlock; onChange: (b: PageBlock, coalesceKey?: string) => void; targets: LinkTarget[]; pro: boolean; tab: "content" | "design"; onTab: (t: "content" | "design") => void }) {
+  const def = moduleDef(block.type);
+  const data = block.data as unknown as Record<string, unknown>;
+  const set: SetField = (key, value, coalesce = true) => onChange({ ...block, data: { ...data, [key]: value } } as PageBlock, coalesce ? `${block.id}:${key}` : undefined);
+  const setStyle = (patch: Partial<BlockStyle>) => {
+    const next = { ...DEFAULT_BLOCK_STYLE, ...block.style, ...patch };
+    const { style: _old, ...rest } = block;
+    onChange((isDefaultStyle(next) ? rest : { ...rest, style: next }) as PageBlock, `${block.id}:style:${Object.keys(patch).join()}`);
+  };
+  if (!def) return <p className="text-sm text-muted-foreground">Este bloque no tiene opciones.</p>;
+  const altKeys = new Set(def.fields.flatMap((f) => (f.kind === "image" && f.altKey ? [f.altKey] : [])));
+  const fields = def.fields.filter((f) => (pro || !f.advanced) && !altKeys.has(f.key));
+  return (
+    <div className="space-y-4">
+      <div className="grid grid-cols-2 gap-1 rounded-lg bg-muted p-1" role="tablist" aria-label="Opciones del bloque">
+        {(["content", "design"] as const).map((t) => (
+          <button
+            key={t}
+            type="button"
+            role="tab"
+            aria-selected={tab === t}
+            onClick={() => onTab(t)}
+            className={cn("rounded-md px-3 py-1.5 text-sm font-medium transition-colors", tab === t ? "bg-background text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground")}
+          >
+            {t === "content" ? "Contenido" : "Diseño"}
+          </button>
+        ))}
+      </div>
+      {tab === "content" ? (
+        <div className="space-y-4">
+          {fields.map((f) => (
+            <div key={f.key} className="space-y-3">
+              <FieldControl field={f} value={data[f.key]} set={set} targets={targets} blockId={block.id} />
+              {f.kind === "image" && f.altKey && !!data[f.key] && (
+                <FieldControl field={def.fields.find((x) => x.key === f.altKey)!} value={data[f.altKey]} set={set} targets={targets} blockId={block.id} />
+              )}
+            </div>
+          ))}
+          {def.note && <p className="rounded-md bg-muted px-3 py-2 text-xs leading-relaxed text-muted-foreground">{def.note}</p>}
+        </div>
+      ) : (
+        <StyleEditor style={{ ...DEFAULT_BLOCK_STYLE, ...block.style }} setStyle={setStyle} pro={pro} />
+      )}
+    </div>
+  );
+}
+
+function FieldShell({ label, hint, children }: { label: string; hint?: string; children: (id: string) => ReactNode }) {
+  const id = useId();
+  return (
+    <div className="space-y-1.5">
+      <Label htmlFor={id}>{label}</Label>
+      {children(id)}
+      {hint && <p className="text-xs text-muted-foreground">{hint}</p>}
+    </div>
+  );
+}
+
+function Segmented({ label, value, options, onChange }: { label: string; value: string; options: ReadonlyArray<{ value: string; label: string }>; onChange: (v: string) => void }) {
+  return (
+    <div className="space-y-1.5">
+      <span className="text-sm font-medium">{label}</span>
+      <div className="flex rounded-lg border border-border bg-muted/40 p-0.5" role="radiogroup" aria-label={label}>
+        {options.map((o) => (
+          <button
+            key={o.value}
+            type="button"
+            role="radio"
+            aria-checked={value === o.value}
+            onClick={() => onChange(o.value)}
+            className={cn("flex-1 rounded-md px-2 py-1.5 text-xs font-medium transition-colors", value === o.value ? "bg-background text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground")}
+          >
+            {o.label}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function FieldControl({ field: f, value, set, targets, blockId }: { field: FieldDef; value: unknown; set: SetField; targets: LinkTarget[]; blockId: string }) {
+  const str = typeof value === "string" ? value : "";
+  switch (f.kind) {
+    case "text":
+      return (
+        <FieldShell label={f.label} hint={f.hint}>
+          {(id) =>
+            f.multiline ? (
+              <Textarea id={id} rows={3} value={str} maxLength={f.max} placeholder={f.placeholder} onChange={(e) => set(f.key, e.target.value)} />
+            ) : (
+              <Input id={id} value={str} maxLength={f.max} placeholder={f.placeholder} onChange={(e) => set(f.key, e.target.value)} />
+            )
+          }
+        </FieldShell>
+      );
+    case "rich":
+      return (
+        <div className="space-y-1.5">
+          <span className="text-sm font-medium">{f.label}</span>
+          <RichTextEditor key={blockId} value={str} onChange={(html) => set(f.key, html)} ariaLabel={f.label} />
+        </div>
+      );
+    case "image":
+      return <ImageUploader label={f.label} value={str} onChange={(url) => set(f.key, url, false)} />;
+    case "link":
+      return <LinkPicker label={f.label} value={str} onChange={(url) => set(f.key, url)} targets={targets} />;
+    case "select":
+      return <Segmented label={f.label} value={str} options={f.options} onChange={(v) => set(f.key, v, false)} />;
+    case "icon":
+      return <IconPicker label={f.label} value={str} onChange={(v) => set(f.key, v, false)} />;
+    case "category":
+      return <CategoryPicker label={f.label} value={str} onChange={(v) => set(f.key, v, false)} />;
+    case "images":
+      return <ImagesEditor field={f} value={Array.isArray(value) ? (value as Array<{ url: string; alt: string }>) : []} set={set} />;
+    case "list":
+      return <ListEditor field={f} value={Array.isArray(value) ? (value as Array<Record<string, string>>) : []} set={set} targets={targets} blockId={blockId} />;
+  }
+}
+
+function IconPicker({ label, value, onChange }: { label: string; value: string; onChange: (v: string) => void }) {
+  return (
+    <div className="space-y-1.5">
+      <span className="text-sm font-medium">{label}</span>
+      <div className="grid grid-cols-8 gap-1" role="radiogroup" aria-label={label}>
+        {FEATURE_ICONS.map((i) => {
+          const Icon = FEATURE_ICON_COMPONENTS[i.value];
+          return (
+            <button
+              key={i.value}
+              type="button"
+              role="radio"
+              aria-checked={value === i.value}
+              aria-label={i.label}
+              title={i.label}
+              onClick={() => onChange(i.value)}
+              className={cn("flex aspect-square items-center justify-center rounded-md border transition-colors", value === i.value ? "border-primary bg-primary/10 text-primary" : "border-transparent text-muted-foreground hover:bg-muted")}
+            >
+              <Icon className="h-4 w-4" />
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+const ALL = "__todas__";
+
+function CategoryPicker({ label, value, onChange }: { label: string; value: string; onChange: (v: string) => void }) {
+  const id = useId();
+  const cats = trpc.public.getCategories.useQuery(undefined, { staleTime: 300_000 });
+  const list = (cats.data ?? []) as Array<{ id: number; name: string; slug: string }>;
+  return (
+    <div className="space-y-1.5">
+      <Label htmlFor={id}>{label}</Label>
+      <Select value={value || ALL} onValueChange={(v) => onChange(v === ALL ? "" : v)}>
+        <SelectTrigger id={id} className="w-full">
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value={ALL}>Todos los productos</SelectItem>
+          {list.map((c) => (
+            <SelectItem key={c.id} value={c.slug}>
+              Categoría: {c.name}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+    </div>
+  );
+}
+
+function ImagesEditor({ field, value, set }: { field: Extract<FieldDef, { kind: "images" }>; value: Array<{ url: string; alt: string }>; set: SetField }) {
+  const update = (i: number, patch: Partial<{ url: string; alt: string }>) => set(field.key, value.map((g, j) => (j === i ? { ...g, ...patch } : g)), !("url" in patch));
+  return (
+    <div className="space-y-3">
+      <span className="text-sm font-medium">{field.label}</span>
+      {value.map((g, i) => (
+        <div key={i} className="space-y-2 rounded-lg border border-border p-3">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-medium text-muted-foreground">Imagen {i + 1}</span>
+            <Button type="button" variant="ghost" size="sm" className="h-7 text-destructive" onClick={() => set(field.key, value.filter((_, j) => j !== i), false)}>
+              <Trash2 className="mr-1 h-3.5 w-3.5" /> Quitar
+            </Button>
+          </div>
+          <ImageUploader value={g.url} onChange={(url) => update(i, { url })} />
+          <PlainInput aria-label={`Descripción de la imagen ${i + 1}`} placeholder="Descripción de la imagen" value={g.alt} maxLength={300} onChange={(e) => update(i, { alt: e.target.value })} />
+        </div>
+      ))}
+      {value.length < field.max && (
+        <Button type="button" variant="outline" size="sm" className="w-full" onClick={() => set(field.key, [...value, { url: "", alt: "" }], false)}>
+          <Plus className="mr-1 h-4 w-4" /> Añadir imagen
+        </Button>
+      )}
+    </div>
+  );
+}
+
+function ListEditor({ field, value, set, targets, blockId }: { field: Extract<FieldDef, { kind: "list" }>; value: Array<Record<string, string>>; set: SetField; targets: LinkTarget[]; blockId: string }) {
+  const [open, setOpen] = useState<number | null>(null);
+  const write = (next: Array<Record<string, string>>, coalesce = false) => set(field.key, next, coalesce);
+  const move = (i: number, dir: -1 | 1) => {
+    const j = i + dir;
+    if (j < 0 || j >= value.length) return;
+    const next = [...value];
+    [next[i], next[j]] = [next[j], next[i]];
+    write(next);
+    setOpen(j);
+  };
+  const firstText = field.fields.find((f) => f.kind === "text")?.key;
+  return (
+    <div className="space-y-2">
+      <span className="text-sm font-medium">{field.label}</span>
+      {value.map((item, i) => {
+        const expanded = open === i;
+        return (
+          <div key={i} className="overflow-hidden rounded-lg border border-border bg-background">
+            <div className="flex items-center gap-1 px-2 py-1.5">
+              <button type="button" className="flex min-w-0 flex-1 items-center gap-2 py-1 text-left text-sm" aria-expanded={expanded} onClick={() => setOpen(expanded ? null : i)}>
+                <ChevronDown className={cn("h-3.5 w-3.5 shrink-0 text-muted-foreground transition-transform", expanded && "rotate-180")} />
+                <span className="min-w-0 overflow-hidden text-ellipsis whitespace-nowrap">{(firstText && item[firstText]) || `${field.itemLabel} ${i + 1}`}</span>
+              </button>
+              <Button type="button" variant="ghost" size="icon" className="h-7 w-7" aria-label="Subir" disabled={i === 0} onClick={() => move(i, -1)}>
+                <ArrowUp className="h-3.5 w-3.5" />
+              </Button>
+              <Button type="button" variant="ghost" size="icon" className="h-7 w-7" aria-label="Bajar" disabled={i === value.length - 1} onClick={() => move(i, 1)}>
+                <ArrowDown className="h-3.5 w-3.5" />
+              </Button>
+              <Button type="button" variant="ghost" size="icon" className="h-7 w-7 text-destructive hover:text-destructive" aria-label={`Quitar ${field.itemLabel.toLowerCase()}`} onClick={() => write(value.filter((_, j) => j !== i))}>
+                <Trash2 className="h-3.5 w-3.5" />
+              </Button>
+            </div>
+            {expanded && (
+              <div className="space-y-3 border-t border-border bg-muted/20 p-3">
+                {field.fields.map((sub) => (
+                  <FieldControl
+                    key={sub.key}
+                    field={sub}
+                    value={item[sub.key]}
+                    targets={targets}
+                    blockId={`${blockId}-${i}`}
+                    set={(k, v, coalesce = true) => set(field.key, value.map((it, j) => (j === i ? { ...it, [k]: v } : it)), coalesce)}
+                  />
+                ))}
+              </div>
+            )}
+          </div>
+        );
+      })}
+      {value.length < field.max && (
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          className="w-full border-dashed"
+          onClick={() => {
+            write([...value, { ...field.newItem }]);
+            setOpen(value.length);
+          }}
+        >
+          <Plus className="mr-1 h-4 w-4" /> Añadir {field.itemLabel.toLowerCase()}
+        </Button>
+      )}
+    </div>
+  );
+}
+
+// ─── Diseño ───────────────────────────────────────────────────────────────────
+
+const BACKGROUNDS: ReadonlyArray<{ value: BlockStyle["background"]; label: string; swatch: string }> = [
+  { value: "none", label: "Sin fondo", swatch: "bg-background" },
+  { value: "soft", label: "Suave", swatch: "bg-muted" },
+  { value: "brand", label: "Color de marca", swatch: "bg-primary" },
+  { value: "dark", label: "Oscuro", swatch: "bg-slate-900" },
+];
+const SPACINGS = [
+  { value: "0", label: "Nada" },
+  { value: "s", label: "Poco" },
+  { value: "m", label: "Medio" },
+  { value: "l", label: "Mucho" },
+] as const;
+const DEVICE_OPTIONS: ReadonlyArray<{ value: Device; label: string; icon: typeof Monitor }> = [
+  { value: "desktop", label: "Ordenador", icon: Monitor },
+  { value: "tablet", label: "Tableta", icon: Tablet },
+  { value: "mobile", label: "Móvil", icon: Smartphone },
+];
+
+function StyleEditor({ style, setStyle, pro }: { style: BlockStyle; setStyle: (p: Partial<BlockStyle>) => void; pro: boolean }) {
+  const anchorId = useId();
+  const [anchor, setAnchor] = useState(style.anchor);
+  const anchorError = anchor && !ANCHOR_RE.test(anchor) ? "Solo minúsculas sin tildes, números y guiones." : null;
+  return (
+    <div className="space-y-5">
+      <div className="space-y-1.5">
+        <span className="text-sm font-medium">Fondo</span>
+        <div className="grid grid-cols-4 gap-2" role="radiogroup" aria-label="Fondo">
+          {BACKGROUNDS.map((bg) => (
+            <button
+              key={bg.value}
+              type="button"
+              role="radio"
+              aria-checked={style.background === bg.value}
+              onClick={() => setStyle({ background: bg.value })}
+              className={cn("flex flex-col items-center gap-1.5 rounded-lg border p-2 text-[11px] leading-tight transition-colors", style.background === bg.value ? "border-primary ring-1 ring-primary" : "border-border hover:border-foreground/30")}
+            >
+              <span className={cn("h-7 w-full rounded-md border border-border", bg.swatch)} aria-hidden />
+              {bg.label}
+            </button>
+          ))}
+        </div>
+        <p className="text-xs text-muted-foreground">Los colores salen de la marca de tu web, así que siempre combinan.</p>
+      </div>
+      {pro ? (
+        <>
+          <Segmented label="Espacio extra arriba" value={style.padTop} options={SPACINGS} onChange={(v) => setStyle({ padTop: v as BlockStyle["padTop"] })} />
+          <Segmented label="Espacio extra abajo" value={style.padBottom} options={SPACINGS} onChange={(v) => setStyle({ padBottom: v as BlockStyle["padBottom"] })} />
+          <div className="space-y-2">
+            <span className="text-sm font-medium">Visible en</span>
+            {DEVICE_OPTIONS.map((d) => (
+              <div key={d.value} className="flex items-center justify-between gap-3">
+                <Label htmlFor={`${anchorId}-${d.value}`} className="flex items-center gap-2 font-normal">
+                  <d.icon className="h-4 w-4 text-muted-foreground" /> {d.label}
+                </Label>
+                <Switch
+                  id={`${anchorId}-${d.value}`}
+                  checked={!style.hideOn.includes(d.value)}
+                  onCheckedChange={(v) => setStyle({ hideOn: v ? style.hideOn.filter((x) => x !== d.value) : [...style.hideOn, d.value] })}
+                />
+              </div>
+            ))}
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor={anchorId}>Ancla para enlazar a esta sección</Label>
+            <PlainInput
+              id={anchorId}
+              value={anchor}
+              maxLength={40}
+              placeholder="por-ejemplo-servicios"
+              aria-invalid={!!anchorError}
+              onChange={(e) => {
+                const v = e.target.value.toLowerCase().replace(/\s+/g, "-");
+                setAnchor(v);
+                if (!v || ANCHOR_RE.test(v)) setStyle({ anchor: v });
+              }}
+            />
+            <p className={cn("text-xs", anchorError ? "text-destructive" : "text-muted-foreground")}>
+              {anchorError ?? (anchor ? `Enlaza a esta sección con «#${anchor}» desde un botón o el menú.` : "Opcional. Sirve para que un botón lleve directamente a esta sección.")}
+            </p>
+          </div>
+        </>
+      ) : (
+        <p className="rounded-md bg-muted px-3 py-2 text-xs leading-relaxed text-muted-foreground">
+          En el modo profesional también puedes ajustar los espacios, elegir en qué dispositivos se ve el bloque y ponerle un ancla.
+        </p>
+      )}
+    </div>
+  );
+}

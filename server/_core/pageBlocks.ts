@@ -8,7 +8,11 @@
  */
 import { sanitizeRichHtml } from "./htmlSanitize";
 import { renderSiteTokens, type SiteTokenData } from "./templates/starterSite";
-import { BLOCK_TYPES, PAGE_LIMITS, newBlockId, type BlockType, type GalleryImage, type PageBlock } from "../../shared/pageBlocks";
+import {
+  ANCHOR_RE, BLOCK_BACKGROUNDS, BLOCK_SPACINGS, BLOCK_TYPES, DEVICES, PAGE_LIMITS, defaultBlockData, isDefaultStyle, newBlockId,
+  type BlockStyle, type BlockType, type GalleryImage, type PageBlock,
+} from "../../shared/pageBlocks";
+import { FEATURE_ICON_KEYS, moduleDef, type FieldDef } from "../../shared/studio/modules";
 
 export class PageBlocksError extends Error {}
 
@@ -83,7 +87,76 @@ function normalizeData(type: BlockType, d: Record<string, unknown>): PageBlock["
       return { title: str(d.title, PAGE_LIMITS.title), intro: str(d.intro, 500), buttonLabel: str(d.buttonLabel, 60) || "Enviar mensaje" };
     case "separator":
       return { kind: oneOf(d.kind, ["line", "space"] as const, "line") };
+    case "video": {
+      const v = normalizeBySchema(type, d) as { title: string; url: string; caption: string };
+      // Solo una dirección web: el reproductor se elige al pintar (YouTube o Vimeo)
+      return { ...v, url: /^https:\/\//i.test(safeLink(v.url)) ? safeLink(v.url) : "" };
+    }
+    default:
+      // Módulos de Elephant Studio: validados con el esquema de campos del registro (shared/studio/modules.ts)
+      return normalizeBySchema(type, d) as PageBlock["data"];
   }
+}
+
+/** Datos de un módulo según el esquema de sus campos. Lo que falta toma el valor inicial del módulo. */
+export function normalizeBySchema(type: BlockType, d: Record<string, unknown>): Record<string, unknown> {
+  const def = moduleDef(type);
+  if (!def) throw new PageBlocksError("La página tiene un bloque que no se reconoce.");
+  const initial = defaultBlockData(type) as unknown as Record<string, unknown>;
+  const out: Record<string, unknown> = {};
+  for (const f of def.fields) out[f.key] = normalizeField(f, d[f.key], initial[f.key]);
+  return out;
+}
+
+function normalizeField(f: FieldDef, v: unknown, initial: unknown): unknown {
+  switch (f.kind) {
+    case "text":
+      return str(v, f.max);
+    case "rich":
+      return richHtml(v);
+    case "image":
+      return safeImage(v);
+    case "link":
+      return safeLink(v);
+    case "select": {
+      const values = f.options.map((o) => o.value);
+      return oneOf(v, values, typeof initial === "string" && values.includes(initial) ? initial : values[0]);
+    }
+    case "icon":
+      return oneOf(v, FEATURE_ICON_KEYS, "check");
+    case "category":
+      return typeof v === "string" && /^[a-z0-9-]{1,64}$/.test(v) ? v : "";
+    case "images": {
+      const raw = Array.isArray(v) ? v : [];
+      if (raw.length > f.max) throw new PageBlocksError(`Una galería admite hasta ${f.max} imágenes.`);
+      return raw
+        .map((i) => (isObj(i) ? { url: safeImage(i.url), alt: str(i.alt) } : null))
+        .filter((i): i is GalleryImage => !!i && !!i.url);
+    }
+    case "list": {
+      const raw = Array.isArray(v) ? v : [];
+      if (raw.length > Math.min(f.max, PAGE_LIMITS.listItems)) throw new PageBlocksError(`«${f.label}» admite hasta ${f.max} elementos.`);
+      return raw.filter(isObj).map((item) => {
+        const o: Record<string, unknown> = {};
+        for (const sub of f.fields) o[sub.key] = normalizeField(sub, item[sub.key], f.newItem[sub.key]);
+        return o;
+      });
+    }
+  }
+}
+
+/** Diseño del bloque (lista cerrada de valores), o nada si es el de serie. */
+export function normalizeStyle(v: unknown): BlockStyle | undefined {
+  if (!isObj(v)) return undefined;
+  const hide = Array.isArray(v.hideOn) ? v.hideOn : [];
+  const style: BlockStyle = {
+    background: oneOf(v.background, BLOCK_BACKGROUNDS, "none"),
+    padTop: oneOf(v.padTop, BLOCK_SPACINGS, "0"),
+    padBottom: oneOf(v.padBottom, BLOCK_SPACINGS, "0"),
+    hideOn: DEVICES.filter((d) => hide.includes(d)),
+    anchor: typeof v.anchor === "string" && ANCHOR_RE.test(v.anchor) ? v.anchor : "",
+  };
+  return isDefaultStyle(style) ? undefined : style;
 }
 
 /**
@@ -102,7 +175,8 @@ export function normalizeBlocks(raw: unknown): PageBlock[] {
     let id = blockId(b.id);
     while (seen.has(id)) id = newBlockId();
     seen.add(id);
-    return { id, type, data: normalizeData(type, isObj(b.data) ? b.data : {}) } as PageBlock;
+    const style = normalizeStyle(b.style);
+    return { id, type, data: normalizeData(type, isObj(b.data) ? b.data : {}), ...(style ? { style } : {}) } as PageBlock;
   });
 }
 
@@ -158,6 +232,28 @@ export function blocksToHtml(blocks: PageBlock[]): string {
         break;
       case "separator":
         if (b.data.kind === "line") parts.push("<hr>");
+        break;
+      case "heading":
+        parts.push(b.data.eyebrow ? `<p>${esc(b.data.eyebrow)}</p>` : "", h(Number(b.data.level.slice(1)), b.data.title), b.data.subtitle ? `<p>${esc(b.data.subtitle)}</p>` : "");
+        break;
+      case "features":
+        parts.push(h(2, b.data.title), b.data.intro ? `<p>${esc(b.data.intro)}</p>` : "");
+        if (b.data.items.length) parts.push(`<ul>${b.data.items.map((it) => `<li><strong>${esc(it.title)}</strong> ${esc(it.text)}</li>`).join("")}</ul>`);
+        break;
+      case "testimonials":
+        parts.push(h(2, b.data.title), ...b.data.items.map((it) => `<blockquote><p>${esc(it.quote)}</p><p>${esc([it.author, it.role].filter(Boolean).join(", "))}</p></blockquote>`));
+        break;
+      case "faq":
+        parts.push(h(2, b.data.title), ...b.data.items.map((it) => `${h(3, it.question)}<p>${esc(it.answer)}</p>`));
+        break;
+      case "cta":
+        parts.push(h(2, b.data.title), b.data.text ? `<p>${esc(b.data.text)}</p>` : "", link(b.data.buttonUrl, b.data.buttonLabel), link(b.data.secondaryUrl, b.data.secondaryLabel));
+        break;
+      case "video":
+        parts.push(h(2, b.data.title), link(b.data.url, b.data.caption || b.data.title || "Ver el vídeo"));
+        break;
+      case "products":
+        parts.push(h(2, b.data.title), b.data.intro ? `<p>${esc(b.data.intro)}</p>` : "", link("/tienda", b.data.buttonLabel));
         break;
     }
   });
@@ -332,6 +428,10 @@ export function renderBlockTokens(blocks: PageBlock[], data: SiteTokenData): Pag
       d[k] = k === "html" ? renderSiteTokens(v, data) : plainTokens(v, data);
     }
     if (b.type === "gallery") d.images = b.data.images.map((g) => ({ ...g, alt: plainTokens(g.alt, data) }));
+    // Listas de los módulos (ventajas, opiniones, preguntas): texto simple en cada elemento
+    if (b.type === "features" || b.type === "testimonials" || b.type === "faq") {
+      d.items = (b.data.items as unknown as Array<Record<string, string>>).map((it) => Object.fromEntries(Object.entries(it).map(([k, v]) => [k, plainTokens(v, data)])));
+    }
     return { ...b, data: d } as PageBlock;
   });
 }
