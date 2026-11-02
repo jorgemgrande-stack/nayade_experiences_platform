@@ -175,6 +175,12 @@ describe("embudo: migración 0021", () => {
     expect(extraordinaryChanges([up, "db/migrations/0021_crm_funnel_stages.down.sql"], "", (f) => read(f))).toEqual([]);
   });
 
+  it("el código del embudo no contiene nada que la publicación trate como destructivo", () => {
+    const files = ["shared/crmFunnel.ts", "server/crmFunnelDb.ts", "server/routers/crmFunnel.ts", "client/src/pages/admin/crm/CrmFunnel.tsx"];
+    const diff = files.map((f) => `diff --git a/${f} b/${f}\n` + read(f).replace(/\r\n/g, "\n").split("\n").map((l) => `+${l}`).join("\n")).join("\n");
+    expect(extraordinaryChanges(files, diff, () => null)).toEqual([]);
+  });
+
   it("crea las dos tablas que usa el servidor y tiene reversión", () => {
     const sql = read(up);
     expect(sql).toMatch(/CREATE TABLE IF NOT EXISTS crm_funnel_stages/);
