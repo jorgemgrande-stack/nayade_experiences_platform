@@ -44,8 +44,6 @@ import { APPROVAL_CATEGORIES, OrderError, REJECT_CODES, rejectCodeOf, type Appro
 export const GRACE_DAYS = 7;
 /** Frecuencia mínima del botón «Reintentar» del panel, por pedido. */
 export const RETRY_MIN_INTERVAL_MS = 60_000;
-/** Días sin cambios tras los que vence un pedido sin cobro (requested, quoted o contracted). */
-export const STALE_ORDER_DAYS = 30;
 /** Días de solo lectura (consulta y exportación) tras el fin del periodo pagado, por los dos caminos. */
 export const READ_ONLY_DAYS = 30;
 /** Proveedor de los pagos verificados en Stripe Billing (modo pruebas). Sus pedidos no reciben recibos simulados. */
