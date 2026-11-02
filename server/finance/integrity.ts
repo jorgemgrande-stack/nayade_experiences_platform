@@ -84,7 +84,7 @@ export interface FinanceIntegrityDeps {
   invoiceStore?: { list(f?: { status?: string; limit?: number }): Promise<Invoice[]> } | null;
   /** Expedición real habilitada en el entorno (interruptor de la facturación propia, decisión DF-2). */
   issueEnabled: boolean;
-  stripe?: { service: Pick<FinanceStripeService, "summary" | "pendingFeeVatCount">; store: Pick<FinanceStripeStore, "transactionsByStripeInvoice"> & Partial<Pick<FinanceStripeStore, "listPayouts">> } | null;
+  stripe?: { service: Pick<FinanceStripeService, "summary" | "pendingFeeVatCount"> & Partial<Pick<FinanceStripeService, "pendingFiscalExpenses">>; store: Pick<FinanceStripeStore, "transactionsByStripeInvoice"> & Partial<Pick<FinanceStripeStore, "listPayouts">> } | null;
   tax?: Pick<FinanceTaxService, "settings"> | null;
   automation?: Pick<FinanceAutomation, "last"> | null;
   now?: () => number;
@@ -289,7 +289,14 @@ export class FinanceIntegrity {
               : { state: "zero", cents: 0, detail: "Sin saldo pendiente de liquidar" },
     );
     const feesPending = net(lines, "555");
-    push("stripeFeesPending", "Comisiones pendientes de clasificación fiscal", "Libro (555)", !c.fy ? noFy : feesPending ? { state: "provisional", cents: feesPending, detail: "Comisiones de Stripe contabilizadas en 555 sin IVA hasta que la gestoría decida su tratamiento (exentas o inversión del sujeto pasivo)" } : { state: "zero", cents: 0, detail: "Ninguna comisión pendiente de clasificar" });
+    // Gastos de Stripe ya en 626/629 (en el resultado) con el IVA aún sin decidir: provisionales solo en lo fiscal
+    const fiscalPending = this.d.stripe?.service.pendingFiscalExpenses ? await this.d.stripe.service.pendingFiscalExpenses() : [];
+    const fiscalPendingCents = sum(fiscalPending.map((e) => e.baseCents));
+    const feesDetail = [
+      feesPending ? `${eur(feesPending)} de comisiones de Stripe aún en 555, fuera del resultado` : "",
+      fiscalPending.length ? `${plural(fiscalPending.length, "gasto de Stripe", "gastos de Stripe")} por ${eur(fiscalPendingCents)} ya en gastos (626/629) sin IVA: el tratamiento (exenta o inversión del sujeto pasivo) queda pendiente de la factura de Stripe o del criterio de la gestoría` : "",
+    ].filter(Boolean).join("; ");
+    push("stripeFeesPending", "Gastos de Stripe con IVA pendiente", "Libro (555) y Contabilidad › Gastos (Stripe)", !c.fy ? noFy : feesPending || fiscalPending.length ? { state: "provisional", cents: feesPending + fiscalPendingCents, detail: feesDetail } : { state: "zero", cents: 0, detail: "Ningún gasto de Stripe pendiente de clasificación fiscal" });
     const bankCents = net(lines, "57200");
     push("bankBalance", "Saldo bancario conocido", "Libro (572000NN) y extractos", !c.fy ? noFy : !c.banks.length ? { state: "unavailable", cents: null, detail: "Sin cuentas bancarias dadas de alta ni extractos importados" } : { state: c.openingPosted ? (bankCents ? "value" : "zero") : "pending", cents: bankCents, detail: c.openingPosted ? "Según el libro" : "Sin asiento de apertura: solo movimientos del ejercicio" });
     const expenses = net(yearLines, "6");

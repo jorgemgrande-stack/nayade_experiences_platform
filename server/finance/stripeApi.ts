@@ -22,6 +22,7 @@
  *   GET   /stripe/fee-vat-rules                              lectura         { items }
  *   POST  /stripe/fee-vat-rules                              configuración   { feeKind, issuerName, issuerCountry, issuerVatId?, treatment, rateBp?, validFrom, validTo?, documentRef?, note? }
  *   POST  /stripe/fee-vat-rules/:id/void                     configuración   { reason }
+ *   POST  /stripe/fee-expenses/link                          contabilizar    { expenseIds, invoiceRef } factura de Stripe de sus gastos automáticos
  * y GET /stripe/settings añade `pendingFeeVatCount`; `stripeFeeVat` admite unset|exempt|reverse_charge|domestic|per_invoice.
  *
  * El fichero llega en base64 dentro del JSON: la ruta de importación lee su cuerpo con un límite propio DESPUÉS de
@@ -99,6 +100,11 @@ export function mountFinanceStripeRoutes(r: Router, stripe: FinanceStripeService
     r.post("/stripe/fee-vat-rules/:id/void", ...canConfig, wrap(async (req, res) => {
       const b = z.object({ reason: z.string().max(300) }).strict().parse(body(req));
       res.json({ item: feeVatRuleDto(await stripe.voidFeeVatRule(id.parse(req.params.id), b.reason, actorOf(req))) });
+    }));
+    // Gastos automáticos de Stripe: la factura de Stripe que los agrupa se vincula (no se registra aparte)
+    r.post("/stripe/fee-expenses/link", ...canPost, wrap(async (req, res) => {
+      const b = z.object({ expenseIds: z.array(id).min(1).max(500), invoiceRef: z.string().min(1).max(60) }).strict().parse(body(req));
+      res.json({ item: await stripe.linkFeeInvoice(b, actorOf(req)) });
     }));
   }
 

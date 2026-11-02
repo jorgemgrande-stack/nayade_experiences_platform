@@ -21,7 +21,7 @@ describe("cuenta de resultados y balance desde el libro", () => {
     const line = (k: string) => pnl.lines.find((l) => l.key === k)!;
     expect(line("revenue").values).toEqual([25_000, 10_000]);
     // Hosting 500 € y software 100 € (629) y comisiones de Stripe (626): 3,88 + 2,12 + 1,50 de servicios − 15 + 15 disputa
-    expect(line("otherOperatingExpenses").accounts.map((a) => [a.code, a.totalCents])).toEqual([["626", -750], ["629", -60_000]]);
+    expect(line("otherOperatingExpenses").accounts.map((a) => [a.code, a.totalCents])).toEqual([["626", -600], ["629", -60_150]]);
     expect(pnl.result.totalCents).toBe(await sixSeven(finance, "2026-09-01", "2026-10-31"));
     expect(pnl.result).toEqual({ totalCents: 25_000 + 10_000 - 60_000 - 750, compareTotalCents: 0 });
     expect(line("revenue")).toMatchObject({ compareTotalCents: 0, variationCents: 35_000, variationPct: null });
@@ -111,7 +111,8 @@ describe("gastos, Revenue & Margin y Conversion Health", () => {
     expect(byCat.items.map((i) => [i.key, i.name, i.totalCents])).toEqual([
       [`category:${hostingCat.id}`, hostingCat.name, 50_000],
       [`category:${softwareCat.id}`, softwareCat.name, 10_000],
-      ["account:626", "626 · Servicios bancarios y similares (sin categoría)", 750],
+      ["account:626", "626 · Servicios bancarios y similares (sin categoría)", 600],
+      ["account:629", "629 · Otros servicios (sin categoría)", 150],
     ]);
     expect(byCat.compare).toEqual({ kind: "previous", from: "2026-09-01", to: "2026-09-30" });
     expect(byCat.totals).toMatchObject({ totalCents: 60_750, compareCents: 0 });
@@ -127,10 +128,10 @@ describe("gastos, Revenue & Margin y Conversion Health", () => {
     expect(cats.map((c) => [c.isDirectCost, c.directCost])).toEqual([[null, true], [null, false]]);
     const rm = await analysis.revenueMargin(2026);
     const oct = rm.months.find((m) => m.month === "2026-10")!;
-    expect(oct).toMatchObject({ accruedRevenueCents: 10_000, stripeFeesCents: 750, directCostsCents: 50_000, grossMarginCents: 10_000 - 750 - 50_000, structureCostsCents: 10_000 });
+    expect(oct).toMatchObject({ accruedRevenueCents: 10_000, stripeFeesCents: 600, directCostsCents: 50_000, grossMarginCents: 10_000 - 600 - 50_000, structureCostsCents: 10_150 });
     // Cobrado: cobros de Stripe (121 + 60,50) − reembolso (60,50) = 121 €
     expect(oct.collectedCents).toBe(12_100);
-    expect(oct.stripeFeesPct).toBe(6.2);
+    expect(oct.stripeFeesPct).toBe(5);
     expect(oct.resultCents).toBe((await analysis.pnl({ from: "2026-10-01", to: "2026-10-31" })).result.totalCents);
     expect(rm.ytd.through).toBe("2026-10");
     expect(rm.ytd.resultCents).toBe((await analysis.pnl({ from: "2026-01-01", to: "2026-10-31" })).result.totalCents);
@@ -138,7 +139,7 @@ describe("gastos, Revenue & Margin y Conversion Health", () => {
     await analysis.setDirectCost(hostingCat.id, false, ACTOR);
     await analysis.setDirectCost(softwareCat.id, true, ACTOR);
     const after = (await analysis.revenueMargin(2026)).months.find((m) => m.month === "2026-10")!;
-    expect(after).toMatchObject({ directCostsCents: 10_000, structureCostsCents: 50_000 });
+    expect(after).toMatchObject({ directCostsCents: 10_000, structureCostsCents: 50_150 });
     await expect(analysis.setDirectCost(999, true, ACTOR)).rejects.toMatchObject({ code: "not_found" });
     expect((await analysis.revenueMargin(2025)).ytd.through).toBe("2025-12");
   });
