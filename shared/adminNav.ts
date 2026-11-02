@@ -267,6 +267,7 @@ export const TASK_NAV: NavSection[] = [
     items: [
       { label: "Clientes", href: "/admin/crm/clientes", key: "t-clientes", icon: "users", roles: SALES, capabilities: ["crm-contacts", "crm-accounts"] },
       { label: "Oportunidades", href: "/admin/crm?tab=leads", key: "t-oportunidades", icon: "target", roles: SALES, capabilities: ["crm-leads"] },
+      { label: "Embudo de ventas", href: "/admin/crm/embudo", key: "t-embudo", icon: "target", roles: SALES, capabilities: ["crm-funnel-advanced"] },
       {
         label: "Presupuestos", href: "/admin/crm?tab=quotes", key: "t-presupuestos", icon: "file", roles: SALES, capabilities: ["crm-quotes"],
         children: [
