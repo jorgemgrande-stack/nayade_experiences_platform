@@ -169,6 +169,11 @@ function calcPricing(
   // per_person (default, retrocompatible)
   return { totalEuros: priceUnit * people, unitsBooked: 0 };
 }
+
+/** Precio por persona o unidad de la tienda online con las reglas de precios (canal web). */
+function webRulePrice(rules: PricingRule[], line: Parameters<typeof priceLine>[1]) {
+  return priceLine(rules, line, { channel: "web", today: madridToday() });
+}
 import { eq, and, desc, inArray, sql as sqlDrizzle } from "drizzle-orm";
 import { hotelRouter } from "./routers/hotel";
 import { spaRouter } from "./routers/spa";
@@ -216,6 +221,7 @@ import { commercialFollowupRouter } from "./routers/commercialFollowup";
 import { crmTagsRouter } from "./routers/crmTags";
 import { crmTasksRouter } from "./routers/crmTasks";
 import { crmFunnelRouter } from "./routers/crmFunnel";
+import { pricingRulesRouter } from "./routers/pricingRules";
 import { customRolesRouter } from "./routers/customRoles";
 import { ghlInboxRouter } from "./routers/ghlInbox";
 import { vapiCallsRouter } from "./routers/vapiCalls";
@@ -232,6 +238,8 @@ import { integrationEnv } from "./_core/tenantConfig";
 import { protectLegacySecret, revealLegacySecret } from "./_core/credentials/legacyFields";
 import { sampleUrl } from "./_core/productIdentity";
 import { assertCheckoutLinePriced } from "./checkoutLinePricing";
+import { activeRules as activePricingRules, webRulesForProduct } from "./pricingRulesDb";
+import { madridToday, priceLine, type PricingRule } from "../shared/pricingRules";
 import { assertFiscalSettingValue } from "./fiscalSettingsValidation";
 const adminProcedure = permissionProcedure("settings.manage", ["admin"]);
 
@@ -332,7 +340,9 @@ export const appRouter = router({
       .query(async ({ input }) => {
         const exp = await getExperienceBySlug(input.slug);
         if (!exp) throw new TRPCError({ code: "NOT_FOUND" });
-        return exp;
+        // Promociones de la tienda (reglas de precios Business, canal web) para enseñar el precio final y el ahorro;
+        // el importe lo recalcula siempre el servidor al pagar. Sin reglas, lista vacía.
+        return { ...exp, pricingRules: await webRulesForProduct({ id: exp.id, categoryId: exp.categoryId ?? null }) };
       }),
 
     getVariantsByExperience: publicProcedure
@@ -2047,11 +2057,13 @@ export const appRouter = router({
         const pricingType = (product as any).pricingType ?? "per_person";
         const unitCapacity = (product as any).unitCapacity ?? null;
         const maxUnits = (product as any).maxUnits ?? null;
+        // Nunca se cobra una línea a 0 € (p. ej. una opción con precio sin configurar)
+        assertCheckoutLinePriced(product.title, calcPricing(pricePerPerson, input.people, pricingType, unitCapacity, maxUnits).totalEuros, `#${input.productId}, opción ${input.variantId ?? "-"}`);
+        // 2c. Reglas de precios de la empresa (Business): sin reglas, el precio de siempre
+        pricePerPerson = webRulePrice(await activePricingRules(), { productId: input.productId, categoryId: product.categoryId ?? null, unitPrice: pricePerPerson, quantity: input.people, serviceDate: input.bookingDate }).unitPrice;
         const { totalEuros: baseTotal, unitsBooked } = calcPricing(
           pricePerPerson, input.people, pricingType, unitCapacity, maxUnits
         );
-        // Nunca se cobra una línea a 0 € (p. ej. una opción con precio sin configurar)
-        assertCheckoutLinePriced(product.title, baseTotal, `#${input.productId}, opción ${input.variantId ?? "-"}`);
         // Los extras con precio del cliente se rechazan en el esquema de entrada (noClientPricedExtras).
         const extrasTotal = input.extras.reduce((sum, e) => sum + e.price * e.quantity, 0);
         const totalEuros = baseTotal + extrasTotal;
@@ -2224,6 +2236,7 @@ export const appRouter = router({
           };
         }> = [];
         const productNames: string[] = [];
+        const cartRules = await activePricingRules();
         for (const item of input.items) {
           const product = await getExpById(item.productId);
           if (!product) {
@@ -2286,11 +2299,13 @@ export const appRouter = router({
           const itemPricingType = (product as any).pricingType ?? "per_person";
           const itemUnitCap = (product as any).unitCapacity ?? null;
           const itemMaxUnits = (product as any).maxUnits ?? null;
+          // Nunca se cobra una línea a 0 € dentro del carrito (p. ej. una opción con precio sin configurar)
+          assertCheckoutLinePriced(product.title, calcPricing(pricePerPerson, item.people, itemPricingType, itemUnitCap, itemMaxUnits).totalEuros, `#${item.productId}, opción ${item.variantId ?? "-"}`);
+          // Reglas de precios de la empresa (Business), antes del cupón: sin reglas, el precio de siempre
+          pricePerPerson = webRulePrice(cartRules, { productId: item.productId, categoryId: product.categoryId ?? null, unitPrice: pricePerPerson, quantity: item.people, serviceDate: item.bookingDate }).unitPrice;
           const { totalEuros: itemBase, unitsBooked: itemUnits } = calcPricing(
             pricePerPerson, item.people, itemPricingType, itemUnitCap, itemMaxUnits
           );
-          // Nunca se cobra una línea a 0 € dentro del carrito (p. ej. una opción con precio sin configurar)
-          assertCheckoutLinePriced(product.title, itemBase, `#${item.productId}, opción ${item.variantId ?? "-"}`);
           const itemTotalEuros = itemBase + extrasTotal;
           const itemAmountCents = Math.round(itemTotalEuros * 100);
           totalAmountCents += itemAmountCents;
@@ -2579,6 +2594,7 @@ export const appRouter = router({
   crmTags: crmTagsRouter,
   crmTasks: crmTasksRouter,
   crmFunnel: crmFunnelRouter,
+  pricingRules: pricingRulesRouter,
   customRoles: customRolesRouter,
   ghlInbox: ghlInboxRouter,
   vapiCalls: vapiCallsRouter,
