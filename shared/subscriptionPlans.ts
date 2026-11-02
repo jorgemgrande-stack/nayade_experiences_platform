@@ -73,10 +73,11 @@ export function parsePanelPlans(raw: unknown): PanelPlanInfo[] {
         .map((l) => ({ label: text(l?.label, 80), value: text(l?.value, 80), metric: text(l?.metric, 64) }))
         .filter((l): l is { label: string; value: string; metric: string | null } => !!l.label && !!l.value)
         .slice(0, 12),
-      monthly: price(prices.find((p) => p?.kind === "monthly")),
-      yearly: price(prices.find((p) => p?.kind === "yearly")),
-      assisted: offer && (offer.modality === "assisted" || offer.modality === "immediate") ? offer.modality === "assisted" : null,
-      offerLabel: offer ? text(offer.label, 60) : null,
+      // Idempotente: acepta los planes del plano de control (prices, offer) y los ya normalizados (monthly, yearly…)
+      monthly: price(r.monthly ?? prices.find((p) => p?.kind === "monthly")),
+      yearly: price(r.yearly ?? prices.find((p) => p?.kind === "yearly")),
+      assisted: typeof r.assisted === "boolean" ? r.assisted : offer && (offer.modality === "assisted" || offer.modality === "immediate") ? offer.modality === "assisted" : null,
+      offerLabel: offer ? text(offer.label, 60) : text(r.offerLabel, 60),
     });
   }
   return out
@@ -99,12 +100,33 @@ export type PlanCta =
   | { kind: "convert"; plan: SelfServicePlanKey }
   /** Cambio de plan con el autoservicio (vista previa de importes y confirmación). */
   | { kind: "change"; plan: SelfServicePlanKey; interval: PlanInterval; direction: "upgrade" | "downgrade"; recurringCents: number; currency: string }
-  /** Contratación asistida o sin flujo en línea: hablar con el equipo comercial. */
-  | { kind: "contact" }
+  /** Contratación asistida o sin flujo en línea: solicitud comercial registrada en el CRM (oportunidad). */
+  | { kind: "contact"; request: PlanRequestKind }
   /** Solo la administración de la empresa puede contratar o cambiar de plan. */
   | { kind: "admin_only" }
-  /** Nada que hacer desde aquí (por ejemplo, un plan inferior sin bajada en línea). */
+  /** Nada que hacer desde aquí. */
   | { kind: "none" };
+
+/** Qué pide la empresa: contratar (desde la prueba o sin plan), ampliar a un plan superior o cambiar a otro. */
+export type PlanRequestKind = "contract" | "upgrade" | "change";
+
+/** Solicitud de plan tal como la ve el cliente (estado sin detalles internos del embudo comercial). */
+export type PlanRequestStatus = "received" | "in_progress" | "completed" | "closed";
+export interface PlanRequestView {
+  reference: string;
+  plan: string;
+  planName: string;
+  status: PlanRequestStatus;
+  createdAt: number;
+  updatedAt: number | null;
+}
+export const PLAN_REQUEST_STATUS_LABEL: Record<PlanRequestStatus, string> = {
+  received: "Recibida",
+  in_progress: "En curso",
+  completed: "Completada",
+  closed: "Cerrada",
+};
+export const PLAN_REQUEST_KIND_LABEL: Record<PlanRequestKind, string> = { contract: "Solicitar", upgrade: "Solicitar la ampliación a", change: "Solicitar el cambio a" };
 
 export interface PlanDifference {
   label: string;
@@ -164,6 +186,8 @@ export function buildPlanComparison(i: PlanComparisonInput): PlanCardModel[] {
   return i.plans.map((plan): PlanCardModel => {
     const isCurrent = plan.key === i.currentPlanKey;
     const selfService = SELF_SERVICE.includes(plan.key);
+    // Lo que no se completa en línea se pide al equipo comercial con su motivo
+    const requestKind: PlanRequestKind = trial || !current ? "contract" : rank(plan) > rank(current) ? "upgrade" : "change";
     let cta: PlanCta;
     if (isCurrent && !trial) cta = { kind: "current" };
     else if (!i.isAdmin) cta = { kind: "admin_only" };
@@ -172,9 +196,8 @@ export function buildPlanComparison(i: PlanComparisonInput): PlanCardModel[] {
       // Mismo periodo que el contrato actual si existe esa opción; si no, la primera que ofrezca el servidor
       const opts = change.options.filter((o) => o.plan === plan.key);
       const o = opts.find((x) => x.interval === change.current!.interval) ?? opts[0];
-      cta = o ? { kind: "change", plan: plan.key as SelfServicePlanKey, interval: o.interval, direction: o.direction, recurringCents: o.recurringCents, currency: o.currency } : current && rank(plan) < rank(current) ? { kind: "none" } : { kind: "contact" };
-    } else if (current && !trial && rank(plan) < rank(current)) cta = { kind: "none" };
-    else cta = { kind: "contact" };
+      cta = o ? { kind: "change", plan: plan.key as SelfServicePlanKey, interval: o.interval, direction: o.direction, recurringCents: o.recurringCents, currency: o.currency } : { kind: "contact", request: requestKind };
+    } else cta = { kind: "contact", request: requestKind };
     return {
       plan,
       isCurrent,

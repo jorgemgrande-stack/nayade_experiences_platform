@@ -20,6 +20,7 @@ import { PlanContractSection } from "./PlanContractSection";
 import { ConversionSection } from "./ConversionSection";
 import { CancellationSection, PlanChangeSection } from "./SelfServiceSection";
 import { PlanComparison } from "./PlanComparison";
+import { PlanRequestList } from "./PlanRequests";
 import { GrowSection, OwnedModules } from "./GrowSection";
 import { UsageSection } from "./UsagePage";
 import { trpc } from "@/lib/trpc";
@@ -144,7 +145,7 @@ export default function SubscriptionPage() {
   const conversion = trpc.subscription.conversionStatus.useQuery(undefined, { retry: false, staleTime: 60_000, enabled: licensed });
   const planChange = trpc.subscription.planChangeStatus.useQuery(undefined, { retry: false, staleTime: 60_000, enabled: licensed });
   const catalog = trpc.subscription.catalog.useQuery(undefined, { retry: false, staleTime: 60_000, enabled: licensed });
-  const support = trpc.subscription.supportContact.useQuery(undefined, { retry: false, staleTime: 300_000, enabled: licensed });
+  const planRequests = trpc.subscription.planRequests.useQuery(undefined, { retry: false, staleTime: 60_000, enabled: licensed });
   const portal = useBillingPortal();
   const [requested, setRequested] = useState<{ plan: SelfServicePlanKey; at: number } | null>(null);
 
@@ -290,7 +291,8 @@ export default function SubscriptionPage() {
                 )}
                 {cards.length > 0 && (
                   <>
-                    <PlanComparison cards={cards} contact={{ upgradeUrl: data.upgradeUrl, supportEmail: support.data?.email ?? null }} current={pc?.current ?? null} onConvert={onConvert} />
+                    <PlanComparison cards={cards} requests={planRequests.data} current={pc?.current ?? null} onConvert={onConvert} />
+                    <PlanRequestList requests={planRequests.data ?? []} />
                     <p className="text-xs text-muted-foreground">Precios publicados en el catálogo oficial de Elephant Source. El importe exacto de cada alta o cambio se calcula y se muestra antes de confirmar.</p>
                   </>
                 )}
