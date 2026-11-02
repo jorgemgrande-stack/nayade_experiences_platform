@@ -268,6 +268,8 @@ describe("acción principal según el estado real", () => {
     expect(activationOf({ state: "pending_setup", activation: null }).state).toBe("pending");
     expect(activationOf({ state: "activating" }).state).toBe("processing");
     expect(activationOf({ state: "incident" }).state).toBe("error");
+    // Suspendida: el pedido vigente del canal dice «active», pero manda la licencia cortada
+    expect(activationOf({ state: "incident", activation: { state: "active", retryable: false, updatedAt: 1 } })).toMatchObject({ state: "error", retryable: false });
     expect(activationOf({ state: "available", activation: { state: "none", retryable: false, updatedAt: null } }).state).toBe("none");
   });
   it("ruta real del módulo: la portada de su entrada de menú (People → /admin/personal)", () => {
