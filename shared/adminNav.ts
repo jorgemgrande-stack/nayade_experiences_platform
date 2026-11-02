@@ -301,6 +301,7 @@ export const TASK_NAV: NavSection[] = [
     id: "web",
     label: "Web",
     items: [
+      { label: "Elephant Studio", href: "/admin/studio", key: "t-studio", icon: "sparkles", roles: ADMIN, capabilities: ["cms-pages-forms", "cms-editor"] },
       { label: "Páginas", href: "/admin/cms/paginas", key: "t-paginas", icon: "globe", roles: ADMIN, capabilities: ["cms-pages-forms", "cms-editor"] },
       { label: "Blog", href: "/admin/cms/blog", key: "t-blog", icon: "file", roles: ADMIN, capabilities: ["cms-blog"] },
       {

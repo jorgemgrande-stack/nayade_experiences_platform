@@ -8,7 +8,11 @@
  * Aquí solo hay tipos, valores iniciales, plantillas y reglas de la dirección de la página: nada de servidor.
  */
 
-export const BLOCK_TYPES = ["hero", "text", "image", "gallery", "button", "columns", "contact_form", "separator"] as const;
+export const BLOCK_TYPES = [
+  "hero", "text", "image", "gallery", "button", "columns", "contact_form", "separator",
+  // Elephant Studio (shared/studio/modules.ts): módulos registrados con su esquema de campos
+  "heading", "features", "testimonials", "faq", "cta", "video", "products",
+] as const;
 export type BlockType = (typeof BLOCK_TYPES)[number];
 
 export interface GalleryImage {
@@ -29,13 +33,65 @@ export interface BlockDataMap {
   /** Formulario de contacto: cada envío entra en el CRM como oportunidad y cliente */
   contact_form: { title: string; intro: string; buttonLabel: string };
   separator: { kind: "line" | "space" };
+  /** Título suelto con antetítulo y subtítulo */
+  heading: { eyebrow: string; title: string; subtitle: string; level: "h1" | "h2" | "h3"; align: "left" | "center" };
+  /** Ventajas o servicios en rejilla, cada uno con su icono */
+  features: { title: string; intro: string; columns: "2" | "3" | "4"; items: FeatureItem[] };
+  testimonials: { title: string; items: TestimonialItem[] };
+  faq: { title: string; items: FaqItem[] };
+  /** Llamada a la acción: título, texto y uno o dos botones */
+  cta: { title: string; text: string; buttonLabel: string; buttonUrl: string; secondaryLabel: string; secondaryUrl: string };
+  /** Vídeo de YouTube o Vimeo */
+  video: { title: string; url: string; caption: string };
+  /** Productos de la tienda de la empresa (datos reales del catálogo: no se copian en la página) */
+  products: { title: string; intro: string; categorySlug: string; limit: "4" | "8" | "12"; buttonLabel: string };
 }
 
-export type PageBlock = { [K in BlockType]: { id: string; type: K; data: BlockDataMap[K] } }[BlockType];
+export interface FeatureItem {
+  icon: string;
+  title: string;
+  text: string;
+}
+export interface TestimonialItem {
+  quote: string;
+  author: string;
+  role: string;
+}
+export interface FaqItem {
+  question: string;
+  answer: string;
+}
+
+/**
+ * Diseño de un bloque (Elephant Studio): fondo, espacio extra, visibilidad por dispositivo y ancla. Son valores de
+ * una lista cerrada (nada de CSS libre), así que el resultado respeta siempre los colores y la tipografía de la web.
+ */
+export const BLOCK_BACKGROUNDS = ["none", "soft", "brand", "dark"] as const;
+export const BLOCK_SPACINGS = ["0", "s", "m", "l"] as const;
+export const DEVICES = ["desktop", "tablet", "mobile"] as const;
+export type Device = (typeof DEVICES)[number];
+export interface BlockStyle {
+  background: (typeof BLOCK_BACKGROUNDS)[number];
+  padTop: (typeof BLOCK_SPACINGS)[number];
+  padBottom: (typeof BLOCK_SPACINGS)[number];
+  hideOn: Device[];
+  anchor: string;
+}
+export const DEFAULT_BLOCK_STYLE: BlockStyle = { background: "none", padTop: "0", padBottom: "0", hideOn: [], anchor: "" };
+export const ANCHOR_RE = /^[a-z0-9]([a-z0-9-]{0,38}[a-z0-9])?$/;
+
+/** Si el diseño del bloque es el de serie (entonces no se guarda). */
+export function isDefaultStyle(s: Partial<BlockStyle> | undefined): boolean {
+  if (!s) return true;
+  const d = DEFAULT_BLOCK_STYLE;
+  return (s.background ?? d.background) === d.background && (s.padTop ?? d.padTop) === d.padTop && (s.padBottom ?? d.padBottom) === d.padBottom && !(s.hideOn ?? []).length && !(s.anchor ?? "");
+}
+
+export type PageBlock = { [K in BlockType]: { id: string; type: K; data: BlockDataMap[K]; style?: BlockStyle } }[BlockType];
 export type BlockOf<K extends BlockType> = Extract<PageBlock, { type: K }>;
 
 /** Límites del contenido de una página. */
-export const PAGE_LIMITS = { blocks: 60, galleryImages: 24, html: 50_000, title: 200, short: 300, url: 1000 } as const;
+export const PAGE_LIMITS = { blocks: 60, galleryImages: 24, html: 50_000, title: 200, short: 300, url: 1000, listItems: 30, long: 2000 } as const;
 
 /** Nombre y descripción de cada bloque en el editor (sin términos técnicos). */
 export const BLOCK_CATALOG: ReadonlyArray<{ type: BlockType; label: string; description: string }> = [
@@ -47,6 +103,13 @@ export const BLOCK_CATALOG: ReadonlyArray<{ type: BlockType; label: string; desc
   { type: "columns", label: "Texto e imagen", description: "Sección a dos columnas: texto a un lado e imagen al otro" },
   { type: "contact_form", label: "Formulario de contacto", description: "Tus clientes te escriben y el mensaje llega a tu CRM" },
   { type: "separator", label: "Separador", description: "Una línea o un espacio entre secciones" },
+  { type: "heading", label: "Título", description: "Un titular con antetítulo y subtítulo" },
+  { type: "features", label: "Ventajas o servicios", description: "Rejilla de puntos fuertes, cada uno con su icono" },
+  { type: "testimonials", label: "Opiniones", description: "Lo que dicen tus clientes" },
+  { type: "faq", label: "Preguntas frecuentes", description: "Preguntas que se despliegan al pulsarlas" },
+  { type: "cta", label: "Llamada a la acción", description: "Un mensaje destacado con uno o dos botones" },
+  { type: "video", label: "Vídeo", description: "Un vídeo de YouTube o Vimeo" },
+  { type: "products", label: "Productos de tu tienda", description: "Tus productos reales, con su foto y su precio" },
 ];
 
 export const blockLabel = (t: string): string => BLOCK_CATALOG.find((b) => b.type === t)?.label ?? "Bloque";
@@ -68,6 +131,34 @@ export function defaultBlockData<K extends BlockType>(type: K): BlockDataMap[K] 
     columns: { title: "Título de la sección", html: "<p>Cuenta aquí lo que quieras destacar.</p>", imageUrl: "", imageAlt: "", imagePosition: "right", buttonLabel: "", buttonUrl: "" },
     contact_form: { title: "Escríbenos", intro: "Déjanos tus datos y te responderemos lo antes posible.", buttonLabel: "Enviar mensaje" },
     separator: { kind: "line" },
+    heading: { eyebrow: "", title: "Escribe aquí tu titular", subtitle: "", level: "h2", align: "center" },
+    features: {
+      title: "Por qué elegirnos",
+      intro: "",
+      columns: "3",
+      items: [
+        { icon: "sparkles", title: "Primera ventaja", text: "Explica en una frase lo que te hace diferente." },
+        { icon: "shield", title: "Segunda ventaja", text: "Cuenta qué gana tu cliente al trabajar contigo." },
+        { icon: "clock", title: "Tercera ventaja", text: "Destaca otro motivo para confiar en ti." },
+      ],
+    },
+    testimonials: {
+      title: "Lo que dicen nuestros clientes",
+      items: [
+        { quote: "Escribe aquí la opinión de un cliente.", author: "Nombre del cliente", role: "" },
+        { quote: "Escribe aquí la opinión de otro cliente.", author: "Nombre del cliente", role: "" },
+      ],
+    },
+    faq: {
+      title: "Preguntas frecuentes",
+      items: [
+        { question: "Escribe aquí una pregunta", answer: "Y aquí su respuesta." },
+        { question: "Otra pregunta habitual", answer: "Su respuesta." },
+      ],
+    },
+    cta: { title: "¿Hablamos?", text: "Cuéntanos qué necesitas y te respondemos lo antes posible.", buttonLabel: "Contacta con nosotros", buttonUrl: "/contacto", secondaryLabel: "", secondaryUrl: "" },
+    video: { title: "", url: "", caption: "" },
+    products: { title: "Nuestros productos", intro: "", categorySlug: "", limit: "4", buttonLabel: "Ver toda la tienda" },
   };
   return structuredCloneSafe(d[type]) as BlockDataMap[K];
 }
@@ -78,7 +169,7 @@ export function createBlock<K extends BlockType>(type: K, data?: Partial<BlockDa
 
 /** Copia de un bloque con otro identificador (duplicar). */
 export function duplicateBlock(b: PageBlock): PageBlock {
-  return { ...b, id: newBlockId(), data: structuredCloneSafe(b.data) } as PageBlock;
+  return { ...b, id: newBlockId(), data: structuredCloneSafe(b.data), ...(b.style ? { style: structuredCloneSafe(b.style) } : {}) } as PageBlock;
 }
 
 function structuredCloneSafe<T>(v: T): T {

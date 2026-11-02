@@ -1,12 +1,12 @@
 /**
- * Web › Páginas: el constructor de la web de la empresa. Lista de páginas (crear desde una plantilla, duplicar,
- * eliminar con confirmación, elegir portada) y editor por bloques con borrador, vista previa y publicación.
+ * Web › Páginas: las páginas de la web de la empresa. Lista de páginas (crear desde una plantilla, duplicar,
+ * eliminar con confirmación, elegir portada); cada página se edita en Elephant Studio (/admin/studio/<dirección>).
  * Lógica de servidor en server/pageBuilderDb.ts; modelo de bloques en shared/pageBlocks.ts.
  */
 import { useEffect, useMemo, useState } from "react";
-import { Link } from "wouter";
+import { Link, useLocation } from "wouter";
 import { toast } from "sonner";
-import { Copy, FileText, Globe, Home, ListTree, MoreHorizontal, Pencil, Plus, Scale, Trash2 } from "lucide-react";
+import { Copy, FileText, Globe, Home, ListTree, MoreHorizontal, Pencil, Plus, Scale, Sparkles, Trash2 } from "lucide-react";
 import AdminLayout from "@/components/AdminLayout";
 import { trpc } from "@/lib/trpc";
 import { Button } from "@/components/ui/button";
@@ -21,37 +21,30 @@ import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { PanelEmpty } from "@/components/admin/PanelStates";
-import { PageEditor, type SitePage } from "@/components/admin/pageBuilder/PageEditor";
+import type { SitePage } from "@/components/admin/studio/PageSettings";
 import { cn } from "@/lib/utils";
 import { PAGE_TEMPLATES, SEO_LIMITS, pageSlugProblem, slugFromTitle, type PageTemplateKey } from "@shared/pageBlocks";
 
-const EDIT_PARAM = "editar";
-
-function readEditParam(): string | null {
+function readParam(name: string): string | null {
   if (typeof window === "undefined") return null;
-  const v = new URLSearchParams(window.location.search).get(EDIT_PARAM);
-  return v && /^[a-z0-9-]{1,64}$/.test(v) ? v : null;
-}
-
-function writeEditParam(slug: string | null) {
-  const url = new URL(window.location.href);
-  if (slug) url.searchParams.set(EDIT_PARAM, slug);
-  else url.searchParams.delete(EDIT_PARAM);
-  window.history.replaceState(window.history.state, "", url.pathname + url.search);
+  return new URLSearchParams(window.location.search).get(name);
 }
 
 export default function PagesManager() {
   const utils = trpc.useUtils();
+  const [, navigate] = useLocation();
   const list = trpc.cms.sitePages.useQuery();
   const pages = (list.data ?? []) as SitePage[];
-  const [editing, setEditing] = useState<string | null>(readEditParam);
-  const [creating, setCreating] = useState(false);
+  const [creating, setCreating] = useState(() => readParam("nueva") === "1");
   const [toDelete, setToDelete] = useState<SitePage | null>(null);
 
-  const edit = (slug: string | null) => {
-    setEditing(slug);
-    writeEditParam(slug);
-  };
+  const edit = (slug: string) => navigate(`/admin/studio/${slug}`);
+
+  // Enlaces del editor anterior (?editar=<dirección>): abren la página en Elephant Studio
+  useEffect(() => {
+    const legacy = readParam("editar");
+    if (legacy && /^[a-z0-9-]{1,64}$/.test(legacy)) navigate(`/admin/studio/${legacy}`, { replace: true });
+  }, [navigate]);
 
   const duplicate = trpc.cms.duplicateSitePage.useMutation({
     onSuccess: (r) => {
@@ -68,26 +61,23 @@ export default function PagesManager() {
     onError: (e) => toast.error(e.message),
   });
 
-  if (editing) {
-    return (
-      <AdminLayout>
-        <PageEditor slug={editing} pages={pages} onBack={() => edit(null)} onSlugChange={(s) => edit(s)} />
-      </AdminLayout>
-    );
-  }
-
   return (
     <AdminLayout>
       <div className="mx-auto max-w-5xl p-4 md:p-6">
         <div className="mb-6 flex flex-wrap items-start justify-between gap-3">
           <div>
             <h1 className="text-2xl font-bold">Páginas de tu web</h1>
-            <p className="mt-1 text-sm text-muted-foreground">Crea y edita las páginas de tu web con bloques. Los cambios se ven en tu web cuando los publicas.</p>
+            <p className="mt-1 text-sm text-muted-foreground">Crea tus páginas y edítalas visualmente en Elephant Studio. Los cambios se ven en tu web cuando los publicas.</p>
           </div>
           <div className="flex flex-wrap gap-2">
             <Button variant="outline" asChild>
               <Link href="/admin/cms/menus">
                 <ListTree className="mr-1.5 h-4 w-4" /> Ordenar el menú
+              </Link>
+            </Button>
+            <Button variant="outline" asChild>
+              <Link href="/admin/studio">
+                <Sparkles className="mr-1.5 h-4 w-4" /> Abrir Elephant Studio
               </Link>
             </Button>
             <Button onClick={() => setCreating(true)}>

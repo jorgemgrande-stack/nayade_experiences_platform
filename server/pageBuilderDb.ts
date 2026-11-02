@@ -9,9 +9,11 @@
  *   - `page_blocks` con `pageSlug = <dirección>`: los bloques PUBLICADOS, uno por fila y en orden.
  *   - `page_blocks` con `pageSlug = "borrador:<dirección>"`: el BORRADOR, una sola fila con la lista completa. Los
  *     dos puntos no caben en una dirección, así que nunca coincide con una página real ni se sirve en la web.
+ *   - `page_blocks` con `pageSlug = "version:<dirección>"`: el HISTORIAL de versiones publicadas (Elephant Studio),
+ *     una fila por publicación con la lista completa; se conservan las últimas `MAX_VERSIONS`.
  *   - `system_settings.site_home_page`: la página elegida como portada (vacío = «inicio»).
  */
-import { and, eq, inArray, like, or } from "drizzle-orm";
+import { and, desc, eq, inArray, like, or } from "drizzle-orm";
 import { menuItems, pageBlocks, staticPages, systemSettings } from "../drizzle/schema";
 import { getDb, savePageBlocks } from "./db";
 import { blocksToHtml, htmlToBlocks, normalizeBlocks, readStoredBlocks, renderBlockTokens, PageBlocksError } from "./_core/pageBlocks";
@@ -23,6 +25,10 @@ export { PageBlocksError };
 
 const DRAFT_PREFIX = "borrador:";
 const draftKey = (slug: string) => `${DRAFT_PREFIX}${slug}`;
+const VERSION_PREFIX = "version:";
+const versionKey = (slug: string) => `${VERSION_PREFIX}${slug}`;
+/** Versiones publicadas que se conservan por página. */
+export const MAX_VERSIONS = 30;
 /** Dirección del menú que lleva a una página (la portada, a «/»). */
 const pageUrl = (slug: string, home: string) => (slug === home ? "/" : `/${slug}`);
 
@@ -90,8 +96,13 @@ export async function getPublishedBlocks(slug: string): Promise<PageBlock[] | nu
 }
 
 function rowToBlock(r: Record<string, unknown>): unknown {
-  const { id, type, ...data } = r;
-  return { id, type, data };
+  const { id, type, _style, ...data } = r;
+  return { id, type, data, style: _style };
+}
+
+/** Fila publicada de un bloque: sus datos con el identificador y, si lo tiene, su diseño. */
+function blockToRowData(b: PageBlock): Record<string, unknown> {
+  return { id: b.id, ...b.data, ...(b.style ? { _style: b.style } : {}) };
 }
 
 async function getDraft(slug: string): Promise<{ blocks: PageBlock[]; savedAt: string | null } | null> {
@@ -185,9 +196,12 @@ export async function discardPageDraft(slug: string) {
   return { success: true };
 }
 
-/** Publica los bloques (los indicados o el borrador guardado): pasan a la web y el borrador se descarta. */
-export async function publishPage(slug: string, raw?: unknown) {
-  await requirePage(slug);
+/**
+ * Publica los bloques (los indicados o el borrador guardado): pasan a la web, el borrador se descarta y la publicación
+ * queda en el historial. La primera vez se guarda también lo que la web mostraba hasta entonces, para poder volver.
+ */
+export async function publishPage(slug: string, raw?: unknown, author?: string | null) {
+  const page = await requirePage(slug);
   let blocks: PageBlock[];
   if (raw !== undefined) blocks = normalizeBlocks(raw);
   else {
@@ -196,10 +210,75 @@ export async function publishPage(slug: string, raw?: unknown) {
     blocks = draft.blocks;
   }
   const d = await db();
-  await savePageBlocks(slug, blocks.map((b, i) => ({ blockType: b.type, sortOrder: i, data: { id: b.id, ...b.data }, isVisible: true })));
+  if (!(await versionRows(slug)).length && page.isPublished) {
+    const before = (await getPublishedBlocks(slug)) ?? ((page.content ?? "").trim() ? htmlToBlocks(plainTextToHtml(page.content ?? "")) : null);
+    if (before?.length) await addVersion(slug, before, { author: null, note: "Versión publicada antes de Elephant Studio", at: page.updatedAt ? new Date(page.updatedAt) : new Date() });
+  }
+  await savePageBlocks(slug, blocks.map((b, i) => ({ blockType: b.type, sortOrder: i, data: blockToRowData(b), isVisible: true })));
   await d.update(staticPages).set({ content: blocksToHtml(blocks), isPublished: true, updatedAt: new Date() }).where(eq(staticPages.slug, slug));
   await discardPageDraft(slug);
+  await addVersion(slug, blocks, { author: author ?? null, note: "Publicada" });
   return { success: true };
+}
+
+// ─── Historial de versiones ───────────────────────────────────────────────────
+
+async function versionRows(slug: string) {
+  const d = await db();
+  return d.select().from(pageBlocks).where(eq(pageBlocks.pageSlug, versionKey(slug))).orderBy(desc(pageBlocks.sortOrder));
+}
+
+async function addVersion(slug: string, blocks: PageBlock[], meta: { author: string | null; note: string; at?: Date }) {
+  const d = await db();
+  const rows = await versionRows(slug);
+  const number = (rows[0]?.sortOrder ?? 0) + 1;
+  await d.insert(pageBlocks).values({
+    pageSlug: versionKey(slug), blockType: "version", sortOrder: number, isVisible: false,
+    data: { blocks, publishedAt: (meta.at ?? new Date()).toISOString(), author: meta.author, note: meta.note } as never,
+  });
+  const old = rows.slice(MAX_VERSIONS - 1).map((r) => r.id);
+  if (old.length) await d.delete(pageBlocks).where(inArray(pageBlocks.id, old));
+}
+
+/** Versiones publicadas de una página, de la más reciente a la más antigua (sin su contenido). */
+export async function listPageVersions(slug: string) {
+  await requirePage(slug);
+  const rows = await versionRows(slug);
+  return rows.map((r, i) => {
+    const data = (r.data ?? {}) as { blocks?: unknown[]; publishedAt?: string; author?: string | null; note?: string };
+    return {
+      id: r.id,
+      number: r.sortOrder,
+      publishedAt: data.publishedAt ?? (r.createdAt ? new Date(r.createdAt).toISOString() : null),
+      author: data.author ?? null,
+      note: data.note ?? "Publicada",
+      blockCount: Array.isArray(data.blocks) ? data.blocks.length : 0,
+      isCurrent: i === 0,
+    };
+  });
+}
+
+async function getVersion(slug: string, id: number): Promise<PageBlock[]> {
+  const d = await db();
+  const [row] = await d.select().from(pageBlocks).where(and(eq(pageBlocks.id, id), eq(pageBlocks.pageSlug, versionKey(slug)))).limit(1);
+  if (!row) throw new PageBlocksError("Esa versión ya no existe.");
+  return readStoredBlocks(((row.data ?? {}) as { blocks?: unknown }).blocks);
+}
+
+/** Contenido de una versión, con los datos de la empresa (para verla antes de recuperarla). */
+export async function getPageVersionPreview(slug: string, id: number, tokens: SiteTokenData) {
+  return { blocks: renderBlockTokens(await getVersion(slug, id), tokens) };
+}
+
+/**
+ * Recupera una versión anterior como BORRADOR: la web no cambia hasta que se publique. El borrador que hubiera se
+ * sustituye (el editor lo avisa antes).
+ */
+export async function restorePageVersion(slug: string, id: number) {
+  await requirePage(slug);
+  const blocks = await getVersion(slug, id);
+  await writeDraft(slug, blocks);
+  return { success: true, blocks };
 }
 
 /** Retira la página de la web (deja de verse y de salir en el menú); su contenido se conserva. */
@@ -266,6 +345,7 @@ export async function updatePageSettings(input: { slug: string; newSlug?: string
   if (target !== input.slug) {
     await d.update(pageBlocks).set({ pageSlug: target }).where(eq(pageBlocks.pageSlug, input.slug));
     await d.update(pageBlocks).set({ pageSlug: draftKey(target) }).where(eq(pageBlocks.pageSlug, draftKey(input.slug)));
+    await d.update(pageBlocks).set({ pageSlug: versionKey(target) }).where(eq(pageBlocks.pageSlug, versionKey(input.slug)));
     await d.update(menuItems).set({ url: `/${target}`, updatedAt: new Date() }).where(eq(menuItems.url, `/${input.slug}`));
     if ((await getHomeSlug()) === input.slug) {
       await d.update(systemSettings).set({ value: target }).where(eq(systemSettings.key, HOME_PAGE_SETTING_KEY));
@@ -298,7 +378,7 @@ export async function deleteSitePage(slug: string, opts: { confirmLegal?: boolea
   if (slug === home) throw new PageBlocksError("Es la portada de tu web. Elige otra portada antes de eliminarla.");
   if (isLegalPageSlug(slug) && !opts.confirmLegal) throw new PageBlocksError("Es un texto legal que tu web enlaza en el pie. Confirma que quieres eliminarlo.");
   const d = await db();
-  await d.delete(pageBlocks).where(or(eq(pageBlocks.pageSlug, slug), eq(pageBlocks.pageSlug, draftKey(slug))));
+  await d.delete(pageBlocks).where(or(eq(pageBlocks.pageSlug, slug), eq(pageBlocks.pageSlug, draftKey(slug)), eq(pageBlocks.pageSlug, versionKey(slug))));
   const links = await d.select({ id: menuItems.id }).from(menuItems).where(eq(menuItems.url, `/${slug}`));
   if (links.length) {
     const ids = links.map((l) => l.id);

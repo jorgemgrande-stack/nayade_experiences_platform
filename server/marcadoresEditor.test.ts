@@ -56,13 +56,13 @@ describe("editor de páginas", () => {
     expect(src).toContain("onChange(badgesToTokens(ref.current.innerHTML))");
   });
 
-  it("los campos de una línea y de varias muestran cómo se verán", () => {
-    const src = read("client/src/components/admin/pageBuilder/BlockEditors.tsx");
-    expect(src).toContain('import { TokenInput as Input, TokenTextarea as Textarea } from "./TokenFields";');
+  it("los campos de una línea y de varias muestran cómo se verán (inspector de Elephant Studio)", () => {
+    const src = read("client/src/components/admin/studio/Inspector.tsx");
+    expect(src).toContain('import { TokenInput as Input, TokenTextarea as Textarea } from "@/components/admin/pageBuilder/TokenFields";');
   });
 
   it("el aviso de datos sin rellenar se mantiene, ya sin llaves", () => {
-    const src = read("client/src/components/admin/pageBuilder/PageEditor.tsx");
+    const src = read("client/src/pages/admin/studio/StudioPage.tsx");
     expect(src).toContain("Si falta alguno, esa línea no se");
     expect(src).not.toContain('{"{{telefono}}"}');
   });

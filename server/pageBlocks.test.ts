@@ -57,7 +57,7 @@ describe("validación y saneado de los bloques", () => {
   });
 
   it("la lectura de lo guardado omite los bloques que no reconoce en lugar de romper la página", () => {
-    expect(readStoredBlocks([{ type: "cta", data: {} }, createBlock("separator")]).map((b) => b.type)).toEqual(["separator"]);
+    expect(readStoredBlocks([{ type: "slider_antiguo", data: {} }, createBlock("separator")]).map((b) => b.type)).toEqual(["separator"]);
     expect(readStoredBlocks("no")).toEqual([]);
   });
 

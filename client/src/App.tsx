@@ -68,6 +68,8 @@ const SlideshowManager = lazy(() => import("./pages/admin/cms/SlideshowManager")
 const MenusManager = lazy(() => import("./pages/admin/cms/MenusManager"));
 const PagesManager = lazy(() => import("./pages/admin/cms/PagesManager"));
 const PagePreview = lazy(() => import("./pages/admin/cms/PagePreview"));
+const StudioPage = lazy(() => import("./pages/admin/studio/StudioPage"));
+const StudioCanvas = lazy(() => import("./pages/admin/studio/StudioCanvas"));
 const MultimediaManager = lazy(() => import("./pages/admin/cms/MultimediaManager"));
 const HomeModulesManager = lazy(() => import("./pages/admin/cms/HomeModulesManager"));
 const GalleryManager = lazy(() => import("./pages/admin/cms/GalleryManager"));
@@ -314,6 +316,10 @@ function Router() {
       <Route path="/admin/cms/menus">{() => <Suspense fallback={<AdminLoadingFallback />}><MenusManager /></Suspense>}</Route>
       <Route path="/admin/cms/paginas/vista-previa/:slug">{(p) => <Suspense fallback={<AdminLoadingFallback />}><PagePreview slug={p.slug} /></Suspense>}</Route>
       <Route path="/admin/cms/paginas">{() => <Suspense fallback={<AdminLoadingFallback />}><PagesManager /></Suspense>}</Route>
+      {/* Elephant Studio y su lienzo (se carga dentro del marco del editor) */}
+      <Route path="/admin/studio-lienzo">{() => <Suspense fallback={<AdminLoadingFallback />}><StudioCanvas /></Suspense>}</Route>
+      <Route path="/admin/studio/:slug">{(p) => <Suspense fallback={<AdminLoadingFallback />}><StudioPage slug={p.slug} /></Suspense>}</Route>
+      <Route path="/admin/studio">{() => <Suspense fallback={<AdminLoadingFallback />}><StudioPage /></Suspense>}</Route>
       <Route path="/admin/cms/multimedia">{() => <Suspense fallback={<AdminLoadingFallback />}><MultimediaManager /></Suspense>}</Route>
       <Route path="/admin/cms/modulos-home">{() => <Suspense fallback={<AdminLoadingFallback />}><HomeModulesManager /></Suspense>}</Route>
       <Route path="/admin/cms/galeria">{() => <Suspense fallback={<AdminLoadingFallback />}><GalleryManager /></Suspense>}</Route>

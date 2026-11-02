@@ -134,7 +134,7 @@ export default function EssentialHome() {
   const quoteAction = canQuotes && sub.canWrite("crm-quotes") ? { label: "Nuevo presupuesto", href: "/admin/crm?tab=quotes&nuevo=1" } : null;
   const clientAction = canClients && sub.canWrite("crm-contacts") ? { label: "Nuevo cliente", href: "/admin/crm/clientes?nuevo=1" } : null;
   const productAction = canCatalog && sub.canWrite("shop-catalog") ? { label: "Nuevo producto", href: "/admin/productos/experiencias?nuevo=1" } : null;
-  const webAction = canWeb ? { label: "Editar mi web", href: "/admin/cms/paginas" } : null;
+  const webAction = canWeb ? { label: "Editar mi web", href: "/admin/studio" } : null;
   const quick = [
     saleAction && { ...saleAction, icon: ShoppingCart },
     invoiceAction && { ...invoiceAction, icon: ReceiptText },
