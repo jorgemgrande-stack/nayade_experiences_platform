@@ -84,8 +84,36 @@ es mensual.
   efecto sobre el pago. Duplicados → `duplicate`; eventos tardíos sobre un pago ya confirmado →
   `ignored`; importe, moneda o pago desconocidos → `rejected`. El efecto sobre el pedido va después:
   si falla, `review` lo retoma.
-- `POST /orders/review` (acción explícita; nada la programa) recupera pedidos confirmados o con pago
-  verificado que no llegaron al final, aplica fines de periodo, impagos y cancelaciones en cascada.
+- `POST /orders/review` (acción explícita; también la lanza el motor de ciclo de vida si está encendido) recupera
+  pedidos confirmados o con pago verificado que no llegaron al final, aplica fines de periodo, impagos y
+  cancelaciones en cascada. No espera entre reintentos, pero nunca reintenta un fallo definitivo o agotado.
+
+### Recuperación automática de la activación (`server/orchestrator/recovery.ts`)
+
+- Solo pedidos en `confirmed`, `subscribed` o `licensed` (cobro verificado, aprobación registrada o herencia). Un
+  cobro rechazado, caducado o revertido nunca avanza: cada paso repite `paidBasis` y la retención de Stripe.
+- Cada fallo queda en `step_failed` con `transient` y `retryable` (sin migración). Transitorios: red, tiempo
+  agotado, bloqueos de MySQL, `conflict`/`version_conflict`/`unavailable`, HTTP 408/429/5xx y errores desconocidos.
+  Definitivos: `invalid_input`, `invalid_state`, `not_found`, `forbidden` (este último, no reintentable), HTTP 4xx y
+  errores de programación.
+- Esperas tras cada fallo: 1, 5, 15 y 60 minutos y después 6 horas; agotado al 10.º fallo o si el siguiente
+  reintento pasaría de 72 h desde la confirmación. Definitivo o agotado = «Error de activación» en el panel.
+- Idempotencia: suscripción viva única por contrato (BD y memoria), cambios ya aplicados detectados (partidas
+  vigentes, bajada de plan ya programada, periodicidad pendiente, enlace del contrato), licencias por diferencia y
+  contrato ya activo. Ningún paso cobra. Dos avances del mismo pedido en un proceso se serializan; entre réplicas,
+  la versión optimista decide.
+- Tarea frecuente (`CP_ORDERS_RECOVERY_INTERVAL_MS`, por defecto 1 min, mínimo 30 s): reanuda los reintentos
+  vencidos y los pedidos en activación sin fallos parados más de 2 minutos.
+- Conciliación de respaldo (`CP_ORDERS_RECONCILE_INTERVAL_MS`, por defecto 24 h; también a los pocos minutos de
+  arrancar): reanuda todas las activaciones reanudables sin esperar y revisa los pedidos sin ningún pago en
+  `requested`, `quoted` o `contracted` sin cambios en `CP_ORDERS_EXPIRY_DAYS` días (por defecto 30). Con
+  `CP_ORDERS_EXPIRY_MODE=report` (POR DEFECTO) solo registra cada candidato en el log (`expiry_candidate`: pedido,
+  estado, días sin cambios y empresa; sin datos personales) y no cambia nada. Solo con `CP_ORDERS_EXPIRY_MODE=apply`
+  los rechaza con `code: "expired"` («Pago caducado» en el panel). Cambiar estados comerciales exige decisión explícita.
+- Botón «Reintentar»: `POST /cp/v1/commerce/tenants/:t/activation/retry` (`{ key? }`, token del Core con
+  `commerce:purchase`). Solo pedidos de esa empresa en activación con algún fallo y base válida; 200 si ya está
+  activo, 202 si se reanudó o hay otra ejecución en curso, 429 si se repite antes de 1 minuto por pedido (o de 5 s
+  por empresa), 409 si no hay nada que reintentar.
 
 ## Pagos: solo modo pruebas
 
@@ -173,6 +201,11 @@ Contrato aditivo de `activation` en el catálogo del panel (`GET /commerce/tenan
 | `CP_ORCHESTRATOR_ENABLED=1` | Monta `/orders` (requiere CRM, web, suscripciones, licencias y la migración 0010) |
 | `CP_PAYMENTS_PROVIDER=simulated` + `CP_PAYMENTS_TEST_WEBHOOK_SECRET` (≥ 32 caracteres) | Pagos de prueba y webhook firmado |
 | `CP_PAYMENTS_AUTO_CHARGE` | No autorizado: si se activa, el servicio no arranca |
+| `CP_ORDERS_RECOVERY_ENABLED=0` | Apaga la recuperación automática y la conciliación diaria (encendidas con los pedidos) |
+| `CP_ORDERS_RECOVERY_INTERVAL_MS` | Intervalo de los reintentos (30 s – 1 h; por defecto 60 000) |
+| `CP_ORDERS_RECONCILE_INTERVAL_MS` | Intervalo de la conciliación (1 h – 7 días; por defecto 24 h) |
+| `CP_ORDERS_EXPIRY_DAYS` | Días sin cambios para vencer un pedido sin cobro (0 = no vencen; por defecto 30) |
+| `CP_ORDERS_EXPIRY_MODE` | `report` (por defecto: solo registra los candidatos) o `apply` (los rechaza con `code: "expired"`) |
 
 ## Decisiones sobre los huecos del PR #101
 
@@ -191,5 +224,6 @@ Contrato aditivo de `activation` en el catálogo del panel (`GET /commerce/tenan
 
 - Proveedor de pagos real (y su modo de pruebas con credenciales): requiere autorización.
 - Interfaz en el CRM para los pedidos.
-- Programar `review` (hoy es una acción explícita).
+- Programar `review` completo: la recuperación de activaciones y el vencimiento ya son periódicos; el resto lo
+  programa el motor de ciclo de vida cuando está encendido.
 - Cambio simultáneo de plan y periodicidad: en dos pedidos.
