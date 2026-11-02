@@ -196,7 +196,7 @@ export function ShowcaseCarousel({ slides, autoplayMs, onNav }: { slides: Resolv
       ref={ref}
       aria-roledescription="carrusel"
       aria-label="Destacados del marketplace"
-      className="relative overflow-hidden rounded-3xl border border-border bg-card shadow-2xl shadow-black/40"
+      className="cx-on-image relative overflow-hidden rounded-3xl border border-border bg-card shadow-2xl shadow-black/15 dark:shadow-black/40"
       onMouseEnter={() => setHover(true)}
       onMouseLeave={() => setHover(false)}
       onFocusCapture={() => setFocus(true)}
@@ -275,7 +275,7 @@ export function NeutralHero({ title, description }: { title: string; description
     <header className="cx-glow relative overflow-hidden rounded-3xl border border-border bg-card px-6 py-8 sm:px-10">
       <div aria-hidden="true" className="cx-placeholder-grid absolute inset-0" />
       <div className="relative flex items-center gap-4">
-        <span aria-hidden="true" className="inline-flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-primary text-primary-foreground shadow-lg shadow-black/40">
+        <span aria-hidden="true" className="inline-flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-primary text-primary-foreground shadow-lg shadow-black/10 dark:shadow-black/40">
           <PackagePlus className="h-7 w-7" />
         </span>
         <div className="min-w-0">
@@ -311,7 +311,7 @@ export function AccessTiles({ tiles, active, onSelect }: { tiles: Array<{ id: Ac
                 onClick={() => onSelect(t.id)}
                 className={cn(
                   "flex h-full w-full items-center gap-3 rounded-2xl border px-4 py-3 text-left transition-colors",
-                  on ? "cx-tile-active shadow-lg shadow-black/40" : "border-border bg-card text-foreground hover:border-primary/60 hover:bg-muted",
+                  on ? "cx-tile-active shadow-lg shadow-black/10 dark:shadow-black/40" : "border-border bg-card text-foreground hover:border-primary/60 hover:bg-muted",
                 )}
               >
                 <span aria-hidden="true" className={cn("inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-xl", on ? "bg-background/20" : "bg-muted cx-red-text")}>

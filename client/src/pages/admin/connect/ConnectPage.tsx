@@ -113,7 +113,7 @@ export default function ConnectPage() {
 
   return (
     <AdminLayout>
-      <div className="dark cx-stage -m-4 min-h-full p-4 sm:-m-6 sm:p-6">
+      <div className="cx-stage -m-4 min-h-full p-4 sm:-m-6 sm:p-6">
         <div className="mx-auto max-w-7xl space-y-6">
           {hasSlides ? (
             <>

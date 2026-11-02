@@ -75,7 +75,7 @@ export default function ConnectDetailPage() {
 
   return (
     <AdminLayout>
-      <div className={cn("dark cx-stage -m-4 min-h-full p-4 sm:-m-6 sm:p-6", item && action?.kind !== "none" && "cx-mobile-bar-space")} data-accent={item?.sheet.layout.accentColor ?? undefined}>
+      <div className={cn("cx-stage -m-4 min-h-full p-4 sm:-m-6 sm:p-6", item && action?.kind !== "none" && "cx-mobile-bar-space")} data-accent={item?.sheet.layout.accentColor ?? undefined}>
         <div className="mx-auto max-w-7xl space-y-6">
           <Link href={AMPLIAR_PATH} className="inline-flex items-center gap-2 rounded text-sm text-muted-foreground hover:text-foreground">
             <ArrowLeft className="h-4 w-4" aria-hidden="true" /> Volver al marketplace
@@ -143,7 +143,7 @@ function Hero({ item, brand }: { item: ConnectCatalogItem; brand: string }) {
   );
   if (style === "image" && hero) {
     return (
-      <header id={SHEET_ANCHORS.description} className="relative scroll-mt-20 overflow-hidden rounded-3xl border border-border bg-card">
+      <header id={SHEET_ANCHORS.description} className="cx-on-image relative scroll-mt-20 overflow-hidden rounded-3xl border border-border bg-card">
         <picture>
           {hero.mobileSrc && <source media="(max-width: 767px)" srcSet={hero.mobileSrc} />}
           <ProductMedia item={item} image={hero} sizes="100vw" eager className="absolute inset-0" />
@@ -158,7 +158,7 @@ function Hero({ item, brand }: { item: ConnectCatalogItem; brand: string }) {
     <header id={SHEET_ANCHORS.description} className="cx-glow relative grid scroll-mt-20 items-center gap-6 overflow-hidden rounded-3xl border border-border bg-card p-6 sm:p-8 lg:grid-cols-[minmax(0,1.1fr)_minmax(0,1fr)]">
       {text}
       {style !== "plain" && (
-        <figure className="relative overflow-hidden rounded-2xl border border-border shadow-2xl shadow-black/50">
+        <figure className="relative overflow-hidden rounded-2xl border border-border shadow-2xl shadow-black/10 dark:shadow-black/50">
           <div className="aspect-[16/10]">
             {hero ? (
               <picture>
@@ -296,7 +296,7 @@ function ContractPanel({
   const others = sortPrices(item.prices).slice(1);
   const conditions = [s.terms.commitment, s.terms.cancellation, s.terms.activation].filter((x): x is string => !!x);
   return (
-    <aside id={SHEET_ANCHORS.prices} aria-label="Contratación" className="cx-glow scroll-mt-20 space-y-5 rounded-3xl border-2 border-primary/60 bg-card p-5 shadow-2xl shadow-black/50 sm:p-6 lg:sticky lg:top-16">
+    <aside id={SHEET_ANCHORS.prices} aria-label="Contratación" className="cx-glow scroll-mt-20 space-y-5 rounded-3xl border-2 border-primary/60 bg-card p-5 shadow-2xl shadow-black/10 dark:shadow-black/50 sm:p-6 lg:sticky lg:top-16">
       <div className="flex flex-wrap items-start justify-between gap-2">
         <p className="min-w-0 break-words text-sm font-semibold uppercase tracking-[0.14em] text-muted-foreground">{item.name}</p>
         <StateBadge state={item.state} />
@@ -396,7 +396,7 @@ function MobileBar({ item, action, onRun }: { item: ConnectCatalogItem; action: 
   }, []);
   if (typing) return null;
   return (
-    <div className="dark cx-stage fixed inset-x-0 bottom-0 z-30 border-t border-border px-4 pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-3 shadow-[0_-12px_30px_rgba(0,0,0,0.45)] lg:hidden">
+    <div className="cx-stage fixed inset-x-0 bottom-0 z-30 border-t border-border px-4 pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-3 shadow-[0_-12px_30px_var(--cx-shadow)] lg:hidden">
       <div className="mx-auto flex max-w-3xl items-center gap-3">
         <div className="min-w-0 flex-1">
           {item.state === "active" ? <p className="text-sm text-foreground">{item.name}</p> : <BigPrice prices={item.prices} />}
