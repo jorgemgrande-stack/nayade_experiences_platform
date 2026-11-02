@@ -182,11 +182,15 @@ export class InvoicingService {
     if (problems.length) throw new InvoicingError(this.d.issueEnabled ? "invalid_state" : "unavailable", `No se puede expedir: ${problems.join("; ")}`);
     const original = invoice.originalInvoiceId ? await this.must(invoice.originalInvoiceId) : null;
     // Una rectificativa lleva los datos del cliente de la factura que corrige y va en su propia serie (art. 15 RD 1619/2012)
-    const customer = original?.customer ?? (isStripeSale(invoice) ? (await this.d.stripeSales!.readiness(invoice)).party : customerOf((await this.d.company(invoice.companyId))!).party);
+    // Venta de Stripe: comprador y datos fiscales (tipo de factura, caso, mención) que se congelan al expedir
+    const sale = !original && isStripeSale(invoice) ? await this.d.stripeSales!.readiness(invoice) : null;
+    const customer = original?.customer ?? (sale ? sale.party : customerOf((await this.d.company(invoice.companyId))!).party);
     if (!customer) throw new InvoicingError("invalid_state", "No se puede expedir: faltan los datos fiscales del cliente");
-    const seriesCode = invoice.kind === "rectification" ? `${this.d.seriesCode}R` : this.d.seriesCode;
+    // Factura simplificada (arts. 4 y 7 RD 1619/2012): serie propia con numeración correlativa independiente
+    const simplified = (sale?.fiscal ?? invoice.fiscal)?.invoiceType === "simplified";
+    const seriesCode = invoice.kind === "rectification" ? `${this.d.seriesCode}R` : simplified ? `${this.d.seriesCode}S` : this.d.seriesCode;
     const now = this.now();
-    const issued = await this.d.store.issue({ id, seriesCode, issueDate: ymd(now), issuer: this.d.issuer, customer, issuedBy: actor, issuedAt: now });
+    const issued = await this.d.store.issue({ id, seriesCode, issueDate: ymd(now), issuer: this.d.issuer, customer, issuedBy: actor, issuedAt: now, ...(sale?.fiscal ? { fiscal: sale.fiscal } : {}) });
     // Rectificación total: la original queda «rectificada» (una parcial la deja vigente por la diferencia)
     if (original && issued.totalCents === -original.totalCents) await this.d.store.setStatus(original.id, "rectified", now);
     // Venta de Stripe (o su rectificativa): su documento fiscal queda emitido con el número; si falla, la pasada lo repara
@@ -209,7 +213,10 @@ export class InvoicingService {
     const full = i.baseCents === undefined || i.baseCents === o.baseCents;
     if (!full && (!Number.isInteger(i.baseCents) || i.baseCents! <= 0 || i.baseCents! > o.baseCents)) throw new InvoicingError("invalid_input", "La base a rectificar debe ser positiva y no mayor que la de la factura");
     if (!full && rates.length !== 1) throw new InvoicingError("invalid_input", "Con varios tipos de IVA, solo rectificación total");
-    const lines = full ? o.lines.map((l, k) => lineOf(k + 1, `Rectificación: ${l.concept}`.slice(0, 300), l.quantity, -l.unitCents, l.taxRateBp)) : [lineOf(1, `Rectificación parcial de la factura ${o.number}`, 1, -i.baseCents!, rates[0])];
+    // Una línea con descuento se rectifica con sus mismos importes en negativo (bruto, descuento, base y cuota)
+    const lines = full
+      ? o.lines.map((l, k) => (l.discountCents ? { position: k + 1, concept: `Rectificación: ${l.concept}`.slice(0, 300), quantity: l.quantity, unitCents: -l.unitCents, baseCents: -l.baseCents, taxRateBp: l.taxRateBp, taxCents: -l.taxCents, grossCents: -(l.grossCents ?? 0), discountCents: -l.discountCents } : lineOf(k + 1, `Rectificación: ${l.concept}`.slice(0, 300), l.quantity, -l.unitCents, l.taxRateBp)))
+      : [lineOf(1, `Rectificación parcial de la factura ${o.number}`, 1, -i.baseCents!, rates[0])];
     const t = totals(lines);
     const { invoice } = await this.d.store.insertDraft({
       sourceKey: `rectify:${o.id}:${-t.baseCents}`,
@@ -230,6 +237,8 @@ export class InvoicingService {
       createdBy: actor,
       createdAt: this.now(),
       lines,
+      // Mismo tipo de factura, caso y mención que la original (si los tiene)
+      ...(o.fiscal ? { fiscal: { ...o.fiscal, advisorPending: Array.from(new Set([...o.fiscal.advisorPending, ...(o.fiscal.invoiceType === "simplified" ? ["rectificativa_simplificada"] : [])])) } } : {}),
     });
     return invoice;
   }

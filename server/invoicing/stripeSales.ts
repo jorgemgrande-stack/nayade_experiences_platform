@@ -10,7 +10,12 @@
  *
  *  - Borrador: uno por factura de Stripe cobrada (`order:<pedido>:in:<factura>`, único por entorno): repetir la pasada,
  *    o que el evento llegue dos veces, nunca crea otra factura. Líneas e importes los del cobro real; el IVA, el que se
- *    cobró (cuota por línea de Stripe Tax), sin recalcularlo. Fecha de operación: el día del cobro (cobro anticipado).
+ *    cobró (cuota por línea de Stripe Tax), sin recalcularlo. Descuentos: por línea (bruto, descuento y base) cuando el
+ *    reparto casa con la cuota cobrada en cada línea; si no, una línea agrupada solo con un único tipo impositivo.
+ *    Fechas: operación (devengo) = el cobro si es anticipado (art. 75.Dos de la Ley 37/1992) o el inicio del periodo si
+ *    el cobro llegó después (art. 75.Uno.7.º); el periodo de prestación y la fecha de cobro constan aparte.
+ *  - Caso fiscal: `fiscalCases.ts`. Hoy solo `business:es_mainland`; los demás casos están preparados y DESACTIVADOS
+ *    (CP_INVOICING_FISCAL_CASES, CP_INVOICING_SIMPLIFIED) y, mientras lo estén, se bloquean como siempre.
  *  - Expedición: la de siempre (`InvoicingAutomation.issueDue`): contraste por API con Stripe, número correlativo, PDF y
  *    envío. Antes, `readiness` exige los datos fiscales completos del comprador y el IVA del 21 % de la península y
  *    Baleares; si falta algo, la factura queda bloqueada con el motivo (`invoice_issue_blocked`).
@@ -23,9 +28,10 @@ import { classifyTerritory, territoryGroup, type BuyerProfile } from "../stripe/
 import { STRIPE_PRODUCT_NAME } from "../stripe/catalog";
 import { invoiceSourceKey, type FiscalDocument, type FiscalDocumentStatus, type StripeInvoiceRecord } from "../stripe/fiscalDocuments";
 import type { InvoiceLineRow } from "../stripe/invoiceLines";
+import { BASE_CASE, fiscalCaseOf, isCaseEnabled, isValidCaseTaxId, legalMentionOf, NO_EXTRA_CASES, rateProblems, simplifiedDecision, TREATMENTS, type FiscalCase, type FiscalCasesConfig } from "./fiscalCases";
 import { customerOf, taxOf, ymd, type CompanyFiscal } from "./rules";
 import type { InvoicingStore } from "./store";
-import type { FiscalParty, Invoice, InvoiceLine, NewInvoice } from "./types";
+import type { FiscalParty, Invoice, InvoiceFiscalDetail, InvoiceLine, NewInvoice } from "./types";
 
 /** Tipo de IVA de las ventas de Elephant Source a compradores de la península y Baleares. */
 export const STANDARD_VAT_BP = 2100;
@@ -45,6 +51,8 @@ export interface StripeSalesRegistry {
   invoiceRecord(stripeInvoiceId: string): Promise<StripeInvoiceRecord | null>;
   buyerProfile(orderId: number): Promise<BuyerProfile | null>;
   markFiscalDocumentIssued(id: number, externalRef: string, by: string, at: number): Promise<FiscalDocument | null>;
+  /** Comprobaciones VIES del pedido (CRM `stripe_vat_checks`). Opcional: sin ella, ningún NIF-IVA consta válido. */
+  vatChecksOfOrder?(orderId: number): Promise<Array<{ country: string; vatNumber: string; status: string; checkedAt: number }>>;
 }
 
 export interface StripeSalesDeps {
@@ -55,6 +63,8 @@ export interface StripeSalesDeps {
   orderCompany(orderId: number): Promise<number | null>;
   /** Ficha fiscal de la empresa (CRM): solo si el pedido no tiene perfil fiscal del comprador. */
   company(id: number): Promise<CompanyFiscal | null>;
+  /** Casos fiscales activados además del vigente y facturas simplificadas. Por defecto, ninguno (como siempre). */
+  fiscalCases?: FiscalCasesConfig;
   now?: () => number;
 }
 
@@ -72,8 +82,8 @@ export interface StripeSalesReport {
 /** Lo que la facturación necesita de las ventas de Stripe (la implementa `StripeSalesInvoicing`). */
 export interface StripeSalesPort {
   generate(store: InvoicingStore, actor: string, f?: { companyId?: number }): Promise<StripeSalesReport>;
-  /** Comprador y motivos por los que aún no se puede expedir (vacío = se puede). */
-  readiness(inv: Invoice): Promise<{ party: FiscalParty | null; problems: string[] }>;
+  /** Comprador, motivos por los que aún no se puede expedir (vacío = se puede) y datos fiscales que se congelan al expedir. */
+  readiness(inv: Invoice): Promise<{ party: FiscalParty | null; problems: string[]; fiscal?: InvoiceFiscalDetail }>;
   /** Tras expedir: el documento fiscal del cobro (o del reembolso) queda emitido con el número. */
   issued(inv: Invoice, store: Pick<InvoicingStore, "get">): Promise<void>;
 }
@@ -115,36 +125,98 @@ export function rateOf(baseCents: number, taxCents: number, tolerance = 1): numb
 }
 
 /**
- * Líneas de la factura propia con los importes EXACTOS del cobro: base total − IVA y la cuota cobrada. Se usan las
- * líneas de Stripe cuando cuadran al céntimo con la factura; si no (descuentos, saldo, líneas sin registrar), una sola
- * línea con los totales cobrados.
+ * Reparto de un descuento total entre líneas en proporción a su importe (con su signo: un cupón porcentual descuenta
+ * también los abonos), como aplica Stripe un cupón de factura. La última línea con importe recibe el resto, para que la
+ * suma sea exacta. null si una línea quedaría con más descuento que importe o con el signo contrario.
+ */
+export function allocateDiscount(amounts: number[], discountCents: number): number[] | null {
+  const gross = amounts.reduce((a, x) => a + x, 0);
+  if (gross <= 0 || discountCents <= 0 || discountCents > gross) return null;
+  const last = amounts.map((x) => x !== 0).lastIndexOf(true);
+  let given = 0;
+  const out = amounts.map((x, k) => {
+    if (x === 0) return 0;
+    const v = k === last ? discountCents - given : Math.round((discountCents * x) / gross);
+    given += v;
+    return v;
+  });
+  return out.every((v, k) => Math.abs(v) <= Math.abs(amounts[k]) && Math.sign(v) * Math.sign(amounts[k]) >= 0) ? out : null;
+}
+
+/**
+ * Líneas de la factura propia con los importes EXACTOS del cobro: base total − IVA y la cuota cobrada.
+ *  - Las líneas de Stripe cuadran al céntimo con la factura: una línea por partida (como siempre).
+ *  - Hay descuento (la suma de las partidas supera la base cobrada): una línea por partida con su importe bruto, su
+ *    descuento y su base neta, si el reparto proporcional casa con la cuota que Stripe cobró en CADA línea (±1 céntimo)
+ *    y cada tipo es el 21 % o el 0 %. Si no casa, una línea agrupada con el bruto, el descuento y la base totales; su
+ *    tipo es el efectivo, que `readiness` bloquea si no es un único tipo (nunca un desglose falso).
+ *  - El resto (líneas sin registrar o que no cuadran por otro motivo): una sola línea con los totales cobrados.
+ * El saldo a favor del cliente no es un descuento: no cambia el total de la factura (es una forma de pago).
  */
 export function saleLines(rec: Pick<StripeInvoiceRecord, "purpose" | "totalCents" | "taxCents" | "periodStart">, stripeLines: InvoiceLineRow[]): InvoiceLine[] {
   const tax = rec.taxCents ?? 0;
   const base = rec.totalCents - tax;
   const usable = stripeLines.filter((l) => l.amountCents !== 0 || (l.taxCents ?? 0) !== 0);
-  const fits = usable.length > 0 && usable.reduce((a, l) => a + l.amountCents, 0) === base && usable.reduce((a, l) => a + (l.taxCents ?? 0), 0) === tax && (tax === 0 || usable.every((l) => l.taxCents !== null));
-  if (!fits) {
-    const period = span(Math.min(...stripeLines.map((l) => l.periodStart ?? Infinity), rec.periodStart ?? Infinity), Math.max(...stripeLines.map((l) => l.periodEnd ?? -Infinity), -Infinity));
-    return [{ position: 1, concept: `${PURPOSE_CONCEPT[rec.purpose]}${period ? ` — ${period}` : ""}`.slice(0, 300), quantity: 1, unitCents: base, baseCents: base, taxRateBp: rateOf(base, tax, Math.max(1, stripeLines.length)), taxCents: tax }];
+  const gross = usable.reduce((a, l) => a + l.amountCents, 0);
+  const taxesFit = usable.length > 0 && usable.reduce((a, l) => a + (l.taxCents ?? 0), 0) === tax && (tax === 0 || usable.every((l) => l.taxCents !== null));
+  if (taxesFit && gross === base) return usable.map((l, k) => partLine(l, k));
+  const discount = gross - base;
+  const period = span(Math.min(...stripeLines.map((l) => l.periodStart ?? Infinity), rec.periodStart ?? Infinity), Math.max(...stripeLines.map((l) => l.periodEnd ?? -Infinity), -Infinity));
+  const concept = `${PURPOSE_CONCEPT[rec.purpose]}${period ? ` — ${period}` : ""}`.slice(0, 300);
+  if (taxesFit && discount > 0) {
+    const alloc = allocateDiscount(usable.map((l) => l.amountCents), discount);
+    if (alloc) {
+      const lines = usable.map((l, k) => partLine(l, k, alloc[k]));
+      if (lines.every((l) => (l.taxRateBp === STANDARD_VAT_BP || (l.taxRateBp === 0 && l.taxCents === 0)) && Math.abs(taxOf(l.baseCents, l.taxRateBp) - l.taxCents) <= 1)) return lines;
+    }
+    return [{ position: 1, concept, quantity: 1, unitCents: gross, baseCents: base, taxRateBp: rateOf(base, tax, Math.max(1, stripeLines.length)), taxCents: tax, grossCents: gross, discountCents: discount }];
   }
-  return usable.map((l, k) => {
-    const lineTax = l.taxCents ?? 0;
-    const q = l.quantity && l.quantity > 1 && l.amountCents % l.quantity === 0 ? l.quantity : 1;
-    const period = span(l.periodStart, l.periodEnd);
-    const what = `${productLabel(l.productKey)}${l.proration ? (l.amountCents < 0 ? " (abono por prorrateo)" : " (prorrateo)") : ""}${q === 1 && l.quantity && l.quantity > 1 ? ` × ${l.quantity}` : ""}`;
-    return { position: k + 1, concept: `${what}${period ? ` — ${period}` : ""}`.slice(0, 300), quantity: q, unitCents: l.amountCents / q, baseCents: l.amountCents, taxRateBp: rateOf(l.amountCents, lineTax), taxCents: lineTax };
-  });
+  return [{ position: 1, concept, quantity: 1, unitCents: base, baseCents: base, taxRateBp: rateOf(base, tax, Math.max(1, stripeLines.length)), taxCents: tax }];
+}
+
+/** Línea de una partida de Stripe; con `discountCents`, su importe bruto, el descuento y la base neta. */
+function partLine(l: InvoiceLineRow, k: number, discountCents = 0): InvoiceLine {
+  const lineTax = l.taxCents ?? 0;
+  const q = l.quantity && l.quantity > 1 && l.amountCents % l.quantity === 0 ? l.quantity : 1;
+  const period = span(l.periodStart, l.periodEnd);
+  const what = `${productLabel(l.productKey)}${l.proration ? (l.amountCents < 0 ? " (abono por prorrateo)" : " (prorrateo)") : ""}${q === 1 && l.quantity && l.quantity > 1 ? ` × ${l.quantity}` : ""}`;
+  const line: InvoiceLine = { position: k + 1, concept: `${what}${period ? ` — ${period}` : ""}`.slice(0, 300), quantity: q, unitCents: l.amountCents / q, baseCents: l.amountCents - discountCents, taxRateBp: rateOf(l.amountCents - discountCents, lineTax), taxCents: lineTax };
+  if (discountCents) Object.assign(line, { grossCents: l.amountCents, discountCents });
+  return line;
+}
+
+/**
+ * Fecha de operación (devengo) de una venta cobrada: el día del cobro si es anterior o igual al inicio del periodo que
+ * paga (cobro anticipado, art. 75.Dos de la Ley 37/1992); si el cobro llegó después (reintento), el inicio del periodo
+ * (exigibilidad, art. 75.Uno.7.º). Pendiente de confirmar por la gestoría (`devengo_cobro_anticipado`).
+ */
+export function accrualOf(collectedAt: number, servicePeriodStart: number | null): { operationDate: string; basis: "advance_payment" | "due_date" } {
+  const collected = ymd(collectedAt);
+  if (servicePeriodStart === null) return { operationDate: collected, basis: "advance_payment" };
+  const due = ymd(servicePeriodStart);
+  return due < collected ? { operationDate: due, basis: "due_date" } : { operationDate: collected, basis: "advance_payment" };
 }
 
 export class StripeSalesInvoicing implements StripeSalesPort {
   private readonly now: () => number;
+  private readonly cases: FiscalCasesConfig;
   constructor(private readonly d: StripeSalesDeps) {
     this.now = d.now ?? Date.now;
+    this.cases = d.fiscalCases ?? NO_EXTRA_CASES;
+  }
+
+  /** ¿NIF-IVA del comprador válido en VIES (la comprobación más reciente de ese número en el pedido)? */
+  private async viesValid(profile: BuyerProfile): Promise<boolean> {
+    if (!profile.taxId || !this.d.stripe.vatChecksOfOrder) return false;
+    const norm = (x: string) => x.toUpperCase().replace(/[^A-Z0-9]/g, "");
+    const id = norm(profile.taxId);
+    const checks = await this.d.stripe.vatChecksOfOrder(profile.orderId).catch(() => []);
+    const hit = checks.filter((c) => id === norm(c.vatNumber) || id === norm(`${c.country}${c.vatNumber}`)).sort((a, b) => b.checkedAt - a.checkedAt)[0];
+    return hit?.status === "valid";
   }
 
   /** Datos fiscales del comprador del pedido: su perfil fiscal (lo que usó Stripe Tax) o, sin él, la ficha del CRM. */
-  async buyer(orderId: number, companyId: number, rec: Pick<StripeInvoiceRecord, "customerCountry" | "customerPostalCode"> | null): Promise<{ party: FiscalParty | null; problems: string[] }> {
+  async buyer(orderId: number, companyId: number, rec: Pick<StripeInvoiceRecord, "customerCountry" | "customerPostalCode"> | null, totalCents = 0): Promise<{ party: FiscalParty | null; problems: string[]; fiscalCase?: FiscalCase; invoiceType?: "complete" | "simplified" }> {
     const profile = await this.d.stripe.buyerProfile(orderId).catch(() => null);
     if (!profile || profile.orderId !== orderId) {
       const company = await this.d.company(companyId);
@@ -152,13 +224,44 @@ export class StripeSalesInvoicing implements StripeSalesPort {
       const r = customerOf(company);
       return { party: r.party, problems: r.problems.map((p) => `comprador: ${p}`) };
     }
+    const vies = profile.territory === "eu" && profile.type === "business" ? await this.viesValid(profile) : false;
+    const fiscalCase = fiscalCaseOf({ type: profile.type, territory: profile.territory, viesValid: vies, nature: "electronic_saas" });
+    if (fiscalCase !== BASE_CASE && isCaseEnabled(fiscalCase, this.cases)) return this.caseBuyer(profile, fiscalCase, rec, totalCents);
     const a = profile.billingAddress;
     const r = customerOf({ name: profile.displayName, legalName: profile.displayName, taxId: profile.taxId, address: a ? [a.line1, a.line2].filter(Boolean).join(", ") : null, postalCode: profile.postalCode, city: a?.city ?? null, country: profile.country, billingEmail: profile.billingEmail });
     const problems = [...r.problems];
     // La dirección con la que Stripe calculó el impuesto debe ser del mismo territorio que la declarada
     const t = rec?.customerCountry ? classifyTerritory(rec.customerCountry, rec.customerPostalCode) : null;
     if (rec?.customerCountry && (!t || territoryGroup(t) !== territoryGroup(profile.territory))) problems.push("la dirección de la factura de Stripe no es del territorio del perfil fiscal declarado");
-    return { party: problems.length ? null : r.party, problems: problems.map((p) => `comprador: ${p}`) };
+    return { party: problems.length ? null : r.party, problems: problems.map((p) => `comprador: ${p}`), fiscalCase, invoiceType: "complete" };
+  }
+
+  /**
+   * Comprador de un caso fiscal ACTIVADO distinto del vigente: datos completos para la factura completa (NIF español con
+   * su control; de la UE, el comprobado en VIES; de fuera de la UE, el que conste) o, para un particular sin NIF, la
+   * factura simplificada si procede. Mismo contraste del territorio de la dirección de Stripe.
+   */
+  private caseBuyer(profile: BuyerProfile, fiscalCase: FiscalCase, rec: Pick<StripeInvoiceRecord, "customerCountry" | "customerPostalCode"> | null, totalCents: number) {
+    const problems: string[] = [];
+    const a = profile.billingAddress;
+    const taxId = (profile.taxId ?? "").trim().toUpperCase().replace(/[\s-]/g, "");
+    const country = profile.country.trim().toUpperCase();
+    const sd = simplifiedDecision({ fiscalCase, hasTaxId: !!taxId, totalCents, cfg: this.cases });
+    if (sd.problem) problems.push(sd.problem);
+    if (taxId && !isValidCaseTaxId(country, taxId)) problems.push("el NIF no es válido");
+    if (!profile.displayName?.trim()) problems.push(profile.type === "business" ? "falta la razón social" : "falta el nombre");
+    // Factura completa: domicilio completo. Simplificada: no se exige (art. 7 del RD 1619/2012)
+    if (sd.invoiceType === "complete") {
+      if (!a?.line1?.trim()) problems.push("falta el domicilio fiscal");
+      if (!a?.city?.trim()) problems.push("falta la localidad");
+      if (country === "ES" && !profile.postalCode) problems.push("falta el código postal");
+    }
+    const t = rec?.customerCountry ? classifyTerritory(rec.customerCountry, rec.customerPostalCode) : null;
+    if (rec?.customerCountry && (!t || territoryGroup(t) !== territoryGroup(profile.territory))) problems.push("la dirección de la factura de Stripe no es del territorio del perfil fiscal declarado");
+    // Simplificada: solo el nombre (el art. 7 del RD 1619/2012 no exige los datos del destinatario)
+    const simplified = sd.invoiceType === "simplified";
+    const party: FiscalParty = { legalName: (profile.displayName ?? "").trim(), taxId, address: simplified || !a ? "" : [a.line1, a.line2].filter(Boolean).join(", "), postalCode: simplified ? "" : (profile.postalCode ?? ""), city: simplified ? "" : (a?.city ?? ""), country, email: profile.billingEmail };
+    return { party: problems.length ? null : party, problems: problems.map((p) => `comprador: ${p}`), fiscalCase, invoiceType: sd.invoiceType };
   }
 
   async generate(store: InvoicingStore, actor: string, f: { companyId?: number } = {}): Promise<StripeSalesReport> {
@@ -220,6 +323,19 @@ export class StripeSalesInvoicing implements StripeSalesPort {
     const ends = stripeLines.map((l) => l.periodEnd).filter((x): x is number => x !== null);
     const periodStart = starts.length ? Math.min(...starts) : rec.periodStart;
     const periodEnd = ends.length ? Math.max(...ends) : null;
+    // Devengo: el cobro (anticipado) o, si llegó después del inicio del periodo de las partidas, ese inicio
+    const accrual = accrualOf(doc.createdAt, starts.length ? Math.min(...starts) : null);
+    const balanceAppliedCents = Math.max(0, rec.totalCents - rec.amountPaidCents);
+    const fiscal: InvoiceFiscalDetail = {
+      invoiceType: "complete",
+      fiscalCase: null,
+      treatment: null,
+      legalMention: null,
+      collectionDate: ymd(doc.createdAt),
+      accrualBasis: accrual.basis,
+      balanceAppliedCents,
+      advisorPending: ["devengo_cobro_anticipado", ...(lines.some((l) => l.discountCents) ? ["descuento_por_linea"] : []), ...(balanceAppliedCents ? ["saldo_a_favor"] : [])],
+    };
     return {
       sourceKey: stripeSaleSourceKey(doc.orderId, rec.stripeInvoiceId),
       kind: "invoice",
@@ -228,8 +344,9 @@ export class StripeSalesInvoicing implements StripeSalesPort {
       billingRef: `order:${doc.orderId}`,
       paymentRef: `stripe:in:${rec.stripeInvoiceId}`,
       originalInvoiceId: null,
-      // Servicio cobrado por anticipado: el IVA se devenga con el cobro (art. 75.2 de la Ley 37/1992)
-      operationDate: ymd(doc.createdAt),
+      // Servicio cobrado por anticipado: el IVA se devenga con el cobro (art. 75.Dos de la Ley 37/1992); si el cobro llegó
+      // tras el inicio del periodo, con su exigibilidad (art. 75.Uno.7.º)
+      operationDate: accrual.operationDate,
       periodStart,
       periodEnd,
       periodLabel: span(periodStart, periodEnd),
@@ -237,8 +354,9 @@ export class StripeSalesInvoicing implements StripeSalesPort {
       baseCents,
       taxCents,
       totalCents: baseCents + taxCents,
-      customer: (await this.buyer(doc.orderId, companyId, rec)).party,
-      notes: `Cobrada con Stripe (factura ${rec.number ?? rec.stripeInvoiceId}).`,
+      customer: (await this.buyer(doc.orderId, companyId, rec, baseCents + taxCents)).party,
+      notes: `Cobrada con Stripe (factura ${rec.number ?? rec.stripeInvoiceId}).${balanceAppliedCents ? ` Saldo a favor del cliente aplicado como forma de pago: ${euros(balanceAppliedCents)}.` : ""}`,
+      fiscal,
       createdBy: actor,
       createdAt: this.now(),
       lines,
@@ -265,7 +383,7 @@ export class StripeSalesInvoicing implements StripeSalesPort {
     }
   }
 
-  async readiness(inv: Invoice): Promise<{ party: FiscalParty | null; problems: string[] }> {
+  async readiness(inv: Invoice): Promise<{ party: FiscalParty | null; problems: string[]; fiscal?: InvoiceFiscalDetail }> {
     const ref = parseStripeSale(inv.sourceKey);
     if (!ref) return { party: null, problems: ["no es una venta de Stripe"] };
     const problems: string[] = [];
@@ -279,11 +397,30 @@ export class StripeSalesInvoicing implements StripeSalesPort {
     const companyId = await this.d.orderCompany(ref.orderId);
     if (companyId !== inv.companyId) problems.push("el pedido no es de la empresa de la factura");
     const rec = await this.d.stripe.invoiceRecord(ref.stripeInvoiceId);
-    const buyer = await this.buyer(ref.orderId, inv.companyId, rec);
+    const buyer = await this.buyer(ref.orderId, inv.companyId, rec, inv.totalCents);
     problems.push(...buyer.problems);
-    const rates = Array.from(new Set(inv.lines.filter((l) => l.taxRateBp !== STANDARD_VAT_BP).map((l) => l.taxRateBp)));
-    if (rates.length) problems.push(`el IVA cobrado en Stripe (${rates.map((r) => `${(r / 100).toLocaleString("es-ES")} %`).join(", ")}) no es el 21 % de un comprador de la península o Baleares: requiere revisión fiscal`);
-    return { party: problems.length ? null : buyer.party, problems };
+    const fiscalCase = buyer.fiscalCase ?? BASE_CASE;
+    const treatment = TREATMENTS[fiscalCase];
+    const activated = fiscalCase !== BASE_CASE && isCaseEnabled(fiscalCase, this.cases);
+    if (activated) problems.push(...rateProblems(inv.lines, treatment));
+    else {
+      const rates = Array.from(new Set(inv.lines.filter((l) => l.taxRateBp !== STANDARD_VAT_BP).map((l) => l.taxRateBp)));
+      if (rates.length) problems.push(`el IVA cobrado en Stripe (${rates.map((r) => `${(r / 100).toLocaleString("es-ES")} %`).join(", ")}) no es el 21 % de un comprador de la península o Baleares: requiere revisión fiscal`);
+    }
+    const invoiceType = buyer.invoiceType ?? "complete";
+    const advisor = [...(inv.fiscal?.advisorPending ?? []), ...treatment.advisor, ...(invoiceType === "simplified" ? ["factura_simplificada"] : [])];
+    const profile = activated ? await this.d.stripe.buyerProfile(ref.orderId).catch(() => null) : null;
+    const fiscal: InvoiceFiscalDetail = {
+      invoiceType,
+      fiscalCase,
+      treatment: treatment.code,
+      legalMention: activated ? legalMentionOf(fiscalCase, profile?.territory ?? null) : null,
+      collectionDate: inv.fiscal?.collectionDate ?? (inv.paidAt ? ymd(inv.paidAt) : null),
+      accrualBasis: inv.fiscal?.accrualBasis ?? "advance_payment",
+      balanceAppliedCents: inv.fiscal?.balanceAppliedCents ?? 0,
+      advisorPending: Array.from(new Set(advisor)),
+    };
+    return { party: problems.length ? null : buyer.party, problems, fiscal };
   }
 
   async issued(inv: Invoice, store: Pick<InvoicingStore, "get">): Promise<void> {

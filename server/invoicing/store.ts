@@ -5,7 +5,7 @@
  *  - huella encadenada con la anterior expedida de la serie.
  */
 import type mysql from "mysql2/promise";
-import { InvoicingError, type FiscalParty, type Invoice, type InvoiceLine, type NewInvoice, type PaymentStatus } from "./types";
+import { InvoicingError, type FiscalParty, type Invoice, type InvoiceFiscalDetail, type InvoiceLine, type NewInvoice, type PaymentStatus } from "./types";
 import { invoiceHash, invoiceNumber } from "./rules";
 
 export interface IssueInput {
@@ -16,6 +16,8 @@ export interface IssueInput {
   customer: FiscalParty;
   issuedBy: string;
   issuedAt: number;
+  /** Datos fiscales congelados al expedir (tipo de factura, caso, mención); sin ellos, los del borrador. */
+  fiscal?: InvoiceFiscalDetail | null;
 }
 
 export interface InvoicingStore {
@@ -81,6 +83,7 @@ export class MemoryInvoicingStore implements InvoicingStore {
     const key = `${i.seriesCode}:${yearOf(i.issueDate)}`;
     const s = this.series.get(key) ?? { next: 1, lastHash: null };
     const number = invoiceNumber(i.seriesCode, yearOf(i.issueDate), s.next);
+    if (i.fiscal !== undefined) r.fiscal = structuredClone(i.fiscal);
     const hash = invoiceHash(s.lastHash, { ...r, number, issueDate: i.issueDate, issuerTaxId: i.issuer.taxId, customerTaxId: i.customer.taxId });
     Object.assign(r, { status: "issued", seriesCode: i.seriesCode, number, issueDate: i.issueDate, issuer: i.issuer, customer: i.customer, previousHash: s.lastHash, hash, issuedAt: i.issuedAt, issuedBy: i.issuedBy, updatedAt: i.issuedAt, version: r.version + 1 });
     this.series.set(key, { next: s.next + 1, lastHash: hash });
@@ -100,13 +103,23 @@ export class MysqlInvoicingStore implements InvoicingStore {
   ) {
     this.lm = mode === "live" ? 1 : 0;
   }
+  private detailReady?: Promise<boolean>;
+  /** ¿Existen las columnas de CRM 0045 (datos fiscales y descuentos por línea)? Sin ellas, todo como antes. */
+  private hasDetail(): Promise<boolean> {
+    this.detailReady ??= this.pool.query("SELECT fiscal_json FROM invoices LIMIT 0").then(
+      () => this.pool.query("SELECT gross_cents, discount_cents FROM invoice_lines LIMIT 0").then(() => true, () => false),
+      () => false,
+    );
+    return this.detailReady;
+  }
   private async lines(ids: number[]): Promise<Map<number, InvoiceLine[]>> {
     const out = new Map<number, InvoiceLine[]>();
     if (!ids.length) return out;
     const [rows] = await this.pool.query<Row[]>("SELECT * FROM invoice_lines WHERE invoice_id IN (?) ORDER BY invoice_id, position", [ids]);
     for (const l of rows) {
       const id = Number(l.invoice_id);
-      out.set(id, [...(out.get(id) ?? []), { position: Number(l.position), concept: String(l.concept), quantity: Number(l.quantity), unitCents: Number(l.unit_cents), baseCents: Number(l.base_cents), taxRateBp: Number(l.tax_rate_bp), taxCents: Number(l.tax_cents) }]);
+      const discount = l.discount_cents === null || l.discount_cents === undefined ? {} : { grossCents: Number(l.gross_cents), discountCents: Number(l.discount_cents) };
+      out.set(id, [...(out.get(id) ?? []), { position: Number(l.position), concept: String(l.concept), quantity: Number(l.quantity), unitCents: Number(l.unit_cents), baseCents: Number(l.base_cents), taxRateBp: Number(l.tax_rate_bp), taxCents: Number(l.tax_cents), ...discount }]);
     }
     return out;
   }
@@ -145,6 +158,7 @@ export class MysqlInvoicingStore implements InvoicingStore {
       updatedAt: Number(r.updated_at),
       version: Number(r.version),
       lines,
+      ...(r.fiscal_json === undefined ? {} : { fiscal: json<InvoiceFiscalDetail>(r.fiscal_json) }),
     };
   }
   private async many(where: string, args: unknown[], limit = 200) {
@@ -167,6 +181,7 @@ export class MysqlInvoicingStore implements InvoicingStore {
     return this.many(w.join(" AND "), a, f.limit);
   }
   async insertDraft(n: NewInvoice) {
+    const detail = await this.hasDetail();
     const conn = await this.pool.getConnection();
     try {
       await conn.beginTransaction();
@@ -178,12 +193,18 @@ export class MysqlInvoicingStore implements InvoicingStore {
           [this.lm, n.sourceKey, n.kind, n.paymentStatus, n.companyId, n.billingRef, n.paymentRef, n.originalInvoiceId, n.operationDate, n.periodStart, n.periodEnd, n.periodLabel, n.currency, n.baseCents, n.taxCents, n.totalCents, n.customer ? JSON.stringify(n.customer) : null, n.notes, n.createdBy, n.createdAt, n.createdAt],
         );
         id = r.insertId;
+        if (detail && n.fiscal) await conn.query("UPDATE invoices SET fiscal_json = ? WHERE id = ?", [JSON.stringify(n.fiscal), id]);
       } catch (e) {
         if ((e as { code?: string }).code !== "ER_DUP_ENTRY") throw e;
         await conn.rollback();
         return { invoice: (await this.bySource(n.sourceKey))!, created: false };
       }
-      for (const l of n.lines) await conn.query("INSERT INTO invoice_lines (invoice_id, position, concept, quantity, unit_cents, base_cents, tax_rate_bp, tax_cents) VALUES (?, ?, ?, ?, ?, ?, ?, ?)", [id, l.position, l.concept, l.quantity, l.unitCents, l.baseCents, l.taxRateBp, l.taxCents]);
+      for (const l of n.lines) {
+        if (detail && l.discountCents) await conn.query("INSERT INTO invoice_lines (invoice_id, position, concept, quantity, unit_cents, base_cents, tax_rate_bp, tax_cents, gross_cents, discount_cents) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", [id, l.position, l.concept, l.quantity, l.unitCents, l.baseCents, l.taxRateBp, l.taxCents, l.grossCents, l.discountCents]);
+        // Sin las columnas de 0045, la línea se guarda por su base (precio unitario neto): el descuento no se pierde en los importes
+        else if (l.discountCents) await conn.query("INSERT INTO invoice_lines (invoice_id, position, concept, quantity, unit_cents, base_cents, tax_rate_bp, tax_cents) VALUES (?, ?, ?, ?, ?, ?, ?, ?)", [id, l.position, l.concept, 1, l.baseCents, l.baseCents, l.taxRateBp, l.taxCents]);
+        else await conn.query("INSERT INTO invoice_lines (invoice_id, position, concept, quantity, unit_cents, base_cents, tax_rate_bp, tax_cents) VALUES (?, ?, ?, ?, ?, ?, ?, ?)", [id, l.position, l.concept, l.quantity, l.unitCents, l.baseCents, l.taxRateBp, l.taxCents]);
+      }
       await conn.commit();
       return { invoice: (await this.get(id))!, created: true };
     } catch (e) {
@@ -205,6 +226,7 @@ export class MysqlInvoicingStore implements InvoicingStore {
   }
   async issue(i: IssueInput) {
     const year = yearOf(i.issueDate);
+    if (i.fiscal !== undefined && !(await this.hasDetail())) i = { ...i, fiscal: undefined };
     // La serie existe antes de la transacción; dentro, siempre se bloquea primero la serie y después la factura (mismo
     // orden en todas las expediciones: sin interbloqueos). Un interbloqueo residual se reintenta.
     await this.pool.query("INSERT IGNORE INTO invoice_series (livemode, code, year, next_number, created_at) VALUES (?, ?, ?, 1, ?)", [this.lm, i.seriesCode, year, i.issuedAt]);
@@ -228,12 +250,14 @@ export class MysqlInvoicingStore implements InvoicingStore {
       const prev = (s[0].last_hash as string | null) ?? null;
       const lines = (await this.lines([i.id])).get(i.id) ?? [];
       const inv = this.row(cur[0], lines);
+      if (i.fiscal !== undefined) inv.fiscal = i.fiscal;
       const number = invoiceNumber(i.seriesCode, year, next);
       const hash = invoiceHash(prev, { ...inv, number, issueDate: i.issueDate, issuerTaxId: i.issuer.taxId, customerTaxId: i.customer.taxId });
       await conn.query(
         "UPDATE invoices SET status = 'issued', series_code = ?, number = ?, issue_date = ?, issuer_json = ?, customer_json = ?, previous_hash = ?, hash = ?, issued_at = ?, issued_by = ?, updated_at = ?, version = version + 1 WHERE id = ? AND status = 'draft'",
         [i.seriesCode, number, i.issueDate, JSON.stringify(i.issuer), JSON.stringify(i.customer), prev, hash, i.issuedAt, i.issuedBy, i.issuedAt, i.id],
       );
+      if (i.fiscal !== undefined) await conn.query("UPDATE invoices SET fiscal_json = ? WHERE id = ?", [i.fiscal ? JSON.stringify(i.fiscal) : null, i.id]);
       await conn.query("UPDATE invoice_series SET next_number = next_number + 1, last_hash = ? WHERE livemode = ? AND code = ? AND year = ?", [hash, this.lm, i.seriesCode, year]);
       await conn.commit();
     } catch (e) {

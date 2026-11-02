@@ -135,6 +135,7 @@ import { BankAutoReconciler } from "../finance/bankAutoReconcile";
 import { FinanceIntegrity } from "../finance/integrity";
 import { StripeApiBalanceReader } from "../finance/stripeBalanceApi";
 import { InvoicingService } from "../invoicing/service";
+import { fiscalCasesFromEnv } from "../invoicing/fiscalCases";
 import { StripeSalesInvoicing } from "../invoicing/stripeSales";
 import { DEFAULT_PROFORMA_LEAD_DAYS, InvoicingAutomation } from "../invoicing/delivery";
 import { billingContact } from "../notifications/customerTriggers";
@@ -691,9 +692,12 @@ async function main() {
   // registro de Stripe y los pedidos montados, y en el mismo entorno (pruebas o real) que la facturación propia
   const salesOrders = orders?.store;
   const salesMode = external?.store.mode ?? "test";
+  // Casos fiscales preparados además de la península y Baleares (CP_INVOICING_FISCAL_CASES, CP_INVOICING_SIMPLIFIED):
+  // ninguno sin las variables; un valor no admitido impide arrancar
+  const invoicingFiscalCases = fiscalCasesFromEnv();
   const stripeSales =
     invoicing && stripe && salesOrders && crmStore && stripe.store.mode === salesMode
-      ? new StripeSalesInvoicing({ stripe: stripe.store, lines: stripe.invoiceLines ?? null, orderCompany: async (id) => (await salesOrders.get(id))?.companyId ?? null, company: async (id) => (await crmStore.get("companies", id)) as CompanyFiscal | null })
+      ? new StripeSalesInvoicing({ stripe: stripe.store, lines: stripe.invoiceLines ?? null, orderCompany: async (id) => (await salesOrders.get(id))?.companyId ?? null, company: async (id) => (await crmStore.get("companies", id)) as CompanyFiscal | null, fiscalCases: invoicingFiscalCases })
       : null;
   if (invoicing && stripeSales) invoicing.stripeSales = stripeSales;
   const stripeSalesReason = stripeSales ? null : !stripe ? "stripe_not_mounted" : !salesOrders ? "orders_not_mounted" : stripe.store.mode !== salesMode ? "mode_mismatch" : "crm_not_mounted";
