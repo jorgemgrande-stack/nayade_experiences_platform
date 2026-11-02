@@ -23,6 +23,7 @@ import { PANEL_ROLES } from "../subscriptionDb";
 import { buildSubscriptionOverview, safeUpgradeUrl } from "../subscriptionOverview";
 import { resolveSupportContact } from "../supportContact";
 import { isTrialTenant } from "../trialPayments";
+import { SELF_SERVICE_PLANS } from "../stripe/catalog";
 import { buildConnectCatalog, type ChannelCatalogItem, type ConnectItem } from "../connectMarketplace";
 import { advertisesRequests, parseMarketplaceHeaders, parseMarketplaceRoot } from "../connectCard";
 import { brandHeaders, type ConnectBrandHeaders, type PurchaseBlock } from "../../shared/connectMarketplace";
@@ -140,7 +141,9 @@ export const connectRouter = router({
       const now = access.currentTime();
       const overview = buildSubscriptionOverview({ mode: "multi", enforcing: access.enforcing(), grants, now });
       const items = buildConnectCatalog(catalog, grants, now, overview.plan?.key ?? null, moduleOpenPath());
-      const purchaseBlock: PurchaseBlock = role !== "admin" ? "role" : (await isTrialTenant()) ? "trial" : !catalog.purchasesEnabled ? "closed" : null;
+      // La compra en línea solo se suma a Essential y Business (el plano de control rechaza el resto): Enterprise, con su gestor
+      const selfService = (SELF_SERVICE_PLANS as readonly string[]).includes(overview.plan?.key ?? "");
+      const purchaseBlock: PurchaseBlock = role !== "admin" ? "role" : (await isTrialTenant()) ? "trial" : !selfService ? "plan" : !catalog.purchasesEnabled ? "closed" : null;
       const interestEnabled = !knownUnsupported() && (advertisesRequests(catalog) || knownSupported());
       const showcase = parseMarketplaceRoot(catalog.marketplace);
       return {

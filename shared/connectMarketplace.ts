@@ -117,11 +117,12 @@ export function deriveConnectState(item: ConnectStateInput, ctx: ConnectStateCon
 export type ConnectAction = "purchase" | "expand" | "request" | "interest" | "contact" | "none";
 
 /** Por qué no se puede contratar en línea aunque esté a la venta. */
-export type PurchaseBlock = "role" | "trial" | "closed" | "unavailable" | null;
+export type PurchaseBlock = "role" | "trial" | "plan" | "closed" | "unavailable" | null;
 
 export const PURCHASE_BLOCK_TEXT: Record<Exclude<PurchaseBlock, null>, string> = {
   role: "Solo la persona administradora de la empresa puede contratar. Pídeselo o envíanos una solicitud.",
   trial: "Durante la prueba gratuita no se contratan módulos sueltos: elige tu plan y los módulos al contratar.",
+  plan: "Con tu plan, los módulos se contratan con tu gestor de Big Elephant. Envíanos una solicitud y te contactamos.",
   closed: "La contratación en línea no está abierta todavía. Envíanos una solicitud y te contactamos.",
   unavailable: "La contratación en línea no está disponible en este momento. Envíanos una solicitud y te contactamos.",
 };

@@ -75,6 +75,7 @@ const ctxFor = (role: string, id = 1): TrpcContext => ({
 });
 const A = "empresa-a";
 const B = "empresa-b";
+const E = "empresa-enterprise";
 let clock = Date.UTC(2026, 9, 31, 10);
 const store = new MemoryCapabilityStore();
 const env = { ...process.env };
@@ -105,6 +106,11 @@ beforeAll(async () => {
       { actor: "test", reason: null, now: clock },
     );
   }
+  await store.apply(
+    E,
+    capabilitiesOfTier("enterprise").map((capabilityId) => ({ capabilityId, siteId: "", status: "active" as const, validUntil: null, source: "subscription:2" })),
+    { actor: "test", reason: null, now: clock },
+  );
 });
 afterAll(() => {
   process.env = env;
@@ -187,6 +193,11 @@ describe("Elephant Connect: ciclo completo de contratación", () => {
     expect(view.items.find((i) => i.key === "connect-voice")!.state).toBe("on_request");
     await expect(as(B, () => app.createCaller(ctxFor("agente")).subscription.purchase({ add: ["connect-people"], idempotencyKey: "clave-agente-000000001" }))).rejects.toMatchObject({ code: "FORBIDDEN" });
     await expect(as(B, () => app.createCaller(ctxFor("user")).connect.catalog())).rejects.toMatchObject({ code: "FORBIDDEN" });
+  });
+
+  it("Enterprise no compra en línea: el panel lo dice antes de intentarlo (se contrata con su gestor)", async () => {
+    const view = await as(E, () => app.createCaller(ctxFor("admin")).connect.catalog());
+    expect([view.plan?.key, view.canPurchase, view.purchaseBlock]).toEqual(["enterprise", false, "plan"]);
   });
 
   it("sin canal con el plano de control: error recuperable, nunca un catálogo vacío", async () => {
