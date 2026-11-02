@@ -79,21 +79,13 @@ function UsageCard({ row }: { row: UsageRow }) {
   );
 }
 
-export default function UsagePage() {
+/** Consumo frente a los límites (también dentro de la página «Suscripción»). */
+export function UsageSection() {
   const usage = trpc.subscription.usage.useQuery(undefined, { retry: false, staleTime: 60_000 });
   const data = usage.data as { available: boolean; rows: UsageRow[]; lagSeconds: number } | null | undefined;
 
   return (
-    <AdminLayout>
-      <div className="max-w-4xl space-y-6">
-        <div>
-          <Link href="/admin/suscripcion" className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground">
-            <ArrowLeft className="w-4 h-4" aria-hidden="true" /> Suscripción
-          </Link>
-          <h1 className="text-2xl font-bold text-foreground mt-1">Consumo</h1>
-          <p className="text-sm text-muted-foreground">Lo que lleva usado tu empresa frente a los límites de tu plan.</p>
-        </div>
-
+    <>
         {usage.isLoading && <PanelLoading label="Cargando el consumo…" />}
         {usage.isError && <PanelError error={usage.error} onRetry={() => usage.refetch()} title="No se ha podido cargar el consumo" />}
 
@@ -115,6 +107,22 @@ export default function UsagePage() {
             <p className="text-xs text-muted-foreground">Las cifras se actualizan cada pocos segundos (hasta {data.lagSeconds} s de retraso).</p>
           </>
         )}
+    </>
+  );
+}
+
+export default function UsagePage() {
+  return (
+    <AdminLayout>
+      <div className="max-w-4xl space-y-6">
+        <div>
+          <Link href="/admin/suscripcion" className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground">
+            <ArrowLeft className="w-4 h-4" aria-hidden="true" /> Suscripción
+          </Link>
+          <h1 className="text-2xl font-bold text-foreground mt-1">Consumo</h1>
+          <p className="text-sm text-muted-foreground">Lo que lleva usado tu empresa frente a los límites de tu plan.</p>
+        </div>
+        <UsageSection />
       </div>
     </AdminLayout>
   );

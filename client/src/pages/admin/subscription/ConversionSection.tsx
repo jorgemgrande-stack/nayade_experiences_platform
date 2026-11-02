@@ -31,10 +31,14 @@ const PLANS: Array<{ id: Plan; name: string }> = [
 const money = (cents: number, currency = "EUR") => new Intl.NumberFormat("es-ES", { style: "currency", currency }).format(cents / 100);
 const newKey = () => randomId();
 
-export function ConversionSection() {
+/** `requested`: plan elegido desde el comparador (cada elección nueva lleva otro `at`). */
+export function ConversionSection({ requested }: { requested?: { plan: Plan; at: number } | null } = {}) {
   const status = trpc.subscription.conversionStatus.useQuery(undefined, { retry: false, staleTime: 60_000 });
   const catalog = trpc.subscription.catalog.useQuery(undefined, { retry: false, staleTime: 60_000, enabled: !!status.data?.enabled });
-  const [plan, setPlan] = useState<Plan>("essential");
+  const [plan, setPlan] = useState<Plan>(requested?.plan ?? "essential");
+  useEffect(() => {
+    if (requested) setPlan(requested.plan);
+  }, [requested]);
   const [interval, setBilling] = useState<Interval>("month");
   const [add, setAdd] = useState<string[]>([]);
   const [buyer, setBuyer] = useState({ legalName: "", taxId: "", country: "ES", postalCode: "", line1: "", city: "" });

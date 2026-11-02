@@ -186,11 +186,64 @@ export function panelCard(p: Record<string, unknown>, visible: ReadonlySet<strin
   };
 }
 
+/**
+ * Plan de Elephant Core (familia `core_plan`) tal como está PUBLICADO: nombre, estado comercial, precios aprobados,
+ * modalidad de contratación, beneficios y límites. Solo para mostrar el comparador de planes en «Suscripción»: los
+ * planes no se compran por el carrito del panel (alta y cambio de plan tienen su propio flujo).
+ */
+export interface PanelPlan {
+  key: string;
+  name: string;
+  commercialStatus: PanelCatalogItem["commercialStatus"];
+  inherits: string | null;
+  tagline: string;
+  description: string;
+  forWho: string | null;
+  highlight: boolean;
+  /** Beneficios publicados (ficha comercial); si no hay, lo que incluye. */
+  benefits: string[];
+  limits: Array<{ label: string; value: string; metric: string | null }>;
+  prices: Array<{ kind: string; amountCents: number; currency: string; taxIncluded: boolean }>;
+  /** Modalidad comercial efectiva publicada (inmediata o asistida) y su etiqueta. */
+  offer: { modality: "immediate" | "assisted"; checkout: boolean; label: string } | null;
+}
+
 export interface PanelCatalog {
   version: string;
   purchasesEnabled: boolean;
   items: PanelCatalogItem[];
   marketplace: PanelMarketplace;
+  /** Planes publicados de Elephant Core (vacío si el catálogo no publica ninguno). */
+  plans: PanelPlan[];
+}
+
+/** Planes publicados (en el orden del catálogo): solo lo que sale en la web pública, nunca lo interno. */
+export function panelPlans(products: QuoteCatalogProduct[], published: ReadonlyMap<string, Record<string, unknown>>): PanelPlan[] {
+  const out: PanelPlan[] = [];
+  for (const p of products) {
+    if (p.family !== "core_plan" || p.commercialStatus === "unpublished") continue;
+    const pub = published.get(p.key) ?? {};
+    const pres = (pub.presentation ?? {}) as Record<string, unknown>;
+    const m = (pub.commercial ?? null) as Record<string, unknown> | null;
+    const benefits = strs(m?.benefits);
+    out.push({
+      key: p.key,
+      name: p.name,
+      commercialStatus: p.commercialStatus,
+      inherits: p.inherits,
+      tagline: str(pub.tagline),
+      description: str(pub.description),
+      forWho: strOrNull(pres.forWho),
+      highlight: pres.highlight === true,
+      benefits: benefits.length > 0 ? benefits : strs(pub.includes),
+      limits: (Array.isArray(pub.limits) ? (pub.limits as Array<Record<string, unknown>>) : [])
+        .filter((l) => !!l && typeof l.label === "string" && !!l.label && typeof l.value === "string" && !!l.value)
+        .map((l) => ({ label: l.label as string, value: l.value as string, metric: strOrNull(l.metric) })),
+      prices: p.prices.filter((x) => x.kind === "monthly" || x.kind === "yearly").map((x) => ({ kind: x.kind, amountCents: x.amountCents, currency: x.currency, taxIncluded: x.taxIncluded })),
+      offer: p.offer ? { modality: p.offer.modality, checkout: p.offer.checkout, label: p.offer.label } : null,
+    });
+  }
+  return out;
 }
 
 /**
@@ -231,7 +284,7 @@ export function panelCatalog(products: QuoteCatalogProduct[], o: { version: stri
     if (p) i.card = panelCard(p, visible);
   }
   items.sort((a, b) => a.kind.localeCompare(b.kind) || a.family.localeCompare(b.family) || a.name.localeCompare(b.name, "es"));
-  return { version: o.version, purchasesEnabled: o.purchasesEnabled, items, marketplace: panelMarketplace(o.marketplace?.doc ?? null, { visible, plan: o.marketplace?.plan ?? null }) };
+  return { version: o.version, purchasesEnabled: o.purchasesEnabled, items, marketplace: panelMarketplace(o.marketplace?.doc ?? null, { visible, plan: o.marketplace?.plan ?? null }), plans: panelPlans(products, published) };
 }
 
 const tenant = z.string().regex(/^[a-z0-9][a-z0-9-]{1,62}$/);

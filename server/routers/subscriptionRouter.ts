@@ -23,6 +23,7 @@ import { LIMIT_METRICS } from "../_core/limits/store";
 import type { PanelUsage } from "../commerce/panelUsage";
 import type { TenantPlanSummary } from "../commerce/tenantPlan";
 import { isTrialTenant, TRIAL_PURCHASES_MESSAGE } from "../trialPayments";
+import { parsePanelPlans } from "../../shared/subscriptionPlans";
 import type { CancellationView as SelfServiceCancellation, PlanChangeView as SelfServicePlanChange } from "../stripe/subscriptionSelfService";
 
 /** Qué se quiere comprar: solo claves y totales. Importes y derechos los calcula el plano de control. */
@@ -137,7 +138,7 @@ export const subscriptionRouter = router({
     if (getTenantMode() !== "multi" || !client) return null;
     const access = getCapabilityAccess();
     try {
-      const [catalog, grants] = await Promise.all([client.catalog(getTenantId()) as Promise<{ purchasesEnabled: boolean; items: PanelCatalogItemView[] }>, access.list()]);
+      const [catalog, grants] = await Promise.all([client.catalog(getTenantId()) as Promise<{ purchasesEnabled: boolean; items: PanelCatalogItemView[]; plans?: unknown }>, access.list()]);
       // Solo la administración compra: al resto se le muestra el catálogo sin el botón
       const out = panelModules(catalog, grants, access.currentTime());
       // Totales contratados hoy (plan + ampliaciones): la compra de unidades pide el NUEVO total. null = sin tope.
@@ -147,7 +148,8 @@ export const subscriptionRouter = router({
         const v = limitAccess ? await limitAccess.limit(m).catch(() => undefined) : undefined;
         if (v !== undefined) totals[m] = v;
       }
-      return { ...out, totals, usedUsers: await countPanelUsers().catch(() => null), canPurchase: String(ctx.user.role) === "admin" && out.purchasesEnabled && !(await isTrialTenant()) };
+      // Planes publicados (comparador de «Suscripción»): solo lectura; un plano de control anterior no los envía → []
+      return { ...out, plans: parsePanelPlans(catalog.plans), totals, usedUsers: await countPanelUsers().catch(() => null), canPurchase: String(ctx.user.role) === "admin" && out.purchasesEnabled && !(await isTrialTenant()) };
     } catch {
       throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "No se pudo consultar el catálogo de módulos. Inténtalo de nuevo en unos minutos." });
     }
