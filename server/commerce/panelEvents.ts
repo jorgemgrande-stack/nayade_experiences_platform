@@ -16,6 +16,13 @@ export const PANEL_EVENT_TYPES = ["card_view", "sheet_view", "cta_click", "slide
 export type PanelEventType = (typeof PANEL_EVENT_TYPES)[number];
 const MAX_AGE_MS = 24 * 3600 * 1000;
 const MAX_SKEW_MS = 5 * 60 * 1000;
+/**
+ * Retención de las claves de deduplicación. Un evento solo se acepta hasta 24 h después de su momento (y 5 min en el
+ * futuro), así que pasadas ~48 h su clave ya no puede evitar nada: llega fuera de plazo y se descarta. 7 días es margen.
+ * Los contadores agregados (`marketplace_event_counts`) no caducan nunca.
+ */
+export const EVENT_KEY_RETENTION_MS = 7 * 24 * 3600 * 1000;
+export const EVENT_KEY_PURGE_BATCH = 1000;
 
 const key = z.string().regex(/^[a-z0-9][a-z0-9-]{0,62}$/);
 const event = z
@@ -44,6 +51,8 @@ export interface PanelEventStore {
   /** Cuenta los eventos cuyo id no se había visto; devuelve cuántos contó. */
   record(tenantId: string, events: Array<{ id: string; type: PanelEventType; productKey: string; slideId: string; day: string }>, now: number): Promise<number>;
   counts(f: { from: string; to: string }): Promise<CountRow[]>;
+  /** Borra las claves de deduplicación recibidas antes de `before` (ms); devuelve cuántas. Nunca toca los contadores. */
+  purgeKeys(before: number): Promise<number>;
 }
 
 export class MemoryPanelEventStore implements PanelEventStore {
@@ -64,6 +73,11 @@ export class MemoryPanelEventStore implements PanelEventStore {
   }
   async counts(f: { from: string; to: string }) {
     return Array.from(this.rows.values()).filter((r) => r.day >= f.from && r.day <= f.to);
+  }
+  async purgeKeys(before: number) {
+    let n = 0;
+    for (const [id, at] of Array.from(this.seen.entries())) if (at < before && this.seen.delete(id)) n++;
+    return n;
   }
 }
 
@@ -99,6 +113,22 @@ export class MysqlPanelEventStore implements PanelEventStore {
     );
     return rows.map((r) => ({ day: String(r.day), tenantId: r.tenant_id, type: r.event_type as PanelEventType, productKey: r.product_key, slideId: r.slide_id, count: Number(r.count) }));
   }
+  async purgeKeys(before: number) {
+    // Por lotes para no bloquear la tabla; solo claves de deduplicación, nunca marketplace_event_counts
+    let total = 0;
+    for (;;) {
+      const [r] = await this.pool.query<mysql.ResultSetHeader>(`DELETE FROM marketplace_event_keys WHERE received_at < ? LIMIT ${EVENT_KEY_PURGE_BATCH}`, [new Date(before)]);
+      total += r.affectedRows;
+      if (r.affectedRows < EVENT_KEY_PURGE_BATCH) return total;
+    }
+  }
+}
+
+/** Depuración periódica de las claves de deduplicación (las de hace más de 7 días). Registra solo cuántas borró. */
+export async function purgePanelEventKeys(store: PanelEventStore, now: number): Promise<number> {
+  const deleted = await store.purgeKeys(now - EVENT_KEY_RETENTION_MS);
+  opsLog("info", "Commerce", "panel_event_keys_purged", { deleted, retentionDays: EVENT_KEY_RETENTION_MS / (24 * 3600 * 1000) });
+  return deleted;
 }
 
 const dayOf = (ms: number) => new Date(ms).toISOString().slice(0, 10);

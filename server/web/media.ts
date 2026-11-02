@@ -7,8 +7,11 @@
  *    `GET /cp/v1/public/media/:id/:variant` con caché de un año: la URL es estable y no cambia nunca su contenido.
  *    Sustituir una imagen = subir otra y cambiar la referencia en la ficha (la anterior sigue sirviéndose).
  *  - Texto alternativo obligatorio. Solo JPEG, PNG, WebP o AVIF reales (se comprueba el contenido, no el nombre).
- *  - Uso: qué entradas del catálogo (borrador o publicación) la referencian. El borrado de las que nadie usa llega en un
- *    cambio aparte por el procedimiento protegido (todo borrado de datos lo es).
+ *  - Uso: qué entradas del catálogo la referencian, en su borrador, en su publicación o en cualquier versión del historial
+ *    (una versión antigua se puede restaurar). Solo se borra una imagen sin ningún uso; el borrado arrastra sus variantes.
+ *  - Limpieza (`POST /web/media/purge`): por defecto SIMULA. Solo borra imágenes sin uso subidas hace más de 30 días
+ *    (plazo de gracia: sus URLs son públicas, inmutables y se cachean un año) y revisa el uso justo antes de cada borrado.
+ *    Nunca se ejecuta sola.
  */
 import crypto from "node:crypto";
 import express, { type Request, type Response, type Router } from "express";
@@ -25,6 +28,9 @@ export const MAX_UPLOAD_BYTES = 12 * 1024 * 1024;
 const MIN_WIDTH = 200;
 const ID_RE = /^[a-f0-9]{32}$/;
 const VARIANT_RE = /^w(480|960|1600|2400)\.(webp|avif)$/;
+/** Plazo de gracia mínimo de la limpieza (días desde la subida). */
+export const PURGE_MIN_AGE_DAYS = 30;
+const DAY_MS = 24 * 3600 * 1000;
 
 export interface MediaRecord {
   id: string;
@@ -49,6 +55,10 @@ export interface MediaStore {
   insert(m: MediaRecord, files: MediaFile[]): Promise<{ created: boolean }>;
   file(id: string, variant: string): Promise<Pick<MediaFile, "contentType" | "data"> | null>;
   setAlt(id: string, alt: string): Promise<boolean>;
+  /** Las subidas antes de `before` (ms), de la más antigua a la más reciente. */
+  listCreatedBefore(before: number, limit: number): Promise<MediaRecord[]>;
+  /** Borra la imagen y sus variantes; `false` si no existía. No comprueba el uso: eso lo hace `MediaService`. */
+  delete(id: string): Promise<boolean>;
 }
 
 export class MemoryMediaStore implements MediaStore {
@@ -73,6 +83,12 @@ export class MemoryMediaStore implements MediaStore {
     if (!r) return false;
     r.m.alt = alt;
     return true;
+  }
+  async listCreatedBefore(before: number, limit: number) {
+    return Array.from(this.rows.values()).map((r) => r.m).filter((m) => m.createdAt < before).sort((a, b) => a.createdAt - b.createdAt).slice(0, limit);
+  }
+  async delete(id: string) {
+    return this.rows.delete(id);
   }
 }
 
@@ -117,6 +133,15 @@ export class MysqlMediaStore implements MediaStore {
   }
   async setAlt(id: string, alt: string) {
     const [res] = await this.pool.query<mysql.ResultSetHeader>("UPDATE marketplace_media SET alt = ? WHERE id = ?", [alt, id]);
+    return res.affectedRows > 0;
+  }
+  async listCreatedBefore(before: number, limit: number) {
+    const [rows] = await this.pool.query<mysql.RowDataPacket[]>("SELECT * FROM marketplace_media WHERE created_at < ? ORDER BY created_at ASC LIMIT ?", [before, limit]);
+    return rows.map((r) => this.map(r));
+  }
+  async delete(id: string) {
+    // Las variantes (marketplace_media_files) se borran en cascada por su clave foránea (migración 0042)
+    const [res] = await this.pool.query<mysql.ResultSetHeader>("DELETE FROM marketplace_media WHERE id = ?", [id]);
     return res.affectedRows > 0;
   }
 }
@@ -179,7 +204,7 @@ export function mediaSrcset(src: string): { webp: string; avif: string } | null 
 }
 
 export class MediaService {
-  constructor(private d: { store: MediaStore; web: Pick<WebStore, "listEntries">; encode?: ImageEncoder; now?: () => number }) {}
+  constructor(private d: { store: MediaStore; web: Pick<WebStore, "listEntries" | "versionsContaining">; encode?: ImageEncoder; now?: () => number }) {}
 
   async upload(input: { data: Buffer; alt: string; author: string }): Promise<{ media: MediaRecord; created: boolean }> {
     const alt = altText.safeParse(input.alt);
@@ -212,10 +237,57 @@ export class MediaService {
     if (!(await this.d.store.setAlt(id, a.data))) throw new MediaError("not_found", "Imagen no encontrada");
   }
 
-  /** Dónde se usa una imagen: entradas del catálogo cuyo borrador o publicación la referencian. */
+  /**
+   * Dónde se usa una imagen: entradas del catálogo cuyo borrador o publicación la referencian (`tipo:clave`) y versiones
+   * del historial que la contienen (`tipo:clave@vN`). Vacío = nadie la usa ni la puede recuperar al restaurar.
+   */
   async usage(id: string): Promise<string[]> {
+    const needle = `/cp/v1/public/media/${id}/`;
     const entries = await this.d.web.listEntries();
-    return entries.filter((e) => JSON.stringify([e.draft, e.published]).includes(`/cp/v1/public/media/${id}/`)).map((e) => `${e.kind}:${e.key}`);
+    const current = entries.filter((e) => JSON.stringify([e.draft, e.published]).includes(needle)).map((e) => `${e.kind}:${e.key}`);
+    const history = (await this.d.web.versionsContaining(needle)).map((v) => `${v.kind}:${v.key}@v${v.version}`);
+    return [...current, ...history];
+  }
+
+  /** Borra una imagen que nadie usa (con sus variantes). Si se usa en algún sitio: `in_use` con la lista de usos. */
+  async remove(id: string, actor: string): Promise<void> {
+    if (!(await this.d.store.get(id))) throw new MediaError("not_found", "Imagen no encontrada");
+    const usedBy = await this.usage(id);
+    if (usedBy.length) throw new MediaError("in_use", "La imagen se usa en el catálogo o en su historial: no se puede borrar", { usedBy });
+    if (!(await this.d.store.delete(id))) throw new MediaError("not_found", "Imagen no encontrada");
+    opsLog("info", "Web", "media_deleted", { mediaId: id, actor: actor.split(":")[0], mode: "manual" });
+  }
+
+  /**
+   * Limpieza de imágenes sin uso. Por defecto SIMULA (`dryRun`) y devuelve qué borraría. Solo considera imágenes subidas
+   * hace más de `olderThanDays` (nunca menos de 30) y, al borrar de verdad, vuelve a comprobar el uso justo antes de cada una.
+   */
+  async purgeUnused(o: { olderThanDays?: number; dryRun?: boolean; limit?: number; actor?: string } = {}) {
+    const olderThanDays = Math.max(PURGE_MIN_AGE_DAYS, Math.floor(o.olderThanDays ?? PURGE_MIN_AGE_DAYS));
+    const dryRun = o.dryRun !== false;
+    const limit = Math.min(500, Math.max(1, Math.floor(o.limit ?? 100)));
+    const before = (this.d.now ?? Date.now)() - olderThanDays * DAY_MS;
+    const unused: MediaRecord[] = [];
+    const kept: Array<{ id: string; usedBy: string[] }> = [];
+    for (const m of await this.d.store.listCreatedBefore(before, limit)) {
+      const usedBy = await this.usage(m.id);
+      if (usedBy.length) kept.push({ id: m.id, usedBy });
+      else unused.push(m);
+    }
+    const deleted: string[] = [];
+    if (!dryRun) {
+      for (const m of unused) {
+        // Segunda comprobación: alguien pudo referenciarla entre la lista y el borrado
+        const usedBy = await this.usage(m.id);
+        if (usedBy.length) {
+          kept.push({ id: m.id, usedBy });
+          continue;
+        }
+        if (await this.d.store.delete(m.id)) deleted.push(m.id);
+      }
+      opsLog("info", "Web", "media_purged", { olderThanDays, examined: unused.length + kept.length, deleted: deleted.length, kept: kept.length, actor: (o.actor ?? "system").split(":")[0] });
+    }
+    return { dryRun, olderThanDays, unused: unused.map((m) => ({ id: m.id, alt: m.alt, bytes: m.bytes, createdAt: m.createdAt })), deleted, kept };
   }
 }
 
@@ -252,6 +324,17 @@ export function createMediaAdminRouter(svc: MediaService): Router {
   r.patch("/:id", requireScope("web:write"), express.json({ limit: "4kb" }), (req, res) => {
     if (!ID_RE.test(req.params.id)) return void res.status(400).json({ error: "invalid_input", message: "id" });
     svc.setAlt(req.params.id, String((req.body as { alt?: unknown })?.alt ?? "")).then(() => res.json({ ok: true }), (e) => fail(res, e));
+  });
+  // Borrado de una imagen sin uso (409 con la lista de usos si alguien la referencia)
+  r.delete("/:id", requireScope("web:write"), (req, res) => {
+    if (!ID_RE.test(req.params.id)) return void res.status(400).json({ error: "invalid_input", message: "id" });
+    svc.remove(req.params.id, who(req)).then(() => res.json({ ok: true }), (e) => fail(res, e));
+  });
+  // Limpieza de imágenes sin uso: simula salvo `{ "dryRun": false }` explícito
+  r.post("/purge", requireScope("web:write"), express.json({ limit: "4kb" }), (req, res) => {
+    const b = z.object({ dryRun: z.boolean().optional(), olderThanDays: z.number().int().min(PURGE_MIN_AGE_DAYS).max(3650).optional(), limit: z.number().int().min(1).max(500).optional() }).strict().safeParse(req.body ?? {});
+    if (!b.success) return void res.status(400).json({ error: "invalid_input", message: `dryRun, olderThanDays (mínimo ${PURGE_MIN_AGE_DAYS}) o limit (1-500)` });
+    svc.purgeUnused({ ...b.data, actor: who(req) }).then((out) => res.json(out), (e) => fail(res, e));
   });
   return r;
 }

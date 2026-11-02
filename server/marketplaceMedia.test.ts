@@ -54,10 +54,11 @@ describe("subida de imágenes del marketplace", () => {
     const { media } = await svc.upload({ data: png, alt: "Cabecera", author: "o" });
     const src = mediaUrl("https://admin.bigelephant.es", media.id);
     await web.createEntry({ kind: "marketplace_slide", key: "campana", family: null, sortOrder: 0, publication: "draft", draft: { background: { src, alt: "Cabecera" } }, draftVersion: 1, published: null, publishedVersion: null, createdAt: 1, createdBy: "o", updatedAt: 1, updatedBy: "o", publishedAt: null, publishedBy: null });
-    expect(await svc.usage(media.id)).toEqual(["marketplace_slide:campana"]);
+    expect(await svc.usage(media.id)).toEqual(["marketplace_slide:campana", "marketplace_slide:campana@v1"]);
     const e = (await web.getEntry("marketplace_slide", "campana"))!;
     await web.saveDraft(e.id, e.draftVersion, { background: { src: "https://otra.example/a.webp", alt: "x" } }, 0, "o", 2);
-    expect(await svc.usage(media.id)).toEqual([]);
+    // Ya no está en el borrador, pero la versión 1 del historial se puede restaurar: sigue contando como uso
+    expect(await svc.usage(media.id)).toEqual(["marketplace_slide:campana@v1"]);
   });
 
   it("el texto alternativo se puede corregir, nunca vaciar", async () => {
