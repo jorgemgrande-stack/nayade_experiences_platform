@@ -135,6 +135,7 @@ import { createContractAcceptanceRouter, createExternalRouter } from "../externa
 import { InvoicingService } from "../invoicing/service";
 import type { InvoicingStore } from "../invoicing/store";
 import type { Invoice } from "../invoicing/types";
+import type { StripeSalesPort } from "../invoicing/stripeSales";
 import { ChargeService, type ChargeStore } from "../invoicing/charges";
 import { createInvoicingRouter } from "../invoicing/api";
 import { invoiceHtml } from "../invoicing/document";
@@ -326,7 +327,7 @@ export interface ControlPlaneDeps {
    * Facturación propia (server/invoicing, CRM 0027): facturas por devengo de los servicios externos con el estado de
    * cobro leído de su historial. Sin `issueEnabled` solo prepara borradores (nunca expide).
    */
-  invoicing?: { store: InvoicingStore; issueEnabled: boolean; seriesCode: string; charges?: ChargeStore; chargePayments?: ChargePaymentStore; operations?: OperationStore; automation?: { sendIssued(inv: Invoice): Promise<string> } };
+  invoicing?: { store: InvoicingStore; issueEnabled: boolean; seriesCode: string; charges?: ChargeStore; chargePayments?: ChargePaymentStore; operations?: OperationStore; automation?: { sendIssued(inv: Invoice): Promise<string> }; stripeSales?: StripeSalesPort };
   /**
    * Motor de transiciones temporales (server/lifecycle). Requiere `orders`. El plan (solo lectura) siempre
    * se puede consultar; la tarea periódica solo con `policy.enabled` y aplica solo en modo «apply».
@@ -2475,6 +2476,8 @@ export function createControlPlaneApp(d: ControlPlaneDeps): Express {
         issuer,
         seriesCode: d.invoicing.seriesCode,
         issueEnabled: d.invoicing.issueEnabled,
+        // Ventas cobradas por Stripe desde el panel: comprador del perfil fiscal y documento fiscal emitido al expedir
+        stripeSales: d.invoicing.stripeSales ?? null,
         // Factura expedida: alerta a la administración y, si es rectificativa, aviso al cliente con su número
         onIssued: async (inv) => {
           const company = ((await crmStore.get("companies", inv.companyId)) as { name?: string } | null)?.name ?? null;
