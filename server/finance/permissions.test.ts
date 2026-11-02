@@ -143,6 +143,7 @@ const EXPECTED: Record<string, FinanceCapability> = {
   "POST /stripe/fee-expenses/link": "post",
   "GET /bank/rules": "read",
   "POST /bank/auto-reconcile": "post",
+  "POST /tax/obligations/:id/register-filed": "tax",
   "GET /analysis/settings": "read",
   "PATCH /analysis/settings": "config",
   // Análisis (fase 4)
