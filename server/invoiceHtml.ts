@@ -42,7 +42,7 @@ export interface InvoiceHtmlParams {
   issuerSnapshot?: unknown;
   invoiceType?: "factura" | "abono" | null;
   creditNoteReason?: string | null;
-  rectifies?: { invoiceNumber: string; issuedAt: Date | string } | null;
+  rectifies?: { invoiceNumber: string; issuedAt: Date | string; timeZone?: string } | null;
 }
 
 /** Migración que fija el cambio de fuente de los datos fiscales (su fecha de aplicación en cada empresa). */
@@ -195,8 +195,22 @@ export interface DocumentBrand {
 /**
  * Copia de los datos del emisor que guarda cada factura o abono al emitirse (0020), con la marca de ese momento: la
  * factura se ve siempre igual aunque la empresa cambie después sus datos, su logotipo o sus colores.
+ * `timeZone`: zona en la que se pintan sus fechas; las copias anteriores no la tienen y conservan la fecha de siempre.
  */
-export type IssuerSnapshot = LegalCompany & { v: 1; capturedAt: string; brand?: DocumentBrand };
+export type IssuerSnapshot = LegalCompany & { v: 1; capturedAt: string; brand?: DocumentBrand; timeZone?: string };
+
+/** Zona de las fechas de los documentos que se emiten ahora (con su horario de verano e invierno). */
+export const DOCUMENT_TIME_ZONE = "Europe/Madrid";
+
+/** Zona guardada en la copia, o undefined (copia anterior: fecha con la zona del servidor, como siempre). */
+export function parseSnapshotTimeZone(raw: unknown): string | undefined {
+  let o: unknown = raw;
+  if (typeof raw === "string") {
+    try { o = JSON.parse(raw); } catch { return undefined; }
+  }
+  const tz = (o as { timeZone?: unknown } | null)?.timeZone;
+  return tz === DOCUMENT_TIME_ZONE ? tz : undefined;
+}
 
 /** Marca en vigor de la empresa para un documento nuevo. */
 export async function currentDocumentBrand(): Promise<DocumentBrand> {
@@ -228,6 +242,7 @@ export function toIssuerSnapshot(l: LegalCompany, at: Date = new Date(), brand?:
   const out = { v: 1 as const, capturedAt: at.toISOString() } as IssuerSnapshot;
   for (const k of LEGAL_FIELDS) out[k] = String(l[k] ?? "");
   if (brand) out.brand = { ...brand };
+  out.timeZone = DOCUMENT_TIME_ZONE;
   return out;
 }
 
@@ -263,7 +278,7 @@ interface InvoiceDocumentMeta {
   invoiceType: string | null;
   creditNoteReason: string | null;
   issuedAt: Date | null;
-  rectifies: { invoiceNumber: string; issuedAt: Date | string } | null;
+  rectifies: { invoiceNumber: string; issuedAt: Date | string; timeZone?: string } | null;
   /** false: aún no está guardada (se pinta al emitirla, antes del alta con su copia del emisor). */
   stored?: boolean;
 }
@@ -273,7 +288,7 @@ async function loadInvoiceDocumentMeta(invoiceNumber: string): Promise<InvoiceDo
   try {
     const [rows] = await _pool.query<any[]>(
       `SELECT i.issuerSnapshot, i.invoiceType, i.creditNoteReason, UNIX_TIMESTAMP(i.issuedAt) * 1000 AS issuedMs,
-              o.invoiceNumber AS origNumber, UNIX_TIMESTAMP(o.issuedAt) * 1000 AS origIssuedMs
+              o.invoiceNumber AS origNumber, UNIX_TIMESTAMP(o.issuedAt) * 1000 AS origIssuedMs, o.issuerSnapshot AS origSnapshot
          FROM invoices i LEFT JOIN invoices o ON o.id = i.creditNoteForId
         WHERE i.invoiceNumber = ? LIMIT 1`,
       [invoiceNumber]
@@ -285,7 +300,7 @@ async function loadInvoiceDocumentMeta(invoiceNumber: string): Promise<InvoiceDo
       invoiceType: r.invoiceType ?? null,
       creditNoteReason: r.creditNoteReason ?? null,
       issuedAt: r.issuedMs != null && Number.isFinite(Number(r.issuedMs)) ? new Date(Number(r.issuedMs)) : null,
-      rectifies: r.origNumber ? { invoiceNumber: String(r.origNumber), issuedAt: new Date(Number(r.origIssuedMs)) } : null,
+      rectifies: r.origNumber ? { invoiceNumber: String(r.origNumber), issuedAt: new Date(Number(r.origIssuedMs)), timeZone: parseSnapshotTimeZone(r.origSnapshot) } : null,
     };
   } catch {
     return null;
@@ -333,6 +348,8 @@ interface InvoiceLook {
   afterParties: string;
   /** Párrafo legal al pie, ya escapado. */
   footerNote: string;
+  /** Zona de la fecha de emisión; sin ella, la del servidor (documentos anteriores, sin cambios). */
+  dateTimeZone?: string;
 }
 
 const LEGACY_COLORS = { primary: "#1a3a6b", accent: "#f97316" };
@@ -406,7 +423,8 @@ const NARROW_CSS = `  @media (max-width: 640px) {
   }
 `;
 
-const dateEs = (d: Date | string) => (d instanceof Date ? d : new Date(d)).toLocaleDateString("es-ES");
+const dateEs = (d: Date | string, timeZone?: string) =>
+  (d instanceof Date ? d : new Date(d)).toLocaleDateString("es-ES", timeZone ? { timeZone } : undefined);
 
 /**
  * HTML de una factura o abono para la vista, el PDF y el ZIP de la gestoría.
@@ -439,7 +457,8 @@ export async function buildInvoiceHtml(rawInvoice: InvoiceHtmlParams): Promise<s
   // Coma decimal solo en los documentos con copia del emisor (los nuevos, también al pintarlos para emitirlos);
   // los demás conservan su formato
   const issuingNow = meta?.stored === false;
-  const base: InvoiceLook = { ...legacyLook(null), brand: docBrand, escapeBrand: true, ...colors, extraCss: NARROW_CSS, ...(snapshot || issuingNow ? newMoneyLook : {}) };
+  const dateTimeZone = snapshot ? parseSnapshotTimeZone(rawSnapshot) : issuingNow ? DOCUMENT_TIME_ZONE : undefined;
+  const base: InvoiceLook = { ...legacyLook(null), brand: docBrand, escapeBrand: true, ...colors, extraCss: NARROW_CSS, ...(snapshot || issuingNow ? newMoneyLook : {}), dateTimeZone };
   const { primary, accent } = colors;
 
   const isCredit = (rawInvoice.invoiceType !== undefined ? rawInvoice.invoiceType : meta?.invoiceType) === "abono";
@@ -448,7 +467,7 @@ export async function buildInvoiceHtml(rawInvoice: InvoiceHtmlParams): Promise<s
   const reason = ((rawInvoice.creditNoteReason !== undefined ? rawInvoice.creditNoteReason : meta?.creditNoteReason) ?? "").trim();
   const afterParties = `  <div class="rectifies">
     <h3>Factura rectificada</h3>
-    <p>${rect ? `Rectifica la factura <strong>${escapeHtml(rect.invoiceNumber)}</strong> de fecha ${escapeHtml(dateEs(rect.issuedAt))}.` : "Rectifica una factura emitida anteriormente."}<br/>
+    <p>${rect ? `Rectifica la factura <strong>${escapeHtml(rect.invoiceNumber)}</strong> de fecha ${escapeHtml(dateEs(rect.issuedAt, rect.timeZone))}.` : "Rectifica una factura emitida anteriormente."}<br/>
     Motivo de la rectificación: ${reason ? escapeHtml(reason) : "no indicado"}</p>
   </div>`;
   return renderInvoiceHtml(negativeAmounts(rawInvoice), issuer, {
@@ -508,9 +527,7 @@ function renderInvoiceHtml(rawInvoice: InvoiceHtmlParams, rawLegal: LegalCompany
     itemRows = buildItemRows(invoice.itemsJson, hasReav && !hasGeneral);
   }
 
-  const issuedDate = invoice.issuedAt instanceof Date
-    ? invoice.issuedAt.toLocaleDateString("es-ES")
-    : new Date(invoice.issuedAt).toLocaleDateString("es-ES");
+  const issuedDate = dateEs(invoice.issuedAt, look.dateTimeZone);
 
   return `<!DOCTYPE html>
 <html lang="es">
