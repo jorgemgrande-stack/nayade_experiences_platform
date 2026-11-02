@@ -10,7 +10,7 @@ import { buildConnectCatalog, type ChannelCatalogItem } from "./connectMarketpla
 import { _resetConnectEventsForTests, acceptEvents, forwardEvents, openPathResolver, panelOpenPath } from "./connectShowcase";
 import { CommerceError, type CommerceClient } from "./commerceClient";
 import { resolveBlocks, SHEET_BLOCK_IDS } from "../shared/connectCard";
-import { activationOf, autoplayDelay, chunkEvents, freshEvents, primaryAction, resolveSlides, VIEW_SHEET_LABEL, type ConnectEvent, type ConnectSlide } from "../shared/connectShowcase";
+import { activationActions, activationLabel, activationOf, autoplayDelay, chunkEvents, freshEvents, primaryAction, resolveSlides, REACTIVATE_RENEWAL_PATH, VIEW_SHEET_LABEL, type ConnectActivation, type ConnectEvent, type ConnectSlide } from "../shared/connectShowcase";
 import { CORE_EXTENSION_PANELS } from "../shared/panelExtensions";
 
 const img = (n: string, extra: Record<string, unknown> = {}) => ({ src: `https://cdn.bigelephant.es/${n}.webp`, alt: `Imagen ${n}`, ...extra });
@@ -135,10 +135,10 @@ describe("lectura tolerante: contenido y composición", () => {
   });
 
   it("activación: estado conocido y reintentable; lo raro → null", () => {
-    expect(parseActivation({ state: "error", retryable: true, updatedAt: "2026-11-01T10:00:00Z" })).toEqual({ state: "error", retryable: true, updatedAt: "2026-11-01T10:00:00.000Z" });
+    expect(parseActivation({ state: "error", retryable: true, updatedAt: "2026-11-01T10:00:00Z" })).toMatchObject({ state: "error", retryable: true, updatedAt: "2026-11-01T10:00:00.000Z" });
     expect(parseActivation({ state: "rota" })).toBeNull();
     expect(parseActivation(null)).toBeNull();
-    expect(parseActivation({ state: "pending", retryable: "sí" })).toEqual({ state: "pending", retryable: false, updatedAt: null });
+    expect(parseActivation({ state: "pending", retryable: "sí" })).toEqual({ state: "pending", retryable: false, updatedAt: null, payment: null, error: null, nextRetryAt: null, activeUntil: null, renewal: null, canReactivate: false });
   });
 
   it("cabeceras de marca: brands como objeto, como lista o la forma anterior", () => {
@@ -346,5 +346,80 @@ describe("carrusel con la forma definitiva del canal (#580)", () => {
     expect(r.slides.map((s) => s.id)).toEqual(["c", "a", "b"]);
     expect(r.slides[0]).toMatchObject({ overlay: 0.6, startsAt: null, endsAt: null, subtitle: null });
     expect(resolveSlides(r.slides, { items: [], canPurchase: true, now: Date.now() }).map((s) => s.id)).toEqual(["c", "a", "b"]);
+  });
+});
+
+describe("contrato común de estados de activación (#596): lectura, textos y acciones", () => {
+  const view = { canPurchase: true, interestEnabled: true };
+  const base = { kind: "module" as const, purchasable: true, state: "available" as const };
+  const a = (o: Partial<ConnectActivation> & { state: ConnectActivation["state"] }): ConnectActivation => ({ retryable: false, updatedAt: null, ...o });
+
+  it("lectura tolerante de los campos ampliados: valores raros → neutros; fechas en ms → ISO", () => {
+    expect(
+      parseActivation({ state: "processing", retryable: true, payment: "confirmed", error: null, nextRetryAt: Date.UTC(2026, 10, 2, 9, 30), activeUntil: null, renewal: null, canReactivate: false }),
+    ).toMatchObject({ state: "processing", payment: "confirmed", nextRetryAt: "2026-11-02T09:30:00.000Z" });
+    expect(parseActivation({ state: "suspended", payment: "overdue" })).toMatchObject({ state: "suspended", payment: "overdue" });
+    expect(parseActivation({ state: "error", retryable: true, error: { kind: "activation", transient: true } })?.error).toEqual({ kind: "activation", transient: true });
+    expect(parseActivation({ state: "active", payment: "regalado", error: { kind: "rara" }, renewal: "quizá", canReactivate: "sí", activeUntil: "no es fecha" })).toMatchObject({
+      payment: null,
+      error: null,
+      renewal: null,
+      canReactivate: false,
+      activeUntil: null,
+    });
+  });
+
+  it("textos exactos de cada estado", () => {
+    expect(activationLabel(a({ state: "pending", payment: "pending" }))).toBe("Pago pendiente");
+    expect(activationLabel(a({ state: "error", payment: "failed", error: { kind: "payment", transient: false } }))).toBe("Error de pago");
+    expect(activationLabel(a({ state: "error", payment: "expired", error: { kind: "payment", transient: false } }))).toBe("Pago caducado");
+    expect(activationLabel(a({ state: "processing", payment: "confirmed" }))).toBe("Procesando");
+    expect(activationLabel(a({ state: "error", payment: "confirmed", error: { kind: "activation", transient: false } }))).toBe("Error de activación");
+    expect(activationLabel(a({ state: "active", payment: "overdue", renewal: "active" }))).toBe("Activo · incidencia de cobro");
+    expect(activationLabel(a({ state: "suspended", payment: "overdue" }))).toBe("Suspendido");
+    expect(activationLabel(a({ state: "active", payment: "confirmed", renewal: "active" }))).toBe("Activo");
+    // Contrato anterior (sin campos nuevos): como antes
+    expect(activationLabel(a({ state: "error", retryable: true }))).toBe("Con incidencia");
+    expect(activationLabel(a({ state: "pending" }))).toBe("Pendiente");
+  });
+
+  it("renovación cancelada: «Activo hasta DD/MM/AAAA» en hora de Madrid (también a medianoche UTC)", () => {
+    // 31/12/2026 23:30 UTC = 01/01/2027 00:30 en Madrid
+    const until = a({ state: "active", payment: "confirmed", activeUntil: "2026-12-31T23:30:00.000Z", renewal: "cancelled", canReactivate: true });
+    expect(activationLabel(until)).toBe("Activo hasta 01/01/2027 · renovación cancelada");
+    expect(activationLabel({ ...until, activeUntil: "2026-07-15T21:59:00.000Z" })).toBe("Activo hasta 15/07/2026 · renovación cancelada");
+    expect(activationLabel({ ...until, activeUntil: "2026-07-15T22:00:00.000Z" })).toBe("Activo hasta 16/07/2026 · renovación cancelada");
+    // Sin botón de contratar; con «Reactivar renovación» hacia la gestión de la suscripción existente
+    expect(primaryAction({ ...base, activation: until }, view).kind).toBe("none");
+    expect(activationActions(until).reactivate).toEqual({ label: "Reactivar renovación", href: REACTIVATE_RENEWAL_PATH });
+    expect(REACTIVATE_RENEWAL_PATH.startsWith("/admin/suscripcion")).toBe(true);
+    expect(activationActions({ ...until, canReactivate: false }).reactivate).toBeNull();
+  });
+
+  it("«Reintentar»: activación fallida reintentable o en proceso con siguiente intento; nunca un error de pago", () => {
+    const failed = a({ state: "error", retryable: true, payment: "confirmed", error: { kind: "activation", transient: true } });
+    expect(activationActions(failed)).toMatchObject({ retry: true, nextRetry: null });
+    expect(activationActions({ ...failed, retryable: false }).retry).toBe(false);
+    expect(activationActions(a({ state: "error", retryable: true, payment: "failed", error: { kind: "payment", transient: false } })).retry).toBe(false);
+    // 09:30 UTC del 2 de noviembre = 10:30 en Madrid (horario de invierno)
+    const waiting = a({ state: "processing", payment: "confirmed", nextRetryAt: "2026-11-02T09:30:00.000Z" });
+    expect(activationActions(waiting)).toMatchObject({ retry: true, nextRetry: "Siguiente intento 10:30" });
+    expect(activationActions(a({ state: "processing", payment: "confirmed" }))).toMatchObject({ retry: false, nextRetry: null });
+  });
+
+  it("acción principal: tras una activación fallida o suspendido no se ofrece comprar (nunca otro cobro); un pago fallido sí se reintenta comprando", () => {
+    expect(primaryAction({ ...base, activation: a({ state: "error", retryable: true, payment: "confirmed", error: { kind: "activation", transient: false } }) }, view).kind).toBe("none");
+    expect(primaryAction({ ...base, activation: a({ state: "suspended", payment: "overdue" }) }, view).kind).toBe("none");
+    expect(primaryAction({ ...base, activation: a({ state: "error", retryable: true, payment: "failed", error: { kind: "payment", transient: false } }) }, view)).toEqual({ kind: "purchase", label: "Reintentar la contratación", href: null });
+  });
+
+  it("la licencia local manda: «incident» → error aunque el canal diga activo; «suspended» del canal → Suspendido; activa conserva los datos del canal", () => {
+    expect(activationOf({ state: "incident", activation: a({ state: "active", payment: "confirmed" }) })).toMatchObject({ state: "error", retryable: false });
+    expect(activationOf({ state: "incident", activation: a({ state: "suspended", payment: "overdue" }) })).toMatchObject({ state: "suspended" });
+    expect(activationOf({ state: "incident" }).state).toBe("error");
+    expect(activationOf({ state: "active", activation: a({ state: "suspended", payment: "overdue" }) }).state).toBe("active");
+    const until = a({ state: "active", activeUntil: "2026-12-16T09:00:00.000Z", renewal: "cancelled", canReactivate: true });
+    expect(activationOf({ state: "active", activation: until })).toBe(until);
+    expect(activationOf({ state: "available", activation: a({ state: "suspended", payment: "overdue" }) }).state).toBe("suspended");
   });
 });

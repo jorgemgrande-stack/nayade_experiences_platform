@@ -65,7 +65,7 @@ export default function ConnectPage() {
   const data = catalog.data;
   const items = catalog.items;
   const brands = data?.brands ?? brandHeaders(null);
-  const view: ConnectView = { canPurchase: !!data?.canPurchase, interestEnabled: !!data?.interestEnabled };
+  const view: ConnectView = { canPurchase: !!data?.canPurchase, interestEnabled: !!data?.interestEnabled, canRetryActivation: !!data?.canRetryActivation };
   const shown = useMemo(() => filterConnectItems(items, { query, category, state }), [items, query, category, state]);
   const categories = useMemo(() => CONNECT_CATEGORIES.filter((c) => items.some((i) => categoryOf(i) === c.id)), [items]);
   const filtering = query.trim() !== "" || category !== "all" || state !== "all";

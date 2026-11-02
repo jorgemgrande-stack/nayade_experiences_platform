@@ -26,7 +26,7 @@ import { isTrialTenant } from "../trialPayments";
 import { buildConnectCatalog, type ChannelCatalogItem, type ConnectItem } from "../connectMarketplace";
 import { advertisesRequests, parseMarketplaceHeaders, parseMarketplaceRoot } from "../connectCard";
 import { brandHeaders, type ConnectBrandHeaders, type PurchaseBlock } from "../../shared/connectMarketplace";
-import { CONNECT_EVENT_TYPES, autoplayDelay, resolveSlides, type ResolvedSlide } from "../../shared/connectShowcase";
+import { CONNECT_EVENT_TYPES, autoplayDelay, resolveSlides, type ActivationRetryOutcome, type ResolvedSlide } from "../../shared/connectShowcase";
 import { acceptEvents, forwardEvents, openPathResolver } from "../connectShowcase";
 import { panelExtensionSources } from "../_core/modules/panelNavigation";
 
@@ -38,6 +38,8 @@ export interface ConnectCatalogView {
   canPurchase: boolean;
   /** Por qué no (null si puede). */
   purchaseBlock: PurchaseBlock;
+  /** Esta persona puede «Reintentar» una activación fallida (solo la administración, como la compra). */
+  canRetryActivation: boolean;
   plan: { key: string; name: string } | null;
   items: ConnectItem[];
   upgradeUrl: string | null;
@@ -102,6 +104,18 @@ const knownSupported = () => !!requestsProbe?.supported;
 
 const TRPC_CODE: Record<number, TRPCError["code"]> = { 400: "BAD_REQUEST", 403: "FORBIDDEN", 404: "NOT_FOUND", 409: "CONFLICT", 503: "PRECONDITION_FAILED" };
 
+/** «Reintentar» la activación: lo que ha pasado, en palabras de la persona. */
+export const RETRY_MESSAGES: Record<ActivationRetryOutcome, string> = {
+  active: "Listo: el módulo ya está activo.",
+  resumed: "Hemos reanudado la activación. Te avisamos aquí en cuanto termine.",
+  in_progress: "La activación ya está en marcha. Te avisamos aquí en cuanto termine.",
+};
+export const RETRY_ERRORS: Record<number, { code: TRPCError["code"]; message: string }> = {
+  404: { code: "NOT_FOUND", message: "No encontramos ninguna activación de este módulo para tu empresa. Recarga la página." },
+  409: { code: "CONFLICT", message: "No hay nada que reintentar: la activación ya terminó o no tiene pasos pendientes. Recarga la página y, si sigue igual, escríbenos." },
+  429: { code: "TOO_MANY_REQUESTS", message: "Ya lo has intentado hace muy poco. Espera unos minutos antes de volver a reintentar." },
+};
+
 export const connectRouter = router({
   catalog: protectedProcedure.query(async ({ ctx }): Promise<ConnectCatalogView> => {
     const role = String(ctx.user.role);
@@ -111,7 +125,7 @@ export const connectRouter = router({
     const client = commerceClientFromEnv();
     const base = { upgradeUrl: safeUpgradeUrl(upgradeUrl), supportEmail };
     if (getTenantMode() !== "multi") {
-      return { available: false, purchasesEnabled: false, canPurchase: false, purchaseBlock: "unavailable", plan: null, items: [], requestsEnabled: false, interestEnabled: false, brands: brandHeaders(null), slides: [], autoplayMs: autoplayDelay(null), ...base };
+      return { available: false, purchasesEnabled: false, canPurchase: false, purchaseBlock: "unavailable", canRetryActivation: false, plan: null, items: [], requestsEnabled: false, interestEnabled: false, brands: brandHeaders(null), slides: [], autoplayMs: autoplayDelay(null), ...base };
     }
     // En multiempresa el catálogo existe siempre: sin canal con el plano de control es una avería (configuración del
     // Core), no un catálogo vacío. Se devuelve un error recuperable para que la página ofrezca reintentar.
@@ -134,6 +148,7 @@ export const connectRouter = router({
         purchasesEnabled: catalog.purchasesEnabled,
         canPurchase: purchaseBlock === null,
         purchaseBlock,
+        canRetryActivation: role === "admin",
         plan: overview.plan,
         items,
         requestsEnabled: true,
@@ -237,6 +252,34 @@ export const connectRouter = router({
       } catch (e) {
         if (e instanceof TRPCError) throw e;
         if (e instanceof CommerceError) throw new TRPCError({ code: TRPC_CODE[e.status] ?? "INTERNAL_SERVER_ERROR", message: e.message });
+        throw e;
+      }
+    }),
+
+  /**
+   * «Reintentar» la activación de un producto ya cobrado: el plano de control repite solo los pasos idempotentes
+   * pendientes (suscripción y licencias), nunca el cobro. Solo la administración, como la compra; el tenant es el
+   * de la sesión.
+   */
+  retryActivation: protectedProcedure
+    .input(z.object({ key: z.string().regex(/^[a-z0-9][a-z0-9_-]{0,79}$/) }).strict())
+    .mutation(async ({ ctx, input }): Promise<{ outcome: ActivationRetryOutcome; message: string }> => {
+      if (String(ctx.user.role) !== "admin") throw new TRPCError({ code: "FORBIDDEN", message: "Solo la administración de la empresa puede reintentar la activación" });
+      const client = commerceClientFromEnv();
+      if (getTenantMode() !== "multi" || !client?.retryActivation) throw new TRPCError({ code: "PRECONDITION_FAILED", message: "El reintento de la activación no está disponible en este momento. Escríbenos y lo revisamos." });
+      const tenantId = getTenantId();
+      try {
+        const { outcome } = await client.retryActivation(tenantId, input.key);
+        // Activado ya: las licencias nuevas se ven sin esperar a que caduque la caché
+        if (outcome === "active") getCapabilityAccess().invalidate(tenantId);
+        return { outcome, message: RETRY_MESSAGES[outcome] };
+      } catch (e) {
+        if (e instanceof CommerceError) {
+          const known = RETRY_ERRORS[e.status];
+          if (known) throw new TRPCError(known);
+          opsLog("warn", "Connect", "activation_retry_failed", { tenantId, status: e.status });
+          throw new TRPCError({ code: TRPC_CODE[e.status] ?? "INTERNAL_SERVER_ERROR", message: e.status === 503 ? e.message : "No se pudo reintentar la activación. Inténtalo de nuevo en unos minutos." });
+        }
         throw e;
       }
     }),

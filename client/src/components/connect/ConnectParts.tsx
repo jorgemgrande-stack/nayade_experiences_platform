@@ -82,7 +82,7 @@ import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { CONNECT_STATE_LABELS, CONNECT_STATE_SHORT, brandOf, type ConnectState } from "@shared/connectMarketplace";
 import { formatMoney, headlinePrice, periodLabel, sortPrices, taxLabel, type ConnectImage, type ConnectPrice } from "@shared/connectCard";
-import { ACTIVATION_LABELS, activationOf, primaryAction, type ConnectActivation } from "@shared/connectShowcase";
+import { ACTIVATION_LABELS, activationActions, activationLabel, activationOf, primaryAction, type ConnectActivation } from "@shared/connectShowcase";
 import { trackConnect, useViewTracking } from "./useConnectTracking";
 import type { PurchaseStatus } from "@shared/connectPurchase";
 import { fichaPath } from "./LockedFeature";
@@ -303,6 +303,8 @@ export const highlightsOf = (item: Pick<ConnectCatalogItem, "sheet" | "includes"
 export interface ConnectView {
   canPurchase: boolean;
   interestEnabled: boolean;
+  /** Puede «Reintentar» una activación fallida (solo la administración). */
+  canRetryActivation?: boolean;
 }
 
 /** Precio destacado: importe grande, periodicidad e IVA (todo del catálogo). Sin precio: «Precio a consultar». */
@@ -325,16 +327,57 @@ export function BigPrice({ prices, size = "md", showFrom = true, className }: { 
   );
 }
 
-/** Estado de activación (pendiente, activándose, activo o con incidencia) en una línea. */
+/** Activo sin nada que avisar (ni incidencia de cobro ni renovación cancelada). */
+export const plainActive = (a: ConnectActivation) => a.state === "active" && activationLabel(a) === ACTIVATION_LABELS.active;
+
+/** Estado de activación (pago pendiente, procesando, activo, suspendido o con error) en una línea. */
 export function ActivationLine({ activation, className }: { activation: ConnectActivation; className?: string }) {
   if (activation.state === "none") return null;
-  const tone = activation.state === "error" ? "text-danger" : activation.state === "active" ? "text-success" : "text-warning";
-  const Icon = activation.state === "error" ? AlertTriangle : activation.state === "active" ? CheckCircle2 : activation.state === "processing" ? Loader2 : Clock;
+  const s = activation.state;
+  const tone = s === "error" || s === "suspended" ? "text-danger" : plainActive(activation) ? "text-success" : "text-warning";
+  const Icon = s === "error" ? AlertTriangle : s === "suspended" ? Lock : s === "active" ? CheckCircle2 : s === "processing" ? Loader2 : Clock;
   return (
     <p className={cn("flex items-center gap-1.5 text-xs font-medium", tone, className)}>
-      <Icon className={cn("h-3.5 w-3.5 shrink-0", activation.state === "processing" && "motion-safe:animate-spin")} aria-hidden="true" />
-      Activación: {ACTIVATION_LABELS[activation.state]}
+      <Icon className={cn("h-3.5 w-3.5 shrink-0", s === "processing" && "motion-safe:animate-spin")} aria-hidden="true" />
+      Activación: {activationLabel(activation)}
     </p>
+  );
+}
+
+/**
+ * «Reintentar» la activación (a través del Core; nunca cobra) con «Siguiente intento hh:mm» mientras se reintenta
+ * sola, y «Reactivar renovación» (gestión de la suscripción existente). Solo la administración ve «Reintentar».
+ */
+export function ActivationActionsBar({ productKey, activation, canRetry, className }: { productKey: string; activation: ConnectActivation; canRetry: boolean; className?: string }) {
+  const refresh = useRefreshLicences();
+  const a = activationActions(activation);
+  const retry = trpc.connect.retryActivation.useMutation({
+    onSuccess: (r) => {
+      toast.success(r.message);
+      refresh();
+    },
+    onError: (e) => {
+      toast.error(e.message);
+      refresh();
+    },
+  });
+  const showRetry = a.retry && canRetry;
+  if (!showRetry && !a.nextRetry && !a.reactivate) return null;
+  return (
+    <div className={cn("flex flex-wrap items-center gap-2 text-xs", className)}>
+      {a.nextRetry && <span className="text-muted-foreground">{a.nextRetry}</span>}
+      {showRetry && (
+        <Button type="button" size="sm" variant="outline" disabled={retry.isPending} onClick={() => retry.mutate({ key: productKey })}>
+          {retry.isPending ? <Loader2 className="h-4 w-4 motion-safe:animate-spin" aria-hidden="true" /> : <RefreshCw className="h-4 w-4" aria-hidden="true" />}
+          Reintentar
+        </Button>
+      )}
+      {a.reactivate && (
+        <Button asChild size="sm" variant="outline">
+          <Link href={a.reactivate.href}>{a.reactivate.label}</Link>
+        </Button>
+      )}
+    </div>
   );
 }
 
@@ -389,7 +432,8 @@ export function ProductCard({
             </Link>
           </H>
           {lead && <p className="line-clamp-2 text-sm text-muted-foreground">{lead}</p>}
-          <ActivationLine activation={activation.state === "active" ? { ...activation, state: "none" } : activation} />
+          <ActivationLine activation={plainActive(activation) ? { ...activation, state: "none" } : activation} />
+          <ActivationActionsBar productKey={item.key} activation={activation} canRetry={!!view.canRetryActivation} className="relative z-10 pt-1" />
         </div>
         {points.length > 0 && (
           <ul className="space-y-1.5 text-sm text-foreground">

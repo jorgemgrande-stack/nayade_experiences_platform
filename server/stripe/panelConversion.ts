@@ -22,7 +22,7 @@ import { requireScope } from "../controlPlane/auth";
 import { opsLog } from "../_core/ops/log";
 import { recordFailure } from "../_core/ops/failureAlerts";
 import type { QuoteRequest, QuoteResult } from "../catalog/quote";
-import { PIPELINE, type CommercialOrder } from "../orchestrator/types";
+import { PIPELINE, type CommercialOrder, type RejectCode } from "../orchestrator/types";
 import { stableHash } from "../subscriptions/pricing";
 import type { CatalogPort } from "../subscriptions/ports";
 import type { TrialRequest } from "../trials/store";
@@ -70,7 +70,7 @@ export interface PanelConversionDeps {
   orchestrator: {
     create(input: { idempotencyKey: string; trialId: number; request: unknown }, actor: string): Promise<{ order: CommercialOrder }>;
     accept(id: number, input: { signatureRef: string }, actor: string): Promise<{ order: CommercialOrder }>;
-    reject(id: number, input: { reason: string }, actor: string): Promise<unknown>;
+    reject(id: number, input: { reason: string; code?: RejectCode }, actor: string): Promise<unknown>;
   };
   /** Sesiones de Checkout del pedido: una selección anterior solo se sustituye sin pago completado ni enlace vivo. */
   sessions: Pick<StripeStore, "openSession" | "hasCompletedSession">;
@@ -166,7 +166,7 @@ export class PanelConversionService {
       if (open.state === "contracted" && stableHash(open.request) === stableHash(request)) return this.pay(open.id, actor);
       const live = await this.d.sessions.openSession(open.id);
       if (live && live.expiresAt > this.now()) throw new PanelConversionError(409, "conversion_open", "Tienes un pago abierto con otra selección: complétalo o espera a que caduque el enlace");
-      await this.d.orchestrator.reject(open.id, { reason: "Sustituida por otra selección desde el panel (sin pago)" }, actor);
+      await this.d.orchestrator.reject(open.id, { reason: "Sustituida por otra selección desde el panel (sin pago)", code: "conflict" }, actor);
     }
     const q = await this.d.quote(request);
     if (!q.ok) throw new PanelConversionError(400, "invalid_selection", q.errors[0] ?? "Revisa el plan y los módulos elegidos");

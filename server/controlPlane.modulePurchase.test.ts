@@ -44,7 +44,8 @@ import type { StripeConfig } from "./stripe/config";
 import { stripeWebhookVerifier, type GwEvent } from "./stripe/gateway";
 import { MemoryStripeStore } from "./stripe/store";
 import { FakeStripeGateway } from "./stripe/testing";
-import { MemorySubscriptionChangeStore } from "./stripe/changes";
+import { StripeGatewayError } from "./stripe/gateway";
+import { MemorySubscriptionChangeStore, SubscriptionChangeError } from "./stripe/changes";
 import { ModulePurchaseService } from "./stripe/purchases";
 import { MemoryTenantLimitStore } from "./_core/limits/store";
 import { MemoryInvoiceLineStore } from "./stripe/invoiceLines";
@@ -318,6 +319,7 @@ describe("compra de módulos y ampliaciones desde la plataforma", () => {
     gw.expirePendingUpdate(a.subId);
     await deliverSince(mark2);
     await until(async () => (await orderState(order)) === "rejected");
+    expect((await ok(call("GET", `/orders/${order}`))).rejectCode).toBe("payment_expired");
     expect((await ok(call("GET", `/commerce/tenants/${a.tenantId}/purchases/${order}`, { token: CORE }))).purchase.status).toBe("expired");
     expect(await capsOf(a.tenantId)).not.toContain("people-hr");
     expect(await orderState(a.orderId)).toBe("active");
@@ -332,6 +334,47 @@ describe("compra de módulos y ampliaciones desde la plataforma", () => {
     await until(async () => (await orderState(r2.purchase.orderId)) === "active");
     expect(await capsOf(a.tenantId)).toContain("people-hr");
     expect((await ok(call("GET", `/commerce/tenants/${a.tenantId}/purchases/${r2.purchase.orderId}`, { token: CORE }))).purchase.status).toBe("applied");
+  });
+
+  it("Stripe rechaza el cambio de forma definitiva: pedido rechazado con el motivo «payment_failed», sin derechos ni reintento de cobro", async () => {
+    const a = await activeCompany("Compra Rechazada SL");
+    const original = gw.updateSubscriptionItems.bind(gw);
+    let calls = 0;
+    gw.updateSubscriptionItems = async () => {
+      calls++;
+      throw new StripeGatewayError("card_declined", "Stripe respondió 402 (card_declined)", false);
+    };
+    try {
+      const r = await ok(buy(a.tenantId, { add: ["connect-people"] }), [200, 201]);
+      expect(r.purchase.status).toBe("failed");
+      const order = r.purchase.orderId as number;
+      expect(await orderState(order)).toBe("rejected");
+      expect((await ok(call("GET", `/orders/${order}`))).rejectCode).toBe("payment_failed");
+      expect(calls).toBe(1);
+    } finally {
+      gw.updateSubscriptionItems = original;
+    }
+    expect(await capsOf(a.tenantId)).not.toContain("people-hr");
+    expect(await orderState(a.orderId)).toBe("active");
+  });
+
+  it("dos compras a la vez sobre la misma suscripción: la que pierde queda rechazada con el motivo «conflict», sin cobro", async () => {
+    const a = await activeCompany("Compra Simultánea SL");
+    const original = changes.insert.bind(changes);
+    changes.insert = async () => {
+      throw new SubscriptionChangeError("pending_exists", "Ya hay un cambio pendiente en la suscripción");
+    };
+    const invoicesBefore = gw.invoices.size;
+    try {
+      expect((await buy(a.tenantId, { add: ["connect-people"] })).status).toBe(409);
+    } finally {
+      changes.insert = original;
+    }
+    const lost = (await ok(call("GET", `/orders?companyId=${a.companyId}&state=rejected`))).orders as Array<{ id: number }>;
+    expect(lost).toHaveLength(1);
+    expect((await ok(call("GET", `/orders/${lost[0].id}`))).rejectCode).toBe("conflict");
+    expect(gw.invoices.size).toBe(invoicesBefore);
+    expect(await orderState(a.orderId)).toBe("active");
   });
 
   it("SEPA, producto no aprobado, permisos y aislamiento entre empresas", async () => {

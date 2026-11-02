@@ -372,13 +372,34 @@ export function parseMarketplaceRoot(raw: unknown): MarketplaceRoot {
   return { slides, autoplayMs: ms === null ? null : Math.round(ms) };
 }
 
-const ACTIVATION_STATES = ["none", "pending", "processing", "active", "error"] as const;
+const ACTIVATION_STATES = ["none", "pending", "processing", "active", "suspended", "error"] as const;
+const ACTIVATION_PAYMENTS = ["pending", "failed", "expired", "confirmed", "overdue"] as const;
+const iso = (v: unknown) => {
+  const t = when(v);
+  return t === null ? null : new Date(t).toISOString();
+};
+const oneOf = <T extends string>(list: readonly T[], v: unknown): T | null => ((list as readonly unknown[]).includes(v) ? (v as T) : null);
 
-/** Estado de activación que publica el canal para cada producto (`activation`), o null si no llega o es raro. */
+/**
+ * Estado de activación que publica el canal para cada producto (`activation`), o null si no llega o su estado es
+ * raro. Los campos ampliados (#596) se leen con tolerancia: un valor desconocido queda en su valor neutro.
+ */
 export function parseActivation(raw: unknown): ConnectActivation | null {
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
   const o = raw as Record<string, unknown>;
-  if (!(ACTIVATION_STATES as readonly unknown[]).includes(o.state)) return null;
-  const at = when(o.updatedAt);
-  return { state: o.state as ConnectActivation["state"], retryable: o.retryable === true, updatedAt: at === null ? null : new Date(at).toISOString() };
+  const state = oneOf(ACTIVATION_STATES, o.state);
+  if (!state) return null;
+  const e = o.error && typeof o.error === "object" && !Array.isArray(o.error) ? (o.error as Record<string, unknown>) : null;
+  const kind = e ? oneOf(["activation", "payment"] as const, e.kind) : null;
+  return {
+    state,
+    retryable: o.retryable === true,
+    updatedAt: iso(o.updatedAt),
+    payment: oneOf(ACTIVATION_PAYMENTS, o.payment),
+    error: kind ? { kind, transient: e!.transient === true } : null,
+    nextRetryAt: iso(o.nextRetryAt),
+    activeUntil: iso(o.activeUntil),
+    renewal: oneOf(["active", "cancelled"] as const, o.renewal),
+    canReactivate: o.canReactivate === true,
+  };
 }
