@@ -13,7 +13,9 @@ import express, { type NextFunction, type Request, type Response, type Router } 
 import { z } from "zod";
 import { getAuth } from "../controlPlane/auth";
 import { opsLog } from "../_core/ops/log";
-import { TicketError, type Ticket, type TicketEvent, type TicketService } from "../_core/support/tickets";
+import { TicketError, type Ticket, type TicketEvent, type TicketPriority, type TicketService } from "../_core/support/tickets";
+import type { CapabilityGrant } from "../_core/capabilities/model";
+import { licenceSummary } from "../planSeats";
 
 export const CUSTOMER_TICKET_CATEGORIES = ["general", "billing", "technical", "account", "data"] as const;
 
@@ -81,8 +83,29 @@ function requireCoreSupport(req: Request, res: Response, next: NextFunction) {
   next();
 }
 
+/**
+ * Soporte prioritario (plan Business o Enterprise según la licencia vigente): la incidencia entra con prioridad
+ * alta. Essential, sin plan o sin licencias legibles: prioridad normal. La empresa no la ve; el equipo sí.
+ */
+export function supportPriorityFor(grants: readonly CapabilityGrant[] | null, now: number): TicketPriority {
+  const plan = licenceSummary(grants, now).plan;
+  return plan === "business" || plan === "enterprise" ? "high" : "normal";
+}
+
+export interface CustomerTicketsOptions {
+  /** Licencias de la empresa (plano de control). Sin ellas, o si fallan, la prioridad es la normal. */
+  grants?: (tenantId: string) => Promise<CapabilityGrant[]>;
+  now?: () => number;
+}
+
 /** Rutas del Core (montar bajo /commerce). */
-export function createCustomerTicketsRouter(tickets: TicketService): Router {
+export function createCustomerTicketsRouter(tickets: TicketService, opts: CustomerTicketsOptions = {}): Router {
+  const now = opts.now ?? Date.now;
+  const priorityOf = async (tenantId: string): Promise<TicketPriority> => {
+    if (!opts.grants) return "normal";
+    const grants = await opts.grants(tenantId).catch(() => null);
+    return supportPriorityFor(grants, now());
+  };
   const r = express.Router();
   r.use("/tenants/:tenantId/tickets", requireCoreSupport, (_req, res, next) => {
     res.setHeader("Cache-Control", "no-store");
@@ -101,7 +124,8 @@ export function createCustomerTicketsRouter(tickets: TicketService): Router {
       .object({ title: z.string().trim().min(3).max(200), description: z.string().trim().min(10).max(10_000), category: z.enum(CUSTOMER_TICKET_CATEGORIES).optional(), requestedBy: who })
       .strict()
       .parse(req.body);
-    const ticket = await tickets.create({ tenantId: t, title: b.title, description: b.description, category: b.category ?? "general", requester: b.requestedBy }, customerActor(t, b.requestedBy));
+    const priority = await priorityOf(t);
+    const ticket = await tickets.create({ tenantId: t, title: b.title, description: b.description, category: b.category ?? "general", priority, requester: b.requestedBy }, customerActor(t, b.requestedBy));
     res.status(201).json({ ticket: ticketView(ticket) });
   }));
 
