@@ -1,6 +1,6 @@
 /**
  * Reglas de precios (Business, pricing-rules) con la aplicación real sobre MySQL (opt-in, REGISTRY_TEST_DATABASE_URL):
- * dos empresas nuevas desde la baseline y las migraciones de empresa (incluida la 0022). Essential no llega a las reglas
+ * dos empresas nuevas desde la baseline y las migraciones de empresa (incluida la 0023). Essential no llega a las reglas
  * y cobra lo de siempre; con Business, administración las gestiona, el TPV, la tienda y los presupuestos las aplican en
  * el servidor, las ventas ya grabadas no cambian y cada empresa solo ve y aplica las suyas.
  */

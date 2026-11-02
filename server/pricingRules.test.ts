@@ -228,11 +228,11 @@ describe("reglas de precios: aplicación en el servidor", () => {
   });
 });
 
-describe("reglas de precios: migración 0022", () => {
-  const up = "db/migrations/0022_pricing_rules.sql";
+describe("reglas de precios: migración 0023", () => {
+  const up = "db/migrations/0023_pricing_rules.sql";
   it("es aditiva: la publicación la trata como ordinaria", () => {
     expect(destructiveMigration(read(up))).toBeNull();
-    expect(extraordinaryChanges([up, "db/migrations/0022_pricing_rules.down.sql"], "", (f) => read(f))).toEqual([]);
+    expect(extraordinaryChanges([up, "db/migrations/0023_pricing_rules.down.sql"], "", (f) => read(f))).toEqual([]);
   });
 
   it("el código de las reglas no contiene nada que la publicación trate como destructivo", () => {
@@ -246,6 +246,6 @@ describe("reglas de precios: migración 0022", () => {
     expect(sql).toMatch(/CREATE TABLE IF NOT EXISTS pricing_rules/);
     expect(sql).not.toMatch(/ALTER TABLE/i);
     expect(read("server/pricingRulesDb.ts")).toMatch(/mysqlTable\("pricing_rules"/);
-    expect(read("db/migrations/0022_pricing_rules.down.sql")).toMatch(/pricing_rules/);
+    expect(read("db/migrations/0023_pricing_rules.down.sql")).toMatch(/pricing_rules/);
   });
 });

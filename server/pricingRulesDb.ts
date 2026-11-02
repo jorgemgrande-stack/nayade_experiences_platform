@@ -3,7 +3,7 @@
  * servidor a la tienda online, al TPV y a los presupuestos (motor puro en shared/pricingRules.ts).
  *
  * Todo vive en la BD de la empresa en curso (`getDb()` resuelve la del tenant): una empresa nunca lee ni aplica las
- * reglas de otra. Tabla de db/migrations/0022_pricing_rules (fuera de drizzle/schema.ts, como la 0021).
+ * reglas de otra. Tabla de db/migrations/0023_pricing_rules (fuera de drizzle/schema.ts, como la 0021).
  *
  * Aplicación: solo con la capacidad activa. Sin ella (Essential), sin poder verificar la licencia o sin la migración
  * aplicada, no hay reglas y el precio es exactamente el de siempre: nunca se rompe un cobro por las reglas.
@@ -57,7 +57,7 @@ const errCode = (e: unknown) => {
 };
 const missingTable = (e: unknown) => errCode(e) === "ER_NO_SUCH_TABLE";
 
-/** Sin la migración 0022 aplicada en esta empresa: aviso claro en lugar de un error interno. */
+/** Sin la migración 0023 aplicada en esta empresa: aviso claro en lugar de un error interno. */
 function notReady(e: unknown): never {
   if (missingTable(e))
     throw new TRPCError({ code: "PRECONDITION_FAILED", message: "Las reglas de precios aún no están preparadas en tu empresa. Inténtalo de nuevo en unos minutos." });
