@@ -16,6 +16,8 @@ export const BLOCK_TYPES = [
   "slideshow", "carousel", "cards",
   // Formularios
   "form",
+  // Marketing
+  "pricing", "stats", "logos",
 ] as const;
 export type BlockType = (typeof BLOCK_TYPES)[number];
 
@@ -67,6 +69,29 @@ export interface BlockDataMap {
   cards: { title: string; intro: string; layout: "grid" | "carousel"; columns: "2" | "3" | "4"; items: CardItem[] };
   /** Formulario a medida: cada envío entra en el CRM de la empresa como oportunidad, con todas las respuestas */
   form: { title: string; intro: string; fields: FormFieldItem[]; submitLabel: string; successMessage: string; redirectUrl: string; consent: OnOff };
+  /** Tabla de precios: planes o tarifas con sus características y botón; uno puede destacarse */
+  pricing: { title: string; intro: string; plans: PricingPlan[] };
+  /** Cifras destacadas, con recuento animado al aparecer */
+  stats: { title: string; items: StatItem[]; animate: OnOff };
+  /** Logos de clientes o marcas */
+  logos: { title: string; logos: GalleryImage[]; grayscale: OnOff };
+}
+
+export interface PricingPlan {
+  name: string;
+  price: string;
+  period: string;
+  description: string;
+  /** Una característica por línea */
+  features: string;
+  buttonLabel: string;
+  buttonUrl: string;
+  highlighted: OnOff;
+}
+export interface StatItem {
+  value: string;
+  suffix: string;
+  label: string;
 }
 
 export const FORM_FIELD_KINDS = ["text", "email", "phone", "number", "date", "time", "select", "radio", "multi", "checkbox", "textarea", "hidden"] as const;
@@ -186,6 +211,9 @@ export const BLOCK_CATALOG: ReadonlyArray<{ type: BlockType; label: string; desc
   { type: "carousel", label: "Carrusel de imágenes", description: "Varias imágenes a la vista que se desplazan, con visor a pantalla completa" },
   { type: "cards", label: "Tarjetas", description: "Tarjetas con imagen, título, texto y botón, en rejilla o en carrusel" },
   { type: "form", label: "Formulario a medida", description: "Elige los campos; cada respuesta llega a tu CRM" },
+  { type: "pricing", label: "Tabla de precios", description: "Tus planes o tarifas con sus características y un botón" },
+  { type: "stats", label: "Cifras", description: "Números destacados que se cuentan al aparecer" },
+  { type: "logos", label: "Logos de clientes", description: "Las marcas que confían en ti" },
 ];
 
 export const blockLabel = (t: string): string => BLOCK_CATALOG.find((b) => b.type === t)?.label ?? "Bloque";
@@ -268,6 +296,25 @@ export function defaultBlockData<K extends BlockType>(type: K): BlockDataMap[K] 
       redirectUrl: "",
       consent: "on",
     },
+    pricing: {
+      title: "Tarifas",
+      intro: "",
+      plans: [
+        { name: "Básico", price: "29 €", period: "al mes", description: "Para empezar", features: "Primera ventaja\nSegunda ventaja", buttonLabel: "Lo quiero", buttonUrl: "/contacto", highlighted: "off" },
+        { name: "Completo", price: "49 €", period: "al mes", description: "El más elegido", features: "Todo lo del plan básico\nOtra ventaja\nOtra más", buttonLabel: "Lo quiero", buttonUrl: "/contacto", highlighted: "on" },
+        { name: "A medida", price: "Consúltanos", period: "", description: "Para necesidades especiales", features: "Lo que necesites", buttonLabel: "Hablemos", buttonUrl: "/contacto", highlighted: "off" },
+      ],
+    },
+    stats: {
+      title: "",
+      animate: "on",
+      items: [
+        { value: "15", suffix: "años", label: "de experiencia" },
+        { value: "2500", suffix: "+", label: "clientes atendidos" },
+        { value: "98", suffix: "%", label: "repetirían" },
+      ],
+    },
+    logos: { title: "Confían en nosotros", logos: [], grayscale: "on" },
   };
   return structuredCloneSafe(d[type]) as BlockDataMap[K];
 }

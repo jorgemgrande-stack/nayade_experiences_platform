@@ -281,6 +281,19 @@ export function blocksToHtml(blocks: PageBlock[]): string {
       case "form":
         parts.push(h(2, b.data.title), b.data.intro ? `<p>${esc(b.data.intro)}</p>` : "");
         break;
+      case "pricing":
+        parts.push(h(2, b.data.title), b.data.intro ? `<p>${esc(b.data.intro)}</p>` : "");
+        b.data.plans.forEach((p) => {
+          const feats = p.features.split(/\n/).map((x) => x.trim()).filter(Boolean);
+          parts.push(h(3, p.name), `<p>${esc([p.price, p.period].filter(Boolean).join(" "))}</p>`, feats.length ? `<ul>${feats.map((x) => `<li>${esc(x)}</li>`).join("")}</ul>` : "", link(p.buttonUrl, p.buttonLabel));
+        });
+        break;
+      case "stats":
+        parts.push(h(2, b.data.title), b.data.items.length ? `<ul>${b.data.items.map((s) => `<li>${esc(`${s.value}${s.suffix} ${s.label}`)}</li>`).join("")}</ul>` : "");
+        break;
+      case "logos":
+        parts.push(h(2, b.data.title), ...b.data.logos.map((g) => img(g.url, g.alt)));
+        break;
     }
   });
   return sanitizeRichHtml(parts.join(""));

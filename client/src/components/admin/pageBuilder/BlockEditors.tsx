@@ -95,5 +95,11 @@ export function blockSummary(b: PageBlock): string {
       return b.data.title || `${b.data.items.length} tarjetas`;
     case "form":
       return `${b.data.title || "Formulario"} · ${b.data.fields.length} campos`;
+    case "pricing":
+      return b.data.title || `${b.data.plans.length} planes`;
+    case "stats":
+      return b.data.title || b.data.items.map((i) => i.value + i.suffix).join(" · ");
+    case "logos":
+      return b.data.title || `${b.data.logos.length} logos`;
   }
 }
