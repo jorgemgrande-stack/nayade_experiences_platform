@@ -51,6 +51,24 @@ export type ConfirmationKind = "payment" | "admin_approval" | "inherited";
 export const APPROVAL_CATEGORIES = ["internal", "promotional", "partner", "exception", "offline_payment"] as const;
 export type ApprovalCategory = (typeof APPROVAL_CATEGORIES)[number];
 
+/**
+ * Motivo TIPIFICADO del rechazo de un pedido (`reject`), además del texto libre `reason`. Opcional y retrocompatible:
+ * los pedidos anteriores no lo tienen. Se guarda en el evento `reject` del pedido (`detail.code`), sin migración, y
+ * se expone como `rejectCode` en el detalle del pedido.
+ *  - payment_failed: el cobro se rechazó; payment_reversed: se revirtió (reembolso o disputa); payment_expired: el
+ *    cobro caducó sin completarse (Stripe); expired: pedido sin cobro vencido por inactividad (conciliación diaria);
+ *  - activation: la activación no pudo completarse; conflict: otra compra o cambio lo sustituyó; manual: decisión
+ *    de una persona.
+ */
+export const REJECT_CODES = ["payment_failed", "payment_reversed", "payment_expired", "expired", "activation", "conflict", "manual"] as const;
+export type RejectCode = (typeof REJECT_CODES)[number];
+/** Motivo tipificado del último rechazo, leído de los eventos del pedido (null si no lo tiene o no está rechazado). */
+export function rejectCodeOf(events: readonly Pick<OrderEvent, "kind" | "detail">[]): RejectCode | null {
+  const last = events.filter((e) => e.kind === "reject").pop();
+  const code = last?.detail?.code;
+  return typeof code === "string" && (REJECT_CODES as readonly string[]).includes(code) ? (code as RejectCode) : null;
+}
+
 export interface Confirmation {
   kind: ConfirmationKind;
   /** Pago (id) o pedido del que se hereda. */

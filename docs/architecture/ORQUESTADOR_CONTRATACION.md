@@ -143,6 +143,29 @@ suspended (reversible)`. El orquestador la aplica así:
 Roles de operador: lectura para todos los que leen; el comercial prepara pedidos (`orders:write`); la
 aprobación sin pago y la activación quedan para administración.
 
+## Motivo tipificado del rechazo
+
+`reject` (y `POST /orders/:id/reject`) admite un `code` opcional además del texto `reason`: `payment_failed`,
+`payment_reversed`, `payment_expired`, `expired` (pedido sin cobro vencido por inactividad), `activation`,
+`conflict` o `manual`. Se guarda en el evento `reject` (`detail.code`, sin migración) y el detalle del pedido lo
+expone como `rejectCode`. Los pedidos anteriores no lo tienen (el panel los trata como antes).
+
+## Estado en el panel (`server/commerce/panelActivation.ts`)
+
+Contrato aditivo de `activation` en el catálogo del panel (`GET /commerce/tenants/:t/catalog`):
+
+| Pedido | `state` | `payment` | Otros |
+|---|---|---|---|
+| requested · quoted · contracted | pending | pending (failed si el último intento de cobro falló, con `error.kind` payment) | |
+| confirmed · subscribed · licensed | processing | confirmed (cobro verificado) | `nextRetryAt` |
+| active | active | confirmed | `renewal` active |
+| past_due (gracia) | active | overdue | |
+| suspended | suspended | overdue | sin acceso |
+| cancel_scheduled | active | confirmed | `activeUntil` (Stripe `cancel_at` o fin de periodo; si no, la suscripción interna), `renewal` cancelled, `canReactivate` solo con `cancel_at_period_end` |
+| módulo retirado con la partida vigente | active | — | `activeUntil` = `effectiveTo` de la partida, `renewal` cancelled |
+| rejected (7 días) | error | failed (payment_failed/reversed) · expired (payment_expired/expired) | `error.kind` payment (activation con activation/conflict), `retryable` true |
+| cancelled · superseded | none | — | |
+
 ## Configuración
 
 | Variable | Efecto |

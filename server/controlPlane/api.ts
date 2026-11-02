@@ -2188,7 +2188,19 @@ export function createControlPlaneApp(d: ControlPlaneDeps): Express {
       // Catálogo de módulos y ampliaciones para el panel de cada empresa (solo lectura, mismo token que la compra)
       if (webAdmin) {
         const wa = webAdmin;
-        router.use("/commerce", createPanelCatalogRouter({ site: () => wa.site("published"), purchasesEnabled: !!d.stripe?.purchases?.enabled, internalTenants: d.stripe?.purchases?.internalTenants, activation: d.orders ? orderActivation({ crm: d.crm.store, orders: d.orders.store, now: d.subscriptions.now }) : undefined, marketplace: () => wa.marketplace("published"), planOf: d.orders ? orderPlan({ crm: d.crm.store, orders: d.orders.store }) : undefined }));
+        // Baja programada: el fin del servicio lo fija la suscripción de Stripe de la empresa (segundos → ms)
+        const stripeStore = d.stripe?.store;
+        const panelBilling = stripeStore
+          ? async (o: { companyId: number; tenantId: string | null }) => {
+              for (const sid of await stripeStore.subscriptionsOfCompany(o.companyId)) {
+                const s = await stripeStore.subscription(sid);
+                if (!s || (s.tenantId !== null && s.tenantId !== o.tenantId)) continue;
+                return { cancelAt: s.cancelAt === null ? null : s.cancelAt * 1000, cancelAtPeriodEnd: s.cancelAtPeriodEnd, currentPeriodEnd: s.currentPeriodEnd === null ? null : s.currentPeriodEnd * 1000 };
+              }
+              return null;
+            }
+          : undefined;
+        router.use("/commerce", createPanelCatalogRouter({ site: () => wa.site("published"), purchasesEnabled: !!d.stripe?.purchases?.enabled, internalTenants: d.stripe?.purchases?.internalTenants, activation: d.orders ? orderActivation({ crm: d.crm.store, orders: d.orders.store, now: d.subscriptions.now, subscriptions: d.subscriptions.store, billing: panelBilling }) : undefined, marketplace: () => wa.marketplace("published"), planOf: d.orders ? orderPlan({ crm: d.crm.store, orders: d.orders.store }) : undefined }));
         // Solicitudes del marketplace del panel («Solicitar información» y «Me interesa») como solicitudes del CRM
         // Medición del marketplace (agregada, sin datos personales): sin la migración 0042, 202 y se descarta
         router.use("/commerce", createPanelEventsRouter({ store: d.web?.events ?? null }));
