@@ -92,7 +92,7 @@ describe("API de política de consumo y excepciones de cuota", () => {
     const b = Object.fromEntries(r.json.business.map((x: any) => [x.metric, x]));
     expect(b.users).toMatchObject({ limit: 4, source: "addon", breakdown: { plan: { key: "essential", included: 3 }, addon: 1 }, explanation: "4 (plan + ampliaciones) · Plan essential: 3 · ampliaciones: +1" });
     expect(b.contacts).toMatchObject({ limit: 10_000, source: "plan", enforcement: "hard" });
-    expect(b.orders_month).toMatchObject({ enforcement: "none" });
+    expect(b.orders_month).toMatchObject({ enforcement: "soft" });
     expect(r.json.resources.find((x: any) => x.metric === "email.sent")).toMatchObject({ limit: 1000, source: "default" });
     expect((await call("GET", "/tenants/nadie/quotas/policy", READER)).status).toBe(404);
   });

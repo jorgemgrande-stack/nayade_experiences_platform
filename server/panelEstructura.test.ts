@@ -101,7 +101,8 @@ describe("guardián de rutas no contratadas", () => {
   it("la entrada más específica gana y la consulta (?tab=) no cuenta", () => {
     expect(routeCapabilities("/admin/marketing/descuentos")).toEqual(["shop-coupons"]);
     expect(routeCapabilities("/admin/contabilidad/caja")).toEqual(["bill-cash"]);
-    expect(routeCapabilities("/admin/contabilidad/gastos")).toEqual(["bill-reports"]);
+    // Gastos: también la licencia Business (menú «Gastos y compras»); Essential la sigue abriendo por su ruta
+    expect(routeCapabilities("/admin/contabilidad/gastos")).toEqual(expect.arrayContaining(["bill-reports", "purchasing-basic"]));
     expect(routeCapabilities("/admin/crm?tab=invoices")).toEqual(expect.arrayContaining(["crm-leads", "bill-invoices", "shop-orders"]));
     expect(routeAccess("/admin/marketing/descuentos", essential)).toBe("allowed");
   });

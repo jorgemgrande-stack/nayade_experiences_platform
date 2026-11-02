@@ -22,6 +22,7 @@ import { panelModules, type PanelCatalogItemView } from "../panelModules";
 import { getLimitAccess } from "../_core/limits/access";
 import { LIMIT_METRICS } from "../_core/limits/store";
 import type { PanelUsage } from "../commerce/panelUsage";
+import { currentOrdersMonthUsage, withOrdersMonth } from "../ordersMonthQuota";
 import type { TenantPlanSummary } from "../commerce/tenantPlan";
 import { isTrialTenant, TRIAL_PURCHASES_MESSAGE } from "../trialPayments";
 import { parsePanelPlans } from "../../shared/subscriptionPlans";
@@ -159,13 +160,15 @@ export const subscriptionRouter = router({
   /**
    * Consumo de la empresa frente a los límites de su plan (correo, IA, ficheros, exportaciones), medido por Elephant
    * Resource Manager. Solo lectura. `null` fuera de multiempresa o sin canal con el plano de control.
+   * Añade los pedidos del mes frente al cupo del plan (se avisa, nunca se bloquea: server/ordersMonthQuota.ts).
    */
   usage: protectedProcedure.query(async ({ ctx }) => {
     if (!(PANEL_ROLES as readonly string[]).includes(String(ctx.user.role))) throw new TRPCError({ code: "FORBIDDEN" });
     const client = commerceClientFromEnv();
     if (getTenantMode() !== "multi" || !client) return null;
     try {
-      return (await client.usage(getTenantId())) as PanelUsage;
+      const [usage, orders] = await Promise.all([client.usage(getTenantId()) as Promise<PanelUsage>, currentOrdersMonthUsage()]);
+      return withOrdersMonth(usage, orders);
     } catch {
       throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "No se pudo consultar el consumo. Inténtalo de nuevo en unos minutos." });
     }

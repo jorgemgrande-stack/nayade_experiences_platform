@@ -60,9 +60,9 @@ export const BUSINESS_POLICIES: readonly MetricPolicy[] = [
     label: "Pedidos al mes",
     unit: "pedidos",
     period: "total",
-    enforcement: "none",
+    enforcement: "soft",
     platformDefault: null,
-    applied: "Sin aplicar: cortar un pedido perjudica al cliente y los pedidos entran por varios canales de cobro (Redsys, Stripe, TPV, taquilla). Solo se informa",
+    applied: "Core: se mide cada mes natural y se avisa en «Consumo» al 80 % y al superarlo. Nunca se bloquea un pedido: cortarlo perjudica al cliente y entran por varios canales (Redsys, Stripe, TPV, taquilla)",
   },
   { metric: "websites", label: "Webs gestionadas", unit: "webs", period: "total", enforcement: "none", platformDefault: null, applied: "Sin aplicar: las webs las da de alta el equipo al implantar" },
   {

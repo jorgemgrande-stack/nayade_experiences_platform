@@ -2693,7 +2693,7 @@ export function createControlPlaneApp(d: ControlPlaneDeps): Express {
     const tickets = d.tickets;
     router.use("/tickets", createTicketsRouter(tickets));
     // Soporte desde el panel de cada empresa (token del Core; nunca notas internas ni datos del equipo)
-    router.use("/commerce", createCustomerTicketsRouter(tickets));
+    router.use("/commerce", createCustomerTicketsRouter(tickets, { grants: d.capabilities ? (t) => d.capabilities!.list(t) : undefined }));
     // Vista por empresa: el tenant de la ruta fuerza el filtro y valida su existencia.
     router.get(
       "/tenants/:id/tickets",
