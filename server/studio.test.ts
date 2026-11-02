@@ -10,6 +10,7 @@ import { blocksToHtml, normalizeBlocks, normalizeStyle, readStoredBlocks, render
 import { docReducer, initialDoc } from "../client/src/components/admin/studio/history";
 import { parseDragPayload } from "../client/src/components/admin/studio/protocol";
 import { renderTokens } from "../client/src/components/admin/studio/tokens";
+import { imageUploadProblem, siteRelativeFileUrl, uploadErrorMessage } from "../shared/imageUpload";
 
 const one = (type: string, data: Record<string, unknown>, style?: unknown) => normalizeBlocks([{ id: "b1", type, data, ...(style ? { style } : {}) }])[0] as any;
 
@@ -165,6 +166,67 @@ describe("historial de deshacer y rehacer", () => {
   it("cada cambio aumenta la revisión (el autoguardado sabe que hay algo pendiente)", () => {
     const s = docReducer(docReducer(initialDoc, { type: "load", blocks: [] }), { type: "change", blocks: b("x") });
     expect(s.revision).toBe(1);
+  });
+});
+
+describe("regresiones de la revisión funcional (imágenes y guardado)", () => {
+  const ID = "01hzx0v6k2m8q9r3s4t5u6v7w8";
+  it("una imagen de Multimedia se guarda como ruta propia (sirve en cualquier dominio de la empresa)", () => {
+    expect(siteRelativeFileUrl(`https://skibox.app.bigelephant.es/files/${ID}/BAQUEIRA.jpg`)).toBe(`/files/${ID}/BAQUEIRA.jpg`);
+    expect(siteRelativeFileUrl("https://cdn.otra.web/foto.jpg")).toBe("https://cdn.otra.web/foto.jpg");
+    expect(one("image", { url: `https://app.bigelephant.es/files/${ID}/BAQUEIRA.jpg` }).data.url).toBe(`/files/${ID}/BAQUEIRA.jpg`);
+    expect(one("hero", { imageUrl: `https://skibox.es/files/${ID}/x.png` }).data.imageUrl).toBe(`/files/${ID}/x.png`);
+    expect(one("gallery", { images: [{ url: `https://skibox.es/files/${ID}/a.jpg`, alt: "A" }] }).data.images[0].url).toBe(`/files/${ID}/a.jpg`);
+    // Un fichero privado o una ruta que no es de Multimedia no se toca
+    expect(one("image", { url: `/api/files/${ID}` }).data.url).toBe(`/api/files/${ID}`);
+  });
+
+  it("la subida explica por qué no se admite un fichero, igual que el servidor", () => {
+    expect(imageUploadProblem({ type: "image/jpeg", size: 1000 })).toBeNull();
+    expect(imageUploadProblem({ type: "image/bmp", size: 1000 })).toMatch(/formato no se admite/);
+    expect(imageUploadProblem({ type: "text/plain", size: 4 })).toMatch(/formato no se admite/);
+    expect(imageUploadProblem({ type: "image/png", size: 11 * 1024 * 1024 })).toMatch(/más de 10 MB/);
+    expect(uploadErrorMessage(413)).toMatch(/más de 10 MB/);
+    expect(uploadErrorMessage(400, "Tipo de archivo no permitido")).toBe("Tipo de archivo no permitido");
+    expect(uploadErrorMessage(401)).toMatch(/sesión/);
+    expect(uploadErrorMessage(502)).toMatch(/servidor/);
+  });
+
+  it("un cambio que llega tarde (subida, diálogo) se aplica sobre el documento vigente y no deshace lo editado", () => {
+    let s = docReducer(initialDoc, { type: "load", blocks: [createBlock("image", { caption: "" })] as PageBlock[] });
+    const id = s.blocks[0].id;
+    // Mientras sube la imagen, la persona escribe el pie de foto
+    s = docReducer(s, { type: "apply", fn: (bs) => bs.map((b) => (b.id === id ? ({ ...b, data: { ...b.data, caption: "Pistas" } } as PageBlock) : b)) });
+    // Termina la subida: solo cambia la imagen
+    s = docReducer(s, { type: "apply", fn: (bs) => bs.map((b) => (b.id === id ? ({ ...b, data: { ...b.data, url: "/files/x/a.jpg" } } as PageBlock) : b)) });
+    expect(s.blocks[0].data).toMatchObject({ caption: "Pistas", url: "/files/x/a.jpg" });
+    // Un cambio sobre un bloque que ya no existe no altera nada ni ensucia el historial
+    const same = docReducer(s, { type: "apply", fn: (bs) => bs });
+    expect(same).toBe(s);
+  });
+
+  it("la subida responde en JSON aunque multer la rechace (antes era una página de error)", async () => {
+    const { singleImage } = await import("./uploadRoutes");
+    const express = (await import("express")).default;
+    const app = express();
+    app.post("/subir", singleImage("image"), (_req, res) => res.json({ ok: true }));
+    const server = app.listen(0);
+    const port = (server.address() as { port: number }).port;
+    const run = async (type: string, size: number) => {
+      const fd = new FormData();
+      fd.append("image", new Blob([new Uint8Array(size)], { type }), "f");
+      const r = await fetch(`http://127.0.0.1:${port}/subir`, { method: "POST", body: fd });
+      return { status: r.status, body: (await r.json()) as { error?: string; ok?: boolean } };
+    };
+    try {
+      expect((await run("text/plain", 4)).status).toBe(400);
+      const big = await run("image/jpeg", 10 * 1024 * 1024 + 10);
+      expect(big.status).toBe(413);
+      expect(big.body.error).toMatch(/10 MB/);
+      expect(await run("image/png", 100)).toEqual({ status: 200, body: { ok: true } });
+    } finally {
+      server.close();
+    }
   });
 });
 

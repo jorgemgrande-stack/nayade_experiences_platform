@@ -60,9 +60,16 @@ export default function StudioCanvas() {
     const onSubmit = (e: Event) => e.preventDefault();
     const onKey = (e: KeyboardEvent) => {
       const t = e.target as HTMLElement | null;
-      if (t?.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t?.tagName ?? "")) return;
       const ctrl = e.ctrlKey || e.metaKey;
       const k = e.key.toLowerCase();
+      // Ctrl+S guarda también mientras se escribe sobre la página: primero se confirma el texto (al perder el foco)
+      if (ctrl && k === "s") {
+        e.preventDefault();
+        if (t?.isContentEditable) t.blur();
+        post({ kind: "key", key: k, ctrl, shift: e.shiftKey });
+        return;
+      }
+      if (t?.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t?.tagName ?? "")) return;
       if (["delete", "backspace", "escape"].includes(k) || (ctrl && ["z", "y", "s", "d"].includes(k))) {
         e.preventDefault();
         post({ kind: "key", key: k, ctrl, shift: e.shiftKey });

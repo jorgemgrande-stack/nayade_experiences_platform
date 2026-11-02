@@ -19,6 +19,8 @@ export function useStudioDocument(slug: string | null) {
   const [status, setStatus] = useState<SaveStatus>("idle");
   const [savedAt, setSavedAt] = useState<Date | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // Si hay un borrador guardado sin publicar (se sabe al momento, sin esperar a que se refresque la lista de páginas)
+  const [hasDraft, setHasDraft] = useState(false);
   const savedRevision = useRef(0);
   const loadedFor = useRef<string | null>(null);
   const stateRef = useRef(state);
@@ -34,6 +36,7 @@ export function useStudioDocument(slug: string | null) {
     dispatch({ type: "load", blocks: editor.data.blocks as PageBlock[] });
     setStatus("idle");
     setError(null);
+    setHasDraft(editor.data.source === "draft");
     setSavedAt(editor.data.draftSavedAt ? new Date(editor.data.draftSavedAt) : null);
   }, [slug, editor.data, editor.isFetching]);
 
@@ -53,6 +56,7 @@ export function useStudioDocument(slug: string | null) {
     try {
       await mutateRef.current({ slug: target, blocks: s.blocks });
       savedRevision.current = s.revision;
+      setHasDraft(true);
       setSavedAt(new Date());
       setError(null);
       setStatus(stateRef.current.revision === s.revision ? "saved" : "pending");
@@ -74,10 +78,17 @@ export function useStudioDocument(slug: string | null) {
   }, [state.revision, slug, save]);
 
   const change = useCallback((blocks: PageBlock[], coalesceKey?: string) => dispatch({ type: "change", blocks, coalesceKey }), []);
+  /** Cambia un bloque a partir de su versión VIGENTE (lo usan el inspector, el lienzo y las subidas). */
+  const updateBlock = useCallback(
+    (id: string, fn: (b: PageBlock) => PageBlock, coalesceKey?: string) =>
+      dispatch({ type: "apply", fn: (blocks) => (blocks.some((b) => b.id === id) ? blocks.map((b) => (b.id === id ? fn(b) : b)) : blocks), coalesceKey }),
+    [],
+  );
 
-  /** Tras publicar o recuperar en el servidor: lo que hay en el editor ya está guardado. */
-  const markSaved = useCallback(() => {
+  /** Tras publicar (sin borrador) o recuperar una versión (queda como borrador) en el servidor: lo del editor ya está guardado. */
+  const markSaved = useCallback((draftRemains: boolean) => {
     savedRevision.current = stateRef.current.revision;
+    setHasDraft(draftRemains);
     setStatus("idle");
     setSavedAt(new Date());
   }, []);
@@ -97,7 +108,9 @@ export function useStudioDocument(slug: string | null) {
     undo: () => dispatch({ type: "undo" }),
     redo: () => dispatch({ type: "redo" }),
     change,
+    updateBlock,
     dirty,
+    hasDraft,
     status,
     savedAt,
     error,

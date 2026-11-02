@@ -106,13 +106,15 @@ function EditableText({ ed, block, k, value, as: Tag, className, multiline, plac
   useLayoutEffect(() => {
     const el = ref.current;
     if (el && el.ownerDocument.activeElement !== el && el.textContent !== value) el.textContent = value;
-  }, [value, editable]);
+    // `Tag` también: al cambiar de nivel (h2 → h3, o al dejar de ser el primer título) el elemento es otro y llega vacío
+  }, [value, editable, Tag]);
   if (!value && !editable) return null;
   const El = Tag as "div";
   return (
     <El
       ref={(el: HTMLElement | null) => {
         ref.current = el;
+        if (el && el.ownerDocument.activeElement !== el && el.textContent !== value) el.textContent = value;
       }}
       className={cn(className, editable && "studio-editable")}
       contentEditable={editable || undefined}
@@ -251,11 +253,19 @@ function EmptyMedia({ children }: { children: ReactNode }) {
 
 function ImageBlock({ b }: { b: BlockOf<"image"> }) {
   const ed = useContext(StudioEditContext);
+  const [broken, setBroken] = useState<string | null>(null);
   if (!b.data.url && !ed) return null;
+  const showBroken = !!ed && broken === b.data.url;
   return (
     <section className="container py-6">
       <figure className={cn("mx-auto", b.data.size === "wide" ? "max-w-6xl" : "max-w-3xl")}>
-        {b.data.url ? <img src={b.data.url} alt={b.data.alt} className="h-auto w-full rounded-2xl object-cover" loading="lazy" /> : <EmptyMedia>Elige la imagen en el panel de la derecha</EmptyMedia>}
+        {!b.data.url ? (
+          <EmptyMedia>Elige la imagen en el panel de la derecha</EmptyMedia>
+        ) : showBroken ? (
+          <EmptyMedia>No se puede mostrar la imagen elegida. Elige otra en el panel de la derecha.</EmptyMedia>
+        ) : (
+          <img src={b.data.url} alt={b.data.alt} className="h-auto w-full rounded-2xl object-cover" loading="lazy" onError={() => setBroken(b.data.url)} />
+        )}
         <Txt k="caption" value={b.data.caption} as="figcaption" className="mt-2 block text-center text-sm text-muted-foreground" placeholder="Pie de foto (opcional)" />
       </figure>
     </section>
@@ -737,7 +747,9 @@ function EditFrame({ ed, b, index, count, children }: { ed: StudioEdit; b: PageB
         e.preventDefault();
         e.stopPropagation();
         const payload = ed.readDrop(e.dataTransfer);
-        const at = drop === "after" ? index + 1 : index;
+        // La posición se calcula con el propio evento (no con el estado del último «dragover», que puede no estar al día)
+        const r = e.currentTarget.getBoundingClientRect();
+        const at = e.clientY < r.top + r.height / 2 ? index : index + 1;
         setDrop(null);
         if (payload) ed.onDrop(payload, at);
       }}
