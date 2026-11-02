@@ -53,6 +53,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { ROLE_LABELS } from "@shared/roleLabels";
+import CustomRolesPanel from "@/components/admin/CustomRolesPanel";
 
 // ─── FASE 3: roleCapabilities — mapa estático de capacidades por rol (UI-only) ─
 const roleCapabilities: Record<string, string[]> = {
@@ -931,6 +932,9 @@ export default function UsersManager() {
             </tbody>
           </table>
         </div>
+
+        {/* ── Roles personalizados (Business, roles-custom): solo con la capacidad ── */}
+        {sub.isLicensed && sub.can("roles-custom") && <CustomRolesPanel users={users} canWrite={sub.canWrite("roles-custom")} />}
 
         {/* ── RBAC Role Manager Dialog ── */}
         <Dialog

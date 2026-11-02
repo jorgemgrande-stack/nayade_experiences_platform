@@ -8,7 +8,8 @@
  *  2. Configuración fiscal: si nadie la ha guardado, guarda solo los datos confirmados del emisor (razón social, NIF,
  *     ejercicio natural) con los valores neutros, SIN validar: la gestoría la valida en el CRM.
  *  3. Facturas propias: BORRADORES de las mensualidades devengadas de los servicios externos y su estado de cobro
- *     (`InvoicingService.generateExternal`, idempotente por `external:<id>:<AAAA-MM>`). Nunca expide.
+ *     (`InvoicingService.generateExternal`, idempotente por `external:<id>:<AAAA-MM>`), y de las ventas cobradas por
+ *     Stripe desde el panel (`generateStripeSales`, una por factura de Stripe cobrada). Nunca expide.
  *  4. Libro: contabiliza las facturas expedidas sin asiento (`invoice:<id>`).
  *  5. Stripe: lee por API las transacciones de saldo y los payouts (solo lectura), los importa con la misma
  *     deduplicación que el CSV (`stripe-txn:<id>`, `stripe-payout:<id>`) y contabiliza lo pendiente. Sin permisos de
@@ -20,6 +21,7 @@
 import type { SchedulerLock } from "../trials/scheduler";
 import type { InvoicingAutomation } from "../invoicing/delivery";
 import type { GenerateReport } from "../invoicing/service";
+import type { StripeSalesReport } from "../invoicing/stripeSales";
 import { madridDateKey } from "../utils/timezone";
 import type { FinanceService } from "./service";
 import type { FinanceStore } from "./store";
@@ -74,7 +76,7 @@ export interface FinanceAutomationDeps {
   stripe?: FinanceStripeService | null;
   stripeApi?: Pick<StripeApiBalanceReader, "read"> | null;
   tax?: Pick<FinanceTaxService, "settings" | "saveSettings"> | null;
-  invoicing?: { generateExternal(actor: string): Promise<GenerateReport> } | null;
+  invoicing?: { generateExternal(actor: string): Promise<GenerateReport>; generateStripeSales?(actor: string): Promise<StripeSalesReport> } | null;
   /** Facturación fiscal automática (DF-2): proformas, expedición contrastada con Stripe y envío. */
   issuing?: Pick<InvoicingAutomation, "sendProformas" | "issueDue" | "redeliver"> | null;
   issuer: { legalName: string; taxId: string };
@@ -117,15 +119,24 @@ export class FinanceAutomation {
       await this.d.tax.saveSettings({ legalName: this.d.issuer.legalName, taxId: this.d.issuer.taxId, fiscalYearStartMonth: 1, notes: SEEDED_TAX_NOTES }, actor);
       return { status: "ok", detail: "Datos confirmados del emisor guardados; pendiente de validar con la gestoría", validated: false, changed: true };
     });
+    // Ventas de Stripe que no pueden tener borrador: se presentan junto a las facturas que no se pueden expedir
+    let salesBlocked: Array<{ id: number; reason: string }> = [];
     const invoiceDrafts = await this.step(async () => {
       if (!this.d.invoicing) return { status: "skipped", detail: "Facturación propia no montada" };
       const r = await this.d.invoicing.generateExternal(actor.by);
-      return { status: "ok", detail: `${r.created.length} borradores nuevos, ${r.existing} ya existentes, ${r.payments.length} cobros actualizados`, created: r.created.length, payments: r.payments.length, warnings: r.warnings.slice(0, 10), changed: r.created.length + r.payments.length > 0 };
+      if (!this.d.invoicing.generateStripeSales) return { status: "ok", detail: `${r.created.length} borradores nuevos, ${r.existing} ya existentes, ${r.payments.length} cobros actualizados`, created: r.created.length, payments: r.payments.length, warnings: r.warnings.slice(0, 10), changed: r.created.length + r.payments.length > 0 };
+      const s = await this.d.invoicing.generateStripeSales(actor.by);
+      salesBlocked = s.skipped.map((x) => ({ id: x.documentId, reason: `documento fiscal de la venta de Stripe ${x.stripeInvoiceId}: ${x.reason}` }));
+      const sales = `ventas de Stripe: ${s.created.length} borradores nuevos, ${s.existing} ya existentes${s.marked ? `, ${s.marked} documentos fiscales marcados como emitidos` : ""}${s.skipped.length ? `, ${s.skipped.length} sin borrador` : ""}`;
+      const created = r.created.length + s.created.length;
+      const payments = r.payments.length + s.payments.length;
+      return { status: "ok", detail: `${r.created.length} borradores nuevos, ${r.existing} ya existentes, ${r.payments.length} cobros actualizados; ${sales}`, created, payments, warnings: [...r.warnings, ...s.warnings].slice(0, 10), changed: created + payments + s.marked > 0 };
     });
     const invoiceIssue = await this.step(async () => {
       if (!this.d.issuing) return { status: "skipped", detail: "Facturación fiscal automática no montada" };
       const pro = await this.d.issuing.sendProformas();
-      const iss = await this.d.issuing.issueDue();
+      const due = await this.d.issuing.issueDue();
+      const iss = { ...due, blocked: [...due.blocked, ...salesBlocked] };
       const re = await this.d.issuing.redeliver();
       const parts = [
         `${pro.sent} proformas enviadas`,

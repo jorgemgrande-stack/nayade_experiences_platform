@@ -215,6 +215,8 @@ import { proposalsRouter } from "./routers/proposals";
 import { commercialFollowupRouter } from "./routers/commercialFollowup";
 import { crmTagsRouter } from "./routers/crmTags";
 import { crmTasksRouter } from "./routers/crmTasks";
+import { crmFunnelRouter } from "./routers/crmFunnel";
+import { customRolesRouter } from "./routers/customRoles";
 import { ghlInboxRouter } from "./routers/ghlInbox";
 import { vapiCallsRouter } from "./routers/vapiCalls";
 import { emailAccountsRouter } from "./routers/emailAccounts";
@@ -2576,6 +2578,8 @@ export const appRouter = router({
   commercialFollowup: commercialFollowupRouter,
   crmTags: crmTagsRouter,
   crmTasks: crmTasksRouter,
+  crmFunnel: crmFunnelRouter,
+  customRoles: customRolesRouter,
   ghlInbox: ghlInboxRouter,
   vapiCalls: vapiCallsRouter,
   emailAccounts: emailAccountsRouter,

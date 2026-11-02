@@ -7,7 +7,7 @@
  * operación (moduleRouteGuard / requireModule).
  */
 import { protectedProcedure, router } from "../_core/trpc";
-import { checkRbacOrLegacy } from "../_core/rbac";
+import { checkPermission } from "../customRolesAccess";
 import { getModuleAccess, getModuleRegistry } from "../_core/modules/runtime";
 import { registerBuiltinModules } from "../_core/modules/builtin";
 
@@ -22,7 +22,7 @@ export const modulesRouter = router({
     const wanted = new Set<string>();
     for (const id of ids) for (const n of registry.get(id)?.navigation ?? []) if (n.permission) wanted.add(n.permission);
     for (const key of Array.from(wanted)) {
-      if (await checkRbacOrLegacy(ctx.user.id, String(ctx.user.role), key, ["admin"])) perms.add(key);
+      if (await checkPermission(ctx.user.id, String(ctx.user.role), key, ["admin"])) perms.add(key);
     }
     return {
       modules: ids,

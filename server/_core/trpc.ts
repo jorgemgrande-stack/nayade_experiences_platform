@@ -3,6 +3,7 @@ import { initTRPC, TRPCError } from "@trpc/server";
 import superjson from "superjson";
 import type { TrpcContext } from "./context";
 import { checkRbacOrLegacy, getUserPermissions } from "./rbac";
+import { applyCustomRoleAny, checkPermission } from "../customRolesAccess";
 import { ModuleError } from "./modules/contract";
 import type { ModuleAccess } from "./modules/entitlements";
 import { QuotaExceededError } from "./erm/types";
@@ -155,7 +156,8 @@ export function permissionProcedure(permissionKey: string, fallbackRoles: string
     if (!ctx.user) {
       throw new TRPCError({ code: "UNAUTHORIZED", message: UNAUTHED_ERR_MSG });
     }
-    const allowed = await checkRbacOrLegacy(
+    // Rol propio (Business, roles-custom) encima de la comprobación de siempre; sin él, idéntico a checkRbacOrLegacy
+    const allowed = await checkPermission(
       ctx.user.id,
       ctx.user.role as string,
       permissionKey,
@@ -186,6 +188,7 @@ export function anyPermissionProcedure(permissionKeys: string[], fallbackRoles: 
     } catch {
       allowed = fallbackRoles.includes(ctx.user.role as string);
     }
+    allowed = await applyCustomRoleAny(ctx.user.id, ctx.user.role as string, permissionKeys, fallbackRoles, allowed);
     if (!allowed) {
       throw new TRPCError({ code: "FORBIDDEN", message: "Acceso denegado" });
     }
@@ -250,7 +253,7 @@ export const adminrestProcedure = baseProcedure.use(
     if (!ctx.user) {
       throw new TRPCError({ code: "UNAUTHORIZED", message: UNAUTHED_ERR_MSG });
     }
-    const allowed = await checkRbacOrLegacy(
+    const allowed = await checkPermission(
       ctx.user.id,
       ctx.user.role as string,
       "restaurants.view",

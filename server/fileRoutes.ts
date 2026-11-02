@@ -16,7 +16,7 @@
  */
 import { Router, type Request, type Response } from "express";
 import { resolveSessionUser } from "./_core/expressAuth";
-import { checkRbacOrLegacy } from "./_core/rbac";
+import { checkPermission } from "./customRolesAccess";
 import { getTenantMode, peekTenantContext } from "./_core/tenant";
 import { policyOf } from "./_core/files/categories";
 import { INLINE_SAFE, extensionFor, safeDisplayName } from "./_core/files/contentType";
@@ -135,7 +135,7 @@ async function authorize(user: SessionUser | null, row: StoredObjectRow, write: 
   }
   let ok = false;
   try {
-    ok = await checkRbacOrLegacy(user.id, String(user.role), policy.permission, policy.fallbackRoles);
+    ok = await checkPermission(user.id, String(user.role), policy.permission, policy.fallbackRoles);
   } catch {
     ok = policy.fallbackRoles.includes(String(user.role));
   }
