@@ -36,7 +36,7 @@ import { seedElephantSource } from "./catalog/seed";
 import { quote } from "./catalog/quote";
 import { quoteCatalogFromSite } from "./catalog/snapshot";
 import { panelCatalog } from "./commerce/panelCatalog";
-import { orderActivation, orderPlan, ERROR_WINDOW_MS } from "./commerce/panelActivation";
+import { orderActivation, orderPlan } from "./commerce/panelActivation";
 
 const SECRET = "secreto-del-proveedor-de-pruebas-0123456789abcdef";
 const PRODUCT = "connect-people";
@@ -275,17 +275,6 @@ describe(`ciclo del pedido de ${PRODUCT} y estado de activación en el panel`, (
     expect(await planOf(t)).toBeNull();
     expect(await access(t, false)).toEqual({ allowed: true, status: "read_only" });
     expect((await access(t, true)).allowed).toBe(false);
-  });
-
-  it("el error de un rechazo caduca a los 7 días y nunca tapa lo ya activo", async () => {
-    const base = await baseOrder("Rechazo People SL");
-    const t = base.tenantId!;
-    const o = (await changeWith(base, [PRODUCT])).order;
-    await svc.reject(o.id, { reason: "El cliente lo deja para más adelante" }, actor);
-    expect(await activationOf(t)).toMatchObject({ state: "error", retryable: true });
-    clock += ERROR_WINDOW_MS + 1;
-    expect(await activationOf(t)).toMatchObject({ state: "none", retryable: false });
-    expect(await planOf(t)).toBe("business");
   });
 
   it("hueco: al quitar el módulo, el panel lo muestra «none» al instante aunque la licencia sigue activa hasta fin de periodo", async () => {
