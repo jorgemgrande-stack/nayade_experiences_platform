@@ -39,6 +39,16 @@ export interface ModuleRequestInput {
   idempotencyKey: string;
 }
 
+export interface PlanRequestInput {
+  plan: string;
+  kind: "contract" | "upgrade" | "change";
+  currentPlan: string | null;
+  trial: boolean;
+  message?: string;
+  requester: { name: string; email: string; userId?: string };
+  idempotencyKey: string;
+}
+
 export class CommerceError extends Error {
   constructor(
     public readonly status: number,
@@ -90,6 +100,9 @@ export interface CommerceClient {
   cancel(tenantId: string, input: { idempotencyKey: string; user: string; reason?: string }): Promise<unknown>;
   undoCancel(tenantId: string, input: { idempotencyKey: string; user: string }): Promise<unknown>;
   /** Cambio de plan o periodicidad: opciones, importe (Stripe) y aplicación (el reflejo llega por el webhook). */
+  /** Solicitud comercial de un plan que no se completa en línea (oportunidad del CRM) y las de la empresa. Opcionales en los dobles. */
+  planRequest?(tenantId: string, input: PlanRequestInput): Promise<unknown>;
+  planRequests?(tenantId: string): Promise<unknown>;
   planChangeStatus(tenantId: string): Promise<unknown>;
   planChangePreview(tenantId: string, input: { plan: "essential" | "business"; interval: "month" | "year" }): Promise<unknown>;
   changePlan(tenantId: string, input: { plan: "essential" | "business"; interval: "month" | "year"; idempotencyKey: string; user: string }): Promise<unknown>;
@@ -183,6 +196,8 @@ export function commerceClientFromEnv(env: NodeJS.ProcessEnv = process.env, fetc
     cancellationStatus: async (tenantId) => ((await call("GET", `${seg(tenantId)}/cancellation`)) as { cancellation: unknown }).cancellation,
     cancel: async (tenantId, input) => ((await call("POST", `${seg(tenantId)}/cancellation`, input)) as { cancellation: unknown }).cancellation,
     undoCancel: async (tenantId, input) => ((await call("POST", `${seg(tenantId)}/cancellation/undo`, input)) as { cancellation: unknown }).cancellation,
+    planRequest: async (tenantId, input) => await call("POST", `${seg(tenantId)}/plan-requests`, input),
+    planRequests: async (tenantId) => ((await call("GET", `${seg(tenantId)}/plan-requests`)) as { requests: unknown }).requests,
     planChangeStatus: async (tenantId) => ((await call("GET", `${seg(tenantId)}/plan-change`)) as { planChange: unknown }).planChange,
     planChangePreview: async (tenantId, input) => ((await call("POST", `${seg(tenantId)}/plan-change/preview`, input)) as { preview: unknown }).preview,
     changePlan: async (tenantId, input) => ((await call("POST", `${seg(tenantId)}/plan-change`, input)) as { planChange: unknown }).planChange,

@@ -5,12 +5,13 @@
  * lo que el catálogo no publica no aparece.
  */
 import { useState } from "react";
-import { ArrowRight, ArrowUpRight, Check, Mail, Sparkles } from "lucide-react";
+import { ArrowRight, Check, Sparkles } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { formatMoney } from "@shared/connectCard";
-import type { PanelPlanInfo, PlanCardModel, PlanPrice, SelfServicePlanKey } from "@shared/subscriptionPlans";
+import type { PanelPlanInfo, PlanCardModel, PlanPrice, PlanRequestView, SelfServicePlanKey } from "@shared/subscriptionPlans";
+import { PlanRequestCta, openRequestFor } from "./PlanRequests";
 import { PlanChangeDialog, type PlanOption } from "./SelfServiceSection";
 
 const tax = (p: PlanPrice) => (p.taxIncluded ? "IVA incluido" : "+ IVA");
@@ -37,46 +38,14 @@ function PlanPrices({ plan }: { plan: PanelPlanInfo }) {
   );
 }
 
-export interface ContactTarget {
-  upgradeUrl: string | null;
-  supportEmail: string | null;
-}
-
-function ContactCta({ plan, contact }: { plan: PanelPlanInfo; contact: ContactTarget }) {
-  if (contact.upgradeUrl) {
-    return (
-      <Button asChild variant="outline" className="w-full">
-        <a href={contact.upgradeUrl} target="_blank" rel="noopener noreferrer">
-          Hablar con ventas
-          <ArrowUpRight className="ml-1.5 h-4 w-4" aria-hidden="true" />
-          <span className="sr-only"> sobre {plan.name} (se abre en otra pestaña)</span>
-        </a>
-      </Button>
-    );
-  }
-  if (contact.supportEmail) {
-    const subject = encodeURIComponent(`Información sobre el plan ${plan.name} de Elephant Core`);
-    return (
-      <Button asChild variant="outline" className="w-full">
-        <a href={`mailto:${contact.supportEmail}?subject=${subject}`}>
-          <Mail className="mr-1.5 h-4 w-4" aria-hidden="true" />
-          Escribir al equipo comercial
-          <span className="sr-only"> sobre {plan.name}</span>
-        </a>
-      </Button>
-    );
-  }
-  return <p className="text-sm text-muted-foreground">Para contratar {plan.name}, escribe a tu contacto comercial de Elephant Source.</p>;
-}
-
 function PlanCard({
   card,
-  contact,
+  requests,
   onConvert,
   onChange,
 }: {
   card: PlanCardModel;
-  contact: ContactTarget;
+  requests: PlanRequestView[] | undefined;
   onConvert: (plan: SelfServicePlanKey) => void;
   onChange: (option: PlanOption) => void;
 }) {
@@ -179,7 +148,7 @@ function PlanCard({
             </p>
           </>
         )}
-        {cta.kind === "contact" && <ContactCta plan={plan} contact={contact} />}
+        {cta.kind === "contact" && <PlanRequestCta plan={plan} kind={cta.request} open={openRequestFor(requests, plan.key)} />}
         {cta.kind === "admin_only" && <p className="text-sm text-muted-foreground">Solo la administración de tu empresa puede contratar o cambiar de plan.</p>}
       </div>
     </li>
@@ -188,12 +157,13 @@ function PlanCard({
 
 export function PlanComparison({
   cards,
-  contact,
+  requests,
   current,
   onConvert,
 }: {
   cards: PlanCardModel[];
-  contact: ContactTarget;
+  /** Solicitudes de plan de la empresa (para no repetir una que ya está abierta). */
+  requests: PlanRequestView[] | undefined;
   /** Plan e intervalo del contrato (para el diálogo de cambio). */
   current: { plan: string; interval: "month" | "year" } | null;
   onConvert: (plan: SelfServicePlanKey) => void;
@@ -203,7 +173,7 @@ export function PlanComparison({
     <>
       <ul className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
         {cards.map((c) => (
-          <PlanCard key={c.plan.key} card={c} contact={contact} onConvert={onConvert} onChange={setChoosing} />
+          <PlanCard key={c.plan.key} card={c} requests={requests} onConvert={onConvert} onChange={setChoosing} />
         ))}
       </ul>
       {choosing && current && <PlanChangeDialog current={current} option={choosing} onClose={() => setChoosing(null)} />}

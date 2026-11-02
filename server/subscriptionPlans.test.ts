@@ -66,6 +66,14 @@ describe("plano de control: planes publicados en el catálogo del panel", () => 
     expect(e.monthly?.amountCents).toBe(cat.plans[0].prices.find((p) => p.kind === "monthly")!.amountCents);
     expect(e.limits.length).toBe(cat.plans[0].limits.length);
   });
+
+  it("es idempotente: lo que el Core ya normalizó y reenvía al navegador conserva precios y modalidad", () => {
+    const cat = panelCatalog(quoteCatalogFromSite(site).products, { version: "v", purchasesEnabled: false, site });
+    const once = parsePanelPlans(JSON.parse(JSON.stringify(cat.plans)));
+    const twice = parsePanelPlans(JSON.parse(JSON.stringify(once)));
+    expect(twice).toEqual(once);
+    expect(twice.every((p) => p.monthly !== null)).toBe(true);
+  });
 });
 
 describe("parsePanelPlans", () => {
@@ -86,13 +94,13 @@ describe("buildPlanComparison", () => {
     expect(ess.currentLabel).toBe("Prueba gratuita");
     expect(ess.cta).toEqual({ kind: "convert", plan: "essential" });
     expect(ctaOf(cards, "business")).toEqual({ kind: "convert", plan: "business" });
-    expect(ctaOf(cards, "enterprise")).toEqual({ kind: "contact" });
+    expect(ctaOf(cards, "enterprise")).toEqual({ kind: "contact", request: "contract" });
     expect(cards.find((c) => c.plan.key === "enterprise")!.commercialLabel).toBe("Implantación asistida");
   });
 
-  it("prueba sin alta en línea: ningún botón de compra, solo contacto", () => {
+  it("prueba sin alta en línea: ningún botón de compra, solo solicitud de contratación", () => {
     const cards = buildPlanComparison({ ...base, currentPlanKey: "essential", state: "trial", conversion: { enabled: false } });
-    expect(cards.every((c) => c.cta.kind === "contact")).toBe(true);
+    expect(cards.every((c) => c.cta.kind === "contact" && c.cta.request === "contract")).toBe(true);
   });
 
   it("Essential de pago con cambio en línea: «Tu plan actual» y cambio a Business con la opción del servidor (mismo periodo)", () => {
@@ -111,15 +119,15 @@ describe("buildPlanComparison", () => {
     expect(ess.currentLabel).toBe("Tu plan actual");
     expect(ess.cta).toEqual({ kind: "current" });
     expect(ctaOf(cards, "business")).toEqual({ kind: "change", plan: "business", interval: "year", direction: "upgrade", recurringCents: 75900, currency: "EUR" });
-    expect(ctaOf(cards, "enterprise")).toEqual({ kind: "contact" });
+    expect(ctaOf(cards, "enterprise")).toEqual({ kind: "contact", request: "upgrade" });
   });
 
-  it("Business de pago sin bajada en línea: Essential sin acción; sin cambio disponible, Enterprise por contacto", () => {
+  it("Business de pago sin bajada en línea: Essential por solicitud de cambio; Enterprise por solicitud de ampliación", () => {
     const planChange: PlanChangeInfo = { enabled: true, available: true, current: { plan: "business", interval: "month" }, options: [] };
     const cards = buildPlanComparison({ ...base, currentPlanKey: "business", state: "active", planChange });
-    expect(ctaOf(cards, "essential")).toEqual({ kind: "none" });
+    expect(ctaOf(cards, "essential")).toEqual({ kind: "contact", request: "change" });
     expect(ctaOf(cards, "business")).toEqual({ kind: "current" });
-    expect(ctaOf(cards, "enterprise")).toEqual({ kind: "contact" });
+    expect(ctaOf(cards, "enterprise")).toEqual({ kind: "contact", request: "upgrade" });
   });
 
   it("el cambio no disponible para la suscripción no ofrece botones de cambio", () => {
