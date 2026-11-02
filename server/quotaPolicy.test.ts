@@ -133,7 +133,7 @@ describe("catálogo: planes y módulos", () => {
     expect(b.sites).toMatchObject({ limit: 5, source: "plan" });
     expect(b.storage_gb).toMatchObject({ limit: 60, breakdown: { addon: 10 } });
     expect(b.contacts).toMatchObject({ limit: 150_000, source: "exception", contractual: 100_000 });
-    expect(b.orders_month).toMatchObject({ limit: 5_000, enforcement: "none" });
+    expect(b.orders_month).toMatchObject({ limit: 5_000, enforcement: "soft" });
     expect(b.rooms).toMatchObject({ limit: null, source: "default" });
     const r = Object.fromEntries(p.resources.map((x) => [`${x.metric}|${x.period}`, x]));
     expect(r["email.sent|day"]).toMatchObject({ limit: 300, source: "override", enforcement: "soft", breakdown: { default: 1000 } });
@@ -287,7 +287,7 @@ describe("cuotas de negocio en el Core", () => {
     counted = 0;
     await expect(runWithTenant("t-sin-plan", () => assertBusinessQuota("contacts", count(1e9)))).resolves.toBeUndefined();
     expect(counted).toBe(0);
-    // Las cuotas no aplicadas (pedidos al mes) nunca bloquean
+    // Pedidos al mes (cuota blanda): se avisa, nunca bloquea
     await expect(runWithTenant("t-crm", () => assertBusinessQuota("orders_month", count(1e9)))).resolves.toBeUndefined();
     // Licencias ilegibles: no se bloquea
     configureCapabilityAccess({ list: async () => Promise.reject(new Error("caído")) }, { enforce: true, ttlMs: 0 });
