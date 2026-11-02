@@ -11,8 +11,8 @@
  * Core. Aquí el rechazo lo hace el operador con `reject`, igual que hace la compra del panel cuando Stripe caduca o
  * rechaza el cambio (server/stripe/purchases.ts).
  *
- * Los casos marcados «hueco» fijan el comportamiento ACTUAL que el informe de revisión señala como mejorable: si
- * alguien lo corrige, el test debe actualizarse a propósito. Datos sintéticos.
+ * Los «huecos» que señaló el informe de revisión (cobro fallido invisible, suspensión como «active», baja de módulo
+ * como «none») están corregidos: el contrato ampliado de `PanelActivation` los fija aquí. Datos sintéticos.
  */
 import { beforeEach, describe, expect, it } from "vitest";
 import crypto from "node:crypto";
@@ -36,7 +36,7 @@ import { seedElephantSource } from "./catalog/seed";
 import { quote } from "./catalog/quote";
 import { quoteCatalogFromSite } from "./catalog/snapshot";
 import { panelCatalog } from "./commerce/panelCatalog";
-import { orderActivation, orderPlan } from "./commerce/panelActivation";
+import { NO_ACTIVATION, orderActivation, orderPlan } from "./commerce/panelActivation";
 
 const SECRET = "secreto-del-proveedor-de-pruebas-0123456789abcdef";
 const PRODUCT = "connect-people";
@@ -54,6 +54,7 @@ describe(`ciclo del pedido de ${PRODUCT} y estado de activación en el panel`, (
   let provider: SignedTestProvider;
   let svc: CommercialOrchestrator;
   let site: SiteDocument;
+  let subsStore: MemorySubscriptionStore;
   // Fallos inyectados (uno por paso) para ver el pedido detenido en cada estado intermedio
   let failQuote = 0;
   let failLicensing = 0;
@@ -65,7 +66,7 @@ describe(`ciclo del pedido de ${PRODUCT} y estado de activación en el panel`, (
     failQuote = failLicensing = failActivateLog = 0;
     coverageHeld = false;
     crmStore = new MemoryCrmStore();
-    const subsStore = new MemorySubscriptionStore();
+    subsStore = new MemorySubscriptionStore();
     caps = new MemoryCapabilityStore();
     orders = new MemoryOrderStore();
     provider = new SignedTestProvider({ webhookSecret: SECRET });
@@ -126,7 +127,7 @@ describe(`ciclo del pedido de ${PRODUCT} y estado de activación en el panel`, (
   // ── Lectura del panel (lo mismo que monta server/controlPlane/api.ts para GET /commerce/tenants/:t/catalog) ──
 
   const panelItem = async (tenantId: string) => {
-    const activation = await orderActivation({ crm: crmStore, orders, now: () => clock })(tenantId);
+    const activation = await orderActivation({ crm: crmStore, orders, now: () => clock, subscriptions: subsStore })(tenantId);
     const cat = panelCatalog(quoteCatalogFromSite(site).products, { version: "v", purchasesEnabled: false, site, activation });
     return cat.items.find((i) => i.key === PRODUCT)!;
   };
@@ -161,7 +162,7 @@ describe(`ciclo del pedido de ${PRODUCT} y estado de activación en el panel`, (
     const base = await baseOrder("Ciclo People SL");
     const t = base.tenantId!;
     expect((await crmStore.get("companies", base.companyId))!.tenantId).toBe(t);
-    expect(await activationOf(t)).toEqual({ state: "none", retryable: false, updatedAt: null });
+    expect(await activationOf(t)).toEqual(NO_ACTIVATION);
     expect(await planOf(t)).toBe("business");
     expect((await access(t)).status).toBe("not_contracted");
 
@@ -179,16 +180,16 @@ describe(`ciclo del pedido de ${PRODUCT} y estado de activación en el panel`, (
     expect(signed).toMatchObject({ waitingFor: "confirmation", order: { state: "contracted" } });
     expect(await activationOf(t)).toMatchObject({ state: "pending" });
 
-    // Cobro de prueba fallido: el pedido sigue «contracted» y el panel sigue en pendiente (hueco: no hay error visible)
+    // Cobro de prueba fallido: el pedido sigue «contracted» y el panel lo muestra (pago fallido, se puede reintentar)
     const p1 = (await svc.requestPayment(first.order.id, actor)).payment;
     expect(p1.amountCents).toBeGreaterThan(0);
     await paymentEvent(p1, "payment.failed");
     expect((await svc.must(first.order.id)).state).toBe("contracted");
-    expect(await activationOf(t)).toMatchObject({ state: "pending", retryable: false });
+    expect(await activationOf(t)).toMatchObject({ state: "pending", payment: "failed", error: { kind: "payment", transient: true }, retryable: true });
 
     // rejected: error recuperable; nada concedido y el plan intacto
-    await svc.reject(first.order.id, { reason: "Pago no completado" }, actor);
-    expect(await activationOf(t)).toMatchObject({ state: "error", retryable: true });
+    await svc.reject(first.order.id, { reason: "Pago no completado", code: "payment_failed" }, actor);
+    expect(await activationOf(t)).toMatchObject({ state: "error", payment: "failed", error: { kind: "payment", transient: false }, retryable: true });
     expect((await access(t)).status).toBe("not_contracted");
     expect(await planOf(t)).toBe("business");
 
@@ -196,7 +197,7 @@ describe(`ciclo del pedido de ${PRODUCT} y estado de activación en el panel`, (
     clock += 60_000;
     const retry = (await changeWith(base, [PRODUCT])).order;
     expect(retry.state).toBe("quoted");
-    expect(await activationOf(t)).toMatchObject({ state: "pending", retryable: false });
+    expect(await activationOf(t)).toMatchObject({ state: "pending", payment: "pending", error: null, retryable: false });
     await svc.accept(retry.id, { signatureRef: "firma-people-2", approvalReason: "Aprobado por producto" }, actor);
     const p2 = (await svc.requestPayment(retry.id, actor)).payment;
 
@@ -234,21 +235,21 @@ describe(`ciclo del pedido de ${PRODUCT} y estado de activación en el panel`, (
     expect(await planOf(t)).toBe("business");
     expect(await access(t)).toEqual({ allowed: true, status: "active" });
 
-    // Fin del periodo: renovación con recibo de prueba vencido → past_due (gracia): el panel sigue «active»
+    // Fin del periodo: renovación con recibo de prueba vencido → past_due (gracia): el panel sigue «active», pago «overdue»
     clock = Date.UTC(2026, 10, 16, 10);
     const rev1 = await svc.review(actor);
     expect(rev1).toMatchObject({ renewed: 1, pastDue: 1 });
     expect((await svc.must(retry.id)).state).toBe("past_due");
-    expect(await activationOf(t)).toMatchObject({ state: "active" });
+    expect(await activationOf(t)).toMatchObject({ state: "active", payment: "overdue" });
     expect(await planOf(t)).toBe("business");
     expect((await access(t)).allowed).toBe(true);
 
-    // Fin de la gracia → suspended: licencia suspendida y acceso cortado; el panel sigue «active» (hueco)
+    // Fin de la gracia → suspended: licencia suspendida y acceso cortado; el panel lo muestra «suspended»
     clock += 8 * DAY;
     expect((await svc.review(actor)).suspended).toBe(1);
     expect((await svc.must(retry.id)).state).toBe("suspended");
     expect(await access(t)).toMatchObject({ allowed: false, status: "suspended" });
-    expect(await activationOf(t)).toMatchObject({ state: "active" });
+    expect(await activationOf(t)).toMatchObject({ state: "suspended", payment: "overdue" });
     expect(await planOf(t)).toBe("business");
 
     // Pago del recibo → recuperado: active y licencia reactivada
@@ -256,6 +257,7 @@ describe(`ciclo del pedido de ${PRODUCT} y estado de activación en el panel`, (
     await paymentEvent(renewal, "payment.succeeded");
     expect((await svc.must(retry.id)).state).toBe("active");
     expect(await access(t)).toEqual({ allowed: true, status: "active" });
+    expect(await activationOf(t)).toMatchObject({ state: "active", payment: "confirmed", renewal: "active" });
 
     // Baja programada: sigue «active» (panel, licencia y plan) hasta el fin del periodo
     const cs = await svc.cancel(retry.id, { reason: "Baja solicitada por el cliente" }, actor);
@@ -263,7 +265,7 @@ describe(`ciclo del pedido de ${PRODUCT} y estado de activación en el panel`, (
     clock = Date.UTC(2026, 11, 16, 8); // justo antes del fin del periodo renovado (16/12, 09:00 UTC)
     await svc.review(actor);
     expect((await svc.must(retry.id)).state).toBe("cancel_scheduled");
-    expect(await activationOf(t)).toMatchObject({ state: "active" });
+    expect(await activationOf(t)).toMatchObject({ state: "active", activeUntil: Date.UTC(2026, 11, 16, 9), renewal: "cancelled", canReactivate: false });
     expect(await planOf(t)).toBe("business");
     expect(await access(t)).toEqual({ allowed: true, status: "active" });
 
@@ -271,13 +273,13 @@ describe(`ciclo del pedido de ${PRODUCT} y estado de activación en el panel`, (
     clock = Date.UTC(2026, 11, 16, 10);
     expect((await svc.review(actor)).cancelled).toBe(1);
     expect((await svc.must(retry.id)).state).toBe("cancelled");
-    expect(await activationOf(t)).toEqual({ state: "none", retryable: false, updatedAt: null });
+    expect(await activationOf(t)).toEqual(NO_ACTIVATION);
     expect(await planOf(t)).toBeNull();
     expect(await access(t, false)).toEqual({ allowed: true, status: "read_only" });
     expect((await access(t, true)).allowed).toBe(false);
   });
 
-  it("hueco: al quitar el módulo, el panel lo muestra «none» al instante aunque la licencia sigue activa hasta fin de periodo", async () => {
+  it("al quitar el módulo, el panel lo sigue mostrando «active» con su fecha de fin mientras la licencia es vigente", async () => {
     const base = await baseOrder("Reduce People SL", [PRODUCT]);
     const t = base.tenantId!;
     expect(await activationOf(t)).toMatchObject({ state: "active" });
@@ -287,11 +289,11 @@ describe(`ciclo del pedido de ${PRODUCT} y estado de activación en el panel`, (
     const r = await svc.accept(ch.id, { signatureRef: "firma-reduce", approvalReason: "Aprobado por producto" }, actor);
     expect(r.order).toMatchObject({ state: "active", confirmation: { kind: "inherited" } });
     expect(await planOf(t)).toBe("business");
-    // La licencia se mantiene (fecha de fin = fin de periodo) pero el panel ya no la refleja
+    // La licencia se mantiene (fecha de fin = fin de periodo) y el panel la refleja con esa fecha, sin renovación
     const grant = (await caps.list(t)).find((g) => g.capabilityId === CAPABILITY)!;
     expect(grant).toMatchObject({ status: "active" });
     expect(grant.validUntil).toBeGreaterThan(clock);
     expect(await access(t)).toEqual({ allowed: true, status: "active" });
-    expect(await activationOf(t)).toEqual({ state: "none", retryable: false, updatedAt: null });
+    expect(await activationOf(t)).toMatchObject({ state: "active", activeUntil: grant.validUntil, renewal: "cancelled", canReactivate: false });
   });
 });
