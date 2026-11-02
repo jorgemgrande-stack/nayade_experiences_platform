@@ -281,8 +281,11 @@ export class FakeStripeGateway implements StripeGateway {
     this.subscriptions.set(subscriptionId, { ...s, scheduleId: null, items, priceIds: items.map((i) => i.priceId), currentPeriodEnd: (s.currentPeriodEnd ?? 0) + 365 * 86_400 });
     this.emit("customer.subscription.updated", "subscription", subscriptionId);
   }
-  /** El cliente paga (o autentica) la factura abierta: si llevaba un cambio pendiente, se aplica. */
-  payInvoice(id: string) {
+  /**
+   * El cliente paga (o autentica) la factura abierta: si llevaba un cambio pendiente, se aplica. El efecto es inmediato
+   * (las pruebas no esperan la promesa); la promesa cumple la firma del gateway, la del reintento de cobro.
+   */
+  payInvoice(id: string, _idempotencyKey?: string): Promise<GwInvoice> {
     const inv = this.invoices.get(id)!;
     this.invoices.set(id, { ...inv, status: "paid", amountPaid: inv.total ?? inv.subtotal ?? 0 });
     this.emit("invoice.paid", "invoice", id);
@@ -291,6 +294,7 @@ export class FakeStripeGateway implements StripeGateway {
       this.applyItems(subId, p.items);
       this.emit("customer.subscription.updated", "subscription", subId);
     }
+    return Promise.resolve(this.invoices.get(id)!);
   }
   /** Pasan las 23 h sin cobro: Stripe descarta el cambio y anula su factura. */
   expirePendingUpdate(subId: string) {
