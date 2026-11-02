@@ -413,18 +413,15 @@ export function ProductCard({
   const hasAction = action.kind !== "none";
   return (
     <article ref={viewRef} className="group relative flex h-full flex-col overflow-hidden rounded-2xl border border-border bg-card shadow-lg shadow-black/30 transition hover:border-primary/70 focus-within:border-primary/70">
-      <div className="relative aspect-[16/9] overflow-hidden border-b border-border">
+      <div className="relative aspect-[16/9] shrink-0 overflow-hidden border-b border-border bg-background">
         <ProductMedia item={item} image={item.sheet.media.card} sizes="(min-width: 1536px) 22rem, (min-width: 768px) 45vw, 100vw" className="transition-transform duration-300 motion-safe:group-hover:scale-[1.03]" />
         {item.sheet.promoLabel && <span className="absolute left-3 top-3 rounded-full bg-primary px-2.5 py-1 text-xs font-semibold text-primary-foreground shadow">{item.sheet.promoLabel}</span>}
-        <span className="absolute right-3 top-3 rounded-full bg-background/90 backdrop-blur">
+        <span className="absolute right-3 top-3 max-w-[calc(100%-1.5rem)] rounded-full bg-background/90 backdrop-blur">
           <StateBadge state={item.state} />
         </span>
         {item.sheet.media.card?.kind === "illustration" && <ImageKindNote kind="illustration" className="absolute bottom-2 left-3" />}
       </div>
-      <div className="flex flex-1 flex-col gap-3 px-5 pb-5">
-        <div className="-mt-6 flex items-end gap-3">
-          <ProductIcon item={item} />
-        </div>
+      <div className="flex min-w-0 flex-1 flex-col gap-3 p-5">
         <div className="space-y-1">
           <H className="break-words text-lg font-semibold leading-snug text-foreground">
             <Link href={href} className="rounded before:absolute before:inset-0 before:content-[''] focus-visible:outline-none">
@@ -440,22 +437,22 @@ export function ProductCard({
             {points.map((p) => (
               <li key={p} className="flex items-start gap-2">
                 <Check className="mt-0.5 h-4 w-4 shrink-0 text-success" aria-hidden="true" />
-                <span className="min-w-0">{p}</span>
+                <span className="min-w-0 break-words">{p}</span>
               </li>
             ))}
           </ul>
         )}
         <div className="mt-auto space-y-3 border-t border-border pt-3">
           {item.state === "active" ? <p className="text-sm text-muted-foreground">Ya forma parte de tu plataforma</p> : <BigPrice prices={item.prices} />}
-          <div className="relative z-10 flex flex-wrap gap-2">
-            <Button asChild variant={hasAction ? "outline" : "default"} size="sm" className="flex-1">
+          <div className="relative z-10 grid gap-2">
+            <Button asChild variant={hasAction ? "outline" : "default"} size="sm" className="w-full">
               <Link href={href}>
                 Ver ficha <ChevronRight className="h-4 w-4" aria-hidden="true" />
                 <span className="sr-only"> de {item.name}</span>
               </Link>
             </Button>
             {hasAction && (
-              <Button type="button" size="sm" className="flex-1" onClick={run}>
+              <Button type="button" size="sm" className="w-full" onClick={run}>
                 {action.label}
                 <span className="sr-only"> · {item.name}</span>
               </Button>
