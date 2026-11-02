@@ -7905,14 +7905,6 @@ export default function CRMDashboard() {
                         <td className="px-4 py-3">
                           <div className="flex items-center justify-end gap-1">
                             {/* PDF: ver si existe (o generarlo); descargar siempre, también los abonos */}
-                            <button onClick={() => downloadInvoicePdf(inv)} disabled={downloadingInvoiceId === inv.id}
-                              title={inv.invoiceType === "abono" ? "Descargar abono" : "Descargar factura"}
-                              aria-label={`Descargar ${inv.invoiceType === "abono" ? "abono" : "factura"} ${inv.invoiceNumber} en PDF`}
-                              className="p-1.5 rounded-lg hover:bg-foreground/[0.08] text-foreground/50 hover:text-emerald-400 transition-colors disabled:opacity-40">
-                              {downloadingInvoiceId === inv.id
-                                ? <RefreshCw className="w-4 h-4 animate-spin" />
-                                : <FileDown className="w-4 h-4" />}
-                            </button>
                             {inv.pdfUrl ? (
                               <button onClick={() => viewInvoicePdf(inv)} title={inv.invoiceType === "abono" ? "Visualizar abono" : "Visualizar factura"}
                                 className="p-1.5 rounded-lg hover:bg-foreground/[0.08] text-foreground/50 hover:text-sky-400 transition-colors">
@@ -7929,6 +7921,14 @@ export default function CRMDashboard() {
                                   : <FilePlus className="w-4 h-4" />}
                               </button>
                             )}
+                            <button onClick={() => downloadInvoicePdf(inv)} disabled={downloadingInvoiceId === inv.id}
+                              title={inv.invoiceType === "abono" ? "Descargar abono" : "Descargar factura"}
+                              aria-label={`Descargar ${inv.invoiceType === "abono" ? "abono" : "factura"} ${inv.invoiceNumber} en PDF`}
+                              className="p-1.5 rounded-lg hover:bg-foreground/[0.08] text-foreground/50 hover:text-emerald-400 transition-colors disabled:opacity-40">
+                              {downloadingInvoiceId === inv.id
+                                ? <RefreshCw className="w-4 h-4 animate-spin" />
+                                : <FileDown className="w-4 h-4" />}
+                            </button>
                             {/* Reenviar */}
                             {["generada", "enviada"].includes(inv.status) && (
                               <button onClick={() => resendInvoiceMutation.mutate({ invoiceId: inv.id })} title="Reenviar por email"
