@@ -27,6 +27,37 @@ export interface InvoiceLine {
   baseCents: number;
   taxRateBp: number;
   taxCents: number;
+  /**
+   * Solo en líneas con descuento (CRM 0045): importe antes del descuento y descuento aplicado, sin impuestos. Siempre
+   * `grossCents − discountCents = baseCents`; el precio unitario (`unitCents`) es el previo al descuento.
+   */
+  grossCents?: number | null;
+  discountCents?: number | null;
+}
+
+/** Tipo de factura: completa (art. 6 del RD 1619/2012) o simplificada (arts. 4 y 7). */
+export type InvoiceType = "complete" | "simplified";
+
+/**
+ * Datos fiscales de la factura (CRM 0045, `invoices.fiscal_json`). Las facturas sin ellos (servicios externos, cargos y
+ * todo lo anterior) se comportan exactamente como antes.
+ */
+export interface InvoiceFiscalDetail {
+  invoiceType: InvoiceType;
+  /** Caso fiscal del comprador (`server/invoicing/fiscalCases.ts`); null si no se ha clasificado. */
+  fiscalCase: string | null;
+  /** Tratamiento aplicado (`taxed_es`, `not_subject`, `reverse_charge`, `oss_destination`). */
+  treatment: string | null;
+  /** Mención legal impresa en la factura (plantilla del caso); null = ninguna. */
+  legalMention: string | null;
+  /** Fecha del cobro (AAAA-MM-DD, Europe/Madrid) si consta. */
+  collectionDate: string | null;
+  /** Criterio de devengo: cobro anticipado (art. 75.Dos) o exigibilidad del periodo (art. 75.Uno.7.º). */
+  accrualBasis: "advance_payment" | "due_date" | null;
+  /** Saldo a favor del cliente aplicado en Stripe (forma de pago, no descuento), en céntimos. */
+  balanceAppliedCents: number;
+  /** Supuestos pendientes de confirmar por la gestoría que afectan a esta factura (identificadores de `ADVISOR_QUESTIONS`). */
+  advisorPending: string[];
 }
 
 export interface Invoice {
@@ -68,6 +99,8 @@ export interface Invoice {
   updatedAt: number;
   version: number;
   lines: InvoiceLine[];
+  /** Datos fiscales (tipo de factura, caso, mención, fechas); ausente o null en las facturas que no los tienen. */
+  fiscal?: InvoiceFiscalDetail | null;
 }
 
 export type NewInvoice = Omit<Invoice, "id" | "status" | "seriesCode" | "number" | "issueDate" | "issuer" | "hash" | "previousHash" | "issuedAt" | "issuedBy" | "paidAt" | "updatedAt" | "version"> & { status?: "draft" };

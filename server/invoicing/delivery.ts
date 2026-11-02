@@ -23,6 +23,7 @@ import type { BrandIssuer, PdfBlock } from "../documents/brandPdf";
 import { fmt, renderEmail } from "../mail/design";
 import { platformBrand } from "../mail/templates";
 import type { MailAttachment, MailCategory, MailContent } from "../mail/types";
+import { invoiceDates } from "./document";
 import { ymd } from "./rules";
 import type { InvoicingService } from "./service";
 import type { InvoicingStore } from "./store";
@@ -40,7 +41,11 @@ export const INVOICING_ACTOR = "system:invoicing";
 const money = (cents: number, currency: string) => new Intl.NumberFormat("es-ES", { style: "currency", currency, useGrouping: "always" }).format(cents / 100);
 const date = (d: string | null) => (d ? `${d.slice(8, 10)}/${d.slice(5, 7)}/${d.slice(0, 4)}` : "—");
 const pct = (bp: number) => `${(bp / 100).toLocaleString("es-ES")} %`;
-const partyLines = (p: FiscalParty | null) => (p ? [p.legalName, `NIF ${p.taxId}`, p.address, `${p.postalCode} ${p.city} (${p.country})`] : ["Datos fiscales pendientes de verificar"]);
+// Un dato vacío (cliente de una factura simplificada sin NIF ni domicilio) no se imprime
+const partyLines = (p: FiscalParty | null) => (p ? [p.legalName, p.taxId ? `NIF ${p.taxId}` : "", p.address, [p.postalCode, p.city].filter(Boolean).join(" ") + (p.city || p.postalCode ? ` (${p.country})` : "")].filter((x) => x.trim()) : ["Datos fiscales pendientes de verificar"]);
+
+/** Título del documento: proforma, rectificativa, simplificada o factura. */
+const titleOf = (inv: Invoice, proforma: boolean) => (proforma ? "Factura proforma" : inv.kind === "rectification" ? "Factura rectificativa" : inv.fiscal?.invoiceType === "simplified" ? "Factura simplificada" : "Factura");
 
 /** Fecha (AAAA-MM-DD) desde la que una factura sin cobrar se expide a crédito. */
 export function creditIssueDate(operationDate: string): string {
@@ -63,28 +68,58 @@ const rectifies = (inv: Invoice, original: RectifiedRef | undefined) =>
 /** Bloques del PDF: contenido del art. 6 del RD 1619/2012; la proforma lleva la leyenda y ningún número. */
 export function invoicePdfBlocks(inv: Invoice, issuerDraft: FiscalParty, o: { proforma?: boolean; original?: RectifiedRef } = {}): PdfBlock[] {
   const proforma = !!o.proforma || inv.status === "draft";
-  const title = proforma ? "Factura proforma" : inv.kind === "rectification" ? "Factura rectificativa" : "Factura";
+  const title = titleOf(inv, proforma);
   const blocks: PdfBlock[] = [{ kind: "title", text: title, subtitle: proforma ? PROFORMA_LEGEND : `${inv.number}` }];
   if (proforma) blocks.push({ kind: "box", title: PROFORMA_LEGEND, lines: ["Documento informativo previo al cobro. No es una factura: no tiene número fiscal ni se contabiliza.", "La factura definitiva se emitirá y enviará una vez confirmado el cobro."] });
   blocks.push({
     kind: "keyValue",
     rows: [
       ...(proforma ? [] : ([["Número", inv.number ?? "—"], ["Fecha de expedición", date(inv.issueDate)]] as Array<[string, string]>)),
-      ["Fecha de operación", `${date(inv.operationDate)}${inv.periodLabel ? ` · periodo: ${inv.periodLabel}` : ""}`],
+      ...invoiceDates(inv),
       ...(inv.kind === "rectification" && inv.originalInvoiceId ? ([["Rectifica", rectifies(inv, o.original)]] as Array<[string, string]>) : []),
     ],
   });
   blocks.push({ kind: "box", title: "Emisor", lines: partyLines(inv.issuer ?? issuerDraft) }, { kind: "box", title: "Cliente", lines: partyLines(inv.customer) });
-  blocks.push({
-    kind: "table",
-    columns: [{ title: "Concepto", width: 40 }, { title: "Cant.", width: 8, align: "right" }, { title: "Base imponible", width: 18, align: "right" }, { title: "IVA", width: 12, align: "right" }, { title: "Cuota", width: 22, align: "right" }],
-    rows: inv.lines.map((l) => [l.concept, String(l.quantity), money(l.baseCents, inv.currency), pct(l.taxRateBp), money(l.taxCents, inv.currency)]),
-    totals: ["Total", "", money(inv.baseCents, inv.currency), "", money(inv.totalCents, inv.currency)],
-  });
-  blocks.push({ kind: "keyValue", rows: [["Base imponible", money(inv.baseCents, inv.currency)], ["Cuota de IVA", money(inv.taxCents, inv.currency)], ["Total", money(inv.totalCents, inv.currency)]] });
+  // Con descuentos: importe bruto, descuento y base por línea (art. 6.1.f del RD 1619/2012); sin ellos, como siempre
+  const discounted = inv.lines.some((l) => l.discountCents);
+  if (discounted) {
+    const gross = inv.lines.reduce((a, l) => a + (l.grossCents ?? l.baseCents), 0);
+    const discount = inv.lines.reduce((a, l) => a + (l.discountCents ?? 0), 0);
+    blocks.push({
+      kind: "table",
+      columns: [{ title: "Concepto", width: 30 }, { title: "Cant.", width: 6, align: "right" }, { title: "Importe", width: 14, align: "right" }, { title: "Descuento", width: 13, align: "right" }, { title: "Base imponible", width: 14, align: "right" }, { title: "IVA", width: 8, align: "right" }, { title: "Cuota", width: 15, align: "right" }],
+      rows: inv.lines.map((l) => [l.concept, String(l.quantity), money(l.grossCents ?? l.baseCents, inv.currency), l.discountCents ? `−${money(l.discountCents, inv.currency)}` : money(0, inv.currency), money(l.baseCents, inv.currency), pct(l.taxRateBp), money(l.taxCents, inv.currency)]),
+      totals: ["Total", "", money(gross, inv.currency), `−${money(discount, inv.currency)}`, money(inv.baseCents, inv.currency), "", money(inv.totalCents, inv.currency)],
+    });
+    blocks.push({ kind: "keyValue", rows: [["Importe antes de descuentos", money(gross, inv.currency)], ["Descuentos", `−${money(discount, inv.currency)}`], ...taxSummary(inv)] });
+  } else {
+    blocks.push({
+      kind: "table",
+      columns: [{ title: "Concepto", width: 40 }, { title: "Cant.", width: 8, align: "right" }, { title: "Base imponible", width: 18, align: "right" }, { title: "IVA", width: 12, align: "right" }, { title: "Cuota", width: 22, align: "right" }],
+      rows: inv.lines.map((l) => [l.concept, String(l.quantity), money(l.baseCents, inv.currency), pct(l.taxRateBp), money(l.taxCents, inv.currency)]),
+      totals: ["Total", "", money(inv.baseCents, inv.currency), "", money(inv.totalCents, inv.currency)],
+    });
+    blocks.push({ kind: "keyValue", rows: taxSummary(inv) });
+  }
+  // Menciones: factura simplificada y la mención legal del caso fiscal (plantilla aprobada al activar el caso)
+  if (!proforma && inv.fiscal?.invoiceType === "simplified") blocks.push({ kind: "paragraph", text: "Factura simplificada (arts. 4 y 7 del Real Decreto 1619/2012)." });
+  if (inv.fiscal?.legalMention) blocks.push({ kind: "paragraph", text: inv.fiscal.legalMention });
   const paid = inv.paymentStatus === "paid";
   blocks.push({ kind: "paragraph", muted: true, text: [proforma ? (inv.sourceKey.startsWith("charge:") ? "Pago mediante el enlace de pago seguro de Stripe." : "Cobro previsto mediante el método de pago autorizado en Stripe.") : paid ? `Cobrada${inv.paymentRef?.startsWith("stripe:") ? " mediante Stripe" : ""}.` : "Pendiente de cobro.", inv.notes ?? ""].filter(Boolean).join(" ") });
   return blocks;
+}
+
+/** Resumen de importes: base, cuota y total; con varios tipos de IVA, la base y la cuota de cada tipo por separado. */
+function taxSummary(inv: Invoice): Array<[string, string]> {
+  const rates = Array.from(new Set(inv.lines.map((l) => l.taxRateBp)));
+  const byRate: Array<[string, string]> =
+    rates.length > 1
+      ? rates.flatMap((r): Array<[string, string]> => {
+          const ls = inv.lines.filter((l) => l.taxRateBp === r);
+          return [[`Base imponible al ${pct(r)}`, money(ls.reduce((a, l) => a + l.baseCents, 0), inv.currency)], [`Cuota al ${pct(r)}`, money(ls.reduce((a, l) => a + l.taxCents, 0), inv.currency)]];
+        })
+      : [];
+  return [...byRate, ["Base imponible", money(inv.baseCents, inv.currency)], ["Cuota de IVA", money(inv.taxCents, inv.currency)], ["Total", money(inv.totalCents, inv.currency)]];
 }
 
 /** PDF auténtico (pdf-lib, cabecera «%PDF-») de la factura, su proforma o su rectificativa (con la factura que rectifica). */
@@ -93,7 +128,7 @@ export async function renderInvoicePdf(inv: Invoice, issuerDraft: FiscalParty, o
   const iss = inv.issuer ?? issuerDraft;
   const issuer: BrandIssuer = { legalName: iss.legalName, taxId: iss.taxId, address: `${iss.address}, ${iss.postalCode} ${iss.city}` };
   const proforma = !!o.proforma || inv.status === "draft";
-  return renderBrandPdf({ title: proforma ? `Proforma · ${inv.periodLabel ?? inv.operationDate}` : `Factura ${inv.number}`, issuer, logoPng: o.logoPng ?? null, footerNote: proforma ? PROFORMA_LEGEND : `Factura ${inv.number} · huella ${inv.hash?.slice(0, 16) ?? "—"}`, blocks: invoicePdfBlocks(inv, issuerDraft, { proforma, original: o.original }) });
+  return renderBrandPdf({ title: proforma ? `Proforma · ${inv.periodLabel ?? inv.operationDate}` : `${inv.kind === "invoice" && inv.fiscal?.invoiceType === "simplified" ? "Factura simplificada" : "Factura"} ${inv.number}`, issuer, logoPng: o.logoPng ?? null, footerNote: proforma ? PROFORMA_LEGEND : `Factura ${inv.number} · huella ${inv.hash?.slice(0, 16) ?? "—"}`, blocks: invoicePdfBlocks(inv, issuerDraft, { proforma, original: o.original }) });
 }
 
 /** La factura original de una rectificativa (null si no lo es o no se encuentra). */

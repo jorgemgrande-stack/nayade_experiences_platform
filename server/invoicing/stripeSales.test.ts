@@ -13,11 +13,13 @@ import { invoiceDocumentOf, invoiceRecordOf, invoiceSourceKey, rectificationOf, 
 import type { GwInvoice, GwInvoiceLine } from "../stripe/gateway";
 import { linesOf, type InvoiceLineRow } from "../stripe/invoiceLines";
 import { ISSUER } from "../stripe/issuer";
-import { InvoicingAutomation } from "./delivery";
+import { InvoicingAutomation, invoicePdfBlocks } from "./delivery";
+import { invoiceHtml } from "./document";
+import type { FiscalCasesConfig } from "./fiscalCases";
 import type { CompanyFiscal } from "./rules";
 import { InvoicingService } from "./service";
 import { MemoryInvoicingStore } from "./store";
-import { productLabel, rateOf, saleLines, StripeSalesInvoicing, stripeSaleSourceKey, type StripeSalesRegistry } from "./stripeSales";
+import { accrualOf, allocateDiscount, productLabel, rateOf, saleLines, StripeSalesInvoicing, stripeSaleSourceKey, type StripeSalesRegistry } from "./stripeSales";
 import type { FiscalParty } from "./types";
 
 const TZ = "Europe/Madrid";
@@ -66,6 +68,10 @@ class FakeRegistry implements StripeSalesRegistry {
   lines: InvoiceLineRow[] = [];
   failMark = false;
   marks: Array<{ id: number; ref: string }> = [];
+  vatChecks: Array<{ orderId: number; country: string; vatNumber: string; status: string; checkedAt: number }> = [];
+  async vatChecksOfOrder(orderId: number) {
+    return this.vatChecks.filter((c) => c.orderId === orderId);
+  }
   async paid(orderId: number, inv: GwInvoice, at: number) {
     const purpose = inv.billingReason === "subscription_cycle" ? "renewal" : inv.billingReason === "subscription_update" ? "change" : "initial";
     const rec = invoiceRecordOf(inv, { orderId, purpose, buyerScenario: this.profiles.get(orderId)?.scenario ?? null, now: at });
@@ -107,14 +113,14 @@ class FakeRegistry implements StripeSalesRegistry {
 const external: ExternalSubscription = { id: 1, contractId: 4, companyId: 7, serviceKey: "skinet", serviceName: "SkiNet — Servicio tecnológico gestionado", amountCents: 100_000, currency: "EUR", taxRateBp: 2100, interval: "month", billingDay: 1, billingHour: 8, timezone: TZ, graceDays: 5, firstChargeAt: chargeInstant("2026-11-01", 8, TZ), externalRef: null, status: "active", endsAt: null } as unknown as ExternalSubscription;
 const externalPaid: ExternalEvent = { id: 1, externalId: 1, kind: "invoice_paid", ref: "in_externo_nov", detail: { periodStart: external.firstChargeAt, baseCents: 100_000, taxCents: 21_000, totalCents: 121_000 }, actor: "system:stripe", at: external.firstChargeAt + 3_600_000 };
 
-function setup(o: { stripeSales?: boolean; issueEnabled?: boolean; stripe?: Record<string, { status: string; amountPaid: number; currency: string } | null>; externals?: boolean } = {}) {
+function setup(o: { stripeSales?: boolean; issueEnabled?: boolean; stripe?: Record<string, { status: string; amountPaid: number; currency: string } | null>; externals?: boolean; fiscalCases?: FiscalCasesConfig } = {}) {
   let now = NOV2 + 3_600_000;
   const clock = () => now;
   const reg = new FakeRegistry();
   // Pedido → empresa: 101 y 103 de la empresa 20; 102 de la empresa 30
   const orderCompany: Record<number, number> = { 101: 20, 102: 30, 103: 20 };
   const companies: Record<number, CompanyFiscal> = { 7: NEXTAIR, 20: { name: "Escuela 20", legalName: null, taxId: null, address: null, postalCode: null, city: null, country: null }, 30: { name: "Escuela 30", legalName: null, taxId: null, address: null, postalCode: null, city: null, country: null } };
-  const sales = o.stripeSales === false ? null : new StripeSalesInvoicing({ stripe: reg, lines: { linesOf: async (id) => reg.lines.filter((l) => l.stripeInvoiceId === id) }, orderCompany: async (id) => orderCompany[id] ?? null, company: async (id) => companies[id] ?? null, now: clock });
+  const sales = o.stripeSales === false ? null : new StripeSalesInvoicing({ stripe: reg, lines: { linesOf: async (id) => reg.lines.filter((l) => l.stripeInvoiceId === id) }, orderCompany: async (id) => orderCompany[id] ?? null, company: async (id) => companies[id] ?? null, fiscalCases: o.fiscalCases, now: clock });
   const store = new MemoryInvoicingStore();
   const svc = new InvoicingService({ store, external: o.externals ? { list: async () => [external], events: async () => [externalPaid] } : undefined, company: async (id) => companies[id] ?? null, issuer: ISSUER_PARTY, seriesCode: "EB", issueEnabled: o.issueEnabled ?? true, stripeSales: sales, now: clock });
   const sent: Array<{ key: string; to: string; category: string }> = [];
@@ -415,8 +421,258 @@ describe("reglas puras", () => {
     expect(productLabel(null)).toBe("Suscripción a Elephant Source");
   });
 
-  it("líneas que no cuadran con el cobro (descuento): una línea con los totales cobrados", () => {
+  it("descuento en una sola partida: la línea con su importe, el descuento y la base, y la cuota cobrada", () => {
     const lines = saleLines({ purpose: "initial", totalCents: 4_840, taxCents: 840, periodStart: NOV2 }, [{ stripeLineId: "x", stripeInvoiceId: "in", orderId: 1, subscriptionItemId: null, stripePriceId: null, webPriceId: null, productKey: "essential", quantity: 1, amountCents: 4_900, taxCents: 840, proration: false, periodStart: NOV2, periodEnd: NOV2 + 30 * DAY, refundedCents: 0 }]);
-    expect(lines).toEqual([{ position: 1, concept: "Alta de la suscripción a Elephant Source — 02/11/2026 a 01/12/2026", quantity: 1, unitCents: 4_000, baseCents: 4_000, taxRateBp: 2100, taxCents: 840 }]);
+    expect(lines).toEqual([{ position: 1, concept: "Elephant Core Essential — 02/11/2026 a 01/12/2026", quantity: 1, unitCents: 4_900, baseCents: 4_000, taxRateBp: 2100, taxCents: 840, grossCents: 4_900, discountCents: 900 }]);
+  });
+
+  it("líneas sin registrar que no cuadran (sin descuento): una línea con los totales cobrados, como siempre", () => {
+    expect(saleLines({ purpose: "renewal", totalCents: 5_929, taxCents: 1_029, periodStart: NOV2 }, [])).toEqual([{ position: 1, concept: "Renovación de la suscripción a Elephant Source", quantity: 1, unitCents: 4_900, baseCents: 4_900, taxRateBp: 2100, taxCents: 1_029 }]);
+  });
+
+  it("reparto del descuento: proporcional con su signo y suma exacta; imposible si excede", () => {
+    expect(allocateDiscount([1_500, 900, -500], 380)).toEqual([300, 180, -100]);
+    expect(allocateDiscount([1_000, 1_000, 1_000], 100)).toEqual([33, 33, 34]);
+    expect(allocateDiscount([100], 200)).toBeNull();
+    expect(allocateDiscount([0, 0], 10)).toBeNull();
+  });
+
+  it("devengo: el cobro si es anticipado; el inicio del periodo si el cobro llegó después", () => {
+    expect(accrualOf(NOV2, NOV2)).toEqual({ operationDate: "2026-11-02", basis: "advance_payment" });
+    expect(accrualOf(NOV2, NOV2 + 30 * DAY)).toEqual({ operationDate: "2026-11-02", basis: "advance_payment" });
+    expect(accrualOf(DEC2 + 3 * DAY, DEC2)).toEqual({ operationDate: "2026-12-02", basis: "due_date" });
+    expect(accrualOf(NOV2, null)).toEqual({ operationDate: "2026-11-02", basis: "advance_payment" });
+  });
+});
+
+const text = (inv: Parameters<typeof invoicePdfBlocks>[0]) => JSON.stringify(invoicePdfBlocks(inv, ISSUER_PARTY)).replace(/[  ]/g, " ");
+
+describe("fechas: expedición, operación (devengo), periodo de prestación y cobro por separado", () => {
+  it("alta cobrada el día: periodo de prestación propio y sin fecha de cobro repetida; datos fiscales del caso vigente", async () => {
+    const t = setup();
+    t.reg.profiles.set(101, profile(101));
+    await t.reg.paid(101, ALTA, NOV2);
+    await t.svc.generateStripeSales("system");
+    t.at(NOV2 + 2 * DAY);
+    await t.auto.issueDue();
+    const inv = (await t.store.get(1))!;
+    expect(inv).toMatchObject({ issueDate: "2026-11-04", operationDate: "2026-11-02", periodLabel: "02/11/2026 a 01/12/2026" });
+    expect(inv.fiscal).toEqual({ invoiceType: "complete", fiscalCase: "business:es_mainland", treatment: "taxed_es", legalMention: null, collectionDate: "2026-11-02", accrualBasis: "advance_payment", balanceAppliedCents: 0, advisorPending: ["devengo_cobro_anticipado"] });
+    const s = text(inv);
+    expect(s).toContain('["Fecha de expedición","04/11/2026"]');
+    expect(s).toContain('["Fecha de operación (devengo)","02/11/2026"]');
+    expect(s).toContain('["Periodo de prestación del servicio","02/11/2026 a 01/12/2026"]');
+    expect(s).not.toContain("Fecha de cobro");
+    expect(invoiceHtml(inv, ISSUER_PARTY)).toContain("<td>Periodo de prestación del servicio</td><td>02/11/2026 a 01/12/2026</td>");
+  });
+
+  it("renovación cobrada en un reintento: devengo el inicio del periodo y la fecha de cobro aparte", async () => {
+    const t = setup();
+    t.reg.profiles.set(101, profile(101));
+    await t.reg.paid(101, RENOVACION, DEC2 + 3 * DAY);
+    t.at(DEC2 + 3 * DAY + 60_000);
+    await t.svc.generateStripeSales("system");
+    const inv = (await t.store.get(1))!;
+    expect(inv.operationDate).toBe("2026-12-02");
+    expect(inv.fiscal).toMatchObject({ accrualBasis: "due_date", collectionDate: "2026-12-05" });
+    expect((await t.auto.issueDue()).issued.map((x) => x.number)).toEqual(["EB-2026-00001"]);
+    const s = text((await t.store.get(1))!);
+    expect(s).toContain('["Fecha de operación (devengo)","02/12/2026"]');
+    expect(s).toContain('["Fecha de cobro","05/12/2026"]');
+    expect(s).toContain('["Fecha de expedición","05/12/2026"]');
+  });
+});
+
+describe("descuentos: importes, bases e impuestos conservados", () => {
+  // Cupón del 20 % en toda la factura: Stripe reparte el descuento y cobra el IVA de cada línea sobre la base neta
+  const CUPON = gwInvoice("in_cupon", "subscription_update", [line("d1", "price_people", 1_500, 252, { proration: true }), line("d2", "price_users", 900, 151, { proration: true, quantity: 3 }), line("d3", "price_essential", -500, -84, { proration: true })], { total: 1_520 + 319, amountPaid: 1_520 + 319, taxCents: 319 });
+
+  it("cupón de factura: una línea por partida con importe, descuento y base; totales los cobrados en Stripe", async () => {
+    const t = setup();
+    t.reg.profiles.set(101, profile(101));
+    await t.reg.paid(101, CUPON, NOV2);
+    await t.svc.generateStripeSales("system");
+    const inv = (await t.store.get(1))!;
+    expect([inv.baseCents, inv.taxCents, inv.totalCents]).toEqual([1_520, 319, 1_839]);
+    expect(inv.lines.map((l) => [l.quantity, l.unitCents, l.grossCents, l.discountCents, l.baseCents, l.taxRateBp, l.taxCents])).toEqual([
+      [1, 1_500, 1_500, 300, 1_200, 2100, 252],
+      [3, 300, 900, 180, 720, 2100, 151],
+      [1, -500, -500, -100, -400, 2100, -84],
+    ]);
+    expect(inv.lines.reduce((a, l) => a + l.baseCents, 0)).toBe(inv.baseCents);
+    expect(inv.fiscal?.advisorPending).toEqual(["devengo_cobro_anticipado", "descuento_por_linea"]);
+    expect((await t.auto.issueDue()).issued.map((x) => x.number)).toEqual(["EB-2026-00001"]);
+    const issued = (await t.store.get(1))!;
+    const s = text(issued);
+    for (const x of ['"Descuento"', '"−3,00 €"', '"12,00 €"', '["Importe antes de descuentos","19,00 €"]', '["Descuentos","−3,80 €"]', '["Base imponible","15,20 €"]', '["Cuota de IVA","3,19 €"]', '["Total","18,39 €"]']) expect(s).toContain(x);
+    const html = invoiceHtml(issued, ISSUER_PARTY);
+    expect(html).toContain("<th class=\"n\">Descuento</th>");
+    expect(html).toContain("Importe antes de descuentos");
+    // La rectificativa total devuelve exactamente lo mismo, línea a línea
+    t.reg.records.set("in_cupon", { ...t.reg.records.get("in_cupon")!, amountRefundedCents: 1_839 });
+    const r = await t.svc.rectify(1, { reason: "Baja del módulo" }, "operador");
+    expect(r.lines.map((l) => [l.grossCents, l.discountCents, l.baseCents, l.taxCents])).toEqual([
+      [-1_500, -300, -1_200, -252],
+      [-900, -180, -720, -151],
+      [500, 100, 400, 84],
+    ]);
+    expect([r.baseCents, r.taxCents, r.totalCents]).toEqual([-1_520, -319, -1_839]);
+  });
+
+  it("descuento en una partida concreta: el reparto no casa con la cuota de cada línea → una línea agrupada exacta (un único tipo)", async () => {
+    const t = setup();
+    t.reg.profiles.set(101, profile(101));
+    await t.reg.paid(101, gwInvoice("in_partida", "subscription_create", [line("p1", "price_essential", 4_900, 1_029), line("p2", "price_people", 1_500, 210)], { total: 5_900 + 1_239, amountPaid: 5_900 + 1_239, taxCents: 1_239 }), NOV2);
+    await t.svc.generateStripeSales("system");
+    const inv = (await t.store.get(1))!;
+    expect(inv.lines).toEqual([{ position: 1, concept: "Alta de la suscripción a Elephant Source — 02/11/2026 a 01/12/2026", quantity: 1, unitCents: 6_400, baseCents: 5_900, taxRateBp: 2100, taxCents: 1_239, grossCents: 6_400, discountCents: 500 }]);
+    expect((await t.auto.issueDue()).issued.map((x) => x.number)).toEqual(["EB-2026-00001"]);
+  });
+
+  it("descuento con varios tipos impositivos que no se pueden repartir: no se agrupa en falso, se bloquea con motivo", async () => {
+    const t = setup();
+    t.reg.profiles.set(101, profile(101));
+    await t.reg.paid(101, gwInvoice("in_mixto", "subscription_create", [line("m1", "price_essential", 4_900, 1_029), line("m2", "price_people", 1_500, 0)], { total: 5_900 + 1_029, amountPaid: 5_900 + 1_029, taxCents: 1_029 }), NOV2);
+    await t.svc.generateStripeSales("system");
+    const iss = await t.auto.issueDue();
+    expect(iss.issued).toEqual([]);
+    expect(iss.blocked[0].reason).toContain("no es el 21 %");
+  });
+
+  it("saldo a favor del cliente: forma de pago, no descuento (la base y el total no cambian)", async () => {
+    const t = setup();
+    t.reg.profiles.set(101, profile(101));
+    await t.reg.paid(101, { ...ALTA, id: "in_saldo", amountPaid: 4_929 }, NOV2);
+    await t.svc.generateStripeSales("system");
+    const inv = (await t.store.get(1))!;
+    expect([inv.baseCents, inv.taxCents, inv.totalCents]).toEqual([4_900, 1_029, 5_929]);
+    expect(inv.lines.every((l) => !l.discountCents)).toBe(true);
+    expect(inv.fiscal).toMatchObject({ balanceAppliedCents: 1_000, advisorPending: ["devengo_cobro_anticipado", "saldo_a_favor"] });
+    expect(inv.notes).toContain("Saldo a favor del cliente aplicado como forma de pago: 10,00 €.");
+  });
+});
+
+const CONSUMER = (orderId: number, p: Partial<BuyerProfile> = {}) => profile(orderId, { type: "consumer", scenario: "consumer:es_mainland", displayName: "María Sintética Pérez", taxId: null, taxIdStatus: "none", billingEmail: null, contactName: null, ...p });
+
+describe("casos fiscales preparados: DESACTIVADOS por defecto", () => {
+  it("particular sin NIF, empresa de la UE y de Canarias: bloqueados como siempre", async () => {
+    const t = setup();
+    t.reg.profiles.set(101, CONSUMER(101));
+    t.reg.profiles.set(102, profile(102, { country: "FR", postalCode: "75001", territory: "eu", scenario: "business:eu", taxId: "FR12345678901" }));
+    t.reg.vatChecks.push({ orderId: 102, country: "FR", vatNumber: "12345678901", status: "valid", checkedAt: NOV2 });
+    await t.reg.paid(101, ALTA, NOV2);
+    await t.reg.paid(102, gwInvoice("in_ue", "subscription_create", [line("u1", "price_essential", 4_900, 0)], { customerCountry: "FR", customerPostalCode: "75001" }), NOV2);
+    await t.svc.generateStripeSales("system");
+    const blocked = new Map((await t.auto.issueDue()).blocked.map((b) => [b.id, b.reason]));
+    expect(blocked.get(1)).toBe("comprador: falta el NIF");
+    expect(blocked.get(2)).toContain("cliente fuera de España");
+    expect(blocked.get(2)).toContain("no es el 21 %");
+  });
+
+  it("particular CON NIF y domicilio de la península: factura completa EB (como hasta ahora)", async () => {
+    const t = setup();
+    t.reg.profiles.set(101, CONSUMER(101, { taxId: "12345678Z" }));
+    await t.reg.paid(101, ALTA, NOV2);
+    await t.svc.generateStripeSales("system");
+    expect((await t.auto.issueDue()).issued.map((x) => x.number)).toEqual(["EB-2026-00001"]);
+    expect((await t.store.get(1))!.fiscal).toMatchObject({ invoiceType: "complete", fiscalCase: "consumer:es_mainland", legalMention: null });
+  });
+});
+
+describe("casos fiscales preparados: ACTIVADOS por configuración", () => {
+  const ALL: FiscalCasesConfig = { enabled: new Set(["consumer:es_mainland", "business:es_canarias", "business:eu_vies", "business:non_eu"]), simplified: true };
+
+  it("factura simplificada para un particular sin NIF (≤ 400 €): serie EBS propia y correlativa, sin datos del destinatario", async () => {
+    const t = setup({ fiscalCases: ALL });
+    t.reg.profiles.set(101, CONSUMER(101, { billingAddress: null }));
+    t.reg.profiles.set(103, profile(103));
+    await t.reg.paid(101, ALTA, NOV2);
+    await t.reg.paid(103, gwInvoice("in_empresa", "subscription_create", [line("e1", "price_essential", 4_900, 1_029)]), NOV2);
+    await t.svc.generateStripeSales("system");
+    const iss = await t.auto.issueDue();
+    expect(iss.blocked).toEqual([]);
+    expect(iss.issued.map((x) => x.number).sort()).toEqual(["EB-2026-00001", "EBS-2026-00001"]);
+    const simp = (await t.store.bySource(stripeSaleSourceKey(101, "in_alta")))!;
+    expect(simp).toMatchObject({ number: "EBS-2026-00001", seriesCode: "EBS", customer: { legalName: "María Sintética Pérez", taxId: "", address: "" } });
+    expect(simp.fiscal).toMatchObject({ invoiceType: "simplified", fiscalCase: "consumer:es_mainland", treatment: "taxed_es" });
+    expect(simp.fiscal?.advisorPending).toEqual(expect.arrayContaining(["consumidor_peninsula", "factura_simplificada"]));
+    const s = text(simp);
+    expect(s).toContain('"text":"Factura simplificada"');
+    expect(s).toContain("Factura simplificada (arts. 4 y 7 del Real Decreto 1619/2012).");
+    expect(s).toContain('"lines":["María Sintética Pérez"]');
+    expect(invoiceHtml(simp, ISSUER_PARTY)).toContain("<h1>Factura simplificada</h1>");
+  });
+
+  it("simplificada por encima de 400 € IVA incluido: bloqueada con el motivo", async () => {
+    const t = setup({ fiscalCases: ALL });
+    t.reg.profiles.set(101, CONSUMER(101));
+    await t.reg.paid(101, gwInvoice("in_caro", "subscription_create", [line("k1", "price_essential", 75_900, 15_939)]), NOV2);
+    await t.svc.generateStripeSales("system");
+    const iss = await t.auto.issueDue();
+    expect(iss.issued).toEqual([]);
+    expect(iss.blocked[0].reason).toContain("supera el límite de la factura simplificada (400 € IVA incluido, art. 4.1.a del RD 1619/2012)");
+  });
+
+  it("empresa de Canarias sin IVA: factura completa con la mención de no sujeción; con el 21 % cobrado, bloqueada", async () => {
+    const t = setup({ fiscalCases: ALL });
+    t.reg.profiles.set(101, profile(101, { postalCode: "35001", territory: "es_canarias", scenario: "business:es_special", billingAddress: { line1: "Calle Triana 1", line2: null, city: "Las Palmas de Gran Canaria", state: null } }));
+    t.reg.profiles.set(102, profile(102, { postalCode: "38001", territory: "es_canarias", scenario: "business:es_special" }));
+    await t.reg.paid(101, gwInvoice("in_igic", "subscription_create", [line("g1", "price_essential", 4_900, 0)], { customerPostalCode: "35001" }), NOV2);
+    await t.reg.paid(102, gwInvoice("in_igic21", "subscription_create", [line("g2", "price_essential", 4_900, 1_029)], { customerPostalCode: "38001" }), NOV2);
+    await t.svc.generateStripeSales("system");
+    const iss = await t.auto.issueDue();
+    expect(iss.issued.map((x) => x.number)).toEqual(["EB-2026-00001"]);
+    expect(iss.blocked).toEqual([{ id: 2, reason: "el IVA cobrado en Stripe (21 %) no es el 0 % que corresponde al caso business:es_canarias: requiere revisión fiscal" }]);
+    const inv = (await t.store.get(1))!;
+    expect(inv.fiscal).toMatchObject({ fiscalCase: "business:es_canarias", treatment: "not_subject", legalMention: expect.stringContaining("establecido en Canarias") });
+    expect(text(inv)).toContain("Operación no sujeta al IVA: destinatario empresario o profesional establecido en Canarias");
+  });
+
+  it("empresa de la UE: con NIF-IVA válido en VIES, inversión del sujeto pasivo; sin VIES, bloqueada como siempre", async () => {
+    const t = setup({ fiscalCases: ALL });
+    const fr = { country: "FR", postalCode: "75001", territory: "eu" as const, scenario: "business:eu" as const, billingAddress: { line1: "1 rue Sintétique", line2: null, city: "París", state: null } };
+    t.reg.profiles.set(101, profile(101, { ...fr, taxId: "FR12345678901" }));
+    t.reg.profiles.set(102, profile(102, { ...fr, taxId: "FR99999999999" }));
+    t.reg.vatChecks.push({ orderId: 101, country: "FR", vatNumber: "12345678901", status: "valid", checkedAt: NOV2 });
+    t.reg.vatChecks.push({ orderId: 102, country: "FR", vatNumber: "99999999999", status: "invalid", checkedAt: NOV2 });
+    for (const [o, id] of [[101, "in_fr"], [102, "in_fr2"]] as const) await t.reg.paid(o, gwInvoice(id, "subscription_create", [line(`${id}_l`, "price_essential", 4_900, 0)], { customerCountry: "FR", customerPostalCode: "75001" }), NOV2);
+    await t.svc.generateStripeSales("system");
+    const iss = await t.auto.issueDue();
+    expect(iss.issued.map((x) => x.number)).toEqual(["EB-2026-00001"]);
+    expect(iss.blocked[0].reason).toContain("cliente fuera de España");
+    const inv = (await t.store.get(1))!;
+    expect(inv.customer).toMatchObject({ taxId: "FR12345678901", country: "FR", city: "París" });
+    expect(inv.fiscal).toMatchObject({ fiscalCase: "business:eu_vies", treatment: "reverse_charge", legalMention: expect.stringMatching(/^Inversión del sujeto pasivo\./) });
+  });
+});
+
+describe("ventas actuales (empresa de la península) sin más cambios que fechas y descuentos", () => {
+  it("con todos los casos activados, una venta peninsular produce la misma factura que sin activar ninguno", async () => {
+    const a = setup();
+    const b = setup({ fiscalCases: { enabled: new Set(["consumer:es_mainland", "business:es_canarias", "business:eu_vies", "business:non_eu", "consumer:eu", "consumer:non_eu"]), simplified: true } });
+    for (const t of [a, b]) {
+      t.reg.profiles.set(101, profile(101));
+      await t.reg.paid(101, COMPRA, NOV2);
+      await t.svc.generateStripeSales("system");
+      await t.auto.issueDue();
+    }
+    expect(await b.store.get(1)).toEqual(await a.store.get(1));
+    const inv = (await a.store.get(1))!;
+    expect(inv).toMatchObject({ number: "EB-2026-00001", baseCents: 1_900, taxCents: 399, totalCents: 2_299 });
+    expect(inv.lines.every((l) => l.grossCents === undefined && l.discountCents === undefined)).toBe(true);
+  });
+
+  it("Nextair: el borrador y la factura externa no llevan datos fiscales nuevos ni descuentos", async () => {
+    const t = setup({ externals: true, stripe: { in_externo_nov: { status: "paid", amountPaid: 121_000, currency: "eur" } } });
+    await t.svc.generateExternal("system");
+    await t.auto.issueDue();
+    const inv = (await t.store.bySource("external:1:2026-11"))!;
+    expect(inv.number).toBe("EB-2026-00001");
+    expect(inv.fiscal).toBeUndefined();
+    expect(inv.lines).toEqual([{ position: 1, concept: expect.any(String), quantity: 1, unitCents: 100_000, baseCents: 100_000, taxRateBp: 2100, taxCents: 21_000 }]);
+    const s = text(inv);
+    expect(s).toContain('["Fecha de operación (devengo)","01/11/2026"]');
+    expect(s).not.toContain("Fecha de cobro");
+    expect(s).not.toContain("Descuento");
   });
 });

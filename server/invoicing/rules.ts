@@ -128,8 +128,16 @@ export const externalSourceKey = (externalId: number, month: string) => `externa
 
 export const invoiceNumber = (series: string, year: number, n: number) => `${series}-${year}-${String(n).padStart(5, "0")}`;
 
-/** Huella de una factura expedida, encadenada con la anterior de su serie (integridad e inalterabilidad). */
-export function invoiceHash(previousHash: string | null, inv: Pick<Invoice, "number" | "issueDate" | "operationDate" | "baseCents" | "taxCents" | "totalCents" | "currency" | "kind"> & { issuerTaxId: string; customerTaxId: string; lines: InvoiceLine[] }): string {
-  const canonical = JSON.stringify([previousHash ?? "", inv.number, inv.kind, inv.issueDate, inv.operationDate, inv.issuerTaxId, inv.customerTaxId, inv.currency, inv.baseCents, inv.taxCents, inv.totalCents, inv.lines.map((l) => [l.position, l.concept, l.quantity, l.unitCents, l.baseCents, l.taxRateBp, l.taxCents])]);
-  return crypto.createHash("sha256").update(canonical).digest("hex");
+/**
+ * Huella de una factura expedida, encadenada con la anterior de su serie (integridad e inalterabilidad). Los descuentos
+ * por línea, la factura simplificada y la mención legal solo entran si existen: la huella de las facturas sin ellos es
+ * la de siempre.
+ */
+export function invoiceHash(previousHash: string | null, inv: Pick<Invoice, "number" | "issueDate" | "operationDate" | "baseCents" | "taxCents" | "totalCents" | "currency" | "kind" | "fiscal"> & { issuerTaxId: string; customerTaxId: string; lines: InvoiceLine[] }): string {
+  const parts: unknown[] = [previousHash ?? "", inv.number, inv.kind, inv.issueDate, inv.operationDate, inv.issuerTaxId, inv.customerTaxId, inv.currency, inv.baseCents, inv.taxCents, inv.totalCents, inv.lines.map((l) => [l.position, l.concept, l.quantity, l.unitCents, l.baseCents, l.taxRateBp, l.taxCents])];
+  const discounts = inv.lines.some((l) => l.discountCents) ? inv.lines.map((l) => [l.grossCents ?? null, l.discountCents ?? null]) : null;
+  const simplified = inv.fiscal?.invoiceType === "simplified";
+  const mention = inv.fiscal?.legalMention ?? null;
+  if (discounts || simplified || mention) parts.push({ discounts, simplified, mention });
+  return crypto.createHash("sha256").update(JSON.stringify(parts)).digest("hex");
 }
