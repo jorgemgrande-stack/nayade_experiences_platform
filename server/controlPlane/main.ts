@@ -135,6 +135,7 @@ import { BankAutoReconciler } from "../finance/bankAutoReconcile";
 import { FinanceIntegrity } from "../finance/integrity";
 import { StripeApiBalanceReader } from "../finance/stripeBalanceApi";
 import { InvoicingService } from "../invoicing/service";
+import { StripeSalesInvoicing } from "../invoicing/stripeSales";
 import { DEFAULT_PROFORMA_LEAD_DAYS, InvoicingAutomation } from "../invoicing/delivery";
 import { billingContact } from "../notifications/customerTriggers";
 import { fetchBrandLogo } from "../documents/brandPdf";
@@ -604,7 +605,7 @@ async function main() {
 
   // Facturación propia (CRM 0027): borradores por devengo; expedir solo con CP_INVOICING_ISSUE_ENABLED=1. Mismo entorno
   // (livemode) que los servicios externos cuyos cobros lee
-  let invoicing: { store: MysqlInvoicingStore; issueEnabled: boolean; seriesCode: string; charges?: MysqlChargeStore; chargePayments?: MysqlChargePaymentStore; operations?: MysqlOperationStore; automation?: InvoicingAutomation } | undefined;
+  let invoicing: { store: MysqlInvoicingStore; issueEnabled: boolean; seriesCode: string; charges?: MysqlChargeStore; chargePayments?: MysqlChargePaymentStore; operations?: MysqlOperationStore; automation?: InvoicingAutomation; stripeSales?: StripeSalesInvoicing } | undefined;
   if (crmPool && crm) {
     const pool = crmPool;
     const has = (t: string) => pool.query(`SELECT 1 FROM ${t} LIMIT 0`).then(() => true, () => false);
@@ -686,6 +687,16 @@ async function main() {
   const stripeReader = financeStripe && stripe ? new StripeApiBalanceReader({ apiKey: stripe.config.apiKey }) : null;
   const issuerParty = { legalName: ISSUER.legalName, taxId: ISSUER.taxId, address: `${ISSUER.address.line1}, ${ISSUER.address.line2}`, postalCode: ISSUER.address.postalCode, city: ISSUER.address.city, country: ISSUER.address.country };
   const proformaDays = Number(process.env.CP_INVOICING_PROFORMA_DAYS ?? DEFAULT_PROFORMA_LEAD_DAYS);
+  // Ventas cobradas por Stripe desde el panel (pedidos comerciales): factura propia de cada cobro verificado. Solo con el
+  // registro de Stripe y los pedidos montados, y en el mismo entorno (pruebas o real) que la facturación propia
+  const salesOrders = orders?.store;
+  const salesMode = external?.store.mode ?? "test";
+  const stripeSales =
+    invoicing && stripe && salesOrders && crmStore && stripe.store.mode === salesMode
+      ? new StripeSalesInvoicing({ stripe: stripe.store, lines: stripe.invoiceLines ?? null, orderCompany: async (id) => (await salesOrders.get(id))?.companyId ?? null, company: async (id) => (await crmStore.get("companies", id)) as CompanyFiscal | null })
+      : null;
+  if (invoicing && stripeSales) invoicing.stripeSales = stripeSales;
+  const stripeSalesReason = stripeSales ? null : !stripe ? "stripe_not_mounted" : !salesOrders ? "orders_not_mounted" : stripe.store.mode !== salesMode ? "mode_mismatch" : "crm_not_mounted";
   const invoicingAuto =
     invoicing && crmStore
       ? new InvoicingService({
@@ -696,6 +707,7 @@ async function main() {
           seriesCode: invoicing.seriesCode,
           issueEnabled: invoicing.issueEnabled,
           proformaLeadDays: Number.isInteger(proformaDays) && proformaDays >= 0 && proformaDays <= 30 ? proformaDays : DEFAULT_PROFORMA_LEAD_DAYS,
+          stripeSales,
           onIssued: async (inv) => {
             const company = ((await crmStore.get("companies", inv.companyId)) as { name?: string } | null)?.name ?? null;
             await adminAlerts?.raise("admin.invoice_issued", { key: `invoice:${inv.id}:issued`, occurredAt: inv.issuedAt ?? Date.now(), companyId: inv.companyId, company, summary: `Factura ${inv.number ?? ""} expedida automáticamente.`, status: { label: "Expedida", tone: "success" }, reference: inv.number, amount: { cents: inv.totalCents, currency: inv.currency }, link: "#/comercial/facturacion" });
@@ -741,7 +753,7 @@ async function main() {
           bankRules,
         })
       : null;
-  if (invoicing) console.log(JSON.stringify({ ctx: "InvoicingAutomation", mounted: !!invoiceIssuing, issueEnabled: invoicing.issueEnabled, proformaLeadDays: invoicingAuto ? (Number.isInteger(proformaDays) && proformaDays >= 0 && proformaDays <= 30 ? proformaDays : DEFAULT_PROFORMA_LEAD_DAYS) : null, mail: !!mailService, stripeCheck: !!stripeReader }));
+  if (invoicing) console.log(JSON.stringify({ ctx: "InvoicingAutomation", mounted: !!invoiceIssuing, issueEnabled: invoicing.issueEnabled, proformaLeadDays: invoicingAuto ? (Number.isInteger(proformaDays) && proformaDays >= 0 && proformaDays <= 30 ? proformaDays : DEFAULT_PROFORMA_LEAD_DAYS) : null, mail: !!mailService, stripeCheck: !!stripeReader, stripeSales: !!stripeSales, ...(stripeSalesReason ? { stripeSalesReason } : {}) }));
   // Integridad: hechos confirmados (webhooks de Stripe) frente al libro y estado de las fuentes, para el control diario y el panel
   const financeIntegrity =
     finance && financeOps && crmPool

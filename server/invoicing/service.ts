@@ -13,6 +13,7 @@
 import type { ExternalEvent, ExternalSubscription } from "../external/types";
 import { customerOf, externalPeriods, externalSourceKey, lineOf, totals, ymd, type CompanyFiscal } from "./rules";
 import type { InvoicingStore } from "./store";
+import { isStripeSale, type StripeSalesPort, type StripeSalesReport } from "./stripeSales";
 import { InvoicingError, type FiscalParty, type Invoice } from "./types";
 
 /** Contrataciones externas que se facturan solas: aceptadas, con el método de pago autorizado y en curso. */
@@ -32,6 +33,8 @@ export interface InvoicingDeps {
   onIssued?: (invoice: Invoice) => Promise<void>;
   /** Días antes del cobro en que nace el borrador de la mensualidad (su proforma); 0 = el día del vencimiento. */
   proformaLeadDays?: number;
+  /** Ventas cobradas por Stripe desde el panel (pedidos comerciales): borradores, comprador y documento fiscal. */
+  stripeSales?: StripeSalesPort | null;
   now?: () => number;
 }
 
@@ -93,6 +96,15 @@ export class InvoicingService {
     return rep;
   }
 
+  /**
+   * Borradores de las ventas cobradas por Stripe desde el panel (alta, compras con prorrateo, cambios y renovaciones):
+   * uno por factura de Stripe cobrada y verificada, con los importes y el IVA del cobro. Idempotente.
+   */
+  async generateStripeSales(actor: string, f: { companyId?: number } = {}): Promise<StripeSalesReport> {
+    if (!this.d.stripeSales) return { created: [], existing: 0, marked: 0, skipped: [], payments: [], warnings: [] };
+    return this.d.stripeSales.generate(this.d.store, actor, f);
+  }
+
   /** Estado de cobro de las facturas de una contratación externa a partir de su historial (solo lectura). */
   private async syncExternalPayments(x: ExternalSubscription, rep: GenerateReport) {
     const events = await this.d.external!.events(x.id);
@@ -152,6 +164,12 @@ export class InvoicingService {
       if (!original || original.status !== "issued") problems.push("la factura que rectifica ya no está vigente");
       return { invoice, problems };
     }
+    // Venta de Stripe: el comprador es el del perfil fiscal del pedido y el cobro debe constar verificado
+    if (isStripeSale(invoice)) {
+      if (!this.d.stripeSales) problems.push("venta de Stripe: el registro de cobros de Stripe no está disponible en este entorno");
+      else problems.push(...(await this.d.stripeSales.readiness(invoice)).problems);
+      return { invoice, problems };
+    }
     const company = await this.d.company(invoice.companyId);
     if (!company) problems.push("la empresa no existe");
     else problems.push(...customerOf(company).problems.map((p) => `cliente: ${p}`));
@@ -164,12 +182,15 @@ export class InvoicingService {
     if (problems.length) throw new InvoicingError(this.d.issueEnabled ? "invalid_state" : "unavailable", `No se puede expedir: ${problems.join("; ")}`);
     const original = invoice.originalInvoiceId ? await this.must(invoice.originalInvoiceId) : null;
     // Una rectificativa lleva los datos del cliente de la factura que corrige y va en su propia serie (art. 15 RD 1619/2012)
-    const customer = original?.customer ?? customerOf((await this.d.company(invoice.companyId))!).party!;
+    const customer = original?.customer ?? (isStripeSale(invoice) ? (await this.d.stripeSales!.readiness(invoice)).party : customerOf((await this.d.company(invoice.companyId))!).party);
+    if (!customer) throw new InvoicingError("invalid_state", "No se puede expedir: faltan los datos fiscales del cliente");
     const seriesCode = invoice.kind === "rectification" ? `${this.d.seriesCode}R` : this.d.seriesCode;
     const now = this.now();
     const issued = await this.d.store.issue({ id, seriesCode, issueDate: ymd(now), issuer: this.d.issuer, customer, issuedBy: actor, issuedAt: now });
     // Rectificación total: la original queda «rectificada» (una parcial la deja vigente por la diferencia)
     if (original && issued.totalCents === -original.totalCents) await this.d.store.setStatus(original.id, "rectified", now);
+    // Venta de Stripe (o su rectificativa): su documento fiscal queda emitido con el número; si falla, la pasada lo repara
+    if (this.d.stripeSales) await this.d.stripeSales.issued(issued, this.d.store).catch(() => undefined);
     if (this.d.onIssued) await this.d.onIssued(issued).catch(() => undefined);
     return issued;
   }

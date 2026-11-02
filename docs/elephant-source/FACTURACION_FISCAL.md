@@ -20,6 +20,33 @@ mano desde el CRM sale por el mismo envío. `GET /cp/v1/invoicing/invoices/:id/p
 **Interruptor:** la expedición real exige `CP_INVOICING_ISSUE_ENABLED=1` en el plano de control (variable protegida).
 Sin él se preparan borradores y proformas, pero no se expide nada.
 
+## Ventas cobradas por Stripe desde el panel
+
+Alta de Essential o Business desde la prueba, compra de módulos y ampliaciones (prorrateo), cambios de plan y
+renovaciones (`server/invoicing/stripeSales.ts`):
+
+- **Origen:** cada cobro verificado deja un documento `invoice` pendiente en `fiscal_documents`. En el paso de
+  borradores, cada uno genera **un** borrador (`order:<pedido>:in:<factura de Stripe>`, ya cobrado,
+  `paymentRef = stripe:in:<id>`) con las líneas de `stripe_invoice_lines` y la cuota de IVA cobrada por Stripe, sin
+  recalcularla. Si las líneas no cuadran al céntimo (descuentos o saldo), se crea una sola línea con los totales
+  cobrados. Fecha de operación: el día del cobro (cobro anticipado, art. 75.2 de la Ley 37/1992). No hay proforma.
+- **Expedición:** el mismo `issueDue`, con contraste por API, número `EB`, PDF y envío. El cliente es el perfil fiscal
+  del comprador del pedido (`stripe_buyer_profiles`), o la ficha del CRM si el pedido no tiene perfil.
+- **Bloqueos:** no se expide (`invoice_issue_blocked`, con el motivo) en estos casos:
+  - faltan la razón social, el NIF válido o el domicilio;
+  - el comprador no es de la península o Baleares;
+  - el IVA cobrado no es el 21 %;
+  - la dirección de la factura de Stripe es de otro territorio;
+  - el pedido es de otra empresa;
+  - el documento fiscal consta emitido con otro número.
+
+  Un documento sin copia de la factura de Stripe, o con la factura sin cobrar, no genera borrador y aparece en el
+  mismo bloqueo.
+- **Al expedir:** el documento fiscal queda `issued` con el número `EB` (`markFiscalDocumentIssued`). Si esa marca
+  falla, la pasada siguiente la repara.
+- **Reembolsos:** la factura queda «reembolsada» (total) o con aviso (parcial). La rectificativa la expide una persona
+  y, al expedirla, liquida el documento de reembolso pendiente del mismo importe.
+
 ## Casos especiales
 
 - **Crédito / impago:** con el cobro de Stripe fallido, la factura se expide el día 10 del mes siguiente a la operación
