@@ -215,6 +215,8 @@ export const productDraft = z
          * instantánea) ni se contrata por autoservicio; solo lo compran las empresas de prueba autorizadas.
          */
         internalOnly: z.boolean().optional(),
+        /** Prepara su Product y su Price en Stripe aunque siga «bajo solicitud» (sin abrir la venta; server/stripe/catalog.ts). */
+        stripePrepared: z.boolean().optional(),
         /** Capacidades (ids estables de server/catalog/capabilities.ts) que concede el producto. */
         capabilities: z.array(entryKey).max(80).default([]),
         /** Planes acumulativos: Business hereda de Essential y Enterprise de Business. */

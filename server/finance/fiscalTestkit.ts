@@ -7,7 +7,7 @@ import type mysql from "mysql2/promise";
 import { FinanceAnalysisService } from "./analysisService";
 import { MemoryFinanceAnalysisStore, MysqlFinanceAnalysisStore } from "./analysisStore";
 import { FinanceOpsService } from "./opsService";
-import { MemoryFinanceOpsStore, MysqlFinanceOpsStore } from "./opsStore";
+import { finExpenseInvoiceRefReady, MemoryFinanceOpsStore, MysqlFinanceOpsStore } from "./opsStore";
 import { FinanceService } from "./service";
 import { MemoryFinanceStore, MysqlFinanceStore } from "./store";
 import { FinanceStripeService } from "./stripeService";
@@ -29,7 +29,7 @@ export async function fiscalScenario(o: { pool?: mysql.Pool; fiscal?: boolean; n
   const ledger = pool ? new MysqlFinanceStore(pool) : new MemoryFinanceStore(seededPlan());
   const finance = new FinanceService({ store: ledger, now });
   for (const y of [2025, 2026]) await finance.createFiscalYear(y, ACTOR);
-  const opsStore = pool ? new MysqlFinanceOpsStore(pool, { fiscal }) : new MemoryFinanceOpsStore(seededOps());
+  const opsStore = pool ? new MysqlFinanceOpsStore(pool, { fiscal, supplierInvoiceRef: await finExpenseInvoiceRefReady(pool) }) : new MemoryFinanceOpsStore(seededOps());
   const ops = new FinanceOpsService({ store: opsStore, finance, ledger, now, fiscal });
   const stripeStore = pool ? new MysqlFinanceStripeStore(pool) : new MemoryFinanceStripeStore();
   const stripe = new FinanceStripeService({ store: stripeStore, finance, ops: opsStore, ledger, now, fiscal });

@@ -147,10 +147,11 @@ export const ACTIVATION_LABELS: Record<Exclude<ConnectActivation["state"], "none
  */
 export function activationOf(item: { state: ConnectState; activation?: ConnectActivation | null }): ConnectActivation {
   if (item.state === "active") return { state: "active", retryable: false, updatedAt: item.activation?.updatedAt ?? null };
+  // Licencia suspendida o con incidencia: el acceso está cortado aunque el pedido siga vigente en el canal
+  if (item.state === "incident") return { state: "error", retryable: false, updatedAt: item.activation?.updatedAt ?? null };
   if (item.activation && item.activation.state !== "none") return item.activation;
   if (item.state === "pending_setup") return { state: "pending", retryable: false, updatedAt: null };
   if (item.state === "activating") return { state: "processing", retryable: false, updatedAt: null };
-  if (item.state === "incident") return { state: "error", retryable: false, updatedAt: null };
   return { state: "none", retryable: false, updatedAt: null };
 }
 

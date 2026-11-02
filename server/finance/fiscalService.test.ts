@@ -126,26 +126,40 @@ describe("comisiones de Stripe: nada se contabiliza a ciegas", () => {
     expect((await s.finance.listEntries({ origin: "stripe", limit: 100 })).total).toBe(entries);
   });
 
-  it("al decidirse el IVA, cada comisión provisional se reclasifica una sola vez de 555 a 626 (con la autoliquidación)", async () => {
+  it("cada cargo de Stripe es un gasto: sale de 555 a 626/629 sin IVA; al decidirse el IVA, la autoliquidación una sola vez", async () => {
     const s = await fiscalScenario();
     await s.stripe.importFile({ kind: "balance", filename: "b.csv", contentBase64: b64(stripeBalanceSample()) }, ACTOR);
-    await s.stripe.post("2026-10-31", ACTOR);
+    const first = await s.stripe.post("2026-10-31", ACTOR);
+    expect(first).toMatchObject({ errors: [], pendingFeeVat: 5, feeExpenses: { created: 5, classified: 0 } });
     expect(await s.stripe.pendingFeeVatCount()).toBe(5);
-    await s.stripe.createFeeVatRule({ feeKind: "*", issuerName: "Stripe Payments Europe, Limited", issuerCountry: "IE", issuerVatId: "IE9999999ZZ", treatment: "reverse_charge", rateBp: 2100, validFrom: "2026-01-01", documentRef: "Factura de comisiones de octubre" }, ACTOR);
-    const out = await s.stripe.post("2026-10-31", ACTOR);
-    expect(out).toMatchObject({ errors: [], feesClassified: 5 });
-    expect(await s.stripe.pendingFeeVatCount()).toBe(0);
-    const posted = await s.ledger.postedLines({});
-    const bal = (code: string) => posted.filter((l) => l.accountCode === code).reduce((a, l) => a + l.debitCents - l.creditCents, 0);
-    expect(bal("555")).toBe(0);
-    expect(bal("472")).toBeGreaterThan(0);
+    const bal = async (code: string) => (await s.ledger.postedLines({})).filter((l) => l.accountCode === code).reduce((a, l) => a + l.debitCents - l.creditCents, 0);
+    // Ya en gastos (fuera de 555), sin IVA inventado
+    expect(await bal("555")).toBe(0);
+    expect(await bal("472")).toBe(0);
+    const expenses = (await s.ops.listExpenses({ sourcePrefix: "stripe-fee:", limit: 50 })).items;
+    expect(expenses).toHaveLength(5);
+    expect(expenses.every((e) => e.status === "registered" && e.paymentStatus === "paid" && e.taxCents === 0 && e.vatTreatment === null && e.supplierName === "Stripe")).toBe(true);
     const c1 = (s.stripeStore as MemoryFinanceStripeStore).txns.find((t) => t.balanceTransactionId === "txn_test_c1")!;
     const cls = (await s.finance.listEntries({ origin: "stripe", limit: 100 })).items.find((e) => e.sourceKey === "stripe-fee-class:txn_test_c1")!;
     expect(cls.date).toBe("2026-10-05");
-    expect(cls.lines.map((l) => [l.accountCode, l.debitCents, l.creditCents])).toEqual(expect.arrayContaining([["626", 388, 0], ["555", 0, 388], ["472", 81, 0], ["477", 0, 81]]));
-    // El asiento del cobro no cambia y otra pasada no reclasifica nada más
+    expect(cls.lines.map((l) => [l.accountCode, l.debitCents, l.creditCents])).toEqual([["626", 388, 0], ["555", 0, 388]]);
+    expect(expenses.find((e) => e.sourceKey === "stripe-fee:txn_test_c1")).toMatchObject({ baseCents: 388, totalCents: 388, entryId: cls.id });
+
+    await s.stripe.createFeeVatRule({ feeKind: "*", issuerName: "Stripe Payments Europe, Limited", issuerCountry: "IE", issuerVatId: "IE9999999ZZ", treatment: "reverse_charge", rateBp: 2100, validFrom: "2026-01-01", documentRef: "Factura de comisiones de octubre" }, ACTOR);
+    const out = await s.stripe.post("2026-10-31", ACTOR);
+    expect(out).toMatchObject({ errors: [], pendingFeeVat: 0, feeExpenses: { created: 0, classified: 5 } });
+    expect(await s.stripe.pendingFeeVatCount()).toBe(0);
+    expect(await bal("472")).toBeGreaterThan(0);
+    const vat = (await s.finance.listEntries({ origin: "stripe", limit: 100 })).items.find((e) => e.sourceKey === "stripe-fee-vat:txn_test_c1")!;
+    expect(vat.date).toBe("2026-10-05");
+    expect(vat.lines.map((l) => [l.accountCode, l.debitCents, l.creditCents])).toEqual([["472", 81, 0], ["477", 0, 81]]);
+    expect((await s.ops.listExpenses({ sourcePrefix: "stripe-fee:", limit: 50 })).items.every((e) => e.vatTreatment === "intra_eu_services" && e.reverseChargeRateBp === 2100)).toBe(true);
+    // El asiento del cobro no cambia y otra pasada no repite gastos ni asientos
     expect((await s.finance.getEntry(c1.entryId!)).lines.map((l) => l.accountCode)).toContain("555");
-    expect((await s.stripe.post("2026-10-31", ACTOR)).feesClassified).toBeUndefined();
+    const entries = (await s.finance.listEntries({ limit: 500 })).total;
+    expect((await s.stripe.post("2026-10-31", ACTOR)).feeExpenses).toBeUndefined();
+    expect((await s.finance.listEntries({ limit: 500 })).total).toBe(entries);
+    expect((await s.ops.listExpenses({ sourcePrefix: "stripe-fee:", limit: 50 })).total).toBe(5);
   });
 
   it("regla «*» con inversión del sujeto pasivo: se contabiliza con el emisor de la regla, que llega al 349; anular la regla", async () => {
@@ -336,8 +350,8 @@ describe("facturas de comisiones de Stripe que liquidan las importadas (settlesS
     expect(d.warnings.join(" ")).not.toMatch(/stripe_fee_invoice/);
     expect((await s.tax.preview("349", 2026, "4T")).declarants).toEqual([expect.objectContaining({ key: "I", taxId: "IE3206488LH", amountCents: 750 })]);
     expect((await s.tax.receivedRegisterCsv("2026-10-01", "2026-10-31")).csv).toContain("STR-2026-10;F1;Stripe Payments Europe, Limited;IE3206488LH;IE;7,50;21,00;1,58;1,58;0,00;7,50;;Sí;Servicios intracomunitarios (ISP)");
-    // Revenue & Margin no cambia: el 626 viene de la importación
-    expect((await s.analysis.revenueMargin(2026)).months[9].stripeFeesCents).toBe(750);
+    // Revenue & Margin no cambia: el 626 viene de la importación (las comisiones de cobro; el servicio de Stripe, 1,50 €, va a 629)
+    expect((await s.analysis.revenueMargin(2026)).months[9].stripeFeesCents).toBe(600);
     // Si la base difiere en más de 1 €, aviso con la diferencia
     const r = await s.ops.createExpense({ ...input(ie.id), categoryId: cat, invoiceNumber: "STR-2026-10-B", baseCents: 400 }, ACTOR);
     await s.ops.registerExpense(r.id, ACTOR);

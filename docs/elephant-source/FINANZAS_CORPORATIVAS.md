@@ -801,6 +801,55 @@ La fecha es la del cobro si su periodo sigue abierto; si no, la de ese día. El 
 diario sigue avisando (`fee_vat_unset`) y el panel muestra la 555 como «provisional». Un payout llegado sin cuenta
 bancaria de destino no se contabiliza ni se da por recibido: queda pendiente (`payout_awaiting_bank`).
 
+**Gastos automáticos de Stripe (CRM 0044, 02/11/2026).** Contabilidad › Gastos es el registro único de gastos: cada
+cargo real de Stripe (la comisión de cada cobro, reembolso o disputa, y cada servicio de Stripe) se convierte en un
+gasto registrado con clave `stripe-fee:<transacción de saldo>`. Lo hace `FinanceStripeService.syncFeeExpenses` en cada
+contabilización de Stripe (y por tanto en la tarea automática):
+
+- Proveedor «Stripe» (Stripe Payments Europe, Limited, IE), dado de alta solo la primera vez y sin NIF-IVA hasta tener
+  su factura. Dos categorías propias: «Comisiones de cobro de Stripe» (626, servicios bancarios y similares) y
+  «Servicios de Stripe (Billing, Radar…)» (629, otros servicios). Las transacciones `stripe_fee` van a 629 también al
+  contabilizarse con el IVA ya decidido, así que Revenue & Margin solo cuenta como comisión de cobro la 626.
+- Comisión en 555 (IVA sin decidir): se reclasifica a 626/629 **sin IVA** (`stripe-fee-class:<id>`) y ese es el asiento
+  del gasto. Comisión ya en 626/629: el asiento del gasto es el de la transacción. El gasto nace pagado con el saldo de
+  Stripe (sin pagos ni cuenta del proveedor), con IVA 0 y `vat_treatment` NULL = **IVA pendiente** (no se inventa).
+- Cuando la regla de IVA de las comisiones lo decide: exenta → `vat_treatment = exempt`, sin asiento; inversión del
+  sujeto pasivo → la autoliquidación aparte (`stripe-fee-vat:<id>`, 472/477 con la marca del emisor) y
+  `intra_eu_services`. Interior o «según factura»: el IVA lo da la factura mensual (`settlesStripeFees`).
+- No se editan, pagan, registran ni anulan a mano (`invalid_state`): el asiento es el del cargo real. Quedan fuera de las
+  listas de recibidas del 303, 349, 347 y del libro de recibidas, porque su IVA ya sale del libro (origen Stripe).
+- La factura de Stripe que agrupa varios gastos se vincula con `POST /finance/stripe/fee-expenses/link`
+  `{ expenseIds, invoiceRef }` (columna `supplier_invoice_ref`; el número propio del gasto es único por proveedor) y se
+  adjunta en el gasto. Ni el gasto ni su asiento se repiten.
+- Idempotente y recuperable: las claves del gasto y de sus asientos son únicas, y un gasto que quedó en borrador tras
+  un fallo se termina de registrar en la pasada siguiente. El saldo 5720 no cambia.
+- El panel muestra «Gastos de Stripe con IVA pendiente» (555 + gastos con el IVA sin decidir) como «provisional», y el
+  aviso `fee_vat_unset` cuenta también esos gastos. La API de gastos añade `origin` (`stripe`, `recurring`, `manual`)
+  y `stripeBalanceTransactionId`.
+
+**Conciliación bancaria por reglas (02/11/2026).** `server/finance/bankRules.ts` define reglas deterministas por
+concepto EXACTO del extracto (normalizado) y signo; `BankAutoReconciler` (`bankAutoReconcile.ts`) las aplica a los
+movimientos pendientes en cada pasada de la tarea automática (paso `bankRules`) y bajo demanda con
+`POST /finance/bank/auto-reconcile { bankAccountId?, dryRun? }` (`GET /finance/bank/rules` lista las reglas). Reutiliza la
+conciliación manual, así que cada conciliación tiene su asiento idempotente, su auditoría con la regla y la evidencia, y
+se deshace con «Desvincular».
+
+- `bank_fee` (comisiones del TPV, mantenimiento, extractos, transferencias, tarjeta de CaixaBank): asiento contra la
+  cuenta de la naturaleza (626) por el importe del banco, sin gasto ni IVA.
+- `supplier_charge` (OpenAI, Anthropic, Railway, Postmark, Brevo, Microsoft, Google Ads, Meta): tique «pendiente de
+  factura» del proveedor (`bank-charge:<movimiento>`, sin IVA, fuera de las listas de los modelos mientras no tenga
+  número de factura) y su pago por banco (Debe 410 · Haber banco). El proveedor se da de alta una vez, sin NIF-IVA ni
+  domicilio hasta tener su factura. Las devoluciones (abonos) se quedan pendientes.
+- `tax_payment` (303, 111, 115 y cuotas de aplazamiento): SOLO contra una obligación presentada y sin pagar con el mismo
+  importe, o la cuota pendiente cuyo principal más intereses sea el cargo. Registra el pago en Gestoría (su asiento;
+  en la cuota, principal a la cuenta del modelo e intereses a 669) y vincula el movimiento sin otro asiento.
+  Desvincularlo solo deshace el vínculo. Sin obligación que case, el movimiento espera.
+- Todo lo demás (cobros de clientes sin factura en el sistema, cargos con tarjeta de comercios, reintegros, traspasos)
+  se queda pendiente de revisión: nada se concilia por parecido de texto ni se convierte en gasto deducible.
+
+Los aplazamientos aceptan el interés exacto de cada cuota del calendario oficial (`installments[].interestCents`, que
+deben sumar el interés del aplazamiento): no se recalcula nada.
+
 ## Permisos
 
 Cada capacidad tiene su ámbito propio (`finance:*`, en `server/controlPlane/auth.ts`), centralizado en

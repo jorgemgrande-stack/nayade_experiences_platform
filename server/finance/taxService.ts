@@ -16,7 +16,7 @@ import JSZip from "jszip";
 import { registerCsv } from "../invoicing/register";
 import type { Invoice } from "../invoicing/types";
 import { madridDateKey } from "../utils/timezone";
-import { addDays, reverseChargeAmounts } from "./opsRules";
+import { addDays, isOutOfTaxLists, reverseChargeAmounts } from "./opsRules";
 import type { FinanceOpsService } from "./opsService";
 import type { ExpenseRow, FinanceOpsStore } from "./opsStore";
 import { VAT_TREATMENT_LABELS, vatTreatmentOf, type DocumentOwner, type Supplier, type VatTreatment } from "./opsTypes";
@@ -77,10 +77,12 @@ import type { FinanceTaxStore, ObligationQuery } from "./taxStore";
 import {
   ADJUSTMENT_KINDS,
   INFORMATIVE_MODELS,
+  OUTCOMES,
   MODEL_NAMES,
   OPEN_STATUSES,
   PAYMENT_ACCOUNT,
   PRESENTED_STATUSES,
+  type Outcome,
   type AdjustmentKind,
   type CorporateEntryOrigin,
   type CorporateEntryRecord,
@@ -173,6 +175,24 @@ export interface PresentInput {
   directDebit?: boolean;
 }
 
+/**
+ * Declaración ya presentada fuera del sistema (por la gestoría) que se registra a posteriori con los importes DECLARADOS
+ * y su justificante oficial: no se recalcula nada desde el libro (que puede no tener aún la actividad de ese periodo).
+ */
+export interface FiledInput {
+  presentedOn: string;
+  receiptNumber: string;
+  resultCents: number;
+  outcome: Outcome;
+  /** 303: bases y cuotas declaradas (devengado − deducible − compensado = resultado). */
+  vat?: { salesBaseCents: number; outputVatCents: number; purchasesBaseCents: number; inputVatCents: number; compensatedCents?: number } | null;
+  /** 111/115: perceptores, base y retenciones declaradas (retenciones = resultado). */
+  withholding?: { recipients: number; baseCents: number; withheldCents: number } | null;
+  directDebit?: boolean;
+  note?: string | null;
+  document?: { filename: string; contentBase64: string } | null;
+}
+
 export interface PaymentInput {
   paidOn: string;
   bankAccountId: number;
@@ -198,7 +218,8 @@ export interface DeferralInput {
   reference?: string | null;
   requestedOn: string;
   notes?: string | null;
-  installments: Array<{ n: number; dueDate: string; amountCents: number }>;
+  /** Cuotas con su principal y, si el calendario oficial los da, sus intereses exactos (no se recalculan). */
+  installments: Array<{ n: number; dueDate: string; amountCents: number; interestCents?: number }>;
 }
 
 export interface DossierInput {
@@ -427,7 +448,11 @@ export class FinanceTaxService {
     return out;
   }
 
-  /** Gastos registrados con fecha de factura en el rango (todas las páginas). */
+  /**
+   * Gastos registrados con fecha de factura en el rango (todas las páginas). Sin los gastos automáticos de Stripe
+   * (`stripe-fee:`): su IVA sale del libro como el de las comisiones (asientos de origen Stripe) y contarlos aquí lo
+   * duplicaría en el 303, el 349, el 347 y el libro de recibidas.
+   */
   private async expensesByInvoiceDate(from: string, to: string): Promise<ExpenseRow[]> {
     const out: ExpenseRow[] = [];
     for (let offset = 0; offset < 100_000; offset += 500) {
@@ -435,7 +460,7 @@ export class FinanceTaxService {
       out.push(...page.items);
       if (out.length >= page.total || page.items.length === 0) break;
     }
-    return out;
+    return out.filter((e) => !isOutOfTaxLists(e));
   }
 
   /** Gastos registrados con fecha de DEVENGO (o de factura) en el rango. */
@@ -800,6 +825,50 @@ export class FinanceTaxService {
     return (await this.s.getObligation(id))!;
   }
 
+  /**
+   * Registra una declaración presentada fuera del sistema con los importes declarados y su justificante oficial (sin
+   * borrador calculado ni puerta de validación: ya está presentada). En un 303 contabiliza su liquidación con lo
+   * declarado (`tax:303:<año>:<periodo>`: Debe 477 devengado · Haber 472 deducible · Haber 4750 resultado), que es lo
+   * que el pago salda; ingresos y gastos NO se generan desde la declaración. Idempotente por obligación.
+   */
+  async registerFiled(id: number, i: FiledInput, actor: FinanceActor) {
+    const o = await this.mustObligation(id);
+    if (PRESENTED_STATUSES.includes(o.status) || o.status === "pagado" || o.status === "aplazado") throw new FinanceError("invalid_state", "La obligación ya está presentada");
+    if (!["pendiente", "borrador", "revisado"].includes(o.status)) throw new FinanceError("invalid_state", `No se registra una presentación sobre una obligación ${o.status}`);
+    if (!isValidDate(i.presentedOn) || i.presentedOn > this.today()) throw bad("Fecha de presentación no válida (AAAA-MM-DD, no futura)");
+    const receipt = text(i.receiptNumber, 100);
+    if (!receipt) throw bad("Indica el número de justificante de la presentación");
+    if (!Number.isSafeInteger(i.resultCents)) throw bad("El resultado es un importe en céntimos");
+    if (!OUTCOMES.includes(i.outcome)) throw bad("Resultado de la declaración no válido");
+    if (i.outcome === "a_ingresar" && i.resultCents <= 0) throw bad("Un resultado a ingresar es mayor que cero");
+    let settlementEntryId: number | null = null;
+    const declared: Record<string, unknown> = { declared: true, resultCents: i.resultCents, outcome: i.outcome };
+    if (o.model === "303") {
+      const v = i.vat;
+      if (!v) throw bad("En un 303 indica las bases y cuotas declaradas");
+      const comp = v.compensatedCents ?? 0;
+      for (const x of [v.salesBaseCents, v.outputVatCents, v.purchasesBaseCents, v.inputVatCents, comp]) if (!Number.isSafeInteger(x)) throw bad("Los importes del 303 son céntimos enteros");
+      if (v.outputVatCents - v.inputVatCents - comp !== i.resultCents) throw bad("El IVA devengado menos el deducible (y lo compensado) no es el resultado declarado");
+      Object.assign(declared, { salesBaseCents: v.salesBaseCents, outputVatCents: v.outputVatCents, purchasesBaseCents: v.purchasesBaseCents, inputVatCents: v.inputVatCents, compensatedCents: comp });
+      const e = vatSettlementEntry({ year: o.year, period: o.period, date: o.periodTo, devengadoCents: v.outputVatCents, deducibleCents: v.inputVatCents, compensadoCents: comp, resultCents: i.resultCents });
+      if (e) settlementEntryId = (await this.d.finance.postGenerated(e, actor)).entry.id;
+    } else if (o.model === "111" || o.model === "115") {
+      const w = i.withholding;
+      if (!w) throw bad(`En un ${o.model} indica los perceptores, la base y las retenciones declaradas`);
+      if (!Number.isSafeInteger(w.recipients) || w.recipients < 0 || !Number.isSafeInteger(w.baseCents) || !Number.isSafeInteger(w.withheldCents)) throw bad("Perceptores, base y retenciones son enteros (céntimos)");
+      if (w.withheldCents !== i.resultCents) throw bad("Las retenciones declaradas no son el resultado");
+      Object.assign(declared, { recipients: w.recipients, baseCents: w.baseCents, withheldCents: w.withheldCents });
+    }
+    let documentId: number | null = null;
+    if (i.document) documentId = (await this.d.documents.uploadDocument({ ownerType: "tax_obligation", ownerId: id, filename: i.document.filename, contentBase64: i.document.contentBase64 }, actor)).id;
+    const to: ObligationStatus = INFORMATIVE_MODELS.includes(o.model) ? "presentado" : i.outcome === "a_ingresar" ? (i.directDebit ? "domiciliado" : "presentado") : i.outcome === "a_compensar" ? "a_compensar" : i.outcome === "sin_actividad" ? "sin_actividad" : "presentado";
+    const ok = await this.s.transition(id, [o.status], to, { presentedAt: this.now(), presentedBy: actor.by, presentedOn: i.presentedOn, presentedAmountCents: i.resultCents, receiptRef: receipt, receiptDocumentId: documentId, settlementEntryId, amountCents: i.resultCents, outcome: i.outcome }, this.now());
+    if (!ok) throw new FinanceError("conflict", "La obligación ha cambiado: recárgala");
+    await this.log(o, actor, "present", to, text(i.note, 500) ?? "Presentación registrada a posteriori con los importes declarados", { receiptNumber: receipt, documentId, settlementEntryId, ...declared });
+    await this.audit(actor, "tax.obligation.register_filed", "tax_obligation", id, { key: o.key, receiptNumber: receipt, settlementEntryId, resultCents: i.resultCents });
+    return (await this.s.getObligation(id))!;
+  }
+
   private async bankCode(bankAccountId: number) {
     const b = await this.d.ops.getBankAccount(bankAccountId);
     if (!b || !b.active) throw bad("La cuenta bancaria no existe o está desactivada");
@@ -1040,6 +1109,22 @@ export class FinanceTaxService {
     return this.s.listDeferrals(q);
   }
 
+  /** Obligaciones de un modelo presentadas y sin pagar con resultado a ingresar (conciliación bancaria por reglas). */
+  async obligationsAwaitingPayment(model: TaxModel): Promise<Array<{ id: number; amountCents: number }>> {
+    const page = await this.s.listObligations({ model, statuses: ["presentado", "domiciliado"], limit: 500 });
+    return page.items.filter((o) => o.outcome === "a_ingresar").map((o) => ({ id: o.id, amountCents: o.presentedAmountCents ?? o.amountCents ?? 0 }));
+  }
+
+  /** Cuotas pendientes de los aplazamientos vivos con su total (principal + intereses), para casar el cargo del banco. */
+  async deferralsAwaitingPayment(): Promise<Array<{ deferralId: number; number: number; amountCents: number; interestCents: number; totalCents: number; dueDate: string }>> {
+    const out: Array<{ deferralId: number; number: number; amountCents: number; interestCents: number; totalCents: number; dueDate: string }> = [];
+    for (const d of await this.s.listDeferrals({})) {
+      if (d.status === "denegado" || d.status === "cancelado" || d.status === "pagado") continue;
+      for (const x of d.installments) if (x.status === "pendiente") out.push({ deferralId: d.id, number: x.number, amountCents: x.amountCents, interestCents: x.interestCents, totalCents: x.amountCents + x.interestCents, dueDate: x.dueDate });
+    }
+    return out;
+  }
+
   /** Aplazamiento o fraccionamiento de una obligación presentada: la obligación pasa a «aplazado». */
   async createDeferral(i: DeferralInput, actor: FinanceActor): Promise<Deferral> {
     const o = await this.mustObligation(i.obligationId);
@@ -1053,8 +1138,11 @@ export class FinanceTaxService {
     if (!inst.length || inst.length > 60) throw bad("Indica de 1 a 60 cuotas");
     if (inst.some((x, k) => x.n !== k + 1)) throw bad("Las cuotas se numeran 1, 2, 3…");
     if (inst.some((x) => !isValidDate(x.dueDate) || !Number.isSafeInteger(x.amountCents) || x.amountCents <= 0)) throw bad("Cada cuota lleva fecha (AAAA-MM-DD) e importe mayor que cero");
+    if (inst.some((x) => x.interestCents !== undefined && (!Number.isSafeInteger(x.interestCents) || x.interestCents < 0))) throw bad("Los intereses de cada cuota son un importe en céntimos no negativo");
     if (sumOf(inst.map((x) => x.amountCents)) !== i.principalCents) throw bad("Las cuotas deben sumar el principal");
-    const d = await this.s.insertDeferral({ obligationId: o.id, status: "solicitado", requestedOn: i.requestedOn, resolutionOn: null, reference: text(i.reference, 60), principalCents: i.principalCents, interestCents: interest, notes: text(i.notes, 500), createdBy: actor.by, createdAt: this.now() }, inst.map((x) => ({ number: x.n, dueDate: x.dueDate, amountCents: x.amountCents, interestCents: 0 })));
+    // Intereses por cuota (calendario oficial): si se dan, deben sumar los intereses del aplazamiento
+    if (inst.some((x) => x.interestCents !== undefined) && sumOf(inst.map((x) => x.interestCents ?? 0)) !== interest) throw bad("Los intereses de las cuotas deben sumar los intereses del aplazamiento");
+    const d = await this.s.insertDeferral({ obligationId: o.id, status: "solicitado", requestedOn: i.requestedOn, resolutionOn: null, reference: text(i.reference, 60), principalCents: i.principalCents, interestCents: interest, notes: text(i.notes, 500), createdBy: actor.by, createdAt: this.now() }, inst.map((x) => ({ number: x.n, dueDate: x.dueDate, amountCents: x.amountCents, interestCents: x.interestCents ?? 0 })));
     if (!(await this.s.transition(o.id, ["presentado", "domiciliado"], "aplazado", {}, this.now()))) throw new FinanceError("conflict", "La obligación ha cambiado: recárgala");
     await this.log(o, actor, "defer", "aplazado", d.reference, { deferralId: d.id, installments: inst.length });
     await this.audit(actor, "tax.deferral.create", "tax_deferral", d.id, { obligationId: o.id, principalCents: i.principalCents, installments: inst.length });

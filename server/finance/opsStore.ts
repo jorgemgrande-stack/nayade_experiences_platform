@@ -7,7 +7,7 @@
  *  - una factura por proveedor y número mientras no esté anulada; un borrador por periodo de cada plantilla recurrente.
  */
 import type mysql from "mysql2/promise";
-import { payableOf, paymentStatusOf } from "./opsRules";
+import { isStripeFeeExpense, payableOf, paymentStatusOf, STRIPE_FEE_EXPENSE_PREFIX } from "./opsRules";
 import {
   type BankAccount,
   type BankImport,
@@ -49,6 +49,8 @@ export interface ExpenseQuery {
   q?: string;
   /** Solo registrados, sin pagar del todo y con vencimiento anterior a esta fecha. */
   overdueBefore?: string;
+  /** Solo los de clave de origen con este prefijo (p. ej. `stripe-fee:`, los gastos automáticos de Stripe). */
+  sourcePrefix?: string;
   sort?: "invoiceDate" | "dueDate" | "totalCents" | "supplier";
   dir?: "asc" | "desc";
   limit?: number;
@@ -106,6 +108,13 @@ export interface FinanceOpsStore {
   openExpenses(limit: number): Promise<ExpenseRow[]>;
   /** Tratamiento del IVA de los gastos cuyo asiento es uno de estos (CRM 0039; null = interior). */
   expenseTreatmentsByEntries(entryIds: number[]): Promise<Map<number, VatTreatment | null>>;
+  /**
+   * Gasto automático de Stripe registrado con el IVA aún sin decidir (`vat_treatment` NULL): fija su tratamiento una
+   * sola vez, cuando la regla de IVA de las comisiones lo resuelve. false si no es de Stripe o ya lo tenía.
+   */
+  setStripeExpenseFiscal(id: number, vatTreatment: VatTreatment, reverseChargeRateBp: number | null): Promise<boolean>;
+  /** CRM 0044: vincula gastos automáticos de Stripe registrados a la factura que los agrupa; devuelve cuántos cambiaron. */
+  linkSupplierInvoice(ids: number[], ref: string): Promise<number>;
 
   listPayments(expenseIds: number[]): Promise<ExpensePayment[]>;
   getPayment(id: number): Promise<ExpensePayment | null>;
@@ -284,6 +293,7 @@ export class MemoryFinanceOpsStore implements FinanceOpsStore {
         (!q.from || e.invoiceDate >= q.from) &&
         (!q.to || e.invoiceDate <= q.to) &&
         (!q.overdueBefore || (e.status === "registered" && e.paymentStatus !== "paid" && !!e.dueDate && e.dueDate < q.overdueBefore)) &&
+        (!q.sourcePrefix || !!e.sourceKey?.startsWith(q.sourcePrefix)) &&
         (!t || [e.invoiceNumber ?? "", e.description, e.supplierName ?? ""].some((v) => v.toLowerCase().includes(t))),
     );
     const k = q.dir === "asc" ? 1 : -1;
@@ -355,6 +365,22 @@ export class MemoryFinanceOpsStore implements FinanceOpsStore {
   async expenseTreatmentsByEntries(entryIds: number[]) {
     const want = new Set(entryIds);
     return new Map(this.expenses.filter((e) => e.entryId !== null && want.has(e.entryId)).map((e) => [e.entryId!, e.vatTreatment ?? null]));
+  }
+  async setStripeExpenseFiscal(id: number, vatTreatment: VatTreatment, reverseChargeRateBp: number | null) {
+    const e = this.expenses.find((x) => x.id === id);
+    if (!e || e.status !== "registered" || !isStripeFeeExpense(e) || (e.vatTreatment ?? null) !== null) return false;
+    Object.assign(e, { vatTreatment, reverseChargeRateBp });
+    return true;
+  }
+  async linkSupplierInvoice(ids: number[], ref: string) {
+    const want = new Set(ids);
+    let n = 0;
+    for (const e of this.expenses)
+      if (want.has(e.id) && e.status === "registered" && isStripeFeeExpense(e) && e.supplierInvoiceRef !== ref) {
+        e.supplierInvoiceRef = ref;
+        n++;
+      }
+    return n;
   }
   async openExpenses(limit: number) {
     return this.expenses
@@ -617,6 +643,8 @@ const expenseRow = (r: Row): ExpenseRow => ({
   vatTreatment: (strOrNull(r.vat_treatment) as VatTreatment | null) ?? null,
   reverseChargeRateBp: numOrNull(r.reverse_charge_rate_bp),
   settlesStripeFees: Number(r.settles_stripe_fees ?? 0) === 1,
+  // CRM 0044: sin la migración la columna no se lee y queda en null
+  supplierInvoiceRef: strOrNull(r.supplier_invoice_ref),
   status: r.status as ExpenseStatus,
   entryId: numOrNull(r.entry_id),
   paymentStatus: r.payment_status as ExpensePaymentStatus,
@@ -784,13 +812,16 @@ function setClause<T extends object>(p: T, fields: Record<string, string>): { sq
 }
 
 export class MysqlFinanceOpsStore implements FinanceOpsStore {
-  /** `fiscal`: la migración 0039 está aplicada (tratamiento del IVA de los gastos); sin ella, el esquema anterior. */
+  /**
+   * `fiscal`: la migración 0039 está aplicada (tratamiento del IVA de los gastos); sin ella, el esquema anterior.
+   * `supplierInvoiceRef`: la 0044 (factura que agrupa gastos de Stripe).
+   */
   constructor(
     private pool: mysql.Pool,
-    private readonly opts: { fiscal?: boolean } = {},
+    private readonly opts: { fiscal?: boolean; supplierInvoiceRef?: boolean } = {},
   ) {}
   private get expenseCols() {
-    return this.opts.fiscal ? EXPENSE_COLS + FISCAL_EXPENSE_COLS : EXPENSE_COLS;
+    return (this.opts.fiscal ? EXPENSE_COLS + FISCAL_EXPENSE_COLS : EXPENSE_COLS) + (this.opts.supplierInvoiceRef ? ", x.supplier_invoice_ref" : "");
   }
   private get expenseFields(): Partial<Record<keyof ExpenseEdit, string>> {
     return this.opts.fiscal ? EXPENSE_FIELDS : LEGACY_EXPENSE_FIELDS;
@@ -894,6 +925,7 @@ export class MysqlFinanceOpsStore implements FinanceOpsStore {
     if (q.from) (w.push("x.invoice_date >= ?"), a.push(q.from));
     if (q.to) (w.push("x.invoice_date <= ?"), a.push(q.to));
     if (q.overdueBefore) (w.push("x.status = 'registered' AND x.payment_status <> 'paid' AND x.due_date < ?"), a.push(q.overdueBefore));
+    if (q.sourcePrefix) (w.push("x.source_key LIKE ?"), a.push(`${q.sourcePrefix.replace(/[\%_]/g, (c) => `\${c}`)}%`));
     if (q.q) (w.push("(x.invoice_number LIKE ? OR x.description LIKE ? OR s.name LIKE ?)"), a.push(like(q.q), like(q.q), like(q.q)));
     const where = w.length ? `WHERE ${w.join(" AND ")}` : "";
     const p = page(q.limit, q.offset);
@@ -991,6 +1023,17 @@ export class MysqlFinanceOpsStore implements FinanceOpsStore {
   async openExpenses(limit: number) {
     const [rows] = await this.pool.query<Row[]>(`SELECT ${this.expenseCols} FROM ${EXPENSE_FROM} WHERE x.status = 'registered' AND x.payment_status <> 'paid' ORDER BY x.id DESC LIMIT ?`, [limit]);
     return rows.map(expenseRow);
+  }
+  async setStripeExpenseFiscal(id: number, vatTreatment: VatTreatment, reverseChargeRateBp: number | null) {
+    if (!this.opts.fiscal) return false;
+    const [r] = await this.pool.query<mysql.ResultSetHeader>("UPDATE fin_expenses SET vat_treatment = ?, reverse_charge_rate_bp = ? WHERE id = ? AND status = 'registered' AND source_key LIKE ? AND vat_treatment IS NULL", [vatTreatment, reverseChargeRateBp, id, `${STRIPE_FEE_EXPENSE_PREFIX}%`]);
+    return r.affectedRows > 0;
+  }
+  async linkSupplierInvoice(ids: number[], ref: string) {
+    if (!ids.length) return 0;
+    if (!this.opts.supplierInvoiceRef) throw new FinanceError("unavailable", "Falta la migración 0044 del CRM: no se pueden vincular facturas a los gastos de Stripe");
+    const [r] = await this.pool.query<mysql.ResultSetHeader>("UPDATE fin_expenses SET supplier_invoice_ref = ? WHERE id IN (?) AND status = 'registered' AND source_key LIKE ? AND (supplier_invoice_ref IS NULL OR supplier_invoice_ref <> ?)", [ref, ids, `${STRIPE_FEE_EXPENSE_PREFIX}%`, ref]);
+    return r.affectedRows;
   }
 
   // Pagos
@@ -1220,6 +1263,14 @@ export class MysqlFinanceOpsStore implements FinanceOpsStore {
 }
 
 /** ¿Existe la migración 0035 (operaciones)? */
+/** ¿Existe la migración 0044 (factura que agrupa los gastos automáticos de Stripe)? */
+export async function finExpenseInvoiceRefReady(pool: Pick<mysql.Pool, "query">): Promise<boolean> {
+  return pool.query("SELECT supplier_invoice_ref FROM fin_expenses LIMIT 0").then(
+    () => true,
+    () => false,
+  );
+}
+
 export async function finOpsTablesReady(pool: Pick<mysql.Pool, "query">): Promise<boolean> {
   for (const t of ["fin_cost_centers", "fin_expense_categories", "fin_suppliers", "fin_expenses", "fin_expense_payments", "fin_documents", "fin_recurring_expenses", "fin_bank_accounts", "fin_bank_imports", "fin_bank_movements", "fin_cash_accounts", "fin_cash_movements"]) {
     const ok = await pool.query(`SELECT 1 FROM ${t} LIMIT 0`).then(() => true, () => false);
