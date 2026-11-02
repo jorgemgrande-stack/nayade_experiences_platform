@@ -12,15 +12,15 @@
  */
 import { useEffect, useRef, useState } from "react";
 import { Link, useLocation, useParams, useSearch } from "wouter";
-import { AlertTriangle, ArrowLeft, Check, CheckCircle2, Clock, Loader2, PackagePlus } from "lucide-react";
+import { AlertTriangle, ArrowLeft, Check, CheckCircle2, Clock, Loader2, Lock, PackagePlus } from "lucide-react";
 import AdminLayout from "@/components/AdminLayout";
 import { Button } from "@/components/ui/button";
 import { PanelError, PanelLoading } from "@/components/admin/PanelStates";
 import { cn } from "@/lib/utils";
 import { brandHeaders, brandOf, PURCHASE_BLOCK_TEXT } from "@shared/connectMarketplace";
 import { periodLabel, sortPrices, taxLabel, formatMoney } from "@shared/connectCard";
-import { ACTIVATION_LABELS, activationOf, primaryAction, type ConnectActivation, type PrimaryAction } from "@shared/connectShowcase";
-import { BigPrice, ImageKindNote, ProductIcon, ProductMedia, PurchaseDialog, RequestDialog, StateBadge, type ConnectView, type RequestKind } from "@/components/connect/ConnectParts";
+import { ACTIVATION_LABELS, activationActions, activationLabel, activationOf, primaryAction, type ConnectActivation, type PrimaryAction } from "@shared/connectShowcase";
+import { ActivationActionsBar, BigPrice, ImageKindNote, ProductIcon, ProductMedia, PurchaseDialog, RequestDialog, StateBadge, type ConnectView, type RequestKind } from "@/components/connect/ConnectParts";
 import { SHEET_ANCHORS, SheetBlocks, sheetAnchorTargets } from "@/components/connect/SheetBlocks";
 import { AMPLIAR_PATH } from "@/components/connect/LockedFeature";
 import { useConnectAttempt, useConnectCatalog, useOrderTracking, type ConnectCatalogItem } from "@/components/connect/useConnect";
@@ -43,7 +43,7 @@ export default function ConnectDetailPage() {
   const [dialog, setDialog] = useState<DialogKind | null>(null);
   const [related, setRelated] = useState<{ item: ConnectCatalogItem; kind: RequestKind } | null>(null);
   const data = catalog.data;
-  const view: ConnectView = { canPurchase: !!data?.canPurchase, interestEnabled: !!data?.interestEnabled };
+  const view: ConnectView = { canPurchase: !!data?.canPurchase, interestEnabled: !!data?.interestEnabled, canRetryActivation: !!data?.canRetryActivation };
   const action = item && data ? primaryAction(item, view) : null;
   const blockText = data?.purchaseBlock ? PURCHASE_BLOCK_TEXT[data.purchaseBlock] : null;
   const showBlock = !!item && item.state === "available" && action?.kind === "request" ? blockText : null;
@@ -93,7 +93,7 @@ export default function ConnectDetailPage() {
                 <div className="min-w-0">
                   <SheetBlocks item={item} items={catalog.items} view={view} onAction={(it, kind) => setRelated({ item: it, kind })} />
                 </div>
-                <ContractPanel item={item} action={action} attemptOrdered={attemptOrdered} showBlock={showBlock} onRun={run} onOpenOrder={() => setDialog("purchase")} />
+                <ContractPanel item={item} action={action} canRetryActivation={!!view.canRetryActivation} attemptOrdered={attemptOrdered} showBlock={showBlock} onRun={run} onOpenOrder={() => setDialog("purchase")} />
               </div>
             </article>
           )}
@@ -214,26 +214,44 @@ function AnchorNav({ item }: { item: ConnectCatalogItem }) {
   );
 }
 
-const STEPS: Array<Exclude<ConnectActivation["state"], "none" | "error">> = ["pending", "processing", "active"];
+const STEPS: Array<Exclude<ConnectActivation["state"], "none" | "error" | "suspended">> = ["pending", "processing", "active"];
 
-/** Estado de la activación: pendiente → activándose → activo, o incidencia (con salida por soporte). */
-function ActivationSteps({ activation, canRetry }: { activation: ConnectActivation; canRetry: boolean }) {
+/** Explicación de cada error, sin prometer lo que no se puede hacer. */
+function errorText(a: ConnectActivation, canRetry: boolean, canRetryActivation: boolean): string {
+  if (a.error?.kind === "activation") {
+    if (activationActions(a).retry) return canRetryActivation ? "El cobro ya está hecho y la activación no terminó. Reintentarla no vuelve a cobrar." : "El cobro ya está hecho y la activación no terminó. La administración de tu empresa puede reintentarla.";
+    return "La activación no terminó. Escríbenos y lo revisamos contigo.";
+  }
+  if (a.payment === "failed") return canRetry ? "No se pudo cobrar la contratación y no se ha activado nada. Puedes volver a intentarlo con el botón de abajo." : "No se pudo cobrar la contratación y no se ha activado nada. Escríbenos y lo revisamos contigo.";
+  if (a.payment === "expired") return canRetry ? "El pago caducó sin completarse y no se ha activado nada. Puedes volver a contratar con el botón de abajo." : "El pago caducó sin completarse y no se ha activado nada. Escríbenos y lo revisamos contigo.";
+  return canRetry ? "La última contratación no se completó. Puedes volver a intentarlo con el botón de abajo." : "La última contratación no se completó. Escríbenos y lo revisamos contigo.";
+}
+
+/** Estado de la activación: pago pendiente → procesando → activo; error, suspendido o renovación cancelada. */
+function ActivationSteps({ productKey, activation, canRetry, canRetryActivation }: { productKey: string; activation: ConnectActivation; canRetry: boolean; canRetryActivation: boolean }) {
   if (activation.state === "none") return null;
-  if (activation.state === "error") {
+  const actions = <ActivationActionsBar productKey={productKey} activation={activation} canRetry={canRetryActivation} />;
+  if (activation.state === "error" || activation.state === "suspended") {
+    const suspended = activation.state === "suspended";
+    const label = activationLabel(activation);
     return (
-      <div role="status" className="space-y-1 rounded-xl border border-danger/40 bg-danger/10 p-3 text-sm text-foreground">
+      <div role="status" className="space-y-2 rounded-xl border border-danger/40 bg-danger/10 p-3 text-sm text-foreground">
         <p className="flex items-center gap-2 font-semibold text-danger">
-          <AlertTriangle className="h-4 w-4 shrink-0" aria-hidden="true" /> Activación con incidencia
+          {suspended ? <Lock className="h-4 w-4 shrink-0" aria-hidden="true" /> : <AlertTriangle className="h-4 w-4 shrink-0" aria-hidden="true" />}
+          {suspended ? "Suspendido" : label === ACTIVATION_LABELS.error ? "Activación con incidencia" : label}
         </p>
-        <p>{canRetry ? "La última contratación no se completó. Puedes volver a intentarlo con el botón de abajo." : "La última contratación no se completó. Escríbenos y lo revisamos contigo."}</p>
+        <p>{suspended ? "El acceso está suspendido por un cobro pendiente. Se recupera en cuanto se regularice el pago, sin perder datos." : errorText(activation, canRetry, canRetryActivation)}</p>
+        {actions}
       </div>
     );
   }
   const at = STEPS.indexOf(activation.state);
+  const detail = activationLabel(activation);
+  const extra = detail !== ACTIVATION_LABELS[activation.state] ? detail : null;
   return (
     <div className="space-y-2">
       <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Activación</p>
-      <ol className="flex items-center gap-2" aria-label={`Activación: ${ACTIVATION_LABELS[activation.state]}`}>
+      <ol className="flex items-center gap-2" aria-label={`Activación: ${detail}`}>
         {STEPS.map((st, i) => {
           const done = i < at || activation.state === "active";
           const now = i === at && activation.state !== "active";
@@ -246,6 +264,8 @@ function ActivationSteps({ activation, canRetry }: { activation: ConnectActivati
           );
         })}
       </ol>
+      {extra && <p className={cn("text-sm font-medium", activation.state === "active" ? "text-warning" : "text-muted-foreground")}>{extra}</p>}
+      {actions}
     </div>
   );
 }
@@ -254,6 +274,7 @@ function ActivationSteps({ activation, canRetry }: { activation: ConnectActivati
 function ContractPanel({
   item,
   action,
+  canRetryActivation,
   attemptOrdered,
   showBlock,
   onRun,
@@ -261,6 +282,7 @@ function ContractPanel({
 }: {
   item: ConnectCatalogItem;
   action: PrimaryAction;
+  canRetryActivation: boolean;
   attemptOrdered: boolean;
   showBlock: string | null;
   onRun: (a: PrimaryAction) => void;
@@ -303,7 +325,7 @@ function ContractPanel({
         </ul>
       )}
       {/* Con incidencia en las licencias, sus motivos (arriba) ya lo explican */}
-      {item.state !== "incident" && <ActivationSteps activation={activation} canRetry={action.kind === "purchase"} />}
+      {(item.state !== "incident" || activation.state === "suspended") && <ActivationSteps productKey={item.key} activation={activation} canRetry={action.kind === "purchase"} canRetryActivation={canRetryActivation} />}
       <div className="space-y-2">
         {action.kind !== "none" && (
           <Button type="button" size="lg" className="h-12 w-full rounded-xl text-base font-bold" onClick={() => onRun(action)}>

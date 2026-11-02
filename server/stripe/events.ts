@@ -31,7 +31,7 @@ import { opsLog } from "../_core/ops/log";
 import { withCommercialCause } from "../commercialEvents/context";
 import { recordFailure } from "../_core/ops/failureAlerts";
 import type { OrderStore } from "../orchestrator/store";
-import type { CommercialOrder } from "../orchestrator/types";
+import type { CommercialOrder, RejectCode } from "../orchestrator/types";
 import { stripePaymentProvider } from "../orchestrator/service";
 import type { StripeMode } from "./config";
 import type { GwCharge, GwInvoice, GwSubscription, StripeGateway } from "./gateway";
@@ -85,7 +85,7 @@ export interface OrchestratorPort {
   /** Cambio de plan o periodicidad hecho en el Customer Portal (orchestrator.applyExternalPlanChange). Opcional. */
   applyExternalPlanChange?(id: number, target: { plan: string; interval: "month" | "year" }, signatureRef: string, actor: string): Promise<{ order: CommercialOrder; created: boolean; noop: boolean; error: string | null }>;
   /** Rechazo de un pedido de compra cuyo cambio caducó sin cobro. Opcional: sin él solo se marca el cambio. */
-  reject?(id: number, input: { reason: string }, actor: string): Promise<unknown>;
+  reject?(id: number, input: { reason: string; code?: RejectCode }, actor: string): Promise<unknown>;
 }
 
 export interface ProcessorDeps {
@@ -368,7 +368,7 @@ export class StripeEventProcessor {
       if (!(await this.d.changes.resolve(c.id, "expired", "El cambio caducó en Stripe sin cobrarse", this.now()))) continue;
       opsLog("info", "StripeEvents", "purchase_expired", { orderId: o.id, changeId: c.id });
       if (["requested", "quoted", "contracted"].includes(o.state) && this.d.orchestrator.reject)
-        await this.d.orchestrator.reject(o.id, { reason: "Pago de la compra no completado: el cambio caducó en Stripe" }, this.actor);
+        await this.d.orchestrator.reject(o.id, { reason: "Pago de la compra no completado: el cambio caducó en Stripe", code: "payment_expired" }, this.actor);
     }
   }
 

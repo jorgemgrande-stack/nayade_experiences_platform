@@ -334,7 +334,7 @@ export class ModulePurchaseService {
       ).change;
     } catch (e) {
       if (e instanceof SubscriptionChangeError) {
-        await this.d.orchestrator.reject(order.id, { reason: "Otra compra pendiente de pago en la misma suscripción" }, "system:purchases").catch(() => undefined);
+        await this.d.orchestrator.reject(order.id, { reason: "Otra compra pendiente de pago en la misma suscripción", code: "conflict" }, "system:purchases").catch(() => undefined);
         throw new PurchaseError("conflict", e.message);
       }
       throw e;
@@ -358,7 +358,7 @@ export class ModulePurchaseService {
         return this.result(change, orderId, "processing", false);
       }
       await this.d.changes.resolve(change.id, "failed", e instanceof Error ? e.message : "error", this.now());
-      await this.d.orchestrator.reject(orderId, { reason: `Stripe rechazó el cambio: ${e instanceof Error ? e.message : "error"}`.slice(0, 300) }, "system:purchases").catch(() => undefined);
+      await this.d.orchestrator.reject(orderId, { reason: `Stripe rechazó el cambio: ${e instanceof Error ? e.message : "error"}`.slice(0, 300), code: "payment_failed" }, "system:purchases").catch(() => undefined);
       opsLog("warn", "Purchases", "change_rejected", { orderId, changeId: change.id });
       return this.result({ ...change, status: "failed" }, orderId, "failed", true);
     }
@@ -414,7 +414,7 @@ export class ModulePurchaseService {
     if (change.stripeInvoiceId && inv && inv.status !== "void" && inv.status !== "uncollectible") return this.result(change, orderId, "processing", false);
     if (!change.stripeInvoiceId && change.updatedAt === change.createdAt && this.now() - change.createdAt < HOUR) return this.result(change, orderId, "processing", false);
     if (await this.d.changes.resolve(change.id, "expired", "El cambio caducó en Stripe sin cobrarse", this.now())) {
-      if (["requested", "quoted", "contracted"].includes(order.state)) await this.d.orchestrator.reject(orderId, { reason: "Pago de la compra no completado: el cambio caducó en Stripe" }, "system:purchases").catch(() => undefined);
+      if (["requested", "quoted", "contracted"].includes(order.state)) await this.d.orchestrator.reject(orderId, { reason: "Pago de la compra no completado: el cambio caducó en Stripe", code: "payment_expired" }, "system:purchases").catch(() => undefined);
       opsLog("info", "Purchases", "change_expired", { orderId, changeId: change.id });
     }
     return this.result({ ...change, status: "expired" }, orderId, "expired", false);
