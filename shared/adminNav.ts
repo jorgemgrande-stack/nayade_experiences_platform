@@ -283,6 +283,14 @@ export const TASK_NAV: NavSection[] = [
           { label: "Todos los pedidos", href: "/admin/crm?tab=reservations", key: "t-pedidos-todos", capabilities: ["shop-orders"] },
         ],
       },
+      // Business: agenda de reservas y citas (las reservas de la empresa por fecha, con su estado operativo)
+      {
+        label: "Agenda y reservas", href: "/admin/operaciones/calendario", key: "b-agenda", icon: "calendar", roles: SALES, capabilities: ["bookings-generic"],
+        children: [
+          { label: "Agenda", href: "/admin/operaciones/calendario", key: "b-agenda-calendario", capabilities: ["bookings-generic"] },
+          { label: "Reservas", href: "/admin/operaciones/reservas", key: "b-agenda-reservas", capabilities: ["bookings-generic"] },
+        ],
+      },
       { label: "Tareas", href: "/admin/crm/tareas", key: "t-tareas", icon: "calendar", roles: SALES, capabilities: ["crm-tasks"] },
       { label: "Etiquetas", href: "/admin/crm/etiquetas", key: "t-etiquetas", icon: "tag", roles: SALES, capabilities: ["crm-tags"] },
     ],
@@ -342,6 +350,23 @@ export const TASK_NAV: NavSection[] = [
         ],
       },
       { label: "Series y numeración", href: "/admin/numeracion", key: "t-series", icon: "settings", roles: ADMIN, capabilities: ["bill-series"] },
+      // Business: compras y gastos con sus proveedores, y la cuenta de resultados por centro de coste
+      {
+        label: "Gastos y compras", href: "/admin/contabilidad/gastos", key: "b-gastos", icon: "truck", roles: ADMIN, capabilities: ["purchasing-basic"],
+        children: [
+          { label: "Gastos", href: "/admin/contabilidad/gastos", key: "b-gastos-lista", capabilities: ["purchasing-basic"] },
+          { label: "Proveedores de gasto", href: "/admin/contabilidad/gastos/proveedores", key: "b-gastos-proveedores", capabilities: ["purchasing-basic"] },
+          { label: "Gastos recurrentes", href: "/admin/contabilidad/gastos/recurrentes", key: "b-gastos-recurrentes", capabilities: ["purchasing-basic"] },
+          { label: "Categorías de gasto", href: "/admin/contabilidad/gastos/categorias", key: "b-gastos-categorias", capabilities: ["purchasing-basic"] },
+        ],
+      },
+      {
+        label: "Cuenta de resultados", href: "/admin/contabilidad/cuenta-resultados", key: "b-resultados", icon: "chart", roles: ADMIN, capabilities: ["reports-advanced"],
+        children: [
+          { label: "Cuenta de resultados", href: "/admin/contabilidad/cuenta-resultados", key: "b-resultados-informe", capabilities: ["reports-advanced"] },
+          { label: "Centros de coste", href: "/admin/contabilidad/gastos/centros-coste", key: "b-centros-coste", capabilities: ["reports-advanced"] },
+        ],
+      },
     ],
   },
   {
@@ -625,6 +650,16 @@ export const EXTRA_ROUTE_CAPABILITIES: ReadonlyArray<{ path: string; capabilitie
   { path: "/admin/fiscal", capabilities: ["travel-net"] },
   { path: "/admin/partners", capabilities: ["supplier-settlements"] },
   { path: "/admin/onboarding", capabilities: ["admin-panel"] },
+  // Pantallas que enlaza el menú Business y que ya se abrían por su ruta con estas capacidades: la entrada del menú
+  // solo aparece con la capacidad Business, pero la ruta sigue abierta como hasta ahora
+  { path: "/admin/operaciones/calendario", capabilities: ["shop-orders"] },
+  { path: "/admin/operaciones/reservas", capabilities: ["shop-orders"] },
+  { path: "/admin/contabilidad/gastos", capabilities: ["bill-reports"] },
+  { path: "/admin/contabilidad/gastos/proveedores", capabilities: ["bill-reports"] },
+  { path: "/admin/contabilidad/gastos/recurrentes", capabilities: ["bill-reports"] },
+  { path: "/admin/contabilidad/gastos/categorias", capabilities: ["bill-reports"] },
+  { path: "/admin/contabilidad/gastos/centros-coste", capabilities: ["bill-reports"] },
+  { path: "/admin/contabilidad/cuenta-resultados", capabilities: ["bill-reports"] },
 ];
 
 /** Ruta del panel → capacidades que la licencian (unión si varias entradas comparten ruta). */

@@ -207,6 +207,8 @@ import { costModelInputSchema } from "../_core/erm/costs";
 import { OVERAGE_POLICY, WATCHED, collectorStatus, dailyUsage, detectAnomalies, exportDailyCsv, lastFullMadridDay } from "../_core/erm/insights";
 import { integrationStatus, mysqlIntegrationRows, type IntegrationRow } from "./tenantIntegrations";
 import { pendingCount, schemaState, tenantMigrations } from "./schemaVersions";
+import { createSaleTraceRouter } from "../commerce/saleTraceApi";
+import type { SaleTraceService } from "../commerce/saleTrace";
 
 export interface ControlPlaneDeps {
   tokens: ServiceToken[];
@@ -415,6 +417,8 @@ export interface ControlPlaneDeps {
   leadNotices?: LeadNoticeService | null;
   /** Alertas administrativas (familia D; server/adminAlerts, CRM 0030). */
   adminAlerts?: AdminAlertService | null;
+  /** Traza de las altas de pago (server/commerce/saleTrace.ts), solo lectura: /orders/:id/trace y /orders/sales/recent. */
+  saleTrace?: SaleTraceService | null;
   /** Estado real de los circuitos comerciales (Stripe externos/SaaS, pruebas, aprovisionamiento); solo lectura. */
   commerceCircuits?: () => CommerceCircuits;
   /** Solicitudes de derechos de protección de datos (RGPD; server/dataRequests, CRM 0032). */
@@ -2151,6 +2155,8 @@ export function createControlPlaneApp(d: ControlPlaneDeps): Express {
           return { order, trial: after ? TrialService.view(after) : null, error: order.state === "active" ? null : error };
         };
       }
+      // Traza de extremo a extremo de las altas de pago (antes que /orders/:id para que /orders/sales/recent no choque)
+      if (d.saleTrace) router.use("/orders", createSaleTraceRouter(d.saleTrace));
       router.use("/orders", createOrdersRouter(orchestrator));
       // Desistimiento de consumidores (CRM 0022): solicitud desde la cuenta (Core) y gestión de operadores. Sin
       // política jurídica aprobada no ejecuta reembolsos ni bajas: registra, evalúa, avisa y guarda la resolución
@@ -2684,7 +2690,7 @@ export function createControlPlaneApp(d: ControlPlaneDeps): Express {
     const tickets = d.tickets;
     router.use("/tickets", createTicketsRouter(tickets));
     // Soporte desde el panel de cada empresa (token del Core; nunca notas internas ni datos del equipo)
-    router.use("/commerce", createCustomerTicketsRouter(tickets));
+    router.use("/commerce", createCustomerTicketsRouter(tickets, { grants: d.capabilities ? (t) => d.capabilities!.list(t) : undefined }));
     // Vista por empresa: el tenant de la ruta fuerza el filtro y valida su existencia.
     router.get(
       "/tenants/:id/tickets",
