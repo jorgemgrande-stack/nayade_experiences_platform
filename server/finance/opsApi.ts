@@ -7,6 +7,7 @@
  *   GET|POST /categories · PATCH /categories/:id                                           lectura | gestión
  *   GET|POST /suppliers · GET|PATCH /suppliers/:id · GET /suppliers/:id/statement          lectura | gestión
  *   GET|POST /expenses · GET|PATCH /expenses/:id (borrador)                                lectura | gestión
+ *     (GET /expenses?origin=stripe: solo los gastos automáticos de Stripe)
  *   POST /expenses/:id/register · /expenses/:id/void · /expenses/:id/payments              contabilizar
  *   POST /expense-payments/:id/reverse                                                     contabilizar
  *   GET|POST /documents · GET /documents/:id/content · POST /documents/:id/archive          lectura | gestión
@@ -30,6 +31,7 @@ import { z } from "zod";
 import { actorOf, wrap } from "./http";
 import type { FinanceAnalysisService } from "./analysisService";
 import type { FinanceOpsService } from "./opsService";
+import { STRIPE_FEE_EXPENSE_PREFIX } from "./opsRules";
 import { FinanceError } from "./types";
 import { ACCOUNT_MATCH_TYPES, BANK_FEE_NATURES, DOCUMENT_OWNERS, EXPENSE_KINDS, EXPENSE_STATUSES, FREQUENCIES, IMPORT_FORMATS, MOVEMENT_STATUSES, PAYMENT_METHODS, PAYMENT_STATUSES, VAT_TREATMENTS } from "./opsTypes";
 import { canExpenses, canPost, canRead, canSuppliers } from "./permissions";
@@ -193,6 +195,7 @@ export function mountFinanceOpsRoutes(r: Router, ops: FinanceOpsService, analysi
         to: date.optional(),
         q: z.string().trim().max(100).optional(),
         due: z.enum(["overdue"]).optional(),
+        origin: z.enum(["stripe"]).optional(),
         sort: z.enum(["invoiceDate", "dueDate", "totalCents", "supplier"]).optional(),
         dir: z.enum(["asc", "desc"]).optional(),
         limit: limit(200),
@@ -200,8 +203,9 @@ export function mountFinanceOpsRoutes(r: Router, ops: FinanceOpsService, analysi
       })
       .strict()
       .parse(req.query);
-    const { supplier, category, costCenter, q: text, ...rest } = q;
-    res.json(await ops.listExpenses({ ...rest, supplierId: supplier, categoryId: category, costCenterId: costCenter, q: text || undefined }));
+    const { supplier, category, costCenter, q: text, origin, ...rest } = q;
+    // `origin=stripe`: solo los gastos automáticos de Stripe
+    res.json(await ops.listExpenses({ ...rest, supplierId: supplier, categoryId: category, costCenterId: costCenter, q: text || undefined, ...(origin === "stripe" ? { sourcePrefix: STRIPE_FEE_EXPENSE_PREFIX } : {}) }));
   }));
   r.post("/expenses", ...canExpenses, wrap(async (req, res) => {
     const e = await ops.createExpense(expenseSchema.parse(body(req)), actorOf(req));

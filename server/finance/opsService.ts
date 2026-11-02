@@ -27,6 +27,7 @@ import {
   expenseAmounts,
   expenseEntry,
   expensePaymentSourceKey,
+  isStripeFeeExpense,
   isValidIban,
   MAX_DOCUMENT_BYTES,
   MAX_IMPORT_ROWS,
@@ -46,6 +47,7 @@ import {
   sha256Hex,
   sniffDocument,
   spanishAccountOfIban,
+  stripeTxnOfExpense,
   suggestMatches,
   taxIdProblem,
   type CsvMapping,
@@ -187,6 +189,8 @@ export type BankSuggestion = Omit<MatchSuggestion, "score"> | Omit<StripeMatchSu
 
 const bad =(m: string) => new FinanceError("invalid_input", m);
 const notFound = (what: string) => new FinanceError("not_found", `${what} no encontrado`);
+/** Gasto automático de Stripe: ya contabilizado y pagado con el saldo de Stripe; se gestiona desde Contabilidad › Stripe. */
+const STRIPE_EXPENSE_LOCKED = "Gasto automático de Stripe: ya está contabilizado y pagado con el saldo de Stripe (se gestiona desde Contabilidad › Stripe; su factura se vincula, no se registra aparte)";
 const text = (v: string | null | undefined, max: number) => {
   const t = (v ?? "").trim();
   return t ? t.slice(0, max) : null;
@@ -437,9 +441,13 @@ export class FinanceOpsService {
 
   // ── Gastos ────────────────────────────────────────────────────────────────────────────────────────────────────
 
-  /** Forma del CRM: el gasto con el nombre del proveedor, lo pagado y lo pendiente (total − retención − pagos). */
+  /**
+   * Forma del CRM: el gasto con el nombre del proveedor, lo pagado y lo pendiente (total − retención − pagos), su
+   * origen (`stripe` automático, `recurring` de una plantilla o `manual`) y, en los de Stripe, la transacción de saldo.
+   */
   expenseDto(e: ExpenseRow) {
-    return { ...e, pendingCents: pendingOf(e) };
+    const stripeTxn = stripeTxnOfExpense(e);
+    return { ...e, pendingCents: pendingOf(e), origin: stripeTxn ? ("stripe" as const) : e.sourceKey?.startsWith("recurring:") ? ("recurring" as const) : ("manual" as const), stripeBalanceTransactionId: stripeTxn };
   }
 
   async listExpenses(q: Omit<ExpenseQuery, "overdueBefore"> & { due?: "overdue" }) {
@@ -551,6 +559,7 @@ export class FinanceOpsService {
   async patchExpense(id: number, p: Partial<ExpenseInput>, actor: FinanceActor) {
     const cur = await this.expense(id);
     if (cur.status !== "draft") throw new FinanceError("invalid_state", "Solo se edita un gasto en borrador");
+    if (isStripeFeeExpense(cur)) throw new FinanceError("invalid_state", STRIPE_EXPENSE_LOCKED);
     const merged: ExpenseInput = {
       kind: p.kind ?? cur.kind,
       supplierId: p.supplierId !== undefined ? p.supplierId : cur.supplierId,
@@ -584,6 +593,7 @@ export class FinanceOpsService {
     const e = await this.expense(id);
     if (e.status === "registered") return e;
     if (e.status === "void") throw new FinanceError("invalid_state", "El gasto está anulado");
+    if (isStripeFeeExpense(e)) throw new FinanceError("invalid_state", STRIPE_EXPENSE_LOCKED);
     if (e.kind !== "ticket" && !e.supplierId) throw bad("Elige el proveedor antes de registrar el gasto");
     if (e.kind !== "ticket" && !e.invoiceNumber) throw bad("Indica el número de la factura del proveedor antes de registrarla");
     if (!e.categoryId) throw bad("Elige la categoría del gasto");
@@ -617,6 +627,7 @@ export class FinanceOpsService {
     const why = reasonOf(reason, "la anulación");
     const e = await this.expense(id);
     if (e.status === "void") throw new FinanceError("invalid_state", "El gasto ya está anulado");
+    if (isStripeFeeExpense(e)) throw new FinanceError("invalid_state", STRIPE_EXPENSE_LOCKED);
     if (e.status === "registered") {
       const live = (await this.s.listPayments([id])).filter((p) => p.status === "posted");
       if (live.length) throw new FinanceError("invalid_state", `El gasto tiene ${live.length} pago(s) vigente(s): reviértelos antes de anularlo`);
@@ -636,6 +647,7 @@ export class FinanceOpsService {
     const e = await this.expense(expenseId);
     if (e.status !== "registered") throw new FinanceError("invalid_state", "Solo se pagan gastos registrados");
     if (e.settlesStripeFees) throw new FinanceError("invalid_state", "La factura de comisiones de Stripe se liquidó con el saldo de Stripe: no admite pagos");
+    if (isStripeFeeExpense(e)) throw new FinanceError("invalid_state", STRIPE_EXPENSE_LOCKED);
     if (!Number.isSafeInteger(amountCents) || amountCents === 0) throw bad("El importe del pago es un número de céntimos distinto de cero");
     const pending = pendingOf(e);
     if (pending === 0) throw new FinanceError("exceeds_pending", "El gasto ya está pagado");
@@ -1097,6 +1109,21 @@ export class FinanceOpsService {
       await this.s.releaseMovement(m.id, "matched");
       throw err;
     }
+    return this.movement(m.id);
+  }
+
+  /**
+   * Vincula un movimiento con un pago ya contabilizado en otro módulo (el de una obligación o una cuota de aplazamiento
+   * de Gestoría, con su asiento propio): sin asiento nuevo. Desvincularlo solo deshace el vínculo; el pago y su asiento
+   * se gestionan en su módulo.
+   */
+  async linkExistingEntry(id: number, i: { type: AccountMatchType; matchId: number; entryId: number | null; note?: string }, actor: FinanceActor): Promise<BankMovement> {
+    const m = await this.movement(id);
+    if (m.status !== "pending") throw new FinanceError("invalid_state", "El movimiento ya no está pendiente");
+    const claimed = await this.s.claimMovement(m.id, { from: "pending", to: "matched", matchType: i.type, by: actor.by, at: this.now(), bump: false });
+    if (!claimed) throw new FinanceError("conflict", "El movimiento ya no está pendiente (otra persona lo ha conciliado)");
+    await this.s.setMovementMatch(m.id, i.matchId, null);
+    await this.audit(actor, "bank_movement.link", "bank_movement", m.id, { type: i.type, matchId: i.matchId, entryId: i.entryId, note: i.note ?? null });
     return this.movement(m.id);
   }
 

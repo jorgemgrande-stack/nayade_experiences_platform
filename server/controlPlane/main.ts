@@ -117,7 +117,7 @@ import { MysqlFinanceStore, finTablesReady } from "../finance/store";
 import { MysqlImplementationStore, implementationTablesReady } from "../implementation/store";
 import { assistedImplementationEnabled } from "../implementation/config";
 import { FinanceOpsService } from "../finance/opsService";
-import { MysqlFinanceOpsStore, finOpsTablesReady } from "../finance/opsStore";
+import { MysqlFinanceOpsStore, finExpenseInvoiceRefReady, finOpsTablesReady } from "../finance/opsStore";
 import { startFinanceRecurringScheduler } from "../finance/recurringScheduler";
 import { FinanceStripeService } from "../finance/stripeService";
 import { MysqlFinanceStripeStore, MysqlStripeInvoiceDirectory, finStripeTablesReady } from "../finance/stripeStore";
@@ -128,6 +128,7 @@ import { MysqlFiscalInvoiceSource } from "../finance/taxSources";
 import { runTaxReminders, taxRemindersEnabled } from "../finance/taxReminders";
 import { FinanceAnalysisService } from "../finance/analysisService";
 import { FinanceAutomation, startFinanceAutomation } from "../finance/automation";
+import { BankAutoReconciler } from "../finance/bankAutoReconcile";
 import { FinanceIntegrity } from "../finance/integrity";
 import { StripeApiBalanceReader } from "../finance/stripeBalanceApi";
 import { InvoicingService } from "../invoicing/service";
@@ -650,12 +651,14 @@ async function main() {
   // Parametrización fiscal (CRM 0039): tratamiento del IVA de gastos y comisiones, validación de la configuración fiscal,
   // Impuesto sobre Sociedades por ejercicio y configuración del análisis. Sin la migración, todo como antes y lo nuevo, 404
   const finFiscal = !!finance && !!crmPool && (await finFiscalTablesReady(crmPool));
+  // CRM 0044: factura de Stripe que agrupa sus gastos automáticos (sin ella, los gastos se crean igual y no se vinculan)
+  const finInvoiceRef = !!finance && !!crmPool && (await finExpenseInvoiceRefReady(crmPool));
   // Operaciones (CRM 0035): gastos, proveedores, bancos y caja sobre el libro; sin la migración, solo el libro
-  const financeOps = finance && crmPool && (await finOpsTablesReady(crmPool)) ? new FinanceOpsService({ store: new MysqlFinanceOpsStore(crmPool, { fiscal: finFiscal }), finance, ledger: new MysqlFinanceStore(crmPool), fiscal: finFiscal }) : null;
+  const financeOps = finance && crmPool && (await finOpsTablesReady(crmPool)) ? new FinanceOpsService({ store: new MysqlFinanceOpsStore(crmPool, { fiscal: finFiscal, supplierInvoiceRef: finInvoiceRef }), finance, ledger: new MysqlFinanceStore(crmPool), fiscal: finFiscal }) : null;
   if (finance) console.log(JSON.stringify({ ctx: "FinanceOps", mounted: !!financeOps, ...(financeOps ? {} : { reason: "migration_0035_missing" }) }));
   if (financeOps) console.log(JSON.stringify({ ctx: "FinanceFiscal", mounted: finFiscal, ...(finFiscal ? {} : { reason: "migration_0039_missing" }) }));
   // Stripe como TPV (CRM 0036): importación de informes, contabilización y conciliación; sin la migración, no se monta
-  const financeStripe = financeOps && finance && crmPool && (await finStripeTablesReady(crmPool)) ? new FinanceStripeService({ store: new MysqlFinanceStripeStore(crmPool), finance, ops: new MysqlFinanceOpsStore(crmPool, { fiscal: finFiscal }), ledger: new MysqlFinanceStore(crmPool), invoices: invoicing ? new MysqlOwnInvoiceDirectory(crmPool, external?.store.mode ?? "test") : null, stripeInvoices: new MysqlStripeInvoiceDirectory(crmPool), lock: mysqlKeyedLock(crmPool), fiscal: finFiscal }) : null;
+  const financeStripe = financeOps && finance && crmPool && (await finStripeTablesReady(crmPool)) ? new FinanceStripeService({ store: new MysqlFinanceStripeStore(crmPool), finance, ops: new MysqlFinanceOpsStore(crmPool, { fiscal: finFiscal, supplierInvoiceRef: finInvoiceRef }), ledger: new MysqlFinanceStore(crmPool), invoices: invoicing ? new MysqlOwnInvoiceDirectory(crmPool, external?.store.mode ?? "test") : null, stripeInvoices: new MysqlStripeInvoiceDirectory(crmPool), lock: mysqlKeyedLock(crmPool), fiscal: finFiscal }) : null;
   if (financeOps) console.log(JSON.stringify({ ctx: "FinanceStripe", mounted: !!financeStripe, ...(financeStripe ? {} : { reason: "migration_0036_missing" }) }));
   if (financeOps && financeStripe) financeOps.useReconciliation(financeStripe);
   // CRM 0039: facturas de comisiones de Stripe que liquidan las importadas (per_invoice o domestic)
@@ -663,7 +666,7 @@ async function main() {
   // Gestoría e impuestos (CRM 0037): borradores, calendario fiscal, nóminas, aplazamientos y expedientes; nunca presenta nada
   const financeTax =
     financeOps && finance && crmPool && (await finTaxTablesReady(crmPool))
-      ? new FinanceTaxService({ store: new MysqlFinanceTaxStore(crmPool, { fiscal: finFiscal }), finance, ledger: new MysqlFinanceStore(crmPool), ops: new MysqlFinanceOpsStore(crmPool, { fiscal: finFiscal }), documents: financeOps, stripe: financeStripe ? new MysqlFinanceStripeStore(crmPool) : null, invoices: invoicing ? new MysqlFiscalInvoiceSource(crmPool, external?.store.mode ?? "test") : null, issuer: { legalName: ISSUER.legalName, taxId: ISSUER.taxId }, fiscal: finFiscal, stripeFeeVat: financeStripe })
+      ? new FinanceTaxService({ store: new MysqlFinanceTaxStore(crmPool, { fiscal: finFiscal }), finance, ledger: new MysqlFinanceStore(crmPool), ops: new MysqlFinanceOpsStore(crmPool, { fiscal: finFiscal, supplierInvoiceRef: finInvoiceRef }), documents: financeOps, stripe: financeStripe ? new MysqlFinanceStripeStore(crmPool) : null, invoices: invoicing ? new MysqlFiscalInvoiceSource(crmPool, external?.store.mode ?? "test") : null, issuer: { legalName: ISSUER.legalName, taxId: ISSUER.taxId }, fiscal: finFiscal, stripeFeeVat: financeStripe })
       : null;
   if (financeOps) console.log(JSON.stringify({ ctx: "FinanceTax", mounted: !!financeTax, ...(financeTax ? { reminders: taxRemindersEnabled(process.env) } : { reason: "migration_0037_missing" }) }));
   if (financeOps && financeTax) financeOps.useTaxDocumentOwners((type, id) => financeTax.documentOwnerExists(type, id));
@@ -713,6 +716,8 @@ async function main() {
         })
       : null;
   if (invoicing) invoicing.automation = invoiceIssuing ?? undefined;
+  // Conciliación bancaria automática por reglas deterministas (comisiones, cargos de proveedores conocidos y pagos a la AEAT)
+  const bankRules = financeOps && crmPool ? new BankAutoReconciler({ ops: financeOps, store: new MysqlFinanceOpsStore(crmPool, { fiscal: finFiscal, supplierInvoiceRef: finInvoiceRef }), tax: financeTax }) : null;
   const financeAutomation =
     finance && crmPool
       ? new FinanceAutomation({
@@ -724,18 +729,19 @@ async function main() {
           invoicing: invoicingAuto,
           issuing: invoiceIssuing,
           issuer: { legalName: ISSUER.legalName, taxId: ISSUER.taxId },
+          bankRules,
         })
       : null;
   if (invoicing) console.log(JSON.stringify({ ctx: "InvoicingAutomation", mounted: !!invoiceIssuing, issueEnabled: invoicing.issueEnabled, proformaLeadDays: invoicingAuto ? (Number.isInteger(proformaDays) && proformaDays >= 0 && proformaDays <= 30 ? proformaDays : DEFAULT_PROFORMA_LEAD_DAYS) : null, mail: !!mailService, stripeCheck: !!stripeReader }));
   // Integridad: hechos confirmados (webhooks de Stripe) frente al libro y estado de las fuentes, para el control diario y el panel
   const financeIntegrity =
     finance && financeOps && crmPool
-      ? new FinanceIntegrity({ finance, ledger: new MysqlFinanceStore(crmPool), ops: new MysqlFinanceOpsStore(crmPool, { fiscal: finFiscal }), external: external?.store ?? null, invoices: invoicing ? new MysqlOwnInvoiceDirectory(crmPool, external?.store.mode ?? "test") : null, invoiceStore: invoicing?.store ?? null, issueEnabled: !!invoicing?.issueEnabled, stripe: financeStripe ? { service: financeStripe, store: new MysqlFinanceStripeStore(crmPool) } : null, tax: financeTax, automation: financeAutomation })
+      ? new FinanceIntegrity({ finance, ledger: new MysqlFinanceStore(crmPool), ops: new MysqlFinanceOpsStore(crmPool, { fiscal: finFiscal, supplierInvoiceRef: finInvoiceRef }), external: external?.store ?? null, invoices: invoicing ? new MysqlOwnInvoiceDirectory(crmPool, external?.store.mode ?? "test") : null, invoiceStore: invoicing?.store ?? null, issueEnabled: !!invoicing?.issueEnabled, stripe: financeStripe ? { service: financeStripe, store: new MysqlFinanceStripeStore(crmPool) } : null, tax: financeTax, automation: financeAutomation })
       : null;
   // Control diario, informes y análisis (CRM 0038): lectura de las fases 1–3; solo guarda la revisión diaria y la marca de coste directo
   const financeAnalysis =
     financeOps && finance && crmPool && (await finAnalysisTablesReady(crmPool))
-      ? new FinanceAnalysisService({ store: new MysqlFinanceAnalysisStore(crmPool, { fiscal: finFiscal }), finance, ledger: new MysqlFinanceStore(crmPool), ops: new MysqlFinanceOpsStore(crmPool, { fiscal: finFiscal }), fiscal: finFiscal, stripe: financeStripe ? { service: financeStripe, store: new MysqlFinanceStripeStore(crmPool) } : null, tax: financeTax, invoices: invoicing ? new MysqlOwnInvoiceDirectory(crmPool, external?.store.mode ?? "test") : null, paymentEvents: new MysqlPaymentEventSource(crmPool, commercialEnvironment), integrity: financeIntegrity })
+      ? new FinanceAnalysisService({ store: new MysqlFinanceAnalysisStore(crmPool, { fiscal: finFiscal }), finance, ledger: new MysqlFinanceStore(crmPool), ops: new MysqlFinanceOpsStore(crmPool, { fiscal: finFiscal, supplierInvoiceRef: finInvoiceRef }), fiscal: finFiscal, stripe: financeStripe ? { service: financeStripe, store: new MysqlFinanceStripeStore(crmPool) } : null, tax: financeTax, invoices: invoicing ? new MysqlOwnInvoiceDirectory(crmPool, external?.store.mode ?? "test") : null, paymentEvents: new MysqlPaymentEventSource(crmPool, commercialEnvironment), integrity: financeIntegrity })
       : null;
   if (financeOps) console.log(JSON.stringify({ ctx: "FinanceAnalysis", mounted: !!financeAnalysis, ...(financeAnalysis ? {} : { reason: "migration_0038_missing" }) }));
   // CRM 0039: la conciliación bancaria resuelve la naturaleza de una comisión con la configuración del análisis
@@ -961,6 +967,7 @@ async function main() {
     financeTax,
     financeAnalysis,
     financeFiscal: finFiscal,
+    financeBankRules: bankRules,
     communications,
     notifications: notificationsFromEnv(process.env),
     mail: {

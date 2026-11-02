@@ -10,8 +10,8 @@
  */
 import { madridDateKey } from "../utils/timezone";
 import { invoiceLockKey, memoryKeyedLock, type KeyedLock, type OwnInvoice, type OwnInvoiceDirectory } from "./ownInvoices";
-import { decodeText, safeFilename, sha256Hex, MAX_DOCUMENT_BYTES } from "./opsRules";
-import type { FinanceOpsStore } from "./opsStore";
+import { decodeText, safeFilename, sha256Hex, MAX_DOCUMENT_BYTES, STRIPE_FEE_EXPENSE_PREFIX, isStripeFeeExpense, stripeFeeExpenseSourceKey, stripeTxnOfExpense } from "./opsRules";
+import type { ExpenseRow, FinanceOpsStore } from "./opsStore";
 import type { BankMovement } from "./opsTypes";
 import type { BankReconciliationExtension } from "./opsService";
 import { addDays } from "./opsRules";
@@ -21,6 +21,7 @@ import type { FinanceStore } from "./store";
 import {
   checkFeeVatRule,
   feeBaseOf,
+  feeExpenseAccount,
   parseBalanceCsv,
   parsePayoutsCsv,
   reconciliationStatus,
@@ -29,6 +30,8 @@ import {
   STRIPE_ACCOUNTS,
   stripeFeeClassEntry,
   stripeFeeClassSourceKey,
+  stripeFeeExpenseDescription,
+  stripeFeeVatEntry,
   stripePayoutEntry,
   stripeTxnEntry,
   suggestStripeMatches,
@@ -69,6 +72,27 @@ const nextMonth = (ym: string) => {
 /** Motivo que queda en una transacción pendiente por no tener decidido el IVA de su comisión. */
 export const FEE_VAT_UNSET_DETAIL = "fee_vat_unset: el IVA de la comisión de Stripe no está configurado (regla por tipo o modo global)";
 export const FEE_PROVISIONAL_DETAIL = "fee_vat_pending: comisión contabilizada en 555 hasta decidir su IVA (exenta o inversión del sujeto pasivo)";
+/** Motivo de una transacción cuya comisión ya es un gasto de Stripe (626/629) con el IVA aún sin decidir. */
+export const FEE_EXPENSE_PENDING_DETAIL = "fee_vat_pending: comisión registrada como gasto de Stripe (626/629) sin IVA hasta decidir su tratamiento";
+
+/** Proveedor y categorías de los gastos automáticos de Stripe (se dan de alta solos la primera vez). */
+export const STRIPE_SUPPLIER = { name: "Stripe", legalName: "Stripe Payments Europe, Limited", country: "IE" } as const;
+export const STRIPE_EXPENSE_CATEGORIES = {
+  "626": "Comisiones de cobro de Stripe",
+  "629": "Servicios de Stripe (Billing, Radar…)",
+} as const;
+/** Transacciones contabilizadas que se repasan como mucho por pasada para sus gastos (las más recientes). */
+const FEE_EXPENSE_SCAN = 2_000;
+
+export interface FeeExpenseSync {
+  /** Gastos dados de alta (o terminados de registrar tras un fallo) en esta pasada. */
+  created: number;
+  /** Gastos cuyo tratamiento del IVA quedó fijado en esta pasada (con su autoliquidación si procede). */
+  classified: number;
+  /** Gastos de Stripe con el IVA aún sin decidir. */
+  pendingFiscal: number;
+  errors: string[];
+}
 
 /** Asiento de la vista previa: solo cuentas e importes (no se guarda nada). */
 const previewEntry = (id: string, d: EntryDraft) => ({ balanceTransactionId: id, date: d.date, description: d.description, lines: d.lines.map((l) => ({ account: l.accountCode, debitCents: l.debitCents, creditCents: l.creditCents })) });
@@ -96,6 +120,8 @@ export interface PostResult {
   pendingFeeVat?: number;
   /** Comisiones provisionales reclasificadas en esta pasada al decidirse su IVA. */
   feesClassified?: number;
+  /** Gastos automáticos de Stripe dados de alta o con el IVA fijado en esta pasada. */
+  feeExpenses?: { created: number; classified: number };
   /** Payouts llegados que esperan la cuenta bancaria de destino (no se dan por recibidos en ningún banco). */
   payoutsAwaitingBank?: number;
 }
@@ -245,8 +271,203 @@ export class FinanceStripeService implements BankReconciliationExtension {
     const resolve = await this.feeResolver();
     const inRange = (t: StripeTxn) => (!from || t.createdOn >= from) && (!to || t.createdOn <= to);
     const pending = await this.s.postableTransactions(to ?? "9999-12-31", POST_BATCH);
-    // Sin contabilizar con el IVA sin decidir, más las contabilizadas en provisional (555) aún sin clasificar
-    return pending.filter((t) => inRange(t) && FinanceStripeService.feeVatUnset(t, resolve(t))).length + (await this.provisionalFees()).filter(inRange).length;
+    // Sin contabilizar con el IVA sin decidir, las contabilizadas en provisional (555) aún sin clasificar y los gastos
+    // de Stripe ya reclasificados cuyo IVA sigue pendiente
+    const expenses = (await this.pendingFiscalExpenses()).filter((e) => (!from || e.invoiceDate >= from) && (!to || e.invoiceDate <= to));
+    return pending.filter((t) => inRange(t) && FinanceStripeService.feeVatUnset(t, resolve(t))).length + (await this.provisionalFees()).filter(inRange).length + expenses.length;
+  }
+
+  // ── Gastos automáticos de Stripe (Contabilidad › Gastos) ─────────────────────────────────────────────────────
+
+  /** Gastos automáticos de Stripe en un estado (todas las páginas). */
+  private async feeExpenses(status?: "draft" | "registered"): Promise<ExpenseRow[]> {
+    const out: ExpenseRow[] = [];
+    for (let offset = 0; ; offset += 500) {
+      const page = await this.d.ops.listExpenses({ sourcePrefix: STRIPE_FEE_EXPENSE_PREFIX, ...(status ? { status } : {}), limit: 500, offset, sort: "invoiceDate", dir: "asc" });
+      out.push(...page.items);
+      if (out.length >= page.total || !page.items.length) return out;
+    }
+  }
+
+  /**
+   * Gastos de Stripe registrados con el tratamiento del IVA aún sin decidir (sin regla ni modo global). Con el modo
+   * «según factura» o interior no cuentan: su IVA lo da la factura mensual de Stripe registrada como gasto.
+   */
+  async pendingFiscalExpenses(): Promise<ExpenseRow[]> {
+    const resolve = await this.feeResolver();
+    return (await this.feeExpenses("registered")).filter((e) => {
+      if ((e.vatTreatment ?? null) !== null) return false;
+      const type = e.description.startsWith("Stripe · ") ? "stripe_fee" : "charge";
+      return resolve({ type, rawType: type, createdOn: e.invoiceDate }).treatment === "unset";
+    });
+  }
+
+  /** Proveedor «Stripe» y las categorías 626/629 de sus gastos; se dan de alta la primera vez (sin inventar el NIF-IVA). */
+  private async feeExpenseRefs(actor: FinanceActor): Promise<{ supplierId: number; categories: Record<"626" | "629", number> }> {
+    const found = (await this.d.ops.listSuppliers({ q: "Stripe", limit: 50 })).items.find((s) => s.active && /\bstripe\b/i.test(`${s.name} ${s.legalName ?? ""}`));
+    const supplier =
+      found ??
+      (await this.d.ops.insertSupplier({
+        name: STRIPE_SUPPLIER.name,
+        legalName: STRIPE_SUPPLIER.legalName,
+        taxId: null,
+        country: STRIPE_SUPPLIER.country,
+        address: null,
+        email: null,
+        phone: null,
+        iban: null,
+        paymentTermsDays: null,
+        defaultCategoryId: null,
+        defaultCostCenterId: null,
+        accountCode: "410",
+        notes: "Alta automática con los gastos de Stripe (cargos leídos de su saldo). NIF-IVA y domicilio: completarlos con la primera factura de Stripe.",
+        active: true,
+        createdBy: actor.by,
+        createdAt: this.now(),
+      }));
+    const cats = await this.d.ops.listCategories();
+    const categories = {} as Record<"626" | "629", number>;
+    for (const account of ["626", "629"] as const) {
+      const name = STRIPE_EXPENSE_CATEGORIES[account];
+      const c = cats.find((x) => x.name === name && x.accountCode === account) ?? (await this.d.ops.insertCategory({ name, accountCode: account, defaultTaxRateBp: null, createdAt: this.now() }));
+      categories[account] = c.id;
+    }
+    return { supplierId: supplier.id, categories };
+  }
+
+  /** ¿Lleva ya la autoliquidación (472) alguno de estos asientos? */
+  private async hasFeeVat(entryIds: Array<number | null>): Promise<boolean> {
+    for (const id of Array.from(new Set(entryIds.filter((x): x is number => x !== null)))) {
+      const e = await this.d.ledger.getEntry(id);
+      if (e?.lines.some((l) => l.accountCode === STRIPE_ACCOUNTS.vatInput)) return true;
+    }
+    return false;
+  }
+
+  /** Asiento generado con la fecha de la transacción si su periodo sigue abierto; si no, con la de hoy. */
+  private async postDated(make: (date: string) => EntryDraft, date: string, actor: FinanceActor) {
+    let draft = make(date);
+    try {
+      await this.d.finance.checkPostable(draft);
+    } catch {
+      draft = make(this.today());
+    }
+    return this.d.finance.postGenerated(draft, actor);
+  }
+
+  /**
+   * Fija el tratamiento del IVA de un gasto de Stripe cuando la regla lo decide: exenta, o inversión del sujeto pasivo
+   * con su autoliquidación (`stripe-fee-vat:<id>`) si el asiento del cobro o de la reclasificación no la llevaba ya.
+   * Interior o «según factura»: sigue pendiente hasta registrar la factura de Stripe. Devuelve si lo fijó.
+   */
+  private async classifyFeeExpense(t: StripeTxn, e: ExpenseRow, f: ResolvedFeeVat, actor: FinanceActor): Promise<boolean> {
+    if (f.treatment !== "exempt" && f.treatment !== "reverse_charge") return false;
+    if (f.treatment === "reverse_charge" && !(await this.hasFeeVat([t.entryId, e.entryId]))) await this.postDated((d) => stripeFeeVatEntry(t, f, d), t.createdOn, actor);
+    const done = await this.d.ops.setStripeExpenseFiscal(e.id, f.treatment === "reverse_charge" ? "intra_eu_services" : "exempt", f.treatment === "reverse_charge" ? f.rateBp : null);
+    if (done && t.issueDetail?.startsWith("fee_vat_pending")) await this.s.markTransaction(t.id, { status: "posted", issueDetail: null });
+    return done;
+  }
+
+  /**
+   * Un gasto por cada cargo real de Stripe (la comisión de cada cobro, reembolso o disputa, y cada servicio de Stripe),
+   * en Contabilidad › Gastos con proveedor Stripe, su categoría (626 comisiones de cobro; 629 Billing, Radar y otros
+   * servicios), la transacción de saldo como referencia (`stripe-fee:<id>`) y pagado con el saldo de Stripe.
+   *  - Comisión aún en 555 (IVA sin decidir): se reclasifica a 626/629 sin IVA (`stripe-fee-class:<id>`) y ese es el
+   *    asiento del gasto; su IVA queda pendiente (no se inventa) y la autoliquidación llega cuando la regla lo decida.
+   *  - Comisión ya en 626/629 (IVA decidido al contabilizar): el asiento del gasto es el de la transacción.
+   * Idempotente y recuperable: la clave del gasto y las de los asientos son únicas; un gasto que se quedó en borrador
+   * tras un fallo se termina de registrar en la pasada siguiente. Ni el cobro ni el saldo de Stripe (5720) cambian.
+   */
+  async syncFeeExpenses(actor: FinanceActor): Promise<FeeExpenseSync> {
+    const out: FeeExpenseSync = { created: 0, classified: 0, pendingFiscal: 0, errors: [] };
+    const candidates: StripeTxn[] = [];
+    for (let offset = 0; offset < FEE_EXPENSE_SCAN; offset += 500) {
+      const page = await this.s.listTransactions({ status: "posted", limit: 500, offset });
+      candidates.push(...page.items.filter((t) => t.entryId !== null && t.currency === "EUR" && SELF_POSTED_TYPES.includes(t.type) && feeBaseOf(t) !== 0));
+      if (offset + page.items.length >= page.total || !page.items.length) break;
+    }
+    const existing = new Map((await this.feeExpenses()).map((e) => [stripeTxnOfExpense(e)!, e]));
+    const resolve = await this.feeResolver();
+    let refs: Awaited<ReturnType<FinanceStripeService["feeExpenseRefs"]>> | null = null;
+    for (const t of candidates) {
+      const cur = existing.get(t.balanceTransactionId);
+      if (cur && cur.status !== "draft" && (cur.status === "void" || (cur.vatTreatment ?? null) !== null)) continue;
+      try {
+        let e = cur ?? null;
+        if (!e || e.status === "draft") {
+          refs ??= await this.feeExpenseRefs(actor);
+          const entry = await this.d.ledger.getEntry(t.entryId!);
+          // La comisión en 555: el gasto nace con la reclasificación (sin IVA si sigue sin decidir)
+          const pending = entry?.lines.some((l) => l.accountCode === STRIPE_ACCOUNTS.feesPending) ?? false;
+          const f = resolve(t);
+          const entryId = pending ? (await this.postDated((d) => stripeFeeClassEntry(t, f.treatment === "unset" ? null : f, d), t.createdOn, actor)).entry.id : t.entryId!;
+          const base = feeBaseOf(t);
+          e = (
+            await this.d.ops.insertExpense({
+              supplierId: refs.supplierId,
+              categoryId: refs.categories[feeExpenseAccount(t)],
+              costCenterId: null,
+              invoiceNumber: null,
+              invoiceDate: t.createdOn,
+              accrualDate: null,
+              dueDate: null,
+              description: stripeFeeExpenseDescription(t),
+              baseCents: base,
+              taxRateBp: 0,
+              taxCents: 0,
+              deductibleBp: 10_000,
+              withholdingRateBp: 0,
+              withholdingCents: 0,
+              totalCents: base,
+              currency: "EUR",
+              kind: base < 0 ? "rectification" : "invoice",
+              rectifiesExpenseId: null,
+              vatTreatment: null,
+              reverseChargeRateBp: null,
+              settlesStripeFees: false,
+              sourceKey: stripeFeeExpenseSourceKey(t.balanceTransactionId),
+              createdBy: actor.by,
+              createdAt: this.now(),
+            })
+          ).expense;
+          if (e.status === "draft") {
+            await this.d.ops.markExpenseRegistered(e.id, entryId, actor.by, this.now());
+            await this.d.ops.markExpenseSettled(e.id);
+            e = { ...e, status: "registered", entryId };
+            out.created++;
+          }
+          if (pending && t.issueDetail === FEE_PROVISIONAL_DETAIL) await this.s.markTransaction(t.id, { status: "posted", issueDetail: FEE_EXPENSE_PENDING_DETAIL });
+        }
+        if (e.status === "registered" && (await this.classifyFeeExpense(t, e, resolve(t), actor))) out.classified++;
+      } catch (err) {
+        if (!(err instanceof FinanceError)) throw err;
+        out.errors.push(`${t.balanceTransactionId}: ${err.message}`);
+      }
+    }
+    out.pendingFiscal = (await this.pendingFiscalExpenses()).length;
+    if (out.created || out.classified || out.errors.length) await this.audit(actor, "stripe.fee_expenses", "stripe", "fee_expenses", { created: out.created, classified: out.classified, pendingFiscal: out.pendingFiscal, errors: out.errors.length });
+    return out;
+  }
+
+  /**
+   * Vincula gastos automáticos de Stripe a la factura de Stripe que los agrupa (la mensual de comisiones y servicios):
+   * el gasto y su asiento no se repiten; la factura se adjunta en el propio gasto y su tratamiento del IVA se completa
+   * con la regla de Contabilidad › Stripe (con la factura como justificante).
+   */
+  async linkFeeInvoice(i: { expenseIds: number[]; invoiceRef: string }, actor: FinanceActor) {
+    const ref = i.invoiceRef.trim();
+    if (!ref || ref.length > 60) throw bad("La referencia de la factura de Stripe tiene de 1 a 60 caracteres");
+    const ids = Array.from(new Set(i.expenseIds));
+    if (!ids.length || ids.length > 500) throw bad("Indica de 1 a 500 gastos de Stripe");
+    const rows = await this.d.ops.getExpensesByIds(ids);
+    const wrong = ids.filter((id) => {
+      const e = rows.find((x) => x.id === id);
+      return !e || !isStripeFeeExpense(e) || e.status !== "registered";
+    });
+    if (wrong.length) throw new FinanceError("invalid_state", `Solo se vinculan gastos automáticos de Stripe registrados (no lo son: #${wrong.join(", #")})`);
+    const linked = await this.d.ops.linkSupplierInvoice(ids, ref);
+    await this.audit(actor, "stripe.fee_invoice_link", "stripe", "fee_expenses", { invoiceRef: ref, expenses: ids.length, linked });
+    return { invoiceRef: ref, expenses: ids.length, linked };
   }
 
   /** Transacciones contabilizadas con la comisión en 555 (pendiente de clasificación fiscal) y sin reclasificar. */
@@ -649,11 +870,16 @@ export class FinanceStripeService implements BankReconciliationExtension {
       }
     }
 
-    // Comisiones provisionales con el IVA ya decidido: reclasificación 555 → 626
+    // Comisiones provisionales con el IVA ya decidido: reclasificación 555 → 626/629
     if (this.fiscal) {
       const cls = await this.classifyProvisionalFees(actor);
       if (cls.classified) out.feesClassified = cls.classified;
       for (const m of cls.errors) out.errors.push({ transactionId: m.split(":")[0], message: m });
+      // Cada cargo real de Stripe, como gasto en Contabilidad › Gastos (las que siguen en 555 se reclasifican sin IVA)
+      const exp = await this.syncFeeExpenses(actor);
+      if (exp.created || exp.classified) out.feeExpenses = { created: exp.created, classified: exp.classified };
+      out.pendingFeeVat = exp.pendingFiscal;
+      for (const m of exp.errors) out.errors.push({ transactionId: m.split(":")[0], message: m });
     }
     await this.postPayouts(u, settings, actor, out);
     await this.audit(actor, "stripe.post", "stripe", "post", { until: u, posted: out.posted, skipped: out.skipped, errors: out.errors.length, truncated: out.truncated });

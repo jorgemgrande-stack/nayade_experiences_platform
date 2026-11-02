@@ -181,10 +181,10 @@ describe("asientos (contrato §2)", () => {
     expect(lines(stripeTxnEntry(won, EXEMPT, INV))).toEqual(["D 5720 13600", "H 626 1500", "H 430 12100 #9"]);
   });
 
-  it("comisiones y servicios de Stripe: Debe 626 · Haber 5720 (con inversión: IVA sobre el cargo)", () => {
+  it("servicios de Stripe (Billing, Radar…): Debe 629 · Haber 5720 (con inversión: IVA sobre el cargo)", () => {
     const fee = txn({ type: "stripe_fee", grossCents: -150, feeCents: 0, netCents: -150, chargeId: null });
-    expect(lines(stripeTxnEntry(fee, EXEMPT, null))).toEqual(["H 5720 150", "D 626 150"]);
-    expect(lines(stripeTxnEntry(fee, RC, null))).toEqual(["H 5720 150", "D 626 150", "D 472 32", "H 477 32"]);
+    expect(lines(stripeTxnEntry(fee, EXEMPT, null))).toEqual(["H 5720 150", "D 629 150"]);
+    expect(lines(stripeTxnEntry(fee, RC, null))).toEqual(["H 5720 150", "D 629 150", "D 472 32", "H 477 32"]);
   });
 
   it("payout: Debe 572000NN del banco · Haber 5720, fecha de llegada; ni payouts ni otras monedas por la vía de transacción", () => {

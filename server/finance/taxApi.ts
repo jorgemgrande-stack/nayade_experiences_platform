@@ -53,6 +53,7 @@ import {
   INSTALLMENT_METHODS,
   MODEL_NAMES,
   OBLIGATION_STATUSES,
+  OUTCOMES,
   TAX_MODELS,
   VAT_PERIODS,
   VAT_REGIMES,
@@ -373,6 +374,25 @@ export function mountFinanceTaxRoutes(r: Router, tax: FinanceTaxService, fiscal 
       .parse(body(req));
     res.json({ item: obligationDto(await tax.present(id.parse(req.params.id), b, actorOf(req))) });
   }));
+  // Declaración ya presentada fuera del sistema: se registra con los importes declarados y el justificante oficial
+  r.post("/tax/obligations/:id/register-filed", ...canTax, bigJson, wrap(async (req, res) => {
+    const cents = z.number().int();
+    const b = z
+      .object({
+        presentedOn: date,
+        receiptNumber: z.string().min(1).max(100),
+        resultCents: cents,
+        outcome: z.enum(OUTCOMES),
+        vat: z.object({ salesBaseCents: cents, outputVatCents: cents, purchasesBaseCents: cents, inputVatCents: cents, compensatedCents: cents.optional() }).strict().nullable().optional(),
+        withholding: z.object({ recipients: z.number().int().min(0), baseCents: cents, withheldCents: cents }).strict().nullable().optional(),
+        directDebit: z.boolean().optional(),
+        note: z.string().max(500).nullable().optional(),
+        document: z.object({ filename: z.string().min(1).max(255), contentBase64: z.string().min(1) }).strict().nullable().optional(),
+      })
+      .strict()
+      .parse(body(req));
+    res.json({ item: obligationDto(await tax.registerFiled(id.parse(req.params.id), b, actorOf(req))) });
+  }));
   r.post("/tax/obligations/:id/pay", ...canTax, wrap(async (req, res) => void res.json({ item: obligationDto(await tax.pay(id.parse(req.params.id), paySchema.parse(body(req)), actorOf(req))) })));
   r.post("/tax/obligations/:id/mark", ...canTax, wrap(async (req, res) => {
     const b = z.object({ status: z.enum(["a_compensar", "sin_actividad"]), note: z.string().max(500).nullable().optional() }).strict().parse(body(req));
@@ -436,7 +456,7 @@ export function mountFinanceTaxRoutes(r: Router, tax: FinanceTaxService, fiscal 
         reference: z.string().max(60).nullable().optional(),
         requestedOn: date,
         notes: z.string().max(500).nullable().optional(),
-        installments: z.array(z.object({ n: z.number().int().positive(), dueDate: date, amountCents: z.number().int().positive() }).strict()).min(1).max(60),
+        installments: z.array(z.object({ n: z.number().int().positive(), dueDate: date, amountCents: z.number().int().positive(), interestCents: z.number().int().min(0).optional() }).strict()).min(1).max(60),
       })
       .strict()
       .parse(body(req));

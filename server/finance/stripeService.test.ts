@@ -119,7 +119,9 @@ describe("contabilización", () => {
 
     // 5720: todo lo contabilizado se compensa; la transferencia de Connect (−5 €) queda como diferencia visible
     expect(await balance("5720")).toBe(0);
-    expect(await balance("626")).toBe(388 + 212 + 150);
+    // Comisiones de cobro a 626; el cargo de Stripe por otros servicios a 629
+    expect(await balance("626")).toBe(388 + 212);
+    expect(await balance("629")).toBe(150);
     const s = await stripe.summary();
     expect(s).toMatchObject({ balancePendingCents: 0, importedBalanceCents: -500, balanceDifferenceCents: 500, grossMonthCents: 18_150, refundsMonthCents: 6_050, payoutsMonthCents: 11_350, payoutsWithoutBank: 1, disputesOpen: 0, lastImportAt: T0 });
     expect(s.feesMonthCents).toBe(388 + 212 + 150);
