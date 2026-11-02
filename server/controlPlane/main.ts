@@ -110,6 +110,8 @@ import { AdminAlertService } from "../adminAlerts/service";
 import { MysqlAdminAlertStore, adminAlertTablesReady } from "../adminAlerts/store";
 import { CommercialEventWatcher, ConsumptionWatcher, usageThresholdsFromEnv, withExternalAlerts } from "../adminAlerts/sources";
 import { startAlertCycle } from "../adminAlerts/runtime";
+import { SaleTraceService, SaleTraceWatcher } from "../commerce/saleTrace";
+import { MysqlSaleTraceReader } from "../commerce/saleTraceStore";
 import { DeployWatcher, RestoreDrillWatcher, SERVED_STATUSES, UptimeMonitor, githubGet, isTestTenant } from "../adminAlerts/operations";
 import { DataRequestService, operatorAssignees } from "../dataRequests/service";
 import { MysqlDataRequestStore, dataRequestTablesReady } from "../dataRequests/store";
@@ -757,6 +759,22 @@ async function main() {
   if (financeAutomation && crmPool) startFinanceAutomation({ automation: financeAutomation, lock: mysqlAdvisoryLock(crmPool) });
   // Borradores de gastos recurrentes: tarea APAGADA salvo CP_FINANCE_RECURRING_ENABLED=1 (una réplica por tick, GET_LOCK)
   if (financeOps && crmPool) startFinanceRecurringScheduler({ ops: financeOps, lock: mysqlAdvisoryLock(crmPool), env: process.env });
+  // Traza de extremo a extremo de las altas de pago (solo lectura): API de operador y alerta admin.sale_trace
+  const saleTrace =
+    orders && crmPool
+      ? new SaleTraceService({
+          orders: orders.store,
+          reader: new MysqlSaleTraceReader(crmPool, ordersMode),
+          mode: ordersMode,
+          capabilities: capabilities ?? null,
+          subscriptions: subscriptions?.store ?? null,
+          trials: trials?.store ?? null,
+          companyTenant: crm ? async (id) => ((await crm.store.get("companies", id)) as { tenantId?: string | null } | null)?.tenantId ?? null : null,
+          tenantName: async (id) => (await store.getTenant(id))?.displayName ?? null,
+          internalTenants: stripe?.purchases?.internalTenants,
+        })
+      : null;
+  console.log(JSON.stringify({ ctx: "SaleTrace", mounted: !!saleTrace, ...(saleTrace ? { mode: ordersMode } : { reason: !orders ? "orders_disabled" : "crm_not_configured" }) }));
   if (crm && crmPool && (await settingsTablesReady(crmPool))) {
     const alertPool = crmPool;
     const alertStore = new MysqlAdminAlertStore(alertPool);
@@ -846,6 +864,8 @@ async function main() {
           ...(copiesReady ? [{ name: "restoreDrills", run: () => new RestoreDrillWatcher({ restores: () => copiesLedger.listRestores(50), store: alertStore, raise }).tick() }] : []),
           ...(uptime ? [{ name: "uptime", run: async () => (await uptime.tick()).down }] : []),
           ...(deploys ? [{ name: "deploys", run: () => deploys.tick() }] : []),
+          // Traza de las altas de pago: al detectar el primer cobro, a los 20 minutos y a las 48 horas (factura)
+          ...(saleTrace ? [{ name: "saleTraces", run: () => new SaleTraceWatcher({ traces: saleTrace, store: alertStore, raise, companyName }).tick() }] : []),
           // Tareas en segundo plano en cortocircuito para una empresa (Core, por el canal interno): un aviso por apertura
           ...(jobCircuitsClient
             ? [{ name: "jobCircuits", run: async () => { const v = await collectJobCircuits({ client: jobCircuitsClient, listTenants: () => store.listTenants(), operator: "system:admin-alerts" }); const list = jobCircuitAlerts(v.circuits, Date.now()); for (const a of list) await raise(a.id, a.facts); return list.length; } }]
@@ -949,6 +969,7 @@ async function main() {
     commercialEvents,
     leadNotices,
     adminAlerts,
+    saleTrace,
     commerceCircuits: () =>
       commerceCircuits({
         stripe: stripeConfig,
