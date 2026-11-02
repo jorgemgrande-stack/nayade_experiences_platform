@@ -801,6 +801,32 @@ La fecha es la del cobro si su periodo sigue abierto; si no, la de ese día. El 
 diario sigue avisando (`fee_vat_unset`) y el panel muestra la 555 como «provisional». Un payout llegado sin cuenta
 bancaria de destino no se contabiliza ni se da por recibido: queda pendiente (`payout_awaiting_bank`).
 
+**Gastos automáticos de Stripe (CRM 0044, 02/11/2026).** Contabilidad › Gastos es el registro único de gastos: cada
+cargo real de Stripe (la comisión de cada cobro, reembolso o disputa, y cada servicio de Stripe) se convierte en un
+gasto registrado con clave `stripe-fee:<transacción de saldo>`. Lo hace `FinanceStripeService.syncFeeExpenses` en cada
+contabilización de Stripe (y por tanto en la tarea automática):
+
+- Proveedor «Stripe» (Stripe Payments Europe, Limited, IE), dado de alta solo la primera vez y sin NIF-IVA hasta tener
+  su factura. Dos categorías propias: «Comisiones de cobro de Stripe» (626, servicios bancarios y similares) y
+  «Servicios de Stripe (Billing, Radar…)» (629, otros servicios). Las transacciones `stripe_fee` van a 629 también al
+  contabilizarse con el IVA ya decidido, así que Revenue & Margin solo cuenta como comisión de cobro la 626.
+- Comisión en 555 (IVA sin decidir): se reclasifica a 626/629 **sin IVA** (`stripe-fee-class:<id>`) y ese es el asiento
+  del gasto. Comisión ya en 626/629: el asiento del gasto es el de la transacción. El gasto nace pagado con el saldo de
+  Stripe (sin pagos ni cuenta del proveedor), con IVA 0 y `vat_treatment` NULL = **IVA pendiente** (no se inventa).
+- Cuando la regla de IVA de las comisiones lo decide: exenta → `vat_treatment = exempt`, sin asiento; inversión del
+  sujeto pasivo → la autoliquidación aparte (`stripe-fee-vat:<id>`, 472/477 con la marca del emisor) y
+  `intra_eu_services`. Interior o «según factura»: el IVA lo da la factura mensual (`settlesStripeFees`).
+- No se editan, pagan, registran ni anulan a mano (`invalid_state`): el asiento es el del cargo real. Quedan fuera de las
+  listas de recibidas del 303, 349, 347 y del libro de recibidas, porque su IVA ya sale del libro (origen Stripe).
+- La factura de Stripe que agrupa varios gastos se vincula con `POST /finance/stripe/fee-expenses/link`
+  `{ expenseIds, invoiceRef }` (columna `supplier_invoice_ref`; el número propio del gasto es único por proveedor) y se
+  adjunta en el gasto. Ni el gasto ni su asiento se repiten.
+- Idempotente y recuperable: las claves del gasto y de sus asientos son únicas, y un gasto que quedó en borrador tras
+  un fallo se termina de registrar en la pasada siguiente. El saldo 5720 no cambia.
+- El panel muestra «Gastos de Stripe con IVA pendiente» (555 + gastos con el IVA sin decidir) como «provisional», y el
+  aviso `fee_vat_unset` cuenta también esos gastos. La API de gastos añade `origin` (`stripe`, `recurring`, `manual`)
+  y `stripeBalanceTransactionId`.
+
 ## Permisos
 
 Cada capacidad tiene su ámbito propio (`finance:*`, en `server/controlPlane/auth.ts`), centralizado en

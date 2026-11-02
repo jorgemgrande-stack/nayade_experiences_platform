@@ -140,6 +140,7 @@ const EXPECTED: Record<string, FinanceCapability> = {
   "GET /stripe/fee-vat-rules": "read",
   "POST /stripe/fee-vat-rules": "config",
   "POST /stripe/fee-vat-rules/:id/void": "config",
+  "POST /stripe/fee-expenses/link": "post",
   "GET /analysis/settings": "read",
   "PATCH /analysis/settings": "config",
   // Análisis (fase 4)

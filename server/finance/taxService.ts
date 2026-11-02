@@ -16,7 +16,7 @@ import JSZip from "jszip";
 import { registerCsv } from "../invoicing/register";
 import type { Invoice } from "../invoicing/types";
 import { madridDateKey } from "../utils/timezone";
-import { addDays, reverseChargeAmounts } from "./opsRules";
+import { addDays, isStripeFeeExpense, reverseChargeAmounts } from "./opsRules";
 import type { FinanceOpsService } from "./opsService";
 import type { ExpenseRow, FinanceOpsStore } from "./opsStore";
 import { VAT_TREATMENT_LABELS, vatTreatmentOf, type DocumentOwner, type Supplier, type VatTreatment } from "./opsTypes";
@@ -427,7 +427,11 @@ export class FinanceTaxService {
     return out;
   }
 
-  /** Gastos registrados con fecha de factura en el rango (todas las páginas). */
+  /**
+   * Gastos registrados con fecha de factura en el rango (todas las páginas). Sin los gastos automáticos de Stripe
+   * (`stripe-fee:`): su IVA sale del libro como el de las comisiones (asientos de origen Stripe) y contarlos aquí lo
+   * duplicaría en el 303, el 349, el 347 y el libro de recibidas.
+   */
   private async expensesByInvoiceDate(from: string, to: string): Promise<ExpenseRow[]> {
     const out: ExpenseRow[] = [];
     for (let offset = 0; offset < 100_000; offset += 500) {
@@ -435,7 +439,7 @@ export class FinanceTaxService {
       out.push(...page.items);
       if (out.length >= page.total || page.items.length === 0) break;
     }
-    return out;
+    return out.filter((e) => !isStripeFeeExpense(e));
   }
 
   /** Gastos registrados con fecha de DEVENGO (o de factura) en el rango. */
