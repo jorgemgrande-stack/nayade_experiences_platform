@@ -48,9 +48,10 @@ import { MysqlTrialStore } from "../trials/store";
 import { MysqlCommercialEventLog, commercialEventsProblem } from "../commercialEvents/log";
 import { trialNotifierFromEnv } from "../trials/emailNotifier";
 import { TrialScheduler, mysqlAdvisoryLock, startTrialScheduler } from "../trials/scheduler";
+import { TrialLicenceReconciler, startTrialLicenceSync } from "../trials/licenceSync";
 import { lifecyclePolicyFromEnv } from "../lifecycle/policy";
 import { blockedDomainsFromEnv } from "../trials/service";
-import type { TrialNotifier } from "../trials/onboarding";
+import type { TrialLicenceSync, TrialNotifier } from "../trials/onboarding";
 import { platformMailFromEnv, tenantLaneResolver } from "../mail/platform";
 import { SandboxAccess } from "../mail/sandboxAccess";
 import { MysqlMailStore } from "../mail/store";
@@ -418,7 +419,7 @@ async function main() {
   // públicas y la activación automática solo con CP_PUBLIC_TRIAL_ENABLED=1 / CP_TRIAL_AUTO_PROVISION=1.
   // No se envía ningún correo salvo con CP_TRIAL_EMAIL_MODE=sandbox|live y SMTP configurado; por defecto el
   // aviso solo deja constancia sin datos personales.
-  let trials: { store: MysqlTrialStore; publicEnabled: boolean; autoProvision: boolean; notify?: TrialNotifier; blockedDomains: string[]; activation: { activate?: (trialId: number, actor: string) => Promise<unknown> } } | undefined;
+  let trials: { store: MysqlTrialStore; publicEnabled: boolean; autoProvision: boolean; notify?: TrialNotifier; blockedDomains: string[]; activation: { activate?: (trialId: number, actor: string) => Promise<unknown>; syncLicences?: (trialId: number, actor: string) => Promise<TrialLicenceSync> } } | undefined;
   if (crmPool && subscriptions) {
     const trialPool = crmPool;
     const ready = await trialPool.query("SELECT 1 FROM trial_requests LIMIT 0").then(() => true, () => false);
@@ -434,6 +435,8 @@ async function main() {
       const t = trials;
       const recovery = () => (t.activation.activate ? { autoProvision: t.autoProvision, activate: t.activation.activate, raise: (id: string, f: Parameters<AdminAlertService["raise"]>[1]) => (adminAlerts ? adminAlerts.raise(id, f) : Promise.resolve(null)) } : null);
       startTrialScheduler({ scheduler: new TrialScheduler({ store: trials.store, notify, lock: mysqlAdvisoryLock(trialPool), recovery }), env: process.env });
+      // Fin de las licencias = fin de la prueba (ampliaciones): ENCENDIDA salvo CP_TRIAL_LICENCE_SYNC=off; solo alinea fechas
+      startTrialLicenceSync({ reconciler: new TrialLicenceReconciler({ store: trials.store, sync: () => t.activation.syncLicences ?? null, lock: mysqlAdvisoryLock(trialPool) }), env: process.env });
     }
   }
 

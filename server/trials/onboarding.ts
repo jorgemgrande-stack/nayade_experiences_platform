@@ -59,8 +59,8 @@ export interface TrialOnboardingDeps {
   provision: (req: ProvisionRequest) => Promise<ProvisionResult>;
   platformDomain: string;
   companies: CompanyPort;
-  subscriptions: Pick<SubscriptionService, "create" | "list" | "detail" | "endTrial" | "changePlan">;
-  licensing: Pick<LicensingService, "apply"> & Partial<Pick<LicensingService, "list" | "setStatus">>;
+  subscriptions: Pick<SubscriptionService, "create" | "list" | "detail" | "endTrial" | "changePlan"> & Partial<Pick<SubscriptionService, "setTrialEnd">>;
+  licensing: Pick<LicensingService, "apply"> & Partial<Pick<LicensingService, "list" | "setStatus" | "syncValidUntil">>;
   /** Id del precio aprobado vigente de un producto (catálogo publicado). */
   priceOf: (productKey: string, kind: "monthly" | "yearly") => Promise<number | null>;
   notify: TrialNotifier;
@@ -70,6 +70,28 @@ export interface TrialOnboardingDeps {
    */
   reissueInvite?: (tenantId: string) => Promise<string | null>;
   now?: () => number;
+}
+
+/**
+ * Diferencia admitida entre el fin de la prueba y el de su suscripción: al activarla, la suscripción se crea unos
+ * instantes después de fijar el fin de la prueba. Por encima de esto, la suscripción se alinea con la prueba.
+ */
+export const TRIAL_END_TOLERANCE_MS = 60_000;
+/** Estados de la prueba cuyas licencias siguen la fecha de fin (las de una prueba convertida son de su suscripción de pago). */
+export const LICENCE_SYNC_STATES: readonly string[] = ["active", "expired", "suspended"];
+
+/** Resultado de alinear las licencias de una prueba con su fecha de fin. */
+export interface TrialLicenceSync {
+  trialId: number;
+  tenantId: string | null;
+  outcome: "aligned" | "in_sync" | "skipped";
+  reason?: "not_live" | "no_trial_subscription" | "unavailable";
+  subscriptionId?: number;
+  endsAt?: number | null;
+  /** La suscripción de la prueba tenía otro fin y se ha movido. */
+  subscriptionMoved?: boolean;
+  /** Licencias cuya caducidad se ha cambiado. */
+  licencesChanged?: number;
 }
 
 /** Longitud máxima de un identificador de tenant (TENANT_ID_RE del aprovisionamiento). */
@@ -281,11 +303,62 @@ export class TrialOnboardingService {
     return expired;
   }
 
-  /** Ampliación aprobada por el equipo: nuevo fin y aviso a la persona solicitante. */
+  /**
+   * Ampliación aprobada por el equipo: nuevo fin, la suscripción de la prueba y la caducidad de sus licencias pasan a
+   * ese fin (el Core calcula la prueba de las licencias) y aviso a la persona solicitante. La ampliación queda hecha
+   * aunque falle la alineación de licencias: queda constancia en el registro de operaciones y la reconciliación
+   * periódica (`TrialLicenceReconciler`) la completa.
+   */
   async approveExtension(trialId: number, o: { expectedVersion: number; days: number; actor: string }) {
     const t = await this.d.trials.approveExtension(trialId, o.expectedVersion, o.days, o.actor);
+    await this.syncLicencesSafely(t.id, o.actor, "approve_extension");
     await this.tellStatus(t, "extended");
     return t;
+  }
+
+  /**
+   * Alinea la suscripción de la prueba y la caducidad (`validUntil`) de sus licencias con el fin de la prueba, que es
+   * la fuente autoritativa. Solo las licencias de la suscripción de la prueba y de su tenant; no cambia estados (una
+   * licencia suspendida sigue suspendida). Idempotente: lo usan la ampliación, la reactivación y la reconciliación.
+   */
+  async syncLicences(trialId: number, actor: string): Promise<TrialLicenceSync> {
+    const t = await this.d.trials.must(trialId);
+    const base = { trialId: t.id, tenantId: t.tenantId };
+    if (!t.tenantId || t.endsAt === null || !LICENCE_SYNC_STATES.includes(t.state)) return { ...base, outcome: "skipped", reason: "not_live" };
+    if (!this.d.subscriptions.setTrialEnd || !this.d.licensing.syncValidUntil) return { ...base, outcome: "skipped", reason: "unavailable" };
+    const sub = await this.trialSubscription(t.tenantId);
+    if (!sub) return { ...base, outcome: "skipped", reason: "no_trial_subscription" };
+    const subscriptionMoved = await this.alignSubscription(t, sub, actor);
+    const lic = await this.d.licensing.syncValidUntil(sub.id, { actor, reason: `Fin de la prueba gratuita #${t.id}` });
+    return { ...base, outcome: subscriptionMoved || lic.changed > 0 ? "aligned" : "in_sync", subscriptionId: sub.id, endsAt: t.endsAt, subscriptionMoved, licencesChanged: lic.changed };
+  }
+
+  /** `syncLicences` sin propagar el fallo: el cambio de la prueba ya está hecho y la reconciliación lo completará. */
+  private async syncLicencesSafely(trialId: number, actor: string, cause: string) {
+    try {
+      const r = await this.syncLicences(trialId, actor);
+      if (r.outcome === "aligned") opsLog("info", "Trials", "trial_licences_aligned", { trialId, cause, subscriptionMoved: !!r.subscriptionMoved, licencesChanged: r.licencesChanged ?? 0 });
+      else if (r.outcome === "skipped" && r.reason !== "not_live") opsLog("warn", "Trials", "trial_licences_not_aligned", { trialId, cause, reason: r.reason ?? null });
+      return r;
+    } catch (e) {
+      opsLog("error", "Trials", "trial_licence_sync_failed", { trialId, cause, error: e instanceof Error ? e.name : "error", message: e instanceof Error ? e.message.slice(0, 200) : null });
+      return null;
+    }
+  }
+
+  /** Suscripción en prueba viva de la empresa del tenant (y de ese mismo tenant), o null. */
+  private async trialSubscription(tenantId: string) {
+    const company = await this.d.companies.byTenant(tenantId);
+    const sub = company ? (await this.d.subscriptions.list({ companyId: company.id })).find((s) => s.status !== "canceled") : undefined;
+    return sub && sub.status === "trialing" && sub.tenantId === tenantId ? sub : null;
+  }
+
+  /** Mueve el fin de la suscripción en prueba al de la prueba si difieren (más allá de la tolerancia). */
+  private async alignSubscription(t: TrialRequest, sub: { id: number; version: number; trialEnd: number | null }, actor: string) {
+    if (t.endsAt === null || !this.d.subscriptions.setTrialEnd) return false;
+    if (sub.trialEnd !== null && Math.abs(sub.trialEnd - t.endsAt) <= TRIAL_END_TOLERANCE_MS) return false;
+    await this.d.subscriptions.setTrialEnd(sub.id, { trialEnd: t.endsAt, reason: `Fin de la prueba gratuita #${t.id}` }, sub.version, actor);
+    return true;
   }
 
   /** Aviso de un cambio decidido por el equipo. Un fallo del aviso nunca deshace el cambio. */
@@ -335,6 +408,8 @@ export class TrialOnboardingService {
       const company = await this.d.companies.byTenant(t.tenantId);
       const sub = company ? (await this.d.subscriptions.list({ companyId: company.id })).find((s) => s.status !== "canceled") : undefined;
       if (!sub) throw new TrialError("invalid_state", "La prueba no tiene suscripción: no se pueden reactivar sus licencias");
+      // Las licencias reaplicadas llevan el fin de la suscripción: antes, el de la prueba (p. ej. tras una ampliación)
+      if (sub.status === "trialing" && sub.tenantId === t.tenantId) await this.alignSubscription(t, sub, o.actor);
       licencesChanged = (await this.d.licensing.apply(sub.id, { activate: true, actor: o.actor, reason: `Reactivación de la prueba #${t.id}` })).applied.length;
     }
     const trial = await this.d.trials.reactivate(t.id, t.version, o.actor);

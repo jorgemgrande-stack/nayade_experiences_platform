@@ -115,7 +115,7 @@ import { LicensingError, LicensingService } from "../licensing/service";
 import type { TenantLimitStore } from "../_core/limits/store";
 import { TrialService, type TrialLimits } from "../trials/service";
 import type { TrialStore } from "../trials/store";
-import { TrialOnboardingService, type TrialNotifier } from "../trials/onboarding";
+import { TrialOnboardingService, type TrialLicenceSync, type TrialNotifier } from "../trials/onboarding";
 import { createPublicTrialRouter, createTrialAdminRouter, type TrialExceptionConversion } from "../trials/api";
 import { OrderError, TERMINAL_STATES } from "../orchestrator/types";
 import { OrganizationError, OrganizationService, type OrganizationStore } from "../organization/service";
@@ -304,7 +304,7 @@ export interface ControlPlaneDeps {
    * sin datos personales ni tokens: no se envía nada). `activation`: aquí se publica la activación de la prueba
    * (la misma instancia que usan las rutas) para que la tarea programada reintente las altas incompletas.
    */
-  trials?: { store: TrialStore; publicEnabled?: boolean; autoProvision?: boolean; notify?: TrialNotifier; limits?: Partial<TrialLimits>; blockedDomains?: string[]; activation?: { activate?: (trialId: number, actor: string) => Promise<unknown> } };
+  trials?: { store: TrialStore; publicEnabled?: boolean; autoProvision?: boolean; notify?: TrialNotifier; limits?: Partial<TrialLimits>; blockedDomains?: string[]; activation?: { activate?: (trialId: number, actor: string) => Promise<unknown>; syncLicences?: (trialId: number, actor: string) => Promise<TrialLicenceSync> } };
   /** Sedes y entidades fiscales (registro 0009), con los límites del plan contratado. */
   organization?: OrganizationStore;
   /** Registro de eventos comerciales (CRM 0015), solo lectura. */
@@ -2055,6 +2055,8 @@ export function createControlPlaneApp(d: ControlPlaneDeps): Express {
       router.use("/trials", createTrialAdminRouter({ onboarding, trials: trialService, store: d.trials.store, convert: trialConversion }));
       if (d.trials.publicEnabled) publicTrial = createPublicTrialRouter({ onboarding, autoProvision: !!d.trials.autoProvision });
       if (d.trials.activation) d.trials.activation.activate = (trialId, actor) => onboarding.activate(trialId, actor);
+      // Reconciliación del fin de las licencias de las pruebas (la monta main.ts con su propio intervalo)
+      if (d.trials.activation) d.trials.activation.syncLicences = (trialId, actor) => onboarding.syncLicences(trialId, actor);
     }
     // Implantación asistida (CRM 0034): el inicio usa la suscripción del contrato (modo sombra) y sus licencias
     if (d.implementation && d.capabilities) {

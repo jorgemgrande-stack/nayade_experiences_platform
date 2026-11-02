@@ -155,6 +155,23 @@ export class LicensingService {
   }
 
   /**
+   * Solo la CADUCIDAD (`validUntil`) de las licencias que ya son de esta suscripción (p. ej. tras ampliar la prueba).
+   * No cambia estados (una licencia suspendida sigue suspendida), no da altas ni bajas y no toca licencias de otro
+   * origen (otra suscripción, operador, módulos) ni de otro tenant. Idempotente.
+   */
+  async syncValidUntil(subscriptionId: number, o: { actor: string; reason?: string | null }) {
+    const plan = await this.preview(subscriptionId, { activate: true });
+    const changes: CapabilityChange[] = [];
+    for (const c of plan.changes) {
+      const cur = plan.current.find((g) => g.capabilityId === c.capabilityId && g.siteId === c.siteId);
+      if (!cur || cur.source !== plan.source || cur.status === "cancelled" || c.status === "cancelled" || cur.validUntil === c.validUntil) continue;
+      changes.push({ capabilityId: cur.capabilityId, siteId: cur.siteId, status: cur.status, validUntil: c.validUntil, source: cur.source });
+    }
+    const events = changes.length ? await this.d.capabilities.apply(plan.tenantId, changes, { actor: o.actor, reason: o.reason ?? `Caducidad de las licencias de la suscripción #${subscriptionId}`, now: this.now() }) : [];
+    return { tenantId: plan.tenantId, source: plan.source, validUntil: plan.validUntil, changed: changes.length, applied: events };
+  }
+
+  /**
    * Baja EFECTIVA de módulos: partidas cuya baja ya se cumplió (fin <= ahora) y cuyas licencias acaba de cancelar ESTA
    * sincronización. Un evento por partida (`subscription.module_removal_effective`) con el producto retirado. Nunca por
    * una baja solo programada, por el plan Core (cambio de plan), por una ampliación por cantidad, por un paquete que
