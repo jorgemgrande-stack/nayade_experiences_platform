@@ -87,5 +87,11 @@ export function blockSummary(b: PageBlock): string {
       return b.data.title || (b.data.url ? "Vídeo" : "Sin vídeo todavía");
     case "products":
       return b.data.title || "Productos de tu tienda";
+    case "slideshow":
+      return `${b.data.slides.length} diapositivas${b.data.slides[0]?.title ? ` · ${b.data.slides[0].title}` : ""}`;
+    case "carousel":
+      return b.data.title || `${b.data.images.length} imágenes`;
+    case "cards":
+      return b.data.title || `${b.data.items.length} tarjetas`;
   }
 }
