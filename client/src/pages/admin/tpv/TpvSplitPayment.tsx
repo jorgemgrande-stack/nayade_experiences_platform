@@ -92,6 +92,7 @@ export default function TpvSplitPayment({
           items: data.items ?? [],
           payments: data.payments ?? [],
         },
+        invoice: data.invoice ?? null,
       };
       onCompleted(normalized);
     },

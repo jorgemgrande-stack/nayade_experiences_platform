@@ -4450,6 +4450,7 @@ export const crmRouter = router({
             .select({
               ...getTableColumns(reservations),
               invoicePdfUrl: invoices.pdfUrl,
+              invoiceClientName: invoices.clientName,
               clientId: clients.id,
               tpvOperationNumber: ctoAgg.operationNumber,
             })
@@ -5754,6 +5755,28 @@ export const crmRouter = router({
           if (e instanceof ExportTooLargeError) throw new TRPCError({ code: "BAD_REQUEST", message: e.message });
           throw e;
         }
+      }),
+
+    // --- Descargar el PDF de una factura o abono ------------------------------
+    // El mismo documento que va en el ZIP de la gestoría: el PDF guardado si existe o, si no, el generado con
+    // los datos guardados (sin recalcular nada). Consulta: también con la facturación en solo lectura.
+    downloadPdf: staff
+      .input(z.object({ invoiceId: z.number().int().positive() }))
+      .query(async ({ input }) => {
+        const [invoice] = await db.select().from(invoices).where(eq(invoices.id, input.invoiceId));
+        if (!invoice) throw new TRPCError({ code: "NOT_FOUND", message: "No se ha encontrado el documento" });
+        let pdf: Buffer;
+        try {
+          pdf = await storedInvoicePdf(invoice);
+        } catch (e) {
+          console.error("[PDF] Error preparando la descarga de", invoice.invoiceNumber, e);
+          throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "No se ha podido preparar el PDF. Inténtalo de nuevo en unos minutos." });
+        }
+        return {
+          fileName: `${invoice.invoiceNumber}.pdf`,
+          mimeType: "application/pdf",
+          contentBase64: pdf.toString("base64"),
+        };
       }),
 
     // --- Regenerar PDF de factura existente -----------------------------------

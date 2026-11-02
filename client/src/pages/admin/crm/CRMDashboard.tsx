@@ -4,6 +4,7 @@ import { trpc } from "@/lib/trpc";
 import { formatEur } from "@shared/creditNoteForm";
 import { formatDayEs } from "@shared/formatDay";
 import { validateTicketInvoiceRecipient, type TicketInvoiceRecipient } from "@shared/ticketInvoice";
+import { orderCustomerLabel } from "@shared/cashSaleLabel";
 import AdminLayout from "@/components/AdminLayout";
 import { WorkplaceLocks } from "@/components/connect/WorkplaceLocks";
 import { usePanelSubscription } from "@/hooks/usePanelSubscription";
@@ -6020,19 +6021,23 @@ export default function CRMDashboard() {
     }
   };
 
+  // Descarga el PDF real del documento (el mismo del ZIP de la gestoría), también para los abonos
+  const [downloadingInvoiceId, setDownloadingInvoiceId] = useState<number | null>(null);
   const downloadInvoicePdf = async (invoice: any) => {
-    if (!invoice.pdfUrl) { toast.error("No hay PDF disponible para esta factura"); return; }
+    setDownloadingInvoiceId(invoice.id);
     try {
-      const res = await fetch(invoice.pdfUrl);
-      const blob = await res.blob();
-      const url = URL.createObjectURL(blob);
+      const res = await utils.crm.invoices.downloadPdf.fetch({ invoiceId: invoice.id }, { staleTime: 0, gcTime: 0 });
+      const bytes = Uint8Array.from(atob(res.contentBase64), (c) => c.charCodeAt(0));
+      const url = URL.createObjectURL(new Blob([bytes], { type: res.mimeType }));
       const a = document.createElement("a");
       a.href = url;
-      a.download = `${invoice.invoiceNumber ?? "factura"}.pdf`;
+      a.download = res.fileName;
       a.click();
-      URL.revokeObjectURL(url);
-    } catch {
-      window.open(invoice.pdfUrl, "_blank");
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+    } catch (e) {
+      toast.error(errorToastMessage(e));
+    } finally {
+      setDownloadingInvoiceId(null);
     }
   };
 
@@ -7416,9 +7421,9 @@ export default function CRMDashboard() {
                             href={`/admin/crm/clientes?clientId=${(res as typeof res & { clientId?: number }).clientId}`}
                             onClick={(e) => e.stopPropagation()}
                             className="text-sm font-medium text-foreground hover:text-blue-300 hover:underline transition-colors block overflow-hidden text-ellipsis whitespace-nowrap"
-                          >{res.customerName}</a>
+                          >{orderCustomerLabel({ customerName: res.customerName, invoiceClientName: (res as { invoiceClientName?: string | null }).invoiceClientName })}</a>
                         ) : (
-                          <div className="text-sm font-medium text-foreground overflow-hidden text-ellipsis whitespace-nowrap">{res.customerName}</div>
+                          <div className="text-sm font-medium text-foreground overflow-hidden text-ellipsis whitespace-nowrap">{orderCustomerLabel({ customerName: res.customerName, invoiceClientName: (res as { invoiceClientName?: string | null }).invoiceClientName })}</div>
                         )}
                         <div className="text-xs text-foreground/50 overflow-hidden text-ellipsis whitespace-nowrap">{res.customerEmail}</div>
                         {res.customerPhone && <div className="text-xs text-foreground/40 mt-0.5 overflow-hidden text-ellipsis whitespace-nowrap">{res.customerPhone}</div>}
@@ -7899,18 +7904,12 @@ export default function CRMDashboard() {
                         </td>
                         <td className="px-4 py-3">
                           <div className="flex items-center justify-end gap-1">
-                            {/* PDF: Generar si no existe, ver+descargar si existe */}
+                            {/* PDF: ver si existe (o generarlo); descargar siempre, también los abonos */}
                             {inv.pdfUrl ? (
-                              <>
-                                <button onClick={() => viewInvoicePdf(inv)} title="Visualizar factura"
-                                  className="p-1.5 rounded-lg hover:bg-foreground/[0.08] text-foreground/50 hover:text-sky-400 transition-colors">
-                                  <Eye className="w-4 h-4" />
-                                </button>
-                                <button onClick={() => downloadInvoicePdf(inv)} title="Descargar factura"
-                                  className="p-1.5 rounded-lg hover:bg-foreground/[0.08] text-foreground/50 hover:text-emerald-400 transition-colors">
-                                  <FileDown className="w-4 h-4" />
-                                </button>
-                              </>
+                              <button onClick={() => viewInvoicePdf(inv)} title={inv.invoiceType === "abono" ? "Visualizar abono" : "Visualizar factura"}
+                                className="p-1.5 rounded-lg hover:bg-foreground/[0.08] text-foreground/50 hover:text-sky-400 transition-colors">
+                                <Eye className="w-4 h-4" />
+                              </button>
                             ) : (
                               <button
                                 onClick={() => regenerateInvoicePdfMutation.mutate({ invoiceId: inv.id })}
@@ -7922,6 +7921,14 @@ export default function CRMDashboard() {
                                   : <FilePlus className="w-4 h-4" />}
                               </button>
                             )}
+                            <button onClick={() => downloadInvoicePdf(inv)} disabled={downloadingInvoiceId === inv.id}
+                              title={inv.invoiceType === "abono" ? "Descargar abono" : "Descargar factura"}
+                              aria-label={`Descargar ${inv.invoiceType === "abono" ? "abono" : "factura"} ${inv.invoiceNumber} en PDF`}
+                              className="p-1.5 rounded-lg hover:bg-foreground/[0.08] text-foreground/50 hover:text-emerald-400 transition-colors disabled:opacity-40">
+                              {downloadingInvoiceId === inv.id
+                                ? <RefreshCw className="w-4 h-4 animate-spin" />
+                                : <FileDown className="w-4 h-4" />}
+                            </button>
                             {/* Reenviar */}
                             {["generada", "enviada"].includes(inv.status) && (
                               <button onClick={() => resendInvoiceMutation.mutate({ invoiceId: inv.id })} title="Reenviar por email"

@@ -17,9 +17,11 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { toast } from "sonner";
-import { Printer, Mail, ShoppingCart } from "lucide-react";
+import { Printer, Mail, ShoppingCart, FileText } from "lucide-react";
 import { displayWebsite } from "@/hooks/usePanelBrand";
 import { ticketHeaderLines } from "@shared/ticketHeaderLines";
+import { saleInvoiceNotice, type SaleInvoiceRef } from "@shared/cashSaleLabel";
+import { TONE_SURFACE, TONE_TEXT } from "@/lib/panelTones";
 
 interface SaleItem {
   productName: string;
@@ -65,7 +67,7 @@ interface Sale {
 
 interface Props {
   open: boolean;
-  sale: { sale: Sale };
+  sale: { sale: Sale; invoice?: SaleInvoiceRef | null };
   onClose: () => void;
 }
 
@@ -235,6 +237,7 @@ export default function TpvTicket({ open, sale, onClose }: Props) {
   });
 
   const s = sale.sale;
+  const invoiceNotice = saleInvoiceNotice(sale.invoice);
   const saleItems: SaleItem[] = ((s as any).items ?? []) as SaleItem[];
   const salePayments: SalePayment[] = ((s as any).payments ?? []) as SalePayment[];
   const date = new Date(s.createdAt);
@@ -295,6 +298,20 @@ export default function TpvTicket({ open, sale, onClose }: Props) {
             </span>
           </DialogTitle>
         </DialogHeader>
+
+        {/* Factura completa emitida con la venta (cliente identificado): número y enlace, no solo el ticket */}
+        {invoiceNotice && (
+          <div role="status" className={`flex items-center justify-between gap-2 rounded-lg border px-3 py-2 text-sm text-foreground ${TONE_SURFACE.success}`}>
+            <span className="flex items-center gap-2 min-w-0">
+              <FileText className={`w-4 h-4 shrink-0 ${TONE_TEXT.success}`} aria-hidden="true" />
+              <span className="break-words">{invoiceNotice.text}</span>
+            </span>
+            <a href={invoiceNotice.href} target="_blank" rel="noopener noreferrer"
+              className={`shrink-0 font-semibold underline underline-offset-2 hover:text-foreground ${TONE_TEXT.success}`}>
+              Ver factura
+            </a>
+          </div>
+        )}
 
         {/* Ticket preview (mismo HTML que va a imprimirse: usa clases que
             la hoja de impresión reconoce) */}

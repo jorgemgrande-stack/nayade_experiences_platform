@@ -300,6 +300,8 @@ export default function TpvScreen() {
           items: data.items ?? [],
           payments: data.payments ?? [],
         },
+        // Factura completa emitida con la venta (cliente identificado), para mencionarla junto al ticket
+        invoice: data.invoice ?? null,
       };
       setLastSale(normalized);
       setShowCashPayment(false);
@@ -670,7 +672,7 @@ export default function TpvScreen() {
         </div>
 
         <div className="flex items-center gap-1 sm:gap-2 shrink-0">
-          <span className="hidden lg:inline text-xs text-gray-400">{user?.name}</span>
+          <span className="hidden lg:inline text-xs text-muted-foreground">{user?.name}</span>
           <Link href="/admin/tpv/backoffice">
             <Button
               size="sm"
@@ -700,7 +702,7 @@ export default function TpvScreen() {
           <Button
             size="sm"
             variant="ghost"
-            className="text-gray-400 hover:text-white h-11 w-11 p-0"
+            className="text-muted-foreground hover:text-white h-11 w-11 p-0"
             onClick={() => setShowCashMovement("in")}
             title="Entrada de efectivo"
             aria-label="Entrada de efectivo"
@@ -710,7 +712,7 @@ export default function TpvScreen() {
           <Button
             size="sm"
             variant="ghost"
-            className="text-gray-400 hover:text-white h-11 w-11 p-0"
+            className="text-muted-foreground hover:text-white h-11 w-11 p-0"
             onClick={() => setShowCashMovement("out")}
             title="Salida de efectivo"
             aria-label="Salida de efectivo"
@@ -728,7 +730,7 @@ export default function TpvScreen() {
           <Button
             size="sm"
             variant="ghost"
-            className="text-gray-400 hover:text-white h-11 w-11 p-0"
+            className="text-muted-foreground hover:text-white h-11 w-11 p-0"
             onClick={() => navigate("/admin")}
             title="Volver al inicio"
             aria-label="Volver al inicio"
@@ -760,7 +762,7 @@ export default function TpvScreen() {
                 className={`h-11 px-3 text-xs gap-1 shrink-0 ${
                   filter === f.key
                     ? "bg-primary text-primary-foreground hover:bg-primary/90"
-                    : "text-gray-400 hover:text-white"
+                    : "text-muted-foreground hover:text-white"
                 }`}
                 onClick={() => setFilter(f.key)}
               >
@@ -892,7 +894,7 @@ export default function TpvScreen() {
               <Button
                 size="sm"
                 variant="ghost"
-                className="md:hidden text-gray-400 hover:text-white h-11 w-11 p-0"
+                className="md:hidden text-muted-foreground hover:text-white h-11 w-11 p-0"
                 onClick={() => setCartOpen(false)}
                 aria-label="Cerrar carrito"
               >
@@ -916,7 +918,7 @@ export default function TpvScreen() {
                     <CheckCircle2 className="w-3.5 h-3.5 shrink-0" />
                     <span className="overflow-hidden text-ellipsis whitespace-nowrap">Cliente existente: {selectedClient.name}</span>
                   </span>
-                  <button type="button" onClick={clearCustomer} className="text-xs text-gray-400 hover:text-white h-11 px-2 shrink-0">Quitar</button>
+                  <button type="button" onClick={clearCustomer} className="text-xs text-muted-foreground hover:text-white h-11 px-2 shrink-0">Quitar</button>
                 </div>
               ) : (
                 <div className="relative">
@@ -931,9 +933,9 @@ export default function TpvScreen() {
                   {clientQuery.length >= 3 && (
                     <div className="absolute z-10 left-0 right-0 mt-1 bg-gray-800 border border-gray-700 rounded-lg overflow-hidden shadow-xl">
                       {clientResults.isLoading ? (
-                        <p className="text-xs text-gray-400 px-3 py-2">Buscando…</p>
+                        <p className="text-xs text-muted-foreground px-3 py-2">Buscando…</p>
                       ) : (clientResults.data ?? []).length === 0 ? (
-                        <p className="text-xs text-gray-400 px-3 py-2">Sin coincidencias: escribe sus datos abajo y se dará de alta al cobrar.</p>
+                        <p className="text-xs text-muted-foreground px-3 py-2">Sin coincidencias: escribe sus datos abajo y se dará de alta al cobrar.</p>
                       ) : (
                         (clientResults.data ?? []).map((c) => (
                           <button
@@ -943,7 +945,7 @@ export default function TpvScreen() {
                             className="w-full text-left px-3 py-2 min-h-11 hover:bg-gray-700"
                           >
                             <span className="block text-xs text-white overflow-hidden text-ellipsis whitespace-nowrap">{c.name}</span>
-                            <span className="block text-[11px] text-gray-400 overflow-hidden text-ellipsis whitespace-nowrap">{[c.email, c.phone].filter(Boolean).join(" · ")}</span>
+                            <span className="block text-[11px] text-muted-foreground overflow-hidden text-ellipsis whitespace-nowrap">{[c.email, c.phone].filter(Boolean).join(" · ")}</span>
                           </button>
                         ))
                       )}
@@ -1026,7 +1028,7 @@ export default function TpvScreen() {
                         </div>
                         <div className="flex-1 min-w-0">
                           <p className="text-xs font-medium text-white line-clamp-1">{item.product.title}</p>
-                          <p className="text-xs text-gray-400">{formatEur(item.unitPrice)}/ud</p>
+                          <p className="text-xs text-muted-foreground">{formatEur(item.unitPrice)}/ud</p>
                           {item.variantName && (
                             <p className="text-xs text-info flex items-center gap-0.5 mt-0.5">
                               <Tag className="w-2.5 h-2.5" />
@@ -1072,7 +1074,7 @@ export default function TpvScreen() {
 
                       {/* Desglose de líneas para Lego Pack */}
                       {item.product.productType === 'legoPack' && item.legoPackLineIds && item.legoPackLineIds.length > 0 && (
-                        <div className="text-xs text-gray-400 border-t border-gray-700 pt-2 space-y-1">
+                        <div className="text-xs text-muted-foreground border-t border-gray-700 pt-2 space-y-1">
                           <p className="font-semibold text-gray-300">Líneas personalizadas:</p>
                           {item.legoPackLineIds.map((lineId) => {
                             const peopleCount = item.legoPackLinePeople?.[lineId] ?? 1;
@@ -1128,7 +1130,7 @@ export default function TpvScreen() {
             {cart.length > 0 && (
               <div className="pb-2 space-y-1 border-t border-gray-800 pt-2">
                 <button
-                  className="w-full min-h-11 flex items-center justify-between text-xs text-gray-400 hover:text-white py-1"
+                  className="w-full min-h-11 flex items-center justify-between text-xs text-muted-foreground hover:text-white py-1"
                   onClick={() => setShowDiscountForm(!showDiscountForm)}
                 >
                   <span className="flex items-center gap-1">
@@ -1162,7 +1164,7 @@ export default function TpvScreen() {
 
           {/* Fecha del servicio */}
           {askServiceDate && <div className="px-4 py-2 border-t border-gray-800">
-            <label htmlFor="tpv-service-date" className="text-xs text-gray-400 mb-1 flex items-center gap-1">
+            <label htmlFor="tpv-service-date" className="text-xs text-muted-foreground mb-1 flex items-center gap-1">
               <Calendar className="w-3 h-3" /> {licensed ? "Fecha del servicio" : "Fecha de actividad"}
             </label>
             <input
@@ -1176,7 +1178,7 @@ export default function TpvScreen() {
 
           {/* Totals — siempre visible */}
           <div className="px-4 py-3 border-t border-gray-800 space-y-1">
-            <div className="flex justify-between text-xs text-gray-400">
+            <div className="flex justify-between text-xs text-muted-foreground">
               <span>Subtotal</span>
               <span>{formatEur(cartSubtotal)}</span>
             </div>
