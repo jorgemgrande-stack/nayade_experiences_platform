@@ -23,6 +23,7 @@ import {
 } from "lucide-react";
 import { formatEuros } from "@shared/storefront";
 import { checkoutErrorMessage, validateBuyer } from "@shared/shopOrders";
+import { estimateCartLine, madridToday, type PricingRule } from "@shared/pricingRules";
 import { useStorefront } from "@/components/StorefrontRoute";
 
 /** Importe en formato es-ES («1.234,50 €»). */
@@ -74,12 +75,25 @@ export default function Checkout() {
       setErrors(p => ({ ...p, promo: e.message }));
     },
   });
+  // Promociones de la empresa (reglas de precios Business, canal web) de cada producto: precio final y ahorro antes del
+  // cupón con el mismo motor que el servidor, que recalcula siempre el importe al pagar.
+  const slugs = Array.from(new Set(items.map((i) => i.productSlug).filter((s): s is string => !!s)));
+  const productQueries = trpc.useQueries((t) => slugs.map((slug) => t.public.getExperienceBySlug({ slug }, { retry: false, staleTime: 60_000 })));
+  const today = madridToday();
+  const ruleLines = items.map((item) => {
+    const product = productQueries[slugs.indexOf(item.productSlug ?? "")]?.data as { id: number; categoryId: number | null; pricingRules?: PricingRule[] } | undefined;
+    if (!product || product.id !== item.productId || !product.pricingRules?.length) return null;
+    const extras = item.extras.reduce((s, e) => s + e.price * e.quantity, 0);
+    return estimateCartLine(product.pricingRules, { productId: item.productId, categoryId: product.categoryId ?? null, unitPrice: item.pricePerPerson, quantity: item.people, serviceDate: item.bookingDate, lineTotal: item.estimatedTotal - extras }, today);
+  });
+  const ruleSavings = Math.round(ruleLines.reduce((s, l) => s + (l?.savings ?? 0), 0) * 100) / 100;
+  const subtotalAfterRules = Math.max(0, Math.round((totalEstimated - ruleSavings) * 100) / 100);
   const promoDiscount = promoData
     ? promoData.discountType === "fixed"
       ? promoData.discountAmount
-      : Math.round(totalEstimated * promoData.discountPercent) / 100
+      : Math.round(subtotalAfterRules * promoData.discountPercent) / 100
     : 0;
-  const finalTotal = Math.max(0, totalEstimated - promoDiscount);
+  const finalTotal = Math.max(0, subtotalAfterRules - promoDiscount);
 
   const cartCheckout = trpc.reservations.cartCheckout.useMutation();
 
@@ -242,8 +256,9 @@ export default function Checkout() {
                 </div>
 
                 <div className="divide-y divide-slate-100">
-                  {items.map((item) => {
+                  {items.map((item, index) => {
                     const extrasTotal = item.extras.reduce((s, e) => s + e.price * e.quantity, 0);
+                    const rule = ruleLines[index] ?? null;
                     return (
                       <div key={item.cartItemId} className="flex gap-4 p-5">
                         {/* Imagen */}
@@ -304,13 +319,23 @@ export default function Checkout() {
                             </div>
                           )}
 
+                          {rule && (
+                            <p className="mt-2 text-xs font-medium text-green-700">
+                              {rule.savings >= 0 ? "Promoción" : "Suplemento"}: {rule.rules.join(" + ")}
+                            </p>
+                          )}
                           <div className="flex items-center justify-between mt-3">
                             <span className="text-xs text-slate-600">
-                              {eur(item.pricePerPerson)}{text.perUnitLong.replace("€", "")}
+                              {rule ? (
+                                <>
+                                  <span className="line-through text-slate-400 mr-1">{eur(rule.baseUnitPrice)}</span>
+                                  {eur(rule.unitPrice)}
+                                </>
+                              ) : eur(item.pricePerPerson)}{text.perUnitLong.replace("€", "")}
                               {extrasTotal > 0 && ` + ${eur(extrasTotal)} extras`}
                             </span>
                             <span className="font-black text-base text-primary">
-                              {eur(item.estimatedTotal)}
+                              {eur(rule ? Math.max(0, item.estimatedTotal - rule.savings) : item.estimatedTotal)}
                             </span>
                           </div>
                         </div>
@@ -347,12 +372,12 @@ export default function Checkout() {
                         type="text"
                         value={promoInput}
                         onChange={e => { setPromoInput(e.target.value.toUpperCase()); setErrors(p => ({ ...p, promo: "" })); }}
-                        onKeyDown={e => e.key === "Enter" && validatePromo.mutate({ code: promoInput, amount: totalEstimated })}
+                        onKeyDown={e => e.key === "Enter" && validatePromo.mutate({ code: promoInput, amount: subtotalAfterRules })}
                         placeholder={text.promoPlaceholder}
                         className={`flex-1 px-3 py-2 text-sm border rounded-xl font-mono uppercase focus:outline-none focus:ring-2 focus:ring-primary/40 ${errors.promo ? "border-red-400 bg-red-50" : "border-slate-300"}`}
                       />
                       <button
-                        onClick={() => validatePromo.mutate({ code: promoInput, amount: totalEstimated })}
+                        onClick={() => validatePromo.mutate({ code: promoInput, amount: subtotalAfterRules })}
                         disabled={validatePromo.isPending || !promoInput.trim()}
                         className="px-3 py-2 text-sm font-semibold bg-primary hover:bg-primary/90 text-primary-foreground rounded-xl disabled:opacity-50 transition-colors"
                       >
@@ -369,6 +394,12 @@ export default function Checkout() {
                     <span>Subtotal ({totalItems} {totalItems === 1 ? "artículo" : "artículos"})</span>
                     <span>{eur(totalEstimated)}</span>
                   </div>
+                  {ruleSavings !== 0 && (
+                    <div className={`flex items-center justify-between text-sm mb-1 ${ruleSavings > 0 ? "text-green-600" : "text-slate-600"}`}>
+                      <span>{ruleSavings > 0 ? "Ahorro por promociones" : "Suplementos"}</span>
+                      <span>{ruleSavings > 0 ? `-${eur(ruleSavings)}` : `+${eur(-ruleSavings)}`}</span>
+                    </div>
+                  )}
                   {promoDiscount > 0 && (
                     <div className="flex items-center justify-between text-sm text-green-600 mb-1">
                       <span>Descuento {promoData?.code}</span>
