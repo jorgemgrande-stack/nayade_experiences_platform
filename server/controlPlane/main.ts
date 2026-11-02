@@ -40,7 +40,7 @@ import { MysqlBackupCopyLedger } from "../_core/ops/backupCopies";
 import { SupportAdmin } from "../_core/support/grants";
 import { MysqlWebStore } from "../web/store";
 import { MysqlMediaStore } from "../web/media";
-import { MysqlPanelEventStore } from "../commerce/panelEvents";
+import { MysqlPanelEventStore, purgePanelEventKeys } from "../commerce/panelEvents";
 import { MysqlSubscriptionStore } from "../subscriptions/store";
 import { MysqlCapabilityStore } from "../_core/capabilities/store";
 import { MysqlTenantLimitStore } from "../_core/limits/store";
@@ -370,6 +370,13 @@ async function main() {
       };
     }
     console.log(JSON.stringify({ ctx: "WebAdmin", enabled: ready, ...(ready ? { publishHook: hookOk } : { reason: "migration_0004_missing" }) }));
+    // Medición del marketplace: depura cada hora las claves de deduplicación de más de 7 días (los contadores se conservan)
+    if (web?.events) {
+      const events = web.events;
+      const every = Math.max(300, Number(process.env.CP_MARKETPLACE_KEYS_PURGE_SECONDS ?? 3600) || 3600) * 1000;
+      const t = setInterval(() => void purgePanelEventKeys(events, Date.now()).catch((e) => console.error(JSON.stringify({ ctx: "Commerce", event: "panel_event_keys_purge_failed", error: e instanceof Error ? e.name : "error" }))), every);
+      t.unref?.();
+    }
   }
 
   // Licencias por capacidad (registro): solo si la migración 0008 del registro está aplicada

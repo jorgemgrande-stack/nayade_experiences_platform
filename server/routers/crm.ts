@@ -75,7 +75,7 @@ import {
   buildBudgetRequestUserHtml,
   buildBudgetRequestAdminHtml,
 } from "../emailTemplates";
-import { buildInvoiceHtml, getLegalCompanySettings } from "../invoiceHtml";
+import { buildInvoiceHtml, getLegalCompanySettings, parseSnapshotTimeZone } from "../invoiceHtml";
 import { ClientImportError, planClientImport } from "../clientImport";
 import { applyClientImport, listClientsForExport, loadClientsForImport } from "../clientImportDb";
 import { CLIENT_CSV_MAX_BYTES, CLIENT_CSV_MAX_ROWS, toClientCsv } from "../../shared/clientImportCsv";
@@ -6259,7 +6259,7 @@ export const crmRouter = router({
             : `Tu factura ${invoice.invoiceNumber} — ${companyName()}`;
           // Abono: la factura que rectifica (número y fecha) y, sin PDF guardado, el enlace firmado a su documento
           const [rectified] = isCredit && invoice.creditNoteForId
-            ? await db.select({ invoiceNumber: invoices.invoiceNumber, issuedAt: invoices.issuedAt }).from(invoices).where(eq(invoices.id, invoice.creditNoteForId)).limit(1)
+            ? await db.select({ invoiceNumber: invoices.invoiceNumber, issuedAt: invoices.issuedAt, issuerSnapshot: invoices.issuerSnapshot }).from(invoices).where(eq(invoices.id, invoice.creditNoteForId)).limit(1)
             : [];
           const base = publicBaseUrl();
           const docUrl = invoice.pdfUrl ? externalFileUrl(invoice.pdfUrl) : isCredit && base ? `${base}${invoicePreviewPath(invoice.invoiceNumber)}` : null;
@@ -6276,7 +6276,7 @@ export const crmRouter = router({
             total: Number(invoice.total),
             pdfUrl: docUrl,
             attached: !!invoice.pdfUrl,
-            rectifies: rectified ?? null,
+            rectifies: rectified ? { invoiceNumber: rectified.invoiceNumber, issuedAt: rectified.issuedAt, timeZone: parseSnapshotTimeZone(rectified.issuerSnapshot) } : null,
             reason: invoice.creditNoteReason ?? null,
             taxBreakdown: (invoice.taxBreakdown as { rate: number; base: number; amount: number }[] | null) ?? null,
           });

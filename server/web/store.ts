@@ -93,6 +93,8 @@ export interface WebStore {
   saveDraft(id: number, expected: number, draft: Record<string, unknown>, sortOrder: number, author: string, now: number): Promise<WebEntry>;
   setPublication(id: number, p: Pick<WebEntry, "publication" | "published" | "publishedVersion" | "publishedAt" | "publishedBy" | "updatedAt" | "updatedBy">): Promise<WebEntry>;
   versions(entryId: number): Promise<EntryVersion[]>;
+  /** Versiones del historial (todas, sin límite) cuyo contenido incluye `text`: lo usa el borrado de imágenes. */
+  versionsContaining(text: string): Promise<Array<{ kind: EntryKind; key: string; version: number }>>;
   listPrices(entryId?: number): Promise<WebPrice[]>;
   getPrice(id: number): Promise<WebPrice | null>;
   insertPrice(p: Omit<WebPrice, "id">): Promise<WebPrice>;
@@ -150,6 +152,14 @@ export class MemoryWebStore implements WebStore {
   }
   async versions(entryId: number) {
     return clone(this.vers.get(entryId) ?? []).reverse();
+  }
+  async versionsContaining(text: string) {
+    const out: Array<{ kind: EntryKind; key: string; version: number }> = [];
+    for (const [id, vs] of Array.from(this.vers.entries())) {
+      const e = this.entries.get(id)!;
+      for (const v of vs) if (JSON.stringify(v.snapshot).includes(text)) out.push({ kind: e.kind, key: e.key, version: v.version });
+    }
+    return out;
   }
   async listPrices(entryId?: number) {
     return Array.from(this.prices.values())
@@ -322,6 +332,15 @@ export class MysqlWebStore implements WebStore {
   async versions(entryId: number) {
     const [rows] = await this.pool.query<mysql.RowDataPacket[]>("SELECT * FROM web_entry_versions WHERE entry_id = ? ORDER BY version DESC LIMIT 200", [entryId]);
     return rows.map((r) => ({ version: Number(r.version), snapshot: json(r.snapshot), author: String(r.author), createdAt: Number(r.created_at) }));
+  }
+  async versionsContaining(text: string) {
+    // Búsqueda literal en todo el historial (los comodines de LIKE se escapan)
+    const like = `%${text.replace(/[\\%_]/g, (c) => `\\${c}`)}%`;
+    const [rows] = await this.pool.query<mysql.RowDataPacket[]>(
+      "SELECT e.kind, e.entry_key, v.version FROM web_entry_versions v JOIN web_entries e ON e.id = v.entry_id WHERE CAST(v.snapshot AS CHAR) LIKE ? ORDER BY e.id, v.version",
+      [like],
+    );
+    return rows.map((r) => ({ kind: r.kind as EntryKind, key: String(r.entry_key), version: Number(r.version) }));
   }
   async listPrices(entryId?: number) {
     const [rows] = await this.pool.query<mysql.RowDataPacket[]>(

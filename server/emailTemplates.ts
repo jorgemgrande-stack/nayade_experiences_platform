@@ -2833,7 +2833,7 @@ export interface InvoiceEmailData {
   /** URL pública del PDF (también va adjunto), o null. */
   pdfUrl: string | null;
   /** Abono: la factura que rectifica (número y fecha) y el motivo. */
-  rectifies?: { invoiceNumber: string; issuedAt: Date | string } | null;
+  rectifies?: { invoiceNumber: string; issuedAt: Date | string; timeZone?: string } | null;
   reason?: string | null;
   /** false: el PDF no va adjunto, solo el enlace (por defecto, adjunto si hay PDF). */
   attached?: boolean;
@@ -2845,7 +2845,7 @@ export function buildInvoiceEmailHtml(d: InvoiceEmailData): string {
   const eur = (n: number) => `${Number(n).toFixed(2).replace(".", ",")}&nbsp;&euro;`;
   const kind = d.isCreditNote ? "la factura rectificativa" : "tu factura";
   const title = d.isCreditNote ? "Factura rectificativa" : "Factura";
-  const rectDate = d.rectifies ? (d.rectifies.issuedAt instanceof Date ? d.rectifies.issuedAt : new Date(d.rectifies.issuedAt)).toLocaleDateString("es-ES") : "";
+  const rectDate = d.rectifies ? (d.rectifies.issuedAt instanceof Date ? d.rectifies.issuedAt : new Date(d.rectifies.issuedAt)).toLocaleDateString("es-ES", d.rectifies.timeZone ? { timeZone: d.rectifies.timeZone } : undefined) : "";
   const rectText = d.isCreditNote && d.rectifies
     ? ` Rectifica la factura <strong>${escAttr(d.rectifies.invoiceNumber)}</strong> de fecha ${escAttr(rectDate)}${(d.reason ?? "").trim() ? `. Motivo: ${escAttr((d.reason ?? "").trim())}` : ""}.`
     : "";
