@@ -468,6 +468,22 @@ export class SubscriptionService {
   }
 
   /**
+   * Nuevo fin de la prueba (ampliación aprobada o alineación con la prueba gratuita del plano de control, que es
+   * la fuente autoritativa). Solo en prueba; no toca periodos, partidas ni cobros (modo sombra).
+   */
+  async setTrialEnd(id: number, input: { trialEnd: number; reason?: string | null }, expectedVersion: number, actor: string) {
+    if (!Number.isSafeInteger(input.trialEnd) || input.trialEnd <= 0) bad("Fecha de fin de prueba no válida");
+    return this.d.store.mutate(id, expectedVersion, actor, this.now(), async (_tx, sub) => {
+      if (sub.status !== "trialing") state("La suscripción no está en periodo de prueba");
+      return {
+        patch: { trialEnd: input.trialEnd },
+        event: { kind: "trial_end_changed", before: { trialEnd: sub.trialEnd }, after: { trialEnd: input.trialEnd }, reason: input.reason ?? null },
+        result: { changed: sub.trialEnd !== input.trialEnd },
+      };
+    });
+  }
+
+  /**
    * Conversión de una prueba en la suscripción CONTRATADA, en una sola operación: se enlaza el contrato
    * firmado, termina la prueba, se cierran las partidas de prueba y entran las acordadas (plan,
    * complementos y periodicidad del contrato) con su instantánea de precio. Misma suscripción y mismo
