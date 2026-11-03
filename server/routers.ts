@@ -224,6 +224,7 @@ import { crmTasksRouter } from "./routers/crmTasks";
 import { crmFunnelRouter } from "./routers/crmFunnel";
 import { pricingRulesRouter } from "./routers/pricingRules";
 import { customRolesRouter } from "./routers/customRoles";
+import { sitesRouter } from "./routers/sites";
 import { ghlInboxRouter } from "./routers/ghlInbox";
 import { vapiCallsRouter } from "./routers/vapiCalls";
 import { emailAccountsRouter } from "./routers/emailAccounts";
@@ -2598,6 +2599,7 @@ export const appRouter = router({
   crmFunnel: crmFunnelRouter,
   pricingRules: pricingRulesRouter,
   customRoles: customRolesRouter,
+  sites: sitesRouter,
   ghlInbox: ghlInboxRouter,
   vapiCalls: vapiCallsRouter,
   emailAccounts: emailAccountsRouter,

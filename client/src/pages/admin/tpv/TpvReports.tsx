@@ -12,13 +12,14 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { PanelEmpty, PanelError, PanelLoading, errorMessage } from "@/components/admin/PanelStates";
 import { BarChart3, Download, ExternalLink, Printer } from "lucide-react";
+import { useCompanySites } from "@/hooks/useCompanySites";
 import {
   PERIOD_PRESETS, presetRange, validateRange, formatEur, formatPct, formatDateKey, formatMadridDateTime, type PeriodPreset,
 } from "./tpvReportsLogic";
 
 type Section = "dias" | "productos" | "categorias" | "pagos" | "iva" | "cajeros" | "anulaciones" | "cierres";
 
-interface Filter { dateFrom: string; dateTo: string; registerId: number | null }
+interface Filter { dateFrom: string; dateTo: string; registerId: number | null; siteId?: string | null }
 
 function downloadCsv(filename: string, csv: string) {
   const url = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" }));
@@ -92,7 +93,10 @@ export default function TpvReports() {
 
   const utils = trpc.useUtils();
   const registersQ = trpc.tpv.reports.registers.useQuery();
-  const reportQ = trpc.tpv.reports.summary.useQuery(filter, { enabled: validateRange(filter.dateFrom, filter.dateTo) === null });
+  // Varias sedes (Business): filtro por sede (con una sola sede, o en Essential, no se muestra ni se envía)
+  const companySites = useCompanySites();
+  const query = companySites.enabled && filter.siteId ? filter : { ...filter, siteId: undefined };
+  const reportQ = trpc.tpv.reports.summary.useQuery(query, { enabled: validateRange(filter.dateFrom, filter.dateTo) === null });
   const r = reportQ.data;
 
   const applyPreset = (p: PeriodPreset) => {
@@ -105,7 +109,7 @@ export default function TpvReports() {
   const exportSection = async (section: Section) => {
     setExporting(section);
     try {
-      const res = await utils.tpv.reports.exportCsv.fetch({ ...filter, section });
+      const res = await utils.tpv.reports.exportCsv.fetch({ ...query, section });
       downloadCsv(res.filename, res.csv);
     } catch (e) {
       toast.error(errorMessage(e, "No se ha podido exportar el informe."));
@@ -174,6 +178,22 @@ export default function TpvReports() {
                 ))}
               </select>
             </div>
+            {companySites.enabled && (
+              <div className="space-y-1">
+                <Label htmlFor="inf-sede">Sede</Label>
+                <select
+                  id="inf-sede"
+                  value={draft.siteId ?? ""}
+                  onChange={(e) => setDraft({ ...draft, siteId: e.target.value || null })}
+                  className="h-9 w-48 rounded-md border border-input bg-background px-3 text-sm"
+                >
+                  <option value="">Todas las sedes</option>
+                  {companySites.sites.map((s) => (
+                    <option key={s.siteId} value={s.siteId}>{s.name}{s.status === "archived" ? " (desactivada)" : ""}</option>
+                  ))}
+                </select>
+              </div>
+            )}
             <Button type="submit" disabled={!!draftError} className="bg-primary hover:bg-primary/90 text-primary-foreground">Ver informe</Button>
           </div>
           {draftError && <p role="alert" className="text-sm text-danger">{draftError}</p>}
@@ -182,6 +202,7 @@ export default function TpvReports() {
         <p className="hidden print:block text-sm text-gray-700">
           Periodo: {formatDateKey(filter.dateFrom)} – {formatDateKey(filter.dateTo)}
           {filter.registerId ? ` · Caja: ${(registersQ.data ?? []).find((c) => c.id === filter.registerId)?.name ?? ""}` : " · Todas las cajas"}
+          {query.siteId ? ` · Sede: ${companySites.nameOf(query.siteId)}` : ""}
         </p>
 
         {reportQ.isLoading ? (

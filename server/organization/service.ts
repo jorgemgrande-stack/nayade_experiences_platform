@@ -13,6 +13,7 @@ import type { SubscriptionStore } from "../subscriptions/store";
 import { includedUsers } from "../planSeats";
 import { activeException } from "../_core/erm/policy";
 import type { QuotaExceptionReader } from "../_core/erm/quotaExceptions";
+import { PRIMARY_SITE_ID, siteIdFromName, validateSiteForm, type PanelSite, type PanelSites, type SiteFormInput } from "../../shared/sites";
 
 export interface Site {
   tenantId: string;
@@ -47,6 +48,17 @@ export class OrganizationError extends Error {
   }
 }
 
+/** Datos de contacto de una sede (registro 0017, `tenant_site_details`). */
+export interface SiteDetails {
+  tenantId: string;
+  siteId: string;
+  address: string | null;
+  phone: string | null;
+  email: string | null;
+  updatedAt: number;
+  updatedBy: string;
+}
+
 export interface OrganizationStore {
   sites(tenantId: string): Promise<Site[]>;
   fiscalEntities(tenantId: string): Promise<FiscalEntity[]>;
@@ -54,11 +66,21 @@ export interface OrganizationStore {
   updateSite(tenantId: string, siteId: string, patch: Partial<Pick<Site, "name" | "fiscalEntityId" | "status" | "updatedAt">>): Promise<void>;
   insertFiscalEntity(f: FiscalEntity): Promise<void>;
   updateFiscalEntity(tenantId: string, entityId: string, patch: Partial<Pick<FiscalEntity, "legalName" | "address" | "isDefault" | "status" | "updatedAt">>): Promise<void>;
+  /** Datos de contacto de las sedes (opcional: sin la tabla, las sedes no tienen contacto). */
+  siteDetails?(tenantId: string): Promise<SiteDetails[]>;
+  upsertSiteDetails?(d: SiteDetails): Promise<void>;
 }
 
 export class MemoryOrganizationStore implements OrganizationStore {
   private s = new Map<string, Site>();
   private f = new Map<string, FiscalEntity>();
+  private d = new Map<string, SiteDetails>();
+  async siteDetails(t: string) {
+    return Array.from(this.d.values()).filter((x) => x.tenantId === t).map((x) => ({ ...x }));
+  }
+  async upsertSiteDetails(x: SiteDetails) {
+    this.d.set(`${x.tenantId}\u0000${x.siteId}`, { ...x });
+  }
   async sites(t: string) {
     return Array.from(this.s.values()).filter((x) => x.tenantId === t).map((x) => ({ ...x }));
   }
@@ -115,6 +137,37 @@ const dup = (e: unknown, msg: string) => {
 
 export class MysqlOrganizationStore implements OrganizationStore {
   constructor(private pool: mysql.Pool) {}
+  async siteDetails(t: string) {
+    try {
+      const [rows] = await this.pool.query<mysql.RowDataPacket[]>("SELECT * FROM tenant_site_details WHERE tenant_id = ?", [t]);
+      return rows.map(
+        (r): SiteDetails => ({
+          tenantId: String(r.tenant_id),
+          siteId: String(r.site_id),
+          address: (r.address as string) ?? null,
+          phone: (r.phone as string) ?? null,
+          email: (r.email as string) ?? null,
+          updatedAt: Number(r.updated_at),
+          updatedBy: String(r.updated_by),
+        }),
+      );
+    } catch (e) {
+      // Registro sin la migración 0017: las sedes siguen funcionando, sin datos de contacto
+      if ((e as { code?: string }).code === "ER_NO_SUCH_TABLE") return [];
+      throw e;
+    }
+  }
+  async upsertSiteDetails(x: SiteDetails) {
+    await this.pool
+      .query(
+        "INSERT INTO tenant_site_details (tenant_id, site_id, address, phone, email, updated_at, updated_by) VALUES (?,?,?,?,?,?,?) ON DUPLICATE KEY UPDATE address = VALUES(address), phone = VALUES(phone), email = VALUES(email), updated_at = VALUES(updated_at), updated_by = VALUES(updated_by)",
+        [x.tenantId, x.siteId, x.address, x.phone, x.email, x.updatedAt, x.updatedBy],
+      )
+      .catch((e) => {
+        if ((e as { code?: string }).code === "ER_NO_SUCH_TABLE") throw new OrganizationError("conflict", "Los datos de contacto de las sedes aún no están disponibles");
+        throw e;
+      });
+  }
   async sites(t: string) {
     const [rows] = await this.pool.query<mysql.RowDataPacket[]>("SELECT * FROM tenant_sites WHERE tenant_id = ? ORDER BY created_at, site_id", [t]);
     return rows.map(siteRow);
@@ -296,5 +349,123 @@ export class OrganizationService {
     if ((await this.d.store.sites(tenantId)).some((s) => s.status === "active" && s.fiscalEntityId === entityId)) throw new OrganizationError("conflict", "Hay sedes activas que emiten con esta entidad fiscal: reasígnalas antes");
     await this.d.store.updateFiscalEntity(tenantId, entityId, { status: "archived", isDefault: false, updatedAt: this.now() });
     return this.overview(tenantId);
+  }
+
+  // ── Sedes desde el panel de la propia empresa (capacidad Business `multi-site`; el Core comprueba la licencia) ──
+
+  private async orderedSites(tenantId: string) {
+    // A igual fecha de alta, la principal implícita va primero (se crea justo antes que la sede que la obliga a existir)
+    return (await this.d.store.sites(tenantId)).sort((a, b) => a.createdAt - b.createdAt || Number(b.siteId === PRIMARY_SITE_ID) - Number(a.siteId === PRIMARY_SITE_ID) || a.siteId.localeCompare(b.siteId));
+  }
+
+  /** Sedes de la empresa para su panel: la principal (también implícita), datos de contacto y límite del plan. */
+  async panelSites(tenantId: string): Promise<PanelSites> {
+    const [sites, details, limits] = await Promise.all([this.orderedSites(tenantId), this.d.store.siteDetails?.(tenantId) ?? Promise.resolve([]), this.limits(tenantId)]);
+    const contact = new Map(details.map((x) => [x.siteId, x]));
+    const primary = sites.find((s) => s.status === "active") ?? null;
+    const list: PanelSite[] = sites.map((s) => ({
+      siteId: s.siteId,
+      name: s.name,
+      status: s.status,
+      isPrimary: s.siteId === primary?.siteId,
+      virtual: false,
+      address: contact.get(s.siteId)?.address ?? null,
+      phone: contact.get(s.siteId)?.phone ?? null,
+      email: contact.get(s.siteId)?.email ?? null,
+      createdAt: s.createdAt,
+    }));
+    if (!primary) list.unshift({ siteId: PRIMARY_SITE_ID, name: "Sede principal", status: "active", isPrimary: true, virtual: true, address: null, phone: null, email: null, createdAt: null });
+    const used = Math.max(1, sites.filter((s) => s.status === "active").length);
+    return { sites: list, primarySiteId: primary?.siteId ?? PRIMARY_SITE_ID, limit: limits.sites, used, canAdd: limits.sites === null || used < limits.sites };
+  }
+
+  /** Lleva la principal implícita al registro (sin cambiar nada si ya hay una sede activa). */
+  private async ensurePrimary(tenantId: string, actor: string, name?: string) {
+    const sites = await this.orderedSites(tenantId);
+    const active = sites.find((s) => s.status === "active");
+    if (active) return active.siteId;
+    const now = this.now();
+    if (sites.some((s) => s.siteId === PRIMARY_SITE_ID)) {
+      await this.d.store.updateSite(tenantId, PRIMARY_SITE_ID, { status: "active", ...(name ? { name } : {}), updatedAt: now });
+    } else {
+      const fiscal = (await this.d.store.fiscalEntities(tenantId)).find((f) => f.status === "active" && f.isDefault)?.entityId ?? null;
+      await this.d.store.insertSite({ tenantId, siteId: PRIMARY_SITE_ID, name: name ?? "Sede principal", fiscalEntityId: fiscal, status: "active", createdAt: now, createdBy: actor.slice(0, 100), updatedAt: now });
+    }
+    return PRIMARY_SITE_ID;
+  }
+
+  private async saveContact(tenantId: string, siteId: string, input: { address?: string | null; phone?: string | null; email?: string | null }, actor: string) {
+    if (input.address === undefined && input.phone === undefined && input.email === undefined) return;
+    if (!this.d.store.siteDetails || !this.d.store.upsertSiteDetails) throw new OrganizationError("conflict", "Los datos de contacto de las sedes aún no están disponibles");
+    const prev = (await this.d.store.siteDetails(tenantId)).find((x) => x.siteId === siteId);
+    const pick = (v: string | null | undefined, old: string | null | undefined) => (v === undefined ? old ?? null : v?.trim() || null);
+    await this.d.store.upsertSiteDetails({
+      tenantId,
+      siteId,
+      address: pick(input.address, prev?.address),
+      phone: pick(input.phone, prev?.phone),
+      email: pick(input.email, prev?.email),
+      updatedAt: this.now(),
+      updatedBy: actor.slice(0, 100),
+    });
+  }
+
+  private static assertForm(input: SiteFormInput) {
+    const errors = validateSiteForm(input);
+    const first = Object.values(errors)[0];
+    if (first) throw new OrganizationError("invalid_input", first);
+  }
+
+  /** Alta desde el panel: id a partir del nombre; la principal implícita pasa antes al registro (cuenta en el límite). */
+  async createPanelSite(tenantId: string, input: SiteFormInput, actor: string): Promise<PanelSites> {
+    OrganizationService.assertForm(input);
+    const name = input.name.trim();
+    const sites = await this.d.store.sites(tenantId);
+    const active = sites.filter((s) => s.status === "active").length;
+    const { sites: max } = await this.limits(tenantId);
+    if (max !== null && Math.max(1, active) + 1 > max) throw new OrganizationError("limit", `El plan contratado permite ${max} sede(s): contrata sedes adicionales o un plan superior`);
+    await this.ensurePrimary(tenantId, actor);
+    const siteId = siteIdFromName(name, [...sites.map((s) => s.siteId), PRIMARY_SITE_ID]);
+    await this.createSite(tenantId, { siteId, name }, actor);
+    await this.saveContact(tenantId, siteId, input, actor);
+    return this.panelSites(tenantId);
+  }
+
+  /** Nombre y datos de contacto. La principal implícita se crea en el registro al editarla. */
+  async updatePanelSite(tenantId: string, siteId: string, input: Partial<SiteFormInput>, actor: string): Promise<PanelSites> {
+    if (input.name !== undefined || input.address !== undefined || input.phone !== undefined || input.email !== undefined) {
+      OrganizationService.assertForm({ name: input.name ?? "xx", address: input.address, phone: input.phone, email: input.email });
+    }
+    const current = await this.panelSites(tenantId);
+    const site = current.sites.find((s) => s.siteId === siteId);
+    if (!site) throw new OrganizationError("not_found", "Sede no encontrada");
+    const name = input.name?.trim();
+    if (site.virtual) await this.ensurePrimary(tenantId, actor, name);
+    else if (name && name !== site.name) await this.d.store.updateSite(tenantId, siteId, { name, updatedAt: this.now() });
+    await this.saveContact(tenantId, siteId, input, actor);
+    return this.panelSites(tenantId);
+  }
+
+  /** Desactivar (archivar): nunca la principal, que es donde quedan los datos sin sede. */
+  async archivePanelSite(tenantId: string, siteId: string): Promise<PanelSites> {
+    const site = (await this.panelSites(tenantId)).sites.find((s) => s.siteId === siteId);
+    if (!site) throw new OrganizationError("not_found", "Sede no encontrada");
+    if (site.isPrimary) throw new OrganizationError("conflict", "La sede principal no se puede desactivar");
+    if (site.status === "active") await this.archiveSite(tenantId, siteId);
+    return this.panelSites(tenantId);
+  }
+
+  /** Reactivar una sede archivada, dentro del límite del plan. */
+  async restorePanelSite(tenantId: string, siteId: string): Promise<PanelSites> {
+    const all = await this.d.store.sites(tenantId);
+    const site = all.find((s) => s.siteId === siteId);
+    if (!site) throw new OrganizationError("not_found", "Sede no encontrada");
+    if (site.status === "active") return this.panelSites(tenantId);
+    const { sites: max } = await this.limits(tenantId);
+    const active = all.filter((s) => s.status === "active").length;
+    // Sin ninguna activa, la reactivada pasa a ser la principal (ocupa el sitio de la implícita)
+    if (max !== null && (active === 0 ? 1 : active + 1) > max) throw new OrganizationError("limit", `El plan contratado permite ${max} sede(s): contrata sedes adicionales o un plan superior`);
+    await this.d.store.updateSite(tenantId, siteId, { status: "active", updatedAt: this.now() });
+    return this.panelSites(tenantId);
   }
 }

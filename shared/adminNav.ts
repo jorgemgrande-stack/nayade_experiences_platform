@@ -404,6 +404,8 @@ export const TASK_NAV: NavSection[] = [
     items: [
       { label: "Usuarios y permisos", href: "/admin/usuarios", key: "t-usuarios", icon: "users", roles: ADMIN, capabilities: ["admin-users"] },
       { label: "Datos de la empresa", href: "/admin/configuracion/sitio", key: "t-empresa", icon: "building", roles: ADMIN, capabilities: ["admin-panel"] },
+      // Sedes: la principal la ve cualquier plan; añadir sedes, filtrar y asignar exigen multi-site (Business)
+      { label: "Sedes", href: "/admin/configuracion/sedes", key: "t-sedes", icon: "building", roles: ADMIN, capabilities: ["admin-panel"] },
       {
         label: "Ajustes", href: "/admin/configuracion", key: "t-ajustes", icon: "settings", roles: ADMIN, capabilities: ["admin-panel"],
         children: [

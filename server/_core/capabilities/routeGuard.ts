@@ -40,6 +40,8 @@ export const TRPC_ROUTER_CAPABILITIES: Record<string, string> = {
   pricingRules: "pricing-rules",
   // Business: roles personalizados (los procedimientos lo comprueban además en el servidor)
   customRoles: "roles-custom",
+  // Sedes: la principal la ve cualquier plan (admin-panel); añadir, filtrar y asignar exigen multi-site en cada procedimiento
+  sites: "admin-panel",
   products: "shop-catalog",
   packs: "shop-catalog",
   timeSlots: "shop-catalog",

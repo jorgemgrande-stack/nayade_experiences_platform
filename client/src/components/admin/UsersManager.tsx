@@ -54,6 +54,7 @@ import {
 import { toast } from "sonner";
 import { ROLE_LABELS } from "@shared/roleLabels";
 import CustomRolesPanel from "@/components/admin/CustomRolesPanel";
+import UserSitesPanel from "@/components/admin/UserSitesPanel";
 
 // ─── FASE 3: roleCapabilities — mapa estático de capacidades por rol (UI-only) ─
 const roleCapabilities: Record<string, string[]> = {
@@ -935,6 +936,9 @@ export default function UsersManager() {
 
         {/* ── Roles personalizados (Business, roles-custom): solo con la capacidad ── */}
         {sub.isLicensed && sub.can("roles-custom") && <CustomRolesPanel users={users} canWrite={sub.canWrite("roles-custom")} />}
+
+        {/* ── Sedes de trabajo (Business, multi-site): solo con la capacidad y más de una sede ── */}
+        {sub.isLicensed && sub.can("multi-site") && <UserSitesPanel users={users} canWrite={sub.canWrite("multi-site")} />}
 
         {/* ── RBAC Role Manager Dialog ── */}
         <Dialog

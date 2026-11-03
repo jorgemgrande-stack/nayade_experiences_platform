@@ -156,6 +156,7 @@ const BrandTheme = lazy(() => import("./pages/admin/settings/BrandTheme"));
 const CustomDomains = lazy(() => import("./pages/admin/settings/CustomDomains"));
 const IntegrationsSettings = lazy(() => import("./pages/admin/settings/Integrations"));
 const AdvancedSettings = lazy(() => import("./pages/admin/settings/AdvancedSettings"));
+const SitesManager = lazy(() => import("./pages/admin/settings/SitesManager"));
 const ConfigPanel = lazy(() => import("./pages/admin/settings/ConfigPanel"));
 const ConfigStatus = lazy(() => import("./pages/admin/settings/ConfigStatus"));
 const OnboardingWizard = lazy(() => import("./pages/admin/onboarding/OnboardingWizard"));
@@ -474,6 +475,7 @@ function Router() {
       <Route path="/admin/configuracion/dominios">{() => <Suspense fallback={<AdminLoadingFallback />}><CustomDomains /></Suspense>}</Route>
       <Route path="/admin/configuracion/integraciones">{() => <Suspense fallback={<AdminLoadingFallback />}><IntegrationsSettings /></Suspense>}</Route>
       <Route path="/admin/configuracion/sitio">{() => <Suspense fallback={<AdminLoadingFallback />}><Settings /></Suspense>}</Route>
+      <Route path="/admin/configuracion/sedes">{() => <Suspense fallback={<AdminLoadingFallback />}><SitesManager /></Suspense>}</Route>
       <Route path="/admin/configuracion/estado">{() => <Suspense fallback={<AdminLoadingFallback />}><ConfigStatus /></Suspense>}</Route>
       <Route path="/admin/configuracion/avanzado">{() => <Suspense fallback={<AdminLoadingFallback />}><AdvancedSettings /></Suspense>}</Route>
       <Route path="/admin/configuracion/email">{() => <Suspense fallback={<AdminLoadingFallback />}><EmailAccountsSettings /></Suspense>}</Route>

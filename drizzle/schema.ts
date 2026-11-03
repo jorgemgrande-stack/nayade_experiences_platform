@@ -1567,8 +1567,10 @@ export const cashRegisters = mysqlTable("cash_registers", {
   location: varchar("location", { length: 200 }),
   isActive: boolean("isActive").default(true).notNull(),
   createdAt: bigint("createdAt", { mode: "number" }).notNull().$defaultFn(() => Date.now()),
+  // Migración 0024: sede de la caja (registro del plano de control); NULL = sede principal
+  siteId: varchar("site_id", { length: 63 }),
 });
-export type CashRegister = typeof cashRegisters.$inferSelect;
+export type CashRegister =typeof cashRegisters.$inferSelect;
 
 // ─── CASH SESSIONS (Turnos de caja) ──────────────────────────────────────────
 export const cashSessions = mysqlTable("cash_sessions", {
@@ -1590,8 +1592,10 @@ export const cashSessions = mysqlTable("cash_sessions", {
   notes: text("notes"),
   openedAt: bigint("openedAt", { mode: "number" }).notNull().$defaultFn(() => Date.now()),
   closedAt: bigint("closedAt", { mode: "number" }),
+  // Migración 0024: sede de la caja al abrir la sesión (no cambia si la caja se mueve después); NULL = principal
+  siteId: varchar("site_id", { length: 63 }),
 });
-export type CashSession = typeof cashSessions.$inferSelect;
+export type CashSession =typeof cashSessions.$inferSelect;
 
 // ─── CASH MOVEMENTS (Movimientos manuales) ───────────────────────────────────
 export const cashMovements = mysqlTable("cash_movements", {
@@ -1640,8 +1644,10 @@ export const tpvSales = mysqlTable("tpv_sales", {
   // Migración 0018: clave del intento de cobro (única; NULL no colisiona) y cliente del CRM de la venta
   idempotencyKey: varchar("idempotencyKey", { length: 64 }),
   clientId:       int("clientId"),
+  // Migración 0024: sede de la venta (la de su sesión de caja); NULL = sede principal
+  siteId:         varchar("site_id", { length: 63 }),
 });
-export type TpvSale = typeof tpvSales.$inferSelect;
+export type TpvSale =typeof tpvSales.$inferSelect;
 
 // ─── TPV SALE ITEMS (Líneas de venta) ────────────────────────────────────────
 export const tpvSaleItems = mysqlTable("tpv_sale_items", {
@@ -1685,6 +1691,15 @@ export const tpvSalePayments = mysqlTable("tpv_sale_payments", {
   createdAt: bigint("createdAt", { mode: "number" }).notNull().$defaultFn(() => Date.now()),
 });
 export type TpvSalePayment = typeof tpvSalePayments.$inferSelect;
+
+// ─── USER SITES (Sedes en las que trabaja cada usuario; migración 0024) ───────
+// Sin filas, el usuario trabaja en todas las sedes (lo de siempre). Ids de sede del registro del plano de control.
+export const userSites = mysqlTable("user_sites", {
+  userId: int("user_id").notNull(),
+  siteId: varchar("site_id", { length: 63 }).notNull(),
+  createdAt: bigint("created_at", { mode: "number" }).notNull().$defaultFn(() => Date.now()),
+});
+export type UserSite = typeof userSites.$inferSelect;
 
 // ─── DISCOUNT CODES ──────────────────────────────────────────────────────────
 export const discountCodes = mysqlTable("discount_codes", {

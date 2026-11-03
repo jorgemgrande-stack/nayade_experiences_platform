@@ -5,6 +5,7 @@
 import { and, eq, gte, inArray, isNotNull, lt, sql } from "drizzle-orm";
 import { cashRegisters, cashSessions, categories, experiences, tpvSaleItems, tpvSalePayments, tpvSales } from "../drizzle/schema";
 import { legacyDb } from "./_core/legacyDb";
+import { siteCondition } from "./sitesDb";
 import {
   computeTpvReport,
   madridRangeMs,
@@ -22,6 +23,8 @@ export interface TpvReportFilter {
   dateFrom: string;
   dateTo: string;
   registerId?: number | null;
+  /** Sede (Business): ventas por su sede y cierres por la de su sesión; la principal incluye lo que no tiene sede. */
+  site?: { siteId: string; isPrimary: boolean } | null;
 }
 
 export class TpvReportRangeError extends Error {}
@@ -76,6 +79,7 @@ export async function getTpvReport(f: TpvReportFilter): Promise<TpvReport> {
       sql`${saleAt} >= ${fromMs}`,
       sql`${saleAt} < ${toMsExclusive}`,
       registerId != null ? eq(cashSessions.registerId, registerId) : undefined,
+      f.site ? siteCondition(tpvSales.siteId, f.site) : undefined,
     ));
 
   const ids = sales.map((s) => s.id);
@@ -139,6 +143,7 @@ export async function getTpvReport(f: TpvReportFilter): Promise<TpvReport> {
       gte(cashSessions.closedAt, fromMs),
       lt(cashSessions.closedAt, toMsExclusive),
       registerId != null ? eq(cashSessions.registerId, registerId) : undefined,
+      f.site ? siteCondition(cashSessions.siteId, f.site) : undefined,
     ));
 
   return computeTpvReport({ dateFrom: f.dateFrom, dateTo: f.dateTo, registerId, sales, items, payments, sessions });
