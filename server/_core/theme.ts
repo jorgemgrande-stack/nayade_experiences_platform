@@ -16,12 +16,32 @@
 import { normalizeWhatsapp } from "../../shared/whatsappButton";
 
 /** Ajustes que forman el tema público (lectura de `public.getTheme`). */
+/**
+ * Cabecera y pie de la web de la empresa (Elephant Studio): botón destacado de la cabecera (el de serie según lo
+ * contratado, uno propio o ninguno) y estilo, texto y datos de contacto del pie. Listas cerradas y textos sin HTML.
+ */
+export const HEADER_CTA_MODES = ["auto", "custom", "none"] as const;
+export const FOOTER_STYLES = ["dark", "light", "brand"] as const;
+export const HEADER_CTA_LABEL_MAX = 40;
+export const FOOTER_TEXT_MAX = 240;
+export const SITE_CHROME_KEYS = ["site_header_cta", "site_header_cta_label", "site_header_cta_url", "site_footer_style", "site_footer_text", "site_footer_contact"] as const;
+
+/** Enlace del botón de la cabecera: página de la web (/contacto), ancla, http(s), correo o teléfono. */
+export function siteLink(v: string | undefined | null): string | null {
+  const s = (v ?? "").trim().replace(/\s+/g, "");
+  if (!s || s.length > 300) return null;
+  if (/^\/(?!\/)/.test(s) || /^#[\w-]+$/.test(s)) return s;
+  if (/^https?:\/\/[^\s]+$/i.test(s)) return s;
+  if (/^(mailto|tel):[^\s]+$/i.test(s)) return s;
+  return null;
+}
+
 export const PUBLIC_THEME_KEYS = [
   "brand_name", "brand_logo_url", "brand_favicon_url", "theme_primary_color", "theme_accent_color",
   "brand_primary_color", "brand_accent_color", "theme_font_family", "theme_radius", "brand_show_powered_by",
   "brand_phone", "brand_whatsapp", "email_reservations", "site_business_email", "brand_location",
   "brand_hero_image_url", "login_background_url", "login_welcome_title", "login_welcome_message",
-  "analytics_ga4_id", "analytics_meta_pixel_id",
+  "analytics_ga4_id", "analytics_meta_pixel_id", ...SITE_CHROME_KEYS,
 ] as const;
 
 /** Valor de `login_background_url` que retira el fondo (sin imagen, ni siquiera la de la web). */
@@ -52,6 +72,9 @@ export interface PublicTheme {
   login: PublicLoginTheme;
   /** Analítica propia de la empresa (multiempresa). Sin identificador, desactivada: nunca la de otra cuenta. */
   analytics: { ga4Id: string | null; metaPixelId: string | null };
+  /** Botón destacado de la cabecera: «auto» es el de serie (presupuesto, si está contratado) */
+  header: { cta: (typeof HEADER_CTA_MODES)[number]; ctaLabel: string | null; ctaUrl: string | null };
+  footer: { style: (typeof FOOTER_STYLES)[number]; text: string | null; showContact: boolean };
 }
 
 const HEX = /^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/;
@@ -126,7 +149,7 @@ export const THEME_EDITABLE_KEYS = [
   "brand_name", "brand_logo_url", "brand_favicon_url", "theme_primary_color", "theme_accent_color",
   "theme_font_family", "theme_radius", "seo_description", "brand_phone", "brand_location", "email_reservations",
   "brand_hero_image_url", "login_background_url", "login_welcome_title", "login_welcome_message",
-  "analytics_ga4_id", "analytics_meta_pixel_id",
+  "analytics_ga4_id", "analytics_meta_pixel_id", ...SITE_CHROME_KEYS,
 ] as const;
 
 /** Ajustes de la pantalla de acceso que «Restaurar valores predeterminados» deja vacíos. */
@@ -178,6 +201,19 @@ export function cleanThemeValues(values: Record<string, string>): Record<string,
       continue;
     }
     if (k === "analytics_meta_pixel_id" && !META_PIXEL_ID.test(val)) throw new ThemeValueError(k, "Identificador no válido: usa el número de tu pixel de Meta");
+    if (k === "site_header_cta" && !(HEADER_CTA_MODES as readonly string[]).includes(val)) throw new ThemeValueError(k, "Opción no válida");
+    if (k === "site_footer_style" && !(FOOTER_STYLES as readonly string[]).includes(val)) throw new ThemeValueError(k, "Estilo no válido");
+    if (k === "site_footer_contact" && val !== "true" && val !== "false") throw new ThemeValueError(k, "Opción no válida");
+    if (k === "site_header_cta_url") {
+      const link = siteLink(val);
+      if (!link) throw new ThemeValueError(k, "Enlace no válido: usa una página de tu web (/contacto), una dirección https, un correo o un teléfono");
+      clean[k] = link;
+      continue;
+    }
+    if (k === "site_header_cta_label" || k === "site_footer_text") {
+      const max = k === "site_header_cta_label" ? HEADER_CTA_LABEL_MAX : FOOTER_TEXT_MAX;
+      if (val.length > max || /[<>]/.test(val)) throw new ThemeValueError(k, `Texto no válido (máximo ${max} caracteres, sin < ni >)`);
+    }
     if (k === "login_welcome_title" || k === "login_welcome_message") {
       const t = text(val, k === "login_welcome_title" ? LOGIN_TITLE_MAX : LOGIN_MESSAGE_MAX);
       if (!t || val.length > (k === "login_welcome_title" ? LOGIN_TITLE_MAX : LOGIN_MESSAGE_MAX) || /[<>]/.test(val)) throw new ThemeValueError(k, k === "login_welcome_title" ? `Titular no válido (máximo ${LOGIN_TITLE_MAX} caracteres, sin < ni >)` : `Mensaje no válido (máximo ${LOGIN_MESSAGE_MAX} caracteres, sin < ni >)`);
@@ -222,6 +258,20 @@ export function buildTheme(
       ga4Id: opts.multi ? ga4Id(get("analytics_ga4_id")) : null,
       metaPixelId: opts.multi ? metaPixelId(get("analytics_meta_pixel_id")) : null,
     },
+    ...siteChrome(get),
+  };
+}
+
+/** Cabecera y pie: un botón propio sin texto o sin enlace válidos se comporta como el de serie. */
+function siteChrome(get: (key: string) => string | undefined): Pick<PublicTheme, "header" | "footer"> {
+  const pick = <T extends string>(v: string | undefined, allowed: readonly T[], fallback: T): T => ((allowed as readonly string[]).includes(v ?? "") ? (v as T) : fallback);
+  const label = text(get("site_header_cta_label"), HEADER_CTA_LABEL_MAX);
+  const url = siteLink(get("site_header_cta_url"));
+  let cta = pick(get("site_header_cta"), HEADER_CTA_MODES, "auto");
+  if (cta === "custom" && (!label || !url)) cta = "auto";
+  return {
+    header: { cta, ctaLabel: cta === "custom" ? label : null, ctaUrl: cta === "custom" ? url : null },
+    footer: { style: pick(get("site_footer_style"), FOOTER_STYLES, "dark"), text: text(get("site_footer_text"), FOOTER_TEXT_MAX), showContact: get("site_footer_contact") !== "false" },
   };
 }
 

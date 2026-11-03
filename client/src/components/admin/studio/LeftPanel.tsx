@@ -8,7 +8,7 @@
  */
 import { useMemo, useRef, useState } from "react";
 import { Link } from "wouter";
-import { Copy, EyeOff, FileText, GripVertical, Home, Image as ImageIcon, LayoutPanelTop, Newspaper, Palette, Plus, Search, Settings2, Trash2 } from "lucide-react";
+import { Copy, EyeOff, FileText, GripVertical, Home, Image as ImageIcon, LayoutPanelTop, Newspaper, Palette, PanelsTopLeft, Plus, Search, Settings2, Trash2 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 import { blockLabel, PAGE_TEMPLATES, type Device, type PageBlock, type PageTemplateKey } from "@shared/pageBlocks";
@@ -45,6 +45,7 @@ export function LeftPanel(props: {
   currentSlug: string;
   onOpenPage: (slug: string) => void;
   onGlobalStyle: () => void;
+  onSiteChrome: () => void;
 }) {
   const tabs: Array<{ key: LeftTab; label: string }> = [
     { key: "add", label: "Añadir" },
@@ -70,7 +71,7 @@ export function LeftPanel(props: {
       <div className="min-h-0 flex-1 overflow-y-auto">
         {props.tab === "add" && <Library modules={props.modules} presets={props.presets} onInsert={props.onInsert} onTemplate={props.onTemplate} />}
         {props.tab === "structure" && <Structure {...props} />}
-        {props.tab === "site" && <Site pages={props.pages} currentSlug={props.currentSlug} onOpenPage={props.onOpenPage} onGlobalStyle={props.onGlobalStyle} />}
+        {props.tab === "site" && <Site pages={props.pages} currentSlug={props.currentSlug} onOpenPage={props.onOpenPage} onGlobalStyle={props.onGlobalStyle} onSiteChrome={props.onSiteChrome} />}
       </div>
     </div>
   );
@@ -284,12 +285,12 @@ function SectionRows({ section, selectedId, device, onSelect, onDuplicate, onDel
 }
 
 const GLOBAL_LINKS = [
-  { href: "/admin/cms/menus", label: "Menús de cabecera y pie", icon: Settings2 },
+  { href: "/admin/cms/menus", label: "Menús con submenús (CMS)", icon: Settings2 },
   { href: "/admin/cms/blog", label: "Blog", icon: Newspaper },
   { href: "/admin/cms/multimedia", label: "Multimedia", icon: ImageIcon },
 ] as const;
 
-function Site({ pages, currentSlug, onOpenPage, onGlobalStyle }: { pages: SitePage[]; currentSlug: string; onOpenPage: (slug: string) => void; onGlobalStyle: () => void }) {
+function Site({ pages, currentSlug, onOpenPage, onGlobalStyle, onSiteChrome }: { pages: SitePage[]; currentSlug: string; onOpenPage: (slug: string) => void; onGlobalStyle: () => void; onSiteChrome: () => void }) {
   const sorted = [...pages].sort((a, b) => Number(b.isHome) - Number(a.isHome) || Number(a.isLegal) - Number(b.isLegal) || a.title.localeCompare(b.title, "es"));
   return (
     <div className="space-y-5 p-3">
@@ -325,6 +326,9 @@ function Site({ pages, currentSlug, onOpenPage, onGlobalStyle }: { pages: SitePa
         <h3 className="px-0.5 pb-1 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Todo el sitio</h3>
         <button type="button" onClick={onGlobalStyle} className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm hover:bg-muted">
           <Palette className="h-3.5 w-3.5 text-[#5b5bf6]" /> Estilo global: colores, letra y bordes
+        </button>
+        <button type="button" onClick={onSiteChrome} className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm hover:bg-muted">
+          <PanelsTopLeft className="h-3.5 w-3.5 text-[#5b5bf6]" /> Cabecera y pie: botón, menús y estilo
         </button>
         {GLOBAL_LINKS.map((l) => (
           <Link key={l.href} href={l.href} className="flex items-center gap-2 rounded-md px-2 py-1.5 text-sm hover:bg-muted">

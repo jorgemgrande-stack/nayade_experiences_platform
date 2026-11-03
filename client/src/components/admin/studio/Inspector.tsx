@@ -165,7 +165,7 @@ function FieldShell({ label, hint, children }: { label: string; hint?: string; c
   );
 }
 
-function Segmented({ label, value, options, onChange }: { label: string; value: string; options: ReadonlyArray<{ value: string; label: string }>; onChange: (v: string) => void }) {
+export function Segmented({ label, value, options, onChange }: { label: string; value: string; options: ReadonlyArray<{ value: string; label: string }>; onChange: (v: string) => void }) {
   return (
     <div className="space-y-1.5">
       <span className="text-sm font-medium">{label}</span>

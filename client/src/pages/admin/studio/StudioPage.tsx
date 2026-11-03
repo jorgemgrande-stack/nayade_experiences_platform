@@ -40,6 +40,7 @@ import { BlockInspector } from "@/components/admin/studio/Inspector";
 import { LeftPanel, type LeftTab } from "@/components/admin/studio/LeftPanel";
 import { PageSettings, type SitePage } from "@/components/admin/studio/PageSettings";
 import { VersionsPanel } from "@/components/admin/studio/VersionsPanel";
+import { SiteChromeEditor } from "@/components/admin/studio/SiteChromeEditor";
 import { BrandIdentityEditor } from "@/components/brand/BrandIdentityEditor";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { moduleIcon } from "@/components/admin/studio/icons";
@@ -103,6 +104,7 @@ function Studio({ routeSlug }: { routeSlug: string | null }) {
   const [shortcuts, setShortcuts] = useState(false);
   const [globalOpen, setGlobalOpen] = useState(false);
   const [templateKey, setTemplateKey] = useState<PageTemplateKey | null>(null);
+  const [chromeOpen, setChromeOpen] = useState(false);
   // Al cambiar el estilo global se vuelve a cargar el lienzo para verlo aplicado
   const [canvasKey, setCanvasKey] = useState(0);
   const [canvasReady, setCanvasReady] = useState(false);
@@ -692,6 +694,7 @@ function Studio({ routeSlug }: { routeSlug: string | null }) {
               currentSlug={slug ?? ""}
               onOpenPage={(s) => void openPage(s)}
               onGlobalStyle={() => setGlobalOpen(true)}
+              onSiteChrome={() => setChromeOpen(true)}
             />
           </aside>
         )}
@@ -935,6 +938,27 @@ function Studio({ routeSlug }: { routeSlug: string | null }) {
                 setCanvasReady(false);
                 setCanvasKey((k) => k + 1);
                 toast.success("Estilo global guardado: ya se ve en toda tu web.");
+              }}
+            />
+          </div>
+        </SheetContent>
+      </Sheet>
+
+      <Sheet open={chromeOpen} onOpenChange={setChromeOpen}>
+        <SheetContent side="right" className="w-full overflow-y-auto sm:max-w-xl">
+          <SheetHeader>
+            <SheetTitle>Cabecera y pie de tu web</SheetTitle>
+            <SheetDescription>El botón destacado, los menús y el pie que se ven en todas las páginas.</SheetDescription>
+          </SheetHeader>
+          <p role="note" className="mx-4 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900 dark:border-amber-700 dark:bg-amber-950/50 dark:text-amber-100">
+            Atención: la cabecera y el pie son comunes a todas las páginas. Los cambios se aplican al momento en tu web publicada; no esperan a «Publicar».
+          </p>
+          <div className="px-4">
+            <SiteChromeEditor
+              targets={targets}
+              onChanged={() => {
+                setCanvasReady(false);
+                setCanvasKey((k) => k + 1);
               }}
             />
           </div>

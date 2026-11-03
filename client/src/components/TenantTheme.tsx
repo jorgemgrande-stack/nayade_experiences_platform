@@ -131,22 +131,32 @@ export function TenantBrand({ theme }: { theme: Theme }) {
   );
 }
 
-export function PoweredBy({ theme }: { theme: Theme }) {
+export function PoweredBy({ theme, className = "text-white/30 hover:text-white/60" }: { theme: Theme; className?: string }) {
   if (!theme.poweredBy) return null;
   return (
     <a
       href={theme.poweredBy.url}
       target="_blank"
       rel="noopener noreferrer"
-      className="text-white/30 hover:text-white/60 text-[11px] transition-colors"
+      className={`${className} text-[11px] transition-colors`}
     >
       {theme.poweredBy.label}
     </a>
   );
 }
 
+/** Estilos del pie (Studio › Cabecera y pie): oscuro (de serie), claro o con el color de la marca. */
+const FOOTER_STYLE = {
+  dark: { root: "bg-lago-dark text-white", soft: "text-white/70", softer: "text-white/60", faint: "text-white/40", hover: "hover:text-white", border: "border-white/10", powered: "text-white/30 hover:text-white/60" },
+  light: { root: "bg-muted text-foreground", soft: "text-foreground/80", softer: "text-muted-foreground", faint: "text-muted-foreground", hover: "hover:text-foreground", border: "border-border", powered: "text-muted-foreground hover:text-foreground" },
+  brand: { root: "bg-primary text-primary-foreground", soft: "text-primary-foreground/85", softer: "text-primary-foreground/75", faint: "text-primary-foreground/60", hover: "hover:text-primary-foreground", border: "border-primary-foreground/20", powered: "text-primary-foreground/50 hover:text-primary-foreground/80" },
+} as const;
+
 export function TenantFooter({ theme }: { theme: Theme }) {
   const c = theme.contact;
+  const f = theme.footer ?? { style: "dark" as const, text: null, showContact: true };
+  const st = FOOTER_STYLE[f.style] ?? FOOTER_STYLE.dark;
+  const showContact = f.showContact && !!(c.phone || c.email);
   // El servidor ya quita los enlaces a páginas en borrador
   const menu = trpc.public.getMenuItems.useQuery({ zone: "footer" }, { staleTime: 5 * 60_000, retry: false });
   const footerLinks = (menu.data ?? [])
@@ -156,41 +166,42 @@ export function TenantFooter({ theme }: { theme: Theme }) {
   const own = new Set(footerLinks.map((l) => pageSlugOfUrl(l.url)).filter(Boolean));
   const legalLinks = LEGAL_FOOTER_LINKS.filter((l) => !own.has(pageSlugOfUrl(l.url)));
   return (
-    <footer className="bg-lago-dark text-white">
+    <footer className={st.root}>
       <div className="container py-10 grid gap-6 md:grid-cols-3">
         <div>
           <p className="font-heading font-bold text-lg">{theme.brandName}</p>
-          {c.address && <p className="text-white/60 text-sm mt-2">{c.address}</p>}
+          {f.showContact && c.address && <p className={`${st.softer} text-sm mt-2`}>{c.address}</p>}
+          {f.text && <p className={`${st.softer} text-sm mt-2 max-w-sm`}>{f.text}</p>}
         </div>
-        <div className="text-sm text-white/70 space-y-1">
-          {c.phone && <p>{c.phone}</p>}
-          {c.email && <p>{c.email}</p>}
+        <div className={`text-sm ${st.soft} space-y-1`}>
+          {showContact && c.phone && <p>{c.phone}</p>}
+          {showContact && c.email && <p>{c.email}</p>}
         </div>
-        <nav aria-label="Enlaces del pie" className="text-sm text-white/60 flex flex-col items-start gap-1">
+        <nav aria-label="Enlaces del pie" className={`text-sm ${st.softer} flex flex-col items-start gap-1`}>
           {footerLinks.map((l) =>
             /^https?:\/\//.test(l.url) ? (
-              <a key={l.id} href={l.url} target={l.target ?? "_self"} rel="noopener noreferrer" className="hover:text-white">
+              <a key={l.id} href={l.url} target={l.target ?? "_self"} rel="noopener noreferrer" className={st.hover}>
                 {l.label}
               </a>
             ) : (
               <Link key={l.id} href={l.url}>
-                <span className="cursor-pointer hover:text-white">{l.label}</span>
+                <span className={`cursor-pointer ${st.hover}`}>{l.label}</span>
               </Link>
             ),
           )}
           {legalLinks.map((l) => (
             <Link key={l.url} href={l.url}>
-              <span className="cursor-pointer hover:text-white">{l.label}</span>
+              <span className={`cursor-pointer ${st.hover}`}>{l.label}</span>
             </Link>
           ))}
         </nav>
       </div>
-      <div className="border-t border-white/10">
+      <div className={`border-t ${st.border}`}>
         <div className="container py-4 flex flex-col md:flex-row items-center justify-between gap-2">
-          <p className="text-white/40 text-xs">
+          <p className={`${st.faint} text-xs`}>
             © {new Date().getFullYear()} {theme.brandName}
           </p>
-          <PoweredBy theme={theme} />
+          <PoweredBy theme={theme} className={st.powered} />
         </div>
       </div>
     </footer>
