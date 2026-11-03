@@ -2,6 +2,7 @@
  * Facturación propia de Elephant Source (CRM 0027). Contrato: docs/elephant-source/CONTRATO_COBROS_FACTURACION.md §5.
  * Se factura por DEVENGO (fecha de operación); el cobro es un estado aparte. Importes en céntimos enteros.
  */
+import type { CreditDecision, FiscalEvidence } from "./fiscalMatrix";
 
 /** `draft`: preparada, sin número. `issued`: expedida (número, datos congelados, huella). `rectified`: corregida por una rectificativa. */
 export type InvoiceStatus = "draft" | "issued" | "rectified";
@@ -58,6 +59,15 @@ export interface InvoiceFiscalDetail {
   balanceAppliedCents: number;
   /** Supuestos pendientes de confirmar por la gestoría que afectan a esta factura (identificadores de `ADVISOR_QUESTIONS`). */
   advisorPending: string[];
+  /** Versión de la matriz fiscal con la que se expidió (`FISCAL_MATRIX_VERSION`) y regla aplicada. Ausentes en las anteriores. */
+  matrixVersion?: string | null;
+  ruleId?: string | null;
+  /** Evidencias fiscales congeladas al expedir: comprador, VIES, localización, Stripe Tax, fechas e importes. */
+  evidence?: FiscalEvidence | null;
+  /** Origen del saldo a favor aplicado (lo decide una persona): medio de pago o ajuste de precio con su rectificativa. */
+  credit?: CreditDecision | null;
+  /** Rectificativa: la factura que rectifica (serie, número, fecha y tipo). */
+  rectifies?: { invoiceId: number; number: string | null; issueDate: string | null; invoiceType: InvoiceType } | null;
 }
 
 export interface Invoice {

@@ -11,6 +11,7 @@
  *    válidos, y no antes de la fecha de operación. Número correlativo y datos congelados al expedir.
  */
 import type { ExternalEvent, ExternalSubscription } from "../external/types";
+import { adjustmentBase, type CreditDecision, type CreditOrigin } from "./fiscalMatrix";
 import { customerOf, externalPeriods, externalSourceKey, lineOf, totals, ymd, type CompanyFiscal } from "./rules";
 import type { InvoicingStore } from "./store";
 import { isStripeSale, type StripeSalesPort, type StripeSalesReport } from "./stripeSales";
@@ -167,7 +168,7 @@ export class InvoicingService {
     // Venta de Stripe: el comprador es el del perfil fiscal del pedido y el cobro debe constar verificado
     if (isStripeSale(invoice)) {
       if (!this.d.stripeSales) problems.push("venta de Stripe: el registro de cobros de Stripe no está disponible en este entorno");
-      else problems.push(...(await this.d.stripeSales.readiness(invoice)).problems);
+      else problems.push(...(await this.d.stripeSales.readiness(invoice, this.d.store)).problems);
       return { invoice, problems };
     }
     const company = await this.d.company(invoice.companyId);
@@ -183,14 +184,17 @@ export class InvoicingService {
     const original = invoice.originalInvoiceId ? await this.must(invoice.originalInvoiceId) : null;
     // Una rectificativa lleva los datos del cliente de la factura que corrige y va en su propia serie (art. 15 RD 1619/2012)
     // Venta de Stripe: comprador y datos fiscales (tipo de factura, caso, mención) que se congelan al expedir
-    const sale = !original && isStripeSale(invoice) ? await this.d.stripeSales!.readiness(invoice) : null;
+    const sale = !original && isStripeSale(invoice) ? await this.d.stripeSales!.readiness(invoice, this.d.store) : null;
     const customer = original?.customer ?? (sale ? sale.party : customerOf((await this.d.company(invoice.companyId))!).party);
     if (!customer) throw new InvoicingError("invalid_state", "No se puede expedir: faltan los datos fiscales del cliente");
-    // Factura simplificada (arts. 4 y 7 RD 1619/2012): serie propia con numeración correlativa independiente
+    // Series (art. 6.1.a y art. 7.1.a RD 1619/2012): completas EB, simplificadas EBS (series separadas en el mismo año),
+    // rectificativas de completas EBR y rectificativas de simplificadas EBSR (también simplificadas, art. 4.1.b)
     const simplified = (sale?.fiscal ?? invoice.fiscal)?.invoiceType === "simplified";
-    const seriesCode = invoice.kind === "rectification" ? `${this.d.seriesCode}R` : simplified ? `${this.d.seriesCode}S` : this.d.seriesCode;
+    const seriesCode = invoice.kind === "rectification" ? (simplified ? `${this.d.seriesCode}SR` : `${this.d.seriesCode}R`) : simplified ? `${this.d.seriesCode}S` : this.d.seriesCode;
     const now = this.now();
-    const issued = await this.d.store.issue({ id, seriesCode, issueDate: ymd(now), issuer: this.d.issuer, customer, issuedBy: actor, issuedAt: now, ...(sale?.fiscal ? { fiscal: sale.fiscal } : {}) });
+    // Evidencias: la fecha de expedición se completa al expedir
+    const fiscal = sale?.fiscal ? { ...sale.fiscal, ...(sale.fiscal.evidence ? { evidence: { ...sale.fiscal.evidence, dates: { ...sale.fiscal.evidence.dates, issueDate: ymd(now) } } } : {}) } : null;
+    const issued = await this.d.store.issue({ id, seriesCode, issueDate: ymd(now), issuer: this.d.issuer, customer, issuedBy: actor, issuedAt: now, ...(fiscal ? { fiscal } : {}) });
     // Rectificación total: la original queda «rectificada» (una parcial la deja vigente por la diferencia)
     if (original && issued.totalCents === -original.totalCents) await this.d.store.setStatus(original.id, "rectified", now);
     // Venta de Stripe (o su rectificativa): su documento fiscal queda emitido con el número; si falla, la pasada lo repara
@@ -237,10 +241,44 @@ export class InvoicingService {
       createdBy: actor,
       createdAt: this.now(),
       lines,
-      // Mismo tipo de factura, caso y mención que la original (si los tiene)
-      ...(o.fiscal ? { fiscal: { ...o.fiscal, advisorPending: Array.from(new Set([...o.fiscal.advisorPending, ...(o.fiscal.invoiceType === "simplified" ? ["rectificativa_simplificada"] : [])])) } } : {}),
+      // Mismo tipo de factura, caso, mención, regla y versión de la matriz que la original (si los tiene), con la referencia
+      // a la factura rectificada; las evidencias del cobro y el saldo a favor son de la original y no se repiten
+      ...(o.fiscal ? { fiscal: { ...o.fiscal, evidence: null, credit: null, balanceAppliedCents: 0, rectifies: { invoiceId: o.id, number: o.number, issueDate: o.issueDate, invoiceType: o.fiscal.invoiceType }, advisorPending: Array.from(new Set([...o.fiscal.advisorPending, ...(o.fiscal.invoiceType === "simplified" ? ["rectificativa_simplificada"] : [])])) } } : {}),
     });
     return invoice;
+  }
+
+  /**
+   * Origen fiscal del saldo a favor que Stripe aplicó en una venta (borrador): lo decide una persona, nunca se infiere.
+   *  - `payment_means`: saldo monetario del cliente usado como medio de pago; no altera la base de ninguna factura.
+   *  - `price_adjustment`: el saldo procede de una alteración del precio de una factura anterior expedida (art. 80.Dos de
+   *    la Ley 37/1992): se prepara el borrador de su rectificativa (art. 15 del RD 1619/2012) por el saldo, enlazado aquí,
+   *    y en esta factura el saldo queda como medio de pago.
+   * Hasta decidirlo, la factura no se expide (`readiness`). Idempotente: repetir la misma decisión no crea otra rectificativa.
+   */
+  async resolveCredit(id: number, i: { origin: CreditOrigin; originalInvoiceId?: number; reason: string }, actor: string): Promise<Invoice> {
+    const inv = await this.must(id);
+    if (inv.status !== "draft" || inv.kind !== "invoice" || !isStripeSale(inv)) throw new InvoicingError("invalid_state", "Solo se decide el origen del saldo de una venta de Stripe sin expedir");
+    const applied = inv.fiscal?.balanceAppliedCents ?? 0;
+    if (!inv.fiscal || applied <= 0) throw new InvoicingError("invalid_state", "La factura no tiene saldo a favor aplicado");
+    const reason = (i.reason ?? "").trim();
+    if (reason.length < 3 || reason.length > 300) throw new InvoicingError("invalid_input", "Indica el motivo (3 a 300 caracteres)");
+    let rectificationInvoiceId: number | null = null;
+    let originalInvoiceId: number | null = null;
+    if (i.origin === "price_adjustment") {
+      if (!i.originalInvoiceId) throw new InvoicingError("invalid_input", "Indica la factura anterior cuyo precio se ajusta");
+      const o = await this.must(i.originalInvoiceId);
+      if (o.companyId !== inv.companyId) throw new InvoicingError("invalid_input", "La factura anterior es de otra empresa");
+      if (o.kind !== "invoice" || o.status !== "issued") throw new InvoicingError("invalid_state", "La factura anterior debe estar expedida y vigente");
+      const rates = Array.from(new Set(o.lines.map((l) => l.taxRateBp)));
+      const base = rates.length === 1 ? adjustmentBase(applied, rates[0]) : null;
+      if (base === null || base > o.baseCents) throw new InvoicingError("invalid_input", "El saldo no corresponde a un ajuste de la base de esa factura con un único tipo de IVA: debe decidirlo la gestoría");
+      const r = await this.rectify(o.id, { reason: `Ajuste de precio aplicado como saldo a favor en la factura #${inv.id}: ${reason}`.slice(0, 300), baseCents: base }, actor);
+      rectificationInvoiceId = r.id;
+      originalInvoiceId = o.id;
+    } else if (i.origin !== "payment_means") throw new InvoicingError("invalid_input", "Origen no admitido");
+    const credit: CreditDecision = { appliedCents: applied, origin: i.origin, originalInvoiceId, rectificationInvoiceId, reason, decidedBy: actor, decidedAt: this.now() };
+    return this.d.store.setDraftFiscal(inv.id, { ...inv.fiscal, credit }, this.now());
   }
 
   async must(id: number) {

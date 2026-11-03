@@ -28,7 +28,8 @@ import { classifyTerritory, territoryGroup, type BuyerProfile } from "../stripe/
 import { STRIPE_PRODUCT_NAME } from "../stripe/catalog";
 import { invoiceSourceKey, type FiscalDocument, type FiscalDocumentStatus, type StripeInvoiceRecord } from "../stripe/fiscalDocuments";
 import type { InvoiceLineRow } from "../stripe/invoiceLines";
-import { BASE_CASE, fiscalCaseOf, isCaseEnabled, isValidCaseTaxId, legalMentionOf, NO_EXTRA_CASES, rateProblems, simplifiedDecision, TREATMENTS, type FiscalCase, type FiscalCasesConfig } from "./fiscalCases";
+import { BASE_CASE, fiscalCaseOf, isCaseEnabled, isValidCaseTaxId, legalMentionOf, NO_EXTRA_CASES, rateProblems, simplifiedDecision, treatmentOf, type FiscalCase, type FiscalCasesConfig } from "./fiscalCases";
+import { creditProblem, euB2cThresholdProblem, evidenceProblems, FISCAL_MATRIX_VERSION, LEGAL_REFS, ruleFor, type FiscalEvidence, type FiscalRule, type LocationProof } from "./fiscalMatrix";
 import { customerOf, taxOf, ymd, type CompanyFiscal } from "./rules";
 import type { InvoicingStore } from "./store";
 import type { FiscalParty, Invoice, InvoiceFiscalDetail, InvoiceLine, NewInvoice } from "./types";
@@ -82,8 +83,11 @@ export interface StripeSalesReport {
 /** Lo que la facturación necesita de las ventas de Stripe (la implementa `StripeSalesInvoicing`). */
 export interface StripeSalesPort {
   generate(store: InvoicingStore, actor: string, f?: { companyId?: number }): Promise<StripeSalesReport>;
-  /** Comprador, motivos por los que aún no se puede expedir (vacío = se puede) y datos fiscales que se congelan al expedir. */
-  readiness(inv: Invoice): Promise<{ party: FiscalParty | null; problems: string[]; fiscal?: InvoiceFiscalDetail }>;
+  /**
+   * Comprador, motivos por los que aún no se puede expedir (vacío = se puede) y datos fiscales que se congelan al expedir.
+   * Con `store`, comprueba además lo que depende de otras facturas (el umbral de 10.000 € de los particulares de la UE).
+   */
+  readiness(inv: Invoice, store?: Pick<InvoicingStore, "list">): Promise<{ party: FiscalParty | null; problems: string[]; fiscal?: InvoiceFiscalDetail }>;
   /** Tras expedir: el documento fiscal del cobro (o del reembolso) queda emitido con el número. */
   issued(inv: Invoice, store: Pick<InvoicingStore, "get">): Promise<void>;
 }
@@ -197,6 +201,39 @@ export function accrualOf(collectedAt: number, servicePeriodStart: number | null
   return due < collected ? { operationDate: due, basis: "due_date" } : { operationDate: collected, basis: "advance_payment" };
 }
 
+/**
+ * Evidencias fiscales de una venta (se congelan al expedir): comprador y su condición, VIES con su fecha, pruebas de
+ * localización (la dirección de Stripe Tax procede de la de facturación: no es independiente), cálculo de Stripe Tax,
+ * fechas (operación, exigibilidad, cobro, periodo) e importes (bruto, descuentos, base, cuota, saldo aplicado).
+ */
+export function evidenceOf(i: { inv: Invoice; rec: StripeInvoiceRecord | null; rule: FiscalRule; profile: BuyerProfile | null; party: FiscalParty | null; vies: { vatNumber: string; status: string; checkedAt: number } | null; stripeInvoiceId: string }): FiscalEvidence {
+  const { inv, rec, profile } = i;
+  const country = (profile?.country ?? i.party?.country ?? "").toUpperCase();
+  const postalCode = profile?.postalCode ?? i.party?.postalCode ?? null;
+  const location: LocationProof[] = [];
+  if (country) location.push({ source: "billing_address", country, postalCode });
+  if (rec?.customerCountry) location.push({ source: "stripe_tax_address", country: rec.customerCountry.toUpperCase(), postalCode: rec.customerPostalCode, derivedFrom: "billing_address" });
+  return {
+    matrixVersion: FISCAL_MATRIX_VERSION,
+    ruleId: i.rule.id,
+    ruleStatus: i.rule.status,
+    legalBasis: i.rule.legal.map((id) => `${LEGAL_REFS[id].label} — ${LEGAL_REFS[id].url}`),
+    buyer: {
+      type: profile?.type ?? "business",
+      territory: profile?.territory ?? (country ? classifyTerritory(country, postalCode) : null),
+      country,
+      postalCode,
+      taxId: (profile ? profile.taxId : i.party?.taxId) || null,
+      condition: profile?.type === "consumer" ? "consumer" : i.vies?.status === "valid" ? "business_vies" : "business_declared",
+    },
+    vies: i.vies,
+    location,
+    stripeTax: { stripeInvoiceId: i.stripeInvoiceId, taxCents: rec?.taxCents ?? 0, totalCents: rec?.totalCents ?? inv.totalCents, amountPaidCents: rec?.amountPaidCents ?? 0, rates: Array.from(new Set(inv.lines.map((l) => l.taxRateBp))), customerCountry: rec?.customerCountry ?? null, customerPostalCode: rec?.customerPostalCode ?? null },
+    dates: { operationDate: inv.operationDate, accrualBasis: inv.fiscal?.accrualBasis ?? null, dueDate: inv.periodStart !== null ? ymd(inv.periodStart) : null, collectionDate: inv.fiscal?.collectionDate ?? (inv.paidAt ? ymd(inv.paidAt) : null), periodStart: inv.periodStart, periodEnd: inv.periodEnd, issueDate: null },
+    amounts: { grossCents: inv.lines.reduce((a, l) => a + (l.grossCents ?? l.baseCents), 0), discountCents: inv.lines.reduce((a, l) => a + (l.discountCents ?? 0), 0), baseCents: inv.baseCents, taxCents: inv.taxCents, totalCents: inv.totalCents, balanceAppliedCents: inv.fiscal?.balanceAppliedCents ?? 0 },
+  };
+}
+
 export class StripeSalesInvoicing implements StripeSalesPort {
   private readonly now: () => number;
   private readonly cases: FiscalCasesConfig;
@@ -205,18 +242,20 @@ export class StripeSalesInvoicing implements StripeSalesPort {
     this.cases = d.fiscalCases ?? NO_EXTRA_CASES;
   }
 
-  /** ¿NIF-IVA del comprador válido en VIES (la comprobación más reciente de ese número en el pedido)? */
-  private async viesValid(profile: BuyerProfile): Promise<boolean> {
-    if (!profile.taxId || !this.d.stripe.vatChecksOfOrder) return false;
+  /** Comprobación VIES más reciente del NIF-IVA del comprador en el pedido (null si no hay ninguna). */
+  private async viesCheck(profile: BuyerProfile): Promise<{ vatNumber: string; status: string; checkedAt: number } | null> {
+    if (!profile.taxId || !this.d.stripe.vatChecksOfOrder) return null;
     const norm = (x: string) => x.toUpperCase().replace(/[^A-Z0-9]/g, "");
     const id = norm(profile.taxId);
     const checks = await this.d.stripe.vatChecksOfOrder(profile.orderId).catch(() => []);
     const hit = checks.filter((c) => id === norm(c.vatNumber) || id === norm(`${c.country}${c.vatNumber}`)).sort((a, b) => b.checkedAt - a.checkedAt)[0];
-    return hit?.status === "valid";
+    if (!hit) return null;
+    const n = norm(hit.vatNumber);
+    return { vatNumber: n.startsWith(hit.country.toUpperCase()) ? n : `${hit.country.toUpperCase()}${n}`, status: hit.status, checkedAt: hit.checkedAt };
   }
 
   /** Datos fiscales del comprador del pedido: su perfil fiscal (lo que usó Stripe Tax) o, sin él, la ficha del CRM. */
-  async buyer(orderId: number, companyId: number, rec: Pick<StripeInvoiceRecord, "customerCountry" | "customerPostalCode"> | null, totalCents = 0): Promise<{ party: FiscalParty | null; problems: string[]; fiscalCase?: FiscalCase; invoiceType?: "complete" | "simplified" }> {
+  async buyer(orderId: number, companyId: number, rec: Pick<StripeInvoiceRecord, "customerCountry" | "customerPostalCode"> | null, totalCents = 0): Promise<{ party: FiscalParty | null; problems: string[]; fiscalCase?: FiscalCase; invoiceType?: "complete" | "simplified"; profile?: BuyerProfile; vies?: { vatNumber: string; status: string; checkedAt: number } | null }> {
     const profile = await this.d.stripe.buyerProfile(orderId).catch(() => null);
     if (!profile || profile.orderId !== orderId) {
       const company = await this.d.company(companyId);
@@ -224,16 +263,16 @@ export class StripeSalesInvoicing implements StripeSalesPort {
       const r = customerOf(company);
       return { party: r.party, problems: r.problems.map((p) => `comprador: ${p}`) };
     }
-    const vies = profile.territory === "eu" && profile.type === "business" ? await this.viesValid(profile) : false;
-    const fiscalCase = fiscalCaseOf({ type: profile.type, territory: profile.territory, viesValid: vies, nature: "electronic_saas" });
-    if (fiscalCase !== BASE_CASE && isCaseEnabled(fiscalCase, this.cases)) return this.caseBuyer(profile, fiscalCase, rec, totalCents);
+    const vies = profile.territory === "eu" && profile.type === "business" ? await this.viesCheck(profile) : null;
+    const fiscalCase = fiscalCaseOf({ type: profile.type, territory: profile.territory, viesValid: vies?.status === "valid", nature: "electronic_saas" });
+    if (fiscalCase !== BASE_CASE && isCaseEnabled(fiscalCase, this.cases)) return { ...this.caseBuyer(profile, fiscalCase, rec, totalCents), profile, vies };
     const a = profile.billingAddress;
     const r = customerOf({ name: profile.displayName, legalName: profile.displayName, taxId: profile.taxId, address: a ? [a.line1, a.line2].filter(Boolean).join(", ") : null, postalCode: profile.postalCode, city: a?.city ?? null, country: profile.country, billingEmail: profile.billingEmail });
     const problems = [...r.problems];
     // La dirección con la que Stripe calculó el impuesto debe ser del mismo territorio que la declarada
     const t = rec?.customerCountry ? classifyTerritory(rec.customerCountry, rec.customerPostalCode) : null;
     if (rec?.customerCountry && (!t || territoryGroup(t) !== territoryGroup(profile.territory))) problems.push("la dirección de la factura de Stripe no es del territorio del perfil fiscal declarado");
-    return { party: problems.length ? null : r.party, problems: problems.map((p) => `comprador: ${p}`), fiscalCase, invoiceType: "complete" };
+    return { party: problems.length ? null : r.party, problems: problems.map((p) => `comprador: ${p}`), fiscalCase, invoiceType: "complete", profile, vies };
   }
 
   /**
@@ -383,7 +422,7 @@ export class StripeSalesInvoicing implements StripeSalesPort {
     }
   }
 
-  async readiness(inv: Invoice): Promise<{ party: FiscalParty | null; problems: string[]; fiscal?: InvoiceFiscalDetail }> {
+  async readiness(inv: Invoice, store?: Pick<InvoicingStore, "list">): Promise<{ party: FiscalParty | null; problems: string[]; fiscal?: InvoiceFiscalDetail }> {
     const ref = parseStripeSale(inv.sourceKey);
     if (!ref) return { party: null, problems: ["no es una venta de Stripe"] };
     const problems: string[] = [];
@@ -400,27 +439,56 @@ export class StripeSalesInvoicing implements StripeSalesPort {
     const buyer = await this.buyer(ref.orderId, inv.companyId, rec, inv.totalCents);
     problems.push(...buyer.problems);
     const fiscalCase = buyer.fiscalCase ?? BASE_CASE;
-    const treatment = TREATMENTS[fiscalCase];
     const activated = fiscalCase !== BASE_CASE && isCaseEnabled(fiscalCase, this.cases);
+    // Regla de la matriz: la del caso con el régimen declarado (solo cuenta si el caso está activado)
+    const rule = ruleFor(fiscalCase, activated ? this.cases.euB2cRegime : null);
+    const treatment = treatmentOf(fiscalCase, activated ? this.cases : NO_EXTRA_CASES);
     if (activated) problems.push(...rateProblems(inv.lines, treatment));
     else {
       const rates = Array.from(new Set(inv.lines.filter((l) => l.taxRateBp !== STANDARD_VAT_BP).map((l) => l.taxRateBp)));
       if (rates.length) problems.push(`el IVA cobrado en Stripe (${rates.map((r) => `${(r / 100).toLocaleString("es-ES")} %`).join(", ")}) no es el 21 % de un comprador de la península o Baleares: requiere revisión fiscal`);
     }
+    const evidence = evidenceOf({ inv, rec, rule, profile: buyer.profile ?? null, party: buyer.party, vies: buyer.vies ?? null, stripeInvoiceId: ref.stripeInvoiceId });
+    // Evidencias que exige la regla de un caso activado (las del caso vigente ya las comprueban los controles de siempre)
+    if (activated) problems.push(...evidenceProblems(rule, evidence, { threshold: rule.evidence.includes("eu_b2c_threshold") ? await this.threshold(inv, store) : null }));
+    // Saldo a favor aplicado: sin su origen fiscal determinado, no se expide (art. 80.Dos Ley 37/1992; art. 15 RD 1619/2012)
+    const credit = creditProblem(inv.fiscal?.balanceAppliedCents ?? 0, inv.fiscal?.credit);
+    if (credit) problems.push(credit);
     const invoiceType = buyer.invoiceType ?? "complete";
     const advisor = [...(inv.fiscal?.advisorPending ?? []), ...treatment.advisor, ...(invoiceType === "simplified" ? ["factura_simplificada"] : [])];
-    const profile = activated ? await this.d.stripe.buyerProfile(ref.orderId).catch(() => null) : null;
     const fiscal: InvoiceFiscalDetail = {
       invoiceType,
       fiscalCase,
       treatment: treatment.code,
-      legalMention: activated ? legalMentionOf(fiscalCase, profile?.territory ?? null) : null,
+      legalMention: activated ? legalMentionOf(fiscalCase, buyer.profile?.territory ?? null) : null,
       collectionDate: inv.fiscal?.collectionDate ?? (inv.paidAt ? ymd(inv.paidAt) : null),
       accrualBasis: inv.fiscal?.accrualBasis ?? "advance_payment",
       balanceAppliedCents: inv.fiscal?.balanceAppliedCents ?? 0,
       advisorPending: Array.from(new Set(advisor)),
+      matrixVersion: FISCAL_MATRIX_VERSION,
+      ruleId: rule.id,
+      evidence,
+      credit: inv.fiscal?.credit ?? null,
     };
     return { party: problems.length ? null : buyer.party, problems, fiscal };
+  }
+
+  /**
+   * Umbral de 10.000 € (art. 73) del régimen declarado `below_threshold`: bases de las facturas de particulares de otros
+   * Estados miembros del año anterior y del año en curso. Sin acceso a las facturas, no se puede comprobar.
+   */
+  private async threshold(inv: Invoice, store?: Pick<InvoicingStore, "list">): Promise<string | null> {
+    if (!store) return "no se puede comprobar el umbral de 10.000 € del art. 73 (sin acceso a las facturas expedidas)";
+    const year = Number(inv.operationDate.slice(0, 4));
+    let previousYearCents = 0;
+    let currentYearCents = 0;
+    for (const x of await store.list({ limit: 500 })) {
+      if (x.id === inv.id || x.status === "draft" || !String(x.fiscal?.ruleId ?? "").startsWith("consumer:eu")) continue;
+      const y = Number(x.operationDate.slice(0, 4));
+      if (y === year) currentYearCents += x.baseCents;
+      else if (y === year - 1) previousYearCents += x.baseCents;
+    }
+    return euB2cThresholdProblem({ previousYearCents, currentYearCents, thisBaseCents: inv.baseCents });
   }
 
   async issued(inv: Invoice, store: Pick<InvoicingStore, "get">): Promise<void> {

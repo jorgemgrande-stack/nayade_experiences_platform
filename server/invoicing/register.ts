@@ -1,7 +1,7 @@
 /**
  * Libro registro de facturas expedidas (para la contabilidad y la gestoría), en CSV de hoja de cálculo española (separador
  * «;», coma decimal, UTF-8 con BOM). Una fila por tipo de IVA de cada factura EXPEDIDA del periodo (por fecha de
- * expedición): fechas de expedición y de operación, serie y número, tipo (F1 factura, R1 rectificativa), destinatario,
+ * expedición): fechas de expedición y de operación, serie y número, tipo (F1 completa, F2 simplificada, R1 y R5 sus rectificativas), destinatario,
  * base, tipo y cuota de IVA, total, factura rectificada y estado de cobro. Los borradores no se registran. Función pura.
  */
 import type { Invoice } from "./types";
@@ -34,7 +34,8 @@ export function registerCsv(invoices: Invoice[], byId: Map<number, Invoice> = ne
         date(inv.operationDate),
         inv.seriesCode ?? "",
         inv.number!,
-        inv.kind === "rectification" ? "R1" : "F1",
+        // F1 completa, F2 simplificada, R1 rectificativa de completa, R5 rectificativa de simplificada
+        inv.fiscal?.invoiceType === "simplified" ? (inv.kind === "rectification" ? "R5" : "F2") : inv.kind === "rectification" ? "R1" : "F1",
         inv.customer?.taxId ?? "",
         inv.customer?.legalName ?? "",
         money(t.base),

@@ -14,9 +14,13 @@
  *    Activarlo aquí no cambia quién puede comprar: eso lo decide la elegibilidad de Stripe (CP_STRIPE_FISCAL_SCENARIOS).
  *    Un caso desactivado se bloquea exactamente como hasta ahora.
  *
+ * Los tratamientos se derivan de la MATRIZ FISCAL versionada (`fiscalMatrix.ts`): estado, impuesto, mención, norma,
+ * obligaciones, evidencias y decisiones previas por caso. Un caso bloqueado en la matriz no se puede activar.
+ *
  * Nada de esto es asesoramiento fiscal: es la preparación técnica para cuando la gestoría confirme cada supuesto.
  */
 import type { BuyerType, Territory } from "../stripe/buyerProfile";
+import { isActivatable, LEGAL_REFS, ruleFor, type EuB2cRegime, type FiscalRule } from "./fiscalMatrix";
 import { isValidSpanishTaxId } from "./rules";
 
 /** Naturaleza del servicio facturado. Solo existe una: la suscripción SaaS (servicio prestado por vía electrónica). */
@@ -95,11 +99,11 @@ export const ADVISOR_QUESTIONS: Record<string, { basis: string; question: string
   factura_simplificada: {
     basis: "Real Decreto 1619/2012, art. 4.1.a) (≤ 400 € IVA incluido) y art. 7",
     question:
-      "¿Procede la factura simplificada (serie propia EBS) para particulares sin NIF de la península y Baleares hasta 400 € IVA incluido, con el contenido del art. 7? ¿Encaja el SaaS en alguno de los supuestos del art. 4.1.b) que eleva el límite a 3.000 € (hoy no se aplica)?",
+      "¿Procede la factura simplificada (serie propia EBS) para particulares sin NIF de la península y Baleares hasta 400 € IVA incluido, con el contenido del art. 7? El límite de 3.000 € del art. 4.2 solo alcanza a los sectores que enumera, entre los que no está el SaaS: ¿confirma que no se aplica?",
   },
   rectificativa_simplificada: {
-    basis: "Real Decreto 1619/2012, art. 15 y art. 4.1.c)",
-    question: "¿Pueden las rectificativas de facturas simplificadas ir en la misma serie de rectificativas (EBR) que las de facturas completas, o conviene una serie propia?",
+    basis: "Real Decreto 1619/2012, art. 15, art. 4.1.b) y art. 7.1.a)",
+    question: "Las rectificativas de facturas simplificadas son a su vez simplificadas (art. 4.1.b) y, como el art. 7.1.a) obliga a separar en series las simplificadas de las completas del mismo año, van en su serie propia EBSR (las de completas, en EBR). ¿Conforme?",
   },
   canarias_ceuta_melilla_empresa: {
     basis: "Ley 37/1992, art. 3.Uno y art. 69.Uno.1.º; Ley 20/1991 (IGIC), art. 19.1.2.º; IPSI de Ceuta y Melilla",
@@ -134,35 +138,31 @@ export const ADVISOR_QUESTIONS: Record<string, { basis: string; question: string
       "Venta SaaS a empresas establecidas fuera de la UE: ¿confirma la no sujeción en España, el texto de la mención, la prueba suficiente de su condición de empresario (identificador fiscal) y que no aplica la regla de utilización efectiva del art. 70.Dos?",
   },
   tercer_pais_particular: {
-    basis: "Ley 37/1992, art. 69.Dos (servicios prestados por vía electrónica a no empresarios fuera de la Comunidad)",
-    question: "Venta SaaS a particulares de fuera de la UE: ¿confirma la no sujeción en España? ¿Qué países exigen registro propio desde la primera venta (Reino Unido, Suiza, Noruega, EE. UU.…)?",
+    basis: "Ley 37/1992, arts. 69.Uno.2.º, 69.Dos (texto vigente, sin los servicios electrónicos) y 70.Uno.4.º; Directiva 2006/112/CE, art. 58",
+    question: "Venta SaaS a particulares de fuera de la UE: el art. 69.Dos vigente ya no incluye los servicios prestados por vía electrónica. ¿Se entienden realizados en España por la regla general (art. 69.Uno.2.º) o fuera, por el art. 58 de la Directiva? ¿Qué países exigen registro propio desde la primera venta (Reino Unido, Suiza, Noruega, EE. UU.…)? Hoy no se puede activar.",
   },
 };
 
-const T = (t: Omit<FiscalTreatment, "requiresAdvisor"> & { requiresAdvisor?: boolean }): FiscalTreatment => ({ requiresAdvisor: true, ...t });
-const NOT_SUBJECT_SPECIAL = "Operación no sujeta al IVA: destinatario empresario o profesional establecido en {territorio}, fuera del territorio de aplicación del impuesto (arts. 3 y 69.Uno.1.º de la Ley 37/1992).";
-const ccm = (c: FiscalCase): FiscalTreatment =>
-  T({ case: c, code: "not_subject", expectedRateBp: 0, legalBasis: ["Ley 37/1992, art. 3.Uno (Canarias, Ceuta y Melilla fuera del territorio de aplicación)", "Ley 37/1992, art. 69.Uno.1.º (sede del destinatario empresario)"], mention: NOT_SUBJECT_SPECIAL, advisor: ["canarias_ceuta_melilla_empresa"], prerequisites: [], activatable: true });
-const ccmConsumer = (c: FiscalCase): FiscalTreatment =>
-  T({ case: c, code: "undetermined", expectedRateBp: null, legalBasis: ["Ley 37/1992, art. 69.Uno.2.º", "Ley 37/1992, art. 69.Dos (excepción que no alcanza a Canarias, Ceuta y Melilla)"], mention: null, advisor: ["canarias_ceuta_melilla_particular"], prerequisites: [], activatable: false });
+/** Tratamiento de una regla de la matriz (`fiscalMatrix.ts`), con la forma de siempre. */
+function treatmentOfRule(r: FiscalRule): FiscalTreatment {
+  return {
+    case: r.case,
+    code: r.treatment,
+    expectedRateBp: r.tax.rateBp,
+    legalBasis: r.legal.map((id) => LEGAL_REFS[id].label),
+    mention: r.mention,
+    requiresAdvisor: r.advisor.length > 0,
+    advisor: r.advisor,
+    prerequisites: r.decisions.filter((d) => d.kind === "censal" || d.kind === "tecnica").map((d) => d.text),
+    activatable: r.status !== "blocked",
+  };
+}
 
-export const TREATMENTS: Record<FiscalCase, FiscalTreatment> = {
-  "business:es_mainland": T({ case: "business:es_mainland", code: "taxed_es", expectedRateBp: 2100, legalBasis: ["Ley 37/1992, art. 69.Uno.1.º (destinatario empresario establecido en el territorio de aplicación)", "Ley 37/1992, art. 90.Uno (tipo general del 21 %)"], mention: null, requiresAdvisor: false, advisor: [], prerequisites: [], activatable: true }),
-  "consumer:es_mainland": T({ case: "consumer:es_mainland", code: "taxed_es", expectedRateBp: 2100, legalBasis: ["Ley 37/1992, art. 69.Uno.2.º (sede del prestador)", "Ley 37/1992, art. 90.Uno"], mention: null, advisor: ["consumidor_peninsula"], prerequisites: [], activatable: true }),
-  "business:es_canarias": ccm("business:es_canarias"),
-  "business:es_ceuta": ccm("business:es_ceuta"),
-  "business:es_melilla": ccm("business:es_melilla"),
-  "consumer:es_canarias": ccmConsumer("consumer:es_canarias"),
-  "consumer:es_ceuta": ccmConsumer("consumer:es_ceuta"),
-  "consumer:es_melilla": ccmConsumer("consumer:es_melilla"),
-  "business:eu_vies": T({ case: "business:eu_vies", code: "reverse_charge", expectedRateBp: 0, legalBasis: ["Ley 37/1992, art. 69.Uno.1.º", "Directiva 2006/112/CE, arts. 44 y 196", "Real Decreto 1619/2012, art. 6.1 (mención «Inversión del sujeto pasivo»)"], mention: "Inversión del sujeto pasivo. Operación no sujeta al IVA español (art. 69.Uno.1.º de la Ley 37/1992; arts. 44 y 196 de la Directiva 2006/112/CE).", advisor: ["ue_empresa_isp"], prerequisites: ["Alta en el Registro de Operadores Intracomunitarios (modelo 036)", "Declaración recapitulativa (modelo 349)"], activatable: true }),
-  "business:eu_unverified": T({ case: "business:eu_unverified", code: "undetermined", expectedRateBp: null, legalBasis: ["Reglamento de Ejecución (UE) 282/2011, art. 18"], mention: null, advisor: ["ue_empresa_sin_vies"], prerequisites: [], activatable: false }),
-  "consumer:eu": T({ case: "consumer:eu", code: "oss_destination", expectedRateBp: null, legalBasis: ["Directiva 2006/112/CE, art. 58", "Ley 37/1992, art. 73 y régimen de la Unión (arts. 163 unvicies y siguientes)"], mention: null, advisor: ["ue_particular_oss"], prerequisites: ["Alta en el régimen de la Unión (OSS, modelo 035)", "Registro OSS en Stripe Tax"], activatable: true }),
-  "business:eu_special": T({ case: "business:eu_special", code: "undetermined", expectedRateBp: null, legalBasis: ["Directiva 2006/112/CE, art. 6"], mention: null, advisor: ["ue_territorio_especial"], prerequisites: [], activatable: false }),
-  "consumer:eu_special": T({ case: "consumer:eu_special", code: "undetermined", expectedRateBp: null, legalBasis: ["Directiva 2006/112/CE, art. 6"], mention: null, advisor: ["ue_territorio_especial"], prerequisites: [], activatable: false }),
-  "business:non_eu": T({ case: "business:non_eu", code: "not_subject", expectedRateBp: 0, legalBasis: ["Ley 37/1992, art. 69.Uno.1.º", "Ley 37/1992, art. 70.Dos (a descartar)"], mention: "Operación no sujeta al IVA: destinatario empresario o profesional establecido fuera de la Unión Europea (art. 69.Uno.1.º de la Ley 37/1992).", advisor: ["tercer_pais_empresa"], prerequisites: [], activatable: true }),
-  "consumer:non_eu": T({ case: "consumer:non_eu", code: "not_subject", expectedRateBp: 0, legalBasis: ["Ley 37/1992, art. 69.Dos"], mention: "Operación no sujeta al IVA: servicio prestado por vía electrónica a un destinatario establecido fuera de la Unión Europea (art. 69.Dos de la Ley 37/1992).", advisor: ["tercer_pais_particular"], prerequisites: ["Registro en el país del cliente si lo exige"], activatable: true }),
-};
+/** Tratamiento por caso, derivado de la matriz (para `consumer:eu`, la fila sin régimen declarado: bloqueada). */
+export const TREATMENTS: Record<FiscalCase, FiscalTreatment> = Object.fromEntries(FISCAL_CASES.map((c) => [c, treatmentOfRule(ruleFor(c))])) as Record<FiscalCase, FiscalTreatment>;
+
+/** Tratamiento del caso con la configuración (el régimen declarado de los particulares de la UE). */
+export const treatmentOf = (c: FiscalCase, cfg: Pick<FiscalCasesConfig, "euB2cRegime"> = NO_EXTRA_CASES): FiscalTreatment => treatmentOfRule(ruleFor(c, cfg.euB2cRegime));
 
 const TERRITORY_NAME: Partial<Record<Territory, string>> = { es_canarias: "Canarias", es_ceuta: "Ceuta", es_melilla: "Melilla" };
 
@@ -194,9 +194,15 @@ export interface FiscalCasesConfig {
   enabled: Set<FiscalCase>;
   /** Facturas simplificadas para particulares sin NIF (serie propia). */
   simplified: boolean;
+  /**
+   * Régimen de los particulares de otros Estados miembros (art. 73 Ley 37/1992), DECLARADO por Big Elephant
+   * (`CP_INVOICING_EU_B2C_REGIME`): sin superar el umbral ni optar (IVA español) o en destino por el régimen de la Unión.
+   * null = sin declarar: `consumer:eu` bloqueado. Nunca se infiere.
+   */
+  euB2cRegime: EuB2cRegime | null;
 }
 
-export const NO_EXTRA_CASES: FiscalCasesConfig = { enabled: new Set(), simplified: false };
+export const NO_EXTRA_CASES: FiscalCasesConfig = { enabled: new Set(), simplified: false, euB2cRegime: null };
 
 /**
  * `CP_INVOICING_FISCAL_CASES` (casos separados por comas) y `CP_INVOICING_SIMPLIFIED=1`. Sin ellas, nada activado. Un
@@ -204,16 +210,19 @@ export const NO_EXTRA_CASES: FiscalCasesConfig = { enabled: new Set(), simplifie
  */
 export function fiscalCasesFromEnv(env: NodeJS.ProcessEnv = process.env): FiscalCasesConfig {
   const enabled = new Set<FiscalCase>();
+  const r = (env.CP_INVOICING_EU_B2C_REGIME ?? "").trim();
+  if (r && r !== "below_threshold" && r !== "destination_oss") throw new InvoicingConfigError("CP_INVOICING_EU_B2C_REGIME: solo «below_threshold» o «destination_oss»");
+  const euB2cRegime: EuB2cRegime | null = r ? (r as EuB2cRegime) : null;
   for (const raw of (env.CP_INVOICING_FISCAL_CASES ?? "").split(",")) {
     const c = raw.trim().toLowerCase();
     if (!c || c === BASE_CASE) continue;
-    if (!(FISCAL_CASES as readonly string[]).includes(c)) throw new InvoicingConfigError(`CP_INVOICING_FISCAL_CASES: caso desconocido «${c}» (admitidos: ${FISCAL_CASES.filter((x) => TREATMENTS[x].activatable && x !== BASE_CASE).join(", ")})`);
-    if (!TREATMENTS[c as FiscalCase].activatable) throw new InvoicingConfigError(`CP_INVOICING_FISCAL_CASES: el caso «${c}» no tiene un tratamiento determinado y no se puede activar`);
+    if (!(FISCAL_CASES as readonly string[]).includes(c)) throw new InvoicingConfigError(`CP_INVOICING_FISCAL_CASES: caso desconocido «${c}» (admitidos: ${FISCAL_CASES.filter((x) => isActivatable(x, euB2cRegime) && x !== BASE_CASE).join(", ")})`);
+    if (!isActivatable(c as FiscalCase, euB2cRegime)) throw new InvoicingConfigError(`CP_INVOICING_FISCAL_CASES: el caso «${c}» está bloqueado en la matriz fiscal (${ruleFor(c as FiscalCase, euB2cRegime).blockedReason}) y no se puede activar`);
     enabled.add(c as FiscalCase);
   }
   const s = (env.CP_INVOICING_SIMPLIFIED ?? "").trim();
   if (s && s !== "0" && s !== "1") throw new InvoicingConfigError("CP_INVOICING_SIMPLIFIED: solo «0» o «1»");
-  return { enabled, simplified: s === "1" };
+  return { enabled, simplified: s === "1", euB2cRegime };
 }
 
 export const isCaseEnabled = (c: FiscalCase, cfg: FiscalCasesConfig) => c === BASE_CASE || cfg.enabled.has(c);
@@ -230,7 +239,8 @@ export function simplifiedDecision(i: { fiscalCase: FiscalCase; hasTaxId: boolea
   if (i.hasTaxId) return { invoiceType: "complete", problem: null };
   if (!i.fiscalCase.startsWith("consumer:")) return { invoiceType: "complete", problem: "falta el NIF" };
   if (!i.cfg.simplified) return { invoiceType: "complete", problem: "falta el NIF (las facturas simplificadas para particulares no están activadas: CP_INVOICING_SIMPLIFIED)" };
-  if (i.fiscalCase !== "consumer:es_mainland") return { invoiceType: "complete", problem: "falta el NIF: la factura simplificada solo está preparada para particulares de la península y Baleares con IVA español" };
+  // Solo con IVA español (art. 4 RD 1619/2012): particulares de la península y Baleares o de la UE bajo el umbral del art. 73
+  if (!ruleFor(i.fiscalCase, i.cfg.euB2cRegime).simplifiedAllowed) return { invoiceType: "complete", problem: "falta el NIF: la factura simplificada solo está preparada para particulares de la península y Baleares (o de otros Estados miembros con IVA español bajo el umbral del art. 73)" };
   if (i.totalCents > SIMPLIFIED_LIMIT_CENTS) {
     const eur = (c: number) => `${(c / 100).toFixed(2).replace(".", ",")} €`;
     return { invoiceType: "complete", problem: `el total (${eur(i.totalCents)}) supera el límite de la factura simplificada (400 € IVA incluido, art. 4.1.a del RD 1619/2012): hacen falta el NIF y el domicilio del cliente para la factura completa` };

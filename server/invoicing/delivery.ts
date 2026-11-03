@@ -24,6 +24,7 @@ import { fmt, renderEmail } from "../mail/design";
 import { platformBrand } from "../mail/templates";
 import type { MailAttachment, MailCategory, MailContent } from "../mail/types";
 import { invoiceDates } from "./document";
+import { creditProblem } from "./fiscalMatrix";
 import { ymd } from "./rules";
 import type { InvoicingService } from "./service";
 import type { InvoicingStore } from "./store";
@@ -45,7 +46,7 @@ const pct = (bp: number) => `${(bp / 100).toLocaleString("es-ES")} %`;
 const partyLines = (p: FiscalParty | null) => (p ? [p.legalName, p.taxId ? `NIF ${p.taxId}` : "", p.address, [p.postalCode, p.city].filter(Boolean).join(" ") + (p.city || p.postalCode ? ` (${p.country})` : "")].filter((x) => x.trim()) : ["Datos fiscales pendientes de verificar"]);
 
 /** Título del documento: proforma, rectificativa, simplificada o factura. */
-const titleOf = (inv: Invoice, proforma: boolean) => (proforma ? "Factura proforma" : inv.kind === "rectification" ? "Factura rectificativa" : inv.fiscal?.invoiceType === "simplified" ? "Factura simplificada" : "Factura");
+const titleOf = (inv: Invoice, proforma: boolean) => (proforma ? "Factura proforma" : inv.kind === "rectification" ? (inv.fiscal?.invoiceType === "simplified" ? "Factura rectificativa simplificada" : "Factura rectificativa") : inv.fiscal?.invoiceType === "simplified" ? "Factura simplificada" : "Factura");
 
 /** Fecha (AAAA-MM-DD) desde la que una factura sin cobrar se expide a crédito. */
 export function creditIssueDate(operationDate: string): string {
@@ -266,8 +267,10 @@ export class InvoicingAutomation {
           rep.blocked.push({ id: inv.id, reason: `no se pudo contrastar el cobro ${id} con Stripe` });
           continue;
         }
-        if (s.status !== "paid" || s.amountPaid !== inv.totalCents || s.currency.toUpperCase() !== inv.currency.toUpperCase()) {
-          rep.blocked.push({ id: inv.id, reason: `el cobro de Stripe ${id} no casa con la factura (${s.status}, ${s.amountPaid} ${s.currency.toUpperCase()} frente a ${inv.totalCents} ${inv.currency})` });
+        // Lo cobrado es el total menos el saldo a favor aplicado, solo cuando una persona decidió su origen fiscal
+        const credit = inv.fiscal?.credit && !creditProblem(inv.fiscal.balanceAppliedCents, inv.fiscal.credit) ? inv.fiscal.balanceAppliedCents : 0;
+        if (s.status !== "paid" || s.amountPaid !== inv.totalCents - credit || s.currency.toUpperCase() !== inv.currency.toUpperCase()) {
+          rep.blocked.push({ id: inv.id, reason: `el cobro de Stripe ${id} no casa con la factura (${s.status}, ${s.amountPaid} ${s.currency.toUpperCase()} frente a ${inv.totalCents - credit} ${inv.currency}${credit ? ` = ${inv.totalCents} − ${credit} de saldo a favor` : ""})` });
           continue;
         }
       }

@@ -33,7 +33,7 @@ export function invoiceDates(inv: Invoice): Array<[string, string]> {
 
 export function invoiceHtml(inv: Invoice, issuerDraft: FiscalParty): string {
   const draft = inv.status === "draft";
-  const title = inv.kind === "rectification" ? "Factura rectificativa" : inv.fiscal?.invoiceType === "simplified" ? "Factura simplificada" : "Factura";
+  const title = inv.kind === "rectification" ? (inv.fiscal?.invoiceType === "simplified" ? "Factura rectificativa simplificada" : "Factura rectificativa") : inv.fiscal?.invoiceType === "simplified" ? "Factura simplificada" : "Factura";
   const discounted = inv.lines.some((l) => l.discountCents);
   const rows = inv.lines
     .map((l) => `<tr><td>${esc(l.concept)}</td><td class="n">${l.quantity}</td><td class="n">${money(l.unitCents, inv.currency)}</td>${discounted ? `<td class="n">${money(l.grossCents ?? l.baseCents, inv.currency)}</td><td class="n">${l.discountCents ? `−${money(l.discountCents, inv.currency)}` : money(0, inv.currency)}</td>` : ""}<td class="n">${money(l.baseCents, inv.currency)}</td><td class="n">${pct(l.taxRateBp)}</td><td class="n">${money(l.taxCents, inv.currency)}</td></tr>`)
