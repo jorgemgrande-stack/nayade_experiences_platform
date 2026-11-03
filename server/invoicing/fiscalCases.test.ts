@@ -4,10 +4,10 @@
  * cuando procede (≤ 400 € IVA incluido, particular sin NIF de la península y Baleares); contraste del IVA por caso.
  */
 import { describe, expect, it } from "vitest";
-import { ADVISOR_QUESTIONS, BASE_CASE, FISCAL_CASES, fiscalCaseOf, fiscalCasesFromEnv, InvoicingConfigError, isCaseEnabled, legalMentionOf, NO_EXTRA_CASES, rateProblems, simplifiedDecision, TREATMENTS, type FiscalCasesConfig } from "./fiscalCases";
+import { ADVISOR_QUESTIONS, BASE_CASE, FISCAL_CASES, fiscalCaseOf, fiscalCasesFromEnv, InvoicingConfigError, isCaseEnabled, legalMentionOf, NO_EXTRA_CASES, rateProblems, simplifiedDecision, treatmentOf, TREATMENTS, type FiscalCasesConfig } from "./fiscalCases";
 import { invoiceHash } from "./rules";
 
-const ON: FiscalCasesConfig = { enabled: new Set(["consumer:es_mainland"]), simplified: true };
+const ON: FiscalCasesConfig = { enabled: new Set(["consumer:es_mainland"]), simplified: true, euB2cRegime: null };
 
 describe("clasificación del comprador", () => {
   it("tipo × territorio × VIES", () => {
@@ -32,7 +32,7 @@ describe("tratamientos: fundamentados y marcados para la gestoría", () => {
       const t = TREATMENTS[c];
       expect(t.case).toBe(c);
       expect(t.legalBasis.length).toBeGreaterThan(0);
-      for (const b of t.legalBasis) expect(b).toMatch(/art(s)?\./);
+      for (const b of t.legalBasis) expect(b).toMatch(/art(s)?\.|^AEAT:|^Reglamento de Ejecución \(UE\) 2017/);
       if (c === BASE_CASE) {
         expect(t).toMatchObject({ code: "taxed_es", expectedRateBp: 2100, requiresAdvisor: false, mention: null });
         continue;
@@ -50,11 +50,13 @@ describe("tratamientos: fundamentados y marcados para la gestoría", () => {
   });
 
   it("menciones legales por caso como plantillas, con el territorio", () => {
-    expect(legalMentionOf("business:es_canarias", "es_canarias")).toBe("Operación no sujeta al IVA: destinatario empresario o profesional establecido en Canarias, fuera del territorio de aplicación del impuesto (arts. 3 y 69.Uno.1.º de la Ley 37/1992).");
-    expect(legalMentionOf("business:es_melilla", "es_melilla")).toContain("establecido en Melilla");
+    expect(legalMentionOf("business:es_canarias", "es_canarias")).toBe("Operación no sujeta al IVA: destinatario empresario o profesional establecido en Canarias, fuera del territorio de aplicación del impuesto (arts. 3 y 69.Uno.1.º de la Ley 37/1992). IGIC: inversión del sujeto pasivo (art. 19.1.2.º.a) de la Ley 20/1991).");
+    // Ceuta y Melilla: bloqueados (IPSI sin cotejar), sin mención
+    expect(legalMentionOf("business:es_melilla", "es_melilla")).toBeNull();
     expect(legalMentionOf("business:eu_vies")).toMatch(/^Inversión del sujeto pasivo\./);
     expect(legalMentionOf("business:non_eu")).toContain("art. 69.Uno.1.º");
-    expect(legalMentionOf("consumer:non_eu")).toContain("art. 69.Dos");
+    // Particular de fuera de la UE: bloqueado (el art. 69.Dos vigente no incluye los servicios electrónicos), sin mención
+    expect(legalMentionOf("consumer:non_eu")).toBeNull();
     expect(legalMentionOf("business:es_mainland")).toBeNull();
     expect(legalMentionOf("consumer:eu")).toBeNull();
   });
@@ -75,7 +77,13 @@ describe("activación por configuración (desactivado por defecto)", () => {
 
   it("un caso desconocido o sin tratamiento determinado impide arrancar", () => {
     expect(() => fiscalCasesFromEnv({ CP_INVOICING_FISCAL_CASES: "business:marte" })).toThrow(InvoicingConfigError);
-    expect(() => fiscalCasesFromEnv({ CP_INVOICING_FISCAL_CASES: "consumer:es_canarias" })).toThrow(/no tiene un tratamiento determinado/);
+    expect(() => fiscalCasesFromEnv({ CP_INVOICING_FISCAL_CASES: "consumer:es_canarias" })).toThrow(/está bloqueado en la matriz fiscal/);
+    expect(() => fiscalCasesFromEnv({ CP_INVOICING_FISCAL_CASES: "business:es_ceuta" })).toThrow(/IPSI/);
+    expect(() => fiscalCasesFromEnv({ CP_INVOICING_FISCAL_CASES: "consumer:non_eu" })).toThrow(InvoicingConfigError);
+    // Particulares de la UE: solo con el régimen del art. 73 DECLARADO
+    expect(() => fiscalCasesFromEnv({ CP_INVOICING_FISCAL_CASES: "consumer:eu" })).toThrow(/CP_INVOICING_EU_B2C_REGIME/);
+    expect(() => fiscalCasesFromEnv({ CP_INVOICING_EU_B2C_REGIME: "inferido" })).toThrow(InvoicingConfigError);
+    expect(fiscalCasesFromEnv({ CP_INVOICING_FISCAL_CASES: "consumer:eu", CP_INVOICING_EU_B2C_REGIME: "destination_oss" })).toMatchObject({ euB2cRegime: "destination_oss" });
     expect(() => fiscalCasesFromEnv({ CP_INVOICING_FISCAL_CASES: "business:eu_unverified" })).toThrow(InvoicingConfigError);
     expect(() => fiscalCasesFromEnv({ CP_INVOICING_SIMPLIFIED: "si" })).toThrow(InvoicingConfigError);
   });
@@ -100,8 +108,13 @@ describe("IVA cobrado frente al tratamiento del caso", () => {
     expect(rateProblems([{ taxRateBp: 2100, taxCents: 1029 }], TREATMENTS["consumer:es_mainland"])).toEqual([]);
     expect(rateProblems([{ taxRateBp: 0, taxCents: 0 }], TREATMENTS["business:es_canarias"])).toEqual([]);
     expect(rateProblems([{ taxRateBp: 2100, taxCents: 1029 }], TREATMENTS["business:es_canarias"])[0]).toContain("no es el 0 %");
-    expect(rateProblems([{ taxRateBp: 2000, taxCents: 980 }], TREATMENTS["consumer:eu"])).toEqual([]);
-    expect(rateProblems([{ taxRateBp: 0, taxCents: 0 }], TREATMENTS["consumer:eu"])[0]).toContain("no cobró impuesto");
+    const oss = treatmentOf("consumer:eu", { euB2cRegime: "destination_oss" });
+    expect(rateProblems([{ taxRateBp: 2000, taxCents: 980 }], oss)).toEqual([]);
+    expect(rateProblems([{ taxRateBp: 0, taxCents: 0 }], oss)[0]).toContain("no cobró impuesto");
+    // Bajo el umbral: IVA español
+    expect(rateProblems([{ taxRateBp: 2000, taxCents: 980 }], treatmentOf("consumer:eu", { euB2cRegime: "below_threshold" }))[0]).toContain("no es el 21 %");
+    // Sin régimen declarado: sin determinar
+    expect(rateProblems([{ taxRateBp: 2100, taxCents: 1029 }], TREATMENTS["consumer:eu"])[0]).toContain("no tiene un tratamiento determinado");
     expect(rateProblems([{ taxRateBp: 0, taxCents: 0 }], TREATMENTS["consumer:es_ceuta"])[0]).toContain("no tiene un tratamiento determinado");
   });
 });

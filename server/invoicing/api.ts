@@ -135,6 +135,14 @@ export function createInvoicingRouter(svc: InvoicingService, issuer: FiscalParty
     opsLog("info", "Invoicing", "rectification_draft", { invoiceId: inv.id, originalInvoiceId: inv.originalInvoiceId });
     res.status(201).json({ invoice: inv });
   }));
+  // Origen fiscal del saldo a favor aplicado por Stripe en una venta sin expedir: medio de pago o ajuste del precio de una
+  // factura anterior (prepara su rectificativa). Sin decidirlo, la venta no se expide
+  r.post("/invoices/:id/credit-origin", requireScope("billing:write"), wrap(async (req, res) => {
+    const b = z.object({ origin: z.enum(["payment_means", "price_adjustment"]), originalInvoiceId: id.optional(), reason: z.string().max(300) }).parse(req.body ?? {});
+    const inv = await svc.resolveCredit(id.parse(req.params.id), b, actorOf(req));
+    opsLog("info", "Invoicing", "credit_origin", { invoiceId: inv.id, origin: b.origin, rectificationInvoiceId: inv.fiscal?.credit?.rectificationInvoiceId ?? null });
+    res.json({ invoice: inv });
+  }));
   // Libro registro de facturas expedidas (CSV) por fecha de expedición
   r.get("/register.csv", requireScope("billing:read"), wrap(async (req, res) => {
     const q = z.object({ from: z.string().regex(/^\d{4}-\d{2}-\d{2}$/), to: z.string().regex(/^\d{4}-\d{2}-\d{2}$/) }).parse(req.query);
