@@ -42,6 +42,8 @@ export const TRPC_ROUTER_CAPABILITIES: Record<string, string> = {
   customRoles: "roles-custom",
   // Sedes: la principal la ve cualquier plan (admin-panel); añadir, filtrar y asignar exigen multi-site en cada procedimiento
   sites: "admin-panel",
+  // Business: inventario y existencias (los procedimientos lo comprueban además); el descuento al vender lo decide inventoryDb
+  inventory: "inventory-basic",
   products: "shop-catalog",
   packs: "shop-catalog",
   timeSlots: "shop-catalog",

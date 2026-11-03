@@ -47,6 +47,7 @@ import { currentTpvScope } from "../tpvCatalogScope";
 import { IDEMPOTENCY_KEY_RE, withSaleKeyLock, findSaleByIdempotencyKey, resolveExistingSale, isIdempotencyKeyConflict } from "../tpvSaleIdempotency";
 import { computeSessionPaymentTotals, receivedSaleCondition } from "../tpvSessionTotals";
 import { tpvReportsRouter } from "./tpvReports";
+import { applySaleStock, assertStockAvailable, type StockSaleLine } from "../inventoryDb";
 
 const _pool = legacyPool();
 const db = legacyDb();
@@ -942,6 +943,8 @@ export const tpvRouter = router({
             conceptText: z.string().max(500).optional(),
             legoPackLineIds: z.array(z.number()).optional(), // Para Lego Packs personalizados
             legoPackLinePeople: z.record(z.string(), z.number()).optional(), // Personas por línea (claves = lineId serializado como string en JSON)
+            // Variante elegida (inventario por variante, Business); sin ella se descuenta el producto entero
+            variantId: z.number().int().positive().optional(),
           })
         ).min(1),
         payments: z.array(
@@ -1043,6 +1046,11 @@ export const tpvRouter = router({
       const sellerUserId = (ctx as any).user?.id ?? null;
       const mainItemForDate = input.items[0]; // usado para serviceDate fallback
       const idempotencyKey = input.idempotencyKey ?? null;
+      // Inventario (Business): productos del catálogo de la venta; lo no inventariable se vende como siempre
+      const stockLines: StockSaleLine[] = input.items.flatMap((it, i) => (it.productType === "experience" && !it.isManual && it.productId > 0
+        ? [{ key: String(i + 1), productId: it.productId, variantId: it.variantId ?? null, quantity: it.quantity, name: it.productName }]
+        : []));
+      let stockWarnings: string[] = [];
 
       // -- 3. Numerar e insertar la venta con datos fiscales ----------------------
       // Se inserta 'pending' y pasa a 'paid' DENTRO de la transacción del núcleo (pasos 4–7). Si el núcleo falla, la
@@ -1052,6 +1060,8 @@ export const tpvRouter = router({
       const [saleSession] = await db.select({ status: cashSessions.status, siteId: cashSessions.siteId }).from(cashSessions).where(eq(cashSessions.id, input.sessionId));
       if (!saleSession) throw new TRPCError({ code: "NOT_FOUND", message: "Sesión de caja no encontrada" });
       if (saleSession.status !== "open") throw new TRPCError({ code: "CONFLICT", message: "La caja está cerrada. Ábrela de nuevo para cobrar." });
+      // Sin existencias con la política «bloquear»: se rechaza antes de numerar (sin hueco en la numeración)
+      await assertStockAvailable(stockLines, saleSession.siteId ?? null);
 
       const ticketNumber = await generateTicketNumber(String((ctx as any).user?.id ?? "system"));
       // Numeración y consultas se resuelven antes de la transacción: dentro solo hay escrituras
@@ -1098,7 +1108,7 @@ export const tpvRouter = router({
         }
         throw e;
       }
-      return { saleId: (saleResult as any).insertId as number, ticketNumber, preReservationNumber };
+      return { saleId: (saleResult as any).insertId as number, ticketNumber, preReservationNumber, saleSiteId: saleSession.siteId ?? null };
       };
 
       let claimed: Awaited<ReturnType<typeof claimSale>>;
@@ -1111,13 +1121,13 @@ export const tpvRouter = router({
         });
         if (outcome.replayId != null) {
           const prev = await loadSaleResult(outcome.replayId);
-          return { ...prev, reservationId: prev.sale?.reservationId ?? null, reavExpedientId: undefined as number | undefined, reavExpedientNumber: undefined as string | undefined, replayed: true };
+          return { ...prev, reservationId: prev.sale?.reservationId ?? null, reavExpedientId: undefined as number | undefined, reavExpedientNumber: undefined as string | undefined, replayed: true, stockWarnings: [] as string[] };
         }
         claimed = outcome.claimed!;
       } else {
         claimed = await claimSale();
       }
-      const { saleId, ticketNumber, preReservationNumber } = claimed;
+      const { saleId, ticketNumber, preReservationNumber, saleSiteId } = claimed;
 
       // -- 4–7. NÚCLEO ATÓMICO ---------------------------------------------------
       // Líneas, cobros, reserva y asiento contable se graban en UNA transacción junto con el estado 'paid': o queda
@@ -1283,6 +1293,10 @@ export const tpvRouter = router({
           operationStatus: "confirmada",
         } as any);
       }
+
+      // -- 7b. Inventario (Business): descuento atómico en la sede de la caja, una vez por línea de esta venta. Si otra
+      // venta se ha llevado las últimas unidades (política «bloquear»), se deshace el cobro entero.
+      stockWarnings = (await applySaleStock({ sourceType: "tpv_sale", sourceId: String(saleId), sourceRef: ticketNumber, site: saleSiteId, actor: { id: sellerUserId, name: sellerName }, onShortage: "reject" }, stockLines, tx)).shortfalls;
 
       // Venta confirmada: el estado 'paid' se escribe dentro de la misma transacción
       await tx.update(tpvSales)
@@ -1675,7 +1689,7 @@ export const tpvRouter = router({
       }
 
       // -- 10. Devolver venta completa -----------------------------------------------------------
-      return { ...(await loadSaleResult(saleId)), reservationId, reavExpedientId, reavExpedientNumber, replayed: false };
+      return { ...(await loadSaleResult(saleId)), reservationId, reavExpedientId, reavExpedientNumber, replayed: false, stockWarnings };
     }),
 
   getSale: tpvAccessProc
