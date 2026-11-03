@@ -72,7 +72,7 @@ export const CAPABILITIES: readonly CapabilityDef[] = [
   c("billing-recurring", "Facturación recurrente del negocio", "business", "billing", "partial"),
   c("roles-custom", "Roles personalizados", "business", "admin", "partial"),
   c("multi-site", "Varias sedes", "business", "business", "partial"),
-  c("inventory-basic", "Inventario y stock genérico", "business", "operations", "planned"),
+  c("inventory-basic", "Inventario y stock genérico", "business", "operations", "partial"),
   c("purchasing-basic", "Compras y proveedores básicos", "business", "operations", "partial"),
   c("reports-advanced", "Informes avanzados", "business", "business", "partial"),
   c("copilot-basic", "Elephant Copilot básico", "business", "ai", "planned"),

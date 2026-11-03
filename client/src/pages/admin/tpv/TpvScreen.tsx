@@ -319,6 +319,10 @@ export default function TpvScreen() {
       } else {
         toast.success(`Venta ${data.sale.ticketNumber} completada`);
       }
+      // Inventario (Business): artículos vendidos con la política «permitir» sin existencias suficientes
+      if (data.stockWarnings?.length) {
+        toast.warning(`Vendido sin existencias suficientes: ${data.stockWarnings.join(", ")}. Revisa el inventario.`, { duration: 8000 });
+      }
     },
     onError: (err) => toast.error(err.message),
   });
@@ -506,6 +510,7 @@ export default function TpvScreen() {
       items: cart.map((item) => ({
         productType: item.product.productType,
         productId: item.product.id,
+        variantId: item.variantId || undefined,
         productName: item.variantName
           ? `${item.product.title} — ${item.variantName}`
           : item.product.title,

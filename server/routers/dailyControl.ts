@@ -22,6 +22,7 @@ import {
 } from "../../drizzle/schema";
 import { madridStartOfDayUtc, madridEndOfDayUtc } from "../utils/timezone";
 import { legacyDb, legacyPool } from "../_core/legacyDb";
+import { restockReservations, restockTpvSale } from "../inventoryDb";
 
 const pool = legacyPool();
 const db = legacyDb();
@@ -830,7 +831,9 @@ export const dailyControlRouter = router({
       type: z.enum(["tpv", "reservation"]),
       id: z.number().int().positive(),
     }))
-    .mutation(async ({ input }) => {
+    .mutation(async ({ input, ctx }) => {
+      // Inventario (Business): las unidades vendidas se reponen una sola vez (sin inventario, no hace nada)
+      const stockActor = { id: ctx.user?.id ?? null, name: ctx.user?.name ?? null };
       if (input.type === "tpv") {
         const [sale] = await db.select({ reservationId: tpvSales.reservationId })
           .from(tpvSales)
@@ -854,6 +857,7 @@ export const dailyControlRouter = router({
             .set({ status: "cancelled", statusReservation: "ANULADA" })
             .where(eq(reservations.id, sale.reservationId));
         }
+        await restockTpvSale(input.id, stockActor);
       } else {
         const [res] = await db.select({ id: reservations.id })
           .from(reservations)
@@ -876,6 +880,7 @@ export const dailyControlRouter = router({
         await db.update(transactions)
           .set({ operationStatus: "anulada" })
           .where(eq(transactions.reservationId, input.id));
+        await restockReservations([input.id], stockActor);
       }
       return { ok: true };
     }),

@@ -32,6 +32,7 @@ import { syncLeadUrlsToGHL, createGHLContact, updateGHLContact, triggerGHLWorkfl
 import { legacyDb, legacyPool } from "./_core/legacyDb";
 import { integrationEnv } from "./_core/tenantConfig";
 import { applyPaymentToInventoryHolds } from "./inventoryHoldsDb";
+import { applyOnlineOrderStock } from "./inventoryDb";
 import { isMultiTenant } from "./_core/tenant";
 import { finalizePaidShopOrder, isGenericShopOrder, sendShopOrderConfirmation, sendShopOrderFailed } from "./shopOrdersDb";
 import { issuerSnapshotForNewInvoice } from "./issuerSnapshot";
@@ -187,6 +188,16 @@ redsysRouter.post("/api/redsys/notification", express.urlencoded({ extended: tru
       await applyPaymentToInventoryHolds(result.merchantOrder, result.isAuthorized);
     } catch (invErr: any) {
       console.error("[Redsys IPN] Error actualizando la retención de plazas:", invErr.message);
+    }
+
+    // Inventario (Business): el pedido pagado descuenta sus artículos inventariables (idempotente; sin inventario
+    // contratado o sin artículos inventariables no hace nada)
+    if (result.isAuthorized) {
+      try {
+        await applyOnlineOrderStock(result.merchantOrder);
+      } catch (stockErr: any) {
+        console.error("[Redsys IPN] Error descontando el inventario del pedido:", stockErr.message);
+      }
     }
 
     // Para carritos multi-artículo: distribuir amountPaid proporcionalmente por reserva.

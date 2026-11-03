@@ -225,6 +225,7 @@ import { crmFunnelRouter } from "./routers/crmFunnel";
 import { pricingRulesRouter } from "./routers/pricingRules";
 import { customRolesRouter } from "./routers/customRoles";
 import { sitesRouter } from "./routers/sites";
+import { inventoryRouter } from "./routers/inventory";
 import { ghlInboxRouter } from "./routers/ghlInbox";
 import { vapiCallsRouter } from "./routers/vapiCalls";
 import { emailAccountsRouter } from "./routers/emailAccounts";
@@ -2072,6 +2073,10 @@ export const appRouter = router({
         const totalEuros = baseTotal + extrasTotal;
         const amountCents = Math.round(totalEuros * 100); // Redsys usa céntimos
 
+        // 2d. Inventario (Business): sin existencias con la política «bloquear», no se inicia el pago
+        const { assertStockAvailable, markOrderStockLine, orderLineQuantity } = await import("./inventoryDb");
+        await assertStockAvailable([{ key: "1", productId: input.productId, variantId: input.variantId ?? null, quantity: orderLineQuantity({ pricing_type: pricingType, units_booked: unitsBooked, people: input.people }), name: product.title }], null);
+
         // 3. Generar merchantOrder único
         const merchantOrder = generateMerchantOrder();
 
@@ -2079,7 +2084,7 @@ export const appRouter = router({
         const extrasJson = JSON.stringify(input.extras);
         const clientIpAddress = ((ctx.req.headers["x-forwarded-for"] as string | undefined)?.split(",")[0]?.trim()) ?? ctx.req.socket?.remoteAddress ?? undefined;
         const clientUserAgent = (ctx.req.headers["user-agent"] as string | undefined) ?? undefined;
-        await createReservation({
+        const { id: createdReservationId } = await createReservation({
           productId: input.productId,
           productName: product.title,
           bookingDate: input.bookingDate,
@@ -2104,6 +2109,8 @@ export const appRouter = router({
           clientIpAddress,
           clientUserAgent,
         });
+        // Artículo inventariable (Business): la línea se descuenta al confirmarse el pago
+        await markOrderStockLine(createdReservationId, input.productId, input.variantId);
 
         // 5. Construir el formulario Redsys
         const pricingDesc = pricingType === "per_unit" && unitsBooked
@@ -2229,6 +2236,9 @@ export const appRouter = router({
           pricingType?: "per_person" | "per_unit";
           unitCapacity?: number;
           unitsBooked?: number;
+          stockVariantId?: number;
+          /** Lego Pack: no es un producto del catálogo, nunca descuenta inventario. */
+          stockExcluded?: boolean;
           legoPackSnapshot?: {
             legoPackId: number;
             legoPackTitle: string;
@@ -2263,6 +2273,7 @@ export const appRouter = router({
               extrasJson: JSON.stringify(item.extras),
               amountTotal: itemAmountCents,
               pricingType: "per_person",
+              stockExcluded: true,
               legoPackSnapshot: item.legoPackLineIds && item.legoPackLineIds.length > 0 ? {
                 legoPackId: item.productId,
                 legoPackTitle: packRow.title,
@@ -2322,6 +2333,7 @@ export const appRouter = router({
             pricingType: itemPricingType,
             unitCapacity: itemUnitCap ?? undefined,
             unitsBooked: itemUnits || undefined,
+            stockVariantId: item.variantId,
           });
           productNames.push(lineName);
         }
@@ -2347,13 +2359,16 @@ export const appRouter = router({
             });
           }
         }
+        // 1c. Inventario (Business): sin existencias con la política «bloquear», no se inicia el pago
+        const cartStock = await import("./inventoryDb");
+        await cartStock.assertStockAvailable(itemsWithPrices.filter((it) => !it.stockExcluded).map((it, i) => ({ key: String(i + 1), productId: it.productId, variantId: it.stockVariantId ?? null, quantity: cartStock.orderLineQuantity({ pricing_type: it.pricingType, units_booked: it.unitsBooked, people: it.people }), name: it.productName })), null);
         // 2. Generar un merchantOrder único para todo el carrito
         const merchantOrder = generateMerchantOrder();
         // 3. Crear una reserva por cada artículo, todas con el mismo merchantOrder
         const cartClientIp = ((ctx.req.headers["x-forwarded-for"] as string | undefined)?.split(",")[0]?.trim()) ?? ctx.req.socket?.remoteAddress ?? undefined;
         const cartClientUa = (ctx.req.headers["user-agent"] as string | undefined) ?? undefined;
         const dbForSnapshots = await getDb();
-        for (const { legoPackSnapshot, ...item } of itemsWithPrices) {
+        for (const { legoPackSnapshot, stockVariantId, stockExcluded, ...item } of itemsWithPrices) {
           const { id: reservationId } = await createReservation({
             ...item,
             customerName: input.customerName,
@@ -2370,6 +2385,7 @@ export const appRouter = router({
             clientIpAddress: cartClientIp,
             clientUserAgent: cartClientUa,
           });
+          if (!legoPackSnapshot && !stockExcluded) await cartStock.markOrderStockLine(reservationId, item.productId, stockVariantId);
           // Guardar snapshot de líneas seleccionadas de Lego Pack: es lo que consume
           // el módulo de Operaciones (`buildPackExpansions`) para mostrar solo lo
           // realmente elegido, en vez de expandir el catálogo completo del pack.
@@ -2600,6 +2616,7 @@ export const appRouter = router({
   pricingRules: pricingRulesRouter,
   customRoles: customRolesRouter,
   sites: sitesRouter,
+  inventory: inventoryRouter,
   ghlInbox: ghlInboxRouter,
   vapiCalls: vapiCallsRouter,
   emailAccounts: emailAccountsRouter,
