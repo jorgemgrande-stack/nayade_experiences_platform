@@ -12,6 +12,8 @@ import PublicLayout from "@/components/PublicLayout";
 import { PageBlocksView, StudioEditContext, type StudioEdit } from "@/components/site/PageBlocksView";
 import { DRAG_MIME, isToCanvas, parseDragPayload, type FromCanvas, type ToCanvas } from "@/components/admin/studio/protocol";
 import { renderTokens } from "@/components/admin/studio/tokens";
+import { walk } from "@shared/studio/tree";
+import type { PageBlock } from "@shared/pageBlocks";
 
 const EDITABLE_CSS = `
 .studio-editable{outline:none;cursor:text;border-radius:4px;box-shadow:0 0 0 1px rgba(91,91,246,.35);transition:box-shadow .12s}
@@ -20,6 +22,13 @@ const EDITABLE_CSS = `
 .studio-editable:empty::before{content:attr(data-placeholder);opacity:.45;pointer-events:none}
 html{scroll-behavior:smooth}
 `;
+
+/** Todos los bloques por su id, también los de dentro de las columnas. */
+function rawMap(blocks: PageBlock[]): Map<string, PageBlock> {
+  const m = new Map<string, PageBlock>();
+  walk(blocks, (f) => m.set(f.block.id, f.block));
+  return m;
+}
 
 function post(msg: FromCanvas) {
   if (window.parent && window.parent !== window) window.parent.postMessage({ ...msg, studio: 1 }, window.location.origin);
@@ -96,15 +105,15 @@ export default function StudioCanvas() {
       selectedId: state.selectedId,
       device: state.device,
       readOnly: state.readOnly,
-      raw: new Map(state.blocks.map((b) => [b.id, b])),
+      raw: rawMap(state.blocks),
       onSelect: select,
       onText: (id, key, value) => post({ kind: "text", id, key, value }),
       onAction: (id, action) => post({ kind: "action", id, action }),
-      onDrop: (payload, index) => {
+      onDrop: (payload, index, parent, col) => {
         const p = parseDragPayload(payload);
         if (!p) return;
-        if (p.what === "block") post({ kind: "move", id: p.value, index });
-        else post({ kind: "drop", payload, index });
+        if (p.what === "block") post({ kind: "move", id: p.value, index, parent, col });
+        else post({ kind: "drop", payload, index, parent, col });
       },
       dragTypes: (types) => types.includes(DRAG_MIME) || types.includes("text/plain"),
       readDrop: (dt) => {

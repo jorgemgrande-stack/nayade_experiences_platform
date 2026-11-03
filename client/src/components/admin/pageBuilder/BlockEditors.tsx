@@ -101,5 +101,9 @@ export function blockSummary(b: PageBlock): string {
       return b.data.title || b.data.items.map((i) => i.value + i.suffix).join(" · ");
     case "logos":
       return b.data.title || `${b.data.logos.length} logos`;
+    case "section": {
+      const n = b.data.columns.reduce((acc, c) => acc + c.blocks.length, 0);
+      return `${b.data.columns.length} columnas · ${n === 1 ? "1 módulo" : `${n} módulos`}`;
+    }
   }
 }

@@ -33,6 +33,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { cn } from "@/lib/utils";
 import { PAGE_LIMITS, blockLabel, createBlock, duplicateBlock, type BlockType, type Device, type PageBlock } from "@shared/pageBlocks";
 import { SECTION_PRESETS, availableModules, moduleDef } from "@shared/studio/modules";
+import { countBlocks, createSection, findBlock, insertBlocks, moveBlock, nestable, placeProblem, removeBlock, type Place } from "@shared/studio/tree";
 import { SITE_TOKEN_LABELS } from "@shared/siteTokenLabels";
 import type { LinkTarget } from "@/components/admin/pageBuilder/BlockEditors";
 import { BlockInspector } from "@/components/admin/studio/Inspector";
@@ -126,9 +127,11 @@ function Studio({ routeSlug }: { routeSlug: string | null }) {
   }, [routeSlug, homeSlug, navigate]);
 
   const blocks = doc.blocks;
-  const selected = blocks.find((b) => b.id === selectedId) ?? null;
+  const found = selectedId ? findBlock(blocks, selectedId) : null;
+  const selected = found?.block ?? null;
+  const parentSection = found?.parent ? findBlock(blocks, found.parent) : null;
   useEffect(() => {
-    if (selectedId && !blocks.some((b) => b.id === selectedId)) setSelectedId(null);
+    if (selectedId && !findBlock(blocks, selectedId)) setSelectedId(null);
   }, [blocks, selectedId]);
 
   const targets: LinkTarget[] = useMemo(() => {
@@ -147,52 +150,89 @@ function Studio({ routeSlug }: { routeSlug: string | null }) {
     }
   }, []);
 
-  const insert = (payload: string, at?: number) => {
+  const tooMany = (adding: number) => {
+    if (countBlocks(blocks) + adding <= PAGE_LIMITS.blocks) return false;
+    toast.error(`Una página admite hasta ${PAGE_LIMITS.blocks} bloques (también cuentan los de dentro de las columnas).`);
+    return true;
+  };
+
+  /** Posición en la página del bloque de primer nivel que contiene a `id` (él mismo si está en la página). */
+  const topIndex = (id: string): number => {
+    let f = findBlock(blocks, id);
+    while (f?.parent) f = findBlock(blocks, f.parent);
+    return f ? f.index : blocks.length - 1;
+  };
+
+  /**
+   * Sitio de lo nuevo: el indicado (al soltar), o detrás del bloque seleccionado en su misma lista; si ahí no cabe
+   * (un módulo de ancho completo dentro de una columna), detrás de su sección en la página.
+   */
+  const placeFor = (added: PageBlock[], at?: Place): Place | null => {
+    if (at) {
+      const problem = placeProblem(blocks, at, added);
+      if (problem) {
+        toast.error(problem);
+        return null;
+      }
+      return at;
+    }
+    if (!found) return { parent: null, col: 0, index: blocks.length };
+    const after: Place = { parent: found.parent, col: found.col, index: found.index + 1 };
+    return placeProblem(blocks, after, added) ? { parent: null, col: 0, index: topIndex(found.block.id) + 1 } : after;
+  };
+
+  const insert = (payload: string, at?: Place) => {
     const p = parseDragPayload(payload);
     if (!p || viewing || !doc.loaded) return;
     let added: PageBlock[] = [];
     if (p.what === "module") {
       if (!modules.some((m) => m.type === p.value)) return toast.error("Ese módulo no está disponible en tu plan.");
-      added = [createBlock(p.value as BlockType)];
+      added = [p.value === "section" ? createSection() : createBlock(p.value as BlockType)];
     } else if (p.what === "preset") {
       const preset = presets.find((x) => x.key === p.value);
       if (!preset) return;
       added = preset.build();
     } else return;
-    if (blocks.length + added.length > PAGE_LIMITS.blocks) return toast.error(`Una página admite hasta ${PAGE_LIMITS.blocks} bloques.`);
-    const selIndex = blocks.findIndex((b) => b.id === selectedId);
-    const index = at ?? (selIndex >= 0 ? selIndex + 1 : blocks.length);
-    doc.change([...blocks.slice(0, index), ...added, ...blocks.slice(index)]);
+    if (tooMany(countBlocks(added))) return;
+    const place = placeFor(added, at);
+    if (!place) return;
+    doc.change(insertBlocks(blocks, place, added));
     select(added[0].id);
   };
 
-  const moveTo = (id: string, index: number) => {
-    const from = blocks.findIndex((b) => b.id === id);
-    if (from < 0) return;
-    const to = from < index ? index - 1 : index;
-    if (to === from) return;
-    const next = [...blocks];
-    const [b] = next.splice(from, 1);
-    next.splice(to, 0, b);
-    doc.change(next);
+  /** Añade un módulo al final de una columna (desde el inspector de la sección). */
+  const addToColumn = (sectionId: string, col: number, type: string) => {
+    const host = findBlock(blocks, sectionId);
+    if (!host || host.block.type !== "section") return;
+    insert(`module:${type}`, { parent: sectionId, col, index: host.block.data.columns[col]?.blocks.length ?? 0 });
+  };
+
+  const moveTo = (id: string, place: Place) => {
+    const f = findBlock(blocks, id);
+    if (!f) return;
+    const problem = place.parent === null ? null : placeProblem(blocks, place, [f.block]);
+    if (problem) return toast.error(problem);
+    const next = moveBlock(blocks, id, place);
+    if (next !== blocks) doc.change(next);
   };
 
   const duplicate = (id: string) => {
-    const i = blocks.findIndex((b) => b.id === id);
-    if (i < 0) return;
-    if (blocks.length >= PAGE_LIMITS.blocks) return toast.error(`Una página admite hasta ${PAGE_LIMITS.blocks} bloques.`);
-    const copy = duplicateBlock(blocks[i]);
-    doc.change([...blocks.slice(0, i + 1), copy, ...blocks.slice(i + 1)]);
+    const f = findBlock(blocks, id);
+    if (!f) return;
+    const copy = duplicateBlock(f.block);
+    if (tooMany(countBlocks([copy]))) return;
+    doc.change(insertBlocks(blocks, { parent: f.parent, col: f.col, index: f.index + 1 }, [copy]));
     select(copy.id);
   };
 
   const remove = (id: string) => {
-    const i = blocks.findIndex((b) => b.id === id);
-    if (i < 0) return;
-    const b = blocks[i];
-    doc.change(blocks.filter((x) => x.id !== id));
-    if (selectedId === id) setSelectedId(blocks[i + 1]?.id ?? blocks[i - 1]?.id ?? null);
-    toast(`«${blockLabel(b.type)}» eliminado`, { action: { label: "Deshacer", onClick: () => doc.undo() } });
+    const f = findBlock(blocks, id);
+    if (!f) return;
+    const host = f.parent ? findBlock(blocks, f.parent) : null;
+    const siblings = host?.block.type === "section" ? host.block.data.columns[f.col].blocks : blocks;
+    doc.change(removeBlock(blocks, id));
+    if (selectedId === id) setSelectedId(siblings[f.index + 1]?.id ?? siblings[f.index - 1]?.id ?? f.parent ?? null);
+    toast(`«${blockLabel(f.block.type)}» eliminado`, { action: { label: "Deshacer", onClick: () => doc.undo() } });
   };
 
   /** Pega el bloque copiado (Ctrl+C), con otro identificador, detrás del seleccionado. */
@@ -206,11 +246,11 @@ function Studio({ routeSlug }: { routeSlug: string | null }) {
     }
     if (!copied || typeof copied !== "object" || !moduleDef(copied.type)) return toast.info("No hay ningún bloque copiado. Selecciona uno y pulsa Ctrl+C.");
     if (!modules.some((m) => m.type === copied!.type)) return toast.error("Ese módulo no está disponible en tu plan.");
-    if (blocks.length >= PAGE_LIMITS.blocks) return toast.error(`Una página admite hasta ${PAGE_LIMITS.blocks} bloques.`);
     const copy = duplicateBlock(copied);
-    const i = blocks.findIndex((b) => b.id === selectedId);
-    const at = i >= 0 ? i + 1 : blocks.length;
-    doc.change([...blocks.slice(0, at), copy, ...blocks.slice(at)]);
+    if (tooMany(countBlocks([copy]))) return;
+    const place = placeFor([copy]);
+    if (!place) return;
+    doc.change(insertBlocks(blocks, place, [copy]));
     select(copy.id);
     toast.success(`«${blockLabel(copy.type)}» pegado.`);
   };
@@ -267,15 +307,15 @@ function Studio({ routeSlug }: { routeSlug: string | null }) {
         if (m.action === "delete") remove(m.id);
         else if (m.action === "duplicate") duplicate(m.id);
         else {
-          const i = blocks.findIndex((b) => b.id === m.id);
-          moveTo(m.id, m.action === "up" ? i - 1 : i + 2);
+          const f = findBlock(blocks, m.id);
+          if (f) moveTo(m.id, { parent: f.parent, col: f.col, index: m.action === "up" ? f.index - 1 : f.index + 2 });
         }
         break;
       case "drop":
-        insert(m.payload, m.index);
+        insert(m.payload, { parent: m.parent ?? null, col: m.col ?? 0, index: m.index });
         break;
       case "move":
-        if (!viewing) moveTo(m.id, m.index);
+        if (!viewing) moveTo(m.id, { parent: m.parent ?? null, col: m.col ?? 0, index: m.index });
         break;
       case "navigate": {
         const href = m.href.split(/[?#]/)[0];
@@ -631,7 +671,7 @@ function Studio({ routeSlug }: { routeSlug: string | null }) {
               selectedId={selectedId}
               device={device}
               onSelect={(id) => select(id)}
-              onMove={moveTo}
+              onMove={(id, index) => moveTo(id, { parent: null, col: 0, index })}
               onDuplicate={duplicate}
               onDelete={remove}
               pages={pages}
@@ -717,7 +757,7 @@ function Studio({ routeSlug }: { routeSlug: string | null }) {
                     <span className="min-w-0 overflow-hidden text-ellipsis whitespace-nowrap font-medium">{blockLabel(selected.type)}</span>
                   </nav>
                   <span className="ml-auto shrink-0 text-[11px] text-muted-foreground">
-                    {blocks.findIndex((b) => b.id === selected.id) + 1} de {blocks.length}
+                    {found ? found.index + 1 : 0} de {parentSection?.block.type === "section" ? (parentSection.block.data.columns[found!.col]?.blocks.length ?? 0) : blocks.length}
                   </span>
                 </>
               ) : (
@@ -728,7 +768,19 @@ function Studio({ routeSlug }: { routeSlug: string | null }) {
               {viewing ? (
                 <p className="text-sm text-muted-foreground">Mientras ves una versión anterior no se puede editar.</p>
               ) : selected ? (
-                <BlockInspector key={selected.id} block={selected} update={(fn, k) => doc.updateBlock(selected.id, fn, k)} targets={targets} pro={pro} tab={inspTab} onTab={setInspTab} />
+                <BlockInspector
+                  key={selected.id}
+                  block={selected}
+                  update={(fn, k) => doc.updateBlock(selected.id, fn, k)}
+                  targets={targets}
+                  pro={pro}
+                  tab={inspTab}
+                  onTab={setInspTab}
+                  columnModules={modules.filter((m) => nestable(m.type) && (m.type !== "section" || (found?.depth ?? 0) === 0))}
+                  onAddToColumn={(col, type) => addToColumn(selected.id, col, type)}
+                  onSelectBlock={select}
+                  inside={parentSection && found ? { id: parentSection.block.id, col: found.col } : null}
+                />
               ) : page ? (
                 <div className="space-y-5">
                   <p className="rounded-lg bg-muted px-3 py-2 text-xs leading-relaxed text-muted-foreground">

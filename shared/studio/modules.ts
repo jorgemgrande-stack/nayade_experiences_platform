@@ -26,6 +26,7 @@ export type FieldDef =
   | { key: string; label: string; kind: "list"; max: number; itemLabel: string; fields: FieldDef[]; newItem: Record<string, string>; advanced?: boolean };
 
 export const MODULE_FAMILIES = [
+  { key: "estructura", label: "Estructura" },
   { key: "basicos", label: "Básicos" },
   { key: "secciones", label: "Secciones" },
   { key: "contenido", label: "Contenido" },
@@ -96,6 +97,19 @@ const mod = (type: BlockType, family: ModuleFamily, icon: string, keywords: stri
 });
 
 export const MODULES: readonly ModuleDef[] = [
+  mod("section", "estructura", "section", "seccion columnas contenedor rejilla grid estructura dos tres cuatro maquetacion", [
+    {
+      key: "layout", label: "Columnas", kind: "select",
+      options: [
+        { value: "1", label: "Una" }, { value: "1-1", label: "Dos iguales" }, { value: "1-2", label: "Estrecha y ancha" }, { value: "2-1", label: "Ancha y estrecha" },
+        { value: "1-1-1", label: "Tres iguales" }, { value: "1-2-1", label: "Tres, la central ancha" }, { value: "1-1-1-1", label: "Cuatro iguales" },
+      ],
+    },
+    { key: "gap", label: "Separación entre columnas", kind: "select", options: [{ value: "s", label: "Poca" }, { value: "m", label: "Media" }, { value: "l", label: "Mucha" }] },
+    { key: "valign", label: "Alinear el contenido", kind: "select", options: [{ value: "top", label: "Arriba" }, { value: "center", label: "Centro" }, { value: "bottom", label: "Abajo" }], advanced: true },
+    { key: "mobile", label: "En el móvil", kind: "select", options: [{ value: "stack", label: "Una debajo de otra" }, { value: "reverse", label: "Una debajo de otra, al revés" }], advanced: true },
+    { key: "width", label: "Ancho", kind: "select", options: [{ value: "normal", label: "Normal" }, { value: "wide", label: "Amplio" }, { value: "full", label: "Toda la pantalla" }], advanced: true },
+  ], { note: "Arrastra módulos de la biblioteca a cualquier columna, o usa «Añadir a la columna». Si quitas columnas, su contenido pasa a la última que queda. Dentro de una sección cabe otra sección (un nivel)." }),
   mod("heading", "basicos", "heading", "titulo titular encabezado h1 h2", [
     { key: "eyebrow", label: "Antetítulo (opcional)", kind: "text", max: 80, inline: true },
     { key: "title", label: "Titular", kind: "text", max: 200, inline: true },

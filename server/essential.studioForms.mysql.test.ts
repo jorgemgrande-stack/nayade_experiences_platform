@@ -43,6 +43,11 @@ describe.skipIf(!URL_)("Elephant Studio — formularios a medida (aplicación re
       expect((await ess.m("a", "cms.savePageDraft", { slug, blocks: [formBlock] }, admA)).status).toBe(200);
     }
     expect((await ess.m("a", "cms.publishPage", { slug: "inscripcion" }, admA)).status).toBe(200);
+    // El mismo formulario dentro de una columna de una «Sección con columnas»
+    const nested = { id: "seccion1", type: "section", data: { layout: "1-1", gap: "m", valign: "top", mobile: "stack", width: "normal", columns: [{ blocks: [{ id: "texto1", type: "text", data: { title: "Apúntate", html: "<p>Plazas limitadas</p>" } }] }, { blocks: [formBlock] }] } };
+    expect((await ess.m("a", "cms.createSitePage", { title: "columnas", slug: "inscripcion-columnas", template: "blank", addToMenu: false }, admA)).status).toBe(200);
+    expect((await ess.m("a", "cms.savePageDraft", { slug: "inscripcion-columnas", blocks: [nested] }, admA)).status).toBe(200);
+    expect((await ess.m("a", "cms.publishPage", { slug: "inscripcion-columnas" }, admA)).status).toBe(200);
   }, 300_000);
   afterAll(async () => {
     await ess?.close();
@@ -58,6 +63,14 @@ describe.skipIf(!URL_)("Elephant Studio — formularios a medida (aplicación re
     expect(lead.message).toContain("Campaña: invierno");
     expect(lead.message).not.toContain("manipulado");
     expect(await ess.sql("a", "SELECT id FROM clients WHERE email = ?", ["lucia@visitante.example"])).toHaveLength(1);
+  });
+
+  it("un formulario dentro de una columna también recibe envíos (se busca en todo el árbol de la página)", async () => {
+    const r = await send("a", "inscripcion-columnas", { f0: "Marta Ruiz", f1: "marta@visitante.example", f2: "Iniciación" });
+    expect(r.status, JSON.stringify(r.json?.error?.json?.message ?? r.json)).toBe(200);
+    expect(data(r).studio.ok).toBe(true);
+    const [lead] = await leadsA("marta@visitante.example");
+    expect(lead).toMatchObject({ name: "Marta Ruiz", source: "web_formulario" });
   });
 
   it("lo inválido se rechaza con su motivo por campo y no crea nada", async () => {

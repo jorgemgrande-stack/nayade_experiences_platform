@@ -5,6 +5,7 @@
 import { useCallback, useEffect, useReducer, useRef, useState } from "react";
 import { trpc } from "@/lib/trpc";
 import type { PageBlock } from "@shared/pageBlocks";
+import { mapBlock, syncSectionColumns } from "@shared/studio/tree";
 import { docReducer, initialDoc as initial } from "./history";
 
 const AUTOSAVE_MS = 1500;
@@ -78,10 +79,13 @@ export function useStudioDocument(slug: string | null) {
   }, [state.revision, slug, save]);
 
   const change = useCallback((blocks: PageBlock[], coalesceKey?: string) => dispatch({ type: "change", blocks, coalesceKey }), []);
-  /** Cambia un bloque a partir de su versión VIGENTE (lo usan el inspector, el lienzo y las subidas). */
+  /**
+   * Cambia un bloque a partir de su versión VIGENTE (lo usan el inspector, el lienzo y las subidas), esté en la página
+   * o dentro de una columna. Si es una sección y cambia su reparto, sus columnas se ajustan sin perder contenido.
+   */
   const updateBlock = useCallback(
     (id: string, fn: (b: PageBlock) => PageBlock, coalesceKey?: string) =>
-      dispatch({ type: "apply", fn: (blocks) => (blocks.some((b) => b.id === id) ? blocks.map((b) => (b.id === id ? fn(b) : b)) : blocks), coalesceKey }),
+      dispatch({ type: "apply", fn: (blocks) => mapBlock(blocks, id, (b) => syncSectionColumns(fn(b))), coalesceKey }),
     [],
   );
 

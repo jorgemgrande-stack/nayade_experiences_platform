@@ -18,6 +18,8 @@ export const BLOCK_TYPES = [
   "form",
   // Marketing
   "pricing", "stats", "logos",
+  // Estructura: contenedor con columnas y módulos dentro
+  "section",
 ] as const;
 export type BlockType = (typeof BLOCK_TYPES)[number];
 
@@ -75,7 +77,28 @@ export interface BlockDataMap {
   stats: { title: string; items: StatItem[]; animate: OnOff };
   /** Logos de clientes o marcas */
   logos: { title: string; logos: GalleryImage[]; grayscale: OnOff };
+  /** Sección con columnas: cada columna lleva sus propios módulos (shared/studio/tree.ts) */
+  section: {
+    layout: SectionLayout;
+    gap: "s" | "m" | "l";
+    valign: "top" | "center" | "bottom";
+    mobile: "stack" | "reverse";
+    width: "normal" | "wide" | "full";
+    columns: SectionColumn[];
+  };
 }
+
+/** Reparto de las columnas de una sección: proporción de cada una (1-2 = un tercio y dos tercios). */
+export const SECTION_LAYOUTS = ["1", "1-1", "1-2", "2-1", "1-1-1", "1-2-1", "1-1-1-1"] as const;
+export type SectionLayout = (typeof SECTION_LAYOUTS)[number];
+export const sectionColumnCount = (layout: string): number => layout.split("-").length;
+export interface SectionColumn {
+  blocks: PageBlock[];
+}
+/** Una sección puede llevar otra dentro (un nivel): más profundidad no se admite. */
+export const SECTION_MAX_DEPTH = 2;
+/** Módulos que no caben dentro de una columna (ocupan todo el ancho de la página). */
+export const NOT_NESTABLE: readonly BlockType[] = ["hero", "slideshow"];
 
 export interface PricingPlan {
   name: string;
@@ -214,6 +237,7 @@ export const BLOCK_CATALOG: ReadonlyArray<{ type: BlockType; label: string; desc
   { type: "pricing", label: "Tabla de precios", description: "Tus planes o tarifas con sus características y un botón" },
   { type: "stats", label: "Cifras", description: "Números destacados que se cuentan al aparecer" },
   { type: "logos", label: "Logos de clientes", description: "Las marcas que confían en ti" },
+  { type: "section", label: "Sección con columnas", description: "De una a cuatro columnas con módulos dentro" },
 ];
 
 export const blockLabel = (t: string): string => BLOCK_CATALOG.find((b) => b.type === t)?.label ?? "Bloque";
@@ -315,6 +339,8 @@ export function defaultBlockData<K extends BlockType>(type: K): BlockDataMap[K] 
       ],
     },
     logos: { title: "Confían en nosotros", logos: [], grayscale: "on" },
+    // Las columnas nacen vacías aquí; createSection (shared/studio/tree.ts) las llena al insertarla
+    section: { layout: "1-1", gap: "m", valign: "top", mobile: "stack", width: "normal", columns: [{ blocks: [] }, { blocks: [] }] },
   };
   return structuredCloneSafe(d[type]) as BlockDataMap[K];
 }
@@ -340,7 +366,10 @@ export function createBlock<K extends BlockType>(type: K, data?: Partial<BlockDa
 
 /** Copia de un bloque con otro identificador (duplicar). */
 export function duplicateBlock(b: PageBlock): PageBlock {
-  return { ...b, id: newBlockId(), data: structuredCloneSafe(b.data), ...(b.style ? { style: structuredCloneSafe(b.style) } : {}) } as PageBlock;
+  const data = structuredCloneSafe(b.data) as PageBlock["data"];
+  // Los módulos de dentro de una sección también reciben identificadores nuevos
+  if (b.type === "section") (data as BlockDataMap["section"]).columns = (data as BlockDataMap["section"]).columns.map((c) => ({ blocks: c.blocks.map(duplicateBlock) }));
+  return { ...b, id: newBlockId(), data, ...(b.style ? { style: structuredCloneSafe(b.style) } : {}) } as PageBlock;
 }
 
 function structuredCloneSafe<T>(v: T): T {

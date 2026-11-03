@@ -16,6 +16,7 @@
 import { and, desc, eq, inArray, like, or } from "drizzle-orm";
 import { menuItems, pageBlocks, staticPages, systemSettings } from "../drizzle/schema";
 import { getDb, savePageBlocks } from "./db";
+import { findBlock } from "../shared/studio/tree";
 import { blocksToHtml, htmlToBlocks, normalizeBlocks, readStoredBlocks, renderBlockTokens, PageBlocksError } from "./_core/pageBlocks";
 import { HOME_PAGE_SETTING_KEY, HOME_SLUG, pageSlugProblem, templateBlocks, duplicateBlock, type PageBlock, type PageTemplateKey } from "../shared/pageBlocks";
 import { isLegalPageSlug } from "../shared/tenantNav";
@@ -226,7 +227,9 @@ export async function getPublishedFormBlock(slug: string, blockId: string) {
   const target = await resolvePublicSlug(slug);
   const page = await getPage(target);
   if (!page?.isPublished) return null;
-  const block = (await getPublishedBlocks(target))?.find((b) => b.id === blockId);
+  // El formulario puede estar dentro de una sección con columnas
+  const published = await getPublishedBlocks(target);
+  const block = published ? findBlock(published, blockId)?.block : undefined;
   return block?.type === "form" ? { slug: target, data: block.data } : null;
 }
 

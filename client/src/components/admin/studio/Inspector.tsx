@@ -18,8 +18,9 @@ import { TokenInput as Input, TokenTextarea as Textarea } from "@/components/adm
 import { RichTextEditor } from "@/components/admin/pageBuilder/RichTextEditor";
 import { LinkPicker, type LinkTarget } from "@/components/admin/pageBuilder/BlockEditors";
 import { FEATURE_ICON_COMPONENTS } from "@/components/site/featureIcons";
-import { ANCHOR_RE, DEFAULT_BLOCK_STYLE, isDefaultStyle, type BlockStyle, type Device, type PageBlock } from "@shared/pageBlocks";
-import { FEATURE_ICONS, moduleDef, type FieldDef } from "@shared/studio/modules";
+import { ANCHOR_RE, DEFAULT_BLOCK_STYLE, blockLabel, isDefaultStyle, type BlockStyle, type Device, type PageBlock } from "@shared/pageBlocks";
+import { FEATURE_ICONS, moduleDef, type FieldDef, type ModuleDef } from "@shared/studio/modules";
+import { blockSummary } from "@/components/admin/pageBuilder/BlockEditors";
 import { siteRelativeFileUrl } from "@shared/imageUpload";
 
 /** Valor nuevo de un campo, o una función que lo calcula a partir del valor VIGENTE (listas, subidas que terminan tarde). */
@@ -30,7 +31,22 @@ type SetField = (key: string, value: FieldValue, coalesce?: boolean) => void;
  * `update` cambia el bloque a partir de su versión vigente en el documento: lo que llega tarde (una imagen que
  * termina de subirse, un diálogo) nunca deshace lo que la persona ha editado mientras tanto.
  */
-export function BlockInspector({ block, update, targets, pro, tab, onTab }: { block: PageBlock; update: (fn: (b: PageBlock) => PageBlock, coalesceKey?: string) => void; targets: LinkTarget[]; pro: boolean; tab: "content" | "design"; onTab: (t: "content" | "design") => void }) {
+export function BlockInspector({
+  block, update, targets, pro, tab, onTab, columnModules = [], onAddToColumn, onSelectBlock, inside = null,
+}: {
+  block: PageBlock;
+  update: (fn: (b: PageBlock) => PageBlock, coalesceKey?: string) => void;
+  targets: LinkTarget[];
+  pro: boolean;
+  tab: "content" | "design";
+  onTab: (t: "content" | "design") => void;
+  /** Módulos que se pueden añadir dentro de una columna (si el bloque es una sección) */
+  columnModules?: ModuleDef[];
+  onAddToColumn?: (col: number, type: string) => void;
+  onSelectBlock?: (id: string) => void;
+  /** Si el bloque está dentro de una sección: cuál y en qué columna */
+  inside?: { id: string; col: number } | null;
+}) {
   const def = moduleDef(block.type);
   const data = block.data as unknown as Record<string, unknown>;
   const set: SetField = (key, value, coalesce = true) =>
@@ -50,6 +66,16 @@ export function BlockInspector({ block, update, targets, pro, tab, onTab }: { bl
   const fields = def.fields.filter((f) => (pro || !f.advanced) && !altKeys.has(f.key));
   return (
     <div className="space-y-4">
+      {inside && (
+        <div className="flex items-center justify-between gap-2 rounded-md border border-border bg-muted/40 px-3 py-2 text-xs">
+          <span className="text-muted-foreground">Dentro de una sección · columna {inside.col + 1}</span>
+          {onSelectBlock && (
+            <button type="button" className="font-medium text-[#5b5bf6] hover:underline" onClick={() => onSelectBlock(inside.id)}>
+              Seleccionar la sección
+            </button>
+          )}
+        </div>
+      )}
       <div className="grid grid-cols-2 gap-1 rounded-lg bg-muted p-1" role="tablist" aria-label="Opciones del bloque">
         {(["content", "design"] as const).map((t) => (
           <button
@@ -74,11 +100,56 @@ export function BlockInspector({ block, update, targets, pro, tab, onTab }: { bl
               )}
             </div>
           ))}
+          {block.type === "section" && (
+            <SectionColumns block={block} modules={columnModules} onAdd={onAddToColumn} onSelect={onSelectBlock} />
+          )}
           {def.note && <p className="rounded-md bg-muted px-3 py-2 text-xs leading-relaxed text-muted-foreground">{def.note}</p>}
         </div>
       ) : (
         <StyleEditor style={{ ...DEFAULT_BLOCK_STYLE, ...block.style }} setStyle={setStyle} pro={pro} />
       )}
+    </div>
+  );
+}
+
+/** Lo que lleva cada columna de una sección: sus módulos (se seleccionan con un clic) y un selector para añadir otro. */
+function SectionColumns({ block, modules, onAdd, onSelect }: { block: Extract<PageBlock, { type: "section" }>; modules: ModuleDef[]; onAdd?: (col: number, type: string) => void; onSelect?: (id: string) => void }) {
+  return (
+    <div className="space-y-3">
+      <span className="text-sm font-medium">Contenido de las columnas</span>
+      {block.data.columns.map((c, i) => (
+        <div key={i} className="space-y-1.5 rounded-lg border border-border p-2.5">
+          <span className="block text-xs font-semibold text-muted-foreground">
+            Columna {i + 1} · {c.blocks.length === 1 ? "1 módulo" : `${c.blocks.length} módulos`}
+          </span>
+          {c.blocks.map((child) => (
+            <button
+              key={child.id}
+              type="button"
+              onClick={() => onSelect?.(child.id)}
+              className="block w-full truncate rounded-md px-2 py-1 text-left text-xs hover:bg-muted"
+              title="Seleccionar este módulo"
+            >
+              <span className="font-medium">{blockLabel(child.type)}</span>
+              <span className="text-muted-foreground"> · {blockSummary(child) || "Sin texto todavía"}</span>
+            </button>
+          ))}
+          {onAdd && (
+            <Select value="" onValueChange={(v) => v && onAdd(i, v)}>
+              <SelectTrigger className="h-8 text-xs" aria-label={`Añadir a la columna ${i + 1}`}>
+                <SelectValue placeholder="Añadir a la columna…" />
+              </SelectTrigger>
+              <SelectContent>
+                {modules.map((m) => (
+                  <SelectItem key={m.type} value={m.type}>
+                    {m.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
+        </div>
+      ))}
     </div>
   );
 }
