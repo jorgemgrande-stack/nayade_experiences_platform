@@ -168,7 +168,10 @@ export default function PublicNav() {
   // Web de una empresa: solo las secciones que tiene contratadas (nada mientras se sabe); la instalación propia, todas
   const { features: site, text: siteText } = usePublicSite();
   const showCoupon = !!site?.coupons;
-  const showQuote = !!site?.quotes;
+  // Botón destacado de la cabecera (web de una empresa): el de serie (presupuesto, si está contratado), uno propio o ninguno
+  const headerCta = tenantTheme?.neutralSite ? tenantTheme.header : null;
+  const customCta = headerCta?.cta === "custom" && headerCta.ctaLabel && headerCta.ctaUrl ? { label: headerCta.ctaLabel, href: headerCta.ctaUrl } : null;
+  const showQuote = !!site?.quotes && headerCta?.cta !== "none" && !customCta;
   const showCart = !!site?.store;
 
   // Cargar menú desde la BD
@@ -336,6 +339,20 @@ export default function PublicNav() {
               </Button>
             </Link>
             )}
+            {customCta &&
+              (/^(https?:|mailto:|tel:)/i.test(customCta.href) ? (
+                <Button asChild size="sm" className="bg-accent hover:bg-accent/90 text-white font-display font-semibold rounded-full px-5 shadow-md">
+                  <a href={customCta.href} {...(/^https?:/i.test(customCta.href) ? { target: "_blank", rel: "noopener noreferrer" } : {})}>
+                    {customCta.label}
+                  </a>
+                </Button>
+              ) : (
+                <Link href={customCta.href}>
+                  <Button size="sm" className="bg-accent hover:bg-accent/90 text-white font-display font-semibold rounded-full px-5 shadow-md">
+                    {customCta.label}
+                  </Button>
+                </Link>
+              ))}
             {/* Toggle tema público */}
             <button
               onClick={togglePublicTheme}
@@ -452,6 +469,18 @@ export default function PublicNav() {
               {siteText.quoteCta}
             </Button>
             )}
+            {customCta &&
+              (/^(https?:|mailto:|tel:)/i.test(customCta.href) ? (
+                <Button asChild className="w-full bg-accent hover:bg-accent/90 text-white font-display font-semibold rounded-full">
+                  <a href={customCta.href} {...(/^https?:/i.test(customCta.href) ? { target: "_blank", rel: "noopener noreferrer" } : {})}>
+                    {customCta.label}
+                  </a>
+                </Button>
+              ) : (
+                <Button className="w-full bg-accent hover:bg-accent/90 text-white font-display font-semibold rounded-full" onClick={() => mobileNavigate(customCta.href)}>
+                  {customCta.label}
+                </Button>
+              ))}
           </div>
         </div>
       </div>
