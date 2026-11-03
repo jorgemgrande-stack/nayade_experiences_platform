@@ -325,6 +325,7 @@ export const TASK_NAV: NavSection[] = [
         ],
       },
       { label: "Marca y tema", href: "/admin/configuracion/marca", key: "t-marca", icon: "sparkles", roles: ADMIN, capabilities: ["cms-editor"] },
+      { label: "Dominio propio", href: "/admin/configuracion/dominios", key: "t-dominios", icon: "globe", roles: ADMIN, capabilities: ["cms-editor"] },
     ],
   },
   {

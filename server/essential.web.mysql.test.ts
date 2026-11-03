@@ -236,9 +236,13 @@ describe.skipIf(!URL_)("Essential — Web y CMS (aplicación real, dos empresas 
     const sm = await ess.callHost(custom, "GET", "/sitemap.xml");
     expect(sm.status).toBe(200);
     expect(sm.text).toContain(`<loc>https://${custom}/</loc>`);
-    // No hay autoservicio desde el panel de la empresa: ningún procedimiento tRPC de dominios
+    // Autoservicio desde el panel: solo domains.*, solo la administración, y sin canal con el plano de control no está disponible
     const { appRouter } = await import("./routers");
-    expect(Object.keys((appRouter as any)._def.procedures).filter((p) => /domain/i.test(p))).toEqual([]);
+    expect(Object.keys((appRouter as any)._def.procedures).filter((p) => /domain/i.test(p)).sort()).toEqual(["domains.add", "domains.check", "domains.disconnect", "domains.setPrimary", "domains.status"]);
+    expect(errCode(await ess.q("a", "domains.status", undefined, agA))).toBe("FORBIDDEN");
+    expect((await ess.q("a", "domains.status")).status).toBe(401);
+    expect(data(await ess.q("a", "domains.status", undefined, admA))).toMatchObject({ available: false });
+    expect(errCode(await ess.m("a", "domains.add", { domain: "www.otra.example" }, admA))).toBe("PRECONDITION_FAILED");
   });
 
   it("cms-blog: crear, publicar y programar; lo público solo ve lo publicado; sitemap; permisos; licencia; aislamiento A/B", async () => {
