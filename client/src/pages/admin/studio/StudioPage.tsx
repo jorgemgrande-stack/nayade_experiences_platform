@@ -15,7 +15,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useLocation } from "wouter";
 import { toast } from "sonner";
 import {
-  ArrowLeft, Check, ChevronDown, CircleAlert, Eye, ExternalLink, History, Keyboard, Loader2, Monitor, MoreHorizontal, PanelLeft, PanelRight, Redo2,
+  ArrowLeft, BookmarkPlus, Check, ChevronDown, CircleAlert, Eye, ExternalLink, History, Keyboard, Loader2, Monitor, MoreHorizontal, PanelLeft, PanelRight, Redo2,
   Smartphone, Tablet, Undo2, Upload, X,
 } from "lucide-react";
 import { trpc } from "@/lib/trpc";
@@ -23,6 +23,7 @@ import { useAuth } from "@/_core/hooks/useAuth";
 import { AuthRequired, PanelSpinner } from "@/components/auth/AuthRequired";
 import { usePanelSubscription } from "@/hooks/usePanelSubscription";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
@@ -33,7 +34,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { cn } from "@/lib/utils";
 import { PAGE_LIMITS, blockLabel, createBlock, duplicateBlock, type BlockType, type Device, type PageBlock } from "@shared/pageBlocks";
 import { SECTION_PRESETS, availableModules, moduleDef } from "@shared/studio/modules";
-import { countBlocks, createSection, findBlock, insertBlocks, moveBlock, nestable, placeProblem, removeBlock, type Place } from "@shared/studio/tree";
+import { countBlocks, createSection, findBlock, insertBlocks, moveBlock, nestable, placeProblem, removeBlock, walk, type Place } from "@shared/studio/tree";
 import { SITE_TOKEN_LABELS } from "@shared/siteTokenLabels";
 import type { LinkTarget } from "@/components/admin/pageBuilder/BlockEditors";
 import { BlockInspector } from "@/components/admin/studio/Inspector";
@@ -103,6 +104,19 @@ function Studio({ routeSlug }: { routeSlug: string | null }) {
   const [confirmRestore, setConfirmRestore] = useState<number | null>(null);
   const [shortcuts, setShortcuts] = useState(false);
   const [globalOpen, setGlobalOpen] = useState(false);
+  const [saveName, setSaveName] = useState<string | null>(null);
+  // Mis bloques: guardados para reutilizar en cualquier página
+  const savedQ = trpc.cms.savedBlocks.useQuery(undefined, { staleTime: 60_000, refetchOnWindowFocus: false });
+  const savedBlocks = savedQ.data ?? [];
+  const saveBlock = trpc.cms.saveReusableBlock.useMutation({
+    onSuccess: (b) => {
+      void utils.cms.savedBlocks.invalidate();
+      setSaveName(null);
+      toast.success(`«${b.name}» guardado en Mis bloques.`);
+    },
+    onError: (e) => toast.error(e.message),
+  });
+  const deleteSaved = trpc.cms.deleteSavedBlock.useMutation({ onSuccess: () => void utils.cms.savedBlocks.invalidate(), onError: (e) => toast.error(e.message) });
   const [chromeOpen, setChromeOpen] = useState(false);
   // Al cambiar el estilo global se vuelve a cargar el lienzo para verlo aplicado
   const [canvasKey, setCanvasKey] = useState(0);
@@ -194,6 +208,14 @@ function Studio({ routeSlug }: { routeSlug: string | null }) {
       const preset = presets.find((x) => x.key === p.value);
       if (!preset) return;
       added = preset.build();
+    } else if (p.what === "saved") {
+      const s = savedBlocks.find((x) => x.id === p.value);
+      if (!s) return;
+      // Todo lo que lleva dentro tiene que estar disponible en el plan (p. ej. productos sin tienda)
+      const types = new Set<string>();
+      walk([s.block], (f) => types.add(f.block.type));
+      if (Array.from(types).some((t) => !modules.some((m) => m.type === t))) return toast.error("Ese bloque usa un módulo que no está disponible en tu plan.");
+      added = [duplicateBlock(s.block)];
     } else return;
     if (tooMany(countBlocks(added))) return;
     const place = placeFor(added, at);
@@ -669,6 +691,8 @@ function Studio({ routeSlug }: { routeSlug: string | null }) {
               modules={modules}
               presets={presets}
               onInsert={(p) => insert(p)}
+              savedBlocks={savedBlocks}
+              onDeleteSaved={(id) => deleteSaved.mutate({ id })}
               blocks={blocks}
               selectedId={selectedId}
               device={device}
@@ -759,7 +783,17 @@ function Studio({ routeSlug }: { routeSlug: string | null }) {
                     <span className="text-muted-foreground">›</span>
                     <span className="min-w-0 overflow-hidden text-ellipsis whitespace-nowrap font-medium">{blockLabel(selected.type)}</span>
                   </nav>
-                  <span className="ml-auto shrink-0 text-[11px] text-muted-foreground">
+                  <button
+                    type="button"
+                    onClick={() => setSaveName(blockLabel(selected.type))}
+                    disabled={!!viewing}
+                    className="ml-auto shrink-0 rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-40"
+                    title="Guardar en Mis bloques para reutilizarlo en otras páginas"
+                    aria-label="Guardar en Mis bloques"
+                  >
+                    <BookmarkPlus className="h-4 w-4" />
+                  </button>
+                  <span className="shrink-0 text-[11px] text-muted-foreground">
                     {found ? found.index + 1 : 0} de {parentSection?.block.type === "section" ? (parentSection.block.data.columns[found!.col]?.blocks.length ?? 0) : blocks.length}
                   </span>
                 </>
@@ -928,6 +962,33 @@ function Studio({ routeSlug }: { routeSlug: string | null }) {
           </div>
         </SheetContent>
       </Sheet>
+
+      <Dialog open={saveName !== null} onOpenChange={(o) => !o && setSaveName(null)}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Guardar en Mis bloques</DialogTitle>
+            <DialogDescription>Lo encontrarás en la biblioteca para añadir una copia, con su diseño, en cualquier página.</DialogDescription>
+          </DialogHeader>
+          <form
+            className="space-y-3"
+            onSubmit={(e) => {
+              e.preventDefault();
+              if (!selected || !saveName?.trim()) return;
+              saveBlock.mutate({ name: saveName.trim(), block: selected });
+            }}
+          >
+            <Input value={saveName ?? ""} maxLength={60} onChange={(e) => setSaveName(e.target.value)} aria-label="Nombre del bloque" autoFocus />
+            <div className="flex justify-end gap-2">
+              <Button type="button" variant="ghost" onClick={() => setSaveName(null)}>
+                Cancelar
+              </Button>
+              <Button type="submit" disabled={!saveName?.trim() || saveBlock.isPending}>
+                {saveBlock.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />} Guardar
+              </Button>
+            </div>
+          </form>
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={shortcuts} onOpenChange={setShortcuts}>
         <DialogContent className="max-w-sm">

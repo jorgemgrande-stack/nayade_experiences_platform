@@ -47,7 +47,8 @@ export function isToCanvas(v: unknown): v is ToCanvas {
 }
 
 /** Datos del arrastre: `module:<tipo>`, `preset:<clave>` o `block:<id>` (reordenar). */
-export function parseDragPayload(p: string): { what: "module" | "preset" | "block"; value: string } | null {
-  const m = /^(module|preset|block):([a-z0-9_-]{1,64})$/i.exec(p);
-  return m ? { what: m[1] as "module" | "preset" | "block", value: m[2] } : null;
+/** `saved:<id>` es un bloque de «Mis bloques» (se inserta una copia). */
+export function parseDragPayload(p: string): { what: "module" | "preset" | "block" | "saved"; value: string } | null {
+  const m = /^(module|preset|block|saved):([a-z0-9_-]{1,64})$/i.exec(p);
+  return m ? { what: m[1] as "module" | "preset" | "block" | "saved", value: m[2] } : null;
 }

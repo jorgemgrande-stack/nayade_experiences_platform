@@ -329,6 +329,7 @@ describe("mensajes del lienzo", () => {
     expect(parseDragPayload("module:faq")).toEqual({ what: "module", value: "faq" });
     expect(parseDragPayload("preset:portada")).toEqual({ what: "preset", value: "portada" });
     expect(parseDragPayload("block:b1x")).toEqual({ what: "block", value: "b1x" });
+    expect(parseDragPayload("saved:bmw11g3qb1tc")).toEqual({ what: "saved", value: "bmw11g3qb1tc" });
     expect(parseDragPayload("https://otra.web")).toBeNull();
     expect(parseDragPayload("module:<img>")).toBeNull();
   });

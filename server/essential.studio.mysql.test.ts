@@ -122,4 +122,25 @@ describe.skipIf(!URL_)("Elephant Studio (aplicación real, dos empresas nuevas)"
     const homeB = data(await ess.q("b", "public.getTenantPage", { slug: "inicio" }));
     expect(homeB.blocks ?? null).toBeNull();
   });
+
+  it("Mis bloques: se guarda una sección con su diseño validada, se lista y se quita; solo en su empresa y solo el equipo", async () => {
+    const section = {
+      id: "seccion-guardada", type: "section", style: { background: "soft", radius: "m" },
+      data: { layout: "1-1", columns: [{ blocks: [{ id: "t1", type: "text", data: { title: "Hola", html: "<p>x</p><script>alert(1)</script>" } }] }, { blocks: [] }] },
+    };
+    const saved = data(await ess.m("a", "cms.saveReusableBlock", { name: "  Mi sección  ", block: section }, admA));
+    expect(saved).toMatchObject({ name: "Mi sección", block: { type: "section", style: { background: "soft", radius: "m" } } });
+    expect(JSON.stringify(saved.block)).not.toContain("<script>");
+    expect(data(await ess.q("a", "cms.savedBlocks", undefined, admA)).map((b: any) => b.name)).toEqual(["Mi sección"]);
+    // Validación: tipo desconocido y nombre vacío
+    expect(errCode(await ess.m("a", "cms.saveReusableBlock", { name: "Raro", block: { id: "x", type: "iframe", data: {} } }, admA))).toBe("BAD_REQUEST");
+    expect(errCode(await ess.m("a", "cms.saveReusableBlock", { name: "   ", block: section }, admA))).toBe("BAD_REQUEST");
+    // Aislamiento y permisos
+    expect(data(await ess.q("b", "cms.savedBlocks", undefined, admB))).toEqual([]);
+    expect((await ess.q("a", "cms.savedBlocks", undefined, agA)).status).toBe(403);
+    expect((await ess.m("a", "cms.saveReusableBlock", { name: "x", block: section }, agA)).status).toBe(403);
+    expect((await ess.m("a", "cms.deleteSavedBlock", { id: saved.id }, agA)).status).toBe(403);
+    expect((await ess.m("a", "cms.deleteSavedBlock", { id: saved.id }, admA)).status).toBe(200);
+    expect(data(await ess.q("a", "cms.savedBlocks", undefined, admA))).toEqual([]);
+  });
 });
