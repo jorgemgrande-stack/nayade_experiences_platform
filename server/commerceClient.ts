@@ -123,6 +123,10 @@ export interface CommerceClient {
   updateSite?(tenantId: string, siteId: string, input: Partial<SiteFormInput> & { requestedBy: string }): Promise<PanelSites>;
   archiveSite?(tenantId: string, siteId: string, input: { requestedBy: string }): Promise<PanelSites>;
   restoreSite?(tenantId: string, siteId: string, input: { requestedBy: string }): Promise<PanelSites>;
+  /** Dominios propios (autoservicio): estado, alta, comprobación, principal y desconexión. Opcionales en los dobles. */
+  domains?(tenantId: string): Promise<unknown>;
+  addDomain?(tenantId: string, input: { domain: string; requestedBy: string }): Promise<unknown>;
+  domainAction?(tenantId: string, domain: string, action: "check" | "primary" | "disconnect", input: { requestedBy: string }): Promise<unknown>;
 }
 
 const DEFAULT_ERROR = "No se pudo completar la operación";
@@ -217,6 +221,9 @@ export function commerceClientFromEnv(env: NodeJS.ProcessEnv = process.env, fetc
     planChangeStatus: async (tenantId) => ((await call("GET", `${seg(tenantId)}/plan-change`)) as { planChange: unknown }).planChange,
     planChangePreview: async (tenantId, input) => ((await call("POST", `${seg(tenantId)}/plan-change/preview`, input)) as { preview: unknown }).preview,
     changePlan: async (tenantId, input) => ((await call("POST", `${seg(tenantId)}/plan-change`, input)) as { planChange: unknown }).planChange,
+    domains: async (tenantId) => ((await call("GET", `${seg(tenantId)}/domains`)) as { overview: unknown }).overview,
+    addDomain: async (tenantId, input) => ((await call("POST", `${seg(tenantId)}/domains`, input)) as { domain: unknown }).domain,
+    domainAction: async (tenantId, domain, action, input) => await call("POST", `${seg(tenantId)}/domains/${encodeURIComponent(domain)}/${action}`, input),
     retryActivation: async (tenantId, key) => {
       const r = await exchange("POST", `${seg(tenantId)}/activation/retry`, { key });
       return { outcome: r.status === 200 ? "active" : retryOutcome(r.json) };

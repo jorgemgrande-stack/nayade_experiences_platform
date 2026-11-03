@@ -30,6 +30,8 @@ export interface InvoicingStore {
   setPayment(id: number, p: { paymentStatus: PaymentStatus; paymentRef: string | null; paidAt: number | null }, now: number): Promise<Invoice>;
   /** Expide un borrador: número correlativo, datos congelados y huella encadenada. `invalid_state` si ya no es borrador. */
   issue(i: IssueInput): Promise<Invoice>;
+  /** Datos fiscales de un BORRADOR (p. ej. el origen del saldo a favor decidido por una persona). */
+  setDraftFiscal(id: number, fiscal: InvoiceFiscalDetail, now: number): Promise<Invoice>;
   /** Una factura expedida pasa a «rectificada» (su rectificativa total ya está expedida). */
   setStatus(id: number, status: "rectified", now: number): Promise<Invoice>;
 }
@@ -67,6 +69,13 @@ export class MemoryInvoicingStore implements InvoicingStore {
     const r = this.rows.find((x) => x.id === id);
     if (!r) throw new InvoicingError("not_found", "Factura no encontrada");
     Object.assign(r, p, { updatedAt: now, version: r.version + 1 });
+    return this.clone(r);
+  }
+  async setDraftFiscal(id: number, fiscal: InvoiceFiscalDetail, now: number) {
+    const r = this.rows.find((x) => x.id === id);
+    if (!r) throw new InvoicingError("not_found", "Factura no encontrada");
+    if (r.status !== "draft") throw new InvoicingError("invalid_state", "Solo se modifican los datos fiscales de un borrador");
+    Object.assign(r, { fiscal: structuredClone(fiscal), updatedAt: now, version: r.version + 1 });
     return this.clone(r);
   }
   async setStatus(id: number, status: "rectified", now: number) {
@@ -217,6 +226,12 @@ export class MysqlInvoicingStore implements InvoicingStore {
   async setPayment(id: number, p: { paymentStatus: PaymentStatus; paymentRef: string | null; paidAt: number | null }, now: number) {
     const [r] = await this.pool.query<mysql.ResultSetHeader>("UPDATE invoices SET payment_status = ?, payment_ref = ?, paid_at = ?, updated_at = ?, version = version + 1 WHERE id = ? AND livemode = ?", [p.paymentStatus, p.paymentRef, p.paidAt, now, id, this.lm]);
     if (!r.affectedRows) throw new InvoicingError("not_found", "Factura no encontrada");
+    return (await this.get(id))!;
+  }
+  async setDraftFiscal(id: number, fiscal: InvoiceFiscalDetail, now: number) {
+    if (!(await this.hasDetail())) throw new InvoicingError("unavailable", "Faltan las columnas de datos fiscales (CRM 0045)");
+    const [r] = await this.pool.query<mysql.ResultSetHeader>("UPDATE invoices SET fiscal_json = ?, updated_at = ?, version = version + 1 WHERE id = ? AND livemode = ? AND status = 'draft'", [JSON.stringify(fiscal), now, id, this.lm]);
+    if (!r.affectedRows) throw new InvoicingError("invalid_state", "Solo se modifican los datos fiscales de un borrador");
     return (await this.get(id))!;
   }
   async setStatus(id: number, status: "rectified", now: number) {

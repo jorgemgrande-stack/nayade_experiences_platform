@@ -197,6 +197,7 @@ import { integrationsRouter } from "./routers/integrations";
 import { modulesRouter } from "./routers/modulesRouter";
 import { panelRouter } from "./routers/panelRouter";
 import { subscriptionRouter } from "./routers/subscriptionRouter";
+import { domainsRouter } from "./routers/domainsRouter";
 import { connectRouter } from "./routers/connectRouter";
 import { supportRouter } from "./routers/supportRouter";
 import { dataExportRouter } from "./routers/dataExportRouter";
@@ -295,6 +296,7 @@ export const appRouter = router({
   modules: modulesRouter,
   panel: panelRouter,
   subscription: subscriptionRouter,
+  domains: domainsRouter,
   connect: connectRouter,
   support: supportRouter,
   dataExport: dataExportRouter,

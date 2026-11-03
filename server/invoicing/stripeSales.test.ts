@@ -15,7 +15,9 @@ import { linesOf, type InvoiceLineRow } from "../stripe/invoiceLines";
 import { ISSUER } from "../stripe/issuer";
 import { InvoicingAutomation, invoicePdfBlocks } from "./delivery";
 import { invoiceHtml } from "./document";
+import { registerCsv } from "./register";
 import type { FiscalCasesConfig } from "./fiscalCases";
+import { FISCAL_MATRIX_VERSION } from "./fiscalMatrix";
 import type { CompanyFiscal } from "./rules";
 import { InvoicingService } from "./service";
 import { MemoryInvoicingStore } from "./store";
@@ -457,7 +459,13 @@ describe("fechas: expedición, operación (devengo), periodo de prestación y co
     await t.auto.issueDue();
     const inv = (await t.store.get(1))!;
     expect(inv).toMatchObject({ issueDate: "2026-11-04", operationDate: "2026-11-02", periodLabel: "02/11/2026 a 01/12/2026" });
-    expect(inv.fiscal).toEqual({ invoiceType: "complete", fiscalCase: "business:es_mainland", treatment: "taxed_es", legalMention: null, collectionDate: "2026-11-02", accrualBasis: "advance_payment", balanceAppliedCents: 0, advisorPending: ["devengo_cobro_anticipado"] });
+    const { matrixVersion, ruleId, evidence, credit, ...same } = inv.fiscal!;
+    expect(same).toEqual({ invoiceType: "complete", fiscalCase: "business:es_mainland", treatment: "taxed_es", legalMention: null, collectionDate: "2026-11-02", accrualBasis: "advance_payment", balanceAppliedCents: 0, advisorPending: ["devengo_cobro_anticipado"] });
+    // Registro adicional: versión de la matriz, regla aplicada y evidencias con las fechas por separado
+    expect({ matrixVersion, ruleId, credit }).toEqual({ matrixVersion: FISCAL_MATRIX_VERSION, ruleId: "business:es_mainland", credit: null });
+    expect(evidence).toMatchObject({ matrixVersion: FISCAL_MATRIX_VERSION, ruleStatus: "enabled", buyer: { type: "business", territory: "es_mainland", country: "ES", postalCode: "28001", taxId: "B12345674", condition: "business_declared" }, vies: null, stripeTax: { stripeInvoiceId: "in_alta", taxCents: 1_029, totalCents: 5_929, amountPaidCents: 5_929, rates: [2100], customerCountry: "ES" }, dates: { operationDate: "2026-11-02", accrualBasis: "advance_payment", dueDate: "2026-11-02", collectionDate: "2026-11-02", issueDate: "2026-11-04" }, amounts: { grossCents: 4_900, discountCents: 0, baseCents: 4_900, taxCents: 1_029, totalCents: 5_929, balanceAppliedCents: 0 } });
+    expect(evidence!.location).toEqual([{ source: "billing_address", country: "ES", postalCode: "28001" }, { source: "stripe_tax_address", country: "ES", postalCode: "28001", derivedFrom: "billing_address" }]);
+    expect(evidence!.legalBasis.every((x) => x.includes("https://www.boe.es/"))).toBe(true);
     const s = text(inv);
     expect(s).toContain('["Fecha de expedición","04/11/2026"]');
     expect(s).toContain('["Fecha de operación (devengo)","02/11/2026"]');
@@ -580,7 +588,7 @@ describe("casos fiscales preparados: DESACTIVADOS por defecto", () => {
 });
 
 describe("casos fiscales preparados: ACTIVADOS por configuración", () => {
-  const ALL: FiscalCasesConfig = { enabled: new Set(["consumer:es_mainland", "business:es_canarias", "business:eu_vies", "business:non_eu"]), simplified: true };
+  const ALL: FiscalCasesConfig = { enabled: new Set(["consumer:es_mainland", "business:es_canarias", "business:eu_vies", "business:non_eu"]), simplified: true, euB2cRegime: null };
 
   it("factura simplificada para un particular sin NIF (≤ 400 €): serie EBS propia y correlativa, sin datos del destinatario", async () => {
     const t = setup({ fiscalCases: ALL });
@@ -649,7 +657,7 @@ describe("casos fiscales preparados: ACTIVADOS por configuración", () => {
 describe("ventas actuales (empresa de la península) sin más cambios que fechas y descuentos", () => {
   it("con todos los casos activados, una venta peninsular produce la misma factura que sin activar ninguno", async () => {
     const a = setup();
-    const b = setup({ fiscalCases: { enabled: new Set(["consumer:es_mainland", "business:es_canarias", "business:eu_vies", "business:non_eu", "consumer:eu", "consumer:non_eu"]), simplified: true } });
+    const b = setup({ fiscalCases: { enabled: new Set(["consumer:es_mainland", "business:es_canarias", "business:eu_vies", "business:non_eu", "consumer:eu"]), simplified: true, euB2cRegime: "destination_oss" } });
     for (const t of [a, b]) {
       t.reg.profiles.set(101, profile(101));
       await t.reg.paid(101, COMPRA, NOV2);
@@ -674,5 +682,180 @@ describe("ventas actuales (empresa de la península) sin más cambios que fechas
     expect(s).toContain('["Fecha de operación (devengo)","01/11/2026"]');
     expect(s).not.toContain("Fecha de cobro");
     expect(s).not.toContain("Descuento");
+  });
+});
+
+describe("matriz fiscal: saldo a favor (medio de pago o ajuste de precio)", () => {
+  const SALDO = { ...ALTA, id: "in_saldo", amountPaid: 4_929 };
+
+  it("sin origen determinado no se expide (motivo registrado); como medio de pago, la misma factura y conciliada con lo cobrado", async () => {
+    const t = setup();
+    t.reg.profiles.set(101, profile(101));
+    await t.reg.paid(101, SALDO, NOV2);
+    await t.svc.generateStripeSales("system");
+    expect((await t.svc.readiness(1)).problems).toEqual(["saldo a favor del cliente aplicado en Stripe (10,00 €) de origen fiscal no determinado: indicar si es un saldo monetario (medio de pago) o un ajuste del precio de una factura anterior (rectificativa, art. 80.Dos de la Ley 37/1992 y art. 15 del RD 1619/2012)"]);
+    expect((await t.auto.issueDue()).issued).toEqual([]);
+    await expect(t.svc.resolveCredit(1, { origin: "payment_means", reason: "x" }, "operador")).rejects.toThrow("Indica el motivo");
+    await t.svc.resolveCredit(1, { origin: "payment_means", reason: "Saldo monetario del cliente" }, "operador");
+    const iss = await t.auto.issueDue();
+    expect(iss.blocked).toEqual([]);
+    expect(iss.issued).toEqual([{ id: 1, number: "EB-2026-00001", totalCents: 5_929, delivery: "pending" }]);
+    const inv = (await t.store.get(1))!;
+    expect([inv.baseCents, inv.taxCents, inv.totalCents]).toEqual([4_900, 1_029, 5_929]);
+    expect(inv.fiscal?.credit).toMatchObject({ appliedCents: 1_000, origin: "payment_means", originalInvoiceId: null, rectificationInvoiceId: null, decidedBy: "operador" });
+    expect(inv.fiscal?.evidence?.amounts).toMatchObject({ balanceAppliedCents: 1_000, totalCents: 5_929 });
+    expect(inv.fiscal?.evidence?.stripeTax).toMatchObject({ amountPaidCents: 4_929, taxCents: 1_029 });
+    // Una vez expedida no se cambia
+    await expect(t.svc.resolveCredit(1, { origin: "payment_means", reason: "otra vez" }, "operador")).rejects.toThrow("sin expedir");
+  });
+
+  it("ajuste del precio de una factura anterior: borrador de rectificativa enlazado (EBR) y la venta se expide", async () => {
+    const t = setup();
+    t.reg.profiles.set(101, profile(101));
+    await t.reg.paid(101, ALTA, NOV2);
+    await t.svc.generateStripeSales("system");
+    await t.auto.issueDue();
+    // Segunda venta con 12,10 € de saldo a favor que procede de un ajuste del precio de la factura EB-2026-00001
+    await t.reg.paid(101, { ...ALTA, id: "in_saldo2", amountPaid: 5_929 - 1_210 }, NOV2 + DAY);
+    t.at(NOV2 + DAY + 3_600_000);
+    await t.svc.generateStripeSales("system");
+    const sale = (await t.store.bySource(stripeSaleSourceKey(101, "in_saldo2")))!;
+    const after = await t.svc.resolveCredit(sale.id, { origin: "price_adjustment", originalInvoiceId: 1, reason: "Bonificación posterior por incidencia" }, "operador");
+    const rid = after.fiscal!.credit!.rectificationInvoiceId!;
+    const r = (await t.store.get(rid))!;
+    expect(r).toMatchObject({ kind: "rectification", status: "draft", originalInvoiceId: 1, baseCents: -1_000, taxCents: -210, totalCents: -1_210 });
+    expect(r.fiscal).toMatchObject({ rectifies: { invoiceId: 1, number: "EB-2026-00001", invoiceType: "complete" }, evidence: null, ruleId: "business:es_mainland", matrixVersion: FISCAL_MATRIX_VERSION });
+    expect((await t.svc.issue(rid, "operador")).number).toBe("EBR-2026-00001");
+    expect((await t.store.get(1))!.status).toBe("issued");
+    expect((await t.auto.issueDue()).issued.map((x) => x.number)).toEqual(["EB-2026-00002"]);
+    // Repetir la decisión no crea otra rectificativa (idempotente por importe)
+    expect((await t.store.list({})).filter((x) => x.kind === "rectification")).toHaveLength(1);
+  });
+
+  it("ajuste sobre una factura de otra empresa o sin expedir: rechazado", async () => {
+    const t = setup();
+    t.reg.profiles.set(101, profile(101));
+    t.reg.profiles.set(102, profile(102));
+    await t.reg.paid(102, { ...ALTA, id: "in_otra" }, NOV2);
+    await t.reg.paid(101, SALDO, NOV2);
+    await t.svc.generateStripeSales("system");
+    const own = (await t.store.bySource(stripeSaleSourceKey(101, "in_saldo")))!;
+    const other = (await t.store.bySource(stripeSaleSourceKey(102, "in_otra")))!;
+    await expect(t.svc.resolveCredit(own.id, { origin: "price_adjustment", originalInvoiceId: other.id, reason: "Ajuste de precio" }, "operador")).rejects.toThrow("otra empresa");
+    await expect(t.svc.resolveCredit(other.id, { origin: "payment_means", reason: "Saldo monetario" }, "operador")).rejects.toThrow("no tiene saldo a favor");
+  });
+});
+
+describe("matriz fiscal: simplificadas y sus rectificativas", () => {
+  const ALL: FiscalCasesConfig = { enabled: new Set(["consumer:es_mainland"]), simplified: true, euB2cRegime: null };
+  it("rectificativa de una simplificada: serie propia EBSR (art. 7.1.a RD 1619/2012), título y libro registro R5; la de una completa, EBR y R1", async () => {
+    const t = setup({ fiscalCases: ALL });
+    t.reg.profiles.set(101, CONSUMER(101, { billingAddress: null }));
+    t.reg.profiles.set(103, profile(103));
+    await t.reg.paid(101, ALTA, NOV2);
+    await t.reg.paid(103, gwInvoice("in_empresa", "subscription_create", [line("e1", "price_essential", 4_900, 1_029)]), NOV2);
+    await t.svc.generateStripeSales("system");
+    await t.auto.issueDue();
+    const simp = (await t.store.bySource(stripeSaleSourceKey(101, "in_alta")))!;
+    const comp = (await t.store.bySource(stripeSaleSourceKey(103, "in_empresa")))!;
+    expect(simp.number).toBe("EBS-2026-00001");
+    const rs = await t.svc.issue((await t.svc.rectify(simp.id, { reason: "Error en el concepto" }, "operador")).id, "operador");
+    const rc = await t.svc.issue((await t.svc.rectify(comp.id, { reason: "Error en el concepto" }, "operador")).id, "operador");
+    expect([rs.number, rc.number]).toEqual(["EBSR-2026-00001", "EBR-2026-00001"]);
+    expect(rs.fiscal).toMatchObject({ invoiceType: "simplified", rectifies: { invoiceId: simp.id, number: "EBS-2026-00001", invoiceType: "simplified" } });
+    expect(rs.fiscal?.advisorPending).toContain("rectificativa_simplificada");
+    expect(text(rs)).toContain('"text":"Factura rectificativa simplificada"');
+    expect(text(rs)).toContain("factura EBS-2026-00001");
+    expect(invoiceHtml(rs, ISSUER_PARTY)).toContain("<h1>Factura rectificativa simplificada</h1>");
+    const csv = registerCsv(await t.store.list({}));
+    expect(csv).toContain(";EBS;EBS-2026-00001;F2;");
+    expect(csv).toContain(";EBSR;EBSR-2026-00001;R5;");
+    expect(csv).toContain(";EB;EB-2026-00001;F1;");
+    expect(csv).toContain(";EBR;EBR-2026-00001;R1;");
+  });
+});
+
+describe("matriz fiscal: casos preparados con evidencias", () => {
+  const fr = { country: "FR", postalCode: "75001", territory: "eu" as const, billingAddress: { line1: "1 rue Sintétique", line2: null, city: "París", state: null } };
+  const frSale = (id: string, base: number, tax: number) => gwInvoice(id, "subscription_create", [line(`${id}_l`, "price_essential", base, tax)], { customerCountry: "FR", customerPostalCode: "75001" });
+
+  it("empresa de la UE: la comprobación VIES con su fecha y la condición del comprador quedan en la factura", async () => {
+    const t = setup({ fiscalCases: { enabled: new Set(["business:eu_vies"]), simplified: false, euB2cRegime: null } });
+    t.reg.profiles.set(101, profile(101, { ...fr, scenario: "business:eu", taxId: "FR12345678901" }));
+    t.reg.vatChecks.push({ orderId: 101, country: "FR", vatNumber: "12345678901", status: "valid", checkedAt: NOV2 - DAY });
+    await t.reg.paid(101, frSale("in_fr", 4_900, 0), NOV2);
+    await t.svc.generateStripeSales("system");
+    expect((await t.auto.issueDue()).issued.map((x) => x.number)).toEqual(["EB-2026-00001"]);
+    const inv = (await t.store.get(1))!;
+    expect(inv.fiscal).toMatchObject({ ruleId: "business:eu_vies", matrixVersion: FISCAL_MATRIX_VERSION });
+    expect(inv.fiscal?.evidence).toMatchObject({ ruleStatus: "ready", vies: { vatNumber: "FR12345678901", status: "valid", checkedAt: NOV2 - DAY }, buyer: { condition: "business_vies", country: "FR" }, stripeTax: { taxCents: 0, customerCountry: "FR" } });
+  });
+
+  it("particular de la UE bajo el umbral (declarado): IVA español, simplificada; la venta que supera 10.000 € en el año se bloquea", async () => {
+    const t = setup({ fiscalCases: { enabled: new Set(["consumer:eu"]), simplified: true, euB2cRegime: "below_threshold" } });
+    t.reg.profiles.set(101, CONSUMER(101, { ...fr, scenario: "consumer:eu", billingAddress: null }));
+    await t.reg.paid(101, frSale("in_fr1", 4_900, 1_029), NOV2);
+    await t.svc.generateStripeSales("system");
+    expect((await t.auto.issueDue()).issued.map((x) => x.number)).toEqual(["EBS-2026-00001"]);
+    expect((await t.store.get(1))!.fiscal).toMatchObject({ ruleId: "consumer:eu@below_threshold", treatment: "taxed_es", invoiceType: "simplified" });
+    // Segunda venta (con NIF y domicilio: factura completa) que lleva el año por encima de 10.000 € sin IVA
+    t.reg.profiles.set(102, CONSUMER(102, { ...fr, scenario: "consumer:eu", taxId: "X1234567" }));
+    await t.reg.paid(102, frSale("in_fr2", 995_200, 208_992), NOV2);
+    await t.svc.generateStripeSales("system");
+    const iss = await t.auto.issueDue();
+    expect(iss.issued).toEqual([]);
+    expect(iss.blocked[0].reason).toContain("superan 10.000 €: desde esta operación tributa en destino (art. 73.Uno)");
+  });
+
+  it("particular de la UE en destino (OSS): sin una segunda prueba de localización independiente no se expide", async () => {
+    const t = setup({ fiscalCases: { enabled: new Set(["consumer:eu"]), simplified: true, euB2cRegime: "destination_oss" } });
+    t.reg.profiles.set(101, CONSUMER(101, { ...fr, scenario: "consumer:eu", taxId: "X1234567" }));
+    await t.reg.paid(101, frSale("in_oss", 4_900, 980), NOV2);
+    await t.svc.generateStripeSales("system");
+    const iss = await t.auto.issueDue();
+    expect(iss.issued).toEqual([]);
+    expect(iss.blocked[0].reason).toContain("faltan pruebas de localización: el art. 24 ter.d) del Reglamento 282/2011 exige dos no contradictorias");
+  });
+
+  it("empresa de fuera de la UE: no sujeta con su mención y el identificador fiscal como prueba; sin él, bloqueada", async () => {
+    const us = { country: "US", postalCode: "10001", territory: "non_eu" as const, scenario: "business:non_eu" as const, billingAddress: { line1: "1 Synthetic Ave", line2: null, city: "Nueva York", state: "NY" } };
+    const t = setup({ fiscalCases: { enabled: new Set(["business:non_eu"]), simplified: false, euB2cRegime: null } });
+    t.reg.profiles.set(101, profile(101, { ...us, taxId: "123456789" }));
+    t.reg.profiles.set(102, profile(102, { ...us, taxId: null }));
+    for (const [o, id] of [[101, "in_us"], [102, "in_us2"]] as const) await t.reg.paid(o, gwInvoice(id, "subscription_create", [line(`${id}_l`, "price_essential", 4_900, 0)], { customerCountry: "US", customerPostalCode: "10001" }), NOV2);
+    await t.svc.generateStripeSales("system");
+    const iss = await t.auto.issueDue();
+    expect(iss.issued.map((x) => x.number)).toEqual(["EB-2026-00001"]);
+    expect(iss.blocked.map((b) => b.reason).join(" ")).toContain("falta el NIF");
+    const inv = (await t.store.get(1))!;
+    expect(inv.fiscal).toMatchObject({ ruleId: "business:non_eu", treatment: "not_subject", legalMention: "Operación no sujeta al IVA: destinatario empresario o profesional establecido fuera del territorio de aplicación del impuesto (art. 69.Uno.1.º de la Ley 37/1992)." });
+    expect(inv.fiscal?.evidence?.buyer).toMatchObject({ country: "US", taxId: "123456789", condition: "business_declared" });
+  });
+
+  it("un caso bloqueado en la matriz nunca se expide, aunque se fuerce en la configuración", async () => {
+    const t = setup({ fiscalCases: { enabled: new Set(["business:es_ceuta", "consumer:non_eu"]), simplified: true, euB2cRegime: null } });
+    t.reg.profiles.set(101, profile(101, { postalCode: "51001", territory: "es_ceuta", scenario: "business:es_special" }));
+    await t.reg.paid(101, gwInvoice("in_ceuta", "subscription_create", [line("c1", "price_essential", 4_900, 0)], { customerPostalCode: "51001" }), NOV2);
+    await t.svc.generateStripeSales("system");
+    const iss = await t.auto.issueDue();
+    expect(iss.issued).toEqual([]);
+    expect(iss.blocked[0].reason).toContain("el caso fiscal business:es_ceuta está bloqueado");
+  });
+});
+
+describe("matriz fiscal: devengo con reintentos de Stripe", () => {
+  it("el reintento de la misma factura de Stripe no es un periodo nuevo: una factura, exigibilidad y cobro por separado en las evidencias", async () => {
+    const t = setup();
+    t.reg.profiles.set(101, profile(101));
+    await t.reg.paid(101, RENOVACION, DEC2 + DAY);
+    // El evento del cobro llega otra vez (otro reintento notificado): mismo documento, ninguna factura nueva
+    await t.reg.paid(101, RENOVACION, DEC2 + 3 * DAY);
+    t.at(DEC2 + 3 * DAY + 60_000);
+    expect((await t.svc.generateStripeSales("system")).created).toHaveLength(1);
+    expect((await t.svc.generateStripeSales("system")).created).toHaveLength(0);
+    await t.auto.issueDue();
+    const inv = (await t.store.get(1))!;
+    expect(await t.store.list({})).toHaveLength(1);
+    expect(inv.fiscal?.evidence?.dates).toMatchObject({ operationDate: "2026-12-02", accrualBasis: "due_date", dueDate: "2026-12-02", collectionDate: "2026-12-03", issueDate: "2026-12-05", periodStart: DEC2 });
   });
 });

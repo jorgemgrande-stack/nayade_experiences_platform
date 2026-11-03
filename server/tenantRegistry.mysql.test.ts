@@ -86,6 +86,20 @@ describe.skipIf(!URL_)("registro MySQL (integración)", () => {
     await expect(svc.addDomain("b", "x.elephantsource.es", "platform_subdomain", OP)).rejects.toThrow(RegistryError);
   });
 
+  it("reconectar un dominio propio desconectado: pendiente con token nuevo, sin fechas y solo para su empresa", async () => {
+    await svc.createTenant({ id: "a", displayName: "A" }, OP);
+    await svc.createTenant({ id: "b", displayName: "B" }, OP);
+    await svc.addDomain("a", "www.cliente.example", "custom", OP);
+    await svc.markDomainVerified("www.cliente.example", OP);
+    await svc.activateDomain("www.cliente.example", OP);
+    await svc.disableDomain("www.cliente.example", OP, "prueba");
+    await expect(svc.restartDomainVerification("b", "www.cliente.example", OP)).rejects.toMatchObject({ code: "forbidden" });
+    const d = await svc.restartDomainVerification("a", "www.cliente.example", OP);
+    expect(d).toMatchObject({ status: "pending_verification", isPrimary: false, verifiedAt: null, activatedAt: null });
+    expect(d.verificationToken).toMatch(/^[0-9a-f]{48}$/);
+    expect((await store.listEvents("a", 10)).map((e) => e.action)).toContain("domain.verification_restarted");
+  });
+
   it("la base de datos impone un único dominio primario y una única BD activa por tenant", async () => {
     await svc.createTenant({ id: "a", displayName: "A" }, OP);
     await pool.query(

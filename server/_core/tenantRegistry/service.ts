@@ -198,6 +198,30 @@ export class TenantRegistryService {
     });
   }
 
+  /**
+   * Vuelve a conectar un dominio propio desconectado de la MISMA empresa: pasa a pendiente con un token nuevo (la
+   * titularidad se prueba otra vez; el dominio pudo cambiar de manos mientras estaba desconectado).
+   */
+  async restartDomainVerification(tenantId: string, domain: string, actor: Actor): Promise<TenantDomain> {
+    return this.store.transaction(async (tx) => {
+      const r = await this.mustDomain(tx, domain);
+      if (r.tenant.id !== tenantId) throw new RegistryError("forbidden", "El dominio no pertenece a ese tenant");
+      if (r.domain.kind !== "custom") throw new RegistryError("invalid_transition", "Solo los dominios propios se verifican");
+      if (r.domain.status === "pending_verification") return r.domain;
+      if (r.domain.status !== "disabled") throw new RegistryError("invalid_transition", `El dominio está ${r.domain.status}`);
+      const d = await tx.updateDomain(r.domain.domain, {
+        status: "pending_verification",
+        isPrimary: false,
+        verificationToken: crypto.randomBytes(24).toString("hex"),
+        verifiedAt: null,
+        activatedAt: null,
+      });
+      await this.bump(tx, r.tenant);
+      await this.audit(tx, actor, tenantId, "domain.verification_restarted", "disabled", "pending_verification", { domain: r.domain.domain });
+      return d;
+    });
+  }
+
   async setPrimaryDomain(tenantId: string, domain: string, actor: Actor): Promise<TenantDomain> {
     return this.store.transaction((tx) => this.makePrimaryInTx(tx, tenantId, domain, actor));
   }

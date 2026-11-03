@@ -958,6 +958,8 @@ async function main() {
     quotaDefaults: parseDefaultQuotas(process.env.ERM_DEFAULT_QUOTAS) ?? undefined,
     platformTarget: process.env.CP_PLATFORM_TARGET ?? "",
     domainProvider: domainProviderFromEnv(process.env),
+    // Dominios propios en curso y activos: DNS, certificado y HTTPS cada 5 minutos (CP_DOMAIN_CHECKS_SECONDS; 0 = apagado)
+    domainChecksEveryMs: (process.env.CP_DOMAIN_CHECKS_SECONDS === undefined ? 300 : Number(process.env.CP_DOMAIN_CHECKS_SECONDS) || 0) * 1000,
     platformDomain,
     support: new SupportAdmin(pool),
     allowedOrigins: (process.env.CP_ALLOWED_ORIGINS ?? "").split(",").map((x) => x.trim()).filter(Boolean),
