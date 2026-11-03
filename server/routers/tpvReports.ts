@@ -8,6 +8,7 @@ import { TRPCError } from "@trpc/server";
 import { permissionProcedure, router } from "../_core/trpc";
 import { getTpvReport, listReportRegisters, TpvReportRangeError } from "../tpvReportsDb";
 import { REPORT_SECTIONS, reportCsvFilename, reportSectionCsv } from "../tpvReports";
+import { resolveSiteFilter } from "../sitesDb";
 
 const tpvReportsProc = permissionProcedure("tpv.backoffice", ["admin"]);
 
@@ -15,11 +16,14 @@ const filterInput = z.object({
   dateFrom: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
   dateTo: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
   registerId: z.number().int().positive().nullish(),
+  // Varias sedes (Business, multi-site): ventas y cierres de esa sede (la principal incluye lo que no tiene sede)
+  siteId: z.string().max(63).nullish(),
 });
 
 async function loadReport(input: z.infer<typeof filterInput>) {
   try {
-    return await getTpvReport(input);
+    const { siteId, ...rest } = input;
+    return await getTpvReport({ ...rest, site: await resolveSiteFilter(siteId) });
   } catch (e) {
     if (e instanceof TpvReportRangeError) throw new TRPCError({ code: "BAD_REQUEST", message: e.message });
     throw e;

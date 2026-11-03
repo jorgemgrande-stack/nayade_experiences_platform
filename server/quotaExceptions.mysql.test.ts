@@ -31,7 +31,7 @@ describe.skipIf(!URL_)("excepciones de cuota con MySQL real (registro 0016)", ()
     u.pathname = `/${DB}`;
     pool = mysql.createPool({ uri: u.toString(), connectionLimit: 5, multipleStatements: true });
     const r = await migrateRegistry(pool, path.resolve(__dirname, "../db/registry"), { dryRun: false });
-    expect(r).toMatchObject({ target: "0016", incomplete: [] });
+    expect(r).toMatchObject({ target: "0017", incomplete: [] });
     expect(r.applied).toContain("0016");
     await pool.query("INSERT INTO tenants (id, display_name) VALUES ('t-a', 'A'), ('t-b', 'B')");
     store = new MysqlQuotaExceptionStore(pool);
@@ -75,12 +75,14 @@ describe.skipIf(!URL_)("excepciones de cuota con MySQL real (registro 0016)", ()
   });
 
   it("la reversión elimina las tablas y deja el registro en 0015", async () => {
+    // La 0017 (posterior) se revierte antes
+    await pool.query(fs.readFileSync(path.resolve(__dirname, "../db/registry/0017_site_details.down.sql"), "utf8"));
     await pool.query(fs.readFileSync(path.resolve(__dirname, "../db/registry/0016_quota_exceptions.down.sql"), "utf8"));
     const [t] = await pool.query<mysql.RowDataPacket[]>("SELECT TABLE_NAME FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME LIKE 'tenant_quota_exception%'");
     expect(t).toEqual([]);
     const [[v]] = (await pool.query<mysql.RowDataPacket[]>("SELECT v FROM registry_meta WHERE k = 'schema_version'")) as any;
     expect(v.v).toBe("0015");
     // Y se puede volver a aplicar
-    expect((await migrateRegistry(pool, path.resolve(__dirname, "../db/registry"), { dryRun: false })).applied).toEqual(["0016"]);
+    expect((await migrateRegistry(pool, path.resolve(__dirname, "../db/registry"), { dryRun: false })).applied).toEqual(["0016", "0017"]);
   });
 });

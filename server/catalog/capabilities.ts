@@ -71,7 +71,7 @@ export const CAPABILITIES: readonly CapabilityDef[] = [
   c("web-multilang", "Web multiidioma", "business", "cms", "planned"),
   c("billing-recurring", "Facturación recurrente del negocio", "business", "billing", "partial"),
   c("roles-custom", "Roles personalizados", "business", "admin", "partial"),
-  c("multi-site", "Varias sedes", "business", "business", "planned"),
+  c("multi-site", "Varias sedes", "business", "business", "partial"),
   c("inventory-basic", "Inventario y stock genérico", "business", "operations", "planned"),
   c("purchasing-basic", "Compras y proveedores básicos", "business", "operations", "partial"),
   c("reports-advanced", "Informes avanzados", "business", "business", "partial"),

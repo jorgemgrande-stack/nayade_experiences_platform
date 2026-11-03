@@ -17,6 +17,8 @@ import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { PanelEmpty, PanelError, PanelLoading, errorMessage } from "@/components/admin/PanelStates";
 import { usePanelSubscription } from "@/hooks/usePanelSubscription";
+import { useCompanySites } from "@/hooks/useCompanySites";
+import { selectClass } from "@/components/admin/crm/CrmParts";
 import { validateCashRegisterForm } from "@shared/formValidation";
 import { toast } from "sonner";
 import { Link } from "wouter";
@@ -51,7 +53,10 @@ export default function TpvBackoffice() {
   const [selectedSessionId, setSelectedSessionId] = useState<number | null>(null);
   const [searchTicket, setSearchTicket] = useState("");
 
-  const { data: sessions } = trpc.tpv.getBackoffice.useQuery({ page: 1, limit: 50 });
+  // Varias sedes (Business): filtro de sesiones por sede y sede de cada caja; con una sola sede no se muestra nada
+  const companySites = useCompanySites();
+  const [siteFilter, setSiteFilter] = useState("");
+  const { data: sessions } = trpc.tpv.getBackoffice.useQuery({ page: 1, limit: 50, ...(companySites.enabled && siteFilter ? { siteId: siteFilter } : {}) });
   const { data: sessionDetail } = trpc.tpv.getSessionSummary.useQuery(
     { sessionId: selectedSessionId! },
     { enabled: !!selectedSessionId }
@@ -66,7 +71,7 @@ export default function TpvBackoffice() {
   const registersQ = trpc.tpv.getRegisters.useQuery();
   const registers = registersQ.data ?? [];
   const [showNewRegister, setShowNewRegister] = useState(false);
-  const [regForm, setRegForm] = useState({ name: "", location: "" });
+  const [regForm, setRegForm] = useState({ name: "", location: "", siteId: "" });
   const [regSubmitted, setRegSubmitted] = useState(false);
   const [regServerError, setRegServerError] = useState<string | null>(null);
   const regErrors = validateCashRegisterForm(regForm, registers.map((r) => r.name));
@@ -74,15 +79,19 @@ export default function TpvBackoffice() {
     onSuccess: (r) => {
       utils.tpv.getRegisters.invalidate();
       setShowNewRegister(false);
-      setRegForm({ name: "", location: "" });
+      setRegForm({ name: "", location: "", siteId: "" });
       setRegSubmitted(false);
       toast.success(`Caja «${r?.name ?? regForm.name.trim()}» creada`);
     },
     // El diálogo sigue abierto con lo escrito para poder corregir y reintentar
     onError: (e) => setRegServerError(errorMessage(e, "No se ha podido crear la caja.")),
   });
+  const setRegisterSite = trpc.tpv.setRegisterSite.useMutation({
+    onSuccess: () => { utils.tpv.getRegisters.invalidate(); toast.success("Sede de la caja actualizada"); },
+    onError: (e) => toast.error(errorMessage(e, "No se ha podido cambiar la sede de la caja.")),
+  });
   const openNewRegister = () => {
-    setRegForm({ name: "", location: "" });
+    setRegForm({ name: "", location: "", siteId: "" });
     setRegSubmitted(false);
     setRegServerError(null);
     setShowNewRegister(true);
@@ -94,7 +103,7 @@ export default function TpvBackoffice() {
       document.getElementById(regErrors.name ? "register-name" : "register-location")?.focus();
       return;
     }
-    createRegister.mutate({ name: regForm.name.trim(), location: regForm.location.trim() || undefined });
+    createRegister.mutate({ name: regForm.name.trim(), location: regForm.location.trim() || undefined, ...(companySites.enabled && regForm.siteId ? { siteId: regForm.siteId } : {}) });
   };
   const showRegErr = (k: "name" | "location") => (regSubmitted ? regErrors[k] : undefined);
 
@@ -168,6 +177,20 @@ export default function TpvBackoffice() {
                       {r.location}
                     </p>
                   )}
+                  {companySites.enabled && (
+                    <div className="mt-2">
+                      <label htmlFor={`caja-sede-${r.id}`} className="sr-only">Sede de {r.name}</label>
+                      <select
+                        id={`caja-sede-${r.id}`}
+                        className={selectClass}
+                        value={r.siteId || companySites.primarySiteId}
+                        disabled={!companySites.canWrite || setRegisterSite.isPending}
+                        onChange={(e) => setRegisterSite.mutate({ registerId: r.id, siteId: e.target.value })}
+                      >
+                        {companySites.sites.filter((s) => s.status === "active" || s.siteId === r.siteId).map((s) => <option key={s.siteId} value={s.siteId}>{s.name}{s.status === "archived" ? " (desactivada)" : ""}</option>)}
+                      </select>
+                    </div>
+                  )}
                 </li>
               ))}
             </ul>
@@ -214,6 +237,14 @@ export default function TpvBackoffice() {
                 />
                 {showRegErr("location") && <p id="register-location-error" role="alert" className="text-sm text-danger">{showRegErr("location")}</p>}
               </div>
+              {companySites.enabled && (
+                <div className="space-y-1.5">
+                  <Label htmlFor="register-site">Sede</Label>
+                  <select id="register-site" className={selectClass} value={regForm.siteId || companySites.primarySiteId} onChange={(e) => setRegForm((f) => ({ ...f, siteId: e.target.value }))}>
+                    {companySites.active.map((s) => <option key={s.siteId} value={s.siteId}>{s.name}</option>)}
+                  </select>
+                </div>
+              )}
               {regServerError && <p role="alert" className="text-sm text-danger">{regServerError}</p>}
               <DialogFooter>
                 <Button type="button" variant="outline" onClick={() => setShowNewRegister(false)} disabled={createRegister.isPending}>Cancelar</Button>
@@ -231,6 +262,15 @@ export default function TpvBackoffice() {
             <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider">
               Sesiones de Caja
             </h2>
+            {companySites.enabled && (
+              <div>
+                <label htmlFor="sesiones-sede" className="sr-only">Filtrar sesiones por sede</label>
+                <select id="sesiones-sede" className={selectClass} value={siteFilter} onChange={(e) => { setSiteFilter(e.target.value); setSelectedSessionId(null); }}>
+                  <option value="">Todas las sedes</option>
+                  {companySites.sites.map((s) => <option key={s.siteId} value={s.siteId}>{s.name}{s.status === "archived" ? " (desactivada)" : ""}</option>)}
+                </select>
+              </div>
+            )}
             <ScrollArea className="h-[600px]">
               <div className="space-y-2 pr-2">
                 {sessions?.map((session: any) => {

@@ -102,6 +102,8 @@ import { integrationEnv } from "../_core/tenantConfig";
 import { issuerSnapshotForNewInvoice } from "../issuerSnapshot";
 import { cashSaleDocument, formatRecipientAddress, invoicePaymentMethodFromTicket, proposeTicketInvoiceRecipient } from "../../shared/ticketInvoice";
 import { applyTpvPricingRules, tpvLinePrices } from "../pricingRulesDb";
+import { resolveSiteFilter, resolveSiteForWrite, siteCondition, userMayUseSite, userSiteScope, companySites } from "../sitesDb";
+import { siteOfStored } from "../../shared/sites";
 
 type FiscalData = { fiscalRegime: "reav" | "general" | "mixed"; taxRate: number; providerPercent: number; agencyMarginPercent: number };
 
@@ -336,15 +338,21 @@ export const tpvRouter = router({
   }),
 
   // Cajas activas con su sesión abierta (si la hay): selector de caja de la pantalla de venta
-  getRegisterStatus: tpvAccessProc.query(async () => {
-    const regs = await db.select().from(cashRegisters).where(eq(cashRegisters.isActive, true));
+  getRegisterStatus: tpvAccessProc.query(async ({ ctx }) => {
+    let regs = await db.select().from(cashRegisters).where(eq(cashRegisters.isActive, true));
+    // Varias sedes (Business): quien tiene sedes asignadas solo ve las cajas de sus sedes
+    const scope = await userSiteScope(ctx.user);
+    if (scope) {
+      const primary = regs.some((r) => !r.siteId) ? (await companySites()).primarySiteId : "";
+      regs = regs.filter((r) => scope.includes(siteOfStored(r.siteId, primary)));
+    }
     const open = await db
       .select({ id: cashSessions.id, registerId: cashSessions.registerId, cashierName: cashSessions.cashierName, openedAt: cashSessions.openedAt })
       .from(cashSessions)
       .where(eq(cashSessions.status, "open"));
     return regs.map((r) => {
       const s = open.find((o) => o.registerId === r.id);
-      return { id: r.id, name: r.name, location: r.location ?? null, openSession: s ? { id: s.id, cashierName: s.cashierName, openedAt: s.openedAt } : null };
+      return { id: r.id, name: r.name, location: r.location ?? null, siteId: r.siteId ?? null, openSession: s ? { id: s.id, cashierName: s.cashierName, openedAt: s.openedAt } : null };
     });
   }),
 
@@ -370,12 +378,26 @@ export const tpvRouter = router({
 
   // Alta de caja: una empresa nueva no trae ninguna y sin caja no se puede abrir sesión
   createRegister: tpvBackofficeProc
-    .input(z.object({ name: z.string().trim().min(1).max(100), location: z.string().trim().max(200).optional() }))
+    .input(z.object({ name: z.string().trim().min(1).max(100), location: z.string().trim().max(200).optional(), siteId: z.string().max(63).optional() }))
     .mutation(async ({ input }) => {
-      const [result] = await db.insert(cashRegisters).values({ name: input.name, location: input.location || null, isActive: true, createdAt: Date.now() });
+      // Sede de la caja (Business, multi-site): sin indicarla, la principal
+      const siteId = await resolveSiteForWrite(input.siteId);
+      const [result] = await db.insert(cashRegisters).values({ name: input.name, location: input.location || null, isActive: true, createdAt: Date.now(), siteId });
       const id = (result as any).insertId as number;
       const [register] = await db.select().from(cashRegisters).where(eq(cashRegisters.id, id));
       return register;
+    }),
+
+  // Cambiar la caja de sede (Business, multi-site). Las sesiones ya abiertas o cerradas conservan la sede que tenían.
+  setRegisterSite: tpvBackofficeProc
+    .input(z.object({ registerId: z.number().int().positive(), siteId: z.string().max(63) }))
+    .mutation(async ({ input }) => {
+      const [register] = await db.select({ id: cashRegisters.id }).from(cashRegisters).where(eq(cashRegisters.id, input.registerId));
+      if (!register) throw new TRPCError({ code: "NOT_FOUND", message: "La caja no existe" });
+      const siteId = await resolveSiteForWrite(input.siteId);
+      await db.update(cashRegisters).set({ siteId }).where(eq(cashRegisters.id, input.registerId));
+      const [updated] = await db.select().from(cashRegisters).where(eq(cashRegisters.id, input.registerId));
+      return updated;
     }),
 
   // -- SESSIONS ---------------------------------------------------------------
@@ -404,8 +426,10 @@ export const tpvRouter = router({
       })
     )
     .mutation(async ({ input, ctx }) => {
-      const [register] = await db.select({ id: cashRegisters.id }).from(cashRegisters).where(and(eq(cashRegisters.id, input.registerId), eq(cashRegisters.isActive, true)));
+      const [register] = await db.select({ id: cashRegisters.id, siteId: cashRegisters.siteId }).from(cashRegisters).where(and(eq(cashRegisters.id, input.registerId), eq(cashRegisters.isActive, true)));
       if (!register) throw new TRPCError({ code: "NOT_FOUND", message: "La caja no existe o está desactivada" });
+      // Varias sedes (Business): solo se abre una caja de una sede en la que trabaja el usuario
+      if (!(await userMayUseSite(ctx.user, register.siteId ?? null))) throw new TRPCError({ code: "FORBIDDEN", message: "Esta caja es de una sede en la que no trabajas" });
       // Check no open session exists
       const existing = await db
         .select()
@@ -431,6 +455,7 @@ export const tpvRouter = router({
         status: "open",
         notes: input.notes,
         openedAt: Date.now(),
+        siteId: register.siteId ?? null,
       });
       const id = (result as any).insertId as number;
       const [session] = await db.select().from(cashSessions).where(eq(cashSessions.id, id));
@@ -1024,7 +1049,7 @@ export const tpvRouter = router({
       // venta queda anulada con motivo (ticket documentado, sin hueco de numeración) y el cajero recibe un error.
       const claimSale = async () => {
       // Solo se cobra en una sesión abierta (antes de numerar: un rechazo no deja hueco en la numeración)
-      const [saleSession] = await db.select({ status: cashSessions.status }).from(cashSessions).where(eq(cashSessions.id, input.sessionId));
+      const [saleSession] = await db.select({ status: cashSessions.status, siteId: cashSessions.siteId }).from(cashSessions).where(eq(cashSessions.id, input.sessionId));
       if (!saleSession) throw new TRPCError({ code: "NOT_FOUND", message: "Sesión de caja no encontrada" });
       if (saleSession.status !== "open") throw new TRPCError({ code: "CONFLICT", message: "La caja está cerrada. Ábrela de nuevo para cobrar." });
 
@@ -1063,6 +1088,8 @@ export const tpvRouter = router({
         sellerName,
         idempotencyKey,
         clientId: linkedClientId,
+        // Sede de la venta: la de su sesión de caja (NULL = principal)
+        siteId: saleSession.siteId ?? null,
       } as any);
       } catch (e) {
         // Última barrera (índice único) si dos intentos con la misma clave llegaran sin bloqueo
@@ -1675,13 +1702,17 @@ export const tpvRouter = router({
       z.object({
         page: z.number().int().positive().default(1),
         limit: z.number().int().positive().max(100).default(20),
+        // Varias sedes (Business, multi-site): solo las sesiones de esa sede (la principal incluye las que no tienen)
+        siteId: z.string().max(63).optional(),
       })
     )
     .query(async ({ input }) => {
       const offset = (input.page - 1) * input.limit;
+      const site = await resolveSiteFilter(input.siteId);
       const sessions = await db
         .select()
         .from(cashSessions)
+        .where(site ? siteCondition(cashSessions.siteId, site) : undefined)
         .orderBy(desc(cashSessions.openedAt))
         .limit(input.limit)
         .offset(offset);

@@ -9,6 +9,8 @@
  *  - URL: https, o la red privada de Railway (`http://<servicio>.railway.internal:<puerto>`, cifrada por la
  *    plataforma y sin salida a Internet), o localhost fuera de producción.
  */
+import type { PanelSites, SiteFormInput } from "../shared/sites";
+
 export interface CommerceInput {
   add?: string[];
   users?: number;
@@ -112,6 +114,15 @@ export interface CommerceClient {
    * y 404 llegan como CommerceError. Opcional en los dobles de prueba.
    */
   retryActivation?(tenantId: string, key: string): Promise<{ outcome: "active" | "resumed" | "in_progress" }>;
+  /**
+   * Sedes de la empresa (registro del plano de control, fuente de verdad): lista con la principal y el límite del plan,
+   * alta, cambios, desactivar y reactivar. `requestedBy`: el usuario de la sesión del Core. Opcionales en los dobles.
+   */
+  sites?(tenantId: string): Promise<PanelSites>;
+  createSite?(tenantId: string, input: SiteFormInput & { requestedBy: string }): Promise<PanelSites>;
+  updateSite?(tenantId: string, siteId: string, input: Partial<SiteFormInput> & { requestedBy: string }): Promise<PanelSites>;
+  archiveSite?(tenantId: string, siteId: string, input: { requestedBy: string }): Promise<PanelSites>;
+  restoreSite?(tenantId: string, siteId: string, input: { requestedBy: string }): Promise<PanelSites>;
 }
 
 const DEFAULT_ERROR = "No se pudo completar la operación";
@@ -198,6 +209,11 @@ export function commerceClientFromEnv(env: NodeJS.ProcessEnv = process.env, fetc
     undoCancel: async (tenantId, input) => ((await call("POST", `${seg(tenantId)}/cancellation/undo`, input)) as { cancellation: unknown }).cancellation,
     planRequest: async (tenantId, input) => await call("POST", `${seg(tenantId)}/plan-requests`, input),
     planRequests: async (tenantId) => ((await call("GET", `${seg(tenantId)}/plan-requests`)) as { requests: unknown }).requests,
+    sites: async (tenantId) => ((await call("GET", `${seg(tenantId)}/sites`)) as { sites: PanelSites }).sites,
+    createSite: async (tenantId, input) => ((await call("POST", `${seg(tenantId)}/sites`, input)) as { sites: PanelSites }).sites,
+    updateSite: async (tenantId, siteId, input) => ((await call("POST", `${seg(tenantId)}/sites/${encodeURIComponent(siteId)}`, input)) as { sites: PanelSites }).sites,
+    archiveSite: async (tenantId, siteId, input) => ((await call("POST", `${seg(tenantId)}/sites/${encodeURIComponent(siteId)}/archive`, input)) as { sites: PanelSites }).sites,
+    restoreSite: async (tenantId, siteId, input) => ((await call("POST", `${seg(tenantId)}/sites/${encodeURIComponent(siteId)}/restore`, input)) as { sites: PanelSites }).sites,
     planChangeStatus: async (tenantId) => ((await call("GET", `${seg(tenantId)}/plan-change`)) as { planChange: unknown }).planChange,
     planChangePreview: async (tenantId, input) => ((await call("POST", `${seg(tenantId)}/plan-change/preview`, input)) as { preview: unknown }).preview,
     changePlan: async (tenantId, input) => ((await call("POST", `${seg(tenantId)}/plan-change`, input)) as { planChange: unknown }).planChange,

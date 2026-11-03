@@ -153,6 +153,7 @@ import { createPanelEventsRouter, createPanelStatsRouter, type PanelEventStore }
 import { createPanelRequestsRouter } from "../commerce/panelRequests";
 import { createPlanRequestsRouter } from "../commerce/planRequests";
 import { createPanelUsageRouter } from "../commerce/panelUsage";
+import { createPanelSitesRouter } from "../commerce/panelSites";
 import { BillingPortalService } from "../stripe/billingPortal";
 import { SubscriptionSelfService, createSubscriptionSelfServiceRouter, type SelfServiceSubscriptionFlags } from "../stripe/subscriptionSelfService";
 import { StripeReconciler, startStripeWorker } from "../stripe/reconcile";
@@ -2016,6 +2017,8 @@ export function createControlPlaneApp(d: ControlPlaneDeps): Express {
         }),
       );
       router.post("/tenants/:id/sites/:site/archive", requireScope("tenants:write"), orgRoute((req, t) => org.archiveSite(t, slug.parse(req.params.site))));
+      // Sedes desde el panel de la propia empresa (token del Core; el límite lo aplica OrganizationService)
+      router.use("/commerce", createPanelSitesRouter({ org, tenantExists: async (t) => !!(await d.reader.getTenant(t)) }));
     }
     // La conversión excepcional de una prueba la monta el orquestador (más abajo); sin él, la ruta responde 409
     const trialConversion: { run?: TrialExceptionConversion } = {};
