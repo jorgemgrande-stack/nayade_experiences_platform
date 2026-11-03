@@ -360,7 +360,7 @@ async function main() {
   const env = arg("env");
   const sc = await scope();
   const service = cmd === "deploy" || cmd === "revert" ? arg("service") : cmd === "drill" ? "restore-drill" : undefined;
-  if (!["verify", "status", "deploy", "drill", "active-sha", "publish", "revert", "active-crm", "publish-crm", "rollback-recorded", "storage", "storage-fix", "test-gateways", "mail-live", "backup-check", "platform-domain", "metering", "mail-access", "lead-notices-mail", "contract-mail", "mail-production", "connect-channel"].includes(cmd)) throw new Error(`orden desconocida: ${cmd}`);
+  if (!["verify", "status", "deploy", "drill", "active-sha", "publish", "revert", "active-crm", "publish-crm", "rollback-recorded", "storage", "storage-fix", "test-gateways", "mail-live", "backup-check", "platform-domain", "metering", "mail-access", "lead-notices-mail", "contract-mail", "mail-production", "connect-channel", "custom-domains"].includes(cmd)) throw new Error(`orden desconocida: ${cmd}`);
   const problems = guard(cfg, sc, { env, service });
   if (problems.length) {
     console.error(`Detenido antes de tocar nada:\n - ${problems.join("\n - ")}`);
@@ -932,6 +932,55 @@ async function main() {
       }
       console.log(`Postmark webhook ${existingHook ? "actualizado" : "creado"}: ${hookUrl} (entrega, rebote, queja y baja)`);
     }
+    return;
+  }
+  if (cmd === "custom-domains") {
+    // Dominios propios de las empresas (solo lectura): si el plano de control tiene CP_RAILWAY_DOMAIN_TOKEN, si la API
+    // de Railway lo acepta, si es del mismo proyecto y entorno, y si devuelve los registros DNS reales de los dominios
+    // de core-gateway. Nunca imprime el token ni crea, cambia o borra dominios.
+    const t = await api<{ projectToken: { projectId: string } }>("query { projectToken { projectId } }");
+    const p = t.projectToken.projectId;
+    const q = "query($p:String!,$e:String!,$s:String!,$u:Boolean){ variables(projectId:$p, environmentId:$e, serviceId:$s, unrendered:$u) }";
+    const cpId = await serviceId("controlplane");
+    const raw = (await api<{ variables: Record<string, string> }>(q, { p, e: sc.environmentId, s: cpId, u: true })).variables;
+    const eff = (await api<{ variables: Record<string, string> }>(q, { p, e: sc.environmentId, s: cpId, u: false })).variables;
+    const domainToken = (eff.CP_RAILWAY_DOMAIN_TOKEN ?? "").trim();
+    if (domainToken && process.env.GITHUB_ACTIONS) console.log(`::add-mask::${domainToken}`);
+    const kind = raw.CP_RAILWAY_DOMAIN_TOKEN === undefined ? "sin definir" : /\$\{\{[^}]+\}\}/.test(raw.CP_RAILWAY_DOMAIN_TOKEN) ? "definida (referencia)" : "definida (valor fijo)";
+    console.log(`controlplane.CP_RAILWAY_DOMAIN_TOKEN   ${kind}${raw.CP_RAILWAY_DOMAIN_TOKEN !== undefined && !domainToken ? " · SIN VALOR EFECTIVO" : ""}`);
+    console.log(`controlplane.CP_DOMAIN_CHECKS_SECONDS  ${eff.CP_DOMAIN_CHECKS_SECONDS ?? "sin definir (300 por defecto)"}`);
+    if (!domainToken) {
+      console.log(`Proveedor de dominios: MANUAL. Para el alta automática: Railway → proyecto → Settings → Tokens → token de proyecto del entorno «${sc.environmentName}»; guardarlo como CP_RAILWAY_DOMAIN_TOKEN en el servicio controlplane y redesplegarlo.`);
+      return;
+    }
+    const withToken = async <T>(query: string, variables: Record<string, unknown> = {}): Promise<T> => {
+      const r = await fetch(API, { method: "POST", headers: { "content-type": "application/json", "Project-Access-Token": domainToken }, body: JSON.stringify({ query, variables }) });
+      const j = (await r.json().catch(() => ({ errors: [{ message: `HTTP ${r.status}` }] }))) as { data?: T; errors?: Array<{ message?: string }> };
+      if (j.errors || !j.data) throw new Error(`la API de Railway rechaza el token: ${String(j.errors?.[0]?.message ?? `HTTP ${r.status}`).slice(0, 160)}`);
+      return j.data;
+    };
+    const own = await withToken<{ projectToken: { projectId: string; environmentId: string } }>("query { projectToken { projectId environmentId } }").catch((e: Error) => e);
+    if (own instanceof Error) {
+      console.log(`API de Railway: ${own.message}`);
+      process.exit(1);
+    }
+    const sameProject = own.projectToken.projectId === p;
+    const sameEnv = own.projectToken.environmentId === sc.environmentId;
+    console.log(`API de Railway: responde · token de proyecto ${sameProject ? "de este proyecto" : "de OTRO proyecto"} · entorno ${sameEnv ? `«${sc.environmentName}»` : "DISTINTO"}`);
+    if (!sameProject || !sameEnv) process.exit(1);
+    const gwId = await serviceId("core-gateway");
+    const d = await withToken<{ domains: { customDomains: Array<{ domain: string; status?: { certificateStatus?: string; dnsRecords?: Array<{ recordType?: string; hostlabel?: string; requiredValue?: string; status?: string; purpose?: string }> } | null }> } }>(
+      "query($p:String!,$e:String!,$s:String!){ domains(projectId:$p, environmentId:$e, serviceId:$s){ customDomains { domain status { certificateStatus dnsRecords { recordType hostlabel requiredValue status purpose } } } } }",
+      { p, e: sc.environmentId, s: gwId },
+    );
+    const list = d.domains.customDomains;
+    console.log(`core-gateway: ${list.length} dominios propios en Railway`);
+    for (const c of list) {
+      const recs = c.status?.dnsRecords ?? [];
+      const shown = recs.map((r) => `${String(r.recordType ?? "").replace(/^DNS_RECORD_TYPE_/, "")} ${r.hostlabel || "@"} ${r.requiredValue ? "con valor" : "SIN VALOR"} ${/PROPAGATED/.test(String(r.status)) ? "propagado" : "pendiente"}`);
+      console.log(`  ${c.domain.padEnd(40)} certificado ${String(c.status?.certificateStatus ?? "?").replace(/^CERTIFICATE_STATUS_TYPE_/, "")} · ${shown.length ? shown.join(" · ") : "sin registros DNS"}`);
+    }
+    console.log("Alta automática: el token es de proyecto y de este entorno, el tipo que admite customDomainCreate/customDomainDelete (esta acción no lo prueba: no crea nada).");
     return;
   }
   if (cmd === "connect-channel") {
