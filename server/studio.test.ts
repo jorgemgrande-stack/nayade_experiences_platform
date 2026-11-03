@@ -4,7 +4,7 @@
  * y el aislamiento entre empresas están en essential.studio.mysql.test.ts).
  */
 import { describe, it, expect } from "vitest";
-import { BLOCK_TYPES, createBlock, defaultBlockData, isDefaultStyle, type PageBlock } from "../shared/pageBlocks";
+import { BLOCK_TYPES, createBlock, cssUrl, DEFAULT_BLOCK_STYLE, defaultBlockData, isDefaultStyle, type PageBlock } from "../shared/pageBlocks";
 import { MODULES, SECTION_PRESETS, availableModules, inlineFields, moduleDef, searchModules } from "../shared/studio/modules";
 import { blocksToHtml, normalizeBlocks, normalizeStyle, readStoredBlocks, renderBlockTokens, PageBlocksError } from "./_core/pageBlocks";
 import { docReducer, initialDoc } from "../client/src/components/admin/studio/history";
@@ -106,7 +106,37 @@ describe("diseño de cada bloque", () => {
 
   it("fondo, espacios, visibilidad y ancla válidos se conservan", () => {
     const s = normalizeStyle({ background: "brand", padTop: "l", padBottom: "s", hideOn: ["mobile", "mobile", "desktop"], anchor: "servicios", color: "red" });
-    expect(s).toEqual({ background: "brand", padTop: "l", padBottom: "s", hideOn: ["desktop", "mobile"], anchor: "servicios", animation: "none" });
+    expect(s).toEqual({ ...DEFAULT_BLOCK_STYLE, background: "brand", padTop: "l", padBottom: "s", hideOn: ["desktop", "mobile"], anchor: "servicios" });
+  });
+
+  it("tipografía, caja, espacios y móvil: valores de la lista se conservan; los demás vuelven a los de serie", () => {
+    const s = normalizeStyle({
+      headingFont: "serif", textFont: "comic-sans", headingSize: "xl", textSize: "l", align: "center", headingColor: "brand",
+      border: "thin", radius: "m", shadow: "l", marginTop: "s", marginBottom: "huge", padTop: "xl", mobileAlign: "left", mobileSpacing: "less",
+    });
+    expect(s).toMatchObject({
+      headingFont: "serif", textFont: "auto", headingSize: "xl", textSize: "l", align: "center", headingColor: "brand",
+      border: "thin", radius: "m", shadow: "l", marginTop: "s", marginBottom: "0", padTop: "xl", mobileAlign: "left", mobileSpacing: "less",
+    });
+  });
+
+  it("degradado e imagen: solo se guardan con su fondo; la imagen, saneada como las de los módulos", () => {
+    expect(normalizeStyle({ background: "gradient", gradient: "night" })).toMatchObject({ background: "gradient", gradient: "night" });
+    expect(normalizeStyle({ background: "gradient", gradient: "rainbow" })).toMatchObject({ gradient: "brand" });
+    // Sin su fondo, degradado, imagen y capa no cuentan: el diseño queda de serie y no se guarda
+    expect(normalizeStyle({ background: "none", gradient: "night", bgImage: "https://x.es/a.jpg", overlay: "light" })).toBeUndefined();
+    const img = normalizeStyle({ background: "image", bgImage: "javascript:alert(1)", overlay: "brand" });
+    expect(img).toMatchObject({ background: "image", bgImage: "", overlay: "brand" });
+    expect(normalizeStyle({ background: "image", bgImage: "https://cdn.example.com/fondo.jpg", overlay: "x" })).toMatchObject({ bgImage: "https://cdn.example.com/fondo.jpg", overlay: "dark" });
+  });
+
+  it("la dirección de la imagen de fondo no puede salirse de url(…) en el CSS", () => {
+    expect(cssUrl('https://x.es/a")%3B b(c).jpg')).toBe("https://x.es/a%22%29%3B%20b%28c%29.jpg");
+    expect(cssUrl("/files/01/foto.jpg")).toBe("/files/01/foto.jpg");
+  });
+
+  it("un diseño guardado antes de los estilos nuevos se lee igual (lo que falta toma su valor de serie)", () => {
+    expect(normalizeStyle({ background: "dark", padTop: "m", padBottom: "0", hideOn: [], anchor: "", animation: "fade" })).toEqual({ ...DEFAULT_BLOCK_STYLE, background: "dark", padTop: "m", animation: "fade" });
   });
 
   it("el diseño viaja con el bloque al validar y un bloque sin diseño queda igual que antes", () => {

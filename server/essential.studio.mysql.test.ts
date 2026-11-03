@@ -7,6 +7,7 @@
  */
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { startEssentialApp, data, errCode, type EssentialApp } from "./essentialApp.testkit";
+import { DEFAULT_BLOCK_STYLE } from "../shared/pageBlocks";
 
 const URL_ = process.env.REGISTRY_TEST_DATABASE_URL;
 
@@ -39,7 +40,7 @@ describe.skipIf(!URL_)("Elephant Studio (aplicación real, dos empresas nuevas)"
     const saved = data(await ess.m("a", "cms.savePageDraft", { slug: "estudio", blocks: studioBlocks }, admA));
     expect(saved.blocks.map((b: any) => b.type)).toEqual(["heading", "features", "cta"]);
     expect(saved.blocks[2].data.buttonUrl).toBe("");
-    expect(saved.blocks[0].style).toEqual({ background: "soft", padTop: "m", padBottom: "0", hideOn: [], anchor: "inicio-servicios", animation: "none" });
+    expect(saved.blocks[0].style).toEqual({ ...DEFAULT_BLOCK_STYLE, background: "soft", padTop: "m", anchor: "inicio-servicios" });
 
     const ed = data(await ess.q("a", "cms.pageEditor", { slug: "estudio" }, admA));
     expect(ed.source).toBe("draft");

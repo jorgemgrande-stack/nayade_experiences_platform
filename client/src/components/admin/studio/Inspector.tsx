@@ -418,13 +418,39 @@ const BACKGROUNDS: ReadonlyArray<{ value: BlockStyle["background"]; label: strin
   { value: "soft", label: "Suave", swatch: "bg-muted" },
   { value: "brand", label: "Color de marca", swatch: "bg-primary" },
   { value: "dark", label: "Oscuro", swatch: "bg-slate-900" },
+  { value: "gradient", label: "Degradado", swatch: "bg-gradient-to-br from-primary to-slate-900" },
+  { value: "image", label: "Imagen", swatch: "bg-[linear-gradient(135deg,#94a3b8,#475569)]" },
+];
+/** Muestras de los degradados (los mismos que en la web, con el color de marca del panel) */
+const GRADIENT_OPTIONS: ReadonlyArray<{ value: BlockStyle["gradient"]; label: string; css: string }> = [
+  { value: "brand", label: "Marca intenso", css: "linear-gradient(135deg, var(--primary), color-mix(in srgb, var(--primary) 55%, #000))" },
+  { value: "soft", label: "Marca suave", css: "linear-gradient(180deg, color-mix(in srgb, var(--primary) 14%, var(--background)), var(--background))" },
+  { value: "night", label: "Noche", css: "linear-gradient(135deg, #0f172a, color-mix(in srgb, var(--primary) 45%, #0f172a))" },
+  { value: "glow", label: "Resplandor", css: "radial-gradient(circle at 50% 0%, color-mix(in srgb, var(--primary) 28%, var(--background)), var(--background) 70%)" },
 ];
 const SPACINGS = [
   { value: "0", label: "Nada" },
   { value: "s", label: "Poco" },
   { value: "m", label: "Medio" },
   { value: "l", label: "Mucho" },
+  { value: "xl", label: "Máximo" },
 ] as const;
+const MARGINS = SPACINGS.slice(0, 4);
+const FONT_OPTIONS = [
+  { value: "auto", label: "La de la marca" },
+  { value: "display", label: "Moderna (Montserrat)" },
+  { value: "sans", label: "Sencilla (Inter)" },
+  { value: "serif", label: "Clásica (Playfair Display)" },
+] as const;
+
+function StyleGroup({ title, children }: { title: string; children: ReactNode }) {
+  return (
+    <section className="space-y-3 border-t border-border pt-4 first:border-t-0 first:pt-0">
+      <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{title}</h3>
+      {children}
+    </section>
+  );
+}
 const DEVICE_OPTIONS: ReadonlyArray<{ value: Device; label: string; icon: typeof Monitor }> = [
   { value: "desktop", label: "Ordenador", icon: Monitor },
   { value: "tablet", label: "Tableta", icon: Tablet },
@@ -435,11 +461,11 @@ function StyleEditor({ style, setStyle, pro }: { style: BlockStyle; setStyle: (p
   const anchorId = useId();
   const [anchor, setAnchor] = useState(style.anchor);
   const anchorError = anchor && !ANCHOR_RE.test(anchor) ? "Solo minúsculas sin tildes, números y guiones." : null;
+  const boxed = style.border !== "none" || style.radius !== "0" || style.shadow !== "none";
   return (
     <div className="space-y-5">
-      <div className="space-y-1.5">
-        <span className="text-sm font-medium">Fondo</span>
-        <div className="grid grid-cols-4 gap-2" role="radiogroup" aria-label="Fondo">
+      <StyleGroup title="Fondo">
+        <div className="grid grid-cols-3 gap-2" role="radiogroup" aria-label="Fondo">
           {BACKGROUNDS.map((bg) => (
             <button
               key={bg.value}
@@ -454,63 +480,221 @@ function StyleEditor({ style, setStyle, pro }: { style: BlockStyle; setStyle: (p
             </button>
           ))}
         </div>
-        <p className="text-xs text-muted-foreground">Los colores salen de la marca de tu web, así que siempre combinan.</p>
-      </div>
-      <div className="space-y-1">
-        <Segmented
-          label="Animación al aparecer"
-          value={style.animation}
-          options={[
-            { value: "none", label: "Ninguna" },
-            { value: "fade", label: "Fundido" },
-            { value: "up", label: "Subir" },
-            { value: "zoom", label: "Acercar" },
-          ]}
-          onChange={(v) => setStyle({ animation: v as BlockStyle["animation"] })}
-        />
-        <p className="text-xs text-muted-foreground">Se ve en tu web al llegar al bloque (no mientras editas) y nunca si el visitante prefiere menos movimiento.</p>
-      </div>
-      {pro ? (
-        <>
-          <Segmented label="Espacio extra arriba" value={style.padTop} options={SPACINGS} onChange={(v) => setStyle({ padTop: v as BlockStyle["padTop"] })} />
-          <Segmented label="Espacio extra abajo" value={style.padBottom} options={SPACINGS} onChange={(v) => setStyle({ padBottom: v as BlockStyle["padBottom"] })} />
-          <div className="space-y-2">
-            <span className="text-sm font-medium">Visible en</span>
-            {DEVICE_OPTIONS.map((d) => (
-              <div key={d.value} className="flex items-center justify-between gap-3">
-                <Label htmlFor={`${anchorId}-${d.value}`} className="flex items-center gap-2 font-normal">
-                  <d.icon className="h-4 w-4 text-muted-foreground" /> {d.label}
-                </Label>
-                <Switch
-                  id={`${anchorId}-${d.value}`}
-                  checked={!style.hideOn.includes(d.value)}
-                  onCheckedChange={(v) => setStyle({ hideOn: v ? style.hideOn.filter((x) => x !== d.value) : [...style.hideOn, d.value] })}
-                />
-              </div>
+        {style.background === "gradient" && (
+          <div className="grid grid-cols-2 gap-2" role="radiogroup" aria-label="Degradado">
+            {GRADIENT_OPTIONS.map((g) => (
+              <button
+                key={g.value}
+                type="button"
+                role="radio"
+                aria-checked={style.gradient === g.value}
+                onClick={() => setStyle({ gradient: g.value })}
+                className={cn("flex flex-col gap-1.5 rounded-lg border p-2 text-left text-[11px] transition-colors", style.gradient === g.value ? "border-primary ring-1 ring-primary" : "border-border hover:border-foreground/30")}
+              >
+                <span className="h-8 w-full rounded-md border border-border" style={{ backgroundImage: g.css }} aria-hidden />
+                {g.label}
+              </button>
             ))}
           </div>
-          <div className="space-y-1.5">
-            <Label htmlFor={anchorId}>Ancla para enlazar a esta sección</Label>
-            <PlainInput
-              id={anchorId}
-              value={anchor}
-              maxLength={40}
-              placeholder="por-ejemplo-servicios"
-              aria-invalid={!!anchorError}
-              onChange={(e) => {
-                const v = e.target.value.toLowerCase().replace(/\s+/g, "-");
-                setAnchor(v);
-                if (!v || ANCHOR_RE.test(v)) setStyle({ anchor: v });
-              }}
+        )}
+        {style.background === "image" && (
+          <div className="space-y-3">
+            <ImageUploader label="Imagen de fondo" value={style.bgImage} onChange={(url) => setStyle({ bgImage: siteRelativeFileUrl(url) })} />
+            <Segmented
+              label="Capa para que el texto se lea"
+              value={style.overlay}
+              options={[
+                { value: "dark", label: "Oscura" },
+                { value: "light", label: "Clara" },
+                { value: "brand", label: "De marca" },
+              ]}
+              onChange={(v) => setStyle({ overlay: v as BlockStyle["overlay"] })}
             />
-            <p className={cn("text-xs", anchorError ? "text-destructive" : "text-muted-foreground")}>
-              {anchorError ?? (anchor ? `Enlaza a esta sección con «#${anchor}» desde un botón o el menú.` : "Opcional. Sirve para que un botón lleve directamente a esta sección.")}
-            </p>
           </div>
+        )}
+        <p className="text-xs text-muted-foreground">Los colores salen de la marca de tu web, así que siempre combinan; sobre fondos oscuros el texto pasa a claro.</p>
+      </StyleGroup>
+
+      <StyleGroup title="Texto">
+        <Segmented
+          label="Alineación"
+          value={style.align}
+          options={[
+            { value: "auto", label: "La de serie" },
+            { value: "left", label: "Izquierda" },
+            { value: "center", label: "Centro" },
+            { value: "right", label: "Derecha" },
+          ]}
+          onChange={(v) => setStyle({ align: v as BlockStyle["align"] })}
+        />
+        <SelectField
+          label="Tamaño de los títulos"
+          value={style.headingSize}
+          options={[
+            { value: "auto", label: "El de serie" },
+            { value: "s", label: "Pequeño" },
+            { value: "m", label: "Mediano" },
+            { value: "l", label: "Grande" },
+            { value: "xl", label: "Muy grande" },
+          ]}
+          onChange={(v) => setStyle({ headingSize: v as BlockStyle["headingSize"] })}
+        />
+        {pro && (
+          <>
+            <SelectField label="Tipo de letra de los títulos" value={style.headingFont} options={FONT_OPTIONS} onChange={(v) => setStyle({ headingFont: v as BlockStyle["headingFont"] })} />
+            <SelectField label="Tipo de letra del texto" value={style.textFont} options={FONT_OPTIONS} onChange={(v) => setStyle({ textFont: v as BlockStyle["textFont"] })} />
+            <Segmented
+              label="Tamaño del texto"
+              value={style.textSize}
+              options={[
+                { value: "s", label: "Pequeño" },
+                { value: "auto", label: "Normal" },
+                { value: "l", label: "Grande" },
+              ]}
+              onChange={(v) => setStyle({ textSize: v as BlockStyle["textSize"] })}
+            />
+            <Segmented
+              label="Color de los títulos"
+              value={style.headingColor}
+              options={[
+                { value: "auto", label: "El de serie" },
+                { value: "brand", label: "De marca" },
+                { value: "text", label: "Como el texto" },
+              ]}
+              onChange={(v) => setStyle({ headingColor: v as BlockStyle["headingColor"] })}
+            />
+          </>
+        )}
+      </StyleGroup>
+
+      {pro && (
+        <StyleGroup title="Caja">
+          <Segmented
+            label="Borde"
+            value={style.border}
+            options={[
+              { value: "none", label: "Sin borde" },
+              { value: "thin", label: "Fino" },
+              { value: "brand", label: "De marca" },
+            ]}
+            onChange={(v) => setStyle({ border: v as BlockStyle["border"] })}
+          />
+          <Segmented
+            label="Esquinas"
+            value={style.radius}
+            options={[
+              { value: "0", label: "Rectas" },
+              { value: "s", label: "Suaves" },
+              { value: "m", label: "Redondas" },
+              { value: "l", label: "Muy redondas" },
+            ]}
+            onChange={(v) => setStyle({ radius: v as BlockStyle["radius"] })}
+          />
+          <Segmented
+            label="Sombra"
+            value={style.shadow}
+            options={[
+              { value: "none", label: "Sin sombra" },
+              { value: "s", label: "Leve" },
+              { value: "m", label: "Media" },
+              { value: "l", label: "Fuerte" },
+            ]}
+            onChange={(v) => setStyle({ shadow: v as BlockStyle["shadow"] })}
+          />
+          <p className="text-xs text-muted-foreground">
+            {boxed ? "El bloque se muestra como una tarjeta dentro del ancho de la página." : "Con borde, esquinas o sombra, el bloque se muestra como una tarjeta."}
+          </p>
+        </StyleGroup>
+      )}
+
+      {pro && (
+        <StyleGroup title="Espacios">
+          <SelectField label="Espacio interior arriba" value={style.padTop} options={SPACINGS} onChange={(v) => setStyle({ padTop: v as BlockStyle["padTop"] })} />
+          <SelectField label="Espacio interior abajo" value={style.padBottom} options={SPACINGS} onChange={(v) => setStyle({ padBottom: v as BlockStyle["padBottom"] })} />
+          <Segmented label="Separación con el bloque de arriba" value={style.marginTop} options={MARGINS} onChange={(v) => setStyle({ marginTop: v as BlockStyle["marginTop"] })} />
+          <Segmented label="Separación con el bloque de abajo" value={style.marginBottom} options={MARGINS} onChange={(v) => setStyle({ marginBottom: v as BlockStyle["marginBottom"] })} />
+        </StyleGroup>
+      )}
+
+      <StyleGroup title="Animación">
+        <div className="space-y-1">
+          <Segmented
+            label="Al aparecer"
+            value={style.animation}
+            options={[
+              { value: "none", label: "Ninguna" },
+              { value: "fade", label: "Fundido" },
+              { value: "up", label: "Subir" },
+              { value: "zoom", label: "Acercar" },
+            ]}
+            onChange={(v) => setStyle({ animation: v as BlockStyle["animation"] })}
+          />
+          <p className="text-xs text-muted-foreground">Se ve en tu web al llegar al bloque (no mientras editas) y nunca si el visitante prefiere menos movimiento.</p>
+        </div>
+      </StyleGroup>
+
+      {pro ? (
+        <>
+          <StyleGroup title="Dispositivos">
+            <div className="space-y-2">
+              <span className="text-sm font-medium">Visible en</span>
+              {DEVICE_OPTIONS.map((d) => (
+                <div key={d.value} className="flex items-center justify-between gap-3">
+                  <Label htmlFor={`${anchorId}-${d.value}`} className="flex items-center gap-2 font-normal">
+                    <d.icon className="h-4 w-4 text-muted-foreground" /> {d.label}
+                  </Label>
+                  <Switch
+                    id={`${anchorId}-${d.value}`}
+                    checked={!style.hideOn.includes(d.value)}
+                    onCheckedChange={(v) => setStyle({ hideOn: v ? style.hideOn.filter((x) => x !== d.value) : [...style.hideOn, d.value] })}
+                  />
+                </div>
+              ))}
+            </div>
+            <Segmented
+              label="Alineación en el móvil"
+              value={style.mobileAlign}
+              options={[
+                { value: "auto", label: "Como en el ordenador" },
+                { value: "left", label: "Izquierda" },
+                { value: "center", label: "Centro" },
+              ]}
+              onChange={(v) => setStyle({ mobileAlign: v as BlockStyle["mobileAlign"] })}
+            />
+            <Segmented
+              label="Espacios en el móvil"
+              value={style.mobileSpacing}
+              options={[
+                { value: "same", label: "Iguales" },
+                { value: "less", label: "La mitad" },
+              ]}
+              onChange={(v) => setStyle({ mobileSpacing: v as BlockStyle["mobileSpacing"] })}
+            />
+          </StyleGroup>
+          <StyleGroup title="Enlace">
+            <div className="space-y-1.5">
+              <Label htmlFor={anchorId}>Ancla para enlazar a esta sección</Label>
+              <PlainInput
+                id={anchorId}
+                value={anchor}
+                maxLength={40}
+                placeholder="por-ejemplo-servicios"
+                aria-invalid={!!anchorError}
+                onChange={(e) => {
+                  const v = e.target.value.toLowerCase().replace(/\s+/g, "-");
+                  setAnchor(v);
+                  if (!v || ANCHOR_RE.test(v)) setStyle({ anchor: v });
+                }}
+              />
+              <p className={cn("text-xs", anchorError ? "text-destructive" : "text-muted-foreground")}>
+                {anchorError ?? (anchor ? `Enlaza a esta sección con «#${anchor}» desde un botón o el menú.` : "Opcional. Sirve para que un botón lleve directamente a esta sección.")}
+              </p>
+            </div>
+          </StyleGroup>
         </>
       ) : (
         <p className="rounded-md bg-muted px-3 py-2 text-xs leading-relaxed text-muted-foreground">
-          En el modo profesional también puedes ajustar los espacios, elegir en qué dispositivos se ve el bloque y ponerle un ancla.
+          En el modo profesional también tienes tipos de letra, borde, esquinas y sombra, espacios, ajustes para el móvil y ancla.
         </p>
       )}
     </div>
