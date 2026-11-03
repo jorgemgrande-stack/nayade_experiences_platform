@@ -9,8 +9,8 @@
 import { sanitizeRichHtml } from "./htmlSanitize";
 import { renderSiteTokens, type SiteTokenData } from "./templates/starterSite";
 import {
-  ANCHOR_RE, BLOCK_ANIMATIONS, BLOCK_BACKGROUNDS, BLOCK_SPACINGS, BLOCK_TYPES, DEVICES, PAGE_LIMITS, defaultBlockData, isDefaultStyle, newBlockId,
-  type BlockStyle, type BlockType, type GalleryImage, type PageBlock,
+  ANCHOR_RE, BLOCK_ANIMATIONS, BLOCK_BACKGROUNDS, BLOCK_SPACINGS, BLOCK_TYPES, DEVICES, NOT_NESTABLE, PAGE_LIMITS, SECTION_MAX_DEPTH, blockLabel, defaultBlockData,
+  isDefaultStyle, newBlockId, sectionColumnCount, type BlockDataMap, type BlockStyle, type BlockType, type GalleryImage, type PageBlock,
 } from "../../shared/pageBlocks";
 import { FEATURE_ICON_KEYS, moduleDef, type FieldDef } from "../../shared/studio/modules";
 import { siteRelativeFileUrl } from "../../shared/imageUpload";
@@ -177,32 +177,65 @@ export function normalizeStyle(v: unknown): BlockStyle | undefined {
 export function normalizeBlocks(raw: unknown): PageBlock[] {
   if (!Array.isArray(raw)) throw new PageBlocksError("El contenido de la página no es válido.");
   if (raw.length > PAGE_LIMITS.blocks) throw new PageBlocksError(`Una página admite hasta ${PAGE_LIMITS.blocks} bloques.`);
-  const seen = new Set<string>();
-  return raw.map((b) => {
-    if (!isObj(b) || typeof b.type !== "string" || !(BLOCK_TYPES as readonly string[]).includes(b.type)) {
-      throw new PageBlocksError("La página tiene un bloque que no se reconoce.");
-    }
-    const type = b.type as BlockType;
-    let id = blockId(b.id);
-    while (seen.has(id)) id = newBlockId();
-    seen.add(id);
-    const style = normalizeStyle(b.style);
-    return { id, type, data: normalizeData(type, isObj(b.data) ? b.data : {}), ...(style ? { style } : {}) } as PageBlock;
-  });
+  return normalizeList(raw, { seen: new Set(), total: 0, tolerant: false }, 0);
 }
 
 /** Lectura tolerante (lo guardado): lo que no se reconoce se omite en lugar de romper la página. */
 export function readStoredBlocks(raw: unknown): PageBlock[] {
   if (!Array.isArray(raw)) return [];
+  return normalizeList(raw, { seen: new Set(), total: 0, tolerant: true }, 0);
+}
+
+/**
+ * Identificadores ya usados y bloques contados en TODO el árbol (las secciones y lo que llevan dentro cuentan uno a
+ * uno). En la lectura tolerante, un bloque dañado se omite (también dentro de una columna) sin perder el resto.
+ */
+interface NormalizeCtx {
+  seen: Set<string>;
+  total: number;
+  tolerant: boolean;
+}
+
+function normalizeList(raw: unknown[], ctx: NormalizeCtx, depth: number): PageBlock[] {
   const out: PageBlock[] = [];
   for (const b of raw) {
+    if (!ctx.tolerant) {
+      out.push(normalizeOne(b, ctx, depth));
+      continue;
+    }
     try {
-      out.push(...normalizeBlocks([b]));
+      out.push(normalizeOne(b, ctx, depth));
     } catch {
       /* bloque antiguo o dañado: no se muestra */
     }
   }
   return out;
+}
+
+function normalizeOne(b: unknown, ctx: NormalizeCtx, depth: number): PageBlock {
+  if (!isObj(b) || typeof b.type !== "string" || !(BLOCK_TYPES as readonly string[]).includes(b.type)) {
+    throw new PageBlocksError("La página tiene un bloque que no se reconoce.");
+  }
+  const type = b.type as BlockType;
+  if (depth > 0 && NOT_NESTABLE.includes(type)) throw new PageBlocksError(`«${blockLabel(type)}» ocupa todo el ancho: no puede ir dentro de una columna.`);
+  if (type === "section" && depth >= SECTION_MAX_DEPTH) throw new PageBlocksError("Solo se puede poner una sección con columnas dentro de otra (un nivel).");
+  if (++ctx.total > PAGE_LIMITS.blocks) throw new PageBlocksError(`Una página admite hasta ${PAGE_LIMITS.blocks} bloques.`);
+  let id = blockId(b.id);
+  while (ctx.seen.has(id)) id = newBlockId();
+  ctx.seen.add(id);
+  const style = normalizeStyle(b.style);
+  const d = isObj(b.data) ? b.data : {};
+  const data = type === "section" ? normalizeSection(d, ctx, depth) : normalizeData(type, d);
+  return { id, type, data, ...(style ? { style } : {}) } as PageBlock;
+}
+
+/** Sección con columnas: tantas columnas como pide su reparto; lo que sobre pasa a la última (no se pierde). */
+function normalizeSection(d: Record<string, unknown>, ctx: NormalizeCtx, depth: number): BlockDataMap["section"] {
+  const base = normalizeBySchema("section", d) as Omit<BlockDataMap["section"], "columns">;
+  const lists = (Array.isArray(d.columns) ? d.columns : []).map((c) => (isObj(c) && Array.isArray(c.blocks) ? (c.blocks as unknown[]) : []));
+  const n = sectionColumnCount(base.layout);
+  const columns = Array.from({ length: n }, (_, i) => ({ blocks: normalizeList(i < n - 1 ? (lists[i] ?? []) : lists.slice(n - 1).flat(), ctx, depth + 1) }));
+  return { ...base, columns };
 }
 
 // ─── Resumen en HTML ──────────────────────────────────────────────────────────
@@ -293,6 +326,9 @@ export function blocksToHtml(blocks: PageBlock[]): string {
         break;
       case "logos":
         parts.push(h(2, b.data.title), ...b.data.logos.map((g) => img(g.url, g.alt)));
+        break;
+      case "section":
+        parts.push(blocksToHtml(b.data.columns.flatMap((c) => c.blocks)));
         break;
     }
   });
@@ -461,6 +497,7 @@ function plainTokens(s: string, data: SiteTokenData): string {
 /** Bloques listos para la web: con los datos de la empresa en sus textos (en el HTML, ya escapados). */
 export function renderBlockTokens(blocks: PageBlock[], data: SiteTokenData): PageBlock[] {
   return blocks.map((b) => {
+    if (b.type === "section") return { ...b, data: { ...b.data, columns: b.data.columns.map((c) => ({ blocks: renderBlockTokens(c.blocks, data) })) } };
     const d: Record<string, unknown> = { ...b.data };
     for (const [k, v] of Object.entries(d)) {
       if (typeof v !== "string") continue;

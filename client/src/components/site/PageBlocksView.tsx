@@ -40,7 +40,8 @@ export interface StudioEdit {
   onSelect: (id: string | null) => void;
   onText: (id: string, key: string, value: string) => void;
   onAction: (id: string, action: StudioBlockAction) => void;
-  onDrop: (payload: string, index: number) => void;
+  /** Soltar en la página (parent null) o en la columna `col` de la sección `parent` */
+  onDrop: (payload: string, index: number, parent: string | null, col: number) => void;
   /** Si lo que se arrastra es de Elephant Studio (según los tipos del arrastre) */
   dragTypes: (types: readonly string[]) => boolean;
   /** Lo que se suelta (módulo, sección o bloque), o vacío */
@@ -1063,7 +1064,7 @@ function AnimateIn({ kind, children }: { kind: BlockStyle["animation"]; children
 
 const DEVICE_LABEL: Record<Device, string> = { desktop: "ordenador", tablet: "tableta", mobile: "móvil" };
 
-function EditFrame({ ed, b, index, count, children }: { ed: StudioEdit; b: PageBlock; index: number; count: number; children: ReactNode }) {
+function EditFrame({ ed, b, index, count, parent, col, children }: { ed: StudioEdit; b: PageBlock; index: number; count: number; parent: string | null; col: number; children: ReactNode }) {
   const [hover, setHover] = useState(false);
   const [drop, setDrop] = useState<"before" | "after" | null>(null);
   const selected = ed.selectedId === b.id;
@@ -1106,7 +1107,7 @@ function EditFrame({ ed, b, index, count, children }: { ed: StudioEdit; b: PageB
         const r = e.currentTarget.getBoundingClientRect();
         const at = e.clientY < r.top + r.height / 2 ? index : index + 1;
         setDrop(null);
-        if (payload) ed.onDrop(payload, at);
+        if (payload) ed.onDrop(payload, at, parent, col);
       }}
     >
       <div className={cn(hiddenHere && "opacity-40")}>{children}</div>
@@ -1178,31 +1179,40 @@ function DropLine({ at }: { at: "before" | "after" }) {
   );
 }
 
-/** Zona para soltar al final de la página (y en la página vacía). */
-function EndDropZone({ ed, index, empty }: { ed: StudioEdit; index: number; empty: boolean }) {
+/** Zona para soltar al final de la página (y en la página vacía) o en una columna vacía. */
+function EndDropZone({ ed, index, empty, parent = null, col = 0 }: { ed: StudioEdit; index: number; empty: boolean; parent?: string | null; col?: number }) {
   const [over, setOver] = useState(false);
   if (ed.readOnly) return null;
+  const inColumn = parent !== null;
+  if (inColumn && !empty) return null;
   return (
     <div
-      className={cn("container font-sans", empty ? "py-16" : "py-6")}
+      className={cn("font-sans", inColumn ? "py-1" : cn("container", empty ? "py-16" : "py-6"))}
       onDragOver={(e) => {
         if (!ed.dragTypes(e.dataTransfer.types)) return;
         e.preventDefault();
+        // Dentro de una columna, la sección que la contiene no debe recibir también el arrastre
+        e.stopPropagation();
         setOver(true);
       }}
       onDragLeave={() => setOver(false)}
       onDrop={(e) => {
         e.preventDefault();
+        e.stopPropagation();
         setOver(false);
         const payload = ed.readDrop(e.dataTransfer);
-        if (payload) ed.onDrop(payload, index);
+        if (payload) ed.onDrop(payload, index, parent, col);
       }}
     >
       <div
-        className={cn("rounded-2xl border-2 border-dashed px-6 text-center text-sm transition-colors", empty ? "py-16" : "py-5")}
+        className={cn("rounded-2xl border-2 border-dashed px-6 text-center text-sm transition-colors", inColumn ? "px-3 py-8" : empty ? "py-16" : "py-5")}
         style={{ borderColor: over ? STUDIO_ACCENT : "rgba(100,116,139,0.35)", background: over ? "rgba(91,91,246,0.06)" : "transparent", color: over ? STUDIO_ACCENT : "rgb(100,116,139)" }}
       >
-        {empty ? "La página está vacía. Arrastra aquí un módulo de la biblioteca o haz clic en uno para añadirlo." : "Suelta aquí para añadirlo al final de la página"}
+        {inColumn
+          ? "Columna vacía: arrastra aquí un módulo"
+          : empty
+            ? "La página está vacía. Arrastra aquí un módulo de la biblioteca o haz clic en uno para añadirlo."
+            : "Suelta aquí para añadirlo al final de la página"}
       </div>
     </div>
   );
@@ -1261,18 +1271,58 @@ function renderBlock(b: PageBlock, first: boolean, preview?: boolean, pageTitle?
       return <StatsBlock b={b} first={first} />;
     case "logos":
       return <LogosBlock b={b} first={first} />;
+    case "section":
+      return <SectionBlock b={b} preview={preview} pageTitle={pageTitle} />;
     default:
       return null;
   }
 }
 
-export function PageBlocksView({ blocks, preview, pageTitle }: { blocks: PageBlock[]; preview?: boolean; pageTitle?: string }) {
+// ─── Sección con columnas ─────────────────────────────────────────────────────
+
+const SECTION_GAP: Record<string, string> = { s: "gap-4 md:gap-6", m: "gap-6 md:gap-10", l: "gap-8 md:gap-16" };
+const SECTION_VALIGN: Record<string, string> = { top: "md:items-start", center: "md:items-center", bottom: "md:items-end" };
+const SECTION_WIDTH: Record<string, string> = { normal: "container", wide: "container max-w-[1400px]", full: "w-full px-4 md:px-8" };
+/**
+ * Dentro de una columna, los módulos no llevan el ancho ni el margen de página: ocupan su columna y con menos espacio
+ * vertical (los mismos componentes, sin una versión aparte).
+ */
+const COLUMN_CLASS = "min-w-0 [&_.container]:mx-0 [&_.container]:max-w-none [&_.container]:px-0 [&_section]:py-3 md:[&_section]:py-4";
+
+/**
+ * Columnas una al lado de otra desde tableta (con tres o cuatro, dos por fila en tableta) y una debajo de otra en el
+ * móvil, en su orden o al revés. Cada columna pinta sus módulos con el mismo componente que la página.
+ */
+function SectionBlock({ b, preview, pageTitle }: { b: BlockOf<"section">; preview?: boolean; pageTitle?: string }) {
   const ed = useContext(StudioEditContext);
-  // La página ya tiene su titular principal si un módulo «Título» lo declara como H1
-  const ownH1 = blocks.some((b) => b.type === "heading" && b.data.level === "h1");
-  const firstTitled = ownH1 ? -1 : blocks.findIndex(hasTitle);
+  const fr = b.data.layout.split("-").map((n) => `minmax(0, ${n}fr)`).join(" ");
+  const many = b.data.columns.length >= 3;
   return (
-    <div className="pb-8">
+    <section className={cn(SECTION_WIDTH[b.data.width] ?? "container", "py-8 md:py-10")}>
+      <div
+        className={cn(
+          b.data.mobile === "reverse" ? "flex flex-col-reverse md:grid" : "grid grid-cols-1",
+          many ? "md:grid-cols-2 lg:[grid-template-columns:var(--studio-cols)]" : "md:[grid-template-columns:var(--studio-cols)]",
+          SECTION_GAP[b.data.gap] ?? SECTION_GAP.m,
+          SECTION_VALIGN[b.data.valign],
+        )}
+        style={{ "--studio-cols": fr } as CSSProperties}
+      >
+        {b.data.columns.map((c, i) => (
+          <div key={i} className={COLUMN_CLASS} data-studio-column={ed ? i : undefined}>
+            <BlockList blocks={c.blocks} parent={b.id} col={i} preview={preview} pageTitle={pageTitle} firstTitled={-1} />
+          </div>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+/** Una lista de bloques: la página o una columna de una sección. */
+function BlockList({ blocks, parent, col, preview, pageTitle, firstTitled }: { blocks: PageBlock[]; parent: string | null; col: number; preview?: boolean; pageTitle?: string; firstTitled: number }) {
+  const ed = useContext(StudioEditContext);
+  return (
+    <>
       {blocks.map((b, i) => {
         const content = (
           <BlockCtx.Provider value={b}>
@@ -1282,14 +1332,25 @@ export function PageBlocksView({ blocks, preview, pageTitle }: { blocks: PageBlo
           </BlockCtx.Provider>
         );
         return ed ? (
-          <EditFrame key={b.id} ed={ed} b={b} index={i} count={blocks.length}>
+          <EditFrame key={b.id} ed={ed} b={b} index={i} count={blocks.length} parent={parent} col={col}>
             {content}
           </EditFrame>
         ) : (
           <Fragment key={b.id}>{content}</Fragment>
         );
       })}
-      {ed && <EndDropZone ed={ed} index={blocks.length} empty={blocks.length === 0} />}
+      {ed && <EndDropZone ed={ed} index={blocks.length} empty={blocks.length === 0} parent={parent} col={col} />}
+    </>
+  );
+}
+
+export function PageBlocksView({ blocks, preview, pageTitle }: { blocks: PageBlock[]; preview?: boolean; pageTitle?: string }) {
+  // La página ya tiene su titular principal si un módulo «Título» lo declara como H1
+  const ownH1 = blocks.some((b) => b.type === "heading" && b.data.level === "h1");
+  const firstTitled = ownH1 ? -1 : blocks.findIndex(hasTitle);
+  return (
+    <div className="pb-8">
+      <BlockList blocks={blocks} parent={null} col={0} preview={preview} pageTitle={pageTitle} firstTitled={firstTitled} />
     </div>
   );
 }

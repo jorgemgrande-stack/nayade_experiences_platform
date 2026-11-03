@@ -28,6 +28,7 @@ export const hasTokens = (s: unknown): boolean => typeof s === "string" && /\{\{
 
 export function renderTokens(blocks: PageBlock[], t: SiteTokens): PageBlock[] {
   return blocks.map((b) => {
+    if (b.type === "section") return { ...b, data: { ...b.data, columns: b.data.columns.map((c) => ({ blocks: renderTokens(c.blocks, t) })) } };
     const d: Record<string, unknown> = { ...b.data };
     for (const [k, v] of Object.entries(d)) {
       if (typeof v === "string") d[k] = k === "html" ? rich(v, t) : plain(v, t);

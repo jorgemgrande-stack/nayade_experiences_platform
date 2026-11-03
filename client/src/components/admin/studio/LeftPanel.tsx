@@ -3,6 +3,7 @@
  *   - Añadir: biblioteca de módulos (buscador, familias, solo los que permite la licencia) y secciones prediseñadas.
  *     Se arrastran al lienzo o se añaden con un clic (detrás del bloque seleccionado).
  *   - Estructura: los bloques de la página en orden; se seleccionan, se reordenan arrastrando, se duplican y se quitan.
+ *     Lo que va dentro de una sección con columnas se ve debajo de ella, columna a columna.
  *   - Sitio: las páginas de la web y los ajustes globales (menús, marca, blog, multimedia).
  */
 import { useMemo, useRef, useState } from "react";
@@ -205,10 +206,54 @@ function Structure({ blocks, selectedId, device, onSelect, onMove, onDuplicate, 
                 </button>
               </span>
             </div>
+            {b.type === "section" && <SectionRows section={b} selectedId={selectedId} device={device} onSelect={onSelect} onDuplicate={onDuplicate} onDelete={onDelete} />}
           </li>
         );
       })}
     </ol>
+  );
+}
+
+/** Contenido de una sección en la estructura: cada columna con sus módulos (se mueven arrastrándolos en el lienzo). */
+function SectionRows({ section, selectedId, device, onSelect, onDuplicate, onDelete }: { section: Extract<PageBlock, { type: "section" }>; selectedId: string | null; device: Device; onSelect: (id: string) => void; onDuplicate: (id: string) => void; onDelete: (id: string) => void }) {
+  return (
+    <div className="ml-4 border-l border-border pl-2">
+      {section.data.columns.map((col, ci) => (
+        <div key={ci} className="py-0.5">
+          <span className="block px-1.5 pt-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/80">Columna {ci + 1}</span>
+          {!col.blocks.length && <span className="block px-1.5 py-1 text-[11px] italic text-muted-foreground">Vacía</span>}
+          <ol aria-label={`Columna ${ci + 1}`}>
+            {col.blocks.map((b) => {
+              const Icon = moduleIcon(moduleDef(b.type)?.icon);
+              const selected = b.id === selectedId;
+              return (
+                <li key={b.id} className="group">
+                  <div className={cn("flex items-center gap-1.5 rounded-md px-1.5 py-1 transition-colors", selected ? "bg-[#5b5bf6]/10 text-foreground" : "hover:bg-muted")}>
+                    <button type="button" onClick={() => onSelect(b.id)} className="flex min-w-0 flex-1 items-center gap-2 text-left" aria-current={selected || undefined}>
+                      <Icon className={cn("h-3.5 w-3.5 shrink-0", selected ? "text-[#5b5bf6]" : "text-muted-foreground")} />
+                      <span className="min-w-0">
+                        <span className="block text-xs font-medium">{blockLabel(b.type)}</span>
+                        <span className="block overflow-hidden text-ellipsis whitespace-nowrap text-[11px] text-muted-foreground">{blockSummary(b) || "Sin texto todavía"}</span>
+                      </span>
+                    </button>
+                    {b.style?.hideOn.includes(device) && <EyeOff className="h-3.5 w-3.5 shrink-0 text-muted-foreground" aria-label="Oculto en este dispositivo" />}
+                    <span className="flex shrink-0 opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100">
+                      <button type="button" className="rounded p-1 text-muted-foreground hover:bg-background hover:text-foreground" aria-label="Duplicar bloque" title="Duplicar" onClick={() => onDuplicate(b.id)}>
+                        <Copy className="h-3.5 w-3.5" />
+                      </button>
+                      <button type="button" className="rounded p-1 text-muted-foreground hover:bg-background hover:text-destructive" aria-label="Eliminar bloque" title="Eliminar" onClick={() => onDelete(b.id)}>
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </button>
+                    </span>
+                  </div>
+                  {b.type === "section" && <SectionRows section={b} selectedId={selectedId} device={device} onSelect={onSelect} onDuplicate={onDuplicate} onDelete={onDelete} />}
+                </li>
+              );
+            })}
+          </ol>
+        </div>
+      ))}
+    </div>
   );
 }
 

@@ -32,8 +32,9 @@ export type FromCanvas =
   | { kind: "select"; id: string | null }
   | { kind: "text"; id: string; key: string; value: string }
   | { kind: "action"; id: string; action: BlockAction }
-  | { kind: "drop"; payload: string; index: number }
-  | { kind: "move"; id: string; index: number }
+  /** `parent` null: la página; si no, la columna `col` de esa sección */
+  | { kind: "drop"; payload: string; index: number; parent: string | null; col: number }
+  | { kind: "move"; id: string; index: number; parent: string | null; col: number }
   | { kind: "navigate"; href: string }
   | { kind: "key"; key: string; ctrl: boolean; shift: boolean };
 
