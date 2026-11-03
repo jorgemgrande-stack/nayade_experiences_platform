@@ -18,19 +18,11 @@
 #                          su propio inicio de sesión. Los dominios técnicos de Railway no se incluyen: siguen
 #                          protegidos. Por defecto, ninguno (todo protegido, como siempre).
 #
-# Dominios propios de las empresas: no se añaden a PUBLIC_HOSTS. Para cualquier host fuera de esa lista, la pasarela
-# pregunta al Core (GET /_ops/public-host, por la red privada) y solo lo sirve sin contraseña si el registro lo tiene
-# como dominio propio ACTIVO de una empresa (o, en `/.well-known/elephant-domain-check`, verificado y a la espera de
-# la comprobación HTTPS que lo activa). Cualquier otra respuesta deja la autenticación básica de siempre; con el
-# Core sin responder, 502 (falla cerrado, como el resto de rutas). En live no se consulta (no hay autenticación básica).
-#
 # El `Host` original se conserva hacia la aplicación (comportamiento por defecto de reverse_proxy): el Core
 # elige la empresa por el host.
 {
 	admin off
 	auto_https off
-	# La decisión de acceso (route @protected) va antes que los bloques handle, que son terminales
-	order route before handle
 	servers {
 		# El borde de Railway llega desde 100.0.0.0/8 (rango de su guía de Caddy) y escribe X-Forwarded-For
 		# como «cliente, CDN». Caddy calcula {client_ip} a partir de ahí y es lo único que se reenvía a la
@@ -63,32 +55,13 @@
 		not host {$PUBLIC_HOSTS:public-hosts.invalid}
 		not expression `"{$RAILWAY_ENVIRONMENT_NAME:}" == "live"`
 	}
-	# Dos bloques: una cabecera que solo se añade se fija al momento; la que borra se aplica al responder. Así el
-	# borrado de X-Robots-Tag de los dominios propios activos (más abajo) se aplica después de fijarla.
-	header X-Robots-Tag "noindex, nofollow"
-	header -Server
+	basic_auth @protected {
+		{$GATEWAY_USER} {$GATEWAY_PASSWORD_HASH}
+	}
 
-	# Fuera de PUBLIC_HOSTS: ¿dominio propio activo? Lo decide el registro (Core). Solo el host y la ruta viajan a la
-	# consulta: ni el cuerpo, ni las cookies, ni las credenciales. Sin un 2xx, autenticación básica.
-	route @protected {
-		reverse_proxy {$UPSTREAM} {
-			method GET
-			rewrite /_ops/public-host
-			header_up -Authorization
-			header_up -Cookie
-			header_up X-Forwarded-Uri {uri}
-			header_up X-Forwarded-For {client_ip}
-			@public_domain status 2xx
-			handle_response @public_domain {
-				# La web de la empresa en su dominio sí se indexa (su robots.txt lo sirve el Core)
-				header -X-Robots-Tag
-			}
-			handle_response {
-				basic_auth {
-					{$GATEWAY_USER} {$GATEWAY_PASSWORD_HASH}
-				}
-			}
-		}
+	header {
+		X-Robots-Tag "noindex, nofollow"
+		-Server
 	}
 
 	# Entrada de las empresas clientes (APP_ENTRY_HOST): página estática; solo /api/central/* llega al Core
