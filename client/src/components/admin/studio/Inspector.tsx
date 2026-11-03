@@ -127,7 +127,7 @@ function SectionColumns({ block, modules, onAdd, onSelect }: { block: Extract<Pa
               key={child.id}
               type="button"
               onClick={() => onSelect?.(child.id)}
-              className="block w-full truncate rounded-md px-2 py-1 text-left text-xs hover:bg-muted"
+              className="block w-full overflow-hidden text-ellipsis whitespace-nowrap rounded-md px-2 py-1 text-left text-xs hover:bg-muted"
               title="Seleccionar este módulo"
             >
               <span className="font-medium">{blockLabel(child.type)}</span>
