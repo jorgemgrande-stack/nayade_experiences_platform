@@ -985,7 +985,7 @@ export const appRouter = router({
       .input(z.object({
         title: z.string().trim().min(1, "Indica el título").max(200),
         slug: z.string().trim().max(64),
-        template: z.enum(["blank", "services", "about", "contact"]).default("blank"),
+        template: z.enum(["blank", "services", "about", "contact", "home", "landing", "pricing", "faq"]).default("blank"),
         metaDescription: z.string().trim().max(300).optional(),
         addToMenu: z.boolean().default(true),
       }))

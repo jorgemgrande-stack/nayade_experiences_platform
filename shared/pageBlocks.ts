@@ -475,13 +475,81 @@ export const PAGE_TEMPLATES = [
   { key: "services", label: "Página de servicios", description: "Cabecera, tus servicios en secciones y un botón de contacto" },
   { key: "about", label: "Quiénes somos", description: "Vuestra historia, el equipo y por qué elegiros" },
   { key: "contact", label: "Contacto", description: "Datos de contacto y formulario que llega a tu CRM" },
+  // Páginas completas con los módulos y el diseño de Elephant Studio
+  { key: "home", label: "Inicio completo", description: "Presentación, ventajas, quiénes sois en columnas, cifras, opiniones, preguntas y contacto" },
+  { key: "landing", label: "Página de campaña", description: "Titular con fondo degradado, ventajas, tarifas, opiniones y llamada a la acción" },
+  { key: "pricing", label: "Tarifas", description: "Tus planes o precios, preguntas frecuentes y un botón de contacto" },
+  { key: "faq", label: "Preguntas frecuentes", description: "Respuestas a las dudas habituales y formulario para lo demás" },
 ] as const;
 export type PageTemplateKey = (typeof PAGE_TEMPLATES)[number]["key"];
+
+/** Bloque con diseño propio (el resto, el de serie). */
+const styled = <B extends PageBlock>(b: B, style: Partial<BlockStyle>): B => ({ ...b, style: { ...DEFAULT_BLOCK_STYLE, ...style } });
+
+/** Sección con columnas ya rellena (las plantillas no dependen del editor). */
+function sectionWith(layout: SectionLayout, columns: PageBlock[][], data: Partial<Omit<BlockDataMap["section"], "layout" | "columns">> = {}): BlockOf<"section"> {
+  const s = createBlock("section");
+  return { ...s, data: { ...s.data, ...data, layout, columns: columns.map((blocks) => ({ blocks })) } };
+}
+
+/** Cifras de ejemplo neutras (la empresa pone las suyas). */
+const exampleStats = () => [
+  { value: "10", suffix: "+", label: "años trabajando" },
+  { value: "500", suffix: "+", label: "clientes atendidos" },
+  { value: "24", suffix: "h", label: "para responderte" },
+];
 
 /** Bloques iniciales de una página nueva. Textos genéricos para que la empresa los adapte; nada inventado. */
 export function templateBlocks(key: PageTemplateKey, title: string): PageBlock[] {
   const t = title.trim() || "Nueva página";
   switch (key) {
+    case "home":
+      return [
+        createBlock("slideshow"),
+        createBlock("features", { title: "Por qué elegirnos", columns: "3" }),
+        sectionWith(
+          "1-1",
+          [
+            [createBlock("text", { title: "Quiénes somos", html: "<p>Cuenta quiénes sois, cómo trabajáis y qué os diferencia. Dos o tres frases bastan.</p>" }), createBlock("button", { label: "Conócenos", url: "/contacto" })],
+            [createBlock("image")],
+          ],
+          { valign: "center" },
+        ),
+        styled(createBlock("stats", { items: exampleStats() }), { background: "soft" }),
+        createBlock("testimonials", { layout: "carousel" }),
+        createBlock("faq"),
+        styled(createBlock("cta"), { background: "gradient", gradient: "brand" }),
+      ];
+    case "landing":
+      return [
+        styled(createBlock("heading", { eyebrow: "Novedad", title: t, subtitle: "Explica en una frase qué ofreces y por qué merece la pena", level: "h1" }), {
+          background: "gradient", gradient: "night", padTop: "l", padBottom: "l", headingSize: "xl",
+        }),
+        createBlock("features", { title: "Lo que incluye", columns: "3" }),
+        createBlock("pricing"),
+        styled(createBlock("testimonials"), { background: "soft" }),
+        styled(createBlock("cta", { title: "¿Hablamos?", text: "Cuéntanos qué necesitas y te respondemos lo antes posible." }), { background: "gradient", gradient: "brand" }),
+      ];
+    case "pricing":
+      return [
+        createBlock("heading", { eyebrow: "Tarifas", title: t, subtitle: "Elige la opción que mejor encaja contigo", level: "h1" }),
+        createBlock("pricing", { title: "" }),
+        createBlock("faq", { title: "Dudas sobre las tarifas" }),
+        styled(createBlock("cta", { title: "¿Necesitas algo a medida?", text: "Escríbenos y te preparamos una propuesta." }), { background: "brand" }),
+      ];
+    case "faq":
+      return [
+        createBlock("heading", { title: t, subtitle: "Las respuestas a las preguntas que más nos hacen", level: "h1" }),
+        createBlock("faq", { title: "" }),
+        sectionWith(
+          "1-2",
+          [
+            [createBlock("text", { title: "¿No encuentras tu respuesta?", html: "<p>Escríbenos y te contestamos lo antes posible.</p><ul><li>Teléfono: {{telefono}}</li><li>Correo electrónico: {{email}}</li></ul>" })],
+            [createBlock("contact_form", { title: "" })],
+          ],
+          { valign: "top" },
+        ),
+      ];
     case "services":
       return [
         createBlock("hero", { title: t, subtitle: "Explica en una frase qué ofreces y a quién", buttonLabel: "Pide información", buttonUrl: "/contacto" }),

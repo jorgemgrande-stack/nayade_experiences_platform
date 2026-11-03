@@ -31,7 +31,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
-import { PAGE_LIMITS, blockLabel, createBlock, duplicateBlock, type BlockType, type Device, type PageBlock } from "@shared/pageBlocks";
+import { PAGE_LIMITS, PAGE_TEMPLATES, blockLabel, createBlock, duplicateBlock, templateBlocks, type BlockType, type Device, type PageBlock, type PageTemplateKey } from "@shared/pageBlocks";
 import { SECTION_PRESETS, availableModules, moduleDef } from "@shared/studio/modules";
 import { countBlocks, createSection, findBlock, insertBlocks, moveBlock, nestable, placeProblem, removeBlock, type Place } from "@shared/studio/tree";
 import { SITE_TOKEN_LABELS } from "@shared/siteTokenLabels";
@@ -102,6 +102,7 @@ function Studio({ routeSlug }: { routeSlug: string | null }) {
   const [confirmRestore, setConfirmRestore] = useState<number | null>(null);
   const [shortcuts, setShortcuts] = useState(false);
   const [globalOpen, setGlobalOpen] = useState(false);
+  const [templateKey, setTemplateKey] = useState<PageTemplateKey | null>(null);
   // Al cambiar el estilo global se vuelve a cargar el lienzo para verlo aplicado
   const [canvasKey, setCanvasKey] = useState(0);
   const [canvasReady, setCanvasReady] = useState(false);
@@ -198,6 +199,18 @@ function Studio({ routeSlug }: { routeSlug: string | null }) {
     if (!place) return;
     doc.change(insertBlocks(blocks, place, added));
     select(added[0].id);
+  };
+
+  /** Plantilla de página completa: sustituye el contenido o se añade al final (un solo paso de deshacer). */
+  const applyTemplate = (mode: "replace" | "append") => {
+    const key = templateKey;
+    setTemplateKey(null);
+    if (!key || viewing || !doc.loaded) return;
+    const added = templateBlocks(key, page?.title ?? "");
+    if (mode === "append" ? tooMany(countBlocks(added)) : countBlocks(added) > PAGE_LIMITS.blocks) return;
+    doc.change(mode === "append" ? [...blocks, ...added] : added);
+    select(added[0]?.id ?? null);
+    toast(`Plantilla «${PAGE_TEMPLATES.find((t) => t.key === key)?.label}» ${mode === "append" ? "añadida al final" : "aplicada"}.`, { action: { label: "Deshacer", onClick: () => doc.undo() } });
   };
 
   /** Añade un módulo al final de una columna (desde el inspector de la sección). */
@@ -667,6 +680,7 @@ function Studio({ routeSlug }: { routeSlug: string | null }) {
               modules={modules}
               presets={presets}
               onInsert={(p) => insert(p)}
+              onTemplate={(key) => setTemplateKey(key)}
               blocks={blocks}
               selectedId={selectedId}
               device={device}
@@ -819,6 +833,28 @@ function Studio({ routeSlug }: { routeSlug: string | null }) {
           restoring={restore.isPending}
         />
       )}
+
+      <AlertDialog open={!!templateKey} onOpenChange={(o) => !o && setTemplateKey(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Usar la plantilla «{PAGE_TEMPLATES.find((t) => t.key === templateKey)?.label}»</AlertDialogTitle>
+            <AlertDialogDescription>
+              {blocks.length
+                ? "Puedes sustituir lo que tiene esta página o añadir la plantilla al final. Se guarda como borrador: tu web no cambia hasta que publiques, y puedes deshacerlo."
+                : "Se añade a la página como borrador: tu web no cambia hasta que publiques."}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            {blocks.length > 0 && (
+              <Button variant="outline" onClick={() => applyTemplate("append")}>
+                Añadir al final
+              </Button>
+            )}
+            <AlertDialogAction onClick={() => applyTemplate("replace")}>{blocks.length ? "Sustituir la página" : "Usar la plantilla"}</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       <AlertDialog open={confirmPublish} onOpenChange={setConfirmPublish}>
         <AlertDialogContent>
