@@ -41,6 +41,7 @@ import { createOpsAccessRouter } from "../opsAccess/router";
 import { runIntegrationAction } from "../opsAccess/integrations";
 import { modulesTechnicalReport } from "../modules/technical";
 import { runAccessAction } from "../opsAccess/actions";
+import { createDomainCheckRouter } from "./domainCheck";
 
 export function installTenantResolution(app: Express, env: NodeJS.ProcessEnv = process.env): TenantRuntime | null {
   const mode = getTenantMode();
@@ -111,6 +112,8 @@ export function installTenantResolution(app: Express, env: NodeJS.ProcessEnv = p
         }),
       );
     }
+    // Dominios propios: consulta de la pasarela (¿se sirve sin su contraseña?) y comprobación HTTPS previa a activarlos
+    app.use(createDomainCheckRouter({ resolver: rt.resolver, reader: rt.reader }));
     app.use(resolveTenantMiddleware(rt.resolver));
     // Salud (/readyz): BD del registro y, si el host es de una empresa servible, la BD de esa empresa
     const runtime = rt;

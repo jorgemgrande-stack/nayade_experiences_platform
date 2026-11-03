@@ -37,6 +37,8 @@ import { verifyDomainOwnership, type VerificationResult } from "../_core/tenantR
 import type { CommerceCircuits } from "./commerceCircuits";
 import { collectJobCircuits } from "./jobCircuits";
 import { manualDomainProvider, type DomainProvider } from "./domainProvider";
+import { CustomDomainService, type Allowance } from "./customDomains";
+import { createPanelDomainsRouter } from "../commerce/panelDomains";
 import type { ProvisioningService } from "../_core/provisioning/service";
 import { ProvisioningError } from "../_core/provisioning/types";
 import type { SubscriptionService } from "../_core/billing/service";
@@ -236,6 +238,10 @@ export interface ControlPlaneDeps {
   verifyDomain?: typeof verifyDomainOwnership;
   /** Alta de dominios propios en el proveedor (Railway con CP_RAILWAY_DOMAIN_TOKEN; si no, manual). */
   domainProvider?: DomainProvider;
+  /** Autoservicio de dominios propios (por defecto, con el proveedor, el DNS y la comprobación HTTPS reales). */
+  customDomains?: CustomDomainService;
+  /** Cada cuánto se comprueban solos los dominios propios en curso y activos (ms; sin valor, no se programan). */
+  domainChecksEveryMs?: number;
   /** Límite de peticiones por minuto y token (por defecto 120). */
   perMinute?: number;
   /** Tope de peticiones por minuto y IP para todo el plano de control (por defecto 600). */
@@ -488,6 +494,9 @@ const wrap =
       void next;
     });
   };
+
+/** Tope de dominios propios por empresa cuando no hay límite de plan en el motor de suscripciones. */
+export const DEFAULT_MAX_CUSTOM_DOMAINS = 3;
 
 export function createControlPlaneApp(d: ControlPlaneDeps): Express {
   const app = express();
@@ -854,6 +863,50 @@ export function createControlPlaneApp(d: ControlPlaneDeps): Express {
       res.json({ domain: await d.registry.disableDomain(req.params.domain.toLowerCase(), actor(req), body.reason) });
     }),
   );
+
+  // Autoservicio de dominios propios desde el panel de la empresa (canal del Core). Mismas reglas que el alta del
+  // operador: primer pago confirmado (o exenta), licencia cms-domain si hay licencias y, con el motor de suscripciones,
+  // el límite de su plan; si no, un tope de plataforma (DEFAULT_MAX_CUSTOM_DOMAINS).
+  const customDomainAllowance = async (id: string, used: number): Promise<Allowance> => {
+    const tenant = await d.reader.getTenant(id);
+    if (!tenant) return { allowed: false, reason: "Empresa no encontrada", max: null };
+    const grants = d.capabilities ? await d.capabilities.list(id).catch(() => "unavailable" as const) : null;
+    const decision = customDomainDecision(resolveCommercialState({ multi: true, tenantId: id, status: tenant.status, grants, now: Date.now(), exempt: exemptTenantsFromEnv() }));
+    if (!decision.allowed) return { allowed: false, reason: decision.message, max: 0 };
+    const exempt = exemptTenantsFromEnv().has(id);
+    if (!exempt && Array.isArray(grants) && grants.length > 0 && !grants.some((g) => g.capabilityId === "cms-domain" && g.status === "active")) {
+      return { allowed: false, reason: "Tu plan no incluye dominio propio. Puedes ampliarlo desde Suscripción.", max: 0 };
+    }
+    let max = DEFAULT_MAX_CUSTOM_DOMAINS;
+    if (d.billing && d.billingStore && (await d.billingStore.getSubscriptionByTenant(id).catch(() => null))) max = await d.billing.maxCustomDomains(id);
+    if (used >= max) return { allowed: false, reason: max === 0 ? "Tu plan no permite dominios propios" : `Tu plan permite ${max} ${max === 1 ? "dominio propio" : "dominios propios"} y ya los tienes en uso. Desconecta uno para conectar otro.`, max };
+    return { allowed: true, reason: null, max };
+  };
+  const customDomains =
+    d.customDomains ??
+    new CustomDomainService({
+      reader: d.reader,
+      registry: d.registry,
+      provider: domainProvider,
+      allowance: customDomainAllowance,
+      platformDomains: d.platformDomain ? [d.platformDomain] : [],
+      onActivated: customerNotices ? (tenantId, domain) => void domainConnectedNotice(customerNotices, { tenantId, domain }) : undefined,
+      log: (event, data) => opsLog("info", "Domains", event, data),
+    });
+  router.use("/commerce", createPanelDomainsRouter(customDomains, (event, data) => opsLog("error", "Domains", event, data)));
+  if (d.domainChecksEveryMs && d.domainChecksEveryMs > 0) {
+    const every = Math.max(60_000, d.domainChecksEveryMs);
+    let running = false;
+    setInterval(() => {
+      if (running) return;
+      running = true;
+      customDomains
+        .runScheduled()
+        .then((r) => r.checked > 0 && opsLog("info", "Domains", "scheduled_checks", r))
+        .catch((e) => opsLog("error", "Domains", "scheduled_checks_failed", { error: e instanceof Error ? e.name : "error" }))
+        .finally(() => (running = false));
+    }, every).unref();
+  }
 
   // ── Licencias y cuotas ─────────────────────────────────────────────────────
   router.get(

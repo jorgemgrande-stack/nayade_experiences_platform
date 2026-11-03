@@ -12,6 +12,20 @@
 
 export type CertificateState = "issued" | "pending" | "failed" | "unknown";
 
+/** Registro DNS que exige Railway para enrutar el dominio o emitir su certificado (valores tal cual los da su API). */
+export interface ProviderDnsRecord {
+  type: "CNAME" | "TXT" | "A" | "NS";
+  /** Nombre completo (p. ej. www.cliente.es) y relativo a la zona (p. ej. www; «@» en el dominio raíz). */
+  fqdn: string;
+  hostlabel: string;
+  zone: string;
+  value: string;
+  /** Valor que se ve hoy en el DNS público según Railway (vacío si ninguno). */
+  current: string;
+  propagated: boolean;
+  purpose: "traffic" | "certificate" | "other";
+}
+
 export interface ProviderDomainStatus {
   provider: "railway" | "manual";
   /** ¿Existe el dominio en el proveedor? */
@@ -19,6 +33,12 @@ export interface ProviderDomainStatus {
   certificate: CertificateState;
   /** Explicación para el CRM (sin secretos). */
   detail: string;
+  /** Registros DNS que pide el proveedor (vacío en manual o si aún no está dado de alta). */
+  records?: ProviderDnsRecord[];
+  /** TXT de titularidad del propio proveedor, si lo exige para este dominio y aún no lo ha comprobado. */
+  ownership?: { host: string; value: string } | null;
+  /** Motivo del fallo del certificado que da el proveedor (sin secretos). */
+  certificateError?: string | null;
 }
 
 export interface DomainProvider {
@@ -26,6 +46,8 @@ export interface DomainProvider {
   /** Da de alta el dominio si no existe (idempotente) y devuelve su estado. */
   ensure(domain: string): Promise<ProviderDomainStatus>;
   status(domain: string): Promise<ProviderDomainStatus>;
+  /** Retira el dominio del proveedor si existe (idempotente). Al desconectarlo: deja de emitirse su certificado. */
+  remove?(domain: string): Promise<void>;
 }
 
 export const manualDomainProvider: DomainProvider = {
@@ -34,9 +56,31 @@ export const manualDomainProvider: DomainProvider = {
     return this.status(domain);
   },
   async status() {
-    return { provider: "manual", registered: false, certificate: "unknown", detail: "Alta en Railway pendiente: sin CP_RAILWAY_DOMAIN_TOKEN, el dominio se añade a mano en core-gateway → Settings → Domains" };
+    return { provider: "manual", registered: false, certificate: "unknown", detail: "Alta en Railway pendiente: sin CP_RAILWAY_DOMAIN_TOKEN, el dominio se añade a mano en core-gateway → Settings → Domains", records: [] };
   },
+  async remove() {},
 };
+
+const RECORD_TYPES = new Set(["CNAME", "TXT", "A", "NS"]);
+
+type RawRecord = { fqdn?: string; hostlabel?: string; zone?: string; recordType?: string; requiredValue?: string; currentValue?: string; status?: string; purpose?: string };
+
+/** Registro de la API de Railway → registro propio (descarta lo que no sea un tipo DNS conocido). */
+export function dnsRecordOf(raw: RawRecord): ProviderDnsRecord | null {
+  const type = String(raw.recordType ?? "").replace(/^DNS_RECORD_TYPE_/, "");
+  if (!RECORD_TYPES.has(type) || !raw.requiredValue) return null;
+  const purpose = String(raw.purpose ?? "");
+  return {
+    type: type as ProviderDnsRecord["type"],
+    fqdn: String(raw.fqdn ?? ""),
+    hostlabel: String(raw.hostlabel ?? "") || "@",
+    zone: String(raw.zone ?? ""),
+    value: String(raw.requiredValue),
+    current: String(raw.currentValue ?? ""),
+    propagated: /PROPAGATED/.test(String(raw.status ?? "")),
+    purpose: /TRAFFIC/.test(purpose) ? "traffic" : /ACME|CHALLENGE/.test(purpose) ? "certificate" : "other",
+  };
+}
 
 const API = "https://backboard.railway.app/graphql/v2";
 const GATEWAY_SERVICE = "core-gateway";
@@ -51,6 +95,8 @@ export function certificateState(raw: unknown): CertificateState {
   if (/ISSUED|ACTIVE|(^|_)VALID$/.test(s)) return "issued";
   return "unknown";
 }
+
+type RawStatus = { certificateStatus?: string; certificateErrorMessage?: string | null; verified?: boolean; verificationDnsHost?: string | null; verificationToken?: string | null; dnsRecords?: RawRecord[] };
 
 type Fetch = (url: string, init: { method: string; headers: Record<string, string>; body: string }) => Promise<{ json(): Promise<unknown>; status: number }>;
 
@@ -76,17 +122,21 @@ export function railwayDomainProvider(o: { token: string; fetch?: Fetch }): Doma
     }));
   const find = async (domain: string) => {
     const s = await getScope();
-    const d = await api<{ domains: { customDomains: Array<{ id: string; domain: string; status?: { certificateStatus?: string } | null }> } }>(
-      "query($p:String!,$e:String!,$s:String!){ domains(projectId:$p, environmentId:$e, serviceId:$s){ customDomains { id domain status { certificateStatus } } } }",
+    const d = await api<{ domains: { customDomains: Array<{ id: string; domain: string; status?: RawStatus | null }> } }>(
+      "query($p:String!,$e:String!,$s:String!){ domains(projectId:$p, environmentId:$e, serviceId:$s){ customDomains { id domain status { certificateStatus certificateErrorMessage verified verificationDnsHost verificationToken dnsRecords { fqdn hostlabel zone recordType requiredValue currentValue status purpose } } } } }",
       { p: s.projectId, e: s.environmentId, s: s.serviceId },
     );
     return { s, found: d.domains.customDomains.find((x) => x.domain.toLowerCase() === domain.toLowerCase()) ?? null };
   };
-  const view = (found: { status?: { certificateStatus?: string } | null } | null): ProviderDomainStatus => {
-    if (!found) return { provider: "railway", registered: false, certificate: "unknown", detail: "El dominio aún no está dado de alta en Railway" };
-    const certificate = certificateState(found.status?.certificateStatus);
+  const view = (found: { status?: RawStatus | null } | null): ProviderDomainStatus => {
+    if (!found) return { provider: "railway", registered: false, certificate: "unknown", detail: "El dominio aún no está dado de alta en Railway", records: [] };
+    const st = found.status ?? {};
+    const certificate = certificateState(st.certificateStatus);
     const detail = certificate === "issued" ? "Certificado emitido" : certificate === "failed" ? "Railway no pudo emitir el certificado: revisa el CNAME" : "Certificado en emisión (puede tardar unos minutos tras propagarse el DNS)";
-    return { provider: "railway", registered: true, certificate, detail };
+    const records = (Array.isArray(st.dnsRecords) ? st.dnsRecords : []).map(dnsRecordOf).filter((r): r is ProviderDnsRecord => r !== null);
+    const ownership = st.verified === false && st.verificationDnsHost && st.verificationToken ? { host: String(st.verificationDnsHost), value: String(st.verificationToken) } : null;
+    const certificateError = certificate === "failed" && st.certificateErrorMessage ? String(st.certificateErrorMessage).slice(0, 200) : null;
+    return { provider: "railway", registered: true, certificate, detail, records, ownership, certificateError };
   };
   return {
     name: "railway",
@@ -100,6 +150,10 @@ export function railwayDomainProvider(o: { token: string; fetch?: Fetch }): Doma
         i: { domain: domain.toLowerCase(), environmentId: s.environmentId, projectId: s.projectId, serviceId: s.serviceId, targetPort: GATEWAY_PORT },
       });
       return view((await find(domain)).found);
+    },
+    async remove(domain) {
+      const { found } = await find(domain);
+      if (found) await api("mutation($id:String!){ customDomainDelete(id:$id) }", { id: found.id });
     },
   };
 }

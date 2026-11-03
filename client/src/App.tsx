@@ -153,6 +153,7 @@ const MiCuenta = lazy(() => import("./pages/admin/MiCuenta"));
 const VerifyEmailChange = lazy(() => import("./pages/VerifyEmailChange"));
 const Settings = lazy(() => import("./pages/admin/settings/Settings"));
 const BrandTheme = lazy(() => import("./pages/admin/settings/BrandTheme"));
+const CustomDomains = lazy(() => import("./pages/admin/settings/CustomDomains"));
 const IntegrationsSettings = lazy(() => import("./pages/admin/settings/Integrations"));
 const AdvancedSettings = lazy(() => import("./pages/admin/settings/AdvancedSettings"));
 const ConfigPanel = lazy(() => import("./pages/admin/settings/ConfigPanel"));
@@ -470,6 +471,7 @@ function Router() {
       <Route path="/admin/mi-cuenta">{() => <Suspense fallback={<AdminLoadingFallback />}><MiCuenta /></Suspense>}</Route>
       <Route path="/admin/configuracion">{() => <Suspense fallback={<AdminLoadingFallback />}><ConfigPanel /></Suspense>}</Route>
       <Route path="/admin/configuracion/marca">{() => <Suspense fallback={<AdminLoadingFallback />}><BrandTheme /></Suspense>}</Route>
+      <Route path="/admin/configuracion/dominios">{() => <Suspense fallback={<AdminLoadingFallback />}><CustomDomains /></Suspense>}</Route>
       <Route path="/admin/configuracion/integraciones">{() => <Suspense fallback={<AdminLoadingFallback />}><IntegrationsSettings /></Suspense>}</Route>
       <Route path="/admin/configuracion/sitio">{() => <Suspense fallback={<AdminLoadingFallback />}><Settings /></Suspense>}</Route>
       <Route path="/admin/configuracion/estado">{() => <Suspense fallback={<AdminLoadingFallback />}><ConfigStatus /></Suspense>}</Route>

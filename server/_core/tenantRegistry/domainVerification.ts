@@ -89,3 +89,19 @@ export async function verifyAndRecordDomain(
   await deps.service.recordDomainVerification(r.domain.domain, v, actor);
   return v;
 }
+
+/**
+ * Solo la titularidad (TXT). Es el primer paso del autoservicio: el CNAME de cada dominio propio lo fija el proveedor
+ * DESPUÉS del alta (Railway da un destino por dominio), así que exigirlo antes de verificar sería circular.
+ */
+export async function verifyDomainTxt(input: { domain: string; token: string }, lookup: DnsLookup = systemDns): Promise<boolean> {
+  const domain = normalizeHost(input.domain);
+  if (!domain || !input.token) return false;
+  try {
+    const records = await lookup.resolveTxt(`${VERIFY_LABEL}.${domain}`);
+    const expected = expectedTxtValue(input.token);
+    return records.some((chunks) => chunks.join("") === expected);
+  } catch {
+    return false;
+  }
+}
