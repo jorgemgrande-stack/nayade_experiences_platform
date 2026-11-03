@@ -1,6 +1,6 @@
 # Prueba real de extremo a extremo de los dominios propios (production)
 
-**Estado (03/11/2026):** preparada, **sin ejecutar**. No se ha registrado ni modificado ningún dominio.
+**Estado (04/11/2026):** preparada, **sin ejecutar**. No se ha registrado ni modificado ningún dominio ni creado ninguna empresa.
 
 Lo que ya está en production y comprobado:
 
@@ -14,8 +14,34 @@ Lo que ya está en production y comprobado:
 | Decisión | Por qué | Ejemplo |
 |---|---|---|
 | **Subdominio de ensayo** | Debe colgar de un dominio que controléis **y que no sea `bigelephant.es`**: el panel rechaza `bigelephant.es`, `railway.app` y los dominios de la plataforma (`RESERVED_SUFFIXES` en `server/controlPlane/customDomains.ts`). | `prueba-dominio.<dominio-vuestro>.es` |
-| **Empresa de ensayo** | El alta exige primer pago y la capacidad `cms-domain`. Usar Skibox cambiaría la configuración de un cliente real: hace falta su autorización o una empresa propia de Big Elephant con el plan adecuado. | Empresa interna con plan Essential pagado |
+| **Empresa de ensayo** | Aislada y propia (nunca Skibox ni un cliente real). Ver § 1.1: cómo habilitar el dominio propio sin cobro. | «PRUEBA dominios 2026-11» |
 | **Quién toca el DNS** | Los registros se crean a mano en el proveedor del dominio (no hay acceso por API). | Jorge, en el panel del proveedor |
+
+## 1.1 Empresa de ensayo y dominio propio sin cobro
+
+**Qué exige el alta** (`customDomainAllowance` en `server/controlPlane/api.ts`, reglas en `server/commercialState.ts`):
+
+- primer pago confirmado **o** empresa exenta (`customDomainDecision`);
+- si la empresa tiene licencias, la licencia `cms-domain` activa (salvo exenta);
+- un tope de 3 dominios propios (`DEFAULT_MAX_CUSTOM_DOMAINS`) sin motor de suscripciones.
+
+**Vías que contempla el código:**
+
+| Vía | Qué deja registrado | ¿Para la prueba? |
+|---|---|---|
+| Exención explícita `TRIAL_RESTRICTIONS_EXEMPT_TENANTS` (lista de tenants separada por comas) | Una variable de entorno; ningún registro comercial | **Sí: es el mecanismo administrativo previsto y el mínimo** |
+| Pedido del orquestador con confirmación `admin_approval` | Un pedido en el historial comercial | No: altera el historial comercial |
+| Licencia de pago sin caducidad (alta asistida) | Una licencia en Elephant Control | No: equivale a dar de alta un plan |
+| Simular un pago o tocar facturas | — | **Prohibido** |
+
+**Procedimiento mínimo (Jorge):**
+
+1. Crear la empresa de ensayo por el alta normal de prueba gratuita, con un nombre inequívoco (p. ej. «PRUEBA dominios 2026-11») y un correo vuestro. Anotar su identificador de tenant (lo muestra el CRM).
+2. En Railway → production → servicio `controlplane` → Variables: `TRIAL_RESTRICTIONS_EXEMPT_TENANTS=t5-skibox,<tenant-de-ensayo>` y redesplegar. **Hay que incluir `t5-skibox`:** si la variable existe, manda exactamente su contenido y deja fuera la lista por defecto.
+3. Solo en `controlplane`: así la exención afecta al dominio propio (y a la cuota y vencimiento de la prueba de esa empresa en el plano de control), pero no a las restricciones del Core (correo e integraciones de la prueba siguen activas para la empresa de ensayo).
+4. Claude comprueba que el panel de la empresa de ensayo ofrece «Paso 1 · Escribe tu dominio» sin el aviso de primer pago.
+
+**Al terminar:** quitar el tenant de ensayo de la variable (dejar `t5-skibox` o borrar la variable para volver a la lista por defecto) y añadir la empresa a la purga controlada de empresas de prueba (`PURGE_TARGETS` en `server/_core/ops/purgeTestCompanies.ts`, lista cerrada) para eliminarla con su simulación previa.
 
 ## 2. Procedimiento
 
