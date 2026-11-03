@@ -83,6 +83,8 @@ export interface BlockDataMap {
     gap: "s" | "m" | "l";
     valign: "top" | "center" | "bottom";
     mobile: "stack" | "reverse";
+    /** Tableta: automático (con 3–4 columnas, dos por fila), una debajo de otra o todas en fila */
+    tablet: "auto" | "stack" | "columns";
     width: "normal" | "wide" | "full";
     columns: SectionColumn[];
   };
@@ -177,34 +179,79 @@ export interface FaqItem {
 }
 
 /**
- * Diseño de un bloque (Elephant Studio): fondo, espacio extra, visibilidad por dispositivo y ancla. Son valores de
- * una lista cerrada (nada de CSS libre), así que el resultado respeta siempre los colores y la tipografía de la web.
+ * Diseño de un bloque (Elephant Studio): fondo (color, degradado o imagen), tipografía, caja (borde, esquinas y sombra),
+ * espacios, comportamiento por dispositivo y ancla. Son valores de una lista cerrada (nada de CSS libre), así que el
+ * resultado respeta siempre los colores de la marca y se lee bien en cualquier pantalla.
  */
-export const BLOCK_BACKGROUNDS = ["none", "soft", "brand", "dark"] as const;
-export const BLOCK_SPACINGS = ["0", "s", "m", "l"] as const;
+export const BLOCK_BACKGROUNDS = ["none", "soft", "brand", "dark", "gradient", "image"] as const;
+/** Degradados construidos con el color de la marca */
+export const BLOCK_GRADIENTS = ["brand", "soft", "night", "glow"] as const;
+/** Capa sobre la imagen de fondo para que el texto se lea */
+export const BLOCK_OVERLAYS = ["dark", "light", "brand"] as const;
+export const BLOCK_SPACINGS = ["0", "s", "m", "l", "xl"] as const;
+export const BLOCK_MARGINS = ["0", "s", "m", "l"] as const;
+/** Tipos de letra cargados en todas las webs: los de la marca (auto), moderna, sencilla y clásica */
+export const BLOCK_FONTS = ["auto", "display", "sans", "serif"] as const;
+export const BLOCK_HEADING_SIZES = ["auto", "s", "m", "l", "xl"] as const;
+export const BLOCK_TEXT_SIZES = ["auto", "s", "l"] as const;
+export const BLOCK_ALIGNS = ["auto", "left", "center", "right"] as const;
+export const BLOCK_HEADING_COLORS = ["auto", "brand", "text"] as const;
+export const BLOCK_BORDERS = ["none", "thin", "brand"] as const;
+export const BLOCK_RADII = ["0", "s", "m", "l"] as const;
+export const BLOCK_SHADOWS = ["none", "s", "m", "l"] as const;
+export const BLOCK_MOBILE_ALIGNS = ["auto", "left", "center"] as const;
+export const BLOCK_MOBILE_SPACINGS = ["same", "less"] as const;
 export const DEVICES = ["desktop", "tablet", "mobile"] as const;
 export type Device = (typeof DEVICES)[number];
 /** Animación al aparecer en pantalla (se desactiva si la persona prefiere menos movimiento) */
 export const BLOCK_ANIMATIONS = ["none", "fade", "up", "zoom"] as const;
 export interface BlockStyle {
   background: (typeof BLOCK_BACKGROUNDS)[number];
+  gradient: (typeof BLOCK_GRADIENTS)[number];
+  /** Imagen de fondo (con fondo «image»): ruta propia o https */
+  bgImage: string;
+  overlay: (typeof BLOCK_OVERLAYS)[number];
   padTop: (typeof BLOCK_SPACINGS)[number];
   padBottom: (typeof BLOCK_SPACINGS)[number];
+  marginTop: (typeof BLOCK_MARGINS)[number];
+  marginBottom: (typeof BLOCK_MARGINS)[number];
+  headingFont: (typeof BLOCK_FONTS)[number];
+  textFont: (typeof BLOCK_FONTS)[number];
+  headingSize: (typeof BLOCK_HEADING_SIZES)[number];
+  textSize: (typeof BLOCK_TEXT_SIZES)[number];
+  align: (typeof BLOCK_ALIGNS)[number];
+  headingColor: (typeof BLOCK_HEADING_COLORS)[number];
+  border: (typeof BLOCK_BORDERS)[number];
+  radius: (typeof BLOCK_RADII)[number];
+  shadow: (typeof BLOCK_SHADOWS)[number];
   hideOn: Device[];
+  mobileAlign: (typeof BLOCK_MOBILE_ALIGNS)[number];
+  mobileSpacing: (typeof BLOCK_MOBILE_SPACINGS)[number];
   anchor: string;
   animation: (typeof BLOCK_ANIMATIONS)[number];
 }
-export const DEFAULT_BLOCK_STYLE: BlockStyle = { background: "none", padTop: "0", padBottom: "0", hideOn: [], anchor: "", animation: "none" };
+export const DEFAULT_BLOCK_STYLE: BlockStyle = {
+  background: "none", gradient: "brand", bgImage: "", overlay: "dark", padTop: "0", padBottom: "0", marginTop: "0", marginBottom: "0",
+  headingFont: "auto", textFont: "auto", headingSize: "auto", textSize: "auto", align: "auto", headingColor: "auto",
+  border: "none", radius: "0", shadow: "none", hideOn: [], mobileAlign: "auto", mobileSpacing: "same", anchor: "", animation: "none",
+};
 export const ANCHOR_RE = /^[a-z0-9]([a-z0-9-]{0,38}[a-z0-9])?$/;
 
 /** Si el diseño del bloque es el de serie (entonces no se guarda). */
 export function isDefaultStyle(s: Partial<BlockStyle> | undefined): boolean {
   if (!s) return true;
-  const d = DEFAULT_BLOCK_STYLE;
-  return (
-    (s.background ?? d.background) === d.background && (s.padTop ?? d.padTop) === d.padTop && (s.padBottom ?? d.padBottom) === d.padBottom &&
-    !(s.hideOn ?? []).length && !(s.anchor ?? "") && (s.animation ?? d.animation) === d.animation
-  );
+  // Degradado, imagen y capa solo cuentan con su fondo elegido
+  const relevant = (k: keyof BlockStyle) =>
+    (k !== "gradient" || s.background === "gradient") && ((k !== "bgImage" && k !== "overlay") || s.background === "image");
+  return (Object.keys(DEFAULT_BLOCK_STYLE) as Array<keyof BlockStyle>).every((k) => {
+    if (k === "hideOn") return !(s.hideOn ?? []).length;
+    return !relevant(k) || (s[k] ?? DEFAULT_BLOCK_STYLE[k]) === DEFAULT_BLOCK_STYLE[k];
+  });
+}
+
+/** URL de imagen apta para `background-image: url("…")`: sin comillas, paréntesis, barras invertidas ni saltos. */
+export function cssUrl(url: string): string {
+  return url.replace(/["'()\\\s]/g, (c) => "%" + c.charCodeAt(0).toString(16).toUpperCase().padStart(2, "0"));
 }
 
 export type PageBlock = { [K in BlockType]: { id: string; type: K; data: BlockDataMap[K]; style?: BlockStyle } }[BlockType];
@@ -340,7 +387,7 @@ export function defaultBlockData<K extends BlockType>(type: K): BlockDataMap[K] 
     },
     logos: { title: "Confían en nosotros", logos: [], grayscale: "on" },
     // Las columnas nacen vacías aquí; createSection (shared/studio/tree.ts) las llena al insertarla
-    section: { layout: "1-1", gap: "m", valign: "top", mobile: "stack", width: "normal", columns: [{ blocks: [] }, { blocks: [] }] },
+    section: { layout: "1-1", gap: "m", valign: "top", mobile: "stack", tablet: "auto", width: "normal", columns: [{ blocks: [] }, { blocks: [] }] },
   };
   return structuredCloneSafe(d[type]) as BlockDataMap[K];
 }

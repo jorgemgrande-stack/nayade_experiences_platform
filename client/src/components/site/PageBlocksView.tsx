@@ -23,7 +23,7 @@ import { Carousel, prefersReducedMotion } from "@/components/site/Carousel";
 import { Slideshow } from "@/components/site/Slideshow";
 import { Lightbox } from "@/components/site/Lightbox";
 import { StudioFormFields } from "@/components/site/StudioForm";
-import { blockLabel, DEFAULT_BLOCK_STYLE, type BlockOf, type BlockStyle, type Device, type GalleryImage, type PageBlock } from "@shared/pageBlocks";
+import { blockLabel, cssUrl, DEFAULT_BLOCK_STYLE, type BlockOf, type BlockStyle, type Device, type GalleryImage, type PageBlock } from "@shared/pageBlocks";
 import { formatEuros, productPath } from "@shared/storefront";
 import { isPurchasable } from "@shared/shopOrders";
 
@@ -993,8 +993,51 @@ function ProductsBlock({ b, first, preview }: { b: BlockOf<"products">; first: b
 
 // ─── Diseño del bloque ────────────────────────────────────────────────────────
 
-const PAD_TOP: Record<BlockStyle["padTop"], string> = { "0": "", s: "pt-4", m: "pt-10", l: "pt-20" };
-const PAD_BOTTOM: Record<BlockStyle["padBottom"], string> = { "0": "", s: "pb-4", m: "pb-10", l: "pb-20" };
+const PAD_TOP: Record<BlockStyle["padTop"], string> = { "0": "", s: "pt-4", m: "pt-10", l: "pt-20", xl: "pt-32" };
+const PAD_BOTTOM: Record<BlockStyle["padBottom"], string> = { "0": "", s: "pb-4", m: "pb-10", l: "pb-20", xl: "pb-32" };
+/** «Menos espacio en el móvil»: la mitad hasta tableta */
+const PAD_TOP_LESS: Record<BlockStyle["padTop"], string> = { "0": "", s: "pt-2 md:pt-4", m: "pt-5 md:pt-10", l: "pt-10 md:pt-20", xl: "pt-16 md:pt-32" };
+const PAD_BOTTOM_LESS: Record<BlockStyle["padBottom"], string> = { "0": "", s: "pb-2 md:pb-4", m: "pb-5 md:pb-10", l: "pb-10 md:pb-20", xl: "pb-16 md:pb-32" };
+const MARGIN_TOP: Record<BlockStyle["marginTop"], string> = { "0": "", s: "mt-4", m: "mt-10", l: "mt-20" };
+const MARGIN_BOTTOM: Record<BlockStyle["marginBottom"], string> = { "0": "", s: "mb-4", m: "mb-10", l: "mb-20" };
+
+// Tipografía: se aplica a los títulos y textos de dentro del bloque (los mismos módulos, sin versiones aparte)
+const HEADING_FONT: Record<BlockStyle["headingFont"], string> = {
+  auto: "",
+  display: "[&_:is(h1,h2,h3,h4)]:[font-family:Montserrat,system-ui,sans-serif]",
+  sans: "[&_:is(h1,h2,h3,h4)]:[font-family:Inter,system-ui,sans-serif]",
+  serif: "[&_:is(h1,h2,h3,h4)]:[font-family:'Playfair_Display',Georgia,serif]",
+};
+const TEXT_FONT: Record<BlockStyle["textFont"], string> = {
+  auto: "",
+  display: "[font-family:Montserrat,system-ui,sans-serif]",
+  sans: "[font-family:Inter,system-ui,sans-serif]",
+  serif: "[font-family:'Playfair_Display',Georgia,serif]",
+};
+const STYLE_HEADING_SIZE: Record<BlockStyle["headingSize"], string> = {
+  auto: "",
+  s: "[&_:is(h1,h2)]:text-2xl md:[&_:is(h1,h2)]:text-3xl [&_h3]:text-lg",
+  m: "[&_:is(h1,h2)]:text-3xl md:[&_:is(h1,h2)]:text-4xl [&_h3]:text-xl",
+  l: "[&_:is(h1,h2)]:text-4xl md:[&_:is(h1,h2)]:text-5xl [&_h3]:text-2xl",
+  xl: "[&_:is(h1,h2)]:text-4xl md:[&_:is(h1,h2)]:text-6xl [&_h3]:text-2xl md:[&_h3]:text-3xl",
+};
+const TEXT_SIZE: Record<BlockStyle["textSize"], string> = { auto: "", s: "[&_:is(p,li,blockquote)]:text-sm", l: "[&_:is(p,li,blockquote)]:text-lg" };
+const ALIGN: Record<BlockStyle["align"], string> = {
+  auto: "",
+  left: "[&_:is(h1,h2,h3,h4,p,li,blockquote,figcaption)]:text-left",
+  center: "[&_:is(h1,h2,h3,h4,p,li,blockquote,figcaption)]:text-center",
+  right: "[&_:is(h1,h2,h3,h4,p,li,blockquote,figcaption)]:text-right",
+};
+const MOBILE_ALIGN: Record<BlockStyle["mobileAlign"], string> = {
+  auto: "",
+  left: "max-md:[&_:is(h1,h2,h3,h4,p,li,blockquote,figcaption)]:text-left",
+  center: "max-md:[&_:is(h1,h2,h3,h4,p,li,blockquote,figcaption)]:text-center",
+};
+const HEADING_COLOR: Record<BlockStyle["headingColor"], string> = { auto: "", brand: "[&_:is(h1,h2,h3,h4)]:text-primary", text: "[&_:is(h1,h2,h3,h4)]:text-foreground" };
+// Caja: borde, esquinas y sombra (el bloque pasa a ir dentro del ancho de la página, como una tarjeta)
+const BORDER: Record<BlockStyle["border"], string> = { none: "", thin: "border border-border", brand: "border-2 border-primary" };
+const RADIUS: Record<BlockStyle["radius"], string> = { "0": "", s: "rounded-lg", m: "rounded-2xl", l: "rounded-[2rem]" };
+const SHADOW: Record<BlockStyle["shadow"], string> = { none: "", s: "shadow-sm", m: "shadow-lg", l: "shadow-2xl" };
 
 /**
  * Fondo de color de marca u oscuro: el bloque redefine los colores de su interior (texto, tarjetas, bordes y botones)
@@ -1008,10 +1051,54 @@ const BRAND_INNER = {
   "--input": "rgba(255,255,255,0.35)", color: "#ffffff",
 } as CSSProperties;
 const DARK_OUTER = { background: "#0f172a" } as CSSProperties;
+/** Degradados con el color de la marca: los oscuros llevan el texto claro (como «Color de marca» u «Oscuro») */
+const GRADIENTS: Record<BlockStyle["gradient"], { bg: string; text: "brand" | "dark" | null }> = {
+  brand: { bg: "linear-gradient(135deg, var(--studio-brand), color-mix(in srgb, var(--studio-brand) 55%, #000))", text: "brand" },
+  soft: { bg: "linear-gradient(180deg, color-mix(in srgb, var(--primary) 14%, var(--background)), var(--background))", text: null },
+  night: { bg: "linear-gradient(135deg, #0f172a, color-mix(in srgb, var(--primary) 45%, #0f172a))", text: "dark" },
+  glow: { bg: "radial-gradient(circle at 50% 0%, color-mix(in srgb, var(--primary) 28%, var(--background)), var(--background) 70%)", text: null },
+};
+const OVERLAYS: Record<BlockStyle["overlay"], { layer: string; text: "brand" | "dark" | null }> = {
+  dark: { layer: "linear-gradient(rgba(15,23,42,0.62), rgba(15,23,42,0.62))", text: "dark" },
+  light: { layer: "linear-gradient(color-mix(in srgb, var(--background) 82%, transparent), color-mix(in srgb, var(--background) 82%, transparent))", text: null },
+  brand: { layer: "linear-gradient(color-mix(in srgb, var(--studio-brand) 78%, transparent), color-mix(in srgb, var(--studio-brand) 78%, transparent))", text: "brand" },
+};
 const DARK_INNER = {
   "--foreground": "#f8fafc", "--muted-foreground": "rgba(248,250,252,0.74)", "--card": "rgba(255,255,255,0.05)", "--card-foreground": "#f8fafc",
   "--border": "rgba(255,255,255,0.14)", "--muted": "rgba(255,255,255,0.08)", "--input": "rgba(255,255,255,0.25)", color: "#f8fafc",
 } as CSSProperties;
+
+/** Fondo del bloque: estilos del contenedor exterior, colores del interior para que el texto se lea y clase. */
+function backgroundOf(s: BlockStyle): { outer?: CSSProperties; inner?: CSSProperties; cls?: string } {
+  const withBrand = (bg: CSSProperties) => ({ "--studio-brand": "var(--primary)", ...bg }) as CSSProperties;
+  const innerFor = (t: "brand" | "dark" | null) => (t === "brand" ? BRAND_INNER : t === "dark" ? DARK_INNER : undefined);
+  switch (s.background) {
+    case "soft":
+      return { cls: "bg-muted/60" };
+    case "brand":
+      return { outer: BRAND_OUTER, inner: BRAND_INNER };
+    case "dark":
+      return { outer: DARK_OUTER, inner: DARK_INNER };
+    case "gradient": {
+      const g = GRADIENTS[s.gradient] ?? GRADIENTS.brand;
+      return { outer: withBrand({ backgroundImage: g.bg }), inner: innerFor(g.text) };
+    }
+    case "image": {
+      if (!s.bgImage) return {};
+      const o = OVERLAYS[s.overlay] ?? OVERLAYS.dark;
+      return {
+        outer: withBrand({ backgroundImage: `${o.layer}, url("${cssUrl(s.bgImage)}")`, backgroundSize: "cover", backgroundPosition: "center" }),
+        inner: innerFor(o.text),
+      };
+    }
+    default:
+      return {};
+  }
+}
+
+function typographyClasses(s: BlockStyle): string {
+  return cn(HEADING_FONT[s.headingFont], TEXT_FONT[s.textFont], STYLE_HEADING_SIZE[s.headingSize], TEXT_SIZE[s.textSize], ALIGN[s.align], MOBILE_ALIGN[s.mobileAlign], HEADING_COLOR[s.headingColor]);
+}
 
 function hiddenClasses(s: BlockStyle): string {
   return cn(s.hideOn.includes("mobile") && "max-md:hidden", s.hideOn.includes("tablet") && "md:max-lg:hidden", s.hideOn.includes("desktop") && "lg:hidden");
@@ -1020,11 +1107,26 @@ function hiddenClasses(s: BlockStyle): string {
 function StyleFrame({ style, edit, children }: { style?: BlockStyle; edit: boolean; children: ReactNode }) {
   if (!style) return <>{children}</>;
   const s = { ...DEFAULT_BLOCK_STYLE, ...style };
-  const outer = s.background === "brand" ? BRAND_OUTER : s.background === "dark" ? DARK_OUTER : undefined;
-  const inner = s.background === "brand" ? BRAND_INNER : s.background === "dark" ? DARK_INNER : undefined;
+  const bg = backgroundOf(s);
+  const less = s.mobileSpacing === "less";
+  const pads = cn((less ? PAD_TOP_LESS : PAD_TOP)[s.padTop], (less ? PAD_BOTTOM_LESS : PAD_BOTTOM)[s.padBottom]);
+  const content = <AnimateIn kind={edit ? "none" : s.animation}>{bg.inner ? <div style={bg.inner}>{children}</div> : children}</AnimateIn>;
+  const boxed = s.border !== "none" || s.radius !== "0" || s.shadow !== "none";
+  const outerCls = cn("scroll-mt-24", MARGIN_TOP[s.marginTop], MARGIN_BOTTOM[s.marginBottom], !edit && hiddenClasses(s));
+  const boxCls = cn(bg.cls, pads, typographyClasses(s));
+  if (!boxed) {
+    return (
+      <div id={s.anchor || undefined} className={cn(outerCls, boxCls)} style={bg.outer}>
+        {content}
+      </div>
+    );
+  }
+  // Caja: dentro del ancho de la página, con su borde, esquinas y sombra (el fondo va dentro de la caja)
   return (
-    <div id={s.anchor || undefined} className={cn("scroll-mt-24", s.background === "soft" && "bg-muted/60", PAD_TOP[s.padTop], PAD_BOTTOM[s.padBottom], !edit && hiddenClasses(s))} style={outer}>
-      <AnimateIn kind={edit ? "none" : s.animation}>{inner ? <div style={inner}>{children}</div> : children}</AnimateIn>
+    <div id={s.anchor || undefined} className={cn(outerCls, "container")}>
+      <div className={cn("overflow-hidden", BORDER[s.border], RADIUS[s.radius], SHADOW[s.shadow], boxCls)} style={bg.outer}>
+        {content}
+      </div>
     </div>
   );
 }
@@ -1297,12 +1399,20 @@ function SectionBlock({ b, preview, pageTitle }: { b: BlockOf<"section">; previe
   const ed = useContext(StudioEditContext);
   const fr = b.data.layout.split("-").map((n) => `minmax(0, ${n}fr)`).join(" ");
   const many = b.data.columns.length >= 3;
+  // Tableta: automático (con 3–4 columnas, dos por fila), una debajo de otra (columnas desde el ordenador) o todas en fila
+  const tablet = b.data.tablet ?? "auto";
+  const gridCls =
+    tablet === "stack"
+      ? "lg:[grid-template-columns:var(--studio-cols)]"
+      : tablet === "columns" || !many
+        ? "md:[grid-template-columns:var(--studio-cols)]"
+        : "md:grid-cols-2 lg:[grid-template-columns:var(--studio-cols)]";
   return (
     <section className={cn(SECTION_WIDTH[b.data.width] ?? "container", "py-8 md:py-10")}>
       <div
         className={cn(
-          b.data.mobile === "reverse" ? "flex flex-col-reverse md:grid" : "grid grid-cols-1",
-          many ? "md:grid-cols-2 lg:[grid-template-columns:var(--studio-cols)]" : "md:[grid-template-columns:var(--studio-cols)]",
+          b.data.mobile === "reverse" ? cn("flex flex-col-reverse", tablet === "stack" ? "lg:grid" : "md:grid") : "grid grid-cols-1",
+          gridCls,
           SECTION_GAP[b.data.gap] ?? SECTION_GAP.m,
           SECTION_VALIGN[b.data.valign],
         )}

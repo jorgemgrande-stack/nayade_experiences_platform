@@ -108,6 +108,7 @@ export const MODULES: readonly ModuleDef[] = [
     { key: "gap", label: "Separación entre columnas", kind: "select", options: [{ value: "s", label: "Poca" }, { value: "m", label: "Media" }, { value: "l", label: "Mucha" }] },
     { key: "valign", label: "Alinear el contenido", kind: "select", options: [{ value: "top", label: "Arriba" }, { value: "center", label: "Centro" }, { value: "bottom", label: "Abajo" }], advanced: true },
     { key: "mobile", label: "En el móvil", kind: "select", options: [{ value: "stack", label: "Una debajo de otra" }, { value: "reverse", label: "Una debajo de otra, al revés" }], advanced: true },
+    { key: "tablet", label: "En la tableta", kind: "select", options: [{ value: "auto", label: "Automático" }, { value: "stack", label: "Una debajo de otra" }, { value: "columns", label: "Todas en fila" }], advanced: true },
     { key: "width", label: "Ancho", kind: "select", options: [{ value: "normal", label: "Normal" }, { value: "wide", label: "Amplio" }, { value: "full", label: "Toda la pantalla" }], advanced: true },
   ], { note: "Arrastra módulos de la biblioteca a cualquier columna, o usa «Añadir a la columna». Si quitas columnas, su contenido pasa a la última que queda. Dentro de una sección cabe otra sección (un nivel)." }),
   mod("heading", "basicos", "heading", "titulo titular encabezado h1 h2", [

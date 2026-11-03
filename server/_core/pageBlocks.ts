@@ -9,8 +9,10 @@
 import { sanitizeRichHtml } from "./htmlSanitize";
 import { renderSiteTokens, type SiteTokenData } from "./templates/starterSite";
 import {
-  ANCHOR_RE, BLOCK_ANIMATIONS, BLOCK_BACKGROUNDS, BLOCK_SPACINGS, BLOCK_TYPES, DEVICES, NOT_NESTABLE, PAGE_LIMITS, SECTION_MAX_DEPTH, blockLabel, defaultBlockData,
-  isDefaultStyle, newBlockId, sectionColumnCount, type BlockDataMap, type BlockStyle, type BlockType, type GalleryImage, type PageBlock,
+  ANCHOR_RE, BLOCK_ALIGNS, BLOCK_ANIMATIONS, BLOCK_BACKGROUNDS, BLOCK_BORDERS, BLOCK_FONTS, BLOCK_GRADIENTS, BLOCK_HEADING_COLORS, BLOCK_HEADING_SIZES,
+  BLOCK_MARGINS, BLOCK_MOBILE_ALIGNS, BLOCK_MOBILE_SPACINGS, BLOCK_OVERLAYS, BLOCK_RADII, BLOCK_SHADOWS, BLOCK_SPACINGS, BLOCK_TEXT_SIZES, BLOCK_TYPES,
+  blockLabel, DEFAULT_BLOCK_STYLE, defaultBlockData, DEVICES, isDefaultStyle, newBlockId, NOT_NESTABLE, PAGE_LIMITS, SECTION_MAX_DEPTH,
+  sectionColumnCount, type BlockDataMap, type BlockStyle, type BlockType, type GalleryImage, type PageBlock,
 } from "../../shared/pageBlocks";
 import { FEATURE_ICON_KEYS, moduleDef, type FieldDef } from "../../shared/studio/modules";
 import { siteRelativeFileUrl } from "../../shared/imageUpload";
@@ -161,12 +163,34 @@ export function normalizeStyle(v: unknown): BlockStyle | undefined {
   const hide = Array.isArray(v.hideOn) ? v.hideOn : [];
   const style: BlockStyle = {
     background: oneOf(v.background, BLOCK_BACKGROUNDS, "none"),
+    gradient: oneOf(v.gradient, BLOCK_GRADIENTS, "brand"),
+    bgImage: safeImage(v.bgImage),
+    overlay: oneOf(v.overlay, BLOCK_OVERLAYS, "dark"),
     padTop: oneOf(v.padTop, BLOCK_SPACINGS, "0"),
     padBottom: oneOf(v.padBottom, BLOCK_SPACINGS, "0"),
+    marginTop: oneOf(v.marginTop, BLOCK_MARGINS, "0"),
+    marginBottom: oneOf(v.marginBottom, BLOCK_MARGINS, "0"),
+    headingFont: oneOf(v.headingFont, BLOCK_FONTS, "auto"),
+    textFont: oneOf(v.textFont, BLOCK_FONTS, "auto"),
+    headingSize: oneOf(v.headingSize, BLOCK_HEADING_SIZES, "auto"),
+    textSize: oneOf(v.textSize, BLOCK_TEXT_SIZES, "auto"),
+    align: oneOf(v.align, BLOCK_ALIGNS, "auto"),
+    headingColor: oneOf(v.headingColor, BLOCK_HEADING_COLORS, "auto"),
+    border: oneOf(v.border, BLOCK_BORDERS, "none"),
+    radius: oneOf(v.radius, BLOCK_RADII, "0"),
+    shadow: oneOf(v.shadow, BLOCK_SHADOWS, "none"),
     hideOn: DEVICES.filter((d) => hide.includes(d)),
+    mobileAlign: oneOf(v.mobileAlign, BLOCK_MOBILE_ALIGNS, "auto"),
+    mobileSpacing: oneOf(v.mobileSpacing, BLOCK_MOBILE_SPACINGS, "same"),
     anchor: typeof v.anchor === "string" && ANCHOR_RE.test(v.anchor) ? v.anchor : "",
     animation: oneOf(v.animation, BLOCK_ANIMATIONS, "none"),
   };
+  // Degradado, imagen y capa solo se guardan con su fondo
+  if (style.background !== "gradient") style.gradient = DEFAULT_BLOCK_STYLE.gradient;
+  if (style.background !== "image") {
+    style.bgImage = "";
+    style.overlay = DEFAULT_BLOCK_STYLE.overlay;
+  }
   return isDefaultStyle(style) ? undefined : style;
 }
 
