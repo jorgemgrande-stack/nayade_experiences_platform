@@ -83,6 +83,7 @@ on:
           - avisos-solicitudes-desactivar
           - connect-canal-estado
           - connect-canal-activar
+          - dominios-estado
           - medicion-preparar
           - medicion-comprobar
           - dominio-plataforma-live-estado
@@ -144,7 +145,7 @@ jobs:
     # Production: lo ordinario (publicar, revertir, solo lectura, copias y revisiones auditadas; ORDINARY_PRODUCTION_ACTIONS
     # en scripts/deploy/esRailwayLib.ts) va sin aprobación; lo extraordinario (variables, secretos, correo real, almacenamiento,
     # migraciones o restauraciones a mano), por el entorno protegido. Orden permanente del propietario (26/10/2026).
-    environment: ${{ inputs.environment == 'production' && (contains(fromJSON('["publicar","estado","verificar-token","comprobar-salud","diagnostico-almacenamiento","copia-de-seguridad","verificar-copia","migraciones-plataforma-simulacion","migraciones-simulacion","verificar-migraciones","huerfanos","correo-acceso-estado","avisos-solicitudes-estado","connect-canal-estado","medicion-comprobar","simular-purga-empresas-prueba","catalogo-revision","catalogo-revision-aplicar","catalogo-fichas","catalogo-fichas-aplicar","catalogo-fichas-publicar","catalogo-fichas-publicar-aplicar","catalogo-fichas-revertir","catalogo-fichas-revertir-aplicar","catalogo-fichas-integridad"]'), inputs.action) || startsWith(inputs.action, 'revertir-')) && 'elephant-source-production-despliegue' || format('elephant-source-{0}', inputs.environment) }}
+    environment: ${{ inputs.environment == 'production' && (contains(fromJSON('["publicar","estado","verificar-token","comprobar-salud","diagnostico-almacenamiento","copia-de-seguridad","verificar-copia","migraciones-plataforma-simulacion","migraciones-simulacion","verificar-migraciones","huerfanos","correo-acceso-estado","avisos-solicitudes-estado","connect-canal-estado","dominios-estado","medicion-comprobar","simular-purga-empresas-prueba","catalogo-revision","catalogo-revision-aplicar","catalogo-fichas","catalogo-fichas-aplicar","catalogo-fichas-publicar","catalogo-fichas-publicar-aplicar","catalogo-fichas-revertir","catalogo-fichas-revertir-aplicar","catalogo-fichas-integridad"]'), inputs.action) || startsWith(inputs.action, 'revertir-')) && 'elephant-source-production-despliegue' || format('elephant-source-{0}', inputs.environment) }}
     timeout-minutes: 60
     env:
       RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
@@ -304,6 +305,12 @@ jobs:
             connect-canal-estado) pnpm exec tsx scripts/deploy/esRailway.ts connect-channel --env "${ES_ENV}" --accion estado ;;
             connect-canal-activar) pnpm exec tsx scripts/deploy/esRailway.ts connect-channel --env "${ES_ENV}" --accion activar ;;
           esac
+
+      # Dominios propios de las empresas (solo lectura): CP_RAILWAY_DOMAIN_TOKEN del plano de control (sin su valor), si
+      # la API de Railway lo acepta para este proyecto y entorno, y los registros DNS de los dominios de core-gateway
+      - name: Dominios propios (estado)
+        if: inputs.action == 'dominios-estado'
+        run: pnpm exec tsx scripts/deploy/esRailway.ts custom-domains --env "${ES_ENV}"
 
       # Correo de CONTRATOS de servicios externos (contract_invitation), solo production y solo el plano de control:
       # estado (lectura) y activar (AÑADE la categoría y los buzones de «destinatarios» al sandbox de los avisos; nunca live)
