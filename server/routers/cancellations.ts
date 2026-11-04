@@ -41,6 +41,7 @@ import { getBusinessEmail } from "../config";
 import { legacyDb, legacyPool } from "../_core/legacyDb";
 import { releaseInventoryHold } from "../inventoryHoldsDb";
 import { restockReservations } from "../inventoryDb";
+import { reverseReservationPoints } from "../loyaltyDb";
 import { issuerSnapshotForNewInvoice } from "../issuerSnapshot";
 const _pool = legacyPool();
 const db = legacyDb();
@@ -281,6 +282,8 @@ async function propagateCancellation(params: {
       console.error(`[Cancellations] Error liberando la plaza de la reserva ${reservationId}:`, err?.message));
     // Inventario (Business): se reponen las unidades vendidas (pedido online o venta del TPV), una sola vez
     await restockReservations([reservationId], { id: adminUserId, name: adminUserName }, `Anulación ${cancellationNumber}`);
+    // Tokens internos: se anulan los puntos que generó la compra, una sola vez
+    await reverseReservationPoints([reservationId], { id: adminUserId, name: adminUserName }, `Anulación ${cancellationNumber}`);
   }
 
   // -- 3. Log de propagación (fuera de tx — no crítico) ----------------------

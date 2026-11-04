@@ -1,6 +1,6 @@
 /**
  * Social Token Net · Comunidades (capacidad social-token-net) con la aplicación real sobre MySQL (opt-in,
- * REGISTRY_TEST_DATABASE_URL): dos empresas nuevas desde la baseline y las migraciones de empresa (incluida la 0026).
+ * REGISTRY_TEST_DATABASE_URL): dos empresas nuevas desde la baseline y las migraciones de empresa (incluida la 0027).
  * Sin licencia no hay panel ni área de miembros; con ella, la administración crea la comunidad, incorpora clientes
  * del CRM ficticios (cuenta de cliente con invitación de un solo uso), los miembros publican, comentan, reaccionan y
  * guardan; la moderación oculta, aprueba y bloquea según el rol; cada empresa solo ve lo suyo; los eventos de

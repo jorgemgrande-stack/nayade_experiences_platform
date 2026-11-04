@@ -323,6 +323,10 @@ export default function TpvScreen() {
       if (data.stockWarnings?.length) {
         toast.warning(`Vendido sin existencias suficientes: ${data.stockWarnings.join(", ")}. Revisa el inventario.`, { duration: 8000 });
       }
+      // Tokens internos (Social Token Net): puntos ganados por el cliente con esta venta
+      if (data.loyalty?.applied && data.loyalty.points > 0) {
+        toast.success(`El cliente gana ${data.loyalty.points.toLocaleString("es-ES")} ${data.loyalty.pointsName} (saldo: ${data.loyalty.balance.toLocaleString("es-ES")})`);
+      }
     },
     onError: (err) => toast.error(err.message),
   });
