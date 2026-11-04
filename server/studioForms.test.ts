@@ -3,7 +3,7 @@
  * el formulario publicado y el aislamiento entre empresas están en essential.studioForms.mysql.test.ts.
  */
 import { describe, it, expect } from "vitest";
-import { createBlock, newFormField, type BlockDataMap } from "../shared/pageBlocks";
+import { createBlock, formFieldVisibility, newFormField, type BlockDataMap } from "../shared/pageBlocks";
 import { normalizeBlocks } from "./_core/pageBlocks";
 import { allowFormSubmit, evaluateFormSubmission, fieldOptions, formRedirect, FORM_RATE, FormSubmitError } from "./_core/studioForms";
 
@@ -91,5 +91,46 @@ describe("formularios a medida: validación del envío", () => {
     const [b] = normalizeBlocks([{ id: "f", type: "form", data: { fields: [{ kind: "script", label: "<b>Hola</b>", role: "admin", required: "si" }], redirectUrl: "javascript:x" } }]) as any;
     expect(b.data.fields[0]).toMatchObject({ kind: "text", label: "<b>Hola</b>", role: "none", required: "off" });
     expect(b.data.redirectUrl).toBe("");
+  });
+});
+
+describe("formularios a medida: campos con condición", () => {
+  const fields = [
+    newFormField("text", "Nombre", { required: "on", role: "name" }),
+    newFormField("email", "Correo", { required: "on", role: "email" }),
+    newFormField("radio", "¿Vienes con niños?", { options: "Sí\nNo", required: "on" }),
+    newFormField("number", "Cuántos niños", { required: "on", showIf: "¿Vienes con niños?", showValue: "Sí" }),
+    newFormField("text", "Edades", { showIf: "Cuántos niños", showValue: "2" }),
+    newFormField("checkbox", "Quiero factura"),
+    newFormField("text", "NIF", { required: "on", showIf: "Quiero factura", showValue: "Sí" }),
+  ];
+
+  it("se muestran solo los que cumplen su condición; la condición sobre un campo que no es de opciones o no existe se ignora", () => {
+    expect(formFieldVisibility(fields, {})).toEqual([true, true, true, false, true, true, false]);
+    expect(formFieldVisibility(fields, { f2: "Sí", f5: true })).toEqual([true, true, true, true, true, true, true]);
+    expect(formFieldVisibility(fields, { f2: "No" })[3]).toBe(false);
+    // Encadenado: si el campo del que depende está oculto, este también
+    const chained = [newFormField("radio", "A", { options: "x\ny" }), newFormField("select", "B", { options: "1\n2", showIf: "A", showValue: "x" }), newFormField("text", "C", { showIf: "B", showValue: "1" })];
+    expect(formFieldVisibility(chained, { f0: "y", f1: "1" })).toEqual([true, false, false]);
+    expect(formFieldVisibility(chained, { f0: "x", f1: "1" })).toEqual([true, true, true]);
+    // Varias opciones: basta con que esté marcada
+    const multi = [newFormField("multi", "Intereses", { options: "Esquí\nSnow" }), newFormField("text", "Nivel de snow", { showIf: "Intereses", showValue: "Snow" })];
+    expect(formFieldVisibility(multi, { f0: ["Esquí", "Snow"] })).toEqual([true, true]);
+    expect(formFieldVisibility(multi, { f0: ["Esquí"] })).toEqual([true, false]);
+  });
+
+  it("el servidor no exige ni guarda un campo oculto por su condición, aunque el navegador lo mande", () => {
+    const r = evaluateFormSubmission(form(fields), { ...ok, values: { f0: "Ana", f1: "ana@ejemplo.es", f2: "No", f3: "7", f6: "X1234567" } }, { slug: "x" });
+    expect(r.kind).toBe("ok");
+    if (r.kind !== "ok") return;
+    expect(r.lead.message).not.toContain("Cuántos niños");
+    expect(r.lead.message).not.toContain("X1234567");
+  });
+
+  it("un campo visible por su condición sí es obligatorio", () => {
+    const r = evaluateFormSubmission(form(fields), { ...ok, values: { f0: "Ana", f1: "ana@ejemplo.es", f2: "Sí", f5: true } }, { slug: "x" });
+    expect(r.kind).toBe("invalid");
+    if (r.kind !== "invalid") return;
+    expect(Object.keys(r.errors).sort()).toEqual(["f3", "f6"]);
   });
 });

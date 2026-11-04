@@ -726,7 +726,7 @@ function FormBlock({ b, first, preview, pageTitle }: { b: BlockOf<"form">; first
             Marca un campo como «Correo» en el panel de la derecha: sin él, no podrás responder a quien te escriba y el formulario no se enviará.
           </p>
         )}
-        <StudioFormFields blockId={b.id} form={b.data} preview={preview || !!ed} pageTitle={pageTitle} />
+        <StudioFormFields blockId={b.id} form={b.data} preview={preview || !!ed} pageTitle={pageTitle} editing={!!ed} />
       </div>
     </section>
   );

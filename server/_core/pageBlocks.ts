@@ -138,6 +138,9 @@ function normalizeField(f: FieldDef, v: unknown, initial: unknown): unknown {
       return oneOf(v, FEATURE_ICON_KEYS, "check");
     case "category":
       return typeof v === "string" && /^[a-z0-9-]{1,64}$/.test(v) ? v : "";
+    case "fieldRef":
+    case "fieldValue":
+      return str(v, 200);
     case "images": {
       const raw = Array.isArray(v) ? v : [];
       if (raw.length > f.max) throw new PageBlocksError(`Una galería admite hasta ${f.max} imágenes.`);
