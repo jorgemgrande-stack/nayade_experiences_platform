@@ -37,11 +37,14 @@ Lo que ya está en production y comprobado:
 **Procedimiento mínimo (Jorge):**
 
 1. Crear la empresa de ensayo por el alta normal de prueba gratuita, con un nombre inequívoco (p. ej. «PRUEBA dominios 2026-11») y un correo vuestro. Anotar su identificador de tenant (lo muestra el CRM).
-2. En Railway → production → servicio `controlplane` → Variables: `TRIAL_RESTRICTIONS_EXEMPT_TENANTS=t5-skibox,<tenant-de-ensayo>` y redesplegar. **Hay que incluir `t5-skibox`:** si la variable existe, manda exactamente su contenido y deja fuera la lista por defecto.
+2. En Railway → production → servicio `controlplane` → Variables, **añadir** el tenant de ensayo a `TRIAL_RESTRICTIONS_EXEMPT_TENANTS` y redesplegar. Si la variable existe, manda exactamente su contenido y deja fuera la lista por defecto, así que:
+   - **Si ya existe:** leer su valor actual y añadir `,<tenant-de-ensayo>` al final, sin quitar ni reordenar nada (debe seguir incluyendo `t5-skibox`; si no lo incluye, añadirlo también).
+   - **Si no existe:** crearla con `t5-skibox,<tenant-de-ensayo>` (`t5-skibox` es la lista por defecto que se perdería).
+   - Antes de guardar, comprobar que el valor nuevo contiene todos los identificadores del anterior más el de ensayo.
 3. Solo en `controlplane`: así la exención afecta al dominio propio (y a la cuota y vencimiento de la prueba de esa empresa en el plano de control), pero no a las restricciones del Core (correo e integraciones de la prueba siguen activas para la empresa de ensayo).
 4. Claude comprueba que el panel de la empresa de ensayo ofrece «Paso 1 · Escribe tu dominio» sin el aviso de primer pago.
 
-**Al terminar:** quitar el tenant de ensayo de la variable (dejar `t5-skibox` o borrar la variable para volver a la lista por defecto) y añadir la empresa a la purga controlada de empresas de prueba (`PURGE_TARGETS` en `server/_core/ops/purgeTestCompanies.ts`, lista cerrada) para eliminarla con su simulación previa.
+**Al terminar:** quitar de la variable solo el tenant de ensayo, dejando el resto exactamente como estaba (si antes de la prueba la variable no existía, se puede borrar para volver a la lista por defecto), y añadir la empresa a la purga controlada de empresas de prueba (`PURGE_TARGETS` en `server/_core/ops/purgeTestCompanies.ts`, lista cerrada) para eliminarla con su simulación previa.
 
 ## 2. Procedimiento
 
