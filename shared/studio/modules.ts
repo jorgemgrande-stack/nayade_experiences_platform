@@ -348,6 +348,14 @@ export const MODULES: readonly ModuleDef[] = [
     { key: "buttonLabel", label: "Botón a la tienda (opcional)", kind: "text", max: 80, inline: true },
     { key: "layout", label: "Presentación", kind: "select", options: LAYOUT_GRID_CAROUSEL },
   ], { capability: "shop-catalog", note: "Muestra los productos publicados en tu tienda, con su foto y su precio reales. Cuando cambias un producto en el catálogo, la web lo refleja sola." }),
+  mod("blog_posts", "contenido", "blog", "blog entradas noticias articulos novedades", [
+    { key: "title", label: "Título", kind: "text", max: 200, inline: true },
+    { key: "intro", label: "Introducción (opcional)", kind: "text", max: 500, multiline: true, inline: true },
+    { key: "limit", label: "Cuántas", kind: "select", options: [{ value: "3", label: "3" }, { value: "6", label: "6" }, { value: "9", label: "9" }] },
+    { key: "showExcerpt", label: "Resumen de cada entrada", kind: "select", options: [{ value: "on", label: "Sí" }, { value: "off", label: "No" }] },
+    { key: "buttonLabel", label: "Botón al blog (opcional)", kind: "text", max: 80, inline: true },
+    { key: "layout", label: "Presentación", kind: "select", options: LAYOUT_GRID_CAROUSEL },
+  ], { capability: "cms-blog", note: "Muestra tus últimas entradas publicadas en el blog. Las entradas se escriben en Web › Blog; al publicar una, la web la muestra sola." }),
 ];
 
 export const moduleDef = (type: string): ModuleDef | undefined => MODULES.find((m) => m.type === type);

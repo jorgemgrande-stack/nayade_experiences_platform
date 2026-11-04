@@ -168,14 +168,17 @@ function Content({ b, light }: { b: PageBlock; light: boolean }) {
     case "testimonials":
     case "cards":
     case "products":
+    case "blog_posts":
       return (
         <span className="flex flex-col items-center gap-[4px]">
           <Bar w="35%" h={4} color={title} />
-          <Grid n={count(b) || 3} max={b.type === "testimonials" ? 3 : 4}>
+          <Grid n={count(b) || 3} max={b.type === "testimonials" || b.type === "blog_posts" ? 3 : 4}>
             {(i) => (
               <Box key={i} className="flex flex-col gap-[2px] p-[3px]">
                 {b.type === "features" && <span className="block h-[5px] w-[5px] rounded-[1px]" style={{ background: C.accent, opacity: 0.6 }} />}
                 {(b.type === "cards" || b.type === "products") && <Media className="aspect-[4/3] w-full" />}
+                {b.type === "blog_posts" && <Media className="aspect-[16/9] w-full" />}
+                {b.type === "blog_posts" && <Bar w="30%" h={2} color={C.accent} />}
                 {b.type === "testimonials" && <Bar w="20%" h={3} color={C.accent} />}
                 <Bar w="80%" h={2} />
                 <Bar w="60%" h={2} />

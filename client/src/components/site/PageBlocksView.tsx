@@ -9,7 +9,7 @@
 import { createContext, Fragment, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { Link } from "wouter";
 import { toast } from "sonner";
-import { ArrowDown, ArrowUp, ChevronDown, Copy, EyeOff, GripVertical, Play, Quote, ShoppingBag, Star, Trash2 } from "lucide-react";
+import { ArrowDown, ArrowUp, CalendarDays, ChevronDown, Copy, EyeOff, GripVertical, Newspaper, Play, Quote, ShoppingBag, Star, Trash2 } from "lucide-react";
 import { trpc } from "@/lib/trpc";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -1004,6 +1004,74 @@ function ProductsBlock({ b, first, preview }: { b: BlockOf<"products">; first: b
   );
 }
 
+const postDate = (ms: number | null | undefined) => (ms ? new Intl.DateTimeFormat("es-ES", { day: "numeric", month: "long", year: "numeric" }).format(new Date(ms)) : "");
+
+/** Últimas entradas publicadas del blog (las mismas que /blog). Sin blog en el plan, la consulta se rechaza y no se pinta nada. */
+function BlogPostsBlock({ b, first, preview }: { b: BlockOf<"blog_posts">; first: boolean; preview?: boolean }) {
+  const d = b.data;
+  const ed = useContext(StudioEditContext);
+  const posts = trpc.blog.publicList.useQuery({ page: 1 }, { staleTime: 60_000, retry: false });
+  const limit = Number(d.limit) || 3;
+  const items = (posts.data?.items ?? []).slice(0, limit);
+  const showButton = !!d.buttonLabel || (!!ed && ed.selectedId === b.id);
+  if (!posts.isLoading && !items.length && !ed) return null;
+  const cards = items.map((p) => (
+    <article key={p.slug} className="group flex h-full flex-col overflow-hidden rounded-2xl border border-border bg-card text-card-foreground shadow-sm">
+      {p.featuredImageUrl && <img src={p.featuredImageUrl} alt={p.featuredImageAlt ?? ""} loading="lazy" className="aspect-[16/9] w-full object-cover" />}
+      <div className="flex flex-1 flex-col p-5">
+        {p.category && <p className="text-xs font-semibold uppercase tracking-wide text-primary">{p.category}</p>}
+        <h3 className="mt-1 font-heading text-lg font-bold text-foreground">
+          <SmartLink href={`/blog/${p.slug}`} preview={preview} className="underline-offset-4 hover:underline">
+            {p.title}
+          </SmartLink>
+        </h3>
+        {d.showExcerpt === "on" && p.excerpt && <p className="mt-2 line-clamp-3 text-sm text-muted-foreground">{p.excerpt}</p>}
+        <p className="mt-auto flex items-center gap-1.5 pt-4 text-xs text-muted-foreground">
+          <CalendarDays className="h-3.5 w-3.5" aria-hidden />
+          <time dateTime={p.publishedAt ? new Date(p.publishedAt).toISOString() : undefined}>{postDate(p.publishedAt)}</time>
+        </p>
+      </div>
+    </article>
+  ));
+  return (
+    <section className="container py-10 md:py-14">
+      {(d.title || d.intro || ed) && (
+        <div className="mb-8 max-w-2xl">
+          <Txt k="title" value={d.title} as={first ? "h1" : "h2"} className={headingClass(first)} placeholder="Título" />
+          <Txt k="intro" value={d.intro} as="p" multiline className="mt-3 text-muted-foreground" placeholder="Introducción (opcional)" />
+        </div>
+      )}
+      {posts.isLoading ? (
+        <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3" aria-hidden>
+          {Array.from({ length: Math.min(limit, 3) }, (_, i) => (
+            <div key={i} className="h-64 animate-pulse rounded-2xl bg-muted" />
+          ))}
+        </div>
+      ) : !items.length ? (
+        <div className="flex flex-col items-center justify-center gap-2 rounded-2xl border-2 border-dashed border-border bg-muted/50 px-6 py-12 text-center text-sm text-muted-foreground">
+          <Newspaper className="h-7 w-7" aria-hidden />
+          {posts.error ? "Tu plan no incluye el blog: este módulo no se mostrará en la web." : "Aquí aparecerán tus últimas entradas del blog. Escríbelas en Web › Blog; ahora mismo no hay ninguna publicada."}
+        </div>
+      ) : d.layout === "carousel" ? (
+        <Carousel perView={{ mobile: 1, tablet: 2, desktop: 3 }} label={d.title || "Entradas del blog"}>
+          {cards}
+        </Carousel>
+      ) : (
+        <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3">{cards}</div>
+      )}
+      {showButton && (
+        <div className="mt-8 text-center">
+          <Button asChild variant="outline" size="lg">
+            <SmartLink href="/blog" preview={preview}>
+              <Txt k="buttonLabel" value={d.buttonLabel} placeholder="Botón al blog (opcional)" />
+            </SmartLink>
+          </Button>
+        </div>
+      )}
+    </section>
+  );
+}
+
 // ─── Diseño del bloque ────────────────────────────────────────────────────────
 
 const PAD_TOP: Record<BlockStyle["padTop"], string> = { "0": "", s: "pt-4", m: "pt-10", l: "pt-20", xl: "pt-32" };
@@ -1370,6 +1438,8 @@ function renderBlock(b: PageBlock, first: boolean, preview?: boolean, pageTitle?
       return <CtaBlock b={b} first={first} preview={preview} />;
     case "video":
       return <VideoBlock b={b} first={first} />;
+    case "blog_posts":
+      return <BlogPostsBlock b={b} first={first} preview={preview} />;
     case "products":
       return <ProductsBlock b={b} first={first} preview={preview} />;
     case "slideshow":
