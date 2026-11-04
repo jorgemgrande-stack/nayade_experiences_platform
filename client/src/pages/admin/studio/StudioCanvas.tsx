@@ -109,6 +109,7 @@ export default function StudioCanvas() {
       onSelect: select,
       onText: (id, key, value) => post({ kind: "text", id, key, value }),
       onAction: (id, action) => post({ kind: "action", id, action }),
+      onAddAt: (index, parent, col) => post({ kind: "addAt", index, parent, col }),
       onDrop: (payload, index, parent, col) => {
         const p = parseDragPayload(payload);
         if (!p) return;
