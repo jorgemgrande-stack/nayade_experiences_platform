@@ -72,13 +72,13 @@ describe("enlace firmado al área de puntos", () => {
   });
 });
 
-describe("licencia y migración 0027", () => {
+describe("licencia y migración 0028", () => {
   it("los procedimientos de recompensas y canjes exigen la capacidad de tokens", () => {
     for (const p of ["loyalty.rewards", "loyalty.consumeCode", "loyalty.redeemForClient", "loyalty.cancelRedemption", "loyalty.sendPortalLink"]) expect(capabilityForProcedure(p)).toBe("social-token-net-tokens");
   });
   it("es aditiva (ordinaria) y tiene reversión", () => {
     const dir = path.resolve(__dirname, "../db/migrations");
-    expect(destructiveMigration(fs.readFileSync(path.join(dir, "0027_loyalty_rewards.sql"), "utf8"))).toBeNull();
-    expect(fs.existsSync(path.join(dir, "0027_loyalty_rewards.down.sql"))).toBe(true);
+    expect(destructiveMigration(fs.readFileSync(path.join(dir, "0028_loyalty_rewards.sql"), "utf8"))).toBeNull();
+    expect(fs.existsSync(path.join(dir, "0028_loyalty_rewards.down.sql"))).toBe(true);
   });
 });
