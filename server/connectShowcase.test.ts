@@ -237,8 +237,8 @@ describe("carrusel", () => {
 describe("acción principal según el estado real", () => {
   const view = { canPurchase: true, interestEnabled: true };
   const base = { kind: "module" as const, purchasable: true, openPath: null as string | null };
-  it("«Contratar y activar» solo si se vende en línea y esta persona puede comprar", () => {
-    expect(primaryAction({ ...base, state: "available" }, view)).toEqual({ kind: "purchase", label: "Contratar y activar", href: null });
+  it("«Contratar ahora» solo si se vende en línea y esta persona puede comprar", () => {
+    expect(primaryAction({ ...base, state: "available" }, view)).toEqual({ kind: "purchase", label: "Contratar ahora", href: null });
     // Prueba gratuita, rol o compras cerradas (canPurchase false) → solicitar información
     expect(primaryAction({ ...base, state: "available" }, { ...view, canPurchase: false }).kind).toBe("request");
     expect(primaryAction({ ...base, purchasable: false, state: "available" }, view).label).toBe("Solicitar información");
@@ -249,9 +249,9 @@ describe("acción principal según el estado real", () => {
     expect(primaryAction({ ...base, state: "coming_soon" }, view).label).toBe("Me interesa");
     expect(primaryAction({ ...base, state: "coming_soon" }, { ...view, interestEnabled: false }).kind).toBe("none");
   });
-  it("contratado → «Abrir módulo» con su ruta real; sin ruta, «Gestionar»", () => {
+  it("contratado → «Abrir módulo» con su ruta real; sin ruta, a «Mis módulos»", () => {
     expect(primaryAction({ ...base, state: "active", openPath: "/admin/personal" }, view)).toEqual({ kind: "open", label: "Abrir módulo", href: "/admin/personal" });
-    expect(primaryAction({ ...base, state: "active" }, view)).toMatchObject({ kind: "manage", label: "Gestionar" });
+    expect(primaryAction({ ...base, state: "active" }, view)).toEqual({ kind: "open", label: "Abrir módulo", href: "/admin/ampliar#cx-mine" });
     expect(primaryAction({ ...base, state: "pending_setup", openPath: "/admin/personal" }, view)).toMatchObject({ kind: "manage", href: "/admin/personal" });
     expect(primaryAction({ ...base, state: "pending_setup" }, view).kind).toBe("contact");
     expect(primaryAction({ ...base, state: "incident" }, view).kind).toBe("contact");
@@ -329,7 +329,7 @@ describe("activación del canal y acción (compra en curso, rechazada o vigente)
   it("rechazada y reintentable: «Reintentar la contratación» por el mismo flujo, solo si ahora se puede comprar", () => {
     expect(primaryAction({ ...base, activation: act("error", true) }, view)).toEqual({ kind: "purchase", label: "Reintentar la contratación", href: null });
     expect(primaryAction({ ...base, activation: act("error", true) }, { ...view, canPurchase: false }).kind).toBe("request");
-    expect(primaryAction({ ...base, activation: null }, view).label).toBe("Contratar y activar");
+    expect(primaryAction({ ...base, activation: null }, view).label).toBe("Contratar ahora");
   });
   it("updatedAt numérico (ms) del canal → fecha ISO", () => {
     expect(parseActivation({ state: "active", retryable: false, updatedAt: Date.UTC(2026, 10, 1) })?.updatedAt).toBe("2026-11-01T00:00:00.000Z");

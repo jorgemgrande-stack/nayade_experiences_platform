@@ -17,10 +17,10 @@ import AdminLayout from "@/components/AdminLayout";
 import { Button } from "@/components/ui/button";
 import { PanelError, PanelLoading } from "@/components/admin/PanelStates";
 import { cn } from "@/lib/utils";
-import { brandHeaders, brandOf, PURCHASE_BLOCK_TEXT } from "@shared/connectMarketplace";
+import { brandHeaders, brandOf, conversionPlanText, conversionSupportText, PURCHASE_BLOCK_TEXT } from "@shared/connectMarketplace";
 import { periodLabel, sortPrices, taxLabel, formatMoney } from "@shared/connectCard";
 import { ACTIVATION_LABELS, activationActions, activationLabel, activationOf, primaryAction, type ConnectActivation, type PrimaryAction } from "@shared/connectShowcase";
-import { ActivationActionsBar, BigPrice, ImageKindNote, ProductIcon, ProductMedia, PurchaseDialog, RequestDialog, StateBadge, type ConnectView, type RequestKind } from "@/components/connect/ConnectParts";
+import { ActivationActionsBar, BigPrice, goTo, ImageKindNote, ProductIcon, ProductMedia, PurchaseDialog, RequestDialog, StateBadge, type ConnectView, type RequestKind } from "@/components/connect/ConnectParts";
 import { SHEET_ANCHORS, SheetBlocks, sheetAnchorTargets } from "@/components/connect/SheetBlocks";
 import { AMPLIAR_PATH } from "@/components/connect/LockedFeature";
 import { useConnectAttempt, useConnectCatalog, useOrderTracking, type ConnectCatalogItem } from "@/components/connect/useConnect";
@@ -53,7 +53,7 @@ export default function ConnectDetailPage() {
     if (item) trackConnect("sheet_view", { productKey: item.key });
   }, [item?.key]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Desde la tarjeta («Contratar y activar»): se abre la contratación aquí, con su vista previa y confirmación
+  // Desde la tarjeta («Contratar ahora»): se abre la contratación aquí, con su vista previa y confirmación
   const autoOpened = useRef(false);
   useEffect(() => {
     if (autoOpened.current || !action || !new URLSearchParams(search).has("contratar")) return;
@@ -65,7 +65,7 @@ export default function ConnectDetailPage() {
   const run = (a: PrimaryAction) => {
     if (!item) return;
     trackConnect("cta_click", { productKey: item.key });
-    if (a.href) navigate(a.href);
+    if (a.href) goTo(a.href, navigate);
     else if (a.kind === "purchase") setDialog("purchase");
     else if (a.kind === "request") setDialog("info");
     else if (a.kind === "interest") setDialog("waitlist");
@@ -93,7 +93,7 @@ export default function ConnectDetailPage() {
                 <div className="min-w-0">
                   <SheetBlocks item={item} items={catalog.items} view={view} onAction={(it, kind) => setRelated({ item: it, kind })} />
                 </div>
-                <ContractPanel item={item} action={action} canRetryActivation={!!view.canRetryActivation} attemptOrdered={attemptOrdered} showBlock={showBlock} onRun={run} onOpenOrder={() => setDialog("purchase")} />
+                <ContractPanel item={item} action={action} currentPlan={data.plan?.key ?? null} canRetryActivation={!!view.canRetryActivation} attemptOrdered={attemptOrdered} showBlock={showBlock} onRun={run} onOpenOrder={() => setDialog("purchase")} />
               </div>
             </article>
           )}
@@ -274,6 +274,7 @@ function ActivationSteps({ productKey, activation, canRetry, canRetryActivation 
 function ContractPanel({
   item,
   action,
+  currentPlan,
   canRetryActivation,
   attemptOrdered,
   showBlock,
@@ -282,6 +283,8 @@ function ContractPanel({
 }: {
   item: ConnectCatalogItem;
   action: PrimaryAction;
+  /** Plan de la empresa (para explicar si el alta pide otro). */
+  currentPlan: string | null;
   canRetryActivation: boolean;
   attemptOrdered: boolean;
   showBlock: string | null;
@@ -329,11 +332,13 @@ function ContractPanel({
       <div className="space-y-2">
         {action.kind !== "none" && (
           <Button type="button" size="lg" className="h-12 w-full rounded-xl text-base font-bold" onClick={() => onRun(action)}>
-            {action.kind === "purchase" && <PackagePlus className="h-5 w-5" aria-hidden="true" />}
+            {(action.kind === "purchase" || action.kind === "convert") && <PackagePlus className="h-5 w-5" aria-hidden="true" />}
             {action.label}
           </Button>
         )}
         {action.kind === "purchase" && <p className="text-xs text-muted-foreground">Te mostramos el importe exacto antes de confirmar. Se activa cuando el cobro queda verificado.</p>}
+        {action.kind === "convert" && <p className="text-xs text-muted-foreground">{conversionSupportText(item.name)}</p>}
+        {action.kind === "convert" && item.conversionPlan && item.conversionPlan !== currentPlan && <p className="text-xs text-muted-foreground">{conversionPlanText(item.name, item.conversionPlan)}</p>}
         {item.state === "activating" && attemptOrdered && (
           <Button type="button" variant="outline" className="w-full" onClick={onOpenOrder}>
             Ver el estado del pedido

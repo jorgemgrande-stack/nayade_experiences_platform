@@ -4,8 +4,8 @@
  * adicionales, facturación, datos y desistimiento. Todo se lee del servidor (subscription.*, connect.catalog); aquí
  * no se calcula ningún precio ni se decide quién puede contratar.
  */
-import { useMemo, useState, type ReactNode } from "react";
-import { Link } from "wouter";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { Link, useSearch } from "wouter";
 import { ArrowUpRight, CalendarClock, CheckCircle2, Clock, CreditCard, Eye, Hourglass, Info, Rocket, ShieldAlert } from "lucide-react";
 import AdminLayout from "@/components/AdminLayout";
 import { Badge } from "@/components/ui/badge";
@@ -26,6 +26,7 @@ import { UsageSection } from "./UsagePage";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
 import { buildPlanComparison, isTrialState, parsePanelPlans, type PlanChangeInfo, type SelfServicePlanKey } from "@shared/subscriptionPlans";
+import { parseConversionRequest } from "@shared/connectMarketplace";
 import "@/components/connect/connectStage.css";
 
 /** Portal de facturación de Stripe: solo la persona propietaria y si está activado. */
@@ -147,7 +148,13 @@ export default function SubscriptionPage() {
   const catalog = trpc.subscription.catalog.useQuery(undefined, { retry: false, staleTime: 60_000, enabled: licensed });
   const planRequests = trpc.subscription.planRequests.useQuery(undefined, { retry: false, staleTime: 60_000, enabled: licensed });
   const portal = useBillingPortal();
-  const [requested, setRequested] = useState<{ plan: SelfServicePlanKey; at: number } | null>(null);
+  const [requested, setRequested] = useState<{ plan: SelfServicePlanKey; modules?: string[]; at: number } | null>(null);
+  // «Contratar ahora» desde el marketplace: /admin/suscripcion?contratar=<plan>&modulos=<clave>#contratar
+  const search = useSearch();
+  useEffect(() => {
+    const r = parseConversionRequest(search);
+    if (r) setRequested({ plan: r.plan, modules: r.modules, at: Date.now() });
+  }, [search]);
 
   const plans = useMemo(() => parsePanelPlans((catalog.data as { plans?: unknown } | null | undefined)?.plans), [catalog.data]);
   const pc = (planChange.data ?? null) as PlanChangeInfo | null;
@@ -299,7 +306,7 @@ export default function SubscriptionPage() {
               </section>
 
               {/* Contratar desde la prueba (solo administración; el servidor decide si está disponible) */}
-              {trial && <ConversionSection requested={requested} />}
+              {trial && <ConversionSection requested={requested} currentPlan={data.plan?.key ?? null} />}
 
               {/* Detalle organizado en pestañas */}
               <section aria-labelledby="sub-detail" className="space-y-3">

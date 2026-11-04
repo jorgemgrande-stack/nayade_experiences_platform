@@ -12,7 +12,7 @@ import { effectiveStatus } from "./subscriptionOverview";
 import { PRODUCTS } from "./catalog/elephantSourceV1";
 import type { PanelCatalogItemView } from "./panelModules";
 import { parseActivation, parseConnectCard, parseConnectOffer, parseConnectPrices } from "./connectCard";
-import { categoryOf, deriveConnectState, type ConnectCategoryId, type ConnectState } from "../shared/connectMarketplace";
+import { categoryOf, deriveConnectState, type CheckoutVia, type ConnectCategoryId, type ConnectState } from "../shared/connectMarketplace";
 import type { ConnectGalleryItem, ConnectImage, ConnectPrice, ConnectSheet } from "../shared/connectCard";
 import type { ConnectActivation } from "../shared/connectShowcase";
 
@@ -59,6 +59,10 @@ export interface ConnectItem {
   activation: ConnectActivation | null;
   /** Ruta real del módulo en el panel (la de su entrada de menú), para «Abrir módulo»; null si no tiene. */
   openPath: string | null;
+  /** Cómo se contrata en línea ahora para esta persona (lo decide `connect.catalog`; aquí, null). */
+  checkoutVia: CheckoutVia;
+  /** Con `checkoutVia: "conversion"`: el plan con el que entra en el alta. */
+  conversionPlan: string | null;
 }
 
 /** Imagen de la forma anterior (`cover`/`screenshots`) como imagen resuelta, mientras el canal la mande. */
@@ -175,6 +179,8 @@ export function buildConnectCatalog(
       contentSource: card ? "card" : d ? "seed" : "none",
       activation: parseActivation(item.activation),
       openPath: item.kind === "module" && capabilities.length > 0 ? openPathOf(capabilities) : null,
+      checkoutVia: null,
+      conversionPlan: null,
     };
   });
 }

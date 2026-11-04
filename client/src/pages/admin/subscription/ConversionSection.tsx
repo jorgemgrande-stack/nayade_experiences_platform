@@ -4,7 +4,8 @@
  * cuando Stripe confirma el cobro (no al volver del pago); los datos de la prueba se conservan.
  */
 import { randomId } from "@shared/randomId";
-import { useEffect, useMemo, useState } from "react";
+import { applyConversionRequest } from "@shared/connectMarketplace";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { CreditCard, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { trpc } from "@/lib/trpc";
@@ -31,16 +32,36 @@ const PLANS: Array<{ id: Plan; name: string }> = [
 const money = (cents: number, currency = "EUR") => new Intl.NumberFormat("es-ES", { style: "currency", currency }).format(cents / 100);
 const newKey = () => randomId();
 
-/** `requested`: plan elegido desde el comparador (cada elección nueva lleva otro `at`). */
-export function ConversionSection({ requested }: { requested?: { plan: Plan; at: number } | null } = {}) {
+/**
+ * `requested`: plan elegido desde el comparador o, desde el marketplace («Contratar ahora»), plan y módulos (cada
+ * elección nueva lleva otro `at`). `currentPlan`: plan de la prueba, para explicar si el módulo pide otro.
+ */
+export function ConversionSection({ requested, currentPlan = null }: { requested?: { plan: Plan; modules?: string[]; at: number } | null; currentPlan?: string | null } = {}) {
   const status = trpc.subscription.conversionStatus.useQuery(undefined, { retry: false, staleTime: 60_000 });
   const catalog = trpc.subscription.catalog.useQuery(undefined, { retry: false, staleTime: 60_000, enabled: !!status.data?.enabled });
   const [plan, setPlan] = useState<Plan>(requested?.plan ?? "essential");
-  useEffect(() => {
-    if (requested) setPlan(requested.plan);
-  }, [requested]);
   const [interval, setBilling] = useState<Interval>("month");
   const [add, setAdd] = useState<string[]>([]);
+  const [notes, setNotes] = useState<string[]>([]);
+  const offered = (((catalog.data as { modules?: CatalogModule[] } | null)?.modules) ?? []).filter((m) => m.kind === "module" && m.commercialStatus === "available" && m.state !== "active");
+  // Se aplica una vez por elección; con módulos, cuando ya se sabe cuáles ofrece el formulario
+  const applied = useRef<number | null>(null);
+  useEffect(() => {
+    if (!requested || applied.current === requested.at) return;
+    if (!requested.modules?.length) {
+      applied.current = requested.at;
+      setPlan(requested.plan);
+      return;
+    }
+    if (!catalog.data) return;
+    applied.current = requested.at;
+    const r = applyConversionRequest(requested, { offered, currentPlan });
+    setPlan(r.plan);
+    setAdd(r.add);
+    setNotes(r.notes);
+    requestAnimationFrame(() => document.getElementById("contratar")?.scrollIntoView({ behavior: window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth", block: "start" }));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [requested, catalog.data, currentPlan]);
   const [buyer, setBuyer] = useState({ legalName: "", taxId: "", country: "ES", postalCode: "", line1: "", city: "" });
   const [accepted, setAccepted] = useState({ terms: false, privacy: false });
   // Una clave por selección: repetir el envío (doble clic, reintento) devuelve el mismo pago
@@ -67,7 +88,7 @@ export function ConversionSection({ requested }: { requested?: { plan: Plan; at:
     );
   }
 
-  const modules = (((catalog.data as { modules?: CatalogModule[] } | null)?.modules) ?? []).filter((m) => m.kind === "module" && m.commercialStatus === "available" && m.state !== "active");
+  const modules = offered;
   const p = preview.data as Preview | undefined;
   const ready = !!p?.quote.ok && !!p.termsVersion && accepted.terms && accepted.privacy && buyer.legalName.trim().length >= 2 && buyer.taxId.trim() && buyer.postalCode.trim() && buyer.line1.trim() && buyer.city.trim();
   const field = (k: keyof typeof buyer, label: string, o: { autoComplete?: string; maxLength?: number } = {}) => (
@@ -84,6 +105,9 @@ export function ConversionSection({ requested }: { requested?: { plan: Plan; at:
           <CreditCard className="w-4 h-4" aria-hidden="true" /> Contratar
         </h2>
         <p className="text-sm text-muted-foreground mt-1">Elige tu plan y los módulos que quieras. Todo lo que has preparado durante la prueba se conserva.</p>
+        {notes.map((n) => (
+          <p key={n} className="text-sm text-foreground mt-2">{n}</p>
+        ))}
       </div>
 
       <fieldset className="space-y-2">
@@ -199,6 +223,11 @@ export function ConversionSection({ requested }: { requested?: { plan: Plan; at:
         {start.isPending && <Loader2 className="w-4 h-4 mr-1.5 animate-spin" aria-hidden="true" />}
         Continuar al pago seguro
       </Button>
+      {start.error?.data?.code === "CONFLICT" && /pago abierto|contratación en curso/.test(start.error.message) && (
+        <p className="text-sm text-red-800 dark:text-red-300" role="alert">
+          Tienes un pago pendiente. {start.error.message}
+        </p>
+      )}
       <p className="text-xs text-muted-foreground">El pago se hace en Stripe. Tu plan se activa en cuanto Stripe confirma el cobro; si cierras la ventana antes, no se cobra nada.</p>
     </section>
   );

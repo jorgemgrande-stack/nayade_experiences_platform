@@ -381,6 +381,20 @@ export function ActivationActionsBar({ productKey, activation, canRetry, classNa
   );
 }
 
+/**
+ * Navega a `href`; si es un ancla de la página en curso (p. ej. «Mis módulos» desde el propio marketplace), avisa a la
+ * página con `hashchange` para que se desplace, porque la navegación del enrutador no lo dispara.
+ */
+export function goTo(href: string, navigate: (to: string) => void) {
+  const [path, hash] = href.split("#");
+  if (hash && path === window.location.pathname && !href.includes("?")) {
+    window.history.replaceState(window.history.state, "", href);
+    window.dispatchEvent(new HashChangeEvent("hashchange"));
+    return;
+  }
+  navigate(href);
+}
+
 export function ProductCard({
   item,
   view,
@@ -403,7 +417,7 @@ export function ProductCard({
   const href = fichaPath(item.key);
   const run = () => {
     trackConnect("cta_click", { productKey: item.key });
-    if (action.href) navigate(action.href);
+    if (action.href) goTo(action.href, navigate);
     // La compra se confirma siempre en la ficha (vista previa del importe y aceptación expresa)
     else if (action.kind === "purchase") navigate(`${href}?contratar=1`);
     else if (action.kind === "request") onAction ? onAction(item, "info") : navigate(href);

@@ -13,7 +13,7 @@ import AdminLayout from "@/components/AdminLayout";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { PanelEmpty, PanelError, PanelLoading } from "@/components/admin/PanelStates";
-import { CONNECT_BRANDS, CONNECT_CATEGORIES, PURCHASE_BLOCK_TEXT, brandHeaders, brandOf, categoryOf, filterConnectItems, type ConnectCategoryId, type ConnectStateFilter } from "@shared/connectMarketplace";
+import { CONNECT_BRANDS, CONNECT_CATEGORIES, PURCHASE_BLOCK_TEXT, TRIAL_CONVERSION_TEXT, brandHeaders, brandOf, categoryOf, filterConnectItems, type ConnectCategoryId, type ConnectStateFilter } from "@shared/connectMarketplace";
 import type { SlideNav } from "@shared/connectShowcase";
 import type { PurchaseAttempt } from "@shared/connectPurchase";
 import { cn } from "@/lib/utils";
@@ -110,13 +110,21 @@ export default function ConnectPage() {
     [select],
   );
   // Enlaces desde otras páginas («Suscripción»): /admin/ampliar#cx-brand-connect, #cx-brand-net, #cx-bundles o #cx-mine
+  // (y «Abrir módulo» de algo contratado sin ruta propia, desde esta misma página)
   const fromHash = useRef(false);
   useEffect(() => {
-    if (fromHash.current || !data) return;
-    fromHash.current = true;
-    const h = window.location.hash.slice(1);
-    const id: AccessId | null = h === "cx-brand-connect" ? "connect" : h === "cx-brand-net" ? "net" : h === "cx-bundles" ? "bundles" : h === "cx-mine" ? "mine" : null;
-    if (id) select(id);
+    if (!data) return;
+    const apply = () => {
+      const h = window.location.hash.slice(1);
+      const id: AccessId | null = h === "cx-brand-connect" ? "connect" : h === "cx-brand-net" ? "net" : h === "cx-bundles" ? "bundles" : h === "cx-mine" ? "mine" : null;
+      if (id) select(id);
+    };
+    if (!fromHash.current) {
+      fromHash.current = true;
+      apply();
+    }
+    window.addEventListener("hashchange", apply);
+    return () => window.removeEventListener("hashchange", apply);
   }, [data, select]);
   const openDialog = useCallback((it: ConnectCatalogItem, kind: RequestKind) => setDialog({ item: it, kind }), []);
 
@@ -212,7 +220,7 @@ export default function ConnectPage() {
                 </p>
               </section>
 
-              {data.purchaseBlock && data.purchaseBlock !== "unavailable" && <p className="text-sm text-muted-foreground">{PURCHASE_BLOCK_TEXT[data.purchaseBlock]}</p>}
+              {data.purchaseBlock && data.purchaseBlock !== "unavailable" && <p className="text-sm text-muted-foreground">{data.purchaseBlock === "trial" && data.conversion?.enabled ? TRIAL_CONVERSION_TEXT : PURCHASE_BLOCK_TEXT[data.purchaseBlock]}</p>}
 
               <div id="cx-results" className="scroll-mt-4 space-y-10">
                 {items.length === 0 ? (

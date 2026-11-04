@@ -8,7 +8,7 @@
  *    Un destino de producto que no se puede contratar ahora se presenta como «Ver ficha».
  *  - La acción de la ficha nunca promete contratar si no se puede.
  */
-import { CONNECT_CATEGORIES, connectAction, type ConnectCategoryId, type ConnectState } from "./connectMarketplace";
+import { CONNECT_CATEGORIES, connectAction, conversionHref, type CheckoutVia, type ConnectCategoryId, type ConnectState } from "./connectMarketplace";
 import type { ConnectImage } from "./connectCard";
 
 // ── Carrusel ───────────────────────────────────────────────────────────────────
@@ -85,6 +85,8 @@ export interface SlideProduct {
   state: ConnectState;
   purchasable: boolean;
   activation?: ConnectActivation | null;
+  checkoutVia?: CheckoutVia;
+  conversionPlan?: string | null;
 }
 
 function resolveCta(cta: SlideCta | null, ctx: { byKey: Map<string, SlideProduct>; canPurchase: boolean }): ResolvedCta | null {
@@ -93,7 +95,8 @@ function resolveCta(cta: SlideCta | null, ctx: { byKey: Map<string, SlideProduct
   if (type === "product") {
     const p = ctx.byKey.get(value);
     if (!p) return null;
-    const buyable = primaryAction(p, { canPurchase: ctx.canPurchase, interestEnabled: false }).kind === "purchase";
+    const kind = primaryAction(p, { canPurchase: ctx.canPurchase, interestEnabled: false }).kind;
+    const buyable = kind === "purchase" || kind === "convert";
     // La llamada solo lleva a la ficha; si no se puede contratar ahora, no lo promete
     return { label: buyable ? cta.label : VIEW_SHEET_LABEL, nav: { kind: "product", productKey: p.key } };
   }
@@ -225,7 +228,7 @@ export type ActivationRetryOutcome = "active" | "resumed" | "in_progress";
 
 // ── Acción principal ───────────────────────────────────────────────────────────
 
-export type PrimaryActionKind = "purchase" | "expand" | "request" | "interest" | "open" | "manage" | "contact" | "none";
+export type PrimaryActionKind = "purchase" | "convert" | "expand" | "request" | "interest" | "open" | "manage" | "contact" | "none";
 
 export interface PrimaryAction {
   kind: PrimaryActionKind;
@@ -236,31 +239,40 @@ export interface PrimaryAction {
 }
 
 export const MODULES_PATH = "/admin/suscripcion/modulos";
+/** «Mis módulos» del marketplace (lo contratado). */
+export const MINE_PATH = "/admin/ampliar#cx-mine";
+export const CONTRACT_NOW_LABEL = "Contratar ahora";
 
 /**
- * Acción principal según el estado REAL:
- *  - «Contratar y activar»: solo si se vende en línea, las compras están abiertas para esta persona (sin prueba que
- *    lo impida) y la empresa puede tenerlo; la compra es la existente (vista previa → confirmación → seguimiento).
+ * Acción principal según el estado REAL (matriz única: tarjeta, ficha, barra móvil, «Mis módulos» y carrusel):
+ *  - «Contratar ahora» (compra): solo si se vende en línea, las compras están abiertas para esta persona (sin prueba
+ *    que lo impida) y la empresa puede tenerlo; la compra es la existente (vista previa → confirmación → seguimiento).
+ *  - «Contratar ahora» (alta): en la prueba, si el servidor dice que el módulo entra en el alta junto con el plan
+ *    (`checkoutVia: "conversion"`): lleva al formulario de alta con el plan y el módulo elegidos.
  *  - «Solicitar información» (bajo solicitud o sin compra en línea), «Me interesa» (próximamente, con solicitudes).
- *  - «Abrir módulo» (contratado, con su ruta real del menú) o «Gestionar».
+ *  - «Abrir módulo» (contratado: su ruta real del menú o, si no tiene, «Mis módulos»).
  */
 export function primaryAction(
-  item: { state: ConnectState; kind: "module" | "quantity"; purchasable: boolean; openPath?: string | null; activation?: ConnectActivation | null },
+  item: { key?: string; state: ConnectState; kind: "module" | "quantity"; purchasable: boolean; openPath?: string | null; activation?: ConnectActivation | null; checkoutVia?: CheckoutVia; conversionPlan?: string | null },
   view: { canPurchase: boolean; interestEnabled: boolean },
 ): PrimaryAction {
   const open = item.openPath ?? null;
-  if (item.state === "active") return open ? { kind: "open", label: "Abrir módulo", href: open } : { kind: "manage", label: "Gestionar", href: MODULES_PATH };
+  if (item.state === "active") return { kind: "open", label: "Abrir módulo", href: open ?? MINE_PATH };
   if (item.state === "pending_setup" && open) return { kind: "manage", label: "Gestionar", href: open };
   // Una compra en curso (a la espera del cobro o concediendo la licencia), ya en el pedido vigente o suspendida nunca se
   // ofrece otra vez; tras una activación fallida tampoco: se reintenta la activación (sin cobrar), no la compra
   const act = item.activation?.state;
   if (act === "pending" || act === "processing" || act === "active" || act === "suspended") return { kind: "none", label: "", href: null };
   if (act === "error" && item.activation?.error?.kind === "activation") return { kind: "none", label: "", href: null };
-  const a = connectAction({ state: item.state, kind: item.kind, purchasable: item.purchasable, canPurchase: view.canPurchase, interestEnabled: view.interestEnabled });
+  // El alta necesita saber qué módulo y con qué plan: sin esos datos no se promete
+  const checkoutVia = item.checkoutVia === "conversion" && !(item.key && item.conversionPlan) ? null : item.checkoutVia;
+  const a = connectAction({ state: item.state, kind: item.kind, purchasable: item.purchasable, canPurchase: view.canPurchase, interestEnabled: view.interestEnabled, checkoutVia });
   switch (a) {
     case "purchase":
       // Compra rechazada: se reintenta por el mismo flujo, y solo porque ahora se puede comprar
-      return { kind: "purchase", label: act === "error" && item.activation?.retryable ? "Reintentar la contratación" : "Contratar y activar", href: null };
+      return { kind: "purchase", label: act === "error" && item.activation?.retryable ? "Reintentar la contratación" : CONTRACT_NOW_LABEL, href: null };
+    case "convert":
+      return { kind: "convert", label: CONTRACT_NOW_LABEL, href: conversionHref(item.conversionPlan!, [item.key!]) };
     case "expand":
       return { kind: "expand", label: "Ampliar", href: MODULES_PATH };
     case "request":
