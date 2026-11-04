@@ -16,7 +16,7 @@ import { Link, useLocation } from "wouter";
 import { toast } from "sonner";
 import {
   ArrowLeft, BookmarkPlus, Check, ChevronDown, CircleAlert, Eye, ExternalLink, History, Keyboard, Loader2, Monitor, MoreHorizontal, PanelLeft, PanelRight, Redo2,
-  Maximize2, Minimize2, SlidersHorizontal, Smartphone, Tablet, Undo2, Upload, X, ZoomIn, ZoomOut,
+  LifeBuoy, Maximize2, Minimize2, SlidersHorizontal, Smartphone, Tablet, Undo2, Upload, X, ZoomIn, ZoomOut,
 } from "lucide-react";
 import { trpc } from "@/lib/trpc";
 import { useAuth } from "@/_core/hooks/useAuth";
@@ -41,7 +41,9 @@ import { siteRelativeFileUrl } from "@shared/imageUpload";
 import { SITE_TOKEN_LABELS } from "@shared/siteTokenLabels";
 import type { LinkTarget } from "@/components/admin/pageBuilder/BlockEditors";
 import { BlockInspector, type InspectorTab } from "@/components/admin/studio/Inspector";
-import { LeftPanel, type LeftTab } from "@/components/admin/studio/LeftPanel";
+import { LeftPanel, revealLibraryGroup, type LeftTab } from "@/components/admin/studio/LeftPanel";
+import { GuideCard, markGuide, reopenGuide } from "@/components/admin/studio/Guide";
+import { RealPreview } from "@/components/admin/studio/RealPreview";
 import { PageSettings, type SitePage } from "@/components/admin/studio/PageSettings";
 import { VersionsPanel } from "@/components/admin/studio/VersionsPanel";
 import { SiteChromeEditor } from "@/components/admin/studio/SiteChromeEditor";
@@ -246,6 +248,7 @@ function Studio({ routeSlug }: { routeSlug: string | null }) {
     if (!place) return;
     doc.change(insertBlocks(blocks, place, added));
     select(added[0].id);
+    markGuide("start");
   };
 
   /** Plantilla de página completa: sustituye el contenido o se añade al final (un solo paso de deshacer). */
@@ -257,6 +260,7 @@ function Studio({ routeSlug }: { routeSlug: string | null }) {
     if (mode === "append" ? tooMany(countBlocks(added)) : countBlocks(added) > PAGE_LIMITS.blocks) return;
     doc.change(mode === "append" ? [...blocks, ...added] : added);
     select(added[0]?.id ?? null);
+    markGuide("start");
     toast(`Plantilla «${PAGE_TEMPLATES.find((t) => t.key === key)?.label}» ${mode === "append" ? "añadida al final" : "aplicada"}.`, { action: { label: "Deshacer", onClick: () => doc.undo() } });
   };
 
@@ -317,6 +321,7 @@ function Studio({ routeSlug }: { routeSlug: string | null }) {
 
   const setText = (id: string, key: string, value: string) => {
     doc.updateBlock(id, (b) => ({ ...b, data: writeBlockText(b.data, key, value) }) as PageBlock, `${id}:${key}`);
+    markGuide("customize");
   };
 
   const openPage = async (target: string) => {
@@ -477,6 +482,7 @@ function Studio({ routeSlug }: { routeSlug: string | null }) {
       await publish.mutateAsync({ slug, blocks });
       doc.markSaved(false);
       setConfirmPublish(false);
+      markGuide("publish");
       const url = page?.isHome ? "/" : `/${slug}`;
       toast.success("Publicado. Ya se ve en tu web.", { action: { label: "Ver", onClick: () => window.open(url, "_blank", "noopener") } });
       // El editor no se recarga (ya tiene lo publicado): solo se actualiza el origen de lo que muestra
@@ -666,7 +672,10 @@ function Studio({ routeSlug }: { routeSlug: string | null }) {
                 aria-checked={device === d.key}
                 aria-label={d.label}
                 title={`${d.label} (${d.width} px)`}
-                onClick={() => setDevice(d.key)}
+                onClick={() => {
+                  setDevice(d.key);
+                  if (d.key === "mobile") markGuide("mobile");
+                }}
                 className={cn("rounded-md px-2.5 py-1.5 transition-colors", device === d.key ? "bg-background text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground")}
               >
                 <d.icon className="h-4 w-4" />
@@ -743,6 +752,15 @@ function Studio({ routeSlug }: { routeSlug: string | null }) {
             <DropdownMenuItem className="lg:hidden" onSelect={() => setPro(!pro)}>
               {pro ? "Pasar al modo sencillo" : "Pasar al modo profesional"}
             </DropdownMenuItem>
+            <DropdownMenuItem
+              onSelect={() => {
+                reopenGuide();
+                setLeftOpen(true);
+                setLeftTab("add");
+              }}
+            >
+              <LifeBuoy className="mr-2 h-4 w-4" /> Ayuda: primeros pasos
+            </DropdownMenuItem>
             <DropdownMenuItem onSelect={() => setShortcuts(true)}>
               <Keyboard className="mr-2 h-4 w-4" /> Atajos de teclado
             </DropdownMenuItem>
@@ -799,6 +817,19 @@ function Studio({ routeSlug }: { routeSlug: string | null }) {
               onOpenPage={(s) => void openPage(s)}
               onGlobalStyle={() => setGlobalOpen(true)}
               onSiteChrome={() => setChromeOpen(true)}
+              guide={
+                !viewing && (
+                  <GuideCard
+                    onTemplates={() => revealLibraryGroup("templates")}
+                    onBlank={() => setAddAt({ index: blocks.length, parent: null, col: 0 })}
+                    onColors={() => setGlobalOpen(true)}
+                    onMobile={() => {
+                      setDevice("mobile");
+                      markGuide("mobile");
+                    }}
+                  />
+                )
+              }
             />
           </aside>
         )}
@@ -1004,6 +1035,11 @@ function Studio({ routeSlug }: { routeSlug: string | null }) {
                 : "Se añade a la página como borrador: tu web no cambia hasta que publiques."}
             </AlertDialogDescription>
           </AlertDialogHeader>
+          {templateKey && (
+            <div className="overflow-hidden rounded-lg border border-border">
+              <RealPreview blocks={templateBlocks(templateKey, page?.title ?? "")} width={462} maxHeight={300} />
+            </div>
+          )}
           <AlertDialogFooter>
             <AlertDialogCancel>Cancelar</AlertDialogCancel>
             {blocks.length > 0 && (

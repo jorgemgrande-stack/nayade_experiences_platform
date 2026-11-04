@@ -5,9 +5,9 @@
  *     con un clic (detrás del bloque seleccionado).
  *   - Estructura: los bloques de la página en orden; se seleccionan, se reordenan arrastrando, se duplican y se quitan.
  *     Lo que va dentro de una sección con columnas se ve debajo de ella, columna a columna.
- *   - Sitio: las páginas de la web y los ajustes globales (menús, marca, blog, multimedia).
+ *   - Sitio: las páginas (inicio, publicadas y borradores, con su estado) y la configuración de todo el sitio.
  */
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "wouter";
 import { ChevronRight, Copy, EyeOff, FileText, GripVertical, Home, Image as ImageIcon, Newspaper, Palette, PanelsTopLeft, Plus, Search, Settings2, Trash2 } from "lucide-react";
 import { Input } from "@/components/ui/input";
@@ -54,6 +54,8 @@ export function LeftPanel(props: {
   onOpenPage: (slug: string) => void;
   onGlobalStyle: () => void;
   onSiteChrome: () => void;
+  /** Guía de primeros pasos, encima de la biblioteca */
+  guide?: React.ReactNode;
 }) {
   const tabs: Array<{ key: LeftTab; label: string }> = [
     { key: "add", label: "Añadir" },
@@ -77,6 +79,7 @@ export function LeftPanel(props: {
         ))}
       </div>
       <div className="min-h-0 flex-1 overflow-y-auto">
+        {props.tab === "add" && props.guide}
         {props.tab === "add" && <Library modules={props.modules} presets={props.presets} onInsert={props.onInsert} onTemplate={props.onTemplate} saved={props.savedBlocks} onDeleteSaved={props.onDeleteSaved} pageEmpty={!props.blocks.length} />}
         {props.tab === "structure" && <Structure {...props} />}
         {props.tab === "site" && <Site pages={props.pages} currentSlug={props.currentSlug} onOpenPage={props.onOpenPage} onGlobalStyle={props.onGlobalStyle} onSiteChrome={props.onSiteChrome} />}
@@ -90,9 +93,13 @@ export function LeftPanel(props: {
  * los colores, la tipografía y los datos de la web de la empresa.
  */
 function Preview({ blocks, title, description, children }: { blocks: PageBlock[]; title: string; description?: string; children: React.ReactElement }) {
+  // Se cierra al pulsar o empezar a arrastrar: no debe quedar encima del diálogo ni de la página
+  const [open, setOpen] = useState(false);
   return (
-    <HoverCard openDelay={300} closeDelay={60}>
-      <HoverCardTrigger asChild>{children}</HoverCardTrigger>
+    <HoverCard openDelay={300} closeDelay={60} open={open} onOpenChange={setOpen}>
+      <HoverCardTrigger asChild onClickCapture={() => setOpen(false)} onDragStartCapture={() => setOpen(false)}>
+        {children}
+      </HoverCardTrigger>
       <HoverCardContent side="right" align="start" sideOffset={12} collisionPadding={12} className="w-96 space-y-2 p-3">
         <RealPreview blocks={blocks} width={358} maxHeight={blocks.length > 1 ? 460 : 300} />
         <p className="text-sm font-medium">{title}</p>
@@ -105,13 +112,19 @@ function Preview({ blocks, title, description, children }: { blocks: PageBlock[]
 /** Plantillas de página completa (las mismas que al crear una página, salvo «En blanco»). */
 const FULL_TEMPLATES = PAGE_TEMPLATES.filter((t) => t.key !== "blank");
 
-type GroupKey = "templates" | "sections" | "elements" | "saved";
+export type GroupKey = "templates" | "sections" | "elements" | "saved";
 const GROUPS: ReadonlyArray<{ key: GroupKey; label: string; hint: string }> = [
   { key: "templates", label: "Plantillas completas", hint: "Páginas enteras listas para adaptar" },
   { key: "sections", label: "Secciones prediseñadas", hint: "Portadas, servicios, galerías, opiniones, precios…" },
   { key: "elements", label: "Elementos", hint: "Texto, imagen, botón, vídeo, formulario…" },
   { key: "saved", label: "Mis diseños", hint: "Lo que has guardado para reutilizar" },
 ];
+const REVEAL_EVENT = "elephant-studio-biblioteca-mostrar";
+/** Despliega un grupo de la biblioteca y lo lleva a la vista (p. ej. las plantillas desde la guía). */
+export function revealLibraryGroup(key: GroupKey) {
+  window.dispatchEvent(new CustomEvent(REVEAL_EVENT, { detail: key }));
+}
+
 /** Qué grupos tiene plegados cada persona (solo en su navegador). */
 const OPEN_KEY = "elephant-studio-biblioteca";
 function readOpen(): Partial<Record<GroupKey, boolean>> {
@@ -127,7 +140,7 @@ const tileClass =
 
 function Group({ id, label, hint, count, open, onToggle, children }: { id: GroupKey; label: string; hint: string; count: number; open: boolean; onToggle: () => void; children: React.ReactNode }) {
   return (
-    <section className="border-b border-border">
+    <section id={`biblioteca-grupo-${id}`} className="scroll-mt-16 border-b border-border">
       <button
         type="button"
         aria-expanded={open}
@@ -169,6 +182,16 @@ function Library({
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
   const [openState, setOpenState] = useState(readOpen);
   const searching = !!q.trim();
+  useEffect(() => {
+    const onReveal = (e: Event) => {
+      const k = (e as CustomEvent<GroupKey>).detail;
+      setQ("");
+      setOpenState((s) => ({ ...s, [k]: true }));
+      requestAnimationFrame(() => document.getElementById(`biblioteca-grupo-${k}`)?.scrollIntoView({ block: "start", behavior: "smooth" }));
+    };
+    window.addEventListener(REVEAL_EVENT, onReveal);
+    return () => window.removeEventListener(REVEAL_EVENT, onReveal);
+  }, []);
   const isOpen = (k: GroupKey) => searching || (openState[k] ?? (k === "templates" ? pageEmpty : true));
   const toggle = (k: GroupKey) => {
     const next = { ...openState, [k]: !isOpen(k) };
@@ -440,55 +463,101 @@ function SectionRows({ section, selectedId, device, onSelect, onDuplicate, onDel
   );
 }
 
-const GLOBAL_LINKS = [
-  { href: "/admin/cms/menus", label: "Menús con submenús (CMS)", icon: Settings2 },
-  { href: "/admin/cms/blog", label: "Blog", icon: Newspaper },
-  { href: "/admin/cms/multimedia", label: "Multimedia", icon: ImageIcon },
+const SITE_SETTINGS = [
+  { href: "/admin/cms/menus", label: "Menús", description: "Enlaces de la cabecera y el pie, con submenús", icon: Settings2 },
+  { href: "/admin/cms/blog", label: "Blog", description: "Entradas, categorías y borradores", icon: Newspaper },
+  { href: "/admin/cms/multimedia", label: "Multimedia", description: "Tus imágenes y archivos", icon: ImageIcon },
 ] as const;
 
-function Site({ pages, currentSlug, onOpenPage, onGlobalStyle, onSiteChrome }: { pages: SitePage[]; currentSlug: string; onOpenPage: (slug: string) => void; onGlobalStyle: () => void; onSiteChrome: () => void }) {
-  const sorted = [...pages].sort((a, b) => Number(b.isHome) - Number(a.isHome) || Number(a.isLegal) - Number(b.isLegal) || a.title.localeCompare(b.title, "es"));
+/** Estado de una página con lo que ya sabe el sistema (publicada, borrador, cambios pendientes de publicar). */
+function pageStatus(p: SitePage): { label: string; className: string } {
+  if (!p.isPublished) return { label: "Borrador", className: "bg-muted text-muted-foreground" };
+  if (p.hasDraft) return { label: "Cambios pendientes", className: "bg-amber-500/15 text-amber-600 dark:text-amber-400" };
+  return { label: "Publicada", className: "bg-emerald-500/15 text-emerald-700 dark:text-emerald-400" };
+}
+
+function PageRow({ p, current, onOpen }: { p: SitePage; current: boolean; onOpen: () => void }) {
+  const st = pageStatus(p);
   return (
-    <div className="space-y-5 p-3">
-      <section className="space-y-1">
-        <div className="flex items-center justify-between px-0.5 pb-1">
-          <h3 className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Páginas</h3>
-          <Link href="/admin/cms/paginas?nueva=1" className="inline-flex items-center gap-1 text-xs font-medium text-[#5b5bf6] hover:underline">
-            <Plus className="h-3.5 w-3.5" /> Nueva
+    <button
+      type="button"
+      onClick={onOpen}
+      aria-current={current || undefined}
+      className={cn(
+        "flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#5b5bf6]",
+        current ? "bg-[#5b5bf6]/10 font-medium" : "hover:bg-muted",
+      )}
+    >
+      {p.isHome ? <Home className="h-3.5 w-3.5 shrink-0 text-[#5b5bf6]" aria-hidden /> : <FileText className="h-3.5 w-3.5 shrink-0 text-muted-foreground" aria-hidden />}
+      <span className="min-w-0 flex-1 overflow-hidden text-ellipsis whitespace-nowrap">
+        {p.title}
+        {current && <span className="sr-only"> (abierta)</span>}
+      </span>
+      {p.isHome && <span className="sr-only"> (página de inicio)</span>}
+      <span className={cn("shrink-0 rounded px-1.5 py-0.5 text-[10px] font-medium", st.className)} title={p.hasDraft && p.isPublished ? "Has guardado cambios que aún no se ven en tu web" : undefined}>{st.label}</span>
+    </button>
+  );
+}
+
+function Site({ pages, currentSlug, onOpenPage, onGlobalStyle, onSiteChrome }: { pages: SitePage[]; currentSlug: string; onOpenPage: (slug: string) => void; onGlobalStyle: () => void; onSiteChrome: () => void }) {
+  const byTitle = (a: SitePage, b: SitePage) => a.title.localeCompare(b.title, "es");
+  const home = pages.filter((p) => p.isHome);
+  const published = pages.filter((p) => !p.isHome && p.isPublished).sort((a, b) => Number(a.isLegal) - Number(b.isLegal) || byTitle(a, b));
+  const drafts = pages.filter((p) => !p.isHome && !p.isPublished).sort(byTitle);
+  const sub = (title: string, list: SitePage[]) =>
+    list.length > 0 && (
+      <div className="space-y-0.5">
+        <h4 className="px-2 pb-0.5 pt-2 text-[11px] font-medium text-muted-foreground">{title}</h4>
+        {list.map((p) => (
+          <PageRow key={p.slug} p={p} current={p.slug === currentSlug} onOpen={() => onOpenPage(p.slug)} />
+        ))}
+      </div>
+    );
+  const settingClass = "flex w-full items-start gap-2.5 rounded-md px-2 py-2 text-left transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#5b5bf6]";
+  return (
+    <div className="space-y-4 p-3">
+      <section className="rounded-xl border border-border p-1.5" aria-labelledby="sitio-paginas">
+        <div className="flex items-center justify-between px-2 pb-1 pt-1">
+          <h3 id="sitio-paginas" className="text-sm font-semibold">
+            Páginas
+          </h3>
+          <Link href="/admin/cms/paginas?nueva=1" className="inline-flex items-center gap-1 rounded-md px-1.5 py-1 text-xs font-medium text-[#7c7cff] hover:bg-muted">
+            <Plus className="h-3.5 w-3.5" /> Nueva página
           </Link>
         </div>
-        {sorted.map((p) => (
-          <button
-            key={p.slug}
-            type="button"
-            onClick={() => onOpenPage(p.slug)}
-            aria-current={p.slug === currentSlug || undefined}
-            className={cn("flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm transition-colors", p.slug === currentSlug ? "bg-[#5b5bf6]/10 font-medium" : "hover:bg-muted")}
-          >
-            {p.isHome ? <Home className="h-3.5 w-3.5 shrink-0 text-[#5b5bf6]" /> : <FileText className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />}
-            <span className="min-w-0 flex-1 overflow-hidden text-ellipsis whitespace-nowrap">{p.title}</span>
-            <span
-              className={cn("h-2 w-2 shrink-0 rounded-full", !p.isPublished ? "bg-slate-300" : p.hasDraft ? "bg-amber-400" : "bg-emerald-500")}
-              title={!p.isPublished ? "Sin publicar" : p.hasDraft ? "Con cambios sin publicar" : "Publicada"}
-              aria-label={!p.isPublished ? "Sin publicar" : p.hasDraft ? "Con cambios sin publicar" : "Publicada"}
-            />
-          </button>
-        ))}
-        <Link href="/admin/cms/paginas" className="block px-2 pt-1 text-xs text-muted-foreground hover:text-foreground hover:underline">
-          Gestionar páginas (crear, duplicar, eliminar)
+        {sub("Página de inicio", home)}
+        {sub("Publicadas", published)}
+        {sub("Borradores (aún no se ven en tu web)", drafts)}
+        <Link href="/admin/cms/paginas" className="mt-1 block rounded-md px-2 py-1.5 text-xs text-muted-foreground hover:bg-muted hover:text-foreground">
+          Gestionar páginas: crear, duplicar y eliminar
         </Link>
       </section>
-      <section className="space-y-1">
-        <h3 className="px-0.5 pb-1 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Todo el sitio</h3>
-        <button type="button" onClick={onGlobalStyle} className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm hover:bg-muted">
-          <Palette className="h-3.5 w-3.5 text-[#5b5bf6]" /> Estilo global: colores, letra y bordes
+      <section className="rounded-xl border border-border p-1.5" aria-labelledby="sitio-ajustes">
+        <h3 id="sitio-ajustes" className="px-2 pb-1 pt-1 text-sm font-semibold">
+          Configuración del sitio
+        </h3>
+        <p className="px-2 pb-1 text-xs text-muted-foreground">Afecta a todas las páginas de tu web.</p>
+        <button type="button" onClick={onGlobalStyle} className={settingClass}>
+          <Palette className="mt-0.5 h-4 w-4 shrink-0 text-[#7c7cff]" aria-hidden />
+          <span>
+            <span className="block text-sm font-medium">Estilo global</span>
+            <span className="block text-xs text-muted-foreground">Colores, tipo de letra y bordes</span>
+          </span>
         </button>
-        <button type="button" onClick={onSiteChrome} className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm hover:bg-muted">
-          <PanelsTopLeft className="h-3.5 w-3.5 text-[#5b5bf6]" /> Cabecera y pie: botón, menús y estilo
+        <button type="button" onClick={onSiteChrome} className={settingClass}>
+          <PanelsTopLeft className="mt-0.5 h-4 w-4 shrink-0 text-[#7c7cff]" aria-hidden />
+          <span>
+            <span className="block text-sm font-medium">Cabecera y pie</span>
+            <span className="block text-xs text-muted-foreground">Botón principal, menús que muestran y estilo</span>
+          </span>
         </button>
-        {GLOBAL_LINKS.map((l) => (
-          <Link key={l.href} href={l.href} className="flex items-center gap-2 rounded-md px-2 py-1.5 text-sm hover:bg-muted">
-            <l.icon className="h-3.5 w-3.5 text-muted-foreground" /> {l.label}
+        {SITE_SETTINGS.map((l) => (
+          <Link key={l.href} href={l.href} className={settingClass}>
+            <l.icon className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" aria-hidden />
+            <span>
+              <span className="block text-sm font-medium">{l.label}</span>
+              <span className="block text-xs text-muted-foreground">{l.description}</span>
+            </span>
           </Link>
         ))}
       </section>
