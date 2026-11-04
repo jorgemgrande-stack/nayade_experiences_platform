@@ -18,7 +18,7 @@ import { TokenInput as Input, TokenTextarea as Textarea } from "@/components/adm
 import { RichTextEditor } from "@/components/admin/pageBuilder/RichTextEditor";
 import { LinkPicker, type LinkTarget } from "@/components/admin/pageBuilder/BlockEditors";
 import { FEATURE_ICON_COMPONENTS } from "@/components/site/featureIcons";
-import { ANCHOR_RE, DEFAULT_BLOCK_STYLE, blockLabel, isDefaultStyle, type BlockStyle, type Device, type PageBlock } from "@shared/pageBlocks";
+import { ANCHOR_RE, CONDITION_KINDS, DEFAULT_BLOCK_STYLE, blockLabel, conditionAnswers, isDefaultStyle, type BlockStyle, type Device, type FormFieldKind, type PageBlock } from "@shared/pageBlocks";
 import { FEATURE_ICONS, moduleDef, type FieldDef, type ModuleDef } from "@shared/studio/modules";
 import { blockSummary } from "@/components/admin/pageBuilder/BlockEditors";
 import { siteRelativeFileUrl } from "@shared/imageUpload";
@@ -187,9 +187,37 @@ export function Segmented({ label, value, options, onChange }: { label: string; 
   );
 }
 
-function FieldControl({ field: f, value, set, targets, blockId, pro = false }: { field: FieldDef; value: unknown; set: SetField; targets: LinkTarget[]; blockId: string; pro?: boolean }) {
+/** Elemento de una lista que se está editando, con los demás (para las condiciones de los formularios). */
+type ListCtx = { items: Array<Record<string, string>>; index: number };
+
+function FieldControl({ field: f, value, set, targets, blockId, pro = false, ctx }: { field: FieldDef; value: unknown; set: SetField; targets: LinkTarget[]; blockId: string; pro?: boolean; ctx?: ListCtx }) {
   const str = typeof value === "string" ? value : "";
   switch (f.kind) {
+    case "fieldRef": {
+      // Solo campos anteriores de opciones o de sí/no, con su pregunta escrita
+      const earlier = (ctx?.items ?? []).slice(0, ctx?.index ?? 0).filter((it) => CONDITION_KINDS.includes(it.kind as FormFieldKind) && (it.label ?? "").trim());
+      const labels = Array.from(new Set(earlier.map((it) => it.label.trim())));
+      const missing = !!str && !labels.includes(str);
+      return (
+        <div className="space-y-1">
+          <SelectField
+            label={f.label}
+            value={str || "__always"}
+            options={[{ value: "__always", label: "Siempre (sin condición)" }, ...labels.map((l) => ({ value: l, label: l })), ...(missing ? [{ value: str, label: `«${str}» (ya no existe)` }] : [])]}
+            onChange={(v) => set(f.key, v === "__always" ? "" : v, false)}
+          />
+          {!labels.length && !str && <p className="text-xs text-muted-foreground">Para usar una condición, pon antes un campo desplegable, de opciones o una casilla de sí/no.</p>}
+          {missing && <p className="text-xs text-destructive">Esa pregunta ya no existe: el campo se mostrará siempre hasta que elijas otra.</p>}
+        </div>
+      );
+    }
+    case "fieldValue": {
+      const ref = (ctx?.items[ctx.index]?.[f.refKey] ?? "").trim();
+      const source = (ctx?.items ?? []).slice(0, ctx?.index ?? 0).find((it) => (it.label ?? "").trim() === ref && CONDITION_KINDS.includes(it.kind as FormFieldKind));
+      const answers = source ? conditionAnswers({ kind: source.kind as FormFieldKind, options: source.options ?? "" }) : [];
+      if (!answers.length) return null;
+      return <SelectField label={f.label} value={answers.includes(str) ? str : ""} options={answers.map((a) => ({ value: a, label: a }))} onChange={(v) => set(f.key, v, false)} />;
+    }
     case "text":
       return (
         <FieldShell label={f.label} hint={f.hint}>
@@ -376,13 +404,14 @@ function ListEditor({ field, value, set, targets, blockId, pro }: { field: Extra
             </div>
             {expanded && (
               <div className="space-y-3 border-t border-border bg-muted/20 p-3">
-                {field.fields.filter((sub) => pro || !sub.advanced).map((sub) => (
+                {field.fields.filter((sub) => (pro || !sub.advanced) && !(sub.kind === "fieldValue" && !(item[sub.refKey] ?? "").trim())).map((sub) => (
                   <FieldControl
                     key={sub.key}
                     field={sub}
                     value={item[sub.key]}
                     targets={targets}
                     blockId={`${blockId}-${i}`}
+                    ctx={{ items: value, index: i }}
                     set={(k, v, coalesce = true) =>
                       write((cur) => cur.map((it, j) => (j === i ? { ...it, [k]: (typeof v === "function" ? (v as (c: unknown) => unknown)(it[k]) : v) as string } : it)), coalesce)
                     }

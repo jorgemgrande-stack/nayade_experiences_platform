@@ -14,7 +14,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { cn } from "@/lib/utils";
-import type { BlockDataMap, FormFieldItem } from "@shared/pageBlocks";
+import { formFieldVisibility, type BlockDataMap, type FormFieldItem } from "@shared/pageBlocks";
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
 const options = (f: FormFieldItem) => Array.from(new Set(f.options.split(/\r?\n/).map((o) => o.trim()).filter(Boolean)));
@@ -30,7 +30,7 @@ function currentSlug(): string {
 
 type Values = Record<string, string | string[] | boolean>;
 
-export function StudioFormFields({ blockId, form, preview, pageTitle }: { blockId: string; form: BlockDataMap["form"]; preview?: boolean; pageTitle?: string }) {
+export function StudioFormFields({ blockId, form, preview, pageTitle, editing }: { blockId: string; form: BlockDataMap["form"]; preview?: boolean; pageTitle?: string; editing?: boolean }) {
   const id = useId();
   const [, navigate] = useLocation();
   const shownAt = useRef(Date.now());
@@ -45,9 +45,13 @@ export function StudioFormFields({ blockId, form, preview, pageTitle }: { blockI
     setErrors((e) => (e[k] ? { ...e, [k]: "" } : e));
   };
 
+  // Campos con condición: solo los que tocan según las respuestas (en el editor se ven todos, marcados)
+  const visible = formFieldVisibility(form.fields, values);
+
   const check = (): Record<string, string> => {
     const out: Record<string, string> = {};
     form.fields.forEach((f, i) => {
+      if (!visible[i]) return;
       const k = `f${i}`;
       const v = values[k];
       if (f.kind === "hidden") return;
@@ -82,7 +86,7 @@ export function StudioFormFields({ blockId, form, preview, pageTitle }: { blockI
         email: EMAIL_RE.test(email) ? email : "sin-correo@formulario.invalid",
         message: pageTitle ? `Página: ${pageTitle}` : undefined,
         source: "web_formulario",
-        studioForm: { slug: currentSlug(), blockId, values, consent, website: trap, elapsedMs: Date.now() - shownAt.current },
+        studioForm: { slug: currentSlug(), blockId, values: Object.fromEntries(Object.entries(values).filter(([k]) => visible[Number(k.slice(1))] !== false)), consent, website: trap, elapsedMs: Date.now() - shownAt.current },
       });
       const studio = (r as { studio?: { ok: boolean; errors?: Record<string, string>; message?: string; redirectUrl?: string } }).studio;
       if (studio && !studio.ok) {
@@ -116,6 +120,13 @@ export function StudioFormFields({ blockId, form, preview, pageTitle }: { blockI
       <div className="grid gap-4 sm:grid-cols-2">
         {form.fields.map((f, i) => {
           if (f.kind === "hidden") return null;
+          if (!visible[i] && !editing) return null;
+          const cond =
+            editing && (f.showIf ?? "").trim() ? (
+              <span className="block text-xs font-normal text-muted-foreground">
+                Se muestra si «{(f.showIf ?? "").trim()}» es «{(f.showValue ?? "").trim() || "Sí"}»
+              </span>
+            ) : null;
           const k = `f${i}`;
           const fid = `${id}-${k}`;
           const err = errors[k];
@@ -172,7 +183,8 @@ export function StudioFormFields({ blockId, form, preview, pageTitle }: { blockI
             );
           } else if (f.kind === "checkbox") {
             return (
-              <div key={i} className="sm:col-span-2">
+              <div key={i} className={cn("sm:col-span-2", cond && "rounded-md border border-dashed border-border p-2")}>
+                {cond}
                 <div className="flex items-start gap-2">
                   <Checkbox id={fid} checked={values[k] === true} onCheckedChange={(v) => set(k, v === true)} aria-invalid={!!err || undefined} className="mt-0.5" />
                   <Label htmlFor={fid} className="block text-sm font-normal leading-snug">
@@ -200,7 +212,8 @@ export function StudioFormFields({ blockId, form, preview, pageTitle }: { blockI
             );
           }
           return (
-            <div key={i} className={cn("space-y-1.5", f.width === "half" ? "sm:col-span-1" : "sm:col-span-2")}>
+            <div key={i} className={cn("space-y-1.5", f.width === "half" ? "sm:col-span-1" : "sm:col-span-2", cond && "rounded-md border border-dashed border-border p-2")}>
+              {cond}
               <Label id={`${fid}-lbl`} htmlFor={fid}>
                 {label}
               </Label>

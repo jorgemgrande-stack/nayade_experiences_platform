@@ -23,7 +23,11 @@ export type FieldDef =
   | { key: string; label: string; kind: "icon"; advanced?: boolean }
   | { key: string; label: string; kind: "category"; advanced?: boolean }
   | { key: string; label: string; kind: "images"; max: number; advanced?: boolean }
-  | { key: string; label: string; kind: "list"; max: number; itemLabel: string; fields: FieldDef[]; newItem: Record<string, string>; advanced?: boolean };
+  | { key: string; label: string; kind: "list"; max: number; itemLabel: string; fields: FieldDef[]; newItem: Record<string, string>; advanced?: boolean }
+  /** Dentro de una lista: otro elemento anterior de la misma lista (por su pregunta), del que depende este */
+  | { key: string; label: string; kind: "fieldRef"; advanced?: boolean }
+  /** Dentro de una lista: una de las respuestas del elemento elegido en `refKey` */
+  | { key: string; label: string; kind: "fieldValue"; refKey: string; advanced?: boolean };
 
 export const MODULE_FAMILIES = [
   { key: "estructura", label: "Estructura" },
@@ -235,7 +239,7 @@ export const MODULES: readonly ModuleDef[] = [
     { key: "intro", label: "Texto de introducción", kind: "text", max: 500, multiline: true, inline: true },
     {
       key: "fields", label: "Campos", kind: "list", max: 20, itemLabel: "Campo",
-      newItem: { kind: "text", label: "Nuevo campo", placeholder: "", options: "", required: "off", role: "none", width: "full", value: "" },
+      newItem: { kind: "text", label: "Nuevo campo", placeholder: "", options: "", required: "off", role: "none", width: "full", value: "", showIf: "", showValue: "" },
       fields: [
         {
           key: "kind", label: "Tipo de campo", kind: "select",
@@ -256,6 +260,8 @@ export const MODULES: readonly ModuleDef[] = [
         },
         { key: "width", label: "Ancho", kind: "select", options: [{ value: "full", label: "Completo" }, { value: "half", label: "Mitad" }], advanced: true },
         { key: "value", label: "Valor fijo (solo campos ocultos)", kind: "text", max: 200, advanced: true },
+        { key: "showIf", label: "Mostrar solo si la pregunta…", kind: "fieldRef", advanced: true },
+        { key: "showValue", label: "…tiene la respuesta", kind: "fieldValue", refKey: "showIf", advanced: true },
       ],
     },
     { key: "submitLabel", label: "Texto del botón de envío", kind: "text", max: 60 },

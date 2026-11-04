@@ -137,6 +137,9 @@ export interface FormFieldItem {
   width: "full" | "half";
   /** Valor fijo de un campo oculto (por ejemplo, la campaña) */
   value: string;
+  /** Condición: solo se muestra si el campo anterior con esta pregunta tiene la respuesta `showValue` (vacío: siempre) */
+  showIf: string;
+  showValue: string;
 }
 
 export type OnOff = "on" | "off";
@@ -405,7 +408,37 @@ export function newSlide(title = "Nueva diapositiva", text = "Escribe aquí el t
 
 /** Campo de formulario nuevo. */
 export function newFormField(kind: FormFieldKind = "text", label = "Nuevo campo", extra: Partial<FormFieldItem> = {}): FormFieldItem {
-  return { kind, label, placeholder: "", options: "", required: "off", role: "none", width: "full", value: "", ...extra };
+  return { kind, label, placeholder: "", options: "", required: "off", role: "none", width: "full", value: "", showIf: "", showValue: "", ...extra };
+}
+
+/** Campos de los que puede depender otro: los de opciones y la casilla de sí/no. */
+export const CONDITION_KINDS: readonly FormFieldKind[] = ["select", "radio", "multi", "checkbox"];
+
+/** Respuestas posibles de un campo del que depende otro (para elegir la condición). */
+export function conditionAnswers(f: Pick<FormFieldItem, "kind" | "options">): string[] {
+  if (f.kind === "checkbox") return ["Sí", "No"];
+  return Array.from(new Set(f.options.split(/\r?\n/).map((o) => o.trim()).filter(Boolean))).slice(0, 50);
+}
+
+/**
+ * Qué campos se muestran con las respuestas dadas (claves «f0», «f1»…). La misma regla en la web y en el servidor:
+ * un campo oculto no es obligatorio y su respuesta no se envía. Si la condición apunta a un campo que ya no existe
+ * (se renombró o se quitó), el campo se muestra.
+ */
+export function formFieldVisibility(fields: Pick<FormFieldItem, "kind" | "label" | "showIf" | "showValue">[], values: Record<string, unknown>): boolean[] {
+  const visible: boolean[] = [];
+  fields.forEach((f, i) => {
+    const ref = (f.showIf ?? "").trim();
+    const j = ref ? fields.findIndex((g, gi) => gi < i && g.label.trim() === ref && CONDITION_KINDS.includes(g.kind)) : -1;
+    if (j < 0) return void visible.push(true);
+    if (!visible[j]) return void visible.push(false);
+    const v = values[`f${j}`];
+    const want = (f.showValue ?? "").trim();
+    if (fields[j].kind === "checkbox") visible.push((v === true || v === "on" || v === "true") === (want !== "No"));
+    else if (fields[j].kind === "multi") visible.push(Array.isArray(v) && v.includes(want));
+    else visible.push(typeof v === "string" && v.trim() === want);
+  });
+  return visible;
 }
 
 /** Tarjeta nueva con textos genéricos para adaptar. */

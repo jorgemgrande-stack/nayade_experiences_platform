@@ -11,7 +11,7 @@
  *  - Sin adjuntos de archivos (aún no disponibles) ni nada ejecutable: solo texto, con límites de tamaño.
  */
 import { safeLink } from "./pageBlocks";
-import type { BlockDataMap, FormFieldItem } from "../../shared/pageBlocks";
+import { formFieldVisibility, type BlockDataMap, type FormFieldItem } from "../../shared/pageBlocks";
 
 export class FormSubmitError extends Error {}
 
@@ -58,7 +58,10 @@ export function evaluateFormSubmission(form: BlockDataMap["form"], input: FormSu
   let name = "";
   let email = "";
   let phone = "";
+  // Un campo que no se muestra por su condición no se valida ni se guarda (aunque el navegador lo mande)
+  const visible = formFieldVisibility(form.fields, input.values);
   form.fields.forEach((f, i) => {
+    if (!visible[i]) return;
     const key = fieldKey(i);
     const raw = input.values[key];
     const label = f.label.trim() || `Campo ${i + 1}`;
