@@ -9,13 +9,14 @@
 import { createContext, Fragment, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { Link } from "wouter";
 import { toast } from "sonner";
-import { ArrowDown, ArrowUp, Bold, CalendarDays, ChevronDown, Copy, CornerLeftUp, EyeOff, GripVertical, Image as ImageIcon, Italic, Link2, List, Newspaper, Play, Plus, Quote, ShoppingBag, Star, Trash2, Unlink } from "lucide-react";
+import { ArrowDown, ArrowUp, Bold, BookmarkPlus, CalendarDays, ChevronDown, Copy, CornerLeftUp, EyeOff, GripVertical, Image as ImageIcon, Italic, Link2, List, MoreHorizontal, Newspaper, Paintbrush, Pencil, Play, Plus, Quote, ShoppingBag, Star, Trash2, Unlink } from "lucide-react";
 import { trpc } from "@/lib/trpc";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
 import { RICH_TEXT_CLASS } from "@/components/site/richText";
 import { FEATURE_ICON_COMPONENTS } from "@/components/site/featureIcons";
@@ -29,7 +30,7 @@ import { isPurchasable } from "@shared/shopOrders";
 
 // ─── Contexto de edición (lienzo de Elephant Studio) ──────────────────────────
 
-export type StudioBlockAction = "duplicate" | "delete" | "up" | "down";
+export type StudioBlockAction = "duplicate" | "delete" | "up" | "down" | "edit" | "design" | "save";
 
 export interface StudioEdit {
   selectedId: string | null;
@@ -1529,6 +1530,22 @@ function EditFrame({ ed, b, index, count, parent, col, children }: { ed: StudioE
   const [drop, setDrop] = useState<"before" | "after" | null>(null);
   const selected = ed.selectedId === b.id;
   const where = parent !== null ? `columna ${col + 1}` : null;
+  // Ancho del bloque seleccionado: con sitio, los botones de la barra llevan su nombre además del icono
+  const frameRef = useRef<HTMLDivElement>(null);
+  const [roomy, setRoomy] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  useLayoutEffect(() => {
+    if (!selected) return setConfirmDelete(false);
+    const el = frameRef.current;
+    if (!el) return;
+    const measure = () => setRoomy(el.offsetWidth >= 600);
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [selected]);
+  // Una sección con contenido se confirma antes de eliminarla (se lleva todo lo que tiene dentro)
+  const nestedCount = b.type === "section" ? b.data.columns.reduce((n, c) => n + c.blocks.length, 0) : 0;
   const hiddenHere = !!b.style?.hideOn.includes(ed.device);
   const act = (a: StudioBlockAction) => (e: React.MouseEvent) => {
     e.preventDefault();
@@ -1537,6 +1554,7 @@ function EditFrame({ ed, b, index, count, parent, col, children }: { ed: StudioE
   };
   return (
     <div
+      ref={frameRef}
       data-studio-block={b.id}
       className="relative"
       onMouseOver={(e) => {
@@ -1577,26 +1595,32 @@ function EditFrame({ ed, b, index, count, parent, col, children }: { ed: StudioE
       {(selected || hover) && !ed.readOnly && (
         <>
           <div className="pointer-events-none absolute inset-0 z-30" style={{ boxShadow: `inset 0 0 0 ${selected ? 2 : 1}px ${STUDIO_ACCENT}` }} aria-hidden />
-          <span className="pointer-events-none absolute left-0 top-0 z-40 rounded-br-md px-2 py-0.5 font-sans text-[11px] font-semibold text-white" style={{ background: STUDIO_ACCENT }}>
+          <span className={cn("pointer-events-none absolute left-0 z-40 rounded-t-md px-2 py-0.5 font-sans text-[11px] font-semibold text-white", index === 0 && parent === null ? "top-0 rounded-b-md rounded-t-none" : "bottom-full")} style={{ background: STUDIO_ACCENT }}>
             {blockLabel(b.type)}
             {where && <span className="font-medium opacity-80"> · {where}</span>}
           </span>
         </>
       )}
       {hiddenHere && (
-        <span className={cn("pointer-events-none absolute z-40 inline-flex items-center gap-1 rounded-md bg-slate-900/85 px-2 py-0.5 font-sans text-[11px] font-medium text-white", selected ? "left-2 top-7" : "right-2 top-2")}>
+        <span className={cn("pointer-events-none absolute z-40 inline-flex items-center gap-1 rounded-md bg-slate-900/85 px-2 py-0.5 font-sans text-[11px] font-medium text-white", selected ? "left-2 top-2" : "right-2 top-2")}>
           <EyeOff className="h-3 w-3" aria-hidden /> Oculto en {DEVICE_LABEL[ed.device]}
         </span>
       )}
       {selected && !ed.readOnly && (
-        <div className="absolute right-2 top-2 z-50 flex items-center gap-0.5 rounded-lg p-0.5 font-sans shadow-lg" style={{ background: STUDIO_ACCENT }}>
+        <div
+          role="toolbar"
+          aria-label={`Acciones de «${blockLabel(b.type)}»`}
+          className={cn("absolute z-50 flex items-center gap-0.5 rounded-lg p-0.5 font-sans shadow-lg", index === 0 && parent === null ? "right-2 top-2" : "bottom-full right-0 mb-1")}
+          style={{ background: STUDIO_ACCENT }}
+          onDoubleClick={(e) => e.stopPropagation()}
+        >
           <span
             draggable
             role="button"
             tabIndex={-1}
-            title="Arrastra para mover"
-            aria-label="Arrastra para mover"
-            className="cursor-grab rounded-md p-1.5 text-white hover:bg-white/15 active:cursor-grabbing"
+            title="Mover: arrastra el bloque a otro sitio, también a otra columna"
+            aria-label="Mover arrastrando"
+            className="inline-flex cursor-grab items-center gap-1 rounded-md p-1.5 text-white hover:bg-white/15 active:cursor-grabbing"
             onDragStart={(e) => {
               e.stopPropagation();
               e.dataTransfer.effectAllowed = "move";
@@ -1605,31 +1629,67 @@ function EditFrame({ ed, b, index, count, parent, col, children }: { ed: StudioE
             }}
           >
             <GripVertical className="h-3.5 w-3.5" />
+            {roomy && <span className="pr-0.5 text-[11px] font-semibold">Mover</span>}
           </span>
-          {parent !== null && (
-            <ToolButton
-              label="Seleccionar la sección que lo contiene (Esc)"
-              onClick={(e) => {
-                e.preventDefault();
-                e.stopPropagation();
-                ed.onSelect(parent);
-              }}
-            >
-              <CornerLeftUp className="h-3.5 w-3.5" />
-            </ToolButton>
-          )}
-          <ToolButton label="Subir" disabled={index === 0} onClick={act("up")}>
-            <ArrowUp className="h-3.5 w-3.5" />
+          <ToolButton label="Editar el contenido en el panel derecho" text={roomy ? "Editar" : undefined} onClick={act("edit")}>
+            <Pencil className="h-3.5 w-3.5" />
           </ToolButton>
-          <ToolButton label="Bajar" disabled={index === count - 1} onClick={act("down")}>
-            <ArrowDown className="h-3.5 w-3.5" />
+          <ToolButton label="Diseño: fondo, colores, tamaño y espacios" text={roomy ? "Diseño" : undefined} onClick={act("design")}>
+            <Paintbrush className="h-3.5 w-3.5" />
           </ToolButton>
-          <ToolButton label="Duplicar" onClick={act("duplicate")}>
+          <ToolButton label="Duplicar (Ctrl+D)" onClick={act("duplicate")}>
             <Copy className="h-3.5 w-3.5" />
           </ToolButton>
-          <ToolButton label="Eliminar" onClick={act("delete")}>
-            <Trash2 className="h-3.5 w-3.5" />
-          </ToolButton>
+          {confirmDelete ? (
+            <button
+              type="button"
+              autoFocus
+              onClick={act("delete")}
+              onBlur={() => setConfirmDelete(false)}
+              className="rounded-md bg-white px-2 py-1 text-[11px] font-semibold text-red-600 hover:bg-red-50"
+            >
+              ¿Eliminar con sus {nestedCount} bloques?
+            </button>
+          ) : (
+            <ToolButton
+              label={nestedCount ? "Eliminar la sección y su contenido" : "Eliminar (Supr)"}
+              onClick={
+                nestedCount
+                  ? (e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      setConfirmDelete(true);
+                    }
+                  : act("delete")
+              }
+            >
+              <Trash2 className="h-3.5 w-3.5" />
+            </ToolButton>
+          )}
+          <DropdownMenu modal={false}>
+            <DropdownMenuTrigger asChild>
+              <button type="button" title="Más acciones" aria-label="Más acciones" className="rounded-md p-1.5 text-white hover:bg-white/15 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white" onClick={(e) => e.stopPropagation()}>
+                <MoreHorizontal className="h-3.5 w-3.5" />
+              </button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-60 font-sans" onClick={(e) => e.stopPropagation()}>
+              {parent !== null && (
+                <DropdownMenuItem onSelect={() => ed.onSelect(parent)}>
+                  <CornerLeftUp className="mr-2 h-4 w-4" /> Seleccionar la sección (Esc)
+                </DropdownMenuItem>
+              )}
+              <DropdownMenuItem disabled={index === 0} onSelect={() => ed.onAction(b.id, "up")}>
+                <ArrowUp className="mr-2 h-4 w-4" /> Subir
+              </DropdownMenuItem>
+              <DropdownMenuItem disabled={index === count - 1} onSelect={() => ed.onAction(b.id, "down")}>
+                <ArrowDown className="mr-2 h-4 w-4" /> Bajar
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem onSelect={() => ed.onAction(b.id, "save")}>
+                <BookmarkPlus className="mr-2 h-4 w-4" /> Guardar en Mis diseños
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
       )}
       {drop && <DropLine at={drop} where={where} />}
@@ -1653,10 +1713,18 @@ function EditFrame({ ed, b, index, count, parent, col, children }: { ed: StudioE
   );
 }
 
-function ToolButton({ label, disabled, onClick, children }: { label: string; disabled?: boolean; onClick: (e: React.MouseEvent) => void; children: ReactNode }) {
+function ToolButton({ label, text, disabled, onClick, children }: { label: string; text?: string; disabled?: boolean; onClick: (e: React.MouseEvent) => void; children: ReactNode }) {
   return (
-    <button type="button" title={label} aria-label={label} disabled={disabled} onClick={onClick} className="rounded-md p-1.5 text-white hover:bg-white/15 disabled:opacity-40">
+    <button
+      type="button"
+      title={label}
+      aria-label={label}
+      disabled={disabled}
+      onClick={onClick}
+      className="inline-flex items-center gap-1 rounded-md p-1.5 text-white hover:bg-white/15 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white disabled:opacity-40"
+    >
       {children}
+      {text && <span className="pr-0.5 text-[11px] font-semibold">{text}</span>}
     </button>
   );
 }

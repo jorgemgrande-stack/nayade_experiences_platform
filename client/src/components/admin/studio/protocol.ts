@@ -13,7 +13,8 @@ export const STUDIO_CANVAS_PATH = "/admin/studio-lienzo";
 /** Tipo de los datos que arrastra la biblioteca (módulo o sección prediseñada). */
 export const DRAG_MIME = "application/x-elephant-studio";
 
-export type BlockAction = "duplicate" | "delete" | "up" | "down";
+/** edit/design: abrir el inspector en Contenido o Diseño; save: guardar en Mis diseños */
+export type BlockAction = "duplicate" | "delete" | "up" | "down" | "edit" | "design" | "save";
 
 /** Del editor al lienzo */
 export type ToCanvas = {
