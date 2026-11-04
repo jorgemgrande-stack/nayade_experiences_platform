@@ -107,7 +107,7 @@ export const CAPABILITIES: readonly CapabilityDef[] = [
   c("restaurant-net", "Restaurant Net", "extra", "net", "partial"),
   c("care-net", "Care Net", "extra", "net", "partial"),
   c("life-net", "Life Net", "extra", "net", "planned"),
-  c("social-token-net", "Social Token Net", "extra", "net", "planned"),
+  c("social-token-net", "Social Token Net", "extra", "net", "partial"),
   // Tokens internos de fidelización (puntos por compras y acciones, monederos, reglas y campañas): extensión propia,
   // separada de las comunidades (social-token-net) para que cada una exija su licencia
   c("social-token-net-tokens", "Social Token Net — Tokens internos", "extra", "net", "partial"),
