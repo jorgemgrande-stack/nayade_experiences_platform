@@ -19,7 +19,7 @@ import { RichTextEditor } from "@/components/admin/pageBuilder/RichTextEditor";
 import { LinkPicker, type LinkTarget } from "@/components/admin/pageBuilder/BlockEditors";
 import { FEATURE_ICON_COMPONENTS } from "@/components/site/featureIcons";
 import { ANCHOR_RE, CONDITION_KINDS, DEFAULT_BLOCK_STYLE, blockLabel, conditionAnswers, isDefaultStyle, type BlockStyle, type Device, type FormFieldKind, type PageBlock } from "@shared/pageBlocks";
-import { FEATURE_ICONS, moduleDef, type FieldDef, type ModuleDef } from "@shared/studio/modules";
+import { FEATURE_ICONS, fieldTab, moduleDef, type FieldDef, type InspectorTab, type ModuleDef } from "@shared/studio/modules";
 import { blockSummary } from "@/components/admin/pageBuilder/BlockEditors";
 import { siteRelativeFileUrl } from "@shared/imageUpload";
 
@@ -31,9 +31,8 @@ type SetField = (key: string, value: FieldValue, coalesce?: boolean) => void;
  * `update` cambia el bloque a partir de su versión vigente en el documento: lo que llega tarde (una imagen que
  * termina de subirse, un diálogo) nunca deshace lo que la persona ha editado mientras tanto.
  */
-/** Pestañas del inspector: Avanzado solo en el modo profesional. */
-export type InspectorTab = "content" | "design" | "advanced";
-const TAB_LABEL: Record<InspectorTab, string> = { content: "Contenido", design: "Diseño", advanced: "Avanzado" };
+export type { InspectorTab };
+const TAB_LABEL: Record<InspectorTab, string> = { content: "Contenido", design: "Diseño", behavior: "Comportamiento", advanced: "Avanzado" };
 
 export function BlockInspector({
   block, update, targets, pro, tab, onTab, columnModules = [], onAddToColumn, onSelectBlock, inside = null,
@@ -67,11 +66,17 @@ export function BlockInspector({
     }, `${block.id}:style:${Object.keys(patch).join()}`);
   if (!def) return <p className="text-sm text-muted-foreground">Este bloque no tiene opciones.</p>;
   const altKeys = new Set(def.fields.flatMap((f) => (f.kind === "image" && f.altKey ? [f.altKey] : [])));
-  // Contenido: lo básico de cada módulo; sus opciones avanzadas van a «Avanzado» (modo profesional)
-  const fields = def.fields.filter((f) => !f.advanced && !altKeys.has(f.key));
-  const advancedFields = pro ? def.fields.filter((f) => f.advanced && !altKeys.has(f.key)) : [];
-  const tabs: InspectorTab[] = pro ? ["content", "design", "advanced"] : ["content", "design"];
-  const current: InspectorTab = tabs.includes(tab) ? tab : "content";
+  // Cada opción en su pestaña (fieldTab): textos y fotos en Contenido, aspecto en Diseño, lo que hace en Comportamiento
+  const inTab = (t: InspectorTab) => def.fields.filter((f) => !altKeys.has(f.key) && fieldTab(f, pro) === t);
+  const fields = inTab("content");
+  const designFields = inTab("design");
+  const behaviorFields = inTab("behavior");
+  const advancedFields = inTab("advanced");
+  // Solo las pestañas con opciones (Diseño y Comportamiento siempre: fondo, espacios y animación son de todos los bloques)
+  const tabs: InspectorTab[] = [...(fields.length || block.type === "section" ? (["content"] as const) : []), "design", "behavior", ...(pro ? (["advanced"] as const) : [])];
+  const current: InspectorTab = tabs.includes(tab) ? tab : tabs[0];
+  const control = (f: FieldDef) => <FieldControl key={f.key} field={f} value={data[f.key]} set={set} targets={targets} blockId={block.id} pro={pro} />;
+  const style = { ...DEFAULT_BLOCK_STYLE, ...block.style };
   return (
     <div className="space-y-4">
       {inside && (
@@ -84,7 +89,7 @@ export function BlockInspector({
           )}
         </div>
       )}
-      <div className={cn("grid gap-1 rounded-lg bg-muted p-1", tabs.length === 3 ? "grid-cols-3" : "grid-cols-2")} role="tablist" aria-label="Opciones del bloque">
+      <div className="flex gap-0.5 rounded-lg bg-muted p-1" role="tablist" aria-label="Opciones del bloque">
         {tabs.map((t) => (
           <button
             key={t}
@@ -92,7 +97,11 @@ export function BlockInspector({
             role="tab"
             aria-selected={current === t}
             onClick={() => onTab(t)}
-            className={cn("rounded-md px-2 py-1.5 text-sm font-medium transition-colors", current === t ? "bg-background text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground")}
+            className={cn(
+              "min-w-0 flex-auto rounded-md py-1.5 font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#5b5bf6]",
+              tabs.length > 3 ? "px-1 text-[11px]" : "px-1.5 text-xs",
+              current === t ? "bg-background text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground",
+            )}
           >
             {TAB_LABEL[t]}
           </button>
@@ -100,10 +109,17 @@ export function BlockInspector({
       </div>
       {current === "advanced" ? (
         <div className="space-y-4">
-          {advancedFields.map((f) => (
-            <FieldControl key={f.key} field={f} value={data[f.key]} set={set} targets={targets} blockId={block.id} pro={pro} />
-          ))}
-          <StyleEditor style={{ ...DEFAULT_BLOCK_STYLE, ...block.style }} setStyle={setStyle} pro={pro} part="advanced" />
+          {advancedFields.map(control)}
+          <StyleEditor style={style} setStyle={setStyle} pro={pro} part="advanced" />
+        </div>
+      ) : current === "behavior" ? (
+        <div className="space-y-5">
+          {behaviorFields.length > 0 && (
+            <StyleGroup title={blockLabel(block.type)}>
+              {behaviorFields.map(control)}
+            </StyleGroup>
+          )}
+          <StyleEditor style={style} setStyle={setStyle} pro={pro} part="behavior" />
         </div>
       ) : current === "content" ? (
         <div className="space-y-4">
@@ -121,7 +137,10 @@ export function BlockInspector({
           {def.note && <p className="rounded-md bg-muted px-3 py-2 text-xs leading-relaxed text-muted-foreground">{def.note}</p>}
         </div>
       ) : (
-        <StyleEditor style={{ ...DEFAULT_BLOCK_STYLE, ...block.style }} setStyle={setStyle} pro={pro} part="design" />
+        <div className="space-y-5">
+          {designFields.length > 0 && <StyleGroup title="Distribución">{designFields.map(control)}</StyleGroup>}
+          <StyleEditor style={style} setStyle={setStyle} pro={pro} part="design" />
+        </div>
       )}
     </div>
   );
@@ -501,8 +520,8 @@ const DEVICE_OPTIONS: ReadonlyArray<{ value: Device; label: string; icon: typeof
   { value: "mobile", label: "Móvil", icon: Smartphone },
 ];
 
-/** Diseño (fondo, texto, caja, espacios) o Avanzado (animación, dispositivos y móvil, ancla). */
-function StyleEditor({ style, setStyle, pro, part }: { style: BlockStyle; setStyle: (p: Partial<BlockStyle>) => void; pro: boolean; part: "design" | "advanced" }) {
+/** Diseño (fondo, texto, caja, espacios), Comportamiento (animación) o Avanzado (dispositivos y móvil, ancla). */
+function StyleEditor({ style, setStyle, pro, part }: { style: BlockStyle; setStyle: (p: Partial<BlockStyle>) => void; pro: boolean; part: "design" | "behavior" | "advanced" }) {
   const anchorId = useId();
   const [anchor, setAnchor] = useState(style.anchor);
   const anchorError = anchor && !ANCHOR_RE.test(anchor) ? "Solo minúsculas sin tildes, números y guiones." : null;
@@ -668,13 +687,12 @@ function StyleEditor({ style, setStyle, pro, part }: { style: BlockStyle; setSty
 
       {part === "design" && !pro && (
         <p className="rounded-md bg-muted px-3 py-2 text-xs leading-relaxed text-muted-foreground">
-          En el modo profesional tienes además tipos de letra, borde, esquinas y sombra, espacios y una pestaña «Avanzado» con animaciones, ajustes
-          para el móvil y ancla.
+          En el modo profesional tienes además tipos de letra, borde, esquinas y sombra, espacios y una pestaña «Avanzado» con ajustes para el móvil
+          y ancla.
         </p>
       )}
 
-      {part === "advanced" && (
-      <>
+      {part === "behavior" && (
       <StyleGroup title="Animación">
         <div className="space-y-1">
           <Segmented
@@ -691,8 +709,9 @@ function StyleEditor({ style, setStyle, pro, part }: { style: BlockStyle; setSty
           <p className="text-xs text-muted-foreground">Se ve en tu web al llegar al bloque (no mientras editas) y nunca si el visitante prefiere menos movimiento.</p>
         </div>
       </StyleGroup>
+      )}
 
-      {pro && (
+      {part === "advanced" && pro && (
         <>
           <StyleGroup title="Dispositivos">
             <div className="space-y-2">
@@ -751,8 +770,6 @@ function StyleEditor({ style, setStyle, pro, part }: { style: BlockStyle; setSty
             </div>
           </StyleGroup>
         </>
-      )}
-      </>
       )}
     </div>
   );
