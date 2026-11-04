@@ -46,6 +46,8 @@ export const TRPC_ROUTER_CAPABILITIES: Record<string, string> = {
   inventory: "inventory-basic",
   // Social Token Net · Comunidades: panel y área de miembros (los procedimientos lo comprueban además)
   communities: "social-token-net",
+  // Social Token Net · Tokens internos: programa de puntos (los procedimientos lo comprueban además); la emisión al vender la decide loyaltyDb
+  loyalty: "social-token-net-tokens",
   products: "shop-catalog",
   packs: "shop-catalog",
   timeSlots: "shop-catalog",

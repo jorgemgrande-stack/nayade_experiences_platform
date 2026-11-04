@@ -25,13 +25,13 @@ async function seeded() {
 }
 
 describe("registro de capacidades", () => {
-  it("74 capacidades con id único: 29 Essential, 15 Business, 3 Enterprise y 27 Extras", () => {
-    expect(CAPABILITIES).toHaveLength(74);
-    expect(new Set(CAPABILITY_IDS).size).toBe(74);
+  it("75 capacidades con id único: 29 Essential, 15 Business, 3 Enterprise y 28 Extras", () => {
+    expect(CAPABILITIES).toHaveLength(75);
+    expect(new Set(CAPABILITY_IDS).size).toBe(75);
     expect(capabilitiesOfTier("essential")).toHaveLength(29);
     expect(capabilitiesOfTier("business")).toHaveLength(15);
     expect(capabilitiesOfTier("enterprise")).toHaveLength(3);
-    expect(capabilitiesOfTier("extra")).toHaveLength(27);
+    expect(capabilitiesOfTier("extra")).toHaveLength(28);
   });
   it("ninguna capacidad se declara disponible (no hay multiempresa desplegada)", () => {
     expect(CAPABILITIES.every((c) => c.technicalStatus !== ("available" as string))).toBe(true);
@@ -99,22 +99,22 @@ describe("semilla en el catálogo comercial", () => {
   it("crea y publica capacidades y productos con sus precios aprobados, y repetirla no cambia nada", async () => {
     const { store, svc, report } = await seeded();
     expect(report.conflicts).toEqual([]);
-    expect(report.created).toHaveLength(74 + PRODUCTS.length);
+    expect(report.created).toHaveLength(75 + PRODUCTS.length);
     expect(report.pricesApproved).toHaveLength(PRODUCTS.reduce((a, p) => a + p.prices.length, 0));
     const site = await svc.site("published");
-    expect(site.catalog.capabilities).toHaveLength(74);
+    expect(site.catalog.capabilities).toHaveLength(75);
     expect(site.catalog.products).toHaveLength(PRODUCTS.length);
     // Ningún dato interno sale en el sitio público
     expect(JSON.stringify(site)).not.toContain("PROPUESTA");
     const again = await seedElephantSource(svc, store);
     expect([again.created, again.updated, again.published, again.pricesApproved]).toEqual([[], [], [], []]);
-    expect(again.unchanged).toBe(74 + PRODUCTS.length);
+    expect(again.unchanged).toBe(75 + PRODUCTS.length);
   });
   it("modo simulación: calcula el plan sin escribir nada", async () => {
     const store = new MemoryWebStore();
     const svc = new WebAdminService({ store, refs });
     const plan = await seedElephantSource(svc, store, { dryRun: true });
-    expect(plan.created.length).toBe(74 + PRODUCTS.length);
+    expect(plan.created.length).toBe(75 + PRODUCTS.length);
     expect(await store.listEntries()).toEqual([]);
   });
   it("cambiar una tarifa en la semilla aprueba el precio nuevo y retira el anterior (historial)", async () => {

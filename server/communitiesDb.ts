@@ -9,7 +9,7 @@
  *    se desactivan (active = 0). Así activar o desactivar la capacidad nunca pierde datos.
  *  - Aislamiento: cada empresa tiene su base de datos; todas las consultas van por getDb() del tenant de la petición.
  *
- * Las tablas (migración db/migrations/0026_communities) no están en `drizzle/schema.ts` a propósito, como el
+ * Las tablas (migración db/migrations/0027_communities) no están en `drizzle/schema.ts` a propósito, como el
  * inventario: el resto del código no depende de que la migración esté aplicada.
  *
  * Reutilizado de Segolife (server/segolife/community/communitySocialDb.ts): comentarios con un nivel de respuesta,
