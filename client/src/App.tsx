@@ -181,6 +181,11 @@ const CrmTasks = lazy(() => import("./pages/admin/crm/CrmTasks"));
 const CrmFunnel = lazy(() => import("./pages/admin/crm/CrmFunnel"));
 const PricingRules = lazy(() => import("./pages/admin/products/PricingRules"));
 const InventoryManager = lazy(() => import("./pages/admin/products/Inventory"));
+const CommunitiesManager = lazy(() => import("./pages/admin/communities/CommunitiesManager"));
+const CommunityDetail = lazy(() => import("./pages/admin/communities/CommunityDetail"));
+const MyCommunities = lazy(() => import("./pages/community/MyCommunities"));
+const CommunityHub = lazy(() => import("./pages/community/CommunityHub"));
+const ActivateMember = lazy(() => import("./pages/community/ActivateMember"));
 const LoyaltyManager = lazy(() => import("./pages/admin/loyalty/Loyalty"));
 const ProposalsPage = lazy(() => import("./pages/admin/crm/ProposalsPage"));
 const CommercialFollowupDashboard = lazy(() => import("./pages/admin/commercial/CommercialFollowupDashboard"));
@@ -370,6 +375,10 @@ function Router() {
       <Route path="/admin/personal/configuracion">{() => <Suspense fallback={<AdminLoadingFallback />}><HRSettings /></Suspense>}</Route>
 
       {/* Portal del Empleado (Fase 3) */}
+      {/* Social Token Net · Comunidades: área de miembros con la cuenta del Core */}
+      <Route path="/comunidad">{() => <Suspense fallback={<AdminLoadingFallback />}><MyCommunities /></Suspense>}</Route>
+      <Route path="/comunidad/activar">{() => <Suspense fallback={<AdminLoadingFallback />}><ActivateMember /></Suspense>}</Route>
+      <Route path="/comunidad/:slug">{() => <Suspense fallback={<AdminLoadingFallback />}><CommunityHub /></Suspense>}</Route>
       <Route path="/empleado">{() => <Suspense fallback={<AdminLoadingFallback />}><EmployeePortal /></Suspense>}</Route>
       <Route path="/empleado/fichar">{() => <Suspense fallback={<AdminLoadingFallback />}><MyTimeClock /></Suspense>}</Route>
       <Route path="/empleado/perfil">{() => <Suspense fallback={<AdminLoadingFallback />}><MyProfile /></Suspense>}</Route>
@@ -466,6 +475,8 @@ function Router() {
       <Route path="/admin/crm/tareas">{() => <Suspense fallback={<AdminLoadingFallback />}><CrmTasks /></Suspense>}</Route>
       <Route path="/admin/productos/reglas-precios">{() => <Suspense fallback={<AdminLoadingFallback />}><PricingRules /></Suspense>}</Route>
       <Route path="/admin/productos/inventario">{() => <Suspense fallback={<AdminLoadingFallback />}><InventoryManager /></Suspense>}</Route>
+      <Route path="/admin/comunidades">{() => <Suspense fallback={<AdminLoadingFallback />}><CommunitiesManager /></Suspense>}</Route>
+      <Route path="/admin/comunidades/:id">{() => <Suspense fallback={<AdminLoadingFallback />}><CommunityDetail /></Suspense>}</Route>
       <Route path="/admin/fidelizacion">{() => <Suspense fallback={<AdminLoadingFallback />}><LoyaltyManager /></Suspense>}</Route>
       <Route path="/admin/crm/embudo">{() => <Suspense fallback={<AdminLoadingFallback />}><CrmFunnel /></Suspense>}</Route>
       <Route path="/admin/crm/propuestas">{() => <Suspense fallback={<AdminLoadingFallback />}><ProposalsPage /></Suspense>}</Route>
