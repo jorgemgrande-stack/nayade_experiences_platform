@@ -16,7 +16,7 @@ import { Link, useLocation } from "wouter";
 import { toast } from "sonner";
 import {
   ArrowLeft, BookmarkPlus, Check, ChevronDown, CircleAlert, Eye, ExternalLink, History, Keyboard, Loader2, Monitor, MoreHorizontal, PanelLeft, PanelRight, Redo2,
-  Maximize2, Minimize2, Smartphone, Tablet, Undo2, Upload, X, ZoomIn, ZoomOut,
+  Maximize2, Minimize2, SlidersHorizontal, Smartphone, Tablet, Undo2, Upload, X, ZoomIn, ZoomOut,
 } from "lucide-react";
 import { trpc } from "@/lib/trpc";
 import { useAuth } from "@/_core/hooks/useAuth";
@@ -168,13 +168,27 @@ function Studio({ routeSlug }: { routeSlug: string | null }) {
   }, [pages, modules]);
 
   // ── Operaciones sobre el documento ──
+  // Modo concentrado (los dos paneles ocultos): seleccionar no vuelve a abrir el inspector; se recupera con «Opciones»
+  const panelsRef = useRef({ leftOpen, rightOpen });
+  panelsRef.current = { leftOpen, rightOpen };
   const select = useCallback((id: string | null) => {
     setSelectedId(id);
     if (id) {
       setInspTab("content");
-      setRightOpen(true);
+      if (panelsRef.current.leftOpen || panelsRef.current.rightOpen) setRightOpen(true);
     }
   }, []);
+  const focusMode = !leftOpen && !rightOpen;
+  const toggleFocus = () => {
+    setLeftOpen(focusMode);
+    setRightOpen(focusMode);
+  };
+  /** Abre el inspector del bloque en una pestaña (también desde el modo concentrado) */
+  const openInspector = (id: string, tab: InspectorTab) => {
+    setSelectedId(id);
+    setInspTab(tab);
+    setRightOpen(true);
+  };
 
   const tooMany = (adding: number) => {
     if (countBlocks(blocks) + adding <= PAGE_LIMITS.blocks) return false;
@@ -318,6 +332,7 @@ function Studio({ routeSlug }: { routeSlug: string | null }) {
     if (!doc.loaded) return;
     if (ctrl && key === "z") return shift ? doc.redo() : doc.undo();
     if (ctrl && key === "y") return doc.redo();
+    if (ctrl && key === ".") return toggleFocus();
     if (ctrl && key === "s") return void doc.save().then((ok) => ok && toast.success("Borrador guardado. Tu web no cambia hasta que publiques."));
     if (viewing) return;
     if (ctrl && key === "d" && selectedId) return duplicate(selectedId);
@@ -356,7 +371,14 @@ function Studio({ routeSlug }: { routeSlug: string | null }) {
         if (viewing) break;
         if (m.action === "delete") remove(m.id);
         else if (m.action === "duplicate") duplicate(m.id);
-        else {
+        else if (m.action === "edit" || m.action === "design") openInspector(m.id, m.action === "edit" ? "content" : "design");
+        else if (m.action === "save") {
+          const f = findBlock(blocks, m.id);
+          if (f) {
+            setSelectedId(m.id);
+            setSaveName(blockLabel(f.block.type));
+          }
+        } else {
           const f = findBlock(blocks, m.id);
           if (f) moveTo(m.id, { parent: f.parent, col: f.col, index: m.action === "up" ? f.index - 1 : f.index + 2 });
         }
@@ -407,7 +429,7 @@ function Studio({ routeSlug }: { routeSlug: string | null }) {
       if (t?.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t?.tagName ?? "") || t?.closest("[role=dialog]")) return;
       const ctrl = e.ctrlKey || e.metaKey;
       const k = e.key.toLowerCase();
-      if (["delete", "backspace", "escape"].includes(k) || (ctrl && ["z", "y", "s", "d", "c", "v"].includes(k) && !(k === "c" && window.getSelection()?.toString()))) {
+      if (["delete", "backspace", "escape"].includes(k) || (ctrl && ["z", "y", "s", "d", "c", "v", "."].includes(k) && !(k === "c" && window.getSelection()?.toString()))) {
         e.preventDefault();
         keyRef.current(k, ctrl, e.shiftKey);
       }
@@ -542,7 +564,9 @@ function Studio({ routeSlug }: { routeSlug: string | null }) {
     const next = dir > 0 ? ZOOM_STEPS.find((z) => z > cur + 0.001) : [...ZOOM_STEPS].reverse().find((z) => z < cur - 0.001);
     if (next) setZoom(next);
   };
-  const frameH = Math.max(320, area.h - pad * 2 - (viewing ? 52 : 0));
+  // Franja de controles flotantes (modo concentrado y «Opciones») cuando el inspector está oculto: no tapan la página
+  const floatBar = !rightOpen && !viewing;
+  const frameH = Math.max(320, area.h - pad * 2 - (viewing ? 52 : 0) - (floatBar ? 40 : 0));
 
   if (pagesQ.error) {
     return (
@@ -670,15 +694,12 @@ function Studio({ routeSlug }: { routeSlug: string | null }) {
             variant="ghost"
             size="icon"
             className="hidden h-9 w-9 md:inline-flex"
-            onClick={() => {
-              const open = leftOpen || rightOpen;
-              setLeftOpen(!open);
-              setRightOpen(!open);
-            }}
-            aria-label={leftOpen || rightOpen ? "Ampliar el lienzo (ocultar los paneles)" : "Mostrar los paneles"}
-            title={leftOpen || rightOpen ? "Ampliar el lienzo" : "Mostrar los paneles"}
+            onClick={toggleFocus}
+            aria-pressed={focusMode}
+            aria-label={focusMode ? "Salir del modo concentrado y mostrar los paneles (Ctrl + .)" : "Modo concentrado: ampliar el lienzo ocultando los paneles (Ctrl + .)"}
+            title={focusMode ? "Mostrar los paneles (Ctrl + .)" : "Modo concentrado: solo la página (Ctrl + .)"}
           >
-            {leftOpen || rightOpen ? <Maximize2 className="h-4 w-4" /> : <Minimize2 className="h-4 w-4" />}
+            {focusMode ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
           </Button>
         </div>
 
@@ -756,7 +777,7 @@ function Studio({ routeSlug }: { routeSlug: string | null }) {
       <div className="relative flex min-h-0 flex-1">
         {/* ── Panel izquierdo ── */}
         {leftOpen && (
-          <aside className="absolute inset-y-0 left-0 z-30 w-[272px] shrink-0 border-r border-border bg-background shadow-xl lg:static lg:shadow-none" aria-label="Biblioteca y estructura">
+          <aside className="absolute inset-y-0 left-0 z-30 w-[272px] shrink-0 border-r border-border bg-background shadow-xl duration-200 animate-in fade-in slide-in-from-left-3 motion-reduce:animate-none lg:static lg:shadow-none" aria-label="Biblioteca y estructura">
             <LeftPanel
               tab={leftTab}
               onTab={setLeftTab}
@@ -814,7 +835,7 @@ function Studio({ routeSlug }: { routeSlug: string | null }) {
               </div>
             </div>
           ) : (
-            <div className={cn("absolute inset-0 flex overflow-auto", overflowX ? "justify-start" : "justify-center")} style={{ paddingTop: pad + (viewing ? 52 : 0), paddingLeft: pad, paddingRight: pad, paddingBottom: zoom ? pad : 0 }}>
+            <div className={cn("absolute inset-0 flex overflow-auto", overflowX ? "justify-start" : "justify-center")} style={{ paddingTop: pad + (viewing ? 52 : 0) + (floatBar ? 40 : 0), paddingLeft: pad, paddingRight: pad, paddingBottom: zoom ? pad : 0 }}>
               <div
                 className={cn("relative shrink-0 overflow-hidden bg-white shadow-[0_8px_40px_rgba(15,23,42,0.18)]", device === "desktop" ? "rounded-lg" : "rounded-[28px] ring-8 ring-slate-900/90")}
                 style={{ width: dev.width * scale, height: frameH }}
@@ -835,6 +856,25 @@ function Studio({ routeSlug }: { routeSlug: string | null }) {
               </div>
             </div>
           )}
+          {floatBar && (
+            <div className="pointer-events-none absolute inset-x-3 top-2.5 z-20 flex items-start justify-between gap-2">
+              {focusMode ? (
+                <div className="pointer-events-auto flex items-center gap-1 rounded-full border border-border bg-background py-1 pl-3 pr-1 text-xs shadow-md duration-200 animate-in fade-in">
+                  <span className="font-medium">Modo concentrado</span>
+                  <Button size="sm" variant="ghost" className="h-7 rounded-full px-2.5 text-xs" onClick={toggleFocus} title="Ctrl + .">
+                    <Minimize2 className="mr-1 h-3.5 w-3.5" /> Mostrar los paneles
+                  </Button>
+                </div>
+              ) : (
+                <span />
+              )}
+              {selected && !rightOpen && (
+                <Button size="sm" variant="outline" className="pointer-events-auto h-8 rounded-full bg-background shadow-md duration-200 animate-in fade-in" onClick={() => openInspector(selected.id, inspTab)}>
+                  <SlidersHorizontal className="mr-1.5 h-3.5 w-3.5" style={{ color: ACCENT }} /> Opciones de «{blockLabel(selected.type)}»
+                </Button>
+              )}
+            </div>
+          )}
           {doc.loaded && source === "converted" && !viewing && (
             <p role="note" className="absolute bottom-3 left-1/2 z-10 max-w-[90%] -translate-x-1/2 rounded-full border border-sky-200 bg-sky-50 px-4 py-1.5 text-center text-xs text-sky-900 shadow-sm dark:border-sky-800 dark:bg-sky-950 dark:text-sky-100">
               Hemos preparado esta página en bloques con todo su contenido. Tu web sigue mostrando la versión actual hasta que publiques.
@@ -844,7 +884,7 @@ function Studio({ routeSlug }: { routeSlug: string | null }) {
 
         {/* ── Inspector ── */}
         {rightOpen && (
-          <aside className="absolute inset-y-0 right-0 z-30 flex w-[320px] shrink-0 flex-col border-l border-border bg-background shadow-xl lg:static lg:shadow-none" aria-label="Inspector">
+          <aside className="absolute inset-y-0 right-0 z-30 flex w-[300px] shrink-0 flex-col border-l border-border bg-background shadow-xl duration-200 animate-in fade-in slide-in-from-right-3 motion-reduce:animate-none lg:static lg:shadow-none 2xl:w-[320px]" aria-label="Inspector">
             <div className="flex h-12 shrink-0 items-center gap-2 border-b border-border px-4">
               {selected && ModuleIcon ? (
                 <>
@@ -1146,6 +1186,7 @@ function Studio({ routeSlug }: { routeSlug: string | null }) {
               ["Ctrl + D", "Duplicar el bloque"],
               ["Ctrl + C / Ctrl + V", "Copiar y pegar un bloque (también entre páginas)"],
               ["Supr", "Eliminar el bloque"],
+              ["Ctrl + .", "Modo concentrado: ocultar o mostrar los paneles"],
               ["Esc", "Quitar la selección"],
             ].map(([k, v]) => (
               <div key={k} className="contents">
