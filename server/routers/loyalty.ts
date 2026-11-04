@@ -19,7 +19,10 @@ import {
   RULE_CALCS,
   RULE_SCOPES,
   RULE_TRIGGERS,
+  REDEMPTION_STATUSES,
 } from "../../shared/loyalty";
+import { cancelRedemption, checkCode, consumeCode, expireRedemptions, listRedemptions, listRewards, redeemReward, saveReward } from "../loyaltyRewardsDb";
+import { portalUrl, sendPortalLink } from "../loyaltyPortal";
 import {
   adjustPoints,
   assertLoyalty,
@@ -102,6 +105,23 @@ const campaignInput = z.object({
   if (x.perClientLimit != null && !x.limitPeriod) c.addIssue({ code: "custom", message: "Elige el periodo del límite", path: ["limitPeriod"] });
   if (x.startsAt != null && x.endsAt != null && x.endsAt < x.startsAt) c.addIssue({ code: "custom", message: "La vigencia termina antes de empezar", path: ["endsAt"] });
 });
+
+const rewardInput = z.object({
+  name: z.string().trim().min(2).max(NAME_MAX),
+  description: z.string().trim().max(500).nullable(),
+  costPoints: points,
+  stock: z.number().int().min(0).max(1_000_000).nullable(),
+  perClientLimit: z.number().int().min(1).max(10_000).nullable(),
+  limitPeriod: z.enum(LIMIT_PERIODS).nullable(),
+  codeValidDays: z.number().int().min(1).max(730),
+  active: z.boolean(),
+  startsAt: ms,
+  endsAt: ms,
+}).strict().superRefine((x, c) => {
+  if (x.perClientLimit != null && !x.limitPeriod) c.addIssue({ code: "custom", message: "Elige el periodo del límite", path: ["limitPeriod"] });
+  if (x.startsAt != null && x.endsAt != null && x.endsAt < x.startsAt) c.addIssue({ code: "custom", message: "La vigencia termina antes de empezar", path: ["endsAt"] });
+});
+const codeInput = z.object({ code: z.string().trim().min(4).max(32) }).strict();
 
 async function canManage(role: string): Promise<boolean> {
   if (role !== "admin") return false;
@@ -207,9 +227,74 @@ export const loyaltyRouter = router({
       return awardActionPoints({ clientId: input.clientId, action: input.action, key: input.key, note: input.note || null, actor: actorOf(ctx.user) });
     }),
 
+  // ─── Recompensas y canjes (STN-2) ──────────────────────────────────────────
+
+  rewards: staffProcedure.query(async () => {
+    await assertLoyalty(false);
+    return listRewards();
+  }),
+
+  saveReward: adminProcedure
+    .input(z.object({ id: id.nullable(), reward: rewardInput }).strict())
+    .mutation(async ({ input }) => {
+      await assertLoyalty(true);
+      const r = input.reward;
+      return saveReward(input.id, { ...r, description: r.description || null, limitPeriod: r.perClientLimit != null ? r.limitPeriod : null });
+    }),
+
+  /** Canjes (todos o de un cliente), con los caducados ya cerrados. */
+  redemptions: staffProcedure
+    .input(z.object({ clientId: id.optional(), status: z.enum(REDEMPTION_STATUSES).optional(), page: z.number().int().min(1).max(10_000).default(1), limit: z.number().int().min(1).max(200).default(50) }))
+    .query(async ({ input }) => {
+      await assertLoyalty(false);
+      if (await assertLoyalty(true).then(() => true, () => false)) await expireRedemptions(input.clientId);
+      return listRedemptions({ clientId: input.clientId, status: input.status, limit: input.limit, offset: (input.page - 1) * input.limit });
+    }),
+
+  /** Canje en el mostrador para un cliente presente (administración). */
+  redeemForClient: adminProcedure
+    .input(z.object({ clientId: id, rewardId: id, key: opKey }).strict())
+    .mutation(async ({ input, ctx }) => {
+      await assertLoyalty(true);
+      return redeemReward({ clientId: input.clientId, rewardId: input.rewardId, key: `panel-${input.key}`, actor: actorOf(ctx.user), channel: "panel" });
+    }),
+
+  /** Anula un canje (pendiente o usado) y devuelve los puntos al cliente, una sola vez. */
+  cancelRedemption: adminProcedure
+    .input(z.object({ redemptionId: id, reason: reason.min(3) }).strict())
+    .mutation(async ({ input, ctx }) => {
+      await assertLoyalty(true);
+      return cancelRedemption(input.redemptionId, input.reason, actorOf(ctx.user));
+    }),
+
+  /** Consulta un código de canje en el TPV o el mostrador (no lo usa). Queda registrado. */
+  checkCode: staffProcedure.input(codeInput).mutation(async ({ input, ctx }) => {
+    await assertLoyalty(false);
+    return checkCode(input.code, actorOf(ctx.user));
+  }),
+
+  /** Usa el código (entrega de la recompensa): un solo uso, también con dos lecturas simultáneas. Queda registrado. */
+  consumeCode: staffProcedure.input(codeInput).mutation(async ({ input, ctx }) => {
+    await assertLoyalty(true);
+    return consumeCode(input.code, actorOf(ctx.user));
+  }),
+
+  /** Enlace firmado al área de puntos del cliente (para copiarlo) — caduca a los 30 días. */
+  portalLink: staffProcedure.input(z.object({ clientId: id })).query(async ({ input }) => {
+    await assertLoyalty(false);
+    return { url: portalUrl(input.clientId) };
+  }),
+
+  /** Envía al cliente por correo el enlace a su área de puntos. */
+  sendPortalLink: staffProcedure.input(z.object({ clientId: id }).strict()).mutation(async ({ input }) => {
+    await assertLoyalty(true);
+    return { sent: await sendPortalLink(input.clientId) };
+  }),
+
   /** Procesa la caducidad de los puntos vencidos de todos los monederos. */
   runExpiry: adminProcedure.mutation(async () => {
     await assertLoyalty(true);
-    return expireAllWallets();
+    const codes = await expireRedemptions();
+    return { ...(await expireAllWallets()), codes };
   }),
 });

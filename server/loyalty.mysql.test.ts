@@ -233,7 +233,7 @@ describe.skipIf(!URL_)("Tokens internos (aplicación real, dos empresas nuevas)"
     expect(w.wallet.balance).toBe(before);
     expect(w.ledger[0]).toMatchObject({ kind: "caducidad", amount: 20 });
     // Repetir no caduca más
-    expect(data(await ess.m("a", "loyalty.runExpiry", undefined, adA))).toEqual({ wallets: 0, points: 0 });
+    expect(data(await ess.m("a", "loyalty.runExpiry", undefined, adA))).toMatchObject({ wallets: 0, points: 0 });
     await ess.m("a", "loyalty.saveProgram", { enabled: true, pointsName: "estrellas", eqPoints: 100, eqEuros: 1, expiryMonths: null }, adA);
   });
 
