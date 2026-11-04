@@ -18,6 +18,7 @@ import { MODULE_FAMILIES, SECTION_PRESETS, moduleDef, searchModules, type Module
 import { blockSummary } from "@/components/admin/pageBuilder/BlockEditors";
 import { moduleIcon } from "./icons";
 import { BlockThumb } from "./BlockThumb";
+import { RealPreview } from "./RealPreview";
 import { DRAG_MIME } from "./protocol";
 import type { SitePage } from "./PageSettings";
 
@@ -83,13 +84,16 @@ export function LeftPanel(props: {
   );
 }
 
-/** Vista previa al pasar por encima de un elemento de la biblioteca (a la derecha del panel). */
+/**
+ * Vista previa al pasar por encima de un elemento de la biblioteca (a la derecha del panel): el resultado REAL, con
+ * los colores, la tipografía y los datos de la web de la empresa.
+ */
 function Preview({ blocks, title, description, children }: { blocks: PageBlock[]; title: string; description?: string; children: React.ReactElement }) {
   return (
-    <HoverCard openDelay={350} closeDelay={60}>
+    <HoverCard openDelay={300} closeDelay={60}>
       <HoverCardTrigger asChild>{children}</HoverCardTrigger>
-      <HoverCardContent side="right" align="start" sideOffset={12} className="w-72 space-y-2 p-3">
-        <BlockThumb blocks={blocks} width={262} ratio={blocks.length > 1 ? 3 / 4 : 16 / 10} />
+      <HoverCardContent side="right" align="start" sideOffset={12} collisionPadding={12} className="w-96 space-y-2 p-3">
+        <RealPreview blocks={blocks} width={358} maxHeight={blocks.length > 1 ? 460 : 300} />
         <p className="text-sm font-medium">{title}</p>
         {description && <p className="text-xs leading-relaxed text-muted-foreground">{description}</p>}
       </HoverCardContent>
@@ -140,10 +144,13 @@ function Library({
                     onDragStart={(e) => startDrag(e, `module:${m.type}`)}
                     onClick={() => onInsert(`module:${m.type}`)}
                     aria-label={`${m.label}: ${m.description}`}
-                    className="group flex cursor-grab flex-col items-center gap-1.5 rounded-lg border border-border bg-background px-2 py-3 text-center transition-all hover:-translate-y-px hover:border-[#5b5bf6]/60 hover:shadow-sm active:cursor-grabbing"
+                    className="group flex cursor-grab flex-col items-stretch gap-1.5 rounded-lg border border-border bg-background p-1.5 text-left transition-all hover:-translate-y-px hover:border-[#5b5bf6]/60 hover:shadow-sm active:cursor-grabbing"
                   >
-                    <Icon className="h-5 w-5 text-muted-foreground transition-colors group-hover:text-[#5b5bf6]" />
-                    <span className="text-xs font-medium leading-tight">{m.label}</span>
+                    <BlockThumb blocks={moduleSamples.get(m.type) ?? []} width={90} ratio={16 / 10} />
+                    <span className="flex items-center gap-1 px-0.5 text-xs font-medium leading-tight">
+                      <Icon className="h-3.5 w-3.5 shrink-0 text-muted-foreground transition-colors group-hover:text-[#5b5bf6]" />
+                      {m.label}
+                    </span>
                   </button>
                   </Preview>
                 );
