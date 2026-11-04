@@ -5,7 +5,7 @@
  */
 import { describe, it, expect } from "vitest";
 import { BLOCK_TYPES, createBlock, cssUrl, DEFAULT_BLOCK_STYLE, defaultBlockData, isDefaultStyle, type PageBlock } from "../shared/pageBlocks";
-import { LIBRARY_ELEMENTS, LIBRARY_SECTIONS, MODULES, SECTION_PRESETS, availableModules, inlineFields, libraryMatch, moduleDef, searchModules } from "../shared/studio/modules";
+import { LIBRARY_ELEMENTS, LIBRARY_SECTIONS, MODULES, SECTION_PRESETS, availableModules, fieldTab, inlineFields, libraryMatch, moduleDef, searchModules } from "../shared/studio/modules";
 import { blocksToHtml, normalizeBlocks, normalizeStyle, readStoredBlocks, renderBlockTokens, PageBlocksError } from "./_core/pageBlocks";
 import { docReducer, initialDoc } from "../client/src/components/admin/studio/history";
 import { parseDragPayload } from "../client/src/components/admin/studio/protocol";
@@ -69,6 +69,21 @@ describe("biblioteca agrupada", () => {
     expect([...types].sort()).toEqual(MODULES.map((m) => m.type).sort());
     const presets = LIBRARY_SECTIONS.flatMap((c) => c.presets);
     expect([...presets].sort()).toEqual(SECTION_PRESETS.map((p) => p.key).sort());
+  });
+  it("inspector: cada opción en su pestaña; las avanzadas solo en el modo profesional", () => {
+    const tabOf = (type: string, key: string, pro: boolean) => fieldTab(moduleDef(type as any)!.fields.find((f) => f.key === key)!, pro);
+    expect(tabOf("heading", "title", false)).toBe("content");
+    expect(tabOf("heading", "align", false)).toBe("design");
+    expect(tabOf("heading", "level", false)).toBeNull();
+    expect(tabOf("heading", "level", true)).toBe("advanced");
+    expect(tabOf("slideshow", "autoplay", false)).toBe("behavior");
+    expect(tabOf("slideshow", "transition", false)).toBeNull();
+    expect(tabOf("slideshow", "transition", true)).toBe("behavior");
+    expect(tabOf("form", "redirectUrl", true)).toBe("behavior");
+    expect(tabOf("section", "mobile", true)).toBe("advanced");
+    expect(tabOf("button", "url", false)).toBe("content");
+    // En el modo profesional ninguna opción se queda sin pestaña
+    for (const m of MODULES) for (const f of m.fields) expect(fieldTab(f, true)).not.toBeNull();
   });
   it("el buscador ignora tildes y mayúsculas", () => {
     expect(libraryMatch("galeria", "Galería", "fotos")).toBe(true);

@@ -486,3 +486,30 @@ export function libraryMatch(q: string, ...texts: string[]): boolean {
   const needle = fold(q.trim());
   return !needle || fold(texts.join(" ")).includes(needle);
 }
+
+// ─── Inspector: en qué pestaña va cada opción ─────────────────────────────────
+
+/** Pestañas del inspector. «Avanzado» solo existe en el modo profesional. */
+export type InspectorTab = "content" | "design" | "behavior" | "advanced";
+
+/** Opciones de aspecto y distribución (pestaña Diseño). */
+const DESIGN_KEYS = new Set(["align", "size", "variant", "kind", "height", "overlay", "imagePosition", "layout", "columns", "perView", "grayscale", "gap", "valign", "width"]);
+/** Lo que pasa al usarlo: avance, intervalos, interacciones y opciones funcionales (pestaña Comportamiento). */
+const BEHAVIOR_KEYS = new Set(["autoplay", "interval", "transition", "arrows", "dots", "animate", "lightbox", "redirectUrl", "consent"]);
+/** Ajustes técnicos, solo en el modo profesional (pestaña Avanzado). */
+const ADVANCED_KEYS = new Set(["mobile", "tablet", "level"]);
+
+/**
+ * Pestaña de una opción de primer nivel del módulo, o null si no se ofrece en ese modo (las marcadas como avanzadas
+ * solo aparecen en el profesional). Los textos, imágenes, enlaces y listas son Contenido. No cambia ningún dato:
+ * solo dónde se muestra la opción.
+ */
+export function fieldTab(f: FieldDef, pro: boolean): InspectorTab | null {
+  if (f.advanced && !pro) return null;
+  if (ADVANCED_KEYS.has(f.key)) return pro ? "advanced" : null;
+  if (f.kind === "select" || f.kind === "link") {
+    if (DESIGN_KEYS.has(f.key)) return "design";
+    if (BEHAVIOR_KEYS.has(f.key)) return "behavior";
+  }
+  return f.advanced ? "advanced" : "content";
+}
