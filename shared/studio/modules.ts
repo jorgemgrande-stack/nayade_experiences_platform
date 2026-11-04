@@ -452,3 +452,37 @@ export const SECTION_PRESETS: readonly SectionPreset[] = [
     build: () => [createBlock("products", { limit: "8" }), createBlock("cta", { title: "¿Buscas algo concreto?", buttonLabel: "Ver toda la tienda", buttonUrl: "/tienda" })],
   },
 ];
+
+// ─── Biblioteca: cómo se agrupa para el cliente ───────────────────────────────
+
+/**
+ * Elementos sueltos (grupo «Elementos» de la biblioteca), en el orden en que se ofrecen. Todo lo demás es una sección
+ * y aparece en una de las categorías de LIBRARY_SECTIONS: cada módulo y cada sección prediseñada, en un solo sitio.
+ */
+export const LIBRARY_ELEMENTS: readonly BlockType[] = ["heading", "text", "image", "button", "video", "form", "contact_form", "separator", "section"];
+
+export interface LibraryCategory {
+  key: string;
+  label: string;
+  /** Módulos que son una sección completa */
+  types: readonly BlockType[];
+  /** Claves de SECTION_PRESETS */
+  presets: readonly string[];
+}
+
+export const LIBRARY_SECTIONS: readonly LibraryCategory[] = [
+  { key: "portadas", label: "Portadas", types: ["hero", "slideshow"], presets: ["portada", "portada-presentacion"] },
+  { key: "servicios", label: "Servicios", types: ["features", "cards", "columns"], presets: ["servicios"] },
+  { key: "galerias", label: "Galerías", types: ["gallery", "carousel"], presets: [] },
+  { key: "opiniones", label: "Opiniones y confianza", types: ["testimonials", "logos", "stats"], presets: ["opiniones-carrusel", "confianza"] },
+  { key: "precios", label: "Precios y tienda", types: ["pricing", "products"], presets: ["tienda"] },
+  { key: "contacto", label: "Contacto", types: ["cta"], presets: ["contacto"] },
+  { key: "otras", label: "Otras secciones", types: ["faq", "blog_posts"], presets: [] },
+];
+
+/** Buscador común de la biblioteca (sin tildes ni mayúsculas). */
+export function libraryMatch(q: string, ...texts: string[]): boolean {
+  const fold = (s: string) => s.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
+  const needle = fold(q.trim());
+  return !needle || fold(texts.join(" ")).includes(needle);
+}
