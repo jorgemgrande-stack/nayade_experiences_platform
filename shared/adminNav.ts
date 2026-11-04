@@ -398,6 +398,8 @@ export const TASK_NAV: NavSection[] = [
         ],
       },
       { label: "Viajes (REAV)", href: "/admin/fiscal/reav", key: "x-reav", icon: "receipt", roles: ADMIN, capabilities: ["travel-net"] },
+      // Social Token Net · Tokens internos: programa de puntos (el equipo consulta; administración configura y ajusta)
+      { label: "Fidelización y puntos", href: "/admin/fidelizacion", key: "x-fidelizacion", icon: "sparkles", roles: SALES, capabilities: ["social-token-net-tokens"] },
     ],
   },
   {

@@ -48,6 +48,7 @@ import { IDEMPOTENCY_KEY_RE, withSaleKeyLock, findSaleByIdempotencyKey, resolveE
 import { computeSessionPaymentTotals, receivedSaleCondition } from "../tpvSessionTotals";
 import { tpvReportsRouter } from "./tpvReports";
 import { applySaleStock, assertStockAvailable, type StockSaleLine } from "../inventoryDb";
+import { issuePurchasePoints, issueTpvSalePointsAfterLink, type IssueResult } from "../loyaltyDb";
 
 const _pool = legacyPool();
 const db = legacyDb();
@@ -1051,6 +1052,15 @@ export const tpvRouter = router({
         ? [{ key: String(i + 1), productId: it.productId, variantId: it.variantId ?? null, quantity: it.quantity, name: it.productName }]
         : []));
       let stockWarnings: string[] = [];
+      // Tokens internos (Social Token Net): puntos de la venta para el cliente del CRM, si la empresa tiene el programa
+      const lineGross = input.items.map((it) => it.unitPrice * it.quantity * (1 - it.discountPercent / 100));
+      const grossSum = lineGross.reduce((a, b) => a + b, 0);
+      const loyaltyLines = input.items.map((it, i) => ({
+        productId: it.productType === "experience" && !it.isManual && it.productId > 0 ? it.productId : null,
+        categoryId: null,
+        amount: grossSum > 0 ? lineGross[i] * (total / grossSum) : 0,
+      }));
+      let loyalty: IssueResult | null = null;
 
       // -- 3. Numerar e insertar la venta con datos fiscales ----------------------
       // Se inserta 'pending' y pasa a 'paid' DENTRO de la transacción del núcleo (pasos 4–7). Si el núcleo falla, la
@@ -1121,7 +1131,7 @@ export const tpvRouter = router({
         });
         if (outcome.replayId != null) {
           const prev = await loadSaleResult(outcome.replayId);
-          return { ...prev, reservationId: prev.sale?.reservationId ?? null, reavExpedientId: undefined as number | undefined, reavExpedientNumber: undefined as string | undefined, replayed: true, stockWarnings: [] as string[] };
+          return { ...prev, reservationId: prev.sale?.reservationId ?? null, reavExpedientId: undefined as number | undefined, reavExpedientNumber: undefined as string | undefined, replayed: true, stockWarnings: [] as string[], loyalty: null as IssueResult | null };
         }
         claimed = outcome.claimed!;
       } else {
@@ -1298,6 +1308,10 @@ export const tpvRouter = router({
       // venta se ha llevado las últimas unidades (política «bloquear»), se deshace el cobro entero.
       stockWarnings = (await applySaleStock({ sourceType: "tpv_sale", sourceId: String(saleId), sourceRef: ticketNumber, site: saleSiteId, actor: { id: sellerUserId, name: sellerName }, onShortage: "reject" }, stockLines, tx)).shortfalls;
 
+      // -- 7c. Tokens internos: emisión en la misma transacción del cobro (idempotente por venta; sin cliente, sin
+      // licencia o sin programa activo no hace nada). Si el cobro se deshace, los puntos también.
+      loyalty = await issuePurchasePoints({ sourceType: "tpv_sale", sourceId: String(saleId), sourceRef: ticketNumber, clientId: linkedClientId, lines: loyaltyLines, actor: { id: sellerUserId, name: sellerName } }, tx);
+
       // Venta confirmada: el estado 'paid' se escribe dentro de la misma transacción
       await tx.update(tpvSales)
         .set({ status: "paid", paidAt: Date.now() } as any)
@@ -1344,6 +1358,8 @@ export const tpvRouter = router({
           if (byEmail) {
             await db.update(tpvSales).set({ clientId: byEmail.id } as any).where(eq(tpvSales.id, saleId));
             if (reservationId) await db.update(reservations).set({ clientId: byEmail.id } as any).where(eq(reservations.id, reservationId));
+            // Tokens internos: el cliente se identifica por su correo tras el cobro (misma clave: nunca dos veces)
+            loyalty = await issueTpvSalePointsAfterLink(saleId, { id: sellerUserId, name: sellerName });
           }
         } catch (e) {
           console.error("[TPV] Error enlazando el cliente CRM a la venta:", e);
@@ -1689,7 +1705,7 @@ export const tpvRouter = router({
       }
 
       // -- 10. Devolver venta completa -----------------------------------------------------------
-      return { ...(await loadSaleResult(saleId)), reservationId, reavExpedientId, reavExpedientNumber, replayed: false, stockWarnings };
+      return { ...(await loadSaleResult(saleId)), reservationId, reavExpedientId, reavExpedientNumber, replayed: false, stockWarnings, loyalty };
     }),
 
   getSale: tpvAccessProc

@@ -23,6 +23,7 @@ import {
 import { madridStartOfDayUtc, madridEndOfDayUtc } from "../utils/timezone";
 import { legacyDb, legacyPool } from "../_core/legacyDb";
 import { restockReservations, restockTpvSale } from "../inventoryDb";
+import { reverseReservationPoints, reverseTpvSalePoints } from "../loyaltyDb";
 
 const pool = legacyPool();
 const db = legacyDb();
@@ -858,6 +859,8 @@ export const dailyControlRouter = router({
             .where(eq(reservations.id, sale.reservationId));
         }
         await restockTpvSale(input.id, stockActor);
+        // Tokens internos: se anulan los puntos emitidos por la venta, una sola vez (sin programa, no hace nada)
+        await reverseTpvSalePoints(input.id, stockActor);
       } else {
         const [res] = await db.select({ id: reservations.id })
           .from(reservations)
@@ -881,6 +884,7 @@ export const dailyControlRouter = router({
           .set({ operationStatus: "anulada" })
           .where(eq(transactions.reservationId, input.id));
         await restockReservations([input.id], stockActor);
+        await reverseReservationPoints([input.id], stockActor);
       }
       return { ok: true };
     }),
