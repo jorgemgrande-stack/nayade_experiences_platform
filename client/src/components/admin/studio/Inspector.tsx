@@ -100,7 +100,7 @@ export function BlockInspector({
             className={cn(
               "min-w-0 flex-auto rounded-md py-1.5 font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#5b5bf6]",
               tabs.length > 3 ? "px-1 text-[11px]" : "px-1.5 text-xs",
-              current === t ? "bg-background text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground",
+              current === t ? "bg-[#5b5bf6]/20 text-foreground shadow-sm ring-1 ring-inset ring-[#5b5bf6]/50" : "text-muted-foreground hover:text-foreground",
             )}
           >
             {TAB_LABEL[t]}
@@ -211,7 +211,7 @@ export function Segmented({ label, value, options, onChange }: { label: string; 
             role="radio"
             aria-checked={value === o.value}
             onClick={() => onChange(o.value)}
-            className={cn("flex-1 rounded-md px-2 py-1.5 text-xs font-medium transition-colors", value === o.value ? "bg-background text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground")}
+            className={cn("flex-1 rounded-md px-2 py-1.5 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#5b5bf6]", value === o.value ? "bg-[#5b5bf6]/20 text-foreground shadow-sm ring-1 ring-inset ring-[#5b5bf6]/50" : "text-muted-foreground hover:text-foreground")}
           >
             {o.label}
           </button>

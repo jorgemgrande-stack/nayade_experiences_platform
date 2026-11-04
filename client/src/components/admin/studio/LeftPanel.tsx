@@ -72,7 +72,7 @@ export function LeftPanel(props: {
             role="tab"
             aria-selected={props.tab === t.key}
             onClick={() => props.onTab(t.key)}
-            className={cn("rounded-md px-2 py-1.5 text-xs font-semibold transition-colors", props.tab === t.key ? "bg-muted text-foreground" : "text-muted-foreground hover:text-foreground")}
+            className={cn("rounded-md px-2 py-1.5 text-xs font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#5b5bf6]", props.tab === t.key ? "bg-[#5b5bf6]/20 text-foreground shadow-sm ring-1 ring-inset ring-[#5b5bf6]/50" : "text-muted-foreground hover:bg-muted hover:text-foreground")}
           >
             {t.label}
           </button>

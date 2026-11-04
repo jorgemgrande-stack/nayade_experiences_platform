@@ -676,7 +676,7 @@ function Studio({ routeSlug }: { routeSlug: string | null }) {
                   setDevice(d.key);
                   if (d.key === "mobile") markGuide("mobile");
                 }}
-                className={cn("rounded-md px-2.5 py-1.5 transition-colors", device === d.key ? "bg-background text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground")}
+                className={cn("rounded-md px-2.5 py-1.5 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#5b5bf6]", device === d.key ? "bg-[#5b5bf6]/20 text-foreground shadow-sm ring-1 ring-inset ring-[#5b5bf6]/50" : "text-muted-foreground hover:text-foreground")}
               >
                 <d.icon className="h-4 w-4" />
               </button>
@@ -689,7 +689,7 @@ function Studio({ routeSlug }: { routeSlug: string | null }) {
             <button
               type="button"
               onClick={() => setZoom(null)}
-              className={cn("min-w-[52px] rounded-md px-1.5 py-1 text-xs font-medium tabular-nums", zoom === null ? "bg-background text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground")}
+              className={cn("min-w-[52px] rounded-md px-1.5 py-1 text-xs font-medium tabular-nums", zoom === null ? "bg-[#5b5bf6]/20 text-foreground shadow-sm ring-1 ring-inset ring-[#5b5bf6]/50" : "text-muted-foreground hover:text-foreground")}
               title="Ajustar al espacio disponible"
               aria-label={`Zoom ${Math.round(scale * 100)} %. Pulsa para ajustar`}
             >
@@ -728,7 +728,7 @@ function Studio({ routeSlug }: { routeSlug: string | null }) {
                 setPro(m.v);
                 toast(m.v ? "Modo profesional: diseño avanzado y pestaña «Avanzado» en el inspector." : "Modo sencillo: lo esencial para editar el contenido de tu web.");
               }}
-              className={cn("rounded-md px-2.5 py-1 text-xs font-medium transition-colors", pro === m.v ? "bg-background text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground")}
+              className={cn("rounded-md px-2.5 py-1 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#5b5bf6]", pro === m.v ? "bg-[#5b5bf6]/20 text-foreground shadow-sm ring-1 ring-inset ring-[#5b5bf6]/50" : "text-muted-foreground hover:text-foreground")}
             >
               {m.label}
             </button>
@@ -974,6 +974,7 @@ function Studio({ routeSlug }: { routeSlug: string | null }) {
                     <div className="flex flex-wrap gap-2">
                       <Button
                         size="sm"
+                        className="bg-[#5b5bf6] text-white hover:bg-[#4a4ae0]"
                         onClick={() => setAddAt({ parent: null, col: 0, index: blocks.length })}
                       >
                         Añadir un bloque

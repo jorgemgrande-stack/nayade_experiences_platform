@@ -62,7 +62,7 @@ export function GuideCard({ onTemplates, onBlank, onColors, onMobile }: { onTemp
   const actions: Partial<Record<GuideStep, React.ReactNode>> = {
     start: (
       <>
-        <Button size="sm" className="h-7 px-2.5 text-xs" onClick={onTemplates}>
+        <Button size="sm" className="h-7 bg-[#5b5bf6] px-2.5 text-xs text-white hover:bg-[#4a4ae0]" onClick={onTemplates}>
           Ver plantillas
         </Button>
         <Button size="sm" variant="outline" className="h-7 px-2.5 text-xs" onClick={onBlank}>
