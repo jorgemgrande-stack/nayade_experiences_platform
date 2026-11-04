@@ -12,7 +12,7 @@ import { Bookmark, Copy, EyeOff, FileText, GripVertical, Home, Image as ImageIco
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
-import { blockLabel, type Device, type PageBlock } from "@shared/pageBlocks";
+import { blockLabel, PAGE_TEMPLATES, type Device, type PageBlock, type PageTemplateKey } from "@shared/pageBlocks";
 import { MODULE_FAMILIES, SECTION_PRESETS, moduleDef, searchModules, type ModuleDef } from "@shared/studio/modules";
 import { blockSummary } from "@/components/admin/pageBuilder/BlockEditors";
 import { moduleIcon } from "./icons";
@@ -36,6 +36,8 @@ export function LeftPanel(props: {
   /** Mis bloques: guardados para reutilizar (se inserta una copia) */
   savedBlocks: Array<{ id: string; name: string; block: PageBlock }>;
   onDeleteSaved: (id: string) => void;
+  /** Elegir una plantilla de página completa (el editor pregunta si sustituye o añade) */
+  onTemplate: (key: PageTemplateKey) => void;
   blocks: PageBlock[];
   selectedId: string | null;
   device: Device;
@@ -71,7 +73,7 @@ export function LeftPanel(props: {
         ))}
       </div>
       <div className="min-h-0 flex-1 overflow-y-auto">
-        {props.tab === "add" && <Library modules={props.modules} presets={props.presets} onInsert={props.onInsert} saved={props.savedBlocks} onDeleteSaved={props.onDeleteSaved} />}
+        {props.tab === "add" && <Library modules={props.modules} presets={props.presets} onInsert={props.onInsert} onTemplate={props.onTemplate} saved={props.savedBlocks} onDeleteSaved={props.onDeleteSaved} />}
         {props.tab === "structure" && <Structure {...props} />}
         {props.tab === "site" && <Site pages={props.pages} currentSlug={props.currentSlug} onOpenPage={props.onOpenPage} onGlobalStyle={props.onGlobalStyle} onSiteChrome={props.onSiteChrome} />}
       </div>
@@ -79,12 +81,16 @@ export function LeftPanel(props: {
   );
 }
 
+/** Plantillas de página completa (las mismas que al crear una página, salvo «En blanco»). */
+const FULL_TEMPLATES = PAGE_TEMPLATES.filter((t) => t.key !== "blank");
+
 function Library({
-  modules, presets, onInsert, saved, onDeleteSaved,
+  modules, presets, onInsert, onTemplate, saved, onDeleteSaved,
 }: {
   modules: ModuleDef[];
   presets: typeof SECTION_PRESETS;
   onInsert: (payload: string) => void;
+  onTemplate: (key: PageTemplateKey) => void;
   saved: Array<{ id: string; name: string; block: PageBlock }>;
   onDeleteSaved: (id: string) => void;
 }) {
@@ -183,6 +189,27 @@ function Library({
                 <span>
                   <span className="block text-sm font-medium">{p.label}</span>
                   <span className="block text-xs text-muted-foreground">{p.description}</span>
+                </span>
+              </button>
+            ))}
+          </div>
+        </section>
+      )}
+      {!q.trim() && (
+        <section className="space-y-2">
+          <h3 className="px-0.5 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Plantillas de página completa</h3>
+          <div className="space-y-2">
+            {FULL_TEMPLATES.map((t) => (
+              <button
+                key={t.key}
+                type="button"
+                onClick={() => onTemplate(t.key)}
+                className="flex w-full items-start gap-3 rounded-lg border border-border bg-background p-3 text-left transition-colors hover:border-[#5b5bf6]/60"
+              >
+                <FileText className="mt-0.5 h-4 w-4 shrink-0 text-[#5b5bf6]" />
+                <span>
+                  <span className="block text-sm font-medium">{t.label}</span>
+                  <span className="block text-xs text-muted-foreground">{t.description}</span>
                 </span>
               </button>
             ))}
