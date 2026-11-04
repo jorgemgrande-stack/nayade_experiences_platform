@@ -31,6 +31,8 @@ export type FromCanvas =
   | { kind: "ready" }
   | { kind: "select"; id: string | null }
   | { kind: "text"; id: string; key: string; value: string }
+  /** Elegir una imagen de la biblioteca multimedia para el campo `key` del bloque (pulsando la imagen o su hueco) */
+  | { kind: "pickImage"; id: string; key: string }
   | { kind: "action"; id: string; action: BlockAction }
   /** `parent` null: la página; si no, la columna `col` de esa sección */
   | { kind: "drop"; payload: string; index: number; parent: string | null; col: number }

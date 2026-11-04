@@ -9,7 +9,7 @@
 import { createContext, Fragment, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { Link } from "wouter";
 import { toast } from "sonner";
-import { ArrowDown, ArrowUp, CalendarDays, ChevronDown, Copy, CornerLeftUp, EyeOff, GripVertical, Plus, Newspaper, Play, Quote, ShoppingBag, Star, Trash2 } from "lucide-react";
+import { ArrowDown, ArrowUp, Bold, CalendarDays, ChevronDown, Copy, CornerLeftUp, EyeOff, GripVertical, Image as ImageIcon, Italic, Link2, List, Newspaper, Play, Plus, Quote, ShoppingBag, Star, Trash2, Unlink } from "lucide-react";
 import { trpc } from "@/lib/trpc";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -39,6 +39,8 @@ export interface StudioEdit {
   raw: Map<string, PageBlock>;
   onSelect: (id: string | null) => void;
   onText: (id: string, key: string, value: string) => void;
+  /** Abrir la biblioteca multimedia para una imagen del bloque */
+  onPickImage: (id: string, key: string) => void;
   onAction: (id: string, action: StudioBlockAction) => void;
   /** Añadir un módulo en ese sitio con el selector rápido del editor */
   onAddAt: (index: number, parent: string | null, col: number) => void;
@@ -109,6 +111,7 @@ const rawField = (ed: StudioEdit, block: PageBlock, k: string, fallback: string)
 
 function EditableText({ ed, block, k, value, as: Tag, className, multiline, placeholder }: { ed: StudioEdit; block: PageBlock; k: string; value: string; as: TagName; className?: string; multiline?: boolean; placeholder?: string }) {
   const ref = useRef<HTMLElement | null>(null);
+  const cancelled = useRef(false);
   const editable = ed.selectedId === block.id && !ed.readOnly;
   const raw = rawField(ed, block, k, value);
   useLayoutEffect(() => {
@@ -116,6 +119,9 @@ function EditableText({ ed, block, k, value, as: Tag, className, multiline, plac
     if (el && el.ownerDocument.activeElement !== el && el.textContent !== value) el.textContent = value;
     // `Tag` también: al cambiar de nivel (h2 → h3, o al dejar de ser el primer título) el elemento es otro y llega vacío
   }, [value, editable, Tag]);
+  useLayoutEffect(() => {
+    if (editable && ref.current) takePendingFocus(block.id, k, ref.current);
+  }, [editable, block.id, k]);
   if (!value && !editable) return null;
   const El = Tag as "div";
   return (
@@ -132,7 +138,15 @@ function EditableText({ ed, block, k, value, as: Tag, className, multiline, plac
       onFocus={(e) => {
         if (raw !== value) e.currentTarget.textContent = raw;
       }}
+      onDoubleClick={() => {
+        if (!editable && !ed.readOnly) requestFocus(block.id, k, ed);
+      }}
       onBlur={(e) => {
+        if (cancelled.current) {
+          cancelled.current = false;
+          e.currentTarget.textContent = value;
+          return;
+        }
         const typed = (e.currentTarget.innerText ?? "").replace(/ /g, " ").replace(/\n{3,}/g, "\n\n").trim();
         const next = multiline ? typed : typed.replace(/\s*\n\s*/g, " ");
         if (next !== raw) ed.onText(block.id, k, next);
@@ -145,6 +159,8 @@ function EditableText({ ed, block, k, value, as: Tag, className, multiline, plac
         sel?.selectAllChildren(e.currentTarget);
       }}
       onKeyDown={(e) => {
+        // Esc deshace lo escrito desde que se empezó a editar; Intro (en un texto de una línea) lo confirma
+        if (e.key === "Escape") cancelled.current = true;
         if (e.key === "Escape" || (e.key === "Enter" && !multiline)) {
           e.preventDefault();
           e.currentTarget.blur();
@@ -156,6 +172,52 @@ function EditableText({ ed, block, k, value, as: Tag, className, multiline, plac
         document.execCommand("insertText", false, e.clipboardData.getData("text/plain"));
       }}
     />
+  );
+}
+
+/**
+ * Doble clic en un texto de un bloque que aún no está seleccionado: se selecciona el bloque y, en cuanto el texto
+ * pasa a editable, recibe el foco con el cursor al final (sin tener que pulsar otra vez).
+ */
+let pendingFocus: { id: string; k: string } | null = null;
+
+function requestFocus(id: string, k: string, ed: StudioEdit) {
+  pendingFocus = { id, k };
+  ed.onSelect(id);
+}
+
+function takePendingFocus(id: string, k: string, el: HTMLElement) {
+  if (!pendingFocus || pendingFocus.id !== id || pendingFocus.k !== k) return;
+  pendingFocus = null;
+  el.focus();
+  const sel = el.ownerDocument.getSelection();
+  const range = el.ownerDocument.createRange();
+  range.selectNodeContents(el);
+  range.collapse(false);
+  sel?.removeAllRanges();
+  sel?.addRange(range);
+}
+
+/** Dirección que se acepta para un enlace escrito en la barra de formato (el servidor la vuelve a validar). */
+function linkHref(v: string): string {
+  const t = v.trim();
+  if (!t) return "";
+  return /^(https?:\/\/|\/|#|mailto:|tel:)/i.test(t) ? t : `https://${t}`;
+}
+
+function FormatButton({ label, active, onClick, children }: { label: string; active?: boolean; onClick: () => void; children: ReactNode }) {
+  return (
+    <button
+      type="button"
+      title={label}
+      aria-label={label}
+      aria-pressed={active}
+      onMouseDown={(e) => e.preventDefault()}
+      onClick={onClick}
+      className={cn("rounded-md p-1.5 text-white hover:bg-white/15", active && "bg-white/20")}
+    >
+      {children}
+    </button>
   );
 }
 
@@ -174,6 +236,12 @@ function Rich({ html, className, k = "html" }: { html: string; className?: strin
 
 function EditableRich({ ed, block, k, html, className }: { ed: StudioEdit; block: PageBlock; k: string; html: string; className: string }) {
   const ref = useRef<HTMLDivElement>(null);
+  const barRef = useRef<HTMLDivElement>(null);
+  const cancelled = useRef(false);
+  const savedRange = useRef<Range | null>(null);
+  const [focused, setFocused] = useState(false);
+  const [linkDraft, setLinkDraft] = useState<string | null>(null);
+  const [, refresh] = useState(0);
   const editable = ed.selectedId === block.id && !ed.readOnly;
   const raw = rawField(ed, block, k, html);
   useLayoutEffect(() => {
@@ -181,34 +249,189 @@ function EditableRich({ ed, block, k, html, className }: { ed: StudioEdit; block
     // El HTML del documento llega saneado del servidor; lo que se escribe aquí se sanea al guardar el borrador
     if (el && el.ownerDocument.activeElement !== el && el.innerHTML !== html) el.innerHTML = html;
   }, [html, editable]);
+  useLayoutEffect(() => {
+    if (editable && ref.current) takePendingFocus(block.id, k, ref.current);
+  }, [editable, block.id, k]);
   if (!html && !editable) return null;
+  const doc = () => ref.current?.ownerDocument ?? document;
+  const exec = (cmd: string, value?: string) => {
+    doc().execCommand(cmd, false, value);
+    refresh((n) => n + 1);
+  };
+  const state = (cmd: string) => {
+    try {
+      return focused && doc().queryCommandState(cmd);
+    } catch {
+      return false;
+    }
+  };
+  /** Terminar de editar: se guarda (o, con Esc, se descarta) y se oculta la barra */
+  const finish = (el: HTMLDivElement) => {
+    setFocused(false);
+    setLinkDraft(null);
+    if (cancelled.current) {
+      cancelled.current = false;
+      el.innerHTML = html;
+      return;
+    }
+    const next = el.innerHTML;
+    if (next !== raw) ed.onText(block.id, k, next);
+    else el.innerHTML = html;
+  };
+  const applyLink = () => {
+    const el = ref.current;
+    const href = linkHref(linkDraft ?? "");
+    setLinkDraft(null);
+    if (!el) return;
+    el.focus();
+    const sel = doc().getSelection();
+    if (savedRange.current && sel) {
+      sel.removeAllRanges();
+      sel.addRange(savedRange.current);
+    }
+    if (href) exec("createLink", href);
+  };
+  return (
+    <div className="relative">
+      {focused && editable && (
+        <div
+          ref={barRef}
+          className="absolute left-0 top-full z-50 mt-2 flex items-center gap-0.5 rounded-lg p-0.5 font-sans shadow-lg"
+          style={{ background: STUDIO_ACCENT }}
+          role="toolbar"
+          aria-label="Formato del texto"
+        >
+          {linkDraft === null ? (
+            <>
+              <FormatButton label="Negrita (Ctrl+B)" active={state("bold")} onClick={() => exec("bold")}>
+                <Bold className="h-3.5 w-3.5" />
+              </FormatButton>
+              <FormatButton label="Cursiva (Ctrl+I)" active={state("italic")} onClick={() => exec("italic")}>
+                <Italic className="h-3.5 w-3.5" />
+              </FormatButton>
+              <FormatButton label="Lista" active={state("insertUnorderedList")} onClick={() => exec("insertUnorderedList")}>
+                <List className="h-3.5 w-3.5" />
+              </FormatButton>
+              <FormatButton
+                label="Enlace"
+                onClick={() => {
+                  const sel = doc().getSelection();
+                  savedRange.current = sel && sel.rangeCount ? sel.getRangeAt(0).cloneRange() : null;
+                  setLinkDraft("");
+                }}
+              >
+                <Link2 className="h-3.5 w-3.5" />
+              </FormatButton>
+              <FormatButton label="Quitar enlace" onClick={() => exec("unlink")}>
+                <Unlink className="h-3.5 w-3.5" />
+              </FormatButton>
+            </>
+          ) : (
+            <input
+              autoFocus
+              value={linkDraft}
+              onChange={(e) => setLinkDraft(e.target.value)}
+              onKeyDown={(e) => {
+                e.stopPropagation();
+                if (e.key === "Enter") {
+                  e.preventDefault();
+                  applyLink();
+                } else if (e.key === "Escape") {
+                  e.preventDefault();
+                  setLinkDraft(null);
+                  ref.current?.focus();
+                }
+              }}
+              onBlur={(e) => {
+                if (e.relatedTarget !== ref.current && ref.current) finish(ref.current);
+              }}
+              placeholder="Pega la dirección y pulsa Intro"
+              aria-label="Dirección del enlace"
+              className="h-7 w-56 rounded-md border-0 bg-white px-2 text-xs text-slate-900 outline-none"
+            />
+          )}
+        </div>
+      )}
+      <div
+        ref={ref}
+        className={cn(className, editable && "studio-editable min-h-[1.5em]")}
+        contentEditable={editable || undefined}
+        suppressContentEditableWarning
+        data-placeholder="Escribe aquí el texto"
+        onDoubleClick={() => {
+          if (!editable && !ed.readOnly) requestFocus(block.id, k, ed);
+        }}
+        onFocus={(e) => {
+          setFocused(true);
+          if (raw !== html && e.currentTarget.innerHTML === html) e.currentTarget.innerHTML = raw;
+        }}
+        onBlur={(e) => {
+          // Al pulsar la barra de formato (o escribir el enlace) se sigue editando
+          if (barRef.current && e.relatedTarget instanceof Node && barRef.current.contains(e.relatedTarget)) return;
+          finish(e.currentTarget);
+        }}
+        onKeyUp={() => refresh((n) => n + 1)}
+        onMouseUp={() => refresh((n) => n + 1)}
+        onKeyDown={(e) => {
+          if (e.key === "Escape") {
+            e.preventDefault();
+            cancelled.current = true;
+            e.currentTarget.blur();
+          }
+          e.stopPropagation();
+        }}
+        onPaste={(e) => {
+          e.preventDefault();
+          document.execCommand("insertText", false, e.clipboardData.getData("text/plain"));
+        }}
+      />
+    </div>
+  );
+}
+
+/**
+ * Imagen que se cambia desde la página: en el lienzo, su hueco vacío abre la biblioteca multimedia con un clic; una
+ * imagen ya puesta, cuando su bloque está seleccionado. En la web es solo su contenido.
+ */
+function ImageSlot({ k, filled, className, children }: { k: string; filled: boolean; className?: string; children: ReactNode }) {
+  const ed = useContext(StudioEditContext);
+  const block = useContext(BlockCtx);
+  if (!ed || !block || ed.readOnly) return <>{children}</>;
+  const active = !filled || ed.selectedId === block.id;
+  const open = () => {
+    if (ed.selectedId !== block.id) ed.onSelect(block.id);
+    ed.onPickImage(block.id, k);
+  };
   return (
     <div
-      ref={ref}
-      className={cn(className, editable && "studio-editable min-h-[1.5em]")}
-      contentEditable={editable || undefined}
-      suppressContentEditableWarning
-      data-placeholder="Escribe aquí el texto"
-      onFocus={(e) => {
-        if (raw !== html) e.currentTarget.innerHTML = raw;
-      }}
-      onBlur={(e) => {
-        const next = e.currentTarget.innerHTML;
-        if (next !== raw) ed.onText(block.id, k, next);
-        else e.currentTarget.innerHTML = html;
+      className={cn("group/img relative", active && "cursor-pointer", className)}
+      onClick={(e) => {
+        if (!active) return;
+        e.preventDefault();
+        e.stopPropagation();
+        open();
       }}
       onKeyDown={(e) => {
-        if (e.key === "Escape") {
+        if (active && (e.key === "Enter" || e.key === " ")) {
           e.preventDefault();
-          e.currentTarget.blur();
+          e.stopPropagation();
+          open();
         }
-        e.stopPropagation();
       }}
-      onPaste={(e) => {
-        e.preventDefault();
-        document.execCommand("insertText", false, e.clipboardData.getData("text/plain"));
-      }}
-    />
+      role={active ? "button" : undefined}
+      tabIndex={active ? 0 : undefined}
+      aria-label={active ? (filled ? "Cambiar imagen" : "Elegir imagen") : undefined}
+    >
+      {children}
+      {active && filled && (
+        <span
+          className="pointer-events-none absolute left-1/2 top-1/2 z-20 inline-flex -translate-x-1/2 -translate-y-1/2 items-center gap-1.5 rounded-full px-3 py-1.5 font-sans text-xs font-semibold text-white opacity-0 shadow-lg transition-opacity group-hover/img:opacity-100"
+          style={{ background: STUDIO_ACCENT }}
+        >
+          <ImageIcon className="h-3.5 w-3.5" aria-hidden /> Cambiar imagen
+        </span>
+      )}
+    </div>
   );
 }
 
@@ -232,6 +455,7 @@ function HeroBlock({ b, first, preview }: { b: BlockOf<"hero">; first: boolean; 
     <section className={cn("relative overflow-hidden", d.imageUrl ? "min-h-[360px] md:min-h-[460px]" : "bg-primary")}>
       {d.imageUrl && <img src={d.imageUrl} alt={d.imageAlt} className="absolute inset-0 h-full w-full object-cover" />}
       {d.imageUrl && <div className="absolute inset-0 bg-gradient-to-b from-black/55 via-black/40 to-black/60" />}
+      <BackgroundImageButton blockId={b.id} k="imageUrl" />
       <div className={cn("relative container flex flex-col justify-center gap-4 py-16 md:py-24 text-white", d.imageUrl ? "min-h-[360px] md:min-h-[460px]" : "text-primary-foreground")}>
         <Txt k="title" value={d.title} as={first ? "h1" : "h2"} className="max-w-3xl break-words font-heading text-3xl md:text-5xl font-bold leading-tight" placeholder="Tu titular" />
         <Txt k="subtitle" value={d.subtitle} as="p" multiline className="max-w-2xl text-lg md:text-xl opacity-90" placeholder="Subtítulo" />
@@ -246,6 +470,26 @@ function HeroBlock({ b, first, preview }: { b: BlockOf<"hero">; first: boolean; 
         )}
       </div>
     </section>
+  );
+}
+
+/** En el lienzo, con la cabecera seleccionada: botón para elegir su imagen de fondo. */
+function BackgroundImageButton({ blockId, k }: { blockId: string; k: string }) {
+  const ed = useContext(StudioEditContext);
+  if (!ed || ed.readOnly || ed.selectedId !== blockId) return null;
+  return (
+    <button
+      type="button"
+      onClick={(e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        ed.onPickImage(blockId, k);
+      }}
+      className="absolute bottom-3 right-3 z-30 inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 font-sans text-xs font-semibold text-white shadow-lg"
+      style={{ background: STUDIO_ACCENT }}
+    >
+      <ImageIcon className="h-3.5 w-3.5" aria-hidden /> Imagen de fondo
+    </button>
   );
 }
 
@@ -278,13 +522,18 @@ function ImageBlock({ b }: { b: BlockOf<"image"> }) {
   return (
     <section className="container py-6">
       <figure className={cn("mx-auto", b.data.size === "wide" ? "max-w-6xl" : "max-w-3xl")}>
-        {!b.data.url ? (
-          <EmptyMedia>Elige la imagen en el panel de la derecha</EmptyMedia>
-        ) : showBroken ? (
-          <EmptyMedia>No se puede mostrar la imagen elegida. Elige otra en el panel de la derecha.</EmptyMedia>
-        ) : (
-          <img src={b.data.url} alt={b.data.alt} className="h-auto w-full rounded-2xl object-cover" loading="lazy" onError={() => setBroken(b.data.url)} />
-        )}
+        <ImageSlot k="url" filled={!!b.data.url && !showBroken}>
+          {!b.data.url ? (
+            <EmptyMedia>
+              <ImageIcon className="h-7 w-7" aria-hidden />
+              Haz clic para elegir la imagen
+            </EmptyMedia>
+          ) : showBroken ? (
+            <EmptyMedia>No se puede mostrar la imagen elegida. Haz clic para elegir otra.</EmptyMedia>
+          ) : (
+            <img src={b.data.url} alt={b.data.alt} className="h-auto w-full rounded-2xl object-cover" loading="lazy" onError={() => setBroken(b.data.url)} />
+          )}
+        </ImageSlot>
         <Txt k="caption" value={b.data.caption} as="figcaption" className="mt-2 block text-center text-sm text-muted-foreground" placeholder="Pie de foto (opcional)" />
       </figure>
     </section>
@@ -418,7 +667,15 @@ function CardsBlock({ b, first, preview }: { b: BlockOf<"cards">; first: boolean
   const d = b.data;
   const cards = d.items.map((c, i) => (
     <article key={i} className="flex h-full flex-col overflow-hidden rounded-2xl border border-border bg-card text-card-foreground shadow-sm transition hover:shadow-md">
-      {c.imageUrl ? <img src={c.imageUrl} alt={c.imageAlt} className="aspect-[4/3] w-full object-cover" loading="lazy" decoding="async" /> : <div className="aspect-[4/3] w-full bg-gradient-to-br from-primary/15 to-primary/5" aria-hidden />}
+      <ImageSlot k={`items.${i}.imageUrl`} filled={!!c.imageUrl}>
+        {c.imageUrl ? (
+          <img src={c.imageUrl} alt={c.imageAlt} className="aspect-[4/3] w-full object-cover" loading="lazy" decoding="async" />
+        ) : (
+          <div className="flex aspect-[4/3] w-full items-center justify-center bg-gradient-to-br from-primary/15 to-primary/5 text-primary/60" aria-hidden>
+            {ed && !ed.readOnly && <ImageIcon className="h-7 w-7" />}
+          </div>
+        )}
+      </ImageSlot>
       <div className="flex flex-1 flex-col gap-2 p-5">
         <Txt k={`items.${i}.title`} value={c.title} as="h3" className="font-heading text-lg font-semibold text-foreground" placeholder="Título de la tarjeta" />
         <Txt k={`items.${i}.text`} value={c.text} as="p" multiline className="flex-1 whitespace-pre-line text-sm leading-relaxed text-muted-foreground" placeholder="Texto (opcional)" />
@@ -477,7 +734,9 @@ function ColumnsBlock({ b, first, preview }: { b: BlockOf<"columns">; first: boo
       <div className={cn("grid items-center gap-8 md:grid-cols-2 md:gap-12", !d.imageUrl && "md:grid-cols-1 max-w-3xl")}>
         {d.imageUrl && (
           <div className={cn(d.imagePosition === "left" ? "md:order-first" : "md:order-last")}>
-            <img src={d.imageUrl} alt={d.imageAlt} className="aspect-[4/3] w-full rounded-2xl object-cover" loading="lazy" />
+            <ImageSlot k="imageUrl" filled>
+              <img src={d.imageUrl} alt={d.imageAlt} className="aspect-[4/3] w-full rounded-2xl object-cover" loading="lazy" />
+            </ImageSlot>
           </div>
         )}
         <div className="min-w-0 space-y-4">

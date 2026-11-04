@@ -32,10 +32,12 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
-import { NOT_NESTABLE, PAGE_LIMITS, PAGE_TEMPLATES, blockLabel, createBlock, duplicateBlock, templateBlocks, writeBlockText, type BlockType, type Device, type PageBlock, type PageTemplateKey } from "@shared/pageBlocks";
+import { NOT_NESTABLE, PAGE_LIMITS, PAGE_TEMPLATES, blockLabel, createBlock, duplicateBlock, readBlockText, templateBlocks, writeBlockText, type BlockType, type Device, type PageBlock, type PageTemplateKey } from "@shared/pageBlocks";
 import { SECTION_PRESETS, availableModules, moduleDef } from "@shared/studio/modules";
 import { countBlocks, createSection, findBlock, insertBlocks, moveBlock, nestable, placeProblem, removeBlock, walk, type Place } from "@shared/studio/tree";
 import { QuickInsert } from "@/components/admin/studio/QuickInsert";
+import { MediaLibraryDialog } from "@/components/ImageUploader";
+import { siteRelativeFileUrl } from "@shared/imageUpload";
 import { SITE_TOKEN_LABELS } from "@shared/siteTokenLabels";
 import type { LinkTarget } from "@/components/admin/pageBuilder/BlockEditors";
 import { BlockInspector } from "@/components/admin/studio/Inspector";
@@ -105,6 +107,7 @@ function Studio({ routeSlug }: { routeSlug: string | null }) {
   const [confirmRestore, setConfirmRestore] = useState<number | null>(null);
   const [shortcuts, setShortcuts] = useState(false);
   const [globalOpen, setGlobalOpen] = useState(false);
+  const [pickImage, setPickImage] = useState<{ id: string; key: string } | null>(null);
   const [saveName, setSaveName] = useState<string | null>(null);
   const [addAt, setAddAt] = useState<Place | null>(null);
   // Mis bloques: guardados para reutilizar en cualquier página
@@ -341,6 +344,9 @@ function Studio({ routeSlug }: { routeSlug: string | null }) {
         break;
       case "text":
         if (!viewing) setText(m.id, m.key, m.value);
+        break;
+      case "pickImage":
+        if (!viewing && doc.loaded) setPickImage({ id: m.id, key: m.key });
         break;
       case "action":
         if (viewing) break;
@@ -1044,6 +1050,16 @@ function Studio({ routeSlug }: { routeSlug: string | null }) {
           </form>
         </DialogContent>
       </Dialog>
+
+      <MediaLibraryDialog
+        open={!!pickImage}
+        current={pickImage ? (readBlockText(findBlock(blocks, pickImage.id)?.block.data, pickImage.key) ?? "") : ""}
+        onClose={() => setPickImage(null)}
+        onConfirm={(url) => {
+          if (pickImage) setText(pickImage.id, pickImage.key, siteRelativeFileUrl(url));
+          setPickImage(null);
+        }}
+      />
 
       <Dialog open={shortcuts} onOpenChange={setShortcuts}>
         <DialogContent className="max-w-sm">
