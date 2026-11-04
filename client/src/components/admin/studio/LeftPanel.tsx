@@ -8,14 +8,16 @@
  */
 import { useMemo, useRef, useState } from "react";
 import { Link } from "wouter";
-import { Bookmark, Copy, EyeOff, FileText, GripVertical, Home, Image as ImageIcon, LayoutPanelTop, Newspaper, Palette, PanelsTopLeft, Plus, Search, Settings2, Trash2 } from "lucide-react";
+import { Copy, EyeOff, FileText, GripVertical, Home, Image as ImageIcon, Newspaper, Palette, PanelsTopLeft, Plus, Search, Settings2, Trash2 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
+import { HoverCard, HoverCardContent, HoverCardTrigger } from "@/components/ui/hover-card";
 import { cn } from "@/lib/utils";
-import { blockLabel, PAGE_TEMPLATES, type Device, type PageBlock, type PageTemplateKey } from "@shared/pageBlocks";
+import { blockLabel, createBlock, PAGE_TEMPLATES, templateBlocks, type Device, type PageBlock, type PageTemplateKey } from "@shared/pageBlocks";
 import { MODULE_FAMILIES, SECTION_PRESETS, moduleDef, searchModules, type ModuleDef } from "@shared/studio/modules";
 import { blockSummary } from "@/components/admin/pageBuilder/BlockEditors";
 import { moduleIcon } from "./icons";
+import { BlockThumb } from "./BlockThumb";
 import { DRAG_MIME } from "./protocol";
 import type { SitePage } from "./PageSettings";
 
@@ -81,6 +83,20 @@ export function LeftPanel(props: {
   );
 }
 
+/** Vista previa al pasar por encima de un elemento de la biblioteca (a la derecha del panel). */
+function Preview({ blocks, title, description, children }: { blocks: PageBlock[]; title: string; description?: string; children: React.ReactElement }) {
+  return (
+    <HoverCard openDelay={350} closeDelay={60}>
+      <HoverCardTrigger asChild>{children}</HoverCardTrigger>
+      <HoverCardContent side="right" align="start" sideOffset={12} className="w-72 space-y-2 p-3">
+        <BlockThumb blocks={blocks} width={262} ratio={blocks.length > 1 ? 3 / 4 : 16 / 10} />
+        <p className="text-sm font-medium">{title}</p>
+        {description && <p className="text-xs leading-relaxed text-muted-foreground">{description}</p>}
+      </HoverCardContent>
+    </HoverCard>
+  );
+}
+
 /** Plantillas de página completa (las mismas que al crear una página, salvo «En blanco»). */
 const FULL_TEMPLATES = PAGE_TEMPLATES.filter((t) => t.key !== "blank");
 
@@ -97,6 +113,10 @@ function Library({
   const [q, setQ] = useState("");
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
   const found = useMemo(() => searchModules(modules, q), [modules, q]);
+  // Bloques de ejemplo para las miniaturas (se construyen una vez; no se insertan)
+  const moduleSamples = useMemo(() => new Map(modules.map((m) => [m.type, [createBlock(m.type)] as PageBlock[]])), [modules]);
+  const presetSamples = useMemo(() => new Map(presets.map((p) => [p.key, p.build()])), [presets]);
+  const templateSamples = useMemo(() => new Map(FULL_TEMPLATES.map((t) => [t.key, templateBlocks(t.key, t.label)])), []);
   return (
     <div className="space-y-5 p-3">
       <div className="relative">
@@ -113,18 +133,19 @@ function Library({
               {list.map((m) => {
                 const Icon = moduleIcon(m.icon);
                 return (
+                  <Preview key={m.type} blocks={moduleSamples.get(m.type) ?? []} title={m.label} description={`${m.description}. Arrástralo a la página o haz clic para añadirlo.`}>
                   <button
-                    key={m.type}
                     type="button"
                     draggable
                     onDragStart={(e) => startDrag(e, `module:${m.type}`)}
                     onClick={() => onInsert(`module:${m.type}`)}
-                    title={`${m.description}. Arrástralo a la página o haz clic para añadirlo.`}
+                    aria-label={`${m.label}: ${m.description}`}
                     className="group flex cursor-grab flex-col items-center gap-1.5 rounded-lg border border-border bg-background px-2 py-3 text-center transition-all hover:-translate-y-px hover:border-[#5b5bf6]/60 hover:shadow-sm active:cursor-grabbing"
                   >
                     <Icon className="h-5 w-5 text-muted-foreground transition-colors group-hover:text-[#5b5bf6]" />
                     <span className="text-xs font-medium leading-tight">{m.label}</span>
                   </button>
+                  </Preview>
                 );
               })}
             </div>
@@ -143,20 +164,21 @@ function Library({
             <div className="space-y-1.5">
               {saved.map((s) => (
                 <div key={s.id} className="flex items-center gap-1 rounded-lg border border-border bg-background pr-1 transition-colors hover:border-[#5b5bf6]/60">
+                  <Preview blocks={[s.block]} title={s.name} description={`${blockLabel(s.block.type)} con su diseño. Arrástralo a la página o haz clic para añadir una copia.`}>
                   <button
                     type="button"
                     draggable
                     onDragStart={(e) => startDrag(e, `saved:${s.id}`)}
                     onClick={() => onInsert(`saved:${s.id}`)}
-                    title="Arrástralo a la página o haz clic para añadir una copia"
-                    className="flex min-w-0 flex-1 cursor-grab items-center gap-2.5 px-3 py-2 text-left active:cursor-grabbing"
+                    className="flex min-w-0 flex-1 cursor-grab items-center gap-2.5 px-2 py-2 text-left active:cursor-grabbing"
                   >
-                    <Bookmark className="h-4 w-4 shrink-0 text-[#5b5bf6]" />
+                    <BlockThumb blocks={[s.block]} width={56} ratio={16 / 10} />
                     <span className="min-w-0">
                       <span className="block overflow-hidden text-ellipsis whitespace-nowrap text-sm font-medium">{s.name}</span>
                       <span className="block text-xs text-muted-foreground">{blockLabel(s.block.type)}</span>
                     </span>
                   </button>
+                  </Preview>
                   {confirmDelete === s.id ? (
                     <Button type="button" size="sm" variant="destructive" className="h-7 px-2 text-xs" onClick={() => (onDeleteSaved(s.id), setConfirmDelete(null))}>
                       Quitar
@@ -177,20 +199,21 @@ function Library({
           <h3 className="px-0.5 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Secciones prediseñadas</h3>
           <div className="space-y-2">
             {presets.map((p) => (
+              <Preview key={p.key} blocks={presetSamples.get(p.key) ?? []} title={p.label} description={p.description}>
               <button
-                key={p.key}
                 type="button"
                 draggable
                 onDragStart={(e) => startDrag(e, `preset:${p.key}`)}
                 onClick={() => onInsert(`preset:${p.key}`)}
-                className="flex w-full cursor-grab items-start gap-3 rounded-lg border border-border bg-background p-3 text-left transition-colors hover:border-[#5b5bf6]/60 active:cursor-grabbing"
+                className="flex w-full cursor-grab items-start gap-3 rounded-lg border border-border bg-background p-2.5 text-left transition-colors hover:border-[#5b5bf6]/60 active:cursor-grabbing"
               >
-                <LayoutPanelTop className="mt-0.5 h-4 w-4 shrink-0 text-[#5b5bf6]" />
+                <BlockThumb blocks={presetSamples.get(p.key) ?? []} width={48} ratio={4 / 5} />
                 <span>
                   <span className="block text-sm font-medium">{p.label}</span>
                   <span className="block text-xs text-muted-foreground">{p.description}</span>
                 </span>
               </button>
+              </Preview>
             ))}
           </div>
         </section>
@@ -200,18 +223,19 @@ function Library({
           <h3 className="px-0.5 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Plantillas de página completa</h3>
           <div className="space-y-2">
             {FULL_TEMPLATES.map((t) => (
+              <Preview key={t.key} blocks={templateSamples.get(t.key) ?? []} title={t.label} description={t.description}>
               <button
-                key={t.key}
                 type="button"
                 onClick={() => onTemplate(t.key)}
-                className="flex w-full items-start gap-3 rounded-lg border border-border bg-background p-3 text-left transition-colors hover:border-[#5b5bf6]/60"
+                className="flex w-full items-start gap-3 rounded-lg border border-border bg-background p-2.5 text-left transition-colors hover:border-[#5b5bf6]/60"
               >
-                <FileText className="mt-0.5 h-4 w-4 shrink-0 text-[#5b5bf6]" />
+                <BlockThumb blocks={templateSamples.get(t.key) ?? []} width={48} ratio={3 / 4} />
                 <span>
                   <span className="block text-sm font-medium">{t.label}</span>
                   <span className="block text-xs text-muted-foreground">{t.description}</span>
                 </span>
               </button>
+              </Preview>
             ))}
           </div>
         </section>
