@@ -114,14 +114,14 @@ function Studio({ routeSlug }: { routeSlug: string | null }) {
   const [pickImage, setPickImage] = useState<{ id: string; key: string } | null>(null);
   const [saveName, setSaveName] = useState<string | null>(null);
   const [addAt, setAddAt] = useState<Place | null>(null);
-  // Mis bloques: guardados para reutilizar en cualquier página
+  // Mis diseños: bloques guardados para reutilizar en cualquier página
   const savedQ = trpc.cms.savedBlocks.useQuery(undefined, { staleTime: 60_000, refetchOnWindowFocus: false });
   const savedBlocks = savedQ.data ?? [];
   const saveBlock = trpc.cms.saveReusableBlock.useMutation({
     onSuccess: (b) => {
       void utils.cms.savedBlocks.invalidate();
       setSaveName(null);
-      toast.success(`«${b.name}» guardado en Mis bloques.`);
+      toast.success(`«${b.name}» guardado en Mis diseños.`);
     },
     onError: (e) => toast.error(e.message),
   });
@@ -861,8 +861,8 @@ function Studio({ routeSlug }: { routeSlug: string | null }) {
                     onClick={() => setSaveName(blockLabel(selected.type))}
                     disabled={!!viewing}
                     className="ml-auto shrink-0 rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-40"
-                    title="Guardar en Mis bloques para reutilizarlo en otras páginas"
-                    aria-label="Guardar en Mis bloques"
+                    title="Guardar en Mis diseños para reutilizarlo en otras páginas"
+                    aria-label="Guardar en Mis diseños"
                   >
                     <BookmarkPlus className="h-4 w-4" />
                   </button>
@@ -1098,7 +1098,7 @@ function Studio({ routeSlug }: { routeSlug: string | null }) {
       <Dialog open={saveName !== null} onOpenChange={(o) => !o && setSaveName(null)}>
         <DialogContent className="max-w-sm">
           <DialogHeader>
-            <DialogTitle>Guardar en Mis bloques</DialogTitle>
+            <DialogTitle>Guardar en Mis diseños</DialogTitle>
             <DialogDescription>Lo encontrarás en la biblioteca para añadir una copia, con su diseño, en cualquier página.</DialogDescription>
           </DialogHeader>
           <form

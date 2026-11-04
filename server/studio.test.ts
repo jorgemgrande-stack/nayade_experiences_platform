@@ -5,7 +5,7 @@
  */
 import { describe, it, expect } from "vitest";
 import { BLOCK_TYPES, createBlock, cssUrl, DEFAULT_BLOCK_STYLE, defaultBlockData, isDefaultStyle, type PageBlock } from "../shared/pageBlocks";
-import { MODULES, SECTION_PRESETS, availableModules, inlineFields, moduleDef, searchModules } from "../shared/studio/modules";
+import { LIBRARY_ELEMENTS, LIBRARY_SECTIONS, MODULES, SECTION_PRESETS, availableModules, inlineFields, libraryMatch, moduleDef, searchModules } from "../shared/studio/modules";
 import { blocksToHtml, normalizeBlocks, normalizeStyle, readStoredBlocks, renderBlockTokens, PageBlocksError } from "./_core/pageBlocks";
 import { docReducer, initialDoc } from "../client/src/components/admin/studio/history";
 import { parseDragPayload } from "../client/src/components/admin/studio/protocol";
@@ -60,6 +60,20 @@ describe("registro de módulos", () => {
   it("solo los textos marcados se editan sobre el lienzo", () => {
     expect(inlineFields("hero")).toEqual(["title", "subtitle", "buttonLabel"]);
     expect(inlineFields("image")).toEqual(["caption"]);
+  });
+});
+
+describe("biblioteca agrupada", () => {
+  it("cada módulo y cada sección prediseñada aparece una sola vez (elementos o una categoría de secciones)", () => {
+    const types = [...LIBRARY_ELEMENTS, ...LIBRARY_SECTIONS.flatMap((c) => c.types)];
+    expect([...types].sort()).toEqual(MODULES.map((m) => m.type).sort());
+    const presets = LIBRARY_SECTIONS.flatMap((c) => c.presets);
+    expect([...presets].sort()).toEqual(SECTION_PRESETS.map((p) => p.key).sort());
+  });
+  it("el buscador ignora tildes y mayúsculas", () => {
+    expect(libraryMatch("galeria", "Galería", "fotos")).toBe(true);
+    expect(libraryMatch("  ", "lo que sea")).toBe(true);
+    expect(libraryMatch("precio", "Opiniones")).toBe(false);
   });
 });
 

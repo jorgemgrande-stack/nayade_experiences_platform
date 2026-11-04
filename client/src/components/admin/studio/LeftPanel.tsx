@@ -1,20 +1,21 @@
 /**
  * Elephant Studio — panel izquierdo:
- *   - Añadir: biblioteca de módulos (buscador, familias, solo los que permite la licencia) y secciones prediseñadas.
- *     Se arrastran al lienzo o se añaden con un clic (detrás del bloque seleccionado).
+ *   - Añadir: la biblioteca en cuatro grupos plegables (plantillas completas, secciones prediseñadas por categoría,
+ *     elementos y Mis diseños) con un buscador común; solo lo que permite la licencia. Se arrastra al lienzo o se añade
+ *     con un clic (detrás del bloque seleccionado).
  *   - Estructura: los bloques de la página en orden; se seleccionan, se reordenan arrastrando, se duplican y se quitan.
  *     Lo que va dentro de una sección con columnas se ve debajo de ella, columna a columna.
  *   - Sitio: las páginas de la web y los ajustes globales (menús, marca, blog, multimedia).
  */
 import { useMemo, useRef, useState } from "react";
 import { Link } from "wouter";
-import { Copy, EyeOff, FileText, GripVertical, Home, Image as ImageIcon, Newspaper, Palette, PanelsTopLeft, Plus, Search, Settings2, Trash2 } from "lucide-react";
+import { ChevronRight, Copy, EyeOff, FileText, GripVertical, Home, Image as ImageIcon, Newspaper, Palette, PanelsTopLeft, Plus, Search, Settings2, Trash2 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { HoverCard, HoverCardContent, HoverCardTrigger } from "@/components/ui/hover-card";
 import { cn } from "@/lib/utils";
 import { blockLabel, createBlock, PAGE_TEMPLATES, templateBlocks, type Device, type PageBlock, type PageTemplateKey } from "@shared/pageBlocks";
-import { MODULE_FAMILIES, SECTION_PRESETS, moduleDef, searchModules, type ModuleDef } from "@shared/studio/modules";
+import { LIBRARY_ELEMENTS, LIBRARY_SECTIONS, SECTION_PRESETS, libraryMatch, moduleDef, type ModuleDef, type SectionPreset } from "@shared/studio/modules";
 import { blockSummary } from "@/components/admin/pageBuilder/BlockEditors";
 import { moduleIcon } from "./icons";
 import { BlockThumb } from "./BlockThumb";
@@ -36,7 +37,7 @@ export function LeftPanel(props: {
   modules: ModuleDef[];
   presets: typeof SECTION_PRESETS;
   onInsert: (payload: string) => void;
-  /** Mis bloques: guardados para reutilizar (se inserta una copia) */
+  /** Mis diseños: bloques guardados para reutilizar (se inserta una copia) */
   savedBlocks: Array<{ id: string; name: string; block: PageBlock }>;
   onDeleteSaved: (id: string) => void;
   /** Elegir una plantilla de página completa (el editor pregunta si sustituye o añade) */
@@ -76,7 +77,7 @@ export function LeftPanel(props: {
         ))}
       </div>
       <div className="min-h-0 flex-1 overflow-y-auto">
-        {props.tab === "add" && <Library modules={props.modules} presets={props.presets} onInsert={props.onInsert} onTemplate={props.onTemplate} saved={props.savedBlocks} onDeleteSaved={props.onDeleteSaved} />}
+        {props.tab === "add" && <Library modules={props.modules} presets={props.presets} onInsert={props.onInsert} onTemplate={props.onTemplate} saved={props.savedBlocks} onDeleteSaved={props.onDeleteSaved} pageEmpty={!props.blocks.length} />}
         {props.tab === "structure" && <Structure {...props} />}
         {props.tab === "site" && <Site pages={props.pages} currentSlug={props.currentSlug} onOpenPage={props.onOpenPage} onGlobalStyle={props.onGlobalStyle} onSiteChrome={props.onSiteChrome} />}
       </div>
@@ -104,8 +105,56 @@ function Preview({ blocks, title, description, children }: { blocks: PageBlock[]
 /** Plantillas de página completa (las mismas que al crear una página, salvo «En blanco»). */
 const FULL_TEMPLATES = PAGE_TEMPLATES.filter((t) => t.key !== "blank");
 
+type GroupKey = "templates" | "sections" | "elements" | "saved";
+const GROUPS: ReadonlyArray<{ key: GroupKey; label: string; hint: string }> = [
+  { key: "templates", label: "Plantillas completas", hint: "Páginas enteras listas para adaptar" },
+  { key: "sections", label: "Secciones prediseñadas", hint: "Portadas, servicios, galerías, opiniones, precios…" },
+  { key: "elements", label: "Elementos", hint: "Texto, imagen, botón, vídeo, formulario…" },
+  { key: "saved", label: "Mis diseños", hint: "Lo que has guardado para reutilizar" },
+];
+/** Qué grupos tiene plegados cada persona (solo en su navegador). */
+const OPEN_KEY = "elephant-studio-biblioteca";
+function readOpen(): Partial<Record<GroupKey, boolean>> {
+  try {
+    return JSON.parse(localStorage.getItem(OPEN_KEY) || "{}") ?? {};
+  } catch {
+    return {};
+  }
+}
+
+const tileClass =
+  "group flex flex-col items-stretch gap-1.5 rounded-lg border border-border bg-background p-1.5 text-left transition-all hover:-translate-y-px hover:border-[#5b5bf6]/60 hover:shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#5b5bf6]";
+
+function Group({ id, label, hint, count, open, onToggle, children }: { id: GroupKey; label: string; hint: string; count: number; open: boolean; onToggle: () => void; children: React.ReactNode }) {
+  return (
+    <section className="border-b border-border">
+      <button
+        type="button"
+        aria-expanded={open}
+        aria-controls={`biblioteca-${id}`}
+        onClick={onToggle}
+        className="flex w-full items-center gap-2 px-3 py-2.5 text-left transition-colors hover:bg-muted/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#5b5bf6]"
+      >
+        <ChevronRight className={cn("h-4 w-4 shrink-0 text-muted-foreground transition-transform", open && "rotate-90")} aria-hidden />
+        <span className="min-w-0 flex-1">
+          <span className="block text-sm font-semibold">{label}</span>
+          {!open && <span className="block overflow-hidden text-ellipsis whitespace-nowrap text-xs text-muted-foreground">{hint}</span>}
+        </span>
+        <span className="shrink-0 rounded-full bg-muted px-1.5 py-0.5 text-[11px] tabular-nums text-muted-foreground" aria-label={`${count} disponibles`}>
+          {count}
+        </span>
+      </button>
+      {open && (
+        <div id={`biblioteca-${id}`} className="space-y-4 px-3 pb-4 pt-1">
+          {children}
+        </div>
+      )}
+    </section>
+  );
+}
+
 function Library({
-  modules, presets, onInsert, onTemplate, saved, onDeleteSaved,
+  modules, presets, onInsert, onTemplate, saved, onDeleteSaved, pageEmpty,
 }: {
   modules: ModuleDef[];
   presets: typeof SECTION_PRESETS;
@@ -113,140 +162,162 @@ function Library({
   onTemplate: (key: PageTemplateKey) => void;
   saved: Array<{ id: string; name: string; block: PageBlock }>;
   onDeleteSaved: (id: string) => void;
+  /** Con la página vacía, las plantillas se ofrecen desplegadas */
+  pageEmpty: boolean;
 }) {
   const [q, setQ] = useState("");
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
-  const found = useMemo(() => searchModules(modules, q), [modules, q]);
+  const [openState, setOpenState] = useState(readOpen);
+  const searching = !!q.trim();
+  const isOpen = (k: GroupKey) => searching || (openState[k] ?? (k === "templates" ? pageEmpty : true));
+  const toggle = (k: GroupKey) => {
+    const next = { ...openState, [k]: !isOpen(k) };
+    setOpenState(next);
+    try {
+      localStorage.setItem(OPEN_KEY, JSON.stringify(next));
+    } catch {
+      /* sin almacenamiento: se pliega solo en esta sesión */
+    }
+  };
   // Bloques de ejemplo para las miniaturas (se construyen una vez; no se insertan)
   const moduleSamples = useMemo(() => new Map(modules.map((m) => [m.type, [createBlock(m.type)] as PageBlock[]])), [modules]);
   const presetSamples = useMemo(() => new Map(presets.map((p) => [p.key, p.build()])), [presets]);
   const templateSamples = useMemo(() => new Map(FULL_TEMPLATES.map((t) => [t.key, templateBlocks(t.key, t.label)])), []);
+
+  const byType = useMemo(() => new Map(modules.map((m) => [m.type, m])), [modules]);
+  const byPreset = useMemo(() => new Map(presets.map((p) => [p.key, p])), [presets]);
+  const matchModule = (m: ModuleDef) => libraryMatch(q, m.label, m.description, m.keywords);
+  const templates = FULL_TEMPLATES.filter((t) => libraryMatch(q, t.label, t.description, "plantilla pagina"));
+  const categories = LIBRARY_SECTIONS.map((c) => ({
+    ...c,
+    presetList: c.presets.map((k) => byPreset.get(k)).filter((p): p is SectionPreset => !!p && libraryMatch(q, p.label, p.description, c.label)),
+    moduleList: c.types.map((t) => byType.get(t)).filter((m): m is ModuleDef => !!m && (matchModule(m) || libraryMatch(q, c.label))),
+  })).filter((c) => c.presetList.length + c.moduleList.length > 0);
+  const elements = LIBRARY_ELEMENTS.map((t) => byType.get(t)).filter((m): m is ModuleDef => !!m && matchModule(m));
+  const savedList = saved.filter((s) => libraryMatch(q, s.name, blockLabel(s.block.type)));
+  const counts: Record<GroupKey, number> = {
+    templates: templates.length,
+    sections: categories.reduce((n, c) => n + c.presetList.length + c.moduleList.length, 0),
+    elements: elements.length,
+    saved: savedList.length,
+  };
+  const nothing = searching && Object.values(counts).every((n) => n === 0);
+
+  const sectionTile = (key: string, label: string, blocks: PageBlock[], payload: string, description: string, sub?: string) => (
+    <Preview key={key} blocks={blocks} title={label} description={`${description}. Arrástrala a la página o haz clic para añadirla.`}>
+      <button type="button" draggable onDragStart={(e) => startDrag(e, payload)} onClick={() => onInsert(payload)} aria-label={`${label}: ${description}`} className={cn(tileClass, "cursor-grab active:cursor-grabbing")}>
+        <BlockThumb blocks={blocks} width={106} ratio={16 / 10} />
+        <span className="px-0.5 text-xs font-medium leading-tight">{label}</span>
+        {sub && <span className="-mt-1 px-0.5 text-[11px] leading-tight text-muted-foreground">{sub}</span>}
+      </button>
+    </Preview>
+  );
+
   return (
-    <div className="space-y-5 p-3">
-      <div className="relative">
-        <Search className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-        <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Buscar módulos" aria-label="Buscar módulos" className="h-9 pl-8" />
+    <div>
+      <div className="sticky top-0 z-10 border-b border-border bg-background p-3">
+        <div className="relative">
+          <Search className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+          <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Buscar: foto, precios, contacto…" aria-label="Buscar en la biblioteca" className="h-9 pl-8" />
+        </div>
       </div>
-      {MODULE_FAMILIES.map((fam) => {
-        const list = found.filter((m) => m.family === fam.key);
-        if (!list.length) return null;
+      {nothing && <p className="p-4 text-sm text-muted-foreground">Nada coincide con «{q}». Prueba con otra palabra, como «foto», «precio» o «contacto».</p>}
+      {GROUPS.map((g) => {
+        if (searching && counts[g.key] === 0) return null;
         return (
-          <section key={fam.key} className="space-y-2">
-            <h3 className="px-0.5 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">{fam.label}</h3>
-            <div className="grid grid-cols-2 gap-2">
-              {list.map((m) => {
-                const Icon = moduleIcon(m.icon);
-                return (
-                  <Preview key={m.type} blocks={moduleSamples.get(m.type) ?? []} title={m.label} description={`${m.description}. Arrástralo a la página o haz clic para añadirlo.`}>
-                  <button
-                    type="button"
-                    draggable
-                    onDragStart={(e) => startDrag(e, `module:${m.type}`)}
-                    onClick={() => onInsert(`module:${m.type}`)}
-                    aria-label={`${m.label}: ${m.description}`}
-                    className="group flex cursor-grab flex-col items-stretch gap-1.5 rounded-lg border border-border bg-background p-1.5 text-left transition-all hover:-translate-y-px hover:border-[#5b5bf6]/60 hover:shadow-sm active:cursor-grabbing"
-                  >
-                    <BlockThumb blocks={moduleSamples.get(m.type) ?? []} width={90} ratio={16 / 10} />
-                    <span className="flex items-center gap-1 px-0.5 text-xs font-medium leading-tight">
-                      <Icon className="h-3.5 w-3.5 shrink-0 text-muted-foreground transition-colors group-hover:text-[#5b5bf6]" />
-                      {m.label}
-                    </span>
-                  </button>
-                  </Preview>
-                );
-              })}
-            </div>
-          </section>
-        );
-      })}
-      {!found.length && <p className="px-1 text-sm text-muted-foreground">Ningún módulo coincide con «{q}».</p>}
-      {!q.trim() && (
-        <section className="space-y-2">
-          <h3 className="px-0.5 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Mis bloques</h3>
-          {saved.length === 0 ? (
-            <p className="rounded-md bg-muted px-3 py-2 text-xs leading-relaxed text-muted-foreground">
-              Guarda aquí un bloque o una sección con su diseño para reutilizarlo en cualquier página: selecciónalo y pulsa «Guardar en Mis bloques» en el panel derecho.
-            </p>
-          ) : (
-            <div className="space-y-1.5">
-              {saved.map((s) => (
-                <div key={s.id} className="flex items-center gap-1 rounded-lg border border-border bg-background pr-1 transition-colors hover:border-[#5b5bf6]/60">
-                  <Preview blocks={[s.block]} title={s.name} description={`${blockLabel(s.block.type)} con su diseño. Arrástralo a la página o haz clic para añadir una copia.`}>
-                  <button
-                    type="button"
-                    draggable
-                    onDragStart={(e) => startDrag(e, `saved:${s.id}`)}
-                    onClick={() => onInsert(`saved:${s.id}`)}
-                    className="flex min-w-0 flex-1 cursor-grab items-center gap-2.5 px-2 py-2 text-left active:cursor-grabbing"
-                  >
-                    <BlockThumb blocks={[s.block]} width={56} ratio={16 / 10} />
-                    <span className="min-w-0">
-                      <span className="block overflow-hidden text-ellipsis whitespace-nowrap text-sm font-medium">{s.name}</span>
-                      <span className="block text-xs text-muted-foreground">{blockLabel(s.block.type)}</span>
-                    </span>
-                  </button>
-                  </Preview>
-                  {confirmDelete === s.id ? (
-                    <Button type="button" size="sm" variant="destructive" className="h-7 px-2 text-xs" onClick={() => (onDeleteSaved(s.id), setConfirmDelete(null))}>
-                      Quitar
-                    </Button>
-                  ) : (
-                    <button type="button" onClick={() => setConfirmDelete(s.id)} className="rounded p-1.5 text-muted-foreground hover:text-destructive" aria-label={`Quitar «${s.name}» de Mis bloques`}>
-                      <Trash2 className="h-3.5 w-3.5" />
-                    </button>
-                  )}
+          <Group key={g.key} id={g.key} label={g.label} hint={g.hint} count={counts[g.key]} open={isOpen(g.key)} onToggle={() => toggle(g.key)}>
+            {g.key === "templates" && (
+              <>
+                <p className="text-xs leading-relaxed text-muted-foreground">Al elegir una, decides si sustituye la página o se añade al final.</p>
+                <div className="grid grid-cols-2 gap-2">
+                  {templates.map((t) => (
+                    <Preview key={t.key} blocks={templateSamples.get(t.key) ?? []} title={t.label} description={t.description}>
+                      <button type="button" onClick={() => onTemplate(t.key)} aria-label={`Plantilla ${t.label}: ${t.description}`} className={tileClass}>
+                        <BlockThumb blocks={templateSamples.get(t.key) ?? []} width={106} ratio={3 / 4} />
+                        <span className="px-0.5 text-xs font-medium leading-tight">{t.label}</span>
+                      </button>
+                    </Preview>
+                  ))}
+                </div>
+              </>
+            )}
+            {g.key === "sections" &&
+              categories.map((c) => (
+                <div key={c.key} className="space-y-2">
+                  <h3 className="px-0.5 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">{c.label}</h3>
+                  <div className="grid grid-cols-2 gap-2">
+                    {c.presetList.map((p) => {
+                      const blocks = presetSamples.get(p.key) ?? [];
+                      return sectionTile(p.key, p.label, blocks, `preset:${p.key}`, p.description, blocks.length > 1 ? `${blocks.length} bloques combinados` : undefined);
+                    })}
+                    {c.moduleList.map((m) => sectionTile(m.type, m.label, moduleSamples.get(m.type) ?? [], `module:${m.type}`, m.description))}
+                  </div>
                 </div>
               ))}
-            </div>
-          )}
-        </section>
-      )}
-      {!q.trim() && (
-        <section className="space-y-2">
-          <h3 className="px-0.5 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Secciones prediseñadas</h3>
-          <div className="space-y-2">
-            {presets.map((p) => (
-              <Preview key={p.key} blocks={presetSamples.get(p.key) ?? []} title={p.label} description={p.description}>
-              <button
-                type="button"
-                draggable
-                onDragStart={(e) => startDrag(e, `preset:${p.key}`)}
-                onClick={() => onInsert(`preset:${p.key}`)}
-                className="flex w-full cursor-grab items-start gap-3 rounded-lg border border-border bg-background p-2.5 text-left transition-colors hover:border-[#5b5bf6]/60 active:cursor-grabbing"
-              >
-                <BlockThumb blocks={presetSamples.get(p.key) ?? []} width={48} ratio={4 / 5} />
-                <span>
-                  <span className="block text-sm font-medium">{p.label}</span>
-                  <span className="block text-xs text-muted-foreground">{p.description}</span>
-                </span>
-              </button>
-              </Preview>
-            ))}
-          </div>
-        </section>
-      )}
-      {!q.trim() && (
-        <section className="space-y-2">
-          <h3 className="px-0.5 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Plantillas de página completa</h3>
-          <div className="space-y-2">
-            {FULL_TEMPLATES.map((t) => (
-              <Preview key={t.key} blocks={templateSamples.get(t.key) ?? []} title={t.label} description={t.description}>
-              <button
-                type="button"
-                onClick={() => onTemplate(t.key)}
-                className="flex w-full items-start gap-3 rounded-lg border border-border bg-background p-2.5 text-left transition-colors hover:border-[#5b5bf6]/60"
-              >
-                <BlockThumb blocks={templateSamples.get(t.key) ?? []} width={48} ratio={3 / 4} />
-                <span>
-                  <span className="block text-sm font-medium">{t.label}</span>
-                  <span className="block text-xs text-muted-foreground">{t.description}</span>
-                </span>
-              </button>
-              </Preview>
-            ))}
-          </div>
-        </section>
-      )}
+            {g.key === "elements" && (
+              <div className="grid grid-cols-3 gap-1.5">
+                {elements.map((m) => {
+                  const Icon = moduleIcon(m.icon);
+                  return (
+                    <Preview key={m.type} blocks={moduleSamples.get(m.type) ?? []} title={m.label} description={`${m.description}. Arrástralo a la página o haz clic para añadirlo.`}>
+                      <button
+                        type="button"
+                        draggable
+                        onDragStart={(e) => startDrag(e, `module:${m.type}`)}
+                        onClick={() => onInsert(`module:${m.type}`)}
+                        aria-label={`${m.label}: ${m.description}`}
+                        className={cn(tileClass, "cursor-grab items-center gap-1 px-1 py-2 text-center active:cursor-grabbing")}
+                      >
+                        <span className="flex h-8 w-8 items-center justify-center rounded-md bg-muted text-muted-foreground transition-colors group-hover:bg-[#5b5bf6]/10 group-hover:text-[#5b5bf6]">
+                          <Icon className="h-4 w-4" />
+                        </span>
+                        <span className="text-[11px] font-medium leading-tight">{m.label}</span>
+                      </button>
+                    </Preview>
+                  );
+                })}
+              </div>
+            )}
+            {g.key === "saved" &&
+              (saved.length === 0 ? (
+                <p className="rounded-md bg-muted px-3 py-2 text-xs leading-relaxed text-muted-foreground">
+                  Guarda aquí un bloque o una sección con su diseño para reutilizarlo en cualquier página: selecciónalo y pulsa «Guardar en Mis diseños» en el panel derecho.
+                </p>
+              ) : (
+                <div className="space-y-1.5">
+                  {savedList.map((s) => (
+                    <div key={s.id} className="flex items-center gap-1 rounded-lg border border-border bg-background pr-1 transition-colors hover:border-[#5b5bf6]/60">
+                      <Preview blocks={[s.block]} title={s.name} description={`${blockLabel(s.block.type)} con su diseño. Arrástralo a la página o haz clic para añadir una copia.`}>
+                        <button
+                          type="button"
+                          draggable
+                          onDragStart={(e) => startDrag(e, `saved:${s.id}`)}
+                          onClick={() => onInsert(`saved:${s.id}`)}
+                          className="flex min-w-0 flex-1 cursor-grab items-center gap-2.5 rounded-lg px-2 py-2 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#5b5bf6] active:cursor-grabbing"
+                        >
+                          <BlockThumb blocks={[s.block]} width={56} ratio={16 / 10} />
+                          <span className="min-w-0">
+                            <span className="block overflow-hidden text-ellipsis whitespace-nowrap text-sm font-medium">{s.name}</span>
+                            <span className="block text-xs text-muted-foreground">{blockLabel(s.block.type)}</span>
+                          </span>
+                        </button>
+                      </Preview>
+                      {confirmDelete === s.id ? (
+                        <Button type="button" size="sm" variant="destructive" className="h-7 px-2 text-xs" onClick={() => (onDeleteSaved(s.id), setConfirmDelete(null))}>
+                          Quitar
+                        </Button>
+                      ) : (
+                        <button type="button" onClick={() => setConfirmDelete(s.id)} className="rounded p-1.5 text-muted-foreground hover:text-destructive" aria-label={`Quitar «${s.name}» de Mis diseños`}>
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </button>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              ))}
+          </Group>
+        );
+      })}
     </div>
   );
 }
