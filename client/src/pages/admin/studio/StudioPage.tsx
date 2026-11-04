@@ -32,7 +32,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
-import { PAGE_LIMITS, PAGE_TEMPLATES, blockLabel, createBlock, duplicateBlock, templateBlocks, type BlockType, type Device, type PageBlock, type PageTemplateKey } from "@shared/pageBlocks";
+import { PAGE_LIMITS, PAGE_TEMPLATES, blockLabel, createBlock, duplicateBlock, templateBlocks, writeBlockText, type BlockType, type Device, type PageBlock, type PageTemplateKey } from "@shared/pageBlocks";
 import { SECTION_PRESETS, availableModules, moduleDef } from "@shared/studio/modules";
 import { countBlocks, createSection, findBlock, insertBlocks, moveBlock, nestable, placeProblem, removeBlock, walk, type Place } from "@shared/studio/tree";
 import { SITE_TOKEN_LABELS } from "@shared/siteTokenLabels";
@@ -293,7 +293,7 @@ function Studio({ routeSlug }: { routeSlug: string | null }) {
   };
 
   const setText = (id: string, key: string, value: string) => {
-    doc.updateBlock(id, (b) => ({ ...b, data: { ...b.data, [key]: value } }) as PageBlock, `${id}:${key}`);
+    doc.updateBlock(id, (b) => ({ ...b, data: writeBlockText(b.data, key, value) }) as PageBlock, `${id}:${key}`);
   };
 
   const openPage = async (target: string) => {

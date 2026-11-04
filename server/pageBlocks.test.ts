@@ -8,7 +8,7 @@ import { describe, it, expect } from "vitest";
 import { blocksToHtml, htmlText, htmlToBlocks, normalizeBlocks, PageBlocksError, readStoredBlocks, renderBlockTokens, safeLink } from "./_core/pageBlocks";
 import { STARTER_PAGES } from "./_core/templates/starterSite";
 import { sanitizeRichHtml } from "./_core/htmlSanitize";
-import { BLOCK_TYPES, PAGE_TEMPLATES, createBlock, duplicateBlock, pageSlugProblem, slugFromTitle, templateBlocks, type PageBlock } from "../shared/pageBlocks";
+import { BLOCK_TYPES, PAGE_TEMPLATES, createBlock, duplicateBlock, pageSlugProblem, slugFromTitle, templateBlocks, readBlockText, writeBlockText, type PageBlock } from "../shared/pageBlocks";
 
 describe("validación y saneado de los bloques", () => {
   it("completa los datos que faltan y descarta los que sobran", () => {
@@ -181,5 +181,27 @@ describe("dirección de la página y plantillas", () => {
     const m = routers.match(/template: z\.enum\(\[([^\]]+)\]\)/);
     const keys = (m?.[1] ?? "").split(",").map((x) => x.trim().replace(/"/g, ""));
     expect(keys.sort()).toEqual(PAGE_TEMPLATES.map((t) => t.key).sort());
+  });
+});
+
+describe("textos editables sobre la página", () => {
+  const cards = createBlock("cards", { title: "Servicios", items: [{ title: "Uno", text: "A", imageUrl: "", imageAlt: "", buttonLabel: "", buttonUrl: "" }] } as never);
+
+  it("lee y escribe un campo del bloque y el de un elemento de una lista", () => {
+    expect(readBlockText(cards.data, "title")).toBe("Servicios");
+    expect(readBlockText(cards.data, "items.0.title")).toBe("Uno");
+    const next = writeBlockText(cards.data, "items.0.title", "Primero");
+    expect(next.items[0].title).toBe("Primero");
+    expect(next.items[0].text).toBe("A");
+    // Copia nueva: el documento anterior (deshacer) no cambia
+    expect(cards.data.items[0].title).toBe("Uno");
+    expect(writeBlockText(cards.data, "title", "Otro").title).toBe("Otro");
+  });
+
+  it("ignora claves que no apuntan a un texto existente", () => {
+    for (const k of ["items.5.title", "items.0.nada", "items", "columns.0.blocks", "__proto__.x.y", "items.0.title.extra", ""]) {
+      expect(readBlockText(cards.data, k)).toBeUndefined();
+      expect(writeBlockText(cards.data, k, "x")).toBe(cards.data);
+    }
   });
 });

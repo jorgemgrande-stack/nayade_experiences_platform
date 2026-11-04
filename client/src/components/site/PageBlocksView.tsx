@@ -23,7 +23,7 @@ import { Carousel, prefersReducedMotion } from "@/components/site/Carousel";
 import { Slideshow } from "@/components/site/Slideshow";
 import { Lightbox } from "@/components/site/Lightbox";
 import { StudioFormFields } from "@/components/site/StudioForm";
-import { blockLabel, cssUrl, DEFAULT_BLOCK_STYLE, type BlockOf, type BlockStyle, type Device, type GalleryImage, type PageBlock } from "@shared/pageBlocks";
+import { blockLabel, cssUrl, DEFAULT_BLOCK_STYLE, readBlockText, type BlockOf, type BlockStyle, type Device, type GalleryImage, type PageBlock } from "@shared/pageBlocks";
 import { formatEuros, productPath } from "@shared/storefront";
 import { isPurchasable } from "@shared/shopOrders";
 
@@ -85,7 +85,7 @@ function headingClass(first: boolean) {
 
 // ─── Textos editables sobre la página ─────────────────────────────────────────
 
-type TagName = "h1" | "h2" | "h3" | "p" | "span" | "div" | "figcaption";
+type TagName = "h1" | "h2" | "h3" | "p" | "span" | "div" | "figcaption" | "dd" | "blockquote";
 
 /**
  * Un texto del bloque. En la web es un elemento normal; en el lienzo, cuando su bloque está seleccionado, se edita
@@ -100,8 +100,7 @@ function Txt({ k, value, as: Tag = "span", className, multiline, placeholder }: 
 }
 
 const rawField = (ed: StudioEdit, block: PageBlock, k: string, fallback: string) => {
-  const v = (ed.raw.get(block.id)?.data as Record<string, unknown> | undefined)?.[k];
-  return typeof v === "string" ? v : fallback;
+  return readBlockText(ed.raw.get(block.id)?.data, k) ?? fallback;
 };
 
 function EditableText({ ed, block, k, value, as: Tag, className, multiline, placeholder }: { ed: StudioEdit; block: PageBlock; k: string; value: string; as: TagName; className?: string; multiline?: boolean; placeholder?: string }) {
@@ -134,6 +133,12 @@ function EditableText({ ed, block, k, value, as: Tag, className, multiline, plac
         const next = multiline ? typed : typed.replace(/\s*\n\s*/g, " ");
         if (next !== raw) ed.onText(block.id, k, next);
         else e.currentTarget.textContent = value;
+      }}
+      onClick={(e) => {
+        // Triple clic: todo el texto (dentro de un desplegable <details> el navegador no selecciona nada)
+        if (!editable || e.detail !== 3) return;
+        const sel = e.currentTarget.ownerDocument.getSelection();
+        sel?.selectAllChildren(e.currentTarget);
       }}
       onKeyDown={(e) => {
         if (e.key === "Escape" || (e.key === "Enter" && !multiline)) {
@@ -206,6 +211,11 @@ function EditableRich({ ed, block, k, html, className }: { ed: StudioEdit; block
 /** Si se muestra un botón: con texto y destino en la web; en el lienzo, también vacío mientras su bloque está seleccionado. */
 function useShowButton(label: string, url: string, blockId: string) {
   const ed = useContext(StudioEditContext);
+  return ed ? !!label || ed.selectedId === blockId : !!label && !!url;
+}
+
+/** Lo mismo para el botón de un elemento de una lista (tarjeta, plan…). */
+function itemButton(ed: StudioEdit | null, blockId: string, label: string, url: string) {
   return ed ? !!label || ed.selectedId === blockId : !!label && !!url;
 }
 
@@ -369,22 +379,22 @@ function SlideshowBlock({ b, first, preview }: { b: BlockOf<"slideshow">; first:
         const Title = first && i === 0 ? "h1" : "h2";
         return (
           <>
-            {s.eyebrow && <p className="text-sm font-semibold uppercase tracking-[0.18em] text-white/85">{s.eyebrow}</p>}
-            {s.title && <Title className="break-words font-heading text-3xl font-bold leading-tight md:text-5xl lg:text-6xl">{s.title}</Title>}
-            {s.text && <p className="whitespace-pre-line text-lg text-white/90 md:text-xl">{s.text}</p>}
+            <Txt k={`slides.${i}.eyebrow`} value={s.eyebrow} as="p" className="text-sm font-semibold uppercase tracking-[0.18em] text-white/85" placeholder="Antetítulo (opcional)" />
+            <Txt k={`slides.${i}.title`} value={s.title} as={Title} className="break-words font-heading text-3xl font-bold leading-tight md:text-5xl lg:text-6xl" placeholder="Titular" />
+            <Txt k={`slides.${i}.text`} value={s.text} as="p" multiline className="whitespace-pre-line text-lg text-white/90 md:text-xl" placeholder="Texto (opcional)" />
             {((s.buttonLabel && s.buttonUrl) || (s.button2Label && s.button2Url)) && (
               <div className="mt-2 flex flex-wrap gap-3">
                 {s.buttonLabel && s.buttonUrl && (
                   <Button asChild size="lg">
                     <SmartLink href={s.buttonUrl} preview={preview}>
-                      {s.buttonLabel}
+                      <Txt k={`slides.${i}.buttonLabel`} value={s.buttonLabel} />
                     </SmartLink>
                   </Button>
                 )}
                 {s.button2Label && s.button2Url && (
                   <Button asChild size="lg" variant="outline" className="border-white/70 bg-white/10 text-white backdrop-blur hover:bg-white/20 hover:text-white">
                     <SmartLink href={s.button2Url} preview={preview}>
-                      {s.button2Label}
+                      <Txt k={`slides.${i}.button2Label`} value={s.button2Label} />
                     </SmartLink>
                   </Button>
                 )}
@@ -406,13 +416,13 @@ function CardsBlock({ b, first, preview }: { b: BlockOf<"cards">; first: boolean
     <article key={i} className="flex h-full flex-col overflow-hidden rounded-2xl border border-border bg-card text-card-foreground shadow-sm transition hover:shadow-md">
       {c.imageUrl ? <img src={c.imageUrl} alt={c.imageAlt} className="aspect-[4/3] w-full object-cover" loading="lazy" decoding="async" /> : <div className="aspect-[4/3] w-full bg-gradient-to-br from-primary/15 to-primary/5" aria-hidden />}
       <div className="flex flex-1 flex-col gap-2 p-5">
-        {c.title && <h3 className="font-heading text-lg font-semibold text-foreground">{c.title}</h3>}
-        {c.text && <p className="flex-1 whitespace-pre-line text-sm leading-relaxed text-muted-foreground">{c.text}</p>}
-        {c.buttonLabel && c.buttonUrl && (
+        <Txt k={`items.${i}.title`} value={c.title} as="h3" className="font-heading text-lg font-semibold text-foreground" placeholder="Título de la tarjeta" />
+        <Txt k={`items.${i}.text`} value={c.text} as="p" multiline className="flex-1 whitespace-pre-line text-sm leading-relaxed text-muted-foreground" placeholder="Texto (opcional)" />
+        {itemButton(ed, b.id, c.buttonLabel, c.buttonUrl) && (
           <div className="pt-2">
             <Button asChild variant="outline" size="sm">
-              <SmartLink href={c.buttonUrl} preview={preview}>
-                {c.buttonLabel}
+              <SmartLink href={c.buttonUrl || "#"} preview={preview}>
+                <Txt k={`items.${i}.buttonLabel`} value={c.buttonLabel} placeholder="Botón (opcional)" />
               </SmartLink>
             </Button>
           </div>
@@ -591,11 +601,11 @@ function PricingBlock({ b, first, preview }: { b: BlockOf<"pricing">; first: boo
           return (
             <article key={i} className={cn("relative flex flex-col rounded-2xl border bg-card p-6 text-card-foreground shadow-sm", hl ? "border-primary shadow-lg ring-1 ring-primary md:-translate-y-2" : "border-border")}>
               {hl && <span className="absolute -top-3 left-1/2 -translate-x-1/2 rounded-full bg-primary px-3 py-1 text-xs font-semibold text-primary-foreground">Recomendado</span>}
-              <h3 className="font-heading text-lg font-semibold text-foreground">{p.name}</h3>
-              {p.description && <p className="mt-1 text-sm text-muted-foreground">{p.description}</p>}
+              <Txt k={`plans.${i}.name`} value={p.name} as="h3" className="font-heading text-lg font-semibold text-foreground" placeholder="Nombre del plan" />
+              <Txt k={`plans.${i}.description`} value={p.description} as="p" className="mt-1 text-sm text-muted-foreground" placeholder="Descripción (opcional)" />
               <p className="mt-4 flex items-baseline gap-1.5">
-                <span className="font-heading text-3xl font-bold text-foreground">{p.price}</span>
-                {p.period && <span className="text-sm text-muted-foreground">{p.period}</span>}
+                <Txt k={`plans.${i}.price`} value={p.price} className="font-heading text-3xl font-bold text-foreground" placeholder="Precio" />
+                <Txt k={`plans.${i}.period`} value={p.period} className="text-sm text-muted-foreground" placeholder="/ mes" />
               </p>
               {feats.length > 0 && (
                 <ul className="mt-5 flex-1 space-y-2 text-sm">
@@ -607,10 +617,10 @@ function PricingBlock({ b, first, preview }: { b: BlockOf<"pricing">; first: boo
                   ))}
                 </ul>
               )}
-              {p.buttonLabel && p.buttonUrl && (
+              {itemButton(ed, b.id, p.buttonLabel, p.buttonUrl) && (
                 <Button asChild className="mt-6 w-full" variant={hl ? "default" : "outline"}>
-                  <SmartLink href={p.buttonUrl} preview={preview}>
-                    {p.buttonLabel}
+                  <SmartLink href={p.buttonUrl || "#"} preview={preview}>
+                    <Txt k={`plans.${i}.buttonLabel`} value={p.buttonLabel} placeholder="Botón (opcional)" />
                   </SmartLink>
                 </Button>
               )}
@@ -670,7 +680,7 @@ function StatsBlock({ b, first }: { b: BlockOf<"stats">; first: boolean }) {
               <CountUp value={s.value} animate={d.animate === "on" && !ed} />
               {/^[A-Za-zÀ-ÿ]/.test(s.suffix) ? ` ${s.suffix}` : s.suffix}
             </dd>
-            <dd className="mt-2 text-sm text-muted-foreground">{s.label}</dd>
+            <Txt k={`items.${i}.label`} value={s.label} as="dd" className="mt-2 text-sm text-muted-foreground" placeholder="Qué mide esta cifra" />
           </div>
         ))}
       </dl>
@@ -766,8 +776,8 @@ function FeaturesBlock({ b, first }: { b: BlockOf<"features">; first: boolean })
               <span className="mb-4 inline-flex h-11 w-11 items-center justify-center rounded-xl bg-primary/10 text-primary">
                 <Icon className="h-5 w-5" aria-hidden />
               </span>
-              {it.title && <h3 className="font-heading text-lg font-semibold text-foreground">{it.title}</h3>}
-              {it.text && <p className="mt-2 whitespace-pre-line text-sm leading-relaxed text-muted-foreground">{it.text}</p>}
+              <Txt k={`items.${i}.title`} value={it.title} as="h3" className="font-heading text-lg font-semibold text-foreground" placeholder="Título" />
+              <Txt k={`items.${i}.text`} value={it.text} as="p" multiline className="mt-2 whitespace-pre-line text-sm leading-relaxed text-muted-foreground" placeholder="Texto (opcional)" />
             </div>
           );
         })}
@@ -778,6 +788,8 @@ function FeaturesBlock({ b, first }: { b: BlockOf<"features">; first: boolean })
 
 function TestimonialsBlock({ b, first }: { b: BlockOf<"testimonials">; first: boolean }) {
   const d = b.data;
+  const ed = useContext(StudioEditContext);
+  const editing = !!ed && ed.selectedId === b.id;
   const cards = d.items.map((it, i) => {
     const stars = Number(it.rating) || 0;
     return (
@@ -791,13 +803,13 @@ function TestimonialsBlock({ b, first }: { b: BlockOf<"testimonials">; first: bo
         ) : (
           <Quote className="mb-3 h-6 w-6 text-primary/60" aria-hidden />
         )}
-        <blockquote className="flex-1 whitespace-pre-line text-base leading-relaxed text-foreground">{it.quote}</blockquote>
-        {(it.author || it.role) && (
+        <Txt k={`items.${i}.quote`} value={it.quote} as="blockquote" multiline className="flex-1 whitespace-pre-line text-base leading-relaxed text-foreground" placeholder="La opinión del cliente" />
+        {(it.author || it.role || editing) && (
           <figcaption className="mt-5 flex items-center gap-3 border-t border-border pt-4 text-sm">
             {it.photoUrl && <img src={it.photoUrl} alt="" className="h-10 w-10 shrink-0 rounded-full object-cover" loading="lazy" />}
             <span>
-              {it.author && <span className="block font-semibold text-foreground">{it.author}</span>}
-              {it.role && <span className="block text-muted-foreground">{it.role}</span>}
+              <Txt k={`items.${i}.author`} value={it.author} className="block font-semibold text-foreground" placeholder="Nombre" />
+              <Txt k={`items.${i}.role`} value={it.role} className="block text-muted-foreground" placeholder="Cargo o ciudad (opcional)" />
             </span>
           </figcaption>
         )}
@@ -827,12 +839,13 @@ function FaqBlock({ b, first }: { b: BlockOf<"faq">; first: boolean }) {
         <Txt k="title" value={d.title} as={first ? "h1" : "h2"} className={cn(headingClass(first), "mb-6 block")} placeholder="Título" />
         <div className="divide-y divide-border rounded-2xl border border-border bg-card text-card-foreground">
           {d.items.map((it, i) => (
-            <details key={i} className="group px-5 py-4 [&_summary::-webkit-details-marker]:hidden" open={!!ed && i === 0}>
-              <summary className="flex cursor-pointer list-none items-center justify-between gap-4 font-medium text-foreground">
-                <span>{it.question}</span>
+            <details key={i} className="group px-5 py-4 [&_summary::-webkit-details-marker]:hidden" open={!!ed && (i === 0 || ed.selectedId === b.id)}>
+              {/* Con el bloque seleccionado las respuestas quedan abiertas y la pregunta se edita sin plegarlas */}
+              <summary className="flex cursor-pointer list-none items-center justify-between gap-4 font-medium text-foreground" onClick={ed?.selectedId === b.id ? (e) => e.preventDefault() : undefined}>
+                <Txt k={`items.${i}.question`} value={it.question} placeholder="La pregunta" />
                 <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground transition-transform group-open:rotate-180" aria-hidden />
               </summary>
-              <p className="mt-3 whitespace-pre-line text-muted-foreground">{it.answer}</p>
+              <Txt k={`items.${i}.answer`} value={it.answer} as="p" multiline className="mt-3 whitespace-pre-line text-muted-foreground" placeholder="La respuesta" />
             </details>
           ))}
         </div>
