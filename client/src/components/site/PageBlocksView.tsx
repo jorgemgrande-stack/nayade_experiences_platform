@@ -9,7 +9,7 @@
 import { createContext, Fragment, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { Link } from "wouter";
 import { toast } from "sonner";
-import { ArrowDown, ArrowUp, ChevronDown, Copy, EyeOff, GripVertical, Play, Quote, ShoppingBag, Star, Trash2 } from "lucide-react";
+import { ArrowDown, ArrowUp, ChevronDown, Copy, CornerLeftUp, EyeOff, GripVertical, Play, Quote, ShoppingBag, Star, Trash2 } from "lucide-react";
 import { trpc } from "@/lib/trpc";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -50,6 +50,8 @@ export interface StudioEdit {
 
 export const StudioEditContext = createContext<StudioEdit | null>(null);
 const BlockCtx = createContext<PageBlock | null>(null);
+/** Bloque bajo el puntero en el lienzo: solo se resalta el más interior (no la sección que lo contiene) */
+const HoverCtx = createContext<{ id: string | null; set: (id: string | null) => void } | null>(null);
 
 /** Color de la interfaz del editor sobre la página (independiente de los colores de la empresa). */
 const STUDIO_ACCENT = "#5b5bf6";
@@ -1180,9 +1182,11 @@ function AnimateIn({ kind, children }: { kind: BlockStyle["animation"]; children
 const DEVICE_LABEL: Record<Device, string> = { desktop: "ordenador", tablet: "tableta", mobile: "móvil" };
 
 function EditFrame({ ed, b, index, count, parent, col, children }: { ed: StudioEdit; b: PageBlock; index: number; count: number; parent: string | null; col: number; children: ReactNode }) {
-  const [hover, setHover] = useState(false);
+  const hoverCtx = useContext(HoverCtx);
+  const hover = hoverCtx?.id === b.id;
   const [drop, setDrop] = useState<"before" | "after" | null>(null);
   const selected = ed.selectedId === b.id;
+  const where = parent !== null ? `columna ${col + 1}` : null;
   const hiddenHere = !!b.style?.hideOn.includes(ed.device);
   const act = (a: StudioBlockAction) => (e: React.MouseEvent) => {
     e.preventDefault();
@@ -1193,8 +1197,10 @@ function EditFrame({ ed, b, index, count, parent, col, children }: { ed: StudioE
     <div
       data-studio-block={b.id}
       className="relative"
-      onMouseEnter={() => setHover(true)}
-      onMouseLeave={() => setHover(false)}
+      onMouseOver={(e) => {
+        e.stopPropagation();
+        if (!hover) hoverCtx?.set(b.id);
+      }}
       onClick={(e) => {
         if (ed.readOnly) return;
         e.stopPropagation();
@@ -1231,6 +1237,7 @@ function EditFrame({ ed, b, index, count, parent, col, children }: { ed: StudioE
           <div className="pointer-events-none absolute inset-0 z-30" style={{ boxShadow: `inset 0 0 0 ${selected ? 2 : 1}px ${STUDIO_ACCENT}` }} aria-hidden />
           <span className="pointer-events-none absolute left-0 top-0 z-40 rounded-br-md px-2 py-0.5 font-sans text-[11px] font-semibold text-white" style={{ background: STUDIO_ACCENT }}>
             {blockLabel(b.type)}
+            {where && <span className="font-medium opacity-80"> · {where}</span>}
           </span>
         </>
       )}
@@ -1257,6 +1264,18 @@ function EditFrame({ ed, b, index, count, parent, col, children }: { ed: StudioE
           >
             <GripVertical className="h-3.5 w-3.5" />
           </span>
+          {parent !== null && (
+            <ToolButton
+              label="Seleccionar la sección que lo contiene (Esc)"
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                ed.onSelect(parent);
+              }}
+            >
+              <CornerLeftUp className="h-3.5 w-3.5" />
+            </ToolButton>
+          )}
           <ToolButton label="Subir" disabled={index === 0} onClick={act("up")}>
             <ArrowUp className="h-3.5 w-3.5" />
           </ToolButton>
@@ -1271,7 +1290,7 @@ function EditFrame({ ed, b, index, count, parent, col, children }: { ed: StudioE
           </ToolButton>
         </div>
       )}
-      {drop && <DropLine at={drop} />}
+      {drop && <DropLine at={drop} where={where} />}
     </div>
   );
 }
@@ -1284,10 +1303,16 @@ function ToolButton({ label, disabled, onClick, children }: { label: string; dis
   );
 }
 
-function DropLine({ at }: { at: "before" | "after" }) {
+/** Línea de inserción: dónde caerá lo que se arrastra (y en qué columna, dentro de una sección). */
+function DropLine({ at, where }: { at: "before" | "after"; where?: string | null }) {
   return (
     <div className={cn("pointer-events-none absolute inset-x-0 z-50 flex items-center", at === "before" ? "-top-[3px]" : "-bottom-[3px]")} aria-hidden>
       <span className="h-[7px] w-[7px] rounded-full" style={{ background: STUDIO_ACCENT }} />
+      <span className="h-[3px] flex-1" style={{ background: STUDIO_ACCENT }} />
+      <span className="whitespace-nowrap rounded-full px-2 py-0.5 font-sans text-[11px] font-semibold text-white shadow" style={{ background: STUDIO_ACCENT }}>
+        {at === "before" ? "Soltar encima" : "Soltar debajo"}
+        {where ? ` · ${where}` : ""}
+      </span>
       <span className="h-[3px] flex-1" style={{ background: STUDIO_ACCENT }} />
       <span className="h-[7px] w-[7px] rounded-full" style={{ background: STUDIO_ACCENT }} />
     </div>
@@ -1471,9 +1496,13 @@ export function PageBlocksView({ blocks, preview, pageTitle }: { blocks: PageBlo
   // La página ya tiene su titular principal si un módulo «Título» lo declara como H1
   const ownH1 = blocks.some((b) => b.type === "heading" && b.data.level === "h1");
   const firstTitled = ownH1 ? -1 : blocks.findIndex(hasTitle);
+  const [hoverId, setHoverId] = useState<string | null>(null);
+  const hover = useMemo(() => ({ id: hoverId, set: setHoverId }), [hoverId]);
   return (
-    <div className="pb-8">
-      <BlockList blocks={blocks} parent={null} col={0} preview={preview} pageTitle={pageTitle} firstTitled={firstTitled} />
-    </div>
+    <HoverCtx.Provider value={hover}>
+      <div className="pb-8" onMouseLeave={() => setHoverId(null)} onMouseOver={() => hoverId && setHoverId(null)}>
+        <BlockList blocks={blocks} parent={null} col={0} preview={preview} pageTitle={pageTitle} firstTitled={firstTitled} />
+      </div>
+    </HoverCtx.Provider>
   );
 }

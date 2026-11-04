@@ -323,7 +323,8 @@ function Studio({ routeSlug }: { routeSlug: string | null }) {
     }
     if (ctrl && key === "v") return pasteBlock();
     if ((key === "delete" || key === "backspace") && selectedId) return remove(selectedId);
-    if (key === "escape") setSelectedId(null);
+    // Esc: de un módulo dentro de una sección, a la sección; si no, nada seleccionado
+    if (key === "escape") setSelectedId(selectedId ? (findBlock(blocks, selectedId)?.parent ?? null) : null);
   };
 
   // ── Mensajes del lienzo (la versión más reciente de cada operación, sin cierres antiguos) ──
