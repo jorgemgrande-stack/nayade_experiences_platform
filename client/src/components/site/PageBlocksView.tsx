@@ -9,7 +9,7 @@
 import { createContext, Fragment, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { Link } from "wouter";
 import { toast } from "sonner";
-import { ArrowDown, ArrowUp, Bold, CalendarDays, ChevronDown, Copy, CornerLeftUp, EyeOff, GripVertical, Image as ImageIcon, Italic, Link2, List, Newspaper, Play, Quote, ShoppingBag, Star, Trash2, Unlink } from "lucide-react";
+import { ArrowDown, ArrowUp, Bold, CalendarDays, ChevronDown, Copy, CornerLeftUp, EyeOff, GripVertical, Image as ImageIcon, Italic, Link2, List, Newspaper, Play, Plus, Quote, ShoppingBag, Star, Trash2, Unlink } from "lucide-react";
 import { trpc } from "@/lib/trpc";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -42,6 +42,8 @@ export interface StudioEdit {
   /** Abrir la biblioteca multimedia para una imagen del bloque */
   onPickImage: (id: string, key: string) => void;
   onAction: (id: string, action: StudioBlockAction) => void;
+  /** Añadir un módulo en ese sitio con el selector rápido del editor */
+  onAddAt: (index: number, parent: string | null, col: number) => void;
   /** Soltar en la página (parent null) o en la columna `col` de la sección `parent` */
   onDrop: (payload: string, index: number, parent: string | null, col: number) => void;
   /** Si lo que se arrastra es de Elephant Studio (según los tipos del arrastre) */
@@ -1618,6 +1620,22 @@ function EditFrame({ ed, b, index, count, parent, col, children }: { ed: StudioE
         </div>
       )}
       {drop && <DropLine at={drop} where={where} />}
+      {hover && !selected && !drop && !ed.readOnly && (
+        <button
+          type="button"
+          title={where ? `Añadir debajo (${where})` : "Añadir un bloque debajo"}
+          aria-label={where ? `Añadir debajo, en la ${where}` : "Añadir un bloque debajo"}
+          onClick={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            ed.onAddAt(index + 1, parent, col);
+          }}
+          className="absolute -bottom-3.5 left-1/2 z-50 inline-flex h-7 w-7 -translate-x-1/2 items-center justify-center rounded-full text-white shadow-lg ring-2 ring-white transition-transform hover:scale-110"
+          style={{ background: STUDIO_ACCENT }}
+        >
+          <Plus className="h-4 w-4" aria-hidden />
+        </button>
+      )}
     </div>
   );
 }
@@ -1675,11 +1693,25 @@ function EndDropZone({ ed, index, empty, parent = null, col = 0 }: { ed: StudioE
         className={cn("rounded-2xl border-2 border-dashed px-6 text-center text-sm transition-colors", inColumn ? "px-3 py-8" : empty ? "py-16" : "py-5")}
         style={{ borderColor: over ? STUDIO_ACCENT : "rgba(100,116,139,0.35)", background: over ? "rgba(91,91,246,0.06)" : "transparent", color: over ? STUDIO_ACCENT : "rgb(100,116,139)" }}
       >
-        {inColumn
-          ? "Columna vacía: arrastra aquí un módulo"
-          : empty
-            ? "La página está vacía. Arrastra aquí un módulo de la biblioteca o haz clic en uno para añadirlo."
-            : "Suelta aquí para añadirlo al final de la página"}
+        <span className="block">
+          {inColumn
+            ? "Columna vacía: arrastra aquí un módulo"
+            : empty
+              ? "La página está vacía. Arrastra aquí un módulo de la biblioteca o añádelo con el botón."
+              : "Suelta aquí un módulo o añádelo al final de la página"}
+        </span>
+        <button
+          type="button"
+          onClick={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            ed.onAddAt(index, parent, col);
+          }}
+          className="mt-2 inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-semibold text-white shadow-sm transition-transform hover:scale-105"
+          style={{ background: STUDIO_ACCENT }}
+        >
+          <Plus className="h-3.5 w-3.5" aria-hidden /> Añadir aquí
+        </button>
       </div>
     </div>
   );
