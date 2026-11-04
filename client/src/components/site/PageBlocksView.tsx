@@ -1595,7 +1595,7 @@ function EditFrame({ ed, b, index, count, parent, col, children }: { ed: StudioE
       {(selected || hover) && !ed.readOnly && (
         <>
           <div className="pointer-events-none absolute inset-0 z-30" style={{ boxShadow: `inset 0 0 0 ${selected ? 2 : 1}px ${STUDIO_ACCENT}` }} aria-hidden />
-          <span className={cn("pointer-events-none absolute left-0 z-40 rounded-t-md px-2 py-0.5 font-sans text-[11px] font-semibold text-white", index === 0 && parent === null ? "top-0 rounded-b-md rounded-t-none" : "bottom-full")} style={{ background: STUDIO_ACCENT }}>
+          <span className={cn("pointer-events-none absolute left-0 z-40 rounded-t-md px-2 py-0.5 font-sans text-xs font-semibold text-white", index === 0 && parent === null ? "top-0 rounded-b-md rounded-t-none" : "bottom-full")} style={{ background: STUDIO_ACCENT }}>
             {blockLabel(b.type)}
             {where && <span className="font-medium opacity-80"> · {where}</span>}
           </span>
@@ -1628,17 +1628,17 @@ function EditFrame({ ed, b, index, count, parent, col, children }: { ed: StudioE
               e.dataTransfer.setData("text/plain", `block:${b.id}`);
             }}
           >
-            <GripVertical className="h-3.5 w-3.5" />
-            {roomy && <span className="pr-0.5 text-[11px] font-semibold">Mover</span>}
+            <GripVertical className="h-4 w-4" />
+            {roomy && <span className="pr-0.5 text-xs font-semibold">Mover</span>}
           </span>
           <ToolButton label="Editar el contenido en el panel derecho" text={roomy ? "Editar" : undefined} onClick={act("edit")}>
-            <Pencil className="h-3.5 w-3.5" />
+            <Pencil className="h-4 w-4" />
           </ToolButton>
           <ToolButton label="Diseño: fondo, colores, tamaño y espacios" text={roomy ? "Diseño" : undefined} onClick={act("design")}>
-            <Paintbrush className="h-3.5 w-3.5" />
+            <Paintbrush className="h-4 w-4" />
           </ToolButton>
           <ToolButton label="Duplicar (Ctrl+D)" onClick={act("duplicate")}>
-            <Copy className="h-3.5 w-3.5" />
+            <Copy className="h-4 w-4" />
           </ToolButton>
           {confirmDelete ? (
             <button
@@ -1663,13 +1663,13 @@ function EditFrame({ ed, b, index, count, parent, col, children }: { ed: StudioE
                   : act("delete")
               }
             >
-              <Trash2 className="h-3.5 w-3.5" />
+              <Trash2 className="h-4 w-4" />
             </ToolButton>
           )}
           <DropdownMenu modal={false}>
             <DropdownMenuTrigger asChild>
               <button type="button" title="Más acciones" aria-label="Más acciones" className="rounded-md p-1.5 text-white hover:bg-white/15 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white" onClick={(e) => e.stopPropagation()}>
-                <MoreHorizontal className="h-3.5 w-3.5" />
+                <MoreHorizontal className="h-4 w-4" />
               </button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-60 font-sans" onClick={(e) => e.stopPropagation()}>
@@ -1724,7 +1724,7 @@ function ToolButton({ label, text, disabled, onClick, children }: { label: strin
       className="inline-flex items-center gap-1 rounded-md p-1.5 text-white hover:bg-white/15 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white disabled:opacity-40"
     >
       {children}
-      {text && <span className="pr-0.5 text-[11px] font-semibold">{text}</span>}
+      {text && <span className="pr-0.5 text-xs font-semibold">{text}</span>}
     </button>
   );
 }
