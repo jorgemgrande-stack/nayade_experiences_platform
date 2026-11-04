@@ -29,6 +29,7 @@ const FEED_LABELS: Record<string, string> = {
   tpv_alert: "Avisos de caja y TPV",
   upcoming_reservation: "Pedidos para mañana",
   task: "Tareas para hoy o vencidas",
+  community: "Comunidades por revisar",
 };
 
 const RECENT_ICONS = { client: Users, lead: Target, quote: FileText, order: ShoppingCart, invoice: Receipt, sale: Receipt } as const;

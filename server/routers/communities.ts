@@ -9,6 +9,7 @@
  *    miembros (clientes del CRM, usuarios del panel o invitación por correo), modera y ve los indicadores.
  *  - `communities.member.*`: el área de miembros (/comunidad), con la cuenta del Core de cada persona
  *    (protectedProcedure) y los permisos de su rol en la comunidad (administrador, moderador, miembro).
+ *  - Encuestas, propuestas de miembros y reportes: server/routers/communityPolls.ts (montados aquí).
  */
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
@@ -73,6 +74,7 @@ import {
   type Member,
 } from "../communitiesDb";
 import { notifyNewMembers } from "../communities/mail";
+import { adminPollRouters, memberPollProcedures } from "./communityPolls";
 
 const id = z.number().int().positive();
 const imageUrl = z.string().trim().max(512).refine(isSafeImageUrl, "Dirección de imagen no válida").nullable().optional();
@@ -246,6 +248,9 @@ const adminRouter = router({
       return { ok: true };
     }),
   }),
+
+  // Encuestas y preguntas, propuestas de miembros y reportes (server/routers/communityPolls.ts)
+  ...adminPollRouters,
 });
 
 // ─── Área de miembros ─────────────────────────────────────────────────────────
@@ -409,6 +414,9 @@ const memberRouter = router({
     await setMemberRole(target, input.role, ctx.user.id);
     return { ok: true };
   }),
+
+  // Encuestas, propuestas y reportes (server/routers/communityPolls.ts)
+  ...memberPollProcedures,
 });
 
 export const communitiesRouter = router({

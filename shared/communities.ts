@@ -171,11 +171,11 @@ export type ReactionTarget = (typeof REACTION_TARGETS)[number];
  * tokens) sin que Comunidades dependa de ellos. Cada hecho tiene una clave única: se registra y se emite una sola vez
  * aunque la acción se repita (quitar y volver a dar «me gusta» no genera un segundo hecho).
  */
-export const PARTICIPATION_EVENTS = ["member.joined", "member.posted", "member.commented", "member.reacted"] as const;
+export const PARTICIPATION_EVENTS = ["member.joined", "member.posted", "member.commented", "member.reacted", "member.responded", "member.proposed", "member.supported"] as const;
 export type ParticipationEvent = (typeof PARTICIPATION_EVENTS)[number];
 
 /** Hechos de gestión (no son participación; sirven, p. ej., para retirar recompensas de contenido ocultado). */
-export const MANAGEMENT_EVENTS = ["post.hidden", "post.restored", "post.approved", "comment.hidden", "comment.restored", "member.blocked", "member.unblocked", "member.left", "member.role_changed", "member.added"] as const;
+export const MANAGEMENT_EVENTS = ["post.hidden", "post.restored", "post.approved", "comment.hidden", "comment.restored", "member.blocked", "member.unblocked", "member.left", "member.role_changed", "member.added", "poll.published", "poll.closed", "proposal.approved", "proposal.rejected", "proposal.converted", "report.resolved", "report.dismissed"] as const;
 export type ManagementEvent = (typeof MANAGEMENT_EVENTS)[number];
 
 export type CommunityEventType = ParticipationEvent | ManagementEvent;
@@ -185,6 +185,9 @@ export const ACTIVITY_LABELS: Record<CommunityEventType, string> = {
   "member.posted": "ha publicado",
   "member.commented": "ha comentado",
   "member.reacted": "ha reaccionado",
+  "member.responded": "ha respondido a una encuesta",
+  "member.proposed": "ha enviado una propuesta",
+  "member.supported": "ha apoyado una propuesta",
   "post.hidden": "ha ocultado una publicación",
   "post.restored": "ha vuelto a mostrar una publicación",
   "post.approved": "ha aprobado una publicación",
@@ -195,6 +198,13 @@ export const ACTIVITY_LABELS: Record<CommunityEventType, string> = {
   "member.left": "ha salido de la comunidad",
   "member.role_changed": "ha cambiado el rol de un miembro",
   "member.added": "ha incorporado a un miembro",
+  "poll.published": "ha publicado una encuesta",
+  "poll.closed": "ha cerrado una encuesta",
+  "proposal.approved": "ha aprobado una propuesta",
+  "proposal.rejected": "ha rechazado una propuesta",
+  "proposal.converted": "ha convertido una propuesta en encuesta",
+  "report.resolved": "ha resuelto un reporte ocultando el contenido",
+  "report.dismissed": "ha descartado un reporte",
 };
 
 export const isParticipationEvent = (t: string): t is ParticipationEvent => (PARTICIPATION_EVENTS as readonly string[]).includes(t);
@@ -205,7 +215,7 @@ export const PARTICIPATION_WINDOW_DAYS = 30;
 
 export interface EngagementInput {
   activeMembers: number;
-  /** Miembros activos con alguna participación (publicar, comentar, reaccionar…) en la ventana. */
+  /** Miembros activos con alguna participación (publicar, comentar, reaccionar, responder, proponer…) en la ventana. */
   participants: number;
   posts: number;
   comments: number;
