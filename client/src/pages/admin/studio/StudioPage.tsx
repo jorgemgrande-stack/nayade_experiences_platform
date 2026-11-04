@@ -903,10 +903,7 @@ function Studio({ routeSlug }: { routeSlug: string | null }) {
                     <div className="flex flex-wrap gap-2">
                       <Button
                         size="sm"
-                        onClick={() => {
-                          setLeftOpen(true);
-                          setLeftTab("add");
-                        }}
+                        onClick={() => setAddAt({ parent: null, col: 0, index: blocks.length })}
                       >
                         Añadir un bloque
                       </Button>
