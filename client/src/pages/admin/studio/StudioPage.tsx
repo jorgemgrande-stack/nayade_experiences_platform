@@ -16,7 +16,7 @@ import { Link, useLocation } from "wouter";
 import { toast } from "sonner";
 import {
   ArrowLeft, BookmarkPlus, Check, ChevronDown, CircleAlert, Eye, ExternalLink, History, Keyboard, Loader2, Monitor, MoreHorizontal, PanelLeft, PanelRight, Redo2,
-  Smartphone, Tablet, Undo2, Upload, X,
+  Maximize2, Minimize2, Smartphone, Tablet, Undo2, Upload, X, ZoomIn, ZoomOut,
 } from "lucide-react";
 import { trpc } from "@/lib/trpc";
 import { useAuth } from "@/_core/hooks/useAuth";
@@ -40,7 +40,7 @@ import { MediaLibraryDialog } from "@/components/ImageUploader";
 import { siteRelativeFileUrl } from "@shared/imageUpload";
 import { SITE_TOKEN_LABELS } from "@shared/siteTokenLabels";
 import type { LinkTarget } from "@/components/admin/pageBuilder/BlockEditors";
-import { BlockInspector } from "@/components/admin/studio/Inspector";
+import { BlockInspector, type InspectorTab } from "@/components/admin/studio/Inspector";
 import { LeftPanel, type LeftTab } from "@/components/admin/studio/LeftPanel";
 import { PageSettings, type SitePage } from "@/components/admin/studio/PageSettings";
 import { VersionsPanel } from "@/components/admin/studio/VersionsPanel";
@@ -58,6 +58,8 @@ const DEVICES: ReadonlyArray<{ key: Device; label: string; width: number; icon: 
 ];
 const MODE_KEY = "elephant-studio-modo";
 const CLIPBOARD_KEY = "elephant-studio-portapapeles";
+/** Pasos del zoom del lienzo */
+const ZOOM_STEPS = [0.5, 0.67, 0.75, 0.9, 1, 1.1, 1.25, 1.5];
 const ACCENT = "#5b5bf6";
 
 function readMode(): boolean {
@@ -99,7 +101,9 @@ function Studio({ routeSlug }: { routeSlug: string | null }) {
   const [leftOpen, setLeftOpen] = useState(wide);
   const [rightOpen, setRightOpen] = useState(wide);
   const [leftTab, setLeftTab] = useState<LeftTab>("add");
-  const [inspTab, setInspTab] = useState<"content" | "design">("content");
+  const [inspTab, setInspTab] = useState<InspectorTab>("content");
+  /** Zoom del lienzo: null = ajustar al espacio disponible */
+  const [zoom, setZoom] = useState<number | null>(null);
   const [versionsOpen, setVersionsOpen] = useState(false);
   const [viewing, setViewing] = useState<{ id: number; label: string } | null>(null);
   const [confirmPublish, setConfirmPublish] = useState(false);
@@ -530,7 +534,14 @@ function Studio({ routeSlug }: { routeSlug: string | null }) {
   }, []);
   const dev = DEVICES.find((d) => d.key === device)!;
   const pad = device === "desktop" ? 20 : 28;
-  const scale = Math.min(1, Math.max(0.3, (area.w - pad * 2) / dev.width));
+  const fitScale = Math.min(1, Math.max(0.3, (area.w - pad * 2) / dev.width));
+  const scale = zoom ?? fitScale;
+  const overflowX = dev.width * scale > area.w - pad * 2 + 1;
+  const stepZoom = (dir: 1 | -1) => {
+    const cur = zoom ?? fitScale;
+    const next = dir > 0 ? ZOOM_STEPS.find((z) => z > cur + 0.001) : [...ZOOM_STEPS].reverse().find((z) => z < cur - 0.001);
+    if (next) setZoom(next);
+  };
   const frameH = Math.max(320, area.h - pad * 2 - (viewing ? 52 : 0));
 
   if (pagesQ.error) {
@@ -638,6 +649,37 @@ function Studio({ routeSlug }: { routeSlug: string | null }) {
               </button>
             ))}
           </div>
+          <div className="ml-1 hidden items-center rounded-lg bg-muted p-0.5 md:flex" role="group" aria-label="Zoom del lienzo">
+            <button type="button" onClick={() => stepZoom(-1)} disabled={scale <= ZOOM_STEPS[0] + 0.001} className="rounded-md px-1.5 py-1.5 text-muted-foreground hover:text-foreground disabled:opacity-40" aria-label="Alejar" title="Alejar">
+              <ZoomOut className="h-4 w-4" />
+            </button>
+            <button
+              type="button"
+              onClick={() => setZoom(null)}
+              className={cn("min-w-[52px] rounded-md px-1.5 py-1 text-xs font-medium tabular-nums", zoom === null ? "bg-background text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground")}
+              title="Ajustar al espacio disponible"
+              aria-label={`Zoom ${Math.round(scale * 100)} %. Pulsa para ajustar`}
+            >
+              {zoom === null ? "Ajustar" : `${Math.round(scale * 100)} %`}
+            </button>
+            <button type="button" onClick={() => stepZoom(1)} disabled={scale >= ZOOM_STEPS[ZOOM_STEPS.length - 1] - 0.001} className="rounded-md px-1.5 py-1.5 text-muted-foreground hover:text-foreground disabled:opacity-40" aria-label="Acercar" title="Acercar">
+              <ZoomIn className="h-4 w-4" />
+            </button>
+          </div>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="hidden h-9 w-9 md:inline-flex"
+            onClick={() => {
+              const open = leftOpen || rightOpen;
+              setLeftOpen(!open);
+              setRightOpen(!open);
+            }}
+            aria-label={leftOpen || rightOpen ? "Ampliar el lienzo (ocultar los paneles)" : "Mostrar los paneles"}
+            title={leftOpen || rightOpen ? "Ampliar el lienzo" : "Mostrar los paneles"}
+          >
+            {leftOpen || rightOpen ? <Maximize2 className="h-4 w-4" /> : <Minimize2 className="h-4 w-4" />}
+          </Button>
         </div>
 
         <div className="hidden items-center rounded-lg bg-muted p-0.5 lg:flex" role="radiogroup" aria-label="Modo de edición">
@@ -650,7 +692,12 @@ function Studio({ routeSlug }: { routeSlug: string | null }) {
               type="button"
               role="radio"
               aria-checked={pro === m.v}
-              onClick={() => setPro(m.v)}
+              title={m.v ? "Diseño avanzado, móvil, animaciones, anclas y opciones avanzadas de cada módulo" : "Lo esencial: textos, imágenes, botones y diseño básico"}
+              onClick={() => {
+                if (pro === m.v) return;
+                setPro(m.v);
+                toast(m.v ? "Modo profesional: diseño avanzado y pestaña «Avanzado» en el inspector." : "Modo sencillo: lo esencial para editar el contenido de tu web.");
+              }}
               className={cn("rounded-md px-2.5 py-1 text-xs font-medium transition-colors", pro === m.v ? "bg-background text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground")}
             >
               {m.label}
@@ -767,7 +814,7 @@ function Studio({ routeSlug }: { routeSlug: string | null }) {
               </div>
             </div>
           ) : (
-            <div className="absolute inset-0 flex justify-center" style={{ paddingTop: pad + (viewing ? 52 : 0), paddingLeft: pad, paddingRight: pad }}>
+            <div className={cn("absolute inset-0 flex overflow-auto", overflowX ? "justify-start" : "justify-center")} style={{ paddingTop: pad + (viewing ? 52 : 0), paddingLeft: pad, paddingRight: pad, paddingBottom: zoom ? pad : 0 }}>
               <div
                 className={cn("relative shrink-0 overflow-hidden bg-white shadow-[0_8px_40px_rgba(15,23,42,0.18)]", device === "desktop" ? "rounded-lg" : "rounded-[28px] ring-8 ring-slate-900/90")}
                 style={{ width: dev.width * scale, height: frameH }}
@@ -846,9 +893,33 @@ function Studio({ routeSlug }: { routeSlug: string | null }) {
                 />
               ) : page ? (
                 <div className="space-y-5">
-                  <p className="rounded-lg bg-muted px-3 py-2 text-xs leading-relaxed text-muted-foreground">
-                    Haz clic en cualquier parte de la página para editarla. Arrastra módulos desde la biblioteca para añadirlos.
-                  </p>
+                  <div className="space-y-3 rounded-xl border border-dashed border-border p-4">
+                    <p className="text-sm font-medium">No hay nada seleccionado</p>
+                    <ul className="space-y-1.5 text-xs leading-relaxed text-muted-foreground">
+                      <li><span className="font-medium text-foreground">Clic</span> en un bloque para ver sus opciones aquí.</li>
+                      <li><span className="font-medium text-foreground">Doble clic</span> en un texto para escribir sobre la página.</li>
+                      <li><span className="font-medium text-foreground">Arrastra</span> módulos desde la biblioteca, o pulsa «+» bajo cualquier bloque.</li>
+                    </ul>
+                    <div className="flex flex-wrap gap-2">
+                      <Button
+                        size="sm"
+                        onClick={() => setAddAt({ parent: null, col: 0, index: blocks.length })}
+                      >
+                        Añadir un bloque
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => {
+                          setLeftOpen(true);
+                          setLeftTab("site");
+                        }}
+                      >
+                        Páginas y ajustes
+                      </Button>
+                    </div>
+                  </div>
+                  <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Ajustes de esta página</p>
                   {missingTokens.length > 0 && (
                     <p role="note" className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-xs leading-relaxed text-amber-900 dark:border-amber-700 dark:bg-amber-950/50 dark:text-amber-100">
                       Esta página usa datos de tu empresa que aún no has rellenado ({missingTokens.join(", ").toLowerCase()}). Si falta alguno, esa línea no se

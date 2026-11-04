@@ -729,9 +729,22 @@ function ButtonBlock({ b, preview }: { b: BlockOf<"button">; preview?: boolean }
 function ColumnsBlock({ b, first, preview }: { b: BlockOf<"columns">; first: boolean; preview?: boolean }) {
   const d = b.data;
   const showButton = useShowButton(d.buttonLabel, d.buttonUrl, b.id);
+  const ed = useContext(StudioEditContext);
+  // En el lienzo, con el bloque seleccionado y sin imagen: su hueco, para elegirla con un clic
+  const emptySlot = !d.imageUrl && !!ed && !ed.readOnly && ed.selectedId === b.id;
   return (
     <section className="container py-8 md:py-12">
-      <div className={cn("grid items-center gap-8 md:grid-cols-2 md:gap-12", !d.imageUrl && "md:grid-cols-1 max-w-3xl")}>
+      <div className={cn("grid items-center gap-8 md:grid-cols-2 md:gap-12", !d.imageUrl && !emptySlot && "md:grid-cols-1 max-w-3xl")}>
+        {emptySlot && (
+          <div className={cn(d.imagePosition === "left" ? "md:order-first" : "md:order-last")}>
+            <ImageSlot k="imageUrl" filled={false}>
+              <EmptyMedia>
+                <ImageIcon className="h-7 w-7" aria-hidden />
+                Haz clic para elegir la imagen (opcional)
+              </EmptyMedia>
+            </ImageSlot>
+          </div>
+        )}
         {d.imageUrl && (
           <div className={cn(d.imagePosition === "left" ? "md:order-first" : "md:order-last")}>
             <ImageSlot k="imageUrl" filled>
