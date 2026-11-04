@@ -107,7 +107,7 @@ export const CAPABILITIES: readonly CapabilityDef[] = [
   c("restaurant-net", "Restaurant Net", "extra", "net", "partial"),
   c("care-net", "Care Net", "extra", "net", "partial"),
   c("life-net", "Life Net", "extra", "net", "planned"),
-  c("social-token-net", "Social Token Net", "extra", "net", "planned"),
+  c("social-token-net", "Social Token Net", "extra", "net", "partial"),
 ];
 
 export const CAPABILITY_IDS: readonly string[] = CAPABILITIES.map((x) => x.id);

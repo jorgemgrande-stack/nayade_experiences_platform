@@ -397,6 +397,8 @@ export const TASK_NAV: NavSection[] = [
           { label: "Liquidaciones", href: "/admin/settlements", capabilities: ["supplier-settlements"] },
         ],
       },
+      // Social Token Net · Comunidades: comunidades, miembros, publicaciones, moderación e indicadores
+      { label: "Comunidades", href: "/admin/comunidades", key: "x-comunidades", icon: "users", roles: ADMIN, capabilities: ["social-token-net"] },
       { label: "Viajes (REAV)", href: "/admin/fiscal/reav", key: "x-reav", icon: "receipt", roles: ADMIN, capabilities: ["travel-net"] },
     ],
   },

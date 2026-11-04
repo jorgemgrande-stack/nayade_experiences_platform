@@ -44,6 +44,8 @@ export const TRPC_ROUTER_CAPABILITIES: Record<string, string> = {
   sites: "admin-panel",
   // Business: inventario y existencias (los procedimientos lo comprueban además); el descuento al vender lo decide inventoryDb
   inventory: "inventory-basic",
+  // Social Token Net · Comunidades: panel y área de miembros (los procedimientos lo comprueban además)
+  communities: "social-token-net",
   products: "shop-catalog",
   packs: "shop-catalog",
   timeSlots: "shop-catalog",
