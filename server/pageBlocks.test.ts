@@ -2,6 +2,8 @@
  * Modelo de bloques del constructor de la web: validación, saneado, conversión desde las páginas antiguas en HTML,
  * resumen en HTML, datos de la empresa y reglas de la dirección de la página.
  */
+import fs from "node:fs";
+import path from "node:path";
 import { describe, it, expect } from "vitest";
 import { blocksToHtml, htmlText, htmlToBlocks, normalizeBlocks, PageBlocksError, readStoredBlocks, renderBlockTokens, safeLink } from "./_core/pageBlocks";
 import { STARTER_PAGES } from "./_core/templates/starterSite";
@@ -161,5 +163,23 @@ describe("dirección de la página y plantillas", () => {
     }
     expect(templateBlocks("contact", "Contacto").some((b) => b.type === "contact_form")).toBe(true);
     expect(templateBlocks("services", "Servicios").some((b) => b.type === "columns")).toBe(true);
+  });
+
+  it("plantillas de página completa: columnas con contenido, diseño propio y todo válido para el servidor", () => {
+    const home = normalizeBlocks(templateBlocks("home", "Inicio"));
+    const section = home.find((b) => b.type === "section") as any;
+    expect(section.data.columns.map((c: any) => c.blocks.map((x: any) => x.type))).toEqual([["text", "button"], ["image"]]);
+    expect(home.find((b) => b.type === "cta")?.style).toMatchObject({ background: "gradient", gradient: "brand" });
+    const landing = normalizeBlocks(templateBlocks("landing", "Oferta de invierno"));
+    expect(landing[0]).toMatchObject({ type: "heading", data: { title: "Oferta de invierno", level: "h1" }, style: { background: "gradient", headingSize: "xl" } });
+    expect(templateBlocks("faq", "Dudas").some((b) => b.type === "section" && JSON.stringify(b).includes("contact_form"))).toBe(true);
+    expect(templateBlocks("pricing", "Tarifas").some((b) => b.type === "pricing")).toBe(true);
+  });
+
+  it("el servidor admite al crear una página todas las plantillas de la lista", () => {
+    const routers = fs.readFileSync(path.join(__dirname, "routers.ts"), "utf8");
+    const m = routers.match(/template: z\.enum\(\[([^\]]+)\]\)/);
+    const keys = (m?.[1] ?? "").split(",").map((x) => x.trim().replace(/"/g, ""));
+    expect(keys.sort()).toEqual(PAGE_TEMPLATES.map((t) => t.key).sort());
   });
 });
