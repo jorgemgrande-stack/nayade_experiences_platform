@@ -20,6 +20,7 @@ const EDITABLE_CSS = `
 .studio-editable:hover{box-shadow:0 0 0 1px rgba(91,91,246,.7)}
 .studio-editable:focus{box-shadow:0 0 0 2px #5b5bf6;background:rgba(91,91,246,.05)}
 .studio-editable:empty::before{content:attr(data-placeholder);opacity:.45;pointer-events:none}
+.studio-editable[contenteditable]:not(:focus){cursor:text}
 html{scroll-behavior:smooth}
 `;
 
@@ -108,6 +109,7 @@ export default function StudioCanvas() {
       raw: rawMap(state.blocks),
       onSelect: select,
       onText: (id, key, value) => post({ kind: "text", id, key, value }),
+      onPickImage: (id, key) => post({ kind: "pickImage", id, key }),
       onAction: (id, action) => post({ kind: "action", id, action }),
       onDrop: (payload, index, parent, col) => {
         const p = parseDragPayload(payload);
