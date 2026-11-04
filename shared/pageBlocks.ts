@@ -419,6 +419,36 @@ export function duplicateBlock(b: PageBlock): PageBlock {
   return { ...b, id: newBlockId(), data, ...(b.style ? { style: structuredCloneSafe(b.style) } : {}) } as PageBlock;
 }
 
+// ─── Textos editables sobre la página ─────────────────────────────────────────
+
+/**
+ * Clave de un texto que se edita sobre la página: un campo del bloque (`title`) o el campo de un elemento de una
+ * lista (`items.2.title`). Solo se leen y escriben textos que ya existen; cualquier otra clave se ignora.
+ */
+const TEXT_PATH_RE = /^([a-zA-Z][a-zA-Z0-9]{0,39})(?:\.(\d{1,2})\.([a-zA-Z][a-zA-Z0-9]{0,39}))?$/;
+
+export function readBlockText(data: unknown, key: string): string | undefined {
+  const m = TEXT_PATH_RE.exec(key);
+  if (!m || !data || typeof data !== "object") return undefined;
+  const top = (data as Record<string, unknown>)[m[1]];
+  if (m[2] === undefined) return typeof top === "string" ? top : undefined;
+  const item = Array.isArray(top) ? top[Number(m[2])] : undefined;
+  const v = item && typeof item === "object" ? (item as Record<string, unknown>)[m[3]] : undefined;
+  return typeof v === "string" ? v : undefined;
+}
+
+/** Copia de `data` con ese texto cambiado (o `data` tal cual si la clave no apunta a un texto existente). */
+export function writeBlockText<T>(data: T, key: string, value: string): T {
+  if (readBlockText(data, key) === undefined) return data;
+  const m = TEXT_PATH_RE.exec(key)!;
+  const d = data as Record<string, unknown>;
+  if (m[2] === undefined) return { ...d, [m[1]]: value } as T;
+  const list = (d[m[1]] as Record<string, unknown>[]).slice();
+  const i = Number(m[2]);
+  list[i] = { ...list[i], [m[3]]: value };
+  return { ...d, [m[1]]: list } as T;
+}
+
 function structuredCloneSafe<T>(v: T): T {
   return JSON.parse(JSON.stringify(v)) as T;
 }
