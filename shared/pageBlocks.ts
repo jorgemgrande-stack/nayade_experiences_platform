@@ -12,6 +12,8 @@ export const BLOCK_TYPES = [
   "hero", "text", "image", "gallery", "button", "columns", "contact_form", "separator",
   // Elephant Studio (shared/studio/modules.ts): módulos registrados con su esquema de campos
   "heading", "features", "testimonials", "faq", "cta", "video", "products",
+  // Contenido del CMS
+  "blog_posts",
   // Carruseles y presentación
   "slideshow", "carousel", "cards",
   // Formularios
@@ -54,6 +56,8 @@ export interface BlockDataMap {
   video: { title: string; url: string; caption: string };
   /** Productos de la tienda de la empresa (datos reales del catálogo: no se copian en la página) */
   products: { title: string; intro: string; categorySlug: string; limit: "4" | "8" | "12"; buttonLabel: string; layout: "grid" | "carousel" };
+  /** Últimas entradas publicadas del blog de la empresa (las del CMS; la web se actualiza sola al publicar) */
+  blog_posts: { title: string; intro: string; limit: "3" | "6" | "9"; showExcerpt: OnOff; buttonLabel: string; layout: "grid" | "carousel" };
   /** Presentación a pantalla ancha con varias diapositivas (portada) */
   slideshow: {
     slides: SlideItem[];
@@ -277,6 +281,7 @@ export const BLOCK_CATALOG: ReadonlyArray<{ type: BlockType; label: string; desc
   { type: "cta", label: "Llamada a la acción", description: "Un mensaje destacado con uno o dos botones" },
   { type: "video", label: "Vídeo", description: "Un vídeo de YouTube o Vimeo" },
   { type: "products", label: "Productos de tu tienda", description: "Tus productos reales, con su foto y su precio" },
+  { type: "blog_posts", label: "Entradas del blog", description: "Tus últimas entradas publicadas, con su imagen y su fecha" },
   { type: "slideshow", label: "Presentación de diapositivas", description: "Portada a todo lo ancho con varias diapositivas, botones y transiciones" },
   { type: "carousel", label: "Carrusel de imágenes", description: "Varias imágenes a la vista que se desplazan, con visor a pantalla completa" },
   { type: "cards", label: "Tarjetas", description: "Tarjetas con imagen, título, texto y botón, en rejilla o en carrusel" },
@@ -335,6 +340,7 @@ export function defaultBlockData<K extends BlockType>(type: K): BlockDataMap[K] 
     cta: { title: "¿Hablamos?", text: "Cuéntanos qué necesitas y te respondemos lo antes posible.", buttonLabel: "Contacta con nosotros", buttonUrl: "/contacto", secondaryLabel: "", secondaryUrl: "" },
     video: { title: "", url: "", caption: "" },
     products: { title: "Nuestros productos", intro: "", categorySlug: "", limit: "4", buttonLabel: "Ver toda la tienda", layout: "grid" },
+    blog_posts: { title: "Últimas entradas", intro: "", limit: "3", showExcerpt: "on", buttonLabel: "Ver todas las entradas", layout: "grid" },
     slideshow: {
       slides: [newSlide("Tu titular principal", "Explica en una frase qué ofreces y a quién"), newSlide("Segunda diapositiva", "Destaca un servicio, una promoción o una novedad")],
       height: "l",

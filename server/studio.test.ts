@@ -46,6 +46,11 @@ describe("registro de módulos", () => {
     expect(availableModules((c) => c === "shop-catalog").map((m) => m.type)).toContain("products");
   });
 
+  it("las entradas del blog solo se ofrecen con el blog en la licencia", () => {
+    expect(availableModules(() => false).map((m) => m.type)).not.toContain("blog_posts");
+    expect(availableModules((c) => c === "cms-blog").map((m) => m.type)).toContain("blog_posts");
+  });
+
   it("el buscador encuentra por nombre y palabras clave, sin tildes", () => {
     expect(searchModules(MODULES, "galeria").map((m) => m.type)).toContain("gallery");
     expect(searchModules(MODULES, "OPINIONES").map((m) => m.type)).toEqual(["testimonials"]);
@@ -85,6 +90,12 @@ describe("validación por esquema de los módulos nuevos", () => {
   it("productos: la categoría es una dirección válida o ninguna; la cantidad, una de la lista", () => {
     expect(one("products", { categorySlug: "../x", limit: "99" }).data).toMatchObject({ categorySlug: "", limit: "4" });
     expect(one("products", { categorySlug: "cafes", limit: "8" }).data).toMatchObject({ categorySlug: "cafes", limit: "8" });
+  });
+
+  it("entradas del blog: cantidad y opciones de la lista; textos recortados; lo que sobra se descarta", () => {
+    const b = one("blog_posts", { title: "  Novedades ", limit: "50", showExcerpt: "quizá", layout: "carousel", buttonLabel: "Ver el blog", posts: [{ slug: "x" }] });
+    expect(b.data).toEqual({ title: "Novedades", intro: "", limit: "3", showExcerpt: "on", buttonLabel: "Ver el blog", layout: "carousel" });
+    expect(blocksToHtml([b])).toContain('href="/blog"');
   });
 
   it("título: nivel y alineación de la lista; por defecto, sección centrada", () => {
