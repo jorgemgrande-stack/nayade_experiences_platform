@@ -8,8 +8,9 @@
  */
 import { useMemo, useRef, useState } from "react";
 import { Link } from "wouter";
-import { Copy, EyeOff, FileText, GripVertical, Home, Image as ImageIcon, LayoutPanelTop, Newspaper, Palette, PanelsTopLeft, Plus, Search, Settings2, Trash2 } from "lucide-react";
+import { Bookmark, Copy, EyeOff, FileText, GripVertical, Home, Image as ImageIcon, LayoutPanelTop, Newspaper, Palette, PanelsTopLeft, Plus, Search, Settings2, Trash2 } from "lucide-react";
 import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { blockLabel, PAGE_TEMPLATES, type Device, type PageBlock, type PageTemplateKey } from "@shared/pageBlocks";
 import { MODULE_FAMILIES, SECTION_PRESETS, moduleDef, searchModules, type ModuleDef } from "@shared/studio/modules";
@@ -32,6 +33,9 @@ export function LeftPanel(props: {
   modules: ModuleDef[];
   presets: typeof SECTION_PRESETS;
   onInsert: (payload: string) => void;
+  /** Mis bloques: guardados para reutilizar (se inserta una copia) */
+  savedBlocks: Array<{ id: string; name: string; block: PageBlock }>;
+  onDeleteSaved: (id: string) => void;
   /** Elegir una plantilla de página completa (el editor pregunta si sustituye o añade) */
   onTemplate: (key: PageTemplateKey) => void;
   blocks: PageBlock[];
@@ -69,7 +73,7 @@ export function LeftPanel(props: {
         ))}
       </div>
       <div className="min-h-0 flex-1 overflow-y-auto">
-        {props.tab === "add" && <Library modules={props.modules} presets={props.presets} onInsert={props.onInsert} onTemplate={props.onTemplate} />}
+        {props.tab === "add" && <Library modules={props.modules} presets={props.presets} onInsert={props.onInsert} onTemplate={props.onTemplate} saved={props.savedBlocks} onDeleteSaved={props.onDeleteSaved} />}
         {props.tab === "structure" && <Structure {...props} />}
         {props.tab === "site" && <Site pages={props.pages} currentSlug={props.currentSlug} onOpenPage={props.onOpenPage} onGlobalStyle={props.onGlobalStyle} onSiteChrome={props.onSiteChrome} />}
       </div>
@@ -80,8 +84,18 @@ export function LeftPanel(props: {
 /** Plantillas de página completa (las mismas que al crear una página, salvo «En blanco»). */
 const FULL_TEMPLATES = PAGE_TEMPLATES.filter((t) => t.key !== "blank");
 
-function Library({ modules, presets, onInsert, onTemplate }: { modules: ModuleDef[]; presets: typeof SECTION_PRESETS; onInsert: (payload: string) => void; onTemplate: (key: PageTemplateKey) => void }) {
+function Library({
+  modules, presets, onInsert, onTemplate, saved, onDeleteSaved,
+}: {
+  modules: ModuleDef[];
+  presets: typeof SECTION_PRESETS;
+  onInsert: (payload: string) => void;
+  onTemplate: (key: PageTemplateKey) => void;
+  saved: Array<{ id: string; name: string; block: PageBlock }>;
+  onDeleteSaved: (id: string) => void;
+}) {
   const [q, setQ] = useState("");
+  const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
   const found = useMemo(() => searchModules(modules, q), [modules, q]);
   return (
     <div className="space-y-5 p-3">
@@ -118,6 +132,46 @@ function Library({ modules, presets, onInsert, onTemplate }: { modules: ModuleDe
         );
       })}
       {!found.length && <p className="px-1 text-sm text-muted-foreground">Ningún módulo coincide con «{q}».</p>}
+      {!q.trim() && (
+        <section className="space-y-2">
+          <h3 className="px-0.5 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Mis bloques</h3>
+          {saved.length === 0 ? (
+            <p className="rounded-md bg-muted px-3 py-2 text-xs leading-relaxed text-muted-foreground">
+              Guarda aquí un bloque o una sección con su diseño para reutilizarlo en cualquier página: selecciónalo y pulsa «Guardar en Mis bloques» en el panel derecho.
+            </p>
+          ) : (
+            <div className="space-y-1.5">
+              {saved.map((s) => (
+                <div key={s.id} className="flex items-center gap-1 rounded-lg border border-border bg-background pr-1 transition-colors hover:border-[#5b5bf6]/60">
+                  <button
+                    type="button"
+                    draggable
+                    onDragStart={(e) => startDrag(e, `saved:${s.id}`)}
+                    onClick={() => onInsert(`saved:${s.id}`)}
+                    title="Arrástralo a la página o haz clic para añadir una copia"
+                    className="flex min-w-0 flex-1 cursor-grab items-center gap-2.5 px-3 py-2 text-left active:cursor-grabbing"
+                  >
+                    <Bookmark className="h-4 w-4 shrink-0 text-[#5b5bf6]" />
+                    <span className="min-w-0">
+                      <span className="block overflow-hidden text-ellipsis whitespace-nowrap text-sm font-medium">{s.name}</span>
+                      <span className="block text-xs text-muted-foreground">{blockLabel(s.block.type)}</span>
+                    </span>
+                  </button>
+                  {confirmDelete === s.id ? (
+                    <Button type="button" size="sm" variant="destructive" className="h-7 px-2 text-xs" onClick={() => (onDeleteSaved(s.id), setConfirmDelete(null))}>
+                      Quitar
+                    </Button>
+                  ) : (
+                    <button type="button" onClick={() => setConfirmDelete(s.id)} className="rounded p-1.5 text-muted-foreground hover:text-destructive" aria-label={`Quitar «${s.name}» de Mis bloques`}>
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </button>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+        </section>
+      )}
       {!q.trim() && (
         <section className="space-y-2">
           <h3 className="px-0.5 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Secciones prediseñadas</h3>

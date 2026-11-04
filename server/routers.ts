@@ -967,6 +967,26 @@ export const appRouter = router({
       return readSiteTokenData();
     }),
 
+    // Mis bloques de Elephant Studio: bloques guardados para reutilizar (copias independientes)
+    savedBlocks: adminProcedure.query(async () => {
+      const { listSavedBlocks } = await import("./pageBuilderDb");
+      return listSavedBlocks();
+    }),
+
+    saveReusableBlock: adminProcedure
+      .input(z.object({ name: z.string().max(200), block: z.unknown() }))
+      .mutation(async ({ input }) => {
+        const { saveReusableBlock } = await import("./pageBuilderDb");
+        return pageBuilderCall(() => saveReusableBlock(input.name, input.block));
+      }),
+
+    deleteSavedBlock: adminProcedure
+      .input(z.object({ id: z.string().regex(/^[a-z0-9_-]{1,64}$/i) }))
+      .mutation(async ({ input }) => {
+        const { deleteSavedBlock } = await import("./pageBuilderDb");
+        return deleteSavedBlock(input.id);
+      }),
+
     discardPageDraft: adminProcedure
       .input(z.object({ slug: z.string().regex(/^[a-z0-9-]{1,64}$/) }))
       .mutation(async ({ input }) => {

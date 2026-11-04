@@ -18,7 +18,7 @@ import { menuItems, pageBlocks, staticPages, systemSettings } from "../drizzle/s
 import { getDb, savePageBlocks } from "./db";
 import { findBlock } from "../shared/studio/tree";
 import { blocksToHtml, htmlToBlocks, normalizeBlocks, readStoredBlocks, renderBlockTokens, PageBlocksError } from "./_core/pageBlocks";
-import { HOME_PAGE_SETTING_KEY, HOME_SLUG, pageSlugProblem, templateBlocks, duplicateBlock, type PageBlock, type PageTemplateKey } from "../shared/pageBlocks";
+import { HOME_PAGE_SETTING_KEY, HOME_SLUG, newBlockId, pageSlugProblem, templateBlocks, duplicateBlock, type PageBlock, type PageTemplateKey } from "../shared/pageBlocks";
 import { isLegalPageSlug } from "../shared/tenantNav";
 import { plainTextToHtml, type SiteTokenData } from "./_core/templates/starterSite";
 
@@ -416,5 +416,75 @@ export async function setPageInMenu(slug: string, zone: "header" | "footer", inM
       await d.delete(menuItems).where(inArray(menuItems.id, ids));
     }
   }
+  return { success: true };
+}
+
+// ─── Mis bloques (Elephant Studio) ────────────────────────────────────────────
+
+/**
+ * Bloques que la empresa guarda para reutilizarlos en cualquier página (un módulo o una sección con sus columnas, con
+ * su diseño). Cada uso inserta una copia independiente. Se guardan validados en `system_settings` (sin tabla nueva).
+ */
+const SAVED_BLOCKS_KEY = "studio_saved_blocks";
+export const SAVED_BLOCKS_MAX = 20;
+const SAVED_BLOCKS_MAX_CHARS = 60_000;
+const SAVED_NAME_MAX = 60;
+
+export interface SavedBlock {
+  id: string;
+  name: string;
+  block: PageBlock;
+  savedAt: string;
+}
+
+async function readSavedBlocks(): Promise<SavedBlock[]> {
+  const d = await db();
+  const [row] = await d.select({ value: systemSettings.value }).from(systemSettings).where(eq(systemSettings.key, SAVED_BLOCKS_KEY)).limit(1);
+  let raw: unknown = [];
+  try {
+    raw = JSON.parse(row?.value || "[]");
+  } catch {
+    raw = [];
+  }
+  if (!Array.isArray(raw)) return [];
+  const out: SavedBlock[] = [];
+  for (const it of raw) {
+    if (!it || typeof it !== "object") continue;
+    const o = it as Record<string, unknown>;
+    // Lectura tolerante: un bloque que ya no se reconoce se omite sin romper la lista
+    const [block] = readStoredBlocks([o.block]);
+    const name = typeof o.name === "string" ? o.name.trim().slice(0, SAVED_NAME_MAX) : "";
+    if (!block || !name || typeof o.id !== "string") continue;
+    out.push({ id: o.id, name, block, savedAt: typeof o.savedAt === "string" ? o.savedAt : "" });
+  }
+  return out;
+}
+
+async function writeSavedBlocks(list: SavedBlock[]) {
+  const value = JSON.stringify(list);
+  if (value.length > SAVED_BLOCKS_MAX_CHARS) throw new PageBlocksError("Mis bloques ya ocupan todo el espacio disponible. Quita alguno para guardar otro.");
+  const d = await db();
+  await d.insert(systemSettings).values({ key: SAVED_BLOCKS_KEY, value, valueType: "json", label: "Mis bloques de Elephant Studio", category: "web" }).onDuplicateKeyUpdate({ set: { value } });
+}
+
+export async function listSavedBlocks(): Promise<SavedBlock[]> {
+  return readSavedBlocks();
+}
+
+export async function saveReusableBlock(nameRaw: string, raw: unknown): Promise<SavedBlock> {
+  const name = nameRaw.trim();
+  if (!name) throw new PageBlocksError("Ponle un nombre al bloque.");
+  if (name.length > SAVED_NAME_MAX) throw new PageBlocksError(`El nombre admite hasta ${SAVED_NAME_MAX} caracteres.`);
+  const [block] = normalizeBlocks([raw]);
+  const list = await readSavedBlocks();
+  if (list.length >= SAVED_BLOCKS_MAX) throw new PageBlocksError(`Puedes guardar hasta ${SAVED_BLOCKS_MAX} bloques. Quita alguno para guardar otro.`);
+  const item: SavedBlock = { id: newBlockId(), name, block, savedAt: new Date().toISOString() };
+  await writeSavedBlocks([item, ...list]);
+  return item;
+}
+
+export async function deleteSavedBlock(id: string) {
+  const list = await readSavedBlocks();
+  await writeSavedBlocks(list.filter((b) => b.id !== id));
   return { success: true };
 }
