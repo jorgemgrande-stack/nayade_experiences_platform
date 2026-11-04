@@ -26,7 +26,7 @@ import { isTrialTenant } from "../trialPayments";
 import { SELF_SERVICE_PLANS } from "../stripe/catalog";
 import { buildConnectCatalog, type ChannelCatalogItem, type ConnectItem } from "../connectMarketplace";
 import { advertisesRequests, parseMarketplaceHeaders, parseMarketplaceRoot } from "../connectCard";
-import { brandHeaders, type ConnectBrandHeaders, type PurchaseBlock } from "../../shared/connectMarketplace";
+import { brandHeaders, checkoutViaFor, conversionPlanFor, type ConnectBrandHeaders, type ConnectConversionView, type PurchaseBlock } from "../../shared/connectMarketplace";
 import { CONNECT_EVENT_TYPES, autoplayDelay, resolveSlides, type ActivationRetryOutcome, type ResolvedSlide } from "../../shared/connectShowcase";
 import { acceptEvents, forwardEvents, openPathResolver } from "../connectShowcase";
 import { panelExtensionSources } from "../_core/modules/panelNavigation";
@@ -55,6 +55,8 @@ export interface ConnectCatalogView {
   slides: ResolvedSlide[];
   /** Pausa entre diapositivas (ms); 0 = sin rotación automática. */
   autoplayMs: number;
+  /** Alta desde la prueba (solo administración en prueba; null si no aplica): los módulos se contratan con el plan. */
+  conversion: ConnectConversionView | null;
 }
 
 /** Ruta real de cada módulo instalado (portada de su entrada de menú). Si algo falla, sin «Abrir módulo». */
@@ -126,7 +128,7 @@ export const connectRouter = router({
     const client = commerceClientFromEnv();
     const base = { upgradeUrl: safeUpgradeUrl(upgradeUrl), supportEmail };
     if (getTenantMode() !== "multi") {
-      return { available: false, purchasesEnabled: false, canPurchase: false, purchaseBlock: "unavailable", canRetryActivation: false, plan: null, items: [], requestsEnabled: false, interestEnabled: false, brands: brandHeaders(null), slides: [], autoplayMs: autoplayDelay(null), ...base };
+      return { available: false, purchasesEnabled: false, canPurchase: false, purchaseBlock: "unavailable", canRetryActivation: false, plan: null, items: [], requestsEnabled: false, interestEnabled: false, brands: brandHeaders(null), slides: [], autoplayMs: autoplayDelay(null), conversion: null, ...base };
     }
     // En multiempresa el catálogo existe siempre: sin canal con el plano de control es una avería (configuración del
     // Core), no un catálogo vacío. Se devuelve un error recuperable para que la página ofrezca reintentar.
@@ -140,10 +142,19 @@ export const connectRouter = router({
       const [catalog, grants] = await Promise.all([client.catalog(tenantId) as Promise<{ purchasesEnabled: boolean; items: ChannelCatalogItem[]; marketplace?: unknown }>, access.list(tenantId)]);
       const now = access.currentTime();
       const overview = buildSubscriptionOverview({ mode: "multi", enforcing: access.enforcing(), grants, now });
-      const items = buildConnectCatalog(catalog, grants, now, overview.plan?.key ?? null, moduleOpenPath());
+      const currentPlan = overview.plan?.key ?? null;
       // La compra en línea solo se suma a Essential y Business (el plano de control rechaza el resto): Enterprise, con su gestor
-      const selfService = (SELF_SERVICE_PLANS as readonly string[]).includes(overview.plan?.key ?? "");
+      const selfService = (SELF_SERVICE_PLANS as readonly string[]).includes(currentPlan ?? "");
       const purchaseBlock: PurchaseBlock = role !== "admin" ? "role" : (await isTrialTenant()) ? "trial" : !selfService ? "plan" : !catalog.purchasesEnabled ? "closed" : null;
+      // En la prueba (ya implica administración) los módulos se contratan en el alta, con el plan, si el plano de
+      // control la ofrece (la misma consulta que `subscription.conversionStatus`; si falla, no se promete)
+      const conversion: ConnectConversionView | null =
+        purchaseBlock === "trial" ? { enabled: (await Promise.resolve().then(() => client.conversionStatus()).catch(() => null))?.enabled === true, plan: currentPlan } : null;
+      const items = buildConnectCatalog(catalog, grants, now, currentPlan, moduleOpenPath()).map((i) => {
+        const conversionPlan = conversion?.enabled ? conversionPlanFor(i, { currentPlan, selfServicePlans: SELF_SERVICE_PLANS }) : null;
+        const checkoutVia = checkoutViaFor(i, { purchaseBlock, conversionEnabled: !!conversion?.enabled, conversionPlan });
+        return { ...i, checkoutVia, conversionPlan: checkoutVia === "conversion" ? conversionPlan : null };
+      });
       const interestEnabled = !knownUnsupported() && (advertisesRequests(catalog) || knownSupported());
       const showcase = parseMarketplaceRoot(catalog.marketplace);
       return {
@@ -159,6 +170,7 @@ export const connectRouter = router({
         brands: brandHeaders(parseMarketplaceHeaders(catalog.marketplace)),
         slides: resolveSlides(showcase.slides, { items, canPurchase: purchaseBlock === null, now: Date.now() }),
         autoplayMs: autoplayDelay(showcase.autoplayMs),
+        conversion,
         ...base,
       };
     } catch {

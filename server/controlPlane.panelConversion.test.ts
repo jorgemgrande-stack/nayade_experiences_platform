@@ -225,6 +225,17 @@ describe("contratación desde el panel de una empresa en prueba (doble de Stripe
     expect((await start(t.tenantId!, {})).status).toBe(409);
   });
 
+  it("«Contratar ahora» desde el marketplace: el presupuesto lleva el plan y el módulo con los importes del catálogo (no del navegador)", async () => {
+    const t = await trial("panel@modulo-marketplace.example", "Panel Módulo SL");
+    const p = await ok(call("POST", `/commerce/tenants/${t.tenantId}/conversion/preview`, { token: CORE, body: { plan: "essential", interval: "month", add: ["connect-people"] } }));
+    const lines = p.preview.quote.lines as Array<{ key: string; amountCents: number; interval: string }>;
+    expect(lines.map((l) => l.key)).toEqual(["essential", "connect-people"]);
+    expect(lines.find((l) => l.key === "connect-people")).toMatchObject({ amountCents: 1900, interval: "month" });
+    expect(p.preview.quote.totals.monthlyCents).toBe(2900 + 1900);
+    // El presupuesto no crea nada (ni pedido ni pago)
+    expect(await orders.list({ trialId: t.id, limit: 10 })).toEqual([]);
+  });
+
   it("otra selección con un pago abierto: no; caducado el enlace, la anterior se sustituye (sin dos pedidos abiertos)", async () => {
     const t = await trial("panel-cambio@empresa.example", "Panel Cambio SL");
     const first = await ok(start(t.tenantId!, {}));

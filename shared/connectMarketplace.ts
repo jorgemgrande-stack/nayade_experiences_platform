@@ -114,7 +114,7 @@ export function deriveConnectState(item: ConnectStateInput, ctx: ConnectStateCon
 }
 
 /** Qué puede hacer la persona desde la ficha (`interest`: «Me interesa», solo con el canal de solicitudes). */
-export type ConnectAction = "purchase" | "expand" | "request" | "interest" | "contact" | "none";
+export type ConnectAction = "purchase" | "convert" | "expand" | "request" | "interest" | "contact" | "none";
 
 /** Por qué no se puede contratar en línea aunque esté a la venta. */
 export type PurchaseBlock = "role" | "trial" | "plan" | "closed" | "unavailable" | null;
@@ -129,18 +129,22 @@ export const PURCHASE_BLOCK_TEXT: Record<Exclude<PurchaseBlock, null>, string> =
 
 /**
  * Acción de la ficha según el estado. «Contratar» solo si el producto se vende en línea y esta persona puede comprar
- * ahora (compras abiertas, administración, fuera de la prueba). «Me interesa» (lo que aún no existe) solo si el plano
- * de control acepta solicitudes; sin él, lo próximo no ofrece acción.
+ * ahora (compras abiertas, administración, fuera de la prueba) o, en la prueba, si se puede contratar junto con el plan
+ * en el alta (`checkoutVia: "conversion"`, decidido por el servidor). «Me interesa» (lo que aún no existe) solo si el
+ * plano de control acepta solicitudes; sin él, lo próximo no ofrece acción.
  */
-export function connectAction(o: { state: ConnectState; kind: "module" | "quantity"; purchasable: boolean; canPurchase: boolean; interestEnabled?: boolean }): ConnectAction {
+export function connectAction(o: { state: ConnectState; kind: "module" | "quantity"; purchasable: boolean; canPurchase: boolean; interestEnabled?: boolean; checkoutVia?: CheckoutVia }): ConnectAction {
   switch (o.state) {
     case "coming_soon":
       return o.interestEnabled ? "interest" : "none";
     case "available":
       if (o.purchasable && o.canPurchase) return o.kind === "quantity" ? "expand" : "purchase";
+      if (o.checkoutVia === "conversion" && o.kind === "module") return "convert";
       return "request";
-    case "on_request":
     case "not_eligible":
+      // En la prueba, un módulo de otro plan entra en el alta con ese plan (si el servidor lo ha comprobado)
+      return o.checkoutVia === "conversion" && o.kind === "module" ? "convert" : "request";
+    case "on_request":
       return "request";
     case "pending_setup":
     case "incident":
@@ -149,6 +153,107 @@ export function connectAction(o: { state: ConnectState; kind: "module" | "quanti
       return "none";
   }
 }
+
+// ── Contratar desde la prueba: el módulo junto con el plan (alta) ──────────────
+
+/**
+ * Cómo se contrata en línea, ahora y para esta persona, un producto «Disponible»: `purchase` (compra de módulos de
+ * siempre: fuera de la prueba, administración, plan de autoservicio y compras abiertas), `conversion` (en la prueba:
+ * en el alta, junto con el plan, en un único pago) o null (no se contrata en línea: se solicita información).
+ */
+export type CheckoutVia = "purchase" | "conversion" | null;
+
+/** Alta desde la prueba tal como la ve el marketplace (null: no aplica a esta persona o empresa). */
+export interface ConnectConversionView {
+  /** El plano de control ofrece hoy el alta desde el panel (`subscription.conversionStatus`). */
+  enabled: boolean;
+  /** Plan de la prueba (el que se preselecciona si el módulo es compatible). */
+  plan: string | null;
+}
+
+/**
+ * Plan con el que el alta acepta este módulo, con las MISMAS reglas que el presupuesto del plano de control
+ * (server/catalog/quote.ts): un módulo (no ampliación por unidades) a la venta y sin contratar (`available`, o
+ * `not_eligible` solo por el plan: en el alta se elige otro), con precio aprobado, compatible con el plan
+ * (`compatibleWith` vacío = cualquiera) y sin requisitos que no sean el propio plan (el alta no lleva lo que hay en la
+ * prueba). Primero el plan de la prueba; si no encaja, el plan de autoservicio más bajo que sí.
+ * null: no se puede contratar en el alta (se solicita información).
+ */
+export function conversionPlanFor(
+  item: { kind: "module" | "quantity"; state: ConnectState; commercialStatus: CommercialStatus; plans: string[]; dependencies: ReadonlyArray<string | { key: string }>; prices: ReadonlyArray<unknown> },
+  o: { currentPlan: string | null; selfServicePlans: readonly string[] },
+): string | null {
+  if (item.kind !== "module" || item.commercialStatus !== "available" || item.prices.length === 0) return null;
+  if (item.state !== "available" && item.state !== "not_eligible") return null;
+  const deps = item.dependencies.map((d) => (typeof d === "string" ? d : d.key));
+  const fits = (p: string) => (item.plans.length === 0 || item.plans.includes(p)) && deps.every((d) => d === p);
+  const candidates = [...(o.currentPlan && o.selfServicePlans.includes(o.currentPlan) ? [o.currentPlan] : []), ...o.selfServicePlans];
+  return candidates.find(fits) ?? null;
+}
+
+/**
+ * Vía de contratación de un producto (matriz única para tarjeta, ficha, «Mis módulos» y carrusel). Nunca promete lo que
+ * el servidor rechazaría: la compra exige `purchaseBlock` null y `purchasable`; el alta exige prueba (bloqueo
+ * `trial`, que ya implica administración), el alta activada en el plano de control y un plan con el que el módulo encaje.
+ */
+export function checkoutViaFor(
+  item: { kind: "module" | "quantity"; state: ConnectState; purchasable: boolean },
+  o: { purchaseBlock: PurchaseBlock; conversionEnabled: boolean; conversionPlan: string | null },
+): CheckoutVia {
+  if (item.state !== "available" && item.state !== "not_eligible") return null;
+  if (o.purchaseBlock === null) return item.state === "available" && item.purchasable ? "purchase" : null;
+  if (o.purchaseBlock === "trial" && o.conversionEnabled && item.kind === "module" && o.conversionPlan) return "conversion";
+  return null;
+}
+
+const CONVERSION_PLAN_KEYS = ["essential", "business"] as const;
+export type ConversionPlanKey = (typeof CONVERSION_PLAN_KEYS)[number];
+const MODULE_KEY = /^[a-z0-9][a-z0-9-]{1,63}$/;
+export const SUBSCRIPTION_PATH = "/admin/suscripcion";
+
+/** Formulario de alta con el plan y los módulos elegidos (lo aplica `ConversionSection`). */
+export function conversionHref(plan: string, modules: string[]): string {
+  const q = new URLSearchParams({ contratar: plan });
+  if (modules.length > 0) q.set("modulos", modules.join(","));
+  return `${SUBSCRIPTION_PATH}?${q.toString().replace(/%2C/g, ",")}#contratar`;
+}
+
+/** Lectura prudente de `?contratar=…&modulos=…` (lo que no se reconoce se ignora). */
+export function parseConversionRequest(search: string): { plan: ConversionPlanKey; modules: string[] } | null {
+  const q = new URLSearchParams(search.startsWith("?") ? search.slice(1) : search);
+  const plan = q.get("contratar");
+  if (!plan || !(CONVERSION_PLAN_KEYS as readonly string[]).includes(plan)) return null;
+  const modules = Array.from(new Set((q.get("modulos") ?? "").split(",").map((k) => k.trim()).filter((k) => MODULE_KEY.test(k)))).slice(0, 20);
+  return { plan: plan as ConversionPlanKey, modules };
+}
+
+/**
+ * Selección inicial del formulario de alta a partir de la petición del marketplace: el plan pedido y, de los módulos
+ * pedidos, solo los que el formulario ofrece (los demás se descartan y se explica). El importe lo calcula el servidor.
+ */
+export function applyConversionRequest(
+  req: { plan: ConversionPlanKey; modules?: string[] },
+  o: { offered: ReadonlyArray<{ key: string; name: string }>; currentPlan: string | null },
+): { plan: ConversionPlanKey; add: string[]; notes: string[] } {
+  const wanted = req.modules ?? [];
+  const byKey = new Map(o.offered.map((m) => [m.key, m.name]));
+  const add = wanted.filter((k) => byKey.has(k));
+  const names = add.map((k) => byKey.get(k)!).join(", ");
+  const notes: string[] = [];
+  if (add.length > 0) {
+    notes.push(`Hemos marcado ${names} en «Módulos adicionales». Revisa el importe y continúa al pago: se activa al confirmarse el pago.`);
+    if (o.currentPlan && o.currentPlan !== req.plan) notes.push(`${names} se contrata con el plan ${PLAN_NAMES[req.plan] ?? req.plan}, el más bajo compatible: lo hemos elegido por ti.`);
+  }
+  if (wanted.length > add.length) notes.push("Algún módulo que elegiste no se puede añadir al alta ahora mismo: puedes solicitar información desde su ficha.");
+  return { plan: req.plan, add, notes };
+}
+
+/** Texto de apoyo de «Contratar ahora» durante la prueba. */
+export const conversionSupportText = (name: string) => `Contrata tu plan y ${name} en un solo pago; se activa al confirmarse el pago.`;
+/** Cuando el módulo pide otro plan que el de la prueba. */
+export const conversionPlanText = (name: string, plan: string) => `${name} se contrata con el plan ${PLAN_NAMES[plan] ?? plan}: lo dejamos elegido en el formulario de alta.`;
+/** Nota general del marketplace en la prueba con el alta disponible. */
+export const TRIAL_CONVERSION_TEXT = "Durante la prueba gratuita, los módulos se contratan junto con tu plan en un solo pago.";
 
 // ── Categorías, búsqueda y filtros ─────────────────────────────────────────────
 
