@@ -38,6 +38,8 @@ export type FromCanvas =
   | { kind: "drop"; payload: string; index: number; parent: string | null; col: number }
   | { kind: "move"; id: string; index: number; parent: string | null; col: number }
   | { kind: "navigate"; href: string }
+  /** Abrir el selector rápido para añadir un módulo en ese sitio (el «+» entre bloques o una zona vacía) */
+  | { kind: "addAt"; index: number; parent: string | null; col: number }
   | { kind: "key"; key: string; ctrl: boolean; shift: boolean };
 
 export function isFromCanvas(v: unknown): v is FromCanvas {

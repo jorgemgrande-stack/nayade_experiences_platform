@@ -32,9 +32,10 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
-import { PAGE_LIMITS, PAGE_TEMPLATES, blockLabel, createBlock, duplicateBlock, readBlockText, templateBlocks, writeBlockText, type BlockType, type Device, type PageBlock, type PageTemplateKey } from "@shared/pageBlocks";
+import { NOT_NESTABLE, PAGE_LIMITS, PAGE_TEMPLATES, blockLabel, createBlock, duplicateBlock, readBlockText, templateBlocks, writeBlockText, type BlockType, type Device, type PageBlock, type PageTemplateKey } from "@shared/pageBlocks";
 import { SECTION_PRESETS, availableModules, moduleDef } from "@shared/studio/modules";
 import { countBlocks, createSection, findBlock, insertBlocks, moveBlock, nestable, placeProblem, removeBlock, walk, type Place } from "@shared/studio/tree";
+import { QuickInsert } from "@/components/admin/studio/QuickInsert";
 import { MediaLibraryDialog } from "@/components/ImageUploader";
 import { siteRelativeFileUrl } from "@shared/imageUpload";
 import { SITE_TOKEN_LABELS } from "@shared/siteTokenLabels";
@@ -108,6 +109,7 @@ function Studio({ routeSlug }: { routeSlug: string | null }) {
   const [globalOpen, setGlobalOpen] = useState(false);
   const [pickImage, setPickImage] = useState<{ id: string; key: string } | null>(null);
   const [saveName, setSaveName] = useState<string | null>(null);
+  const [addAt, setAddAt] = useState<Place | null>(null);
   // Mis bloques: guardados para reutilizar en cualquier página
   const savedQ = trpc.cms.savedBlocks.useQuery(undefined, { staleTime: 60_000, refetchOnWindowFocus: false });
   const savedBlocks = savedQ.data ?? [];
@@ -360,6 +362,9 @@ function Studio({ routeSlug }: { routeSlug: string | null }) {
         break;
       case "move":
         if (!viewing) moveTo(m.id, { parent: m.parent ?? null, col: m.col ?? 0, index: m.index });
+        break;
+      case "addAt":
+        if (!viewing && doc.loaded) setAddAt({ index: m.index, parent: m.parent ?? null, col: m.col ?? 0 });
         break;
       case "navigate": {
         const href = m.href.split(/[?#]/)[0];
@@ -1005,6 +1010,19 @@ function Studio({ routeSlug }: { routeSlug: string | null }) {
           </div>
         </SheetContent>
       </Sheet>
+
+      <QuickInsert
+        open={!!addAt}
+        where={!addAt ? "" : addAt.parent ? `en la columna ${addAt.col + 1}` : addAt.index >= blocks.length ? "al final de la página" : "en la página"}
+        modules={addAt?.parent ? modules.filter((m) => !NOT_NESTABLE.includes(m.type) && m.type !== "section") : modules}
+        saved={savedBlocks}
+        onClose={() => setAddAt(null)}
+        onPick={(payload) => {
+          const at = addAt;
+          setAddAt(null);
+          if (at) insert(payload, at);
+        }}
+      />
 
       <Dialog open={saveName !== null} onOpenChange={(o) => !o && setSaveName(null)}>
         <DialogContent className="max-w-sm">
