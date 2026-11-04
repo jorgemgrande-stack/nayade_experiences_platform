@@ -51,14 +51,14 @@ describe.skipIf(!URL_)("catálogo de Elephant Source con MySQL real", () => {
     await admin?.end();
   });
 
-  it("semilla completa: 74 capacidades y todos los productos publicados con sus tarifas; repetirla no cambia nada", async () => {
+  it("semilla completa: 75 capacidades y todos los productos publicados con sus tarifas; repetirla no cambia nada", async () => {
     const r = await seedElephantSource(svc, store);
     expect(r.conflicts).toEqual([]);
-    expect(r.created).toHaveLength(74 + PRODUCTS.length);
+    expect(r.created).toHaveLength(75 + PRODUCTS.length);
     const [[counts]] = (await pool.query<mysql.RowDataPacket[]>(
       "SELECT SUM(kind = 'capability') AS caps, SUM(kind = 'product') AS products, SUM(publication = 'published') AS published FROM web_entries",
     )) as unknown as [[{ caps: string; products: string; published: string }]];
-    expect([Number(counts.caps), Number(counts.products), Number(counts.published)]).toEqual([74, PRODUCTS.length, 74 + PRODUCTS.length]);
+    expect([Number(counts.caps), Number(counts.products), Number(counts.published)]).toEqual([75, PRODUCTS.length, 75 + PRODUCTS.length]);
     const [[prices]] = (await pool.query<mysql.RowDataPacket[]>("SELECT COUNT(*) AS n FROM web_prices WHERE status = 'approved'")) as unknown as [[{ n: number }]];
     expect(Number(prices.n)).toBe(PRODUCTS.reduce((a, p) => a + p.prices.length, 0));
     const again = await seedElephantSource(svc, store);

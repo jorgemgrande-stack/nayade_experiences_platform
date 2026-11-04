@@ -434,7 +434,7 @@ describe("cotizador por API (catálogo de Elephant Source)", () => {
       const crm = await app.call("POST", "/web/quote", { token: TOK.read, body: { plan: "essential", interval: "month", items: [{ key: "connect-pack-communications" }], owned: ["connect-voice"] } });
       expect(crm.json.lines.find((l: { key: string }) => l.key === "connect-pack-communications").replaces).toEqual(["connect-voice"]);
       const cat = await app.call("GET", "/web/catalog", { token: TOK.read });
-      expect(cat.json.capabilities).toHaveLength(74);
+      expect(cat.json.capabilities).toHaveLength(75);
       expect(cat.json.catalog.products.find((p: { key: string }) => p.key === "essential").commercialStatus).toBe("on_request");
       // Si la BD cae: 503 explícito, nunca un precio inventado
       app.webStore.fail = true;

@@ -5,7 +5,7 @@
  * precios, límites) está en el catálogo comercial (server/web, tipo de entrada «capability» y
  * productos).
  *
- * Catálogo oficial v1 (octubre 2026): 29 Essential + 15 Business + 3 Enterprise + 27 Extras = 74.
+ * Catálogo oficial v1 (octubre 2026): 29 Essential + 15 Business + 3 Enterprise + 28 Extras = 75.
  *
  * `technicalStatus` describe el CÓDIGO, no lo comercial:
  *   - partial: hay código reutilizable (hoy operativo solo en la instalación de una sola empresa)
@@ -108,6 +108,9 @@ export const CAPABILITIES: readonly CapabilityDef[] = [
   c("care-net", "Care Net", "extra", "net", "partial"),
   c("life-net", "Life Net", "extra", "net", "planned"),
   c("social-token-net", "Social Token Net", "extra", "net", "planned"),
+  // Tokens internos de fidelización (puntos por compras y acciones, monederos, reglas y campañas): extensión propia,
+  // separada de las comunidades (social-token-net) para que cada una exija su licencia
+  c("social-token-net-tokens", "Social Token Net — Tokens internos", "extra", "net", "partial"),
 ];
 
 export const CAPABILITY_IDS: readonly string[] = CAPABILITIES.map((x) => x.id);

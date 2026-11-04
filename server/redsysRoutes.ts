@@ -33,6 +33,7 @@ import { legacyDb, legacyPool } from "./_core/legacyDb";
 import { integrationEnv } from "./_core/tenantConfig";
 import { applyPaymentToInventoryHolds } from "./inventoryHoldsDb";
 import { applyOnlineOrderStock } from "./inventoryDb";
+import { applyOnlineOrderPoints } from "./loyaltyDb";
 import { isMultiTenant } from "./_core/tenant";
 import { finalizePaidShopOrder, isGenericShopOrder, sendShopOrderConfirmation, sendShopOrderFailed } from "./shopOrdersDb";
 import { issuerSnapshotForNewInvoice } from "./issuerSnapshot";
@@ -307,6 +308,16 @@ redsysRouter.post("/api/redsys/notification", express.urlencoded({ extended: tru
         phone: updatedReservation.customerPhone ?? null,
         source: "redsys",
       });
+    }
+
+    // Tokens internos (Social Token Net): el pedido pagado da puntos a su cliente del CRM (idempotente; sin programa
+    // activo o sin la extensión, no hace nada). Nunca rompe la confirmación del pago.
+    if (result.isAuthorized) {
+      try {
+        await applyOnlineOrderPoints(result.merchantOrder);
+      } catch (pointsErr: any) {
+        console.error("[Redsys IPN] Error emitiendo los puntos del pedido:", pointsErr.message);
+      }
     }
 
     // -- Detectar si la reserva corresponde a una cuota de plan de pagos ----------
