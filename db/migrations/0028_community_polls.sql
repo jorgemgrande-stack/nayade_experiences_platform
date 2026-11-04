@@ -1,5 +1,5 @@
 -- Big Elephant — Social Token Net · Comunidades: encuestas, propuestas de miembros y reportes (aditiva, BD de cada
--- empresa; capacidad social-token-net). Sigue a 0026_communities.
+-- empresa; capacidad social-token-net). Sigue a 0027_communities.
 --
 -- `community_polls`: encuestas y preguntas de una comunidad (9 tipos de pregunta), con ventana de respuesta
 -- (starts_at/ends_at: el estado efectivo se calcula al leer, sin planificador), visibilidad de resultados, si se

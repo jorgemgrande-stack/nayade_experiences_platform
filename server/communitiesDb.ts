@@ -863,7 +863,7 @@ export async function communityStats(communityId: number, now = Date.now()) {
   const activeMembers = memberCount("active");
   const publishedPosts = postCount("published");
   const visibleComments = n(comments?.c) - n(comments?.hidden);
-  // Encuestas, propuestas y reportes (migración 0027); sin ella, a cero
+  // Encuestas, propuestas y reportes (migración 0028); sin ella, a cero
   let polls = { polls: 0, openPolls: 0, responses: 0, proposals: 0, pendingProposals: 0, openReports: 0 };
   try {
     const [pl] = await rows<{ c: number; open: number }>(sql`SELECT COUNT(*) AS c, COALESCE(SUM(status = 'active' AND (starts_at IS NULL OR starts_at <= ${now}) AND (ends_at IS NULL OR ends_at >= ${now})), 0) AS open
@@ -873,7 +873,7 @@ export async function communityStats(communityId: number, now = Date.now()) {
     const [rp] = await rows<{ c: number }>(sql`SELECT COUNT(DISTINCT target_type, target_id) AS c FROM community_reports WHERE community_id = ${communityId} AND status = 'open'`);
     polls = { polls: n(pl?.c), openPolls: n(pl?.open), responses: n(rs?.c), proposals: n(pr?.c), pendingProposals: n(pr?.pending), openReports: n(rp?.c) };
   } catch {
-    /* sin 0027 */
+    /* sin 0028 */
   }
   return {
     participation: polls,

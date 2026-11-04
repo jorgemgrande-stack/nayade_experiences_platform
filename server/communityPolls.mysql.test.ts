@@ -1,6 +1,6 @@
 /**
  * Comunidades — encuestas, propuestas de miembros y reportes con la aplicación real sobre MySQL (opt-in,
- * REGISTRY_TEST_DATABASE_URL): dos empresas nuevas con las migraciones 0026 y 0027. Responder los tipos de pregunta
+ * REGISTRY_TEST_DATABASE_URL): dos empresas nuevas con las migraciones 0027 y 0028. Responder los tipos de pregunta
  * con su ventana, cambio de respuesta y «me apunto» de un solo uso; resultados según su visibilidad; evento enlazado a
  * un producto del catálogo; propuestas con moderación, apoyos y conversión en encuesta; reportes resueltos por la
  * moderación de la comunidad; aviso en la campana del panel; permisos, aislamiento y licencia; eventos de

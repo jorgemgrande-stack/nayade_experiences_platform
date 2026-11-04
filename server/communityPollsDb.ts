@@ -1,6 +1,6 @@
 /**
  * Social Token Net · Comunidades — encuestas, propuestas de miembros y reportes (acceso a datos). Lógica pura en
- * shared/communityPolls.ts; comunidades y miembros en server/communitiesDb.ts. Migración 0027_community_polls.
+ * shared/communityPolls.ts; comunidades y miembros en server/communitiesDb.ts. Migración 0028_community_polls.
  *
  * Reutilizado de Segolife (server/segolife/community), adaptado a una base de datos por empresa y sin universidades
  * ni estudiantes:

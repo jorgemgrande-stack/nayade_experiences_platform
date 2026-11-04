@@ -435,7 +435,7 @@ async function sourceTasks(userId: number): Promise<FeedSection> {
 /**
  * Comunidades con algo por revisar (social-token-net): solicitudes de entrada, publicaciones en revisión previa,
  * propuestas de miembros y reportes. Solo administración. Silenciar un aviso lo calla hasta que cambie lo pendiente
- * (el id lleva la comunidad y el total). Sin la capacidad o sin las migraciones 0026/0027, vacía.
+ * (el id lleva la comunidad y el total). Sin la capacidad o sin las migraciones 0027/0028, vacía.
  */
 async function sourceCommunities(userId: number, role: string): Promise<FeedSection> {
   const empty: FeedSection = { kind: "community", label: "Comunidades por revisar", icon: "👥", severity: "info", total: 0, items: [], ctaAllPath: "/admin/comunidades" };
