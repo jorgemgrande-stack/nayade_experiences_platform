@@ -100,6 +100,18 @@ export const CONNECT_EXTENSIONS: ModuleManifest[] = [
     source: { location: "core" },
     ...CORE_EXTENSION_PANELS.people,
   },
+  {
+    // Sin capacidad única (Comunidades, Tokens internos o Complete): cada entrada declara la suya
+    id: "social_token_net",
+    name: "Social Token Net",
+    version: "1.0.0",
+    kind: "addon",
+    coreRange: "^1.0.0",
+    description: "Comunidades de clientes y socios, y fidelización con puntos internos",
+    resources: ["http.request"],
+    source: { location: "core" },
+    panel: CORE_EXTENSION_PANELS.socialTokenNet.panel,
+  },
 ];
 
 let registered = false;

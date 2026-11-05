@@ -84,7 +84,7 @@ describe("contrato de módulo 1.2: aportaciones al panel", () => {
     for (const m of [...BUILTIN_MODULES, ...CONNECT_EXTENSIONS]) expect(() => validateManifest(m), m.id).not.toThrow();
     expect(validateManifest.bind(null, careManifest)).not.toThrow();
     const declared = [...BUILTIN_MODULES, ...CONNECT_EXTENSIONS].filter((m) => m.panel).map((m) => [m.id, m.capability]);
-    expect(declared).toEqual([["hotel", "hotel-net"], ["spa", "care-net"], ["restaurants", "restaurant-net"], ["people", "people-hr"]]);
+    expect(declared).toEqual([["hotel", "hotel-net"], ["spa", "care-net"], ["restaurants", "restaurant-net"], ["people", "people-hr"], ["social_token_net", undefined]]);
     // Ya no están fijas en el menú del Core
     const hrefs = TASK_NAV.flatMap((s) => s.items.map((i) => i.href));
     for (const p of ["/admin/personal", "/admin/hotel", "/admin/restaurantes", "/admin/spa"]) expect(hrefs).not.toContain(p);

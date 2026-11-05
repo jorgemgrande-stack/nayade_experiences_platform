@@ -7,7 +7,7 @@
  * participando en la comunidad y un enlace a su monedero.
  */
 import { useMemo, useState } from "react";
-import { Link, useParams } from "wouter";
+import { Link, useLocation, useParams } from "wouter";
 import type { inferRouterOutputs } from "@trpc/server";
 import type { AppRouter } from "../../../../../server/routers";
 import { ArrowLeft, Ban, CheckCircle2, ExternalLink, Eye, EyeOff, Mail, MessageSquare, Pin, PinOff, Plus, Search, UserPlus, Users } from "lucide-react";
@@ -30,6 +30,7 @@ import { toastError } from "@/lib/errorMessage";
 import {
   ACTIVITY_LABELS,
   COMMUNITY_CAPABILITY,
+  isCommunityAdminTab,
   MEMBER_ROLES,
   MEMBER_ROLE_LABELS,
   MEMBER_SOURCE_LABELS,
@@ -503,8 +504,10 @@ function ActivityTab({ communityId }: { communityId: number }) {
 // ─── Página ──────────────────────────────────────────────────────────────────
 
 export default function CommunityDetail() {
-  const params = useParams<{ id: string }>();
+  const params = useParams<{ id: string; tab?: string }>();
   const communityId = Number(params.id);
+  const [, navigate] = useLocation();
+  const tab = isCommunityAdminTab(params.tab) ? params.tab : "resumen";
   const { user } = useAuth();
   const sub = usePanelSubscription();
   const canEdit = (user as { role?: string } | null)?.role === "admin" && sub.canWrite(COMMUNITY_CAPABILITY);
@@ -542,7 +545,7 @@ export default function CommunityDetail() {
                 </div>
               </div>
             </div>
-            <Tabs defaultValue="resumen">
+            <Tabs value={tab} onValueChange={(v) => navigate(`/admin/comunidades/${communityId}${v === "resumen" ? "" : `/${v}`}`, { replace: true })}>
               <TabsList className="flex-wrap">
                 <TabsTrigger value="resumen">Resumen</TabsTrigger>
                 <TabsTrigger value="miembros">Miembros</TabsTrigger>

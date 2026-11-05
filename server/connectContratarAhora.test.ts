@@ -2,7 +2,7 @@
  * «Contratar ahora» en el marketplace (/admin/ampliar y fichas): matriz única de acción para todos los productos y su
  * vía de contratación real (`checkoutVia`), calculada por `connect.catalog` con las mismas reglas que valida el servidor.
  *
- *  - Contratado → «Abrir módulo» (su ruta o «Mis módulos»).
+ *  - Contratado → «Gestionar» (su ruta) o, sin ruta propia, «Abrir módulo» («Mis módulos»).
  *  - Disponible + compra posible → «Contratar ahora» (compra de módulos de siempre, confirmada en la ficha).
  *  - Disponible + prueba + administración + alta activada + módulo que entra en el alta → «Contratar ahora» al formulario
  *    de alta con el plan y el módulo preseleccionados (un único pago; activación con el pago confirmado).
@@ -135,8 +135,8 @@ describe("matriz de acción (pura)", () => {
     // No se vende en línea → solicitar
     expect(decide(item("available", { purchasable: false }), null, false).kind).toBe("request");
   });
-  it("contratado → «Abrir módulo» (su ruta o, sin ruta propia, «Mis módulos»)", () => {
-    expect(decide({ ...item("active"), openPath: "/admin/personal" }, "trial", true)).toEqual({ kind: "open", label: "Abrir módulo", href: "/admin/personal" });
+  it("contratado → «Gestionar» (su ruta) o, sin ruta propia, «Abrir módulo» («Mis módulos»)", () => {
+    expect(decide({ ...item("active"), openPath: "/admin/personal" }, "trial", true)).toEqual({ kind: "open", label: "Gestionar", href: "/admin/personal" });
     expect(decide(item("active"), null, false)).toEqual({ kind: "open", label: "Abrir módulo", href: MINE_PATH });
   });
   it("bajo solicitud → «Solicitar información»; próximamente → «Me interesa» (también en la prueba)", () => {

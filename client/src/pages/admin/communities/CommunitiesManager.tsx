@@ -2,9 +2,12 @@
  * Comunidades (Social Token Net · Comunidades, `social-token-net`): listado de las comunidades de la empresa con sus
  * cifras y alta de una nueva. Solo administración. Sin la capacidad, el guardián de rutas muestra «No incluido en tu
  * plan» y el servidor rechaza cualquier operación.
+ *
+ * `/admin/comunidades/apartado/:pestaña` (Miembros, Moderación… desde el menú): con una sola comunidad abre esa pestaña
+ * de su ficha; con varias, pide elegir la comunidad.
  */
-import { useState } from "react";
-import { Link, useLocation } from "wouter";
+import { useEffect, useState } from "react";
+import { Link, useLocation, useParams } from "wouter";
 import { Archive, MessagesSquare, Plus, Users } from "lucide-react";
 import { toast } from "sonner";
 import AdminLayout from "@/components/AdminLayout";
@@ -16,7 +19,7 @@ import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { PanelEmpty, PanelError, PanelLoading } from "@/components/admin/PanelStates";
 import { toastError } from "@/lib/errorMessage";
-import { COMMUNITY_CAPABILITY, VISIBILITY_SHORT } from "@shared/communities";
+import { COMMUNITY_ADMIN_TABS, COMMUNITY_CAPABILITY, isCommunityAdminTab, VISIBILITY_SHORT } from "@shared/communities";
 import { CommunityForm, EMPTY_COMMUNITY } from "./CommunityForm";
 
 const fmtDate = (ms: number | null) => (ms ? new Intl.DateTimeFormat("es-ES", { dateStyle: "medium" }).format(new Date(ms)) : "Sin actividad");
@@ -39,6 +42,14 @@ export default function CommunitiesManager() {
     onError: (e) => toastError(e),
   });
   const items = list.data ?? [];
+  const params = useParams<{ tab?: string }>();
+  const tab = isCommunityAdminTab(params.tab) ? params.tab : null;
+  const detailHref = (id: number) => `/admin/comunidades/${id}${tab && tab !== "resumen" ? `/${tab}` : ""}`;
+  const only = tab && list.data?.length === 1 ? list.data[0].id : null;
+  useEffect(() => {
+    if (only != null) navigate(detailHref(only), { replace: true });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [only]);
 
   return (
     <AdminLayout>
@@ -58,6 +69,12 @@ export default function CommunitiesManager() {
           )}
         </div>
 
+        {tab && items.length > 1 && (
+          <div role="status" className="rounded-xl border border-primary/30 bg-primary/5 px-3 py-2 text-sm text-foreground">
+            Elige la comunidad para abrir «{COMMUNITY_ADMIN_TABS[tab]}».
+          </div>
+        )}
+
         {list.isLoading ? (
           <PanelLoading label="Cargando las comunidades…" />
         ) : list.isError ? (
@@ -70,7 +87,7 @@ export default function CommunitiesManager() {
           <ul className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
             {items.map((c) => (
               <li key={c.id}>
-                <Link href={`/admin/comunidades/${c.id}`} className="block h-full overflow-hidden rounded-xl border border-border bg-card transition-colors hover:border-primary/50">
+                <Link href={detailHref(c.id)} className="block h-full overflow-hidden rounded-xl border border-border bg-card transition-colors hover:border-primary/50">
                   <div className="h-20 bg-muted" style={c.coverImageUrl ? { backgroundImage: `url(${c.coverImageUrl})`, backgroundSize: "cover", backgroundPosition: "center" } : c.accentColor ? { background: c.accentColor } : undefined} aria-hidden="true" />
                   <div className="space-y-2 p-4">
                     <div className="flex items-start justify-between gap-2">

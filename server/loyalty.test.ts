@@ -144,8 +144,8 @@ describe("licencia, menú y catálogo", () => {
     for (const p of ["loyalty.overview", "loyalty.adjust", "loyalty.saveRule", "loyalty.wallet"]) expect(capabilityForProcedure(p)).toBe(LOYALTY_CAPABILITY);
     expect(CAPABILITIES.find((c) => c.id === LOYALTY_CAPABILITY)).toMatchObject({ tier: "extra", group: "net", technicalStatus: "partial" });
     expect(routeCapabilities("/admin/fidelizacion")).toEqual([LOYALTY_CAPABILITY]);
-    const entry = TASK_NAV.flatMap((s) => s.items).find((i) => i.href === "/admin/fidelizacion");
-    expect(entry).toMatchObject({ capabilities: [LOYALTY_CAPABILITY] });
+    // El menú lo aporta la extensión Social Token Net (sección propia), ya no el menú fijo del Core
+    expect(TASK_NAV.flatMap((s) => s.items).find((i) => i.href === "/admin/fidelizacion")).toBeUndefined();
   });
   it("el producto de catálogo concede la capacidad y sigue sin comercializarse (Próximamente)", () => {
     const p = PRODUCTS.find((x) => x.key === "social-token-net-tokens")!;

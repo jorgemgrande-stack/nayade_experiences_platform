@@ -249,8 +249,8 @@ describe("acción principal según el estado real", () => {
     expect(primaryAction({ ...base, state: "coming_soon" }, view).label).toBe("Me interesa");
     expect(primaryAction({ ...base, state: "coming_soon" }, { ...view, interestEnabled: false }).kind).toBe("none");
   });
-  it("contratado → «Abrir módulo» con su ruta real; sin ruta, a «Mis módulos»", () => {
-    expect(primaryAction({ ...base, state: "active", openPath: "/admin/personal" }, view)).toEqual({ kind: "open", label: "Abrir módulo", href: "/admin/personal" });
+  it("contratado → «Gestionar» con su ruta real; sin ruta, «Abrir módulo» a «Mis módulos»", () => {
+    expect(primaryAction({ ...base, state: "active", openPath: "/admin/personal" }, view)).toEqual({ kind: "open", label: "Gestionar", href: "/admin/personal" });
     expect(primaryAction({ ...base, state: "active" }, view)).toEqual({ kind: "open", label: "Abrir módulo", href: "/admin/ampliar#cx-mine" });
     expect(primaryAction({ ...base, state: "pending_setup", openPath: "/admin/personal" }, view)).toMatchObject({ kind: "manage", href: "/admin/personal" });
     expect(primaryAction({ ...base, state: "pending_setup" }, view).kind).toBe("contact");
@@ -273,7 +273,7 @@ describe("acción principal según el estado real", () => {
     expect(activationOf({ state: "available", activation: { state: "none", retryable: false, updatedAt: null } }).state).toBe("none");
   });
   it("ruta real del módulo: la portada de su entrada de menú (People → /admin/personal)", () => {
-    const resolve = openPathResolver(Object.values(CORE_EXTENSION_PANELS).map((x) => ({ capability: x.capability, panel: x.panel })));
+    const resolve = openPathResolver(Object.values(CORE_EXTENSION_PANELS).map((x) => ({ capability: x.capability ?? null, panel: x.panel })));
     expect(resolve(["people-hr"])).toBe("/admin/personal");
     expect(resolve(["capacidad-inexistente"])).toBeNull();
     expect(panelOpenPath(null)).toBeNull();

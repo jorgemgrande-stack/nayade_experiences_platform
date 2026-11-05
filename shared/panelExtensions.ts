@@ -33,6 +33,8 @@ export interface PanelLeafDecl {
   icon?: NavIcon;
   /** Capacidades que la habilitan (basta una). Por defecto, la capacidad del módulo. */
   capabilities?: string[];
+  /** Además, capacidades que deben estar TODAS (funciones conjuntas de un paquete, p. ej. Social Token Net Complete). */
+  allCapabilities?: string[];
   /** Roles que la ven. Por defecto, solo la administración. */
   roles?: string[];
   /** Permiso propio del módulo (declarado en `permissions`) necesario para verla. */
@@ -74,6 +76,8 @@ export interface PanelNavLeaf {
   href: string;
   icon?: NavIcon;
   capabilities: string[];
+  /** Capacidades que deben estar todas (ya comprobadas por el servidor). */
+  allCapabilities?: string[];
   roles: string[];
 }
 export interface PanelNavItem extends PanelNavLeaf {
@@ -133,7 +137,8 @@ export function validatePanelContributions(
     if (l.permission && !perms.has(l.permission)) errors.push(`${where} ${l.id}: permiso no declarado (${l.permission})`);
     const caps = l.capabilities ?? (o.capability ? [o.capability] : []);
     if (caps.length === 0) errors.push(`${where} ${l.id}: sin capacidad que la licencie`);
-    if (o.isCapability) for (const c of caps) if (!o.isCapability(c)) errors.push(`${where} ${l.id}: capacidad desconocida (${c})`);
+    if (o.isCapability) for (const c of [...caps, ...(l.allCapabilities ?? [])]) if (!o.isCapability(c)) errors.push(`${where} ${l.id}: capacidad desconocida (${c})`);
+    if (l.allCapabilities && l.allCapabilities.length === 0) errors.push(`${where} ${l.id}: lista de capacidades conjuntas vacía`);
     if (l.roles && l.roles.length === 0) errors.push(`${where} ${l.id}: lista de roles vacía`);
   };
   const item = (i: PanelItemDecl, where: string) => {
@@ -183,9 +188,23 @@ export function panelEntries(moduleId: string, panel: PanelContributions, capabi
   const roles = (l: PanelLeafDecl) => l.roles ?? DEFAULT_EXTENSION_ROLES;
   const allowed = (l: PanelLeafDecl) => {
     const c = caps(l);
-    return c.length > 0 && f.roleAllowed(roles(l)) && (!l.permission || f.hasPermission(l.permission)) && f.capabilitiesVisible(c);
+    return (
+      c.length > 0 &&
+      f.roleAllowed(roles(l)) &&
+      (!l.permission || f.hasPermission(l.permission)) &&
+      f.capabilitiesVisible(c) &&
+      (l.allCapabilities ?? []).every((x) => f.capabilitiesVisible([x]))
+    );
   };
-  const leaf = (l: PanelLeafDecl): PanelNavLeaf => ({ key: keyOf(moduleId, l.id), label: l.label, href: l.path, ...(l.icon ? { icon: l.icon } : {}), capabilities: caps(l), roles: roles(l) });
+  const leaf = (l: PanelLeafDecl): PanelNavLeaf => ({
+    key: keyOf(moduleId, l.id),
+    label: l.label,
+    href: l.path,
+    ...(l.icon ? { icon: l.icon } : {}),
+    capabilities: caps(l),
+    ...(l.allCapabilities ? { allCapabilities: l.allCapabilities } : {}),
+    roles: roles(l),
+  });
   const item = (i: PanelItemDecl): PanelNavItem | null => {
     if (!allowed(i)) return null;
     const out: PanelNavItem = { ...leaf(i), icon: i.icon ?? "package" };
@@ -239,7 +258,7 @@ export function panelRoutes(panel: PanelContributions, capability: string | null
  * Aportaciones al panel de las extensiones incluidas en el Core (las usan sus manifiestos en el servidor y el
  * guardián de rutas del cliente, que así las bloquea aunque aún no haya respuesta del servidor).
  */
-export const CORE_EXTENSION_PANELS: Readonly<Record<string, { capability: string; panel: PanelContributions }>> = {
+export const CORE_EXTENSION_PANELS: Readonly<Record<string, { capability?: string; panel: PanelContributions }>> = {
   people: {
     capability: "people-hr",
     panel: {
@@ -278,7 +297,54 @@ export const CORE_EXTENSION_PANELS: Readonly<Record<string, { capability: string
     capability: "care-net",
     panel: { items: [{ id: "agenda", label: "Agenda y citas", path: "/admin/spa", icon: "calendar", order: 67 }], api: ["spa"] },
   },
+  // Social Token Net: tres productos (Comunidades, Tokens internos y Complete = los dos) y dos capacidades, así que la
+  // extensión no tiene una capacidad única: cada entrada declara la suya y las funciones conjuntas exigen las dos.
+  // Sus APIs (communities, loyalty, socialNet) ya las protege TRPC_ROUTER_CAPABILITIES.
+  socialTokenNet: { panel: socialTokenNetPanel() },
 };
 
+/** Menú de Social Token Net: sección propia con portada, Comunidades, Fidelización y las funciones de Complete. */
+function socialTokenNetPanel(): PanelContributions {
+  const COM = ["social-token-net"];
+  const TOK = ["social-token-net-tokens"];
+  const STAFF = ["admin", "agente"];
+  const com = (id: string, label: string, path: string): PanelLeafDecl => ({ id, label, path, capabilities: COM });
+  const tok = (id: string, label: string, path: string): PanelLeafDecl => ({ id, label, path, capabilities: TOK, roles: STAFF });
+  return {
+    section: {
+      id: "social-token-net",
+      label: "Social Token Net",
+      items: [
+        { id: "inicio", label: "Inicio", path: "/admin/social-token-net", icon: "sparkles", capabilities: [...COM, ...TOK], roles: STAFF },
+        {
+          ...com("comunidades", "Comunidades", "/admin/comunidades"),
+          icon: "users",
+          children: [
+            com("comunidades-lista", "Comunidades", "/admin/comunidades"),
+            com("miembros", "Miembros", "/admin/comunidades/apartado/miembros"),
+            com("publicaciones", "Publicaciones", "/admin/comunidades/apartado/publicaciones"),
+            com("encuestas", "Encuestas y propuestas", "/admin/comunidades/apartado/encuestas"),
+            com("moderacion", "Moderación", "/admin/comunidades/apartado/reportes"),
+            com("indicadores", "Indicadores de participación", "/admin/comunidades/apartado/resumen"),
+          ],
+        },
+        {
+          ...tok("fidelizacion", "Fidelización", "/admin/fidelizacion"),
+          icon: "tag",
+          children: [
+            tok("programa", "Programa y estadísticas", "/admin/fidelizacion"),
+            tok("monederos", "Monederos y movimientos", "/admin/fidelizacion/monederos"),
+            tok("reglas", "Reglas y campañas", "/admin/fidelizacion/reglas"),
+            tok("recompensas", "Recompensas", "/admin/fidelizacion/recompensas"),
+            tok("canjes", "Canjes y validación", "/admin/fidelizacion/canjes"),
+          ],
+        },
+        // Complete: puntos por participación, recompensas exclusivas por comunidad y estadísticas conjuntas
+        { ...tok("conjunto", "Comunidad y puntos", "/admin/fidelizacion/comunidades"), icon: "chart", allCapabilities: [...COM, ...TOK] },
+      ],
+    },
+  };
+}
+
 /** Rutas de las extensiones del Core (guardián de rutas del cliente). */
-export const CORE_EXTENSION_ROUTES: readonly PanelRoute[] = Object.values(CORE_EXTENSION_PANELS).flatMap((x) => panelRoutes(x.panel, x.capability));
+export const CORE_EXTENSION_ROUTES: readonly PanelRoute[] = Object.values(CORE_EXTENSION_PANELS).flatMap((x) => panelRoutes(x.panel, x.capability ?? null));
