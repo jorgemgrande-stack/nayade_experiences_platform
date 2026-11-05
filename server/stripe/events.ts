@@ -41,6 +41,7 @@ import { invoiceDocumentOf, invoiceRecordOf, invoiceSourceKey, pendingSink, rect
 import type { CatalogPort } from "../subscriptions/ports";
 import { SELF_SERVICE_PLANS, desiredCatalog } from "./catalog";
 import { sameItems, type SubscriptionChangeStore } from "./changes";
+import { cleanupSwapZeros } from "./swapCleanup";
 import { allocateRefund, itemsDrift, linesOf, type InvoiceLineStore, type PriceResolver } from "./invoiceLines";
 
 /** Eventos que se aceptan y procesan (nombres de la API 2026-09-30.endive). */
@@ -359,7 +360,9 @@ export class StripeEventProcessor {
       const o = await this.d.orders.get(c.orderId);
       if (!o) continue;
       if (sameItems(sub.items, c.expectedItems)) {
-        if (LIVE_OR_SCHEDULED.includes(o.state) || o.state === "superseded") await this.d.changes.resolve(c.id, "applied", null, this.now());
+        // Sustitución por paquete confirmada: antes de darla por aplicada se retira la partida a 0 (sin prorrateo). Si
+        // Stripe falla, el cambio sigue pendiente y la conciliación de compras lo reintenta
+        if ((LIVE_OR_SCHEDULED.includes(o.state) || o.state === "superseded") && (await cleanupSwapZeros(this.d.gateway, c, sub))) await this.d.changes.resolve(c.id, "applied", null, this.now());
         continue;
       }
       if (sub.pendingUpdate || !c.stripeInvoiceId) continue;

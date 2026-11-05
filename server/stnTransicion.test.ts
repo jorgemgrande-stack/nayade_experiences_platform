@@ -6,8 +6,9 @@
  *
  *  - Comunidades → Complete: UNA sola actualización de Stripe (la partida cambia de precio), prorrateo (se paga la
  *    diferencia), pedido activo, suscripción interna con Complete desde ya y licencias sin hueco; idempotente.
- *  - Comunidades + Tokens → Complete: más barato (abono), confirmación heredada, partida sobrante a 0 que la siguiente
- *    reducción retira sin cobro.
+ *  - Comunidades + Tokens → Complete: más barato (abono), confirmación heredada; la partida sobrante queda a 0 en el
+ *    cambio y, una vez confirmado, se retira sin prorrateo (ni cargo ni abono): solo queda la partida de Complete.
+ *    Idempotente; si la limpieza falla, alerta y la conciliación la reintenta.
  *  - Cobro fallido o caducado: nada cambia. Paquete y componente a la vez: rechazado. Otra empresa: intacta. Datos:
  *    ninguna base borrada.
  *
@@ -49,6 +50,8 @@ import { FakeStripeGateway } from "./stripe/testing";
 import { StripeGatewayError } from "./stripe/gateway";
 import { MemorySubscriptionChangeStore, SubscriptionChangeError } from "./stripe/changes";
 import { ModulePurchaseService, substitutionItems } from "./stripe/purchases";
+import { cleanupSwapZeros, swapZeroItems } from "./stripe/swapCleanup";
+import type { SubscriptionChange } from "./stripe/changes";
 import { MemoryTenantLimitStore } from "./_core/limits/store";
 import { MemoryInvoiceLineStore } from "./stripe/invoiceLines";
 import { setLogSink } from "./_core/ops/log";
@@ -329,7 +332,7 @@ describe("Social Token Net: de módulos sueltos a Complete en una sola operació
     expect(tok.json.message).toMatch(/ya está incluido en «Social Token Net Complete»/);
   });
 
-  it("con Comunidades y Tokens internos, Complete los sustituye a los dos: sale más barato (abono), sin hueco y con la partida sobrante a 0", async () => {
+  it("con Comunidades y Tokens internos, Complete los sustituye a los dos: sale más barato (abono), sin hueco y, confirmado, solo queda la partida de Complete", async () => {
     const a = await activeCompany("STN Ambos SL");
     gw.now = Math.floor(clock / 1000);
     await ok(buy(a.tenantId, { add: [COM] }), 201);
@@ -345,38 +348,120 @@ describe("Social Token Net: de módulos sueltos a Complete en una sola operació
     expect(p.amountDueCents).toBeLessThanOrEqual(0);
 
     const mark = gw.calls.length;
+    const invoicesBefore = gw.invoices.size;
     const t0 = clock;
     const r = await ok(buy(a.tenantId, { add: [CPL] }), 201);
     expect(r.purchase.status).toBe("applied");
     const up = updatesSince(mark);
-    expect(up).toHaveLength(1);
+    expect(up).toHaveLength(2);
     expect(up[0].input).toMatchObject({ prorationBehavior: "always_invoice", items: [{ id: comItem.id, priceId: priceOf(CPL), quantity: 1 }, { id: tokItem.id, quantity: 0 }] });
+    // Confirmada la sustitución, la partida a 0 se retira SIN prorrateo: solo esa partida, ni cargo ni abono ni factura
+    expect(up[1].input).toEqual(expect.objectContaining({ prorationBehavior: "none", paymentBehavior: "error_if_incomplete", items: [{ id: tokItem.id, deleted: true }] }));
+    expect(up[1].key).toMatch(/-swap-v1-cleanup-/);
+    expect(gw.invoices.size).toBe(invoicesBefore + 1);
     const after = gw.subscriptions.get(a.subId)!.items!;
+    expect(after).toHaveLength(2);
     expect(after.find((i) => i.id === comItem.id)).toMatchObject({ priceId: priceOf(CPL), quantity: 1 });
-    expect(after.find((i) => i.id === tokItem.id)).toMatchObject({ priceId: priceOf(TOK), quantity: 0 });
+    expect(after.some((i) => i.id === tokItem.id || i.quantity === 0)).toBe(false);
+    expect((await changes.byOrder(r.purchase.orderId))!.status).toBe("applied");
     // Sin importe ni capacidades nuevas: confirmación heredada del pedido anterior
     const detail = await ok(call("GET", `/orders/${r.purchase.orderId}`));
     expect(detail.order).toMatchObject({ state: "active", confirmation: expect.objectContaining({ kind: "inherited" }) });
     expect(await liveItems(a.companyId)).toEqual([CPL]);
     expect(await stnCaps(a.tenantId)).toEqual([...STN_CAPS].sort());
     expect(await neverInactive(a.tenantId, t0)).toBe(true);
+    // Idempotente: los webhooks (dos veces) y la conciliación no vuelven a tocar Stripe ni a facturar
     await deliverSince(0);
     await settled();
-    expect(updatesSince(mark)).toHaveLength(1);
+    await deliverSince(0);
+    await settled();
+    await ok(call("POST", "/commerce/purchases/sync"));
+    expect(updatesSince(mark)).toHaveLength(2);
+    expect(gw.invoices.size).toBe(invoicesBefore + 1);
+    expect(await orderState(r.purchase.orderId)).toBe("active");
+    expect(await stnCaps(a.tenantId)).toEqual([...STN_CAPS].sort());
 
-    // La partida a 0 no impide otra compra ni se borra en ella; la siguiente reducción la retira sin cobrar nada
+    // Después, compras y reducciones siguen como siempre (ya no hay partida a 0 que retirar)
     const pu = (await ok(preview(a.tenantId, { users: 5 }))).preview;
     expect(pu.lines.map((l: { productKey: string }) => l.productKey)).toEqual(["addon-user-essential"]);
     const mark2 = gw.calls.length;
     await ok(buy(a.tenantId, { users: 5 }), 201);
     expect(JSON.stringify(updatesSince(mark2))).not.toContain("deleted");
-    expect(gw.subscriptions.get(a.subId)!.items!.some((i) => i.id === tokItem.id && i.quantity === 0)).toBe(true);
     const invoices = gw.invoices.size;
     const red = await ok(reduce(a.tenantId, { users: 3 }), 201);
     expect(red.reduction.status).toBe("applied");
-    expect(gw.subscriptions.get(a.subId)!.items!.some((i) => i.id === tokItem.id)).toBe(false);
     expect(gw.invoices.size).toBe(invoices);
     expect(await stnCaps(a.tenantId)).toEqual([...STN_CAPS].sort());
+  });
+
+  it("si Stripe falla al retirar la partida a 0: la compra queda aplicada, salta la alerta y la conciliación la retira después (sin cargos)", async () => {
+    const a = await activeCompany("STN Limpieza SL");
+    gw.now = Math.floor(clock / 1000);
+    await ok(buy(a.tenantId, { add: [COM] }), 201);
+    await ok(buy(a.tenantId, { add: [TOK] }), 201);
+    const tokItem = gw.subscriptions.get(a.subId)!.items!.find((i) => i.priceId === priceOf(TOK))!;
+    const logs: string[] = [];
+    setLogSink((_l, line) => void logs.push(line));
+    const real = gw.updateSubscriptionItems.bind(gw);
+    gw.updateSubscriptionItems = async (c, k) => {
+      if (k.includes("-cleanup-")) throw new StripeGatewayError("api_error", "Stripe respondió 500", true);
+      return real(c, k);
+    };
+    const mark = gw.calls.length;
+    let r: { purchase: { status: string; orderId: number } };
+    try {
+      r = await ok(buy(a.tenantId, { add: [CPL] }), 201);
+    } finally {
+      gw.updateSubscriptionItems = real;
+      setLogSink(null);
+    }
+    expect(r.purchase.status).toBe("applied");
+    expect(await orderState(r.purchase.orderId)).toBe("active");
+    expect(await stnCaps(a.tenantId)).toEqual([...STN_CAPS].sort());
+    expect(logs.some((l) => l.includes("swap_cleanup_pending"))).toBe(true);
+    // La partida a 0 sigue (sin importe) y el cambio queda pendiente para la conciliación
+    expect(gw.subscriptions.get(a.subId)!.items!.find((i) => i.id === tokItem.id)).toMatchObject({ quantity: 0 });
+    expect((await changes.byOrder(r.purchase.orderId))!.status).toBe("pending");
+    const invoices = gw.invoices.size;
+    // La conciliación la retira (sin prorrateo) y da el cambio por aplicado
+    await ok(call("POST", "/commerce/purchases/sync"));
+    expect(gw.subscriptions.get(a.subId)!.items!.some((i) => i.id === tokItem.id)).toBe(false);
+    expect((await changes.byOrder(r.purchase.orderId))!.status).toBe("applied");
+    expect(gw.invoices.size).toBe(invoices);
+    const ups = updatesSince(mark);
+    expect(ups.filter((u) => (u.input as { prorationBehavior: string }).prorationBehavior === "always_invoice")).toHaveLength(1);
+    expect(ups.at(-1)!.input).toMatchObject({ prorationBehavior: "none", items: [{ id: tokItem.id, deleted: true }] });
+    await deliverSince(0);
+    await settled();
+    expect(updatesSince(mark)).toHaveLength(ups.length);
+  });
+
+  it("limpieza de la partida a 0: solo la que dejó el cambio, solo si sigue a 0 y ya está confirmado; idempotente", async () => {
+    const g = new FakeStripeGateway();
+    g.addProduct({ id: "prod_x", name: "X" });
+    for (const id of ["p_plan", "p_a", "p_b", "p_pack", "p_z"]) g.addPrice({ id, productId: "prod_x", unitAmount: 1000, interval: "month" });
+    const subOf = (items: Array<[string, string, number]>) => ({ id: "sub_x", customerId: "cus_x", status: "active", items: items.map(([id, priceId, quantity]) => ({ id, priceId, quantity })) }) as never;
+    const change = (over: Partial<SubscriptionChange> = {}): SubscriptionChange => ({ id: 1, orderId: 9, companyId: 1, stripeSubscriptionId: "sub_x", idempotencyKey: "es-local-order-9-items-swap-v1", items: [{ id: "si_a", priceId: "p_pack", quantity: 1 }, { id: "si_b", quantity: 0 }], expectedItems: [{ priceId: "p_plan", quantity: 1 }, { priceId: "p_pack", quantity: 1 }, { priceId: "p_b", quantity: 0 }], status: "pending", stripeInvoiceId: null, amountDueCents: 0, expiresAt: null, detail: null, createdBy: "t", createdAt: 0, updatedAt: 0, ...over }) as SubscriptionChange;
+    // Aún sin aplicar (cobro pendiente o caducado): la partida del componente no está a 0, no se toca nada
+    expect(swapZeroItems(change(), subOf([["si_plan", "p_plan", 1], ["si_a", "p_a", 1], ["si_b", "p_b", 1]]))).toEqual([]);
+    // Un cambio que no es sustitución, una partida a 0 ajena (de otro cambio) o con otro precio: tampoco
+    expect(swapZeroItems(change({ idempotencyKey: "es-local-order-9-items-v1" }), subOf([["si_plan", "p_plan", 1], ["si_a", "p_pack", 1], ["si_b", "p_b", 0]]))).toEqual([]);
+    expect(swapZeroItems(change(), subOf([["si_plan", "p_plan", 1], ["si_a", "p_pack", 1], ["si_z", "p_z", 0]]))).toEqual([]);
+    expect(swapZeroItems(change(), subOf([["si_plan", "p_plan", 1], ["si_a", "p_pack", 1], ["si_b", "p_z", 0]]))).toEqual([]);
+    // Confirmado: solo la partida del componente sustituido, sin prorrateo; las demás (y la ajena a 0) intactas
+    g.subscriptions.set("sub_x", subOf([["si_plan", "p_plan", 1], ["si_a", "p_pack", 1], ["si_b", "p_b", 0], ["si_z", "p_z", 0]]));
+    expect(await cleanupSwapZeros(g, change(), g.subscriptions.get("sub_x")!)).toBe(true);
+    expect(g.subscriptions.get("sub_x")!.items!.map((i) => i.id)).toEqual(["si_plan", "si_a", "si_z"]);
+    expect(g.invoices.size).toBe(0);
+    const calls = g.calls.filter((c) => c.op === "subscriptions.update");
+    expect(calls).toHaveLength(1);
+    expect(calls[0]).toMatchObject({ key: "es-local-order-9-items-swap-v1-cleanup-si_b", input: { prorationBehavior: "none", items: [{ id: "si_b", deleted: true }] } });
+    // Segunda vez (evento repetido): ya no está, no se llama a Stripe
+    expect(await cleanupSwapZeros(g, change(), g.subscriptions.get("sub_x")!)).toBe(true);
+    expect(g.calls.filter((c) => c.op === "subscriptions.update")).toHaveLength(1);
+    // Misma petición con la misma clave (dos procesos a la vez): Stripe devuelve lo mismo, sin otro cambio
+    await g.updateSubscriptionItems(calls[0].input as never, calls[0].key!);
+    expect(g.subscriptions.get("sub_x")!.items!.map((i) => i.id)).toEqual(["si_plan", "si_a", "si_z"]);
   });
 
   it("cobro fallido de la sustitución: no cambia nada (ni Stripe, ni la suscripción interna, ni las licencias); al caducar, el pedido se rechaza", async () => {
