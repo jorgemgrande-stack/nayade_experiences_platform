@@ -10,7 +10,14 @@
  *  - Solo se vende lo que está en estado comercial «available» (terminado, probado y aprobado para venta libre)
  *    y tiene Price enlazado en Stripe. Lo «bajo solicitud» o «próximamente» queda deshabilitado.
  *  - Solo ALTAS y AUMENTOS (módulo nuevo, más usuarios, sedes o almacenamiento). Bajas y reducciones van por el
- *    camino de fin de periodo (PR 6), nunca por aquí.
+ *    camino de fin de periodo (PR 6), nunca por aquí. Única excepción, acotada: un PAQUETE que sustituye a
+ *    componentes suyos ya contratados (p. ej. Comunidades → Social Token Net Complete). En la MISMA operación de
+ *    Stripe el paquete entra y los componentes salen, con el prorrateo de siempre (abono de lo no consumido de los
+ *    componentes + cargo del paquete: se paga solo la diferencia). Los cambios pendientes de cobro de Stripe no
+ *    admiten borrar partidas: la primera partida sustituida cambia al precio del paquete y las demás quedan a
+ *    cantidad 0 (sin importe; la siguiente reducción las retira). Cualquier otra partida que desaparezca se rechaza.
+ *    Si la sustitución sale más barata (los dos módulos → el paquete), el pedido se confirma con la confirmación
+ *    heredada (sin importe y sin capacidades nuevas) y el cambio de Stripe se reenvía siempre CON prorrateo.
  *  - Stripe aplica el cambio SOLO si cobra el prorrateo (`pending_if_incomplete` + `always_invoice`). Ningún
  *    derecho se concede antes: lo concede el circuito de siempre (pago verificado → confirmar → suscripción →
  *    licencias) cuando el procesador de eventos relee la factura PAGADA y las partidas esperadas.
@@ -37,6 +44,45 @@ import type { GwInvoice, GwSubscription, StripeGateway } from "./gateway";
 import { intervalCompatible, itemChanges, supportsPendingUpdate } from "./multipart";
 import type { StripeStore } from "./store";
 import { SubscriptionChangeError, sameItems, type ExpectedItem, type SubscriptionChange, type SubscriptionChangeStore } from "./changes";
+import { bundleReplaces } from "../catalog/quote";
+
+type ItemChange = { id?: string; priceId?: string; quantity?: number; deleted?: true };
+/** Clave del cambio de Stripe de una sustitución por paquete: lleva abono, así que nunca se reenvía sin prorrateo. */
+const SWAP_SUFFIX = "-swap-v1";
+
+/**
+ * Partidas de una compra en la forma que Stripe acepta en un cambio pendiente de cobro (precio y cantidad, nunca
+ * borrados). En una sustitución por paquete, la primera partida de los componentes pasa al precio del paquete (Stripe
+ * prorratea el cambio de precio en esa partida) y las demás quedan a 0. Las partidas a 0 que ya hubiera se conservan.
+ * Devuelve el cambio y las partidas esperadas después.
+ */
+export function substitutionItems(
+  current: Array<{ id: string; priceId: string; quantity: number }>,
+  desired: Map<string, number>,
+  swaps: Array<{ bundlePriceId: string; componentPriceIds: string[] }>,
+): { items: ItemChange[]; expected: ExpectedItem[] } {
+  const zero = new Set(current.filter((i) => i.quantity === 0).map((i) => i.id));
+  const items: ItemChange[] = itemChanges(current, Array.from(desired.entries()).map(([priceId, quantity]) => ({ priceId, quantity }))).filter((c) => !(c.deleted && c.id && zero.has(c.id)));
+  const expected = new Map(Array.from(desired.entries()).filter(([, q]) => q > 0));
+  for (const i of current) if (zero.has(i.id) && !expected.has(i.priceId)) expected.set(i.priceId, 0);
+  const out: ItemChange[] = [];
+  const used = new Set<ItemChange>();
+  for (const s of swaps) {
+    const add = items.find((c) => !c.id && c.priceId === s.bundlePriceId);
+    const removed = s.componentPriceIds.map((p) => items.find((c) => c.deleted && c.id === current.find((i) => i.priceId === p)?.id));
+    if (!add || removed.some((x) => !x)) continue;
+    used.add(add);
+    removed.forEach((x, n) => {
+      used.add(x!);
+      if (n === 0) out.push({ id: x!.id, priceId: s.bundlePriceId, quantity: add.quantity ?? 1 });
+      else {
+        out.push({ id: x!.id, quantity: 0 });
+        expected.set(s.componentPriceIds[n], 0);
+      }
+    });
+  }
+  return { items: [...items.filter((c) => !used.has(c)), ...out], expected: Array.from(expected.entries()).map(([priceId, quantity]) => ({ priceId, quantity })) };
+}
 
 export type PurchaseErrorCode = "disabled" | "not_found" | "invalid_input" | "invalid_state" | "unavailable" | "conflict" | "async_payment_method";
 export class PurchaseError extends Error {
@@ -223,8 +269,21 @@ export class ModulePurchaseService {
       const p = await this.d.catalog.product(key);
       if (!p || p.commercialStatus !== "available" || !PURCHASABLE_FAMILIES.has(p.family) || p.addonFor || (p.internalOnly && !this.internalAllowed(current.tenantId))) throw new PurchaseError("unavailable", `«${key}» no está disponible para compra en línea`);
     }
+    // Paquetes y componentes: nunca los dos a la vez. Un paquete que sustituye componentes ya contratados los quita
+    // de la configuración (y de Stripe, en la misma operación)
+    const replacedBy = new Map<string, string>();
+    for (const key of add) {
+      const p = (await this.d.catalog.product(key))!;
+      const both = add.find((c) => c !== key && p.bundleOf.includes(c));
+      if (both) throw new PurchaseError("invalid_input", `«${both}» ya va incluido en «${p.name}»: elige el paquete o el módulo, no los dos`);
+      for (const c of bundleReplaces(p.bundleOf, have)) replacedBy.set(c, key);
+      for (const h of Array.from(have)) {
+        const b = await this.d.catalog.product(h);
+        if (b?.bundleOf.includes(key)) throw new PurchaseError("invalid_input", `«${p.name}» ya está incluido en «${b.name}», que ya tienes contratado`);
+      }
+    }
     const r = current.request as CommercialOrder["request"] & { users?: number; sites?: number; storageGb?: number };
-    const request: CommercialOrder["request"] & { users?: number; sites?: number; storageGb?: number } = { ...structuredClone(r), items: [...r.items, ...add.map((key) => ({ key }))] };
+    const request: CommercialOrder["request"] & { users?: number; sites?: number; storageGb?: number } = { ...structuredClone(r), items: [...r.items.filter((i) => !replacedBy.has(i.key)), ...add.map((key) => ({ key }))] };
     for (const f of Object.keys(METRICS) as Array<keyof typeof METRICS>) {
       const v = input[f];
       if (v === undefined) continue;
@@ -267,15 +326,35 @@ export class ModulePurchaseService {
     // Una reducción declarada (menos usuarios que ahora) nunca entra por aquí
     for (const [key, qty] of Array.from(qtyBefore.entries())) if (!q.lines.some((l) => l.key === key && l.quantity >= qty)) throw new PurchaseError("invalid_input", "Para reducir una ampliación usa la reducción a fin de periodo");
     if (!lines.length) throw new PurchaseError("invalid_input", "No hay nada nuevo que comprar");
-    const expected: ExpectedItem[] = Array.from(desired.entries()).map(([priceId, quantity]) => ({ priceId, quantity }));
-    const items = itemChanges(sub.items ?? [], expected);
+    // Componentes sustituidos por su paquete: sale su partida de Stripe (la contratada, con su precio aprobado)
+    const swaps: Array<{ bundlePriceId: string; componentPriceIds: string[] }> = [];
+    const intervalBefore = new Map(before.ok ? before.lines.map((l) => [l.key, l.interval]) : []);
+    for (const [key, bundleKey] of Array.from(replacedBy.entries())) {
+      const bundle = lines.find((l) => l.productKey === bundleKey)!;
+      const product = offer.find((p) => p.key === key);
+      const name = product?.name ?? key;
+      const interval = intervalBefore.get(key) ?? request.interval;
+      if (interval !== bundle.interval) throw new PurchaseError("unavailable", `«${bundle.name}» y «${name}» se cobran con periodicidades distintas: la sustitución la hace tu gestor`);
+      const kind = interval === "year" ? "yearly" : "monthly";
+      const price = product?.prices.find((p) => p.kind === kind && p.status === "approved" && p.currency.toUpperCase() === "EUR");
+      const link = price ? await this.d.stripeStore.priceForWebPrice(price.id) : null;
+      if (!price || !link || (curItems.get(link.stripePriceId) ?? 0) !== 1) throw new PurchaseError("conflict", `«${name}» en Stripe no coincide con lo contratado: lo revisa el equipo`);
+      desired.delete(link.stripePriceId);
+      const swap = swaps.find((s) => s.bundlePriceId === bundle.stripePriceId);
+      if (swap) swap.componentPriceIds.push(link.stripePriceId);
+      else swaps.push({ bundlePriceId: bundle.stripePriceId, componentPriceIds: [link.stripePriceId] });
+      lines.push({ productKey: key, name, kind: "module", stripePriceId: link.stripePriceId, fromQuantity: 1, toQuantity: 0, interval, unitAmountCents: price.amountCents });
+      recurringDeltaCents -= price.amountCents;
+      recurringDelta[interval === "year" ? "yearlyCents" : "monthlyCents"] -= price.amountCents;
+    }
+    const { items, expected } = substitutionItems(sub.items ?? [], desired, swaps);
     if (items.some((i) => i.deleted)) throw new PurchaseError("invalid_state", "La compra quitaría partidas de la suscripción: lo revisa el equipo");
     // «Bajo solicitud» solo puede ser lo ya contratado (aprobado en el pedido vigente): lo nuevo es «available»
     const owned = new Set([current.request.plan, ...current.request.items.map((i) => i.key)]);
     const onRequest = q.lines.filter((l) => l.commercialStatus === "on_request");
     if (onRequest.some((l) => !owned.has(l.key))) throw new PurchaseError("unavailable", "La compra incluye productos que requieren aprobación comercial");
     const approvalReason = onRequest.length ? `Ya aprobado en el pedido vigente ${current.reference ?? current.id}; la compra solo añade productos disponibles` : undefined;
-    return { request, lines, expected, items, recurringDeltaCents, recurringDelta, approvalReason };
+    return { request, lines, expected, items, recurringDeltaCents, recurringDelta, approvalReason, substitution: swaps.length > 0 };
   }
 
   private async assertPaymentMethod(sub: GwSubscription) {
@@ -308,6 +387,8 @@ export class ModulePurchaseService {
     const { company, current, sub } = await this.context(tenantId);
     const p = await this.plan(current, sub, input);
     await this.assertPaymentMethod(sub);
+    // Una sustitución puede quedar activa al aceptarla (confirmación heredada): el conflicto se mira ANTES de crear nada
+    if (p.substitution && (await this.d.changes.ofSubscription(sub.id)).some((c) => c.status === "pending")) throw new PurchaseError("conflict", "Hay otro cambio pendiente en la suscripción: espera a que termine");
     let order: CommercialOrder;
     try {
       const created = await this.d.orchestrator.create({ idempotencyKey: orderKey, changeOf: current.id, request: p.request }, opts.actor);
@@ -317,7 +398,10 @@ export class ModulePurchaseService {
       if (e instanceof OrderError) throw new PurchaseError(e.code === "conflict" ? "conflict" : e.code === "invalid_input" ? "invalid_input" : "invalid_state", e.message);
       throw e;
     }
-    if (order.state !== "contracted") throw new PurchaseError("invalid_state", `El pedido de la compra quedó en «${order.state}»${order.lastError ? `: ${order.lastError}` : ""}`);
+    // Una sustitución más barata (sin importe ni capacidades nuevas) queda activa con la confirmación heredada: Stripe
+    // la aplica igualmente con su prorrateo (abono) y, si no llegara, se reenvía (nunca sin prorrateo)
+    const inheritedSwap = p.substitution && order.state === "active" && order.confirmation?.kind === "inherited";
+    if (order.state !== "contracted" && !inheritedSwap) throw new PurchaseError("invalid_state", `El pedido de la compra quedó en «${order.state}»${order.lastError ? `: ${order.lastError}` : ""}`);
     let change: SubscriptionChange;
     try {
       change = (
@@ -325,7 +409,7 @@ export class ModulePurchaseService {
           orderId: order.id,
           companyId: company.id,
           stripeSubscriptionId: sub.id,
-          idempotencyKey: `es-${this.d.namespace}-order-${order.id}-items-v1`,
+          idempotencyKey: `es-${this.d.namespace}-order-${order.id}-items${p.substitution ? SWAP_SUFFIX : "-v1"}`,
           items: p.items,
           expectedItems: p.expected,
           createdBy: opts.actor,
@@ -355,6 +439,13 @@ export class ModulePurchaseService {
       if (retryable) {
         // No se sabe si llegó: el cambio queda pendiente y la conciliación (`sync`) lo resuelve releyendo Stripe
         opsLog("warn", "Purchases", "send_uncertain", { orderId, changeId: change.id });
+        return this.result(change, orderId, "processing", false);
+      }
+      // Sustitución ya vigente (confirmación heredada): lo interno no se deshace en silencio; queda pendiente, con
+      // alerta, y la conciliación la reenvía con su prorrateo
+      if (change.idempotencyKey.endsWith(SWAP_SUFFIX) && (await this.d.orchestrator.must(orderId)).state === "active") {
+        opsLog("error", "Purchases", "swap_stripe_pending", { orderId, changeId: change.id });
+        recordFailure("purchases.swap_stripe_pending");
         return this.result(change, orderId, "processing", false);
       }
       await this.d.changes.resolve(change.id, "failed", e instanceof Error ? e.message : "error", this.now());
@@ -403,8 +494,9 @@ export class ModulePurchaseService {
       return this.result(change, orderId, "processing", false);
     }
     // Pedido ya vigente y Stripe sin las partidas: solo puede ser una reducción (una compra no se activa sin
-    // cobro). Se reenvía con la misma clave; nunca caduca
-    if (["active", "past_due", "suspended", "cancel_scheduled"].includes(order.state)) return this.sendReduction(change, orderId);
+    // cobro) o una sustitución más barata ya vigente. Se reenvía con la misma clave (la sustitución, con su
+    // prorrateo: el abono de los componentes); nunca caduca
+    if (["active", "past_due", "suspended", "cancel_scheduled"].includes(order.state)) return change.idempotencyKey.endsWith(SWAP_SUFFIX) ? this.resendSwap(change, orderId) : this.sendReduction(change, orderId);
     if (sub.pendingUpdate) {
       const inv = change.stripeInvoiceId ? await this.d.gateway.invoice(change.stripeInvoiceId) : null;
       return { ...this.result(change, orderId, "payment_pending", false), paymentUrl: inv?.hostedInvoiceUrl ?? null };
@@ -482,7 +574,8 @@ export class ModulePurchaseService {
       if (to < from) await reduce(key, offer.find((p) => p.key === key)?.name ?? key, "quantity", from, to);
     }
     if (!lines.length) throw new PurchaseError("invalid_input", "No hay nada que reducir");
-    const expected: ExpectedItem[] = Array.from(desired.entries()).map(([priceId, quantity]) => ({ priceId, quantity }));
+    // Las partidas a 0 que dejó una sustitución por paquete se retiran aquí (sin prorrateo: no tienen importe)
+    const expected: ExpectedItem[] = Array.from(desired.entries()).filter(([, quantity]) => quantity > 0).map(([priceId, quantity]) => ({ priceId, quantity }));
     const items = itemChanges(sub.items ?? [], expected);
     const owned = new Set([current.request.plan, ...current.request.items.map((i) => i.key)]);
     const onRequest = q.lines.filter((l) => l.commercialStatus === "on_request");
@@ -542,6 +635,27 @@ export class ModulePurchaseService {
       })
     ).change;
     return { ...(await this.sendReduction(change, order.id)), created: true };
+  }
+
+  /**
+   * Reenvío de una sustitución por paquete ya vigente (confirmación heredada) que Stripe aún no tiene: CON prorrateo
+   * (el abono de los componentes es del cliente) y la misma clave. Sin recursión: solo lee el resultado.
+   */
+  private async resendSwap(change: SubscriptionChange, orderId: number): Promise<PurchaseResult> {
+    try {
+      const r = await this.d.gateway.updateSubscriptionItems(
+        { subscriptionId: change.stripeSubscriptionId, items: change.items, prorationBehavior: "always_invoice", paymentBehavior: "pending_if_incomplete", metadata: { es_change_order_id: String(orderId) } },
+        change.idempotencyKey,
+      );
+      if (sameItems(r.subscription.items ?? [], change.expectedItems)) {
+        await this.d.changes.resolve(change.id, "applied", null, this.now());
+        return this.result({ ...change, status: "applied" }, orderId, "applied", false);
+      }
+    } catch (e) {
+      opsLog("error", "Purchases", "swap_stripe_pending", { orderId, changeId: change.id, retryable: (e as { retryable?: boolean }).retryable === true });
+      recordFailure("purchases.swap_stripe_pending");
+    }
+    return this.result(change, orderId, "processing", false);
   }
 
   /** Ajusta las partidas en Stripe sin prorrateo (ni cobro ni abono). Reenviable: misma clave, mismo resultado. */

@@ -102,6 +102,8 @@ export async function itemsDrift(stripeItems: GwSubscriptionItem[], contracted: 
   const inStripe = new Map<string, number>();
   const unknownPrices: string[] = [];
   for (const i of stripeItems) {
+    // Partida a 0 (la deja una sustitución por paquete hasta la siguiente reducción): no cobra nada, no es un descuadre
+    if (i.quantity === 0) continue;
     const p = await resolve(i.priceId);
     if (!p?.productKey) {
       unknownPrices.push(i.priceId);
