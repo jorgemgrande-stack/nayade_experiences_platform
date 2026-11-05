@@ -194,6 +194,7 @@ export async function startEssentialApp(url: string, label: string, opts: { webD
   app.use("/api/trpc", capabilityRouteGuard(getCapabilityAccess));
   app.use("/api/trpc", createAuthGuardMiddleware(true));
   app.use(redsysRouter);
+  app.use((await import("./loyaltyPortal")).createLoyaltyPortalRouter());
   app.use(uploadRouter);
   app.use(fileRouter);
   app.use(invoicePreviewRouter);

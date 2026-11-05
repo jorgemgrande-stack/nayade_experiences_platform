@@ -23,6 +23,7 @@ import { FormField, selectClass } from "@/components/admin/crm/CrmParts";
 import { toastError } from "@/lib/errorMessage";
 import { cn } from "@/lib/utils";
 import { randomId } from "@shared/randomId";
+import { RedemptionsDialogSection, Redemptions, Rewards, ValidateCode, WalletRewardActions } from "./LoyaltyRewards";
 import {
   LEDGER_KIND_LABELS,
   LIMIT_PERIODS,
@@ -85,7 +86,7 @@ function ProgramCard({ data }: { data: Overview }) {
   });
   const runExpiry = trpc.loyalty.runExpiry.useMutation({
     onSuccess: (r) => {
-      toast.success(r.points > 0 ? `Caducados ${fmtN(r.points)} ${p.pointsName} en ${r.wallets} monederos` : "No hay puntos vencidos");
+      toast.success(r.points > 0 || r.codes > 0 ? `Caducados ${fmtN(r.points)} ${p.pointsName} en ${r.wallets} monederos y ${r.codes} códigos sin usar` : "No hay puntos ni códigos vencidos");
       utils.loyalty.invalidate();
     },
     onError: (e) => toastError(e),
@@ -126,11 +127,9 @@ function ProgramCard({ data }: { data: Overview }) {
           >
             Guardar programa
           </Button>
-          {p.expiryMonths != null && (
-            <Button variant="outline" disabled={runExpiry.isPending} onClick={() => runExpiry.mutate()}>
-              Procesar caducidades
-            </Button>
-          )}
+          <Button variant="outline" disabled={runExpiry.isPending} onClick={() => runExpiry.mutate()}>
+            Procesar caducidades
+          </Button>
         </div>
       )}
     </div>
@@ -327,6 +326,7 @@ function WalletDialog({ clientId, canManage, pointsName, onClose }: { clientId: 
                 <Button size="sm" variant="outline" onClick={() => setActing(true)}><Gift className="mr-1.5 h-4 w-4" aria-hidden="true" /> Registrar acción</Button>
               </div>
             )}
+            <WalletRewardActions clientId={clientId} canManage={canManage} pointsName={pointsName} />
             {q.data.ledger.length === 0 ? <PanelEmpty title="Sin movimientos" description="Este cliente todavía no tiene movimientos de puntos." /> : (
               <div className="max-h-96 overflow-auto rounded-xl border border-border">
                 <table className="w-full text-sm">
@@ -353,7 +353,7 @@ function WalletDialog({ clientId, canManage, pointsName, onClose }: { clientId: 
                         </td>
                         {canManage && (
                           <td className="px-3 py-2 text-right">
-                            {["emision", "ajuste", "canje"].includes(l.kind) && !l.reversed && (
+                            {["emision", "ajuste"].includes(l.kind) && !l.reversed && (
                               <Button size="sm" variant="ghost" aria-label="Anular movimiento" onClick={() => setReversing(l.id)}><Undo2 className="h-4 w-4" aria-hidden="true" /></Button>
                             )}
                           </td>
@@ -364,6 +364,7 @@ function WalletDialog({ clientId, canManage, pointsName, onClose }: { clientId: 
                 </table>
               </div>
             )}
+            <RedemptionsDialogSection clientId={clientId} canManage={canManage} />
             {reversing != null && (
               <div className="space-y-2 rounded-xl border border-warning/40 bg-warning/10 p-3">
                 <FormField id="rev-reason" label="Motivo de la anulación" required>
@@ -781,11 +782,17 @@ export default function Loyalty() {
                 <TabsTrigger value="monederos">Monederos</TabsTrigger>
                 <TabsTrigger value="reglas">Reglas</TabsTrigger>
                 <TabsTrigger value="campanas">Campañas</TabsTrigger>
+                <TabsTrigger value="recompensas">Recompensas</TabsTrigger>
+                <TabsTrigger value="canjes">Canjes</TabsTrigger>
+                <TabsTrigger value="validar">Validar código</TabsTrigger>
               </TabsList>
               <TabsContent value="resumen"><Summary data={data} /></TabsContent>
               <TabsContent value="monederos"><Wallets data={data} /></TabsContent>
               <TabsContent value="reglas"><Rules data={data} /></TabsContent>
               <TabsContent value="campanas"><Campaigns data={data} /></TabsContent>
+              <TabsContent value="recompensas"><Rewards canManage={data.canManage} pointsName={data.program.pointsName} /></TabsContent>
+              <TabsContent value="canjes"><Redemptions canManage={data.canManage} /></TabsContent>
+              <TabsContent value="validar"><ValidateCode /></TabsContent>
             </Tabs>
           </>
         )}

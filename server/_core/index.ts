@@ -31,6 +31,7 @@ import { createAuthGuardMiddleware } from "../authGuard";
 import uploadRouter from "../uploadRoutes";
 import fileRouter from "../fileRoutes";
 import redsysRouter from "../redsysRoutes";
+import { createLoyaltyPortalRouter } from "../loyaltyPortal";
 import { metaCapiRouter } from "../metaCapiRoute";
 import settlementExportRouter from "../settlementExportRoutes";
 import invoicePreviewRouter from "../invoicePreviewRouter";
@@ -241,6 +242,8 @@ async function startServer() {
 
   // Redsys IPN notification endpoint
   app.use(redsysRouter);
+  // Área de puntos del cliente (Social Token Net · Tokens internos): /mis-puntos con enlace firmado, sin sesión
+  app.use(createLoyaltyPortalRouter());
   // Meta Conversions API proxy (recibe eventos del cliente para envío server-side)
   app.use(metaCapiRouter);
   // Settlement Excel export endpoint

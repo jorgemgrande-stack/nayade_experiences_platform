@@ -293,3 +293,88 @@ export function csvText(v: string | null | undefined): string {
   if (/^[=+\-@\t\r]/.test(s)) s = `'${s}`;
   return `"${s.replace(/"/g, '""')}"`;
 }
+
+// ─── Recompensas y canjes (STN-2) ────────────────────────────────────────────
+
+export const REDEMPTION_STATUSES = ["emitido", "usado", "anulado", "caducado"] as const;
+export type RedemptionStatus = (typeof REDEMPTION_STATUSES)[number];
+export const REDEMPTION_STATUS_LABELS: Record<RedemptionStatus, string> = {
+  emitido: "Pendiente de usar",
+  usado: "Usado",
+  anulado: "Anulado",
+  caducado: "Caducado",
+};
+
+/** Resultado de una validación de código en mostrador (queda registrado). */
+export const CHECK_RESULTS = ["valido", "consulta", "no_existe", "ya_usado", "anulado", "caducado"] as const;
+export type CheckResult = (typeof CHECK_RESULTS)[number];
+
+/** Alfabeto de los códigos de canje: sin caracteres que se confunden al leerlos (0/O, 1/I/L). */
+export const CODE_ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
+export const CODE_LENGTH = 10;
+
+/** Código de un solo uso aleatorio (10 caracteres, ~8·10¹⁴ combinaciones). `random` devuelve bytes aleatorios. */
+export function generateRedemptionCode(random: (n: number) => Uint8Array): string {
+  const out: string[] = [];
+  while (out.length < CODE_LENGTH) {
+    for (const b of Array.from(random(CODE_LENGTH * 2))) {
+      // Rechazo de los valores que sesgarían la distribución (256 no es múltiplo de 31)
+      if (b < 248 && out.length < CODE_LENGTH) out.push(CODE_ALPHABET[b % CODE_ALPHABET.length]);
+    }
+  }
+  return out.join("");
+}
+
+/** Normaliza lo que teclea o lee el lector en el mostrador: mayúsculas y sin separadores. null si no es un código válido. */
+export function normalizeRedemptionCode(input: string): string | null {
+  const c = input.toUpperCase().replace(/[^A-Z0-9]/g, "");
+  if (c.length !== CODE_LENGTH) return null;
+  for (const ch of c) if (!CODE_ALPHABET.includes(ch)) return null;
+  return c;
+}
+
+/** Código para mostrar: «ABCDE-FGHJK». */
+export function formatRedemptionCode(code: string): string {
+  return code.length === CODE_LENGTH ? `${code.slice(0, 5)}-${code.slice(5)}` : code;
+}
+
+export interface LoyaltyReward {
+  id: number;
+  name: string;
+  description: string | null;
+  costPoints: number;
+  /** Unidades disponibles en total (null = sin límite). Cuentan los canjes pendientes y usados. */
+  stock: number | null;
+  perClientLimit: number | null;
+  limitPeriod: LimitPeriod | null;
+  /** Días de validez del código desde el canje. */
+  codeValidDays: number;
+  active: boolean;
+  startsAt: number | null;
+  endsAt: number | null;
+}
+
+export type RewardDenial = "inactive" | "not_started" | "ended" | "out_of_stock" | "client_limit" | "insufficient_balance";
+export const REWARD_DENIAL_MESSAGES: Record<RewardDenial, string> = {
+  inactive: "Esta recompensa no está disponible.",
+  not_started: "Esta recompensa todavía no está disponible.",
+  ended: "Esta recompensa ya no está disponible.",
+  out_of_stock: "No quedan unidades de esta recompensa.",
+  client_limit: "Ya has canjeado esta recompensa el máximo de veces permitido.",
+  insufficient_balance: "No tienes saldo suficiente para esta recompensa.",
+};
+
+/** ¿Se puede canjear ahora? (sin tocar la BD: los contadores los aporta quien llama, bajo bloqueo). */
+export function rewardDenial(r: LoyaltyReward, ctx: { at: number; committed: number; clientCommitted: number; balance: number }): RewardDenial | null {
+  if (!r.active) return "inactive";
+  if (r.startsAt != null && r.startsAt > ctx.at) return "not_started";
+  if (r.endsAt != null && r.endsAt < ctx.at) return "ended";
+  if (r.stock != null && ctx.committed >= r.stock) return "out_of_stock";
+  if (r.perClientLimit != null && ctx.clientCommitted >= r.perClientLimit) return "client_limit";
+  if (ctx.balance < r.costPoints) return "insufficient_balance";
+  return null;
+}
+
+/** Firma de un enlace al área de puntos del cliente: `<cliente>.<caducidad en s>.<firma>`. */
+export const PORTAL_TOKEN_RE = /^([1-9]\d{0,9})\.(\d{10})\.([A-Za-z0-9_-]{32})$/;
+export const PORTAL_LINK_DAYS = 30;

@@ -603,6 +603,9 @@ export async function reverseMovement(ledgerId: number, reason: string, actor: A
   return inTx(async (tx) => {
     const [r] = await rows<any>(tx, sql`SELECT id FROM loyalty_ledger WHERE reverses_id = ${ledgerId} LIMIT 1`);
     if (r) throw new LoyaltyError("ALREADY_REVERSED", "Ese movimiento ya está anulado");
+    const [o] = await rows<any>(tx, sql`SELECT kind FROM loyalty_ledger WHERE id = ${ledgerId}`);
+    // Un canje se anula desde su canje (anula también el código); aquí devolvería los puntos con el código aún válido
+    if (o?.kind === "canje") throw new TRPCError({ code: "BAD_REQUEST", message: "Los canjes se anulan desde la pestaña Canjes (así el código deja de valer)." });
     return reverseMovementInTx(tx, ledgerId, reason, actor);
   });
 }
