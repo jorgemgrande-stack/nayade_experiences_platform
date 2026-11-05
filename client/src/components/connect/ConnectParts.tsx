@@ -457,7 +457,7 @@ export function ProductCard({
           </ul>
         )}
         <div className="mt-auto space-y-3 border-t border-border pt-3">
-          {item.state === "active" ? <p className="text-sm text-muted-foreground">Ya forma parte de tu plataforma</p> : <BigPrice prices={item.prices} />}
+          {item.state === "active" ? <p className="text-sm text-muted-foreground">{item.includedIn ? `Incluido en ${item.includedIn.name}` : "Ya forma parte de tu plataforma"}</p> : <BigPrice prices={item.prices} />}
           <div className="relative z-10 grid gap-2">
             <Button asChild variant={hasAction ? "outline" : "default"} size="sm" className="w-full">
               <Link href={href}>
@@ -684,6 +684,7 @@ export function PurchaseDialog({ item, onClose }: { item: ConnectCatalogItem; on
                   {p.lines.map((l) => (
                     <li key={l.productKey} className="text-foreground">
                       {l.name}
+                      {l.kind === "module" && l.toQuantity === 0 && <span className="text-muted-foreground"> · deja de cobrarse aparte (lo incluye el paquete)</span>}
                     </li>
                   ))}
                 </ul>
@@ -694,7 +695,7 @@ export function PurchaseDialog({ item, onClose }: { item: ConnectCatalogItem; on
                   </p>
                   {p.taxCents !== null && <p className="text-xs text-muted-foreground">Incluye {money(p.taxCents, p.currency)} de impuestos.</p>}
                   <p className="text-xs text-muted-foreground">
-                    Después, {money(p.recurringDeltaCents, p.currency)} más por {per} en cada renovación{p.taxCents === null ? " (IVA aparte)" : ""}.
+                    Después, {money(Math.abs(p.recurringDeltaCents), p.currency)} {p.recurringDeltaCents < 0 ? "menos" : "más"} por {per} en cada renovación{p.taxCents === null ? " (IVA aparte)" : ""}.
                   </p>
                 </div>
                 <label className="flex items-start gap-2 text-sm">

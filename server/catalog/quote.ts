@@ -10,7 +10,8 @@
  *  - Plan obligatorio. Mensual o anual: el plan anual usa SU tarifa anual aprobada (nunca 12 × mensual).
  *    Lo que no tiene tarifa anual se cotiza mensual, y se indica.
  *  - Un paquete sustituye a sus componentes: si se eligen también por separado, no se cobran dos
- *    veces. Si ya estaban contratados (`owned`), se indica que el paquete los sustituye.
+ *    veces (se avisa). Si ya estaban contratados (`owned`), se indica que el paquete los sustituye. Un componente de
+ *    un paquete ya contratado no se cotiza aparte (error).
  *  - Sugiere el paquete cuando sale más barato que los componentes elegidos.
  *  - Dependencias y compatibilidades se validan contra lo elegido, lo incluido en paquetes y lo contratado.
  *  - Usuarios, sedes y almacenamiento por encima de lo incluido añaden su complemento si el plan lo
@@ -197,6 +198,11 @@ export function quote(catalog: QuoteCatalog, req: QuoteRequest): QuoteResult {
       errors.push(`«${p.name}» ya está contratado`);
       continue;
     }
+    const ownedBundle = includingBundle(p.key, owned, byKey);
+    if (ownedBundle) {
+      errors.push(`«${p.name}» ya está incluido en «${ownedBundle.name}», que ya tienes contratado: no se paga aparte`);
+      continue;
+    }
     selected.set(p.key, q);
   }
 
@@ -221,7 +227,9 @@ export function quote(catalog: QuoteCatalog, req: QuoteRequest): QuoteResult {
     if (p.compatibleWith.length && !p.compatibleWith.includes(plan.key)) errors.push(`«${p.name}» no es compatible con el plan ${plan.name}`);
     const bundleKey = inBundle.get(key);
     if (bundleKey) {
-      lines.push(line(p, qty, 0, "month", "included_in_bundle", `Incluido en ${byKey.get(bundleKey)!.name}`));
+      const bundleName = byKey.get(bundleKey)!.name;
+      lines.push(line(p, qty, 0, "month", "included_in_bundle", `Incluido en ${bundleName}`));
+      warnings.push(bundleComponentWarning(p.name, bundleName));
       continue;
     }
     const pr = pickPrice(p, req.interval);
@@ -345,6 +353,18 @@ export function quote(catalog: QuoteCatalog, req: QuoteRequest): QuoteResult {
  */
 export function bundleReplaces(bundleOf: string[], owned: { has(key: string): boolean }): string[] {
   return bundleOf.filter((c) => owned.has(c));
+}
+
+/** Aviso cuando se eligen a la vez un paquete y uno de sus componentes: el componente no se cobra (lo incluye el paquete). */
+export const bundleComponentWarning = (component: string, bundle: string) => `«${component}» ya va incluido en «${bundle}»: se quita de la selección para no cobrarlo dos veces`;
+
+/** Paquete contratado (`owned`) que ya incluye ese producto, o null. Un componente no se contrata aparte de su paquete. */
+export function includingBundle(key: string, owned: Iterable<string>, byKey: Map<string, QuoteCatalogProduct>): QuoteCatalogProduct | null {
+  for (const k of Array.from(owned)) {
+    const b = byKey.get(k);
+    if (b && BUNDLE_FAMILIES.has(b.family) && b.bundleOf.includes(key)) return b;
+  }
+  return null;
 }
 
 function pickPrice(p: QuoteCatalogProduct, interval: "month" | "year"): QuoteCatalogPrice | undefined {

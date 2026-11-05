@@ -367,19 +367,24 @@ export class SubscriptionService {
     });
   }
 
-  async addItem(id: number, input: { item: ItemSpec; when?: When; reason?: string | null }, expectedVersion: number, actor: string) {
+  /**
+   * `external`: refleja una sustitución ya cobrada en el proveedor de pago (compra de un paquete con prorrateo): el
+   * paquete entra y los componentes que sustituye salen YA, sin hueco ni solape.
+   */
+  async addItem(id: number, input: { item: ItemSpec; when?: When; reason?: string | null; external?: boolean }, expectedVersion: number, actor: string) {
     return this.d.store.mutate(id, expectedVersion, actor, this.now(), async (tx, sub) => {
       this.assertOpen(sub);
       const items = await tx.items();
       await this.checkContractPrice(input.item, sub.contractId, sub.id);
       const probe = await this.snapshot(input.item, ADDON_FAMILIES, sub, 0, actor);
-      // Paquete con componentes ya contratados: los sustituye al final de su periodo en curso
+      // Paquete con componentes ya contratados: los sustituye al final de su periodo en curso (o ya, si el proveedor
+      // de pago ya cobró la sustitución prorrateada)
       const liveNow = items.filter((i) => i.effectiveTo === null || i.effectiveTo > this.now());
       const replacedKeys = bundleReplaces(probe.product.bundleOf, new Set(liveNow.map((i) => i.productKey)));
       const replaced = liveNow.filter((i) => replacedKeys.includes(i.productKey));
-      if (replaced.length && input.when === "now") state("Un paquete que sustituye componentes ya contratados entra en vigor al final de su periodo en curso (sin solapes ni abonos)");
+      if (replaced.length && input.when === "now" && !input.external) state("Un paquete que sustituye componentes ya contratados entra en vigor al final de su periodo en curso (sin solapes ni abonos)");
       if (replaced.some((i) => i.priceKind !== probe.item.priceKind)) state("El paquete y los componentes que sustituye deben tener la misma periodicidad");
-      const when: When = probe.item.family === "usage" || probe.item.family === "service" ? "now" : replaced.length ? "period_end" : (input.when ?? "now");
+      const when: When = probe.item.family === "usage" || probe.item.family === "service" ? "now" : replaced.length ? (input.external ? "now" : "period_end") : (input.when ?? "now");
       const at = this.itemEffectAt(sub, probe.item, when);
       const live = items.filter((i) => i.effectiveTo === null || i.effectiveTo > at);
       if (live.some((i) => i.productKey === probe.item.productKey)) state(`«${probe.item.productName}» ya está contratado`);
