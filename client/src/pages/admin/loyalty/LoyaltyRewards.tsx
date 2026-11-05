@@ -33,8 +33,12 @@ const intOrNull = (s: string) => (s.trim() === "" ? null : Number.parseInt(s, 10
 
 // ─── Catálogo de recompensas ─────────────────────────────────────────────────
 
-function RewardDialog({ reward, onClose }: { reward: Reward | null; onClose: () => void }) {
+function RewardDialog({ reward, onClose, integration }: { reward: Reward | null; onClose: () => void; integration: boolean }) {
   const utils = trpc.useUtils();
+  // Social Token Net Complete: recompensa exclusiva para miembros de comunidades
+  const communities = trpc.socialNet.communities.useQuery(undefined, { enabled: integration });
+  const [exclusive, setExclusive] = useState<number[]>(reward?.communityIds ?? []);
+  const setCommunities = trpc.socialNet.setRewardCommunities.useMutation();
   const [name, setName] = useState(reward?.name ?? "");
   const [description, setDescription] = useState(reward?.description ?? "");
   const [cost, setCost] = useState(reward?.costPoints?.toString() ?? "");
@@ -46,7 +50,17 @@ function RewardDialog({ reward, onClose }: { reward: Reward | null; onClose: () 
   const [startsAt, setStartsAt] = useState(toDateInput(reward?.startsAt ?? null));
   const [endsAt, setEndsAt] = useState(toDateInput(reward?.endsAt ?? null));
   const save = trpc.loyalty.saveReward.useMutation({
-    onSuccess: () => {
+    onSuccess: async (r) => {
+      const before = [...(reward?.communityIds ?? [])].sort().join(",");
+      if (integration && before !== [...exclusive].sort().join(",")) {
+        try {
+          await setCommunities.mutateAsync({ rewardId: r.id, communityIds: exclusive });
+        } catch (e) {
+          toastError(e);
+          utils.loyalty.invalidate();
+          return;
+        }
+      }
       toast.success("Recompensa guardada");
       utils.loyalty.invalidate();
       onClose();
@@ -98,6 +112,22 @@ function RewardDialog({ reward, onClose }: { reward: Reward | null; onClose: () 
               <Input id="rw-to" type="date" value={endsAt} onChange={(e) => setEndsAt(e.target.value)} />
             </FormField>
           </div>
+          {integration && (
+            <fieldset className="space-y-1.5 rounded-xl border border-border p-3">
+              <legend className="px-1 text-sm font-medium text-foreground">Exclusiva para miembros de</legend>
+              <p className="text-xs text-muted-foreground">Sin marcar ninguna, la recompensa es para todos los clientes. Marcando comunidades, solo la ven y la canjean sus miembros activos.</p>
+              {communities.isLoading ? <PanelLoading /> : (communities.data ?? []).length === 0 ? <p className="text-sm text-muted-foreground">Todavía no hay comunidades.</p> : (
+                <div className="grid gap-1 sm:grid-cols-2">
+                  {(communities.data ?? []).map((c) => (
+                    <label key={c.id} className="flex items-center gap-2 text-sm text-foreground">
+                      <input type="checkbox" className="h-4 w-4" checked={exclusive.includes(c.id)} onChange={(e) => setExclusive((xs) => (e.target.checked ? [...xs, c.id] : xs.filter((x) => x !== c.id)))} />
+                      {c.name}{c.status === "archived" && <span className="text-xs text-muted-foreground">(archivada)</span>}
+                    </label>
+                  ))}
+                </div>
+              )}
+            </fieldset>
+          )}
           <label className="flex items-center gap-2 text-sm text-foreground">
             <input type="checkbox" checked={active} onChange={(e) => setActive(e.target.checked)} className="h-4 w-4" /> Activa
           </label>
@@ -105,7 +135,7 @@ function RewardDialog({ reward, onClose }: { reward: Reward | null; onClose: () 
         <DialogFooter>
           <Button variant="outline" onClick={onClose}>Cancelar</Button>
           <Button
-            disabled={save.isPending || name.trim().length < 2 || !costN || costN <= 0}
+            disabled={save.isPending || setCommunities.isPending || name.trim().length < 2 || !costN || costN <= 0}
             onClick={() => save.mutate({
               id: reward?.id ?? null,
               reward: {
@@ -122,8 +152,15 @@ function RewardDialog({ reward, onClose }: { reward: Reward | null; onClose: () 
   );
 }
 
-export function Rewards({ canManage, pointsName }: { canManage: boolean; pointsName: string }) {
+export function Rewards({ canManage, pointsName, integration = false }: { canManage: boolean; pointsName: string; integration?: boolean }) {
   const q = trpc.loyalty.rewards.useQuery();
+  const communities = trpc.socialNet.communities.useQuery(undefined, { enabled: integration });
+  const exclusiveText = (ids: number[]) => {
+    if (!ids.length) return null;
+    if (!integration) return "exclusiva de comunidad (no visible sin Social Token Net Complete)";
+    const names = ids.map((i) => communities.data?.find((c) => c.id === i)?.name).filter(Boolean);
+    return `solo miembros de ${names.length ? names.join(", ") : `${ids.length} comunidad(es)`}`;
+  };
   const [editing, setEditing] = useState<Reward | null | "new">(null);
   return (
     <div className="space-y-3">
@@ -139,7 +176,7 @@ export function Rewards({ canManage, pointsName }: { canManage: boolean; pointsN
                 <p className="text-sm text-muted-foreground">
                   {[`${fmtN(r.costPoints)} ${pointsName}`, r.stock != null ? `${fmtN(Math.max(0, r.stock - r.committed))} de ${fmtN(r.stock)} disponibles` : "sin límite de unidades",
                     r.perClientLimit && r.limitPeriod ? `máx. ${r.perClientLimit} por cliente ${LIMIT_PERIOD_LABELS[r.limitPeriod]}` : null, `código válido ${r.codeValidDays} días`, `${fmtN(r.used)} entregadas`,
-                    r.startsAt || r.endsAt ? `${r.startsAt ? fmtDate(r.startsAt) : "…"} – ${r.endsAt ? fmtDate(r.endsAt) : "…"}` : null].filter(Boolean).join(" · ")}
+                    r.startsAt || r.endsAt ? `${r.startsAt ? fmtDate(r.startsAt) : "…"} – ${r.endsAt ? fmtDate(r.endsAt) : "…"}` : null, exclusiveText(r.communityIds)].filter(Boolean).join(" · ")}
                 </p>
               </div>
               {canManage && <Button size="sm" variant="outline" onClick={() => setEditing(r)}><Pencil className="mr-1.5 h-4 w-4" aria-hidden="true" /> Editar</Button>}
@@ -147,7 +184,7 @@ export function Rewards({ canManage, pointsName }: { canManage: boolean; pointsN
           ))}
         </ul>
       )}
-      {editing && <RewardDialog reward={editing === "new" ? null : editing} onClose={() => setEditing(null)} />}
+      {editing && <RewardDialog reward={editing === "new" ? null : editing} integration={integration} onClose={() => setEditing(null)} />}
     </div>
   );
 }

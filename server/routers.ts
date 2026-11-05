@@ -228,6 +228,7 @@ import { sitesRouter } from "./routers/sites";
 import { inventoryRouter } from "./routers/inventory";
 import { communitiesRouter } from "./routers/communities";
 import { loyaltyRouter } from "./routers/loyalty";
+import { socialNetRouter } from "./routers/socialNet";
 import { ghlInboxRouter } from "./routers/ghlInbox";
 import { vapiCallsRouter } from "./routers/vapiCalls";
 import { emailAccountsRouter } from "./routers/emailAccounts";
@@ -2641,6 +2642,7 @@ export const appRouter = router({
   inventory: inventoryRouter,
   communities: communitiesRouter,
   loyalty: loyaltyRouter,
+  socialNet: socialNetRouter,
   ghlInbox: ghlInboxRouter,
   vapiCalls: vapiCallsRouter,
   emailAccounts: emailAccountsRouter,

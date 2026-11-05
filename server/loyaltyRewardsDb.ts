@@ -30,6 +30,7 @@ import {
   type LoyaltyExec,
 } from "./loyaltyDb";
 import { madridDateKey, madridMidnightMs } from "./utils/timezone";
+import { clientCommunityIds, stnIntegrationActive } from "./stnIntegration";
 import {
   REWARD_DENIAL_MESSAGES,
   generateRedemptionCode,
@@ -87,12 +88,41 @@ function toReward(r: any): LoyaltyReward {
 
 export type RewardInput = Omit<LoyaltyReward, "id">;
 
-export async function listRewards(): Promise<Array<LoyaltyReward & { committed: number; used: number }>> {
+/**
+ * Social Token Net Complete: comunidades a las que está reservada cada recompensa (vacío = para todos los clientes).
+ * Sin la migración 0030, ninguna.
+ */
+export async function rewardCommunityMap(exec?: LoyaltyExec): Promise<Map<number, number[]>> {
+  try {
+    const r = await rows<any>(exec ?? (await db()), sql`SELECT reward_id, community_id FROM loyalty_reward_communities WHERE active = 1 ORDER BY reward_id, community_id`);
+    const out = new Map<number, number[]>();
+    for (const x of r) out.set(n(x.reward_id), [...(out.get(n(x.reward_id)) ?? []), n(x.community_id)]);
+    return out;
+  } catch (e) {
+    if (isMissingLoyaltySchema(e)) return new Map();
+    throw e;
+  }
+}
+
+export async function listRewards(): Promise<Array<LoyaltyReward & { committed: number; used: number; communityIds: number[] }>> {
   const d = await db();
   const list = await rows<any>(d, sql`SELECT * FROM loyalty_rewards ORDER BY active DESC, cost_points, id`);
   const counts = await rows<any>(d, sql`SELECT reward_id, SUM(status IN ('emitido', 'usado')) AS committed, SUM(status = 'usado') AS used FROM loyalty_redemptions GROUP BY reward_id`);
   const byId = new Map(counts.map((c) => [n(c.reward_id), { committed: n(c.committed), used: n(c.used) }]));
-  return list.map((r) => ({ ...toReward(r), ...(byId.get(n(r.id)) ?? { committed: 0, used: 0 }) }));
+  const exclusive = await rewardCommunityMap(d);
+  return list.map((r) => ({ ...toReward(r), ...(byId.get(n(r.id)) ?? { committed: 0, used: 0 }), communityIds: exclusive.get(n(r.id)) ?? [] }));
+}
+
+/**
+ * ¿Puede este cliente ver y canjear una recompensa exclusiva de comunidad? Solo con la integración (comunidades y
+ * tokens a la vez) y siendo miembro activo de alguna de sus comunidades. Sin la integración, las exclusivas no se
+ * muestran a nadie (no pasan a ser para todos) y se conservan para cuando vuelva.
+ */
+async function exclusiveAllowed(communityIds: number[], clientId: number | null, write: boolean): Promise<boolean> {
+  if (!communityIds.length) return true;
+  if (!clientId || !(await stnIntegrationActive(write))) return false;
+  const mine = await clientCommunityIds(clientId);
+  return communityIds.some((c) => mine.has(c));
 }
 
 export async function saveReward(id: number | null, r: RewardInput): Promise<{ id: number }> {
@@ -109,12 +139,20 @@ export async function saveReward(id: number | null, r: RewardInput): Promise<{ i
   return { id: res.insertId };
 }
 
-/** Recompensas que un cliente puede ver ahora (activas y vigentes), con lo que queda. */
-export async function availableRewards(): Promise<Array<LoyaltyReward & { remaining: number | null }>> {
+/**
+ * Recompensas que un cliente puede ver ahora (activas y vigentes), con lo que queda. Las exclusivas de comunidad, solo
+ * si `clientId` es miembro (Social Token Net Complete); sin cliente, nunca.
+ */
+export async function availableRewards(clientId: number | null = null): Promise<Array<LoyaltyReward & { remaining: number | null; exclusive: boolean }>> {
   const now = Date.now();
-  return (await listRewards())
-    .filter((r) => r.active && (r.startsAt == null || r.startsAt <= now) && (r.endsAt == null || r.endsAt >= now))
-    .map((r) => ({ ...r, remaining: r.stock == null ? null : Math.max(0, r.stock - r.committed) }));
+  const out: Array<LoyaltyReward & { remaining: number | null; exclusive: boolean }> = [];
+  for (const r of await listRewards()) {
+    if (!(r.active && (r.startsAt == null || r.startsAt <= now) && (r.endsAt == null || r.endsAt >= now))) continue;
+    if (!(await exclusiveAllowed(r.communityIds, clientId, false))) continue;
+    const { communityIds, ...rest } = r;
+    out.push({ ...rest, remaining: r.stock == null ? null : Math.max(0, r.stock - r.committed), exclusive: communityIds.length > 0 });
+  }
+  return out;
 }
 
 // ─── Canje ───────────────────────────────────────────────────────────────────
@@ -142,6 +180,9 @@ export async function redeemReward(input: { clientId: number; rewardId: number; 
   if (prev) return prev;
   const [c] = await rows<any>(await db(), sql`SELECT id FROM clients WHERE id = ${input.clientId}`);
   if (!c) throw new TRPCError({ code: "NOT_FOUND", message: "Cliente no encontrado" });
+  // Recompensa exclusiva de comunidad (Social Token Net Complete): solo sus miembros
+  const exclusive = (await rewardCommunityMap()).get(input.rewardId) ?? [];
+  if (!(await exclusiveAllowed(exclusive, input.clientId, true))) throw new TRPCError({ code: "FORBIDDEN", message: "Esta recompensa es exclusiva para los miembros de una comunidad." });
   await ensureWallet(input.clientId);
   try {
     return await inTx(async (tx) => {
