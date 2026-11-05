@@ -30,6 +30,13 @@ Los tres servicios están conectados a `jorgemgrande-stack/nayade_experiences_pl
 Tras fusionar solo en el CRM o en la web: `gh workflow run ci.yml --ref integration/elephant-source`. El job `publicar`
 del CI llama a `publicacion.yml`.
 
+**Trampa (05/11/2026):** si el CRM y el Core se fusionan casi a la vez, el CI del CRM lanza «solo crm» sobre la cabeza de
+la rama mientras el CI del Core aún corre. Esa publicación falla («El CI … no está en verde») y queda como comprobación
+fallida del commit, así que Railway, con «Wait for CI», **salta** (SKIPPED) los tres servicios del Core en live y el
+cambio del Core no llega a production aunque luego todo quede en verde. Cómo evitarlo: fusionar el Core, esperar a que su
+CI termine y fusionar después el CRM. Si ya ha pasado: relanzar la publicación fallida cuando el CI esté en verde (publica
+el CRM) y fusionar el siguiente cambio de la rama; Railway despliega entonces la nueva cabeza.
+
 Volver atrás en live: Railway → servicio → Deployments → «Rollback» sobre el despliegue anterior, o
 `esRailway.ts rollback-recorded`.
 
