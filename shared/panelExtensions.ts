@@ -20,7 +20,7 @@
 export const NAV_ICON_NAMES = [
   "dashboard", "image", "package", "file", "building", "target", "calendar", "briefcase", "chart",
   "receipt", "monitor", "truck", "bed", "sparkles", "utensils", "tag", "users", "settings",
-  "globe", "creditCard", "shoppingCart", "rocket", "message", "bot", "mail", "help",
+  "globe", "creditCard", "shoppingCart", "rocket", "message", "bot", "mail", "help", "coins",
 ] as const;
 export type NavIcon = (typeof NAV_ICON_NAMES)[number];
 
@@ -84,9 +84,10 @@ export interface PanelNavItem extends PanelNavLeaf {
   icon: NavIcon;
   children?: PanelNavLeaf[];
 }
+/** `since`: activación más reciente de las licencias de la entrada (ms), para marcarla como «Nuevo»; null = no se sabe. */
 export type PanelNavEntry =
-  | { kind: "section"; moduleId: string; section: { id: string; label: string; order: number }; items: PanelNavItem[] }
-  | { kind: "item"; moduleId: string; sectionId: string; order: number; item: PanelNavItem }
+  | { kind: "section"; moduleId: string; section: { id: string; label: string; order: number }; items: PanelNavItem[]; since?: number | null }
+  | { kind: "item"; moduleId: string; sectionId: string; order: number; item: PanelNavItem; since?: number | null }
   | { kind: "tab"; moduleId: string; parent: string; order: number; leaf: PanelNavLeaf };
 
 /** Ruta de una extensión con las capacidades que la licencian (guardián de rutas del panel). */
@@ -330,7 +331,7 @@ function socialTokenNetPanel(): PanelContributions {
         },
         {
           ...tok("fidelizacion", "Fidelización", "/admin/fidelizacion"),
-          icon: "tag",
+          icon: "coins",
           children: [
             tok("programa", "Programa y estadísticas", "/admin/fidelizacion"),
             tok("monederos", "Monederos y movimientos", "/admin/fidelizacion/monederos"),

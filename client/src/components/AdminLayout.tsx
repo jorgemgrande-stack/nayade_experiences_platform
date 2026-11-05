@@ -6,7 +6,7 @@ import {
   Bell, User, BedDouble, Sparkles, UtensilsCrossed, AlertCircle,
   UserPlus, FileCheck, ChevronRight, Receipt, Truck, Monitor, Tag, Ticket,
   Sun, Moon, ExternalLink, Target, MessageCircle, Bot, Mail, Building2,
-  Briefcase, Globe, CreditCard, ShoppingCart, Rocket, ArrowUpRight, HelpCircle, RefreshCw,
+  Briefcase, Globe, CreditCard, ShoppingCart, Rocket, ArrowUpRight, HelpCircle, RefreshCw, Coins,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -25,6 +25,8 @@ import {
   type NavIcon, type ResolvedItem, type ResolvedSection,
 } from "@shared/adminNav";
 import { helpForLocation } from "@shared/helpCenter";
+import { discoveredAt, extensionBlocks, isNewExtension } from "@shared/panelNews";
+import { useDiscoveredExtensions } from "@/hooks/useDiscoveredExtensions";
 import { ROLE_LABELS } from "@shared/roleLabels";
 import { AuthRequired, PanelSpinner } from "@/components/auth/AuthRequired";
 
@@ -50,7 +52,7 @@ const NAV_ICONS: Record<NavIcon, React.ComponentType<{ className?: string }>> = 
   dashboard: LayoutDashboard, image: Image, package: Package, file: FileText, building: Building2,
   target: Target, calendar: Calendar, briefcase: Briefcase, chart: BarChart3, receipt: Receipt,
   monitor: Monitor, truck: Truck, bed: BedDouble, sparkles: Sparkles, utensils: UtensilsCrossed,
-  tag: Tag, users: Users, settings: Settings, globe: Globe, creditCard: CreditCard,
+  tag: Tag, users: Users, settings: Settings, globe: Globe, creditCard: CreditCard, coins: Coins,
   shoppingCart: ShoppingCart, rocket: Rocket, message: MessageCircle, bot: Bot, mail: Mail, help: HelpCircle,
 };
 
@@ -227,6 +229,14 @@ export default function AdminLayout({ children, title }: AdminLayoutProps) {
           capabilityState: subscription.mode === "tasks" ? subscription.capabilityState : () => "active",
         }, subscription.extensions);
   const isTaskNav = subscription.mode === "tasks";
+  // «Nuevo» en las extensiones recién activadas hasta que la persona entra en ellas (shared/panelNews.ts)
+  const { discovered, markDiscovered } = useDiscoveredExtensions((user as { id?: string | number } | null)?.id ?? null);
+  const extensionBlocksSig = JSON.stringify(extensionBlocks(navSections));
+  useEffect(() => {
+    const ids = discoveredAt(location, JSON.parse(extensionBlocksSig));
+    if (ids.length) markDiscovered(ids);
+  }, [location, extensionBlocksSig, markDiscovered]);
+  const nowMs = Date.now();
   // Ayuda contextual de la pantalla actual (contenido en shared/helpCenter.ts)
   const contextHelp = isTaskNav ? helpForLocation(location, currentSearch) : undefined;
   const upgradeUrl = subscription.data?.upgradeUrl ?? null;
@@ -330,6 +340,8 @@ export default function AdminLayout({ children, title }: AdminLayoutProps) {
         <span className="sr-only"> {badge.label}</span>
       </span>
     );
+    const isNew = isNewExtension(item.extension, discovered, nowMs);
+    const newTag = isNew && showLabels && <NewPill />;
     const readOnlyTag = item.readOnly && showLabels && (
       <span className="text-[10px] font-medium rounded px-1.5 py-0.5 bg-sidebar-accent text-sidebar-foreground/80">Solo lectura</span>
     );
@@ -353,11 +365,12 @@ export default function AdminLayout({ children, title }: AdminLayoutProps) {
                 : "text-sidebar-foreground/80 hover:bg-sidebar-accent hover:text-sidebar-foreground",
             )}
           >
-            <Icon className="w-4 h-4 shrink-0" aria-hidden="true" />
+            <NavIconWithDot Icon={Icon} dot={isNew && !showLabels} />
             {showLabels ? (
               <>
                 <span className="flex-1 text-left">{item.label}</span>
                 {readOnlyTag}
+                {newTag}
                 {badgeEl}
                 <ChevronDown className={cn("w-3.5 h-3.5 transition-transform", isExpanded && "rotate-180")} aria-hidden="true" />
               </>
@@ -409,11 +422,12 @@ export default function AdminLayout({ children, title }: AdminLayoutProps) {
               : "text-sidebar-foreground/80 hover:bg-sidebar-accent hover:text-sidebar-foreground",
           )}
         >
-          <Icon className="w-4 h-4 shrink-0" aria-hidden="true" />
+          <NavIconWithDot Icon={Icon} dot={isNew && !showLabels} />
           {showLabels ? (
             <>
               <span className="flex-1">{item.label}</span>
               {readOnlyTag}
+                {newTag}
               {badgeEl}
             </>
           ) : (
@@ -531,10 +545,19 @@ export default function AdminLayout({ children, title }: AdminLayoutProps) {
             </div>
           )}
           {navSections.map((section) => (
-            <div key={section.id} className="mb-3">
+            <div
+              key={section.id}
+              className={cn(
+                "mb-3",
+                // Sección de una extensión contratada: bloque diferenciado con los colores del propio menú
+                section.extension && "rounded-xl border border-sidebar-border bg-sidebar-accent/40 px-1 pb-1",
+              )}
+              data-extension={section.extension?.moduleId}
+            >
               {section.label && showLabels && (
-                <p className="px-3 pt-2 pb-1 text-[11px] font-semibold uppercase tracking-wider text-sidebar-foreground/60">
-                  {section.label}
+                <p className="flex items-center gap-2 px-3 pt-2 pb-1 text-[11px] font-semibold uppercase tracking-wider text-sidebar-foreground/60">
+                  <span className="flex-1">{section.label}</span>
+                  {isNewExtension(section.extension, discovered, nowMs) && <NewPill />}
                 </p>
               )}
               {section.label && !showLabels && <div className="mx-3 my-2 border-t border-sidebar-border" aria-hidden="true" />}
@@ -824,5 +847,25 @@ export default function AdminLayout({ children, title }: AdminLayoutProps) {
       {/* Solo con WhatsApp contratado: si no, consultaría cada 15 s una ruta que el servidor deniega */}
       {subscription.mode !== "loading" && subscription.can("whatsapp-ai") && <WhatsAppNotification />}
     </div>
+  );
+}
+
+/** Marca discreta de una extensión recién activada (desaparece al entrar en ella). */
+function NewPill() {
+  return (
+    <span className="shrink-0 rounded-full bg-sidebar-primary/15 px-1.5 py-0.5 text-[10px] font-semibold normal-case tracking-normal text-sidebar-primary">
+      Nuevo
+    </span>
+  );
+}
+
+/** Icono del menú con un punto de «Nuevo» cuando el menú está plegado. */
+function NavIconWithDot({ Icon, dot }: { Icon: React.ComponentType<{ className?: string }>; dot: boolean }) {
+  return (
+    <span className="relative shrink-0">
+      <Icon className="w-4 h-4 shrink-0" aria-hidden="true" />
+      {dot && <span className="absolute -right-1 -top-1 h-2 w-2 rounded-full bg-sidebar-primary" aria-hidden="true" />}
+      {dot && <span className="sr-only"> (nuevo)</span>}
+    </span>
   );
 }
