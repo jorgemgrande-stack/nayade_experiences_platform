@@ -1,6 +1,6 @@
 /**
  * Social Token Net · Tokens internos — recompensas y canjes (STN-2) con la aplicación real sobre MySQL (opt-in,
- * REGISTRY_TEST_DATABASE_URL): dos empresas nuevas desde la baseline y las migraciones de empresa (0026 y 0028).
+ * REGISTRY_TEST_DATABASE_URL): dos empresas nuevas desde la baseline y las migraciones de empresa (0026 y 0029).
  * Sin la extensión no hay recompensas ni área de puntos; con ella, el canje descuenta los puntos y da un código de un
  * solo uso (idempotente), las últimas unidades y el saldo nunca se canjean dos veces (canjes simultáneos), el código
  * no se usa dos veces (validaciones simultáneas), la anulación y la caducidad devuelven los puntos una sola vez, y el
