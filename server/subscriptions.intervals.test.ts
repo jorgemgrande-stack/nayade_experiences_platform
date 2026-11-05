@@ -311,6 +311,25 @@ describe("intervalos mixtos", () => {
     expect((await caps.list("acme")).filter((g) => g.status !== "active")).toEqual([]);
   });
 
+  it("8b) sustitución ya cobrada en el proveedor de pago (compra en línea): el paquete entra YA y los componentes salen YA, sin hueco de licencias", async () => {
+    const s = await create("essential", "year", ["connect-tax", "connect-partners"]);
+    await licensing.apply(s.id, { activate: true, actor: A });
+    clock = T0 + 10 * DAY;
+    const pack = { productKey: "connect-pack-finance", priceId: await priceOf("connect-pack-finance") };
+    const added = await subs.addItem(s.id, { item: pack, when: "now", external: true }, await version(s.id), A);
+    expect(added.result.effectiveFrom).toBe(clock);
+    const d = await subs.detail(s.id);
+    expect(d.items.filter((i) => i.productKey !== "essential").map((i) => [i.productKey, i.effectiveTo])).toEqual([
+      ["connect-tax", clock],
+      ["connect-partners", clock],
+      ["connect-pack-finance", null],
+    ]);
+    // Las capacidades de los componentes las sigue concediendo el paquete: ninguna deja de estar activa
+    expect((await licensing.preview(s.id, { activate: true })).changes.filter((c) => c.status !== "active")).toEqual([]);
+    await licensing.apply(s.id, { activate: true, actor: A });
+    expect((await caps.list("acme")).filter((g) => g.status !== "active")).toEqual([]);
+  });
+
   it("lo que no está a la venta sigue sin poder contratarse", async () => {
     await expect(create("essential", "year", ["connect-reception-ai"])).rejects.toThrow(/no es contratable|aún no se puede contratar/);
   });

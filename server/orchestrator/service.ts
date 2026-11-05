@@ -61,6 +61,8 @@ const LIVE: OrderState[] = ["active", "past_due", "suspended"];
 const PORTAL_APPROVAL = "Plan ofrecido en el Customer Portal de Stripe (configuración aprobada)";
 /** Prefijo de la clave de los pedidos que reflejan un cambio de plan YA aplicado en Stripe (portal o calendario). */
 const STRIPE_PLAN_KEY = "stripe-plan-";
+/** Prefijo de los pedidos de compra en línea (server/stripe/purchases.ts): ya cobrados en Stripe con prorrateo. */
+const PURCHASE_KEY = "purchase-";
 const reflectsStripe = (o: Pick<CommercialOrder, "kind" | "idempotencyKey">) => o.kind === "change" && o.idempotencyKey.startsWith(STRIPE_PLAN_KEY);
 
 export interface PlatformPort {
@@ -660,11 +662,16 @@ export class CommercialOrchestrator {
     const isQuantity = new Set<number>();
     for (const i of live) if (await addonOf(i)) isQuantity.add(i.id);
     const addons = live.filter((i) => i.family !== "core_plan" && !isQuantity.has(i.id) && (i.effectiveTo === null || i.effectiveTo > now));
+    // Compra en línea: Stripe ya cobró el prorrateo, así que un paquete que sustituye componentes contratados entra ya
+    // (y ellos salen ya), igual que en Stripe; sin compra, a fin de periodo
+    const external = o.kind === "change" && o.idempotencyKey.startsWith(PURCHASE_KEY) ? { external: true } : {};
     for (const i of o.request.items.filter((x) => !addons.some((a) => a.productKey === x.key))) {
       sub = await reread();
-      sub = (await this.d.subscriptions.addItem(sub.id, { item: { productKey: i.key, priceId: await this.priceFor(i.key, sub.interval, false), ...(i.quantity ? { quantity: i.quantity } : {}) }, reason }, sub.version, actor)).subscription;
+      sub = (await this.d.subscriptions.addItem(sub.id, { item: { productKey: i.key, priceId: await this.priceFor(i.key, sub.interval, false), ...(i.quantity ? { quantity: i.quantity } : {}) }, reason, ...external }, sub.version, actor)).subscription;
     }
-    for (const a of addons.filter((x) => !wanted.has(x.productKey) && x.effectiveTo === null)) {
+    // Releídas: un paquete puede haber dado ya de baja a los componentes que sustituye
+    const stillOpen = new Set((await this.d.subscriptionStore.items(sub.id)).filter((i) => i.effectiveTo === null).map((i) => i.id));
+    for (const a of addons.filter((x) => !wanted.has(x.productKey) && stillOpen.has(x.id))) {
       sub = await reread();
       sub = (await this.d.subscriptions.removeItem(sub.id, a.id, { when: "period_end", reason }, sub.version, actor)).subscription;
     }
