@@ -75,6 +75,25 @@ describe("cotizador: un paquete y sus componentes no se pagan a la vez", () => {
     expect(l.note).toMatch(/Sustituye a lo ya contratado: Social Token Net · Comunidades/);
   });
 
+  it("tres modalidades: solo Comunidades, solo Tokens internos (sin Comunidades) o Complete", () => {
+    const charged = (keys: string[]) => {
+      const r = quote(forSale, { plan: "essential", interval: "month", items: keys.map((key) => ({ key })) });
+      expect(r.errors).toEqual([]);
+      return r.lines.filter((l) => l.status === "charged" && l.key !== "essential").map((l) => [l.key, l.amountCents]);
+    };
+    expect(charged([COM])).toEqual([[COM, 3900]]);
+    expect(charged([TOK])).toEqual([[TOK, 2900]]);
+    expect(charged([CPL])).toEqual([[CPL, 5900]]);
+    expect(PRODUCTS.find((p) => p.key === TOK)!.draft.dependencies).toEqual([]);
+  });
+
+  it("Tokens internos explica la naturaleza de los puntos sin aviso genérico de revisión legal", () => {
+    const req = PRODUCTS.find((p) => p.key === TOK)!.draft.requirements.join(" ");
+    expect(req).toMatch(/Puntos internos de fidelización: se canjean solo por recompensas y beneficios dentro del programa/);
+    expect(req).toMatch(/No son criptomonedas, dinero electrónico, activos de inversión ni medio de pago/);
+    expect(req).not.toMatch(/revisión legal/i);
+  });
+
   it("los dos módulos sueltos (68 €) sugieren Complete (59 €)", () => {
     const r = quote(forSale, { plan: "essential", interval: "month", items: [{ key: COM }, { key: TOK }] });
     expect(r.ok).toBe(true);

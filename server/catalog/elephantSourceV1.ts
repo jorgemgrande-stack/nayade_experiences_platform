@@ -229,6 +229,9 @@ const CORE: SeedProduct[] = [
 const net = (p: Omit<P, "family" | "scope"> & { scope?: "company" | "site" }) => product({ ...p, family: "net_module", scope: p.scope ?? "site" });
 const netBundle = (p: Omit<P, "family" | "scope">) => product({ ...p, family: "net_bundle", scope: "site" });
 const DEPS_NOTE = `Dependencias entre submódulos: ${PROPOSAL}`;
+/** Naturaleza de los puntos de Social Token Net · Tokens internos (decisión de Jorge, 05/11/2026): se contrata sin Comunidades. */
+const TOKENS_R1 = "Puntos internos de fidelización: se canjean solo por recompensas y beneficios dentro del programa de tu negocio.";
+const TOKENS_R2 = "No son criptomonedas, dinero electrónico, activos de inversión ni medio de pago: no se cambian por dinero ni se transfieren entre clientes.";
 
 const HOTEL: SeedProduct[] = [
   net({ key: "hotel-net-pms", name: "Hotel Net · PMS", group: "hotel", tagline: "Gestión de alojamiento hasta 20 habitaciones.", tech: "partial", commercial: "on_request", monthly: 59, capabilities: ["hotel-net"], quotas: [{ metric: "rooms", included: 20 }], limits: [{ label: "Habitaciones", value: "Hasta 20", metric: "rooms" }], includes: ["Tipos de habitación, temporadas y tarifas", "Disponibilidad y bloqueos", "Reservas y estancias"], activation: { kind: "module", ref: "hotel" }, icon: "bed", notes: "Reutilizable (módulo hotel). La disponibilidad descuenta reservas y ocupación (retención atómica de plazas). Lo implanta el equipo." }),
@@ -265,7 +268,7 @@ const CARE: SeedProduct[] = [
 const LIFE: SeedProduct[] = [net({ key: "life-net", name: "Life Net", group: "life", scope: "company", tagline: "Organización personal y familiar.", tech: "planned", commercial: "coming_soon", monthly: 9, capabilities: ["life-net"], forWho: "Profesionales y familias.", icon: "leaf" })];
 const SOCIAL: SeedProduct[] = [
   net({ key: "social-token-net-communities", name: "Social Token Net · Comunidades", group: "social-token", scope: "company", tagline: "Comunidades de clientes y socios.", tech: "planned", commercial: "coming_soon", monthly: 39, capabilities: ["social-token-net"], icon: "users" }),
-  net({ key: "social-token-net-tokens", name: "Social Token Net · Tokens internos", group: "social-token", scope: "company", tagline: "Puntos y tokens internos de fidelización.", tech: "planned", commercial: "coming_soon", monthly: 29, capabilities: ["social-token-net-tokens"], dependencies: ["social-token-net-communities"], icon: "coins", requirements: ["Tokens internos sin valor monetario fuera de la plataforma: requiere revisión legal antes de activarse."], notes: DEPS_NOTE }),
+  net({ key: "social-token-net-tokens", name: "Social Token Net · Tokens internos", group: "social-token", scope: "company", tagline: "Puntos y tokens internos de fidelización.", tech: "planned", commercial: "coming_soon", monthly: 29, capabilities: ["social-token-net-tokens"], icon: "coins", requirements: [TOKENS_R1, TOKENS_R2] }),
   netBundle({ key: "social-token-net-complete", name: "Social Token Net Complete", group: "social-token", tagline: "Comunidades y tokens internos.", description: "Comunidad y fidelización en un solo paquete.", tech: "planned", commercial: "coming_soon", monthly: 59, bundleOf: ["social-token-net-communities", "social-token-net-tokens"], forWho: "Marcas, clubes y asociaciones.", icon: "sparkles" }),
 ];
 
