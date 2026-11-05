@@ -3,6 +3,8 @@
  * el CRM, usuarios del panel o invitación por correo; roles, aprobación y bloqueo), publicaciones y moderación,
  * encuestas, propuestas de miembros y reportes,
  * configuración y actividad. Solo administración; el servidor vuelve a comprobar la licencia y el rol en cada operación.
+ * Con Social Token Net Complete (también tokens internos), los miembros muestran su saldo de puntos, lo ganado
+ * participando en la comunidad y un enlace a su monedero.
  */
 import { useMemo, useState } from "react";
 import { Link, useParams } from "wouter";
@@ -249,6 +251,11 @@ function MembersTab({ communityId, canEdit }: { communityId: number; canEdit: bo
   const setSt = trpc.communities.admin.members.setStatus.useMutation({ onSuccess: () => { toast.success("Hecho"); refresh(); }, onError: (e) => toastError(e) });
   const resend = trpc.communities.admin.members.resendInvite.useMutation({ onSuccess: (r) => toast.success(r.emailsSent ? "Invitación reenviada" : "No se ha podido enviar el correo"), onError: (e) => toastError(e) });
   const rows = list.data ?? [];
+  // Social Token Net Complete: saldo de puntos del miembro y enlace a su monedero
+  const integration = trpc.communities.admin.integration.useQuery();
+  const withPoints = !!integration.data?.active;
+  const points = trpc.socialNet.memberPoints.useQuery({ communityId }, { enabled: withPoints });
+  const pointsOf = useMemo(() => new Map((points.data ?? []).map((p) => [p.memberId, p])), [points.data]);
 
   const act = (m: MemberRow, action: "approve" | "block" | "unblock" | "remove") => {
     const reason = action === "block" ? window.prompt(`Motivo del bloqueo de ${m.name} (opcional):`) : null;
@@ -276,7 +283,7 @@ function MembersTab({ communityId, canEdit }: { communityId: number; canEdit: bo
         <div className="overflow-x-auto rounded-xl border border-border">
           <table className="w-full text-sm">
             <thead className="bg-muted/50 text-left text-xs uppercase text-muted-foreground">
-              <tr><th className="p-2">Persona</th><th className="p-2">Rol</th><th className="p-2">Estado</th><th className="p-2">Origen</th><th className="p-2">Última visita</th><th className="p-2 text-right">Acciones</th></tr>
+              <tr><th className="p-2">Persona</th><th className="p-2">Rol</th><th className="p-2">Estado</th><th className="p-2">Origen</th>{withPoints && <th className="p-2">Puntos</th>}<th className="p-2">Última visita</th><th className="p-2 text-right">Acciones</th></tr>
             </thead>
             <tbody>
               {rows.map((m) => (
@@ -296,6 +303,22 @@ function MembersTab({ communityId, canEdit }: { communityId: number; canEdit: bo
                     {m.statusReason && <p className="mt-1 text-xs text-muted-foreground">{m.statusReason}</p>}
                   </td>
                   <td className="p-2 text-xs text-muted-foreground">{MEMBER_SOURCE_LABELS[m.source]}</td>
+                  {withPoints && (
+                    <td className="p-2 text-xs">
+                      {(() => {
+                        const p = pointsOf.get(m.id);
+                        if (!p) return <span className="text-muted-foreground">—</span>;
+                        if (p.clientId == null) return <span className="text-muted-foreground">Sin cliente del CRM</span>;
+                        return (
+                          <>
+                            <span className="font-medium text-foreground">{(p.balance ?? 0).toLocaleString("es-ES")}</span>
+                            <span className="text-muted-foreground"> · {p.communityPoints.toLocaleString("es-ES")} aquí</span>
+                            <br /><Link href={`/admin/fidelizacion?cliente=${p.clientId}`} className="text-primary underline-offset-2 hover:underline">Ver monedero</Link>
+                          </>
+                        );
+                      })()}
+                    </td>
+                  )}
                   <td className="p-2 text-xs text-muted-foreground">{fmtDateTime(m.lastSeenAt)}</td>
                   <td className="p-2">
                     {canEdit && (

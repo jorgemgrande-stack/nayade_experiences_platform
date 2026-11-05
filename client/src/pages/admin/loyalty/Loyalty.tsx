@@ -24,7 +24,9 @@ import { toastError } from "@/lib/errorMessage";
 import { cn } from "@/lib/utils";
 import { randomId } from "@shared/randomId";
 import { RedemptionsDialogSection, Redemptions, Rewards, ValidateCode, WalletRewardActions } from "./LoyaltyRewards";
+import { CommunityLoyalty, WalletCommunities } from "./LoyaltyCommunities";
 import {
+  CAMPAIGN_SCOPE_LABELS,
   LEDGER_KIND_LABELS,
   LIMIT_PERIODS,
   LIMIT_PERIOD_LABELS,
@@ -36,6 +38,7 @@ import {
   RULE_SCOPES,
   RULE_SCOPE_LABELS,
   equivalenceText,
+  type CampaignScope,
   type LimitPeriod,
   type LoyaltyAction,
   type RuleCalc,
@@ -290,7 +293,7 @@ function ActionDialog({ clientId, onClose }: { clientId: number; onClose: () => 
   );
 }
 
-function WalletDialog({ clientId, canManage, pointsName, onClose }: { clientId: number; canManage: boolean; pointsName: string; onClose: () => void }) {
+function WalletDialog({ clientId, canManage, pointsName, integration, onClose }: { clientId: number; canManage: boolean; pointsName: string; integration: boolean; onClose: () => void }) {
   const utils = trpc.useUtils();
   const q = trpc.loyalty.wallet.useQuery({ clientId });
   const [adjusting, setAdjusting] = useState(false);
@@ -327,6 +330,7 @@ function WalletDialog({ clientId, canManage, pointsName, onClose }: { clientId: 
               </div>
             )}
             <WalletRewardActions clientId={clientId} canManage={canManage} pointsName={pointsName} />
+            {integration && <WalletCommunities clientId={clientId} />}
             {q.data.ledger.length === 0 ? <PanelEmpty title="Sin movimientos" description="Este cliente todavía no tiene movimientos de puntos." /> : (
               <div className="max-h-96 overflow-auto rounded-xl border border-border">
                 <table className="w-full text-sm">
@@ -443,7 +447,7 @@ function Wallets({ data }: { data: Overview }) {
           </DialogContent>
         </Dialog>
       )}
-      {open != null && <WalletDialog clientId={open} canManage={data.canManage} pointsName={data.program.pointsName} onClose={() => setOpen(null)} />}
+      {open != null && <WalletDialog clientId={open} canManage={data.canManage} pointsName={data.program.pointsName} integration={data.integration} onClose={() => setOpen(null)} />}
     </div>
   );
 }
@@ -643,11 +647,38 @@ function Rules({ data }: { data: Overview }) {
 
 // ─── Campañas ────────────────────────────────────────────────────────────────
 
-function CampaignDialog({ campaign, onClose }: { campaign: Campaign | null; onClose: () => void }) {
+/** Alcance de una campaña: el de las reglas y, con Social Token Net Complete, «miembros de una comunidad». */
+function CampaignScopeFields({ scope, scopeId, setScope, setScopeId, options, integration }: { scope: CampaignScope; scopeId: number | null; setScope: (s: CampaignScope) => void; setScopeId: (v: number | null) => void; options: ScopeOptions | undefined; integration: boolean }) {
+  const communities = trpc.socialNet.communities.useQuery(undefined, { enabled: integration });
+  if (!integration && scope !== "community") return <ScopeFields idp="c" scope={scope} scopeId={scopeId} setScope={setScope} setScopeId={setScopeId} options={options} />;
+  return (
+    <div className="grid gap-3 sm:grid-cols-2">
+      <FormField id="c-scope" label="Alcance">
+        <select id="c-scope" className={selectClass} value={scope} onChange={(e) => { setScope(e.target.value as CampaignScope); setScopeId(null); }}>
+          {(Object.keys(CAMPAIGN_SCOPE_LABELS) as CampaignScope[]).filter((s) => s !== "community" || integration).map((s) => <option key={s} value={s}>{CAMPAIGN_SCOPE_LABELS[s]}</option>)}
+        </select>
+      </FormField>
+      {scope !== "all" && (
+        <FormField id="c-scopeid" label={scope === "product" ? "Producto" : scope === "category" ? "Categoría" : "Comunidad"} hint={scope === "community" ? "Se aplica a las compras de sus miembros activos y a los puntos por participar en ella" : undefined}>
+          <select id="c-scopeid" className={selectClass} value={scopeId ?? ""} onChange={(e) => setScopeId(e.target.value ? Number(e.target.value) : null)}>
+            <option value="">Elige…</option>
+            {scope === "product"
+              ? options?.products.map((p) => <option key={p.id} value={p.id}>{p.title}</option>)
+              : scope === "category"
+                ? options?.categories.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)
+                : (communities.data ?? []).map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+          </select>
+        </FormField>
+      )}
+    </div>
+  );
+}
+
+function CampaignDialog({ campaign, integration, onClose }: { campaign: Campaign | null; integration: boolean; onClose: () => void }) {
   const utils = trpc.useUtils();
   const options = trpc.loyalty.catalog.useQuery();
   const [name, setName] = useState(campaign?.name ?? "");
-  const [scope, setScope] = useState<RuleScope>(campaign?.scope ?? "all");
+  const [scope, setScope] = useState<CampaignScope>(campaign?.scope ?? "all");
   const [scopeId, setScopeId] = useState<number | null>(campaign?.scopeId ?? null);
   const [multiplier, setMultiplier] = useState(campaign?.multiplier?.toString() ?? "2");
   const [bonus, setBonus] = useState(campaign?.bonusPoints?.toString() ?? "");
@@ -677,7 +708,7 @@ function CampaignDialog({ campaign, onClose }: { campaign: Campaign | null; onCl
           <FormField id="c-name" label="Nombre" required>
             <Input id="c-name" value={name} onChange={(e) => setName(e.target.value)} maxLength={120} />
           </FormField>
-          <ScopeFields idp="c" scope={scope} scopeId={scopeId} setScope={setScope} setScopeId={setScopeId} options={options.data} />
+          <CampaignScopeFields scope={scope} scopeId={scopeId} setScope={setScope} setScopeId={setScopeId} options={options.data} integration={integration} />
           <div className="grid gap-3 sm:grid-cols-3">
             <FormField id="c-mult" label="Multiplicador" hint="Por ejemplo, 2 = puntos dobles">
               <Input id="c-mult" inputMode="decimal" value={multiplier} onChange={(e) => setMultiplier(e.target.value)} />
@@ -727,6 +758,7 @@ function CampaignDialog({ campaign, onClose }: { campaign: Campaign | null; onCl
 
 function Campaigns({ data }: { data: Overview }) {
   const q = trpc.loyalty.campaigns.useQuery();
+  const communities = trpc.socialNet.communities.useQuery(undefined, { enabled: data.integration });
   const [editing, setEditing] = useState<Campaign | null | "new">(null);
   const name = data.program.pointsName;
   return (
@@ -741,7 +773,7 @@ function Campaigns({ data }: { data: Overview }) {
               <div>
                 <p className="font-medium text-foreground">{c.name} {!c.active && <span className="text-xs text-muted-foreground">(inactiva)</span>}</p>
                 <p className="text-sm text-muted-foreground">
-                  {[RULE_SCOPE_LABELS[c.scope], c.multiplier ? `×${c.multiplier}` : null, c.bonusPoints ? `+${fmtN(c.bonusPoints)} ${name}` : null,
+                  {[c.scope === "community" ? `${CAMPAIGN_SCOPE_LABELS.community}${communities.data ? ` (${communities.data.find((x) => x.id === c.scopeId)?.name ?? c.scopeId})` : ""}${data.integration ? "" : " · sin efecto sin Social Token Net Complete"}` : CAMPAIGN_SCOPE_LABELS[c.scope], c.multiplier ? `×${c.multiplier}` : null, c.bonusPoints ? `+${fmtN(c.bonusPoints)} ${name}` : null,
                     c.budgetPoints ? `presupuesto ${fmtN(c.used)} / ${fmtN(c.budgetPoints)}` : `${fmtN(c.used)} extra concedidos`,
                     c.perClientLimit && c.limitPeriod ? `máx. ${fmtN(c.perClientLimit)} por cliente ${LIMIT_PERIOD_LABELS[c.limitPeriod]}` : null,
                     c.startsAt || c.endsAt ? `${c.startsAt ? fmtDate(c.startsAt) : "…"} – ${c.endsAt ? fmtDate(c.endsAt) : "…"}` : null].filter(Boolean).join(" · ")}
@@ -752,16 +784,27 @@ function Campaigns({ data }: { data: Overview }) {
           ))}
         </ul>
       )}
-      {editing && <CampaignDialog campaign={editing === "new" ? null : editing} onClose={() => setEditing(null)} />}
+      {editing && <CampaignDialog campaign={editing === "new" ? null : editing} integration={data.integration} onClose={() => setEditing(null)} />}
     </div>
   );
 }
 
 // ─── Página ──────────────────────────────────────────────────────────────────
 
+/** Monedero indicado en la dirección (`?cliente=<id>`, p. ej. desde la ficha de un miembro de una comunidad). */
+function clientFromUrl(): number | null {
+  try {
+    const v = Number(new URLSearchParams(window.location.search).get("cliente"));
+    return Number.isInteger(v) && v > 0 ? v : null;
+  } catch {
+    return null;
+  }
+}
+
 export default function Loyalty() {
   const overview = trpc.loyalty.overview.useQuery();
   const data = overview.data;
+  const [walletOf, setWalletOf] = useState<number | null>(clientFromUrl);
   const disabledNote = useMemo(() => (data && !data.program.enabled ? "El programa está desactivado: las ventas no dan puntos hasta que lo actives." : null), [data]);
   return (
     <AdminLayout>
@@ -776,7 +819,7 @@ export default function Loyalty() {
         {overview.isLoading ? <PanelLoading label="Cargando el programa…" /> : overview.isError || !data ? <PanelError error={overview.error} onRetry={() => overview.refetch()} title="No se ha podido cargar el programa" /> : (
           <>
             {disabledNote && <div role="status" className="rounded-xl border border-warning/40 bg-warning/10 px-3 py-2 text-sm text-foreground">{disabledNote}</div>}
-            <Tabs defaultValue="resumen">
+            <Tabs defaultValue={walletOf ? "monederos" : "resumen"}>
               <TabsList>
                 <TabsTrigger value="resumen">Resumen</TabsTrigger>
                 <TabsTrigger value="monederos">Monederos</TabsTrigger>
@@ -785,15 +828,18 @@ export default function Loyalty() {
                 <TabsTrigger value="recompensas">Recompensas</TabsTrigger>
                 <TabsTrigger value="canjes">Canjes</TabsTrigger>
                 <TabsTrigger value="validar">Validar código</TabsTrigger>
+                {data.integration && <TabsTrigger value="comunidades">Comunidades</TabsTrigger>}
               </TabsList>
               <TabsContent value="resumen"><Summary data={data} /></TabsContent>
               <TabsContent value="monederos"><Wallets data={data} /></TabsContent>
               <TabsContent value="reglas"><Rules data={data} /></TabsContent>
               <TabsContent value="campanas"><Campaigns data={data} /></TabsContent>
-              <TabsContent value="recompensas"><Rewards canManage={data.canManage} pointsName={data.program.pointsName} /></TabsContent>
+              <TabsContent value="recompensas"><Rewards canManage={data.canManage} pointsName={data.program.pointsName} integration={data.integration} /></TabsContent>
               <TabsContent value="canjes"><Redemptions canManage={data.canManage} /></TabsContent>
               <TabsContent value="validar"><ValidateCode /></TabsContent>
+              {data.integration && <TabsContent value="comunidades"><CommunityLoyalty canManage={data.canManage} pointsName={data.program.pointsName} onOpenWallet={setWalletOf} /></TabsContent>}
             </Tabs>
+            {walletOf != null && <WalletDialog clientId={walletOf} canManage={data.canManage} pointsName={data.program.pointsName} integration={data.integration} onClose={() => setWalletOf(null)} />}
           </>
         )}
       </div>

@@ -20,7 +20,9 @@ import {
   RULE_SCOPES,
   RULE_TRIGGERS,
   REDEMPTION_STATUSES,
+  CAMPAIGN_SCOPES,
 } from "../../shared/loyalty";
+import { stnIntegrationActive } from "../stnIntegration";
 import { cancelRedemption, checkCode, consumeCode, expireRedemptions, listRedemptions, listRewards, redeemReward, saveReward } from "../loyaltyRewardsDb";
 import { portalUrl, sendPortalLink } from "../loyaltyPortal";
 import {
@@ -88,7 +90,7 @@ const ruleInput = z.object({
 
 const campaignInput = z.object({
   name: z.string().trim().min(2).max(NAME_MAX),
-  scope: z.enum(RULE_SCOPES),
+  scope: z.enum(CAMPAIGN_SCOPES),
   scopeId: id.nullable(),
   multiplier: z.number().min(1).max(100).nullable(),
   bonusPoints: z.number().int().min(1).max(POINTS_MAX).nullable(),
@@ -101,7 +103,7 @@ const campaignInput = z.object({
   endsAt: ms,
 }).strict().superRefine((x, c) => {
   if (x.multiplier == null && x.bonusPoints == null) c.addIssue({ code: "custom", message: "Indica un multiplicador o una bonificación", path: ["multiplier"] });
-  if (x.scope !== "all" && !x.scopeId) c.addIssue({ code: "custom", message: "Elige el producto o la categoría", path: ["scopeId"] });
+  if (x.scope !== "all" && !x.scopeId) c.addIssue({ code: "custom", message: x.scope === "community" ? "Elige la comunidad" : "Elige el producto o la categoría", path: ["scopeId"] });
   if (x.perClientLimit != null && !x.limitPeriod) c.addIssue({ code: "custom", message: "Elige el periodo del límite", path: ["limitPeriod"] });
   if (x.startsAt != null && x.endsAt != null && x.endsAt < x.startsAt) c.addIssue({ code: "custom", message: "La vigencia termina antes de empezar", path: ["endsAt"] });
 });
@@ -132,8 +134,9 @@ export const loyaltyRouter = router({
   /** Programa, estadísticas y qué puede hacer el usuario. */
   overview: staffProcedure.query(async ({ ctx }) => {
     await assertLoyalty(false);
-    const [program, s, manage] = await Promise.all([getProgram(), stats(), canManage(ctx.user.role)]);
-    return { program, stats: s, canManage: manage };
+    const [program, s, manage, integration] = await Promise.all([getProgram(), stats(), canManage(ctx.user.role), stnIntegrationActive(false)]);
+    // integration: Social Token Net Complete (comunidades y tokens a la vez) — el panel muestra entonces lo integrado
+    return { program, stats: s, canManage: manage, integration };
   }),
 
   saveProgram: adminProcedure
@@ -174,6 +177,7 @@ export const loyaltyRouter = router({
     .mutation(async ({ input }) => {
       await assertLoyalty(true);
       const c = input.campaign;
+      if (c.scope === "community" && !(await stnIntegrationActive(true))) throw new TRPCError({ code: "FORBIDDEN", message: "Las campañas por comunidad necesitan Social Token Net Complete (o Comunidades y Tokens internos a la vez)." });
       return saveCampaign(input.id, { ...c, scopeId: c.scope === "all" ? null : c.scopeId });
     }),
 

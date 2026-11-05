@@ -27,6 +27,7 @@ import { TRPCError } from "@trpc/server";
 import { getDb } from "./db";
 import { getCapabilityAccess } from "./_core/capabilities/access";
 import { madridDateKey, madridMidnightMs } from "./utils/timezone";
+import { clientCommunityIds, stnIntegrationActive } from "./stnIntegration";
 import {
   LOYALTY_CAPABILITY,
   addMonthsMs,
@@ -39,6 +40,7 @@ import {
   periodStartKey,
   type LedgerKind,
   type LimitPeriod,
+  type CampaignScope,
   type LoyaltyCampaign,
   type LoyaltyRule,
   type PurchaseLine,
@@ -323,7 +325,8 @@ function toRule(r: any): LoyaltyRule {
 
 function toCampaign(r: any): LoyaltyCampaign {
   return {
-    id: n(r.id), name: r.name, scope: (["all", "product", "category"].includes(r.scope) ? r.scope : "all") as RuleScope, scopeId: nOrNull(r.scope_id),
+    // Un alcance desconocido nunca pasa a «todas»: «community» se conserva y solo se aplica con la integración activa
+    id: n(r.id), name: r.name, scope: (["all", "product", "category", "community"].includes(r.scope) ? r.scope : "community") as CampaignScope, scopeId: nOrNull(r.scope_id),
     multiplier: nOrNull(r.multiplier), bonusPoints: nOrNull(r.bonus_points), budgetPoints: nOrNull(r.budget_points), perClientLimit: nOrNull(r.per_client_limit),
     limitPeriod: (r.limit_period ?? null) as LimitPeriod | null, priority: n(r.priority), active: !!n(r.active), startsAt: nOrNull(r.starts_at), endsAt: nOrNull(r.ends_at),
   };
@@ -378,9 +381,38 @@ export async function campaignUsage(exec?: LoyaltyExec): Promise<Map<number, num
   return new Map(r.map((x) => [n(x.campaign_id), n(x.used)]));
 }
 
-function periodSinceMs(period: LimitPeriod | null, now: number): number | null {
+export function periodSinceMs(period: LimitPeriod | null, now: number): number | null {
   const key = periodStartKey(period ?? "lifetime", madridDateKey(new Date(now)));
   return key ? madridMidnightMs(key) : null;
+}
+
+/**
+ * Puntos extra de una campaña sobre unos puntos base (orden de Segolife): la campaña se bloquea (`FOR UPDATE`, siempre
+ * DESPUÉS del monedero) y se recorta por lo que queda de su presupuesto y del límite por cliente en el periodo. Dentro de
+ * la transacción del movimiento. La usan las compras y los puntos por participar en comunidades.
+ */
+export async function campaignExtraInTx(tx: LoyaltyExec, candidate: LoyaltyCampaign | null, base: number, clientId: number, now: number): Promise<{ campaign: LoyaltyCampaign | null; extra: number; requestedExtra: number }> {
+  let campaign = candidate;
+  if (campaign) {
+    const [locked] = await rows<any>(tx, sql`SELECT * FROM loyalty_campaigns WHERE id = ${campaign.id} FOR UPDATE`);
+    campaign = locked && n(locked.active) ? toCampaign(locked) : null;
+  }
+  if (!campaign) return { campaign: null, extra: 0, requestedExtra: 0 };
+  const requestedExtra = applyCampaignToAmount(campaign, base) - base;
+  let budgetRemaining: number | null = null;
+  if (campaign.budgetPoints != null) {
+    const [u] = await rows<any>(tx, sql`SELECT COALESCE(SUM(campaign_points), 0) AS used FROM loyalty_ledger WHERE campaign_id = ${campaign.id} FOR SHARE`);
+    budgetRemaining = campaign.budgetPoints - n(u?.used);
+  }
+  let perClientRemaining: number | null = null;
+  if (campaign.perClientLimit != null) {
+    const since = periodSinceMs(campaign.limitPeriod, now);
+    const [u] = await rows<any>(tx, since == null
+      ? sql`SELECT COALESCE(SUM(campaign_points), 0) AS used FROM loyalty_ledger WHERE campaign_id = ${campaign.id} AND client_id = ${clientId} FOR SHARE`
+      : sql`SELECT COALESCE(SUM(campaign_points), 0) AS used FROM loyalty_ledger WHERE campaign_id = ${campaign.id} AND client_id = ${clientId} AND created_at >= ${since} FOR SHARE`);
+    perClientRemaining = campaign.perClientLimit - n(u?.used);
+  }
+  return { campaign, extra: clampCampaignExtra(requestedExtra, { perClientRemaining, budgetRemaining }), requestedExtra };
 }
 
 // ─── Emisión por compras confirmadas ─────────────────────────────────────────
@@ -424,6 +456,8 @@ export async function issuePurchasePoints(doc: PurchaseDocument, exec?: LoyaltyE
   try {
     const program0 = await getProgram();
     if (!program0.enabled) return null;
+    // Campañas «miembros de una comunidad»: solo con comunidades y tokens a la vez (Social Token Net Complete)
+    const communityIds = (await stnIntegrationActive(true)) ? await clientCommunityIds(doc.clientId) : null;
     await ensureWallet(doc.clientId);
     return await inTx(async (tx) => {
       const program = await getProgram(tx);
@@ -439,30 +473,7 @@ export async function issuePurchasePoints(doc: PurchaseDocument, exec?: LoyaltyE
       const prev = await existingByKey(tx, idemKey);
       if (prev) return { points: prev.amount, ledgerId: prev.ledgerId, balance: prev.balance, pointsName: program.pointsName, applied: false };
 
-      let campaign = findApplicableCampaign(await listCampaigns(tx, true), lines, now);
-      let extra = 0;
-      let requestedExtra = 0;
-      if (campaign) {
-        const [locked] = await rows<any>(tx, sql`SELECT * FROM loyalty_campaigns WHERE id = ${campaign.id} FOR UPDATE`);
-        campaign = locked && n(locked.active) ? toCampaign(locked) : null;
-      }
-      if (campaign) {
-        requestedExtra = applyCampaignToAmount(campaign, breakdown.base) - breakdown.base;
-        let budgetRemaining: number | null = null;
-        if (campaign.budgetPoints != null) {
-          const [u] = await rows<any>(tx, sql`SELECT COALESCE(SUM(campaign_points), 0) AS used FROM loyalty_ledger WHERE campaign_id = ${campaign.id} FOR SHARE`);
-          budgetRemaining = campaign.budgetPoints - n(u?.used);
-        }
-        let perClientRemaining: number | null = null;
-        if (campaign.perClientLimit != null) {
-          const since = periodSinceMs(campaign.limitPeriod, now);
-          const [u] = await rows<any>(tx, since == null
-            ? sql`SELECT COALESCE(SUM(campaign_points), 0) AS used FROM loyalty_ledger WHERE campaign_id = ${campaign.id} AND client_id = ${clientId} FOR SHARE`
-            : sql`SELECT COALESCE(SUM(campaign_points), 0) AS used FROM loyalty_ledger WHERE campaign_id = ${campaign.id} AND client_id = ${clientId} AND created_at >= ${since} FOR SHARE`);
-          perClientRemaining = campaign.perClientLimit - n(u?.used);
-        }
-        extra = clampCampaignExtra(requestedExtra, { perClientRemaining, budgetRemaining });
-      }
+      const { campaign, extra, requestedExtra } = await campaignExtraInTx(tx, findApplicableCampaign(await listCampaigns(tx, true), lines, now, { communityIds }), breakdown.base, clientId, now);
       const points = breakdown.base + extra;
       const res = await postMovementInTx(tx, {
         clientId, kind: "emision", direction: "credit", amount: points, reason: breakdown.byRule.map((r) => r.ruleName).join(" · ").slice(0, 300) || "Compra",

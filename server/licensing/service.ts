@@ -30,7 +30,7 @@ import { cleanData } from "../commercialEvents/derive";
 import { opsLog } from "../_core/ops/log";
 
 /** Capacidades que concede un producto (con su herencia y, en los paquetes, las de sus componentes). */
-function capabilitiesOf(p: QuoteCatalogProduct | undefined, byKey: Map<string, QuoteCatalogProduct>, out = new Set<string>(), depth = 0): Set<string> {
+export function capabilitiesOf(p: QuoteCatalogProduct | undefined, byKey: Map<string, QuoteCatalogProduct>, out = new Set<string>(), depth = 0): Set<string> {
   if (!p || depth > 10) return out;
   p.capabilities.forEach((c) => CAPABILITY_IDS.includes(c) && out.add(c));
   if (p.inherits) capabilitiesOf(byKey.get(p.inherits), byKey, out, depth + 1);

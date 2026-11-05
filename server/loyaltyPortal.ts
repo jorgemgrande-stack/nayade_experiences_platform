@@ -138,7 +138,7 @@ async function available(write: boolean): Promise<boolean> {
 async function renderArea(res: Response, clientId: number, token: string, notice = "") {
   await expireRedemptions(clientId);
   await expireWallet(clientId);
-  const [w, program, rewards, mine, ledger] = await Promise.all([walletOf(clientId), getProgram(), availableRewards(), listRedemptions({ clientId, status: "emitido", limit: 20, offset: 0 }), clientLedger(clientId, 30)]);
+  const [w, program, rewards, mine, ledger] = await Promise.all([walletOf(clientId), getProgram(), availableRewards(clientId), listRedemptions({ clientId, status: "emitido", limit: 20, offset: 0 }), clientLedger(clientId, 30)]);
   if (!w) return page(res, 404, "Mis puntos", linkForm("Este enlace ya no es válido."));
   const name = program.pointsName;
   const eq = program.eqPoints && program.eqEuros ? { points: program.eqPoints, euros: program.eqEuros } : null;
@@ -147,7 +147,7 @@ async function renderArea(res: Response, clientId: number, token: string, notice
     ? `<ul>${rewards.map((r) => {
         const can = w.balance >= r.costPoints && r.remaining !== 0;
         const key = crypto.randomBytes(12).toString("hex");
-        return `<li><div><strong>${esc(r.name)}</strong>${r.description ? `<div class="muted">${esc(r.description)}</div>` : ""}<div class="muted">${fmtN(r.costPoints)} ${esc(name)}${r.remaining != null ? ` · quedan ${fmtN(r.remaining)}` : ""}</div></div>` +
+        return `<li><div><strong>${esc(r.name)}</strong>${r.exclusive ? ` <span class="muted">· exclusiva para miembros</span>` : ""}${r.description ? `<div class="muted">${esc(r.description)}</div>` : ""}<div class="muted">${fmtN(r.costPoints)} ${esc(name)}${r.remaining != null ? ` · quedan ${fmtN(r.remaining)}` : ""}</div></div>` +
           `<form method="post" action="${esc(action)}"><input type="hidden" name="reward" value="${r.id}"><input type="hidden" name="key" value="${key}"><button type="submit"${can ? "" : " disabled"}>Canjear</button></form></li>`;
       }).join("")}</ul>`
     : `<p class="muted">Todavía no hay recompensas disponibles.</p>`;

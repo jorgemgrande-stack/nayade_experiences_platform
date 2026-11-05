@@ -32,6 +32,7 @@ export const LOYALTY_SOURCE_LABELS: Record<string, string> = {
   expiry: "Caducidad de puntos",
   reversal: "Anulación de un movimiento",
   redemption: "Canje de recompensa",
+  community: "Participación en una comunidad",
 };
 
 /** Cómo calcula una regla los puntos. */
@@ -55,6 +56,15 @@ export const RULE_SCOPE_LABELS: Record<RuleScope, string> = {
   product: "Un producto",
   category: "Una categoría",
 };
+
+/**
+ * Alcance de una campaña: los de las reglas y, con Social Token Net Complete (comunidades y tokens a la vez),
+ * «miembros de una comunidad» (scopeId = la comunidad): se aplica a las compras de sus miembros y a los puntos por
+ * participar en ella. Sin la integración, una campaña de comunidad no se aplica nunca (no pasa a «todas»).
+ */
+export const CAMPAIGN_SCOPES = ["all", "product", "category", "community"] as const;
+export type CampaignScope = (typeof CAMPAIGN_SCOPES)[number];
+export const CAMPAIGN_SCOPE_LABELS: Record<CampaignScope, string> = { ...RULE_SCOPE_LABELS, community: "Miembros de una comunidad" };
 
 /** Acciones permitidas que puede premiar una regla (las registra la administración o una integración). */
 export const LOYALTY_ACTIONS = ["alta", "cumpleanos", "resena", "encuesta", "recomendacion", "visita"] as const;
@@ -111,7 +121,7 @@ export interface LoyaltyRule {
 export interface LoyaltyCampaign {
   id: number;
   name: string;
-  scope: RuleScope;
+  scope: CampaignScope;
   scopeId: number | null;
   multiplier: number | null;
   bonusPoints: number | null;
@@ -153,7 +163,7 @@ export function compareRulesByPrecedence(a: Pick<LoyaltyRule, "id" | "priority" 
   return a.id - b.id;
 }
 
-export function scopeMatchesLine(x: { scope: RuleScope; scopeId: number | null }, line: PurchaseLine): boolean {
+export function scopeMatchesLine(x: { scope: RuleScope | CampaignScope; scopeId: number | null }, line: PurchaseLine): boolean {
   if (x.scope === "all") return true;
   if (x.scope === "product") return x.scopeId != null && x.scopeId === line.productId;
   if (x.scope === "category") return x.scopeId != null && x.scopeId === line.categoryId;
@@ -218,11 +228,22 @@ export function findActionRule(rules: readonly LoyaltyRule[], action: string, at
 
 /**
  * Campaña aplicable a una compra: la de mayor prioridad (empate: id más bajo) activa, vigente y que cubre alguna línea.
- * Nunca se apilan varias (Segolife: evita bonificaciones inexplicables).
+ * Nunca se apilan varias (Segolife: evita bonificaciones inexplicables). Las de comunidad solo cubren la compra si el
+ * cliente es miembro activo de esa comunidad (`communityIds`, que solo se informa con la integración activa).
  */
-export function findApplicableCampaign(campaigns: readonly LoyaltyCampaign[], lines: readonly PurchaseLine[], at: number): LoyaltyCampaign | null {
+export function findApplicableCampaign(campaigns: readonly LoyaltyCampaign[], lines: readonly PurchaseLine[], at: number, ctx: { communityIds?: ReadonlySet<number> | null } = {}): LoyaltyCampaign | null {
+  const covers = (c: LoyaltyCampaign) =>
+    c.scope === "community" ? c.scopeId != null && !!ctx.communityIds?.has(c.scopeId) && lines.some((l) => l.amount > 0) : lines.some((l) => l.amount > 0 && scopeMatchesLine(c, l));
   const m = campaigns
-    .filter((c) => c.active && isWithinWindow(c, at) && lines.some((l) => l.amount > 0 && scopeMatchesLine(c, l)))
+    .filter((c) => c.active && isWithinWindow(c, at) && covers(c))
+    .sort((a, b) => (b.priority !== a.priority ? b.priority - a.priority : a.id - b.id));
+  return m[0] ?? null;
+}
+
+/** Campaña de una comunidad para los puntos por participar en ella (la de mayor prioridad; empate: id más bajo). */
+export function findCommunityCampaign(campaigns: readonly LoyaltyCampaign[], communityId: number, at: number): LoyaltyCampaign | null {
+  const m = campaigns
+    .filter((c) => c.active && c.scope === "community" && c.scopeId === communityId && isWithinWindow(c, at))
     .sort((a, b) => (b.priority !== a.priority ? b.priority - a.priority : a.id - b.id));
   return m[0] ?? null;
 }

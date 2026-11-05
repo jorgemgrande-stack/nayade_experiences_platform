@@ -48,6 +48,8 @@ export const TRPC_ROUTER_CAPABILITIES: Record<string, string> = {
   communities: "social-token-net",
   // Social Token Net · Tokens internos: programa de puntos (los procedimientos lo comprueban además); la emisión al vender la decide loyaltyDb
   loyalty: "social-token-net-tokens",
+  // Social Token Net Complete: integración de comunidades y puntos (los procedimientos exigen además las dos capacidades)
+  socialNet: "social-token-net-tokens",
   products: "shop-catalog",
   packs: "shop-catalog",
   timeSlots: "shop-catalog",

@@ -75,6 +75,7 @@ import {
 } from "../communitiesDb";
 import { notifyNewMembers } from "../communities/mail";
 import { adminPollRouters, memberPollProcedures } from "./communityPolls";
+import { stnIntegrationActive } from "../stnIntegration";
 
 const id = z.number().int().positive();
 const imageUrl = z.string().trim().max(512).refine(isSafeImageUrl, "Dirección de imagen no válida").nullable().optional();
@@ -118,6 +119,12 @@ const adminRouter = router({
   list: adminProcedure.query(async () => {
     await read();
     return listCommunities();
+  }),
+
+  /** Social Token Net Complete: ¿hay también tokens internos? (el panel muestra entonces saldos y enlaces al monedero). */
+  integration: adminProcedure.query(async () => {
+    await read();
+    return { active: await stnIntegrationActive(false) };
   }),
 
   get: adminProcedure.input(z.object({ id })).query(async ({ input }) => {
