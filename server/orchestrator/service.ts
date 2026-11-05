@@ -400,6 +400,10 @@ export class CommercialOrchestrator {
   private async stepQuote(o: CommercialOrder, actor: string) {
     const q = await this.d.quote(o.request);
     if (!q.ok) throw new OrderError("invalid_input", `Configuración no válida: ${q.errors.join("; ")}`);
+    // Un pedido nunca lleva un paquete y sus componentes a la vez (se cobrarían o activarían dos veces): se rechaza
+    // antes de cualquier cobro. El cotizador sí los admite juntos (cobra solo el paquete y avisa) para el configurador.
+    const twice = q.lines.filter((l) => l.status === "included_in_bundle");
+    if (twice.length) throw new OrderError("invalid_input", `Configuración no válida: ${twice.map((l) => `«${l.name}» ya va incluido en ${l.note?.startsWith("Incluido en ") ? `«${l.note.slice("Incluido en ".length)}»` : "su paquete"}`).join("; ")}. Elige el paquete o sus módulos, no los dos`);
     if (q.blocking.length) throw new OrderError("invalid_state", `Incluye productos que aún no se pueden contratar: ${q.blocking.join(", ")}`);
     const t = q.totals;
     const quote: OrderQuote = {

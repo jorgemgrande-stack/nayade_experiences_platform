@@ -181,6 +181,7 @@ function PurchaseDialog({ module, current, onClose }: { module: PanelModule; cur
                       {l.fromQuantity} → {l.toQuantity}
                     </span>
                   )}
+                  {l.kind === "module" && l.toQuantity === 0 && <span className="text-muted-foreground">Deja de cobrarse aparte (lo incluye el paquete)</span>}
                 </li>
               ))}
             </ul>
@@ -191,7 +192,7 @@ function PurchaseDialog({ module, current, onClose }: { module: PanelModule; cur
               </p>
               {p.taxCents !== null && <p className="text-xs text-muted-foreground">Incluye {money(p.taxCents, p.currency)} de impuestos.</p>}
               <p className="text-xs text-muted-foreground">
-                Después, {money(p.recurringDeltaCents, p.currency)} más por {p.interval === "year" ? "año" : "mes"} en cada renovación
+                Después, {money(Math.abs(p.recurringDeltaCents), p.currency)} {p.recurringDeltaCents < 0 ? "menos" : "más"} por {p.interval === "year" ? "año" : "mes"} en cada renovación
                 {p.taxCents === null ? " (impuestos aparte)" : ""}.
               </p>
             </div>

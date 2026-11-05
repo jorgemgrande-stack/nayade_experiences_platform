@@ -63,6 +63,10 @@ export interface ConnectItem {
   checkoutVia: CheckoutVia;
   /** Con `checkoutVia: "conversion"`: el plan con el que entra en el alta. */
   conversionPlan: string | null;
+  /** Módulo incluido en un paquete que la empresa tiene contratado (no se compra aparte); null si no. */
+  includedIn: { key: string; name: string } | null;
+  /** Paquete no contratado: sus componentes que la empresa ya tiene y que el paquete sustituiría. */
+  replaces: Array<{ key: string; name: string }>;
 }
 
 /** Imagen de la forma anterior (`cover`/`screenshots`) como imagen resuelta, mientras el canal la mande. */
@@ -79,6 +83,15 @@ function seedCapabilities(key: string, depth = 0): string[] {
   if (own.length > 0) return own;
   return Array.from(new Set((p.draft.catalog.bundleOf ?? []).flatMap((k) => seedCapabilities(k, depth + 1))));
 }
+
+/** Componentes de un paquete según el catálogo oficial (vacío si no es un paquete). */
+const seedBundleOf = (key: string): string[] => seedOf(key)?.draft.catalog.bundleOf ?? [];
+
+/** Texto de la ficha de un componente cuando su paquete está contratado. */
+export const includedInText = (bundle: string) => `Incluido en ${bundle}, que ya tienes contratado: no se compra aparte.`;
+/** Texto de la ficha de un paquete que sustituye a módulos ya contratados (el prorrateo lo calcula la vista previa). */
+export const replacesText = (names: string[]) =>
+  `Sustituye a ${names.join(" y ")}, que ya tienes contratado: al contratarlo dejas de pagarlo aparte y solo se cobra la diferencia prorrateada del periodo en curso. Tus datos se conservan.`;
 
 /** El dato de la ficha si viene (aunque sea una lista vacía a propósito); si no, el de la semilla. */
 function pick<T>(card: T | null | undefined, seed: T): T {
@@ -103,6 +116,10 @@ export function buildConnectCatalog(
     return caps.length > 0 && caps.every((c) => capabilityStatus(c) === "active");
   };
   const productName = (key: string) => byKey.get(key)?.name ?? seedOf(key)?.draft.name ?? key;
+  // Contratado de verdad (pedido vigente): un paquete concede las capacidades de sus componentes, así que las
+  // licencias no dicen si se tiene el paquete o los módulos sueltos; los pedidos, sí
+  const contracted = (key: string) => parseActivation(byKey.get(key)?.activation)?.state === "active";
+  const bundles = catalog.items.filter((i) => seedBundleOf(i.key).length > 0);
 
   return catalog.items.map((item): ConnectItem => {
     const seed = seedOf(item.key);
@@ -113,10 +130,19 @@ export function buildConnectCatalog(
     const dependencies = pick(card?.dependencies, d?.dependencies ?? []);
     // Ampliaciones: los planes a los que amplían; módulos: los planes con los que se pueden contratar
     const plans = d?.catalog.addonFor?.plans ?? (item.kind === "module" ? pick(card?.compatibleWith, d?.compatibleWith ?? []) : []);
-    const { state, reasons } = deriveConnectState(
-      { kind: item.kind, commercialStatus: item.commercialStatus, capabilities, dependencies, plans },
+    const includer = item.kind === "module" ? bundles.find((b) => b.key !== item.key && contracted(b.key) && seedBundleOf(b.key).includes(item.key)) : undefined;
+    const includedIn = includer ? { key: includer.key, name: includer.name } : null;
+    const replaces = item.kind === "module" && !contracted(item.key) ? seedBundleOf(item.key).filter(contracted).map((k) => ({ key: k, name: productName(k) })) : [];
+    // Paquete sin contratar cuyos componentes sí están contratados: sus capacidades activas son las de los módulos, no
+    // las suyas; su estado es el comercial (se puede contratar en sustitución de los módulos)
+    const derived = deriveConnectState(
+      { kind: item.kind, commercialStatus: item.commercialStatus, capabilities: replaces.length > 0 ? [] : capabilities, dependencies, plans },
       { capabilityStatus, plan, productActive, productName },
     );
+    const state = derived.state;
+    const reasons = [...derived.reasons];
+    if (includedIn && state === "active") reasons.push(includedInText(includedIn.name));
+    if (replaces.length > 0) reasons.push(replacesText(replaces.map((r) => r.name)));
     const prices = card?.prices ?? parseConnectPrices(item.prices) ?? [];
     const fallbackPrices: ConnectPrice[] = item.monthly
       ? [{ kind: "monthly", amountCents: item.monthly.amountCents, currency: item.monthly.currency, unit: item.monthly.unit, taxRateBp: null, taxIncluded: item.monthly.taxIncluded }]
@@ -181,6 +207,8 @@ export function buildConnectCatalog(
       openPath: item.kind === "module" && capabilities.length > 0 ? openPathOf(capabilities) : null,
       checkoutVia: null,
       conversionPlan: null,
+      includedIn,
+      replaces,
     };
   });
 }
