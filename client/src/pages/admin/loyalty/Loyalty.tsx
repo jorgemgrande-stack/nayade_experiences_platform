@@ -8,6 +8,7 @@
  * Los puntos son internos: no son dinero, no se transfieren entre clientes y no se cambian por dinero.
  */
 import { useMemo, useState } from "react";
+import { useLocation, useParams } from "wouter";
 import type { inferRouterOutputs } from "@trpc/server";
 import type { AppRouter } from "../../../../../server/routers";
 import { Coins, Gift, Megaphone, Pencil, Plus, Search, Undo2, Wallet } from "lucide-react";
@@ -801,10 +802,19 @@ function clientFromUrl(): number | null {
   }
 }
 
+/** Pestañas con ruta propia (`/admin/fidelizacion/:pestaña`; el menú enlaza varias). */
+const LOYALTY_TABS = ["resumen", "monederos", "reglas", "campanas", "recompensas", "canjes", "validar", "comunidades"] as const;
+
 export default function Loyalty() {
   const overview = trpc.loyalty.overview.useQuery();
   const data = overview.data;
   const [walletOf, setWalletOf] = useState<number | null>(clientFromUrl);
+  const [openedWithWallet] = useState(() => walletOf != null);
+  const params = useParams<{ tab?: string }>();
+  const [, navigate] = useLocation();
+  const asked = params.tab && (LOYALTY_TABS as readonly string[]).includes(params.tab) ? params.tab : openedWithWallet ? "monederos" : "resumen";
+  // «Comunidades» solo existe con Social Token Net Complete
+  const tab = asked === "comunidades" && data && !data.integration ? "resumen" : asked;
   const disabledNote = useMemo(() => (data && !data.program.enabled ? "El programa está desactivado: las ventas no dan puntos hasta que lo actives." : null), [data]);
   return (
     <AdminLayout>
@@ -819,7 +829,7 @@ export default function Loyalty() {
         {overview.isLoading ? <PanelLoading label="Cargando el programa…" /> : overview.isError || !data ? <PanelError error={overview.error} onRetry={() => overview.refetch()} title="No se ha podido cargar el programa" /> : (
           <>
             {disabledNote && <div role="status" className="rounded-xl border border-warning/40 bg-warning/10 px-3 py-2 text-sm text-foreground">{disabledNote}</div>}
-            <Tabs defaultValue={walletOf ? "monederos" : "resumen"}>
+            <Tabs value={tab} onValueChange={(v) => navigate(v === "resumen" ? "/admin/fidelizacion" : `/admin/fidelizacion/${v}`, { replace: true })}>
               <TabsList>
                 <TabsTrigger value="resumen">Resumen</TabsTrigger>
                 <TabsTrigger value="monederos">Monederos</TabsTrigger>

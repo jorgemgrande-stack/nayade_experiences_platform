@@ -27,6 +27,20 @@ export const VISIBILITY_LABELS: Record<Visibility, string> = {
 };
 export const VISIBILITY_SHORT: Record<Visibility, string> = { open: "Abierta", request: "Con solicitud", private: "Privada" };
 
+/** Pestañas de la ficha de una comunidad en el panel (`/admin/comunidades/:id/:pestaña`; el menú enlaza varias). */
+export const COMMUNITY_ADMIN_TABS = {
+  resumen: "Indicadores de participación",
+  miembros: "Miembros",
+  publicaciones: "Publicaciones",
+  encuestas: "Encuestas",
+  propuestas: "Propuestas",
+  reportes: "Moderación",
+  configuracion: "Configuración",
+  actividad: "Actividad",
+} as const;
+export type CommunityAdminTab = keyof typeof COMMUNITY_ADMIN_TABS;
+export const isCommunityAdminTab = (t: string | undefined): t is CommunityAdminTab => !!t && Object.prototype.hasOwnProperty.call(COMMUNITY_ADMIN_TABS, t);
+
 export const POST_MODERATION = ["none", "pre"] as const;
 export type PostModeration = (typeof POST_MODERATION)[number];
 export const POST_MODERATION_LABELS: Record<PostModeration, string> = {

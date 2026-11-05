@@ -26,11 +26,20 @@ export function panelOpenPath(panel: PanelContributions | undefined | null): str
  */
 export function openPathResolver(sources: Array<{ capability: string | null; panel?: PanelContributions | null }>): (capabilities: string[]) => string | null {
   const byCap = new Map<string, string>();
+  const set = (caps: string[], p: string) => {
+    const k = [...caps].sort().join("|");
+    if (!byCap.has(k)) byCap.set(k, p);
+  };
   for (const s of sources) {
     const p = panelOpenPath(s.panel);
-    if (s.capability && p && !byCap.has(s.capability)) byCap.set(s.capability, p);
+    if (s.capability && p) set([s.capability], p);
+    // Extensión sin capacidad única (Social Token Net): cada entrada principal abre lo suyo y la portada, lo que
+    // concede varias a la vez (un paquete)
+    if (!s.capability) for (const i of [...(s.panel?.section?.items ?? []), ...(s.panel?.items ?? [])]) if (i.capabilities?.length && !i.allCapabilities) set(i.capabilities, i.path);
   }
   return (caps) => {
+    const exact = byCap.get([...caps].sort().join("|"));
+    if (exact) return exact;
     for (const c of caps) {
       const p = byCap.get(c);
       if (p) return p;

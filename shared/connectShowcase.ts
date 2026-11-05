@@ -250,14 +250,15 @@ export const CONTRACT_NOW_LABEL = "Contratar ahora";
  *  - «Contratar ahora» (alta): en la prueba, si el servidor dice que el módulo entra en el alta junto con el plan
  *    (`checkoutVia: "conversion"`): lleva al formulario de alta con el plan y el módulo elegidos.
  *  - «Solicitar información» (bajo solicitud o sin compra en línea), «Me interesa» (próximamente, con solicitudes).
- *  - «Abrir módulo» (contratado: su ruta real del menú o, si no tiene, «Mis módulos»).
+ *  - «Gestionar» (contratado: abre su pantalla operativa principal, la de su entrada del menú); sin ruta propia,
+ *    «Abrir módulo» lleva a «Mis módulos».
  */
 export function primaryAction(
   item: { key?: string; state: ConnectState; kind: "module" | "quantity"; purchasable: boolean; openPath?: string | null; activation?: ConnectActivation | null; checkoutVia?: CheckoutVia; conversionPlan?: string | null },
   view: { canPurchase: boolean; interestEnabled: boolean },
 ): PrimaryAction {
   const open = item.openPath ?? null;
-  if (item.state === "active") return { kind: "open", label: "Abrir módulo", href: open ?? MINE_PATH };
+  if (item.state === "active") return open ? { kind: "open", label: "Gestionar", href: open } : { kind: "open", label: "Abrir módulo", href: MINE_PATH };
   if (item.state === "pending_setup" && open) return { kind: "manage", label: "Gestionar", href: open };
   // Una compra en curso (a la espera del cobro o concediendo la licencia), ya en el pedido vigente o suspendida nunca se
   // ofrece otra vez; tras una activación fallida tampoco: se reintenta la activación (sin cobrar), no la compra
