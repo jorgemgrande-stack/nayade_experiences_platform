@@ -109,6 +109,22 @@ function ivaSoportado(e: any): number {
   return rate > 0 ? total - total / (1 + rate / 100) : 0;
 }
 
+/** Nombre comparable (sin mayúsculas, acentos ni espacios repetidos): avisa de duplicados en las altas rápidas. */
+const sameName = (a: string, b: string) => {
+  const n = (s: string) => s.normalize("NFD").replace(/[̀-ͯ]/g, "").trim().toLowerCase().replace(/\s+/g, " ");
+  return !!n(b) && n(a) === n(b);
+};
+
+/** Aviso de alta rápida duplicada con la opción de usar el registro que ya existe. */
+function DuplicateNotice({ text, onUse }: { text: string; onUse: () => void }) {
+  return (
+    <p role="alert" className="text-xs text-amber-700 dark:text-amber-300">
+      {text}{" "}
+      <button type="button" className="font-medium underline" onClick={onUse}>Usar el existente</button>
+    </p>
+  );
+}
+
 export default function ExpensesManager() {
   
   const [, setLocation] = useLocation();
@@ -233,7 +249,7 @@ export default function ExpensesManager() {
       setQuickCatOpen(false); setQuickCatName(""); setQuickCatDesc("");
       toast.success("Categoría creada");
     },
-    onError: () => toast.error("Error al crear categoría"),
+    onError: (e) => toast.error(e.message || "Error al crear categoría"),
   });
   const createCCMut = trpc.financial.costCenters.create.useMutation({
     onSuccess: (res) => {
@@ -242,7 +258,7 @@ export default function ExpensesManager() {
       setQuickCCOpen(false); setQuickCCName(""); setQuickCCDesc("");
       toast.success("Centro de coste creado");
     },
-    onError: () => toast.error("Error al crear centro de coste"),
+    onError: (e) => toast.error(e.message || "Error al crear centro de coste"),
   });
   const createSupMut = trpc.financial.suppliers.create.useMutation({
     onSuccess: (res) => {
@@ -251,7 +267,7 @@ export default function ExpensesManager() {
       setQuickSupOpen(false); setQuickSupName("");
       toast.success("Proveedor creado");
     },
-    onError: () => toast.error("Error al crear proveedor"),
+    onError: (e) => toast.error(e.message || "Error al crear proveedor"),
   });
 
   const bankCandidatesQ = trpc.bankMovements.listExpenseCandidates.useQuery(
@@ -280,6 +296,9 @@ export default function ExpensesManager() {
   const categories = categoriesQ.data ?? [];
   const costCenters = costCentersQ.data ?? [];
   const suppliers = suppliersQ.data ?? [];
+  const dupCat = quickCatOpen ? categories.find((c) => sameName(c.name, quickCatName)) : undefined;
+  const dupCC = quickCCOpen ? costCenters.find((c) => sameName(c.name, quickCCName)) : undefined;
+  const dupSup = quickSupOpen ? suppliers.find((s) => sameName(s.name, quickSupName)) : undefined;
   const expenses = expensesQ.data?.items ?? [];
   const total = expensesQ.data?.total ?? 0;
 
@@ -1515,7 +1534,7 @@ export default function ExpensesManager() {
                 value={quickCatName}
                 onChange={(e) => setQuickCatName(e.target.value)}
                 placeholder="Ej: Suministros"
-                onKeyDown={(e) => e.key === "Enter" && quickCatName.trim() && createCatMut.mutate({ name: quickCatName.trim(), description: quickCatDesc || undefined })}
+                onKeyDown={(e) => e.key === "Enter" && quickCatName.trim() && !dupCat && createCatMut.mutate({ name: quickCatName.trim(), description: quickCatDesc || undefined })}
                 autoFocus
               />
             </div>
@@ -1523,11 +1542,12 @@ export default function ExpensesManager() {
               <Label>Descripción</Label>
               <Input value={quickCatDesc} onChange={(e) => setQuickCatDesc(e.target.value)} placeholder="Opcional" />
             </div>
+            {dupCat && <DuplicateNotice text={`Ya existe la categoría «${dupCat.name}».`} onUse={() => { setForm((f) => ({ ...f, categoryId: String(dupCat.id) })); setQuickCatOpen(false); }} />}
             <div className="flex justify-end gap-2">
               <Button variant="outline" onClick={() => setQuickCatOpen(false)}>Cancelar</Button>
               <Button
                 onClick={() => quickCatName.trim() && createCatMut.mutate({ name: quickCatName.trim(), description: quickCatDesc || undefined })}
-                disabled={!quickCatName.trim() || createCatMut.isPending}
+                disabled={!quickCatName.trim() || !!dupCat || createCatMut.isPending}
               >Crear y seleccionar</Button>
             </div>
           </div>
@@ -1545,7 +1565,7 @@ export default function ExpensesManager() {
                 value={quickCCName}
                 onChange={(e) => setQuickCCName(e.target.value)}
                 placeholder="Ej: Actividades acuáticas"
-                onKeyDown={(e) => e.key === "Enter" && quickCCName.trim() && createCCMut.mutate({ name: quickCCName.trim(), description: quickCCDesc || undefined })}
+                onKeyDown={(e) => e.key === "Enter" && quickCCName.trim() && !dupCC && createCCMut.mutate({ name: quickCCName.trim(), description: quickCCDesc || undefined })}
                 autoFocus
               />
             </div>
@@ -1553,11 +1573,12 @@ export default function ExpensesManager() {
               <Label>Descripción</Label>
               <Input value={quickCCDesc} onChange={(e) => setQuickCCDesc(e.target.value)} placeholder="Opcional" />
             </div>
+            {dupCC && <DuplicateNotice text={`Ya existe el centro de coste «${dupCC.name}».`} onUse={() => { setForm((f) => ({ ...f, costCenterId: String(dupCC.id) })); setQuickCCOpen(false); }} />}
             <div className="flex justify-end gap-2">
               <Button variant="outline" onClick={() => setQuickCCOpen(false)}>Cancelar</Button>
               <Button
                 onClick={() => quickCCName.trim() && createCCMut.mutate({ name: quickCCName.trim(), description: quickCCDesc || undefined })}
-                disabled={!quickCCName.trim() || createCCMut.isPending}
+                disabled={!quickCCName.trim() || !!dupCC || createCCMut.isPending}
               >Crear y seleccionar</Button>
             </div>
           </div>
@@ -1575,16 +1596,17 @@ export default function ExpensesManager() {
                 value={quickSupName}
                 onChange={(e) => setQuickSupName(e.target.value)}
                 placeholder="Ej: Ferretería López"
-                onKeyDown={(e) => e.key === "Enter" && quickSupName.trim() && createSupMut.mutate({ name: quickSupName.trim() })}
+                onKeyDown={(e) => e.key === "Enter" && quickSupName.trim() && !dupSup && createSupMut.mutate({ name: quickSupName.trim() })}
                 autoFocus
               />
             </div>
+            {dupSup && <DuplicateNotice text={`Ya existe el proveedor «${dupSup.name}».`} onUse={() => { setForm((f) => ({ ...f, supplierId: String(dupSup.id) })); setQuickSupOpen(false); }} />}
             <p className="text-xs text-muted-foreground">Podrás añadir NIF, IBAN y más datos desde la sección Proveedores.</p>
             <div className="flex justify-end gap-2">
               <Button variant="outline" onClick={() => setQuickSupOpen(false)}>Cancelar</Button>
               <Button
                 onClick={() => quickSupName.trim() && createSupMut.mutate({ name: quickSupName.trim() })}
-                disabled={!quickSupName.trim() || createSupMut.isPending}
+                disabled={!quickSupName.trim() || !!dupSup || createSupMut.isPending}
               >Crear y seleccionar</Button>
             </div>
           </div>
