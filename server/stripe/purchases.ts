@@ -15,7 +15,9 @@
  *    Stripe el paquete entra y los componentes salen, con el prorrateo de siempre (abono de lo no consumido de los
  *    componentes + cargo del paquete: se paga solo la diferencia). Los cambios pendientes de cobro de Stripe no
  *    admiten borrar partidas: la primera partida sustituida cambia al precio del paquete y las demás quedan a
- *    cantidad 0 (sin importe; la siguiente reducción las retira). Cualquier otra partida que desaparezca se rechaza.
+ *    cantidad 0 (sin importe). En cuanto el cambio queda confirmado, esa partida a 0 se retira con una
+ *    actualización SIN prorrateo (./swapCleanup.ts): la suscripción queda solo con la partida del paquete.
+ *    Cualquier otra partida que desaparezca se rechaza.
  *    Si la sustitución sale más barata (los dos módulos → el paquete), el pedido se confirma con la confirmación
  *    heredada (sin importe y sin capacidades nuevas) y el cambio de Stripe se reenvía siempre CON prorrateo.
  *  - Stripe aplica el cambio SOLO si cobra el prorrateo (`pending_if_incomplete` + `always_invoice`). Ningún
@@ -45,10 +47,9 @@ import { intervalCompatible, itemChanges, supportsPendingUpdate } from "./multip
 import type { StripeStore } from "./store";
 import { SubscriptionChangeError, sameItems, type ExpectedItem, type SubscriptionChange, type SubscriptionChangeStore } from "./changes";
 import { bundleReplaces } from "../catalog/quote";
+import { SWAP_SUFFIX, cleanupSwapZeros } from "./swapCleanup";
 
 type ItemChange = { id?: string; priceId?: string; quantity?: number; deleted?: true };
-/** Clave del cambio de Stripe de una sustitución por paquete: lleva abono, así que nunca se reenvía sin prorrateo. */
-const SWAP_SUFFIX = "-swap-v1";
 
 /**
  * Partidas de una compra en la forma que Stripe acepta en un cambio pendiente de cobro (precio y cantidad, nunca
@@ -487,10 +488,7 @@ export class ModulePurchaseService {
         await this.d.settle(sub.id).catch(() => undefined);
         order = await this.d.orchestrator.must(orderId);
       }
-      if (order.state === "active" || order.state === "superseded") {
-        await this.d.changes.resolve(change.id, "applied", null, this.now());
-        return this.result({ ...change, status: "applied" }, orderId, "applied", false);
-      }
+      if (order.state === "active" || order.state === "superseded") return this.applied(change, orderId, sub);
       return this.result(change, orderId, "processing", false);
     }
     // Pedido ya vigente y Stripe sin las partidas: solo puede ser una reducción (una compra no se activa sin
@@ -574,7 +572,7 @@ export class ModulePurchaseService {
       if (to < from) await reduce(key, offer.find((p) => p.key === key)?.name ?? key, "quantity", from, to);
     }
     if (!lines.length) throw new PurchaseError("invalid_input", "No hay nada que reducir");
-    // Las partidas a 0 que dejó una sustitución por paquete se retiran aquí (sin prorrateo: no tienen importe)
+    // Las partidas a 0 que aún quedaran de una sustitución por paquete también se retiran aquí (sin prorrateo: no tienen importe)
     const expected: ExpectedItem[] = Array.from(desired.entries()).filter(([, quantity]) => quantity > 0).map(([priceId, quantity]) => ({ priceId, quantity }));
     const items = itemChanges(sub.items ?? [], expected);
     const owned = new Set([current.request.plan, ...current.request.items.map((i) => i.key)]);
@@ -647,15 +645,22 @@ export class ModulePurchaseService {
         { subscriptionId: change.stripeSubscriptionId, items: change.items, prorationBehavior: "always_invoice", paymentBehavior: "pending_if_incomplete", metadata: { es_change_order_id: String(orderId) } },
         change.idempotencyKey,
       );
-      if (sameItems(r.subscription.items ?? [], change.expectedItems)) {
-        await this.d.changes.resolve(change.id, "applied", null, this.now());
-        return this.result({ ...change, status: "applied" }, orderId, "applied", false);
-      }
+      if (sameItems(r.subscription.items ?? [], change.expectedItems)) return this.applied(change, orderId, r.subscription);
     } catch (e) {
       opsLog("error", "Purchases", "swap_stripe_pending", { orderId, changeId: change.id, retryable: (e as { retryable?: boolean }).retryable === true });
       recordFailure("purchases.swap_stripe_pending");
     }
     return this.result(change, orderId, "processing", false);
+  }
+
+  /**
+   * Cambio confirmado en Stripe con el pedido vigente: retira la partida a 0 de una sustitución por paquete (sin
+   * prorrateo) y lo da por aplicado. Si esa limpieza falla, la compra ya está aplicada (derechos concedidos) pero el
+   * cambio sigue pendiente, con alerta, y la conciliación (`syncPending`) la reintenta.
+   */
+  private async applied(change: SubscriptionChange, orderId: number, sub: GwSubscription): Promise<PurchaseResult> {
+    if (await cleanupSwapZeros(this.d.gateway, change, sub)) await this.d.changes.resolve(change.id, "applied", null, this.now());
+    return this.result({ ...change, status: "applied" }, orderId, "applied", false);
   }
 
   /** Ajusta las partidas en Stripe sin prorrateo (ni cobro ni abono). Reenviable: misma clave, mismo resultado. */

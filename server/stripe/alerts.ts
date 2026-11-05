@@ -40,6 +40,7 @@ export const STRIPE_FAILURE_RULES: Record<string, FailureRule> = {
   "purchases.reduction_stuck": once("Compra de módulos: una reducción no quedó activa (revisar el pedido)"),
   "purchases.reduction_stripe_pending": once("Compra de módulos: Stripe no aplicó una reducción ya programada (la conciliación la reenvía; revisar)"),
   "purchases.swap_stripe_pending": once("Compra de módulos: Stripe no aplicó una sustitución por paquete ya vigente (la conciliación la reenvía con su prorrateo; revisar)"),
+  "purchases.swap_cleanup_pending": once("Compra de módulos: no se pudo retirar de Stripe la partida a 0 que dejó una sustitución por paquete (sin importe; la conciliación lo reintenta)", "warning"),
   "purchases.failed": repeated(3, 30, "Compra de módulos: errores repetidos", "critical"),
   "stripe.fiscal_document_failed": once("Facturación: el sistema de facturación legal rechazó un documento (queda en la cola para revisión)"),
   // Activación sin pago de Stripe en el entorno real: cada una queda a la vista del equipo (auditoría)

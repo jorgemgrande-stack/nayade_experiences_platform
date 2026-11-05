@@ -48,11 +48,17 @@ export class SubscriptionChangeError extends Error {
   }
 }
 
-/** ¿La suscripción tiene exactamente estas partidas (precio y cantidad, sin importar el orden)? */
+/**
+ * ¿La suscripción tiene exactamente estas partidas (precio y cantidad, sin importar el orden)? Una partida a 0 (la
+ * deja una sustitución por paquete hasta que se retira) no cobra nada: está o no, da igual a ambos lados.
+ */
 export function sameItems(a: ExpectedItem[], b: ExpectedItem[]): boolean {
-  if (a.length !== b.length) return false;
-  const m = new Map(a.map((x) => [x.priceId, x.quantity]));
-  return b.every((x) => m.get(x.priceId) === x.quantity);
+  const live = (x: ExpectedItem[]) => x.filter((i) => i.quantity !== 0);
+  const la = live(a);
+  const lb = live(b);
+  if (la.length !== lb.length) return false;
+  const m = new Map(la.map((x) => [x.priceId, x.quantity]));
+  return lb.every((x) => m.get(x.priceId) === x.quantity);
 }
 
 export interface SubscriptionChangeStore {
