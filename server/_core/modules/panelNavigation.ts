@@ -54,6 +54,21 @@ export interface PanelNavigationDeps {
   /** Licencia de módulo + dependencias + flag operativo. */
   moduleAvailable: (moduleId: string) => Promise<boolean>;
   hasPermission: (key: string) => Promise<boolean>;
+  /** Activación más reciente de una capacidad (ms) o null (sin licencia o sin dato): marca las extensiones nuevas. */
+  capabilitySince?: (capabilityId: string) => number | null;
+}
+
+/** Activación más reciente entre las capacidades visibles de las entradas (null si ninguna lo dice). */
+function sinceOf(items: Array<{ capabilities: string[]; allCapabilities?: string[]; children?: Array<{ capabilities: string[] }> }>, deps: PanelNavigationDeps): number | null {
+  if (!deps.capabilitySince) return null;
+  let max: number | null = null;
+  const caps = new Set(items.flatMap((i) => [...i.capabilities, ...(i.allCapabilities ?? []), ...(i.children ?? []).flatMap((c) => c.capabilities)]));
+  for (const c of Array.from(caps)) {
+    if (deps.capabilityState(c) === null) continue;
+    const t = deps.capabilitySince(c);
+    if (t != null && (max == null || t > max)) max = t;
+  }
+  return max;
 }
 
 const navRole = (role: string) => (role === READONLY_ROLE ? "agente" : role);
@@ -79,13 +94,15 @@ export async function resolvePanelNavigation(sources: PanelExtensionSource[], de
     for (const i of [...(panel.section?.items ?? []), ...(panel.items ?? []), ...(panel.tabs ?? []), ...(panel.settings ?? [])]) collect(i);
     const granted = new Set<string>();
     for (const k of Array.from(wanted)) if (await deps.hasPermission(k)) granted.add(k);
-    entries.push(
-      ...panelEntries(s.manifest.id, panel, s.capability, {
-        roleAllowed: (roles) => roles.includes(role),
-        hasPermission: (k) => granted.has(k),
-        capabilitiesVisible: (caps) => caps.some((c) => deps.capabilityState(c) !== null),
-      }),
-    );
+    for (const e of panelEntries(s.manifest.id, panel, s.capability, {
+      roleAllowed: (roles) => roles.includes(role),
+      hasPermission: (k) => granted.has(k),
+      capabilitiesVisible: (caps) => caps.some((c) => deps.capabilityState(c) !== null),
+    })) {
+      if (e.kind === "section") entries.push({ ...e, since: sinceOf(e.items, deps) });
+      else if (e.kind === "item") entries.push({ ...e, since: sinceOf([e.item], deps) });
+      else entries.push(e);
+    }
   }
   return { entries, routes };
 }

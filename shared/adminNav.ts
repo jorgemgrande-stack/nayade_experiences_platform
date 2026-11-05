@@ -50,12 +50,22 @@ export interface NavItem extends NavLeaf {
   /** Módulo del registro de módulos (licencia de módulo + dependencias + flag). */
   moduleKey?: string;
   children?: NavLeaf[];
+  /** Aportada por una extensión contratada (no por el Core). */
+  extension?: NavExtension;
+}
+
+/** Extensión que aporta una sección o entrada del menú y cuándo se activó (para «Nuevo»). */
+export interface NavExtension {
+  moduleId: string;
+  since: number | null;
 }
 
 export interface NavSection {
   id: string;
   /** Título visible del grupo; null = sin título. */
   label: string | null;
+  /** Sección propia de una extensión contratada (se pinta como bloque diferenciado). */
+  extension?: NavExtension;
   items: NavItem[];
 }
 
@@ -78,6 +88,7 @@ export interface ResolvedSection {
   id: string;
   label: string | null;
   items: ResolvedItem[];
+  extension?: NavExtension;
 }
 
 // ── Menú de siempre (Náyade, modo single) ──────────────────────────────────────
@@ -505,7 +516,7 @@ export function mergeExtensions(sections: readonly NavSection[], entries: readon
     const target = out.find((s) => s.id === e.sectionId) ?? out.find((s) => s.id === DEFAULT_EXTENSION_SECTION);
     if (!target || !fresh(e.item.key)) continue;
     const list = extra.get(target.id) ?? [];
-    list.push({ order: e.order, item: itemFromPanel(e.item) });
+    list.push({ order: e.order, item: { ...itemFromPanel(e.item), extension: { moduleId: e.moduleId, since: e.since ?? null } } });
     extra.set(target.id, list);
   }
   for (const s of out) {
@@ -530,7 +541,7 @@ export function mergeExtensions(sections: readonly NavSection[], entries: readon
   for (const e of sectionEntries.slice().sort((a, b) => a.section.order - b.section.order)) {
     if (out.some((s) => s.id === e.section.id) || own.some((s) => s.id === e.section.id)) continue;
     const items = e.items.filter((i) => fresh(i.key)).map(itemFromPanel);
-    if (items.length) own.push({ id: e.section.id, label: e.section.label, items });
+    if (items.length) own.push({ id: e.section.id, label: e.section.label, items, extension: { moduleId: e.moduleId, since: e.since ?? null } });
   }
   if (own.length) {
     const at = out.findIndex((s) => s.id === EXTENSION_SECTIONS_BEFORE);
@@ -585,7 +596,7 @@ export function resolveNav(sections: NavSection[], ctx: NavContext, extensions?:
       }
       items.push({ ...item, readOnly: forceReadOnly || state === "read_only", children });
     }
-    if (items.length) out.push({ id: section.id, label: section.label, items });
+    if (items.length) out.push({ id: section.id, label: section.label, items, ...(section.extension ? { extension: section.extension } : {}) });
   }
   return out;
 }

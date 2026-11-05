@@ -25,6 +25,7 @@ export const panelRouter = router({
     if (!(PANEL_ROLES as readonly string[]).includes(role)) throw new TRPCError({ code: "FORBIDDEN" });
     const mode = getTenantMode();
     let capabilityState: (id: string) => "active" | "read_only" | null = () => "active";
+    let capabilitySince: (id: string) => number | null = () => null;
     if (mode === "multi") {
       const access = getCapabilityAccess();
       let grants;
@@ -35,12 +36,17 @@ export const panelRouter = router({
       }
       // El mismo cálculo que `subscription.overview` (menú y guardián coinciden)
       capabilityState = capabilityStateFrom(buildSubscriptionOverview({ mode, enforcing: access.enforcing(), grants, now: access.currentTime() }));
+      // Última activación de cada capacidad (para «Nuevo» en el menú)
+      const since = new Map<string, number>();
+      for (const g of grants) if (g.status === "active" && g.updatedAt > (since.get(g.capabilityId) ?? 0)) since.set(g.capabilityId, g.updatedAt);
+      capabilitySince = (id) => since.get(id) ?? null;
     }
     const modules = getModuleAccess();
     return resolvePanelNavigation(panelExtensionSources(), {
       coreVersion: CORE_VERSION,
       role,
       capabilityState,
+      capabilitySince,
       moduleAvailable: (id) => modules.isModuleAvailable(id).catch(() => false),
       hasPermission: (key) => checkPermission(ctx.user.id, role, key, ["admin"]),
     });
