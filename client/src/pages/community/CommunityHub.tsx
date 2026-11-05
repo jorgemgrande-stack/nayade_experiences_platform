@@ -1,6 +1,7 @@
 /**
  * /comunidad/:slug — muro de una comunidad para sus miembros: publicar, comentar (un nivel de respuesta), «me gusta»,
- * guardados y miembros. Moderadores y administradores de la comunidad ocultan, aprueban, fijan y bloquean desde aquí.
+ * guardados, miembros, encuestas y propuestas, y reportar contenido. Moderadores y administradores de la comunidad
+ * ocultan, aprueban, fijan, bloquean y resuelven reportes desde aquí.
  * Los permisos los vuelve a comprobar el servidor en cada operación.
  */
 import { useState } from "react";
@@ -16,6 +17,7 @@ import { Input } from "@/components/ui/input";
 import { toastError } from "@/lib/errorMessage";
 import { COMMENT_MAX, MEMBER_ROLE_LABELS, POST_BODY_MAX, POST_STATUS_LABELS, TITLE_MAX } from "@shared/communities";
 import CommunityLayout, { CommunityNotice, isUnlicensed } from "./CommunityLayout";
+import { MemberPolls, MemberProposals, MemberReports, ReportButton } from "./CommunityPolls";
 
 type Out = inferRouterOutputs<AppRouter>["communities"]["member"];
 type Post = Out["feed"][number];
@@ -88,6 +90,7 @@ function Comments({ post, perms }: { post: Post; perms: Perms }) {
         {!isReply && !c.hidden && canComment && <button type="button" className="hover:text-slate-800" onClick={() => setReplyTo({ id: c.id, name: c.authorName })}>Responder</button>}
         {c.isOwn && !c.hidden && <button type="button" className="hover:text-slate-800" onClick={() => removeOwn.mutate({ commentId: c.id })}>Retirar</button>}
         {perms.moderate && <button type="button" className="hover:text-slate-800" onClick={() => moderate.mutate({ commentId: c.id, hidden: !c.hidden })}>{c.hidden ? "Volver a mostrar" : "Ocultar"}</button>}
+        {!c.isOwn && !c.hidden && <ReportButton target="comment" targetId={c.id} />}
       </div>
       {c.replies.length > 0 && <ul className="mt-2 space-y-2">{c.replies.map((r) => <Item key={r.id} c={r} isReply />)}</ul>}
     </li>
@@ -144,6 +147,7 @@ function PostCard({ post, perms }: { post: Post; perms: Perms }) {
         <button type="button" className="inline-flex items-center gap-1 hover:text-slate-900" onClick={() => save.mutate({ postId: post.id })} aria-pressed={post.savedByMe}>
           {post.savedByMe ? <BookmarkCheck className="h-4 w-4" aria-hidden="true" /> : <Bookmark className="h-4 w-4" aria-hidden="true" />}{post.savedByMe ? "Guardada" : "Guardar"}
         </button>
+        {!post.isOwn && post.status === "published" && <ReportButton target="post" targetId={post.id} />}
         {perms.moderate && (
           <span className="ml-auto flex flex-wrap gap-2 text-xs">
             {post.status !== "published" && <button type="button" className="inline-flex items-center gap-1 hover:text-slate-900" onClick={() => moderate.mutate({ postId: post.id, action: "publish" })}><CheckCircle2 className="h-3.5 w-3.5" aria-hidden="true" />{post.status === "pending" ? "Aprobar" : "Mostrar"}</button>}
@@ -194,14 +198,18 @@ function Members({ communityId, perms }: { communityId: number; perms: Perms }) 
   );
 }
 
+const TABS = ["muro", "encuestas", "propuestas", "guardados", "miembros", "reportes"] as const;
+type Tab = (typeof TABS)[number];
+const TAB_LABELS: Record<Tab, string> = { muro: "Muro", encuestas: "Encuestas", propuestas: "Propuestas", guardados: "Guardados", miembros: "Miembros", reportes: "Reportes" };
+
 export default function CommunityHub() {
   const { slug } = useParams<{ slug: string }>();
   const utils = trpc.useUtils();
   const head = trpc.communities.member.community.useQuery({ slug }, { retry: false });
   const c = head.data?.community;
   const active = head.data?.membership?.status === "active";
-  const [tab, setTab] = useState<"muro" | "guardados" | "miembros">("muro");
-  const feed = trpc.communities.member.feed.useQuery({ communityId: c?.id ?? 0, savedOnly: tab === "guardados" }, { enabled: !!c && active && tab !== "miembros" });
+  const [tab, setTab] = useState<Tab>("muro");
+  const feed = trpc.communities.member.feed.useQuery({ communityId: c?.id ?? 0, savedOnly: tab === "guardados" }, { enabled: !!c && active && (tab === "muro" || tab === "guardados") });
   const join = trpc.communities.member.join.useMutation({ onSuccess: () => utils.communities.member.community.invalidate(), onError: (e) => toastError(e) });
   const leave = trpc.communities.member.leave.useMutation({ onSuccess: () => { toast.success("Has salido de la comunidad"); utils.communities.member.community.invalidate(); }, onError: (e) => toastError(e) });
 
@@ -238,15 +246,15 @@ export default function CommunityHub() {
           : <CommunityNotice title="Únete para participar" text={c.visibility === "open" ? "Esta comunidad es abierta." : "La administración aprobará tu solicitud."} action={<Button onClick={() => join.mutate({ communityId: c.id })} disabled={join.isPending}>{c.visibility === "open" ? "Unirme" : "Solicitar unirme"}</Button>} />
         ) : (
           <>
-            <nav className="flex gap-1 border-b border-slate-200" aria-label="Secciones de la comunidad">
-              {(["muro", "guardados", "miembros"] as const).map((t) => (
+            <nav className="flex gap-1 overflow-x-auto border-b border-slate-200" aria-label="Secciones de la comunidad">
+              {TABS.filter((t) => t !== "reportes" || perms.moderate).map((t) => (
                 <button key={t} type="button" onClick={() => setTab(t)} aria-current={tab === t ? "page" : undefined}
                   className={`-mb-px border-b-2 px-3 py-2 text-sm font-medium ${tab === t ? "border-[var(--portal-accent)] text-slate-900" : "border-transparent text-slate-500 hover:text-slate-900"}`}>
-                  {t === "muro" ? "Muro" : t === "guardados" ? "Guardados" : "Miembros"}
+                  {TAB_LABELS[t]}
                 </button>
               ))}
             </nav>
-            {tab === "miembros" ? <Members communityId={c.id} perms={perms} /> : (
+            {tab === "miembros" ? <Members communityId={c.id} perms={perms} /> : tab === "encuestas" ? <MemberPolls communityId={c.id} /> : tab === "propuestas" ? <MemberProposals communityId={c.id} perms={perms} /> : tab === "reportes" ? <MemberReports communityId={c.id} /> : (
               <div className="space-y-4">
                 {tab === "muro" && <Composer communityId={c.id} perms={perms} />}
                 {feed.isLoading ? <p className="text-sm text-slate-500">Cargando…</p> : (feed.data ?? []).length === 0 ? (

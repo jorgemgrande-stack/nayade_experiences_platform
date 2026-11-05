@@ -14,6 +14,8 @@
  *   - tpv_alert             → 4 sub-tipos críticos de cardTerminalBatches/operations
  *   - upcoming_reservation  → reservas confirmadas (paid) con bookingDate=mañana
  *   - task                  → tareas del CRM del usuario que vencen hoy o vencidas (crm-tasks)
+ *   - community             → comunidades con solicitudes, publicaciones, propuestas o reportes por revisar
+ *                              (social-token-net; solo administración)
  *
  * Dismiss es por-usuario: silenciar un item afecta solo a quien lo silencia.
  */
@@ -53,7 +55,8 @@ type FeedKind =
   | "pending_payment"
   | "tpv_alert"
   | "upcoming_reservation"
-  | "task";
+  | "task"
+  | "community";
 
 interface FeedItem {
   kind: FeedKind;
@@ -429,6 +432,38 @@ async function sourceTasks(userId: number): Promise<FeedSection> {
   }
 }
 
+/**
+ * Comunidades con algo por revisar (social-token-net): solicitudes de entrada, publicaciones en revisión previa,
+ * propuestas de miembros y reportes. Solo administración. Silenciar un aviso lo calla hasta que cambie lo pendiente
+ * (el id lleva la comunidad y el total). Sin la capacidad o sin las migraciones 0027/0028, vacía.
+ */
+async function sourceCommunities(userId: number, role: string): Promise<FeedSection> {
+  const empty: FeedSection = { kind: "community", label: "Comunidades por revisar", icon: "👥", severity: "info", total: 0, items: [], ctaAllPath: "/admin/comunidades" };
+  if (role !== "admin") return empty;
+  try {
+    const decision = await getCapabilityAccess().check("social-token-net", { write: false });
+    if (!decision.allowed) return empty;
+    const { pendingByCommunity } = await import("../communityPollsDb");
+    const dismissed = await getDismissedIds(userId, "community");
+    const all = (await pendingByCommunity()).map((c) => ({ ...c, entityId: c.communityId * 10_000 + Math.min(9_999, c.members + c.posts + c.proposals + c.reports) }));
+    const pending = all.filter((c) => !dismissed.has(c.entityId));
+    const plural = (n: number, one: string, many: string) => (n ? `${n} ${n === 1 ? one : many}` : null);
+    const items: FeedItem[] = pending.slice(0, 5).map((c) => ({
+      kind: "community" as const,
+      entityId: c.entityId,
+      title: c.name,
+      subtitle: [plural(c.members, "solicitud", "solicitudes"), plural(c.posts, "publicación", "publicaciones"), plural(c.proposals, "propuesta", "propuestas"), plural(c.reports, "reporte", "reportes")].filter(Boolean).join(" · "),
+      amount: null,
+      severity: c.reports > 0 ? ("warning" as const) : ("info" as const),
+      ctaPath: `/admin/comunidades/${c.communityId}`,
+      createdAtMs: 0,
+    }));
+    return { ...empty, severity: pending.some((c) => c.reports > 0) ? "warning" : "info", total: pending.length, items };
+  } catch {
+    return empty;
+  }
+}
+
 // ─── Router ─────────────────────────────────────────────────────────────────
 
 export const notificationsRouter = router({
@@ -439,7 +474,7 @@ export const notificationsRouter = router({
   feed: staffProcedure.query(async ({ ctx }) => {
     const userId = ctx.user.id;
     const [
-      sLeads, sQuotes, sCancellations, sPending, sTpv, sUpcoming, sTasks,
+      sLeads, sQuotes, sCancellations, sPending, sTpv, sUpcoming, sTasks, sCommunities,
     ] = await Promise.all([
       sourceLeads(userId),
       sourceQuotes(userId),
@@ -448,6 +483,7 @@ export const notificationsRouter = router({
       sourceTpvAlerts(userId),
       sourceUpcomingReservations(userId),
       sourceTasks(userId),
+      sourceCommunities(userId, String(ctx.user.role)),
     ]);
 
     // Textos de las secciones según el modo de la empresa (pyme: oportunidades y pedidos)
@@ -461,6 +497,7 @@ export const notificationsRouter = router({
       sPending,
       sTpv,
       sTasks,
+      sCommunities,
       sLeads,
       sQuotes,
       sUpcoming,       // info al final (no es alerta)
@@ -479,7 +516,7 @@ export const notificationsRouter = router({
   dismiss: staffProcedure
     .input(z.object({
       kind: z.enum([
-        "lead", "quote", "cancellation", "pending_payment", "tpv_alert", "upcoming_reservation", "task",
+        "lead", "quote", "cancellation", "pending_payment", "tpv_alert", "upcoming_reservation", "task", "community",
       ]),
       entityId: z.number().int(),
     }))
@@ -497,7 +534,7 @@ export const notificationsRouter = router({
   dismissAll: staffProcedure
     .input(z.object({
       kind: z.enum([
-        "lead", "quote", "cancellation", "pending_payment", "tpv_alert", "upcoming_reservation", "task",
+        "lead", "quote", "cancellation", "pending_payment", "tpv_alert", "upcoming_reservation", "task", "community",
       ]),
     }))
     .mutation(async ({ input, ctx }) => {
@@ -535,6 +572,8 @@ export const notificationsRouter = router({
         entityIds = rows.map(r => r.id);
       } else if (input.kind === "task") {
         entityIds = (await dueTasksFor(userId).catch(() => [])).map(t => t.id);
+      } else if (input.kind === "community") {
+        entityIds = (await sourceCommunities(userId, String(ctx.user.role))).items.map(i => i.entityId);
       }
 
       if (entityIds.length === 0) return { ok: true, dismissed: 0 };

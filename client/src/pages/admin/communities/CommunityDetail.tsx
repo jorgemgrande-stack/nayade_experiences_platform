@@ -1,6 +1,7 @@
 /**
  * Ficha de una comunidad (Social Token Net · Comunidades): indicadores de participación, miembros (incorporación desde
  * el CRM, usuarios del panel o invitación por correo; roles, aprobación y bloqueo), publicaciones y moderación,
+ * encuestas, propuestas de miembros y reportes,
  * configuración y actividad. Solo administración; el servidor vuelve a comprobar la licencia y el rol en cada operación.
  */
 import { useMemo, useState } from "react";
@@ -40,6 +41,7 @@ import {
   type PostStatus,
 } from "@shared/communities";
 import { CommunityForm } from "./CommunityForm";
+import { PollsTab, ProposalsTab, ReportsTab } from "./CommunityPollsTabs";
 
 type Out = inferRouterOutputs<AppRouter>["communities"]["admin"];
 type MemberRow = Out["members"]["list"][number];
@@ -73,6 +75,11 @@ function Summary({ communityId }: { communityId: number }) {
         <Stat label="Participación" value={`${s.indicators.participationRate} %`} hint={`${s.participants} participan en ${s.windowDays} días`} />
         <Stat label="Publicaciones" value={s.content.posts} hint={`${s.indicators.interactionsPerPost} interacciones por publicación`} />
         <Stat label="Comentarios y me gusta" value={s.content.comments + s.content.reactions} hint={`${s.content.comments} comentarios · ${s.content.reactions} me gusta · ${s.content.saves} guardados`} />
+      </div>
+      <div className="grid gap-3 sm:grid-cols-3">
+        <Stat label="Encuestas" value={s.participation.polls} hint={`${s.participation.openPolls} abiertas · ${s.participation.responses} respuestas`} />
+        <Stat label="Propuestas" value={s.participation.proposals} hint={`${s.participation.pendingProposals} por revisar`} />
+        <Stat label="Reportes pendientes" value={s.participation.openReports} />
       </div>
       {(s.members.pending > 0 || s.content.pendingPosts > 0) && (
         <p className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900 dark:border-amber-500/40 dark:bg-amber-500/10 dark:text-amber-200">
@@ -517,12 +524,18 @@ export default function CommunityDetail() {
                 <TabsTrigger value="resumen">Resumen</TabsTrigger>
                 <TabsTrigger value="miembros">Miembros</TabsTrigger>
                 <TabsTrigger value="publicaciones">Publicaciones</TabsTrigger>
+                <TabsTrigger value="encuestas">Encuestas</TabsTrigger>
+                <TabsTrigger value="propuestas">Propuestas</TabsTrigger>
+                <TabsTrigger value="reportes">Reportes</TabsTrigger>
                 <TabsTrigger value="configuracion">Configuración</TabsTrigger>
                 <TabsTrigger value="actividad">Actividad</TabsTrigger>
               </TabsList>
               <TabsContent value="resumen"><Summary communityId={c.id} /></TabsContent>
               <TabsContent value="miembros"><MembersTab communityId={c.id} canEdit={canEdit} /></TabsContent>
               <TabsContent value="publicaciones"><PostsTab communityId={c.id} canEdit={canEdit} /></TabsContent>
+              <TabsContent value="encuestas"><PollsTab communityId={c.id} canEdit={canEdit} /></TabsContent>
+              <TabsContent value="propuestas"><ProposalsTab communityId={c.id} canEdit={canEdit} /></TabsContent>
+              <TabsContent value="reportes"><ReportsTab communityId={c.id} canEdit={canEdit} /></TabsContent>
               <TabsContent value="configuracion">
                 <div className="max-w-2xl rounded-xl border border-border bg-card p-4">
                   <CommunityForm
