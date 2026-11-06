@@ -10,6 +10,7 @@
  *     (GET /expenses?origin=stripe: solo los gastos automáticos de Stripe)
  *   GET /expenses/export?format=xlsx|pdf&<filtros de la lista>                             exportar
  *   POST /expenses/:id/register · /expenses/:id/void · /expenses/:id/payments              contabilizar
+ *   DELETE /expenses/:id (solo sin efecto contable: borrador o anulado sin asiento)          contabilizar
  *   POST /expense-payments/:id/reverse                                                     contabilizar
  *   GET|POST /documents · GET /documents/:id/content · POST /documents/:id/archive          lectura | gestión
  *   GET|POST /recurring · PATCH /recurring/:id · GET /recurring/preview · POST /recurring/run   lectura | gestión
@@ -277,6 +278,8 @@ export function mountFinanceOpsRoutes(r: Router, ops: FinanceOpsService, analysi
     res.json({ item: ops.expenseDto(e) });
   }));
   r.post("/expenses/:id/register", ...canPost, wrap(async (req, res) => void res.json({ item: ops.expenseDto(await ops.registerExpense(id.parse(req.params.id), actorOf(req))) })));
+  // Borrado definitivo, con sesión de operador: solo lo que nunca tuvo efecto contable (lo demás se anula)
+  r.delete("/expenses/:id", ...canPost, wrap(async (req, res) => void res.json(await ops.deleteExpense(id.parse(req.params.id), actorOf(req)))));
   r.post("/expenses/:id/void", ...canPost, wrap(async (req, res) => {
     const b = reason.parse(body(req));
     res.json({ item: ops.expenseDto(await ops.voidExpense(id.parse(req.params.id), b.reason, actorOf(req))) });

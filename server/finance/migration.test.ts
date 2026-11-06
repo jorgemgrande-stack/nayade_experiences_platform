@@ -121,11 +121,23 @@ describe("migraciones 0033, 0035, 0036, 0037, 0038 y 0039 y módulo de finanzas:
     for (const k of ["uq_fin_tax_corporate_entry_source (source_key)", "uq_fin_tax_corporate_entry_live (live_year)"]) expect(sql).toContain(`UNIQUE KEY ${k}`);
   });
 
-  it("el código de server/finance no borra datos y nada del conjunto es extraordinario", () => {
-    for (const f of moduleFiles.filter((x) => !/\.test\.ts$/.test(x))) expect(fs.readFileSync(f, "utf8")).not.toMatch(/\b(DELETE\s+FROM|TRUNCATE|DROP\s+(TABLE|DATABASE|SCHEMA|COLUMN|INDEX))\b/i);
+  it("el código de server/finance no borra datos salvo el gasto sin asiento, y nada más del conjunto es extraordinario", () => {
+    // Única excepción (decisión de Jorge, 06/11/2026): borrar un gasto que nunca tuvo efecto contable y sus documentos
+    // (opsStore.deleteExpense, con la fila bloqueada y expenseDeleteProblem). Ningún otro borrado.
+    const ALLOWED = ["DELETE FROM fin_documents WHERE owner_type = 'expense' AND owner_id = ?", "DELETE FROM fin_expenses WHERE id = ?"];
+    for (const f of moduleFiles.filter((x) => !/\.test\.ts$/.test(x))) {
+      let code = fs.readFileSync(f, "utf8");
+      if (f.endsWith("opsStore.ts"))
+        for (const a of ALLOWED) {
+          expect(code.split(a).length - 1, a).toBe(1);
+          code = code.replace(a, "");
+        }
+      expect(code, f).not.toMatch(/\b(DELETE\s+FROM|TRUNCATE|DROP\s+(TABLE|DATABASE|SCHEMA|COLUMN|INDEX))\b/i);
+    }
     const files = [...MIGRATIONS.map(rel), ...moduleFiles.map(rel)];
     const existsInBase = (name: string) => !NEW_SWITCHES.has(name);
-    expect(extraordinaryChanges(files, addedDiff([...MIGRATIONS, ...moduleFiles]), (f) => (f.endsWith(".sql") ? sqlOf(path.join(ROOT, f)) : null), { existsInBase })).toEqual([]);
+    // El clasificador sí lo ve: su publicación es extraordinaria (la aprueba Jorge en GitHub)
+    expect(extraordinaryChanges(files, addedDiff([...MIGRATIONS, ...moduleFiles]), (f) => (f.endsWith(".sql") ? sqlOf(path.join(ROOT, f)) : null), { existsInBase })).toEqual([expect.stringMatching(/opsStore\.ts: operación destructiva de datos/)]);
     // Sin `existsInBase` el interruptor se trataría como uno ya existente: confirma que la prueba lo ve
     expect(extraordinaryChanges(files, addedDiff(moduleFiles), () => null).join(" ")).toMatch(/CP_FINANCE_RECURRING_ENABLED/);
     expect(extraordinaryChanges(files, addedDiff(moduleFiles), () => null).join(" ")).toMatch(/CP_FINANCE_TAX_REMINDERS_ENABLED/);

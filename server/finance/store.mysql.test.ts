@@ -306,6 +306,17 @@ describe.skipIf(!URL_)("operaciones con MySQL real (CRM 0035)", () => {
     expect(await count("SELECT COUNT(*) AS n FROM fin_entries")).toBe(before);
   });
 
+  it("borrado de un gasto sin asiento (con sus documentos) y rechazo con asiento, pagos u origen automático", async () => {
+    const d = await ops.createExpense({ kind: "invoice", supplierId: ids.supplier, categoryId: ids.category, invoiceNumber: "F-DEL", invoiceDate: "2026-10-05", description: "Borrar", baseCents: 1_000, taxRateBp: 2100 }, ACTOR);
+    await ops.uploadDocument({ ownerType: "expense", ownerId: d.id, filename: "f.pdf", contentBase64: b64("%PDF-1.7 y") }, ACTOR);
+    expect(await ops.deleteExpense(d.id, ACTOR)).toEqual({ deleted: true, id: d.id, documents: 1 });
+    expect(await count("SELECT COUNT(*) AS n FROM fin_expenses WHERE id = ?", [d.id])).toBe(0);
+    expect(await count("SELECT COUNT(*) AS n FROM fin_documents WHERE owner_type = 'expense' AND owner_id = ?", [d.id])).toBe(0);
+    await expect(ops.deleteExpense(ids.expense, ACTOR)).rejects.toMatchObject({ code: "invalid_state" });
+    await expect(ops.deleteExpense(d.id, ACTOR)).rejects.toMatchObject({ code: "not_found" });
+    expect(await count("SELECT COUNT(*) AS n FROM fin_audit_log WHERE action = 'expense.delete' AND entity_id = ?", [String(d.id)])).toBe(1);
+  });
+
   it("documento binario íntegro, recurrentes idempotentes en paralelo, caja, resumen y auditoría", async () => {
     const pdf = Buffer.concat([Buffer.from("%PDF-1.7\n"), Buffer.from(Array.from({ length: 256 }, (_, i) => i))]);
     const doc = await ops.uploadDocument({ ownerType: "expense", ownerId: ids.expense, filename: "f.pdf", contentBase64: b64(pdf) }, ACTOR);
