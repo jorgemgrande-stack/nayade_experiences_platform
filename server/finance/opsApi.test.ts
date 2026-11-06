@@ -226,6 +226,26 @@ describe("API /cp/v1/finance, fase 1B: permisos y formas del CRM", () => {
     expect((await call("POST", `/documents/${up.json.item.id}/archive`, WRITE)).json.item.archived).toBe(true);
   });
 
+  it("borrar un gasto: solo con sesión y sin efecto contable; se lleva sus documentos", async () => {
+    const body = { kind: "invoice", supplierId: ids.supplier, categoryId: ids.category, costCenterId: null, invoiceNumber: "F-BORRAR", invoiceDate: "2026-10-02", accrualDate: null, dueDate: null, description: "Borrador a borrar", baseCents: 1_000, taxRateBp: 2100, deductibleBp: 10_000, withholdingRateBp: 0, rectifiesExpenseId: null };
+    const d = (await call("POST", "/expenses", WRITE, body)).json.item;
+    await call("POST", "/documents", WRITE, { ownerType: "expense", ownerId: d.id, filename: "factura.pdf", contentBase64: b64("%PDF-1.4 x") });
+    expect((await call("DELETE", `/expenses/${d.id}`, READ)).status).toBe(403);
+    const svc = await call("DELETE", `/expenses/${d.id}`, WRITE);
+    expect(svc.status).toBe(403);
+    expect(svc.json.error).toBe("operator_session_required");
+    const del = await call("DELETE", `/expenses/${d.id}`, SALES);
+    expect(del.status).toBe(200);
+    expect(del.json).toEqual({ deleted: true, id: d.id, documents: 1 });
+    expect((await call("GET", `/expenses/${d.id}`, READ)).status).toBe(404);
+    expect((await call("GET", `/documents?ownerType=expense&ownerId=${d.id}`, READ)).json.items).toEqual([]);
+    // Registrado (con asiento y pagos): no se borra, se anula
+    const reg = await call("DELETE", `/expenses/${ids.expense}`, SALES);
+    expect(reg.status).toBe(409);
+    expect(reg.json.message).toMatch(/asiento/);
+    expect((await call("GET", `/expenses/${ids.expense}`, READ)).status).toBe(200);
+  });
+
   it("recurrentes: { items }, vista previa y generación de borradores", async () => {
     const t = await call("POST", "/recurring", WRITE, { supplierId: ids.supplier, categoryId: ids.category, costCenterId: null, description: "Servidor", baseCents: 5_000, taxRateBp: 2100, deductibleBp: 10_000, withholdingRateBp: 0, frequency: "monthly", dayOfMonth: 1, startDate: "2026-10-01", endDate: null });
     expect(t.status).toBe(201);

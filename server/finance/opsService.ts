@@ -623,6 +623,17 @@ export class FinanceOpsService {
   }
 
   /** Anula un gasto. Registrado: revierte su asiento y exige que no tenga pagos vigentes (revertirlos antes). */
+  /**
+   * Borrado definitivo de un gasto sin efecto contable (borrador, o anulado que nunca tuvo asiento) con sus documentos.
+   * Lo comprueba el almacén con la fila bloqueada (`expenseDeleteProblem`); queda en la auditoría con sus datos.
+   */
+  async deleteExpense(id: number, actor: FinanceActor) {
+    const e = await this.expense(id);
+    const { documents } = await this.s.deleteExpense(id);
+    await this.audit(actor, "expense.delete", "expense", id, { status: e.status, supplierName: e.supplierName, invoiceNumber: e.invoiceNumber, invoiceDate: e.invoiceDate, description: e.description, totalCents: e.totalCents, documents });
+    return { deleted: true as const, id, documents };
+  }
+
   async voidExpense(id: number, reason: string, actor: FinanceActor) {
     const why = reasonOf(reason, "la anulación");
     const e = await this.expense(id);

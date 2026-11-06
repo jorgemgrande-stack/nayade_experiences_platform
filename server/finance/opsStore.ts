@@ -101,6 +101,11 @@ export interface FinanceOpsStore {
   markExpenseSettled(id: number): Promise<void>;
   /** `from` → void; false si ya no estaba en ese estado. */
   markExpenseVoid(id: number, from: ExpenseStatus, o: { by: string; at: number; reason: string }): Promise<boolean>;
+  /**
+   * Borra definitivamente un gasto que nunca tuvo efecto contable (`expenseDeleteProblem`) y sus documentos, comprobándolo
+   * de nuevo con la fila bloqueada. Devuelve cuántos documentos se borraron con él.
+   */
+  deleteExpense(id: number): Promise<{ documents: number }>;
   /** Recalcula lo pagado (pagos vigentes) y el estado de pago. */
   refreshExpensePaid(id: number): Promise<ExpenseRow>;
   existingExpenseSources(keys: string[]): Promise<Set<string>>;
@@ -180,6 +185,19 @@ const liveNumber = (e: Pick<Expense, "status" | "invoiceNumber">) => (e.status =
 const NUMBER_TAKEN = "Ya hay una factura de este proveedor con ese número";
 
 /** Comprobación de un pago frente al gasto (bajo bloqueo). `paid` = suma de los pagos vigentes. */
+/**
+ * ¿Se puede borrar el gasto? Solo si nunca tuvo efecto contable: borrador, o anulado sin asiento; sin pagos, sin otro gasto
+ * que lo rectifique y sin origen automático (Stripe o recurrente: el generador lo volvería a crear). Lo demás se anula.
+ */
+export function expenseDeleteProblem(e: Pick<Expense, "status" | "entryId" | "sourceKey"> | null, o: { payments: number; rectifiedBy: number }): FinanceError | null {
+  if (!e) return new FinanceError("not_found", "Gasto no encontrado");
+  if (e.status === "registered" || e.entryId !== null) return new FinanceError("invalid_state", "El gasto tiene asiento en el libro diario: no se borra, se anula (el asiento queda revertido y trazable)");
+  if (e.sourceKey) return new FinanceError("invalid_state", "Gasto generado automáticamente (Stripe o recurrente): anúlalo; si se borrara, se volvería a generar");
+  if (o.payments > 0) return new FinanceError("invalid_state", "El gasto tiene pagos registrados: no se puede borrar");
+  if (o.rectifiedBy > 0) return new FinanceError("invalid_state", "Otro gasto rectifica a este: no se puede borrar");
+  return null;
+}
+
 export function paymentProblem(e: Pick<Expense, "status" | "totalCents" | "withholdingCents"> | null, paid: number, amountCents: number): FinanceError | null {
   if (!e) return new FinanceError("not_found", "Gasto no encontrado");
   if (e.status !== "registered") return new FinanceError("invalid_state", "Solo se pagan gastos registrados");
@@ -351,6 +369,15 @@ export class MemoryFinanceOpsStore implements FinanceOpsStore {
     if (!e || e.status !== from) return false;
     Object.assign(e, { status: "void", voidedBy: o.by, voidedAt: o.at, voidReason: o.reason });
     return true;
+  }
+  async deleteExpense(id: number) {
+    const e = this.expenses.find((x) => x.id === id) ?? null;
+    const problem = expenseDeleteProblem(e, { payments: this.payments.filter((p) => p.expenseId === id).length, rectifiedBy: this.expenses.filter((x) => x.rectifiesExpenseId === id).length });
+    if (problem) throw problem;
+    const before = this.documents.length;
+    this.documents = this.documents.filter((d) => !(d.ownerType === "expense" && d.ownerId === id));
+    this.expenses = this.expenses.filter((x) => x.id !== id);
+    return { documents: before - this.documents.length };
   }
   async refreshExpensePaid(id: number) {
     const e = this.expenses.find((x) => x.id === id)!;
@@ -993,6 +1020,28 @@ export class MysqlFinanceOpsStore implements FinanceOpsStore {
   async markExpenseVoid(id: number, from: ExpenseStatus, o: { by: string; at: number; reason: string }) {
     const [r] = await this.pool.query<mysql.ResultSetHeader>("UPDATE fin_expenses SET status = 'void', voided_by = ?, voided_at = ?, void_reason = ? WHERE id = ? AND status = ?", [o.by, o.at, o.reason, id, from]);
     return r.affectedRows > 0;
+  }
+  async deleteExpense(id: number) {
+    const conn = await this.pool.getConnection();
+    try {
+      await conn.beginTransaction();
+      // La fila bloqueada: nadie la registra, paga ni rectifica mientras se comprueba y se borra
+      const [es] = await conn.query<Row[]>("SELECT status, entry_id, source_key FROM fin_expenses WHERE id = ? FOR UPDATE", [id]);
+      const e = es[0] ? { status: es[0].status as ExpenseStatus, entryId: numOrNull(es[0].entry_id), sourceKey: (es[0].source_key as string | null) ?? null } : null;
+      const [[pay]] = await conn.query<Row[]>("SELECT COUNT(*) AS n FROM fin_expense_payments WHERE expense_id = ?", [id]);
+      const [[rect]] = await conn.query<Row[]>("SELECT COUNT(*) AS n FROM fin_expenses WHERE rectifies_expense_id = ?", [id]);
+      const problem = expenseDeleteProblem(e, { payments: num(pay.n), rectifiedBy: num(rect.n) });
+      if (problem) throw problem;
+      const [docs] = await conn.query<mysql.ResultSetHeader>("DELETE FROM fin_documents WHERE owner_type = 'expense' AND owner_id = ?", [id]);
+      await conn.query("DELETE FROM fin_expenses WHERE id = ?", [id]);
+      await conn.commit();
+      return { documents: docs.affectedRows };
+    } catch (err) {
+      await conn.rollback().catch(() => undefined);
+      throw err;
+    } finally {
+      conn.release();
+    }
   }
   async refreshExpensePaid(id: number) {
     await this.pool.query(
