@@ -8,6 +8,7 @@
  *   GET|POST /suppliers · GET|PATCH /suppliers/:id · GET /suppliers/:id/statement          lectura | gestión
  *   GET|POST /expenses · GET|PATCH /expenses/:id (borrador)                                lectura | gestión
  *     (GET /expenses?origin=stripe: solo los gastos automáticos de Stripe)
+ *   GET /expenses/export?format=xlsx|pdf&<filtros de la lista>                             exportar
  *   POST /expenses/:id/register · /expenses/:id/void · /expenses/:id/payments              contabilizar
  *   POST /expense-payments/:id/reverse                                                     contabilizar
  *   GET|POST /documents · GET /documents/:id/content · POST /documents/:id/archive          lectura | gestión
@@ -34,7 +35,10 @@ import type { FinanceOpsService } from "./opsService";
 import { STRIPE_FEE_EXPENSE_PREFIX } from "./opsRules";
 import { FinanceError } from "./types";
 import { ACCOUNT_MATCH_TYPES, BANK_FEE_NATURES, DOCUMENT_OWNERS, EXPENSE_KINDS, EXPENSE_STATUSES, FREQUENCIES, IMPORT_FORMATS, MOVEMENT_STATUSES, PAYMENT_METHODS, PAYMENT_STATUSES, VAT_TREATMENTS } from "./opsTypes";
-import { canExpenses, canPost, canRead, canSuppliers } from "./permissions";
+import { canExpenses, canExport, canPost, canRead, canSuppliers } from "./permissions";
+import { EXPENSE_EXPORT_MAX, esDate, expenseExportRows, expensesPdf, expensesXlsx } from "./expenseExport";
+import { fetchBrandLogo } from "../documents/brandPdf";
+import { ISSUER } from "../stripe/issuer";
 
 /**
  * Rutas con fichero en base64: el analizador JSON general (256 kB) no las lee; aquí, hasta 15 MB y tras el permiso.
@@ -183,6 +187,62 @@ export function mountFinanceOpsRoutes(r: Router, ops: FinanceOpsService, analysi
   }));
 
   // Gastos (facturas recibidas)
+  // Exportación del listado (Excel o PDF) con los mismos filtros que la lista; antes que /expenses/:id
+  r.get("/expenses/export", ...canExport, wrap(async (req, res) => {
+    const q = z
+      .object({
+        format: z.enum(["xlsx", "pdf"]),
+        status: z.enum(EXPENSE_STATUSES).optional(),
+        paymentStatus: z.enum(PAYMENT_STATUSES).optional(),
+        supplier: qId.optional(),
+        category: qId.optional(),
+        costCenter: qId.optional(),
+        from: date.optional(),
+        to: date.optional(),
+        q: z.string().trim().max(100).optional(),
+        due: z.enum(["overdue"]).optional(),
+        origin: z.enum(["stripe"]).optional(),
+        sort: z.enum(["invoiceDate", "dueDate", "totalCents", "supplier"]).optional(),
+        dir: z.enum(["asc", "desc"]).optional(),
+      })
+      .strict()
+      .parse(req.query);
+    const { format, supplier, category, costCenter, q: text, origin, ...rest } = q;
+    const list = await ops.listExpenses({ ...rest, supplierId: supplier, categoryId: category, costCenterId: costCenter, q: text || undefined, ...(origin === "stripe" ? { sourcePrefix: STRIPE_FEE_EXPENSE_PREFIX } : {}), limit: EXPENSE_EXPORT_MAX, offset: 0 });
+    if (list.total > EXPENSE_EXPORT_MAX) throw new FinanceError("invalid_input", `Hay ${list.total} gastos con estos filtros: el máximo por exportación es ${EXPENSE_EXPORT_MAX}. Acota las fechas.`);
+    const [categories, centers] = await Promise.all([ops.categories(), ops.costCenters()]);
+    const catName = new Map(categories.map((c) => [c.id, c.name]));
+    const ccName = new Map(centers.map((c) => [c.id, `${c.code} · ${c.name}`]));
+    const rows = expenseExportRows(list.items, { category: (id) => (id ? (catName.get(id) ?? "") : ""), costCenter: (id) => (id ? (ccName.get(id) ?? "") : "") });
+    const STATUS: Record<string, string> = { draft: "Borrador", registered: "Registrado", void: "Anulado" };
+    const PAY: Record<string, string> = { pending: "Pendiente", partial: "Parcial", paid: "Pagado" };
+    const supplierName = supplier ? (list.items.find((e) => e.supplierId === supplier)?.supplierName ?? `Proveedor #${supplier}`) : null;
+    const filters = [
+      q.status ? `Estado: ${STATUS[q.status]}` : null,
+      q.paymentStatus ? `Pago: ${PAY[q.paymentStatus]}` : null,
+      supplierName ? `Proveedor: ${supplierName}` : null,
+      category ? `Categoría: ${catName.get(category) ?? category}` : null,
+      costCenter ? `Centro: ${ccName.get(costCenter) ?? costCenter}` : null,
+      q.from ? `Desde ${esDate(q.from)}` : null,
+      q.to ? `Hasta ${esDate(q.to)}` : null,
+      text ? `Búsqueda: «${text}»` : null,
+      q.due ? "Solo vencidos" : null,
+      origin === "stripe" ? "Origen: Stripe" : null,
+    ].filter((x): x is string => !!x);
+    const meta = { filters, generatedAt: new Date() };
+    const stamp = new Date().toISOString().slice(0, 10);
+    res.setHeader("Cache-Control", "no-store");
+    if (format === "xlsx") {
+      res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+      res.setHeader("Content-Disposition", `attachment; filename="gastos-${stamp}.xlsx"`);
+      return void res.send(expensesXlsx(rows, meta));
+    }
+    const a = ISSUER.address;
+    const pdf = await expensesPdf(rows, meta, { legalName: ISSUER.legalName, taxId: ISSUER.taxId, address: `${a.line1}, ${a.line2}, ${a.postalCode} ${a.city}` }, await fetchBrandLogo());
+    res.setHeader("Content-Type", "application/pdf");
+    res.setHeader("Content-Disposition", `attachment; filename="gastos-${stamp}.pdf"`);
+    res.send(Buffer.from(pdf));
+  }));
   r.get("/expenses", ...canRead, wrap(async (req, res) => {
     const q = z
       .object({

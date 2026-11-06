@@ -52,6 +52,7 @@ const EXPECTED: Record<string, FinanceCapability> = {
   "PATCH /suppliers/:id": "suppliers",
   "GET /suppliers/:id/statement": "read",
   "GET /expenses": "read",
+  "GET /expenses/export": "export",
   "POST /expenses": "expenses",
   "GET /expenses/:id": "read",
   "PATCH /expenses/:id": "expenses",
