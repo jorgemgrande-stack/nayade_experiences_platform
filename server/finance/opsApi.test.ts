@@ -18,6 +18,7 @@ import { MemoryFinanceOpsStore } from "./opsStore";
 import { FinanceService } from "./service";
 import { MemoryFinanceStore } from "./store";
 import { norma43Sample, seededOps, seededPlan } from "./testkit";
+import * as XLSX from "xlsx";
 
 const READ = "ci-only-placeholder-not-a-secret-ops-r";
 const WRITE = "ci-only-placeholder-not-a-secret-ops-w";
@@ -187,6 +188,23 @@ describe("API /cp/v1/finance, fase 1B: permisos y formas del CRM", () => {
     expect((await call("POST", `/expense-payments/${ids.payment}/reverse`, SALES, { reason: "Error" })).json.item.status).toBe("reversed");
     expect((await call("POST", `/expenses/${ids.expense}/void`, WRITE, { reason: "Duplicada" })).status).toBe(403);
     expect((await call("POST", `/expenses/${ids.expense}/void`, SALES, { reason: "Duplicada" })).json.item).toMatchObject({ status: "void", pendingCents: 0 });
+  });
+
+  it("exportación del listado de gastos: Excel y PDF con los filtros de la lista (finance:export)", async () => {
+    const x = await call("GET", "/expenses/export?format=xlsx&q=Servidores", READ);
+    expect(x.status).toBe(200);
+    expect(x.headers.get("content-type")).toContain("spreadsheetml");
+    expect(x.headers.get("content-disposition")).toMatch(/attachment; filename="gastos-\d{4}-\d{2}-\d{2}\.xlsx"/);
+    const sheet = XLSX.read(x.buf).Sheets.Gastos;
+    const rows = XLSX.utils.sheet_to_json<unknown[]>(sheet, { header: 1, raw: true });
+    expect(String(rows[1][0])).toContain("Búsqueda: «Servidores»");
+    expect(rows[3]).toEqual(expect.arrayContaining(["Fecha", "Proveedor", "Total (€)"]));
+    expect(rows.find((r) => r[3] === "Servidores octubre")).toEqual(expect.arrayContaining(["Hosting Nube SL", "F-2026-10", 1000, 210, 1210]));
+    const p = await call("GET", "/expenses/export?format=pdf", SALES);
+    expect(p.status).toBe(200);
+    expect(p.headers.get("content-type")).toBe("application/pdf");
+    expect(p.buf.subarray(0, 5).toString()).toBe("%PDF-");
+    expect((await call("GET", "/expenses/export?format=csv", READ)).status).toBe(400);
   });
 
   it("documentos: alta en base64 (más de 256 kB pasa), lista, descarga con Content-Disposition y archivo", async () => {

@@ -197,9 +197,11 @@ export async function renderBrandPdf(input: BrandPdfInput): Promise<Uint8Array> 
         const cells = row.map((cell, j) => wrap(cell, font, size, cols[j].w - 16));
         return { isHead, isTotal, font, size, cells, h: Math.max(1, ...cells.map((c) => c.length)) * (size + 3) + 11 };
       });
-      ensure(laid.reduce((a, r) => a + r.h, 0) + 10);
-      let lastH = 0;
-      for (const r of laid) {
+      const tableH = laid.reduce((a, r) => a + r.h, 0) + 10;
+      // Una tabla que cabe en una página no se parte (facturas, contratos). Una más larga (listados) salta de página
+      // fila a fila y repite la cabecera en cada página.
+      const long = tableH > A4.h - M.top - M.bottom;
+      const drawRow = (r: (typeof laid)[number]) => {
         if (r.isHead) page.drawRectangle({ x: M.x, y: y - r.h, width, height: r.h, color: C.ink });
         else if (r.isTotal) page.drawRectangle({ x: M.x, y: y - r.h, width, height: r.h, color: C.paper });
         let x = M.x;
@@ -214,6 +216,15 @@ export async function renderBrandPdf(input: BrandPdfInput): Promise<Uint8Array> 
         });
         if (!r.isHead) page.drawLine({ start: { x: M.x, y: y - r.h }, end: { x: M.x + width, y: y - r.h }, thickness: 0.5, color: C.line });
         y -= r.h;
+      };
+      ensure(long ? laid[0].h + (laid[1]?.h ?? 0) : tableH);
+      let lastH = 0;
+      for (const r of laid) {
+        if (long && !r.isHead && y - r.h < M.bottom) {
+          newPage();
+          drawRow(laid[0]);
+        }
+        drawRow(r);
         lastH = r.h;
       }
       if (b.totals) page.drawRectangle({ x: M.x, y, width: 3, height: lastH, color: C.accent });
