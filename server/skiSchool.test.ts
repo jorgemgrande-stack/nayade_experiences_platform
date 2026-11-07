@@ -146,6 +146,7 @@ describe("manifiesto, menú e independencia", () => {
       ["Profesores", "/admin/ski/profesores", ["ski-school"]],
       ["Productos docentes", "/admin/ski/productos-docentes", ["ski-school"]],
       ["Sesiones y alumnos", "/admin/ski/sesiones", ["ski-school"]],
+      ["Cursillos y grupos", "/admin/ski/grupos", ["ski-school"]],
       ["Control de horas", "/admin/ski/horas", ["ski-school"]],
       ["Liquidaciones de profesores", "/admin/ski/liquidaciones", ["ski-school"]],
     ]);

@@ -152,6 +152,11 @@ export interface SkiSchoolStore {
   /** Inscripción atómica: bloquea la sesión (dos inscripciones a la vez no superan el aforo). */
   enroll(x: NewParticipant, check: (c: EnrollContext) => void): Promise<number>;
   cancelParticipant(id: number): Promise<boolean>;
+  /**
+   * Mueve alumnos inscritos de una sesión a otra (fusión o división de grupos) de forma atómica: bloquea las dos
+   * sesiones, `check` lanza si no procede (aforo, estado) y, con `cancelSource`, cancela la de origen.
+   */
+  moveParticipants(fromId: number, toId: number, participantIds: number[] | "all", cancelSource: boolean, check: (from: Session, to: Session, moving: number, enrolledTo: number) => void): Promise<number>;
 
   reservation(id: number): Promise<ReservationRef | null>;
 }
@@ -295,6 +300,15 @@ export class MemorySkiSchoolStore implements SkiSchoolStore {
     if (!p || p.status !== "enrolled") return false;
     p.status = "cancelled";
     return true;
+  }
+  async moveParticipants(fromId: number, toId: number, ids: number[] | "all", cancelSource: boolean, check: (from: Session, to: Session, moving: number, enrolledTo: number) => void) {
+    const from = this.sess.find((x) => x.id === fromId)!;
+    const to = this.sess.find((x) => x.id === toId)!;
+    const moving = this.parts.filter((p) => p.sessionId === fromId && p.status === "enrolled" && (ids === "all" || ids.includes(p.id)));
+    check(clone(from), clone(to), moving.length, this.parts.filter((p) => p.sessionId === toId && p.status === "enrolled").length);
+    for (const p of moving) p.sessionId = toId;
+    if (cancelSource) from.status = "cancelled";
+    return moving.length;
   }
   async reservation(id: number) {
     const r = this.reservations.get(id);
@@ -648,6 +662,24 @@ export class TenantDbSkiSchoolStore implements SkiSchoolStore {
   }
   cancelParticipant(id: number) {
     return this.run(async (db) => affectedOf(await db.execute(sql`UPDATE ski_school_participants SET status = 'cancelled', cancelled_at = CURRENT_TIMESTAMP(3) WHERE id = ${id} AND status = 'enrolled'`)) === 1);
+  }
+
+  moveParticipants(fromId: number, toId: number, ids: number[] | "all", cancelSource: boolean, check: (from: Session, to: Session, moving: number, enrolledTo: number) => void) {
+    return this.run((db) =>
+      db.transaction(async (tx) => {
+        // Orden fijo de bloqueo (id menor primero): dos fusiones cruzadas no se interbloquean
+        const locked = rowsOf(await tx.execute(sql`SELECT ${SESSION_COLS} FROM ski_school_sessions WHERE id IN (${fromId}, ${toId}) ORDER BY id FOR UPDATE`)).map(toSession);
+        const from = locked.find((x) => x.id === fromId)!;
+        const to = locked.find((x) => x.id === toId)!;
+        const filter = ids === "all" ? sql`` : sql`AND id IN (${sql.join(ids.map((i) => sql`${i}`), sql`, `)})`;
+        const [m] = rowsOf(await tx.execute(sql`SELECT COUNT(*) AS n FROM ski_school_participants WHERE session_id = ${fromId} AND status = 'enrolled' ${filter}`));
+        const [t] = rowsOf(await tx.execute(sql`SELECT COUNT(*) AS n FROM ski_school_participants WHERE session_id = ${toId} AND status = 'enrolled'`));
+        check(from, to, Number(m.n), Number(t.n));
+        const res = await tx.execute(sql`UPDATE ski_school_participants SET session_id = ${toId} WHERE session_id = ${fromId} AND status = 'enrolled' ${filter}`);
+        if (cancelSource) await tx.execute(sql`UPDATE ski_school_sessions SET status = 'cancelled' WHERE id = ${fromId}`);
+        return Number((res as unknown as [{ affectedRows: number }])[0].affectedRows);
+      }),
+    );
   }
 
   /** Reserva del Core (tabla `reservations`): solo producto, fecha, personas y estado. */

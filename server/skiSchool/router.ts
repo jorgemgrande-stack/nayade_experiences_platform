@@ -17,6 +17,8 @@ import { SkiSchoolError, SkiSchoolService } from "./service";
 import { TenantDbSkiSchoolStore } from "./store";
 import { SkiTeacherService } from "./teacherService";
 import { TenantDbSkiTeacherStore } from "./teacherStore";
+import { SkiGroupingService } from "./groupingService";
+import { TenantDbSkiGroupingStore } from "./groupingStore";
 import { ATTENDANCE_STATUSES, PAY_MODES } from "./teachers";
 
 // Un módulo que no valida no impide arrancar al Core: queda sin registrar y sus rutas responden NOT_FOUND
@@ -31,6 +33,12 @@ const service = new SkiSchoolService({
   store: school,
   gate: () => getSdkRuntime().gate,
   events: () => getSdkRuntime().events,
+});
+const grouping = new SkiGroupingService({
+  store: new TenantDbSkiGroupingStore(),
+  school,
+  service,
+  gate: () => getSdkRuntime().gate,
 });
 const teachers = new SkiTeacherService({
   store: new TenantDbSkiTeacherStore(),
@@ -61,6 +69,7 @@ const optAge = z.number().int().min(0).max(120).nullable().optional();
 const codeLabels = z.array(z.object({ code: z.string().max(16), label: z.string().max(60) })).max(20);
 const weekly = z.array(z.object({ day: z.number().int().min(0).max(6), start: time, end: time })).max(42);
 const actor = (ctx: { user: { id: number } }) => `user:${ctx.user.id}`;
+const turn = site.extend({ productId: z.number().int().positive(), date: day, startTime: time });
 
 const instructorFields = {
   fullName: z.string().max(120),
@@ -239,4 +248,22 @@ export const skiSchoolRouter = router({
   }),
   /** Portal del empleado: el profesor vinculado a este usuario ve sus próximas clases y sus horas del mes. */
   myClasses: employeeProcedure.query(({ ctx }) => handle(() => teachers.myClasses(ctx.user.id))),
+  // ── Cursillos y grupos por niveles ──
+  groupTurn: adminProcedure.input(turn).query(({ input }) => handle(() => grouping.turn(input))),
+  addToPool: adminProcedure
+    .input(turn.extend({ name: z.string().max(120), age: optAge, level: z.string().max(16).nullable().optional(), language: z.string().max(16).nullable().optional(), notes: optText(500) }))
+    .mutation(({ input, ctx }) => {
+      const { siteId, productId, date, startTime, ...rest } = input;
+      return handle(() => grouping.addToPool({ siteId, productId, date, startTime }, rest, actor(ctx)));
+    }),
+  cancelPoolEntry: adminProcedure.input(site.extend({ entryId: id })).mutation(({ input }) => handle(() => grouping.cancelPoolEntry(input.siteId, input.entryId))),
+  proposeGroups: adminProcedure.input(turn).query(({ input }) => handle(() => grouping.propose(input))),
+  applyGroups: adminProcedure.input(turn.extend({ fingerprint: z.string().regex(/^[a-f0-9]{32}$/) })).mutation(({ input, ctx }) => {
+    const { fingerprint, ...t } = input;
+    return handle(() => grouping.apply(t, fingerprint, actor(ctx)));
+  }),
+  mergeGroups: adminProcedure.input(site.extend({ targetId: id, sourceId: id })).mutation(({ input }) => handle(() => grouping.merge(input.siteId, input.targetId, input.sourceId))),
+  splitGroup: adminProcedure
+    .input(site.extend({ sessionId: id, participantIds: z.array(id).min(1).max(100) }))
+    .mutation(({ input, ctx }) => handle(() => grouping.split(input.siteId, input.sessionId, input.participantIds, actor(ctx)))),
 });

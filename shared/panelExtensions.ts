@@ -402,6 +402,7 @@ function skiNetPanel(): PanelContributions {
         { id: "profesores", label: "Profesores", path: "/admin/ski/profesores", icon: "users", capabilities: SCHOOL, order: 3 },
         { id: "productos-docentes", label: "Productos docentes", path: "/admin/ski/productos-docentes", icon: "tag", capabilities: SCHOOL, order: 4 },
         { id: "sesiones", label: "Sesiones y alumnos", path: "/admin/ski/sesiones", icon: "briefcase", capabilities: SCHOOL, order: 5 },
+        { id: "grupos", label: "Cursillos y grupos", path: "/admin/ski/grupos", icon: "users", capabilities: SCHOOL, order: 5.05 },
         { id: "horas", label: "Control de horas", path: "/admin/ski/horas", icon: "chart", capabilities: SCHOOL, order: 5.1 },
         { id: "liquidaciones", label: "Liquidaciones de profesores", path: "/admin/ski/liquidaciones", icon: "coins", capabilities: SCHOOL, order: 5.2 },
         { id: "alquiler", label: "Alquiler: mostrador", path: "/admin/ski/alquiler", icon: "shoppingCart", capabilities: RENTAL, order: 6 },
