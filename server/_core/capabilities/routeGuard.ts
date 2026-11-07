@@ -98,6 +98,8 @@ export const TRPC_ROUTER_CAPABILITIES: Record<string, string> = {
   reav: "travel-net",
   // Travel Net: expedientes, servicios, márgenes, proveedores y operaciones
   travel: "travel-net",
+  // Restaurant Net · sala, carta y comandas (también lo declara el manifiesto del módulo de restaurantes)
+  restaurantNet: "restaurant-net",
 };
 
 /**

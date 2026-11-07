@@ -32,7 +32,7 @@ export interface SkiCtx {
   canWrite: boolean;
 }
 
-const SDK_MESSAGES: Record<string, string> = {
+export const SDK_MESSAGES: Record<string, string> = {
   module_not_licensed: "Ski Net · Escuela no está incluido en el plan de esta sede.",
   module_read_only: "La licencia de la escuela está en solo lectura: puedes consultar, pero no hacer cambios.",
   module_not_active: "La escuela no está activada en esta sede.",
@@ -101,8 +101,8 @@ export function CodeToggles({ options, value, onChange, label }: { options: Code
 
 const SITE_KEY = "ski-school:site";
 
-/** Sedes activas de la empresa y la elegida (recordada en este navegador). */
-function useSkiSite() {
+/** Sedes activas de la empresa y la elegida (recordada en este navegador; la comparten escuela y alquiler). */
+export function useSkiSite() {
   const q = trpc.sites.list.useQuery(undefined, { staleTime: 60_000, retry: 1 });
   const active = (q.data?.sites ?? []).filter((s) => s.status === "active");
   const primary = q.data?.primarySiteId ?? "";
@@ -123,6 +123,27 @@ function useSkiSite() {
     }
   };
   return { q, active, siteId, choose };
+}
+
+/** Selector de sede (solo si la empresa tiene varias activas). */
+export function SiteSelect({ sites }: { sites: ReturnType<typeof useSkiSite> }) {
+  if (sites.active.length < 2) return null;
+  return (
+    <label className="flex items-center gap-2 text-sm text-muted-foreground">
+      <span>Sede</span>
+      <select
+        className="h-9 max-w-[14rem] rounded-md border border-input bg-background px-3 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        value={sites.siteId}
+        onChange={(e) => sites.choose(e.target.value)}
+      >
+        {sites.active.map((x) => (
+          <option key={x.siteId} value={x.siteId}>
+            {x.name}
+          </option>
+        ))}
+      </select>
+    </label>
+  );
 }
 
 export function SkiSchoolShell({ title, description, actions, children }: { title: string; description: string; actions?: (ctx: SkiCtx) => ReactNode; children: (ctx: SkiCtx) => ReactNode }) {
@@ -185,22 +206,7 @@ export function SkiSchoolShell({ title, description, actions, children }: { titl
             <p className="max-w-3xl text-sm text-muted-foreground">{description}</p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
-            {sites.active.length > 1 && (
-              <label className="flex items-center gap-2 text-sm text-muted-foreground">
-                <span>Sede</span>
-                <select
-                  className="h-9 max-w-[14rem] rounded-md border border-input bg-background px-3 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                  value={sites.siteId}
-                  onChange={(e) => sites.choose(e.target.value)}
-                >
-                  {sites.active.map((x) => (
-                    <option key={x.siteId} value={x.siteId}>
-                      {x.name}
-                    </option>
-                  ))}
-                </select>
-              </label>
-            )}
+            <SiteSelect sites={sites} />
             {ctx && s?.active && actions?.(ctx)}
           </div>
         </header>

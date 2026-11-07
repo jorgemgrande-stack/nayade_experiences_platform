@@ -299,6 +299,7 @@ export const CORE_EXTENSION_PANELS: Readonly<Record<string, { capability?: strin
           { id: "planning", label: "Planning", path: "/admin/hotel/planning", icon: "calendar", order: 4 },
           { id: "reservas", label: "Reservas", path: "/admin/hotel/reservas", icon: "receipt", order: 5 },
           { id: "habitaciones", label: "Habitaciones", path: "/admin/hotel/habitaciones", icon: "bed", order: 6 },
+          { id: "informes", label: "Informes", path: "/admin/hotel/informes", icon: "chart", order: 7 },
         ],
       },
       api: ["hotel"],
@@ -314,9 +315,13 @@ export const CORE_EXTENSION_PANELS: Readonly<Record<string, { capability?: strin
         items: [
           { id: "panel", label: "Panel general", path: "/admin/net/restaurant", icon: "dashboard", roles: ["admin", "adminrest"], order: 1 },
           { id: "restaurantes", label: "Reservas y mesas", path: "/admin/restaurantes", icon: "utensils", roles: ["admin", "adminrest"], order: 2 },
+          { id: "sala", label: "Sala y comandas", path: "/admin/restaurant-net/sala", icon: "receipt", roles: ["admin", "adminrest"], order: 3 },
+          { id: "carta", label: "Carta", path: "/admin/restaurant-net/carta", icon: "file", roles: ["admin", "adminrest"], order: 5 },
+          { id: "cocina", label: "Cocina (KDS)", path: "/admin/restaurant-net/cocina", icon: "monitor", roles: ["admin", "adminrest"], order: 4 },
+          { id: "salas-mesas", label: "Salas y mesas", path: "/admin/restaurant-net/salas-mesas", icon: "settings", roles: ["admin", "adminrest"], order: 6 },
         ],
       },
-      api: ["restaurants"],
+      api: ["restaurants", "restaurantNet"],
     },
   },
   spa: {
@@ -335,8 +340,8 @@ export const CORE_EXTENSION_PANELS: Readonly<Record<string, { capability?: strin
     },
   },
   // Productos Net aún sin herramientas operativas en el Core: si se conceden, su panel general muestra lo incluido
-  // Ski Net: panel general (cualquiera de sus dos licencias) y las herramientas de la escuela (módulo del SDK
-  // server/skiSchool, licencia `ski-school` por sede, que el servicio comprueba en cada operación)
+  // Ski Net: panel general (cualquiera de sus dos licencias), las herramientas de la escuela (server/skiSchool, licencia
+  // `ski-school`) y las del alquiler (server/skiRental, licencia `ski-rental`); los servicios las comprueban por sede
   skiNet: { panel: skiNetPanel() },
   travelNet: { panel: travelNetPanel() },
   lifeNet: { panel: netHomeOnly("life-net", "Life Net", "/admin/net/life", ["life-net"], 71) },
@@ -375,9 +380,10 @@ function travelNetPanel(): PanelContributions {
   };
 }
 
-/** Menú de Ski Net: sección propia con el panel general y las pantallas de la escuela. */
+/** Menú de Ski Net: sección propia con el panel general, las pantallas de la escuela y las del alquiler. */
 function skiNetPanel(): PanelContributions {
   const SCHOOL = ["ski-school"];
+  const RENTAL = ["ski-rental"];
   return {
     section: {
       id: "ski-net",
@@ -389,6 +395,10 @@ function skiNetPanel(): PanelContributions {
         { id: "profesores", label: "Profesores", path: "/admin/ski/profesores", icon: "users", capabilities: SCHOOL, order: 3 },
         { id: "productos-docentes", label: "Productos docentes", path: "/admin/ski/productos-docentes", icon: "tag", capabilities: SCHOOL, order: 4 },
         { id: "sesiones", label: "Sesiones y alumnos", path: "/admin/ski/sesiones", icon: "briefcase", capabilities: SCHOOL, order: 5 },
+        { id: "alquiler", label: "Alquiler: mostrador", path: "/admin/ski/alquiler", icon: "shoppingCart", capabilities: RENTAL, order: 6 },
+        { id: "inventario", label: "Inventario de material", path: "/admin/ski/inventario", icon: "package", capabilities: RENTAL, order: 7 },
+        { id: "taller", label: "Taller", path: "/admin/ski/taller", icon: "settings", capabilities: RENTAL, order: 8 },
+        { id: "alquiler-ajustes", label: "Tiendas y contrato", path: "/admin/ski/alquiler-ajustes", icon: "file", capabilities: RENTAL, order: 9 },
       ],
     },
   };

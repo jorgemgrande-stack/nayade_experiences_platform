@@ -1,0 +1,9 @@
+DROP TABLE IF EXISTS ski_rental_workshop_tickets;
+DROP TABLE IF EXISTS ski_rental_contracts;
+DROP TABLE IF EXISTS ski_rental_delivery_lines;
+DROP TABLE IF EXISTS ski_rental_deliveries;
+DROP TABLE IF EXISTS ski_rental_unit_events;
+DROP TABLE IF EXISTS ski_rental_units;
+DROP TABLE IF EXISTS ski_rental_models;
+DROP TABLE IF EXISTS ski_rental_stores;
+DROP TABLE IF EXISTS ski_rental_settings;

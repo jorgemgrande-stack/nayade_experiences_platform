@@ -179,6 +179,7 @@ import { hotelRouter } from "./routers/hotel";
 import { spaRouter } from "./routers/spa";
 import { reviewsRouter } from "./routers/reviews";
 import { restaurantsRouter } from "./routers/restaurants";
+import { restaurantNetRouter } from "./routers/restaurantNet";
 import { skiRentalRouter } from "./skiRental/router";
 import { skiSchoolRouter } from "./skiSchool/router";
 import { travelRouter } from "./travelNet/router";
@@ -2632,6 +2633,7 @@ export const appRouter = router({
   reviews: reviewsRouter,
   blog: blogRouter,
   restaurants: restaurantsRouter,
+  restaurantNet: restaurantNetRouter,
   skiRental: skiRentalRouter,
   skiSchool: skiSchoolRouter,
   travel: travelRouter,
