@@ -146,6 +146,8 @@ describe("manifiesto, menú e independencia", () => {
       ["Profesores", "/admin/ski/profesores", ["ski-school"]],
       ["Productos docentes", "/admin/ski/productos-docentes", ["ski-school"]],
       ["Sesiones y alumnos", "/admin/ski/sesiones", ["ski-school"]],
+      ["Control de horas", "/admin/ski/horas", ["ski-school"]],
+      ["Liquidaciones de profesores", "/admin/ski/liquidaciones", ["ski-school"]],
     ]);
     expect(CORE_EXTENSION_ROUTES).toContainEqual({ path: "/admin/ski/profesores", capabilities: ["ski-school"] });
   });

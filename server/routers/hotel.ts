@@ -28,6 +28,24 @@ import {
   getPmsSettings, setPmsSettings, getHotelReport, runNightAudit,
 } from "../hotelFolioDb";
 import { FOLIO_CHARGE_CATEGORIES, FOLIO_PAYMENT_METHODS, normalizeTaxBp } from "../hotelFolio";
+import {
+  listHousekeepingAssignees, listHousekeepingTasks, generateHousekeepingTasks, createHousekeepingTask, assignHousekeepingTask,
+  setHousekeepingTaskStatus, listIncidentTypes, saveIncidentType, listRoomIncidents, createRoomIncident, setRoomIncidentStatus,
+} from "../hotelHousekeepingDb";
+import { HK_ASSIGNEE_ROLES, HK_TASK_KINDS, HK_TASK_STATUSES, INCIDENT_PRIORITIES, INCIDENT_STATUSES } from "../hotelHousekeeping";
+import { checkPermission } from "../customRolesAccess";
+
+/**
+ * Personal del hotel (housekeeping): cualquier usuario del panel con un rol de equipo, con el módulo de hotel activo.
+ * Solo ve y cambia SUS tareas (lo comprueba setHousekeepingTaskStatus); quien gestiona el hotel (mismo permiso que
+ * adminProcedure) puede además inspeccionar y operar todas.
+ */
+const hotelStaffProcedure = protectedProcedure.use(async ({ ctx, next }) => {
+  await assertModuleEnabled("hotel_module_enabled");
+  const canManage = await checkPermission(ctx.user.id, ctx.user.role as string, "settings.manage", ["admin"]);
+  if (!canManage && !(HK_ASSIGNEE_ROLES as readonly string[]).includes(ctx.user.role as string)) throw new TRPCError({ code: "FORBIDDEN", message: "Acceso denegado" });
+  return next({ ctx: { ...ctx, canManageHotel: canManage } });
+});
 
 const isoDate = z.string().refine(isIsoDate, "Fecha no válida (AAAA-MM-DD)");
 /** Rango de fechas inclusivo y acotado (planning, listados y restricciones). */
@@ -598,6 +616,64 @@ export const hotelRouter = router({
   adminRunNightAudit: adminProcedure
     .input(z.object({ businessDate: isoDate }))
     .mutation(({ input, ctx }) => runNightAudit(input.businessDate, { userId: ctx.user.id, source: "manual" })),
+
+  // ── ADMIN: PMS · HOUSEKEEPING ─────────────────────────────────────────────
+
+  adminHkAssignees: adminProcedure.query(() => listHousekeepingAssignees()),
+
+  adminHkTasks: adminProcedure
+    .input(z.object({ date: isoDate, assignedUserId: z.number().int().optional() }))
+    .query(({ input }) => listHousekeepingTasks(input.date, { assignedUserId: input.assignedUserId })),
+
+  /** Genera las tareas del día (salidas → limpieza de salida; ocupadas → repaso; sucias → limpieza). Idempotente. */
+  adminHkGenerateTasks: adminProcedure
+    .input(z.object({ date: isoDate }))
+    .mutation(({ input, ctx }) => generateHousekeepingTasks(input.date, ctx.user.id)),
+
+  adminHkCreateTask: adminProcedure
+    .input(z.object({ hotelRoomId: z.number().int(), date: isoDate, kind: z.enum(HK_TASK_KINDS), assignedUserId: z.number().int().nullable(), notes: z.string().max(500).optional() }))
+    .mutation(({ input, ctx }) => createHousekeepingTask({ ...input, userId: ctx.user.id })),
+
+  adminHkAssignTask: adminProcedure
+    .input(z.object({ taskId: z.number().int(), assignedUserId: z.number().int().nullable() }))
+    .mutation(({ input }) => assignHousekeepingTask(input.taskId, input.assignedUserId)),
+
+  adminHkIncidentTypes: adminProcedure.query(() => listIncidentTypes()),
+
+  adminHkSaveIncidentType: adminProcedure
+    .input(z.object({ id: z.number().int().optional(), name: z.string().max(80), isActive: z.boolean().optional(), sortOrder: z.number().int().min(0).max(1000).optional() }))
+    .mutation(({ input }) => saveIncidentType(input)),
+
+  adminHkIncidents: adminProcedure
+    .input(z.object({ status: z.enum([...INCIDENT_STATUSES, "abiertas"]).optional(), hotelRoomId: z.number().int().optional() }).optional())
+    .query(({ input }) => listRoomIncidents(input ?? {})),
+
+  adminHkSetIncidentStatus: adminProcedure
+    .input(z.object({ id: z.number().int(), status: z.enum(INCIDENT_STATUSES) }))
+    .mutation(({ input, ctx }) => setRoomIncidentStatus({ ...input, userId: ctx.user.id })),
+
+  // ── PERSONAL: PMS · HOUSEKEEPING (vista por persona) ──────────────────────
+
+  /** Tareas del día de quien entra (y si puede gestionar el hotel, para mostrarle la vista completa). */
+  hkMyTasks: hotelStaffProcedure
+    .input(z.object({ date: isoDate }))
+    .query(async ({ input, ctx }) => ({
+      canManage: ctx.canManageHotel,
+      tasks: await listHousekeepingTasks(input.date, { assignedUserId: ctx.user.id }),
+    })),
+
+  /** Cambia el estado de una tarea: la persona asignada (en curso, hecha) o quien gestiona (también inspeccionar). */
+  hkSetTaskStatus: hotelStaffProcedure
+    .input(z.object({ taskId: z.number().int(), to: z.enum(HK_TASK_STATUSES), notes: z.string().max(500).optional() }))
+    .mutation(({ input, ctx }) => setHousekeepingTaskStatus({ taskId: input.taskId, to: input.to, notes: input.notes, actor: { userId: ctx.user.id, canManage: ctx.canManageHotel } })),
+
+  /** Tipos de incidencia activos (para el formulario del personal). */
+  hkIncidentTypes: hotelStaffProcedure.query(async () => (await listIncidentTypes()).filter((t) => t.isActive)),
+
+  /** Abre una incidencia de habitación (personal o recepción); puede bloquear la habitación. */
+  hkReportIncident: hotelStaffProcedure
+    .input(z.object({ hotelRoomId: z.number().int(), typeId: z.number().int(), description: z.string().max(1000).optional(), priority: z.enum(INCIDENT_PRIORITIES).default("media"), blocksRoom: z.boolean().default(false) }))
+    .mutation(({ input, ctx }) => createRoomIncident({ ...input, userId: ctx.user.id })),
 
   // ── BOOKING ───────────────────────────────────────────────────────────────
 
