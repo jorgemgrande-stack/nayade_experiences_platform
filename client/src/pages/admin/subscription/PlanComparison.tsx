@@ -33,12 +33,15 @@ function PlanPrice({ plan }: { plan: PanelPlanInfo }) {
         <span className="text-base font-medium text-muted-foreground">{per}</span>
         <span className="text-xs font-medium text-muted-foreground">{taxLabel(main)}</span>
       </p>
-      <p className="mt-2 text-xs text-muted-foreground">{plan.monthly ? "Facturación mensual" : "Facturación anual"}</p>
-      {plan.monthly && plan.yearly && (
-        <p className="mt-1 text-sm text-muted-foreground">
-          O <strong className="font-semibold text-foreground">{formatMoney(plan.yearly.amountCents, plan.yearly.currency)}</strong> /año con facturación anual ({taxLabel(plan.yearly)})
-        </p>
-      )}
+      <p className="mt-2 text-xs leading-relaxed text-muted-foreground">
+        {plan.monthly ? "Facturación mensual" : "Facturación anual"}
+        {plan.monthly && plan.yearly && (
+          <>
+            {" · o "}
+            <strong className="text-sm font-semibold text-foreground">{formatMoney(plan.yearly.amountCents, plan.yearly.currency)}</strong> /año con facturación anual ({taxLabel(plan.yearly)})
+          </>
+        )}
+      </p>
     </div>
   );
 }
@@ -70,7 +73,7 @@ function PlanCard({
       aria-labelledby={titleId}
     >
       {featured && <span className="absolute inset-x-6 top-0 h-1 rounded-b-full bg-primary" aria-hidden="true" />}
-      <div className={cn("flex flex-1 flex-col gap-5 rounded-3xl p-5 sm:p-7", (featured || card.isCurrent) && "cx-glow")}>
+      <div className={cn("flex flex-1 flex-col gap-4 rounded-3xl p-5 sm:p-6", (featured || card.isCurrent) && "cx-glow")}>
         {/* Cabecera: público, estado y nombre */}
         <div className="flex items-start gap-3">
           <span
@@ -130,11 +133,11 @@ function PlanCard({
         )}
 
         {limits.length > 0 && (
-          <dl className="grid grid-cols-2 gap-2">
+          <dl className="grid grid-cols-2 gap-x-4 gap-y-1.5 rounded-xl border border-border bg-background/60 px-3 py-2.5">
             {limits.map((l) => (
-              <div key={l.label} className="min-w-0 rounded-xl border border-border bg-background/60 px-3 py-2">
-                <dt className="overflow-hidden text-ellipsis whitespace-nowrap text-xs text-muted-foreground">{l.label}</dt>
-                <dd className="break-words text-sm font-semibold text-foreground">{l.value}</dd>
+              <div key={l.label} className="flex min-w-0 flex-wrap items-baseline justify-between gap-x-2">
+                <dt className="min-w-0 break-words text-xs text-muted-foreground">{l.label}</dt>
+                <dd className="min-w-0 break-words text-sm font-semibold text-foreground">{l.value}</dd>
               </div>
             ))}
           </dl>
@@ -207,7 +210,7 @@ function PlanComparisonTable({ cards }: { cards: PlanCardModel[] }) {
         </p>
         <p className="text-xs text-muted-foreground md:hidden">Desliza la tabla para ver todos los planes.</p>
       </div>
-      <div className="overflow-x-auto">
+      <div className="relative overflow-x-auto">
         <table className="w-full min-w-[640px] border-collapse">
           <caption className="sr-only">Comparativa de los planes de Elephant Core</caption>
           <thead>
