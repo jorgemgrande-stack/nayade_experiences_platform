@@ -183,7 +183,7 @@ describe.skipIf(!URL_)("Ski Rental (routers reales, licencia por capacidad)", ()
 
   it("la migración 0003 creó las tablas del módulo en la empresa aprovisionada", async () => {
     const [rows] = await tenantDb.query<mysql.RowDataPacket[]>("SHOW TABLES LIKE 'ski_rental_%'");
-    // Las de la v0.1; la v1 por unidad (0032) añade otras ski_rental_* que se prueban en skiRentalUnits.mysql.test.ts
+    // Las de la v0.1; la v1 por unidad (0036) añade otras ski_rental_* que se prueban en skiRentalUnits.mysql.test.ts
     expect(rows.map((r) => Object.values(r)[0])).toEqual(expect.arrayContaining(V01_TABLES));
   });
 
