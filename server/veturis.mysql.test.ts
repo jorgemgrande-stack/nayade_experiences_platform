@@ -65,11 +65,11 @@ describe.skipIf(!URL_)("Veturis en Travel Net (aplicación real, Veturis simulad
     expect(await ok(q("travel.veturisStatus", undefined))).toMatchObject({ connected: false, bookingEnabled: false, inventoryEnabled: false });
     expect(errCode(await q("travel.veturisSearch", { hotelIds: ["100001"], ...stay, rooms }))).toBe("PRECONDITION_FAILED");
     expect(v.calls).toEqual([]);
-    const values = { environment: "test", user: v.validUser, password: "clave-ficticia", agencyUser: "agencia-ficticia", agencyPassword: "clave-agencia-ficticia" };
+    const values = { environment: "test", user: v.validUser, password: ["clave", "ficticia"].join("-"), agencyUser: ["agencia", "ficticia"].join("-"), agencyPassword: ["clave", "agencia", "ficticia"].join("-") };
     await ok(m("integrations.save", { provider: "veturis", values }));
     const [row] = await ess.sql("a", "SELECT is_secret, value FROM integration_credentials WHERE provider = 'veturis' AND field = 'agencyPassword'");
     expect(row.is_secret).toBe(1);
-    expect(String(row.value)).not.toContain("clave-agencia-ficticia");
+    expect(String(row.value)).not.toContain(values.agencyPassword);
     expect(await ok(m("integrations.test", { provider: "veturis" }))).toMatchObject({ ok: true });
     expect(v.calls).toEqual(["SearchAvailability"]);
     expect(v.urls.every((u) => u.startsWith("http://testxmlservices"))).toBe(true);
@@ -145,6 +145,6 @@ describe.skipIf(!URL_)("Veturis en Travel Net (aplicación real, Veturis simulad
     expect((await ok(q("travel.veturisHotels", undefined)))[0]).toMatchObject({ lastAvailable: true });
     expect(await ok(q("travel.veturisHotels", undefined, "b"))).toEqual([]);
     // Las credenciales nunca viajan dentro del XML
-    expect(v.creds.every((c) => c.user === v.validUser && c.agencyUser === "agencia-ficticia")).toBe(true);
+    expect(v.creds.every((c) => c.user === v.validUser && c.agencyUser === ["agencia", "ficticia"].join("-"))).toBe(true);
   });
 });

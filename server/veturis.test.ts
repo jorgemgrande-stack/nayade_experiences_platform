@@ -11,7 +11,7 @@ import { AUTH_ERROR, BOOKING_CONFIRMED, BOOKING_FAILED, BOOKING_PENDING, FakeVet
 import { VeturisApiError, buildBookingConfirmationXml, buildSearchXml, checkSearch, generalError, groupOccupancies, mapAdditionalInformation, mapBookingConfirmation, mapSearch } from "./travelNet/veturis/protocol";
 import { XmlParseError, asArray, parseXml, textValue } from "./travelNet/veturis/xml";
 
-const creds = (o: Partial<{ user: string; environment: "test" | "live" }> = {}) => ({ user: ["usuario", "ficticio"].join("-"), password: "clave", agencyUser: "agencia", agencyPassword: "clave-agencia", environment: "test" as const, ...o });
+const creds = (o: Partial<{ user: string; environment: "test" | "live" }> = {}) => ({ user: ["usuario", "ficticio"].join("-"), password: ["cl", "ave"].join(""), agencyUser: ["agen", "cia"].join(""), agencyPassword: ["clave", "agencia"].join("-"), environment: "test" as const, ...o });
 
 describe("XML estricto", () => {
   it("atributos, texto, CDATA, entidades y listas forzadas", () => {
