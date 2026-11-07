@@ -348,7 +348,7 @@ export const CORE_EXTENSION_PANELS: Readonly<Record<string, { capability?: strin
   // Ski Net: panel general (cualquiera de sus dos licencias), las herramientas de la escuela (server/skiSchool, licencia
   // `ski-school`) y las del alquiler (server/skiRental, licencia `ski-rental`); los servicios las comprueban por sede
   skiNet: { panel: skiNetPanel() },
-  travelNet: { panel: netHomeOnly("travel-net", "Travel Net", "/admin/net/travel", ["travel-net"], 69) },
+  travelNet: { panel: travelNetPanel() },
   lifeNet: { panel: netHomeOnly("life-net", "Life Net", "/admin/net/life", ["life-net"], 71) },
   // Social Token Net: tres productos (Comunidades, Tokens internos y Complete = los dos) y dos capacidades, así que la
   // extensión no tiene una capacidad única: cada entrada declara la suya y las funciones conjuntas exigen las dos.
@@ -359,6 +359,30 @@ export const CORE_EXTENSION_PANELS: Readonly<Record<string, { capability?: strin
 /** Sección de un producto Elephant Net que hoy solo tiene su panel general. */
 function netHomeOnly(id: string, label: string, path: string, capabilities: string[], order: number): PanelContributions {
   return { section: { id, label, order, items: [{ id: "panel", label: "Panel general", path, icon: "dashboard", capabilities }] } };
+}
+
+/**
+ * Menú de Travel Net: sección propia con el panel general y las pantallas de agencia (expedientes, proveedores,
+ * operaciones y márgenes). «Viajes (REAV)» del Core sigue en su sitio. API `travel.*` licenciada por
+ * TRPC_ROUTER_CAPABILITIES; los márgenes solo los cambia administración.
+ */
+function travelNetPanel(): PanelContributions {
+  const TRAVEL = ["travel-net"];
+  const TEAM = ["admin", "agente"];
+  return {
+    section: {
+      id: "travel-net",
+      label: "Travel Net",
+      order: 69,
+      items: [
+        { id: "panel", label: "Panel general", path: "/admin/net/travel", icon: "dashboard", capabilities: TRAVEL, order: 1 },
+        { id: "expedientes", label: "Expedientes", path: "/admin/travel/expedientes", icon: "briefcase", capabilities: TRAVEL, roles: TEAM, order: 2 },
+        { id: "proveedores", label: "Proveedores", path: "/admin/travel/proveedores", icon: "truck", capabilities: TRAVEL, roles: TEAM, order: 3 },
+        { id: "operaciones", label: "Operaciones", path: "/admin/travel/operaciones", icon: "calendar", capabilities: TRAVEL, roles: TEAM, order: 4 },
+        { id: "margenes", label: "Márgenes", path: "/admin/travel/margenes", icon: "coins", capabilities: TRAVEL, order: 5 },
+      ],
+    },
+  };
 }
 
 /** Menú de Ski Net: sección propia con el panel general, las pantallas de la escuela y las del alquiler. */

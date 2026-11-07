@@ -207,6 +207,10 @@ const SocialTokenNetHome = lazy(() => import("./pages/admin/socialTokenNet/Socia
 const NetProductHome = lazy(() => import("./pages/admin/net/NetProductHome"));
 const SkiSchoolPlanning = lazy(() => import("./pages/admin/ski/SkiSchoolPlanning"));
 const SkiInstructors = lazy(() => import("./pages/admin/ski/SkiInstructors"));
+const TravelFiles = lazy(() => import("./pages/admin/travel/TravelFiles"));
+const TravelSuppliers = lazy(() => import("./pages/admin/travel/TravelSuppliers"));
+const TravelOperations = lazy(() => import("./pages/admin/travel/TravelOperations"));
+const TravelMargins = lazy(() => import("./pages/admin/travel/TravelMargins"));
 const SkiTeachingProducts = lazy(() => import("./pages/admin/ski/SkiTeachingProducts"));
 const SkiSessions = lazy(() => import("./pages/admin/ski/SkiSessions"));
 const SkiRentalCounter = lazy(() => import("./pages/admin/ski/SkiRentalCounter"));
@@ -528,6 +532,10 @@ function Router() {
       <Route path="/admin/social-token-net">{() => <Suspense fallback={<AdminLoadingFallback />}><SocialTokenNetHome /></Suspense>}</Route>
       <Route path="/admin/net/:producto">{() => <Suspense fallback={<AdminLoadingFallback />}><NetProductHome /></Suspense>}</Route>
       <Route path="/admin/ski/escuela">{() => <Suspense fallback={<AdminLoadingFallback />}><SkiSchoolPlanning /></Suspense>}</Route>
+      <Route path="/admin/travel/expedientes">{() => <Suspense fallback={<AdminLoadingFallback />}><TravelFiles /></Suspense>}</Route>
+      <Route path="/admin/travel/proveedores">{() => <Suspense fallback={<AdminLoadingFallback />}><TravelSuppliers /></Suspense>}</Route>
+      <Route path="/admin/travel/operaciones">{() => <Suspense fallback={<AdminLoadingFallback />}><TravelOperations /></Suspense>}</Route>
+      <Route path="/admin/travel/margenes">{() => <Suspense fallback={<AdminLoadingFallback />}><TravelMargins /></Suspense>}</Route>
       <Route path="/admin/ski/profesores">{() => <Suspense fallback={<AdminLoadingFallback />}><SkiInstructors /></Suspense>}</Route>
       <Route path="/admin/ski/productos-docentes">{() => <Suspense fallback={<AdminLoadingFallback />}><SkiTeachingProducts /></Suspense>}</Route>
       <Route path="/admin/ski/sesiones">{() => <Suspense fallback={<AdminLoadingFallback />}><SkiSessions /></Suspense>}</Route>
