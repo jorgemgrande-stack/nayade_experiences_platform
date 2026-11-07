@@ -5,7 +5,7 @@
  * sin la migración 0034 se omite sin error. El cierre manual («Cerrar día» en Informes) hace exactamente lo mismo.
  */
 import { scheduleTenantCron } from "./_core/tenantRegistry/scheduler";
-import { getFeatureFlag } from "./config";
+import { moduleFlagEnabled } from "./_core/flagGuard";
 import { addDaysIso, todayInTimeZone } from "./hotelPms";
 import { isMissingPmsSchema } from "./hotelPmsDb";
 
@@ -19,7 +19,7 @@ export function nightAuditBusinessDate(now: Date = new Date()): string {
 
 export async function runHotelNightAuditJob(now: Date = new Date()): Promise<{ businessDate: string; skipped?: string }> {
   const businessDate = nightAuditBusinessDate(now);
-  if (!(await getFeatureFlag("hotel_module_enabled", false))) return { businessDate, skipped: "hotel_off" };
+  if (!(await moduleFlagEnabled("hotel_module_enabled"))) return { businessDate, skipped: "hotel_off" };
   try {
     const { getCapabilityAccess } = await import("./_core/capabilities/access");
     if (!(await getCapabilityAccess().check("hotel-net", { write: true })).allowed) return { businessDate, skipped: "sin_licencia" };
