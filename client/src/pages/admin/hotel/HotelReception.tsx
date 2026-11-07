@@ -1,11 +1,13 @@
+import { useState } from "react";
 import { trpc } from "@/lib/trpc";
+import FolioDialog from "./FolioDialog";
 import { Link } from "wouter";
 import AdminLayout from "@/components/AdminLayout";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { toast } from "sonner";
-import { Ban, BedDouble, ConciergeBell, Lock, LogIn, LogOut, Percent, RefreshCw, Sparkles, Users } from "lucide-react";
+import { Ban, BedDouble, ConciergeBell, Lock, LogIn, LogOut, Percent, Receipt, RefreshCw, Sparkles, Users } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { PmsNotInstalled, ROOM_STATE_LABEL, isPmsNotInstalled, roomStateClass, shortDate } from "./pmsShared";
 
@@ -46,6 +48,7 @@ export default function HotelReception() {
   const checkIn = trpc.hotel.adminCheckIn.useMutation({ onSuccess: (r) => { toast.success(r.roomCode ? `Check-in hecho · habitación ${r.roomCode}` : "Check-in hecho (sin habitación asignada)"); refresh(); }, onError });
   const checkOut = trpc.hotel.adminCheckOut.useMutation({ onSuccess: () => { toast.success("Check-out hecho"); refresh(); }, onError });
   const noShow = trpc.hotel.adminMarkNoShow.useMutation({ onSuccess: () => { toast.success("Marcada como no-show"); refresh(); }, onError });
+  const [folioId, setFolioId] = useState<number | null>(null);
   const busy = checkIn.isPending || checkOut.isPending || noShow.isPending;
 
   const roomStates = Object.entries(d?.roomStates ?? {}).filter(([, n]) => (n as number) > 0);
@@ -114,7 +117,7 @@ export default function HotelReception() {
                     <div key={r.id} className="flex items-center justify-between gap-2 border-b border-border pb-2 last:border-0">
                       <Guest r={r} today={d.today} />
                       {r.statusReservation === "FINALIZADA"
-                        ? <Badge variant="secondary" className="shrink-0">Salida hecha</Badge>
+                        ? <Button size="sm" variant="outline" className="shrink-0" onClick={() => setFolioId(r.id)}><Receipt className="h-3.5 w-3.5 sm:mr-1" /><span className="hidden sm:inline">Folio</span></Button>
                         : <Button size="sm" className="shrink-0" onClick={() => checkOut.mutate({ reservationId: r.id })} disabled={busy}><LogOut className="h-3.5 w-3.5 sm:mr-1" /><span className="hidden sm:inline">Check-out</span></Button>}
                     </div>
                   ))}
@@ -128,7 +131,10 @@ export default function HotelReception() {
                   {d.inHouse.map((r: any) => (
                     <div key={r.id} className="flex items-center justify-between gap-2 border-b border-border pb-2 last:border-0">
                       <Guest r={r} today={d.today} />
-                      <Button size="sm" variant="outline" className="shrink-0" onClick={() => checkOut.mutate({ reservationId: r.id })} disabled={busy} title="Check-out"><LogOut className="h-3.5 w-3.5" /></Button>
+                      <div className="flex gap-1 shrink-0">
+                        <Button size="sm" variant="outline" onClick={() => setFolioId(r.id)} title="Folio"><Receipt className="h-3.5 w-3.5" /></Button>
+                        <Button size="sm" variant="outline" onClick={() => checkOut.mutate({ reservationId: r.id })} disabled={busy} title="Check-out"><LogOut className="h-3.5 w-3.5" /></Button>
+                      </div>
                     </div>
                   ))}
                 </CardContent>
@@ -151,6 +157,7 @@ export default function HotelReception() {
           </>
         )}
       </div>
+      {folioId !== null && <FolioDialog reservationId={folioId} onClose={() => setFolioId(null)} />}
     </AdminLayout>
   );
 }

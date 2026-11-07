@@ -23,6 +23,11 @@ import {
   assignRoomWithinTx, unassignRoomFromReservation, autoAssignReservation, autoAssignRange, getRoomPlanning,
   getReceptionDashboard, applyStayTransition, listStayRestrictions, setStayRestrictions, stayRestrictionReason,
 } from "../hotelPmsDb";
+import {
+  getFolio, addFolioCharge, addFolioPayment, deleteFolioItem, closeFolio, postAccommodationOnCheckIn,
+  getPmsSettings, setPmsSettings, getHotelReport, runNightAudit,
+} from "../hotelFolioDb";
+import { FOLIO_CHARGE_CATEGORIES, FOLIO_PAYMENT_METHODS, normalizeTaxBp } from "../hotelFolio";
 
 const isoDate = z.string().refine(isIsoDate, "Fecha no válida (AAAA-MM-DD)");
 /** Rango de fechas inclusivo y acotado (planning, listados y restricciones). */
@@ -490,7 +495,12 @@ export const hotelRouter = router({
   /** Check-in: la estancia pasa a «en curso» y la habitación asignada (o la automática) queda ocupada. */
   adminCheckIn: adminProcedure
     .input(z.object({ reservationId: z.number().int() }))
-    .mutation(({ input, ctx }) => applyStayTransition(input.reservationId, "checkin", ctx.user.id)),
+    .mutation(async ({ input, ctx }) => {
+      const r = await applyStayTransition(input.reservationId, "checkin", ctx.user.id);
+      // El alojamiento entra en el folio al hacer el check-in (sin la migración 0034 no hace nada)
+      await postAccommodationOnCheckIn(input.reservationId, ctx.user.id).catch((e) => console.warn("[hotel] Folio: alojamiento no cargado al hacer check-in:", e instanceof Error ? e.message : e));
+      return r;
+    }),
 
   /** Check-out: solo con check-in previo; la estancia finaliza y la habitación queda sucia. */
   adminCheckOut: adminProcedure
@@ -524,6 +534,70 @@ export const hotelRouter = router({
       if (why) throw new TRPCError({ code: "BAD_REQUEST", message: why });
       return setStayRestrictions({ roomTypeId: input.roomTypeId, from: input.range.from, to: input.range.to, userId: ctx.user.id, ...r });
     }),
+
+  // ── ADMIN: PMS · FOLIO DE ESTANCIA ────────────────────────────────────────
+
+  /** Folio de la reserva: cargos, pagos y saldo (se abre y carga el alojamiento la primera vez tras el check-in). */
+  adminGetFolio: adminProcedure
+    .input(z.object({ reservationId: z.number().int() }))
+    .query(({ input, ctx }) => getFolio(input.reservationId, ctx.user.id)),
+
+  adminAddFolioCharge: adminProcedure
+    .input(z.object({
+      reservationId: z.number().int(),
+      category: z.enum(FOLIO_CHARGE_CATEGORIES).exclude(["alojamiento"]),
+      description: z.string().trim().min(1).max(255),
+      quantity: z.number().int().min(1).max(999),
+      unitPriceCents: z.number().int().min(1).max(10_000_000),
+      taxRateBp: z.number().int().min(0).max(3000),
+    }))
+    .mutation(({ input, ctx }) => addFolioCharge({ ...input, userId: ctx.user.id })),
+
+  adminAddFolioPayment: adminProcedure
+    .input(z.object({
+      reservationId: z.number().int(),
+      method: z.enum(FOLIO_PAYMENT_METHODS),
+      amountCents: z.number().int().min(1).max(100_000_000),
+      description: z.string().max(255).optional(),
+    }))
+    .mutation(({ input, ctx }) => addFolioPayment({ ...input, userId: ctx.user.id })),
+
+  adminDeleteFolioItem: adminProcedure
+    .input(z.object({ reservationId: z.number().int(), itemId: z.number().int() }))
+    .mutation(({ input }) => deleteFolioItem(input)),
+
+  /** Cierra el folio (saldo 0) y emite su factura con la numeración de la empresa. */
+  adminCloseFolio: adminProcedure
+    .input(z.object({
+      reservationId: z.number().int(),
+      clientName: z.string().max(256).optional(),
+      clientNif: z.string().max(32).optional(),
+      clientAddress: z.string().max(500).optional(),
+    }))
+    .mutation(({ input, ctx }) => closeFolio({ ...input, userId: ctx.user.id })),
+
+  adminGetPmsSettings: adminProcedure.query(() => getPmsSettings()),
+
+  /** IVA del alojamiento de la empresa (por defecto 10 %). */
+  adminSetPmsSettings: adminProcedure
+    .input(z.object({ accommodationTaxBp: z.number().int() }))
+    .mutation(({ input, ctx }) => {
+      const bp = normalizeTaxBp(input.accommodationTaxBp);
+      if (bp === null) throw new TRPCError({ code: "BAD_REQUEST", message: "IVA no válido (entre 0 % y 30 %)" });
+      return setPmsSettings({ accommodationTaxBp: bp, userId: ctx.user.id });
+    }),
+
+  // ── ADMIN: PMS · CIERRE DEL DÍA E INFORMES ────────────────────────────────
+
+  /** Ocupación, ingresos de alojamiento, ADR y RevPAR por día del rango, con el resumen y los cierres guardados. */
+  adminGetReport: adminProcedure
+    .input(dateRange(370))
+    .query(({ input }) => getHotelReport(input.from, input.to)),
+
+  /** «Cerrar día»: guarda los indicadores del día (repetirlo los recalcula). */
+  adminRunNightAudit: adminProcedure
+    .input(z.object({ businessDate: isoDate }))
+    .mutation(({ input, ctx }) => runNightAudit(input.businessDate, { userId: ctx.user.id, source: "manual" })),
 
   // ── BOOKING ───────────────────────────────────────────────────────────────
 

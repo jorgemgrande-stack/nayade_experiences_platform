@@ -83,18 +83,18 @@ export const hotelRoomAssignments = mysqlTable("hotel_room_assignments", {
 
 export type HotelRoom = typeof hotelRooms.$inferSelect;
 
-type Db = NonNullable<Awaited<ReturnType<typeof getDb>>>;
-type Exec = Pick<Db, "execute" | "select" | "insert" | "update" | "delete">;
+export type Db = NonNullable<Awaited<ReturnType<typeof getDb>>>;
+export type Exec = Pick<Db, "execute" | "select" | "insert" | "update" | "delete">;
 
 // ─── Utilidades ───────────────────────────────────────────────────────────────
 
-async function db(): Promise<Db> {
+export async function db(): Promise<Db> {
   const d = await getDb();
   if (!d) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Base de datos no disponible" });
   return d;
 }
 
-async function rows<T>(exec: Pick<Db, "execute">, q: SQL): Promise<T[]> {
+export async function rows<T>(exec: Pick<Db, "execute">, q: SQL): Promise<T[]> {
   const [r] = (await exec.execute(q)) as unknown as [T[]];
   return r;
 }
@@ -127,7 +127,7 @@ async function pms<T>(fn: () => Promise<T>): Promise<T> {
 }
 
 /** Transacción READ COMMITTED con reintento ante interbloqueo. */
-async function inTx<T>(fn: (tx: Exec) => Promise<T>): Promise<T> {
+export async function inTx<T>(fn: (tx: Exec) => Promise<T>): Promise<T> {
   const d = await db();
   for (let attempt = 1; ; attempt++) {
     try {
@@ -398,7 +398,7 @@ export async function listHotelReservations(f: { from: string; to: string; statu
     .filter((r): r is HotelReservation => !!r && r.checkIn <= f.to && r.checkOut > f.from);
 }
 
-async function lockReservation(tx: Exec, reservationId: number): Promise<HotelReservation> {
+export async function lockReservation(tx: Exec, reservationId: number): Promise<HotelReservation> {
   const [r] = await rows<ReservationRow>(tx, sql`
     SELECT ${RESERVATION_COLUMNS} FROM reservations WHERE id = ${reservationId} AND ${HOTEL_RESERVATION} FOR UPDATE`);
   const res = r ? toReservation(r, Date.now()) : null;
@@ -471,7 +471,7 @@ async function selectAssignments(exec: Pick<Db, "execute">, where: SQL): Promise
   return list.map((r) => toAssignment(r, now));
 }
 
-async function assignmentsForReservations(exec: Pick<Db, "execute">, ids: readonly number[]) {
+export async function assignmentsForReservations(exec: Pick<Db, "execute">, ids: readonly number[]) {
   if (ids.length === 0) return new Map<number, AssignmentView>();
   const list = await selectAssignments(exec, sql`a.reservation_id IN (${idList(ids)})`);
   return new Map(list.map((a) => [a.reservationId, a]));
