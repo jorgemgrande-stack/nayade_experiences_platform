@@ -73,7 +73,7 @@ function PlanCard({
       aria-labelledby={titleId}
     >
       {featured && <span className="absolute inset-x-6 top-0 h-1 rounded-b-full bg-primary" aria-hidden="true" />}
-      <div className={cn("flex flex-1 flex-col gap-4 rounded-3xl p-5 sm:p-6", (featured || card.isCurrent) && "cx-glow")}>
+      <div className={cn("flex flex-1 flex-col gap-4 rounded-3xl p-5 sm:p-6 xl:gap-3 xl:p-5", (featured || card.isCurrent) && "cx-glow")}>
         {/* Cabecera: público, estado y nombre */}
         <div className="flex items-start gap-3">
           <span
@@ -92,7 +92,7 @@ function PlanCard({
             </h3>
           </div>
         </div>
-        <div className="-mt-2 flex flex-wrap items-center gap-1.5">
+        <div className="-mt-1 flex flex-wrap items-center gap-1.5">
           {card.currentLabel && <Badge className="bg-primary text-primary-foreground">{card.currentLabel}</Badge>}
           {featured && (
             <Badge className="gap-1 bg-primary/10 text-[color:var(--cx-red-text)] hover:bg-primary/10">
@@ -112,7 +112,7 @@ function PlanCard({
         {pr.pillars.length > 0 && (
           <ul className="flex flex-wrap gap-1.5" aria-label={`Áreas clave de ${plan.name}`}>
             {pr.pillars.map((p) => (
-              <li key={p} className="rounded-full border border-border bg-background/60 px-2.5 py-1 text-xs font-medium text-foreground">
+              <li key={p} className="rounded-full border border-border bg-background/60 px-2.5 py-0.5 text-xs font-medium text-foreground">
                 {p}
               </li>
             ))}
