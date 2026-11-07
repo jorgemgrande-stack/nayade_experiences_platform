@@ -111,7 +111,13 @@ describe.skipIf(!URL_)("Elephant Net · rutas públicas (aplicación real, dos e
       expect(sent.text).toContain("Pedido enviado");
       expect(sent.text).toContain("No se cobra nada ahora");
       expect((await post("a", `/mesa/${tokenOf(url)}`, { [`q${menuA}`]: "2", [`q${menuB}`]: "1", n: "Sin cebolla", k })).status).toBe(200);
-      const reqs = await ess.sql("a", "SELECT status, item_count, estimated_total FROM restaurant_table_requests WHERE table_id = ?", [tableId]);
+      // El mismo formulario enviado dos veces a la vez: los dos responden bien y es un solo pedido (sin 500)
+      const k2 = key();
+      const twin = await Promise.all([1, 2].map(() => post("a", `/mesa/${tokenOf(url)}`, { [`q${menuA}`]: "1", k: k2 })));
+      expect(twin.map((r) => r.status)).toEqual([200, 200]);
+      expect((await ess.sql("a", "SELECT COUNT(*) AS n FROM restaurant_table_requests WHERE submit_key = ?", [k2]))[0].n).toBe(1);
+      await ess.sql("a", "UPDATE restaurant_table_requests SET status = 'rejected' WHERE submit_key = ?", [k2]);
+      const reqs = await ess.sql("a", "SELECT status, item_count, estimated_total FROM restaurant_table_requests WHERE table_id = ? AND status = 'pending'", [tableId]);
       expect(reqs).toHaveLength(1);
       expect(reqs[0]).toMatchObject({ status: "pending", item_count: 3, estimated_total: "31.50" });
       expect((await ess.sql("a", "SELECT COUNT(*) AS n FROM hospo_orders"))[0].n).toBe(0);
@@ -131,7 +137,7 @@ describe.skipIf(!URL_)("Elephant Net · rutas públicas (aplicación real, dos e
       const items = await ess.sql("a", "SELECT name, quantity, status, notes FROM hospo_order_items WHERE order_id = ? ORDER BY id", [r.orderId]);
       expect(items.map((i) => [i.name, i.quantity, i.status])).toEqual([["Croquetas caseras", 2, "pending"], ["Arroz del día", 1, "pending"]]);
       expect(items[0].notes).toBe("Desde la mesa: Sin cebolla");
-      expect((await ess.sql("a", "SELECT status, hospo_order_id FROM restaurant_table_requests"))[0]).toMatchObject({ status: "accepted", hospo_order_id: r.orderId });
+      expect((await ess.sql("a", "SELECT status, hospo_order_id FROM restaurant_table_requests ORDER BY id"))[0]).toMatchObject({ status: "accepted", hospo_order_id: r.orderId });
       expect((await ess.sql("a", "SELECT COUNT(*) AS n FROM tpv_sales"))[0].n).toBe(0);
       expect(errCode(await ess.m("a", "restaurantNet.acceptTableRequest", { requestId: list.pending[0].id }, adA))).toBe("CONFLICT");
     });
@@ -205,6 +211,10 @@ describe.skipIf(!URL_)("Elephant Net · rutas públicas (aplicación real, dos e
       const bad = await post("a", `/check-in/${tokenOf(url)}`, { ...g0, g0_docNumber: "12345678A" });
       expect(bad.status).toBe(400);
       expect(bad.text).toContain("DNI no es válido");
+      // Al corregir, el documento y el soporte nunca se devuelven en la página
+      expect(bad.text).not.toContain("12345678A");
+      expect(bad.text).not.toContain("ABC123456");
+      expect(bad.text).toContain('value="Calle Ejemplo 1"');
       expect((await post("a", `/check-in/${tokenOf(url)}`, g0)).status).toBe(200);
       expect((await post("a", `/check-in/${tokenOf(url)}`, { ...g0, g0_city: "Ejemplo de Abajo" })).status).toBe(200);
       const rows = await ess.sql("a", "SELECT status, guest_count, guests_json FROM hotel_online_checkins WHERE reservation_id = ?", [resId]);
@@ -212,9 +222,10 @@ describe.skipIf(!URL_)("Elephant Net · rutas públicas (aplicación real, dos e
       expect(rows[0].status).toBe("pending");
       expect(JSON.parse(rows[0].guests_json)[0]).toMatchObject({ firstName: "Ana", city: "Ejemplo de Abajo" });
       expect((await ess.sql("a", "SELECT COUNT(*) AS n FROM hotel_guests"))[0].n).toBe(0);
+      // Lo ya enviado no se vuelve a mostrar: solo un resumen (quien tenga el enlace no ve documentos ni direcciones)
       const again = await get("a", `/check-in/${tokenOf(url)}`);
-      expect(again.text).toContain("Ya hemos recibido tus datos");
-      expect(again.text).toContain('value="Ejemplo de Abajo"');
+      expect(again.text).toContain("Datos recibidos de 1 persona, pendientes de revisión en recepción");
+      for (const secret of ["12345678Z", "ABC123456", "1990-05-10", "Calle Ejemplo 1", "Ejemplo de Abajo", "titular@cliente-a.example"]) expect(again.text).not.toContain(secret);
     });
 
     it("recepción lo aplica a las fichas; los datos enviados se vacían y el enlace deja de valer", async () => {
@@ -259,7 +270,7 @@ describe.skipIf(!URL_)("Elephant Net · rutas públicas (aplicación real, dos e
       ok(await ess.m("a", "skiRental.activateSite", S, adA));
       storeId = ok(await ess.m("a", "skiRental.createStore", { ...S, name: "Tienda pie de pistas", openingTime: "08:30", closingTime: "18:00", overdueReturnTime: "17:30" }, adA)).id;
       modelId = ok(await ess.m("a", "skiRental.createModel", { ...S, assetType: "ski", name: "Allround", size: "160", replacementValueCents: 30000 }, adA)).id;
-      ok(await ess.m("a", "skiRental.createUnits", { ...S, modelId, storeId, count: 3 }, adA));
+      ok(await ess.m("a", "skiRental.createUnits", { ...S, modelId, storeId, count: 5 }, adA));
       deliveryId = await newDelivery("SKI-00001");
       url = ok(await ess.m("a", "skiRental.issueSignLink", { ...S, deliveryId }, adA)).url;
     });
@@ -305,6 +316,16 @@ describe.skipIf(!URL_)("Elephant Net · rutas públicas (aplicación real, dos e
       expect((await get("a", `/firma/${tokenOf(u2)}`)).text).toContain(INVALID);
       expect(errCode(await ess.m("b", "skiRental.issueSignLink", { ...S, deliveryId: d2 }, adB))).not.toBeUndefined();
       expect((await ess.sql("a", "SELECT status FROM ski_rental_contracts WHERE delivery_id = ?", [d2]))[0].status).toBe("pending");
+    });
+
+    it("dos firmas a la vez con el mismo enlace: solo firma la que consume el enlace", async () => {
+      const dx = await newDelivery("SKI-00004");
+      const u = ok(await ess.m("a", "skiRental.issueSignLink", { ...S, deliveryId: dx }, adA)).url;
+      const both = await Promise.all(["Primera Persona", "Segunda Persona"].map((signerName) => post("a", `/firma/${tokenOf(u)}`, { signerName, accepted: "1" })));
+      expect(both.filter((r) => r.status === 200 && r.text.includes("Contrato firmado"))).toHaveLength(1);
+      expect(both.filter((r) => r.text.includes(INVALID))).toHaveLength(1);
+      const winner = both.find((r) => r.status === 200)!.text.includes("Primera Persona") ? "Primera Persona" : "Segunda Persona";
+      expect((await ess.sql("a", "SELECT status, signer_name FROM ski_rental_contracts WHERE delivery_id = ?", [dx]))[0]).toMatchObject({ status: "signed", signer_name: winner });
     });
 
     it("sin la licencia ski-rental la firma remota no está disponible", async () => {
