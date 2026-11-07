@@ -96,6 +96,8 @@ export const TRPC_ROUTER_CAPABILITIES: Record<string, string> = {
   partners: "supplier-settlements",
   // Elephant Net
   reav: "travel-net",
+  // Travel Net: expedientes, servicios, márgenes, proveedores y operaciones
+  travel: "travel-net",
 };
 
 /**
