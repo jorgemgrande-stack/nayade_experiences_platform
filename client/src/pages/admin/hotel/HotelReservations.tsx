@@ -11,7 +11,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
-import { Ban, BedDouble, CalendarDays, Link2, Link2Off, LogIn, LogOut, Plus, RefreshCw, Wand2 } from "lucide-react";
+import { Ban, BedDouble, CalendarDays, Link2, Link2Off, LogIn, LogOut, Plus, Receipt, RefreshCw, Wand2 } from "lucide-react";
+import FolioDialog from "./FolioDialog";
 import {
   CHANNEL_LABEL, EmptyStep, PAYMENT_LABEL, PmsNotInstalled, STAY_LABEL, addDays, eur, isPmsNotInstalled, localToday, shortDate,
 } from "./pmsShared";
@@ -177,6 +178,7 @@ export default function HotelReservations() {
   const [status, setStatus] = useState("all");
   const [newOpen, setNewOpen] = useState(false);
   const [assignTarget, setAssignTarget] = useState<any | null>(null);
+  const [folioId, setFolioId] = useState<number | null>(null);
   const validRange = from && to && from <= to;
   const listQ = trpc.hotel.adminListReservations.useQuery(
     { range: { from, to }, status: status === "all" ? undefined : (status as any) },
@@ -278,6 +280,7 @@ export default function HotelReservations() {
                             {canCheckIn && <Button variant="ghost" size="sm" onClick={() => checkIn.mutate({ reservationId: r.id })} disabled={busy} title="Check-in"><LogIn className="h-4 w-4 text-emerald-600 dark:text-emerald-400" /></Button>}
                             {s === "EN_CURSO" && <Button variant="ghost" size="sm" onClick={() => checkOut.mutate({ reservationId: r.id })} disabled={busy} title="Check-out"><LogOut className="h-4 w-4 text-violet-600 dark:text-violet-400" /></Button>}
                             {canCheckIn && <Button variant="ghost" size="sm" onClick={() => noShow.mutate({ reservationId: r.id })} disabled={busy} title="No-show"><Ban className="h-4 w-4" /></Button>}
+                            {(r.occupies || s === "FINALIZADA") && <Button variant="ghost" size="sm" onClick={() => setFolioId(r.id)} title="Folio de la estancia"><Receipt className="h-4 w-4 text-amber-600 dark:text-amber-400" /></Button>}
                             {r.occupies && s !== "FINALIZADA" && !r.assignment && <Button variant="ghost" size="sm" onClick={() => auto.mutate({ reservationId: r.id })} disabled={busy} title="Asignar automáticamente"><Wand2 className="h-4 w-4" /></Button>}
                             {r.occupies && s !== "FINALIZADA" && <Button variant="ghost" size="sm" onClick={() => setAssignTarget(r)} disabled={busy} title={r.assignment ? "Cambiar habitación" : "Asignar habitación"}><Link2 className="h-4 w-4" /></Button>}
                             {r.assignment && s !== "EN_CURSO" && s !== "FINALIZADA" && <Button variant="ghost" size="sm" onClick={() => unassign.mutate({ reservationId: r.id })} disabled={busy} title="Quitar habitación"><Link2Off className="h-4 w-4 text-destructive" /></Button>}
@@ -294,6 +297,7 @@ export default function HotelReservations() {
       </div>
 
       {newOpen && <NewReservationDialog roomTypes={roomTypes} rooms={roomsQ.data ?? []} onClose={() => setNewOpen(false)} />}
+      {folioId !== null && <FolioDialog reservationId={folioId} onClose={() => setFolioId(null)} />}
       {assignTarget && <AssignDialog reservation={assignTarget} rooms={roomsQ.data ?? []} onClose={() => setAssignTarget(null)} />}
     </AdminLayout>
   );
