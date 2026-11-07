@@ -66,7 +66,7 @@ export const NET_PRODUCTS: readonly NetProduct[] = [
       { title: "Agenda y citas", features: [A("Agenda y calendario"), A("Reservas y citas online"), A("Gestión de profesionales"), A("Horarios y disponibilidad"), A("Capacidad y prevención de solapamientos")] },
       { title: "Clientes y seguimiento", features: [A("Clientes e historiales"), S("Fichas clínicas y seguimiento especializado")] },
       { title: "Tratamientos y bonos", features: [A("Tratamientos y servicios"), A("Bonos y paquetes de sesiones"), A("Control de sesiones consumidas y pendientes")] },
-      { title: "Cobros y gestión", features: [A("Pagos online y TPV"), S("Recordatorios y comunicaciones"), S("Estadísticas y gestión del centro")] },
+      { title: "Cobros y gestión", features: [A("Pagos online y TPV"), S("Recordatorios y comunicaciones"), A("Estadísticas y gestión del centro")] },
     ],
   },
   {
@@ -102,7 +102,7 @@ export const NET_PRODUCTS: readonly NetProduct[] = [
       { title: "Reservas y mesas", features: [A("Reservas online"), A("Turnos y aforos"), S("Clientes y preferencias"), A("Gestión de mesas y plano de sala")] },
       { title: "Sala y comandas", features: [A("Carta y productos"), A("TPV de restauración"), A("Comandas digitales"), A("Gestión de camareros")] },
       { title: "Cocina", features: [A("Cocina/KDS"), A("Estados de preparación"), A("Comunicación entre sala y cocina")] },
-      { title: "Gestión", features: [S("Escandallos y costes"), A("Facturación y cobros"), S("Informes operativos")] },
+      { title: "Gestión", features: [S("Escandallos y costes"), A("Facturación y cobros"), A("Informes operativos")] },
     ],
   },
   {
@@ -116,10 +116,10 @@ export const NET_PRODUCTS: readonly NetProduct[] = [
     benefits: ["Clases, cursillos y profesores planificados en un mismo calendario.", "Liquidaciones de profesores sin hojas de cálculo.", "Alquiler de material con contratos, fianzas y devoluciones."],
     legacyKeys: ["ski-net-school", "ski-net-courses", "ski-net-rental", "ski-net-instructors"],
     areas: [
-      { title: "Escuela", features: [A("Gestión de escuelas"), A("Calendarios y disponibilidad"), A("Clases particulares y colectivas"), S("Cursillos y grupos por niveles"), A("Alumnos y fichas"), A("Planificación de sesiones")] },
+      { title: "Escuela", features: [A("Gestión de escuelas"), A("Calendarios y disponibilidad"), A("Clases particulares y colectivas"), A("Cursillos y grupos por niveles"), A("Alumnos y fichas"), A("Planificación de sesiones")] },
       { title: "Profesores", features: [A("Profesores y monitores"), A("Asignación de profesores"), A("Control de horas"), A("Liquidaciones de profesores"), A("Portal del profesor")] },
       { title: "Alquiler", features: [A("Inventario de material"), A("Alquiler de equipos"), S("Disponibilidad y reservas"), A("Contratos digitales y firmas"), S("Fianzas y devoluciones")] },
-      { title: "Gestión", features: [A("Cobros y facturación"), S("Estadísticas operativas")] },
+      { title: "Gestión", features: [A("Cobros y facturación"), A("Estadísticas operativas")] },
     ],
   },
   {
@@ -133,10 +133,10 @@ export const NET_PRODUCTS: readonly NetProduct[] = [
     benefits: ["Expedientes, presupuestos y reservas de cada viajero en un único sitio.", "Inventario de proveedores unificado y con tus márgenes.", "Paquetes y circuitos con su documentación y su cobro."],
     legacyKeys: ["travel-net-agency", "travel-net-connectors", "travel-net-packages"],
     areas: [
-      { title: "Agencia", features: [S("Gestión de agencias"), A("Clientes y viajeros"), S("Expedientes de viaje"), A("Presupuestos y propuestas"), S("Reservas")] },
-      { title: "Proveedores y conectores", features: [S("Proveedores turísticos"), S("Conectores externos"), S("Consulta de alojamientos"), S("Integración de servicios turísticos"), S("Unificación y deduplicación de inventario"), S("Configuración de márgenes comerciales")] },
-      { title: "Paquetes y circuitos", features: [S("Paquetes dinámicos"), S("Circuitos y viajes combinados"), S("Documentación y bonos"), S("Área del viajero")] },
-      { title: "Gestión", features: [A("Cobros y facturación"), S("Informes comerciales")] },
+      { title: "Agencia", features: [S("Gestión de agencias"), A("Clientes y viajeros"), A("Expedientes de viaje"), A("Presupuestos y propuestas"), A("Reservas")] },
+      { title: "Proveedores y conectores", features: [A("Proveedores turísticos"), S("Conectores externos"), S("Consulta de alojamientos"), S("Integración de servicios turísticos"), S("Unificación y deduplicación de inventario"), A("Configuración de márgenes comerciales")] },
+      { title: "Paquetes y circuitos", features: [S("Paquetes dinámicos"), S("Circuitos y viajes combinados"), A("Documentación y bonos"), S("Área del viajero")] },
+      { title: "Gestión", features: [A("Cobros y facturación"), A("Informes comerciales")] },
     ],
     note: "Las integraciones con proveedores pueden tener costes externos de consumo, transacción o proveedor, que se repercuten según uso; no son extensiones de pago de Travel Net.",
   },
