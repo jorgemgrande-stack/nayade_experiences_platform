@@ -418,7 +418,8 @@ export async function campaignExtraInTx(tx: LoyaltyExec, candidate: LoyaltyCampa
 // ─── Emisión por compras confirmadas ─────────────────────────────────────────
 
 export interface PurchaseDocument {
-  sourceType: "tpv_sale" | "reservation";
+  /** `hotel_folio`: folio de Hotel Net cerrado con factura (server/loyaltySectors.ts). */
+  sourceType: "tpv_sale" | "reservation" | "hotel_folio";
   sourceId: string;
   sourceRef?: string | null;
   clientId: number | null;

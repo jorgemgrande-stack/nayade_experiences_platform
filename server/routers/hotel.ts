@@ -2,6 +2,7 @@ import { router, publicProcedure, protectedProcedure, permissionProcedure } from
 import { companyName } from "../tenantBrand";
 import { publicBaseUrl } from "../_core/productIdentity";
 import { TRPCError } from "@trpc/server";
+import { awardHotelFolioPoints } from "../loyaltySectors";
 import { z } from "zod";
 import {
   getAllRoomTypes, getActiveRoomTypes, getRoomTypeBySlug, getRoomTypeById,
@@ -592,7 +593,12 @@ export const hotelRouter = router({
       clientNif: z.string().max(32).optional(),
       clientAddress: z.string().max(500).optional(),
     }))
-    .mutation(({ input, ctx }) => closeFolio({ ...input, userId: ctx.user.id })),
+    .mutation(async ({ input, ctx }) => {
+      const r = await closeFolio({ ...input, userId: ctx.user.id });
+      // Social Token Net: puntos del folio cobrado (sin licencia de tokens o sin cliente en el CRM, nada; nunca rompe el cierre)
+      if (r.invoiceId) await awardHotelFolioPoints(input.reservationId);
+      return r;
+    }),
 
   adminGetPmsSettings: adminProcedure.query(() => getPmsSettings()),
 
