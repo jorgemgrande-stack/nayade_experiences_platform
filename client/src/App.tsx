@@ -193,6 +193,10 @@ const SkiSchoolPlanning = lazy(() => import("./pages/admin/ski/SkiSchoolPlanning
 const SkiInstructors = lazy(() => import("./pages/admin/ski/SkiInstructors"));
 const SkiTeachingProducts = lazy(() => import("./pages/admin/ski/SkiTeachingProducts"));
 const SkiSessions = lazy(() => import("./pages/admin/ski/SkiSessions"));
+const SkiRentalCounter = lazy(() => import("./pages/admin/ski/SkiRentalCounter"));
+const SkiRentalInventory = lazy(() => import("./pages/admin/ski/SkiRentalInventory"));
+const SkiRentalWorkshop = lazy(() => import("./pages/admin/ski/SkiRentalWorkshop"));
+const SkiRentalSettings = lazy(() => import("./pages/admin/ski/SkiRentalSettings"));
 const ProposalsPage = lazy(() => import("./pages/admin/crm/ProposalsPage"));
 const CommercialFollowupDashboard = lazy(() => import("./pages/admin/commercial/CommercialFollowupDashboard"));
 const WhatsAppGHLInbox = lazy(() => import("./pages/admin/commercial/WhatsAppGHLInbox"));
@@ -493,6 +497,10 @@ function Router() {
       <Route path="/admin/ski/profesores">{() => <Suspense fallback={<AdminLoadingFallback />}><SkiInstructors /></Suspense>}</Route>
       <Route path="/admin/ski/productos-docentes">{() => <Suspense fallback={<AdminLoadingFallback />}><SkiTeachingProducts /></Suspense>}</Route>
       <Route path="/admin/ski/sesiones">{() => <Suspense fallback={<AdminLoadingFallback />}><SkiSessions /></Suspense>}</Route>
+      <Route path="/admin/ski/alquiler">{() => <Suspense fallback={<AdminLoadingFallback />}><SkiRentalCounter /></Suspense>}</Route>
+      <Route path="/admin/ski/inventario">{() => <Suspense fallback={<AdminLoadingFallback />}><SkiRentalInventory /></Suspense>}</Route>
+      <Route path="/admin/ski/taller">{() => <Suspense fallback={<AdminLoadingFallback />}><SkiRentalWorkshop /></Suspense>}</Route>
+      <Route path="/admin/ski/alquiler-ajustes">{() => <Suspense fallback={<AdminLoadingFallback />}><SkiRentalSettings /></Suspense>}</Route>
       <Route path="/admin/crm/embudo">{() => <Suspense fallback={<AdminLoadingFallback />}><CrmFunnel /></Suspense>}</Route>
       <Route path="/admin/crm/propuestas">{() => <Suspense fallback={<AdminLoadingFallback />}><ProposalsPage /></Suspense>}</Route>
       <Route path="/admin/crm/anulaciones">{() => { window.location.replace("/admin/crm"); return null; }}</Route>
