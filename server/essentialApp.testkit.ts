@@ -135,7 +135,8 @@ export async function startEssentialApp(url: string, label: string, opts: { webD
     registry: svc,
     reader: store,
     databases: new prov.MysqlDatabaseProvisioner(admin, { host: u.hostname, port: Number(u.port || 3306) }),
-    schema: new prov.MysqlSchemaApplier({ baselinePath: path.resolve(__dirname, "../db/baseline/0000_baseline.sql"), migrationsDir: path.resolve(__dirname, "../db/migrations") }),
+    schema: new prov.MysqlSchemaApplier({ baselinePath: path.resolve(__dirname, "../db/baseline/0000_baseline.sql"), // TEST_MIGRATIONS_DIR: copia del carril sin huecos mientras se fusionan migraciones numeradas por adelantado
+      migrationsDir: process.env.TEST_MIGRATIONS_DIR ?? path.resolve(__dirname, "../db/migrations") }),
     seeder: new prov.MysqlTenantSeeder(),
     entitlements: new EntitlementAdmin(regPool),
     quotas: new QuotaAdmin(regPool),

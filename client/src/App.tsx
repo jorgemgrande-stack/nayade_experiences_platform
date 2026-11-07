@@ -213,6 +213,7 @@ const TravelOperations = lazy(() => import("./pages/admin/travel/TravelOperation
 const TravelMargins = lazy(() => import("./pages/admin/travel/TravelMargins"));
 const SkiTeachingProducts = lazy(() => import("./pages/admin/ski/SkiTeachingProducts"));
 const SkiSessions = lazy(() => import("./pages/admin/ski/SkiSessions"));
+const SkiGroups = lazy(() => import("./pages/admin/ski/SkiGroups"));
 const SkiRentalCounter = lazy(() => import("./pages/admin/ski/SkiRentalCounter"));
 const SkiRentalInventory = lazy(() => import("./pages/admin/ski/SkiRentalInventory"));
 const SkiRentalWorkshop = lazy(() => import("./pages/admin/ski/SkiRentalWorkshop"));
@@ -541,6 +542,7 @@ function Router() {
       <Route path="/admin/ski/profesores">{() => <Suspense fallback={<AdminLoadingFallback />}><SkiInstructors /></Suspense>}</Route>
       <Route path="/admin/ski/productos-docentes">{() => <Suspense fallback={<AdminLoadingFallback />}><SkiTeachingProducts /></Suspense>}</Route>
       <Route path="/admin/ski/sesiones">{() => <Suspense fallback={<AdminLoadingFallback />}><SkiSessions /></Suspense>}</Route>
+      <Route path="/admin/ski/grupos">{() => <Suspense fallback={<AdminLoadingFallback />}><SkiGroups /></Suspense>}</Route>
       <Route path="/admin/ski/horas">{() => <Suspense fallback={<AdminLoadingFallback />}><SkiTeacherHours /></Suspense>}</Route>
       <Route path="/admin/ski/liquidaciones">{() => <Suspense fallback={<AdminLoadingFallback />}><SkiSettlements /></Suspense>}</Route>
       <Route path="/admin/ski/alquiler">{() => <Suspense fallback={<AdminLoadingFallback />}><SkiRentalCounter /></Suspense>}</Route>
