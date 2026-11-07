@@ -210,7 +210,7 @@ function SessionsBody({ ctx, from, onNew }: { ctx: SkiCtx; from: string; onNew: 
       <div className="space-y-4">
         {days.map((d) => (
           <section key={d} className="space-y-2">
-            <h2 className="text-sm font-semibold capitalize text-foreground">{formatDay(d)}</h2>
+            <h2 className="text-sm font-semibold text-foreground">{formatDay(d)}</h2>
             <ul className="divide-y divide-border rounded-xl border border-border bg-card">
               {rows
                 .filter((r) => r.date === d)

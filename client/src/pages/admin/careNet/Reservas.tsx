@@ -25,7 +25,11 @@ import { BONOS_PATH, ClientPicker, PageHeader, useCareWrite } from "./CareNetPar
 
 const STATE_TONE: Record<SpaBookingState, Tone> = { pendiente: "warning", confirmada: "success", anulada: "neutral", conflicto: "danger" };
 const addDays = (d: string, n: number) => new Date(Date.parse(`${d}T00:00:00Z`) + n * DAY_MS).toISOString().slice(0, 10);
-const dayLabel = (d: string) => new Date(`${d}T12:00:00Z`).toLocaleDateString("es-ES", { weekday: "long", day: "numeric", month: "long", timeZone: "UTC" });
+// Solo la primera letra en mayúscula («Sábado, 7 de noviembre»; `capitalize` de CSS ponía «De Noviembre»)
+const dayLabel = (d: string) => {
+  const s = new Date(`${d}T12:00:00Z`).toLocaleDateString("es-ES", { weekday: "long", day: "numeric", month: "long", timeZone: "UTC" });
+  return s.charAt(0).toUpperCase() + s.slice(1);
+};
 
 export default function Reservas() {
   const { canWrite } = useCareWrite();
@@ -94,7 +98,7 @@ export default function Reservas() {
         ) : (
           days.map((d) => (
             <section key={d} className="rounded-2xl border border-border bg-card" aria-label={dayLabel(d)}>
-              <h2 className="border-b border-border px-4 py-2.5 text-sm font-semibold capitalize text-foreground">{dayLabel(d)}</h2>
+              <h2 className="border-b border-border px-4 py-2.5 text-sm font-semibold text-foreground">{dayLabel(d)}</h2>
               {(byDay.get(d) ?? []).length === 0 ? (
                 <p className="px-4 py-3 text-sm text-muted-foreground">Sin reservas.</p>
               ) : (
@@ -141,7 +145,7 @@ export default function Reservas() {
       )}
 
       <Dialog open={reverting != null} onOpenChange={(o) => !o && setReverting(null)}>
-        <DialogContent className="max-w-sm">
+        <DialogContent className="sm:max-w-sm">
           <DialogHeader>
             <DialogTitle>Devolver la sesión al bono</DialogTitle>
             <DialogDescription>Sin anular la cita, la reserva queda pendiente de pago; anulándola, se libera la plaza.</DialogDescription>
@@ -180,7 +184,7 @@ function CounterDialog({ onClose, onDone }: { onClose: () => void; onDone: () =>
   });
   return (
     <Dialog open onOpenChange={(o) => !o && onClose()}>
-      <DialogContent className="max-h-[90vh] max-w-md overflow-y-auto">
+      <DialogContent className="max-h-[90vh] sm:max-w-md overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Cita con bono</DialogTitle>
           <DialogDescription>Reserva una franja libre y descuenta una sesión del bono del cliente (el que caduca antes).</DialogDescription>
@@ -208,7 +212,7 @@ function CounterDialog({ onClose, onDone }: { onClose: () => void; onDone: () =>
           <div className="space-y-1.5">
             <Label htmlFor="care-ct-slot">Horario</Label>
             <Select value={slotId} onValueChange={setSlotId}>
-              <SelectTrigger id="care-ct-slot"><SelectValue placeholder={slots.data && slots.data.length === 0 ? "No hay horarios ese día" : "Elige el horario"} /></SelectTrigger>
+              <SelectTrigger id="care-ct-slot" className="w-full min-w-0"><SelectValue placeholder={slots.data && slots.data.length === 0 ? "No hay horarios ese día" : "Elige el horario"} /></SelectTrigger>
               <SelectContent>
                 {(slots.data ?? []).map((s) => (
                   <SelectItem key={s.id} value={String(s.id)} disabled={s.free < 1}>{s.startTime} · {s.treatmentName} · {s.free} libres</SelectItem>

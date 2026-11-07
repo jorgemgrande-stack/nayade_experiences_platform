@@ -68,7 +68,9 @@ export function addDays(iso: string, n: number): string {
 }
 export function formatDay(iso: string): string {
   const [y, m, d] = iso.split("-").map(Number);
-  return new Date(Date.UTC(y, m - 1, d)).toLocaleDateString("es-ES", { weekday: "long", day: "numeric", month: "long", timeZone: "UTC" });
+  const s = new Date(Date.UTC(y, m - 1, d)).toLocaleDateString("es-ES", { weekday: "long", day: "numeric", month: "long", timeZone: "UTC" });
+  // Solo la primera letra en mayúscula («Sábado, 7 de noviembre»; la clase capitalize de CSS ponía «De Noviembre»)
+  return s.charAt(0).toUpperCase() + s.slice(1);
 }
 export type ProductKind = "private" | "group" | "kids";
 export const KIND_LABEL: Record<ProductKind, string> = { private: "Clase particular", group: "Cursillo / colectiva", kids: "Escuelita" };
