@@ -174,6 +174,19 @@ export function touchLink(id: number, now = Date.now()): Promise<void> {
   });
 }
 
+/** Devuelve a activo un enlace consumido cuya operación falló (si no se ha emitido otro para el mismo objeto). */
+export function reactivateLink(id: number): Promise<void> {
+  return withLinksDb(async (d) => {
+    try {
+      await d.execute(sql`UPDATE net_public_links SET status = 'active', used_at = NULL WHERE id = ${id} AND status = 'used'`);
+    } catch (e) {
+      // Ya hay otro enlace activo para el mismo objeto (índice único): este se queda usado
+      for (let x: any = e, depth = 0; x && depth < 6; x = x.cause, depth++) if (x.code === "ER_DUP_ENTRY" || x.errno === 1062) return;
+      throw e;
+    }
+  });
+}
+
 /** Consume un enlace de un solo uso. Devuelve si lo consumió ESTA llamada (dos a la vez: solo una). */
 export function consumeLink(id: number, now = Date.now()): Promise<boolean> {
   return withLinksDb(async (d) =>

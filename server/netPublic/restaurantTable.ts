@@ -93,7 +93,22 @@ export const publicMenu = (restaurantId: number) => rn.listMenu(restaurantId);
 export type SubmitResult = { ok: true; requestId: number; replayed: boolean } | { ok: false; error: string };
 
 /** Registra el pedido pendiente de la mesa. Idempotente por clave del formulario. */
-export function submitTableRequest(link: NetLink, table: PublicTable, lines: TableOrderLine[], note: string | null, submitKey: string, now = Date.now()): Promise<SubmitResult> {
+export async function submitTableRequest(link: NetLink, table: PublicTable, lines: TableOrderLine[], note: string | null, submitKey: string, now = Date.now()): Promise<SubmitResult> {
+  try {
+    return await insertTableRequest(link, table, lines, note, submitKey, now);
+  } catch (e) {
+    // El mismo formulario enviado dos veces a la vez: el segundo choca con el índice único y es una repetición
+    for (let x: any = e, depth = 0; x && depth < 6; x = x.cause, depth++) {
+      if ((x.code === "ER_DUP_ENTRY" || x.errno === 1062) && String(x.sqlMessage ?? x.message ?? "").includes("uq_restaurant_table_requests_submit")) {
+        const [same] = await withLinksDb(async (d) => rows(d, sql`SELECT id FROM restaurant_table_requests WHERE link_id = ${link.id} AND submit_key = ${submitKey}`));
+        if (same) return { ok: true, requestId: Number(same.id), replayed: true };
+      }
+    }
+    throw e;
+  }
+}
+
+function insertTableRequest(link: NetLink, table: PublicTable, lines: TableOrderLine[], note: string | null, submitKey: string, now: number): Promise<SubmitResult> {
   return withLinksDb((d) =>
     d.transaction(async (tx) => {
       const [same] = await rows(tx, sql`SELECT id FROM restaurant_table_requests WHERE link_id = ${link.id} AND submit_key = ${submitKey}`);

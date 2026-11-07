@@ -7,8 +7,9 @@
  *  - GET/POST /firma/<token>     Ski Net · firma remota del contrato de alquiler (un solo uso).
  *  - GET/POST /baja/<token>      Connect Brevo · baja de las comunicaciones comerciales (idempotente).
  *
- * Antiabuso: límite por IP (todas las peticiones y, más estricto, los envíos) y por enlace (envíos con el mismo token,
- * p. ej. por mesa); cuerpo como mucho de 8 KB y solo formularios (`netPublicBodyParser`, montado ANTES del lector
+ * Antiabuso: límite por IP (todas las peticiones y, más estricto, los envíos; en la carta de mesa, más alto porque un
+ * comedor comparte la IP de su wifi) y por enlace (envíos con el mismo token, p. ej. por mesa); rutas sensibles a
+ * mayúsculas; cuerpo como mucho de 8 KB y solo formularios (`netPublicBodyParser`, montado ANTES del lector
  * general de 50 MB); el token se valida por formato antes de tocar la BD. Cada superficie exige su capacidad (y su
  * módulo) en la empresa del dominio; un enlace no válido, de otra empresa, revocado, usado o caducado responde siempre
  * la misma página.
@@ -77,7 +78,14 @@ export interface NetPublicRouterOptions {
   postsPerIp?: number;
   /** Envíos con el mismo enlace cada 10 minutos (p. ej. por mesa). */
   postsPerLink?: number;
+  /** Carta de mesa: peticiones por IP y minuto (la wifi del comedor es una sola IP). */
+  mesaPerIpPerMinute?: number;
+  /** Carta de mesa: envíos por IP cada 10 minutos. */
+  mesaPostsPerIp?: number;
 }
+
+/** Ruta sin barra final (la misma clave por enlace con y sin ella). El token conserva sus mayúsculas: es parte del secreto. */
+export const normalizedPath = (req: Request) => req.path.replace(/\/+$/, "");
 
 // ─── Restaurant Net: carta de la mesa ──────────────────────────────────────────
 
@@ -203,8 +211,17 @@ function checkinPage(res: Response, status: number, c: PublicCheckin, values: Ar
   page(res, status, CHECKIN, `${msg}${head}<form method="post"><div class="sheet">${sets}<button type="submit">Enviar mis datos</button></div></form>`);
 }
 
-const toValues = (guests: ReadonlyArray<Record<string, unknown>>) =>
-  guests.map((g) => Object.fromEntries(GUEST_FIELDS.map((f) => [f, g[f] == null ? "" : String(g[f])])) as Record<string, string>);
+/** Campos que nunca se devuelven a la página (ni al corregir un envío con errores). */
+export const CHECKIN_NEVER_ECHOED = ["docNumber", "docSupportNumber"] as const;
+const withoutDocuments = (values: Array<Record<string, string>>) =>
+  values.map((v) => ({ ...v, ...Object.fromEntries(CHECKIN_NEVER_ECHOED.map((f) => [f, ""])) }));
+
+/**
+ * Lo ya enviado NO se vuelve a mostrar (quien tenga el enlace no ve documentos, fechas ni direcciones): solo un resumen,
+ * y para corregir se envían de nuevo los datos completos, que sustituyen a los anteriores.
+ */
+const receivedNotice = (n: number) =>
+  notice("ok", `Datos recibidos de ${n} persona${n === 1 ? "" : "s"}, pendientes de revisión en recepción. Si necesitas corregir algo, vuelve a enviar los datos completos: sustituyen a los anteriores.`);
 
 async function checkinGet(req: Request, res: Response) {
   try {
@@ -212,8 +229,7 @@ async function checkinGet(req: Request, res: Response) {
     const link = await resolveLink("hotel_checkin", tokenOf(req));
     const c = link ? await checkinOfLink(link) : null;
     if (!link || !c) return invalidLink(res, CHECKIN);
-    const values = c.submission?.status === "pending" ? toValues(c.submission.guests as unknown as Array<Record<string, unknown>>) : [];
-    checkinPage(res, 200, c, values, c.submission?.status === "pending" ? notice("ok", "Ya hemos recibido tus datos. Puedes corregirlos y volver a enviarlos.") : "");
+    checkinPage(res, 200, c, [], c.submission?.status === "pending" ? receivedNotice(c.submission.guestCount) : "");
   } catch (e) {
     handleError(res, CHECKIN, e, "checkin.get");
   }
@@ -227,10 +243,10 @@ async function checkinPost(req: Request, res: Response) {
     if (!link || !c) return invalidLink(res, CHECKIN);
     if (c.closedReason) return checkinPage(res, 409, c, []);
     const { guests, values, errors } = guestsFromForm(bodyOf(req), c.slots, c.reservation.checkIn);
-    if (errors.length) return checkinPage(res, 400, c, values, `<div class="notice err">${errors.slice(0, 12).map(esc).join("<br>")}</div>`);
+    if (errors.length) return checkinPage(res, 400, c, withoutDocuments(values), `<div class="notice err">${errors.slice(0, 12).map(esc).join("<br>")}</div>`);
     const saved = await saveSubmission(link, c.reservation.id, guests);
     if (!saved) return checkinPage(res, 409, { ...c, closedReason: "Recepción ya ha registrado estos datos." }, []);
-    page(res, 200, CHECKIN, `${notice("ok", "Datos recibidos. ¡Gracias!")}<div class="sheet"><h1>${esc(CHECKIN)}</h1><p>Recepción ya tiene tus datos para el registro de viajeros. Si necesitas corregir algo, vuelve a abrir este enlace antes del día de llegada.</p></div>`);
+    page(res, 200, CHECKIN, `${notice("ok", "Datos recibidos. ¡Gracias!")}<div class="sheet"><h1>${esc(CHECKIN)}</h1><p>Recepción ya tiene tus datos para el registro de viajeros. Si necesitas corregir algo, vuelve a abrir este enlace antes del día de llegada y envía de nuevo los datos completos.</p></div>`);
   } catch (e) {
     handleError(res, CHECKIN, e, "checkin.post");
   }
@@ -316,23 +332,22 @@ async function unsubPost(req: Request, res: Response) {
 // ─── Montaje ───────────────────────────────────────────────────────────────────
 
 export function createNetPublicRouter(opts: NetPublicRouterOptions = {}): Router {
-  const r = express.Router();
+  // Rutas exactas (en minúsculas): /MESA/… no entra aquí ni se salta el lector de 8 KB
+  const r = express.Router({ caseSensitive: true, strict: false });
   const ip = (req: Request) => `ip:${ipKeyGenerator(req.ip ?? "")}`;
-  const all = rateLimit({ windowMs: 60_000, limit: opts.perIpPerMinute ?? 60, standardHeaders: true, legacyHeaders: false, keyGenerator: ip, handler: tooMany });
-  const posts = rateLimit({ windowMs: 10 * 60_000, limit: opts.postsPerIp ?? 30, standardHeaders: true, legacyHeaders: false, keyGenerator: ip, handler: tooMany });
-  // Por enlace (mesa, reserva, contrato o contacto): la huella del token con la empresa, nunca el token
-  const perLink = rateLimit({
-    windowMs: 10 * 60_000,
-    limit: opts.postsPerLink ?? 10,
-    standardHeaders: true,
-    legacyHeaders: false,
-    keyGenerator: (req) => `link:${crypto.createHash("sha256").update(`${getTenantIdOrDefault()}:${req.path}`).digest("hex")}`,
-    handler: tooMany,
-  });
+  const limiter = (windowMs: number, limit: number, keyGenerator: (req: Request) => string) =>
+    rateLimit({ windowMs, limit, standardHeaders: true, legacyHeaders: false, keyGenerator, handler: tooMany });
+  const all = limiter(60_000, opts.perIpPerMinute ?? 60, (req) => `all:${ip(req)}`);
+  const posts = limiter(10 * 60_000, opts.postsPerIp ?? 30, (req) => `posts:${ip(req)}`);
+  // Un comedor comparte la IP de su wifi: en la carta, límites por IP más altos y el freno real es el de cada mesa
+  const mesaAll = limiter(60_000, opts.mesaPerIpPerMinute ?? 240, (req) => `mesa-all:${ip(req)}`);
+  const mesaPosts = limiter(10 * 60_000, opts.mesaPostsPerIp ?? 120, (req) => `mesa-posts:${ip(req)}`);
+  // Por enlace (mesa, reserva, contrato o contacto): la huella de la ruta normalizada con la empresa, nunca el token
+  const perLink = limiter(10 * 60_000, opts.postsPerLink ?? 10, (req) => `link:${crypto.createHash("sha256").update(`${getTenantIdOrDefault()}:${normalizedPath(req)}`).digest("hex")}`);
   const post = [all, posts, perLink, netPublicBodyParser] as RequestHandler[];
 
-  r.get("/mesa/:token", all, restaurantGet);
-  r.post("/mesa/:token", ...post, restaurantPost);
+  r.get("/mesa/:token", mesaAll, restaurantGet);
+  r.post("/mesa/:token", mesaAll, mesaPosts, perLink, netPublicBodyParser, restaurantPost);
   r.get("/check-in/:token", all, checkinGet);
   r.post("/check-in/:token", ...post, checkinPost);
   r.get("/firma/:token", all, signGet);

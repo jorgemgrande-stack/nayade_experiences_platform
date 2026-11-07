@@ -1,7 +1,7 @@
 /**
  * Elephant Connect · Campaigns (Brevo): baja pública de las comunicaciones comerciales (capacidad `email-campaigns`).
  *
- *  - Enlace sin estado: `/baja/<cliente>.<firma>`, firma HMAC-SHA256 con la clave de sesiones (JWT_SECRET) sobre
+ *  - Enlace sin estado: `/baja/<cliente>.<firma>`, firma HMAC-SHA256 con NET_UNSUBSCRIBE_SECRET (o, sin ella, JWT_SECRET) sobre
  *    `brevo-unsub:<empresa>:<cliente>`. Un enlace de una empresa no vale en otra (la firma incluye la empresa) y no
  *    caduca: una baja tiene que poder pedirse siempre. Nada se guarda para el enlace (no hay token que robar de la BD).
  *  - La baja la registra BrevoMarketingService.publicUnsubscribe: retira el consentimiento existente con su fila del
@@ -20,10 +20,25 @@ import { publicUrl } from "./html";
 
 export const UNSUB_TOKEN_RE = /^(\d{1,10})\.([A-Za-z0-9_-]{32})$/;
 
-function mac(clientId: number, tenantId: string): string {
-  const key = sessionSecret();
-  if (!key) return "";
+/**
+ * Claves de firma: la propia de las bajas (`NET_UNSUBSCRIBE_SECRET`, opcional) y la de sesiones como respaldo. Se firma
+ * con la propia si existe y se acepta la firma de cualquiera de las dos: rotar JWT_SECRET (cerrar sesiones) no invalida
+ * los enlaces de baja ya enviados si hay clave propia, y los firmados antes de configurarla siguen valiendo mientras
+ * no cambie JWT_SECRET.
+ */
+function unsubscribeKeys(): string[] {
+  const own = (process.env.NET_UNSUBSCRIBE_SECRET ?? "").trim();
+  const session = sessionSecret();
+  return Array.from(new Set([own.length >= 32 ? own : "", session ?? ""].filter(Boolean)));
+}
+
+function macWith(key: string, clientId: number, tenantId: string): string {
   return crypto.createHmac("sha256", key).update(`brevo-unsub:${tenantId}:${clientId}`).digest("base64url").slice(0, 32);
+}
+
+function mac(clientId: number, tenantId: string): string {
+  const [key] = unsubscribeKeys();
+  return key ? macWith(key, clientId, tenantId) : "";
 }
 
 export function unsubscribeToken(clientId: number, tenantId: string = getTenantIdOrDefault()): string {
@@ -37,8 +52,7 @@ export function verifyUnsubscribeToken(token: unknown, tenantId: string = getTen
   if (!m) return null;
   const clientId = Number(m[1]);
   if (!Number.isSafeInteger(clientId) || clientId <= 0) return null;
-  const expected = mac(clientId, tenantId);
-  return expected && secureEqual(m[2], expected) ? clientId : null;
+  return unsubscribeKeys().some((k) => secureEqual(m[2], macWith(k, clientId, tenantId))) ? clientId : null;
 }
 
 export const unsubscribeUrl = (clientId: number) => publicUrl(`/baja/${unsubscribeToken(clientId)}`);

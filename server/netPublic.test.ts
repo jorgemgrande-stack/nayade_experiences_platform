@@ -53,6 +53,27 @@ describe("baja de comunicaciones: enlace HMAC por empresa y contacto", () => {
     expect(verifyUnsubscribeToken(`42.${sig.slice(0, -1)}${sig.endsWith("A") ? "B" : "A"}`, "empresa-a")).toBeNull();
     for (const bad of ["", "42", "0.abc", "abc.def", 42]) expect(verifyUnsubscribeToken(bad, "empresa-a")).toBeNull();
   });
+  it("clave propia NET_UNSUBSCRIBE_SECRET: rotar JWT_SECRET no rompe las bajas enviadas; las firmadas antes siguen valiendo", () => {
+    const jwt = process.env.JWT_SECRET;
+    try {
+      const old = unsubscribeToken(5, "empresa-a"); // firmado solo con JWT_SECRET (antes de la clave propia)
+      process.env.NET_UNSUBSCRIBE_SECRET = "clave-propia-de-bajas-de-al-menos-32-caracteres";
+      const own = unsubscribeToken(5, "empresa-a");
+      expect(own).not.toBe(old);
+      expect(verifyUnsubscribeToken(old, "empresa-a")).toBe(5);
+      expect(verifyUnsubscribeToken(own, "empresa-a")).toBe(5);
+      process.env.JWT_SECRET = "jwt-rotada-tras-un-incidente-de-sesiones";
+      expect(verifyUnsubscribeToken(own, "empresa-a")).toBe(5);
+      expect(verifyUnsubscribeToken(own, "empresa-b")).toBeNull();
+      // Una clave propia demasiado corta no se usa (se firma con JWT_SECRET)
+      process.env.NET_UNSUBSCRIBE_SECRET = "corta";
+      expect(verifyUnsubscribeToken(unsubscribeToken(5, "empresa-a"), "empresa-a")).toBe(5);
+      expect(verifyUnsubscribeToken(own, "empresa-a")).toBeNull();
+    } finally {
+      delete process.env.NET_UNSUBSCRIBE_SECRET;
+      process.env.JWT_SECRET = jwt;
+    }
+  });
 });
 
 describe("pedido desde la mesa", () => {
@@ -154,6 +175,15 @@ describe("lector de cuerpos y límites de peticiones", () => {
     const other = await send("POST", `/limites/baja/${t2}`, "x=1");
     expect(other.status).toBe(429); // 4.ª petición de la IP en el minuto: límite general
     expect(other.text).toMatch(/demasiadas solicitudes/i);
+  });
+
+  it("rutas sensibles a mayúsculas: /MESA no la atiende el módulo (ni salta el lector de 8 KB)", async () => {
+    const big = "n=" + "x".repeat(NET_PUBLIC_BODY_LIMIT * 2);
+    // El lector general de la app no lee formularios: si el router atendiera /MESA, procesaría un cuerpo sin leer
+    const r = await send("POST", `/limites/MESA/${"c".repeat(43)}`, big);
+    expect(r.status).toBe(404);
+    expect(r.text).toMatch(/Cannot POST/);
+    expect((await send("GET", `/limites/Mesa/${"c".repeat(43)}`)).text).toMatch(/Cannot GET/);
   });
 });
 

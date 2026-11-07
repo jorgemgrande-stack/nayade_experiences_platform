@@ -13,8 +13,8 @@ import { TRPCError } from "@trpc/server";
 import { getCapabilityAccess } from "../_core/capabilities/access";
 import { SdkError, toTrpcError } from "../sdk";
 import { SkiRentalError } from "../skiRental/service";
-import type { ContractContent } from "../skiRental/units";
-import { activeLink, consumeLink, issueLink, revokeLink, type NetLink } from "./links";
+import { UnitRuleError, checkSignature, type ContractContent } from "../skiRental/units";
+import { activeLink, consumeLink, issueLink, reactivateLink, revokeLink, type NetLink } from "./links";
 import { publicUrl } from "./html";
 
 /** Servicio del módulo (el mismo del mostrador), cargado al usarlo: el router del módulo importa este fichero. */
@@ -56,15 +56,26 @@ export async function contractOfLink(link: NetLink): Promise<PublicContract | nu
 
 export type RemoteSignResult = { ok: true; signerName: string; contentHash: string } | { ok: false; error: string } | { ok: false; used: true };
 
-/** Firma con el enlace (una sola vez). Los errores de validación se devuelven para mostrarlos; el enlace sigue valiendo. */
+/**
+ * Firma con el enlace (una sola vez). Primero se valida la firma (nombre y aceptación: un error se muestra y el enlace
+ * sigue valiendo); después se CONSUME el enlace y solo firma la llamada que lo ha consumido (dos envíos a la vez: uno
+ * firma, el otro ve «no válido»). Si la firma falla por otra causa, el enlace vuelve a valer.
+ */
 export async function signWithLink(link: NetLink, input: { signerName: string; accepted: boolean }, evidence: { ip: string | null; userAgent: string | null }): Promise<RemoteSignResult> {
   if (!link.siteId) return { ok: false, used: true };
   try {
+    checkSignature(input);
+  } catch (e) {
+    if (e instanceof UnitRuleError) return { ok: false, error: e.message };
+    throw e;
+  }
+  if (!(await consumeLink(link.id))) return { ok: false, used: true };
+  try {
     const r = await (await units()).signContract(link.siteId, link.targetId, input, evidence, `public:link:${link.id}`);
-    await consumeLink(link.id);
     if (r.alreadySigned) return { ok: false, used: true };
     return { ok: true, signerName: r.contract.signerName ?? input.signerName, contentHash: r.contract.contentHash };
   } catch (e) {
+    await reactivateLink(link.id);
     if (e instanceof SkiRentalError && e.code === "invalid_input") return { ok: false, error: e.message };
     throw e;
   }
