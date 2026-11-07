@@ -133,7 +133,7 @@ function PlanCard({
           <dl className="grid grid-cols-2 gap-2">
             {limits.map((l) => (
               <div key={l.label} className="min-w-0 rounded-xl border border-border bg-background/60 px-3 py-2">
-                <dt className="truncate text-xs text-muted-foreground">{l.label}</dt>
+                <dt className="overflow-hidden text-ellipsis whitespace-nowrap text-xs text-muted-foreground">{l.label}</dt>
                 <dd className="break-words text-sm font-semibold text-foreground">{l.value}</dd>
               </div>
             ))}
