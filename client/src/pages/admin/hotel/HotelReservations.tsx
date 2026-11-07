@@ -11,8 +11,9 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
-import { Ban, BedDouble, CalendarDays, Link2, Link2Off, LogIn, LogOut, Plus, Receipt, RefreshCw, Wand2 } from "lucide-react";
+import { Ban, BedDouble, CalendarDays, IdCard, Link2, Link2Off, LogIn, LogOut, Plus, Receipt, RefreshCw, Wand2 } from "lucide-react";
 import FolioDialog from "./FolioDialog";
+import GuestsDialog from "./GuestsDialog";
 import {
   CHANNEL_LABEL, EmptyStep, PAYMENT_LABEL, PmsNotInstalled, STAY_LABEL, addDays, eur, isPmsNotInstalled, localToday, shortDate,
 } from "./pmsShared";
@@ -38,6 +39,9 @@ function NewReservationDialog({ roomTypes, rooms, onClose }: { roomTypes: any[];
   const [notes, setNotes] = useState("");
   const [force, setForce] = useState(false);
   const [hotelRoomId, setHotelRoomId] = useState<number | null>(null);
+  const [ratePlanId, setRatePlanId] = useState<string>("none");
+  const plansQ = trpc.hotel.adminListRatePlans.useQuery(roomTypeId ? { roomTypeId } : undefined, { enabled: !!roomTypeId, retry: false });
+  const plans = (plansQ.data ?? []).filter((p) => p.isActive);
   const nights = nightsOf(checkIn, checkOut);
   const roomsForType = rooms.filter((r) => r.roomTypeId === roomTypeId && r.isActive);
   const type = roomTypes.find((t) => t.id === roomTypeId);
@@ -63,6 +67,7 @@ function NewReservationDialog({ roomTypes, rooms, onClose }: { roomTypes: any[];
       roomTypeId, checkIn, checkOut, adults, children, totalEuros: t, channel,
       customerName: customerName.trim(), customerEmail: customerEmail.trim(), customerPhone: customerPhone.trim() || undefined,
       notes: notes.trim() || undefined, force, hotelRoomId: hotelRoomId ?? undefined,
+      ratePlanId: ratePlanId === "none" ? undefined : Number(ratePlanId),
     });
   }
 
@@ -73,7 +78,7 @@ function NewReservationDialog({ roomTypes, rooms, onClose }: { roomTypes: any[];
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 py-2">
           <div className="sm:col-span-2 space-y-1">
             <Label>Tipología</Label>
-            <Select value={roomTypeId ? String(roomTypeId) : ""} onValueChange={(v) => { setRoomTypeId(Number(v)); setHotelRoomId(null); }}>
+            <Select value={roomTypeId ? String(roomTypeId) : ""} onValueChange={(v) => { setRoomTypeId(Number(v)); setHotelRoomId(null); setRatePlanId("none"); }}>
               <SelectTrigger><SelectValue placeholder="Elige la tipología" /></SelectTrigger>
               <SelectContent>{roomTypes.map((t) => <SelectItem key={t.id} value={String(t.id)}>{t.name}</SelectItem>)}</SelectContent>
             </Select>
@@ -82,6 +87,18 @@ function NewReservationDialog({ roomTypes, rooms, onClose }: { roomTypes: any[];
           <div className="space-y-1"><Label>Salida</Label><Input type="date" value={checkOut} min={checkIn} onChange={(e) => setCheckOut(e.target.value)} /></div>
           <div className="space-y-1"><Label>Adultos</Label><Input type="number" min={1} max={20} value={adults} onChange={(e) => setAdults(Math.max(1, Number(e.target.value) || 1))} /></div>
           <div className="space-y-1"><Label>Niños</Label><Input type="number" min={0} max={20} value={children} onChange={(e) => setChildren(Math.max(0, Number(e.target.value) || 0))} /></div>
+          {plans.length > 0 && (
+            <div className="sm:col-span-2 space-y-1">
+              <Label>Plan de tarifa</Label>
+              <Select value={ratePlanId} onValueChange={setRatePlanId}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">Tarifa de la noche (sin plan)</SelectItem>
+                  {plans.map((p) => <SelectItem key={p.id} value={String(p.id)}>{p.name}{p.refundable ? "" : " · no reembolsable"}{p.includesBreakfast ? " · desayuno" : ""}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
           <div className="sm:col-span-2 space-y-1">
             <Label>Importe total (€)</Label>
             <Input inputMode="decimal" placeholder={type && nights > 0 ? `Vacío = tarifa de cada noche (${nights} noche${nights > 1 ? "s" : ""})` : "Vacío = tarifa de cada noche"} value={total} onChange={(e) => setTotal(e.target.value)} />
@@ -179,6 +196,7 @@ export default function HotelReservations() {
   const [newOpen, setNewOpen] = useState(false);
   const [assignTarget, setAssignTarget] = useState<any | null>(null);
   const [folioId, setFolioId] = useState<number | null>(null);
+  const [guestsFor, setGuestsFor] = useState<{ id: number; title: string } | null>(null);
   const validRange = from && to && from <= to;
   const listQ = trpc.hotel.adminListReservations.useQuery(
     { range: { from, to }, status: status === "all" ? undefined : (status as any) },
@@ -280,6 +298,7 @@ export default function HotelReservations() {
                             {canCheckIn && <Button variant="ghost" size="sm" onClick={() => checkIn.mutate({ reservationId: r.id })} disabled={busy} title="Check-in"><LogIn className="h-4 w-4 text-emerald-600 dark:text-emerald-400" /></Button>}
                             {s === "EN_CURSO" && <Button variant="ghost" size="sm" onClick={() => checkOut.mutate({ reservationId: r.id })} disabled={busy} title="Check-out"><LogOut className="h-4 w-4 text-violet-600 dark:text-violet-400" /></Button>}
                             {canCheckIn && <Button variant="ghost" size="sm" onClick={() => noShow.mutate({ reservationId: r.id })} disabled={busy} title="No-show"><Ban className="h-4 w-4" /></Button>}
+                            {(r.occupies || s === "FINALIZADA") && <Button variant="ghost" size="sm" onClick={() => setGuestsFor({ id: r.id, title: r.customerName })} title="Huéspedes"><IdCard className="h-4 w-4" /></Button>}
                             {(r.occupies || s === "FINALIZADA") && <Button variant="ghost" size="sm" onClick={() => setFolioId(r.id)} title="Folio de la estancia"><Receipt className="h-4 w-4 text-amber-600 dark:text-amber-400" /></Button>}
                             {r.occupies && s !== "FINALIZADA" && !r.assignment && <Button variant="ghost" size="sm" onClick={() => auto.mutate({ reservationId: r.id })} disabled={busy} title="Asignar automáticamente"><Wand2 className="h-4 w-4" /></Button>}
                             {r.occupies && s !== "FINALIZADA" && <Button variant="ghost" size="sm" onClick={() => setAssignTarget(r)} disabled={busy} title={r.assignment ? "Cambiar habitación" : "Asignar habitación"}><Link2 className="h-4 w-4" /></Button>}
@@ -298,6 +317,7 @@ export default function HotelReservations() {
 
       {newOpen && <NewReservationDialog roomTypes={roomTypes} rooms={roomsQ.data ?? []} onClose={() => setNewOpen(false)} />}
       {folioId !== null && <FolioDialog reservationId={folioId} onClose={() => setFolioId(null)} />}
+      {guestsFor && <GuestsDialog reservationId={guestsFor.id} title={guestsFor.title} onClose={() => setGuestsFor(null)} />}
       {assignTarget && <AssignDialog reservation={assignTarget} rooms={roomsQ.data ?? []} onClose={() => setAssignTarget(null)} />}
     </AdminLayout>
   );

@@ -44,6 +44,7 @@ import { startCancellationStaleJob } from "../cancellationStaleJob";
 import { startEmailAutomationJob } from "../emailAutomationJob";
 import { startTaxReminderJob } from "../taxReminderJob";
 import { startHotelNightAuditJob } from "../hotelNightAuditJob";
+import { startHotelGuestRetentionJob } from "../hotelGuestRetentionJob";
 import { startDataExportJob } from "../dataExport/job";
 import { startOnboardingReminderJob } from "../onboardingReminders";
 import { startEmailIngestionJob } from "../services/emailTpvIngestionService";
@@ -1828,6 +1829,7 @@ const SCHEDULED_JOBS: Array<{ name: string; flag: string; start: () => void; lab
   { name: "tax-reminder", flag: "tax_reminder_job_enabled", start: startTaxReminderJob, label: "Tax Reminder", def: true },
   { name: "data-export", flag: "data_export_job_enabled", start: startDataExportJob, label: "Data Export", def: true },
   { name: "hotel-night-audit", flag: "hotel_night_audit_job_enabled", start: startHotelNightAuditJob, label: "Hotel Night Audit", def: false },
+  { name: "hotel-guest-retention", flag: "hotel_guest_retention_job_enabled", start: startHotelGuestRetentionJob, label: "Hotel Guest Retention", def: false },
   {
     name: "onboarding-reminder",
     flag: "onboarding_reminder_job_enabled",

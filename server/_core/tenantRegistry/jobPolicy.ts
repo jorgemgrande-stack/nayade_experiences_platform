@@ -30,6 +30,7 @@ export const JOB_MULTI_POLICIES: Readonly<Record<string, JobMultiPolicy>> = {
   "email-automation": { mode: "per-tenant", reason: "Cola de correos programados de la propia empresa" },
   "tax-reminder": { mode: "per-tenant", reason: "Obligaciones fiscales de la propia empresa" },
   "data-export": { mode: "per-tenant", reason: "Exportación de los datos de la propia empresa (también suspendida o en solo lectura)" },
+  "hotel-guest-retention": { mode: "per-tenant", reason: "Conservación de las fichas de huésped de la propia empresa (sin plazo configurado no toca nada)" },
   "hotel-night-audit": { mode: "per-tenant", reason: "Cierre del día del hotel con las reservas de la propia empresa" },
   "onboarding-reminder": { mode: "per-tenant", reason: "Recordatorios de Primeros pasos de la propia empresa, a quien abrió su asistente" },
 };
