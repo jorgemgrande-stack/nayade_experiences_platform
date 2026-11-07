@@ -186,6 +186,36 @@ describe("licencias (entitlements)", () => {
     expect(await access.isModuleAvailable("hotel", "nunca-visto")).toBe(false);
   });
 
+  it("producto de Elephant Net: su capacidad vigente concede el módulo sin licencia de módulo", async () => {
+    const hotelNet: ModuleManifest = { ...hotel, capability: "hotel-net" };
+    const caps = new Map<string, boolean>([["acme hotel-net", true]]);
+    const calls: string[] = [];
+    const net = new ModuleAccess(registry(cms, hotelNet), store, {
+      now: () => now,
+      hasCapability: async (t, c) => (calls.push(`${t}:${c}`), caps.get(`${t} ${c}`) ?? false),
+    });
+    expect(await net.isModuleAvailable("hotel", "acme")).toBe(true);
+    expect(await net.isModuleAvailable("hotel", "otro")).toBe(false); // otra empresa sin la capacidad
+    expect(calls).toEqual(["acme:hotel-net", "otro:hotel-net"]);
+    // Sin capacidad (cancelada, suspendida…) y sin licencia de módulo: no hay módulo
+    caps.set("acme hotel-net", false);
+    expect(await net.isModuleAvailable("hotel", "acme")).toBe(false);
+    // La licencia de módulo sigue bastando por sí sola
+    store.grant({ tenantId: "acme", moduleId: "hotel", validUntil: null, source: "operator" });
+    net.invalidate("acme");
+    expect(await net.isModuleAvailable("hotel", "acme")).toBe(true);
+  });
+
+  it("si la capacidad no puede verificarse, falla cerrado; sin capacidad declarada no se consulta", async () => {
+    const hotelNet: ModuleManifest = { ...hotel, capability: "hotel-net" };
+    const failing = new ModuleAccess(registry(cms, hotelNet), store, { now: () => now, hasCapability: async () => { throw new Error("registro caído"); } });
+    expect(await failing.isModuleAvailable("hotel", "acme")).toBe(false);
+    let asked = false;
+    const plain = new ModuleAccess(registry(cms, hotel), store, { now: () => now, hasCapability: async () => ((asked = true), true) });
+    expect(await plain.isModuleAvailable("hotel", "acme")).toBe(false);
+    expect(asked).toBe(false);
+  });
+
   it("en single todo lo instalado está licenciado (compatibilidad)", async () => {
     delete process.env.TENANT_MODE;
     expect((await access.activeModules("default")).sort()).toEqual(["cms", "hotel", "spa"]);

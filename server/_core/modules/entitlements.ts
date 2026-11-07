@@ -10,6 +10,10 @@
  *    nunca solo ocultando una opción del menú.
  *  - Un módulo solo está efectivo si también lo están sus dependencias.
  *  - Modo `single` (producción actual): todos los módulos instalados están licenciados.
+ *  - Un módulo cuyo manifiesto declara `capability` (Hotel, SPA, Restaurantes: productos de Elephant Net) también
+ *    cuenta como licenciado si la empresa tiene esa capacidad vigente (activa o en solo lectura) en alguna sede:
+ *    contratar el producto concede su módulo sin una licencia de módulo aparte. La capacidad sigue aplicándose en
+ *    cada operación (activa / solo lectura) con su propio guardián.
  */
 import { getTenantId, getTenantMode } from "../tenant";
 import { ModuleError } from "./contract";
@@ -64,6 +68,11 @@ export interface ModuleAccessOptions {
   isFlagEnabled?: (moduleId: string) => Promise<boolean>;
   /** Fuerza el modo de licenciamiento (por defecto, según TENANT_MODE). */
   enforce?: boolean;
+  /**
+   * ¿La empresa tiene vigente (activa o en solo lectura) la capacidad que declara el manifiesto del módulo? Sin esta
+   * opción solo cuentan las licencias de módulo. Si no puede verificarse, se trata como «no» (falla cerrado).
+   */
+  hasCapability?: (tenantId: string, capabilityId: string) => Promise<boolean>;
 }
 
 type CacheEntry = { at: number; list: Entitlement[] };
@@ -120,8 +129,10 @@ export class ModuleAccess {
       return false;
     }
     const e = list.find((x) => x.moduleId === moduleId);
-    if (!e || e.status !== "active") return false;
-    return !e.validUntil || e.validUntil.getTime() > this.now();
+    if (e && e.status === "active" && (!e.validUntil || e.validUntil.getTime() > this.now())) return true;
+    // Producto de Elephant Net contratado: su capacidad concede el módulo
+    if (m.capability && this.opts.hasCapability) return this.opts.hasCapability(tenantId, m.capability).catch(() => false);
+    return false;
   }
 
   /** Disponibilidad efectiva: licencia + dependencias + flag operativo. */
