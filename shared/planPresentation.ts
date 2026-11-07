@@ -48,7 +48,7 @@ export function planPresentation(plan: Pick<PanelPlanInfo, "key" | "tagline">): 
 /** Límites que se ven en la tarjeta (los primeros que publica el catálogo); el resto, en la comparativa. */
 export const CARD_LIMITS = 4;
 /** Ventajas que se ven en la tarjeta; la lista completa, en la comparativa. */
-export const CARD_BENEFITS = 4;
+export const CARD_BENEFITS = 3;
 
 export const cardLimits = (plan: PanelPlanInfo) => plan.limits.slice(0, CARD_LIMITS);
 export const cardBenefits = (plan: PanelPlanInfo) => plan.benefits.slice(0, CARD_BENEFITS);
