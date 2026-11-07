@@ -118,7 +118,7 @@ describe("carta y migración", () => {
   });
   it("detecta la falta de la migración 0033 sin confundirla con otras tablas", () => {
     expect(isMissingSalaSchema({ code: "ER_NO_SUCH_TABLE", sqlMessage: "Table 'x.hospo_orders' doesn't exist" })).toBe(true);
-    expect(isMissingSalaSchema({ cause: { errno: 1054, sqlMessage: "Unknown column 'seated_at' in 'field list'" } })).toBe(true);
+    expect(isMissingSalaSchema({ cause: { errno: 1146, sqlMessage: "Table 'x.restaurant_booking_seating' doesn't exist" } })).toBe(true);
     expect(isMissingSalaSchema({ code: "ER_NO_SUCH_TABLE", sqlMessage: "Table 'x.clients' doesn't exist" })).toBe(false);
     expect(isMissingSalaSchema(new Error("otra cosa"))).toBe(false);
   });
