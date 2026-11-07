@@ -6,7 +6,7 @@
  */
 import { useEffect, useMemo, useState } from "react";
 import { Link, useLocation, useParams } from "wouter";
-import { ArrowLeft, Ban, Link2, Minus, Plus, Receipt, Search, Trash2, Unlink, Users, Wallet } from "lucide-react";
+import { ArrowLeft, Ban, ChefHat, Link2, Minus, Plus, Receipt, Search, Trash2, Unlink, Users, Wallet } from "lucide-react";
 import { toast } from "sonner";
 import AdminLayout from "@/components/AdminLayout";
 import TpvTicket from "@/pages/admin/tpv/TpvTicket";
@@ -34,6 +34,7 @@ import {
   type OrderStatus,
   type PaymentMethod,
 } from "@shared/restaurantNet";
+import { KITCHEN_STATUS_LABELS } from "@shared/restaurantKds";
 import { CARTA_PATH, SALA_PATH, useRestaurantNetWrite } from "./RestaurantNetParts";
 
 const ALL = "__todas";
@@ -45,7 +46,9 @@ export default function Comanda() {
   const [, navigate] = useLocation();
   const { canWrite } = useRestaurantNetWrite();
   const utils = trpc.useUtils();
-  const detail = trpc.restaurantNet.getOrder.useQuery({ orderId }, { enabled: orderId > 0, refetchInterval: 20_000 });
+  const detail = trpc.restaurantNet.getOrder.useQuery({ orderId }, { enabled: orderId > 0, refetchInterval: 10_000 });
+  const waiters = trpc.restaurantNet.listWaiters.useQuery({ restaurantId: detail.data?.order.restaurantId ?? 0 }, { enabled: detail.data != null, retry: false });
+  const [course, setCourse] = useState(1);
   const restaurantId = detail.data?.order.restaurantId;
   const menu = trpc.restaurantNet.listMenu.useQuery({ restaurantId: restaurantId! }, { enabled: restaurantId != null });
   const floor = trpc.restaurantNet.getFloor.useQuery({ restaurantId: restaurantId! }, { enabled: restaurantId != null });
@@ -74,6 +77,9 @@ export default function Comanda() {
   const merge = trpc.restaurantNet.mergeTables.useMutation({ onSuccess: () => { setMerging(false); toast.success("Mesas unidas"); refresh(); }, onError: onErr });
   const unmerge = trpc.restaurantNet.unmergeTable.useMutation({ onSuccess: () => { toast.success("Mesa separada"); refresh(); }, onError: onErr });
   const updateOrder = trpc.restaurantNet.updateOrder.useMutation({ onSuccess: refresh, onError: onErr });
+  const fire = trpc.restaurantNet.fireItems.useMutation({ onSuccess: (r) => { toast.success(r.fired === 1 ? "1 plato marchado a cocina" : `${r.fired} platos marchados a cocina`); refresh(); }, onError: onErr });
+  const serveReady = trpc.restaurantNet.serveReady.useMutation({ onSuccess: refresh, onError: onErr });
+  const assignWaiter = trpc.restaurantNet.assignWaiter.useMutation({ onSuccess: () => { toast.success("Camarero asignado"); refresh(); }, onError: onErr });
 
   const items = (menu.data ?? []).filter((m) => m.isActive);
   const categories = useMemo(() => Array.from(new Set(items.map((m) => m.category || "Sin categoría"))), [items]);
@@ -98,6 +104,9 @@ export default function Comanda() {
   const editable = canWrite && (status === "open" || status === "bill_requested");
   const lines = detail.data.items;
   const busy = addItem.isPending || setQty.isPending;
+  const pendingCount = lines.filter((l) => l.status === "pending").length;
+  const readyCount = lines.filter((l) => l.status === "ready").length;
+  const pendingCourses = Array.from(new Set(lines.filter((l) => l.status === "pending").map((l) => l.course))).sort((a, b) => a - b);
   const states = tableStates(floor.data?.tables ?? [], floor.data?.openOrders ?? []);
   const mergeCandidates = (floor.data?.tables ?? []).filter((t) => t.id !== table?.id && t.mergedInto == null && !(floor.data?.tables ?? []).some((x) => x.mergedInto === t.id));
 
@@ -137,6 +146,17 @@ export default function Comanda() {
             )}
             <span>comensales</span>
             {order.customerName && <span className="break-words">· {order.customerName}</span>}
+            {editable && (waiters.data ?? []).length > 0 ? (
+              <Select value={detail.data.waiter ? String(detail.data.waiter.id) : "__nadie"} onValueChange={(v) => assignWaiter.mutate({ orderId, userId: v === "__nadie" ? null : Number(v) })}>
+                <SelectTrigger className="h-8 w-44" aria-label="Camarero"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__nadie">Sin camarero</SelectItem>
+                  {(waiters.data ?? []).map((w) => <SelectItem key={w.id} value={String(w.id)}>{w.name ?? `Usuario ${w.id}`}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            ) : (
+              detail.data.waiter && <span className="break-words">· {detail.data.waiter.name}</span>
+            )}
             {booking && <Badge variant="secondary">Reserva {booking.locator} · {booking.time}</Badge>}
           </div>
         </div>
@@ -153,6 +173,12 @@ export default function Comanda() {
                 <div className="relative">
                   <Search className="pointer-events-none absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" aria-hidden="true" />
                   <Input aria-label="Buscar plato" placeholder="Buscar plato" value={search} onChange={(e) => setSearch(e.target.value)} className="pl-8" />
+                </div>
+                <div className="flex flex-wrap items-center gap-1.5" role="group" aria-label="Pase de los platos que añades">
+                  <span className="text-xs text-muted-foreground">Pase</span>
+                  {[1, 2, 3].map((c) => (
+                    <Button key={c} size="sm" variant={course === c ? "secondary" : "ghost"} aria-pressed={course === c} className="h-7 px-2.5" onClick={() => setCourse(c)}>{c}</Button>
+                  ))}
                 </div>
                 <div className="flex gap-1.5 overflow-x-auto pb-1" role="tablist" aria-label="Categorías">
                   {[ALL, ...categories].map((c) => (
@@ -174,7 +200,7 @@ export default function Comanda() {
                       key={m.id}
                       type="button"
                       disabled={busy}
-                      onClick={() => addItem.mutate({ orderId, menuItemId: m.id, quantity: 1 })}
+                      onClick={() => addItem.mutate({ orderId, menuItemId: m.id, quantity: 1, course })}
                       className="flex min-h-[76px] min-w-0 flex-col justify-between rounded-xl border border-border bg-background p-2.5 text-left hover:border-primary hover:bg-primary/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-60"
                     >
                       <span className="break-words text-sm font-medium leading-tight text-foreground">{m.name}</span>
@@ -204,7 +230,13 @@ export default function Comanda() {
                         {formatEur(l.unitPrice)} · IVA {l.taxRate.toLocaleString("es-ES")} %{l.station ? ` · ${l.station}` : ""}
                         {l.notes ? ` · ${l.notes}` : ""}
                       </p>
-                      {isVoid && <p className="text-[11px] text-danger">Anulada: {l.voidReason}</p>}
+                      {isVoid ? (
+                        <p className="text-[11px] text-danger">Anulada: {l.voidReason}</p>
+                      ) : (
+                        <p className={cn("text-[11px]", l.status === "ready" ? "font-semibold text-success" : l.status === "pending" ? "text-muted-foreground" : "text-foreground")}>
+                          {KITCHEN_STATUS_LABELS[l.status] ?? l.status}{l.course > 1 ? ` · pase ${l.course}` : ""}
+                        </p>
+                      )}
                     </div>
                     {editable && !isVoid && l.status === "pending" ? (
                       <div className="flex shrink-0 items-center gap-1">
@@ -235,6 +267,21 @@ export default function Comanda() {
               <p className="flex justify-between text-lg font-bold text-foreground"><span>Total</span><span className="tabular-nums">{formatEur(totals.total)}</span></p>
               <p className="text-[11px] text-muted-foreground">IVA incluido</p>
             </div>
+            {editable && (pendingCount > 0 || readyCount > 0) && (
+              <div className="flex flex-wrap gap-2 border-t border-border p-3">
+                {pendingCount > 0 && (
+                  <Button className="flex-1" disabled={fire.isPending} onClick={() => fire.mutate({ orderId })}>
+                    <ChefHat className="mr-1.5 h-4 w-4" aria-hidden="true" />Marchar {pendingCount === 1 ? "1 plato" : `${pendingCount} platos`}
+                  </Button>
+                )}
+                {pendingCourses.length > 1 && pendingCourses.map((c) => (
+                  <Button key={c} variant="outline" size="sm" disabled={fire.isPending} onClick={() => fire.mutate({ orderId, course: c })}>Marchar pase {c}</Button>
+                ))}
+                {readyCount > 0 && (
+                  <Button variant="outline" className="flex-1" disabled={serveReady.isPending} onClick={() => serveReady.mutate({ orderId })}>Servir {readyCount === 1 ? "1 lista" : `${readyCount} listas`}</Button>
+                )}
+              </div>
+            )}
             <div className="grid grid-cols-2 gap-2 border-t border-border p-3">
               {status === "paid" && order.tpvSaleId ? (
                 <>

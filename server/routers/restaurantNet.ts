@@ -15,6 +15,8 @@ import { getCapabilityAccess } from "../_core/capabilities/access";
 import { getRestaurantsByUser } from "../restaurantsDb";
 import { tpvRouter } from "./tpv";
 import * as rn from "../restaurantNetDb";
+import * as kds from "../restaurantKdsDb";
+import { INCIDENT_TYPES, KITCHEN_FLOW, STATION_TONES } from "../../shared/restaurantKds";
 import { MENU_TAX_RATES, PAYMENT_METHODS, ROOM_KINDS, TABLE_SHAPES, madridToday } from "../../shared/restaurantNet";
 import type { TrpcContext } from "../_core/context";
 
@@ -163,6 +165,85 @@ export const restaurantNetRouter = router({
         return { saleId: Number(r.sale?.id), ticketNumber: String(r.sale?.ticketNumber ?? ""), total: Number(r.sale?.total ?? 0), replayed: Boolean(r.replayed) };
       });
     }),
+
+  // ── Cocina (KDS) ─────────────────────────────────────────────────────────
+  /** Marchar a cocina las líneas pendientes de la comanda (todas o las de un pase). */
+  fireItems: adminrestProcedure
+    .input(z.object({ orderId: id, course: z.number().int().min(1).max(9).nullish() }))
+    .mutation(({ ctx, input }) => kds.fireItems(guardOf(ctx), input.orderId, input.course ?? null)),
+
+  /** Pantalla de cocina: líneas en cocina de las comandas abiertas (una partida, "" = sin partida, o todas). */
+  kdsBoard: adminrestProcedure
+    .input(restaurantInput.extend({ station: z.string().max(40).nullish() }))
+    .query(async ({ ctx, input }) => {
+      await guardOf(ctx)(input.restaurantId);
+      return kds.kdsBoard(input.restaurantId, input.station ?? null);
+    }),
+
+  setKitchenStatus: adminrestProcedure
+    .input(z.object({ itemId: id, status: z.enum(KITCHEN_FLOW) }))
+    .mutation(({ ctx, input }) => kds.setKitchenStatus(guardOf(ctx), input.itemId, input.status)),
+
+  serveReady: adminrestProcedure.input(z.object({ orderId: id })).mutation(({ ctx, input }) => kds.serveReady(guardOf(ctx), input.orderId)),
+
+  setPriority: adminrestProcedure
+    .input(z.object({ orderId: id, priority: z.enum(["normal", "high"]) }))
+    .mutation(({ ctx, input }) => kds.setPriority(guardOf(ctx), input.orderId, input.priority)),
+
+  listStations: adminrestProcedure.input(restaurantInput.extend({ includeArchived: z.boolean().optional() })).query(async ({ ctx, input }) => {
+    await guardOf(ctx)(input.restaurantId);
+    return kds.listStations(input.restaurantId, input.includeArchived);
+  }),
+
+  upsertStation: adminrestProcedure
+    .input(z.object({ id: id.optional(), restaurantId: id, name: z.string().trim().min(1, "Indica el nombre de la partida").max(40), tone: z.enum(STATION_TONES).default("neutral"), slaMinutes: z.number().int().min(1).max(180).default(15), isActive: z.boolean().optional() }))
+    .mutation(({ ctx, input }) => kds.upsertStation(guardOf(ctx), input)),
+
+  listRouting: adminrestProcedure.input(restaurantInput).query(async ({ ctx, input }) => {
+    await guardOf(ctx)(input.restaurantId);
+    return kds.listRouting(input.restaurantId);
+  }),
+
+  setRouting: adminrestProcedure
+    .input(z.object({ restaurantId: id, category: z.string().trim().min(1).max(128), station: z.string().max(40).nullable() }))
+    .mutation(({ ctx, input }) => kds.setRouting(guardOf(ctx), input.restaurantId, input.category, input.station)),
+
+  getKdsSettings: adminrestProcedure.input(restaurantInput).query(async ({ ctx, input }) => {
+    await guardOf(ctx)(input.restaurantId);
+    return kds.getKdsSettings(input.restaurantId);
+  }),
+
+  setKdsSettings: adminrestProcedure
+    .input(z.object({ restaurantId: id, greenMaxMin: z.number().int(), amberMaxMin: z.number().int() }))
+    .mutation(({ ctx, input }) => kds.setKdsSettings(guardOf(ctx), input.restaurantId, input, ctx.user.id)),
+
+  createIncident: adminrestProcedure
+    .input(z.object({ orderId: id, itemId: id.nullish(), type: z.enum(INCIDENT_TYPES), reason: z.string().max(255).nullish() }))
+    .mutation(({ ctx, input }) => kds.createIncident(guardOf(ctx), input, ctx.user.id)),
+
+  listIncidents: adminrestProcedure
+    .input(restaurantInput.extend({ date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional() }))
+    .query(async ({ ctx, input }) => {
+      await guardOf(ctx)(input.restaurantId);
+      return kds.listIncidents(input.restaurantId, input.date ?? madridToday());
+    }),
+
+  kitchenMetrics: adminrestProcedure
+    .input(restaurantInput.extend({ date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional() }))
+    .query(async ({ ctx, input }) => {
+      await guardOf(ctx)(input.restaurantId);
+      return kds.kitchenMetricsOf(input.restaurantId, input.date ?? madridToday());
+    }),
+
+  // ── Camareros (usuarios del Core) ────────────────────────────────────────
+  listWaiters: adminrestProcedure.input(restaurantInput).query(async ({ ctx, input }) => {
+    await guardOf(ctx)(input.restaurantId);
+    return kds.listWaiters(input.restaurantId);
+  }),
+
+  assignWaiter: adminrestProcedure
+    .input(z.object({ orderId: id, userId: id.nullable() }))
+    .mutation(({ ctx, input }) => kds.assignWaiter(guardOf(ctx), input.orderId, input.userId)),
 
   // ── Reservas en la sala ──────────────────────────────────────────────────
   listDayBookings: adminrestProcedure

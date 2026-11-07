@@ -132,6 +132,8 @@ export interface PlanBadge {
   state: TableState;
   total?: number | null;
   guests?: number | null;
+  /** Platos listos en cocina pendientes de servir. */
+  ready?: number;
 }
 
 /** Contenido de una mesa (plano y listado). */
@@ -152,6 +154,7 @@ function TableFace({ t, badge, codeOf }: { t: PlanTable; badge?: PlanBadge; code
       {badge && badge.state !== "libre" && badge.total != null && t.mergedInto == null && (
         <span className={cn("mt-0.5 text-[11px] font-semibold", TONE_TEXT[STATE_TONE[badge.state]])}>{formatEur(badge.total)}</span>
       )}
+      {badge?.ready ? <span className="mt-0.5 rounded-full bg-success/15 px-1.5 text-[10px] font-semibold text-success">{badge.ready === 1 ? "1 lista" : `${badge.ready} listas`}</span> : null}
     </>
   );
 }
