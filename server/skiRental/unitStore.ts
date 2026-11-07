@@ -1,5 +1,5 @@
 /**
- * Persistencia de Ski Net · Alquiler v1 por unidad en la BD de la empresa (migración `db/migrations/0032_ski_rental_v1.sql`).
+ * Persistencia de Ski Net · Alquiler v1 por unidad en la BD de la empresa (migración `db/migrations/0036_ski_rental_v1.sql`).
  * Nada se borra: tiendas y modelos se archivan, las unidades se retiran, las entregas se cierran al devolver y los
  * contratos firmados no se modifican. Cada cambio de estado de una unidad deja un evento. Si las tablas no existen
  * (migración no aplicada) se lanza `ModuleNotInstalled`.

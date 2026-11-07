@@ -15,6 +15,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { PanelEmpty, PanelError, PanelLoading } from "@/components/admin/PanelStates";
 import { FormField, selectClass } from "@/components/admin/crm/CrmParts";
 import { addDays, todayIso } from "@/components/ski/SkiSchoolShell";
+import { useAsk } from "@/components/ski/AskDialog";
 import { SkiRentalShell, toastRental, typeLabel, type RentalCtx } from "@/components/ski/SkiRentalShell";
 
 type Line = { code: string; requestedType: string; requestedSize: string; confirmSize: boolean; reason: string };
@@ -200,11 +201,12 @@ function DeliveryDetail({ ctx, deliveryId }: { ctx: RentalCtx; deliveryId: numbe
     },
     onError: toastRental,
   });
+  const { ask, dialog } = useAsk();
   if (q.isLoading) return <PanelLoading />;
   if (q.error) return <PanelError error={q.error} onRetry={() => q.refetch()} />;
   const d = q.data!;
-  const giveBack = (lineId: number, condition: "ok" | "damaged" | "lost") => {
-    const note = condition === "ok" ? null : window.prompt(condition === "damaged" ? "Describe el daño" : "Describe la pérdida")?.trim();
+  const giveBack = async (lineId: number, condition: "ok" | "damaged" | "lost") => {
+    const note = condition === "ok" ? null : await ask({ title: condition === "damaged" ? "Devolución con daño" : "Material perdido", label: condition === "damaged" ? "Describe el daño" : "Describe la pérdida", required: true, confirmLabel: "Registrar" });
     if (condition !== "ok" && !note) return;
     ret.mutate({ siteId: ctx.siteId, lineId, condition, note });
   };
@@ -243,6 +245,7 @@ function DeliveryDetail({ ctx, deliveryId }: { ctx: RentalCtx; deliveryId: numbe
         ))}
       </ul>
       {d.contract && <Contract ctx={ctx} deliveryId={d.id} customerName={d.customerName} contract={d.contract} />}
+      {dialog}
     </div>
   );
 }

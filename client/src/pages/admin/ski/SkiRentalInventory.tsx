@@ -14,6 +14,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { PanelEmpty, PanelError, PanelLoading } from "@/components/admin/PanelStates";
 import { FormField, selectClass } from "@/components/admin/crm/CrmParts";
+import { useAsk } from "@/components/ski/AskDialog";
 import { SkiRentalShell, UNIT_STATUS_LABEL, euros, rentalErrorMessage, toastRental, typeLabel, unitStatusVariant, type RentalCtx } from "@/components/ski/SkiRentalShell";
 
 type UnitRow = { id: number; code: string; status: string; modelId: number; notes: string | null };
@@ -156,7 +157,7 @@ function UnitActions({ ctx, unit }: { ctx: RentalCtx; unit: UnitRow }) {
   };
   const set = trpc.skiRental.setUnitStatus.useMutation({ onSuccess: () => (toast.success("Estado cambiado"), refresh()), onError: toastRental });
   const ticket = trpc.skiRental.openTicket.useMutation({ onSuccess: () => (toast.success("Enviada al taller"), refresh()), onError: toastRental });
-  const ask = (msg: string) => window.prompt(msg)?.trim() || null;
+  const { ask, dialog } = useAsk();
   return (
     <div className="space-y-2">
       <div className="flex flex-wrap gap-1.5">
@@ -165,12 +166,18 @@ function UnitActions({ ctx, unit }: { ctx: RentalCtx; unit: UnitRow }) {
           Historial
         </Button>
         {ctx.canWrite && (unit.status === "available" || unit.status === "incident") && (
-          <Button size="sm" variant="outline" onClick={() => { const r = ask("Motivo para el taller"); if (r) ticket.mutate({ siteId: ctx.siteId, unitId: unit.id, reason: r }); }}>
+          <Button size="sm" variant="outline" onClick={async () => {
+              const r = await ask({ title: `Enviar ${unit.code} al taller`, label: "Motivo", required: true, confirmLabel: "Enviar al taller" });
+              if (r) ticket.mutate({ siteId: ctx.siteId, unitId: unit.id, reason: r });
+            }}>
             Al taller
           </Button>
         )}
         {ctx.canWrite && unit.status === "available" && (
-          <Button size="sm" variant="outline" onClick={() => set.mutate({ siteId: ctx.siteId, unitId: unit.id, status: "incident", note: ask("Describe la incidencia") })}>
+          <Button size="sm" variant="outline" onClick={async () => {
+              const note = await ask({ title: `Incidencia en ${unit.code}`, label: "Describe la incidencia", required: true, confirmLabel: "Registrar" });
+              if (note) set.mutate({ siteId: ctx.siteId, unitId: unit.id, status: "incident", note });
+            }}>
             Incidencia
           </Button>
         )}
@@ -180,12 +187,16 @@ function UnitActions({ ctx, unit }: { ctx: RentalCtx; unit: UnitRow }) {
           </Button>
         )}
         {ctx.canWrite && (unit.status === "available" || unit.status === "incident") && (
-          <Button size="sm" variant="ghost" className="text-destructive" onClick={() => window.confirm(`¿Retirar ${unit.code}? No se puede deshacer.`) && set.mutate({ siteId: ctx.siteId, unitId: unit.id, status: "retired", note: ask("Motivo de la retirada") })}>
+          <Button size="sm" variant="ghost" className="text-destructive" onClick={async () => {
+              const note = await ask({ title: `¿Retirar ${unit.code}?`, description: "Una unidad retirada no vuelve al inventario.", label: "Motivo de la retirada", confirmLabel: "Retirar", destructive: true });
+              if (note !== null) set.mutate({ siteId: ctx.siteId, unitId: unit.id, status: "retired", note: note || null });
+            }}>
             Retirar
           </Button>
         )}
       </div>
       {history && <UnitHistory ctx={ctx} unitId={unit.id} />}
+      {dialog}
     </div>
   );
 }

@@ -1,8 +1,8 @@
 /**
  * Ski Net · Alquiler v1 por unidad con la aplicación REAL sobre MySQL (opt-in, REGISTRY_TEST_DATABASE_URL): empresa
- * aprovisionada desde la baseline + `db/migrations` (incluida 0032_ski_rental_v1), login de administrador, llamadas
+ * aprovisionada desde la baseline + `db/migrations` (incluida 0036_ski_rental_v1), login de administrador, llamadas
  * tRPC reales y licencias por capacidad del registro con sedes de Elephant Control.
- *  - Licencia y activación por sede; solo lectura; error tipado sin instalar (0032 revertida y vuelta a aplicar).
+ *  - Licencia y activación por sede; solo lectura; error tipado sin instalar (0036 revertida y vuelta a aplicar).
  *  - Correlativo de códigos sin repetir en altas simultáneas; la misma unidad en entregas simultáneas sale una vez.
  *  - Firma por clic con IP, navegador, empleado y huella SHA-256 del contenido; devolución con daño, taller e historial.
  */
@@ -176,15 +176,15 @@ describe.skipIf(!URL_)("Ski Rental v1 por unidad (routers reales, licencia por c
   let storeId = 0;
   let skiModel = 0;
 
-  /** Revierte o vuelve a aplicar 0032 con las sentencias reales del carril y su registro. */
-  async function migration0032(direction: "down" | "up") {
-    const m = loadMigrations(path.resolve(__dirname, "../db/migrations")).migrations.find((x) => x.id === "0032_ski_rental_v1")!;
+  /** Revierte o vuelve a aplicar 0036 con las sentencias reales del carril y su registro. */
+  async function migration0036(direction: "down" | "up") {
+    const m = loadMigrations(path.resolve(__dirname, "../db/migrations")).migrations.find((x) => x.id === "0036_ski_rental_v1")!;
     for (const st of splitStatements(direction === "down" ? m.down! : m.up)) await tenantDb.query(st);
     if (direction === "down") await tenantDb.query("DELETE FROM __elephant_migrations WHERE id = ?", [m.id]);
     else await tenantDb.query("INSERT INTO __elephant_migrations (id, checksum) VALUES (?, ?)", [m.id, m.checksum]);
   }
 
-  it("la migración 0032 creó las tablas de la v1 junto a las de la v0.1", async () => {
+  it("la migración 0036 creó las tablas de la v1 junto a las de la v0.1", async () => {
     const [rows] = await tenantDb.query<mysql.RowDataPacket[]>("SHOW TABLES LIKE 'ski_rental_%'");
     expect(rows.map((r) => Object.values(r)[0])).toEqual(expect.arrayContaining([...V1_TABLES, "ski_rental_items", "ski_rental_rentals", "ski_rental_sites"]));
   });
@@ -261,12 +261,12 @@ describe.skipIf(!URL_)("Ski Rental v1 por unidad (routers reales, licencia por c
     await license("active", "pista-norte");
   });
 
-  it("sin instalar la v1 (0032 revertida): error tipado en la v1, la v0.1 y el Core siguen; se vuelve a aplicar", async () => {
-    await migration0032("down");
+  it("sin instalar la v1 (0036 revertida): error tipado en la v1, la v0.1 y el Core siguen; se vuelve a aplicar", async () => {
+    await migration0036("down");
     expect(fail(await query("skiRental.listModels", NORTE))).toMatchObject({ status: 412, message: expect.stringMatching(/^\[module_not_installed\]/) });
     expect((await query("skiRental.listItems", NORTE)).status).toBe(200);
     expect((await query("products.getAll")).status).toBe(200);
-    await migration0032("up");
+    await migration0036("up");
     expect(ok(await query("skiRental.listModels", NORTE))).toEqual([]);
   }, 60_000);
 });
