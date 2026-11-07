@@ -156,6 +156,35 @@ export async function holdHotelRoomAndCreateReservation(
   });
 }
 
+/**
+ * Alta de una reserva de hotel por el personal (recepción, teléfono, correo): misma transacción serializada por el tipo
+ * de habitación que la reserva pública, pero la retención nace CONFIRMADA (no caduca: la confirma quien la crea) y la
+ * estancia, confirmada; el cobro se registra después por el circuito de reservas de siempre. Con `force` (walk-in o
+ * cambio de categoría) se aloja aunque el tipo esté completo. `afterCreate` corre dentro de la transacción (p. ej. para
+ * asignar la habitación física): si falla, no se crea nada.
+ */
+export async function createStaffHotelReservation(
+  stay: { roomTypeId: number; checkIn: string; checkOut: string; units: number },
+  data: ReservationData,
+  opts: { channel: "MANUAL" | "TELEFONO" | "EMAIL" | "TPV_FISICO"; force?: boolean; afterCreate?: (tx: Exec, reservationId: number) => Promise<void> },
+  now = Date.now(),
+): Promise<HoldResult> {
+  const reservationNumber = data.reservationNumber ?? await generateReservationNumber();
+  return inTx(async (tx) => {
+    const available = await lockedHotelAvailability(tx, stay, now);
+    if (!opts.force && available < stay.units) return { ok: false, available };
+    const reservation = await createReservation({ ...data, reservationNumber }, tx);
+    await tx.execute(sql`
+      UPDATE reservations SET inventory_kind = 'hotel_room', inventory_ref_id = ${stay.roomTypeId}, inventory_units = ${stay.units},
+        stay_check_in = ${stay.checkIn}, stay_check_out = ${stay.checkOut},
+        hold_status = 'confirmada', hold_expires_at = NULL, hold_release_reason = NULL,
+        channel = ${opts.channel}, status_reservation = 'CONFIRMADA'
+      WHERE id = ${reservation.id}`);
+    if (opts.afterCreate) await opts.afterCreate(tx, reservation.id);
+    return { ok: true, reservation };
+  });
+}
+
 /** Bloquea el tipo de habitación y devuelve las unidades libres en la noche más ajustada de la estancia. */
 async function lockedHotelAvailability(
   tx: Exec,
