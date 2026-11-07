@@ -8,10 +8,11 @@
 -- `hotel_room_state_events`: historial de cambios de estado operativo (quién, cuándo, de qué estado a cuál y por qué).
 -- `hotel_room_assignments`: habitación física asignada a una reserva de hotel (una por reserva: reservation_id único),
 -- con las fechas de la estancia copiadas para detectar solapes sin leer la reserva.
--- `room_blocks.min_stay`, `max_stay`, `closed_to_arrival`, `closed_to_departure`: restricciones de estancia por
--- tipología y día. Nulas o a 0 no restringen nada: los bloqueos existentes se comportan como siempre.
+-- `hotel_stay_restrictions`: restricciones de estancia por tipología y día (estancia mínima y máxima, cerrado a
+-- llegadas o a salidas), único por (tipología, día). Sin fila, o nulas y a 0, no restringen nada. Tabla propia: no
+-- altera `room_blocks` (inventario por día), que sigue como siempre.
 --
--- Solo crea tablas nuevas y añade columnas nulas o con valor por defecto. Nunca se ejecuta al arrancar.
+-- Solo crea tablas nuevas. Nunca se ejecuta al arrancar.
 
 CREATE TABLE IF NOT EXISTS hotel_rooms (
   id                  INT           NOT NULL AUTO_INCREMENT,
@@ -60,8 +61,17 @@ CREATE TABLE IF NOT EXISTS hotel_room_assignments (
   KEY idx_hotel_room_assignments_room (hotel_room_id, check_in, check_out)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
-ALTER TABLE room_blocks
-  ADD COLUMN min_stay INT NULL DEFAULT NULL,
-  ADD COLUMN max_stay INT NULL DEFAULT NULL,
-  ADD COLUMN closed_to_arrival TINYINT(1) NOT NULL DEFAULT 0,
-  ADD COLUMN closed_to_departure TINYINT(1) NOT NULL DEFAULT 0;
+CREATE TABLE IF NOT EXISTS hotel_stay_restrictions (
+  id                   INT         NOT NULL AUTO_INCREMENT,
+  room_type_id         INT         NOT NULL,
+  date                 VARCHAR(10) NOT NULL,
+  min_stay             INT         NULL DEFAULT NULL,
+  max_stay             INT         NULL DEFAULT NULL,
+  closed_to_arrival    TINYINT(1)  NOT NULL DEFAULT 0,
+  closed_to_departure  TINYINT(1)  NOT NULL DEFAULT 0,
+  created_by           INT         NULL DEFAULT NULL,
+  updated_at           BIGINT      NOT NULL,
+  PRIMARY KEY (id),
+  UNIQUE KEY uq_hotel_stay_restrictions_type_date (room_type_id, date),
+  KEY idx_hotel_stay_restrictions_date (date)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
