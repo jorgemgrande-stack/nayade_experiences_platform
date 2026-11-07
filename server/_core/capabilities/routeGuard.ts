@@ -100,6 +100,8 @@ export const TRPC_ROUTER_CAPABILITIES: Record<string, string> = {
   reav: "travel-net",
   // Travel Net: expedientes, servicios, márgenes, proveedores y operaciones
   travel: "travel-net",
+  // Informes comerciales de Travel Net (los de Restaurant y Care Net los declara su manifiesto; los de Ski Net, por sede)
+  travelReports: "travel-net",
   // Restaurant Net · sala, carta y comandas (también lo declara el manifiesto del módulo de restaurantes)
   restaurantNet: "restaurant-net",
   // Care Net · bonos y reservas de SPA (también lo declara el manifiesto del módulo de SPA)
