@@ -14,9 +14,10 @@
 -- `hospo_order_items`: líneas de comanda con la foto del plato (nombre, precio e IVA al pedirlo), partida, pase,
 -- comensal, estado (las anuladas guardan el motivo) y los tiempos de cocina para el KDS futuro.
 -- `restaurant_booking_tables`: mesas asignadas a una reserva de restaurante (una reserva puede ocupar varias).
--- `restaurant_bookings.seated_at` / `hospo_order_id`: cuándo se sentó la reserva y la comanda que abrió.
+-- `restaurant_booking_seating`: cuándo se sentó una reserva de restaurante, quién la sentó y la comanda que abrió (una
+-- fila por reserva; no se toca la tabla de reservas).
 --
--- Solo crea tablas nuevas y añade dos columnas nulas. Sin la capacidad restaurant-net no se usan. Nunca se ejecuta al
+-- Solo crea tablas nuevas (no modifica ninguna existente). Sin la capacidad restaurant-net no se usan. Nunca se ejecuta al
 -- arrancar.
 
 CREATE TABLE IF NOT EXISTS dining_rooms (
@@ -96,7 +97,8 @@ CREATE TABLE IF NOT EXISTS hospo_orders (
   KEY idx_hospo_orders_restaurant (restaurant_id, status),
   KEY idx_hospo_orders_table (table_id),
   KEY idx_hospo_orders_sale (tpv_sale_id),
-  KEY idx_hospo_orders_booking (restaurant_booking_id)
+  KEY idx_hospo_orders_booking (restaurant_booking_id),
+  KEY idx_hospo_orders_waiter (waiter_user_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 CREATE TABLE IF NOT EXISTS hospo_order_items (
@@ -122,7 +124,9 @@ CREATE TABLE IF NOT EXISTS hospo_order_items (
   created_at       BIGINT         NOT NULL,
   updated_at       BIGINT         NOT NULL,
   PRIMARY KEY (id),
-  KEY idx_hospo_order_items_order (order_id, status)
+  KEY idx_hospo_order_items_order (order_id, status),
+  KEY idx_hospo_order_items_fired (fired_at),
+  KEY idx_hospo_order_items_station (station, status)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 CREATE TABLE IF NOT EXISTS restaurant_booking_tables (
@@ -135,6 +139,11 @@ CREATE TABLE IF NOT EXISTS restaurant_booking_tables (
   KEY idx_restaurant_booking_tables_table (table_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
-ALTER TABLE restaurant_bookings
-  ADD COLUMN seated_at BIGINT NULL DEFAULT NULL,
-  ADD COLUMN hospo_order_id INT NULL DEFAULT NULL;
+CREATE TABLE IF NOT EXISTS restaurant_booking_seating (
+  booking_id      INT     NOT NULL,
+  seated_at       BIGINT  NOT NULL,
+  hospo_order_id  INT     NOT NULL,
+  seated_by       INT     NULL DEFAULT NULL,
+  PRIMARY KEY (booking_id),
+  KEY idx_restaurant_booking_seating_order (hospo_order_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;

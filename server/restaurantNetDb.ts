@@ -57,8 +57,7 @@ const OPEN_SQL = sql.join(OPEN_ORDER_STATUSES.map((s) => sql`${s}`), sql`, `);
 export function isMissingSalaSchema(e: unknown): boolean {
   for (let x: any = e, depth = 0; x && depth < 6; x = x.cause, depth++) {
     const msg = String(x.sqlMessage ?? x.message ?? "");
-    if ((x.code === "ER_NO_SUCH_TABLE" || x.errno === 1146) && /dining_|hospo_orders|hospo_order_items|restaurant_menu_items|restaurant_booking_tables/.test(msg)) return true;
-    if ((x.code === "ER_BAD_FIELD_ERROR" || x.errno === 1054) && /seated_at|hospo_order_id/.test(msg)) return true;
+    if ((x.code === "ER_NO_SUCH_TABLE" || x.errno === 1146) && /dining_|hospo_orders|hospo_order_items|restaurant_menu_items|restaurant_booking_tables|restaurant_booking_seating/.test(msg)) return true;
   }
   return false;
 }
@@ -918,8 +917,8 @@ export interface DayBooking {
 export function listDayBookings(restaurantId: number, date: string): Promise<DayBooking[]> {
   return run(async (d) => {
     const list = await rows(d, sql`SELECT b.id, b.locator, b.time, b.guests, b.guestName, b.guestLastName, b.guestPhone, b.status, b.allergies, b.isVip,
-        b.seated_at, b.hospo_order_id, s.name AS shift_name
-      FROM restaurant_bookings b LEFT JOIN restaurant_shifts s ON s.id = b.shiftId
+        st.seated_at, st.hospo_order_id, s.name AS shift_name
+      FROM restaurant_bookings b LEFT JOIN restaurant_shifts s ON s.id = b.shiftId LEFT JOIN restaurant_booking_seating st ON st.booking_id = b.id
       WHERE b.restaurantId = ${restaurantId} AND b.date = ${date} AND b.status NOT IN ('cancelled', 'payment_failed')
       ORDER BY b.time, b.id`);
     const ids = list.map((b: any) => num(b.id));
@@ -937,7 +936,7 @@ export function listDayBookings(restaurantId: number, date: string): Promise<Day
 }
 
 async function bookingOf(exec: RnExec, bookingId: number): Promise<{ id: number; restaurantId: number; guests: number; status: string; guestName: string; hospoOrderId: number | null } | null> {
-  const [b] = await rows(exec, sql`SELECT id, restaurantId, guests, status, guestName, guestLastName, hospo_order_id FROM restaurant_bookings WHERE id = ${bookingId}`);
+  const [b] = await rows(exec, sql`SELECT b.id, b.restaurantId, b.guests, b.status, b.guestName, b.guestLastName, st.hospo_order_id FROM restaurant_bookings b LEFT JOIN restaurant_booking_seating st ON st.booking_id = b.id WHERE b.id = ${bookingId}`);
   return b
     ? { id: num(b.id), restaurantId: num(b.restaurantId), guests: num(b.guests), status: String(b.status), guestName: `${b.guestName ?? ""} ${b.guestLastName ?? ""}`.trim(), hospoOrderId: numOrNull(b.hospo_order_id) }
     : null;
@@ -993,7 +992,8 @@ export async function seatBooking(guard: Guard, bookingId: number, tableId: numb
   const { id } = await openOrder(guard, { tableId: t.id, guests: Math.max(1, Math.min(50, pre.booking.guests)), customerName: pre.booking.guestName || null, restaurantBookingId: pre.booking.id }, waiterUserId);
   await run(async (d) => {
     await d.execute(sql`INSERT IGNORE INTO restaurant_booking_tables (booking_id, table_id, created_at) VALUES (${pre.booking.id}, ${t.id}, ${Date.now()})`);
-    await d.execute(sql`UPDATE restaurant_bookings SET seated_at = ${Date.now()}, hospo_order_id = ${id} WHERE id = ${pre.booking.id}`);
+    await d.execute(sql`INSERT INTO restaurant_booking_seating (booking_id, seated_at, hospo_order_id, seated_by) VALUES (${pre.booking.id}, ${Date.now()}, ${id}, ${waiterUserId})
+      ON DUPLICATE KEY UPDATE seated_at = VALUES(seated_at), hospo_order_id = VALUES(hospo_order_id), seated_by = VALUES(seated_by)`);
   });
   return { orderId: id, reused: false };
 }
