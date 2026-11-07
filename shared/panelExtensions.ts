@@ -340,8 +340,8 @@ export const CORE_EXTENSION_PANELS: Readonly<Record<string, { capability?: strin
     },
   },
   // Productos Net aún sin herramientas operativas en el Core: si se conceden, su panel general muestra lo incluido
-  // Ski Net: panel general (cualquiera de sus dos licencias) y las herramientas de la escuela (módulo del SDK
-  // server/skiSchool, licencia `ski-school` por sede, que el servicio comprueba en cada operación)
+  // Ski Net: panel general (cualquiera de sus dos licencias), las herramientas de la escuela (server/skiSchool, licencia
+  // `ski-school`) y las del alquiler (server/skiRental, licencia `ski-rental`); los servicios las comprueban por sede
   skiNet: { panel: skiNetPanel() },
   travelNet: { panel: netHomeOnly("travel-net", "Travel Net", "/admin/net/travel", ["travel-net"], 69) },
   lifeNet: { panel: netHomeOnly("life-net", "Life Net", "/admin/net/life", ["life-net"], 71) },
@@ -356,9 +356,10 @@ function netHomeOnly(id: string, label: string, path: string, capabilities: stri
   return { section: { id, label, order, items: [{ id: "panel", label: "Panel general", path, icon: "dashboard", capabilities }] } };
 }
 
-/** Menú de Ski Net: sección propia con el panel general y las pantallas de la escuela. */
+/** Menú de Ski Net: sección propia con el panel general, las pantallas de la escuela y las del alquiler. */
 function skiNetPanel(): PanelContributions {
   const SCHOOL = ["ski-school"];
+  const RENTAL = ["ski-rental"];
   return {
     section: {
       id: "ski-net",
@@ -370,6 +371,10 @@ function skiNetPanel(): PanelContributions {
         { id: "profesores", label: "Profesores", path: "/admin/ski/profesores", icon: "users", capabilities: SCHOOL, order: 3 },
         { id: "productos-docentes", label: "Productos docentes", path: "/admin/ski/productos-docentes", icon: "tag", capabilities: SCHOOL, order: 4 },
         { id: "sesiones", label: "Sesiones y alumnos", path: "/admin/ski/sesiones", icon: "briefcase", capabilities: SCHOOL, order: 5 },
+        { id: "alquiler", label: "Alquiler: mostrador", path: "/admin/ski/alquiler", icon: "shoppingCart", capabilities: RENTAL, order: 6 },
+        { id: "inventario", label: "Inventario de material", path: "/admin/ski/inventario", icon: "package", capabilities: RENTAL, order: 7 },
+        { id: "taller", label: "Taller", path: "/admin/ski/taller", icon: "settings", capabilities: RENTAL, order: 8 },
+        { id: "alquiler-ajustes", label: "Tiendas y contrato", path: "/admin/ski/alquiler-ajustes", icon: "file", capabilities: RENTAL, order: 9 },
       ],
     },
   };

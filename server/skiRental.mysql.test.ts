@@ -24,6 +24,7 @@ const URL_ = process.env.REGISTRY_TEST_DATABASE_URL;
 const run = crypto.randomBytes(3).toString("hex");
 const T = `ski-${run}`;
 const PASS = "clave-ski-" + run;
+const V01_TABLES = ["ski_rental_items", "ski_rental_rentals", "ski_rental_sites"];
 
 describe.skipIf(!URL_)("Ski Rental (routers reales, licencia por capacidad)", () => {
   let admin: mysql.Pool;
@@ -182,7 +183,8 @@ describe.skipIf(!URL_)("Ski Rental (routers reales, licencia por capacidad)", ()
 
   it("la migración 0003 creó las tablas del módulo en la empresa aprovisionada", async () => {
     const [rows] = await tenantDb.query<mysql.RowDataPacket[]>("SHOW TABLES LIKE 'ski_rental_%'");
-    expect(rows.map((r) => Object.values(r)[0]).sort()).toEqual(["ski_rental_items", "ski_rental_rentals", "ski_rental_sites"]);
+    // Las de la v0.1; la v1 por unidad (0036) añade otras ski_rental_* que se prueban en skiRentalUnits.mysql.test.ts
+    expect(rows.map((r) => Object.values(r)[0])).toEqual(expect.arrayContaining(V01_TABLES));
   });
 
   it("sin licencia: error tipado en consultas y operaciones; el Core y otro módulo siguen funcionando", async () => {
@@ -259,7 +261,7 @@ describe.skipIf(!URL_)("Ski Rental (routers reales, licencia por capacidad)", ()
   it("sin instalar (migración 0003 revertida): error tipado y el Core intacto; se vuelve a aplicar", async () => {
     await migration0003("down");
     const [gone] = await tenantDb.query<mysql.RowDataPacket[]>("SHOW TABLES LIKE 'ski_rental_%'");
-    expect(gone).toHaveLength(0);
+    expect(gone.map((r) => Object.values(r)[0]).filter((t) => V01_TABLES.includes(String(t)))).toHaveLength(0);
     expect(fail(await query("skiRental.listItems", NORTE))).toMatchObject({ status: 412, message: expect.stringMatching(/^\[module_not_installed\]/) });
     expect((await query("products.getAll")).status).toBe(200);
     expect((await query("hotel.adminGetRoomTypes")).status).toBe(200);
