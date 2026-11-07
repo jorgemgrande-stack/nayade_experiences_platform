@@ -9,10 +9,10 @@
 -- se marchó la línea, ámbar hasta amber_max_min, rojo después). Sin fila, 10 y 20 minutos.
 -- `hospo_kitchen_incidents`: incidencias de cocina (agotado, devuelto, error de cocina o de sala, rehacer) con la
 -- comanda, la línea, el motivo y quién la registró.
--- Índices nuevos en hospo_order_items (marcha, para las métricas del día; partida y estado, para la pantalla) y en
--- hospo_orders (camarero asignado). Los camareros son usuarios del Core: no hay tabla ni PIN propios.
+-- Los índices de las líneas (marcha, partida y estado) y del camarero de la comanda ya los crea la 0033. Los camareros
+-- son usuarios del Core: no hay tabla ni PIN propios.
 --
--- Solo crea tablas nuevas e índices. Sin la capacidad restaurant-net no se usan. Nunca se ejecuta al arrancar.
+-- Solo crea tablas nuevas (no modifica ninguna existente). Sin la capacidad restaurant-net no se usan. Nunca se ejecuta al arrancar.
 
 CREATE TABLE IF NOT EXISTS hospo_kitchen_stations (
   id             INT          NOT NULL AUTO_INCREMENT,
@@ -65,10 +65,3 @@ CREATE TABLE IF NOT EXISTS hospo_kitchen_incidents (
   KEY idx_hospo_kitchen_incidents_day (restaurant_id, created_at),
   KEY idx_hospo_kitchen_incidents_order (order_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
-
-ALTER TABLE hospo_order_items
-  ADD INDEX idx_hospo_order_items_fired (fired_at),
-  ADD INDEX idx_hospo_order_items_station (station, status);
-
-ALTER TABLE hospo_orders
-  ADD INDEX idx_hospo_orders_waiter (waiter_user_id);
