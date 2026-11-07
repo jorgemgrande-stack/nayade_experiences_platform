@@ -124,7 +124,7 @@ function RoomFormDialog({ open, onClose, editRoom }: {
 
   return (
     <Dialog open={open} onOpenChange={v => !v && onClose()}>
-      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+      <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>{editRoom ? "Editar tipología" : "Nueva tipología"}</DialogTitle>
         </DialogHeader>

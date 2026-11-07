@@ -49,6 +49,9 @@ export function PurchaseBadge({ state }: { state: PurchaseState }) {
 
 export const fmtDate = (ms: number | null | undefined) => (ms ? new Date(ms).toLocaleDateString("es-ES", { day: "2-digit", month: "short", year: "numeric", timeZone: "Europe/Madrid" }) : "—");
 
+/** Día AAAA-MM-DD como «07 nov 2026». */
+export const fmtDay = (d: string) => new Date(`${d}T12:00:00Z`).toLocaleDateString("es-ES", { day: "2-digit", month: "short", year: "numeric", timeZone: "UTC" });
+
 export const newRequestKey = (): string => {
   try {
     return crypto.randomUUID().replace(/-/g, "");
@@ -111,7 +114,7 @@ export function useOpenCash() {
     <div className="space-y-1.5">
       <Label htmlFor="care-cash">Caja</Label>
       <Select value={sessionId} onValueChange={setChosen}>
-        <SelectTrigger id="care-cash"><SelectValue placeholder="Elige la caja" /></SelectTrigger>
+        <SelectTrigger id="care-cash" className="w-full min-w-0"><SelectValue placeholder="Elige la caja" /></SelectTrigger>
         <SelectContent>{open.map((r) => <SelectItem key={r.id} value={String(r.openSession!.id)}>{r.name}</SelectItem>)}</SelectContent>
       </Select>
     </div>
@@ -155,7 +158,7 @@ export function SellPackDialog({ initialPackId, initialClient, onClose }: { init
   });
   return (
     <Dialog open onOpenChange={(o) => !o && onClose()}>
-      <DialogContent className="max-h-[90vh] max-w-md overflow-y-auto">
+      <DialogContent className="max-h-[90vh] sm:max-w-md overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Vender un bono</DialogTitle>
           <DialogDescription>Se cobra como venta del TPV en la caja elegida; el bono empieza a contar desde hoy.</DialogDescription>
@@ -164,7 +167,7 @@ export function SellPackDialog({ initialPackId, initialClient, onClose }: { init
           <div className="space-y-1.5">
             <Label htmlFor="care-sell-pack">Bono</Label>
             <Select value={packId} onValueChange={setPackId}>
-              <SelectTrigger id="care-sell-pack"><SelectValue placeholder="Elige el bono" /></SelectTrigger>
+              <SelectTrigger id="care-sell-pack" className="w-full min-w-0"><SelectValue placeholder="Elige el bono" /></SelectTrigger>
               <SelectContent>{(packs.data ?? []).map((p) => <SelectItem key={p.id} value={String(p.id)}>{p.name} · {p.sessions} sesiones · {formatEur(p.price)}</SelectItem>)}</SelectContent>
             </Select>
           </div>
@@ -174,15 +177,15 @@ export function SellPackDialog({ initialPackId, initialClient, onClose }: { init
           </div>
           {roomGuests.data?.available && (
             <div className="flex rounded-lg border border-border p-0.5" role="group" aria-label="Cómo se cobra">
-              <Button size="sm" className="flex-1" variant={mode === "tpv" ? "secondary" : "ghost"} aria-pressed={mode === "tpv"} onClick={() => setMode("tpv")}>Cobrar en caja</Button>
-              <Button size="sm" className="flex-1" variant={mode === "habitacion" ? "secondary" : "ghost"} aria-pressed={mode === "habitacion"} onClick={() => setMode("habitacion")}>Cargar a la habitación</Button>
+              <Button size="sm" className="h-auto min-h-8 flex-1 whitespace-normal" variant={mode === "tpv" ? "secondary" : "ghost"} aria-pressed={mode === "tpv"} onClick={() => setMode("tpv")}>Cobrar en caja</Button>
+              <Button size="sm" className="h-auto min-h-8 flex-1 whitespace-normal" variant={mode === "habitacion" ? "secondary" : "ghost"} aria-pressed={mode === "habitacion"} onClick={() => setMode("habitacion")}>Cargar a la habitación</Button>
             </div>
           )}
           {mode === "habitacion" ? (
             <div className="space-y-1.5">
               <Label htmlFor="care-sell-room">Habitación</Label>
               <Select value={hotelReservation} onValueChange={setHotelReservation}>
-                <SelectTrigger id="care-sell-room"><SelectValue placeholder={(roomGuests.data?.guests ?? []).length ? "Elige el huésped" : "No hay huéspedes en casa"} /></SelectTrigger>
+                <SelectTrigger id="care-sell-room" className="w-full min-w-0"><SelectValue placeholder={(roomGuests.data?.guests ?? []).length ? "Elige el huésped" : "No hay huéspedes en casa"} /></SelectTrigger>
                 <SelectContent>
                   {(roomGuests.data?.guests ?? []).map((g) => <SelectItem key={g.reservationId} value={String(g.reservationId)}>{g.roomCode ? `Habitación ${g.roomCode}` : g.roomName ?? "Sin habitación"} · {g.guestName}</SelectItem>)}
                 </SelectContent>
@@ -195,7 +198,7 @@ export function SellPackDialog({ initialPackId, initialClient, onClose }: { init
               <div className="space-y-1.5">
                 <Label htmlFor="care-sell-method">Forma de pago</Label>
                 <Select value={method} onValueChange={(v) => setMethod(v as typeof method)}>
-                  <SelectTrigger id="care-sell-method"><SelectValue /></SelectTrigger>
+                  <SelectTrigger id="care-sell-method" className="w-full min-w-0"><SelectValue /></SelectTrigger>
                   <SelectContent>{METHODS.map(([k, l]) => <SelectItem key={k} value={k}>{l}</SelectItem>)}</SelectContent>
                 </Select>
               </div>

@@ -253,7 +253,7 @@ export default function CocinaAjustes() {
       </div>
 
       <Dialog open={form != null} onOpenChange={(o) => !o && setForm(null)}>
-        <DialogContent className="max-w-sm">
+        <DialogContent className="sm:max-w-sm">
           <DialogHeader>
             <DialogTitle>{form?.id ? "Editar partida" : "Nueva partida"}</DialogTitle>
             <DialogDescription>Al renombrarla, la carta y el enrutado la siguen.</DialogDescription>
@@ -272,7 +272,7 @@ export default function CocinaAjustes() {
                 <div className="space-y-1.5">
                   <Label htmlFor="rnet-st-tone">Color</Label>
                   <Select value={form.tone} onValueChange={(v) => setForm({ ...form, tone: v as StationTone })}>
-                    <SelectTrigger id="rnet-st-tone"><SelectValue /></SelectTrigger>
+                    <SelectTrigger id="rnet-st-tone" className="w-full min-w-0"><SelectValue /></SelectTrigger>
                     <SelectContent>{STATION_TONES.map((t) => <SelectItem key={t} value={t}>{STATION_TONE_LABELS[t]}</SelectItem>)}</SelectContent>
                   </Select>
                 </div>

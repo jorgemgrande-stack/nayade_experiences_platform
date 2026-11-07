@@ -60,7 +60,7 @@ function ServiceDialog({ fileId, siteId, edit, onClose }: { fileId: number; site
   const p = sim.data?.price;
   return (
     <Dialog open onOpenChange={(o) => !o && onClose()}>
-      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+      <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto">
         <DialogHeader><DialogTitle>{edit ? "Editar servicio" : "Nuevo servicio"}</DialogTitle></DialogHeader>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 py-2">
           <div className="space-y-1">
@@ -143,7 +143,7 @@ function FileDialog({ edit, onClose, onCreated }: { edit: any | null; onClose: (
   }
   return (
     <Dialog open onOpenChange={(o) => !o && onClose()}>
-      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+      <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto">
         <DialogHeader><DialogTitle>{edit ? "Editar expediente" : "Nuevo expediente"}</DialogTitle></DialogHeader>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 py-2">
           <div className="sm:col-span-2 space-y-1"><Label>Viaje o paquete</Label><Input value={f.title} maxLength={200} onChange={(e) => set({ title: e.target.value })} placeholder="Escapada de fin de semana" /></div>
