@@ -181,6 +181,7 @@ import { reviewsRouter } from "./routers/reviews";
 import { restaurantsRouter } from "./routers/restaurants";
 import { restaurantNetRouter } from "./routers/restaurantNet";
 import { skiRentalRouter } from "./skiRental/router";
+import { skiSchoolRouter } from "./skiSchool/router";
 import { crmRouter } from "./routers/crm";
 import { suppliersRouter, settlementsRouter } from "./routers/suppliers";
 import { supplierPortalRouter } from "./routers/supplierPortal";
@@ -2633,6 +2634,7 @@ export const appRouter = router({
   restaurants: restaurantsRouter,
   restaurantNet: restaurantNetRouter,
   skiRental: skiRentalRouter,
+  skiSchool: skiSchoolRouter,
   crm: crmRouter,
   commercialFollowup: commercialFollowupRouter,
   crmTags: crmTagsRouter,

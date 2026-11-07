@@ -9,11 +9,25 @@ import type { Request, Response } from 'express';
 import { Router } from 'express';
 import crypto from 'node:crypto';
 import { integrationEnv } from "./_core/tenantConfig";
+import { isMultiTenant } from "./_core/tenant";
+import { metaPixelId } from "./_core/theme";
+import { getSystemSetting } from "./config";
 
-const PIXEL_ID = process.env.VITE_META_PIXEL_ID;
-const ACCESS_TOKEN = integrationEnv("META_CAPI_ACCESS_TOKEN");
-const API_VERSION = integrationEnv("META_API_VERSION") || 'v21.0';
-const TEST_EVENT_CODE = integrationEnv("META_CAPI_TEST_EVENT_CODE");
+/**
+ * Configuración de CAPI de la empresa en curso, leída EN CADA ENVÍO (07/11/2026). Antes se leía una sola vez al cargar el
+ * módulo, fuera de cualquier empresa: en multiempresa el token salía siempre vacío y no se enviaba nada, y en ningún caso
+ * podía usar el token ni el píxel de cada empresa. Multiempresa: token de su bóveda y píxel de su ajuste
+ * `analytics_meta_pixel_id` (el mismo que carga su web); instalación de una empresa: las variables de siempre.
+ */
+export async function capiConfig(): Promise<{ pixelId: string | null; accessToken: string | undefined; apiVersion: string; testEventCode: string | undefined }> {
+  const pixelId = isMultiTenant() ? metaPixelId(await getSystemSetting("analytics_meta_pixel_id", "")) : (process.env.VITE_META_PIXEL_ID?.trim() || null);
+  return {
+    pixelId,
+    accessToken: integrationEnv("META_CAPI_ACCESS_TOKEN"),
+    apiVersion: integrationEnv("META_API_VERSION") || 'v21.0',
+    testEventCode: integrationEnv("META_CAPI_TEST_EVENT_CODE"),
+  };
+}
 
 // ─── Helpers de hashing PII ───────────────────────────────────────────────────
 
@@ -77,6 +91,7 @@ interface CAPIRequestBody {
  * y desde el webhook de Redsys (server-side Purchase).
  */
 export async function sendCapiEvent(args: CapiEventArgs): Promise<{ ok: boolean; result: unknown }> {
+  const { pixelId: PIXEL_ID, accessToken: ACCESS_TOKEN, apiVersion: API_VERSION, testEventCode: TEST_EVENT_CODE } = await capiConfig();
   if (!ACCESS_TOKEN || !PIXEL_ID) {
     console.warn('[Meta CAPI] Variables de entorno no configuradas (PIXEL_ID o ACCESS_TOKEN)');
     return { ok: false, result: 'missing_config' };
