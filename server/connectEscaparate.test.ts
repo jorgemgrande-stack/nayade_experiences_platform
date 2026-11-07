@@ -5,6 +5,7 @@
  * separados y lo interno o no publicado no aparece.
  */
 import { beforeAll, describe, expect, it } from "vitest";
+import { isNetLegacyExtension } from "../shared/netProducts";
 import { seedElephantSource } from "./catalog/seed";
 import { quoteCatalogFromSite } from "./catalog/snapshot";
 import type { QuoteCatalogProduct } from "./catalog/quote";
@@ -43,7 +44,9 @@ describe("escaparate de Elephant Connect", () => {
 
   it.each(["essential", "business", "enterprise", null])("ningún producto publicado desaparece por el plan (%s) ni por no tener licencias", (plan) => {
     const items = buildConnectCatalog(published, [], NOW, plan);
-    expect(items.map((i) => i.key).sort()).toEqual(published.items.map((i) => i.key).sort());
+    // Elephant Net (07/11/2026): solo desaparecen las 19 antiguas extensiones sectoriales (no se venden sueltas)
+    expect(items.map((i) => i.key).sort()).toEqual(published.items.map((i) => i.key).filter((k) => !isNetLegacyExtension(k)).sort());
+    expect(published.items.filter((i) => isNetLegacyExtension(i.key))).toHaveLength(19);
     expect(filterConnectItems(items, { state: "all" })).toHaveLength(items.length);
   });
 

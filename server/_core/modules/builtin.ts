@@ -112,6 +112,14 @@ export const CONNECT_EXTENSIONS: ModuleManifest[] = [
     source: { location: "core" },
     panel: CORE_EXTENSION_PANELS.socialTokenNet.panel,
   },
+  // Elephant Net sin herramientas operativas todavía en el Core: solo su panel general (lo incluido y su estado)
+  ...(
+    [
+      ["ski_net", "Ski Net", "Escuelas de esquí, snowboard y alquiler de material", CORE_EXTENSION_PANELS.skiNet.panel],
+      ["travel_net", "Travel Net", "Agencias de viajes y operadores turísticos", CORE_EXTENSION_PANELS.travelNet.panel],
+      ["life_net", "Life Net", "Organización personal y familiar", CORE_EXTENSION_PANELS.lifeNet.panel],
+    ] as const
+  ).map(([id, name, description, panel]): ModuleManifest => ({ id, name, version: "1.0.0", kind: "addon", coreRange: "^1.0.0", description, resources: ["http.request"], source: { location: "core" }, panel })),
 ];
 
 let registered = false;

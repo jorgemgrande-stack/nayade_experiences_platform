@@ -387,7 +387,7 @@ export interface ControlPlaneDeps {
      * Compra de módulos y ampliaciones desde la plataforma (CRM 0018). `enabled` (CP_COMMERCE_PURCHASES_ENABLED)
      * apagado por defecto; sin `changes`, ni se monta ni se reconocen suscripciones multipartida.
      */
-    purchases?: { enabled: boolean; changes: SubscriptionChangeStore; internalTenants?: ReadonlySet<string> };
+    purchases?: { enabled: boolean; changes: SubscriptionChangeStore; internalTenants?: ReadonlySet<string>; /** Solo pruebas (ver PurchaseDeps). */ legacyNetSales?: boolean };
     /** Portal de facturación (CP_BILLING_PORTAL_ENABLED y CP_BILLING_PORTAL_CONFIGURATION): apagado por defecto. */
     billingPortal?: { enabled: boolean; configurationId: string | null };
     /**
@@ -2386,6 +2386,7 @@ export function createControlPlaneApp(d: ControlPlaneDeps): Express {
           const purchases = new ModulePurchaseService({
             enabled: st.purchases.enabled,
             internalTenants: st.purchases.internalTenants,
+            legacyNetSales: st.purchases.legacyNetSales,
             mode: st.config.mode,
             namespace: st.config.namespace,
             billingMode: st.config.billingMode ?? "classic",

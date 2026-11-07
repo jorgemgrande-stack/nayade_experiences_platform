@@ -152,8 +152,8 @@ describe("ficha resuelta: catálogo central, reserva de la semilla y nada invent
     expect(i.forWho).toBe("Empresas de prueba del canal simulado.");
     expect(i.prices.map((p) => p.kind)).toEqual(["monthly", "yearly"]);
     expect(i.sheet.offer).toBe("Implantación asistida");
-    // Relacionados: solo los que están en el catálogo de la empresa
-    expect(i.sheet.related).toEqual(["connect-people", "hotel-net-pms"]);
+    // Relacionados: solo los que están en el catálogo de la empresa (nunca una antigua extensión de Elephant Net)
+    expect(i.sheet.related).toEqual(["connect-people"]);
   });
 
   it("ficha parcial: lo vacío usa la semilla oficial; las secciones sin datos quedan vacías", () => {
@@ -189,11 +189,9 @@ describe("ficha resuelta: catálogo central, reserva de la semilla y nada invent
       "connect-people": "on_request",
       "connect-voice": "coming_soon",
       "connect-deals": "active",
-      "restaurant-net-bookings": "available",
-      "hotel-net-pms": "on_request",
-      "hotel-net-channel-manager": "coming_soon",
-      "care-net-agenda": "active",
     });
+    // Elephant Net: las antiguas extensiones sectoriales no aparecen como producto
+    for (const k of ["restaurant-net-bookings", "hotel-net-pms", "hotel-net-channel-manager", "care-net-agenda", "social-token-net-communities"]) expect(states[k], k).toBeUndefined();
   });
 });
 

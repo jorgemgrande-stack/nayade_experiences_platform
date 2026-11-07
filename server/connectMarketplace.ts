@@ -15,6 +15,7 @@ import { parseActivation, parseConnectCard, parseConnectOffer, parseConnectPrice
 import { categoryOf, deriveConnectState, type CheckoutVia, type ConnectCategoryId, type ConnectState } from "../shared/connectMarketplace";
 import type { ConnectGalleryItem, ConnectImage, ConnectPrice, ConnectSheet } from "../shared/connectCard";
 import type { ConnectActivation } from "../shared/connectShowcase";
+import { isNetLegacyExtension, netProductOf, type NetArea, type NetSegment } from "../shared/netProducts";
 
 /** Producto tal como llega del canal: lo de siempre y, opcionalmente, la ficha y los precios aprobados. */
 export type ChannelCatalogItem = PanelCatalogItemView & { card?: unknown; prices?: unknown; offer?: unknown; activation?: unknown };
@@ -67,7 +68,26 @@ export interface ConnectItem {
   includedIn: { key: string; name: string } | null;
   /** Paquete no contratado: sus componentes que la empresa ya tiene y que el paquete sustituiría. */
   replaces: Array<{ key: string; name: string }>;
+  /** Producto de Elephant Net (uno de los 7): licencia, funcionalidades por áreas y contrataciones anteriores; null si no. */
+  net: ConnectNetInfo | null;
 }
+
+/** Datos de un producto Elephant Net en el escaparate (shared/netProducts.ts). */
+export interface ConnectNetInfo {
+  licence: string;
+  segment: NetSegment;
+  summary: string;
+  benefits: string[];
+  areas: NetArea[];
+  note: string | null;
+  homePath: string;
+  /** Antiguas extensiones que la empresa tiene contratadas (condiciones anteriores, que se conservan). */
+  legacyContracted: Array<{ key: string; name: string }>;
+}
+
+/** Texto de la ficha de un producto Net cuyas funciones ya tiene la empresa por una contratación anterior. */
+export const legacyEquivalentText = (product: string, names: string[]) =>
+  `Ya tienes las funciones de ${product} con tu contratación anterior (${names.join(", ")}): conservas el acceso y tus condiciones, sin cargos adicionales.`;
 
 /** Imagen de la forma anterior (`cover`/`screenshots`) como imagen resuelta, mientras el canal la mande. */
 const legacyImage = (m: { src: string; alt: string } | null | undefined): ConnectImage | null => (m ? { src: m.src, srcset: null, mobileSrc: null, width: null, height: null, alt: m.alt, focal: null, kind: null } : null);
@@ -121,7 +141,10 @@ export function buildConnectCatalog(
   const contracted = (key: string) => parseActivation(byKey.get(key)?.activation)?.state === "active";
   const bundles = catalog.items.filter((i) => seedBundleOf(i.key).length > 0);
 
-  return catalog.items.map((item): ConnectItem => {
+  // Elephant Net: 7 productos. Las antiguas extensiones sectoriales no se muestran como producto (07/11/2026)
+  const shownItems = catalog.items.filter((i) => !isNetLegacyExtension(i.key));
+  return shownItems.map((item): ConnectItem => {
+    const np = netProductOf(item.key);
     const seed = seedOf(item.key);
     const d = seed?.draft;
     const card = parseConnectCard(item.card);
@@ -133,22 +156,26 @@ export function buildConnectCatalog(
     const includer = item.kind === "module" ? bundles.find((b) => b.key !== item.key && contracted(b.key) && seedBundleOf(b.key).includes(item.key)) : undefined;
     const includedIn = includer ? { key: includer.key, name: includer.name } : null;
     const replaces = item.kind === "module" && !contracted(item.key) ? seedBundleOf(item.key).filter(contracted).map((k) => ({ key: k, name: productName(k) })) : [];
+    // Contratación anterior por extensiones que ya da TODAS las funciones del producto: equivale al producto (sin
+    // nueva compra ni cargo); si solo cubre una parte, se ofrece el producto en sustitución (prorrateo de siempre)
+    const equivalent = !!np && replaces.length > 0 && capabilities.length > 0 && capabilities.every((c) => capabilityStatus(c) === "active");
     // Paquete sin contratar cuyos componentes sí están contratados: sus capacidades activas son las de los módulos, no
     // las suyas; su estado es el comercial (se puede contratar en sustitución de los módulos)
     const derived = deriveConnectState(
-      { kind: item.kind, commercialStatus: item.commercialStatus, capabilities: replaces.length > 0 ? [] : capabilities, dependencies, plans },
+      { kind: item.kind, commercialStatus: item.commercialStatus, capabilities: replaces.length > 0 && !equivalent ? [] : capabilities, dependencies, plans },
       { capabilityStatus, plan, productActive, productName },
     );
     const state = derived.state;
     const reasons = [...derived.reasons];
     if (includedIn && state === "active") reasons.push(includedInText(includedIn.name));
-    if (replaces.length > 0) reasons.push(replacesText(replaces.map((r) => r.name)));
+    if (equivalent && np) reasons.push(legacyEquivalentText(np.name, replaces.map((r) => r.name)));
+    else if (replaces.length > 0) reasons.push(replacesText(replaces.map((r) => r.name)));
     const prices = card?.prices ?? parseConnectPrices(item.prices) ?? [];
     const fallbackPrices: ConnectPrice[] = item.monthly
       ? [{ kind: "monthly", amountCents: item.monthly.amountCents, currency: item.monthly.currency, unit: item.monthly.unit, taxRateBp: null, taxIncluded: item.monthly.taxIncluded }]
       : [];
     const offer = card?.offer ?? parseConnectOffer(item.offer);
-    const related = Array.from(new Set([...(c?.related ?? []), ...(c?.compatibleExtensions ?? [])])).filter((k) => k !== item.key && byKey.has(k));
+    const related = Array.from(new Set([...(c?.related ?? []), ...(c?.compatibleExtensions ?? [])])).filter((k) => k !== item.key && byKey.has(k) && !isNetLegacyExtension(k));
     const sheet: ConnectSheet = {
       headline: c?.headline ?? null,
       valueProposition: c?.valueProposition ?? null,
@@ -175,7 +202,7 @@ export function buildConnectCatalog(
     };
     return {
       key: item.key,
-      name: item.name,
+      name: np?.name ?? item.name,
       family: item.family,
       category: categoryOf(item),
       kind: item.kind,
@@ -187,11 +214,12 @@ export function buildConnectCatalog(
       // Solo se compra lo que está disponible para esta empresa (nunca algo contratado, en curso o sin requisitos)
       purchasable: item.purchasable && state === "available",
       tagline: card?.tagline ?? (d?.tagline || null),
-      description: card?.description ?? (d?.description || null),
-      includes: pick(card?.includes, d?.includes ?? []),
+      // Net: la descripción y lo incluido son los del producto unificado (no los de los antiguos submódulos)
+      description: np ? np.summary : (card?.description ?? (d?.description || null)),
+      includes: np ? np.areas.map((a) => (a.features.every((f) => f.status === "coming_soon") ? `${a.title} (próximamente)` : a.title)) : pick(card?.includes, d?.includes ?? []),
       requirements: pick(card?.requirements, d?.requirements ?? []),
       forWho: c?.forWho ?? card?.presentation?.forWho ?? d?.presentation.forWho ?? null,
-      thirdPartyCosts: card?.thirdPartyCosts ?? d?.thirdPartyCosts ?? null,
+      thirdPartyCosts: card?.thirdPartyCosts ?? d?.thirdPartyCosts ?? np?.note ?? null,
       dependencies: dependencies.map((k) => ({ key: k, name: productName(k) })),
       plans,
       state,
@@ -209,6 +237,9 @@ export function buildConnectCatalog(
       conversionPlan: null,
       includedIn,
       replaces,
+      net: np
+        ? { licence: np.licence, segment: np.segment, summary: np.summary, benefits: np.benefits, areas: np.areas, note: np.note ?? null, homePath: np.homePath, legacyContracted: replaces }
+        : null,
     };
   });
 }

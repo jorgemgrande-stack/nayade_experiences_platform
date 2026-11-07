@@ -268,13 +268,18 @@ export default function ConnectPage() {
                           <p className="mt-0.5 max-w-3xl text-sm text-muted-foreground">{h.intro}</p>
                         </div>
                       </div>
-                      <ul className="grid gap-5 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
-                        {group.map((i) => (
-                          <li key={i.key}>
-                            <ProductCard item={i} view={view} onAction={openDialog} />
-                          </li>
-                        ))}
-                      </ul>
+                      {(b.id === "net" ? netSegments(group) : [{ id: "all", title: null, items: group }]).map((seg) => (
+                        <div key={seg.id} className="space-y-3">
+                          {seg.title && <h3 className="text-base font-semibold text-foreground">{seg.title}</h3>}
+                          <ul className="grid gap-5 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
+                            {seg.items.map((i) => (
+                              <li key={i.key}>
+                                <ProductCard item={i} view={view} onAction={openDialog} />
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+                      ))}
                     </section>
                   );
                 })}
@@ -288,4 +293,14 @@ export default function ConnectPage() {
       )}
     </AdminLayout>
   );
+}
+
+/** Elephant Net en el escaparate: «Empresas» (las 6 soluciones sectoriales) y «Personal» (Life Net). */
+function netSegments(items: ConnectCatalogItem[]): Array<{ id: string; title: string | null; items: ConnectCatalogItem[] }> {
+  const business = items.filter((i) => i.net?.segment !== "personal");
+  const personal = items.filter((i) => i.net?.segment === "personal");
+  return [
+    { id: "business", title: "Elephant Net · Empresas", items: business },
+    { id: "personal", title: "Elephant Net · Personal", items: personal },
+  ].filter((s) => s.items.length > 0);
 }

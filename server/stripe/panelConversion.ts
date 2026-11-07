@@ -33,6 +33,7 @@ import type { StripeMode } from "./config";
 import type { EligibilityResult } from "./eligibility";
 import { StripeGatewayError } from "./gateway";
 import type { StripeStore } from "./store";
+import { legacyExtensionText } from "../../shared/netProducts";
 
 const moduleKey = z.string().regex(/^[a-z0-9][a-z0-9-]{1,63}$/);
 export const conversionQuoteBody = z
@@ -203,6 +204,11 @@ export class PanelConversionService {
   }
 
   private requestOf(b: ConversionQuoteBody): QuoteRequest {
+    // Elephant Net (07/11/2026): las antiguas extensiones sectoriales no entran en un alta; se contrata el producto
+    for (const key of b.add ?? []) {
+      const legacy = legacyExtensionText(key);
+      if (legacy) throw new PanelConversionError(400, "invalid_selection", legacy);
+    }
     return { plan: b.plan, interval: b.interval, items: Array.from(new Set(b.add ?? [])).map((key) => ({ key })) };
   }
 

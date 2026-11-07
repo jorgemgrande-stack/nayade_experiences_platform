@@ -188,6 +188,7 @@ const CommunityHub = lazy(() => import("./pages/community/CommunityHub"));
 const ActivateMember = lazy(() => import("./pages/community/ActivateMember"));
 const LoyaltyManager = lazy(() => import("./pages/admin/loyalty/Loyalty"));
 const SocialTokenNetHome = lazy(() => import("./pages/admin/socialTokenNet/SocialTokenNetHome"));
+const NetProductHome = lazy(() => import("./pages/admin/net/NetProductHome"));
 const ProposalsPage = lazy(() => import("./pages/admin/crm/ProposalsPage"));
 const CommercialFollowupDashboard = lazy(() => import("./pages/admin/commercial/CommercialFollowupDashboard"));
 const WhatsAppGHLInbox = lazy(() => import("./pages/admin/commercial/WhatsAppGHLInbox"));
@@ -483,6 +484,7 @@ function Router() {
       <Route path="/admin/fidelizacion">{() => <Suspense fallback={<AdminLoadingFallback />}><LoyaltyManager /></Suspense>}</Route>
       <Route path="/admin/fidelizacion/:tab">{() => <Suspense fallback={<AdminLoadingFallback />}><LoyaltyManager /></Suspense>}</Route>
       <Route path="/admin/social-token-net">{() => <Suspense fallback={<AdminLoadingFallback />}><SocialTokenNetHome /></Suspense>}</Route>
+      <Route path="/admin/net/:producto">{() => <Suspense fallback={<AdminLoadingFallback />}><NetProductHome /></Suspense>}</Route>
       <Route path="/admin/crm/embudo">{() => <Suspense fallback={<AdminLoadingFallback />}><CrmFunnel /></Suspense>}</Route>
       <Route path="/admin/crm/propuestas">{() => <Suspense fallback={<AdminLoadingFallback />}><ProposalsPage /></Suspense>}</Route>
       <Route path="/admin/crm/anulaciones">{() => { window.location.replace("/admin/crm"); return null; }}</Route>
