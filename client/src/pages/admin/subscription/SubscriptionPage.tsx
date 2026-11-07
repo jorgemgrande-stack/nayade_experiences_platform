@@ -6,7 +6,7 @@
  */
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { Link, useSearch } from "wouter";
-import { ArrowUpRight, CalendarClock, CheckCircle2, Clock, CreditCard, Eye, Hourglass, Info, Rocket, ShieldAlert } from "lucide-react";
+import { ArrowUpRight, CalendarClock, CheckCircle2, Clock, CreditCard, Eye, Hourglass, Info, Rocket, ShieldAlert, Sparkles } from "lucide-react";
 import AdminLayout from "@/components/AdminLayout";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -19,7 +19,7 @@ import { WithdrawalSection } from "./WithdrawalSection";
 import { PlanContractSection } from "./PlanContractSection";
 import { ConversionSection } from "./ConversionSection";
 import { CancellationSection, PlanChangeSection } from "./SelfServiceSection";
-import { PlanComparison } from "./PlanComparison";
+import { PlanAssurances, PlanComparison } from "./PlanComparison";
 import { PlanRequestList } from "./PlanRequests";
 import { GrowSection, OwnedModules } from "./GrowSection";
 import { UsageSection } from "./UsagePage";
@@ -274,14 +274,22 @@ export default function SubscriptionPage() {
               </section>
 
               {/* Comparador de planes publicados */}
-              <section id="planes" className="scroll-mt-4 space-y-4" aria-labelledby="sub-plans">
-                <div className="space-y-1">
-                  <h2 id="sub-plans" className="text-xl font-bold text-foreground">Planes de Elephant Core</h2>
-                  <p className="text-sm text-muted-foreground">
+              <section id="planes" className="scroll-mt-4 space-y-6" aria-labelledby="sub-plans">
+                <div className="space-y-3 pt-2 text-center sm:pt-4">
+                  <p className="cx-red-text inline-flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider">
+                    <Sparkles className="h-3.5 w-3.5" aria-hidden="true" /> Planes de Elephant Core
+                  </p>
+                  <h2 id="sub-plans" className="mx-auto max-w-3xl text-balance text-3xl font-extrabold tracking-tight text-foreground sm:text-4xl">
+                    El plan que acompaña a tu negocio en cada etapa
+                  </h2>
+                  <p className="mx-auto max-w-2xl text-pretty text-base text-muted-foreground">
                     {trial
                       ? "Compara los planes y elige con cuál seguir. Todo lo que has preparado durante la prueba se conserva."
                       : "Compara tu plan con el resto. Tus datos, usuarios y configuración se conservan con cualquier plan."}
                   </p>
+                  <div className="flex justify-center">
+                    <PlanAssurances trial={trial} />
+                  </div>
                 </div>
                 {catalog.isLoading && <PanelLoading label="Cargando los planes…" />}
                 {!catalog.isLoading && cards.length === 0 && (
