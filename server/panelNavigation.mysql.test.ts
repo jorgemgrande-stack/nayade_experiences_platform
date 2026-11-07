@@ -60,11 +60,14 @@ describe.skipIf(!URL_)("panel.navigation — aportaciones de extensiones por lic
     await ess.setCapability("a", "people-hr", null);
   });
 
-  it("módulo con licencia propia (Hotel Net): la capacidad sola no basta, falta la licencia de módulo", async () => {
+  it("producto de Elephant Net con módulo sectorial (Hotel Net): contratar la capacidad concede el módulo, solo en esa empresa", async () => {
     await ess.setCapability("a", "hotel-net", "active");
     try {
-      expect((await nav("a", admA)).entries.map((e) => e.moduleId)).not.toContain("hotel");
-      expect((await ess.q("a", "hotel.getRoomTypes", undefined, admA)).status).toBe(403);
+      expect((await nav("a", admA)).entries.map((e) => e.moduleId)).toContain("hotel");
+      expect((await ess.q("a", "hotel.getRoomTypes", undefined, admA)).status).not.toBe(403);
+      // La otra empresa, sin la capacidad ni licencia de módulo, sigue sin él
+      expect((await nav("b", admB)).entries.map((e) => e.moduleId)).not.toContain("hotel");
+      expect((await ess.q("b", "hotel.getRoomTypes", undefined, admB)).status).toBe(403);
     } finally {
       await ess.setCapability("a", "hotel-net", null);
     }
