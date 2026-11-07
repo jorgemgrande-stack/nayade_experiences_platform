@@ -82,7 +82,7 @@ export default function Sala() {
     for (const t of tables) {
       const s = states.get(t.id);
       const o = s?.orderId != null ? orderById.get(s.orderId) : undefined;
-      m.set(t.id, { state: s?.state ?? "libre", total: o?.total ?? null, guests: o?.guests ?? null });
+      m.set(t.id, { state: s?.state ?? "libre", total: o?.total ?? null, guests: o?.guests ?? null, ready: t.mergedInto == null ? o?.readyItems ?? 0 : 0 });
     }
     return m;
   }, [tables, states, orderById]);

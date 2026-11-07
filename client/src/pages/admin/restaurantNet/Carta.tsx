@@ -42,6 +42,8 @@ export default function Carta() {
   const restaurantId = choice.restaurantId;
   const utils = trpc.useUtils();
   const menu = trpc.restaurantNet.listMenu.useQuery({ restaurantId: restaurantId!, includeArchived: true }, { enabled: restaurantId != null });
+  // Partidas de cocina (si la cocina está instalada) para elegir la del plato
+  const stations = trpc.restaurantNet.listStations.useQuery({ restaurantId: restaurantId! }, { enabled: restaurantId != null, retry: false });
   const [form, setForm] = useState<Form | null>(null);
   const [search, setSearch] = useState("");
   const refresh = () => utils.restaurantNet.listMenu.invalidate();
@@ -209,7 +211,8 @@ export default function Carta() {
                 </div>
                 <div className="col-span-2 space-y-1.5 sm:col-span-1">
                   <Label htmlFor="rnet-mi-station">Partida</Label>
-                  <Input id="rnet-mi-station" value={form.station} maxLength={40} placeholder="Cocina, barra…" onChange={(e) => setForm({ ...form, station: e.target.value })} />
+                  <Input id="rnet-mi-station" value={form.station} maxLength={40} list="rnet-mi-stations" placeholder="Cocina, barra…" onChange={(e) => setForm({ ...form, station: e.target.value })} />
+                  <datalist id="rnet-mi-stations">{(stations.data ?? []).map((st) => <option key={st.id} value={st.name} />)}</datalist>
                 </div>
                 <div className="space-y-1.5">
                   <Label htmlFor="rnet-mi-price">Precio (€)</Label>

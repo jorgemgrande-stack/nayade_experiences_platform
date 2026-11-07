@@ -42,6 +42,7 @@ import {
   type RoomKind,
   type TableShape,
 } from "../shared/restaurantNet";
+import { stationFor } from "../shared/restaurantKds";
 
 type Db = NonNullable<Awaited<ReturnType<typeof getDb>>>;
 export type RnExec = Pick<Db, "execute">;
@@ -56,7 +57,7 @@ const OPEN_SQL = sql.join(OPEN_ORDER_STATUSES.map((s) => sql`${s}`), sql`, `);
 export function isMissingSalaSchema(e: unknown): boolean {
   for (let x: any = e, depth = 0; x && depth < 6; x = x.cause, depth++) {
     const msg = String(x.sqlMessage ?? x.message ?? "");
-    if ((x.code === "ER_NO_SUCH_TABLE" || x.errno === 1146) && /dining_|hospo_|restaurant_menu_items|restaurant_booking_tables/.test(msg)) return true;
+    if ((x.code === "ER_NO_SUCH_TABLE" || x.errno === 1146) && /dining_|hospo_orders|hospo_order_items|restaurant_menu_items|restaurant_booking_tables/.test(msg)) return true;
     if ((x.code === "ER_BAD_FIELD_ERROR" || x.errno === 1054) && /seated_at|hospo_order_id/.test(msg)) return true;
   }
   return false;
@@ -471,6 +472,9 @@ export interface FloorOpenOrder {
   customerName: string | null;
   openedAt: number;
   liveItems: number;
+  /** Líneas listas en cocina, pendientes de servir (aviso en la sala). */
+  readyItems: number;
+  waiterUserId: number | null;
 }
 
 /** Salas, mesas y comandas abiertas de un restaurante (estado de cada mesa: shared/restaurantNet tableStates). */
@@ -478,11 +482,13 @@ export function getFloor(restaurantId: number): Promise<{ rooms: DiningRoom[]; t
   return run(async (d) => {
     const rooms = (await rows(d, sql`SELECT * FROM dining_rooms WHERE restaurant_id = ${restaurantId} AND is_active = 1 ORDER BY sort_order, id`)).map(toRoom);
     const tables = (await rows(d, sql`SELECT * FROM dining_tables WHERE restaurant_id = ${restaurantId} AND is_active = 1 ORDER BY code`)).map(toTable);
-    const openOrders = (await rows(d, sql`SELECT o.id, o.table_id, o.status, o.total, o.guests, o.customer_name, o.opened_at,
-        (SELECT COUNT(*) FROM hospo_order_items i WHERE i.order_id = o.id AND i.status <> 'void') AS live_items
+    const openOrders = (await rows(d, sql`SELECT o.id, o.table_id, o.status, o.total, o.guests, o.customer_name, o.opened_at, o.waiter_user_id,
+        (SELECT COUNT(*) FROM hospo_order_items i WHERE i.order_id = o.id AND i.status <> 'void') AS live_items,
+        (SELECT COUNT(*) FROM hospo_order_items i WHERE i.order_id = o.id AND i.status = 'ready') AS ready_items
       FROM hospo_orders o WHERE o.restaurant_id = ${restaurantId} AND o.status IN (${OPEN_SQL}) ORDER BY o.opened_at`)).map((r: any) => ({
       id: num(r.id), tableId: numOrNull(r.table_id), status: String(r.status), total: Number(r.total), guests: num(r.guests),
-      customerName: r.customer_name ?? null, openedAt: num(r.opened_at), liveItems: num(r.live_items),
+      customerName: r.customer_name ?? null, openedAt: num(r.opened_at), liveItems: num(r.live_items), readyItems: num(r.ready_items),
+      waiterUserId: numOrNull(r.waiter_user_id),
     }));
     return { rooms, tables, openOrders };
   });
@@ -593,6 +599,8 @@ export interface OrderDetail {
   totals: OrderTotals;
   table: { id: number; code: string; roomId: number; merged: Array<{ id: number; code: string }> } | null;
   booking: { id: number; locator: string; guestName: string; time: string; guests: number } | null;
+  /** Camarero asignado (usuario del Core). */
+  waiter: { id: number; name: string | null } | null;
 }
 
 export function getOrder(guard: Guard, orderId: number): Promise<OrderDetail> {
@@ -614,8 +622,37 @@ export function getOrder(guard: Guard, orderId: number): Promise<OrderDetail> {
       const [b] = await rows(d, sql`SELECT id, locator, guestName, guestLastName, time, guests FROM restaurant_bookings WHERE id = ${order.restaurantBookingId}`);
       if (b) booking = { id: num(b.id), locator: String(b.locator), guestName: `${b.guestName ?? ""} ${b.guestLastName ?? ""}`.trim(), time: String(b.time), guests: num(b.guests) };
     }
-    return { order, items, totals: orderTotals(items), table, booking };
+    let waiter: OrderDetail["waiter"] = null;
+    if (order.waiterUserId != null) {
+      const [u] = await rows(d, sql`SELECT id, name FROM users WHERE id = ${order.waiterUserId}`);
+      if (u) waiter = { id: num(u.id), name: u.name ?? null };
+    }
+    return { order, items, totals: orderTotals(items), table, booking, waiter };
   });
+}
+
+/**
+ * Enrutado de la categoría a su partida (migración 0035). Sin la migración del KDS no hay enrutado: la partida es la
+ * del plato.
+ */
+async function routingOf(exec: RnExec, restaurantId: number, category: string | null): Promise<Map<string, string>> {
+  if (!category) return new Map();
+  try {
+    const r = await rows(exec, sql`SELECT category, station FROM hospo_station_routing WHERE restaurant_id = ${restaurantId} AND category = ${category}`);
+    return new Map(r.map((x: any) => [String(x.category), String(x.station)] as [string, string]));
+  } catch (e) {
+    if (isMissingKdsSchema(e)) return new Map();
+    throw e;
+  }
+}
+
+/** Empresa sin la migración 0035 (cocina): tablas de partidas, enrutado, semáforo o incidencias ausentes. */
+export function isMissingKdsSchema(e: unknown): boolean {
+  for (let x: any = e, depth = 0; x && depth < 6; x = x.cause, depth++) {
+    const msg = String(x.sqlMessage ?? x.message ?? "");
+    if ((x.code === "ER_NO_SUCH_TABLE" || x.errno === 1146) && /hospo_kitchen_|hospo_station_routing|hospo_kds_settings/.test(msg)) return true;
+  }
+  return false;
 }
 
 /** Comensales, nombre del cliente o notas de la comanda. */
@@ -644,6 +681,7 @@ export function addItem(
     const [m] = await rows(tx, sql`SELECT * FROM restaurant_menu_items WHERE id = ${input.menuItemId} AND restaurant_id = ${o.restaurantId} AND is_active = 1`);
     if (!m) throw notFound("El plato");
     const item = toMenuItem(m);
+    const station = stationFor(item.category, item.station, await routingOf(tx, o.restaurantId, item.category));
     const notes = input.notes?.trim() || null;
     const seat = input.seat ?? null;
     const course = input.course ?? 1;
@@ -660,7 +698,7 @@ export function addItem(
     } else {
       const r = await header(tx, sql`INSERT INTO hospo_order_items (order_id, product_type, product_id, name, quantity, unit_price, tax_rate, station, course, seat, status, notes, created_at, updated_at)
         VALUES (${o.id}, 'restaurant', ${item.id}, ${item.name}, ${input.quantity}, ${item.price.toFixed(2)}, ${(Number.isFinite(item.taxRate) ? item.taxRate : DEFAULT_MENU_TAX_RATE).toFixed(2)},
-          ${item.station}, ${course}, ${seat}, 'pending', ${notes}, ${now}, ${now})`);
+          ${station}, ${course}, ${seat}, 'pending', ${notes}, ${now}, ${now})`);
       itemId = r.insertId;
     }
     if (o.status === "bill_requested") await tx.execute(sql`UPDATE hospo_orders SET status = 'open' WHERE id = ${o.id}`);

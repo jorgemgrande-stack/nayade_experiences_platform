@@ -150,6 +150,8 @@ const RestaurantNetSala = lazy(() => import("./pages/admin/restaurantNet/Sala"))
 const RestaurantNetComanda = lazy(() => import("./pages/admin/restaurantNet/Comanda"));
 const RestaurantNetCarta = lazy(() => import("./pages/admin/restaurantNet/Carta"));
 const RestaurantNetSalasMesas = lazy(() => import("./pages/admin/restaurantNet/SalasMesas"));
+const RestaurantNetCocina = lazy(() => import("./pages/admin/restaurantNet/Cocina"));
+const RestaurantNetCocinaAjustes = lazy(() => import("./pages/admin/restaurantNet/CocinaAjustes"));
 
 // Users & Settings
 const UsersManager = lazy(() => import("./pages/admin/users/UsersManager"));
@@ -462,6 +464,8 @@ function Router() {
       <Route path="/admin/restaurant-net/sala/comanda/:id">{() => <Suspense fallback={<AdminLoadingFallback />}><RestaurantNetComanda /></Suspense>}</Route>
       <Route path="/admin/restaurant-net/carta">{() => <Suspense fallback={<AdminLoadingFallback />}><RestaurantNetCarta /></Suspense>}</Route>
       <Route path="/admin/restaurant-net/salas-mesas">{() => <Suspense fallback={<AdminLoadingFallback />}><RestaurantNetSalasMesas /></Suspense>}</Route>
+      <Route path="/admin/restaurant-net/cocina">{() => <Suspense fallback={<AdminLoadingFallback />}><RestaurantNetCocina /></Suspense>}</Route>
+      <Route path="/admin/restaurant-net/cocina/ajustes">{() => <Suspense fallback={<AdminLoadingFallback />}><RestaurantNetCocinaAjustes /></Suspense>}</Route>
 
       {/* Atención Comercial */}
       <Route path="/admin/atencion-comercial/whatsapp">{() => <Suspense fallback={<AdminLoadingFallback />}><WhatsAppGHLInbox /></Suspense>}</Route>
