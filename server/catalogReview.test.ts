@@ -10,6 +10,7 @@ import { describe, it, expect, beforeEach } from "vitest";
 import { seedElephantSource } from "./catalog/seed";
 import { applyStatusReview, fillEvidence } from "./catalog/review";
 import { EVIDENCE_2026_10_25, STATUS_REVIEW_2026_10_25 } from "./catalog/review20261025";
+import { STATUS_REVIEW_2026_11_07 } from "./catalog/review20261107";
 import { PRODUCTS } from "./catalog/elephantSourceV1";
 import { quote } from "./catalog/quote";
 import { quoteCatalogFromSite } from "./catalog/snapshot";
@@ -62,7 +63,10 @@ describe("estados comerciales normalizados", () => {
 
   it("la semilla nueva ya refleja la revisión y todo lo que se ofrece tiene evidencia", () => {
     const status = Object.fromEntries(PRODUCTS.map((p) => [p.key, p.draft.catalog.commercialStatus]));
-    for (const c of STATUS_REVIEW_2026_10_25) expect(status[c.key], c.key).toBe(c.to);
+    // Cada producto, en el estado de llegada de la última revisión que lo cambia
+    const latest = new Map([...STATUS_REVIEW_2026_10_25, ...STATUS_REVIEW_2026_11_07].map((c) => [c.key, c.to]));
+    for (const [key, to] of Array.from(latest)) expect(status[key], key).toBe(to);
+    for (const c of STATUS_REVIEW_2026_11_07) if (c.technical) expect(PRODUCTS.find((p) => p.key === c.key)!.draft.technicalStatus, c.key).toBe(c.technical.to);
     for (const p of PRODUCTS) {
       if (p.draft.catalog.commercialStatus === "on_request") expect(p.draft.internal.evidence, p.key).toBeTruthy();
       if (p.draft.catalog.commercialStatus === "on_request") expect(p.draft.technicalStatus, p.key).not.toBe("planned");
@@ -140,6 +144,86 @@ describe("revisión del 25/10/2026", () => {
     await k.svc.publish("product", "connect-voice", saved.draftVersion, "operator:1");
     await seedElephantSource(k.svc, k.store);
     expect(productDraft.parse((await k.store.getEntry("product", "connect-voice"))!.draft).catalog.commercialStatus).toBe("in_preparation");
+  });
+});
+
+describe("revisión del 07/11/2026: Elephant Net en implantación acompañada", () => {
+  const AUTHOR_1107 = "operacion:revision-catalogo-2026-11-07";
+  const FIVE = ["hotel-net-complete", "restaurant-net-complete", "care-net-complete", "ski-net-complete", "travel-net-complete"];
+
+  /** Catálogo como está hoy en production: los cinco en su estado de partida (comercial y técnico), ya publicados. */
+  async function before1107() {
+    const store = new MemoryWebStore();
+    const svc = new WebAdminService({ store, refs, now: () => 1_790_000_000_000 });
+    await seedElephantSource(svc, store);
+    for (const c of STATUS_REVIEW_2026_11_07) {
+      const e = (await store.getEntry("product", c.key))!;
+      const d = productDraft.parse(e.draft);
+      const old = { ...d, ...(c.technical ? { technicalStatus: c.technical.from } : {}), catalog: { ...d.catalog, commercialStatus: c.from } };
+      const saved = await store.saveDraft(e.id, e.draftVersion, old, e.sortOrder, "catalogo:elephant-source-v1", 1_790_000_000_000);
+      await store.setPublication(e.id, { publication: "published", published: { ...(e.published ?? {}), ...(c.technical ? { technicalStatus: c.technical.from } : {}), catalog: { ...((e.published?.catalog as object) ?? {}), commercialStatus: c.from } }, publishedVersion: saved.draftVersion, publishedAt: 1, publishedBy: "x", updatedAt: 1, updatedBy: "x" });
+    }
+    return { store, svc };
+  }
+
+  it("solo los cinco productos, todos a «Implantación acompañada»; Social Token Net y Life Net no cambian", () => {
+    expect(STATUS_REVIEW_2026_11_07.map((c) => c.key)).toEqual(FIVE);
+    expect(STATUS_REVIEW_2026_11_07.every((c) => c.to === "on_request")).toBe(true);
+    expect(STATUS_REVIEW_2026_11_07.filter((c) => c.technical).map((c) => [c.key, c.technical!.from, c.technical!.to])).toEqual([
+      ["ski-net-complete", "planned", "partial"],
+      ["travel-net-complete", "planned", "partial"],
+    ]);
+    for (const c of STATUS_REVIEW_2026_11_07) expect(c.evidence, c.key).toMatch("verificado en production el 07/11/2026");
+  });
+
+  it("aplica por el flujo normal sin tocar precios ni la oferta (asistida, sin checkout); repetir no cambia nada", async () => {
+    const k = await before1107();
+    const pricesBefore = JSON.stringify(await k.store.listPrices());
+    const sim = await applyStatusReview(k.svc, k.store, STATUS_REVIEW_2026_11_07, { author: AUTHOR_1107 });
+    expect(sim.changed).toEqual([
+      "hotel-net-complete: in_preparation → on_request",
+      "restaurant-net-complete: in_preparation → on_request",
+      "care-net-complete: in_preparation → on_request",
+      "ski-net-complete: coming_soon → on_request (técnico planned → partial)",
+      "travel-net-complete: coming_soon → on_request (técnico planned → partial)",
+    ]);
+    const r = await applyStatusReview(k.svc, k.store, STATUS_REVIEW_2026_11_07, { apply: true, author: AUTHOR_1107 });
+    expect(r.conflicts).toEqual([]);
+    for (const key of FIVE) {
+      const e = (await k.store.getEntry("product", key))!;
+      const d = productDraft.parse(e.draft);
+      expect(d.catalog.commercialStatus, key).toBe("on_request");
+      expect(d.technicalStatus, key).toBe("partial");
+      expect(e.publishedVersion, key).toBe(e.draftVersion);
+      expect(e.publishedBy, key).toBe(AUTHOR_1107);
+    }
+    expect(JSON.stringify(await k.store.listPrices())).toBe(pricesBefore);
+    // Venta asistida: el cotizador la deja en solicitud (nunca autoservicio) y la oferta no lleva checkout
+    const cat = quoteCatalogFromSite(await k.svc.site("published"));
+    for (const key of FIVE) {
+      const p = cat.products.find((x) => x.key === key)!;
+      expect(p.commercialStatus, key).toBe("on_request");
+      expect(p.offer, key).toMatchObject({ modality: "assisted", checkout: false, trial: false, cta: "proposal" });
+      expect(quote(cat, { plan: "essential", interval: "month", extensions: [key] } as never).contractable, key).toBe("request");
+    }
+    for (const key of ["social-token-net-complete", "life-net"]) expect(cat.products.find((x) => x.key === key)!.commercialStatus, key).toBe("coming_soon");
+    const again = await applyStatusReview(k.svc, k.store, STATUS_REVIEW_2026_11_07, { apply: true, author: AUTHOR_1107 });
+    expect(again.changed).toEqual([]);
+    expect(again.already).toEqual(FIVE);
+    // La del 25/10, aplicada después, ya no los toca: los informa como decididos (conflicto, no fallo)
+    const old = await applyStatusReview(k.svc, k.store, STATUS_REVIEW_2026_10_25, { author: AUTHOR });
+    for (const key of ["hotel-net-complete", "restaurant-net-complete", "care-net-complete"]) expect(old.conflicts.some((c) => c.startsWith(`${key}:`)), key).toBe(true);
+  });
+
+  it("respeta un estado técnico decidido desde el CRM", async () => {
+    const k = await before1107();
+    const e = (await k.store.getEntry("product", "travel-net-complete"))!;
+    const d = productDraft.parse(e.draft);
+    const saved = await k.svc.save("product", "travel-net-complete", { draft: { ...d, technicalStatus: "available" }, expectedVersion: e.draftVersion }, "operator:1");
+    await k.svc.publish("product", "travel-net-complete", saved.draftVersion, "operator:1");
+    const r = await applyStatusReview(k.svc, k.store, STATUS_REVIEW_2026_11_07, { apply: true, author: AUTHOR_1107 });
+    expect(r.conflicts.some((c) => c.startsWith("travel-net-complete: estado técnico"))).toBe(true);
+    expect(productDraft.parse((await k.store.getEntry("product", "travel-net-complete"))!.draft).catalog.commercialStatus).toBe("coming_soon");
   });
 });
 
