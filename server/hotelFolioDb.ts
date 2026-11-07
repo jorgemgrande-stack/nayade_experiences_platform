@@ -13,8 +13,8 @@
  * todo en la transacción que bloquea el folio: dos cierres a la vez nunca emiten dos facturas.
  */
 import { TRPCError } from "@trpc/server";
-import { eq, sql } from "drizzle-orm";
-import { bigint, int, mysqlTable } from "drizzle-orm/mysql-core";
+import { and, eq, like, sql } from "drizzle-orm";
+import { bigint, int, mysqlTable, varchar } from "drizzle-orm/mysql-core";
 import { invoices } from "../drizzle/schema";
 import { chargedInvoiceAmounts } from "./invoiceCalc";
 import { issuerSnapshotForNewInvoice } from "./issuerSnapshot";
@@ -33,6 +33,7 @@ import {
 } from "./hotelFolio";
 import { nightKpis, periodKpis, type AuditStay, type NightKpis } from "./hotelAudit";
 import { stayNights } from "./inventoryHolds";
+import { externalChargeIdOf, externalChargeSource, externalItemKey, externalLinesProblem, type ExternalChargeLine, type ExternalChargeModule } from "./hotelFolioChargeSources";
 import { addDaysIso, todayInTimeZone } from "./hotelPms";
 import {
   assignmentsForReservations,
@@ -51,6 +52,7 @@ import {
 const hotelFolioItems = mysqlTable("hotel_folio_items", {
   id: bigint("id", { mode: "number" }).autoincrement().primaryKey(),
   folioId: int("folio_id").notNull(),
+  sourceKey: varchar("source_key", { length: 64 }),
 });
 
 export const FOLIO_NOT_INSTALLED_MESSAGE =
@@ -140,7 +142,9 @@ const toItem = (r: ItemRow) => ({
   nightDate: r.night_date,
   sourceKey: r.source_key,
   /** Los cargos automáticos (noches, pago previo) no se borran a mano. */
-  automatic: r.source_key !== null,
+  automatic: r.source_key !== null && externalChargeIdOf(r.source_key) === null,
+  /** Cargo de otro módulo (restaurante, SPA): al borrarlo se anula el cargo entero y su origen queda pendiente de cobro. */
+  external: externalChargeIdOf(r.source_key) !== null,
   createdAt: Number(r.created_at),
 });
 
@@ -276,8 +280,59 @@ export async function addFolioPayment(input: { reservationId: number; method: st
   }));
 }
 
-/** Borra un cargo o pago manual de un folio abierto (los automáticos no). */
-export async function deleteFolioItem(input: { reservationId: number; itemId: number }) {
+/**
+ * Cargo de otro módulo (Restaurant Net, Care Net) al folio de un huésped en casa, dentro de la transacción del módulo
+ * que carga (la que cierra su comanda o su cita): o quedan las dos cosas o ninguna. Cada línea entra con su IVA. Un
+ * mismo origen no puede estar cargado dos veces (índice único de hotel_folio_external_charges, migración 0041).
+ */
+export async function addExternalChargeInTx(
+  tx: Exec,
+  input: { reservationId: number; module: ExternalChargeModule; sourceRef: string; description: string; category: "restaurante" | "spa"; lines: ExternalChargeLine[]; userId: number | null },
+): Promise<{ chargeId: number; folioId: number; amountCents: number }> {
+  const problem = externalLinesProblem(input.lines);
+  if (problem) bad(problem);
+  const r = await lockReservation(tx, input.reservationId);
+  if (r.statusReservation !== "EN_CURSO") bad("El huésped no está alojado ahora (sin check-in o ya salió): no se puede cargar a su habitación.");
+  const folio = await lockFolio(tx, input.reservationId);
+  const why = folioEditBlocker(folio.status, r);
+  if (why) bad(why);
+  const amount = input.lines.reduce((s, l) => s + chargeAmount(l.quantity, l.unitPriceCents), 0);
+  const now = Date.now();
+  let chargeId: number;
+  try {
+    const [res] = (await tx.execute(sql`
+      INSERT INTO hotel_folio_external_charges (folio_id, reservation_id, source_module, source_ref, description, amount_cents, status, created_by, created_at)
+      VALUES (${folio.id}, ${input.reservationId}, ${input.module}, ${input.sourceRef}, ${input.description.slice(0, 255)}, ${amount}, 'charged', ${input.userId}, ${now})`)) as unknown as [{ insertId: number }];
+    chargeId = Number(res.insertId);
+  } catch (e) {
+    const x = e as { code?: string; cause?: { code?: string } };
+    if ((x?.code ?? x?.cause?.code) === "ER_DUP_ENTRY") throw new TRPCError({ code: "CONFLICT", message: "Esto ya está cargado a una habitación." });
+    throw e;
+  }
+  let n = 0;
+  for (const l of input.lines) {
+    await insertItem(tx, folio.id, {
+      kind: "cargo", category: input.category, description: l.description.slice(0, 255), quantity: l.quantity, unitPriceCents: l.unitPriceCents,
+      amountCents: chargeAmount(l.quantity, l.unitPriceCents), taxRateBp: l.taxRateBp, sourceKey: externalItemKey(chargeId, ++n), userId: input.userId,
+    });
+  }
+  return { chargeId, folioId: Number(folio.id), amountCents: amount };
+}
+
+/** Anula un cargo externo entero (todas sus líneas) y devuelve su origen a pendiente de cobro (en la misma transacción). */
+async function revertExternalCharge(tx: Exec, folioId: number, chargeId: number, userId: number | null) {
+  const [c] = await rows<{ id: number; source_module: string; source_ref: string; status: string }>(tx, sql`
+    SELECT id, source_module, source_ref, status FROM hotel_folio_external_charges WHERE id = ${chargeId} AND folio_id = ${folioId} FOR UPDATE`);
+  if (!c || c.status !== "charged") bad("Este cargo ya está anulado.");
+  const reason = "Anulado desde el folio";
+  const source = externalChargeSource(c.source_module);
+  if (source) await source.onReverted(tx, c.source_ref, { reason, userId });
+  await tx.delete(hotelFolioItems).where(and(eq(hotelFolioItems.folioId, folioId), like(hotelFolioItems.sourceKey, `ext:${chargeId}:%`)));
+  await tx.execute(sql`UPDATE hotel_folio_external_charges SET status = 'reverted', reverted_by = ${userId}, reverted_at = ${Date.now()}, revert_reason = ${reason} WHERE id = ${chargeId}`);
+}
+
+/** Borra un cargo o pago manual de un folio abierto (los automáticos no). Un cargo de otro módulo se anula entero. */
+export async function deleteFolioItem(input: { reservationId: number; itemId: number; userId?: number | null }) {
   return folioSchema(() => inTx(async (tx) => {
     const r = await lockReservation(tx, input.reservationId);
     const folio = await lockFolio(tx, input.reservationId);
@@ -285,6 +340,11 @@ export async function deleteFolioItem(input: { reservationId: number; itemId: nu
     if (why) bad(why);
     const [it] = await rows<{ id: number; source_key: string | null }>(tx, sql`SELECT id, source_key FROM hotel_folio_items WHERE id = ${input.itemId} AND folio_id = ${folio.id}`);
     if (!it) throw new TRPCError({ code: "NOT_FOUND", message: "Movimiento no encontrado" });
+    const external = externalChargeIdOf(it.source_key);
+    if (external !== null) {
+      await revertExternalCharge(tx, folio.id, external, input.userId ?? null);
+      return { ok: true as const };
+    }
     if (it.source_key !== null) bad("Los cargos automáticos (noches y pago de la reserva) no se borran a mano.");
     await tx.delete(hotelFolioItems).where(eq(hotelFolioItems.id, input.itemId));
     return { ok: true as const };

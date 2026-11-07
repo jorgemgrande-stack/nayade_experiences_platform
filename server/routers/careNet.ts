@@ -12,6 +12,7 @@ import { router, permissionProcedure } from "../_core/trpc";
 import { getCapabilityAccess } from "../_core/capabilities/access";
 import { tpvRouter } from "./tpv";
 import * as care from "../careNetDb";
+import { hotelChargesEnabled, listInHouseGuests } from "../hotelFolioCharges";
 import { REQUEST_KEY_RE } from "../../shared/careNet";
 
 const manageProc = permissionProcedure("settings.manage", ["admin"]);
@@ -77,6 +78,23 @@ export const careNetRouter = router({
   counterAppointment: deskProc
     .input(z.object({ clientId: id, slotId: id, persons: z.number().int().min(1).max(20).optional(), purchaseId: id.nullish(), notes: z.string().max(500).nullish() }))
     .mutation(({ ctx, input }) => care.counterAppointment(input, ctx.user.id)),
+
+  // ── Cargo a habitación (solo con Hotel Net) ─────────────────────────────
+  /** ¿Se puede cargar a la habitación? y huéspedes en casa. Sin Hotel Net: no disponible (la opción no aparece). */
+  roomGuests: deskProc.query(async () => {
+    if (!(await hotelChargesEnabled())) return { available: false, guests: [] };
+    return { available: true, guests: await listInHouseGuests() };
+  }),
+
+  /** Carga una reserva de SPA pendiente al folio del huésped (sin venta del TPV). */
+  chargeReservationToRoom: deskProc
+    .input(z.object({ reservationId: id, hotelReservationId: id }))
+    .mutation(({ ctx, input }) => care.chargeSpaReservationToRoom(input.reservationId, input.hotelReservationId, ctx.user.id)),
+
+  /** Vende un bono y lo carga al folio del huésped en lugar de cobrarlo en el TPV. */
+  sellPackToRoom: deskProc
+    .input(z.object({ packId: id, clientId: id, hotelReservationId: id, requestKey: z.string().regex(REQUEST_KEY_RE), notes: z.string().max(500).nullish() }))
+    .mutation(({ ctx, input }) => care.sellPackToRoom(input, ctx.user.id)),
 
   revertConsumption: deskProc
     .input(z.object({ consumptionId: id, reason: z.string().trim().min(3, "Indica el motivo").max(255), cancelReservation: z.boolean().default(false) }))
