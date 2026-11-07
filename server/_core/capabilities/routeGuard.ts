@@ -94,6 +94,8 @@ export const TRPC_ROUTER_CAPABILITIES: Record<string, string> = {
   supplierPortal: "supplier-settlements",
   settlements: "supplier-settlements",
   partners: "supplier-settlements",
+  // Elephant Connect · Campaigns: conector de Brevo con la cuenta propia de la empresa
+  brevoMarketing: "email-campaigns",
   // Elephant Net
   reav: "travel-net",
 };

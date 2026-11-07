@@ -110,6 +110,10 @@ async function testProviderRaw(provider: string, v: Record<string, string>, fetc
       if (!v.capiAccessToken) return { ok: false, message: "Falta el token de acceso" };
       return get(fetchImpl, `https://graph.facebook.com/v21.0/me?access_token=${encodeURIComponent(v.capiAccessToken)}`, {});
     }
+    case "brevo_marketing": {
+      if (!v.apiKey) return { ok: false, message: "Falta la clave API" };
+      return get(fetchImpl, "https://api.brevo.com/v3/account", { "api-key": v.apiKey, accept: "application/json" });
+    }
     case "redsys": {
       // Sin red: Redsys no ofrece un ping; se valida que la configuración sea utilizable
       if (!v.merchantCode || !v.merchantKey) return { ok: false, message: "Faltan el número de comercio o la clave secreta" };

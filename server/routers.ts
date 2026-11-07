@@ -181,6 +181,7 @@ import { reviewsRouter } from "./routers/reviews";
 import { restaurantsRouter } from "./routers/restaurants";
 import { skiRentalRouter } from "./skiRental/router";
 import { skiSchoolRouter } from "./skiSchool/router";
+import { brevoMarketingRouter } from "./brevoMarketing/router";
 import { crmRouter } from "./routers/crm";
 import { suppliersRouter, settlementsRouter } from "./routers/suppliers";
 import { supplierPortalRouter } from "./routers/supplierPortal";
@@ -2633,6 +2634,7 @@ export const appRouter = router({
   restaurants: restaurantsRouter,
   skiRental: skiRentalRouter,
   skiSchool: skiSchoolRouter,
+  brevoMarketing: brevoMarketingRouter,
   crm: crmRouter,
   commercialFollowup: commercialFollowupRouter,
   crmTags: crmTagsRouter,
