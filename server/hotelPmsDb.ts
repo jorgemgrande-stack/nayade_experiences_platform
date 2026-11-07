@@ -243,7 +243,7 @@ export async function deleteHotelRoom(id: number) {
 }
 
 /** Cambia el estado operativo (con el registro del cambio) dentro de `tx`, con la habitación bloqueada. */
-async function setRoomStateLocked(tx: Exec, hotelRoomId: number, toStatus: RoomOperationalStatus, opts: { userId?: number | null; reason?: string | null }) {
+export async function setRoomStateLocked(tx: Exec, hotelRoomId: number, toStatus: RoomOperationalStatus, opts: { userId?: number | null; reason?: string | null }) {
   const [cur] = await rows<{ operational_status: string }>(tx, sql`SELECT operational_status FROM hotel_rooms WHERE id = ${hotelRoomId} FOR UPDATE`);
   if (!cur) throw new TRPCError({ code: "NOT_FOUND", message: "Habitación no encontrada" });
   if (cur.operational_status === toStatus) return { changed: false };

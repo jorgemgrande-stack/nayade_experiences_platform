@@ -4,7 +4,7 @@
  * las reglas al asignar o inscribir y rechaza con un mensaje claro lo que no encaja.
  */
 import { useState } from "react";
-import { UserCheck, UserMinus, Users } from "lucide-react";
+import { ClipboardCheck, UserCheck, UserMinus, Users } from "lucide-react";
 import { toast } from "sonner";
 import { trpc } from "@/lib/trpc";
 import { Badge } from "@/components/ui/badge";
@@ -71,6 +71,74 @@ function AssignPanel({ ctx, sessionId, current }: { ctx: SkiCtx; sessionId: numb
         </details>
       )}
     </div>
+  );
+}
+
+const ATT_LABEL: Record<string, string> = { present: "Presente", late: "Con retraso", absent: "Ausente" };
+
+/** Pasar lista una sola vez (todos los inscritos): la sesión queda impartida y cuenta para el control de horas. */
+function Attendance({ ctx, sessionId, enrolled, canTake }: { ctx: SkiCtx; sessionId: number; enrolled: Array<{ id: number; name: string }>; canTake: boolean }) {
+  const utils = trpc.useUtils();
+  const q = trpc.skiSchool.getAttendance.useQuery({ siteId: ctx.siteId, sessionId });
+  const [marks, setMarks] = useState<Record<number, "present" | "late" | "absent">>({});
+  const save = trpc.skiSchool.recordAttendance.useMutation({
+    onSuccess: () => {
+      toast.success("Lista guardada. La sesión queda impartida.");
+      utils.skiSchool.getAttendance.invalidate();
+      utils.skiSchool.getSession.invalidate();
+      utils.skiSchool.listSessions.invalidate();
+      utils.skiSchool.planning.invalidate();
+      utils.skiSchool.hoursSummary.invalidate();
+    },
+    onError: toastSki,
+  });
+  if (q.isLoading) return <PanelLoading />;
+  if (q.error) return <PanelError error={q.error} onRetry={() => q.refetch()} />;
+  const { closure, entries } = q.data!;
+  return (
+    <section className="space-y-2">
+      <h3 className="flex items-center gap-2 text-sm font-semibold text-foreground">
+        <ClipboardCheck className="h-4 w-4" aria-hidden="true" />
+        Asistencia
+      </h3>
+      {closure ? (
+        <p className="text-sm text-muted-foreground">
+          Lista pasada el {new Date(closure.closedAt).toLocaleString("es-ES")}: {closure.present} presentes, {closure.absent} ausentes
+          {entries.length ? ` (${entries.map((e) => `${enrolled.find((p) => p.id === e.participantId)?.name ?? "#" + e.participantId}: ${ATT_LABEL[e.status]}`).join(", ")})` : ""}.
+        </p>
+      ) : !canTake ? (
+        <p className="text-sm text-muted-foreground">Asigna un profesor para poder pasar lista.</p>
+      ) : enrolled.length === 0 ? (
+        <p className="text-sm text-muted-foreground">Sin alumnos inscritos: al pasar lista la sesión queda impartida.</p>
+      ) : null}
+      {!closure && canTake && ctx.canWrite && (
+        <form
+          className="space-y-2"
+          onSubmit={(e) => {
+            e.preventDefault();
+            save.mutate({ siteId: ctx.siteId, sessionId, entries: enrolled.map((p) => ({ participantId: p.id, status: marks[p.id] ?? "present" })) });
+          }}
+        >
+          <ul className="space-y-1">
+            {enrolled.map((p) => (
+              <li key={p.id} className="flex flex-wrap items-center justify-between gap-2 text-sm">
+                <span className="min-w-0 break-words text-foreground">{p.name}</span>
+                <select aria-label={`Asistencia de ${p.name}`} className={`${selectClass} w-40`} value={marks[p.id] ?? "present"} onChange={(e) => setMarks({ ...marks, [p.id]: e.target.value as "present" })}>
+                  {Object.entries(ATT_LABEL).map(([k, v]) => (
+                    <option key={k} value={k}>
+                      {v}
+                    </option>
+                  ))}
+                </select>
+              </li>
+            ))}
+          </ul>
+          <Button type="submit" size="sm" disabled={save.isPending}>
+            Guardar la lista
+          </Button>
+        </form>
+      )}
+    </section>
   );
 }
 
@@ -194,6 +262,8 @@ function Detail({ ctx, sessionId }: { ctx: SkiCtx; sessionId: number }) {
           </form>
         )}
       </section>
+
+      {s.status !== "cancelled" && <Attendance ctx={ctx} sessionId={sessionId} enrolled={enrolled.map((p) => ({ id: p.id, name: p.name }))} canTake={s.instructorId != null} />}
 
       {ctx.canWrite && open && (
         <div className="flex flex-wrap gap-2 border-t border-border pt-4">
