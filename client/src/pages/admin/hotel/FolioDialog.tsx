@@ -102,14 +102,14 @@ export default function FolioDialog({ reservationId, onClose }: { reservationId:
                       <tr key={it.id} className="border-b border-border last:border-0">
                         <td className="p-2">
                           <div>{it.description ?? LABEL[it.category] ?? it.category}</div>
-                          <div className="text-xs text-muted-foreground">{it.kind === "pago" ? "Pago" : "Cargo"} · {LABEL[it.category] ?? it.category}</div>
+                          <div className="text-xs text-muted-foreground">{it.kind === "pago" ? "Pago" : "Cargo"} · {LABEL[it.category] ?? it.category}{it.external ? " · desde su módulo (al borrarlo se anula el cargo entero y vuelve a pendiente de cobro)" : ""}</div>
                         </td>
                         <td className="p-2">{it.kind === "cargo" ? it.quantity : ""}</td>
                         <td className="p-2">{it.kind === "cargo" && it.taxRateBp != null ? `${it.taxRateBp / 100} %` : ""}</td>
                         <td className={`p-2 text-right whitespace-nowrap ${it.kind === "pago" ? "text-emerald-700 dark:text-emerald-400" : ""}`}>{it.kind === "pago" ? "−" : ""}{eur(it.amountCents)}</td>
                         <td className="p-2 text-right">
                           {editable && !it.automatic && (
-                            <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => del.mutate({ reservationId, itemId: it.id })} disabled={busy} aria-label="Borrar"><Trash2 className="h-3.5 w-3.5 text-destructive" /></Button>
+                            <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => del.mutate({ reservationId, itemId: it.id })} disabled={busy} aria-label={it.external ? "Anular el cargo" : "Borrar"}><Trash2 className="h-3.5 w-3.5 text-destructive" /></Button>
                           )}
                         </td>
                       </tr>

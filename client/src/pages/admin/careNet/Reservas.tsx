@@ -6,9 +6,10 @@
  */
 import { useMemo, useState } from "react";
 import { Link } from "wouter";
-import { CalendarDays, ChevronLeft, ChevronRight, Plus, Ticket } from "lucide-react";
+import { BedDouble, CalendarDays, ChevronLeft, ChevronRight, Plus, Ticket } from "lucide-react";
 import { toast } from "sonner";
 import AdminLayout from "@/components/AdminLayout";
+import { RoomChargeDialog } from "@/components/hotel/RoomChargeDialog";
 import { trpc } from "@/lib/trpc";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -40,6 +41,10 @@ export default function Reservas() {
   const [cancelRes, setCancelRes] = useState(false);
   const refresh = () => { utils.careNet.spaReservations.invalidate(); utils.careNet.clientsWithPacks.invalidate(); };
   const consume = trpc.careNet.consumeForReservation.useMutation({ onSuccess: (r) => { toast.success(`Pagada con bono · quedan ${r.purchase.remaining} sesiones`); refresh(); }, onError: (e) => toastError(e) });
+  // Cargo a habitación: solo con Hotel Net
+  const roomGuests = trpc.careNet.roomGuests.useQuery(undefined, { retry: false });
+  const [toRoom, setToRoom] = useState<{ id: number; label: string } | null>(null);
+  const chargeRoom = trpc.careNet.chargeReservationToRoom.useMutation({ onSuccess: () => { toast.success("Cargada a la habitación"); setToRoom(null); refresh(); }, onError: (e) => toastError(e) });
   const revert = trpc.careNet.revertConsumption.useMutation({ onSuccess: () => { toast.success("Sesión devuelta al bono"); setReverting(null); refresh(); }, onError: (e) => toastError(e) });
 
   const rows = (list.data ?? []).filter((r) => showCancelled || r.state !== "anulada");
@@ -107,6 +112,9 @@ export default function Reservas() {
                         {canWrite && r.state === "pendiente" && !r.consumption && (
                           <Button size="sm" variant="outline" disabled={consume.isPending} onClick={() => consume.mutate({ reservationId: r.id })}><Ticket className="mr-1 h-4 w-4" aria-hidden="true" />Pagar con bono</Button>
                         )}
+                        {canWrite && r.state === "pendiente" && !r.consumption && roomGuests.data?.available && r.amountTotal > 0 && (
+                          <Button size="sm" variant="outline" onClick={() => setToRoom({ id: r.id, label: `${r.amountTotal.toLocaleString("es-ES", { minimumFractionDigits: 2 })} €` })}><BedDouble className="mr-1 h-4 w-4" aria-hidden="true" />A la habitación</Button>
+                        )}
                         {canWrite && r.consumption && (
                           <Button size="sm" variant="ghost" onClick={() => { setReason(""); setCancelRes(false); setReverting(r.consumption!.id); }}>Devolver sesión</Button>
                         )}
@@ -121,6 +129,16 @@ export default function Reservas() {
       </div>
 
       {counter && <CounterDialog onClose={() => setCounter(false)} onDone={refresh} />}
+      {toRoom && (
+        <RoomChargeDialog
+          title="Cargar la reserva de SPA a una habitación"
+          amountLabel={toRoom.label}
+          guests={roomGuests.data?.guests ?? []}
+          pending={chargeRoom.isPending}
+          onConfirm={(hotelReservationId) => chargeRoom.mutate({ reservationId: toRoom.id, hotelReservationId })}
+          onClose={() => setToRoom(null)}
+        />
+      )}
 
       <Dialog open={reverting != null} onOpenChange={(o) => !o && setReverting(null)}>
         <DialogContent className="max-w-sm">

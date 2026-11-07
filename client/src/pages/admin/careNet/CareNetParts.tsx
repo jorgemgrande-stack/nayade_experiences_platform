@@ -131,6 +131,19 @@ export function SellPackDialog({ initialPackId, initialClient, onClose }: { init
   const requestKey = useMemo(newRequestKey, []);
   const cash = useOpenCash();
   const pack = (packs.data ?? []).find((p) => String(p.id) === packId) ?? null;
+  // Con Hotel Net, el bono se puede cargar a la habitación de un huésped en casa en lugar de cobrarlo en el TPV
+  const roomGuests = trpc.careNet.roomGuests.useQuery(undefined, { retry: false });
+  const [mode, setMode] = useState<"tpv" | "habitacion">("tpv");
+  const [hotelReservation, setHotelReservation] = useState("");
+  const toRoom = trpc.careNet.sellPackToRoom.useMutation({
+    onSuccess: (r) => {
+      toast.success(`Bono cargado a la habitación de ${r.purchase.clientName}`);
+      utils.careNet.clientsWithPacks.invalidate();
+      utils.careNet.clientPacks.invalidate();
+      onClose();
+    },
+    onError: (e) => toastError(e),
+  });
   const sell = trpc.careNet.sellPack.useMutation({
     onSuccess: (r) => {
       toast.success(r.replayed ? "Este bono ya estaba vendido" : `Bono vendido a ${r.purchase.clientName}`);
@@ -159,24 +172,51 @@ export function SellPackDialog({ initialPackId, initialClient, onClose }: { init
             <Label>Cliente</Label>
             <ClientPicker value={client} onChange={setClient} />
           </div>
-          {cash.picker}
-          <div className="space-y-1.5">
-            <Label htmlFor="care-sell-method">Forma de pago</Label>
-            <Select value={method} onValueChange={(v) => setMethod(v as typeof method)}>
-              <SelectTrigger id="care-sell-method"><SelectValue /></SelectTrigger>
-              <SelectContent>{METHODS.map(([k, l]) => <SelectItem key={k} value={k}>{l}</SelectItem>)}</SelectContent>
-            </Select>
-          </div>
+          {roomGuests.data?.available && (
+            <div className="flex rounded-lg border border-border p-0.5" role="group" aria-label="Cómo se cobra">
+              <Button size="sm" className="flex-1" variant={mode === "tpv" ? "secondary" : "ghost"} aria-pressed={mode === "tpv"} onClick={() => setMode("tpv")}>Cobrar en caja</Button>
+              <Button size="sm" className="flex-1" variant={mode === "habitacion" ? "secondary" : "ghost"} aria-pressed={mode === "habitacion"} onClick={() => setMode("habitacion")}>Cargar a la habitación</Button>
+            </div>
+          )}
+          {mode === "habitacion" ? (
+            <div className="space-y-1.5">
+              <Label htmlFor="care-sell-room">Habitación</Label>
+              <Select value={hotelReservation} onValueChange={setHotelReservation}>
+                <SelectTrigger id="care-sell-room"><SelectValue placeholder={(roomGuests.data?.guests ?? []).length ? "Elige el huésped" : "No hay huéspedes en casa"} /></SelectTrigger>
+                <SelectContent>
+                  {(roomGuests.data?.guests ?? []).map((g) => <SelectItem key={g.reservationId} value={String(g.reservationId)}>{g.roomCode ? `Habitación ${g.roomCode}` : g.roomName ?? "Sin habitación"} · {g.guestName}</SelectItem>)}
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground">Se cobra con la factura del folio al cerrar la estancia.</p>
+            </div>
+          ) : (
+            <>
+              {cash.picker}
+              <div className="space-y-1.5">
+                <Label htmlFor="care-sell-method">Forma de pago</Label>
+                <Select value={method} onValueChange={(v) => setMethod(v as typeof method)}>
+                  <SelectTrigger id="care-sell-method"><SelectValue /></SelectTrigger>
+                  <SelectContent>{METHODS.map(([k, l]) => <SelectItem key={k} value={k}>{l}</SelectItem>)}</SelectContent>
+                </Select>
+              </div>
+            </>
+          )}
           {pack && <p className="text-sm text-foreground">Total: <strong>{formatEur(pack.price)}</strong> · caduca a los {pack.validityDays} días</p>}
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={onClose}>Cancelar</Button>
-          <Button
-            disabled={!pack || !client || !cash.sessionId || sell.isPending}
-            onClick={() => sell.mutate({ packId: pack!.id, clientId: client!.id, sessionId: cash.sessionId!, payments: [{ method, amount: pack!.price }], requestKey })}
-          >
-            {sell.isPending ? "Cobrando…" : "Cobrar y vender"}
-          </Button>
+          {mode === "habitacion" ? (
+            <Button disabled={!pack || !client || !hotelReservation || toRoom.isPending} onClick={() => toRoom.mutate({ packId: pack!.id, clientId: client!.id, hotelReservationId: Number(hotelReservation), requestKey })}>
+              {toRoom.isPending ? "Cargando…" : "Vender y cargar"}
+            </Button>
+          ) : (
+            <Button
+              disabled={!pack || !client || !cash.sessionId || sell.isPending}
+              onClick={() => sell.mutate({ packId: pack!.id, clientId: client!.id, sessionId: cash.sessionId!, payments: [{ method, amount: pack!.price }], requestKey })}
+            >
+              {sell.isPending ? "Cobrando…" : "Cobrar y vender"}
+            </Button>
+          )}
         </DialogFooter>
       </DialogContent>
     </Dialog>

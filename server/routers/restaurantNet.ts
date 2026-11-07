@@ -15,6 +15,7 @@ import { getCapabilityAccess } from "../_core/capabilities/access";
 import { getRestaurantsByUser } from "../restaurantsDb";
 import { tpvRouter } from "./tpv";
 import * as rn from "../restaurantNetDb";
+import { hotelChargesEnabled, listInHouseGuests } from "../hotelFolioCharges";
 import * as kds from "../restaurantKdsDb";
 import { INCIDENT_TYPES, KITCHEN_FLOW, STATION_TONES } from "../../shared/restaurantKds";
 import { MENU_TAX_RATES, PAYMENT_METHODS, ROOM_KINDS, TABLE_SHAPES, madridToday } from "../../shared/restaurantNet";
@@ -244,6 +245,18 @@ export const restaurantNetRouter = router({
   assignWaiter: adminrestProcedure
     .input(z.object({ orderId: id, userId: id.nullable() }))
     .mutation(({ ctx, input }) => kds.assignWaiter(guardOf(ctx), input.orderId, input.userId)),
+
+  // ── Cargo a habitación (solo con Hotel Net) ──────────────────────────────
+  /** ¿Se puede cargar a la habitación? y huéspedes en casa. Sin Hotel Net: no disponible (la opción no aparece). */
+  roomGuests: adminrestProcedure.query(async () => {
+    if (!(await hotelChargesEnabled())) return { available: false, guests: [] };
+    return { available: true, guests: await listInHouseGuests() };
+  }),
+
+  /** Carga la comanda al folio del huésped y la cierra sin venta del TPV (se cobra al cerrar el folio). */
+  chargeToRoom: adminrestProcedure
+    .input(z.object({ orderId: id, hotelReservationId: id }))
+    .mutation(({ ctx, input }) => rn.chargeOrderToRoom(guardOf(ctx), input.orderId, input.hotelReservationId, ctx.user.id)),
 
   // ── Reservas en la sala ──────────────────────────────────────────────────
   listDayBookings: adminrestProcedure

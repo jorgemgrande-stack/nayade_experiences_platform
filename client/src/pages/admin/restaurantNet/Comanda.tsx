@@ -6,9 +6,10 @@
  */
 import { useEffect, useMemo, useState } from "react";
 import { Link, useLocation, useParams } from "wouter";
-import { ArrowLeft, Ban, ChefHat, Link2, Minus, Plus, Receipt, Search, Trash2, Unlink, Users, Wallet } from "lucide-react";
+import { BedDouble, ArrowLeft, Ban, ChefHat, Link2, Minus, Plus, Receipt, Search, Trash2, Unlink, Users, Wallet } from "lucide-react";
 import { toast } from "sonner";
 import AdminLayout from "@/components/AdminLayout";
+import { RoomChargeDialog } from "@/components/hotel/RoomChargeDialog";
 import TpvTicket from "@/pages/admin/tpv/TpvTicket";
 import { trpc } from "@/lib/trpc";
 import { Button } from "@/components/ui/button";
@@ -38,7 +39,7 @@ import { KITCHEN_STATUS_LABELS } from "@shared/restaurantKds";
 import { CARTA_PATH, SALA_PATH, useRestaurantNetWrite } from "./RestaurantNetParts";
 
 const ALL = "__todas";
-const STATUS_TONE: Record<OrderStatus, keyof typeof TONE_BADGE> = { open: "warning", bill_requested: "info", paying: "info", paid: "success", cancelled: "neutral" };
+const STATUS_TONE: Record<OrderStatus, keyof typeof TONE_BADGE> = { open: "warning", bill_requested: "info", paying: "info", paid: "success", room_charged: "brand", cancelled: "neutral" };
 
 export default function Comanda() {
   const params = useParams<{ id: string }>();
@@ -61,6 +62,13 @@ export default function Comanda() {
   const [merging, setMerging] = useState(false);
   const [mergeTable, setMergeTable] = useState("");
   const [paying, setPaying] = useState(false);
+  // Cargo a habitación: solo si la empresa tiene Hotel Net (si no, la opción no aparece)
+  const roomGuests = trpc.restaurantNet.roomGuests.useQuery(undefined, { retry: false });
+  const [toRoom, setToRoom] = useState(false);
+  const chargeToRoom = trpc.restaurantNet.chargeToRoom.useMutation({
+    onSuccess: () => { toast.success("Cargada a la habitación"); setToRoom(false); utils.restaurantNet.getFloor.invalidate(); navigate(SALA_PATH); },
+    onError: (e) => toastError(e),
+  });
   const [ticketSaleId, setTicketSaleId] = useState<number | null>(null);
 
   const refresh = () => {
@@ -296,6 +304,9 @@ export default function Comanda() {
                     <Button variant="outline" disabled={reopen.isPending} onClick={() => reopen.mutate({ orderId })}>Siguen pidiendo</Button>
                   )}
                   <Button disabled={totals.total <= 0} onClick={() => setPaying(true)}><Wallet className="mr-1.5 h-4 w-4" aria-hidden="true" />Cobrar</Button>
+                  {roomGuests.data?.available && (
+                    <Button variant="outline" className="col-span-2" disabled={totals.total <= 0} onClick={() => setToRoom(true)}><BedDouble className="mr-1.5 h-4 w-4" aria-hidden="true" />Cargar a la habitación</Button>
+                  )}
                   <Button variant="ghost" size="sm" disabled={!table} onClick={() => { setMergeTable(""); setMerging(true); }}><Link2 className="mr-1 h-4 w-4" aria-hidden="true" />Unir mesa</Button>
                   <Button variant="ghost" size="sm" onClick={() => { setReleaseReason(""); setReleasing(true); }}><Ban className="mr-1 h-4 w-4" aria-hidden="true" />Liberar mesa</Button>
                 </>
@@ -367,6 +378,16 @@ export default function Comanda() {
         </DialogContent>
       </Dialog>
 
+      {toRoom && (
+        <RoomChargeDialog
+          title={table ? `Cargar la mesa ${table.code} a una habitación` : "Cargar a una habitación"}
+          amountLabel={formatEur(totals.total)}
+          guests={roomGuests.data?.guests ?? []}
+          pending={chargeToRoom.isPending}
+          onConfirm={(hotelReservationId) => chargeToRoom.mutate({ orderId, hotelReservationId })}
+          onClose={() => setToRoom(false)}
+        />
+      )}
       {paying && (
         <CheckoutDialog
           orderId={orderId}
