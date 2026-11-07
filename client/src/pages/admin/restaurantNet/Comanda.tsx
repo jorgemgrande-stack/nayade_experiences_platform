@@ -188,7 +188,7 @@ export default function Comanda() {
                     <Button key={c} size="sm" variant={course === c ? "secondary" : "ghost"} aria-pressed={course === c} className="h-7 px-2.5" onClick={() => setCourse(c)}>{c}</Button>
                   ))}
                 </div>
-                <div className="flex gap-1.5 overflow-x-auto pb-1" role="tablist" aria-label="Categorías">
+                <div className="flex gap-1.5 overflow-x-auto pb-1 [scrollbar-width:thin]" role="tablist" aria-label="Categorías">
                   {[ALL, ...categories].map((c) => (
                     <button
                       key={c}
@@ -225,7 +225,7 @@ export default function Comanda() {
           </section>
 
           {/* Ticket de la comanda */}
-          <section className="flex min-w-0 flex-col rounded-2xl border border-border bg-card" aria-label="Comanda">
+          <section className="order-first flex min-w-0 flex-col rounded-2xl border border-border bg-card lg:order-none" aria-label="Comanda">
             <ul className="max-h-[50vh] flex-1 divide-y divide-border overflow-y-auto">
               {lines.length === 0 && <li className="p-4 text-sm text-muted-foreground">Aún no hay platos. Toca un plato de la carta para añadirlo.</li>}
               {lines.map((l) => {
@@ -319,7 +319,7 @@ export default function Comanda() {
       </div>
 
       <Dialog open={voiding != null} onOpenChange={(o) => !o && setVoiding(null)}>
-        <DialogContent className="max-w-sm">
+        <DialogContent className="sm:max-w-sm">
           <DialogHeader>
             <DialogTitle>Anular «{voiding?.name}»</DialogTitle>
             <DialogDescription>La línea queda tachada en la comanda con el motivo y deja de contar en el total.</DialogDescription>
@@ -336,7 +336,7 @@ export default function Comanda() {
       </Dialog>
 
       <Dialog open={releasing} onOpenChange={setReleasing}>
-        <DialogContent className="max-w-sm">
+        <DialogContent className="sm:max-w-sm">
           <DialogHeader>
             <DialogTitle>Liberar la mesa sin cobrar</DialogTitle>
             <DialogDescription>
@@ -357,13 +357,13 @@ export default function Comanda() {
       </Dialog>
 
       <Dialog open={merging} onOpenChange={setMerging}>
-        <DialogContent className="max-w-sm">
+        <DialogContent className="sm:max-w-sm">
           <DialogHeader>
             <DialogTitle>Unir otra mesa a la {table?.code}</DialogTitle>
             <DialogDescription>La comanda sigue en esta mesa; si la otra tenía platos, pasan aquí. Al cobrar, se separan solas.</DialogDescription>
           </DialogHeader>
           <Select value={mergeTable} onValueChange={setMergeTable}>
-            <SelectTrigger aria-label="Mesa que se une"><SelectValue placeholder="Elige la mesa" /></SelectTrigger>
+            <SelectTrigger aria-label="Mesa que se une" className="w-full min-w-0"><SelectValue placeholder="Elige la mesa" /></SelectTrigger>
             <SelectContent>
               {mergeCandidates.map((t) => {
                 const s = states.get(t.id)?.state ?? "libre";
@@ -420,7 +420,7 @@ function CheckoutDialog({ orderId, total, customerName, onClose, onPaid }: { ord
 
   return (
     <Dialog open onOpenChange={(o) => !o && onClose()}>
-      <DialogContent className="max-h-[90vh] max-w-md overflow-y-auto">
+      <DialogContent className="max-h-[90vh] sm:max-w-md overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Cobrar {formatEur(total)}</DialogTitle>
           <DialogDescription>Se registra como venta del TPV en la caja elegida, con su ticket y el IVA de cada plato.</DialogDescription>
@@ -439,7 +439,7 @@ function CheckoutDialog({ orderId, total, customerName, onClose, onPaid }: { ord
             <div className="space-y-1.5">
               <Label htmlFor="rnet-pay-session">Caja</Label>
               <Select value={chosen} onValueChange={setSessionId}>
-                <SelectTrigger id="rnet-pay-session"><SelectValue placeholder="Elige la caja" /></SelectTrigger>
+                <SelectTrigger id="rnet-pay-session" className="w-full min-w-0"><SelectValue placeholder="Elige la caja" /></SelectTrigger>
                 <SelectContent>{open.map((r) => <SelectItem key={r.id} value={String(r.openSession!.id)}>{r.name}{r.openSession!.cashierName ? ` · ${r.openSession!.cashierName}` : ""}</SelectItem>)}</SelectContent>
               </Select>
             </div>
@@ -448,7 +448,7 @@ function CheckoutDialog({ orderId, total, customerName, onClose, onPaid }: { ord
                 <div className="min-w-0 space-y-1.5">
                   <Label htmlFor={`rnet-pay-m-${i}`}>Pago {payments.length > 1 ? i + 1 : ""}</Label>
                   <Select value={p.method} onValueChange={(v) => setPayments(payments.map((x, j) => (j === i ? { ...x, method: v as PaymentMethod } : x)))}>
-                    <SelectTrigger id={`rnet-pay-m-${i}`}><SelectValue /></SelectTrigger>
+                    <SelectTrigger id={`rnet-pay-m-${i}`} className="w-full min-w-0"><SelectValue /></SelectTrigger>
                     <SelectContent>{PAYMENT_METHODS.map((m) => <SelectItem key={m} value={m}>{PAYMENT_METHOD_LABELS[m]}</SelectItem>)}</SelectContent>
                   </Select>
                 </div>

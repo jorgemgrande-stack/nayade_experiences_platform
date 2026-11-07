@@ -95,7 +95,7 @@ export default function Cocina() {
         ) : (
           <>
             <div className="flex flex-wrap items-center justify-between gap-2">
-              <div className="flex gap-1.5 overflow-x-auto pb-1" role="tablist" aria-label="Partidas">
+              <div className="flex gap-1.5 overflow-x-auto pb-1 [scrollbar-width:thin]" role="tablist" aria-label="Partidas">
                 {[{ k: ALL, l: "Todas" }, ...(board.data?.stations ?? []).map((s) => ({ k: s.name, l: s.name })), { k: NONE, l: "Sin partida" }].map((s) => (
                   <button
                     key={s.k}
@@ -185,7 +185,7 @@ export default function Cocina() {
       </div>
 
       <Dialog open={incident != null} onOpenChange={(o) => !o && setIncident(null)}>
-        <DialogContent className="max-w-sm">
+        <DialogContent className="sm:max-w-sm">
           <DialogHeader>
             <DialogTitle>Incidencia en «{incident?.name}»</DialogTitle>
             <DialogDescription>Queda registrada en las métricas del día. Si el plato no se sirve, la sala debe anular la línea con su motivo.</DialogDescription>
@@ -194,7 +194,7 @@ export default function Cocina() {
             <div className="space-y-1.5">
               <Label htmlFor="rnet-inc-type">Tipo</Label>
               <Select value={incType} onValueChange={(v) => setIncType(v as IncidentType)}>
-                <SelectTrigger id="rnet-inc-type"><SelectValue /></SelectTrigger>
+                <SelectTrigger id="rnet-inc-type" className="w-full min-w-0"><SelectValue /></SelectTrigger>
                 <SelectContent>{INCIDENT_TYPES.map((x) => <SelectItem key={x} value={x}>{INCIDENT_LABELS[x]}</SelectItem>)}</SelectContent>
               </Select>
             </div>

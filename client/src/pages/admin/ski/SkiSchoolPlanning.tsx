@@ -248,7 +248,7 @@ export default function SkiSchoolPlanning() {
             <Button variant="ghost" size="sm" onClick={() => setDate(todayIso())}>
               Hoy
             </Button>
-            <span className="text-sm capitalize text-muted-foreground">{formatDay(date)}</span>
+            <span className="text-sm text-muted-foreground">{formatDay(date)}</span>
           </div>
           <PlanningBody ctx={ctx} date={date} />
           <Dialog open={config} onOpenChange={setConfig}>

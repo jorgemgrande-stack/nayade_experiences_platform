@@ -38,7 +38,7 @@ function OperationDialog({ id, onClose }: { id: number; onClose: () => void }) {
   const next = op ? OPERATION_NEXT[op.status] ?? [] : [];
   return (
     <Dialog open onOpenChange={(o) => !o && onClose()}>
-      <DialogContent className="max-w-xl max-h-[90vh] overflow-y-auto">
+      <DialogContent className="sm:max-w-xl max-h-[90vh] overflow-y-auto">
         <DialogHeader><DialogTitle>Operación con el proveedor</DialogTitle></DialogHeader>
         {!op ? <p className="text-sm text-muted-foreground py-4">Cargando…</p> : (
           <div className="space-y-4 py-1">

@@ -224,7 +224,7 @@ export default function Sala() {
       </div>
 
       <Dialog open={opening != null} onOpenChange={(o) => !o && setOpening(null)}>
-        <DialogContent className="max-w-sm">
+        <DialogContent className="sm:max-w-sm">
           <DialogHeader>
             <DialogTitle>Abrir la mesa {opening?.code}</DialogTitle>
             <DialogDescription>Capacidad: {opening?.capacity} comensales. Después añadirás los platos.</DialogDescription>
@@ -256,7 +256,7 @@ export default function Sala() {
       </Dialog>
 
       <Dialog open={seatingBooking != null} onOpenChange={(o) => !o && setSeating(null)}>
-        <DialogContent className="max-w-sm">
+        <DialogContent className="sm:max-w-sm">
           <DialogHeader>
             <DialogTitle>Sentar a {seatingBooking?.guestName || seatingBooking?.locator}</DialogTitle>
             <DialogDescription>Se abre la comanda de la mesa con los comensales de la reserva.</DialogDescription>
@@ -264,7 +264,7 @@ export default function Sala() {
           <div className="space-y-1.5">
             <Label htmlFor="rnet-seat-table">Mesa</Label>
             <Select value={seatTable} onValueChange={setSeatTable}>
-              <SelectTrigger id="rnet-seat-table"><SelectValue placeholder="Elige una mesa libre" /></SelectTrigger>
+              <SelectTrigger id="rnet-seat-table" className="w-full min-w-0"><SelectValue placeholder="Elige una mesa libre" /></SelectTrigger>
               <SelectContent>
                 {[...(seatingBooking?.tables ?? []).map((t) => t.tableId), ...freeTables.map((t) => t.id)]
                   .filter((id, i, a) => a.indexOf(id) === i)

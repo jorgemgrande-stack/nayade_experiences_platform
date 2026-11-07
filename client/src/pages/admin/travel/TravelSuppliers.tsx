@@ -68,7 +68,7 @@ function SupplierDialog({ s, onClose }: { s: any; onClose: () => void }) {
   const del = trpc.travel.removeSupplierContact.useMutation({ onSuccess: refresh, onError: (e) => toast.error(e.message) });
   return (
     <Dialog open onOpenChange={(o) => !o && onClose()}>
-      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+      <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto">
         <DialogHeader><DialogTitle>{s.name}</DialogTitle></DialogHeader>
         <div className="space-y-4 py-2">
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">

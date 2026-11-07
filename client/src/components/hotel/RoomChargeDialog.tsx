@@ -10,6 +10,9 @@ import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
 
+/** Día AAAA-MM-DD como «10 nov». */
+const fmtDay = (d: string) => new Date(`${d}T12:00:00Z`).toLocaleDateString("es-ES", { day: "numeric", month: "short", timeZone: "UTC" });
+
 export interface RoomGuest {
   reservationId: number;
   reservationNumber: string | null;
@@ -40,7 +43,7 @@ export function RoomChargeDialog({
   const shown = term ? guests.filter((g) => `${g.roomCode ?? ""} ${g.guestName} ${g.reservationNumber ?? ""}`.toLowerCase().includes(term)) : guests;
   return (
     <Dialog open onOpenChange={(o) => !o && onClose()}>
-      <DialogContent className="max-h-[90vh] max-w-md overflow-y-auto">
+      <DialogContent className="max-h-[90vh] sm:max-w-md overflow-y-auto">
         <DialogHeader>
           <DialogTitle>{title}</DialogTitle>
           <DialogDescription>{amountLabel} irá al folio de la habitación y se cobrará con la factura de la estancia.</DialogDescription>
@@ -66,7 +69,7 @@ export function RoomChargeDialog({
                     <BedDouble className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden="true" />
                     <span className="min-w-0">
                       <span className="block break-words text-sm font-medium text-foreground">{g.roomCode ? `Habitación ${g.roomCode}` : g.roomName ?? "Sin habitación asignada"} · {g.guestName}</span>
-                      <span className="block text-xs text-muted-foreground">Salida {g.checkOut}{g.reservationNumber ? ` · ${g.reservationNumber}` : ""}</span>
+                      <span className="block text-xs text-muted-foreground">Salida {fmtDay(g.checkOut)}{g.reservationNumber ? ` · ${g.reservationNumber}` : ""}</span>
                     </span>
                   </button>
                 </li>
