@@ -338,9 +338,12 @@ export const CORE_EXTENSION_PANELS: Readonly<Record<string, { capability?: strin
         items: [
           { id: "panel", label: "Panel general", path: "/admin/net/care", icon: "dashboard", order: 1 },
           { id: "agenda", label: "Agenda, citas y tratamientos", path: "/admin/spa", icon: "calendar", order: 2 },
+          { id: "reservas", label: "Reservas y calendario", path: "/admin/care-net/reservas", icon: "calendar", roles: ["admin", "agente"], order: 3 },
+          { id: "bonos", label: "Bonos y paquetes", path: "/admin/care-net/bonos", icon: "tag", roles: ["admin", "agente"], order: 4 },
+          { id: "clientes-bono", label: "Clientes con bono", path: "/admin/care-net/clientes", icon: "users", roles: ["admin", "agente"], order: 5 },
         ],
       },
-      api: ["spa"],
+      api: ["spa", "careNet"],
     },
   },
   // Productos Net aún sin herramientas operativas en el Core: si se conceden, su panel general muestra lo incluido
@@ -375,6 +378,8 @@ function skiNetPanel(): PanelContributions {
         { id: "profesores", label: "Profesores", path: "/admin/ski/profesores", icon: "users", capabilities: SCHOOL, order: 3 },
         { id: "productos-docentes", label: "Productos docentes", path: "/admin/ski/productos-docentes", icon: "tag", capabilities: SCHOOL, order: 4 },
         { id: "sesiones", label: "Sesiones y alumnos", path: "/admin/ski/sesiones", icon: "briefcase", capabilities: SCHOOL, order: 5 },
+        { id: "horas", label: "Control de horas", path: "/admin/ski/horas", icon: "chart", capabilities: SCHOOL, order: 5.1 },
+        { id: "liquidaciones", label: "Liquidaciones de profesores", path: "/admin/ski/liquidaciones", icon: "coins", capabilities: SCHOOL, order: 5.2 },
         { id: "alquiler", label: "Alquiler: mostrador", path: "/admin/ski/alquiler", icon: "shoppingCart", capabilities: RENTAL, order: 6 },
         { id: "inventario", label: "Inventario de material", path: "/admin/ski/inventario", icon: "package", capabilities: RENTAL, order: 7 },
         { id: "taller", label: "Taller", path: "/admin/ski/taller", icon: "settings", capabilities: RENTAL, order: 8 },
