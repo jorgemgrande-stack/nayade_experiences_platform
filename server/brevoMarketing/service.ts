@@ -37,6 +37,7 @@ export interface BrevoDeps {
 }
 
 const UNSUB_SOURCE = "brevo_unsubscribe";
+export const PUBLIC_UNSUB_SOURCE = "public_unsubscribe";
 
 export class BrevoMarketingService {
   constructor(private d: BrevoDeps) {}
@@ -135,6 +136,27 @@ export class BrevoMarketingService {
 
   consentLog(clientId: number) {
     return this.d.store.consentLog(clientId);
+  }
+
+  /**
+   * Baja desde el enlace público (server/netPublic/brevoUnsubscribe.ts): retira el consentimiento con su historial
+   * (idempotente: repetirla no cambia nada) y, SOLO si la empresa tiene su clave de Brevo y una lista elegidas, saca el
+   * correo de esa lista. Si Brevo falla, la baja en el CRM queda hecha y la siguiente sincronización lo saca de la lista.
+   */
+  async publicUnsubscribe(clientId: number): Promise<{ changed: boolean; propagated: boolean }> {
+    if (!(await this.d.store.clientExists(clientId))) return { changed: false, propagated: false };
+    const changed = await this.d.store.withdrawOnce(clientId, PUBLIC_UNSUB_SOURCE, "Baja con el enlace de las comunicaciones", "public:unsubscribe");
+    let propagated = false;
+    try {
+      const [settings, key, email] = await Promise.all([this.d.store.settings(), this.d.credentials.apiKey(), this.d.store.clientEmail(clientId)]);
+      if (key && settings.listId && email) {
+        await new BrevoMarketingClient(key, { fetch: this.d.fetch, maxCalls: 1 }).removeFromList(settings.listId, [email.trim().toLowerCase()]);
+        propagated = true;
+      }
+    } catch {
+      propagated = false;
+    }
+    return { changed, propagated };
   }
 
   // ── Sincronización ────────────────────────────────────────────────────────────

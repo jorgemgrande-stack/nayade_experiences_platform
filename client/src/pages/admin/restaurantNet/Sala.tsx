@@ -33,6 +33,7 @@ import {
   type PlanBadge,
   type PlanTable,
 } from "./RestaurantNetParts";
+import { TableRequestsPanel } from "./CartaQr";
 
 const VIEW_KEY = "rnet.salaView";
 
@@ -142,6 +143,7 @@ export default function Sala() {
         ) : (
           <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_320px]">
             <section className="min-w-0 space-y-3" aria-label="Mesas">
+              <TableRequestsPanel restaurantId={restaurantId} canWrite={canWrite} />
               {menu.data && menu.data.length === 0 && (
                 <div role="status" className="rounded-xl border border-warning/50 bg-warning/10 px-3 py-2 text-sm text-foreground">
                   La carta está vacía: <Link href={CARTA_PATH} className="font-medium underline">añade platos</Link> para poder tomar comandas.

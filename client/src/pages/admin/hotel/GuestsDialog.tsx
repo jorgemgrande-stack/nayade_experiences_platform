@@ -10,6 +10,7 @@ import { toast } from "sonner";
 import { Pencil, Plus, Trash2, UserCheck, Users } from "lucide-react";
 import { PmsNotInstalled, isPmsNotInstalled } from "./pmsShared";
 import { EMPTY_GUEST, GdprNotice, GuestForm, guestPayload, guestToForm, type GuestFormValue } from "./guestShared";
+import OnlineCheckin from "./OnlineCheckin";
 
 /** Huéspedes de una reserva (titular y acompañantes) para el registro de viajeros en el check-in. */
 export default function GuestsDialog({ reservationId, title, onClose }: { reservationId: number; title?: string; onClose: () => void }) {
@@ -32,6 +33,7 @@ export default function GuestsDialog({ reservationId, title, onClose }: { reserv
         {isPmsNotInstalled(q.error) ? <PmsNotInstalled /> : q.error ? <p className="text-sm text-destructive">{q.error.message}</p> : (
           <div className="space-y-3">
             <GdprNotice />
+            <OnlineCheckin reservationId={reservationId} onApplied={refresh} />
             {q.isLoading ? <p className="text-sm text-muted-foreground">Cargando…</p> : list.length === 0 && !editing ? (
               <p className="text-sm text-muted-foreground">Sin huéspedes registrados. Empieza por el titular de la reserva y añade después a los acompañantes.</p>
             ) : (

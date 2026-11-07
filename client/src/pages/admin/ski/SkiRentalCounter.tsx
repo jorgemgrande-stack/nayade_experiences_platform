@@ -182,10 +182,34 @@ function Contract({ ctx, deliveryId, contract, customerName }: { ctx: RentalCtx;
               Firmar
             </Button>
             <p className="text-xs text-muted-foreground">El cliente firma en este equipo. Se guardan su nombre, la fecha, la IP, el navegador y la huella del contrato.</p>
+            <RemoteSignLink ctx={ctx} deliveryId={deliveryId} />
           </form>
         )
       )}
     </section>
+  );
+}
+
+/** Firma remota: enlace de un solo uso (24 h) para que el cliente firme en su móvil. Solo se ve al crearlo. */
+function RemoteSignLink({ ctx, deliveryId }: { ctx: RentalCtx; deliveryId: number }) {
+  const utils = trpc.useUtils();
+  const [url, setUrl] = useState<string | null>(null);
+  const status = trpc.skiRental.signLinkStatus.useQuery({ siteId: ctx.siteId, deliveryId }, { retry: false });
+  const issue = trpc.skiRental.issueSignLink.useMutation({ onSuccess: (r) => { setUrl(r.url); utils.skiRental.signLinkStatus.invalidate(); }, onError: toastRental });
+  const revoke = trpc.skiRental.revokeSignLink.useMutation({ onSuccess: () => { setUrl(null); toast.success("Enlace desactivado"); utils.skiRental.signLinkStatus.invalidate(); }, onError: toastRental });
+  const link = status.data?.link ?? null;
+  return (
+    <div className="space-y-1 border-t border-border pt-2">
+      <p className="text-xs text-muted-foreground">
+        {link ? `Enlace de firma remota activo hasta el ${new Date(link.expiresAt ?? 0).toLocaleString("es-ES")}.` : "También puedes enviarle un enlace para que firme en su móvil (un solo uso, caduca en 24 horas)."}
+      </p>
+      {url && <p className="break-all rounded bg-muted px-2 py-1 text-xs text-foreground">{url}</p>}
+      <div className="flex flex-wrap gap-2">
+        <Button type="button" size="sm" variant="outline" disabled={issue.isPending} onClick={() => issue.mutate({ siteId: ctx.siteId, deliveryId })}>{link ? "Generar un enlace nuevo" : "Enlace de firma remota"}</Button>
+        {url && <Button type="button" size="sm" variant="outline" onClick={() => navigator.clipboard?.writeText(url).then(() => toast.success("Enlace copiado"))}>Copiar</Button>}
+        {link && <Button type="button" size="sm" variant="ghost" disabled={revoke.isPending} onClick={() => revoke.mutate({ siteId: ctx.siteId, deliveryId })}>Desactivar</Button>}
+      </div>
+    </div>
   );
 }
 

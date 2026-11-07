@@ -17,6 +17,7 @@ import { TenantDbSkiRentalStore } from "./store";
 import { SkiRentalUnitsService } from "./unitService";
 import { TenantDbSkiRentalUnitStore } from "./unitStore";
 import { UNIT_STATUSES } from "./units";
+import { SIGN_LINK_MAX_HOURS, issueSignLink, revokeSignLink, signLinkStatus } from "../netPublic/skiSign";
 
 // Un módulo que no valida no impide arrancar al Core: queda sin registrar y sus rutas responden NOT_FOUND
 try {
@@ -37,6 +38,8 @@ const units = new SkiRentalUnitsService({
   gate: () => getSdkRuntime().gate,
   events: () => getSdkRuntime().events,
 });
+/** El mismo servicio para la firma remota (server/netPublic/skiSign.ts): una sola forma de firmar. */
+export const skiRentalUnitsService = units;
 
 const CODES: Record<SkiRentalError["code"], TRPCError["code"]> = { invalid_input: "BAD_REQUEST", not_found: "NOT_FOUND", conflict: "CONFLICT" };
 
@@ -172,6 +175,12 @@ export const skiRentalRouter = router({
   listContracts: adminProcedure
     .input(site.extend({ status: z.enum(["pending", "signed"]).optional() }))
     .query(({ input }) => handle(() => units.listContracts(input.siteId, input.status))),
+  // Firma remota (enlace de un solo uso con caducidad; la página pública es /firma/<token>)
+  signLinkStatus: adminProcedure.input(site.extend({ deliveryId: id })).query(({ input }) => signLinkStatus(input.siteId, input.deliveryId)),
+  issueSignLink: adminProcedure
+    .input(site.extend({ deliveryId: id, hours: z.number().int().min(1).max(SIGN_LINK_MAX_HOURS).optional() }))
+    .mutation(({ input, ctx }) => issueSignLink(input.siteId, input.deliveryId, input.hours, actor(ctx))),
+  revokeSignLink: adminProcedure.input(site.extend({ deliveryId: id })).mutation(({ input, ctx }) => revokeSignLink(input.siteId, input.deliveryId, actor(ctx))),
   listTickets: adminProcedure
     .input(site.extend({ status: z.enum(["open", "done"]).optional() }))
     .query(({ input }) => handle(() => units.listTickets(input.siteId, input.status))),

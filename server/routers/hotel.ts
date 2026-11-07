@@ -41,6 +41,7 @@ import {
 } from "../hotelGuestsDb";
 import { ADJUST_TYPES, DOC_TYPES, SEXES, applyPlanToStay, ratePlanError, retentionError } from "../hotelGuests";
 import { todayInTimeZone } from "../hotelPms";
+import { applyCheckin, checkinStatus, discardCheckin, issueCheckinLink, revokeCheckinLink } from "../netPublic/hotelCheckin";
 
 const guestDate = z.string().refine(isIsoDate, "Fecha no válida (AAAA-MM-DD)");
 const guestOpt = (max: number) => z.string().max(max).nullable().optional();
@@ -700,7 +701,8 @@ export const hotelRouter = router({
     .mutation(({ input, ctx }) => createRoomIncident({ ...input, userId: ctx.user.id })),
 
   // ── ADMIN: PMS · FICHAS DE HUÉSPED (RD 933/2021) ──────────────────────────
-  // Datos personales: solo quien gestiona el hotel (adminProcedure). Sin rutas públicas ni check-in en línea.
+  // Datos personales: solo quien gestiona el hotel (adminProcedure). Sin rutas públicas: el check-in online no escribe
+  // en las fichas, lo aplica recepción (más abajo).
 
   /** Huéspedes de la reserva (titular y acompañantes) con lo que falta para el registro de viajeros. */
   adminGetStayGuests: adminProcedure
@@ -740,6 +742,30 @@ export const hotelRouter = router({
 
   /** Aplica ahora la conservación configurada (sin plazo configurado no hace nada). */
   adminRunGuestRetention: adminProcedure.mutation(() => anonymizeExpiredGuests(todayInTimeZone())),
+
+  // ── ADMIN: PMS · CHECK-IN ONLINE (página pública /check-in/<token>) ──────
+  // El huésped envía su registro de viajeros con el enlace; recepción lo revisa y lo aplica a las fichas.
+
+  adminOnlineCheckin: adminProcedure
+    .input(z.object({ reservationId: z.number().int() }))
+    .query(({ input }) => checkinStatus(input.reservationId)),
+
+  /** Emite o rota el enlace (caduca al terminar el día de llegada). Devuelve la URL una sola vez. */
+  adminIssueCheckinLink: adminProcedure
+    .input(z.object({ reservationId: z.number().int() }))
+    .mutation(({ input, ctx }) => issueCheckinLink(input.reservationId, `user:${ctx.user.id}`)),
+
+  adminRevokeCheckinLink: adminProcedure
+    .input(z.object({ reservationId: z.number().int() }))
+    .mutation(({ input, ctx }) => revokeCheckinLink(input.reservationId, `user:${ctx.user.id}`)),
+
+  adminApplyOnlineCheckin: adminProcedure
+    .input(z.object({ reservationId: z.number().int() }))
+    .mutation(({ input, ctx }) => applyCheckin(input.reservationId, ctx.user.id)),
+
+  adminDiscardOnlineCheckin: adminProcedure
+    .input(z.object({ reservationId: z.number().int() }))
+    .mutation(({ input, ctx }) => discardCheckin(input.reservationId, ctx.user.id)),
 
   // ── ADMIN: PMS · PLANES DE TARIFA ─────────────────────────────────────────
 
