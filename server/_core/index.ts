@@ -45,6 +45,7 @@ import { startEmailAutomationJob } from "../emailAutomationJob";
 import { startTaxReminderJob } from "../taxReminderJob";
 import { startDataExportJob } from "../dataExport/job";
 import { startOnboardingReminderJob } from "../onboardingReminders";
+import { startBrevoMarketingJob } from "../brevoMarketing/runtime";
 import { startEmailIngestionJob } from "../services/emailTpvIngestionService";
 import { startExpenseEmailIngestionJob } from "../services/expenseEmailIngestionService";
 import { initCommercialEmailTables, startCommercialEmailSyncJob } from "../services/commercialEmailService";
@@ -1826,6 +1827,8 @@ const SCHEDULED_JOBS: Array<{ name: string; flag: string; start: () => void; lab
   { name: "email-automation", flag: "email_automation_job_enabled", start: startEmailAutomationJob, label: "Email Automation", def: false },
   { name: "tax-reminder", flag: "tax_reminder_job_enabled", start: startTaxReminderJob, label: "Tax Reminder", def: true },
   { name: "data-export", flag: "data_export_job_enabled", start: startDataExportJob, label: "Data Export", def: true },
+  // Desactivado por defecto: además, cada empresa decide con su interruptor de sincronización automática
+  { name: "brevo-marketing-sync", flag: "brevo_marketing_sync_enabled", start: startBrevoMarketingJob, label: "Brevo Marketing Sync", def: false },
   {
     name: "onboarding-reminder",
     flag: "onboarding_reminder_job_enabled",

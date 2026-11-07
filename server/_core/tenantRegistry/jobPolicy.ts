@@ -31,6 +31,7 @@ export const JOB_MULTI_POLICIES: Readonly<Record<string, JobMultiPolicy>> = {
   "tax-reminder": { mode: "per-tenant", reason: "Obligaciones fiscales de la propia empresa" },
   "data-export": { mode: "per-tenant", reason: "Exportación de los datos de la propia empresa (también suspendida o en solo lectura)" },
   "onboarding-reminder": { mode: "per-tenant", reason: "Recordatorios de Primeros pasos de la propia empresa, a quien abrió su asistente" },
+  "brevo-marketing-sync": { mode: "per-tenant", reason: "Cuenta de Brevo propia de la empresa (bóveda brevo_marketing); sin clave, lista o sincronización automática, no hace nada" },
 };
 
 export function jobMultiPolicy(name: string): JobMultiPolicy {
