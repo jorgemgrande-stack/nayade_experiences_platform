@@ -9,6 +9,7 @@ import { resolveSiteFilter, resolveSiteForWrite } from "../sitesDb";
 import { CONNECTION_MODES } from "./adapters";
 import { MARGIN_SCOPES, OPERATION_BUCKETS, OPERATION_STATUSES, PRICING_MODES, SERVICE_KINDS, SERVICE_SOURCES } from "./rules";
 import * as svc from "./service";
+import * as veturis from "./veturis/service";
 
 const day = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Fecha no válida (AAAA-MM-DD)");
 const id = z.number().int().positive();
@@ -47,6 +48,8 @@ const serviceFields = z.object({
 const toServiceInput = (s: z.infer<typeof serviceFields>): svc.ServiceInput => ({
   ...s, description: s.description ?? null, serviceDate: s.serviceDate ?? null, endDate: s.endDate ?? null,
 });
+
+const rooms = z.array(z.object({ adults: z.number().int().min(1).max(9), childrenAges: z.array(z.number().int().min(0).max(17)).max(6) })).min(1).max(9);
 
 export const travelRouter = router({
   // ── Expedientes ─────────────────────────────────────────────────────────
@@ -163,4 +166,22 @@ export const travelRouter = router({
     .mutation(({ input, ctx }) => svc.addSupplierContact(input.supplierId, { name: input.name, role: input.role ?? null, email: input.email || null, phone: input.phone ?? null, isPrimary: input.isPrimary }, ctx.user.id)),
 
   removeSupplierContact: adminProcedure.input(z.object({ id })).mutation(({ input, ctx }) => svc.removeSupplierContact(input.id, ctx.user.id)),
+  // ── Veturis (alojamiento): credenciales de la empresa en Integraciones; la reserva real, con su interruptor ──
+  veturisStatus: staffProcedure.query(() => veturis.status()),
+  veturisSaveSettings: adminProcedure
+    .input(z.object({ supplierId: id.nullable().optional(), bookingEnabled: z.boolean().optional(), inventoryEnabled: z.boolean().optional() }))
+    .mutation(({ input, ctx }) => veturis.saveSettings(input, ctx.user.id)),
+  veturisHotels: staffProcedure.query(() => veturis.listHotels()),
+  veturisAddHotel: adminProcedure
+    .input(z.object({ hotelId: z.string().max(12), name: z.string().max(200), destination: optText(120) }))
+    .mutation(({ input, ctx }) => veturis.addHotel({ hotelId: input.hotelId, name: input.name, destination: input.destination ?? null }, ctx.user.id)),
+  veturisSetHotelActive: adminProcedure.input(z.object({ id, active: z.boolean() })).mutation(({ input }) => veturis.setHotelActive(input.id, input.active)),
+  veturisSearch: staffProcedure
+    .input(z.object({ hotelIds: z.array(z.string().regex(/^\d{1,12}$/)).max(50).optional(), checkIn: day, checkOut: day, rooms }))
+    .query(({ input }) => veturis.search(input)),
+  veturisAddOffer: staffProcedure
+    .input(z.object({ fileId: id, searchObj: z.string().min(1).max(200), offerToken: z.string().min(1).max(300), hotelId: z.string().regex(/^\d{1,12}$/), checkIn: day, checkOut: day, rooms, refundable: z.enum(["yes", "no", "unknown"]) }))
+    .mutation(({ input, ctx }) => veturis.addOffer(input, ctx.user.id)),
+  veturisRevalidate: staffProcedure.input(z.object({ serviceId: id })).mutation(({ input, ctx }) => veturis.revalidate(input.serviceId, ctx.user.id)),
+  veturisFileOffers: staffProcedure.input(z.object({ fileId: id })).query(({ input }) => veturis.fileOffers(input.fileId)),
 });

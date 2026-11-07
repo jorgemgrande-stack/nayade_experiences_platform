@@ -297,12 +297,33 @@ export async function operationDetail(id: number) {
   });
 }
 
-/** Envía la operación al proveedor con su adaptador (hoy, manual: queda enviada y con plazo de respuesta). */
+/**
+ * Envía la operación al proveedor. Si el servicio viene de Veturis y la empresa tiene la reserva ENCENDIDA, se reserva
+ * en Veturis (fuera de la transacción: es una llamada de red) con revalidación previa del precio, y la operación queda
+ * confirmada con su localizador. En cualquier otro caso, el adaptador manual de siempre (queda enviada con plazo).
+ */
 export async function submitOperation(id: number, userId: number) {
+  const veturis = await store.travel(async () => {
+    const d = await store.db();
+    const op = (await store.getOperation(d, id)) ?? notFound("Operación");
+    const why = operationTransitionError(op.status, "submitted");
+    if (why) bad(why);
+    const f = await store.getFile(d, op.fileId);
+    const { bookForOperation } = await import("./veturis/service");
+    return bookForOperation({ id: op.id, serviceId: op.serviceId }, { fileNumber: f?.fileNumber ?? null, clientName: f?.clientName ?? "", clientEmail: f?.clientEmail ?? null, clientPhone: f?.clientPhone ?? null });
+  });
   return store.travel(() => store.inTx(async (tx) => {
     const op = (await store.getOperation(tx, id, true)) ?? notFound("Operación");
     const why = operationTransitionError(op.status, "submitted");
     if (why) bad(why);
+    if (veturis) {
+      await store.setOperationStatus(tx, op, "submitted", { locator: veturis.locator ?? undefined, slaDeadlineAt: Date.now() + DEFAULT_SLA_MS }, { userId, reason: veturis.note });
+      if (veturis.status === "provider_confirmed") {
+        await store.setOperationStatus(tx, { id: op.id, status: "submitted" }, "provider_confirmed", { locator: veturis.locator ?? undefined }, { userId, reason: veturis.note });
+      }
+      await store.audit(tx, "operation", id, "submitted", userId, { adapter: "api", provider: "veturis", status: veturis.status });
+      return { ok: true as const, status: veturis.status, note: veturis.note };
+    }
     const f = await store.getFile(tx, op.fileId);
     const [mode] = await store.rows<{ connection_mode: string }>(tx, sql`SELECT connection_mode FROM travel_supplier_profiles WHERE supplier_id = ${op.supplierId}`);
     const adapter = resolveSupplierAdapter(mode?.connection_mode ?? "manual");
