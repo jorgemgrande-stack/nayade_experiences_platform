@@ -8,6 +8,8 @@ import { hotelOccupancy } from "./inventoryHoldsDb";
 import { nightCapacity } from "./inventoryHolds";
 import { stayRestrictionsFor, restrictionAt } from "./hotelPmsDb";
 import { stayRestrictionViolation } from "./hotelPms";
+import { activeRatePlans } from "./hotelGuestsDb";
+import { applyPlanToStay } from "./hotelGuests";
 
 // Pool persistente reutilizable. Ver nota en server/db/reviewsDb.ts:
 // el patrón anterior `createConnection()` per-request acumulaba
@@ -251,6 +253,8 @@ export async function searchAvailability(params: {
   const occupancy = await hotelOccupancy(db, rooms.map(r => r.id), params.checkIn, params.checkOut);
   // Restricciones de estancia del día de llegada y del de salida (sin la migración 0032 no hay ninguna)
   const restrictions = await stayRestrictionsFor(db, rooms.map(r => r.id), [params.checkIn, params.checkOut]);
+  // Planes de tarifa activos (sin la migración 0043 o sin planes, ninguno: el precio de siempre)
+  const plans = await activeRatePlans(db, rooms.map(r => r.id));
 
   const checkInDate = new Date(params.checkIn);
   const checkOutDate = new Date(params.checkOut);
@@ -261,12 +265,15 @@ export async function searchAvailability(params: {
     let totalPrice = 0;
     let pricePerNight = parseFloat(room.basePrice);
     const roomRatesList = allRates.filter(r => r.roomTypeId === room.id);
+    const nightCents: number[] = [];
 
     for (let i = 0; i < nights; i++) {
       const d = new Date(checkInDate);
       d.setDate(d.getDate() + i);
       const dateStr = d.toISOString().split("T")[0];
-      totalPrice += resolveNightlyPrice(roomRatesList, seasons, room.basePrice, dateStr);
+      const night = resolveNightlyPrice(roomRatesList, seasons, room.basePrice, dateStr);
+      totalPrice += night;
+      nightCents.push(Math.round(night * 100));
     }
     pricePerNight = nights > 0 ? totalPrice / nights : parseFloat(room.basePrice);
 
@@ -301,8 +308,33 @@ export async function searchAvailability(params: {
       availableUnits: minAvailable,
       isAvailable,
       restriction,
+      // Planes de tarifa de la tipología con su total (el precio base de arriba no cambia)
+      ratePlans: plans.filter(p => p.roomTypeId === room.id).map(p => {
+        const total = applyPlanToStay(nightCents, p) / 100;
+        return {
+          id: p.id, name: p.name, description: p.description, refundable: p.refundable, includesBreakfast: p.includesBreakfast,
+          totalPrice: Math.round(total * 100) / 100, pricePerNight: Math.round((total / nights) * 100) / 100,
+        };
+      }),
     };
   });
+}
+
+/** Precio de cada noche de la estancia en céntimos (misma regla que el buscador y el cobro). */
+export function stayNightCents(
+  rates: Parameters<typeof resolveNightlyPrice>[0],
+  seasons: Parameters<typeof resolveNightlyPrice>[1],
+  basePrice: string,
+  checkIn: string,
+  nights: number,
+): number[] {
+  const out: number[] = [];
+  for (let i = 0; i < nights; i++) {
+    const d = new Date(`${checkIn}T00:00:00Z`);
+    d.setUTCDate(d.getUTCDate() + i);
+    out.push(Math.round(resolveNightlyPrice(rates, seasons, basePrice, d.toISOString().slice(0, 10)) * 100));
+  }
+  return out;
 }
 
 /**

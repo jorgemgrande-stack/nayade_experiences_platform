@@ -9,7 +9,7 @@ import {
   getAllRateSeasons, createRateSeason, updateRateSeason, deleteRateSeason,
   getRatesByRoomType, createRoomRate, updateRoomRate, deleteRoomRate,
   getRoomBlocksForRange, getAllBlocksForRange, upsertRoomBlock, deleteRoomBlock,
-  searchAvailability, getRoomCalendar, resolveNightlyPrice,
+  searchAvailability, getRoomCalendar, resolveNightlyPrice, stayNightCents,
 } from "../hotelDb";
 import { getRatingsByEntityType } from "../db/reviewsDb";
 import { holdHotelRoomAndCreateReservation, releaseInventoryHold, reconcileInventory, createStaffHotelReservation } from "../inventoryHoldsDb";
@@ -34,6 +34,25 @@ import {
 } from "../hotelHousekeepingDb";
 import { HK_ASSIGNEE_ROLES, HK_TASK_KINDS, HK_TASK_STATUSES, INCIDENT_PRIORITIES, INCIDENT_STATUSES } from "../hotelHousekeeping";
 import { checkPermission } from "../customRolesAccess";
+import {
+  listStayGuests, saveStayGuest, removeStayGuest, searchGuests, guestDetail, updateGuest, getGuestSettings, setGuestSettings,
+  anonymizeExpiredGuests, listRatePlans, saveRatePlan, ratePlanForBooking,
+} from "../hotelGuestsDb";
+import { ADJUST_TYPES, DOC_TYPES, SEXES, applyPlanToStay, ratePlanError, retentionError } from "../hotelGuests";
+import { todayInTimeZone } from "../hotelPms";
+
+const guestDate = z.string().refine(isIsoDate, "Fecha no válida (AAAA-MM-DD)");
+const guestOpt = (max: number) => z.string().max(max).nullable().optional();
+const guestFields = z.object({
+  firstName: guestOpt(120), lastName: guestOpt(160), secondLastName: guestOpt(160), sex: z.enum(SEXES).nullable().optional(),
+  birthDate: guestDate.nullable().optional(), nationality: guestOpt(80), docType: z.enum(DOC_TYPES).nullable().optional(),
+  docNumber: guestOpt(64), docSupportNumber: guestOpt(64), docIssueDate: guestDate.nullable().optional(),
+  address: guestOpt(255), city: guestOpt(120), postalCode: guestOpt(16), country: guestOpt(80), phone: guestOpt(40),
+  email: z.string().trim().email().max(255).nullable().optional().or(z.literal("")),
+});
+const toGuestInput = (g: z.infer<typeof guestFields>) => ({
+  ...g, firstName: g.firstName ?? null, lastName: g.lastName ?? null, birthDate: g.birthDate ?? null, nationality: g.nationality ?? null, email: g.email || null,
+});
 
 /**
  * Personal del hotel (housekeeping): cualquier usuario del panel con un rol de equipo, con el módulo de hotel activo.
@@ -413,6 +432,7 @@ export const hotelRouter = router({
       notes: z.string().max(2000).optional(),
       force: z.boolean().default(false),
       hotelRoomId: z.number().int().optional(),
+      ratePlanId: z.number().int().optional(),
     }))
     .mutation(async ({ input, ctx }) => {
       const room = await getRoomTypeById(input.roomTypeId);
@@ -425,15 +445,12 @@ export const hotelRouter = router({
         if (why) throw new TRPCError({ code: "BAD_REQUEST", message: `${why} Usa «Forzar» para alojar igualmente.` });
       }
 
+      const plan = input.ratePlanId != null ? await ratePlanForBooking(input.roomTypeId, input.ratePlanId) : null;
       let totalEuros = input.totalEuros;
       if (totalEuros === undefined) {
         const [rates, seasons] = await Promise.all([getRatesByRoomType(input.roomTypeId), getAllRateSeasons()]);
-        totalEuros = 0;
-        for (let i = 0; i < nights; i++) {
-          const d = new Date(`${input.checkIn}T00:00:00Z`);
-          d.setUTCDate(d.getUTCDate() + i);
-          totalEuros += resolveNightlyPrice(rates, seasons, String(room.basePrice ?? 0), d.toISOString().slice(0, 10));
-        }
+        // Precio de cada noche (misma regla que la web) con el plan de tarifa, si se eligió
+        totalEuros = applyPlanToStay(stayNightCents(rates, seasons, String(room.basePrice ?? 0), input.checkIn, nights), plan) / 100;
       }
       const amountCents = Math.round(totalEuros * 100);
       const extrasJson = JSON.stringify({
@@ -447,6 +464,7 @@ export const hotelRouter = router({
         children: input.children,
         pricePerNight: Math.round((totalEuros / nights) * 100) / 100,
         source: "pms_recepcion",
+        ...(plan ? { ratePlan: { id: plan.id, name: plan.name, refundable: plan.refundable, includesBreakfast: plan.includesBreakfast } } : {}),
       });
       const held = await createStaffHotelReservation(
         { roomTypeId: input.roomTypeId, checkIn: input.checkIn, checkOut: input.checkOut, units: 1 },
@@ -675,6 +693,67 @@ export const hotelRouter = router({
     .input(z.object({ hotelRoomId: z.number().int(), typeId: z.number().int(), description: z.string().max(1000).optional(), priority: z.enum(INCIDENT_PRIORITIES).default("media"), blocksRoom: z.boolean().default(false) }))
     .mutation(({ input, ctx }) => createRoomIncident({ ...input, userId: ctx.user.id })),
 
+  // ── ADMIN: PMS · FICHAS DE HUÉSPED (RD 933/2021) ──────────────────────────
+  // Datos personales: solo quien gestiona el hotel (adminProcedure). Sin rutas públicas ni check-in en línea.
+
+  /** Huéspedes de la reserva (titular y acompañantes) con lo que falta para el registro de viajeros. */
+  adminGetStayGuests: adminProcedure
+    .input(z.object({ reservationId: z.number().int() }))
+    .query(({ input }) => listStayGuests(input.reservationId)),
+
+  adminSaveStayGuest: adminProcedure
+    .input(z.object({ reservationId: z.number().int(), guestId: z.number().int().nullable().optional(), isLead: z.boolean(), kinship: guestOpt(40), guest: guestFields }))
+    .mutation(({ input, ctx }) => saveStayGuest({ reservationId: input.reservationId, guestId: input.guestId, isLead: input.isLead, kinship: input.kinship, guest: toGuestInput(input.guest), userId: ctx.user.id })),
+
+  adminRemoveStayGuest: adminProcedure
+    .input(z.object({ reservationId: z.number().int(), guestId: z.number().int() }))
+    .mutation(({ input }) => removeStayGuest(input.reservationId, input.guestId)),
+
+  adminSearchGuests: adminProcedure
+    .input(z.object({ q: z.string().max(100).default("") }))
+    .query(({ input }) => searchGuests(input.q)),
+
+  adminGetGuest: adminProcedure
+    .input(z.object({ id: z.number().int() }))
+    .query(({ input }) => guestDetail(input.id)),
+
+  adminUpdateGuest: adminProcedure
+    .input(z.object({ id: z.number().int(), guest: guestFields, notes: z.string().max(1000).nullable().optional() }))
+    .mutation(({ input, ctx }) => updateGuest(input.id, toGuestInput(input.guest), input.notes ?? null, ctx.user.id)),
+
+  adminGetGuestSettings: adminProcedure.query(() => getGuestSettings()),
+
+  /** Conservación de las fichas (meses tras la última estancia; null = desactivada, el valor por defecto). */
+  adminSetGuestSettings: adminProcedure
+    .input(z.object({ retentionMonths: z.number().int().nullable() }))
+    .mutation(({ input, ctx }) => {
+      const why = retentionError(input.retentionMonths);
+      if (why) throw new TRPCError({ code: "BAD_REQUEST", message: why });
+      return setGuestSettings(input.retentionMonths, ctx.user.id);
+    }),
+
+  /** Aplica ahora la conservación configurada (sin plazo configurado no hace nada). */
+  adminRunGuestRetention: adminProcedure.mutation(() => anonymizeExpiredGuests(todayInTimeZone())),
+
+  // ── ADMIN: PMS · PLANES DE TARIFA ─────────────────────────────────────────
+
+  adminListRatePlans: adminProcedure
+    .input(z.object({ roomTypeId: z.number().int().optional() }).optional())
+    .query(({ input }) => listRatePlans(input?.roomTypeId)),
+
+  /** Alta o cambio de un plan de la tipología: ajuste en % (puntos básicos) o fijo por noche (céntimos). */
+  adminSaveRatePlan: adminProcedure
+    .input(z.object({
+      id: z.number().int().optional(), roomTypeId: z.number().int(), code: z.string().max(32).nullable().optional(), name: z.string().max(120),
+      description: z.string().max(255).nullable().optional(), refundable: z.boolean(), includesBreakfast: z.boolean(), adjustType: z.enum(ADJUST_TYPES),
+      adjustValue: z.number().int(), sortOrder: z.number().int().min(0).max(1000).default(0), isActive: z.boolean().default(true),
+    }))
+    .mutation(({ input }) => {
+      const why = ratePlanError(input);
+      if (why) throw new TRPCError({ code: "BAD_REQUEST", message: why });
+      return saveRatePlan({ ...input, code: input.code ?? null, description: input.description ?? null });
+    }),
+
   // ── BOOKING ───────────────────────────────────────────────────────────────
 
   /**
@@ -694,6 +773,8 @@ export const hotelRouter = router({
       customerPhone: z.string().optional(),
       notes: z.string().optional(),
       origin: z.string().url(),
+      /** Plan de tarifa de la tipología (opcional: sin él, el precio de siempre). */
+      ratePlanId: z.number().int().optional(),
     }))
     .mutation(async ({ input }) => {
       // 1. Obtener la tipología y validar
@@ -720,12 +801,18 @@ export const hotelRouter = router({
       const rates = await getRatesByRoomType(input.roomTypeId);
       const seasons = await getAllRateSeasons();
       let totalEuros = 0;
+      const nightCents: number[] = [];
       for (let i = 0; i < nights; i++) {
         const d = new Date(checkInDate);
         d.setDate(d.getDate() + i);
         const dateStr = d.toISOString().split("T")[0];
-        totalEuros += resolveNightlyPrice(rates, seasons, String(room.basePrice ?? 0), dateStr);
+        const night = resolveNightlyPrice(rates, seasons, String(room.basePrice ?? 0), dateStr);
+        totalEuros += night;
+        nightCents.push(Math.round(night * 100));
       }
+      // Plan de tarifa elegido en la web (solo si se indica: sin él, todo igual que siempre)
+      const ratePlan = input.ratePlanId != null ? await ratePlanForBooking(input.roomTypeId, input.ratePlanId) : null;
+      if (ratePlan) totalEuros = applyPlanToStay(nightCents, ratePlan) / 100;
       const pricePerNight = nights > 0 ? totalEuros / nights : parseFloat(String(room.basePrice ?? 0));
 
       // 4. Total = suma de los precios/noche (el precio ya incluye la habitación completa)
@@ -747,6 +834,7 @@ export const hotelRouter = router({
         children: input.children,
         childrenAges: input.childrenAges ?? [],
         pricePerNight,
+        ...(ratePlan ? { ratePlan: { id: ratePlan.id, name: ratePlan.name, refundable: ratePlan.refundable, includesBreakfast: ratePlan.includesBreakfast } } : {}),
       });
 
       //    La habitación queda retenida cada noche de la estancia en la misma transacción que crea
