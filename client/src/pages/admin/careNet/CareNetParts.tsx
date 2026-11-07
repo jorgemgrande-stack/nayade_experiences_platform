@@ -55,13 +55,6 @@ export const newRequestKey = (): string => randomId().replace(/-/g, "");
 /** Día AAAA-MM-DD como «07 nov 2026». */
 export const fmtDay = (d: string) => new Date(`${d}T12:00:00Z`).toLocaleDateString("es-ES", { day: "2-digit", month: "short", year: "numeric", timeZone: "UTC" });
 
-export const newRequestKey = (): string => {
-  try {
-    return crypto.randomUUID().replace(/-/g, "");
-  } catch {
-    return `${Date.now()}${Math.random().toString(36).slice(2, 12)}`;
-  }
-};
 
 /** Buscador de clientes del CRM (nombre, correo o teléfono). */
 export function ClientPicker({ value, onChange }: { value: { id: number; name: string } | null; onChange: (c: { id: number; name: string } | null) => void }) {
