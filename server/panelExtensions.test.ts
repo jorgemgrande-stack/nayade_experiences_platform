@@ -146,7 +146,7 @@ describe("resolución por licencia, rol, permiso y versión del Core", () => {
     const hotel = BUILTIN_MODULES.find((m) => m.id === "hotel")!;
     const src = [source(hotel, { requiresModuleLicense: true })];
     expect((await resolvePanelNavigation(src, deps({ states: { "hotel-net": "active" } }))).entries).toEqual([]);
-    expect((await resolvePanelNavigation(src, deps({ states: { "hotel-net": "active" }, modules: ["hotel"] }))).entries.flatMap((e) => (e.kind === "section" ? e.items.map((i) => i.href) : []))).toEqual(["/admin/net/hotel", "/admin/hotel", "/admin/hotel/recepcion", "/admin/hotel/planning", "/admin/hotel/reservas", "/admin/hotel/habitaciones", "/admin/hotel/informes"]);
+    expect((await resolvePanelNavigation(src, deps({ states: { "hotel-net": "active" }, modules: ["hotel"] }))).entries.flatMap((e) => (e.kind === "section" ? e.items.map((i) => i.href) : []))).toEqual(["/admin/net/hotel", "/admin/hotel", "/admin/hotel/recepcion", "/admin/hotel/planning", "/admin/hotel/reservas", "/admin/hotel/habitaciones", "/admin/hotel/informes", "/admin/hotel/housekeeping"]);
     expect((await resolvePanelNavigation(src, deps({ modules: ["hotel"] }))).entries).toEqual([]);
   });
 
@@ -183,7 +183,7 @@ describe("fusión con el menú por tareas", () => {
     expect(contratados[0]).toBe("x-people-personal");
     expect(contratados.filter((k) => k === "x-people-personal")).toHaveLength(1);
     // Elephant Net: cada producto, una sola sección propia (sin duplicados en «Módulos contratados»)
-    expect(merged.filter((s) => s.id === "hotel-net").map((s) => s.items.map((i) => i.key))).toEqual([["x-hotel-panel", "x-hotel-hotel", "x-hotel-recepcion", "x-hotel-planning", "x-hotel-reservas", "x-hotel-habitaciones", "x-hotel-informes"]]);
+    expect(merged.filter((s) => s.id === "hotel-net").map((s) => s.items.map((i) => i.key))).toEqual([["x-hotel-panel", "x-hotel-hotel", "x-hotel-recepcion", "x-hotel-planning", "x-hotel-reservas", "x-hotel-habitaciones", "x-hotel-informes", "x-hotel-housekeeping"]]);
     expect(contratados).not.toContain("x-hotel-hotel");
     const orphan = mergeExtensions(TASK_NAV, [{ kind: "tab", moduleId: "z", parent: "no-existe", order: 1, leaf: { key: "x-z-a", label: "A", href: "/admin/z", capabilities: ["care-net"], roles: ["admin"] } }]);
     expect(JSON.stringify(orphan)).not.toContain("x-z-a");
