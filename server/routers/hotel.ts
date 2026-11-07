@@ -582,7 +582,7 @@ export const hotelRouter = router({
 
   adminDeleteFolioItem: adminProcedure
     .input(z.object({ reservationId: z.number().int(), itemId: z.number().int() }))
-    .mutation(({ input }) => deleteFolioItem(input)),
+    .mutation(({ input, ctx }) => deleteFolioItem({ ...input, userId: ctx.user.id })),
 
   /** Cierra el folio (saldo 0) y emite su factura con la numeración de la empresa. */
   adminCloseFolio: adminProcedure
