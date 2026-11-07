@@ -140,6 +140,10 @@ async function getProductFiscalData(
     } else if (productType === "hotel") {
       const [row] = await db.select({ fiscalRegime: roomTypes.fiscalRegime, taxRate: roomTypes.taxRate, providerPercent: roomTypes.providerPercent, agencyMarginPercent: roomTypes.agencyMarginPercent }).from(roomTypes).where(eq(roomTypes.id, productId));
       if (row) return toFiscalData(row);
+    } else if (productType === "restaurant") {
+      // Plato de la carta de Restaurant Net (migración 0033): IVA general con el tipo del plato
+      const [rows] = (await db.execute(sql`SELECT tax_rate FROM restaurant_menu_items WHERE id = ${productId}`)) as unknown as [Array<{ tax_rate: unknown }>];
+      if (rows?.[0]) return { fiscalRegime: "general", taxRate: parseFloat(String(rows[0].tax_rate)), providerPercent: 0, agencyMarginPercent: 0 };
     }
   } catch { /* fallback */ }
   return fallback;

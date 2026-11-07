@@ -223,8 +223,8 @@ describe("rutas y APIs de las extensiones", () => {
   it("guardianes del servidor: los namespaces que declaran los manifiestos", () => {
     const sources = [...panelExtensionSources(), source(careManifest), source({ ...careManifest, id: "sede", capability: "ski-rental", panel: { ...big, api: ["porSede"] } }, { siteScoped: true })];
     const caps = extensionCapabilityRoutes(sources);
-    expect(caps).toMatchObject({ hr: "people-hr", hotel: "hotel-net", spa: "care-net", restaurants: "restaurant-net", careClinic: "care-net" });
+    expect(caps).toMatchObject({ hr: "people-hr", hotel: "hotel-net", spa: "care-net", restaurants: "restaurant-net", restaurantNet: "restaurant-net", careClinic: "care-net" });
     expect(caps.porSede).toBeUndefined();
-    expect(extensionModuleRoutes(sources)).toEqual({ hotel: "hotel", spa: "spa", restaurants: "restaurants" });
+    expect(extensionModuleRoutes(sources)).toEqual({ hotel: "hotel", spa: "spa", restaurants: "restaurants", restaurantNet: "restaurants" });
   });
 });

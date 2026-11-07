@@ -314,9 +314,12 @@ export const CORE_EXTENSION_PANELS: Readonly<Record<string, { capability?: strin
         items: [
           { id: "panel", label: "Panel general", path: "/admin/net/restaurant", icon: "dashboard", roles: ["admin", "adminrest"], order: 1 },
           { id: "restaurantes", label: "Reservas y mesas", path: "/admin/restaurantes", icon: "utensils", roles: ["admin", "adminrest"], order: 2 },
+          { id: "sala", label: "Sala y comandas", path: "/admin/restaurant-net/sala", icon: "receipt", roles: ["admin", "adminrest"], order: 3 },
+          { id: "carta", label: "Carta", path: "/admin/restaurant-net/carta", icon: "file", roles: ["admin", "adminrest"], order: 4 },
+          { id: "salas-mesas", label: "Salas y mesas", path: "/admin/restaurant-net/salas-mesas", icon: "settings", roles: ["admin", "adminrest"], order: 5 },
         ],
       },
-      api: ["restaurants"],
+      api: ["restaurants", "restaurantNet"],
     },
   },
   spa: {

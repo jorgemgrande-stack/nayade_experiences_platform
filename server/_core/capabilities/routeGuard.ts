@@ -96,6 +96,8 @@ export const TRPC_ROUTER_CAPABILITIES: Record<string, string> = {
   partners: "supplier-settlements",
   // Elephant Net
   reav: "travel-net",
+  // Restaurant Net · sala, carta y comandas (también lo declara el manifiesto del módulo de restaurantes)
+  restaurantNet: "restaurant-net",
 };
 
 /**
