@@ -16,6 +16,7 @@ import { legacyDb } from "./_core/legacyDb";
 import { getTenantId, getTenantMode } from "./_core/tenant";
 import { getCapabilityAccess } from "./_core/capabilities/access";
 import { CommerceError, commerceClientFromEnv, type CommerceClient } from "./commerceClient";
+import type { SiteDirectory } from "./sdk/context";
 import { MULTI_SITE_CAPABILITY, PRIMARY_SITE_ID, SITE_ID_PATTERN, siteOfStored, storedSiteId, userWorksAtSite, type PanelSites, type SiteFormInput } from "../shared/sites";
 
 /** Operaciones sobre las sedes de una empresa (el canal con el plano de control; las pruebas lo sustituyen). */
@@ -82,7 +83,22 @@ function asTrpc(e: unknown): never {
 export async function companySites(): Promise<PanelSites> {
   const src = currentSource();
   if (!src) return singleSite();
-  const tenantId = getTenantId();
+  return sitesOf(src, getTenantId());
+}
+
+/**
+ * Directorio de sedes de los módulos del SDK (Ski Net, Brevo…): las sedes ACTIVAS de la empresa, con la misma fuente y
+ * caché que el panel. Sin canal con el plano de control, solo la sede principal implícita (la que ve el panel).
+ */
+export const companySiteDirectory: SiteDirectory = {
+  async activeSites(tenantId: string): Promise<string[]> {
+    const src = currentSource();
+    const value = src ? await sitesOf(src, tenantId) : singleSite();
+    return value.sites.filter((s) => s.status === "active").map((s) => s.siteId);
+  },
+};
+
+async function sitesOf(src: SiteSource, tenantId: string): Promise<PanelSites> {
   const now = Date.now();
   const hit = cache.get(tenantId);
   if (hit && now - hit.at < TTL) return hit.value;
