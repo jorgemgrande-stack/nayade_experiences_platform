@@ -331,7 +331,9 @@ export const CORE_EXTENSION_PANELS: Readonly<Record<string, { capability?: strin
     },
   },
   // Productos Net aún sin herramientas operativas en el Core: si se conceden, su panel general muestra lo incluido
-  skiNet: { panel: netHomeOnly("ski-net", "Ski Net", "/admin/net/ski", ["ski-school", "ski-rental"], 68) },
+  // Ski Net: panel general (cualquiera de sus dos licencias) y las herramientas de la escuela (módulo del SDK
+  // server/skiSchool, licencia `ski-school` por sede, que el servicio comprueba en cada operación)
+  skiNet: { panel: skiNetPanel() },
   travelNet: { panel: netHomeOnly("travel-net", "Travel Net", "/admin/net/travel", ["travel-net"], 69) },
   lifeNet: { panel: netHomeOnly("life-net", "Life Net", "/admin/net/life", ["life-net"], 71) },
   // Social Token Net: tres productos (Comunidades, Tokens internos y Complete = los dos) y dos capacidades, así que la
@@ -343,6 +345,25 @@ export const CORE_EXTENSION_PANELS: Readonly<Record<string, { capability?: strin
 /** Sección de un producto Elephant Net que hoy solo tiene su panel general. */
 function netHomeOnly(id: string, label: string, path: string, capabilities: string[], order: number): PanelContributions {
   return { section: { id, label, order, items: [{ id: "panel", label: "Panel general", path, icon: "dashboard", capabilities }] } };
+}
+
+/** Menú de Ski Net: sección propia con el panel general y las pantallas de la escuela. */
+function skiNetPanel(): PanelContributions {
+  const SCHOOL = ["ski-school"];
+  return {
+    section: {
+      id: "ski-net",
+      label: "Ski Net",
+      order: 68,
+      items: [
+        { id: "panel", label: "Panel general", path: "/admin/net/ski", icon: "dashboard", capabilities: ["ski-school", "ski-rental"], order: 1 },
+        { id: "escuela-planning", label: "Escuela: planning", path: "/admin/ski/escuela", icon: "calendar", capabilities: SCHOOL, order: 2 },
+        { id: "profesores", label: "Profesores", path: "/admin/ski/profesores", icon: "users", capabilities: SCHOOL, order: 3 },
+        { id: "productos-docentes", label: "Productos docentes", path: "/admin/ski/productos-docentes", icon: "tag", capabilities: SCHOOL, order: 4 },
+        { id: "sesiones", label: "Sesiones y alumnos", path: "/admin/ski/sesiones", icon: "briefcase", capabilities: SCHOOL, order: 5 },
+      ],
+    },
+  };
 }
 
 /** Menú de Social Token Net: sección propia con portada, Comunidades, Fidelización y las funciones de Complete. */
