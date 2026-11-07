@@ -18,6 +18,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { PanelEmpty, PanelError, PanelLoading, toastError } from "@/components/admin/PanelStates";
 import { cn } from "@/lib/utils";
 import { ROOM_KINDS, ROOM_KIND_LABELS, TABLE_SHAPES, TABLE_SHAPE_LABELS, type RoomKind, type TableShape } from "@shared/restaurantNet";
+import { TableQrButton } from "./CartaQr";
 import { FloorPlan, NoRestaurants, PageHeader, RestaurantPicker, SALA_PATH, useRestaurantChoice, useRestaurantNetWrite, type PlanTable } from "./RestaurantNetParts";
 
 type RoomForm = { id?: number; name: string; kind: RoomKind };
@@ -30,6 +31,8 @@ export default function SalasMesas() {
   const utils = trpc.useUtils();
   const rooms = trpc.restaurantNet.listRooms.useQuery({ restaurantId: restaurantId!, includeArchived: true }, { enabled: restaurantId != null });
   const tables = trpc.restaurantNet.listTables.useQuery({ restaurantId: restaurantId!, includeArchived: true }, { enabled: restaurantId != null });
+  const qrLinks = trpc.restaurantNet.tableLinks.useQuery({ restaurantId: restaurantId! }, { enabled: restaurantId != null && canWrite, retry: false });
+  const qrActive = new Set((qrLinks.data ?? []).filter((l) => l.active).map((l) => l.tableId));
   const [roomTab, setRoomTab] = useState<number | null>(null);
   const [roomForm, setRoomForm] = useState<RoomForm | null>(null);
   const [tableForm, setTableForm] = useState<TableForm | null>(null);
@@ -177,6 +180,7 @@ export default function SalasMesas() {
                           </span>
                           {canWrite && (
                             <span className="flex gap-1">
+                              <TableQrButton tableId={t.id} code={t.code} active={qrActive.has(t.id)} canWrite={canWrite} onChange={() => utils.restaurantNet.tableLinks.invalidate()} />
                               <Button size="sm" variant="ghost" aria-label={`Editar la mesa ${t.code}`} onClick={() => setTableForm({ id: t.id, roomId: t.roomId, code: t.code, shape: t.shape as TableShape, capacity: String(t.capacity) })}>
                                 <Pencil className="h-4 w-4" aria-hidden="true" />
                               </Button>

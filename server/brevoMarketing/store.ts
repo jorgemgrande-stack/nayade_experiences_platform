@@ -86,6 +86,12 @@ export interface BrevoMarketingStore {
   /** Cambia el estado vigente y añade la fila del historial a la vez. */
   setConsent(next: Omit<Consent, "grantedAt" | "withdrawnAt">, log: ConsentLogEntry): Promise<void>;
   consentLog(clientId: number): Promise<ConsentLogEntry[]>;
+  /**
+   * Baja atómica: retira el consentimiento (o registra la retirada si no había) con su fila del historial, salvo que ya
+   * estuviera retirado. Devuelve si ha cambiado algo (dos bajas a la vez: una sola fila del historial).
+   */
+  withdrawOnce(clientId: number, source: string, evidence: string | null, actor: string): Promise<boolean>;
+  clientEmail(clientId: number): Promise<string | null>;
   clientExists(clientId: number): Promise<boolean>;
   clients(q: string, limit: number): Promise<ClientRow[]>;
   consentCounts(): Promise<{ granted: number; withdrawn: number }>;
@@ -137,6 +143,15 @@ export class MemoryBrevoMarketingStore implements BrevoMarketingStore {
   }
   async consentLog(clientId: number) {
     return this.log.filter((l) => l.clientId === clientId).map((l) => ({ ...l }));
+  }
+  async withdrawOnce(clientId: number, source: string, evidence: string | null, actor: string) {
+    const prev = this.cons.get(clientId);
+    if (prev?.status === "withdrawn") return false;
+    await this.setConsent({ clientId, status: "withdrawn", source, evidence, updatedBy: actor }, { clientId, previousStatus: prev?.status ?? null, newStatus: "withdrawn", source, evidence, actor });
+    return true;
+  }
+  async clientEmail(clientId: number) {
+    return this.clientRows.find((c) => c.id === clientId)?.email ?? null;
   }
   async clientExists(clientId: number) {
     return this.clientRows.some((c) => c.id === clientId);
@@ -301,6 +316,37 @@ export class TenantDbBrevoMarketingStore implements BrevoMarketingStore {
         createdAt: iso(r.created_at)!,
       })),
     );
+  }
+  async withdrawOnce(clientId: number, source: string, evidence: string | null, actor: string): Promise<boolean> {
+    for (let attempt = 1; ; attempt++) {
+      try {
+        return await this.exec((db) =>
+          db.transaction(async (tx) => {
+            const [cur] = rowsOf(await tx.execute(sql`SELECT status FROM customer_marketing_consents WHERE client_id = ${clientId} FOR UPDATE`));
+            if (cur?.status === "withdrawn") return false;
+            await tx.execute(sql`
+              INSERT INTO customer_marketing_consents (client_id, status, source, evidence, granted_at, withdrawn_at, updated_by)
+              VALUES (${clientId}, 'withdrawn', ${source}, ${evidence}, NULL, CURRENT_TIMESTAMP(3), ${actor.slice(0, 100)})
+              ON DUPLICATE KEY UPDATE status = 'withdrawn', source = VALUES(source), evidence = VALUES(evidence), withdrawn_at = CURRENT_TIMESTAMP(3), updated_by = VALUES(updated_by)`);
+            await tx.execute(sql`
+              INSERT INTO customer_marketing_consent_log (client_id, previous_status, new_status, source, evidence, actor)
+              VALUES (${clientId}, ${cur ? String(cur.status) : null}, 'withdrawn', ${source}, ${evidence}, ${actor.slice(0, 100)})`);
+            return true;
+          }),
+        );
+      } catch (e) {
+        // Dos bajas a la vez sin fila previa: una gana; la otra se repite y ve la baja ya hecha
+        const code = (e as { code?: string; cause?: { code?: string } })?.code ?? (e as { cause?: { code?: string } })?.cause?.code;
+        if (attempt < 3 && (isDuplicate(e) || code === "ER_LOCK_DEADLOCK")) continue;
+        throw e;
+      }
+    }
+  }
+  clientEmail(clientId: number) {
+    return this.exec(async (db) => {
+      const [r] = rowsOf(await db.execute(sql`SELECT email FROM clients WHERE id = ${clientId}`));
+      return r?.email ? String(r.email).trim().toLowerCase() : null;
+    });
   }
   clientExists(clientId: number) {
     return this.exec(async (db) => rowsOf(await db.execute(sql`SELECT id FROM clients WHERE id = ${clientId}`)).length > 0);

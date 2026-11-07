@@ -237,9 +237,24 @@ function Consents() {
               <span className="flex flex-wrap items-center gap-2">
                 {c.consent === "granted" ? <Badge>Con consentimiento</Badge> : c.consent === "withdrawn" ? <Badge variant="secondary">Baja</Badge> : <Badge variant="outline">Sin consentimiento</Badge>}
                 {c.consent === "granted" ? (
-                  <Button size="sm" variant="ghost" onClick={() => setWithdrawFor(c)}>
-                    Retirar
-                  </Button>
+                  <>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      title="Enlace público para que el cliente se dé de baja (pie de las campañas)"
+                      onClick={() =>
+                        utils.brevoMarketing.unsubscribeLink
+                          .fetch({ clientId: c.clientId })
+                          .then((r) => navigator.clipboard?.writeText(r.url))
+                          .then(() => toast.success("Enlace de baja copiado"), (e) => toastError(e))
+                      }
+                    >
+                      Enlace de baja
+                    </Button>
+                    <Button size="sm" variant="ghost" onClick={() => setWithdrawFor(c)}>
+                      Retirar
+                    </Button>
+                  </>
                 ) : (
                   <Button size="sm" variant="outline" onClick={() => setGrantFor(c)}>
                     Registrar consentimiento

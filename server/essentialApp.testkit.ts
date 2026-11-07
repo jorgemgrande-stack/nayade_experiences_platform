@@ -198,6 +198,8 @@ export async function startEssentialApp(url: string, label: string, opts: { webD
   app.use("/api/trpc", createAuthGuardMiddleware(true));
   app.use(redsysRouter);
   app.use((await import("./loyaltyPortal")).createLoyaltyPortalRouter());
+  // Límites por IP holgados (todas las pruebas salen de 127.0.0.1); el límite por enlace, el real
+  app.use((await import("./netPublic/router")).createNetPublicRouter({ perIpPerMinute: 100_000, postsPerIp: 100_000 }));
   app.use(uploadRouter);
   app.use(fileRouter);
   app.use(invoicePreviewRouter);

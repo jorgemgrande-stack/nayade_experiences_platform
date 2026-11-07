@@ -17,6 +17,7 @@ import { tpvRouter } from "./tpv";
 import * as rn from "../restaurantNetDb";
 import { hotelChargesEnabled, listInHouseGuests } from "../hotelFolioCharges";
 import * as kds from "../restaurantKdsDb";
+import * as qr from "../netPublic/restaurantTable";
 import { INCIDENT_TYPES, KITCHEN_FLOW, STATION_TONES } from "../../shared/restaurantKds";
 import { MENU_TAX_RATES, PAYMENT_METHODS, ROOM_KINDS, TABLE_SHAPES, madridToday } from "../../shared/restaurantNet";
 import type { TrpcContext } from "../_core/context";
@@ -257,6 +258,25 @@ export const restaurantNetRouter = router({
   chargeToRoom: adminrestProcedure
     .input(z.object({ orderId: id, hotelReservationId: id }))
     .mutation(({ ctx, input }) => rn.chargeOrderToRoom(guardOf(ctx), input.orderId, input.hotelReservationId, ctx.user.id)),
+
+  // ── Carta QR y pedidos desde la mesa (página pública /mesa/<token>) ─────
+  /** Enlace de cada mesa: si hay uno activo (el token no se puede volver a ver: se rota). */
+  tableLinks: adminrestProcedure.input(restaurantInput).query(({ ctx, input }) => qr.tableLinks(guardOf(ctx), input.restaurantId)),
+
+  /** Emite o rota el enlace (y el QR) de la mesa: el anterior deja de valer. Devuelve la URL una sola vez. */
+  issueTableLink: adminrestProcedure.input(z.object({ tableId: id })).mutation(({ ctx, input }) => qr.issueTableLink(guardOf(ctx), input.tableId, `user:${ctx.user.id}`)),
+
+  revokeTableLink: adminrestProcedure.input(z.object({ tableId: id })).mutation(({ ctx, input }) => qr.revokeTableLink(guardOf(ctx), input.tableId, `user:${ctx.user.id}`)),
+
+  /** Pedidos enviados desde las mesas: pendientes de confirmar y últimos atendidos. */
+  tableRequests: adminrestProcedure.input(restaurantInput).query(({ ctx, input }) => qr.listTableRequests(guardOf(ctx), input.restaurantId)),
+
+  /** Confirma el pedido: pasa a la comanda de la mesa (no cobra; el cobro es el de siempre, en sala). */
+  acceptTableRequest: adminrestProcedure.input(z.object({ requestId: id })).mutation(({ ctx, input }) => qr.acceptTableRequest(guardOf(ctx), input.requestId, ctx.user.id)),
+
+  rejectTableRequest: adminrestProcedure
+    .input(z.object({ requestId: id, reason: z.string().max(255).nullish() }))
+    .mutation(({ ctx, input }) => qr.rejectTableRequest(guardOf(ctx), input.requestId, ctx.user.id, input.reason ?? null)),
 
   // ── Reservas en la sala ──────────────────────────────────────────────────
   listDayBookings: adminrestProcedure

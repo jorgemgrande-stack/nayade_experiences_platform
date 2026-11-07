@@ -10,6 +10,7 @@ import { CONSENT_SOURCES } from "./plan";
 import { BrevoMarketingError } from "./service";
 import { BREVO_CAPABILITY, brevoMarketingService } from "./runtime";
 import { BrevoNotInstalled, RunInProgress } from "./store";
+import { unsubscribeUrl } from "../netPublic/brevoUnsubscribe";
 
 const CODES: Record<BrevoMarketingError["code"], TRPCError["code"]> = {
   invalid_input: "BAD_REQUEST",
@@ -57,6 +58,8 @@ export const brevoMarketingRouter = router({
     .input(z.object({ clientId: id, reason: z.string().max(500).default("") }))
     .mutation(({ input, ctx }) => handle(() => svc().withdrawConsent(input.clientId, input.reason, actor(ctx)))),
   consentLog: licensed.input(z.object({ clientId: id })).query(({ input }) => handle(() => svc().consentLog(input.clientId))),
+  /** Enlace público de baja del cliente (/baja/<cliente>.<firma>): para el pie de las campañas o enviarlo a mano. */
+  unsubscribeLink: licensed.input(z.object({ clientId: id })).query(({ input }) => ({ url: unsubscribeUrl(input.clientId) })),
 
   preview: licensed.query(() => handle(() => svc().preview())),
   sync: licensed.mutation(({ ctx }) => handle(() => svc().sync("manual", actor(ctx)))),
