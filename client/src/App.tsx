@@ -144,12 +144,19 @@ const HotelReception = lazy(() => import("./pages/admin/hotel/HotelReception"));
 const HotelPlanning = lazy(() => import("./pages/admin/hotel/HotelPlanning"));
 const HotelReservations = lazy(() => import("./pages/admin/hotel/HotelReservations"));
 const HotelRooms = lazy(() => import("./pages/admin/hotel/HotelRooms"));
+const HotelReports = lazy(() => import("./pages/admin/hotel/HotelReports"));
 const SpaManager = lazy(() => import("./pages/admin/spa/SpaManager"));
 const ReviewsManager = lazy(() => import("./pages/admin/ReviewsManager"));
 
 // Restaurants Admin
 const RestaurantsManager = lazy(() => import("./pages/admin/restaurants/RestaurantsManager"));
 const GlobalCalendar = lazy(() => import("./pages/admin/restaurants/GlobalCalendar"));
+const RestaurantNetSala = lazy(() => import("./pages/admin/restaurantNet/Sala"));
+const RestaurantNetComanda = lazy(() => import("./pages/admin/restaurantNet/Comanda"));
+const RestaurantNetCarta = lazy(() => import("./pages/admin/restaurantNet/Carta"));
+const RestaurantNetSalasMesas = lazy(() => import("./pages/admin/restaurantNet/SalasMesas"));
+const RestaurantNetCocina = lazy(() => import("./pages/admin/restaurantNet/Cocina"));
+const RestaurantNetCocinaAjustes = lazy(() => import("./pages/admin/restaurantNet/CocinaAjustes"));
 
 // Users & Settings
 const UsersManager = lazy(() => import("./pages/admin/users/UsersManager"));
@@ -197,6 +204,10 @@ const SkiSchoolPlanning = lazy(() => import("./pages/admin/ski/SkiSchoolPlanning
 const SkiInstructors = lazy(() => import("./pages/admin/ski/SkiInstructors"));
 const SkiTeachingProducts = lazy(() => import("./pages/admin/ski/SkiTeachingProducts"));
 const SkiSessions = lazy(() => import("./pages/admin/ski/SkiSessions"));
+const SkiRentalCounter = lazy(() => import("./pages/admin/ski/SkiRentalCounter"));
+const SkiRentalInventory = lazy(() => import("./pages/admin/ski/SkiRentalInventory"));
+const SkiRentalWorkshop = lazy(() => import("./pages/admin/ski/SkiRentalWorkshop"));
+const SkiRentalSettings = lazy(() => import("./pages/admin/ski/SkiRentalSettings"));
 const ProposalsPage = lazy(() => import("./pages/admin/crm/ProposalsPage"));
 const CommercialFollowupDashboard = lazy(() => import("./pages/admin/commercial/CommercialFollowupDashboard"));
 const WhatsAppGHLInbox = lazy(() => import("./pages/admin/commercial/WhatsAppGHLInbox"));
@@ -455,6 +466,7 @@ function Router() {
       <Route path="/admin/hotel/planning">{() => <Suspense fallback={<AdminLoadingFallback />}><HotelPlanning /></Suspense>}</Route>
       <Route path="/admin/hotel/reservas">{() => <Suspense fallback={<AdminLoadingFallback />}><HotelReservations /></Suspense>}</Route>
       <Route path="/admin/hotel/habitaciones">{() => <Suspense fallback={<AdminLoadingFallback />}><HotelRooms /></Suspense>}</Route>
+      <Route path="/admin/hotel/informes">{() => <Suspense fallback={<AdminLoadingFallback />}><HotelReports /></Suspense>}</Route>
       <Route path="/admin/hotel">{() => <Suspense fallback={<AdminLoadingFallback />}><HotelManager /></Suspense>}</Route>
       <Route path="/admin/spa">{() => <Suspense fallback={<AdminLoadingFallback />}><SpaManager /></Suspense>}</Route>
 
@@ -466,6 +478,12 @@ function Router() {
       <Route path="/admin/restaurantes/reservas">{() => <Suspense fallback={<AdminLoadingFallback />}><RestaurantsManager /></Suspense>}</Route>
       <Route path="/admin/restaurantes/calendario">{() => <Suspense fallback={<AdminLoadingFallback />}><GlobalCalendar /></Suspense>}</Route>
       <Route path="/admin/restaurantes/configuracion">{() => <Suspense fallback={<AdminLoadingFallback />}><RestaurantsManager /></Suspense>}</Route>
+      <Route path="/admin/restaurant-net/sala">{() => <Suspense fallback={<AdminLoadingFallback />}><RestaurantNetSala /></Suspense>}</Route>
+      <Route path="/admin/restaurant-net/sala/comanda/:id">{() => <Suspense fallback={<AdminLoadingFallback />}><RestaurantNetComanda /></Suspense>}</Route>
+      <Route path="/admin/restaurant-net/carta">{() => <Suspense fallback={<AdminLoadingFallback />}><RestaurantNetCarta /></Suspense>}</Route>
+      <Route path="/admin/restaurant-net/salas-mesas">{() => <Suspense fallback={<AdminLoadingFallback />}><RestaurantNetSalasMesas /></Suspense>}</Route>
+      <Route path="/admin/restaurant-net/cocina">{() => <Suspense fallback={<AdminLoadingFallback />}><RestaurantNetCocina /></Suspense>}</Route>
+      <Route path="/admin/restaurant-net/cocina/ajustes">{() => <Suspense fallback={<AdminLoadingFallback />}><RestaurantNetCocinaAjustes /></Suspense>}</Route>
 
       {/* Atención Comercial */}
       <Route path="/admin/atencion-comercial/whatsapp">{() => <Suspense fallback={<AdminLoadingFallback />}><WhatsAppGHLInbox /></Suspense>}</Route>
@@ -501,6 +519,10 @@ function Router() {
       <Route path="/admin/ski/profesores">{() => <Suspense fallback={<AdminLoadingFallback />}><SkiInstructors /></Suspense>}</Route>
       <Route path="/admin/ski/productos-docentes">{() => <Suspense fallback={<AdminLoadingFallback />}><SkiTeachingProducts /></Suspense>}</Route>
       <Route path="/admin/ski/sesiones">{() => <Suspense fallback={<AdminLoadingFallback />}><SkiSessions /></Suspense>}</Route>
+      <Route path="/admin/ski/alquiler">{() => <Suspense fallback={<AdminLoadingFallback />}><SkiRentalCounter /></Suspense>}</Route>
+      <Route path="/admin/ski/inventario">{() => <Suspense fallback={<AdminLoadingFallback />}><SkiRentalInventory /></Suspense>}</Route>
+      <Route path="/admin/ski/taller">{() => <Suspense fallback={<AdminLoadingFallback />}><SkiRentalWorkshop /></Suspense>}</Route>
+      <Route path="/admin/ski/alquiler-ajustes">{() => <Suspense fallback={<AdminLoadingFallback />}><SkiRentalSettings /></Suspense>}</Route>
       <Route path="/admin/crm/embudo">{() => <Suspense fallback={<AdminLoadingFallback />}><CrmFunnel /></Suspense>}</Route>
       <Route path="/admin/crm/propuestas">{() => <Suspense fallback={<AdminLoadingFallback />}><ProposalsPage /></Suspense>}</Route>
       <Route path="/admin/crm/anulaciones">{() => { window.location.replace("/admin/crm"); return null; }}</Route>

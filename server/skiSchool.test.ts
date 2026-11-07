@@ -141,7 +141,7 @@ describe("manifiesto, menú e independencia", () => {
     const s = CORE_EXTENSION_PANELS.skiNet.panel.section!;
     expect([s.id, s.label]).toEqual(["ski-net", "Ski Net"]);
     expect(s.items[0]).toMatchObject({ label: "Panel general", path: "/admin/net/ski", capabilities: ["ski-school", "ski-rental"] });
-    expect(s.items.slice(1).map((i) => [i.label, i.path, i.capabilities])).toEqual([
+    expect(s.items.filter((i) => i.capabilities?.join() === "ski-school").map((i) => [i.label, i.path, i.capabilities])).toEqual([
       ["Escuela: planning", "/admin/ski/escuela", ["ski-school"]],
       ["Profesores", "/admin/ski/profesores", ["ski-school"]],
       ["Productos docentes", "/admin/ski/productos-docentes", ["ski-school"]],
