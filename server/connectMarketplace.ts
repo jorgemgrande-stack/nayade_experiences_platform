@@ -181,7 +181,8 @@ export function buildConnectCatalog(
       valueProposition: c?.valueProposition ?? null,
       longDescription: c?.longDescription ?? null,
       problem: c?.problem ?? null,
-      benefits: c?.benefits ?? [],
+      // Net: los beneficios del producto unificado (los publicados antes comparaban con los submódulos sueltos)
+      benefits: np ? np.benefits : (c?.benefits ?? []),
       excludes: c?.excludes ?? [],
       integrations: c?.integrations ?? [],
       coreIntegration: c?.coreIntegration ?? [],

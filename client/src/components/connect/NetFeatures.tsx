@@ -44,22 +44,3 @@ export function NetFeatureAreas({ areas, title = "Funcionalidades incluidas", in
     </section>
   );
 }
-
-export function NetBenefits({ benefits }: { benefits: string[] }) {
-  if (benefits.length === 0) return null;
-  return (
-    <section className="rounded-2xl border border-border bg-card p-5 sm:p-6" aria-labelledby="net-benefits-t">
-      <h2 id="net-benefits-t" className="mb-3 text-lg font-bold text-foreground">
-        Principales beneficios
-      </h2>
-      <ul className="space-y-2">
-        {benefits.map((b) => (
-          <li key={b} className="flex items-start gap-2 text-sm text-foreground">
-            <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-primary" aria-hidden="true" />
-            <span>{b}</span>
-          </li>
-        ))}
-      </ul>
-    </section>
-  );
-}

@@ -25,7 +25,7 @@ import { SHEET_ANCHORS, SheetBlocks, sheetAnchorTargets } from "@/components/con
 import { AMPLIAR_PATH } from "@/components/connect/LockedFeature";
 import { useConnectAttempt, useConnectCatalog, useOrderTracking, type ConnectCatalogItem } from "@/components/connect/useConnect";
 import { trackConnect, useConnectTrackingSender } from "@/components/connect/useConnectTracking";
-import { NetBenefits, NetFeatureAreas } from "@/components/connect/NetFeatures";
+import { NetFeatureAreas } from "@/components/connect/NetFeatures";
 import { netProductOfLegacy } from "@shared/netProducts";
 import "@/components/connect/connectStage.css";
 
@@ -99,7 +99,6 @@ export default function ConnectDetailPage() {
               <AnchorNav item={item} />
               <div className="grid items-start gap-6 lg:grid-cols-[minmax(0,1fr)_22rem]">
                 <div className="min-w-0 space-y-6">
-                  {item.net && item.sheet.benefits.length === 0 && <NetBenefits benefits={item.net.benefits} />}
                   {item.net && <NetFeatureAreas areas={item.net.areas} />}
                   <SheetBlocks item={item} items={catalog.items} view={view} onAction={(it, kind) => setRelated({ item: it, kind })} />
                 </div>
