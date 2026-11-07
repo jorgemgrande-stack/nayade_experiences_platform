@@ -68,7 +68,7 @@ function NewReservationDialog({ roomTypes, rooms, onClose }: { roomTypes: any[];
 
   return (
     <Dialog open onOpenChange={(o) => !o && onClose()}>
-      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+      <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto">
         <DialogHeader><DialogTitle>Nueva reserva de hotel</DialogTitle></DialogHeader>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 py-2">
           <div className="sm:col-span-2 space-y-1">
@@ -251,7 +251,7 @@ export default function HotelReservations() {
                       <th className="p-3 font-medium">Pago</th>
                       <th className="p-3 font-medium">Estancia</th>
                       <th className="p-3 font-medium">Habitación</th>
-                      <th className="p-3 font-medium text-right">Acciones</th>
+                      <th className="sticky right-0 bg-muted p-3 font-medium text-right">Acciones</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -276,7 +276,7 @@ export default function HotelReservations() {
                           <td className="p-3"><Badge variant={r.status === "paid" ? "default" : "outline"}>{PAYMENT_LABEL[r.status] ?? r.status}</Badge></td>
                           <td className="p-3">{stayBadge(r)}</td>
                           <td className="p-3">{r.assignment ? <Badge variant="outline" className="gap-1"><BedDouble className="h-3 w-3" /> {r.assignment.roomCode}</Badge> : <span className="text-xs text-muted-foreground">Sin asignar</span>}</td>
-                          <td className="p-3 whitespace-nowrap text-right">
+                          <td className="sticky right-0 bg-card p-3 whitespace-nowrap text-right shadow-[-8px_0_8px_-8px_rgba(0,0,0,0.25)]">
                             {canCheckIn && <Button variant="ghost" size="sm" onClick={() => checkIn.mutate({ reservationId: r.id })} disabled={busy} title="Check-in"><LogIn className="h-4 w-4 text-emerald-600 dark:text-emerald-400" /></Button>}
                             {s === "EN_CURSO" && <Button variant="ghost" size="sm" onClick={() => checkOut.mutate({ reservationId: r.id })} disabled={busy} title="Check-out"><LogOut className="h-4 w-4 text-violet-600 dark:text-violet-400" /></Button>}
                             {canCheckIn && <Button variant="ghost" size="sm" onClick={() => noShow.mutate({ reservationId: r.id })} disabled={busy} title="No-show"><Ban className="h-4 w-4" /></Button>}
