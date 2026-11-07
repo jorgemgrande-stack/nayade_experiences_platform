@@ -120,6 +120,7 @@ const MyDocuments = lazy(() => import("./pages/employee/MyDocuments"));
 const MyTimeClock = lazy(() => import("./pages/employee/MyTimeClock"));
 const MyPayslips = lazy(() => import("./pages/employee/MyPayslips"));
 const ActivarEmpleado = lazy(() => import("./pages/employee/ActivarEmpleado"));
+const MyClasses = lazy(() => import("./pages/employee/MyClasses"));
 
 // Accounting
 const AccountingDashboard = lazy(() => import("./pages/admin/accounting/AccountingDashboard"));
@@ -145,7 +146,11 @@ const HotelPlanning = lazy(() => import("./pages/admin/hotel/HotelPlanning"));
 const HotelReservations = lazy(() => import("./pages/admin/hotel/HotelReservations"));
 const HotelRooms = lazy(() => import("./pages/admin/hotel/HotelRooms"));
 const HotelReports = lazy(() => import("./pages/admin/hotel/HotelReports"));
+const HotelHousekeeping = lazy(() => import("./pages/admin/hotel/HotelHousekeeping"));
 const SpaManager = lazy(() => import("./pages/admin/spa/SpaManager"));
+const CareNetReservas = lazy(() => import("./pages/admin/careNet/Reservas"));
+const CareNetBonos = lazy(() => import("./pages/admin/careNet/Bonos"));
+const CareNetClientes = lazy(() => import("./pages/admin/careNet/Clientes"));
 const ReviewsManager = lazy(() => import("./pages/admin/ReviewsManager"));
 
 // Restaurants Admin
@@ -212,6 +217,8 @@ const SkiRentalCounter = lazy(() => import("./pages/admin/ski/SkiRentalCounter")
 const SkiRentalInventory = lazy(() => import("./pages/admin/ski/SkiRentalInventory"));
 const SkiRentalWorkshop = lazy(() => import("./pages/admin/ski/SkiRentalWorkshop"));
 const SkiRentalSettings = lazy(() => import("./pages/admin/ski/SkiRentalSettings"));
+const SkiTeacherHours = lazy(() => import("./pages/admin/ski/SkiTeacherHours"));
+const SkiSettlements = lazy(() => import("./pages/admin/ski/SkiSettlements"));
 const ProposalsPage = lazy(() => import("./pages/admin/crm/ProposalsPage"));
 const CommercialFollowupDashboard = lazy(() => import("./pages/admin/commercial/CommercialFollowupDashboard"));
 const WhatsAppGHLInbox = lazy(() => import("./pages/admin/commercial/WhatsAppGHLInbox"));
@@ -410,6 +417,7 @@ function Router() {
       <Route path="/empleado/nominas">{() => <Suspense fallback={<AdminLoadingFallback />}><MyPayslips /></Suspense>}</Route>
       <Route path="/empleado/documentos">{() => <Suspense fallback={<AdminLoadingFallback />}><MyDocuments /></Suspense>}</Route>
       <Route path="/empleado/vacaciones">{() => <Suspense fallback={<AdminLoadingFallback />}><MyLeaves /></Suspense>}</Route>
+      <Route path="/empleado/clases">{() => <Suspense fallback={<AdminLoadingFallback />}><MyClasses /></Suspense>}</Route>
       <Route path="/empleado/activar">{() => <Suspense fallback={<AdminLoadingFallback />}><ActivarEmpleado /></Suspense>}</Route>
 
       {/* Accounting */}
@@ -471,8 +479,12 @@ function Router() {
       <Route path="/admin/hotel/reservas">{() => <Suspense fallback={<AdminLoadingFallback />}><HotelReservations /></Suspense>}</Route>
       <Route path="/admin/hotel/habitaciones">{() => <Suspense fallback={<AdminLoadingFallback />}><HotelRooms /></Suspense>}</Route>
       <Route path="/admin/hotel/informes">{() => <Suspense fallback={<AdminLoadingFallback />}><HotelReports /></Suspense>}</Route>
+      <Route path="/admin/hotel/housekeeping">{() => <Suspense fallback={<AdminLoadingFallback />}><HotelHousekeeping /></Suspense>}</Route>
       <Route path="/admin/hotel">{() => <Suspense fallback={<AdminLoadingFallback />}><HotelManager /></Suspense>}</Route>
       <Route path="/admin/spa">{() => <Suspense fallback={<AdminLoadingFallback />}><SpaManager /></Suspense>}</Route>
+      <Route path="/admin/care-net/reservas">{() => <Suspense fallback={<AdminLoadingFallback />}><CareNetReservas /></Suspense>}</Route>
+      <Route path="/admin/care-net/bonos">{() => <Suspense fallback={<AdminLoadingFallback />}><CareNetBonos /></Suspense>}</Route>
+      <Route path="/admin/care-net/clientes">{() => <Suspense fallback={<AdminLoadingFallback />}><CareNetClientes /></Suspense>}</Route>
 
       {/* Reviews */}
       <Route path="/admin/operaciones/resenas">{() => <Suspense fallback={<AdminLoadingFallback />}><ReviewsManager /></Suspense>}</Route>
@@ -527,6 +539,8 @@ function Router() {
       <Route path="/admin/ski/profesores">{() => <Suspense fallback={<AdminLoadingFallback />}><SkiInstructors /></Suspense>}</Route>
       <Route path="/admin/ski/productos-docentes">{() => <Suspense fallback={<AdminLoadingFallback />}><SkiTeachingProducts /></Suspense>}</Route>
       <Route path="/admin/ski/sesiones">{() => <Suspense fallback={<AdminLoadingFallback />}><SkiSessions /></Suspense>}</Route>
+      <Route path="/admin/ski/horas">{() => <Suspense fallback={<AdminLoadingFallback />}><SkiTeacherHours /></Suspense>}</Route>
+      <Route path="/admin/ski/liquidaciones">{() => <Suspense fallback={<AdminLoadingFallback />}><SkiSettlements /></Suspense>}</Route>
       <Route path="/admin/ski/alquiler">{() => <Suspense fallback={<AdminLoadingFallback />}><SkiRentalCounter /></Suspense>}</Route>
       <Route path="/admin/ski/inventario">{() => <Suspense fallback={<AdminLoadingFallback />}><SkiRentalInventory /></Suspense>}</Route>
       <Route path="/admin/ski/taller">{() => <Suspense fallback={<AdminLoadingFallback />}><SkiRentalWorkshop /></Suspense>}</Route>

@@ -15,7 +15,7 @@ import { Link, useLocation } from "wouter";
 import { useAuth } from "@/_core/hooks/useAuth";
 import { trpc } from "@/lib/trpc";
 import {
-  LayoutDashboard, User, FileText, LogOut, Loader2, Phone, Clock, Banknote, CalendarOff,
+  LayoutDashboard, User, FileText, LogOut, Loader2, Phone, Clock, Banknote, CalendarOff, GraduationCap,
 } from "lucide-react";
 import { usePortalLook } from "./usePortalLook";
 
@@ -49,6 +49,8 @@ function EmployeeLayoutInner({ user, location, navigate, logout, children }: {
 }) {
   const look = usePortalLook();
   const { data: me, error: meError } = trpc.hr.portal.me.useQuery(undefined, { retry: false });
+  // Ski Net · Profesores: la pestaña «Mis clases» solo aparece si el usuario está vinculado a un profesor de la escuela
+  const teacher = trpc.skiSchool.myClasses.useQuery(undefined, { retry: false, staleTime: 60_000 });
   // Sin la extensión Personal activa (o con el usuario sin ficha): aviso claro en lugar de pantallas con errores
   const meErrorData = meError?.data as { code?: string; capability?: string } | undefined;
   const portalUnavailable = meErrorData?.capability === "people-hr";
@@ -126,6 +128,11 @@ function EmployeeLayoutInner({ user, location, navigate, logout, children }: {
             <NavTab href="/empleado/vacaciones" active={location.startsWith("/empleado/vacaciones")} icon={<CalendarOff className="w-3.5 h-3.5" />}>
               Vacaciones
             </NavTab>
+            {teacher.data && (
+              <NavTab href="/empleado/clases" active={location.startsWith("/empleado/clases")} icon={<GraduationCap className="w-3.5 h-3.5" />}>
+                Mis clases
+              </NavTab>
+            )}
             <NavTab href="/empleado/documentos" active={location.startsWith("/empleado/documentos")} icon={<FileText className="w-3.5 h-3.5" />}>
               Mis documentos
             </NavTab>

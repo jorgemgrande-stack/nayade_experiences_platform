@@ -8,12 +8,16 @@
  */
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
-import { adminProcedure, router } from "../_core/trpc";
+import { adminProcedure, employeeProcedure, router } from "../_core/trpc";
+import { getSystemSetting } from "../config";
 import { SdkError, getSdkRuntime, installSdkModule, toTrpcError } from "../sdk";
 import { skiSchoolModule } from "./manifest";
 import { ABSENCE_KINDS, PRODUCT_KINDS } from "./rules";
 import { SkiSchoolError, SkiSchoolService } from "./service";
 import { TenantDbSkiSchoolStore } from "./store";
+import { SkiTeacherService } from "./teacherService";
+import { TenantDbSkiTeacherStore } from "./teacherStore";
+import { ATTENDANCE_STATUSES, PAY_MODES } from "./teachers";
 
 // Un módulo que no valida no impide arrancar al Core: queda sin registrar y sus rutas responden NOT_FOUND
 try {
@@ -22,8 +26,15 @@ try {
   console.warn(JSON.stringify({ ctx: "SkiSchool", event: "install_failed", error: e instanceof Error ? e.message.slice(0, 200) : "error" }));
 }
 
+const school = new TenantDbSkiSchoolStore();
 const service = new SkiSchoolService({
-  store: new TenantDbSkiSchoolStore(),
+  store: school,
+  gate: () => getSdkRuntime().gate,
+  events: () => getSdkRuntime().events,
+});
+const teachers = new SkiTeacherService({
+  store: new TenantDbSkiTeacherStore(),
+  school,
   gate: () => getSdkRuntime().gate,
   events: () => getSdkRuntime().events,
 });
@@ -186,4 +197,46 @@ export const skiSchoolRouter = router({
   cancelParticipant: adminProcedure.input(site.extend({ participantId: id })).mutation(({ input }) => handle(() => service.cancelParticipant(input.siteId, input.participantId))),
 
   planning: adminProcedure.input(site.extend({ date: day })).query(({ input }) => handle(() => service.planning(input.siteId, input.date))),
+  // ── Profesores: horas, asistencia, liquidaciones y portal ──
+  updateTerms: adminProcedure
+    .input(
+      site.extend({
+        instructorId: id,
+        payMode: z.enum(PAY_MODES).nullable(),
+        hourlyRateCents: z.number().int().nullable().optional(),
+        percentBp: z.number().int().nullable().optional(),
+        monthlyCents: z.number().int().nullable().optional(),
+        requiredMinutesWeek: z.number().int().nullable().optional(),
+      }),
+    )
+    .mutation(({ input, ctx }) => {
+      const { siteId, instructorId, ...terms } = input;
+      return handle(() => teachers.updateTerms(siteId, instructorId, terms, actor(ctx)));
+    }),
+  linkUser: adminProcedure
+    .input(site.extend({ instructorId: id, email: z.string().max(200).nullable() }))
+    .mutation(({ input, ctx }) => handle(() => teachers.linkUser(input.siteId, input.instructorId, input.email, actor(ctx)))),
+  hoursSummary: adminProcedure.input(site.extend({ from: day, to: day })).query(({ input }) => handle(() => teachers.hoursSummary(input.siteId, input.from, input.to))),
+  getAttendance: adminProcedure.input(site.extend({ sessionId: id })).query(({ input }) => handle(() => teachers.getAttendance(input.siteId, input.sessionId))),
+  recordAttendance: adminProcedure
+    .input(site.extend({ sessionId: id, entries: z.array(z.object({ participantId: id, status: z.enum(ATTENDANCE_STATUSES) })).max(100) }))
+    .mutation(({ input, ctx }) => handle(() => teachers.recordAttendance(input.siteId, input.sessionId, input.entries, actor(ctx)))),
+  previewSettlement: adminProcedure
+    .input(site.extend({ instructorId: id, from: day, to: day }))
+    .query(({ input }) => handle(() => teachers.previewSettlement(input.siteId, input.instructorId, input.from, input.to))),
+  closeSettlement: adminProcedure
+    .input(site.extend({ instructorId: id, from: day, to: day }))
+    .mutation(({ input, ctx }) => handle(() => teachers.closeSettlement(input.siteId, input.instructorId, input.from, input.to, actor(ctx)))),
+  voidSettlement: adminProcedure
+    .input(site.extend({ settlementId: id, reason: z.string().max(300) }))
+    .mutation(({ input, ctx }) => handle(() => teachers.voidSettlement(input.siteId, input.settlementId, input.reason, actor(ctx)))),
+  listSettlements: adminProcedure.input(site.extend({ instructorId: id.optional() })).query(({ input }) => handle(() => teachers.listSettlements(input.siteId, input.instructorId))),
+  getSettlement: adminProcedure.input(site.extend({ settlementId: id })).query(({ input }) => handle(() => teachers.getSettlement(input.siteId, input.settlementId))),
+  exportSettlementCsv: adminProcedure.input(site.extend({ settlementId: id })).query(({ input }) => handle(() => teachers.exportCsv(input.siteId, input.settlementId))),
+  exportSettlementPdf: adminProcedure.input(site.extend({ settlementId: id })).mutation(async ({ input }) => {
+    const company = await getSystemSetting("brand_name", "");
+    return handle(() => teachers.exportPdf(input.siteId, input.settlementId, company));
+  }),
+  /** Portal del empleado: el profesor vinculado a este usuario ve sus próximas clases y sus horas del mes. */
+  myClasses: employeeProcedure.query(({ ctx }) => handle(() => teachers.myClasses(ctx.user.id))),
 });
