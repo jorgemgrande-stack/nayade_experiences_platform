@@ -5,14 +5,14 @@
  * toca nada. Una empresa sin Hotel Net, con el módulo de hotel apagado o sin la migración 0043 se omite sin error.
  */
 import { scheduleTenantCron } from "./_core/tenantRegistry/scheduler";
-import { getFeatureFlag } from "./config";
+import { moduleFlagEnabled } from "./_core/flagGuard";
 import { todayInTimeZone } from "./hotelPms";
 import { isMissingPmsSchema } from "./hotelPmsDb";
 
 export const HOTEL_GUEST_RETENTION_JOB = "hotel-guest-retention";
 
 export async function runHotelGuestRetentionJob(now: Date = new Date()): Promise<{ anonymized: number; skipped?: string }> {
-  if (!(await getFeatureFlag("hotel_module_enabled", false))) return { anonymized: 0, skipped: "hotel_off" };
+  if (!(await moduleFlagEnabled("hotel_module_enabled"))) return { anonymized: 0, skipped: "hotel_off" };
   try {
     const { getCapabilityAccess } = await import("./_core/capabilities/access");
     if (!(await getCapabilityAccess().check("hotel-net", { write: true })).allowed) return { anonymized: 0, skipped: "sin_licencia" };

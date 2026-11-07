@@ -65,6 +65,9 @@ describe.skipIf(!URL_)("panel.navigation — aportaciones de extensiones por lic
     try {
       expect((await nav("a", admA)).entries.map((e) => e.moduleId)).toContain("hotel");
       expect((await ess.q("a", "hotel.getRoomTypes", undefined, admA)).status).not.toBe(403);
+      // Empresa nueva sin fila hotel_module_enabled: la gestión del hotel funciona con la licencia (no «Módulo desactivado»)
+      expect((await ess.q("a", "hotel.adminGetRoomTypes", undefined, admA)).status).toBe(200);
+      expect(await ess.sql("a", "SELECT COUNT(*) AS n FROM feature_flags WHERE `key` = 'hotel_module_enabled'")).toEqual([{ n: 0 }]);
       // La otra empresa, sin la capacidad ni licencia de módulo, sigue sin él
       expect((await nav("b", admB)).entries.map((e) => e.moduleId)).not.toContain("hotel");
       expect((await ess.q("b", "hotel.getRoomTypes", undefined, admB)).status).toBe(403);
