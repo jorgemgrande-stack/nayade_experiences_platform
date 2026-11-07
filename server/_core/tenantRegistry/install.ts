@@ -13,6 +13,8 @@ import mysql from "mysql2/promise";
 import { getTenantMode, isMultiTenant } from "../tenant";
 import { getErm, installErmFromEnv } from "../erm/runtime";
 import { configureModuleAccess } from "../modules/runtime";
+import { configureSiteDirectory } from "../../sdk/context";
+import { companySiteDirectory } from "../../sitesDb";
 import { configureCapabilityAccess } from "../capabilities/access";
 import { configureLimitAccess } from "../limits/access";
 import { configureQuotaExceptions } from "../erm/exceptionAccess";
@@ -145,6 +147,8 @@ export function installTenantResolution(app: Express, env: NodeJS.ProcessEnv = p
     configureTenantIdentity(rt.identity);
     // Las licencias de módulos se leen del registro (solo lectura)
     configureModuleAccess(rt.entitlements);
+    // Sedes de cada empresa para los módulos del SDK por sede (sin directorio, en multi fallan cerrados)
+    configureSiteDirectory(companySiteDirectory);
     // Licencias por capacidad (catálogo de Elephant Source); se aplican con CAPABILITY_ENFORCEMENT=on
     configureCapabilityAccess(rt.capabilities);
     // Límites contratados (usuarios, almacenamiento) y uso declarado (registro 0013)
