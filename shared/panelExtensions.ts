@@ -325,9 +325,12 @@ export const CORE_EXTENSION_PANELS: Readonly<Record<string, { capability?: strin
         items: [
           { id: "panel", label: "Panel general", path: "/admin/net/care", icon: "dashboard", order: 1 },
           { id: "agenda", label: "Agenda, citas y tratamientos", path: "/admin/spa", icon: "calendar", order: 2 },
+          { id: "reservas", label: "Reservas y calendario", path: "/admin/care-net/reservas", icon: "calendar", roles: ["admin", "agente"], order: 3 },
+          { id: "bonos", label: "Bonos y paquetes", path: "/admin/care-net/bonos", icon: "tag", roles: ["admin", "agente"], order: 4 },
+          { id: "clientes-bono", label: "Clientes con bono", path: "/admin/care-net/clientes", icon: "users", roles: ["admin", "agente"], order: 5 },
         ],
       },
-      api: ["spa"],
+      api: ["spa", "careNet"],
     },
   },
   // Productos Net aún sin herramientas operativas en el Core: si se conceden, su panel general muestra lo incluido

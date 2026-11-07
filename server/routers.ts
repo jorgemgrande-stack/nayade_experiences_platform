@@ -177,6 +177,7 @@ function webRulePrice(rules: PricingRule[], line: Parameters<typeof priceLine>[1
 import { eq, and, desc, inArray, sql as sqlDrizzle } from "drizzle-orm";
 import { hotelRouter } from "./routers/hotel";
 import { spaRouter } from "./routers/spa";
+import { careNetRouter } from "./routers/careNet";
 import { reviewsRouter } from "./routers/reviews";
 import { restaurantsRouter } from "./routers/restaurants";
 import { skiRentalRouter } from "./skiRental/router";
@@ -2628,6 +2629,7 @@ export const appRouter = router({
   }),
   hotel: hotelRouter,
   spa: spaRouter,
+  careNet: careNetRouter,
   reviews: reviewsRouter,
   blog: blogRouter,
   restaurants: restaurantsRouter,

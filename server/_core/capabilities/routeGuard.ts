@@ -96,6 +96,8 @@ export const TRPC_ROUTER_CAPABILITIES: Record<string, string> = {
   partners: "supplier-settlements",
   // Elephant Net
   reav: "travel-net",
+  // Care Net · bonos y reservas de SPA (también lo declara el manifiesto del módulo de SPA)
+  careNet: "care-net",
 };
 
 /**
