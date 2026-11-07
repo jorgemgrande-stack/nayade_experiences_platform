@@ -64,7 +64,7 @@ export const Metrics = {
 } as const;
 
 /** Integraciones externas de pago con medición (`ext.<proveedor>.*`). */
-export type ExternalProvider = "ghl" | "vapi" | "maps";
+export type ExternalProvider = "ghl" | "vapi" | "maps" | "brevo";
 
 /**
  * Métricas de una integración externa: llamadas salientes, errores (red o HTTP ≥ 400), latencia y coste en

@@ -224,7 +224,7 @@ export default function SalasMesas() {
       </div>
 
       <Dialog open={roomForm != null} onOpenChange={(o) => !o && setRoomForm(null)}>
-        <DialogContent className="max-w-md">
+        <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle>{roomForm?.id ? "Editar sala" : "Nueva sala"}</DialogTitle>
             <DialogDescription>El nombre que verá el equipo en el plano de la sala.</DialogDescription>
@@ -238,7 +238,7 @@ export default function SalasMesas() {
               <div className="space-y-1.5">
                 <Label htmlFor="rnet-room-kind">Tipo</Label>
                 <Select value={roomForm.kind} onValueChange={(v) => setRoomForm({ ...roomForm, kind: v as RoomKind })}>
-                  <SelectTrigger id="rnet-room-kind"><SelectValue /></SelectTrigger>
+                  <SelectTrigger id="rnet-room-kind" className="w-full min-w-0"><SelectValue /></SelectTrigger>
                   <SelectContent>{ROOM_KINDS.map((k) => <SelectItem key={k} value={k}>{ROOM_KIND_LABELS[k]}</SelectItem>)}</SelectContent>
                 </Select>
               </div>
@@ -252,7 +252,7 @@ export default function SalasMesas() {
       </Dialog>
 
       <Dialog open={tableForm != null} onOpenChange={(o) => !o && setTableForm(null)}>
-        <DialogContent className="max-w-md">
+        <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle>{tableForm?.id ? `Editar la mesa ${tableForm.code}` : "Nueva mesa"}</DialogTitle>
             <DialogDescription>El número o nombre de la mesa es único en el restaurante.</DialogDescription>
@@ -270,14 +270,14 @@ export default function SalasMesas() {
               <div className="col-span-2 space-y-1.5 sm:col-span-1">
                 <Label htmlFor="rnet-table-shape">Forma</Label>
                 <Select value={tableForm.shape} onValueChange={(v) => setTableForm({ ...tableForm, shape: v as TableShape })}>
-                  <SelectTrigger id="rnet-table-shape"><SelectValue /></SelectTrigger>
+                  <SelectTrigger id="rnet-table-shape" className="w-full min-w-0"><SelectValue /></SelectTrigger>
                   <SelectContent>{TABLE_SHAPES.map((s) => <SelectItem key={s} value={s}>{TABLE_SHAPE_LABELS[s]}</SelectItem>)}</SelectContent>
                 </Select>
               </div>
               <div className="col-span-2 space-y-1.5 sm:col-span-1">
                 <Label htmlFor="rnet-table-room">Sala</Label>
                 <Select value={String(tableForm.roomId)} onValueChange={(v) => setTableForm({ ...tableForm, roomId: Number(v) })}>
-                  <SelectTrigger id="rnet-table-room"><SelectValue /></SelectTrigger>
+                  <SelectTrigger id="rnet-table-room" className="w-full min-w-0"><SelectValue /></SelectTrigger>
                   <SelectContent>{activeRooms.map((r) => <SelectItem key={r.id} value={String(r.id)}>{r.name}</SelectItem>)}</SelectContent>
                 </Select>
               </div>

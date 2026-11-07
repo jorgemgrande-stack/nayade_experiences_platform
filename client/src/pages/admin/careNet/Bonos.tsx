@@ -130,7 +130,7 @@ export default function Bonos() {
       {selling != null && <SellPackDialog initialPackId={selling || undefined} onClose={() => setSelling(null)} />}
 
       <Dialog open={form != null} onOpenChange={(o) => !o && setForm(null)}>
-        <DialogContent className="max-h-[90vh] max-w-lg overflow-y-auto">
+        <DialogContent className="max-h-[90vh] sm:max-w-lg overflow-y-auto">
           <DialogHeader>
             <DialogTitle>{form?.id ? "Editar bono" : "Nuevo bono"}</DialogTitle>
             <DialogDescription>Los cambios valen para las ventas nuevas; los bonos ya vendidos conservan sus condiciones.</DialogDescription>

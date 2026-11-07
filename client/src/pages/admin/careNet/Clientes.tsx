@@ -16,7 +16,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { PanelEmpty, PanelError, PanelLoading, toastError } from "@/components/admin/PanelStates";
 import { cn } from "@/lib/utils";
 import { formatEur } from "@shared/careNet";
-import { PageHeader, PurchaseBadge, SellPackDialog, fmtDate, useCareWrite, useOpenCash } from "./CareNetParts";
+import { PageHeader, PurchaseBadge, SellPackDialog, fmtDate, fmtDay, useCareWrite, useOpenCash } from "./CareNetParts";
 
 const FILTERS = [["active", "Con sesiones"], ["expired", "Caducados con sesiones"], ["all", "Todos"]] as const;
 
@@ -99,7 +99,7 @@ function ClientDetail({ clientId, onClose }: { clientId: number; onClose: () => 
   return (
     <>
       <Dialog open onOpenChange={(o) => !o && onClose()}>
-        <DialogContent className="max-h-[90vh] max-w-2xl overflow-y-auto">
+        <DialogContent className="max-h-[90vh] sm:max-w-2xl overflow-y-auto">
           <DialogHeader>
             <DialogTitle>{d.data?.client?.name ?? "Cliente"}</DialogTitle>
             <DialogDescription>{d.data?.client?.email ?? ""}</DialogDescription>
@@ -146,7 +146,7 @@ function ClientDetail({ clientId, onClose }: { clientId: number; onClose: () => 
                     {(d.data?.consumptions ?? []).map((k) => (
                       <li key={k.id} className="flex flex-wrap items-center justify-between gap-2 px-3 py-2">
                         <span className={cn("min-w-0 break-words", k.status === "reverted" ? "text-muted-foreground line-through" : "text-foreground")}>
-                          {k.date ?? fmtDate(k.consumedAt)} {k.time ?? ""} · {k.treatmentName ?? "Tratamiento"} · {k.packName}{k.source === "counter" ? " · mostrador" : ""}
+                          {k.date ? fmtDay(k.date) : fmtDate(k.consumedAt)} {k.time ?? ""} · {k.treatmentName ?? "Tratamiento"} · {k.packName}{k.source === "counter" ? " · mostrador" : ""}
                         </span>
                         {k.status === "reverted" ? (
                           <span className="text-xs text-muted-foreground">Devuelta: {k.revertReason}</span>
@@ -164,7 +164,7 @@ function ClientDetail({ clientId, onClose }: { clientId: number; onClose: () => 
       </Dialog>
 
       <Dialog open={reverting != null} onOpenChange={(o) => !o && setReverting(null)}>
-        <DialogContent className="max-w-sm">
+        <DialogContent className="sm:max-w-sm">
           <DialogHeader>
             <DialogTitle>Devolver la sesión al bono</DialogTitle>
             <DialogDescription>La sesión vuelve al saldo del cliente. Si además anulas la cita, se libera su plaza.</DialogDescription>
@@ -197,7 +197,7 @@ function PayPendingDialog({ purchase, onClose }: { purchase: { id: number; price
   const pay = trpc.careNet.payPurchase.useMutation({ onSuccess: () => { toast.success("Bono cobrado"); onClose(); }, onError: (e) => toastError(e) });
   return (
     <Dialog open onOpenChange={(o) => !o && onClose()}>
-      <DialogContent className="max-w-sm">
+      <DialogContent className="sm:max-w-sm">
         <DialogHeader>
           <DialogTitle>Cobrar el bono ({formatEur(purchase.price)})</DialogTitle>
           <DialogDescription>Se registra como venta del TPV en la caja elegida.</DialogDescription>

@@ -300,6 +300,8 @@ export const CORE_EXTENSION_PANELS: Readonly<Record<string, { capability?: strin
           { id: "reservas", label: "Reservas", path: "/admin/hotel/reservas", icon: "receipt", order: 5 },
           { id: "habitaciones", label: "Habitaciones", path: "/admin/hotel/habitaciones", icon: "bed", order: 6 },
           { id: "informes", label: "Informes", path: "/admin/hotel/informes", icon: "chart", order: 7 },
+          { id: "huespedes", label: "Huéspedes", path: "/admin/hotel/huespedes", icon: "users", order: 9 },
+          { id: "tarifas", label: "Planes de tarifa", path: "/admin/hotel/tarifas", icon: "tag", order: 10 },
           // El personal de pisos ve sus tareas: cualquier rol de equipo (la gestión completa la decide el servidor)
           { id: "housekeeping", label: "Housekeeping", path: "/admin/hotel/housekeeping", icon: "sparkles", order: 8, roles: ["admin", "agente", "monitor", "adminrest", "controler"] },
         ],
@@ -348,7 +350,7 @@ export const CORE_EXTENSION_PANELS: Readonly<Record<string, { capability?: strin
   // Ski Net: panel general (cualquiera de sus dos licencias), las herramientas de la escuela (server/skiSchool, licencia
   // `ski-school`) y las del alquiler (server/skiRental, licencia `ski-rental`); los servicios las comprueban por sede
   skiNet: { panel: skiNetPanel() },
-  travelNet: { panel: netHomeOnly("travel-net", "Travel Net", "/admin/net/travel", ["travel-net"], 69) },
+  travelNet: { panel: travelNetPanel() },
   lifeNet: { panel: netHomeOnly("life-net", "Life Net", "/admin/net/life", ["life-net"], 71) },
   // Social Token Net: tres productos (Comunidades, Tokens internos y Complete = los dos) y dos capacidades, así que la
   // extensión no tiene una capacidad única: cada entrada declara la suya y las funciones conjuntas exigen las dos.
@@ -359,6 +361,30 @@ export const CORE_EXTENSION_PANELS: Readonly<Record<string, { capability?: strin
 /** Sección de un producto Elephant Net que hoy solo tiene su panel general. */
 function netHomeOnly(id: string, label: string, path: string, capabilities: string[], order: number): PanelContributions {
   return { section: { id, label, order, items: [{ id: "panel", label: "Panel general", path, icon: "dashboard", capabilities }] } };
+}
+
+/**
+ * Menú de Travel Net: sección propia con el panel general y las pantallas de agencia (expedientes, proveedores,
+ * operaciones y márgenes). «Viajes (REAV)» del Core sigue en su sitio. API `travel.*` licenciada por
+ * TRPC_ROUTER_CAPABILITIES; los márgenes solo los cambia administración.
+ */
+function travelNetPanel(): PanelContributions {
+  const TRAVEL = ["travel-net"];
+  const TEAM = ["admin", "agente"];
+  return {
+    section: {
+      id: "travel-net",
+      label: "Travel Net",
+      order: 69,
+      items: [
+        { id: "panel", label: "Panel general", path: "/admin/net/travel", icon: "dashboard", capabilities: TRAVEL, order: 1 },
+        { id: "expedientes", label: "Expedientes", path: "/admin/travel/expedientes", icon: "briefcase", capabilities: TRAVEL, roles: TEAM, order: 2 },
+        { id: "proveedores", label: "Proveedores", path: "/admin/travel/proveedores", icon: "truck", capabilities: TRAVEL, roles: TEAM, order: 3 },
+        { id: "operaciones", label: "Operaciones", path: "/admin/travel/operaciones", icon: "calendar", capabilities: TRAVEL, roles: TEAM, order: 4 },
+        { id: "margenes", label: "Márgenes", path: "/admin/travel/margenes", icon: "coins", capabilities: TRAVEL, order: 5 },
+      ],
+    },
+  };
 }
 
 /** Menú de Ski Net: sección propia con el panel general, las pantallas de la escuela y las del alquiler. */
@@ -376,6 +402,7 @@ function skiNetPanel(): PanelContributions {
         { id: "profesores", label: "Profesores", path: "/admin/ski/profesores", icon: "users", capabilities: SCHOOL, order: 3 },
         { id: "productos-docentes", label: "Productos docentes", path: "/admin/ski/productos-docentes", icon: "tag", capabilities: SCHOOL, order: 4 },
         { id: "sesiones", label: "Sesiones y alumnos", path: "/admin/ski/sesiones", icon: "briefcase", capabilities: SCHOOL, order: 5 },
+        { id: "grupos", label: "Cursillos y grupos", path: "/admin/ski/grupos", icon: "users", capabilities: SCHOOL, order: 5.05 },
         { id: "horas", label: "Control de horas", path: "/admin/ski/horas", icon: "chart", capabilities: SCHOOL, order: 5.1 },
         { id: "liquidaciones", label: "Liquidaciones de profesores", path: "/admin/ski/liquidaciones", icon: "coins", capabilities: SCHOOL, order: 5.2 },
         { id: "alquiler", label: "Alquiler: mostrador", path: "/admin/ski/alquiler", icon: "shoppingCart", capabilities: RENTAL, order: 6 },

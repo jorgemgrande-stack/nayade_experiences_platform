@@ -192,7 +192,7 @@ export default function Carta() {
       </div>
 
       <Dialog open={form != null} onOpenChange={(o) => !o && setForm(null)}>
-        <DialogContent className="max-h-[90vh] max-w-lg overflow-y-auto">
+        <DialogContent className="max-h-[90vh] sm:max-w-lg overflow-y-auto">
           <DialogHeader>
             <DialogTitle>{form?.id ? "Editar plato" : "Nuevo plato"}</DialogTitle>
             <DialogDescription>Precio con IVA incluido, como se cobra en la mesa.</DialogDescription>
@@ -221,7 +221,7 @@ export default function Carta() {
                 <div className="space-y-1.5">
                   <Label htmlFor="rnet-mi-tax">IVA</Label>
                   <Select value={String(form.taxRate)} onValueChange={(v) => setForm({ ...form, taxRate: Number(v) })}>
-                    <SelectTrigger id="rnet-mi-tax"><SelectValue /></SelectTrigger>
+                    <SelectTrigger id="rnet-mi-tax" className="w-full min-w-0"><SelectValue /></SelectTrigger>
                     <SelectContent>{MENU_TAX_RATES.map((r) => <SelectItem key={r} value={String(r)}>{r} %</SelectItem>)}</SelectContent>
                   </Select>
                 </div>

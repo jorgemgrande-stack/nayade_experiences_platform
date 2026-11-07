@@ -401,6 +401,7 @@ export const TASK_NAV: NavSection[] = [
       { label: "WhatsApp", href: "/admin/atencion-comercial/whatsapp", key: "x-whatsapp", icon: "message", roles: SALES, capabilities: ["whatsapp-ai"] },
       { label: "Llamadas IA", href: "/admin/atencion-comercial/agente-ia", key: "x-voz", icon: "bot", roles: SALES, capabilities: ["voice-ai"] },
       { label: "Cupones y plataformas", href: "/admin/marketing/cupones", key: "x-cupones", icon: "tag", roles: ADMIN, capabilities: ["deals-coupons"] },
+      { label: "Email marketing (Brevo)", href: "/admin/marketing/brevo", key: "x-brevo", icon: "mail", roles: ADMIN, capabilities: ["email-campaigns"] },
       {
         label: "Proveedores", href: "/admin/suppliers", key: "x-proveedores", icon: "truck", roles: ADMIN, capabilities: ["supplier-settlements"],
         children: [

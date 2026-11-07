@@ -43,6 +43,8 @@ import {
   type TableShape,
 } from "../shared/restaurantNet";
 import { stationFor } from "../shared/restaurantKds";
+import { addExternalCharge, assertHotelCharges } from "./hotelFolioCharges";
+import { registerExternalChargeSource } from "./hotelFolioChargeSources";
 
 type Db = NonNullable<Awaited<ReturnType<typeof getDb>>>;
 export type RnExec = Pick<Db, "execute">;
@@ -771,7 +773,7 @@ export function releaseTable(guard: Guard, orderId: number, reason: string | nul
     if (!o) throw notFound("La comanda");
     await guard(o.restaurantId);
     if (o.status === "paying") throw conflict("Se está cobrando esta comanda. Espera a que termine el cobro.");
-    if (o.status === "paid" || o.status === "cancelled") {
+    if (o.status === "paid" || o.status === "cancelled" || o.status === "room_charged") {
       await freeMergedTables(tx, o.tableId);
       return { ok: true as const, status: o.status };
     }
@@ -851,6 +853,7 @@ export async function checkout(
     if (!o) throw notFound("La comanda");
     await guard(o.restaurantId);
     if (o.status === "paid" && o.tpvSaleId != null) return { done: o as HospoOrder, order: null, items: [] as HospoOrderItem[], totals: null };
+    if (o.status === "room_charged") throw bad("La comanda está cargada a una habitación: se cobra al cerrar el folio. Anula el cargo en el folio para cobrarla aquí.");
     if (o.status === "cancelled" || o.status === "paid") throw bad("La comanda ya está cerrada.");
     const items = await itemsOf(tx, o.id);
     const totals = orderTotals(items);
@@ -997,3 +1000,63 @@ export async function seatBooking(guard: Guard, bookingId: number, tableId: numb
   });
   return { orderId: id, reused: false };
 }
+
+// ─── Cargo a habitación (Hotel Net) ──────────────────────────────────────────
+
+export const roomChargeRef = (orderId: number): string => `hospo_order:${orderId}`;
+
+/**
+ * Carga la comanda al folio de un huésped en casa (solo con Hotel Net): en UNA transacción se añaden sus líneas al folio
+ * (cada una con su IVA) y la comanda queda «cargada a habitación», sin venta del TPV (el cobro y la factura llegan al
+ * cerrar el folio). No es posible a la vez que el cobro: la comanda se bloquea y debe estar abierta o pidiendo la
+ * cuenta (una comanda cobrándose en el TPV está «paying» y se rechaza; una cargada ya no entra en el TPV).
+ */
+export async function chargeOrderToRoom(guard: Guard, orderId: number, hotelReservationId: number, userId: number): Promise<{ chargeId: number; amountCents: number }> {
+  await assertHotelCharges();
+  return inTx(async (tx) => {
+    const o = await orderById(tx, orderId, true);
+    if (!o) throw notFound("La comanda");
+    await guard(o.restaurantId);
+    if (o.status === "paying") throw conflict("Se está cobrando esta comanda en el TPV. Espera a que termine.");
+    if (o.status !== "open" && o.status !== "bill_requested") throw bad("La comanda ya está cerrada.");
+    const items = await itemsOf(tx, o.id);
+    // Las mismas líneas que irían al TPV (no anuladas y con importe), cada una con su IVA
+    const lines = items
+      .filter((i) => i.status !== "void" && i.unitPrice > 0 && i.quantity > 0)
+      .map((i) => ({ description: i.name, quantity: i.quantity, unitPriceCents: Math.round(i.unitPrice * 100), taxRateBp: Math.round((Number.isFinite(i.taxRate) ? i.taxRate : DEFAULT_MENU_TAX_RATE) * 100) }));
+    if (!lines.length) throw bad("La comanda no tiene importe que cargar.");
+    let tableCode: string | null = null;
+    if (o.tableId != null) tableCode = (await tableById(tx, o.tableId))?.code ?? null;
+    const charge = await addExternalCharge(tx, {
+      reservationId: hotelReservationId, module: "restaurant", sourceRef: roomChargeRef(o.id),
+      description: `Restaurante · comanda ${o.id}${tableCode ? ` · mesa ${tableCode}` : ""}`, category: "restaurante", lines, userId,
+    });
+    const totals = orderTotals(items);
+    await tx.execute(sql`UPDATE hospo_orders SET status = 'room_charged', closed_at = ${Date.now()}, subtotal = ${totals.subtotal.toFixed(2)}, total = ${totals.total.toFixed(2)},
+      notes = CONCAT(COALESCE(notes, ''), ${`[Cargada a la habitación: reserva de hotel ${hotelReservationId}]`}) WHERE id = ${o.id}`);
+    await freeMergedTables(tx, o.tableId);
+    if (o.restaurantBookingId != null) {
+      await tx.execute(sql`UPDATE restaurant_bookings SET status = 'completed' WHERE id = ${o.restaurantBookingId} AND status IN ('confirmed', 'modified', 'pending_payment')`);
+    }
+    return { chargeId: charge.chargeId, amountCents: charge.amountCents };
+  });
+}
+
+// Anular el cargo desde el folio: la comanda vuelve a «pide la cuenta» en su mesa (o sin mesa si ya hay otra abierta)
+registerExternalChargeSource("restaurant", {
+  async onReverted(tx, sourceRef, info) {
+    const id = Number(/^hospo_order:(\d+)$/.exec(sourceRef)?.[1]);
+    if (!id) return;
+    const exec = tx as RnExec;
+    const o = await orderById(exec, id, true);
+    if (!o || o.status !== "room_charged") return;
+    const note = `[Cargo a habitación anulado: ${info.reason}]`;
+    try {
+      await exec.execute(sql`UPDATE hospo_orders SET status = 'bill_requested', closed_at = NULL, notes = CONCAT(COALESCE(notes, ''), ${note}) WHERE id = ${id}`);
+    } catch (e) {
+      if (!isDuplicate(e, "uq_hospo_orders_open_table")) throw e;
+      // La mesa ya tiene otra comanda abierta: esta queda pendiente de cobro sin mesa
+      await exec.execute(sql`UPDATE hospo_orders SET status = 'bill_requested', closed_at = NULL, table_id = NULL, notes = CONCAT(COALESCE(notes, ''), ${note}) WHERE id = ${id}`);
+    }
+  },
+});

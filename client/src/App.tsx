@@ -147,6 +147,8 @@ const HotelReservations = lazy(() => import("./pages/admin/hotel/HotelReservatio
 const HotelRooms = lazy(() => import("./pages/admin/hotel/HotelRooms"));
 const HotelReports = lazy(() => import("./pages/admin/hotel/HotelReports"));
 const HotelHousekeeping = lazy(() => import("./pages/admin/hotel/HotelHousekeeping"));
+const HotelGuests = lazy(() => import("./pages/admin/hotel/HotelGuests"));
+const HotelRatePlans = lazy(() => import("./pages/admin/hotel/HotelRatePlans"));
 const SpaManager = lazy(() => import("./pages/admin/spa/SpaManager"));
 const CareNetReservas = lazy(() => import("./pages/admin/careNet/Reservas"));
 const CareNetBonos = lazy(() => import("./pages/admin/careNet/Bonos"));
@@ -207,8 +209,13 @@ const SocialTokenNetHome = lazy(() => import("./pages/admin/socialTokenNet/Socia
 const NetProductHome = lazy(() => import("./pages/admin/net/NetProductHome"));
 const SkiSchoolPlanning = lazy(() => import("./pages/admin/ski/SkiSchoolPlanning"));
 const SkiInstructors = lazy(() => import("./pages/admin/ski/SkiInstructors"));
+const TravelFiles = lazy(() => import("./pages/admin/travel/TravelFiles"));
+const TravelSuppliers = lazy(() => import("./pages/admin/travel/TravelSuppliers"));
+const TravelOperations = lazy(() => import("./pages/admin/travel/TravelOperations"));
+const TravelMargins = lazy(() => import("./pages/admin/travel/TravelMargins"));
 const SkiTeachingProducts = lazy(() => import("./pages/admin/ski/SkiTeachingProducts"));
 const SkiSessions = lazy(() => import("./pages/admin/ski/SkiSessions"));
+const SkiGroups = lazy(() => import("./pages/admin/ski/SkiGroups"));
 const SkiRentalCounter = lazy(() => import("./pages/admin/ski/SkiRentalCounter"));
 const SkiRentalInventory = lazy(() => import("./pages/admin/ski/SkiRentalInventory"));
 const SkiRentalWorkshop = lazy(() => import("./pages/admin/ski/SkiRentalWorkshop"));
@@ -247,6 +254,7 @@ const SettlementsManager = lazy(() => import("./pages/admin/suppliers/Settlement
 // Marketing
 const DiscountCodesManager = lazy(() => import("./pages/DiscountCodesManager"));
 const CuponesManager = lazy(() => import("./pages/admin/marketing/CuponesManager"));
+const BrevoMarketing = lazy(() => import("./pages/admin/marketing/BrevoMarketing"));
 const PlatformsManager = lazy(() => import("./pages/admin/marketing/PlatformsManager"));
 
 // TPV
@@ -455,6 +463,7 @@ function Router() {
       {/* Marketing */}
       <Route path="/admin/marketing">{() => <Suspense fallback={<AdminLoadingFallback />}><CuponesManager /></Suspense>}</Route>
       <Route path="/admin/marketing/cupones">{() => <Suspense fallback={<AdminLoadingFallback />}><CuponesManager /></Suspense>}</Route>
+      <Route path="/admin/marketing/brevo">{() => <Suspense fallback={<AdminLoadingFallback />}><BrevoMarketing /></Suspense>}</Route>
       <Route path="/admin/marketing/plataformas">{() => <Suspense fallback={<AdminLoadingFallback />}><PlatformsManager /></Suspense>}</Route>
       <Route path="/admin/marketing/descuentos">{() => <Suspense fallback={<AdminLoadingFallback />}><DiscountCodesManager /></Suspense>}</Route>
       <Route path="/admin/marketing/codigos-descuento">{() => <Suspense fallback={<AdminLoadingFallback />}><DiscountCodesManager /></Suspense>}</Route>
@@ -476,6 +485,8 @@ function Router() {
       <Route path="/admin/hotel/habitaciones">{() => <Suspense fallback={<AdminLoadingFallback />}><HotelRooms /></Suspense>}</Route>
       <Route path="/admin/hotel/informes">{() => <Suspense fallback={<AdminLoadingFallback />}><HotelReports /></Suspense>}</Route>
       <Route path="/admin/hotel/housekeeping">{() => <Suspense fallback={<AdminLoadingFallback />}><HotelHousekeeping /></Suspense>}</Route>
+      <Route path="/admin/hotel/huespedes">{() => <Suspense fallback={<AdminLoadingFallback />}><HotelGuests /></Suspense>}</Route>
+      <Route path="/admin/hotel/tarifas">{() => <Suspense fallback={<AdminLoadingFallback />}><HotelRatePlans /></Suspense>}</Route>
       <Route path="/admin/hotel">{() => <Suspense fallback={<AdminLoadingFallback />}><HotelManager /></Suspense>}</Route>
       <Route path="/admin/spa">{() => <Suspense fallback={<AdminLoadingFallback />}><SpaManager /></Suspense>}</Route>
       <Route path="/admin/care-net/reservas">{() => <Suspense fallback={<AdminLoadingFallback />}><CareNetReservas /></Suspense>}</Route>
@@ -528,9 +539,14 @@ function Router() {
       <Route path="/admin/social-token-net">{() => <Suspense fallback={<AdminLoadingFallback />}><SocialTokenNetHome /></Suspense>}</Route>
       <Route path="/admin/net/:producto">{() => <Suspense fallback={<AdminLoadingFallback />}><NetProductHome /></Suspense>}</Route>
       <Route path="/admin/ski/escuela">{() => <Suspense fallback={<AdminLoadingFallback />}><SkiSchoolPlanning /></Suspense>}</Route>
+      <Route path="/admin/travel/expedientes">{() => <Suspense fallback={<AdminLoadingFallback />}><TravelFiles /></Suspense>}</Route>
+      <Route path="/admin/travel/proveedores">{() => <Suspense fallback={<AdminLoadingFallback />}><TravelSuppliers /></Suspense>}</Route>
+      <Route path="/admin/travel/operaciones">{() => <Suspense fallback={<AdminLoadingFallback />}><TravelOperations /></Suspense>}</Route>
+      <Route path="/admin/travel/margenes">{() => <Suspense fallback={<AdminLoadingFallback />}><TravelMargins /></Suspense>}</Route>
       <Route path="/admin/ski/profesores">{() => <Suspense fallback={<AdminLoadingFallback />}><SkiInstructors /></Suspense>}</Route>
       <Route path="/admin/ski/productos-docentes">{() => <Suspense fallback={<AdminLoadingFallback />}><SkiTeachingProducts /></Suspense>}</Route>
       <Route path="/admin/ski/sesiones">{() => <Suspense fallback={<AdminLoadingFallback />}><SkiSessions /></Suspense>}</Route>
+      <Route path="/admin/ski/grupos">{() => <Suspense fallback={<AdminLoadingFallback />}><SkiGroups /></Suspense>}</Route>
       <Route path="/admin/ski/horas">{() => <Suspense fallback={<AdminLoadingFallback />}><SkiTeacherHours /></Suspense>}</Route>
       <Route path="/admin/ski/liquidaciones">{() => <Suspense fallback={<AdminLoadingFallback />}><SkiSettlements /></Suspense>}</Route>
       <Route path="/admin/ski/alquiler">{() => <Suspense fallback={<AdminLoadingFallback />}><SkiRentalCounter /></Suspense>}</Route>

@@ -19,6 +19,7 @@ export type SkiSchoolEvents = {
   "ski_school.session.assigned": { sessionId: number; instructorId: number | null };
   "ski_school.participant.enrolled": { sessionId: number; participantId: number };
   "ski_school.settlement.closed": { settlementId: number; instructorId: number; totalCents: number };
+  "ski_school.session.completed": { sessionId: number; reservationId: number | null };
 };
 
 export const skiSchoolModule = defineSdkModule<SkiSchoolEvents>({
@@ -39,5 +40,5 @@ export const skiSchoolModule = defineSdkModule<SkiSchoolEvents>({
   contract: "^1.1.0",
   capability: "ski-school",
   siteScoped: true,
-  events: ["ski_school.site.activated", "ski_school.site.deactivated", "ski_school.session.created", "ski_school.session.assigned", "ski_school.participant.enrolled", "ski_school.settlement.closed"],
+  events: ["ski_school.site.activated", "ski_school.site.deactivated", "ski_school.session.created", "ski_school.session.assigned", "ski_school.participant.enrolled", "ski_school.settlement.closed", "ski_school.session.completed"],
 });

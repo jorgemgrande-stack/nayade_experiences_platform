@@ -62,7 +62,7 @@ export default function FolioDialog({ reservationId, onClose }: { reservationId:
 
   return (
     <Dialog open onOpenChange={(o) => !o && onClose()}>
-      <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
+      <DialogContent className="sm:max-w-3xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="flex flex-wrap items-center gap-2">
             <Receipt className="h-5 w-5" /> Folio{d ? ` · ${d.reservation.reservationNumber ?? d.reservation.id}` : ""}
@@ -102,14 +102,14 @@ export default function FolioDialog({ reservationId, onClose }: { reservationId:
                       <tr key={it.id} className="border-b border-border last:border-0">
                         <td className="p-2">
                           <div>{it.description ?? LABEL[it.category] ?? it.category}</div>
-                          <div className="text-xs text-muted-foreground">{it.kind === "pago" ? "Pago" : "Cargo"} · {LABEL[it.category] ?? it.category}</div>
+                          <div className="text-xs text-muted-foreground">{it.kind === "pago" ? "Pago" : "Cargo"} · {LABEL[it.category] ?? it.category}{it.external ? " · cargado desde su módulo" : ""}</div>
                         </td>
                         <td className="p-2">{it.kind === "cargo" ? it.quantity : ""}</td>
                         <td className="p-2">{it.kind === "cargo" && it.taxRateBp != null ? `${it.taxRateBp / 100} %` : ""}</td>
                         <td className={`p-2 text-right whitespace-nowrap ${it.kind === "pago" ? "text-emerald-700 dark:text-emerald-400" : ""}`}>{it.kind === "pago" ? "−" : ""}{eur(it.amountCents)}</td>
                         <td className="p-2 text-right">
                           {editable && !it.automatic && (
-                            <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => del.mutate({ reservationId, itemId: it.id })} disabled={busy} aria-label="Borrar"><Trash2 className="h-3.5 w-3.5 text-destructive" /></Button>
+                            <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => del.mutate({ reservationId, itemId: it.id })} disabled={busy} aria-label={it.external ? "Anular el cargo (vuelve a pendiente de cobro en su módulo)" : "Borrar"} title={it.external ? "Anula el cargo entero: vuelve a pendiente de cobro en su módulo" : undefined}><Trash2 className="h-3.5 w-3.5 text-destructive" /></Button>
                           )}
                         </td>
                       </tr>

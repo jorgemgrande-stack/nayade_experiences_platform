@@ -6,9 +6,10 @@
  */
 import { useEffect, useMemo, useState } from "react";
 import { Link, useLocation, useParams } from "wouter";
-import { ArrowLeft, Ban, ChefHat, Link2, Minus, Plus, Receipt, Search, Trash2, Unlink, Users, Wallet } from "lucide-react";
+import { BedDouble, ArrowLeft, Ban, ChefHat, Link2, Minus, Plus, Receipt, Search, Trash2, Unlink, Users, Wallet } from "lucide-react";
 import { toast } from "sonner";
 import AdminLayout from "@/components/AdminLayout";
+import { RoomChargeDialog } from "@/components/hotel/RoomChargeDialog";
 import TpvTicket from "@/pages/admin/tpv/TpvTicket";
 import { trpc } from "@/lib/trpc";
 import { Button } from "@/components/ui/button";
@@ -38,7 +39,7 @@ import { KITCHEN_STATUS_LABELS } from "@shared/restaurantKds";
 import { CARTA_PATH, SALA_PATH, useRestaurantNetWrite } from "./RestaurantNetParts";
 
 const ALL = "__todas";
-const STATUS_TONE: Record<OrderStatus, keyof typeof TONE_BADGE> = { open: "warning", bill_requested: "info", paying: "info", paid: "success", cancelled: "neutral" };
+const STATUS_TONE: Record<OrderStatus, keyof typeof TONE_BADGE> = { open: "warning", bill_requested: "info", paying: "info", paid: "success", room_charged: "brand", cancelled: "neutral" };
 
 export default function Comanda() {
   const params = useParams<{ id: string }>();
@@ -61,6 +62,13 @@ export default function Comanda() {
   const [merging, setMerging] = useState(false);
   const [mergeTable, setMergeTable] = useState("");
   const [paying, setPaying] = useState(false);
+  // Cargo a habitación: solo si la empresa tiene Hotel Net (si no, la opción no aparece)
+  const roomGuests = trpc.restaurantNet.roomGuests.useQuery(undefined, { retry: false });
+  const [toRoom, setToRoom] = useState(false);
+  const chargeToRoom = trpc.restaurantNet.chargeToRoom.useMutation({
+    onSuccess: () => { toast.success("Cargada a la habitación"); setToRoom(false); utils.restaurantNet.getFloor.invalidate(); navigate(SALA_PATH); },
+    onError: (e) => toastError(e),
+  });
   const [ticketSaleId, setTicketSaleId] = useState<number | null>(null);
 
   const refresh = () => {
@@ -180,7 +188,7 @@ export default function Comanda() {
                     <Button key={c} size="sm" variant={course === c ? "secondary" : "ghost"} aria-pressed={course === c} className="h-7 px-2.5" onClick={() => setCourse(c)}>{c}</Button>
                   ))}
                 </div>
-                <div className="flex gap-1.5 overflow-x-auto pb-1" role="tablist" aria-label="Categorías">
+                <div className="flex gap-1.5 overflow-x-auto pb-1 [scrollbar-width:thin]" role="tablist" aria-label="Categorías">
                   {[ALL, ...categories].map((c) => (
                     <button
                       key={c}
@@ -217,7 +225,7 @@ export default function Comanda() {
           </section>
 
           {/* Ticket de la comanda */}
-          <section className="flex min-w-0 flex-col rounded-2xl border border-border bg-card" aria-label="Comanda">
+          <section className="order-first flex min-w-0 flex-col rounded-2xl border border-border bg-card lg:order-none" aria-label="Comanda">
             <ul className="max-h-[50vh] flex-1 divide-y divide-border overflow-y-auto">
               {lines.length === 0 && <li className="p-4 text-sm text-muted-foreground">Aún no hay platos. Toca un plato de la carta para añadirlo.</li>}
               {lines.map((l) => {
@@ -296,6 +304,9 @@ export default function Comanda() {
                     <Button variant="outline" disabled={reopen.isPending} onClick={() => reopen.mutate({ orderId })}>Siguen pidiendo</Button>
                   )}
                   <Button disabled={totals.total <= 0} onClick={() => setPaying(true)}><Wallet className="mr-1.5 h-4 w-4" aria-hidden="true" />Cobrar</Button>
+                  {roomGuests.data?.available && (
+                    <Button variant="outline" className="col-span-2" disabled={totals.total <= 0} onClick={() => setToRoom(true)}><BedDouble className="mr-1.5 h-4 w-4" aria-hidden="true" />Cargar a la habitación</Button>
+                  )}
                   <Button variant="ghost" size="sm" disabled={!table} onClick={() => { setMergeTable(""); setMerging(true); }}><Link2 className="mr-1 h-4 w-4" aria-hidden="true" />Unir mesa</Button>
                   <Button variant="ghost" size="sm" onClick={() => { setReleaseReason(""); setReleasing(true); }}><Ban className="mr-1 h-4 w-4" aria-hidden="true" />Liberar mesa</Button>
                 </>
@@ -308,7 +319,7 @@ export default function Comanda() {
       </div>
 
       <Dialog open={voiding != null} onOpenChange={(o) => !o && setVoiding(null)}>
-        <DialogContent className="max-w-sm">
+        <DialogContent className="sm:max-w-sm">
           <DialogHeader>
             <DialogTitle>Anular «{voiding?.name}»</DialogTitle>
             <DialogDescription>La línea queda tachada en la comanda con el motivo y deja de contar en el total.</DialogDescription>
@@ -325,7 +336,7 @@ export default function Comanda() {
       </Dialog>
 
       <Dialog open={releasing} onOpenChange={setReleasing}>
-        <DialogContent className="max-w-sm">
+        <DialogContent className="sm:max-w-sm">
           <DialogHeader>
             <DialogTitle>Liberar la mesa sin cobrar</DialogTitle>
             <DialogDescription>
@@ -346,13 +357,13 @@ export default function Comanda() {
       </Dialog>
 
       <Dialog open={merging} onOpenChange={setMerging}>
-        <DialogContent className="max-w-sm">
+        <DialogContent className="sm:max-w-sm">
           <DialogHeader>
             <DialogTitle>Unir otra mesa a la {table?.code}</DialogTitle>
             <DialogDescription>La comanda sigue en esta mesa; si la otra tenía platos, pasan aquí. Al cobrar, se separan solas.</DialogDescription>
           </DialogHeader>
           <Select value={mergeTable} onValueChange={setMergeTable}>
-            <SelectTrigger aria-label="Mesa que se une"><SelectValue placeholder="Elige la mesa" /></SelectTrigger>
+            <SelectTrigger aria-label="Mesa que se une" className="w-full min-w-0"><SelectValue placeholder="Elige la mesa" /></SelectTrigger>
             <SelectContent>
               {mergeCandidates.map((t) => {
                 const s = states.get(t.id)?.state ?? "libre";
@@ -367,6 +378,16 @@ export default function Comanda() {
         </DialogContent>
       </Dialog>
 
+      {toRoom && (
+        <RoomChargeDialog
+          title={table ? `Cargar la mesa ${table.code} a una habitación` : "Cargar a una habitación"}
+          amountLabel={formatEur(totals.total)}
+          guests={roomGuests.data?.guests ?? []}
+          pending={chargeToRoom.isPending}
+          onConfirm={(hotelReservationId) => chargeToRoom.mutate({ orderId, hotelReservationId })}
+          onClose={() => setToRoom(false)}
+        />
+      )}
       {paying && (
         <CheckoutDialog
           orderId={orderId}
@@ -399,7 +420,7 @@ function CheckoutDialog({ orderId, total, customerName, onClose, onPaid }: { ord
 
   return (
     <Dialog open onOpenChange={(o) => !o && onClose()}>
-      <DialogContent className="max-h-[90vh] max-w-md overflow-y-auto">
+      <DialogContent className="max-h-[90vh] sm:max-w-md overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Cobrar {formatEur(total)}</DialogTitle>
           <DialogDescription>Se registra como venta del TPV en la caja elegida, con su ticket y el IVA de cada plato.</DialogDescription>
@@ -418,7 +439,7 @@ function CheckoutDialog({ orderId, total, customerName, onClose, onPaid }: { ord
             <div className="space-y-1.5">
               <Label htmlFor="rnet-pay-session">Caja</Label>
               <Select value={chosen} onValueChange={setSessionId}>
-                <SelectTrigger id="rnet-pay-session"><SelectValue placeholder="Elige la caja" /></SelectTrigger>
+                <SelectTrigger id="rnet-pay-session" className="w-full min-w-0"><SelectValue placeholder="Elige la caja" /></SelectTrigger>
                 <SelectContent>{open.map((r) => <SelectItem key={r.id} value={String(r.openSession!.id)}>{r.name}{r.openSession!.cashierName ? ` · ${r.openSession!.cashierName}` : ""}</SelectItem>)}</SelectContent>
               </Select>
             </div>
@@ -427,7 +448,7 @@ function CheckoutDialog({ orderId, total, customerName, onClose, onPaid }: { ord
                 <div className="min-w-0 space-y-1.5">
                   <Label htmlFor={`rnet-pay-m-${i}`}>Pago {payments.length > 1 ? i + 1 : ""}</Label>
                   <Select value={p.method} onValueChange={(v) => setPayments(payments.map((x, j) => (j === i ? { ...x, method: v as PaymentMethod } : x)))}>
-                    <SelectTrigger id={`rnet-pay-m-${i}`}><SelectValue /></SelectTrigger>
+                    <SelectTrigger id={`rnet-pay-m-${i}`} className="w-full min-w-0"><SelectValue /></SelectTrigger>
                     <SelectContent>{PAYMENT_METHODS.map((m) => <SelectItem key={m} value={m}>{PAYMENT_METHOD_LABELS[m]}</SelectItem>)}</SelectContent>
                   </Select>
                 </div>

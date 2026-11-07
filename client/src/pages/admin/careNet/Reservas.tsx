@@ -6,9 +6,10 @@
  */
 import { useMemo, useState } from "react";
 import { Link } from "wouter";
-import { CalendarDays, ChevronLeft, ChevronRight, Plus, Ticket } from "lucide-react";
+import { BedDouble, CalendarDays, ChevronLeft, ChevronRight, Plus, Ticket } from "lucide-react";
 import { toast } from "sonner";
 import AdminLayout from "@/components/AdminLayout";
+import { RoomChargeDialog } from "@/components/hotel/RoomChargeDialog";
 import { trpc } from "@/lib/trpc";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -24,7 +25,11 @@ import { BONOS_PATH, ClientPicker, PageHeader, useCareWrite } from "./CareNetPar
 
 const STATE_TONE: Record<SpaBookingState, Tone> = { pendiente: "warning", confirmada: "success", anulada: "neutral", conflicto: "danger" };
 const addDays = (d: string, n: number) => new Date(Date.parse(`${d}T00:00:00Z`) + n * DAY_MS).toISOString().slice(0, 10);
-const dayLabel = (d: string) => new Date(`${d}T12:00:00Z`).toLocaleDateString("es-ES", { weekday: "long", day: "numeric", month: "long", timeZone: "UTC" });
+// Solo la primera letra en mayúscula («Sábado, 7 de noviembre»; `capitalize` de CSS ponía «De Noviembre»)
+const dayLabel = (d: string) => {
+  const s = new Date(`${d}T12:00:00Z`).toLocaleDateString("es-ES", { weekday: "long", day: "numeric", month: "long", timeZone: "UTC" });
+  return s.charAt(0).toUpperCase() + s.slice(1);
+};
 
 export default function Reservas() {
   const { canWrite } = useCareWrite();
@@ -40,6 +45,10 @@ export default function Reservas() {
   const [cancelRes, setCancelRes] = useState(false);
   const refresh = () => { utils.careNet.spaReservations.invalidate(); utils.careNet.clientsWithPacks.invalidate(); };
   const consume = trpc.careNet.consumeForReservation.useMutation({ onSuccess: (r) => { toast.success(`Pagada con bono · quedan ${r.purchase.remaining} sesiones`); refresh(); }, onError: (e) => toastError(e) });
+  // Cargo a habitación: solo con Hotel Net
+  const roomGuests = trpc.careNet.roomGuests.useQuery(undefined, { retry: false });
+  const [toRoom, setToRoom] = useState<{ id: number; label: string } | null>(null);
+  const chargeRoom = trpc.careNet.chargeReservationToRoom.useMutation({ onSuccess: () => { toast.success("Cargada a la habitación"); setToRoom(null); refresh(); }, onError: (e) => toastError(e) });
   const revert = trpc.careNet.revertConsumption.useMutation({ onSuccess: () => { toast.success("Sesión devuelta al bono"); setReverting(null); refresh(); }, onError: (e) => toastError(e) });
 
   const rows = (list.data ?? []).filter((r) => showCancelled || r.state !== "anulada");
@@ -89,7 +98,7 @@ export default function Reservas() {
         ) : (
           days.map((d) => (
             <section key={d} className="rounded-2xl border border-border bg-card" aria-label={dayLabel(d)}>
-              <h2 className="border-b border-border px-4 py-2.5 text-sm font-semibold capitalize text-foreground">{dayLabel(d)}</h2>
+              <h2 className="border-b border-border px-4 py-2.5 text-sm font-semibold text-foreground">{dayLabel(d)}</h2>
               {(byDay.get(d) ?? []).length === 0 ? (
                 <p className="px-4 py-3 text-sm text-muted-foreground">Sin reservas.</p>
               ) : (
@@ -107,6 +116,9 @@ export default function Reservas() {
                         {canWrite && r.state === "pendiente" && !r.consumption && (
                           <Button size="sm" variant="outline" disabled={consume.isPending} onClick={() => consume.mutate({ reservationId: r.id })}><Ticket className="mr-1 h-4 w-4" aria-hidden="true" />Pagar con bono</Button>
                         )}
+                        {canWrite && r.state === "pendiente" && !r.consumption && roomGuests.data?.available && r.amountTotal > 0 && (
+                          <Button size="sm" variant="outline" onClick={() => setToRoom({ id: r.id, label: `${r.amountTotal.toLocaleString("es-ES", { minimumFractionDigits: 2 })} €` })}><BedDouble className="mr-1 h-4 w-4" aria-hidden="true" />A la habitación</Button>
+                        )}
                         {canWrite && r.consumption && (
                           <Button size="sm" variant="ghost" onClick={() => { setReason(""); setCancelRes(false); setReverting(r.consumption!.id); }}>Devolver sesión</Button>
                         )}
@@ -121,9 +133,19 @@ export default function Reservas() {
       </div>
 
       {counter && <CounterDialog onClose={() => setCounter(false)} onDone={refresh} />}
+      {toRoom && (
+        <RoomChargeDialog
+          title="Cargar la reserva de SPA a una habitación"
+          amountLabel={toRoom.label}
+          guests={roomGuests.data?.guests ?? []}
+          pending={chargeRoom.isPending}
+          onConfirm={(hotelReservationId) => chargeRoom.mutate({ reservationId: toRoom.id, hotelReservationId })}
+          onClose={() => setToRoom(null)}
+        />
+      )}
 
       <Dialog open={reverting != null} onOpenChange={(o) => !o && setReverting(null)}>
-        <DialogContent className="max-w-sm">
+        <DialogContent className="sm:max-w-sm">
           <DialogHeader>
             <DialogTitle>Devolver la sesión al bono</DialogTitle>
             <DialogDescription>Sin anular la cita, la reserva queda pendiente de pago; anulándola, se libera la plaza.</DialogDescription>
@@ -162,7 +184,7 @@ function CounterDialog({ onClose, onDone }: { onClose: () => void; onDone: () =>
   });
   return (
     <Dialog open onOpenChange={(o) => !o && onClose()}>
-      <DialogContent className="max-h-[90vh] max-w-md overflow-y-auto">
+      <DialogContent className="max-h-[90vh] sm:max-w-md overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Cita con bono</DialogTitle>
           <DialogDescription>Reserva una franja libre y descuenta una sesión del bono del cliente (el que caduca antes).</DialogDescription>
@@ -190,7 +212,7 @@ function CounterDialog({ onClose, onDone }: { onClose: () => void; onDone: () =>
           <div className="space-y-1.5">
             <Label htmlFor="care-ct-slot">Horario</Label>
             <Select value={slotId} onValueChange={setSlotId}>
-              <SelectTrigger id="care-ct-slot"><SelectValue placeholder={slots.data && slots.data.length === 0 ? "No hay horarios ese día" : "Elige el horario"} /></SelectTrigger>
+              <SelectTrigger id="care-ct-slot" className="w-full min-w-0"><SelectValue placeholder={slots.data && slots.data.length === 0 ? "No hay horarios ese día" : "Elige el horario"} /></SelectTrigger>
               <SelectContent>
                 {(slots.data ?? []).map((s) => (
                   <SelectItem key={s.id} value={String(s.id)} disabled={s.free < 1}>{s.startTime} · {s.treatmentName} · {s.free} libres</SelectItem>
