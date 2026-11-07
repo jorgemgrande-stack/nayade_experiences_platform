@@ -145,6 +145,7 @@ const HotelPlanning = lazy(() => import("./pages/admin/hotel/HotelPlanning"));
 const HotelReservations = lazy(() => import("./pages/admin/hotel/HotelReservations"));
 const HotelRooms = lazy(() => import("./pages/admin/hotel/HotelRooms"));
 const HotelReports = lazy(() => import("./pages/admin/hotel/HotelReports"));
+const HotelHousekeeping = lazy(() => import("./pages/admin/hotel/HotelHousekeeping"));
 const SpaManager = lazy(() => import("./pages/admin/spa/SpaManager"));
 const CareNetReservas = lazy(() => import("./pages/admin/careNet/Reservas"));
 const CareNetBonos = lazy(() => import("./pages/admin/careNet/Bonos"));
@@ -470,6 +471,7 @@ function Router() {
       <Route path="/admin/hotel/reservas">{() => <Suspense fallback={<AdminLoadingFallback />}><HotelReservations /></Suspense>}</Route>
       <Route path="/admin/hotel/habitaciones">{() => <Suspense fallback={<AdminLoadingFallback />}><HotelRooms /></Suspense>}</Route>
       <Route path="/admin/hotel/informes">{() => <Suspense fallback={<AdminLoadingFallback />}><HotelReports /></Suspense>}</Route>
+      <Route path="/admin/hotel/housekeeping">{() => <Suspense fallback={<AdminLoadingFallback />}><HotelHousekeeping /></Suspense>}</Route>
       <Route path="/admin/hotel">{() => <Suspense fallback={<AdminLoadingFallback />}><HotelManager /></Suspense>}</Route>
       <Route path="/admin/spa">{() => <Suspense fallback={<AdminLoadingFallback />}><SpaManager /></Suspense>}</Route>
       <Route path="/admin/care-net/reservas">{() => <Suspense fallback={<AdminLoadingFallback />}><CareNetReservas /></Suspense>}</Route>

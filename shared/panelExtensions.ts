@@ -300,6 +300,8 @@ export const CORE_EXTENSION_PANELS: Readonly<Record<string, { capability?: strin
           { id: "reservas", label: "Reservas", path: "/admin/hotel/reservas", icon: "receipt", order: 5 },
           { id: "habitaciones", label: "Habitaciones", path: "/admin/hotel/habitaciones", icon: "bed", order: 6 },
           { id: "informes", label: "Informes", path: "/admin/hotel/informes", icon: "chart", order: 7 },
+          // El personal de pisos ve sus tareas: cualquier rol de equipo (la gestión completa la decide el servidor)
+          { id: "housekeeping", label: "Housekeeping", path: "/admin/hotel/housekeeping", icon: "sparkles", order: 8, roles: ["admin", "agente", "monitor", "adminrest", "controler"] },
         ],
       },
       api: ["hotel"],
