@@ -196,6 +196,22 @@ export const PROVIDERS: ProviderDef[] = [
       { key: "apiKey", label: "Clave API", secret: true, required: true, pattern: /^xkeysib-[A-Za-z0-9-]{20,200}$/, panel: { label: "Clave API de Brevo", help: "Créala en tu cuenta de Brevo, en «SMTP y API» → «Claves API». Empieza por «xkeysib-».", formatMessage: "La clave empieza por «xkeysib-» y no tiene espacios. Cópiala completa." } },
     ],
   },
+  {
+    // Cuenta de agencia PROPIA de cada empresa en Veturis (nunca la de otra empresa ni variables de entorno)
+    id: "veturis",
+    name: "Veturis (alojamiento)",
+    description: "Banco de camas para los expedientes de Travel Net: buscar disponibilidad y precio de hoteles y, si lo activas, reservarlos.",
+    capabilities: ["Buscar disponibilidad y precio de hoteles (solo lectura)", "Revalidar el precio de una oferta antes de confirmar", "Reservar el alojamiento, solo si activas la reserva en Travel Net"],
+    check: "Búsqueda de disponibilidad de prueba (SearchAvailability): no reserva nada",
+    panel: { group: "suppliers", title: "Veturis: hoteles para tus viajes", summary: "Busca hoteles de Veturis desde tus expedientes de viaje con tu propia cuenta de agencia.", requires: ["travel-net"] },
+    fields: [
+      { key: "environment", label: "Entorno", secret: false, required: true, options: ["test", "live"], panel: { label: "Modo", help: "Empieza en «Pruebas» con el usuario de pruebas que te da Veturis; pasa a «Real» cuando Veturis te certifique.", optionLabels: { test: "Pruebas (sin reservas reales)", live: "Real" } } },
+      { key: "user", label: "Usuario XML", secret: true, required: true, pattern: TOKEN_RE, panel: { label: "Usuario de la API", help: "Te lo da Veturis al darte de alta en su API XML.", formatMessage: "Cópialo completo, sin espacios." } },
+      { key: "password", label: "Clave XML", secret: true, required: true, pattern: PASSWORD_RE, panel: { label: "Clave de la API", formatMessage: "La clave no puede tener saltos de línea." } },
+      { key: "agencyUser", label: "Usuario de la agencia", secret: true, required: true, pattern: TOKEN_RE, panel: { label: "Usuario de tu agencia en Veturis", formatMessage: "Cópialo completo, sin espacios." } },
+      { key: "agencyPassword", label: "Clave de la agencia", secret: true, required: true, pattern: PASSWORD_RE, panel: { label: "Clave de tu agencia en Veturis", formatMessage: "La clave no puede tener saltos de línea." } },
+    ],
+  },
 ];
 
 export function getProvider(id: string): ProviderDef | undefined {

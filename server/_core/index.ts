@@ -48,6 +48,7 @@ import { startHotelGuestRetentionJob } from "../hotelGuestRetentionJob";
 import { startDataExportJob } from "../dataExport/job";
 import { startOnboardingReminderJob } from "../onboardingReminders";
 import { startBrevoMarketingJob } from "../brevoMarketing/runtime";
+import { startVeturisInventoryJob } from "../travelNet/veturis/job";
 import { startEmailIngestionJob } from "../services/emailTpvIngestionService";
 import { startExpenseEmailIngestionJob } from "../services/expenseEmailIngestionService";
 import { initCommercialEmailTables, startCommercialEmailSyncJob } from "../services/commercialEmailService";
@@ -1832,6 +1833,8 @@ const SCHEDULED_JOBS: Array<{ name: string; flag: string; start: () => void; lab
   { name: "hotel-night-audit", flag: "hotel_night_audit_job_enabled", start: startHotelNightAuditJob, label: "Hotel Night Audit", def: false },
   // Desactivado por defecto: además, cada empresa decide con su interruptor de sincronización automática
   { name: "brevo-marketing-sync", flag: "brevo_marketing_sync_enabled", start: startBrevoMarketingJob, label: "Brevo Marketing Sync", def: false },
+  // Desactivado por defecto: además, cada empresa decide con su interruptor de inventario de Veturis
+  { name: "veturis-inventory", flag: "veturis_inventory_enabled", start: startVeturisInventoryJob, label: "Veturis Inventory", def: false },
   { name: "hotel-guest-retention", flag: "hotel_guest_retention_job_enabled", start: startHotelGuestRetentionJob, label: "Hotel Guest Retention", def: false },
   {
     name: "onboarding-reminder",

@@ -13,6 +13,7 @@ import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
 import { Plus, Truck, Trash2, Users } from "lucide-react";
 import { KINDS, KIND_LABEL, TravelEmpty, TravelNotInstalled, isTravelNotInstalled } from "./travelShared";
+import { VeturisSettingsCard } from "./TravelVeturis";
 
 function KindsPicker({ value, onChange }: { value: string[]; onChange: (v: string[]) => void }) {
   return (
@@ -125,6 +126,7 @@ export default function TravelSuppliers() {
           </div>
           <Button onClick={() => setCreating(true)} disabled={isTravelNotInstalled(q.error)}><Plus className="h-4 w-4 mr-1" /> Nuevo proveedor</Button>
         </div>
+        {!isTravelNotInstalled(q.error) && <VeturisSettingsCard suppliers={q.data ?? []} />}
         <Select value={kind} onValueChange={setKind}>
           <SelectTrigger className="w-48"><SelectValue /></SelectTrigger>
           <SelectContent><SelectItem value="all">Todos los servicios</SelectItem>{KINDS.map((k) => <SelectItem key={k} value={k}>{KIND_LABEL[k]}</SelectItem>)}</SelectContent>

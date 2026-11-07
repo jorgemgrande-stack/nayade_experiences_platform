@@ -1,3 +1,6 @@
+import { VeturisApiError } from "../../travelNet/veturis/protocol";
+import { VeturisClient, VeturisNetworkError, type VeturisFetch } from "../../travelNet/veturis/client";
+
 /**
  * Comprobación de credenciales por proveedor. Nunca devuelve ni registra el secreto; el
  * resultado es solo `ok` + un motivo genérico. Las llamadas de red usan `fetch` inyectable.
@@ -79,6 +82,27 @@ async function mailbox(kind: "imap" | "smtp", v: Record<string, string>, probes:
   }
 }
 
+/**
+ * Veturis no tiene un «ping»: se hace una búsqueda de disponibilidad (solo lectura, no reserva nada) dentro de 60
+ * días. Unas credenciales malas responden con un error de acceso.
+ */
+async function veturisCheck(v: Record<string, string>, fetchImpl: VeturisFetch): Promise<TestResult> {
+  if (!v.user || !v.password || !v.agencyUser || !v.agencyPassword) return { ok: false, message: "Faltan el usuario, la clave o los datos de la agencia" };
+  const env = v.environment === "live" ? "live" : "test";
+  const day = (n: number) => new Date(Date.now() + n * 86_400_000).toISOString().slice(0, 10);
+  const client = new VeturisClient({ user: v.user, password: v.password, agencyUser: v.agencyUser, agencyPassword: v.agencyPassword, environment: env }, { fetch: fetchImpl, maxCalls: 1 });
+  try {
+    await client.search({ hotelIds: ["1"], checkIn: day(60), checkOut: day(61), rooms: [{ adults: 2, childrenAges: [] }] });
+    return { ok: true, message: `Conexión correcta con Veturis (${env === "live" ? "real" : "pruebas"})` };
+  } catch (e) {
+    if (e instanceof VeturisNetworkError && e.rejected) return { ok: false, message: "Veturis rechaza las credenciales", outcome: "rejected" };
+    if (e instanceof VeturisApiError && VETURIS_AUTH_RE.test(e.message)) return { ok: false, message: "Veturis rechaza las credenciales", outcome: "rejected" };
+    if (e instanceof VeturisApiError) return { ok: false, message: "Veturis respondió con un error: revisa los datos o contacta con su soporte" };
+    return { ok: false, message: "No se pudo contactar con Veturis (revisa que la IP del servidor esté autorizada)" };
+  }
+}
+const VETURIS_AUTH_RE = /usuari|user|password|contrase|login|autentic|acceso|access|credencial|agenc/i;
+
 export async function testProvider(
   provider: string,
   v: Record<string, string>,
@@ -114,6 +138,8 @@ async function testProviderRaw(provider: string, v: Record<string, string>, fetc
       if (!v.apiKey) return { ok: false, message: "Falta la clave API" };
       return get(fetchImpl, "https://api.brevo.com/v3/account", { "api-key": v.apiKey, accept: "application/json" });
     }
+    case "veturis":
+      return veturisCheck(v, fetchImpl as unknown as VeturisFetch);
     case "redsys": {
       // Sin red: Redsys no ofrece un ping; se valida que la configuración sea utilizable
       if (!v.merchantCode || !v.merchantKey) return { ok: false, message: "Faltan el número de comercio o la clave secreta" };

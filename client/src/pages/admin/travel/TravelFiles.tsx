@@ -11,11 +11,12 @@ import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
-import { ArrowLeft, Briefcase, FileText, Pencil, Plus, RefreshCw, Send, Ticket, Trash2, Wand2 } from "lucide-react";
+import { ArrowLeft, Briefcase, FileText, Pencil, Plus, RefreshCw, Search, Send, Ticket, Trash2, Wand2 } from "lucide-react";
 import {
   FILE_STATUS_LABEL, KINDS, KIND_LABEL, MODE_LABEL, OPERATION_STATUS_LABEL, QUOTE_STATUS_LABEL, RULE_SOURCE_LABEL, TravelEmpty, TravelNotInstalled,
   downloadBase64Pdf, eur, isTravelNotInstalled, operationClass, pct, toCents,
 } from "./travelShared";
+import { VeturisSearchDialog, useVeturisOffers } from "./TravelVeturis";
 
 type ServiceForm = {
   kind: string; source: "proveedor" | "propio"; supplierId: number | null; title: string; description: string; serviceDate: string; endDate: string;
@@ -180,6 +181,8 @@ function FileDetail({ id, onBack }: { id: number; onBack: () => void }) {
   const q = trpc.travel.getFile.useQuery({ id });
   const [serviceEdit, setServiceEdit] = useState<any | null | undefined>(undefined);
   const [editFile, setEditFile] = useState(false);
+  const [veturisOpen, setVeturisOpen] = useState(false);
+  const vt = useVeturisOffers(id);
   const refresh = () => { void utils.travel.getFile.invalidate({ id }); void utils.travel.listFiles.invalidate(); void utils.travel.listOperations.invalidate(); };
   const onError = (e: { message: string }) => toast.error(e.message);
   const genQuote = trpc.travel.generateQuote.useMutation({ onSuccess: (r) => { toast.success(r.updated ? `Presupuesto ${r.quoteNumber} actualizado` : `Presupuesto ${r.quoteNumber} creado`); refresh(); }, onError });
@@ -221,7 +224,12 @@ function FileDetail({ id, onBack }: { id: number; onBack: () => void }) {
       <Card>
         <CardHeader className="pb-2 flex flex-row items-center justify-between gap-2 space-y-0">
           <CardTitle className="text-base">Servicios</CardTitle>
-          {editable && <Button size="sm" onClick={() => setServiceEdit(null)}><Plus className="h-4 w-4 mr-1" /> Servicio</Button>}
+          {editable && (
+            <div className="flex flex-wrap gap-2">
+              <Button size="sm" variant="outline" onClick={() => setVeturisOpen(true)}><Search className="h-4 w-4 mr-1" /> Veturis</Button>
+              <Button size="sm" onClick={() => setServiceEdit(null)}><Plus className="h-4 w-4 mr-1" /> Servicio</Button>
+            </div>
+          )}
         </CardHeader>
         <CardContent className="p-0">
           {d.services.length === 0 ? (
@@ -237,7 +245,7 @@ function FileDetail({ id, onBack }: { id: number; onBack: () => void }) {
                 <tbody>
                   {d.services.map((s) => (
                     <tr key={s.id} className="border-b border-border last:border-0 align-top">
-                      <td className="p-2"><div className="font-medium">{s.title}</div><div className="text-xs text-muted-foreground">{KIND_LABEL[s.kind] ?? s.kind} · {s.quantity} ud.</div></td>
+                      <td className="p-2"><div className="font-medium">{s.title}</div><div className="text-xs text-muted-foreground">{KIND_LABEL[s.kind] ?? s.kind} · {s.quantity} ud.{vt.byService.get(s.id) ? <> · <Badge variant="outline" className="ml-1">Veturis{vt.byService.get(s.id)!.environment === "test" ? " · pruebas" : ""}</Badge>{vt.byService.get(s.id)!.locator ? ` · ${vt.byService.get(s.id)!.locator}` : ""}</> : null}</div></td>
                       <td className="p-2">{s.source === "propio" ? <span className="text-muted-foreground">Propio</span> : s.supplierName ?? "—"}</td>
                       <td className="p-2 whitespace-nowrap text-xs">{s.serviceDate ?? "—"}{s.endDate && s.endDate !== s.serviceDate ? ` → ${s.endDate}` : ""}</td>
                       <td className="p-2 text-right whitespace-nowrap">{eur(s.netCents)}</td>
@@ -245,6 +253,7 @@ function FileDetail({ id, onBack }: { id: number; onBack: () => void }) {
                       <td className="p-2 text-xs whitespace-nowrap">{RULE_SOURCE_LABEL[s.ruleSource ?? ""] ?? "—"}{s.markupBp != null ? ` +${pct(s.markupBp)}` : s.commissionBp != null ? ` ${pct(s.commissionBp)}` : ""}</td>
                       <td className="p-2">{s.operation ? <Badge variant="outline" className={operationClass(s.operation.status)}>{OPERATION_STATUS_LABEL[s.operation.status] ?? s.operation.status}</Badge> : <span className="text-xs text-muted-foreground">{s.source === "propio" ? "No aplica" : "—"}</span>}</td>
                       <td className="p-2 whitespace-nowrap text-right">
+                        {vt.byService.get(s.id)?.status === "quoted" && <Button variant="ghost" size="sm" onClick={() => vt.revalidate.mutate({ serviceId: s.id })} disabled={vt.revalidate.isPending} title="Revalidar precio en Veturis"><RefreshCw className="h-4 w-4" /></Button>}
                         {editable && <Button variant="ghost" size="sm" onClick={() => setServiceEdit(s)} title="Editar"><Pencil className="h-4 w-4" /></Button>}
                         {editable && <Button variant="ghost" size="sm" onClick={() => removeSvc.mutate({ fileId: id, serviceId: s.id })} title="Quitar"><Trash2 className="h-4 w-4 text-destructive" /></Button>}
                         {s.operation?.status === "pending_submission" && <Button variant="ghost" size="sm" onClick={() => submitOp.mutate({ id: s.operation!.id })} disabled={submitOp.isPending} title="Enviar al proveedor"><Send className="h-4 w-4" /></Button>}
@@ -283,6 +292,7 @@ function FileDetail({ id, onBack }: { id: number; onBack: () => void }) {
 
       {serviceEdit !== undefined && <ServiceDialog fileId={id} siteId={f.siteId} edit={serviceEdit} onClose={() => setServiceEdit(undefined)} />}
       {editFile && <FileDialog edit={f} onClose={() => setEditFile(false)} />}
+      {veturisOpen && <VeturisSearchDialog file={{ id, startDate: f.startDate, endDate: f.endDate, adults: f.adults }} onClose={() => setVeturisOpen(false)} />}
     </div>
   );
 }
