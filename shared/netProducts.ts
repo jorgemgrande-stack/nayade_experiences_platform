@@ -65,7 +65,7 @@ export const NET_PRODUCTS: readonly NetProduct[] = [
     areas: [
       { title: "Agenda y citas", features: [A("Agenda y calendario"), A("Reservas y citas online"), A("Gestión de profesionales"), A("Horarios y disponibilidad"), A("Capacidad y prevención de solapamientos")] },
       { title: "Clientes y seguimiento", features: [A("Clientes e historiales"), S("Fichas clínicas y seguimiento especializado")] },
-      { title: "Tratamientos y bonos", features: [A("Tratamientos y servicios"), S("Bonos y paquetes de sesiones"), S("Control de sesiones consumidas y pendientes")] },
+      { title: "Tratamientos y bonos", features: [A("Tratamientos y servicios"), A("Bonos y paquetes de sesiones"), A("Control de sesiones consumidas y pendientes")] },
       { title: "Cobros y gestión", features: [A("Pagos online y TPV"), S("Recordatorios y comunicaciones"), S("Estadísticas y gestión del centro")] },
     ],
   },
@@ -83,7 +83,7 @@ export const NET_PRODUCTS: readonly NetProduct[] = [
       { title: "PMS", features: [A("PMS"), A("Habitaciones y tipologías"), A("Tarifas, ocupación y disponibilidad"), A("Calendario de reservas"), A("Gestión de huéspedes"), A("Check-in y check-out")] },
       { title: "Motor de reservas", features: [A("Motor de reservas para web propia"), A("Reservas y pagos directos")] },
       { title: "Channel Manager", features: [S("Channel Manager"), S("Sincronización de inventario y tarifas")] },
-      { title: "Housekeeping", features: [S("Housekeeping"), S("Limpieza y estados de habitaciones"), S("Coordinación de recepción y personal")] },
+      { title: "Housekeeping", features: [A("Housekeeping"), A("Limpieza y estados de habitaciones"), A("Coordinación de recepción y personal")] },
       { title: "Informes", features: [A("Informes de ocupación e ingresos")] },
     ],
     note: "Las comisiones de los canales de venta (OTAs) se pagan aparte a cada canal.",
@@ -117,7 +117,7 @@ export const NET_PRODUCTS: readonly NetProduct[] = [
     legacyKeys: ["ski-net-school", "ski-net-courses", "ski-net-rental", "ski-net-instructors"],
     areas: [
       { title: "Escuela", features: [A("Gestión de escuelas"), A("Calendarios y disponibilidad"), A("Clases particulares y colectivas"), S("Cursillos y grupos por niveles"), A("Alumnos y fichas"), A("Planificación de sesiones")] },
-      { title: "Profesores", features: [A("Profesores y monitores"), A("Asignación de profesores"), S("Control de horas"), S("Liquidaciones de profesores"), S("Portal del profesor")] },
+      { title: "Profesores", features: [A("Profesores y monitores"), A("Asignación de profesores"), A("Control de horas"), A("Liquidaciones de profesores"), A("Portal del profesor")] },
       { title: "Alquiler", features: [A("Inventario de material"), A("Alquiler de equipos"), S("Disponibilidad y reservas"), A("Contratos digitales y firmas"), S("Fianzas y devoluciones")] },
       { title: "Gestión", features: [A("Cobros y facturación"), S("Estadísticas operativas")] },
     ],

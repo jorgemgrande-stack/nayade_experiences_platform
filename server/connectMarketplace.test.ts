@@ -160,7 +160,7 @@ describe("catálogo de Connect con el catálogo oficial", () => {
     expect(out.map((i) => i.name).sort()).toEqual(["Care Net", "Hotel Net", "Life Net", "Restaurant Net", "Ski Net", "Social Token Net", "Travel Net"]);
     const hotel = out.find((i) => i.key === "hotel-net-complete")!;
     expect(hotel.net).toMatchObject({ licence: "HOTEL_NET", segment: "business", homePath: "/admin/net/hotel", legacyContracted: [] });
-    expect(hotel.includes).toEqual(["PMS", "Motor de reservas", "Channel Manager (próximamente)", "Housekeeping (próximamente)", "Informes"]);
+    expect(hotel.includes).toEqual(["PMS", "Motor de reservas", "Channel Manager (próximamente)", "Housekeeping", "Informes"]);
     expect(hotel.capabilities).toEqual(["hotel-net"]);
     expect(out.find((i) => i.key === "life-net")!.net!.segment).toBe("personal");
     expect(JSON.stringify(out)).not.toMatch(/Complete/);
