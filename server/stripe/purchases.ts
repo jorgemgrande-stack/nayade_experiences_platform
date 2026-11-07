@@ -47,6 +47,7 @@ import { intervalCompatible, itemChanges, supportsPendingUpdate } from "./multip
 import type { StripeStore } from "./store";
 import { SubscriptionChangeError, sameItems, type ExpectedItem, type SubscriptionChange, type SubscriptionChangeStore } from "./changes";
 import { bundleReplaces } from "../catalog/quote";
+import { legacyExtensionText } from "../../shared/netProducts";
 import { SWAP_SUFFIX, cleanupSwapZeros } from "./swapCleanup";
 
 type ItemChange = { id?: string; priceId?: string; quantity?: number; deleted?: true };
@@ -157,6 +158,11 @@ export interface PurchaseDeps {
   enabled: boolean;
   /** Empresas de prueba que pueden comprar productos internos (`catalog.internalOnly`). Vacío: ninguna. */
   internalTenants?: ReadonlySet<string>;
+  /**
+   * SOLO PRUEBAS: permite comprar las antiguas extensiones de Elephant Net para simular contratos anteriores al
+   * 07/11/2026 (las pruebas de sustitución por el producto). En producción no se define: nunca se venden sueltas.
+   */
+  legacyNetSales?: boolean;
   /** Vía asíncrona (SEPA). Desactivada: con un método asíncrono no se compra en línea. */
   asyncPayments?: boolean;
   mode: StripeMode;
@@ -267,6 +273,9 @@ export class ModulePurchaseService {
         const live = (await this.d.subscriptionItems.items(current.subscriptionId)).find((i) => i.productKey === key && i.effectiveFrom <= at && (i.effectiveTo === null || i.effectiveTo > at));
         if (live) throw new PurchaseError("invalid_state", `«${key}» tiene la baja programada y sigue activo hasta el fin del periodo: se podrá volver a contratar después`);
       }
+      // Elephant Net (07/11/2026): las antiguas extensiones sectoriales no se venden sueltas; se contrata el producto
+      const legacy = legacyExtensionText(key);
+      if (legacy && !this.d.legacyNetSales) throw new PurchaseError("unavailable", legacy);
       const p = await this.d.catalog.product(key);
       if (!p || p.commercialStatus !== "available" || !PURCHASABLE_FAMILIES.has(p.family) || p.addonFor || (p.internalOnly && !this.internalAllowed(current.tenantId))) throw new PurchaseError("unavailable", `«${key}» no está disponible para compra en línea`);
     }

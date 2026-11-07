@@ -68,7 +68,7 @@ describe("estados comerciales normalizados", () => {
       if (p.draft.catalog.commercialStatus === "on_request") expect(p.draft.technicalStatus, p.key).not.toBe("planned");
       expect(p.draft.catalog.commercialStatus, p.key).not.toBe("available");
     }
-    expect(PRODUCTS.find((p) => p.key === "hotel-net-pms")!.draft.internal.notes).not.toMatch(/no se vende/);
+    expect(PRODUCTS.find((p) => p.key === "hotel-net-pms")!.draft.internal.notes).toMatch(/^Componente interno del producto Elephant Net/);
   });
 });
 

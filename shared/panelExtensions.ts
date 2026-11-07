@@ -283,26 +283,67 @@ export const CORE_EXTENSION_PANELS: Readonly<Record<string, { capability?: strin
       api: ["hr"],
     },
   },
+  // Elephant Net (07/11/2026): cada producto contratado tiene UNA sección propia con su panel general (funcionalidades
+  // incluidas y su estado) y sus herramientas; lo pendiente se ve como «Próximamente» en el panel general
   hotel: {
     capability: "hotel-net",
-    panel: { items: [{ id: "hotel", label: "Hotel", path: "/admin/hotel", icon: "bed", order: 65 }], api: ["hotel"] },
+    panel: {
+      section: {
+        id: "hotel-net",
+        label: "Hotel Net",
+        order: 65,
+        items: [
+          { id: "panel", label: "Panel general", path: "/admin/net/hotel", icon: "dashboard", order: 1 },
+          { id: "hotel", label: "PMS: habitaciones, tarifas y reservas", path: "/admin/hotel", icon: "bed", order: 2 },
+        ],
+      },
+      api: ["hotel"],
+    },
   },
   restaurants: {
     capability: "restaurant-net",
     panel: {
-      items: [{ id: "restaurantes", label: "Restaurantes", path: "/admin/restaurantes", icon: "utensils", roles: ["admin", "adminrest"], order: 66 }],
+      section: {
+        id: "restaurant-net",
+        label: "Restaurant Net",
+        order: 66,
+        items: [
+          { id: "panel", label: "Panel general", path: "/admin/net/restaurant", icon: "dashboard", roles: ["admin", "adminrest"], order: 1 },
+          { id: "restaurantes", label: "Reservas y mesas", path: "/admin/restaurantes", icon: "utensils", roles: ["admin", "adminrest"], order: 2 },
+        ],
+      },
       api: ["restaurants"],
     },
   },
   spa: {
     capability: "care-net",
-    panel: { items: [{ id: "agenda", label: "Agenda y citas", path: "/admin/spa", icon: "calendar", order: 67 }], api: ["spa"] },
+    panel: {
+      section: {
+        id: "care-net",
+        label: "Care Net",
+        order: 67,
+        items: [
+          { id: "panel", label: "Panel general", path: "/admin/net/care", icon: "dashboard", order: 1 },
+          { id: "agenda", label: "Agenda, citas y tratamientos", path: "/admin/spa", icon: "calendar", order: 2 },
+        ],
+      },
+      api: ["spa"],
+    },
   },
+  // Productos Net aún sin herramientas operativas en el Core: si se conceden, su panel general muestra lo incluido
+  skiNet: { panel: netHomeOnly("ski-net", "Ski Net", "/admin/net/ski", ["ski-school", "ski-rental"], 68) },
+  travelNet: { panel: netHomeOnly("travel-net", "Travel Net", "/admin/net/travel", ["travel-net"], 69) },
+  lifeNet: { panel: netHomeOnly("life-net", "Life Net", "/admin/net/life", ["life-net"], 71) },
   // Social Token Net: tres productos (Comunidades, Tokens internos y Complete = los dos) y dos capacidades, así que la
   // extensión no tiene una capacidad única: cada entrada declara la suya y las funciones conjuntas exigen las dos.
   // Sus APIs (communities, loyalty, socialNet) ya las protege TRPC_ROUTER_CAPABILITIES.
   socialTokenNet: { panel: socialTokenNetPanel() },
 };
+
+/** Sección de un producto Elephant Net que hoy solo tiene su panel general. */
+function netHomeOnly(id: string, label: string, path: string, capabilities: string[], order: number): PanelContributions {
+  return { section: { id, label, order, items: [{ id: "panel", label: "Panel general", path, icon: "dashboard", capabilities }] } };
+}
 
 /** Menú de Social Token Net: sección propia con portada, Comunidades, Fidelización y las funciones de Complete. */
 function socialTokenNetPanel(): PanelContributions {
@@ -316,7 +357,7 @@ function socialTokenNetPanel(): PanelContributions {
       id: "social-token-net",
       label: "Social Token Net",
       items: [
-        { id: "inicio", label: "Inicio", path: "/admin/social-token-net", icon: "sparkles", capabilities: [...COM, ...TOK], roles: STAFF },
+        { id: "inicio", label: "Panel general", path: "/admin/social-token-net", icon: "sparkles", capabilities: [...COM, ...TOK], roles: STAFF },
         {
           ...com("comunidades", "Comunidades", "/admin/comunidades"),
           icon: "users",

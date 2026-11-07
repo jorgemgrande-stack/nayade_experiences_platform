@@ -25,6 +25,8 @@ import { SHEET_ANCHORS, SheetBlocks, sheetAnchorTargets } from "@/components/con
 import { AMPLIAR_PATH } from "@/components/connect/LockedFeature";
 import { useConnectAttempt, useConnectCatalog, useOrderTracking, type ConnectCatalogItem } from "@/components/connect/useConnect";
 import { trackConnect, useConnectTrackingSender } from "@/components/connect/useConnectTracking";
+import { NetFeatureAreas } from "@/components/connect/NetFeatures";
+import { netProductOfLegacy } from "@shared/netProducts";
 import "@/components/connect/connectStage.css";
 
 type DialogKind = "purchase" | RequestKind;
@@ -48,6 +50,12 @@ export default function ConnectDetailPage() {
   const blockText = data?.purchaseBlock ? PURCHASE_BLOCK_TEXT[data.purchaseBlock] : null;
   const showBlock = !!item && item.state === "available" && action?.kind === "request" ? blockText : null;
   const brands = data?.brands ?? brandHeaders(null);
+
+  // Elephant Net: las antiguas extensiones sectoriales llevan a la ficha de su producto (enlaces guardados)
+  const legacyTarget = netProductOfLegacy(key);
+  useEffect(() => {
+    if (legacyTarget) navigate(`${AMPLIAR_PATH}/${encodeURIComponent(legacyTarget.key)}`, { replace: true });
+  }, [legacyTarget, navigate]);
 
   useEffect(() => {
     if (item) trackConnect("sheet_view", { productKey: item.key });
@@ -90,7 +98,8 @@ export default function ConnectDetailPage() {
               <Hero item={item} brand={brands[brandOf(item)].title} />
               <AnchorNav item={item} />
               <div className="grid items-start gap-6 lg:grid-cols-[minmax(0,1fr)_22rem]">
-                <div className="min-w-0">
+                <div className="min-w-0 space-y-6">
+                  {item.net && <NetFeatureAreas areas={item.net.areas} />}
                   <SheetBlocks item={item} items={catalog.items} view={view} onAction={(it, kind) => setRelated({ item: it, kind })} />
                 </div>
                 <ContractPanel item={item} action={action} currentPlan={data.plan?.key ?? null} canRetryActivation={!!view.canRetryActivation} attemptOrdered={attemptOrdered} showBlock={showBlock} onRun={run} onOpenOrder={() => setDialog("purchase")} />

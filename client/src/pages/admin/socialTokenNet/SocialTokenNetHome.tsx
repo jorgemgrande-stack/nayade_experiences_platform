@@ -123,7 +123,8 @@ export default function SocialTokenNetHome() {
   const members = list.reduce((s, c) => s + c.activeMembers, 0);
   const pending = list.reduce((s, c) => s + c.pendingMembers + c.pendingPosts, 0);
   const integration = hasCommunities && hasTokens && !!loyalty.data?.integration;
-  const contracted = [hasCommunities && "Comunidades", hasTokens && "Tokens internos", integration && "Complete"].filter((x): x is string => !!x);
+  // Producto único (07/11/2026): con todo, «Social Token Net»; con una contratación anterior parcial, lo que incluye
+  const contracted = integration ? ["Social Token Net"] : [hasCommunities && "Comunidades", hasTokens && "Tokens internos"].filter((x): x is string => !!x);
 
   return (
     <AdminLayout>
@@ -158,7 +159,7 @@ export default function SocialTokenNetHome() {
           <div className="grid gap-4 lg:grid-cols-2">
             <Card icon={<Users className="h-5 w-5" />} title="Comunidades" subtitle="Miembros, publicaciones, encuestas y moderación." included={hasCommunities}>
               {!hasCommunities ? (
-                <Upsell text="Crea comunidades públicas o privadas para tus clientes y socios." href="/admin/ampliar/social-token-net-communities" isAdmin={isAdmin} />
+                <Upsell text="Crea comunidades públicas o privadas para tus clientes y socios." href="/admin/ampliar/social-token-net-complete" isAdmin={isAdmin} />
               ) : !isAdmin ? (
                 <p className="text-sm text-muted-foreground">Las comunidades las gestiona la administración de la empresa.</p>
               ) : communities.isLoading ? (
@@ -183,7 +184,7 @@ export default function SocialTokenNetHome() {
 
             <Card icon={<Coins className="h-5 w-5" />} title="Fidelización y puntos" subtitle="Reglas, campañas, recompensas y canjes." included={hasTokens}>
               {!hasTokens ? (
-                <Upsell text="Premia las compras y la participación con puntos internos canjeables por recompensas." href="/admin/ampliar/social-token-net-tokens" isAdmin={isAdmin} />
+                <Upsell text="Premia las compras y la participación con puntos internos canjeables por recompensas." href="/admin/ampliar/social-token-net-complete" isAdmin={isAdmin} />
               ) : loyalty.isLoading ? (
                 <PanelLoading label="Cargando el programa…" />
               ) : loyalty.isError || !loyalty.data ? (
@@ -211,7 +212,7 @@ export default function SocialTokenNetHome() {
             </Card>
 
             <div className="lg:col-span-2">
-              <Card icon={<Sparkles className="h-5 w-5" />} title="Comunidad y puntos" subtitle="Social Token Net Complete: las dos herramientas trabajando juntas." included={integration}>
+              <Card icon={<Sparkles className="h-5 w-5" />} title="Comunidad y puntos" subtitle="Incluido en Social Token Net: las dos herramientas trabajando juntas." included={integration}>
                 {integration ? (
                   <>
                     <p className="text-sm text-muted-foreground">Puntos por participar en tus comunidades, recompensas exclusivas para sus miembros y estadísticas conjuntas.</p>
@@ -219,7 +220,7 @@ export default function SocialTokenNetHome() {
                   </>
                 ) : (
                   <Upsell
-                    text="Con Complete, participar en una comunidad suma puntos y las recompensas pueden ser exclusivas de cada comunidad."
+                    text="Con Social Token Net, participar en una comunidad suma puntos y las recompensas pueden ser exclusivas de cada comunidad."
                     href="/admin/ampliar/social-token-net-complete"
                     isAdmin={isAdmin}
                   />

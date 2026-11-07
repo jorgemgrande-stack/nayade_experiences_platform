@@ -390,6 +390,8 @@ describe("compra de módulos y ampliaciones desde la plataforma", () => {
     gw.pmTypeOf.delete(a.customerId);
     // Bajo solicitud o próximamente: no se vende en línea
     for (const k of ["connect-tax", "hotel-net-pms"]) expect((await buy(a.tenantId, { add: [k] })).json.error).toBe("unavailable");
+    // Elephant Net (07/11/2026): una antigua extensión sectorial nunca se vende suelta
+    for (const k of ["social-token-net-tokens", "care-net-agenda"]) expect((await buy(a.tenantId, { add: [k] })).json.error).toBe("unavailable");
     // Solo el token del Core compra; el de operador (sin commerce:purchase) no
     expect((await buy(a.tenantId, { add: ["connect-people"] }, ADMIN)).status).toBe(403);
     expect((await buy(a.tenantId, { add: ["connect-people"] }, null)).status).toBe(401);

@@ -4,6 +4,7 @@
  * Core sin perder productos ni inventar nada, y el cuerpo de las solicitudes del Core cumple el esquema del canal.
  */
 import { beforeAll, describe, expect, it } from "vitest";
+import { isNetLegacyExtension } from "../shared/netProducts";
 import { seedElephantSource } from "./catalog/seed";
 import { quoteCatalogFromSite } from "./catalog/snapshot";
 import { WebAdminService, type SiteDocument } from "./web/service";
@@ -40,7 +41,9 @@ describe("canal real → marketplace del Core", () => {
 
   it("ningún producto se pierde; la ficha sale del catálogo central y nada interno llega al panel", () => {
     const items = buildConnectCatalog(published, [], NOW, "business");
-    expect(items.map((i) => i.key).sort()).toEqual(published.items.map((i) => i.key).sort());
+    // Elephant Net (07/11/2026): solo desaparecen las 19 antiguas extensiones sectoriales (no se venden sueltas)
+    expect(items.map((i) => i.key).sort()).toEqual(published.items.map((i) => i.key).filter((k) => !isNetLegacyExtension(k)).sort());
+    expect(published.items.filter((i) => isNetLegacyExtension(i.key))).toHaveLength(19);
     const withCard = published.items.filter((i) => i.card).map((i) => i.key);
     expect(withCard.length).toBeGreaterThan(0);
     for (const i of items) {

@@ -142,10 +142,41 @@ describe("catálogo de Connect con el catálogo oficial", () => {
   const grant = (capabilityId: string, o: Partial<CapabilityGrant> = {}): CapabilityGrant => ({ tenantId: "t1", capabilityId, siteId: "", status: "active", validUntil: null, source: "subscription:1", updatedAt: NOW, updatedBy: "test", ...o });
 
   it("textos de la ficha del catálogo oficial, sin nada interno", () => {
-    const [pms] = buildConnectCatalog({ items: [item("hotel-net-pms", { family: "net_module", capabilities: ["hotel-net"] })] }, [], NOW, "essential");
-    expect(pms.tagline).toBe("Gestión de alojamiento hasta 20 habitaciones.");
-    expect(pms.includes.length).toBe(3);
-    expect(JSON.stringify(pms)).not.toMatch(/Reutilizable|notes|evidence|costCents/);
+    const [people] = buildConnectCatalog({ items: [item("connect-people", { capabilities: ["people-hr"] })] }, [], NOW, "essential");
+    expect(people.tagline).toBe("Gestión de empleados y control horario, integrada en tu empresa.");
+    expect(people.includes.length).toBe(7);
+    expect(people.net).toBeNull();
+    expect(JSON.stringify(people)).not.toMatch(/Reutilizable|notes|evidence|costCents/);
+  });
+
+  // Elephant Net unificado (07/11/2026): 7 productos y ninguna extensión sectorial suelta
+  const allNet = () => [
+    ...["hotel-net-pms", "hotel-net-channel-manager", "hotel-net-booking-engine", "hotel-net-housekeeping", "care-net-agenda", "social-token-net-communities", "social-token-net-tokens"].map((k) => item(k, { family: "net_module" })),
+    ...["hotel-net-complete", "care-net-complete", "restaurant-net-complete", "ski-net-complete", "travel-net-complete", "social-token-net-complete"].map((k) => item(k, { family: "net_bundle", commercialStatus: "coming_soon", purchasable: false })),
+    item("life-net", { family: "net_module", capabilities: ["life-net"], commercialStatus: "coming_soon", purchasable: false }),
+  ];
+  it("Net: solo los 7 productos, con nombre sin «Complete», licencia y funcionalidades por áreas", () => {
+    const out = buildConnectCatalog({ items: allNet() }, [], NOW, "essential");
+    expect(out.map((i) => i.name).sort()).toEqual(["Care Net", "Hotel Net", "Life Net", "Restaurant Net", "Ski Net", "Social Token Net", "Travel Net"]);
+    const hotel = out.find((i) => i.key === "hotel-net-complete")!;
+    expect(hotel.net).toMatchObject({ licence: "HOTEL_NET", segment: "business", homePath: "/admin/net/hotel", legacyContracted: [] });
+    expect(hotel.includes).toEqual(["PMS", "Motor de reservas", "Channel Manager (próximamente)", "Housekeeping (próximamente)", "Informes (próximamente)"]);
+    expect(hotel.capabilities).toEqual(["hotel-net"]);
+    expect(out.find((i) => i.key === "life-net")!.net!.segment).toBe("personal");
+    expect(JSON.stringify(out)).not.toMatch(/Complete/);
+  });
+  it("Net: una contratación anterior que da todas las funciones equivale al producto (sin nueva compra)", () => {
+    const items = allNet().map((i) => (i.key === "hotel-net-pms" ? { ...i, activation: { state: "active" } } : i.key === "hotel-net-complete" ? { ...i, commercialStatus: "available" as const, purchasable: true } : i));
+    const hotel = buildConnectCatalog({ items }, [grant("hotel-net")], NOW, "essential").find((i) => i.key === "hotel-net-complete")!;
+    expect([hotel.state, hotel.purchasable]).toEqual(["active", false]);
+    expect(hotel.net!.legacyContracted).toEqual([{ key: "hotel-net-pms", name: "hotel-net-pms" }]);
+    expect(hotel.reasons.join(" ")).toMatch(/conservas el acceso y tus condiciones, sin cargos adicionales/);
+  });
+  it("Net: una contratación anterior parcial se puede sustituir por el producto (prorrateo, sin cargo doble)", () => {
+    const items = allNet().map((i) => (i.key === "social-token-net-communities" ? { ...i, activation: { state: "active" } } : i.key === "social-token-net-complete" ? { ...i, commercialStatus: "available" as const, purchasable: true } : i));
+    const stn = buildConnectCatalog({ items }, [grant("social-token-net")], NOW, "essential").find((i) => i.key === "social-token-net-complete")!;
+    expect([stn.state, stn.purchasable]).toEqual(["available", true]);
+    expect(stn.reasons.join(" ")).toMatch(/Sustituye a social-token-net-communities/);
   });
   it("lo suspendido no se puede comprar otra vez (aunque el catálogo lo venda)", () => {
     const [p] = buildConnectCatalog({ items: [item("connect-people", { capabilities: ["people-hr"] })] }, [grant("people-hr", { status: "suspended" })], NOW, "essential");
@@ -156,7 +187,6 @@ describe("catálogo de Connect con el catálogo oficial", () => {
       {
         items: [
           item("connect-pack-finance", { family: "connect_bundle" }),
-          item("hotel-net-booking-engine", { family: "net_module", capabilities: ["hotel-net"] }),
           item("addon-user-business", { family: "addon", kind: "quantity", metric: "users", step: 1 }),
         ],
       },
@@ -164,11 +194,9 @@ describe("catálogo de Connect con el catálogo oficial", () => {
       NOW,
       "essential",
     );
-    const [pack, engine, addon] = out;
+    const [pack, addon] = out;
     expect(pack.capabilities.sort()).toEqual(["bank-import-pos", "bank-reconciliation", "supplier-settlements", "tax-filings"]);
     expect(pack.state).toBe("active");
-    expect(engine.dependencies).toEqual([{ key: "hotel-net-pms", name: "Hotel Net · PMS" }]);
-    expect(engine.state).toBe("not_eligible");
     expect([addon.state, addon.purchasable, addon.category]).toEqual(["not_eligible", false, "capacity"]);
   });
 });

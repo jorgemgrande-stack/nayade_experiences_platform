@@ -208,7 +208,8 @@ beforeAll(async () => {
       selfService: true,
       // Condiciones legales SIN publicar (situación real hoy)
       termsVersion: null,
-      purchases: { enabled: true, changes, internalTenants },
+      // Contratos anteriores al 07/11/2026: se simulan comprando las extensiones sueltas (ya no se venden)
+      purchases: { enabled: true, changes, internalTenants, legacyNetSales: true },
       invoiceLines,
     },
   });
@@ -329,7 +330,7 @@ describe("Social Token Net: de módulos sueltos a Complete en una sola operació
     // Con Complete, los módulos sueltos ya no se venden
     const tok = await buy(a.tenantId, { add: [TOK] });
     expect(tok.status).toBe(400);
-    expect(tok.json.message).toMatch(/ya está incluido en «Social Token Net Complete»/);
+    expect(tok.json.message).toMatch(/ya está incluido en «Social Token Net»/);
   });
 
   it("con Comunidades y Tokens internos, Complete los sustituye a los dos: sale más barato (abono), sin hueco y, confirmado, solo queda la partida de Complete", async () => {
@@ -491,7 +492,7 @@ describe("Social Token Net: de módulos sueltos a Complete en una sola operació
     gw.now = Math.floor(clock / 1000);
     const both = await buy(a.tenantId, { add: [CPL, COM] });
     expect(both.status).toBe(400);
-    expect(both.json.message).toMatch(/ya va incluido en «Social Token Net Complete»/);
+    expect(both.json.message).toMatch(/ya va incluido en «Social Token Net»/);
     await ok(buy(b.tenantId, { add: [COM] }), 201);
     const bItems = JSON.stringify(gw.subscriptions.get(b.subId)!.items);
     const bCaps = await stnCaps(b.tenantId);

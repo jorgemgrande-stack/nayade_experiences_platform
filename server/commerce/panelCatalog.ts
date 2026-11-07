@@ -20,6 +20,7 @@ import { mediaSrcset } from "../web/media";
 import { NO_ACTIVATION, type PanelActivation } from "./panelActivation";
 import { panelMarketplace, type PanelMarketplace } from "./panelMarketplace";
 import type { MarketplaceDocument } from "../web/service";
+import { isNetLegacyExtension } from "../../shared/netProducts";
 
 export interface PanelCatalogItem {
   key: string;
@@ -261,7 +262,8 @@ export function panelCatalog(products: QuoteCatalogProduct[], o: { version: stri
     if (!quantity && !PANEL_FAMILIES.has(p.family)) continue;
     const monthly = p.prices.find((x) => x.kind === "monthly") ?? null;
     // Todas las familias del panel se contratan como extensión o módulo sectorial (CONTRACT_FAMILY): a la venta = comprable
-    const sellable = p.commercialStatus === "available";
+    // Las antiguas extensiones de Elephant Net se integran en su producto: nunca se compran sueltas (07/11/2026)
+    const sellable = p.commercialStatus === "available" && !isNetLegacyExtension(p.key);
     items.push({
       key: p.key,
       name: p.name,

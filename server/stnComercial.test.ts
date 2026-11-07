@@ -57,14 +57,14 @@ describe("cotizador: un paquete y sus componentes no se pagan a la vez", () => {
     expect(r.ok).toBe(true);
     expect(r.lines.filter((l) => l.status === "charged" && l.key !== "essential").map((l) => [l.key, l.amountCents])).toEqual([[CPL, 5900]]);
     expect(r.lines.filter((l) => l.status === "included_in_bundle").map((l) => l.key).sort()).toEqual([COM, TOK]);
-    expect(r.warnings).toEqual(expect.arrayContaining([expect.stringMatching(/Comunidades» ya va incluido en «Social Token Net Complete»: se quita de la selección/)]));
+    expect(r.warnings).toEqual(expect.arrayContaining([expect.stringMatching(/Comunidades» ya va incluido en «Social Token Net»: se quita de la selección/)]));
     expect(r.bundleSavings).toEqual([{ bundle: CPL, listCents: 6800, bundleCents: 5900, savingCents: 900 }]);
   });
 
   it("con Complete ya contratado, pedir un módulo suelto se rechaza (ya está incluido)", () => {
     const r = quote(forSale, { plan: "essential", interval: "month", owned: [CPL], items: [{ key: TOK }] });
     expect(r.ok).toBe(false);
-    expect(r.errors).toEqual([expect.stringMatching(/Tokens internos» ya está incluido en «Social Token Net Complete», que ya tienes contratado/)]);
+    expect(r.errors).toEqual([expect.stringMatching(/Tokens internos» ya está incluido en «Social Token Net», que ya tienes contratado/)]);
   });
 
   it("con un módulo contratado, Complete lo sustituye (deja de cobrarse aparte)", () => {
@@ -114,7 +114,7 @@ describe("pedidos: el paquete y un componente juntos se rechazan antes de cobrar
       err = e;
     }
     const message = err instanceof OrderError ? err.message : (order?.lastError ?? "");
-    expect(message).toMatch(/Comunidades» ya va incluido en «Social Token Net Complete».*Elige el paquete o sus módulos, no los dos/);
+    expect(message).toMatch(/Comunidades» ya va incluido en «Social Token Net».*Elige el paquete o sus módulos, no los dos/);
     if (order) expect(["requested", "rejected"]).toContain(order.state);
     expect(await c.orders.payments(order?.id ?? -1).catch(() => [])).toEqual([]);
     expect(await c.caps.list(base.tenantId!)).toEqual(before);
@@ -139,14 +139,10 @@ describe("marketplace: incluido en Complete y sustitución de módulos", () => {
   const grant = (capabilityId: string): CapabilityGrant => ({ tenantId: "t1", capabilityId, siteId: "", status: "active", validUntil: null, source: "subscription:1", updatedAt: T0, updatedBy: "test" });
   const both = [grant("social-token-net"), grant("social-token-net-tokens")];
 
-  it("con Complete contratado, los dos módulos salen «Incluido en Social Token Net Complete», sin compra", () => {
+  it("con Social Token Net contratado, los antiguos módulos no aparecen como productos y el producto sale contratado", () => {
     const out = buildConnectCatalog({ items: [item(COM), item(TOK), item(CPL, { activation: active })] }, both, T0, "essential");
-    for (const k of [COM, TOK]) {
-      const m = out.find((i) => i.key === k)!;
-      expect(m).toMatchObject({ state: "active", purchasable: false, includedIn: { key: CPL, name: "Social Token Net Complete" } });
-      expect(m.reasons).toEqual([expect.stringMatching(/^Incluido en Social Token Net Complete, que ya tienes contratado/)]);
-    }
-    expect(out.find((i) => i.key === CPL)).toMatchObject({ state: "active", replaces: [], includedIn: null });
+    expect(out.map((i) => i.key)).toEqual([CPL]);
+    expect(out[0]).toMatchObject({ name: "Social Token Net", state: "active", purchasable: false, replaces: [], includedIn: null });
   });
 
   it("con Comunidades contratado, Complete se puede contratar y explica que lo sustituye con la diferencia prorrateada", () => {
@@ -154,15 +150,16 @@ describe("marketplace: incluido en Complete y sustitución de módulos", () => {
     const cpl = out.find((i) => i.key === CPL)!;
     expect(cpl).toMatchObject({ state: "available", purchasable: true, replaces: [{ key: COM, name: "Social Token Net · Comunidades" }] });
     expect(cpl.reasons.join(" ")).toMatch(/Sustituye a Social Token Net · Comunidades.*solo se cobra la diferencia prorrateada.*Tus datos se conservan/);
-    expect(out.find((i) => i.key === COM)).toMatchObject({ state: "active", includedIn: null });
+    expect(out.find((i) => i.key === COM)).toBeUndefined();
   });
 
-  it("con los dos módulos sueltos, Complete NO aparece como contratado (las capacidades son de los módulos)", () => {
+  it("con los dos módulos sueltos (contrato anterior), equivale al producto: contratado, sin nueva compra ni cambio de condiciones", () => {
     const out = buildConnectCatalog({ items: [item(COM, { activation: active }), item(TOK, { activation: active }), item(CPL, { activation: { ...active, state: "none", payment: null } })] }, both, T0, "essential");
     const cpl = out.find((i) => i.key === CPL)!;
-    expect(cpl.state).toBe("available");
+    expect([cpl.state, cpl.purchasable]).toEqual(["active", false]);
     expect(cpl.replaces.map((r) => r.key)).toEqual([COM, TOK]);
-    expect(cpl.reasons.join(" ")).toMatch(/Sustituye a Social Token Net · Comunidades y Social Token Net · Tokens internos/);
+    expect(cpl.net!.legacyContracted.map((r) => r.key)).toEqual([COM, TOK]);
+    expect(cpl.reasons.join(" ")).toMatch(/Ya tienes las funciones de Social Token Net con tu contratación anterior \(Social Token Net · Comunidades, Social Token Net · Tokens internos\)/);
   });
 
   it("«Próximamente» sigue mandando: con un módulo contratado, Complete no se vende todavía", () => {

@@ -84,7 +84,7 @@ describe("contrato de módulo 1.2: aportaciones al panel", () => {
     for (const m of [...BUILTIN_MODULES, ...CONNECT_EXTENSIONS]) expect(() => validateManifest(m), m.id).not.toThrow();
     expect(validateManifest.bind(null, careManifest)).not.toThrow();
     const declared = [...BUILTIN_MODULES, ...CONNECT_EXTENSIONS].filter((m) => m.panel).map((m) => [m.id, m.capability]);
-    expect(declared).toEqual([["hotel", "hotel-net"], ["spa", "care-net"], ["restaurants", "restaurant-net"], ["people", "people-hr"], ["social_token_net", undefined]]);
+    expect(declared).toEqual([["hotel", "hotel-net"], ["spa", "care-net"], ["restaurants", "restaurant-net"], ["people", "people-hr"], ["social_token_net", undefined], ["ski_net", undefined], ["travel_net", undefined], ["life_net", undefined]]);
     // Ya no están fijas en el menú del Core
     const hrefs = TASK_NAV.flatMap((s) => s.items.map((i) => i.href));
     for (const p of ["/admin/personal", "/admin/hotel", "/admin/restaurantes", "/admin/spa"]) expect(hrefs).not.toContain(p);
@@ -146,7 +146,7 @@ describe("resolución por licencia, rol, permiso y versión del Core", () => {
     const hotel = BUILTIN_MODULES.find((m) => m.id === "hotel")!;
     const src = [source(hotel, { requiresModuleLicense: true })];
     expect((await resolvePanelNavigation(src, deps({ states: { "hotel-net": "active" } }))).entries).toEqual([]);
-    expect((await resolvePanelNavigation(src, deps({ states: { "hotel-net": "active" }, modules: ["hotel"] }))).entries.map((e) => e.kind === "item" && e.item.href)).toEqual(["/admin/hotel"]);
+    expect((await resolvePanelNavigation(src, deps({ states: { "hotel-net": "active" }, modules: ["hotel"] }))).entries.flatMap((e) => (e.kind === "section" ? e.items.map((i) => i.href) : []))).toEqual(["/admin/net/hotel", "/admin/hotel"]);
     expect((await resolvePanelNavigation(src, deps({ modules: ["hotel"] }))).entries).toEqual([]);
   });
 
@@ -178,10 +178,13 @@ describe("fusión con el menú por tareas", () => {
     const hotel = CORE_EXTENSION_PANELS.hotel;
     const f = { roleAllowed: () => true, hasPermission: () => true, capabilitiesVisible: () => true };
     const entries = [...panelEntries("hotel", hotel.panel, hotel.capability, f), ...panelEntries("people", people.panel, people.capability, f)];
-    const contratados = mergeExtensions(TASK_NAV, [...entries, ...entries]).find((s) => s.id === "contratados")!.items.map((i) => i.key);
+    const merged = mergeExtensions(TASK_NAV, [...entries, ...entries]);
+    const contratados = merged.find((s) => s.id === "contratados")!.items.map((i) => i.key);
     expect(contratados[0]).toBe("x-people-personal");
-    expect(contratados.filter((k) => k === "x-hotel-hotel")).toHaveLength(1);
-    expect(contratados.indexOf("x-hotel-hotel")).toBeLessThan(contratados.indexOf("x-reav"));
+    expect(contratados.filter((k) => k === "x-people-personal")).toHaveLength(1);
+    // Elephant Net: cada producto, una sola sección propia (sin duplicados en «Módulos contratados»)
+    expect(merged.filter((s) => s.id === "hotel-net").map((s) => s.items.map((i) => i.key))).toEqual([["x-hotel-panel", "x-hotel-hotel"]]);
+    expect(contratados).not.toContain("x-hotel-hotel");
     const orphan = mergeExtensions(TASK_NAV, [{ kind: "tab", moduleId: "z", parent: "no-existe", order: 1, leaf: { key: "x-z-a", label: "A", href: "/admin/z", capabilities: ["care-net"], roles: ["admin"] } }]);
     expect(JSON.stringify(orphan)).not.toContain("x-z-a");
   });
