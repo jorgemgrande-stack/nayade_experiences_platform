@@ -12,9 +12,34 @@ import {
   searchAvailability, getRoomCalendar, resolveNightlyPrice,
 } from "../hotelDb";
 import { getRatingsByEntityType } from "../db/reviewsDb";
-import { holdHotelRoomAndCreateReservation, releaseInventoryHold, reconcileInventory } from "../inventoryHoldsDb";
+import { holdHotelRoomAndCreateReservation, releaseInventoryHold, reconcileInventory, createStaffHotelReservation } from "../inventoryHoldsDb";
 import { buildRedsysForm, generateMerchantOrder } from "../redsys";
 import { assertModuleEnabled } from "../_core/flagGuard";
+import { resolveSiteFilter, resolveSiteForWrite, siteCondition } from "../sitesDb";
+import { ROOM_OPERATIONAL_STATUSES, isIsoDate, nightsBetween, restrictionInputError } from "../hotelPms";
+import {
+  hotelRooms, listHotelRooms, createHotelRoom, updateHotelRoom, deleteHotelRoom, toggleHotelRoomActive,
+  setHotelRoomState, getHotelRoomStateHistory, listHotelReservationsWithRooms, assignRoomToReservation,
+  assignRoomWithinTx, unassignRoomFromReservation, autoAssignReservation, autoAssignRange, getRoomPlanning,
+  getReceptionDashboard, applyStayTransition, listStayRestrictions, setStayRestrictions, stayRestrictionReason,
+} from "../hotelPmsDb";
+
+const isoDate = z.string().refine(isIsoDate, "Fecha no válida (AAAA-MM-DD)");
+/** Rango de fechas inclusivo y acotado (planning, listados y restricciones). */
+const dateRange = (maxDays: number) => z.object({ from: isoDate, to: isoDate }).refine(
+  (r) => r.from <= r.to && nightsBetween(r.from, r.to) <= maxDays,
+  `El rango de fechas no es válido (máximo ${maxDays} días)`,
+);
+const roomFields = {
+  roomTypeId: z.number().int().positive(),
+  code: z.string().trim().min(1).max(32),
+  name: z.string().max(120).nullable().optional(),
+  floor: z.string().max(32).nullable().optional(),
+  notes: z.string().max(2000).nullable().optional(),
+  attributes: z.array(z.string().trim().min(1).max(60)).max(30).optional(),
+  isActive: z.boolean().optional(),
+  sortOrder: z.number().int().min(0).max(100000).optional(),
+};
 
 
 const adminProcedure = permissionProcedure("settings.manage", ["admin"]).use(async ({ ctx, next }) => {
@@ -295,6 +320,211 @@ export const hotelRouter = router({
     .input(z.object({ apply: z.boolean().default(false) }))
     .mutation(({ input }) => reconcileInventory({ apply: input.apply, kind: "hotel_room" })),
 
+  // ── ADMIN: PMS · HABITACIONES FÍSICAS ─────────────────────────────────────
+
+  adminGetRooms: adminProcedure
+    .input(z.object({ roomTypeId: z.number().int().optional(), siteId: z.string().optional() }).optional())
+    .query(async ({ input }) => {
+      const site = await resolveSiteFilter(input?.siteId);
+      return listHotelRooms({ roomTypeId: input?.roomTypeId, siteCondition: site ? siteCondition(hotelRooms.siteId, site) : null });
+    }),
+
+  adminCreateRoom: adminProcedure
+    .input(z.object({ ...roomFields, siteId: z.string().optional() }))
+    .mutation(async ({ input }) => {
+      const { siteId, ...data } = input;
+      return createHotelRoom(data, await resolveSiteForWrite(siteId));
+    }),
+
+  adminUpdateRoom: adminProcedure
+    .input(z.object({ id: z.number().int(), ...roomFields, roomTypeId: roomFields.roomTypeId.optional(), code: roomFields.code.optional() }))
+    .mutation(({ input }) => {
+      const { id, ...patch } = input;
+      return updateHotelRoom(id, patch);
+    }),
+
+  adminDeleteRoom: adminProcedure
+    .input(z.object({ id: z.number().int() }))
+    .mutation(({ input }) => deleteHotelRoom(input.id)),
+
+  adminToggleRoomActive: adminProcedure
+    .input(z.object({ id: z.number().int(), isActive: z.boolean() }))
+    .mutation(({ input }) => toggleHotelRoomActive(input.id, input.isActive)),
+
+  /** Cambia el estado operativo de una habitación (queda en su historial). */
+  adminSetRoomState: adminProcedure
+    .input(z.object({ hotelRoomId: z.number().int(), toStatus: z.enum(ROOM_OPERATIONAL_STATUSES), reason: z.string().max(255).optional() }))
+    .mutation(({ input, ctx }) => setHotelRoomState(input.hotelRoomId, input.toStatus, { userId: ctx.user.id, reason: input.reason })),
+
+  adminGetRoomStateHistory: adminProcedure
+    .input(z.object({ hotelRoomId: z.number().int() }))
+    .query(({ input }) => getHotelRoomStateHistory(input.hotelRoomId)),
+
+  // ── ADMIN: PMS · RESERVAS Y ASIGNACIÓN ────────────────────────────────────
+
+  /** Reservas de hotel cuya estancia solapa el rango, con su habitación asignada. */
+  adminListReservations: adminProcedure
+    .input(z.object({
+      range: dateRange(400),
+      status: z.enum(["pending_payment", "paid", "cancelled", "failed"]).optional(),
+    }))
+    .query(({ input }) => listHotelReservationsWithRooms({ from: input.range.from, to: input.range.to, status: input.status, limit: 1000 })),
+
+  /**
+   * Alta de reserva por recepción (mostrador, teléfono o correo). El importe por defecto es el de la tarifa de cada
+   * noche (misma regla que la web); la habitación queda retenida al crearla y, si se indica, asignada en la misma
+   * transacción. «Forzar» aloja aunque la tipología esté completa o la estancia incumpla las restricciones.
+   */
+  adminCreateReservation: adminProcedure
+    .input(z.object({
+      roomTypeId: z.number().int(),
+      checkIn: isoDate,
+      checkOut: isoDate,
+      adults: z.number().int().min(1).max(20),
+      children: z.number().int().min(0).max(20).default(0),
+      totalEuros: z.number().min(0).max(1_000_000).optional(),
+      channel: z.enum(["MANUAL", "TELEFONO", "EMAIL", "TPV_FISICO"]).default("MANUAL"),
+      customerName: z.string().trim().min(2).max(255),
+      customerEmail: z.string().trim().email().max(255).optional().or(z.literal("")),
+      customerPhone: z.string().trim().max(50).optional(),
+      notes: z.string().max(2000).optional(),
+      force: z.boolean().default(false),
+      hotelRoomId: z.number().int().optional(),
+    }))
+    .mutation(async ({ input, ctx }) => {
+      const room = await getRoomTypeById(input.roomTypeId);
+      if (!room) throw new TRPCError({ code: "NOT_FOUND", message: "Tipología no encontrada" });
+      const nights = nightsBetween(input.checkIn, input.checkOut);
+      if (nights < 1) throw new TRPCError({ code: "BAD_REQUEST", message: "La salida debe ser posterior a la entrada" });
+      if (nights > 90) throw new TRPCError({ code: "BAD_REQUEST", message: "La estancia no puede superar 90 noches" });
+      if (!input.force) {
+        const why = await stayRestrictionReason(input.roomTypeId, input.checkIn, input.checkOut);
+        if (why) throw new TRPCError({ code: "BAD_REQUEST", message: `${why} Usa «Forzar» para alojar igualmente.` });
+      }
+
+      let totalEuros = input.totalEuros;
+      if (totalEuros === undefined) {
+        const [rates, seasons] = await Promise.all([getRatesByRoomType(input.roomTypeId), getAllRateSeasons()]);
+        totalEuros = 0;
+        for (let i = 0; i < nights; i++) {
+          const d = new Date(`${input.checkIn}T00:00:00Z`);
+          d.setUTCDate(d.getUTCDate() + i);
+          totalEuros += resolveNightlyPrice(rates, seasons, String(room.basePrice ?? 0), d.toISOString().slice(0, 10));
+        }
+      }
+      const amountCents = Math.round(totalEuros * 100);
+      const extrasJson = JSON.stringify({
+        type: "hotel",
+        roomTypeId: input.roomTypeId,
+        roomName: room.name,
+        checkIn: input.checkIn,
+        checkOut: input.checkOut,
+        nights,
+        adults: input.adults,
+        children: input.children,
+        pricePerNight: Math.round((totalEuros / nights) * 100) / 100,
+        source: "pms_recepcion",
+      });
+      const held = await createStaffHotelReservation(
+        { roomTypeId: input.roomTypeId, checkIn: input.checkIn, checkOut: input.checkOut, units: 1 },
+        {
+          productId: input.roomTypeId,
+          productName: `Hotel: ${room.name} (${nights} noche${nights > 1 ? "s" : ""})`,
+          bookingDate: input.checkIn,
+          people: input.adults + input.children,
+          extrasJson,
+          amountTotal: amountCents,
+          customerName: input.customerName,
+          // La columna admite NULL: sin correo no se guarda una cadena vacía
+          customerEmail: (input.customerEmail || null) as unknown as string,
+          customerPhone: input.customerPhone || undefined,
+          merchantOrder: generateMerchantOrder(),
+          notes: input.notes || undefined,
+        },
+        {
+          channel: input.channel,
+          force: input.force,
+          afterCreate: input.hotelRoomId != null
+            ? async (tx, reservationId) => { await assignRoomWithinTx(tx, { reservationId, hotelRoomId: input.hotelRoomId!, userId: ctx.user.id }); }
+            : undefined,
+        },
+      );
+      if (!held.ok) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "No quedan habitaciones de esa tipología para esas fechas. Usa «Forzar» para alojar igualmente." });
+      }
+      return { id: held.reservation.id, reservationNumber: held.reservation.reservationNumber, amountCents };
+    }),
+
+  /** Asigna o cambia la habitación física de una reserva (fechas de la reserva; sin solapes). */
+  adminAssignRoom: adminProcedure
+    .input(z.object({ reservationId: z.number().int(), hotelRoomId: z.number().int(), notes: z.string().max(2000).optional() }))
+    .mutation(({ input, ctx }) => assignRoomToReservation({ ...input, userId: ctx.user.id })),
+
+  adminUnassignRoom: adminProcedure
+    .input(z.object({ reservationId: z.number().int() }))
+    .mutation(({ input }) => unassignRoomFromReservation(input.reservationId)),
+
+  /** Asigna automáticamente la primera habitación libre de la tipología. */
+  adminAutoAssignRoom: adminProcedure
+    .input(z.object({ reservationId: z.number().int() }))
+    .mutation(async ({ input }) => {
+      const r = await autoAssignReservation(input.reservationId);
+      if (!r.ok) throw new TRPCError({ code: "BAD_REQUEST", message: r.reason });
+      return r;
+    }),
+
+  /** Asigna automáticamente todas las reservas sin habitación del rango. */
+  adminAutoAssignAll: adminProcedure
+    .input(dateRange(62))
+    .mutation(({ input }) => autoAssignRange(input.from, input.to)),
+
+  /** Planning / rack de ocupación por habitación física. */
+  adminGetPlanning: adminProcedure
+    .input(dateRange(62))
+    .query(({ input }) => getRoomPlanning(input.from, input.to)),
+
+  // ── ADMIN: PMS · RECEPCIÓN ────────────────────────────────────────────────
+
+  adminGetReceptionDashboard: adminProcedure.query(() => getReceptionDashboard()),
+
+  /** Check-in: la estancia pasa a «en curso» y la habitación asignada (o la automática) queda ocupada. */
+  adminCheckIn: adminProcedure
+    .input(z.object({ reservationId: z.number().int() }))
+    .mutation(({ input, ctx }) => applyStayTransition(input.reservationId, "checkin", ctx.user.id)),
+
+  /** Check-out: solo con check-in previo; la estancia finaliza y la habitación queda sucia. */
+  adminCheckOut: adminProcedure
+    .input(z.object({ reservationId: z.number().int() }))
+    .mutation(({ input, ctx }) => applyStayTransition(input.reservationId, "checkout", ctx.user.id)),
+
+  /** No-show: el huésped no llegó; la habitación asignada queda libre. */
+  adminMarkNoShow: adminProcedure
+    .input(z.object({ reservationId: z.number().int() }))
+    .mutation(({ input, ctx }) => applyStayTransition(input.reservationId, "noshow", ctx.user.id)),
+
+  // ── ADMIN: PMS · RESTRICCIONES DE ESTANCIA ────────────────────────────────
+
+  adminGetStayRestrictions: adminProcedure
+    .input(z.object({ range: dateRange(400), roomTypeId: z.number().int().optional() }))
+    .query(({ input }) => listStayRestrictions(input.range.from, input.range.to, input.roomTypeId)),
+
+  /** Estancia mínima y máxima y cierre a llegadas o salidas de una tipología en cada día del rango (0/vacío = sin restricción). */
+  adminSetStayRestrictions: adminProcedure
+    .input(z.object({
+      roomTypeId: z.number().int(),
+      range: dateRange(366),
+      minStay: z.number().int().min(0).max(365).nullable(),
+      maxStay: z.number().int().min(0).max(365).nullable(),
+      closedToArrival: z.boolean(),
+      closedToDeparture: z.boolean(),
+    }))
+    .mutation(({ input, ctx }) => {
+      const r = { minStay: input.minStay, maxStay: input.maxStay, closedToArrival: input.closedToArrival, closedToDeparture: input.closedToDeparture };
+      const why = restrictionInputError(r);
+      if (why) throw new TRPCError({ code: "BAD_REQUEST", message: why });
+      return setStayRestrictions({ roomTypeId: input.roomTypeId, from: input.range.from, to: input.range.to, userId: ctx.user.id, ...r });
+    }),
+
   // ── BOOKING ───────────────────────────────────────────────────────────────
 
   /**
@@ -329,6 +559,10 @@ export const hotelRouter = router({
       if (nights < 1) {
         throw new TRPCError({ code: "BAD_REQUEST", message: "La fecha de salida debe ser posterior a la de entrada" });
       }
+
+      // 2b. Restricciones de estancia (estancia mínima/máxima, cierre a llegadas o salidas): las mismas que el buscador
+      const restriction = await stayRestrictionReason(input.roomTypeId, input.checkIn, input.checkOut);
+      if (restriction) throw new TRPCError({ code: "BAD_REQUEST", message: restriction });
 
       // 3. Calcular precio por noche con la MISMA lógica que la visualización
       //    (resolveNightlyPrice): así lo cobrado coincide exactamente con lo mostrado

@@ -6,6 +6,8 @@ import {
 import { legacyDb, legacyPool } from "./_core/legacyDb";
 import { hotelOccupancy } from "./inventoryHoldsDb";
 import { nightCapacity } from "./inventoryHolds";
+import { stayRestrictionsFor, restrictionAt } from "./hotelPmsDb";
+import { stayRestrictionViolation } from "./hotelPms";
 
 // Pool persistente reutilizable. Ver nota en server/db/reviewsDb.ts:
 // el patrón anterior `createConnection()` per-request acumulaba
@@ -247,6 +249,8 @@ export async function searchAvailability(params: {
   const allBlocks = await db.select().from(roomBlocks)
     .where(and(gte(roomBlocks.date, params.checkIn), lte(roomBlocks.date, params.checkOut)));
   const occupancy = await hotelOccupancy(db, rooms.map(r => r.id), params.checkIn, params.checkOut);
+  // Restricciones de estancia del día de llegada y del de salida (sin la migración 0032 no hay ninguna)
+  const restrictions = await stayRestrictionsFor(db, rooms.map(r => r.id), [params.checkIn, params.checkOut]);
 
   const checkInDate = new Date(params.checkIn);
   const checkOutDate = new Date(params.checkOut);
@@ -279,7 +283,13 @@ export async function searchAvailability(params: {
     }
     minAvailable = Math.max(0, minAvailable);
 
-    const isAvailable = minAvailable > 0 &&
+    const restriction = stayRestrictionViolation(
+      restrictionAt(restrictions, room.id, params.checkIn),
+      restrictionAt(restrictions, room.id, params.checkOut),
+      nights,
+    );
+
+    const isAvailable = minAvailable > 0 && !restriction &&
       room.maxAdults >= params.adults &&
       (room.maxChildren >= params.children || params.children === 0);
 
@@ -290,6 +300,7 @@ export async function searchAvailability(params: {
       nights,
       availableUnits: minAvailable,
       isAvailable,
+      restriction,
     };
   });
 }
