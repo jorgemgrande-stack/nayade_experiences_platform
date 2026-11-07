@@ -32,7 +32,7 @@ export const FLOOR_W = 1000;
 export const FLOOR_H = 640;
 
 /** `paying`: el cobro está en curso en el TPV (la comanda no admite cambios hasta que termina o falla). */
-export const ORDER_STATUSES = ["open", "bill_requested", "paying", "paid", "cancelled"] as const;
+export const ORDER_STATUSES = ["open", "bill_requested", "paying", "paid", "room_charged", "cancelled"] as const;
 export type OrderStatus = (typeof ORDER_STATUSES)[number];
 export const OPEN_ORDER_STATUSES: readonly OrderStatus[] = ["open", "bill_requested", "paying"];
 export const ORDER_STATUS_LABELS: Record<OrderStatus, string> = {
@@ -40,6 +40,7 @@ export const ORDER_STATUS_LABELS: Record<OrderStatus, string> = {
   bill_requested: "Pide la cuenta",
   paying: "Cobrando",
   paid: "Cobrada",
+  room_charged: "Cargada a habitación",
   cancelled: "Cerrada sin cobro",
 };
 

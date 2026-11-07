@@ -23,6 +23,8 @@ import { getDb } from "./db";
 import { ModuleNotInstalled } from "./sdk";
 import { holdSpaSlotAndCreateReservation, confirmInventoryHold, releaseInventoryHold } from "./inventoryHoldsDb";
 import { generateMerchantOrder } from "./redsys";
+import { addExternalCharge, assertHotelCharges } from "./hotelFolioCharges";
+import { registerExternalChargeSource } from "./hotelFolioChargeSources";
 import {
   CARE_NET_CAPABILITY,
   consumeProblem,
@@ -264,10 +266,16 @@ export async function payPurchase(purchaseId: number, sessionId: number, payment
   if (!p) throw notFound("El bono vendido");
   if (p.status === "active" && p.tpvSaleId != null) return { purchase: p, saleId: p.tpvSaleId, replayed: true };
   if (p.status === "cancelled") throw bad("Este bono está anulado.");
+  if (p.status === "active") throw bad("Este bono ya está cargado a una habitación: se cobra al cerrar el folio.");
   const paid = Math.round(payments.reduce((s, x) => s + x.amount, 0) * 100);
   if (paid !== Math.round(p.price * 100)) throw bad(`Los pagos no coinciden con el precio del bono (${p.price.toFixed(2)} €).`);
+  // Reserva del cobro: mientras se cobra en el TPV («paying») no se puede cargar a la habitación (y al revés)
+  const claimed = await run((d) => header(d, sql`UPDATE care_pack_purchases SET status = 'paying', updated_at = ${Date.now()} WHERE id = ${p.id} AND status IN ('pending', 'paying')`));
+  if (!claimed.affectedRows) throw conflict("Este bono acaba de cobrarse o cargarse a una habitación. Recarga la pantalla.");
   const client = await run((d) => clientById(d, p.clientId));
-  const sale = await createSale({
+  let sale: Awaited<ReturnType<CreatePackSale>>;
+  try {
+    sale = await createSale({
     sessionId,
     idempotencyKey: packSaleKey(p.id),
     clientId: p.clientId,
@@ -276,12 +284,17 @@ export async function payPurchase(purchaseId: number, sessionId: number, payment
     notes: `Bono ${p.id}: ${p.packName}`,
     items: [{ productType: "extra", productId: p.packId, productName: `Bono: ${p.packName} (${p.sessionsTotal} sesiones)`, quantity: 1, unitPrice: p.price, discountPercent: 0, participants: 1 }],
     payments,
-  });
+    });
+  } catch (e) {
+    // El TPV no lo registró: el bono vuelve a pendiente de cobro
+    await run((d) => d.execute(sql`UPDATE care_pack_purchases SET status = 'pending' WHERE id = ${p.id} AND status = 'paying'`)).catch(() => undefined);
+    throw e;
+  }
   await run(async (d) => {
     const [s] = await rows(d, sql`SELECT site_id FROM tpv_sales WHERE id = ${sale.saleId}`);
     const now = Date.now();
     await d.execute(sql`UPDATE care_pack_purchases SET status = 'active', tpv_sale_id = ${sale.saleId}, site_id = ${s?.site_id ?? null}, purchased_at = ${now},
-      expires_at = ${expiresAtOf(now, p.validityDays)}, updated_at = ${now} WHERE id = ${p.id} AND status = 'pending'`);
+      expires_at = ${expiresAtOf(now, p.validityDays)}, updated_at = ${now} WHERE id = ${p.id} AND status IN ('pending', 'paying')`);
   });
   const purchase = (await run((d) => purchaseById(d, p.id)))!;
   return { purchase, saleId: purchase.tpvSaleId ?? sale.saleId, replayed: sale.replayed };
@@ -310,7 +323,7 @@ export function clientsWithPacks(filter: "active" | "expired" | "all", search?: 
   return run(async (d) => {
     const term = search?.trim() ? `%${search.trim().replace(/[\\%_]/g, (c) => `\\${c}`)}%` : null;
     const list = (await rows(d, sql`SELECT p.*, c.email AS client_email FROM care_pack_purchases p LEFT JOIN clients c ON c.id = p.client_id
-      WHERE p.status IN ('active', 'pending')${term ? sql` AND (p.client_name LIKE ${term} OR c.email LIKE ${term})` : sql``}
+      WHERE p.status IN ('active', 'pending', 'paying')${term ? sql` AND (p.client_name LIKE ${term} OR c.email LIKE ${term})` : sql``}
       ORDER BY p.client_name, p.expires_at`)).map((r: any) => ({ p: toPurchase(r), email: r.client_email ?? null }));
     const by = new Map<number, ClientWithPacks>();
     for (const { p, email } of list) {
@@ -561,3 +574,99 @@ export function spaCatalog(): Promise<{ treatments: Array<{ id: number; name: st
     categories: (await rows(d, sql`SELECT id, name FROM spa_categories ORDER BY sortOrder, name`)).map((r: any) => ({ id: num(r.id), name: String(r.name) })),
   }));
 }
+
+// ─── Cargo a habitación (Hotel Net) ──────────────────────────────────────────
+
+/** IVA de los servicios de SPA y de los bonos cuando el tratamiento no indica el suyo (21 %, como el TPV). */
+const SPA_TAX_FALLBACK_BP = 2100;
+
+/**
+ * Carga una reserva de SPA pendiente de pago al folio de un huésped en casa (solo con Hotel Net). En una transacción:
+ * la reserva bloqueada pasa a pagada (sin venta del TPV ni sesión de bono) y su importe entra en el folio con el IVA del
+ * tratamiento; se cobra al cerrar el folio. Una reserva ya pagada (TPV, web o bono) no se puede cargar.
+ */
+export async function chargeSpaReservationToRoom(spaReservationId: number, hotelReservationId: number, userId: number): Promise<{ chargeId: number; amountCents: number }> {
+  await assertHotelCharges();
+  const out = await inTx(async (tx) => {
+    const r = await spaReservation(tx, spaReservationId, true);
+    if (!r) throw notFound("La reserva de SPA");
+    if (r.status === "paid") throw bad("La reserva ya está pagada.");
+    if (r.status === "cancelled" || r.status === "failed" || r.holdStatus === "liberada") throw bad("La reserva está anulada o su plaza se liberó.");
+    const [x] = await rows(tx, sql`SELECT r.amount_total, r.product_name, t.taxRate, t.fiscalRegime FROM reservations r JOIN spa_slots s ON s.id = r.inventory_ref_id
+      LEFT JOIN spa_treatments t ON t.id = s.treatmentId WHERE r.id = ${r.id}`);
+    const cents = num(x?.amount_total);
+    if (cents <= 0) throw bad("La reserva no tiene importe que cargar.");
+    const taxBp = x?.fiscalRegime === "reav" ? 0 : x?.taxRate != null ? Math.round(Number(x.taxRate) * 100) : SPA_TAX_FALLBACK_BP;
+    const name = String(x?.product_name ?? "Tratamiento de SPA");
+    const charge = await addExternalCharge(tx, {
+      reservationId: hotelReservationId, module: "care", sourceRef: `spa_reservation:${r.id}`, description: `SPA · ${name}`.slice(0, 255),
+      category: "spa", lines: [{ description: name.slice(0, 255), quantity: 1, unitPriceCents: cents, taxRateBp: taxBp }], userId,
+    });
+    const now = Date.now();
+    await tx.execute(sql`UPDATE reservations SET status = 'paid', status_payment = 'PAGADO', status_reservation = 'CONFIRMADA', paymentMethod = 'otro', paid_at = ${now},
+      notes = CONCAT(COALESCE(notes, ''), ${` [Cargada a la habitación: reserva de hotel ${hotelReservationId}]`}), updated_at = ${now} WHERE id = ${r.id}`);
+    return charge;
+  });
+  await confirmInventoryHold(spaReservationId);
+  return { chargeId: out.chargeId, amountCents: out.amountCents };
+}
+
+/**
+ * Vende un bono a un cliente y lo carga al folio de un huésped en casa, en lugar de cobrarlo en el TPV. Un bono
+ * pendiente que se está cobrando en el TPV («paying») no se puede cargar, y uno cargado no entra en el TPV.
+ */
+export async function sellPackToRoom(input: { packId: number; clientId: number; hotelReservationId: number; requestKey: string; notes?: string | null }, userId: number): Promise<{ purchase: Purchase; chargeId: number }> {
+  await assertHotelCharges();
+  const out = await inTx(async (tx) => {
+    let purchaseId: number;
+    const [existing] = await rows(tx, sql`SELECT id, client_id, pack_id, status FROM care_pack_purchases WHERE request_key = ${input.requestKey} FOR UPDATE`);
+    if (existing) {
+      if (num(existing.client_id) !== input.clientId || num(existing.pack_id) !== input.packId) throw conflict("Esta venta ya se registró con otro cliente o bono. Recarga la pantalla.");
+      if (String(existing.status) !== "pending") throw conflict("Este bono ya está cobrado o cargado a una habitación.");
+      purchaseId = num(existing.id);
+    } else {
+      const [pk] = await rows(tx, sql`SELECT * FROM care_session_packs WHERE id = ${input.packId} AND is_active = 1`);
+      if (!pk) throw notFound("El bono");
+      const pack = toPack(pk);
+      const client = await clientById(tx, input.clientId);
+      if (!client) throw notFound("El cliente");
+      const now = Date.now();
+      purchaseId = (await header(tx, sql`INSERT INTO care_pack_purchases (pack_id, pack_name, client_id, client_name, sessions_total, sessions_used, price, treatment_ids, category_ids, validity_days, status, sold_by, notes, request_key, created_at, updated_at)
+        VALUES (${pack.id}, ${pack.name}, ${client.id}, ${client.name}, ${pack.sessions}, 0, ${pack.price.toFixed(2)}, ${JSON.stringify(pack.treatmentIds)}, ${JSON.stringify(pack.categoryIds)},
+          ${pack.validityDays}, 'pending', ${userId}, ${input.notes?.trim().slice(0, 500) || null}, ${input.requestKey}, ${now}, ${now})`)).insertId;
+    }
+    const p = (await purchaseById(tx, purchaseId, true))!;
+    const charge = await addExternalCharge(tx, {
+      reservationId: input.hotelReservationId, module: "care", sourceRef: `care_pack:${p.id}`, description: `Bono · ${p.packName} (${p.clientName})`.slice(0, 255), category: "spa",
+      lines: [{ description: `Bono: ${p.packName} (${p.sessionsTotal} sesiones)`.slice(0, 255), quantity: 1, unitPriceCents: Math.round(p.price * 100), taxRateBp: SPA_TAX_FALLBACK_BP }], userId,
+    });
+    const now = Date.now();
+    await tx.execute(sql`UPDATE care_pack_purchases SET status = 'active', purchased_at = ${now}, expires_at = ${expiresAtOf(now, p.validityDays)}, updated_at = ${now},
+      notes = CONCAT(COALESCE(notes, ''), ${` [Cargado a la habitación: reserva de hotel ${input.hotelReservationId}]`}) WHERE id = ${p.id} AND status = 'pending'`);
+    return { purchaseId: p.id, chargeId: charge.chargeId };
+  });
+  return { purchase: (await run((d) => purchaseById(d, out.purchaseId)))!, chargeId: out.chargeId };
+}
+
+// Anular el cargo desde el folio: la reserva de SPA vuelve a pendiente de pago; el bono, a pendiente de cobro (solo si
+// aún no tiene sesiones usadas: si las tiene, se devuelven antes)
+registerExternalChargeSource("care", {
+  async onReverted(tx, sourceRef, info) {
+    const exec = tx as Exec;
+    const now = Date.now();
+    const spa = /^spa_reservation:(\d+)$/.exec(sourceRef);
+    if (spa) {
+      await exec.execute(sql`UPDATE reservations SET status = 'pending_payment', status_payment = 'PENDIENTE', paid_at = NULL,
+        notes = CONCAT(COALESCE(notes, ''), ${` [Cargo a habitación anulado: ${info.reason}]`}), updated_at = ${now} WHERE id = ${Number(spa[1])} AND status = 'paid'`);
+      return;
+    }
+    const pack = /^care_pack:(\d+)$/.exec(sourceRef);
+    if (pack) {
+      const p = await purchaseById(exec, Number(pack[1]), true);
+      if (!p) return;
+      if (p.sessionsUsed > 0) throw bad(`El bono ya tiene ${p.sessionsUsed} sesiones usadas: devuélvelas en «Clientes con bono» antes de anular el cargo.`);
+      await exec.execute(sql`UPDATE care_pack_purchases SET status = 'pending', purchased_at = NULL, expires_at = NULL, updated_at = ${now},
+        notes = CONCAT(COALESCE(notes, ''), ${` [Cargo a habitación anulado: ${info.reason}]`}) WHERE id = ${p.id} AND status = 'active' AND tpv_sale_id IS NULL`);
+    }
+  },
+});
