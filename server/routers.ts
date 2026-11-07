@@ -183,6 +183,7 @@ import { restaurantsRouter } from "./routers/restaurants";
 import { restaurantNetRouter } from "./routers/restaurantNet";
 import { skiRentalRouter } from "./skiRental/router";
 import { skiSchoolRouter } from "./skiSchool/router";
+import { careReportsRouter, restaurantReportsRouter, skiReportsRouter, travelReportsRouter } from "./netReports/router";
 import { travelRouter } from "./travelNet/router";
 import { brevoMarketingRouter } from "./brevoMarketing/router";
 import { installSectorLoyalty } from "./loyaltySectors";
@@ -2644,6 +2645,10 @@ export const appRouter = router({
   restaurantNet: restaurantNetRouter,
   skiRental: skiRentalRouter,
   skiSchool: skiSchoolRouter,
+  restaurantReports: restaurantReportsRouter,
+  careReports: careReportsRouter,
+  skiReports: skiReportsRouter,
+  travelReports: travelReportsRouter,
   travel: travelRouter,
   brevoMarketing: brevoMarketingRouter,
   crm: crmRouter,

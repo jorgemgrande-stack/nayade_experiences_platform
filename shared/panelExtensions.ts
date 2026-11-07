@@ -323,9 +323,10 @@ export const CORE_EXTENSION_PANELS: Readonly<Record<string, { capability?: strin
           { id: "carta", label: "Carta", path: "/admin/restaurant-net/carta", icon: "file", roles: ["admin", "adminrest"], order: 5 },
           { id: "cocina", label: "Cocina (KDS)", path: "/admin/restaurant-net/cocina", icon: "monitor", roles: ["admin", "adminrest"], order: 4 },
           { id: "salas-mesas", label: "Salas y mesas", path: "/admin/restaurant-net/salas-mesas", icon: "settings", roles: ["admin", "adminrest"], order: 6 },
+          { id: "informes", label: "Informes", path: "/admin/restaurant-net/informes", icon: "chart", roles: ["admin", "adminrest"], order: 7 },
         ],
       },
-      api: ["restaurants", "restaurantNet"],
+      api: ["restaurants", "restaurantNet", "restaurantReports"],
     },
   },
   spa: {
@@ -341,9 +342,10 @@ export const CORE_EXTENSION_PANELS: Readonly<Record<string, { capability?: strin
           { id: "reservas", label: "Reservas y calendario", path: "/admin/care-net/reservas", icon: "calendar", roles: ["admin", "agente"], order: 3 },
           { id: "bonos", label: "Bonos y paquetes", path: "/admin/care-net/bonos", icon: "tag", roles: ["admin", "agente"], order: 4 },
           { id: "clientes-bono", label: "Clientes con bono", path: "/admin/care-net/clientes", icon: "users", roles: ["admin", "agente"], order: 5 },
+          { id: "informes", label: "Informes", path: "/admin/care-net/informes", icon: "chart", order: 6 },
         ],
       },
-      api: ["spa", "careNet"],
+      api: ["spa", "careNet", "careReports"],
     },
   },
   // Productos Net aún sin herramientas operativas en el Core: si se conceden, su panel general muestra lo incluido
@@ -382,6 +384,7 @@ function travelNetPanel(): PanelContributions {
         { id: "proveedores", label: "Proveedores", path: "/admin/travel/proveedores", icon: "truck", capabilities: TRAVEL, roles: TEAM, order: 3 },
         { id: "operaciones", label: "Operaciones", path: "/admin/travel/operaciones", icon: "calendar", capabilities: TRAVEL, roles: TEAM, order: 4 },
         { id: "margenes", label: "Márgenes", path: "/admin/travel/margenes", icon: "coins", capabilities: TRAVEL, order: 5 },
+        { id: "informes", label: "Informes", path: "/admin/travel/informes", icon: "chart", capabilities: TRAVEL, order: 6 },
       ],
     },
   };
@@ -409,6 +412,7 @@ function skiNetPanel(): PanelContributions {
         { id: "inventario", label: "Inventario de material", path: "/admin/ski/inventario", icon: "package", capabilities: RENTAL, order: 7 },
         { id: "taller", label: "Taller", path: "/admin/ski/taller", icon: "settings", capabilities: RENTAL, order: 8 },
         { id: "alquiler-ajustes", label: "Tiendas y contrato", path: "/admin/ski/alquiler-ajustes", icon: "file", capabilities: RENTAL, order: 9 },
+        { id: "informes", label: "Informes", path: "/admin/ski/informes", icon: "chart", capabilities: ["ski-school", "ski-rental"], order: 10 },
       ],
     },
   };
