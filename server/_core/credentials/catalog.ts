@@ -183,6 +183,19 @@ export const PROVIDERS: ProviderDef[] = [
       { key: "fromEmail", label: "Dirección del remitente", secret: false, required: true, pattern: EMAIL_RE, hint: "hola@tuempresa.es", panel: { label: "Dirección desde la que se envía", help: "Debe ser de tu propio dominio (por ejemplo, hola@tuempresa.es).", formatMessage: "Escribe una dirección de correo válida (por ejemplo, hola@tuempresa.es)." } },
     ],
   },
+  {
+    // Distinto del Brevo del CORREO de la plataforma (server/mail, variables BREVO_*): esta es la cuenta de marketing
+    // PROPIA de cada empresa, para sincronizar sus contactos con consentimiento con una lista suya
+    id: "brevo_marketing",
+    name: "Brevo (email marketing)",
+    description: "Sincroniza con una lista de tu cuenta de Brevo los contactos del CRM que han dado su consentimiento para recibir comunicaciones comerciales.",
+    capabilities: ["Consultar la cuenta y sus listas", "Añadir o actualizar en la lista elegida los contactos con consentimiento", "Quitar de la lista a quien retira el consentimiento", "Leer las bajas de la lista para respetarlas en el CRM"],
+    check: "Consulta de la cuenta (GET /v3/account): solo lectura",
+    panel: { group: "marketing", title: "Email marketing con Brevo", summary: "Envía tus campañas desde tu cuenta de Brevo a los clientes que han aceptado recibirlas.", requires: ["email-campaigns"] },
+    fields: [
+      { key: "apiKey", label: "Clave API", secret: true, required: true, pattern: /^xkeysib-[A-Za-z0-9-]{20,200}$/, panel: { label: "Clave API de Brevo", help: "Créala en tu cuenta de Brevo, en «SMTP y API» → «Claves API». Empieza por «xkeysib-».", formatMessage: "La clave empieza por «xkeysib-» y no tiene espacios. Cópiala completa." } },
+    ],
+  },
 ];
 
 export function getProvider(id: string): ProviderDef | undefined {

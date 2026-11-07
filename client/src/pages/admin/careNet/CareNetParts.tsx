@@ -17,6 +17,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { PanelLoading, toastError } from "@/components/admin/PanelStates";
 import { TONE_BADGE, type Tone } from "@/lib/panelTones";
 import { cn } from "@/lib/utils";
+import { randomId } from "@shared/randomId";
 import { CARE_NET_CAPABILITY, PURCHASE_STATE_LABELS, formatEur, type PurchaseState } from "@shared/careNet";
 
 export const RESERVAS_PATH = "/admin/care-net/reservas";
@@ -49,13 +50,8 @@ export function PurchaseBadge({ state }: { state: PurchaseState }) {
 
 export const fmtDate = (ms: number | null | undefined) => (ms ? new Date(ms).toLocaleDateString("es-ES", { day: "2-digit", month: "short", year: "numeric", timeZone: "Europe/Madrid" }) : "—");
 
-export const newRequestKey = (): string => {
-  try {
-    return crypto.randomUUID().replace(/-/g, "");
-  } catch {
-    return `${Date.now()}${Math.random().toString(36).slice(2, 12)}`;
-  }
-};
+// Clave de idempotencia también fuera de contextos seguros (shared/randomId, como el TPV)
+export const newRequestKey = (): string => randomId().replace(/-/g, "");
 
 /** Buscador de clientes del CRM (nombre, correo o teléfono). */
 export function ClientPicker({ value, onChange }: { value: { id: number; name: string } | null; onChange: (c: { id: number; name: string } | null) => void }) {
