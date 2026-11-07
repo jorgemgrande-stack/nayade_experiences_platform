@@ -170,6 +170,8 @@ export class SkiTeacherService {
         },
         actor,
       );
+      // Pasar lista da la sesión por impartida: mismo evento que «Marcar como impartida»
+      if (s.status === "assigned") await this.d.events().emit("ski_school.session.completed", { sessionId, reservationId: s.reservationId });
       return { closure: await this.d.store.closure(sessionId), entries: await this.d.store.attendance(sessionId) };
     });
   }

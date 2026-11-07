@@ -543,6 +543,7 @@ export class SkiSchoolService {
       const s = await this.siteSession(siteId, sessionId);
       if (s.status !== "assigned") throw new SkiSchoolError("conflict", "Solo se puede dar por impartida una sesión con profesor asignado");
       await this.d.store.updateSession(sessionId, { status: "completed" });
+      await this.d.events().emit("ski_school.session.completed", { sessionId, reservationId: s.reservationId });
       return (await this.d.store.session(sessionId))!;
     });
   }

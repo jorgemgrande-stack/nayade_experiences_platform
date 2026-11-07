@@ -67,7 +67,8 @@ export type CampaignScope = (typeof CAMPAIGN_SCOPES)[number];
 export const CAMPAIGN_SCOPE_LABELS: Record<CampaignScope, string> = { ...RULE_SCOPE_LABELS, community: "Miembros de una comunidad" };
 
 /** Acciones permitidas que puede premiar una regla (las registra la administración o una integración). */
-export const LOYALTY_ACTIONS = ["alta", "cumpleanos", "resena", "encuesta", "recomendacion", "visita"] as const;
+// `alquiler_ski` y `clase_ski`: las registra Ski Net (alquiler entregado y clase impartida, server/loyaltySectors.ts)
+export const LOYALTY_ACTIONS = ["alta", "cumpleanos", "resena", "encuesta", "recomendacion", "visita", "alquiler_ski", "clase_ski"] as const;
 export type LoyaltyAction = (typeof LOYALTY_ACTIONS)[number];
 export const LOYALTY_ACTION_LABELS: Record<LoyaltyAction, string> = {
   alta: "Alta en el programa",
@@ -76,6 +77,8 @@ export const LOYALTY_ACTION_LABELS: Record<LoyaltyAction, string> = {
   encuesta: "Encuesta respondida",
   recomendacion: "Recomendación de un nuevo cliente",
   visita: "Visita registrada",
+  alquiler_ski: "Alquiler de material de esquí entregado",
+  clase_ski: "Clase de esquí impartida",
 };
 
 /** Periodo de un límite (por persona). */

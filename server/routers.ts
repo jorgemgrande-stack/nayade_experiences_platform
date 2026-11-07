@@ -185,6 +185,8 @@ import { skiRentalRouter } from "./skiRental/router";
 import { skiSchoolRouter } from "./skiSchool/router";
 import { travelRouter } from "./travelNet/router";
 import { brevoMarketingRouter } from "./brevoMarketing/router";
+import { installSectorLoyalty } from "./loyaltySectors";
+import { getSdkRuntime } from "./sdk";
 import { crmRouter } from "./routers/crm";
 import { suppliersRouter, settlementsRouter } from "./routers/suppliers";
 import { supplierPortalRouter } from "./routers/supplierPortal";
@@ -276,6 +278,9 @@ const noClientPricedExtras = z
   .array(z.object({ name: z.string(), price: z.number(), quantity: z.number() }))
   .max(0, "Los extras no están disponibles en la reserva online.")
   .default([]);
+
+// Social Token Net por sector: puntos por alquiler entregado y clase impartida de Ski Net (eventos del SDK)
+installSectorLoyalty(getSdkRuntime().events);
 
 export const appRouter = router({
   system: systemRouter,
