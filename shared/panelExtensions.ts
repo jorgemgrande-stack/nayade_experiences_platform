@@ -295,6 +295,10 @@ export const CORE_EXTENSION_PANELS: Readonly<Record<string, { capability?: strin
         items: [
           { id: "panel", label: "Panel general", path: "/admin/net/hotel", icon: "dashboard", order: 1 },
           { id: "hotel", label: "PMS: habitaciones, tarifas y reservas", path: "/admin/hotel", icon: "bed", order: 2 },
+          { id: "recepcion", label: "Recepción", path: "/admin/hotel/recepcion", icon: "users", order: 3 },
+          { id: "planning", label: "Planning", path: "/admin/hotel/planning", icon: "calendar", order: 4 },
+          { id: "reservas", label: "Reservas", path: "/admin/hotel/reservas", icon: "receipt", order: 5 },
+          { id: "habitaciones", label: "Habitaciones", path: "/admin/hotel/habitaciones", icon: "bed", order: 6 },
         ],
       },
       api: ["hotel"],
