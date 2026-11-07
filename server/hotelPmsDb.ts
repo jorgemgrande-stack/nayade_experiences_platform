@@ -739,13 +739,36 @@ export async function applyStayTransition(reservationId: number, action: StayAct
   }));
 }
 
-// ─── Restricciones de estancia (room_blocks) ──────────────────────────────────
+// ─── Restricciones de estancia (hotel_stay_restrictions) ──────────────────────
+
+export const hotelStayRestrictions = mysqlTable("hotel_stay_restrictions", {
+  id: int("id").autoincrement().primaryKey(),
+  roomTypeId: int("room_type_id").notNull(),
+  date: varchar("date", { length: 10 }).notNull(),
+});
 
 const restrictionKey = (roomTypeId: number, date: string) => `${roomTypeId}|${date}`;
 
+interface RestrictionRow {
+  id: number;
+  room_type_id: number;
+  date: string;
+  min_stay: number | null;
+  max_stay: number | null;
+  closed_to_arrival: number;
+  closed_to_departure: number;
+}
+
+const toRestriction = (r: RestrictionRow): StayRestriction => ({
+  minStay: r.min_stay === null ? null : Number(r.min_stay),
+  maxStay: r.max_stay === null ? null : Number(r.max_stay),
+  closedToArrival: !!Number(r.closed_to_arrival),
+  closedToDeparture: !!Number(r.closed_to_departure),
+});
+
 /**
- * Restricciones de estancia de las tipologías en las fechas indicadas. Sin la migración 0032 (columnas ausentes) no
- * hay restricciones: el buscador y la reserva pública siguen exactamente como antes.
+ * Restricciones de estancia de las tipologías en las fechas indicadas. Sin la migración 0032 (tabla ausente) no hay
+ * restricciones: el buscador y la reserva pública siguen exactamente como antes.
  */
 export async function stayRestrictionsFor(
   exec: Pick<Db, "execute">,
@@ -755,17 +778,10 @@ export async function stayRestrictionsFor(
   const out = new Map<string, StayRestriction>();
   if (roomTypeIds.length === 0 || dates.length === 0) return out;
   try {
-    const list = await rows<{ roomTypeId: number; date: string; min_stay: number | null; max_stay: number | null; closed_to_arrival: number; closed_to_departure: number }>(exec, sql`
-      SELECT roomTypeId, date, min_stay, max_stay, closed_to_arrival, closed_to_departure FROM room_blocks
-      WHERE roomTypeId IN (${idList(roomTypeIds)}) AND date IN (${sql.join(dates.map((x) => sql`${x}`), sql`, `)})`);
-    for (const r of list) {
-      out.set(restrictionKey(Number(r.roomTypeId), r.date), {
-        minStay: r.min_stay === null ? null : Number(r.min_stay),
-        maxStay: r.max_stay === null ? null : Number(r.max_stay),
-        closedToArrival: !!Number(r.closed_to_arrival),
-        closedToDeparture: !!Number(r.closed_to_departure),
-      });
-    }
+    const list = await rows<RestrictionRow>(exec, sql`
+      SELECT id, room_type_id, date, min_stay, max_stay, closed_to_arrival, closed_to_departure FROM hotel_stay_restrictions
+      WHERE room_type_id IN (${idList(roomTypeIds)}) AND date IN (${sql.join(dates.map((x) => sql`${x}`), sql`, `)})`);
+    for (const r of list) out.set(restrictionKey(Number(r.room_type_id), r.date), toRestriction(r));
   } catch (e) {
     if (!isMissingPmsSchema(e)) throw e;
   }
@@ -780,43 +796,38 @@ export function restrictionAt(map: ReadonlyMap<string, StayRestriction>, roomTyp
 export async function listStayRestrictions(from: string, to: string, roomTypeId?: number) {
   return pms(async () => {
     const d = await db();
-    const list = await rows<{ id: number; roomTypeId: number; date: string; availableUnits: number; min_stay: number | null; max_stay: number | null; closed_to_arrival: number; closed_to_departure: number }>(d, sql`
-      SELECT id, roomTypeId, date, availableUnits, min_stay, max_stay, closed_to_arrival, closed_to_departure FROM room_blocks
-      WHERE date >= ${from} AND date <= ${to} ${roomTypeId != null ? sql`AND roomTypeId = ${roomTypeId}` : sql``}
-        AND (min_stay > 0 OR max_stay > 0 OR closed_to_arrival = 1 OR closed_to_departure = 1)
-      ORDER BY date, roomTypeId`);
-    return list.map((r) => ({
-      id: Number(r.id), roomTypeId: Number(r.roomTypeId), date: r.date,
-      minStay: r.min_stay === null ? null : Number(r.min_stay), maxStay: r.max_stay === null ? null : Number(r.max_stay),
-      closedToArrival: !!Number(r.closed_to_arrival), closedToDeparture: !!Number(r.closed_to_departure),
-    }));
+    const list = await rows<RestrictionRow>(d, sql`
+      SELECT id, room_type_id, date, min_stay, max_stay, closed_to_arrival, closed_to_departure FROM hotel_stay_restrictions
+      WHERE date >= ${from} AND date <= ${to} ${roomTypeId != null ? sql`AND room_type_id = ${roomTypeId}` : sql``}
+      ORDER BY date, room_type_id`);
+    return list.map((r) => ({ id: Number(r.id), roomTypeId: Number(r.room_type_id), date: r.date, ...toRestriction(r) }));
   });
 }
 
 /**
- * Fija las restricciones de estancia de una tipología en cada día de [from, to]. En los días que ya tienen bloqueo de
- * inventario solo cambian las restricciones; en los demás se crea la fila con todas las unidades del tipo disponibles
- * (la capacidad no cambia: un bloqueo nunca supera las unidades del tipo).
+ * Fija las restricciones de estancia de una tipología en cada día de [from, to] (una fila por día). Todo vacío y
+ * desactivado las quita. El inventario por día (room_blocks) no cambia.
  */
 export async function setStayRestrictions(input: { roomTypeId: number; from: string; to: string; userId?: number | null } & StayRestriction) {
   return pms(() => inTx(async (tx) => {
-    const [type] = await rows<{ totalUnits: number }>(tx, sql`SELECT totalUnits FROM room_types WHERE id = ${input.roomTypeId} FOR UPDATE`);
+    const [type] = await rows<{ id: number }>(tx, sql`SELECT id FROM room_types WHERE id = ${input.roomTypeId}`);
     if (!type) bad("La tipología no existe.");
     const minStay = input.minStay && input.minStay > 0 ? input.minStay : null;
     const maxStay = input.maxStay && input.maxStay > 0 ? input.maxStay : null;
     const cta = input.closedToArrival ? 1 : 0;
     const ctd = input.closedToDeparture ? 1 : 0;
+    const clear = !minStay && !maxStay && !cta && !ctd;
+    const now = Date.now();
     let days = 0;
     for (let date = input.from; date <= input.to; date = addDaysIso(date, 1)) {
-      const [existing] = await rows<{ id: number }>(tx, sql`SELECT id FROM room_blocks WHERE roomTypeId = ${input.roomTypeId} AND date = ${date} ORDER BY id LIMIT 1`);
-      if (existing) {
+      if (clear) {
+        await tx.delete(hotelStayRestrictions).where(and(eq(hotelStayRestrictions.roomTypeId, input.roomTypeId), eq(hotelStayRestrictions.date, date)));
+      } else {
         await tx.execute(sql`
-          UPDATE room_blocks SET min_stay = ${minStay}, max_stay = ${maxStay}, closed_to_arrival = ${cta}, closed_to_departure = ${ctd}
-          WHERE id = ${existing.id}`);
-      } else if (minStay || maxStay || cta || ctd) {
-        await tx.execute(sql`
-          INSERT INTO room_blocks (roomTypeId, date, availableUnits, reason, min_stay, max_stay, closed_to_arrival, closed_to_departure, createdBy)
-          VALUES (${input.roomTypeId}, ${date}, ${Number(type.totalUnits)}, ${"Restricción de estancia"}, ${minStay}, ${maxStay}, ${cta}, ${ctd}, ${input.userId ?? null})`);
+          INSERT INTO hotel_stay_restrictions (room_type_id, date, min_stay, max_stay, closed_to_arrival, closed_to_departure, created_by, updated_at)
+          VALUES (${input.roomTypeId}, ${date}, ${minStay}, ${maxStay}, ${cta}, ${ctd}, ${input.userId ?? null}, ${now})
+          ON DUPLICATE KEY UPDATE min_stay = VALUES(min_stay), max_stay = VALUES(max_stay), closed_to_arrival = VALUES(closed_to_arrival),
+            closed_to_departure = VALUES(closed_to_departure), created_by = VALUES(created_by), updated_at = VALUES(updated_at)`);
       }
       days++;
     }

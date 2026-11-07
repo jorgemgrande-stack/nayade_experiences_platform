@@ -160,9 +160,10 @@ describe.skipIf(!URL_)("Hotel Net · PMS (aplicación real, dos empresas nuevas)
     expect(errCode(await ess.m("a", "hotel.adminSetStayRestrictions", {
       roomTypeId: typeId, range: { from: arrival, to: arrival }, minStay: 5, maxStay: 2, closedToArrival: false, closedToDeparture: false,
     }, adA))).toBe("BAD_REQUEST");
-    // La fila nueva no cierra el día: conserva todas las unidades del tipo
-    const [blk] = await ess.sql("a", "SELECT availableUnits, min_stay FROM room_blocks WHERE roomTypeId = ? AND date = ?", [typeId, arrival]);
-    expect(blk).toMatchObject({ availableUnits: 2, min_stay: 3 });
+    // Tabla propia: el inventario por día (room_blocks) no se toca
+    const [rst] = await ess.sql("a", "SELECT min_stay, max_stay FROM hotel_stay_restrictions WHERE room_type_id = ? AND date = ?", [typeId, arrival]);
+    expect(rst).toMatchObject({ min_stay: 3, max_stay: null });
+    expect((await ess.sql("a", "SELECT COUNT(*) AS n FROM room_blocks WHERE roomTypeId = ?", [typeId]))[0].n).toBe(0);
 
     const two = data(await ess.q("a", "hotel.searchAvailability", { checkIn: arrival, checkOut: addDaysIso(arrival, 2), adults: 2, children: 0 }));
     expect(two.find((t: any) => t.id === typeId)).toMatchObject({ isAvailable: false, availableUnits: 2 });
@@ -174,5 +175,8 @@ describe.skipIf(!URL_)("Hotel Net · PMS (aplicación real, dos empresas nuevas)
     expect((await reserve({ roomTypeId: typeId, checkIn: arrival, checkOut: addDaysIso(arrival, 2), force: true })).status).toBe(200);
     const listed = data(await ess.q("a", "hotel.adminGetStayRestrictions", { range: { from: arrival, to: arrival } }, adA));
     expect(listed).toEqual([expect.objectContaining({ roomTypeId: typeId, date: arrival, minStay: 3 })]);
+    // Todo vacío quita la restricción
+    await ess.m("a", "hotel.adminSetStayRestrictions", { roomTypeId: typeId, range: { from: arrival, to: arrival }, minStay: null, maxStay: null, closedToArrival: false, closedToDeparture: false }, adA);
+    expect(data(await ess.q("a", "hotel.adminGetStayRestrictions", { range: { from: arrival, to: arrival } }, adA))).toEqual([]);
   });
 });
