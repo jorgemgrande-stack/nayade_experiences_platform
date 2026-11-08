@@ -38,8 +38,9 @@ import type { ReminderAppointment, SendRow } from "./careNetRemindersDb";
 export const CARE_REMINDERS_JOB = "care-net-reminders";
 export const CARE_REMINDERS_FLAG = "care_net_reminders_enabled";
 export const CARE_REMINDER_CATEGORY: MailCategory = "operational";
-/** Citas que se revisan y envíos máximos por empresa y pasada. */
+/** Citas por página, páginas máximas (20.000 citas) y envíos máximos por empresa y pasada. */
 export const CARE_REMINDERS_SCAN = 500;
+export const CARE_REMINDERS_MAX_PAGES = 40;
 export const CARE_REMINDERS_PER_RUN = 100;
 /** Pausa mínima entre dos envíos manuales de la misma cita (doble clic, reintentos del navegador). */
 export const MANUAL_COOLDOWN_MS = 2 * 60_000;
@@ -134,21 +135,26 @@ export interface CareReminderDeps {
   licensed: () => Promise<boolean>;
   settings: () => Promise<ReminderSettings>;
   mailBlock: () => Promise<string | null>;
-  appointments: (from: string, to: string, limit: number) => Promise<ReminderAppointment[]>;
+  appointments: (from: string, to: string, limit: number, offset: number) => Promise<ReminderAppointment[]>;
   sends: (reservationIds: number[]) => Promise<SendRow[]>;
   claim: (reservationId: number, leadHours: number, appointmentAt: number) => Promise<boolean>;
   settle: (reservationId: number, leadHours: number, status: "sent" | "failed" | "skipped", reason: string | null) => Promise<void>;
   skip: (reservationId: number, leadHours: number, appointmentAt: number, reason: string) => Promise<void>;
-  /** ¿La empresa está en prueba gratuita con restricciones de correo? (para el motivo de un envío no salido). */
-  trialRestricted: () => Promise<boolean>;
+  /** ¿La política de la prueba gratuita del Core impide escribir a ese destinatario? (entonces, omitido). */
+  trialBlocks: (email: string) => Promise<boolean>;
   send: (a: ReminderAppointment, leadHours: number, email: string) => Promise<boolean>;
 }
 
-async function trialRestrictedNow(): Promise<boolean> {
+/**
+ * ¿La política de correo de la prueba gratuita (la misma función que aplica `sendEmail`) deja fuera a este
+ * destinatario? Sin contar la cuota de prueba, que es temporal: un envío cortado por la cuota queda «fallido» y se
+ * reintenta. Fuera de multiempresa, o si no se puede comprobar, false (decide el envío).
+ */
+async function trialBlocksNow(email: string): Promise<boolean> {
   if (!isMultiTenant()) return false;
   try {
-    const { currentCommercialState } = await import("./trialRestrictions");
-    return (await currentCommercialState()).restricted;
+    const { applyTrialMailPolicy } = await import("./trialRestrictions");
+    return (await applyTrialMailPolicy({ to: email, category: CARE_REMINDER_CATEGORY }, { usage: async () => 0 })) === null;
   } catch {
     return false;
   }
@@ -170,7 +176,7 @@ async function defaultDeps(): Promise<CareReminderDeps> {
     claim: (id, lead, at) => db.claimSend(id, lead, at, REMINDER_MAX_ATTEMPTS),
     settle: db.settleSend,
     skip: db.skipSend,
-    trialRestricted: trialRestrictedNow,
+    trialBlocks: trialBlocksNow,
     send: async (a, lead, email) => {
       const s = await db.getReminderSettings();
       const c = reminderEmail(a, currentBrand(), s.extraText);
@@ -206,37 +212,46 @@ export async function runCareReminders(now = new Date(), deps?: CareReminderDeps
     const maxLead = Math.max(...s.leadHours);
     const from = dayIn(t, CARE_REMINDER_TZ);
     const to = dayIn(t + (maxLead + 24) * HOUR_MS, CARE_REMINDER_TZ);
-    const list = (await d.appointments(from, to, CARE_REMINDERS_SCAN)).filter((a) => appointmentProblem(a, t) == null);
-    const done = await d.sends(list.map((a) => a.reservationId));
     let budget = CARE_REMINDERS_PER_RUN;
-    for (const a of list) {
-      if (budget <= 0) break;
-      const at = wallToUtc(a.date, a.startTime)!;
-      const plan = planReminder(at, t, s.leadHours, done.filter((r) => r.reservationId === a.reservationId));
-      for (const l of plan.supersede) {
-        await d.skip(a.reservationId, l, at, "superado");
-        out.skipped++;
+    // Por páginas: en un centro con mucho volumen ninguna cita se queda fuera (hasta CARE_REMINDERS_MAX_PAGES)
+    for (let page = 0; page < CARE_REMINDERS_MAX_PAGES && budget > 0; page++) {
+      const raw = await d.appointments(from, to, CARE_REMINDERS_SCAN, page * CARE_REMINDERS_SCAN);
+      const list = raw.filter((a) => appointmentProblem(a, t) == null);
+      const done = await d.sends(list.map((a) => a.reservationId));
+      for (const a of list) {
+        if (budget <= 0) break;
+        const at = wallToUtc(a.date, a.startTime)!;
+        const plan = planReminder(at, t, s.leadHours, done.filter((r) => r.reservationId === a.reservationId));
+        for (const l of plan.supersede) {
+          await d.skip(a.reservationId, l, at, "superado");
+          out.skipped++;
+        }
+        if (plan.send == null) continue;
+        const email = validEmail(a.customerEmail);
+        if (!email) {
+          await d.skip(a.reservationId, plan.send, at, "sin_correo");
+          out.skipped++;
+          continue;
+        }
+        if (!(await d.claim(a.reservationId, plan.send, at))) continue;
+        // Solo la política de la prueba gratuita deja el recordatorio omitido (definitivo); cualquier otro fallo
+        // queda «fallido» y se reintenta
+        if (await d.trialBlocks(email).catch(() => false)) {
+          await d.settle(a.reservationId, plan.send, "skipped", "prueba_gratuita");
+          out.skipped++;
+          continue;
+        }
+        budget--;
+        const ok = await d.send(a, plan.send, email).catch(() => false);
+        if (ok) {
+          await d.settle(a.reservationId, plan.send, "sent", null);
+          out.sent++;
+        } else {
+          await d.settle(a.reservationId, plan.send, "failed", "envio_fallido");
+          out.failed++;
+        }
       }
-      if (plan.send == null) continue;
-      const email = validEmail(a.customerEmail);
-      if (!email) {
-        await d.skip(a.reservationId, plan.send, at, "sin_correo");
-        out.skipped++;
-        continue;
-      }
-      if (!(await d.claim(a.reservationId, plan.send, at))) continue;
-      budget--;
-      const ok = await d.send(a, plan.send, email).catch(() => false);
-      if (ok) {
-        await d.settle(a.reservationId, plan.send, "sent", null);
-        out.sent++;
-      } else if (await d.trialRestricted()) {
-        await d.settle(a.reservationId, plan.send, "skipped", "prueba_gratuita");
-        out.skipped++;
-      } else {
-        await d.settle(a.reservationId, plan.send, "failed", "envio_fallido");
-        out.failed++;
-      }
+      if (raw.length < CARE_REMINDERS_SCAN) break;
     }
     return out;
   } catch (e) {
@@ -266,7 +281,7 @@ export interface ManualDeps {
   lastManual: (reservationId: number) => Promise<SendRow | null>;
   claim: (reservationId: number, appointmentAt: number, userId: number) => Promise<boolean>;
   settle: (reservationId: number, status: "sent" | "failed" | "skipped", reason: string | null) => Promise<void>;
-  trialRestricted: () => Promise<boolean>;
+  trialBlocks: (email: string) => Promise<boolean>;
   send: (a: ReminderAppointment, email: string, at: number) => Promise<boolean>;
 }
 
@@ -289,14 +304,14 @@ export async function sendReminderNow(reservationId: number, userId: number, now
   }
   const at = wallToUtc(a.date, a.startTime)!;
   if (!(await d.claim(reservationId, at, userId))) return { ok: false, status: "refused", message: "Ya se está enviando un recordatorio de esta cita." };
+  if (await d.trialBlocks(email).catch(() => false)) {
+    await d.settle(reservationId, "skipped", "prueba_gratuita");
+    return { ok: false, status: "skipped", message: "No enviado: durante la prueba gratuita solo se envían correos a los buzones de la empresa." };
+  }
   const ok = await d.send(a, email, now).catch(() => false);
   if (ok) {
     await d.settle(reservationId, "sent", null);
     return { ok: true, status: "sent" };
-  }
-  if (await d.trialRestricted()) {
-    await d.settle(reservationId, "skipped", "prueba_gratuita");
-    return { ok: false, status: "skipped", message: "No enviado: durante la prueba gratuita solo se envían correos a los buzones de la empresa." };
   }
   await d.settle(reservationId, "failed", "envio_fallido");
   return { ok: false, status: "failed", message: "No se ha podido enviar el recordatorio. Inténtalo más tarde." };
@@ -310,7 +325,7 @@ async function defaultManualDeps(): Promise<ManualDeps> {
     lastManual: async (id) => (await db.sendsFor([id])).find((r) => r.leadHours === MANUAL_LEAD) ?? null,
     claim: (id, at, userId) => db.claimSend(id, MANUAL_LEAD, at, REMINDER_MAX_ATTEMPTS, userId),
     settle: (id, status, reason) => db.settleSend(id, MANUAL_LEAD, status, reason),
-    trialRestricted: trialRestrictedNow,
+    trialBlocks: trialBlocksNow,
     send: async (a, email, at) => {
       const s = await db.getReminderSettings();
       const c = reminderEmail(a, currentBrand(), s.extraText);

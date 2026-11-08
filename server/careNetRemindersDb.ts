@@ -15,13 +15,12 @@ import { TRPCError } from "@trpc/server";
 import { getDb } from "./db";
 import { ModuleNotInstalled } from "./sdk";
 import { CARE_NET_CAPABILITY, spaBookingState, type SpaBookingState } from "../shared/careNet";
-import { DEFAULT_REMINDER_SETTINGS, MANUAL_LEAD, normalizeLeads, type ReminderSettings, type ReminderStatus } from "../shared/careNetReminders";
+import { DEFAULT_REMINDER_SETTINGS, MANUAL_LEAD, STALE_SENDING_MS, normalizeLeads, type ReminderSettings, type ReminderStatus } from "../shared/careNetReminders";
 
 type Db = NonNullable<Awaited<ReturnType<typeof getDb>>>;
 type Exec = Pick<Db, "execute">;
 
-/** Minutos tras los que un registro «enviando» se considera atascado (caída a mitad de envío) y se puede reintentar. */
-export const STALE_SENDING_MS = 15 * 60_000;
+export { STALE_SENDING_MS };
 
 const num = (v: unknown) => Number(v ?? 0);
 
@@ -124,11 +123,11 @@ const toAppointment = (r: any): ReminderAppointment => ({
   state: spaBookingState({ status: String(r.status), holdStatus: r.hold_status ?? null, statusReservation: r.status_reservation ?? null }),
 });
 
-/** Citas de SPA entre dos días (AAAA-MM-DD) para el job; el estado y la hora se filtran en la lógica pura. */
-export async function appointmentsBetween(from: string, to: string, limit: number): Promise<ReminderAppointment[]> {
+/** Citas de SPA entre dos días (AAAA-MM-DD) para el job, por páginas; el estado y la hora se filtran en la lógica pura. */
+export async function appointmentsBetween(from: string, to: string, limit: number, offset = 0): Promise<ReminderAppointment[]> {
   return run(async (d) => (await rows(d, sql`${APPOINTMENT_SELECT}
       WHERE r.inventory_kind = 'spa_slot' AND s.date BETWEEN ${from} AND ${to} AND (r.status = 'paid' OR r.hold_status = 'confirmada')
-      ORDER BY s.date, s.startTime, r.id LIMIT ${limit}`)).map(toAppointment));
+      ORDER BY s.date, s.startTime, r.id LIMIT ${limit} OFFSET ${offset}`)).map(toAppointment));
 }
 
 export async function appointmentById(reservationId: number): Promise<ReminderAppointment | null> {

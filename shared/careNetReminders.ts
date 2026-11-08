@@ -19,6 +19,8 @@ export const MANUAL_LEAD = 0;
 /** Intentos de envío automáticos de un mismo recordatorio antes de darlo por fallido. */
 export const REMINDER_MAX_ATTEMPTS = 3;
 export const REMINDER_EXTRA_TEXT_MAX = 500;
+/** Un registro «enviando» sin cerrar tras este tiempo (caída a mitad de envío) se puede volver a reservar. */
+export const STALE_SENDING_MS = 15 * 60_000;
 
 export interface ReminderSettings {
   enabled: boolean;
@@ -81,6 +83,8 @@ export interface SendRecord {
   leadHours: number;
   status: ReminderStatus;
   attempts: number;
+  /** Última actualización del registro (ms); con «enviando», para detectar un envío atascado. */
+  at?: number;
 }
 
 export interface ReminderPlan {
@@ -93,8 +97,9 @@ export interface ReminderPlan {
 /**
  * Qué recordatorio toca para una cita a `appointmentAt` en el instante `now`. Puro.
  *  - Una antelación L está abierta si now ≥ cita − L h y la cita no ha empezado.
- *  - Se envía la abierta más corta si no tiene registro (o falló con intentos libres); las abiertas más largas
- *    sin registro se omiten. Una antelación ya enviada u omitida nunca se repite.
+ *  - Se envía la abierta más corta si no tiene registro, si falló o si quedó «enviando» atascado (más de
+ *    STALE_SENDING_MS sin cerrarse, p. ej. por una caída), siempre con intentos libres; las abiertas más largas sin
+ *    registro se omiten. Una antelación ya enviada u omitida nunca se repite.
  */
 export function planReminder(appointmentAt: number, now: number, leads: readonly number[], done: readonly SendRecord[], maxAttempts = REMINDER_MAX_ATTEMPTS): ReminderPlan {
   const none: ReminderPlan = { send: null, supersede: [] };
@@ -104,7 +109,8 @@ export function planReminder(appointmentAt: number, now: number, leads: readonly
   const rec = (l: number) => done.find((r) => r.leadHours === l);
   const shortest = open[0];
   const r = rec(shortest);
-  const retryable = r != null && r.status === "failed" && r.attempts < maxAttempts;
+  const stuck = r != null && r.status === "sending" && r.at != null && now - r.at > STALE_SENDING_MS;
+  const retryable = r != null && (r.status === "failed" || stuck) && r.attempts < maxAttempts;
   const send = r == null || retryable ? shortest : null;
   // Una antelación más corta ya resuelta (enviada u omitida) también cierra las largas que queden sin registro
   const supersede = open.slice(1).filter((l) => rec(l) == null);

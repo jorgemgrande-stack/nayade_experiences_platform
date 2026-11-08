@@ -85,6 +85,10 @@ describe("qué recordatorio toca", () => {
   it("idempotencia: enviado u omitido no se repite; fallido se reintenta con límite", () => {
     expect(planReminder(at, h(3), [24], [{ leadHours: 24, status: "skipped", attempts: 0 }]).send).toBeNull();
     expect(planReminder(at, h(3), [24], [{ leadHours: 24, status: "sending", attempts: 1 }]).send).toBeNull();
+    // «Enviando» atascado (caída a mitad de envío): reintentable pasados 15 minutos y con intentos libres
+    expect(planReminder(at, h(3), [24], [{ leadHours: 24, status: "sending", attempts: 1, at: h(3) - 10 * 60_000 }]).send).toBeNull();
+    expect(planReminder(at, h(3), [24], [{ leadHours: 24, status: "sending", attempts: 1, at: h(3) - 16 * 60_000 }]).send).toBe(24);
+    expect(planReminder(at, h(3), [24], [{ leadHours: 24, status: "sending", attempts: 3, at: h(3) - 16 * 60_000 }]).send).toBeNull();
     expect(planReminder(at, h(3), [24], [{ leadHours: 24, status: "failed", attempts: 1 }]).send).toBe(24);
     expect(planReminder(at, h(3), [24], [{ leadHours: 24, status: "failed", attempts: 3 }]).send).toBeNull();
   });
@@ -155,7 +159,8 @@ function fakeStore() {
     claim: async (id: number, l: number) => {
       const r = rows.get(k(id, l));
       if (!r) { rows.set(k(id, l), { reservationId: id, leadHours: l, status: "sending", reason: null, attempts: 1, at: 0 }); return true; }
-      if (r.status === "failed" && r.attempts < 3) { r.status = "sending"; r.attempts++; return true; }
+      // Reintento de un fallido o de un «enviando» atascado (la base lo condiciona a updated_at; aquí decide el plan)
+      if ((r.status === "failed" || r.status === "sending") && r.attempts < 3) { r.status = "sending"; r.attempts++; return true; }
       return false;
     },
     settle: async (id: number, l: number, status: "sent" | "failed" | "skipped", reason: string | null) => {
@@ -180,7 +185,7 @@ function deps(o: Partial<CareReminderDeps> & { list?: ReminderAppointment[] } = 
     claim: store.claim,
     settle: store.settle,
     skip: store.skip,
-    trialRestricted: async () => false,
+    trialBlocks: async () => false,
     send: async (a, lead, email) => { sent.push({ id: a.reservationId, lead, email }); return true; },
     ...o,
   };
@@ -245,11 +250,42 @@ describe("tarea por empresa (dobles)", () => {
     ok = true;
     expect((await runCareReminders(now, d)).sent).toBe(0);
   });
-  it("prueba gratuita: el Core decide; si no sale, queda omitido (no fallido) y no se reintenta", async () => {
-    const { d, store } = deps({ send: async () => false, trialRestricted: async () => true });
+  it("prueba gratuita: si la política del Core deja fuera al destinatario, omitido sin enviar y sin reintentos", async () => {
+    const { d, store, sent } = deps({ trialBlocks: async () => true });
     expect(await runCareReminders(now, d)).toEqual({ sent: 0, failed: 0, skipped: 1 });
+    expect(sent).toHaveLength(0);
     expect(store.rows.get("7:24")).toMatchObject({ status: "skipped", reason: "prueba_gratuita" });
     expect((await runCareReminders(now, d)).skipped).toBe(0);
+  });
+  it("cualquier otro fallo (también en prueba gratuita con destinatario permitido) queda fallido y se reintenta", async () => {
+    const { d, store } = deps({ trialBlocks: async () => false, send: async () => false });
+    expect((await runCareReminders(now, d)).failed).toBe(1);
+    expect(store.rows.get("7:24")).toMatchObject({ status: "failed", reason: "envio_fallido" });
+    // Comprobación de la política que falla: no se da por omitido, decide el envío
+    const x = deps({ trialBlocks: async () => { throw new Error("x"); }, send: async () => false });
+    expect((await runCareReminders(now, x.d)).failed).toBe(1);
+  });
+  it("«enviando» atascado tras una caída: se vuelve a reservar pasados 15 minutos, no antes", async () => {
+    const t = now.getTime();
+    const stuck = (minutes: number) => {
+      const x = deps();
+      x.store.rows.set("7:24", { reservationId: 7, leadHours: 24, status: "sending", reason: null, attempts: 1, at: t - minutes * 60_000 });
+      return x;
+    };
+    const recent = stuck(5);
+    expect((await runCareReminders(now, recent.d)).sent).toBe(0);
+    expect(recent.sent).toHaveLength(0);
+    const old = stuck(20);
+    expect((await runCareReminders(now, old.d)).sent).toBe(1);
+    expect(old.store.rows.get("7:24")).toMatchObject({ status: "sent", attempts: 2 });
+  });
+  it("por páginas: una cita confirmada detrás de 500 que no tocan también se recuerda", async () => {
+    const all = [...Array.from({ length: 500 }, (_, i) => appt({ reservationId: 1000 + i, state: "pendiente" })), appt({ reservationId: 7 })];
+    const offsets: number[] = [];
+    const { d, sent } = deps({ appointments: async (_f, _t, limit, offset) => { offsets.push(offset); return all.slice(offset, offset + limit); } });
+    expect((await runCareReminders(now, d)).sent).toBe(1);
+    expect(sent.map((x) => x.id)).toEqual([7]);
+    expect(offsets).toEqual([0, 500]);
   });
   it("otra réplica ya lo reservó: no se envía", async () => {
     const { d, sent } = deps({ claim: async () => false });
@@ -269,7 +305,7 @@ describe("«Enviar recordatorio ahora» (dobles)", () => {
       lastManual: async () => last,
       claim: async () => { calls.push("claim"); return true; },
       settle: async (_id, status) => { calls.push(status); last = { reservationId: 7, leadHours: 0, status, reason: null, attempts: 1, at: now }; },
-      trialRestricted: async () => false,
+      trialBlocks: async () => false,
       send: async () => { calls.push("send"); return true; },
       ...o,
     };
@@ -298,7 +334,9 @@ describe("«Enviar recordatorio ahora» (dobles)", () => {
   });
   it("fallo del envío y prueba gratuita", async () => {
     expect((await sendReminderNow(7, 1, now, manual({ send: async () => false }).d)).status).toBe("failed");
-    expect((await sendReminderNow(7, 1, now, manual({ send: async () => false, trialRestricted: async () => true }).d)).status).toBe("skipped");
+    const t = manual({ trialBlocks: async () => true });
+    expect((await sendReminderNow(7, 1, now, t.d)).status).toBe("skipped");
+    expect(t.calls).toEqual(["claim", "skipped"]);
   });
 });
 
