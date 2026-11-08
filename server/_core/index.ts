@@ -33,7 +33,7 @@ import fileRouter from "../fileRoutes";
 import redsysRouter from "../redsysRoutes";
 import { createLoyaltyPortalRouter } from "../loyaltyPortal";
 import { createNetPublicRouter, netPublicBodyParser } from "../netPublic/router";
-import { createTenantPostmarkWebhookRouter } from "../mail/tenantPostmarkWebhook";
+import { createTenantPostmarkWebhookRouter, tenantPostmarkWebhookBodyParser } from "../mail/tenantPostmarkWebhook";
 import { metaCapiRouter } from "../metaCapiRoute";
 import settlementExportRouter from "../settlementExportRoutes";
 import invoicePreviewRouter from "../invoicePreviewRouter";
@@ -165,6 +165,8 @@ async function startServer() {
   installTenantResolution(app);
   // Rutas públicas de Elephant Net (/mesa, /check-in, /firma, /baja): solo formularios de 8 KB, antes del lector general
   app.use(netPublicBodyParser);
+  // Webhook de Postmark de cada empresa: JSON de 256 KB como mucho, antes del lector general
+  app.use(tenantPostmarkWebhookBodyParser);
   // Configure body parser with larger size limit for file uploads
   app.use(express.json({ limit: "50mb" }));
   app.use(express.urlencoded({ limit: "50mb", extended: true }));
