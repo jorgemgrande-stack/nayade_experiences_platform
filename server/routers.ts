@@ -187,6 +187,7 @@ import { skiSchoolRouter } from "./skiSchool/router";
 import { careReportsRouter, restaurantReportsRouter, skiReportsRouter, travelReportsRouter } from "./netReports/router";
 import { travelRouter } from "./travelNet/router";
 import { brevoMarketingRouter } from "./brevoMarketing/router";
+import { geoControlRouter } from "./routers/geoControl";
 import { postmarkTenantRouter } from "./routers/postmarkTenant";
 import { installSectorLoyalty } from "./loyaltySectors";
 import { getSdkRuntime } from "./sdk";
@@ -2654,6 +2655,7 @@ export const appRouter = router({
   travelReports: travelReportsRouter,
   travel: travelRouter,
   brevoMarketing: brevoMarketingRouter,
+  geoControl: geoControlRouter,
   postmarkTenant: postmarkTenantRouter,
   crm: crmRouter,
   commercialFollowup: commercialFollowupRouter,
