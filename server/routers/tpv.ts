@@ -945,6 +945,9 @@ export const tpvRouter = router({
             participants: z.number().int().positive().default(1),
             notes: z.string().optional(),
             isManual: z.boolean().optional().default(false),
+            // Concepto libre que NO es un servicio de viaje (p. ej. cargo por daños de Ski Net): IVA general de la
+            // empresa aunque la instalación trabaje en REAV
+            forceGeneralVat: z.boolean().optional(),
             conceptText: z.string().max(500).optional(),
             legoPackLineIds: z.array(z.number()).optional(), // Para Lego Packs personalizados
             legoPackLinePeople: z.record(z.string(), z.number()).optional(), // Personas por línea (claves = lineId serializado como string en JSON)
@@ -1009,9 +1012,14 @@ export const tpvRouter = router({
             ? { fiscalRegime: "reav", taxRate: 0, providerPercent: 60, agencyMarginPercent: 40 }
             : { fiscalRegime: "general", taxRate: parseFloat(await getSystemSetting("tax_rate_general", "21")) || 21, providerPercent: 0, agencyMarginPercent: 0 })
         : null;
+      const generalFiscal: FiscalData | null = input.items.some(i => i.isManual && i.forceGeneralVat)
+        ? { fiscalRegime: "general", taxRate: parseFloat(await getSystemSetting("tax_rate_general", "21")) || 21, providerPercent: 0, agencyMarginPercent: 0 }
+        : null;
       for (const item of input.items) {
         const lineSubtotal = item.unitPrice * item.quantity * (1 - item.discountPercent / 100);
-        const fiscalData = item.isManual && manualFiscal
+        const fiscalData = item.isManual && item.forceGeneralVat && generalFiscal
+          ? generalFiscal
+          : item.isManual && manualFiscal
           ? manualFiscal
           : await getProductFiscalData(item.productType, item.productId);
         const fiscal = calcLineFiscal(lineSubtotal, fiscalData.fiscalRegime, fiscalData.taxRate, fiscalData.providerPercent, fiscalData.agencyMarginPercent);

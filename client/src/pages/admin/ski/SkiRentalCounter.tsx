@@ -2,7 +2,8 @@
  * Ski Net · Alquiler — Mostrador (/admin/ski/alquiler): entregas abiertas (con aviso de devolución tardía), nueva
  * entrega escaneando cada unidad, contrato con firma por clic en el propio mostrador (tableta o equipo del empleado:
  * nombre escrito, aceptación expresa, IP, navegador y huella del contenido) y devolución unidad a unidad.
- * Fianzas y cargos por daños: fuera de esta versión.
+ * Fianzas (cobro al entregar, liquidación al devolver y cargos por daños en el TPV) y su tablero con los totales del
+ * día para el cierre de caja: components/ski/SkiDeposits.tsx.
  */
 import { useState } from "react";
 import { FileSignature, Plus, ShoppingCart, Trash2 } from "lucide-react";
@@ -17,6 +18,7 @@ import { FormField, selectClass } from "@/components/admin/crm/CrmParts";
 import { addDays, todayIso } from "@/components/ski/SkiSchoolShell";
 import { useAsk } from "@/components/ski/AskDialog";
 import { SkiRentalShell, toastRental, typeLabel, type RentalCtx } from "@/components/ski/SkiRentalShell";
+import { DepositPanel, DepositsBoard } from "@/components/ski/SkiDeposits";
 
 type Line = { code: string; requestedType: string; requestedSize: string; confirmSize: boolean; reason: string };
 
@@ -222,6 +224,7 @@ function DeliveryDetail({ ctx, deliveryId }: { ctx: RentalCtx; deliveryId: numbe
       utils.skiRental.getDelivery.invalidate();
       utils.skiRental.listDeliveries.invalidate();
       utils.skiRental.listModels.invalidate();
+      utils.skiRental.depositForDelivery.invalidate();
     },
     onError: toastRental,
   });
@@ -269,6 +272,7 @@ function DeliveryDetail({ ctx, deliveryId }: { ctx: RentalCtx; deliveryId: numbe
         ))}
       </ul>
       {d.contract && <Contract ctx={ctx} deliveryId={d.id} customerName={d.customerName} contract={d.contract} />}
+      <DepositPanel ctx={ctx} deliveryId={d.id} />
       {dialog}
     </div>
   );
@@ -313,11 +317,11 @@ function Deliveries({ ctx, status, onOpen, onNew }: { ctx: RentalCtx; status: "o
 export default function SkiRentalCounter() {
   const [creating, setCreating] = useState(false);
   const [open, setOpen] = useState<number | null>(null);
-  const [tab, setTab] = useState<"open" | "returned">("open");
+  const [tab, setTab] = useState<"open" | "returned" | "deposits">("open");
   return (
     <SkiRentalShell
       title="Alquiler: mostrador"
-      description="Entregas y devoluciones por unidad, con el contrato firmado por el cliente en el mostrador."
+      description="Entregas y devoluciones por unidad, con el contrato firmado por el cliente en el mostrador y la fianza."
       actions={(ctx) =>
         ctx.canWrite && (
           <Button onClick={() => setCreating(true)}>
@@ -330,13 +334,13 @@ export default function SkiRentalCounter() {
       {(ctx) => (
         <div className="space-y-4">
           <div className="flex flex-wrap gap-2" role="tablist" aria-label="Entregas">
-            {(["open", "returned"] as const).map((t) => (
+            {(["open", "returned", "deposits"] as const).map((t) => (
               <Button key={t} role="tab" aria-selected={tab === t} size="sm" variant={tab === t ? "default" : "outline"} onClick={() => setTab(t)}>
-                {t === "open" ? "En la calle" : "Devueltas"}
+                {t === "open" ? "En la calle" : t === "returned" ? "Devueltas" : "Fianzas"}
               </Button>
             ))}
           </div>
-          <Deliveries ctx={ctx} status={tab} onOpen={setOpen} onNew={() => setCreating(true)} />
+          {tab === "deposits" ? <DepositsBoard ctx={ctx} onOpen={setOpen} /> : <Deliveries ctx={ctx} status={tab} onOpen={setOpen} onNew={() => setCreating(true)} />}
           <Dialog open={creating} onOpenChange={setCreating}>
             <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl">
               <DialogHeader>
@@ -359,7 +363,7 @@ export default function SkiRentalCounter() {
             <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl">
               <DialogHeader>
                 <DialogTitle>Entrega #{open}</DialogTitle>
-                <DialogDescription>Material entregado, devolución por unidad y contrato.</DialogDescription>
+                <DialogDescription>Material entregado, devolución por unidad, contrato y fianza.</DialogDescription>
               </DialogHeader>
               {open != null && <DeliveryDetail ctx={ctx} deliveryId={open} />}
             </DialogContent>

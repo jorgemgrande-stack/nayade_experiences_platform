@@ -18,6 +18,14 @@ import { SkiRentalUnitsService } from "./unitService";
 import { TenantDbSkiRentalUnitStore } from "./unitStore";
 import { UNIT_STATUSES } from "./units";
 import { SIGN_LINK_MAX_HOURS, issueSignLink, revokeSignLink, signLinkStatus } from "../netPublic/skiSign";
+import { getCapabilityAccess } from "../_core/capabilities/access";
+import { companySites } from "../sitesDb";
+import { storagePut } from "../storage";
+import { objectStorageEnabled } from "../_core/files/service";
+import { tpvRouter } from "../routers/tpv";
+import { DEPOSIT_METHODS, MAX_DEPOSIT_CENTS, PAY_METHODS, REQUEST_KEY_RE, centsToEuros } from "../../shared/skiDeposits";
+import { MAX_PHOTO_BYTES, SkiDepositService, type CreateDamageSale } from "./depositService";
+import { TenantDbDepositStore } from "./depositStore";
 
 // Un módulo que no valida no impide arrancar al Core: queda sin registrar y sus rutas responden NOT_FOUND
 try {
@@ -32,12 +40,51 @@ const service = new SkiRentalService({
   gate: () => getSdkRuntime().gate,
   events: () => getSdkRuntime().events,
 });
+const unitStore = new TenantDbSkiRentalUnitStore();
 const units = new SkiRentalUnitsService({
-  store: new TenantDbSkiRentalUnitStore(),
+  store: unitStore,
   activation: store,
   gate: () => getSdkRuntime().gate,
   events: () => getSdkRuntime().events,
 });
+/** Fianzas del alquiler (incluidas en la capacidad ski-rental): server/skiRental/depositService.ts. */
+const deposits = new SkiDepositService({
+  store: new TenantDbDepositStore(),
+  units: unitStore,
+  activation: store,
+  gate: () => getSdkRuntime().gate,
+  isPrimarySite: async (siteId) => (await companySites()).primarySiteId === siteId,
+  photosEnabled: objectStorageEnabled,
+});
+
+/**
+ * Venta «Cargo por daños» en el TPV del Core (concepto libre, con su ticket, IVA y numeración) con la sesión de quien
+ * cobra. Llamar al TPV desde aquí no pasa por el guardián HTTP de su namespace: se comprueba su licencia (caja).
+ */
+async function damageSale(ctx: Parameters<typeof tpvRouter.createCaller>[0]): Promise<CreateDamageSale> {
+  const cash = await getCapabilityAccess().check("bill-cash", { write: true }).catch(() => ({ allowed: false }));
+  if (!cash.allowed) throw new TRPCError({ code: "FORBIDDEN", message: "La caja (TPV) no está incluida en tu plan o está en solo lectura: no se puede cobrar el cargo por daños." });
+  // El TPV solo admite conceptos libres a administradores (tpv.createSale): se comprueba antes de reservar nada
+  if ((ctx as { user?: { role?: string } }).user?.role !== "admin") throw new TRPCError({ code: "FORBIDDEN", message: "Solo un administrador puede registrar cargos por daños en el TPV." });
+  const tpv = tpvRouter.createCaller(ctx);
+  return async (s) => {
+    const euros = centsToEuros(s.amountCents);
+    const r = await tpv.createSale({
+      sessionId: s.sessionId,
+      idempotencyKey: s.idempotencyKey,
+      customerName: s.customerName || undefined,
+      notes: s.notes,
+      discountAmount: 0,
+      // IVA general siempre (nunca REAV). PENDIENTE DEL ASESOR FISCAL: una indemnización por daños puede no estar
+      // sujeta a IVA (art. 78.Tres.1º LIVA); hoy se documenta con ticket e IVA general.
+      items: [{ productType: "extra", productId: 0, productName: "Cargo por daños (alquiler de material)", quantity: 1, unitPrice: euros, discountPercent: 0, participants: 1, isManual: true, forceGeneralVat: true, conceptText: s.concept }],
+      payments: [{ method: s.method, amount: euros }],
+    });
+    return { saleId: Number(r.sale?.id), ticketNumber: r.sale?.ticketNumber ? String(r.sale.ticketNumber) : null };
+  };
+}
+const cents = z.number().int().min(0).max(MAX_DEPOSIT_CENTS);
+const cashierOf = (ctx: { user: { name?: string | null; email?: string | null } }) => ctx.user.name ?? ctx.user.email ?? "Mostrador";
 /** El mismo servicio para la firma remota (server/netPublic/skiSign.ts): una sola forma de firmar. */
 export const skiRentalUnitsService = units;
 
@@ -190,4 +237,51 @@ export const skiRentalRouter = router({
   closeTicket: adminProcedure
     .input(site.extend({ ticketId: id, resolution: z.enum(["available", "incident", "retired"]), notes: z.string().max(500).nullable().optional() }))
     .mutation(({ input, ctx }) => handle(() => units.closeTicket(input.siteId, input.ticketId, input.resolution, input.notes, actor(ctx)))),
+
+  // ── Fianzas (incluidas en ski-rental) ──
+  depositRules: adminProcedure.input(site).query(({ input }) => handle(() => deposits.listRules(input.siteId))),
+  setDepositRule: adminProcedure
+    .input(site.extend({ modelId: id.nullable().optional(), assetType: z.string().max(24).nullable().optional(), amountCents: cents.nullable() }))
+    .mutation(({ input, ctx }) => handle(() => deposits.setRule(input.siteId, input, actor(ctx)))),
+  depositCashSessions: adminProcedure.input(site).query(({ input }) => handle(() => deposits.cashSessions(input.siteId))),
+  depositForDelivery: adminProcedure.input(site.extend({ deliveryId: id })).query(({ input }) => handle(() => deposits.forDelivery(input.siteId, input.deliveryId))),
+  registerDeposit: adminProcedure
+    .input(site.extend({ deliveryId: id, amountCents: cents, method: z.enum(DEPOSIT_METHODS), sessionId: id.nullable().optional(), externalRef: z.string().max(120).nullable().optional() }))
+    .mutation(({ input, ctx }) => {
+      const { siteId, ...rest } = input;
+      return handle(() => deposits.register(siteId, rest, actor(ctx), cashierOf(ctx)));
+    }),
+  settleDeposit: adminProcedure
+    .input(site.extend({ depositId: id, damageCents: cents, reason: z.string().max(300).nullable().optional(), note: z.string().max(1000).nullable().optional(), sessionId: id.nullable().optional() }))
+    .mutation(async ({ input, ctx }) => {
+      const { siteId, depositId, ...rest } = input;
+      return handle(() => deposits.settle(siteId, depositId, rest, actor(ctx), cashierOf(ctx), () => damageSale(ctx)));
+    }),
+  addDepositPhoto: adminProcedure
+    .input(site.extend({ depositId: id, fileName: z.string().max(200), mimeType: z.string().max(80), base64: z.string().max(Math.ceil((MAX_PHOTO_BYTES * 4) / 3) + 8) }))
+    .mutation(({ input, ctx }) =>
+      handle(() =>
+        deposits.addPhoto(input.siteId, input.depositId, { fileName: input.fileName, mimeType: input.mimeType, data: Buffer.from(input.base64, "base64") }, actor(ctx), async (key, data, mime, name) => {
+          const r = await storagePut(key, data, mime, { category: "internal", originalName: name, uploadedBy: ctx.user.id });
+          return r.url;
+        }),
+      ),
+    ),
+  createDamageCharge: adminProcedure
+    .input(site.extend({ deliveryId: id, amountCents: cents, reason: z.string().max(300), requestKey: z.string().regex(REQUEST_KEY_RE) }))
+    .mutation(({ input, ctx }) => {
+      const { siteId, ...rest } = input;
+      return handle(() => deposits.createCharge(siteId, rest, actor(ctx)));
+    }),
+  payDamageCharge: adminProcedure
+    .input(site.extend({ chargeId: id, sessionId: id, method: z.enum(PAY_METHODS) }))
+    .mutation(async ({ input, ctx }) => {
+      const sale = await damageSale(ctx);
+      return handle(() => deposits.payCharge(input.siteId, input.chargeId, { sessionId: input.sessionId, method: input.method }, actor(ctx), sale));
+    }),
+  cancelDamageCharge: adminProcedure
+    .input(site.extend({ chargeId: id, reason: z.string().max(300) }))
+    .mutation(({ input, ctx }) => handle(() => deposits.cancelCharge(input.siteId, input.chargeId, input.reason, actor(ctx)))),
+  listDeposits: adminProcedure.input(site.extend({ status: z.enum(["open", "closed"]) })).query(({ input }) => handle(() => deposits.list(input.siteId, input.status))),
+  depositTotals: adminProcedure.input(site.extend({ day: day.optional() })).query(({ input }) => handle(() => deposits.totals(input.siteId, input.day ?? SkiDepositService.today()))),
 });
