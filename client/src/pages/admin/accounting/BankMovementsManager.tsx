@@ -287,8 +287,8 @@ export default function BankMovementsManager() {
     if (!file) return;
     e.target.value = "";
     const ext = file.name.split(".").pop()?.toLowerCase() ?? "";
-    if (!["xls", "xlsx", "csv"].includes(ext)) {
-      toast.error("Formato no soportado. Usa .xls, .xlsx o .csv");
+    if (!["xls", "xlsx", "csv", "txt", "n43", "aeb", "q43"].includes(ext)) {
+      toast.error("Formato no soportado. Usa el Excel o CSV del extracto (.xls, .xlsx, .csv) o el fichero Norma 43 de tu banco (.txt, .n43, .aeb, .q43)");
       return;
     }
     setUploading(true);
@@ -348,7 +348,7 @@ export default function BankMovementsManager() {
         <div className="flex items-center justify-between">
           <div>
             <h1 className="text-2xl font-bold text-gray-900">Movimientos Bancarios</h1>
-            <p className="text-sm text-gray-500 mt-1">Importa, gestiona y concilia los movimientos bancarios de CaixaBank</p>
+            <p className="text-sm text-gray-500 mt-1">Importa, gestiona y concilia los movimientos de tu banco: Norma 43, Excel o CSV</p>
           </div>
           <div className="flex gap-2">
             <Button
@@ -362,7 +362,7 @@ export default function BankMovementsManager() {
                 <><Upload className="w-4 h-4 mr-2" /> Importar fichero</>
               )}
             </Button>
-            <input ref={fileInputRef} type="file" accept=".xls,.xlsx,.csv" className="hidden" onChange={handleFileChange} />
+            <input ref={fileInputRef} type="file" accept=".xls,.xlsx,.csv,.txt,.n43,.aeb,.q43" className="hidden" onChange={handleFileChange} />
           </div>
         </div>
 
@@ -549,7 +549,7 @@ export default function BankMovementsManager() {
               <div className="text-center py-12 text-gray-400">
                 <FileSpreadsheet className="w-10 h-10 mx-auto mb-3 opacity-40" />
                 <p>No hay importaciones todavía</p>
-                <p className="text-xs mt-1">Usa el botón "Importar fichero" para cargar un extracto de CaixaBank</p>
+                <p className="text-xs mt-1">Usa el botón "Importar fichero" para cargar el extracto de tu banco (Norma 43, Excel o CSV)</p>
               </div>
             ) : (
               <div className="rounded-lg border border-white/10 overflow-hidden">

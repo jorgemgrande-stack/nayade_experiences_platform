@@ -7,6 +7,7 @@ import { bankFileImports, bankMovements, bankMovementLinks, quotes, leads, expen
 import * as XLSX from "xlsx";
 import { assertModuleEnabled } from "../_core/flagGuard";
 import { legacyDb, legacyPool } from "../_core/legacyDb";
+import { BankStatementError, parseBankStatement, type ParsedBankRow } from "../bankStatementImport";
 
 const _pool = legacyPool();
 const db = legacyDb();
@@ -19,114 +20,7 @@ const adminProc = protectedProcedure.use(async ({ ctx, next }) => {
   return next({ ctx });
 });
 
-// -- CaixaBank parser ----------------------------------------------------------
-
-function parseExcelDate(v: unknown): string {
-  if (v == null || v === "") return "";
-  // JS Date (when cellDates:true)
-  if (v instanceof Date) {
-    const y = v.getUTCFullYear();
-    const m = String(v.getUTCMonth() + 1).padStart(2, "0");
-    const d = String(v.getUTCDate()).padStart(2, "0");
-    return `${y}-${m}-${d}`;
-  }
-  // Numeric serial (Excel epoch: 1 = Jan 1 1900, with 1900 leap-year bug offset)
-  if (typeof v === "number") {
-    const ms = (v - 25569) * 86400 * 1000;
-    const dt = new Date(ms);
-    const y = dt.getUTCFullYear();
-    const m = String(dt.getUTCMonth() + 1).padStart(2, "0");
-    const d = String(dt.getUTCDate()).padStart(2, "0");
-    if (y > 1900 && y < 2100) return `${y}-${m}-${d}`;
-  }
-  // String DD/MM/YYYY or YYYY-MM-DD
-  const s = String(v).trim();
-  const dmatch = s.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
-  if (dmatch) return `${dmatch[3]}-${dmatch[2]}-${dmatch[1]}`;
-  const ymatch = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
-  if (ymatch) return s.slice(0, 10);
-  return s;
-}
-
-function parseImporte(v: unknown): number {
-  if (v == null || v === "") return 0;
-  if (typeof v === "number") return v;
-  const s = String(v).replace(/\s/g, "").replace(",", ".");
-  const n = parseFloat(s);
-  return isNaN(n) ? 0 : n;
-}
-
-function normalize(v: unknown): string {
-  return String(v ?? "").trim().toLowerCase().replace(/\s+/g, " ");
-}
-
-function makeDuplicateKey(
-  fecha: string,
-  fechaValor: string,
-  movimiento: string,
-  masDatos: string,
-  importe: number,
-  saldo: number | null
-): string {
-  return [fecha, fechaValor, normalize(movimiento), normalize(masDatos), importe.toFixed(2), saldo != null ? saldo.toFixed(2) : ""].join("|");
-}
-
-interface ParsedRow {
-  fecha: string;
-  fechaValor: string;
-  movimiento: string;
-  masDatos: string;
-  importe: number;
-  saldo: number | null;
-  duplicateKey: string;
-}
-
-function parseCaixaBankBuffer(buffer: Buffer, ext: string): ParsedRow[] {
-  const wb = XLSX.read(buffer, { type: "buffer", cellDates: true, raw: true });
-  const ws = wb.Sheets[wb.SheetNames[0]];
-  const rows: unknown[][] = XLSX.utils.sheet_to_json(ws, { header: 1, defval: "", raw: true }) as unknown[][];
-
-  // Find header row by searching for known column names
-  const COL_MAP: Record<string, number> = {};
-  let headerRow = -1;
-
-  for (let r = 0; r < Math.min(rows.length, 20); r++) {
-    const row = rows[r] as unknown[];
-    const normalized = row.map((c) => normalize(c));
-    const hasFecha = normalized.some((c) => c === "fecha");
-    const hasImporte = normalized.some((c) => c === "importe");
-    if (hasFecha && hasImporte) {
-      headerRow = r;
-      normalized.forEach((h, i) => {
-        if (h === "fecha" && COL_MAP["fecha"] == null) COL_MAP["fecha"] = i;
-        else if ((h === "fecha valor" || h === "f.valor" || h === "fechavalor") && COL_MAP["fechaValor"] == null) COL_MAP["fechaValor"] = i;
-        else if (h === "movimiento" && COL_MAP["movimiento"] == null) COL_MAP["movimiento"] = i;
-        else if ((h === "más datos" || h === "mas datos" || h === "concepto" || h === "descripcion" || h === "descripción") && COL_MAP["masDatos"] == null) COL_MAP["masDatos"] = i;
-        else if (h === "importe" && COL_MAP["importe"] == null) COL_MAP["importe"] = i;
-        else if (h === "saldo" && COL_MAP["saldo"] == null) COL_MAP["saldo"] = i;
-      });
-      break;
-    }
-  }
-
-  if (headerRow === -1) throw new Error("No se encontró cabecera válida (Fecha + Importe)");
-  if (COL_MAP["fecha"] == null || COL_MAP["importe"] == null) throw new Error("Faltan columnas obligatorias: Fecha, Importe");
-
-  const parsed: ParsedRow[] = [];
-  for (let r = headerRow + 1; r < rows.length; r++) {
-    const row = rows[r] as unknown[];
-    const fecha = parseExcelDate(row[COL_MAP["fecha"]]);
-    if (!fecha) continue;
-    const fechaValor = COL_MAP["fechaValor"] != null ? parseExcelDate(row[COL_MAP["fechaValor"]]) : "";
-    const movimiento = String(row[COL_MAP["movimiento"] ?? -1] ?? "").trim();
-    const masDatos = String(row[COL_MAP["masDatos"] ?? -1] ?? "").trim();
-    const importe = parseImporte(row[COL_MAP["importe"]]);
-    const saldo = COL_MAP["saldo"] != null ? parseImporte(row[COL_MAP["saldo"]]) : null;
-    const duplicateKey = makeDuplicateKey(fecha, fechaValor, movimiento, masDatos, importe, saldo);
-    parsed.push({ fecha, fechaValor, movimiento, masDatos, importe, saldo, duplicateKey });
-  }
-  return parsed;
-}
+// -- Extractos de cualquier banco (Norma 43, Excel o CSV): server/bankStatementImport.ts ----------------
 
 // -- Expense auto-category suggestion -----------------------------------------
 
@@ -176,11 +70,11 @@ export const bankMovementsRouter = router({
     }))
     .mutation(async ({ input }) => {
       const buffer = Buffer.from(input.fileBase64, "base64");
-      let rows: ParsedRow[];
+      let rows: ParsedBankRow[];
       try {
-        rows = parseCaixaBankBuffer(buffer, input.fileType);
+        rows = parseBankStatement(buffer).rows;
       } catch (e: unknown) {
-        const msg = e instanceof Error ? e.message : String(e);
+        const msg = e instanceof BankStatementError ? e.message : "No se pudo leer el extracto";
         try {
           await db.insert(bankFileImports).values({
             fileName: input.fileName,
