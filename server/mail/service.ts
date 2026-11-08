@@ -281,7 +281,7 @@ export class MailService {
       const err = e instanceof MailProviderError ? e : new MailProviderError("internal_error", true);
       if (err.retryable && row.attempts < this.d.policy.retry.maxAttempts) {
         const next = now + backoffMs(this.d.policy, row.attempts);
-        await this.d.store.settle(id, { status: "pending", lastError: err.code, nextAttemptAt: next, provider: this.d.provider.name }, now);
+        await this.d.store.settle(id, { status: "pending", lastError: err.code, nextAttemptAt: next, provider: (err.provider ?? this.d.provider.name).slice(0, 20) }, now);
         await this.d.store.addEvent({ outboxId: id, tenantId: row.tenantId, kind: "retry_scheduled", providerEventId: null, detail: err.code, at: now });
         this.log("warn", "retry_scheduled", { lane: this.d.lane, tenantId: row.tenantId, id, category: row.category, attempts: row.attempts, code: err.code, inMs: next - now });
       } else await fail("failed", err.code);
@@ -317,8 +317,8 @@ export class MailService {
     if (!fresh) return "duplicate";
     if (rule.to) await this.d.store.setStatusIf(row.id, rule.from, rule.to, ev.kind, now);
     if (rule.suppress) {
-      const email = normalizeEmail(ev.email ?? "");
-      await this.d.store.suppress(row.tenantId, email ? recipientHash(email) : row.recipientHash, rule.suppress, now);
+      // Siempre el destinatario del mensaje (la dirección del cuerpo del evento no decide a quién se suprime)
+      await this.d.store.suppress(row.tenantId, row.recipientHash, rule.suppress, now);
     }
     // Avisos al equipo (incidencia deduplicada): una queja siempre; los rebotes permanentes si se repiten
     if (ev.kind === "spam") recordFailure("mail.complaint", row.tenantId);

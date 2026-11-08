@@ -10,7 +10,8 @@ import { getProvider, validateFields } from "../_core/credentials/catalog";
 import { setResolvedCredentials, invalidateCredentials } from "../_core/credentials/cache";
 import { runWithTenant } from "../_core/tenant";
 
-const verified = { customDomains: [{ domain: "www.empresa-a.es", state: "verified" as const, isPrimary: true }] };
+const verified = { customDomains: [{ domain: "empresa-a.es", state: "verified" as const, isPrimary: true }] };
+const onlyWww = { customDomains: [{ domain: "www.empresa-a.es", state: "verified" as const, isPrimary: true }] };
 const pending = { customDomains: [{ domain: "empresa-a.es", state: "pending" as const, isPrimary: true }] };
 const smtpA = { host: "smtp.empresa-a.es", user: "envios@empresa-a.es", pass: "secreto", fromEmail: "Reservas@Empresa-A.es", port: "465", secure: "true" };
 
@@ -59,10 +60,23 @@ describe("SMTP propio de cada empresa", () => {
     expect(tenantOwnSmtp(verified)).toBeNull();
   });
 
-  it("dominio verificado: el mismo, uno que cuelga de él o del que cuelga", () => {
+  it("dominio verificado: el mismo o un subdominio suyo, nunca el dominio padre", () => {
     expect(senderDomainVerified("empresa-a.es", verified)).toBe(true);
+    expect(senderDomainVerified("mail.empresa-a.es", verified)).toBe(true);
     expect(senderDomainVerified("otra.es", verified)).toBe(false);
-    expect(senderDomainVerified("mail.www.empresa-a.es", verified)).toBe(true);
+    expect(senderDomainVerified("xempresa-a.es", verified)).toBe(false);
+    // Verificar www.empresa-a.es no da derecho a enviar como empresa-a.es
+    expect(senderDomainVerified("empresa-a.es", onlyWww)).toBe(false);
+    expect(senderDomainVerified("www.empresa-a.es", onlyWww)).toBe(true);
+    expect(senderDomainVerified("mail.www.empresa-a.es", onlyWww)).toBe(true);
+  });
+
+  it("SMTP propio: con solo www.<dominio> verificado, un remitente del dominio padre no se usa", async () => {
+    process.env.TENANT_MODE = "multi";
+    await runWithTenant("empresa-a", async () => {
+      setResolvedCredentials({ mail_smtp: smtpA });
+      expect(tenantOwnSmtp(onlyWww)).toBeNull();
+    });
   });
 });
 

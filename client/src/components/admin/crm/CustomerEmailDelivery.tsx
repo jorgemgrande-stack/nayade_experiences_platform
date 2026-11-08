@@ -107,7 +107,7 @@ export function CustomerEmailDeliveryList({ clientId, email }: { clientId: numbe
             <span className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
               <span className="tabular-nums">{fmt(s.createdAt)}</span>
               <span className={`rounded-full border px-2 py-0.5 font-medium ${TONE[st.tone]}`}>{st.label}{why ? ` (${why})` : ""}</span>
-              {s.provider === "postmark" && <span>Postmark</span>}
+              {s.provider === "postmark_tenant" && <span>Postmark</span>}
             </span>
           </li>
         );

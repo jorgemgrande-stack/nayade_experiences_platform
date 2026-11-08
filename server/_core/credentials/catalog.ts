@@ -209,6 +209,8 @@ export const PROVIDERS: ProviderDef[] = [
       { key: "fromEmail", label: "Dirección del remitente", secret: false, required: true, pattern: EMAIL_RE, hint: "reservas@tuempresa.es", panel: { label: "Dirección desde la que se envía", help: "De un dominio propio verificado en Elephant Source y firmado (DKIM) en Postmark.", formatMessage: "Escribe una dirección de correo válida (por ejemplo, reservas@tuempresa.es)." } },
       // Lo genera la plataforma (pantalla de Postmark) y se pega como cabecera del webhook en Postmark
       { key: "webhookToken", label: "Token del webhook", secret: true, pattern: /^[A-Za-z0-9_-]{32,128}$/, panel: { label: "Token del webhook", hidden: true } },
+      // Marca de la última comprobación correcta (servidor Live y flujo transaccional) de este token y flujo: sin ella no se usa
+      { key: "verifiedFor", label: "Comprobación", secret: true, pattern: /^[a-f0-9]{64}$/, panel: { label: "Comprobación", hidden: true } },
     ],
   },
   {

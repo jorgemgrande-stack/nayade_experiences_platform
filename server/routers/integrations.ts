@@ -11,6 +11,8 @@ import { isMultiTenant } from "../_core/tenant";
 import { getVault } from "../_core/credentials/runtime";
 import { getProvider } from "../_core/credentials/catalog";
 import { testProvider } from "../_core/credentials/testers";
+import { POSTMARK_PROVIDER_ID } from "../mail/tenantPostmark";
+import { setPostmarkVerification } from "../mail/tenantPostmarkHealth";
 import { integrationHealth, recordCheck } from "../_core/credentials/health";
 import { fieldProblems, panelIntegrations, type VisibilityInput } from "../_core/credentials/presentation";
 import { getTenantMode } from "../_core/tenant";
@@ -113,6 +115,8 @@ export const integrationsRouter = router({
       if (!provider) throw new TRPCError({ code: "BAD_REQUEST", message: "Proveedor desconocido" });
       // Avisos en español con el nombre que ve el usuario (la bóveda vuelve a validar al guardar)
       const problems = fieldProblems(provider, input.values);
+      // Los campos que gestiona una pantalla propia (tokens generados, marcas de comprobación) no se escriben desde aquí
+      if (Object.keys(input.values).some((k) => provider.fields.find((f) => f.key === k)?.panel?.hidden)) problems.push("Hay un dato que no se puede cambiar desde aquí.");
       if (problems.length) throw new TRPCError({ code: "BAD_REQUEST", message: problems.join(" ") });
       try {
         const r = await getVault().save(input.provider, input.values, `user:${ctx.user.id}`);
@@ -138,6 +142,8 @@ export const integrationsRouter = router({
     const r = await testProvider(input.provider, values);
     // El resultado queda registrado (sin secretos) y se ve también en la ficha de la empresa del plano de control
     if (r.outcome && r.outcome !== "unsupported") await recordCheck(input.provider, r.outcome, r.message, `user:${ctx.user.id}`).catch(() => undefined);
+    // Postmark propio: solo se usa tras una comprobación correcta de este token y flujo
+    if (input.provider === POSTMARK_PROVIDER_ID) await setPostmarkVerification(values, r.ok, `user:${ctx.user.id}`).catch(() => undefined);
     return r;
   }),
 

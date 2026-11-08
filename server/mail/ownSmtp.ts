@@ -21,11 +21,11 @@ export interface OwnSmtp {
 
 const trim = (v: string | undefined) => (v ?? "").trim();
 
-/** ¿El dominio del remitente es (o cuelga de) un dominio verificado de la empresa? */
+/** ¿El dominio del remitente es un dominio verificado de la empresa o un subdominio suyo? (Nunca el dominio padre.) */
 export function senderDomainVerified(domain: string, identity: Pick<TenantRegistryIdentity, "customDomains"> | null): boolean {
   if (!identity) return false;
   return identity.customDomains.some(
-    (d) => d.state === "verified" && (d.domain === domain || d.domain.endsWith(`.${domain}`) || domain.endsWith(`.${d.domain}`)),
+    (d) => d.state === "verified" && (d.domain === domain || domain.endsWith(`.${d.domain}`)),
   );
 }
 

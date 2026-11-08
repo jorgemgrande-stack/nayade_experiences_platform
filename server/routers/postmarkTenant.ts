@@ -14,19 +14,19 @@ import { getProvider } from "../_core/credentials/catalog";
 import { fieldProblems } from "../_core/credentials/presentation";
 import { integrationHealth, recordCheck } from "../_core/credentials/health";
 import { peekTenantIdentity } from "../_core/tenantIdentity";
-import { publicBaseUrl } from "../_core/productIdentity";
+import { setPostmarkVerification } from "../mail/tenantPostmarkHealth";
+import { tenantPublicUrl } from "../_core/tenantIdentity";
 import { WEBHOOK_TOKEN_HEADER } from "../mail/webhook";
-import { POSTMARK_DEFAULT_STREAM, POSTMARK_PROBLEM_TEXT, POSTMARK_PROVIDER_ID, TENANT_POSTMARK_WEBHOOK_PATH, postmarkConfigFrom, postmarkServerInfo } from "../mail/tenantPostmark";
+import { POSTMARK_DEFAULT_STREAM, POSTMARK_PROBLEM_TEXT, POSTMARK_PROVIDER_ID, TENANT_POSTMARK_LABEL, TENANT_POSTMARK_WEBHOOK_PATH, postmarkConfigFrom, postmarkFingerprint, postmarkServerInfo } from "../mail/tenantPostmark";
 import { providerDeliveryStats } from "../mail/deliveryDb";
 
 function requireMulti() {
   if (!isMultiTenant()) throw new TRPCError({ code: "PRECONDITION_FAILED", message: "Disponible solo en multiempresa" });
 }
 
-const webhookUrl = () => {
-  const base = publicBaseUrl().replace(/\/+$/, "");
-  return base ? `${base}${TENANT_POSTMARK_WEBHOOK_PATH}` : null;
-};
+/** URL del webhook en el dominio público de la EMPRESA; sin él, ninguna (nunca la de la plataforma). */
+export const tenantWebhookUrl = (base: string | null = tenantPublicUrl()) => (base ? `${base.replace(/\/+$/, "")}${TENANT_POSTMARK_WEBHOOK_PATH}` : null);
+const webhookUrl = () => tenantWebhookUrl();
 
 const DAY = 86_400_000;
 
@@ -39,7 +39,7 @@ export const postmarkTenantRouter = router({
       vault.status([POSTMARK_PROVIDER_ID]),
       vault.resolve(POSTMARK_PROVIDER_ID),
       integrationHealth().catch(() => ({ available: false, providers: [] })),
-      providerDeliveryStats("postmark", Date.now() - 30 * DAY).catch(() => null),
+      providerDeliveryStats(TENANT_POSTMARK_LABEL, Date.now() - 30 * DAY).catch(() => null),
     ]);
     const identity = peekTenantIdentity();
     const cfg = postmarkConfigFrom(values, identity);
@@ -88,9 +88,11 @@ export const postmarkTenantRouter = router({
     const values = await getVault().resolve(POSTMARK_PROVIDER_ID);
     if (!values.serverToken) throw new TRPCError({ code: "PRECONDITION_FAILED", message: "Pega primero el token del servidor de Postmark." });
     const info = await postmarkServerInfo({ serverToken: values.serverToken, messageStream: values.messageStream });
-    const cfg = postmarkConfigFrom(values, peekTenantIdentity());
+    const cfg = postmarkConfigFrom({ ...values, verifiedFor: info.ok ? postmarkFingerprint(values.serverToken, values.messageStream) : "" }, peekTenantIdentity());
     const message = [info.message, ...info.warnings].join(" ");
     await recordCheck(POSTMARK_PROVIDER_ID, info.outcome, message, `user:${ctx.user.id}`).catch(() => undefined);
+    // Solo una comprobación correcta (Live y flujo transaccional) de este token y flujo activa el envío por Postmark
+    await setPostmarkVerification(values, info.ok, `user:${ctx.user.id}`);
     return { ...info, message, sender: { domain: cfg.domain, problem: cfg.problem, problemText: cfg.problem ? POSTMARK_PROBLEM_TEXT[cfg.problem] : null } };
   }),
 

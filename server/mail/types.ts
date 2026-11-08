@@ -180,6 +180,8 @@ export class MailProviderError extends Error {
     super(`Proveedor de correo: ${code}`);
     this.name = "MailProviderError";
   }
+  /** Proveedor que falló, cuando el puerto reparte entre varios (se guarda también al programar el reintento). */
+  provider?: string;
 }
 
 export type ProviderEventKind = "delivered" | "soft_bounce" | "hard_bounce" | "blocked" | "spam" | "invalid" | "unsubscribed" | "deferred" | "error";

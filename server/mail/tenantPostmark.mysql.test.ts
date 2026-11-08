@@ -4,7 +4,9 @@
  *  - Sin credencial → envío de plataforma, como hoy. Con la suya → Postmark con SU token, SU remitente y su flujo.
  *  - Aislamiento: el token de una empresa nunca se usa para otra; una comercial no pasa por Postmark.
  *  - Webhook del Core: el token de otra empresa se rechaza; el propio aplica el rebote y suprime SOLO en su base; repetido
- *    no se aplica dos veces; una referencia de otra empresa se ignora. Ficha del cliente: estado y supresión.
+ *    no se aplica dos veces; una referencia de otra empresa se ignora. Ficha del cliente: estado y supresión, sin los
+ *    correos de usuarios del panel.
+ *  - Cuenta de Postmark rechazada al enviar: ese correo sale por la plataforma una sola vez y los siguientes ya no la usan.
  */
 import { describe, it, expect, beforeAll, afterAll, vi } from "vitest";
 import crypto from "node:crypto";
@@ -51,6 +53,8 @@ describe.skipIf(!URL_)("Postmark por empresa sobre MySQL (dos empresas)", () => 
   const pools: Record<string, mysql.Pool> = {};
   const saved = { ...process.env };
   const calls: Array<{ token: string; body: any }> = [];
+  let postmarkStatus: { status: number; body: unknown } | null = null;
+  const failures: string[] = [];
   let mem: ReturnType<typeof import("./providers").memoryProvider>;
   const creds: Record<string, Record<string, Record<string, string>>> = {};
 
@@ -97,10 +101,21 @@ describe.skipIf(!URL_)("Postmark por empresa sobre MySQL (dos empresas)", () => 
     tm.setTenantMailProviderForTests(mem);
     tm.setTenantPostmarkFetchForTests(async (_url, init) => {
       calls.push({ token: init.headers["X-Postmark-Server-Token"], body: JSON.parse(init.body ?? "{}") });
+      if (postmarkStatus) {
+        const r = postmarkStatus;
+        return { status: r.status, ok: false, json: async () => r.body, text: async () => "" };
+      }
       return { status: 200, ok: true, json: async () => ({ ErrorCode: 0, MessageID: `pm-${calls.length}` }), text: async () => "" };
     });
+    // Como markPostmarkUnhealthy, sin bóveda real: se borra la marca de comprobación de la empresa en curso
+    tm.setTenantPostmarkFailureHookForTests(async (e) => {
+      failures.push(e.code);
+      const { getTenantIdOrDefault } = await import("../_core/tenant");
+      delete creds[getTenantIdOrDefault()].postmark.verifiedFor;
+    });
     // Solo acme tiene su Postmark; beta tiene token de webhook (para probar el rechazo cruzado) pero no servidor
-    creds.acme = { postmark: { serverToken: TOKEN_A, fromEmail: "reservas@empresa-a.example", messageStream: "outbound", webhookToken: HOOK_A } };
+    const { postmarkFingerprint } = await import("./tenantPostmark");
+    creds.acme = { postmark: { serverToken: TOKEN_A, fromEmail: "reservas@empresa-a.example", messageStream: "outbound", webhookToken: HOOK_A, verifiedFor: postmarkFingerprint(TOKEN_A, "outbound") } };
     creds.beta = { postmark: { webhookToken: HOOK_B } };
   });
 
@@ -109,6 +124,7 @@ describe.skipIf(!URL_)("Postmark por empresa sobre MySQL (dos empresas)", () => 
     const tm = await import("./tenantMail");
     tm.setTenantMailProviderForTests(undefined);
     tm.setTenantPostmarkFetchForTests(undefined);
+    tm.setTenantPostmarkFailureHookForTests(undefined);
     const { setConnectionResolver } = await import("../_core/dbRegistry");
     setConnectionResolver(null);
     const { configureTenantIdentity } = await import("../_core/tenantIdentity");
@@ -124,7 +140,7 @@ describe.skipIf(!URL_)("Postmark por empresa sobre MySQL (dos empresas)", () => 
     const [b] = await rows(pools.b, "payment_confirmed");
     const [a] = await rows(pools.a, "payment_confirmed");
     expect(b).toMatchObject({ tenant_id: "beta", status: "accepted", provider: "memory", sender_email: "no-reply@envios.example" });
-    expect(a).toMatchObject({ tenant_id: "acme", status: "accepted", provider: "postmark", provider_message_id: "pm-1", sender_email: "reservas@empresa-a.example" });
+    expect(a).toMatchObject({ tenant_id: "acme", status: "accepted", provider: "postmark_tenant", provider_message_id: "pm-1", sender_email: "reservas@empresa-a.example" });
     expect(mem.sent).toHaveLength(1);
     expect(calls).toHaveLength(1);
     expect(calls[0].token).toBe(TOKEN_A);
@@ -186,17 +202,42 @@ describe.skipIf(!URL_)("Postmark por empresa sobre MySQL (dos empresas)", () => 
     expect(await send("beta", { category: "invoice_available" })).toBe(true);
   });
 
-  it("ficha del cliente: estado de cada envío y aviso de supresión, cada empresa con lo suyo", async () => {
+  it("ficha del cliente: estado de cada envío y aviso de supresión, cada empresa con lo suyo; sin correos del panel", async () => {
     const { clientMailDelivery, providerDeliveryStats } = await import("./deliveryDb");
+    // Un restablecimiento de contraseña a la misma dirección (usuario del panel) no aparece en la ficha del cliente
+    await send("beta", { category: "password_reset" });
+    expect(await rows(pools.b, "password_reset")).toHaveLength(1);
     const a = await inTenant("acme", () => clientMailDelivery(CLIENT.toUpperCase()));
     expect(a.available).toBe(true);
     expect(a.suppressed).toMatchObject({ reason: "hard_bounce" });
-    expect(a.sends.find((s) => s.category === "payment_confirmed")).toMatchObject({ status: "bounced", provider: "postmark", lastEvent: { kind: "hard_bounce", detail: "Unknown user" } });
+    expect(a.sends.find((s) => s.category === "payment_confirmed")).toMatchObject({ status: "bounced", provider: "postmark_tenant", lastEvent: { kind: "hard_bounce", detail: "Unknown user" } });
     expect(a.sends.find((s) => s.category === "invoice_available")).toMatchObject({ status: "skipped", reason: "suppressed" });
     const b = await inTenant("beta", () => clientMailDelivery(CLIENT));
     expect(b.suppressed).toBeNull();
     expect(b.sends.every((s) => s.status === "accepted")).toBe(true);
-    expect(await inTenant("acme", () => providerDeliveryStats("postmark", 0))).toEqual({ bounced: 1, accepted: 1 });
-    expect(await inTenant("beta", () => providerDeliveryStats("postmark", 0))).toEqual({});
+    expect(b.sends.some((s) => s.category === "password_reset")).toBe(false);
+    expect(await inTenant("acme", () => providerDeliveryStats("postmark_tenant", 0))).toEqual({ bounced: 1, accepted: 1 });
+    expect(await inTenant("beta", () => providerDeliveryStats("postmark_tenant", 0))).toEqual({});
+  });
+
+  it("cuenta de Postmark rechazada (token revocado): el correo sale por la plataforma una vez y los siguientes ya no usan Postmark", async () => {
+    const TO = "otra@pruebas.example";
+    postmarkStatus = { status: 401, body: { ErrorCode: 10, Message: "Bad or missing server token" } };
+    const pmBefore = calls.length;
+    const memBefore = mem.sent.length;
+    expect(await send("acme", { category: "refund_recorded", to: TO })).toBe(true);
+    expect(calls.length).toBe(pmBefore + 1);
+    expect(failures).toEqual(["postmark_10"]);
+    expect(mem.sent.length).toBe(memBefore + 1);
+    expect(mem.sent.at(-1)!.from.email).toBe("no-reply@envios.example");
+    const [r] = await rows(pools.a, "refund_recorded");
+    expect(r).toMatchObject({ status: "accepted", provider: "memory" });
+    expect(await rows(pools.a, "refund_recorded")).toHaveLength(1);
+    // La integración ya no está verificada: el siguiente ni siquiera intenta Postmark y sale con la identidad de la plataforma
+    postmarkStatus = null;
+    expect(await send("acme", { category: "invoice_available", to: TO })).toBe(true);
+    expect(calls.length).toBe(pmBefore + 1);
+    const inv = (await rows(pools.a, "invoice_available")).find((x: any) => x.recipient_masked.startsWith("o"));
+    expect(inv).toMatchObject({ provider: "memory", sender_email: "no-reply@envios.example" });
   });
 });

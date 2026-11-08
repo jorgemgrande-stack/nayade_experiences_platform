@@ -33,6 +33,25 @@ export interface ClientMailDelivery {
   sends: ClientMailSend[];
 }
 
+/**
+ * Categorías que se muestran en la ficha del CLIENTE. Fuera quedan las de usuarios del panel (accesos, invitaciones,
+ * restablecer contraseña, avisos de seguridad, exportaciones de datos…), aunque la dirección coincida.
+ */
+export const CUSTOMER_CATEGORIES = [
+  "operational",
+  "legacy",
+  "quote_sent",
+  "payment_confirmed",
+  "invoice_available",
+  "refund_recorded",
+  "cancellation",
+  "withdrawal_receipt",
+  "withdrawal_resolution",
+  "contract_invitation",
+  "marketing",
+  "survey",
+] as const;
+
 /** Estados que significan que el correo no le ha llegado (o no le llegará). */
 export const UNDELIVERED: ReadonlySet<MailStatus> = new Set<MailStatus>(["bounced", "blocked", "complained", "failed"]);
 
@@ -56,8 +75,8 @@ export async function clientMailDelivery(rawEmail: string | null | undefined, po
     const [sup, sends] = await Promise.all([
       p.query("SELECT reason, created_at FROM mail_suppressions WHERE tenant_id = ? AND recipient_hash = ? LIMIT 1", [tenantId, hash]),
       p.query(
-        "SELECT id, category, status, reason, provider, subject, created_at, updated_at FROM mail_outbox WHERE tenant_id = ? AND recipient_hash = ? ORDER BY created_at DESC, id DESC LIMIT 50",
-        [tenantId, hash],
+        "SELECT id, category, status, reason, provider, subject, created_at, updated_at FROM mail_outbox WHERE tenant_id = ? AND recipient_hash = ? AND category IN (?) ORDER BY created_at DESC, id DESC LIMIT 50",
+        [tenantId, hash, CUSTOMER_CATEGORIES],
       ),
     ]);
     const list = rowsOf(sends);

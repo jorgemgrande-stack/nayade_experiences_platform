@@ -18,10 +18,11 @@ import { tenantCommsConfig } from "../tenantBrand";
 import { forbiddenLinkHosts, mailPolicyFromEnv } from "./policy";
 import { mailProviderFromEnv, postmarkProvider, smtpProvider, type FetchLike } from "./providers";
 import { tenantOwnSmtp } from "./ownSmtp";
-import { isTransactionalCategory, tenantPostmark, transactionalRouter } from "./tenantPostmark";
+import { TENANT_POSTMARK_LABEL, isTransactionalCategory, senderGuard, tenantPostmark, transactionalRouter } from "./tenantPostmark";
+import { markPostmarkUnhealthy } from "./tenantPostmarkHealth";
 import { MailService } from "./service";
 import { MysqlMailStore } from "./store";
-import type { MailCategory, MailProviderPort } from "./types";
+import type { MailCategory, MailProviderError, MailProviderPort } from "./types";
 import { cleanSubject, dropEmptyContactLinks, htmlToText } from "./plainText";
 
 export interface TenantMailParams {
@@ -65,6 +66,11 @@ export function setTenantMailProviderForTests(p: MailProviderPort | null | undef
 export function setTenantPostmarkFetchForTests(f: FetchLike | undefined): void {
   postmarkFetchOverride = f;
 }
+let postmarkFailureHook: ((e: MailProviderError) => Promise<void>) | undefined;
+/** Solo pruebas: sustituye lo que se hace cuando Postmark rechaza la cuenta (por defecto, marcarla no sana). */
+export function setTenantPostmarkFailureHookForTests(f: ((e: MailProviderError) => Promise<void>) | undefined): void {
+  postmarkFailureHook = f;
+}
 
 /**
  * Servicio de correo de la empresa en curso, o `null` (sin base o sin migración). Proveedor, por orden: Postmark propio
@@ -79,9 +85,20 @@ export async function tenantMailService(o: { category?: string } = {}): Promise<
   if (!(await outboxReady(tenantId, pool))) return null;
   const own = tenantOwnSmtp();
   const pm = tenantPostmark();
-  const fallback = providerOverride !== undefined ? providerOverride : own ? smtpProvider(own.config) : mailProviderFromEnv(process.env);
+  // Envío de siempre con SU identidad: un mensaje encolado con otra (p. ej. la de Postmark, si la cuenta falló o se
+  // desconectó) sale con la dirección del SMTP propio o con no-reply de la plataforma, nunca con un dominio ajeno
+  const platformDomain = (process.env.MAIL_SENDING_DOMAIN ?? "").trim().toLowerCase() || null;
+  const fallbackDomain = own ? own.domain : platformDomain;
+  const fallbackFrom = own ? own.fromEmail : platformDomain ? `no-reply@${platformDomain}` : null;
+  const fallback = senderGuard(providerOverride !== undefined ? providerOverride : own ? smtpProvider(own.config) : mailProviderFromEnv(process.env), { domain: fallbackDomain, from: fallbackFrom });
   const provider = pm
-    ? transactionalRouter({ primary: postmarkProvider({ serverToken: pm.serverToken, messageStream: pm.messageStream, fetch: postmarkFetchOverride }), primaryDomain: pm.domain, fallback })
+    ? transactionalRouter({
+        primary: { ...postmarkProvider({ serverToken: pm.serverToken, messageStream: pm.messageStream, fetch: postmarkFetchOverride }), name: TENANT_POSTMARK_LABEL },
+        primaryDomain: pm.domain,
+        fallback,
+        fallbackFrom,
+        onAccountFailure: postmarkFailureHook ?? markPostmarkUnhealthy,
+      })
     : fallback;
   // Misma política de envío (MAIL_MODE, sandbox, límites); solo cambia el dominio del remitente
   const domain = pm && isTransactionalCategory(o.category) ? pm.domain : own ? own.domain : null;
