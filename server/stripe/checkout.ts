@@ -27,7 +27,7 @@ import { recordFailure } from "../_core/ops/failureAlerts";
 import type { CrmStore } from "../crm/store";
 import type { OrderStore } from "../orchestrator/store";
 import type { CatalogPort } from "../subscriptions/ports";
-import { SELF_SERVICE_PLANS, desiredCatalog, type SelfServicePlan } from "./catalog";
+import { CHECKOUT_PLANS, desiredCatalog, isPersonalCheckoutPlan, type CheckoutPlan } from "./catalog";
 import type { StripeMode, StripeTaxPolicy } from "./config";
 import { issuerLine } from "./issuer";
 import { StripeGatewayError, type CheckoutLineItem, type StripeGateway } from "./gateway";
@@ -220,8 +220,10 @@ export class StripeCheckoutService {
     if (!o) throw new StripeCheckoutError("not_found", "Pedido no encontrado");
     if (o.kind === "change") throw new StripeCheckoutError("unsupported", "Los cambios de plan o periodicidad se hacen en el Customer Portal");
     if (o.state !== "contracted" || o.confirmation) throw new StripeCheckoutError("invalid_state", `El pedido está en «${o.state}»: solo se paga un pedido contratado y sin confirmar`);
-    const plan = o.request.plan as SelfServicePlan;
-    if (!SELF_SERVICE_PLANS.includes(plan)) throw new StripeCheckoutError("unsupported", "Este plan se contrata por propuesta comercial, no por Checkout");
+    const plan = o.request.plan as CheckoutPlan;
+    if (!CHECKOUT_PLANS.includes(plan)) throw new StripeCheckoutError("unsupported", "Este plan se contrata por propuesta comercial, no por Checkout");
+    // Planes personales: solo tarifa mensual (decisión de Jorge del 08/11/2026)
+    if (isPersonalCheckoutPlan(plan) && o.request.interval !== "month") throw new StripeCheckoutError("unsupported", "El plan personal solo tiene tarifa mensual");
     if (o.request.interval !== "month" && o.request.interval !== "year") throw new StripeCheckoutError("unsupported", "Periodicidad no admitida");
     // Presupuesto y Stripe nunca muestran importes distintos: el neto del presupuesto es el de los Prices de Stripe
     if (!o.quote) throw new StripeCheckoutError("invalid_state", "El pedido no tiene presupuesto");
@@ -468,7 +470,7 @@ export class StripeCheckoutService {
   }
 
   /** Sin cotizador: solo el plan, sin complementos (comportamiento anterior a la fase 2). */
-  private async planOnlyLines(o: NonNullable<Awaited<ReturnType<CheckoutDeps["orders"]["get"]>>>, plan: SelfServicePlan, policy: StripeTaxPolicy): Promise<CheckoutLinePlan> {
+  private async planOnlyLines(o: NonNullable<Awaited<ReturnType<CheckoutDeps["orders"]["get"]>>>, plan: CheckoutPlan, policy: StripeTaxPolicy): Promise<CheckoutLinePlan> {
     const r = o.request as typeof o.request & { users?: number; sites?: number; storageGb?: number; fiscalEntities?: number };
     if ((o.request.items ?? []).length || r.users != null || r.sites != null || r.storageGb != null || r.fiscalEntities != null) {
       throw new StripeCheckoutError("unsupported", "Los complementos y ampliaciones todavía no se contratan por Checkout");

@@ -110,7 +110,7 @@ Elephant People no se incluye en ningún plan (decisión del 01/11/2026): es una
 | Care | 69 € |
 | Social Token | 59 € |
 
-Los módulos Net sueltos (`net_module`, incluido Life Net, que no tiene paquete) siguen siendo módulos individuales que requieren un plan de Elephant Core. Las extensiones, extras, servicios y complementos no cambian.
+Los módulos Net sueltos (`net_module`) siguen siendo módulos individuales que requieren un plan de Elephant Core, salvo Life Net: desde el 08/11/2026 es un producto personal que se contrata con el plan personal Life (`life`), sin ningún plan de empresa (`docs/elephant-source/LIFE_CONTRATACION_PARTICULARES.md`). Las extensiones, extras, servicios y complementos no cambian.
 
 **Dato.** `catalog.coreIncluded` del paquete contiene:
 

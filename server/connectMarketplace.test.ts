@@ -155,14 +155,17 @@ describe("catálogo de Connect con el catálogo oficial", () => {
     ...["hotel-net-complete", "care-net-complete", "restaurant-net-complete", "ski-net-complete", "travel-net-complete", "social-token-net-complete"].map((k) => item(k, { family: "net_bundle", commercialStatus: "coming_soon", purchasable: false })),
     item("life-net", { family: "net_module", capabilities: ["life-net"], commercialStatus: "coming_soon", purchasable: false }),
   ];
-  it("Net: solo los 7 productos, con nombre sin «Complete», licencia y funcionalidades por áreas", () => {
+  it("Net: solo los 7 productos, con nombre sin «Complete», licencia y funcionalidades por áreas; Life Net, solo para un hogar", () => {
+    // Life Net es personal (decisión J7 del 08/11/2026): fuera del escaparate de las empresas
     const out = buildConnectCatalog({ items: allNet() }, [], NOW, "essential");
-    expect(out.map((i) => i.name).sort()).toEqual(["Care Net", "Hotel Net", "Life Net", "Restaurant Net", "Ski Net", "Social Token Net", "Travel Net"]);
+    expect(out.map((i) => i.name).sort()).toEqual(["Care Net", "Hotel Net", "Restaurant Net", "Ski Net", "Social Token Net", "Travel Net"]);
+    const home = buildConnectCatalog({ items: allNet() }, [], NOW, "life");
+    expect(home.map((i) => i.name)).toEqual(["Life Net"]);
     const hotel = out.find((i) => i.key === "hotel-net-complete")!;
     expect(hotel.net).toMatchObject({ licence: "HOTEL_NET", segment: "business", homePath: "/admin/net/hotel", legacyContracted: [] });
     expect(hotel.includes).toEqual(["PMS", "Motor de reservas", "Channel Manager (próximamente)", "Housekeeping", "Informes"]);
     expect(hotel.capabilities).toEqual(["hotel-net"]);
-    expect(out.find((i) => i.key === "life-net")!.net!.segment).toBe("personal");
+    expect(home.find((i) => i.key === "life-net")!.net!.segment).toBe("personal");
     expect(JSON.stringify(out)).not.toMatch(/Complete/);
   });
   it("Net en implantación acompañada (revisión del 07/11/2026): lo activa el equipo y se solicita, nunca se compra en línea", () => {

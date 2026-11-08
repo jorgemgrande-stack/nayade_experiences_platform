@@ -16,7 +16,7 @@
  */
 import crypto from "node:crypto";
 import { TERMINAL, nextState, type TrialAction, type TrialState } from "./machine";
-import { TrialConflict, type TrialPatch, type TrialRequest, type TrialStore } from "./store";
+import { TrialConflict, type TrialHolder, type TrialPatch, type TrialRequest, type TrialStore } from "./store";
 import { canonicalMailbox, mailboxOf } from "./mailbox";
 
 export { canonicalMailbox, mailboxOf };
@@ -91,7 +91,7 @@ export function blockedDomainsFromEnv(env: NodeJS.ProcessEnv): string[] {
 
 export class TrialError extends Error {
   constructor(
-    public readonly code: "invalid_input" | "invalid_state" | "not_found" | "limit" | "conflict" | "forbidden",
+    public readonly code: "invalid_input" | "invalid_state" | "not_found" | "limit" | "conflict" | "forbidden" | "unavailable",
     message: string,
   ) {
     super(message);
@@ -146,7 +146,7 @@ export class TrialService {
    * de verificación EN CLARO solo al crearla (para que el remitente lo envíe por correo) y nunca lo
    * guarda.
    */
-  async register(input: { email: string; companyName: string; configuration: { plan: string | null; addons: string[] }; idempotencyKey: string; ip?: string | null }) {
+  async register(input: { email: string; companyName: string; configuration: { plan: string | null; addons: string[]; holder?: TrialHolder }; idempotencyKey: string; ip?: string | null }) {
     const email = input.email.trim().toLowerCase();
     const m = EMAIL_RE.exec(email);
     if (!m || email.length > 254) throw new TrialError("invalid_input", "Correo no válido");
@@ -156,6 +156,12 @@ export class TrialService {
     const addons = input.configuration.addons ?? [];
     if (addons.length > 30 || addons.some((a) => !/^[a-z0-9][a-z0-9-]{0,62}$/.test(a)) || (input.configuration.plan !== null && !/^[a-z0-9][a-z0-9-]{0,62}$/.test(input.configuration.plan))) {
       throw new TrialError("invalid_input", "Configuración no válida");
+    }
+    // Titular particular (plan personal): nombre y apellidos obligatorios, NIF opcional; nunca razón social
+    const h = input.configuration.holder;
+    const holder: TrialHolder | undefined = h ? { firstName: h.firstName.trim(), lastName: h.lastName.trim(), taxId: h.taxId?.trim().toUpperCase() || null } : undefined;
+    if (holder && (!holder.firstName || holder.firstName.length > 80 || !holder.lastName || holder.lastName.length > 120 || (holder.taxId && !/^[A-Z0-9]{8,12}$/.test(holder.taxId)))) {
+      throw new TrialError("invalid_input", "Indica nombre y apellidos del titular (el NIF es opcional)");
     }
 
     const domain = m[1];
@@ -181,7 +187,7 @@ export class TrialService {
           email,
           emailDomain: domain,
           companyName: company,
-          configuration: { plan: input.configuration.plan, addons },
+          configuration: { plan: input.configuration.plan, addons, ...(holder ? { holder } : {}) },
           state: "pending_verification",
           verificationTokenHash: sha256(token),
           verificationExpiresAt: now + this.limits.verificationTtlMs,
@@ -324,11 +330,15 @@ export class TrialService {
     return this.move(id, expectedVersion, "request_provisioning", actor, () => ({}));
   }
 
-  /** El aprovisionamiento terminó: empieza la prueba de 15 días. Un tenant, una prueba. */
-  async markProvisioned(id: number, expectedVersion: number, tenantId: string, actor: string) {
+  /**
+   * El aprovisionamiento terminó: empieza la prueba (15 días; el plan personal Life, 14) desde este momento, que es la
+   * activación de la plataforma. Un tenant, una prueba.
+   */
+  async markProvisioned(id: number, expectedVersion: number, tenantId: string, actor: string, days: number = TRIAL_DAYS) {
     if (!/^[a-z][a-z0-9-]{1,62}$/.test(tenantId)) throw new TrialError("invalid_input", "Identificador de tenant no válido");
+    if (!Number.isInteger(days) || days < 1 || days > TRIAL_DAYS) throw new TrialError("invalid_input", "Duración de la prueba no válida");
     const now = this.now();
-    return this.move(id, expectedVersion, "provisioned", actor, () => ({ tenantId, startsAt: now, endsAt: now + TRIAL_DAYS * DAY }), `tenant ${tenantId}`);
+    return this.move(id, expectedVersion, "provisioned", actor, () => ({ tenantId, startsAt: now, endsAt: now + days * DAY }), `tenant ${tenantId}`);
   }
 
   /** Fallo de aprovisionamiento: vuelve a «verificada» para reintentar; sin tenant a medias. */

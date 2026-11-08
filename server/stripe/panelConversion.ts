@@ -34,6 +34,7 @@ import type { EligibilityResult } from "./eligibility";
 import { StripeGatewayError } from "./gateway";
 import type { StripeStore } from "./store";
 import { legacyExtensionText } from "../../shared/netProducts";
+import { isPersonalPlan } from "../../shared/personalPlans";
 
 const moduleKey = z.string().regex(/^[a-z0-9][a-z0-9-]{1,63}$/);
 export const conversionQuoteBody = z
@@ -148,6 +149,8 @@ export class PanelConversionService {
     if (!this.d.termsVersion) throw new PanelConversionError(503, "terms_unpublished", "La contratación en línea no está disponible");
     if (b.consents.termsVersion !== this.d.termsVersion) throw new PanelConversionError(409, "terms_outdated", "Las condiciones han cambiado: revísalas y acéptalas de nuevo");
     const trial = await this.trialOf(tenantId);
+    // Una prueba del plan personal Life no se convierte en un plan de empresa (08/11/2026)
+    if (isPersonalPlan(trial.configuration?.plan)) throw new PanelConversionError(409, "plan_not_self_service", "Tu plan personal se contrata desde la oferta personal, no como plan de empresa");
     await this.assertPlan(b.plan);
     const actor = `panel:${tenantId}/${b.user}`.slice(0, 100);
     const key = conversionKeyOf(b.idempotencyKey);

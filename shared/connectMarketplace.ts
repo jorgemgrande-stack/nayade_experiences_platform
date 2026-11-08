@@ -11,6 +11,16 @@
  *    se puede tener).
  *  - «Contratada y activa» solo con TODAS sus capacidades activas en las licencias.
  */
+import { isPersonalPlan, isPersonalProduct } from "./personalPlans";
+
+/**
+ * ¿Sale este producto en el escaparate del panel? (decisión J7 de Jorge, 08/11/2026). Los productos personales (Life
+ * Net) no se ofrecen a las empresas: se contratan con el plan personal Life desde la oferta personal de la web. Un hogar
+ * con plan personal solo ve los suyos. Con el plan desconocido, se trata como empresa.
+ */
+export function shownInShowcase(key: string, plan: string | null): boolean {
+  return isPersonalPlan(plan) ? isPersonalProduct(key) : !isPersonalProduct(key);
+}
 
 /** Estado efectivo de una capacidad en las licencias de la empresa (server/subscriptionOverview.ts); null = sin licencia. */
 export type ConnectCapabilityStatus = "active" | "read_only" | "expired" | "contracted" | "pending_setup" | "suspended" | "cancelled" | null;

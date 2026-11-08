@@ -12,7 +12,7 @@ import { effectiveStatus } from "./subscriptionOverview";
 import { PRODUCTS } from "./catalog/elephantSourceV1";
 import type { PanelCatalogItemView } from "./panelModules";
 import { parseActivation, parseConnectCard, parseConnectOffer, parseConnectPrices } from "./connectCard";
-import { categoryOf, deriveConnectState, type CheckoutVia, type ConnectCategoryId, type ConnectState } from "../shared/connectMarketplace";
+import { categoryOf, deriveConnectState, shownInShowcase, type CheckoutVia, type ConnectCategoryId, type ConnectState } from "../shared/connectMarketplace";
 import type { ConnectGalleryItem, ConnectImage, ConnectPrice, ConnectSheet } from "../shared/connectCard";
 import type { ConnectActivation } from "../shared/connectShowcase";
 import { isNetLegacyExtension, netProductOf, type NetArea, type NetSegment } from "../shared/netProducts";
@@ -141,8 +141,9 @@ export function buildConnectCatalog(
   const contracted = (key: string) => parseActivation(byKey.get(key)?.activation)?.state === "active";
   const bundles = catalog.items.filter((i) => seedBundleOf(i.key).length > 0);
 
-  // Elephant Net: 7 productos. Las antiguas extensiones sectoriales no se muestran como producto (07/11/2026)
-  const shownItems = catalog.items.filter((i) => !isNetLegacyExtension(i.key));
+  // Elephant Net: 7 productos. Las antiguas extensiones sectoriales no se muestran como producto (07/11/2026). Life Net
+  // es personal: fuera del escaparate de las empresas (08/11/2026)
+  const shownItems = catalog.items.filter((i) => !isNetLegacyExtension(i.key) && shownInShowcase(i.key, plan));
   return shownItems.map((item): ConnectItem => {
     const np = netProductOf(item.key);
     const seed = seedOf(item.key);
@@ -175,7 +176,7 @@ export function buildConnectCatalog(
       ? [{ kind: "monthly", amountCents: item.monthly.amountCents, currency: item.monthly.currency, unit: item.monthly.unit, taxRateBp: null, taxIncluded: item.monthly.taxIncluded }]
       : [];
     const offer = card?.offer ?? parseConnectOffer(item.offer);
-    const related = Array.from(new Set([...(c?.related ?? []), ...(c?.compatibleExtensions ?? [])])).filter((k) => k !== item.key && byKey.has(k) && !isNetLegacyExtension(k));
+    const related = Array.from(new Set([...(c?.related ?? []), ...(c?.compatibleExtensions ?? [])])).filter((k) => k !== item.key && byKey.has(k) && !isNetLegacyExtension(k) && shownInShowcase(k, plan));
     const sheet: ConnectSheet = {
       headline: c?.headline ?? null,
       valueProposition: c?.valueProposition ?? null,
