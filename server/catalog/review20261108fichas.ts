@@ -269,7 +269,7 @@ export async function applyListingReview(svc: WebAdminService, store: WebStore, 
       continue;
     }
     // Ya en venta directa (review20261108connect.ts): esta revisión ya hizo su parte y no la deshace
-    if (c.status && d.catalog.commercialStatus === "available" && d.technicalStatus === "available" && d.catalog.offer?.modality === "immediate") {
+    if (d.catalog.commercialStatus === "available" && d.technicalStatus === "available" && d.catalog.offer?.modality === "immediate") {
       r.already.push(`${c.key} (en venta directa)`);
       continue;
     }

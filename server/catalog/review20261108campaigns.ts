@@ -36,7 +36,7 @@ export const CAMPAIGNS_LISTING_2026_11_08: readonly ListingChange[] = [
         to: "Campañas de correo a tu base de clientes con los segmentos de tu CRM y tu marca, para que la recompra no dependa del azar.",
       },
       benefits: { from: ["Segmentos con los datos de tu CRM"], to: ["Segmentos con las etiquetas de tu CRM", "Solo a quien dio su consentimiento", "Estadísticas de cada campaña"] },
-      excludes: { from: [], to: ["Pruebas A/B y envío a la mejor hora", "Los envíos, que factura Brevo a tu empresa"] },
+      excludes: { from: [], to: ["Pruebas A/B y envío a la mejor hora", "Segmentos de más de 5.000 destinatarios por campaña", "Los envíos, que factura Brevo a tu empresa"] },
       integrations: { from: ["Proveedor de correo central o propio"], to: ["Tu cuenta de Brevo (remitente verificado)"] },
       seo: {
         from: { slug: "campaigns", title: "Email marketing para empresas | Big Elephant Campaigns", description: "Próximamente: campañas de email marketing con los segmentos de tu CRM." },
@@ -61,7 +61,7 @@ export const CAMPAIGNS_LISTING_2026_11_08: readonly ListingChange[] = [
         ],
         to: [
           ASSISTED_FAQ,
-          { q: "¿Qué necesito?", a: "Una cuenta de Brevo propia con un remitente verificado y los consentimientos de marketing de tus clientes. Los envíos los factura Brevo a tu empresa." },
+          { q: "¿Qué necesito?", a: "Una cuenta de Brevo propia con un remitente verificado y los consentimientos de marketing de tus clientes. El buzón de las pruebas tiene que ser un contacto de tu cuenta de Brevo. Los envíos los factura Brevo a tu empresa." },
           { q: "¿Quién recibe las campañas?", a: "Solo los clientes del segmento que dieron su consentimiento de marketing. Quien se da de baja sale también de las campañas ya programadas." },
           { q: "¿Forma parte de algún paquete?", a: "Sí, del Paquete Marketing." },
         ],
