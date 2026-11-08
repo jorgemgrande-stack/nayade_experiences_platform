@@ -110,6 +110,7 @@ import { buildInvoiceEmailHtml } from "../emailTemplates";
 import { assertQuotePricedForSend } from "../quoteSendGuards";
 import { addClientNote, clientListConditions, clientStats, deleteClientNote, deleteNotesOfClient, findClientDuplicates, listClientNotes, listFilteredClientsForExport, loadClientHistoryExtras } from "../clientProfileDb";
 import { CLIENT_KINDS, NOTE_MAX } from "../../shared/clientProfile";
+import { clientMailDelivery } from "../mail/deliveryDb";
 import { isValidSpanishTaxId } from "../../shared/formValidation";
 import { issuerSnapshotForNewInvoice } from "../issuerSnapshot";
 import { applyQuotePricingRules } from "../pricingRulesDb";
@@ -6626,6 +6627,13 @@ export const crmRouter = router({
       await db.delete(clients).where(eq(clients.id, input.id));
       await deleteNotesOfClient(input.id);
       return { success: true };
+    }),
+
+    /** Estado de entrega de los correos enviados al cliente y aviso si su dirección está suprimida (rebote, queja, baja). */
+    mailDelivery: staff.input(z.object({ id: z.number().int().positive() })).query(async ({ input }) => {
+      const [client] = await db.select({ email: clients.email }).from(clients).where(eq(clients.id, input.id));
+      if (!client) throw new TRPCError({ code: "NOT_FOUND" });
+      return clientMailDelivery(client.email);
     }),
 
     getHistory: staff.input(z.object({ id: z.number() })).query(async ({ input }) => {

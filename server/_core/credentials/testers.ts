@@ -1,5 +1,7 @@
 import { VeturisApiError } from "../../travelNet/veturis/protocol";
 import { VeturisClient, VeturisNetworkError, type VeturisFetch } from "../../travelNet/veturis/client";
+import { postmarkServerInfo } from "../../mail/tenantPostmark";
+import type { FetchLike } from "../../mail/providers";
 
 /**
  * Comprobación de credenciales por proveedor. Nunca devuelve ni registra el secreto; el
@@ -137,6 +139,12 @@ async function testProviderRaw(provider: string, v: Record<string, string>, fetc
     case "brevo_marketing": {
       if (!v.apiKey) return { ok: false, message: "Falta la clave API" };
       return get(fetchImpl, "https://api.brevo.com/v3/account", { "api-key": v.apiKey, accept: "application/json" });
+    }
+    case "postmark": {
+      // Solo lectura: servidor y flujo (debe ser transaccional). Nunca envía ni registra el webhook
+      if (!v.serverToken) return { ok: false, message: "Falta el token del servidor" };
+      const r = await postmarkServerInfo({ serverToken: v.serverToken, messageStream: v.messageStream, fetch: fetchImpl as unknown as FetchLike });
+      return { ok: r.ok, message: [r.message, ...r.warnings].join(" "), outcome: r.outcome };
     }
     case "veturis":
       return veturisCheck(v, fetchImpl as unknown as VeturisFetch);

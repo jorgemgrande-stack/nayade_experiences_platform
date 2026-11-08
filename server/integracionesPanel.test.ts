@@ -32,7 +32,8 @@ const all = (configured: Record<string, Record<string, string>> = {}) => PROVIDE
 describe("qué integraciones ve una pyme Essential", () => {
   it("solo cobro con tarjeta y correo propio, agrupados por lo que quiere hacer", () => {
     const list = panelIntegrations(all(), essential);
-    expect(list.map((p) => p.id)).toEqual(["redsys", "mail_smtp"]);
+    // Correo: SMTP propio o Postmark propio (transaccional), ambos con la capacidad comms-email de Essential
+    expect(list.map((p) => p.id)).toEqual(["redsys", "mail_smtp", "postmark"]);
     expect(groupIntegrations(list).map((g) => g.title)).toEqual(["Cobrar con tarjeta", "Enviar correos"]);
   });
 

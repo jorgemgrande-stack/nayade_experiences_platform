@@ -166,7 +166,8 @@ export interface ProviderMessage {
 
 export interface MailProviderPort {
   readonly name: string;
-  send(m: ProviderMessage): Promise<{ messageId: string | null }>;
+  /** `provider`: el que envió de verdad cuando el puerto reparte entre varios (p. ej. Postmark de la empresa o plataforma). */
+  send(m: ProviderMessage): Promise<{ messageId: string | null; provider?: string }>;
 }
 
 /** Fallo del proveedor. `retryable`: red, 5xx o límite de tasa; el resto (4xx) es definitivo. */
@@ -179,6 +180,8 @@ export class MailProviderError extends Error {
     super(`Proveedor de correo: ${code}`);
     this.name = "MailProviderError";
   }
+  /** Proveedor que falló, cuando el puerto reparte entre varios (se guarda también al programar el reintento). */
+  provider?: string;
 }
 
 export type ProviderEventKind = "delivered" | "soft_bounce" | "hard_bounce" | "blocked" | "spam" | "invalid" | "unsubscribed" | "deferred" | "error";

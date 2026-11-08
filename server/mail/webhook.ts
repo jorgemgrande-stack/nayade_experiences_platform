@@ -107,7 +107,8 @@ export function webhookTokenValid(expected: string | null | undefined, received:
 }
 
 export interface BrevoWebhookDeps {
-  token: string | null | undefined;
+  /** Token esperado; como función se lee en cada petición (el de cada empresa, en el webhook del Core). */
+  token: string | null | undefined | (() => string | null | undefined);
   /** Servicio de correo del carril y la empresa de la referencia, o `null` si no existe. */
   resolve: (lane: MailLane, tenantId: string) => Promise<MailService | null>;
   log?: (event: string, data: Record<string, unknown>) => void;
@@ -125,8 +126,9 @@ export function brevoWebhookHandler(d: BrevoWebhookDeps) {
 function providerWebhookHandler(d: BrevoWebhookDeps, parse: (raw: unknown) => ProviderEvent | null) {
   const log = d.log ?? ((event, data) => opsLog(event === "rejected" ? "warn" : "info", "MailWebhook", event, data));
   return async (req: Request, res: Response) => {
-    if (!d.token || d.token.length < 32) return void res.status(503).json({ error: "webhook_not_configured" });
-    if (!webhookTokenValid(d.token, req.headers[WEBHOOK_TOKEN_HEADER])) {
+    const token = typeof d.token === "function" ? d.token() : d.token;
+    if (!token || token.length < 32) return void res.status(503).json({ error: "webhook_not_configured" });
+    if (!webhookTokenValid(token, req.headers[WEBHOOK_TOKEN_HEADER])) {
       log("rejected", { reason: "invalid_token" });
       return void res.status(401).json({ error: "unauthorized" });
     }

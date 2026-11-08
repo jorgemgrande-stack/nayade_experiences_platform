@@ -33,6 +33,7 @@ import fileRouter from "../fileRoutes";
 import redsysRouter from "../redsysRoutes";
 import { createLoyaltyPortalRouter } from "../loyaltyPortal";
 import { createNetPublicRouter, netPublicBodyParser } from "../netPublic/router";
+import { createTenantPostmarkWebhookRouter, tenantPostmarkWebhookBodyParser } from "../mail/tenantPostmarkWebhook";
 import { metaCapiRouter } from "../metaCapiRoute";
 import settlementExportRouter from "../settlementExportRoutes";
 import invoicePreviewRouter from "../invoicePreviewRouter";
@@ -164,6 +165,8 @@ async function startServer() {
   installTenantResolution(app);
   // Rutas públicas de Elephant Net (/mesa, /check-in, /firma, /baja): solo formularios de 8 KB, antes del lector general
   app.use(netPublicBodyParser);
+  // Webhook de Postmark de cada empresa: JSON de 256 KB como mucho, antes del lector general
+  app.use(tenantPostmarkWebhookBodyParser);
   // Configure body parser with larger size limit for file uploads
   app.use(express.json({ limit: "50mb" }));
   app.use(express.urlencoded({ limit: "50mb", extended: true }));
@@ -253,6 +256,8 @@ async function startServer() {
   app.use(createLoyaltyPortalRouter());
   // Elephant Net: carta QR de mesa, check-in online, firma remota y baja de comunicaciones (enlaces con token, sin sesión)
   app.use(createNetPublicRouter());
+  // Webhook de Postmark de cada empresa (entregas, rebotes, quejas y bajas de su correo transaccional), con su token propio
+  app.use(createTenantPostmarkWebhookRouter());
   // Meta Conversions API proxy (recibe eventos del cliente para envío server-side)
   app.use(metaCapiRouter);
   // Settlement Excel export endpoint
