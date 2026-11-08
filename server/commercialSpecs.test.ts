@@ -30,7 +30,7 @@ describe("especificaciones comerciales", () => {
   });
   it("lo que no tiene desarrollo se presenta como «Próximamente» con lista de espera", () => {
     const none = PRODUCT_SPECS.filter((s) => s.verified.grade === "none").map((s) => s.key).sort();
-    expect(none).toEqual(["extra-accounting", "hotel-net-channel-manager", "hotel-net-housekeeping", "life", "life-net"]);
+    expect(none).toEqual(["extra-accounting", "hotel-net-channel-manager", "hotel-net-housekeeping"]);
   });
   it("Travel Net no atribuye circuitos ni transporte como existentes", () => {
     for (const s of PRODUCT_SPECS.filter((x) => x.key.startsWith("travel-net"))) for (const t of s.includes) expect(t).not.toMatch(/circuito|transporte/i);
@@ -39,7 +39,8 @@ describe("especificaciones comerciales", () => {
     const s = PRODUCT_SPECS.find((x) => x.key === "life-net")!;
     const pub = [s.longDescription, s.problem, s.forWho, ...s.includes, ...s.excludes, ...s.capacityRules, s.publicContent.headline, ...s.publicContent.benefits, s.seo.title, s.seo.description];
     for (const t of pub) expect(t).not.toMatch(/repositorio|desarrollo|definición funcional/i);
-    expect(s.verified.grade).toBe("none");
+    // Desarrollado en el Core (PR #710), pero sin contratar todavía: lista de espera
+    expect(s.verified.grade).toBe("partial");
     expect(s.publicContent.cta).toBe("waitlist");
   });
   it("ninguna ficha pública lleva repositorios, arquitectura interna ni comentarios de desarrollo", () => {
