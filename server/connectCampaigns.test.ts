@@ -27,6 +27,7 @@ class FakeBrevo {
   processStatus = "completed";
   failOn: Record<string, number> = {};
   attributeExists = false;
+  blacklisted = new Set<string>();
   private seq = 100;
   fetch: FetchLike = async (url, init) => {
     const u = new URL(url);
@@ -38,7 +39,10 @@ class FakeBrevo {
     if (this.failOn[key]) return reply(this.failOn[key], { code: "invalid_parameter", message: "no" });
     const body = init.body ? JSON.parse(init.body) : {};
     if (key === "GET /senders") return reply(200, { senders: [{ id: 1, name: "Marketing", email: "hola@empresa.test", active: true }, { id: 2, name: "Sin verificar", email: "x@empresa.test", active: false }] });
-    if (key === "GET /contacts/folders") return reply(200, { folders: this.folders, count: this.folders.length });
+    if (key === "GET /contacts/folders") {
+      const off = Number(u.searchParams.get("offset"));
+      return reply(200, { folders: this.folders.slice(off, off + 50), count: this.folders.length });
+    }
     if (key === "POST /contacts/folders") {
       const id = ++this.seq;
       this.folders.push({ id, name: body.name });
@@ -92,6 +96,17 @@ class FakeBrevo {
         sentDate: camp!.status === "sent" ? "2026-11-08T10:00:00.000Z" : undefined,
         statistics: { globalStats: { sent: 3, delivered: 3, uniqueViews: 2, uniqueClicks: 1, unsubscriptions: 1, hardBounces: 0, softBounces: 0, complaints: 0 } },
       });
+    const rm = /^\/contacts\/lists\/(\d+)\/contacts\/remove$/.exec(path);
+    if (rm) {
+      for (const e of body.emails) this.lists.get(Number(rm[1]))!.delete(e);
+      return reply(201, { contacts: { success: body.emails } });
+    }
+    const ct = /^\/contacts\/([^/]+@[^/]+)$/.exec(decodeURIComponent(path));
+    if (ct && init.method === "PUT") {
+      for (const l of body.unlinkListIds ?? []) this.lists.get(l)?.delete(ct[1]);
+      if (body.emailBlacklisted) this.blacklisted.add(ct[1]);
+      return reply(204);
+    }
     const lc = /^\/contacts\/lists\/(\d+)\/contacts$/.exec(path);
     if (lc) {
       const all = Array.from(this.lists.get(Number(lc[1]))!.entries());
@@ -344,5 +359,103 @@ describe("servicio de campañas con Brevo simulado", () => {
     expect((await svc().preview(c.id)).html).toBe("<html>Novedades de otoño|2|#enlace-de-baja</html>");
     expect(await svc().update(c.id, draft({ subject: "Otro asunto" }), "user:1")).toMatchObject({ subject: "Otro asunto" });
     await expect(svc().create(draft({ blocks: [{ type: "button", label: "x", url: "ftp://x" }] }), "user:1")).rejects.toThrow(/https/);
+  });
+
+  it("bloqueante: programada → retira el consentimiento → sale al momento de la lista que se enviará (y en la cuenta, si es una baja)", async () => {
+    const c = (await svc().create(draft(), "user:1"))!;
+    const r = (await svc().launch(c.id, { at: new Date("2026-11-20T09:00:00Z") }, "user:1"))!;
+    expect(r).toMatchObject({ status: "scheduled", recipients: 2 });
+    const list = brevo.lists.get(r.brevoListId!)!;
+    expect(list.has("bea@cliente.test")).toBe(true);
+    // Retirada en el CRM (o enlace de baja): Brevo marketing avisa a las campañas
+    store.consents.set(2, "withdrawn");
+    expect(await svc().onWithdrawn(2, { blacklist: true })).toEqual({ removed: 1 });
+    expect(list.has("bea@cliente.test")).toBe(false);
+    expect(brevo.blacklisted.has("bea@cliente.test")).toBe(true);
+    expect((await store.get(c.id))!.recipients).toBe(1);
+    // Repetirlo no hace nada (ya no está pendiente en ninguna campaña)
+    expect(await svc().onWithdrawn(2, { blacklist: true })).toEqual({ removed: 0 });
+  });
+
+  it("si avisar a Brevo falla, la comprobación de la programada (job o «Actualizar») la saca antes de que se envíe", async () => {
+    const c = (await svc().create(draft(), "user:1"))!;
+    const r = (await svc().launch(c.id, { at: new Date("2026-11-20T09:00:00Z") }, "user:1"))!;
+    store.consents.set(1, "withdrawn");
+    brevo.failOn["PUT /contacts/ana%40cliente.test"] = 500;
+    expect(await svc().onWithdrawn(1, { blacklist: false })).toEqual({ removed: 0 });
+    expect(brevo.lists.get(r.brevoListId!)!.has("ana@cliente.test")).toBe(true);
+    await svc().tick();
+    expect(Array.from(brevo.lists.get(r.brevoListId!)!.keys())).toEqual(["bea@cliente.test"]);
+    expect((await store.get(c.id))!).toMatchObject({ status: "scheduled", recipients: 1 });
+  });
+
+  it("preparando: quien retira el consentimiento antes de reservar el envío no está en la lista enviada; sin nadie, no se envía", async () => {
+    brevo.processStatus = "in_process";
+    const c = (await svc().create(draft(), "user:1"))!;
+    const r = (await svc().launch(c.id, { at: null }, "user:1"))!;
+    expect(r.status).toBe("preparing");
+    store.consents.set(1, "withdrawn");
+    brevo.processStatus = "completed";
+    expect(await svc().refresh(c.id)).toMatchObject({ status: "sent", recipients: 1 });
+    expect(Array.from(brevo.lists.get(r.brevoListId!)!.keys())).toEqual(["bea@cliente.test"]);
+    // Otra campaña en la que nadie conserva el consentimiento al llegar el momento: fallida, sin envío
+    brevo.processStatus = "in_process";
+    const c2 = (await svc().create(draft(), "user:1"))!;
+    await svc().launch(c2.id, { at: null }, "user:1");
+    store.consents.set(2, "withdrawn");
+    brevo.processStatus = "completed";
+    expect(await svc().advance(c2.id)).toMatchObject({ status: "failed", sendClaimedAt: null });
+    expect(Array.from(brevo.campaigns.values()).reduce((n, x) => n + x.sendNow, 0)).toBe(1);
+  });
+
+  it("preparación interrumpida sin lista: pasado el plazo, fallida con su motivo; un fallo tardío no pisa una enviada", async () => {
+    const c = (await svc().create(draft(), "user:1"))!;
+    expect(await store.claimLaunch(c.id, null, "user:1")).toBe(true);
+    expect(await svc().advance(c.id)).toMatchObject({ status: "preparing" });
+    now = new Date(now.getTime() + 31 * 60_000);
+    store.rows[0].launchedAt = new Date(now.getTime() - 31 * 60_000).toISOString();
+    expect(await svc().advance(c.id)).toMatchObject({ status: "failed" });
+    expect((await store.get(c.id))!.errorMessage).toMatch(/no terminó/);
+    // Reservado el envío, un fallo «antes de reservar» de otra petición no cambia nada
+    const d = (await svc().create(draft(), "user:1"))!;
+    await store.claimLaunch(d.id, null, "user:1");
+    await store.claimSend(d.id);
+    expect(await store.failUnclaimed(d.id, "x")).toBe(false);
+    expect((await store.get(d.id))!.status).toBe("preparing");
+  });
+
+  it("job: las abiertas no dejan sin estadísticas a las enviadas (cupos separados); carpetas paginadas sin duplicar", async () => {
+    for (let i = 0; i < 12; i++) await store.create(draft(), "user:1");
+    for (const r of store.rows.slice(0, 11)) Object.assign(r, { status: "scheduled" });
+    Object.assign(store.rows[11], { status: "sent" });
+    const due = await store.due(10, 3600_000);
+    expect(due).toHaveLength(11);
+    expect(due).toContain(12);
+    brevo.folders = Array.from({ length: 60 }, (_, i) => ({ id: i + 1, name: i === 55 ? "Elephant Campaigns" : `Carpeta ${i}` }));
+    const c = (await svc().create(draft(), "user:1"))!;
+    await svc().launch(c.id, { at: null }, "user:1");
+    expect(brevo.calls.filter((x) => x === "POST /contacts/folders")).toEqual([]);
+    expect(await store.settings()).toMatchObject({ folderId: 56 });
+  });
+});
+
+describe("Brevo marketing avisa a las campañas al retirar un consentimiento", () => {
+  it("retirada en el CRM (sin lista negra), enlace público (con lista negra) y baja leída en la sincronización", async () => {
+    const { BrevoMarketingService } = await import("./brevoMarketing/service");
+    const st = new MemoryBrevoMarketingStore();
+    st.clientRows = [{ id: 1, name: "Ana", email: "ana@cliente.test" }];
+    const seen: string[] = [];
+    const s = new BrevoMarketingService({
+      store: st,
+      credentials: { apiKey: async () => null, clear: async () => undefined },
+      onWithdrawn: async (id, o) => {
+        seen.push(`${id}:${o.blacklist}`);
+        throw new Error("Brevo caído");
+      },
+    });
+    await s.grantConsent(1, "form", "Casilla del formulario", "user:1");
+    expect(await s.withdrawConsent(1, "", "user:1")).toMatchObject({ status: "withdrawn" });
+    expect(await s.publicUnsubscribe(1)).toMatchObject({ changed: false });
+    expect(seen).toEqual(["1:false", "1:true"]);
   });
 });

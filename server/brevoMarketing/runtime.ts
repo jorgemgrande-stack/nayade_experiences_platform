@@ -24,6 +24,8 @@ export function brevoMarketingService(): BrevoMarketingService {
       apiKey: async () => (await getVault().resolve(BREVO_PROVIDER)).apiKey || null,
       clear: () => getVault().clear(BREVO_PROVIDER),
     },
+    // Elephant Campaigns: una retirada saca el correo de las listas de las campañas aún no enviadas (import diferido: ciclo)
+    onWithdrawn: async (clientId, o) => (await import("../connectCampaigns/runtime")).campaignService().onWithdrawn(clientId, o),
     licensed: async () => {
       try {
         return (await getCapabilityAccess().check(BREVO_CAPABILITY, { write: true })).allowed;

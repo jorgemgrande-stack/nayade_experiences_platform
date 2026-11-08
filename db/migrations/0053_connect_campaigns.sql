@@ -10,7 +10,8 @@
 --   dos veces. La campaña de pruebas de Brevo (sin lista) es otra distinta de la del envío. Estadísticas leídas de
 --   Brevo (envíos, aperturas, clics, bajas…).
 -- `campaign_recipients`: destinatarios de cada campaña en el momento del envío (cliente del CRM y correo normalizado),
---   para auditar y atribuir las bajas de la lista de la campaña.
+--   para auditar y atribuir las bajas de la lista de la campaña. `removed_at`: sacado de la lista de Brevo antes del
+--   envío porque retiró el consentimiento (una baja nunca recibe una campaña ya preparada o programada).
 -- `campaign_events`: historial de cada campaña (creación, prueba, envío, programación, fallo, estadísticas).
 -- Fechas de programación y envío en milisegundos (sin desfases de zona horaria entre Node y MySQL).
 
@@ -42,6 +43,7 @@ CREATE TABLE IF NOT EXISTS campaign_campaigns (
   brevo_status       VARCHAR(20)   NULL DEFAULT NULL,
   import_process_ids VARCHAR(500)  NULL DEFAULT NULL,
   recipients         INT UNSIGNED  NOT NULL DEFAULT 0,
+  launched_at        BIGINT        NULL DEFAULT NULL,
   send_claimed_at    DATETIME(3)   NULL DEFAULT NULL,
   sent_at            BIGINT        NULL DEFAULT NULL,
   error_message      VARCHAR(500)  NULL DEFAULT NULL,
@@ -66,6 +68,7 @@ CREATE TABLE IF NOT EXISTS campaign_recipients (
   client_id        INT          NOT NULL,
   email_normalized VARCHAR(255) NOT NULL,
   brevo_list_id    BIGINT       NOT NULL,
+  removed_at       BIGINT       NULL DEFAULT NULL,
   created_at       DATETIME(3)  NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
   PRIMARY KEY (campaign_id, client_id),
   KEY idx_campaign_recipients_email (campaign_id, brevo_list_id, email_normalized)

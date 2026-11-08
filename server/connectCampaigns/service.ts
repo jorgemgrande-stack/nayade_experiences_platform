@@ -11,10 +11,12 @@
  *    SIEMPRE como borrador; enviar o programar es una llamada aparte que se reserva antes en la BD (`claimSend`): dos
  *    peticiones a la vez, un reintento o el job nunca envían dos veces. Si Brevo no confirma ese paso, la campaña queda
  *    fallida y bloqueada (hay que comprobarlo en Brevo y, si hace falta, duplicarla).
- *  - Bajas: Brevo no envía a contactos dados de baja en la cuenta; al leer las estadísticas se leen también las bajas de
- *    la lista de la campaña y se retira el consentimiento en el CRM, así que una baja nunca entra en otra campaña.
+ *  - Bajas: una retirada de consentimiento (cualquier vía) saca el correo de las listas de las campañas aún no enviadas
+ *    (`onWithdrawn`); además, antes de reservar el envío y en cada actualización de una programada se vuelve a calcular
+ *    la audiencia y se saca a quien ya no tiene consentimiento (`reconcile`). Al leer las estadísticas se leen las bajas
+ *    de la lista de la campaña y se retira el consentimiento en el CRM: una baja nunca entra en otra campaña.
  */
-import { BrevoApiError, BrevoBudgetExceeded, BrevoMarketingClient, IMPORT_BATCH, LIST_PAGE, type BrevoCampaignInput, type FetchLike } from "../brevoMarketing/client";
+import { BrevoApiError, BrevoBudgetExceeded, BrevoMarketingClient, IMPORT_BATCH, LIST_PAGE, REMOVE_BATCH, type BrevoCampaignInput, type FetchLike } from "../brevoMarketing/client";
 import { chunk } from "../brevoMarketing/plan";
 import type { BrevoMarketingStore } from "../brevoMarketing/store";
 import { checkBlocks, missingForSend, NAME_MAX, PREVIEW_MAX, SUBJECT_MAX, type CampaignBlock } from "../../shared/connectCampaigns";
@@ -60,6 +62,8 @@ export interface DraftPayload {
 }
 
 const STATS_EVERY_MS = 60 * 60_000;
+/** Una preparación sin lista de Brevo pasado este plazo se da por interrumpida. */
+export const STUCK_PREPARING_MS = 30 * 60_000;
 const EMAIL_RE = /^[^\s@]{1,64}@[^\s@]{1,190}\.[^\s@]{2,}$/;
 const SYSTEM = "system:campaigns";
 
@@ -313,9 +317,62 @@ export class CampaignService {
     return this.d.store.get(id);
   }
 
+  /** Fallo ANTES de reservar el envío: si otra petición ya lo reservó (o envió), no se toca la campaña. */
   private async fail(id: number, message: string, actor = SYSTEM) {
-    await this.d.store.setStatus(id, "failed", { errorMessage: message });
-    await this.d.store.event(id, "failed", message, actor);
+    if (await this.d.store.failUnclaimed(id, message)) await this.d.store.event(id, "failed", message, actor);
+  }
+
+  /**
+   * Quita de la lista de Brevo de la campaña a quien ya no está en la audiencia (retiró el consentimiento, se dio de
+   * baja o ya no tiene la etiqueta) y devuelve cuántos quedan. Se hace antes de reservar el envío y, en las
+   * programadas, en cada actualización hasta que Brevo la envía.
+   */
+  private async reconcile(client: BrevoMarketingClient, c: Campaign, actor: string): Promise<number> {
+    const listId = c.brevoListId!;
+    const active = await this.d.store.activeRecipients(c.id, listId);
+    const aud = planAudience(await this.d.store.audience(c.tagIds, c.tagMode), await this.d.store.withdrawnEmails());
+    const ok = new Set(aud.recipients.map((r) => `${r.clientId}:${r.email}`));
+    const gone = active.filter((r) => !ok.has(`${r.clientId}:${r.email}`));
+    for (const batch of chunk(gone, REMOVE_BATCH)) {
+      try {
+        await client.removeFromList(listId, batch.map((b) => b.email));
+      } catch (e) {
+        // 400: ya no estaban en la lista; cualquier otro error se propaga (no se envía sin haberlos sacado)
+        if (!(e instanceof BrevoApiError) || e.status !== 400) throw e;
+      }
+      await this.d.store.markRemoved(c.id, listId, batch.map((b) => b.clientId));
+    }
+    if (gone.length) await this.d.store.event(c.id, "removed", `${gone.length} sacados de la lista de la campaña por no tener ya el consentimiento`, actor);
+    return active.length - gone.length;
+  }
+
+  /**
+   * Una retirada de consentimiento (enlace de baja, CRM o baja leída de Brevo): saca ese correo YA de las listas de
+   * las campañas que aún no se han enviado («preparing» o «scheduled») y, si se pide, lo da de baja de los correos de
+   * la cuenta de Brevo. Si Brevo falla, la comprobación antes del envío y la del job lo vuelven a intentar.
+   */
+  async onWithdrawn(clientId: number, o: { blacklist: boolean }): Promise<{ removed: number }> {
+    const pending = await this.d.store.pendingListsOf(clientId);
+    if (!pending.length) return { removed: 0 };
+    if (!(await this.d.credentials.apiKey())) return { removed: 0 };
+    const client = await this.client(Math.min(MAX_CALLS_PER_STEP, pending.length + 1));
+    let removed = 0;
+    const byEmail = new Map<string, typeof pending>();
+    for (const x of pending) byEmail.set(x.email, [...(byEmail.get(x.email) ?? []), x]);
+    for (const [email, rows] of Array.from(byEmail.entries())) {
+      try {
+        await client.unlinkContact(email, Array.from(new Set(rows.map((r) => r.listId))), o.blacklist);
+      } catch (e) {
+        // 404: el contacto ya no existe en Brevo (no recibirá nada); cualquier otro fallo lo repite la comprobación previa
+        if (!(e instanceof BrevoApiError) || e.status !== 404) continue;
+      }
+      for (const r of rows) {
+        await this.d.store.markRemoved(r.campaignId, r.listId, [clientId]);
+        await this.d.store.event(r.campaignId, "removed", "Sacado de la lista de la campaña al retirar el consentimiento", SYSTEM);
+        removed++;
+      }
+    }
+    return { removed };
   }
 
   /**
@@ -323,8 +380,16 @@ export class CampaignService {
    * envío y lo pide (ya o programado). Si la importación sigue, no hace nada. Idempotente.
    */
   async advance(id: number, actor = SYSTEM, signal?: AbortSignal) {
-    const c = await this.must(id);
-    if (c.status !== "preparing" || c.sendClaimedAt || !c.brevoListId) return c;
+    let c = await this.must(id);
+    if (c.status !== "preparing" || c.sendClaimedAt) return c;
+    if (!c.brevoListId) {
+      // La preparación se cortó a mitad (el proceso se reinició): pasado el plazo, fallida con su motivo
+      if (c.launchedAt && new Date(c.launchedAt).getTime() < this.now().getTime() - STUCK_PREPARING_MS) {
+        await this.fail(id, "La preparación del envío no terminó (se interrumpió antes de crear la lista en Brevo): vuelve a enviarla", actor);
+        return this.d.store.get(id);
+      }
+      return c;
+    }
     const client = await this.client(MAX_CALLS_PER_STEP, signal);
     let brevoId: number;
     try {
@@ -336,6 +401,15 @@ export class CampaignService {
         return this.d.store.get(id);
       }
       if (st === "wait") return c;
+      // Otra petición pudo reservar el envío mientras tanto: no se toca nada
+      c = await this.must(id);
+      if (c.status !== "preparing" || c.sendClaimedAt) return c;
+      // Quien retiró el consentimiento desde la preparación sale de la lista antes de enviar
+      if ((await this.reconcile(client, c, actor)) === 0) {
+        await this.fail(id, "Nadie de la lista conserva el consentimiento de marketing: no se envía", actor);
+        return this.d.store.get(id);
+      }
+      c = await this.must(id);
       brevoId = await this.upsertBrevo(client, c, "send");
     } catch (e) {
       if (!(e instanceof BrevoApiError || e instanceof BrevoBudgetExceeded)) throw e;
@@ -352,7 +426,10 @@ export class CampaignService {
       else await client.scheduleEmailCampaign(brevoId, at!.toISOString());
     } catch (e) {
       if (!(e instanceof BrevoApiError || e instanceof BrevoBudgetExceeded)) throw e;
-      await this.fail(id, `Brevo no confirmó el ${sendNow ? "envío" : "programa"} (${e.message}). Compruébalo en Brevo antes de duplicar la campaña`, actor);
+      // Con el envío ya reservado por esta petición: fallida y bloqueada (Brevo pudo haberlo recibido)
+      const msg = `Brevo no confirmó el ${sendNow ? "envío" : "programa"} (${e.message}). Compruébalo en Brevo antes de duplicar la campaña`;
+      await this.d.store.setStatus(id, "failed", { errorMessage: msg });
+      await this.d.store.event(id, "failed", msg, actor);
       return this.d.store.get(id);
     }
     if (sendNow) {
@@ -389,6 +466,8 @@ export class CampaignService {
         await this.d.store.event(id, "brevo", `En Brevo figura como «${r.status}»`, actor);
       }
       c = (await this.d.store.get(id))!;
+      // Programada: hasta que Brevo la envíe, quien retire el consentimiento sale de su lista
+      if (c.status === "scheduled" && c.brevoListId) await this.reconcile(client, c, actor);
       if (c.status === "sent" && c.brevoListId) await this.readUnsubscribes(client, c, actor);
     } catch (e) {
       return this.wrap(e);
@@ -403,7 +482,11 @@ export class CampaignService {
       const page = await client.listContacts(c.brevoListId!, offset);
       for (const x of page.contacts) {
         if (!x.blacklisted && !x.unsubscribedFromList) continue;
-        for (const clientId of byEmail.get(x.email.trim().toLowerCase()) ?? []) if (await this.d.consents.withdrawOnce(clientId, "brevo_unsubscribe", `Baja en la campaña #${c.id}`, "system:brevo")) n++;
+        for (const clientId of byEmail.get(x.email.trim().toLowerCase()) ?? [])
+          if (await this.d.consents.withdrawOnce(clientId, "brevo_unsubscribe", `Baja en la campaña #${c.id}`, "system:brevo")) {
+            n++;
+            await this.onWithdrawn(clientId, { blacklist: false }).catch(() => undefined);
+          }
       }
       offset += page.contacts.length;
       if (!page.contacts.length || offset >= page.count || page.contacts.length < LIST_PAGE) break;

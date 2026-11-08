@@ -359,7 +359,9 @@ function Detail({ id, onEdit, onClose }: { id: number; onEdit: () => void; onClo
               </div>
             </>
           )}
-          <p className="col-span-full text-xs text-muted-foreground">Estadísticas de Brevo: {c.statsAt ? `leídas el ${fmt(c.statsAt)}` : "aún no leídas"}.</p>
+          <p className="col-span-full text-xs text-muted-foreground">
+            Estadísticas de Brevo: {c.statsAt ? `leídas el ${fmt(c.statsAt)}` : "aún no leídas"}. Se leen cada hora solo si la tarea automática de Brevo está activada; si no, las estadísticas y las bajas de la lista de la campaña solo se leen al pulsar «Actualizar». Quien retira el consentimiento sale al momento de las campañas aún no enviadas y se vuelve a comprobar antes de enviar.
+          </p>
         </dl>
       )}
 

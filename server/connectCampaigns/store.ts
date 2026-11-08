@@ -48,6 +48,8 @@ export interface Campaign extends DraftInput {
   brevoStatus: string | null;
   processIds: number[];
   recipients: number;
+  /** Cuándo se pidió enviar o programar (para dar por atascada una preparación sin lista). */
+  launchedAt: string | null;
   sendClaimedAt: string | null;
   sentAt: string | null;
   errorMessage: string | null;
@@ -86,13 +88,21 @@ export interface CampaignStore {
   /** Reserva el envío ANTES de pedírselo a Brevo; solo una petición lo consigue (no se envía dos veces). */
   claimSend(id: number): Promise<boolean>;
   setStatus(id: number, status: CampaignStatus, p?: { errorMessage?: string | null; sentAt?: Date | null; brevoStatus?: string | null }): Promise<void>;
+  /** «preparing» → «failed» SOLO si aún no se reservó el envío (una petición a la vez nunca marca fallida una enviada). */
+  failUnclaimed(id: number, message: string): Promise<boolean>;
   saveStats(id: number, stats: CampaignStats | null, brevoStatus: string): Promise<void>;
-  /** Campañas que el job revisa: preparándose, programadas o enviadas con estadísticas viejas. */
+  /** Campañas que el job revisa: preparándose o programadas (un cupo) y enviadas con estadísticas viejas (otro cupo). */
   due(limit: number, statsOlderThanMs: number): Promise<number[]>;
 
   saveRecipients(id: number, listId: number, rows: Array<{ clientId: number; email: string }>): Promise<void>;
   /** Clientes de la campaña por correo (de su lista de Brevo actual). */
   recipientsByEmail(id: number, listId: number): Promise<Map<string, number[]>>;
+  /** Destinatarios aún en la lista de Brevo de la campaña (sin los sacados por baja). */
+  activeRecipients(id: number, listId: number): Promise<Array<{ clientId: number; email: string }>>;
+  /** Dónde está aún un cliente: campañas «preparing» o «scheduled» con su lista de Brevo actual. */
+  pendingListsOf(clientId: number): Promise<Array<{ campaignId: number; listId: number; email: string }>>;
+  /** Marca como sacados de la lista y recalcula el número de destinatarios de la campaña. */
+  markRemoved(id: number, listId: number, clientIds: number[]): Promise<void>;
 
   /** Clientes con consentimiento CONCEDIDO del segmento (sin etiquetas: todos los que lo tienen). */
   audience(tagIds: number[], mode: TagMode): Promise<AudienceRow[]>;
@@ -112,7 +122,7 @@ export class MemoryCampaignStore implements CampaignStore {
   private set: CampaignSettings = { folderId: null, attributeReady: false };
   rows: Campaign[] = [];
   ev: Array<CampaignEvent & { id: number }> = [];
-  rec = new Map<number, Array<{ clientId: number; email: string; listId: number }>>();
+  rec = new Map<number, Array<{ clientId: number; email: string; listId: number; removed?: boolean }>>();
   // CRM simulado
   clients: Array<{ id: number; email: string | null; name: string | null }> = [];
   consents = new Map<number, "granted" | "withdrawn">();
@@ -145,6 +155,7 @@ export class MemoryCampaignStore implements CampaignStore {
       brevoStatus: null,
       processIds: [],
       recipients: 0,
+      launchedAt: null,
       sendClaimedAt: null,
       sentAt: null,
       errorMessage: null,
@@ -168,7 +179,7 @@ export class MemoryCampaignStore implements CampaignStore {
   async claimLaunch(id: number, scheduledAt: Date | null) {
     const r = this.rows.find((x) => x.id === id);
     if (!r || !(r.status === "draft" || r.status === "failed") || r.sendClaimedAt) return false;
-    Object.assign(r, { status: "preparing", scheduledAt: scheduledAt?.toISOString() ?? null, errorMessage: null });
+    Object.assign(r, { status: "preparing", scheduledAt: scheduledAt?.toISOString() ?? null, errorMessage: null, launchedAt: nowIso(), brevoListId: null, processIds: [] });
     return true;
   }
   async setPrepared(id: number, p: { listId: number; processIds: number[]; recipients: number }) {
@@ -194,19 +205,38 @@ export class MemoryCampaignStore implements CampaignStore {
     if (p.sentAt !== undefined) r.sentAt = p.sentAt?.toISOString() ?? null;
     if (p.brevoStatus !== undefined) r.brevoStatus = p.brevoStatus;
   }
+  async failUnclaimed(id: number, message: string) {
+    const r = this.row(id);
+    if (r.status !== "preparing" || r.sendClaimedAt) return false;
+    Object.assign(r, { status: "failed", errorMessage: message });
+    return true;
+  }
   async saveStats(id: number, stats: CampaignStats | null, brevoStatus: string) {
     Object.assign(this.row(id), { stats, brevoStatus, statsAt: nowIso() });
   }
   async due(limit: number, olderMs: number) {
     const cut = Date.now() - olderMs;
-    return this.rows
-      .filter((r) => r.status === "preparing" || r.status === "scheduled" || (r.status === "sent" && (!r.statsAt || new Date(r.statsAt).getTime() < cut)))
-      .slice(0, limit)
-      .map((r) => r.id);
+    const open = this.rows.filter((r) => r.status === "preparing" || r.status === "scheduled").slice(0, limit);
+    const sent = this.rows.filter((r) => r.status === "sent" && (!r.statsAt || new Date(r.statsAt).getTime() < cut)).slice(0, limit);
+    return [...open, ...sent].map((r) => r.id);
   }
   async saveRecipients(id: number, listId: number, rows: Array<{ clientId: number; email: string }>) {
     const cur = (this.rec.get(id) ?? []).filter((x) => !rows.some((r) => r.clientId === x.clientId));
     this.rec.set(id, [...cur, ...rows.map((r) => ({ ...r, listId }))]);
+  }
+  async activeRecipients(id: number, listId: number) {
+    return (this.rec.get(id) ?? []).filter((r) => r.listId === listId && !r.removed).map(({ clientId, email }) => ({ clientId, email }));
+  }
+  async pendingListsOf(clientId: number) {
+    const out: Array<{ campaignId: number; listId: number; email: string }> = [];
+    for (const c of this.rows)
+      if ((c.status === "preparing" || c.status === "scheduled") && c.brevoListId)
+        for (const r of this.rec.get(c.id) ?? []) if (r.clientId === clientId && r.listId === c.brevoListId && !r.removed) out.push({ campaignId: c.id, listId: r.listId, email: r.email });
+    return out;
+  }
+  async markRemoved(id: number, listId: number, clientIds: number[]) {
+    for (const r of this.rec.get(id) ?? []) if (r.listId === listId && clientIds.includes(r.clientId)) r.removed = true;
+    this.row(id).recipients = (await this.activeRecipients(id, listId)).length;
   }
   async recipientsByEmail(id: number, listId: number) {
     const m = new Map<string, number[]>();
@@ -289,6 +319,7 @@ const toCampaign = (r: Row): Campaign => ({
   brevoStatus: str(r.brevo_status),
   processIds: ids(r.import_process_ids),
   recipients: Number(r.recipients ?? 0),
+  launchedAt: ms(r.launched_at),
   sendClaimedAt: iso(r.send_claimed_at),
   sentAt: ms(r.sent_at),
   errorMessage: str(r.error_message),
@@ -371,7 +402,7 @@ export class TenantDbCampaignStore implements CampaignStore {
       async (db) =>
         affected(
           await db.execute(sql`
-            UPDATE campaign_campaigns SET status = 'preparing', scheduled_at = ${scheduledAt ? scheduledAt.getTime() : null}, error_message = NULL, updated_by = ${actor.slice(0, 100)}
+            UPDATE campaign_campaigns SET status = 'preparing', scheduled_at = ${scheduledAt ? scheduledAt.getTime() : null}, error_message = NULL, launched_at = ${Date.now()}, brevo_list_id = NULL, import_process_ids = NULL, updated_by = ${actor.slice(0, 100)}
             WHERE id = ${id} AND status IN ('draft', 'failed') AND send_claimed_at IS NULL`),
         ) === 1,
     );
@@ -416,14 +447,22 @@ export class TenantDbCampaignStore implements CampaignStore {
     });
   }
   due(limit: number, statsOlderThanMs: number) {
-    return this.exec(async (db) =>
-      rowsOf(
+    return this.exec(async (db) => {
+      // Dos cupos: las abiertas no dejan sin estadísticas a las enviadas (y al revés)
+      const open = rowsOf(await db.execute(sql`SELECT id FROM campaign_campaigns WHERE status IN ('preparing', 'scheduled') ORDER BY updated_at, id LIMIT ${limit}`));
+      const sent = rowsOf(
         await db.execute(sql`
           SELECT id FROM campaign_campaigns
-          WHERE status IN ('preparing', 'scheduled')
-             OR (status = 'sent' AND sent_at > ${Date.now() - 30 * 86_400_000} AND (stats_at IS NULL OR stats_at < NOW(3) - INTERVAL ${Math.max(1, Math.round(statsOlderThanMs / 1000))} SECOND))
-          ORDER BY id LIMIT ${limit}`),
-      ).map((r) => Number(r.id)),
+          WHERE status = 'sent' AND sent_at > ${Date.now() - 30 * 86_400_000} AND (stats_at IS NULL OR stats_at < NOW(3) - INTERVAL ${Math.max(1, Math.round(statsOlderThanMs / 1000))} SECOND)
+          ORDER BY stats_at IS NOT NULL, stats_at, id LIMIT ${limit}`),
+      );
+      return [...open, ...sent].map((r) => Number(r.id));
+    });
+  }
+  failUnclaimed(id: number, message: string) {
+    return this.exec(
+      async (db) =>
+        affected(await db.execute(sql`UPDATE campaign_campaigns SET status = 'failed', error_message = ${message.slice(0, 500)} WHERE id = ${id} AND status = 'preparing' AND send_claimed_at IS NULL`)) === 1,
     );
   }
 
@@ -434,7 +473,7 @@ export class TenantDbCampaignStore implements CampaignStore {
         const values = rows.slice(i, i + 500).map((r) => sql`(${id}, ${r.clientId}, ${r.email}, ${listId})`);
         await db.execute(sql`
           INSERT INTO campaign_recipients (campaign_id, client_id, email_normalized, brevo_list_id) VALUES ${sql.join(values, sql`, `)}
-          ON DUPLICATE KEY UPDATE email_normalized = VALUES(email_normalized), brevo_list_id = VALUES(brevo_list_id)`);
+          ON DUPLICATE KEY UPDATE email_normalized = VALUES(email_normalized), brevo_list_id = VALUES(brevo_list_id), removed_at = NULL`);
       }
     });
   }
@@ -446,6 +485,35 @@ export class TenantDbCampaignStore implements CampaignStore {
         m.set(e, [...(m.get(e) ?? []), Number(r.client_id)]);
       }
       return m;
+    });
+  }
+
+  activeRecipients(id: number, listId: number) {
+    return this.exec(async (db) =>
+      rowsOf(await db.execute(sql`SELECT client_id, email_normalized FROM campaign_recipients WHERE campaign_id = ${id} AND brevo_list_id = ${listId} AND removed_at IS NULL`)).map((r) => ({
+        clientId: Number(r.client_id),
+        email: String(r.email_normalized),
+      })),
+    );
+  }
+  pendingListsOf(clientId: number) {
+    return this.exec(async (db) =>
+      rowsOf(
+        await db.execute(sql`
+          SELECT r.campaign_id, r.brevo_list_id, r.email_normalized FROM campaign_recipients r
+          JOIN campaign_campaigns c ON c.id = r.campaign_id AND c.brevo_list_id = r.brevo_list_id AND c.status IN ('preparing', 'scheduled')
+          WHERE r.client_id = ${clientId} AND r.removed_at IS NULL`),
+      ).map((r) => ({ campaignId: Number(r.campaign_id), listId: Number(r.brevo_list_id), email: String(r.email_normalized) })),
+    );
+  }
+  markRemoved(id: number, listId: number, clientIds: number[]) {
+    if (!clientIds.length) return Promise.resolve();
+    return this.exec(async (db) => {
+      await db.execute(sql`UPDATE campaign_recipients SET removed_at = ${Date.now()} WHERE campaign_id = ${id} AND brevo_list_id = ${listId} AND removed_at IS NULL AND client_id IN (${sql.join(
+        clientIds.map((c) => sql`${c}`),
+        sql`, `,
+      )})`);
+      await db.execute(sql`UPDATE campaign_campaigns SET recipients = (SELECT COUNT(*) FROM campaign_recipients WHERE campaign_id = ${id} AND brevo_list_id = ${listId} AND removed_at IS NULL) WHERE id = ${id}`);
     });
   }
 

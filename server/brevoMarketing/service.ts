@@ -34,6 +34,11 @@ export interface BrevoDeps {
   fetch?: FetchLike;
   maxCalls?: number;
   maxContacts?: number;
+  /**
+   * Tras retirar un consentimiento (cualquier vía): Elephant Campaigns saca ese correo de las listas de sus campañas aún
+   * no enviadas y, con `blacklist`, lo da de baja de los correos de la cuenta de Brevo. Nunca bloquea la retirada.
+   */
+  onWithdrawn?: (clientId: number, o: { blacklist: boolean }) => Promise<unknown>;
 }
 
 const UNSUB_SOURCE = "brevo_unsubscribe";
@@ -131,6 +136,7 @@ export class BrevoMarketingService {
     if (prev.status === "withdrawn") return prev;
     const r = reason.trim().slice(0, 500) || null;
     await this.d.store.setConsent({ clientId, status: "withdrawn", source: "manual", evidence: r, updatedBy: actor }, { clientId, previousStatus: "granted", newStatus: "withdrawn", source: "manual", evidence: r, actor });
+    await this.afterWithdrawn(clientId, false);
     return this.d.store.consent(clientId);
   }
 
@@ -156,7 +162,18 @@ export class BrevoMarketingService {
     } catch {
       propagated = false;
     }
+    // Baja pedida por el cliente: fuera también de las campañas pendientes y de los correos de la cuenta de Brevo
+    await this.afterWithdrawn(clientId, true);
     return { changed, propagated };
+  }
+
+  /** Avisa a las campañas de una retirada; un fallo no deshace la baja (la comprobación antes de enviar lo repite). */
+  private async afterWithdrawn(clientId: number, blacklist: boolean) {
+    try {
+      await this.d.onWithdrawn?.(clientId, { blacklist });
+    } catch {
+      /* se repite antes del envío y en el job */
+    }
   }
 
   // ── Sincronización ────────────────────────────────────────────────────────────
@@ -216,6 +233,7 @@ export class BrevoMarketingService {
         );
         await this.d.store.recordSync([{ clientId: u.clientId, email: u.email, status: "removed" }], runId);
         stats.unsubscribed++;
+        await this.afterWithdrawn(u.clientId, false);
       }
       // 4. Salen de la lista quienes ya no tienen consentimiento
       for (const batch of chunk(plan.toRemove, REMOVE_BATCH)) {

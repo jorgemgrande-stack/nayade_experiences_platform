@@ -171,6 +171,7 @@ describe.skipIf(!URL_)("Elephant Campaigns (routers reales, Brevo simulado)", ()
     lists: new Map<number, Map<string, { unsub: boolean; attrs: Record<string, string> }>>(),
     campaigns: new Map<number, { body: any; status: string; sendNow: number }>(),
     seq: 500,
+    blacklisted: new Set<string>(),
   };
   const realFetch = globalThis.fetch;
   const fakeFetch = async (input: string | URL | Request, init?: RequestInit) => {
@@ -224,6 +225,12 @@ describe.skipIf(!URL_)("Elephant Campaigns (routers reales, Brevo simulado)", ()
         sentDate: "2026-11-08T10:00:00.000Z",
         statistics: { globalStats: { sent: 2, delivered: 2, uniqueViews: 1, uniqueClicks: 1, unsubscriptions: 1, hardBounces: 0, softBounces: 0, complaints: 0 } },
       });
+    }
+    const ct = /^\/contacts\/([^/]+@[^/]+)$/.exec(decodeURIComponent(p));
+    if (ct && method === "PUT") {
+      for (const l of body.unlinkListIds ?? []) brevo.lists.get(l)?.delete(ct[1]);
+      if (body.emailBlacklisted) brevo.blacklisted.add(ct[1]);
+      return reply(204);
     }
     const lc = /^\/contacts\/lists\/(\d+)\/contacts$/.exec(p);
     if (lc) {
@@ -325,6 +332,29 @@ describe.skipIf(!URL_)("Elephant Campaigns (routers reales, Brevo simulado)", ()
     const r2 = ok(await mutate("brevoMarketing.campaigns.launch", { id: copy.id, scheduledAt: null }));
     expect(Array.from(brevo.lists.get(r2.brevoListId)!.keys())).toEqual([`ana-${run}@cliente.example`]);
   });
+
+  it("programada y después retirada en el CRM: esa persona sale de la lista que se enviará", async () => {
+    ok(await mutate("brevoMarketing.grantConsent", { clientId: ids[1], source: "form", evidence: "Vuelve a aceptar en el formulario" }));
+    const c = ok(
+      await mutate("brevoMarketing.campaigns.create", { name: "Invierno", subject: "Novedades de invierno", senderId: 3, blocks: [{ type: "text", text: "Hola" }], tagIds: [tagId], tagMode: "any" }),
+    );
+    const at = new Date(Date.now() + 7 * 86_400_000).toISOString();
+    const r = ok(await mutate("brevoMarketing.campaigns.launch", { id: c.id, scheduledAt: at }));
+    expect(r).toMatchObject({ status: "scheduled", recipients: 2 });
+    expect(brevo.lists.get(r.brevoListId)!.has(`bea-${run}@cliente.example`)).toBe(true);
+    ok(await mutate("brevoMarketing.withdrawConsent", { clientId: ids[1], reason: "Ya no quiere correos" }));
+    expect(Array.from(brevo.lists.get(r.brevoListId)!.keys())).toEqual([`ana-${run}@cliente.example`]);
+    const [[rec]] = (await tenantDb.query<mysql.RowDataPacket[]>("SELECT removed_at FROM campaign_recipients WHERE campaign_id = ? AND client_id = ?", [c.id, ids[1]])) as unknown as [[any]];
+    expect(rec.removed_at).not.toBeNull();
+    expect(ok(await query("brevoMarketing.campaigns.get", { id: c.id }))).toMatchObject({ status: "scheduled", recipients: 1 });
+    // Enlace público de baja: fuera también de los correos de la cuenta de Brevo
+    const { unsubscribe } = await import("./netPublic/brevoUnsubscribe");
+    const { runWithTenant } = await import("./_core/tenant");
+    const { withTenantDb } = await import("./_core/dbRegistry");
+    await runWithTenant(T, () => withTenantDb(T, () => unsubscribe(ids[0])));
+    expect(brevo.lists.get(r.brevoListId)!.size).toBe(0);
+    expect(brevo.blacklisted.has(`ana-${run}@cliente.example`)).toBe(true);
+  }, 60_000);
 
   it("sin la migración, error claro; el resto del panel sigue", async () => {
     await campaignsMigration("down");

@@ -184,9 +184,26 @@ export class BrevoMarketingClient {
     return (r.senders ?? []).map((x) => ({ id: Number(x.id), name: String(x.name ?? ""), email: String(x.email), active: !!x.active }));
   }
 
+  /** Todas las carpetas (paginado de 50 en 50, hasta 10 páginas) para no duplicar la de las campañas. */
   async folders(): Promise<Array<{ id: number; name: string }>> {
-    const r = await this.req<{ folders?: Array<{ id: number; name: string }> }>("GET", "/contacts/folders?limit=50&offset=0&sort=desc");
-    return (r.folders ?? []).map((f) => ({ id: Number(f.id), name: String(f.name) }));
+    const out: Array<{ id: number; name: string }> = [];
+    for (let offset = 0, page = 0; page < 10; page++) {
+      const r = await this.req<{ folders?: Array<{ id: number; name: string }>; count?: number }>("GET", `/contacts/folders?limit=50&offset=${offset}&sort=asc`);
+      const fs = r.folders ?? [];
+      out.push(...fs.map((f) => ({ id: Number(f.id), name: String(f.name) })));
+      offset += fs.length;
+      if (fs.length < 50 || offset >= Number(r.count ?? 0)) break;
+    }
+    return out;
+  }
+
+  /**
+   * Saca el contacto de unas listas (PUT /contacts/{email} con `unlinkListIds`) y, si se pide, lo da de baja de los
+   * correos de la cuenta (`emailBlacklisted`): Brevo no le envía ninguna campaña.
+   */
+  async unlinkContact(email: string, listIds: number[], blacklist: boolean): Promise<void> {
+    if (!listIds.length && !blacklist) return;
+    await this.req("PUT", `/contacts/${encodeURIComponent(email)}?identifierType=email_id`, { ...(listIds.length ? { unlinkListIds: listIds } : {}), ...(blacklist ? { emailBlacklisted: true } : {}) });
   }
 
   async createFolder(name: string): Promise<number> {
