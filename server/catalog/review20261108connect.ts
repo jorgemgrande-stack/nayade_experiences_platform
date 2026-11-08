@@ -41,12 +41,19 @@ export interface DirectSaleChange {
   firstStep: { from: Step; to: Step };
   /** Estado funcional de partida que esta revisión corrige a «in_use» (con su evidencia); sin él, solo «in_use» o vacío. */
   gradeFrom?: "partial";
+  /** Respuestas de la ficha que cambian con la venta directa (si la pregunta existe, su respuesta debe ser la de partida). */
+  faq?: ReadonlyArray<{ q: string; from: string; to: string }>;
 }
 
-const ASSISTED_ACTIVATION = "Implantación acompañada: la solicitas desde el panel y nuestro equipo la activa y la pone en marcha contigo.";
+export const ASSISTED_ACTIVATION = "Implantación acompañada: la solicitas desde el panel y nuestro equipo la activa y la pone en marcha contigo.";
 const AUTOMATIC_ACTIVATION = "Activación automática: en cuanto se confirma el pago, las funcionalidades contratadas se añaden al administrador de tu empresa.";
-const REQUEST_STEP: Step = { title: "Solicitud", text: "La solicitas desde el panel y nuestro equipo prepara la implantación contigo." };
+export const REQUEST_STEP: Step = { title: "Solicitud", text: "La solicitas desde el panel y nuestro equipo prepara la implantación contigo." };
 const PURCHASE_STEP: Step = { title: "Contratación", text: "La contratas desde el panel de tu empresa y se activa automáticamente al confirmarse el pago." };
+const HOW_TO_START = {
+  q: "¿Cómo se pone en marcha?",
+  from: "Es una implantación acompañada: envías la solicitud desde el panel y nuestro equipo la activa contigo. Enviar la solicitud no activa ni cobra nada por sí solo.",
+  to: "La contratas desde el panel de tu empresa y se activa automáticamente en cuanto se confirma el pago, sin esperar a nuestro equipo.",
+};
 
 export const DIRECT_SALE_2026_11_08: readonly DirectSaleChange[] = [
   {
@@ -55,6 +62,7 @@ export const DIRECT_SALE_2026_11_08: readonly DirectSaleChange[] = [
       "Tanda A del 08/11/2026: proveedores, colaboradores, liquidaciones por periodo con PDF y portales en la BD de cada empresa (routers suppliers, settlements, supplierPortal y partners); la licencia supplier-settlements protege rutas y menú; sin credenciales externas ni configuración del equipo. Contratación inmediata con Price de Stripe Live enlazado.",
     activation: { from: ASSISTED_ACTIVATION, to: AUTOMATIC_ACTIVATION },
     firstStep: { from: REQUEST_STEP, to: PURCHASE_STEP },
+    faq: [HOW_TO_START],
   },
   {
     key: "connect-deals",
@@ -62,6 +70,7 @@ export const DIRECT_SALE_2026_11_08: readonly DirectSaleChange[] = [
       "Tanda A del 08/11/2026: formulario público de canje, revisión, conversión en reserva y conciliación por plataforma en la BD de cada empresa (router ticketing); la licencia deals-coupons protege rutas y menú; las plataformas las da de alta la propia empresa; canje manual sin API de terceros. Contratación inmediata con Price de Stripe Live enlazado.",
     activation: { from: ASSISTED_ACTIVATION, to: AUTOMATIC_ACTIVATION },
     firstStep: { from: REQUEST_STEP, to: PURCHASE_STEP },
+    faq: [HOW_TO_START],
   },
   {
     key: "connect-tax",
@@ -70,6 +79,31 @@ export const DIRECT_SALE_2026_11_08: readonly DirectSaleChange[] = [
     activation: { from: ASSISTED_ACTIVATION, to: AUTOMATIC_ACTIVATION },
     firstStep: { from: REQUEST_STEP, to: PURCHASE_STEP },
     gradeFrom: "partial",
+    faq: [
+      HOW_TO_START,
+      {
+        q: "¿Presenta los impuestos por mí?",
+        from: "No. Elephant Tax no calcula ni presenta automáticamente los modelos: organiza la documentación y el seguimiento con tu gestoría, que es quien presenta.",
+        to: "No. Elephant Tax calcula una estimación de los modelos 303, 390, 111, 190, 200 y 202 con tus facturas, gastos y nóminas, y organiza la documentación y el seguimiento con tu gestoría, que es quien los presenta.",
+      },
+    ],
+  },
+  // Tanda B (08/11/2026): con su ficha de implantación acompañada publicada (review20261108fichas.ts)
+  {
+    key: "connect-geo-control",
+    evidence:
+      "Tanda B del 08/11/2026 (PR #717): consultas, observaciones por asistente de IA, panel de presencia y citación, cambios, competidores y oportunidades en la BD de cada empresa; licencia geo-control; sin credenciales externas. Contratación inmediata con Price de Stripe Live enlazado.",
+    activation: { from: ASSISTED_ACTIVATION, to: AUTOMATIC_ACTIVATION },
+    firstStep: { from: REQUEST_STEP, to: PURCHASE_STEP },
+    faq: [HOW_TO_START],
+  },
+  {
+    key: "extra-contracts-esign",
+    evidence:
+      "Tanda B del 08/11/2026 (PR #718): plantillas, contratos, firma simple por enlace de un solo uso o en el panel, evidencias y PDF firmado en la BD de cada empresa; licencia contracts-esign; sin credenciales externas. Contratación inmediata con Price de Stripe Live enlazado.",
+    activation: { from: ASSISTED_ACTIVATION, to: AUTOMATIC_ACTIVATION },
+    firstStep: { from: REQUEST_STEP, to: PURCHASE_STEP },
+    faq: [HOW_TO_START],
   },
 ];
 
@@ -93,7 +127,8 @@ function isDone(d: ProductDraft, c: DirectSaleChange): boolean {
     o?.modality === "immediate" &&
     o.checkout === true &&
     d.commercial?.terms?.activation === c.activation.to &&
-    sameStep(d.commercial?.howItWorks?.[0], c.firstStep.to)
+    sameStep(d.commercial?.howItWorks?.[0], c.firstStep.to) &&
+    (c.faq ?? []).every((f) => (d.commercial?.faq ?? []).every((x) => x.q !== f.q || x.a === f.to))
   );
 }
 
@@ -166,6 +201,11 @@ export async function applyDirectSaleReview(
       r.conflicts.push(`${c.key}: el primer paso de «Cómo funciona» ya no es el de partida; se revisa en el CRM`);
       continue;
     }
+    const faqDrift = (c.faq ?? []).find((f) => (d.commercial?.faq ?? []).some((x) => x.q === f.q && x.a !== f.from && x.a !== f.to));
+    if (faqDrift) {
+      r.conflicts.push(`${c.key}: la respuesta a «${faqDrift.q}» ya no es la de partida; se revisa en el CRM`);
+      continue;
+    }
     // Los precios de la venta (los que leen la compra en línea y el catálogo de Stripe): exactamente un mensual aprobado en
     // EUR sin IVA y, si hay anual aprobado, uno solo y sin IVA; todos con su Price de Stripe enlazado y activo
     const approved = (await store.listPrices(cur.id)).filter((p) => p.status === "approved" && p.currency.toUpperCase() === "EUR");
@@ -192,7 +232,12 @@ export async function applyDirectSaleReview(
       ...d,
       technicalStatus: "available",
       catalog: { ...d.catalog, commercialStatus: "available", offer: { modality: "immediate", trial: false, checkout: true, cta: "checkout" } },
-      commercial: { ...m, terms: { ...(m.terms ?? {}), activation: c.activation.to }, howItWorks: steps },
+      commercial: {
+        ...m,
+        terms: { ...(m.terms ?? {}), activation: c.activation.to },
+        howItWorks: steps,
+        ...(m.faq ? { faq: m.faq.map((x) => ({ ...x, a: c.faq?.find((f) => f.q === x.q)?.to ?? x.a })) } : {}),
+      },
       internal: { ...d.internal, evidence: c.evidence, functionalGrade: "in_use" },
     };
     // Un fallo (validación de la publicación con la ficha real) queda en el informe y no detiene el resto de la orden; el

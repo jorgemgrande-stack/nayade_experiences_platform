@@ -48,6 +48,28 @@ export function openPathResolver(sources: Array<{ capability: string | null; pan
   };
 }
 
+/**
+ * Reserva: la entrada del menú del Core que habilita una sola capacidad (Partners, Deals, Tax, Finance Sync, GEO
+ * Control, Contratos…), para las extensiones de Connect que viven en el Core sin manifiesto propio. Así «Gestionar»
+ * lleva a la pantalla del módulo también en ellas. Gana la resolución por manifiesto.
+ */
+export function navOpenPathResolver(sections: ReadonlyArray<{ items: ReadonlyArray<{ href: string; capabilities?: string[]; external?: boolean; children?: ReadonlyArray<{ href: string; capabilities?: string[] }> }> }>): (capabilities: string[]) => string | null {
+  const byCap = new Map<string, string>();
+  for (const s of sections)
+    for (const i of s.items)
+      for (const leaf of [i, ...(i.children ?? [])]) {
+        const caps = leaf.capabilities ?? [];
+        if (caps.length === 1 && leaf.href.startsWith("/admin/") && !byCap.has(caps[0])) byCap.set(caps[0], leaf.href);
+      }
+  return (caps) => {
+    for (const c of caps) {
+      const p = byCap.get(c);
+      if (p) return p;
+    }
+    return null;
+  };
+}
+
 const SESSION_MS = 30 * 60_000;
 const MISSING_TTL_MS = 10 * 60_000;
 const seen = new Map<string, number>();

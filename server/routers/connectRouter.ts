@@ -28,7 +28,8 @@ import { buildConnectCatalog, type ChannelCatalogItem, type ConnectItem } from "
 import { advertisesRequests, parseMarketplaceHeaders, parseMarketplaceRoot } from "../connectCard";
 import { brandHeaders, checkoutViaFor, conversionPlanFor, type ConnectBrandHeaders, type ConnectConversionView, type PurchaseBlock } from "../../shared/connectMarketplace";
 import { CONNECT_EVENT_TYPES, autoplayDelay, resolveSlides, type ActivationRetryOutcome, type ResolvedSlide } from "../../shared/connectShowcase";
-import { acceptEvents, forwardEvents, openPathResolver } from "../connectShowcase";
+import { acceptEvents, forwardEvents, navOpenPathResolver, openPathResolver } from "../connectShowcase";
+import { TASK_NAV } from "../../shared/adminNav";
 import { panelExtensionSources } from "../_core/modules/panelNavigation";
 
 export interface ConnectCatalogView {
@@ -62,7 +63,9 @@ export interface ConnectCatalogView {
 /** Ruta real de cada módulo instalado (portada de su entrada de menú). Si algo falla, sin «Abrir módulo». */
 function moduleOpenPath(): (capabilities: string[]) => string | null {
   try {
-    return openPathResolver(panelExtensionSources().map((s) => ({ capability: s.capability, panel: s.manifest.panel ?? null })));
+    const byManifest = openPathResolver(panelExtensionSources().map((s) => ({ capability: s.capability, panel: s.manifest.panel ?? null })));
+    const byNav = navOpenPathResolver(TASK_NAV);
+    return (caps) => byManifest(caps) ?? byNav(caps);
   } catch {
     return () => null;
   }
