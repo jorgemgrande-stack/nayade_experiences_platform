@@ -411,7 +411,7 @@ function MobileBar({ item, action, onRun }: { item: ConnectCatalogItem; action: 
   }, []);
   if (typing) return null;
   return (
-    <div className="cx-stage fixed inset-x-0 bottom-0 z-30 border-t border-border px-4 pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-3 shadow-[0_-12px_30px_var(--cx-shadow)] lg:hidden">
+    <div className="cx-stage cx-market fixed inset-x-0 bottom-0 z-30 border-t border-border px-4 pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-3 shadow-[0_-12px_30px_var(--cx-shadow)] lg:hidden">
       <div className="mx-auto flex max-w-3xl items-center gap-3">
         <div className="min-w-0 flex-1">
           {item.state === "active" ? <p className="text-sm text-foreground">{item.name}</p> : <BigPrice prices={item.prices} />}

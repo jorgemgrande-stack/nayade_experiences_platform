@@ -274,14 +274,14 @@ export default function ConnectPage() {
                         intro={h.intro}
                         action={
                           !filtering && group.length > 4 ? (
-                            <Button type="button" variant="ghost" size="sm" className="shrink-0 rounded-full" aria-pressed={expanded.has(b.id)} onClick={() => toggleExpanded(b.id)}>
+                            <Button type="button" variant="ghost" size="sm" className="shrink-0 rounded-full" onClick={() => toggleExpanded(b.id)}>
                               {expanded.has(b.id) ? "Ver en carrusel" : `Ver todo (${group.length})`}
                               {!expanded.has(b.id) && <ArrowRight className="h-4 w-4" aria-hidden="true" />}
                             </Button>
                           ) : null
                         }
                       />
-                      {(asGrid ? [{ id: "all", title: null, items: group }] : segments).map((seg) => (
+                      {segments.map((seg) => (
                         <div key={seg.id} className="space-y-3">
                           {seg.title && <h3 className="text-base font-semibold text-foreground sm:text-lg">{seg.title}</h3>}
                           {asGrid ? (

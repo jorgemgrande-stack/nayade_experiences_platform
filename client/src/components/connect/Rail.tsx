@@ -3,7 +3,7 @@
  * solo aparecen cuando hay hacia dónde ir, indicadores de página y teclado (← → Inicio Fin con el carril enfocado).
  * Con «reducir movimiento» el desplazamiento es instantáneo (ver `.cx-rail` y la regla global de connectStage.css).
  */
-import { Children, useCallback, useEffect, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
+import { Children, isValidElement, useCallback, useEffect, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { railOffset, railPage, railPages } from "@shared/marketplaceVisual";
@@ -19,7 +19,7 @@ export function Rail({ label, children, itemClassName }: { label: string; childr
     const el = ref.current;
     if (!el) return;
     const { scrollLeft, scrollWidth, clientWidth } = el;
-    const next = { page: railPage(scrollLeft, scrollWidth, clientWidth), pages: railPages(scrollWidth, clientWidth), atStart: scrollLeft <= 2, atEnd: scrollLeft + clientWidth >= scrollWidth - 2 };
+    const next = { page: railPage(scrollLeft, scrollWidth, clientWidth), pages: railPages(scrollWidth, clientWidth), atStart: scrollLeft <= 6, atEnd: scrollLeft + clientWidth >= scrollWidth - 6 };
     setM((prev) => (prev.page === next.page && prev.pages === next.pages && prev.atStart === next.atStart && prev.atEnd === next.atEnd ? prev : next));
   }, []);
 
@@ -59,10 +59,10 @@ export function Rail({ label, children, itemClassName }: { label: string; childr
         tabIndex={0}
         aria-label={label}
         onKeyDown={onKey}
-        className="cx-rail -mx-1 flex snap-x snap-mandatory gap-4 overflow-x-auto px-1 pb-3 pt-1 sm:gap-5"
+        className="cx-rail -mx-1 -my-4 flex scroll-px-1 snap-x snap-mandatory gap-4 overflow-x-auto px-1 py-4 sm:gap-5"
       >
         {items.map((child, i) => (
-          <li key={i} className={cn("w-[84%] shrink-0 snap-start sm:w-[calc((100%-1.25rem)/2)] lg:w-[calc((100%-2.5rem)/3)] 2xl:w-[calc((100%-3.75rem)/4)]", itemClassName)}>
+          <li key={isValidElement(child) && child.key != null ? child.key : i} className={cn("w-[84%] shrink-0 snap-start sm:w-[calc((100%-1.25rem)/2)] lg:w-[calc((100%-2.5rem)/3)] 2xl:w-[calc((100%-3.75rem)/4)]", itemClassName)}>
             {child}
           </li>
         ))}

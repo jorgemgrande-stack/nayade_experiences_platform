@@ -254,9 +254,12 @@
 [data-tone="amber"] { --tone: #e08a00; --tone-2: #d0268f; --tone-soft: rgba(224, 138, 0, 0.2); --tone-text-l: #8a4b00; --tone-text-d: #ffd27a; }
 [data-tone] { --tone-text: var(--tone-text-l); }
 .dark [data-tone],
+.cx-on-image,
 .cx-on-image[data-tone],
 .cx-on-image [data-tone] { --tone-text: var(--tone-text-d); }
-.cx-market[data-tone] { --cx-accent: var(--tone); --cx-accent-glow: var(--tone-soft); --cx-accent-text: var(--tone-text); }
+/* El tono del producto manda sobre el acento antiguo (`data-accent`) en los dos modos */
+.cx-stage.cx-market[data-tone],
+.dark .cx-stage.cx-market[data-tone] { --cx-accent: var(--tone); --cx-accent-glow: var(--tone-soft); --cx-accent-text: var(--tone-text); }
 .cx-tone-text { color: var(--tone-text); }
 .cx-tone-chip { background-image: linear-gradient(135deg, var(--tone) 0%, var(--tone-2) 100%); color: #ffffff; }
 
@@ -294,10 +297,10 @@
   position: absolute;
   inset: auto -20% -55% 25%;
   height: 120%;
-  background: radial-gradient(60% 50% at 60% 40%, rgba(255, 255, 255, 0.28), transparent 70%);
+  background: radial-gradient(60% 50% at 60% 40%, rgba(255, 255, 255, 0.16), transparent 70%);
   pointer-events: none;
 }
-.cx-access[aria-pressed="true"] { box-shadow: 0 0 0 2px #ffffff, 0 16px 40px -14px var(--a1); }
+.cx-access[aria-pressed="true"] { box-shadow: 0 0 0 3px var(--background), 0 0 0 5px var(--foreground), 0 16px 40px -14px var(--a1); }
 .cx-access-electric-violet { --a1: #2f45e0; --a2: #6d28d9; }
 .cx-access-electric-turquoise { --a1: #1d4ed8; --a2: #0b7285; }
 .cx-access-magenta-violet { --a1: #a3167a; --a2: #5b21b6; }

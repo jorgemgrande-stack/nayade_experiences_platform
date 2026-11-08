@@ -17,7 +17,6 @@ import {
   Bot,
   Building2,
   Calendar,
-  Check,
   CheckCircle2,
   ChefHat,
   ChevronRight,
@@ -303,9 +302,6 @@ export function PriceList({ prices }: { prices: ConnectPrice[] }) {
 
 // ── Tarjeta del escaparate ─────────────────────────────────────────────────────
 
-/** 2 o 3 puntos fuertes: los beneficios del catálogo o, si no publica, lo que incluye. Nunca rellenos. */
-export const highlightsOf = (item: Pick<ConnectCatalogItem, "sheet" | "includes">) => (item.sheet.benefits.length > 0 ? item.sheet.benefits : item.includes).slice(0, 3);
-
 /** Lo que la tarjeta y la ficha necesitan saber de la persona para elegir la acción. */
 export interface ConnectView {
   canPurchase: boolean;
@@ -434,6 +430,8 @@ export function ProductCard({
   const tone = toneOf(item);
   return (
     <article ref={viewRef} data-tone={tone} className="cx-card group relative flex h-full flex-col overflow-hidden rounded-2xl border border-border bg-card">
+      {/* Toda la tarjeta lleva a la ficha (el enlace accesible es el del nombre; este solo amplía la zona pulsable) */}
+      <Link href={href} aria-hidden="true" tabIndex={-1} className="absolute inset-0 z-[1]" />
       {/* Imagen protagonista con degradado inferior; el nombre va sobre ella (texto de la interfaz, nunca en la imagen) */}
       <div className="cx-on-image relative aspect-[16/10] shrink-0 overflow-hidden cx-night-bg">
         <ProductMedia item={item} image={item.sheet.media.card} sizes="(min-width: 1536px) 22rem, (min-width: 1024px) 31vw, (min-width: 640px) 48vw, 84vw" className="motion-safe:transition-transform motion-safe:duration-500 motion-safe:group-hover:scale-[1.04]" />
@@ -446,14 +444,14 @@ export function ProductCard({
           <ProductIcon item={item} size="sm" />
           <div className="min-w-0 flex-1">
             <H className="break-words text-lg font-bold leading-tight text-white [text-shadow:0_1px_8px_rgba(0,0,0,0.55)] sm:text-xl">
-              <Link href={href} className="rounded before:absolute before:inset-0 before:z-[1] before:content-[''] focus-visible:outline-none">
+              <Link href={href} className="relative z-[2] rounded">
                 {item.name}
               </Link>
             </H>
-            {item.sheet.offer && item.sheet.offer !== CONNECT_STATE_SHORT[item.state] && <p className="mt-0.5 overflow-hidden text-ellipsis whitespace-nowrap text-xs font-medium text-white/80">{item.sheet.offer}</p>}
+            {item.sheet.offer && item.sheet.offer !== CONNECT_STATE_SHORT[item.state] && <p className="mt-0.5 line-clamp-2 break-words text-xs font-medium text-white/85">{item.sheet.offer}</p>}
           </div>
         </div>
-        {item.sheet.media.card?.kind === "illustration" && <span className="sr-only">Imagen ilustrativa</span>}
+        {item.sheet.media.card?.kind === "illustration" && <ImageKindNote kind="illustration" className="absolute right-3 top-11" />}
       </div>
       <div className="flex min-w-0 flex-1 flex-col gap-3 p-4 sm:p-5">
         {lead && <p className="line-clamp-2 text-sm text-muted-foreground">{lead}</p>}
@@ -521,7 +519,7 @@ export function RequestDialog({
   const done = send.data;
   return (
     <Dialog open onOpenChange={(o) => !o && onClose()}>
-      <DialogContent className="cx-stage">
+      <DialogContent className="cx-stage cx-market">
         <DialogHeader>
           <DialogTitle>{waitlist ? `Me interesa ${item.name}` : kind === "contact" ? `Contactar sobre ${item.name}` : `Solicitar información de ${item.name}`}</DialogTitle>
           <DialogDescription>
@@ -678,7 +676,7 @@ export function PurchaseDialog({ item, onClose }: { item: ConnectCatalogItem; on
 
   return (
     <Dialog open onOpenChange={(o) => !o && onClose()}>
-      <DialogContent className="cx-stage">
+      <DialogContent className="cx-stage cx-market">
         <DialogHeader>
           <DialogTitle>Contratar {item.name}</DialogTitle>
           <DialogDescription>Revisa el importe antes de confirmar. Lo calcula nuestro sistema de cobros según los días que quedan de tu periodo actual.</DialogDescription>

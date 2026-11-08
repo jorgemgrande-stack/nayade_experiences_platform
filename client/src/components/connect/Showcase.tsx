@@ -8,7 +8,7 @@
  */
 import { useCallback, useEffect, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 import { Link } from "wouter";
-import { ArrowRight, ChevronLeft, ChevronRight, ExternalLink, Layers, Package, PackagePlus, Pause, Play, Plug, SquareCheckBig } from "lucide-react";
+import { ArrowRight, Check, ChevronLeft, ChevronRight, ExternalLink, Layers, Package, PackagePlus, Pause, Play, Plug, SquareCheckBig } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import type { ResolvedCta, ResolvedSlide, SlideNav } from "@shared/connectShowcase";
@@ -125,7 +125,7 @@ function SlideView({ slide, active, index, total, eager, onNav }: { slide: Resol
           )}
           <h2 className="break-words text-3xl font-extrabold leading-[1.05] tracking-tight text-white sm:text-5xl xl:text-6xl">{slide.title}</h2>
           {slide.subtitle && <p className="text-lg font-semibold text-white sm:text-2xl">{slide.subtitle}</p>}
-          {slide.description && <p className="line-clamp-3 max-w-lg text-sm text-white/85 sm:text-base">{slide.description}</p>}
+          {slide.description && <p className="line-clamp-3 max-w-lg text-sm text-white/85 sm:line-clamp-none sm:text-base">{slide.description}</p>}
           {(slide.primaryCta || slide.secondaryCta) && (
             <div className="flex flex-wrap gap-2 pt-3">
               {slide.primaryCta && <SlideCtaButton cta={slide.primaryCta} slideId={slide.id} primary onNav={onNav} />}
@@ -215,7 +215,7 @@ export function ShowcaseCarousel({ slides, autoplayMs, onNav }: { slides: Resolv
       onTouchStart={() => setStopped(true)}
       onKeyDown={onKey}
     >
-      <div className="relative h-[30rem] sm:h-[24rem] lg:h-[26rem] 2xl:h-[28rem]" aria-live={playing ? "off" : "polite"}>
+      <div className="relative h-[32rem] sm:h-[24rem] lg:h-[26rem] 2xl:h-[28rem]" aria-live={playing ? "off" : "polite"}>
         {slides.map((s, i) => (
           <SlideView key={s.id} slide={s} active={i === index} index={i} total={total} eager={i === 0} onNav={onNav} />
         ))}
@@ -327,8 +327,9 @@ export function AccessTiles({ tiles, active, onSelect }: { tiles: Array<{ id: Ac
                 </span>
                 <span className="relative min-w-0">
                   <span className="block break-words text-sm font-bold leading-tight sm:text-lg">{t.title}</span>
-                  <span className="block text-sm text-white/85">{t.count === 1 ? "1 producto" : `${t.count} productos`}</span>
+                  <span className="block text-sm text-white">{t.count === 1 ? "1 producto" : `${t.count} productos`}</span>
                 </span>
+                {on && <Check className="relative ml-auto h-5 w-5 shrink-0" aria-hidden="true" />}
               </button>
             </li>
           );
