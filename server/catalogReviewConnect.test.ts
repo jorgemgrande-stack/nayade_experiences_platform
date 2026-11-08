@@ -121,3 +121,40 @@ describe("revisión del 08/11/2026: venta directa de Partners y Deals", () => {
     for (const key of KEYS) expect(productDraft.parse((await k.store.getEntry("product", key))!.draft).catalog.commercialStatus, key).toBe("on_request");
   });
 });
+
+describe("revisión del 08/11/2026: precios anuales, estado funcional y reanudación", () => {
+  it("un anual aprobado también necesita su Price enlazado; un estado funcional distinto de «in_use» se respeta", async () => {
+    const k = await production();
+    const pid = await monthlyId(k.store, "connect-partners");
+    const yearly = await k.svc.addPrice("connect-partners", { kind: "yearly", amountCents: 19000, currency: "EUR", unit: null, taxRateBp: 2100, taxIncluded: false, note: "prueba" }, "operator:1");
+    await k.svc.approvePrice(yearly.id, "operator:1");
+    const e = (await k.store.getEntry("product", "connect-deals"))!;
+    const d = productDraft.parse(e.draft);
+    const s = await k.svc.save("product", "connect-deals", { draft: { ...d, internal: { ...d.internal, functionalGrade: "partial" } }, expectedVersion: e.draftVersion }, "operator:1");
+    await k.svc.publish("product", "connect-deals", s.draftVersion, "operator:1");
+    const r = await applyDirectSaleReview(k.svc, k.store, async (id) => id === pid, { apply: true, author: AUTHOR });
+    expect(r.changed).toEqual([]);
+    expect(r.stripePending).toEqual([{ key: "connect-partners", webPriceId: yearly.id, lookupKey: `es:connect-partners:yearly:eur:v${yearly.id}`, amountCents: 19000, interval: "year" }]);
+    expect(r.conflicts.some((c) => c.startsWith("connect-deals: estado funcional «partial»"))).toBe(true);
+  });
+
+  it("si la publicación falla tras guardar, la siguiente ejecución publica el borrador propio", async () => {
+    const k = await production();
+    const yes = async () => true;
+    const real = k.svc.publish.bind(k.svc);
+    let fail = true;
+    k.svc.publish = (async (...a: Parameters<typeof real>) => {
+      if (fail && a[1] === "connect-partners" && a[3] === AUTHOR) throw new Error("caída simulada");
+      return real(...a);
+    }) as typeof real;
+    const r1 = await applyDirectSaleReview(k.svc, k.store, yes, { apply: true, author: AUTHOR });
+    expect(r1.conflicts.some((c) => c.startsWith("connect-partners: no se pudo abrir la venta"))).toBe(true);
+    expect(r1.changed.map((c) => c.split(":")[0])).toEqual(["connect-deals"]);
+    fail = false;
+    const r2 = await applyDirectSaleReview(k.svc, k.store, yes, { apply: true, author: AUTHOR });
+    expect(r2.changed).toEqual(["connect-partners: se publica la venta directa ya guardada"]);
+    const e = (await k.store.getEntry("product", "connect-partners"))!;
+    expect(e.publishedVersion).toBe(e.draftVersion);
+    expect(productDraft.parse(e.draft).catalog.commercialStatus).toBe("available");
+  });
+});

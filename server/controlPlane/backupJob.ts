@@ -495,8 +495,11 @@ async function main() {
           const pricesAfter = new Map((await webStore.listPrices()).map((p) => [p.id, `${p.status}:${p.amountCents}`]));
           const otherPricesIntact = Array.from(pricesBefore).every(([id, v]) => pricesAfter.get(id) === v);
           // 08/11/2026 (activación del marketplace, tanda A): venta directa de Partners y Deals solo con su Price de Stripe
-          // enlazado y activo en el modo indicado (por defecto live, el de production); sin él, informa del Price que falta
-          const stripeMode = opt("--stripe-mode") === "test" ? "test" : "live";
+          // enlazado y activo en el modo de Stripe del entorno (--stripe-mode, si no CP_STRIPE_MODE, si no live, el de
+          // production); sin él, informa del Price que falta
+          const stripeModeRaw = (opt("--stripe-mode") ?? process.env.CP_STRIPE_MODE ?? "live").trim().toLowerCase();
+          if (stripeModeRaw !== "live" && stripeModeRaw !== "test") die(`Modo de Stripe no válido: ${stripeModeRaw} (live o test)`);
+          const stripeMode: "live" | "test" = stripeModeRaw;
           const stripeStore = new MysqlStripeStore(crmPool, stripeMode);
           const repConnect = await applyDirectSaleReview(svc, webStore, async (id) => !!(await stripeStore.priceForWebPrice(id)), { apply, author: `operacion:${REVIEW_ID_2026_11_08_CONNECT}` });
           const pricesFinal = new Map((await webStore.listPrices()).map((p) => [p.id, `${p.status}:${p.amountCents}`]));

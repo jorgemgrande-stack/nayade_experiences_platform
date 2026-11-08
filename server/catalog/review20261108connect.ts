@@ -63,7 +63,7 @@ export interface DirectSaleReport {
   changed: string[];
   already: string[];
   /** Falta el Price de Stripe: lo que hay que crear (una persona) antes de abrir la venta. */
-  stripePending: Array<{ key: string; webPriceId: number; lookupKey: string; amountCents: number; interval: "month" }>;
+  stripePending: Array<{ key: string; webPriceId: number; lookupKey: string; amountCents: number; interval: "month" | "year" }>;
   conflicts: string[];
 }
 
@@ -105,6 +105,18 @@ export async function applyDirectSaleReview(
       r.already.push(c.key);
       continue;
     }
+    // Cambio propio guardado y sin publicar (una ejecución anterior se interrumpió entre guardar y publicar): se publica
+    if (isDone(d, c) && cur.publication === "published" && !upToDate && cur.updatedBy === o.author) {
+      r.changed.push(`${c.key}: se publica la venta directa ya guardada`);
+      if (o.apply) {
+        try {
+          await svc.publish("product", c.key, cur.draftVersion, o.author);
+        } catch (e) {
+          r.conflicts.push(`${c.key}: no se pudo publicar (${e instanceof Error ? e.message : String(e)}); se retoma en la siguiente ejecución`);
+        }
+      }
+      continue;
+    }
     if (cur.publication !== "published") {
       r.conflicts.push(`${c.key}: no está publicado (${cur.publication}); se decide en el CRM`);
       continue;
@@ -121,6 +133,14 @@ export async function applyDirectSaleReview(
       r.conflicts.push(`${c.key}: estado técnico «planned»; se deja como lo decidió el CRM`);
       continue;
     }
+    if (d.internal.functionalGrade && d.internal.functionalGrade !== "in_use") {
+      r.conflicts.push(`${c.key}: estado funcional «${d.internal.functionalGrade}» en el CRM; «Disponible» exige «in_use»`);
+      continue;
+    }
+    if (d.catalog.offer?.activationNotes) {
+      r.conflicts.push(`${c.key}: la oferta tiene condiciones de activación propias en el CRM; se revisan allí`);
+      continue;
+    }
     const activation = d.commercial?.terms?.activation;
     if (activation !== c.activation.from && activation !== c.activation.to) {
       r.conflicts.push(`${c.key}: la condición de activación ya no es la de partida («${(activation ?? "").slice(0, 60)}»); se revisa en el CRM`);
@@ -131,17 +151,24 @@ export async function applyDirectSaleReview(
       r.conflicts.push(`${c.key}: el primer paso de «Cómo funciona» ya no es el de partida; se revisa en el CRM`);
       continue;
     }
-    // El precio de la venta: exactamente un mensual aprobado en EUR sin IVA (el mismo que lee la compra en línea)
-    const monthly = (await store.listPrices(cur.id)).filter((p) => p.kind === "monthly" && p.status === "approved" && p.currency.toUpperCase() === "EUR");
-    if (monthly.length !== 1 || monthly[0].taxIncluded) {
-      r.conflicts.push(`${c.key}: necesita exactamente un precio mensual aprobado en EUR sin IVA (hay ${monthly.length})`);
+    // Los precios de la venta (los que leen la compra en línea y el catálogo de Stripe): exactamente un mensual aprobado en
+    // EUR sin IVA y, si hay anual aprobado, uno solo y sin IVA; todos con su Price de Stripe enlazado y activo
+    const approved = (await store.listPrices(cur.id)).filter((p) => p.status === "approved" && p.currency.toUpperCase() === "EUR");
+    const monthly = approved.filter((p) => p.kind === "monthly");
+    const yearly = approved.filter((p) => p.kind === "yearly");
+    if (monthly.length !== 1 || yearly.length > 1 || [...monthly, ...yearly].some((p) => p.taxIncluded)) {
+      r.conflicts.push(`${c.key}: necesita un precio mensual aprobado en EUR sin IVA y como mucho uno anual (hay ${monthly.length} y ${yearly.length})`);
       continue;
     }
     const price = monthly[0];
-    if (!(await stripeLinked(price.id))) {
-      r.stripePending.push({ key: c.key, webPriceId: price.id, lookupKey: lookupKeyFor(c.key, "monthly", "EUR", price.id), amountCents: price.amountCents, interval: "month" });
-      continue;
+    let pending = false;
+    for (const p of [...monthly, ...yearly]) {
+      if (await stripeLinked(p.id)) continue;
+      pending = true;
+      const kind = p.kind === "yearly" ? "yearly" : "monthly";
+      r.stripePending.push({ key: c.key, webPriceId: p.id, lookupKey: lookupKeyFor(c.key, kind, "EUR", p.id), amountCents: p.amountCents, interval: kind === "yearly" ? "year" : "month" });
     }
+    if (pending) continue;
     r.changed.push(`${c.key}: on_request → available (contratación inmediata, ${price.amountCents} céntimos al mes sin IVA)`);
     if (!o.apply) continue;
     const m = d.commercial!;
@@ -149,12 +176,19 @@ export async function applyDirectSaleReview(
     const draft: ProductDraft = {
       ...d,
       technicalStatus: "available",
-      catalog: { ...d.catalog, commercialStatus: "available", offer: { ...(d.catalog.offer ?? {}), modality: "immediate", trial: false, checkout: true, cta: "checkout" } },
+      catalog: { ...d.catalog, commercialStatus: "available", offer: { modality: "immediate", trial: false, checkout: true, cta: "checkout" } },
       commercial: { ...m, terms: { ...(m.terms ?? {}), activation: c.activation.to }, howItWorks: steps },
       internal: { ...d.internal, evidence: c.evidence, functionalGrade: "in_use" },
     };
-    const saved = await svc.save("product", c.key, { draft, expectedVersion: cur.draftVersion }, o.author);
-    await svc.publish("product", c.key, saved.draftVersion, o.author);
+    // Un fallo (validación de la publicación con la ficha real) queda en el informe y no detiene el resto de la orden; el
+    // borrador propio que quede guardado se publica en la siguiente ejecución (arriba)
+    try {
+      const saved = await svc.save("product", c.key, { draft, expectedVersion: cur.draftVersion }, o.author);
+      await svc.publish("product", c.key, saved.draftVersion, o.author);
+    } catch (e) {
+      r.changed.pop();
+      r.conflicts.push(`${c.key}: no se pudo abrir la venta (${e instanceof Error ? e.message : String(e)}); se revisa en el CRM`);
+    }
   }
   return r;
 }

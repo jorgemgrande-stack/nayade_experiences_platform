@@ -169,7 +169,7 @@ En el Core, cada empresa guarda sus credenciales en una bóveda (`server/_core/c
 | Informes sectoriales (Restaurant, Care, Ski, Travel) | #696 | fusionado |
 | Connect · Veturis en Travel Net (reserva real apagada) | #697 | en curso |
 | Estados «Disponible» en las fichas | #686 y esta PR | — |
-| Activación del marketplace · tanda A: venta directa de Partners y Deals (revisión `review20261108connect.ts`) | esta PR | fusionado; espera el Price de Stripe Live |
+| Activación del marketplace · tanda A: venta directa de Partners y Deals (revisión `review20261108connect.ts`) | #714 | en curso; espera el Price de Stripe Live |
 
 ## Activación del marketplace (encargo del 08/11/2026)
 
