@@ -120,7 +120,7 @@ function publicMessage(e: unknown): string {
  */
 export async function fetchIcal(
   rawUrl: string,
-  deps: { resolve?: Resolver; get?: HopGetter; timeoutMs?: number; maxBytes?: number; maxRedirects?: number } = {},
+  deps: { resolve?: Resolver; get?: HopGetter; timeoutMs?: number; maxBytes?: number; maxRedirects?: number; signal?: AbortSignal } = {},
 ): Promise<{ ok: true; body: string } | { ok: false; error: string }> {
   const resolve = deps.resolve ?? systemResolver;
   const get = deps.get ?? httpsHop;
@@ -129,6 +129,10 @@ export async function fetchIcal(
   const maxRedirects = deps.maxRedirects ?? ICAL_LIMITS.maxRedirects;
   const ctl = new AbortController();
   const timer = setTimeout(() => ctl.abort(), timeoutMs);
+  // Cancelación desde fuera (el trabajo programado agota su tiempo): se corta igual que por tiempo
+  const onAbort = () => ctl.abort();
+  if (deps.signal?.aborted) ctl.abort();
+  else deps.signal?.addEventListener("abort", onAbort, { once: true });
   try {
     let current = rawUrl;
     for (let hop = 0; ; hop++) {
@@ -153,5 +157,6 @@ export async function fetchIcal(
     return { ok: false, error: ctl.signal.aborted ? "El canal no ha respondido a tiempo." : publicMessage(e) };
   } finally {
     clearTimeout(timer);
+    deps.signal?.removeEventListener("abort", onAbort);
   }
 }

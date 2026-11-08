@@ -216,11 +216,12 @@ export function issueExport(input: { targetKind: IcalTargetKind; targetId: numbe
 }
 
 export function revokeExport(id: number, actor: string, now = Date.now()) {
-  return panel(() =>
-    withIcalDb(async (d) => ({
+  return panel(async () => {
+    await assertAvailable();
+    return withIcalDb(async (d) => ({
       revoked: (await affected(d, sql`UPDATE hotel_ical_exports SET status = 'revoked', revoked_at = ${now}, revoked_by = ${actor.slice(0, 100)} WHERE id = ${id} AND status = 'active'`)).affectedRows > 0,
-    })),
-  );
+    }));
+  });
 }
 
 /**
@@ -336,14 +337,15 @@ export function addFeed(input: { targetKind: IcalTargetKind; targetId: number; c
 
 /** Pausa, reactiva o archiva una URL. Pausada o archivada, sus bloqueos dejan de contar; archivada, se cancelan. */
 export function setFeedStatus(id: number, status: "active" | "paused" | "archived", now = Date.now()) {
-  return panel(() =>
-    withIcalDb(async (d) => {
+  return panel(async () => {
+    await assertAvailable();
+    return withIcalDb(async (d) => {
       const r = await affected(d, sql`UPDATE hotel_ical_feeds SET status = ${status}, updated_at = ${now} WHERE id = ${id} AND status <> 'archived'`);
       if (!r.affectedRows) throw new TRPCError({ code: "NOT_FOUND", message: "URL de importación no encontrada." });
       if (status === "archived") await d.execute(sql`UPDATE hotel_ical_blocks SET status = 'cancelled', cancelled_at = ${now}, updated_at = ${now} WHERE feed_id = ${id} AND status = 'active'`);
       return { ok: true };
-    }),
-  );
+    });
+  });
 }
 
 export interface SyncResult {
@@ -368,9 +370,10 @@ async function recordFailure(d: Exec, id: number, error: string, now: number): P
  * Sincroniza una URL: descarga, lee y aplica las altas, cambios y bajas por UID. Un fallo no toca los bloqueos.
  * `fetcher` se sustituye en las pruebas.
  */
-export async function syncFeedNow(feedId: number, opts: { now?: number; fetcher?: Fetcher } = {}): Promise<SyncResult> {
+export async function syncFeedNow(feedId: number, opts: { now?: number; fetcher?: Fetcher; signal?: AbortSignal } = {}): Promise<SyncResult> {
   const now = opts.now ?? Date.now();
-  const fetcher = opts.fetcher ?? ((url: string) => fetchIcal(url));
+  // La señal del trabajo (tiempo máximo por empresa) corta también la descarga en curso
+  const fetcher = opts.fetcher ?? ((url: string) => fetchIcal(url, { signal: opts.signal }));
   return withIcalDb(async (d) => {
     const [row] = await rows(d, sql`SELECT * FROM hotel_ical_feeds WHERE id = ${feedId}`);
     if (!row) throw new TRPCError({ code: "NOT_FOUND", message: "URL de importación no encontrada." });

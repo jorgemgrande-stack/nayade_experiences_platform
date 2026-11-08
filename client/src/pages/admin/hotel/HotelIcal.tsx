@@ -160,6 +160,10 @@ export default function HotelIcal() {
             (solo dice «No disponible», nunca datos del huésped) e importa la URL iCal de cada canal: lo vendido allí bloquea la disponibilidad aquí, sin tocar tus reservas.
             iCal sincroniza disponibilidad, no tarifas, y los canales lo leen cada cierto tiempo (de minutos a horas).
           </p>
+          <p className="mt-2 rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-800 dark:border-amber-800 dark:bg-amber-950/50 dark:text-amber-300">
+            Ojo: una reserva que llega por el iCal de un canal ya bloquea la disponibilidad. Si además la das de alta a mano en el PMS, cuenta dos veces.
+            En ese caso, no la crees como reserva o pausa la URL de ese canal.
+          </p>
         </div>
         {isPmsNotInstalled(q.error) ? <PmsNotInstalled /> : q.error ? (
           <Card><CardContent className="p-6 text-sm text-red-700 dark:text-red-400">{q.error.message}</CardContent></Card>

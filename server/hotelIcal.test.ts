@@ -73,6 +73,11 @@ describe("exportación iCal (RFC 5545)", () => {
 
   it("escapa el texto y agrupa noches consecutivas en tramos", () => {
     expect(escapeText("a,b;c\\d\ne")).toBe("a\\,b\\;c\\\\d\\ne");
+    // Ningún salto de línea (CRLF, CR o LF sueltos) llega crudo: no se pueden inyectar propiedades
+    expect(escapeText("x\r\nUID:falso\rSUMMARY:otro\nY")).toBe("x\\nUID:falso\\nSUMMARY:otro\\nY");
+    const injected = buildCalendar({ name: "Doble\rBEGIN:VEVENT\r\nUID:inyectado", seed: "s", ranges: [], now });
+    expect(injected.split("\r\n").filter((l) => /^(BEGIN:VEVENT|UID:)/.test(l))).toEqual([]);
+    expect(injected.replace(/\r\n/g, "")).not.toMatch(/[\r\n]/);
     expect(nightRanges(["2026-12-03", "2026-12-01", "2026-12-02", "2026-12-10", "2026-12-02", "mal"])).toEqual([
       { start: "2026-12-01", end: "2026-12-04" },
       { start: "2026-12-10", end: "2026-12-11" },
@@ -308,6 +313,11 @@ describe("protección SSRF", () => {
     const hang: HopGetter = (_u, _a, o) => new Promise((_, reject) => o.signal.addEventListener("abort", () => reject(Object.assign(new Error("abort"), { name: "AbortError" }))));
     const r = await fetchIcal("https://canal.example.org/a.ics", { resolve: async () => [{ address: "93.184.216.34", family: 4 }], get: hang, timeoutMs: 30 });
     expect(r).toEqual({ ok: false, error: "El canal no ha respondido a tiempo." });
+    // La señal del trabajo programado corta la descarga en curso
+    const outer = new AbortController();
+    setTimeout(() => outer.abort(), 20);
+    const cut = await fetchIcal("https://canal.example.org/a.ics", { resolve: async () => [{ address: "93.184.216.34", family: 4 }], get: hang, timeoutMs: 60_000, signal: outer.signal });
+    expect(cut).toEqual({ ok: false, error: "El canal no ha respondido a tiempo." });
   });
 
   it("el panel enseña la URL del canal enmascarada (lleva su propio secreto)", () => {
