@@ -517,10 +517,11 @@ async function recordSignature(
 }
 
 /** PDF firmado: el guardado o, si aún no lo hay, se genera y se guarda (con su huella y un evento). */
-async function ensurePdf(id: number, pdf: PdfDeps, now = Date.now()): Promise<{ data: Buffer; hash: string }> {
+async function ensurePdf(id: number, pdf: PdfDeps, now = Date.now(), generate = true): Promise<{ data: Buffer; hash: string }> {
   return run(async (d) => {
     const [doc] = await rows(d, sql`SELECT pdf, pdf_hash FROM esign_documents WHERE contract_id = ${id}`);
     if (doc) return { data: Buffer.from(doc.pdf as Buffer), hash: String(doc.pdf_hash) };
+    if (!generate) throw new TRPCError({ code: "PRECONDITION_FAILED", message: "El PDF firmado aún no se ha generado: lo genera la primera descarga de un usuario con la licencia activa." });
     const c = await contractRow(d, id);
     if (c.status !== "signed" || !c.signedAt || !c.signerName || !c.signedMethod) throw conflict("El PDF firmado solo existe cuando el contrato está firmado.");
     const content = verifiedContent(c.contentJson, c.contentHash);
@@ -586,8 +587,8 @@ export function voidContract(id: number, reason: string, userId: number, now = D
   );
 }
 
-export async function downloadPdf(id: number, pdf: PdfDeps = defaultPdf): Promise<{ filename: string; base64: string; sha256: string }> {
-  const r = await ensurePdf(id, pdf).catch((e) => {
+export async function downloadPdf(id: number, pdf: PdfDeps = defaultPdf, o: { generate?: boolean } = {}): Promise<{ filename: string; base64: string; sha256: string }> {
+  const r = await ensurePdf(id, pdf, Date.now(), o.generate ?? true).catch((e) => {
     if (e instanceof TRPCError) throw e;
     console.error(JSON.stringify({ ctx: "ContractsEsign", event: "pdf_failed", contractId: id, error: e instanceof Error ? e.message.slice(0, 160) : "error" }));
     throw new TRPCError({ code: "PRECONDITION_FAILED", message: "No se ha podido generar el PDF en este momento. La firma y sus evidencias están guardadas; inténtalo de nuevo en unos minutos." });
@@ -636,7 +637,10 @@ export async function signWithLink(link: EsignLink, input: { signerName: string;
       if (!(await consume(tx, link.id, now))) return null;
       const c = await contractRow(tx, link.contractId);
       if (c.status !== "sent") throw conflict("used");
-      return recordSignature(tx, c, s, ev, "link", actor, now);
+      // Si la firma no se registra (carrera), se deshace todo: el enlace no queda consumido con el contrato sin firmar
+      const signed = await recordSignature(tx, c, s, ev, "link", actor, now);
+      if (!signed) throw conflict("used");
+      return signed;
     }),
   ).catch((e) => {
     if (e instanceof TRPCError && (e.code === "CONFLICT" || e.code === "NOT_FOUND")) return null;

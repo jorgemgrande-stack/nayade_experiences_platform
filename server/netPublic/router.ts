@@ -394,7 +394,7 @@ async function esignPost(req: Request, res: Response) {
     if (f.data.action === "reject") {
       const x = await rejectWithLink(r.link, f.data.reason, evidence(req));
       if (!x.ok) return invalidLink(res, CONTRATO);
-      return page(res, 200, CONTRATO, `${notice("ok", "Contrato rechazado.")}<div class="sheet"><h1>${esc(CONTRATO)}</h1><p>Hemos avisado a ${esc(r.c.content.company)} de que no firmas este contrato. El enlace ya no se puede usar.</p></div>`);
+      return page(res, 200, CONTRATO, `${notice("ok", "Contrato rechazado.")}<div class="sheet"><h1>${esc(CONTRATO)}</h1><p>${esc(r.c.content.company)} verá en su panel que has rechazado este contrato. El enlace ya no se puede usar.</p></div>`);
     }
     const x = await esignSignWithLink(r.link, { signerName: f.data.signerName, signerTaxId: f.data.signerTaxId, accepted: f.data.accepted === "1" }, evidence(req));
     if (!x.ok) return "used" in x ? invalidLink(res, CONTRATO) : esignPage(res, 400, r.c, notice("err", x.error), { signerName: f.data.signerName, signerTaxId: f.data.signerTaxId });

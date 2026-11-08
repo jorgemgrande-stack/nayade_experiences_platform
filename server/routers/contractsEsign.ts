@@ -64,6 +64,10 @@ export const contractsEsignRouter = router({
     .input(z.object({ id, signerName: z.string().max(ESIGN_LIMITS.nameMax), signerTaxId: z.string().max(ESIGN_LIMITS.taxIdMax + 10).nullish(), accepted: z.boolean() }))
     .mutation(({ ctx, input }) => esign.signInPanel(input, ctx.user.id, evidence(ctx))),
   void: admin.input(z.object({ id, reason: z.string().max(ESIGN_LIMITS.reasonMax) })).mutation(({ ctx, input }) => esign.voidContract(input.id, input.reason, ctx.user.id)),
-  // Consulta (también en solo lectura): la primera vez genera y guarda el PDF firmado
-  downloadPdf: staff.input(z.object({ id })).query(({ input }) => esign.downloadPdf(input.id)),
+  // Consulta (también en solo lectura): sirve el PDF firmado guardado. Generarlo y guardarlo la primera vez es escribir:
+  // solo con la licencia activa y un rol que no sea de solo lectura
+  downloadPdf: staff.input(z.object({ id })).query(async ({ ctx, input }) => {
+    const canWrite = ctx.user.role !== "readonly" && (await getCapabilityAccess().check(ESIGN_CAPABILITY, { write: true })).allowed;
+    return esign.downloadPdf(input.id, undefined, { generate: canWrite });
+  }),
 });
