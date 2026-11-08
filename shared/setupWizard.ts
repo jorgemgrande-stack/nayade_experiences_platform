@@ -285,7 +285,7 @@ export const SECTOR_MODULES: ReadonlyArray<{ id: string; label: string; href: st
   { id: "care-net", label: "Care Net", href: null },
   { id: "ski-school", label: "Escuela de esquí", href: null },
   { id: "ski-rental", label: "Alquiler de material de esquí", href: null },
-  { id: "life-net", label: "Life Net", href: null },
+  { id: "life-net", label: "Life Net", href: "/admin/net/life" },
   { id: "social-token-net", label: "Social Token Net", href: null },
 ];
 

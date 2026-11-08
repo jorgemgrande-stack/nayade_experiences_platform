@@ -17,6 +17,8 @@ import { cn } from "@/lib/utils";
 import { usePanelSubscription } from "@/hooks/usePanelSubscription";
 import { PanelLoading } from "@/components/admin/PanelStates";
 import EssentialHome from "./home/EssentialHome";
+import LifeHome from "./lifeNet/LifeHome";
+import { prefersLifeHome } from "@shared/lifeNet";
 import { AuthRequired, PanelSpinner } from "@/components/auth/AuthRequired";
 import { usePanelBrand } from "@/hooks/usePanelBrand";
 
@@ -265,6 +267,8 @@ function SectionLabel({ label }: { label: string }) {
 // empresas sin licencias por capacidad: el dashboard de siempre, sin cambios.
 export default function AdminDashboard() {
   const sub = usePanelSubscription();
+  // Hogar con Life Net (plan personal o solo Life Net entre sus herramientas): su inicio es «Mi día»
+  if (sub.mode === "tasks" && prefersLifeHome({ planKey: sub.data?.plan?.key ?? null, capabilityState: sub.capabilityState })) return <LifeHome />;
   if (sub.mode === "tasks") return <EssentialHome />;
   // Con error, el guardián de rutas (AdminRouteGate) muestra «Reintentar»: nunca el inicio de otra empresa
   if (sub.mode === "loading" || sub.mode === "error") {

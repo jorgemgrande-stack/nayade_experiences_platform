@@ -290,3 +290,58 @@ Por eso la opción B se resuelve como un **plan** propio y no como un Net con Co
 - No se ha activado ningún cobro ni ninguna variable.
 - No se ha consultado Stripe.
 - Este documento es la única modificación.
+
+---
+
+## 4. Implementación de las 7 funciones (08/11/2026)
+
+Decisiones aplicadas: J5 (5 miembros incluidos; un miembro puede ser un perfil sin acceso), J6 (titular persona y nombre del hogar editable) y J8 (solo las 7 funciones). Decisión técnica T1: tablas propias `life_*`, no `crm_tasks`.
+
+**Dónde está.**
+
+| Pieza | Fichero |
+|---|---|
+| Lógica pura (validaciones, estados, seguimiento, hora del hogar) | `shared/lifeNet.ts` |
+| Datos (BD de la empresa en curso) | `server/lifeNetDb.ts` |
+| API tRPC `lifeNet.*` | `server/routers/lifeNet.ts` (licencia `life-net` en `server/_core/capabilities/routeGuard.ts`) |
+| Recordatorios por correo | `server/lifeNet/reminders.ts` (tarea `life-net-reminders`, cada 10 min, por empresa) |
+| Migración | `db/migrations/0047_life_net.sql` (solo `CREATE TABLE`) |
+| Menú | sección «Life Net» de `shared/panelExtensions.ts` (módulo integrado `life_net`) |
+| Pantallas | `client/src/pages/admin/lifeNet/*` |
+
+**Funciones.**
+- F1 Organización personal: «Mi día» (`/admin/net/life`), con mis tareas (vencidas primero) y mi agenda de 7 días. Sin miembro vinculado, las del hogar.
+- F2 Gestión familiar y F6 Miembros del hogar: `/admin/life/miembros`, solo para la administración. Incluye los datos del titular (nombre, apellidos y NIF opcional) y el nombre del hogar («Hogar de …» por defecto). Un miembro es un perfil sin acceso o está vinculado a un usuario del panel; se invita desde «Usuarios y permisos».
+- F3 Calendario y agenda y F5 Actividades compartidas: `/admin/life/agenda`. Actividades y compromisos de uno o varios miembros, con lugar, horario y recordatorio.
+- F4 Tareas y recordatorios: `/admin/life/tareas`. Varios responsables, fecha límite y recordatorio. Al marcarla hecha se guarda quién y cuándo; la administración puede marcarla por otro miembro, por ejemplo un menor.
+- F7 Seguimiento: `/admin/life/seguimiento`. Por miembro: pendientes, vencidas, hechas en 30 días y actividades; y las últimas tareas hechas.
+
+**Cupo de miembros.** Se lee la métrica `household_members` del plan (`currentBusinessLimit`). Si el plan no la define, rige `LIFE_HOUSEHOLD_MEMBERS_INCLUDED = 5` (`shared/lifeNet.ts`). El titular cuenta, los archivados no.
+
+**Quién accede.** La API exige la licencia `life-net`. Además, cada procedimiento exige ser la administración del hogar o un usuario vinculado a un miembro activo. Los usuarios del panel no vinculados reciben 403.
+- Gestionar el hogar y los miembros: solo la administración.
+- Agenda y tareas: cualquier miembro con acceso. Cambia o quita lo que creó o en lo que participa.
+- El rol de solo lectura no escribe.
+- Nada se borra: tareas y actividades se archivan y los miembros se desactivan.
+
+**Recordatorios.**
+- Destinatarios: miembros con acceso, usuario activo y correo que sean responsables o participantes.
+- Solo en empresas con `life-net` activa y en modo multiempresa.
+- Una vez por elemento, miembro y hora (tabla `life_reminders` más clave de idempotencia de la bandeja).
+- Margen de 24 h: lo vencido hace más no se envía.
+- Categoría `operational`, ya autorizada en el correo real de production. Una categoría propia (`life_reminder`) obligaría a tocar `LIVE_MAIL_CATEGORIES` en `scripts/deploy/esRailwayLib.ts` (control de despliegue) y a relanzar `correo-production-activar`: queda como decisión pendiente si se quiere separar en las trazas.
+- Interruptor por empresa: `life_net_reminders_enabled` (activo por defecto).
+
+**Un hogar con solo Life** (capacidades `life-net`, `admin-users` y `comms-email`) ve este menú, comprobado en `server/lifeNet.test.ts`:
+- Inicio.
+- Life Net: Mi día, Agenda del hogar, Tareas y recordatorios, Seguimiento y Miembros y hogar.
+- Organización: Usuarios y permisos.
+- Suscripción: Plan y uso, Amplía tu empresa.
+- Ayuda y Soporte.
+
+No ve CRM, tienda, web, facturación ni ajustes (estos exigen `admin-panel`). Su inicio (`/admin`) es «Mi día» si el plan es `life` o si Life Net es su única herramienta (`prefersLifeHome`). Una empresa con Essential y Life Net conserva su inicio.
+
+**Pendiente (no es de esta entrega).**
+- Plan `life` y cupo `household_members` en el catálogo: los prepara el agente del plan personal.
+- Los textos «Amplía tu empresa» y «Plan y uso» siguen con el vocabulario de empresa.
+- Ficha comercial y web: siguen como «Próximamente» hasta que se decida J10.
