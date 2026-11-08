@@ -84,3 +84,12 @@ Se contrastó con el código y las pruebas de cada módulo, y con las verificaci
 - Venta asistida: el panel muestra «Lo activa nuestro equipo contigo» y «Solicitar información» crea una solicitud en el CRM; la web ofrece «Solicitar propuesta». No hay checkout ni cobro automático, y no se crea ningún Price de Stripe.
 - Precios, contratos y suscripciones no cambian. Social Token Net y Life Net siguen en Próximamente.
 - La orden `catalog-review` aplica las dos revisiones en orden. En la del 25/10, los productos que ya cambió la del 07/11 aparecen como conflicto: es lo esperado.
+
+## Revisión del 08/11/2026: plan personal Life
+
+`server/catalog/review20261108.ts` (decisiones J1–J10 de Jorge del 08/11/2026) da de alta el plan personal **Life** (`life`, familia `core_plan`), independiente de Essential: un hogar por tenant con `life-net`, `admin-users` y `comms-email`, 5 miembros del hogar (`household_members`) y solo tarifa mensual de 7,44 € sin IVA (9,00 € IVA incluido). Entra en **Próximamente** con estado técnico «planned»: no se suscribe, no se cotiza como contratable, no tiene Price de Stripe y la prueba de 14 días está apagada (`CP_LIFE_TRIAL_ENABLED`). También cambia la presentación de Life Net de «Profesionales y familias.» a «Particulares y familias.», solo desde ese valor de partida.
+
+- Por el flujo normal del CRM (crear → publicar → precio en borrador → aprobar), con autor `operacion:revision-catalogo-2026-11-08`. Idempotente; un plan `life` creado por otra persona o un borrador ajeno de Life Net se respetan y salen como conflicto.
+- El único precio que añade es el del plan nuevo. La orden comprueba que los precios que ya existían quedan iguales (`preciosExistentesIntactos`) y falla si no.
+- **Orden en production (sin cambio de estado comercial):** primero `catalogo-revision` (simulación) y `catalogo-revision-aplicar`, porque la ficha de un producto que todavía no existe no se puede importar; después `catalogo-fichas` → `catalogo-fichas-aplicar` → `catalogo-fichas-publicar` → `catalogo-fichas-publicar-aplicar` y `catalogo-fichas-integridad`. Al revés, el cambio de presentación de Life Net encontraría el borrador de la ficha sin publicar y quedaría como conflicto.
+- Contratación de particulares, textos y variables: `docs/elephant-source/LIFE_CONTRATACION_PARTICULARES.md`.

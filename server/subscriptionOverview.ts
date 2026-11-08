@@ -14,6 +14,7 @@
 import { CAPABILITIES, capability, type CapabilityGroup, type CapabilityTier } from "./catalog/capabilities";
 import { PRODUCTS } from "./catalog/elephantSourceV1";
 import { decide, type CapabilityGrant } from "./_core/capabilities/model";
+import { LIFE_CAPABILITIES, LIFE_PLAN } from "../shared/personalPlans";
 
 export type EffectiveCapabilityStatus = "active" | "read_only" | "expired" | "contracted" | "pending_setup" | "suspended" | "cancelled";
 
@@ -40,7 +41,7 @@ export interface SubscriptionLimit {
 export interface SubscriptionOverview {
   mode: "single" | "multi";
   licensing: "legacy" | "capabilities";
-  plan: { key: "essential" | "business" | "enterprise"; name: string } | null;
+  plan: { key: "essential" | "business" | "enterprise" | "life"; name: string } | null;
   state: SubscriptionState;
   trial: { endsAt: number; daysLeft: number } | null;
   capabilities: SubscriptionCapability[];
@@ -110,7 +111,10 @@ export function buildSubscriptionOverview(o: {
 
   // Plan: el nivel más alto con alguna capacidad propia viva (los planes son acumulativos)
   const live = caps.filter((c) => c.status !== "cancelled");
-  const planHit = PLAN_ORDER.find((p) => live.some((c) => capability(c.id)?.tier === p.tier));
+  // Plan personal Life (08/11/2026): sus capacidades base son de nivel Essential, así que se reconoce antes por su
+  // licencia, si el hogar no tiene nada más que las del plan
+  const personal = live.some((c) => c.id === "life-net") && live.every((c) => LIFE_CAPABILITIES.includes(c.id));
+  const planHit = personal ? { key: LIFE_PLAN as "life" } : PLAN_ORDER.find((p) => live.some((c) => capability(c.id)?.tier === p.tier));
   const planProduct = planHit ? PRODUCTS.find((p) => p.key === planHit.key && p.family === "core_plan") : undefined;
   const plan = planHit && planProduct ? { key: planHit.key, name: planProduct.draft.name } : null;
 

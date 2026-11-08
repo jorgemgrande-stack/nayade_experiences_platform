@@ -26,10 +26,24 @@ import type { StripeStore } from "./store";
 export const SELF_SERVICE_PLANS = ["essential", "business"] as const;
 export type SelfServicePlan = (typeof SELF_SERVICE_PLANS)[number];
 
-/** Nombre del Product en Stripe para cada plan (decisión del propietario, 17/10/2026). */
-export const STRIPE_PRODUCT_NAME: Record<SelfServicePlan, string> = {
+/**
+ * Planes PERSONALES con Checkout (shared/personalPlans.ts; decisiones de Jorge del 08/11/2026). No son planes de empresa:
+ * no reciben complementos, no se cambian por Essential o Business desde el panel ni entran en la conversión de una prueba
+ * de empresa, así que no están en SELF_SERVICE_PLANS. Solo tarifa mensual (exentos de la anual) y solo entran en el
+ * catálogo de Stripe cuando el plan está «available»: hasta entonces no hay Product ni Price que preparar.
+ */
+export const PERSONAL_CHECKOUT_PLANS = ["life"] as const;
+export type PersonalCheckoutPlan = (typeof PERSONAL_CHECKOUT_PLANS)[number];
+/** Todo lo que se paga por Checkout como plan: los de empresa y los personales. */
+export const CHECKOUT_PLANS = [...SELF_SERVICE_PLANS, ...PERSONAL_CHECKOUT_PLANS] as const;
+export type CheckoutPlan = (typeof CHECKOUT_PLANS)[number];
+export const isPersonalCheckoutPlan = (plan: string): plan is PersonalCheckoutPlan => (PERSONAL_CHECKOUT_PLANS as readonly string[]).includes(plan);
+
+/** Nombre del Product en Stripe para cada plan (decisión del propietario, 17/10/2026; Life, 08/11/2026). */
+export const STRIPE_PRODUCT_NAME: Record<CheckoutPlan, string> = {
   essential: "Elephant Core Essential",
   business: "Elephant Core Business",
+  life: "Elephant Life",
 };
 
 const KIND_INTERVAL = { monthly: "month", yearly: "year" } as const;
@@ -105,6 +119,32 @@ export async function desiredCatalog(catalog: CatalogPort, opts: { includeIntern
       if (!Number.isInteger(p.amountCents) || p.amountCents <= 0) throw new StripeCatalogError(`Importe no válido en el precio ${p.id}`);
       out.push({ productKey: plan, productName: STRIPE_PRODUCT_NAME[plan], webPriceId: p.id, kind, interval: KIND_INTERVAL[kind], amountCents: p.amountCents, currency: "EUR", lookupKey: lookupKeyFor(plan, kind, "EUR", p.id), sellable: true, commercialStatus: product.commercialStatus });
     }
+  }
+  // Planes personales: solo mensual (exentos de la tarifa anual) y solo con la venta abierta («available»). Sin publicar o
+  // sin abrir, se quedan fuera sin detener nada: el catálogo de Essential y Business no cambia
+  for (const plan of PERSONAL_CHECKOUT_PLANS) {
+    const product = offer.find((p) => p.key === plan);
+    if (!product) continue;
+    if (product.commercialStatus !== "available" || (product.internalOnly && !opts.includeInternal)) {
+      opts.onSkip?.({ productKey: plan, reason: `Plan personal «${plan}» en «${product.commercialStatus}»: sin Product ni Price hasta abrir la venta` });
+      continue;
+    }
+    // Un plan personal mal configurado se queda fuera (se informa): nunca detiene el cobro de Essential y Business
+    const approved = product.prices.filter((p) => p.kind === "monthly" && p.status === "approved" && p.currency.toUpperCase() === "EUR");
+    const p = approved[0];
+    const problem =
+      approved.length !== 1
+        ? `El plan «${plan}» necesita exactamente un precio mensual aprobado en EUR (hay ${approved.length})`
+        : p.taxIncluded
+          ? `El precio ${p.id} incluye IVA: los Prices de Stripe se crean sin IVA (tax_behavior exclusive)`
+          : !Number.isInteger(p.amountCents) || p.amountCents <= 0
+            ? `Importe no válido en el precio ${p.id}`
+            : null;
+    if (problem) {
+      opts.onSkip?.({ productKey: plan, reason: problem });
+      continue;
+    }
+    out.push({ productKey: plan, productName: STRIPE_PRODUCT_NAME[plan], webPriceId: p.id, kind: "monthly", interval: "month", amountCents: p.amountCents, currency: "EUR", lookupKey: lookupKeyFor(plan, "monthly", "EUR", p.id), sellable: true, commercialStatus: product.commercialStatus });
   }
   // Productos internos de pruebas: solo si se piden expresamente (catálogo del sandbox), nunca en live
   const listed = offer.filter((p) => PURCHASABLE_FAMILIES.has(p.family) && (p.commercialStatus === "available" || isPrepared(p)) && (!p.internalOnly || opts.includeInternal));

@@ -12,18 +12,29 @@
  *
  * Comunicaciones: SOLO a través del puerto `notify`. En producción no se conecta a ningún envío real
  * hasta que se autorice (la ruta pública está apagada por defecto). Nunca se registran tokens.
+ *
+ * Plan personal Life (decisión de Jorge del 08/11/2026): el mismo recorrido para un hogar, con 14 días desde la
+ * activación, el titular particular (nombre y apellidos, NIF opcional) y el nombre del hogar en lugar de la empresa.
+ * APAGADO salvo `lifeTrials` (CP_LIFE_TRIAL_ENABLED=1): sin él no se registra ni se activa ninguna prueba de Life.
  */
 import type { ProvisionRequest, ProvisionResult } from "../_core/provisioning/types";
 import type { LicensingService } from "../licensing/service";
 import type { SubscriptionService } from "../subscriptions/service";
 import { opsLog } from "../_core/ops/log";
+import { LIFE_PLAN, LIFE_TRIAL_DAYS } from "../../shared/personalPlans";
 import { nextState } from "./machine";
 import { TrialError, TrialService } from "./service";
-import type { TrialRequest } from "./store";
+import type { TrialHolder, TrialRequest } from "./store";
 
 const DAY = 86_400_000;
 export const ESSENTIAL_PLAN = "essential";
 export const TRIAL_PLAN_DAYS = 15;
+/** Planes con prueba gratuita y sus días (desde la activación de la plataforma). */
+export const TRIAL_PLANS: Readonly<Record<string, number>> = { [ESSENTIAL_PLAN]: TRIAL_PLAN_DAYS, [LIFE_PLAN]: LIFE_TRIAL_DAYS };
+/** Plan de una prueba: el pedido al registrarla (las anteriores al plan Life, Essential). */
+export const trialPlanOf = (t: Pick<TrialRequest, "configuration">): string => (t.configuration?.plan === LIFE_PLAN ? LIFE_PLAN : ESSENTIAL_PLAN);
+/** Interruptor de la prueba del plan Life: solo «1» exacto la enciende. */
+export const lifeTrialsEnabled = (env: Record<string, string | undefined>): boolean => env.CP_LIFE_TRIAL_ENABLED === "1";
 /** Avisos antes del vencimiento (días): 7, 3 y 1 días antes y el día del fin (D-16; prueba de 15 días). */
 export const NOTICE_DAYS = [7, 3, 1, 0] as const;
 
@@ -69,6 +80,8 @@ export interface TrialOnboardingDeps {
    * su contraseña; `null` si ya entró. Opcional: sin él no se puede reenviar el acceso.
    */
   reissueInvite?: (tenantId: string) => Promise<string | null>;
+  /** Prueba del plan personal Life (CP_LIFE_TRIAL_ENABLED=1). Por defecto, apagada. */
+  lifeTrials?: boolean;
   now?: () => number;
 }
 
@@ -92,6 +105,12 @@ export interface TrialLicenceSync {
   subscriptionMoved?: boolean;
   /** Licencias cuya caducidad se ha cambiado. */
   licencesChanged?: number;
+}
+
+/** Nombre del hogar: el que da el titular o, si no da ninguno, «Hogar de» y su nombre y apellidos. */
+export function householdNameOf(holder: Pick<TrialHolder, "firstName" | "lastName">, householdName?: string | null): string {
+  const given = householdName?.trim();
+  return given ? given : `Hogar de ${holder.firstName.trim()} ${holder.lastName.trim()}`.slice(0, 160);
 }
 
 /** Longitud máxima de un identificador de tenant (TENANT_ID_RE del aprovisionamiento). */
@@ -123,6 +142,17 @@ export class TrialOnboardingService {
   /** Registro público: crea la solicitud y envía el enlace de verificación (solo si es nueva). */
   async register(input: { email: string; companyName: string; idempotencyKey: string; ip?: string | null }) {
     const r = await this.d.trials.register({ email: input.email, companyName: input.companyName, configuration: { plan: ESSENTIAL_PLAN, addons: [] }, idempotencyKey: input.idempotencyKey, ip: input.ip ?? null });
+    if (r.created && r.verificationToken) await this.d.notify.verification(r.trial.email, { trialId: r.trial.id, token: r.verificationToken });
+    return { trialId: r.trial.id, created: r.created, state: r.trial.state };
+  }
+
+  /**
+   * Registro público de la prueba del plan personal Life: un hogar con su titular particular (nombre y apellidos, NIF
+   * opcional, sin razón social) y el nombre del hogar, editable después (por defecto, «Hogar de» y el titular).
+   */
+  async registerLife(input: { email: string; holder: TrialHolder; householdName?: string | null; idempotencyKey: string; ip?: string | null }) {
+    if (!this.d.lifeTrials) throw new TrialError("unavailable", "La prueba del plan Life todavía no está disponible");
+    const r = await this.d.trials.register({ email: input.email, companyName: householdNameOf(input.holder, input.householdName), configuration: { plan: LIFE_PLAN, addons: [], holder: input.holder }, idempotencyKey: input.idempotencyKey, ip: input.ip ?? null });
     if (r.created && r.verificationToken) await this.d.notify.verification(r.trial.email, { trialId: r.trial.id, token: r.verificationToken });
     return { trialId: r.trial.id, created: r.created, state: r.trial.state };
   }
@@ -200,17 +230,22 @@ export class TrialOnboardingService {
     if (!["verified", "provisioning", "active"].includes(t.state)) throw new TrialError("invalid_state", `La prueba está en «${t.state}»: no se puede activar`);
     const tenantId = t.tenantId ?? trialTenantId(t.id, t.companyName);
     let domain: string | null = null;
+    // Plan de la prueba: Essential o el plan personal Life (este, solo con su interruptor encendido)
+    const plan = trialPlanOf(t);
+    const planName = plan === LIFE_PLAN ? "Life" : "Essential";
+    const days = TRIAL_PLANS[plan];
+    if (plan === LIFE_PLAN && !this.d.lifeTrials && t.state === "verified") throw new TrialError("unavailable", "La prueba del plan Life todavía no está disponible");
 
-    // 0. Antes de crear nada: sin tarifa Essential aprobada la prueba no podría tener suscripción ni licencias, y se
+    // 0. Antes de crear nada: sin tarifa del plan aprobada la prueba no podría tener suscripción ni licencias, y se
     // quedaría una plataforma a medias con la bienvenida ya enviada. La prueba sigue verificada y se puede reintentar.
-    if (t.state === "verified" && !(await this.d.priceOf(ESSENTIAL_PLAN, "monthly"))) throw new TrialError("invalid_state", "Essential no tiene tarifa mensual aprobada y publicada");
+    if (t.state === "verified" && !(await this.d.priceOf(plan, "monthly"))) throw new TrialError("invalid_state", `${planName} no tiene tarifa mensual aprobada y publicada`);
 
     // 1. Plataforma (con su administrador)
     if (t.state === "verified") t = await this.d.trials.requestProvisioning(t.id, t.version, actor);
     if (t.state === "provisioning") {
       let result: ProvisionResult;
       try {
-        result = await this.d.provision({ tenantId, displayName: t.companyName, adminEmail: t.email, platformDomain: this.d.platformDomain, trialDays: TRIAL_PLAN_DAYS });
+        result = await this.d.provision({ tenantId, displayName: t.companyName, adminEmail: t.email, platformDomain: this.d.platformDomain, trialDays: days });
       } catch (e) {
         await this.d.trials.markProvisioningFailed(t.id, t.version, e instanceof Error ? e.message : "error", actor);
         throw e;
@@ -220,7 +255,7 @@ export class TrialOnboardingService {
         throw new TrialError("invalid_state", `El alta de la plataforma no terminó (${result.status}${result.failedStep ? `, paso ${result.failedStep}` : ""}); se puede reintentar`);
       }
       domain = result.domain ?? null;
-      t = await this.d.trials.markProvisioned(t.id, t.version, tenantId, actor);
+      t = await this.d.trials.markProvisioned(t.id, t.version, tenantId, actor, days);
       // La invitación del administrador solo existe en la ejecución que lo creó. Si el alta ya estaba
       // completada (la prueba se quedó a medias tras ella), se emite una nueva para no dejar al
       // propietario sin acceso.
@@ -235,19 +270,19 @@ export class TrialOnboardingService {
     // 2. Empresa en el CRM (enlazada a la plataforma)
     const company = (await this.d.companies.byTenant(tenantId)) ?? (await this.d.companies.create({ name: t.companyName, email: t.email, tenantId }, actor));
 
-    // 3. Suscripción Essential en prueba (sin tarjeta ni cobro)
+    // 3. Suscripción del plan en prueba (sin tarjeta ni cobro)
     const live = (await this.d.subscriptions.list({ companyId: company.id })).find((s) => s.status !== "canceled");
     let subscription = live;
     if (!subscription) {
-      const priceId = await this.d.priceOf(ESSENTIAL_PLAN, "monthly");
-      if (!priceId) throw new TrialError("invalid_state", "Essential no tiene tarifa mensual aprobada y publicada");
+      const priceId = await this.d.priceOf(plan, "monthly");
+      if (!priceId) throw new TrialError("invalid_state", `${planName} no tiene tarifa mensual aprobada y publicada`);
       subscription = await this.d.subscriptions.create(
-        { companyId: company.id, tenantId, interval: "month", trialDays: Math.max(1, Math.ceil(((t.endsAt ?? this.now() + TRIAL_PLAN_DAYS * DAY) - this.now()) / DAY)), plan: { productKey: ESSENTIAL_PLAN, priceId }, reason: `Prueba gratuita #${t.id}` },
+        { companyId: company.id, tenantId, interval: "month", trialDays: Math.max(1, Math.ceil(((t.endsAt ?? this.now() + days * DAY) - this.now()) / DAY)), plan: { productKey: plan, priceId }, reason: `Prueba gratuita #${t.id}` },
         actor,
       );
     }
 
-    // 4. Licencias Essential con caducidad al final de la prueba
+    // 4. Licencias del plan con caducidad al final de la prueba
     const licences = await this.d.licensing.apply(subscription.id, { activate: true, actor, reason: `Prueba gratuita #${t.id}` });
     return { trial: t, tenantId, domain, companyId: company.id, subscriptionId: subscription.id, licencesChanged: licences.applied.length, capabilities: licences.desired.length };
   }

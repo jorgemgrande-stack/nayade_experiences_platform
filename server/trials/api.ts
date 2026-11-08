@@ -21,6 +21,7 @@ import type { TrialStore } from "./store";
 import { TRIAL_STATES } from "./machine";
 import { opsLog } from "../_core/ops/log";
 import { APPROVAL_CATEGORIES, OrderError, type ApprovalCategory } from "../orchestrator/types";
+import { LIFE_PLAN } from "../../shared/personalPlans";
 
 /**
  * Conversión de una prueba a pago por EXCEPCIÓN administrativa: la hace el orquestador con un pedido de
@@ -56,13 +57,24 @@ export function createPublicTrialRouter(o: { onboarding: TrialOnboardingService;
     wrap(async (req, res) => {
       res.setHeader("Cache-Control", "no-store");
       const b = z
-        .object({ email: z.string().max(254), companyName: z.string().max(160), idempotencyKey: z.string().max(80), website: z.string().max(200).optional() })
+        .object({
+          email: z.string().max(254),
+          companyName: z.string().max(160).optional(),
+          // Plan personal Life (08/11/2026): titular particular y nombre del hogar, nunca razón social; con su interruptor
+          plan: z.literal(LIFE_PLAN).optional(),
+          holder: z.object({ firstName: z.string().max(80), lastName: z.string().max(120), taxId: z.string().max(20).optional() }).strict().optional(),
+          householdName: z.string().max(160).optional(),
+          idempotencyKey: z.string().max(80),
+          website: z.string().max(200).optional(),
+        })
         .strict()
+        .refine((x) => (x.plan === LIFE_PLAN ? !!x.holder && x.companyName === undefined : x.companyName !== undefined && !x.holder && x.householdName === undefined), { message: "Datos del alta no válidos" })
         .parse(req.body);
       // Campo trampa: los robots lo rellenan; se responde igual que a una persona, sin crear nada
       if (b.website) return void res.status(202).json(ACCEPTED);
       try {
-        await o.onboarding.register({ email: b.email, companyName: b.companyName, idempotencyKey: b.idempotencyKey, ip: req.ip ?? null });
+        if (b.plan === LIFE_PLAN) await o.onboarding.registerLife({ email: b.email, holder: b.holder!, householdName: b.householdName ?? null, idempotencyKey: b.idempotencyKey, ip: req.ip ?? null });
+        else await o.onboarding.register({ email: b.email, companyName: b.companyName!, idempotencyKey: b.idempotencyKey, ip: req.ip ?? null });
       } catch (e) {
         // No se revela si el correo ya tiene una prueba en curso
         if (e instanceof TrialError && e.code === "conflict") return void res.status(202).json(ACCEPTED);

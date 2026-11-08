@@ -311,7 +311,7 @@ export interface ControlPlaneDeps {
    * sin datos personales ni tokens: no se envía nada). `activation`: aquí se publica la activación de la prueba
    * (la misma instancia que usan las rutas) para que la tarea programada reintente las altas incompletas.
    */
-  trials?: { store: TrialStore; publicEnabled?: boolean; autoProvision?: boolean; notify?: TrialNotifier; limits?: Partial<TrialLimits>; blockedDomains?: string[]; activation?: { activate?: (trialId: number, actor: string) => Promise<unknown>; syncLicences?: (trialId: number, actor: string) => Promise<TrialLicenceSync> } };
+  trials?: { store: TrialStore; publicEnabled?: boolean; autoProvision?: boolean; lifeTrials?: boolean; notify?: TrialNotifier; limits?: Partial<TrialLimits>; blockedDomains?: string[]; activation?: { activate?: (trialId: number, actor: string) => Promise<unknown>; syncLicences?: (trialId: number, actor: string) => Promise<TrialLicenceSync> } };
   /** Sedes y entidades fiscales (registro 0009), con los límites del plan contratado. */
   organization?: OrganizationStore;
   /** Registro de eventos comerciales (CRM 0015), solo lectura. */
@@ -2106,6 +2106,8 @@ export function createControlPlaneApp(d: ControlPlaneDeps): Express {
         priceOf: async (key, kind) => (await catalogPort.offer()).find((p) => p.key === key)?.prices.find((x) => x.kind === kind && x.status === "approved")?.id ?? null,
         notify: d.trials.notify ?? logOnlyTrialNotifier,
         reissueInvite: (tenantId) => provisioning.reissueAdminInvite(tenantId),
+        // Prueba del plan personal Life: apagada salvo CP_LIFE_TRIAL_ENABLED=1 (main.ts)
+        lifeTrials: !!d.trials.lifeTrials,
         now: d.subscriptions.now,
       });
       router.use("/trials", createTrialAdminRouter({ onboarding, trials: trialService, store: d.trials.store, convert: trialConversion }));

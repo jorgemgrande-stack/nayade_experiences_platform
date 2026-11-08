@@ -10,7 +10,7 @@
  * es la semilla de la v1.
  *
  * Importes en céntimos, EUR, SIN IVA (21 % aparte). Las tarifas anuales son las expresamente
- * aprobadas (no 12 × mensual). Solo los planes Core tienen tarifa anual.
+ * aprobadas (no 12 × mensual). Solo los planes Core tienen tarifa anual (el plan personal Life, solo mensual).
  *
  * Estados (honestidad; revisados el 25/10/2026 en review20261025.ts, con su evidencia): ninguno es todavía «available».
  *   - on_request («Implantación acompañada»): operativo; el equipo lo implanta con el cliente.
@@ -27,6 +27,7 @@
 import { capabilitiesOfTier } from "./capabilities";
 import { EVIDENCE_2026_10_25, STATUS_REVIEW_2026_10_25 } from "./review20261025";
 import { STATUS_REVIEW_2026_11_07 } from "./review20261107";
+import { HOUSEHOLD_MEMBERS_METRIC, LIFE_CAPABILITIES, LIFE_HOUSEHOLD_MEMBERS_INCLUDED, LIFE_MONTHLY_BASE_CENTS, LIFE_PLAN } from "../../shared/personalPlans";
 import type { ProductDraft } from "../web/schemas";
 
 type Fam = "core_plan" | "net_module" | "net_bundle" | "connect" | "connect_bundle" | "extra" | "addon" | "service";
@@ -274,7 +275,8 @@ const CARE: SeedProduct[] = [
   net({ key: "care-net-treatments", name: "Care Net · Tratamientos y bonos", group: "care", tagline: "Tratamientos, bonos y sesiones.", tech: "partial", commercial: "in_preparation", monthly: 19, capabilities: ["care-net"], dependencies: ["care-net-agenda"], icon: "ticket", notes: DEPS_NOTE }),
   netBundle({ key: "care-net-complete", name: "Care Net", group: "care", tagline: "Solución integral para centros de bienestar, masajes, terapias y clínicas.", description: "Agenda y citas, clientes e historiales, tratamientos, bonos y cobros en un solo producto, sin extensiones adicionales. Fichas clínicas, seguimiento especializado y recordatorios: próximamente, incluidos sin coste adicional.", tech: "partial", commercial: "on_request", monthly: 69, bundleOf: ["care-net-agenda", "care-net-clinical", "care-net-treatments"], forWho: "Clínicas, centros de bienestar, estética y fisioterapia.", icon: "heart" }),
 ];
-const LIFE: SeedProduct[] = [net({ key: "life-net", name: "Life Net", group: "life", scope: "company", tagline: "Organización personal y familiar.", tech: "planned", commercial: "coming_soon", monthly: 9, capabilities: ["life-net"], forWho: "Profesionales y familias.", icon: "leaf" })];
+// Producto Net y licencia LIFE_NET (J2, 08/11/2026): se contrata con el plan personal Life, nunca sobre un plan de empresa
+const LIFE: SeedProduct[] = [net({ key: "life-net", name: "Life Net", group: "life", scope: "company", tagline: "Organización personal y familiar.", tech: "planned", commercial: "coming_soon", monthly: 9, capabilities: ["life-net"], forWho: "Particulares y familias.", icon: "leaf" })];
 const SOCIAL: SeedProduct[] = [
   net({ key: "social-token-net-communities", name: "Social Token Net · Comunidades", group: "social-token", scope: "company", tagline: "Comunidades de clientes y socios.", tech: "planned", commercial: "coming_soon", monthly: 39, capabilities: ["social-token-net"], icon: "users" }),
   net({ key: "social-token-net-tokens", name: "Social Token Net · Tokens internos", group: "social-token", scope: "company", tagline: "Puntos y tokens internos de fidelización.", tech: "planned", commercial: "coming_soon", monthly: 29, capabilities: ["social-token-net-tokens"], icon: "coins", requirements: [TOKENS_R1, TOKENS_R2] }),
@@ -337,7 +339,29 @@ const EXTRAS: SeedProduct[] = [
   product({ key: "addon-storage-10gb", family: "addon", name: "Almacenamiento adicional 10 GB", tech: "partial", commercial: "on_request", monthly: 5, unit: "10 GB", chargeUnit: "por bloque de 10 GB", addonFor: { metric: "storage_gb", step: 10 }, icon: "database" }),
 ];
 
-export const PRODUCTS: readonly SeedProduct[] = [...CORE, ...HOTEL, ...SKI, ...TRAVEL, ...RESTAURANT, ...CARE, ...LIFE, ...SOCIAL, ...CONNECT, ...CONNECT_BUNDLES, ...EXTRAS];
+// ── Planes personales (decisiones de Jorge del 08/11/2026, shared/personalPlans.ts) ───────────────────────────────
+// Al final de la lista para no mover el orden de lo que ya existe. Un tenant por hogar, independiente de Essential:
+// 9 € al mes IVA incluido (base 7,44 € sin IVA, como el resto del catálogo), solo mensual y 5 miembros incluidos.
+const PERSONAL: SeedProduct[] = [
+  product({
+    key: LIFE_PLAN,
+    family: "core_plan",
+    name: "Life",
+    tagline: "Organización personal y familiar para tu hogar.",
+    description: "Plan personal con Life Net: la agenda, las tareas, los recordatorios y las actividades compartidas de los miembros de tu hogar. Sin funciones de empresa.",
+    tech: "planned",
+    commercial: "coming_soon",
+    monthly: LIFE_MONTHLY_BASE_CENTS / 100,
+    capabilities: [...LIFE_CAPABILITIES],
+    quotas: [{ metric: HOUSEHOLD_MEMBERS_METRIC, included: LIFE_HOUSEHOLD_MEMBERS_INCLUDED }],
+    limits: [{ label: "Miembros del hogar", value: `Hasta ${LIFE_HOUSEHOLD_MEMBERS_INCLUDED}`, metric: HOUSEHOLD_MEMBERS_METRIC }],
+    forWho: "Particulares y familias.",
+    icon: "leaf",
+    notes: "Plan personal (J1–J5, 08/11/2026): un tenant por hogar; precio final 9 € IVA incluido; solo tarifa mensual; prueba de 14 días tras CP_LIFE_TRIAL_ENABLED (apagado).",
+  }),
+];
+
+export const PRODUCTS: readonly SeedProduct[] = [...CORE, ...HOTEL, ...SKI, ...TRAVEL, ...RESTAURANT, ...CARE, ...LIFE, ...SOCIAL, ...CONNECT, ...CONNECT_BUNDLES, ...EXTRAS, ...PERSONAL];
 export const NET_FAMILIES = [
   { group: "hotel", name: "Elephant Hotel Net" },
   { group: "ski", name: "Elephant Ski Net" },
