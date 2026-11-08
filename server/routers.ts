@@ -179,6 +179,7 @@ import { hotelRouter } from "./routers/hotel";
 import { spaRouter } from "./routers/spa";
 import { careNetRouter } from "./routers/careNet";
 import { lifeNetRouter } from "./routers/lifeNet";
+import { contractsEsignRouter } from "./routers/contractsEsign";
 import { reviewsRouter } from "./routers/reviews";
 import { restaurantsRouter } from "./routers/restaurants";
 import { restaurantNetRouter } from "./routers/restaurantNet";
@@ -2643,6 +2644,7 @@ export const appRouter = router({
   spa: spaRouter,
   careNet: careNetRouter,
   lifeNet: lifeNetRouter,
+  contractsEsign: contractsEsignRouter,
   reviews: reviewsRouter,
   blog: blogRouter,
   restaurants: restaurantsRouter,
