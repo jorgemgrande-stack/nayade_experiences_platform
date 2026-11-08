@@ -44,3 +44,27 @@ Las variables van en **controlplane** (bandeja de plataforma y webhook) y en **c
 3. Comprobar en el arranque `ctx: Mail` → `provider: "postmark"`, `postmarkWebhook: true` y sin `providerProblem`.
 4. Con `MAIL_MODE=sandbox` y `MAIL_SANDBOX_ALLOWLIST` con buzones propios, enviar una prueba de cada plantilla y comprobar SPF, DKIM y DMARC en las cabeceras.
 5. Solo entonces, `MAIL_MODE=live` y `MAIL_LIVE_AUTHORIZED=1` (**decisión tuya**).
+
+## Postmark propio de cada empresa (correo transaccional del Core)
+
+**Estado (08/11/2026):** implementado. Postmark es el proveedor elegido para Big Elephant (no Brevo). Cada empresa puede conectar **su propia cuenta** de Postmark para sus correos transaccionales; sin configurarla, todo sigue como hasta ahora (servicio de correo de la plataforma). No hay variables de entorno nuevas: las credenciales viven en la bóveda de cada empresa.
+
+| Aspecto | Comportamiento |
+|---|---|
+| Credenciales | Proveedor `postmark` del almacén (`server/_core/credentials/catalog.ts`): `serverToken` (secreto), `messageStream` (por defecto `outbound`), `fromEmail` y `webhookToken` (secreto, lo genera la plataforma). Se leen en cada envío (`credentialFor`), nunca del entorno ni de otra empresa |
+| Cuándo se usa | Solo si están el token y el remitente **y** el dominio del remitente es un dominio propio **verificado** de la empresa en el registro. Si no, envío de plataforma (`server/mail/tenantPostmark.ts`, `postmarkConfigFrom`) |
+| Orden de proveedores | Postmark propio (solo transaccional) → SMTP propio → servicio central. Mismo motor: bandeja de salida, plantillas, idempotencia, reintentos, supresión y `MAIL_MODE` |
+| Transaccional y marketing | Las categorías `marketing` y `survey` nunca pasan por Postmark (`transactionalRouter`): salen con la identidad de la plataforma. Las campañas de la empresa siguen en **Brevo marketing** (`server/brevoMarketing/*`), sin cambios. Solo flujos de tipo *Transactional* |
+| Seguimiento | Nunca aperturas ni clics: cada mensaje lleva `TrackOpens: false` y `TrackLinks: None` |
+| Probador | `GET /server` y `GET /message-streams/{id}` (solo lectura). Exige flujo transaccional; avisa si el servidor está en *Sandbox*. El token del servidor no permite leer dominios ni firmas (exigen el token de la cuenta, que no se pide): Postmark rechaza el envío si el dominio no está firmado y se ve en la ficha del cliente |
+| Webhook | `POST https://<dominio de la empresa>/api/mail/postmark/webhook` (Core, fuera de `/api/trpc`; no cambia `server/authGuard.ts`). Empresa por el dominio de la petición; cabecera `x-elephant-webhook-token` con el token **de esa empresa**, comparado en tiempo constante (503 sin token, 401 si no coincide). Solo aplica eventos de mensajes de esa empresa; idempotente (`mail_events`). Delivery → entregado; Bounce duro, dirección no válida → rebote con supresión; SpamComplaint → queja con supresión; SubscriptionChange (SuppressSending) → baja con supresión |
+| Trazabilidad en el CRM | Ficha del cliente: tarjeta «Entrega de correos» (estado de cada envío) y aviso «Correo no entregado al cliente» si su dirección está suprimida o algún correo rebotó (`crm.clients.mailDelivery`, `server/mail/deliveryDb.ts`). Sin tablas nuevas: `mail_outbox`, `mail_events` y `mail_suppressions` (0010) por la huella del correo |
+| Panel | Ajustes → **Correo transaccional (Postmark)** (`/admin/configuracion/postmark`): pegar el token y el remitente, probar la conexión, ver el dominio, copiar la URL y la cabecera del webhook, generar su token (se muestra una vez), estado de los envíos y desconectar. Licencia: `comms-email` (notificaciones por email, incluida en Essential) |
+
+### Activación de una empresa (lo hace la propia empresa)
+
+1. En Postmark: crear un servidor, con el flujo transaccional `outbound`, y firmar el dominio (DKIM y Return-Path) en *Sender Signatures*.
+2. En Elephant Source: verificar ese dominio en **Dominios** (si no, el Postmark propio no se usa).
+3. En **Correo transaccional (Postmark)**: pegar el *Server API token* y la dirección del remitente; **Probar conexión**.
+4. **Generar token** del webhook y, en Postmark, crear el webhook del flujo con la URL mostrada, la cabecera `x-elephant-webhook-token` con ese token y los eventos Delivery, Bounce, Spam Complaint y Subscription Change (sin Open ni Click).
+5. El envío real lo sigue gobernando `MAIL_MODE` de la instalación (off, sandbox o live autorizado).

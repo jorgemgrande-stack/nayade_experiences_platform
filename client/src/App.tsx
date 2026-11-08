@@ -173,6 +173,7 @@ const Settings = lazy(() => import("./pages/admin/settings/Settings"));
 const BrandTheme = lazy(() => import("./pages/admin/settings/BrandTheme"));
 const CustomDomains = lazy(() => import("./pages/admin/settings/CustomDomains"));
 const IntegrationsSettings = lazy(() => import("./pages/admin/settings/Integrations"));
+const PostmarkSettings = lazy(() => import("./pages/admin/settings/PostmarkSettings"));
 const AdvancedSettings = lazy(() => import("./pages/admin/settings/AdvancedSettings"));
 const SitesManager = lazy(() => import("./pages/admin/settings/SitesManager"));
 const ConfigPanel = lazy(() => import("./pages/admin/settings/ConfigPanel"));
@@ -572,6 +573,7 @@ function Router() {
       <Route path="/admin/configuracion/marca">{() => <Suspense fallback={<AdminLoadingFallback />}><BrandTheme /></Suspense>}</Route>
       <Route path="/admin/configuracion/dominios">{() => <Suspense fallback={<AdminLoadingFallback />}><CustomDomains /></Suspense>}</Route>
       <Route path="/admin/configuracion/integraciones">{() => <Suspense fallback={<AdminLoadingFallback />}><IntegrationsSettings /></Suspense>}</Route>
+      <Route path="/admin/configuracion/postmark">{() => <Suspense fallback={<AdminLoadingFallback />}><PostmarkSettings /></Suspense>}</Route>
       <Route path="/admin/configuracion/sitio">{() => <Suspense fallback={<AdminLoadingFallback />}><Settings /></Suspense>}</Route>
       <Route path="/admin/configuracion/sedes">{() => <Suspense fallback={<AdminLoadingFallback />}><SitesManager /></Suspense>}</Route>
       <Route path="/admin/configuracion/estado">{() => <Suspense fallback={<AdminLoadingFallback />}><ConfigStatus /></Suspense>}</Route>

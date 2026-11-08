@@ -272,9 +272,11 @@ export class MailService {
         idempotencyKey: `${row.tenantId}:${row.idempotencyKey}`.slice(0, 200),
         ...(headers ? { headers } : {}),
       });
-      await this.d.store.settle(id, { status: "accepted", reason: null, provider: this.d.provider.name, providerMessageId: r.messageId, purge: true }, now);
-      await this.d.store.addEvent({ outboxId: id, tenantId: row.tenantId, kind: "accepted", providerEventId: null, detail: this.d.provider.name, at: now });
-      this.log("info", "accepted", { lane: this.d.lane, tenantId: row.tenantId, id, category: row.category, provider: this.d.provider.name, attempts: row.attempts });
+      // El proveedor que envió de verdad (un puerto que reparte lo indica; si no, el del puerto)
+      const used = (r.provider ?? this.d.provider.name).slice(0, 20);
+      await this.d.store.settle(id, { status: "accepted", reason: null, provider: used, providerMessageId: r.messageId, purge: true }, now);
+      await this.d.store.addEvent({ outboxId: id, tenantId: row.tenantId, kind: "accepted", providerEventId: null, detail: used, at: now });
+      this.log("info", "accepted", { lane: this.d.lane, tenantId: row.tenantId, id, category: row.category, provider: used, attempts: row.attempts });
     } catch (e) {
       const err = e instanceof MailProviderError ? e : new MailProviderError("internal_error", true);
       if (err.retryable && row.attempts < this.d.policy.retry.maxAttempts) {

@@ -32,6 +32,8 @@ export interface FieldPanel {
   optionLabels?: Record<string, string>;
   /** `yesno`: interruptor Sí/No sobre los valores `true`/`false`. */
   control?: "yesno";
+  /** No se muestra en el formulario general: lo gestiona una pantalla propia (p. ej. un token que genera la plataforma). */
+  hidden?: boolean;
 }
 
 export type { IntegrationGroup };
@@ -181,6 +183,32 @@ export const PROVIDERS: ProviderDef[] = [
       { key: "user", label: "Usuario", secret: false, required: true, pattern: MAILBOX_USER_RE, panel: { label: "Usuario", help: "Normalmente, tu dirección de correo completa.", formatMessage: "El usuario no puede tener espacios." } },
       { key: "pass", label: "Contraseña", secret: true, required: true, pattern: PASSWORD_RE, panel: { label: "Contraseña", help: "La de tu buzón, o una «contraseña de aplicación» si tu proveedor la exige (Gmail y Outlook, por ejemplo).", formatMessage: "La contraseña no puede tener saltos de línea." } },
       { key: "fromEmail", label: "Dirección del remitente", secret: false, required: true, pattern: EMAIL_RE, hint: "hola@tuempresa.es", panel: { label: "Dirección desde la que se envía", help: "Debe ser de tu propio dominio (por ejemplo, hola@tuempresa.es).", formatMessage: "Escribe una dirección de correo válida (por ejemplo, hola@tuempresa.es)." } },
+    ],
+  },
+  {
+    // Correo TRANSACCIONAL de la empresa con SU servidor de Postmark (decisión del 08/11/2026). Distinto del Postmark de la
+    // plataforma (variables POSTMARK_*): sin configurar, los correos salen por el servicio de Elephant Source como hoy. Solo
+    // el flujo transaccional: las campañas siguen en Brevo marketing. Activación guiada en /admin/configuracion/postmark
+    id: "postmark",
+    name: "Postmark (correo transaccional)",
+    description: "Opcional. Los correos transaccionales de la empresa (confirmaciones, facturas, accesos) salen por su propio servidor de Postmark, con su dominio verificado, y se registra si se entregan o rebotan. Sin configurar, se usa el servicio de correo de Elephant Source.",
+    capabilities: [
+      "Enviar los correos transaccionales de la empresa por su flujo transaccional de Postmark, sin seguimiento de aperturas ni de clics",
+      "Recibir por webhook los avisos de entrega, rebote, queja y baja de esos correos",
+    ],
+    check: "Consulta del servidor y del flujo de mensajes (GET /server y GET /message-streams/{id}): solo lectura",
+    panel: {
+      group: "email",
+      title: "Correo transaccional con Postmark",
+      summary: "Opcional. Tus confirmaciones, facturas y avisos salen por tu cuenta de Postmark con tu dominio, y en la ficha de cada cliente ves si le han llegado. La activación guiada está en Ajustes → Correo transaccional (Postmark).",
+      requires: ["comms-email"],
+    },
+    fields: [
+      { key: "serverToken", label: "Server API token", secret: true, required: true, pattern: /^[A-Za-z0-9-]{20,100}$/, panel: { label: "Token del servidor de Postmark", help: "En Postmark: tu servidor → API Tokens → «Server API token» (no el de la cuenta).", formatMessage: "El token tiene letras, números y guiones, sin espacios. Cópialo completo." } },
+      { key: "messageStream", label: "Flujo de mensajes", secret: false, pattern: /^[a-z0-9][a-z0-9-]{0,49}$/, hint: "outbound", panel: { label: "Flujo transaccional", help: "Déjalo vacío para usar «outbound», el flujo transaccional por defecto. Nunca uno de difusión (broadcast).", formatMessage: "Solo minúsculas, números y guiones (por ejemplo, outbound)." } },
+      { key: "fromEmail", label: "Dirección del remitente", secret: false, required: true, pattern: EMAIL_RE, hint: "reservas@tuempresa.es", panel: { label: "Dirección desde la que se envía", help: "De un dominio propio verificado en Elephant Source y firmado (DKIM) en Postmark.", formatMessage: "Escribe una dirección de correo válida (por ejemplo, reservas@tuempresa.es)." } },
+      // Lo genera la plataforma (pantalla de Postmark) y se pega como cabecera del webhook en Postmark
+      { key: "webhookToken", label: "Token del webhook", secret: true, pattern: /^[A-Za-z0-9_-]{32,128}$/, panel: { label: "Token del webhook", hidden: true } },
     ],
   },
   {

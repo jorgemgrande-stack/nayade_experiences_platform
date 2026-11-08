@@ -16,8 +16,9 @@ import { peekTenantIdentity } from "../_core/tenantIdentity";
 import { opsLog } from "../_core/ops/log";
 import { tenantCommsConfig } from "../tenantBrand";
 import { forbiddenLinkHosts, mailPolicyFromEnv } from "./policy";
-import { mailProviderFromEnv, smtpProvider } from "./providers";
+import { mailProviderFromEnv, postmarkProvider, smtpProvider, type FetchLike } from "./providers";
 import { tenantOwnSmtp } from "./ownSmtp";
+import { isTransactionalCategory, tenantPostmark, transactionalRouter } from "./tenantPostmark";
 import { MailService } from "./service";
 import { MysqlMailStore } from "./store";
 import type { MailCategory, MailProviderPort } from "./types";
@@ -51,41 +52,66 @@ async function outboxReady(tenantId: string, pool: Pick<mysql.Pool, "query">): P
 }
 
 let providerOverride: MailProviderPort | null | undefined;
-/** Solo pruebas: sustituye el proveedor del entorno (p. ej. por uno en memoria). `undefined` lo restaura. */
+let postmarkFetchOverride: FetchLike | undefined;
+/**
+ * Solo pruebas: sustituye el proveedor del entorno (p. ej. por uno en memoria). `undefined` lo restaura. Con Postmark
+ * de la empresa configurado, sustituye al envío de siempre (el respaldo), no a Postmark.
+ */
 export function setTenantMailProviderForTests(p: MailProviderPort | null | undefined): void {
   providerOverride = p;
   ready.clear();
 }
+/** Solo pruebas: `fetch` falso para el Postmark de la empresa (ninguna llamada real). `undefined` lo restaura. */
+export function setTenantPostmarkFetchForTests(f: FetchLike | undefined): void {
+  postmarkFetchOverride = f;
+}
 
-/** Servicio de correo de la empresa en curso, o `null` (sin base o sin migración). */
-export async function tenantMailService(): Promise<MailService | null> {
+/**
+ * Servicio de correo de la empresa en curso, o `null` (sin base o sin migración). Proveedor, por orden: Postmark propio
+ * de la empresa (solo transaccional y con su dominio verificado), SMTP propio (dominio verificado) o el servicio
+ * central. `category` decide la identidad del remitente al encolar: una comercial nunca usa la de Postmark.
+ */
+export async function tenantMailService(o: { category?: string } = {}): Promise<MailService | null> {
   const tenantId = getTenantIdOrDefault();
   const db = await getTenantDatabase();
   if (!db) return null;
   const pool = (db as unknown as { $client: mysql.Pool }).$client;
   if (!(await outboxReady(tenantId, pool))) return null;
-  // SMTP propio de la empresa (dominio verificado) o, si no lo tiene, el servicio central; misma política de envío
   const own = tenantOwnSmtp();
+  const pm = tenantPostmark();
+  const fallback = providerOverride !== undefined ? providerOverride : own ? smtpProvider(own.config) : mailProviderFromEnv(process.env);
+  const provider = pm
+    ? transactionalRouter({ primary: postmarkProvider({ serverToken: pm.serverToken, messageStream: pm.messageStream, fetch: postmarkFetchOverride }), primaryDomain: pm.domain, fallback })
+    : fallback;
+  // Misma política de envío (MAIL_MODE, sandbox, límites); solo cambia el dominio del remitente
+  const domain = pm && isTransactionalCategory(o.category) ? pm.domain : own ? own.domain : null;
   return new MailService({
     lane: "tenant",
     store: new MysqlMailStore(pool),
-    provider: providerOverride !== undefined ? providerOverride : own ? smtpProvider(own.config) : mailProviderFromEnv(process.env),
-    policy: mailPolicyFromEnv(own ? { ...process.env, MAIL_SENDING_DOMAIN: own.domain } : process.env),
+    provider,
+    policy: mailPolicyFromEnv(domain ? { ...process.env, MAIL_SENDING_DOMAIN: domain } : process.env),
     tenantId,
   });
+}
+
+/** Dirección propia del remitente para un aviso de esta categoría (Postmark o SMTP de la empresa), o `null` (plataforma). */
+function ownSenderFor(category: string): string | null {
+  const pm = tenantPostmark();
+  if (pm && isTransactionalCategory(category)) return pm.fromEmail;
+  return tenantOwnSmtp()?.fromEmail ?? null;
 }
 
 const list = (v: string | string[] | undefined) => (Array.isArray(v) ? v : v ? [v] : []).flatMap((x) => x.split(",")).map((x) => x.trim()).filter(Boolean);
 
 /** Envía (vía bandeja de salida) un correo de la empresa en curso. `true` si la API del proveedor lo aceptó. */
 export async function sendTenantMail(p: TenantMailParams): Promise<boolean> {
-  const svc = await tenantMailService().catch(() => null);
+  const svc = await tenantMailService({ category: p.category ?? "legacy" }).catch(() => null);
   if (!svc) {
     opsLog("error", "Mail", "not_sent", { lane: "tenant", reason: "outbox_missing", category: p.category ?? "legacy" });
     return false;
   }
   const comms = tenantCommsConfig();
-  const ownFrom = tenantOwnSmtp()?.fromEmail ?? null;
+  const ownFrom = ownSenderFor(p.category ?? "legacy");
   const identity = isMultiTenant() ? peekTenantIdentity() : null;
   const hosts = identity ? [identity.publicHost, ...identity.customDomains.filter((d) => d.state === "verified").map((d) => d.domain)].filter((h): h is string => !!h) : [];
   const guard = isMultiTenant() ? (html: string) => (forbiddenLinkHosts(html, { tenantHosts: hosts, appUrl: process.env.APP_URL }).length ? "forbidden_link_host" : null) : undefined;

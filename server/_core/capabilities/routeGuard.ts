@@ -96,6 +96,8 @@ export const TRPC_ROUTER_CAPABILITIES: Record<string, string> = {
   partners: "supplier-settlements",
   // Elephant Connect · Campaigns: conector de Brevo con la cuenta propia de la empresa
   brevoMarketing: "email-campaigns",
+  // Correo transaccional con el Postmark propio de la empresa (notificaciones por email, incluidas en Essential)
+  postmarkTenant: "comms-email",
   // Elephant Net
   reav: "travel-net",
   // Travel Net: expedientes, servicios, márgenes, proveedores y operaciones

@@ -22,6 +22,7 @@ import { usePanelSubscription } from "@/hooks/usePanelSubscription";
 import { useVocabulary } from "@/lib/vocabulary";
 import { EntityTagsDialog, TagChip, useCrmCanWrite } from "@/components/admin/crm/CrmParts";
 import { ClientFormDialog } from "@/components/admin/crm/ClientFormDialog";
+import { CustomerEmailDeliveryList, CustomerEmailDeliveryWarning } from "@/components/admin/crm/CustomerEmailDelivery";
 import {
   ACTIVITY_FILTERS, CLIENT_KIND_LABELS, NOTE_MAX, buildClientActivity, clientDisplayName, clientKind, invoicedTotal,
   type ActivityItem, type ActivityKind,
@@ -224,6 +225,8 @@ export default function ClientDetail({ id }: { id: number }) {
           </div>
         </header>
 
+        <CustomerEmailDeliveryWarning clientId={id} email={client.email} />
+
         {/* Resumen */}
         <div className="mb-6 grid grid-cols-2 gap-3 md:grid-cols-4">
           {canQuotes && <Stat label="Presupuestos" value={String(data.quotes.length)} />}
@@ -250,6 +253,9 @@ export default function ClientDetail({ id }: { id: number }) {
                 <Row label="País" value={client.country === "ES" ? "España" : client.country} />
               </dl>
               {!client.nif && canInvoices && <p className="mt-2 text-xs text-muted-foreground">Añade el NIF para emitirle facturas completas.</p>}
+            </Card>
+            <Card title="Entrega de correos" icon={Mail}>
+              <CustomerEmailDeliveryList clientId={id} email={client.email} />
             </Card>
             {data.lead && client.leadId && canLeads && (
               <Card title={voc.leadOrigin} icon={User}>

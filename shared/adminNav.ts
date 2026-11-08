@@ -425,6 +425,7 @@ export const TASK_NAV: NavSection[] = [
         children: [
           { label: "Ajustes generales", href: "/admin/configuracion", capabilities: ["admin-panel"] },
           { label: "Integraciones y pagos", href: "/admin/configuracion/integraciones", capabilities: ["admin-panel", "shop-checkout"] },
+          { label: "Correo transaccional (Postmark)", href: "/admin/configuracion/postmark", capabilities: ["comms-email"] },
           { label: "Plantillas de email", href: "/admin/plantillas-email", capabilities: ["comms-email"] },
           { label: "Estado del sistema", href: "/admin/configuracion/estado", capabilities: ["admin-panel"] },
         ],

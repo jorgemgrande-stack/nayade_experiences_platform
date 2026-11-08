@@ -59,7 +59,7 @@ export function integrationState(
 }
 
 function panelFields(p: ProviderDef, status: ProviderStatus): PanelField[] {
-  return p.fields.map((f) => {
+  return p.fields.filter((f) => !f.panel?.hidden).map((f) => {
     const s = status.fields.find((x) => x.key === f.key);
     const ui = f.panel;
     const control: PanelField["control"] = ui?.control === "yesno" ? "yesno" : f.options ? "choice" : f.secret ? "secret" : "text";
