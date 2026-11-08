@@ -7,6 +7,7 @@
  *  - GET/POST /firma/<token>     Ski Net · firma remota del contrato de alquiler (un solo uso).
  *  - GET/POST /baja/<token>      Connect Brevo · baja de las comunicaciones comerciales (idempotente).
  *  - GET/POST /contrato/<token>  Contratos y firma electrónica · firma (o rechazo) a distancia del contrato (un solo uso).
+ *  - GET /ical/<token>.ics        Hotel Net · calendario iCal de disponibilidad de una tipología o habitación (canales).
  *
  * Antiabuso: límite por IP (todas las peticiones y, más estricto, los envíos; en la carta de mesa, más alto porque un
  * comedor comparte la IP de su wifi) y por enlace (envíos con el mismo token, p. ej. por mesa); rutas sensibles a
@@ -31,9 +32,11 @@ import { unsubscribe, unsubscribeAvailable, verifyUnsubscribeToken } from "./bre
 import { contractOfLink as esignContractOfLink, contractSigningAvailable, rejectWithLink, resolveEsignLink, signWithLink as esignSignWithLink, type PublicContract as EsignPublicContract } from "./contractSign";
 import { ESIGN_LIMITS, SIMPLE_SIGNATURE_NOTICE, formatAmount } from "../../shared/contractsEsign";
 import { DOC_TYPES, SEXES } from "../hotelGuests";
+import { ICAL_FILE_RE } from "../hotelIcal";
+import { exportCalendar, icalAvailable, resolveExport } from "../hotelIcalDb";
 
 /** Rutas públicas de este módulo (las comprueba el lector de cuerpos y la prueba de rutas). */
-export const NET_PUBLIC_PATH = /^\/(mesa|check-in|firma|baja|contrato)\/[^/]+\/?$/;
+export const NET_PUBLIC_PATH = /^\/(mesa|check-in|firma|baja|contrato|ical)\/[^/]+\/?$/;
 export const NET_PUBLIC_BODY_LIMIT = 8 * 1024;
 
 const urlencoded = express.urlencoded({ extended: false, limit: NET_PUBLIC_BODY_LIMIT, parameterLimit: 400 });
@@ -85,6 +88,8 @@ export interface NetPublicRouterOptions {
   mesaPerIpPerMinute?: number;
   /** Carta de mesa: envíos por IP cada 10 minutos. */
   mesaPostsPerIp?: number;
+  /** Calendarios iCal: peticiones por IP y minuto (los canales consultan muchos calendarios desde pocas IP). */
+  icalPerIpPerMinute?: number;
 }
 
 /** Ruta sin barra final (la misma clave por enlace con y sin ella). El token conserva sus mayúsculas: es parte del secreto. */
@@ -410,6 +415,36 @@ async function esignPost(req: Request, res: Response) {
   }
 }
 
+// ─── Hotel Net: calendario iCal de disponibilidad ──────────────────────────────
+
+const ICAL = "Calendario";
+
+/**
+ * GET /ical/<token>.ics: VCALENDAR de la tipología o habitación del enlace (solo «No disponible», sin datos del
+ * huésped). Exige Hotel Net en la empresa del dominio; un enlace con otro formato, inexistente, de otra empresa o
+ * revocado responde siempre la misma página. Sin caché ni indexación.
+ */
+async function icalGet(req: Request, res: Response) {
+  try {
+    if (!(await icalAvailable())) return unavailable(res, ICAL);
+    const m = ICAL_FILE_RE.exec(String(req.params.file ?? "").slice(0, 120));
+    const link = m ? await resolveExport(m[1]) : null;
+    const body = link ? await exportCalendar(link) : null;
+    if (!link || body == null) return invalidLink(res, ICAL);
+    res.status(200);
+    res.setHeader("Content-Type", "text/calendar; charset=utf-8");
+    res.setHeader("Content-Disposition", 'inline; filename="disponibilidad.ics"');
+    res.setHeader("Cache-Control", "no-store");
+    res.setHeader("Referrer-Policy", "no-referrer");
+    res.setHeader("X-Robots-Tag", "noindex, nofollow");
+    res.setHeader("X-Content-Type-Options", "nosniff");
+    res.send(body);
+  } catch (e) {
+    if (e instanceof Error && e.name === "IcalNotInstalled") return unavailable(res, ICAL);
+    handleError(res, ICAL, e, "ical.get");
+  }
+}
+
 // ─── Montaje ───────────────────────────────────────────────────────────────────
 
 export function createNetPublicRouter(opts: NetPublicRouterOptions = {}): Router {
@@ -423,6 +458,7 @@ export function createNetPublicRouter(opts: NetPublicRouterOptions = {}): Router
   // Un comedor comparte la IP de su wifi: en la carta, límites por IP más altos y el freno real es el de cada mesa
   const mesaAll = limiter(60_000, opts.mesaPerIpPerMinute ?? 240, (req) => `mesa-all:${ip(req)}`);
   const mesaPosts = limiter(10 * 60_000, opts.mesaPostsPerIp ?? 120, (req) => `mesa-posts:${ip(req)}`);
+  const icalAll = limiter(60_000, opts.icalPerIpPerMinute ?? 300, (req) => `ical-all:${ip(req)}`);
   // Por enlace (mesa, reserva, contrato o contacto): la huella de la ruta normalizada con la empresa, nunca el token
   const perLink = limiter(10 * 60_000, opts.postsPerLink ?? 10, (req) => `link:${crypto.createHash("sha256").update(`${getTenantIdOrDefault()}:${normalizedPath(req)}`).digest("hex")}`);
   const post = [all, posts, perLink, netPublicBodyParser] as RequestHandler[];
@@ -437,6 +473,7 @@ export function createNetPublicRouter(opts: NetPublicRouterOptions = {}): Router
   r.post("/baja/:token", ...post, unsubPost);
   r.get("/contrato/:token", all, esignGet);
   r.post("/contrato/:token", ...post, esignPost);
+  r.get("/ical/:file", icalAll, icalGet);
   r.use((err: unknown, _req: Request, res: Response, next: NextFunction) => {
     if (res.headersSent) return next(err);
     return failure(res, "Error");
