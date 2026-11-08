@@ -96,6 +96,8 @@ export const TRPC_ROUTER_CAPABILITIES: Record<string, string> = {
   partners: "supplier-settlements",
   // Elephant Connect · Campaigns: conector de Brevo con la cuenta propia de la empresa
   brevoMarketing: "email-campaigns",
+  // Elephant Connect · GEO Control: visibilidad de la marca en los motores de IA generativa (los procedimientos la comprueban también)
+  geoControl: "geo-control",
   // Correo transaccional con el Postmark propio de la empresa (notificaciones por email, incluidas en Essential)
   postmarkTenant: "comms-email",
   // Elephant Net
