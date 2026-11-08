@@ -71,6 +71,7 @@ import { MysqlWebStore } from "../web/store";
 import { WebAdminService } from "../web/service";
 import { applyStatusReview, fillEvidence } from "../catalog/review";
 import { EVIDENCE_2026_10_25, REVIEW_ID, STATUS_REVIEW_2026_10_25 } from "../catalog/review20261025";
+import { REVIEW_ID_2026_11_07, STATUS_REVIEW_2026_11_07 } from "../catalog/review20261107";
 import { IMPORT_AUTHOR, importCommercialSpecs } from "../catalog/commercial/importSpecs";
 import { publishBatch, revertLastBatch } from "../catalog/commercial/publishBatch";
 import { commercialIntegrity } from "../catalog/commercial/integrity";
@@ -470,8 +471,9 @@ async function main() {
         break;
       }
       case "catalog-review": {
-        // Revisión de estados comerciales del catálogo (server/catalog/review20261025.ts) por el flujo normal del CRM,
-        // con autor e historial; simulación salvo --apply. Nunca toca precios, licencias, Stripe ni cobros.
+        // Revisiones de estados comerciales del catálogo, en orden (server/catalog/review20261025.ts y review20261107.ts),
+        // por el flujo normal del CRM, con autor e historial; simulación salvo --apply. Nunca toca precios, licencias,
+        // Stripe ni cobros. Lo que una revisión posterior ya cambió figura como conflicto en la anterior (no es un fallo).
         const crmUrl = process.env.CRM_DATABASE_URL || die("Falta CRM_DATABASE_URL (base del CRM con el catálogo)");
         const crmPool = mysql.createPool({ uri: crmUrl, connectionLimit: 2 });
         try {
@@ -481,7 +483,9 @@ async function main() {
           const apply = flag("--apply");
           const rep = await applyStatusReview(svc, webStore, STATUS_REVIEW_2026_10_25, { apply, author });
           const evidence = await fillEvidence(svc, webStore, EVIDENCE_2026_10_25, { apply, author });
-          print({ revision: REVIEW_ID, ...rep, evidenciaRellenada: evidence });
+          const rep1107 = await applyStatusReview(svc, webStore, STATUS_REVIEW_2026_11_07, { apply, author: `operacion:${REVIEW_ID_2026_11_07}` });
+          // Una sola línea (el registro de Railway la guarda en los atributos si es JSON)
+          console.log(JSON.stringify({ revisiones: [{ revision: REVIEW_ID, ...rep, evidenciaRellenada: evidence }, { revision: REVIEW_ID_2026_11_07, ...rep1107 }] }));
           // Un conflicto (estado cambiado desde el CRM o borrador ajeno) no es un fallo: se informa y se respeta
         } finally {
           await crmPool.end().catch(() => undefined);

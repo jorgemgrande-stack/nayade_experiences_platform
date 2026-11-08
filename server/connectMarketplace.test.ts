@@ -165,6 +165,18 @@ describe("catálogo de Connect con el catálogo oficial", () => {
     expect(out.find((i) => i.key === "life-net")!.net!.segment).toBe("personal");
     expect(JSON.stringify(out)).not.toMatch(/Complete/);
   });
+  it("Net en implantación acompañada (revisión del 07/11/2026): lo activa el equipo y se solicita, nunca se compra en línea", () => {
+    const five = ["hotel-net-complete", "restaurant-net-complete", "care-net-complete", "ski-net-complete", "travel-net-complete"];
+    const items = allNet().map((i) => (five.includes(i.key) ? { ...i, commercialStatus: "on_request" as const, purchasable: false } : i));
+    const out = buildConnectCatalog({ items }, [], NOW, "essential");
+    for (const key of five) {
+      const p = out.find((i) => i.key === key)!;
+      expect([p.state, p.purchasable], key).toEqual(["on_request", false]);
+      expect(p.reasons, key).toEqual(["Lo activa nuestro equipo contigo (implantación acompañada)."]);
+      expect(connectAction({ state: p.state, kind: p.kind, purchasable: p.purchasable, canPurchase: true }), key).toBe("request");
+    }
+    expect(out.find((i) => i.key === "social-token-net-complete")!.state).toBe("coming_soon");
+  });
   it("Net: una contratación anterior que da todas las funciones equivale al producto (sin nueva compra)", () => {
     const items = allNet().map((i) => (i.key === "hotel-net-pms" ? { ...i, activation: { state: "active" } } : i.key === "hotel-net-complete" ? { ...i, commercialStatus: "available" as const, purchasable: true } : i));
     const hotel = buildConnectCatalog({ items }, [grant("hotel-net")], NOW, "essential").find((i) => i.key === "hotel-net-complete")!;
