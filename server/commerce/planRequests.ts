@@ -21,6 +21,7 @@ import { z } from "zod";
 import { getAuth } from "../controlPlane/auth";
 import { opsLog } from "../_core/ops/log";
 import { quoteCatalogFromSite } from "../catalog/snapshot";
+import { isPersonalPlan } from "../../shared/personalPlans";
 import type { SiteDocument } from "../web/service";
 import type { WebRequestService } from "../crm/webRequests";
 import type { CrmService } from "../crm/service";
@@ -83,7 +84,8 @@ export const opportunityReference = (id: number) => `OP-${id}`;
 function publishedPlans(site: SiteDocument): Map<string, string> {
   return new Map(
     quoteCatalogFromSite(site)
-      .products.filter((p) => p.family === "core_plan" && p.commercialStatus !== "unpublished")
+      // Solo planes de empresa: el plan personal Life no se pide desde el panel de una empresa (08/11/2026)
+      .products.filter((p) => p.family === "core_plan" && p.commercialStatus !== "unpublished" && !isPersonalPlan(p.key))
       .map((p) => [p.key, p.name]),
   );
 }

@@ -129,11 +129,21 @@ export async function desiredCatalog(catalog: CatalogPort, opts: { includeIntern
       opts.onSkip?.({ productKey: plan, reason: `Plan personal «${plan}» en «${product.commercialStatus}»: sin Product ni Price hasta abrir la venta` });
       continue;
     }
+    // Un plan personal mal configurado se queda fuera (se informa): nunca detiene el cobro de Essential y Business
     const approved = product.prices.filter((p) => p.kind === "monthly" && p.status === "approved" && p.currency.toUpperCase() === "EUR");
-    if (approved.length !== 1) throw new StripeCatalogError(`El plan «${plan}» necesita exactamente un precio mensual aprobado en EUR (hay ${approved.length})`);
     const p = approved[0];
-    if (p.taxIncluded) throw new StripeCatalogError(`El precio ${p.id} incluye IVA: los Prices de Stripe se crean sin IVA (tax_behavior exclusive)`);
-    if (!Number.isInteger(p.amountCents) || p.amountCents <= 0) throw new StripeCatalogError(`Importe no válido en el precio ${p.id}`);
+    const problem =
+      approved.length !== 1
+        ? `El plan «${plan}» necesita exactamente un precio mensual aprobado en EUR (hay ${approved.length})`
+        : p.taxIncluded
+          ? `El precio ${p.id} incluye IVA: los Prices de Stripe se crean sin IVA (tax_behavior exclusive)`
+          : !Number.isInteger(p.amountCents) || p.amountCents <= 0
+            ? `Importe no válido en el precio ${p.id}`
+            : null;
+    if (problem) {
+      opts.onSkip?.({ productKey: plan, reason: problem });
+      continue;
+    }
     out.push({ productKey: plan, productName: STRIPE_PRODUCT_NAME[plan], webPriceId: p.id, kind: "monthly", interval: "month", amountCents: p.amountCents, currency: "EUR", lookupKey: lookupKeyFor(plan, "monthly", "EUR", p.id), sellable: true, commercialStatus: product.commercialStatus });
   }
   // Productos internos de pruebas: solo si se piden expresamente (catálogo del sandbox), nunca en live

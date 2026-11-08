@@ -26,6 +26,7 @@ import { applyCatalogAdditions, PRESENTATION_PATCHES_2026_11_08, REVIEW_ID_2026_
 import { CHECKOUT_PLANS, SELF_SERVICE_PLANS, STRIPE_PRODUCT_NAME, desiredCatalog, type SkippedProduct } from "./stripe/catalog";
 import { selfServiceBody } from "./stripe/selfService";
 import { buildConnectCatalog } from "./connectMarketplace";
+import { buildSubscriptionOverview } from "./subscriptionOverview";
 import { panelCatalog } from "./commerce/panelCatalog";
 import { shownInShowcase } from "../shared/connectMarketplace";
 import { HOUSEHOLD_MEMBERS_METRIC, LIFE_CAPABILITIES, LIFE_PLAN, LIFE_TRIAL_DAYS, PERSONAL_PLANS, PERSONAL_PRODUCTS, priceWithTaxCents } from "../shared/personalPlans";
@@ -169,8 +170,12 @@ describe("Stripe: plan personal exento de la tarifa anual y sin Price hasta abri
     expect(withYearly.filter((x) => x.productKey === "life").map((x) => x.kind)).toEqual(["monthly"]);
   });
 
-  it("disponible sin tarifa mensual: se detiene (nunca se cobra algo dudoso)", async () => {
-    await expect(desiredCatalog(port("available", []))).rejects.toThrow(/plan «life» necesita exactamente un precio mensual/);
+  it("disponible pero mal configurado: Life se queda fuera y Essential y Business se siguen cobrando", async () => {
+    const skipped: SkippedProduct[] = [];
+    const d = await desiredCatalog(port("available", []), { onSkip: (s) => skipped.push(s) });
+    expect(d.some((x) => x.productKey === "life")).toBe(false);
+    expect(skipped[0].reason).toMatch(/plan «life» necesita exactamente un precio mensual/);
+    expect(essentialAndBusiness(d)).toEqual(essentialAndBusiness(await desiredCatalog(port(null))));
   });
 
   it("con el catálogo sembrado (Life próximamente) no hay nada de Life que crear en Stripe", async () => {
@@ -347,6 +352,22 @@ describe("revisión del 08/11/2026: alta del plan Life", () => {
     expect(await store.listPrices((await store.getEntry("product", "life"))!.id)).toEqual([]);
   });
 
+  it("no rehace lo que el CRM cambió después del alta: despublicado o sin precio", async () => {
+    const { store, svc } = await before();
+    await applyCatalogAdditions(svc, store, { apply: true, author: AUTHOR, patches: [] });
+    await svc.unpublish("product", "life", "operador:jorge");
+    const r = await applyCatalogAdditions(svc, store, { apply: true, author: AUTHOR, patches: [] });
+    expect(r.conflicts[0]).toMatch(/^life: cambió en el CRM después del alta/);
+    expect((await store.getEntry("product", "life"))!.publication).toBe("unpublished");
+  });
+
+  it("simulación: avisa si las capacidades del plan no están publicadas", async () => {
+    const store = new MemoryWebStore();
+    const svc = new WebAdminService({ store, refs, now: () => 1_790_000_000_000 });
+    const r = await applyCatalogAdditions(svc, store, { author: AUTHOR, patches: [] });
+    expect([r.created, r.conflicts]).toEqual([[], ["life: capacidades sin publicar (life-net, admin-users, comms-email); no se puede publicar el plan"]]);
+  });
+
   it("no publica un borrador ajeno de Life Net", async () => {
     const { store, svc } = await before();
     const ln = (await store.getEntry("product", "life-net"))!;
@@ -355,6 +376,16 @@ describe("revisión del 08/11/2026: alta del plan Life", () => {
     const r = await applyCatalogAdditions(svc, store, { apply: true, author: AUTHOR, additions: [] });
     expect(r.conflicts).toEqual(["life-net: tiene cambios sin publicar en el CRM; no se publica un borrador ajeno"]);
     expect(PRESENTATION_PATCHES_2026_11_08).toHaveLength(1);
+  });
+});
+
+describe("panel del hogar: el plan se reconoce como Life, no como Essential", () => {
+  const grant = (capabilityId: string) => ({ tenantId: "t1", capabilityId, siteId: "", status: "active" as const, validUntil: null, source: "subscription:1", updatedAt: 1, updatedBy: "x" });
+  it("con solo las capacidades del plan Life, el plan es Life; con algo de Essential más, Essential", () => {
+    const home = buildSubscriptionOverview({ mode: "multi", enforcing: true, grants: LIFE_CAPABILITIES.map(grant), now: 2 });
+    expect(home.plan).toEqual({ key: "life", name: "Life" });
+    const company = buildSubscriptionOverview({ mode: "multi", enforcing: true, grants: [...LIFE_CAPABILITIES, "crm-contacts"].map(grant), now: 2 });
+    expect(company.plan?.key).toBe("essential");
   });
 });
 

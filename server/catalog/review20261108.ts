@@ -73,25 +73,44 @@ export async function applyCatalogAdditions(
       continue;
     }
     const prices = cur ? await store.listPrices(cur.id) : [];
-    const missingPrices = seed.prices.filter((sp) => !prices.some((x) => x.status === "approved" && x.kind === sp.kind && x.currency === "EUR" && (x.unit ?? null) === (sp.unit ?? null)));
-    const pendingPrices = seed.prices.filter((sp) => prices.some((x) => x.status === "draft" && x.kind === sp.kind && x.amountCents === sp.amountCents));
+    const sameKind = (x: (typeof prices)[number], sp: (typeof seed.prices)[number]) => x.kind === sp.kind && x.currency === "EUR" && (x.unit ?? null) === (sp.unit ?? null);
+    const missingPrices = seed.prices.filter((sp) => !prices.some((x) => x.status === "approved" && sameKind(x, sp)));
+    // Solo se aprueba un borrador de precio que dejó esta misma revisión, con la tarifa exacta
+    const ownDraft = (sp: (typeof seed.prices)[number]) => prices.find((x) => x.status === "draft" && sameKind(x, sp) && x.amountCents === sp.amountCents && x.taxRateBp === TAX_RATE_BP && !x.taxIncluded && x.createdBy === o.author);
     if (cur && cur.publication === "published" && !missingPrices.length) {
       r.already.push(a.key);
       continue;
     }
-    r.created.push(`${a.key}${cur ? " (se retoma el alta)" : ""}: ${seed.prices.map((p) => `${p.kind} ${p.amountCents} céntimos sin IVA`).join(", ")}`);
-    if (!o.apply) continue;
-    let entry = cur;
-    if (!entry) {
-      const draft = productDraft.parse({ ...seed.draft, internal: { ...seed.draft.internal, evidence: a.evidence } });
-      entry = await svc.create({ kind: "product", key: a.key, family: seed.family, sortOrder: seed.sortOrder, draft }, o.author);
+    // Lo que el CRM cambió después del alta (despublicado, borrador editado o precio retirado) no se rehace: se decide allí
+    if (cur && (cur.publication === "unpublished" || cur.updatedBy !== o.author || cur.draftVersion !== 1 || missingPrices.some((sp) => prices.some((x) => x.status === "retired" && sameKind(x, sp))))) {
+      r.conflicts.push(`${a.key}: cambió en el CRM después del alta (${cur.publication}, borrador v${cur.draftVersion} de ${cur.updatedBy}); se deja como está`);
+      continue;
     }
-    if (entry.publication !== "published") entry = await svc.publish("product", a.key, entry.draftVersion, o.author);
-    for (const sp of missingPrices) {
-      // Un precio propio que se quedó en borrador (alta interrumpida) se aprueba; si no, se crea
-      const draftPrice = pendingPrices.includes(sp) ? prices.find((x) => x.status === "draft" && x.kind === sp.kind && x.amountCents === sp.amountCents) : undefined;
-      const p = draftPrice ?? (await svc.addPrice(a.key, { kind: sp.kind, amountCents: sp.amountCents, currency: "EUR", unit: sp.unit ?? null, taxRateBp: TAX_RATE_BP, taxIncluded: false, note }, o.author));
-      await svc.approvePrice(p.id, o.author);
+    r.created.push(`${a.key}${cur ? " (se retoma el alta)" : ""}: ${seed.prices.map((p) => `${p.kind} ${p.amountCents} céntimos sin IVA`).join(", ")}`);
+    // Las capacidades que concede tienen que estar publicadas (lo exige la publicación): se avisa ya en la simulación
+    const unpublished: string[] = [];
+    for (const c of seed.draft.catalog.capabilities) if ((await store.getEntry("capability", c))?.publication !== "published") unpublished.push(c);
+    if (unpublished.length) {
+      r.created.pop();
+      r.conflicts.push(`${a.key}: capacidades sin publicar (${unpublished.join(", ")}); no se puede publicar el plan`);
+      continue;
+    }
+    if (!o.apply) continue;
+    try {
+      let entry = cur;
+      if (!entry) {
+        const draft = productDraft.parse({ ...seed.draft, internal: { ...seed.draft.internal, evidence: a.evidence } });
+        entry = await svc.create({ kind: "product", key: a.key, family: seed.family, sortOrder: seed.sortOrder, draft }, o.author);
+      }
+      if (entry.publication !== "published") entry = await svc.publish("product", a.key, entry.draftVersion, o.author);
+      for (const sp of missingPrices) {
+        // Un precio propio que se quedó en borrador (alta interrumpida) se aprueba; si no, se crea
+        const p = ownDraft(sp) ?? (await svc.addPrice(a.key, { kind: sp.kind, amountCents: sp.amountCents, currency: "EUR", unit: sp.unit ?? null, taxRateBp: TAX_RATE_BP, taxIncluded: false, note }, o.author));
+        await svc.approvePrice(p.id, o.author);
+      }
+    } catch (e) {
+      // Queda a medias y con su causa en el informe; la siguiente ejecución retoma el alta propia
+      r.conflicts.push(`${a.key}: alta sin terminar (${e instanceof Error ? e.message : String(e)}); se retoma en la siguiente ejecución`);
     }
   }
   for (const p of o.patches ?? PRESENTATION_PATCHES_2026_11_08) {
@@ -105,6 +124,12 @@ export async function applyCatalogAdditions(
     const upToDate = cur.publication !== "published" || cur.publishedVersion === cur.draftVersion;
     if (value === p.to && upToDate) {
       r.already.push(`${p.key}.${p.field}`);
+      continue;
+    }
+    // Cambio propio guardado y sin publicar (una ejecución anterior se interrumpió entre guardar y publicar): se publica
+    if (value === p.to && cur.updatedBy === o.author) {
+      r.patched.push(`${p.key}.${p.field}: se publica el cambio ya guardado`);
+      if (o.apply) await svc.publish("product", p.key, cur.draftVersion, o.author);
       continue;
     }
     if (value !== p.from) {
