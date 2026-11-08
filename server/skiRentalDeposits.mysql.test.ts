@@ -259,9 +259,13 @@ describe.skipIf(!URL_)("Ski Net · fianzas del alquiler (routers reales, TPV del
     expect(again.deposit).toMatchObject({ status: "retained_total", refundedCents: 0, retainedCents: 13000, damageCents: 30000 });
     // Una sola venta «Cargo por daños» de 130 € en la caja de la sede
     expect(await count("SELECT COUNT(*) AS n FROM tpv_sales")).toBe(salesBefore + 1);
-    const [[sale]] = (await tenantDb.query<mysql.RowDataPacket[]>("SELECT total, sessionId FROM tpv_sales WHERE id = ?", [again.deposit.damageSaleId])) as unknown as [[any]];
+    const [[sale]] = (await tenantDb.query<mysql.RowDataPacket[]>("SELECT total, sessionId, fiscalSummary, taxAmount, reavMargin FROM tpv_sales WHERE id = ?", [again.deposit.damageSaleId])) as unknown as [[any]];
     expect(Number(sale.sessionId)).toBe(sessNorte);
     expect(Number(sale.total)).toBe(130);
+    // IVA general de la empresa, nunca REAV (pendiente del asesor fiscal: art. 78.Tres.1º LIVA)
+    expect(sale.fiscalSummary).toBe("iva_only");
+    expect(Number(sale.taxAmount)).toBeGreaterThan(0);
+    expect(Number(sale.reavMargin)).toBe(0);
     // Salida de caja por lo aplicado a la venta (sale de la custodia) y ninguna devolución
     expect(await count("SELECT COUNT(*) AS n FROM cash_movements WHERE sessionId = ? AND type_cm = 'out' AND amount = 130.00", [sessNorte])).toBe(1);
     expect(await count("SELECT COUNT(*) AS n FROM cash_movements WHERE sessionId = ? AND type_cm = 'out'", [sessNorte])).toBe(1);
@@ -314,5 +318,57 @@ describe.skipIf(!URL_)("Ski Net · fianzas del alquiler (routers reales, TPV del
     expect(ok(await query("skiRental.depositTotals", SUR)).collected.count).toBe(0);
     const ev = ok(await query("skiRental.depositForDelivery", { ...NORTE, deliveryId: d1 })).events.map((e: any) => e.kind);
     expect(ev).toEqual(["collected", "retained", "charge_created", "charge_paid"]);
+  });
+
+  it("liquidación a medias con la caja cerrada: se reasigna a otra caja abierta de la sede, sin duplicar la venta y con la caja cuadrada", async () => {
+    const d4 = ok(await mutate("skiRental.createDelivery", { ...NORTE, storeId, customerName: "Cuarto cliente", startDate: "2026-12-20", expectedReturnDate: "2026-12-21", lines: [{ code: "SKI-00003", requestedType: "ski" }] })).id;
+    const dep = ok(await mutate("skiRental.registerDeposit", { ...NORTE, deliveryId: d4, amountCents: 6000, method: "cash", sessionId: sessNorte })).deposit;
+    const det = ok(await query("skiRental.getDelivery", { ...NORTE, deliveryId: d4 }));
+    ok(await mutate("skiRental.returnLine", { ...NORTE, lineId: det.lines[0].id, condition: "damaged", note: "Fijación rota" }));
+    // Otra caja de la sede donde empezó la liquidación: la venta de daños llegó a crearse y la caja se cerró antes del cierre
+    const now = Date.now();
+    const [reg] = (await tenantDb.query("INSERT INTO cash_registers (name, isActive, createdAt, site_id) VALUES ('Caja norte 2', 1, ?, 'pista-norte')", [now])) as unknown as [{ insertId: number }];
+    const [ses] = (await tenantDb.query("INSERT INTO cash_sessions (registerId, cashierUserId, cashierName, openingAmount, status_cs, openedAt, site_id) VALUES (?, 1, 'Cajero', 0, 'open', ?, 'pista-norte')", [reg.insertId, now])) as unknown as [{ insertId: number }];
+    const sessA = ses.insertId;
+    await tenantDb.query(
+      "UPDATE ski_deposits SET status = 'settling', damage_cents = 2000, refunded_cents = 4000, retained_cents = 2000, settle_session_id = ?, settle_reason = 'Fijación rota', settled_by = 'user:1' WHERE id = ?",
+      [sessA, dep.id],
+    );
+    const key = `skidep-${dep.id}-r2000`;
+    const sale = ok(
+      await mutate("tpv.createSale", {
+        sessionId: sessA,
+        idempotencyKey: key,
+        discountAmount: 0,
+        items: [{ productType: "extra", productId: 0, productName: "Cargo por daños (alquiler de material)", quantity: 1, unitPrice: 20, discountPercent: 0, participants: 1, isManual: true, forceGeneralVat: true, conceptText: "Cargo por daños" }],
+        payments: [{ method: "cash", amount: 20 }],
+      }),
+    ).sale;
+    await tenantDb.query("UPDATE cash_sessions SET status_cs = 'closed', closedAt = ? WHERE id = ?", [Date.now(), sessA]);
+
+    // Repetir sin caja, o con la de otra sede: no; queda «liquidándose» (no se libera: la venta ya existe)
+    expect(fail(await mutate("skiRental.settleDeposit", { ...NORTE, depositId: dep.id, damageCents: 2000, reason: "Fijación rota" })).message).toMatch(/ya está cerrada/);
+    expect(fail(await mutate("skiRental.settleDeposit", { ...NORTE, depositId: dep.id, damageCents: 2000, reason: "Fijación rota", sessionId: sessSur })).message).toMatch(/otra sede/);
+    const [[st]] = (await tenantDb.query<mysql.RowDataPacket[]>("SELECT status FROM ski_deposits WHERE id = ?", [dep.id])) as unknown as [[any]];
+    expect(st.status).toBe("settling");
+
+    const salesBefore = await count("SELECT COUNT(*) AS n FROM tpv_sales");
+    const r = ok(await mutate("skiRental.settleDeposit", { ...NORTE, depositId: dep.id, damageCents: 2000, reason: "Fijación rota", sessionId: sessNorte }));
+    expect(r.deposit).toMatchObject({ status: "retained_partial", refundedCents: 4000, retainedCents: 2000, settleSessionId: sessNorte, damageSaleId: Number(sale.id) });
+    // La venta del intento anterior se recupera por su clave: ninguna nueva
+    expect(await count("SELECT COUNT(*) AS n FROM tpv_sales")).toBe(salesBefore);
+    expect(await count("SELECT COUNT(*) AS n FROM tpv_sales WHERE idempotencyKey = ?", [key])).toBe(1);
+    // Caja cuadrada: entrada 60 − devolución 40 − aplicado 20 (en la caja abierta) + venta 20 (en la cerrada) = 20 retenidos
+    const [[mv]] = (await tenantDb.query<mysql.RowDataPacket[]>(
+      "SELECT COALESCE(SUM(CASE WHEN type_cm = 'in' THEN amount ELSE -amount END), 0) AS net, SUM(sessionId = ?) AS inA FROM cash_movements WHERE reason LIKE ?",
+      [sessA, `%alquiler #${d4}`],
+    )) as unknown as [[any]];
+    expect(Number(mv.net)).toBe(0);
+    expect(Number(mv.inA)).toBe(0);
+    const [[sv]] = (await tenantDb.query<mysql.RowDataPacket[]>("SELECT total FROM tpv_sales WHERE id = ?", [sale.id])) as unknown as [[any]];
+    expect(Number(mv.net) + Number(sv.total)).toBe(20);
+    // Repetir ya cerrada: no cambia nada
+    expect(ok(await mutate("skiRental.settleDeposit", { ...NORTE, depositId: dep.id, damageCents: 2000, reason: "Fijación rota", sessionId: sessNorte })).replayed).toBe(true);
+    expect(await count("SELECT COUNT(*) AS n FROM cash_movements WHERE reason LIKE ?", [`%alquiler #${d4}`])).toBe(3);
   });
 });

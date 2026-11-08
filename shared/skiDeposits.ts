@@ -13,6 +13,9 @@
  *  - Con tarjeta (datáfono) o retención externa no hay movimiento de efectivo: la devolución se hace en el datáfono o
  *    se libera la retención fuera del Core, y la parte retenida se registra igualmente como venta (tarjeta u «otro»).
  *  - Si los daños superan la fianza, la diferencia queda como cargo pendiente del cliente, que se cobra en el TPV.
+ *  - IVA: la venta de daños lleva siempre el IVA general de la empresa (nunca REAV, no es un servicio de viaje).
+ *    PENDIENTE DE VALIDAR CON EL ASESOR FISCAL: una indemnización por daños puede no estar sujeta a IVA
+ *    (art. 78.Tres.1º LIVA); hoy se documenta con ticket e IVA general, que es el criterio prudente del TPV.
  */
 
 export const DEPOSIT_METHODS = ["cash", "card", "external"] as const;
@@ -179,8 +182,11 @@ export function assertChargeTransition(from: ChargeStatus, to: ChargeStatus): vo
   if (!CHARGE_TRANSITIONS[from].includes(to)) throw new DepositRuleError(`El cargo está «${CHARGE_STATUS_LABEL[from]}»: no puede pasar a «${CHARGE_STATUS_LABEL[to]}»`);
 }
 
-/** Claves de idempotencia del TPV (`[A-Za-z0-9_-]{8,64}`): una venta por fianza retenida y una por cargo. */
-export const retentionSaleKey = (depositId: number) => `skidep-${depositId}-ret`;
+/**
+ * Claves de idempotencia del TPV (`[A-Za-z0-9_-]{8,64}`): una venta por liquidación de fianza (con el importe retenido,
+ * para que una liquidación nueva con otro plan nunca reutilice una venta anterior) y una por cargo.
+ */
+export const retentionSaleKey = (depositId: number, retainedCents: number) => `skidep-${depositId}-r${retainedCents}`;
 export const chargeSaleKey = (chargeId: number) => `skichg-${chargeId}-pay`;
 
 /** Clave del cliente para no duplicar un cargo manual con un doble clic. */

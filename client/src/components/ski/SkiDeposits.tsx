@@ -194,7 +194,7 @@ function SettleDeposit({ ctx, deposit, suggestedDamageCents, returned }: { ctx: 
   );
 }
 
-function Photos({ ctx, depositId, photos }: { ctx: RentalCtx; depositId: number; photos: Array<{ id: number; fileUrl: string; fileName: string }> }) {
+function Photos({ ctx, depositId, photos, enabled }: { ctx: RentalCtx; depositId: number; photos: Array<{ id: number; fileUrl: string; fileName: string }>; enabled: boolean }) {
   const utils = trpc.useUtils();
   const add = trpc.skiRental.addDepositPhoto.useMutation({
     onSuccess: () => {
@@ -222,7 +222,8 @@ function Photos({ ctx, depositId, photos }: { ctx: RentalCtx; depositId: number;
           </a>
         ))}
       </div>
-      {ctx.canWrite && (
+      {ctx.canWrite && !enabled && <p className="text-xs text-muted-foreground">Las fotos de los daños necesitan el almacén privado de ficheros, que no está activo: describe los daños en la nota.</p>}
+      {ctx.canWrite && enabled && (
         <label className="inline-flex cursor-pointer items-center gap-1.5 text-xs text-muted-foreground">
           <Camera className="h-4 w-4" aria-hidden="true" />
           Añadir foto de los daños
@@ -435,7 +436,7 @@ export function DepositPanel({ ctx, deliveryId }: { ctx: RentalCtx; deliveryId: 
           <SettleDeposit ctx={ctx} deposit={dep} suggestedDamageCents={data.suggestedDamageCents} returned={data.delivery.status === "returned"} />
         </>
       )}
-      {dep && <Photos ctx={ctx} depositId={dep.id} photos={data.attachments} />}
+      {dep && <Photos ctx={ctx} depositId={dep.id} photos={data.attachments} enabled={data.photosEnabled} />}
       {dep && (
         <>
           <Receipt data={{ delivery: data.delivery, deposit: dep, events: data.events }} />

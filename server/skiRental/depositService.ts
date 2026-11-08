@@ -63,6 +63,8 @@ export interface DepositDeps {
   assertSite?: (siteId: string) => Promise<void>;
   /** ¿Es la sede principal de la empresa? (las cajas sin sede, NULL, son de la principal). */
   isPrimarySite: (siteId: string) => Promise<boolean>;
+  /** ¿Hay almacén privado de ficheros? Sin él no se admiten fotos de los daños. */
+  photosEnabled: () => boolean;
 }
 
 function rule<T>(fn: () => T, code: SkiRentalError["code"] = "invalid_input"): T {
@@ -83,7 +85,13 @@ const text = (v: string | null | undefined, max: number): string | null => {
   return t ? t.slice(0, max) : null;
 };
 const DAY_RE = /^\d{4}-\d{2}-\d{2}$/;
-const IMAGE_TYPES = ["image/jpeg", "image/png", "image/webp"];
+/** Tipo real de la imagen por la firma de sus primeros bytes (JPEG, PNG o WebP); null si no es ninguna. */
+export function imageTypeOf(b: Buffer): "image/jpeg" | "image/png" | "image/webp" | null {
+  if (b.length >= 3 && b[0] === 0xff && b[1] === 0xd8 && b[2] === 0xff) return "image/jpeg";
+  if (b.length >= 8 && b.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]))) return "image/png";
+  if (b.length >= 12 && b.toString("latin1", 0, 4) === "RIFF" && b.toString("latin1", 8, 12) === "WEBP") return "image/webp";
+  return null;
+}
 export const MAX_PHOTO_BYTES = 5 * 1024 * 1024;
 export const MAX_PHOTOS = 6;
 
@@ -166,6 +174,7 @@ export class SkiDepositService {
         delivery: { id: x.id, customerName: x.customerName, status: x.status, startDate: x.startDate, expectedReturnDate: x.expectedReturnDate },
         deposit: deposit && deposit.siteId === siteId ? deposit : null,
         attachments: deposit && deposit.siteId === siteId ? await this.d.store.attachments(deposit.id) : [],
+        photosEnabled: this.d.photosEnabled(),
         suggestedCents: suggestion.totalCents,
         suggestedDamageCents: damage,
         damagedLines: lines.flatMap((l, i) => (l.returnCondition && l.returnCondition !== "ok" ? [{ code: units[i]?.code ?? "—", condition: l.returnCondition, note: l.returnNote, replacementValueCents: models[i]?.replacementValueCents ?? null }] : [])),
@@ -228,7 +237,7 @@ export class SkiDepositService {
       if (dep.status !== "held" && dep.status !== "settling") return { deposit: dep, replayed: true, ticketNumber: null as string | null };
       const delivery = await this.siteDelivery(siteId, dep.deliveryId);
       // Un plan nuevo solo si la fianza sigue cobrada; si ya se está liquidando, se continúa con el guardado
-      const claimed = await this.d.store
+      let claimed = await this.d.store
         .claimSettlement(
           depositId,
           async (d, lockSession) => {
@@ -237,6 +246,8 @@ export class SkiDepositService {
             const plan = rule(() => planSettlement(d.amountCents, input.damageCents));
             const reason = text(input.reason, 300);
             rule(() => assertSettlementReason(plan, reason));
+            // Licencia de caja y permiso de concepto libre ANTES de reservar: nunca un FORBIDDEN a mitad
+            if (plan.retainedCents > 0) await getSale();
             const sessionId = input.sessionId ?? null;
             if (needsCashSession(d.method, plan)) {
               if (sessionId == null) throw new SkiRentalError("invalid_input", d.method === "cash" ? "Elige la caja abierta de donde sale el efectivo" : "Elige la caja abierta donde se registra el cargo por daños");
@@ -249,37 +260,67 @@ export class SkiDepositService {
         .catch((e) => storeErr(e, "Fianza"));
       if (claimed.status !== "settling") return { deposit: claimed, replayed: true, ticketNumber: null as string | null };
       const plan = rule(() => planSettlement(claimed.amountCents, claimed.damageCents ?? 0));
-      let saleId: number | null = null;
-      let ticketNumber: string | null = null;
-      if (plan.retainedCents > 0) {
-        try {
-          const createSale = await getSale();
-          const s = await createSale({
-            sessionId: claimed.settleSessionId!,
-            idempotencyKey: retentionSaleKey(depositId),
-            customerName: claimed.customerName,
-            concept: `Cargo por daños · alquiler #${claimed.deliveryId}${claimed.settleReason ? ` · ${claimed.settleReason}` : ""}`.slice(0, 500),
-            amountCents: plan.retainedCents,
-            method: retentionPayMethod(claimed.method),
-            notes: `Fianza ${depositId} retenida (${plan.status === "retained_total" ? "total" : "parcial"})`,
+      const fresh = claimed.fresh;
+
+      // Se retoma una liquidación a medias cuya caja ya está cerrada: se pasa a otra caja abierta de la sede
+      if (!fresh && claimed.settleSessionId != null) {
+        const stored = await this.d.store.cashSession(claimed.settleSessionId);
+        if (!stored?.open) {
+          const next = input.sessionId ?? null;
+          if (next == null || next === claimed.settleSessionId) throw new SkiRentalError("conflict", "La caja de esta liquidación ya está cerrada: elige otra caja abierta de la sede para terminarla");
+          const primary = await this.d.isPrimarySite(siteId);
+          const moved = await this.d.store.reassignSettlementSession(depositId, next, async (_d, s) => {
+            if (!s) throw new SkiRentalError("not_found", "Sesión de caja no encontrada");
+            if (!s.open) throw new SkiRentalError("conflict", "La sesión de caja está cerrada: abre la caja en el TPV");
+            if (!(s.siteId === siteId || (s.siteId == null && primary))) throw new SkiRentalError("invalid_input", "Esa caja es de otra sede");
           });
-          saleId = s.saleId;
-          ticketNumber = s.ticketNumber;
-        } catch (e) {
-          // El TPV no la registró: si la reserva es de esta llamada, la fianza vuelve a «cobrada» para repetir la
-          // liquidación; si se estaba retomando una anterior, sigue «liquidándose» con su plan (la venta lleva su clave)
-          if (claimed.fresh) await this.d.store.releaseSettlement(depositId).catch(() => undefined);
-          throw e;
+          if (moved.status !== "settling") return { deposit: moved, replayed: true, ticketNumber: null as string | null };
+          claimed = { ...claimed, settleSessionId: moved.settleSessionId };
         }
       }
-      const done = await this.d.store
-        .finishSettlement(
+
+      let saleId: number | null = claimed.damageSaleId;
+      let ticketNumber: string | null = null;
+      if (plan.retainedCents > 0 && saleId == null) {
+        const key = retentionSaleKey(depositId, plan.retainedCents);
+        // Una venta de un intento anterior (quizá en la caja ya cerrada) se recupera por su clave: no se duplica
+        const prev = fresh ? null : await this.d.store.saleByKey(key);
+        if (prev && prev.status !== "pending") saleId = prev.id;
+        else {
+          try {
+            const createSale = await getSale();
+            const s = await createSale({
+              sessionId: claimed.settleSessionId!,
+              idempotencyKey: key,
+              customerName: claimed.customerName,
+              concept: `Cargo por daños · alquiler #${claimed.deliveryId}${claimed.settleReason ? ` · ${claimed.settleReason}` : ""}`.slice(0, 500),
+              amountCents: plan.retainedCents,
+              method: retentionPayMethod(claimed.method),
+              notes: `Fianza ${depositId} retenida (${plan.status === "retained_total" ? "total" : "parcial"})`,
+            });
+            saleId = s.saleId;
+            ticketNumber = s.ticketNumber;
+          } catch (e) {
+            // El TPV no la registró: sin venta con esa clave, la fianza vuelve a «cobrada» para repetir la liquidación
+            if (!(await this.d.store.saleByKey(key).catch(() => null))) await this.d.store.releaseSettlement(depositId).catch(() => undefined);
+            throw e;
+          }
+        }
+        await this.d.store.recordSettlementSale(depositId, saleId);
+      }
+      try {
+        const done = await this.d.store.finishSettlement(
           depositId,
           { plan, movements: settlementMovements(claimed.method, plan, claimed.deliveryId), saleId, cashierName, extraReason: `Daños no cubiertos por la fianza · alquiler #${claimed.deliveryId}${claimed.settleReason ? ` · ${claimed.settleReason}` : ""}` },
           actor,
-        )
-        .catch((e) => storeErr(e, "Fianza"));
-      return { deposit: done, replayed: false, ticketNumber };
+        );
+        return { deposit: done, replayed: false, ticketNumber };
+      } catch (e) {
+        // Sin venta de daños no hay nada hecho fuera de la fianza: vuelve a «cobrada». Con venta, sigue «liquidándose»
+        // con la venta anotada y se termina eligiendo otra caja abierta.
+        if (saleId == null) await this.d.store.releaseSettlement(depositId).catch(() => undefined);
+        return storeErr(e, "Fianza");
+      }
     });
   }
 
@@ -287,8 +328,11 @@ export class SkiDepositService {
   addPhoto(siteId: string, depositId: number, file: { fileName: string; mimeType: string; data: Buffer }, actor: string, put: (key: string, data: Buffer, mime: string, name: string) => Promise<string>) {
     return this.within(siteId, true, async () => {
       const dep = await this.siteDeposit(siteId, depositId);
-      if (!IMAGE_TYPES.includes(file.mimeType)) throw new SkiRentalError("invalid_input", "La foto debe ser JPEG, PNG o WebP");
+      if (!this.d.photosEnabled()) throw new SkiRentalError("conflict", "Las fotos de los daños necesitan el almacén privado de ficheros, que no está activo en esta instalación: describe los daños en la nota");
       if (!file.data.length || file.data.length > MAX_PHOTO_BYTES) throw new SkiRentalError("invalid_input", "La foto ocupa demasiado (5 MB como mucho)");
+      // El tipo se comprueba por el contenido, no por lo que declara el navegador
+      const real = imageTypeOf(file.data);
+      if (!real || real !== file.mimeType) throw new SkiRentalError("invalid_input", "La foto debe ser una imagen JPEG, PNG o WebP");
       if ((await this.d.store.attachments(dep.id)).length >= MAX_PHOTOS) throw new SkiRentalError("conflict", `Como mucho ${MAX_PHOTOS} fotos por fianza`);
       const name = (file.fileName || "foto").replace(/[^\w.-]+/g, "_").slice(0, 120);
       const url = await put(`ski-deposits/${dep.id}/${Date.now()}-${name}`, file.data, file.mimeType, name);

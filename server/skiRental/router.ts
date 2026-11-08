@@ -21,6 +21,7 @@ import { SIGN_LINK_MAX_HOURS, issueSignLink, revokeSignLink, signLinkStatus } fr
 import { getCapabilityAccess } from "../_core/capabilities/access";
 import { companySites } from "../sitesDb";
 import { storagePut } from "../storage";
+import { objectStorageEnabled } from "../_core/files/service";
 import { tpvRouter } from "../routers/tpv";
 import { DEPOSIT_METHODS, MAX_DEPOSIT_CENTS, PAY_METHODS, REQUEST_KEY_RE, centsToEuros } from "../../shared/skiDeposits";
 import { MAX_PHOTO_BYTES, SkiDepositService, type CreateDamageSale } from "./depositService";
@@ -53,6 +54,7 @@ const deposits = new SkiDepositService({
   activation: store,
   gate: () => getSdkRuntime().gate,
   isPrimarySite: async (siteId) => (await companySites()).primarySiteId === siteId,
+  photosEnabled: objectStorageEnabled,
 });
 
 /**
@@ -62,6 +64,8 @@ const deposits = new SkiDepositService({
 async function damageSale(ctx: Parameters<typeof tpvRouter.createCaller>[0]): Promise<CreateDamageSale> {
   const cash = await getCapabilityAccess().check("bill-cash", { write: true }).catch(() => ({ allowed: false }));
   if (!cash.allowed) throw new TRPCError({ code: "FORBIDDEN", message: "La caja (TPV) no está incluida en tu plan o está en solo lectura: no se puede cobrar el cargo por daños." });
+  // El TPV solo admite conceptos libres a administradores (tpv.createSale): se comprueba antes de reservar nada
+  if ((ctx as { user?: { role?: string } }).user?.role !== "admin") throw new TRPCError({ code: "FORBIDDEN", message: "Solo un administrador puede registrar cargos por daños en el TPV." });
   const tpv = tpvRouter.createCaller(ctx);
   return async (s) => {
     const euros = centsToEuros(s.amountCents);
@@ -71,7 +75,9 @@ async function damageSale(ctx: Parameters<typeof tpvRouter.createCaller>[0]): Pr
       customerName: s.customerName || undefined,
       notes: s.notes,
       discountAmount: 0,
-      items: [{ productType: "extra", productId: 0, productName: "Cargo por daños (alquiler de material)", quantity: 1, unitPrice: euros, discountPercent: 0, participants: 1, isManual: true, conceptText: s.concept }],
+      // IVA general siempre (nunca REAV). PENDIENTE DEL ASESOR FISCAL: una indemnización por daños puede no estar
+      // sujeta a IVA (art. 78.Tres.1º LIVA); hoy se documenta con ticket e IVA general.
+      items: [{ productType: "extra", productId: 0, productName: "Cargo por daños (alquiler de material)", quantity: 1, unitPrice: euros, discountPercent: 0, participants: 1, isManual: true, forceGeneralVat: true, conceptText: s.concept }],
       payments: [{ method: s.method, amount: euros }],
     });
     return { saleId: Number(r.sale?.id), ticketNumber: r.sale?.ticketNumber ? String(r.sale.ticketNumber) : null };

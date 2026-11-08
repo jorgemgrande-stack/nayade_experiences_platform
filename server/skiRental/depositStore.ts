@@ -360,12 +360,41 @@ export class TenantDbDepositStore {
       }),
     );
   }
-  /** El TPV no registró la venta de daños: la fianza vuelve a «cobrada» y no queda nada a medias. */
+  /**
+   * Sin venta de daños registrada (el TPV falló o no hacía falta y el cierre falló): la fianza vuelve a «cobrada» y no
+   * queda nada a medias. Con venta ya registrada no se libera nunca (se termina reasignando la caja).
+   */
   releaseSettlement(depositId: number) {
     return this.run(async (db) => {
       await db.execute(sql`UPDATE ski_deposits SET status = 'held', damage_cents = NULL, refunded_cents = NULL, retained_cents = NULL, settle_session_id = NULL,
-        settle_reason = NULL, settle_note = NULL, settled_by = NULL WHERE id = ${depositId} AND status = 'settling'`);
+        settle_reason = NULL, settle_note = NULL, settled_by = NULL WHERE id = ${depositId} AND status = 'settling' AND damage_sale_id IS NULL`);
     });
+  }
+  /** Venta de daños ya creada en el TPV: se anota en cuanto existe, para no perderla si el cierre falla después. */
+  recordSettlementSale(depositId: number, saleId: number) {
+    return this.run(async (db) => {
+      await db.execute(sql`UPDATE ski_deposits SET damage_sale_id = ${saleId} WHERE id = ${depositId} AND status = 'settling' AND damage_sale_id IS NULL`);
+    });
+  }
+  /** Venta del TPV por su clave de idempotencia (para recuperar una venta creada en un intento anterior). */
+  saleByKey(key: string) {
+    return this.one(sql`SELECT id, sessionId, status_ts FROM tpv_sales WHERE idempotencyKey = ${key}`, (r) => ({ id: Number(r.id), sessionId: Number(r.sessionId), status: String(r.status_ts) }));
+  }
+  /**
+   * Liquidación a medias cuya caja se cerró: pasa a otra sesión ABIERTA de la misma sede (`check` la valida con la
+   * sesión bloqueada) para terminarla. Solo si sigue «settling».
+   */
+  reassignSettlementSession(depositId: number, sessionId: number, check: (d: Deposit, s: CashSessionInfo | null) => Promise<void>) {
+    return this.run((db) =>
+      db.transaction(async (tx) => {
+        const [r] = rowsOf(await tx.execute(sql`SELECT * FROM ski_deposits WHERE id = ${depositId} FOR UPDATE`));
+        const d = toDeposit(r);
+        if (d.status !== "settling") return d;
+        await check(d, await lockedSession(tx, sessionId));
+        await tx.execute(sql`UPDATE ski_deposits SET settle_session_id = ${sessionId} WHERE id = ${depositId}`);
+        return { ...d, settleSessionId: sessionId };
+      }),
+    );
   }
   /**
    * Cierre atómico de la liquidación: movimientos de caja, cargo adicional (una sola vez por liquidación), eventos y
@@ -400,7 +429,7 @@ export class TenantDbDepositStore {
           extraId = Number(c.id);
           await addEvent(tx, { ...base, chargeId: extraId, kind: "charge_created", amountCents: x.plan.extraChargeCents, method: null, note: x.extraReason }, actor, now);
         }
-        await tx.execute(sql`UPDATE ski_deposits SET status = ${x.plan.status}, damage_sale_id = ${x.saleId}, extra_charge_id = ${extraId}, settled_at = ${now} WHERE id = ${depositId}`);
+        await tx.execute(sql`UPDATE ski_deposits SET status = ${x.plan.status}, damage_sale_id = COALESCE(damage_sale_id, ${x.saleId}), extra_charge_id = ${extraId}, settled_at = ${now} WHERE id = ${depositId}`);
         const [after] = rowsOf(await tx.execute(sql`SELECT * FROM ski_deposits WHERE id = ${depositId}`));
         return toDeposit(after);
       }),

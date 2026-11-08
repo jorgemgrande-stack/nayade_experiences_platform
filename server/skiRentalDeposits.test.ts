@@ -25,6 +25,7 @@ import {
   type DepositRow,
 } from "../shared/skiDeposits";
 import { IDEMPOTENCY_KEY_RE } from "./tpvSaleIdempotency";
+import { imageTypeOf } from "./skiRental/depositService";
 
 describe("importes en céntimos", () => {
   it("solo enteros positivos dentro del tope", () => {
@@ -173,8 +174,22 @@ describe("estados", () => {
     expect(() => assertChargeTransition("cancelled", "paying")).toThrow(DepositRuleError);
   });
   it("las claves de idempotencia cumplen el formato del TPV", () => {
-    for (const k of [retentionSaleKey(1), retentionSaleKey(999999), chargeSaleKey(1), chargeSaleKey(4294967295)]) expect(IDEMPOTENCY_KEY_RE.test(k)).toBe(true);
-    expect(retentionSaleKey(5)).not.toBe(chargeSaleKey(5));
+    for (const k of [retentionSaleKey(1, 1), retentionSaleKey(4294967295, 10_000_000), chargeSaleKey(1), chargeSaleKey(4294967295)]) expect(IDEMPOTENCY_KEY_RE.test(k)).toBe(true);
+    expect(retentionSaleKey(5, 100)).not.toBe(chargeSaleKey(5));
+    // Una liquidación nueva con otro importe retenido nunca reutiliza la venta de la anterior
+    expect(retentionSaleKey(5, 100)).not.toBe(retentionSaleKey(5, 200));
+    expect(retentionSaleKey(5, 100)).toBe(retentionSaleKey(5, 100));
+  });
+});
+
+describe("fotos: tipo real por la firma del contenido", () => {
+  it("JPEG, PNG y WebP por sus bytes; lo demás, no", () => {
+    expect(imageTypeOf(Buffer.from([0xff, 0xd8, 0xff, 0xe0, 0, 0]))).toBe("image/jpeg");
+    expect(imageTypeOf(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0]))).toBe("image/png");
+    expect(imageTypeOf(Buffer.concat([Buffer.from("RIFF"), Buffer.from([1, 2, 3, 4]), Buffer.from("WEBPVP8 ")]))).toBe("image/webp");
+    expect(imageTypeOf(Buffer.from("<svg xmlns='http://www.w3.org/2000/svg'/>"))).toBeNull();
+    expect(imageTypeOf(Buffer.from("%PDF-1.7"))).toBeNull();
+    expect(imageTypeOf(Buffer.alloc(0))).toBeNull();
   });
 });
 
