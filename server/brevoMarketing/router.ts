@@ -11,6 +11,7 @@ import { BrevoMarketingError } from "./service";
 import { BREVO_CAPABILITY, brevoMarketingService } from "./runtime";
 import { BrevoNotInstalled, RunInProgress } from "./store";
 import { unsubscribeUrl } from "../netPublic/brevoUnsubscribe";
+import { campaignsRouter } from "../connectCampaigns/router";
 
 const CODES: Record<BrevoMarketingError["code"], TRPCError["code"]> = {
   invalid_input: "BAD_REQUEST",
@@ -65,4 +66,7 @@ export const brevoMarketingRouter = router({
   sync: licensed.mutation(({ ctx }) => handle(() => svc().sync("manual", actor(ctx)))),
   retry: licensed.input(z.object({ runId: id })).mutation(({ input, ctx }) => handle(() => svc().retry(input.runId, actor(ctx)))),
   runs: licensed.query(() => handle(() => svc().runs())),
+
+  /** Elephant Campaigns: campañas de correo enviadas con esta misma cuenta de Brevo (server/connectCampaigns). */
+  campaigns: campaignsRouter,
 });

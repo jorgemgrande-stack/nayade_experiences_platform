@@ -34,7 +34,25 @@ export function brevoMarketingService(): BrevoMarketingService {
   });
 }
 
-/** Cada hora, en el minuto 17 (para no coincidir con las tareas en punto). */
+/**
+ * Cada hora, en el minuto 17 (para no coincidir con las tareas en punto). Primero la sincronización; después las
+ * campañas de correo (Elephant Campaigns): termina las que se están preparando y lee estadísticas y bajas de Brevo.
+ * Un fallo de las campañas no tumba la sincronización ni al revés.
+ */
 export function startBrevoMarketingJob() {
-  return scheduleTenantCron("17 * * * *", BREVO_JOB, ({ signal }) => brevoMarketingService().runScheduled(signal));
+  return scheduleTenantCron("17 * * * *", BREVO_JOB, async ({ signal }) => {
+    let sync: unknown;
+    let syncError: unknown = null;
+    try {
+      sync = await brevoMarketingService().runScheduled(signal);
+    } catch (e) {
+      syncError = e;
+    }
+    const { campaignService } = await import("../connectCampaigns/runtime");
+    const campaigns = await campaignService()
+      .tick(signal)
+      .catch(() => ({ skipped: "error" }));
+    if (syncError) throw syncError;
+    return { sync, campaigns };
+  });
 }
