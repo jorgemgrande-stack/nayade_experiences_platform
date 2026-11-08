@@ -42,6 +42,10 @@ import {
 import { ADJUST_TYPES, DOC_TYPES, SEXES, applyPlanToStay, ratePlanError, retentionError } from "../hotelGuests";
 import { todayInTimeZone } from "../hotelPms";
 import { applyCheckin, checkinStatus, discardCheckin, issueCheckinLink, revokeCheckinLink } from "../netPublic/hotelCheckin";
+import { addFeed, icalPanel, issueExport, revokeExport, setAutoSync, setFeedStatus, syncNow } from "../hotelIcalDb";
+import { ICAL_CHANNELS, ICAL_TARGET_KINDS } from "../hotelIcal";
+
+const icalTarget = z.object({ targetKind: z.enum(ICAL_TARGET_KINDS), targetId: z.number().int().positive(), channel: z.enum(ICAL_CHANNELS) });
 
 const guestDate = z.string().refine(isIsoDate, "Fecha no válida (AAAA-MM-DD)");
 const guestOpt = (max: number) => z.string().max(max).nullable().optional();
@@ -766,6 +770,46 @@ export const hotelRouter = router({
   adminDiscardOnlineCheckin: adminProcedure
     .input(z.object({ reservationId: z.number().int() }))
     .mutation(({ input, ctx }) => discardCheckin(input.reservationId, ctx.user.id)),
+
+  // ── ADMIN: CANALES iCAL (exportación /ical/<token>.ics e importación por URL) ──
+  // Booking, Airbnb, Vrbo y Google: disponibilidad por tipología o habitación, sin datos del huésped.
+
+  adminIcalPanel: adminProcedure.query(() => icalPanel()),
+
+  /** Emite o rota el enlace de exportación del destino y canal (el anterior deja de valer). */
+  adminIcalIssueExport: adminProcedure
+    .input(icalTarget)
+    .mutation(({ input, ctx }) => issueExport({ ...input, actor: `user:${ctx.user.id}` })),
+
+  adminIcalRevokeExport: adminProcedure
+    .input(z.object({ id: z.number().int().positive() }))
+    .mutation(({ input, ctx }) => revokeExport(input.id, `user:${ctx.user.id}`)),
+
+  /** Alta de la URL iCal de un canal; se sincroniza en el acto (el resultado vuelve con la respuesta). */
+  adminIcalAddFeed: adminProcedure
+    .input(icalTarget.extend({ url: z.string().min(1).max(2100), label: z.string().max(120).nullable().optional() }))
+    .mutation(async ({ input, ctx }) => {
+      const { id } = await addFeed({ ...input, actor: `user:${ctx.user.id}` });
+      const [sync] = await syncNow(id);
+      return { id, sync };
+    }),
+
+  adminIcalSetFeedStatus: adminProcedure
+    .input(z.object({ id: z.number().int().positive(), status: z.enum(["active", "paused", "archived"]) }))
+    .mutation(async ({ input }) => {
+      await setFeedStatus(input.id, input.status);
+      // Al reactivarla se pone al día enseguida (sus bloqueos vuelven a contar)
+      return { ok: true, sync: input.status === "active" ? (await syncNow(input.id))[0] : null };
+    }),
+
+  /** «Sincronizar ahora»: una URL o todas las activas. */
+  adminIcalSyncNow: adminProcedure
+    .input(z.object({ feedId: z.number().int().positive().nullable().optional() }))
+    .mutation(({ input }) => syncNow(input.feedId ?? null)),
+
+  adminIcalSetAutoSync: adminProcedure
+    .input(z.object({ enabled: z.boolean() }))
+    .mutation(({ input, ctx }) => setAutoSync(input.enabled, `user:${ctx.user.id}`)),
 
   // ── ADMIN: PMS · PLANES DE TARIFA ─────────────────────────────────────────
 
