@@ -14,6 +14,7 @@ import {
   CreditCard, Loader2, Info, Building2, Check,
 } from "lucide-react";
 import CompanyData from "./CompanyData";
+import SearchIndexingToggle from "./SearchIndexingToggle";
 
 // ─── Sidebar tab definitions ──────────────────────────────────────────────────
 const TABS = [
@@ -322,6 +323,7 @@ export default function Settings() {
                 </div>
                 {blockedNotice(businessValid)}
                 <AutoSaveStatus saving={updateMutation.isPending} />
+                <SearchIndexingToggle />
               </div>
             )}
 

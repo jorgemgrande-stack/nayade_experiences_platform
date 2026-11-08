@@ -30,6 +30,7 @@ import { listPublishedForSitemap } from "./blogDb";
 import { getModuleAccess } from "./_core/modules/runtime";
 import { getStorefront } from "./storefront";
 import { productPath, SECTOR_LIST_PATH, SHOP_PATH } from "../shared/storefront";
+import { EMPTY_SITEMAP, robotsTxt, searchIndexingOff } from "./searchIndexing";
 
 /** Módulo sectorial contratado y activo (en una sola empresa, lo instalado). */
 async function moduleOn(id: string): Promise<boolean> {
@@ -101,17 +102,24 @@ function urlEntry(base: string, loc: string, lastmod?: string, changefreq = "mon
 
 export const sitemapRouter = Router();
 
-sitemapRouter.get("/robots.txt", (_req, res, next) => {
+sitemapRouter.get("/robots.txt", async (_req, res, next) => {
   // En una sola empresa se sirve el fichero estático de siempre
   if (!isMultiTenant()) return next();
   const base = publicBaseUrl().replace(/\/+$/, "");
+  const off = await searchIndexingOff().catch(() => false);
   res.setHeader("Content-Type", "text/plain; charset=utf-8");
   res.setHeader("Cache-Control", "public, max-age=3600, s-maxage=3600");
-  res.status(200).send(`User-agent: *\nAllow: /\nDisallow: /admin/\nDisallow: /api/\n\nSitemap: ${base}/sitemap.xml\n`);
+  res.status(200).send(robotsTxt(base, off));
 });
 
 sitemapRouter.get("/sitemap.xml", async (_req, res) => {
   try {
+    // Web oculta a los buscadores: sitemap vacío
+    if (await searchIndexingOff().catch(() => false)) {
+      res.setHeader("Content-Type", "application/xml; charset=utf-8");
+      res.setHeader("X-Robots-Tag", "noindex, nofollow");
+      return void res.status(200).send(EMPTY_SITEMAP);
+    }
     const multi = isMultiTenant();
     const BASE_URL = publicBaseUrl().replace(/\/+$/, "");
     const url = (loc: string, lastmod?: string, changefreq?: string, priority?: string) => urlEntry(BASE_URL, loc, lastmod, changefreq, priority);

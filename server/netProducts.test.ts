@@ -60,6 +60,14 @@ describe("Elephant Net: 7 productos", () => {
     ]);
   });
 
+  it("en implantación acompañada (on_request) no se compra en el panel aunque las compras estén abiertas", () => {
+    const prod = (key: string): QuoteCatalogProduct =>
+      ({ key, name: key, family: "net_bundle", commercialStatus: "on_request", capabilities: [], prices: [{ kind: "monthly", amountCents: 11900, currency: "EUR", taxIncluded: false, unit: null }], bundleOf: [], addonFor: null, inherits: null }) as unknown as QuoteCatalogProduct;
+    const out = panelCatalog(["hotel-net-complete", "restaurant-net-complete", "care-net-complete", "ski-net-complete", "travel-net-complete"].map(prod), { version: "t", purchasesEnabled: true });
+    expect(out.items.map((i) => [i.key, i.commercialStatus, i.purchasable])).toEqual(expect.arrayContaining(["hotel-net-complete", "restaurant-net-complete", "care-net-complete", "ski-net-complete", "travel-net-complete"].map((k) => [k, "on_request", false])));
+    expect(out.items).toHaveLength(5);
+  });
+
   it("cada producto contratado tiene una sola sección de menú con su panel general, protegido por su licencia", () => {
     const sections = Object.values(CORE_EXTENSION_PANELS).map((x) => x.panel.section).filter((s): s is NonNullable<typeof s> => !!s);
     for (const p of NET_PRODUCTS) {

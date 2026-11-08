@@ -9,12 +9,14 @@
  *  - En preparación: hay código, pero falta desarrollo o validación para implantarlo.
  *  - Próximamente: previsto, sin código que se pueda implantar.
  */
-import type { CommercialStatus } from "../web/schemas";
+import type { CommercialStatus, TECHNICAL_STATUS } from "../web/schemas";
 
 export interface StatusChange {
   key: string;
   from: CommercialStatus;
   to: CommercialStatus;
+  /** Estado técnico de partida y de llegada, si la revisión también lo cambia (mismas reglas que el comercial). */
+  technical?: { from: (typeof TECHNICAL_STATUS)[number]; to: (typeof TECHNICAL_STATUS)[number] };
   /** Por qué (queda en el historial del producto y en las notas internas). */
   evidence: string;
   /** Nota interna nueva (sustituye a una desfasada), o undefined para conservar la actual. */

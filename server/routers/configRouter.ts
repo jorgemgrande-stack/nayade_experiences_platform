@@ -174,6 +174,20 @@ export const configRouter = router({
       return { ok: true };
     }),
 
+  /** Ocultar la web de la empresa a los buscadores (robots.txt, sitemap y noindex). */
+  getSearchIndexing: settingsViewProc.query(async () => {
+    const { searchIndexingOff } = await import("../searchIndexing");
+    return { off: await searchIndexingOff(), available: isMultiTenant() };
+  }),
+  setSearchIndexing: settingsManageProc
+    .input(z.object({ off: z.boolean() }))
+    .mutation(async ({ input, ctx }) => {
+      if (!isMultiTenant()) throw new TRPCError({ code: "PRECONDITION_FAILED", message: "Solo disponible en la web de cada empresa" });
+      const { setSearchIndexingOff } = await import("../searchIndexing");
+      const user = ctx.user as User;
+      return setSearchIndexingOff(input.off, { id: user.id, name: user.name ?? user.email ?? "Admin" });
+    }),
+
   updateSystemSetting: settingsManageProc
     .input(z.object({
       key: z.string(),

@@ -76,3 +76,11 @@ Se contrastó con el código y las pruebas de cada módulo, y con las verificaci
 **Próximamente:** el resto, es decir, todo lo que no tiene código.
 
 **Disponible:** ninguno todavía. Exige estado técnico operativo, y Essential lo será tras la primera compra controlada.
+
+## Revisión del 07/11/2026 (autorizada el 08/11/2026)
+
+`server/catalog/review20261107.ts` pasa a **Implantación acompañada** Hotel Net, Restaurant Net, Care Net, Ski Net y Travel Net. Su recorrido esencial se verificó en production el 07/11/2026 en la empresa Elephant Demo. Ski Net y Travel Net pasan además de estado técnico «planned» a «partial»: la revisión lo indica con su estado de partida, con las mismas reglas que el comercial.
+
+- Venta asistida: el panel muestra «Lo activa nuestro equipo contigo» y «Solicitar información» crea una solicitud en el CRM; la web ofrece «Solicitar propuesta». No hay checkout ni cobro automático, y no se crea ningún Price de Stripe.
+- Precios, contratos y suscripciones no cambian. Social Token Net y Life Net siguen en Próximamente.
+- La orden `catalog-review` aplica las dos revisiones en orden. En la del 25/10, los productos que ya cambió la del 07/11 aparecen como conflicto: es lo esperado.

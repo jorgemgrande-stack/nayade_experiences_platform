@@ -6,8 +6,8 @@
  *  - Solo cambia un producto si su estado actual es el de partida (`from`). Si ya está en el de llegada, no hace nada;
  *    si tiene otro (alguien lo cambió desde el CRM), no lo toca y lo informa.
  *  - No publica nunca un borrador ajeno: si el producto tiene cambios sin publicar, se informa y se deja.
- *  - No toca precios, licencias, módulos de las empresas, Stripe ni cobros: solo el estado comercial, la evidencia y la
- *    nota interna del producto.
+ *  - No toca precios, licencias, módulos de las empresas, Stripe ni cobros: solo el estado comercial (y el técnico, si la
+ *    revisión lo indica con su estado de partida), la evidencia y la nota interna del producto.
  *  - Por defecto es una SIMULACIÓN.
  */
 import { productDraft } from "../web/schemas";
@@ -32,7 +32,8 @@ export async function applyStatusReview(svc: WebAdminService, store: WebStore, c
     }
     const d = productDraft.parse(cur.draft);
     const status = d.catalog.commercialStatus;
-    if (status === c.to && cur.publication === "published" && cur.publishedVersion === cur.draftVersion) {
+    const techDone = !c.technical || d.technicalStatus === c.technical.to;
+    if (status === c.to && techDone && cur.publication === "published" && cur.publishedVersion === cur.draftVersion) {
       r.already.push(c.key);
       continue;
     }
@@ -40,13 +41,17 @@ export async function applyStatusReview(svc: WebAdminService, store: WebStore, c
       r.conflicts.push(`${c.key}: está en «${status}» (se esperaba «${c.from}»); se deja como lo decidió el CRM`);
       continue;
     }
+    if (c.technical && d.technicalStatus !== c.technical.from && d.technicalStatus !== c.technical.to) {
+      r.conflicts.push(`${c.key}: estado técnico «${d.technicalStatus}» (se esperaba «${c.technical.from}»); se deja como lo decidió el CRM`);
+      continue;
+    }
     if (cur.publication === "published" && cur.publishedVersion !== cur.draftVersion) {
       r.conflicts.push(`${c.key}: tiene cambios sin publicar en el CRM; no se publica un borrador ajeno`);
       continue;
     }
-    r.changed.push(`${c.key}: ${c.from} → ${c.to}`);
+    r.changed.push(`${c.key}: ${c.from} → ${c.to}${c.technical && d.technicalStatus !== c.technical.to ? ` (técnico ${c.technical.from} → ${c.technical.to})` : ""}`);
     if (!o.apply) continue;
-    const draft = { ...d, catalog: { ...d.catalog, commercialStatus: c.to }, internal: { ...d.internal, evidence: c.evidence, ...(c.notes !== undefined ? { notes: c.notes } : {}) } };
+    const draft = { ...d, ...(c.technical ? { technicalStatus: c.technical.to } : {}), catalog: { ...d.catalog, commercialStatus: c.to }, internal: { ...d.internal, evidence: c.evidence, ...(c.notes !== undefined ? { notes: c.notes } : {}) } };
     const saved = await svc.save("product", c.key, { draft, expectedVersion: cur.draftVersion }, o.author);
     if (cur.publication === "published") await svc.publish("product", c.key, saved.draftVersion, o.author);
   }
