@@ -96,11 +96,12 @@ export default function PostmarkSettings() {
               <Link href="/admin/configuracion/integraciones" className="text-primary underline-offset-4 hover:underline">Integraciones</Link>. Lo paga quien lo contrata.
             </li>
             <li>
-              <span className="font-medium text-foreground">El servicio de correo de Elephant Source</span>, si no configuras ninguna de las anteriores o si tu cuenta
-              falla (entonces el correo sale por este servicio para que no se pierda). Elephant Source mide este consumo y le aplica los límites del servicio.
+              <span className="font-medium text-foreground">El servicio de correo de Elephant Source</span>, si no configuras ninguna de las anteriores (o para los correos no transaccionales si solo tienes Postmark). También si
+              Postmark rechaza tu cuenta (token revocado, cuenta pendiente…) y no tienes SMTP propio: ese correo sale por este servicio para que no se pierda. Elephant Source
+              mide este consumo y le aplica los límites del servicio.
             </li>
           </ul>
-          <p className="text-muted-foreground">Lo que sale por tu propia cuenta (Postmark o SMTP) no cuenta para esos límites: Elephant Source solo lo registra, y en la ficha de cada cliente ves si le ha llegado.</p>
+          <p className="text-muted-foreground">Lo que sale por tu propia cuenta (Postmark o SMTP) no cuenta para esos límites: Elephant Source solo lo registra. Con Postmark, además, en la ficha de cada cliente ves si le ha llegado.</p>
         </section>
 
         {status.isLoading && <PanelLoading />}

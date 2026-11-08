@@ -98,6 +98,8 @@ describe("medición del correo en el Resource Manager", () => {
     outbox.routes = ["platform"];
     expect(await send()).toBe(true);
     expect(mailEvents()).toEqual([[Metrics.EMAIL_SENT, "platform"]]);
+    // Sin reserva previa (vía prevista propia): se cuenta una vez al medir, sin crédito huérfano
+    expect(quota.calls).toEqual([]);
   });
 
   it("un envío que no llega al proveedor se mide por la vía prevista, como hasta ahora (una unidad por envío)", async () => {
