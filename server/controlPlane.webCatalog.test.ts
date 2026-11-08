@@ -426,7 +426,8 @@ describe("cotizador por API (catálogo de Elephant Source)", () => {
       expect(pub.status).toBe(200);
       expect(pub.headers["cache-control"]).toBe("no-store");
       expect(pub.json.totals).toMatchObject({ yearlyCents: 75900, monthlyCents: 11900 + 1000 });
-      expect(pub.json.contractable).toBe("not_available");
+      // Hotel Net en implantación acompañada (revisión del 07/11/2026): se solicita, nunca en autoservicio
+      expect(pub.json.contractable).toBe("request");
       expect((await app.call("POST", "/public/site/quote", { body: { plan: "essential", interval: "semana" } })).status).toBe(400);
       expect((await app.call("POST", "/public/site/quote", { body: { plan: "essential", interval: "month", owned: ["connect-voice"] } })).status).toBe(400);
       // Admin: sin token 401; con web:read, cotiza con lo ya contratado y lista el catálogo
