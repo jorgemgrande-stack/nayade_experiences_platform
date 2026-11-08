@@ -217,6 +217,7 @@ import { accountSecurityRouter } from "./routers/accountSecurityRouter";
 import { operationsRouter } from "./routers/operations";
 import { hrRouter } from "./routers/hr";
 import { bankMovementsRouter } from "./routers/bankMovements";
+import { financeSyncRouter } from "./routers/financeSync";
 import { cashRegisterRouter } from "./routers/cashRegister";
 import { getBusinessEmail, internalNoticeEmail } from "./config";
 import { cardTerminalOperationsRouter } from "./routers/cardTerminalOperations";
@@ -292,6 +293,7 @@ export const appRouter = router({
   publicExpenses: publicExpensesRouter,
   financial: expensesModuleRouter,
   bankMovements: bankMovementsRouter,
+  financeSync: financeSyncRouter,
   cashRegister: cashRegisterRouter,
   cardTerminalOperations: cardTerminalOperationsRouter,
   cardTerminalBatches: cardTerminalBatchesRouter,
