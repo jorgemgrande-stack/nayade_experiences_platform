@@ -115,11 +115,17 @@ function MailboxCard({ p, ingestionEnabled, onChanged }: { p: PanelIntegration; 
             toast.error("Revisa los datos marcados en rojo");
             return;
           }
+          // Cambiar el servidor, el puerto, el usuario o el cifrado exige volver a escribir la contraseña (el servidor lo vuelve a exigir)
+          const passField = p.fields.find((f) => f.secret);
+          if (passField?.set && !changed[passField.key] && ["host", "port", "user", "secure"].some((k) => k in changed)) {
+            toast.error("Has cambiado los datos de conexión: vuelve a escribir la contraseña del buzón.");
+            return;
+          }
           try {
-            await save.mutateAsync({ values: changed });
+            const r = await save.mutateAsync({ values: changed });
             setVals({});
             setResult(null);
-            toast.success("Buzón guardado. Ahora pulsa «Comprobar conexión».");
+            toast.success(r.ingestionDisabled ? "Buzón guardado. La lectura automática se ha apagado: comprueba la conexión y vuelve a encenderla." : "Buzón guardado. Ahora pulsa «Comprobar conexión».");
             onChanged();
           } catch (err) {
             toast.error(err instanceof Error ? err.message : "No se pudo guardar");

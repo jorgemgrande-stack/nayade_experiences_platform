@@ -7,8 +7,10 @@ import { describe, it, expect, vi } from "vitest";
 import crypto from "node:crypto";
 import { financeSyncSetup, type FinanceSyncFacts } from "../shared/financeSyncSetup";
 import { IntegrationVault, MemoryCredentialStore, type Keyring } from "./_core/credentials/vault";
-import { testProvider, type MailProbes } from "./_core/credentials/testers";
+import { imapLoginCheck, IMAP_CHECK_TIMEOUTS, testProvider, type ImapCheckClient, type MailProbes } from "./_core/credentials/testers";
+import { mailHostNameProblem, MailHostError, resolveMailHost, type HostResolver } from "./_core/credentials/mailHost";
 import {
+  createRateLimiter,
   FinanceSyncSetupError,
   getFinanceSyncSetup,
   readFinanceSyncCounts,
@@ -94,7 +96,11 @@ const ring: Keyring = { keys: new Map([["k1", crypto.randomBytes(32)]]), activeI
 const ZERO: FinanceSyncCounts = { bankImports: 0, bankMovements: 0, tpvExcelImports: 0, cardOperations: 0, emailsRead: 0, confirmedConciliations: 0, suggestedConciliations: 0 };
 const SECRET = "contrasena-de-prueba-no-real";
 
-function harness(o: { tenant?: string; multi?: boolean; counts?: Partial<FinanceSyncCounts>; probe?: FinanceSyncDeps["probe"] } = {}) {
+const ACTOR = { id: 1, name: "Ana" };
+/** DNS de prueba: nombres de ejemplo con IP pública de documentación… salvo los que se hacen pasar por internos. */
+const fakeDns: HostResolver = async (h) => (h.startsWith("interno.") ? ["10.0.0.5"] : h.startsWith("metadatos.") ? ["169.254.169.254"] : ["8.8.8.8"]);
+
+function harness(o: { tenant?: string; multi?: boolean; counts?: Partial<FinanceSyncCounts>; probe?: FinanceSyncDeps["probe"]; allowTest?: FinanceSyncDeps["allowTest"] } = {}) {
   const store = new MemoryCredentialStore();
   const vault = new IntegrationVault(store, () => o.tenant ?? "empresa-a", () => ring);
   const checks: Array<{ outcome: string; at: string }> = [];
@@ -102,13 +108,18 @@ function harness(o: { tenant?: string; multi?: boolean; counts?: Partial<Finance
   const flagWrites: boolean[] = [];
   const deps: FinanceSyncDeps = {
     multi: () => o.multi ?? true,
+    tenantId: () => o.tenant ?? "empresa-a",
+    checkHost: async (host) => {
+      await resolveMailHost(host, fakeDns);
+    },
+    allowTest: o.allowTest ?? (() => true),
     vault: () => vault,
     // Estado de integraciones: lo último comprobado (como integration_status)
     health: async () =>
       checks.length ? [{ provider: "imap_tpv", connection: checks.at(-1)!.outcome === "connected" ? "connected" : "error", stateAt: checks.at(-1)!.at, lastCheck: { message: "ok" }, lastSync: null }] : [],
     probe: o.probe ?? (async () => ({ ok: true, message: "Buzón accesible", outcome: "connected" })),
     recordCheck: async (outcome) => {
-      checks.push({ outcome, at: new Date(Date.now() + 1000).toISOString() });
+      checks.push({ outcome, at: new Date().toISOString() });
     },
     counts: async () => ({ ...ZERO, ...o.counts }),
     ingestion: {
@@ -127,7 +138,7 @@ const MAILBOX = { host: "imap.ejemplo.test", port: "993", user: "tickets@ejemplo
 describe("buzón de tickets en la bóveda de la empresa", () => {
   it("guarda la contraseña cifrada y nunca la devuelve en la pantalla", async () => {
     const h = harness();
-    await saveMailbox(h.deps, MAILBOX, "user:1");
+    await saveMailbox(h.deps, MAILBOX, ACTOR);
     const pass = (await h.store.list("imap_tpv")).find((r) => r.field === "pass")!;
     expect(pass.secret).toBe(true);
     expect(pass.value).not.toContain(SECRET);
@@ -141,30 +152,66 @@ describe("buzón de tickets en la bóveda de la empresa", () => {
 
   it("aislamiento: lo cifrado para una empresa no se descifra en otra", async () => {
     const a = harness({ tenant: "empresa-a" });
-    await saveMailbox(a.deps, MAILBOX, "user:1");
+    await saveMailbox(a.deps, MAILBOX, ACTOR);
     const b = new IntegrationVault(a.store, () => "empresa-b", () => ring);
     expect((await b.resolve("imap_tpv")).pass).toBeUndefined();
     expect((await a.vault.resolve("imap_tpv")).pass).toBe(SECRET);
   });
 
-  it("una contraseña en blanco conserva la guardada", async () => {
+  it("una contraseña en blanco conserva la guardada (si no cambian los datos de conexión)", async () => {
     const h = harness();
-    await saveMailbox(h.deps, MAILBOX, "user:1");
-    const r = await saveMailbox(h.deps, { host: "imap2.ejemplo.test", pass: "" }, "user:1");
-    expect(r.saved).toEqual(["host"]);
+    await saveMailbox(h.deps, MAILBOX, ACTOR);
+    const r = await saveMailbox(h.deps, { allowedSender: "otra@banco.ejemplo.test", pass: "" }, ACTOR);
+    expect(r.saved).toEqual(["allowedSender"]);
     expect((await h.vault.resolve("imap_tpv")).pass).toBe(SECRET);
+  });
+
+  it("si cambian servidor, puerto, usuario o cifrado hay que volver a escribir la contraseña", async () => {
+    const h = harness();
+    await saveMailbox(h.deps, MAILBOX, ACTOR);
+    for (const change of [{ host: "imap2.ejemplo.test" }, { port: "143" }, { user: "otro@ejemplo.test" }, { secure: "false" }]) {
+      await expect(saveMailbox(h.deps, { ...change, pass: "" }, ACTOR)).rejects.toThrow(/vuelve a escribir la contraseña/);
+    }
+    expect((await h.vault.resolve("imap_tpv")).host).toBe("imap.ejemplo.test");
+    // Mismo valor que el guardado: no es un cambio
+    await expect(saveMailbox(h.deps, { host: "imap.ejemplo.test" }, ACTOR)).resolves.toMatchObject({ saved: ["host"] });
+    // Con la contraseña escrita de nuevo, sí
+    await expect(saveMailbox(h.deps, { host: "imap2.ejemplo.test", pass: "otra-de-prueba-no-real" }, ACTOR)).resolves.toMatchObject({ saved: ["host", "pass"] });
+  });
+
+  it("SSRF: no guarda servidores internos, privados ni de metadatos", async () => {
+    const h = harness();
+    for (const host of ["localhost", "core.railway.internal", "127.0.0.1", "10.1.2.3", "192.168.1.10", "169.254.169.254", "100.64.0.1", "interno.ejemplo.test", "metadatos.ejemplo.test"]) {
+      await expect(saveMailbox(h.deps, { ...MAILBOX, host }, ACTOR), host).rejects.toMatchObject({ code: "BAD_REQUEST", message: expect.stringMatching(/privada o interna/) });
+    }
+    expect(await h.store.list()).toEqual([]);
+  });
+
+  it("al cambiar el buzón se apaga la lectura automática hasta volver a comprobarlo", async () => {
+    const h = harness();
+    await saveMailbox(h.deps, MAILBOX, ACTOR);
+    await testMailbox(h.deps, "user:1");
+    await setMailboxIngestion(h.deps, true, ACTOR);
+    await new Promise((r) => setTimeout(r, 5));
+    const r = await saveMailbox(h.deps, { mailbox: "Tickets" }, ACTOR);
+    expect(r.ingestionDisabled).toBe(true);
+    expect(h.flagWrites).toEqual([true, false]);
+    const view = await getFinanceSyncSetup(h.deps);
+    expect(view.ingestionEnabled).toBe(false);
+    expect(view.mailbox!.state).toBe("unchecked");
+    await expect(setMailboxIngestion(h.deps, true, ACTOR)).rejects.toMatchObject({ code: "PRECONDITION_FAILED" });
   });
 
   it("rechaza formatos no válidos con el nombre que ve el usuario y campos ajenos", async () => {
     const h = harness();
-    await expect(saveMailbox(h.deps, { host: "https://imap mal" }, "user:1")).rejects.toThrow(/Servidor de correo entrante/);
-    await expect(saveMailbox(h.deps, { otro: "x" }, "user:1")).rejects.toBeInstanceOf(FinanceSyncSetupError);
+    await expect(saveMailbox(h.deps, { host: "https://imap mal" }, ACTOR)).rejects.toThrow(/Servidor de correo entrante/);
+    await expect(saveMailbox(h.deps, { otro: "x" }, ACTOR)).rejects.toBeInstanceOf(FinanceSyncSetupError);
     expect(await h.store.list()).toEqual([]);
   });
 
   it("sin bóveda por empresa no se guarda nada", async () => {
     const h = harness({ multi: false });
-    await expect(saveMailbox(h.deps, MAILBOX, "user:1")).rejects.toMatchObject({ code: "PRECONDITION_FAILED" });
+    await expect(saveMailbox(h.deps, MAILBOX, ACTOR)).rejects.toMatchObject({ code: "PRECONDITION_FAILED" });
     expect((await getFinanceSyncSetup(h.deps)).mailbox).toBeNull();
   });
 });
@@ -181,7 +228,7 @@ describe("comprobar la conexión del buzón", () => {
       },
     };
     const h = harness({ probe: (v) => testProvider("imap_tpv", v, undefined, probes) });
-    await saveMailbox(h.deps, MAILBOX, "user:1");
+    await saveMailbox(h.deps, MAILBOX, ACTOR);
     const r = await testMailbox(h.deps, "user:1");
     expect(r).toMatchObject({ ok: true, outcome: "connected" });
     expect(calls).toEqual([{ host: "imap.ejemplo.test", port: 993, secure: true, user: "tickets@ejemplo.test", pass: SECRET, mailbox: "INBOX" }]);
@@ -195,7 +242,7 @@ describe("comprobar la conexión del buzón", () => {
   it("credenciales rechazadas: queda como «No funciona» sin filtrar el secreto", async () => {
     const probes: MailProbes = { imapLogin: async () => Promise.reject(Object.assign(new Error("AUTHENTICATIONFAILED"), { authenticationFailed: true })), smtpVerify: async () => undefined };
     const h = harness({ probe: (v) => testProvider("imap_tpv", v, undefined, probes) });
-    await saveMailbox(h.deps, MAILBOX, "user:1");
+    await saveMailbox(h.deps, MAILBOX, ACTOR);
     const r = await testMailbox(h.deps, "user:1");
     expect(r).toMatchObject({ ok: false, outcome: "rejected" });
     expect(h.checks.map((c) => c.outcome)).toEqual(["rejected"]);
@@ -205,7 +252,7 @@ describe("comprobar la conexión del buzón", () => {
     vi.useFakeTimers();
     try {
       const h = harness({ probe: () => new Promise(() => undefined) });
-      await saveMailbox(h.deps, MAILBOX, "user:1");
+      await saveMailbox(h.deps, MAILBOX, ACTOR);
       const p = testMailbox(h.deps, "user:1", 50);
       await vi.advanceTimersByTimeAsync(60);
       await expect(p).resolves.toMatchObject({ ok: false, outcome: "error", message: expect.stringMatching(/no respondió a tiempo/) });
@@ -228,7 +275,7 @@ describe("comprobar la conexión del buzón", () => {
 describe("lectura automática por empresa", () => {
   it("no se enciende sin el buzón comprobado; con él, sí (y se puede apagar siempre)", async () => {
     const h = harness();
-    await saveMailbox(h.deps, MAILBOX, "user:1");
+    await saveMailbox(h.deps, MAILBOX, ACTOR);
     await expect(setMailboxIngestion(h.deps, true, { id: 1, name: "Ana" })).rejects.toMatchObject({ code: "PRECONDITION_FAILED" });
     expect(h.flagWrites).toEqual([]);
     await testMailbox(h.deps, "user:1");
@@ -271,5 +318,86 @@ describe("lectura de los datos de la empresa", () => {
     expect(c.confirmedConciliations).toBe(3);
     expect(c.suggestedConciliations).toBe(3 + 4);
     expect(c.bankMovements).toBe(3);
+  });
+});
+
+describe("límite de ritmo de «Comprobar conexión»", () => {
+  it("ventana deslizante por clave", () => {
+    let t = 0;
+    const allow = createRateLimiter(2, 1000, () => t);
+    expect([allow("a"), allow("a"), allow("a"), allow("b")]).toEqual([true, true, false, true]);
+    t = 1001;
+    expect(allow("a")).toBe(true);
+  });
+
+  it("por empresa: al superarlo no se conecta ni se registra nada", async () => {
+    const probe = vi.fn(async () => ({ ok: true, message: "ok", outcome: "connected" as const }));
+    const allow = createRateLimiter(1, 60_000);
+    const a = harness({ tenant: "empresa-a", probe, allowTest: allow });
+    const b = harness({ tenant: "empresa-b", probe, allowTest: allow });
+    await saveMailbox(a.deps, MAILBOX, ACTOR);
+    await saveMailbox(b.deps, MAILBOX, ACTOR);
+    await testMailbox(a.deps, "user:1");
+    await expect(testMailbox(a.deps, "user:1")).rejects.toMatchObject({ code: "TOO_MANY_REQUESTS" });
+    await expect(testMailbox(b.deps, "user:1")).resolves.toMatchObject({ ok: true });
+    expect(probe).toHaveBeenCalledTimes(2);
+    expect(a.checks).toHaveLength(1);
+  });
+
+  it("SSRF también al comprobar: un buzón guardado que ahora resuelve a una IP interna no se conecta", async () => {
+    const probe = vi.fn();
+    const h = harness({ probe });
+    await saveMailbox(h.deps, MAILBOX, ACTOR);
+    // El DNS del servidor cambia después de guardarlo
+    h.deps.checkHost = async (host) => {
+      await resolveMailHost(host, async () => ["127.0.0.1"]);
+    };
+    await expect(testMailbox(h.deps, "user:1")).resolves.toMatchObject({ ok: false, outcome: "error", message: expect.stringMatching(/privada o interna/) });
+    expect(probe).not.toHaveBeenCalled();
+  });
+});
+
+describe("servidores de correo públicos (SSRF)", () => {
+  it("nombres internos e IP no públicas se rechazan sin resolver; los públicos pasan", () => {
+    for (const h of ["localhost", "imap.localhost", "core.railway.internal", "buzon.local", "intranet", "127.0.0.1", "0.0.0.0", "10.0.0.1", "172.16.5.4", "192.168.0.1", "169.254.169.254", "100.64.1.1", "::1", "fd12::1", "fe80::1", "::ffff:127.0.0.1"]) {
+      expect(mailHostNameProblem(h), h).toMatch(/privada o interna/);
+    }
+    for (const h of ["imap.gmail.com", "outlook.office365.com", "8.8.8.8", "2001:4860:4860::8888"]) expect(mailHostNameProblem(h), h).toBeNull();
+  });
+
+  it("resuelve y exige que TODAS las direcciones sean públicas; devuelve la IP y el nombre para SNI", async () => {
+    await expect(resolveMailHost("imap.ejemplo.test", async () => ["8.8.8.8", "8.8.4.4"])).resolves.toEqual({ address: "8.8.8.8", servername: "imap.ejemplo.test" });
+    await expect(resolveMailHost("imap.ejemplo.test", async () => ["8.8.8.8", "10.0.0.1"])).rejects.toBeInstanceOf(MailHostError);
+    await expect(resolveMailHost("imap.ejemplo.test", async () => [])).rejects.toThrow(/No se encuentra/);
+    await expect(resolveMailHost("imap.ejemplo.test", async () => Promise.reject(new Error("ENOTFOUND")))).rejects.toThrow(/No se encuentra/);
+    await expect(resolveMailHost("8.8.8.8", async () => Promise.reject(new Error("no debe resolver")))).resolves.toEqual({ address: "8.8.8.8", servername: undefined });
+  });
+
+  it("la comprobación real conecta a la IP validada con SNI y tiempos acotados, en solo lectura", async () => {
+    const opts: Array<Record<string, unknown>> = [];
+    const locks: Array<{ path: string; readOnly: boolean }> = [];
+    const client: ImapCheckClient = {
+      connect: async () => undefined,
+      getMailboxLock: async (path, o) => {
+        locks.push({ path, readOnly: o.readOnly });
+        return { release: () => undefined };
+      },
+      logout: async () => undefined,
+    };
+    const login = { host: "imap.ejemplo.test", port: 993, secure: true, user: "u@ejemplo.test", pass: SECRET, mailbox: "INBOX" };
+    await imapLoginCheck(login, async () => ["8.8.8.8"], async (o) => {
+      opts.push(o);
+      return client;
+    });
+    expect(opts[0]).toMatchObject({ host: "8.8.8.8", servername: "imap.ejemplo.test", port: 993, secure: true, ...IMAP_CHECK_TIMEOUTS });
+    expect(Number(opts[0].connectionTimeout) + Number(opts[0].greetingTimeout)).toBeLessThanOrEqual(20_000);
+    expect(locks).toEqual([{ path: "INBOX", readOnly: true }]);
+    // Interno: ni se crea el cliente; testProvider lo traduce a un error sin el secreto
+    const make = vi.fn();
+    await expect(imapLoginCheck({ ...login, host: "core.railway.internal" }, async () => ["8.8.8.8"], make)).rejects.toBeInstanceOf(MailHostError);
+    expect(make).not.toHaveBeenCalled();
+    const r = await testProvider("imap_tpv", { host: "localhost", user: "u", pass: SECRET }, undefined, { imapLogin: (o) => imapLoginCheck(o, async () => ["127.0.0.1"], make), smtpVerify: async () => undefined });
+    expect(r).toMatchObject({ ok: false, outcome: "error", message: expect.stringMatching(/privada o interna/) });
+    expect(JSON.stringify(r)).not.toContain(SECRET);
   });
 });

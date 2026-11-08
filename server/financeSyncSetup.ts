@@ -18,16 +18,21 @@ import { panelIntegrations, fieldProblems, type PanelIntegration } from "./_core
 import type { ProviderStatus } from "./_core/credentials/vault";
 import type { Connection, CheckOutcome } from "./_core/credentials/health";
 import type { TestResult } from "./_core/credentials/testers";
+import { MailHostError } from "./_core/credentials/mailHost";
 import { financeSyncSetup, type FinanceSyncFacts, type FinanceSyncSetup } from "../shared/financeSyncSetup";
 
 export const MAILBOX_PROVIDER = "imap_tpv";
 export const INGESTION_FLAG = "email_ingestion_enabled";
-/** Tope de «Comprobar conexión»: el probador ya corta cada socket a los 8 s; esto acota la operación completa. */
+/** Tope de «Comprobar conexión»: ImapFlow ya corta conexión (12 s), saludo (6 s) y socket (8 s); esto acota el total. */
 export const MAILBOX_TEST_TIMEOUT_MS = 20_000;
+/** Límite de ritmo de «Comprobar conexión» por empresa: como mucho 5 cada 10 minutos. */
+export const MAILBOX_TEST_LIMIT = { max: 5, windowMs: 10 * 60_000 } as const;
+/** Campos de conexión: si cambia alguno, hay que volver a escribir la contraseña (no se reenvía a otro servidor). */
+export const CONNECTION_FIELDS = ["host", "port", "user", "secure"] as const;
 
 export class FinanceSyncSetupError extends Error {
   constructor(
-    readonly code: "BAD_REQUEST" | "PRECONDITION_FAILED",
+    readonly code: "BAD_REQUEST" | "PRECONDITION_FAILED" | "TOO_MANY_REQUESTS",
     message: string,
   ) {
     super(message);
@@ -55,6 +60,12 @@ interface HealthLike {
 export interface FinanceSyncDeps {
   /** Bóveda por empresa disponible (multiempresa). */
   multi: () => boolean;
+  /** Empresa en curso (clave del límite de ritmo). */
+  tenantId: () => string;
+  /** SSRF: resuelve el servidor y lanza MailHostError si no es una dirección pública. */
+  checkHost: (host: string) => Promise<void>;
+  /** Límite de ritmo: true si se admite otra comprobación con esta clave (y la cuenta). */
+  allowTest: (key: string) => boolean;
   vault: () => {
     status(providerIds?: string[]): Promise<ProviderStatus[]>;
     resolve(provider: string): Promise<Record<string, string>>;
@@ -106,8 +117,13 @@ function requireVault(deps: FinanceSyncDeps): void {
   if (!deps.multi()) throw new FinanceSyncSetupError("PRECONDITION_FAILED", "En esta instalación el buzón lo configura el equipo técnico.");
 }
 
-/** Guarda los datos del buzón en la bóveda de la empresa en curso. Un campo secreto vacío se conserva. */
-export async function saveMailbox(deps: FinanceSyncDeps, values: Record<string, string>, actor: string): Promise<{ saved: string[] }> {
+/**
+ * Guarda los datos del buzón en la bóveda de la empresa en curso. Una contraseña vacía conserva la guardada, salvo que
+ * cambie el servidor, el puerto, el usuario o el cifrado: entonces hay que volver a escribirla (la guardada no se envía
+ * a otro servidor). Solo se admiten servidores públicos (SSRF). Si cambia algo, la lectura automática se apaga hasta
+ * volver a comprobar el buzón.
+ */
+export async function saveMailbox(deps: FinanceSyncDeps, values: Record<string, string>, actor: { id: number; name: string }): Promise<{ saved: string[]; ingestionDisabled: boolean }> {
   requireVault(deps);
   const provider = getProvider(MAILBOX_PROVIDER)!;
   const clean: Record<string, string> = {};
@@ -120,16 +136,54 @@ export async function saveMailbox(deps: FinanceSyncDeps, values: Record<string, 
   const problems = fieldProblems(provider, clean);
   if (Object.keys(clean).some((k) => provider.fields.find((f) => f.key === k)?.panel?.hidden)) problems.push("Hay un dato que no se puede cambiar desde aquí.");
   if (problems.length) throw new FinanceSyncSetupError("BAD_REQUEST", problems.join(" "));
-  if (!Object.keys(clean).length) return { saved: [] };
+  if (!Object.keys(clean).length) return { saved: [], ingestionDisabled: false };
+
+  const current = await deps.vault().resolve(MAILBOX_PROVIDER);
+  const connectionChanged = CONNECTION_FIELDS.some((k) => k in clean && clean[k] !== (current[k] ?? ""));
+  if (connectionChanged && current.pass && !clean.pass) {
+    throw new FinanceSyncSetupError("BAD_REQUEST", "Has cambiado el servidor, el puerto, el usuario o la conexión cifrada: vuelve a escribir la contraseña del buzón.");
+  }
+  if (clean.host) {
+    try {
+      await deps.checkHost(clean.host);
+    } catch (e) {
+      throw new FinanceSyncSetupError("BAD_REQUEST", e instanceof MailHostError ? e.message : "No se pudo comprobar el servidor de correo.");
+    }
+  }
+
+  let r: { saved: string[] };
   try {
-    const r = await deps.vault().save(MAILBOX_PROVIDER, clean, actor);
-    // Auditoría sin valores: solo qué campos
-    console.warn(JSON.stringify({ ctx: "FinanceSyncSetup", event: "mailbox_saved", fields: r.saved, user: actor }));
-    return r;
+    r = await deps.vault().save(MAILBOX_PROVIDER, clean, `user:${actor.id}`);
   } catch (e) {
     throw new FinanceSyncSetupError("BAD_REQUEST", e instanceof Error ? e.message : "No se pudo guardar el buzón");
   }
+  // Buzón cambiado: no se sigue leyendo con datos sin comprobar
+  let ingestionDisabled = false;
+  if (r.saved.length && (await deps.ingestion.get().catch(() => false))) {
+    await deps.ingestion.set(false, actor);
+    ingestionDisabled = true;
+  }
+  // Auditoría sin valores: solo qué campos
+  console.warn(JSON.stringify({ ctx: "FinanceSyncSetup", event: "mailbox_saved", fields: r.saved, ingestionDisabled, user: actor.id }));
+  return { saved: r.saved, ingestionDisabled };
 }
+
+/** Límite de ritmo en memoria (ventana deslizante) por clave. */
+export function createRateLimiter(max: number, windowMs: number, now: () => number = Date.now): (key: string) => boolean {
+  const hits = new Map<string, number[]>();
+  return (key) => {
+    const t = now();
+    const recent = (hits.get(key) ?? []).filter((x) => t - x < windowMs);
+    if (recent.length >= max) {
+      hits.set(key, recent);
+      return false;
+    }
+    recent.push(t);
+    hits.set(key, recent);
+    return true;
+  };
+}
+const defaultTestLimiter = createRateLimiter(MAILBOX_TEST_LIMIT.max, MAILBOX_TEST_LIMIT.windowMs);
 
 function withTimeout<T>(p: Promise<T>, ms: number, onTimeout: () => T): Promise<T> {
   let t: ReturnType<typeof setTimeout> | undefined;
@@ -138,17 +192,25 @@ function withTimeout<T>(p: Promise<T>, ms: number, onTimeout: () => T): Promise<
 
 /**
  * Comprueba el buzón guardado: inicio de sesión y apertura de la carpeta en solo lectura (no descarga ni marca correos),
- * con límite de tiempo. El resultado (sin secretos) queda en el estado de integraciones de la empresa.
+ * solo contra servidores públicos, con límite de tiempo y de ritmo por empresa. El resultado (sin secretos) queda en el
+ * estado de integraciones de la empresa.
  */
 export async function testMailbox(deps: FinanceSyncDeps, actor: string, timeoutMs = MAILBOX_TEST_TIMEOUT_MS): Promise<TestResult> {
   requireVault(deps);
+  if (!deps.allowTest(`${MAILBOX_PROVIDER}:${deps.tenantId()}`)) {
+    throw new FinanceSyncSetupError("TOO_MANY_REQUESTS", "Has comprobado el buzón muchas veces seguidas: espera unos minutos antes de volver a intentarlo.");
+  }
   const values = await deps.vault().resolve(MAILBOX_PROVIDER);
   if (!values.host || !values.user || !values.pass) return { ok: false, message: "Guarda antes el servidor, el usuario y la contraseña del buzón.", outcome: "error" };
-  const r = await withTimeout(
-    deps.probe(values).catch((): TestResult => ({ ok: false, message: "No se pudo conectar con el servidor IMAP", outcome: "error" })),
-    timeoutMs,
-    (): TestResult => ({ ok: false, message: "El servidor de correo no respondió a tiempo: revisa el servidor y el puerto.", outcome: "error" }),
-  );
+  const run = async (): Promise<TestResult> => {
+    try {
+      await deps.checkHost(values.host);
+    } catch (e) {
+      return { ok: false, message: e instanceof MailHostError ? e.message : "No se pudo comprobar el servidor de correo.", outcome: "error" };
+    }
+    return deps.probe(values).catch((): TestResult => ({ ok: false, message: "No se pudo conectar con el servidor IMAP", outcome: "error" }));
+  };
+  const r = await withTimeout(run(), timeoutMs, (): TestResult => ({ ok: false, message: "El servidor de correo no respondió a tiempo: revisa el servidor y el puerto.", outcome: "error" }));
   if (r.outcome && r.outcome !== "unsupported") await deps.recordCheck(r.outcome, r.message, actor).catch(() => undefined);
   return r;
 }
@@ -215,13 +277,14 @@ export async function writeIngestionFlag(db: Db, enabled: boolean, actor: { id: 
 }
 
 export async function defaultFinanceSyncDeps(): Promise<FinanceSyncDeps> {
-  const [{ getDb }, { isMultiTenant }, { getVault }, health, { testProvider }, config] = await Promise.all([
+  const [{ getDb }, { isMultiTenant, getTenantId }, { getVault }, health, { testProvider }, config, { resolveMailHost }] = await Promise.all([
     import("./db"),
     import("./_core/tenant"),
     import("./_core/credentials/runtime"),
     import("./_core/credentials/health"),
     import("./_core/credentials/testers"),
     import("./config"),
+    import("./_core/credentials/mailHost"),
   ]);
   const db = async (): Promise<Db> => {
     const d = await getDb();
@@ -230,6 +293,11 @@ export async function defaultFinanceSyncDeps(): Promise<FinanceSyncDeps> {
   };
   return {
     multi: () => isMultiTenant(),
+    tenantId: () => getTenantId(),
+    checkHost: async (host) => {
+      await resolveMailHost(host);
+    },
+    allowTest: defaultTestLimiter,
     vault: () => getVault(),
     health: async () => (await health.integrationHealth()).providers,
     probe: (values) => testProvider(MAILBOX_PROVIDER, values),

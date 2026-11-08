@@ -20,7 +20,7 @@ export const financeSyncRouter = router({
 
   saveMailbox: adminProcedure
     .input(z.object({ values: z.record(z.string().max(64), z.string().max(1024)) }))
-    .mutation(async ({ ctx, input }) => saveMailbox(await defaultFinanceSyncDeps(), input.values, `user:${ctx.user.id}`).catch(mapError)),
+    .mutation(async ({ ctx, input }) => saveMailbox(await defaultFinanceSyncDeps(), input.values, { id: ctx.user.id, name: actorName(ctx.user) }).catch(mapError)),
 
   testMailbox: adminProcedure.mutation(async ({ ctx }) => testMailbox(await defaultFinanceSyncDeps(), `user:${ctx.user.id}`).catch(mapError)),
 
