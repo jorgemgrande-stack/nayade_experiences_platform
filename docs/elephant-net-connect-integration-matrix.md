@@ -173,7 +173,11 @@ En el Core, cada empresa guarda sus credenciales en una bóveda (`server/_core/c
 | Finance Sync · extractos de cualquier banco | #716 | fusionado |
 | GEO Control funcional | #717 | fusionado |
 | Contratos y firma electrónica simple | #718 | fusionado |
-| Tanda B: fichas de GEO, Contratos y Finance Sync; «Gestionar» abre el módulo | esta PR | en curso |
+| Tanda B: fichas de GEO, Contratos y Finance Sync; «Gestionar» abre el módulo | #719 | en production |
+| Hotel Net · sincronización iCal (exportación e importación con protección SSRF) | #722 | fusionado (0050) |
+| Care Net · recordatorios de cita por correo | #720 | fusionado (0051) |
+| Ski Net · fianzas del alquiler y cargos por daños | #721 | en curso (0052) |
+| Tanda C: fichas de Care, Ski, Restaurant y Travel Net al día (Hotel Net bloqueado por el borrador ajeno v10) | esta PR | en curso |
 
 ## Activación del marketplace (encargo del 08/11/2026)
 

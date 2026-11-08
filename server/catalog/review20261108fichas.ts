@@ -37,7 +37,7 @@ export interface ListingChange {
   fields: Partial<Record<Field, { from: unknown; to: unknown }>>;
 }
 
-const ASSISTED_FAQ = { q: "¿Cómo se pone en marcha?", a: "Es una implantación acompañada: envías la solicitud desde el panel y nuestro equipo la activa contigo. Enviar la solicitud no activa ni cobra nada por sí solo." };
+export const ASSISTED_FAQ = { q: "¿Cómo se pone en marcha?", a: "Es una implantación acompañada: envías la solicitud desde el panel y nuestro equipo la activa contigo. Enviar la solicitud no activa ni cobra nada por sí solo." };
 const COMING_SOON_ACTIVATION = { activation: "Todavía no se puede contratar: estará disponible próximamente." };
 
 export const LISTINGS_2026_11_08: readonly ListingChange[] = [
