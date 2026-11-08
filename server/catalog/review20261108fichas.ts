@@ -33,6 +33,8 @@ export interface ListingChange {
   activation?: { from: ProductDraft["activation"]["kind"]; to: ProductDraft["activation"]["kind"] };
   functionalGrade?: NonNullable<ProductDraft["internal"]["functionalGrade"]>;
   stripePrepared?: boolean;
+  /** Costes de terceros del producto (texto público fuera de la ficha): de partida y nuevo. */
+  thirdPartyCosts?: { from: string | null; to: string | null };
   /** Campos de la ficha: valor publicado de partida y valor nuevo. */
   fields: Partial<Record<Field, { from: unknown; to: unknown }>>;
 }
@@ -213,6 +215,7 @@ function target(d: ProductDraft, c: ListingChange): ProductDraft {
   for (const [f, v] of Object.entries(c.fields) as Array<[Field, { to: unknown }]>) (m as Record<string, unknown>)[f] = v.to;
   return {
     ...d,
+    ...(c.thirdPartyCosts ? { thirdPartyCosts: c.thirdPartyCosts.to } : {}),
     technicalStatus: c.technical?.to ?? d.technicalStatus,
     activation: c.activation ? { ...d.activation, kind: c.activation.to } : d.activation,
     catalog: { ...d.catalog, commercialStatus: c.status?.to ?? d.catalog.commercialStatus, ...(c.stripePrepared !== undefined ? { stripePrepared: c.stripePrepared } : {}) },
@@ -228,7 +231,8 @@ function isDone(d: ProductDraft, c: ListingChange): boolean {
     d.technicalStatus === t.technicalStatus &&
     d.activation.kind === t.activation.kind &&
     d.catalog.commercialStatus === t.catalog.commercialStatus &&
-    (c.stripePrepared === undefined || d.catalog.stripePrepared === c.stripePrepared)
+    (c.stripePrepared === undefined || d.catalog.stripePrepared === c.stripePrepared) &&
+    (!c.thirdPartyCosts || d.thirdPartyCosts === c.thirdPartyCosts.to)
   );
 }
 
@@ -270,6 +274,7 @@ export async function applyListingReview(svc: WebAdminService, store: WebStore, 
       continue;
     }
     const problems: string[] = [];
+    if (c.thirdPartyCosts && d.thirdPartyCosts !== c.thirdPartyCosts.from && d.thirdPartyCosts !== c.thirdPartyCosts.to) problems.push("los costes de terceros ya no son los de partida");
     if (c.stripePrepared !== undefined && d.catalog.stripePrepared !== undefined && d.catalog.stripePrepared !== c.stripePrepared) problems.push(`«stripePrepared» decidido en el CRM (${d.catalog.stripePrepared})`);
     if (c.status && d.catalog.commercialStatus !== c.status.from && d.catalog.commercialStatus !== c.status.to) problems.push(`estado «${d.catalog.commercialStatus}» (se esperaba «${c.status.from}»)`);
     if (c.technical && d.technicalStatus !== c.technical.from && d.technicalStatus !== c.technical.to) problems.push(`estado técnico «${d.technicalStatus}» (se esperaba «${c.technical.from}»)`);

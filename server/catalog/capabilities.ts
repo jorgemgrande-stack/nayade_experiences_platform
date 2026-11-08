@@ -89,7 +89,7 @@ export const CAPABILITIES: readonly CapabilityDef[] = [
   c("whatsapp-ai", "WhatsApp Business automatizado e IA", "extra", "comms", "partial"),
   c("voice-ai", "Centralita y llamadas IA", "extra", "comms", "partial"),
   c("reception-ai", "Recepcionista virtual IA", "extra", "ai", "planned"),
-  c("email-campaigns", "Email marketing y campañas", "extra", "marketing", "planned"),
+  c("email-campaigns", "Email marketing y campañas", "extra", "marketing", "partial"),
   c("ads-manager", "Ads Manager", "extra", "marketing", "planned"),
   c("seo-control", "SEO Control", "extra", "marketing", "planned"),
   c("geo-control", "GEO Control", "extra", "marketing", "partial"),
