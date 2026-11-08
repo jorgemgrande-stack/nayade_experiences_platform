@@ -6,6 +6,7 @@
  *  - GET/POST /check-in/<token>  Hotel Net · registro de viajeros antes de llegar (sin datos de pago).
  *  - GET/POST /firma/<token>     Ski Net · firma remota del contrato de alquiler (un solo uso).
  *  - GET/POST /baja/<token>      Connect Brevo · baja de las comunicaciones comerciales (idempotente).
+ *  - GET/POST /contrato/<token>  Contratos y firma electrónica · firma (o rechazo) a distancia del contrato (un solo uso).
  *
  * Antiabuso: límite por IP (todas las peticiones y, más estricto, los envíos; en la carta de mesa, más alto porque un
  * comedor comparte la IP de su wifi) y por enlace (envíos con el mismo token, p. ej. por mesa); rutas sensibles a
@@ -27,10 +28,12 @@ import { SUBMIT_KEY_RE, TABLE_ORDER_LIMITS, estimatedTotal, orderLinesFromForm, 
 import { GUEST_FIELDS, checkinOfLink, guestsFromForm, onlineCheckinAvailable, saveSubmission, type PublicCheckin } from "./hotelCheckin";
 import { contractOfLink, remoteSigningAvailable, signWithLink, type PublicContract } from "./skiSign";
 import { unsubscribe, unsubscribeAvailable, verifyUnsubscribeToken } from "./brevoUnsubscribe";
+import { contractOfLink as esignContractOfLink, contractSigningAvailable, rejectWithLink, resolveEsignLink, signWithLink as esignSignWithLink, type PublicContract as EsignPublicContract } from "./contractSign";
+import { ESIGN_LIMITS, SIMPLE_SIGNATURE_NOTICE, formatAmount } from "../../shared/contractsEsign";
 import { DOC_TYPES, SEXES } from "../hotelGuests";
 
 /** Rutas públicas de este módulo (las comprueba el lector de cuerpos y la prueba de rutas). */
-export const NET_PUBLIC_PATH = /^\/(mesa|check-in|firma|baja)\/[^/]+\/?$/;
+export const NET_PUBLIC_PATH = /^\/(mesa|check-in|firma|baja|contrato)\/[^/]+\/?$/;
 export const NET_PUBLIC_BODY_LIMIT = 8 * 1024;
 
 const urlencoded = express.urlencoded({ extended: false, limit: NET_PUBLIC_BODY_LIMIT, parameterLimit: 400 });
@@ -329,6 +332,84 @@ async function unsubPost(req: Request, res: Response) {
   }
 }
 
+// ─── Contratos y firma electrónica: firma a distancia ──────────────────────────
+
+const CONTRATO = "Firma del contrato";
+
+function esignPage(res: Response, status: number, c: EsignPublicContract, msg = "", values: { signerName?: string; signerTaxId?: string } = {}) {
+  const x = c.content;
+  const amount = x.amount != null ? formatAmount(Number(x.amount)) : null;
+  page(
+    res,
+    status,
+    CONTRATO,
+    `${msg}<div class="sheet"><h1>${esc(x.title)}</h1><p>${esc(x.company)} · ${esc(x.customerName)}</p><p class="muted">Fecha: ${esc(fmtDay(x.contractDate))}${amount ? ` · Importe: ${esc(amount)}` : ""}</p></div>` +
+      `<div class="sheet"><h2>Texto del contrato</h2><div class="terms">${esc(x.body)}</div><p class="muted">Huella del contrato (SHA-256): ${esc(c.hash)}</p></div>` +
+      `<form method="post"><div class="sheet"><input type="hidden" name="action" value="sign">` +
+      `<label for="signerName">Nombre y apellidos de quien firma</label><input id="signerName" name="signerName" maxlength="${ESIGN_LIMITS.nameMax}" required value="${esc(values.signerName ?? "")}" autocomplete="name">` +
+      `<label for="signerTaxId">DNI/NIF (opcional)</label><input id="signerTaxId" name="signerTaxId" maxlength="${ESIGN_LIMITS.taxIdMax}" value="${esc(values.signerTaxId ?? "")}">` +
+      `<label><input type="checkbox" name="accepted" value="1" required>He leído y acepto el contrato</label>` +
+      `<p class="muted">${esc(SIMPLE_SIGNATURE_NOTICE)} Al firmar se guardan tu nombre, tu DNI/NIF si lo indicas, la fecha, la IP y el navegador.</p>` +
+      `<button type="submit">Firmar el contrato</button></div></form>` +
+      `<form method="post"><div class="sheet"><input type="hidden" name="action" value="reject"><h2>¿No estás de acuerdo?</h2>` +
+      `<label for="reason">Motivo (opcional)</label><textarea id="reason" name="reason" maxlength="${ESIGN_LIMITS.reasonMax}" rows="2"></textarea><p></p>` +
+      `<button type="submit">Rechazar el contrato</button></div></form>`,
+  );
+}
+
+async function esignLinkAndContract(req: Request) {
+  const link = await resolveEsignLink(tokenOf(req));
+  const c = link ? await esignContractOfLink(link, evidence(req)) : null;
+  return link && c ? { link, c } : null;
+}
+
+async function esignGet(req: Request, res: Response) {
+  try {
+    if (!(await contractSigningAvailable())) return unavailable(res, CONTRATO);
+    const r = await esignLinkAndContract(req);
+    if (!r) return invalidLink(res, CONTRATO);
+    esignPage(res, 200, r.c);
+  } catch (e) {
+    handleError(res, CONTRATO, e, "contrato.get");
+  }
+}
+
+const esignForm = z.object({
+  action: z.enum(["sign", "reject"]),
+  signerName: z.string().max(ESIGN_LIMITS.nameMax).default(""),
+  signerTaxId: z.string().max(ESIGN_LIMITS.taxIdMax + 10).default(""),
+  accepted: z.literal("1").optional(),
+  reason: z.string().max(ESIGN_LIMITS.reasonMax).default(""),
+});
+
+async function esignPost(req: Request, res: Response) {
+  try {
+    if (!(await contractSigningAvailable())) return unavailable(res, CONTRATO);
+    const r = await esignLinkAndContract(req);
+    if (!r) return invalidLink(res, CONTRATO);
+    const body = bodyOf(req);
+    const s = (k: string) => (typeof body[k] === "string" ? (body[k] as string) : "");
+    const f = esignForm.safeParse({ action: s("action") || "sign", signerName: s("signerName"), signerTaxId: s("signerTaxId"), accepted: body.accepted === "1" ? "1" : undefined, reason: s("reason") });
+    if (!f.success) return esignPage(res, 400, r.c, notice("err", "Revisa los datos del formulario."));
+    if (f.data.action === "reject") {
+      const x = await rejectWithLink(r.link, f.data.reason, evidence(req));
+      if (!x.ok) return invalidLink(res, CONTRATO);
+      return page(res, 200, CONTRATO, `${notice("ok", "Contrato rechazado.")}<div class="sheet"><h1>${esc(CONTRATO)}</h1><p>${esc(r.c.content.company)} verá en su panel que has rechazado este contrato. El enlace ya no se puede usar.</p></div>`);
+    }
+    const x = await esignSignWithLink(r.link, { signerName: f.data.signerName, signerTaxId: f.data.signerTaxId, accepted: f.data.accepted === "1" }, evidence(req));
+    if (!x.ok) return "used" in x ? invalidLink(res, CONTRATO) : esignPage(res, 400, r.c, notice("err", x.error), { signerName: f.data.signerName, signerTaxId: f.data.signerTaxId });
+    page(
+      res,
+      200,
+      CONTRATO,
+      `${notice("ok", "Contrato firmado.")}<div class="sheet"><h1>${esc(CONTRATO)}</h1><p>Firmado por ${esc(x.signerName)}. ${esc(r.c.content.company)} ya tiene el contrato firmado.</p>` +
+        `<p class="muted">Huella del contrato (SHA-256): ${esc(x.contentHash)}</p><p class="muted">${esc(SIMPLE_SIGNATURE_NOTICE)}</p></div>`,
+    );
+  } catch (e) {
+    handleError(res, CONTRATO, e, "contrato.post");
+  }
+}
+
 // ─── Montaje ───────────────────────────────────────────────────────────────────
 
 export function createNetPublicRouter(opts: NetPublicRouterOptions = {}): Router {
@@ -354,6 +435,8 @@ export function createNetPublicRouter(opts: NetPublicRouterOptions = {}): Router
   r.post("/firma/:token", ...post, signPost);
   r.get("/baja/:token", all, unsubGet);
   r.post("/baja/:token", ...post, unsubPost);
+  r.get("/contrato/:token", all, esignGet);
+  r.post("/contrato/:token", ...post, esignPost);
   r.use((err: unknown, _req: Request, res: Response, next: NextFunction) => {
     if (res.headersSent) return next(err);
     return failure(res, "Error");

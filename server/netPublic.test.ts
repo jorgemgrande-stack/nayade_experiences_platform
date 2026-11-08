@@ -2,7 +2,7 @@
  * Elephant Net · rutas públicas (server/netPublic) sin base de datos: tokens y su huella por empresa, enlace de baja
  * HMAC, reglas del pedido desde la mesa (límites y platos), registro de viajeros del check-in online, cierre del
  * check-in, lector de cuerpos (8 KB, solo formularios), límites de peticiones por IP y por enlace, baja idempotente con
- * propagación a Brevo solo con la clave de la empresa y el código QR del panel.
+ * propagación a Brevo solo con la clave de la empresa, el código QR del panel y la firma de contratos (/contrato).
  */
 import http from "node:http";
 import type { AddressInfo } from "node:net";
@@ -12,7 +12,7 @@ import { TOKEN_RE, newToken, resolveLink, tokenHash } from "./netPublic/links";
 import { TABLE_ORDER_LIMITS, orderLinesFromForm } from "./netPublic/restaurantTable";
 import { checkinClosedReason, checkinExpiry, guestsFromForm } from "./netPublic/hotelCheckin";
 import { unsubscribeToken, verifyUnsubscribeToken } from "./netPublic/brevoUnsubscribe";
-import { NET_PUBLIC_BODY_LIMIT, createNetPublicRouter, netPublicBodyParser } from "./netPublic/router";
+import { NET_PUBLIC_BODY_LIMIT, NET_PUBLIC_PATH, createNetPublicRouter, netPublicBodyParser } from "./netPublic/router";
 import { BrevoMarketingService, PUBLIC_UNSUB_SOURCE } from "./brevoMarketing/service";
 import { MemoryBrevoMarketingStore } from "./brevoMarketing/store";
 import { qrMatrix, qrSvgPath } from "../shared/qrCode";
@@ -141,6 +141,8 @@ describe("lector de cuerpos y límites de peticiones", () => {
     app.post("/mesa/:token", (req, res) => res.json({ body: req.body }));
     // Límites bajos para probarlos; las rutas sin capacidad responden «no disponible» (404) sin tocar la BD
     app.use("/limites", createNetPublicRouter({ perIpPerMinute: 3, postsPerIp: 100, postsPerLink: 2 }));
+    // Sin límites efectivos: rutas de firma de contratos
+    app.use("/limites2", createNetPublicRouter({ perIpPerMinute: 1000, postsPerIp: 1000, postsPerLink: 1000 }));
     server = http.createServer(app);
     await new Promise<void>((r) => server.listen(0, "127.0.0.1", r));
     port = (server.address() as AddressInfo).port;
@@ -175,6 +177,40 @@ describe("lector de cuerpos y límites de peticiones", () => {
     const other = await send("POST", `/limites/baja/${t2}`, "x=1");
     expect(other.status).toBe(429); // 4.ª petición de la IP en el minuto: límite general
     expect(other.text).toMatch(/demasiadas solicitudes/i);
+  });
+
+  it("/contrato/<token>: mismo lector de 8 KB y solo formularios; un token mal formado es «enlace no válido» sin tocar la BD", async () => {
+    expect(NET_PUBLIC_PATH.test("/contrato/abc")).toBe(true);
+    expect(NET_PUBLIC_PATH.test("/contrato/abc/")).toBe(true);
+    expect(NET_PUBLIC_PATH.test("/contrato/abc/otra")).toBe(false);
+    expect(NET_PUBLIC_PATH.test("/contratos/abc")).toBe(false);
+    const big = await send("POST", `/limites2/contrato/${"d".repeat(43)}`, "signerName=" + "x".repeat(NET_PUBLIC_BODY_LIMIT));
+    expect(big.status).toBe(413);
+    expect((await send("POST", `/limites2/contrato/${"d".repeat(43)}`, JSON.stringify({ a: 1 }), "application/json")).status).toBe(415);
+    for (const bad of ["corto", "x".repeat(44)]) {
+      const r = await send("GET", `/limites2/contrato/${bad}`);
+      expect(r.status).toBe(404);
+      expect(r.text).toContain("Este enlace no es válido o ha caducado");
+      const p = await send("POST", `/limites2/contrato/${bad}`, "action=sign&signerName=Ana&accepted=1");
+      expect(p.status).toBe(404);
+      expect(p.text).toContain("Este enlace no es válido o ha caducado");
+    }
+    // Sensible a mayúsculas, como el resto
+    expect((await send("GET", `/limites2/CONTRATO/${"d".repeat(43)}`)).text).toMatch(/Cannot GET/);
+  });
+
+  it("/contrato sin la capacidad contracts-esign: «no disponible» antes de mirar el enlace", async () => {
+    const { configureCapabilityAccess, _resetCapabilityAccessForTests } = await import("./_core/capabilities/access");
+    const { MemoryCapabilityStore } = await import("./_core/capabilities/store");
+    configureCapabilityAccess(new MemoryCapabilityStore(), { enforce: true });
+    try {
+      const r = await send("GET", `/limites2/contrato/${"e".repeat(43)}`);
+      expect(r.status).toBe(404);
+      expect(r.text).toContain("Este servicio no está disponible");
+      expect((await send("POST", `/limites2/contrato/${"e".repeat(43)}`, "action=sign&signerName=Ana&accepted=1")).text).toContain("Este servicio no está disponible");
+    } finally {
+      _resetCapabilityAccessForTests();
+    }
   });
 
   it("rutas sensibles a mayúsculas: /MESA no la atiende el módulo (ni salta el lector de 8 KB)", async () => {
