@@ -32,6 +32,7 @@ import {
   type ReleaseReason,
   type SpaSlotDrift,
 } from "./inventoryHolds";
+import { externalIcalOccupancy, type ExternalOccupancyOptions } from "./hotelIcalOccupancy";
 
 type Db = NonNullable<Awaited<ReturnType<typeof getDb>>>;
 type Exec = Pick<Db, "execute" | "insert">;
@@ -208,7 +209,8 @@ async function lockedHotelAvailability(
 
 /**
  * Ocupación calculada del hotel: habitaciones ocupadas por tipo y noche en [from, to), contando solo las
- * reservas que ocupan plaza ahora (retenidas sin caducar y confirmadas de reservas no anuladas).
+ * reservas que ocupan plaza ahora (retenidas sin caducar y confirmadas de reservas no anuladas), más los bloqueos
+ * importados de los canales iCal de Hotel Net (server/hotelIcalOccupancy.ts; `external: false` los deja fuera).
  */
 export async function hotelOccupancy(
   exec: Pick<Db, "execute">,
@@ -217,6 +219,7 @@ export async function hotelOccupancy(
   to: string,
   now = Date.now(),
   excludeReservationId?: number,
+  external: ExternalOccupancyOptions | false = {},
 ): Promise<Map<number, Map<string, number>>> {
   const out = new Map<number, Map<string, number>>();
   if (roomTypeIds && roomTypeIds.length === 0) return out;
@@ -236,6 +239,13 @@ export async function hotelOccupancy(
     byRoom.get(k)!.push({ checkIn: r.stay_check_in!, checkOut: r.stay_check_out!, units: Number(r.inventory_units ?? 1) });
   }
   byRoom.forEach((stays, k) => out.set(k, occupancyByNight(stays, nights)));
+  if (external !== false) {
+    (await externalIcalOccupancy(exec, roomTypeIds, from, to, external)).forEach((byNight, k) => {
+      const own = out.get(k) ?? new Map<string, number>(nights.map((n) => [n, 0]));
+      byNight.forEach((units, n) => own.set(n, (own.get(n) ?? 0) + units));
+      out.set(k, own);
+    });
+  }
   return out;
 }
 
