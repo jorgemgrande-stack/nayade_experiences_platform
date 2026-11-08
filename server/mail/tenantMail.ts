@@ -73,11 +73,57 @@ export function setTenantPostmarkFailureHookForTests(f: ((e: MailProviderError) 
 }
 
 /**
+ * Vía por la que sale un correo de la empresa: el servicio central de la plataforma (coste de Big Elephant, se mide como
+ * `email.sent` y cuenta para la cuota) o una cuenta propia de la empresa, Postmark o SMTP (la paga su titular: se mide
+ * aparte como `email.own.sent`, sin coste ni cuota de la plataforma).
+ */
+export type MailRoute = "platform" | "own_postmark" | "own_smtp";
+
+/** Puerto que avisa (`onRoute`) de la vía de cada mensaje que el proveedor ACEPTA. Sin aviso, el mismo puerto. */
+function routeTagged(port: MailProviderPort | null, route: MailRoute, onRoute: ((route: MailRoute) => void) | undefined): MailProviderPort | null {
+  if (!port || !onRoute) return port;
+  return {
+    name: port.name,
+    async send(m) {
+      const r = await port.send(m);
+      try {
+        onRoute(route);
+      } catch {
+        // Medir no puede afectar al envío
+      }
+      return r;
+    },
+  };
+}
+
+/**
+ * Vía prevista para un correo de esta categoría en la empresa en curso (antes de enviarlo): Postmark propio si es
+ * transaccional y está activo, SMTP propio si está configurado y, si no, la plataforma. La vía real puede ser la
+ * plataforma cuando la cuenta propia falla (envío alternativo): la indica `sendTenantMail`.
+ */
+export function predictedMailRoute(category: string | null | undefined): MailRoute {
+  if (!isMultiTenant()) return "platform";
+  if (tenantPostmark() && isTransactionalCategory(category ?? "legacy")) return "own_postmark";
+  return tenantOwnSmtp() ? "own_smtp" : "platform";
+}
+
+/**
+ * Vía con la que se mide un envío: la plataforma si algún mensaje salió por ella (también el envío alternativo); si no,
+ * la cuenta propia que lo aceptó; sin ninguna aceptación (fallo, omitido o reintento pendiente), la prevista.
+ */
+export function meteredMailRoute(used: ReadonlySet<MailRoute>, predicted: MailRoute): MailRoute {
+  if (used.has("platform")) return "platform";
+  if (used.has("own_postmark")) return "own_postmark";
+  if (used.has("own_smtp")) return "own_smtp";
+  return predicted;
+}
+
+/**
  * Servicio de correo de la empresa en curso, o `null` (sin base o sin migración). Proveedor, por orden: Postmark propio
  * de la empresa (solo transaccional y con su dominio verificado), SMTP propio (dominio verificado) o el servicio
  * central. `category` decide la identidad del remitente al encolar: una comercial nunca usa la de Postmark.
  */
-export async function tenantMailService(o: { category?: string } = {}): Promise<MailService | null> {
+export async function tenantMailService(o: { category?: string; onRoute?: (route: MailRoute) => void } = {}): Promise<MailService | null> {
   const tenantId = getTenantIdOrDefault();
   const db = await getTenantDatabase();
   if (!db) return null;
@@ -90,10 +136,14 @@ export async function tenantMailService(o: { category?: string } = {}): Promise<
   const platformDomain = (process.env.MAIL_SENDING_DOMAIN ?? "").trim().toLowerCase() || null;
   const fallbackDomain = own ? own.domain : platformDomain;
   const fallbackFrom = own ? own.fromEmail : platformDomain ? `no-reply@${platformDomain}` : null;
-  const fallback = senderGuard(providerOverride !== undefined ? providerOverride : own ? smtpProvider(own.config) : mailProviderFromEnv(process.env), { domain: fallbackDomain, from: fallbackFrom });
+  const fallback = routeTagged(
+    senderGuard(providerOverride !== undefined ? providerOverride : own ? smtpProvider(own.config) : mailProviderFromEnv(process.env), { domain: fallbackDomain, from: fallbackFrom }),
+    own ? "own_smtp" : "platform",
+    o.onRoute,
+  );
   const provider = pm
     ? transactionalRouter({
-        primary: { ...postmarkProvider({ serverToken: pm.serverToken, messageStream: pm.messageStream, fetch: postmarkFetchOverride }), name: TENANT_POSTMARK_LABEL },
+        primary: routeTagged({ ...postmarkProvider({ serverToken: pm.serverToken, messageStream: pm.messageStream, fetch: postmarkFetchOverride }), name: TENANT_POSTMARK_LABEL }, "own_postmark", o.onRoute)!,
         primaryDomain: pm.domain,
         fallback,
         fallbackFrom,
@@ -120,9 +170,14 @@ function ownSenderFor(category: string): string | null {
 
 const list = (v: string | string[] | undefined) => (Array.isArray(v) ? v : v ? [v] : []).flatMap((x) => x.split(",")).map((x) => x.trim()).filter(Boolean);
 
-/** Envía (vía bandeja de salida) un correo de la empresa en curso. `true` si la API del proveedor lo aceptó. */
-export async function sendTenantMail(p: TenantMailParams): Promise<boolean> {
-  const svc = await tenantMailService({ category: p.category ?? "legacy" }).catch(() => null);
+/**
+ * Envía (vía bandeja de salida) un correo de la empresa en curso. `true` si la API del proveedor lo aceptó. `onRoute`
+ * recibe la vía de cada mensaje aceptado (para medir el consumo de la plataforma aparte del de las cuentas propias).
+ */
+export async function sendTenantMail(p: TenantMailParams, onRoute?: (route: MailRoute) => void): Promise<boolean> {
+  // Solo los mensajes de ESTE envío: los reintentos pendientes que se drenan al final no se atribuyen a él
+  let open = true;
+  const svc = await tenantMailService({ category: p.category ?? "legacy", onRoute: onRoute && ((r) => open && onRoute(r)) }).catch(() => null);
   if (!svc) {
     opsLog("error", "Mail", "not_sent", { lane: "tenant", reason: "outbox_missing", category: p.category ?? "legacy" });
     return false;
@@ -156,6 +211,7 @@ export async function sendTenantMail(p: TenantMailParams): Promise<boolean> {
     if (!(r.status === "accepted" || r.status === "delivered")) allOk = false;
   }
   // Reintentos pendientes de la empresa, sin esperar al ciclo periódico
+  open = false;
   void svc.drain(3).catch(() => undefined);
   return tos.length > 0 && allOk;
 }

@@ -37,7 +37,10 @@ export const Metrics = {
   HTTP_REQUEST_MS: "http.request.ms",
   HTTP_RESPONSE_BYTES: "http.response.bytes",
   STORAGE_WRITE_BYTES: "storage.write.bytes",
+  /** Correos por el servicio de correo de la PLATAFORMA (también el envío alternativo cuando falla la cuenta propia). */
   EMAIL_SENT: "email.sent",
+  /** Correos por la cuenta PROPIA de la empresa (Postmark o SMTP): se miden, pero no son coste ni cuota de la plataforma. */
+  EMAIL_OWN_SENT: "email.own.sent",
   LLM_TOKENS_INPUT: "llm.tokens.input",
   LLM_TOKENS_OUTPUT: "llm.tokens.output",
   /** Tokens con la cuenta de IA PROPIA de la empresa: se miden, pero no son coste de la plataforma. */
