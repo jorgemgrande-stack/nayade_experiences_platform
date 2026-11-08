@@ -213,6 +213,9 @@ const LifeAgenda = lazy(() => import("./pages/admin/lifeNet/LifeAgenda"));
 const LifeTasks = lazy(() => import("./pages/admin/lifeNet/LifeTasks"));
 const LifeTracking = lazy(() => import("./pages/admin/lifeNet/LifeTracking"));
 const LifeMembers = lazy(() => import("./pages/admin/lifeNet/LifeMembers"));
+const ContractsList = lazy(() => import("./pages/admin/contratos/ContractsList"));
+const ContractTemplates = lazy(() => import("./pages/admin/contratos/ContractTemplates"));
+const ContractDetail = lazy(() => import("./pages/admin/contratos/ContractDetail"));
 const SkiSchoolPlanning = lazy(() => import("./pages/admin/ski/SkiSchoolPlanning"));
 const SkiInstructors = lazy(() => import("./pages/admin/ski/SkiInstructors"));
 const TravelFiles = lazy(() => import("./pages/admin/travel/TravelFiles"));
@@ -552,6 +555,9 @@ function Router() {
       <Route path="/admin/life/tareas">{() => <Suspense fallback={<AdminLoadingFallback />}><LifeTasks /></Suspense>}</Route>
       <Route path="/admin/life/seguimiento">{() => <Suspense fallback={<AdminLoadingFallback />}><LifeTracking /></Suspense>}</Route>
       <Route path="/admin/life/miembros">{() => <Suspense fallback={<AdminLoadingFallback />}><LifeMembers /></Suspense>}</Route>
+      <Route path="/admin/contratos">{() => <Suspense fallback={<AdminLoadingFallback />}><ContractsList /></Suspense>}</Route>
+      <Route path="/admin/contratos/plantillas">{() => <Suspense fallback={<AdminLoadingFallback />}><ContractTemplates /></Suspense>}</Route>
+      <Route path="/admin/contratos/:id">{(params) => <Suspense fallback={<AdminLoadingFallback />}><ContractDetail key={params.id} id={Number(params.id)} /></Suspense>}</Route>
       <Route path="/admin/net/:producto">{() => <Suspense fallback={<AdminLoadingFallback />}><NetProductHome /></Suspense>}</Route>
       <Route path="/admin/ski/escuela">{() => <Suspense fallback={<AdminLoadingFallback />}><SkiSchoolPlanning /></Suspense>}</Route>
       <Route path="/admin/travel/expedientes">{() => <Suspense fallback={<AdminLoadingFallback />}><TravelFiles /></Suspense>}</Route>

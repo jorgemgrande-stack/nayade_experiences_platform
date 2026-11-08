@@ -110,6 +110,8 @@ export const TRPC_ROUTER_CAPABILITIES: Record<string, string> = {
   careNet: "care-net",
   // Life Net · hogar, miembros, agenda, tareas y seguimiento (los procedimientos exigen además ser miembro con acceso)
   lifeNet: "life-net",
+  // Contratos y firma electrónica: plantillas, contratos, envío a firma y PDF firmado (los procedimientos lo comprueban además)
+  contractsEsign: "contracts-esign",
 };
 
 /**

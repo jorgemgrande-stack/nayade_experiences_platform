@@ -410,6 +410,13 @@ export const TASK_NAV: NavSection[] = [
         ],
       },
       { label: "Viajes (REAV)", href: "/admin/fiscal/reav", key: "x-reav", icon: "receipt", roles: ADMIN, capabilities: ["travel-net"] },
+      {
+        label: "Contratos y firma", href: "/admin/contratos", key: "x-contratos", icon: "file", roles: SALES, capabilities: ["contracts-esign"],
+        children: [
+          { label: "Contratos", href: "/admin/contratos", key: "x-contratos-lista", capabilities: ["contracts-esign"] },
+          { label: "Plantillas", href: "/admin/contratos/plantillas", key: "x-contratos-plantillas", capabilities: ["contracts-esign"] },
+        ],
+      },
     ],
   },
   {
@@ -669,6 +676,8 @@ export const EXTRA_ROUTE_CAPABILITIES: ReadonlyArray<{ path: string; capabilitie
   { path: "/admin/fiscal", capabilities: ["travel-net"] },
   { path: "/admin/partners", capabilities: ["supplier-settlements"] },
   { path: "/admin/onboarding", capabilities: ["admin-panel"] },
+  // Contratos y firma electrónica: lista, ficha (/admin/contratos/<id>) y plantillas
+  { path: "/admin/contratos", capabilities: ["contracts-esign"] },
   // Pantallas que enlaza el menú Business y que ya se abrían por su ruta con estas capacidades: la entrada del menú
   // solo aparece con la capacidad Business, pero la ruta sigue abierta como hasta ahora
   { path: "/admin/operaciones/calendario", capabilities: ["shop-orders"] },
