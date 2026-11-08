@@ -47,7 +47,7 @@ export function reminderEmail(t: ReminderTarget, panelUrl: string | null): { sub
     eyebrow: "Recordatorio de tu hogar",
     hero: "calendario",
     title: t.kind === "task" ? "Tienes una tarea pendiente" : "Tienes una actividad próxima",
-    subject: `Recordatorio: ${t.title}`,
+    subject: `Recordatorio: ${t.title.replace(/[\r\n\t]+/g, " ")}`,
     greeting: `Hola, ${t.userName || t.memberName}:`,
     intro: [t.kind === "task" ? "Te recordamos esta tarea de tu hogar en Life Net." : "Te recordamos esta actividad de la agenda de tu hogar en Life Net."],
     blocks: [{ card: { rows } }],

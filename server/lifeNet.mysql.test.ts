@@ -119,6 +119,10 @@ describe.skipIf(!URL_)("Life Net · hogar, miembros, agenda, tareas, seguimiento
     const list = await ok(q("members", { includeArchived: true }, agA));
     expect(list.every((x: any) => x.userEmail === null)).toBe(true);
     expect(list).toHaveLength(5);
+    // El NIF y los apellidos del titular solo los ve la administración
+    expect(await ok(q("household", undefined, agA))).toMatchObject({ householdName: "QA-LIFE Casa de la playa", holderTaxId: null, holderLastName: "" });
+    expect((await ok(q("overview", undefined, agA))).household.holderTaxId).toBeNull();
+    expect((await ok(q("household"))).holderTaxId).toBe("12345678Z");
   });
 
   it("agenda compartida: actividad con varios miembros, filtro por miembro y quién puede cambiarla", async () => {
@@ -137,6 +141,11 @@ describe.skipIf(!URL_)("Life Net · hogar, miembros, agenda, tareas, seguimiento
     const cita = all.find((e: any) => e.title === "QA-LIFE Cita médica").id;
     expect(errCode(await m("archiveEvent", { id: cita }, agA))).toBe("FORBIDDEN");
     expect(errCode(await q("events", { from: d, to: "2099-01-01" }))).toBe("BAD_REQUEST");
+    expect(errCode(await q("events", { from: "2026-13-45", to: d }))).toBe("BAD_REQUEST");
+    // Títulos en una sola línea
+    const dos = await ok(m("upsertEvent", { title: "QA-LIFE Dos\nlíneas", kind: "actividad", date: d, memberIds: [leo] }));
+    expect(dos.title).toBe("QA-LIFE Dos líneas");
+    await ok(m("archiveEvent", { id: dos.id }));
   });
 
   it("tareas con varios responsables: vencida, hecha por quién y cuándo, y reabrir", async () => {
@@ -222,6 +231,11 @@ describe.skipIf(!URL_)("Life Net · hogar, miembros, agenda, tareas, seguimiento
     await ess.setCapability("a", CAP, "active");
     // El controler vinculado (rol de panel) escribe; un usuario desvinculado deja de entrar
     expect((await ok(q("access", undefined, coA))).canWrite).toBe(true);
+    // Si su usuario pierde el rol del panel (pasa a cliente web), deja de entrar aunque siga vinculado
+    await ess.sql("a", "UPDATE users SET role = 'user' WHERE id = ?", [controlerUser]);
+    expect(errCode(await q("overview", undefined, coA))).toBe("FORBIDDEN");
+    await ess.sql("a", "UPDATE users SET role = 'controler' WHERE id = ?", [controlerUser]);
+    expect((await q("overview", undefined, coA)).status).toBe(200);
     await ess.sql("a", "UPDATE life_members SET user_id = NULL WHERE user_id = ?", [controlerUser]);
     expect(errCode(await q("overview", undefined, coA))).toBe("FORBIDDEN");
   });

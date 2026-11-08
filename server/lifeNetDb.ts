@@ -20,14 +20,17 @@ import { eq, sql, type SQL } from "drizzle-orm";
 import { int, mysqlTable } from "drizzle-orm/mysql-core";
 import { getDb } from "./db";
 import { currentBusinessLimit } from "./businessQuotas";
+import { isMultiTenant } from "./_core/tenant";
 import {
   EVENT_KINDS,
   HOUSEHOLD_MEMBERS_METRIC,
   LIFE_COLORS,
   LIFE_DEFAULT_TIME_ZONE,
   LIFE_RELATIONSHIPS,
+  REMINDER_MAX_ATTEMPTS,
   addDays,
   defaultHouseholdName,
+  isDay,
   eventProblem,
   householdProblem,
   memberLimitOf,
@@ -53,6 +56,8 @@ export const LIFE_NOT_INSTALLED_MESSAGE = "Life Net aún no está preparado en t
 /** Roles con acceso al panel que pueden vincularse a un miembro (los de `subscription.overview`). */
 export const LIFE_PANEL_ROLES = ["admin", "agente", "monitor", "adminrest", "controler", "readonly"] as const;
 
+const panelRoles = () => sql.join(LIFE_PANEL_ROLES.map((r) => sql`${r}`), sql`, `);
+
 /** Solo para sustituir participantes y responsables con el ORM (el resto va en SQL explícito). */
 const lifeEventMembers = mysqlTable("life_event_members", { eventId: int("event_id").notNull(), memberId: int("member_id").notNull() });
 const lifeTaskAssignees = mysqlTable("life_task_assignees", { taskId: int("task_id").notNull(), memberId: int("member_id").notNull() });
@@ -61,6 +66,8 @@ const bad = (message: string) => new TRPCError({ code: "BAD_REQUEST", message })
 const forbidden = (message: string) => new TRPCError({ code: "FORBIDDEN", message });
 const notFound = (what: string) => new TRPCError({ code: "NOT_FOUND", message: `${what} no existe o ya no está disponible.` });
 const num = (v: unknown) => Number(v ?? 0);
+/** Títulos en una sola línea (también van en el asunto de los recordatorios). */
+const oneLine = (v: string) => v.replace(/[\r\n\t]+/g, " ").trim();
 const str = (v: unknown) => (v == null ? null : String(v));
 
 function errCode(e: unknown): string | undefined {
@@ -125,8 +132,12 @@ export interface LifeAccess {
  */
 export async function accessOf(actor: LifeActor): Promise<LifeAccess> {
   return run(async (d) => {
+    // Life Net es de empresas con licencias por capacidad: en la instalación única (Náyade) no se sirve
+    if (!isMultiTenant()) throw forbidden("Life Net no está disponible en esta instalación.");
     const isAdmin = actor.role === "admin";
-    const [m] = await rows(d, sql`SELECT id FROM life_members WHERE user_id = ${actor.userId} AND is_active = 1 LIMIT 1`);
+    const [m] = await rows(d, sql`
+      SELECT m.id FROM life_members m JOIN users u ON u.id = m.user_id AND u.isActive = 1 AND u.role IN (${panelRoles()})
+      WHERE m.user_id = ${actor.userId} AND m.is_active = 1 LIMIT 1`);
     const memberId = m ? num(m.id) : null;
     if (!isAdmin && memberId === null) throw forbidden("Solo los miembros del hogar con acceso pueden ver su organización. Pide a la persona titular que te vincule como miembro.");
     return { isAdmin, memberId, canWrite: actor.role !== "readonly" };
@@ -175,7 +186,13 @@ async function activeMemberCount(exec: Pick<Db, "execute">): Promise<number> {
   return num(r?.n);
 }
 
-export async function getHousehold(): Promise<Household> {
+/** Recuento con lectura bloqueante (dentro de una transacción): dos altas a la vez nunca superan el cupo. */
+async function lockedActiveCount(tx: Pick<Db, "execute">): Promise<number> {
+  return (await rows(tx, sql`SELECT id FROM life_members WHERE is_active = 1 FOR UPDATE`)).length;
+}
+
+/** Datos del hogar. El NIF y los apellidos del titular solo los recibe la administración. */
+export async function getHousehold(viewer: { isAdmin: boolean } = { isAdmin: true }): Promise<Household> {
   const limit = await memberLimit();
   return run(async (d) => {
     const s = await settingsRow(d);
@@ -185,8 +202,8 @@ export async function getHousehold(): Promise<Household> {
       configured: !!s,
       householdName: str(s?.household_name) || defaultHouseholdName({ firstName: first, lastName: last }),
       holderFirstName: first,
-      holderLastName: last,
-      holderTaxId: str(s?.holder_tax_id),
+      holderLastName: viewer.isAdmin ? last : "",
+      holderTaxId: viewer.isAdmin ? str(s?.holder_tax_id) : null,
       timeZone: safeZone(str(s?.time_zone)),
       memberLimit: limit,
       activeMembers: await activeMemberCount(d),
@@ -218,7 +235,7 @@ export async function saveHousehold(input: { householdName?: string | null; hold
       await tx.execute(sql`UPDATE life_members SET display_name = ${first} WHERE id = ${num(holder.id)}`);
       return;
     }
-    const problem = memberLimitProblem(await activeMemberCount(tx), limit);
+    const problem = memberLimitProblem(await lockedActiveCount(tx), limit);
     if (problem) throw bad(problem);
     const [linked] = await rows(tx, sql`SELECT id FROM life_members WHERE user_id = ${actor.userId} LIMIT 1`);
     await tx.execute(sql`
@@ -278,7 +295,7 @@ export async function linkableUsers(actor: LifeActor): Promise<Array<{ id: numbe
   return run(async (d) =>
     (await rows(d, sql`
       SELECT u.id, u.name, u.email, u.role, m.id AS member_id FROM users u LEFT JOIN life_members m ON m.user_id = u.id
-      WHERE u.isActive = 1 AND u.role IN (${sql.join(LIFE_PANEL_ROLES.map((r) => sql`${r}`), sql`, `)})
+      WHERE u.isActive = 1 AND u.role IN (${panelRoles()})
       ORDER BY u.name, u.email`)).map((r) => ({ id: num(r.id), name: str(r.name), email: str(r.email), role: String(r.role), memberId: r.member_id == null ? null : num(r.member_id) })),
   );
 }
@@ -307,18 +324,18 @@ export async function upsertMember(input: MemberInput, actor: LifeActor): Promis
   if (input.relationship === "titular") throw bad("El titular se define en los datos del hogar.");
   const limit = await memberLimit();
   const id = await inTx(async (tx) => {
-    if (input.userId != null) await assertLinkableUser(tx, input.userId);
     if (input.id) {
       const [cur] = await rows(tx, sql`SELECT id, is_holder FROM life_members WHERE id = ${input.id} FOR UPDATE`);
       if (!cur) throw notFound("El miembro");
+      if (input.userId != null) await assertLinkableUser(tx, input.userId);
       const rel = Number(cur.is_holder) === 1 ? "titular" : input.relationship;
       await tx.execute(sql`UPDATE life_members SET display_name = ${name}, relationship = ${rel}, color = ${input.color}, user_id = ${input.userId} WHERE id = ${input.id}`);
       return input.id;
     }
-    // Bloqueo de los miembros activos: dos altas a la vez no superan el cupo
-    await rows(tx, sql`SELECT id FROM life_members WHERE is_active = 1 FOR UPDATE`);
-    const problem = memberLimitProblem(await activeMemberCount(tx), limit);
+    // Bloqueo de los miembros activos ANTES de cualquier otra lectura: dos altas a la vez no superan el cupo
+    const problem = memberLimitProblem(await lockedActiveCount(tx), limit);
     if (problem) throw bad(problem);
+    if (input.userId != null) await assertLinkableUser(tx, input.userId);
     return (await header(tx, sql`
       INSERT INTO life_members (display_name, relationship, color, user_id, created_by)
       VALUES (${name}, ${input.relationship}, ${input.color}, ${input.userId}, ${actor.userId})`)).insertId;
@@ -335,8 +352,7 @@ export async function setMemberActive(id: number, active: boolean, actor: LifeAc
     if (!cur) throw notFound("El miembro");
     if (!active && Number(cur.is_holder) === 1) throw bad("El titular del hogar no se puede archivar.");
     if (active && Number(cur.is_active) !== 1) {
-      await rows(tx, sql`SELECT id FROM life_members WHERE is_active = 1 FOR UPDATE`);
-      const problem = memberLimitProblem(await activeMemberCount(tx), limit);
+      const problem = memberLimitProblem(await lockedActiveCount(tx), limit);
       if (problem) throw bad(problem);
     }
     await tx.execute(sql`UPDATE life_members SET is_active = ${active ? 1 : 0} WHERE id = ${id}`);
@@ -390,12 +406,15 @@ const toEvent = (r: any, members: Map<number, number[]>): LifeEvent => ({
   createdBy: r.created_by == null ? null : num(r.created_by),
 });
 
+/** Tope de actividades por consulta (un hogar no llega ni de lejos en tres meses). */
+const MAX_EVENTS_PER_QUERY = 1000;
+
 async function eventsBetween(exec: Pick<Db, "execute">, from: string, to: string, memberId?: number | null): Promise<LifeEvent[]> {
   const list = await rows(exec, sql`
     SELECT e.* FROM life_events e
     WHERE e.is_archived = 0 AND e.event_date BETWEEN ${from} AND ${to}
     ${memberId ? sql`AND EXISTS (SELECT 1 FROM life_event_members em WHERE em.event_id = e.id AND em.member_id = ${memberId})` : sql``}
-    ORDER BY e.event_date, e.start_time IS NULL DESC, e.start_time, e.id`);
+    ORDER BY e.event_date, e.start_time IS NULL DESC, e.start_time, e.id LIMIT ${MAX_EVENTS_PER_QUERY}`);
   const members = await linkIds(exec, "life_event_members", "event_id", list.map((r) => num(r.id)));
   return list.map((r) => toEvent(r, members));
 }
@@ -403,6 +422,7 @@ async function eventsBetween(exec: Pick<Db, "execute">, from: string, to: string
 /** Agenda del hogar entre dos fechas (máximo 93 días), de todos o de un miembro. */
 export async function listEvents(input: { from: string; to: string; memberId?: number | null }, actor: LifeActor): Promise<LifeEvent[]> {
   await accessOf(actor);
+  if (!isDay(input.from) || !isDay(input.to)) throw bad("Las fechas no son válidas.");
   if (input.to < input.from) throw bad("La fecha final debe ser posterior a la inicial.");
   if (addDays(input.from, 93) < input.to) throw bad("Consulta como mucho tres meses seguidos.");
   return run((d) => eventsBetween(d, input.from, input.to, input.memberId));
@@ -434,7 +454,7 @@ export async function upsertEvent(input: EventInput, actor: LifeActor): Promise<
   const p = eventProblem({ ...input });
   if (p) throw bad(p);
   const remind = reminderStamp(input.remindDate, input.remindTime) as string | null;
-  const title = input.title.trim();
+  const title = oneLine(input.title);
   const notes = input.notes?.trim() || null;
   const location = input.location?.trim() || null;
   const id = await inTx(async (tx) => {
@@ -550,7 +570,7 @@ export async function upsertTask(input: TaskInput, actor: LifeActor, now = new D
   const p = taskProblem(input);
   if (p) throw bad(p);
   const remind = reminderStamp(input.remindDate, input.remindTime) as string | null;
-  const title = input.title.trim();
+  const title = oneLine(input.title);
   const notes = input.notes?.trim() || null;
   const id = await inTx(async (tx) => {
     const assignees = await assertActiveMembers(tx, input.assigneeIds);
@@ -650,12 +670,15 @@ export interface LifeOverview {
 
 export async function overview(actor: LifeActor, now = new Date()): Promise<LifeOverview> {
   const a = await accessOf(actor);
-  const household = await getHousehold();
+  const household = await getHousehold(a);
   return run(async (d) => {
     const n = await nowOf(d, now);
     const mine = a.memberId ? sql`AND EXISTS (SELECT 1 FROM life_task_assignees ta WHERE ta.task_id = t.id AND ta.member_id = ${a.memberId})` : sql``;
     const open = await tasksWhere(d, sql`t.status = 'pending' ${mine}`, n, 200);
-    const all = await tasksWhere(d, sql`t.status = 'pending'`, n, 2000);
+    const [c] = await rows(d, sql`
+      SELECT COUNT(*) AS open_n,
+        SUM(t.due_date IS NOT NULL AND (t.due_date < ${n.day} OR (t.due_date = ${n.day} AND t.due_time IS NOT NULL AND t.due_time < ${n.time}))) AS overdue_n
+      FROM life_tasks t WHERE t.is_archived = 0 AND t.status = 'pending'`);
     const events = await eventsBetween(d, n.day, addDays(n.day, 7), a.memberId);
     const order = (t: LifeTask) => (t.state === "overdue" ? 0 : 1);
     return {
@@ -665,7 +688,7 @@ export async function overview(actor: LifeActor, now = new Date()): Promise<Life
       isAdmin: a.isAdmin,
       myTasks: open.sort((x, y) => order(x) - order(y)).slice(0, 10),
       myEvents: events.slice(0, 10),
-      counts: { openTasks: all.length, overdueTasks: all.filter((t) => t.state === "overdue").length, eventsToday: events.filter((e) => e.date === n.day).length },
+      counts: { openTasks: num(c?.open_n), overdueTasks: num(c?.overdue_n), eventsToday: events.filter((e) => e.date === n.day).length },
     };
   });
 }
@@ -694,17 +717,24 @@ export interface ReminderTarget {
 export async function dueReminderTargets(nowStamp: string, floorStamp: string, limit = 200): Promise<ReminderTarget[]> {
   return run(async (d) => {
     const recipients = sql`JOIN life_members m ON m.id = x.member_id AND m.is_active = 1 AND m.user_id IS NOT NULL
-      JOIN users u ON u.id = m.user_id AND u.isActive = 1 AND u.email IS NOT NULL AND u.email <> ''`;
+      JOIN users u ON u.id = m.user_id AND u.isActive = 1 AND u.role IN (${panelRoles()}) AND u.email IS NOT NULL AND u.email <> ''`;
+    // Sin los ya enviados (o en curso): los atendidos no tapan a los nuevos
+    const pendingOf = (kind: "task" | "event", id: SQL, at: SQL) => sql`NOT EXISTS (
+      SELECT 1 FROM life_reminders r WHERE r.item_kind = ${kind} AND r.item_id = ${id} AND r.member_id = m.id AND r.remind_at = ${at}
+        AND (r.status = 'sent' OR r.attempts >= ${REMINDER_MAX_ATTEMPTS} OR (r.status = 'sending' AND r.updated_at >= NOW(3) - INTERVAL ${STALE_SENDING_MINUTES} MINUTE)))`;
+    const half = Math.max(1, Math.ceil(limit / 2));
     const tasks = await rows(d, sql`
       SELECT t.id, t.title, t.due_date AS d, t.due_time AS tm, NULL AS loc, t.remind_at, m.id AS member_id, m.display_name, u.email, u.name AS user_name
       FROM life_tasks t JOIN life_task_assignees x ON x.task_id = t.id ${recipients}
       WHERE t.is_archived = 0 AND t.status = 'pending' AND t.remind_at IS NOT NULL AND t.remind_at <= ${nowStamp} AND t.remind_at >= ${floorStamp}
-      ORDER BY t.remind_at, t.id LIMIT ${limit}`);
+        AND ${pendingOf("task", sql`t.id`, sql`t.remind_at`)}
+      ORDER BY t.remind_at, t.id LIMIT ${half}`);
     const events = await rows(d, sql`
       SELECT e.id, e.title, e.event_date AS d, e.start_time AS tm, e.location AS loc, e.remind_at, m.id AS member_id, m.display_name, u.email, u.name AS user_name
       FROM life_events e JOIN life_event_members x ON x.event_id = e.id ${recipients}
       WHERE e.is_archived = 0 AND e.remind_at IS NOT NULL AND e.remind_at <= ${nowStamp} AND e.remind_at >= ${floorStamp}
-      ORDER BY e.remind_at, e.id LIMIT ${limit}`);
+        AND ${pendingOf("event", sql`e.id`, sql`e.remind_at`)}
+      ORDER BY e.remind_at, e.id LIMIT ${half}`);
     const map = (kind: "task" | "event") => (r: any): ReminderTarget => ({
       kind,
       itemId: num(r.id),

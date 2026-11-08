@@ -8,10 +8,10 @@
 import { z } from "zod";
 import { router, protectedProcedure } from "../_core/trpc";
 import * as life from "../lifeNetDb";
-import { EVENT_KINDS, LIFE_COLORS, LIFE_RELATIONSHIPS } from "../../shared/lifeNet";
+import { EVENT_KINDS, LIFE_COLORS, LIFE_RELATIONSHIPS, isDay } from "../../shared/lifeNet";
 
 const id = z.number().int().positive();
-const day = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
+const day = z.string().refine(isDay, "La fecha no es válida.");
 const time = z.string().regex(/^\d{2}:\d{2}$/);
 const actorOf = (ctx: { user: { id: number; role: unknown } }): life.LifeActor => ({ userId: ctx.user.id, role: String(ctx.user.role) });
 
@@ -21,10 +21,7 @@ export const lifeNetRouter = router({
   access: protectedProcedure.query(({ ctx }) => life.accessOf(actorOf(ctx))),
 
   // ── Hogar y titular (J6) ───────────────────────────────────────────────
-  household: protectedProcedure.query(async ({ ctx }) => {
-    await life.accessOf(actorOf(ctx));
-    return life.getHousehold();
-  }),
+  household: protectedProcedure.query(async ({ ctx }) => life.getHousehold(await life.accessOf(actorOf(ctx)))),
   saveHousehold: protectedProcedure
     .input(z.object({
       householdName: z.string().max(160).nullish(),
