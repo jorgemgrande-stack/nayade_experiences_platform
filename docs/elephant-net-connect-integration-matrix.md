@@ -172,7 +172,7 @@ En el Core, cada empresa guarda sus credenciales en una bóveda (`server/_core/c
 | Activación del marketplace · tanda A: venta directa de Partners, Deals y Tax (revisión `review20261108connect.ts`) | #714 | fusionado; espera el Price de Stripe Live |
 | Finance Sync · extractos de cualquier banco | #716 | fusionado |
 | GEO Control funcional | #717 | fusionado |
-| Contratos y firma electrónica simple | #718 | en curso |
+| Contratos y firma electrónica simple | #718 | fusionado |
 | Tanda B: fichas de GEO, Contratos y Finance Sync; «Gestionar» abre el módulo | esta PR | en curso |
 
 ## Activación del marketplace (encargo del 08/11/2026)

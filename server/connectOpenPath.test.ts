@@ -14,6 +14,7 @@ describe("pantalla de cada extensión de Connect al contratarla", () => {
     expect(open(["tax-filings"])).toBe("/admin/gestoria");
     expect(open(["bank-reconciliation", "bank-import-pos"])).toMatch(/^\/admin\/contabilidad\//);
     expect(open(["geo-control"])).toBe("/admin/marketing/geo");
+    expect(open(["contracts-esign"])).toMatch(/^\/admin\/contratos/);
   });
   it("una capacidad sin pantalla no abre nada", () => {
     expect(open(["ads-manager"])).toBeNull();
