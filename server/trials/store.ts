@@ -9,12 +9,20 @@ import type { CommercialEventSink } from "../commercialEvents/types";
 import type { TrialAction, TrialState } from "./machine";
 import { canonicalMailbox } from "./mailbox";
 
+/** Titular particular de un plan personal (sin razón social). */
+export interface TrialHolder {
+  firstName: string;
+  lastName: string;
+  taxId?: string | null;
+}
+
 export interface TrialRequest {
   id: number;
   email: string;
   emailDomain: string;
   companyName: string;
-  configuration: { plan: string | null; addons: string[] };
+  /** Plan y complementos pedidos; en el plan personal Life, el titular (particular: nombre y apellidos, NIF opcional). */
+  configuration: { plan: string | null; addons: string[]; holder?: TrialHolder };
   state: TrialState;
   verificationTokenHash: string | null;
   verificationExpiresAt: number | null;

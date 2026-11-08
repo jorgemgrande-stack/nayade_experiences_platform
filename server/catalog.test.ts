@@ -41,7 +41,8 @@ describe("registro de capacidades", () => {
     for (const p of PRODUCTS) for (const c of p.draft.catalog.capabilities) granted.set(c, [...(granted.get(c) ?? []), p.key]);
     for (const c of capabilitiesOfTier("extra")) expect(granted.get(c)?.length, c).toBeGreaterThan(0);
     for (const c of [...capabilitiesOfTier("essential"), ...capabilitiesOfTier("business"), ...capabilitiesOfTier("enterprise")]) {
-      expect(granted.get(c)?.every((k) => ["essential", "business", "enterprise"].includes(k)), c).toBe(true);
+      // El plan personal Life (08/11/2026) concede las capacidades base admin-users y comms-email
+      expect(granted.get(c)?.every((k) => ["essential", "business", "enterprise", "life"].includes(k)), c).toBe(true);
     }
   });
 });
@@ -245,8 +246,8 @@ describe("cotizador", () => {
     expect(quote(cat, { plan: "nope", interval: "month" }).ok).toBe(false);
     expect(q({ items: [{ key: "business" }] }).errors.join()).toMatch(/es un plan/);
     expect(q({ items: [{ key: "addon-user-essential" }] }).errors.join()).toMatch(/se calcula solo/);
-    expect(q({ items: [{ key: "life-net", quantity: 0 }] }).ok).toBe(false);
-    expect(q({ items: [{ key: "life-net" }, { key: "life-net" }] }).errors.join()).toMatch(/repetido/);
+    expect(q({ items: [{ key: "connect-tax", quantity: 0 }] }).ok).toBe(false);
+    expect(q({ items: [{ key: "connect-tax" }, { key: "connect-tax" }] }).errors.join()).toMatch(/repetido/);
   });
 });
 
