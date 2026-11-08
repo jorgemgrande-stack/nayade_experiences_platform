@@ -1849,6 +1849,8 @@ const SCHEDULED_JOBS: Array<{ name: string; flag: string; start: () => void; lab
   { name: "hotel-guest-retention", flag: "hotel_guest_retention_job_enabled", start: startHotelGuestRetentionJob, label: "Hotel Guest Retention", def: false },
   // Life Net: solo actúa en empresas con la capacidad life-net y la migración 0047 (el resto se omite sin tocar nada)
   { name: "life-net-reminders", flag: "life_net_reminders_enabled", start: startLifeRemindersJob, label: "Life Net Reminders", def: true },
+  { name: "hotel-ical-sync", flag: "hotel_ical_sync_enabled", start: () => void import("../hotelIcalJob").then((m) => m.startHotelIcalSyncJob(), (e) => console.error("[Jobs] 'Hotel Net iCal Sync' no se ha podido registrar:", e instanceof Error ? e.message : e)), label: "Hotel Net iCal Sync", def: true },
+  { name: "care-net-reminders", flag: "care_net_reminders_enabled", start: () => void import("../careNetReminders").then((m) => m.startCareRemindersJob(), (e) => console.error("[Jobs] Care Net Reminders:", e?.message ?? e)), label: "Care Net Reminders", def: true },
   {
     name: "onboarding-reminder",
     flag: "onboarding_reminder_job_enabled",

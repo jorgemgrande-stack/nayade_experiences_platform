@@ -59,14 +59,14 @@ export const NET_PRODUCTS: readonly NetProduct[] = [
     group: "care",
     segment: "business",
     homePath: "/admin/net/care",
-    summary: "Solución integral para centros de bienestar, masajes, terapias y clínicas: agenda, citas online, tratamientos, bonos e historial de cada cliente en un solo producto. Fichas clínicas y recordatorios: próximamente, incluidos sin coste adicional.",
+    summary: "Solución integral para centros de bienestar, masajes, terapias y clínicas: agenda, citas online, tratamientos, bonos, historial de cada cliente y recordatorios de cita por correo en un solo producto. Fichas clínicas: próximamente, incluidas sin coste adicional.",
     benefits: ["Tus citas, profesionales y cabinas en una sola agenda, sin solapamientos.", "Reservas y cobros online desde tu propia web.", "Tratamientos, bonos y sesiones controlados en el mismo sitio."],
     legacyKeys: ["care-net-agenda", "care-net-clinical", "care-net-treatments"],
     areas: [
       { title: "Agenda y citas", features: [A("Agenda y calendario"), A("Reservas y citas online"), A("Gestión de profesionales"), A("Horarios y disponibilidad"), A("Capacidad y prevención de solapamientos")] },
       { title: "Clientes y seguimiento", features: [A("Clientes e historiales"), S("Fichas clínicas y seguimiento especializado")] },
       { title: "Tratamientos y bonos", features: [A("Tratamientos y servicios"), A("Bonos y paquetes de sesiones"), A("Control de sesiones consumidas y pendientes")] },
-      { title: "Cobros y gestión", features: [A("Pagos online y TPV"), S("Recordatorios y comunicaciones"), A("Estadísticas y gestión del centro")] },
+      { title: "Cobros y gestión", features: [A("Pagos online y TPV"), A("Recordatorios y comunicaciones"), A("Estadísticas y gestión del centro")] },
     ],
   },
   {
