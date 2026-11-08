@@ -1,5 +1,5 @@
 /**
- * Persistencia de Elephant Campaigns en la BD de la empresa (migración `db/migrations/0054_connect_campaigns.sql`).
+ * Persistencia de Elephant Campaigns en la BD de la empresa (migración `db/migrations/0053_connect_campaigns.sql`).
  * Tablas fuera de drizzle/schema.ts y SQL parametrizado (patrón de server/brevoMarketing/store.ts). Los consentimientos
  * son los de Brevo marketing (`customer_marketing_consents`, 0042) y los segmentos, las etiquetas del CRM
  * (`crm_tag_links`, 0008). Sin las tablas → `CampaignsNotInstalled`.
