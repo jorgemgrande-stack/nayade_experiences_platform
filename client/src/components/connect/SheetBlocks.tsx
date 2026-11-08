@@ -41,7 +41,7 @@ function Card({ id, icon, title, tone = "neutral", children, className }: { id?:
       )}
     >
       <h2 id={headingId} className="mb-4 flex items-center gap-3 text-lg font-bold text-foreground sm:text-xl">
-        <span aria-hidden="true" className={cn("inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl [&_svg]:h-5 [&_svg]:w-5", tone === "result" ? "bg-success/15 text-success" : "bg-primary/15 cx-red-text")}>
+        <span aria-hidden="true" className={cn("inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl [&_svg]:h-5 [&_svg]:w-5", tone === "result" ? "bg-success/15 text-success" : "bg-primary/15 cx-tone-text")}>
           {icon}
         </span>
         <span className="min-w-0 break-words">{title}</span>
@@ -154,7 +154,7 @@ export function SheetBlocks({
                 <ul className="grid gap-3 sm:grid-cols-2">
                   {item.includes.map((x) => (
                     <li key={x} className="flex items-start gap-3 rounded-xl border border-border bg-muted p-3 text-sm text-foreground">
-                      <BadgeCheck className="mt-0.5 h-5 w-5 shrink-0 cx-red-text" aria-hidden="true" />
+                      <BadgeCheck className="mt-0.5 h-5 w-5 shrink-0 cx-tone-text" aria-hidden="true" />
                       <span className="min-w-0">{x}</span>
                     </li>
                   ))}
