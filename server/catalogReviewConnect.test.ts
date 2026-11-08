@@ -14,7 +14,8 @@ import { BUILTIN_MODULES } from "./_core/modules/builtin";
 
 const refs = { moduleIds: BUILTIN_MODULES.map((m) => m.id), planIds: () => null };
 const AUTHOR = `operacion:${REVIEW_ID_2026_11_08_CONNECT}`;
-const KEYS = ["connect-partners", "connect-deals", "connect-tax"];
+const KEYS = ["connect-partners", "connect-deals", "connect-tax", "connect-geo-control", "extra-contracts-esign"];
+const MONTHLY: Record<string, number> = { "connect-partners": 1900, "connect-deals": 1900, "connect-tax": 1900, "connect-geo-control": 2900, "extra-contracts-esign": 1500 };
 
 /** Catálogo como está hoy en production: Partners y Deals «Implantación acompañada», publicados con su ficha. */
 async function production() {
@@ -29,8 +30,12 @@ async function production() {
       cta: "contact" as const,
       terms: { activation: c.activation.from },
       howItWorks: [c.firstStep.from, { title: "Día a día", text: "Lo usas desde el panel de tu empresa." }],
+      faq: [...(c.faq ?? []).map((f) => ({ q: f.q, a: f.from })), { q: "¿El precio incluye IVA?", a: "No. Los importes del catálogo son sin IVA; el 21 % se añade aparte." }],
     };
-    const saved = await svc.save("product", c.key, { draft: { ...d, commercial, internal: { ...d.internal, functionalGrade: c.gradeFrom ?? "in_use" } }, expectedVersion: e.draftVersion }, "operator:1");
+    // Como en production tras la tanda B: GEO Control y Contratos ya en implantación acompañada (review20261108fichas.ts)
+    const onRequest = { technicalStatus: "partial" as const, activation: { kind: "feature" as const, ref: null }, catalog: { ...d.catalog, commercialStatus: "on_request" as const } };
+    const base = d.catalog.commercialStatus === "on_request" ? {} : onRequest;
+    const saved = await svc.save("product", c.key, { draft: { ...d, ...base, commercial, internal: { ...d.internal, functionalGrade: c.gradeFrom ?? "in_use" } }, expectedVersion: e.draftVersion }, "operator:1");
     await svc.publish("product", c.key, saved.draftVersion, "operator:1");
   }
   return { store, svc };
@@ -59,7 +64,7 @@ describe("revisión del 08/11/2026: venta directa de Partners, Deals y Tax", () 
     expect(r.stripePending.map((p) => p.key)).toEqual(KEYS);
     for (const p of r.stripePending) {
       expect(p.lookupKey).toBe(`es:${p.key}:monthly:eur:v${await monthlyId(k.store, p.key)}`);
-      expect(p.amountCents).toBe(1900);
+      expect(p.amountCents).toBe(MONTHLY[p.key]);
     }
     expect(JSON.stringify(await k.store.listEntries({ kind: "product" }))).toBe(before);
   });
@@ -69,7 +74,7 @@ describe("revisión del 08/11/2026: venta directa de Partners, Deals y Tax", () 
     const pricesBefore = JSON.stringify(await k.store.listPrices());
     const linked = new Set(await Promise.all(KEYS.map((key) => monthlyId(k.store, key))));
     const sim = await applyDirectSaleReview(k.svc, k.store, async (id) => linked.has(id), { author: AUTHOR });
-    expect(sim.changed).toHaveLength(3);
+    expect(sim.changed).toHaveLength(KEYS.length);
     expect(productDraft.parse((await k.store.getEntry("product", "connect-partners"))!.draft).catalog.commercialStatus).toBe("on_request");
     const r = await applyDirectSaleReview(k.svc, k.store, async (id) => linked.has(id), { apply: true, author: AUTHOR });
     expect(r.conflicts).toEqual([]);
@@ -83,6 +88,8 @@ describe("revisión del 08/11/2026: venta directa de Partners, Deals y Tax", () 
       expect(d.commercial?.terms?.activation, key).toMatch(/^Activación automática/);
       expect(d.commercial?.howItWorks?.[0].title, key).toBe("Contratación");
       expect(d.commercial?.howItWorks?.[1].title, key).toBe("Día a día");
+      expect(d.commercial?.faq?.find((f) => f.q === "¿Cómo se pone en marcha?")?.a, key).toMatch(/se activa automáticamente/);
+      expect(d.commercial?.faq?.find((f) => f.q === "¿El precio incluye IVA?")?.a, key).toMatch(/sin IVA/);
       expect(e.publishedVersion, key).toBe(e.draftVersion);
       expect(e.publishedBy, key).toBe(AUTHOR);
     }
@@ -96,7 +103,7 @@ describe("revisión del 08/11/2026: venta directa de Partners, Deals y Tax", () 
       const q = quote(cat, { plan: "essential", interval: "month", items: [{ key }] });
       expect(q.errors, key).toEqual([]);
       expect(q.capabilities, key).toEqual(expect.arrayContaining(p.capabilities));
-      expect(q.lines.find((l) => l.key === key), key).toMatchObject({ status: "charged", commercialStatus: "available", amountCents: 1900 });
+      expect(q.lines.find((l) => l.key === key), key).toMatchObject({ status: "charged", commercialStatus: "available", amountCents: MONTHLY[key] });
     }
     const again = await applyDirectSaleReview(k.svc, k.store, async (id) => linked.has(id), { apply: true, author: AUTHOR });
     expect(again.changed).toEqual([]);
@@ -115,7 +122,7 @@ describe("revisión del 08/11/2026: venta directa de Partners, Deals y Tax", () 
     const p = (await k.store.getEntry("product", "connect-partners"))!;
     await k.svc.save("product", "connect-partners", { draft: { ...productDraft.parse(p.draft), tagline: "Borrador de otra persona" }, expectedVersion: p.draftVersion }, "operator:2");
     const r = await applyDirectSaleReview(k.svc, k.store, yes, { apply: true, author: AUTHOR });
-    expect(r.changed.map((c) => c.split(":")[0])).toEqual(["connect-tax"]);
+    expect(r.changed.map((c) => c.split(":")[0])).toEqual(["connect-tax", "connect-geo-control", "extra-contracts-esign"]);
     expect(r.conflicts.some((c) => c.startsWith("connect-partners: tiene cambios sin publicar"))).toBe(true);
     expect(r.conflicts.some((c) => c.startsWith("connect-deals: la condición de activación"))).toBe(true);
     for (const key of ["connect-partners", "connect-deals"]) expect(productDraft.parse((await k.store.getEntry("product", key))!.draft).catalog.commercialStatus, key).toBe("on_request");
@@ -149,7 +156,7 @@ describe("revisión del 08/11/2026: precios anuales, estado funcional y reanudac
     }) as typeof real;
     const r1 = await applyDirectSaleReview(k.svc, k.store, yes, { apply: true, author: AUTHOR });
     expect(r1.conflicts.some((c) => c.startsWith("connect-partners: no se pudo abrir la venta"))).toBe(true);
-    expect(r1.changed.map((c) => c.split(":")[0])).toEqual(["connect-deals", "connect-tax"]);
+    expect(r1.changed.map((c) => c.split(":")[0])).toEqual(KEYS.slice(1));
     fail = false;
     const r2 = await applyDirectSaleReview(k.svc, k.store, yes, { apply: true, author: AUTHOR });
     expect(r2.changed).toEqual(["connect-partners: se publica la venta directa ya guardada"]);

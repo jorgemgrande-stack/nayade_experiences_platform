@@ -81,7 +81,7 @@ export const CAPABILITIES: readonly CapabilityDef[] = [
   c("api-integrations", "API e integraciones personalizadas", "enterprise", "enterprise", "planned"),
   c("audit-advanced", "Auditoría de actividad y trazabilidad avanzada", "enterprise", "enterprise", "partial"),
   // ── EXTRAS (27) ──────────────────────────────────────────────────────────────
-  c("contracts-esign", "Contratos y firma electrónica", "extra", "business", "planned"),
+  c("contracts-esign", "Contratos y firma electrónica", "extra", "business", "partial"),
   c("multichannel", "Venta multicanal y marketplaces", "extra", "ecommerce", "planned"),
   c("accounting-general", "Contabilidad general", "extra", "finance", "planned"),
   c("bank-reconciliation", "Conciliación bancaria", "extra", "finance", "partial"),
@@ -92,7 +92,7 @@ export const CAPABILITIES: readonly CapabilityDef[] = [
   c("email-campaigns", "Email marketing y campañas", "extra", "marketing", "planned"),
   c("ads-manager", "Ads Manager", "extra", "marketing", "planned"),
   c("seo-control", "SEO Control", "extra", "marketing", "planned"),
-  c("geo-control", "GEO Control", "extra", "marketing", "planned"),
+  c("geo-control", "GEO Control", "extra", "marketing", "partial"),
   c("automations-advanced", "Automatizaciones avanzadas", "extra", "automation", "partial"),
   c("copilot-advanced", "Copilot avanzado", "extra", "ai", "planned"),
   c("people-hr", "Gestión de empleados, fichajes y nóminas", "extra", "operations", "partial"),

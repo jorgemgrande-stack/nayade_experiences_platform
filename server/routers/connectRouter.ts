@@ -28,7 +28,8 @@ import { buildConnectCatalog, type ChannelCatalogItem, type ConnectItem } from "
 import { advertisesRequests, parseMarketplaceHeaders, parseMarketplaceRoot } from "../connectCard";
 import { brandHeaders, checkoutViaFor, conversionPlanFor, type ConnectBrandHeaders, type ConnectConversionView, type PurchaseBlock } from "../../shared/connectMarketplace";
 import { CONNECT_EVENT_TYPES, autoplayDelay, resolveSlides, type ActivationRetryOutcome, type ResolvedSlide } from "../../shared/connectShowcase";
-import { acceptEvents, forwardEvents, openPathResolver } from "../connectShowcase";
+import { acceptEvents, forwardEvents, navOpenPathResolver, openPathResolver } from "../connectShowcase";
+import { TASK_NAV } from "../../shared/adminNav";
 import { panelExtensionSources } from "../_core/modules/panelNavigation";
 
 export interface ConnectCatalogView {
@@ -60,9 +61,11 @@ export interface ConnectCatalogView {
 }
 
 /** Ruta real de cada módulo instalado (portada de su entrada de menú). Si algo falla, sin «Abrir módulo». */
-function moduleOpenPath(): (capabilities: string[]) => string | null {
+function moduleOpenPath(role: string): (capabilities: string[]) => string | null {
   try {
-    return openPathResolver(panelExtensionSources().map((s) => ({ capability: s.capability, panel: s.manifest.panel ?? null })));
+    const byManifest = openPathResolver(panelExtensionSources().map((s) => ({ capability: s.capability, panel: s.manifest.panel ?? null })));
+    const byNav = navOpenPathResolver(TASK_NAV, role);
+    return (caps) => byManifest(caps) ?? byNav(caps);
   } catch {
     return () => null;
   }
@@ -150,7 +153,7 @@ export const connectRouter = router({
       // control la ofrece (la misma consulta que `subscription.conversionStatus`; si falla, no se promete)
       const conversion: ConnectConversionView | null =
         purchaseBlock === "trial" ? { enabled: (await Promise.resolve().then(() => client.conversionStatus()).catch(() => null))?.enabled === true, plan: currentPlan } : null;
-      const items = buildConnectCatalog(catalog, grants, now, currentPlan, moduleOpenPath()).map((i) => {
+      const items = buildConnectCatalog(catalog, grants, now, currentPlan, moduleOpenPath(role)).map((i) => {
         const conversionPlan = conversion?.enabled ? conversionPlanFor(i, { currentPlan, selfServicePlans: SELF_SERVICE_PLANS }) : null;
         const checkoutVia = checkoutViaFor(i, { purchaseBlock, conversionEnabled: !!conversion?.enabled, conversionPlan });
         return { ...i, checkoutVia, conversionPlan: checkoutVia === "conversion" ? conversionPlan : null };

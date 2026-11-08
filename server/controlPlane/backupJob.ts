@@ -74,6 +74,7 @@ import { EVIDENCE_2026_10_25, REVIEW_ID, STATUS_REVIEW_2026_10_25 } from "../cat
 import { REVIEW_ID_2026_11_07, STATUS_REVIEW_2026_11_07 } from "../catalog/review20261107";
 import { REVIEW_ID_2026_11_08, applyCatalogAdditions } from "../catalog/review20261108";
 import { REVIEW_ID_2026_11_08_CONNECT, applyDirectSaleReview } from "../catalog/review20261108connect";
+import { REVIEW_ID_2026_11_08_FICHAS, applyListingReview } from "../catalog/review20261108fichas";
 import { MysqlStripeStore } from "../stripe/store";
 import { IMPORT_AUTHOR, importCommercialSpecs } from "../catalog/commercial/importSpecs";
 import { publishBatch, revertLastBatch } from "../catalog/commercial/publishBatch";
@@ -501,6 +502,8 @@ async function main() {
           if (stripeModeRaw !== "live" && stripeModeRaw !== "test") die(`Modo de Stripe no válido: ${stripeModeRaw} (live o test)`);
           const stripeMode: "live" | "test" = stripeModeRaw;
           const stripeStore = new MysqlStripeStore(crmPool, stripeMode);
+          // Tanda B: fichas de GEO Control, Contratos y Finance Sync (antes de la venta directa, que parte de ellas)
+          const repFichas = await applyListingReview(svc, webStore, { apply, author: `operacion:${REVIEW_ID_2026_11_08_FICHAS}` });
           const repConnect = await applyDirectSaleReview(svc, webStore, async (id) => !!(await stripeStore.priceForWebPrice(id)), { apply, author: `operacion:${REVIEW_ID_2026_11_08_CONNECT}` });
           const pricesFinal = new Map((await webStore.listPrices()).map((p) => [p.id, `${p.status}:${p.amountCents}`]));
           const pricesIntactConnect = pricesFinal.size === pricesAfter.size && Array.from(pricesAfter).every(([id, v]) => pricesFinal.get(id) === v);
@@ -511,6 +514,7 @@ async function main() {
                 { revision: REVIEW_ID, ...rep, evidenciaRellenada: evidence },
                 { revision: REVIEW_ID_2026_11_07, ...rep1107 },
                 { revision: REVIEW_ID_2026_11_08, ...rep1108, preciosExistentesIntactos: otherPricesIntact },
+                { revision: REVIEW_ID_2026_11_08_FICHAS, ...repFichas },
                 { revision: REVIEW_ID_2026_11_08_CONNECT, modoStripe: stripeMode, ...repConnect, preciosIntactos: pricesIntactConnect },
               ],
             }),

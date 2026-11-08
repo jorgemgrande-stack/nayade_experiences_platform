@@ -169,7 +169,11 @@ En el Core, cada empresa guarda sus credenciales en una bóveda (`server/_core/c
 | Informes sectoriales (Restaurant, Care, Ski, Travel) | #696 | fusionado |
 | Connect · Veturis en Travel Net (reserva real apagada) | #697 | en curso |
 | Estados «Disponible» en las fichas | #686 y esta PR | — |
-| Activación del marketplace · tanda A: venta directa de Partners, Deals y Tax (revisión `review20261108connect.ts`) | #714 | en curso; espera el Price de Stripe Live |
+| Activación del marketplace · tanda A: venta directa de Partners, Deals y Tax (revisión `review20261108connect.ts`) | #714 | fusionado; espera el Price de Stripe Live |
+| Finance Sync · extractos de cualquier banco | #716 | fusionado |
+| GEO Control funcional | #717 | fusionado |
+| Contratos y firma electrónica simple | #718 | fusionado |
+| Tanda B: fichas de GEO, Contratos y Finance Sync; «Gestionar» abre el módulo | esta PR | en curso |
 
 ## Activación del marketplace (encargo del 08/11/2026)
 
@@ -201,15 +205,17 @@ Inventario accionable de lo que se vende en `/admin/ampliar`. Estado público de
 | Partners (`supplier-settlements`) | Proveedores, liquidaciones con PDF y portales | — | Implantación acompañada | **Tanda A.** Crear el Price mensual en Stripe Live y sincronizar; la revisión lo pasa a «Disponible». |
 | Deals (`deals-coupons`) | Formulario de canje, reserva y conciliación | — (canje manual) | Implantación acompañada | **Tanda A.** Igual que Partners. |
 | Tax (`tax-filings`) | Estimación de los modelos 303, 390, 111, 190, 200 y 202; calendario con avisos, expedientes y portal de la gestoría | — | Implantación acompañada | **Tanda A.** Igual que Partners. La presentación la hace la gestoría. |
-| Finance Sync (`bank-import-pos`, `bank-reconciliation`) | Extractos, operaciones y remesas del datáfono, conciliación | Buzón IMAP de la empresa | Implantación acompañada | Dar función propia a `bank-reconciliation`. Asistente IMAP en el panel. |
+| Finance Sync (`bank-import-pos`, `bank-reconciliation`) | Extractos de **cualquier banco** (Norma 43, Excel o CSV, #716), operaciones y remesas del datáfono, conciliación | Buzón IMAP de la empresa (tickets del datáfono) | Implantación acompañada (ficha actualizada en la tanda B) | Asistente del buzón del datáfono en el panel; después, venta directa. |
 | Voice (`voice-ai`) | Llamadas Vapi, leads y coste | Cuenta Vapi de la empresa (bóveda) | Implantación acompañada | Asistente de alta de Vapi. Netelip: IP de salida fija. |
 | POS (`pos-advanced`) | El TPV avanzado existe, pero lo licencia `bill-cash` (Essential) | — | Implantación acompañada | Frontera entre la caja básica y la avanzada. Es una decisión de negocio: hoy la tienen los clientes de Essential. |
 | WhatsApp AI (`whatsapp-ai`) | Bandeja a través de GHL | Cuenta GHL o app de Meta de Big Elephant | En preparación | WhatsApp Cloud API directa y respuestas con IA. |
 | Campaigns (`email-campaigns`) | Sincronización de clientes con consentimiento a la lista de Brevo de la empresa | Cuenta Brevo de la empresa | Próximamente | Envío de campañas desde el Core. Brevo no es un producto de correo nuevo. |
 | Automatizaciones (`automations-advanced`) | Recordatorios por correo (`emailAutomationJob`) | — | En preparación | Motor de reglas y flujos licenciado. |
 | Copilot avanzado (`copilot-advanced`) | Proveedor de IA central | IA de la plataforma | Próximamente | Hay un borrador ajeno (v6): bloqueo. |
-| Reception AI, Ads Manager, SEO Control, GEO Control | Sin código en el Core (base en Skicenter) | Vapi o Meta; Meta/Google Ads; Google Business Profile; IA | Próximamente | Portar desde Skicenter. |
-| Contratos y firma, Venta multicanal, Contabilidad general | Sin código genérico (contrato de alquiler en Ski Net) | — o canales | Próximamente | Generalizar el contrato con firma de Ski Net. Lo demás es desarrollo nuevo. |
+| GEO Control (`geo-control`) | Consultas, observaciones por asistente de IA, presencia y citación, cambios, competidores y oportunidades (#717, migración 0048) | IA central (opcional) | Implantación acompañada (tanda B) | Venta directa con su Price de Stripe Live. |
+| Reception AI, Ads Manager, SEO Control | Sin código en el Core (base en Skicenter) | Vapi o Meta; Meta/Google Ads; Google Business Profile | Próximamente | Portar desde Skicenter. |
+| Contratos y firma (`contracts-esign`) | Plantillas, contratos, firma simple por enlace `/contrato/<token>` o en el panel, evidencias y PDF (#718, migración 0049) | — | Implantación acompañada (tanda B) | Venta directa con su Price de Stripe Live (`stripePrepared`). |
+| Venta multicanal, Contabilidad general | Sin código genérico | Canales | Próximamente | Desarrollo nuevo. |
 
 **Paquetes (sección 5).**
 - **Finance:** sus componentes son reales salvo `bank-reconciliation`. Seguirá en implantación acompañada hasta que Tax y Finance Sync estén a la venta.
