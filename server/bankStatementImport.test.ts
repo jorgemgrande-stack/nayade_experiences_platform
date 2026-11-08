@@ -84,3 +84,24 @@ describe("codificación de los CSV", () => {
     expect(a[0]).toMatchObject({ fecha: "2026-10-09", masDatos: "Recibo teléfono", importe: -45.9 });
   });
 });
+
+describe("casos límite de la revisión", () => {
+  it("una fila con fecha y sin importe se salta sin anular el fichero", () => {
+    const r = parseBankStatement(xlsx([["Fecha", "Importe", "Saldo"], ["02/10/2026", 10, 110], ["03/10/2026", "", 110]]));
+    expect(r.rows.map((x) => x.importe)).toEqual([10]);
+  });
+
+  it("Norma 43 con el fin de fichero de DOS (0x1A) se reconoce; un «11…» mal formado da un error propio", () => {
+    expect(parseBankStatement(Buffer.from(`${norma43Sample()}\r\n\x1a`, "latin1")).format).toBe("norma43");
+    expect(() => parseBankStatement(Buffer.from("11000000000000000000 no es norma 43\nfecha;importe\n"))).toThrow(/parece Norma 43/);
+  });
+
+  it("el concepto que no cabe en la columna (255) pasa a «más datos»", () => {
+    const { r11, r22, r23, r33, r88 } = n43;
+    const extra = Array.from({ length: 5 }, (_, i) => r23(`0${i + 1}`, `CONCEPTO LARGO ${i} `.padEnd(38, "X"), "Y".repeat(38)));
+    const f = [r11({ open: 0 }), r22({ date: "261002", amount: -100, ref2: "CARGO" }), ...extra, r33({ nd: 1, d: 100, nc: 0, c: 0, close: -100 }), r88(8)].join("\n");
+    const [row] = parseBankStatement(Buffer.from(f, "latin1")).rows;
+    expect(row.movimiento.length).toBeLessThanOrEqual(255);
+    expect(row.masDatos.length).toBeGreaterThan(0);
+  });
+});

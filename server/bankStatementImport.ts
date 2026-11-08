@@ -58,6 +58,8 @@ function withOccurrences(rows: Array<Omit<ParsedBankRow, "duplicateKey">>): Pars
 }
 
 const euros = (cents: number) => Math.round(cents) / 100;
+/** Longitud de la columna `bank_movements.movimiento` (varchar 255). */
+const MOV_MAX = 255;
 
 /** ¿Es Norma 43? Primera línea con registro 11 y registros de 80 posiciones numerados. */
 export function looksLikeNorma43(text: string): boolean {
@@ -108,6 +110,9 @@ function spreadsheetRows(buffer: Buffer): ParsedBankRow[] {
     const fecha = parseExcelDate(cell(row, "fecha"));
     if (!fecha) continue; // pies, totales y líneas en blanco
     let cents: number | null;
+    const blank = (k: Col) => String(cell(row, k) ?? "").trim() === "";
+    // Fila sin importe (ni cargo ni abono): no es un movimiento (antes contaba como 0 y tampoco se guardaba con sentido)
+    if (col.importe != null ? blank("importe") : blank("cargo") && blank("abono")) continue;
     if (col.importe != null) cents = parseImporte(cell(row, "importe"));
     else {
       const cargo = parseImporte(cell(row, "cargo")) ?? 0;
@@ -120,7 +125,7 @@ function spreadsheetRows(buffer: Buffer): ParsedBankRow[] {
     out.push({
       fecha,
       fechaValor: col.fechaValor != null ? parseExcelDate(cell(row, "fechaValor")) : "",
-      movimiento: String(cell(row, "movimiento") ?? "").trim().slice(0, 500),
+      movimiento: String(cell(row, "movimiento") ?? "").trim().slice(0, MOV_MAX),
       masDatos: String(cell(row, "masDatos") ?? "").trim().slice(0, 1000),
       importe: euros(cents),
       saldo: saldo === null ? null : euros(saldo),
@@ -138,8 +143,11 @@ function norma43Rows(text: string): ParsedBankRow[] {
   }
   const out: Array<Omit<ParsedBankRow, "duplicateKey">> = [];
   for (const a of accounts)
-    for (const m of a.movements)
-      out.push({ fecha: m.bookingDate, fechaValor: m.valueDate ?? "", movimiento: m.description.slice(0, 500), masDatos: m.reference ?? "", importe: euros(m.amountCents), saldo: m.balanceCents === null ? null : euros(m.balanceCents) });
+    for (const m of a.movements) {
+      // `movimiento` es varchar(255): lo que no cabe del concepto (registros 23) pasa a «más datos» (text)
+      const rest = m.description.slice(MOV_MAX).trim();
+      out.push({ fecha: m.bookingDate, fechaValor: m.valueDate ?? "", movimiento: m.description.slice(0, MOV_MAX), masDatos: [rest, m.reference ?? ""].filter(Boolean).join(" · "), importe: euros(m.amountCents), saldo: m.balanceCents === null ? null : euros(m.balanceCents) });
+    }
   return withOccurrences(out);
 }
 
@@ -148,8 +156,10 @@ export function parseBankStatement(buffer: Buffer): { format: BankStatementForma
   if (!buffer.length) throw new BankStatementError("El fichero está vacío");
   const head = buffer.subarray(0, 2).toString("latin1");
   if (head === "11") {
-    const text = decodeText(buffer);
+    // Algunos bancos cierran el fichero con el fin de fichero de DOS (0x1A)
+    const text = decodeText(buffer).replace(/\x1a[\s\x1a]*$/, "");
     if (looksLikeNorma43(text)) return { format: "norma43", rows: norma43Rows(text) };
+    if (/^11\d{18}/.test(text)) throw new BankStatementError("El fichero parece Norma 43 pero no tiene el formato del cuaderno 43 (registros de 80 posiciones 11, 22, 23, 33 y 88): descárgalo de nuevo de tu banco");
   }
   return { format: "spreadsheet", rows: spreadsheetRows(buffer) };
 }
