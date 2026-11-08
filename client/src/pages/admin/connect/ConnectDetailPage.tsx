@@ -27,6 +27,7 @@ import { useConnectAttempt, useConnectCatalog, useOrderTracking, type ConnectCat
 import { trackConnect, useConnectTrackingSender } from "@/components/connect/useConnectTracking";
 import { NetFeatureAreas } from "@/components/connect/NetFeatures";
 import { netProductOfLegacy } from "@shared/netProducts";
+import { toneOf } from "@shared/marketplaceVisual";
 import "@/components/connect/connectStage.css";
 
 type DialogKind = "purchase" | RequestKind;
@@ -83,8 +84,8 @@ export default function ConnectDetailPage() {
 
   return (
     <AdminLayout>
-      <div className={cn("cx-stage -m-4 min-h-full p-4 sm:-m-6 sm:p-6", item && action?.kind !== "none" && "cx-mobile-bar-space")} data-accent={item?.sheet.layout.accentColor ?? undefined}>
-        <div className="mx-auto max-w-7xl space-y-6">
+      <div className={cn("cx-stage cx-market -m-4 min-h-full p-4 sm:-m-6 sm:p-6", item && action?.kind !== "none" && "cx-mobile-bar-space")} data-accent={item?.sheet.layout.accentColor ?? undefined} data-tone={item ? toneOf(item) : undefined}>
+        <div className="mx-auto max-w-[90rem] space-y-6">
           <Link href={AMPLIAR_PATH} className="inline-flex items-center gap-2 rounded text-sm text-muted-foreground hover:text-foreground">
             <ArrowLeft className="h-4 w-4" aria-hidden="true" /> Volver al marketplace
           </Link>
@@ -134,7 +135,7 @@ function Hero({ item, brand }: { item: ConnectCatalogItem; brand: string }) {
       <div className="flex items-center gap-4">
         <ProductIcon item={item} size="xl" />
         <div className="min-w-0 space-y-1">
-          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">{brand}</p>
+          <p className="cx-tone-text text-xs font-bold uppercase tracking-[0.2em]">{brand}</p>
           <h1 className="break-words text-3xl font-extrabold leading-tight tracking-tight text-foreground sm:text-4xl">{item.name}</h1>
         </div>
       </div>
@@ -152,12 +153,12 @@ function Hero({ item, brand }: { item: ConnectCatalogItem; brand: string }) {
   );
   if (style === "image" && hero) {
     return (
-      <header id={SHEET_ANCHORS.description} className="cx-on-image relative scroll-mt-20 overflow-hidden rounded-3xl border border-border bg-card">
+      <header id={SHEET_ANCHORS.description} className="cx-on-image relative scroll-mt-20 overflow-hidden rounded-3xl border border-white/10 cx-night-bg shadow-2xl shadow-black/30">
         <picture>
           {hero.mobileSrc && <source media="(max-width: 767px)" srcSet={hero.mobileSrc} />}
           <ProductMedia item={item} image={hero} sizes="100vw" eager className="absolute inset-0" />
         </picture>
-        <div aria-hidden="true" className="absolute inset-0" style={{ background: "linear-gradient(90deg, rgba(10,6,8,0.92) 0%, rgba(10,6,8,0.8) 50%, rgba(10,6,8,0.35) 100%)" }} />
+        <div aria-hidden="true" className="absolute inset-0" style={{ background: "linear-gradient(90deg, rgba(5,9,26,0.94) 0%, rgba(5,9,26,0.84) 46%, rgba(5,9,26,0.3) 100%)" }} />
         <div className="relative p-6 sm:p-10 lg:max-w-[60%]">{text}</div>
         <ImageKindNote kind={kindNote} className="absolute bottom-3 right-3" />
       </header>

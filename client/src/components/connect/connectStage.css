@@ -178,3 +178,144 @@
     scroll-behavior: auto !important;
   }
 }
+
+/* ══════════════════════════════════════════════════════════════════════════════════════════════════════════════
+ * Marketplace «premium cinematic» (/admin/ampliar y sus fichas): `.cx-stage.cx-market`.
+ * Azul noche de fondo con luces de azul eléctrico, violeta y turquesa; botones en azul eléctrico; el rojo corporativo
+ * queda como acento de marca (`--cx-red-text`, etiquetas promocionales). Contraste AA comprobado:
+ *  - Claro: texto 17,4:1 y secundario 7,6:1 sobre blanco; blanco sobre el azul de los botones 6,9:1.
+ *  - Oscuro: texto 16,8:1 y secundario 10,1:1 sobre las tarjetas; blanco sobre el azul de los botones 5,0:1.
+ *  - Texto sobre imagen: siempre blanco sobre el degradado azul noche (≥ 0,82 de opacidad bajo el texto).
+ * ════════════════════════════════════════════════════════════════════════════════════════════════════════════ */
+.cx-stage.cx-market {
+  --background: #f3f5fb;
+  --foreground: #0e1428;
+  --card: #ffffff;
+  --card-foreground: #0e1428;
+  --popover: #ffffff;
+  --popover-foreground: #0e1428;
+  --primary: #3b47d9;
+  --primary-foreground: #ffffff;
+  --secondary: #e9edf8;
+  --secondary-foreground: #0e1428;
+  --muted: #eef1f9;
+  --muted-foreground: #4a5472;
+  --accent: #e9edf8;
+  --accent-foreground: #0e1428;
+  --border: #dde3f0;
+  --input: #cbd3e6;
+  --ring: #3b47d9;
+  --cx-shadow: rgba(20, 30, 80, 0.14);
+  background-color: var(--background);
+  background-image:
+    radial-gradient(60rem 26rem at 88% -8%, rgba(59, 91, 253, 0.12), transparent 62%),
+    radial-gradient(42rem 22rem at -6% 18%, rgba(124, 58, 237, 0.09), transparent 62%),
+    radial-gradient(40rem 22rem at 50% 105%, rgba(20, 184, 166, 0.08), transparent 62%);
+}
+.dark .cx-stage.cx-market,
+.cx-market .cx-on-image,
+.cx-on-image.cx-market-dark {
+  color-scheme: dark;
+  --background: #070b1a;
+  --foreground: #f2f5ff;
+  --card: #0f1529;
+  --card-foreground: #f2f5ff;
+  --popover: #111833;
+  --popover-foreground: #f2f5ff;
+  --primary: #4f5df5;
+  --primary-foreground: #ffffff;
+  --secondary: #18213f;
+  --secondary-foreground: #f2f5ff;
+  --muted: #141b33;
+  --muted-foreground: #b9c3dd;
+  --accent: #18213f;
+  --accent-foreground: #f2f5ff;
+  --border: #222c4d;
+  --input: #2c3860;
+  --ring: #93a4ff;
+  --cx-shadow: rgba(0, 0, 0, 0.5);
+  color: var(--foreground);
+}
+.dark .cx-stage.cx-market {
+  background-color: var(--background);
+  background-image:
+    radial-gradient(62rem 28rem at 90% -10%, rgba(59, 91, 253, 0.28), transparent 62%),
+    radial-gradient(44rem 26rem at -8% 20%, rgba(124, 58, 237, 0.2), transparent 62%),
+    radial-gradient(46rem 26rem at 55% 108%, rgba(20, 184, 166, 0.14), transparent 62%);
+}
+
+/* Tonos de producto (`data-tone`, ver shared/marketplaceVisual.ts): base, segundo color, halo y texto legible */
+[data-tone="night"] { --tone: #1e2a5a; --tone-2: #3b47d9; --tone-soft: rgba(59, 71, 217, 0.16); --tone-text-l: #2c3796; --tone-text-d: #aeb8ff; }
+[data-tone="electric"] { --tone: #2f5bff; --tone-2: #5b3df5; --tone-soft: rgba(47, 91, 255, 0.18); --tone-text-l: #1f43d6; --tone-text-d: #9fb4ff; }
+[data-tone="violet"] { --tone: #7c3aed; --tone-2: #c026d3; --tone-soft: rgba(124, 58, 237, 0.18); --tone-text-l: #6425d0; --tone-text-d: #cbb2ff; }
+[data-tone="magenta"] { --tone: #d0268f; --tone-2: #7c3aed; --tone-soft: rgba(208, 38, 143, 0.18); --tone-text-l: #b0156f; --tone-text-d: #ffa6d8; }
+[data-tone="turquoise"] { --tone: #0e9fae; --tone-2: #2f5bff; --tone-soft: rgba(14, 159, 174, 0.18); --tone-text-l: #0b6f7a; --tone-text-d: #7fe6ef; }
+[data-tone="emerald"] { --tone: #0f9f6e; --tone-2: #0e9fae; --tone-soft: rgba(15, 159, 110, 0.18); --tone-text-l: #06704c; --tone-text-d: #7ff0c3; }
+[data-tone="amber"] { --tone: #e08a00; --tone-2: #d0268f; --tone-soft: rgba(224, 138, 0, 0.2); --tone-text-l: #8a4b00; --tone-text-d: #ffd27a; }
+[data-tone] { --tone-text: var(--tone-text-l); }
+.dark [data-tone],
+.cx-on-image[data-tone],
+.cx-on-image [data-tone] { --tone-text: var(--tone-text-d); }
+.cx-market[data-tone] { --cx-accent: var(--tone); --cx-accent-glow: var(--tone-soft); --cx-accent-text: var(--tone-text); }
+.cx-tone-text { color: var(--tone-text); }
+.cx-tone-chip { background-image: linear-gradient(135deg, var(--tone) 0%, var(--tone-2) 100%); color: #ffffff; }
+
+/* Respaldo sin fotografía: degradado del tono con luces suaves (sin iconos ampliados, cubos ni circuitos) */
+.cx-tone-fallback {
+  background-color: #0b1126;
+  background-image:
+    radial-gradient(70% 90% at 82% 18%, color-mix(in srgb, var(--tone) 75%, transparent), transparent 70%),
+    radial-gradient(60% 80% at 8% 100%, color-mix(in srgb, var(--tone-2) 55%, transparent), transparent 72%),
+    linear-gradient(135deg, #0d1430 0%, #070b1a 100%);
+}
+
+/* Tarjeta tipo tienda de aplicaciones */
+.cx-card { transition: transform 220ms ease, box-shadow 220ms ease, border-color 220ms ease; box-shadow: 0 12px 34px -16px var(--cx-shadow); }
+.cx-card:hover,
+.cx-card:focus-within { border-color: color-mix(in srgb, var(--tone, var(--primary)) 70%, transparent); box-shadow: 0 22px 48px -18px color-mix(in srgb, var(--tone, var(--primary)) 45%, transparent); }
+@media (prefers-reduced-motion: no-preference) {
+  .cx-card:hover { transform: translateY(-3px); }
+}
+.cx-card-shade { background: linear-gradient(180deg, rgba(5, 9, 24, 0) 30%, rgba(5, 9, 24, 0.55) 58%, rgba(5, 9, 24, 0.94) 100%); }
+
+/* Indicador de estado sobre imagen (cristal oscuro + punto de color) */
+.cx-pill { background: rgba(6, 10, 26, 0.72); color: #ffffff; border: 1px solid rgba(255, 255, 255, 0.16); backdrop-filter: blur(8px); }
+.cx-dot-emerald { background: #34d399; }
+.cx-dot-amber { background: #fbbf24; }
+.cx-dot-violet { background: #c4a6ff; }
+.cx-dot-electric { background: #7ea2ff; }
+.cx-dot-slate { background: #a3adc2; }
+.cx-dot-danger { background: #ff6b75; }
+
+/* Accesos a las líneas: degradados de color con onda luminosa */
+.cx-access { position: relative; overflow: hidden; color: #ffffff; background-image: linear-gradient(120deg, var(--a1) 0%, var(--a2) 100%); }
+.cx-access::after {
+  content: "";
+  position: absolute;
+  inset: auto -20% -55% 25%;
+  height: 120%;
+  background: radial-gradient(60% 50% at 60% 40%, rgba(255, 255, 255, 0.28), transparent 70%);
+  pointer-events: none;
+}
+.cx-access[aria-pressed="true"] { box-shadow: 0 0 0 2px #ffffff, 0 16px 40px -14px var(--a1); }
+.cx-access-electric-violet { --a1: #2f45e0; --a2: #6d28d9; }
+.cx-access-electric-turquoise { --a1: #1d4ed8; --a2: #0b7285; }
+.cx-access-magenta-violet { --a1: #a3167a; --a2: #5b21b6; }
+.cx-access-turquoise-emerald { --a1: #0b6f7a; --a2: #047857; }
+
+/* Carril horizontal (scroll-snap) */
+.cx-rail { scrollbar-width: none; scroll-behavior: smooth; overscroll-behavior-x: contain; }
+.cx-rail::-webkit-scrollbar { display: none; }
+.cx-rail-arrow { background: rgba(6, 10, 26, 0.78); color: #ffffff; border: 1px solid rgba(255, 255, 255, 0.18); backdrop-filter: blur(8px); }
+.cx-rail-arrow:hover { background: rgba(6, 10, 26, 0.92); }
+
+/* Botón principal del escaparate (azul eléctrico → violeta) */
+.cx-cta { background-image: linear-gradient(120deg, #3b47d9 0%, #6d28d9 100%); color: #ffffff; }
+.cx-cta:hover { filter: brightness(1.08); }
+
+/* Colores fijos del escaparate (fondo azul noche bajo las imágenes, etiqueta promocional y acento de marca) */
+.cx-night-bg { background-color: #070b1a; }
+.cx-promo { background-color: #c81e2a; color: #ffffff; }
+.cx-brand-dot { background-color: #ff4655; }
+.cx-dot-on { background-color: #ffffff; }
+.cx-dot-off { background-color: rgba(255, 255, 255, 0.45); }

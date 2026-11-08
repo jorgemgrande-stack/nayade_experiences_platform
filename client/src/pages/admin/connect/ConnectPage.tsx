@@ -6,9 +6,9 @@
  * Ningún texto comercial vive aquí: títulos, imágenes, precios y ofertas salen del catálogo. Sin diapositivas
  * publicadas, la cabecera es la de la página (sin carrusel ni textos comerciales inventados).
  */
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Link } from "wouter";
-import { Layers, PackagePlus, Plug, Search, Sparkles } from "lucide-react";
+import { ArrowRight, Layers, PackagePlus, Plug, Search, Sparkles } from "lucide-react";
 import AdminLayout from "@/components/AdminLayout";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -22,6 +22,8 @@ import { AccessTiles, NeutralHero, ShowcaseCarousel, type AccessId } from "@/com
 import { fichaPath } from "@/components/connect/LockedFeature";
 import { useConnectCatalog, useOpenOrders, useOrderTracking, type ConnectCatalogItem } from "@/components/connect/useConnect";
 import { useConnectTrackingSender } from "@/components/connect/useConnectTracking";
+import { Rail } from "@/components/connect/Rail";
+import type { MarketTone } from "@shared/marketplaceVisual";
 import "@/components/connect/connectStage.css";
 
 const STATE_FILTERS: Array<{ id: ConnectStateFilter; label: string }> = [
@@ -62,6 +64,14 @@ export default function ConnectPage() {
   const [category, setCategory] = useState<ConnectCategoryId | "all">("all");
   const [state, setState] = useState<ConnectStateFilter>("all");
   const [dialog, setDialog] = useState<{ item: ConnectCatalogItem; kind: RequestKind } | null>(null);
+  const [expanded, setExpanded] = useState<ReadonlySet<string>>(() => new Set());
+  const toggleExpanded = (id: string) =>
+    setExpanded((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
   const data = catalog.data;
   const items = catalog.items;
   const brands = data?.brands ?? brandHeaders(null);
@@ -130,8 +140,8 @@ export default function ConnectPage() {
 
   return (
     <AdminLayout>
-      <div className="cx-stage -m-4 min-h-full p-4 sm:-m-6 sm:p-6">
-        <div className="mx-auto max-w-7xl space-y-6">
+      <div className="cx-stage cx-market -m-4 min-h-full p-4 sm:-m-6 sm:p-6">
+        <div className="mx-auto max-w-[96rem] space-y-8">
           {hasSlides ? (
             <>
               <h1 className="sr-only">{PAGE_TITLE}</h1>
@@ -180,8 +190,8 @@ export default function ConnectPage() {
               <section aria-label="Buscar y filtrar" className="flex flex-col gap-3 xl:flex-row xl:items-center">
                 <label className="relative block xl:w-[24rem] xl:shrink-0">
                   <span className="sr-only">Buscar en el catálogo</span>
-                  <Search className="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
-                  <Input type="search" value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Buscar módulo, función o beneficio…" className="h-11 rounded-xl bg-card pl-10" />
+                  <Search className="absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
+                  <Input type="search" value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Buscar módulo, función o beneficio…" className="h-12 rounded-full border-border bg-card pl-11 shadow-sm" />
                 </label>
                 <div className="flex flex-wrap items-center gap-2" role="group" aria-label="Estado">
                   {STATE_FILTERS.map((o) => (
@@ -191,7 +201,7 @@ export default function ConnectPage() {
                       size="sm"
                       variant={state === o.id ? "default" : "outline"}
                       aria-pressed={state === o.id}
-                      className={cn("h-9 rounded-full px-4", state !== o.id && "bg-card")}
+                      className={cn("h-10 rounded-full px-4 font-semibold", state !== o.id && "bg-card shadow-sm")}
                       onClick={() => setState(o.id)}
                     >
                       {o.label}
@@ -204,7 +214,7 @@ export default function ConnectPage() {
                     <select
                       value={category}
                       onChange={(e) => setCategory(e.target.value as ConnectCategoryId | "all")}
-                      className="h-11 w-full rounded-xl border border-input bg-card px-3 text-sm text-foreground xl:w-56"
+                      className="h-12 w-full rounded-full border border-border bg-card px-4 text-sm text-foreground shadow-sm xl:w-60"
                     >
                       <option value="all">Todas las categorías</option>
                       {categories.map((c) => (
@@ -237,16 +247,12 @@ export default function ConnectPage() {
 
                 {featured.length > 0 && (
                   <section className="space-y-4" aria-labelledby="cx-featured">
-                    <h2 id="cx-featured" className="flex items-center gap-2 text-xl font-bold text-foreground">
-                      <Sparkles className="h-5 w-5 cx-red-text" aria-hidden="true" /> Destacados
-                    </h2>
-                    <ul className="grid gap-5 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
+                    <SectionHeader id="cx-featured" tone="magenta" icon={<Sparkles className="h-6 w-6" />} title="Destacados" />
+                    <Rail label="Destacados">
                       {featured.map((i) => (
-                        <li key={i.key}>
-                          <ProductCard item={i} view={view} onAction={openDialog} />
-                        </li>
+                        <ProductCard key={i.key} item={i} view={view} onAction={openDialog} />
                       ))}
-                    </ul>
+                    </Rail>
                   </section>
                 )}
 
@@ -255,29 +261,44 @@ export default function ConnectPage() {
                   if (group.length === 0) return null;
                   const h = brands[b.id];
                   const Icon = b.id === "net" ? Layers : Plug;
+                  // Con búsqueda o filtros, o con «Ver todo», cuadrícula; si no, carriles por segmento para explorar
+                  const asGrid = filtering || expanded.has(b.id);
+                  const segments = b.id === "net" ? netSegments(group) : connectSegments(group);
                   return (
                     <section key={b.id} id={`cx-brand-${b.id}`} className="scroll-mt-4 space-y-5" aria-labelledby={`cx-brand-${b.id}-t`}>
-                      <div className="flex items-start gap-4">
-                        <span aria-hidden="true" className={cn("inline-flex h-12 w-12 shrink-0 items-center justify-center rounded-full border bg-card", b.id === "net" ? "border-info/40 text-info" : "border-primary/50 cx-red-text")}>
-                          <Icon className="h-6 w-6" />
-                        </span>
-                        <div className="min-w-0">
-                          <h2 id={`cx-brand-${b.id}-t`} className="break-words text-2xl font-bold text-foreground">
-                            {h.title}
-                          </h2>
-                          <p className="mt-0.5 max-w-3xl text-sm text-muted-foreground">{h.intro}</p>
-                        </div>
-                      </div>
-                      {(b.id === "net" ? netSegments(group) : [{ id: "all", title: null, items: group }]).map((seg) => (
+                      <SectionHeader
+                        id={`cx-brand-${b.id}-t`}
+                        tone={b.id === "net" ? "turquoise" : "electric"}
+                        icon={<Icon className="h-6 w-6" />}
+                        title={h.title}
+                        intro={h.intro}
+                        action={
+                          !filtering && group.length > 4 ? (
+                            <Button type="button" variant="ghost" size="sm" className="shrink-0 rounded-full" aria-pressed={expanded.has(b.id)} onClick={() => toggleExpanded(b.id)}>
+                              {expanded.has(b.id) ? "Ver en carrusel" : `Ver todo (${group.length})`}
+                              {!expanded.has(b.id) && <ArrowRight className="h-4 w-4" aria-hidden="true" />}
+                            </Button>
+                          ) : null
+                        }
+                      />
+                      {(asGrid ? [{ id: "all", title: null, items: group }] : segments).map((seg) => (
                         <div key={seg.id} className="space-y-3">
-                          {seg.title && <h3 className="text-base font-semibold text-foreground">{seg.title}</h3>}
-                          <ul className="grid gap-5 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
-                            {seg.items.map((i) => (
-                              <li key={i.key}>
-                                <ProductCard item={i} view={view} onAction={openDialog} />
-                              </li>
-                            ))}
-                          </ul>
+                          {seg.title && <h3 className="text-base font-semibold text-foreground sm:text-lg">{seg.title}</h3>}
+                          {asGrid ? (
+                            <ul className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4">
+                              {seg.items.map((i) => (
+                                <li key={i.key}>
+                                  <ProductCard item={i} view={view} onAction={openDialog} />
+                                </li>
+                              ))}
+                            </ul>
+                          ) : (
+                            <Rail label={seg.title ?? h.title}>
+                              {seg.items.map((i) => (
+                                <ProductCard key={i.key} item={i} view={view} onAction={openDialog} />
+                              ))}
+                            </Rail>
+                          )}
                         </div>
                       ))}
                     </section>
@@ -303,4 +324,31 @@ function netSegments(items: ConnectCatalogItem[]): Array<{ id: string; title: st
     { id: "business", title: "Elephant Net · Empresas", items: business },
     { id: "personal", title: "Elephant Net · Personal", items: personal },
   ].filter((s) => s.items.length > 0);
+}
+
+/** Elephant Connect en carriles por categoría (herramientas, paquetes, extras, ampliaciones), en el orden del catálogo. */
+function connectSegments(items: ConnectCatalogItem[]): Array<{ id: string; title: string | null; items: ConnectCatalogItem[] }> {
+  const known = CONNECT_CATEGORIES.map((c) => ({ id: c.id as string, title: c.label as string, items: items.filter((i) => categoryOf(i) === c.id) }));
+  const other = { id: "other", title: "Otros", items: items.filter((i) => categoryOf(i) === "other") };
+  const segs = [...known, other].filter((s) => s.items.length > 0);
+  // Con un solo segmento sobra el subtítulo
+  return segs.length === 1 ? [{ ...segs[0], title: null }] : segs;
+}
+
+/** Cabecera de sección: icono sobre el degradado del tono, título, entrada y acción opcional. */
+function SectionHeader({ id, tone, icon, title, intro, action }: { id: string; tone: MarketTone; icon: ReactNode; title: string; intro?: string | null; action?: ReactNode }) {
+  return (
+    <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+      <span aria-hidden="true" data-tone={tone} className="cx-tone-chip inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl shadow-lg shadow-black/20 sm:h-12 sm:w-12">
+        {icon}
+      </span>
+      <div className="min-w-[12rem] flex-1">
+        <h2 id={id} className="break-words text-2xl font-extrabold tracking-tight text-foreground sm:text-3xl">
+          {title}
+        </h2>
+        {intro && <p className="mt-0.5 max-w-3xl text-sm text-muted-foreground sm:text-base">{intro}</p>}
+      </div>
+      {action && <div className="ml-auto">{action}</div>}
+    </div>
+  );
 }

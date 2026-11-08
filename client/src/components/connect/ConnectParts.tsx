@@ -80,9 +80,10 @@ import { StatusBadge, type Tone } from "@/components/admin/PanelUi";
 import { trpc } from "@/lib/trpc";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
-import { CONNECT_STATE_LABELS, CONNECT_STATE_SHORT, brandOf, type ConnectState } from "@shared/connectMarketplace";
+import { CONNECT_STATE_LABELS, CONNECT_STATE_SHORT, type ConnectState } from "@shared/connectMarketplace";
 import { formatMoney, headlinePrice, periodLabel, sortPrices, taxLabel, type ConnectImage, type ConnectPrice } from "@shared/connectCard";
 import { ACTIVATION_LABELS, activationActions, activationLabel, activationOf, primaryAction, type ConnectActivation } from "@shared/connectShowcase";
+import { STATE_TONE, toneOf } from "@shared/marketplaceVisual";
 import { trackConnect, useViewTracking } from "./useConnectTracking";
 import type { PurchaseStatus } from "@shared/connectPurchase";
 import { fichaPath } from "./LockedFeature";
@@ -143,18 +144,18 @@ const ICONS: Record<string, LucideIcon> = {
   workflow: Workflow,
 };
 
-/** Icono del producto en su recuadro: el publicado por el catálogo (`media.icon`) o el de la colección del panel. */
-export function ProductIcon({ item, size = "md" }: { item: Pick<ConnectCatalogItem, "icon" | "family" | "kind"> & { sheet?: Pick<ConnectCatalogItem["sheet"], "media"> }; size?: "md" | "lg" | "xl" }) {
+/** Icono del producto: el publicado por el catálogo (`media.icon`) o el de la colección sobre el degradado de su tono. */
+export function ProductIcon({ item, size = "md" }: { item: Pick<ConnectCatalogItem, "key" | "icon" | "family" | "kind"> & { sheet?: Pick<ConnectCatalogItem["sheet"], "media" | "layout"> }; size?: "sm" | "md" | "lg" | "xl" }) {
   const Icon = (item.icon && Object.prototype.hasOwnProperty.call(ICONS, item.icon) && ICONS[item.icon]) || Puzzle;
-  const net = brandOf(item) === "net";
   const img = item.sheet?.media.icon ?? null;
   return (
     <span
       aria-hidden="true"
+      data-tone={toneOf(item)}
       className={cn(
-        "inline-flex shrink-0 items-center justify-center overflow-hidden border shadow-sm",
-        net ? "border-info/40 bg-card text-info" : "border-primary/50 bg-card cx-red-text",
-        size === "xl" ? "h-20 w-20 rounded-2xl [&_svg]:h-10 [&_svg]:w-10" : size === "lg" ? "h-14 w-14 rounded-2xl [&_svg]:h-7 [&_svg]:w-7" : "h-12 w-12 rounded-xl [&_svg]:h-6 [&_svg]:w-6",
+        "inline-flex shrink-0 items-center justify-center overflow-hidden shadow-lg shadow-black/25 ring-1 ring-white/20",
+        !img && "cx-tone-chip",
+        size === "xl" ? "h-20 w-20 rounded-2xl [&_svg]:h-10 [&_svg]:w-10" : size === "lg" ? "h-14 w-14 rounded-2xl [&_svg]:h-7 [&_svg]:w-7" : size === "sm" ? "h-9 w-9 rounded-xl [&_svg]:h-[1.125rem] [&_svg]:w-[1.125rem]" : "h-12 w-12 rounded-xl [&_svg]:h-6 [&_svg]:w-6",
       )}
     >
       {img ? <img src={img.src} alt="" className="h-full w-full object-cover" loading="lazy" decoding="async" /> : <Icon />}
@@ -181,7 +182,7 @@ export function ProductMedia({
   eager = false,
   className,
 }: {
-  item: Pick<ConnectCatalogItem, "icon" | "family" | "kind">;
+  item: Pick<ConnectCatalogItem, "key" | "icon" | "family" | "kind"> & { sheet?: Pick<ConnectCatalogItem["sheet"], "layout"> };
   image: ConnectImage | null;
   sizes: string;
   eager?: boolean;
@@ -203,14 +204,8 @@ export function ProductMedia({
       />
     );
   }
-  const Icon = iconFor(item);
-  return (
-    <div aria-hidden="true" className={cn("cx-placeholder relative h-full w-full overflow-hidden", className)} data-line={brandOf(item)}>
-      <div className="cx-placeholder-grid absolute inset-0" />
-      <Icon className="absolute right-[8%] top-1/2 h-[46%] w-auto -translate-y-1/2 text-foreground opacity-20" strokeWidth={1.25} />
-      <Icon className={cn("absolute left-[10%] top-[22%] h-[22%] w-auto opacity-70", brandOf(item) === "net" ? "text-info" : "cx-red-text")} strokeWidth={1.5} />
-    </div>
-  );
+  // Sin fotografía: degradado del tono del producto (sin iconos ampliados, cubos ni circuitos como sustituto)
+  return <div aria-hidden="true" data-tone={toneOf(item)} className={cn("cx-tone-fallback h-full w-full", className)} />;
 }
 
 /** Aviso discreto sobre la naturaleza de una imagen (captura real o ilustración). */
@@ -247,6 +242,18 @@ export function StateBadge({ state, long = false }: { state: ConnectState; long?
     <StatusBadge tone={meta.tone} icon={<Icon className={cn("shrink-0", state === "activating" && "animate-spin")} aria-hidden="true" />} className="whitespace-normal text-left">
       {long ? CONNECT_STATE_LABELS[state] : CONNECT_STATE_SHORT[state]}
     </StatusBadge>
+  );
+}
+
+/** Estado sobre la imagen de la tarjeta: cristal oscuro y punto del color del estado (texto real del catálogo). */
+export function StatePill({ state, className }: { state: ConnectState; className?: string }) {
+  const Icon = STATE_META[state].icon;
+  return (
+    <span className={cn("cx-pill inline-flex max-w-full items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-semibold", className)}>
+      <span aria-hidden="true" className={cn("h-2 w-2 shrink-0 rounded-full", `cx-dot-${STATE_TONE[state]}`)} />
+      <Icon className={cn("h-3.5 w-3.5 shrink-0 opacity-90", state === "activating" && "motion-safe:animate-spin")} aria-hidden="true" />
+      <span className="min-w-0 break-words">{CONNECT_STATE_SHORT[state]}</span>
+    </span>
   );
 }
 
@@ -410,7 +417,6 @@ export function ProductCard({
   const H = `h${headingLevel}` as "h2" | "h3" | "h4";
   const [, navigate] = useLocation();
   const lead = item.sheet.valueProposition ?? item.tagline ?? item.sheet.headline;
-  const points = highlightsOf(item);
   const action = primaryAction(item, view);
   const activation = activationOf(item);
   const viewRef = useViewTracking<HTMLElement>("card_view", { productKey: item.key });
@@ -425,53 +431,57 @@ export function ProductCard({
     else if (action.kind === "contact") onAction ? onAction(item, "contact") : navigate(href);
   };
   const hasAction = action.kind !== "none";
+  const tone = toneOf(item);
   return (
-    <article ref={viewRef} className="group relative flex h-full flex-col overflow-hidden rounded-2xl border border-border bg-card cx-shadow transition hover:border-primary/70 focus-within:border-primary/70">
-      <div className="relative aspect-[16/9] shrink-0 overflow-hidden border-b border-border bg-background">
-        <ProductMedia item={item} image={item.sheet.media.card} sizes="(min-width: 1536px) 22rem, (min-width: 768px) 45vw, 100vw" className="transition-transform duration-300 motion-safe:group-hover:scale-[1.03]" />
-        {item.sheet.promoLabel && <span className="absolute left-3 top-3 rounded-full bg-primary px-2.5 py-1 text-xs font-semibold text-primary-foreground shadow">{item.sheet.promoLabel}</span>}
-        <span className="absolute right-3 top-3 max-w-[calc(100%-1.5rem)] rounded-full bg-background/90 backdrop-blur">
-          <StateBadge state={item.state} />
-        </span>
-        {item.sheet.media.card?.kind === "illustration" && <ImageKindNote kind="illustration" className="absolute bottom-2 left-3" />}
-      </div>
-      <div className="flex min-w-0 flex-1 flex-col gap-3 p-5">
-        <div className="space-y-1">
-          <H className="break-words text-lg font-semibold leading-snug text-foreground">
-            <Link href={href} className="rounded before:absolute before:inset-0 before:content-[''] focus-visible:outline-none">
-              {item.name}
-            </Link>
-          </H>
-          {lead && <p className="line-clamp-2 text-sm text-muted-foreground">{lead}</p>}
-          <ActivationLine activation={plainActive(activation) ? { ...activation, state: "none" } : activation} />
-          <ActivationActionsBar productKey={item.key} activation={activation} canRetry={!!view.canRetryActivation} className="relative z-10 pt-1" />
+    <article ref={viewRef} data-tone={tone} className="cx-card group relative flex h-full flex-col overflow-hidden rounded-2xl border border-border bg-card">
+      {/* Imagen protagonista con degradado inferior; el nombre va sobre ella (texto de la interfaz, nunca en la imagen) */}
+      <div className="cx-on-image relative aspect-[16/10] shrink-0 overflow-hidden cx-night-bg">
+        <ProductMedia item={item} image={item.sheet.media.card} sizes="(min-width: 1536px) 22rem, (min-width: 1024px) 31vw, (min-width: 640px) 48vw, 84vw" className="motion-safe:transition-transform motion-safe:duration-500 motion-safe:group-hover:scale-[1.04]" />
+        <div aria-hidden="true" className="cx-card-shade absolute inset-0" />
+        <div className="absolute inset-x-3 top-3 flex items-start justify-between gap-2">
+          {item.sheet.promoLabel ? <span className="rounded-full cx-promo px-2.5 py-1 text-xs font-semibold shadow">{item.sheet.promoLabel}</span> : <span />}
+          <StatePill state={item.state} className="ml-auto" />
         </div>
-        {points.length > 0 && (
-          <ul className="space-y-1.5 text-sm text-foreground">
-            {points.map((p) => (
-              <li key={p} className="flex items-start gap-2">
-                <Check className="mt-0.5 h-4 w-4 shrink-0 text-success" aria-hidden="true" />
-                <span className="min-w-0 break-words">{p}</span>
-              </li>
-            ))}
-          </ul>
-        )}
-        <div className="mt-auto space-y-3 border-t border-border pt-3">
-          {item.state === "active" ? <p className="text-sm text-muted-foreground">{item.includedIn ? `Incluido en ${item.includedIn.name}` : "Ya forma parte de tu plataforma"}</p> : <BigPrice prices={item.prices} />}
-          <div className="relative z-10 grid gap-2">
-            <Button asChild variant={hasAction ? "outline" : "default"} size="sm" className="w-full">
-              <Link href={href}>
-                Ver ficha <ChevronRight className="h-4 w-4" aria-hidden="true" />
-                <span className="sr-only"> de {item.name}</span>
+        <div className="absolute inset-x-4 bottom-3 flex items-end gap-3">
+          <ProductIcon item={item} size="sm" />
+          <div className="min-w-0 flex-1">
+            <H className="break-words text-lg font-bold leading-tight text-white [text-shadow:0_1px_8px_rgba(0,0,0,0.55)] sm:text-xl">
+              <Link href={href} className="rounded before:absolute before:inset-0 before:z-[1] before:content-[''] focus-visible:outline-none">
+                {item.name}
               </Link>
-            </Button>
-            {hasAction && (
-              <Button type="button" size="sm" className="w-full" onClick={run}>
-                {action.label}
-                <span className="sr-only"> · {item.name}</span>
-              </Button>
-            )}
+            </H>
+            {item.sheet.offer && item.sheet.offer !== CONNECT_STATE_SHORT[item.state] && <p className="mt-0.5 overflow-hidden text-ellipsis whitespace-nowrap text-xs font-medium text-white/80">{item.sheet.offer}</p>}
           </div>
+        </div>
+        {item.sheet.media.card?.kind === "illustration" && <span className="sr-only">Imagen ilustrativa</span>}
+      </div>
+      <div className="flex min-w-0 flex-1 flex-col gap-3 p-4 sm:p-5">
+        {lead && <p className="line-clamp-2 text-sm text-muted-foreground">{lead}</p>}
+        <ActivationLine activation={plainActive(activation) ? { ...activation, state: "none" } : activation} />
+        <ActivationActionsBar productKey={item.key} activation={activation} canRetry={!!view.canRetryActivation} className="relative z-10" />
+        <div className="mt-auto flex flex-wrap items-end justify-between gap-x-3 gap-y-2 pt-1">
+          {item.state === "active" ? (
+            <p className="flex items-center gap-1.5 text-sm font-medium text-foreground">
+              <CheckCircle2 className="h-4 w-4 shrink-0 cx-tone-text" aria-hidden="true" />
+              {item.includedIn ? `Incluido en ${item.includedIn.name}` : "Ya forma parte de tu plataforma"}
+            </p>
+          ) : (
+            <BigPrice prices={item.prices} />
+          )}
+        </div>
+        <div className="relative z-10 flex gap-2">
+          {hasAction && (
+            <Button type="button" size="sm" className="h-10 flex-1 rounded-xl font-semibold" onClick={run}>
+              {action.label}
+              <span className="sr-only"> · {item.name}</span>
+            </Button>
+          )}
+          <Button asChild variant="outline" size="sm" className={cn("h-10 rounded-xl bg-transparent", hasAction ? "shrink-0 px-3" : "flex-1")}>
+            <Link href={href}>
+              Ver ficha <ChevronRight className="h-4 w-4" aria-hidden="true" />
+              <span className="sr-only"> de {item.name}</span>
+            </Link>
+          </Button>
         </div>
       </div>
     </article>
