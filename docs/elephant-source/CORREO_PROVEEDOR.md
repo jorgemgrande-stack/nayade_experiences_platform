@@ -70,3 +70,33 @@ Las variables van en **controlplane** (bandeja de plataforma y webhook) y en **c
 3. En **Correo transaccional (Postmark)**: pegar el *Server API token* y la dirección del remitente; **Probar conexión**.
 4. **Generar token** del webhook y, en Postmark, crear el webhook del flujo con la URL mostrada, la cabecera `x-elephant-webhook-token` con ese token y los eventos Delivery, Bounce, Spam Complaint y Subscription Change (sin Open ni Click).
 5. El envío real lo sigue gobernando `MAIL_MODE` de la instalación (off, sandbox o live autorizado).
+
+## Política comercial del correo (aprobada el 08/11/2026)
+
+**Postmark propio y SMTP propio son una capacidad de configuración incluida en los planes**, no un producto de pago. Están bajo la capacidad `comms-email` (nivel Essential), que Business y Enterprise heredan. Elephant Connect no tiene ningún producto de Postmark. Brevo sigue funcionando para las campañas de la empresa (Brevo marketing), sin ampliarse y sin presentarse como prioridad.
+
+### Las tres vías de envío de cada empresa
+
+| Vía | Quién la paga | Cómo la mide el Resource Manager |
+|---|---|---|
+| **Postmark propio** (solo transaccional, `/admin/configuracion/postmark`) | La empresa titular de la cuenta: Postmark le factura directamente | `email.own.sent` (`route: own_postmark`). Sin tarifa de la plataforma y sin cuota |
+| **SMTP propio** (Ajustes → Integraciones, proveedor `mail_smtp`) | La empresa titular del servidor | `email.own.sent` (`route: own_smtp`). Sin tarifa de la plataforma y sin cuota |
+| **Servicio de correo de la plataforma** (sin cuenta propia, categorías no transaccionales sin SMTP propio o **envío alternativo** cuando la cuenta propia falla) | Big Elephant | `email.sent` (`route: platform`). Lleva la tarifa de `costs.ts` y consume las cuotas vigentes (`quota.ts`, cuotas por empresa y de prueba) en los contadores compartidos (`usage_windows`) |
+
+No hay límites nuevos: las cuotas de correo existentes se aplican solo al servicio de la plataforma.
+
+### Medición (auditoría del 08/11/2026)
+
+- **Antes:** `sendEmail` (`server/mailer.ts`) medía **todo** envío por la bandeja de salida como `email.sent` (`channel: outbox`), saliera por el Postmark propio, por el SMTP propio o por la plataforma. Además comprobaba (y reservaba) la cuota de la plataforma antes de cualquier envío. Es decir, el ERM imputaba a Big Elephant un coste que pagaba la empresa.
+- **Ahora:** los puertos del proveedor de cada empresa (`server/mail/tenantMail.ts`) avisan de la vía de cada mensaje que el proveedor **acepta**. `sendEmail` mide una unidad por envío, como antes, con la vía real (`meteredMailRoute`). Si algún mensaje salió por la plataforma, cuenta `email.sent`. Si no, cuenta `email.own.sent` con la cuenta que lo aceptó. Sin aceptación (fallo, omitido o reintento), cuenta la vía prevista (`predictedMailRoute`). La cuota de la plataforma solo se comprueba cuando la vía prevista es la plataforma. Si la cuenta propia falla y el mensaje sale por la plataforma, se mide como de la plataforma, aunque no se haya reservado cuota antes.
+- `email.own.sent` está en el catálogo de métricas del ERM (`tenantMetrics.ts`), pero no en los contadores de cuota (`SHARED_COUNTER_METRICS`) ni en el modelo de costes. `email.sent`, sus ventanas y sus umbrales no cambian de nombre ni de forma.
+- La trazabilidad no cambia: la bandeja de salida guarda el proveedor real (`postmark_tenant`, `smtp` o el de la plataforma), y los webhooks registran entregas, rebotes, quejas y bajas (`email.delivered.30d` y `email.problems.30d`).
+
+### Pendiente para la cuenta central (sin credenciales; no se ha hecho)
+
+1. Alta de la cuenta de Postmark de la plataforma: servidor «Elephant Source» con flujo transaccional `outbound` y aprobación de la cuenta (salir del modo de pruebas).
+2. DNS de `bigelephant.es`: DKIM (`XXXXXXXXpm._domainkey`, valor de Postmark) y Return-Path (CNAME `pm-bounces` → `pm.mtasv.net`), sin tocar MX ni el SPF actual.
+3. Variables en controlplane y core: `MAIL_PROVIDER=postmark`, `POSTMARK_SERVER_TOKEN` y `POSTMARK_WEBHOOK_TOKEN`, y el webhook de la plataforma (ver «Configuración en Postmark» y «Para cambiar de Brevo a Postmark»).
+4. Actualizar la tarifa de `email.sent` en el modelo de costes (`ERM_COST_MODEL` o `costs.ts`) con la factura real de Postmark.
+
+Hasta entonces, el servicio de la plataforma sigue con el proveedor configurado hoy en el entorno.

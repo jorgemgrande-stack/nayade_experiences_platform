@@ -57,6 +57,9 @@ describe.skipIf(!URL_)("Postmark por empresa sobre MySQL (dos empresas)", () => 
   const failures: string[] = [];
   let mem: ReturnType<typeof import("./providers").memoryProvider>;
   const creds: Record<string, Record<string, Record<string, string>>> = {};
+  // Medición del ERM: consumo de la plataforma (`email.sent`) frente al de la cuenta propia (`email.own.sent`)
+  let sink: import("../_core/metering").InMemoryMeterSink;
+  const mailEvents = () => sink.events.filter((e) => e.metric.startsWith("email.")).map((e) => [e.tenantId, e.metric, e.meta?.route]);
 
   /** Fija la bóveda e identidad precargadas de la empresa (como el borde de cada petición) y ejecuta `fn`. */
   async function inTenant<T>(tenant: string, fn: () => Promise<T>): Promise<T> {
@@ -117,10 +120,14 @@ describe.skipIf(!URL_)("Postmark por empresa sobre MySQL (dos empresas)", () => 
     const { postmarkFingerprint } = await import("./tenantPostmark");
     creds.acme = { postmark: { serverToken: TOKEN_A, fromEmail: "reservas@empresa-a.example", messageStream: "outbound", webhookToken: HOOK_A, verifiedFor: postmarkFingerprint(TOKEN_A, "outbound") } };
     creds.beta = { postmark: { webhookToken: HOOK_B } };
+    const metering = await import("../_core/metering");
+    sink = new metering.InMemoryMeterSink();
+    metering.setMeterSink(sink);
   });
 
   afterAll(async () => {
     process.env = saved;
+    (await import("../_core/metering")).setMeterSink(null);
     const tm = await import("./tenantMail");
     tm.setTenantMailProviderForTests(undefined);
     tm.setTenantPostmarkFetchForTests(undefined);
@@ -146,6 +153,11 @@ describe.skipIf(!URL_)("Postmark por empresa sobre MySQL (dos empresas)", () => 
     expect(calls[0].token).toBe(TOKEN_A);
     expect(calls[0].body).toMatchObject({ To: CLIENT, MessageStream: "outbound", TrackOpens: false, TrackLinks: "None", Tag: "payment_confirmed" });
     expect(calls[0].body.From).toContain("<reservas@empresa-a.example>");
+    // ERM: el de beta es consumo de la plataforma; el de acme, de su cuenta propia (sin coste ni cuota de la plataforma)
+    expect(mailEvents()).toEqual([
+      ["beta", "email.sent", "platform"],
+      ["acme", "email.own.sent", "own_postmark"],
+    ]);
   });
 
   it("aislamiento e idempotencia: el token de acme nunca sirve a beta; el mismo aviso con la misma clave sale una vez", async () => {
@@ -225,7 +237,10 @@ describe.skipIf(!URL_)("Postmark por empresa sobre MySQL (dos empresas)", () => 
     postmarkStatus = { status: 401, body: { ErrorCode: 10, Message: "Bad or missing server token" } };
     const pmBefore = calls.length;
     const memBefore = mem.sent.length;
+    sink.events.length = 0;
     expect(await send("acme", { category: "refund_recorded", to: TO })).toBe(true);
+    // El envío alternativo sale por la plataforma: se mide como consumo de la plataforma, no de la cuenta propia
+    expect(mailEvents()).toEqual([["acme", "email.sent", "platform"]]);
     expect(calls.length).toBe(pmBefore + 1);
     expect(failures).toEqual(["postmark_10"]);
     expect(mem.sent.length).toBe(memBefore + 1);
