@@ -33,6 +33,7 @@ import fileRouter from "../fileRoutes";
 import redsysRouter from "../redsysRoutes";
 import { createLoyaltyPortalRouter } from "../loyaltyPortal";
 import { createNetPublicRouter, netPublicBodyParser } from "../netPublic/router";
+import { createTenantPostmarkWebhookRouter } from "../mail/tenantPostmarkWebhook";
 import { metaCapiRouter } from "../metaCapiRoute";
 import settlementExportRouter from "../settlementExportRoutes";
 import invoicePreviewRouter from "../invoicePreviewRouter";
@@ -253,6 +254,8 @@ async function startServer() {
   app.use(createLoyaltyPortalRouter());
   // Elephant Net: carta QR de mesa, check-in online, firma remota y baja de comunicaciones (enlaces con token, sin sesión)
   app.use(createNetPublicRouter());
+  // Webhook de Postmark de cada empresa (entregas, rebotes, quejas y bajas de su correo transaccional), con su token propio
+  app.use(createTenantPostmarkWebhookRouter());
   // Meta Conversions API proxy (recibe eventos del cliente para envío server-side)
   app.use(metaCapiRouter);
   // Settlement Excel export endpoint
