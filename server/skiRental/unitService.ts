@@ -6,7 +6,8 @@
  * el módulo activado en la sede (`ModuleNotActive`). La activación es la de la v0.1 (`ski_rental_sites`).
  *
  * La firma es en el mostrador (la tableta o el equipo del empleado, con sesión del panel): no hay página pública de
- * firma en esta entrega. Fianzas y cargos por daños con enlace de pago: fuera de esta entrega.
+ * firma en esta entrega. Fianzas y cargos por daños: server/skiRental/depositService.ts (cobro en el TPV del Core; sin
+ * enlace de pago).
  */
 import { ModuleNotActive, assertSite, runWithSite, type EventBus, type ModuleGate } from "../sdk";
 import { SKI_RENTAL_ID, type SkiRentalEvents } from "./manifest";

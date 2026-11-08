@@ -1,7 +1,8 @@
 /**
  * Ski Net · Alquiler — Tiendas y contrato (/admin/ski/alquiler-ajustes): tiendas de la sede con su horario y hora
  * límite de devolución, tipos de material (plantilla por defecto editable) y texto del contrato (plantilla neutra o el
- * de la empresa; cada cambio crea una versión y los contratos ya generados conservan la suya).
+ * de la empresa; cada cambio crea una versión y los contratos ya generados conservan la suya) e importe de la fianza
+ * por tipo de material o por modelo.
  */
 import { useState } from "react";
 import { Store } from "lucide-react";
@@ -14,6 +15,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { PanelEmpty, PanelError, PanelLoading } from "@/components/admin/PanelStates";
 import { FormField } from "@/components/admin/crm/CrmParts";
 import { SkiRentalShell, toastRental, type RentalCtx } from "@/components/ski/SkiRentalShell";
+import { DepositRules } from "@/components/ski/SkiDeposits";
 
 type StoreRow = { id: number; name: string; openingTime: string; closingTime: string; overdueReturnTime: string; active: boolean };
 
@@ -189,6 +191,7 @@ export default function SkiRentalSettings() {
             <Stores ctx={ctx} />
           </section>
           <SettingsForm ctx={ctx} />
+          <DepositRules ctx={ctx} />
         </div>
       )}
     </SkiRentalShell>
