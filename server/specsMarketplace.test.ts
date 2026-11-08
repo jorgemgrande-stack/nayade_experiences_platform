@@ -24,13 +24,20 @@ const entry = (k: string) => entries.find((e) => e.key === k)!;
 const spec = (k: string) => PRODUCT_SPECS.find((s) => s.key === k)!;
 
 describe("especificaciones con ficha del marketplace", () => {
-  it("las especificaciones actuales (sin marketplace) no añaden ningún campo nuevo", () => {
-    for (const s of PRODUCT_SPECS) {
+  it("las especificaciones sin marketplace no añaden ningún campo nuevo (life-net trae la suya)", () => {
+    for (const s of PRODUCT_SPECS.filter((x) => !x.marketplace)) {
       const e = entries.find((x) => x.key === s.key);
       if (!e) continue;
       const c = draftWithSpec(e.draft, e.family, s).commercial as Record<string, unknown>;
       expect(MK.filter((k) => k in c), s.key).toEqual([]);
     }
+  });
+
+  it("solo life-net declara ficha del marketplace (sustituye la FAQ heredada del CRM)", () => {
+    expect(PRODUCT_SPECS.filter((s) => s.marketplace).map((s) => s.key)).toEqual(["life-net"]);
+    const e = entries.find((x) => x.key === "life-net")!;
+    const c = draftWithSpec(e.draft, e.family, spec("life-net")).commercial as Record<string, unknown>;
+    expect(MK.filter((k) => k in c)).toEqual(["valueProposition", "terms", "faq"]);
   });
 
   it("sin marketplace en la especificación, se conserva lo escrito en el CRM", () => {

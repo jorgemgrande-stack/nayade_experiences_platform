@@ -42,6 +42,9 @@ describe("especificaciones comerciales", () => {
     // Desarrollado en el Core (PR #710), pero sin contratar todavía: lista de espera
     expect(s.verified.grade).toBe("partial");
     expect(s.publicContent.cta).toBe("waitlist");
+    // Ficha del marketplace: sin la FAQ heredada («profesionales», «anunciaremos sus funciones») ni requisito de empresa
+    const m = [s.marketplace!.valueProposition!, s.marketplace!.terms!.activation!, ...s.marketplace!.faq!.flatMap((f) => [f.q, f.a])];
+    for (const t of m) expect(t).not.toMatch(/profesionales|anunciaremos|requiere un plan|disponible para contratar/i);
   });
   it("ninguna ficha pública lleva repositorios, arquitectura interna ni comentarios de desarrollo", () => {
     for (const s of PRODUCT_SPECS) {

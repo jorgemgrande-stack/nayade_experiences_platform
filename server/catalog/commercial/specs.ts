@@ -539,6 +539,18 @@ export const PRODUCT_SPECS: readonly ProductSpec[] = [
     },
     seo: { slug: "life-net", title: "Big Elephant Life Net: organización familiar (próximamente)", description: "Próximamente: agenda, tareas, recordatorios y actividades compartidas de los miembros de tu hogar, con el plan personal Life." },
     admin: { pendingDecisions: ["Fecha de apertura de la contratación de particulares (J9)"], notes: "Producto personal: fuera del escaparate de las empresas (J7)." },
+    // Sustituye la FAQ heredada del CRM («profesionales y familias», «anunciaremos sus funciones»): imágenes y diseño se conservan
+    marketplace: {
+      valueProposition: "Próximamente: la organización personal y familiar de tu hogar, con el plan personal Life.",
+      terms: { activation: "Todavía no se puede contratar: la contratación para particulares se abrirá próximamente." },
+      faq: [
+        { q: "¿Puedo contratarlo ya?", a: "Todavía no: la contratación para particulares se abrirá próximamente. Hasta entonces puedes apuntarte a la lista de espera." },
+        { q: "¿Necesito un plan de empresa?", a: "No: Life Net va con el plan personal Life, sin Elephant Core ni funciones de empresa." },
+        { q: "¿Qué incluirá?", a: "Organización personal, gestión familiar, calendario y agenda, tareas y recordatorios, actividades compartidas, organización de miembros del hogar y seguimiento de actividades y compromisos." },
+        { q: "¿Para quién es?", a: "Para particulares y familias: un hogar por plan, con hasta 5 miembros del hogar incluidos." },
+        { q: "¿Puedo dejar mi interés?", a: "Sí, con el botón «Quiero que me aviséis»: te escribiremos cuando se abra la contratación." },
+      ],
+    },
   }),
   // ── Social Token Net ───────────────────────────────────────────────────────
   s({
