@@ -42,7 +42,7 @@ Reglas del portado:
 | Restricciones de estancia (mín./máx., CTA/CTD) | Hotel | A | No | 2 | en production |
 | Folio: cargos, pagos y cierre con factura del Core | Hotel | B | No | 1 | en production |
 | Auditoría nocturna, ocupación, ADR y RevPAR | Hotel | B | No | 2 | en production |
-| Housekeeping: tareas, inspección e incidencias | Hotel | B | No (requiere resolver `employees`) | 2 | pendiente |
+| Housekeeping: tareas, inspección e incidencias | Hotel | B | No (requiere resolver `employees`) | 2 | en production (0038) |
 | Planes de tarifa (BAR, no reembolsable, desayuno) | Hotel | B | Parcial (temporadas y tarifas) | 3 | pendiente |
 | Check-in online: huéspedes, firma, textos legales, campos | Hotel | B | No | 2 | pendiente (E5, requiere evaluación RGPD) |
 | OCR del documento de identidad | Hotel / Connect | A | No (el Core tiene proveedor de IA) | 2 | pendiente (E5) |
@@ -51,7 +51,7 @@ Reglas del portado:
 | Salas de reuniones y eventos | Hotel | B | No | 4 | pendiente |
 | Salas, mesas y plano (unir mesas) | Restaurant | B | No | 1 | en production |
 | Carta con alérgenos | Restaurant | B | No | 1 | en production |
-| Carta digital QR y pedido desde la mesa | Restaurant | B | No | 3 | pendiente (endpoint público: token por mesa y límite) |
+| Carta digital QR y pedido desde la mesa | Restaurant | B | No | 3 | en production (0046) |
 | Comandas y TPV de restauración con cobro en el TPV del Core | Restaurant | B | No | 1 | en production |
 | Reservas enlazadas a mesas (sentar, no-show) | Restaurant | B | Parcial | 2 | en production |
 | KDS: cocina, partidas, enrutado, incidencias y métricas | Restaurant | B | No | 2 | en production |
@@ -169,6 +169,60 @@ En el Core, cada empresa guarda sus credenciales en una bóveda (`server/_core/c
 | Informes sectoriales (Restaurant, Care, Ski, Travel) | #696 | fusionado |
 | Connect · Veturis en Travel Net (reserva real apagada) | #697 | en curso |
 | Estados «Disponible» en las fichas | #686 y esta PR | — |
+| Activación del marketplace · tanda A: venta directa de Partners y Deals (revisión `review20261108connect.ts`) | esta PR | fusionado; espera el Price de Stripe Live |
+
+## Activación del marketplace (encargo del 08/11/2026)
+
+Inventario accionable de lo que se vende en `/admin/ampliar`. Estado público de partida: el de `https://admin.bigelephant.es/cp/v1/public/site` del 08/11/2026 a las 12:30.
+
+**Circuito común** (los diez puntos que comparten todos los productos):
+- **Licencia y permisos (4).** Por capacidad: `TRPC_ROUTER_CAPABILITIES` y el menú (`shared/adminNav.ts`).
+- **Contratación (8).**
+  - En línea solo con:
+    - estado «Disponible» y técnico `available`;
+    - un precio mensual aprobado;
+    - el **Price de Stripe Live enlazado** (`stripe_prices`);
+    - un plan Essential o Business con suscripción activa en Stripe (`server/stripe/purchases.ts`).
+  - La licencia se concede cuando se cobra la factura de prorrateo.
+  - El menú se desbloquea en unos 60 s.
+  - La tarjeta pasa a «Gestionar».
+- **Implantación acompañada.**
+  - «Solicitar información» crea una solicitud web en el CRM (`panelRequests.ts`) y avisa al equipo (`leadNotices`).
+  - El equipo crea y aprueba el pedido en el CRM, y eso concede la licencia por el circuito normal.
+- **Stripe Live (7).** El 08/11/2026 solo tienen Price Essential, Business, People y los tres de Social Token. Lo crea una persona:
+  1. `GET /cp/v1/stripe/catalog/plan`.
+  2. Crear el Product y el Price.
+  3. `POST /cp/v1/stripe/catalog/sync`.
+- **Configuración (5).** No hay asistente propio por módulo: «Gestionar» lleva a la pantalla principal.
+
+| Producto (capacidad) | Operativo hoy (2) | Integración externa (6) | Estado (9) | Trabajo exacto para venderlo (10) |
+|---|---|---|---|---|
+| People (`people-hr`) | Completo | — | Disponible | — |
+| Partners (`supplier-settlements`) | Proveedores, liquidaciones con PDF y portales | — | Implantación acompañada | **Tanda A.** Crear el Price mensual en Stripe Live y sincronizar; la revisión lo pasa a «Disponible». |
+| Deals (`deals-coupons`) | Formulario de canje, reserva y conciliación | — (canje manual) | Implantación acompañada | **Tanda A.** Igual que Partners. |
+| Tax (`tax-filings`) | Gestoría: IVA, calendario, expedientes, portal y avisos | — | Implantación acompañada | Cálculo de los modelos (303/130/111) desde la facturación. Después, venta directa. |
+| Finance Sync (`bank-import-pos`, `bank-reconciliation`) | Extractos, operaciones y remesas del datáfono, conciliación | Buzón IMAP de la empresa | Implantación acompañada | Dar función propia a `bank-reconciliation`. Asistente IMAP en el panel. |
+| Voice (`voice-ai`) | Llamadas Vapi, leads y coste | Cuenta Vapi de la empresa (bóveda) | Implantación acompañada | Asistente de alta de Vapi. Netelip: IP de salida fija. |
+| POS (`pos-advanced`) | El TPV avanzado existe, pero lo licencia `bill-cash` (Essential) | — | Implantación acompañada | Frontera entre la caja básica y la avanzada. Es una decisión de negocio: hoy la tienen los clientes de Essential. |
+| WhatsApp AI (`whatsapp-ai`) | Bandeja a través de GHL | Cuenta GHL o app de Meta de Big Elephant | En preparación | WhatsApp Cloud API directa y respuestas con IA. |
+| Campaigns (`email-campaigns`) | Sincronización de clientes con consentimiento a la lista de Brevo de la empresa | Cuenta Brevo de la empresa | Próximamente | Envío de campañas desde el Core. Brevo no es un producto de correo nuevo. |
+| Automatizaciones (`automations-advanced`) | Recordatorios por correo (`emailAutomationJob`) | — | En preparación | Motor de reglas y flujos licenciado. |
+| Copilot avanzado (`copilot-advanced`) | Proveedor de IA central | IA de la plataforma | Próximamente | Hay un borrador ajeno (v6): bloqueo. |
+| Reception AI, Ads Manager, SEO Control, GEO Control | Sin código en el Core (base en Skicenter) | Vapi o Meta; Meta/Google Ads; Google Business Profile; IA | Próximamente | Portar desde Skicenter. |
+| Contratos y firma, Venta multicanal, Contabilidad general | Sin código genérico (contrato de alquiler en Ski Net) | — o canales | Próximamente | Generalizar el contrato con firma de Ski Net. Lo demás es desarrollo nuevo. |
+
+**Paquetes (sección 5).**
+- **Finance:** sus componentes son reales salvo `bank-reconciliation`. Seguirá en implantación acompañada hasta que Tax y Finance Sync estén a la venta.
+- **Communications, Marketing y AI:** incluyen capacidades sin función (`reception-ai`, `ads-manager`, `seo-control`, `geo-control`, `copilot-advanced`, `automations-advanced`). No se abren a la venta.
+
+**Net.**
+- **Hotel Net:** pendiente de que el operador publique su borrador v10; no se toca.
+- **Mejoras pequeñas por sector:**
+  - Hotel: exportación iCal.
+  - Restaurant: clientes y preferencias.
+  - Care: recordatorios de cita.
+  - Ski: fianzas.
+  - Travel: consulta de alojamientos con Veturis.
 
 ## Bloqueos y decisiones pendientes
 

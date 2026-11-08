@@ -73,6 +73,8 @@ import { applyStatusReview, fillEvidence } from "../catalog/review";
 import { EVIDENCE_2026_10_25, REVIEW_ID, STATUS_REVIEW_2026_10_25 } from "../catalog/review20261025";
 import { REVIEW_ID_2026_11_07, STATUS_REVIEW_2026_11_07 } from "../catalog/review20261107";
 import { REVIEW_ID_2026_11_08, applyCatalogAdditions } from "../catalog/review20261108";
+import { REVIEW_ID_2026_11_08_CONNECT, applyDirectSaleReview } from "../catalog/review20261108connect";
+import { MysqlStripeStore } from "../stripe/store";
 import { IMPORT_AUTHOR, importCommercialSpecs } from "../catalog/commercial/importSpecs";
 import { publishBatch, revertLastBatch } from "../catalog/commercial/publishBatch";
 import { commercialIntegrity } from "../catalog/commercial/integrity";
@@ -492,9 +494,25 @@ async function main() {
           const rep1108 = await applyCatalogAdditions(svc, webStore, { apply, author: `operacion:${REVIEW_ID_2026_11_08}` });
           const pricesAfter = new Map((await webStore.listPrices()).map((p) => [p.id, `${p.status}:${p.amountCents}`]));
           const otherPricesIntact = Array.from(pricesBefore).every(([id, v]) => pricesAfter.get(id) === v);
+          // 08/11/2026 (activación del marketplace, tanda A): venta directa de Partners y Deals solo con su Price de Stripe
+          // enlazado y activo en el modo indicado (por defecto live, el de production); sin él, informa del Price que falta
+          const stripeMode = opt("--stripe-mode") === "test" ? "test" : "live";
+          const stripeStore = new MysqlStripeStore(crmPool, stripeMode);
+          const repConnect = await applyDirectSaleReview(svc, webStore, async (id) => !!(await stripeStore.priceForWebPrice(id)), { apply, author: `operacion:${REVIEW_ID_2026_11_08_CONNECT}` });
+          const pricesFinal = new Map((await webStore.listPrices()).map((p) => [p.id, `${p.status}:${p.amountCents}`]));
+          const pricesIntactConnect = pricesFinal.size === pricesAfter.size && Array.from(pricesAfter).every(([id, v]) => pricesFinal.get(id) === v);
           // Una sola línea (el registro de Railway la guarda en los atributos si es JSON)
-          console.log(JSON.stringify({ revisiones: [{ revision: REVIEW_ID, ...rep, evidenciaRellenada: evidence }, { revision: REVIEW_ID_2026_11_07, ...rep1107 }, { revision: REVIEW_ID_2026_11_08, ...rep1108, preciosExistentesIntactos: otherPricesIntact }] }));
-          if (!otherPricesIntact) process.exitCode = 1;
+          console.log(
+            JSON.stringify({
+              revisiones: [
+                { revision: REVIEW_ID, ...rep, evidenciaRellenada: evidence },
+                { revision: REVIEW_ID_2026_11_07, ...rep1107 },
+                { revision: REVIEW_ID_2026_11_08, ...rep1108, preciosExistentesIntactos: otherPricesIntact },
+                { revision: REVIEW_ID_2026_11_08_CONNECT, modoStripe: stripeMode, ...repConnect, preciosIntactos: pricesIntactConnect },
+              ],
+            }),
+          );
+          if (!otherPricesIntact || !pricesIntactConnect) process.exitCode = 1;
           // Un conflicto (estado cambiado desde el CRM o borrador ajeno) no es un fallo: se informa y se respeta
         } finally {
           await crmPool.end().catch(() => undefined);
