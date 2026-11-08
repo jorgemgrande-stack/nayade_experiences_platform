@@ -34,6 +34,7 @@ export const JOB_MULTI_POLICIES: Readonly<Record<string, JobMultiPolicy>> = {
   "hotel-night-audit": { mode: "per-tenant", reason: "Cierre del día del hotel con las reservas de la propia empresa" },
   "onboarding-reminder": { mode: "per-tenant", reason: "Recordatorios de Primeros pasos de la propia empresa, a quien abrió su asistente" },
   "veturis-inventory": { mode: "per-tenant", reason: "Cuenta de agencia de Veturis propia de la empresa (bóveda veturis); sin credenciales o con el inventario apagado, no hace nada" },
+  "life-net-reminders": { mode: "per-tenant", reason: "Recordatorios de tareas y actividades del propio hogar a sus miembros con acceso (solo con la capacidad life-net)" },
   "brevo-marketing-sync": { mode: "per-tenant", reason: "Cuenta de Brevo propia de la empresa (bóveda brevo_marketing); sin clave, lista o sincronización automática, no hace nada" },
 };
 
