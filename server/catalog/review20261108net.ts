@@ -84,7 +84,7 @@ export const NET_LISTINGS_2026_11_08: readonly ListingChange[] = [
         to: [
           { q: "¿Qué incluye?", a: "Reservas y mesas, sala y comandas, carta, cocina con pantalla KDS y cobro en el TPV. Los escandallos y la ficha de clientes con sus preferencias llegarán próximamente, incluidos sin coste adicional." },
           ASSISTED_FAQ,
-          { q: "¿Incluye la caja?", a: "No. Cobras con la caja de tu plan de Elephant Core." },
+          { q: "¿Incluye la caja?", a: "No trae una caja aparte: cobras con la caja (TPV) de tu plan de Elephant Core." },
         ],
       },
     },
@@ -105,7 +105,7 @@ export const NET_LISTINGS_2026_11_08: readonly ListingChange[] = [
         to: [
           { q: "¿Qué incluye?", a: "Clientes y viajeros, expedientes, presupuestos, reservas, proveedores con tus márgenes y bonos de viaje. Los conectores externos, los paquetes dinámicos y los circuitos llegarán próximamente, incluidos sin coste adicional." },
           ASSISTED_FAQ,
-          { q: "¿Incluye circuitos?", a: "No por ahora: los circuitos y el transporte gestionado no están incluidos." },
+          { q: "¿Incluye circuitos?", a: "No por ahora: llegarán próximamente, incluidos sin coste adicional. El transporte gestionado no está incluido." },
         ],
       },
     },
