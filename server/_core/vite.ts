@@ -196,6 +196,14 @@ export function serveStatic(app: Express, opts: { distPath?: string; routeDeps?:
       let html = injectSeoMeta(_htmlCache, seo);
       if (isMultiTenant()) html = tenantSiteHtml(html, escapeHtml(brandName));
       if (route.status === 404) html = html.replace(/<meta charset="UTF-8" \/>/, '<meta charset="UTF-8" />\n    <meta name="robots" content="noindex" />');
+      // Web oculta a los buscadores (empresa de demostración o web en preparación)
+      if (multi) {
+        const { searchIndexingOff, withNoindexMeta } = await import("../searchIndexing");
+        if (await searchIndexingOff().catch(() => false)) {
+          html = withNoindexMeta(html);
+          res.setHeader("X-Robots-Tag", "noindex, nofollow");
+        }
+      }
       res.status(route.status).set("Content-Type", "text/html").send(html);
     }
   });
