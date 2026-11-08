@@ -1,5 +1,6 @@
 import { useState, useRef, useCallback } from "react";
 import AdminLayout from "@/components/AdminLayout";
+import FinanceSyncSetupBanner from "@/components/finance/FinanceSyncSetupBanner";
 import { trpc } from "@/lib/trpc";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -344,6 +345,7 @@ export default function BankMovementsManager() {
   return (
     <AdminLayout>
       <div className="p-6 space-y-6">
+        <FinanceSyncSetupBanner />
         {/* Header */}
         <div className="flex items-center justify-between">
           <div>

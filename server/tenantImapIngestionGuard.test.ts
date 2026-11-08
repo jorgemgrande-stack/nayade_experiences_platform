@@ -22,6 +22,8 @@ vi.mock("imapflow", () => ({
 import { runEmailIngestion } from "./services/emailTpvIngestionService";
 import { runExpenseEmailIngestion } from "./services/expenseEmailIngestionService";
 import { withTenantDb, setConnectionResolver, closeAllDatabases } from "./_core/dbRegistry";
+import { runWithTenant } from "./_core/tenant";
+import { setResolvedCredentials, invalidateCredentials } from "./_core/credentials/cache";
 
 afterEach(async () => {
   delete process.env.TENANT_MODE;
@@ -60,5 +62,23 @@ describe("ingesta IMAP con credenciales globales en multiempresa", () => {
     const before = imap.created;
     await runEmailIngestion(false);
     expect(imap.created).toBe(before);
+  });
+});
+
+describe("ingesta IMAP de la empresa con un servidor interno (SSRF)", () => {
+  it("multi: un buzón que apunta a una dirección privada o interna no abre ninguna conexión", async () => {
+    process.env.TENANT_MODE = "multi";
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    for (const host of ["127.0.0.1", "169.254.169.254", "10.0.0.8", "core.railway.internal", "localhost"]) {
+      const before = imap.created;
+      const r = await runWithTenant("empresa-a", async () => {
+        setResolvedCredentials({ imap_tpv: { host, user: "tickets@ejemplo.test", pass: "clave-de-prueba-no-real" } });
+        return runEmailIngestion(false);
+      });
+      expect(r.errors.join(" "), host).toMatch(/privada o interna/);
+      expect(imap.created, host).toBe(before);
+    }
+    invalidateCredentials();
+    warn.mockRestore();
   });
 });

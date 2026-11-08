@@ -135,6 +135,7 @@ const CashRegisterManager = lazy(() => import("./pages/admin/accounting/CashRegi
 const RecurringExpensesManager = lazy(() => import("./pages/admin/accounting/RecurringExpensesManager"));
 const ProfitLossReport = lazy(() => import("./pages/admin/accounting/ProfitLossReport"));
 const BankMovementsManager = lazy(() => import("./pages/admin/accounting/BankMovementsManager"));
+const FinanceSyncSetup = lazy(() => import("./pages/admin/accounting/FinanceSyncSetup"));
 const CardTerminalOperationsManager = lazy(() => import("./pages/admin/accounting/CardTerminalOperationsManager"));
 const CardTerminalBatchesManager = lazy(() => import("./pages/admin/accounting/CardTerminalBatchesManager"));
 const CardTerminalConciliationDashboard = lazy(() => import("./pages/admin/accounting/CardTerminalConciliationDashboard"));
@@ -453,6 +454,7 @@ function Router() {
       <Route path="/admin/contabilidad/gastos/recurrentes">{() => <Suspense fallback={<AdminLoadingFallback />}><RecurringExpensesManager /></Suspense>}</Route>
       <Route path="/admin/contabilidad/cuenta-resultados">{() => <Suspense fallback={<AdminLoadingFallback />}><ProfitLossReport /></Suspense>}</Route>
       <Route path="/admin/contabilidad/caja">{() => <Suspense fallback={<AdminLoadingFallback />}><CashRegisterManager /></Suspense>}</Route>
+      <Route path="/admin/contabilidad/finance-sync">{() => <Suspense fallback={<AdminLoadingFallback />}><FinanceSyncSetup /></Suspense>}</Route>
       <Route path="/admin/contabilidad/movimientos-bancarios">{() => <Suspense fallback={<AdminLoadingFallback />}><BankMovementsManager /></Suspense>}</Route>
       <Route path="/admin/contabilidad/operaciones-tpv">{() => <Suspense fallback={<AdminLoadingFallback />}><CardTerminalOperationsManager /></Suspense>}</Route>
       <Route path="/admin/contabilidad/remesas-tpv">{() => <Suspense fallback={<AdminLoadingFallback />}><CardTerminalBatchesManager /></Suspense>}</Route>

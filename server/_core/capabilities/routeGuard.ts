@@ -85,6 +85,8 @@ export const TRPC_ROUTER_CAPABILITIES: Record<string, string> = {
   gestoria: "tax-filings",
   fiscalAudit: "tax-filings",
   bankMovements: "bank-import-pos",
+  // Puesta en marcha de Finance Sync: extracto, datáfono, buzón de tickets y primera conciliación
+  financeSync: "bank-import-pos",
   cardTerminalOperations: "bank-import-pos",
   cardTerminalBatches: "bank-import-pos",
   vapiCalls: "voice-ai",
