@@ -264,7 +264,13 @@ export async function applyListingReview(svc: WebAdminService, store: WebStore, 
       r.conflicts.push(`${c.key}: no tiene ficha comercial`);
       continue;
     }
+    // Ya en venta directa (review20261108connect.ts): esta revisión ya hizo su parte y no la deshace
+    if (c.status && d.catalog.commercialStatus === "available" && d.technicalStatus === "available" && d.catalog.offer?.modality === "immediate") {
+      r.already.push(`${c.key} (en venta directa)`);
+      continue;
+    }
     const problems: string[] = [];
+    if (c.stripePrepared !== undefined && d.catalog.stripePrepared !== undefined && d.catalog.stripePrepared !== c.stripePrepared) problems.push(`«stripePrepared» decidido en el CRM (${d.catalog.stripePrepared})`);
     if (c.status && d.catalog.commercialStatus !== c.status.from && d.catalog.commercialStatus !== c.status.to) problems.push(`estado «${d.catalog.commercialStatus}» (se esperaba «${c.status.from}»)`);
     if (c.technical && d.technicalStatus !== c.technical.from && d.technicalStatus !== c.technical.to) problems.push(`estado técnico «${d.technicalStatus}» (se esperaba «${c.technical.from}»)`);
     if (c.activation && d.activation.kind !== c.activation.from && d.activation.kind !== c.activation.to) problems.push(`activación «${d.activation.kind}» (se esperaba «${c.activation.from}»)`);

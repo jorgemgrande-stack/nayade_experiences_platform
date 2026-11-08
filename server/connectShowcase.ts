@@ -51,14 +51,19 @@ export function openPathResolver(sources: Array<{ capability: string | null; pan
 /**
  * Reserva: la entrada del menú del Core que habilita una sola capacidad (Partners, Deals, Tax, Finance Sync, GEO
  * Control, Contratos…), para las extensiones de Connect que viven en el Core sin manifiesto propio. Así «Gestionar»
- * lleva a la pantalla del módulo también en ellas. Gana la resolución por manifiesto.
+ * lleva a la pantalla del módulo también en ellas. Gana la resolución por manifiesto. Con `role`, solo las entradas que ese
+ * rol puede abrir (las de la propia entrada o, si no las tiene, las de su grupo) y nunca las que dependen de un interruptor.
  */
-export function navOpenPathResolver(sections: ReadonlyArray<{ items: ReadonlyArray<{ href: string; capabilities?: string[]; external?: boolean; children?: ReadonlyArray<{ href: string; capabilities?: string[] }> }> }>): (capabilities: string[]) => string | null {
+type NavLeafLike = { href: string; capabilities?: string[]; roles?: string[]; flagKey?: string };
+export function navOpenPathResolver(sections: ReadonlyArray<{ items: ReadonlyArray<NavLeafLike & { children?: ReadonlyArray<NavLeafLike> }> }>, role?: string): (capabilities: string[]) => string | null {
   const byCap = new Map<string, string>();
   for (const s of sections)
     for (const i of s.items)
       for (const leaf of [i, ...(i.children ?? [])]) {
         const caps = leaf.capabilities ?? [];
+        const roles = leaf.roles ?? i.roles;
+        if (role !== undefined && roles && !roles.includes(role)) continue;
+        if (leaf.flagKey || i.flagKey) continue;
         if (caps.length === 1 && leaf.href.startsWith("/admin/") && !byCap.has(caps[0])) byCap.set(caps[0], leaf.href);
       }
   return (caps) => {
