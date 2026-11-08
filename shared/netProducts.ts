@@ -118,7 +118,7 @@ export const NET_PRODUCTS: readonly NetProduct[] = [
     areas: [
       { title: "Escuela", features: [A("Gestión de escuelas"), A("Calendarios y disponibilidad"), A("Clases particulares y colectivas"), A("Cursillos y grupos por niveles"), A("Alumnos y fichas"), A("Planificación de sesiones")] },
       { title: "Profesores", features: [A("Profesores y monitores"), A("Asignación de profesores"), A("Control de horas"), A("Liquidaciones de profesores"), A("Portal del profesor")] },
-      { title: "Alquiler", features: [A("Inventario de material"), A("Alquiler de equipos"), S("Disponibilidad y reservas"), A("Contratos digitales y firmas"), A("Entregas y devoluciones por unidad"), S("Fianzas y cargos por daños")] },
+      { title: "Alquiler", features: [A("Inventario de material"), A("Alquiler de equipos"), S("Disponibilidad y reservas"), A("Contratos digitales y firmas"), A("Entregas y devoluciones por unidad"), A("Fianzas y cargos por daños")] },
       { title: "Gestión", features: [A("Cobros y facturación"), A("Estadísticas operativas")] },
     ],
   },
