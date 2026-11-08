@@ -208,6 +208,11 @@ const ActivateMember = lazy(() => import("./pages/community/ActivateMember"));
 const LoyaltyManager = lazy(() => import("./pages/admin/loyalty/Loyalty"));
 const SocialTokenNetHome = lazy(() => import("./pages/admin/socialTokenNet/SocialTokenNetHome"));
 const NetProductHome = lazy(() => import("./pages/admin/net/NetProductHome"));
+const LifeHome = lazy(() => import("./pages/admin/lifeNet/LifeHome"));
+const LifeAgenda = lazy(() => import("./pages/admin/lifeNet/LifeAgenda"));
+const LifeTasks = lazy(() => import("./pages/admin/lifeNet/LifeTasks"));
+const LifeTracking = lazy(() => import("./pages/admin/lifeNet/LifeTracking"));
+const LifeMembers = lazy(() => import("./pages/admin/lifeNet/LifeMembers"));
 const SkiSchoolPlanning = lazy(() => import("./pages/admin/ski/SkiSchoolPlanning"));
 const SkiInstructors = lazy(() => import("./pages/admin/ski/SkiInstructors"));
 const TravelFiles = lazy(() => import("./pages/admin/travel/TravelFiles"));
@@ -542,6 +547,11 @@ function Router() {
       <Route path="/admin/fidelizacion">{() => <Suspense fallback={<AdminLoadingFallback />}><LoyaltyManager /></Suspense>}</Route>
       <Route path="/admin/fidelizacion/:tab">{() => <Suspense fallback={<AdminLoadingFallback />}><LoyaltyManager /></Suspense>}</Route>
       <Route path="/admin/social-token-net">{() => <Suspense fallback={<AdminLoadingFallback />}><SocialTokenNetHome /></Suspense>}</Route>
+      <Route path="/admin/net/life">{() => <Suspense fallback={<AdminLoadingFallback />}><LifeHome /></Suspense>}</Route>
+      <Route path="/admin/life/agenda">{() => <Suspense fallback={<AdminLoadingFallback />}><LifeAgenda /></Suspense>}</Route>
+      <Route path="/admin/life/tareas">{() => <Suspense fallback={<AdminLoadingFallback />}><LifeTasks /></Suspense>}</Route>
+      <Route path="/admin/life/seguimiento">{() => <Suspense fallback={<AdminLoadingFallback />}><LifeTracking /></Suspense>}</Route>
+      <Route path="/admin/life/miembros">{() => <Suspense fallback={<AdminLoadingFallback />}><LifeMembers /></Suspense>}</Route>
       <Route path="/admin/net/:producto">{() => <Suspense fallback={<AdminLoadingFallback />}><NetProductHome /></Suspense>}</Route>
       <Route path="/admin/ski/escuela">{() => <Suspense fallback={<AdminLoadingFallback />}><SkiSchoolPlanning /></Suspense>}</Route>
       <Route path="/admin/travel/expedientes">{() => <Suspense fallback={<AdminLoadingFallback />}><TravelFiles /></Suspense>}</Route>

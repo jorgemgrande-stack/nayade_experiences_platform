@@ -51,6 +51,7 @@ import { startDataExportJob } from "../dataExport/job";
 import { startOnboardingReminderJob } from "../onboardingReminders";
 import { startBrevoMarketingJob } from "../brevoMarketing/runtime";
 import { startVeturisInventoryJob } from "../travelNet/veturis/job";
+import { startLifeRemindersJob } from "../lifeNet/reminders";
 import { startEmailIngestionJob } from "../services/emailTpvIngestionService";
 import { startExpenseEmailIngestionJob } from "../services/expenseEmailIngestionService";
 import { initCommercialEmailTables, startCommercialEmailSyncJob } from "../services/commercialEmailService";
@@ -1846,6 +1847,8 @@ const SCHEDULED_JOBS: Array<{ name: string; flag: string; start: () => void; lab
   // Desactivado por defecto: además, cada empresa decide con su interruptor de inventario de Veturis
   { name: "veturis-inventory", flag: "veturis_inventory_enabled", start: startVeturisInventoryJob, label: "Veturis Inventory", def: false },
   { name: "hotel-guest-retention", flag: "hotel_guest_retention_job_enabled", start: startHotelGuestRetentionJob, label: "Hotel Guest Retention", def: false },
+  // Life Net: solo actúa en empresas con la capacidad life-net y la migración 0047 (el resto se omite sin tocar nada)
+  { name: "life-net-reminders", flag: "life_net_reminders_enabled", start: startLifeRemindersJob, label: "Life Net Reminders", def: true },
   {
     name: "onboarding-reminder",
     flag: "onboarding_reminder_job_enabled",

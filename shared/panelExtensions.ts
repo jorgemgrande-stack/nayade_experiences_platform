@@ -353,16 +353,36 @@ export const CORE_EXTENSION_PANELS: Readonly<Record<string, { capability?: strin
   // `ski-school`) y las del alquiler (server/skiRental, licencia `ski-rental`); los servicios las comprueban por sede
   skiNet: { panel: skiNetPanel() },
   travelNet: { panel: travelNetPanel() },
-  lifeNet: { panel: netHomeOnly("life-net", "Life Net", "/admin/net/life", ["life-net"], 71) },
+  lifeNet: { panel: lifeNetPanel() },
   // Social Token Net: tres productos (Comunidades, Tokens internos y Complete = los dos) y dos capacidades, así que la
   // extensión no tiene una capacidad única: cada entrada declara la suya y las funciones conjuntas exigen las dos.
   // Sus APIs (communities, loyalty, socialNet) ya las protege TRPC_ROUTER_CAPABILITIES.
   socialTokenNet: { panel: socialTokenNetPanel() },
 };
 
-/** Sección de un producto Elephant Net que hoy solo tiene su panel general. */
-function netHomeOnly(id: string, label: string, path: string, capabilities: string[], order: number): PanelContributions {
-  return { section: { id, label, order, items: [{ id: "panel", label: "Panel general", path, icon: "dashboard", capabilities }] } };
+/**
+ * Menú de Life Net (organización personal y familiar): portada «Mi día», agenda, tareas, seguimiento y, para la
+ * administración del hogar, los miembros y los datos del hogar. API `lifeNet.*` licenciada por TRPC_ROUTER_CAPABILITIES;
+ * cada procedimiento exige además ser la administración o un miembro con acceso (server/lifeNetDb.ts).
+ */
+function lifeNetPanel(): PanelContributions {
+  const LIFE = ["life-net"];
+  const HOUSEHOLD = ["admin", "agente"];
+  return {
+    section: {
+      id: "life-net",
+      label: "Life Net",
+      order: 71,
+      items: [
+        { id: "panel", label: "Mi día", path: "/admin/net/life", icon: "dashboard", capabilities: LIFE, roles: HOUSEHOLD, order: 1 },
+        { id: "agenda", label: "Agenda del hogar", path: "/admin/life/agenda", icon: "calendar", capabilities: LIFE, roles: HOUSEHOLD, order: 2 },
+        { id: "tareas", label: "Tareas y recordatorios", path: "/admin/life/tareas", icon: "briefcase", capabilities: LIFE, roles: HOUSEHOLD, order: 3 },
+        { id: "seguimiento", label: "Seguimiento", path: "/admin/life/seguimiento", icon: "chart", capabilities: LIFE, roles: HOUSEHOLD, order: 4 },
+        { id: "miembros", label: "Miembros y hogar", path: "/admin/life/miembros", icon: "users", capabilities: LIFE, order: 5 },
+      ],
+    },
+    api: ["lifeNet"],
+  };
 }
 
 /**

@@ -108,6 +108,8 @@ export const TRPC_ROUTER_CAPABILITIES: Record<string, string> = {
   restaurantNet: "restaurant-net",
   // Care Net · bonos y reservas de SPA (también lo declara el manifiesto del módulo de SPA)
   careNet: "care-net",
+  // Life Net · hogar, miembros, agenda, tareas y seguimiento (los procedimientos exigen además ser miembro con acceso)
+  lifeNet: "life-net",
 };
 
 /**

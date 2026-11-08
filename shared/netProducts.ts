@@ -168,8 +168,8 @@ export const NET_PRODUCTS: readonly NetProduct[] = [
     benefits: ["La agenda de toda la familia en un solo calendario.", "Tareas y recordatorios compartidos.", "Seguimiento de actividades y compromisos de cada miembro."],
     legacyKeys: [],
     areas: [
-      { title: "Organización", features: [S("Organización personal"), S("Gestión familiar"), S("Calendario y agenda"), S("Tareas y recordatorios")] },
-      { title: "Hogar", features: [S("Actividades compartidas"), S("Organización de miembros del hogar"), S("Seguimiento de actividades y compromisos")] },
+      { title: "Organización", features: [A("Organización personal"), A("Gestión familiar"), A("Calendario y agenda"), A("Tareas y recordatorios")] },
+      { title: "Hogar", features: [A("Actividades compartidas"), A("Organización de miembros del hogar"), A("Seguimiento de actividades y compromisos")] },
     ],
   },
 ];
