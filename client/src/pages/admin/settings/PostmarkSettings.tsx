@@ -83,6 +83,27 @@ export default function PostmarkSettings() {
           </p>
         </header>
 
+        <section aria-labelledby="vias-correo" className="space-y-2 rounded-xl border border-border p-4 text-sm">
+          <h2 id="vias-correo" className="font-semibold text-foreground">Cómo salen tus correos</h2>
+          <p className="text-muted-foreground">Está incluido en tu plan (Essential, Business y Enterprise), sin coste adicional en Elephant Source. Puedes usar una de estas tres vías:</p>
+          <ul className="list-disc space-y-1 pl-5 text-muted-foreground">
+            <li>
+              <span className="font-medium text-foreground">Tu cuenta de Postmark</span> (esta pantalla), solo para los correos transaccionales. Postmark te factura
+              directamente a ti.
+            </li>
+            <li>
+              <span className="font-medium text-foreground">Tu propio servidor SMTP</span>, en{" "}
+              <Link href="/admin/configuracion/integraciones" className="text-primary underline-offset-4 hover:underline">Integraciones</Link>. Lo paga quien lo contrata.
+            </li>
+            <li>
+              <span className="font-medium text-foreground">El servicio de correo de Elephant Source</span>, si no configuras ninguna de las anteriores (o para los correos no transaccionales si solo tienes Postmark). También si
+              Postmark rechaza tu cuenta (token revocado, cuenta pendiente…) y no tienes SMTP propio: ese correo sale por este servicio para que no se pierda. Elephant Source
+              mide este consumo y le aplica los límites del servicio.
+            </li>
+          </ul>
+          <p className="text-muted-foreground">Lo que sale por tu propia cuenta (Postmark o SMTP) no cuenta para esos límites: Elephant Source solo lo registra. Con Postmark, además, en la ficha de cada cliente ves si le ha llegado.</p>
+        </section>
+
         {status.isLoading && <PanelLoading />}
         {status.error && <PanelError error={status.error} onRetry={() => status.refetch()} />}
         {s && (
