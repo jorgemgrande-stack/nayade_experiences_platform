@@ -169,7 +169,7 @@ En el Core, cada empresa guarda sus credenciales en una bóveda (`server/_core/c
 | Informes sectoriales (Restaurant, Care, Ski, Travel) | #696 | fusionado |
 | Connect · Veturis en Travel Net (reserva real apagada) | #697 | en curso |
 | Estados «Disponible» en las fichas | #686 y esta PR | — |
-| Activación del marketplace · tanda A: venta directa de Partners y Deals (revisión `review20261108connect.ts`) | #714 | en curso; espera el Price de Stripe Live |
+| Activación del marketplace · tanda A: venta directa de Partners, Deals y Tax (revisión `review20261108connect.ts`) | #714 | en curso; espera el Price de Stripe Live |
 
 ## Activación del marketplace (encargo del 08/11/2026)
 
@@ -200,7 +200,7 @@ Inventario accionable de lo que se vende en `/admin/ampliar`. Estado público de
 | People (`people-hr`) | Completo | — | Disponible | — |
 | Partners (`supplier-settlements`) | Proveedores, liquidaciones con PDF y portales | — | Implantación acompañada | **Tanda A.** Crear el Price mensual en Stripe Live y sincronizar; la revisión lo pasa a «Disponible». |
 | Deals (`deals-coupons`) | Formulario de canje, reserva y conciliación | — (canje manual) | Implantación acompañada | **Tanda A.** Igual que Partners. |
-| Tax (`tax-filings`) | Gestoría: IVA, calendario, expedientes, portal y avisos | — | Implantación acompañada | Cálculo de los modelos (303/130/111) desde la facturación. Después, venta directa. |
+| Tax (`tax-filings`) | Estimación de los modelos 303, 390, 111, 190, 200 y 202; calendario con avisos, expedientes y portal de la gestoría | — | Implantación acompañada | **Tanda A.** Igual que Partners. La presentación la hace la gestoría. |
 | Finance Sync (`bank-import-pos`, `bank-reconciliation`) | Extractos, operaciones y remesas del datáfono, conciliación | Buzón IMAP de la empresa | Implantación acompañada | Dar función propia a `bank-reconciliation`. Asistente IMAP en el panel. |
 | Voice (`voice-ai`) | Llamadas Vapi, leads y coste | Cuenta Vapi de la empresa (bóveda) | Implantación acompañada | Asistente de alta de Vapi. Netelip: IP de salida fija. |
 | POS (`pos-advanced`) | El TPV avanzado existe, pero lo licencia `bill-cash` (Essential) | — | Implantación acompañada | Frontera entre la caja básica y la avanzada. Es una decisión de negocio: hoy la tienen los clientes de Essential. |

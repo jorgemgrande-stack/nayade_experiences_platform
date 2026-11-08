@@ -7,6 +7,11 @@
  *  - Elephant Partners (`supplier-settlements`): proveedores, colaboradores, liquidaciones con PDF y portales.
  *  - Elephant Deals (`deals-coupons`): formulario público de canje, revisión, reserva y conciliación de cupones.
  *
+ *  - Elephant Tax (`tax-filings`): estimación de los modelos 303, 390, 111, 190, 200 y 202 desde la facturación, gastos y
+ *    nóminas (server/gestoriaTax.ts), calendario de obligaciones con avisos, expedientes y portal de la gestoría. La
+ *    presentación oficial la hace la gestoría, como dice la ficha. Su estado funcional «partial» del 25/10/2026
+ *    («sin cálculo de modelos») está desfasado y pasa a «in_use».
+ *
  * Criterio de «Disponible» (encargo, sección 4): ficha correcta, precio aprobado, Product y Price de Stripe Live,
  * compra en línea, licencia automática al confirmarse el pago, menú desbloqueado, uso sin asistencia y aislamiento por
  * empresa. Por eso la revisión NO abre la venta mientras el precio mensual aprobado no tenga su Price de Stripe
@@ -34,6 +39,8 @@ export interface DirectSaleChange {
   activation: { from: string; to: string };
   /** Primer paso de «Cómo funciona»: de la solicitud a la contratación. */
   firstStep: { from: Step; to: Step };
+  /** Estado funcional de partida que esta revisión corrige a «in_use» (con su evidencia); sin él, solo «in_use» o vacío. */
+  gradeFrom?: "partial";
 }
 
 const ASSISTED_ACTIVATION = "Implantación acompañada: la solicitas desde el panel y nuestro equipo la activa y la pone en marcha contigo.";
@@ -55,6 +62,14 @@ export const DIRECT_SALE_2026_11_08: readonly DirectSaleChange[] = [
       "Tanda A del 08/11/2026: formulario público de canje, revisión, conversión en reserva y conciliación por plataforma en la BD de cada empresa (router ticketing); la licencia deals-coupons protege rutas y menú; las plataformas las da de alta la propia empresa; canje manual sin API de terceros. Contratación inmediata con Price de Stripe Live enlazado.",
     activation: { from: ASSISTED_ACTIVATION, to: AUTOMATIC_ACTIVATION },
     firstStep: { from: REQUEST_STEP, to: PURCHASE_STEP },
+  },
+  {
+    key: "connect-tax",
+    evidence:
+      "Tanda A del 08/11/2026: estimación de los modelos 303, 390, 111, 190, 200 y 202 desde facturas, tickets, gastos y nóminas (server/gestoriaTax.ts), calendario de obligaciones con avisos (tax-reminder), expedientes, exportación de facturas y portal de la gestoría, en la BD de cada empresa (routers gestoria y fiscalAudit); la licencia tax-filings protege rutas y menú; sin credenciales externas. La presentación la hace la gestoría. Contratación inmediata con Price de Stripe Live enlazado.",
+    activation: { from: ASSISTED_ACTIVATION, to: AUTOMATIC_ACTIVATION },
+    firstStep: { from: REQUEST_STEP, to: PURCHASE_STEP },
+    gradeFrom: "partial",
   },
 ];
 
@@ -133,7 +148,7 @@ export async function applyDirectSaleReview(
       r.conflicts.push(`${c.key}: estado técnico «planned»; se deja como lo decidió el CRM`);
       continue;
     }
-    if (d.internal.functionalGrade && d.internal.functionalGrade !== "in_use") {
+    if (d.internal.functionalGrade && d.internal.functionalGrade !== "in_use" && d.internal.functionalGrade !== c.gradeFrom) {
       r.conflicts.push(`${c.key}: estado funcional «${d.internal.functionalGrade}» en el CRM; «Disponible» exige «in_use»`);
       continue;
     }
