@@ -332,6 +332,11 @@ export default function BrevoMarketing() {
           <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Elephant Connect</p>
           <h1 className="text-2xl font-bold text-foreground">Email marketing con Brevo</h1>
           <p className="max-w-3xl text-sm text-muted-foreground">Envía tus campañas desde tu propia cuenta de Brevo a los clientes que han aceptado recibirlas. Las bajas que se produzcan en Brevo se respetan aquí.</p>
+          <p className="text-sm">
+            <Link href="/admin/marketing/campanas" className="text-primary underline-offset-4 hover:underline">
+              Redactar y enviar campañas desde el panel
+            </Link>
+          </p>
         </header>
         <Connection />
         <Runs />

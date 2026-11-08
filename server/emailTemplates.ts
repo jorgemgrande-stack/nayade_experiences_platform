@@ -23,6 +23,7 @@ import { isMultiTenant } from "./_core/tenant";
 import { publicBaseUrl } from "./_core/productIdentity";
 import { roleLabel as roleLabelOf } from "../shared/roleLabels";
 import { ew, emailsAreGeneric } from "./emailVocabulary";
+import type { CampaignBlock } from "../shared/connectCampaigns";
 
 // ─── Dynamic brand helpers (read from config cache at call time) ──────────────
 const getContactEmail = () => brandSetting("email_reservations", "");
@@ -2816,6 +2817,56 @@ export function buildNoticeHtml(d: NoticeEmailData): string {
     </td></tr>
     ${emailFooter()}`;
   return emailWrapper(d.title, body);
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// CAMPAÑA DE CORREO (Elephant Campaigns, enviada con la cuenta de Brevo de la empresa)
+// ═══════════════════════════════════════════════════════════════════════════════
+export interface CampaignEmailData {
+  title: string;
+  previewText?: string | null;
+  blocks: CampaignBlock[];
+  /** Enlace de baja: la etiqueta de Brevo con el atributo del contacto al enviar; una dirección real en la vista previa. */
+  unsubscribeHref: string;
+}
+
+/**
+ * Lo escrito se escapa y además pierde las llaves (`{` `}` como entidades): ningún texto puede colar una etiqueta de la
+ * plantilla de Brevo (`{{ … }}`). El enlace de baja es lo único que la lleva y lo pone el servidor.
+ */
+const escCampaign = (v: string) => escAttr(v).replace(/'/g, "&#39;").replace(/\{/g, "&#123;").replace(/\}/g, "&#125;");
+const escCampaignUrl = (v: string) => escAttr(v).replace(/'/g, "%27").replace(/\{/g, "%7B").replace(/\}/g, "%7D");
+
+export function buildCampaignHtml(d: CampaignEmailData): string {
+  const rows = d.blocks
+    .map((b) => {
+      switch (b.type) {
+        case "heading":
+          return `<h2 style="color:${BRAND_BLUE()};font-size:21px;margin:0 0 14px;font-weight:700;font-family:Georgia,serif;">${escCampaign(b.text)}</h2>`;
+        case "text":
+          return b.text
+            .split(/\n{2,}/)
+            .map((p) => `<p style="color:#4b5563;font-size:15px;line-height:1.7;margin:0 0 14px;font-family:Arial,sans-serif;">${escCampaign(p).replace(/\n/g, "<br/>")}</p>`)
+            .join("");
+        case "button":
+          return ctaButton(escCampaign(b.label), escCampaignUrl(b.url));
+        case "image":
+          return `<p style="margin:0 0 14px;"><img src="${escCampaignUrl(b.url)}" alt="${escCampaign(b.alt)}" width="536" style="display:block;width:100%;max-width:536px;height:auto;border:0;border-radius:8px;" /></p>`;
+        case "divider":
+          return `<hr style="border:0;border-top:1px solid #e5e7eb;margin:20px 0;" />`;
+      }
+    })
+    .join("");
+  const preheader = d.previewText ? `<tr><td style="display:none;max-height:0;overflow:hidden;font-size:1px;line-height:1px;color:#ffffff;">${escCampaign(d.previewText)}</td></tr>` : "";
+  const body = `
+    ${preheader}
+    ${emailHeader()}
+    <tr><td style="padding:28px 32px 8px;">${rows}</td></tr>
+    ${emailFooter()}
+    <tr><td style="padding:12px 32px 24px;text-align:center;">
+      <p style="color:#9ca3af;font-size:12px;line-height:1.6;margin:0;font-family:Arial,sans-serif;">Recibes este correo porque nos diste tu consentimiento para recibir comunicaciones comerciales. <a href="${d.unsubscribeHref}" style="color:#6b7280;text-decoration:underline;">Darse de baja</a></p>
+    </td></tr>`;
+  return emailWrapper(d.title.replace(/[{}]/g, ""), body);
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
