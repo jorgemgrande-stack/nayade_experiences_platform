@@ -2,11 +2,13 @@
  * Care Net · Reservas y calendario (/admin/care-net/reservas): reservas de SPA del Core por días (las de la web y las
  * citas en mostrador), con su estado de pago y de plaza. Una reserva pendiente se puede pagar con una sesión de bono;
  * una pagada con bono, devolver la sesión. «Cita con bono» reserva una franja libre para un cliente y descuenta la
- * sesión. Inspirada en el gestor de reservas de SPA de la aplicación de origen, adaptada a las retenciones del Core.
+ * sesión. «Recordatorios» abre los ajustes de los recordatorios de cita; cada cita muestra el estado del suyo y, si está
+ * confirmada y es futura, «Enviar recordatorio ahora». Inspirada en el gestor de reservas de SPA de la aplicación de
+ * origen, adaptada a las retenciones del Core.
  */
 import { useMemo, useState } from "react";
 import { Link } from "wouter";
-import { BedDouble, CalendarDays, ChevronLeft, ChevronRight, Plus, Ticket } from "lucide-react";
+import { BedDouble, BellRing, CalendarDays, ChevronLeft, ChevronRight, Plus, Ticket } from "lucide-react";
 import { toast } from "sonner";
 import AdminLayout from "@/components/AdminLayout";
 import { RoomChargeDialog } from "@/components/hotel/RoomChargeDialog";
@@ -22,6 +24,7 @@ import { TONE_BADGE, type Tone } from "@/lib/panelTones";
 import { cn } from "@/lib/utils";
 import { DAY_MS, SPA_BOOKING_STATE_LABELS, daysBetween, madridToday, type SpaBookingState } from "@shared/careNet";
 import { BONOS_PATH, ClientPicker, PageHeader, useCareWrite } from "./CareNetParts";
+import { ReminderBadge, RemindersDialog, SendReminderButton, canRemind } from "./Recordatorios";
 
 const STATE_TONE: Record<SpaBookingState, Tone> = { pendiente: "warning", confirmada: "success", anulada: "neutral", conflicto: "danger" };
 const addDays = (d: string, n: number) => new Date(Date.parse(`${d}T00:00:00Z`) + n * DAY_MS).toISOString().slice(0, 10);
@@ -32,7 +35,7 @@ const dayLabel = (d: string) => {
 };
 
 export default function Reservas() {
-  const { canWrite } = useCareWrite();
+  const { canWrite, isAdmin } = useCareWrite();
   const utils = trpc.useUtils();
   const [from, setFrom] = useState(madridToday());
   const [span, setSpan] = useState<1 | 7>(7);
@@ -43,7 +46,11 @@ export default function Reservas() {
   const [reverting, setReverting] = useState<number | null>(null);
   const [reason, setReason] = useState("");
   const [cancelRes, setCancelRes] = useState(false);
-  const refresh = () => { utils.careNet.spaReservations.invalidate(); utils.careNet.clientsWithPacks.invalidate(); };
+  const refresh = () => { utils.careNet.spaReservations.invalidate(); utils.careNet.clientsWithPacks.invalidate(); utils.careNet.reminderStatus.invalidate(); };
+  // Recordatorios de cita: estado de cada cita y ajustes de la empresa
+  const [remindersOpen, setRemindersOpen] = useState(false);
+  const reminderStatus = trpc.careNet.reminderStatus.useQuery({ from, to }, { refetchInterval: 60_000, retry: false });
+  const reminderOf = useMemo(() => new Map((reminderStatus.data ?? []).map((x) => [x.reservationId, x.summary])), [reminderStatus.data]);
   const consume = trpc.careNet.consumeForReservation.useMutation({ onSuccess: (r) => { toast.success(`Pagada con bono · quedan ${r.purchase.remaining} sesiones`); refresh(); }, onError: (e) => toastError(e) });
   // Cargo a habitación: solo con Hotel Net
   const roomGuests = trpc.careNet.roomGuests.useQuery(undefined, { retry: false });
@@ -65,7 +72,10 @@ export default function Reservas() {
         <PageHeader
           title="Reservas y calendario"
           description="Reservas de SPA por día con su estado de pago. Paga con bono las reservas pendientes o da una cita en mostrador descontando una sesión."
-          actions={canWrite && <Button onClick={() => setCounter(true)}><Plus className="mr-1.5 h-4 w-4" aria-hidden="true" />Cita con bono</Button>}
+          actions={<>
+            <Button variant="outline" onClick={() => setRemindersOpen(true)}><BellRing className="mr-1.5 h-4 w-4" aria-hidden="true" />Recordatorios</Button>
+            {canWrite && <Button onClick={() => setCounter(true)}><Plus className="mr-1.5 h-4 w-4" aria-hidden="true" />Cita con bono</Button>}
+          </>}
         />
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div className="flex flex-wrap items-center gap-2">
@@ -113,6 +123,8 @@ export default function Reservas() {
                       <span className="flex flex-wrap items-center gap-1.5">
                         <span className={cn("rounded-full border px-2 py-0.5 text-xs font-medium", TONE_BADGE[STATE_TONE[r.state]])}>{SPA_BOOKING_STATE_LABELS[r.state]}</span>
                         {r.consumption && <span className={cn("rounded-full border px-2 py-0.5 text-xs", TONE_BADGE.brand)}>Bono: {r.consumption.packName}</span>}
+                        <ReminderBadge summary={reminderOf.get(r.id)} />
+                        {canWrite && canRemind(r) && <SendReminderButton reservationId={r.id} onDone={() => utils.careNet.reminderStatus.invalidate()} />}
                         {canWrite && r.state === "pendiente" && !r.consumption && (
                           <Button size="sm" variant="outline" disabled={consume.isPending} onClick={() => consume.mutate({ reservationId: r.id })}><Ticket className="mr-1 h-4 w-4" aria-hidden="true" />Pagar con bono</Button>
                         )}
@@ -133,6 +145,7 @@ export default function Reservas() {
       </div>
 
       {counter && <CounterDialog onClose={() => setCounter(false)} onDone={refresh} />}
+      {remindersOpen && <RemindersDialog canEdit={canWrite && isAdmin} onClose={() => setRemindersOpen(false)} />}
       {toRoom && (
         <RoomChargeDialog
           title="Cargar la reserva de SPA a una habitación"

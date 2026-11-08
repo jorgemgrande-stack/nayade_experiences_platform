@@ -5,6 +5,8 @@
  * Permisos: definir bonos es de administración (settings.manage, como la configuración del SPA); vender, consumir,
  * citas en mostrador y consultas son de quien vende en el TPV (tpv.sell: admin y agente), porque la venta se cobra
  * con tpv.createSale con la sesión de caja de quien vende. La lógica vive en server/careNetDb.ts.
+ * Recordatorios de cita: ajustes de administración (settings.manage); estado y «Enviar recordatorio ahora» desde el
+ * mostrador (tpv.sell). Lógica en server/careNetReminders.ts y server/careNetRemindersDb.ts (migración 0051).
  */
 import { z } from "zod";
 import { TRPCError } from "@trpc/server";
@@ -14,6 +16,9 @@ import { tpvRouter } from "./tpv";
 import * as care from "../careNetDb";
 import { hotelChargesEnabled, listInHouseGuests } from "../hotelFolioCharges";
 import { REQUEST_KEY_RE } from "../../shared/careNet";
+import * as reminders from "../careNetRemindersDb";
+import { reminderMailStatus, sendReminderNow } from "../careNetReminders";
+import { REMINDER_EXTRA_TEXT_MAX, REMINDER_LEAD_OPTIONS, reminderSummary, settingsProblem } from "../../shared/careNetReminders";
 
 const manageProc = permissionProcedure("settings.manage", ["admin"]);
 const deskProc = permissionProcedure("tpv.sell", ["admin", "agente"]);
@@ -99,6 +104,59 @@ export const careNetRouter = router({
   revertConsumption: deskProc
     .input(z.object({ consumptionId: id, reason: z.string().trim().min(3, "Indica el motivo").max(255), cancelReservation: z.boolean().default(false) }))
     .mutation(({ ctx, input }) => care.revertConsumption(input.consumptionId, input.reason, input.cancelReservation, ctx.user.id)),
+
+  // ── Recordatorios de cita ───────────────────────────────────────────────
+  /** Ajustes de la empresa y si su correo está listo. Sin la migración 0051: `installed: false`. */
+  reminderSettings: deskProc.query(async () => {
+    const mail = await reminderMailStatus();
+    try {
+      return { installed: true, settings: await reminders.getReminderSettings(), mail };
+    } catch (e) {
+      if (e instanceof reminders.ReminderSchemaMissing) return { installed: false, settings: null, mail };
+      throw e;
+    }
+  }),
+
+  saveReminderSettings: manageProc
+    .input(z.object({
+      enabled: z.boolean(),
+      leadHours: z.array(z.number().int().refine((n) => (REMINDER_LEAD_OPTIONS as readonly number[]).includes(n), "Antelación no válida")).max(REMINDER_LEAD_OPTIONS.length),
+      extraText: z.string().max(REMINDER_EXTRA_TEXT_MAX).default(""),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      const p = settingsProblem(input);
+      if (p) throw new TRPCError({ code: "BAD_REQUEST", message: p });
+      try {
+        return await reminders.saveReminderSettings(input, ctx.user.id);
+      } catch (e) {
+        throw reminders.asPanelError(e);
+      }
+    }),
+
+  /** Estado del recordatorio de cada cita de SPA de esas fechas (sin la migración, ninguno). */
+  reminderStatus: deskProc.input(z.object({ from: day, to: day })).query(async ({ input }) => {
+    try {
+      const all = await reminders.sendsBetween(input.from, input.to);
+      const by = new Map<number, typeof all>();
+      for (const r of all) by.set(r.reservationId, [...(by.get(r.reservationId) ?? []), r]);
+      return Array.from(by, ([reservationId, list]) => ({ reservationId, summary: reminderSummary(list) }));
+    } catch (e) {
+      if (e instanceof reminders.ReminderSchemaMissing) return [];
+      throw e;
+    }
+  }),
+
+  /** «Enviar recordatorio ahora» de una cita confirmada y futura con correo. */
+  sendReminderNow: deskProc.input(z.object({ reservationId: id })).mutation(async ({ ctx, input }) => {
+    let r: Awaited<ReturnType<typeof sendReminderNow>>;
+    try {
+      r = await sendReminderNow(input.reservationId, ctx.user.id);
+    } catch (e) {
+      throw reminders.asPanelError(e);
+    }
+    if (!r.ok && r.status === "refused") throw new TRPCError({ code: "BAD_REQUEST", message: r.message });
+    return r;
+  }),
 });
 
 /** Venta del bono con el TPV del Core, con la sesión (y permisos) de quien vende. */
