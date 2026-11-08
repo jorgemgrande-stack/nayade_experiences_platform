@@ -13,7 +13,7 @@ const STATE_STYLE: Record<PanelIntegration["state"], { icon: typeof Circle; clas
   failing: { icon: AlertTriangle, className: "text-red-600 dark:text-red-400" },
 };
 
-function FieldInput({ p, f, value, onChange, error }: { p: PanelIntegration; f: PanelField; value: string | undefined; onChange: (v: string) => void; error: string | null }) {
+export function FieldInput({ p, f, value, onChange, error }: { p: PanelIntegration; f: PanelField; value: string | undefined; onChange: (v: string) => void; error: string | null }) {
   const id = `${p.id}-${f.key}`;
   const describedBy = [f.help ? `${id}-help` : null, error ? `${id}-error` : null].filter(Boolean).join(" ") || undefined;
   const current = value ?? (f.secret ? "" : f.display ?? "");

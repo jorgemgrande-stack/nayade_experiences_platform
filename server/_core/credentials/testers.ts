@@ -2,6 +2,7 @@ import { VeturisApiError } from "../../travelNet/veturis/protocol";
 import { VeturisClient, VeturisNetworkError, type VeturisFetch } from "../../travelNet/veturis/client";
 import { postmarkServerInfo } from "../../mail/tenantPostmark";
 import type { FetchLike } from "../../mail/providers";
+import { MailHostError, resolveMailHost, systemHostResolver, type HostResolver } from "./mailHost";
 
 /**
  * Comprobación de credenciales por proveedor. Nunca devuelve ni registra el secreto; el
@@ -43,19 +44,40 @@ export interface MailProbes {
 
 const AUTH_FAIL = /auth|login|credential|password|535|534|invalid user|authenticationfailed/i;
 
+/** Tiempos de ImapFlow en la comprobación: conexión y saludo acotados (por debajo de los 20 s del asistente). */
+export const IMAP_CHECK_TIMEOUTS = { connectionTimeout: 12_000, greetingTimeout: 6_000, socketTimeout: TIMEOUT_MS } as const;
+
+/** Cliente IMAP mínimo que usa la comprobación (inyectable en pruebas). */
+export interface ImapCheckClient {
+  connect(): Promise<void>;
+  getMailboxLock(path: string, opts: { readOnly: boolean }): Promise<{ release(): void }>;
+  logout(): Promise<void>;
+}
+export type ImapClientFactory = (opts: Record<string, unknown>) => Promise<ImapCheckClient>;
+const imapflowFactory: ImapClientFactory = async (opts) => {
+  const { ImapFlow } = await import("imapflow");
+  return new ImapFlow(opts as unknown as ConstructorParameters<typeof ImapFlow>[0]) as unknown as ImapCheckClient;
+};
+
+/**
+ * Inicio de sesión IMAP real de la comprobación. SSRF: solo servidores públicos (MailHostError si no); se conecta a la
+ * IP validada con el nombre original como SNI y para validar el certificado. No lee ni marca mensajes.
+ */
+export async function imapLoginCheck(o: Parameters<MailProbes["imapLogin"]>[0], resolve: HostResolver = systemHostResolver, makeClient: ImapClientFactory = imapflowFactory): Promise<void> {
+  const target = await resolveMailHost(o.host, resolve);
+  const client = await makeClient({ host: target.address, servername: target.servername, port: o.port, secure: o.secure, auth: { user: o.user, pass: o.pass }, logger: false, ...IMAP_CHECK_TIMEOUTS });
+  try {
+    await client.connect();
+    // Abre la carpeta en solo lectura (no marca nada como leído) y sale
+    const lock = await client.getMailboxLock(o.mailbox, { readOnly: true });
+    lock.release();
+  } finally {
+    await client.logout().catch(() => undefined);
+  }
+}
+
 const realProbes: MailProbes = {
-  async imapLogin(o) {
-    const { ImapFlow } = await import("imapflow");
-    const client = new ImapFlow({ host: o.host, port: o.port, secure: o.secure, auth: { user: o.user, pass: o.pass }, logger: false, socketTimeout: TIMEOUT_MS });
-    try {
-      await client.connect();
-      // Abre la carpeta en solo lectura (no marca nada como leído) y sale
-      const lock = await client.getMailboxLock(o.mailbox, { readOnly: true });
-      lock.release();
-    } finally {
-      await client.logout().catch(() => undefined);
-    }
-  },
+  imapLogin: (o) => imapLoginCheck(o),
   async smtpVerify(o) {
     const nodemailer = await import("nodemailer");
     const t = nodemailer.createTransport({ host: o.host, port: o.port, secure: o.secure, auth: { user: o.user, pass: o.pass }, connectionTimeout: TIMEOUT_MS, greetingTimeout: TIMEOUT_MS, socketTimeout: TIMEOUT_MS });
@@ -78,6 +100,7 @@ async function mailbox(kind: "imap" | "smtp", v: Record<string, string>, probes:
     else await probes.smtpVerify({ host: v.host, port, secure, user: v.user, pass: v.pass });
     return { ok: true, message: kind === "imap" ? "Buzón accesible (inicio de sesión correcto, sin leer mensajes)" : "Servidor de envío accesible (autenticación correcta, sin enviar nada)" };
   } catch (e) {
+    if (e instanceof MailHostError) return { ok: false, message: e.message, outcome: "error" };
     const raw = String((e as { responseText?: string; response?: string; message?: string }).responseText ?? (e as { response?: string }).response ?? (e as Error).message ?? "");
     if (AUTH_FAIL.test(raw) || (e as { authenticationFailed?: boolean }).authenticationFailed) return { ok: false, message: "El servidor rechaza el usuario o la contraseña", outcome: "rejected" };
     return { ok: false, message: kind === "imap" ? "No se pudo conectar con el servidor IMAP" : "No se pudo conectar con el servidor SMTP", outcome: "error" };

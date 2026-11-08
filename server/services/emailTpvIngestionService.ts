@@ -21,6 +21,7 @@ import { legacyDb, legacyPool } from "../_core/legacyDb";
 import { scheduleTenantCron } from "../_core/tenantRegistry/scheduler";
 import { isMultiTenant } from "../_core/tenant";
 import { tenantImapConfig, type ImapConfig } from "./imapConfig";
+import { MailHostError, resolveMailHost } from "../_core/credentials/mailHost";
 
 // CONFIG
 
@@ -672,17 +673,40 @@ export async function runEmailIngestion(retryErrors = false): Promise<IngestionR
     return emptyResult({ errors: ["IMAP_TPV_PASS not configured"] });
   }
 
+  // Multiempresa: el servidor lo escribe la empresa (SSRF). Solo servidores públicos y se conecta a la IP validada,
+  // con el nombre original como SNI y para el certificado. En la instalación única el buzón es del entorno.
   isRunning = true;
+  let target: { host: string; servername?: string } = { host: cfg.host };
+  if (isMultiTenant()) {
+    try {
+      const t = await resolveMailHost(cfg.host);
+      target = { host: t.address, servername: t.servername };
+    } catch (e) {
+      const msg = e instanceof MailHostError ? e.message : "No se pudo resolver el servidor IMAP";
+      isRunning = false;
+      await recordSync("imap_tpv", false, msg).catch(() => undefined);
+      return emptyResult({ errors: [msg] });
+    }
+  }
+
   const result = emptyResult();
   const db = makeDb();
 
-  const client = new ImapFlow({
-    host: cfg.host,
-    port: cfg.port,
-    secure: cfg.secure,
-    auth: { user: cfg.user, pass: cfg.pass },
-    logger: false,
-  });
+  // Si el cliente no llega a crearse, se libera el cerrojo (si no, la ingesta quedaría parada en el proceso)
+  let client: ImapFlow;
+  try {
+    client = new ImapFlow({
+      host: target.host,
+      ...(target.servername ? { servername: target.servername } : {}),
+      port: cfg.port,
+      secure: cfg.secure,
+      auth: { user: cfg.user, pass: cfg.pass },
+      logger: false,
+    });
+  } catch (e) {
+    isRunning = false;
+    throw e;
+  }
 
   try {
     await client.connect();

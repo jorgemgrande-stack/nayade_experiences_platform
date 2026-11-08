@@ -179,7 +179,14 @@ export function configSectionsFor(ctx: SectionContext): SectionDef[] {
   if (ctx.can("pos-advanced") || ctx.can("bank-import-pos")) {
     out.push({ ...base("tpv"), label: "Datáfono", description: "Tolerancia al cuadrar las operaciones del datáfono.", flagModules: [] });
   }
-  if (ctx.can("bank-import-pos") || ctx.can("bank-reconciliation")) out.push({ ...base("banco"), flagModules: [] });
+  if (ctx.can("bank-import-pos") || ctx.can("bank-reconciliation")) {
+    out.push({
+      ...base("banco"),
+      flagModules: [],
+      // Extracto, datáfono y buzón de tickets en autoservicio (pantalla de puesta en marcha de Finance Sync)
+      ...(ctx.can("bank-import-pos") ? { link: { href: "/admin/contabilidad/finance-sync", label: "Abrir la puesta en marcha de Finance Sync" } } : {}),
+    });
+  }
   if (ctx.can("automations-advanced")) {
     out.push({ ...base("automatizaciones"), label: "Recordatorios automáticos", description: "Cuándo se envían los recordatorios y avisos automáticos.", settingKeys: ["cancellation_stale_days", "quote_reminder_days_before"], flagModules: [] });
   }

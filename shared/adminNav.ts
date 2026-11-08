@@ -392,6 +392,7 @@ export const TASK_NAV: NavSection[] = [
       {
         label: "Bancos y TPV", href: "/admin/contabilidad/movimientos-bancarios", key: "x-bancos", icon: "creditCard", roles: ADMIN, capabilities: ["bank-import-pos"],
         children: [
+          { label: "Puesta en marcha", href: "/admin/contabilidad/finance-sync", capabilities: ["bank-import-pos"] },
           { label: "Movimientos bancarios", href: "/admin/contabilidad/movimientos-bancarios", capabilities: ["bank-import-pos"] },
           { label: "Operaciones TPV", href: "/admin/contabilidad/operaciones-tpv", capabilities: ["bank-import-pos"] },
           { label: "Remesas TPV", href: "/admin/contabilidad/remesas-tpv", capabilities: ["bank-import-pos"] },
