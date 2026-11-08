@@ -116,6 +116,25 @@ export const PRODUCT_SPECS: readonly ProductSpec[] = [
     seo: { slug: "enterprise", title: "Big Elephant Enterprise: grupos y varias sociedades", description: "Gestión de varias sociedades, API, finanzas, contabilidad y asistente de IA para grupos empresariales, con implantación a medida." },
     admin: { pendingDecisions: ["Cupos base (decisión 1)", "Precio de ampliaciones (decisión 2)", "Límite de IA (decisión 6)"] },
   }),
+  // Plan personal (decisiones de Jorge del 08/11/2026): un hogar con Life Net, independiente de los planes de empresa
+  s({
+    key: "life",
+    category: "plan",
+    longDescription:
+      "Plan personal para organizar tu hogar con Life Net, sin ningún plan de empresa: organización personal, gestión familiar, calendario y agenda, tareas y recordatorios, actividades compartidas, organización de miembros del hogar y seguimiento de actividades y compromisos. Llegará próximamente.",
+    problem: "La agenda, las tareas y los compromisos de cada miembro del hogar acaban repartidos entre notas, mensajes y calendarios que no se comparten.",
+    forWho: "Particulares y familias.",
+    includes: ["Life Net: las siete funciones de organización personal y familiar", "Usuarios del hogar e invitaciones", "Avisos por correo"],
+    excludes: ["CRM, tienda online, web, facturación y demás funciones de empresa", "Extensiones de Elephant Connect y soluciones sectoriales"],
+    compatibleExtensions: [],
+    capacityRules: ["Un hogar por plan", "Hasta 5 miembros del hogar incluidos", "Precio mensual con IVA incluido, sin tarifa anual"],
+    implementation: { level: 3, requirements: ["Alta del hogar por el titular", "Desarrollo de Life Net"], sources: ["Core: plan personal Life (08/11/2026)"] },
+    integrations: ["Correo central de Big Elephant"],
+    verified: { grade: "none", evidence: "Plan personal definido el 08/11/2026; Life Net todavía no está operativo" },
+    publicContent: { headline: "Próximamente: tu hogar organizado con un plan personal.", benefits: ["La agenda de toda la familia en un solo calendario.", "Tareas y recordatorios compartidos.", "Seguimiento de actividades y compromisos de cada miembro."], cta: "waitlist" },
+    seo: { slug: "life", title: "Big Elephant Life: plan personal para tu hogar (próximamente)", description: "Próximamente: el plan personal de Big Elephant para organizar tu hogar con Life Net, sin funciones de empresa." },
+    admin: { pendingDecisions: ["Apertura de la contratación de particulares: textos legales y variables de cobro (J9)"] },
+  }),
   // ── Hotel Net ──────────────────────────────────────────────────────────────
   s({
     key: "hotel-net-pms",
@@ -496,22 +515,30 @@ export const PRODUCT_SPECS: readonly ProductSpec[] = [
     admin: { pendingDecisions: [] },
   }),
   // ── Life Net ───────────────────────────────────────────────────────────────
+  // Producto personal (decisiones de Jorge del 08/11/2026, J1, J2 y J10): se contrata con el plan personal Life, sin
+  // ningún plan de empresa. Sigue «Próximamente» con lista de espera: las siete funciones de shared/netProducts.ts se
+  // presentan como lo que incluirá el plan, sin anunciar nada más
   s({
     key: "life-net",
     category: "sector_module",
-    longDescription: "Organización personal y familiar con Big Elephant. Llegará próximamente: anunciaremos sus funciones cuando esté disponible.",
-    problem: "",
-    forWho: "Profesionales y familias.",
-    includes: [],
-    excludes: [],
+    longDescription:
+      "Organización personal y familiar para tu hogar, con el plan personal Life: no necesita ningún plan de empresa. Incluirá organización personal, gestión familiar, calendario y agenda, tareas y recordatorios, actividades compartidas, organización de miembros del hogar y seguimiento de actividades y compromisos. Llegará próximamente.",
+    problem: "La agenda, las tareas y los compromisos de cada miembro del hogar acaban repartidos entre notas, mensajes y calendarios que no se comparten.",
+    forWho: "Particulares y familias.",
+    includes: ["Organización personal", "Gestión familiar", "Calendario y agenda", "Tareas y recordatorios", "Actividades compartidas", "Organización de miembros del hogar", "Seguimiento de actividades y compromisos"],
+    excludes: ["Funciones de empresa: CRM, tienda online, web y facturación"],
     compatibleExtensions: [],
-    capacityRules: ["Por empresa"],
-    implementation: { level: 3, requirements: ["Definición funcional y desarrollo nuevo"], sources: ["Sin desarrollo"] },
+    capacityRules: ["Se contrata con el plan personal Life, un hogar por plan", "Hasta 5 miembros del hogar incluidos"],
+    implementation: { level: 3, requirements: ["Desarrollo de las siete funciones de Life Net", "Alta de hogares con el plan personal Life"], sources: ["Core: plan personal Life (08/11/2026)"] },
     integrations: [],
-    verified: { grade: "none", evidence: "Ninguna funcionalidad identificada" },
-    publicContent: { headline: "Próximamente: organización personal y familiar.", benefits: [], cta: "waitlist" },
-    seo: { slug: "life-net", title: "Big Elephant Life Net (próximamente)", description: "Próximamente: organización personal y familiar con Big Elephant." },
-    admin: { pendingDecisions: ["Definición funcional antes de comprometer plazos"], notes: "Sin definición funcional ni desarrollo en ningún repositorio (dato interno, fuera de la ficha pública)." },
+    verified: { grade: "none", evidence: "Las siete funciones están definidas y en desarrollo; ninguna está operativa todavía" },
+    publicContent: {
+      headline: "Próximamente: la organización personal y familiar de tu hogar.",
+      benefits: ["La agenda de toda la familia en un solo calendario.", "Tareas y recordatorios compartidos.", "Seguimiento de actividades y compromisos de cada miembro."],
+      cta: "waitlist",
+    },
+    seo: { slug: "life-net", title: "Big Elephant Life Net: organización familiar (próximamente)", description: "Próximamente: agenda, tareas, recordatorios y actividades compartidas de los miembros de tu hogar, con el plan personal Life." },
+    admin: { pendingDecisions: ["Fecha de apertura de la contratación de particulares (J9)"], notes: "Producto personal: fuera del escaparate de las empresas (J7)." },
   }),
   // ── Social Token Net ───────────────────────────────────────────────────────
   s({

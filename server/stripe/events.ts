@@ -39,7 +39,7 @@ import type { StripeEventRow, StripeStore } from "./store";
 import { checkInvoiceTax, classifyTerritory, territoryGroup, type FiscalScenario, type TaxTreatment } from "./buyerProfile";
 import { invoiceDocumentOf, invoiceRecordOf, invoiceSourceKey, pendingSink, rectificationOf, type FiscalDocument, type FiscalDocumentSink, type InvoicePurpose } from "./fiscalDocuments";
 import type { CatalogPort } from "../subscriptions/ports";
-import { SELF_SERVICE_PLANS, desiredCatalog } from "./catalog";
+import { CHECKOUT_PLANS, desiredCatalog } from "./catalog";
 import { sameItems, type SubscriptionChangeStore } from "./changes";
 import { cleanupSwapZeros } from "./swapCleanup";
 import { allocateRefund, itemsDrift, linesOf, type InvoiceLineStore, type PriceResolver } from "./invoiceLines";
@@ -392,7 +392,7 @@ export class StripeEventProcessor {
     const link = (await this.d.store.listPrices()).find((p) => p.stripePriceId === priceIds[0] && p.status === "active");
     if (!link) return null;
     const d = (await desiredCatalog(this.d.catalog)).find((x) => x.webPriceId === link.webPriceId);
-    if (!d || !(SELF_SERVICE_PLANS as readonly string[]).includes(d.productKey)) return null;
+    if (!d || !(CHECKOUT_PLANS as readonly string[]).includes(d.productKey)) return null;
     return { plan: d.productKey, interval: d.interval === "year" ? "year" : "month" };
   }
 

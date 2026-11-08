@@ -21,6 +21,8 @@ import { NO_ACTIVATION, type PanelActivation } from "./panelActivation";
 import { panelMarketplace, type PanelMarketplace } from "./panelMarketplace";
 import type { MarketplaceDocument } from "../web/service";
 import { isNetLegacyExtension } from "../../shared/netProducts";
+import { shownInShowcase } from "../../shared/connectMarketplace";
+import { isPersonalPlan } from "../../shared/personalPlans";
 
 export interface PanelCatalogItem {
   key: string;
@@ -218,11 +220,15 @@ export interface PanelCatalog {
   plans: PanelPlan[];
 }
 
-/** Planes publicados (en el orden del catálogo): solo lo que sale en la web pública, nunca lo interno. */
-export function panelPlans(products: QuoteCatalogProduct[], published: ReadonlyMap<string, Record<string, unknown>>): PanelPlan[] {
+/**
+ * Planes publicados (en el orden del catálogo): solo lo que sale en la web pública, nunca lo interno. Una empresa solo ve
+ * los planes de empresa y un hogar con plan personal, los personales (08/11/2026); con el plan desconocido, los de empresa.
+ */
+export function panelPlans(products: QuoteCatalogProduct[], published: ReadonlyMap<string, Record<string, unknown>>, plan: string | null = null): PanelPlan[] {
   const out: PanelPlan[] = [];
   for (const p of products) {
     if (p.family !== "core_plan" || p.commercialStatus === "unpublished") continue;
+    if (isPersonalPlan(p.key) !== isPersonalPlan(plan)) continue;
     const pub = published.get(p.key) ?? {};
     const pres = (pub.presentation ?? {}) as Record<string, unknown>;
     const m = (pub.commercial ?? null) as Record<string, unknown> | null;
@@ -256,8 +262,11 @@ const PANEL_FAMILIES = new Set(["extension", "industry_module", "net_module", "n
 export function panelCatalog(products: QuoteCatalogProduct[], o: { version: string; purchasesEnabled: boolean; site?: Pick<SiteDocument, "catalog">; activation?: ReadonlyMap<string, PanelActivation> | null; marketplace?: { doc: MarketplaceDocument | null; plan: string | null } }): PanelCatalog {
   const items: PanelCatalogItem[] = [];
   const published = new Map((o.site?.catalog.products ?? []).map((p) => [p.key, p as Record<string, unknown>]));
+  const plan = o.marketplace?.plan ?? null;
   for (const p of products) {
     if (p.commercialStatus === "unpublished") continue;
+    // Life Net es personal: no se ofrece a las empresas; un hogar solo ve lo suyo (decisión J7, 08/11/2026)
+    if (!shownInShowcase(p.key, plan)) continue;
     const quantity = !!p.addonFor;
     if (!quantity && !PANEL_FAMILIES.has(p.family)) continue;
     const monthly = p.prices.find((x) => x.kind === "monthly") ?? null;
@@ -286,7 +295,7 @@ export function panelCatalog(products: QuoteCatalogProduct[], o: { version: stri
     if (p) i.card = panelCard(p, visible);
   }
   items.sort((a, b) => a.kind.localeCompare(b.kind) || a.family.localeCompare(b.family) || a.name.localeCompare(b.name, "es"));
-  return { version: o.version, purchasesEnabled: o.purchasesEnabled, items, marketplace: panelMarketplace(o.marketplace?.doc ?? null, { visible, plan: o.marketplace?.plan ?? null }), plans: panelPlans(products, published) };
+  return { version: o.version, purchasesEnabled: o.purchasesEnabled, items, marketplace: panelMarketplace(o.marketplace?.doc ?? null, { visible, plan: o.marketplace?.plan ?? null }), plans: panelPlans(products, published, plan) };
 }
 
 const tenant = z.string().regex(/^[a-z0-9][a-z0-9-]{1,62}$/);

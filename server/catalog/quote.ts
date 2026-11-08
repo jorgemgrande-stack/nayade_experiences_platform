@@ -112,6 +112,13 @@ export interface QuoteResult {
   blocking: string[];
 }
 
+/**
+ * Planes personales (un tenant por hogar) y los productos que solo se contratan con ellos. Misma lista que
+ * shared/personalPlans.ts (este módulo no importa nada; una prueba comprueba que coinciden).
+ */
+export const QUOTE_PERSONAL_PLANS: readonly string[] = ["life"];
+export const QUOTE_PERSONAL_PRODUCTS: Readonly<Record<string, string>> = { "life-net": "life" };
+
 const MAX_QTY = 1000;
 const BUNDLE_FAMILIES = new Set(["net_bundle", "connect_bundle"]);
 const tax = (cents: number, bp: number) => Math.round((cents * bp) / 10_000);
@@ -144,6 +151,7 @@ export function quote(catalog: QuoteCatalog, req: QuoteRequest): QuoteResult {
     errors.push(`Plan desconocido: «${req.plan}»`);
     return empty;
   }
+  const personal = QUOTE_PERSONAL_PLANS.includes(plan.key);
   if (req.interval !== "month" && req.interval !== "year") {
     errors.push("Periodicidad no válida: mensual o anual");
     return empty;
@@ -183,6 +191,18 @@ export function quote(catalog: QuoteCatalog, req: QuoteRequest): QuoteResult {
     }
     if (p.family === "addon") {
       errors.push(`«${p.name}» se calcula solo: indica el total de usuarios, sedes o almacenamiento`);
+      continue;
+    }
+    // Planes personales (08/11/2026): su producto va incluido en el plan y nunca se suma a un plan de empresa; el plan
+    // personal no admite extensiones, soluciones sectoriales ni servicios de empresa
+    const ownerKey = Object.prototype.hasOwnProperty.call(QUOTE_PERSONAL_PRODUCTS, p.key) ? QUOTE_PERSONAL_PRODUCTS[p.key] : null;
+    if (ownerKey) {
+      const owner = byKey.get(ownerKey)?.name ?? ownerKey;
+      errors.push(personal ? `«${p.name}» ya va incluido en el plan ${plan.name}` : `«${p.name}» se contrata con el plan personal ${owner}, no sobre un plan de empresa`);
+      continue;
+    }
+    if (personal) {
+      errors.push(`El plan ${plan.name} es personal: no admite extensiones ni soluciones de empresa («${p.name}»)`);
       continue;
     }
     const q = it.quantity ?? 1;

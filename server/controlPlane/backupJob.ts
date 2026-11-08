@@ -72,6 +72,7 @@ import { WebAdminService } from "../web/service";
 import { applyStatusReview, fillEvidence } from "../catalog/review";
 import { EVIDENCE_2026_10_25, REVIEW_ID, STATUS_REVIEW_2026_10_25 } from "../catalog/review20261025";
 import { REVIEW_ID_2026_11_07, STATUS_REVIEW_2026_11_07 } from "../catalog/review20261107";
+import { REVIEW_ID_2026_11_08, applyCatalogAdditions } from "../catalog/review20261108";
 import { IMPORT_AUTHOR, importCommercialSpecs } from "../catalog/commercial/importSpecs";
 import { publishBatch, revertLastBatch } from "../catalog/commercial/publishBatch";
 import { commercialIntegrity } from "../catalog/commercial/integrity";
@@ -471,7 +472,8 @@ async function main() {
         break;
       }
       case "catalog-review": {
-        // Revisiones de estados comerciales del catálogo, en orden (server/catalog/review20261025.ts y review20261107.ts),
+        // Revisiones de estados comerciales del catálogo, en orden (server/catalog/review20261025.ts, review20261107.ts y el
+        // alta del plan personal Life de review20261108.ts),
         // por el flujo normal del CRM, con autor e historial; simulación salvo --apply. Nunca toca precios, licencias,
         // Stripe ni cobros. Lo que una revisión posterior ya cambió figura como conflicto en la anterior (no es un fallo).
         const crmUrl = process.env.CRM_DATABASE_URL || die("Falta CRM_DATABASE_URL (base del CRM con el catálogo)");
@@ -484,8 +486,15 @@ async function main() {
           const rep = await applyStatusReview(svc, webStore, STATUS_REVIEW_2026_10_25, { apply, author });
           const evidence = await fillEvidence(svc, webStore, EVIDENCE_2026_10_25, { apply, author });
           const rep1107 = await applyStatusReview(svc, webStore, STATUS_REVIEW_2026_11_07, { apply, author: `operacion:${REVIEW_ID_2026_11_07}` });
+          // 08/11/2026: alta del plan personal Life (con su único precio nuevo) y presentación de Life Net. Los precios que
+          // ya existían deben quedar exactamente igual (estado e importe); si no, la orden termina en fallo
+          const pricesBefore = new Map((await webStore.listPrices()).map((p) => [p.id, `${p.status}:${p.amountCents}`]));
+          const rep1108 = await applyCatalogAdditions(svc, webStore, { apply, author: `operacion:${REVIEW_ID_2026_11_08}` });
+          const pricesAfter = new Map((await webStore.listPrices()).map((p) => [p.id, `${p.status}:${p.amountCents}`]));
+          const otherPricesIntact = Array.from(pricesBefore).every(([id, v]) => pricesAfter.get(id) === v);
           // Una sola línea (el registro de Railway la guarda en los atributos si es JSON)
-          console.log(JSON.stringify({ revisiones: [{ revision: REVIEW_ID, ...rep, evidenciaRellenada: evidence }, { revision: REVIEW_ID_2026_11_07, ...rep1107 }] }));
+          console.log(JSON.stringify({ revisiones: [{ revision: REVIEW_ID, ...rep, evidenciaRellenada: evidence }, { revision: REVIEW_ID_2026_11_07, ...rep1107 }, { revision: REVIEW_ID_2026_11_08, ...rep1108, preciosExistentesIntactos: otherPricesIntact }] }));
+          if (!otherPricesIntact) process.exitCode = 1;
           // Un conflicto (estado cambiado desde el CRM o borrador ajeno) no es un fallo: se informa y se respeta
         } finally {
           await crmPool.end().catch(() => undefined);

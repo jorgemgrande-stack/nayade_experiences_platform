@@ -10,9 +10,9 @@ import { validateSpecs } from "./catalog/commercial/validateSpecs";
 import { INTERNAL_NOTE_RE, textProblems } from "./catalog/commercial/checks";
 
 describe("especificaciones comerciales", () => {
-  it("58 productos, 58 especificaciones, sin incidencias con la política propuesta ni con la vigente", () => {
-    expect(PRODUCTS).toHaveLength(58);
-    expect(PRODUCT_SPECS).toHaveLength(58);
+  it("59 productos (con el plan personal Life), 59 especificaciones, sin incidencias con la política propuesta ni con la vigente", () => {
+    expect(PRODUCTS).toHaveLength(59);
+    expect(PRODUCT_SPECS).toHaveLength(59);
     expect(validateSpecs(PRODUCTS, PRODUCT_SPECS, PROPOSED_POLICY)).toEqual([]);
     expect(validateSpecs(PRODUCTS, PRODUCT_SPECS, CATALOG_POLICY)).toEqual([]);
   });
@@ -30,7 +30,7 @@ describe("especificaciones comerciales", () => {
   });
   it("lo que no tiene desarrollo se presenta como «Próximamente» con lista de espera", () => {
     const none = PRODUCT_SPECS.filter((s) => s.verified.grade === "none").map((s) => s.key).sort();
-    expect(none).toEqual(["extra-accounting", "hotel-net-channel-manager", "hotel-net-housekeeping", "life-net"]);
+    expect(none).toEqual(["extra-accounting", "hotel-net-channel-manager", "hotel-net-housekeeping", "life", "life-net"]);
   });
   it("Travel Net no atribuye circuitos ni transporte como existentes", () => {
     for (const s of PRODUCT_SPECS.filter((x) => x.key.startsWith("travel-net"))) for (const t of s.includes) expect(t).not.toMatch(/circuito|transporte/i);

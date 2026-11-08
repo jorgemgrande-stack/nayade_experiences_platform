@@ -11,6 +11,8 @@
  *       ticket, website (campo trampa) }
  *   Con `buyer`, el nombre y el identificador fiscal salen del perfil: un particular no da razón social. En live
  *   `buyer` es obligatorio (sin perfil fiscal no se abre el pago); en pruebas, `company` sigue valiendo.
+ *   Plan personal `life` (08/11/2026): solo particulares (`buyer.type: consumer`: nombre y apellidos, NIF opcional),
+ *   solo mensual y con `household.name` opcional (nombre del hogar, editable después; por defecto, «Hogar de …»).
  *   → 200 { sessionId, url, expiresAt }   (la URL de Stripe Checkout)
  *
  *   POST /cp/v1/public/checkout/eligibility
@@ -47,7 +49,7 @@ import { recordFailure } from "../_core/ops/failureAlerts";
 import { checkTicket } from "../crm/publicApi";
 import type { CatalogPort } from "../subscriptions/ports";
 import type { CommercialOrder } from "../orchestrator/types";
-import { SELF_SERVICE_PLANS } from "./catalog";
+import { CHECKOUT_PLANS, isPersonalCheckoutPlan } from "./catalog";
 import { StripeCheckoutError, type CheckoutStart } from "./checkout";
 import type { StripeMode } from "./config";
 import type { StripeStore } from "./store";
@@ -62,7 +64,7 @@ export const eligibilityQuery = z
     country: z.string().trim().toUpperCase().regex(/^[A-Z]{2}$/),
     postalCode: z.string().trim().max(12).optional(),
     taxId: z.string().trim().max(40).optional(),
-    plan: z.enum(SELF_SERVICE_PLANS).optional(),
+    plan: z.enum(CHECKOUT_PLANS).optional(),
     interval: z.enum(["month", "year"]).optional(),
   })
   .strict();
@@ -71,9 +73,11 @@ export type EligibilityQuery = z.infer<typeof eligibilityQuery>;
 export const selfServiceBody = z
   .object({
     idempotencyKey: z.string().uuid(),
-    plan: z.enum(SELF_SERVICE_PLANS),
+    plan: z.enum(CHECKOUT_PLANS),
     interval: z.enum(["month", "year"]),
     company: z.object({ name: z.string().trim().min(2).max(160), taxId: z.string().trim().max(40).optional() }).strict().optional(),
+    /** Plan personal: nombre del hogar (opcional y editable después). Nunca razón social. */
+    household: z.object({ name: z.string().trim().min(2).max(160) }).strict().optional(),
     buyer: buyerProfileInput.optional(),
     admin: z.object({ name: z.string().trim().min(2).max(120), email: z.string().trim().toLowerCase().email().max(200) }).strict(),
     consents: z
@@ -90,7 +94,11 @@ export const selfServiceBody = z
     website: z.string().max(500).optional(),
   })
   .strict()
-  .refine((b) => !!b.company || !!b.buyer, { message: "Indica los datos del comprador", path: ["buyer"] });
+  .refine((b) => !!b.company || !!b.buyer, { message: "Indica los datos del comprador", path: ["buyer"] })
+  // Plan personal: un particular con nombre y apellidos (NIF opcional), sin datos de empresa y solo mensual
+  .refine((b) => !isPersonalCheckoutPlan(b.plan) || (b.buyer?.type === "consumer" && !b.company), { message: "El plan personal lo contrata un particular: nombre y apellidos, NIF opcional", path: ["buyer"] })
+  .refine((b) => !isPersonalCheckoutPlan(b.plan) || b.interval === "month", { message: "El plan personal solo tiene tarifa mensual", path: ["interval"] })
+  .refine((b) => !b.household || isPersonalCheckoutPlan(b.plan), { message: "El nombre del hogar es del plan personal", path: ["household"] });
 export type SelfServiceBody = z.infer<typeof selfServiceBody>;
 
 export interface SelfServiceDeps {
@@ -203,7 +211,9 @@ export class SelfServiceCheckout {
         }
       }
     }
-    const name = b.buyer ? (b.buyer.type === "business" ? b.buyer.legalName : `${b.buyer.firstName} ${b.buyer.lastName}`) : b.company!.name;
+    const holder = b.buyer && b.buyer.type === "consumer" ? `${b.buyer.firstName} ${b.buyer.lastName}` : null;
+    // Plan personal: la ficha del CRM es el hogar (su nombre, o «Hogar de» y el titular); el titular es el contacto
+    const name = isPersonalCheckoutPlan(b.plan) ? (b.household?.name ?? `Hogar de ${holder}`) : b.buyer ? (b.buyer.type === "business" ? b.buyer.legalName : holder!) : b.company!.name;
     const taxId = b.buyer ? b.buyer.taxId : b.company!.taxId;
     const company = await this.d.crm.createCompany({ name, ...(taxId ? { taxId } : {}), email: b.admin.email }, ACTOR);
     await this.d.crm.createContact(company.id, { name: b.admin.name, email: b.admin.email, role: "Administración", isPrimary: true }, ACTOR);
