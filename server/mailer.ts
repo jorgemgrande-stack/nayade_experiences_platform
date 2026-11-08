@@ -27,6 +27,7 @@ import { isMultiTenant } from "./_core/tenant";
 import { getSystemSettingSync } from "./config";
 import { brandName, tenantCommsConfig } from "./tenantBrand";
 import type { MailCategory } from "./mail/types";
+import type { MailRoute } from "./mail/tenantMail";
 import { readStoredFile } from "./storage";
 import { objectIdFromUrl } from "./_core/files/service";
 import { cleanSubject } from "./mail/plainText";
@@ -265,9 +266,13 @@ export const CRITICAL_MAIL_CATEGORIES: ReadonlySet<MailCategory> = new Set<MailC
  * Devuelve true si el envío fue exitoso.
  */
 export async function sendEmail(params: MailParams): Promise<boolean> {
+  const { sendTenantMail, usesMailService, predictedMailRoute, meteredMailRoute } = await import("./mail/tenantMail");
+  // Vía prevista: con la cuenta propia de la empresa (Postmark o SMTP) el envío lo paga su titular y no consume la cuota
+  // del servicio de correo de la plataforma (si esa cuenta falla y sale por la plataforma, sí se mide como de plataforma)
+  const predicted = predictedMailRoute(params.category);
   // Los avisos críticos (acceso, seguridad, cobros y obligaciones legales) no los corta la cuota diaria: siguen
   // midiéndose y conservan los límites del servicio de correo (idempotencia y límites por hora).
-  if (!(params.category && CRITICAL_MAIL_CATEGORIES.has(params.category))) {
+  if (predicted === "platform" && !(params.category && CRITICAL_MAIL_CATEGORIES.has(params.category))) {
     try {
       await enforceQuota(Metrics.EMAIL_SENT, 1);
     } catch (e) {
@@ -292,10 +297,12 @@ export async function sendEmail(params: MailParams): Promise<boolean> {
   // Servicio centralizado (bandeja de salida, MAIL_MODE off|sandbox|live, idempotencia, límites y
   // remitente de plataforma por empresa): siempre en multiempresa; en single solo si se define
   // MAIL_MODE. Sin MAIL_MODE, la instalación única sigue exactamente como antes (docs/runbooks/CORREO_BREVO.md).
-  const { sendTenantMail, usesMailService } = await import("./mail/tenantMail");
   if (usesMailService()) {
-    const ok = await sendTenantMail(enriched);
-    meter(Metrics.EMAIL_SENT, 1, "count", { channel: "outbox", ok });
+    const used = new Set<MailRoute>();
+    const ok = await sendTenantMail(enriched, (r) => used.add(r));
+    // Consumo de la plataforma (`email.sent`) solo por lo que sale por ella; lo de la cuenta propia, aparte
+    const route = meteredMailRoute(used, predicted);
+    meter(route === "platform" ? Metrics.EMAIL_SENT : Metrics.EMAIL_OWN_SENT, 1, "count", { channel: "outbox", route, ok });
     return ok;
   }
 
