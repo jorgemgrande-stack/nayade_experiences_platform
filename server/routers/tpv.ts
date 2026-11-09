@@ -683,20 +683,28 @@ export const tpvRouter = router({
         throw new TRPCError({ code: "BAD_REQUEST", message: "Tipo de salida no válido" });
       }
       const input = { ...raw, outKind: raw.outKind ?? ("gasto" as const) };
-      const kind = accounting ? explicitCashMoveKind(raw) : null;
-      const id = await db.transaction(async (tx) => {
-        const [result] = await tx.insert(cashMovements).values({
-          sessionId: input.sessionId,
-          type: input.type,
-          amount: String(input.amount),
-          reason: input.reason,
-          cashierName: ctx.user.name ?? ctx.user.email ?? "Cajero",
-          createdAt: Date.now(),
+      const values = {
+        sessionId: input.sessionId,
+        type: input.type,
+        amount: String(input.amount),
+        reason: input.reason,
+        cashierName: ctx.user.name ?? ctx.user.email ?? "Cajero",
+        createdAt: Date.now(),
+      };
+      let id: number;
+      if (!accounting) {
+        // Exactamente como siempre: sin transacción ni nada de la contabilidad
+        const [result] = await db.insert(cashMovements).values(values);
+        id = (result as any).insertId as number;
+      } else {
+        // Con la contabilidad en uso, el tipo se guarda en la misma transacción que el movimiento
+        id = await db.transaction(async (tx) => {
+          const [result] = await tx.insert(cashMovements).values(values);
+          const movementId = (result as any).insertId as number;
+          await recordCashMovementKind(tx, movementId, explicitCashMoveKind(raw));
+          return movementId;
         });
-        const movementId = (result as any).insertId as number;
-        await recordCashMovementKind(tx, movementId, kind);
-        return movementId;
-      });
+      }
       const [movement] = await db.select().from(cashMovements).where(eq(cashMovements.id, id));
 
       // Propagación a Contabilidad ? Caja (fire-and-forget, no bloquea TPV).
@@ -795,7 +803,7 @@ export const tpvRouter = router({
                 createdBy: ctx.user.id ? Number(ctx.user.id) : undefined,
               });
               // Contabilidad general: el gasto de esta salida (para contabilizarla una sola vez)
-              await linkCashMovementExpense(id, Number((expRes as any).insertId));
+              if (accounting) await linkCashMovementExpense(id, Number((expRes as any).insertId));
             }
           } catch (e) {
             console.error("[TPV] Error registrando retirada en contabilidad:", e);

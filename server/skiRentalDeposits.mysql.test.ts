@@ -374,8 +374,8 @@ describe.skipIf(!URL_)("Ski Net · fianzas del alquiler (routers reales, TPV del
   }, 60_000);
 
   it("contabilidad general: las fianzas en efectivo, contra fianzas recibidas (560); su cobro y su devolución se saldan y no tocan el 555 ni el 430", async () => {
-    // Cada movimiento de fianza guardó su tipo en la misma transacción
-    expect(await count("SELECT COUNT(*) AS n FROM cash_movements m LEFT JOIN acc_cash_movement_kinds k ON k.movement_id = m.id WHERE m.reason LIKE '%fianza%' AND (k.kind IS NULL OR k.kind <> 'fianza')")).toBe(0);
+    // Sin la contabilidad en uso, el alquiler no escribe nada de ella (las fianzas se reconocen por ski_deposit_events)
+    expect(await count("SELECT COUNT(*) AS n FROM acc_cash_movement_kinds")).toBe(0);
     await license("active", "", "accounting-general");
     const s = ok(await mutate("accountingGeneral.sync", undefined));
     expect(s.errors).toEqual([]);
@@ -393,5 +393,9 @@ describe.skipIf(!URL_)("Ski Net · fianzas del alquiler (routers reales, TPV del
     expect(await count("SELECT COUNT(*) AS n FROM acc_entry_lines l JOIN acc_entries e ON e.id = l.entry_id WHERE e.source_key LIKE 'cajamov:%' AND l.account_code = '560'")).toBeGreaterThan(0);
     // La devolución de una fianza no se toma por una devolución a un cliente ni queda para revisar
     expect(s.review.filter((r: any) => String(r.key).startsWith("cajamov:"))).toEqual([]);
+    // Con la contabilidad ya en uso, una fianza nueva guarda su tipo en la misma transacción que su movimiento
+    const d5 = ok(await mutate("skiRental.createDelivery", { ...NORTE, storeId, customerName: "Fianza con contabilidad", startDate: "2026-12-20", expectedReturnDate: "2026-12-21", lines: [{ code: "BOOT-00006", requestedType: "boots" }] })).id;
+    ok(await mutate("skiRental.registerDeposit", { ...NORTE, deliveryId: d5, amountCents: 1000, method: "cash", sessionId: sessNorte }));
+    expect(await count("SELECT COUNT(*) AS n FROM acc_cash_movement_kinds k JOIN cash_movements m ON m.id = k.movement_id WHERE k.kind = 'fianza' AND m.reason LIKE ?", [`%alquiler #${d5}`])).toBe(1);
   }, 60_000);
 });

@@ -1,7 +1,7 @@
 /**
  * TpvCashMovement — Modal de entrada/salida de efectivo
  */
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { trpc } from "@/lib/trpc";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
@@ -37,7 +37,12 @@ const QUICK_REASONS_IN = [
  */
 export default function TpvCashMovement(props: Props) {
   const mode = trpc.tpv.cashMovementMode.useQuery(undefined, { staleTime: 60_000, retry: false });
-  return mode.data?.typed === true ? <TpvCashMovementAccounting {...props} /> : <CoreCashMovement {...props} />;
+  // El modal se decide con el diálogo cerrado: abierto no cambia de componente (no se pierde lo escrito)
+  const [typed, setTyped] = useState(false);
+  useEffect(() => {
+    if (!props.open) setTyped(mode.data?.typed === true);
+  }, [props.open, mode.data?.typed]);
+  return typed ? <TpvCashMovementAccounting {...props} /> : <CoreCashMovement {...props} />;
 }
 
 function CoreCashMovement({ open, type, sessionId, onClose }: Props) {

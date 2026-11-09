@@ -77,6 +77,15 @@ describe.skipIf(!URL_)("Contabilidad general · caminos reales del Core (TPV, an
     await ess?.close();
   });
 
+  /** Gasto del TPV sin esperar enlace (sin la contabilidad en uso no se enlaza nada). */
+  const coreTpvExpense = async (concept: string) => {
+    for (let i = 0; i < 40; i++) {
+      const [e] = await ess.sql("a", "SELECT id FROM expenses WHERE source = 'tpv' AND concept LIKE ?", [`%${concept}%`]);
+      if (e) return e;
+      await sleep(150);
+    }
+    return null;
+  };
   const kindOf = async (movementId: number) => {
     const r = await ess.sql("a", "SELECT kind FROM acc_cash_movement_kinds WHERE movement_id = ?", [movementId]);
     return r.length ? r[0].kind : "sin fila";
@@ -87,8 +96,8 @@ describe.skipIf(!URL_)("Contabilidad general · caminos reales del Core (TPV, an
     expect(ok(await ess.q("a", "tpv.cashMovementMode", undefined, agA), "modo")).toEqual({ typed: false });
     expect((await ess.m("a", "tpv.addCashMovement", { sessionId, type: "out", amount: 1, reason: "x", outKind: "devolucion" }, agA)).status).toBe(400);
     const mv = await move({ type: "out", amount: 1, reason: "Devolución en efectivo (sin contabilidad)", outKind: "gasto" });
-    expect(await kindOf(mv.id)).toBeNull(); // sin tipo
-    expect(await tpvExpense("Devolución en efectivo (sin contabilidad)")).not.toBeNull(); // crea el gasto, como siempre
+    expect(await coreTpvExpense("Devolución en efectivo (sin contabilidad)")).not.toBeNull(); // crea el gasto, como siempre
+    expect(await kindOf(mv.id)).toBe("sin fila"); // nada de la contabilidad: ni fila de tipo ni enlace
     // Al iniciar la contabilidad (primera generación), el modal pide el tipo
     await sync();
     expect(ok(await ess.q("a", "tpv.cashMovementMode", undefined, agA), "modo")).toEqual({ typed: true });
@@ -103,10 +112,20 @@ describe.skipIf(!URL_)("Contabilidad general · caminos reales del Core (TPV, an
     try {
       expect((await ess.m("a", "tpv.addCashMovement", { sessionId, type: "out", amount: 1, reason: "x", outKind: "devolucion" }, agA)).status).toBe(400);
       const mv = await move({ type: "out", amount: 1, reason: "Hielo con el registro caído", outKind: "gasto" });
-      expect(await kindOf(mv.id)).toBeNull();
-      expect(await tpvExpense("Hielo con el registro caído")).not.toBeNull();
+      expect(await coreTpvExpense("Hielo con el registro caído")).not.toBeNull();
+      expect(await kindOf(mv.id)).toBe("sin fila");
     } finally {
       spy.mockRestore();
+    }
+    // Si falla la consulta de acc_settings (tabla no disponible), también como siempre
+    await ess.sql("a", "RENAME TABLE acc_settings TO acc_settings_fuera");
+    try {
+      expect(ok(await ess.q("a", "tpv.cashMovementMode", undefined, agA), "modo")).toEqual({ typed: false });
+      const mv2 = await move({ type: "out", amount: 1, reason: "Hielo sin acc_settings", outKind: "gasto" });
+      expect(await coreTpvExpense("Hielo sin acc_settings")).not.toBeNull();
+      expect(await kindOf(mv2.id)).toBe("sin fila");
+    } finally {
+      await ess.sql("a", "RENAME TABLE acc_settings_fuera TO acc_settings");
     }
     await sync(); // las pruebas siguientes parten de todo contabilizado
   });
