@@ -83,7 +83,7 @@ export const COPILOT_TOOLS: readonly CopilotToolMeta[] = [
   {
     name: "ventas_periodo",
     label: "Ventas por periodo",
-    description: "Ventas cobradas (pedidos de la tienda, reservas y caja) entre dos fechas: total, número de operaciones, ticket medio y evolución por día, semana o mes. Sin fechas: últimos 30 días.",
+    description: "Ventas cobradas entre dos fechas, tal como quedan registradas en las reservas pagadas: pedidos de la tienda online, reservas y presupuestos cobrados y ventas del TPV (cada venta del TPV genera su reserva pagada). Total con impuestos, número de operaciones, ticket medio y evolución por día, semana o mes. No incluye otros movimientos de caja ni descuenta abonos o devoluciones. Sin fechas: últimos 30 días.",
     permission: "finance",
     capabilities: ["shop-orders", "bill-cash"],
     parameters: obj({ desde: day, hasta: day, agrupar: { type: "string", enum: ["dia", "semana", "mes"] } }),

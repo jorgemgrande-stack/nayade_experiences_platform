@@ -42,7 +42,8 @@ const round2 = (n: number) => Math.round(n * 100) / 100;
 const dayOf = (ms: number | null) => (ms == null ? null : madridDay(ms));
 /** Filas de día y producto que devuelve `ocupacion` (si hay más, la nota lo dice). */
 export const OCCUPANCY_ROWS_MAX = 120;
-const SALES_NOTE = "Ventas cobradas (pedidos, reservas y caja), con impuestos.";
+/** Lo que mide `ventas_periodo` (lo lee la IA junto a las cifras); la misma frontera que su descripción en shared/copilot.ts. */
+export const SALES_NOTE = "Ventas cobradas registradas como reservas pagadas: pedidos de la tienda online, reservas y presupuestos cobrados y ventas del TPV. Con impuestos. No incluye otros movimientos de caja (entradas o salidas manuales) ni descuenta abonos o devoluciones.";
 
 function reservationOut(r: ReservationRow) {
   return {

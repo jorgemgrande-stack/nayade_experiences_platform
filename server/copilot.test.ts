@@ -21,7 +21,7 @@ import {
   type CopilotAccess,
   type CopilotPermission,
 } from "../shared/copilot";
-import { runTool, parseToolArgs } from "./copilot/tools";
+import { runTool, parseToolArgs, SALES_NOTE } from "./copilot/tools";
 import { CopilotError, CopilotService, AI_UNAVAILABLE_MESSAGE, type LlmFn, type LlmReply, type CopilotActor } from "./copilot/service";
 import { MemoryCopilotStore } from "./copilot/store";
 import type { CopilotData, ClientRow, ReservationRow, SlotRow, UnpaidInvoices } from "./copilot/data";
@@ -233,6 +233,16 @@ describe("herramientas de solo lectura", () => {
     const r = await runTool("ventas_periodo", { desde: "2026-11-01", hasta: "2026-11-10", agrupar: "semana" }, data, NOW);
     expect(r).toMatchObject({ periodo: { desde: "2026-11-01", hasta: "2026-11-10" }, total: 90, operaciones: 2, ticketMedio: 45, agrupadoPor: "semana" });
     expect(r.evolucion).toEqual([{ periodo: "2026-11-02", total: 80, operaciones: 1 }, { periodo: "2026-11-09", total: 10, operaciones: 1 }]);
+  });
+
+  it("ventas por periodo: la descripción y la nota dicen lo que se consulta de verdad (reservas pagadas)", async () => {
+    const meta = COPILOT_TOOLS.find((t) => t.name === "ventas_periodo")!;
+    expect(meta.description).toMatch(/reservas pagadas/);
+    expect(meta.description).toMatch(/TPV/);
+    expect(meta.description).toMatch(/No incluye otros movimientos de caja/);
+    expect(meta.description).not.toMatch(/reservas y caja\)/);
+    expect((await runTool("ventas_periodo", {}, data, NOW)).nota).toBe(SALES_NOTE);
+    expect(SALES_NOTE).toMatch(/reservas pagadas/);
   });
 
   it("top productos por importe o por personas", async () => {
