@@ -403,6 +403,8 @@ export const TASK_NAV: NavSection[] = [
       { label: "Llamadas IA", href: "/admin/atencion-comercial/agente-ia", key: "x-voz", icon: "bot", roles: SALES, capabilities: ["voice-ai"] },
       { label: "Recepcionista IA", href: "/admin/atencion-comercial/recepcionista", key: "x-recepcion", icon: "bot", roles: SALES, capabilities: ["reception-ai"] },
       { label: "Cupones y plataformas", href: "/admin/marketing/cupones", key: "x-cupones", icon: "tag", roles: ADMIN, capabilities: ["deals-coupons"] },
+      // Paquete Marketing: puesta en marcha y resumen de sus cuatro módulos (basta uno; lo no incluido sale como tal)
+      { label: "Marketing · Puesta en marcha", href: "/admin/marketing/resumen", key: "x-marketing-resumen", icon: "rocket", roles: ADMIN, capabilities: ["ads-manager", "email-campaigns", "seo-control", "geo-control"] },
       { label: "Campañas de correo", href: "/admin/marketing/campanas", key: "x-campanas", icon: "mail", roles: ADMIN, capabilities: ["email-campaigns"] },
       { label: "Email marketing (Brevo)", href: "/admin/marketing/brevo", key: "x-brevo", icon: "mail", roles: ADMIN, capabilities: ["email-campaigns"] },
       { label: "Visibilidad en IA (GEO)", href: "/admin/marketing/geo", key: "x-geo", icon: "sparkles", roles: ADMIN, capabilities: ["geo-control"] },
