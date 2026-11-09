@@ -197,6 +197,7 @@ import { accountingGeneralRouter } from "./accountingGeneral/router";
 import { receptionAiRouter } from "./receptionAi/router";
 import { whatsappCloudRouter } from "./whatsappCloud/router";
 import { copilotRouter } from "./copilot/router";
+import { automationsRouter } from "./automations/router";
 import { postmarkTenantRouter } from "./routers/postmarkTenant";
 import { installSectorLoyalty } from "./loyaltySectors";
 import { getSdkRuntime } from "./sdk";
@@ -2678,6 +2679,7 @@ export const appRouter = router({
   receptionAi: receptionAiRouter,
   whatsappCloud: whatsappCloudRouter,
   copilot: copilotRouter,
+  automations: automationsRouter,
   postmarkTenant: postmarkTenantRouter,
   crm: crmRouter,
   commercialFollowup: commercialFollowupRouter,

@@ -150,7 +150,7 @@ export interface CareReminderDeps {
  * destinatario? Sin contar la cuota de prueba, que es temporal: un envío cortado por la cuota queda «fallido» y se
  * reintenta. Fuera de multiempresa, o si no se puede comprobar, false (decide el envío).
  */
-async function trialBlocksNow(email: string): Promise<boolean> {
+export async function trialBlocksNow(email: string): Promise<boolean> {
   if (!isMultiTenant()) return false;
   try {
     const { applyTrialMailPolicy } = await import("./trialRestrictions");

@@ -118,6 +118,8 @@ export const TRPC_ROUTER_CAPABILITIES: Record<string, string> = {
   whatsappCloud: "whatsapp-ai",
   // Elephant Connect · Copilot avanzado: asistente de IA con herramientas de solo lectura del Core (los procedimientos la comprueban también)
   copilot: "copilot-advanced",
+  // Elephant Connect · Automatizaciones avanzadas: reglas, secuencias y su historial (los procedimientos la comprueban también)
+  automations: "automations-advanced",
   // Correo transaccional con el Postmark propio de la empresa (notificaciones por email, incluidas en Essential)
   postmarkTenant: "comms-email",
   // Elephant Net

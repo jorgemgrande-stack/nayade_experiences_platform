@@ -77,6 +77,7 @@ import { DIRECT_SALE_2026_11_08, REVIEW_ID_2026_11_08_CONNECT, applyDirectSaleRe
 import { CAMPAIGNS_LISTING_2026_11_08, FINANCE_SYNC_DIRECT_SALE, REVIEW_ID_2026_11_08_CAMPAIGNS } from "../catalog/review20261108campaigns";
 import { MARKETING_LISTINGS_2026_11_09, REVIEW_ID_2026_11_09_MARKETING } from "../catalog/review20261109marketing";
 import { REVIEW_ID_2026_11_09_WHATSAPP, WHATSAPP_LISTING_2026_11_09 } from "../catalog/review20261109whatsapp";
+import { AUTOMATIONS_LISTING_2026_11_09, REVIEW_ID_2026_11_09_AUTOMATIONS } from "../catalog/review20261109automations";
 import { PACK_MARKETING_LISTING_2026_11_09, REVIEW_ID_2026_11_09_PACK_MARKETING } from "../catalog/review20261109packmarketing";
 import { REVIEW_ID_2026_11_08_FICHAS, applyListingReview } from "../catalog/review20261108fichas";
 import { NET_LISTINGS_2026_11_08, REVIEW_ID_2026_11_08_NET } from "../catalog/review20261108net";
@@ -517,6 +518,8 @@ async function main() {
           const repMarketing = await applyListingReview(svc, webStore, { apply, author: `operacion:${REVIEW_ID_2026_11_09_MARKETING}`, changes: MARKETING_LISTINGS_2026_11_09 });
           // 09/11/2026: Elephant WhatsApp AI (WhatsApp Cloud API por empresa y respuestas con IA) en implantación acompañada
           const repWhatsapp = await applyListingReview(svc, webStore, { apply, author: `operacion:${REVIEW_ID_2026_11_09_WHATSAPP}`, changes: WHATSAPP_LISTING_2026_11_09 });
+          // 09/11/2026: Automatizaciones avanzadas en implantación acompañada (motor de reglas por empresa, migración 0062)
+          const repAutomations = await applyListingReview(svc, webStore, { apply, author: `operacion:${REVIEW_ID_2026_11_09_AUTOMATIONS}`, changes: AUTOMATIONS_LISTING_2026_11_09 });
           // 09/11/2026: Paquete Marketing en implantación acompañada (sus cuatro componentes ya se contratan; sin Price de Stripe)
           const repPackMarketing = await applyListingReview(svc, webStore, { apply, author: `operacion:${REVIEW_ID_2026_11_09_PACK_MARKETING}`, changes: PACK_MARKETING_LISTING_2026_11_09 });
           const repConnect = await applyDirectSaleReview(svc, webStore, async (id) => !!(await stripeStore.priceForWebPrice(id)), { apply, author: `operacion:${REVIEW_ID_2026_11_08_CONNECT}`, changes: [...DIRECT_SALE_2026_11_08, FINANCE_SYNC_DIRECT_SALE] });
@@ -534,6 +537,7 @@ async function main() {
                 { revision: REVIEW_ID_2026_11_08_CAMPAIGNS, ...repCampaigns },
                 { revision: REVIEW_ID_2026_11_09_MARKETING, ...repMarketing },
                 { revision: REVIEW_ID_2026_11_09_WHATSAPP, ...repWhatsapp },
+                { revision: REVIEW_ID_2026_11_09_AUTOMATIONS, ...repAutomations },
                 { revision: REVIEW_ID_2026_11_09_PACK_MARKETING, ...repPackMarketing },
                 { revision: REVIEW_ID_2026_11_08_CONNECT, modoStripe: stripeMode, ...repConnect, preciosIntactos: pricesIntactConnect },
               ],

@@ -245,6 +245,7 @@ const VapiAgente = lazy(() => import("./pages/admin/commercial/VapiAgente"));
 const VoiceSetup = lazy(() => import("./pages/admin/commercial/VoiceSetup"));
 const ReceptionAi = lazy(() => import("./pages/admin/commercial/ReceptionAi"));
 const Copilot = lazy(() => import("./pages/admin/Copilot"));
+const Automatizaciones = lazy(() => import("./pages/admin/Automatizaciones"));
 const EmailInbox = lazy(() => import("./pages/admin/commercial/EmailInbox"));
 const EmailAccountsSettings = lazy(() => import("./pages/admin/settings/EmailAccountsSettings"));
 const SolicitarAnulacion = lazy(() => import("./pages/SolicitarAnulacion"));
@@ -549,6 +550,7 @@ function Router() {
       <Route path="/admin/atencion-comercial/agente-ia/puesta-en-marcha">{() => <Suspense fallback={<AdminLoadingFallback />}><VoiceSetup /></Suspense>}</Route>
       <Route path="/admin/atencion-comercial/agente-ia">{() => <Suspense fallback={<AdminLoadingFallback />}><VapiAgente /></Suspense>}</Route>
       <Route path="/admin/copilot">{() => <Suspense fallback={<AdminLoadingFallback />}><Copilot /></Suspense>}</Route>
+      <Route path="/admin/automatizaciones">{() => <Suspense fallback={<AdminLoadingFallback />}><Automatizaciones /></Suspense>}</Route>
       <Route path="/admin/atencion-comercial/recepcionista">{() => <Suspense fallback={<AdminLoadingFallback />}><ReceptionAi /></Suspense>}</Route>
       <Route path="/admin/atencion-comercial/email">{() => <Suspense fallback={<AdminLoadingFallback />}><EmailInbox /></Suspense>}</Route>
       <Route path="/admin/atencion-comercial">{() => <Suspense fallback={<AdminLoadingFallback />}><CommercialFollowupDashboard /></Suspense>}</Route>

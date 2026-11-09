@@ -16,6 +16,8 @@
  *   - task                  → tareas del CRM del usuario que vencen hoy o vencidas (crm-tasks)
  *   - community             → comunidades con solicitudes, publicaciones, propuestas o reportes por revisar
  *                              (social-token-net; solo administración)
+ *   - automation            → avisos al equipo de las Automatizaciones avanzadas de los últimos 7 días
+ *                              (automations-advanced; sin la migración 0062, vacía)
  *
  * Dismiss es por-usuario: silenciar un item afecta solo a quien lo silencia.
  */
@@ -56,7 +58,8 @@ type FeedKind =
   | "tpv_alert"
   | "upcoming_reservation"
   | "task"
-  | "community";
+  | "community"
+  | "automation";
 
 interface FeedItem {
   kind: FeedKind;
@@ -464,6 +467,34 @@ async function sourceCommunities(userId: number, role: string): Promise<FeedSect
   }
 }
 
+/**
+ * Avisos al equipo de las Automatizaciones avanzadas (acción «Avisar al equipo en el panel») de los últimos 7 días. Solo
+ * con la capacidad; sin la migración 0062 o sin poder leerlos, la sección queda vacía y no rompe el resto del feed.
+ */
+async function sourceAutomations(userId: number): Promise<FeedSection> {
+  const empty: FeedSection = { kind: "automation", label: "Avisos de tus automatizaciones", icon: "⚙️", severity: "info", total: 0, items: [], ctaAllPath: "/admin/automatizaciones" };
+  try {
+    const decision = await getCapabilityAccess().check("automations-advanced", { write: false });
+    if (!decision.allowed) return empty;
+    const { automationService } = await import("../automations/runtime");
+    const dismissed = await getDismissedIds(userId, "automation");
+    const pending = (await automationService().notices(7, 100)).filter((n) => !dismissed.has(n.id));
+    const items: FeedItem[] = pending.slice(0, 5).map((n) => ({
+      kind: "automation" as const,
+      entityId: n.id,
+      title: n.title,
+      subtitle: n.body,
+      amount: null,
+      severity: "info" as const,
+      ctaPath: n.ctaPath ?? "/admin/automatizaciones",
+      createdAtMs: new Date(n.createdAt).getTime(),
+    }));
+    return { ...empty, total: pending.length, items };
+  } catch {
+    return empty;
+  }
+}
+
 // ─── Router ─────────────────────────────────────────────────────────────────
 
 export const notificationsRouter = router({
@@ -474,7 +505,7 @@ export const notificationsRouter = router({
   feed: staffProcedure.query(async ({ ctx }) => {
     const userId = ctx.user.id;
     const [
-      sLeads, sQuotes, sCancellations, sPending, sTpv, sUpcoming, sTasks, sCommunities,
+      sLeads, sQuotes, sCancellations, sPending, sTpv, sUpcoming, sTasks, sCommunities, sAutomations,
     ] = await Promise.all([
       sourceLeads(userId),
       sourceQuotes(userId),
@@ -484,6 +515,7 @@ export const notificationsRouter = router({
       sourceUpcomingReservations(userId),
       sourceTasks(userId),
       sourceCommunities(userId, String(ctx.user.role)),
+      sourceAutomations(userId),
     ]);
 
     // Textos de las secciones según el modo de la empresa (pyme: oportunidades y pedidos)
@@ -498,6 +530,7 @@ export const notificationsRouter = router({
       sTpv,
       sTasks,
       sCommunities,
+      sAutomations,
       sLeads,
       sQuotes,
       sUpcoming,       // info al final (no es alerta)
@@ -516,7 +549,7 @@ export const notificationsRouter = router({
   dismiss: staffProcedure
     .input(z.object({
       kind: z.enum([
-        "lead", "quote", "cancellation", "pending_payment", "tpv_alert", "upcoming_reservation", "task", "community",
+        "lead", "quote", "cancellation", "pending_payment", "tpv_alert", "upcoming_reservation", "task", "community", "automation",
       ]),
       entityId: z.number().int(),
     }))
@@ -534,7 +567,7 @@ export const notificationsRouter = router({
   dismissAll: staffProcedure
     .input(z.object({
       kind: z.enum([
-        "lead", "quote", "cancellation", "pending_payment", "tpv_alert", "upcoming_reservation", "task", "community",
+        "lead", "quote", "cancellation", "pending_payment", "tpv_alert", "upcoming_reservation", "task", "community", "automation",
       ]),
     }))
     .mutation(async ({ input, ctx }) => {
@@ -574,6 +607,9 @@ export const notificationsRouter = router({
         entityIds = (await dueTasksFor(userId).catch(() => [])).map(t => t.id);
       } else if (input.kind === "community") {
         entityIds = (await sourceCommunities(userId, String(ctx.user.role))).items.map(i => i.entityId);
+      } else if (input.kind === "automation") {
+        const { automationService } = await import("../automations/runtime");
+        entityIds = (await automationService().notices(7, 100).catch(() => [])).map(n => n.id);
       }
 
       if (entityIds.length === 0) return { ok: true, dismissed: 0 };
