@@ -53,7 +53,7 @@ export function GrowSection() {
   const view: ConnectView = { canPurchase: !!data?.canPurchase, interestEnabled: !!data?.interestEnabled, canRetryActivation: !!data?.canRetryActivation };
   // Disponibles para el plan de la empresa: lo que el marketplace muestra como «Disponible» (estado del servidor)
   // (nunca un módulo suelto retirado, campo `legacy` de la unificación de Elephant Net)
-  const available = items.filter((i) => i.state === "available" && !(i as { legacy?: unknown }).legacy).sort((a, b) => Number(b.highlight) - Number(a.highlight));
+  const available = items.filter((i) => i.state === "available" && !i.legacy).sort((a, b) => Number(b.highlight) - Number(a.highlight));
   const [dialog, setDialog] = useState<{ item: ConnectCatalogItem; kind: RequestKind } | null>(null);
   const detail = (filter: (i: (typeof items)[number]) => boolean) => {
     if (!data?.available) return null;
