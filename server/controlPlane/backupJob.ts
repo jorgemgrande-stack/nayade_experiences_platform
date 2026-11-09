@@ -524,9 +524,6 @@ async function main() {
           const repAutomations = await applyListingReview(svc, webStore, { apply, author: `operacion:${REVIEW_ID_2026_11_09_AUTOMATIONS}`, changes: AUTOMATIONS_LISTING_2026_11_09 });
           // 09/11/2026: Paquete Marketing en implantación acompañada (sus cuatro componentes ya se contratan; sin Price de Stripe)
           const repPackMarketing = await applyListingReview(svc, webStore, { apply, author: `operacion:${REVIEW_ID_2026_11_09_PACK_MARKETING}`, changes: PACK_MARKETING_LISTING_2026_11_09 });
-          // 09/11/2026: estrategia del TPV (caja de cada plan y TPV Advanced, la ficha de connect-pos). Sin precios: el de
-          // connect-pos y su ámbito por empresa se cambian aparte en el CRM
-          const repTpv = await applyListingReview(svc, webStore, { apply, author: `operacion:${REVIEW_ID_2026_11_09_TPV}`, changes: TPV_LISTINGS_2026_11_09 });
           const repConnect = await applyDirectSaleReview(svc, webStore, async (id) => !!(await stripeStore.priceForWebPrice(id)), { apply, author: `operacion:${REVIEW_ID_2026_11_08_CONNECT}`, changes: [...DIRECT_SALE_2026_11_08, FINANCE_SYNC_DIRECT_SALE] });
           // 09/11/2026: unificación comercial de Elephant Net (7 soluciones completas; 19 módulos sueltos heredados). Fotos de
           // solo lectura antes y después: contratos y licencias Net (deben ser idénticos) y huella del catálogo fuera de lo previsto
@@ -537,6 +534,9 @@ async function main() {
           const guardChanged = guardDiff(guardBefore, await catalogGuard(webStore));
           const netAfter = await netContracts(crmPool, pool, netAt);
           const netIntact = JSON.stringify(netBefore) === JSON.stringify(netAfter);
+          // 09/11/2026: estrategia del TPV (caja de cada plan y TPV Advanced, la ficha de connect-pos), después de la
+          // unificación de Elephant Net. Sin precios: el de connect-pos y su ámbito por empresa se cambian aparte en el CRM
+          const repTpv = await applyListingReview(svc, webStore, { apply, author: `operacion:${REVIEW_ID_2026_11_09_TPV}`, changes: TPV_LISTINGS_2026_11_09 });
           const pricesFinal = new Map((await webStore.listPrices()).map((p) => [p.id, `${p.status}:${p.amountCents}`]));
           const pricesIntactConnect = pricesFinal.size === pricesAfter.size && Array.from(pricesAfter).every(([id, v]) => pricesFinal.get(id) === v);
           // Una sola línea (el registro de Railway la guarda en los atributos si es JSON)
@@ -553,9 +553,9 @@ async function main() {
                 { revision: REVIEW_ID_2026_11_09_WHATSAPP, ...repWhatsapp },
                 { revision: REVIEW_ID_2026_11_09_AUTOMATIONS, ...repAutomations },
                 { revision: REVIEW_ID_2026_11_09_PACK_MARKETING, ...repPackMarketing },
-                { revision: REVIEW_ID_2026_11_09_TPV, ...repTpv },
                 { revision: REVIEW_ID_2026_11_08_CONNECT, modoStripe: stripeMode, ...repConnect, preciosIntactos: pricesIntactConnect },
                 { revision: REVIEW_ID_2026_11_09_NET_UNIFICATION, ...repNetUnification, catalogoFueraDeLoPrevisto: guardChanged, contratosNetIntactos: netIntact, contratosNet: netAfter },
+                { revision: REVIEW_ID_2026_11_09_TPV, ...repTpv },
               ],
             }),
           );

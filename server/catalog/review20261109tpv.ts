@@ -14,8 +14,12 @@
  *    exportaciones avanzadas, sobre la caja del plan. Sigue «Bajo solicitud», sin checkout ni Price de Stripe
  *    (`stripePrepared: false`). No incluye el datáfono ni la conciliación bancaria (Finance Sync), las comandas
  *    (Restaurant Net), las fianzas (Ski Net) ni el cargo a habitación (Hotel Net).
- *  - Restaurant Net · Sala y comandas y Sede adicional Business dejan de nombrar «Elephant POS» como forma de cobrar o
- *    como algo que se contrata por sede: los productos Net cobran en la caja del plan, sin suplementos duplicados.
+ *  - Sede adicional Business deja de nombrar «Elephant POS» como algo que se contrata por sede. Los módulos Net sueltos
+ *    son heredados desde la unificación de Elephant Net (review20261109netunificacion.ts, que se aplica antes que esta) y
+ *    no se tocan; las soluciones completas cobran en la caja del plan y TPV Advanced no cobra nada que ya incluyan
+ *    (TPV de restauración, comandas, camareros y cobro de mesa; fianzas y cargos por daños; cargo a habitación).
+ *  - Essential describe el reparto de las contrataciones nuevas; quien ya lo tenía conserva los informes de caja por
+ *    periodo y por cajero y la revisión y los ajustes de cierres (migración 0064), y la ficha lo dice.
  *
  * Fuera de esta revisión (lo hace main en el CRM; el mecanismo de revisión nunca toca precios ni la licencia): el
  * precio de `connect-pos` (mensual 2500 → 1900 céntimos sin IVA) y su ámbito (`catalog.scope` site → company,
@@ -75,6 +79,7 @@ export const TPV_LISTINGS_2026_11_09: readonly ListingChange[] = [
           "No admite sedes adicionales: una segunda sede exige Business",
           "Contactos, pedidos y webs por encima del cupo: subir de plan",
           "Caja: una caja activa por empresa; más cajas, con Business o Enterprise",
+          "Si ya tenías Essential, conservas los informes de caja por periodo y por cajero y la revisión y los ajustes de cierres que ya usabas",
         ],
       },
     },
@@ -134,8 +139,8 @@ export const TPV_LISTINGS_2026_11_09: readonly ListingChange[] = [
         to: [
           "La caja y el número de cajas activas: los da tu plan",
           "Datáfono y conciliación bancaria (Finance Sync)",
-          "Comandas y cobro de mesa (Restaurant Net)",
-          "Fianzas del alquiler de material (Ski Net)",
+          "TPV de restauración, comandas, camareros y cobro de mesa (Restaurant Net)",
+          "Fianzas y cargos por daños del alquiler de material (Ski Net)",
           "Cargo a habitación (Hotel Net)",
         ],
       },
@@ -179,7 +184,7 @@ export const TPV_LISTINGS_2026_11_09: readonly ListingChange[] = [
           { q: "¿Se paga por sede?", a: "No: se paga por empresa, tengas las cajas y las sedes que tengas." },
           {
             q: "¿Incluye el datáfono, las comandas o el cargo a habitación?",
-            a: "No. El datáfono y la conciliación bancaria son de Finance Sync; las comandas, de Restaurant Net; las fianzas del alquiler, de Ski Net, y el cargo a habitación, de Hotel Net. Esos productos cobran en la caja de tu plan sin necesitar TPV Advanced.",
+            a: "No. El datáfono y la conciliación bancaria son de Finance Sync; el TPV de restauración, las comandas, los camareros y el cobro de mesa, de Restaurant Net; las fianzas y los cargos por daños del alquiler, de Ski Net, y el cargo a habitación, de Hotel Net. Esas soluciones los incluyen y cobran en la caja de tu plan sin necesitar TPV Advanced, que nunca vuelve a cobrarlos.",
           },
           ASSISTED_FAQ,
           VAT_FAQ,
@@ -188,26 +193,6 @@ export const TPV_LISTINGS_2026_11_09: readonly ListingChange[] = [
       seo: {
         from: { slug: "pos", title: "TPV para varias cajas y cajeros | Big Elephant POS", description: "Varias cajas por sede, rol de cajero, backoffice y revisión de cierres para comercios y restauración." },
         to: { slug: "pos", title: "TPV Advanced: arqueos, turnos y auditoría | Big Elephant", description: "Arqueos avanzados, turnos, entrega de caja entre operadores, autorizaciones y auditoría sobre la caja de tu plan." },
-      },
-    },
-  },
-  {
-    key: "restaurant-net-floor",
-    fields: {
-      excludes: { from: ["Caja: usa la caja básica del plan o Elephant POS", "Pantalla de cocina (KDS)"], to: ["Caja: cobras con la caja de tu plan", "Pantalla de cocina (KDS)"] },
-      faq: {
-        from: [
-          { a: "Todavía no: estará disponible próximamente y hasta entonces no se puede contratar.", q: "¿Puedo contratarlo ya?" },
-          { a: "Sí, cuando la ficha muestra el botón «Me interesa»: tu solicitud llega a nuestro equipo.", q: "¿Puedo dejar mi interés?" },
-          { a: "No. Cobrarás con la caja básica de tu plan o con Elephant POS.", q: "¿Incluirá la caja?" },
-          { a: "No: es el submódulo Cocina/KDS.", q: "¿Incluirá la pantalla de cocina?" },
-        ],
-        to: [
-          { a: "Todavía no: estará disponible próximamente y hasta entonces no se puede contratar.", q: "¿Puedo contratarlo ya?" },
-          { a: "Sí, cuando la ficha muestra el botón «Me interesa»: tu solicitud llega a nuestro equipo.", q: "¿Puedo dejar mi interés?" },
-          { a: "No trae una caja aparte: cobrarás con la caja de tu plan, sin necesitar TPV Advanced.", q: "¿Incluirá la caja?" },
-          { a: "No: es el submódulo Cocina/KDS.", q: "¿Incluirá la pantalla de cocina?" },
-        ],
       },
     },
   },

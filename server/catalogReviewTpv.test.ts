@@ -64,7 +64,6 @@ describe("revisión del 09/11/2026: estrategia del TPV", () => {
         "business: producto (description)",
         "enterprise: producto (description)",
         "connect-pos: producto (name, tagline); ficha (headline, longDescription, problem, forWho, valueProposition, benefits, excludes, capacityRules, integrations, coreIntegration, howItWorks, faq, seo)",
-        "restaurant-net-floor: ficha (excludes, faq)",
         "addon-site-business: ficha (excludes, faq)",
       ],
       already: [],
@@ -104,7 +103,7 @@ describe("revisión del 09/11/2026: estrategia del TPV", () => {
     expect(bus.description).toMatch(/hasta 3 cajas activas, operadores y permisos por caja/);
     expect(bus.commercial).toEqual(productDraft.parse({ ...bus, commercial: {} }).commercial);
     expect((await get("enterprise")).description).toMatch(/sin límite comercial fijo \(con control de recursos y uso razonable\)/);
-    for (const key of ["restaurant-net-floor", "addon-site-business"]) expect(JSON.stringify((await get(key)).commercial), key).not.toMatch(/Elephant POS/);
+    for (const key of ["addon-site-business"]) expect(JSON.stringify((await get(key)).commercial), key).not.toMatch(/Elephant POS/);
 
     // TPV Advanced sigue en venta asistida, sin checkout
     const cat = quoteCatalogFromSite(await k.svc.site("published"));
