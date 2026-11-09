@@ -101,12 +101,28 @@ export async function verifyConnection(fetchImpl: GraphFetch, c: Pick<WhatsappCr
   return { displayPhoneNumber: s(phone?.display_phone_number, 40), verifiedName: s(phone?.verified_name), qualityRating: s(phone?.quality_rating, 20), nameStatus: s(phone?.name_status, 40), accountName: s(waba?.name) };
 }
 
-/** Plantillas APROBADAS de la WABA (solo lectura). */
+/**
+ * ¿Se puede enviar rellenando solo las variables del cuerpo? No, si la cabecera es multimedia o de ubicación (exige un
+ * fichero) o lleva variables, o si algún botón lleva variables o es de código (p. ej. una URL dinámica o un OTP).
+ */
+export function sendableTemplate(components: any[]): boolean {
+  const hasVar = (v: unknown) => typeof v === "string" && /\{\{\s*\d{1,2}\s*\}\}/.test(v);
+  for (const c of components) {
+    const type = String(c?.type ?? "").toUpperCase();
+    if (type === "HEADER" && (String(c?.format ?? "TEXT").toUpperCase() !== "TEXT" || hasVar(c?.text))) return false;
+    if (type === "BUTTONS" && (Array.isArray(c?.buttons) ? c.buttons : []).some((b: any) => hasVar(b?.url) || hasVar(b?.text) || ["OTP", "COPY_CODE", "FLOW", "CATALOG", "MPM"].includes(String(b?.type ?? "").toUpperCase()))) return false;
+  }
+  return true;
+}
+
+/** Plantillas APROBADAS de la WABA (solo lectura) que se pueden enviar con las variables del cuerpo. */
 export async function listTemplates(fetchImpl: GraphFetch, c: Pick<WhatsappCredentials, "wabaId" | "accessToken">): Promise<WhatsappTemplate[]> {
   const out: WhatsappTemplate[] = [];
   const j = await call(fetchImpl, c.accessToken, "GET", `${encodeURIComponent(c.wabaId)}/message_templates?fields=name,status,language,category,components&limit=100`);
   for (const t of Array.isArray(j?.data) ? j.data : []) {
     if (String(t?.status ?? "").toUpperCase() !== "APPROVED") continue;
+    // Solo se envían las variables del cuerpo: se descartan las que piden datos en la cabecera o en los botones
+    if (!sendableTemplate(Array.isArray(t.components) ? t.components : [])) continue;
     const body = String((Array.isArray(t.components) ? t.components : []).find((x: any) => String(x?.type).toUpperCase() === "BODY")?.text ?? "").slice(0, 1024);
     const name = String(t.name ?? "");
     const language = String(t.language ?? "");

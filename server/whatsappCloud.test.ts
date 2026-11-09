@@ -584,3 +584,18 @@ describe("revisión: una respuesta automática por conversación y lote", () => 
     expect(store.msgs.filter((m) => m.origin === "ai_auto")).toHaveLength(2);
   });
 });
+
+describe("revisión: plantillas con variables fuera del cuerpo", () => {
+  it("se descartan las de cabecera multimedia o con variables y las de botones con variables o código", async () => {
+    const body = { type: "BODY", text: "Hola {{1}}" };
+    const templates = [
+      { name: "solo_cuerpo", status: "APPROVED", language: "es", components: [{ type: "HEADER", format: "TEXT", text: "Aviso" }, body, { type: "BUTTONS", buttons: [{ type: "QUICK_REPLY", text: "Sí" }, { type: "URL", text: "Ver", url: "https://ejemplo.es/reservas" }] }] },
+      { name: "cabecera_imagen", status: "APPROVED", language: "es", components: [{ type: "HEADER", format: "IMAGE" }, body] },
+      { name: "cabecera_variable", status: "APPROVED", language: "es", components: [{ type: "HEADER", format: "TEXT", text: "Hola {{1}}" }, body] },
+      { name: "boton_url_variable", status: "APPROVED", language: "es", components: [body, { type: "BUTTONS", buttons: [{ type: "URL", text: "Ver", url: "https://ejemplo.es/r/{{1}}" }] }] },
+      { name: "codigo", status: "APPROVED", language: "es", components: [body, { type: "BUTTONS", buttons: [{ type: "OTP", text: "Copiar" }] }] },
+    ];
+    const { svc } = setup({ graph: fakeGraph({ templates }) });
+    expect((await svc.templates()).map((t) => t.name)).toEqual(["solo_cuerpo"]);
+  });
+});
