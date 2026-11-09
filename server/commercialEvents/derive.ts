@@ -223,7 +223,8 @@ function trialData(t: TrialRequest) {
     extensionsUsed: t.extensionsUsed,
     convertedSubscriptionId: t.convertedSubscriptionId,
     ...(p ? { sector: p.sector, country: p.country, marketingConsent: p.marketingConsent } : {}),
-    ...(a ? { source: a.source, medium: a.medium, campaign: a.campaign, referrerHost: a.referrerHost } : {}),
+    ...(a ? { source: a.source, medium: a.medium, campaign: a.campaign, referrerHost: a.referrerHost, adClick: a.adClick ?? null } : {}),
+    ...(t.configuration?.test ? { test: true } : {}),
   });
 }
 

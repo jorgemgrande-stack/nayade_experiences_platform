@@ -127,7 +127,7 @@ describe.skipIf(!ON)("rendimiento de Essential (opt-in PERF=1, MySQL en Docker)"
 
   it(`registros simultáneos y creación de ${N_TENANTS} empresas`, async () => {
     const reg = await measure(`registro público (POST /public/trial)`, N_TENANTS, N_TENANTS, (i) =>
-      s.cp("POST", "/public/trial", { body: { email: `perf${i}-${s.run}@perf${i}.example`, companyName: `Perf Empresa ${i} ${s.run}`, idempotencyKey: crypto.randomBytes(12).toString("hex") } }).then((r) => track(r, "registro")),
+      s.cp("POST", "/public/trial", { body: { email: `perf${i}-${s.run}@perf${i}.example`, companyName: `Perf Empresa ${i} ${s.run}`, termsAccepted: true, termsVersion: "2026-10-21", idempotencyKey: crypto.randomBytes(12).toString("hex") } }).then((r) => track(r, "registro")),
     (r) => r.status === 202);
     expect(reg.every((r) => r.status === 202)).toBe(true);
     const ver = await measure(`verificación + aprovisionamiento real de la BD`, N_TENANTS, N_TENANTS, (i) => s.cp("POST", "/public/trial/verify", { body: s.verificationLink(`perf${i}-${s.run}@perf${i}.example`) }).then((r) => track(r, "verificación")), is200);

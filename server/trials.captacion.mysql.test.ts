@@ -80,4 +80,29 @@ describe.skipIf(!URL_)("captación de la prueba con MySQL real", () => {
     expect(s.totals).toEqual({ visit: 2, form_start: 1 });
     expect(s.channels).toEqual([{ channel: "google", visit: 2, form_start: 0 }, { channel: "directo", visit: 0, form_start: 1 }]);
   });
+
+  it("condiciones con su versión, marca de prueba técnica (sin cambiar estado ni versión) y canales técnicos (0047)", async () => {
+    const r = await svc.register({
+      email: "tecnica@verificacion.example",
+      companyName: "Verificación técnica",
+      configuration: { plan: "essential", addons: [] },
+      terms: { accepted: true, version: "2026-10-21" },
+      attribution: { source: "verificacion-mysql" },
+      idempotencyKey: "idem-captacion-0000000009",
+    });
+    expect(r.trial.configuration.terms).toEqual({ acceptedAt: clock, version: "2026-10-21" });
+    const marked = await svc.markTest(r.trial.id, "Alta de verificación técnica", "op:test");
+    expect(marked.configuration.test).toMatchObject({ reason: "Alta de verificación técnica", actor: "op:test" });
+    expect(marked.version).toBe(r.trial.version);
+    expect(marked.state).toBe("pending_verification");
+    const store = new MysqlTrialStore(pool);
+    expect((await store.events(r.trial.id)).filter((e) => e.action === "marked_test")).toHaveLength(1);
+    const f = await store.funnel({ from: clock - 3600_000, to: clock + 3600_000 });
+    expect(f.rows.some((x) => x.channel === "verificacion-mysql")).toBe(false);
+    expect(f.excluded).toBe(1);
+    const c = new MysqlTrialFunnelCounter(pool);
+    expect(await c.markTestChannel({ channel: "verificacion-mysql", reason: "Visitas de verificación", actor: "op:test", createdAt: clock })).toBe(true);
+    expect(await c.markTestChannel({ channel: "verificacion-mysql", reason: "Otra vez", actor: "op:test", createdAt: clock })).toBe(false);
+    expect((await c.testChannels()).map((x) => x.channel)).toEqual(["verificacion-mysql"]);
+  });
 });

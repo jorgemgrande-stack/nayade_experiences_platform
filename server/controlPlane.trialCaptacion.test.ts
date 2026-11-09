@@ -163,8 +163,11 @@ describe("normalización de los datos del formulario", () => {
   });
   it("la procedencia descarta correos, números largos, URLs completas y parámetros", () => {
     expect(normalizeAttribution({ source: "ana@correo.es", medium: "612345678", campaign: "Otoño 2026", referrerHost: "https://x.com/a", landingPath: "/prueba-gratuita?utm=1" })).toEqual({
-      source: null, medium: null, campaign: "otoño-2026", term: null, content: null, referrerHost: null, landingPath: "/prueba-gratuita",
+      source: null, medium: null, campaign: "otoño-2026", term: null, content: null, referrerHost: null, landingPath: "/prueba-gratuita", adClick: null,
     });
+    // Del clic de anuncio solo la red conocida, nunca el identificador
+    expect(normalizeAttribution({ adClick: "google" })?.adClick).toBe("google");
+    expect(normalizeAttribution({ source: "x", adClick: "Cj0KCQ-identificador" })?.adClick).toBeNull();
     expect(normalizeAttribution({})).toBeNull();
     // Un teléfono con separadores tampoco pasa como UTM
     expect(normalizeAttribution({ source: "+34-600-111-222", medium: "600.111.222", campaign: "black-friday-2026" })).toMatchObject({ source: null, medium: null, campaign: "black-friday-2026" });
@@ -196,14 +199,24 @@ describe("alta con el formulario nuevo", () => {
     expect(JSON.stringify(mine)).not.toMatch(/Lucía|600 111|lucia@/);
   });
 
-  it("sin nombre o sin aceptación expresa no se acepta; el formulario anterior sigue valiendo", async () => {
+  it("sin nombre o sin aceptación expresa no se acepta; el formulario anterior solo con la aceptación y su versión", async () => {
     expect((await signup("sin-nombre@taller.example", "Taller", { ...FORM, fullName: "" })).status).toBe(400);
     expect((await signup("sin-acepta@taller.example", "Taller", { ...FORM, termsAccepted: false })).status).toBe(400);
-    expect((await signup("antiguo@taller.example", "Taller Antiguo", {})).status).toBe(202);
+    // Formulario anterior (solo correo y empresa) sin aceptación: 400 con el motivo para la persona y nada creado
+    const old = await signup("sin-condiciones@taller.example", "Taller Viejo", {});
+    expect(old.status).toBe(400);
+    expect(old.json.message).toBe("Hay que aceptar la política de privacidad y las condiciones de la prueba");
+    const noVersion = await signup("sin-version@taller.example", "Taller Viejo", { termsAccepted: true });
+    expect(noVersion.status).toBe(400);
+    expect(noVersion.json.message).toMatch(/versión de las condiciones/);
+    expect((await trialStore.list({})).some((x) => x.email.startsWith("sin-condiciones@") || x.email.startsWith("sin-version@"))).toBe(false);
+    expect((await signup("antiguo@taller.example", "Taller Antiguo", { termsAccepted: true, termsVersion: "2026-10-21" })).status).toBe(202);
     // Claves de procedencia desconocidas (gclid…) se descartan sin impedir el alta
     expect((await signup("gclid@taller.example", "Taller Gclid", { ...FORM, attribution: { source: "bing", gclid: "abc123" } })).status).toBe(202);
     const t = (await trialStore.list({})).find((x) => x.email === "antiguo@taller.example")!;
     expect(t.configuration.profile).toBeUndefined();
+    // La versión aceptada queda registrada en todas las altas públicas
+    expect(t.configuration.terms).toEqual({ acceptedAt: expect.any(Number), version: "2026-10-21" });
   });
 
   it("campo trampa: misma respuesta y no se crea nada", async () => {
@@ -273,5 +286,45 @@ describe("contador sin la migración 0046", () => {
     await expect(c.counts({ from: "2026-11-01", to: "2026-11-09" })).resolves.toEqual([]);
     const other = new MysqlTrialFunnelCounter(pool(Object.assign(new Error("down"), { code: "ECONNREFUSED" })));
     await expect(other.add("visit", { day: "2026-11-09", channel: "directo", medium: "", campaign: "" })).rejects.toThrow("down");
+  });
+});
+
+describe("registros técnicos o de prueba: fuera del embudo, sin borrar nada", () => {
+  it("marcar una prueba es una acción auditada, idempotente y con permiso de escritura", async () => {
+    clock += 25 * 3600_000; // fuera del límite de altas por conexión de las pruebas anteriores
+    expect((await signup("tecnica@verificacion.example", "Verificación técnica", { ...FORM, attribution: { source: "verificacion-interna" } })).status).toBe(202);
+    const t = (await trialStore.list({})).find((x) => x.email === "tecnica@verificacion.example")!;
+    expect((await call("POST", `/trials/${t.id}/mark-test`, { token: CORE, body: { reason: "Alta de verificación técnica" } })).status).toBe(403);
+    expect((await call("POST", `/trials/${t.id}/mark-test`, { body: { reason: "no" } })).status).toBe(400);
+    const r = await call("POST", `/trials/${t.id}/mark-test`, { body: { reason: "Alta de verificación técnica" } });
+    expect(r.status).toBe(200);
+    expect(r.json.trial.configuration.test).toMatchObject({ reason: "Alta de verificación técnica" });
+    expect(r.json.trial.state).toBe(t.state);
+    expect((await call("POST", `/trials/${t.id}/mark-test`, { body: { reason: "Otra vez, ya marcada" } })).status).toBe(200);
+    const notes = (await trialStore.events(t.id)).filter((e) => e.action === "marked_test");
+    expect(notes).toHaveLength(1);
+    expect(notes[0].detail).toBe("Alta de verificación técnica");
+  });
+
+  it("el embudo excluye las pruebas marcadas y los canales técnicos (visitas incluidas) y dice cuántos", async () => {
+    clock += 25 * 3600_000; // fuera del límite de altas por conexión de las pruebas anteriores
+    const day = new Date(clock).toISOString().slice(0, 10);
+    await call("POST", "/public/trial/funnel", { token: null, body: { step: "visit", attribution: { source: "canal-tecnico" } } });
+    expect((await signup("canal@tecnico.example", "Canal técnico", { ...FORM, attribution: { source: "canal-tecnico" } })).status).toBe(202);
+    const before = (await call("GET", `/trials/funnel?from=${day}&to=${day}`, {})).json;
+    expect(before.rows.some((x: { channel: string }) => x.channel === "canal-tecnico")).toBe(true);
+    expect((await call("POST", "/trials/funnel/test-channels", { token: CORE, body: { channel: "canal-tecnico", reason: "Visitas de verificación" } })).status).toBe(403);
+    const m = await call("POST", "/trials/funnel/test-channels", { body: { channel: "Canal-Tecnico", reason: "Visitas de verificación" } });
+    expect(m.status).toBe(201);
+    expect((await call("POST", "/trials/funnel/test-channels", { body: { channel: "canal-tecnico", reason: "Visitas de verificación" } })).json.marked).toBe(false);
+    const after = (await call("GET", `/trials/funnel?from=${day}&to=${day}`, {})).json;
+    expect(after.rows.some((x: { channel: string }) => x.channel === "canal-tecnico")).toBe(false);
+    expect(after.landing.channels.some((x: { channel: string }) => x.channel === "canal-tecnico")).toBe(false);
+    expect(after.excluded.channels).toContain("canal-tecnico");
+    // Un canal que no encaja con lo que se guarda se rechaza en lugar de no excluir nada
+    expect((await call("POST", "/trials/funnel/test-channels", { body: { channel: "<script>", reason: "Visitas de verificación" } })).status).toBe(400);
+    expect(after.excluded.trials).toBeGreaterThanOrEqual(1);
+    // Nada se ha borrado: el contador sigue teniendo la visita
+    expect(Array.from(funnel.rows.values()).some((x) => x.channel === "canal-tecnico")).toBe(true);
   });
 });

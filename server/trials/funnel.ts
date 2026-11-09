@@ -22,9 +22,21 @@ export interface LandingCountRow {
   count: number;
 }
 
+/** Canal marcado como técnico o de prueba (visitas y altas de verificación): fuera del embudo, sin borrar nada. */
+export interface TestChannel {
+  channel: string;
+  reason: string;
+  actor: string;
+  createdAt: number;
+}
+
 export interface TrialFunnelCounter {
   add(step: LandingStep, key: { day: string; channel: string; medium: string; campaign: string }): Promise<void>;
   counts(f: { from: string; to: string }): Promise<LandingCountRow[]>;
+  /** Canales técnicos (CRM 0047). Sin la tabla, ninguno. */
+  testChannels(): Promise<TestChannel[]>;
+  /** Marca un canal como técnico (idempotente: si ya lo estaba, devuelve false). Sin la tabla, lanza. */
+  markTestChannel(c: TestChannel): Promise<boolean>;
 }
 
 export class MemoryTrialFunnelCounter implements TrialFunnelCounter {
@@ -37,6 +49,15 @@ export class MemoryTrialFunnelCounter implements TrialFunnelCounter {
   }
   async counts(f: { from: string; to: string }) {
     return Array.from(this.rows.values()).filter((r) => r.day >= f.from && r.day <= f.to);
+  }
+  tests = new Map<string, TestChannel>();
+  async testChannels() {
+    return Array.from(this.tests.values());
+  }
+  async markTestChannel(c: TestChannel) {
+    if (this.tests.has(c.channel)) return false;
+    this.tests.set(c.channel, { ...c });
+    return true;
   }
 }
 
@@ -68,6 +89,19 @@ export class MysqlTrialFunnelCounter implements TrialFunnelCounter {
     }
     return rows.map((r) => ({ day: String(r.day), step: r.step as LandingStep, channel: String(r.channel), medium: String(r.medium), campaign: String(r.campaign), count: Number(r.count) }));
   }
+  async testChannels() {
+    try {
+      const [rows] = await this.pool.query<mysql.RowDataPacket[]>("SELECT channel, reason, actor, created_at FROM funnel_test_channels ORDER BY created_at");
+      return rows.map((r) => ({ channel: String(r.channel), reason: String(r.reason), actor: String(r.actor), createdAt: Number(r.created_at) }));
+    } catch (e) {
+      if (missingTable(e)) return [];
+      throw e;
+    }
+  }
+  async markTestChannel(c: TestChannel) {
+    const [r] = await this.pool.query<mysql.ResultSetHeader>("INSERT IGNORE INTO funnel_test_channels (channel, reason, actor, created_at) VALUES (?, ?, ?, ?)", [c.channel, c.reason, c.actor, c.createdAt]);
+    return r.affectedRows === 1;
+  }
 }
 
 const dayOf = (ms: number) => new Date(ms).toISOString().slice(0, 10);
@@ -80,8 +114,9 @@ export async function countLandingStep(counter: TrialFunnelCounter | null, step:
   return true;
 }
 
-/** Totales por paso y por canal en un rango de días. */
-export function summarizeLanding(rows: LandingCountRow[]) {
+/** Totales por paso y por canal en un rango de días (sin los canales técnicos). */
+export function summarizeLanding(all: LandingCountRow[], excludeChannels?: ReadonlySet<string>) {
+  const rows = excludeChannels ? all.filter((r) => !excludeChannels.has(r.channel)) : all;
   const totals: Record<LandingStep, number> = { visit: 0, form_start: 0 };
   const byChannel = new Map<string, Record<LandingStep, number>>();
   for (const r of rows) {
