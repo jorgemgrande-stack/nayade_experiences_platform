@@ -91,6 +91,8 @@ describe("revisión del 09/11/2026: unificación comercial de Elephant Net", () 
       expect([...p.catalog.bundleOf].sort(), np.key).toEqual([...np.legacyKeys].sort());
       // Sin comparaciones con la compra suelta
       expect(JSON.stringify({ d: p.description, c: p.commercial }), np.key).not.toMatch(/descuento|por separado|submódulos|sueltos/i);
+      // La web pública no usa «Próximamente»: el estado real va en includedFeatures[].status
+      expect(JSON.stringify({ t: p.tagline, d: p.description, c: { ...p.commercial, includedFeatures: undefined } }), np.key).not.toMatch(/próximamente/i);
       expect(p.name).toBe(np.name);
       expect(p.name).toBe(np.name);
       expect(p.catalog.legacy).toBeUndefined();

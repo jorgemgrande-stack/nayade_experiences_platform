@@ -51,6 +51,8 @@ export interface NetUnificationChange {
   implementationLevel?: { from: 1 | 2 | 3 | undefined; to: 1 | 2 | 3 };
   /** Marca de heredado (solo se pone si no la tiene). */
   legacy?: { replacedBy: string; since: string };
+  /** Solución: sus textos públicos dejan de decir «Próximamente» (scrubComingSoon). */
+  scrubText?: boolean;
   /** Campos de la ficha: valor publicado de partida y valor nuevo. */
   fields?: Partial<Record<keyof Commercial, FieldChange>>;
 }
@@ -77,6 +79,26 @@ const DESCRIPTION_FROM: Record<string, string> = {
   "social-token-net-complete": "Comunidad y fidelización en un solo paquete.",
   "life-net": "",
 };
+
+/**
+ * La web pública no usa la palabra «Próximamente» (09/11/2026): lo pendiente se nombra «en implantación» y el estado real
+ * va en `includedFeatures[].status`. Idempotente: un texto ya limpio no cambia.
+ */
+export function scrubComingSoon(t: string): string {
+  return t
+    .replace(/Próximamente: (\p{L})/gu, (_m, c: string) => c.toUpperCase())
+    .replace(/llegarán próximamente/g, "están en implantación")
+    .replace(/llegará próximamente/g, "está en implantación")
+    .replace(/se abrirá próximamente/g, "se abrirá en breve")
+    .replace(/ \(próximamente\)/g, " (en preparación)")
+    .replace(/: próximamente,/g, ": en implantación,")
+    .replace(/próximamente/gi, "en implantación");
+}
+const hasComingSoonWord = (v: unknown) => /próximamente/i.test(JSON.stringify(v ?? null));
+/** Aplica `scrubComingSoon` a todas las cadenas de un valor JSON. */
+const scrubDeep = <T,>(v: T): T => (typeof v === "string" ? (scrubComingSoon(v) as T) : Array.isArray(v) ? (v.map(scrubDeep) as T) : v && typeof v === "object" ? (Object.fromEntries(Object.entries(v).map(([k, x]) => [k, scrubDeep(x)])) as T) : v);
+/** Campos de texto de una solución que no pueden decir «Próximamente» (los publica la web). */
+const TEXT_FIELDS = ["headline", "valueProposition", "longDescription", "problem", "benefits", "excludes", "faq", "terms", "seo", "howItWorks"] as const;
 
 const areasOf = (areas: readonly NetArea[]) => areas.map((a) => ({ title: a.title, features: a.features.map((f) => ({ label: f.label, status: f.status })) }));
 
@@ -135,8 +157,9 @@ export const NET_UNIFICATION_2026_11_09: readonly NetUnificationChange[] = [
       ...(p.key === "life-net" ? {} : { name: { from: `${p.name} Complete`, to: p.name } }),
       // Nombre, línea corta y descripción: los de la semilla (sin «Complete» ni comparaciones con la compra suelta); Life
       // Net no tiene descripción en la semilla y toma el resumen del producto
-      description: { from: DESCRIPTION_FROM[p.key] ?? "", to: seedOf(p.key)?.description || p.summary },
-      ...(TAGLINE_FROM[p.key] && seedOf(p.key)?.tagline ? { tagline: { from: TAGLINE_FROM[p.key], to: seedOf(p.key)!.tagline } } : {}),
+      description: { from: DESCRIPTION_FROM[p.key] ?? "", to: scrubComingSoon(seedOf(p.key)?.description || p.summary) },
+      ...(TAGLINE_FROM[p.key] && seedOf(p.key)?.tagline ? { tagline: { from: TAGLINE_FROM[p.key], to: scrubComingSoon(seedOf(p.key)!.tagline) } } : {}),
+      scrubText: true,
       // Hotel Net: PMS, motor de reservas, check-in y check-out y housekeeping ya están en el Core (nivel 1, como las demás
       // soluciones); solo el Channel Manager queda pendiente, incluido como «Próximamente»
       ...(p.key === "hotel-net-complete" ? { status: { from: "in_preparation" as const, to: "on_request" as const }, implementationLevel: { from: 3 as const, to: 1 as const } } : {}),
@@ -184,12 +207,14 @@ function isDone(d: ProductDraft, c: NetUnificationChange): boolean {
   if (c.status && d.catalog.commercialStatus !== c.status.to) return false;
   if (c.implementationLevel && d.catalog.implementationLevel !== c.implementationLevel.to) return false;
   if (c.legacy && d.catalog.legacy?.replacedBy !== c.legacy.replacedBy) return false;
-  for (const [f, v] of Object.entries(c.fields ?? {})) if (!same((d.commercial as Record<string, unknown> | undefined)?.[f], v!.to)) return false;
+  for (const [f, v] of Object.entries(c.fields ?? {})) if (!same((d.commercial as Record<string, unknown> | undefined)?.[f], scrubDeep(v!.to))) return false;
+  if (c.scrubText && (hasComingSoonWord(d.tagline) || hasComingSoonWord(d.description) || TEXT_FIELDS.some((f) => hasComingSoonWord((d.commercial as Record<string, unknown> | undefined)?.[f])))) return false;
   return true;
 }
 
 function target(d: ProductDraft, c: NetUnificationChange): ProductDraft {
-  const commercial = c.fields ? { ...(d.commercial as Commercial), ...Object.fromEntries(Object.entries(c.fields).map(([f, v]) => [f, v!.to])) } : d.commercial;
+  const merged = c.fields ? { ...(d.commercial as Commercial), ...Object.fromEntries(Object.entries(c.fields).map(([f, v]) => [f, v!.to])) } : d.commercial;
+  const commercial = merged && c.scrubText ? { ...merged, ...Object.fromEntries(TEXT_FIELDS.filter((f) => merged[f] !== undefined).map((f) => [f, scrubDeep(merged[f])])) } : merged;
   return productDraft.parse({
     ...d,
     ...(c.name ? { name: c.name.to } : {}),
@@ -244,7 +269,7 @@ export async function applyNetUnification(svc: WebAdminService, store: WebStore,
     if (c.fields && !d.commercial) problems.push("no tiene ficha comercial");
     for (const [f, v] of Object.entries(c.fields ?? {})) {
       const now = (d.commercial as Record<string, unknown> | undefined)?.[f];
-      if (!same(now, v!.from) && !same(now, v!.to)) problems.push(`el campo «${f}» de la ficha ya no es el de partida`);
+      if (!same(now, v!.from) && !same(now, v!.to) && !same(now, scrubDeep(v!.to))) problems.push(`el campo «${f}» de la ficha ya no es el de partida`);
     }
     if (problems.length) {
       r.conflicts.push(`${c.key}: ${problems.join("; ")}; se deja como lo decidió el CRM`);
@@ -258,6 +283,7 @@ export async function applyNetUnification(svc: WebAdminService, store: WebStore,
       c.description ? "descripción" : null,
       c.tagline ? "línea corta" : null,
       c.fields ? `ficha (${Object.keys(c.fields).join(", ")})` : null,
+      c.scrubText && TEXT_FIELDS.some((f) => hasComingSoonWord((d.commercial as Record<string, unknown> | undefined)?.[f])) ? "textos sin «Próximamente»" : null,
     ].filter(Boolean);
     r.changed.push(`${c.key}: ${what.join("; ")}`);
     if (!o.apply) continue;
