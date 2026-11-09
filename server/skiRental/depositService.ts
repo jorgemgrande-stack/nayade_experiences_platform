@@ -18,6 +18,7 @@ import {
   assertCents,
   assertChargeTransition,
   assertSettlementReason,
+  attemptKey,
 
   chargeSaleKey,
   collectMovements,
@@ -38,6 +39,7 @@ import {
   type PayMethod,
 } from "../../shared/skiDeposits";
 import { SKI_RENTAL_ID } from "./manifest";
+import { STALE_PENDING_SALE_MS } from "../tpvSaleIdempotency";
 import { SkiRentalError } from "./service";
 import type { SkiRentalStore } from "./store";
 import type { CashSessionInfo, TenantDbDepositStore } from "./depositStore";
@@ -70,7 +72,11 @@ export interface DepositDeps {
    * la venta del TPV de un cargo o de una liquidación; si no se obtiene a tiempo, lanza CONFLICT sin ejecutar nada.
    */
   lock: <T>(scope: "ski_charge" | "ski_deposit", key: string, fn: () => Promise<T>) => Promise<T>;
+  /** Anula una venta «pendiente» abandonada con esa clave (tpvSaleIdempotency.abandonStalePendingSale). */
+  abandonStaleSale: (key: string) => Promise<boolean>;
 }
+
+const SALE_IN_FLIGHT = "La venta de este cobro sigue registrándose en el TPV: espera unos segundos y vuelve a intentarlo";
 
 function rule<T>(fn: () => T, code: SkiRentalError["code"] = "invalid_input"): T {
   try {
@@ -125,6 +131,21 @@ export class SkiDepositService {
     const x = await this.d.store.charge(id);
     if (!x || x.siteId !== siteId) throw new SkiRentalError("not_found", "Cargo no encontrado en esta sede");
     return x;
+  }
+  /**
+   * Ventas del TPV de una familia de claves (cargo o liquidación): la cobrada si la hay, si alguna sigue «pendiente» y la
+   * clave del siguiente intento (el más alto + 1). Una «pendiente» abandonada (proceso caído a mitad del cobro, más de
+   * 15 min) se anula primero y deja de contar.
+   */
+  private async keyedState(base: string) {
+    let sales = await this.d.store.keyedSales(base);
+    const stale = sales.filter((s) => s.status === "pending" && s.createdAt < Date.now() - STALE_PENDING_SALE_MS);
+    if (stale.length) {
+      for (const s of stale) await this.d.abandonStaleSale(s.key);
+      sales = await this.d.store.keyedSales(base);
+    }
+    const last = sales.reduce((m, s) => Math.max(m, s.attempt), 0);
+    return { paid: sales.find((s) => s.status === "paid") ?? null, pending: sales.some((s) => s.status === "pending"), nextKey: attemptKey(base, last + 1) };
   }
   /** La sesión debe estar abierta y ser de una caja de esta sede (sin sede = la principal). */
   private async assertSession(siteId: string, s: CashSessionInfo | null) {
@@ -296,14 +317,15 @@ export class SkiDepositService {
       let saleId: number | null = claimed.damageSaleId;
       let ticketNumber: string | null = null;
       if (plan.retainedCents > 0 && saleId == null) {
-        const key = retentionSaleKey(depositId, plan.retainedCents);
+        const base = retentionSaleKey(depositId, plan.retainedCents);
         // Una venta de un intento anterior (quizá en la caja ya cerrada) se recupera por su clave: no se duplica. También
-        // en una reserva nueva: un intento interrumpido de antes pudo dejar la venta cobrada y la fianza «cobrada»
-        const prev = await this.d.store.saleByKey(key);
-        if (prev && prev.status === "paid") saleId = prev.id;
-        else if (prev && prev.status !== "pending") {
-          throw new SkiRentalError("conflict", "La venta de daños de esta liquidación está anulada o devuelta en el TPV: revisa la venta con administración antes de liquidar la fianza");
-        } else {
+        // en una reserva nueva: un intento interrumpido de antes pudo dejar la venta cobrada y la fianza «cobrada».
+        // Anulada o devuelta en el TPV: su clave está gastada y se usa la siguiente
+        const st = await this.keyedState(base);
+        if (st.paid) saleId = st.paid.id;
+        else if (st.pending) throw new SkiRentalError("conflict", SALE_IN_FLIGHT);
+        else {
+          const key = st.nextKey;
           try {
             const createSale = await getSale();
             const s = await createSale({
@@ -320,10 +342,13 @@ export class SkiDepositService {
           } catch (e) {
             // ¿Llegó el TPV a grabarla? Cobrada (fallo tras crearla): se sigue con ella. Ninguna: la fianza vuelve a
             // «cobrada» para repetir la liquidación. No se sabe (BD caída) o a medias: sigue «liquidándose».
-            const after = await this.d.store.saleByKey(key).catch(() => undefined);
-            if (after === null) await this.d.store.releaseSettlement(depositId).catch(() => undefined);
-            if (after?.status !== "paid") throw e;
-            saleId = after.id;
+            const after = await this.d.store.keyedSales(base).catch(() => null);
+            const paid = after?.find((s) => s.status === "paid");
+            if (!paid) {
+              if (after && !after.some((s) => s.status === "pending")) await this.d.store.releaseSettlement(depositId).catch(() => undefined);
+              throw e;
+            }
+            saleId = paid.id;
           }
         }
         await this.d.store.recordSettlementSale(depositId, saleId);
@@ -392,12 +417,12 @@ export class SkiDepositService {
         const cur = await this.siteCharge(siteId, chargeId);
         if (cur.status === "paid") return { charge: cur, replayed: true, ticketNumber: null as string | null };
         if (cur.status === "cancelled") throw new SkiRentalError("conflict", "El cargo está anulado");
-        const sales = await this.d.store.chargeSales(chargeId);
-        const done = sales.find((s) => s.status === "paid");
-        if (done) return { charge: await this.d.store.finishCharge(chargeId, done, actor), replayed: true, ticketNumber: done.ticketNumber };
-        if (sales.some((s) => s.status === "pending")) throw new SkiRentalError("conflict", "La venta de este cargo sigue registrándose en el TPV: espera unos segundos y vuelve a intentarlo");
+        const base = chargeSaleKey(chargeId);
+        const st = await this.keyedState(base);
+        if (st.paid) return { charge: await this.d.store.finishCharge(chargeId, st.paid, actor), replayed: true, ticketNumber: st.paid.ticketNumber };
+        if (st.pending) throw new SkiRentalError("conflict", SALE_IN_FLIGHT);
         // Las ventas anuladas o devueltas en el TPV gastaron su clave: el cobro nuevo usa la siguiente
-        const key = chargeSaleKey(chargeId, sales.length + 1);
+        const key = st.nextKey;
         const c = await this.d.store
           .claimCharge(
             chargeId,
@@ -426,7 +451,7 @@ export class SkiDepositService {
         } catch (e) {
           // ¿Llegó el TPV a grabar la venta? Cobrada: se concilia. Ninguna: vuelve a «pendiente». No se sabe (BD caída)
           // o sigue a medias: se queda «cobrándose» y el reintento lo resuelve.
-          const after = await this.d.store.chargeSales(chargeId).catch(() => null);
+          const after = await this.d.store.keyedSales(base).catch(() => null);
           const paid = after?.find((s) => s.status === "paid");
           if (paid) return { charge: await this.d.store.finishCharge(chargeId, paid, actor), replayed: false, ticketNumber: paid.ticketNumber };
           if (after && !after.some((s) => s.status === "pending")) await this.d.store.releaseCharge(chargeId).catch(() => undefined);
@@ -450,13 +475,12 @@ export class SkiDepositService {
       return this.d.lock("ski_charge", String(chargeId), async () => {
         const cur = await this.siteCharge(siteId, chargeId);
         if (cur.status === "pending" || cur.status === "paying") {
-          const sales = await this.d.store.chargeSales(chargeId);
-          const paid = sales.find((s) => s.status === "paid");
+          const { paid, pending } = await this.keyedState(chargeSaleKey(chargeId));
           if (paid) {
             await this.d.store.finishCharge(chargeId, paid, actor);
             throw new SkiRentalError("conflict", `El cargo ya está cobrado en el TPV${paid.ticketNumber ? ` (ticket ${paid.ticketNumber})` : ""}: no se puede anular`);
           }
-          if (sales.some((s) => s.status === "pending")) throw new SkiRentalError("conflict", "La venta de este cargo sigue registrándose en el TPV: espera unos segundos y vuelve a intentarlo");
+          if (pending) throw new SkiRentalError("conflict", SALE_IN_FLIGHT);
           // «Cobrándose» sin venta: un intento interrumpido que no llegó al TPV; vuelve a «pendiente» para anularlo
           if (cur.status === "paying") await this.d.store.releaseCharge(chargeId);
         }

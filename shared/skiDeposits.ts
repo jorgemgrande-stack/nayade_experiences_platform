@@ -184,12 +184,19 @@ export function assertChargeTransition(from: ChargeStatus, to: ChargeStatus): vo
 
 /**
  * Claves de idempotencia del TPV (`[A-Za-z0-9_-]{8,64}`): una venta por liquidación de fianza (con el importe retenido,
- * para que una liquidación nueva con otro plan nunca reutilice una venta anterior) y una por cargo. Si la venta de un
- * cargo se anuló o devolvió en el TPV sin cobrarse el cargo, su clave ya está gastada (el TPV devolvería esa misma venta):
- * el siguiente intento usa `-pay-2`, `-pay-3`…
+ * para que una liquidación nueva con otro plan nunca reutilice una venta anterior) y una por cargo. Si la venta se
+ * anuló o devolvió en el TPV sin cobrarse el cargo o liquidarse la fianza, su clave ya está gastada (el TPV devolvería
+ * esa misma venta): el siguiente intento usa `<base>-2`, `<base>-3`…
  */
-export const retentionSaleKey = (depositId: number, retainedCents: number) => `skidep-${depositId}-r${retainedCents}`;
-export const chargeSaleKey = (chargeId: number, attempt = 1) => `skichg-${chargeId}-pay${attempt > 1 ? `-${attempt}` : ""}`;
+export const attemptKey = (base: string, attempt = 1) => (attempt > 1 ? `${base}-${attempt}` : base);
+export const retentionSaleKey = (depositId: number, retainedCents: number, attempt = 1) => attemptKey(`skidep-${depositId}-r${retainedCents}`, attempt);
+export const chargeSaleKey = (chargeId: number, attempt = 1) => attemptKey(`skichg-${chargeId}-pay`, attempt);
+/** Intento de una clave de la familia `base` (1 = la base; 0 si no es de esa familia). */
+export function keyAttempt(base: string, key: string): number {
+  if (key === base) return 1;
+  const m = key.startsWith(`${base}-`) ? /^\d+$/.exec(key.slice(base.length + 1)) : null;
+  return m ? Number(m[0]) : 0;
+}
 
 /** Clave del cliente para no duplicar un cargo manual con un doble clic. */
 export const REQUEST_KEY_RE = /^[A-Za-z0-9_-]{8,64}$/;

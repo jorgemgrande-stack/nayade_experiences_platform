@@ -156,6 +156,8 @@ export function createPublicTrialRouter(o: { onboarding: TrialOnboardingService;
           country: z.string().max(4).optional(),
           termsAccepted: z.boolean().optional(),
           termsVersion: z.string().max(60).optional(),
+          // Versión de la política de privacidad mostrada (10/11/2026); opcional: el formulario anterior no la envía
+          privacyVersion: z.string().max(60).optional(),
           marketingConsent: z.boolean().optional(),
           attribution: attributionSchema.optional(),
           // Plan personal Life (08/11/2026): titular particular y nombre del hogar, nunca razón social; con su interruptor
@@ -172,7 +174,7 @@ export function createPublicTrialRouter(o: { onboarding: TrialOnboardingService;
       if (b.website) return void res.status(202).json(ACCEPTED);
       // Desde el 09/11/2026 toda alta pública exige la aceptación expresa con su versión (también la del formulario
       // anterior y la del plan Life): sin ella, 400 con el motivo para la persona y no se crea nada
-      const terms = { accepted: b.termsAccepted, version: b.termsVersion };
+      const terms = { accepted: b.termsAccepted, version: b.termsVersion, privacyVersion: b.privacyVersion };
       try {
         if (b.plan === LIFE_PLAN) await o.onboarding.registerLife({ email: b.email, holder: b.holder!, householdName: b.householdName ?? null, terms, idempotencyKey: b.idempotencyKey, ip: req.ip ?? null });
         else
