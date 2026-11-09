@@ -1,0 +1,82 @@
+/*
+ * «Suscripción» con el sistema visual del marketplace (/admin/ampliar). NO redefine tokens: usa los de
+ * `.cx-stage.cx-market` y los tonos `data-tone` de components/connect/connectStage.css (azul noche, azul eléctrico,
+ * violeta, magenta). Aquí solo hay piezas propias de la página: tarjeta de plan con su tono, caja de precios, pasos
+ * de la contratación y opciones seleccionables. Contraste AA en los dos modos:
+ *  - Botón del plan: blanco sobre el degradado del tono (violeta 5,7:1, eléctrico 4,9:1, magenta 4,7:1 en su tramo más claro).
+ *  - Textos sobre las tarjetas: los del tema (`--foreground`, `--muted-foreground`).
+ */
+
+/* Tarjeta de plan: borde y halo del tono del plan */
+.sx-plan {
+  position: relative;
+  border: 1px solid var(--border);
+  background-color: var(--card);
+  background-image: radial-gradient(28rem 14rem at 100% 0%, var(--tone-soft, transparent), transparent 70%);
+  box-shadow: 0 14px 36px -18px var(--cx-shadow);
+}
+.sx-plan[data-current="true"] { border-color: color-mix(in srgb, var(--tone) 70%, transparent); }
+/* Opción de crecimiento: anillo con el degradado del tono (solo cuando el catálogo la marca y es superior) */
+.sx-plan-growth {
+  border-color: transparent;
+  background:
+    radial-gradient(28rem 14rem at 100% 0%, var(--tone-soft), transparent 70%) padding-box,
+    linear-gradient(var(--card), var(--card)) padding-box,
+    linear-gradient(135deg, var(--tone) 0%, var(--tone-2) 100%) border-box;
+  border-width: 2px;
+  box-shadow: 0 22px 52px -20px color-mix(in srgb, var(--tone) 55%, transparent);
+}
+
+/* Botón del plan con el degradado de su tono */
+.sx-tone-cta { background-image: linear-gradient(120deg, var(--tone) 0%, var(--tone-2) 100%); color: #ffffff; }
+.sx-tone-cta:hover { filter: brightness(1.08); }
+.sx-tone-cta:disabled { filter: grayscale(0.4); opacity: 0.7; }
+
+/* Etiqueta del plan («Para empezar») en el tono */
+.sx-tone-tag { background-color: var(--tone-soft); color: var(--tone-text); }
+
+/* Caja de precios: mensual y anual del catálogo, separados */
+.sx-price { background-color: color-mix(in srgb, var(--muted) 80%, transparent); border: 1px solid var(--border); }
+
+/* Panel de estado dentro de la banda oscura (cristal) */
+.sx-glass { background: rgba(255, 255, 255, 0.06); border: 1px solid rgba(255, 255, 255, 0.14); backdrop-filter: blur(10px); }
+
+/* Indicador de estado de la cabecera sobre fondo oscuro */
+.sx-status-info { background: rgba(126, 162, 255, 0.18); color: #c9d6ff; border: 1px solid rgba(126, 162, 255, 0.4); }
+.sx-status-success { background: rgba(52, 211, 153, 0.16); color: #a7f3d0; border: 1px solid rgba(52, 211, 153, 0.4); }
+.sx-status-warning { background: rgba(251, 191, 36, 0.16); color: #fde68a; border: 1px solid rgba(251, 191, 36, 0.42); }
+.sx-status-danger { background: rgba(255, 107, 117, 0.16); color: #fecaca; border: 1px solid rgba(255, 107, 117, 0.45); }
+.sx-status-neutral { background: rgba(255, 255, 255, 0.1); color: #e5e9f5; border: 1px solid rgba(255, 255, 255, 0.22); }
+
+/* Pasos de la contratación */
+.sx-step-dot { border: 2px solid var(--border); color: var(--muted-foreground); background: var(--card); }
+.sx-step[data-state="current"] .sx-step-dot { border-color: transparent; color: #ffffff; background-image: linear-gradient(120deg, #3b47d9 0%, #6d28d9 100%); box-shadow: 0 0 0 4px color-mix(in srgb, #6d28d9 25%, transparent); }
+.sx-step[data-state="done"] .sx-step-dot { border-color: transparent; color: #ffffff; background-image: linear-gradient(120deg, #3b47d9 0%, #6d28d9 100%); }
+.sx-step-line { background-color: var(--border); }
+.sx-step-line[data-done="true"] { background-image: linear-gradient(90deg, #3b47d9 0%, #6d28d9 100%); }
+
+/* Opción seleccionable (plan, periodicidad, ampliación) */
+.sx-option { border: 1px solid var(--border); background-color: var(--card); transition: border-color 160ms ease, box-shadow 160ms ease; }
+.sx-option:hover { border-color: color-mix(in srgb, var(--tone, var(--primary)) 55%, var(--border)); }
+.sx-option[data-selected="true"] {
+  border-color: var(--tone, var(--primary));
+  box-shadow: 0 0 0 1px var(--tone, var(--primary)), 0 12px 30px -16px color-mix(in srgb, var(--tone, var(--primary)) 60%, transparent);
+  background-image: radial-gradient(22rem 10rem at 100% 0%, var(--tone-soft, transparent), transparent 70%);
+}
+.sx-option[aria-disabled="true"] { opacity: 0.85; }
+/* Foco visible con teclado (el radio real está oculto dentro de la etiqueta) */
+.sx-option:has(input:focus-visible) { outline: 2px solid var(--tone, var(--ring)); outline-offset: 2px; }
+
+/* Grupos desplegables (ampliaciones y comparativa en móvil) */
+.sx-details > summary { list-style: none; cursor: pointer; }
+.sx-details > summary::-webkit-details-marker { display: none; }
+.sx-details[open] > summary .sx-chevron { transform: rotate(180deg); }
+.sx-chevron { transition: transform 160ms ease; }
+
+/* Columna del plan actual en la comparativa */
+.sx-col-current { background-color: color-mix(in srgb, var(--primary) 7%, transparent); }
+
+@media (prefers-reduced-motion: reduce) {
+  .sx-option,
+  .sx-chevron { transition: none; }
+}

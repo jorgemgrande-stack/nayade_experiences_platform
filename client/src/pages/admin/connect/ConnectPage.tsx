@@ -73,7 +73,9 @@ export default function ConnectPage() {
       return next;
     });
   const data = catalog.data;
-  const items = catalog.items;
+  const all = catalog.items;
+  // Productos heredados (09/11/2026): solo en «Mis módulos», para quien los tiene; nunca en el escaparate
+  const items = useMemo(() => (state === "mine" ? all : all.filter((i) => !i.legacy)), [all, state]);
   const brands = data?.brands ?? brandHeaders(null);
   const view: ConnectView = { canPurchase: !!data?.canPurchase, interestEnabled: !!data?.interestEnabled, canRetryActivation: !!data?.canRetryActivation };
   const shown = useMemo(() => filterConnectItems(items, { query, category, state }), [items, query, category, state]);
@@ -86,7 +88,7 @@ export default function ConnectPage() {
     setCategory("all");
     setState("all");
   };
-  const mineCount = useMemo(() => filterConnectItems(items, { state: "mine" }).length, [items]);
+  const mineCount = useMemo(() => filterConnectItems(all, { state: "mine" }).length, [all]);
   const tiles = [
     { id: "connect" as const, title: brands.connect.title, count: items.filter((i) => brandOf(i) === "connect").length },
     { id: "net" as const, title: brands.net.title, count: items.filter((i) => brandOf(i) === "net").length },

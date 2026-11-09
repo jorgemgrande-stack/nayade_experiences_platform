@@ -42,6 +42,8 @@ export interface PanelCatalogItem {
   card: PanelCard | null;
   /** Estado de activación de ESTA empresa (null: no se pudo consultar; el panel usa lo que sepa por su cuenta). */
   activation: PanelActivation | null;
+  /** Producto heredado (retirado de la venta, 09/11/2026): la solución que lo incluye; null si se vende con normalidad. */
+  legacy: { replacedBy: string } | null;
 }
 
 type Img = { src: string; alt: string; caption?: string; mobileSrc?: string; focal?: { x: number; y: number }; kind?: "screenshot" | "illustration"; srcset?: { webp: string; avif: string } };
@@ -58,6 +60,12 @@ export interface PanelMedia {
 }
 
 export { DEFAULT_AUTOPLAY_MS, type PanelMarketplace } from "./panelMarketplace";
+
+/** Área de funcionalidades incluidas de una solución completa (`commercial.includedFeatures`). */
+export interface PanelIncludedArea {
+  title: string;
+  features: Array<{ label: string; status: "available" | "coming_soon" }>;
+}
 
 /** Ficha del marketplace: solo contenido publicado; los campos que falten llegan vacíos y el panel usa su reserva. */
 export interface PanelCard {
@@ -87,6 +95,8 @@ export interface PanelCard {
     media: PanelMedia;
     howItWorks: Array<{ title: string; text: string }>;
     promoLabel: string | null;
+    /** Funcionalidades incluidas por áreas (soluciones completas): operativas hoy o incluidas y pendientes. */
+    includedFeatures: PanelIncludedArea[];
     layout: { blocks: Array<{ id: string; visible: boolean }>; accentColor: string | null; heroStyle: string | null };
     cta: string;
     seo: { slug: string; title: string; description: string } | null;
@@ -115,6 +125,20 @@ const img = (v: unknown): Img | null => {
   };
 };
 const imgs = (v: unknown): Img[] => (Array.isArray(v) ? v.map(img).filter((x): x is Img => !!x) : []);
+
+/** Funcionalidades incluidas publicadas, con lectura tolerante (lo que no tenga la forma esperada no se muestra). */
+function includedFeatures(v: unknown): PanelIncludedArea[] {
+  if (!Array.isArray(v)) return [];
+  return v
+    .filter((a): a is { title: string; features: unknown[] } => !!a && typeof a.title === "string" && !!a.title && Array.isArray(a.features))
+    .map((a) => ({
+      title: a.title,
+      features: a.features
+        .filter((f): f is { label: string; status: "available" | "coming_soon" } => !!f && typeof (f as { label?: unknown }).label === "string" && ((f as { status?: unknown }).status === "available" || (f as { status?: unknown }).status === "coming_soon"))
+        .map((f) => ({ label: f.label, status: f.status })),
+    }))
+    .filter((a) => a.features.length > 0);
+}
 
 function panelMedia(media: Record<string, unknown>): PanelMedia {
   const cover = img(media.cover);
@@ -173,6 +197,7 @@ export function panelCard(p: Record<string, unknown>, visible: ReadonlySet<strin
           media: panelMedia(media),
           howItWorks: (Array.isArray(m.howItWorks) ? m.howItWorks : []).filter((s): s is { title: string; text: string } => !!s && typeof s.title === "string" && typeof s.text === "string"),
           promoLabel: strOrNull(m.promoLabel),
+          includedFeatures: includedFeatures(m.includedFeatures),
           layout: {
             blocks: (Array.isArray(layout.blocks) ? layout.blocks : []).filter((b): b is { id: string; visible: boolean } => !!b && typeof b.id === "string" && typeof b.visible === "boolean"),
             accentColor: strOrNull(layout.accentColor),
@@ -272,7 +297,8 @@ export function panelCatalog(products: QuoteCatalogProduct[], o: { version: stri
     const monthly = p.prices.find((x) => x.kind === "monthly") ?? null;
     // Todas las familias del panel se contratan como extensión o módulo sectorial (CONTRACT_FAMILY): a la venta = comprable
     // Las antiguas extensiones de Elephant Net se integran en su producto: nunca se compran sueltas (07/11/2026)
-    const sellable = p.commercialStatus === "available" && !isNetLegacyExtension(p.key);
+    // Producto heredado del catálogo (09/11/2026): tampoco se vende, aunque siga publicado para quien lo tiene
+    const sellable = p.commercialStatus === "available" && !isNetLegacyExtension(p.key) && !p.legacy;
     items.push({
       key: p.key,
       name: p.name,
@@ -286,6 +312,7 @@ export function panelCatalog(products: QuoteCatalogProduct[], o: { version: stri
       purchasable: o.purchasesEnabled && sellable,
       card: null,
       activation: o.activation === null ? null : (o.activation?.get(p.key) ?? NO_ACTIVATION),
+      legacy: p.legacy ? { replacedBy: p.legacy.replacedBy } : null,
     });
   }
   // Las fichas, cuando ya se sabe qué ve la empresa (relacionados solo entre productos visibles)

@@ -90,6 +90,8 @@ const focal = z.object({ x: z.number().min(0).max(100), y: z.number().min(0).max
 export const ACCENT_COLORS = ["blue", "teal", "violet", "amber", "rose", "slate"] as const;
 export const HERO_STYLES = ["image", "split", "plain"] as const;
 /** Bloques ordenables de la ficha del marketplace. */
+/** Estado de una funcionalidad incluida: operativa hoy o incluida pero todavía pendiente. */
+export const INCLUDED_FEATURE_STATUS = ["available", "coming_soon"] as const;
 export const SHEET_BLOCKS = ["problem", "benefits", "features", "howItWorks", "includes", "excludes", "integration", "gallery", "requirements", "terms", "faq", "related"] as const;
 /**
  * Vídeo de la ficha: solo YouTube o Vimeo, servido en su modo de privacidad mejorada. Devuelve la URL para incrustar o
@@ -156,6 +158,19 @@ const commercialBlock = z
     howItWorks: z.array(z.object({ title: text(60).min(1), text: text(240).min(1) }).strict()).max(4).optional(),
     /** Etiqueta promocional breve de la tarjeta (p. ej. «Nuevo»). */
     promoLabel: text(30).min(1).optional(),
+    /**
+     * Funcionalidades incluidas en una solución completa (Elephant Net, 09/11/2026), por áreas. `status` distingue la
+     * inclusión comercial de la disponibilidad técnica: «available» solo si está operativa hoy; «coming_soon», incluida en
+     * el precio pero todavía pendiente. Opcional y sin valor por defecto (las versiones anteriores se reconstruyen igual).
+     */
+    includedFeatures: z
+      .array(
+        z
+          .object({ title: text(80).min(1), features: z.array(z.object({ label: text(120).min(1), status: z.enum(INCLUDED_FEATURE_STATUS) }).strict()).min(1).max(20) })
+          .strict(),
+      )
+      .max(10)
+      .optional(),
     /** Diseño de la ficha: orden y visibilidad de bloques, color de apoyo de la paleta y estilo de cabecera. */
     layout: z
       .object({
@@ -259,6 +274,16 @@ export const productDraft = z
           .optional(),
         /** 1 activable desde el Core · 2 portable desde otro desarrollo · 3 desarrollo nuevo. */
         implementationLevel: z.union([z.literal(1), z.literal(2), z.literal(3)]).optional(),
+        /**
+         * Producto HEREDADO (retirado de la venta, 09/11/2026): no admite contrataciones nuevas (lo valida el servidor al crear
+         * un pedido, en la compra del panel y en las altas del equipo; la cotización no lo rechaza porque también cotiza lo que
+         * ya se tiene), pero se conserva con sus precios históricos y sigue visible
+         * para quien lo tiene contratado. `replacedBy`: la solución que lo incluye y que se contrata en su lugar.
+         */
+        legacy: z
+          .object({ replacedBy: entryKey, since: z.string().regex(/^\d{4}-\d{2}-\d{2}$/) })
+          .strict()
+          .optional(),
         /**
          * Modalidad comercial declarada: inmediata (prueba y/o checkout) o implantación asistida (propuesta). Opcional y
          * SIN valores por defecto: lo publicado antes del campo se reconstruye igual desde el historial. Lo que se

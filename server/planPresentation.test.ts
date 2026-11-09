@@ -10,7 +10,7 @@ import { MemoryWebStore } from "./web/store";
 import { BUILTIN_MODULES } from "./_core/modules/builtin";
 import { panelCatalog } from "./commerce/panelCatalog";
 import { buildPlanComparison, parsePanelPlans, type PanelPlanInfo } from "../shared/subscriptionPlans";
-import { CARD_BENEFITS, CARD_LIMITS, cardBenefits, cardLimits, comparisonLimitRows, displayMoney, planPresentation } from "../shared/planPresentation";
+import { CARD_BENEFITS, CARD_LIMITS, cardBenefits, cardLimits, comparisonLimitRows, displayMoney, groupedComparisonRows, isGrowthOption, planPresentation } from "../shared/planPresentation";
 
 const NOW = Date.UTC(2026, 10, 1, 12);
 let site: SiteDocument;
@@ -41,23 +41,24 @@ const plan = (key: string, o: Partial<PanelPlanInfo> = {}): PanelPlanInfo => ({
 });
 
 describe("presentación de los planes", () => {
-  it("cada plan publicado en el catálogo tiene público, mensaje y pilares", () => {
+  it("cada plan publicado en el catálogo tiene público, mensaje, icono y tono (sin capacidades escritas a mano)", () => {
     const plans = parsePanelPlans(panelCatalog(quoteCatalogFromSite(site).products, { version: "v", purchasesEnabled: false, site }).plans);
     expect(plans.map((p) => p.key)).toEqual(["essential", "business", "enterprise"]);
     for (const p of plans) {
       const pr = planPresentation(p);
       expect(pr.audience, p.key).toBeTruthy();
       expect(pr.headline, p.key).toBeTruthy();
-      expect(pr.pillars.length, p.key).toBeGreaterThanOrEqual(3);
+      expect(pr.tone, p.key).toBeTruthy();
+      // Las capacidades (TPV, sedes…) solo salen del catálogo: la presentación no las enumera
+      expect(Object.keys(pr).sort(), p.key).toEqual(["audience", "headline", "icon", "tone"]);
     }
     expect(planPresentation(plans[0]).headline).toBe("Todo tu negocio, conectado desde el primer día");
     expect(planPresentation(plans[1]).headline).toBe("Más equipo, más control y más capacidad para crecer");
     expect(planPresentation(plans[2]).headline).toBe("Una plataforma adaptada a tu organización");
-    expect(planPresentation(plans[0]).pillars).toEqual(["CRM", "Ventas", "Web", "Tienda online", "TPV", "Facturación"]);
   });
 
   it("un plan desconocido se presenta con lo que publica el catálogo", () => {
-    expect(planPresentation(plan("partners", { tagline: "Para socios" }))).toEqual({ audience: null, headline: "Para socios", pillars: [], icon: "layers" });
+    expect(planPresentation(plan("partners", { tagline: "Para socios" }))).toEqual({ audience: null, headline: "Para socios", icon: "layers", tone: "night" });
   });
 
   it("el importe no cambia: solo se omiten los decimales cuando son cero", () => {
@@ -99,5 +100,27 @@ describe("presentación de los planes", () => {
     // Coincide con «Frente a tu plan» del comparador
     const business = cards.find((c) => c.plan.key === "business")!;
     expect(business.differences.map((d) => d.label)).toEqual(rows.filter((r) => r.cells[1].differs).map((r) => r.label));
+  });
+
+  it("la comparativa agrupa por categorías sin perder ninguna fila", () => {
+    const plans = parsePanelPlans(panelCatalog(quoteCatalogFromSite(site).products, { version: "v", purchasesEnabled: false, site }).plans);
+    const cards = buildPlanComparison({ plans, currentPlanKey: "essential", state: "trial", isAdmin: true, conversion: { enabled: true }, planChange: null });
+    const groups = groupedComparisonRows(cards);
+    expect(groups.flatMap((g) => g.rows.map((r) => r.label)).sort()).toEqual(comparisonLimitRows(cards).map((r) => r.label).sort());
+    expect(groups.map((g) => g.id)).toEqual(["team", "sales", "web", "service"]);
+    // Una capacidad nueva del catálogo (p. ej. del TPV) aparece sola, sin tocar la presentación
+    const extra = groupedComparisonRows(
+      buildPlanComparison({ plans: [plan("essential", { limits: [{ label: "Terminales TPV", value: "2", metric: "pos_terminals" }] })], currentPlanKey: null, state: "active", isAdmin: true, conversion: null, planChange: null }),
+    );
+    expect(extra).toEqual([{ id: "other", label: "Otras capacidades", rows: [{ label: "Terminales TPV", cells: [{ value: "2", differs: false }] }] }]);
+  });
+
+  it("la opción de crecimiento solo se destaca si el catálogo la marca y es superior al plan actual", () => {
+    const business = { isCurrent: false, plan: plan("business", { highlight: true }) };
+    expect(isGrowthOption(business, "essential")).toBe(true);
+    expect(isGrowthOption(business, null)).toBe(true);
+    expect(isGrowthOption(business, "enterprise")).toBe(false);
+    expect(isGrowthOption({ ...business, isCurrent: true }, "business")).toBe(false);
+    expect(isGrowthOption({ isCurrent: false, plan: plan("business") }, "essential")).toBe(false);
   });
 });

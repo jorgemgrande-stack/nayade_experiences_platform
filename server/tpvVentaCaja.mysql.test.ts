@@ -34,6 +34,8 @@ describe.skipIf(!URL_)("TPV — venta y caja (aplicación real, dos empresas nue
     await ess.m("a", "products.create", { slug: "corte", title: "Corte de pelo", categoryId: c.id, locationId: l.id, basePrice: "100.00", taxRate: "21" }, admA);
     productId = (await ess.sql("a", "SELECT id FROM experiences WHERE slug = 'corte'"))[0].id;
     await ess.sql("a", "UPDATE experiences SET isPresentialSale = 1 WHERE id = ?", [productId]);
+    // Varias cajas activas: plan Business (Essential incluye una; estrategia TPV 09/11/2026)
+    await ess.setCapability("a", "reports-advanced", "active");
     reg1 = data(await ess.m("a", "tpv.createRegister", { name: "Mostrador" }, admA)).id;
     reg2 = data(await ess.m("a", "tpv.createRegister", { name: "Terraza" }, admA)).id;
   }, 300_000);

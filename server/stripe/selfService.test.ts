@@ -111,7 +111,7 @@ describe("contratación por autoservicio (apagada por defecto)", () => {
 
 describe("autoservicio con perfil fiscal del comprador (B2B y B2C)", () => {
   beforeEach(() => void (clock = Date.UTC(2026, 9, 19, 10)));
-  const DECIDED: ConsentVersions = { terms: "v1", privacy: "p1", precontract: "pre1", withdrawal: "immediate_execution_ack" };
+  const DECIDED: ConsentVersions = { terms: "v1", privacy: "2026-10-25", precontract: "pre1", withdrawal: "immediate_execution_ack" };
   // Empresas de la Península y Baleares; particulares de Canarias (sin IVA español: precio final = neto)
   const OPEN: EligibilityConfig = {
     scenarios: new Set<FiscalScenario>(["business:es_mainland", "consumer:es_special"]),
@@ -140,9 +140,9 @@ describe("autoservicio con perfil fiscal del comprador (B2B y B2C)", () => {
 
   it("empresa: la ficha sale del perfil (razón social y NIF) y se guarda el perfil con su consentimiento", async () => {
     const { svc, companies, buyers } = setup({ mode: "live", consent: DECIDED, eligibility: OPEN });
-    await svc.start(without(body({ buyer: { type: "business", legalName: "Taller Norte SL", taxId: "B11111119", country: "ES", postalCode: "48001", line1: "Gran Vía, 10", city: "Bilbao" }, consents: { terms: true, privacy: true, termsVersion: "v1", privacyVersion: "p1" } })));
+    await svc.start(without(body({ buyer: { type: "business", legalName: "Taller Norte SL", taxId: "B11111119", country: "ES", postalCode: "48001", line1: "Gran Vía, 10", city: "Bilbao" }, consents: { terms: true, privacy: true, termsVersion: "v1", privacyVersion: "2026-10-25" } })));
     expect(companies).toEqual([{ name: "Taller Norte SL", taxId: "B11111119", email: "ana@autoservicio.example" }]);
-    expect(await buyers.buyerProfile(501)).toMatchObject({ type: "business", scenario: "business:es_mainland", consent: { source: "web", terms: { version: "v1" }, privacy: { version: "p1" }, precontract: null } });
+    expect(await buyers.buyerProfile(501)).toMatchObject({ type: "business", scenario: "business:es_mainland", consent: { source: "web", terms: { version: "v1" }, privacy: { version: "2026-10-25" }, precontract: null } });
   });
 
   it("particular: sin decisión legal sobre el desistimiento no se contrata (503) y no se crea nada", async () => {
@@ -154,21 +154,21 @@ describe("autoservicio con perfil fiscal del comprador (B2B y B2C)", () => {
   it("particular: exige precontractual y la casilla propia del desistimiento; con todo, sin razón social ni NIF", async () => {
     const { svc, calls, companies, buyers } = setup({ mode: "live", consent: DECIDED, eligibility: OPEN });
     const consumer = { type: "consumer" as const, firstName: "Lucía", lastName: "Pérez", country: "ES", postalCode: "38001", line1: "Calle del Castillo, 5", city: "Santa Cruz de Tenerife" };
-    await expectCode(svc.start(without(body({ buyer: consumer, consents: { terms: true, privacy: true, termsVersion: "v1", privacyVersion: "p1", precontractVersion: "pre1" } }))), "consent_outdated");
+    await expectCode(svc.start(without(body({ buyer: consumer, consents: { terms: true, privacy: true, termsVersion: "v1", privacyVersion: "2026-10-25", precontractVersion: "pre1" } }))), "consent_outdated");
     expect(calls.companies).toBe(0);
-    await svc.start(without(body({ buyer: consumer, consents: { terms: true, privacy: true, termsVersion: "v1", privacyVersion: "p1", precontractVersion: "pre1", immediateExecution: true } })));
+    await svc.start(without(body({ buyer: consumer, consents: { terms: true, privacy: true, termsVersion: "v1", privacyVersion: "2026-10-25", precontractVersion: "pre1", immediateExecution: true } })));
     expect(companies).toEqual([{ name: "Lucía Pérez", email: "ana@autoservicio.example" }]);
     expect(await buyers.buyerProfile(501)).toMatchObject({ type: "consumer", territory: "es_canarias", scenario: "consumer:es_special", taxId: null, consent: { precontract: { version: "pre1" }, immediateExecution: { at: clock } } });
   });
 
   it("sin código postal válido no se adivina el territorio (400) y no se crea nada", async () => {
     const { svc, calls } = setup({ mode: "live", consent: DECIDED });
-    await expectCode(svc.start(without(body({ buyer: { type: "business", legalName: "Sin CP SL", taxId: "B22222228", country: "ES" }, consents: { terms: true, privacy: true, termsVersion: "v1", privacyVersion: "p1" } }))), "territory_unknown");
+    await expectCode(svc.start(without(body({ buyer: { type: "business", legalName: "Sin CP SL", taxId: "B22222228", country: "ES" }, consents: { terms: true, privacy: true, termsVersion: "v1", privacyVersion: "2026-10-25" } }))), "territory_unknown");
     expect(calls.companies).toBe(0);
   });
 
   it("live: un comprador no habilitado (país, NIF o domicilio) se rechaza ANTES de crear empresa, contacto o pedido", async () => {
-    const consents = { terms: true as const, privacy: true as const, termsVersion: "v1", privacyVersion: "p1" };
+    const consents = { terms: true as const, privacy: true as const, termsVersion: "v1", privacyVersion: "2026-10-25" };
     const cases: Array<[SelfServiceBody["buyer"], string]> = [
       [{ type: "business", legalName: "Tokyo KK", taxId: "1234567890123", country: "JP", line1: "1-1 Chiyoda", city: "Tokio" }, "country_not_enabled:JP"],
       [{ type: "business", legalName: "Taller Norte SL", taxId: "B12345678", country: "ES", postalCode: "48001", line1: "Gran Vía, 10", city: "Bilbao" }, "tax_id_invalid"],
@@ -207,7 +207,7 @@ describe("autoservicio con perfil fiscal del comprador (B2B y B2C)", () => {
   it("empresa de la UE con inversión del sujeto pasivo: con VIES caído o NIF-IVA no válido no se crea nada; verificado, sí", async () => {
     const EU: EligibilityConfig = { ...OPEN, scenarios: new Set([...OPEN.scenarios, "business:eu"]), taxExpectations: new Map([...OPEN.taxExpectations, ["business:eu", "reverse_charge"]]) };
     const buyer = { type: "business" as const, legalName: "Firma GmbH", taxId: "DE123456789", country: "DE", postalCode: "10115", line1: "Unter den Linden 1", city: "Berlin" };
-    const consents = { terms: true as const, privacy: true as const, termsVersion: "v1", privacyVersion: "p1" };
+    const consents = { terms: true as const, privacy: true as const, termsVersion: "v1", privacyVersion: "2026-10-25" };
     for (const [vat, reason] of [["unavailable", "vat_check_unavailable"], ["invalid", "vat_invalid"]] as const) {
       const { svc, calls } = setup({ mode: "live", consent: DECIDED, eligibility: EU, vat });
       await expectCode(svc.start(without(body({ buyer, consents }))), "not_eligible");

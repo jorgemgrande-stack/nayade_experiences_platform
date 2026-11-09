@@ -10,7 +10,7 @@
 import { sql, type SQL } from "drizzle-orm";
 import { getTenantDatabase } from "../_core/dbRegistry";
 import { ModuleNotInstalled } from "../sdk";
-import type { CashMove, ChargeStatus, DepositMethod, DepositStatus, PayMethod, SettlementPlan } from "../../shared/skiDeposits";
+import { keyAttempt, type CashMove, type ChargeStatus, type DepositMethod, type DepositStatus, type PayMethod, type SettlementPlan } from "../../shared/skiDeposits";
 import { SKI_RENTAL_ID } from "./manifest";
 import { CASH_DEPOSIT_KIND, cashKindsInUse, recordCashMovementKind } from "../cashMovementKindsDb";
 
@@ -96,6 +96,18 @@ export interface DepositAttachment {
   mimeType: string;
   createdBy: string;
   createdAt: number;
+}
+/** Venta del TPV de un cargo o de una liquidación (por su clave). */
+export interface KeyedSale {
+  id: number;
+  sessionId: number;
+  status: string;
+  ticketNumber: string | null;
+  key: string;
+  /** Intento de la clave (1 = la base). */
+  attempt: number;
+  createdAt: number;
+  method: PayMethod | null;
 }
 export interface CashSessionInfo {
   id: number;
@@ -381,10 +393,6 @@ export class TenantDbDepositStore {
       await db.execute(sql`UPDATE ski_deposits SET damage_sale_id = ${saleId} WHERE id = ${depositId} AND status = 'settling' AND damage_sale_id IS NULL`);
     });
   }
-  /** Venta del TPV por su clave de idempotencia (para recuperar una venta creada en un intento anterior). */
-  saleByKey(key: string) {
-    return this.one(sql`SELECT id, sessionId, status_ts FROM tpv_sales WHERE idempotencyKey = ${key}`, (r) => ({ id: Number(r.id), sessionId: Number(r.sessionId), status: String(r.status_ts) }));
-  }
   /**
    * Liquidación a medias cuya caja se cerró: pasa a otra sesión ABIERTA de la misma sede (`check` la valida con la
    * sesión bloqueada) para terminarla. Solo si sigue «settling».
@@ -446,20 +454,52 @@ export class TenantDbDepositStore {
   createCharge(x: { siteId: string; deliveryId: number; amountCents: number; reason: string; requestKey: string }, actor: string): Promise<{ id: number; replayed: boolean }> {
     return this.run((db) =>
       db.transaction(async (tx) => {
-        const [prev] = rowsOf(await tx.execute(sql`SELECT id FROM ski_deposit_charges WHERE site_id = ${x.siteId} AND request_key = ${x.requestKey} FOR UPDATE`));
-        if (prev) return { id: Number(prev.id), replayed: true };
         const [dep] = rowsOf(await tx.execute(sql`SELECT id FROM ski_deposits WHERE delivery_id = ${x.deliveryId}`));
         const now = Date.now();
-        const id = insertIdOf(
-          await tx.execute(sql`INSERT INTO ski_deposit_charges (site_id, delivery_id, deposit_id, request_key, amount_cents, reason, status, created_by, created_at)
-            VALUES (${x.siteId}, ${x.deliveryId}, ${dep ? Number(dep.id) : null}, ${x.requestKey}, ${x.amountCents}, ${x.reason.slice(0, 300)}, 'pending', ${actor.slice(0, 100)}, ${now})`),
-        );
+        // Sin SELECT … FOR UPDATE previo: sobre una clave que aún no existe bloquea el hueco del índice y dos altas
+        // simultáneas (aunque sean de claves distintas) acaban en interbloqueo. El índice único decide: la misma clave
+        // espera a la primera y se ignora; claves distintas no se estorban.
+        const ins = await tx.execute(sql`INSERT IGNORE INTO ski_deposit_charges (site_id, delivery_id, deposit_id, request_key, amount_cents, reason, status, created_by, created_at)
+            VALUES (${x.siteId}, ${x.deliveryId}, ${dep ? Number(dep.id) : null}, ${x.requestKey}, ${x.amountCents}, ${x.reason.slice(0, 300)}, 'pending', ${actor.slice(0, 100)}, ${now})`);
+        if (Number((ins as unknown as [{ affectedRows: number }])[0].affectedRows) === 0) {
+          // Lectura con bloqueo: ve la fila ya confirmada por el otro intento (la instantánea de la transacción, no)
+          // (compartida: el INSERT IGNORE ya tomó un bloqueo S sobre la fila; pedir X con dos esperando interbloquea)
+          const [prev] = rowsOf(await tx.execute(sql`SELECT id FROM ski_deposit_charges WHERE site_id = ${x.siteId} AND request_key = ${x.requestKey} LOCK IN SHARE MODE`));
+          if (!prev) throw new Error("No se pudo registrar el cargo");
+          return { id: Number(prev.id), replayed: true };
+        }
+        const id = insertIdOf(ins);
         await addEvent(tx, { siteId: x.siteId, deliveryId: x.deliveryId, depositId: dep ? Number(dep.id) : null, chargeId: id, kind: "charge_created", amountCents: x.amountCents, note: x.reason }, actor, now);
         return { id, replayed: false };
       }),
     );
   }
-  /** Reserva el cobro del cargo («paying»); `decide` lanza si no procede y devuelve false si ya está cobrado. */
+  /**
+   * Ventas del TPV de una clave de idempotencia y de sus intentos siguientes (`<base>`, `<base>-2`…; ver
+   * shared/skiDeposits.ts), con la forma de pago. Las que fallaron al grabarse no aparecen: el TPV les quita la clave.
+   */
+  keyedSales(base: string) {
+    return this.many(
+      sql`SELECT s.id, s.sessionId, s.status_ts, s.ticketNumber, s.idempotencyKey, s.createdAt,
+            (SELECT p.method_tsp FROM tpv_sale_payments p WHERE p.saleId = s.id ORDER BY p.id LIMIT 1) AS method
+          FROM tpv_sales s WHERE s.idempotencyKey = ${base} OR s.idempotencyKey LIKE ${`${base}-%`} ORDER BY s.id`,
+      (r): KeyedSale => ({
+        id: Number(r.id),
+        sessionId: Number(r.sessionId),
+        status: String(r.status_ts),
+        ticketNumber: str(r.ticketNumber),
+        key: String(r.idempotencyKey),
+        attempt: keyAttempt(base, String(r.idempotencyKey)),
+        createdAt: Number(r.createdAt),
+        method: (str(r.method) as PayMethod | null) ?? null,
+      }),
+    );
+  }
+  /**
+   * Reserva el cobro del cargo («paying») con la caja y la forma de esta petición; `decide` lanza si no procede y
+   * devuelve false si ya está cobrado. El servicio lo llama con el bloqueo del cargo: un «paying» que encuentre es de un
+   * intento interrumpido y se retoma con la caja nueva.
+   */
   claimCharge(chargeId: number, decide: (c: DamageCharge, session: (id: number) => Promise<CashSessionInfo | null>) => Promise<boolean>, x: { sessionId: number; method: PayMethod }) {
     return this.run((db) =>
       db.transaction(async (tx) => {
@@ -467,8 +507,8 @@ export class TenantDbDepositStore {
         if (!r) throw Object.assign(new Error("cargo"), { notFound: true });
         const c = toCharge(r);
         if (!(await decide(c, (id) => lockedSession(tx, id)))) return c;
-        if (c.status === "pending") await tx.execute(sql`UPDATE ski_deposit_charges SET status = 'paying', pay_method = ${x.method}, pay_session_id = ${x.sessionId} WHERE id = ${chargeId}`);
-        return { ...c, status: "paying" as const, payMethod: c.status === "paying" ? c.payMethod : x.method, paySessionId: c.status === "paying" ? c.paySessionId : x.sessionId };
+        await tx.execute(sql`UPDATE ski_deposit_charges SET status = 'paying', pay_method = ${x.method}, pay_session_id = ${x.sessionId} WHERE id = ${chargeId} AND status IN ('pending', 'paying')`);
+        return { ...c, status: "paying" as const, payMethod: x.method, paySessionId: x.sessionId };
       }),
     );
   }
@@ -477,15 +517,21 @@ export class TenantDbDepositStore {
       await db.execute(sql`UPDATE ski_deposit_charges SET status = 'pending', pay_method = NULL, pay_session_id = NULL WHERE id = ${chargeId} AND status = 'paying'`);
     });
   }
-  finishCharge(chargeId: number, saleId: number, actor: string): Promise<DamageCharge> {
+  /**
+   * Cargo cobrado con su venta del TPV: la caja y la forma de pago son las de la venta. Concilia también un cargo que
+   * quedó «pendiente» con la venta ya cobrada (intento interrumpido): la venta es la verdad del cobro.
+   */
+  finishCharge(chargeId: number, sale: { id: number; sessionId: number; method: PayMethod | null }, actor: string): Promise<DamageCharge> {
     return this.run((db) =>
       db.transaction(async (tx) => {
         const [r] = rowsOf(await tx.execute(sql`SELECT * FROM ski_deposit_charges WHERE id = ${chargeId} FOR UPDATE`));
         const c = toCharge(r);
-        if (c.status === "paying") {
+        if (c.status === "paying" || c.status === "pending") {
           const now = Date.now();
-          await tx.execute(sql`UPDATE ski_deposit_charges SET status = 'paid', tpv_sale_id = ${saleId}, paid_by = ${actor.slice(0, 100)}, paid_at = ${now} WHERE id = ${chargeId}`);
-          await addEvent(tx, { siteId: c.siteId, deliveryId: c.deliveryId, depositId: c.depositId, chargeId: c.id, kind: "charge_paid", amountCents: c.amountCents, method: c.payMethod, cashSessionId: c.paySessionId, tpvSaleId: saleId }, actor, now);
+          const method = sale.method ?? c.payMethod;
+          await tx.execute(sql`UPDATE ski_deposit_charges SET status = 'paid', tpv_sale_id = ${sale.id}, pay_session_id = ${sale.sessionId}, pay_method = ${method},
+            paid_by = ${actor.slice(0, 100)}, paid_at = ${now} WHERE id = ${chargeId}`);
+          await addEvent(tx, { siteId: c.siteId, deliveryId: c.deliveryId, depositId: c.depositId, chargeId: c.id, kind: "charge_paid", amountCents: c.amountCents, method, cashSessionId: sale.sessionId, tpvSaleId: sale.id }, actor, now);
         }
         const [after] = rowsOf(await tx.execute(sql`SELECT * FROM ski_deposit_charges WHERE id = ${chargeId}`));
         return toCharge(after);

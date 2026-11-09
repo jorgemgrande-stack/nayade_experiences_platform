@@ -3,7 +3,8 @@
  * (accounting-general): el cajero elige el tipo de cada movimiento, sin valor por defecto. Los motivos rápidos solo
  * rellenan el motivo: nunca fijan el tipo. Sin la licencia se usa el modal de siempre (TpvCashMovement).
  */
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { newAttemptKey } from "./tpvKeys";
 import { trpc } from "@/lib/trpc";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
@@ -39,6 +40,9 @@ const IN_KINDS: Array<{ kind: InKind; label: string; hint: string }> = [
 export default function TpvCashMovementAccounting({ open, type, sessionId, onClose }: Props) {
   const [amount, setAmount] = useState("");
   const [reason, setReason] = useState("");
+  // Clave del intento: un doble clic o un reintento no duplica el movimiento ni su apunte
+  const [attemptKey, setAttemptKey] = useState(newAttemptKey);
+  useEffect(() => { if (open) setAttemptKey(newAttemptKey()); }, [open]);
   // Salidas: "gasto" (compra/proveedor), "devolucion" (a un cliente) o "traspaso" (a Caja Central). Sin valor por
   // defecto: una devolución registrada como gasto inventaba un gasto en la contabilidad.
   const [outKind, setOutKind] = useState<OutKind | null>(null);
@@ -186,6 +190,7 @@ export default function TpvCashMovementAccounting({ open, type, sessionId, onClo
                 movMut.mutate({
                   sessionId,
                   type,
+                  idempotencyKey: attemptKey,
                   amount: parseFloat(amount) || 0,
                   reason: reason || (type === "out" && outKind === "traspaso" ? "Traspaso a Caja Central" : "Sin motivo"),
                   ...(type === "out" ? { outKind: outKind ?? undefined } : { inKind: inKind ?? undefined }),

@@ -46,6 +46,8 @@ export interface QuoteCatalogProduct {
   addonFor: { metric: string; step: number; plans: string[] } | null;
   thirdPartyCosts: string | null;
   prices: QuoteCatalogPrice[];
+  /** Producto heredado (retirado de la venta): ninguna contratación nueva. Opcional: los catálogos guardados antes no lo llevan. */
+  legacy?: { replacedBy: string } | null;
   /** Modalidad comercial efectiva (server/catalog/commercial/offer.ts). Opcional: los catálogos guardados antes no la llevan. */
   offer?: { modality: "immediate" | "assisted"; trial: boolean; checkout: boolean; cta: string; reasons: string[]; label: string; activationNotes: string | null };
 }
@@ -371,6 +373,9 @@ export function quote(catalog: QuoteCatalog, req: QuoteRequest): QuoteResult {
  * Componentes de un paquete que ya están contratados: el paquete los sustituye (dejan de cobrarse
  * aparte). Misma regla en el cotizador y en el motor de suscripciones.
  */
+/** Motivo por el que un producto heredado no se contrata (el mismo texto en la cotización, la compra y las suscripciones). */
+export const legacyProductText = (name: string, replacedBy: string) => `«${name}» ya no se contrata por separado: forma parte de ${replacedBy}, que se contrata como solución completa.`;
+
 export function bundleReplaces(bundleOf: string[], owned: { has(key: string): boolean }): string[] {
   return bundleOf.filter((c) => owned.has(c));
 }

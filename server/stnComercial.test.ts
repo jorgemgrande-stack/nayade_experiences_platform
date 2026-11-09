@@ -150,7 +150,10 @@ describe("marketplace: incluido en Complete y sustitución de módulos", () => {
     const cpl = out.find((i) => i.key === CPL)!;
     expect(cpl).toMatchObject({ state: "available", purchasable: true, replaces: [{ key: COM, name: "Social Token Net · Comunidades" }] });
     expect(cpl.reasons.join(" ")).toMatch(/Sustituye a Social Token Net · Comunidades.*solo se cobra la diferencia prorrateada.*Tus datos se conservan/);
-    expect(out.find((i) => i.key === COM)).toBeUndefined();
+    // 09/11/2026: el módulo heredado contratado se ve (en «Mis módulos»), marcado como heredado y sin compra; el no
+    // contratado, no
+    expect(out.find((i) => i.key === COM)).toMatchObject({ purchasable: false, legacy: { replacedBy: { key: CPL, name: "Social Token Net" } } });
+    expect(out.find((i) => i.key === TOK)).toBeUndefined();
   });
 
   it("con los dos módulos sueltos (contrato anterior), equivale al producto: contratado, sin nueva compra ni cambio de condiciones", () => {

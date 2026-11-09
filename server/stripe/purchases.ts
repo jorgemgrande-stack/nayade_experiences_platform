@@ -46,7 +46,7 @@ import type { GwInvoice, GwSubscription, StripeGateway } from "./gateway";
 import { intervalCompatible, itemChanges, supportsPendingUpdate } from "./multipart";
 import type { StripeStore } from "./store";
 import { SubscriptionChangeError, sameItems, type ExpectedItem, type SubscriptionChange, type SubscriptionChangeStore } from "./changes";
-import { bundleReplaces } from "../catalog/quote";
+import { bundleReplaces, legacyProductText } from "../catalog/quote";
 import { legacyExtensionText } from "../../shared/netProducts";
 import { SWAP_SUFFIX, cleanupSwapZeros } from "./swapCleanup";
 
@@ -277,6 +277,8 @@ export class ModulePurchaseService {
       const legacy = legacyExtensionText(key);
       if (legacy && !this.d.legacyNetSales) throw new PurchaseError("unavailable", legacy);
       const p = await this.d.catalog.product(key);
+      // Producto heredado en el catálogo (09/11/2026): retirado de la venta
+      if (p?.legacy && !this.d.legacyNetSales) throw new PurchaseError("unavailable", legacyProductText(p.name, (await this.d.catalog.product(p.legacy.replacedBy))?.name ?? p.legacy.replacedBy));
       if (!p || p.commercialStatus !== "available" || !PURCHASABLE_FAMILIES.has(p.family) || p.addonFor || (p.internalOnly && !this.internalAllowed(current.tenantId))) throw new PurchaseError("unavailable", `«${key}» no está disponible para compra en línea`);
     }
     // Paquetes y componentes: nunca los dos a la vez. Un paquete que sustituye componentes ya contratados los quita
