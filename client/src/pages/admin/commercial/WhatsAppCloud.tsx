@@ -27,6 +27,7 @@ import {
   WHATSAPP_AI_MODES,
   WHATSAPP_AI_MODE_LABELS,
   WHATSAPP_LIMITS,
+  formatInZone,
   renderTemplate,
   type AiLogOutcome,
   type MessageOrigin,
@@ -36,7 +37,11 @@ import {
 
 const selectClass = "h-9 w-full rounded-md border border-input bg-background px-3 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring";
 const sectionClass = "space-y-4 rounded-xl border border-border bg-card p-4";
-const fmtDate = (iso: string | null) => (iso ? new Intl.DateTimeFormat("es-ES", { dateStyle: "short", timeStyle: "short", timeZone: "Europe/Madrid" }).format(new Date(iso)) : "—");
+/** Fechas en la zona horaria de la empresa (la de su configuración de WhatsApp). */
+function useFmt() {
+  const tz = trpc.whatsappCloud.settings.useQuery(undefined, { retry: false, staleTime: 60_000 }).data?.timezone;
+  return (iso: string | null) => formatInZone(iso, tz);
+}
 
 function Field({ label, hint, children }: { label: string; hint?: string; children: React.ReactNode }) {
   return (
@@ -99,6 +104,7 @@ function TemplateSender({ conversationId, onSent }: { conversationId: number; on
 }
 
 function ConversationView({ id, aiMode }: { id: number; aiMode: WhatsappAiMode }) {
+  const fmt = useFmt();
   const utils = trpc.useUtils();
   const q = trpc.whatsappCloud.conversation.useQuery({ id }, { retry: false, refetchInterval: 15_000 });
   const [text, setText] = useState("");
@@ -141,7 +147,7 @@ function ConversationView({ id, aiMode }: { id: number; aiMode: WhatsappAiMode }
           <p className="text-xs text-muted-foreground">+{c.waId}</p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          {d.windowOpen ? <Badge variant="secondary">Ventana abierta hasta {fmtDate(d.windowEndsAt)}</Badge> : <Badge variant="outline">Fuera de la ventana de 24 h</Badge>}
+          {d.windowOpen ? <Badge variant="secondary">Ventana abierta hasta {fmt(d.windowEndsAt)}</Badge> : <Badge variant="outline">Fuera de la ventana de 24 h</Badge>}
           <Button variant={c.needsHuman ? "default" : "outline"} size="sm" onClick={() => human.mutate({ id, value: !c.needsHuman })} disabled={human.isPending}>
             <UserRound className="mr-1 h-4 w-4" />{c.needsHuman ? "La atiende una persona (devolver a la IA)" : "Pasar a una persona"}
           </Button>
@@ -154,7 +160,7 @@ function ConversationView({ id, aiMode }: { id: number; aiMode: WhatsappAiMode }
             <div className={`max-w-[85%] rounded-lg px-3 py-2 text-sm ${m.direction === "out" ? "bg-primary text-primary-foreground" : "bg-card text-foreground border border-border"}`}>
               <p className="whitespace-pre-wrap break-words">{m.body}</p>
               <p className={`mt-1 text-[11px] ${m.direction === "out" ? "text-primary-foreground/80" : "text-muted-foreground"}`}>
-                {fmtDate(m.createdAt)}
+                {fmt(m.createdAt)}
                 {m.direction === "out" && ` · ${MESSAGE_ORIGIN_LABELS[m.origin as MessageOrigin]}${m.templateName ? " · plantilla" : ""} · ${MESSAGE_STATUS_LABELS[m.status as MessageStatus]}`}
                 {m.status === "failed" && m.errorTitle ? ` (${m.errorTitle})` : ""}
               </p>
@@ -185,7 +191,7 @@ function ConversationView({ id, aiMode }: { id: number; aiMode: WhatsappAiMode }
           <ul className="mt-2 space-y-2">
             {d.aiLog.map((l) => (
               <li key={l.id} className="break-words text-muted-foreground">
-                <span className="font-medium text-foreground">{fmtDate(l.createdAt)} · {l.mode === "auto" ? "Automática" : "Sugerencia"} · {AI_LOG_OUTCOME_LABELS[l.outcome as AiLogOutcome] ?? l.outcome}</span>
+                <span className="font-medium text-foreground">{fmt(l.createdAt)} · {l.mode === "auto" ? "Automática" : "Sugerencia"} · {AI_LOG_OUTCOME_LABELS[l.outcome as AiLogOutcome] ?? l.outcome}</span>
                 {l.reply && <span className="block whitespace-pre-wrap">{l.reply}</span>}
               </li>
             ))}
@@ -197,6 +203,7 @@ function ConversationView({ id, aiMode }: { id: number; aiMode: WhatsappAiMode }
 }
 
 function Inbox() {
+  const fmt = useFmt();
   const [search, setSearch] = useState("");
   const [onlyHuman, setOnlyHuman] = useState(false);
   const [openId, setOpenId] = useState<number | null>(null);
@@ -235,7 +242,7 @@ function Inbox() {
                     </div>
                     <p className="line-clamp-1 break-words text-xs text-muted-foreground">{c.lastPreview ?? ""}</p>
                     <div className="mt-1 flex flex-wrap gap-1 text-[11px] text-muted-foreground">
-                      <span>{fmtDate(c.lastMessageAt)}</span>
+                      <span>{fmt(c.lastMessageAt)}</span>
                       {c.needsHuman && <Badge variant="destructive" className="text-[10px]">Espera a una persona</Badge>}
                       {!c.windowOpen && <Badge variant="outline" className="text-[10px]">Solo plantillas</Badge>}
                     </div>
@@ -332,6 +339,7 @@ function HoursEditor({ value, onChange }: { value: HoursRange[]; onChange: (v: H
 }
 
 function AiTab() {
+  const fmt = useFmt();
   const utils = trpc.useUtils();
   const q = trpc.whatsappCloud.settings.useQuery(undefined, { retry: false });
   const log = trpc.whatsappCloud.aiLog.useQuery({ limit: 50 }, { retry: false });
@@ -391,7 +399,7 @@ function AiTab() {
           <ul className="space-y-2 text-sm">
             {log.data.map((l) => (
               <li key={l.id} className="break-words rounded-md border border-border p-2 text-muted-foreground">
-                <span className="font-medium text-foreground">{fmtDate(l.createdAt)} · conversación {l.conversationId} · {l.mode === "auto" ? "Automática" : "Sugerencia"} · {AI_LOG_OUTCOME_LABELS[l.outcome as AiLogOutcome] ?? l.outcome}</span>
+                <span className="font-medium text-foreground">{fmt(l.createdAt)} · conversación {l.conversationId} · {l.mode === "auto" ? "Automática" : "Sugerencia"} · {AI_LOG_OUTCOME_LABELS[l.outcome as AiLogOutcome] ?? l.outcome}</span>
                 {l.reply && <span className="block whitespace-pre-wrap">{l.reply}</span>}
               </li>
             ))}

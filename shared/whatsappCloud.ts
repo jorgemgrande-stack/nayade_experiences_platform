@@ -166,3 +166,14 @@ export function nextStatus(current: MessageStatus, incoming: MessageStatus): Mes
   if (current === "failed" || current === "read") return current;
   return STATUS_RANK[incoming] > STATUS_RANK[current] ? incoming : current;
 }
+
+/** Fecha y hora («dd/mm/aa, hh:mm») en la zona horaria de la empresa; Europe/Madrid si no hay otra válida. */
+export function formatInZone(iso: string | null, timeZone?: string | null): string {
+  if (!iso) return "—";
+  const fmt = (tz: string) => new Intl.DateTimeFormat("es-ES", { dateStyle: "short", timeStyle: "short", timeZone: tz }).format(new Date(iso));
+  try {
+    return fmt(timeZone || "Europe/Madrid");
+  } catch {
+    return fmt("Europe/Madrid");
+  }
+}

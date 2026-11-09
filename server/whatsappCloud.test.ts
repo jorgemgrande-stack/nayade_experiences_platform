@@ -599,3 +599,16 @@ describe("revisión: plantillas con variables fuera del cuerpo", () => {
     expect((await svc.templates()).map((t) => t.name)).toEqual(["solo_cuerpo"]);
   });
 });
+
+describe("revisión: fechas del panel en la zona horaria de la empresa", () => {
+  it("formatInZone usa la zona de la empresa y, si no vale, Europe/Madrid", async () => {
+    const { formatInZone } = await import("../shared/whatsappCloud");
+    expect(formatInZone("2026-11-10T21:00:00Z", "Europe/Madrid")).toBe("10/11/26, 22:00");
+    expect(formatInZone("2026-11-10T21:00:00Z", "Atlantic/Canary")).toBe("10/11/26, 21:00");
+    expect(formatInZone("2026-11-10T21:00:00Z", "Zona/Inventada")).toBe("10/11/26, 22:00");
+    expect(formatInZone(null, "Europe/Madrid")).toBe("—");
+    const page = (await import("node:fs")).readFileSync(new URL("../client/src/pages/admin/commercial/WhatsAppCloud.tsx", import.meta.url), "utf8");
+    expect(page).toContain("formatInZone(iso, tz)");
+    expect(page).not.toContain('timeZone: "Europe/Madrid"');
+  });
+});
