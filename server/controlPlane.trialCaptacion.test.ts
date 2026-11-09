@@ -370,13 +370,13 @@ describe("versión de la política de privacidad (10/11/2026)", () => {
     const svc = new TrialService({ store, now: () => 5000 });
     const reg = (email: string, privacyVersion?: unknown) =>
       svc.register({ email, companyName: "Tienda Servicio", configuration: { plan: null, addons: [] }, terms: { accepted: true, version: "2026-10-21", privacyVersion }, idempotencyKey: key() + key() });
-    for (const v of ["2026-10-25", "2026-11-10", undefined]) {
-      const out = await reg(`svc-${v ?? "sin"}@tienda.example`, v);
+    for (const [v, saved] of [["2026-10-25", "2026-10-25"], ["2026-11-10", "2026-11-10"], [" 2026-11-10 ", "2026-11-10"], [undefined, null], ["", null], ["   ", null]] as const) {
+      const out = await reg(`svc@tienda-${key()}.example`, v);
       expect(out.trial.configuration.terms).toEqual({ acceptedAt: 5000, version: "2026-10-21" });
-      expect(out.trial.configuration.privacy).toEqual({ acceptedAt: 5000, version: v ?? null });
+      expect(out.trial.configuration.privacy).toEqual({ acceptedAt: 5000, version: saved });
     }
     for (const v of ["2026-10-21", "2026-11-11", "p1", 20261110]) {
-      await expect(reg(`svc-mala@tienda.example`, v), String(v)).rejects.toMatchObject({ code: "invalid_input" });
+      await expect(reg(`svc-mala@tienda.example`, v), String(v)).rejects.toMatchObject({ code: "invalid_input", message: expect.stringMatching(/política de privacidad ha cambiado/) });
     }
     expect(ACCEPTED_PRIVACY_VERSIONS).toEqual(["2026-10-25", "2026-11-10"]);
   });

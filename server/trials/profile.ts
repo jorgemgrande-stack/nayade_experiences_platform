@@ -114,7 +114,7 @@ export interface TrialPrivacy {
  */
 export function normalizePrivacy(accepted: unknown, version: unknown, now: number): TrialPrivacy {
   if (accepted !== true) throw new TrialProfileError("Hay que aceptar la política de privacidad y las condiciones de la prueba");
-  if (version === undefined || version === null || version === "") return { acceptedAt: now, version: null };
+  if (version === undefined || version === null || (typeof version === "string" && !version.trim())) return { acceptedAt: now, version: null };
   if (typeof version !== "string" || !isAcceptedPrivacyVersion(version)) throw new TrialProfileError("La política de privacidad ha cambiado: recarga la página y vuelve a aceptarla");
   return { acceptedAt: now, version: version.trim() };
 }

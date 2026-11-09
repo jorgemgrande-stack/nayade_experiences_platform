@@ -170,12 +170,14 @@ export class TrialService {
     let profile: ReturnType<typeof normalizeProfile> | null = null;
     let terms: ReturnType<typeof normalizeTerms> | null = null;
     let privacy: ReturnType<typeof normalizePrivacy> | null = null;
+    // Una sola marca de tiempo: condiciones y privacidad se aceptan con la misma casilla
+    const acceptedAt = this.now();
     try {
       // Aceptación de las condiciones con su versión: la exige el alta pública (la del operador no la pasa)
-      terms = input.terms ? normalizeTerms(input.terms.accepted, input.terms.version, this.now()) : null;
+      terms = input.terms ? normalizeTerms(input.terms.accepted, input.terms.version, acceptedAt) : null;
       // La privacidad, aparte: su versión y su fecha (sin versión, «no informada»; una versión desconocida, rechazada)
-      privacy = input.terms ? normalizePrivacy(input.terms.accepted, input.terms.privacyVersion, this.now()) : null;
-      profile = input.profile ? normalizeProfile(input.profile, this.now()) : null;
+      privacy = input.terms ? normalizePrivacy(input.terms.accepted, input.terms.privacyVersion, acceptedAt) : null;
+      profile = input.profile ? normalizeProfile(input.profile, acceptedAt) : null;
     } catch (e) {
       if (e instanceof TrialProfileError) throw new TrialError("invalid_input", e.message);
       throw e;
