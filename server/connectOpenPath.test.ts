@@ -15,6 +15,7 @@ describe("pantalla de cada extensión de Connect al contratarla", () => {
     expect(open(["bank-reconciliation", "bank-import-pos"])).toMatch(/^\/admin\/contabilidad\//);
     expect(open(["geo-control"])).toBe("/admin/marketing/geo");
     expect(open(["ads-manager"])).toBe("/admin/marketing/ads");
+    expect(open(["accounting-general"])).toBe("/admin/contabilidad/general");
     expect(open(["contracts-esign"])).toMatch(/^\/admin\/contratos/);
   });
   it("solo abre lo que el rol puede ver: un agente no recibe la pantalla de administración", () => {

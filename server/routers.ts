@@ -191,6 +191,7 @@ import { brevoMarketingRouter } from "./brevoMarketing/router";
 import { geoControlRouter } from "./routers/geoControl";
 import { seoControlRouter } from "./routers/seoControl";
 import { adsManagerRouter } from "./adsManager/router";
+import { accountingGeneralRouter } from "./accountingGeneral/router";
 import { receptionAiRouter } from "./receptionAi/router";
 import { postmarkTenantRouter } from "./routers/postmarkTenant";
 import { installSectorLoyalty } from "./loyaltySectors";
@@ -2665,6 +2666,7 @@ export const appRouter = router({
   geoControl: geoControlRouter,
   seoControl: seoControlRouter,
   adsManager: adsManagerRouter,
+  accountingGeneral: accountingGeneralRouter,
   receptionAi: receptionAiRouter,
   postmarkTenant: postmarkTenantRouter,
   crm: crmRouter,

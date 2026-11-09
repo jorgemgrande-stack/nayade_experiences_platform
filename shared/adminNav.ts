@@ -389,6 +389,7 @@ export const TASK_NAV: NavSection[] = [
     label: "Módulos contratados",
     items: [
       { label: "Impuestos y gestoría", href: "/admin/gestoria", key: "x-gestoria", icon: "receipt", roles: ADMIN, capabilities: ["tax-filings"] },
+      { label: "Contabilidad general", href: "/admin/contabilidad/general", key: "x-contabilidad", icon: "chart", roles: ADMIN, capabilities: ["accounting-general"] },
       {
         label: "Bancos y TPV", href: "/admin/contabilidad/movimientos-bancarios", key: "x-bancos", icon: "creditCard", roles: ADMIN, capabilities: ["bank-import-pos"],
         children: [
