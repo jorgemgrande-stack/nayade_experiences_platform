@@ -90,7 +90,7 @@ export async function updateProgress(change: (p: SetupProgress) => SetupProgress
  * Primera venta: un pedido cobrado, un pedido registrado pendiente de cobro (no un pago online que se quedó a medias)
  * o una venta en caja cobrada. Primer presupuesto o factura: cualquier presupuesto (también un borrador) o factura.
  */
-export async function readSetupCounts(): Promise<{ clients: number; products: number; sales: number; documents: number; webEdited: boolean }> {
+export async function readSetupCounts(): Promise<{ clients: number; products: number; sales: number; documents: number; quotes: number; webEdited: boolean }> {
   const db = await requireDb();
   const n = async (q: Promise<Array<{ n: number | string }>>) => Number((await q)[0]?.n ?? 0);
   const orderPlaced = or(
@@ -107,7 +107,7 @@ export async function readSetupCounts(): Promise<{ clients: number; products: nu
     n(db.select({ n: count() }).from(pageBlocks)),
     n(db.select({ n: count() }).from(staticPages).where(gt(staticPages.updatedAt, staticPages.createdAt))),
   ]);
-  return { clients: cl, products: pr, sales: re + tpv, documents: qu + inv, webEdited: blocks + edited > 0 };
+  return { clients: cl, products: pr, sales: re + tpv, documents: qu + inv, quotes: qu, webEdited: blocks + edited > 0 };
 }
 
 /**

@@ -73,6 +73,16 @@ const ORDER_UNPAID_STATES = new Set(["past_due", "suspended"]);
 /** Planes que se contratan desde la prueba en el panel (shared/connectMarketplace.ts CONVERSION_PLAN_KEYS). */
 const CONVERTIBLE_PLANS = new Set(["essential", "business"]);
 
+/**
+ * Contratar el plan que se está probando: la sección «Contratar» de la suscripción (Stripe Checkout de
+ * subscription.conversionStart) si la contratación desde la prueba está disponible para ese plan; si no, el comparador.
+ * La usan el aviso de prueba terminada y el aviso previo al vencimiento del Inicio.
+ */
+export function trialConversionHref(planKey: string | null | undefined, conversionEnabled: boolean | undefined): string {
+  const plan = planKey ?? "";
+  return conversionEnabled && CONVERTIBLE_PLANS.has(plan) ? `${SUBSCRIPTION_PATH}?contratar=${plan}#contratar` : PLANS_HREF;
+}
+
 const KEEP_BROWSING = "Puedes seguir consultando tu información mientras tanto.";
 /** La exportación (solo la persona propietaria) sigue disponible en consulta y después (exenta del bloqueo). */
 const EXPORT_LINE = "La persona propietaria de la empresa puede exportar los datos desde «Suscripción».";
@@ -227,8 +237,7 @@ export function resolveRecovery(i: RecoveryInput): RecoveryView | null {
 
   // 3) Prueba terminada: contratar el plan que se estaba probando
   if (o.state === "trial_expired") {
-    const plan = o.plan?.key ?? "";
-    const href = i.conversionEnabled && CONVERTIBLE_PLANS.has(plan) ? `${SUBSCRIPTION_PATH}?contratar=${plan}#contratar` : PLANS_HREF;
+    const href = trialConversionHref(o.plan?.key, i.conversionEnabled);
     return {
       kind: "trial_ended",
       tone: "warning",

@@ -17,6 +17,8 @@ import { PanelError } from "@/components/admin/PanelStates";
 import { WelcomeScreen } from "@/components/onboarding/WelcomeScreen";
 import { SETUP_WIZARD_PATH } from "@/components/SetupWizardLink";
 import { SetupStatusCard } from "@/components/onboarding/SetupStatusCard";
+import { TrialFirstSteps } from "@/components/onboarding/TrialFirstSteps";
+import { PLANS_HREF, trialConversionHref } from "@shared/subscriptionRecovery";
 import { configurationSteps, shouldOpenSetupWizard } from "@shared/setupWizard";
 import { cn } from "@/lib/utils";
 import { TONE_BADGE, TONE_SURFACE, TONE_TEXT } from "@/lib/panelTones";
@@ -102,6 +104,9 @@ export default function EssentialHome() {
   const data = sub.data;
   // Estado de configuración: una sola fuente, el asistente (solo quien configura la empresa)
   const wizard = trpc.setupWizard.status.useQuery(undefined, { enabled: isAdmin, retry: false, staleTime: 60_000 });
+  // Prueba en curso: contratar el plan que se prueba desde el propio panel (mismo destino que al terminar la prueba)
+  const inTrial = !!data?.trial && data.trial.daysLeft > 0;
+  const conversion = trpc.subscription.conversionStatus.useQuery(undefined, { enabled: isAdmin && inTrial, retry: false, staleTime: 300_000 });
 
   const canClients = isSales && sub.can("crm-contacts");
   const canQuotes = isSales && sub.can("crm-quotes");
@@ -148,13 +153,15 @@ export default function EssentialHome() {
   // Avisos: solo lo que requiere atención, con datos reales
   const notices: Array<{ key: string; tone: "warn" | "info"; text: React.ReactNode; href: string; cta: string }> = [];
   // Prueba terminada, solo lectura o suspensión: los explica el aviso único de recuperación del panel (AdminLayout)
-  if (data?.trial && data.trial.daysLeft > 0 && isAdmin) {
+  if (data?.trial && inTrial && isAdmin) {
+    const planName = data.plan?.name ?? "Elephant Core";
     notices.push({
       key: "trial",
       tone: data.trial.daysLeft <= 3 ? "warn" : "info",
-      text: <>Estás probando <strong>{data.plan?.name ?? "Elephant Core"}</strong>: te {data.trial.daysLeft === 1 ? "queda" : "quedan"} <strong>{data.trial.daysLeft} {data.trial.daysLeft === 1 ? "día" : "días"}</strong>.</>,
-      href: "/admin/suscripcion",
-      cta: "Ver mi suscripción",
+      text: <>Estás probando <strong>{planName}</strong>: te {data.trial.daysLeft === 1 ? "queda" : "quedan"} <strong>{data.trial.daysLeft} {data.trial.daysLeft === 1 ? "día" : "días"}</strong>. Si contratas, conservas todo lo que hayas creado.</>,
+      href: trialConversionHref(data.plan?.key, conversion.data?.enabled),
+      // Sin contratación desde la prueba (o mientras se comprueba) se ofrecen los planes, sin prometer el pago aquí
+      cta: trialConversionHref(data.plan?.key, conversion.data?.enabled) === PLANS_HREF ? "Ver los planes" : `Contratar ${planName}`,
     });
   }
   if (w && !w.facts.fiscal && sub.can("bill-invoices")) {
@@ -241,6 +248,11 @@ export default function EssentialHome() {
               </div>
             ))}
           </div>
+        )}
+
+        {/* Primera sesión de la prueba: datos de la empresa, primer cliente y primer presupuesto (omitible y retomable) */}
+        {isAdmin && inTrial && w && (
+          <TrialFirstSteps facts={w.facts} can={{ clients: canClients && sub.canWrite("crm-contacts"), quotes: canQuotes && sub.canWrite("crm-quotes") }} />
         )}
 
         {/* Accesos rápidos */}
