@@ -152,6 +152,31 @@ const price = z.unknown().transform((v): ConnectPrice | null => {
 
 const priceList = z.unknown().transform((v) => (Array.isArray(v) ? v.map((p) => price.parse(p)).filter((p): p is ConnectPrice => p !== null).slice(0, 12) : null));
 
+/** Funcionalidades incluidas por áreas (soluciones completas de Elephant Net): «available» operativa hoy, «coming_soon» incluida y pendiente. */
+export interface ConnectIncludedArea {
+  title: string;
+  features: Array<{ label: string; status: "available" | "coming_soon" }>;
+}
+const includedList = z.unknown().transform((v): ConnectIncludedArea[] | null =>
+  Array.isArray(v)
+    ? nonEmpty(
+        v
+          .map((a): ConnectIncludedArea | null => {
+            if (!a || typeof a !== "object") return null;
+            const title = text(80).parse((a as { title?: unknown }).title);
+            const raw = (a as { features?: unknown }).features;
+            const features = (Array.isArray(raw) ? raw : [])
+              .map((f) => (f && typeof f === "object" ? { label: text(120).parse((f as { label?: unknown }).label), status: (f as { status?: unknown }).status } : null))
+              .filter((f): f is { label: string; status: "available" | "coming_soon" } => !!f && !!f.label && (f.status === "available" || f.status === "coming_soon"))
+              .slice(0, 20);
+            return title && features.length ? { title, features } : null;
+          })
+          .filter((a): a is ConnectIncludedArea => !!a)
+          .slice(0, 10),
+      )
+    : null,
+);
+
 const faqList = z.unknown().transform((v): ConnectFaq[] | null =>
   Array.isArray(v)
     ? v
@@ -215,6 +240,7 @@ const cardSchema = loose({
     }),
     howItWorks: howList,
     promoLabel: text(30),
+    includedFeatures: includedList,
     layout,
   }),
 });

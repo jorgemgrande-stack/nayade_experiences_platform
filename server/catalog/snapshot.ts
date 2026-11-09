@@ -25,6 +25,7 @@ interface PublishedProduct {
     quotas: Array<{ metric: string; included: number | null }>;
     addonFor: { metric: string; step: number; plans: string[] } | null;
     offer: OfferConfig;
+    legacy: { replacedBy: string; since?: string };
   }>;
 }
 
@@ -51,6 +52,7 @@ export function quoteCatalogFromSite(site: Pick<SiteDocument, "version" | "catal
         addonFor: p.catalog?.addonFor ?? null,
         thirdPartyCosts: p.thirdPartyCosts ?? null,
         prices,
+        legacy: p.catalog?.legacy ? { replacedBy: p.catalog.legacy.replacedBy } : null,
         // Modalidad comercial efectiva (aditiva): la misma regla que la salida pública
         offer: effectiveOffer({ technicalStatus: p.technicalStatus, catalog: p.catalog, prices }),
       };

@@ -7,6 +7,7 @@
 import crypto from "node:crypto";
 import type { Pool, RowDataPacket } from "mysql2/promise";
 import { NET_COMPLETE } from "./policy";
+import { NET_PRODUCTS } from "../../../shared/netProducts";
 
 interface TableSpec {
   table: string;
@@ -22,7 +23,10 @@ const CRM_TABLES: TableSpec[] = [
   { table: "commercial_payments", columns: ["id", "order_id", "purpose", "amount_cents", "status"], order: "id", status: "status" },
   { table: "stripe_subscriptions", columns: ["stripe_subscription_id", "status", "cancel_at_period_end", "current_period_end", "price_ids_json", "version"], order: "stripe_subscription_id", status: "status" },
 ];
-const REGISTRY_TABLES: TableSpec[] = [{ table: "tenant_entitlements", columns: ["tenant_id", "module_id", "status", "valid_until"], order: "tenant_id, module_id", status: "status" }];
+const REGISTRY_TABLES: TableSpec[] = [
+  { table: "tenant_entitlements", columns: ["tenant_id", "module_id", "status", "valid_until"], order: "tenant_id, module_id", status: "status" },
+  { table: "tenant_capabilities", columns: ["tenant_id", "capability_id", "status", "valid_until"], order: "tenant_id, capability_id", status: "status" },
+];
 
 export interface TableSnapshot {
   filas: number;
@@ -76,10 +80,77 @@ export async function coreAudit(crm: Pool, now = Date.now()) {
   }
 }
 
-export async function commercialIntegrity(crm: Pool, registry: Pool): Promise<Record<string, TableSnapshot | "ausente" | Awaited<ReturnType<typeof coreAudit>>>> {
-  const out: Record<string, TableSnapshot | "ausente" | Awaited<ReturnType<typeof coreAudit>>> = {};
+/** Claves del catálogo de Elephant Net: las siete soluciones y sus antiguos módulos sueltos (heredados desde el 09/11/2026). */
+const NET_KEYS = NET_PRODUCTS.flatMap((p) => [p.key, ...p.legacyKeys]);
+const NET_SOLUTIONS = new Set(NET_PRODUCTS.map((p) => p.key));
+/** Capacidades que conceden los productos Net (server/catalog/capabilities.ts). */
+export const NET_CAPABILITIES = ["hotel-net", "ski-school", "ski-rental", "travel-net", "restaurant-net", "care-net", "social-token-net", "social-token-net-tokens", "life-net"] as const;
+
+/**
+ * Contrataciones de Elephant Net (solo lectura, sin datos personales): partidas vivas por producto en suscripciones no
+ * canceladas (empresas, partidas e importe), empresas con módulos sueltos y con solución completa, y licencias Net por
+ * capacidad y estado, con su huella. Sirve para demostrar que la unificación comercial no cambia ningún contrato.
+ */
+export async function netContracts(crm: Pool, registry: Pool, now = Date.now()) {
+  const out: { porProducto: Record<string, { empresas: number; partidas: number; importeCents: number }>; empresasConModulosSueltos: number[]; empresasConCompleto: number[]; licencias: Record<string, Record<string, number>> | "ausente"; huellaLicencias: string | null } = {
+    porProducto: {},
+    empresasConModulosSueltos: [],
+    empresasConCompleto: [],
+    licencias: {},
+    huellaLicencias: null,
+  };
+  try {
+    const [rows] = await crm.query<RowDataPacket[]>(
+      `SELECT s.company_id, i.product_key, i.unit_amount_cents, i.quantity FROM subscription_items i JOIN subscriptions s ON s.id = i.subscription_id WHERE s.status <> 'canceled' AND (i.effective_to IS NULL OR i.effective_to > ?) AND i.product_key IN (${NET_KEYS.map(() => "?").join(",")}) ORDER BY i.id`,
+      [now, ...NET_KEYS],
+    );
+    const companies = new Map<string, Set<number>>();
+    const modules = new Set<number>();
+    const solutions = new Set<number>();
+    for (const r of rows) {
+      const k = String(r.product_key);
+      const c = Number(r.company_id);
+      const p = (out.porProducto[k] ??= { empresas: 0, partidas: 0, importeCents: 0 });
+      p.partidas++;
+      p.importeCents += Number(r.unit_amount_cents) * Number(r.quantity ?? 1);
+      if (!companies.has(k)) companies.set(k, new Set());
+      companies.get(k)!.add(c);
+      (NET_SOLUTIONS.has(k) ? solutions : modules).add(c);
+    }
+    for (const [k, s] of Array.from(companies)) out.porProducto[k].empresas = s.size;
+    out.empresasConModulosSueltos = Array.from(modules).sort((a, b) => a - b);
+    out.empresasConCompleto = Array.from(solutions).sort((a, b) => a - b);
+  } catch (e) {
+    if ((e as { code?: string }).code !== "ER_NO_SUCH_TABLE") throw e;
+  }
+  try {
+    const [rows] = await registry.query<RowDataPacket[]>(
+      `SELECT tenant_id, capability_id, status, valid_until FROM tenant_capabilities WHERE capability_id IN (${NET_CAPABILITIES.map(() => "?").join(",")}) ORDER BY tenant_id, capability_id`,
+      [...NET_CAPABILITIES],
+    );
+    const lic: Record<string, Record<string, number>> = {};
+    const h = crypto.createHash("sha256");
+    for (const r of rows) {
+      const cap = String(r.capability_id);
+      const st = String(r.status);
+      lic[cap] ??= {};
+      lic[cap][st] = (lic[cap][st] ?? 0) + 1;
+      h.update(JSON.stringify([r.tenant_id, cap, st, r.valid_until instanceof Date ? r.valid_until.toISOString() : r.valid_until]) + "\n");
+    }
+    out.licencias = lic;
+    out.huellaLicencias = h.digest("hex").slice(0, 16);
+  } catch (e) {
+    if ((e as { code?: string }).code !== "ER_NO_SUCH_TABLE") throw e;
+    out.licencias = "ausente";
+  }
+  return out;
+}
+
+export async function commercialIntegrity(crm: Pool, registry: Pool): Promise<Record<string, TableSnapshot | "ausente" | Awaited<ReturnType<typeof coreAudit>> | Awaited<ReturnType<typeof netContracts>>>> {
+  const out: Record<string, TableSnapshot | "ausente" | Awaited<ReturnType<typeof coreAudit>> | Awaited<ReturnType<typeof netContracts>>> = {};
   for (const t of CRM_TABLES) out[t.table] = await snapshot(crm, t);
   for (const t of REGISTRY_TABLES) out[t.table] = await snapshot(registry, t);
   out.coreUnico = await coreAudit(crm);
+  out.net = await netContracts(crm, registry, Date.now());
   return out;
 }
