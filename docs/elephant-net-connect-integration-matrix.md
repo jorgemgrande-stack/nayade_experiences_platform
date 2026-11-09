@@ -130,7 +130,7 @@ En el Core, cada empresa guarda sus credenciales en una bóveda (`server/_core/c
 | Meta CAPI + Pixel | Core / Skicenter `metaCapi/` | A | corregido el fallo por empresa (PR #674) | portar reintentos y salud de `metaCapi/` |
 | Redsys con varios TPV | Skicenter | A | pendiente | tablas `redsys_tpvs` y log por empresa |
 | Veturis (hoteles XML) | Skicenter | A/B | pendiente | credenciales de cada agencia; confirmar si exige IP en lista blanca |
-| WhatsApp Cloud API | Skicenter | B | en curso (Elephant WhatsApp AI, migración 0063) | app y número PROPIOS de cada empresa en su bóveda (`whatsapp_cloud`); webhook en su dominio con firma de su App Secret y filtro por `phone_number_id`. Bloqueo externo: verificación de la empresa y de la app en Meta y número aprobado |
+| WhatsApp Cloud API | Skicenter | B | en curso (Elephant WhatsApp AI, migración 0062) | app y número PROPIOS de cada empresa en su bóveda (`whatsapp_cloud`); webhook en su dominio con firma de su App Secret y filtro por `phone_number_id`. Bloqueo externo: verificación de la empresa y de la app en Meta y número aprobado |
 | Meta Lead Ads | Skicenter | B | pendiente | suscripción de página por empresa |
 | Brevo marketing (contactos, listas, campañas) | Skicenter | B | pendiente | separar del Brevo de correo de la plataforma |
 | Google Ads | Skicenter | B | pendiente | token de desarrollador de la plataforma y OAuth por empresa |
@@ -178,7 +178,7 @@ En el Core, cada empresa guarda sus credenciales en una bóveda (`server/_core/c
 | Care Net · recordatorios de cita por correo | #720 | fusionado (0051) |
 | Ski Net · fianzas del alquiler y cargos por daños | #721 | en curso (0052) |
 | Tanda C: fichas de Care, Ski, Restaurant y Travel Net al día (Hotel Net bloqueado por el borrador ajeno v10) | esta PR | en curso |
-| Elephant WhatsApp AI · WhatsApp Cloud API por empresa, bandeja con ventana de 24 h y plantillas, IA (sugerencias y automática con tope) y revisión `review20261109whatsapp.ts` | PR de esta entrega | en curso (0063) |
+| Elephant WhatsApp AI · WhatsApp Cloud API por empresa, bandeja con ventana de 24 h y plantillas, IA (sugerencias y automática con tope) y revisión `review20261109whatsapp.ts` | PR de esta entrega | en curso (0062) |
 
 ## Activación del marketplace (encargo del 08/11/2026)
 
@@ -213,7 +213,7 @@ Inventario accionable de lo que se vende en `/admin/ampliar`. Estado público de
 | Finance Sync (`bank-import-pos`, `bank-reconciliation`) | Extractos de **cualquier banco** (Norma 43, Excel o CSV, #716), operaciones y remesas del datáfono, conciliación | Buzón IMAP de la empresa (tickets del datáfono) | Implantación acompañada (ficha actualizada en la tanda B) | Asistente del buzón del datáfono en el panel; después, venta directa. |
 | Voice (`voice-ai`) | Llamadas Vapi, leads y coste | Cuenta Vapi de la empresa (bóveda) | Implantación acompañada | Asistente de alta de Vapi. Netelip: IP de salida fija. |
 | POS (`pos-advanced`) | El TPV avanzado existe, pero lo licencia `bill-cash` (Essential) | — | Implantación acompañada | Frontera entre la caja básica y la avanzada. Es una decisión de negocio: hoy la tienen los clientes de Essential. |
-| WhatsApp AI (`whatsapp-ai`) | WhatsApp Cloud API con el número de la empresa: webhook firmado e idempotente, estados de entrega, bandeja con ventana de 24 h y plantillas aprobadas, sugerencias de IA y respuesta automática opcional con horario, tope diario y traspaso a persona (migración 0063). La bandeja de GHL sigue para quien la usa | App de Meta, negocio y número verificados y aprobados de la empresa (bóveda `whatsapp_cloud`); plantillas aprobadas por Meta | En preparación → implantación acompañada con `review20261109whatsapp.ts` (preparada, sin lanzar) | Bloqueo externo: verificación de la empresa y la app en Meta y número aprobado. Las conversaciones las factura Meta. |
+| WhatsApp AI (`whatsapp-ai`) | WhatsApp Cloud API con el número de la empresa: webhook firmado e idempotente, estados de entrega, bandeja con ventana de 24 h y plantillas aprobadas, sugerencias de IA y respuesta automática opcional con horario, tope diario y traspaso a persona (migración 0062). La bandeja de GHL sigue para quien la usa | App de Meta, negocio y número verificados y aprobados de la empresa (bóveda `whatsapp_cloud`); plantillas aprobadas por Meta | En preparación → implantación acompañada con `review20261109whatsapp.ts` (preparada, sin lanzar) | Bloqueo externo: verificación de la empresa y la app en Meta y número aprobado. Las conversaciones las factura Meta. |
 | Campaigns (`email-campaigns`) | Sincronización de clientes con consentimiento a la lista de Brevo de la empresa | Cuenta Brevo de la empresa | Próximamente | Envío de campañas desde el Core. Brevo no es un producto de correo nuevo. |
 | Automatizaciones (`automations-advanced`) | Recordatorios por correo (`emailAutomationJob`) | — | En preparación | Motor de reglas y flujos licenciado. |
 | Copilot avanzado (`copilot-advanced`) | Proveedor de IA central | IA de la plataforma | Próximamente | Hay un borrador ajeno (v6): bloqueo. |

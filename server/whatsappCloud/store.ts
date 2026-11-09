@@ -1,6 +1,6 @@
 /**
  * Persistencia de Elephant WhatsApp AI en la BD de la empresa en curso (migración
- * `db/migrations/0063_connect_whatsapp_ai.sql`). Tablas fuera de drizzle/schema.ts y SQL parametrizado (patrón de
+ * `db/migrations/0062_connect_whatsapp_ai.sql`). Tablas fuera de drizzle/schema.ts y SQL parametrizado (patrón de
  * server/receptionAi/store.ts). Sin las tablas → `WhatsappNotInstalled`. Nada se borra: es el registro de la empresa.
  *
  * Idempotencia: cada mensaje de Meta tiene un id único (`wamid`, clave única): el mismo webhook repetido no duplica
@@ -24,7 +24,7 @@ import {
 
 export class WhatsappNotInstalled extends Error {
   constructor() {
-    super("WhatsApp Business aún no está preparado en tu empresa: falta aplicar la actualización 0063_connect_whatsapp_ai de su base de datos.");
+    super("WhatsApp Business aún no está preparado en tu empresa: falta aplicar la actualización 0062_connect_whatsapp_ai de su base de datos.");
     this.name = "WhatsappNotInstalled";
   }
 }

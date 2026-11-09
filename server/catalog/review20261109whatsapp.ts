@@ -23,7 +23,7 @@ export const WHATSAPP_LISTING_2026_11_09: readonly ListingChange[] = [
   {
     key: "connect-whatsapp-ai",
     evidence:
-      "Entrega Elephant WhatsApp AI del 09/11/2026 (migración 0063, server/whatsappCloud): WhatsApp Cloud API con el número, la cuenta WABA, la clave del usuario del sistema y el App Secret de la empresa en su bóveda (verificación de solo lectura contra la Graph API, token solo en Authorization); webhook público con hub.verify_token y firma X-Hub-Signature-256 en tiempo constante, idempotente por wamid y con estados de entrega; bandeja con ventana de 24 h y plantillas aprobadas de la WABA; sugerencias con la IA central y el conocimiento de Reception AI; respuesta automática opcional (apagada por defecto) con horario, tope diario atómico y traspaso a persona; registro de la IA; licencia whatsapp-ai.",
+      "Entrega Elephant WhatsApp AI del 09/11/2026 (migración 0062, server/whatsappCloud): WhatsApp Cloud API con el número, la cuenta WABA, la clave del usuario del sistema y el App Secret de la empresa en su bóveda (verificación de solo lectura contra la Graph API, token solo en Authorization); webhook público con hub.verify_token y firma X-Hub-Signature-256 en tiempo constante, idempotente por wamid y con estados de entrega; bandeja con ventana de 24 h y plantillas aprobadas de la WABA; sugerencias con la IA central y el conocimiento de Reception AI; respuesta automática opcional (apagada por defecto) con horario, tope diario atómico y traspaso a persona; registro de la IA; licencia whatsapp-ai.",
     status: { from: "in_preparation", to: "on_request" },
     functionalGrade: "in_use",
     stripePrepared: false,
