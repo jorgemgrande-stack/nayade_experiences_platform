@@ -86,10 +86,15 @@ export async function getSettings(exec: Exec): Promise<AccSettings | null> {
  */
 export async function seed(exec: TxExec, startDate: string): Promise<void> {
   await exec.transaction(async (tx) => {
-    const values = ACC_PGC_SEED.map((a) => sql`(${a.code}, ${a.name}, ${a.type}, ${a.parentCode ?? null}, 1, 1, 1)`);
-    await tx.execute(sql`INSERT IGNORE INTO acc_accounts (code, name, type, parent_code, is_postable, active, is_seed) VALUES ${sql.join(values, sql`, `)}`);
+    await seedAccounts(tx);
     await tx.execute(sql`INSERT IGNORE INTO acc_settings (id, start_date, account_map) VALUES (1, ${startDate}, ${JSON.stringify(ACC_DEFAULT_MAP)})`);
   });
+}
+
+/** Cuentas del plan que falten (INSERT IGNORE: nunca toca las existentes ni lo que la empresa cambió). */
+export async function seedAccounts(exec: Exec): Promise<void> {
+  const values = ACC_PGC_SEED.map((a) => sql`(${a.code}, ${a.name}, ${a.type}, ${a.parentCode ?? null}, 1, 1, 1)`);
+  await exec.execute(sql`INSERT IGNORE INTO acc_accounts (code, name, type, parent_code, is_postable, active, is_seed) VALUES ${sql.join(values, sql`, `)}`);
 }
 
 export async function saveSettings(exec: Exec, s: { startDate: string; lockedUntil: string | null; map: AccAccountMap }, userId: number | null): Promise<void> {

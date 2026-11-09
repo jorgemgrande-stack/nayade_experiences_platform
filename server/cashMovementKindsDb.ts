@@ -12,6 +12,8 @@
  */
 import { sql, type SQL } from "drizzle-orm";
 import { legacyDb } from "./_core/legacyDb";
+import { getCapabilityAccess } from "./_core/capabilities/access";
+import { ACC_CAPABILITY } from "../shared/accountingGeneral";
 
 export const CASH_OUT_KINDS = ["gasto", "devolucion", "traspaso"] as const;
 export const CASH_IN_KINDS = ["fondo", "cobro"] as const;
@@ -20,6 +22,23 @@ export type CashInKind = (typeof CASH_IN_KINDS)[number];
 /** Fianzas del alquiler (server/skiRental/depositStore.ts): cobro y devolución, contra fianzas recibidas. */
 export const CASH_DEPOSIT_KIND = "fianza" as const;
 export type CashMoveKind = CashOutKind | CashInKind | typeof CASH_DEPOSIT_KIND;
+
+/**
+ * ¿Se usan los tipos de movimiento de caja en esta empresa? Solo si la contabilidad general está licenciada Y en uso
+ * (`acc_settings` iniciado: alguien la abrió o la configuró). En la instalación única, donde la licencia se da por
+ * concedida, sin contabilidad iniciada el TPV es el de siempre. Ante cualquier fallo (registro de licencias caído,
+ * tabla ausente), false: el TPV se comporta exactamente como antes. La misma regla para el servidor y el cliente
+ * (`tpv.cashMovementMode`).
+ */
+export async function cashKindsInUse(exec: Exec = legacyDb()): Promise<boolean> {
+  try {
+    if (!(await getCapabilityAccess().check(ACC_CAPABILITY, { write: true })).allowed) return false;
+    const [rows] = (await exec.execute(sql`SELECT 1 AS x FROM acc_settings WHERE id = 1`)) as unknown as [unknown[]];
+    return Array.isArray(rows) && rows.length > 0;
+  } catch {
+    return false;
+  }
+}
 
 /** Tipo explícito de un movimiento (el que eligió el cajero) o null si no se indicó. */
 export function explicitCashMoveKind(m: { type: "in" | "out"; outKind?: CashOutKind | null; inKind?: CashInKind | null }): CashMoveKind | null {

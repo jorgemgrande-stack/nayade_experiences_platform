@@ -72,10 +72,43 @@ describe.skipIf(!URL_)("Contabilidad general · caminos reales del Core (TPV, an
     ccId = (await ess.sql("a", "SELECT id FROM cost_centers WHERE name = 'General'"))[0].id;
     const registerId = ok(await ess.m("a", "tpv.createRegister", { name: "Mostrador" }, adA), "caja").id;
     sessionId = ok(await ess.m("a", "tpv.openSession", { registerId, openingAmount: 0 }, agA), "abrir caja").id;
-    await sync();
   }, 300_000);
   afterAll(async () => {
     await ess?.close();
+  });
+
+  const kindOf = async (movementId: number) => {
+    const r = await ess.sql("a", "SELECT kind FROM acc_cash_movement_kinds WHERE movement_id = ?", [movementId]);
+    return r.length ? r[0].kind : "sin fila";
+  };
+
+  it("con la licencia pero la contabilidad sin iniciar (como la instalación única): el TPV y su modal son los de siempre", async () => {
+    expect(await ess.sql("a", "SELECT COUNT(*) AS n FROM acc_settings")).toEqual([{ n: 0 }]);
+    expect(ok(await ess.q("a", "tpv.cashMovementMode", undefined, agA), "modo")).toEqual({ typed: false });
+    expect((await ess.m("a", "tpv.addCashMovement", { sessionId, type: "out", amount: 1, reason: "x", outKind: "devolucion" }, agA)).status).toBe(400);
+    const mv = await move({ type: "out", amount: 1, reason: "Devolución en efectivo (sin contabilidad)", outKind: "gasto" });
+    expect(await kindOf(mv.id)).toBeNull(); // sin tipo
+    expect(await tpvExpense("Devolución en efectivo (sin contabilidad)")).not.toBeNull(); // crea el gasto, como siempre
+    // Al iniciar la contabilidad (primera generación), el modal pide el tipo
+    await sync();
+    expect(ok(await ess.q("a", "tpv.cashMovementMode", undefined, agA), "modo")).toEqual({ typed: true });
+  });
+
+  it("si el registro de licencias falla, el TPV se comporta como siempre (sin tipos), sin fallar", async () => {
+    const { getCapabilityAccess } = await import("./_core/capabilities/access");
+    const access = getCapabilityAccess();
+    const original = access.check.bind(access);
+    // Solo falla la consulta de la licencia de la contabilidad (el resto del panel sigue funcionando)
+    const spy = vi.spyOn(access, "check").mockImplementation((cap, o) => (cap === "accounting-general" ? Promise.reject(new Error("registro de licencias caído")) : original(cap, o)));
+    try {
+      expect((await ess.m("a", "tpv.addCashMovement", { sessionId, type: "out", amount: 1, reason: "x", outKind: "devolucion" }, agA)).status).toBe(400);
+      const mv = await move({ type: "out", amount: 1, reason: "Hielo con el registro caído", outKind: "gasto" });
+      expect(await kindOf(mv.id)).toBeNull();
+      expect(await tpvExpense("Hielo con el registro caído")).not.toBeNull();
+    } finally {
+      spy.mockRestore();
+    }
+    await sync(); // las pruebas siguientes parten de todo contabilizado
   });
 
 

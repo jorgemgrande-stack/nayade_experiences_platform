@@ -24,6 +24,7 @@ const run = crypto.randomBytes(3).toString("hex");
 const T = `skid-${run}`;
 const PASS = "clave-ski-" + run;
 
+// Tiempo máximo explícito en cada prueba (60 s): con varias suites MySQL a la vez, 5 s no bastan
 describe.skipIf(!URL_)("Ski Net · fianzas del alquiler (routers reales, TPV del Core)", () => {
   let admin: mysql.Pool;
   let tenantDb: mysql.Connection;
@@ -178,7 +179,7 @@ describe.skipIf(!URL_)("Ski Net · fianzas del alquiler (routers reales, TPV del
   it("la migración 0052 creó las tablas de fianzas", async () => {
     const [rows] = await tenantDb.query<mysql.RowDataPacket[]>("SHOW TABLES LIKE 'ski_deposit%'");
     expect(rows.map((r) => Object.values(r)[0]).sort()).toEqual(["ski_deposit_attachments", "ski_deposit_charges", "ski_deposit_events", "ski_deposit_rules", "ski_deposits"]);
-  });
+  }, 60_000);
 
   it("preparación: licencias, material, importes de fianza y cajas abiertas por sede", async () => {
     expect(fail(await query("skiRental.depositRules", NORTE)).message).toMatch(/^\[module_not_licensed\]/);
@@ -212,7 +213,7 @@ describe.skipIf(!URL_)("Ski Net · fianzas del alquiler (routers reales, TPV del
       else sessSur = ses.insertId;
     }
     expect(ok(await query("skiRental.depositCashSessions", NORTE)).map((s: any) => s.id)).toEqual([sessNorte]);
-  });
+  }, 60_000);
 
   it("fianza en efectivo al entregar: sugerida por modelo y tipo, entrada en caja y sin duplicar con doble clic", async () => {
     d1 = ok(
@@ -241,7 +242,7 @@ describe.skipIf(!URL_)("Ski Net · fianzas del alquiler (routers reales, TPV del
     expect(deps[0]).toMatchObject({ status: "held", amountCents: 13000, method: "cash", collectSessionId: sessNorte });
     expect(await count("SELECT COUNT(*) AS n FROM cash_movements WHERE sessionId = ? AND type_cm = 'in' AND amount = 130.00", [sessNorte])).toBe(1);
     expect(await count("SELECT COUNT(*) AS n FROM ski_deposits WHERE delivery_id = ?", [d1])).toBe(1);
-  });
+  }, 60_000);
 
   it("liquidación: retención con motivo, venta de daños única en el TPV, salida de caja y cargo pendiente por lo no cubierto", async () => {
     expect(fail(await mutate("skiRental.settleDeposit", { ...NORTE, depositId: dep1, damageCents: 0, sessionId: sessNorte })).message).toMatch(/devolución de todo el material/);
@@ -281,7 +282,7 @@ describe.skipIf(!URL_)("Ski Net · fianzas del alquiler (routers reales, TPV del
     expect(paid).toMatchObject({ replayed: true, charge: { status: "paid", payMethod: "card" } });
     expect(await count("SELECT COUNT(*) AS n FROM tpv_sales")).toBe(salesBefore + 2);
     expect(fail(await mutate("skiRental.cancelDamageCharge", { ...NORTE, chargeId: charges[0].id, reason: "Error" })).status).toBe(409);
-  });
+  }, 60_000);
 
   it("tarjeta: devolución total sin efectivo ni venta; cargo manual sin duplicar y anulado con motivo", async () => {
     const d2 = ok(await mutate("skiRental.createDelivery", { ...NORTE, storeId, customerName: "Otra clienta", startDate: "2026-12-20", expectedReturnDate: "2026-12-21", lines: [{ code: "BOOT-00005", requestedType: "boots" }] })).id;
@@ -300,7 +301,7 @@ describe.skipIf(!URL_)("Ski Net · fianzas del alquiler (routers reales, TPV del
     const b = ok(await mutate("skiRental.createDamageCharge", { ...NORTE, deliveryId: d2, amountCents: 1500, reason: "Hebilla rota detectada después", requestKey: key }));
     expect(b).toMatchObject({ replayed: true, charge: { id: a.charge.id } });
     expect(ok(await mutate("skiRental.cancelDamageCharge", { ...NORTE, chargeId: a.charge.id, reason: "Era de antes" }))).toMatchObject({ status: "cancelled", cancelReason: "Era de antes" });
-  });
+  }, 60_000);
 
   it("listado de fianzas abiertas, totales del día, justificante y aislamiento por sede", async () => {
     const d3 = ok(await mutate("skiRental.createDelivery", { ...NORTE, storeId, customerName: "Tercer cliente", startDate: "2026-12-20", expectedReturnDate: "2026-12-21", lines: [{ code: "SKI-00002", requestedType: "ski" }] })).id;
@@ -318,7 +319,7 @@ describe.skipIf(!URL_)("Ski Net · fianzas del alquiler (routers reales, TPV del
     expect(ok(await query("skiRental.depositTotals", SUR)).collected.count).toBe(0);
     const ev = ok(await query("skiRental.depositForDelivery", { ...NORTE, deliveryId: d1 })).events.map((e: any) => e.kind);
     expect(ev).toEqual(["collected", "retained", "charge_created", "charge_paid"]);
-  });
+  }, 60_000);
 
   it("liquidación a medias con la caja cerrada: se reasigna a otra caja abierta de la sede, sin duplicar la venta y con la caja cuadrada", async () => {
     const d4 = ok(await mutate("skiRental.createDelivery", { ...NORTE, storeId, customerName: "Cuarto cliente", startDate: "2026-12-20", expectedReturnDate: "2026-12-21", lines: [{ code: "SKI-00003", requestedType: "ski" }] })).id;
@@ -370,7 +371,7 @@ describe.skipIf(!URL_)("Ski Net · fianzas del alquiler (routers reales, TPV del
     // Repetir ya cerrada: no cambia nada
     expect(ok(await mutate("skiRental.settleDeposit", { ...NORTE, depositId: dep.id, damageCents: 2000, reason: "Fijación rota", sessionId: sessNorte })).replayed).toBe(true);
     expect(await count("SELECT COUNT(*) AS n FROM cash_movements WHERE reason LIKE ?", [`%alquiler #${d4}`])).toBe(3);
-  });
+  }, 60_000);
 
   it("contabilidad general: las fianzas en efectivo, contra fianzas recibidas (560); su cobro y su devolución se saldan y no tocan el 555 ni el 430", async () => {
     // Cada movimiento de fianza guardó su tipo en la misma transacción
@@ -392,5 +393,5 @@ describe.skipIf(!URL_)("Ski Net · fianzas del alquiler (routers reales, TPV del
     expect(await count("SELECT COUNT(*) AS n FROM acc_entry_lines l JOIN acc_entries e ON e.id = l.entry_id WHERE e.source_key LIKE 'cajamov:%' AND l.account_code = '560'")).toBeGreaterThan(0);
     // La devolución de una fianza no se toma por una devolución a un cliente ni queda para revisar
     expect(s.review.filter((r: any) => String(r.key).startsWith("cajamov:"))).toEqual([]);
-  });
+  }, 60_000);
 });

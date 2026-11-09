@@ -10,9 +10,7 @@ import { madridDateKey } from "../utils/timezone";
 import { createReavExpedient, attachReavDocument, upsertClientFromReservation, postConfirmOperation, logActivity, getGHLCredentials } from "../db";
 import { createGHLContact, triggerGHLWorkflow, syncLeadUrlsToGHL } from "../ghl";
 import { createCashMovementIfNotExists, getDefaultCashAccountId, recordCashTransferToCentral } from "./cashRegisterHelper";
-import { CASH_IN_KINDS, CASH_OUT_KINDS, explicitCashMoveKind, linkCashMovementExpense, recordCashMovementKind } from "../cashMovementKindsDb";
-import { getCapabilityAccess } from "../_core/capabilities/access";
-import { ACC_CAPABILITY } from "../../shared/accountingGeneral";
+import { CASH_IN_KINDS, CASH_OUT_KINDS, cashKindsInUse, explicitCashMoveKind, linkCashMovementExpense, recordCashMovementKind } from "../cashMovementKindsDb";
 import { calcularREAVSimple } from "../reav";
 import { getDailyControlCenter } from "./dailyControl";
 import {
@@ -410,6 +408,9 @@ export const tpvRouter = router({
     }),
 
   // -- SESSIONS ---------------------------------------------------------------
+  /** ¿El modal de caja pide el tipo de cada movimiento? Solo con la contabilidad general en uso (cashKindsInUse). */
+  cashMovementMode: tpvAccessProc.query(async () => ({ typed: await cashKindsInUse() })),
+
   getActiveSession: tpvAccessProc
     .input(z.object({ registerId: z.number() }))
     .query(async ({ input }) => {
@@ -675,9 +676,9 @@ export const tpvRouter = router({
       })
     )
     .mutation(async ({ input: raw, ctx }) => {
-      // Sin la contabilidad general (accounting-general), el TPV es el de siempre: solo «gasto» (por defecto) o
+      // Sin la contabilidad general en uso (licencia y acc_settings iniciado; ver cashKindsInUse), el TPV es el de siempre: solo «gasto» (por defecto) o
       // «traspaso», y no se guarda ningún tipo. Con ella, además «devolucion» y el tipo explícito para contabilizarlo.
-      const accounting = (await getCapabilityAccess().check(ACC_CAPABILITY, { write: true })).allowed;
+      const accounting = await cashKindsInUse();
       if (!accounting && raw.outKind === "devolucion") {
         throw new TRPCError({ code: "BAD_REQUEST", message: "Tipo de salida no válido" });
       }

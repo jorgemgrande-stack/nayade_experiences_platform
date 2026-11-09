@@ -298,6 +298,7 @@ async function readCash(db: Db, ctx: SourceContext, out: SourceRead) {
   const kinds = new Map<number, CashMoveKind>();
   const linkedExpense = new Set<number>();
   const tpvExpenseKeys = new Set<string>();
+  const depositBeforeStart = new Set<number>();
   if ((moves as unknown[]).length) {
     const [kr] = (await db.execute(sql`SELECT movement_id, kind, expense_id FROM acc_cash_movement_kinds`)) as unknown as [Array<{ movement_id: number; kind: string | null; expense_id: number | null }>];
     for (const k of kr) {
@@ -306,8 +307,16 @@ async function readCash(db: Db, ctx: SourceContext, out: SourceRead) {
     }
     // Fianzas del alquiler anteriores a la 0060: las identifica su evento (ski_deposit_events.cash_movement_id)
     try {
-      const [dr] = (await db.execute(sql`SELECT DISTINCT cash_movement_id AS id FROM ski_deposit_events WHERE cash_movement_id IS NOT NULL`)) as unknown as [Array<{ id: number }>];
-      for (const d of dr) if (!kinds.has(Number(d.id))) kinds.set(Number(d.id), "fianza");
+      const [dr] = (await db.execute(sql`SELECT e.cash_movement_id AS id, e.deposit_id, m.createdAt AS at FROM ski_deposit_events e JOIN cash_movements m ON m.id = e.cash_movement_id WHERE e.cash_movement_id IS NOT NULL`)) as unknown as [Array<{ id: number; deposit_id: number | null; at: number }>];
+      const firstMove = new Map<number, number>();
+      for (const d of dr) {
+        if (!kinds.has(Number(d.id))) kinds.set(Number(d.id), "fianza");
+        if (d.deposit_id != null) firstMove.set(Number(d.deposit_id), Math.min(firstMove.get(Number(d.deposit_id)) ?? Infinity, Number(d.at)));
+      }
+      // Fianza cobrada antes de la fecha de inicio y liquidada después: su cobro va en el asiento de apertura (560)
+      for (const d of dr) {
+        if (d.deposit_id != null && Number(d.at) >= since && (firstMove.get(Number(d.deposit_id)) ?? Infinity) < since) depositBeforeStart.add(Number(d.id));
+      }
     } catch {
       // Sin el alquiler instalado no hay fianzas
     }
@@ -324,6 +333,7 @@ async function readCash(db: Db, ctx: SourceContext, out: SourceRead) {
     const effective = effectiveCashKind(c);
     // Lo que queda en el puente de caja (555) sin nada que lo salde, para revisar
     const clearedByExpense = linkedExpense.has(Number(m.id)) || tpvExpenseKeys.has(`Retirada de caja TPV — ${c.reason}|${c.amountCents}`);
+    if (depositBeforeStart.has(Number(m.id))) out.review.push({ key, message: `${what}: fianza cobrada antes del inicio de la contabilidad; su cobro debe estar en el asiento de apertura (fianzas recibidas, 560)` });
     if (m.type === "in" && c.kind == null) out.review.push({ key, message: `${what} sin tipo: queda en el puente de caja (555) hasta aplicarla` });
     else if (m.type === "out" && c.kind == null && effective === "devolucion") out.review.push({ key, message: `${what} sin tipo: por su motivo se contabiliza como devolución a un cliente` });
     else if (m.type === "out" && effective === "gasto" && !clearedByExpense) out.review.push({ key, message: `${what} de tipo gasto sin su gasto (¿faltaba la categoría o el centro de coste?): queda en el puente de caja (555)` });

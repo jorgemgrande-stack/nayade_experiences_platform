@@ -9,8 +9,6 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
 import { ArrowDownLeft, ArrowUpRight, Banknote } from "lucide-react";
-import { usePanelSubscription } from "@/hooks/usePanelSubscription";
-import { ACC_CAPABILITY } from "@shared/accountingGeneral";
 import TpvCashMovementAccounting from "./TpvCashMovementAccounting";
 
 interface Props {
@@ -33,12 +31,13 @@ const QUICK_REASONS_IN = [
 ];
 
 /**
- * Con la contabilidad general (accounting-general) activa, el modal con el tipo de cada movimiento
- * (TpvCashMovementAccounting). Sin ella, el de siempre, sin ningún cambio.
+ * Con la contabilidad general en uso (licencia y contabilidad iniciada: `tpv.cashMovementMode`, la misma regla que el
+ * servidor), el modal con el tipo de cada movimiento (TpvCashMovementAccounting). Si no, o mientras no se sabe, el de
+ * siempre, sin ningún cambio.
  */
 export default function TpvCashMovement(props: Props) {
-  const { canWrite } = usePanelSubscription();
-  return canWrite(ACC_CAPABILITY) ? <TpvCashMovementAccounting {...props} /> : <CoreCashMovement {...props} />;
+  const mode = trpc.tpv.cashMovementMode.useQuery(undefined, { staleTime: 60_000, retry: false });
+  return mode.data?.typed === true ? <TpvCashMovementAccounting {...props} /> : <CoreCashMovement {...props} />;
 }
 
 function CoreCashMovement({ open, type, sessionId, onClose }: Props) {

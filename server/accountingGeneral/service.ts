@@ -80,7 +80,11 @@ async function run<T>(fn: (d: Db) => Promise<T>): Promise<T> {
  */
 async function ready(db: Db): Promise<store.AccSettings> {
   const s = await store.getSettings(db);
-  if (s) return s;
+  if (s) {
+    // Las cuentas nuevas del plan (p. ej. la 560 de las fianzas) en empresas ya sembradas, sin tocar las existentes
+    await store.seedAccounts(db);
+    return s;
+  }
   await store.seed(db as unknown as store.TxExec, `${madridYear()}-01-01`);
   return (await store.getSettings(db))!;
 }
