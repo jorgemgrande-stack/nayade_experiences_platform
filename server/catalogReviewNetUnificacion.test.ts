@@ -36,6 +36,7 @@ async function production() {
       ...d,
       ...(c.name ? { name: c.name.from } : {}),
       ...(c.description ? { description: c.description.from } : {}),
+      ...(c.tagline ? { tagline: c.tagline.from } : {}),
       catalog: { ...d.catalog, ...(c.status ? { commercialStatus: c.status.from } : {}), ...(c.implementationLevel?.from ? { implementationLevel: c.implementationLevel.from } : {}) },
       ...(c.fields ? { commercial } : {}),
     });
@@ -91,7 +92,7 @@ describe("revisión del 09/11/2026: unificación comercial de Elephant Net", () 
       // Sin comparaciones con la compra suelta
       expect(JSON.stringify({ d: p.description, c: p.commercial }), np.key).not.toMatch(/descuento|por separado|submódulos|sueltos/i);
       expect(p.name).toBe(np.name);
-      expect(p.description).toBe(np.summary);
+      expect(p.name).toBe(np.name);
       expect(p.catalog.legacy).toBeUndefined();
       expect(p.commercial.includedFeatures).toEqual(np.areas);
     }

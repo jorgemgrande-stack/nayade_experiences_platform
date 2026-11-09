@@ -79,9 +79,12 @@ describe("suscripciones: heredado sin contrataciones nuevas, conservado para qui
     expect(JSON.stringify(await caps.list("t1"))).toBe(capsBefore);
 
     // Contratación nueva del heredado: rechazada (alta y ampliación)
-    await expect(subs.create({ companyId: 2, contractId: 20, interval: "month", plan: { productKey: "business", priceId: await k.priceOf("business") }, addons: [{ productKey: PMS, priceId: await k.priceOf(PMS) }] } as never, "operator:ana")).rejects.toThrow(/ya no se contrata por separado/);
+    await expect(subs.create({ companyId: 2, contractId: 20, interval: "month", plan: { productKey: "business", priceId: await k.priceOf("business") }, addons: [{ productKey: PMS, priceId: await k.priceOf(PMS) }], newSale: true } as never, "operator:ana")).rejects.toThrow(/ya no se contrata por separado/);
     const cur = await subs.must(owner.id);
-    await expect(subs.addItem(owner.id, { item: { productKey: BOOKING, priceId: await k.priceOf(BOOKING) } }, cur.version, "operator:ana")).rejects.toThrow(/forma parte de/);
+    await expect(subs.addItem(owner.id, { item: { productKey: BOOKING, priceId: await k.priceOf(BOOKING) }, newSale: true }, cur.version, "operator:ana")).rejects.toThrow(/forma parte de/);
+    // Lo que llega de un pedido o expediente ya aceptado (sin `newSale`) se ejecuta: rechazarlo tras el cobro o la firma
+    // dejaría el pedido en error (la entrada del pedido ya lo valida)
+    await expect(subs.addItem(owner.id, { item: { productKey: BOOKING, priceId: await k.priceOf(BOOKING) } }, cur.version, "orchestrator")).resolves.toBeTruthy();
     // La solución completa sí se contrata
     const fresh = await subs.create({ companyId: 2, contractId: 20, interval: "month", plan: { productKey: "business", priceId: await k.priceOf("business") }, addons: [{ productKey: "hotel-net-complete", priceId: await k.priceOf("hotel-net-complete") }] } as never, "operator:ana");
     expect((await store.items(fresh.id)).map((i) => i.productKey)).toContain("hotel-net-complete");

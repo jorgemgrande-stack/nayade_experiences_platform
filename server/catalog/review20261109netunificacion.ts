@@ -4,7 +4,7 @@
  * Net suelto a la venta.
  *
  *  - Las siete soluciones son las claves de siempre (`*-net-complete`, `life-net`): conservan precio, Prices de Stripe,
- *    licencias e historial. Se llaman sin «Complete», con su descripción unificada, sus beneficios y la ficha de
+ *    licencias e historial. Se llaman sin «Complete», con la línea corta y la descripción de la semilla, sus beneficios y la ficha de
  *    funcionalidades incluidas (`commercial.includedFeatures`, de shared/netProducts.ts), que distingue lo operativo hoy
  *    («available») de lo incluido y pendiente («coming_soon»).
  *  - Hotel Net pasa de «En preparación» a «Implantación acompañada», como las demás soluciones sectoriales: hasta hoy se
@@ -28,6 +28,10 @@ import type { WebStore } from "../web/store";
 import { NET_PRODUCTS, type NetArea } from "../../shared/netProducts";
 import { ASSISTED_ACTIVATION } from "./review20261108connect";
 import { ASSISTED_FAQ } from "./review20261108fichas";
+import { PRODUCTS } from "./elephantSourceV1";
+
+/** Textos del catálogo oficial (la semilla): son los que la semilla vuelve a escribir, así que la revisión los adopta. */
+const seedOf = (key: string) => PRODUCTS.find((p) => p.key === key)?.draft;
 
 export const REVIEW_ID_2026_11_09_NET_UNIFICATION = "revision-catalogo-2026-11-09-net-unificacion";
 /** Fecha de retirada de la venta de los módulos Net sueltos. */
@@ -41,6 +45,7 @@ export interface NetUnificationChange {
   evidence: string;
   name?: { from: string; to: string };
   description?: { from: string; to: string };
+  tagline?: { from: string; to: string };
   status?: { from: ProductDraft["catalog"]["commercialStatus"]; to: ProductDraft["catalog"]["commercialStatus"] };
   /** Nivel de implantación (1 activable desde el Core · 2 portable · 3 desarrollo nuevo): de partida y nuevo. */
   implementationLevel?: { from: 1 | 2 | 3 | undefined; to: 1 | 2 | 3 };
@@ -51,6 +56,16 @@ export interface NetUnificationChange {
 }
 
 const OLD_BENEFITS = ["Todas las funcionalidades de tu sector incluidas, sin extensiones adicionales"];
+
+/** Línea corta publicada de partida (09/11/2026): enumeraba los antiguos submódulos. */
+const TAGLINE_FROM: Record<string, string> = {
+  "hotel-net-complete": "PMS, Channel Manager, motor de reservas y housekeeping.",
+  "ski-net-complete": "Escuela, alquiler, cursillos y profesores.",
+  "travel-net-complete": "Agencias, paquetes y circuitos y conectores.",
+  "restaurant-net-complete": "Sala y comandas, reservas y mesas y cocina.",
+  "care-net-complete": "Agenda, gestión clínica y tratamientos y bonos.",
+  "social-token-net-complete": "Comunidades y tokens internos.",
+};
 
 /** Descripción publicada de partida de cada solución (09/11/2026). */
 const DESCRIPTION_FROM: Record<string, string> = {
@@ -118,7 +133,10 @@ export const NET_UNIFICATION_2026_11_09: readonly NetUnificationChange[] = [
       evidence:
         "Unificación comercial de Elephant Net (decisión de Jorge del 09/11/2026): solución completa con sus funcionalidades incluidas (shared/netProducts.ts, estado real de cada una); sus antiguos módulos sueltos quedan heredados. Precio, Prices de Stripe y licencias sin cambios.",
       ...(p.key === "life-net" ? {} : { name: { from: `${p.name} Complete`, to: p.name } }),
-      description: { from: DESCRIPTION_FROM[p.key] ?? "", to: p.summary },
+      // Nombre, línea corta y descripción: los de la semilla (sin «Complete» ni comparaciones con la compra suelta); Life
+      // Net no tiene descripción en la semilla y toma el resumen del producto
+      description: { from: DESCRIPTION_FROM[p.key] ?? "", to: seedOf(p.key)?.description || p.summary },
+      ...(TAGLINE_FROM[p.key] && seedOf(p.key)?.tagline ? { tagline: { from: TAGLINE_FROM[p.key], to: seedOf(p.key)!.tagline } } : {}),
       // Hotel Net: PMS, motor de reservas, check-in y check-out y housekeeping ya están en el Core (nivel 1, como las demás
       // soluciones); solo el Channel Manager queda pendiente, incluido como «Próximamente»
       ...(p.key === "hotel-net-complete" ? { status: { from: "in_preparation" as const, to: "on_request" as const }, implementationLevel: { from: 3 as const, to: 1 as const } } : {}),
@@ -162,6 +180,7 @@ function same(a: unknown, b: unknown): boolean {
 function isDone(d: ProductDraft, c: NetUnificationChange): boolean {
   if (c.name && d.name !== c.name.to) return false;
   if (c.description && d.description !== c.description.to) return false;
+  if (c.tagline && d.tagline !== c.tagline.to) return false;
   if (c.status && d.catalog.commercialStatus !== c.status.to) return false;
   if (c.implementationLevel && d.catalog.implementationLevel !== c.implementationLevel.to) return false;
   if (c.legacy && d.catalog.legacy?.replacedBy !== c.legacy.replacedBy) return false;
@@ -175,6 +194,7 @@ function target(d: ProductDraft, c: NetUnificationChange): ProductDraft {
     ...d,
     ...(c.name ? { name: c.name.to } : {}),
     ...(c.description ? { description: c.description.to } : {}),
+    ...(c.tagline ? { tagline: c.tagline.to } : {}),
     catalog: {
       ...d.catalog,
       ...(c.status ? { commercialStatus: c.status.to } : {}),
@@ -217,6 +237,7 @@ export async function applyNetUnification(svc: WebAdminService, store: WebStore,
     const problems: string[] = [];
     if (c.name && d.name !== c.name.from && d.name !== c.name.to) problems.push(`nombre «${d.name}» (se esperaba «${c.name.from}»)`);
     if (c.description && d.description !== c.description.from && d.description !== c.description.to) problems.push("la descripción ya no es la de partida");
+    if (c.tagline && d.tagline !== c.tagline.from && d.tagline !== c.tagline.to) problems.push("la línea corta ya no es la de partida");
     if (c.status && d.catalog.commercialStatus !== c.status.from && d.catalog.commercialStatus !== c.status.to) problems.push(`estado «${d.catalog.commercialStatus}» (se esperaba «${c.status.from}»)`);
     if (c.implementationLevel && d.catalog.implementationLevel !== c.implementationLevel.from && d.catalog.implementationLevel !== c.implementationLevel.to) problems.push(`nivel de implantación «${d.catalog.implementationLevel}» (se esperaba «${c.implementationLevel.from}»)`);
     if (c.legacy && d.catalog.legacy && d.catalog.legacy.replacedBy !== c.legacy.replacedBy) problems.push(`ya es heredado de «${d.catalog.legacy.replacedBy}»`);
@@ -235,6 +256,7 @@ export async function applyNetUnification(svc: WebAdminService, store: WebStore,
       c.implementationLevel ? `nivel ${c.implementationLevel.from} → ${c.implementationLevel.to}` : null,
       c.legacy ? `heredado (lo incluye ${c.legacy.replacedBy})` : null,
       c.description ? "descripción" : null,
+      c.tagline ? "línea corta" : null,
       c.fields ? `ficha (${Object.keys(c.fields).join(", ")})` : null,
     ].filter(Boolean);
     r.changed.push(`${c.key}: ${what.join("; ")}`);

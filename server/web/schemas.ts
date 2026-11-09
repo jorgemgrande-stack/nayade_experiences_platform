@@ -275,8 +275,9 @@ export const productDraft = z
         /** 1 activable desde el Core · 2 portable desde otro desarrollo · 3 desarrollo nuevo. */
         implementationLevel: z.union([z.literal(1), z.literal(2), z.literal(3)]).optional(),
         /**
-         * Producto HEREDADO (retirado de la venta, 09/11/2026): no admite contrataciones nuevas (lo valida el servidor en la
-         * cotización, la compra, el alta y las suscripciones), pero se conserva con sus precios históricos y sigue visible
+         * Producto HEREDADO (retirado de la venta, 09/11/2026): no admite contrataciones nuevas (lo valida el servidor al crear
+         * un pedido, en la compra del panel y en las altas del equipo; la cotización no lo rechaza porque también cotiza lo que
+         * ya se tiene), pero se conserva con sus precios históricos y sigue visible
          * para quien lo tiene contratado. `replacedBy`: la solución que lo incluye y que se contrata en su lugar.
          */
         legacy: z

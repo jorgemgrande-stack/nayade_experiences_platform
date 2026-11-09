@@ -250,7 +250,12 @@ export class CommercialOrchestrator {
     if (!parsed.ok) throw new OrderError("invalid_input", parsed.message);
     const request = { ...parsed.value, items: parsed.value.items ?? [] };
     // Productos heredados (09/11/2026): quien ya los tiene los conserva en sus cambios; nunca entran como contratación nueva
+    // Lo conservado: lo del pedido o la prueba de partida y las partidas vivas de su suscripción (lo añadido desde el CRM)
     const kept = new Set(base.kept ?? []);
+    if (base.subscriptionId !== null) {
+      const at = this.now();
+      for (const i of await this.d.subscriptionStore.items(base.subscriptionId)) if (i.effectiveTo === null || i.effectiveTo > at) kept.add(i.productKey);
+    }
     for (const it of request.items) {
       if (kept.has(it.key)) continue;
       const p = await this.d.catalog.product(it.key);

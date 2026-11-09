@@ -151,6 +151,6 @@ export async function commercialIntegrity(crm: Pool, registry: Pool): Promise<Re
   for (const t of CRM_TABLES) out[t.table] = await snapshot(crm, t);
   for (const t of REGISTRY_TABLES) out[t.table] = await snapshot(registry, t);
   out.coreUnico = await coreAudit(crm);
-  out.net = await netContracts(crm, registry);
+  out.net = await netContracts(crm, registry, Date.now());
   return out;
 }

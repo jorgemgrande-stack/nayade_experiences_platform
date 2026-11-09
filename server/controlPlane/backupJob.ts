@@ -526,11 +526,12 @@ async function main() {
           const repConnect = await applyDirectSaleReview(svc, webStore, async (id) => !!(await stripeStore.priceForWebPrice(id)), { apply, author: `operacion:${REVIEW_ID_2026_11_08_CONNECT}`, changes: [...DIRECT_SALE_2026_11_08, FINANCE_SYNC_DIRECT_SALE] });
           // 09/11/2026: unificación comercial de Elephant Net (7 soluciones completas; 19 módulos sueltos heredados). Fotos de
           // solo lectura antes y después: contratos y licencias Net (deben ser idénticos) y huella del catálogo fuera de lo previsto
-          const netBefore = await netContracts(crmPool, pool);
+          const netAt = Date.now();
+          const netBefore = await netContracts(crmPool, pool, netAt);
           const guardBefore = await catalogGuard(webStore);
           const repNetUnification = await applyNetUnification(svc, webStore, { apply, author: `operacion:${REVIEW_ID_2026_11_09_NET_UNIFICATION}` });
           const guardChanged = guardDiff(guardBefore, await catalogGuard(webStore));
-          const netAfter = await netContracts(crmPool, pool);
+          const netAfter = await netContracts(crmPool, pool, netAt);
           const netIntact = JSON.stringify(netBefore) === JSON.stringify(netAfter);
           const pricesFinal = new Map((await webStore.listPrices()).map((p) => [p.id, `${p.status}:${p.amountCents}`]));
           const pricesIntactConnect = pricesFinal.size === pricesAfter.size && Array.from(pricesAfter).every(([id, v]) => pricesFinal.get(id) === v);

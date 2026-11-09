@@ -146,8 +146,10 @@ export class SubscriptionService {
 
   /** Dependencias y compatibilidad de una composición (claves de producto activas). */
   /**
-   * Producto heredado (09/11/2026): no entra como contratación nueva. Lo que la suscripción ya tiene (`kept`) se conserva
-   * tal cual (renovaciones, cambios de periodicidad y conversiones que lo mantienen).
+   * Producto heredado (09/11/2026): no entra como contratación nueva del equipo (`newSale`, lo marca la API de
+   * suscripciones). Lo que la suscripción ya tiene (`kept`) se conserva, y lo que llega de un pedido o de un expediente ya
+   * aceptado (orquestador, implantación) se ejecuta: la entrada de esos flujos ya lo validó (orchestrator.create) y
+   * rechazarlo después del cobro o de la firma dejaría el pedido en error.
    */
   private async assertNotLegacy(product: CatalogProduct, kept: ReadonlySet<string>) {
     if (!product.legacy || kept.has(product.key)) return;
@@ -210,6 +212,8 @@ export class SubscriptionService {
       plan: ItemSpec;
       addons?: ItemSpec[];
       reason?: string | null;
+      /** Alta directa del equipo (API de suscripciones): un producto heredado no entra. */
+      newSale?: boolean;
     },
     actor: string,
   ): Promise<Subscription> {
@@ -228,7 +232,7 @@ export class SubscriptionService {
     const plan = await this.snapshot(input.plan, ["core_plan"], sub, start, actor);
     const addons = [];
     for (const a of input.addons ?? []) addons.push(await this.snapshot(a, ADDON_FAMILIES, sub, start, actor));
-    for (const a of addons) await this.assertNotLegacy(a.product, new Set());
+    if (input.newSale) for (const a of addons) await this.assertNotLegacy(a.product, new Set());
     const all = [plan.item, ...addons.map((a) => a.item)];
     if (new Set(all.map((i) => i.productKey)).size !== all.length) bad("Un producto no puede contratarse dos veces en la misma suscripción");
     const inBundle = new Map<string, string>();
@@ -382,13 +386,13 @@ export class SubscriptionService {
    * `external`: refleja una sustitución ya cobrada en el proveedor de pago (compra de un paquete con prorrateo): el
    * paquete entra y los componentes que sustituye salen YA, sin hueco ni solape.
    */
-  async addItem(id: number, input: { item: ItemSpec; when?: When; reason?: string | null; external?: boolean }, expectedVersion: number, actor: string) {
+  async addItem(id: number, input: { item: ItemSpec; when?: When; reason?: string | null; external?: boolean; newSale?: boolean }, expectedVersion: number, actor: string) {
     return this.d.store.mutate(id, expectedVersion, actor, this.now(), async (tx, sub) => {
       this.assertOpen(sub);
       const items = await tx.items();
       await this.checkContractPrice(input.item, sub.contractId, sub.id);
       const probe = await this.snapshot(input.item, ADDON_FAMILIES, sub, 0, actor);
-      await this.assertNotLegacy(probe.product, new Set(items.filter((i) => i.effectiveTo === null || i.effectiveTo > this.now()).map((i) => i.productKey)));
+      if (input.newSale) await this.assertNotLegacy(probe.product, new Set(items.filter((i) => i.effectiveTo === null || i.effectiveTo > this.now()).map((i) => i.productKey)));
       // Paquete con componentes ya contratados: los sustituye al final de su periodo en curso (o ya, si el proveedor
       // de pago ya cobró la sustitución prorrateada)
       const liveNow = items.filter((i) => i.effectiveTo === null || i.effectiveTo > this.now());
@@ -517,8 +521,6 @@ export class SubscriptionService {
       const plan = await this.snapshot(input.plan, ["core_plan"], shape, start, actor);
       const addons = [];
       for (const a of input.addons ?? []) addons.push(await this.snapshot(a, ADDON_FAMILIES, shape, start, actor));
-      const trialKeys = new Set((await tx.items()).filter((i) => i.effectiveTo === null || i.effectiveTo > start).map((i) => i.productKey));
-      for (const a of addons) await this.assertNotLegacy(a.product, trialKeys);
       const next = [plan.item, ...addons.map((a) => a.item)];
       if (new Set(next.map((i) => i.productKey)).size !== next.length) bad("Un producto no puede contratarse dos veces en la misma suscripción");
       await this.checkComposition(next);

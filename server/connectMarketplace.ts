@@ -169,9 +169,10 @@ export function buildConnectCatalog(
   // es personal: fuera del escaparate de las empresas (08/11/2026)
   // 09/11/2026: lo heredado (registro de Net o marca `legacy` del catálogo) solo se muestra a quien lo tiene contratado
   const isLegacy = (i: ChannelCatalogItem) => isNetLegacyExtension(i.key) || !!legacyOf(i.legacy);
+  // Cualquier activación propia que no sea «none» (contratado, en curso, pendiente, suspendido o con error que reintentar)
   const kept = (i: ChannelCatalogItem) => {
     const s = parseActivation(i.activation)?.state;
-    return s === "active" || s === "suspended";
+    return !!s && s !== "none";
   };
   const shownItems = catalog.items.filter((i) => (!isLegacy(i) || kept(i)) && shownInShowcase(i.key, plan));
   return shownItems.map((item): ConnectItem => {
