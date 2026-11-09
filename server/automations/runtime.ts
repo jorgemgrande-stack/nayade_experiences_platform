@@ -13,7 +13,7 @@ import { getTenantDatabase } from "../_core/dbRegistry";
 import { sendEmail } from "../mailer";
 import { buildNoticeHtml } from "../emailTemplates";
 import { companyName } from "../tenantBrand";
-import { AUTOMATIONS_CAPABILITY } from "../../shared/automations";
+import { AUTOMATIONS_CAPABILITY, type CoreReminders } from "../../shared/automations";
 import type { ActionDeps } from "./actions";
 import { madridDay } from "./engine";
 import { AutomationService } from "./service";
@@ -116,4 +116,29 @@ export async function editorOptions() {
 /** Estado del correo de la empresa para el panel. */
 export async function mailStatus(): Promise<{ ready: boolean; message: string | null }> {
   return (await import("../careNetReminders")).reminderMailStatus();
+}
+
+/**
+ * Recordatorios que el Core ya envía en la empresa en curso, para avisar en las plantillas: el job de correo del Centro
+ * de comunicaciones encendido y con alguna regla activa, y los recordatorios de cita de Care Net activados. Sin poder
+ * comprobarlo (sin tablas), se da por no activo.
+ */
+export async function coreReminders(): Promise<CoreReminders> {
+  const safe = async (fn: () => Promise<boolean>) => {
+    try {
+      return await fn();
+    } catch {
+      return false;
+    }
+  };
+  const [emailAutomation, careNetReminders] = await Promise.all([
+    safe(async () => {
+      const { getFeatureFlag } = await import("../config");
+      if (!(await getFeatureFlag("email_automation_job_enabled"))) return false;
+      const r = await firstRow(sql`SELECT COUNT(*) AS n FROM email_automation_rules WHERE isActive = 1`);
+      return Number(r?.n ?? 0) > 0;
+    }),
+    safe(async () => (await (await import("../careNetRemindersDb")).getReminderSettings()).enabled),
+  ]);
+  return { emailAutomation, careNetReminders };
 }

@@ -109,7 +109,7 @@ export const AUTOMATION_TRIGGERS = {
   },
   reservation_upcoming: {
     label: "Reserva próxima",
-    description: "Reservas confirmadas cuya fecha se acerca (no anuladas).",
+    description: "Reservas confirmadas cuya fecha se acerca (no anuladas). Si la tarea programada estuvo parada, un paso pendiente solo se recupera mientras la reserva no haya empezado.",
     entity: "reservation",
     timing: "before",
     delayLabel: "antes de la reserva",
@@ -390,6 +390,25 @@ export const RULE_TEMPLATES: readonly RuleTemplate[] = [
     },
   },
 ];
+
+/** Recordatorios que el Core ya envía por su cuenta (para no duplicarlos con una plantilla). */
+export interface CoreReminders {
+  /** Recordatorios automáticos del Centro de comunicaciones (emailAutomationJob encendido y con reglas activas). */
+  emailAutomation: boolean;
+  /** Recordatorios de cita de Care Net activados en sus ajustes. */
+  careNetReminders: boolean;
+}
+
+/** Aviso de una plantilla si duplicaría recordatorios que el Core ya envía; null si no. */
+export function templateWarning(key: string, core: CoreReminders): string | null {
+  if (key === "recordatorio-reserva") {
+    const active = [core.emailAutomation ? "los recordatorios automáticos del Centro de comunicaciones" : null, core.careNetReminders ? "los recordatorios de cita de Care Net" : null].filter(Boolean);
+    if (active.length) return `Ya están activos ${active.join(" y ")}: con esta plantilla el cliente podría recibir dos recordatorios de la misma reserva. Desactiva uno de los dos o añade una condición sobre el producto.`;
+  }
+  if (key === "seguimiento-presupuesto" && core.emailAutomation)
+    return "Ya están activos los recordatorios automáticos del Centro de comunicaciones, que también hacen seguimiento de presupuestos: con esta plantilla el cliente podría recibir dos seguimientos. Desactívalos allí o quita el paso de correo.";
+  return null;
+}
 
 // ─── Ejecuciones (historial) ─────────────────────────────────────────────────
 

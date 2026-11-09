@@ -3,7 +3,7 @@
  * idempotencia, topes, reintentos, consentimiento, apagado por defecto y modo «probar».
  */
 import { describe, expect, it } from "vitest";
-import { AUTOMATION_LIMITS, AUTOMATION_TRIGGERS, RULE_TEMPLATES, validateRule, type AutomationRuleInput, type FieldDef } from "../shared/automations";
+import { AUTOMATION_LIMITS, AUTOMATION_TRIGGERS, RULE_TEMPLATES, templateWarning, validateRule, type AutomationRuleInput, type FieldDef } from "../shared/automations";
 import { evaluateCondition, madridDay, madridWallToUtc, matchesConditions, planEntity, renderText, type AutomationEntity, type RunRow } from "./automations/engine";
 import type { ActionDeps, MailParams } from "./automations/actions";
 import { AutomationService } from "./automations/service";
@@ -115,6 +115,18 @@ describe("validación de reglas y plantillas", () => {
     const q = RULE_TEMPLATES.find((t) => t.key === "seguimiento-presupuesto")!;
     expect(q.rule.steps.some((s) => s.action.kind === "email" && s.action.purpose === "commercial")).toBe(true);
   });
+  it("las plantillas avisan si duplicarían recordatorios que el Core ya envía", () => {
+    const none = { emailAutomation: false, careNetReminders: false };
+    for (const t of RULE_TEMPLATES) expect(templateWarning(t.key, none), t.key).toBeNull();
+    expect(templateWarning("recordatorio-reserva", { ...none, careNetReminders: true })).toMatch(/Care Net.*dos recordatorios/);
+    expect(templateWarning("recordatorio-reserva", { ...none, emailAutomation: true })).toMatch(/Centro de comunicaciones/);
+    expect(templateWarning("seguimiento-presupuesto", { ...none, emailAutomation: true })).toMatch(/dos seguimientos/);
+    expect(templateWarning("seguimiento-presupuesto", { ...none, careNetReminders: true })).toBeNull();
+    expect(templateWarning("oportunidad-nueva", { emailAutomation: true, careNetReminders: true })).toBeNull();
+    // Y el disparador «antes de la reserva» dice hasta cuándo se recupera un paso pendiente
+    expect(AUTOMATION_TRIGGERS.reservation_upcoming.description).toMatch(/mientras la reserva no haya empezado/);
+  });
+
   it("textos con variables (desconocidas en blanco, asunto en una línea)", () => {
     expect(renderText("Hola {{nombre}}, {{nada}}fin", { nombre: "Ana" })).toBe("Hola Ana, fin");
     expect(renderText("A\n{{ referencia }}", { referencia: "R-1" }, true)).toBe("A R-1");

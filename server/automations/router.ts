@@ -7,9 +7,9 @@ import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 import { adminProcedure, router } from "../_core/trpc";
 import { getCapabilityAccess } from "../_core/capabilities/access";
-import { AUTOMATIONS_CAPABILITY, RULE_TEMPLATES, ruleInputSchema } from "../../shared/automations";
+import { AUTOMATIONS_CAPABILITY, RULE_TEMPLATES, ruleInputSchema, templateWarning } from "../../shared/automations";
 import { AutomationError } from "./service";
-import { automationService, editorOptions, mailStatus } from "./runtime";
+import { automationService, coreReminders, editorOptions, mailStatus } from "./runtime";
 import { AutomationsNotInstalled } from "./store";
 
 const CODES: Record<AutomationError["code"], TRPCError["code"]> = { invalid_input: "BAD_REQUEST", not_found: "NOT_FOUND" };
@@ -39,8 +39,8 @@ export const automationsRouter = router({
   overview: licensed.query(() =>
     handle(async () => {
       const s = svc();
-      const [rules, today, options, mail] = await Promise.all([s.rules(), s.today(), editorOptions(), mailStatus()]);
-      return { rules, today, options, mail, templates: RULE_TEMPLATES.map((t) => ({ key: t.key, title: t.title, summary: t.summary, trigger: t.rule.trigger, used: rules.some((r) => r.templateKey === t.key) })) };
+      const [rules, today, options, mail, core] = await Promise.all([s.rules(), s.today(), editorOptions(), mailStatus(), coreReminders()]);
+      return { rules, today, options, mail, templates: RULE_TEMPLATES.map((t) => ({ key: t.key, title: t.title, summary: t.summary, trigger: t.rule.trigger, used: rules.some((r) => r.templateKey === t.key), warning: templateWarning(t.key, core) })) };
     }),
   ),
   rule: licensed.input(z.object({ id })).query(({ input }) => handle(() => svc().rule(input.id))),

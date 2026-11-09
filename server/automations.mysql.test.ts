@@ -75,6 +75,8 @@ describe.skipIf(!URL_)("Automatizaciones avanzadas · licencia, tarea por empres
     const ov = await ok(q("overview"));
     expect(ov.rules).toEqual([]);
     expect(ov.templates.map((t: any) => t.key)).toEqual(expect.arrayContaining(["recordatorio-reserva", "seguimiento-presupuesto", "reserva-grupo"]));
+    // Sin recordatorios del Core activos en la empresa nueva, ninguna plantilla avisa de duplicados
+    expect(ov.templates.map((t: any) => t.warning)).toEqual(ov.templates.map(() => null));
     const group = await ok(m("createFromTemplate", { key: "reserva-grupo" }));
     const mail = await ok(m("create", emailRule));
     expect([group.enabled, mail.enabled]).toEqual([false, false]);

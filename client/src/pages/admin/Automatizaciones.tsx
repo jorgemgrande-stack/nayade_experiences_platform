@@ -339,7 +339,7 @@ function Rules({ rules, options }: { rules: RuleRow[]; options: Options }) {
   );
 }
 
-function Templates({ templates }: { templates: Array<{ key: string; title: string; summary: string; trigger: AutomationTrigger; used: boolean }> }) {
+function Templates({ templates }: { templates: Array<{ key: string; title: string; summary: string; trigger: AutomationTrigger; used: boolean; warning: string | null }> }) {
   const utils = trpc.useUtils();
   const create = trpc.automations.createFromTemplate.useMutation({ onSuccess: () => (toast.success("Regla creada apagada: revísala en «Reglas», pruébala y enciéndela"), utils.automations.invalidate()), onError: (e) => toastError(e) });
   return (
@@ -349,6 +349,7 @@ function Templates({ templates }: { templates: Array<{ key: string; title: strin
           <p className="font-semibold text-foreground">{t.title}</p>
           <p className="text-sm text-muted-foreground">{t.summary}</p>
           <p className="text-xs text-muted-foreground">Cuando: {triggerOf(t.trigger).label}</p>
+          {t.warning && <p className="rounded-lg border border-amber-500/40 bg-amber-500/10 p-2 text-xs text-foreground">{t.warning}</p>}
           <div className="flex items-center justify-between gap-2">
             {t.used ? <Badge variant="secondary">Ya la tienes</Badge> : <span />}
             <Button size="sm" variant="outline" disabled={create.isPending} onClick={() => create.mutate({ key: t.key })}>Crear desde la plantilla</Button>
