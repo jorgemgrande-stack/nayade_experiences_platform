@@ -560,3 +560,27 @@ describe("revisión: el registro de errores del webhook no lleva el mensaje", ()
     expect(errorInfo(err)).toEqual({ error: "Error", code: "ER_DUP_ENTRY" });
   });
 });
+
+describe("revisión: una respuesta automática por conversación y lote", () => {
+  it("si llegan varios mensajes del mismo cliente en un webhook, la IA responde solo al último", async () => {
+    const { svc, store, llmCalls } = setup();
+    await svc.saveSettings(AUTO_ALL, 1);
+    const ts = String(Math.floor(NOW.getTime() / 1000) - 10);
+    const batch = {
+      object: "whatsapp_business_account",
+      entry: [{ changes: [{ field: "messages", value: { metadata: { phone_number_id: PHONE }, contacts: [{ wa_id: "34611222333", profile: { name: "Ana" } }, { wa_id: "34622000000", profile: { name: "Luis" } }], messages: [
+        { id: "wamid.L1", from: "34611222333", timestamp: ts, type: "text", text: { body: "Hola" } },
+        { id: "wamid.L2", from: "34611222333", timestamp: ts, type: "text", text: { body: "¿Hay parking?" } },
+        { id: "wamid.L3", from: "34622000000", timestamp: ts, type: "text", text: { body: "¿Abrís hoy?" } },
+      ] } }] }],
+    };
+    const raw = Buffer.from(JSON.stringify(batch));
+    const later: Array<() => Promise<unknown>> = [];
+    const r: any = { status: () => r, json: () => r };
+    await whatsappEventsHandler({ credentials: async () => CREDS, licensed: async () => true, service: () => svc, defer: (fn) => void later.push(fn) })({ body: raw, headers: { "x-hub-signature-256": sign(raw) } } as any, r);
+    await later[0]();
+    expect(llmCalls).toHaveLength(2);
+    expect(llmCalls[0].at(-1)).toEqual({ role: "user", content: "¿Hay parking?" });
+    expect(store.msgs.filter((m) => m.origin === "ai_auto")).toHaveLength(2);
+  });
+});

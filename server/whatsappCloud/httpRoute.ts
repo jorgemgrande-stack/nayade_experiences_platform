@@ -33,6 +33,13 @@ export const whatsappWebhookBodyParser: RequestHandler = (req, res, next) => {
   });
 };
 
+/** Del lote de un webhook, solo el último mensaje entrante de cada conversación recibe la respuesta automática. */
+export function lastPerConversation<T extends { conversationId: number; messageId: number }>(inbound: readonly T[]): T[] {
+  const last = new Map<number, T>();
+  for (const m of inbound) last.set(m.conversationId, m);
+  return Array.from(last.values());
+}
+
 /** Lo único que se registra de un error: su nombre y su código (nunca el mensaje). */
 export const errorInfo = (e: unknown) => ({ error: e instanceof Error ? e.name.slice(0, 60) : "error", code: typeof (e as { code?: unknown })?.code === "string" || typeof (e as { code?: unknown })?.code === "number" ? String((e as { code: unknown }).code).slice(0, 40) : null });
 
@@ -96,7 +103,7 @@ export function whatsappEventsHandler(d: WebhookDeps = {}) {
     if (r.foreign) log("foreign_changes_ignored", { count: r.foreign });
     if (!r.inbound.length) return;
     const run = async () => {
-      for (const m of r.inbound) await svc.autoReply(m.conversationId, m.messageId);
+      for (const m of lastPerConversation(r.inbound)) await svc.autoReply(m.conversationId, m.messageId);
     };
     (d.defer ?? tenantDeferral())(run);
   };
