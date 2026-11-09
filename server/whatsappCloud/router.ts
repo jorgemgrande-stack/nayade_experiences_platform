@@ -11,6 +11,10 @@ import { adminProcedure, router, staffProcedure } from "../_core/trpc";
 import { getCapabilityAccess } from "../_core/capabilities/access";
 import { isMultiTenant } from "../_core/tenant";
 import { WHATSAPP_AI_MODES, WHATSAPP_CAPABILITY, WHATSAPP_LIMITS } from "../../shared/whatsappCloud";
+import { KNOWLEDGE_KINDS, RECEPTION_LIMITS } from "../../shared/receptionAi";
+import { ReceptionError } from "../receptionAi/service";
+import { receptionService } from "../receptionAi/runtime";
+import { ReceptionNotInstalled, TenantDbReceptionStore } from "../receptionAi/store";
 import { WhatsappError } from "./service";
 import { whatsappService } from "./runtime";
 import { WhatsappNotInstalled } from "./store";
@@ -29,6 +33,9 @@ async function handle<T>(fn: () => Promise<T>): Promise<T> {
   } catch (e) {
     if (e instanceof WhatsappError) throw new TRPCError({ code: CODES[e.code], message: e.message });
     if (e instanceof WhatsappNotInstalled) throw new TRPCError({ code: "PRECONDITION_FAILED", message: e.message });
+    // Base de conocimiento compartida con Reception AI
+    if (e instanceof ReceptionError) throw new TRPCError({ code: e.code === "not_found" ? "NOT_FOUND" : e.code === "invalid_input" ? "BAD_REQUEST" : "PRECONDITION_FAILED", message: e.message });
+    if (e instanceof ReceptionNotInstalled) throw new TRPCError({ code: "PRECONDITION_FAILED", message: e.message });
     throw e;
   }
 }
@@ -51,6 +58,7 @@ const svc = () => whatsappService();
 const id = z.number().int().positive();
 const hhmm = z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, "Hora no válida (HH:MM).");
 const L = WHATSAPP_LIMITS;
+const knowledgeInput = z.object({ kind: z.enum(KNOWLEDGE_KINDS), question: z.string().max(RECEPTION_LIMITS.questionMax + 50), answer: z.string().max(RECEPTION_LIMITS.answerMax + 100) });
 
 export const whatsappCloudRouter = router({
   // ── Conexión ─────────────────────────────────────────────────────────────────
@@ -88,5 +96,10 @@ export const whatsappCloudRouter = router({
     .mutation(({ ctx, input }) => handle(() => svc().sendTemplate(input.id, { name: input.name, language: input.language, params: input.params }, ctx.user.id))),
   // Pedir una sugerencia consume IA (y la registra): es una operación de escritura, bloqueada en solo lectura
   suggest: staff.input(z.object({ id })).mutation(({ ctx, input }) => handle(() => svc().suggest(input.id, ctx.user.id))),
+  // ── Base de conocimiento de la empresa (la misma que usa Reception AI): editable también con whatsapp-ai ──
+  knowledge: admin.query(() => handle(() => new TenantDbReceptionStore().knowledge(true))),
+  addKnowledge: admin.input(knowledgeInput).mutation(({ ctx, input }) => handle(async () => ({ id: await receptionService().addKnowledge(input, ctx.user.id) }))),
+  updateKnowledge: admin.input(knowledgeInput.extend({ id })).mutation(({ input }) => handle(() => receptionService().updateKnowledge(input.id, input))),
+  archiveKnowledge: admin.input(z.object({ id, archived: z.boolean() })).mutation(({ input }) => handle(() => receptionService().archiveKnowledge(input.id, input.archived))),
   aiLog: staff.input(z.object({ limit: z.number().int().min(1).max(200).default(50) }).optional()).query(({ input }) => handle(() => svc().aiLog(input?.limit ?? 50))),
 });

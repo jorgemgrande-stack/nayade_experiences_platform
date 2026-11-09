@@ -23,7 +23,7 @@ export const WHATSAPP_LISTING_2026_11_09: readonly ListingChange[] = [
   {
     key: "connect-whatsapp-ai",
     evidence:
-      "Entrega Elephant WhatsApp AI del 09/11/2026 (migración 0062, server/whatsappCloud): WhatsApp Cloud API con el número, la cuenta WABA, la clave del usuario del sistema y el App Secret de la empresa en su bóveda (verificación de solo lectura contra la Graph API, token solo en Authorization); webhook público con hub.verify_token y firma X-Hub-Signature-256 en tiempo constante, idempotente por wamid y con estados de entrega; bandeja con ventana de 24 h y plantillas aprobadas de la WABA; sugerencias con la IA central y el conocimiento de Reception AI; respuesta automática opcional (apagada por defecto) con horario, tope diario atómico y traspaso a persona; registro de la IA; licencia whatsapp-ai.",
+      "Entrega Elephant WhatsApp AI del 09/11/2026 (migración 0062, server/whatsappCloud): WhatsApp Cloud API con el número, la cuenta WABA, la clave del usuario del sistema y el App Secret de la empresa en su bóveda (verificación de solo lectura contra la Graph API, token solo en Authorization); webhook público con hub.verify_token y firma X-Hub-Signature-256 en tiempo constante, idempotente por wamid y con estados de entrega; bandeja con ventana de 24 h y plantillas aprobadas de la WABA; sugerencias con la IA central y la base de conocimiento de la empresa (compartida con Reception AI y editable con whatsapp-ai); respuesta automática opcional (apagada por defecto) con horario, tope diario atómico y traspaso a persona; registro de la IA; licencia whatsapp-ai.",
     status: { from: "in_preparation", to: "on_request" },
     functionalGrade: "in_use",
     stripePrepared: false,
@@ -51,7 +51,7 @@ export const WHATSAPP_LISTING_2026_11_09: readonly ListingChange[] = [
       },
       integrations: {
         from: ["Meta WhatsApp Cloud API (cuenta propia)"],
-        to: ["Meta WhatsApp Cloud API con tu app, tu número verificado y tu cuenta de WhatsApp Business", "IA central de Elephant con el conocimiento de tu recepcionista y tu catálogo publicado"],
+        to: ["Meta WhatsApp Cloud API con tu app, tu número verificado y tu cuenta de WhatsApp Business", "IA central de Elephant con la base de conocimiento de tu empresa y tu catálogo publicado"],
       },
       coreIntegration: {
         from: [
@@ -61,7 +61,7 @@ export const WHATSAPP_LISTING_2026_11_09: readonly ListingChange[] = [
         ],
         to: [
           "Entrada «WhatsApp» en «Módulos contratados», para el equipo comercial",
-          "La IA responde con la base de conocimiento de tu recepcionista y tu catálogo publicado",
+          "La IA responde con la base de conocimiento de tu empresa, que editas desde WhatsApp (la misma de la Recepcionista IA), y tu catálogo publicado",
           "Registro de lo que propuso o envió la IA en cada conversación",
         ],
       },

@@ -485,3 +485,14 @@ describe("revisión: el estado tras el envío no pisa uno más avanzado", () => 
     expect((await k.store.message(m.id))!.status).toBe("read");
   });
 });
+
+describe("revisión: base de conocimiento editable con whatsapp-ai", () => {
+  it("el router de WhatsApp expone la base de conocimiento (la de Reception AI) bajo su propia licencia", async () => {
+    const { whatsappCloudRouter } = await import("./whatsappCloud/router");
+    const procs = Object.keys((whatsappCloudRouter as any)._def.procedures);
+    for (const p of ["knowledge", "addKnowledge", "updateKnowledge", "archiveKnowledge"]) expect(procs, p).toContain(p);
+    const page = (await import("node:fs")).readFileSync(new URL("../client/src/pages/admin/commercial/WhatsAppCloud.tsx", import.meta.url), "utf8");
+    expect(page).toContain("trpc.whatsappCloud.addKnowledge");
+    expect(page).toContain("compartida con la Recepcionista IA");
+  });
+});

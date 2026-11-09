@@ -71,6 +71,8 @@ describe("revisión del 09/11/2026: Elephant WhatsApp AI", () => {
     expect(d.commercial?.faq?.[0].q).toBe("¿Cómo se pone en marcha?");
     expect(JSON.stringify(d.commercial?.faq)).toMatch(/número aprobado/);
     expect(JSON.stringify(d.commercial?.faq)).toMatch(/plantillas aprobadas/);
+    // La base de conocimiento se edita desde WhatsApp AI (compartida con Reception AI)
+    expect(d.commercial?.coreIntegration?.some((x) => /editas desde WhatsApp/.test(x))).toBe(true);
     // El Paquete Communications no cambia
     expect(before.get("connect-pack-communications")).toBeDefined();
     // Sin checkout: implantación asistida en la web y el cotizador

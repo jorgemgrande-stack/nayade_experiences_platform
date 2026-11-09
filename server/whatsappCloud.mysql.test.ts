@@ -166,6 +166,12 @@ describe.skipIf(!URL_)("WhatsApp AI · conexión, webhook, bandeja e IA (aplicac
 
   it("IA apagada por defecto; sin proveedor de IA no inventa: registra el fallo y el cupo diario vuelve", async () => {
     expect((await ok(q("settings"))).aiMode).toBe("off");
+    // Base de conocimiento editable con whatsapp-ai, sin la licencia de Reception AI; solo administración
+    expect(errCode(await m("addKnowledge", { kind: "faq", question: "¿Hay parking?", answer: "Sí" }, agA))).toBe("FORBIDDEN");
+    const k = await ok(m("addKnowledge", { kind: "faq", question: "¿Hay parking?", answer: "Sí, gratuito junto al puerto." }));
+    expect(k.id).toBeGreaterThan(0);
+    expect((await ok(q("knowledge"))).map((x: any) => x.question)).toEqual(["¿Hay parking?"]);
+    expect(await ess.sql("b", "SELECT COUNT(*) AS n FROM reception_knowledge")).toEqual([{ n: 0 }]);
     const [c] = await ess.sql("a", "SELECT id FROM whatsapp_conversations");
     expect(errCode(await m("suggest", { id: c.id }, agA))).toBe("PRECONDITION_FAILED");
     expect(errCode(await m("saveSettings", { aiMode: "auto", autoHours: [], autoDailyLimit: 1, timezone: "Europe/Madrid" }))).toBe("BAD_REQUEST");

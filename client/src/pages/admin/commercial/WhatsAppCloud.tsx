@@ -19,7 +19,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { PanelEmpty, PanelError, PanelLoading } from "@/components/admin/PanelStates";
 import { toastError } from "@/lib/errorMessage";
-import { RECEPTION_LIMITS, WEEKDAY_LABELS, WEEKDAY_ORDER, type HoursRange, type Weekday } from "@shared/receptionAi";
+import { KNOWLEDGE_KINDS, KNOWLEDGE_KIND_LABELS, RECEPTION_LIMITS, WEEKDAY_LABELS, WEEKDAY_ORDER, type HoursRange, type KnowledgeKind, type Weekday } from "@shared/receptionAi";
 import {
   AI_LOG_OUTCOME_LABELS,
   MESSAGE_ORIGIN_LABELS,
@@ -355,7 +355,7 @@ function AiTab() {
     <div className="space-y-4">
       <form className="space-y-4" onSubmit={(e) => (e.preventDefault(), save.mutate({ ...form, handoffKeywords: form.handoffKeywords || null, extraRules: form.extraRules || null }))}>
         <section className={sectionClass}>
-          <Field label="IA en WhatsApp" hint="Responde con la información de tu negocio de «Recepcionista IA › Conocimiento» y tu catálogo publicado. Cada respuesta cuenta en el consumo de IA de tu empresa.">
+          <Field label="IA en WhatsApp" hint="Responde con la base de conocimiento de tu empresa (pestaña «Conocimiento», compartida con la Recepcionista IA) y tu catálogo publicado. Cada respuesta cuenta en el consumo de IA de tu empresa.">
             <select className={selectClass} value={form.aiMode} onChange={(e) => set("aiMode", e.target.value as WhatsappAiMode)}>
               {modes.map((m) => <option key={m.value} value={m.value}>{m.label}</option>)}
             </select>
@@ -402,6 +402,70 @@ function AiTab() {
   );
 }
 
+// ─── Conocimiento ─────────────────────────────────────────────────────────────
+
+function KnowledgeTab() {
+  const utils = trpc.useUtils();
+  const q = trpc.whatsappCloud.knowledge.useQuery(undefined, { retry: false });
+  const [kind, setKind] = useState<KnowledgeKind>("faq");
+  const [question, setQuestion] = useState("");
+  const [answer, setAnswer] = useState("");
+  const refresh = () => void utils.whatsappCloud.knowledge.invalidate();
+  const add = trpc.whatsappCloud.addKnowledge.useMutation({
+    onSuccess: () => {
+      toast.success("Contenido añadido");
+      setQuestion("");
+      setAnswer("");
+      refresh();
+    },
+    onError: (e) => toastError(e),
+  });
+  const archive = trpc.whatsappCloud.archiveKnowledge.useMutation({ onSuccess: refresh, onError: (e) => toastError(e) });
+  if (q.isLoading) return <PanelLoading />;
+  if (q.error) return <PanelError error={q.error} onRetry={() => q.refetch()} />;
+  const items = q.data ?? [];
+  return (
+    <div className="space-y-4">
+      <section className={sectionClass}>
+        <h2 className="text-base font-semibold text-foreground">Lo que la IA sabe de tu negocio</h2>
+        <p className="text-sm text-muted-foreground">Es la base de conocimiento de tu empresa: la misma que usa la Recepcionista IA, si la tienes. La IA responde solo con esto y con tu catálogo publicado.</p>
+        <div className="grid gap-3 sm:grid-cols-[12rem_minmax(0,1fr)]">
+          <Field label="Tipo">
+            <select className={selectClass} value={kind} onChange={(e) => setKind(e.target.value as KnowledgeKind)}>
+              {KNOWLEDGE_KINDS.map((k) => <option key={k} value={k}>{KNOWLEDGE_KIND_LABELS[k]}</option>)}
+            </select>
+          </Field>
+          <Field label="Pregunta o tema">
+            <Input value={question} maxLength={RECEPTION_LIMITS.questionMax} onChange={(e) => setQuestion(e.target.value)} placeholder="Por ejemplo: ¿Hay parking?" />
+          </Field>
+        </div>
+        <Field label="Respuesta">
+          <Textarea rows={3} value={answer} maxLength={RECEPTION_LIMITS.answerMax} onChange={(e) => setAnswer(e.target.value)} />
+        </Field>
+        <Button onClick={() => add.mutate({ kind, question, answer })} disabled={add.isPending || !question.trim() || !answer.trim()}><Plus className="mr-2 h-4 w-4" />Añadir</Button>
+      </section>
+      {!items.length ? (
+        <PanelEmpty icon={<Bot className="h-5 w-5" />} title="Aún no hay contenidos" description="Añade tus preguntas frecuentes, servicios e información útil para que la IA pueda responder." />
+      ) : (
+        <ul className="space-y-2">
+          {items.map((k) => (
+            <li key={k.id} className={`rounded-xl border border-border p-3 text-sm ${k.archived ? "opacity-60" : ""}`}>
+              <div className="flex flex-wrap items-start justify-between gap-2">
+                <div className="min-w-0">
+                  <p className="break-words font-medium text-foreground">{k.question}</p>
+                  <p className="whitespace-pre-wrap break-words text-muted-foreground">{k.answer}</p>
+                  <p className="mt-1 text-xs text-muted-foreground">{KNOWLEDGE_KIND_LABELS[k.kind as KnowledgeKind]}{k.archived ? " · archivado" : ""}</p>
+                </div>
+                <Button variant="outline" size="sm" onClick={() => archive.mutate({ id: k.id, archived: !k.archived })} disabled={archive.isPending}>{k.archived ? "Recuperar" : "Archivar"}</Button>
+              </div>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+
 // ─── Página ───────────────────────────────────────────────────────────────────
 
 export default function WhatsAppCloud() {
@@ -420,10 +484,12 @@ export default function WhatsAppCloud() {
           <TabsList className="flex-wrap">
             <TabsTrigger value="bandeja">Bandeja</TabsTrigger>
             {isAdmin && <TabsTrigger value="ia">Configuración de la IA</TabsTrigger>}
+            {isAdmin && <TabsTrigger value="conocimiento">Conocimiento</TabsTrigger>}
             {isAdmin && <TabsTrigger value="conexion">Conexión con Meta</TabsTrigger>}
           </TabsList>
           <TabsContent value="bandeja" className="pt-4"><Inbox /></TabsContent>
           {isAdmin && <TabsContent value="ia" className="pt-4"><AiTab /></TabsContent>}
+          {isAdmin && <TabsContent value="conocimiento" className="pt-4"><KnowledgeTab /></TabsContent>}
           {isAdmin && <TabsContent value="conexion" className="pt-4"><ConnectionTab /></TabsContent>}
         </Tabs>
       </div>
