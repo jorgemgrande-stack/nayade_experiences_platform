@@ -446,3 +446,18 @@ describe("revisión: reacciones, avisos y tipos no admitidos", () => {
     expect(store.msgs.some((m) => m.direction === "out")).toBe(false);
   });
 });
+
+describe("revisión: para recibir basta el número y la clave secreta de la app", () => {
+  it("sin clave de acceso ni WABA se reciben mensajes; responder sí las exige", async () => {
+    const { svc, store, graph } = setup({ creds: { phoneNumberId: PHONE, appSecret: APP_SECRET, verifyToken: VERIFY } });
+    const st = await svc.status();
+    expect(st).toMatchObject({ ready: false, webhookReady: true, phoneNumberId: PHONE });
+    const r = await svc.handleWebhook(inboundPayload());
+    expect(r.inbound).toHaveLength(1);
+    expect(store.msgs).toHaveLength(1);
+    await expect(svc.reply(1, "Hola", 1)).rejects.toMatchObject({ code: "not_configured" });
+    expect(graph.calls).toHaveLength(0);
+    // Sin App Secret no hay webhook
+    expect((await setup({ creds: { phoneNumberId: PHONE, verifyToken: VERIFY } }).svc.status()).webhookReady).toBe(false);
+  });
+});

@@ -206,9 +206,9 @@ function Inbox() {
   if (status.error) return <PanelError error={status.error} onRetry={() => status.refetch()} />;
   return (
     <div className="space-y-4">
-      {status.data && !status.data.ready && (
+      {status.data && (!status.data.ready || !status.data.webhookReady) && (
         <section className={sectionClass}>
-          <p className="text-sm text-amber-700 dark:text-amber-300">Tu número de WhatsApp Business aún no está conectado.</p>
+          <p className="text-sm text-amber-700 dark:text-amber-300">{status.data.webhookReady ? "Ya recibes los mensajes, pero aún no puedes responder desde aquí." : "Tu número de WhatsApp Business aún no está conectado."}</p>
           <ul className="list-disc space-y-1 pl-5 text-sm text-muted-foreground">{status.data.problems.map((p) => <li key={p}>{p}</li>)}</ul>
         </section>
       )}

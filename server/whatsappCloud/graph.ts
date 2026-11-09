@@ -37,7 +37,18 @@ const TIMEOUT_MS = 10_000;
 export const PHONE_ID_RE = /^\d{5,30}$/;
 export const WABA_ID_RE = /^\d{5,30}$/;
 
-/** Credenciales completas de la bóveda o null (faltan datos: la conexión está desactivada). */
+/**
+ * Lo mínimo para RECIBIR (webhook): el identificador del número y la clave secreta de la app (firma). El token de
+ * verificación se comprueba aparte, solo en el alta de la suscripción. La clave de acceso y la WABA solo hacen falta para
+ * enviar y leer plantillas.
+ */
+export function receivingCredentials(v: Record<string, string | undefined>): { phoneNumberId: string; appSecret: string } | null {
+  const phoneNumberId = (v.phoneNumberId ?? "").trim();
+  const appSecret = (v.appSecret ?? "").trim();
+  return PHONE_ID_RE.test(phoneNumberId) && appSecret ? { phoneNumberId, appSecret } : null;
+}
+
+/** Credenciales para ENVIAR (número, WABA y clave de acceso) o null: sin ellas no se escribe ni se leen plantillas. */
 export function usableCredentials(v: Record<string, string | undefined>): WhatsappCredentials | null {
   const c = { phoneNumberId: (v.phoneNumberId ?? "").trim(), wabaId: (v.wabaId ?? "").trim(), accessToken: (v.accessToken ?? "").trim(), appSecret: (v.appSecret ?? "").trim(), verifyToken: (v.verifyToken ?? "").trim() };
   if (!PHONE_ID_RE.test(c.phoneNumberId) || !WABA_ID_RE.test(c.wabaId) || !c.accessToken) return null;

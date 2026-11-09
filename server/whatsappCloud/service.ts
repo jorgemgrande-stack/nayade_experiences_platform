@@ -26,7 +26,7 @@ import {
 } from "../../shared/whatsappCloud";
 import { DEFAULT_TIMEZONE, cleanText, isHumanHoursNow, isValidTimezone, localClock, oneLine, sortHours } from "../../shared/receptionAi";
 import { usableWebhookSecret } from "../_core/webhookSecret";
-import { GraphError, listTemplates, sendTemplate, sendText, usableCredentials, verifyConnection, type ConnectionInfo, type GraphFetch, type WhatsappCredentials } from "./graph";
+import { GraphError, listTemplates, receivingCredentials, sendTemplate, sendText, usableCredentials, verifyConnection, type ConnectionInfo, type GraphFetch, type WhatsappCredentials } from "./graph";
 import { QUIET_KINDS, parseWebhook } from "./webhook";
 import type { ConversationListFilter, WaConversation, WaMessage, WhatsappStore } from "./store";
 
@@ -98,11 +98,14 @@ export class WhatsappService {
   async status(): Promise<ConnectionStatus> {
     const v = await this.d.credentials();
     const c = usableCredentials(v);
+    const rx = receivingCredentials(v);
     const has = (k: string) => !!(v[k] ?? "").trim();
-    const webhookReady = !!c && has("appSecret") && !!usableWebhookSecret(v.verifyToken);
+    // Para recibir basta el número y la clave secreta de la app (y el token de verificación para dar de alta el webhook)
+    const webhookReady = !!rx && !!usableWebhookSecret(v.verifyToken);
     const problems: string[] = [];
-    if (!c) problems.push("Faltan datos de tu número de WhatsApp Business: identificador del número, de la cuenta y clave de acceso (Configuración › Integraciones › WhatsApp Business).");
+    if (!has("phoneNumberId")) problems.push("Falta el identificador de tu número de WhatsApp Business (Configuración › Integraciones › WhatsApp Business).");
     if (!has("appSecret")) problems.push("Falta la clave secreta de tu app de Meta: sin ella no se aceptan los mensajes entrantes.");
+    if (!c) problems.push("Para responder y usar plantillas faltan el identificador de la cuenta de WhatsApp Business y la clave de acceso del usuario del sistema.");
     if (!usableWebhookSecret(v.verifyToken)) problems.push("Falta el token de verificación del webhook (al menos 24 caracteres), el mismo que escribes en tu app de Meta.");
     return {
       hasPhoneNumberId: has("phoneNumberId"),
@@ -112,7 +115,7 @@ export class WhatsappService {
       hasVerifyToken: has("verifyToken"),
       ready: !!c,
       webhookReady,
-      phoneNumberId: c?.phoneNumberId ?? null,
+      phoneNumberId: rx?.phoneNumberId ?? c?.phoneNumberId ?? null,
       webhookUrl: this.d.webhookUrl(),
       problems,
     };
@@ -368,7 +371,8 @@ export class WhatsappService {
    * empresa. Devuelve los mensajes entrantes NUEVOS (para la respuesta automática) y cuántos estados se aplicaron.
    */
   async handleWebhook(payload: unknown): Promise<{ inbound: Array<{ conversationId: number; messageId: number }>; duplicates: number; statuses: number; foreign: number }> {
-    const c = usableCredentials(await this.d.credentials());
+    // Recibir no exige la clave de acceso ni la WABA: solo el número (el webhook ya comprobó la firma)
+    const c = receivingCredentials(await this.d.credentials());
     if (!c) return { inbound: [], duplicates: 0, statuses: 0, foreign: 0 };
     const p = parseWebhook(payload, c.phoneNumberId);
     const inbound: Array<{ conversationId: number; messageId: number }> = [];
