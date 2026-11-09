@@ -135,7 +135,8 @@ export default function SubscriptionPage() {
   const conversionOn = !!conversion.data?.enabled;
   const header = useMemo(
     () =>
-      data && licensed
+      // La administración espera al contrato (cobro, renovación): así la cabecera no cambia de estado al cargar
+      data && licensed && !(isAdmin && contract.isLoading)
         ? subscriptionHeader({
             overview: { licensing: data.licensing, state: data.state, plan: data.plan, trial: data.trial, consultation: data.consultation },
             contract: contract.data ?? null,
@@ -145,10 +146,11 @@ export default function SubscriptionPage() {
             hasPlans: cards.length > 0,
           })
         : null,
-    [data, licensed, contract.data, isAdmin, portal.enabled, conversionOn, cards.length],
+    [data, licensed, contract.data, contract.isLoading, isAdmin, portal.enabled, conversionOn, cards.length],
   );
 
-  // Anclas de los avisos del panel: #planes («Reactivar mi plan») y #facturacion (cobro); se desplaza cuando hay contenido
+  // Anclas de los avisos del panel y del marketplace: #planes («Reactivar mi plan»), #facturacion y #sub-cancel (cobro y
+  // baja), #ampliar y #contratar (sin elección en la URL); se desplaza cuando el contenido ya está pintado
   const hashDone = useRef(false);
   useEffect(() => {
     if (hashDone.current || !data) return;
@@ -156,12 +158,19 @@ export default function SubscriptionPage() {
     if (h === "#planes" && cards.length > 0) {
       hashDone.current = true;
       scrollTo("planes");
-    } else if (h === "#facturacion") {
+    } else if (h === "#facturacion" || h === "#sub-cancel") {
       hashDone.current = true;
       setTab("billing");
-      scrollTo("detalle");
+      // La sección de baja se monta al abrir la pestaña y tras su consulta: se espera un momento
+      window.setTimeout(() => (h === "#sub-cancel" && document.getElementById("sub-cancel") ? scrollTo("sub-cancel") : scrollTo("detalle")), 400);
+    } else if (h === "#ampliar") {
+      hashDone.current = true;
+      scrollTo("ampliar");
+    } else if (h === "#contratar" && !parseConversionRequest(window.location.search) && document.getElementById("contratar")) {
+      hashDone.current = true;
+      scrollTo("contratar");
     }
-  }, [cards.length, data]);
+  }, [cards.length, data, conversion.data]);
 
   const onConvert = (plan: SelfServicePlanKey) => {
     setRequested({ plan, at: Date.now() });

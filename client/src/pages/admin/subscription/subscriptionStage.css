@@ -64,6 +64,8 @@
   background-image: radial-gradient(22rem 10rem at 100% 0%, var(--tone-soft, transparent), transparent 70%);
 }
 .sx-option[aria-disabled="true"] { opacity: 0.85; }
+/* Foco visible con teclado (el radio real está oculto dentro de la etiqueta) */
+.sx-option:has(input:focus-visible) { outline: 2px solid var(--tone, var(--ring)); outline-offset: 2px; }
 
 /* Grupos desplegables (ampliaciones y comparativa en móvil) */
 .sx-details > summary { list-style: none; cursor: pointer; }

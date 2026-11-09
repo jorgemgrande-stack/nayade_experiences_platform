@@ -69,6 +69,8 @@ describe("cabecera de la suscripción", () => {
     expect(h.status.label).toBe("Cancelada · acceso vigente");
     expect(h.facts[0]).toMatchObject({ id: "end", value: "1 de diciembre de 2026" });
     expect(h.primary).toEqual({ kind: "billing", label: "Mantener mi suscripción" });
+    // Quien no administra no ve una acción que no puede usar
+    expect(subscriptionHeader(base({}, { isAdmin: false, contract: contract("cancel_scheduled", { cancelAt: NOW + DAY }) })).primary?.kind).toBe("plans");
   });
 
   it("finalizada: el texto de consulta real y reactivar el plan", () => {

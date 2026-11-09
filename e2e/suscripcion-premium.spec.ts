@@ -289,7 +289,7 @@ test.describe("Suscripción: casos de negocio", () => {
     await onRequest.locator("summary").click();
     await expect(onRequest.getByRole("checkbox")).toHaveCount(0);
     await expect(onRequest.getByRole("link", { name: /Ver ficha y solicitar/ }).first()).toHaveAttribute("href", /\/admin\/ampliar\//);
-    const owned = form.locator("details").filter({ hasText: "Ya contratadas" });
+    const owned = form.locator("details").filter({ hasText: "Ya activas en tu cuenta" });
     await owned.locator("summary").click();
     await expect(owned.getByText(/Elephant People|connect-people/)).toBeVisible();
     await expect(owned.getByRole("checkbox")).toHaveCount(0);
@@ -365,7 +365,7 @@ test.describe("Suscripción: casos de negocio", () => {
       // Borrador de una pantalla abierta antes del despliegue (paso de revisión, datos completos)
       if (!sessionStorage.getItem("sx-sembrado")) {
         sessionStorage.setItem("sx-sembrado", "1");
-        localStorage.setItem(
+        sessionStorage.setItem(
           "es-suscripcion-alta:u1",
           JSON.stringify({ plan: "essential", interval: "month", add: [], buyer: { legalName: "Skibox SL", taxId: "B12345678", line1: "Calle Mayor 1", postalCode: "28001", city: "Madrid", country: "ES" }, step: 3, key: null, keyFor: null, savedAt: Date.now() }),
         );

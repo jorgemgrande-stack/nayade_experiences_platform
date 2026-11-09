@@ -26,8 +26,8 @@ export const EXTENSION_GROUPS: ReadonlyArray<{ id: ExtensionGroupId; title: stri
   { id: "available", title: "Disponibles", intro: "Se contratan ahora junto con tu plan, en el mismo pago." },
   { id: "on_request", title: "Bajo solicitud", intro: "Las activa nuestro equipo contigo: consulta la ficha o envíanos una solicitud." },
   { id: "coming_soon", title: "Próximamente", intro: "Todavía no se pueden contratar. Puedes ver su ficha." },
-  { id: "not_included", title: "No incluidas en tu plan", intro: "Requieren otro plan u otro producto." },
-  { id: "contracted", title: "Ya contratadas", intro: "Ya las tienes: no se vuelven a contratar." },
+  { id: "not_included", title: "No incluidas en el alta", intro: "Requieren otro plan u otro producto, o se contratan después desde su ficha." },
+  { id: "contracted", title: "Ya activas en tu cuenta", intro: "Las tienes activas (por tu prueba o por una contratación anterior): no se añaden aquí. Su ficha explica con qué plan siguen." },
 ];
 
 /** Lo que el modelo necesita de un producto del marketplace (ConnectCatalogItem). */
@@ -42,6 +42,11 @@ export interface CheckoutCatalogItem {
   prices: ReadonlyArray<unknown>;
   reasons: string[];
   checkoutVia?: CheckoutVia;
+  /**
+   * Antiguo módulo suelto sustituido por un producto completo (unificación de Elephant Net, campo aditivo de
+   * connect.catalog `{ replacedBy, since }`). Nunca se ofrece: si la empresa lo tiene, se muestra como contratado.
+   */
+  legacy?: { replacedBy?: string | null; since?: string | number | null } | null;
 }
 
 export interface CheckoutExtension<T extends CheckoutCatalogItem = CheckoutCatalogItem> {
@@ -63,9 +68,12 @@ export function checkoutExtensions<T extends CheckoutCatalogItem>(items: readonl
   for (const item of items) {
     if (item.kind !== "module") continue;
     if (CONTRACTED.includes(item.state)) {
-      out.push({ item, group: "contracted", selectable: false, needsPlan: null, note: item.reasons[0] ?? null });
+      const note = item.legacy ? "Contratación anterior: conservas el acceso y tus condiciones." : (item.reasons[0] ?? null);
+      out.push({ item, group: "contracted", selectable: false, needsPlan: null, note });
       continue;
     }
+    // Módulo suelto retirado (se vende el producto completo): si no se tiene, no se muestra
+    if (item.legacy) continue;
     if (item.state === "on_request") {
       out.push({ item, group: "on_request", selectable: false, needsPlan: null, note: item.reasons[0] ?? null });
       continue;
@@ -92,7 +100,8 @@ export function checkoutExtensions<T extends CheckoutCatalogItem>(items: readonl
       continue;
     }
     if (item.state === "available") {
-      out.push({ item, group: "available", selectable: false, needsPlan: null, note: "No se añade al alta: consulta su ficha para contratarlo." });
+      // A la venta, pero no entra en el alta (sin precio aprobado, requisitos…): no se presenta como «Disponible» aquí
+      out.push({ item, group: "not_included", selectable: false, needsPlan: null, note: item.reasons[0] ?? "No se añade al alta: consulta su ficha para contratarlo después." });
       continue;
     }
     out.push({ item, group: "not_included", selectable: false, needsPlan: null, note: item.reasons[0] ?? null });
@@ -182,8 +191,10 @@ export interface CheckoutDraft {
   step: CheckoutStep;
   /** Clave de idempotencia de esta selección: repetir el envío (también tras recargar) abre el mismo pago. */
   key: string | null;
-  /** Firma de la selección a la que corresponde `key`. */
+  /** Firma de la selección (plan, periodicidad, ampliaciones, datos fiscales y condiciones) a la que corresponde `key`. */
   keyFor: string | null;
+  /** Caducidad del enlace de pago abierto con `key` (null: aún no se abrió). Caducado, la clave no se reutiliza. */
+  payExpiresAt: number | null;
   savedAt: number;
 }
 
@@ -193,7 +204,19 @@ const MODULE_KEY = /^[a-z0-9][a-z0-9-]{1,63}$/;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const str = (v: unknown, max: number) => (typeof v === "string" ? v.slice(0, max) : "");
 
-export const selectionSignature = (s: { plan: string; interval: string; add: readonly string[] }) => `${s.plan}|${s.interval}|${[...s.add].sort().join(",")}`;
+/**
+ * Firma de lo que se envía: plan, periodicidad y ampliaciones y, si se dan, los datos fiscales y la versión de las
+ * condiciones. Cualquier cambio en lo enviado lleva otra clave de idempotencia (nunca la misma clave con otro cuerpo).
+ */
+export const selectionSignature = (s: { plan: string; interval: string; add: readonly string[]; buyer?: BuyerDraft; terms?: string | null }) =>
+  [s.plan, s.interval, [...s.add].sort().join(","), s.buyer ? JSON.stringify(buyerPayload(s.buyer)) : "", s.terms ?? ""].join("|");
+
+/** Clave del borrador que se puede reutilizar: misma firma y sin un enlace de pago ya caducado. */
+export function reusableKey(d: Pick<CheckoutDraft, "key" | "keyFor" | "payExpiresAt"> | null, signature: string, now: number): string | null {
+  if (!d?.key || d.keyFor !== signature) return null;
+  if (d.payExpiresAt !== null && d.payExpiresAt <= now) return null;
+  return d.key;
+}
 
 /** Lectura prudente del borrador guardado: lo que no se reconoce se descarta; caducado o ajeno, null. */
 export function parseDraft(raw: string | null, now: number): CheckoutDraft | null {
@@ -222,9 +245,13 @@ export function parseDraft(raw: string | null, now: number): CheckoutDraft | nul
   };
   const step: CheckoutStep = o.step === 2 || o.step === 3 ? o.step : 1;
   const key = typeof o.key === "string" && UUID.test(o.key) ? o.key : null;
-  const keyFor = key && typeof o.keyFor === "string" ? o.keyFor.slice(0, 400) : null;
-  return { plan, interval, add, buyer, step, key, keyFor, savedAt };
+  const keyFor = key && typeof o.keyFor === "string" ? o.keyFor.slice(0, 2000) : null;
+  const payExpiresAt = key && typeof o.payExpiresAt === "number" && Number.isFinite(o.payExpiresAt) ? o.payExpiresAt : null;
+  return { plan, interval, add, buyer, step, key, keyFor, payExpiresAt, savedAt };
 }
 
-/** Clave del almacenamiento de la sesión del navegador: por persona (el navegador ya separa cada empresa por su dirección). */
+/**
+ * Clave en el almacenamiento de la SESIÓN del navegador (sessionStorage: la pestaña; no deja datos fiscales en el equipo
+ * al cerrarla), por persona; el navegador ya separa cada empresa por su dirección.
+ */
 export const draftStorageKey = (userId: number | string | null | undefined) => `es-suscripcion-alta:u${userId ?? "0"}`;

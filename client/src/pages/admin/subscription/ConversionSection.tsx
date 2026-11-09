@@ -39,6 +39,7 @@ import {
   draftStorageKey,
   maxReachableStep,
   parseDraft,
+  reusableKey,
   selectionSignature,
   validSelection,
   validateBuyer,
@@ -70,16 +71,18 @@ const scrollIntoView = (id: string) => requestAnimationFrame(() => document.getE
 const per = (i: CheckoutInterval) => (i === "year" ? "año" : "mes");
 
 // ── Borrador en el navegador (con try/catch: el almacenamiento puede no estar disponible) ──
-function readDraft(key: string): CheckoutDraft | null {
+function readDraft(key: string | null): CheckoutDraft | null {
+  if (!key) return null;
   try {
-    return parseDraft(window.localStorage.getItem(key), Date.now());
+    return parseDraft(window.sessionStorage.getItem(key), Date.now());
   } catch {
     return null;
   }
 }
-function writeDraft(key: string, d: Omit<CheckoutDraft, "savedAt">) {
+function writeDraft(key: string, d: Omit<CheckoutDraft, "savedAt"> | null) {
   try {
-    window.localStorage.setItem(key, JSON.stringify({ ...d, savedAt: Date.now() }));
+    if (d) window.sessionStorage.setItem(key, JSON.stringify({ ...d, savedAt: Date.now() }));
+    else window.sessionStorage.removeItem(key);
   } catch {
     // sin almacenamiento: la selección vive solo en esta pantalla
   }
@@ -116,10 +119,15 @@ export function ConversionSection({ requested, currentPlan = null, plans = [] }:
 
 function Checkout({ requested, currentPlan, plans }: { requested: ConversionRequest | null; currentPlan: string | null; plans: PanelPlanInfo[] }) {
   const { user } = useAuth();
-  const storageKey = draftStorageKey((user as { id?: number } | null)?.id);
+  const uid = (user as { id?: number } | null)?.id;
+  // Sin la persona identificada no se lee ni se escribe ningún borrador (nunca el de otra persona)
+  const storageKey = uid ? draftStorageKey(uid) : null;
   const catalog = useConnectCatalog();
   const initial = useMemo(() => readDraft(storageKey), [storageKey]);
   const defaultPlan: CheckoutPlan = (CHECKOUT_PLANS as readonly string[]).includes(currentPlan ?? "") ? (currentPlan as CheckoutPlan) : "essential";
+  /** ¿Hay algo elegido o escrito? Solo entonces se guarda el borrador y se avisa de que se ha recuperado. */
+  const meaningful = (d: { plan: CheckoutPlan; interval: CheckoutInterval; add: string[]; buyer: BuyerDraft; step: CheckoutStep }) =>
+    d.plan !== defaultPlan || d.interval !== "month" || d.add.length > 0 || d.step > 1 || (Object.keys(EMPTY_BUYER) as BuyerField[]).some((k) => d.buyer[k].trim() !== EMPTY_BUYER[k]);
   const [plan, setPlan] = useState<CheckoutPlan>(initial?.plan ?? defaultPlan);
   const [interval, setBilling] = useState<CheckoutInterval>(initial?.interval ?? "month");
   const [add, setAdd] = useState<string[]>(initial?.add ?? []);
@@ -127,28 +135,35 @@ function Checkout({ requested, currentPlan, plans }: { requested: ConversionRequ
   const [step, setStep] = useState<CheckoutStep>(initial?.step ?? 1);
   const [touched, setTouched] = useState<Partial<Record<BuyerField, boolean>>>({});
   const [accepted, setAccepted] = useState({ terms: false, privacy: false });
-  const [notes, setNotes] = useState<string[]>(initial ? ["Hemos recuperado la selección que dejaste a medias."] : []);
+  const [notes, setNotes] = useState<string[]>(initial && meaningful(initial) ? ["Hemos recuperado la selección que dejaste a medias."] : []);
   const [legalNotice, setLegalNotice] = useState<string | null>(null);
 
   const extensions = useMemo(() => checkoutExtensions(catalog.items as ConnectCatalogItem[], plan), [catalog.items, plan]);
   // Al cambiar de plan (o al llegar el catálogo) se quita lo que ya no se puede añadir con él
   useEffect(() => {
+    // Sin catálogo no se puede comprobar ninguna ampliación: no se envía ninguna (se añaden después)
+    if (catalog.isError) {
+      setAdd((a) => (a.length ? [] : a));
+      return;
+    }
     if (!catalog.data) return;
     setAdd((a) => {
       const v = validSelection(a, extensions);
       return v.length === a.length ? a : v;
     });
-  }, [catalog.data, extensions]);
+  }, [catalog.data, catalog.isError, extensions]);
 
   // Elección desde el comparador o desde el marketplace: se aplica una vez por elección y SUMA a lo ya elegido
   const applied = useRef<number | null>(null);
   useEffect(() => {
     if (!requested || applied.current === requested.at) return;
-    if (requested.modules?.length && !catalog.data) return;
+    if (requested.modules?.length && !catalog.data && !catalog.isError) return;
     applied.current = requested.at;
     setPlan(requested.plan);
     setStep(1);
-    if (requested.modules?.length) {
+    if (requested.modules?.length && catalog.isError) {
+      setNotes(["No hemos podido comprobar los módulos elegidos ahora mismo: contrata el plan y añádelos después desde su ficha."]);
+    } else if (requested.modules?.length) {
       const offered = checkoutExtensions(catalog.items as ConnectCatalogItem[], requested.plan)
         .filter((e) => e.selectable)
         .map((e) => ({ key: e.item.key, name: e.item.name }));
@@ -157,7 +172,7 @@ function Checkout({ requested, currentPlan, plans }: { requested: ConversionRequ
       setNotes(r.notes);
     } else setNotes([]);
     scrollIntoView("contratar");
-  }, [requested, catalog.data, catalog.items, currentPlan]);
+  }, [requested, catalog.data, catalog.isError, catalog.items, currentPlan]);
 
   // Importe: siempre del servidor; solo vale la respuesta de la última selección
   const sig = selectionSignature({ plan, interval, add });
@@ -185,13 +200,23 @@ function Checkout({ requested, currentPlan, plans }: { requested: ConversionRequ
   const p = quote?.sig === sig ? quote.data : null;
   const calculating = !p && !quoteError;
 
-  // Clave de idempotencia de ESTA selección (la del borrador si es la misma selección)
-  const idem = useRef<{ key: string; sig: string }>(initial?.key && initial.keyFor ? { key: initial.key, sig: initial.keyFor } : { key: randomId(), sig });
-  if (idem.current.sig !== sig) idem.current = { key: randomId(), sig };
+  // Clave de idempotencia de lo que se envía (selección y datos fiscales): la del borrador si es lo mismo y su enlace
+  // de pago no ha caducado; cualquier cambio en lo enviado lleva otra clave (nunca la misma clave con otro cuerpo)
+  const keySig = selectionSignature({ plan, interval, add, buyer });
+  const idem = useRef<{ key: string; sig: string; payExpiresAt: number | null } | null>(null);
+  if (idem.current === null) {
+    const reused = reusableKey(initial, keySig, Date.now());
+    idem.current = { key: reused ?? randomId(), sig: keySig, payExpiresAt: reused ? (initial?.payExpiresAt ?? null) : null };
+  }
+  if (idem.current.sig !== keySig) idem.current = { key: randomId(), sig: keySig, payExpiresAt: null };
 
+  const [payOpenedAt, setPayOpenedAt] = useState(0);
   useEffect(() => {
-    writeDraft(storageKey, { plan, interval, add, buyer, step, key: idem.current.key, keyFor: idem.current.sig });
-  }, [storageKey, plan, interval, add, buyer, step]);
+    if (!storageKey || !idem.current) return;
+    const d = { plan, interval, add, buyer, step };
+    writeDraft(storageKey, meaningful(d) ? { ...d, key: idem.current.key, keyFor: idem.current.sig, payExpiresAt: idem.current.payExpiresAt } : null);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [storageKey, plan, interval, add, buyer, step, payOpenedAt]);
 
   const errors = validateBuyer(buyer);
   const buyerValid = Object.keys(errors).length === 0;
@@ -207,19 +232,35 @@ function Checkout({ requested, currentPlan, plans }: { requested: ConversionRequ
     }
     setStep(s);
     scrollIntoView("contratar");
+    // El botón pulsado desaparece con el paso: el foco pasa al título del paso nuevo
+    requestAnimationFrame(() => document.getElementById("sx-step-actual")?.focus({ preventScroll: true }));
   };
 
   const sending = useRef(false);
   const [redirecting, setRedirecting] = useState(false);
+  // Vuelta con «Atrás» desde el pago (página restaurada de la caché del navegador): el botón vuelve a estar disponible
+  useEffect(() => {
+    const onShow = (e: PageTransitionEvent) => {
+      if (!e.persisted) return;
+      sending.current = false;
+      setRedirecting(false);
+    };
+    window.addEventListener("pageshow", onShow);
+    return () => window.removeEventListener("pageshow", onShow);
+  }, []);
   const start = trpc.subscription.conversionStart.useMutation({
     onSuccess: (r) => {
+      // Se guarda la caducidad del enlace: pasado ese momento, un nuevo intento usa otra clave
+      if (idem.current) idem.current = { ...idem.current, payExpiresAt: typeof r.expiresAt === "number" ? r.expiresAt : null };
+      setPayOpenedAt(Date.now());
       setRedirecting(true);
       window.location.assign(r.url);
     },
     onError: (e) => {
       sending.current = false;
-      // Condiciones o textos actualizados durante un despliegue: se piden de nuevo y se vuelven a aceptar
+      // Condiciones o textos actualizados durante un despliegue: se piden de nuevo, se vuelven a aceptar y con otra clave
       if (e.data?.code === "CONFLICT" && /condiciones|textos vigentes/i.test(e.message)) {
+        idem.current = { key: randomId(), sig: keySig, payExpiresAt: null };
         setAccepted({ terms: false, privacy: false });
         setLegalNotice(e.message);
         requestPreview();
@@ -233,7 +274,7 @@ function Checkout({ requested, currentPlan, plans }: { requested: ConversionRequ
     if (!canConfirm || !p || sending.current) return;
     sending.current = true;
     start.mutate({
-      idempotencyKey: idem.current.key,
+      idempotencyKey: idem.current!.key,
       plan,
       interval,
       ...(add.length ? { add } : {}),
@@ -244,7 +285,8 @@ function Checkout({ requested, currentPlan, plans }: { requested: ConversionRequ
 
   const planInfo = (k: CheckoutPlan) => plans.find((x) => x.key === k) ?? null;
   const planName = planInfo(plan)?.name ?? (plan === "business" ? "Business" : "Essential");
-  const selectedItems = extensions.filter((e) => add.includes(e.item.key));
+  // Nombres de lo que se envía (del catálogo o, si no ha llegado, de las líneas del importe del servidor)
+  const addNames = add.map((k) => extensions.find((e) => e.item.key === k)?.item.name ?? p?.quote.lines.find((l) => l.key === k)?.name ?? k);
 
   return (
     <section id="contratar" className="cx-shadow scroll-mt-4 space-y-6 rounded-3xl border border-border bg-card p-4 sm:p-6 lg:p-8" aria-labelledby="sub-convert">
@@ -275,6 +317,9 @@ function Checkout({ requested, currentPlan, plans }: { requested: ConversionRequ
 
       <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_22rem] xl:grid-cols-[minmax(0,1fr)_24rem]">
         <div className="min-w-0 space-y-6">
+          <h3 id="sx-step-actual" tabIndex={-1} className="sr-only">
+            Paso {step} de 3: {CHECKOUT_STEPS[step - 1].title}
+          </h3>
           {step === 1 && (
             <>
               <Panel icon={<Layers className="h-5 w-5" />} title="Plan seleccionado" intro="Elige el plan con el que quieres seguir.">
@@ -367,7 +412,7 @@ function Checkout({ requested, currentPlan, plans }: { requested: ConversionRequ
                   <div className="sm:col-span-2">
                     <Field id="line1" label="Dirección fiscal" value={buyer.line1} error={touched.line1 ? errors.line1 : undefined} autoComplete="address-line1" maxLength={200} onChange={(v) => setBuyer((b) => ({ ...b, line1: v }))} onBlur={() => setTouched((t) => ({ ...t, line1: true }))} />
                   </div>
-                  <Field id="postalCode" label="Código postal" value={buyer.postalCode} error={touched.postalCode ? errors.postalCode : undefined} autoComplete="postal-code" inputMode="numeric" maxLength={12} onChange={(v) => setBuyer((b) => ({ ...b, postalCode: v }))} onBlur={() => setTouched((t) => ({ ...t, postalCode: true }))} />
+                  <Field id="postalCode" label="Código postal" value={buyer.postalCode} error={touched.postalCode ? errors.postalCode : undefined} autoComplete="postal-code" maxLength={12} onChange={(v) => setBuyer((b) => ({ ...b, postalCode: v }))} onBlur={() => setTouched((t) => ({ ...t, postalCode: true }))} />
                   <Field id="city" label="Ciudad" value={buyer.city} error={touched.city ? errors.city : undefined} autoComplete="address-level2" maxLength={120} onChange={(v) => setBuyer((b) => ({ ...b, city: v }))} onBlur={() => setTouched((t) => ({ ...t, city: true }))} />
                   <Field
                     id="country"
@@ -391,7 +436,7 @@ function Checkout({ requested, currentPlan, plans }: { requested: ConversionRequ
               <Panel icon={<FileText className="h-5 w-5" />} title="Revisión" intro="Comprueba tu selección antes de ir al pago seguro.">
                 <dl className="grid gap-3 text-sm sm:grid-cols-2">
                   <Review label="Plan" value={`${planName} · ${interval === "year" ? "anual" : "mensual"}`} onEdit={() => go(1)} />
-                  <Review label="Ampliaciones" value={selectedItems.length > 0 ? selectedItems.map((e) => e.item.name).join(", ") : "Sin ampliaciones"} onEdit={() => go(1)} />
+                  <Review label="Ampliaciones" value={addNames.length > 0 ? addNames.join(", ") : "Sin ampliaciones"} onEdit={() => go(1)} />
                   <Review label="Facturación a" value={`${buyer.legalName.trim()} · ${buyer.taxId.trim()}`} onEdit={() => go(2)} />
                   <Review label="Domicilio fiscal" value={`${buyer.line1.trim()}, ${buyer.postalCode.trim()} ${buyer.city.trim()} (${buyer.country.trim().toUpperCase()})`} onEdit={() => go(2)} />
                 </dl>
@@ -432,7 +477,7 @@ function Checkout({ requested, currentPlan, plans }: { requested: ConversionRequ
 
               {/* En el móvil, el resumen va justo antes de la confirmación (en escritorio está a la derecha) */}
               <div className="lg:hidden">
-                <Summary p={p} planName={planName} interval={interval} calculating={calculating} error={quoteError} />
+                <Summary id="sx-summary-main" p={p} planName={planName} interval={interval} calculating={calculating} error={quoteError} />
               </div>
 
               <div className="flex flex-col-reverse gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -454,14 +499,14 @@ function Checkout({ requested, currentPlan, plans }: { requested: ConversionRequ
           )}
           {step === 3 && !p && (
             <div className="lg:hidden">
-              <Summary p={null} planName={planName} interval={interval} calculating={calculating} error={quoteError} />
+              <Summary id="sx-summary-main" p={null} planName={planName} interval={interval} calculating={calculating} error={quoteError} />
             </div>
           )}
         </div>
 
         <aside className={cn("min-w-0", step === 3 ? "hidden lg:block" : "")} aria-label="Resumen de la contratación">
           <div className="lg:sticky lg:top-4">
-            <Summary p={p} planName={planName} interval={interval} calculating={calculating} error={quoteError} />
+            <Summary id="sx-summary-aside" p={p} planName={planName} interval={interval} calculating={calculating} error={quoteError} />
           </div>
         </aside>
       </div>
@@ -707,12 +752,12 @@ function ExtensionRow({ e, checked, onToggle, onPlan }: { e: CheckoutExtension<C
 }
 
 /** Resumen económico: importes del servidor; los impuestos solo se dan por definitivos en el pago (Stripe Tax). */
-function Summary({ p, planName, interval, calculating, error }: { p: Preview | null; planName: string; interval: CheckoutInterval; calculating: boolean; error: string | null }) {
+function Summary({ id, p, planName, interval, calculating, error }: { id: string; p: Preview | null; planName: string; interval: CheckoutInterval; calculating: boolean; error: string | null }) {
   const cur = p?.quote.currency ?? "EUR";
   return (
-    <section className="cx-glow overflow-hidden rounded-2xl border border-border bg-card" aria-labelledby="sx-summary" aria-live="polite">
+    <section className="cx-glow overflow-hidden rounded-2xl border border-border bg-card" aria-labelledby={id} aria-live="polite">
       <div className="border-b border-border px-4 py-3 sm:px-5">
-        <h3 id="sx-summary" className="text-lg font-bold text-foreground">
+        <h3 id={id} className="text-lg font-bold text-foreground">
           Resumen de tu contratación
         </h3>
         <p className="text-xs text-muted-foreground">

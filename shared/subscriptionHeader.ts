@@ -132,8 +132,9 @@ export function subscriptionHeader(i: SubscriptionHeaderInput): SubscriptionHead
           facts,
           dataNote: "Tu suscripción no se renovará. Hasta esa fecha sigues trabajando con normalidad y, después, tus datos se conservan.",
           restriction: null,
-          primary: { kind: "billing", label: "Mantener mi suscripción" },
-          secondary: portal ?? plansAction("Comparar planes"),
+          // Mantenerla es cosa de la administración (deshacer la baja, solo la persona propietaria, en «Facturación y contrato»)
+          primary: i.isAdmin ? { kind: "billing", label: "Mantener mi suscripción" } : plansAction("Comparar planes"),
+          secondary: i.isAdmin ? (portal ?? plansAction("Comparar planes")) : null,
         };
       }
       const facts: HeaderFact[] = [];

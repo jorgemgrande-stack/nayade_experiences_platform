@@ -10,6 +10,7 @@ import {
   checkoutExtensions,
   maxReachableStep,
   parseDraft,
+  reusableKey,
   selectionSignature,
   validSelection,
   validateBuyer,
@@ -51,11 +52,19 @@ describe("ampliaciones en el alta", () => {
     expect(by["ski-net"]).toMatchObject({ group: "coming_soon", selectable: false });
     expect(by["connect-whatsapp-ai"]).toMatchObject({ group: "contracted", selectable: false });
     expect(by["connect-automations"]).toMatchObject({ group: "not_included", selectable: false, note: "Requiere tener contratado Elephant People." });
-    expect(by["sin-precio"]).toMatchObject({ group: "available", selectable: false });
+    // A la venta pero fuera del alta: no se presenta como «Disponible» aquí
+    expect(by["sin-precio"]).toMatchObject({ group: "not_included", selectable: false });
     // Las ampliaciones por unidades no entran en el alta
     expect(by["addon-user-essential"]).toBeUndefined();
     const bus = Object.fromEntries(checkoutExtensions(items, "business").map((e) => [e.item.key, e]));
     expect(bus["connect-voice"]).toMatchObject({ group: "available", selectable: true });
+  });
+
+  it("unificación de Elephant Net: un módulo suelto retirado nunca se ofrece; si se tiene, se muestra como activo", () => {
+    const legacy = { replacedBy: "hotel-net-complete", since: "2026-11-07" };
+    const out = checkoutExtensions([item("hotel-net-pms", { legacy }), item("hotel-net-channel", { legacy, state: "active", checkoutVia: null }), item("hotel-net-rates", { legacy, state: "on_request", checkoutVia: null })], "essential");
+    expect(out.map((e) => [e.item.key, e.group, e.selectable])).toEqual([["hotel-net-channel", "contracted", false]]);
+    expect(out[0].note).toMatch(/Contratación anterior/);
   });
 
   it("al cambiar de plan se descarta lo que ya no cabe (nunca se envía)", () => {
@@ -92,7 +101,8 @@ describe("borrador para volver sin perder nada", () => {
     const d = parseDraft(JSON.stringify(draft), now)!;
     expect(d).toMatchObject({ plan: "business", interval: "year", add: ["connect-people"], step: 2, key });
     expect(d.buyer).toEqual({ ...EMPTY_BUYER, legalName: "Skibox SL", country: "ES" });
-    expect(d.keyFor).toBe(selectionSignature({ plan: "business", interval: "year", add: ["connect-people"] }));
+    expect(d.keyFor).toBe("business|year|connect-people");
+    expect(d.payExpiresAt).toBeNull();
   });
   it("descarta lo caducado, lo mal formado o un plan que no se contrata en línea", () => {
     expect(parseDraft(JSON.stringify({ ...draft, savedAt: now - DRAFT_TTL_MS - 1 }), now)).toBeNull();
@@ -101,6 +111,18 @@ describe("borrador para volver sin perder nada", () => {
     expect(parseDraft(null, now)).toBeNull();
     expect(parseDraft(JSON.stringify({ ...draft, key: "x" }), now)?.key).toBeNull();
   });
+  it("la clave solo se reutiliza para lo mismo y con el enlace de pago vigente", () => {
+    const buyer = { ...EMPTY_BUYER, legalName: "Skibox SL" };
+    const sig = selectionSignature({ plan: "essential", interval: "month", add: [], buyer });
+    const d = { key, keyFor: sig, payExpiresAt: null };
+    expect(reusableKey(d, sig, now)).toBe(key);
+    expect(reusableKey({ ...d, payExpiresAt: now + 1000 }, sig, now)).toBe(key);
+    expect(reusableKey({ ...d, payExpiresAt: now - 1 }, sig, now)).toBeNull();
+    // Otros datos fiscales = otro cuerpo = otra clave
+    expect(reusableKey(d, selectionSignature({ plan: "essential", interval: "month", add: [], buyer: { ...buyer, taxId: "B1234" } }), now)).toBeNull();
+    expect(reusableKey(null, sig, now)).toBeNull();
+  });
+
   it("la firma no depende del orden de las ampliaciones", () => {
     expect(selectionSignature({ plan: "essential", interval: "month", add: ["b", "a"] })).toBe(selectionSignature({ plan: "essential", interval: "month", add: ["a", "b"] }));
   });
