@@ -370,12 +370,14 @@ describe.skipIf(!URL_)("Venta multicanal · canales, cupo, ventas sin sobreventa
   });
 
   it("sin ficha en Operaciones (0 filas, con la tabla presente) el paso no queda hecho: se marca y se completa al reintentar", async () => {
-    // La ficha no llega a crearse: un disparador rechaza su alta (la tabla existe y queda sin filas para la reserva)
-    await ess.sql("a", "CREATE TRIGGER qa_mc_sin_ficha BEFORE INSERT ON reservation_operational FOR EACH ROW SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'qa: sin ficha'");
+    // La ficha no llega a crearse: una restricción temporal rechaza fichas de reservas nuevas (la tabla existe y queda
+    // sin filas para la reserva). Sin disparadores: el MySQL del CI no los admite con el registro binario activo.
+    const [{ m: lastReservation }] = await ess.sql("a", "SELECT COALESCE(MAX(id), 0) AS m FROM reservations");
+    await ess.sql("a", `ALTER TABLE reservation_operational ADD CONSTRAINT qa_mc_sin_ficha CHECK (reservation_id <= ${Number(lastReservation)})`);
     try {
       expect((await post(sale("FICHA-1", "KAYAK", { date: day(25) }))).json.results[0]).toMatchObject({ status: "registrada" });
     } finally {
-      await ess.sql("a", "DROP TRIGGER IF EXISTS qa_mc_sin_ficha");
+      await ess.sql("a", "ALTER TABLE reservation_operational DROP CHECK qa_mc_sin_ficha");
     }
     const [s] = await ess.sql("a", "SELECT id, reservation_id, ops_status, ops_error FROM mc_sales WHERE external_ref = 'FICHA-1'");
     expect(await ess.sql("a", "SELECT id FROM reservation_operational WHERE reservation_id = ?", [s.reservation_id])).toEqual([]);
@@ -403,12 +405,13 @@ describe.skipIf(!URL_)("Venta multicanal · canales, cupo, ventas sin sobreventa
       // El canal cancela; después el paso crea booking, ingreso y ficha, y el cierre no puede anular el booking
       expect((await post({ ref: "CXL-2", event: "cancelacion" })).json.results[0]).toMatchObject({ status: "cancelada" });
       await mc.defaultAfterRegister(p);
-      await ess.sql("a", "CREATE TRIGGER qa_mc_sin_anular BEFORE UPDATE ON bookings FOR EACH ROW SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'qa: booking bloqueado'");
+      // Restricción temporal: el booking de esta reserva no puede pasar a cancelado
+      await ess.sql("a", `ALTER TABLE bookings ADD CONSTRAINT qa_mc_sin_anular CHECK (status <> 'cancelado' OR reservationId <> ${p.reservationId})`);
     }));
-    await ess.sql("a", "DROP TRIGGER IF EXISTS qa_mc_sin_anular");
+    await ess.sql("a", "ALTER TABLE bookings DROP CHECK qa_mc_sin_anular");
     const s = await ops("CXL-2");
     expect(s).toMatchObject({ status: "cancelada", ops_status: "error", ops_claim: null });
-    expect(s.ops_error).toBe("No se ha podido cerrar el paso de contabilidad y Operaciones: qa: booking bloqueado");
+    expect(s.ops_error).toBe("No se ha podido cerrar el paso de contabilidad y Operaciones: Check constraint 'qa_mc_sin_anular' is violated.");
     // Todo lo creado sigue vigente (el cierre se deshizo entero) y la conciliación lo muestra
     expect(await txOf(s.reservation_id)).toEqual([{ status: "completado", operationStatus: "confirmada" }]);
     let rec = await ok(q("reconciliation", { channelId, from: day(20), to: day(30) }));
