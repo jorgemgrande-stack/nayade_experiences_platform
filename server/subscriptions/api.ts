@@ -84,7 +84,7 @@ export function createSubscriptionsRouter(svc: SubscriptionService, shadow: Shad
       })
       .strict()
       .parse(req.body);
-    res.status(201).json({ subscription: await svc.create(b, who(req)) });
+    res.status(201).json({ subscription: await svc.create({ ...b, newSale: true }, who(req)) });
   }));
   r.get("/:id", requireScope("subscriptions:read"), wrap(async (req, res) => {
     const sid = id.parse(req.params.id);
@@ -98,7 +98,7 @@ export function createSubscriptionsRouter(svc: SubscriptionService, shadow: Shad
   }));
   r.post("/:id/items", requireScope("subscriptions:write"), wrap(async (req, res) => {
     const b = z.object({ item: itemSpec, when, reason, expectedVersion: version }).strict().parse(req.body);
-    res.status(201).json(await svc.addItem(await writable(req), b, b.expectedVersion, who(req)));
+    res.status(201).json(await svc.addItem(await writable(req), { ...b, newSale: true }, b.expectedVersion, who(req)));
   }));
   r.post("/:id/items/:itemId/remove", requireScope("subscriptions:write"), wrap(async (req, res) => {
     const b = z.object({ when, reason, expectedVersion: version }).strict().parse(req.body);

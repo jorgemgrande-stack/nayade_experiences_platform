@@ -1,48 +1,35 @@
 /**
- * Presentación comercial de los planes de Elephant Core en «Suscripción»: público, mensaje y pilares de cada plan
- * conocido, y la comparativa completa (precios, límites y ventajas) a partir de las tarjetas del comparador. Es solo
- * capa de contenido: no calcula importes ni decide qué se puede contratar (eso sigue en subscriptionPlans y el
+ * Presentación comercial de los planes de Elephant Core en «Suscripción»: público, mensaje, icono y tono de cada plan
+ * conocido, y la comparativa completa (precios, límites y ventajas, agrupados por categorías) a partir de las tarjetas
+ * del comparador. Es solo capa de contenido: no calcula importes, no anuncia capacidades (las capacidades y los
+ * límites salen SIEMPRE del catálogo publicado) ni decide qué se puede contratar (eso sigue en subscriptionPlans y el
  * servidor). Un plan que no esté aquí se presenta con lo que publica el catálogo.
  */
 import type { PanelPlanInfo, PlanCardModel, PlanPrice } from "./subscriptionPlans";
 
 export type PlanIconKey = "rocket" | "trending" | "building" | "layers";
+/** Tono del plan en el sistema visual del marketplace (`data-tone` de connectStage.css). */
+export type PlanTone = "violet" | "electric" | "magenta" | "night";
 
 export interface PlanPresentation {
   /** Para quién es, en dos o tres palabras («Para empezar»). */
   audience: string | null;
   /** Mensaje principal de la tarjeta. */
   headline: string | null;
-  /** Áreas clave que cubre el plan (etiquetas cortas, sacadas de lo que publica el catálogo). */
-  pillars: string[];
   icon: PlanIconKey;
+  tone: PlanTone;
 }
 
 const KNOWN: Record<string, Omit<PlanPresentation, "headline"> & { headline: string }> = {
-  essential: {
-    audience: "Para empezar",
-    headline: "Todo tu negocio, conectado desde el primer día",
-    pillars: ["CRM", "Ventas", "Web", "Tienda online", "TPV", "Facturación"],
-    icon: "rocket",
-  },
-  business: {
-    audience: "Para crecer",
-    headline: "Más equipo, más control y más capacidad para crecer",
-    pillars: ["Varias sedes", "Inventario", "Reservas", "Compras", "Informes"],
-    icon: "trending",
-  },
-  enterprise: {
-    audience: "Para operaciones complejas",
-    headline: "Una plataforma adaptada a tu organización",
-    pillars: ["Varias entidades fiscales", "API", "Integraciones a medida", "Trazabilidad avanzada"],
-    icon: "building",
-  },
+  essential: { audience: "Para empezar", headline: "Todo tu negocio, conectado desde el primer día", icon: "rocket", tone: "violet" },
+  business: { audience: "Para crecer", headline: "Más equipo, más control y más capacidad para crecer", icon: "trending", tone: "electric" },
+  enterprise: { audience: "Para operaciones complejas", headline: "Una plataforma adaptada a tu organización", icon: "building", tone: "magenta" },
 };
 
 export function planPresentation(plan: Pick<PanelPlanInfo, "key" | "tagline">): PlanPresentation {
   const k = KNOWN[plan.key];
-  if (k) return { ...k, pillars: [...k.pillars] };
-  return { audience: null, headline: plan.tagline, pillars: [], icon: "layers" };
+  if (k) return { ...k };
+  return { audience: null, headline: plan.tagline, icon: "layers", tone: "night" };
 }
 
 /** Límites que se ven en la tarjeta (los primeros que publica el catálogo); el resto, en la comparativa. */
@@ -99,4 +86,54 @@ export function comparisonLimitRows(cards: PlanCardModel[]): ComparisonRow[] {
       }),
     };
   });
+}
+
+/** Categorías de la comparativa completa (por indicador publicado o, sin él, por la etiqueta). */
+export type ComparisonGroupId = "team" | "sales" | "web" | "service" | "other";
+export const COMPARISON_GROUP_LABELS: Record<ComparisonGroupId, string> = {
+  team: "Equipo y organización",
+  sales: "Clientes y ventas",
+  web: "Web y almacenamiento",
+  service: "Soporte y servicio",
+  other: "Otras capacidades",
+};
+const GROUP_BY_METRIC: Record<string, ComparisonGroupId> = {
+  users: "team",
+  sites: "team",
+  fiscal_entities: "team",
+  contacts: "sales",
+  orders_month: "sales",
+  websites: "web",
+  storage_gb: "web",
+};
+const GROUP_BY_LABEL: Record<string, ComparisonGroupId> = { roles: "team", soporte: "service", support: "service" };
+const GROUP_ORDER: ComparisonGroupId[] = ["team", "sales", "web", "service", "other"];
+
+export function comparisonGroupOf(l: { label: string; metric: string | null }): ComparisonGroupId {
+  return (l.metric && GROUP_BY_METRIC[l.metric]) || GROUP_BY_LABEL[l.label.trim().toLowerCase()] || "other";
+}
+
+/**
+ * Filas de límites agrupadas por categoría, en el orden fijo de las categorías y, dentro de cada una, en el de
+ * publicación. No se descarta ninguna fila: lo que no encaja en una categoría conocida va a «Otras capacidades».
+ */
+export function groupedComparisonRows(cards: PlanCardModel[]): Array<{ id: ComparisonGroupId; label: string; rows: ComparisonRow[] }> {
+  const rows = comparisonLimitRows(cards);
+  const metricOf = new Map<string, string | null>();
+  for (const c of cards) for (const l of c.plan.limits) if (!metricOf.has(l.label)) metricOf.set(l.label, l.metric);
+  return GROUP_ORDER.map((id) => ({ id, label: COMPARISON_GROUP_LABELS[id], rows: rows.filter((r) => comparisonGroupOf({ label: r.label, metric: metricOf.get(r.label) ?? null }) === id) })).filter(
+    (g) => g.rows.length > 0,
+  );
+}
+
+const PLAN_RANK: Record<string, number> = { essential: 0, business: 1, enterprise: 2 };
+
+/**
+ * Plan que se presenta como opción de crecimiento: lo marca el catálogo (`highlight`) y es superior al plan actual.
+ * Nunca se presenta como «el recomendado para todos».
+ */
+export function isGrowthOption(card: Pick<PlanCardModel, "isCurrent" | "plan">, currentKey: string | null): boolean {
+  if (!card.plan.highlight || card.isCurrent) return false;
+  if (!currentKey || PLAN_RANK[currentKey] === undefined) return true;
+  return (PLAN_RANK[card.plan.key] ?? -1) > PLAN_RANK[currentKey];
 }
