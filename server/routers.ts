@@ -191,6 +191,7 @@ import { brevoMarketingRouter } from "./brevoMarketing/router";
 import { geoControlRouter } from "./routers/geoControl";
 import { multichannelRouter } from "./routers/multichannel";
 import { seoControlRouter } from "./routers/seoControl";
+import { marketingPackRouter } from "./routers/marketingPack";
 import { adsManagerRouter } from "./adsManager/router";
 import { accountingGeneralRouter } from "./accountingGeneral/router";
 import { receptionAiRouter } from "./receptionAi/router";
@@ -2671,6 +2672,8 @@ export const appRouter = router({
   seoControl: seoControlRouter,
   adsManager: adsManagerRouter,
   accountingGeneral: accountingGeneralRouter,
+  // Paquete Marketing: puesta en marcha y resumen de sus cuatro módulos (cada bloque con su licencia; ver el router)
+  marketingPack: marketingPackRouter,
   receptionAi: receptionAiRouter,
   copilot: copilotRouter,
   postmarkTenant: postmarkTenantRouter,

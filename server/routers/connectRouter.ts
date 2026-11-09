@@ -153,7 +153,7 @@ export const connectRouter = router({
       // control la ofrece (la misma consulta que `subscription.conversionStatus`; si falla, no se promete)
       const conversion: ConnectConversionView | null =
         purchaseBlock === "trial" ? { enabled: (await Promise.resolve().then(() => client.conversionStatus()).catch(() => null))?.enabled === true, plan: currentPlan } : null;
-      const items = buildConnectCatalog(catalog, grants, now, currentPlan, moduleOpenPath(role)).map((i) => {
+      const items = buildConnectCatalog(catalog, grants, now, currentPlan, moduleOpenPath(role), { enforcing: access.enforcing() }).map((i) => {
         const conversionPlan = conversion?.enabled ? conversionPlanFor(i, { currentPlan, selfServicePlans: SELF_SERVICE_PLANS }) : null;
         const checkoutVia = checkoutViaFor(i, { purchaseBlock, conversionEnabled: !!conversion?.enabled, conversionPlan });
         return { ...i, checkoutVia, conversionPlan: checkoutVia === "conversion" ? conversionPlan : null };

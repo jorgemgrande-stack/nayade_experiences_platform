@@ -146,7 +146,7 @@ afterAll(async () => {
 
 /** Alta pública + verificación (activa la prueba). */
 async function startTrial(email: string, companyName: string) {
-  await ok(call("POST", "/public/trial", { token: null, body: { email, companyName, idempotencyKey: key() } }), 202);
+  await ok(call("POST", "/public/trial", { token: null, body: { email, companyName, termsAccepted: true, termsVersion: "2026-10-21", idempotencyKey: key() } }), 202);
   const v = outbox.filter((m) => m.kind === "verification" && m.to === email).at(-1)!;
   await ok(call("POST", "/public/trial/verify", { token: null, body: { id: v.data.trialId, token: v.data.token } }));
   const t = (await trialStore.get(v.data.trialId as number))!;
@@ -157,7 +157,7 @@ async function startTrial(email: string, companyName: string) {
 
 describe("reenvío del enlace de verificación por HTTP", () => {
   it("respuesta idéntica exista o no el correo; token rotado; el anterior ya no vale", async () => {
-    await ok(call("POST", "/public/trial", { token: null, body: { email: "rosa@vinos.example", companyName: "Vinos Rosa SL", idempotencyKey: key() } }), 202);
+    await ok(call("POST", "/public/trial", { token: null, body: { email: "rosa@vinos.example", companyName: "Vinos Rosa SL", termsAccepted: true, termsVersion: "2026-10-21", idempotencyKey: key() } }), 202);
     const first = outbox.find((m) => m.kind === "verification" && m.to === "rosa@vinos.example")!;
     clock += 5 * 60_000;
     const yes = await call("POST", "/public/trial/resend", { token: null, body: { email: "rosa@vinos.example" } });
@@ -180,7 +180,7 @@ describe("reenvío del enlace de verificación por HTTP", () => {
   });
 
   it("operador: resultado detallado sin token; requiere permiso", async () => {
-    await ok(call("POST", "/public/trial", { token: null, body: { email: "op@vinos.example", companyName: "Vinos Op SL", idempotencyKey: key() } }), 202);
+    await ok(call("POST", "/public/trial", { token: null, body: { email: "op@vinos.example", companyName: "Vinos Op SL", termsAccepted: true, termsVersion: "2026-10-21", idempotencyKey: key() } }), 202);
     const id = outbox.filter((m) => m.kind === "verification" && m.to === "op@vinos.example")[0].data.trialId;
     expect((await call("POST", `/trials/${id}/resend-verification`, { token: null })).status).toBe(401);
     const cool = await ok(call("POST", `/trials/${id}/resend-verification`));

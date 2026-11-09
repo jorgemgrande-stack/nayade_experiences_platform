@@ -50,6 +50,27 @@ export interface TrialAttribution {
   referrerHost: string | null;
   /** Ruta de entrada en la web, sin parámetros. */
   landingPath: string | null;
+  /**
+   * Red de anuncios del clic, si la URL traía su identificador (gclid → google, fbclid → meta, msclkid → microsoft).
+   * Nunca se guarda el identificador: solo de qué red viene.
+   */
+  adClick?: AdClick | null;
+}
+
+export const AD_CLICKS = ["google", "meta", "microsoft"] as const;
+export type AdClick = (typeof AD_CLICKS)[number];
+
+/** Aceptación de la política de privacidad y de las condiciones de la prueba (obligatoria en toda alta pública). */
+export interface TrialTerms {
+  acceptedAt: number;
+  version: string;
+}
+
+/** Marca de registro técnico o de prueba: se excluye del embudo y de los informes; nunca se borra nada. */
+export interface TrialTestMark {
+  at: number;
+  actor: string;
+  reason: string;
 }
 
 export interface TrialProfileInput {
@@ -63,6 +84,17 @@ export interface TrialProfileInput {
 }
 
 export type TrialAttributionInput = Partial<Record<keyof TrialAttribution, string | null>>;
+
+/**
+ * Valida la aceptación expresa de las condiciones y su versión (desde el 09/11/2026, en TODA alta pública: también la
+ * del formulario anterior y la del plan Life). Lanza TrialProfileError con un mensaje para la persona.
+ */
+export function normalizeTerms(accepted: unknown, version: unknown, now: number): TrialTerms {
+  if (accepted !== true) throw new TrialProfileError("Hay que aceptar la política de privacidad y las condiciones de la prueba");
+  const v = typeof version === "string" ? version.trim() : "";
+  if (!v || v.length > 40 || !/^[\w.:-]+$/.test(v)) throw new TrialProfileError("Falta la versión de las condiciones aceptadas: recarga la página y vuelve a intentarlo");
+  return { acceptedAt: now, version: v };
+}
 
 export class TrialProfileError extends Error {
   constructor(message: string) {
@@ -119,8 +151,19 @@ export function normalizeAttribution(input: TrialAttributionInput | null | undef
     content: tag(input.content, 80),
     referrerHost,
     landingPath,
+    adClick: typeof input.adClick === "string" && (AD_CLICKS as readonly string[]).includes(input.adClick) ? (input.adClick as AdClick) : null,
   };
   return Object.values(out).some((v) => v !== null) ? out : null;
+}
+
+/**
+ * Canal tal como se guarda (utm_source o dominio de referencia normalizados), o null si no encaja. Para marcar un canal
+ * técnico con el mismo valor que tienen los contadores y las pruebas.
+ */
+export function normalizeChannel(v: string): string | null {
+  const raw = v.trim();
+  if (raw.toLowerCase() === "directo") return "directo";
+  return normalizeAttribution({ referrerHost: raw })?.referrerHost ?? normalizeAttribution({ source: raw })?.source ?? null;
 }
 
 /**
@@ -153,7 +196,7 @@ export const TRIAL_SECTOR_LABEL: Record<TrialSector, string> = {
 const describeAttribution = (a: TrialAttribution | null) => {
   if (!a) return "Procedencia: directo.";
   const utm = [a.source && `origen ${a.source}`, a.medium && `medio ${a.medium}`, a.campaign && `campaña ${a.campaign}`].filter(Boolean).join(", ");
-  return `Procedencia: ${utm || (a.referrerHost ? `desde ${a.referrerHost}` : "directo")}${a.landingPath ? ` (entrada ${a.landingPath})` : ""}.`;
+  return `Procedencia: ${utm || (a.referrerHost ? `desde ${a.referrerHost}` : "directo")}${a.adClick ? `, clic de anuncio de ${a.adClick}` : ""}${a.landingPath ? ` (entrada ${a.landingPath})` : ""}.`;
 };
 
 /** Campos de la empresa del CRM que salen del formulario de la prueba (nunca datos fiscales). */
@@ -164,6 +207,15 @@ export function trialCompanyFields(p: TrialProfile | null, a: TrialAttribution |
     ...(p?.country ? { country: p.country } : {}),
     notes: `Alta desde la prueba gratuita de la web. ${describeAttribution(a)}`.slice(0, 1000),
   };
+}
+
+/** Texto exacto de la casilla comercial del formulario (www.bigelephant.es/prueba-gratuita) para la evidencia. */
+export const TRIAL_MARKETING_TEXT = "Quiero recibir novedades y ofertas de Big Elephant (opcional, puedes darte de baja cuando quieras).";
+
+/** Evidencia del consentimiento comercial: casilla, fecha y versión de las condiciones. */
+export function trialMarketingEvidence(p: TrialProfile): string {
+  const day = new Date(p.marketingConsentAt ?? p.termsAcceptedAt).toISOString().slice(0, 10);
+  return `Formulario de la prueba gratuita (www.bigelephant.es/prueba-gratuita), casilla no premarcada: «${TRIAL_MARKETING_TEXT}» Marcada el ${day}${p.termsVersion ? `; condiciones ${p.termsVersion}` : ""}.`.slice(0, 500);
 }
 
 /** Contacto principal (propietario) de la empresa del CRM: el responsable que se registró en la prueba. */

@@ -12,6 +12,7 @@ import { toast } from "sonner";
 import { Link } from "wouter";
 import AdminLayout from "@/components/AdminLayout";
 import { trpc } from "@/lib/trpc";
+import { tabFromUrl } from "@/lib/tabFromUrl";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -555,7 +556,7 @@ function Reviews() {
 }
 
 export default function SeoControl() {
-  const [tab, setTab] = useState("panel");
+  const [tab, setTab] = useState<string>(() => tabFromUrl(["panel", "palabras", "gsc", "auditoria", "resenas"], "panel"));
   return (
     <AdminLayout>
       <div className="mx-auto max-w-5xl space-y-6">

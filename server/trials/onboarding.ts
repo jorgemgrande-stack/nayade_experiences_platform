@@ -51,6 +51,21 @@ export interface TrialNotifier {
    * (clave de idempotencia: una transición, un aviso). Opcional: un notificador sin él no avisa.
    */
   statusNotice?(to: string, info: TrialStatusNotice): Promise<void>;
+  /**
+   * Recordatorio de servicio (server/trials/reminders.ts): `setup`, aún no ha entrado en su panel; `first_action`, aún
+   * sin su primera acción útil. `optOutUrl`: baja de los recordatorios. Opcional: sin él no se recuerda nada.
+   */
+  reminder?(to: string, info: TrialReminderNotice): Promise<void>;
+}
+
+export interface TrialReminderNotice {
+  trialId: number;
+  kind: "setup" | "first_action";
+  /** Clave idempotente (tipo y paso). */
+  key: string;
+  domain: string | null;
+  endsAt: number | null;
+  optOutUrl: string | null;
 }
 
 export interface TrialStatusNotice {
@@ -145,8 +160,8 @@ export class TrialOnboardingService {
   }
 
   /** Registro público: crea la solicitud y envía el enlace de verificación (solo si es nueva). */
-  async register(input: { email: string; companyName: string; profile?: TrialProfileInput | null; attribution?: TrialAttributionInput | null; idempotencyKey: string; ip?: string | null }) {
-    const r = await this.d.trials.register({ email: input.email, companyName: input.companyName, configuration: { plan: ESSENTIAL_PLAN, addons: [] }, profile: input.profile ?? null, attribution: input.attribution ?? null, idempotencyKey: input.idempotencyKey, ip: input.ip ?? null });
+  async register(input: { email: string; companyName: string; profile?: TrialProfileInput | null; attribution?: TrialAttributionInput | null; terms?: { accepted: unknown; version: unknown } | null; idempotencyKey: string; ip?: string | null }) {
+    const r = await this.d.trials.register({ email: input.email, companyName: input.companyName, configuration: { plan: ESSENTIAL_PLAN, addons: [] }, profile: input.profile ?? null, attribution: input.attribution ?? null, terms: input.terms ?? null, idempotencyKey: input.idempotencyKey, ip: input.ip ?? null });
     if (r.created && r.verificationToken) await this.d.notify.verification(r.trial.email, { trialId: r.trial.id, token: r.verificationToken });
     return { trialId: r.trial.id, created: r.created, state: r.trial.state };
   }
@@ -155,9 +170,9 @@ export class TrialOnboardingService {
    * Registro público de la prueba del plan personal Life: un hogar con su titular particular (nombre y apellidos, NIF
    * opcional, sin razón social) y el nombre del hogar, editable después (por defecto, «Hogar de» y el titular).
    */
-  async registerLife(input: { email: string; holder: TrialHolder; householdName?: string | null; idempotencyKey: string; ip?: string | null }) {
+  async registerLife(input: { email: string; holder: TrialHolder; householdName?: string | null; terms?: { accepted: unknown; version: unknown } | null; idempotencyKey: string; ip?: string | null }) {
     if (!this.d.lifeTrials) throw new TrialError("unavailable", "La prueba del plan Life todavía no está disponible");
-    const r = await this.d.trials.register({ email: input.email, companyName: householdNameOf(input.holder, input.householdName), configuration: { plan: LIFE_PLAN, addons: [], holder: input.holder }, idempotencyKey: input.idempotencyKey, ip: input.ip ?? null });
+    const r = await this.d.trials.register({ email: input.email, companyName: householdNameOf(input.holder, input.householdName), configuration: { plan: LIFE_PLAN, addons: [], holder: input.holder }, terms: input.terms ?? null, idempotencyKey: input.idempotencyKey, ip: input.ip ?? null });
     if (r.created && r.verificationToken) await this.d.notify.verification(r.trial.email, { trialId: r.trial.id, token: r.verificationToken });
     return { trialId: r.trial.id, created: r.created, state: r.trial.state };
   }

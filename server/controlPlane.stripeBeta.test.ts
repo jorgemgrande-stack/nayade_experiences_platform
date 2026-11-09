@@ -222,7 +222,7 @@ describe("contratación con Stripe por HTTP (doble de Stripe, firma real)", () =
 
   it("conversión de una prueba gratuita pagando por Checkout: misma empresa, plataforma y suscripción", async () => {
     const email = "beta-prueba@empresa.example";
-    await ok(call("POST", "/public/trial", { token: null, body: { email, companyName: "Prueba a Pago SL", idempotencyKey: key() } }), 202);
+    await ok(call("POST", "/public/trial", { token: null, body: { email, companyName: "Prueba a Pago SL", termsAccepted: true, termsVersion: "2026-10-21", idempotencyKey: key() } }), 202);
     const v = outbox.filter((m) => m.kind === "verification" && m.to === email).at(-1)!;
     await ok(call("POST", "/public/trial/verify", { token: null, body: { id: v.data.trialId, token: v.data.token } }));
     const t = (await trialStore.get(v.data.trialId as number))!;
@@ -290,7 +290,7 @@ describe("contratación con Stripe por HTTP (doble de Stripe, firma real)", () =
 
   it("suscripciones: la de una prueba gratuita sigue siendo simulación", async () => {
     const email = "beta-sombra@empresa.example";
-    await ok(call("POST", "/public/trial", { token: null, body: { email, companyName: "Sombra SL", idempotencyKey: key() } }), 202);
+    await ok(call("POST", "/public/trial", { token: null, body: { email, companyName: "Sombra SL", termsAccepted: true, termsVersion: "2026-10-21", idempotencyKey: key() } }), 202);
     const v = outbox.filter((m) => m.kind === "verification" && m.to === email).at(-1)!;
     await ok(call("POST", "/public/trial/verify", { token: null, body: { id: v.data.trialId, token: v.data.token } }));
     const t = (await trialStore.get(v.data.trialId as number))!;

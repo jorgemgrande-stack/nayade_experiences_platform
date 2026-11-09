@@ -8,7 +8,7 @@ import { trialChanged } from "../commercialEvents/derive";
 import type { CommercialEventSink } from "../commercialEvents/types";
 import type { TrialAction, TrialState } from "./machine";
 import { canonicalMailbox } from "./mailbox";
-import type { TrialAttribution, TrialProfile } from "./profile";
+import type { TrialAttribution, TrialProfile, TrialTerms, TrialTestMark } from "./profile";
 
 /** Titular particular de un plan personal (sin razón social). */
 export interface TrialHolder {
@@ -27,6 +27,12 @@ export interface TrialConfiguration {
   holder?: TrialHolder;
   profile?: TrialProfile;
   attribution?: TrialAttribution;
+  /** Aceptación de las condiciones (fecha y versión): obligatoria en el alta pública desde el 09/11/2026. */
+  terms?: TrialTerms;
+  /** Registro técnico o de prueba (acción auditada `marked_test`): fuera del embudo y de los informes. */
+  test?: TrialTestMark;
+  /** Baja de los recordatorios de la prueba (enlace firmado del correo): no se le vuelve a enviar ninguno. */
+  reminders?: { optOutAt: number };
 }
 
 export interface TrialRequest {
@@ -70,7 +76,7 @@ export interface TrialEvent {
  * Anotación sin cambio de estado ni de versión: `notice_queued` (aviso encolado), `activation_retry` (reintento
  * automático del alta incompleta) y `activation_gave_up` (reintentos agotados; queda para una persona).
  */
-export type TrialNoteAction = "notice_queued" | "activation_retry" | "activation_gave_up" | TrialMilestone;
+export type TrialNoteAction = "notice_queued" | "activation_retry" | "activation_gave_up" | "marked_test" | "reminders_opt_out" | TrialMilestone;
 /**
  * Hitos de activación que comunica el panel de la empresa (una sola vez cada uno): primer acceso del propietario y
  * primera acción útil (cliente, presupuesto, factura, venta o producto).
@@ -116,7 +122,14 @@ export interface TrialStore {
    * Embudo de las pruebas registradas en `[from, to)`: cuántas llegaron a cada etapa, por canal de procedencia y
    * sector. Sin datos personales.
    */
-  funnel(f: { from: number; to: number }): Promise<{ rows: TrialFunnelRow[]; truncated: boolean }>;
+  funnel(f: { from: number; to: number; excludeChannels?: ReadonlySet<string> }): Promise<{ rows: TrialFunnelRow[]; truncated: boolean; excluded: number }>;
+  /**
+   * Añade la marca de prueba técnica a la configuración (sin cambiar estado ni versión) solo si la versión no ha
+   * cambiado y la prueba no estaba ya marcada. Devuelve la prueba o null si no se ha escrito nada.
+   */
+  setTestMark(id: number, expectedVersion: number, mark: TrialTestMark): Promise<TrialRequest | null>;
+  /** Registra la baja de los recordatorios (solo la clave `reminders`, solo si no estaba). Devuelve si se ha escrito. */
+  setRemindersOptOut(id: number, at: number): Promise<boolean>;
 }
 
 /** Etapas del embudo que salen de las pruebas (las visitas e inicios del formulario, del contador anónimo de ./funnel.ts). */
@@ -145,6 +158,9 @@ export function trialStages(t: TrialRequest, actions: ReadonlySet<string>): Tria
 /** Canal de procedencia de una prueba: `utm_source`, si no el dominio de referencia, si no «directo». */
 export const trialChannel = (t: Pick<TrialRequest, "configuration">) => t.configuration?.attribution?.source ?? t.configuration?.attribution?.referrerHost ?? "directo";
 
+/** ¿Cuenta en el embudo? Fuera los registros técnicos (marca de prueba o canal técnico). */
+export const countsInFunnel = (t: TrialRequest, excludeChannels?: ReadonlySet<string>) => !t.configuration?.test && !excludeChannels?.has(trialChannel(t));
+
 /** Agrega las pruebas por canal y sector. */
 export function aggregateFunnel(items: Array<{ trial: TrialRequest; actions: ReadonlySet<string> }>): TrialFunnelRow[] {
   const m = new Map<string, TrialFunnelRow>();
@@ -167,6 +183,11 @@ export interface TrialListFilter {
   verificationExpiredBefore?: number;
   /** Creadas antes de este instante. */
   createdBefore?: number;
+  /** Creadas después de este instante (ventanas de los recordatorios). */
+  createdAfter?: number;
+  /** Con la prueba iniciada (startsAt) dentro de [startsAfter, startsBefore]. */
+  startsAfter?: number;
+  startsBefore?: number;
   /** Último cambio (o el alta, si no tiene) antes de este instante. */
   updatedBefore?: number;
   limit?: number;
@@ -252,6 +273,9 @@ export class MemoryTrialStore implements TrialStore {
           (f.extensionRequested === undefined || (r.extensionRequestedAt !== null) === f.extensionRequested) &&
           (f.verificationExpiredBefore === undefined || (r.verificationExpiresAt !== null && r.verificationExpiresAt <= f.verificationExpiredBefore)) &&
           (f.createdBefore === undefined || r.createdAt <= f.createdBefore) &&
+          (f.createdAfter === undefined || r.createdAt >= f.createdAfter) &&
+          (f.startsAfter === undefined || (r.startsAt !== null && r.startsAt >= f.startsAfter)) &&
+          (f.startsBefore === undefined || (r.startsAt !== null && r.startsAt <= f.startsBefore)) &&
           (f.updatedBefore === undefined || (r.updatedAt ?? r.createdAt) <= f.updatedBefore),
       )
       .slice(0, f.limit ?? 200)
@@ -264,11 +288,23 @@ export class MemoryTrialStore implements TrialStore {
     const r = Array.from(this.rows.values()).find((x) => x.tenantId === tenantId);
     return r ? clone(r) : null;
   }
-  async funnel(f: { from: number; to: number }) {
-    const items = Array.from(this.rows.values())
-      .filter((r) => r.createdAt >= f.from && r.createdAt < f.to)
-      .map((trial) => ({ trial, actions: new Set(this.evs.filter((e) => e.trialId === trial.id).map((e) => e.action as string)) }));
-    return { rows: aggregateFunnel(items), truncated: false };
+  async funnel(f: { from: number; to: number; excludeChannels?: ReadonlySet<string> }) {
+    const inRange = Array.from(this.rows.values()).filter((r) => r.createdAt >= f.from && r.createdAt < f.to);
+    const kept = inRange.filter((t) => countsInFunnel(t, f.excludeChannels));
+    const items = kept.map((trial) => ({ trial, actions: new Set(this.evs.filter((e) => e.trialId === trial.id).map((e) => e.action as string)) }));
+    return { rows: aggregateFunnel(items), truncated: false, excluded: inRange.length - kept.length };
+  }
+  async setRemindersOptOut(id: number, at: number) {
+    const cur = this.rows.get(id);
+    if (!cur || cur.configuration?.reminders) return false;
+    cur.configuration = { ...cur.configuration, reminders: { optOutAt: at } };
+    return true;
+  }
+  async setTestMark(id: number, expectedVersion: number, mark: TrialTestMark) {
+    const cur = this.rows.get(id);
+    if (!cur || cur.version !== expectedVersion || cur.configuration?.test) return null;
+    cur.configuration = { ...cur.configuration, test: { ...mark } };
+    return clone(cur);
   }
 }
 
@@ -404,9 +440,25 @@ export class MysqlTrialStore implements TrialStore {
     const [r] = await this.pool.query<mysql.RowDataPacket[]>("SELECT * FROM trial_requests WHERE tenant_id = ? LIMIT 1", [tenantId]);
     return r[0] ? row(r[0]) : null;
   }
-  async funnel(f: { from: number; to: number }) {
+  async setRemindersOptOut(id: number, at: number) {
+    const [r] = await this.pool.query<mysql.ResultSetHeader>(
+      "UPDATE trial_requests SET configuration = JSON_SET(configuration, '$.reminders', CAST(? AS JSON)) WHERE id = ? AND JSON_EXTRACT(configuration, '$.reminders') IS NULL",
+      [JSON.stringify({ optOutAt: at }), id],
+    );
+    return r.affectedRows === 1;
+  }
+  async setTestMark(id: number, expectedVersion: number, mark: TrialTestMark) {
+    // Solo la clave `test`, y solo si no existía: dos marcas a la vez no se pisan ni pisan otros cambios
+    const [r] = await this.pool.query<mysql.ResultSetHeader>(
+      "UPDATE trial_requests SET configuration = JSON_SET(configuration, '$.test', CAST(? AS JSON)) WHERE id = ? AND version = ? AND JSON_EXTRACT(configuration, '$.test') IS NULL",
+      [JSON.stringify(mark), id, expectedVersion],
+    );
+    return r.affectedRows === 1 ? this.get(id) : null;
+  }
+  async funnel(f: { from: number; to: number; excludeChannels?: ReadonlySet<string> }) {
     const [rows] = await this.pool.query<mysql.RowDataPacket[]>(`SELECT * FROM trial_requests WHERE created_at >= ? AND created_at < ? ORDER BY id LIMIT ${FUNNEL_MAX + 1}`, [f.from, f.to]);
-    const trials = rows.slice(0, FUNNEL_MAX).map(row);
+    const all = rows.slice(0, FUNNEL_MAX).map(row);
+    const trials = all.filter((t) => countsInFunnel(t, f.excludeChannels));
     const actions = new Map<number, Set<string>>(trials.map((t) => [t.id, new Set<string>()]));
     if (trials.length) {
       const [ev] = await this.pool.query<mysql.RowDataPacket[]>(
@@ -416,7 +468,7 @@ export class MysqlTrialStore implements TrialStore {
       for (const x of ev) actions.get(Number(x.trial_id))?.add(String(x.action));
     }
     // Con más pruebas que el máximo, los totales son parciales y la respuesta lo dice
-    return { rows: aggregateFunnel(trials.map((trial) => ({ trial, actions: actions.get(trial.id) ?? new Set<string>() }))), truncated: rows.length > FUNNEL_MAX };
+    return { rows: aggregateFunnel(trials.map((trial) => ({ trial, actions: actions.get(trial.id) ?? new Set<string>() }))), truncated: rows.length > FUNNEL_MAX, excluded: all.length - trials.length };
   }
   async get(id: number) {
     const [r] = await this.pool.query<mysql.RowDataPacket[]>("SELECT * FROM trial_requests WHERE id = ?", [id]);
@@ -467,6 +519,9 @@ export class MysqlTrialStore implements TrialStore {
     if (f.extensionRequested !== undefined) w.push(f.extensionRequested ? "extension_requested_at IS NOT NULL" : "extension_requested_at IS NULL");
     if (f.verificationExpiredBefore !== undefined) (w.push("verification_expires_at IS NOT NULL AND verification_expires_at <= ?"), a.push(f.verificationExpiredBefore));
     if (f.createdBefore !== undefined) (w.push("created_at <= ?"), a.push(f.createdBefore));
+    if (f.createdAfter !== undefined) (w.push("created_at >= ?"), a.push(f.createdAfter));
+    if (f.startsAfter !== undefined) (w.push("starts_at IS NOT NULL AND starts_at >= ?"), a.push(f.startsAfter));
+    if (f.startsBefore !== undefined) (w.push("starts_at IS NOT NULL AND starts_at <= ?"), a.push(f.startsBefore));
     if (f.updatedBefore !== undefined) (w.push("COALESCE(updated_at, created_at) <= ?"), a.push(f.updatedBefore));
     const [r] = await this.pool.query<mysql.RowDataPacket[]>(`SELECT * FROM trial_requests${w.length ? ` WHERE ${w.join(" AND ")}` : ""} ORDER BY id LIMIT ?`, [...a, Math.min(f.limit ?? 200, 1000)]);
     return r.map(row);

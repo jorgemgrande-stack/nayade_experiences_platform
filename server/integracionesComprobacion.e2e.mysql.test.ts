@@ -16,7 +16,7 @@ describe.skipIf(!URL_)("comprobación de integraciones desde Admin (MySQL real, 
   let B = "";
   const SECRET = `valor-secreto-${crypto.randomBytes(8).toString("hex")}`;
   const signUp = async (company: string, email: string) => {
-    expect((await s.cp("POST", "/public/trial", { body: { email, companyName: company, idempotencyKey: crypto.randomBytes(12).toString("hex") } })).status).toBe(202);
+    expect((await s.cp("POST", "/public/trial", { body: { email, companyName: company, termsAccepted: true, termsVersion: "2026-10-21", idempotencyKey: crypto.randomBytes(12).toString("hex") } })).status).toBe(202);
     const v = await s.cp("POST", "/public/trial/verify", { body: s.verificationLink(email) });
     const id = String(v.json.domain).split(".")[0];
     s.tenants.push(id);

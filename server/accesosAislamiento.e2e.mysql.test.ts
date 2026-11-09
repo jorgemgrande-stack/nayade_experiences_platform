@@ -47,7 +47,7 @@ describe.skipIf(!URL_)("Accesos: aislamiento entre dos empresas reales (MySQL re
   const core = (token: string, host?: string) => s.request(s.appPort, "POST", "/_ops/access", { token, host, body: {} });
 
   async function signUp(company: string, email: string) {
-    const r = await s.cp("POST", "/public/trial", { body: { email, companyName: company, idempotencyKey: crypto.randomBytes(12).toString("hex") } });
+    const r = await s.cp("POST", "/public/trial", { body: { email, companyName: company, termsAccepted: true, termsVersion: "2026-10-21", idempotencyKey: crypto.randomBytes(12).toString("hex") } });
     expect(r.status).toBe(202);
     const v = await s.cp("POST", "/public/trial/verify", { body: s.verificationLink(email) });
     if (v.status !== 200) throw new Error(`verificación: ${v.status} ${v.raw}`);
