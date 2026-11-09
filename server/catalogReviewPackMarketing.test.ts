@@ -135,6 +135,11 @@ describe("revisión del 09/11/2026: Paquete Marketing (preparada)", () => {
     const c = PACK_MARKETING_LISTING_2026_11_09[0];
     expect(s.publicContent).toMatchObject({ headline: c.fields.headline!.to, cta: "contact" });
     expect(s.seo).toEqual(c.fields.seo!.to);
+    // Lo mismo que la ficha que publica la revisión (el importador de fichas no la deshace)
+    expect(s.longDescription).toBe(c.fields.longDescription!.to);
+    expect(s.publicContent.benefits).toEqual(c.fields.benefits!.to);
+    expect(s.excludes).toEqual(c.fields.excludes!.to);
+    expect(s.integrations).toEqual(c.fields.integrations!.to);
     expect(s.verified.grade).toBe("in_use");
     for (const t of [s.publicContent.headline, s.seo.description, s.verified.evidence, ...s.implementation.requirements]) expect(t).not.toMatch(/Próximamente|Skicenter/i);
   });
