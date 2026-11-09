@@ -465,7 +465,11 @@ jobs:
           # las bloqueantes pueden quedar fuera de la primera. filter=latest: solo el último intento de cada comprobación.
           RUNS=$(gh api --paginate "repos/${GITHUB_REPOSITORY}/commits/${ES_DEPLOY_SHA}/check-runs?per_page=100&filter=latest" --jq '.check_runs[] | "\(.name)|\(.conclusion)"')
           for JOB in "Suites del Core multiempresa (bloqueante)" "Secretos y ficheros sensibles (bloqueante)"; do
-            if ! printf '%s\n' "${RUNS}" | grep -Fxq "${JOB}|success"; then echo "El CI «${JOB}» no está en verde para ${ES_DEPLOY_SHA}. No se publica."; exit 1; fi
+            # Al menos una en verde y ninguna otra con el mismo nombre en otro estado (nombres duplicados de otro flujo)
+            if ! printf '%s\n' "${RUNS}" | grep -Fxq "${JOB}|success" \
+              || printf '%s\n' "${RUNS}" | grep -F "${JOB}|" | grep -Fxvq "${JOB}|success"; then
+              echo "El CI «${JOB}» no está en verde para ${ES_DEPLOY_SHA}. No se publica."; exit 1
+            fi
           done
           echo "CI y live superados por ${ES_DEPLOY_SHA}"
 
