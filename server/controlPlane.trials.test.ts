@@ -122,15 +122,15 @@ describe("prueba gratuita de Essential de punta a punta", () => {
   let tenantId = "";
 
   it("registro: respuesta genérica sin token, enlace por el buzón; sin revelar correos ya registrados; campo trampa", async () => {
-    const r = await call("POST", "/public/trial", { body: { email: "ana@hotelsol.example", companyName: "Hotel Sol, S.L.", idempotencyKey: key() } });
+    const r = await call("POST", "/public/trial", { body: { email: "ana@hotelsol.example", companyName: "Hotel Sol, S.L.", termsAccepted: true, termsVersion: "2026-10-21", idempotencyKey: key() } });
     expect(r.status).toBe(202);
     expect(r.raw).not.toMatch(/token/i);
     expect(outbox.filter((m) => m.kind === "verification")).toHaveLength(1);
     trialId = outbox[0].data.trialId as number;
-    const again = await call("POST", "/public/trial", { body: { email: "ana@hotelsol.example", companyName: "Otra", idempotencyKey: key() } });
+    const again = await call("POST", "/public/trial", { body: { email: "ana@hotelsol.example", companyName: "Otra", termsAccepted: true, termsVersion: "2026-10-21", idempotencyKey: key() } });
     expect(again.status).toBe(202);
     expect(again.json).toEqual(r.json);
-    const bot = await call("POST", "/public/trial", { body: { email: "bot@spam.example", companyName: "Bot", idempotencyKey: key(), website: "http://spam" } });
+    const bot = await call("POST", "/public/trial", { body: { email: "bot@spam.example", companyName: "Bot", termsAccepted: true, termsVersion: "2026-10-21", idempotencyKey: key(), website: "http://spam" } });
     expect(bot.status).toBe(202);
     expect(outbox.filter((m) => m.kind === "verification")).toHaveLength(1);
     expect((await trialStore.list({})).length).toBe(1);
@@ -209,7 +209,7 @@ describe("prueba gratuita de Essential de punta a punta", () => {
 
   it("fallo del aprovisionamiento: el correo queda verificado, la activación pendiente y se reintenta", async () => {
     outbox.length = 0;
-    await call("POST", "/public/trial", { body: { email: "luis@casarural.example", companyName: "Casa Rural Luna", idempotencyKey: key() } });
+    await call("POST", "/public/trial", { body: { email: "luis@casarural.example", companyName: "Casa Rural Luna", termsAccepted: true, termsVersion: "2026-10-21", idempotencyKey: key() } });
     const v = outbox.find((m) => m.kind === "verification")!;
     failProvisioning = 100;
     const r = await call("POST", "/public/trial/verify", { body: { id: v.data.trialId, token: v.data.token } });

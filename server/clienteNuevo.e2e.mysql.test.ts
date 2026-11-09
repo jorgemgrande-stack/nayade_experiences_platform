@@ -92,7 +92,7 @@ describe.skipIf(!URL_)("cliente nuevo de punta a punta: Empresa Demo Elephant 01
   };
   /** Registro + verificación por la API pública y acceso de la propietaria en SU host. */
   async function signUp(company: string, email: string, password: string) {
-    const r = await s.cp("POST", "/public/trial", { body: { email, companyName: company, idempotencyKey: crypto.randomBytes(12).toString("hex") } });
+    const r = await s.cp("POST", "/public/trial", { body: { email, companyName: company, termsAccepted: true, termsVersion: "2026-10-21", idempotencyKey: crypto.randomBytes(12).toString("hex") } });
     expect(r.status).toBe(202);
     expect(r.raw).not.toMatch(/token/i);
     const link = s.verificationLink(email);
@@ -151,7 +151,7 @@ describe.skipIf(!URL_)("cliente nuevo de punta a punta: Empresa Demo Elephant 01
   });
 
   it("pasos 5–7: registro, correo de verificación (buzón en memoria) y verificación; un token falso se rechaza", async () => {
-    const r = await s.cp("POST", "/public/trial", { body: { email: one.owner, companyName: COMPANY_01, idempotencyKey: crypto.randomBytes(12).toString("hex") } });
+    const r = await s.cp("POST", "/public/trial", { body: { email: one.owner, companyName: COMPANY_01, termsAccepted: true, termsVersion: "2026-10-21", idempotencyKey: crypto.randomBytes(12).toString("hex") } });
     expect(r.status).toBe(202);
     expect(r.raw).not.toMatch(/token/i);
     const link = s.verificationLink(one.owner);
