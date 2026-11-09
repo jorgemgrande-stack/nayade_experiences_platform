@@ -57,6 +57,9 @@ export interface ActionDeps {
   validAssignee(userId: number): Promise<boolean>;
   createTask(t: { title: string; description: string | null; dueDate: string; assignedTo: number | null; priority: "baja" | "media" | "alta"; entityType: "lead" | "quote" | null; entityId: number | null }, actorId: number): Promise<number>;
   funnelLicensed(): Promise<boolean>;
+  /** ¿Licencia de tareas del CRM (crm-tasks) y de etiquetas (crm-tags) en escritura? */
+  tasksLicensed(): Promise<boolean>;
+  tagsLicensed(): Promise<boolean>;
   stageExists(stageId: number): Promise<boolean>;
   moveStage(leadId: number, stageId: number, reason: string, actorId: number): Promise<void>;
   tagExists(tagId: number): Promise<boolean>;
@@ -99,6 +102,7 @@ export async function runAction(action: AutomationAction, ctx: ActionContext, d:
       return sent ? ok(`Correo «${subject}» a ${maskEmail(to)}`) : fail("envio_fallido");
     }
     case "task": {
+      if (!(await d.tasksLicensed())) return skip("sin_tareas");
       // Responsable: el elegido en la regla (debe seguir en el equipo) o, si no, el de la oportunidad
       let owner: number | null = null;
       if (action.assignedTo != null) {
@@ -128,6 +132,7 @@ export async function runAction(action: AutomationAction, ctx: ActionContext, d:
     }
     case "lead_tag": {
       if (e.leadId == null) return skip("sin_oportunidad");
+      if (!(await d.tagsLicensed())) return skip("sin_etiquetas");
       if (!(await d.tagExists(action.tagId))) return skip("etiqueta_no_existe");
       if (ctx.dry) return ok(would(`etiquetar la oportunidad #${e.leadId}`));
       await d.assignTag(action.tagId, e.leadId, actorId);

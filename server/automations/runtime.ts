@@ -81,6 +81,8 @@ export const coreActionDeps: ActionDeps = {
   validAssignee: async (userId) => (await (await import("../crmTasksDb")).listAssignees()).some((u) => u.id === userId),
   createTask: async (t, actorId) => (await (await import("../crmTasksDb")).createTask(t, actorId)).id,
   funnelLicensed: () => licensedFor("crm-funnel-advanced", true).catch(() => false),
+  tasksLicensed: () => licensedFor("crm-tasks", true).catch(() => false),
+  tagsLicensed: () => licensedFor("crm-tags", true).catch(() => false),
   stageExists: async (id) => (await (await import("../crmFunnelDb")).listStages()).some((s) => s.id === id),
   moveStage: async (leadId, stageId, reason, actorId) => {
     await (await import("../crmFunnelDb")).moveLeadToStage(leadId, stageId, reason, { id: actorId, name: "Automatización" });

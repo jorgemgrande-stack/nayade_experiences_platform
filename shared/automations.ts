@@ -426,6 +426,8 @@ export const RUN_REASON_LABELS: Record<string, string> = {
   correo_no_disponible: "El correo de la empresa no está disponible",
   sin_oportunidad: "No hay oportunidad asociada",
   sin_embudo: "El embudo de ventas avanzado no está contratado",
+  sin_tareas: "Las tareas del CRM no están incluidas en el plan",
+  sin_etiquetas: "Las etiquetas del CRM no están incluidas en el plan",
   etapa_no_existe: "La etapa ya no existe",
   etiqueta_no_existe: "La etiqueta ya no existe",
   responsable_no_valido: "El responsable de la tarea ya no está en el equipo",

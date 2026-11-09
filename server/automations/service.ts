@@ -86,6 +86,8 @@ export class AutomationService {
     const a = this.d.actions;
     for (const s of v.rule.steps) {
       const x = s.action;
+      if (x.kind === "task" && !(await a.tasksLicensed())) throw new AutomationError("invalid_input", "Crear tareas necesita las tareas del CRM, que tu plan no incluye.");
+      if (x.kind === "lead_tag" && !(await a.tagsLicensed())) throw new AutomationError("invalid_input", "Poner etiquetas necesita las etiquetas del CRM, que tu plan no incluye.");
       if (x.kind === "task" && x.assignedTo != null && !(await a.validAssignee(x.assignedTo))) throw new AutomationError("invalid_input", "El responsable de la tarea no es del equipo comercial.");
       if (x.kind === "lead_stage") {
         if (!(await a.funnelLicensed())) throw new AutomationError("invalid_input", "Mover de etapa necesita el embudo de ventas avanzado.");

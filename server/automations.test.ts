@@ -22,7 +22,7 @@ function entity(o: Partial<AutomationEntity> & { id: number; anchorAt: number })
   return { type: "reservation", email: `cliente${o.id}@clientes.example`, name: `Cliente ${o.id}`, leadId: null, ownerId: null, fields: { people: 2, product: "Kayak", amount: 50, channel: "ONLINE_DIRECTO" }, vars: { nombre: `Cliente ${o.id}`, referencia: `RES-${o.id}`, empresa: "Náyade QA" }, ctaPath: "/admin/crm?tab=reservations", ...o };
 }
 
-function fakeDeps(o: { consent?: string[]; paused?: string[]; sendOk?: () => boolean; mailBlock?: string | null; noUnsubscribe?: boolean } = {}) {
+function fakeDeps(o: { consent?: string[]; paused?: string[]; sendOk?: () => boolean; mailBlock?: string | null; noUnsubscribe?: boolean; noTasks?: boolean; noTags?: boolean } = {}) {
   const sent: MailParams[] = [];
   const tasks: Array<{ title: string; assignedTo: number | null }> = [];
   const store = new MemoryAutomationStore();
@@ -42,6 +42,8 @@ function fakeDeps(o: { consent?: string[]; paused?: string[]; sendOk?: () => boo
     validAssignee: async (id) => id === 7,
     createTask: async (t) => (tasks.push({ title: t.title, assignedTo: t.assignedTo }), tasks.length),
     funnelLicensed: async () => true,
+    tasksLicensed: async () => !o.noTasks,
+    tagsLicensed: async () => !o.noTags,
     stageExists: async (id) => id === 3,
     moveStage: async () => undefined,
     tagExists: async (id) => id === 4,
@@ -331,6 +333,26 @@ describe("tarea programada (runPass)", () => {
     s.at(T0 + 4 * D);
     expect(await s.svc.runPass()).toMatchObject({ done: 0 });
     expect(await s.svc.history()).toHaveLength(1);
+  });
+
+  it("sin las tareas o las etiquetas del CRM en el plan, no se guardan esas acciones ni se ejecutan", async () => {
+    const lead = (action: AutomationRuleInput["steps"][0]["action"]): AutomationRuleInput => ({ name: "x", trigger: "lead_created", conditions: [], dailyCap: 5, steps: [{ delayMinutes: 0, action }] });
+    const task = lead({ kind: "task", title: "Llamar", dueInDays: 1, priority: "media", assignedTo: null });
+    const tag = lead({ kind: "lead_tag", tagId: 4 });
+    const s = setup(task, [], { noTasks: true, noTags: true });
+    await expect(s.svc.create(task, 1)).rejects.toThrow(/tareas del CRM/);
+    await expect(s.svc.create(tag, 1)).rejects.toThrow(/etiquetas del CRM/);
+    // Una regla guardada antes de perder la capacidad: la tarea la omite con su motivo
+    const ent: AutomationEntity = { ...entity({ id: 1, anchorAt: T0 + 60_000 }), type: "lead", leadId: 1 };
+    const s2 = setup(task, [ent]);
+    const r = await s2.svc.create(task, 1);
+    await s2.svc.setEnabled(r.id, true, 1);
+    const s3 = setup(task, [ent], { noTasks: true });
+    s3.store.rules = s2.store.rules;
+    s3.at(T0 + H);
+    expect(await s3.svc.runPass()).toMatchObject({ done: 0, skipped: 1 });
+    expect((await s3.svc.history())[0]).toMatchObject({ reason: "sin_tareas" });
+    expect(s3.tasks).toHaveLength(0);
   });
 
   it("referencias: no guarda una regla con un responsable, etapa o etiqueta inexistentes", async () => {
