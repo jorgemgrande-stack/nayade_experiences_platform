@@ -11,6 +11,8 @@ import { vapiCalls } from "../../drizzle/schema";
 import { createLead } from "../db";
 import { legacyDb, legacyPool } from "../_core/legacyDb";
 import { integrationEnv } from "../_core/tenantConfig";
+import { isMultiTenant } from "../_core/tenant";
+import { configuredVapiApiKey, configuredVapiWebhookSecret, maskedVapiCredentials } from "../vapiCredentialsSource";
 import { MIN_WEBHOOK_SECRET_LENGTH, usableWebhookSecret } from "../_core/webhookSecret";
 import { placeholderEmail } from "../../shared/placeholderEmail";
 import { meteredFetch, meterVoiceCall } from "../_core/externalMetering";
@@ -59,8 +61,8 @@ async function getVapiCredentials(): Promise<{ apiKey: string; webhookSecret: st
     const map: Record<string, string> = {};
     for (const r of (rows as any[])) map[r.key] = r.value ?? "";
     return {
-      apiKey: integrationEnv("VAPI_API_KEY") || map.vapiApiKey || "",
-      webhookSecret: integrationEnv("VAPI_WEBHOOK_SECRET") || map.vapiWebhookSecret || "",
+      apiKey: configuredVapiApiKey({ multi: isMultiTenant(), vault: integrationEnv("VAPI_API_KEY"), legacy: map.vapiApiKey }),
+      webhookSecret: configuredVapiWebhookSecret({ multi: isMultiTenant(), vault: integrationEnv("VAPI_WEBHOOK_SECRET"), legacy: map.vapiWebhookSecret, ghl: undefined }),
     };
   } catch {
     return {
@@ -224,13 +226,11 @@ export const vapiCallsRouter = router({
     ).catch(() => [[]]);
     const map: Record<string, string> = {};
     for (const r of (rows as any[])) map[r.key] = r.value ?? "";
-    const apiKey = integrationEnv("VAPI_API_KEY") || map.vapiApiKey || "";
-    const webhookSecret = integrationEnv("VAPI_WEBHOOK_SECRET") || map.vapiWebhookSecret || "";
-    return {
-      hasApiKey: !!apiKey,
-      apiKeyMasked: apiKey ? `${apiKey.slice(0, 8)}…${apiKey.slice(-4)}` : "",
-      webhookSecret,
-    };
+    // Multiempresa: solo la bóveda de la empresa (server/vapiCredentialsSource.ts)
+    const apiKey = configuredVapiApiKey({ multi: isMultiTenant(), vault: integrationEnv("VAPI_API_KEY"), legacy: map.vapiApiKey });
+    const webhookSecret = configuredVapiWebhookSecret({ multi: isMultiTenant(), vault: integrationEnv("VAPI_WEBHOOK_SECRET"), legacy: map.vapiWebhookSecret, ghl: undefined });
+    // Nunca en claro: la clave de verificación solo se ve enmascarada (la configura en Vapi la puesta en marcha)
+    return maskedVapiCredentials(apiKey, webhookSecret);
   }),
 
   saveCredentials: staffProcedure
@@ -239,6 +239,11 @@ export const vapiCallsRouter = router({
       webhookSecret: z.string().default(""),
     }))
     .mutation(async ({ input }) => {
+      // Multiempresa: las credenciales viven en la bóveda de la empresa y las configura la administración en
+      // «Llamadas IA › Puesta en marcha» (el webhook ya no lee site_settings)
+      if (isMultiTenant()) {
+        throw new TRPCError({ code: "PRECONDITION_FAILED", message: "Configura tu cuenta de Vapi en Llamadas IA › Puesta en marcha." });
+      }
       // Solo actualizar si se proporciona un valor real (no "KEEP" ni vacío)
       if (input.apiKey && input.apiKey !== "KEEP") {
         await _pool.execute(

@@ -69,6 +69,13 @@ export const fieldMaxLength = (f: CredentialField) => f.maxLength ?? FIELD_MAX_L
 
 const URL_RE = /^https:\/\/[^\s]{4,500}$/;
 const TOKEN_RE = /^[\x21-\x7e]{8,512}$/; // imprimibles ASCII sin espacios
+/** Clave de verificación de webhooks: al menos 24 caracteres (MIN_WEBHOOK_SECRET_LENGTH de server/_core/webhookSecret.ts). */
+const WEBHOOK_SECRET_RE = /^[\x21-\x7e]{24,512}$/;
+/** Identificador de un recurso de Vapi (UUID). */
+const VAPI_ID_RE = /^[A-Za-z0-9-]{8,80}$/;
+/** Texto corto de una línea (nombre o número que se muestra en el panel). */
+const LABEL_RE = /^[^\r\n\t]{1,120}$/;
+const ISO_RE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{1,3})?Z$/;
 
 const HOST_RE = /^[A-Za-z0-9.-]{3,253}$/;
 const PORT_RE = /^\d{2,5}$/;
@@ -111,12 +118,19 @@ export const PROVIDERS: ProviderDef[] = [
     id: "vapi",
     name: "VAPI",
     description: "Asistente de voz y registro de llamadas.",
-    capabilities: ["Recibir el registro de llamadas por webhook", "Consultar asistentes"],
+    capabilities: ["Recibir el registro de llamadas por webhook", "Consultar asistentes y números", "Configurar el webhook del asistente elegido y asignarle el número elegido (Puesta en marcha de Llamadas IA)"],
     check: "Listado de asistentes (1 elemento): solo lectura",
     panel: { group: "customer", title: "Asistente de voz (VAPI)", summary: "Atiende llamadas con un asistente de voz y guarda el registro de cada llamada.", requires: ["voice-ai", "reception-ai"] },
     fields: [
       { key: "apiKey", label: "API key", secret: true, env: "VAPI_API_KEY", pattern: TOKEN_RE, panel: { label: "Clave de acceso", help: "Está en tu cuenta de VAPI, en el apartado de claves (usa la privada).", formatMessage: "Cópiala completa, sin espacios." } },
-      { key: "webhookSecret", label: "Secreto del webhook", secret: true, env: "VAPI_WEBHOOK_SECRET", pattern: TOKEN_RE, panel: { label: "Clave de verificación de llamadas", help: "La eliges tú y la escribes igual en la configuración de tu asistente en VAPI.", formatMessage: "Al menos 8 caracteres, sin espacios." } },
+      // Mínimo de 24 caracteres, el mismo que exige el webhook (server/_core/webhookSecret.ts): con menos, rechaza las llamadas
+      { key: "webhookSecret", label: "Secreto del webhook", secret: true, env: "VAPI_WEBHOOK_SECRET", pattern: WEBHOOK_SECRET_RE, panel: { label: "Clave de verificación de llamadas", help: "La genera y la configura en tu asistente de VAPI la «Puesta en marcha» de Llamadas IA; si la escribes tú, ponla igual en VAPI.", formatMessage: "Al menos 24 caracteres, sin espacios." } },
+      // Elección de la «Puesta en marcha» de Llamadas IA (server/voiceSetup.ts): no son secretos y no se editan desde aquí
+      { key: "setupAssistantId", label: "Asistente conectado", secret: false, pattern: VAPI_ID_RE, panel: { label: "Asistente conectado", hidden: true } },
+      { key: "setupAssistantName", label: "Nombre del asistente", secret: false, pattern: LABEL_RE, maxLength: 120, panel: { label: "Nombre del asistente", hidden: true } },
+      { key: "setupPhoneNumberId", label: "Número conectado", secret: false, pattern: VAPI_ID_RE, panel: { label: "Número conectado", hidden: true } },
+      { key: "setupPhoneNumber", label: "Número de teléfono", secret: false, pattern: LABEL_RE, maxLength: 120, panel: { label: "Número de teléfono", hidden: true } },
+      { key: "setupConnectedAt", label: "Conectado el", secret: false, pattern: ISO_RE, panel: { label: "Conectado el", hidden: true } },
     ],
   },
   {
@@ -315,6 +329,34 @@ export const PROVIDERS: ProviderDef[] = [
     fields: [
       { key: "apiKey", label: "Clave de la API", secret: true, required: true, pattern: TOKEN_RE, panel: { label: "Clave de la API de TripAdvisor", help: "La de tu cuenta de la API de contenidos de TripAdvisor.", formatMessage: "Cópiala completa, sin espacios." } },
       { key: "locationId", label: "ID del establecimiento", secret: false, required: true, pattern: /^\d{1,12}$/, panel: { label: "Identificador del establecimiento", help: "El número que aparece en la dirección de tu ficha de TripAdvisor (…-d123456-…).", formatMessage: "Solo números." } },
+    ],
+  },
+  {
+    // Venta multicanal: credenciales PREPARADAS para el conector de Fourvenues (su API de integraciones exige una clave
+    // que emite Fourvenues a cada organizador). Hoy las ventas entran por el informe CSV o el enlace de entrada del canal.
+    id: "fourvenues",
+    name: "Fourvenues",
+    description: "Cuenta de Fourvenues para el conector de entradas de la Venta multicanal (en preparación).",
+    capabilities: ["Guardar la clave de tu cuenta para el conector de entradas (aún no se usa: las ventas entran por CSV o por el enlace del canal)"],
+    check: "Sin prueba de conexión: el conector se activa en la implantación acompañada, con la clave que te emite Fourvenues",
+    panel: { group: "channels", title: "Fourvenues", summary: "Guarda aquí la clave de la API de Fourvenues para cuando se active el conector. Mientras, importa su informe de ventas en Venta multicanal.", requires: ["multichannel"] },
+    fields: [
+      { key: "apiKey", label: "Clave de la API", secret: true, required: true, pattern: TOKEN_RE, panel: { label: "Clave de la API de Fourvenues", help: "La emite el equipo de integraciones de Fourvenues para tu organización.", formatMessage: "Cópiala completa, sin espacios." } },
+      { key: "organizationId", label: "Organización", secret: false, pattern: /^[A-Za-z0-9_-]{1,64}$/, panel: { label: "Identificador de tu organización", help: "El que figura en tu panel de Fourvenues.", formatMessage: "Solo letras, números, guiones y guiones bajos." } },
+    ],
+  },
+  {
+    // Venta multicanal: credenciales PREPARADAS para el conector de Weezevent (API con clave y usuario de la cuenta).
+    id: "weezevent",
+    name: "Weezevent",
+    description: "Cuenta de Weezevent para el conector de entradas de la Venta multicanal (en preparación).",
+    capabilities: ["Guardar la clave y el usuario de tu cuenta para el conector de entradas (aún no se usa: las ventas entran por CSV o por el enlace del canal)"],
+    check: "Sin prueba de conexión: el conector se activa en la implantación acompañada, con la clave de API que te da Weezevent",
+    panel: { group: "channels", title: "Weezevent", summary: "Guarda aquí la clave de la API de Weezevent para cuando se active el conector. Mientras, importa su informe de participantes en Venta multicanal.", requires: ["multichannel"] },
+    fields: [
+      { key: "apiKey", label: "Clave de la API", secret: true, required: true, pattern: TOKEN_RE, panel: { label: "Clave de la API de Weezevent", help: "Se solicita a Weezevent desde tu cuenta de organizador.", formatMessage: "Cópiala completa, sin espacios." } },
+      { key: "user", label: "Usuario", secret: false, pattern: MAILBOX_USER_RE, panel: { label: "Usuario de tu cuenta de Weezevent", formatMessage: "El usuario no puede tener espacios." } },
+      { key: "password", label: "Contraseña", secret: true, pattern: PASSWORD_RE, panel: { label: "Contraseña de tu cuenta de Weezevent", formatMessage: "La contraseña no puede tener saltos de línea." } },
     ],
   },
 ];

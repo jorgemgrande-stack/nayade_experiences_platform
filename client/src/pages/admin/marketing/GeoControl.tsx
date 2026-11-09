@@ -10,6 +10,7 @@ import { Archive, ArchiveRestore, Bot, ListPlus, Pencil, Plus, RefreshCw, Sparkl
 import { toast } from "sonner";
 import AdminLayout from "@/components/AdminLayout";
 import { trpc } from "@/lib/trpc";
+import { tabFromUrl } from "@/lib/tabFromUrl";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -641,7 +642,7 @@ function Settings() {
 }
 
 export default function GeoControl() {
-  const [tab, setTab] = useState("panel");
+  const [tab, setTab] = useState<string>(() => tabFromUrl(["panel", "consultas", "observaciones", "oportunidades", "ajustes"], "panel"));
   const [queryId, setQueryId] = useState<number | null>(null);
   return (
     <AdminLayout>

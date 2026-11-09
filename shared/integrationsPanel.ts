@@ -5,7 +5,7 @@
  */
 
 /** Para qué lo quiere el usuario: así se agrupan las integraciones en el panel. */
-export type IntegrationGroup = "payments" | "email" | "mailboxes" | "customer" | "marketing" | "suppliers";
+export type IntegrationGroup = "payments" | "email" | "mailboxes" | "customer" | "marketing" | "suppliers" | "channels";
 
 export const INTEGRATION_GROUPS: Array<{ id: IntegrationGroup; title: string; description: string }> = [
   { id: "payments", title: "Cobrar con tarjeta", description: "Para que tus clientes paguen en línea con tu propio contrato de cobro." },
@@ -14,6 +14,7 @@ export const INTEGRATION_GROUPS: Array<{ id: IntegrationGroup; title: string; de
   { id: "customer", title: "Atención al cliente", description: "Herramientas externas de mensajería y llamadas." },
   { id: "marketing", title: "Publicidad y medición", description: "Medición de tus campañas en redes sociales." },
   { id: "suppliers", title: "Proveedores turísticos", description: "Bancos de camas y otros proveedores conectados a tus expedientes de viaje." },
+  { id: "channels", title: "Vender en otros canales", description: "Cuentas de los marketplaces y canales de entradas en los que vendes tus productos." },
 ];
 
 export type IntegrationState = "off" | "incomplete" | "unchecked" | "working" | "failing";

@@ -189,7 +189,9 @@ import { careReportsRouter, restaurantReportsRouter, skiReportsRouter, travelRep
 import { travelRouter } from "./travelNet/router";
 import { brevoMarketingRouter } from "./brevoMarketing/router";
 import { geoControlRouter } from "./routers/geoControl";
+import { multichannelRouter } from "./routers/multichannel";
 import { seoControlRouter } from "./routers/seoControl";
+import { marketingPackRouter } from "./routers/marketingPack";
 import { adsManagerRouter } from "./adsManager/router";
 import { receptionAiRouter } from "./receptionAi/router";
 import { copilotRouter } from "./copilot/router";
@@ -249,6 +251,7 @@ import { loyaltyRouter } from "./routers/loyalty";
 import { socialNetRouter } from "./routers/socialNet";
 import { ghlInboxRouter } from "./routers/ghlInbox";
 import { vapiCallsRouter } from "./routers/vapiCalls";
+import { voiceSetupRouter } from "./routers/voiceSetup";
 import { emailAccountsRouter } from "./routers/emailAccounts";
 import { emailInboxRouter } from "./routers/emailInbox";
 import { emailCommunicationsRouter } from "./routers/emailCommunications";
@@ -2665,8 +2668,11 @@ export const appRouter = router({
   travel: travelRouter,
   brevoMarketing: brevoMarketingRouter,
   geoControl: geoControlRouter,
+  multichannel: multichannelRouter,
   seoControl: seoControlRouter,
   adsManager: adsManagerRouter,
+  // Paquete Marketing: puesta en marcha y resumen de sus cuatro módulos (cada bloque con su licencia; ver el router)
+  marketingPack: marketingPackRouter,
   receptionAi: receptionAiRouter,
   copilot: copilotRouter,
   automations: automationsRouter,
@@ -2685,6 +2691,8 @@ export const appRouter = router({
   socialNet: socialNetRouter,
   ghlInbox: ghlInboxRouter,
   vapiCalls: vapiCallsRouter,
+  // Elephant Voice: puesta en marcha del asistente de Vapi de la empresa (capacidad voice-ai)
+  voiceSetup: voiceSetupRouter,
   emailAccounts: emailAccountsRouter,
   emailInbox: emailInboxRouter,
   emailCommunications: emailCommunicationsRouter,
