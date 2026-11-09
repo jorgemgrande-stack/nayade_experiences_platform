@@ -68,6 +68,8 @@ describe.skipIf(!URL_)("TPV Advanced (aplicación real)", () => {
     expect([c1.countedCash, c1.expectedCash, c1.cashDifference, c1.expected.card, c1.differences.card, c1.differences.bizum]).toEqual([60, 60, 0, 25, -5, null]);
     expect(data(await ess.m("a", "tpvAdvanced.createCount", count, agA)).id).toBe(c1.id);
     expect(errCode(await ess.m("a", "tpvAdvanced.createCount", { ...count, denominations: { "5000": 2 } }, agA))).toBe("CONFLICT");
+    // La misma clave con otro importe del datáfono tampoco devuelve el antiguo en silencio
+    expect(errCode(await ess.m("a", "tpvAdvanced.createCount", { ...count, declaredCard: 25 }, agA))).toBe("CONFLICT");
     expect(errCode(await ess.m("a", "tpvAdvanced.createCount", { ...count, denominations: { "300": 1 }, idempotencyKey: key("mal") }, agA))).toBe("BAD_REQUEST");
     expect((await ess.sql("a", "SELECT COUNT(*) AS n FROM tpv_adv_counts"))[0].n).toBe(1);
   });
@@ -81,6 +83,7 @@ describe.skipIf(!URL_)("TPV Advanced (aplicación real)", () => {
     expect((await ess.sql("a", "SELECT COUNT(*) AS n FROM tpv_adv_handovers WHERE idempotency_key = ?", [hk]))[0].n).toBe(1);
     // Otra entrega mientras hay una pendiente: no
     expect(errCode(await ess.m("a", "tpvAdvanced.declareHandover", { ...input, idempotencyKey: key("otra") }, agA))).toBe("CONFLICT");
+    expect(errCode(await ess.m("a", "tpvAdvanced.declareHandover", { ...input, toUserId: null }, agA))).toBe("CONFLICT");
     const h = data(both[0]);
     expect(errCode(await ess.m("a", "tpvAdvanced.receiveHandover", { handoverId: h.id, receivedCash: 60, idempotencyKey: key("r0") }, agA))).toBe("FORBIDDEN");
     const rk = key("recibir");
@@ -108,6 +111,8 @@ describe.skipIf(!URL_)("TPV Advanced (aplicación real)", () => {
     const ok = data(await ess.m("a", "tpvAdvanced.decideAuthorization", { id: a.id, approve: true, note: "Conforme" }, admA));
     expect([ok.status, ok.usable]).toEqual(["approved", true]);
     expect(errCode(await ess.m("a", "tpvAdvanced.useAuthorization", { id: a.id, kind: "cash_out", amount: 180, sessionId, usedRef: "Mov 1" }, agA))).toBe("BAD_REQUEST");
+    expect(errCode(await ess.m("a", "tpvAdvanced.useAuthorization", { id: a.id, kind: "cash_out", sessionId, usedRef: "Mov 1" }, agA))).toBe("BAD_REQUEST");
+    expect(errCode(await ess.m("a", "tpvAdvanced.useAuthorization", { id: a.id, kind: "cash_out", amount: 150, usedRef: "Mov 1" }, agA))).toBe("BAD_REQUEST");
     expect(data(await ess.m("a", "tpvAdvanced.useAuthorization", { id: a.id, kind: "cash_out", amount: 150, sessionId, usedRef: "Mov 1" }, agA)).status).toBe("used");
     expect(data(await ess.m("a", "tpvAdvanced.useAuthorization", { id: a.id, kind: "cash_out", amount: 150, sessionId, usedRef: "Mov 1" }, agA)).status).toBe("used");
     expect(errCode(await ess.m("a", "tpvAdvanced.useAuthorization", { id: a.id, kind: "cash_out", amount: 150, sessionId, usedRef: "Mov 2" }, agA))).toBe("CONFLICT");
@@ -154,6 +159,10 @@ describe.skipIf(!URL_)("TPV Advanced (aplicación real)", () => {
     for (const t of ["session_open", "session_close", "sale", "cash_movement", "shift_start", "shift_end", "handover_declared", "handover_received", "count", "auth_requested", "auth_decided", "record_correction"]) expect(types.has(t), t).toBe(true);
     const onlyCounts = data(await ess.q("a", "tpvAdvanced.audit", { from: day, to: day, types: ["count"] }, admA));
     expect(onlyCounts.events.every((e: any) => e.type === "count")).toBe(true);
+    const auditCsv = data(await ess.q("a", "tpvAdvanced.exportCsv", { from: day, to: day, section: "auditoria", types: ["count"] }, admA)).csv;
+    expect(auditCsv.split(/\r\n/).filter(Boolean)).toHaveLength(1 + onlyCounts.events.length);
+    // El agente no ve en el detalle las solicitudes de otros
+    expect(data(await ess.q("a", "tpvAdvanced.sessionDetail", { sessionId }, agA)).authorizations.every((x: any) => x.requestedBy === agentId)).toBe(true);
     const shifts = data(await ess.q("a", "tpvAdvanced.report", { from: day, to: day, section: "turnos" }, admA)).turnos;
     const agentShift = shifts.find((s: any) => s.operatorUserId === agentId);
     expect([agentShift.card, agentShift.cashIn, agentShift.expectedCash, agentShift.difference]).toEqual([25, 10, 60, 0]);

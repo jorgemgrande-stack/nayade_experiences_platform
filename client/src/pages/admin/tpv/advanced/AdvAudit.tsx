@@ -31,7 +31,7 @@ export default function AdvAudit() {
   const exportCsv = async () => {
     setExporting(true);
     try {
-      const r = await utils.tpvAdvanced.exportCsv.fetch({ from, to, registerId: query.registerId, section: "auditoria" });
+      const r = await utils.tpvAdvanced.exportCsv.fetch({ from, to, registerId: query.registerId, types: query.types, actor: query.actor, section: "auditoria" });
       downloadCsv(r.filename, r.csv);
     } catch (e) {
       toast.error(errorMessage(e, "No se ha podido exportar."));

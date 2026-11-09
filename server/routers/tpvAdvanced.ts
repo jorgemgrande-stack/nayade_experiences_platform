@@ -57,7 +57,9 @@ const note = z.string().trim().max(500).nullish();
 const day = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
 const range = z.object({ from: day, to: day, registerId: id.nullish() });
 
-async function sectionData(section: AdvReportSection, f: z.infer<typeof range>) {
+const auditFilter = { types: z.array(z.enum(AUDIT_TYPES)).max(AUDIT_TYPES.length).optional(), actor: z.string().trim().max(100).nullish() };
+
+async function sectionData(section: AdvReportSection, f: z.infer<typeof range> & { types?: (typeof AUDIT_TYPES)[number][]; actor?: string | null }) {
   switch (section) {
     case "turnos":
       return { turnos: await adv.shiftsReport(f) };
@@ -81,10 +83,14 @@ export const tpvAdvancedRouter = router({
     return { canWrite, isManager: manager, isSupervisor: supervisor, userId: ctx.user.id };
   }),
 
-  sessions: accessProc.query(() => adv.listSessions()),
+  // Solo las cajas de las sedes en las que trabaja el usuario (varias sedes, Business)
+  sessions: accessProc.query(({ ctx }) => adv.listSessions(7, (siteId) => userMayUseSite({ id: ctx.user.id, role: String(ctx.user.role) }, siteId))),
   sessionDetail: accessProc.input(z.object({ sessionId: id })).query(async ({ ctx, input }) => {
     await assertSessionSite(ctx.user, input.sessionId);
-    return adv.sessionDetail(input.sessionId);
+    const d = await adv.sessionDetail(input.sessionId);
+    // Las solicitudes de autorización de otros solo las ven supervisores y administración del TPV
+    if (!(await isSupervisor(ctx.user)) && !(await isManager(ctx.user))) d.authorizations = d.authorizations.filter((a) => a.requestedBy === ctx.user.id);
+    return d;
   }),
   operators: accessProc.query(() => adv.listOperators()),
 
@@ -135,7 +141,10 @@ export const tpvAdvancedRouter = router({
     }),
   cancelHandover: operateProc
     .input(z.object({ handoverId: id }))
-    .mutation(async ({ ctx, input }) => adv.cancelHandover(input.handoverId, actorOf(ctx.user), await isManager(ctx.user))),
+    .mutation(async ({ ctx, input }) => {
+      await assertSessionSite(ctx.user, (await adv.getHandover(input.handoverId)).sessionId);
+      return adv.cancelHandover(input.handoverId, actorOf(ctx.user), await isManager(ctx.user));
+    }),
 
   // ── Correcciones trazables de un arqueo, turno o entrega (el original no cambia) ──
   addCorrection: backofficeProc
@@ -171,7 +180,11 @@ export const tpvAdvancedRouter = router({
     }),
   decideAuthorization: authorizeProc
     .input(z.object({ id, approve: z.boolean(), note }))
-    .mutation(({ ctx, input }) => adv.decideAuthorization(input, actorOf(ctx.user))),
+    .mutation(async ({ ctx, input }) => {
+      const a = await adv.getAuthorization(input.id);
+      if (a.sessionId) await assertSessionSite(ctx.user, a.sessionId);
+      return adv.decideAuthorization(input, actorOf(ctx.user));
+    }),
   cancelAuthorization: operateProc
     .input(z.object({ id }))
     .mutation(async ({ ctx, input }) => adv.cancelAuthorization(input.id, actorOf(ctx.user), await isManager(ctx.user))),
@@ -193,12 +206,13 @@ export const tpvAdvancedRouter = router({
 
   // ── Auditoría e informes (administración del TPV) ─────────────────────────
   audit: backofficeProc
-    .input(range.extend({ types: z.array(z.enum(AUDIT_TYPES)).max(AUDIT_TYPES.length).optional(), actor: z.string().trim().max(100).nullish() }))
+    .input(range.extend(auditFilter))
     .query(({ input }) => adv.buildAudit(input)),
   report: backofficeProc
     .input(range.extend({ section: z.enum(ADV_REPORT_SECTIONS) }))
     .query(({ input }) => sectionData(input.section, input)),
+  // El CSV de la auditoría respeta los mismos filtros que la pantalla
   exportCsv: backofficeProc
-    .input(range.extend({ section: z.enum(ADV_REPORT_SECTIONS) }))
+    .input(range.extend({ section: z.enum(ADV_REPORT_SECTIONS), ...auditFilter }))
     .query(async ({ input }) => ({ filename: advCsvFilename(input.section, input.from, input.to), csv: advSectionCsv(input.section, await sectionData(input.section, input)) })),
 });

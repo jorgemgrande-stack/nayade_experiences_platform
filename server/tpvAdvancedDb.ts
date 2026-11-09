@@ -150,9 +150,13 @@ export async function getSession(sessionId: number): Promise<SessionInfo> {
 }
 
 /** Sesiones abiertas y las cerradas de los últimos días (para elegir caja en el panel). */
-export async function listSessions(recentDays = 7): Promise<SessionInfo[]> {
+export async function listSessions(recentDays = 7, mayUse?: (siteId: string | null) => Promise<boolean>): Promise<SessionInfo[]> {
   const since = Date.now() - recentDays * 86_400_000;
-  return (await rowsOf(sql`${SESSION_SELECT} WHERE s.status_cs = 'open' OR s.openedAt >= ${since} ORDER BY (s.status_cs = 'open') DESC, s.openedAt DESC LIMIT 100`)).map(toSession);
+  const all = (await rowsOf(sql`${SESSION_SELECT} WHERE s.status_cs = 'open' OR s.openedAt >= ${since} ORDER BY (s.status_cs = 'open') DESC, s.openedAt DESC LIMIT 100`)).map(toSession);
+  if (!mayUse) return all;
+  const out: SessionInfo[] = [];
+  for (const s of all) if (await mayUse(s.siteId)) out.push(s);
+  return out;
 }
 
 /**
@@ -248,7 +252,9 @@ export async function createCount(input: CountInput, actor: Actor): Promise<Coun
     const [r] = await rowsOf(sql`SELECT * FROM tpv_adv_counts WHERE idempotency_key = ${input.key}`);
     return r ? toCount(r) : null;
   };
-  const matches = (c: CountRow) => c.sessionId === input.sessionId && c.kind === input.kind && same(c.countedCash, counted);
+  const matches = (c: CountRow) =>
+    c.sessionId === input.sessionId && c.kind === input.kind && same(c.countedCash, counted) &&
+    same(c.declared.card, input.declaredCard ?? null) && same(c.declared.bizum, input.declaredBizum ?? null) && same(c.declared.other, input.declaredOther ?? null);
   return idempotent(find, matches, () =>
     withSessionLock(input.sessionId, async () => {
       const replay = await find();
@@ -336,9 +342,12 @@ export async function startShift(input: { sessionId: number; openingCash: number
       if (s.status !== "open") throw conflict("La caja está cerrada: no admite turnos nuevos.");
       const [open] = await rowsOf(sql`SELECT operator_name FROM tpv_adv_shifts WHERE session_id = ${s.id} AND status = 'open' LIMIT 1`);
       if (open) throw conflict(`Hay un turno abierto de ${String(open.operator_name)}. Termínalo o haz una entrega de caja antes de empezar otro.`);
-      const id = await insertId(sql`INSERT INTO tpv_adv_shifts (session_id, register_id, operator_user_id, operator_name, status, opening_cash, started_at, started_by, notes, start_key)
-        VALUES (${s.id}, ${s.registerId}, ${actor.id}, ${actor.name}, 'open', ${money(input.openingCash)}, ${Date.now()}, ${actor.id}, ${input.notes ?? null}, ${input.key})`);
-      return getShift(id);
+      // Condicionado a que la caja siga abierta: un cierre simultáneo (tpv.closeSession no usa este bloqueo) gana
+      const n = await affected(sql`INSERT INTO tpv_adv_shifts (session_id, register_id, operator_user_id, operator_name, status, opening_cash, started_at, started_by, notes, start_key)
+        SELECT ${s.id}, ${s.registerId}, ${actor.id}, ${actor.name}, 'open', ${money(input.openingCash)}, ${Date.now()}, ${actor.id}, ${input.notes ?? null}, ${input.key}
+        FROM cash_sessions WHERE id = ${s.id} AND status_cs = 'open'`);
+      if (n !== 1) throw conflict("La caja está cerrada: no admite turnos nuevos.");
+      return (await find())!;
     }),
   "Esa clave ya se usó para otro turno");
 }
@@ -354,7 +363,10 @@ export async function endShift(input: { shiftId: number; closingCash: number; no
       throw conflict("Este turno ya está terminado.");
     }
     const n = await affected(sql`UPDATE tpv_adv_shifts SET status = 'closed', closing_cash = ${money(input.closingCash)}, ended_at = ${Date.now()}, ended_by = ${actor.id}, end_key = ${input.key},
-      notes = COALESCE(${input.notes ?? null}, notes) WHERE id = ${input.shiftId} AND status = 'open'`);
+      notes = COALESCE(${input.notes ?? null}, notes) WHERE id = ${input.shiftId} AND status = 'open'`).catch((e) => {
+      if (isDuplicateKeyError(e)) throw conflict("Esa clave ya se usó para terminar otro turno");
+      throw e;
+    });
     if (n !== 1) throw conflict("Este turno ya está terminado.");
     return getShift(input.shiftId);
   });
@@ -429,8 +441,7 @@ export async function declareHandover(input: { sessionId: number; declaredCash: 
     const [r] = await rowsOf(sql`SELECT * FROM tpv_adv_handovers WHERE idempotency_key = ${input.key}`);
     return r ? toHandover(r) : null;
   };
-  const matches = (h: HandoverRow) => h.sessionId === input.sessionId && h.fromUserId === actor.id && same(h.declaredCash, input.declaredCash);
-  const toName = input.toUserId ? await activeUserName(input.toUserId) : null;
+  const matches = (h: HandoverRow) => h.sessionId === input.sessionId && h.fromUserId === actor.id && same(h.declaredCash, input.declaredCash) && (h.toUserId ?? null) === (input.toUserId ?? null);
   return idempotent(find, matches, () =>
     withSessionLock(input.sessionId, async () => {
       const replay = await find();
@@ -442,10 +453,14 @@ export async function declareHandover(input: { sessionId: number; declaredCash: 
       if (s.status !== "open") throw conflict("La caja está cerrada: no admite entregas nuevas.");
       const [pending] = await rowsOf(sql`SELECT id FROM tpv_adv_handovers WHERE session_id = ${s.id} AND status = 'pending' LIMIT 1`);
       if (pending) throw conflict("Ya hay una entrega de caja pendiente de recibir en esta caja.");
+      const toName = input.toUserId ? await activeUserName(input.toUserId) : null;
       const [shift] = await rowsOf(sql`SELECT id FROM tpv_adv_shifts WHERE session_id = ${s.id} AND status = 'open' AND operator_user_id = ${actor.id} LIMIT 1`);
-      const id = await insertId(sql`INSERT INTO tpv_adv_handovers (session_id, register_id, status, from_user_id, from_name, from_shift_id, to_user_id, to_name, declared_cash, declared_notes, declared_at, idempotency_key)
-        VALUES (${s.id}, ${s.registerId}, 'pending', ${actor.id}, ${actor.name}, ${shift ? Number(shift.id) : null}, ${input.toUserId ?? null}, ${toName}, ${money(input.declaredCash)}, ${input.notes ?? null}, ${Date.now()}, ${input.key})`);
-      return getHandover(id);
+      // Condicionado a que la caja siga abierta (un cierre simultáneo gana)
+      const n = await affected(sql`INSERT INTO tpv_adv_handovers (session_id, register_id, status, from_user_id, from_name, from_shift_id, to_user_id, to_name, declared_cash, declared_notes, declared_at, idempotency_key)
+        SELECT ${s.id}, ${s.registerId}, 'pending', ${actor.id}, ${actor.name}, ${shift ? Number(shift.id) : null}, ${input.toUserId ?? null}, ${toName}, ${money(input.declaredCash)}, ${input.notes ?? null}, ${Date.now()}, ${input.key}
+        FROM cash_sessions WHERE id = ${s.id} AND status_cs = 'open'`);
+      if (n !== 1) throw conflict("La caja está cerrada: no admite entregas nuevas.");
+      return (await find())!;
     }),
   "Esa clave ya se usó para otra entrega de caja");
 }
@@ -468,6 +483,7 @@ export async function receiveHandover(input: { handoverId: number; receivedCash:
     const s = await getSession(h.sessionId);
     const now = Date.now();
     await db.transaction(async (tx) => {
+      // (una receive_key ya usada en otra entrega acaba en el índice único: se traduce abajo a CONFLICT)
       const x = tx as unknown as Exec;
       const n = await affected(sql`UPDATE tpv_adv_handovers SET status = ${out.status}, received_cash = ${money(input.receivedCash)}, difference = ${money(out.difference)},
         received_notes = ${input.notes ?? null}, received_at = ${now}, to_user_id = ${actor.id}, to_name = ${actor.name}, receive_key = ${input.key}
@@ -480,10 +496,13 @@ export async function receiveHandover(input: { handoverId: number; receivedCash:
         const [other] = await rowsOf(sql`SELECT id FROM tpv_adv_shifts WHERE session_id = ${h.sessionId} AND status = 'open' LIMIT 1`, x);
         if (!other) {
           const shiftId = await insertId(sql`INSERT INTO tpv_adv_shifts (session_id, register_id, operator_user_id, operator_name, status, opening_cash, started_at, started_by, notes, start_key)
-            VALUES (${h.sessionId}, ${h.registerId}, ${actor.id}, ${actor.name}, 'open', ${money(input.receivedCash)}, ${now}, ${actor.id}, ${"Turno iniciado al recibir la caja"}, ${`entrega-${h.id}`})`, x);
+            VALUES (${h.sessionId}, ${h.registerId}, ${actor.id}, ${actor.name}, 'open', ${money(input.receivedCash)}, ${now}, ${actor.id}, ${"Turno iniciado al recibir la caja"}, ${`entrega:${h.id}`})`, x);
           await x.execute(sql`UPDATE tpv_adv_handovers SET to_shift_id = ${shiftId} WHERE id = ${h.id}`);
         }
       }
+    }).catch((e) => {
+      if (isDuplicateKeyError(e)) throw conflict("Esa clave ya se usó para recibir otra entrega de caja");
+      throw e;
     });
     return getHandover(h.id);
   });
@@ -694,8 +713,8 @@ export async function consumeAuthorization(input: { id: number; kind: AuthKind; 
   if (a.status === "used" && a.usedRef === input.usedRef) return a;
   if (a.kind !== input.kind) throw badRequest("Esta autorización es para otra operación.");
   if (!a.usable) throw conflict(a.status === "approved" ? "La autorización ha caducado: pide otra." : "La autorización no está aprobada.");
-  if (a.sessionId && input.sessionId && a.sessionId !== input.sessionId) throw badRequest("Esta autorización es para otra caja.");
-  if (a.amount !== null && typeof input.amount === "number" && Math.abs(input.amount) - Math.abs(a.amount) > 0.005) throw badRequest("El importe supera el autorizado.");
+  if (a.sessionId && a.sessionId !== (input.sessionId ?? null)) throw badRequest("Esta autorización es para otra caja.");
+  if (a.amount !== null && (typeof input.amount !== "number" || Math.abs(input.amount) - Math.abs(a.amount) > 0.005)) throw badRequest("Indica el importe de la operación: no puede superar el autorizado.");
   const n = await affected(sql`UPDATE tpv_adv_authorizations SET status = 'used', used_at = ${Date.now()}, used_ref = ${input.usedRef} WHERE id = ${input.id} AND status = 'approved' AND decided_at >= ${Date.now() - AUTH_VALIDITY_MS}`);
   if (n !== 1) {
     const now = await getAuthorization(input.id);
