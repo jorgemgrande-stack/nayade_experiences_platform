@@ -128,7 +128,7 @@ describe("validación de reglas y plantillas", () => {
 
 describe("secuencias con retardo (planEntity)", () => {
   const rule = { trigger: "quote_unanswered" as const, steps: [{ delayMinutes: 3 * 1440, action: { kind: "notify" as const, title: "a", body: "" } }, { delayMinutes: 7 * 1440, action: { kind: "notify" as const, title: "b", body: "" } }] };
-  const run = (stepIndex: number, status: RunRow["status"], attempts = 1, lastAttemptAt = T0): RunRow => ({ ruleId: 1, entityType: "quote", entityId: 1, stepIndex, action: "notify", status, reason: null, attempts, lastAttemptAt });
+  const run = (stepIndex: number, status: RunRow["status"], attempts = 1, lastAttemptAt = T0): RunRow => ({ ruleId: 1, entityType: "quote", entityId: 1, stepIndex, stepKey: `p${stepIndex}`, action: "notify", status, reason: null, attempts, lastAttemptAt });
   it("espera, ejecuta el primer paso, espera el segundo y termina", () => {
     expect(planEntity(rule, T0, [], T0 + D, T0)).toEqual({ kind: "wait", until: T0 + 3 * D, late: [] });
     expect(planEntity(rule, T0, [], T0 + 3 * D, T0)).toMatchObject({ kind: "run", step: 0, retry: false });
@@ -146,6 +146,25 @@ describe("secuencias con retardo (planEntity)", () => {
     expect(planEntity(rule, T0, [run(0, "running", 1, T0 + 3 * D)], T0 + 3 * D + 20 * 60_000, T0)).toMatchObject({ kind: "run", step: 0, retry: true, exhausted: false });
     expect(planEntity(rule, T0, [run(0, "running", 3, T0 + 3 * D)], T0 + 3 * D + 20 * 60_000, T0)).toMatchObject({ kind: "run", exhausted: true });
   });
+  it("clave estable por paso: añadir o reordenar pasos no confunde sus ejecuciones; el reintento guarda la acción nueva", async () => {
+    const v = validateRule(emailRule({ steps: [{ delayMinutes: 60, action: { kind: "notify", title: "b", body: "" } }, { key: "keepme1", delayMinutes: 0, action: { kind: "notify", title: "a", body: "" } }] }));
+    expect(v.ok).toBe(true);
+    if (!v.ok) return;
+    const [first, second] = v.rule.steps;
+    expect(first.key).toBe("keepme1"); // conserva la suya, aunque cambie de posición
+    expect(second.key).toMatch(/^[a-z0-9]{4,16}$/);
+    expect(validateRule(emailRule({ steps: [{ key: "dup1", delayMinutes: 0, action: { kind: "notify", title: "a", body: "" } }, { key: "dup1", delayMinutes: 5, action: { kind: "notify", title: "b", body: "" } }] })).ok).toBe(false);
+    // El paso «keepme1» ya se hizo cuando era el segundo: ahora es el primero y sigue contando como hecho
+    const done: RunRow = { ruleId: 1, entityType: "reservation", entityId: 1, stepIndex: 1, stepKey: "keepme1", action: "notify", status: "done", reason: null, attempts: 1, lastAttemptAt: T0 };
+    expect(planEntity({ trigger: "reservation_paid", steps: v.rule.steps }, T0, [done], T0 + 2 * H, T0)).toMatchObject({ kind: "run", step: 1 });
+    const st = new MemoryAutomationStore();
+    const k = { ruleId: 1, entityType: "reservation" as const, entityId: 1, stepIndex: 0, stepKey: "abcd1" };
+    await st.claim(k, "email", T0, "2026-11-09");
+    await st.settle(k, "failed", "envio_fallido", null, T0);
+    expect(await st.claim({ ...k, stepIndex: 2 }, "notify", T0 + H, "2026-11-09")).toBe(true);
+    expect(st.runs[0]).toMatchObject({ action: "notify", stepIndex: 2, attempts: 2 });
+  });
+
   it("antes de la reserva: un paso cuyo momento es anterior a la activación no aplica", () => {
     const before = { trigger: "reservation_upcoming" as const, steps: [{ delayMinutes: 1440, action: { kind: "notify" as const, title: "a", body: "" } }, { delayMinutes: 60, action: { kind: "notify" as const, title: "b", body: "" } }] };
     const start = T0 + 2 * H; // reserva dentro de 2 h; regla activada ahora
@@ -173,12 +192,12 @@ describe("tarea programada (runPass)", () => {
     s.at(T0 + 3 * H);
     expect(await s.svc.runPass()).toMatchObject({ done: 2, failed: 0 });
     expect(s.sent.map((m) => m.to)).toEqual(["cliente2@clientes.example", "cliente3@clientes.example"]);
-    expect(s.sent[0]).toMatchObject({ subject: "Hola Cliente 2", idempotencyKey: `auto:${r.id}:reservation:2:0` });
+    expect(s.sent[0]).toMatchObject({ subject: "Hola Cliente 2", idempotencyKey: `auto:${r.id}:reservation:2:${r.steps[0].key}` });
     s.at(T0 + 4 * H);
     expect(await s.svc.runPass()).toMatchObject({ done: 0 });
     expect(s.sent).toHaveLength(2);
     // Una segunda réplica que reclama el mismo paso no lo consigue
-    expect(await s.store.claim({ ruleId: r.id, entityType: "reservation", entityId: 2, stepIndex: 0 }, "email", s.now, madridDay(s.now))).toBe(false);
+    expect(await s.store.claim({ ruleId: r.id, entityType: "reservation", entityId: 2, stepIndex: 0, stepKey: r.steps[0].key! }, "email", s.now, madridDay(s.now))).toBe(false);
     // Apagar y volver a encender no repite lo hecho (y cuenta desde el nuevo encendido)
     await s.svc.setEnabled(r.id, false, 1);
     await s.svc.setEnabled(r.id, true, 1);
@@ -325,9 +344,9 @@ describe("modo «probar» (simulate)", () => {
     expect(s.store.noticeRows).toHaveLength(0);
     // Con una regla guardada tiene en cuenta lo ya hecho: el siguiente paso aún espera
     const r = await s.svc.create(rule, 1);
-    await s.store.claim({ ruleId: r.id, entityType: "reservation", entityId: 1, stepIndex: 0 }, "email", T0, madridDay(T0));
-    await s.store.settle({ ruleId: r.id, entityType: "reservation", entityId: 1, stepIndex: 0 }, "done", null, null, T0);
-    const again = await s.svc.simulate(rule, r.id);
+    await s.store.claim({ ruleId: r.id, entityType: "reservation", entityId: 1, stepIndex: 0, stepKey: r.steps[0].key! }, "email", T0, madridDay(T0));
+    await s.store.settle({ ruleId: r.id, entityType: "reservation", entityId: 1, stepIndex: 0, stepKey: r.steps[0].key! }, "done", null, null, T0);
+    const again = await s.svc.simulate({ ...rule, steps: r.steps }, r.id); // como el editor: los pasos guardados llevan su clave
     expect(again.items.find((i) => i.entityId === 1)).toMatchObject({ outcome: "esperando", step: 1 });
   });
   it("sin correo en la empresa, el paso de correo se omitiría (y en la tarea queda fallido para reintentar)", async () => {

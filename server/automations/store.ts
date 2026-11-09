@@ -11,7 +11,7 @@
  */
 import { sql } from "drizzle-orm";
 import { getTenantDatabase } from "../_core/dbRegistry";
-import { AUTOMATION_LIMITS, type AutomationCondition, type AutomationRuleInput, type AutomationStep, type AutomationTrigger, type RunStatus } from "../../shared/automations";
+import { AUTOMATION_LIMITS, stepKeyOf, type AutomationCondition, type AutomationRuleInput, type AutomationStep, type AutomationTrigger, type RunStatus } from "../../shared/automations";
 import { STALE_RUNNING_MS, type RunKey, type RunRow, type StoredRule } from "./engine";
 
 export class AutomationsNotInstalled extends Error {
@@ -89,7 +89,7 @@ const toRule = (r: Row): StoredRule => ({
   name: String(r.name ?? ""),
   trigger: String(r.trigger_key) as AutomationTrigger,
   conditions: parseJson<AutomationCondition[]>(r.conditions_json, []),
-  steps: parseJson<AutomationStep[]>(r.steps_json, []),
+  steps: parseJson<AutomationStep[]>(r.steps_json, []).map((s, i) => ({ ...s, key: stepKeyOf(s, i) })),
   dailyCap: Number(r.daily_cap ?? AUTOMATION_LIMITS.dailyCapDefault),
   enabled: bool(r.enabled),
   enabledAt: numOrNull(r.enabled_at),
@@ -104,6 +104,7 @@ const toRun = (r: Row): RunRow => ({
   ruleId: Number(r.rule_id),
   entityType: r.entity_type,
   entityId: Number(r.entity_id),
+  stepKey: String(r.step_key),
   stepIndex: Number(r.step_index),
   action: String(r.action),
   status: r.status as RunStatus,
@@ -183,12 +184,12 @@ export class TenantDbAutomationStore implements AutomationStore {
   }
   claim(k: RunKey, action: string, now: number, day: string) {
     return this.run(async (d) => {
-      const ins = await d.execute(sql`INSERT IGNORE INTO automation_runs (rule_id, entity_type, entity_id, step_index, action, status, attempts, run_day, last_attempt_at)
-        VALUES (${k.ruleId}, ${k.entityType}, ${k.entityId}, ${k.stepIndex}, ${action}, 'running', 1, ${day}, ${now})`);
+      const ins = await d.execute(sql`INSERT IGNORE INTO automation_runs (rule_id, entity_type, entity_id, step_key, step_index, action, status, attempts, run_day, last_attempt_at)
+        VALUES (${k.ruleId}, ${k.entityType}, ${k.entityId}, ${k.stepKey}, ${k.stepIndex}, ${action}, 'running', 1, ${day}, ${now})`);
       if (this.affected(ins) === 1) return true;
       // Reintento: fallido con intentos pendientes, o abandonado «en curso» (proceso interrumpido)
-      const upd = await d.execute(sql`UPDATE automation_runs SET status = 'running', attempts = attempts + 1, run_day = ${day}, last_attempt_at = ${now}, reason = NULL
-        WHERE rule_id = ${k.ruleId} AND entity_type = ${k.entityType} AND entity_id = ${k.entityId} AND step_index = ${k.stepIndex}
+      const upd = await d.execute(sql`UPDATE automation_runs SET status = 'running', attempts = attempts + 1, action = ${action}, step_index = ${k.stepIndex}, run_day = ${day}, last_attempt_at = ${now}, reason = NULL
+        WHERE rule_id = ${k.ruleId} AND entity_type = ${k.entityType} AND entity_id = ${k.entityId} AND step_key = ${k.stepKey}
           AND attempts < ${AUTOMATION_LIMITS.maxAttempts}
           AND (status = 'failed' OR (status = 'running' AND last_attempt_at < ${now - STALE_RUNNING_MS}))`);
       return this.affected(upd) === 1;
@@ -197,13 +198,13 @@ export class TenantDbAutomationStore implements AutomationStore {
   settle(k: RunKey, status: Exclude<RunStatus, "running">, reason: string | null, detail: string | null, now: number) {
     return this.run(async (d) => {
       await d.execute(sql`UPDATE automation_runs SET status = ${status}, reason = ${clip(reason, 60)}, detail = ${clip(detail, 300)}, finished_at = ${now}
-        WHERE rule_id = ${k.ruleId} AND entity_type = ${k.entityType} AND entity_id = ${k.entityId} AND step_index = ${k.stepIndex}`);
+        WHERE rule_id = ${k.ruleId} AND entity_type = ${k.entityType} AND entity_id = ${k.entityId} AND step_key = ${k.stepKey}`);
     });
   }
   skip(k: RunKey, action: string, reason: string, now: number, day: string) {
     return this.run(async (d) => {
-      await d.execute(sql`INSERT IGNORE INTO automation_runs (rule_id, entity_type, entity_id, step_index, action, status, reason, attempts, run_day, last_attempt_at, finished_at)
-        VALUES (${k.ruleId}, ${k.entityType}, ${k.entityId}, ${k.stepIndex}, ${action}, 'skipped', ${clip(reason, 60)}, 0, ${day}, ${now}, ${now})`);
+      await d.execute(sql`INSERT IGNORE INTO automation_runs (rule_id, entity_type, entity_id, step_key, step_index, action, status, reason, attempts, run_day, last_attempt_at, finished_at)
+        VALUES (${k.ruleId}, ${k.entityType}, ${k.entityId}, ${k.stepKey}, ${k.stepIndex}, ${action}, 'skipped', ${clip(reason, 60)}, 0, ${day}, ${now}, ${now})`);
     });
   }
   usedOn(day: string, ruleId?: number) {
@@ -225,7 +226,7 @@ export class TenantDbAutomationStore implements AutomationStore {
       const k = n.key;
       await d.execute(sql`INSERT IGNORE INTO automation_notices (rule_id, run_id, title, body, entity_type, entity_id, cta_path)
         SELECT ${k.ruleId}, id, ${n.title.slice(0, 160)}, ${clip(n.body, 600)}, ${k.entityType}, ${k.entityId}, ${clip(n.ctaPath, 200)} FROM automation_runs
-         WHERE rule_id = ${k.ruleId} AND entity_type = ${k.entityType} AND entity_id = ${k.entityId} AND step_index = ${k.stepIndex}`);
+         WHERE rule_id = ${k.ruleId} AND entity_type = ${k.entityType} AND entity_id = ${k.entityId} AND step_key = ${k.stepKey}`);
     });
   }
   notices(sinceMs: number, limit: number) {
@@ -246,7 +247,7 @@ export class MemoryAutomationStore implements AutomationStore {
   runs: MemRun[] = [];
   noticeRows: Array<NoticeRow & { runId: number }> = [];
   private seq = 0;
-  private same = (r: RunKey, k: RunKey) => r.ruleId === k.ruleId && r.entityType === k.entityType && r.entityId === k.entityId && r.stepIndex === k.stepIndex;
+  private same = (r: RunKey, k: RunKey) => r.ruleId === k.ruleId && r.entityType === k.entityType && r.entityId === k.entityId && r.stepKey === k.stepKey;
 
   async listRules(includeArchived = false) {
     return this.rules.filter((r) => includeArchived || !r.archived).map((r) => structuredClone(r));
@@ -291,7 +292,7 @@ export class MemoryAutomationStore implements AutomationStore {
     }
     const retry = r.attempts < AUTOMATION_LIMITS.maxAttempts && (r.status === "failed" || (r.status === "running" && (r.lastAttemptAt ?? 0) < now - STALE_RUNNING_MS));
     if (!retry) return false;
-    Object.assign(r, { status: "running", attempts: r.attempts + 1, runDay: day, lastAttemptAt: now, reason: null });
+    Object.assign(r, { status: "running", attempts: r.attempts + 1, action, stepIndex: k.stepIndex, runDay: day, lastAttemptAt: now, reason: null });
     return true;
   }
   async settle(k: RunKey, status: Exclude<RunStatus, "running">, reason: string | null, detail: string | null, now: number) {

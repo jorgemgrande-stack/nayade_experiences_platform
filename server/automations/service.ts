@@ -197,11 +197,11 @@ export class AutomationService {
         for (const e of list) {
           const plan = planEntity(rule, e.anchorAt, runs.filter((r) => r.entityId === e.id), now, rule.enabledAt!);
           for (const i of plan.late) {
-            await this.d.store.skip(runKeyOf(rule.id, e, i), rule.steps[i].action.kind, "fuera_de_plazo", now, day);
+            await this.d.store.skip(runKeyOf(rule.id, e, rule.steps, i), rule.steps[i].action.kind, "fuera_de_plazo", now, day);
             out.skipped++;
           }
           if (plan.kind !== "run") continue;
-          const key = runKeyOf(rule.id, e, plan.step);
+          const key = runKeyOf(rule.id, e, rule.steps, plan.step);
           const action = rule.steps[plan.step].action;
           if (plan.exhausted) {
             await this.d.store.settle(key, "failed", "error", "El proceso se interrumpió y se agotaron los intentos", now);
@@ -266,7 +266,7 @@ export class AutomationService {
           continue;
         }
         const action = rule.steps[plan.step].action;
-        const r = await runAction(action, { rule: { id: ruleId ?? 0, name: rule.name, updatedBy: null, createdBy: null }, entity: e, key: runKeyOf(ruleId ?? 0, e, plan.step), dry: true }, this.d.actions).catch(
+        const r = await runAction(action, { rule: { id: ruleId ?? 0, name: rule.name, updatedBy: null, createdBy: null }, entity: e, key: runKeyOf(ruleId ?? 0, e, rule.steps, plan.step), dry: true }, this.d.actions).catch(
           (err): ActionOutcome => ({ status: "failed", reason: "error", detail: err instanceof Error ? err.message.slice(0, 200) : null }),
         );
         items.push({ ...base, step: plan.step, action: action.kind, outcome: r.status === "done" ? "ejecutaria" : "omitiria", reason: r.reason, detail: r.detail, at: stepDueAt(rule.trigger, e.anchorAt, rule.steps[plan.step].delayMinutes) });

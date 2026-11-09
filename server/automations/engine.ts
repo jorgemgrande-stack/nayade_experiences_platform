@@ -6,10 +6,12 @@
 import {
   AUTOMATION_LIMITS,
   AUTOMATION_TRIGGERS,
+  stepKeyOf,
   toNumber,
   type AutomationCondition,
   type AutomationEntityType,
   type AutomationRuleInput,
+  type AutomationStep,
   type AutomationTrigger,
   type FieldDef,
   type RunStatus,
@@ -51,6 +53,9 @@ export interface RunKey {
   ruleId: number;
   entityType: AutomationEntityType;
   entityId: number;
+  /** Clave estable del paso (identifica la ejecución). */
+  stepKey: string;
+  /** Posición del paso cuando se ejecutó (para mostrarla). */
   stepIndex: number;
 }
 
@@ -62,9 +67,9 @@ export interface RunRow extends RunKey {
   lastAttemptAt: number | null;
 }
 
-/** Clave única de una ejecución: un disparo por regla, entidad y paso. */
-export const runKeyOf = (ruleId: number, e: Pick<AutomationEntity, "type" | "id">, stepIndex: number): RunKey => ({ ruleId, entityType: e.type, entityId: e.id, stepIndex });
-export const runKeyText = (k: RunKey) => `auto:${k.ruleId}:${k.entityType}:${k.entityId}:${k.stepIndex}`;
+/** Clave única de una ejecución: un disparo por regla, entidad y paso (por su clave estable, no por su posición). */
+export const runKeyOf = (ruleId: number, e: Pick<AutomationEntity, "type" | "id">, steps: readonly AutomationStep[], stepIndex: number): RunKey => ({ ruleId, entityType: e.type, entityId: e.id, stepIndex, stepKey: stepKeyOf(steps[stepIndex], stepIndex) });
+export const runKeyText = (k: RunKey) => `auto:${k.ruleId}:${k.entityType}:${k.entityId}:${k.stepKey}`;
 
 // ─── Condiciones ─────────────────────────────────────────────────────────────
 
@@ -143,7 +148,8 @@ export type StepPlan =
 export function planEntity(rule: Pick<StoredRule, "trigger" | "steps">, anchorAt: number, runs: readonly RunRow[], now: number, since: number, catchUpMinutes: number = AUTOMATION_LIMITS.catchUpMinutes): StepPlan {
   const late: number[] = [];
   for (let i = 0; i < rule.steps.length; i++) {
-    const r = runs.find((x) => x.stepIndex === i);
+    const key = stepKeyOf(rule.steps[i], i);
+    const r = runs.find((x) => x.stepKey === key);
     if (r) {
       if (isTerminal(r)) continue;
       if (retryReady(r, now)) return { kind: "run", step: i, retry: true, exhausted: r.attempts >= AUTOMATION_LIMITS.maxAttempts, late };

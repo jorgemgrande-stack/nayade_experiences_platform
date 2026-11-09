@@ -109,7 +109,7 @@ describe.skipIf(!URL_)("Automatizaciones avanzadas · licencia, tarea por empres
     expect(await runJob()).toMatchObject({ done: 0, skipped: 0, failed: 0 });
     expect(ess.mails.length).toBe(before + 1);
     // La clave única impide un segundo disparo aunque otra réplica lo intente
-    await expect(ess.sql("a", "INSERT INTO automation_runs (rule_id, entity_type, entity_id, step_index, action, status, run_day) VALUES (?, 'reservation', ?, 0, 'email', 'running', '2026-11-09')", [mail.id, big])).rejects.toThrow(/Duplicate/);
+    await expect(ess.sql("a", "INSERT INTO automation_runs (rule_id, entity_type, entity_id, step_key, step_index, action, status, run_day) VALUES (?, 'reservation', ?, ?, 0, 'email', 'running', '2026-11-09')", [mail.id, big, mail.steps[0].key])).rejects.toThrow(/Duplicate/);
     // Historial y aviso en la campana del panel (solo la empresa A)
     const hist = await ok(q("history", { ruleId: mail.id }));
     expect(hist.map((h: any) => h.status).sort()).toEqual(["done", "skipped"]);

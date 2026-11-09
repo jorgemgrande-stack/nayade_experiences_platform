@@ -1,6 +1,6 @@
 -- Elephant Connect · Automatizaciones avanzadas (server/automations/*, capacidad automations-advanced): reglas de la
 -- empresa (disparador, condiciones y pasos con retardo), registro de ejecuciones con clave única por regla, entidad y
--- paso (un disparo por entidad y paso: idempotencia entre réplicas y reintentos acotados) y avisos al equipo en el
+-- clave estable del paso (un disparo por entidad y paso: idempotencia entre réplicas y reintentos acotados) y avisos al equipo en el
 -- panel. Fuera de drizzle/schema.ts. Solo CREATE TABLE.
 CREATE TABLE IF NOT EXISTS automation_rules (
   id               INT UNSIGNED  NOT NULL AUTO_INCREMENT,
@@ -26,6 +26,7 @@ CREATE TABLE IF NOT EXISTS automation_runs (
   rule_id          INT UNSIGNED  NOT NULL,
   entity_type      VARCHAR(16)   NOT NULL,
   entity_id        INT           NOT NULL,
+  step_key         VARCHAR(16)   NOT NULL,
   step_index       TINYINT UNSIGNED NOT NULL,
   action           VARCHAR(16)   NOT NULL,
   status           VARCHAR(12)   NOT NULL,
@@ -37,7 +38,7 @@ CREATE TABLE IF NOT EXISTS automation_runs (
   finished_at      BIGINT        NULL,
   created_at       TIMESTAMP(3)  NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
   PRIMARY KEY (id),
-  UNIQUE KEY uq_automation_runs_step (rule_id, entity_type, entity_id, step_index),
+  UNIQUE KEY uq_automation_runs_step (rule_id, entity_type, entity_id, step_key),
   KEY idx_automation_runs_day (run_day, rule_id, status),
   KEY idx_automation_runs_recent (rule_id, id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;

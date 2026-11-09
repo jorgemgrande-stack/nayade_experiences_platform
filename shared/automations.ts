@@ -191,6 +191,8 @@ export type AutomationAction =
   | { kind: "lead_tag"; tagId: number };
 
 export interface AutomationStep {
+  /** Clave estable del paso (la asigna el servidor): identifica sus ejecuciones aunque cambie el orden de los pasos. */
+  key?: string;
   delayMinutes: number;
   action: AutomationAction;
 }
@@ -214,7 +216,8 @@ export const actionSchema = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("lead_tag"), tagId: z.number().int().positive() }),
 ]);
 export const conditionSchema = z.object({ field: z.string().min(1).max(40), op: z.enum(CONDITION_OPS), value: z.string().max(200) });
-export const stepSchema = z.object({ delayMinutes: z.number().int().min(0).max(AUTOMATION_LIMITS.delayMaxMinutes), action: actionSchema });
+export const STEP_KEY_RE = /^[a-z0-9]{4,16}$/;
+export const stepSchema = z.object({ key: z.string().regex(STEP_KEY_RE).optional(), delayMinutes: z.number().int().min(0).max(AUTOMATION_LIMITS.delayMaxMinutes), action: actionSchema });
 export const ruleInputSchema = z.object({
   name: text(AUTOMATION_LIMITS.nameMax),
   trigger: z.enum(AUTOMATION_TRIGGER_KEYS as [AutomationTrigger, ...AutomationTrigger[]]),
@@ -250,9 +253,26 @@ export function validateRule(input: AutomationRuleInput): { ok: true; rule: Auto
   }
   if (errors.length) return { ok: false, errors };
   // Pasos en el orden en que ocurren: después del hecho, de menos a más retardo; antes de la reserva, de más a menos
-  const steps = [...input.steps].sort((a, b) => (t.timing === "before" ? b.delayMinutes - a.delayMinutes : a.delayMinutes - b.delayMinutes));
+  const keys = input.steps.map((s) => s.key).filter((k): k is string => !!k);
+  if (new Set(keys).size !== keys.length) return { ok: false, errors: ["Hay dos pasos con la misma clave."] };
+  const used = new Set(keys);
+  const withKeys = input.steps.map((s) => (s.key ? s : { ...s, key: newStepKey(used) }));
+  const steps = withKeys.sort((a, b) => (t.timing === "before" ? b.delayMinutes - a.delayMinutes : a.delayMinutes - b.delayMinutes));
   return { ok: true, rule: { ...input, name: input.name.trim(), steps } };
 }
+
+/** Clave nueva de paso, distinta de las usadas (y de las que pudo tener un paso borrado: aleatoria). */
+export function newStepKey(used: Set<string>): string {
+  for (;;) {
+    const k = `s${Math.random().toString(36).slice(2, 10)}`.padEnd(6, "0");
+    if (!used.has(k)) {
+      used.add(k);
+      return k;
+    }
+  }
+}
+/** Clave de un paso guardado (las reglas siempre las llevan; por si acaso, la posición). */
+export const stepKeyOf = (s: Pick<AutomationStep, "key">, i: number) => s.key ?? `p${i}`;
 
 export function toNumber(v: unknown): number | null {
   if (v == null || v === "") return null;
