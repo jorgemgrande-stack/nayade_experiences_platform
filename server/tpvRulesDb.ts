@@ -73,8 +73,11 @@ export async function acquiredRights(): Promise<AcquiredRights> {
   try {
     let list = await rows(sql`SELECT feature, origin, granted_at, status, confirmed_at FROM tpv_acquired_rights`);
     if (list.some((r) => r.status === "seeded")) {
-      const grants = await getCapabilityAccess().grants();
-      const had = !grants || grants.some((g) => g.capabilityId === "bill-cash" && g.siteId === "" && g.status !== "cancelled");
+      // «La tenía»: la caja del plan concedida (activa, en solo lectura o suspendida; no cancelada ni solo contratada)
+      // o, sin aplicar todavía las licencias por capacidad, la caja de siempre
+      const access = getCapabilityAccess();
+      const grants = await access.grants();
+      const had = !grants || !access.enforcing() || grants.some((g) => g.capabilityId === "bill-cash" && g.siteId === "" && g.status !== "cancelled" && g.status !== "contracted");
       await db.execute(sql`UPDATE tpv_acquired_rights SET status = ${had ? "granted" : "not_eligible"}, confirmed_at = ${Date.now()} WHERE status = 'seeded'`);
       list = await rows(sql`SELECT feature, origin, granted_at, status, confirmed_at FROM tpv_acquired_rights`);
     }

@@ -228,6 +228,8 @@ export function TpvSessionReturns({ sessionId }: { sessionId: number }) {
         <DialogContent className="dark bg-gray-900 border-gray-700 text-white max-w-lg">
           <DialogHeader><DialogTitle className="text-white">Ventas de esta caja</DialogTitle></DialogHeader>
           <div className="max-h-[60vh] overflow-y-auto space-y-2">
+            {/* Quien autoriza (permiso o supervisor de la caja) resuelve aquí mismo las solicitudes */}
+            {reqs.data?.canAuthorize && <div className="rounded-lg bg-background text-foreground"><TpvReturnRequests /></div>}
             {(sales.data ?? []).map((s) => (
               <div key={s.id} className="rounded-lg border border-gray-700 p-2">
                 <div className="flex items-center justify-between text-sm">

@@ -126,14 +126,17 @@ describe.skipIf(!URL_)("Caja Business y Enterprise (aplicación real)", () => {
     expect((await ess.sql("b", "SELECT status_ts AS st FROM tpv_sales WHERE id = ?", [ok.saleId]))[0].st).toBe("refunded");
     const sup = data(await ess.q("b", "tpv.supervision", undefined, admB));
     expect(sup.sites[0].registers.find((r: any) => r.id === regB).openSession).not.toBeNull();
+    // Las dos ventas anteriores se devolvieron o anularon: el consolidado solo cuenta lo cobrado que sigue en pie
+    const [open] = await ess.sql("b", "SELECT id FROM cash_sessions WHERE registerId = ? AND status_cs = 'open'", [regB]);
+    await sell(open.id, agB);
     const cons = data(await ess.q("b", "tpv.reports.consolidated", { dateFrom: today(), dateTo: today() }, admB));
-    expect(cons.tickets).toBe(2);
+    expect([cons.tickets, cons.total]).toEqual([1, 20]);
   });
 
   it("correcciones de una caja cerrada: ajuste aparte en la caja contable, enlazado, una sola vez", async () => {
     await ess.sql("b", "INSERT INTO fin_cash_accounts (name, type, current_balance, initial_balance) VALUES ('Caja', 'principal', 100, 100)");
     const [s] = await ess.sql("b", "SELECT id FROM cash_sessions WHERE registerId = ? AND status_cs = 'open'", [regB]);
-    await ess.m("b", "tpv.closeSession", { sessionId: s.id, countedCash: 45, idempotencyKey: key("cierre") }, admB);
+    await ess.m("b", "tpv.closeSession", { sessionId: s.id, countedCash: 25, idempotencyKey: key("cierre") }, admB);
     const k = key("corr");
     const input = { sessionId: s.id, kind: "cash_out", amount: 4.5, reason: "Cambio entregado y no anotado", idempotencyKey: k };
     const both = await Promise.all([ess.m("b", "tpv.addClosedSessionCorrection", input, admB), ess.m("b", "tpv.addClosedSessionCorrection", input, admB)]);
@@ -146,7 +149,10 @@ describe.skipIf(!URL_)("Caja Business y Enterprise (aplicación real)", () => {
     expect(Number((await ess.sql("b", "SELECT current_balance AS b FROM fin_cash_accounts WHERE type = 'principal'"))[0].b)).toBe(95.5);
     // El cierre no cambia
     const [snap] = await ess.sql("b", "SELECT counted_cash FROM tpv_session_closures WHERE session_id = ?", [s.id]);
-    expect(Number(snap.counted_cash)).toBe(45);
+    expect(Number(snap.counted_cash)).toBe(25);
+    // Las dos devoluciones autorizadas sacaron su efectivo de la caja (salidas de tipo devolución, una vez cada una)
+    expect((await ess.sql("b", "SELECT COUNT(*) AS n FROM cash_movements WHERE idempotency_key LIKE 'dev-%' AND type_cm = 'out' AND amount = 20"))[0].n).toBe(2);
+    expect(Number((await ess.sql("b", "SELECT cashDifference AS d FROM cash_sessions WHERE id = ?", [s.id]))[0].d)).toBe(0);
   });
 
   it("derecho adquirido: la siembra de la 0064 en una empresa Essential existente conserva informes y supervisión de cierres, también al renovar", async () => {

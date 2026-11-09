@@ -78,7 +78,7 @@ export default function TpvPlanPanel({ canManage }: { canManage: boolean }) {
           </ul>
           {q.data.acquired.features.length > 0 && (
             <p className="text-xs text-muted-foreground mt-2">
-              Como cliente desde antes del {q.data.acquired.cutoff.split("-").reverse().join("/")}, conservas {q.data.acquired.features.map((f) => TPV_FEATURE_LABELS[f as TpvFeature].toLowerCase()).join(", ")}.
+              Como ya las tenías antes del cambio de planes del {q.data.acquired.cutoff.split("-").reverse().join("/")}, conservas {q.data.acquired.features.map((f) => TPV_FEATURE_LABELS[f as TpvFeature].toLowerCase()).join(", ")}.
             </p>
           )}
         </div>

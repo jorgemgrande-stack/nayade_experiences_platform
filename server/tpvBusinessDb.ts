@@ -15,7 +15,10 @@ import { checkPermission } from "./customRolesAccess";
 import { cancelTpvSale } from "./routers/dailyControl";
 import { companySites } from "./sitesDb";
 import { siteOfStored } from "../shared/sites";
-import { companyCutoff, isDuplicateKeyError, registerOperationalDay, tpvFeatureEnabled } from "./tpvRulesDb";
+import { addCorrection, companyCutoff, isDuplicateKeyError, postCorrectionToTreasury, registerOperationalDay, tpvFeatureEnabled } from "./tpvRulesDb";
+import { withTenantLock } from "./tpvSaleIdempotency";
+import { cashKindsInUse, recordCashMovementKind } from "./cashMovementKindsDb";
+import { featureNotIncludedMessage } from "../shared/tpvPlan";
 import { receivedSaleCondition } from "./tpvSessionTotals";
 
 const db = legacyDb();
@@ -53,8 +56,10 @@ export async function listRegisterOperators(registerId?: number): Promise<Regist
  * `supervisor` exige Enterprise (gestión avanzada de permisos).
  */
 export async function setRegisterOperators(registerId: number, wanted: Array<{ userId: number; role: OperatorRole }>, actor: Actor): Promise<RegisterOperator[]> {
-  if (!(await tpvFeatureEnabled("registerOperators"))) throw new TRPCError({ code: "FORBIDDEN", message: "Operadores y permisos por caja forma parte del plan Business. Puedes ampliar tu plan desde «Suscripción»." });
-  if (wanted.some((w) => w.role === "supervisor") && !(await tpvFeatureEnabled("advancedPermissions"))) {
+  if (!(await tpvFeatureEnabled("registerOperators"))) throw new TRPCError({ code: "FORBIDDEN", message: featureNotIncludedMessage("registerOperators") });
+  const before = await listRegisterOperators(registerId);
+  const newSupervisor = wanted.some((w) => w.role === "supervisor" && !before.some((b) => b.userId === w.userId && b.role === "supervisor"));
+  if (newSupervisor && !(await tpvFeatureEnabled("advancedPermissions"))) {
     throw new TRPCError({ code: "FORBIDDEN", message: "Los supervisores por caja forman parte de la gestión avanzada de permisos del plan Enterprise. Puedes ampliar tu plan desde «Suscripción»." });
   }
   const [reg] = await db.select({ id: cashRegisters.id }).from(cashRegisters).where(eq(cashRegisters.id, registerId));
@@ -64,6 +69,10 @@ export async function setRegisterOperators(registerId: number, wanted: Array<{ u
     const found = await db.select({ id: users.id }).from(users).where(and(inArray(users.id, ids), eq(users.isActive, true)));
     if (found.length !== ids.length) throw new TRPCError({ code: "BAD_REQUEST", message: "Algún usuario no existe o está desactivado" });
   }
+  return withTenantLock("tpv_registers", `ops${registerId}`, 10, "Se están guardando los operadores de esta caja. Inténtalo de nuevo en unos segundos.", () => applyOperators(registerId, wanted, actor));
+}
+
+async function applyOperators(registerId: number, wanted: Array<{ userId: number; role: OperatorRole }>, actor: Actor): Promise<RegisterOperator[]> {
   const now = Date.now();
   const current = await listRegisterOperators(registerId);
   const want = new Map(wanted.map((w) => [w.userId, w.role]));
@@ -170,7 +179,7 @@ async function requestById(id: number): Promise<ReturnRequest | null> {
 
 export async function assertReturnsFeature(): Promise<void> {
   if (!(await tpvFeatureEnabled("authorizedReturns"))) {
-    throw new TRPCError({ code: "FORBIDDEN", message: "Devoluciones y anulaciones autorizadas forma parte del plan Business. Puedes ampliar tu plan desde «Suscripción»." });
+    throw new TRPCError({ code: "FORBIDDEN", message: featureNotIncludedMessage("authorizedReturns") });
   }
 }
 
@@ -216,7 +225,11 @@ export async function decideReturn(input: { id: number; approve: boolean; notes?
   if (!(await canAuthorizeReturns(req.registerId, user))) throw new TRPCError({ code: "FORBIDDEN", message: "No puedes autorizar devoluciones ni anulaciones de esta caja" });
   const target = input.approve ? "approved" : "rejected";
   if (req.status !== "pending") {
-    if (req.status === target) return req;
+    if (req.status === target) {
+      // Si la primera ejecución se quedó a medias, se completa (todos los pasos son idempotentes)
+      if (target === "approved") await executeApprovedReturn(req, user);
+      return (await requestById(input.id))!;
+    }
     throw new TRPCError({ code: "CONFLICT", message: "Esta solicitud ya está resuelta" });
   }
   if (req.requestedBy === user.id) throw new TRPCError({ code: "FORBIDDEN", message: "La solicitud la tiene que autorizar otra persona" });
@@ -228,11 +241,46 @@ export async function decideReturn(input: { id: number; approve: boolean; notes?
     if (now?.status === target) return now;
     throw new TRPCError({ code: "CONFLICT", message: "Esta solicitud ya está resuelta" });
   }
-  if (input.approve) {
-    const [sale] = await db.select({ status: tpvSales.status }).from(tpvSales).where(eq(tpvSales.id, req.saleId));
-    if (sale?.status === "paid") await cancelTpvSale(req.saleId, { id: user.id, name: actorName(user) }, req.action === "refund" ? "refunded" : "cancelled");
-  }
+  if (input.approve) await executeApprovedReturn(req, user);
   return (await requestById(input.id))!;
+}
+
+/**
+ * Ejecuta una devolución o anulación aprobada (idempotente: se puede repetir si se quedó a medias):
+ *  - la venta pasa a anulada o devuelta con su contabilidad, existencias y puntos (cancelTpvSale, una sola vez);
+ *  - lo cobrado en efectivo sale de la caja: con la caja de la venta aún abierta, una salida de tipo «devolución»
+ *    (clave `dev-<id>`); con la caja ya cerrada, una corrección de salida reflejada en la caja contable.
+ */
+async function executeApprovedReturn(req: ReturnRequest, user: Actor): Promise<void> {
+  const [sale] = await db.select({ status: tpvSales.status, ticketNumber: tpvSales.ticketNumber }).from(tpvSales).where(eq(tpvSales.id, req.saleId));
+  const target = req.action === "refund" ? "refunded" : "cancelled";
+  if (sale?.status === "paid" || sale?.status === target) await cancelTpvSale(req.saleId, { id: user.id, name: actorName(user) }, target);
+  const [cash] = (await db.execute(sql`SELECT COALESCE(SUM(amount_tsp), 0) AS c FROM tpv_sale_payments WHERE saleId = ${req.saleId} AND method_tsp = 'cash' AND status_tsp = 'completed'`)) as unknown as [Array<{ c: string | number }>];
+  const cashCents = Math.round(Number(cash?.[0]?.c ?? 0) * 100);
+  if (cashCents <= 0) return;
+  const key = `dev-${req.id}`;
+  const reason = `Devolución del ticket ${sale?.ticketNumber ?? req.saleId} (autorizada por ${actorName(user) ?? "supervisor"})`;
+  const [session] = await db.select({ status: cashSessions.status }).from(cashSessions).where(eq(cashSessions.id, req.sessionId));
+  if (session?.status === "open") {
+    const [done] = await rows(sql`SELECT id FROM cash_movements WHERE idempotency_key = ${key}`);
+    if (done) return;
+    const accounting = await cashKindsInUse();
+    try {
+      await db.transaction(async (tx) => {
+        const [locked] = await tx.select({ status: cashSessions.status }).from(cashSessions).where(eq(cashSessions.id, req.sessionId)).for("update");
+        if (locked?.status !== "open") throw new Error("cerrada");
+        const [res] = (await tx.execute(sql`INSERT INTO cash_movements (sessionId, type_cm, amount, reason, cashierName, createdAt, idempotency_key)
+          VALUES (${req.sessionId}, 'out', ${(cashCents / 100).toFixed(2)}, ${reason.slice(0, 300)}, ${actorName(user)}, ${Date.now()}, ${key})`)) as unknown as [{ insertId: number }];
+        if (accounting) await recordCashMovementKind(tx, Number(res.insertId), "devolucion");
+      });
+      return;
+    } catch (e) {
+      if (isDuplicateKeyError(e)) return;
+      if (!(e instanceof Error && e.message === "cerrada")) throw e;
+    }
+  }
+  const correction = await addCorrection({ sessionId: req.sessionId, kind: "cash_out", amount: cashCents / 100, reason, key, userId: user.id, userName: actorName(user) });
+  await postCorrectionToTreasury(correction).catch(() => null);
 }
 
 // ─── Enterprise: supervisión centralizada e informes consolidados ────────────
@@ -266,7 +314,7 @@ export async function supervisionOverview(): Promise<{ day: string; sites: SiteO
     if (reg && (await registerOperationalDay(Number(s.openedAt), reg.cutoffTime ?? null, company)) === day) todaySessions.push(s.id);
   }
   const sales = todaySessions.length
-    ? await db.select({ sessionId: tpvSales.sessionId, total: tpvSales.total }).from(tpvSales).where(and(inArray(tpvSales.sessionId, todaySessions), receivedSaleCondition()))
+    ? await db.select({ sessionId: tpvSales.sessionId, total: tpvSales.total }).from(tpvSales).where(and(inArray(tpvSales.sessionId, todaySessions), receivedSaleCondition(), eq(tpvSales.status, "paid")))
     : [];
   const sessionRegister = new Map(recent.map((s) => [s.id, s.registerId]));
   const siteOfReg = (id: number) => siteOfStored(regById.get(id)?.siteId ?? null, sites.primarySiteId);
@@ -301,7 +349,7 @@ export async function consolidatedReport(dateFrom: string, dateTo: string): Prom
     const d = await registerOperationalDay(Number(s.openedAt), regById.get(s.registerId)?.cutoffTime ?? null, company);
     if (d >= dateFrom && d <= dateTo) inRange.push(s);
   }
-  const sales = inRange.length ? await db.select({ sessionId: tpvSales.sessionId, total: tpvSales.total }).from(tpvSales).where(and(inArray(tpvSales.sessionId, inRange.map((s) => s.id)), receivedSaleCondition())) : [];
+  const sales = inRange.length ? await db.select({ sessionId: tpvSales.sessionId, total: tpvSales.total }).from(tpvSales).where(and(inArray(tpvSales.sessionId, inRange.map((s) => s.id)), receivedSaleCondition(), eq(tpvSales.status, "paid"))) : [];
   const out = new Map(sites.sites.map((s) => [s.siteId, { siteId: s.siteId, siteName: s.name, tickets: 0, total: 0, sessions: 0, difference: 0 }]));
   const siteOfSession = new Map(inRange.map((s) => [s.id, siteOfStored(s.siteId ?? null, sites.primarySiteId)]));
   const get = (id: string) => out.get(id) ?? out.get(sites.primarySiteId)!;
