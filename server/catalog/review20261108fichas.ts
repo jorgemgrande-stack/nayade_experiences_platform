@@ -47,6 +47,11 @@ export interface ListingChange {
    * un producto en venta directa se da por hecho y no se toca (review20261108connect.ts ya hizo su parte).
    */
   inDirectSale?: boolean;
+  /**
+   * Condición previa en el catálogo de un producto (el propio u otro): ámbito y unidad de cobro ya cambiados en el CRM.
+   * Sin cumplirse, la ficha no cambia (conflicto) para no publicar un texto que contradiga el precio vigente.
+   */
+  requiresCatalog?: { key: string; scope: "company" | "site"; chargeUnit: string | null };
 }
 type ProductText = "name" | "tagline" | "description";
 
@@ -289,6 +294,12 @@ export async function applyListingReview(svc: WebAdminService, store: WebStore, 
       continue;
     }
     const problems: string[] = [];
+    if (c.requiresCatalog) {
+      const q = c.requiresCatalog;
+      const other = q.key === c.key ? cur : await store.getEntry("product", q.key);
+      const oc = other ? productDraft.parse(other.published ?? other.draft).catalog : null;
+      if (!oc || oc.scope !== q.scope || (oc.chargeUnit ?? null) !== q.chargeUnit) problems.push(`antes hay que cambiar en el CRM el ámbito de «${q.key}» a «${q.scope}» y su unidad de cobro a «${q.chargeUnit ?? "ninguna"}» (ahora «${oc?.scope ?? "?"}», «${oc?.chargeUnit ?? "ninguna"}»)`);
+    }
     if (c.implementationLevel && d.catalog.implementationLevel !== c.implementationLevel.from && d.catalog.implementationLevel !== c.implementationLevel.to) problems.push(`nivel de implantación «${d.catalog.implementationLevel}» (se esperaba «${c.implementationLevel.from}»)`);
     if (c.thirdPartyCosts && d.thirdPartyCosts !== c.thirdPartyCosts.from && d.thirdPartyCosts !== c.thirdPartyCosts.to) problems.push("los costes de terceros ya no son los de partida");
     if (c.stripePrepared !== undefined && d.catalog.stripePrepared !== undefined && d.catalog.stripePrepared !== c.stripePrepared) problems.push(`«stripePrepared» decidido en el CRM (${d.catalog.stripePrepared})`);

@@ -181,7 +181,7 @@ const CORE: SeedProduct[] = [
     family: "core_plan",
     name: "Business",
     tagline: "Para empresas en crecimiento: varias sedes, roles propios y procesos avanzados.",
-    description: "Todo Essential, más embudo avanzado, portal de clientes, reglas de precios, reservas y citas, suscripciones de tus productos, varias webs y sedes, inventario, compras, informes avanzados y Copilot básico.",
+    description: "Todo Essential, más embudo avanzado, portal de clientes, reglas de precios, reservas y citas, suscripciones de tus productos, varias webs y sedes, caja para equipos (hasta 3 cajas activas, operadores y permisos por caja, devoluciones y anulaciones autorizadas, supervisión de cierres, informes por caja, por empleado y por periodo, y gestión de diferencias de caja), inventario, compras, informes avanzados y Copilot básico.",
     tech: "partial",
     commercial: "on_request",
     monthly: 79,

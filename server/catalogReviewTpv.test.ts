@@ -16,8 +16,11 @@ const refs = { moduleIds: BUILTIN_MODULES.map((m) => m.id), planIds: () => null 
 const AUTHOR = `operacion:${REVIEW_ID_2026_11_09_TPV}`;
 const KEYS = TPV_LISTINGS_2026_11_09.map((c) => c.key);
 
-/** Como production el 09/11/2026: los textos de partida publicados y Essential y Business en venta directa. */
-async function production() {
+/**
+ * Como production el 09/11/2026: los textos de partida publicados y Essential y Business en venta directa. Con
+ * `perCompany`, el ámbito de connect-pos ya cambiado en el CRM (por empresa, sin unidad de cobro), que exige la revisión.
+ */
+async function production(perCompany = true) {
   const store = new MemoryWebStore();
   const svc = new WebAdminService({ store, refs, now: () => 1_790_000_000_000 });
   await seedElephantSource(svc, store);
@@ -32,7 +35,11 @@ async function production() {
       ...d,
       ...texts,
       ...(direct ? { technicalStatus: "available" as const } : {}),
-      catalog: { ...d.catalog, ...(direct ? { commercialStatus: "available" as const, offer: { modality: "immediate" as const, trial: true, checkout: true } } : {}) },
+      catalog: {
+        ...d.catalog,
+        ...(direct ? { commercialStatus: "available" as const, offer: { modality: "immediate" as const, trial: true, checkout: true } } : {}),
+        ...(c.key === "connect-pos" && perCompany ? { scope: "company" as const, chargeUnit: null } : {}),
+      },
       commercial,
       internal: { ...d.internal, evidence: `Evidencia previa de ${c.key}` },
     };
@@ -81,7 +88,7 @@ describe("revisión del 09/11/2026: estrategia del TPV", () => {
     // Mismo estado, ámbito y unidad de cobro: el precio y el ámbito por empresa los cambia main en el CRM
     const posCatalog = { ...pos.catalog, stripePrepared: undefined };
     expect(JSON.stringify(posCatalog)).toBe(JSON.stringify({ ...JSON.parse(statusBefore.get("connect-pos")!), stripePrepared: undefined }));
-    expect(pos.catalog).toMatchObject({ commercialStatus: "on_request", stripePrepared: false, scope: "site", capabilities: ["pos-advanced"] });
+    expect(pos.catalog).toMatchObject({ commercialStatus: "on_request", stripePrepared: false, scope: "company", chargeUnit: null, capabilities: ["pos-advanced"] });
     expect(pos.internal.evidence).toMatch(/aprobada por Jorge/);
     const posText = JSON.stringify(pos.commercial);
     for (const t of ["Finance Sync", "Restaurant Net", "Ski Net", "Hotel Net", "caja de tu plan", "Por empresa"]) expect(posText).toContain(t);
@@ -122,6 +129,15 @@ describe("revisión del 09/11/2026: estrategia del TPV", () => {
     expect(sim.conflicts.find((c) => c.startsWith("connect-pos"))).toMatch(/«tagline» del producto/);
     expect(sim.conflicts.find((c) => c.startsWith("essential"))).toMatch(/«benefits»/);
     expect(sim.changed).toHaveLength(KEYS.length - 2);
+  });
+
+  it("sin el ámbito por empresa de connect-pos en el CRM, las fichas que lo dicen no cambian (conflicto)", async () => {
+    const k = await production(false);
+    const r = await applyListingReview(k.svc, k.store, { apply: true, author: AUTHOR, changes: TPV_LISTINGS_2026_11_09 });
+    expect(r.conflicts.map((c) => c.split(":")[0])).toEqual(["connect-pos", "addon-site-business"]);
+    expect(r.conflicts[0]).toMatch(/ámbito de «connect-pos» a «company».*ahora «site», «por sede»/);
+    expect(r.changed).toHaveLength(KEYS.length - 2);
+    expect(productDraft.parse((await k.store.getEntry("product", "connect-pos"))!.draft).name).toBe("Elephant POS");
   });
 
   it("un borrador ajeno sin publicar no se publica", async () => {

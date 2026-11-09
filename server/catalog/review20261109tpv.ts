@@ -19,8 +19,9 @@
  *
  * Fuera de esta revisión (lo hace main en el CRM; el mecanismo de revisión nunca toca precios ni la licencia): el
  * precio de `connect-pos` (mensual 2500 → 1900 céntimos sin IVA) y su ámbito (`catalog.scope` site → company,
- * `catalog.chargeUnit` «por sede» → sin unidad). Esta revisión se aplica a la vez que ese cambio, cuando la frontera
- * esté programada en el TPV del Core: la ficha no debe prometer nada que no exista.
+ * `catalog.chargeUnit` «por sede» → sin unidad). Las fichas que dicen «por empresa» (`connect-pos` y
+ * `addon-site-business`) exigen ese ámbito ya publicado (`requiresCatalog`): hasta entonces salen como conflicto y no
+ * cambian. La revisión se fusiona cuando la frontera esté programada en el TPV del Core.
  *
  * Mecanismo y garantías: applyListingReview (review20261108fichas.ts): cada campo y cada texto del producto solo
  * cambia desde su valor publicado de partida (los «from» son los publicados en production el 09/11/2026,
@@ -33,6 +34,9 @@ import { REQUEST_STEP } from "./review20261108connect";
 export const REVIEW_ID_2026_11_09_TPV = "revision-catalogo-2026-11-09-tpv";
 
 const VAT_FAQ = { a: "No. Los importes del catálogo son sin IVA; el 21 % se añade aparte.", q: "¿El precio incluye IVA?" };
+
+/** Ámbito por empresa de TPV Advanced, cambiado en el CRM antes de publicar las fichas que lo dicen. */
+const POS_PER_COMPANY = { key: "connect-pos", scope: "company", chargeUnit: null } as const;
 
 export const TPV_LISTINGS_2026_11_09: readonly ListingChange[] = [
   {
@@ -101,6 +105,7 @@ export const TPV_LISTINGS_2026_11_09: readonly ListingChange[] = [
     evidence:
       "Estrategia del TPV aprobada por Jorge el 09/11/2026: la caja de cada plan (bill-cash; una caja activa en Essential, hasta 3 en Business y sin límite comercial fijo en Enterprise) y TPV Advanced (pos-advanced) con arqueos y conciliaciones avanzadas, turnos, entrega y recepción de caja entre operadores, autorizaciones especiales, auditoría e informes y exportaciones avanzadas, programado en el TPV del Core (server/routers/tpv.ts y cashRegister.ts) antes de aplicar esta revisión. Venta asistida, sin Price de Stripe.",
     stripePrepared: false,
+    requiresCatalog: POS_PER_COMPANY,
     product: {
       name: { from: "Elephant POS", to: "TPV Advanced" },
       tagline: { from: "TPV físico avanzado por sede.", to: "Arqueos, turnos y auditoría sobre la caja de tu plan." },
@@ -208,6 +213,7 @@ export const TPV_LISTINGS_2026_11_09: readonly ListingChange[] = [
   },
   {
     key: "addon-site-business",
+    requiresCatalog: POS_PER_COMPANY,
     fields: {
       excludes: { from: ["Elephant POS y módulos sectoriales de la nueva sede (por sede)"], to: ["Módulos sectoriales de la nueva sede (por sede)"] },
       faq: {
