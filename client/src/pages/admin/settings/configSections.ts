@@ -188,7 +188,7 @@ export function configSectionsFor(ctx: SectionContext): SectionDef[] {
     });
   }
   if (ctx.can("automations-advanced")) {
-    out.push({ ...base("automatizaciones"), label: "Recordatorios automáticos", description: "Cuándo se envían los recordatorios y avisos automáticos.", settingKeys: ["cancellation_stale_days", "quote_reminder_days_before"], flagModules: [] });
+    out.push({ ...base("automatizaciones"), label: "Recordatorios automáticos", description: "Cuándo se envían los recordatorios y avisos automáticos.", settingKeys: ["cancellation_stale_days", "quote_reminder_days_before"], flagModules: [], link: { href: "/admin/automatizaciones", label: "Abrir las reglas de Automatizaciones" } });
   }
   if (ctx.can("whatsapp-ai")) {
     out.push({ ...base("integraciones"), label: "Mensajería", description: "Conexión con la mensajería contratada.", flagModules: [] });
