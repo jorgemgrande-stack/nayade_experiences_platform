@@ -404,3 +404,21 @@ describe("revisión: palabras de traspaso por defecto", () => {
     for (const t of ["Quiero hablar con una persona", "¿Eres una persona real?", "Pásame con un humano", "Quiero poner una reclamación", "Tengo una QUEJA"]) expect(wantsHuman(t, k), t).toBe(true);
   });
 });
+
+describe("revisión: respuesta automática diferida en la empresa del webhook", () => {
+  it("fija la empresa al recibir y ejecuta con withTenantDb(empresa, tarea) después de responder", async () => {
+    const { tenantDeferral } = await import("./whatsappCloud/httpRoute");
+    const ran: string[] = [];
+    let scheduled: (() => void) | null = null;
+    let current = "empresa-a";
+    const defer = tenantDeferral({ tenantId: () => current, run: async (t, fn) => (ran.push(t), fn()), schedule: (cb) => void (scheduled = cb) });
+    let done = false;
+    defer(async () => void (done = true));
+    current = "empresa-b"; // el contexto cambia después: la tarea sigue siendo de A
+    expect(done).toBe(false);
+    scheduled!();
+    await new Promise((r) => setImmediate(r));
+    expect(ran).toEqual(["empresa-a"]);
+    expect(done).toBe(true);
+  });
+});

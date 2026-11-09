@@ -14,7 +14,8 @@
  */
 import express, { type Request, type RequestHandler, type Response, type Router } from "express";
 import rateLimit, { ipKeyGenerator } from "express-rate-limit";
-import { getTenantIdOrDefault, isMultiTenant } from "../_core/tenant";
+import { withTenantDb } from "../_core/dbRegistry";
+import { getTenantId, getTenantIdOrDefault, isMultiTenant } from "../_core/tenant";
 import { WHATSAPP_WEBHOOK_PATH } from "../../shared/whatsappCloud";
 import { whatsappCredentials, whatsappLicensed, whatsappService } from "./runtime";
 import type { WhatsappService } from "./service";
@@ -93,7 +94,22 @@ export function whatsappEventsHandler(d: WebhookDeps = {}) {
     const run = async () => {
       for (const m of r.inbound) await svc.autoReply(m.conversationId, m.messageId);
     };
-    (d.defer ?? ((fn) => void fn().catch(() => undefined)))(run);
+    (d.defer ?? tenantDeferral())(run);
+  };
+}
+
+/**
+ * Ejecución diferida (tras responder a Meta) EN LA EMPRESA de la petición: la empresa se fija al recibir el webhook y la
+ * tarea corre con `withTenantDb` (contexto y conexión propios de esa empresa), no con el contexto de una petición ya
+ * terminada. Nunca lanza.
+ */
+export function tenantDeferral(o: { tenantId?: () => string; run?: <T>(tenantId: string, fn: () => Promise<T>) => Promise<T>; schedule?: (cb: () => void) => void } = {}) {
+  return (fn: () => Promise<unknown>) => {
+    const tenantId = (o.tenantId ?? getTenantId)();
+    const run = o.run ?? withTenantDb;
+    (o.schedule ?? setImmediate)(() => {
+      void run(tenantId, fn).catch((e: unknown) => log("auto_reply_error", { error: e instanceof Error ? e.name : "error" }));
+    });
   };
 }
 
