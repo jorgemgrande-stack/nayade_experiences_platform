@@ -65,6 +65,11 @@ export interface DepositDeps {
   isPrimarySite: (siteId: string) => Promise<boolean>;
   /** ¿Hay almacén privado de ficheros? Sin él no se admiten fotos de los daños. */
   photosEnabled: () => boolean;
+  /**
+   * Bloqueo con nombre de la empresa (`scope`: "ski_charge" o "ski_deposit"; `key`: el id). Serializa todo lo que toca
+   * la venta del TPV de un cargo o de una liquidación; si no se obtiene a tiempo, lanza CONFLICT sin ejecutar nada.
+   */
+  lock: <T>(scope: "ski_charge" | "ski_deposit", key: string, fn: () => Promise<T>) => Promise<T>;
 }
 
 function rule<T>(fn: () => T, code: SkiRentalError["code"] = "invalid_input"): T {
@@ -233,6 +238,15 @@ export class SkiDepositService {
    */
   settle(siteId: string, depositId: number, input: { damageCents: number; reason?: string | null; note?: string | null; sessionId?: number | null }, actor: string, cashierName: string, getSale: () => Promise<CreateDamageSale>) {
     return this.within(siteId, true, async () => {
+      const first = await this.siteDeposit(siteId, depositId);
+      if (first.status !== "held" && first.status !== "settling") return { deposit: first, replayed: true, ticketNumber: null as string | null };
+      // Con el bloqueo de la fianza: un doble clic o un reintento espera al primero y nunca libera lo que este hace
+      return this.d.lock("ski_deposit", String(depositId), () => this.settleLocked(siteId, depositId, input, actor, cashierName, getSale));
+    });
+  }
+
+  private async settleLocked(siteId: string, depositId: number, input: { damageCents: number; reason?: string | null; note?: string | null; sessionId?: number | null }, actor: string, cashierName: string, getSale: () => Promise<CreateDamageSale>) {
+    {
       const dep = await this.siteDeposit(siteId, depositId);
       if (dep.status !== "held" && dep.status !== "settling") return { deposit: dep, replayed: true, ticketNumber: null as string | null };
       const delivery = await this.siteDelivery(siteId, dep.deliveryId);
@@ -283,10 +297,13 @@ export class SkiDepositService {
       let ticketNumber: string | null = null;
       if (plan.retainedCents > 0 && saleId == null) {
         const key = retentionSaleKey(depositId, plan.retainedCents);
-        // Una venta de un intento anterior (quizá en la caja ya cerrada) se recupera por su clave: no se duplica
-        const prev = fresh ? null : await this.d.store.saleByKey(key);
-        if (prev && prev.status !== "pending") saleId = prev.id;
-        else {
+        // Una venta de un intento anterior (quizá en la caja ya cerrada) se recupera por su clave: no se duplica. También
+        // en una reserva nueva: un intento interrumpido de antes pudo dejar la venta cobrada y la fianza «cobrada»
+        const prev = await this.d.store.saleByKey(key);
+        if (prev && prev.status === "paid") saleId = prev.id;
+        else if (prev && prev.status !== "pending") {
+          throw new SkiRentalError("conflict", "La venta de daños de esta liquidación está anulada o devuelta en el TPV: revisa la venta con administración antes de liquidar la fianza");
+        } else {
           try {
             const createSale = await getSale();
             const s = await createSale({
@@ -301,9 +318,12 @@ export class SkiDepositService {
             saleId = s.saleId;
             ticketNumber = s.ticketNumber;
           } catch (e) {
-            // El TPV no la registró: sin venta con esa clave, la fianza vuelve a «cobrada» para repetir la liquidación
-            if (!(await this.d.store.saleByKey(key).catch(() => null))) await this.d.store.releaseSettlement(depositId).catch(() => undefined);
-            throw e;
+            // ¿Llegó el TPV a grabarla? Cobrada (fallo tras crearla): se sigue con ella. Ninguna: la fianza vuelve a
+            // «cobrada» para repetir la liquidación. No se sabe (BD caída) o a medias: sigue «liquidándose».
+            const after = await this.d.store.saleByKey(key).catch(() => undefined);
+            if (after === null) await this.d.store.releaseSettlement(depositId).catch(() => undefined);
+            if (after?.status !== "paid") throw e;
+            saleId = after.id;
           }
         }
         await this.d.store.recordSettlementSale(depositId, saleId);
@@ -321,7 +341,7 @@ export class SkiDepositService {
         if (saleId == null) await this.d.store.releaseSettlement(depositId).catch(() => undefined);
         return storeErr(e, "Fianza");
       }
-    });
+    }
   }
 
   /** Foto de los daños (imagen JPEG/PNG/WebP, 5 MB como mucho) guardada como fichero privado del Core. */
@@ -356,56 +376,96 @@ export class SkiDepositService {
     });
   }
 
-  /** Cobro del cargo en el TPV del Core (ticket con IVA). Repetirlo devuelve el mismo cobro. */
+  /**
+   * Cobro del cargo en el TPV del Core (ticket con IVA). Idempotente y recuperable:
+   *  - Todo el ciclo (reservar, cobrar, liberar, finalizar) va con el bloqueo del cargo: un doble clic o un reintento
+   *    espera a que termine el primero y devuelve su cobro; nunca deshace lo que el otro está haciendo.
+   *  - La venta del TPV es la verdad del cobro: si ya hay una venta cobrada con la clave del cargo (intento anterior
+   *    interrumpido por la red, un tiempo agotado o un fallo tras crearla), se concilia con ella y no se crea otra.
+   *  - El cargo solo vuelve a «pendiente» si el TPV no llegó a grabar ninguna venta.
+   */
   payCharge(siteId: string, chargeId: number, input: { sessionId: number; method: PayMethod }, actor: string, createSale: CreateDamageSale) {
     return this.within(siteId, true, async () => {
       await this.siteCharge(siteId, chargeId);
       if (!PAY_METHODS.includes(input.method)) throw new SkiRentalError("invalid_input", "Forma de pago no válida");
-      const c = await this.d.store
-        .claimCharge(
-          chargeId,
-          async (cur, lockSession) => {
-            if (cur.status === "paid") return false;
-            if (cur.status === "pending") {
-              rule(() => assertChargeTransition(cur.status, "paying"), "conflict");
+      return this.d.lock("ski_charge", String(chargeId), async () => {
+        const cur = await this.siteCharge(siteId, chargeId);
+        if (cur.status === "paid") return { charge: cur, replayed: true, ticketNumber: null as string | null };
+        if (cur.status === "cancelled") throw new SkiRentalError("conflict", "El cargo está anulado");
+        const sales = await this.d.store.chargeSales(chargeId);
+        const done = sales.find((s) => s.status === "paid");
+        if (done) return { charge: await this.d.store.finishCharge(chargeId, done, actor), replayed: true, ticketNumber: done.ticketNumber };
+        if (sales.some((s) => s.status === "pending")) throw new SkiRentalError("conflict", "La venta de este cargo sigue registrándose en el TPV: espera unos segundos y vuelve a intentarlo");
+        // Las ventas anuladas o devueltas en el TPV gastaron su clave: el cobro nuevo usa la siguiente
+        const key = chargeSaleKey(chargeId, sales.length + 1);
+        const c = await this.d.store
+          .claimCharge(
+            chargeId,
+            async (now, lockSession) => {
+              if (now.status === "paid") return false;
+              if (now.status === "cancelled") throw new SkiRentalError("conflict", "El cargo está anulado");
+              if (now.status === "pending") rule(() => assertChargeTransition(now.status, "paying"), "conflict");
               await this.assertSession(siteId, await lockSession(input.sessionId));
-            }
-            if (cur.status === "cancelled") throw new SkiRentalError("conflict", "El cargo está anulado");
-            return true;
-          },
-          input,
-        )
-        .catch((e) => storeErr(e, "Cargo"));
-      if (c.status === "paid") return { charge: c, replayed: true, ticketNumber: null as string | null };
-      let sale: Awaited<ReturnType<CreateDamageSale>>;
-      try {
-        sale = await createSale({
-          sessionId: c.paySessionId!,
-          idempotencyKey: chargeSaleKey(chargeId),
-          customerName: (await this.d.units.delivery(c.deliveryId))?.customerName ?? "",
-          concept: `Cargo por daños · alquiler #${c.deliveryId} · ${c.reason}`.slice(0, 500),
-          amountCents: c.amountCents,
-          method: c.payMethod ?? input.method,
-          notes: `Cargo por daños ${c.id}`,
-        });
-      } catch (e) {
-        await this.d.store.releaseCharge(chargeId).catch(() => undefined);
-        throw e;
-      }
-      return { charge: await this.d.store.finishCharge(chargeId, sale.saleId, actor), replayed: false, ticketNumber: sale.ticketNumber };
+              return true;
+            },
+            input,
+          )
+          .catch((e) => storeErr(e, "Cargo"));
+        if (c.status === "paid") return { charge: c, replayed: true, ticketNumber: null as string | null };
+        let sale: Awaited<ReturnType<CreateDamageSale>>;
+        try {
+          sale = await createSale({
+            sessionId: c.paySessionId!,
+            idempotencyKey: key,
+            customerName: (await this.d.units.delivery(c.deliveryId))?.customerName ?? "",
+            concept: `Cargo por daños · alquiler #${c.deliveryId} · ${c.reason}`.slice(0, 500),
+            amountCents: c.amountCents,
+            method: c.payMethod ?? input.method,
+            notes: `Cargo por daños ${c.id}`,
+          });
+        } catch (e) {
+          // ¿Llegó el TPV a grabar la venta? Cobrada: se concilia. Ninguna: vuelve a «pendiente». No se sabe (BD caída)
+          // o sigue a medias: se queda «cobrándose» y el reintento lo resuelve.
+          const after = await this.d.store.chargeSales(chargeId).catch(() => null);
+          const paid = after?.find((s) => s.status === "paid");
+          if (paid) return { charge: await this.d.store.finishCharge(chargeId, paid, actor), replayed: false, ticketNumber: paid.ticketNumber };
+          if (after && !after.some((s) => s.status === "pending")) await this.d.store.releaseCharge(chargeId).catch(() => undefined);
+          throw e;
+        }
+        const charge = await this.d.store.finishCharge(chargeId, { id: sale.saleId, sessionId: c.paySessionId!, method: c.payMethod ?? input.method }, actor);
+        return { charge, replayed: false, ticketNumber: sale.ticketNumber };
+      });
     });
   }
 
+  /**
+   * Anulación con motivo, con el bloqueo del cargo. Nunca se anula un cargo con venta cobrada en el TPV: si la hay (un
+   * intento interrumpido lo dejó «pendiente»), se concilia como cobrado y se rechaza la anulación.
+   */
   cancelCharge(siteId: string, chargeId: number, reason: string, actor: string) {
     return this.within(siteId, true, async () => {
       await this.siteCharge(siteId, chargeId);
       const r = text(reason, 300);
       if (!r || r.length < 3) throw new SkiRentalError("invalid_input", "Indica el motivo de la anulación");
-      return this.d.store
-        .cancelCharge(chargeId, r, (c) => {
-          if (c.status !== "cancelled") rule(() => assertChargeTransition(c.status, "cancelled"), "conflict");
-        }, actor)
-        .catch((e) => storeErr(e, "Cargo"));
+      return this.d.lock("ski_charge", String(chargeId), async () => {
+        const cur = await this.siteCharge(siteId, chargeId);
+        if (cur.status === "pending" || cur.status === "paying") {
+          const sales = await this.d.store.chargeSales(chargeId);
+          const paid = sales.find((s) => s.status === "paid");
+          if (paid) {
+            await this.d.store.finishCharge(chargeId, paid, actor);
+            throw new SkiRentalError("conflict", `El cargo ya está cobrado en el TPV${paid.ticketNumber ? ` (ticket ${paid.ticketNumber})` : ""}: no se puede anular`);
+          }
+          if (sales.some((s) => s.status === "pending")) throw new SkiRentalError("conflict", "La venta de este cargo sigue registrándose en el TPV: espera unos segundos y vuelve a intentarlo");
+          // «Cobrándose» sin venta: un intento interrumpido que no llegó al TPV; vuelve a «pendiente» para anularlo
+          if (cur.status === "paying") await this.d.store.releaseCharge(chargeId);
+        }
+        return this.d.store
+          .cancelCharge(chargeId, r, (c) => {
+            if (c.status !== "cancelled") rule(() => assertChargeTransition(c.status, "cancelled"), "conflict");
+          }, actor)
+          .catch((e) => storeErr(e, "Cargo"));
+      });
     });
   }
 

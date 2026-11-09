@@ -184,10 +184,12 @@ export function assertChargeTransition(from: ChargeStatus, to: ChargeStatus): vo
 
 /**
  * Claves de idempotencia del TPV (`[A-Za-z0-9_-]{8,64}`): una venta por liquidación de fianza (con el importe retenido,
- * para que una liquidación nueva con otro plan nunca reutilice una venta anterior) y una por cargo.
+ * para que una liquidación nueva con otro plan nunca reutilice una venta anterior) y una por cargo. Si la venta de un
+ * cargo se anuló o devolvió en el TPV sin cobrarse el cargo, su clave ya está gastada (el TPV devolvería esa misma venta):
+ * el siguiente intento usa `-pay-2`, `-pay-3`…
  */
 export const retentionSaleKey = (depositId: number, retainedCents: number) => `skidep-${depositId}-r${retainedCents}`;
-export const chargeSaleKey = (chargeId: number) => `skichg-${chargeId}-pay`;
+export const chargeSaleKey = (chargeId: number, attempt = 1) => `skichg-${chargeId}-pay${attempt > 1 ? `-${attempt}` : ""}`;
 
 /** Clave del cliente para no duplicar un cargo manual con un doble clic. */
 export const REQUEST_KEY_RE = /^[A-Za-z0-9_-]{8,64}$/;

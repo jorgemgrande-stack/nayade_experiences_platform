@@ -180,6 +180,14 @@ describe("estados", () => {
     expect(retentionSaleKey(5, 100)).not.toBe(retentionSaleKey(5, 200));
     expect(retentionSaleKey(5, 100)).toBe(retentionSaleKey(5, 100));
   });
+  it("cargo: el primer cobro usa la clave de siempre; tras una venta anulada en el TPV, la siguiente", () => {
+    expect(chargeSaleKey(7)).toBe("skichg-7-pay");
+    expect(chargeSaleKey(7, 1)).toBe("skichg-7-pay");
+    expect(chargeSaleKey(7, 2)).toBe("skichg-7-pay-2");
+    expect(IDEMPOTENCY_KEY_RE.test(chargeSaleKey(4294967295, 999))).toBe(true);
+    // Las claves de un cargo nunca empiezan por las de otro (se buscan por prefijo «skichg-<id>-pay»)
+    expect(chargeSaleKey(12).startsWith(chargeSaleKey(1))).toBe(false);
+  });
 });
 
 describe("fotos: tipo real por la firma del contenido", () => {
