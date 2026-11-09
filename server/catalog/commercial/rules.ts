@@ -33,11 +33,11 @@ export const COMMERCIAL_RULES: readonly CommercialRule[] = [
   },
   {
     id: "pos-caja-basica",
-    title: "Elephant POS: caja básica incluida en el plan; varias cajas, cajero y backoffice como extensión",
-    status: "proposed",
-    where: "Capacidad bill-cash de los planes de Elephant Core; connect-pos es una extensión con su precio aprobado",
-    todayEffect: "Ninguno: el catálogo ya funciona así (la caja básica no tiene precio propio y POS se cobra aparte)",
-    requires: ["Ratificar el reparto entre caja básica y POS (decisión 4)"],
+    title: "TPV: la caja la da el plan (Essential 1 caja activa, Business hasta 3, Enterprise sin límite comercial fijo); TPV Advanced añade arqueos, turnos, entrega de caja, autorizaciones y auditoría",
+    status: "approved",
+    where: "Capacidad bill-cash de los planes de Elephant Core (límite de cajas activas por plan) y pos-advanced de connect-pos (TPV Advanced, por empresa); revisión revision-catalogo-2026-11-09-tpv",
+    todayEffect: "Ninguno hasta programar la frontera en el TPV del Core: el catálogo no cobra la caja aparte y TPV Advanced sigue en venta asistida, sin Price de Stripe",
+    requires: ["Límite de cajas activas por plan y capacidad pos-advanced en el TPV del Core", "Precio por empresa de connect-pos y su ámbito company en el CRM", "Aplicar la revisión del catálogo revision-catalogo-2026-11-09-tpv"],
   },
   {
     id: "paquetes-solo-facturables",

@@ -79,6 +79,7 @@ import { MARKETING_LISTINGS_2026_11_09, REVIEW_ID_2026_11_09_MARKETING } from ".
 import { REVIEW_ID_2026_11_09_WHATSAPP, WHATSAPP_LISTING_2026_11_09 } from "../catalog/review20261109whatsapp";
 import { AUTOMATIONS_LISTING_2026_11_09, REVIEW_ID_2026_11_09_AUTOMATIONS } from "../catalog/review20261109automations";
 import { PACK_MARKETING_LISTING_2026_11_09, REVIEW_ID_2026_11_09_PACK_MARKETING } from "../catalog/review20261109packmarketing";
+import { REVIEW_ID_2026_11_09_TPV, TPV_LISTINGS_2026_11_09 } from "../catalog/review20261109tpv";
 import { REVIEW_ID_2026_11_08_FICHAS, applyListingReview } from "../catalog/review20261108fichas";
 import { NET_LISTINGS_2026_11_08, REVIEW_ID_2026_11_08_NET } from "../catalog/review20261108net";
 import { MysqlStripeStore } from "../stripe/store";
@@ -522,6 +523,9 @@ async function main() {
           const repAutomations = await applyListingReview(svc, webStore, { apply, author: `operacion:${REVIEW_ID_2026_11_09_AUTOMATIONS}`, changes: AUTOMATIONS_LISTING_2026_11_09 });
           // 09/11/2026: Paquete Marketing en implantación acompañada (sus cuatro componentes ya se contratan; sin Price de Stripe)
           const repPackMarketing = await applyListingReview(svc, webStore, { apply, author: `operacion:${REVIEW_ID_2026_11_09_PACK_MARKETING}`, changes: PACK_MARKETING_LISTING_2026_11_09 });
+          // 09/11/2026: estrategia del TPV (caja de cada plan y TPV Advanced, la ficha de connect-pos). Sin precios: el de
+          // connect-pos y su ámbito por empresa se cambian aparte en el CRM
+          const repTpv = await applyListingReview(svc, webStore, { apply, author: `operacion:${REVIEW_ID_2026_11_09_TPV}`, changes: TPV_LISTINGS_2026_11_09 });
           const repConnect = await applyDirectSaleReview(svc, webStore, async (id) => !!(await stripeStore.priceForWebPrice(id)), { apply, author: `operacion:${REVIEW_ID_2026_11_08_CONNECT}`, changes: [...DIRECT_SALE_2026_11_08, FINANCE_SYNC_DIRECT_SALE] });
           const pricesFinal = new Map((await webStore.listPrices()).map((p) => [p.id, `${p.status}:${p.amountCents}`]));
           const pricesIntactConnect = pricesFinal.size === pricesAfter.size && Array.from(pricesAfter).every(([id, v]) => pricesFinal.get(id) === v);
@@ -539,6 +543,7 @@ async function main() {
                 { revision: REVIEW_ID_2026_11_09_WHATSAPP, ...repWhatsapp },
                 { revision: REVIEW_ID_2026_11_09_AUTOMATIONS, ...repAutomations },
                 { revision: REVIEW_ID_2026_11_09_PACK_MARKETING, ...repPackMarketing },
+                { revision: REVIEW_ID_2026_11_09_TPV, ...repTpv },
                 { revision: REVIEW_ID_2026_11_08_CONNECT, modoStripe: stripeMode, ...repConnect, preciosIntactos: pricesIntactConnect },
               ],
             }),

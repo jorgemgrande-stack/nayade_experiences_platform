@@ -26,7 +26,8 @@ type Field = keyof Commercial;
 
 export interface ListingChange {
   key: string;
-  evidence: string;
+  /** Evidencia del estado comercial; sin ella se conserva la que ya tenga el producto (cambios solo de textos). */
+  evidence?: string;
   /** Estados de partida y de llegada (sin `status`, no cambia). */
   status?: { from: ProductDraft["catalog"]["commercialStatus"]; to: ProductDraft["catalog"]["commercialStatus"] };
   technical?: { from: ProductDraft["technicalStatus"]; to: ProductDraft["technicalStatus"] };
@@ -39,7 +40,15 @@ export interface ListingChange {
   implementationLevel?: { from: 1 | 2 | 3 | undefined; to: 1 | 2 | 3 };
   /** Campos de la ficha: valor publicado de partida y valor nuevo. */
   fields: Partial<Record<Field, { from: unknown; to: unknown }>>;
+  /** Textos del producto fuera de la ficha (nombre, frase corta y descripción): de partida y nuevo. */
+  product?: Partial<Record<ProductText, { from: string; to: string }>>;
+  /**
+   * Solo textos de un producto que ya está en venta directa (un plan): la revisión también le aplica. Sin esta marca,
+   * un producto en venta directa se da por hecho y no se toca (review20261108connect.ts ya hizo su parte).
+   */
+  inDirectSale?: boolean;
 }
+type ProductText = "name" | "tagline" | "description";
 
 export const ASSISTED_FAQ = { q: "¿Cómo se pone en marcha?", a: "Es una implantación acompañada: envías la solicitud desde el panel y nuestro equipo la activa contigo. Enviar la solicitud no activa ni cobra nada por sí solo." };
 const COMING_SOON_ACTIVATION = { activation: "Todavía no se puede contratar: estará disponible próximamente." };
@@ -215,14 +224,16 @@ function same(a: unknown, b: unknown): boolean {
 function target(d: ProductDraft, c: ListingChange): ProductDraft {
   const m: Commercial = { ...(d.commercial as Commercial) };
   for (const [f, v] of Object.entries(c.fields) as Array<[Field, { to: unknown }]>) (m as Record<string, unknown>)[f] = v.to;
+  const texts = Object.fromEntries((Object.entries(c.product ?? {}) as Array<[ProductText, { to: string }]>).map(([f, v]) => [f, v.to]));
   return {
     ...d,
+    ...texts,
     ...(c.thirdPartyCosts ? { thirdPartyCosts: c.thirdPartyCosts.to } : {}),
     technicalStatus: c.technical?.to ?? d.technicalStatus,
     activation: c.activation ? { ...d.activation, kind: c.activation.to } : d.activation,
     catalog: { ...d.catalog, commercialStatus: c.status?.to ?? d.catalog.commercialStatus, ...(c.stripePrepared !== undefined ? { stripePrepared: c.stripePrepared } : {}), ...(c.implementationLevel ? { implementationLevel: c.implementationLevel.to } : {}) },
-    commercial: m,
-    internal: { ...d.internal, evidence: c.evidence, ...(c.functionalGrade ? { functionalGrade: c.functionalGrade } : {}) },
+    commercial: Object.keys(c.fields).length ? m : d.commercial,
+    internal: { ...d.internal, ...(c.evidence !== undefined ? { evidence: c.evidence } : {}), ...(c.functionalGrade ? { functionalGrade: c.functionalGrade } : {}) },
   };
 }
 
@@ -230,6 +241,7 @@ function isDone(d: ProductDraft, c: ListingChange): boolean {
   const t = target(d, c);
   return (
     same(d.commercial, t.commercial) &&
+    (Object.keys(c.product ?? {}) as ProductText[]).every((f) => d[f] === t[f]) &&
     d.technicalStatus === t.technicalStatus &&
     d.activation.kind === t.activation.kind &&
     d.catalog.commercialStatus === t.catalog.commercialStatus &&
@@ -267,12 +279,12 @@ export async function applyListingReview(svc: WebAdminService, store: WebStore, 
       r.conflicts.push(`${c.key}: tiene cambios sin publicar en el CRM; no se publica un borrador ajeno`);
       continue;
     }
-    if (!d.commercial) {
+    if (!d.commercial && Object.keys(c.fields).length) {
       r.conflicts.push(`${c.key}: no tiene ficha comercial`);
       continue;
     }
     // Ya en venta directa (review20261108connect.ts): esta revisión ya hizo su parte y no la deshace
-    if (d.catalog.commercialStatus === "available" && d.technicalStatus === "available" && d.catalog.offer?.modality === "immediate") {
+    if (!c.inDirectSale && d.catalog.commercialStatus === "available" && d.technicalStatus === "available" && d.catalog.offer?.modality === "immediate") {
       r.already.push(`${c.key} (en venta directa)`);
       continue;
     }
@@ -287,11 +299,13 @@ export async function applyListingReview(svc: WebAdminService, store: WebStore, 
       const now = (d.commercial as Record<string, unknown>)[f];
       if (!same(now, v.from) && !same(now, v.to)) problems.push(`el campo «${f}» de la ficha ya no es el de partida`);
     }
+    for (const [f, v] of Object.entries(c.product ?? {}) as Array<[ProductText, { from: string; to: string }]>) if (d[f] !== v.from && d[f] !== v.to) problems.push(`el texto «${f}» del producto ya no es el de partida`);
     if (problems.length) {
       r.conflicts.push(`${c.key}: ${problems.join("; ")}; se deja como lo decidió el CRM`);
       continue;
     }
-    r.changed.push(`${c.key}: ${c.status ? `${c.status.from} → ${c.status.to}; ` : ""}ficha (${Object.keys(c.fields).join(", ")})`);
+    const what = [Object.keys(c.product ?? {}).length ? `producto (${Object.keys(c.product ?? {}).join(", ")})` : "", Object.keys(c.fields).length ? `ficha (${Object.keys(c.fields).join(", ")})` : ""].filter(Boolean).join("; ");
+    r.changed.push(`${c.key}: ${c.status ? `${c.status.from} → ${c.status.to}; ` : ""}${what}`);
     if (!o.apply) continue;
     try {
       const saved = await svc.save("product", c.key, { draft: target(d, c), expectedVersion: cur.draftVersion }, o.author);
