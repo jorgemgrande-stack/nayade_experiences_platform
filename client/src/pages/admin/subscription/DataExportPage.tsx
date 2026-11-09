@@ -18,13 +18,13 @@ const fmtDateTime = (ms: number) => new Date(ms).toLocaleString("es-ES", { day: 
 const fmtSize = (b: number) => (b >= 1048576 ? `${(b / 1048576).toLocaleString("es-ES", { maximumFractionDigits: 1 })} MB` : `${Math.max(1, Math.round(b / 1024)).toLocaleString("es-ES")} KB`);
 const fmtNum = (n: number | null) => (n ?? 0).toLocaleString("es-ES");
 
-/** Aviso según el estado de la cuenta: la exportación sigue disponible en solo lectura y suspendida. */
-function AccountNotice() {
+/** Aviso según el estado de la cuenta (la exportación sigue disponible en solo lectura y suspendida), con quién exporta. */
+function AccountNotice({ canExport }: { canExport: boolean }) {
   const sub = usePanelSubscription();
   const d = sub.data;
   if (!d || d.licensing !== "capabilities") return null;
   // La consulta solo se promete si existe hoy (subscription.overview.consultation, mismas reglas que el servidor)
-  const text = exportAccountNotice(d.state, d.consultation);
+  const text = exportAccountNotice(d.state, d.consultation, canExport);
   if (!text) return null;
   return (
     <div className="rounded-xl border border-amber-300/60 bg-amber-50 dark:bg-amber-500/10 p-4 flex gap-3" role="status">
@@ -221,7 +221,7 @@ export default function DataExportPage() {
           <p className="text-sm text-muted-foreground">Una copia de tus datos y ficheros en un ZIP con CSV (para hojas de cálculo) y JSON (para otros sistemas).</p>
         </div>
 
-        <AccountNotice />
+        {s && <AccountNotice canExport={s.canExport} />}
 
         {status.isLoading && <PanelLoading label="Comprobando tu acceso…" />}
         {status.isError && <PanelError error={status.error} onRetry={() => status.refetch()} title="No se ha podido comprobar tu acceso" />}

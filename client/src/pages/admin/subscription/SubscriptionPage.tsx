@@ -27,7 +27,7 @@ import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
 import { buildPlanComparison, isTrialState, parsePanelPlans, type PlanChangeInfo, type SelfServicePlanKey } from "@shared/subscriptionPlans";
 import { parseConversionRequest } from "@shared/connectMarketplace";
-import { subscriptionEndedText } from "@shared/subscriptionRecovery";
+import { expiredCanConsult, subscriptionEndedText } from "@shared/subscriptionRecovery";
 import "@/components/connect/connectStage.css";
 
 /** Portal de facturación de Stripe: solo la persona propietaria y si está activado. */
@@ -93,6 +93,9 @@ const CAP_STATUS: Record<string, { label: string; icon: typeof CheckCircle2; ton
   suspended: { label: "Suspendida", icon: ShieldAlert, tone: "text-red-700 dark:text-red-400" },
   cancelled: { label: "Cancelada", icon: ShieldAlert, tone: "text-muted-foreground" },
 };
+
+/** Capacidad caducada sin consulta (p. ej. el plazo de solo lectura vencido: decide() tampoco deja leer). */
+const EXPIRED_NO_READ = { label: "Caducada", icon: Clock, tone: "text-muted-foreground" };
 
 const fmtDate = (ms: number) => new Date(ms).toLocaleDateString("es-ES", { day: "numeric", month: "long", year: "numeric" });
 
@@ -353,7 +356,8 @@ export default function SubscriptionPage() {
                             <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2">{GROUP_LABELS[group] ?? group}</h4>
                             <ul className="space-y-1.5">
                               {caps.map((cap) => {
-                                const meta = CAP_STATUS[cap.status] ?? CAP_STATUS.contracted;
+                                // «Caducada (solo lectura)» solo si hoy se puede consultar (subscription.overview.consultation)
+                                const meta = cap.status === "expired" && !expiredCanConsult(data.consultation) ? EXPIRED_NO_READ : (CAP_STATUS[cap.status] ?? CAP_STATUS.contracted);
                                 const Icon = meta.icon;
                                 return (
                                   <li key={cap.id} className="flex flex-wrap items-start gap-2 text-sm">
