@@ -281,6 +281,17 @@ describe.skipIf(!URL_)("Venta multicanal · canales, cupo, ventas sin sobreventa
     expect(await txCount("OPS-1")).toBe(1);
   });
 
+  it("el token del canal también se acepta en una cabecera (la URL con token sigue valiendo)", async () => {
+    const r = await ess.call("a", "POST", "/canal/ventas", { body: sale("HDR-1", "KAYAK", { date: day(25) }), headers: { "x-canal-token": token } });
+    expect(r.status).toBe(200);
+    expect(r.json.results[0]).toMatchObject({ status: "registrada" });
+    const bearer = await ess.call("a", "POST", "/canal/ventas", { body: sale("HDR-1", "KAYAK", { date: day(25) }), headers: { authorization: `Bearer ${token}` } });
+    expect(bearer.json.results[0]).toMatchObject({ status: "registrada", duplicate: true });
+    expect((await ess.call("a", "GET", "/canal/disponibilidad", { headers: { authorization: `Bearer ${token}` } })).status).toBe(200);
+    expect((await ess.call("a", "POST", "/canal/ventas", { body: sale("HDR-2", "KAYAK"), headers: { "x-canal-token": "b".repeat(43) } })).status).toBe(404);
+    expect((await ess.call("a", "POST", "/canal/ventas", { body: sale("HDR-3", "KAYAK") })).status).toBe(404);
+  });
+
   it("aislamiento: la empresa B no ve los canales de A y el enlace de A no sirve en B", async () => {
     expect(await ok(q("channels", undefined, adB, "b"))).toEqual([]);
     expect((await post(sale("B-1", "KAYAK"), "b")).status).toBe(404);

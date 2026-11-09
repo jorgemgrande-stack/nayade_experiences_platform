@@ -208,6 +208,9 @@ function Channels() {
                 </div>
               ))}
               <p className="text-xs text-muted-foreground">
+                Si el canal lo admite, mejor sin el token en la dirección: <code>{origin}/canal/ventas</code> y <code>{origin}/canal/disponibilidad</code> con la cabecera <code>X-Canal-Token</code> (o <code>Authorization: Bearer</code>) y el token <code className="break-all">{link.token}</code>.
+              </p>
+              <p className="text-xs text-muted-foreground">
                 Cuerpo de cada venta: <code>{'{"ref":"A-1001","code":"KAYAK-2H","date":"2026-12-01","time":"10:00","units":2,"amount":59.90,"customer":{"name":"…","email":"…"}}'}</code>.
                 Para cancelar, la misma referencia con <code>{'"event":"cancelacion"'}</code>. Se admiten hasta 100 en <code>{'{"sales":[…]}'}</code>. Repetir una venta no la duplica.
               </p>

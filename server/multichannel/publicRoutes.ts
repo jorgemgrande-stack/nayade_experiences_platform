@@ -4,6 +4,9 @@
  *
  *  - POST /canal/<token>/ventas         Ventas y cancelaciones del canal en JSON (una o `{ "sales": [...] }`, hasta 100).
  *  - GET  /canal/<token>/disponibilidad Lo que el canal puede vender cada día (su cupo restante, limitado por el Core).
+ *  - POST /canal/ventas y GET /canal/disponibilidad: lo mismo con el token en una cabecera (`X-Canal-Token: <token>` o
+ *    `Authorization: Bearer <token>`), para que el secreto no quede en los registros de URL. La forma con el token en la
+ *    ruta se mantiene por compatibilidad.
  *
  * El token es el secreto del canal (32 bytes, se guarda solo su huella ligada a la empresa) y la empresa sale del
  * dominio de la petición, nunca del cuerpo. Exige multiempresa y la capacidad `multichannel` con escritura en esa
@@ -20,7 +23,7 @@ import { MC_CAPABILITY, MC_LIMITS, parseInboundSale } from "../../shared/multich
 import { McNotInstalled, availabilityFeed, ingestSale, resolveInboundChannel, type McAfterRegister } from "../multichannelDb";
 
 /** POST de ventas (lo comprueba el lector de cuerpos). */
-export const MC_PUBLIC_POST_PATH = /^\/canal\/[^/]+\/ventas\/?$/;
+export const MC_PUBLIC_POST_PATH = /^\/canal\/(?:[^/]+\/)?ventas\/?$/;
 
 const json = express.json({ limit: MC_LIMITS.inboundBytes, type: () => true });
 
@@ -40,6 +43,14 @@ const noStore = (res: Response) => {
   res.setHeader("X-Robots-Tag", "noindex, nofollow");
   res.setHeader("Referrer-Policy", "no-referrer");
 };
+/** Token del canal: el de la ruta o, si no va en ella, el de la cabecera X-Canal-Token o Authorization: Bearer. */
+export function inboundTokenOf(req: Pick<Request, "params" | "headers">): string {
+  if (req.params?.token) return String(req.params.token).slice(0, 120);
+  const h = req.headers["x-canal-token"];
+  const header = (Array.isArray(h) ? h[0] : h) ?? /^Bearer\s+(\S+)$/i.exec(String(req.headers.authorization ?? ""))?.[1] ?? "";
+  return String(header).trim().slice(0, 120);
+}
+
 const notFound = (res: Response) => void res.status(404).json({ error: "not_found" });
 const unavailable = (res: Response) => void res.status(503).json({ error: "unavailable", message: "La Venta multicanal no está disponible en esta empresa." });
 
@@ -68,7 +79,7 @@ export function multichannelHandlers(o: MultichannelPublicOptions = {}) {
     noStore(res);
     try {
       if (!(await available())) return unavailable(res);
-      const channel = await resolveInboundChannel(String(req.params.token ?? "").slice(0, 120));
+      const channel = await resolveInboundChannel(inboundTokenOf(req));
       if (!channel) return notFound(res);
       const body = req.body && typeof req.body === "object" ? (req.body as Record<string, unknown>) : null;
       if (!body) return void res.status(400).json({ error: "invalid_body" });
@@ -95,7 +106,7 @@ export function multichannelHandlers(o: MultichannelPublicOptions = {}) {
     noStore(res);
     try {
       if (!(await available())) return unavailable(res);
-      const channel = await resolveInboundChannel(String(req.params.token ?? "").slice(0, 120));
+      const channel = await resolveInboundChannel(inboundTokenOf(req));
       if (!channel) return notFound(res);
       const days = Number(req.query.dias ?? req.query.days ?? 60);
       res.status(200).json(await availabilityFeed(channel.id, Number.isFinite(days) ? Math.trunc(days) : 60));
@@ -115,9 +126,12 @@ export function createMultichannelPublicRouter(o: MultichannelPublicOptions = {}
     rateLimit({ windowMs, limit, standardHeaders: true, legacyHeaders: false, keyGenerator, handler: (_req, res) => void res.status(429).json({ error: "too_many_requests" }) });
   const all = limiter(60_000, o.perIpPerMinute ?? 120, (req) => `mc-all:${ip(req)}`);
   // Por enlace: la huella de la ruta con la empresa, nunca el token
-  const perLink = limiter(10 * 60_000, o.perLinkPer10Min ?? 600, (req) => `mc-link:${crypto.createHash("sha256").update(`${getTenantIdOrDefault()}:${String(req.params.token ?? "")}`).digest("hex")}`);
+  const perLink = limiter(10 * 60_000, o.perLinkPer10Min ?? 600, (req) => `mc-link:${crypto.createHash("sha256").update(`${getTenantIdOrDefault()}:${inboundTokenOf(req)}`).digest("hex")}`);
   const h = multichannelHandlers(o);
   r.post("/canal/:token/ventas", all, perLink, multichannelBodyParser, h.post);
   r.get("/canal/:token/disponibilidad", all, perLink, h.get);
+  // Con el token en una cabecera
+  r.post("/canal/ventas", all, perLink, multichannelBodyParser, h.post);
+  r.get("/canal/disponibilidad", all, perLink, h.get);
   return r;
 }

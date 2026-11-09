@@ -28,7 +28,7 @@ import { TRPC_ROUTER_CAPABILITIES, capabilityForProcedure } from "./_core/capabi
 import { TASK_NAV } from "../shared/adminNav";
 import { PROVIDERS } from "./_core/credentials/catalog";
 import { inboundTokenHash, newInboundToken, storedSaleInput } from "./multichannelDb";
-import { MC_PUBLIC_POST_PATH, createMultichannelPublicRouter, multichannelBodyParser } from "./multichannel/publicRoutes";
+import { MC_PUBLIC_POST_PATH, createMultichannelPublicRouter, inboundTokenOf, multichannelBodyParser } from "./multichannel/publicRoutes";
 import { NET_PUBLIC_PATH } from "./netPublic/router";
 
 describe("comisión", () => {
@@ -135,6 +135,7 @@ describe("enlace de entrada", () => {
   it("rutas propias, fuera de las rutas de formularios de Net", () => {
     expect(MC_PUBLIC_POST_PATH.test("/canal/abc/ventas")).toBe(true);
     expect(MC_PUBLIC_POST_PATH.test("/canal/abc/otra")).toBe(false);
+    expect(MC_PUBLIC_POST_PATH.test("/canal/ventas")).toBe(true);
     expect(NET_PUBLIC_PATH.test("/canal/abc")).toBe(false);
   });
 
@@ -155,6 +156,14 @@ describe("enlace de entrada", () => {
       });
     return { send, close: () => new Promise<void>((r) => server.close(() => r())) };
   }
+
+  it("token del canal: el de la ruta o, si no, el de la cabecera X-Canal-Token o Authorization: Bearer", () => {
+    expect(inboundTokenOf({ params: { token: "de-la-ruta" }, headers: { "x-canal-token": "otro" } } as any)).toBe("de-la-ruta");
+    expect(inboundTokenOf({ params: {}, headers: { "x-canal-token": " abc " } } as any)).toBe("abc");
+    expect(inboundTokenOf({ params: {}, headers: { authorization: "Bearer xyz" } } as any)).toBe("xyz");
+    expect(inboundTokenOf({ params: {}, headers: { authorization: "Basic xyz" } } as any)).toBe("");
+    expect(inboundTokenOf({ params: {}, headers: {} } as any)).toBe("");
+  });
 
   it("lector del cuerpo: solo JSON y como mucho 64 KB", async () => {
     const app = express();
