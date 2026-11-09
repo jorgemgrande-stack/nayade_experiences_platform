@@ -46,6 +46,23 @@ export function tpvPlanInfo(tier: TpvTier): TpvPlanInfo {
   return { tier, maxActiveRegisters, features };
 }
 
+/**
+ * Derecho adquirido (decisión de main del 10/11/2026, a la espera de Jorge: «no reducir la operativa de ninguna
+ * empresa existente»). Estas funciones las daba Essential hasta la estrategia TPV; las empresas dadas de alta antes de
+ * la fecha de corte las conservan aunque su plan ya no las incluya. Las nuevas siguen el reparto por plan.
+ */
+export const TPV_ACQUIRED_RIGHTS_CUTOFF = "2026-11-10";
+export const TPV_ACQUIRED_RIGHTS_CUTOFF_MS = Date.parse("2026-11-10T00:00:00+01:00");
+export const TPV_GRANDFATHERED_FEATURES: readonly TpvFeature[] = ["detailedReports", "closureSupervision", "cashDifferences"];
+
+/** Plan con los derechos adquiridos de la empresa sumados (nunca quita nada). */
+export function withAcquiredRights(info: TpvPlanInfo, acquired: readonly TpvFeature[]): TpvPlanInfo {
+  if (!acquired.length) return info;
+  const features = { ...info.features };
+  for (const f of acquired) features[f] = true;
+  return { ...info, features };
+}
+
 /** Plan del que forma parte cada función (para explicar dónde está y ofrecer la ampliación). */
 export function tierForFeature(f: TpvFeature): "business" | "enterprise" {
   return BUSINESS_FEATURES.includes(f) ? "business" : "enterprise";

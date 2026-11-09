@@ -47,6 +47,7 @@ export const CUSTOM_ROLE_PERMISSIONS: readonly CustomRolePermissionDef[] = [
   p("tpv.sell", "Vender en el TPV", "TPV y caja", ["admin", "agente"]),
   p("tpv.open_close", "Abrir y cerrar caja del TPV", "TPV y caja", ["admin", "agente"]),
   p("tpv.backoffice", "Administración del TPV", "TPV y caja", ["admin"]),
+  p("tpv.authorize", "Autorizar operaciones especiales del TPV", "TPV y caja", ["admin"]),
   p("operations.view", "Ver operaciones del día", "Operaciones", ["admin", "agente", "monitor"]),
   p("restaurants.view", "Gestionar restaurantes", "Operaciones", ["admin", "adminrest"]),
   p("accounting.daily_control", "Control diario de contabilidad", "Contabilidad", ["admin", "controler"]),

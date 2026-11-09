@@ -340,6 +340,28 @@ async function readCash(db: Db, ctx: SourceContext, out: SourceRead) {
     else if (m.type === "out" && effective === "gasto" && !clearedByExpense) out.review.push({ key, message: `${what} de tipo gasto sin su gasto (¿faltaba la categoría o el centro de coste?): queda en el puente de caja (555)` });
     else if (m.type === "out" && effective == null && !clearedByExpense) out.review.push({ key, message: `${what} sin tipo y sin gasto que la salde (¿un traspaso anterior?): queda en el puente de caja (555)` });
   }
+  // Correcciones de una caja ya cerrada (tpv_session_corrections, migración 0063): una vez cada una, aparte del
+  // cierre (que no cambia). Entrada o salida como un movimiento de caja sin tipo; ajuste del recuento como un
+  // sobrante o faltante. Sin la tabla (empresa sin la migración), no hay correcciones.
+  let corrections: Array<{ id: number; session_id: number; kind: string; amount: string; reason: string; created_at: number; register: string | null }> = [];
+  try {
+    const [cr] = (await db.execute(sql`SELECT c.id, c.session_id, c.kind, c.amount, c.reason, c.created_at, r.name AS register FROM tpv_session_corrections c
+      LEFT JOIN cash_sessions s ON s.id = c.session_id LEFT JOIN cash_registers r ON r.id = s.registerId WHERE c.created_at >= ${since}`)) as unknown as [typeof corrections];
+    corrections = cr ?? [];
+  } catch {
+    corrections = [];
+  }
+  for (const k of corrections) {
+    const date = madridDayKey(new Date(Number(k.created_at)));
+    const cents = centsOf(k.amount);
+    const reason = `Corrección del cierre de caja #${k.session_id}: ${String(k.reason ?? "").trim()}`;
+    out.desired.set(
+      `cajacorr:${k.id}`,
+      k.kind === "count_adjustment"
+        ? desiredOf((map) => cashCloseEntry({ sessionId: Number(k.session_id), date, differenceCents: cents, register: k.register ?? "" }, map), ctx.map)
+        : desiredOf((map) => cashMoveEntry({ id: Number(k.id), date, type: k.kind === "cash_out" ? "out" : "in", amountCents: Math.abs(cents), reason }, map), ctx.map),
+    );
+  }
 }
 
 const READERS: Record<SourceGroup, (db: Db, ctx: SourceContext, out: SourceRead) => Promise<void>> = {

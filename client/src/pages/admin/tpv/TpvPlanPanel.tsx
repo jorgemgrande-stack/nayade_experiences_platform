@@ -76,6 +76,11 @@ export default function TpvPlanPanel({ canManage }: { canManage: boolean }) {
               </li>
             ))}
           </ul>
+          {q.data.acquired.features.length > 0 && (
+            <p className="text-xs text-muted-foreground mt-2">
+              Como cliente desde antes del {q.data.acquired.cutoff.split("-").reverse().join("/")}, conservas {q.data.acquired.features.map((f) => TPV_FEATURE_LABELS[f as TpvFeature].toLowerCase()).join(", ")}.
+            </p>
+          )}
         </div>
         <div className="space-y-3">
           {(["business", "enterprise"] as const).map((t) =>

@@ -114,6 +114,10 @@ export default function CashRegisterManager() {
   const [actionNote, setActionNote] = useState("");
 
   const utils = trpc.useUtils();
+  // Supervisión de cierres y gestión de diferencias: Business o superior (lo decide el servidor; aquí solo se explica)
+  const tpvPlanQ = trpc.tpv.planInfo.useQuery(undefined, { retry: false });
+  const canSuperviseClosures = tpvPlanQ.data?.plan?.features.closureSupervision ?? true;
+  const canManageDifferences = tpvPlanQ.data?.plan?.features.cashDifferences ?? true;
 
   const summaryQ = trpc.cashRegister.getSummary.useQuery();
   const accountsQ = trpc.cashRegister.listAccounts.useQuery();
@@ -858,23 +862,30 @@ export default function CashRegisterManager() {
                   <div className="border rounded-xl p-4 space-y-2 bg-orange-50 border-orange-200">
                     <p className="text-xs font-semibold text-orange-800 uppercase tracking-wide mb-3">Acciones de resolución</p>
                     <div className="flex flex-wrap gap-2">
-                      {cl.status === "difference" && (
+                      {cl.status === "difference" && canSuperviseClosures && (
                         <Button size="sm" variant="outline" className="text-blue-700 border-blue-300 hover:bg-blue-50" onClick={() => setActionModal("review")}>
                           🔍 Marcar revisado
                         </Button>
                       )}
-                      {!hasAdjustment && (
+                      {!hasAdjustment && canManageDifferences && (
                         <Button size="sm" variant="outline" className="text-purple-700 border-purple-300 hover:bg-purple-50" onClick={() => setActionModal("adjust")}>
                           ⚖️ Crear ajuste de caja
                         </Button>
                       )}
-                      <Button size="sm" variant="outline" className="text-gray-700 border-gray-300 hover:bg-gray-50" onClick={() => setActionModal("accept")}>
-                        📋 Aceptar sin ajuste
-                      </Button>
+                      {canManageDifferences && (
+                        <Button size="sm" variant="outline" className="text-gray-700 border-gray-300 hover:bg-gray-50" onClick={() => setActionModal("accept")}>
+                          📋 Aceptar sin ajuste
+                        </Button>
+                      )}
                       <Button size="sm" variant="outline" className="text-emerald-700 border-emerald-300 hover:bg-emerald-50" onClick={() => setActionModal("note")}>
                         💬 Añadir nota
                       </Button>
                     </div>
+                    {(!canSuperviseClosures || !canManageDifferences) && (
+                      <p className="text-xs text-muted-foreground pt-1">
+                        La supervisión de cierres y la gestión de diferencias de caja forman parte del plan Business. Puedes anotar lo ocurrido y <a href="/admin/suscripcion" className="underline">ampliar tu plan</a> cuando lo necesites.
+                      </p>
+                    )}
                   </div>
                 )}
                 {!isActionable && ["adjusted", "accepted_difference", "balanced"].includes(cl.status) && (

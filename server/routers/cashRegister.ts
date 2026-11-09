@@ -8,6 +8,7 @@ import { createCashMovementIfNotExists } from "./cashRegisterHelper";
 import { getSystemSetting } from "../config";
 import { assertModuleEnabled } from "../_core/flagGuard";
 import { madridDateKey } from "../utils/timezone";
+import { assertTpvFeature } from "../tpvRulesDb";
 import { legacyDb, legacyPool } from "../_core/legacyDb";
 
 const _pool = legacyPool();
@@ -20,6 +21,17 @@ const cashViewProc   = permissionProcedure("accounting.cash.view",   ["admin"]).
 });
 const cashManageProc = permissionProcedure("accounting.cash.manage", ["admin"]).use(async ({ ctx, next }) => {
   await assertModuleEnabled("cash_register_module_enabled");
+  return next({ ctx });
+});
+
+// Supervisión de cierres y gestión de diferencias de caja: Business o superior (estrategia TPV 09/11/2026). Ver los
+// cierres, sus alertas y añadir notas sigue en todos los planes.
+const closureSupervisionProc = cashManageProc.use(async ({ ctx, next }) => {
+  await assertTpvFeature("closureSupervision");
+  return next({ ctx });
+});
+const cashDifferencesProc = cashManageProc.use(async ({ ctx, next }) => {
+  await assertTpvFeature("cashDifferences");
   return next({ ctx });
 });
 
@@ -405,7 +417,7 @@ export const cashRegisterRouter = router({
         .orderBy(desc(finCashClosureActions.createdAt));
     }),
 
-  reviewClosure: cashManageProc
+  reviewClosure: closureSupervisionProc
     .input(z.object({ closureId: z.number(), notes: z.string().min(1) }))
     .mutation(async ({ input, ctx }) => {
       const [closure] = await db.select().from(finCashClosures).where(eq(finCashClosures.id, input.closureId));
@@ -440,7 +452,7 @@ export const cashRegisterRouter = router({
       return { ok: true };
     }),
 
-  createClosureAdjustment: cashManageProc
+  createClosureAdjustment: cashDifferencesProc
     .input(z.object({ closureId: z.number(), notes: z.string().min(1) }))
     .mutation(async ({ input, ctx }) => {
       const [closure] = await db.select().from(finCashClosures).where(eq(finCashClosures.id, input.closureId));
@@ -522,7 +534,7 @@ export const cashRegisterRouter = router({
       return { ok: true, concept, amount: movAmount, movType };
     }),
 
-  acceptDifference: cashManageProc
+  acceptDifference: cashDifferencesProc
     .input(z.object({ closureId: z.number(), notes: z.string().min(1) }))
     .mutation(async ({ input, ctx }) => {
       const [closure] = await db.select().from(finCashClosures).where(eq(finCashClosures.id, input.closureId));

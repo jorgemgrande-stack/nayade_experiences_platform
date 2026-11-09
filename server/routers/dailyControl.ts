@@ -836,31 +836,7 @@ export const dailyControlRouter = router({
       // Inventario (Business): las unidades vendidas se reponen una sola vez (sin inventario, no hace nada)
       const stockActor = { id: ctx.user?.id ?? null, name: ctx.user?.name ?? null };
       if (input.type === "tpv") {
-        const [sale] = await db.select({ reservationId: tpvSales.reservationId })
-          .from(tpvSales)
-          .where(eq(tpvSales.id, input.id))
-          .limit(1);
-        if (!sale) throw new TRPCError({ code: "NOT_FOUND", message: "Venta TPV no encontrada" });
-
-        // Marcar venta TPV como cancelled
-        await db.update(tpvSales)
-          .set({ status: "cancelled" })
-          .where(eq(tpvSales.id, input.id));
-
-        // Marcar transacción contable vinculada como reembolsada
-        await db.update(transactions)
-          .set({ status: "reembolsado", operationStatus: "reembolsada" })
-          .where(eq(transactions.tpvSaleId, input.id));
-
-        // Si tiene reserva auto-generada, también anularla
-        if (sale.reservationId) {
-          await db.update(reservations)
-            .set({ status: "cancelled", statusReservation: "ANULADA" })
-            .where(eq(reservations.id, sale.reservationId));
-        }
-        await restockTpvSale(input.id, stockActor);
-        // Tokens internos: se anulan los puntos emitidos por la venta, una sola vez (sin programa, no hace nada)
-        await reverseTpvSalePoints(input.id, stockActor);
+        await cancelTpvSale(input.id, stockActor);
       } else {
         const [res] = await db.select({ id: reservations.id })
           .from(reservations)
@@ -889,5 +865,38 @@ export const dailyControlRouter = router({
       return { ok: true };
     }),
 });
+
+/**
+ * Anula (o marca como devuelta) una venta del TPV y propaga el estado: transacción contable reembolsada, reserva
+ * generada anulada, existencias repuestas y puntos anulados, una sola vez. La usan el Control diario y las
+ * devoluciones y anulaciones autorizadas de Business (server/tpvBusinessDb.ts).
+ */
+export async function cancelTpvSale(saleId: number, actor: { id: number | null; name: string | null }, status: "cancelled" | "refunded" = "cancelled"): Promise<void> {
+  const [sale] = await db.select({ reservationId: tpvSales.reservationId })
+    .from(tpvSales)
+    .where(eq(tpvSales.id, saleId))
+    .limit(1);
+  if (!sale) throw new TRPCError({ code: "NOT_FOUND", message: "Venta TPV no encontrada" });
+
+  // Marcar venta TPV como anulada (o devuelta)
+  await db.update(tpvSales)
+    .set({ status })
+    .where(eq(tpvSales.id, saleId));
+
+  // Marcar transacción contable vinculada como reembolsada
+  await db.update(transactions)
+    .set({ status: "reembolsado", operationStatus: "reembolsada" })
+    .where(eq(transactions.tpvSaleId, saleId));
+
+  // Si tiene reserva auto-generada, también anularla
+  if (sale.reservationId) {
+    await db.update(reservations)
+      .set({ status: "cancelled", statusReservation: "ANULADA" })
+      .where(eq(reservations.id, sale.reservationId));
+  }
+  await restockTpvSale(saleId, actor);
+  // Tokens internos: se anulan los puntos emitidos por la venta, una sola vez (sin programa, no hace nada)
+  await reverseTpvSalePoints(saleId, actor);
+}
 
 export type DailyControlData = Awaited<ReturnType<typeof getDailyControlCenter>>;
