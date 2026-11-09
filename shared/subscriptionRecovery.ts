@@ -77,9 +77,18 @@ const KEEP_BROWSING = "Puedes seguir consultando tu información mientras tanto.
 /** La exportación (solo la persona propietaria) sigue disponible en consulta y después (exenta del bloqueo). */
 const EXPORT_LINE = "La persona propietaria de la empresa puede exportar los datos desde «Suscripción».";
 
-/** Fecha de un plazo en español peninsular («9 de diciembre de 2026»). */
+/** Fecha de un plazo en hora peninsular (Europe/Madrid), como el resto del panel: «9 de diciembre de 2026». */
 export function formatConsultDate(ms: number): string {
   return new Intl.DateTimeFormat("es-ES", { day: "numeric", month: "long", year: "numeric", timeZone: "Europe/Madrid" }).format(new Date(ms));
+}
+
+/**
+ * Fin de un plazo con la hora («9 de diciembre de 2026 a las 11:00»): el plazo vence a una hora concreta
+ * (decide(): `validUntil <= now`), así que solo la fecha prometería el día entero.
+ */
+export function formatConsultDeadline(ms: number): string {
+  const time = new Intl.DateTimeFormat("es-ES", { hour: "2-digit", minute: "2-digit", hourCycle: "h23", timeZone: "Europe/Madrid" }).format(new Date(ms));
+  return `${formatConsultDate(ms)} a las ${time}`;
 }
 
 /** Consulta de hoy: sin plazo, hasta una fecha, terminada (con la fecha si consta) o desconocida. */
@@ -87,7 +96,7 @@ type Consult = { kind: "open" } | { kind: "until"; date: string } | { kind: "clo
 
 function consultOf(c: RecoveryConsultation | null | undefined): Consult {
   if (!c) return { kind: "unknown" };
-  if (c.available) return c.until !== null ? { kind: "until", date: formatConsultDate(c.until) } : { kind: "open" };
+  if (c.available) return c.until !== null ? { kind: "until", date: formatConsultDeadline(c.until) } : { kind: "open" };
   return { kind: "closed", date: c.endedAt !== null ? formatConsultDate(c.endedAt) : null };
 }
 
@@ -139,7 +148,7 @@ export function resolveRecovery(i: RecoveryInput): RecoveryView | null {
         ? "Avisa a la administración de tu empresa para que actualice el pago."
         : i.portalEnabled
           ? readOnly
-            ? (consultLine(c) ?? (c.kind === "closed" ? "Mientras tanto no se puede consultar la información del panel." : ""))
+            ? (consultLine(c) ?? join(c.kind === "closed" ? "Mientras tanto no se puede consultar la información del panel." : null, EXPORT_LINE))
             : "El pago se gestiona en el portal seguro de nuestro proveedor de cobros."
           : "Solo la persona propietaria de la empresa puede actualizar el pago.",
     };
@@ -155,7 +164,9 @@ export function resolveRecovery(i: RecoveryInput): RecoveryView | null {
       title: "Tu cuenta está restringida temporalmente",
       text: `${dataLead(c)} Nuestro equipo de soporte te explicará el motivo y cómo restablecer el acceso.`,
       cta: { label: "Contactar con soporte", action: { type: "link", href: SUPPORT_HREF } },
-      secondary: consultLine(c) ?? (c.kind === "closed" ? "Mientras dure la restricción no se puede consultar la información del panel." : ""),
+      secondary:
+        consultLine(c) ??
+        join(c.kind === "closed" ? "Mientras dure la restricción no se puede consultar la información del panel." : null, i.isAdmin ? EXPORT_LINE : null),
     };
   }
 

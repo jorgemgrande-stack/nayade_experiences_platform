@@ -220,12 +220,12 @@ describe("textos de consulta según el derecho real (subscription.overview.consu
       canConsult: true,
       title: "Tu suscripción ha finalizado",
       text: "Tus datos siguen disponibles. Reactiva tu plan para volver a gestionar tu negocio con todas tus herramientas.",
-      secondary: "Puedes consultar tu información en solo lectura hasta el 9 de diciembre de 2026.",
+      secondary: "Puedes consultar tu información en solo lectura hasta el 9 de diciembre de 2026 a las 11:00.",
       cta: REACTIVATE,
     });
     expect(resolveRecovery({ overview: o, isAdmin: false })).toMatchObject({
       cta: null,
-      secondary: "Pide a la administración de tu empresa que reactive el plan. Puedes consultar tu información en solo lectura hasta el 9 de diciembre de 2026.",
+      secondary: "Pide a la administración de tu empresa que reactive el plan. Puedes consultar tu información en solo lectura hasta el 9 de diciembre de 2026 a las 11:00.",
     });
     // Con varios plazos se anuncia el más próximo
     const mixed = overview([g({ status: "read_only", source: "subscription:9", validUntil: NOW + 30 * DAY }), g({ capabilityId: "crm-leads", status: "read_only", source: "subscription:9", validUntil: NOW + 3 * DAY })]);
@@ -286,7 +286,7 @@ describe("textos de consulta según el derecho real (subscription.overview.consu
       canConsult: false,
       title: "Tu suscripción está pendiente de pago",
       text: "Tus datos se conservan. Actualiza tu método de pago para volver a gestionar tu negocio con todas tus herramientas.",
-      secondary: "Mientras tanto no se puede consultar la información del panel.",
+      secondary: `Mientras tanto no se puede consultar la información del panel. ${EXPORT}`,
       cta: { label: "Reactivar mi plan", action: { type: "portal", fallbackHref: "/admin/suscripcion" } },
     });
     expect(resolveRecovery({ overview: o, contract: pastDue, isAdmin: true, portalEnabled: false })).toMatchObject({ secondary: "Solo la persona propietaria de la empresa puede actualizar el pago.", cta: { label: "Ver mi suscripción" } });
@@ -302,10 +302,30 @@ describe("textos de consulta según el derecho real (subscription.overview.consu
       kind: "restricted",
       canConsult: false,
       text: "Tus datos se conservan. Nuestro equipo de soporte te explicará el motivo y cómo restablecer el acceso.",
-      secondary: "Mientras dure la restricción no se puede consultar la información del panel.",
+      secondary: `Mientras dure la restricción no se puede consultar la información del panel. ${EXPORT}`,
       cta: { label: "Contactar con soporte", action: { type: "link", href: "/admin/soporte" } },
     });
     expect(blockedNotice(v)).toMatchObject({ description: "Tu cuenta está restringida temporalmente. Nuestro equipo de soporte te ayudará a restablecer el acceso.", action: { label: "Contactar con soporte", href: "/admin/soporte" } });
+  });
+
+  it("casos límite del cálculo: sin aplicación de licencias, licencias de sede, mezclas, `validUntil == now` y medianoche", () => {
+    // Sin aplicar licencias (CAPABILITY_ENFORCEMENT apagado) el acceso lo permite todo: no se dice que no se puede consultar
+    const lax = buildSubscriptionOverview({ mode: "multi", enforcing: false, grants: grants({ status: "read_only", validUntil: NOW - DAY }), now: NOW });
+    expect(lax.consultation).toEqual({ available: true, until: null, endedAt: null });
+    // Una licencia de sede no da consulta de empresa (el guardián no pasa sede), como en effectiveStatus
+    const site = [g({ status: "read_only", source: "subscription:9", validUntil: NOW - DAY }), g({ siteId: "centro", status: "active", source: "subscription:9" })];
+    expect(overview(site).consultation).toEqual({ available: false, until: null, endedAt: NOW - DAY });
+    // Mezcla: una capacidad legible con plazo y otra vencida → se consulta, con el plazo de la legible
+    const mixed = [g({ status: "read_only", source: "subscription:9", validUntil: NOW + 5 * DAY }), g({ capabilityId: "crm-leads", status: "read_only", source: "subscription:9", validUntil: NOW - DAY })];
+    expect(overview(mixed).consultation).toEqual({ available: true, until: NOW + 5 * DAY, endedAt: null });
+    // Prueba caducada y solo lectura con plazo en la misma capacidad: manda la activa (sin plazo), como en decide()
+    const both = [g({ source: "trial:7", validUntil: NOW - DAY }), g({ status: "read_only", source: "subscription:9", validUntil: NOW + DAY })];
+    expect(overview(both).consultation).toEqual({ available: true, until: null, endedAt: null });
+    // Justo en el vencimiento (decide(): `validUntil <= now`) ya no hay consulta
+    expect(overview(grants({ status: "read_only", validUntil: NOW })).consultation).toEqual({ available: false, until: null, endedAt: NOW });
+    // El plazo se anuncia con la hora peninsular: 23:30 UTC del 9 es la madrugada del 10 en Madrid
+    const night = overview(grants({ status: "read_only", validUntil: Date.UTC(2026, 11, 9, 23, 30) }));
+    expect(resolveRecovery({ overview: night, isAdmin: true })!.secondary).toBe("Puedes consultar tu información en solo lectura hasta el 10 de diciembre de 2026 a las 00:30.");
   });
 
   it("sin el dato de consulta del servidor no se promete nada", () => {

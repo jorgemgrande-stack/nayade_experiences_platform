@@ -184,6 +184,7 @@ export function buildSubscriptionOverview(o: {
     return { metric, label: LIMIT_LABELS[metric], included: q ? q.included : null, used: metric === "users" ? (o.usedUsers ?? null) : null };
   });
 
-  const consultation = consultationOf(o.grants, caps.map((c) => c.id), o.now);
+  // Sin aplicación de licencias (CAPABILITY_ENFORCEMENT apagado) el acceso lo permite todo: la consulta también
+  const consultation = o.enforcing ? consultationOf(o.grants, caps.map((c) => c.id), o.now) : { available: true, until: null, endedAt: null };
   return { mode, licensing: "capabilities", plan, state, trial, capabilities: caps, visible, readOnly, limits: plan ? limits : [], upgradeUrl, consultation };
 }
