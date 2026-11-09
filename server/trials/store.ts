@@ -116,7 +116,7 @@ export interface TrialStore {
    * Embudo de las pruebas registradas en `[from, to)`: cuántas llegaron a cada etapa, por canal de procedencia y
    * sector. Sin datos personales.
    */
-  funnel(f: { from: number; to: number }): Promise<TrialFunnelRow[]>;
+  funnel(f: { from: number; to: number }): Promise<{ rows: TrialFunnelRow[]; truncated: boolean }>;
 }
 
 /** Etapas del embudo que salen de las pruebas (las visitas e inicios del formulario, del contador anónimo de ./funnel.ts). */
@@ -214,8 +214,10 @@ export class MemoryTrialStore implements TrialStore {
   async note(trialId: number, e: { action: TrialNoteAction; detail: string; actor: string; at: number }) {
     const cur = this.rows.get(trialId);
     if (!cur) return;
-    this.evs.push({ id: ++this.seq, trialId, action: e.action, fromState: cur.state, toState: cur.state, version: cur.version, detail: e.detail, actor: e.actor, createdAt: e.at });
-    if ((TRIAL_MILESTONES as readonly string[]).includes(e.action)) await this.commercialEvents?.append(null, trialChanged(cur, e.action, cur.state, e.actor, e.at));
+    const milestone = (TRIAL_MILESTONES as readonly string[]).includes(e.action);
+    // Un hito se anota una sola vez; repetirlo solo reintenta su evento comercial (idempotente por clave)
+    if (!(milestone && this.evs.some((x) => x.trialId === trialId && x.action === e.action))) this.evs.push({ id: ++this.seq, trialId, action: e.action, fromState: cur.state, toState: cur.state, version: cur.version, detail: e.detail, actor: e.actor, createdAt: e.at });
+    if (milestone) await this.commercialEvents?.append(null, trialChanged(cur, e.action, cur.state, e.actor, e.at));
   }
   async get(id: number) {
     const r = this.rows.get(id);
@@ -266,7 +268,7 @@ export class MemoryTrialStore implements TrialStore {
     const items = Array.from(this.rows.values())
       .filter((r) => r.createdAt >= f.from && r.createdAt < f.to)
       .map((trial) => ({ trial, actions: new Set(this.evs.filter((e) => e.trialId === trial.id).map((e) => e.action as string)) }));
-    return aggregateFunnel(items);
+    return { rows: aggregateFunnel(items), truncated: false };
   }
 }
 
@@ -318,6 +320,9 @@ const COLS: Record<keyof TrialPatch, string> = {
   updatedAt: "updated_at",
 };
 const dup = (e: unknown, key: string) => (e as { code?: string }).code === "ER_DUP_ENTRY" && new RegExp(key).test((e as Error).message);
+
+/** Máximo de pruebas por consulta del embudo (un rango mayor sale marcado como incompleto). */
+export const FUNNEL_MAX = 5000;
 
 export class MysqlTrialStore implements TrialStore {
   constructor(
@@ -382,12 +387,15 @@ export class MysqlTrialStore implements TrialStore {
     }
   }
   async note(trialId: number, e: { action: TrialNoteAction; detail: string; actor: string; at: number }) {
+    const milestone = (TRIAL_MILESTONES as readonly string[]).includes(e.action);
+    // Un hito se anota una sola vez (también con dos peticiones a la vez); repetirlo solo reintenta su evento comercial
     await this.pool.query(
-      "INSERT INTO trial_events (trial_id, action, from_state, to_state, version, detail, actor, created_at) SELECT id, ?, state, state, version, ?, ?, ? FROM trial_requests WHERE id = ?",
-      [e.action, e.detail.slice(0, 300), e.actor, e.at, trialId],
+      "INSERT INTO trial_events (trial_id, action, from_state, to_state, version, detail, actor, created_at) SELECT id, ?, state, state, version, ?, ?, ? FROM trial_requests WHERE id = ?" +
+        (milestone ? " AND NOT EXISTS (SELECT 1 FROM trial_events WHERE trial_id = ? AND action = ?)" : ""),
+      milestone ? [e.action, e.detail.slice(0, 300), e.actor, e.at, trialId, trialId, e.action] : [e.action, e.detail.slice(0, 300), e.actor, e.at, trialId],
     );
     // Los hitos de activación también van al registro comercial (clave idempotente por prueba, versión e hito)
-    if (this.commercialEvents && (TRIAL_MILESTONES as readonly string[]).includes(e.action)) {
+    if (this.commercialEvents && milestone) {
       const t = await this.get(trialId);
       if (t) await this.commercialEvents.append(null, trialChanged(t, e.action, t.state, e.actor, e.at));
     }
@@ -397,17 +405,18 @@ export class MysqlTrialStore implements TrialStore {
     return r[0] ? row(r[0]) : null;
   }
   async funnel(f: { from: number; to: number }) {
-    const [rows] = await this.pool.query<mysql.RowDataPacket[]>("SELECT * FROM trial_requests WHERE created_at >= ? AND created_at < ? ORDER BY id LIMIT 5000", [f.from, f.to]);
-    const trials = rows.map(row);
+    const [rows] = await this.pool.query<mysql.RowDataPacket[]>(`SELECT * FROM trial_requests WHERE created_at >= ? AND created_at < ? ORDER BY id LIMIT ${FUNNEL_MAX + 1}`, [f.from, f.to]);
+    const trials = rows.slice(0, FUNNEL_MAX).map(row);
     const actions = new Map<number, Set<string>>(trials.map((t) => [t.id, new Set<string>()]));
     if (trials.length) {
       const [ev] = await this.pool.query<mysql.RowDataPacket[]>(
-        "SELECT DISTINCT e.trial_id, e.action FROM trial_events e JOIN trial_requests t ON t.id = e.trial_id WHERE t.created_at >= ? AND t.created_at < ? AND e.action IN ('provisioning_failed', 'first_access', 'first_action')",
-        [f.from, f.to],
+        "SELECT DISTINCT trial_id, action FROM trial_events WHERE trial_id IN (?) AND action IN ('provisioning_failed', 'first_access', 'first_action')",
+        [trials.map((t) => t.id)],
       );
       for (const x of ev) actions.get(Number(x.trial_id))?.add(String(x.action));
     }
-    return aggregateFunnel(trials.map((trial) => ({ trial, actions: actions.get(trial.id) ?? new Set<string>() })));
+    // Con más pruebas que el máximo, los totales son parciales y la respuesta lo dice
+    return { rows: aggregateFunnel(trials.map((trial) => ({ trial, actions: actions.get(trial.id) ?? new Set<string>() }))), truncated: rows.length > FUNNEL_MAX };
   }
   async get(id: number) {
     const [r] = await this.pool.query<mysql.RowDataPacket[]>("SELECT * FROM trial_requests WHERE id = ?", [id]);

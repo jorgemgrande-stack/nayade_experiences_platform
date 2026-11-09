@@ -100,7 +100,7 @@ const tag = (v: string | null | undefined, max = 60): string | null => {
   if (typeof v !== "string") return null;
   const s = v.trim().toLowerCase().replace(/\s+/g, "-").slice(0, max);
   // Una dirección de correo o un número largo en un UTM serían datos personales: se descartan
-  if (!s || /@/.test(s) || /\d{7,}/.test(s) || !/^[a-z0-9à-öø-ÿ._~+-]+$/.test(s)) return null;
+  if (!s || /@/.test(s) || s.replace(/\D/g, "").length >= 7 ||!/^[a-z0-9à-öø-ÿ._~+-]+$/.test(s)) return null;
   return s;
 };
 

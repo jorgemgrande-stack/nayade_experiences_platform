@@ -66,8 +66,9 @@ describe.skipIf(!URL_)("captación de la prueba con MySQL real", () => {
     expect(ev.map((e) => e.type)).toEqual(expect.arrayContaining(["trial.requested", "trial.started", "trial.first_access", "trial.first_action"]));
     expect(JSON.stringify(ev)).not.toMatch(/Ana Gil|600 000|ana@/);
 
-    const rows = await new MysqlTrialStore(pool).funnel({ from: clock - 86_400_000, to: clock + 86_400_000 });
+    const { rows, truncated } = await new MysqlTrialStore(pool).funnel({ from: clock - 86_400_000, to: clock + 86_400_000 });
     expect(rows).toEqual([{ channel: "linkedin", sector: "industria", stages: expect.objectContaining({ submitted: 1, verified: 1, provisioned: 1, first_access: 1, first_action: 1, converted: 0 }) }]);
+    expect(truncated).toBe(false);
   });
 
   it("contador anónimo de la página por día y canal", async () => {

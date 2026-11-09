@@ -329,10 +329,11 @@ export class TrialService {
     if (!(TRIAL_MILESTONES as readonly string[]).includes(milestone)) throw new TrialError("invalid_input", "Hito no válido");
     const t = await this.d.store.byTenant(tenantId);
     if (!t || !["active", "expired", "suspended", "converted"].includes(t.state)) return { recorded: false, trialId: t?.id ?? null };
-    if ((await this.d.store.events(t.id)).some((e) => e.action === milestone)) return { recorded: false, trialId: t.id };
+    const already = (await this.d.store.events(t.id)).some((e) => e.action === milestone);
     const clean = detail && /^[a-z0-9_-]{1,40}$/.test(detail) ? detail : milestone;
+    // También si ya estaba: el almacén no lo duplica y reintenta su evento comercial (por si aquel falló)
     await this.d.store.note(t.id, { action: milestone, detail: clean, actor, at: this.now() });
-    return { recorded: true, trialId: t.id };
+    return { recorded: !already, trialId: t.id };
   }
 
   async recordNotice(id: number, key: string, actor: string) {

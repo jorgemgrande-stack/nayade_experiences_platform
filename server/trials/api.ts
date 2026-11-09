@@ -36,7 +36,8 @@ const attributionSchema = z
     referrerHost: z.string().max(253).nullable().optional(),
     landingPath: z.string().max(300).nullable().optional(),
   })
-  .strict();
+  // Claves desconocidas (gclid, fbclid…) se descartan: la medición nunca impide registrarse
+  .strip();
 
 /**
  * Conversión de una prueba a pago por EXCEPCIÓN administrativa: la hace el orquestador con un pedido de
@@ -215,9 +216,9 @@ export function createTrialAdminRouter(o: { onboarding: TrialOnboardingService; 
       const from = Date.parse(`${q.from}T00:00:00Z`);
       const to = Date.parse(`${q.to}T00:00:00Z`) + 86_400_000;
       if (!(from < to) || to - from > 367 * 86_400_000) throw new TrialError("invalid_input", "Rango de días no válido (máximo un año)");
-      const [rows, landing] = await Promise.all([o.store.funnel({ from, to }), o.funnel ? o.funnel.counts({ from: q.from, to: q.to }).catch(() => null) : Promise.resolve(null)]);
+      const [{ rows, truncated }, landing] = await Promise.all([o.store.funnel({ from, to }), o.funnel ? o.funnel.counts({ from: q.from, to: q.to }).catch(() => null) : Promise.resolve(null)]);
       const totals = Object.fromEntries(TRIAL_FUNNEL_STAGES.map((s) => [s, rows.reduce((n, x) => n + x.stages[s], 0)]));
-      res.json({ from: q.from, to: q.to, landing: landing ? summarizeLanding(landing) : null, totals, rows });
+      res.json({ from: q.from, to: q.to, truncated, landing: landing ? summarizeLanding(landing) : null, totals, rows });
     }),
   );
 

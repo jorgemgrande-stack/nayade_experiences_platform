@@ -166,6 +166,8 @@ describe("normalización de los datos del formulario", () => {
       source: null, medium: null, campaign: "otoño-2026", term: null, content: null, referrerHost: null, landingPath: "/prueba-gratuita",
     });
     expect(normalizeAttribution({})).toBeNull();
+    // Un teléfono con separadores tampoco pasa como UTM
+    expect(normalizeAttribution({ source: "+34-600-111-222", medium: "600.111.222", campaign: "black-friday-2026" })).toMatchObject({ source: null, medium: null, campaign: "black-friday-2026" });
   });
 });
 
@@ -198,6 +200,8 @@ describe("alta con el formulario nuevo", () => {
     expect((await signup("sin-nombre@taller.example", "Taller", { ...FORM, fullName: "" })).status).toBe(400);
     expect((await signup("sin-acepta@taller.example", "Taller", { ...FORM, termsAccepted: false })).status).toBe(400);
     expect((await signup("antiguo@taller.example", "Taller Antiguo", {})).status).toBe(202);
+    // Claves de procedencia desconocidas (gclid…) se descartan sin impedir el alta
+    expect((await signup("gclid@taller.example", "Taller Gclid", { ...FORM, attribution: { source: "bing", gclid: "abc123" } })).status).toBe(202);
     const t = (await trialStore.list({})).find((x) => x.email === "antiguo@taller.example")!;
     expect(t.configuration.profile).toBeUndefined();
   });
