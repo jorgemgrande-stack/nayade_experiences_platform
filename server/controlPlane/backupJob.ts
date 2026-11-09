@@ -75,6 +75,7 @@ import { REVIEW_ID_2026_11_07, STATUS_REVIEW_2026_11_07 } from "../catalog/revie
 import { REVIEW_ID_2026_11_08, applyCatalogAdditions } from "../catalog/review20261108";
 import { DIRECT_SALE_2026_11_08, REVIEW_ID_2026_11_08_CONNECT, applyDirectSaleReview } from "../catalog/review20261108connect";
 import { CAMPAIGNS_LISTING_2026_11_08, FINANCE_SYNC_DIRECT_SALE, REVIEW_ID_2026_11_08_CAMPAIGNS } from "../catalog/review20261108campaigns";
+import { MARKETING_LISTINGS_2026_11_09, REVIEW_ID_2026_11_09_MARKETING } from "../catalog/review20261109marketing";
 import { REVIEW_ID_2026_11_08_FICHAS, applyListingReview } from "../catalog/review20261108fichas";
 import { NET_LISTINGS_2026_11_08, REVIEW_ID_2026_11_08_NET } from "../catalog/review20261108net";
 import { MysqlStripeStore } from "../stripe/store";
@@ -510,6 +511,8 @@ async function main() {
           const repNet = await applyListingReview(svc, webStore, { apply, author: `operacion:${REVIEW_ID_2026_11_08_NET}`, changes: NET_LISTINGS_2026_11_08 });
           // Tandas D y E: Campaigns en implantación acompañada; Finance Sync entra en la venta directa (con su Price)
           const repCampaigns = await applyListingReview(svc, webStore, { apply, author: `operacion:${REVIEW_ID_2026_11_08_CAMPAIGNS}`, changes: CAMPAIGNS_LISTING_2026_11_08 });
+          // 09/11/2026: SEO Control, Ads Manager y Reception AI en implantación acompañada (portados de Skicenter)
+          const repMarketing = await applyListingReview(svc, webStore, { apply, author: `operacion:${REVIEW_ID_2026_11_09_MARKETING}`, changes: MARKETING_LISTINGS_2026_11_09 });
           const repConnect = await applyDirectSaleReview(svc, webStore, async (id) => !!(await stripeStore.priceForWebPrice(id)), { apply, author: `operacion:${REVIEW_ID_2026_11_08_CONNECT}`, changes: [...DIRECT_SALE_2026_11_08, FINANCE_SYNC_DIRECT_SALE] });
           const pricesFinal = new Map((await webStore.listPrices()).map((p) => [p.id, `${p.status}:${p.amountCents}`]));
           const pricesIntactConnect = pricesFinal.size === pricesAfter.size && Array.from(pricesAfter).every(([id, v]) => pricesFinal.get(id) === v);
@@ -523,6 +526,7 @@ async function main() {
                 { revision: REVIEW_ID_2026_11_08_FICHAS, ...repFichas },
                 { revision: REVIEW_ID_2026_11_08_NET, ...repNet },
                 { revision: REVIEW_ID_2026_11_08_CAMPAIGNS, ...repCampaigns },
+                { revision: REVIEW_ID_2026_11_09_MARKETING, ...repMarketing },
                 { revision: REVIEW_ID_2026_11_08_CONNECT, modoStripe: stripeMode, ...repConnect, preciosIntactos: pricesIntactConnect },
               ],
             }),

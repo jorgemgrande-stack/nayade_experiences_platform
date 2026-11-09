@@ -35,6 +35,8 @@ export interface ListingChange {
   stripePrepared?: boolean;
   /** Costes de terceros del producto (texto público fuera de la ficha): de partida y nuevo. */
   thirdPartyCosts?: { from: string | null; to: string | null };
+  /** Nivel de implantación (1 activable desde el Core · 2 portable · 3 desarrollo nuevo): de partida y nuevo. */
+  implementationLevel?: { from: 1 | 2 | 3 | undefined; to: 1 | 2 | 3 };
   /** Campos de la ficha: valor publicado de partida y valor nuevo. */
   fields: Partial<Record<Field, { from: unknown; to: unknown }>>;
 }
@@ -218,7 +220,7 @@ function target(d: ProductDraft, c: ListingChange): ProductDraft {
     ...(c.thirdPartyCosts ? { thirdPartyCosts: c.thirdPartyCosts.to } : {}),
     technicalStatus: c.technical?.to ?? d.technicalStatus,
     activation: c.activation ? { ...d.activation, kind: c.activation.to } : d.activation,
-    catalog: { ...d.catalog, commercialStatus: c.status?.to ?? d.catalog.commercialStatus, ...(c.stripePrepared !== undefined ? { stripePrepared: c.stripePrepared } : {}) },
+    catalog: { ...d.catalog, commercialStatus: c.status?.to ?? d.catalog.commercialStatus, ...(c.stripePrepared !== undefined ? { stripePrepared: c.stripePrepared } : {}), ...(c.implementationLevel ? { implementationLevel: c.implementationLevel.to } : {}) },
     commercial: m,
     internal: { ...d.internal, evidence: c.evidence, ...(c.functionalGrade ? { functionalGrade: c.functionalGrade } : {}) },
   };
@@ -232,7 +234,8 @@ function isDone(d: ProductDraft, c: ListingChange): boolean {
     d.activation.kind === t.activation.kind &&
     d.catalog.commercialStatus === t.catalog.commercialStatus &&
     (c.stripePrepared === undefined || d.catalog.stripePrepared === c.stripePrepared) &&
-    (!c.thirdPartyCosts || d.thirdPartyCosts === c.thirdPartyCosts.to)
+    (!c.thirdPartyCosts || d.thirdPartyCosts === c.thirdPartyCosts.to) &&
+    (!c.implementationLevel || d.catalog.implementationLevel === c.implementationLevel.to)
   );
 }
 
@@ -274,6 +277,7 @@ export async function applyListingReview(svc: WebAdminService, store: WebStore, 
       continue;
     }
     const problems: string[] = [];
+    if (c.implementationLevel && d.catalog.implementationLevel !== c.implementationLevel.from && d.catalog.implementationLevel !== c.implementationLevel.to) problems.push(`nivel de implantación «${d.catalog.implementationLevel}» (se esperaba «${c.implementationLevel.from}»)`);
     if (c.thirdPartyCosts && d.thirdPartyCosts !== c.thirdPartyCosts.from && d.thirdPartyCosts !== c.thirdPartyCosts.to) problems.push("los costes de terceros ya no son los de partida");
     if (c.stripePrepared !== undefined && d.catalog.stripePrepared !== undefined && d.catalog.stripePrepared !== c.stripePrepared) problems.push(`«stripePrepared» decidido en el CRM (${d.catalog.stripePrepared})`);
     if (c.status && d.catalog.commercialStatus !== c.status.from && d.catalog.commercialStatus !== c.status.to) problems.push(`estado «${d.catalog.commercialStatus}» (se esperaba «${c.status.from}»)`);
