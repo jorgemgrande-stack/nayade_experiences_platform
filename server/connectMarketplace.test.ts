@@ -46,7 +46,7 @@ describe("estado de un módulo para la empresa", () => {
     // Prueba vencida que se puede leer
     expect(reason(EXP, { available: true, until: null, endedAt: null })).toMatch(/puedes consultar/);
     // Consulta con plazo
-    expect(reason(RO, { available: true, until: Date.UTC(2026, 11, 9, 12), endedAt: null })).toContain("hasta el 9 de diciembre de 2026");
+    expect(reason(RO, { available: true, until: Date.UTC(2026, 11, 9, 12), endedAt: null })).toContain("hasta el 9 de diciembre de 2026 a las ");
     // Plazo de consulta terminado: ni «solo lectura» ni «puedes consultar»
     const closed = reason(EXP, { available: false, until: null, endedAt: Date.UTC(2026, 10, 1, 12) });
     expect(closed).toContain("El plazo de consulta terminó el 1 de noviembre de 2026");
@@ -158,6 +158,18 @@ describe("catálogo de Connect con el catálogo oficial", () => {
   });
   const grant = (capabilityId: string, o: Partial<CapabilityGrant> = {}): CapabilityGrant => ({ tenantId: "t1", capabilityId, siteId: "", status: "active", validUntil: null, source: "subscription:1", updatedAt: NOW, updatedBy: "test", ...o });
 
+  it("licencia en solo lectura: la ficha solo promete la consulta real de esas capacidades (y nada en modo sombra)", () => {
+    const H = 60 * 60 * 1000;
+    const people = (grants: CapabilityGrant[], opts?: { enforcing?: boolean }) =>
+      buildConnectCatalog({ items: [item("connect-people", { capabilities: ["people-hr"] })] }, grants, NOW, "essential", () => null, opts)[0].reasons[0];
+    // Solo lectura con plazo vigente: «hasta el …» con la hora
+    expect(people([grant("people-hr", { status: "read_only", validUntil: NOW + 48 * H })])).toMatch(/solo lectura hasta el .* a las /);
+    // Plazo de consulta terminado: no se promete consulta
+    const ended = people([grant("people-hr", { status: "read_only", validUntil: NOW - H })]);
+    expect(ended ?? "").not.toMatch(/puedes consultar/);
+    // Modo sombra: el servidor deja leer, no se anuncia que la consulta terminó
+    expect(people([grant("people-hr", { status: "read_only", validUntil: NOW - H })], { enforcing: false }) ?? "").not.toMatch(/terminó/);
+  });
   it("textos de la ficha del catálogo oficial, sin nada interno", () => {
     const [people] = buildConnectCatalog({ items: [item("connect-people", { capabilities: ["people-hr"] })] }, [], NOW, "essential");
     expect(people.tagline).toBe("Gestión de empleados y control horario, integrada en tu empresa.");

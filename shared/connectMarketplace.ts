@@ -12,7 +12,7 @@
  *  - «Contratada y activa» solo con TODAS sus capacidades activas en las licencias.
  */
 import { isPersonalPlan, isPersonalProduct } from "./personalPlans";
-import { formatConsultDate, type RecoveryConsultation } from "./subscriptionRecovery";
+import { formatConsultDate, formatConsultDeadline, type RecoveryConsultation } from "./subscriptionRecovery";
 
 /**
  * ¿Sale este producto en el escaparate del panel? (decisión J7 de Jorge, 08/11/2026). Los productos personales (Life
@@ -94,7 +94,7 @@ const PLAN_NAMES: Record<string, string> = { essential: "Essential", business: "
 export function lapsedLicenceText(readOnly: boolean, consultation: RecoveryConsultation | null | undefined): string {
   if (consultation?.available === false)
     return `${consultation.endedAt ? `El plazo de consulta terminó el ${formatConsultDate(consultation.endedAt)}` : "Ya no se puede consultar"}: tus datos se conservan. Reactívala desde «Suscripción» para volver a usarla.`;
-  if (consultation?.available && consultation.until) return `Está en solo lectura hasta el ${formatConsultDate(consultation.until)}: puedes consultar tus datos, pero no trabajar con ellos.`;
+  if (consultation?.available && consultation.until) return `Está en solo lectura hasta el ${formatConsultDeadline(consultation.until)}: puedes consultar tus datos, pero no trabajar con ellos.`;
   if (consultation?.available || readOnly) return "Está en solo lectura: puedes consultar tus datos, pero no trabajar con ellos.";
   return "La licencia no permite hacer cambios ahora mismo. Revisa el estado de tu suscripción.";
 }
