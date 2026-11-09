@@ -548,6 +548,13 @@ interface ChannelRow {
   is_active: unknown;
 }
 
+/** Señal interna: la venta cabe y hace falta el número de reserva (se pide fuera de la transacción). */
+const NEED_NUMBER = new Error("mc:need-reservation-number");
+const isNeedNumber = (e: unknown) => {
+  for (let x: any = e, i = 0; x && i < 4; x = x.cause, i++) if (x === NEED_NUMBER || x.message === NEED_NUMBER.message) return true;
+  return false;
+};
+
 const merchantOrderOf = (channelId: number) => `MC${channelId}-${Date.now().toString(36)}${crypto.randomBytes(2).toString("hex")}`.slice(0, 30);
 
 type Planned =
@@ -570,7 +577,7 @@ type Planned =
 /** Qué hay que reservar en el Core (dentro de la transacción; sin escribir nada todavía). */
 async function plan(tx: Exec, channelId: number, s: McSaleInput): Promise<Planned> {
   const listings = await rows(tx, sql`SELECT * FROM mc_listings WHERE channel_id = ${channelId} AND is_active = 1 ${s.code ? sql`AND external_code = ${s.code}` : sql``} LIMIT 2`);
-  if (listings.length === 0) return { ok: false, status: "rechazada", problem: s.code ? `El código de producto «${s.code}» no está publicado en este canal.` : "Falta el código del producto y el canal tiene varias publicaciones." };
+  if (listings.length === 0) return { ok: false, status: "rechazada", problem: s.code ? `El código de producto «${s.code}» no está publicado en este canal.` : "El canal no tiene productos publicados." };
   if (listings.length > 1) return { ok: false, status: "rechazada", problem: "Falta el código del producto y el canal tiene varias publicaciones." };
   const l = listings[0];
   const kind = l.target_kind as McTargetKind;
@@ -619,10 +626,11 @@ export async function ingestSale(
   const now = o.now ?? Date.now();
   if (s.event === "cancelacion") return cancelByRef(d, channel, s.ref, o, now);
   if (!bool(channel.is_active)) return { ref: s.ref, status: "rechazada", saleId: 0, reservationId: null, duplicate: false, problem: "El canal está desactivado." };
-  const reservationNumber = await generateReservationNumber();
+  // El número de reserva se pide solo cuando la venta va a crear la reserva (fuera de la transacción, para no ocupar
+  // una segunda conexión dentro de ella): repetir o rechazar ventas no gasta numeración
+  let reservationNumber: string | null = null;
   let registered: Parameters<McAfterRegister>[0] | null = null;
-
-  const outcome = await inTx(d, async (tx): Promise<McIngestOutcome> => {
+  const attempt = () => inTx(d, async (tx): Promise<McIngestOutcome> => {
     // 1. La fila de la venta (bloqueada): si ya está registrada o cancelada, no se repite nada
     let [sale] = await rows(tx, sql`SELECT id, status, reservation_id FROM mc_sales WHERE channel_id = ${channel.id} AND external_ref = ${s.ref} FOR UPDATE`);
     if (sale && !MC_RETRYABLE.has(String(sale.status))) {
@@ -666,6 +674,7 @@ export async function ingestSale(
     if (short.length) return fail("sin_cupo", `Sin cupo para este canal el ${short.slice(0, 5).join(", ")}${short.length > 5 ? "…" : ""}.`, sql`, listing_id = ${listingId}`);
 
     // 4. Plaza en el Core y reserva (misma transacción)
+    if (!reservationNumber) throw NEED_NUMBER;
     const customerName = s.customerName || `Cliente de ${channel.name}`;
     const merchantOrder = merchantOrderOf(channel.id);
     const data = {
@@ -730,6 +739,16 @@ export async function ingestSale(
     registered = { reservationId, productId: p.productId, productName: p.productName, day: p.day, people: p.people, grossCents: gross, netCents, customerName, customerEmail: s.customerEmail, customerPhone: s.customerPhone, channelName: channel.name, ref: s.ref, merchantOrder };
     return { ref: s.ref, status: "registrada", saleId, reservationId, duplicate: false, problem: null };
   });
+
+  let outcome: McIngestOutcome;
+  try {
+    outcome = await attempt();
+  } catch (e) {
+    if (!isNeedNumber(e)) throw e;
+    // Cabe: se pide el número y se repite la transacción (el estado se vuelve a comprobar bajo bloqueo)
+    reservationNumber = await generateReservationNumber();
+    outcome = await attempt();
+  }
 
   if (registered) {
     try {
