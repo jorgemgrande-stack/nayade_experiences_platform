@@ -1,6 +1,6 @@
 /**
  * Automatizaciones avanzadas con la aplicación real sobre MySQL (opt-in, REGISTRY_TEST_DATABASE_URL): dos empresas nuevas
- * desde la baseline y las migraciones de empresa (incluida la 0063). Licencia automations-advanced (sin ella 403; en
+ * desde la baseline y las migraciones de empresa (incluida la 0062). Licencia automations-advanced (sin ella 403; en
  * solo lectura, solo consultas), solo administración, reglas apagadas al crearse, tarea por empresa (solo hechos tras
  * encender la regla, un disparo por entidad y paso, correo con el proveedor falso del kit, aviso en la campana), modo
  * «probar» sin efectos y aislamiento entre empresas.

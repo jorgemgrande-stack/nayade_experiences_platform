@@ -1,6 +1,6 @@
 /**
  * Revisión del catálogo del 09/11/2026 — Automatizaciones avanzadas (`connect-automations`, capacidad
- * `automations-advanced`): el motor de reglas por empresa ya está en el Core (server/automations/*, migración 0063), así
+ * `automations-advanced`): el motor de reglas por empresa ya está en el Core (server/automations/*, migración 0062), así
  * que pasa de «En preparación» a «Implantación acompañada», con una ficha que dice exactamente qué disparadores y qué
  * acciones hay. Sin checkout ni Price de Stripe: el botón «Solicitar información» crea la solicitud en el CRM y el equipo
  * concede la licencia (`stripePrepared: false`).
@@ -28,7 +28,7 @@ export const AUTOMATIONS_LISTING_2026_11_09: readonly ListingChange[] = [
   {
     key: "connect-automations",
     evidence:
-      "Entrega del 09/11/2026 (Frente C, migración 0063): motor de reglas por empresa con disparadores del Core (oportunidad nueva, presupuesto enviado sin respuesta, reserva confirmada, reserva próxima y factura sin cobrar), condiciones sobre sus campos, hasta cinco pasos con retardo y acciones (correo al cliente con la marca y el remitente de la empresa, tarea del CRM, aviso al equipo en la campana, etapa del embudo y etiqueta de la oportunidad); tarea por empresa idempotente con topes diarios, historial y reintentos, reglas apagadas al crearse, modo «probar» y correo comercial solo con consentimiento; licencia automations-advanced.",
+      "Entrega del 09/11/2026 (Frente C, migración 0062): motor de reglas por empresa con disparadores del Core (oportunidad nueva, presupuesto enviado sin respuesta, reserva confirmada, reserva próxima y factura sin cobrar), condiciones sobre sus campos, hasta cinco pasos con retardo y acciones (correo al cliente con la marca y el remitente de la empresa, tarea del CRM, aviso al equipo en la campana, etapa del embudo y etiqueta de la oportunidad); tarea por empresa idempotente con topes diarios, historial y reintentos, reglas apagadas al crearse, modo «probar» y correo comercial solo con consentimiento; licencia automations-advanced.",
     status: { from: "in_preparation", to: "on_request" },
     functionalGrade: "partial",
     stripePrepared: false,

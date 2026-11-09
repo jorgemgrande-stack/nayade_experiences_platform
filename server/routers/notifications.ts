@@ -17,7 +17,7 @@
  *   - community             → comunidades con solicitudes, publicaciones, propuestas o reportes por revisar
  *                              (social-token-net; solo administración)
  *   - automation            → avisos al equipo de las Automatizaciones avanzadas de los últimos 7 días
- *                              (automations-advanced; sin la migración 0063, vacía)
+ *                              (automations-advanced; sin la migración 0062, vacía)
  *
  * Dismiss es por-usuario: silenciar un item afecta solo a quien lo silencia.
  */
@@ -469,7 +469,7 @@ async function sourceCommunities(userId: number, role: string): Promise<FeedSect
 
 /**
  * Avisos al equipo de las Automatizaciones avanzadas (acción «Avisar al equipo en el panel») de los últimos 7 días. Solo
- * con la capacidad; sin la migración 0063 o sin poder leerlos, la sección queda vacía y no rompe el resto del feed.
+ * con la capacidad; sin la migración 0062 o sin poder leerlos, la sección queda vacía y no rompe el resto del feed.
  */
 async function sourceAutomations(userId: number): Promise<FeedSection> {
   const empty: FeedSection = { kind: "automation", label: "Avisos de tus automatizaciones", icon: "⚙️", severity: "info", total: 0, items: [], ctaAllPath: "/admin/automatizaciones" };

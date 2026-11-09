@@ -514,7 +514,7 @@ async function main() {
           const repCampaigns = await applyListingReview(svc, webStore, { apply, author: `operacion:${REVIEW_ID_2026_11_08_CAMPAIGNS}`, changes: CAMPAIGNS_LISTING_2026_11_08 });
           // 09/11/2026: SEO Control, Ads Manager y Reception AI en implantación acompañada (portados de Skicenter)
           const repMarketing = await applyListingReview(svc, webStore, { apply, author: `operacion:${REVIEW_ID_2026_11_09_MARKETING}`, changes: MARKETING_LISTINGS_2026_11_09 });
-          // 09/11/2026: Automatizaciones avanzadas en implantación acompañada (motor de reglas por empresa, migración 0063)
+          // 09/11/2026: Automatizaciones avanzadas en implantación acompañada (motor de reglas por empresa, migración 0062)
           const repAutomations = await applyListingReview(svc, webStore, { apply, author: `operacion:${REVIEW_ID_2026_11_09_AUTOMATIONS}`, changes: AUTOMATIONS_LISTING_2026_11_09 });
           const repConnect = await applyDirectSaleReview(svc, webStore, async (id) => !!(await stripeStore.priceForWebPrice(id)), { apply, author: `operacion:${REVIEW_ID_2026_11_08_CONNECT}`, changes: [...DIRECT_SALE_2026_11_08, FINANCE_SYNC_DIRECT_SALE] });
           const pricesFinal = new Map((await webStore.listPrices()).map((p) => [p.id, `${p.status}:${p.amountCents}`]));

@@ -1,7 +1,7 @@
 /**
  * Automatizaciones avanzadas · tarea programada `connect-automations` (por empresa con `scheduleTenantCron`, cada 10
  * minutos). En cada empresa solo actúa con la licencia `automations-advanced` en escritura y reglas encendidas; sin la
- * migración 0063 la empresa se omite sin error. Flag de la instalación: `connect_automations_enabled` (activa por
+ * migración 0062 la empresa se omite sin error. Flag de la instalación: `connect_automations_enabled` (activa por
  * defecto; el interruptor real es cada regla, apagada al crearse).
  */
 import { scheduleTenantCron } from "../_core/tenantRegistry/scheduler";

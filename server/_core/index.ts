@@ -1852,7 +1852,7 @@ const SCHEDULED_JOBS: Array<{ name: string; flag: string; start: () => void; lab
   { name: "hotel-ical-sync", flag: "hotel_ical_sync_enabled", start: () => void import("../hotelIcalJob").then((m) => m.startHotelIcalSyncJob(), (e) => console.error("[Jobs] 'Hotel Net iCal Sync' no se ha podido registrar:", e instanceof Error ? e.message : e)), label: "Hotel Net iCal Sync", def: true },
   // Ads Manager: solo empresas con ads-manager, la migración 0055 y alguna conexión en su bóveda (el resto se omite)
   { name: "ads-manager-sync", flag: "ads_manager_sync_enabled", start: () => void import("../adsManager/job").then((m) => m.startAdsManagerSyncJob(), (e) => console.error("[Jobs] 'Ads Manager Sync' no se ha podido registrar:", e instanceof Error ? e.message : e)), label: "Ads Manager Sync", def: true },
-  // Automatizaciones avanzadas: solo empresas con automations-advanced, la migración 0063 y alguna regla encendida
+  // Automatizaciones avanzadas: solo empresas con automations-advanced, la migración 0062 y alguna regla encendida
   { name: "connect-automations", flag: "connect_automations_enabled", start: () => void import("../automations/job").then((m) => m.startAutomationsJob(), (e) => console.error("[Jobs] 'Automatizaciones' no se ha podido registrar:", e instanceof Error ? e.message : e)), label: "Connect Automations", def: true },
   { name: "care-net-reminders", flag: "care_net_reminders_enabled", start: () => void import("../careNetReminders").then((m) => m.startCareRemindersJob(), (e) => console.error("[Jobs] Care Net Reminders:", e?.message ?? e)), label: "Care Net Reminders", def: true },
   {

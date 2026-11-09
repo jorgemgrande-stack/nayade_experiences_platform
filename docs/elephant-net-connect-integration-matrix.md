@@ -178,7 +178,7 @@ En el Core, cada empresa guarda sus credenciales en una bóveda (`server/_core/c
 | Care Net · recordatorios de cita por correo | #720 | fusionado (0051) |
 | Ski Net · fianzas del alquiler y cargos por daños | #721 | en curso (0052) |
 | Tanda C: fichas de Care, Ski, Restaurant y Travel Net al día (Hotel Net bloqueado por el borrador ajeno v10) | esta PR | en curso |
-| Connect · Automatizaciones avanzadas: motor de reglas por empresa (5 disparadores, condiciones, pasos con retardo, correo/tarea/aviso/etapa/etiqueta, historial, topes, «probar»); revisión `review20261109automations.ts` preparada sin lanzar | Frente C | en curso (0063) |
+| Connect · Automatizaciones avanzadas: motor de reglas por empresa (5 disparadores, condiciones, pasos con retardo, correo/tarea/aviso/etapa/etiqueta, historial, topes, «probar»); revisión `review20261109automations.ts` preparada sin lanzar | Frente C | en curso (0062) |
 
 ## Activación del marketplace (encargo del 08/11/2026)
 
@@ -215,7 +215,7 @@ Inventario accionable de lo que se vende en `/admin/ampliar`. Estado público de
 | POS (`pos-advanced`) | El TPV avanzado existe, pero lo licencia `bill-cash` (Essential) | — | Implantación acompañada | Frontera entre la caja básica y la avanzada. Es una decisión de negocio: hoy la tienen los clientes de Essential. |
 | WhatsApp AI (`whatsapp-ai`) | Bandeja a través de GHL | Cuenta GHL o app de Meta de Big Elephant | En preparación | WhatsApp Cloud API directa y respuestas con IA. |
 | Campaigns (`email-campaigns`) | Sincronización de clientes con consentimiento a la lista de Brevo de la empresa | Cuenta Brevo de la empresa | Próximamente | Envío de campañas desde el Core. Brevo no es un producto de correo nuevo. |
-| Automatizaciones (`automations-advanced`) | Motor de reglas por empresa (`server/automations`, migración 0063): oportunidad nueva, presupuesto sin respuesta, reserva confirmada, reserva próxima y factura sin cobrar; correo al cliente (comercial solo con consentimiento), tarea, aviso en la campana, etapa y etiqueta; historial, topes diarios, reintentos y «probar». Pantalla «Automatizaciones» (solo administración) | Correo de la empresa | En preparación (revisión preparada a implantación acompañada, sin lanzar) | Lanzar `catalog-review` tras fusionar. Ningún plan la incluye en production. |
+| Automatizaciones (`automations-advanced`) | Motor de reglas por empresa (`server/automations`, migración 0062): oportunidad nueva, presupuesto sin respuesta, reserva confirmada, reserva próxima y factura sin cobrar; correo al cliente (comercial solo con consentimiento), tarea, aviso en la campana, etapa y etiqueta; historial, topes diarios, reintentos y «probar». Pantalla «Automatizaciones» (solo administración) | Correo de la empresa | En preparación (revisión preparada a implantación acompañada, sin lanzar) | Lanzar `catalog-review` tras fusionar. Ningún plan la incluye en production. |
 | Copilot avanzado (`copilot-advanced`) | Proveedor de IA central | IA de la plataforma | Próximamente | Hay un borrador ajeno (v6): bloqueo. |
 | GEO Control (`geo-control`) | Consultas, observaciones por asistente de IA, presencia y citación, cambios, competidores y oportunidades (#717, migración 0048) | IA central (opcional) | Implantación acompañada (tanda B) | Venta directa con su Price de Stripe Live. |
 | Reception AI, Ads Manager, SEO Control | Sin código en el Core (base en Skicenter) | Vapi o Meta; Meta/Google Ads; Google Business Profile | Próximamente | Portar desde Skicenter. |

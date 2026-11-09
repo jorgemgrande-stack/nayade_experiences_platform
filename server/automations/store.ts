@@ -1,5 +1,5 @@
 /**
- * Automatizaciones avanzadas · almacén en la BD de la empresa en curso (migración db/migrations/0063_connect_automations).
+ * Automatizaciones avanzadas · almacén en la BD de la empresa en curso (migración db/migrations/0062_connect_automations).
  * Tablas fuera de drizzle/schema.ts y SQL parametrizado. Aislamiento: cada empresa tiene su base (getTenantDatabase).
  *
  *  - `automation_rules`: reglas (apagadas al crearse; nada se borra: se archivan).
@@ -16,7 +16,7 @@ import { STALE_RUNNING_MS, type RunKey, type RunRow, type StoredRule } from "./e
 
 export class AutomationsNotInstalled extends Error {
   constructor() {
-    super("Las automatizaciones aún no están preparadas en tu empresa: falta aplicar la actualización 0063_connect_automations de su base de datos. Inténtalo de nuevo en unos minutos.");
+    super("Las automatizaciones aún no están preparadas en tu empresa: falta aplicar la actualización 0062_connect_automations de su base de datos. Inténtalo de nuevo en unos minutos.");
     this.name = "AutomationsNotInstalled";
   }
 }
