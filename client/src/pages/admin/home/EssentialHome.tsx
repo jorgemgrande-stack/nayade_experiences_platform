@@ -147,27 +147,14 @@ export default function EssentialHome() {
 
   // Avisos: solo lo que requiere atención, con datos reales
   const notices: Array<{ key: string; tone: "warn" | "info"; text: React.ReactNode; href: string; cta: string }> = [];
-  if (data?.trial && isAdmin) {
+  // Prueba terminada, solo lectura o suspensión: los explica el aviso único de recuperación del panel (AdminLayout)
+  if (data?.trial && data.trial.daysLeft > 0 && isAdmin) {
     notices.push({
       key: "trial",
       tone: data.trial.daysLeft <= 3 ? "warn" : "info",
-      text:
-        data.trial.daysLeft > 0 ? (
-          <>Estás probando <strong>{data.plan?.name ?? "Elephant Core"}</strong>: te {data.trial.daysLeft === 1 ? "queda" : "quedan"} <strong>{data.trial.daysLeft} {data.trial.daysLeft === 1 ? "día" : "días"}</strong>.</>
-        ) : (
-          <>Tu prueba ha terminado. Tus datos se conservan en solo lectura.</>
-        ),
+      text: <>Estás probando <strong>{data.plan?.name ?? "Elephant Core"}</strong>: te {data.trial.daysLeft === 1 ? "queda" : "quedan"} <strong>{data.trial.daysLeft} {data.trial.daysLeft === 1 ? "día" : "días"}</strong>.</>,
       href: "/admin/suscripcion",
       cta: "Ver mi suscripción",
-    });
-  }
-  if (data && !data.trial && (data.state === "read_only" || data.state === "suspended")) {
-    notices.push({
-      key: "state",
-      tone: "warn",
-      text: data.state === "read_only" ? "Tu cuenta está en solo lectura: puedes consultar tus datos, pero no crear ni modificar." : "Tu suscripción está suspendida. Contacta con tu responsable de cuenta.",
-      href: "/admin/suscripcion",
-      cta: "Ver detalles",
     });
   }
   if (w && !w.facts.fiscal && sub.can("bill-invoices")) {

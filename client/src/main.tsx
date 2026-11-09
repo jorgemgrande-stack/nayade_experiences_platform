@@ -3,6 +3,7 @@ import { UNAUTHED_ERR_MSG } from '@shared/const';
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { httpBatchLink, httpLink, TRPCClientError } from "@trpc/client";
 import { isTenantSite } from "@/lib/tenantSite";
+import { notifyIfReadOnlyBlocked } from "@/lib/readOnlyBlock";
 import { createRoot } from "react-dom/client";
 import superjson from "superjson";
 import App from "./App";
@@ -35,6 +36,8 @@ queryClient.getMutationCache().subscribe(event => {
   if (event.type === "updated" && event.action.type === "error") {
     const error = event.mutation.state.error;
     redirectToLoginIfUnauthorized(error);
+    // Crear, editar o guardar con el panel en consulta: un único aviso con la acción de reactivar
+    notifyIfReadOnlyBlocked(error);
     console.error("[API Mutation Error]", error);
   }
 });
