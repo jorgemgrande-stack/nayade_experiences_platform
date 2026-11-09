@@ -108,7 +108,7 @@ export const integrationsRouter = router({
   }),
 
   save: adminProcedure
-    .input(z.object({ provider: providerSchema, values: z.record(z.string().max(64), z.string().max(1024)) }))
+    .input(z.object({ provider: providerSchema, values: z.record(z.string().max(64), z.string().max(8000)) })) // cada campo tiene su límite (fieldProblems)
     .mutation(async ({ ctx, input }) => {
       requireMulti();
       const provider = getProvider(input.provider);

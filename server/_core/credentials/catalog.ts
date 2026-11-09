@@ -15,6 +15,8 @@ export interface CredentialField {
   /** Nombre de la variable de entorno histórica equivalente. */
   env?: string;
   pattern?: RegExp;
+  /** Longitud máxima del valor (por defecto, FIELD_MAX_LENGTH). */
+  maxLength?: number;
   hint?: string;
   options?: string[];
   /** Presentación en el panel de la empresa (no cambia cómo se guarda ni se valida el valor). */
@@ -60,6 +62,10 @@ export interface ProviderDef {
   /** Presentación en el panel de la empresa. */
   panel: ProviderPanel;
 }
+
+/** Longitud máxima por defecto de un valor de la bóveda. */
+export const FIELD_MAX_LENGTH = 1024;
+export const fieldMaxLength = (f: CredentialField) => f.maxLength ?? FIELD_MAX_LENGTH;
 
 const URL_RE = /^https:\/\/[^\s]{4,500}$/;
 const TOKEN_RE = /^[\x21-\x7e]{8,512}$/; // imprimibles ASCII sin espacios
@@ -134,14 +140,40 @@ export const PROVIDERS: ProviderDef[] = [
   },
   {
     id: "meta",
-    name: "Meta (Conversions API)",
-    description: "Eventos de conversión del sitio.",
-    capabilities: ["Enviar eventos de conversión del sitio"],
-    check: "Consulta de la identidad del token: solo lectura",
-    panel: { group: "marketing", title: "Medición de anuncios de Meta", summary: "Envía a Meta las compras de tu web para medir tus anuncios de Facebook e Instagram.", legacy: true },
+    name: "Meta (Conversions API y Marketing API)",
+    description: "Eventos de conversión del sitio y, con Elephant Ads Manager, lectura diaria del gasto y los resultados de las campañas de la cuenta publicitaria de la empresa.",
+    capabilities: [
+      "Enviar eventos de conversión del sitio",
+      "Leer cada día el gasto, las impresiones, los clics y las compras de las campañas de la cuenta publicitaria (solo lectura: nunca crea ni modifica campañas)",
+    ],
+    check: "Consulta de la identidad del token o, si hay cuenta publicitaria, de su nombre: solo lectura",
+    // Heredada (solo se ve si ya está configurada), salvo para las empresas con Elephant Ads Manager, que la necesitan
+    panel: { group: "marketing", title: "Medición de anuncios de Meta", summary: "Envía a Meta las compras de tu web para medir tus anuncios de Facebook e Instagram y, con Ads Manager, trae cada día lo que gastan y consiguen tus campañas.", legacy: true, requires: ["ads-manager"] },
     fields: [
       { key: "capiAccessToken", label: "Token de acceso", secret: true, env: "META_CAPI_ACCESS_TOKEN", pattern: TOKEN_RE, panel: { label: "Clave de acceso", help: "Se genera en el Administrador de eventos de Meta, en la configuración de tu píxel.", formatMessage: "Cópiala completa, sin espacios." } },
       { key: "capiTestEventCode", label: "Código de evento de prueba", secret: false, env: "META_CAPI_TEST_EVENT_CODE", pattern: /^[A-Za-z0-9_-]{3,40}$/, panel: { label: "Código de prueba (opcional)", help: "Solo para comprobar que llegan los datos; normalmente, déjalo vacío.", formatMessage: "Solo letras, números, guiones y guiones bajos." } },
+      // Elephant Ads Manager: lectura de la cuenta publicitaria PROPIA de la empresa (sin ellos, el panel funciona con CSV)
+      { key: "adAccountId", label: "Cuenta publicitaria (act_…)", secret: false, pattern: /^(act_)?\d{5,20}$/, hint: "act_1234567890", panel: { label: "Número de tu cuenta publicitaria", help: "Está en el Administrador de anuncios de Meta, junto al nombre de la cuenta (puede empezar por «act_»).", formatMessage: "Solo cifras, con o sin «act_» delante." } },
+      { key: "adsAccessToken", label: "Token de lectura de anuncios (ads_read)", secret: true, pattern: TOKEN_RE, panel: { label: "Clave de lectura de tus anuncios", help: "Créala en la configuración del negocio de Meta con un usuario del sistema que tenga acceso a la cuenta publicitaria y permiso para leer anuncios. Si la clave de acceso de arriba ya tiene ese permiso, puedes dejarla vacía.", formatMessage: "Cópiala completa, sin espacios." } },
+    ],
+  },
+  {
+    // Elephant Ads Manager: cuenta de Google Ads PROPIA de cada empresa, solo lectura (GAQL sobre campaign). Google exige
+    // un token de desarrollador aprobado y un cliente OAuth: sin todos los datos, la conexión está desactivada y el panel
+    // funciona con el CSV del informe de Google Ads. Nunca una cuenta ni un token de otra empresa o de la plataforma
+    id: "google_ads",
+    name: "Google Ads (solo lectura)",
+    description: "Lectura diaria del coste, las impresiones, los clics y las conversiones de las campañas de la cuenta de Google Ads de la empresa para Elephant Ads Manager.",
+    capabilities: ["Leer cada día el coste, las impresiones, los clics y las conversiones de las campañas (solo lectura: nunca crea ni modifica campañas)"],
+    check: "Renovación del acceso y consulta de la cuenta y de un día de sus campañas: solo lectura",
+    panel: { group: "marketing", title: "Google Ads", summary: "Trae cada día lo que gastan y consiguen tus campañas de Google para verlas junto a tus ventas. Si no lo configuras, puedes subir el informe de Google Ads a mano.", requires: ["ads-manager"] },
+    fields: [
+      { key: "customerId", label: "ID de cliente de Google Ads", secret: false, required: true, pattern: /^\d{3}-?\d{3}-?\d{4}$/, hint: "123-456-7890", panel: { label: "Número de tu cuenta de Google Ads", help: "Aparece arriba a la derecha en Google Ads, con el formato 123-456-7890.", formatMessage: "Son 10 cifras, con o sin guiones (123-456-7890)." } },
+      { key: "loginCustomerId", label: "ID de la cuenta de administrador (MCC)", secret: false, pattern: /^\d{3}-?\d{3}-?\d{4}$/, panel: { label: "Número de tu cuenta de administrador (opcional)", help: "Solo si entras en la cuenta a través de una cuenta de administrador (la de tu agencia o la tuya).", formatMessage: "Son 10 cifras, con o sin guiones (123-456-7890)." } },
+      { key: "developerToken", label: "Token de desarrollador", secret: true, required: true, pattern: /^[A-Za-z0-9_-]{16,64}$/, panel: { label: "Clave de desarrollador de Google Ads", help: "Se solicita a Google en el Centro de la API de tu cuenta de administrador (Herramientas → Centro de la API) y debe estar aprobada.", formatMessage: "Letras, números, guiones y guiones bajos, sin espacios." } },
+      { key: "clientId", label: "ID de cliente OAuth", secret: false, required: true, pattern: /^[A-Za-z0-9._-]{10,200}\.apps\.googleusercontent\.com$/, panel: { label: "Identificador de la aplicación de Google", help: "Se crea en Google Cloud (Credenciales → ID de cliente de OAuth) con la API de Google Ads activada. Termina en «.apps.googleusercontent.com».", formatMessage: "Debe terminar en «.apps.googleusercontent.com»." } },
+      { key: "clientSecret", label: "Secreto de cliente OAuth", secret: true, required: true, pattern: TOKEN_RE, panel: { label: "Clave secreta de la aplicación de Google", help: "Se muestra junto al identificador de la aplicación en Google Cloud.", formatMessage: "Cópiala completa, sin espacios." } },
+      { key: "refreshToken", label: "Refresh token (ámbito adwords)", secret: true, required: true, pattern: TOKEN_RE, panel: { label: "Permiso de lectura de tu cuenta", help: "Se obtiene al autorizar esa aplicación con el usuario de Google que entra en tu cuenta de Google Ads (permiso de Google Ads).", formatMessage: "Cópialo completo, sin espacios." } },
     ],
   },
   {
@@ -242,6 +274,49 @@ export const PROVIDERS: ProviderDef[] = [
       { key: "agencyPassword", label: "Clave de la agencia", secret: true, required: true, pattern: PASSWORD_RE, panel: { label: "Clave de tu agencia en Veturis", formatMessage: "La clave no puede tener saltos de línea." } },
     ],
   },
+  {
+    // Search Console PROPIO de cada empresa: su cuenta de servicio de Google Cloud con acceso a su propiedad (como
+    // Skicenter, sin OAuth de Big Elephant). Elephant SEO Control (server/seoControl/connectors.ts)
+    id: "google_search_console",
+    name: "Google Search Console",
+    description: "Importa de tu propiedad de Search Console los clics, las impresiones y la posición media de tus palabras clave y páginas.",
+    capabilities: ["Listar las propiedades a las que tiene acceso la cuenta de servicio (solo lectura)", "Leer el rendimiento de búsqueda de tu propiedad por consulta, página y día (solo lectura)"],
+    check: "Inicio de sesión de la cuenta de servicio y listado de propiedades (sites.list): solo lectura",
+    panel: { group: "marketing", title: "Google Search Console", summary: "Posiciones, clics e impresiones de tu web en Google para el seguimiento SEO.", requires: ["seo-control"] },
+    fields: [
+      { key: "serviceAccountJson", label: "JSON de la cuenta de servicio", secret: true, required: true, maxLength: 6000, pattern: /^\s*\{[\s\S]*"private_key"[\s\S]*\}\s*$/, panel: { label: "Cuenta de servicio de Google (JSON)", help: "En Google Cloud: crea una cuenta de servicio, genera una clave JSON y pega aquí el contenido completo del fichero. Después añade el correo de la cuenta como usuario de tu propiedad en Search Console.", formatMessage: "Pega el contenido completo del fichero JSON (empieza por «{» e incluye «private_key»)." } },
+      { key: "siteUrl", label: "Propiedad", secret: false, required: true, pattern: /^(sc-domain:[A-Za-z0-9.-]{3,253}|https?:\/\/[^\s/]{3,253}\/[^\s]{0,200})$/, hint: "sc-domain:miempresa.es", panel: { label: "Propiedad de Search Console", help: "Tal como aparece en Search Console: «sc-domain:miempresa.es» para una propiedad de dominio o «https://www.miempresa.es/» para una de prefijo de URL.", formatMessage: "Escribe «sc-domain:tudominio.es» o la URL completa terminada en «/»." } },
+    ],
+  },
+  {
+    // Ficha PROPIA de la empresa en Google Business Profile: su cliente OAuth y su token de actualización (Skicenter usa
+    // el mismo flujo con su app; aquí cada empresa trae la suya). Solo lectura de reseñas
+    id: "google_business_profile",
+    name: "Google Business Profile",
+    description: "Lee las reseñas de la ficha de tu negocio en Google para verlas en SEO Control junto al resto.",
+    capabilities: ["Renovar el acceso con tu token de actualización", "Listar tus cuentas y leer las reseñas de tu ficha (solo lectura: no responde ni edita nada)"],
+    check: "Renovación del token y listado de cuentas: solo lectura",
+    panel: { group: "marketing", title: "Reseñas de Google (Business Profile)", summary: "Reseñas de tu ficha de Google en el panel de SEO Control.", requires: ["seo-control"] },
+    fields: [
+      { key: "clientId", label: "ID de cliente OAuth", secret: false, required: true, pattern: /^[A-Za-z0-9._-]{10,200}$/, panel: { label: "ID de cliente OAuth", help: "En tu proyecto de Google Cloud con acceso aprobado a la API de Business Profile: «APIs y servicios» → «Credenciales».", formatMessage: "Cópialo completo, sin espacios." } },
+      { key: "clientSecret", label: "Secreto del cliente OAuth", secret: true, required: true, pattern: TOKEN_RE, panel: { label: "Secreto del cliente OAuth", formatMessage: "Cópialo completo, sin espacios." } },
+      { key: "refreshToken", label: "Token de actualización", secret: true, required: true, pattern: TOKEN_RE, panel: { label: "Token de actualización", help: "Se obtiene autorizando tu cliente OAuth con la cuenta que gestiona la ficha (permiso business.manage).", formatMessage: "Cópialo completo, sin espacios." } },
+      { key: "locationPath", label: "Ficha", secret: false, required: true, pattern: /^accounts\/[A-Za-z0-9_-]{1,64}\/locations\/[A-Za-z0-9_-]{1,64}$/, hint: "accounts/123/locations/456", panel: { label: "Identificador de la ficha", help: "Con la forma accounts/{cuenta}/locations/{ficha}.", formatMessage: "Debe tener la forma accounts/123/locations/456." } },
+    ],
+  },
+  {
+    // Clave PROPIA de la empresa en la API de contenidos de TripAdvisor (Terra). Solo lectura de reseñas
+    id: "tripadvisor",
+    name: "TripAdvisor",
+    description: "Lee las reseñas más recientes de tu establecimiento en TripAdvisor para verlas en SEO Control.",
+    capabilities: ["Leer las reseñas más recientes de tu establecimiento (solo lectura; cada reseña consume cuota de tu cuenta)"],
+    check: "Lectura de 1 reseña del establecimiento: solo lectura (consume 1 unidad de cuota)",
+    panel: { group: "marketing", title: "Reseñas de TripAdvisor", summary: "Reseñas de tu establecimiento en TripAdvisor en el panel de SEO Control.", requires: ["seo-control"] },
+    fields: [
+      { key: "apiKey", label: "Clave de la API", secret: true, required: true, pattern: TOKEN_RE, panel: { label: "Clave de la API de TripAdvisor", help: "La de tu cuenta de la API de contenidos de TripAdvisor.", formatMessage: "Cópiala completa, sin espacios." } },
+      { key: "locationId", label: "ID del establecimiento", secret: false, required: true, pattern: /^\d{1,12}$/, panel: { label: "Identificador del establecimiento", help: "El número que aparece en la dirección de tu ficha de TripAdvisor (…-d123456-…).", formatMessage: "Solo números." } },
+    ],
+  },
 ];
 
 export function getProvider(id: string): ProviderDef | undefined {
@@ -267,7 +342,7 @@ export function validateFields(provider: ProviderDef, values: Record<string, str
     if (v === "") continue; // vacío = borrar
     if (f.options && !f.options.includes(v)) problems.push(`${k}: valor no permitido`);
     else if (f.pattern && !f.pattern.test(v)) problems.push(`${k}: formato no válido`);
-    else if (v.length > 1024) problems.push(`${k}: demasiado largo`);
+    else if (v.length > fieldMaxLength(f)) problems.push(`${k}: demasiado largo`);
   }
   return problems;
 }

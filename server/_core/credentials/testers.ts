@@ -3,6 +3,7 @@ import { VeturisClient, VeturisNetworkError, type VeturisFetch } from "../../tra
 import { postmarkServerInfo } from "../../mail/tenantPostmark";
 import type { FetchLike } from "../../mail/providers";
 import { MailHostError, resolveMailHost, systemHostResolver, type HostResolver } from "./mailHost";
+import { testSeoProvider, type SeoFetch } from "../../seoControl/connectors";
 
 /**
  * Comprobación de credenciales por proveedor. Nunca devuelve ni registra el secreto; el
@@ -156,8 +157,26 @@ async function testProviderRaw(provider: string, v: Record<string, string>, fetc
       return get(fetchImpl, "https://api.vapi.ai/assistant?limit=1", { Authorization: `Bearer ${v.apiKey}` });
     }
     case "meta": {
-      if (!v.capiAccessToken) return { ok: false, message: "Falta el token de acceso" };
-      return get(fetchImpl, `https://graph.facebook.com/v21.0/me?access_token=${encodeURIComponent(v.capiAccessToken)}`, {});
+      // Ads Manager: con cuenta publicitaria se comprueba que la clave de lectura (o la de la Conversions API) la ve
+      const token = v.capiAccessToken || v.adsAccessToken;
+      if (!token) return { ok: false, message: "Falta el token de acceso" };
+      const account = v.adAccountId?.match(/^(?:act_)?(\d{5,20})$/)?.[1];
+      if (account) return get(fetchImpl, `https://graph.facebook.com/v21.0/act_${account}?fields=name`, { Authorization: `Bearer ${v.adsAccessToken || token}` });
+      return get(fetchImpl, `https://graph.facebook.com/v21.0/me?access_token=${encodeURIComponent(token)}`, {});
+    }
+    case "google_ads": {
+      // Solo lectura: renueva el acceso y consulta un día de la cuenta (Elephant Ads Manager)
+      const { fetchGoogleDaily } = await import("../../adsManager/connectors");
+      const day = new Date().toISOString().slice(0, 10);
+      const r = await fetchGoogleDaily(
+        { customerId: v.customerId ?? "", loginCustomerId: v.loginCustomerId || undefined, developerToken: v.developerToken ?? "", clientId: v.clientId ?? "", clientSecret: v.clientSecret ?? "", refreshToken: v.refreshToken ?? "" },
+        day,
+        day,
+        fetchImpl as unknown as import("../../adsManager/connectors").AdsFetch,
+      );
+      if (r.ok) return { ok: true, message: `Conexión correcta con Google Ads (${r.accountName ?? r.accountId}, ${r.currency})` };
+      if (r.error.kind === "AUTH_ERROR" || r.error.kind === "PERMISSION_ERROR") return { ok: false, message: r.error.message, outcome: "rejected" };
+      return { ok: false, message: r.error.message };
     }
     case "brevo_marketing": {
       if (!v.apiKey) return { ok: false, message: "Falta la clave API" };
@@ -171,6 +190,12 @@ async function testProviderRaw(provider: string, v: Record<string, string>, fetc
     }
     case "veturis":
       return veturisCheck(v, fetchImpl as unknown as VeturisFetch);
+    // Elephant SEO Control: solo lectura con las credenciales de la empresa (server/seoControl/connectors.ts)
+    case "google_search_console":
+    case "google_business_profile":
+    case "tripadvisor":
+      // Con el fetch global por defecto se usa el del conector (sustituible en pruebas); si no, el inyectado
+      return (await testSeoProvider(provider, v, fetchImpl === (globalThis.fetch as unknown) ? undefined : (fetchImpl as unknown as SeoFetch)))!;
     case "redsys": {
       // Sin red: Redsys no ofrece un ping; se valida que la configuración sea utilizable
       if (!v.merchantCode || !v.merchantKey) return { ok: false, message: "Faltan el número de comercio o la clave secreta" };
