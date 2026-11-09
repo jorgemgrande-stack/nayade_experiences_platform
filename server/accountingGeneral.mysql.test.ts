@@ -249,6 +249,31 @@ describe.skipIf(!URL_)("Contabilidad general · asientos automáticos, manuales,
     expect((await ok(q("overview"))).balanced).toBe(true);
   });
 
+  it("documentos anteriores al inicio cobrados o pagados después: solo el cobro o el pago, en su fecha, contra la apertura", async () => {
+    const [b430, b410, b572, b700] = [await balance("430"), await balance("410"), await balance("572"), await balance("700")];
+    const prev = `${y() - 1}-12-20`;
+    await ess.sql("a", `INSERT INTO invoices (invoiceNumber, clientName, clientEmail, subtotal, taxRate, taxAmount, taxBreakdown, total, status, invoiceType, paymentMethod, issuedAt, paymentValidatedAt)
+      VALUES ('F-QA-ANT', 'Cliente QA', 'qa@example.com', 41.32, 21, 8.68, '[{"rate":21,"base":41.32,"amount":8.68}]', 50.00, 'cobrada', 'factura', 'transferencia', ?, ?)`, [noon(prev), noon(d2())]);
+    // Otra anterior y cobrada antes del inicio: nada (va en la apertura)
+    await ess.sql("a", `INSERT INTO invoices (invoiceNumber, clientName, clientEmail, subtotal, taxRate, taxAmount, taxBreakdown, total, status, invoiceType, paymentMethod, issuedAt, paymentValidatedAt)
+      VALUES ('F-QA-ANT2', 'Cliente QA', 'qa@example.com', 10.00, 21, 2.10, '[{"rate":21,"base":10,"amount":2.1}]', 12.10, 'cobrada', 'factura', 'transferencia', ?, ?)`, [noon(prev), noon(prev)]);
+    await ess.sql("a", "INSERT INTO expenses (date, concept, amount, categoryId, costCenterId, paymentMethod, taxRate, taxBase, taxAmount, fiscalReviewStatus) VALUES (?, 'Gasto anterior QA', 30.00, 1, 1, 'transfer', 21, 24.79, 5.21, 'revisado')", [prev]);
+    const [exp] = await ess.sql("a", "SELECT id FROM expenses WHERE concept = 'Gasto anterior QA'");
+    await ess.sql("a", "INSERT INTO bank_movements (import_id, fecha, importe, duplicate_key, conciliation_status) VALUES (1, ?, -30.00, 'qa-ant', 'conciliado')", [d2()]);
+    const [mov] = await ess.sql("a", "SELECT id FROM bank_movements WHERE duplicate_key = 'qa-ant'");
+    await ess.sql("a", "INSERT INTO bank_movement_links (bank_movement_id, entity_type, entity_id, link_type, amount_linked, status) VALUES (?, 'expense', ?, 'expense_payment', 30.00, 'confirmed')", [mov.id, exp.id]);
+    const s = await ok(m("sync", undefined));
+    expect(s.errors).toEqual([]);
+    expect(s.created).toBe(2); // el cobro y el pago; ni la factura ni el gasto
+    expect((await balance("430")) - b430).toBe(-5000);
+    expect((await balance("410")) - b410).toBe(3000);
+    expect((await balance("572")) - b572).toBe(5000 - 3000);
+    expect((await balance("700")) - b700).toBe(0);
+    const [e] = await ess.sql("a", "SELECT DATE_FORMAT(entry_date, '%Y-%m-%d') AS d FROM acc_entries WHERE source_key LIKE ?", [`pago:${exp.id}#%`]);
+    expect(e.d).toBe(d2());
+    expect((await ok(q("overview"))).balanced).toBe(true);
+  });
+
   it("libros y exportaciones para la gestoría: diario, mayor, sumas y saldos, pérdidas y ganancias y Excel", async () => {
     const j = await ok(q("export", { ...period(), kind: "journal" }));
     const csv = Buffer.from(j.base64, "base64").toString("utf8");

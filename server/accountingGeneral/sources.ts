@@ -10,7 +10,7 @@
  * Cada documento se resuelve en lo que pide hoy (`Desired`) bajo su clave natural. Un grupo que no puede leerse se
  * omite entero (sus asientos no se tocan) y queda en el resumen.
  */
-import { and, eq, gte, inArray, isNotNull } from "drizzle-orm";
+import { and, eq, gte, inArray, isNotNull, or } from "drizzle-orm";
 import { bankMovementLinks, bankMovements, cashMovements, cashRegisters, cashSessions, expenseSuppliers, expenses, invoices, tpvSalePayments } from "../../drizzle/schema";
 import { listFiscalDocuments, madridDayRange } from "../fiscalDocumentsDb";
 import { madridDayKey } from "../../shared/gestoriaExportPeriod";
@@ -96,10 +96,12 @@ async function readSales(db: Db, ctx: SourceContext, out: SourceRead) {
 }
 
 async function readCollections(db: Db, ctx: SourceContext, out: SourceRead) {
+  const start = new Date(madridMidnightMs(ctx.startDate));
   const rs = await db
     .select({ id: invoices.id, number: invoices.invoiceNumber, status: invoices.status, total: invoices.total, method: invoices.paymentMethod, validatedAt: invoices.paymentValidatedAt, issuedAt: invoices.issuedAt, clientName: invoices.clientName })
     .from(invoices)
-    .where(and(eq(invoices.invoiceType, "factura"), gte(invoices.issuedAt, new Date(madridMidnightMs(ctx.startDate)))));
+    // También las anteriores al inicio cobradas después: su cobro va contra el saldo de apertura de clientes
+    .where(and(eq(invoices.invoiceType, "factura"), or(gte(invoices.issuedAt, start), gte(invoices.paymentValidatedAt, start))));
   for (const r of rs as Array<{ id: number; number: string; status: string; total: string; method: string | null; validatedAt: Date | null; issuedAt: Date; clientName: string }>) {
     const key = `cobro:${r.id}`;
     // Abonada: no consta si llegó a cobrarse antes del abono; se deja lo que hubiera
@@ -113,6 +115,8 @@ async function readCollections(db: Db, ctx: SourceContext, out: SourceRead) {
     }
     const issued = madridDayKey(r.issuedAt);
     const paid = r.validatedAt ? madridDayKey(r.validatedAt) : issued;
+    // Factura anterior al inicio: solo su cobro, y solo si consta cobrada desde el inicio (si no, ya va en la apertura)
+    if (issued < ctx.startDate && paid < ctx.startDate) continue;
     const c = { number: r.number, date: paid > issued ? paid : issued, totalCents: centsOf(r.total), method: r.method, clientName: r.clientName ?? "" };
     out.desired.set(key, desiredOf((m) => collectionEntry(c, m), ctx.map));
   }
@@ -159,14 +163,18 @@ async function readExpenses(db: Db, ctx: SourceContext, out: SourceRead) {
       out.desired.set(`pago:${r.id}`, { kind: "keep" });
       continue;
     }
-    // Anterior al inicio de la contabilidad: no se contabiliza solo (va en el asiento de apertura)
-    if (date < ctx.startDate) continue;
     const doc = expenseDocOf(r, date, paidOn.get(Number(r.id)), ctx);
+    const asRoles = (roles: boolean): ExpenseDoc => (roles ? { ...doc, expenseAccount: categoryRole(Number(r.categoryId)) } : doc);
+    // Anterior al inicio de la contabilidad: el gasto va en el asiento de apertura (no se contabiliza solo), pero su
+    // pago, si es posterior al inicio, sí: contra el saldo de apertura de proveedores
+    if (date < ctx.startDate) {
+      if (doc.paidOn >= ctx.startDate) out.desired.set(`pago:${doc.id}`, desiredOf((m, roles) => expensePaymentEntry(asRoles(roles), m), ctx.map));
+      continue;
+    }
     if (doc.taxUnknown && doc.totalCents !== 0) {
       out.review.push({ key: `gasto:${doc.id}`, message: `El gasto #${doc.id} (${doc.concept.slice(0, 80) || "sin concepto"}) no tiene el IVA revisado: se contabiliza sin IVA soportado hasta que se revise en Gastos` });
     }
     // Huella con la categoría (no con la cuenta que tenga asignada): ver desiredOf
-    const asRoles = (roles: boolean): ExpenseDoc => (roles ? { ...doc, expenseAccount: categoryRole(Number(r.categoryId)) } : doc);
     out.desired.set(`gasto:${doc.id}`, desiredOf((m, roles) => expenseEntry(asRoles(roles), m), ctx.map));
     out.desired.set(`pago:${doc.id}`, desiredOf((m, roles) => expensePaymentEntry(asRoles(roles), m), ctx.map));
   }
