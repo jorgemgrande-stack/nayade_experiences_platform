@@ -16,7 +16,7 @@ import * as XLSX from "xlsx";
 import { csvText, esDate, eur, journalCsv, ledger, reversalEntry, signed, toCsv, trialBalance, trialBalanceCsv, validateEntry } from "../finance/rules";
 import { cashEntry, paymentEntry, signedTaxOf } from "../finance/opsRules";
 import { FinanceError, type Account, type EntryLine, type EntryLineInput, type PostedLine } from "../finance/types";
-import { ACC_PNL_ITEMS, type AccAccountMap, type AccAccountType, type AccJournal, type AccOrigin, type AccPnlKey } from "../../shared/accountingGeneral";
+import { ACC_MAP_KEYS, ACC_PNL_ITEMS, type AccAccountMap, type AccAccountType, type AccJournal, type AccOrigin, type AccPnlKey } from "../../shared/accountingGeneral";
 
 export { trialBalance, ledger };
 
@@ -79,6 +79,24 @@ export function validateDraft(d: AccDraft, accounts: ReadonlyMap<string, AccAcco
 export function draftHash(d: AccDraft): string {
   const lines = d.lines.map((l) => [l.accountCode, l.debitCents, l.creditCents, l.taxRateBp ?? null]);
   return createHash("sha256").update(JSON.stringify([d.journal, d.date, lines])).digest("hex");
+}
+
+/** Cuentas «por papel»: cada cuenta de Ajustes se sustituye por el nombre de su papel (`@cash`, `@bank`…). */
+export const ACC_ROLE_MAP = Object.fromEntries(ACC_MAP_KEYS.map((k) => [k, `@${k}`])) as AccAccountMap;
+/** Cuenta «por papel» de la categoría de un gasto (la huella no depende de la cuenta asignada a la categoría). */
+export const categoryRole = (categoryId: number) => `@cat:${categoryId}`;
+
+/**
+ * Lo que pide un documento: su asiento (con las cuentas de hoy) y su huella. La huella se calcula con el mismo asiento
+ * construido con las cuentas POR PAPEL (`ACC_ROLE_MAP` y `categoryRole`), no con sus códigos: cambiar una cuenta en
+ * Ajustes o la de una categoría solo se aplica hacia adelante (a los documentos nuevos o que cambien) y nunca revierte
+ * ni vuelve a contabilizar lo ya contabilizado. Un cambio del documento (importe, fecha, método de cobro o categoría)
+ * sí cambia la huella.
+ */
+export function desiredOf(build: (map: AccAccountMap, roles: boolean) => AccDraft | null, map: AccAccountMap): Desired {
+  const draft = build(map, false);
+  if (!draft) return { kind: "none" };
+  return { kind: "entry", draft, hash: draftHash(build(ACC_ROLE_MAP, true) ?? draft) };
 }
 
 /** Agrupa importes por cuenta conservando el orden de aparición. */
@@ -291,7 +309,7 @@ export function cashMoveEntry(m: { id: number; date: string; type: "in" | "out";
 // ── Plan de la generación (idempotente por documento) ──────────────────────────────────────────────────────────────
 
 /** Lo que el documento pide hoy: su asiento, ninguno (anulado, devuelto…) o dejar lo que haya (sin información nueva). */
-export type Desired = { kind: "entry"; draft: AccDraft } | { kind: "none" } | { kind: "keep" };
+export type Desired = { kind: "entry"; draft: AccDraft; hash?: string } | { kind: "none" } | { kind: "keep" };
 
 export interface SourceState {
   entryId: number | null;
@@ -317,7 +335,7 @@ export function planSync(desired: ReadonlyMap<string, Desired>, existing: Readon
     const s = existing.get(key);
     const active = s?.entryId ?? null;
     if (d.kind === "entry") {
-      const hash = draftHash(d.draft);
+      const hash = d.hash ?? draftHash(d.draft);
       if (active == null) out.push({ type: "create", key, draft: d.draft, hash });
       else if (s!.hash !== hash) out.push({ type: "replace", key, draft: d.draft, hash, entryId: active });
     } else if (d.kind === "none" && active != null) out.push({ type: "reverse", key, entryId: active });
@@ -336,6 +354,18 @@ export function planSync(desired: ReadonlyMap<string, Desired>, existing: Readon
 export function autoReversalDate(originalDate: string, lockedUntil: string | null, today: string): string | null {
   if (!lockedUntil || originalDate > lockedUntil) return originalDate;
   return today > lockedUntil ? today : null;
+}
+
+/**
+ * Documento nuevo o cambiado con fecha en el periodo bloqueado: se contabiliza en el primer día abierto (hoy), como la
+ * regularización de un periodo cerrado, con la fecha del documento en la descripción. Así no queda «bloqueado» en cada
+ * generación. Null si hoy también está bloqueado (entonces sí espera).
+ */
+export function deferLockedDraft(d: AccDraft, lockedUntil: string | null, today: string): AccDraft | null {
+  if (!isLocked(d.date, lockedUntil)) return d;
+  const date = autoReversalDate(d.date, lockedUntil, today);
+  if (!date) return null;
+  return { ...d, date, description: short(`${d.description} (documento del ${esDate(d.date)}, periodo bloqueado)`, 500) };
 }
 
 /** ¿La fecha cae en el periodo bloqueado? */

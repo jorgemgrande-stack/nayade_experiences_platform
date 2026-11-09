@@ -16,7 +16,7 @@ import { listFiscalDocuments, madridDayRange } from "../fiscalDocumentsDb";
 import { madridDayKey } from "../../shared/gestoriaExportPeriod";
 import { madridMidnightMs } from "../utils/timezone";
 import { isAccDate, type AccAccountMap } from "../../shared/accountingGeneral";
-import { cashCloseEntry, cashMoveEntry, centsOf, collectionEntry, expenseEntry, expensePaymentEntry, saleEntry, type Desired, type ExpenseDoc, type ExpenseMethod, type SaleDoc, type TpvMethod, voidTicketCashEntry } from "./rules";
+import { cashCloseEntry, categoryRole, desiredOf, cashMoveEntry, centsOf, collectionEntry, expenseEntry, expensePaymentEntry, saleEntry, type Desired, type ExpenseDoc, type ExpenseMethod, type SaleDoc, type TpvMethod, voidTicketCashEntry } from "./rules";
 
 /** Grupos de documentos y el prefijo de su clave. */
 export const SOURCE_GROUPS = {
@@ -77,8 +77,7 @@ async function readSales(db: Db, ctx: SourceContext, out: SourceRead) {
     const key = `${d.kind === "ticket" ? "tpv" : "inv"}:${d.id}`;
     if (!d.counts) {
       const cashCents = voided(d) ? (payments.get(d.id) ?? []).filter((p) => p.method === "cash").reduce((a, p) => a + p.cents, 0) : 0;
-      const draft = voidTicketCashEntry({ number: d.number, date: madridDayKey(d.issuedAt), cashCents }, ctx.map);
-      out.desired.set(key, draft ? { kind: "entry", draft } : { kind: "none" });
+      out.desired.set(key, desiredOf((m) => voidTicketCashEntry({ number: d.number, date: madridDayKey(d.issuedAt), cashCents }, m), ctx.map));
       continue;
     }
     const doc: SaleDoc = {
@@ -92,8 +91,7 @@ async function readSales(db: Db, ctx: SourceContext, out: SourceRead) {
       totalCents: centsOf(d.total),
       payments: d.kind === "ticket" ? payments.get(d.id) ?? [] : undefined,
     };
-    const draft = saleEntry(doc, ctx.map);
-    out.desired.set(key, draft ? { kind: "entry", draft } : { kind: "none" });
+    out.desired.set(key, desiredOf((m) => saleEntry(doc, m), ctx.map));
   }
 }
 
@@ -115,8 +113,8 @@ async function readCollections(db: Db, ctx: SourceContext, out: SourceRead) {
     }
     const issued = madridDayKey(r.issuedAt);
     const paid = r.validatedAt ? madridDayKey(r.validatedAt) : issued;
-    const draft = collectionEntry({ number: r.number, date: paid > issued ? paid : issued, totalCents: centsOf(r.total), method: r.method, clientName: r.clientName ?? "" }, ctx.map);
-    out.desired.set(key, draft ? { kind: "entry", draft } : { kind: "none" });
+    const c = { number: r.number, date: paid > issued ? paid : issued, totalCents: centsOf(r.total), method: r.method, clientName: r.clientName ?? "" };
+    out.desired.set(key, desiredOf((m) => collectionEntry(c, m), ctx.map));
   }
 }
 
@@ -167,10 +165,10 @@ async function readExpenses(db: Db, ctx: SourceContext, out: SourceRead) {
     if (doc.taxUnknown && doc.totalCents !== 0) {
       out.review.push({ key: `gasto:${doc.id}`, message: `El gasto #${doc.id} (${doc.concept.slice(0, 80) || "sin concepto"}) no tiene el IVA revisado: se contabiliza sin IVA soportado hasta que se revise en Gastos` });
     }
-    const e = expenseEntry(doc, ctx.map);
-    const p = expensePaymentEntry(doc, ctx.map);
-    out.desired.set(`gasto:${doc.id}`, e ? { kind: "entry", draft: e } : { kind: "none" });
-    out.desired.set(`pago:${doc.id}`, p ? { kind: "entry", draft: p } : { kind: "none" });
+    // Huella con la categoría (no con la cuenta que tenga asignada): ver desiredOf
+    const asRoles = (roles: boolean): ExpenseDoc => (roles ? { ...doc, expenseAccount: categoryRole(Number(r.categoryId)) } : doc);
+    out.desired.set(`gasto:${doc.id}`, desiredOf((m, roles) => expenseEntry(asRoles(roles), m), ctx.map));
+    out.desired.set(`pago:${doc.id}`, desiredOf((m, roles) => expensePaymentEntry(asRoles(roles), m), ctx.map));
   }
 }
 
@@ -228,16 +226,16 @@ async function readCash(db: Db, ctx: SourceContext, out: SourceRead) {
     .leftJoin(cashRegisters, eq(cashRegisters.id, cashSessions.registerId))
     .where(and(eq(cashSessions.status, "closed"), isNotNull(cashSessions.closedAt), gte(cashSessions.closedAt, since)));
   for (const s of sessions as Array<{ id: number; closedAt: number; diff: string | null; register: string | null }>) {
-    const draft = cashCloseEntry({ sessionId: s.id, date: madridDayKey(new Date(Number(s.closedAt))), differenceCents: centsOf(s.diff), register: s.register ?? "" }, ctx.map);
-    out.desired.set(`cierre:${s.id}`, draft ? { kind: "entry", draft } : { kind: "none" });
+    const c = { sessionId: s.id, date: madridDayKey(new Date(Number(s.closedAt))), differenceCents: centsOf(s.diff), register: s.register ?? "" };
+    out.desired.set(`cierre:${s.id}`, desiredOf((m) => cashCloseEntry(c, m), ctx.map));
   }
   const moves = await db
     .select({ id: cashMovements.id, type: cashMovements.type, amount: cashMovements.amount, reason: cashMovements.reason, createdAt: cashMovements.createdAt })
     .from(cashMovements)
     .where(gte(cashMovements.createdAt, since));
   for (const m of moves as Array<{ id: number; type: "in" | "out"; amount: string; reason: string; createdAt: number }>) {
-    const draft = cashMoveEntry({ id: m.id, date: madridDayKey(new Date(Number(m.createdAt))), type: m.type, amountCents: centsOf(m.amount), reason: m.reason ?? "" }, ctx.map);
-    out.desired.set(`cajamov:${m.id}`, draft ? { kind: "entry", draft } : { kind: "none" });
+    const c = { id: m.id, date: madridDayKey(new Date(Number(m.createdAt))), type: m.type, amountCents: centsOf(m.amount), reason: m.reason ?? "" };
+    out.desired.set(`cajamov:${m.id}`, desiredOf((map) => cashMoveEntry(c, map), ctx.map));
   }
 }
 

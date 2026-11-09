@@ -11,7 +11,10 @@ import {
   autoReversalDate,
   cashCloseEntry,
   cashMoveEntry,
+  categoryRole,
   collectionEntry,
+  deferLockedDraft,
+  desiredOf,
   draftHash,
   expenseAmounts,
   expenseEntry,
@@ -309,6 +312,34 @@ describe("generación idempotente por documento", () => {
     expect(keyInGroups("inv:1", ["sales"])).toBe(true);
     expect(keyInGroups("pago:1", ["sales"])).toBe(false);
     expect(keyInGroups("pago:1", ["expenses"])).toBe(true);
+  });
+
+  it("cambiar una cuenta en Ajustes o la de una categoría no vuelve a contabilizar el histórico (solo hacia adelante)", () => {
+    const ticket: SaleDoc = { kind: "ticket", id: 3, number: "T-3", date: "2026-03-01", clientName: "", rectifies: "", byRate: [{ rateBp: 2100, baseCents: 1000, taxCents: 210 }], totalCents: 1210, payments: [{ method: "card", cents: 1210 }] };
+    const before = desiredOf((m) => saleEntry(ticket, m), map);
+    const moved = { ...map, card: "57200001", sales: "705", vatOutput: "4770" };
+    const after = desiredOf((m) => saleEntry(ticket, m), moved);
+    if (before.kind !== "entry" || after.kind !== "entry") throw new Error("sin asiento");
+    expect(after.draft.lines.map((l) => l.accountCode)).toContain("57200001"); // lo nuevo, con la cuenta nueva
+    expect(after.hash).toBe(before.hash);
+    expect(planSync(new Map([["tpv:3", after]]), new Map([["tpv:3", { entryId: 5, hash: before.hash! }]]))).toEqual([]);
+    // Categoría de gasto: la huella va con la categoría, no con su cuenta
+    const g = (account: string) => desiredOf((m, roles) => expenseEntry({ ...expense, expenseAccount: roles ? categoryRole(4) : account }, m), map);
+    expect((g("629") as any).hash).toBe((g("623") as any).hash);
+    // El documento sí cambia: otro método de cobro, otro importe u otra categoría
+    expect((desiredOf((m) => saleEntry({ ...ticket, payments: [{ method: "cash", cents: 1210 }] }, m), map) as any).hash).not.toBe(before.hash);
+    expect((desiredOf((m) => saleEntry({ ...ticket, totalCents: 1331, byRate: [{ rateBp: 2100, baseCents: 1100, taxCents: 231 }] }, m), map) as any).hash).not.toBe(before.hash);
+    expect((desiredOf((m, roles) => expenseEntry({ ...expense, expenseAccount: roles ? categoryRole(5) : "629" }, m), map) as any).hash).not.toBe((g("629") as any).hash);
+  });
+
+  it("documento nuevo o cambiado de un periodo bloqueado: al primer día abierto (no queda bloqueado en cada generación)", () => {
+    const d = saleEntry(invoice, map)!;
+    const moved = deferLockedDraft(d, "2026-03-31", "2026-04-15")!;
+    expect(moved.date).toBe("2026-04-15");
+    expect(moved.description).toContain("10/03/2026");
+    expect(moved.lines).toEqual(d.lines);
+    expect(deferLockedDraft(d, "2026-02-28", "2026-04-15")).toBe(d); // no bloqueado: tal cual
+    expect(deferLockedDraft(d, "2026-04-30", "2026-04-15")).toBeNull(); // hoy también bloqueado: espera
   });
 });
 

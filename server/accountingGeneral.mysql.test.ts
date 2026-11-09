@@ -166,20 +166,32 @@ describe.skipIf(!URL_)("Contabilidad general · asientos automáticos, manuales,
     expect(errCode(await m("reverseEntry", { id: auto.id, reason: "no" }))).toBe("CONFLICT");
   });
 
-  it("bloqueo de periodo: no se contabiliza con fecha bloqueada; la fecha de inicio no cambia con asientos automáticos", async () => {
+  it("bloqueo de periodo: un manual no entra; un documento con fecha bloqueada va al primer día abierto, una vez y sin bucles; la fecha de inicio no cambia", async () => {
     const st = await ok(q("settings"));
     expect(st.startDateEditable).toBe(false);
     expect(errCode(await m("saveSettings", { startDate: `${y()}-02-01`, lockedUntil: null, map: st.map }))).toBe("CONFLICT");
     await ok(m("saveSettings", { startDate: st.startDate, lockedUntil: `${y()}-01-31`, map: st.map }));
     const r = await m("createEntry", { date: `${y()}-01-10`, journal: "GEN", description: "Tarde", lines: [{ accountCode: "629", debitCents: 100, creditCents: 0 }, { accountCode: "570", debitCents: 0, creditCents: 100 }] });
     expect(errCode(r)).toBe("CONFLICT");
-    // Un gasto nuevo en el periodo bloqueado queda pendiente (no se contabiliza)
+    // Un gasto nuevo con fecha en el periodo bloqueado: se contabiliza el primer día abierto (hoy), una sola vez
+    expect(today() > `${y()}-01-31`).toBe(true); // (la prueba usa enero: no se ejecuta en enero)
     await ess.sql("a", "INSERT INTO expenses (date, concept, amount, categoryId, costCenterId, paymentMethod, taxRate, taxAmount, fiscalReviewStatus) VALUES (?, 'Tardío', 12.10, 1, 1, 'cash', 21, 2.10, 'revisado')", [`${y()}-01-25`]);
+    const [late] = await ess.sql("a", "SELECT id FROM expenses WHERE concept = 'Tardío'");
     const s = await ok(m("sync", undefined));
-    expect(s.blocked).toBe(2);
-    expect(s.created).toBe(0);
+    expect(s).toMatchObject({ created: 2, deferred: 2, blocked: 0 });
+    const [e] = await ess.sql("a", "SELECT DATE_FORMAT(entry_date, '%Y-%m-%d') AS d, description FROM acc_entries WHERE source_key LIKE ?", [`gasto:${late.id}#%`]);
+    expect(e.d).toBe(today());
+    expect(e.description).toContain("periodo bloqueado");
+    // Repetir no lo vuelve a pedir: ni «bloqueado» en cada generación ni duplicado
+    expect(await ok(m("sync", undefined))).toMatchObject({ created: 0, replaced: 0, reversed: 0, deferred: 0, blocked: 0 });
+    // Si cambia el documento del periodo bloqueado, se corrige hoy, una vez
+    await ess.sql("a", "UPDATE expenses SET amount = 24.20, taxAmount = 4.20 WHERE id = ?", [late.id]);
+    expect(await ok(m("sync", undefined))).toMatchObject({ replaced: 2, deferred: 2, blocked: 0 });
+    expect(await ok(m("sync", undefined))).toMatchObject({ created: 0, replaced: 0, reversed: 0, blocked: 0 });
+    // Al desbloquear no se vuelve a contabilizar nada
     await ok(m("saveSettings", { startDate: st.startDate, lockedUntil: null, map: st.map }));
-    expect((await ok(m("sync", undefined))).created).toBe(2);
+    expect(await ok(m("sync", undefined))).toMatchObject({ created: 0, replaced: 0, reversed: 0 });
+    expect((await ok(q("overview"))).balanced).toBe(true);
   });
 
   it("retirada de caja del TPV de tipo gasto: la caja baja una sola vez, el puente queda saldado y sin IVA inventado", async () => {
@@ -249,6 +261,26 @@ describe.skipIf(!URL_)("Contabilidad general · asientos automáticos, manuales,
     const x = await ok(q("export", { ...period(), kind: "workbook" }));
     const wb = XLSX.read(Buffer.from(x.base64, "base64"), { type: "buffer" });
     expect(wb.SheetNames).toEqual(["Diario", "Sumas y saldos", "Pérdidas y ganancias"]);
+  });
+
+  it("cambiar las cuentas de Ajustes o la de una categoría no revierte ni vuelve a contabilizar el histórico", async () => {
+    const st = await ok(q("settings"));
+    const before = (await ok(q("overview"))).counts.entries;
+    const [b623, b572] = [await balance("623"), await balance("572")];
+    await ok(m("saveSettings", { startDate: st.startDate, lockedUntil: null, map: { ...st.map, bank: "57200001", card: "57200001", sales: "705", suppliers: "400" } }));
+    const [cat] = await ess.sql("a", "SELECT id FROM expense_categories WHERE name = 'Asesoría QA'");
+    await ok(m("saveCategoryAccount", { categoryId: cat.id, accountCode: "629" }));
+    expect(await ok(m("sync", undefined))).toMatchObject({ created: 0, replaced: 0, reversed: 0, blocked: 0 });
+    expect((await ok(q("overview"))).counts.entries).toBe(before);
+    expect(await balance("623")).toBe(b623); // lo contabilizado conserva su cuenta
+    expect(await balance("572")).toBe(b572);
+    // Lo nuevo sí va con las cuentas nuevas
+    const b629 = await balance("629");
+    await ess.sql("a", "INSERT INTO expenses (date, concept, amount, categoryId, costCenterId, paymentMethod, taxRate, taxBase, taxAmount, fiscalReviewStatus) VALUES (?, 'Asesoría nueva', 60.50, ?, 1, 'transfer', 21, 50.00, 10.50, 'revisado')", [d2(), cat.id]);
+    expect((await ok(m("sync", undefined))).created).toBe(2);
+    expect((await balance("629")) - b629).toBe(5000);
+    expect(await balance("400")).toBe(0); // registrado y pagado contra la cuenta nueva de proveedores
+    expect((await ok(q("overview"))).balanced).toBe(true);
   });
 
   it("aislamiento: la otra empresa no ve nada y sus asientos son solo suyos", async () => {

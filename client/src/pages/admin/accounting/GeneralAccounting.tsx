@@ -150,7 +150,8 @@ function Summary({ syncing, onSync }: { syncing: boolean; onSync: () => void }) 
             <li>Corregidos (documento cambiado): {last.replaced}</li>
             <li>Revertidos (anulados, devueltos o borrados): {last.reversed}</li>
             <li>Sin cambios: {last.unchanged}</li>
-            <li>En periodo bloqueado: {last.blocked}</li>
+            <li>De periodo bloqueado, contabilizados hoy: {last.deferred ?? 0}</li>
+            <li>Esperando (hoy también bloqueado): {last.blocked}</li>
             {last.truncated && <li className="text-foreground">Quedan documentos: vuelve a actualizar</li>}
           </ul>
         )}
@@ -651,7 +652,7 @@ function Settings() {
   const [draft, setDraft] = useState<{ startDate: string; lockedUntil: string; map: AccAccountMap } | null>(null);
   const save = trpc.accountingGeneral.saveSettings.useMutation({
     onSuccess: () => {
-      toast.success("Ajustes guardados. Actualiza los asientos para aplicarlos a los documentos nuevos.");
+      toast.success("Ajustes guardados. Se aplican a los documentos nuevos o que cambien; lo ya contabilizado no se toca.");
       utils.accountingGeneral.invalidate();
     },
     onError: (e) => toastError(e),
@@ -681,9 +682,14 @@ function Settings() {
           <label className="space-y-1.5 text-sm font-medium text-foreground">
             Bloqueado hasta (incluido)
             <Input type="date" value={d.lockedUntil} onChange={(e) => setDraft({ ...d, lockedUntil: e.target.value })} />
-            <span className="block text-xs font-normal text-muted-foreground">Cuando la gestoría cierra un trimestre: nada se contabiliza ni se corrige con fecha anterior.</span>
+            <span className="block text-xs font-normal text-muted-foreground">
+              Cuando la gestoría cierra un trimestre: nada se contabiliza ni se corrige con fecha anterior. Un documento nuevo o cambiado de un periodo bloqueado se contabiliza el primer día abierto (hoy), con su fecha en la descripción.
+            </span>
           </label>
         </div>
+        <p className="rounded-lg border border-border bg-muted/40 p-3 text-sm text-muted-foreground">
+          Cambiar una cuenta (aquí o la de una categoría de gasto) solo se aplica hacia adelante: a los documentos nuevos y a los que cambien. Los asientos ya contabilizados no se revierten ni se vuelven a contabilizar; para reclasificar saldos anteriores, haz un asiento manual en el diario general.
+        </p>
         <div className="grid gap-3 sm:grid-cols-2">
           {ACC_MAP_KEYS.map((k) => (
             <label key={k} className="space-y-1 text-sm font-medium text-foreground">
@@ -697,7 +703,7 @@ function Settings() {
         </Button>
       </form>
       <section className={sectionClass}>
-        <p className="text-sm text-muted-foreground">Cuenta del grupo 6 de cada categoría de gasto (vacía: la de por defecto, {s.map.defaultExpense}).</p>
+        <p className="text-sm text-muted-foreground">Cuenta del grupo 6 de cada categoría de gasto (vacía: la de por defecto, {s.map.defaultExpense}). Solo hacia adelante: los gastos ya contabilizados conservan su cuenta.</p>
         {!s.categories.length ? (
           <PanelEmpty title="Sin categorías de gasto" description="Créalas en Gastos › Categorías." />
         ) : (

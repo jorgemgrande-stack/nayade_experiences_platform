@@ -16,6 +16,7 @@ import { ACC_MAP_KEYS, ACC_MANUAL_JOURNALS, isAccDate, type AccAccountMap, type 
 import {
   AccError,
   autoReversalDate,
+  deferLockedDraft,
   isLocked,
   journalCsvOf,
   ledger,
@@ -109,6 +110,9 @@ export interface SyncSummary {
   replaced: number;
   reversed: number;
   unchanged: number;
+  /** Documentos nuevos o cambiados con fecha bloqueada, contabilizados hoy (primer día abierto). */
+  deferred: number;
+  /** Con fecha bloqueada y hoy también bloqueado: esperan a que se desbloquee. */
   blocked: number;
   truncated: boolean;
   errors: Array<{ key: string; message: string }>;
@@ -165,6 +169,7 @@ export async function sync(userId: number | null, now = new Date()): Promise<Syn
       replaced: 0,
       reversed: 0,
       unchanged: 0,
+      deferred: 0,
       blocked: 0,
       truncated: actions.length > MAX_ACTIONS_PER_SYNC,
       errors: read.problems.slice(0, 50),
@@ -174,14 +179,23 @@ export async function sync(userId: number | null, now = new Date()): Promise<Syn
     };
     const pending = new Set(actions.map((a) => a.key));
     summary.unchanged = Array.from(read.desired.keys()).filter((k) => !pending.has(k)).length;
-    for (const a of actions.slice(0, MAX_ACTIONS_PER_SYNC)) {
+    for (const planned of actions.slice(0, MAX_ACTIONS_PER_SYNC)) {
+      let a = planned;
+      let deferred = false;
       if (a.type !== "reverse" && isLocked(a.draft.date, s.lockedUntil)) {
-        summary.blocked++;
-        continue;
+        // Al primer día abierto (la huella sigue siendo la del documento: no vuelve a pedirse)
+        const draft = deferLockedDraft(a.draft, s.lockedUntil, today);
+        if (!draft) {
+          summary.blocked++;
+          continue;
+        }
+        a = { ...a, draft };
+        deferred = true;
       }
       try {
         const o = await applyAction(db, a, accounts, s.lockedUntil, today, userId);
         if (o !== "skipped") summary[o]++;
+        if (o !== "skipped" && deferred) summary.deferred++;
       } catch (e) {
         if (store.isConcurrent(e)) continue;
         if (store.isMissingAccSchema(e)) throw e;
