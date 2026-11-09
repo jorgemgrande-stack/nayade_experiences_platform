@@ -1,8 +1,8 @@
 /**
  * Pantalla abierta durante un despliegue: los ficheros de la versión anterior (las páginas que se cargan al navegar)
  * dejan de existir y al abrir una página nueva el navegador no la encuentra («vite:preloadError»). En lugar del aviso
- * de error, se recarga UNA vez para traer la versión nueva. Si vuelve a fallar enseguida (otra causa), no se recarga
- * en bucle: se deja el error con su botón de «Reintentar».
+ * de error, se recarga UNA vez para traer la versión nueva. Nunca en bucle: si vuelve a fallar enseguida (otra causa),
+ * sin conexión o sin poder apuntar la recarga (almacenamiento bloqueado), se deja el error con su «Reintentar».
  */
 export const STALE_RELOAD_KEY = "es-recarga-version";
 /** Ventana en la que no se repite la recarga (evita bucles si el fallo no es por una versión antigua). */
@@ -14,27 +14,26 @@ export function shouldReloadForStaleBuild(lastReloadAt: string | null, now: numb
 }
 
 type Store = Pick<Storage, "getItem" | "setItem">;
+type Win = Pick<Window, "addEventListener" | "removeEventListener"> & { location: Pick<Location, "reload">; sessionStorage?: Store; navigator?: { onLine?: boolean } };
 
 /** Instala la recarga única. Devuelve la función para quitarla (pruebas). */
-export function installStaleBuildReload(win: Pick<Window, "addEventListener" | "removeEventListener"> & { location: Pick<Location, "reload">; sessionStorage?: Store }, now: () => number = Date.now): () => void {
+export function installStaleBuildReload(win: Win, now: () => number = Date.now): () => void {
   const onError = (event: Event) => {
+    // Sin conexión no es una versión antigua: recargar solo mostraría la página de «sin conexión» del navegador
+    if (win.navigator?.onLine === false) return;
     let store: Store | null = null;
     try {
       store = win.sessionStorage ?? null;
     } catch {
       store = null;
     }
-    let last: string | null = null;
+    // Sin poder apuntar la recarga no se recarga (si no, un fallo persistente recargaría sin fin)
+    if (!store) return;
     try {
-      last = store?.getItem(STALE_RELOAD_KEY) ?? null;
+      if (!shouldReloadForStaleBuild(store.getItem(STALE_RELOAD_KEY), now())) return;
+      store.setItem(STALE_RELOAD_KEY, String(now()));
     } catch {
-      last = null;
-    }
-    if (!shouldReloadForStaleBuild(last, now())) return;
-    try {
-      store?.setItem(STALE_RELOAD_KEY, String(now()));
-    } catch {
-      // sin almacenamiento: se recarga igualmente (una sola vez por carga de página)
+      return;
     }
     event.preventDefault();
     win.location.reload();

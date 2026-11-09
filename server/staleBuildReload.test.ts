@@ -46,6 +46,20 @@ describe("recarga tras un despliegue", () => {
     expect(shouldReloadForStaleBuild(String(20), 10)).toBe(true);
   });
 
+  it("sin almacenamiento o sin conexión no recarga (nunca en bucle)", () => {
+    const blocked = fakeWindow();
+    const w = { ...blocked.win, sessionStorage: { getItem: () => null, setItem: () => { throw new Error("bloqueado"); } } };
+    installStaleBuildReload(w as never);
+    blocked.fire();
+    expect(w.location.reload).not.toHaveBeenCalled();
+    const offline = fakeWindow();
+    const o = { ...offline.win, navigator: { onLine: false } };
+    installStaleBuildReload(o as never);
+    const e = offline.fire();
+    expect(e.preventDefault).not.toHaveBeenCalled();
+    expect(o.location.reload).not.toHaveBeenCalled();
+  });
+
   it("se puede quitar", () => {
     const { win, listeners } = fakeWindow();
     const off = installStaleBuildReload(win as never);
