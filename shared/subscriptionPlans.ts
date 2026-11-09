@@ -166,6 +166,8 @@ export interface PlanComparisonInput {
 }
 
 export const isTrialState = (state: string) => state === "trial" || state === "trial_expired";
+/** Suscripción terminada (solo lectura) o cancelada: el plan que tenía se vuelve a contratar (reactivación). */
+export const isEndedState = (state: string) => state === "read_only" || state === "cancelled";
 
 /** Diferencias de límites publicados entre un plan y el actual (mismo indicador o, sin él, misma etiqueta). */
 export function planDifferences(plan: PanelPlanInfo, current: PanelPlanInfo | null): PlanDifference[] {
@@ -180,16 +182,17 @@ export function planDifferences(plan: PanelPlanInfo, current: PanelPlanInfo | nu
 
 export function buildPlanComparison(i: PlanComparisonInput): PlanCardModel[] {
   const trial = isTrialState(i.state);
+  const ended = isEndedState(i.state);
   const current = i.plans.find((p) => p.key === i.currentPlanKey) ?? null;
   const convertible = trial && i.isAdmin && i.conversion?.enabled === true;
-  const change = !trial && i.isAdmin && i.planChange?.enabled && i.planChange.available && i.planChange.current ? i.planChange : null;
+  const change = !trial && !ended && i.isAdmin && i.planChange?.enabled && i.planChange.available && i.planChange.current ? i.planChange : null;
   return i.plans.map((plan): PlanCardModel => {
     const isCurrent = plan.key === i.currentPlanKey;
     const selfService = SELF_SERVICE.includes(plan.key);
     // Lo que no se completa en línea se pide al equipo comercial con su motivo
-    const requestKind: PlanRequestKind = trial || !current ? "contract" : rank(plan) > rank(current) ? "upgrade" : "change";
+    const requestKind: PlanRequestKind = trial || ended || !current ? "contract" : rank(plan) > rank(current) ? "upgrade" : "change";
     let cta: PlanCta;
-    if (isCurrent && !trial) cta = { kind: "current" };
+    if (isCurrent && !trial && !ended) cta = { kind: "current" };
     else if (!i.isAdmin) cta = { kind: "admin_only" };
     else if (convertible && selfService) cta = { kind: "convert", plan: plan.key as SelfServicePlanKey };
     else if (change && selfService) {
@@ -201,7 +204,7 @@ export function buildPlanComparison(i: PlanComparisonInput): PlanCardModel[] {
     return {
       plan,
       isCurrent,
-      currentLabel: isCurrent ? (trial ? "Prueba gratuita" : "Tu plan actual") : null,
+      currentLabel: isCurrent ? (trial ? "Prueba gratuita" : ended ? "Tu plan anterior" : "Tu plan actual") : null,
       commercialLabel: plan.assisted && plan.offerLabel ? plan.offerLabel : COMMERCIAL_LABELS[plan.commercialStatus],
       differences: planDifferences(plan, current),
       cta,

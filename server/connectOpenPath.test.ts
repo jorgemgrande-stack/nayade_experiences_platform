@@ -15,6 +15,7 @@ describe("pantalla de cada extensión de Connect al contratarla", () => {
     expect(open(["bank-reconciliation", "bank-import-pos"])).toMatch(/^\/admin\/contabilidad\//);
     expect(open(["geo-control"])).toBe("/admin/marketing/geo");
     expect(open(["ads-manager"])).toBe("/admin/marketing/ads");
+    expect(open(["copilot-advanced"])).toBe("/admin/copilot");
     expect(open(["contracts-esign"])).toMatch(/^\/admin\/contratos/);
   });
   it("solo abre lo que el rol puede ver: un agente no recibe la pantalla de administración", () => {
@@ -23,7 +24,7 @@ describe("pantalla de cada extensión de Connect al contratarla", () => {
     expect(navOpenPathResolver(TASK_NAV, "admin")(["tax-filings"])).toBe("/admin/gestoria");
   });
   it("una capacidad sin pantalla no abre nada", () => {
-    expect(open(["copilot-advanced"])).toBeNull();
+    expect(open(["automations-advanced"])).toBeNull();
     expect(open([])).toBeNull();
   });
 });

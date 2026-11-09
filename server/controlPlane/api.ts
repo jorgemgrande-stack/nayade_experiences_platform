@@ -117,8 +117,10 @@ import { LicensingError, LicensingService } from "../licensing/service";
 import type { TenantLimitStore } from "../_core/limits/store";
 import { TrialService, type TrialLimits } from "../trials/service";
 import type { TrialStore } from "../trials/store";
+import { trialCompanyFields, trialOwnerContact } from "../trials/profile";
 import { TrialOnboardingService, type TrialLicenceSync, type TrialNotifier } from "../trials/onboarding";
-import { createPublicTrialRouter, createTrialAdminRouter, type TrialExceptionConversion } from "../trials/api";
+import { createPublicTrialRouter, createTrialAdminRouter, createTrialMilestoneRouter, type TrialExceptionConversion } from "../trials/api";
+import type { TrialFunnelCounter } from "../trials/funnel";
 import { OrderError, TERMINAL_STATES } from "../orchestrator/types";
 import { OrganizationError, OrganizationService, type OrganizationStore } from "../organization/service";
 import { CommercialOrchestrator } from "../orchestrator/service";
@@ -311,7 +313,7 @@ export interface ControlPlaneDeps {
    * sin datos personales ni tokens: no se envía nada). `activation`: aquí se publica la activación de la prueba
    * (la misma instancia que usan las rutas) para que la tarea programada reintente las altas incompletas.
    */
-  trials?: { store: TrialStore; publicEnabled?: boolean; autoProvision?: boolean; lifeTrials?: boolean; notify?: TrialNotifier; limits?: Partial<TrialLimits>; blockedDomains?: string[]; activation?: { activate?: (trialId: number, actor: string) => Promise<unknown>; syncLicences?: (trialId: number, actor: string) => Promise<TrialLicenceSync> } };
+  trials?: { store: TrialStore; funnel?: TrialFunnelCounter | null; publicEnabled?: boolean; autoProvision?: boolean; lifeTrials?: boolean; notify?: TrialNotifier; limits?: Partial<TrialLimits>; blockedDomains?: string[]; activation?: { activate?: (trialId: number, actor: string) => Promise<unknown>; syncLicences?: (trialId: number, actor: string) => Promise<TrialLicenceSync> } };
   /** Sedes y entidades fiscales (registro 0009), con los límites del plan contratado. */
   organization?: OrganizationStore;
   /** Registro de eventos comerciales (CRM 0015), solo lectura. */
@@ -2090,15 +2092,26 @@ export function createControlPlaneApp(d: ControlPlaneDeps): Express {
           byTenant: async (tenantId) => (await crmD.store.list("companies", { tenantId }, { limit: 1 }))[0] ?? null,
           create: async (input, actor) => {
             let c: { id: number };
+            // Datos de la empresa del formulario de la prueba (sector, país, teléfono y procedencia); nunca datos fiscales
+            const extra = trialCompanyFields(input.profile ?? null, input.attribution ?? null);
             try {
-              c = await crmD.service.createCompany({ name: input.name, email: input.email }, actor);
+              c = await crmD.service.createCompany({ name: input.name, email: input.email, ...extra }, actor);
             } catch (e) {
               // Otra empresa (otra prueba o un cliente) ya se llama así: se distingue por su plataforma
               // en lugar de dejar la prueba sin activar para siempre
               if (!(e instanceof CrmError && e.code === "conflict")) throw e;
-              c = await crmD.service.createCompany({ name: `${input.name} (${input.tenantId})`, email: input.email }, actor);
+              c = await crmD.service.createCompany({ name: `${input.name} (${input.tenantId})`, email: input.email, ...extra }, actor);
             }
-            return crmD.store.update("companies", c.id, { tenantId: input.tenantId });
+            const company = await crmD.store.update("companies", c.id, { tenantId: input.tenantId });
+            // El responsable de la prueba, contacto principal de la empresa (propietario). Un fallo aquí no deja la prueba sin activar.
+            if (input.profile) {
+              try {
+                await crmD.service.createContact(company.id, trialOwnerContact(input.profile, input.email), actor);
+              } catch (e) {
+                opsLog("warn", "Trials", "trial_owner_contact_failed", { companyId: company.id, error: e instanceof Error ? e.name : "error" });
+              }
+            }
+            return company;
           },
         },
         subscriptions: svc,
@@ -2110,8 +2123,10 @@ export function createControlPlaneApp(d: ControlPlaneDeps): Express {
         lifeTrials: !!d.trials.lifeTrials,
         now: d.subscriptions.now,
       });
-      router.use("/trials", createTrialAdminRouter({ onboarding, trials: trialService, store: d.trials.store, convert: trialConversion }));
-      if (d.trials.publicEnabled) publicTrial = createPublicTrialRouter({ onboarding, autoProvision: !!d.trials.autoProvision });
+      router.use("/trials", createTrialAdminRouter({ onboarding, trials: trialService, store: d.trials.store, convert: trialConversion, funnel: d.trials.funnel ?? null }));
+      // Hitos de activación que comunica el panel de la empresa (primer acceso y primera acción útil)
+      router.use("/commerce", createTrialMilestoneRouter({ trials: trialService }));
+      if (d.trials.publicEnabled) publicTrial = createPublicTrialRouter({ onboarding, autoProvision: !!d.trials.autoProvision, funnel: d.trials.funnel ?? null, now: d.subscriptions.now });
       if (d.trials.activation) d.trials.activation.activate = (trialId, actor) => onboarding.activate(trialId, actor);
       // Reconciliación del fin de las licencias de las pruebas (la monta main.ts con su propio intervalo)
       if (d.trials.activation) d.trials.activation.syncLicences = (trialId, actor) => onboarding.syncLicences(trialId, actor);
