@@ -4,11 +4,12 @@
  * sigue bloqueando la escritura (capabilityRouteGuard) y que solo una suscripción aplicada la desbloquea, empresa a
  * empresa. Datos sintéticos; sin red ni Stripe.
  */
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import http from "node:http";
 import type { AddressInfo } from "node:net";
 import express from "express";
-import { blockedNotice, isPanelReadOnlyState, isPaymentPending, isReadOnlyBlockError, resolveRecovery, type RecoveryInput } from "../shared/subscriptionRecovery";
+import { blockedNotice, exportAccountNotice, isPanelReadOnlyState, isPaymentPending, isReadOnlyBlockError, readOnlyBlockStatus, resolveRecovery, subscriptionEndedText, type RecoveryInput } from "../shared/subscriptionRecovery";
+import { errorToastMessage } from "../client/src/lib/errorMessage";
 import { buildSubscriptionOverview } from "./subscriptionOverview";
 import { buildPlanComparison, type PanelPlanInfo } from "../shared/subscriptionPlans";
 import { capabilityRouteGuard } from "./_core/capabilities/routeGuard";
@@ -378,5 +379,64 @@ describe("textos de consulta según el derecho real (subscription.overview.consu
     } finally {
       await new Promise<void>((r) => server.close(() => r()));
     }
+  });
+});
+
+describe("pantallas de «Suscripción», «Exportar mis datos» y el aviso de error: misma regla de consulta", () => {
+  const until = { available: true, until: NOW + 30 * DAY, endedAt: null };
+  const ended = { available: false, until: null, endedAt: NOW - 2 * DAY };
+  const closed = { available: false, until: null, endedAt: null };
+
+  it("«Suscripción» con la suscripción terminada: fecha y hora si la consulta sigue, sin promesa si no", () => {
+    expect(subscriptionEndedText(until)).toBe("Tu suscripción ha finalizado. Puedes consultar tus datos en solo lectura hasta el 9 de diciembre de 2026 a las 11:00: reactiva tu plan para volver a crear y editar.");
+    expect(subscriptionEndedText(OPEN)).toBe("Tu suscripción ha finalizado. Tus datos siguen disponibles en solo lectura: reactiva tu plan para volver a crear y editar.");
+    expect(subscriptionEndedText(ended)).toBe("Tu suscripción ha finalizado y el plazo de consulta terminó el 7 de noviembre de 2026. Tus datos se conservan: la persona propietaria puede exportarlos, y puedes reactivar tu plan para volver a trabajar.");
+    expect(subscriptionEndedText(closed)).toMatch(/^Tu suscripción ha finalizado y la consulta del panel ya no está disponible\. Tus datos se conservan/);
+    expect(subscriptionEndedText(undefined)).toBe("Tu suscripción ha finalizado. Tus datos se conservan: reactiva tu plan para volver a crear y editar.");
+    for (const c of [ended, closed, undefined]) expect(subscriptionEndedText(c)).not.toMatch(/siguen disponibles|puedes consultar/i);
+  });
+
+  it("«Exportar mis datos»: cada estado con su consulta real; la exportación se ofrece siempre", () => {
+    expect(exportAccountNotice("trial", OPEN)).toBe("Estás en la prueba gratuita: puedes exportar tus datos cuando quieras.");
+    expect(exportAccountNotice("trial_expired", OPEN)).toBe("Tu prueba ha terminado y la cuenta está en solo lectura: puedes seguir exportando tus datos.");
+    expect(exportAccountNotice("read_only", until)).toBe("Tu cuenta está en solo lectura hasta el 9 de diciembre de 2026 a las 11:00: hasta entonces puedes consultar tus datos. La exportación sigue disponible también después.");
+    expect(exportAccountNotice("read_only", OPEN)).toBe("Tu cuenta está en solo lectura: puedes consultar y exportar tus datos.");
+    // Plazo vencido: ya no promete «hasta el <fecha pasada> puedes consultar»
+    expect(exportAccountNotice("read_only", ended)).toBe("El periodo de solo lectura terminó el 7 de noviembre de 2026. Puedes seguir exportando tus datos mientras la cuenta no se archive: te recomendamos descargarlos cuanto antes.");
+    // Suspendida: decide() no deja leer; antes decía «el panel sigue disponible para consultar»
+    expect(exportAccountNotice("suspended", closed)).toBe("Tu suscripción está suspendida: mientras tanto no se puede consultar la información del panel, pero puedes exportar tus datos.");
+    expect(exportAccountNotice("suspended", undefined)).toBe("Tu suscripción está suspendida: puedes exportar tus datos.");
+    expect(exportAccountNotice("cancelled", closed)).toBe("El periodo de solo lectura ha terminado. Puedes seguir exportando tus datos mientras la cuenta no se archive: te recomendamos descargarlos cuanto antes.");
+    expect(exportAccountNotice("active", OPEN)).toBeNull();
+    for (const [s, c] of [["read_only", ended], ["suspended", closed], ["suspended", undefined], ["cancelled", closed]] as const) {
+      expect(exportAccountNotice(s, c)).not.toMatch(/consultar y|puedes consultar|disponible para consultar/i);
+      expect(exportAccountNotice(s, c)).toMatch(/exportar|exportando/);
+    }
+  });
+
+  it("con las licencias reales: el resumen del servidor da el texto correcto en cada pantalla", () => {
+    const o = (gs: CapabilityGrant[]) => buildSubscriptionOverview({ mode: "multi", enforcing: true, grants: gs, now: NOW });
+    const suspended = o([g({ status: "suspended", source: "subscription:9" })]);
+    expect(exportAccountNotice(suspended.state, suspended.consultation)).toMatch(/no se puede consultar/);
+    const expired = o([g({ status: "read_only", source: "subscription:9", validUntil: NOW - 2 * DAY })]);
+    expect(subscriptionEndedText(expired.consultation)).toMatch(/el plazo de consulta terminó el 7 de noviembre de 2026/);
+    expect(exportAccountNotice(expired.state, expired.consultation)).toMatch(/^El periodo de solo lectura terminó el 7 de noviembre de 2026/);
+  });
+
+  it("aviso de error al guardar: solo `read_only` promete consulta; `expired` no", () => {
+    const err = (status: string) => ({ data: { code: "FORBIDDEN", httpStatus: 403, capability: "crm-contacts", status } });
+    expect(readOnlyBlockStatus(err("read_only"))).toBe("read_only");
+    expect(readOnlyBlockStatus(err("expired"))).toBe("expired");
+    expect(readOnlyBlockStatus(err("suspended"))).toBeNull();
+    expect(readOnlyBlockStatus(null)).toBeNull();
+    vi.stubGlobal("window", { location: { pathname: "/admin/crm" } });
+    try {
+      expect(errorToastMessage(err("read_only"))).toBe("Tu plan está en solo lectura: puedes consultar tus datos, pero no hacer cambios.");
+      expect(errorToastMessage(err("expired"))).toBe("Tu plan no permite hacer cambios ahora mismo. Revisa el estado de tu suscripción.");
+    } finally {
+      vi.unstubAllGlobals();
+    }
+    // Fuera del panel, el mensaje neutro de siempre
+    expect(errorToastMessage(err("expired"))).toBe("Esta acción no está disponible ahora mismo.");
   });
 });

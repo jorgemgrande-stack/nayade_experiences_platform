@@ -9,7 +9,7 @@ import { blockedNotice, isReadOnlyBlockError, type RecoveryView } from "@shared/
 
 const TOAST_ID = "panel-solo-lectura";
 /** Textos del mismo rechazo que las pantallas muestran por su cuenta (se retiran para no duplicar el aviso). */
-const DUPLICATE_RE = /solo lectura|ha caducado/i;
+const DUPLICATE_RE = /solo lectura|ha caducado|no permite hacer cambios/i;
 
 /** Estado de recuperación vigente (lo publica el aviso único del panel al resolverlo con los datos del servidor). */
 let current: RecoveryView | null = null;
