@@ -98,10 +98,22 @@ describe.skipIf(!URL_)("Paquete Marketing · puesta en marcha y resumen (aplicac
     expect(JSON.stringify(s)).not.toMatch(/apiKey|token|secret|password|serviceAccount|refresh/i);
   });
 
+  it("aislamiento de Campaigns: los consentimientos de A no cuentan en B", async () => {
+    await ess.sql("a", "INSERT INTO clients (name, email, source) VALUES ('QA-MKT Ana Ficticia', 'qa-mkt-ana@clientes.example', 'manual')");
+    const [c] = await ess.sql<{ id: number }>("a", "SELECT id FROM clients WHERE email = 'qa-mkt-ana@clientes.example'");
+    await ok(ess.m("a", "brevoMarketing.grantConsent", { clientId: Number(c.id), source: "form", evidence: "Casilla del formulario" }, adA));
+    const a = await ok(summary("a", adA));
+    expect(mod(a, "campaigns").figures[0].value).toBe("1");
+    await ess.setCapability("b", "email-campaigns", "active");
+    const b = await ok(summary("b", adB));
+    expect(mod(b, "campaigns").figures[0].value).toBe("0");
+  });
+
   it("en solo lectura se consulta y se marca como tal", async () => {
     await ess.setCapability("a", "geo-control", "read_only");
     const s = await ok(summary("a", adA));
     expect(mod(s, "geo")).toMatchObject({ readOnly: true, state: "ready" });
     expect(mod(s, "geo").message).toMatch(/solo lectura/);
+    expect(mod(s, "geo").nextStep).toEqual({ label: "Consulta los datos de GEO Control", href: "/admin/marketing/geo" });
   });
 });
