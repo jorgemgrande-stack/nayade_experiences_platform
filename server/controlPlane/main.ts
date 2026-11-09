@@ -45,6 +45,7 @@ import { MysqlSubscriptionStore } from "../subscriptions/store";
 import { MysqlCapabilityStore } from "../_core/capabilities/store";
 import { MysqlTenantLimitStore } from "../_core/limits/store";
 import { MysqlTrialStore } from "../trials/store";
+import { MysqlTrialFunnelCounter } from "../trials/funnel";
 import { MysqlCommercialEventLog, commercialEventsProblem } from "../commercialEvents/log";
 import { trialNotifierFromEnv } from "../trials/emailNotifier";
 import { TrialScheduler, mysqlAdvisoryLock, startTrialScheduler } from "../trials/scheduler";
@@ -420,7 +421,7 @@ async function main() {
   // públicas y la activación automática solo con CP_PUBLIC_TRIAL_ENABLED=1 / CP_TRIAL_AUTO_PROVISION=1.
   // No se envía ningún correo salvo con CP_TRIAL_EMAIL_MODE=sandbox|live y SMTP configurado; por defecto el
   // aviso solo deja constancia sin datos personales.
-  let trials: { store: MysqlTrialStore; publicEnabled: boolean; autoProvision: boolean; lifeTrials?: boolean; notify?: TrialNotifier; blockedDomains: string[]; activation: { activate?: (trialId: number, actor: string) => Promise<unknown>; syncLicences?: (trialId: number, actor: string) => Promise<TrialLicenceSync> } } | undefined;
+  let trials: { store: MysqlTrialStore; funnel?: MysqlTrialFunnelCounter | null; publicEnabled: boolean; autoProvision: boolean; lifeTrials?: boolean; notify?: TrialNotifier; blockedDomains: string[]; activation: { activate?: (trialId: number, actor: string) => Promise<unknown>; syncLicences?: (trialId: number, actor: string) => Promise<TrialLicenceSync> } } | undefined;
   if (crmPool && subscriptions) {
     const trialPool = crmPool;
     const ready = await trialPool.query("SELECT 1 FROM trial_requests LIMIT 0").then(() => true, () => false);
@@ -429,6 +430,8 @@ async function main() {
     if (ready) trials = { store: new MysqlTrialStore(trialPool, commercialEvents), publicEnabled: process.env.CP_PUBLIC_TRIAL_ENABLED === "1", autoProvision: process.env.CP_TRIAL_AUTO_PROVISION === "1", notify: email?.notifier, blockedDomains: blockedDomainsFromEnv(process.env), activation: {} };
     // Prueba del plan personal Life (08/11/2026): apagada salvo su interruptor (server/trials/onboarding.ts)
     if (trials) trials.lifeTrials = lifeTrialsEnabled(process.env);
+    // Contador anónimo de la página de la prueba (CRM 0046): sin la tabla, la ruta pública descarta
+    if (trials) trials.funnel = (await trialPool.query("SELECT 1 FROM funnel_landing_counts LIMIT 0").then(() => true, () => false)) ? new MysqlTrialFunnelCounter(trialPool) : null;
     console.log(JSON.stringify({ ctx: "Trials", enabled: ready, publicEnabled: trials?.publicEnabled ?? false, autoProvision: trials?.autoProvision ?? false, email: { mode: email?.mode ?? "off", provider: email?.provider ?? null, ...(email?.reason ? { reason: email.reason } : {}) }, ...(ready ? {} : { reason: "migration_0007_missing" }) }));
     // Tarea programada de vencimiento y avisos: APAGADA salvo CP_TRIALS_SCHEDULER_ENABLED=1. Una sola réplica
     // trabaja en cada tick (GET_LOCK); nunca suspende, cancela ni borra. Sin notificador, los avisos solo se registran.

@@ -22,6 +22,21 @@ import { TRIAL_STATES } from "./machine";
 import { opsLog } from "../_core/ops/log";
 import { APPROVAL_CATEGORIES, OrderError, type ApprovalCategory } from "../orchestrator/types";
 import { LIFE_PLAN } from "../../shared/personalPlans";
+import { LANDING_STEPS, countLandingStep, summarizeLanding, type TrialFunnelCounter } from "./funnel";
+import { TRIAL_FUNNEL_STAGES, TRIAL_MILESTONES } from "./store";
+
+/** Procedencia que envía la web (UTM, dominio de referencia y página de entrada); se sanea en ./profile.ts. */
+const attributionSchema = z
+  .object({
+    source: z.string().max(200).nullable().optional(),
+    medium: z.string().max(200).nullable().optional(),
+    campaign: z.string().max(200).nullable().optional(),
+    term: z.string().max(200).nullable().optional(),
+    content: z.string().max(200).nullable().optional(),
+    referrerHost: z.string().max(253).nullable().optional(),
+    landingPath: z.string().max(300).nullable().optional(),
+  })
+  .strict();
 
 /**
  * Conversión de una prueba a pago por EXCEPCIÓN administrativa: la hace el orquestador con un pedido de
@@ -39,8 +54,33 @@ const wrap = (fn: (req: Request, res: Response) => Promise<void>) => (req: Reque
   });
 const who = (req: Request) => `${getAuth(req)!.actor.type}:${getAuth(req)!.actor.id}`;
 
-export function createPublicTrialRouter(o: { onboarding: TrialOnboardingService; autoProvision: boolean; perIpHour?: number; resendPerIpHour?: number }): Router {
+export function createPublicTrialRouter(o: { onboarding: TrialOnboardingService; autoProvision: boolean; perIpHour?: number; resendPerIpHour?: number; funnel?: TrialFunnelCounter | null; funnelPerIpHour?: number; now?: () => number }): Router {
   const r = express.Router();
+  // Contador anónimo de la página (visita e inicio del formulario): antes del límite del alta, con el suyo propio.
+  // Responde 202 siempre (también sin la migración 0046 o si falla): la medición nunca molesta a quien se registra.
+  r.post(
+    "/funnel",
+    rateLimit({
+      windowMs: 60 * 60_000,
+      limit: o.funnelPerIpHour ?? 60,
+      standardHeaders: true,
+      legacyHeaders: false,
+      keyGenerator: (req) => `trial-funnel:${ipKeyGenerator(req.ip ?? "")}`,
+      handler: (_req, res) => void res.status(202).json({ counted: false }),
+    }),
+    (req, res) => {
+      res.setHeader("Cache-Control", "no-store");
+      const b = z.object({ step: z.enum(LANDING_STEPS), attribution: attributionSchema.optional() }).strict().safeParse(req.body);
+      if (!b.success) return void res.status(400).json({ error: "invalid_input" });
+      countLandingStep(o.funnel ?? null, b.data.step, b.data.attribution ?? null, (o.now ?? Date.now)()).then(
+        (counted) => void res.status(202).json({ counted }),
+        (e) => {
+          opsLog("warn", "Trials", "landing_count_failed", { error: e instanceof Error ? e.name : "error" });
+          res.status(202).json({ counted: false });
+        },
+      );
+    },
+  );
   r.use(
     rateLimit({
       windowMs: 60 * 60_000,
@@ -60,6 +100,15 @@ export function createPublicTrialRouter(o: { onboarding: TrialOnboardingService;
         .object({
           email: z.string().max(254),
           companyName: z.string().max(160).optional(),
+          // Formulario de captación (09/11/2026): responsable, sector, teléfono, país, aceptaciones y procedencia
+          fullName: z.string().max(160).optional(),
+          sector: z.string().max(60).optional(),
+          phone: z.string().max(40).optional(),
+          country: z.string().max(4).optional(),
+          termsAccepted: z.boolean().optional(),
+          termsVersion: z.string().max(60).optional(),
+          marketingConsent: z.boolean().optional(),
+          attribution: attributionSchema.optional(),
           // Plan personal Life (08/11/2026): titular particular y nombre del hogar, nunca razón social; con su interruptor
           plan: z.literal(LIFE_PLAN).optional(),
           holder: z.object({ firstName: z.string().max(80), lastName: z.string().max(120), taxId: z.string().max(20).optional() }).strict().optional(),
@@ -74,10 +123,23 @@ export function createPublicTrialRouter(o: { onboarding: TrialOnboardingService;
       if (b.website) return void res.status(202).json(ACCEPTED);
       try {
         if (b.plan === LIFE_PLAN) await o.onboarding.registerLife({ email: b.email, holder: b.holder!, householdName: b.householdName ?? null, idempotencyKey: b.idempotencyKey, ip: req.ip ?? null });
-        else await o.onboarding.register({ email: b.email, companyName: b.companyName!, idempotencyKey: b.idempotencyKey, ip: req.ip ?? null });
+        else
+          await o.onboarding.register({
+            email: b.email,
+            companyName: b.companyName!,
+            // Con el formulario nuevo, el responsable va con su aceptación expresa; el anterior (solo correo y empresa) sigue valiendo
+            profile: b.fullName !== undefined ? { fullName: b.fullName, sector: b.sector ?? null, phone: b.phone ?? null, country: b.country ?? null, termsAccepted: b.termsAccepted === true, termsVersion: b.termsVersion ?? null, marketingConsent: b.marketingConsent === true } : null,
+            attribution: b.attribution ?? null,
+            idempotencyKey: b.idempotencyKey,
+            ip: req.ip ?? null,
+          });
       } catch (e) {
-        // No se revela si el correo ya tiene una prueba en curso
-        if (e instanceof TrialError && e.code === "conflict") return void res.status(202).json(ACCEPTED);
+        // No se revela si el correo ya tiene una prueba en curso. Si sigue sin verificar, se le reenvía el enlace (con la
+        // espera mínima y el máximo diario de siempre): quien perdió el correo no se queda sin poder empezar.
+        if (e instanceof TrialError && e.code === "conflict") {
+          void o.onboarding.resendVerification({ email: b.email }, "web").catch((err) => opsLog("error", "Trials", "resend_failed", { error: err instanceof Error ? err.name : "error" }));
+          return void res.status(202).json(ACCEPTED);
+        }
         throw e;
       }
       res.status(202).json(ACCEPTED);
@@ -137,10 +199,27 @@ export function createPublicTrialRouter(o: { onboarding: TrialOnboardingService;
   return r;
 }
 
-export function createTrialAdminRouter(o: { onboarding: TrialOnboardingService; trials: TrialService; store: TrialStore; convert?: { run?: TrialExceptionConversion } }): Router {
+export function createTrialAdminRouter(o: { onboarding: TrialOnboardingService; trials: TrialService; store: TrialStore; convert?: { run?: TrialExceptionConversion }; funnel?: TrialFunnelCounter | null }): Router {
   const r = express.Router();
   const id = z.coerce.number().int().positive();
   const listActive = async () => (await o.store.list({ states: ["active"] })).map((t) => ({ id: t.id, email: t.email, endsAt: t.endsAt }));
+
+  // Embudo de captación y activación (sin datos personales): página (contador anónimo) y etapas de las pruebas
+  // registradas en el rango, por canal de procedencia y sector. Días AAAA-MM-DD, ambos incluidos, máximo un año.
+  r.get(
+    "/funnel",
+    requireScope("subscriptions:read"),
+    wrap(async (req, res) => {
+      const day = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
+      const q = z.object({ from: day, to: day }).parse(req.query);
+      const from = Date.parse(`${q.from}T00:00:00Z`);
+      const to = Date.parse(`${q.to}T00:00:00Z`) + 86_400_000;
+      if (!(from < to) || to - from > 367 * 86_400_000) throw new TrialError("invalid_input", "Rango de días no válido (máximo un año)");
+      const [rows, landing] = await Promise.all([o.store.funnel({ from, to }), o.funnel ? o.funnel.counts({ from: q.from, to: q.to }).catch(() => null) : Promise.resolve(null)]);
+      const totals = Object.fromEntries(TRIAL_FUNNEL_STAGES.map((s) => [s, rows.reduce((n, x) => n + x.stages[s], 0)]));
+      res.json({ from: q.from, to: q.to, landing: landing ? summarizeLanding(landing) : null, totals, rows });
+    }),
+  );
 
   r.get(
     "/",
@@ -296,6 +375,32 @@ export function createTrialAdminRouter(o: { onboarding: TrialOnboardingService; 
     wrap(async (_req, res) => {
       const due = await o.onboarding.noticesDue(listActive);
       res.json(await o.onboarding.sendNotices(due));
+    }),
+  );
+  return r;
+}
+
+/**
+ * Hitos de activación de una prueba (`POST /cp/v1/commerce/tenants/:tenantId/trial-milestones`), con el token de
+ * comercio del Core (el tenant sale de la sesión del panel, nunca del navegador): primer acceso del propietario y
+ * primera acción útil. Una sola vez por prueba; sin prueba, no hace nada. Sin datos personales.
+ */
+export function createTrialMilestoneRouter(o: { trials: TrialService }): Router {
+  const r = express.Router();
+  const tenant = z.string().regex(/^[a-z0-9][a-z0-9-]{1,62}$/);
+  r.post(
+    "/tenants/:tenantId/trial-milestones",
+    (req, res, next) => {
+      const scopes = getAuth(req)?.scopes;
+      if (!scopes || !(scopes.has("commerce:support") || scopes.has("commerce:purchase"))) return void res.status(403).json({ error: "forbidden", scope: "commerce:support" });
+      next();
+    },
+    express.json({ limit: "4kb" }),
+    wrap(async (req, res) => {
+      const t = tenant.parse(req.params.tenantId);
+      const b = z.object({ milestone: z.enum(TRIAL_MILESTONES), detail: z.string().regex(/^[a-z0-9_-]{1,40}$/).optional() }).strict().parse(req.body);
+      const out = await o.trials.recordMilestone(t, b.milestone, b.detail ?? null, `core:${t}`);
+      res.status(202).json(out);
     }),
   );
   return r;

@@ -25,6 +25,7 @@ import { LIFE_PLAN, LIFE_TRIAL_DAYS } from "../../shared/personalPlans";
 import { nextState } from "./machine";
 import { TrialError, TrialService } from "./service";
 import type { TrialHolder, TrialRequest } from "./store";
+import type { TrialAttribution, TrialAttributionInput, TrialProfile, TrialProfileInput } from "./profile";
 
 const DAY = 86_400_000;
 export const ESSENTIAL_PLAN = "essential";
@@ -62,7 +63,11 @@ export interface TrialStatusNotice {
 
 export interface CompanyPort {
   byTenant(tenantId: string): Promise<{ id: number } | null>;
-  create(input: { name: string; email: string; tenantId: string }, actor: string): Promise<{ id: number }>;
+  /**
+   * Empresa nueva enlazada a la plataforma. `profile` y `attribution` (formulario de la web): sector, país,
+   * teléfono y procedencia de la empresa, y el responsable de la prueba como contacto principal (propietario).
+   */
+  create(input: { name: string; email: string; tenantId: string; profile?: TrialProfile | null; attribution?: TrialAttribution | null }, actor: string): Promise<{ id: number }>;
 }
 
 export interface TrialOnboardingDeps {
@@ -140,8 +145,8 @@ export class TrialOnboardingService {
   }
 
   /** Registro público: crea la solicitud y envía el enlace de verificación (solo si es nueva). */
-  async register(input: { email: string; companyName: string; idempotencyKey: string; ip?: string | null }) {
-    const r = await this.d.trials.register({ email: input.email, companyName: input.companyName, configuration: { plan: ESSENTIAL_PLAN, addons: [] }, idempotencyKey: input.idempotencyKey, ip: input.ip ?? null });
+  async register(input: { email: string; companyName: string; profile?: TrialProfileInput | null; attribution?: TrialAttributionInput | null; idempotencyKey: string; ip?: string | null }) {
+    const r = await this.d.trials.register({ email: input.email, companyName: input.companyName, configuration: { plan: ESSENTIAL_PLAN, addons: [] }, profile: input.profile ?? null, attribution: input.attribution ?? null, idempotencyKey: input.idempotencyKey, ip: input.ip ?? null });
     if (r.created && r.verificationToken) await this.d.notify.verification(r.trial.email, { trialId: r.trial.id, token: r.verificationToken });
     return { trialId: r.trial.id, created: r.created, state: r.trial.state };
   }
@@ -245,7 +250,8 @@ export class TrialOnboardingService {
     if (t.state === "provisioning") {
       let result: ProvisionResult;
       try {
-        result = await this.d.provision({ tenantId, displayName: t.companyName, adminEmail: t.email, platformDomain: this.d.platformDomain, trialDays: days });
+        const adminName = t.configuration?.profile?.fullName;
+        result = await this.d.provision({ tenantId, displayName: t.companyName, adminEmail: t.email, ...(adminName ? { adminName } : {}), platformDomain: this.d.platformDomain, trialDays: days });
       } catch (e) {
         await this.d.trials.markProvisioningFailed(t.id, t.version, e instanceof Error ? e.message : "error", actor);
         throw e;
@@ -268,7 +274,7 @@ export class TrialOnboardingService {
     }
 
     // 2. Empresa en el CRM (enlazada a la plataforma)
-    const company = (await this.d.companies.byTenant(tenantId)) ?? (await this.d.companies.create({ name: t.companyName, email: t.email, tenantId }, actor));
+    const company = (await this.d.companies.byTenant(tenantId)) ?? (await this.d.companies.create({ name: t.companyName, email: t.email, tenantId, profile: t.configuration?.profile ?? null, attribution: t.configuration?.attribution ?? null }, actor));
 
     // 3. Suscripción del plan en prueba (sin tarjeta ni cobro)
     const live = (await this.d.subscriptions.list({ companyId: company.id })).find((s) => s.status !== "canceled");
