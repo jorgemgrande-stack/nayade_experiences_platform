@@ -186,6 +186,69 @@ export async function createStaffHotelReservation(
   });
 }
 
+/**
+ * Venta de un canal externo (Venta multicanal, server/multichannelDb.ts): retiene la plaza de spa o las habitaciones
+ * con la MISMA regla atómica que la venta web y crea la reserva con la retención ya CONFIRMADA (el canal ya cobró),
+ * dentro de la transacción de quien llama (que también consume el cupo del canal). Si no cabe, no crea nada.
+ */
+export async function holdConfirmedForChannelSale(
+  tx: Exec,
+  target:
+    | { kind: "spa_slot"; slotId: number; treatmentId: number; date: string; units: number }
+    | { kind: "hotel_room"; roomTypeId: number; checkIn: string; checkOut: string; units: number },
+  data: ReservationData & { reservationNumber: string },
+  now = Date.now(),
+): Promise<HoldResult> {
+  if (target.kind === "spa_slot") {
+    await settleSpaSlotHolds(tx, target.slotId, now);
+    const ok = await affected(tx, sql`
+      UPDATE spa_slots SET bookedCount = bookedCount + ${target.units}
+      WHERE id = ${target.slotId} AND treatmentId = ${target.treatmentId} AND date = ${target.date}
+        AND status <> 'bloqueado' AND bookedCount + ${target.units} <= capacity`);
+    if (ok !== 1) {
+      const [s] = await rows<{ capacity: number; bookedCount: number }>(tx, sql`SELECT capacity, bookedCount FROM spa_slots WHERE id = ${target.slotId}`);
+      return { ok: false, available: s ? Math.max(0, s.capacity - s.bookedCount) : 0 };
+    }
+    const reservation = await createReservation(data, tx);
+    await tx.execute(sql`
+      UPDATE reservations SET inventory_kind = 'spa_slot', inventory_ref_id = ${target.slotId}, inventory_units = ${target.units},
+        hold_status = 'confirmada', hold_expires_at = NULL, hold_release_reason = NULL
+      WHERE id = ${reservation.id}`);
+    return { ok: true, reservation };
+  }
+  const available = await lockedHotelAvailability(tx, target, now);
+  if (available < target.units) return { ok: false, available };
+  const reservation = await createReservation(data, tx);
+  await tx.execute(sql`
+    UPDATE reservations SET inventory_kind = 'hotel_room', inventory_ref_id = ${target.roomTypeId}, inventory_units = ${target.units},
+      stay_check_in = ${target.checkIn}, stay_check_out = ${target.checkOut},
+      hold_status = 'confirmada', hold_expires_at = NULL, hold_release_reason = NULL
+    WHERE id = ${reservation.id}`);
+  return { ok: true, reservation };
+}
+
+/** Plazas libres de una franja de spa sin contar las retenciones que ya deberían liberarse (para el canal). */
+export async function spaSlotFree(exec: Pick<Db, "execute">, slotId: number, now = Date.now()): Promise<number> {
+  const [s] = await rows<{ capacity: number; bookedCount: number; status: string }>(exec, sql`SELECT capacity, bookedCount, status FROM spa_slots WHERE id = ${slotId}`);
+  if (!s || s.status === "bloqueado") return 0;
+  const list = await rows<HoldRow>(exec, sql`
+    SELECT ${HOLD_COLUMNS} FROM reservations WHERE inventory_kind = 'spa_slot' AND inventory_ref_id = ${slotId} AND hold_status IN ('retenida', 'confirmada')`);
+  let releasable = 0;
+  for (const r of list) if (decideHoldAction(holdState(r), now).type === "liberar") releasable += Number(r.inventory_units ?? 0);
+  return Math.max(0, Number(s.capacity) - Number(s.bookedCount) + releasable);
+}
+
+/** Habitaciones libres de un tipo en la noche más ajustada (lectura sin bloqueo, para la disponibilidad del canal). */
+export async function hotelRoomFree(exec: Pick<Db, "execute">, roomTypeId: number, checkIn: string, checkOut: string, now = Date.now()): Promise<number> {
+  const [room] = await rows<{ totalUnits: number }>(exec, sql`SELECT totalUnits FROM room_types WHERE id = ${roomTypeId}`);
+  const nights = stayNights(checkIn, checkOut);
+  if (!room || nights.length === 0) return 0;
+  const occ = await hotelOccupancy(exec, [roomTypeId], checkIn, checkOut, now);
+  const blocks = await rows<{ date: string; availableUnits: number }>(exec, sql`
+    SELECT date, availableUnits FROM room_blocks WHERE roomTypeId = ${roomTypeId} AND date >= ${checkIn} AND date < ${checkOut}`);
+  return minAvailableUnits({ nights, totalUnits: room.totalUnits, blocks: new Map(blocks.map((b) => [b.date, b.availableUnits])), occupancy: occ.get(roomTypeId) ?? new Map() });
+}
+
 /** Bloquea el tipo de habitación y devuelve las unidades libres en la noche más ajustada de la estancia. */
 async function lockedHotelAvailability(
   tx: Exec,

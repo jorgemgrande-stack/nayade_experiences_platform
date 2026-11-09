@@ -179,6 +179,8 @@ En el Core, cada empresa guarda sus credenciales en una bóveda (`server/_core/c
 | Ski Net · fianzas del alquiler y cargos por daños | #721 | en curso (0052) |
 | Tanda C: fichas de Care, Ski, Restaurant y Travel Net al día (Hotel Net bloqueado por el borrador ajeno v10) | esta PR | en curso |
 | Elephant WhatsApp AI · WhatsApp Cloud API por empresa, bandeja con ventana de 24 h y plantillas, IA (sugerencias y automática con tope) y revisión `review20261109whatsapp.ts` | PR de esta entrega | en curso (0061) |
+| Pack Marketing: «Marketing · Puesta en marcha y resumen» (`/admin/marketing/resumen`, `marketingPack.summary`) y revisión de catálogo preparada (`review20261109packmarketing.ts`, sin lanzar) | `feat/pack-marketing` | en curso (sin migración) |
+| Elephant Voice · asistente de alta de Vapi en el panel (sin migración; catálogo sin cambios) | #740 | fusionado |
 
 ## Activación del marketplace (encargo del 08/11/2026)
 
@@ -211,8 +213,8 @@ Inventario accionable de lo que se vende en `/admin/ampliar`. Estado público de
 | Deals (`deals-coupons`) | Formulario de canje, reserva y conciliación | — (canje manual) | Implantación acompañada | **Tanda A.** Igual que Partners. |
 | Tax (`tax-filings`) | Estimación de los modelos 303, 390, 111, 190, 200 y 202; calendario con avisos, expedientes y portal de la gestoría | — | Implantación acompañada | **Tanda A.** Igual que Partners. La presentación la hace la gestoría. |
 | Finance Sync (`bank-import-pos`, `bank-reconciliation`) | Extractos de **cualquier banco** (Norma 43, Excel o CSV, #716), operaciones y remesas del datáfono, conciliación | Buzón IMAP de la empresa (tickets del datáfono) | Implantación acompañada (ficha actualizada en la tanda B) | Asistente del buzón del datáfono en el panel; después, venta directa. |
-| Voice (`voice-ai`) | Llamadas Vapi, leads y coste | Cuenta Vapi de la empresa (bóveda) | Implantación acompañada | Asistente de alta de Vapi. Netelip: IP de salida fija. |
-| POS (`pos-advanced`) | El TPV avanzado existe, pero lo licencia `bill-cash` (Essential) | — | Implantación acompañada | Frontera entre la caja básica y la avanzada. Es una decisión de negocio: hoy la tienen los clientes de Essential. |
+| Voice (`voice-ai`) | Llamadas Vapi, leads y registro de minutos; **asistente de alta en el panel** (Llamadas IA › Puesta en marcha): clave privada validada contra Vapi y guardada en la bóveda, elección de asistente y número, webhook al dominio de la empresa con clave de 24+ caracteres, llamada de prueba y último evento, comprobación en Vapi y desconexión | Cuenta Vapi de la empresa (bóveda); Vapi factura los minutos en esa cuenta | Implantación acompañada (`on_request`, sin Price: venta asistida) | Hecho el asistente de alta. Queda en venta asistida por decisión comercial. Netelip: bloqueo externo (IP de salida fija). |
+| POS (`pos-advanced`) | El TPV avanzado existe, pero lo licencia `bill-cash` (Essential) | — | Implantación acompañada | Frontera entre la caja básica y la avanzada. Es una decisión de negocio: hoy la tienen los clientes de Essential. Propuesta escrita en [elephant-pos-propuesta.md](elephant-pos-propuesta.md) (09/11/2026), pendiente de las decisiones de Jorge. |
 | WhatsApp AI (`whatsapp-ai`) | WhatsApp Cloud API con el número de la empresa: webhook firmado e idempotente, estados de entrega, bandeja con ventana de 24 h y plantillas aprobadas, sugerencias de IA y respuesta automática opcional con horario, tope diario y traspaso a persona (migración 0061). La bandeja de GHL sigue para quien la usa | App de Meta, negocio y número verificados y aprobados de la empresa (bóveda `whatsapp_cloud`); plantillas aprobadas por Meta | En preparación → implantación acompañada con `review20261109whatsapp.ts` (preparada, sin lanzar) | Bloqueo externo: verificación de la empresa y la app en Meta y número aprobado. Las conversaciones las factura Meta. |
 | Campaigns (`email-campaigns`) | Sincronización de clientes con consentimiento a la lista de Brevo de la empresa | Cuenta Brevo de la empresa | Próximamente | Envío de campañas desde el Core. Brevo no es un producto de correo nuevo. |
 | Automatizaciones (`automations-advanced`) | Recordatorios por correo (`emailAutomationJob`) | — | En preparación | Motor de reglas y flujos licenciado. |
@@ -220,11 +222,18 @@ Inventario accionable de lo que se vende en `/admin/ampliar`. Estado público de
 | GEO Control (`geo-control`) | Consultas, observaciones por asistente de IA, presencia y citación, cambios, competidores y oportunidades (#717, migración 0048) | IA central (opcional) | Implantación acompañada (tanda B) | Venta directa con su Price de Stripe Live. |
 | Reception AI, Ads Manager, SEO Control | Sin código en el Core (base en Skicenter) | Vapi o Meta; Meta/Google Ads; Google Business Profile | Próximamente | Portar desde Skicenter. |
 | Contratos y firma (`contracts-esign`) | Plantillas, contratos, firma simple por enlace `/contrato/<token>` o en el panel, evidencias y PDF (#718, migración 0049) | — | Implantación acompañada (tanda B) | Venta directa con su Price de Stripe Live (`stripePrepared`). |
+| Paquete Marketing (`ads-manager`, `email-campaigns`, `seo-control`, `geo-control`) | Los cuatro módulos y su puesta en marcha y resumen (`/admin/marketing/resumen`) | Las de sus componentes (Brevo, Meta/Google Ads o CSV, Search Console, GBP/TripAdvisor opcional) | Próximamente (revisión preparada: implantación acompañada) | Lanzar `catalog-review` (coordinador). |
 | Venta multicanal, Contabilidad general | Sin código genérico | Canales | Próximamente | Desarrollo nuevo. |
 
 **Paquetes (sección 5).**
 - **Finance:** sus componentes son reales salvo `bank-reconciliation`. Seguirá en implantación acompañada hasta que Tax y Finance Sync estén a la venta.
-- **Communications, Marketing y AI:** incluyen capacidades sin función (`reception-ai`, `ads-manager`, `seo-control`, `geo-control`, `copilot-advanced`, `automations-advanced`). No se abren a la venta.
+- **Marketing (09/11/2026, `feat/pack-marketing`):**
+  - Sus cuatro componentes funcionan en el Core y se contratan: Ads Manager (#729), Campaigns (#725/#726) y SEO Control (#728) en implantación acompañada; GEO Control (#717) disponible.
+  - La licencia del paquete concede `ads-manager`, `email-campaigns`, `seo-control` y `geo-control` (con prueba) y el menú muestra sus entradas.
+  - «Marketing · Puesta en marcha y resumen» (`/admin/marketing/resumen`, `marketingPack.summary`): estado real, siguiente paso y cifras de cada módulo; lo no incluido, con enlace a `/admin/ampliar`. «Gestionar» del paquete lleva allí.
+  - Revisión preparada, **sin lanzar** (`review20261109packmarketing.ts`, orden `catalog-review`): «Próximamente» → implantación acompañada, sin Price de Stripe ni cambio de precio.
+  - Lo aporta el cliente: cuenta de Brevo; Meta Ads o Google Ads, o sus CSV; Search Console (y, opcional, Google Business Profile y TripAdvisor). La IA central de GEO es opcional.
+- **Communications y AI:** incluyen capacidades sin función completa (`copilot-advanced`, `automations-advanced`). No se abren a la venta.
 
 **Net.**
 - **Hotel Net:** pendiente de que el operador publique su borrador v10; no se toca.
@@ -243,7 +252,7 @@ Inventario accionable de lo que se vende en `/admin/ampliar`. Estado público de
 - **Conectores con requisitos externos:**
   - Veturis: credenciales, certificación e IP en lista blanca.
   - WhatsApp Cloud API: cada empresa con su app de Meta, su negocio verificado y su número aprobado (ya no depende de una app de Big Elephant).
-  - Grandvalira y Netelip: IP de salida fija.
+  - Grandvalira y Netelip: IP de salida fija (Netelip es la telefonía propia de Voice; con Vapi no hace falta).
   - WebBeds: certificación.
   - Google Ads, GA4 y Business Profile: OAuth y token de la plataforma.
 - **Venta de los productos Net.** Siguen en su estado comercial del CRM («Próximamente» o «Bajo solicitud»). Pasarlos a «Disponible» para la venta es una decisión comercial (Price y condiciones).

@@ -8,7 +8,7 @@
  * beneficios, ni preguntas, ni imágenes inventadas. Precios: solo los que publica el canal (los aprobados).
  */
 import type { CapabilityGrant } from "./_core/capabilities/model";
-import { effectiveStatus } from "./subscriptionOverview";
+import { consultationOf, effectiveStatus } from "./subscriptionOverview";
 import { PRODUCTS } from "./catalog/elephantSourceV1";
 import type { PanelCatalogItemView } from "./panelModules";
 import { parseActivation, parseConnectCard, parseConnectOffer, parseConnectPrices } from "./connectCard";
@@ -124,6 +124,8 @@ export function buildConnectCatalog(
   now: number,
   plan: string | null,
   openPathOf: (capabilities: string[]) => string | null = () => null,
+  /** ¿Se aplican las licencias? En modo sombra el servidor deja leer y escribir: no se anuncia ningún plazo de consulta. */
+  opts: { enforcing?: boolean } = {},
 ): ConnectItem[] {
   const byKey = new Map(catalog.items.map((i) => [i.key, i]));
   const capsOf = (key: string) => {
@@ -134,6 +136,13 @@ export function buildConnectCatalog(
   const productActive = (key: string) => {
     const caps = capsOf(key);
     return caps.length > 0 && caps.every((c) => capabilityStatus(c) === "active");
+  };
+  // Consulta de una licencia en solo lectura o vencida: solo sobre esas capacidades (una activa no hace legible otra
+  // vencida), con el mismo cálculo que subscription.overview.consultation
+  const consultationFor = (caps: string[]) => {
+    if (opts.enforcing === false) return { available: true, until: null, endedAt: null };
+    const lapsed = caps.filter((c) => { const s = capabilityStatus(c); return s === "read_only" || s === "expired"; });
+    return lapsed.length > 0 ? consultationOf(grants, lapsed, now) : null;
   };
   const productName = (key: string) => byKey.get(key)?.name ?? seedOf(key)?.draft.name ?? key;
   // Contratado de verdad (pedido vigente): un paquete concede las capacidades de sus componentes, así que las
@@ -164,7 +173,7 @@ export function buildConnectCatalog(
     // las suyas; su estado es el comercial (se puede contratar en sustitución de los módulos)
     const derived = deriveConnectState(
       { kind: item.kind, commercialStatus: item.commercialStatus, capabilities: replaces.length > 0 && !equivalent ? [] : capabilities, dependencies, plans },
-      { capabilityStatus, plan, productActive, productName },
+      { capabilityStatus, plan, productActive, productName, consultation: consultationFor(capabilities) },
     );
     const state = derived.state;
     const reasons = [...derived.reasons];

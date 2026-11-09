@@ -73,6 +73,16 @@ const ORDER_UNPAID_STATES = new Set(["past_due", "suspended"]);
 /** Planes que se contratan desde la prueba en el panel (shared/connectMarketplace.ts CONVERSION_PLAN_KEYS). */
 const CONVERTIBLE_PLANS = new Set(["essential", "business"]);
 
+/**
+ * Contratar el plan que se está probando: la sección «Contratar» de la suscripción (Stripe Checkout de
+ * subscription.conversionStart) si la contratación desde la prueba está disponible para ese plan; si no, el comparador.
+ * La usan el aviso de prueba terminada y el aviso previo al vencimiento del Inicio.
+ */
+export function trialConversionHref(planKey: string | null | undefined, conversionEnabled: boolean | undefined): string {
+  const plan = planKey ?? "";
+  return conversionEnabled && CONVERTIBLE_PLANS.has(plan) ? `${SUBSCRIPTION_PATH}?contratar=${plan}#contratar` : PLANS_HREF;
+}
+
 const KEEP_BROWSING = "Puedes seguir consultando tu información mientras tanto.";
 /** La exportación (solo la persona propietaria) sigue disponible en consulta y después (exenta del bloqueo). */
 const EXPORT_LINE = "La persona propietaria de la empresa puede exportar los datos desde «Suscripción».";
@@ -112,6 +122,61 @@ function consultLine(c: Consult): string | null {
 /** Sin consulta tras terminar el plazo de solo lectura (o sin consulta por otra causa). */
 const closedLine = (c: Consult) => (c.kind === "closed" ? (c.date ? `El plazo de consulta terminó el ${c.date}.` : "La consulta del panel ya no está disponible.") : null);
 const join = (...parts: Array<string | null>) => parts.filter((p): p is string => !!p).join(" ");
+
+/**
+ * ¿Una capacidad `expired` del resumen se puede leer? `expired` es tanto una prueba vencida (se lee) como un plazo de
+ * solo lectura vencido (no se lee); sin consulta en todo el panel, no se anuncia «solo lectura». Sin el dato, como antes.
+ */
+export function expiredCanConsult(consultation: RecoveryConsultation | null | undefined): boolean {
+  return consultation?.available !== false;
+}
+
+/**
+ * «Suscripción» con la suscripción terminada (estado `read_only`): la misma regla que el aviso del panel, que en esa
+ * página no se muestra.
+ */
+export function subscriptionEndedText(consultation: RecoveryConsultation | null | undefined): string {
+  const c = consultOf(consultation);
+  if (c.kind === "until") return `Tu suscripción ha finalizado. Puedes consultar tus datos en solo lectura hasta el ${c.date}: reactiva tu plan para volver a crear y editar.`;
+  if (c.kind === "open") return "Tu suscripción ha finalizado. Tus datos siguen disponibles en solo lectura: reactiva tu plan para volver a crear y editar.";
+  if (c.kind === "closed")
+    return `Tu suscripción ha finalizado y ${c.date ? `el plazo de consulta terminó el ${c.date}` : "la consulta del panel ya no está disponible"}. Tus datos se conservan: la persona propietaria puede exportarlos, y puedes reactivar tu plan para volver a trabajar.`;
+  return "Tu suscripción ha finalizado. Tus datos se conservan: reactiva tu plan para volver a crear y editar.";
+}
+
+/**
+ * Aviso de la página «Exportar mis datos» según el estado y el derecho de consulta. La exportación (solo la persona
+ * propietaria, `canExport` de dataExport.status) sigue disponible en todos estos estados: no depende de licencias y
+ * está exenta del bloqueo de escrituras (tenantMiddleware READ_ONLY_ALLOWED). La consulta solo se promete si existe.
+ */
+export function exportAccountNotice(state: RecoveryState, consultation: RecoveryConsultation | null | undefined, canExport: boolean): string | null {
+  const c = consultOf(consultation);
+  const OWNER = "la persona propietaria de la empresa";
+  const can = canExport ? "puedes exportar tus datos" : `${OWNER} puede exportar los datos`;
+  const keep = canExport ? "puedes seguir exportando tus datos" : `${OWNER} puede seguir exportando los datos`;
+  const consultAndExport = canExport ? "puedes consultar y exportar tus datos" : `puedes consultar tus datos, y ${OWNER} puede exportarlos`;
+  const later = canExport
+    ? "Puedes seguir exportando tus datos mientras la cuenta no se archive: te recomendamos descargarlos cuanto antes."
+    : "La persona propietaria de la empresa puede seguir exportando los datos mientras la cuenta no se archive.";
+  const ended = c.kind === "closed" ? (c.date ? `El periodo de solo lectura terminó el ${c.date}.` : "El periodo de solo lectura ha terminado.") : null;
+  if (state === "trial") return canExport ? "Estás en la prueba gratuita: puedes exportar tus datos cuando quieras." : `Estás en la prueba gratuita: ${OWNER} puede exportar los datos cuando quiera.`;
+  if (state === "trial_expired") return canConsult(c) ? `Tu prueba ha terminado y la cuenta está en solo lectura: ${keep}.` : `Tu prueba ha terminado: ${keep}.`;
+  if (state === "read_only") {
+    if (c.kind === "until")
+      return `Tu cuenta está en solo lectura hasta el ${c.date}: hasta entonces puedes consultar tus datos. ${canExport ? "La exportación" : "La exportación (solo la persona propietaria)"} sigue disponible también después.`;
+    if (c.kind === "open") return `Tu cuenta está en solo lectura: ${consultAndExport}.`;
+    if (c.kind === "closed") return join(ended, later);
+    return `Tu cuenta está en solo lectura: ${can}.`;
+  }
+  if (state === "suspended") {
+    if (canConsult(c)) return `Tu suscripción está suspendida: ${consultAndExport}.`;
+    if (c.kind === "closed") return `Tu suscripción está suspendida: mientras tanto no se puede consultar la información del panel, pero ${can}.`;
+    return `Tu suscripción está suspendida: ${can}.`;
+  }
+  // Cancelada o sin licencias: solo se habla del periodo de solo lectura si consta que lo hubo y terminó
+  if (state === "cancelled" || state === "none") return join(c.kind === "closed" && c.date ? ended : "Tu cuenta no tiene un plan activo.", later);
+  return null;
+}
 
 /** ¿Todo el panel queda en consulta (prueba o suscripción terminada, o restringida)? */
 export function isPanelReadOnlyState(state: string | null | undefined): boolean {
@@ -172,8 +237,7 @@ export function resolveRecovery(i: RecoveryInput): RecoveryView | null {
 
   // 3) Prueba terminada: contratar el plan que se estaba probando
   if (o.state === "trial_expired") {
-    const plan = o.plan?.key ?? "";
-    const href = i.conversionEnabled && CONVERTIBLE_PLANS.has(plan) ? `${SUBSCRIPTION_PATH}?contratar=${plan}#contratar` : PLANS_HREF;
+    const href = trialConversionHref(o.plan?.key, i.conversionEnabled);
     return {
       kind: "trial_ended",
       tone: "warning",
@@ -213,9 +277,20 @@ export interface BlockedNotice {
   action: { label: string; href: string } | null;
 }
 
-export function blockedNotice(view: RecoveryView | null): BlockedNotice {
+/**
+ * `status` es el del rechazo (readOnlyBlockStatus). Sin el panel en consulta, `read_only` es una función en solo lectura
+ * dentro de plazo (se consulta); `expired` puede ser un plazo de solo lectura vencido (ya no se consulta): no se promete.
+ */
+export function blockedNotice(view: RecoveryView | null, status: "read_only" | "expired" = "read_only"): BlockedNotice {
   if (!view || !view.readOnly) {
-    // Una función concreta en solo lectura con el plan en vigor (p. ej. un módulo que ha caducado)
+    if (status === "expired") {
+      return {
+        title: "No se pueden guardar cambios",
+        description: "Tu plan no permite hacer cambios en esta función. Revisa el estado de tu suscripción.",
+        action: { label: "Ver mi suscripción", href: SUBSCRIPTION_PATH },
+      };
+    }
+    // Una función concreta en solo lectura con el plan en vigor
     return {
       title: "Esta función está en solo lectura",
       description: "Tu plan permite consultarla, pero no hacer cambios.",
@@ -246,8 +321,32 @@ type ErrorData = { code?: unknown; httpStatus?: unknown; capability?: unknown; s
  * `read_only` o `expired`)? Acepta el error del cliente tRPC (`data`/`shape.data`) o el cuerpo HTTP del guardián.
  */
 export function isReadOnlyBlockError(err: unknown): boolean {
+  return readOnlyBlockStatus(err) !== null;
+}
+
+/** Estado del rechazo tipado de escritura en consulta (`read_only` o `expired`); null si no es ese rechazo. */
+export function readOnlyBlockStatus(err: unknown): "read_only" | "expired" | null {
   const e = err as { data?: ErrorData; shape?: { data?: ErrorData }; error?: { json?: { data?: ErrorData } } } | null | undefined;
   const d = e?.data ?? e?.shape?.data ?? e?.error?.json?.data;
-  if (!d || typeof d !== "object") return false;
-  return (d.httpStatus === 403 || d.code === "FORBIDDEN") && typeof d.capability === "string" && (d.status === "read_only" || d.status === "expired");
+  if (!d || typeof d !== "object") return null;
+  if (!((d.httpStatus === 403 || d.code === "FORBIDDEN") && typeof d.capability === "string")) return null;
+  return d.status === "read_only" || d.status === "expired" ? d.status : null;
+}
+
+/**
+ * Texto del rechazo de una escritura en consulta. `read_only` (decide(): solo lectura dentro de plazo) permite leer esa
+ * función; `expired` puede ser una prueba vencida (se lee) o un plazo de solo lectura vencido (no se lee): no se
+ * promete consulta.
+ */
+/**
+ * Textos de las pantallas para este mismo rechazo (readOnlyBlockText y los mensajes del servidor, «… está en solo
+ * lectura», «… ha caducado: solo lectura»): el aviso con la acción (readOnlyBlock.ts) los retira para no duplicarlo.
+ * Sin «ha caducado» suelto: retiraría también «Tu sesión ha caducado».
+ */
+export const READ_ONLY_DUPLICATE_RE = /solo lectura|no permite hacer cambios/i;
+
+export function readOnlyBlockText(status: "read_only" | "expired"): string {
+  return status === "read_only"
+    ? "Tu plan está en solo lectura: puedes consultar tus datos, pero no hacer cambios."
+    : "Tu plan no permite hacer cambios ahora mismo. Revisa el estado de tu suscripción.";
 }

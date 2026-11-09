@@ -75,8 +75,11 @@ export interface EssentialApp {
 export const data = (r: Res) => r.json?.result?.data?.json;
 export const errCode = (r: Res) => r.json?.error?.json?.data?.code;
 
-/** `webDist`: carpeta con un index.html; monta además la web pública (servidor estático con su 404 y metadatos). */
-export async function startEssentialApp(url: string, label: string, opts: { webDist?: string } = {}): Promise<EssentialApp> {
+/**
+ * `webDist`: carpeta con un index.html; monta además la web pública (servidor estático con su 404 y metadatos).
+ * `vapiWebhook`: monta además el webhook de Vapi (server/vapiWebhookRouter.ts), como el arranque real.
+ */
+export async function startEssentialApp(url: string, label: string, opts: { webDist?: string; vapiWebhook?: boolean } = {}): Promise<EssentialApp> {
   const run = crypto.randomBytes(3).toString("hex");
   const ids: Record<Co, string> = { a: `${label}-a-${run}`, b: `${label}-b-${run}` };
   const regDb = `ess_reg_${label.replace(/[^a-z0-9]/g, "")}_${run}`;
@@ -207,6 +210,7 @@ export async function startEssentialApp(url: string, label: string, opts: { webD
   app.use(fileRouter);
   app.use(invoicePreviewRouter);
   app.use(whatsappWebhook.createWhatsappWebhookRouter({ perIpMinute: 100_000 }));
+  if (opts.vapiWebhook) app.use((await import("./vapiWebhookRouter")).default);
   app.use("/api/trpc", createExpressMiddleware({ router: appRouter, createContext: createLocalContext, onError: () => undefined }));
   app.use(sitemapRouter);
   if (opts.webDist) (await import("./_core/vite")).serveStatic(app, { distPath: opts.webDist });
