@@ -5,6 +5,7 @@
  */
 import { getCapabilityAccess } from "../_core/capabilities/access";
 import { invokeLLM } from "../_core/llm";
+import { getTenantIdOrDefault } from "../_core/tenant";
 import { resolveAiProvider } from "../ai/provider";
 import { checkPermission } from "../customRolesAccess";
 import { companyName } from "../tenantBrand";
@@ -70,5 +71,5 @@ export async function resolveCopilotAccess(user: { id: number; role: unknown }):
 }
 
 export function copilotService(): CopilotService {
-  return new CopilotService({ store, data, llm: coreLlm, companyName });
+  return new CopilotService({ store, data, llm: coreLlm, companyName, scope: getTenantIdOrDefault });
 }

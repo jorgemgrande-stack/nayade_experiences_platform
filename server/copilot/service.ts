@@ -73,7 +73,12 @@ export interface CopilotDeps {
   llm: LlmFn;
   companyName: () => string;
   now?: () => number;
+  /** Empresa en curso: separa las peticiones en curso de usuarios con el mismo id en empresas distintas. */
+  scope?: () => string;
 }
+
+/** Peticiones a la IA en curso por empresa y usuario (en este proceso), para la protección contra ráfagas. */
+const IN_FLIGHT = new Map<string, number>();
 
 export interface DraftInput {
   kind: CopilotDraftKind;
@@ -115,8 +120,25 @@ export class CopilotService {
     }
   }
 
-  private async guardBurst(userId: number) {
-    if ((await this.d.store.userRequestsSince(userId, COPILOT_LIMITS.burstWindowSeconds)) >= COPILOT_LIMITS.burstMax) throw new CopilotError("busy", BUSY_MESSAGE);
+  /**
+   * Protección contra ráfagas: la petición se apunta como «en curso» ANTES de llamar a la IA, de forma síncrona (sin
+   * ningún await por medio), y cuenta junto a las ya guardadas en la ventana. Así las peticiones en paralelo se ven
+   * entre sí y no pueden pasar todas a la vez el límite. Al terminar (bien o mal) deja de contar como en curso; si
+   * salió bien, ya cuenta su mensaje guardado.
+   */
+  private async withBurstSlot<T>(userId: number, fn: () => Promise<T>): Promise<T> {
+    const key = `${this.d.scope ? this.d.scope() : ""}:${userId}`;
+    const position = (IN_FLIGHT.get(key) ?? 0) + 1;
+    IN_FLIGHT.set(key, position);
+    try {
+      const saved = await this.d.store.userRequestsSince(userId, COPILOT_LIMITS.burstWindowSeconds);
+      if (saved + position > COPILOT_LIMITS.burstMax) throw new CopilotError("busy", BUSY_MESSAGE);
+      return await fn();
+    } finally {
+      const left = (IN_FLIGHT.get(key) ?? 1) - 1;
+      if (left > 0) IN_FLIGHT.set(key, left);
+      else IN_FLIGHT.delete(key);
+    }
   }
 
   private allowed(actor: CopilotActor, name: CopilotToolName): boolean {
@@ -166,8 +188,10 @@ export class CopilotService {
       conv = await this.d.store.conversation(actor.userId, input.conversationId);
       if (!conv || conv.kind !== "chat") throw new CopilotError("not_found", "Esa conversación no existe o no es tuya.");
     }
-    await this.guardBurst(actor.userId);
+    return this.withBurstSlot(actor.userId, () => this.answer(actor, conv, question));
+  }
 
+  private async answer(actor: CopilotActor, conv: Conversation | null, question: string): Promise<{ conversationId: number; answer: string; tools: ToolTrace[] }> {
     const tools = allowedTools(actor.access);
     const history: StoredMessage[] = conv ? await this.d.store.messages(actor.userId, conv.id, COPILOT_LIMITS.historyMax) : [];
     const messages: LlmMessage[] = [
@@ -246,19 +270,19 @@ export class CopilotService {
       } else if (!text) throw new CopilotError("invalid_input", "Elige un producto del catálogo o escribe de qué producto se trata.");
       else subject = text;
     }
-    await this.guardBurst(actor.userId);
-
-    const reply = await this.callLlm({ messages: buildDraftMessages({ kind: input.kind, companyName: this.d.companyName(), tone: input.tone, text, notes, context }), maxTokens: COPILOT_LIMITS.maxTokens });
-    const out = reply.content.trim();
-    if (!out) throw new CopilotError("unavailable", AI_FAILED_MESSAGE);
-    const label = COPILOT_DRAFT_LABELS[input.kind];
-    const conversationId = await this.d.store.createConversation(actor.userId, "draft", titleFrom(`${label}: ${subject}`));
-    const request = [label, text && input.kind !== "resumen_cliente" ? text : subject, notes ? `Indicaciones: ${notes}` : ""].filter(Boolean).join("\n\n");
-    await this.d.store.addMessages(actor.userId, conversationId, [
-      { role: "user", content: request },
-      { role: "assistant", content: out, tokensIn: reply.tokensIn, tokensOut: reply.tokensOut },
-    ]);
-    return { conversationId, text: out };
+    return this.withBurstSlot(actor.userId, async () => {
+      const reply = await this.callLlm({ messages: buildDraftMessages({ kind: input.kind, companyName: this.d.companyName(), tone: input.tone, text, notes, context }), maxTokens: COPILOT_LIMITS.maxTokens });
+      const out = reply.content.trim();
+      if (!out) throw new CopilotError("unavailable", AI_FAILED_MESSAGE);
+      const label = COPILOT_DRAFT_LABELS[input.kind];
+      const conversationId = await this.d.store.createConversation(actor.userId, "draft", titleFrom(`${label}: ${subject}`));
+      const request = [label, text && input.kind !== "resumen_cliente" ? text : subject, notes ? `Indicaciones: ${notes}` : ""].filter(Boolean).join("\n\n");
+      await this.d.store.addMessages(actor.userId, conversationId, [
+        { role: "user", content: request },
+        { role: "assistant", content: out, tokensIn: reply.tokensIn, tokensOut: reply.tokensOut },
+      ]);
+      return { conversationId, text: out };
+    });
   }
 
   private async clientContext(actor: CopilotActor, clienteId: number) {

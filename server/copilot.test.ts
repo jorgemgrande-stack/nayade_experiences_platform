@@ -383,6 +383,44 @@ describe("servicio de Copilot", () => {
     expect((await make(scriptedLlm([{ content: "Hola" }]).fn).ask(actor(2, ADMIN), { question: "Hola" })).answer).toBe("Hola");
   });
 
+  it("ráfagas en paralelo: no se salta el límite (la petición cuenta antes de llamar a la IA)", async () => {
+    // Una IA lenta: todas las peticiones están «en curso» a la vez antes de guardar nada
+    let release!: () => void;
+    const gate = new Promise<void>((r) => (release = r));
+    let llmCalls = 0;
+    const slow: LlmFn = async () => {
+      llmCalls++;
+      await gate;
+      return { content: "Hola", toolCalls: [], tokensIn: 1, tokensOut: 1 };
+    };
+    const extra = 5;
+    const svc = make(slow);
+    const runs = Array.from({ length: COPILOT_LIMITS.burstMax + extra }, (_, i) =>
+      i % 2 ? svc.ask(actor(1, ADMIN), { question: `Pregunta ${i}` }) : svc.draft(actor(1, ADMIN), { kind: "respuesta_cliente", tone: "cercano", text: `Mensaje ${i}` }),
+    );
+    const settled = Promise.allSettled(runs);
+    await new Promise((r) => setTimeout(r, 10));
+    release();
+    const out = await settled;
+    expect(out.filter((r) => r.status === "fulfilled")).toHaveLength(COPILOT_LIMITS.burstMax);
+    const rejected = out.filter((r): r is PromiseRejectedResult => r.status === "rejected");
+    expect(rejected).toHaveLength(extra);
+    for (const r of rejected) expect(r.reason).toMatchObject({ code: "busy" });
+    expect(llmCalls).toBe(COPILOT_LIMITS.burstMax);
+    // Ya guardadas, siguen contando: la siguiente también es rechazada
+    await expect(svc.ask(actor(1, ADMIN), { question: "Otra" })).rejects.toMatchObject({ code: "busy" });
+    // El mismo id de usuario en otra empresa tiene su propio límite
+    const otherCompany = new CopilotService({ store: new MemoryCopilotStore(), data, llm: slow, companyName: () => "Otra", now: () => NOW, scope: () => "otra" });
+    expect((await otherCompany.ask(actor(1, ADMIN), { question: "Hola" })).answer).toBe("Hola");
+  });
+
+  it("una petición que falla deja de contar como en curso", async () => {
+    const svc = make(scriptedLlm([new Error("caída"), { content: "Ya va" }]).fn);
+    for (let i = 0; i < COPILOT_LIMITS.burstMax - 1; i++) store.msgs.push({ id: i + 1, conversationId: 1, userId: 1, role: "user", content: "x", tools: [], createdAt: "", at: NOW, tokensIn: 0, tokensOut: 0 });
+    await expect(svc.ask(actor(1, ADMIN), { question: "Hola" })).rejects.toMatchObject({ code: "unavailable" });
+    expect((await svc.ask(actor(1, ADMIN), { question: "Hola" })).answer).toBe("Ya va");
+  });
+
   it("consultas rápidas: solo las herramientas del rol", async () => {
     await expect(make(scriptedLlm([]).fn).quick(actor(2, AGENTE), "facturas_pendientes", {})).rejects.toBeInstanceOf(CopilotError);
     await expect(make(scriptedLlm([]).fn).quick(actor(2, AGENTE), "reservas_proximas", { dias: 99 })).rejects.toMatchObject({ code: "invalid_input" });
