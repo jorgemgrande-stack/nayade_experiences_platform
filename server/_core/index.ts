@@ -41,6 +41,7 @@ import { kbRouter } from "../kbRoute";
 import ghlWebhookRouter from "../ghlWebhookRouter";
 import ghlInboxRouter, { initGhlTables } from "../routes/ghlInboxRouter";
 import vapiWebhookRouter, { initVapiTables } from "../vapiWebhookRouter";
+import { createWhatsappWebhookRouter, whatsappWebhookBodyParser } from "../whatsappCloud/httpRoute";
 import { sitemapRouter } from "../sitemapRouter";
 import { startCancellationStaleJob } from "../cancellationStaleJob";
 import { startEmailAutomationJob } from "../emailAutomationJob";
@@ -168,6 +169,8 @@ async function startServer() {
   app.use(netPublicBodyParser);
   // Webhook de Postmark de cada empresa: JSON de 256 KB como mucho, antes del lector general
   app.use(tenantPostmarkWebhookBodyParser);
+  // Webhook de WhatsApp Cloud API de cada empresa: bytes exactos (firma de Meta), 512 KB como mucho, antes del lector general
+  app.use(whatsappWebhookBodyParser);
   // Configure body parser with larger size limit for file uploads
   app.use(express.json({ limit: "50mb" }));
   app.use(express.urlencoded({ limit: "50mb", extended: true }));
@@ -272,6 +275,8 @@ async function startServer() {
   app.use(ghlInboxRouter);
   // VAPI webhook receiver (lead + presupuesto síncrono)
   app.use(vapiWebhookRouter);
+  // Elephant WhatsApp AI: webhook de WhatsApp Cloud API de cada empresa (verificación y firma con sus credenciales)
+  app.use(createWhatsappWebhookRouter());
   // tRPC API
   app.use(
     "/api/trpc",

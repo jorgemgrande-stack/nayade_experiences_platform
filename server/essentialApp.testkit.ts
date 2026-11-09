@@ -188,6 +188,9 @@ export async function startEssentialApp(url: string, label: string, opts: { webD
 
   const app = express();
   const rt = installTenantResolution(app, process.env)!;
+  // Webhook de WhatsApp Cloud API: bytes exactos para la firma, antes del lector general (como en server/_core/index.ts)
+  const whatsappWebhook = await import("./whatsappCloud/httpRoute");
+  app.use(whatsappWebhook.whatsappWebhookBodyParser);
   app.use(express.json({ limit: "5mb" }));
   installTenantBinding(app);
   app.use(createLocalAuthRouter());
@@ -203,6 +206,7 @@ export async function startEssentialApp(url: string, label: string, opts: { webD
   app.use(uploadRouter);
   app.use(fileRouter);
   app.use(invoicePreviewRouter);
+  app.use(whatsappWebhook.createWhatsappWebhookRouter({ perIpMinute: 100_000 }));
   app.use("/api/trpc", createExpressMiddleware({ router: appRouter, createContext: createLocalContext, onError: () => undefined }));
   app.use(sitemapRouter);
   if (opts.webDist) (await import("./_core/vite")).serveStatic(app, { distPath: opts.webDist });

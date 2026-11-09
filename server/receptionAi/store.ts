@@ -29,8 +29,11 @@ export class ReceptionNotInstalled extends Error {
 }
 
 export type MessageRole = "user" | "assistant" | "tool";
-/** Cupos diarios del chat (migración 0057): respuestas de la IA y solicitudes creadas desde el chat. */
-export type ReceptionQuotaKind = "chat_reply" | "chat_lead";
+/**
+ * Cupos diarios de la IA (migración 0057): respuestas del chat, solicitudes creadas desde el chat y respuestas
+ * automáticas de Elephant WhatsApp AI (server/whatsappCloud: mismo contador atómico por día y tipo).
+ */
+export type ReceptionQuotaKind = "chat_reply" | "chat_lead" | "whatsapp_auto";
 /** customer: lo escribe o dice el cliente · ai: respuesta de la IA · fallback: respuesta fija sin IA · tool: herramienta de voz. */
 export type MessageOrigin = "customer" | "ai" | "fallback" | "tool";
 

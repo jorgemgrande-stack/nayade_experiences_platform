@@ -179,6 +179,19 @@ async function testProviderRaw(provider: string, v: Record<string, string>, fetc
       if (r.error.kind === "AUTH_ERROR" || r.error.kind === "PERMISSION_ERROR") return { ok: false, message: r.error.message, outcome: "rejected" };
       return { ok: false, message: r.error.message };
     }
+    case "whatsapp_cloud": {
+      // Elephant WhatsApp AI: datos del número y de su cuenta (solo lectura); la clave en la cabecera, nunca en la URL
+      const { verifyConnection, usableCredentials } = await import("../../whatsappCloud/graph");
+      const c = usableCredentials(v);
+      if (!c) return { ok: false, message: "Faltan el identificador del número, el de la cuenta o la clave de acceso" };
+      try {
+        const info = await verifyConnection(fetchImpl as unknown as import("../../whatsappCloud/graph").GraphFetch, c);
+        return { ok: true, message: `Conexión correcta con WhatsApp Business (${[info.displayPhoneNumber, info.verifiedName].filter(Boolean).join(" · ") || "número verificado"})` };
+      } catch (e) {
+        const rejected = (e as { kind?: string }).kind === "rejected";
+        return { ok: false, message: e instanceof Error && e.name === "GraphError" ? e.message : "No se pudo contactar con Meta", ...(rejected ? { outcome: "rejected" as const } : {}) };
+      }
+    }
     case "brevo_marketing": {
       if (!v.apiKey) return { ok: false, message: "Falta la clave API" };
       return get(fetchImpl, "https://api.brevo.com/v3/account", { "api-key": v.apiKey, accept: "application/json" });
