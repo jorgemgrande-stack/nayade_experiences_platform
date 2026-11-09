@@ -485,3 +485,24 @@ describe("licencia voice-ai, rutas y coherencia con el Core", () => {
     expect(generateWebhookSecret()).toMatch(/^[A-Za-z0-9_-]{32}$/);
   });
 });
+
+describe("de dónde salen las claves de Vapi (desconectar debe dejar el webhook inactivo)", () => {
+  it("multiempresa: solo la bóveda; ni site_settings ni la clave de GHL", async () => {
+    const { configuredVapiWebhookSecret, configuredVapiApiKey } = await import("./vapiCredentialsSource");
+    const legacy = "x".repeat(30);
+    const ghl = "g".repeat(30);
+    expect(configuredVapiWebhookSecret({ multi: true, vault: undefined, legacy, ghl })).toBe("");
+    expect(configuredVapiWebhookSecret({ multi: true, vault: "v".repeat(30), legacy, ghl })).toBe("v".repeat(30));
+    expect(configuredVapiApiKey({ multi: true, vault: undefined, legacy })).toBe("");
+    // Con la bóveda vacía (tras desconectar) el webhook queda inactivo
+    expect(checkWebhookSecret(legacy, configuredVapiWebhookSecret({ multi: true, vault: undefined, legacy, ghl }))).toBe("inactive");
+  });
+
+  it("instalación única (Náyade): como siempre, entorno, después site_settings y la clave de GHL", async () => {
+    const { configuredVapiWebhookSecret, configuredVapiApiKey } = await import("./vapiCredentialsSource");
+    expect(configuredVapiWebhookSecret({ multi: false, vault: "env", legacy: "db", ghl: "ghl" })).toBe("env");
+    expect(configuredVapiWebhookSecret({ multi: false, vault: undefined, legacy: "db", ghl: "ghl" })).toBe("db");
+    expect(configuredVapiWebhookSecret({ multi: false, vault: undefined, legacy: "", ghl: "ghl" })).toBe("ghl");
+    expect(configuredVapiApiKey({ multi: false, vault: undefined, legacy: "db" })).toBe("db");
+  });
+});

@@ -174,4 +174,15 @@ describe.skipIf(!URL_)("Voice · asistente de alta de Vapi (aplicación real, do
     expect(await ess.sql("a", "SELECT vapiCallId FROM vapi_calls")).toHaveLength(1);
     expect(await ok(q("status"))).toMatchObject({ completed: 0, keyMasked: null });
   });
+
+  it("tras desconectar, una clave heredada en site_settings tampoco abre el webhook (multiempresa: solo la bóveda)", async () => {
+    const legacy = "clave-heredada-en-site-settings-" + run;
+    await ess.sql("a", "INSERT INTO site_settings (`key`, `value`, `type`, updatedAt) VALUES ('vapiWebhookSecret', ?, 'text', NOW()) ON DUPLICATE KEY UPDATE `value` = VALUES(`value`)", [legacy]);
+    const report = { message: { type: "end-of-call-report", call: { id: `call3-${run}` } } };
+    expect((await ess.call("a", "POST", "/api/vapi/webhook", { body: report, headers: { "x-vapi-secret": legacy } })).status).toBe(401);
+    expect(await ess.sql("a", "SELECT vapiCallId FROM vapi_calls")).toHaveLength(1);
+    // El formulario heredado de «Llamadas IA › Configuración» ya no escribe site_settings en multiempresa
+    expect(errCode(await ess.m("a", "vapiCalls.saveCredentials", { apiKey: KEY_A, webhookSecret: legacy }, adA))).toBe("PRECONDITION_FAILED");
+    expect(await ok(ess.q("a", "vapiCalls.getCredentials", undefined, adA))).toMatchObject({ hasApiKey: false, webhookSecret: "" });
+  });
 });
