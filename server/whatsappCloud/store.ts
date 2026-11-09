@@ -122,7 +122,13 @@ export interface WhatsappStore {
   markRead(conversationId: number): Promise<void>;
   /** Marca o quita «espera a una persona»; al quitarlo (devolver a la IA) reinicia el contador de respuestas automáticas. */
   setNeedsHuman(conversationId: number, value: boolean): Promise<void>;
-  incAutoReplies(conversationId: number): Promise<void>;
+  /**
+   * Reserva atómica de una respuesta automática en la conversación: suma 1 solo si quedan (`< max`) y no espera a una
+   * persona. Dos mensajes a la vez de la misma conversación nunca superan el máximo. true si se reservó.
+   */
+  reserveAutoReply(conversationId: number, max: number): Promise<boolean>;
+  /** Devuelve la reserva si la respuesta no llegó a enviarse. */
+  releaseAutoReply(conversationId: number): Promise<void>;
   addAiLog(e: { conversationId: number; messageId: number | null; mode: AiLogMode; outcome: AiLogOutcome; reply: string | null; actor: number | null }): Promise<void>;
   aiLog(f: { conversationId?: number; limit: number }): Promise<WaAiLogEntry[]>;
 }
@@ -287,9 +293,15 @@ export class MemoryWhatsappStore implements WhatsappStore {
       if (!value) c.aiAutoReplies = 0;
     }
   }
-  async incAutoReplies(conversationId: number) {
+  async reserveAutoReply(conversationId: number, max: number) {
     const c = this.convs.find((x) => x.id === conversationId);
-    if (c) c.aiAutoReplies++;
+    if (!c || c.needsHuman || c.aiAutoReplies >= max) return false;
+    c.aiAutoReplies++;
+    return true;
+  }
+  async releaseAutoReply(conversationId: number) {
+    const c = this.convs.find((x) => x.id === conversationId);
+    if (c) c.aiAutoReplies = Math.max(0, c.aiAutoReplies - 1);
   }
   async addAiLog(e: { conversationId: number; messageId: number | null; mode: AiLogMode; outcome: AiLogOutcome; reply: string | null; actor: number | null }) {
     this.logs.push({ id: this.logs.length + 1, ...e, createdAt: this.nowIso() });
@@ -433,8 +445,12 @@ export class TenantDbWhatsappStore implements WhatsappStore {
     // Devolver la conversación a la IA (false) reinicia su contador de respuestas automáticas
     return this.exec(async (db) => void (await db.execute(value ? sql`UPDATE whatsapp_conversations SET needs_human = 1 WHERE id = ${conversationId}` : sql`UPDATE whatsapp_conversations SET needs_human = 0, ai_auto_replies = 0 WHERE id = ${conversationId}`)));
   }
-  incAutoReplies(conversationId: number) {
-    return this.exec(async (db) => void (await db.execute(sql`UPDATE whatsapp_conversations SET ai_auto_replies = ai_auto_replies + 1 WHERE id = ${conversationId}`)));
+  reserveAutoReply(conversationId: number, max: number) {
+    // El bloqueo de fila de InnoDB serializa las peticiones simultáneas: nunca se supera el máximo por conversación
+    return this.exec(async (db) => affected(await db.execute(sql`UPDATE whatsapp_conversations SET ai_auto_replies = ai_auto_replies + 1 WHERE id = ${conversationId} AND ai_auto_replies < ${max} AND needs_human = 0`)) === 1);
+  }
+  releaseAutoReply(conversationId: number) {
+    return this.exec(async (db) => void (await db.execute(sql`UPDATE whatsapp_conversations SET ai_auto_replies = ai_auto_replies - 1 WHERE id = ${conversationId} AND ai_auto_replies > 0`)));
   }
   addAiLog(e: { conversationId: number; messageId: number | null; mode: AiLogMode; outcome: AiLogOutcome; reply: string | null; actor: number | null }) {
     return this.exec(async (db) => {

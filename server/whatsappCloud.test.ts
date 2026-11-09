@@ -513,3 +513,29 @@ describe("revisión: solo se escribe desde el número de la conversación", () =
     expect(store.msgs.filter((x) => x.direction === "out")).toHaveLength(0);
   });
 });
+
+describe("revisión: reserva atómica por conversación", () => {
+  it("con 4 respuestas ya enviadas, dos mensajes a la vez de la misma conversación: una respuesta y un traspaso", async () => {
+    const { svc, store } = setup();
+    await svc.saveSettings(AUTO_ALL, 1);
+    const a = await lastIn(svc, { wamid: "wamid.C1", text: "uno" });
+    store.convs[0].aiAutoReplies = 4;
+    const b = await lastIn(svc, { wamid: "wamid.C2", text: "dos" });
+    const r = await Promise.all([svc.autoReply(a.conversationId, a.messageId), svc.autoReply(b.conversationId, b.messageId)]);
+    expect(r.sort()).toEqual(["handoff", "sent"]);
+    expect(store.msgs.filter((m) => m.origin === "ai_auto" && m.body !== HANDOFF_REPLY)).toHaveLength(1);
+    expect(await store.conversation(1)).toMatchObject({ aiAutoReplies: 5, needsHuman: true });
+  });
+  it("si la IA falla, la reserva de la conversación vuelve; fuera de horario ni siquiera la palabra clave hace nada", async () => {
+    const fail = setup({ llm: async () => Promise.reject(new Error("sin IA")) });
+    await fail.svc.saveSettings(AUTO_ALL, 1);
+    const m = await lastIn(fail.svc, {});
+    expect(await fail.svc.autoReply(m.conversationId, m.messageId)).toBe("error");
+    expect((await fail.store.conversation(1))!.aiAutoReplies).toBe(0);
+    const off = setup({ now: new Date("2026-11-10T09:00:00Z") });
+    await off.svc.saveSettings({ ...AUTO_ALL, autoHours: [{ day: 2, from: "20:00", to: "23:59" }] }, 1);
+    const k = await lastIn(off.svc, { text: "Quiero hablar con una persona", ts: Math.floor(Date.parse("2026-11-10T08:59:00Z") / 1000) });
+    expect(await off.svc.autoReply(k.conversationId, k.messageId)).toBe("skipped_hours");
+    expect((await off.store.conversation(1))!.needsHuman).toBe(false);
+  });
+});

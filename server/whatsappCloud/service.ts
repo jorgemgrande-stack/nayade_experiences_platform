@@ -319,26 +319,39 @@ export class WhatsappService {
       const cr = usableCredentials(await this.d.credentials());
       if (!cr) return "not_configured";
       if (cr.phoneNumberId !== c.phoneNumberId) return "other_number";
-      if (wantsHuman(inbound.body, settings.handoffKeywords) || c.aiAutoReplies >= WHATSAPP_LIMITS.autoPerConversation) {
+      const handoff = async () => {
         await this.d.store.setNeedsHuman(conversationId, true);
         await log("handoff", HANDOFF_REPLY);
         if (windowOpen(c.lastInboundAt, this.now())) await this.deliver(c, { kind: "text", body: HANDOFF_REPLY, templateName: null, origin: "ai_auto", sentBy: null }, (k) => sendText(this.d.fetch, k, c.waId, HANDOFF_REPLY), cr).catch(() => undefined);
         return "handoff";
-      }
+      };
+      // Fuera de su horario la IA no hace nada (tampoco el traspaso por palabra clave: lo atiende el equipo)
       if (!isHumanHoursNow(settings.autoHours, this.now(), settings.timezone)) {
         await log("skipped_hours");
         return "skipped_hours";
       }
+      if (wantsHuman(inbound.body, settings.handoffKeywords)) return handoff();
       if (!windowOpen(c.lastInboundAt, this.now())) {
         await log("skipped_window");
         return "skipped_window";
       }
+      // Reserva atómica en la conversación (máximo por conversación y sin traspaso pendiente) ANTES del cupo diario y la IA
+      if (!(await this.d.store.reserveAutoReply(conversationId, WHATSAPP_LIMITS.autoPerConversation))) {
+        if ((await this.d.store.conversation(conversationId))?.needsHuman) return "needs_human";
+        return handoff();
+      }
+      const releaseConv = () => this.d.store.releaseAutoReply(conversationId).catch(() => undefined);
       const day = this.today(settings);
       if (!(await this.d.quota.reserve(day, settings.autoDailyLimit))) {
+        await releaseConv();
         await this.d.store.setNeedsHuman(conversationId, true);
         await log("skipped_quota");
         return "skipped_quota";
       }
+      const releaseAll = async () => {
+        await this.d.quota.release(day).catch(() => undefined);
+        await releaseConv();
+      };
       let reply: string | null = null;
       try {
         reply = await this.aiReply(settings, conversationId);
@@ -346,27 +359,23 @@ export class WhatsappService {
         reply = null;
       }
       if (!reply) {
-        await this.d.quota.release(day).catch(() => undefined);
+        await releaseAll();
         await this.d.store.setNeedsHuman(conversationId, true);
         await log("error");
         return "error";
       }
       if (reply.includes(HANDOFF_MARK)) {
         // La IA no sabe responder: no consume cupo; pasa a una persona con el aviso fijo
-        await this.d.quota.release(day).catch(() => undefined);
-        await this.d.store.setNeedsHuman(conversationId, true);
-        await log("handoff", HANDOFF_REPLY);
-        await this.deliver(c, { kind: "text", body: HANDOFF_REPLY, templateName: null, origin: "ai_auto", sentBy: null }, (k) => sendText(this.d.fetch, k, c.waId, HANDOFF_REPLY), cr).catch(() => undefined);
-        return "handoff";
+        await releaseAll();
+        return handoff();
       }
       try {
         await this.deliver(c, { kind: "text", body: reply, templateName: null, origin: "ai_auto", sentBy: null }, (k) => sendText(this.d.fetch, k, c.waId, reply!), cr);
       } catch {
-        await this.d.quota.release(day).catch(() => undefined);
+        await releaseAll();
         await log("error", reply);
         return "error";
       }
-      await this.d.store.incAutoReplies(conversationId);
       await log("sent", reply);
       return "sent";
     } catch {
