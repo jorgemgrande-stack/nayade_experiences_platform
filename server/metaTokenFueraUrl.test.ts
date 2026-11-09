@@ -43,7 +43,7 @@ describe("Meta CAPI", () => {
     state.creds = {};
   });
 
-  it("envía el token en cabecera y lo quita del error registrado y devuelto", async () => {
+  it("envía el token en el cuerpo del POST (no en la URL) y lo quita del error registrado y devuelto", async () => {
     vi.stubEnv("VITE_META_PIXEL_ID", "111111111111");
     state.creds.META_CAPI_ACCESS_TOKEN = TOKEN;
     const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue(
@@ -54,7 +54,12 @@ describe("Meta CAPI", () => {
     expect(r.ok).toBe(false);
     const [url, init] = fetchSpy.mock.calls[0] as [string, RequestInit];
     expect(url).toBe("https://graph.facebook.com/v21.0/111111111111/events");
-    expect((init.headers as Record<string, string>).Authorization).toBe(`Bearer ${TOKEN}`);
+    expect(url).not.toContain(TOKEN);
+    expect(url).not.toContain("access_token");
+    expect((init.headers as Record<string, string>).Authorization).toBeUndefined();
+    expect(JSON.parse(String(init.body)).access_token).toBe(TOKEN);
+    // Mismo formato de objeto que antes, sin el token
+    expect(r.result).toEqual({ error: { message: "Token no válido: ***" } });
     expect(JSON.stringify(r)).not.toContain(TOKEN);
     expect(JSON.stringify(errSpy.mock.calls)).not.toContain(TOKEN);
   });

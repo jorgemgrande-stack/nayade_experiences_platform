@@ -84,6 +84,20 @@ interface CAPIRequestBody {
   user_data?: CapiUserData; // incluye external_id opcional
 }
 
+/**
+ * La respuesta de Meta con la misma forma de objeto, sin el token (ni nada con forma `access_token=…`). Si no se puede
+ * reconstruir, `{ error: <mensaje limpio> }`.
+ */
+function sinToken(value: unknown, token: string, clean: string): unknown {
+  try {
+    let text = JSON.stringify(value ?? null);
+    if (token.length >= 6) text = text.split(token).join('***');
+    return JSON.parse(text.replace(/access_token=[^&\s"\\]+/gi, 'access_token=***'));
+  } catch {
+    return { error: clean };
+  }
+}
+
 // ─── Helper reutilizable ──────────────────────────────────────────────────────
 
 /**
@@ -138,12 +152,12 @@ export async function sendCapiEvent(args: CapiEventArgs): Promise<{ ok: boolean;
     payload.test_event_code = TEST_EVENT_CODE;
   }
 
-  // El token va en la cabecera Authorization, nunca en la URL
+  // El token va como `access_token` en el cuerpo JSON del POST (forma documentada de la Conversions API), nunca en la URL
   const url = `https://graph.facebook.com/${API_VERSION}/${PIXEL_ID}/events`;
   const response = await fetch(url, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${ACCESS_TOKEN}` },
-    body: JSON.stringify(payload),
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ ...payload, access_token: ACCESS_TOKEN }),
   });
 
   const result = await response.json();
@@ -152,7 +166,7 @@ export async function sendCapiEvent(args: CapiEventArgs): Promise<{ ok: boolean;
     // Por si Meta repitiera el token en su respuesta: se quita antes de registrarla o devolverla
     const clean = scrub(JSON.stringify(result ?? null), [ACCESS_TOKEN]);
     console.error('[Meta CAPI] Error from Meta API:', clean);
-    return { ok: false, result: clean };
+    return { ok: false, result: sinToken(result, ACCESS_TOKEN, clean) };
   }
 
   return { ok: true, result };

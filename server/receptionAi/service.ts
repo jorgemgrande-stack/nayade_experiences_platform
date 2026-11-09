@@ -530,13 +530,14 @@ export class ReceptionService {
 
     const conv = await this.d.store.ensureConversation("chat", this.chatRef(token));
     if (conv.leadId) return { leadId: conv.leadId, already: true };
-    // Tope diario de solicitudes desde el chat por empresa (reserva atómica): al superarlo no se crea nada en el CRM
-    const day = this.today(settings);
-    if (!(await this.d.store.reserveDaily("chat_lead", day, RECEPTION_LIMITS.chatLeadsPerDay))) throw invalid(LEADS_FULL_MESSAGE);
     const note = cleanText(f.note, RECEPTION_LIMITS.noteMax);
     const msgs = (await this.d.store.messages(conv.id, 10)).filter((m) => m.role !== "tool");
     const transcript = msgs.map((m) => `${m.role === "user" ? "Cliente" : "IA"}: ${oneLine(m.content).slice(0, 200)}`).join(" | ");
     const message = `[Recepcionista IA · chat web] ${isCallback ? "Pide que le llamen" : "Solicitud de información"}${note ? `: ${note}` : ""}${transcript ? `\nConversación: ${transcript}` : ""}`.slice(0, 2500);
+    // Tope diario de solicitudes desde el chat por empresa (reserva atómica justo antes de crearla): al superarlo no se
+    // crea nada en el CRM; si la creación falla, la plaza vuelve al cupo
+    const day = this.today(settings);
+    if (!(await this.d.store.reserveDaily("chat_lead", day, RECEPTION_LIMITS.chatLeadsPerDay))) throw invalid(LEADS_FULL_MESSAGE);
     let leadId: number;
     try {
       leadId = await this.d.createLead({ name, email: email ?? placeholderEmail("recepcion", `${Date.now()}`), phone: phone ?? undefined, message, source: "recepcion_ia_chat" });

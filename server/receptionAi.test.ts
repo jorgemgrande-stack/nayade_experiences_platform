@@ -401,6 +401,20 @@ describe("servicio: chat de la web", () => {
     expect(w.store.quotas.get("2026-11-10:chat_lead")).toBe(0);
   });
 
+  it("si falla la lectura de la conversación antes de crear la solicitud, no se consume plaza", async () => {
+    const s = await w.store.settings();
+    const realMessages = w.store.messages.bind(w.store);
+    w.store.messages = async () => {
+      throw new Error("BD no disponible");
+    };
+    await expect(w.svc.chatLead(s, T, { kind: "info", name: "Ana", phone: "", email: "ana@cliente.example", note: "", consent: true })).rejects.toThrow(/BD/);
+    expect(w.store.quotas.get("2026-11-10:chat_lead") ?? 0).toBe(0);
+    expect(w.leads).toHaveLength(0);
+    w.store.messages = realMessages;
+    expect((await w.svc.chatLead(s, T, { kind: "info", name: "Ana", phone: "", email: "ana@cliente.example", note: "", consent: true })).already).toBe(false);
+    expect(w.store.quotas.get("2026-11-10:chat_lead")).toBe(1);
+  });
+
   it("como mucho 20 mensajes del cliente por conversación", async () => {
     const s = { ...(await w.store.settings()), chatDailyLimit: 1000 };
     for (let i = 0; i < RECEPTION_LIMITS.chatTurnsMax; i++) await w.svc.chatSend(s, T, `M${i}`);
