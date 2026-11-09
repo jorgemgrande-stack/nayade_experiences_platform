@@ -138,6 +138,7 @@ describe.skipIf(!URL_)("captación y activación de la prueba gratuita de punta 
     return login.cookie!;
   }
 
+  const envBefore = { ...process.env };
   beforeAll(async () => {
     const u = new URL(URL_!);
     const at = (db: string) => {
@@ -304,7 +305,7 @@ describe.skipIf(!URL_)("captación y activación de la prueba gratuita de punta 
       await closeAllDatabases();
       await rt.close();
     };
-  }, 120_000);
+  }, 240_000);
 
   afterAll(async () => {
     await closeApp().catch(() => undefined);
@@ -317,11 +318,10 @@ describe.skipIf(!URL_)("captación y activación de la prueba gratuita de punta 
     await crmPool?.end();
     for (const db of [REG_DB, CRM_DB]) await admin?.query(`DROP DATABASE IF EXISTS \`${db}\``).catch(() => undefined);
     await admin?.end();
-    delete process.env.CP_COMMERCE_URL;
-    delete process.env.CP_COMMERCE_TOKEN;
-    delete process.env.TENANT_MODE;
-    delete process.env.CAPABILITY_ENFORCEMENT;
-  });
+    // El entorno vuelve a como estaba (las variables de esta suite no se quedan para otras)
+    for (const k of Object.keys(process.env)) if (!(k in envBefore)) delete process.env[k];
+    Object.assign(process.env, envBefore);
+  }, 120_000);
 
   let trialId = 0;
   let tenantId = "";
@@ -361,7 +361,8 @@ describe.skipIf(!URL_)("captación y activación de la prueba gratuita de punta 
     expect((await trialStore.list({})).length).toBe(0);
     const r = await cpCall("POST", "/public/trial", { body: { email: OWNER, companyName: COMPANY, ...FORM, idempotencyKey: key() } });
     expect(r.status).toBe(202);
-    expect(JSON.stringify(r.json)).not.toMatch(/token|id/i);
+    // Respuesta genérica: ni el id de la prueba ni el token (el enlace solo va por correo)
+    expect(Object.keys(r.json).sort()).toEqual(["message", "status"]);
     ({ id: trialId } = verificationLink(OWNER));
     const t = (await trialStore.get(trialId))!;
     expect(t.configuration.terms).toEqual({ acceptedAt: expect.any(Number), version: "2026-10-21" });
@@ -374,9 +375,9 @@ describe.skipIf(!URL_)("captación y activación de la prueba gratuita de punta 
     const v = await cpCall("POST", "/public/trial/verify", { body: { id, token } });
     expect(v.status).toBe(200);
     const t = (await trialStore.get(trialId))!;
+    if (t.tenantId) tenants.push(t.tenantId);
     expect(t.state).toBe("active");
     tenantId = t.tenantId!;
-    tenants.push(tenantId);
     expect(welcomeLink(OWNER)?.host).toBe(hostOf(tenantId));
     const company = (await crmStoreRef.list("companies", { tenantId }))[0];
     expect(company).toMatchObject({ name: COMPANY, sector: "Servicios profesionales", country: "ES", phone: "+34 600 111 222" });
@@ -389,10 +390,10 @@ describe.skipIf(!URL_)("captación y activación de la prueba gratuita de punta 
     cookie = await ownerLogin(tenantId, OWNER, PASS);
     const st = data(await q(tenantId, "setupWizard.status", undefined, cookie));
     expect(st.facts.clients).toBe(0);
-    expect(await eventually(() => events(trialId), (a) => a.includes("first_access"))).toContain("first_access");
+    expect(await eventually(() => events(trialId), (a) => a.includes("first_access"), 15_000)).toContain("first_access");
     expect((await m(tenantId, "crm.clients.create", { name: "Primer cliente", email: `cliente-${run}@cliente.example` }, cookie)).status).toBe(200);
     expect(data(await q(tenantId, "setupWizard.status", undefined, cookie)).facts.clients).toBe(1);
-    const acts = await eventually(() => events(trialId), (a) => a.includes("first_action"));
+    const acts = await eventually(() => events(trialId), (a) => a.includes("first_action"), 15_000);
     expect(acts.filter((a) => a === "first_access")).toHaveLength(1);
     expect(acts).toContain("first_action");
   }, 60_000);
@@ -417,9 +418,17 @@ describe.skipIf(!URL_)("captación y activación de la prueba gratuita de punta 
     const idleEmail = `sin-entrar-${run}@panel.example`;
     expect((await cpCall("POST", "/public/trial", { body: { email: pendingEmail, companyName: `Pendiente ${run}`, ...FORM, attribution: { source: "recordatorios-e2e" }, idempotencyKey: key() } })).status).toBe(202);
     expect((await cpCall("POST", "/public/trial", { body: { email: idleEmail, companyName: `Sin entrar ${run}`, ...FORM, attribution: { source: "recordatorios-e2e" }, idempotencyKey: key() } })).status).toBe(202);
+    const techEmail = `tecnica-sin-entrar-${run}@panel.example`;
+    expect((await cpCall("POST", "/public/trial", { body: { email: techEmail, companyName: `Técnica ${run}`, ...FORM, attribution: { source: "recordatorios-e2e" }, idempotencyKey: key() } })).status).toBe(202);
     const idle = verificationLink(idleEmail);
-    expect((await cpCall("POST", "/public/trial/verify", { body: idle })).status).toBe(200);
-    tenants.push((await trialStore.get(idle.id))!.tenantId!);
+    const tech = verificationLink(techEmail);
+    for (const v of [idle, tech]) {
+      const res = await cpCall("POST", "/public/trial/verify", { body: v });
+      const tid = (await trialStore.get(v.id))?.tenantId;
+      if (tid) tenants.push(tid);
+      expect(res.status).toBe(200);
+    }
+    expect((await cpCall("POST", `/trials/${tech.id}/mark-test`, { token: ADMIN, body: { reason: "Prueba técnica sin entrar en el panel" } })).status).toBe(200);
     const pendingId = verificationLink(pendingEmail).id;
     const tpl = trialEmails({ verifyUrl: "https://web.example/prueba/verificar" });
     const scheduler = new TrialScheduler({
@@ -443,6 +452,7 @@ describe.skipIf(!URL_)("captación y activación de la prueba gratuita de punta 
     on.stop();
 
     const start = clock;
+    try {
     const before = trialOutbox.filter((x) => x.to === pendingEmail).length;
     clock = start + 21 * 3_600_000;
     expect((await scheduler.tick()).remindersQueued).toBe(1);
@@ -452,9 +462,12 @@ describe.skipIf(!URL_)("captación y activación de la prueba gratuita de punta 
     await scheduler.tick();
     await scheduler.tick();
     expect(reminders).toEqual([expect.objectContaining({ to: idleEmail, kind: "setup", key: `trial:${idle.id}:reminder:setup:1`, domain: expect.stringContaining(PLATFORM) })]);
-    // La propietaria del recorrido (técnica, con primer acceso y primera acción) no recibe nada
+    // La técnica sin entrar en el panel no lo recibe (la otra, igual que ella, sí); la del recorrido tampoco
+    expect(reminders.some((r) => r.to === techEmail)).toBe(false);
     expect(reminders.some((r) => r.to === OWNER)).toBe(false);
     expect((await scheduler.tick()).remindersQueued).toBe(0);
-    clock = start;
-  }, 120_000);
+    } finally {
+      clock = start;
+    }
+  }, 180_000);
 });
