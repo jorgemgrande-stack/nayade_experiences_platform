@@ -6,6 +6,13 @@
 
 export const ACC_CAPABILITY = "accounting-general";
 
+/**
+ * Marca de una confirmación de IVA retirada en `acc_expense_tax_reviews.invoice_type`: la fila no se borra (queda el
+ * rastro de quién la retiró y cuándo en confirmed_by y confirmed_at) y ningún tipo de factura real coincide con ella, así
+ * que la confirmación deja de valer. Volver a confirmar la sobrescribe.
+ */
+export const ACC_TAX_REVIEW_RETRACTED = "__retirada";
+
 export const ACC_ACCOUNT_TYPES = ["asset", "liability", "equity", "income", "expense"] as const;
 export type AccAccountType = (typeof ACC_ACCOUNT_TYPES)[number];
 export const ACC_ACCOUNT_TYPE_LABELS: Record<AccAccountType, string> = {

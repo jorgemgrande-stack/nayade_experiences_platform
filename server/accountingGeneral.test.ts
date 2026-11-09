@@ -259,6 +259,9 @@ describe("caja del TPV", () => {
     expect(taxConfirmationMatches(conf, { ...coreReviewed, amount: "121.00" })).toBe(false);
     expect(taxConfirmationMatches(conf, { ...coreReviewed, taxAmount: "11.00" })).toBe(false);
     expect(taxConfirmationMatches(conf, { ...coreReviewed, invoiceType: "simplificada" })).toBe(false);
+    // Retirada (la fila se conserva anulada): nunca vale, ni aunque el gasto dijera lo mismo
+    expect(taxConfirmationMatches({ ...conf, invoiceType: "__retirada" }, coreReviewed)).toBe(false);
+    expect(taxConfirmationMatches({ ...conf, invoiceType: "__retirada" }, { ...coreReviewed, invoiceType: "__retirada" })).toBe(false);
     // Sin factura o exenta: nunca, aunque se hubiera confirmado
     expect(side(expenseEntry(expenseDocOf({ ...coreReviewed, invoiceType: "sin_factura" }, "2026-03-02", undefined, ctx, { ...conf, invoiceType: "sin_factura" }), map)!, "472")).toBe(0);
     // Nóminas de RRHH: sin IVA por naturaleza, no se marcan para revisar

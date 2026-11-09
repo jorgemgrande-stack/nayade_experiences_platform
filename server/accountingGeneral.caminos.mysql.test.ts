@@ -226,6 +226,18 @@ describe.skipIf(!URL_)("Contabilidad general · caminos reales del Core (TPV, an
     expect(await ess.sql("a", "SELECT taxRate, taxBase, taxAmount, fiscalReviewStatus FROM expenses WHERE id = ?", [id])).toEqual([row]);
     await sync();
     expect((await delta(b))["472"]).toBe(2100);
+    // Retirar la confirmación: deja de deducir y la fila queda como rastro (no se borra), con quién la retiró
+    ok(await ess.m("a", "accountingGeneral.confirmExpenseTax", { expenseId: id, confirmed: false }, adA), "retirar IVA");
+    const [kept] = await ess.sql("a", "SELECT invoice_type, confirmed_by FROM acc_expense_tax_reviews WHERE expense_id = ?", [id]);
+    expect(kept.invoice_type).toBe("__retirada");
+    expect(kept.confirmed_by).not.toBeNull();
+    const sr = await sync();
+    expect((await delta(b))["472"]).toBe(0);
+    expect(sr.review.find((r: any) => r.key === `gasto:${id}`)).toMatchObject({ canConfirm: true });
+    // Volver a confirmar funciona
+    ok(await ess.m("a", "accountingGeneral.confirmExpenseTax", { expenseId: id, confirmed: true }, adA), "confirmar otra vez");
+    await sync();
+    expect((await delta(b))["472"]).toBe(2100);
     // Pasa a «sin factura»: la confirmación deja de valer y no se puede confirmar
     ok(await ess.m("a", "financial.expenses.update", { id, ...base, taxRate: "21", invoiceType: "sin_factura" }, adA), "sin factura");
     await sync();

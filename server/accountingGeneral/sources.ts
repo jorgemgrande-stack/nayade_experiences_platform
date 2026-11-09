@@ -15,7 +15,7 @@ import { bankMovementLinks, bankMovements, cashMovements, cashRegisters, cashSes
 import { listFiscalDocuments, madridDayRange } from "../fiscalDocumentsDb";
 import { madridDayKey } from "../../shared/gestoriaExportPeriod";
 import { madridMidnightMs } from "../utils/timezone";
-import { isAccDate, type AccAccountMap } from "../../shared/accountingGeneral";
+import { ACC_TAX_REVIEW_RETRACTED, isAccDate, type AccAccountMap } from "../../shared/accountingGeneral";
 import { cashCloseEntry, categoryRole, desiredOf, cashMoveEntry, centsOf, collectionEntry, expenseEntry, expensePaymentEntry, saleEntry, type Desired, type ExpenseDoc, type ExpenseMethod, type SaleDoc, type TpvMethod, type CashMoveKind, effectiveCashKind, looksLikeRefund, voidTicketCashEntry } from "./rules";
 
 /** Grupos de documentos y el prefijo de su clave. */
@@ -69,7 +69,8 @@ export interface TaxConfirmation {
 
 /** ¿La confirmación sigue valiendo? Solo si el gasto no ha cambiado (importe, tipo, cuota y tipo de factura). */
 export function taxConfirmationMatches(c: TaxConfirmation | null | undefined, r: { amount: unknown; taxRate: unknown; taxAmount: unknown; invoiceType?: unknown }): boolean {
-  if (!c || r.taxAmount == null || r.taxRate == null) return false;
+  // Retirada (la fila queda como rastro): nunca vale
+  if (!c || c.invoiceType === ACC_TAX_REVIEW_RETRACTED || r.taxAmount == null || r.taxRate == null) return false;
   return c.amountCents === centsOf(r.amount) && c.taxRateBp === Math.round(Number(r.taxRate) * 100) && c.taxCents === centsOf(r.taxAmount) && (c.invoiceType ?? null) === ((r.invoiceType as string | null) ?? null);
 }
 
