@@ -10,6 +10,7 @@ import { madridDateKey } from "../utils/timezone";
 import { createReavExpedient, attachReavDocument, upsertClientFromReservation, postConfirmOperation, logActivity, getGHLCredentials } from "../db";
 import { createGHLContact, triggerGHLWorkflow, syncLeadUrlsToGHL } from "../ghl";
 import { createCashMovementIfNotExists, getDefaultCashAccountId, recordCashTransferToCentral } from "./cashRegisterHelper";
+import { CASH_IN_KINDS, CASH_OUT_KINDS, cashKindsInUse, explicitCashMoveKind, linkCashMovementExpense, recordCashMovementKind } from "../cashMovementKindsDb";
 import { calcularREAVSimple } from "../reav";
 import { getDailyControlCenter } from "./dailyControl";
 import {
@@ -407,6 +408,9 @@ export const tpvRouter = router({
     }),
 
   // -- SESSIONS ---------------------------------------------------------------
+  /** ¿El modal de caja pide el tipo de cada movimiento? Solo con la contabilidad general en uso (cashKindsInUse). */
+  cashMovementMode: tpvAccessProc.query(async () => ({ typed: await cashKindsInUse() })),
+
   getActiveSession: tpvAccessProc
     .input(z.object({ registerId: z.number() }))
     .query(async ({ input }) => {
@@ -663,21 +667,44 @@ export const tpvRouter = router({
         type: z.enum(["out", "in"]),
         amount: z.number().positive(),
         reason: z.string().min(1),
-        // Para salidas: "gasto" (compra/proveedor ? gasto real) o "traspaso"
-        // (llevar el efectivo a la Caja Central ? movimiento interno, NO gasto).
-        outKind: z.enum(["gasto", "traspaso"]).default("gasto"),
+        // Para salidas: "gasto" (compra/proveedor ? gasto real; por defecto, como siempre), "traspaso"
+        // (llevar el efectivo a la Caja Central ? movimiento interno, NO gasto) o "devolucion" (devolución de
+        // efectivo a un cliente, elegida por el cajero: NO es gasto).
+        outKind: z.enum(CASH_OUT_KINDS).optional(),
+        // Para entradas: "fondo" (desde la Caja Central) o "cobro" (cobro pendiente). Solo lo usa la contabilidad.
+        inKind: z.enum(CASH_IN_KINDS).optional(),
       })
     )
-    .mutation(async ({ input, ctx }) => {
-      const [result] = await db.insert(cashMovements).values({
+    .mutation(async ({ input: raw, ctx }) => {
+      // Sin la contabilidad general en uso (licencia y acc_settings iniciado; ver cashKindsInUse), el TPV es el de siempre: solo «gasto» (por defecto) o
+      // «traspaso», y no se guarda ningún tipo. Con ella, además «devolucion» y el tipo explícito para contabilizarlo.
+      const accounting = await cashKindsInUse();
+      if (!accounting && raw.outKind === "devolucion") {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "Tipo de salida no válido" });
+      }
+      const input = { ...raw, outKind: raw.outKind ?? ("gasto" as const) };
+      const values = {
         sessionId: input.sessionId,
         type: input.type,
         amount: String(input.amount),
         reason: input.reason,
         cashierName: ctx.user.name ?? ctx.user.email ?? "Cajero",
         createdAt: Date.now(),
-      });
-      const id = (result as any).insertId as number;
+      };
+      let id: number;
+      if (!accounting) {
+        // Exactamente como siempre: sin transacción ni nada de la contabilidad
+        const [result] = await db.insert(cashMovements).values(values);
+        id = (result as any).insertId as number;
+      } else {
+        // Con la contabilidad en uso, el tipo se guarda en la misma transacción que el movimiento
+        id = await db.transaction(async (tx) => {
+          const [result] = await tx.insert(cashMovements).values(values);
+          const movementId = (result as any).insertId as number;
+          await recordCashMovementKind(tx, movementId, explicitCashMoveKind(raw));
+          return movementId;
+        });
+      }
       const [movement] = await db.select().from(cashMovements).where(eq(cashMovements.id, id));
 
       // Propagación a Contabilidad ? Caja (fire-and-forget, no bloquea TPV).
@@ -713,6 +740,26 @@ export const tpvRouter = router({
               return;
             }
 
+            // DEVOLUCIÓN de efectivo a un cliente (elegida por el cajero): sale de la caja, pero NO es gasto.
+            if (input.outKind === "devolucion") {
+              if (cashAccountId) {
+                await db.insert(finCashMovements).values({
+                  accountId: cashAccountId,
+                  date: today,
+                  type: "expense",
+                  amount: String(input.amount),
+                  concept: `Devolución de efectivo TPV — ${input.reason}`,
+                  relatedEntityType: "manual",
+                  notes: `Devolución registrada en TPV sesión #${input.sessionId} por ${ctx.user.name ?? ctx.user.email}`,
+                  createdBy: ctx.user.id ? Number(ctx.user.id) : undefined,
+                });
+                await db.update(finCashAccounts)
+                  .set({ currentBalance: sql`current_balance - ${input.amount}` })
+                  .where(eq(finCashAccounts.id, cashAccountId));
+              }
+              return;
+            }
+
             // GASTO real: apunte 'expense' en caja + gasto conciliado en /gastos.
             const concept = `Retirada de caja TPV — ${input.reason}`;
 
@@ -743,7 +790,7 @@ export const tpvRouter = router({
               .from(costCenters).where(eq(costCenters.active, true)).limit(1);
 
             if (cat && cc) {
-              await db.insert(expenses).values({
+              const [expRes] = await db.insert(expenses).values({
                 date: today,
                 concept,
                 amount: String(input.amount),
@@ -755,6 +802,8 @@ export const tpvRouter = router({
                 source: "tpv",
                 createdBy: ctx.user.id ? Number(ctx.user.id) : undefined,
               });
+              // Contabilidad general: el gasto de esta salida (para contabilizarla una sola vez)
+              if (accounting) await linkCashMovementExpense(id, Number((expRes as any).insertId));
             }
           } catch (e) {
             console.error("[TPV] Error registrando retirada en contabilidad:", e);

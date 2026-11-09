@@ -1,7 +1,7 @@
 /**
  * TpvCashMovement — Modal de entrada/salida de efectivo
  */
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { trpc } from "@/lib/trpc";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
@@ -9,6 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
 import { ArrowDownLeft, ArrowUpRight, Banknote } from "lucide-react";
+import TpvCashMovementAccounting from "./TpvCashMovementAccounting";
 
 interface Props {
   open: boolean;
@@ -29,7 +30,22 @@ const QUICK_REASONS_IN = [
   "Cobro pendiente",
 ];
 
-export default function TpvCashMovement({ open, type, sessionId, onClose }: Props) {
+/**
+ * Con la contabilidad general en uso (licencia y contabilidad iniciada: `tpv.cashMovementMode`, la misma regla que el
+ * servidor), el modal con el tipo de cada movimiento (TpvCashMovementAccounting). Si no, o mientras no se sabe, el de
+ * siempre, sin ningún cambio.
+ */
+export default function TpvCashMovement(props: Props) {
+  const mode = trpc.tpv.cashMovementMode.useQuery(undefined, { staleTime: 60_000, retry: false });
+  // El modal se decide con el diálogo cerrado: abierto no cambia de componente (no se pierde lo escrito)
+  const [typed, setTyped] = useState(false);
+  useEffect(() => {
+    if (!props.open) setTyped(mode.data?.typed === true);
+  }, [props.open, mode.data?.typed]);
+  return typed ? <TpvCashMovementAccounting {...props} /> : <CoreCashMovement {...props} />;
+}
+
+function CoreCashMovement({ open, type, sessionId, onClose }: Props) {
   const [amount, setAmount] = useState("");
   const [reason, setReason] = useState("");
   // Solo para salidas: "gasto" (compra/proveedor) o "traspaso" (a Caja Central).
