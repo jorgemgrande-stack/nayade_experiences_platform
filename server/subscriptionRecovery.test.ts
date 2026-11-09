@@ -8,7 +8,7 @@ import { describe, it, expect } from "vitest";
 import http from "node:http";
 import type { AddressInfo } from "node:net";
 import express from "express";
-import { blockedNotice, isPaymentPending, isReadOnlyBlockError, resolveRecovery, type RecoveryInput } from "../shared/subscriptionRecovery";
+import { blockedNotice, isPanelReadOnlyState, isPaymentPending, isReadOnlyBlockError, resolveRecovery, type RecoveryInput } from "../shared/subscriptionRecovery";
 import { buildSubscriptionOverview } from "./subscriptionOverview";
 import { buildPlanComparison, type PanelPlanInfo } from "../shared/subscriptionPlans";
 import { capabilityRouteGuard } from "./_core/capabilities/routeGuard";
@@ -58,11 +58,13 @@ describe("aviso único: estado real y destino del botón", () => {
     expect(isPaymentPending(pastDue)).toBe(true);
     expect(isPaymentPending({ contract: null, billing: { status: "unpaid" } })).toBe(true);
     expect(isPaymentPending(paid)).toBe(false);
+    // Pedido suspendido al acabar la gracia por impago, con cobro manual (sin estado de Stripe): pago pendiente, no restricción
+    expect(resolveRecovery({ overview: ov("suspended"), contract: { contract: { state: "suspended" }, billing: { status: null } }, isAdmin: true })!.kind).toBe("payment_pending");
     const owner = resolveRecovery({ overview: ov("suspended"), contract: pastDue, isAdmin: true, portalEnabled: true })!;
     expect(owner).toMatchObject({ kind: "payment_pending", readOnly: true, title: "Tu suscripción está pendiente de pago" });
     expect(owner.cta).toEqual({ label: "Reactivar mi plan", action: { type: "portal", fallbackHref: "/admin/suscripcion" } });
     const admin = resolveRecovery({ overview: ov("read_only"), contract: pastDue, isAdmin: true, portalEnabled: false })!;
-    expect(admin.cta!.action).toEqual({ type: "link", href: "/admin/suscripcion" });
+    expect(admin.cta).toEqual({ label: "Ver mi suscripción", action: { type: "link", href: "/admin/suscripcion" } });
     expect(admin.secondary).toMatch(/propietaria/);
     // En periodo de gracia (aún activa): aviso de pago, sin bloquear nada
     const grace = resolveRecovery({ overview: ov("active"), contract: pastDue, isAdmin: true, portalEnabled: true })!;
@@ -75,6 +77,11 @@ describe("aviso único: estado real y destino del botón", () => {
     expect(v.cta).toEqual({ label: "Contactar con soporte", action: { type: "link", href: "/admin/soporte" } });
     // Sin contrato (alta asistida suspendida): también soporte, también para el equipo
     expect(resolveRecovery({ overview: ov("suspended"), contract: null, isAdmin: false })!.cta!.action).toEqual({ type: "link", href: "/admin/soporte" });
+  });
+
+  it("panel en consulta solo en prueba o suscripción terminada o restringida (decide si el menú repite «Solo lectura»)", () => {
+    for (const st of ["trial_expired", "read_only", "cancelled", "suspended"]) expect(isPanelReadOnlyState(st)).toBe(true);
+    for (const st of ["active", "trial", "pending", "none", undefined]) expect(isPanelReadOnlyState(st)).toBe(false);
   });
 
   it("sin aviso: activa, en prueba, pendiente de activar, instalación propia o mientras carga", () => {

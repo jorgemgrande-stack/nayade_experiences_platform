@@ -53,22 +53,29 @@ export const SUPPORT_HREF = "/admin/soporte";
 
 /** Estados del pedido o del cobro en Stripe que indican un recibo sin pagar. */
 const PAYMENT_PENDING_STATES = new Set(["past_due", "unpaid", "incomplete"]);
+/** El pedido se suspende al acabar la gracia por impago (orquestador): también es un pago pendiente. */
+const ORDER_UNPAID_STATES = new Set(["past_due", "suspended"]);
 /** Planes que se contratan desde la prueba en el panel (shared/connectMarketplace.ts CONVERSION_PLAN_KEYS). */
 const CONVERTIBLE_PLANS = new Set(["essential", "business"]);
 
 const KEEP_BROWSING = "Puedes seguir consultando tu información mientras tanto.";
 const ASK_ADMIN = "Pide a la administración de tu empresa que reactive el plan. Puedes seguir consultando tu información mientras tanto.";
 
+/** ¿Todo el panel queda en consulta (prueba o suscripción terminada, o restringida)? */
+export function isPanelReadOnlyState(state: string | null | undefined): boolean {
+  return state === "trial_expired" || state === "read_only" || state === "cancelled" || state === "suspended";
+}
+
 export function isPaymentPending(contract: RecoveryInput["contract"]): boolean {
   if (!contract) return false;
-  return (!!contract.contract && PAYMENT_PENDING_STATES.has(contract.contract.state)) || PAYMENT_PENDING_STATES.has(contract.billing.status ?? "");
+  return (!!contract.contract && ORDER_UNPAID_STATES.has(contract.contract.state)) || PAYMENT_PENDING_STATES.has(contract.billing.status ?? "");
 }
 
 /** Qué ve y a dónde lleva el aviso de recuperación; null si la empresa no lo necesita (activa, en prueba, legacy…). */
 export function resolveRecovery(i: RecoveryInput): RecoveryView | null {
   const o = i.overview;
   if (!o || o.licensing !== "capabilities") return null;
-  const readOnly = o.state === "trial_expired" || o.state === "read_only" || o.state === "cancelled" || o.state === "suspended";
+  const readOnly = isPanelReadOnlyState(o.state);
 
   // 1) Pago pendiente: se recupera el cobro (manda sobre la suspensión, que suele ser su consecuencia)
   if (isPaymentPending(i.contract) && (readOnly || o.state === "active")) {
@@ -81,7 +88,8 @@ export function resolveRecovery(i: RecoveryInput): RecoveryView | null {
       text: readOnly
         ? "Tus datos siguen disponibles. Actualiza tu método de pago para volver a gestionar tu negocio con todas tus herramientas."
         : "Actualiza tu método de pago para seguir gestionando tu negocio sin interrupciones.",
-      cta: i.isAdmin ? { label: readOnly ? "Reactivar mi plan" : "Actualizar el pago", action } : null,
+      // Sin portal (administración que no es la propietaria) el botón solo lleva a ver la suscripción
+      cta: i.isAdmin ? { label: !i.portalEnabled ? "Ver mi suscripción" : readOnly ? "Reactivar mi plan" : "Actualizar el pago", action } : null,
       secondary: !i.isAdmin
         ? "Avisa a la administración de tu empresa para que actualice el pago."
         : i.portalEnabled

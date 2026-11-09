@@ -21,6 +21,7 @@ import MaintenanceModeControl, { maintenanceControlMode } from "./admin/Maintena
 
 import { usePanelSubscription } from "@/hooks/usePanelSubscription";
 import { SubscriptionRecoveryBanner } from "./admin/SubscriptionRecoveryBanner";
+import { isPanelReadOnlyState } from "@shared/subscriptionRecovery";
 import {
   LEGACY_SECTIONS, TASK_NAV, resolveNav,
   type NavIcon, type ResolvedItem, type ResolvedSection,
@@ -230,6 +231,8 @@ export default function AdminLayout({ children, title }: AdminLayoutProps) {
           capabilityState: subscription.mode === "tasks" ? subscription.capabilityState : () => "active",
         }, subscription.extensions);
   const isTaskNav = subscription.mode === "tasks";
+  // Prueba o suscripción terminada (o restringida): todo el panel en consulta (shared/subscriptionRecovery.ts)
+  const panelReadOnly = isTaskNav && isPanelReadOnlyState(subscription.data?.state);
   // «Nuevo» en las extensiones recién activadas hasta que la persona entra en ellas (shared/panelNews.ts)
   const { discovered, markDiscovered } = useDiscoveredExtensions((user as { id?: string | number } | null)?.id ?? null);
   const extensionBlocksSig = JSON.stringify(extensionBlocks(navSections));
@@ -343,6 +346,11 @@ export default function AdminLayout({ children, title }: AdminLayoutProps) {
     );
     const isNew = isNewExtension(item.extension, discovered, nowMs);
     const newTag = isNew && showLabels && <NewPill />;
+    // Con todo el panel en consulta no se repite en cada apartado (lo explica el aviso único); con el plan en
+    // vigor y una función suelta en solo lectura, sí se marca esa función
+    const readOnlyTag = item.readOnly && showLabels && !panelReadOnly && (
+      <span className="text-[10px] font-medium rounded px-1.5 py-0.5 bg-sidebar-accent text-sidebar-foreground/80">Solo lectura</span>
+    );
 
     if (item.children) {
       const isExpanded = expandedItems.includes(id) || active || item.children.some((c) => isChildActive(c.href));
@@ -367,6 +375,7 @@ export default function AdminLayout({ children, title }: AdminLayoutProps) {
             {showLabels ? (
               <>
                 <span className="flex-1 text-left">{item.label}</span>
+                {readOnlyTag}
                 {newTag}
                 {badgeEl}
                 <ChevronDown className={cn("w-3.5 h-3.5 transition-transform", isExpanded && "rotate-180")} aria-hidden="true" />
@@ -393,6 +402,7 @@ export default function AdminLayout({ children, title }: AdminLayoutProps) {
                       )}
                     >
                       <span className="flex-1">{child.label}</span>
+                      {child.readOnly && !panelReadOnly && <span className="text-[10px] text-sidebar-foreground/70">Solo lectura</span>}
                     </Link>
                   </li>
                 );
@@ -422,6 +432,7 @@ export default function AdminLayout({ children, title }: AdminLayoutProps) {
           {showLabels ? (
             <>
               <span className="flex-1">{item.label}</span>
+              {readOnlyTag}
                 {newTag}
               {badgeEl}
             </>

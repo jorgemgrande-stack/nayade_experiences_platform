@@ -44,7 +44,8 @@ export function serverMessage(err: unknown): string | null {
 export function errorToastMessage(err: unknown, fallback = "No se ha podido completar la operación. Inténtalo de nuevo."): string {
   const e = err as ErrLike;
   const code = e?.data?.code;
-  if (isReadOnlyBlockError(err)) return READ_ONLY_TEXT;
+  // En el panel se explica el plan; fuera (p. ej. el área de miembros) quien lo lee no gestiona la suscripción
+  if (isReadOnlyBlockError(err)) return typeof window !== "undefined" && window.location.pathname.startsWith("/admin") ? READ_ONLY_TEXT : "Esta acción no está disponible ahora mismo.";
   if (code === "UNAUTHORIZED" || e?.data?.httpStatus === 401) return errorMessage(err);
   if (e?.message && NETWORK_RE.test(e.message)) return errorMessage(err);
   const fromServer = serverMessage(err);
