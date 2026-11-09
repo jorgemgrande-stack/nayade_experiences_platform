@@ -189,8 +189,17 @@ export class TrialService {
 
     const again = await this.d.store.byIdempotencyKey(input.idempotencyKey);
     if (again) return { trial: again, created: false as const, verificationToken: null };
+    // Mismo envío repetido a la vez (doble clic): si otra petición con la MISMA clave acaba de crearla, se devuelve esa
+    const sameKey = async () => {
+      const t = await this.d.store.byIdempotencyKey(input.idempotencyKey);
+      return t ? { trial: t, created: false as const, verificationToken: null } : null;
+    };
     // Un buzón, una prueba abierta: no se revela el estado de la existente
-    if (await this.openFor(email, "system:trial")) throw new TrialError("conflict", "Ya hay una solicitud de prueba en curso para este correo");
+    if (await this.openFor(email, "system:trial")) {
+      const same = await sameKey();
+      if (same) return same;
+      throw new TrialError("conflict", "Ya hay una solicitud de prueba en curso para este correo");
+    }
 
     const now = this.now();
     const ipHash = input.ip ? sha256(`trial-ip:${input.ip}`) : null;
@@ -228,10 +237,11 @@ export class TrialService {
       );
       return { trial, created: true as const, verificationToken: token };
     } catch (e) {
-      // Dos altas simultáneas: la BD decide
-      if (e instanceof TrialConflict && e.code === "duplicate_key") {
-        const t = await this.d.store.byIdempotencyKey(input.idempotencyKey);
-        if (t) return { trial: t, created: false as const, verificationToken: null };
+      // Dos altas simultáneas: la BD decide. Con la misma clave, la que ganó se devuelve aunque MySQL avise antes del
+      // índice del correo que del de la clave
+      if (e instanceof TrialConflict && (e.code === "duplicate_key" || e.code === "duplicate_email")) {
+        const same = await sameKey();
+        if (same) return same;
       }
       if (e instanceof TrialConflict && e.code === "duplicate_email") throw new TrialError("conflict", "Ya hay una solicitud de prueba en curso para este correo");
       throw e;
