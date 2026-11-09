@@ -4,10 +4,12 @@
  * ni cambia nada.
  *
  * Correo: solo al correo de la entidad (cliente de la reserva, del presupuesto o de la factura; la propia oportunidad),
- * con la marca y el remitente de la empresa (`sendEmail`, categoría «operational») y clave de idempotencia por regla,
- * entidad y paso. Nunca a quien tiene las comunicaciones automáticas en pausa; el correo «comercial» solo a quien tiene
- * el consentimiento de marketing CONCEDIDO (el de Elephant Campaigns y Brevo). Respeta la política de la prueba gratuita
- * y el estado del correo de la empresa.
+ * con la marca y el remitente de la empresa (`sendEmail`) y clave de idempotencia por regla, entidad y paso. Nunca a
+ * quien tiene las comunicaciones automáticas en pausa. El operativo sale con la categoría «operational». El «comercial»
+ * sale con la categoría «marketing», solo a un cliente con el consentimiento de marketing CONCEDIDO y ninguna retirada
+ * para ese correo (el de Elephant Campaigns y Brevo), y siempre con su enlace personal de baja (el de Campaigns, que
+ * retira el consentimiento); sin enlace de baja disponible, no sale. Respeta la política de la prueba gratuita y el
+ * estado del correo de la empresa.
  */
 import { ACTION_LABELS, type AutomationAction } from "../../shared/automations";
 import { renderText, runKeyText, validEmail, type AutomationEntity, type RunKey, type StoredRule } from "./engine";
@@ -31,6 +33,7 @@ export interface MailParams {
   html: string;
   text: string;
   idempotencyKey: string;
+  category: "operational" | "marketing";
 }
 
 export interface ActionDeps {
@@ -40,9 +43,16 @@ export interface ActionDeps {
   trialBlocks(email: string): Promise<boolean>;
   /** ¿Tiene el cliente las comunicaciones automáticas en pausa? (customer_email_prefs) */
   paused(email: string): Promise<boolean>;
-  /** ¿Tiene el consentimiento de marketing concedido? (customer_marketing_consents) */
-  marketingConsent(email: string): Promise<boolean>;
-  renderEmail(subject: string, body: string, greetingName: string | null): { html: string; text: string };
+  /**
+   * Cliente del CRM con ese correo que tiene el consentimiento de marketing CONCEDIDO y ninguna retirada para ese correo
+   * (customer_marketing_consents); si no, null.
+   */
+  commercialRecipient(email: string): Promise<number | null>;
+  /** ¿Se pueden enviar correos comerciales? (enlace de baja de Elephant Campaigns disponible) */
+  commercialAvailable(): Promise<boolean>;
+  /** Enlace personal de baja del cliente que retira su consentimiento; null si no está disponible. */
+  unsubscribeLink(clientId: number): Promise<string | null>;
+  renderEmail(subject: string, body: string, greetingName: string | null, unsubscribeUrl: string | null): { html: string; text: string };
   sendEmail(p: MailParams): Promise<boolean>;
   validAssignee(userId: number): Promise<boolean>;
   createTask(t: { title: string; description: string | null; dueDate: string; assignedTo: number | null; priority: "baja" | "media" | "alta"; entityType: "lead" | "quote" | null; entityId: number | null }, actorId: number): Promise<number>;
@@ -71,14 +81,21 @@ export async function runAction(action: AutomationAction, ctx: ActionContext, d:
       const to = validEmail(e.email);
       if (!to) return skip("sin_correo");
       if (await d.paused(to)) return skip("cliente_en_pausa");
-      if (action.purpose === "commercial" && !(await d.marketingConsent(to))) return skip("sin_consentimiento");
+      let unsubscribeUrl: string | null = null;
+      if (action.purpose === "commercial") {
+        const clientId = await d.commercialRecipient(to);
+        if (clientId == null) return skip("sin_consentimiento");
+        unsubscribeUrl = await d.unsubscribeLink(clientId);
+        if (!unsubscribeUrl) return skip("sin_enlace_de_baja");
+      }
       const block = await d.mailBlock();
       if (block) return ctx.dry ? skip("correo_no_disponible", block) : fail("correo_no_disponible", block);
       if (await d.trialBlocks(to).catch(() => false)) return skip("prueba_gratuita");
       const subject = renderText(action.subject, e.vars, true).slice(0, 200);
       if (ctx.dry) return ok(would(`correo «${subject}» a ${maskEmail(to)}`));
-      const c = d.renderEmail(subject, renderText(action.body, e.vars), e.name);
-      const sent = await d.sendEmail({ to, subject, html: c.html, text: c.text, idempotencyKey: runKeyText(ctx.key) }).catch(() => false);
+      const c = d.renderEmail(subject, renderText(action.body, e.vars), e.name, unsubscribeUrl);
+      const category = action.purpose === "commercial" ? "marketing" : "operational";
+      const sent = await d.sendEmail({ to, subject, html: c.html, text: c.text, idempotencyKey: runKeyText(ctx.key), category }).catch(() => false);
       return sent ? ok(`Correo «${subject}» a ${maskEmail(to)}`) : fail("envio_fallido");
     }
     case "task": {

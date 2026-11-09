@@ -45,24 +45,39 @@ export const coreActionDeps: ActionDeps = {
     const r = await firstRow(sql`SELECT automationsPaused FROM customer_email_prefs WHERE email = ${email} LIMIT 1`);
     return !!r && (r.automationsPaused === true || Number(r.automationsPaused) === 1);
   },
-  marketingConsent: async (email) => {
+  commercialRecipient: async (email) => {
     try {
-      const r = await firstRow(sql`SELECT c.status FROM customer_marketing_consents c JOIN clients cl ON cl.id = c.client_id WHERE LOWER(cl.email) = ${email} ORDER BY c.updated_at DESC LIMIT 1`);
-      return r?.status === "granted";
+      const d = await getTenantDatabase();
+      if (!d) throw new Error("Base de datos no disponible");
+      const rows = ((await d.execute(sql`SELECT c.id, m.status FROM clients c JOIN customer_marketing_consents m ON m.client_id = c.id WHERE LOWER(TRIM(c.email)) = ${email}`)) as unknown as [Record<string, any>[]])[0] ?? [];
+      // Como Campaigns: una retirada para ese correo (en cualquier ficha) manda sobre cualquier concesión
+      if (rows.some((r) => r.status !== "granted")) return null;
+      const granted = rows.find((r) => r.status === "granted");
+      return granted ? Number(granted.id) : null;
     } catch (e) {
       // Sin la tabla de consentimientos (migración 0042) nadie tiene el consentimiento: el correo comercial no sale
-      if (missingTable(e)) return false;
+      if (missingTable(e)) return null;
       throw e;
     }
   },
-  renderEmail: (subject, body, greetingName) => {
+  commercialAvailable: async () => (await import("../netPublic/brevoUnsubscribe")).unsubscribeAvailable(),
+  unsubscribeLink: async (clientId) => {
+    const u = await import("../netPublic/brevoUnsubscribe");
+    if (!(await u.unsubscribeAvailable())) return null;
+    // Sin clave de firma el enlace no serviría: entonces no hay enlace (y el correo comercial no sale)
+    return u.UNSUB_TOKEN_RE.test(u.unsubscribeToken(clientId)) ? u.unsubscribeUrl(clientId) : null;
+  },
+  renderEmail: (subject, body, greetingName, unsubscribeUrl) => {
     const company = companyName();
     const paragraphs = body.split(/\n+/).map((p) => p.trim()).filter(Boolean);
-    const html = buildNoticeHtml({ badge: company, title: subject, greetingName, paragraphs, note: `Mensaje automático de ${company}.` });
-    const text = [`Hola${greetingName ? `, ${greetingName}` : ""}:`, "", ...paragraphs, "", company].join("\n");
+    const note = unsubscribeUrl
+      ? `Recibes este correo porque aceptaste recibir comunicaciones comerciales de ${company}. Para darte de baja: ${unsubscribeUrl}`
+      : `Mensaje automático de ${company}.`;
+    const html = buildNoticeHtml({ badge: company, title: subject, greetingName, paragraphs, note });
+    const text = [`Hola${greetingName ? `, ${greetingName}` : ""}:`, "", ...paragraphs, "", company, ...(unsubscribeUrl ? ["", note] : [])].join("\n");
     return { html, text };
   },
-  sendEmail: (p) => sendEmail({ to: p.to, subject: p.subject, html: p.html, text: p.text, category: "operational", idempotencyKey: p.idempotencyKey }),
+  sendEmail: (p) => sendEmail({ to: p.to, subject: p.subject, html: p.html, text: p.text, category: p.category, idempotencyKey: p.idempotencyKey }),
   validAssignee: async (userId) => (await (await import("../crmTasksDb")).listAssignees()).some((u) => u.id === userId),
   createTask: async (t, actorId) => (await (await import("../crmTasksDb")).createTask(t, actorId)).id,
   funnelLicensed: () => licensedFor("crm-funnel-advanced", true).catch(() => false),

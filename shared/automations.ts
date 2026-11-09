@@ -180,7 +180,7 @@ export const EMAIL_PURPOSES = ["operational", "commercial"] as const;
 export type EmailPurpose = (typeof EMAIL_PURPOSES)[number];
 export const EMAIL_PURPOSE_LABELS: Record<EmailPurpose, string> = {
   operational: "Operativo (sobre su reserva, presupuesto o factura)",
-  commercial: "Comercial (solo a quien aceptó comunicaciones comerciales)",
+  commercial: "Comercial (solo a quien aceptó comunicaciones comerciales, con enlace de baja; necesita Elephant Campaigns)",
 };
 
 export type AutomationAction =
@@ -382,6 +382,7 @@ export const RUN_REASON_LABELS: Record<string, string> = {
   sin_correo: "El cliente no tiene un correo válido",
   cliente_en_pausa: "El cliente tiene las comunicaciones automáticas en pausa",
   sin_consentimiento: "Correo comercial: el cliente no ha aceptado comunicaciones comerciales",
+  sin_enlace_de_baja: "Correo comercial: no hay enlace de baja disponible (necesita Elephant Campaigns)",
   prueba_gratuita: "Durante la prueba gratuita solo se escribe a los buzones de la empresa",
   correo_no_disponible: "El correo de la empresa no está disponible",
   sin_oportunidad: "No hay oportunidad asociada",

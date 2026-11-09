@@ -117,7 +117,12 @@ export class AutomationService {
 
   async setEnabled(id: number, enabled: boolean, userId: number | null) {
     const r = await this.rule(id);
-    if (enabled) await this.validate(r); // una referencia borrada desde que se guardó no se activa
+    if (enabled) {
+      await this.validate(r); // una referencia borrada desde que se guardó no se activa
+      // El correo comercial solo sale con su enlace de baja (el de Elephant Campaigns): sin él, la regla no se enciende
+      if (r.steps.some((s) => s.action.kind === "email" && s.action.purpose === "commercial") && !(await this.d.actions.commercialAvailable()))
+        throw new AutomationError("invalid_input", "Esta regla envía un correo comercial y necesita el enlace de baja de Elephant Campaigns, que tu empresa no tiene. Cambia el correo a operativo o quita ese paso.");
+    }
     await this.d.store.setEnabled(id, enabled, this.now(), userId);
     return this.rule(id);
   }

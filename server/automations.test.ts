@@ -22,7 +22,7 @@ function entity(o: Partial<AutomationEntity> & { id: number; anchorAt: number })
   return { type: "reservation", email: `cliente${o.id}@clientes.example`, name: `Cliente ${o.id}`, leadId: null, ownerId: null, fields: { people: 2, product: "Kayak", amount: 50, channel: "ONLINE_DIRECTO" }, vars: { nombre: `Cliente ${o.id}`, referencia: `RES-${o.id}`, empresa: "Náyade QA" }, ctaPath: "/admin/crm?tab=reservations", ...o };
 }
 
-function fakeDeps(o: { consent?: string[]; paused?: string[]; sendOk?: () => boolean; mailBlock?: string | null } = {}) {
+function fakeDeps(o: { consent?: string[]; paused?: string[]; sendOk?: () => boolean; mailBlock?: string | null; noUnsubscribe?: boolean } = {}) {
   const sent: MailParams[] = [];
   const tasks: Array<{ title: string; assignedTo: number | null }> = [];
   const store = new MemoryAutomationStore();
@@ -30,8 +30,10 @@ function fakeDeps(o: { consent?: string[]; paused?: string[]; sendOk?: () => boo
     mailBlock: async () => o.mailBlock ?? null,
     trialBlocks: async () => false,
     paused: async (e) => (o.paused ?? []).includes(e),
-    marketingConsent: async (e) => (o.consent ?? []).includes(e),
-    renderEmail: (subject, body) => ({ html: `<p>${body}</p>`, text: body }),
+    commercialRecipient: async (e) => ((o.consent ?? []).includes(e) ? 500 + (o.consent ?? []).indexOf(e) : null),
+    commercialAvailable: async () => !o.noUnsubscribe,
+    unsubscribeLink: async (clientId) => (o.noUnsubscribe ? null : `https://empresa.example/baja/${clientId}.firma`),
+    renderEmail: (subject, body, _name, unsub) => ({ html: `<p>${body}</p>${unsub ? `<p>Baja: ${unsub}</p>` : ""}`, text: body }),
     sendEmail: async (p) => {
       if (o.sendOk && !o.sendOk()) return false;
       sent.push(p);
@@ -238,14 +240,31 @@ describe("tarea programada (runPass)", () => {
     s.at(T0 + H);
     expect(await s.svc.runPass()).toMatchObject({ done: 1, skipped: 2 });
     expect(s.sent.map((m) => m.to)).toEqual(["cliente1@clientes.example"]);
+    // El comercial sale como marketing y con el enlace de baja del cliente
+    expect(s.sent[0]).toMatchObject({ category: "marketing" });
+    expect(s.sent[0].html).toContain("https://empresa.example/baja/500.firma");
     const reasons = (await s.svc.history()).map((h) => [h.entityId, h.reason]);
     expect(reasons).toEqual(expect.arrayContaining([[2, "cliente_en_pausa"], [3, "sin_consentimiento"]]));
-    // El operativo no necesita consentimiento, pero sí respeta la pausa
+    // El operativo no necesita consentimiento, sale como operativo y sin enlace de baja, pero sí respeta la pausa
     const s2 = setup(emailRule(), ents, { paused: ["cliente2@clientes.example"] });
     const r2 = await s2.svc.create(emailRule(), 1);
     await s2.svc.setEnabled(r2.id, true, 1);
     s2.at(T0 + H);
     expect(await s2.svc.runPass()).toMatchObject({ done: 2, skipped: 1 });
+    expect(s2.sent.every((m) => m.category === "operational" && !m.html.includes("/baja/"))).toBe(true);
+  });
+
+  it("sin enlace de baja (sin Elephant Campaigns) el correo comercial no sale y su regla no se enciende", async () => {
+    const rule = emailRule({ steps: [{ delayMinutes: 0, action: { kind: "email", purpose: "commercial", subject: "Oferta", body: "x" } }] });
+    const s = setup(rule, [entity({ id: 1, anchorAt: T0 + 60_000 })], { consent: ["cliente1@clientes.example"], noUnsubscribe: true });
+    const r = await s.svc.create(rule, 1); // se puede guardar (y crear desde plantilla) apagada
+    await expect(s.svc.setEnabled(r.id, true, 1)).rejects.toThrow(/enlace de baja/);
+    // Aunque la regla ya estuviera encendida (Campaigns se dio de baja después), la tarea no lo envía
+    await s.store.setEnabled(r.id, true, T0, 1);
+    s.at(T0 + H);
+    expect((await s.svc.simulate(rule)).items[0]).toMatchObject({ outcome: "omitiria", reason: "sin_enlace_de_baja" });
+    expect(await s.svc.runPass()).toMatchObject({ done: 0, skipped: 1 });
+    expect(s.sent).toHaveLength(0);
   });
 
   it("condiciones, tarea con el responsable de la oportunidad y aviso al equipo (uno por ejecución)", async () => {

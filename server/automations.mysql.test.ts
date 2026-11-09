@@ -157,4 +157,30 @@ describe.skipIf(!URL_)("Automatizaciones avanzadas · licencia, tarea por empres
     await ess.setCapability("a", CAP, "active");
     expect(await runJob()).toMatchObject({ done: 1 });
   }, 60_000);
+
+  it("correo comercial: solo con el consentimiento concedido y sin retirada, como marketing y con el enlace de baja de Campaigns", async () => {
+    const commercial = { ...emailRule, name: "Seguimiento comercial", steps: [{ delayMinutes: 0, action: { kind: "email", purpose: "commercial", subject: "Novedades para {{nombre}}", body: "Tenemos novedades." } }] };
+    const rule = await ok(m("create", commercial));
+    // Sin Elephant Campaigns no hay enlace de baja: la regla no se enciende
+    expect(errCode(await m("setEnabled", { id: rule.id, enabled: true }))).toBe("BAD_REQUEST");
+    await ess.setCapability("a", "email-campaigns", "active");
+    // Apaga las anteriores para mirar solo esta
+    for (const r of (await ok(q("overview"))).rules) if (r.id !== rule.id) await ok(m("setEnabled", { id: r.id, enabled: false }));
+    await ok(m("setEnabled", { id: rule.id, enabled: true }));
+    await ess.sql("a", "INSERT INTO clients (name, email, source) VALUES ('Con Consentimiento QA', 'si@clientes.example', 'manual'), ('Retirado QA', 'no@clientes.example', 'manual')");
+    const ids = await ess.sql("a", "SELECT id, email FROM clients WHERE email IN ('si@clientes.example', 'no@clientes.example')");
+    const idOf = (e: string) => ids.find((r: any) => r.email === e).id;
+    await ess.sql("a", "INSERT INTO customer_marketing_consents (client_id, status, source, granted_at, withdrawn_at, updated_by) VALUES (?, 'granted', 'prueba', NOW(3), NULL, 'prueba'), (?, 'withdrawn', 'prueba', NOW(3), NOW(3), 'prueba')", [idOf("si@clientes.example"), idOf("no@clientes.example")]);
+    await new Promise((r) => setTimeout(r, 20));
+    await paidReservation("a", { people: 2, email: "si@clientes.example", name: "Con Consentimiento QA" });
+    await paidReservation("a", { people: 2, email: "no@clientes.example", name: "Retirado QA" });
+    await paidReservation("a", { people: 2, email: "nunca@clientes.example", name: "Sin Ficha QA" });
+    const before = ess.mails.length;
+    expect(await runJob()).toMatchObject({ done: 1, skipped: 2 });
+    const mails = ess.mails.slice(before);
+    expect(mails.map((x) => x.to[0].email)).toEqual(["si@clientes.example"]);
+    expect(mails[0].htmlContent).toContain(`/baja/${idOf("si@clientes.example")}.`);
+    const reasons = (await ok(q("history", { ruleId: rule.id }))).map((h: any) => h.reason ?? h.status).sort();
+    expect(reasons).toEqual(["done", "sin_consentimiento", "sin_consentimiento"]);
+  }, 60_000);
 });
