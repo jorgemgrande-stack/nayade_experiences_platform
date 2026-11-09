@@ -5,7 +5,7 @@
 --   quién, cuándo y por qué) y nunca se borra ningún contador. Sin esta tabla no se excluye ningún canal.
 
 CREATE TABLE funnel_test_channels (
-  channel VARCHAR(60) NOT NULL,
+  channel VARCHAR(60) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NOT NULL,
   reason VARCHAR(200) NOT NULL,
   actor VARCHAR(120) NOT NULL,
   created_at BIGINT NOT NULL,

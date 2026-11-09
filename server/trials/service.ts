@@ -351,7 +351,8 @@ export class TrialService {
       if (!t) throw new TrialError("not_found", "Prueba no encontrada");
       if (t.configuration?.test) return t;
       const at = this.now();
-      const updated = await this.d.store.setConfiguration(t.id, t.version, { ...t.configuration, test: { at, actor, reason: why } });
+      // Solo si nadie la ha marcado a la vez: el registro de auditoría `marked_test` es uno por prueba
+      const updated = await this.d.store.setTestMark(t.id, t.version, { at, actor, reason: why });
       if (updated) {
         await this.d.store.note(t.id, { action: "marked_test", detail: why, actor, at });
         return updated;

@@ -320,7 +320,9 @@ describe("registros técnicos o de prueba: fuera del embudo, sin borrar nada", (
     const after = (await call("GET", `/trials/funnel?from=${day}&to=${day}`, {})).json;
     expect(after.rows.some((x: { channel: string }) => x.channel === "canal-tecnico")).toBe(false);
     expect(after.landing.channels.some((x: { channel: string }) => x.channel === "canal-tecnico")).toBe(false);
-    expect(after.excluded.channels.map((c: { channel: string }) => c.channel)).toContain("canal-tecnico");
+    expect(after.excluded.channels).toContain("canal-tecnico");
+    // Un canal que no encaja con lo que se guarda se rechaza en lugar de no excluir nada
+    expect((await call("POST", "/trials/funnel/test-channels", { body: { channel: "<script>", reason: "Visitas de verificación" } })).status).toBe(400);
     expect(after.excluded.trials).toBeGreaterThanOrEqual(1);
     // Nada se ha borrado: el contador sigue teniendo la visita
     expect(Array.from(funnel.rows.values()).some((x) => x.channel === "canal-tecnico")).toBe(true);

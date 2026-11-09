@@ -23,6 +23,7 @@ import { opsLog } from "../_core/ops/log";
 import { APPROVAL_CATEGORIES, OrderError, type ApprovalCategory } from "../orchestrator/types";
 import { LIFE_PLAN } from "../../shared/personalPlans";
 import { LANDING_STEPS, countLandingStep, summarizeLanding, type TrialFunnelCounter } from "./funnel";
+import { normalizeChannel } from "./profile";
 import { TRIAL_FUNNEL_STAGES, TRIAL_MILESTONES } from "./store";
 
 /** Procedencia que envía la web (UTM, dominio de referencia y página de entrada); se sanea en ./profile.ts. */
@@ -227,7 +228,7 @@ export function createTrialAdminRouter(o: { onboarding: TrialOnboardingService; 
       const exclude = new Set(testChannels.map((c) => c.channel));
       const [{ rows, truncated, excluded }, landing] = await Promise.all([o.store.funnel({ from, to, excludeChannels: exclude }), o.funnel ? o.funnel.counts({ from: q.from, to: q.to }).catch(() => null) : Promise.resolve(null)]);
       const totals = Object.fromEntries(TRIAL_FUNNEL_STAGES.map((s) => [s, rows.reduce((n, x) => n + x.stages[s], 0)]));
-      res.json({ from: q.from, to: q.to, truncated, landing: landing ? summarizeLanding(landing, exclude) : null, totals, rows, excluded: { trials: excluded, channels: testChannels } });
+      res.json({ from: q.from, to: q.to, truncated, landing: landing ? summarizeLanding(landing, exclude) : null, totals, rows, excluded: { trials: excluded, channels: testChannels.map((c) => c.channel) } });
     }),
   );
 
@@ -245,14 +246,17 @@ export function createTrialAdminRouter(o: { onboarding: TrialOnboardingService; 
     wrap(async (req, res) => {
       const b = z.object({ channel: z.string().trim().min(1).max(60), reason: z.string().trim().min(5).max(200) }).strict().parse(req.body);
       if (!o.funnel) throw new TrialError("unavailable", "El contador del embudo no está disponible");
+      // El mismo valor que guardan los contadores y las pruebas (minúsculas, sin «www.», espacios a guiones)
+      const channel = normalizeChannel(b.channel);
+      if (!channel) throw new TrialError("invalid_input", "Canal no válido: usa el utm_source o el dominio tal como aparece en el embudo");
       let marked: boolean;
       try {
-        marked = await o.funnel.markTestChannel({ channel: b.channel.toLowerCase(), reason: b.reason, actor: who(req), createdAt: Date.now() });
+        marked = await o.funnel.markTestChannel({ channel, reason: b.reason, actor: who(req), createdAt: Date.now() });
       } catch (e) {
         if ((e as { code?: string } | null)?.code === "ER_NO_SUCH_TABLE") throw new TrialError("unavailable", "Falta la migración 0047 del CRM");
         throw e;
       }
-      opsLog("info", "Trials", "funnel_test_channel_marked", { channel: b.channel.toLowerCase(), actor: who(req), marked });
+      opsLog("info", "Trials", "funnel_test_channel_marked", { channel, actor: who(req), marked });
       res.status(marked ? 201 : 200).json({ marked, channels: await o.funnel.testChannels() });
     }),
   );

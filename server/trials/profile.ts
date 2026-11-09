@@ -91,8 +91,8 @@ export type TrialAttributionInput = Partial<Record<keyof TrialAttribution, strin
  */
 export function normalizeTerms(accepted: unknown, version: unknown, now: number): TrialTerms {
   if (accepted !== true) throw new TrialProfileError("Hay que aceptar la política de privacidad y las condiciones de la prueba");
-  const v = typeof version === "string" ? version.trim().slice(0, 40) : "";
-  if (!v || !/^[\w.:-]+$/.test(v)) throw new TrialProfileError("Falta la versión de las condiciones aceptadas: recarga la página y vuelve a intentarlo");
+  const v = typeof version === "string" ? version.trim() : "";
+  if (!v || v.length > 40 || !/^[\w.:-]+$/.test(v)) throw new TrialProfileError("Falta la versión de las condiciones aceptadas: recarga la página y vuelve a intentarlo");
   return { acceptedAt: now, version: v };
 }
 
@@ -154,6 +154,16 @@ export function normalizeAttribution(input: TrialAttributionInput | null | undef
     adClick: typeof input.adClick === "string" && (AD_CLICKS as readonly string[]).includes(input.adClick) ? (input.adClick as AdClick) : null,
   };
   return Object.values(out).some((v) => v !== null) ? out : null;
+}
+
+/**
+ * Canal tal como se guarda (utm_source o dominio de referencia normalizados), o null si no encaja. Para marcar un canal
+ * técnico con el mismo valor que tienen los contadores y las pruebas.
+ */
+export function normalizeChannel(v: string): string | null {
+  const raw = v.trim();
+  if (raw.toLowerCase() === "directo") return "directo";
+  return normalizeAttribution({ referrerHost: raw })?.referrerHost ?? normalizeAttribution({ source: raw })?.source ?? null;
 }
 
 /**

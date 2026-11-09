@@ -122,10 +122,10 @@ export interface TrialStore {
    */
   funnel(f: { from: number; to: number; excludeChannels?: ReadonlySet<string> }): Promise<{ rows: TrialFunnelRow[]; truncated: boolean; excluded: number }>;
   /**
-   * Sustituye la configuración (sin cambiar estado ni versión) si la versión no ha cambiado. Solo para anotaciones
-   * auditadas que no son transiciones (p. ej. la marca de prueba técnica). Devuelve la prueba o null si cambió.
+   * Añade la marca de prueba técnica a la configuración (sin cambiar estado ni versión) solo si la versión no ha
+   * cambiado y la prueba no estaba ya marcada. Devuelve la prueba o null si no se ha escrito nada.
    */
-  setConfiguration(id: number, expectedVersion: number, configuration: TrialConfiguration): Promise<TrialRequest | null>;
+  setTestMark(id: number, expectedVersion: number, mark: TrialTestMark): Promise<TrialRequest | null>;
 }
 
 /** Etapas del embudo que salen de las pruebas (las visitas e inicios del formulario, del contador anónimo de ./funnel.ts). */
@@ -282,10 +282,10 @@ export class MemoryTrialStore implements TrialStore {
     const items = kept.map((trial) => ({ trial, actions: new Set(this.evs.filter((e) => e.trialId === trial.id).map((e) => e.action as string)) }));
     return { rows: aggregateFunnel(items), truncated: false, excluded: inRange.length - kept.length };
   }
-  async setConfiguration(id: number, expectedVersion: number, configuration: TrialConfiguration) {
+  async setTestMark(id: number, expectedVersion: number, mark: TrialTestMark) {
     const cur = this.rows.get(id);
-    if (!cur || cur.version !== expectedVersion) return null;
-    cur.configuration = clone(configuration);
+    if (!cur || cur.version !== expectedVersion || cur.configuration?.test) return null;
+    cur.configuration = { ...cur.configuration, test: { ...mark } };
     return clone(cur);
   }
 }
@@ -422,8 +422,12 @@ export class MysqlTrialStore implements TrialStore {
     const [r] = await this.pool.query<mysql.RowDataPacket[]>("SELECT * FROM trial_requests WHERE tenant_id = ? LIMIT 1", [tenantId]);
     return r[0] ? row(r[0]) : null;
   }
-  async setConfiguration(id: number, expectedVersion: number, configuration: TrialConfiguration) {
-    const [r] = await this.pool.query<mysql.ResultSetHeader>("UPDATE trial_requests SET configuration = ? WHERE id = ? AND version = ?", [JSON.stringify(configuration), id, expectedVersion]);
+  async setTestMark(id: number, expectedVersion: number, mark: TrialTestMark) {
+    // Solo la clave `test`, y solo si no existía: dos marcas a la vez no se pisan ni pisan otros cambios
+    const [r] = await this.pool.query<mysql.ResultSetHeader>(
+      "UPDATE trial_requests SET configuration = JSON_SET(configuration, '$.test', CAST(? AS JSON)) WHERE id = ? AND version = ? AND JSON_EXTRACT(configuration, '$.test') IS NULL",
+      [JSON.stringify(mark), id, expectedVersion],
+    );
     return r.affectedRows === 1 ? this.get(id) : null;
   }
   async funnel(f: { from: number; to: number; excludeChannels?: ReadonlySet<string> }) {
