@@ -9,6 +9,8 @@
  *  - GET/POST /contrato/<token>  Contratos y firma electrónica · firma (o rechazo) a distancia del contrato (un solo uso).
  *  - GET /ical/<token>.ics        Hotel Net · calendario iCal de disponibilidad de una tipología o habitación (canales).
  *  - GET/POST /recepcion/<clave> Elephant Reception AI · chat de la recepcionista virtual en la web de la empresa.
+ *  - GET/POST /canal/<token>/…   Venta multicanal · ventas y disponibilidad de cada canal externo en JSON (64 KB como
+ *                                mucho, server/multichannel/publicRoutes.ts).
  *
  * Antiabuso: límite por IP (todas las peticiones y, más estricto, los envíos; en la carta de mesa, más alto porque un
  * comedor comparte la IP de su wifi) y por enlace (envíos con el mismo token, p. ej. por mesa); rutas sensibles a
@@ -36,6 +38,7 @@ import { DOC_TYPES, SEXES } from "../hotelGuests";
 import { ICAL_FILE_RE } from "../hotelIcal";
 import { exportCalendar, icalAvailable, resolveExport } from "../hotelIcalDb";
 import { receptionChatHandlers, type ReceptionChatDeps } from "./receptionChat";
+import { createMultichannelPublicRouter, multichannelBodyParser, type MultichannelPublicOptions } from "../multichannel/publicRoutes";
 
 /** Rutas públicas de este módulo (las comprueba el lector de cuerpos y la prueba de rutas). */
 export const NET_PUBLIC_PATH = /^\/(mesa|check-in|firma|baja|contrato|ical|recepcion)\/[^/]+\/?$/;
@@ -48,6 +51,8 @@ const urlencoded = express.urlencoded({ extended: false, limit: NET_PUBLIC_BODY_
  * (50 MB) del arranque; si el cuerpo ya se leyó (pruebas), no hace nada.
  */
 export const netPublicBodyParser: RequestHandler = (req, res, next) => {
+  // Venta multicanal: su propio lector (JSON de 64 KB), también antes del general
+  if (req.method === "POST" && req.path.startsWith("/canal/")) return multichannelBodyParser(req, res, next);
   if (req.method !== "POST" || !NET_PUBLIC_PATH.test(req.path)) return next();
   if (Number(req.headers["content-length"] ?? 0) > NET_PUBLIC_BODY_LIMIT) return tooLarge(res);
   const type = String(req.headers["content-type"] ?? "");
@@ -96,6 +101,8 @@ export interface NetPublicRouterOptions {
   chatPostsPerIp?: number;
   /** Chat de la recepcionista: dependencias (pruebas). */
   receptionChat?: ReceptionChatDeps;
+  /** Venta multicanal: límites y dependencias (pruebas). */
+  multichannel?: MultichannelPublicOptions;
 }
 
 /** Ruta sin barra final (la misma clave por enlace con y sin ella). El token conserva sus mayúsculas: es parte del secreto. */
@@ -485,6 +492,8 @@ export function createNetPublicRouter(opts: NetPublicRouterOptions = {}): Router
   const chatPosts = limiter(10 * 60_000, opts.chatPostsPerIp ?? 30, (req) => `chat-posts:${ip(req)}`);
   r.get("/recepcion/:token", all, chat.get);
   r.post("/recepcion/:token", all, chatPosts, netPublicBodyParser, chat.post);
+  // Venta multicanal: respuestas en JSON
+  r.use(createMultichannelPublicRouter(opts.multichannel));
   r.use((err: unknown, _req: Request, res: Response, next: NextFunction) => {
     if (res.headersSent) return next(err);
     return failure(res, "Error");

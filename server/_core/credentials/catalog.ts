@@ -317,6 +317,34 @@ export const PROVIDERS: ProviderDef[] = [
       { key: "locationId", label: "ID del establecimiento", secret: false, required: true, pattern: /^\d{1,12}$/, panel: { label: "Identificador del establecimiento", help: "El número que aparece en la dirección de tu ficha de TripAdvisor (…-d123456-…).", formatMessage: "Solo números." } },
     ],
   },
+  {
+    // Venta multicanal: credenciales PREPARADAS para el conector de Fourvenues (su API de integraciones exige una clave
+    // que emite Fourvenues a cada organizador). Hoy las ventas entran por el informe CSV o el enlace de entrada del canal.
+    id: "fourvenues",
+    name: "Fourvenues",
+    description: "Cuenta de Fourvenues para el conector de entradas de la Venta multicanal (en preparación).",
+    capabilities: ["Guardar la clave de tu cuenta para el conector de entradas (aún no se usa: las ventas entran por CSV o por el enlace del canal)"],
+    check: "Sin prueba de conexión: el conector se activa en la implantación acompañada, con la clave que te emite Fourvenues",
+    panel: { group: "channels", title: "Fourvenues", summary: "Guarda aquí la clave de la API de Fourvenues para cuando se active el conector. Mientras, importa su informe de ventas en Venta multicanal.", requires: ["multichannel"] },
+    fields: [
+      { key: "apiKey", label: "Clave de la API", secret: true, required: true, pattern: TOKEN_RE, panel: { label: "Clave de la API de Fourvenues", help: "La emite el equipo de integraciones de Fourvenues para tu organización.", formatMessage: "Cópiala completa, sin espacios." } },
+      { key: "organizationId", label: "Organización", secret: false, pattern: /^[A-Za-z0-9_-]{1,64}$/, panel: { label: "Identificador de tu organización", help: "El que figura en tu panel de Fourvenues.", formatMessage: "Solo letras, números, guiones y guiones bajos." } },
+    ],
+  },
+  {
+    // Venta multicanal: credenciales PREPARADAS para el conector de Weezevent (API con clave y usuario de la cuenta).
+    id: "weezevent",
+    name: "Weezevent",
+    description: "Cuenta de Weezevent para el conector de entradas de la Venta multicanal (en preparación).",
+    capabilities: ["Guardar la clave y el usuario de tu cuenta para el conector de entradas (aún no se usa: las ventas entran por CSV o por el enlace del canal)"],
+    check: "Sin prueba de conexión: el conector se activa en la implantación acompañada, con la clave de API que te da Weezevent",
+    panel: { group: "channels", title: "Weezevent", summary: "Guarda aquí la clave de la API de Weezevent para cuando se active el conector. Mientras, importa su informe de participantes en Venta multicanal.", requires: ["multichannel"] },
+    fields: [
+      { key: "apiKey", label: "Clave de la API", secret: true, required: true, pattern: TOKEN_RE, panel: { label: "Clave de la API de Weezevent", help: "Se solicita a Weezevent desde tu cuenta de organizador.", formatMessage: "Cópiala completa, sin espacios." } },
+      { key: "user", label: "Usuario", secret: false, pattern: MAILBOX_USER_RE, panel: { label: "Usuario de tu cuenta de Weezevent", formatMessage: "El usuario no puede tener espacios." } },
+      { key: "password", label: "Contraseña", secret: true, pattern: PASSWORD_RE, panel: { label: "Contraseña de tu cuenta de Weezevent", formatMessage: "La contraseña no puede tener saltos de línea." } },
+    ],
+  },
 ];
 
 export function getProvider(id: string): ProviderDef | undefined {
