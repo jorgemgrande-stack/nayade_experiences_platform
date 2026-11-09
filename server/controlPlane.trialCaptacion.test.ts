@@ -27,7 +27,7 @@ import { keyringFromEnv } from "./_core/tenantRegistry/crypto";
 import { MemorySubscriptionStore } from "./subscriptions/store";
 import { MemoryCapabilityStore } from "./_core/capabilities/store";
 import { MemoryTrialStore } from "./trials/store";
-import { MemoryTrialFunnelCounter } from "./trials/funnel";
+import { MemoryTrialFunnelCounter, MysqlTrialFunnelCounter } from "./trials/funnel";
 import { normalizeAttribution, normalizeProfile } from "./trials/profile";
 import { ProvisioningService } from "./_core/provisioning/service";
 import { MemoryProvisioningStore } from "./_core/provisioning/ports";
@@ -257,5 +257,17 @@ describe("hitos del panel y embudo", () => {
     expect(f.totals.submitted).toBeGreaterThanOrEqual(4);
     expect(f.raw ?? JSON.stringify(f)).not.toMatch(/@/);
     expect((await call("GET", "/trials/funnel?from=2026-11-30&to=2026-11-01")).status).toBe(400);
+  });
+});
+
+describe("contador sin la migración 0046", () => {
+  it("descarta en silencio si falta la tabla y propaga cualquier otro error", async () => {
+    const missing = Object.assign(new Error("Table doesn't exist"), { code: "ER_NO_SUCH_TABLE" });
+    const pool = (err: Error) => ({ query: async () => { throw err; } }) as never;
+    const c = new MysqlTrialFunnelCounter(pool(missing));
+    await expect(c.add("visit", { day: "2026-11-09", channel: "directo", medium: "", campaign: "" })).resolves.toBeUndefined();
+    await expect(c.counts({ from: "2026-11-01", to: "2026-11-09" })).resolves.toEqual([]);
+    const other = new MysqlTrialFunnelCounter(pool(Object.assign(new Error("down"), { code: "ECONNREFUSED" })));
+    await expect(other.add("visit", { day: "2026-11-09", channel: "directo", medium: "", campaign: "" })).rejects.toThrow("down");
   });
 });

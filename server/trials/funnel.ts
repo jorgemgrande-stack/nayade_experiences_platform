@@ -5,7 +5,7 @@
  * (`TrialStore.funnel`), da el embudo completo: visita → formulario → envío → verificación → plataforma → primer
  * acceso → primera acción → contratación o fin sin contratar.
  *
- * Sin la migración 0046 la ruta pública responde 202 y descarta: la web puede enviar siempre.
+ * Sin la migración 0046 la ruta pública responde 202 y descarta en silencio: la web puede enviar siempre.
  */
 import type mysql from "mysql2/promise";
 import { normalizeAttribution, type TrialAttributionInput } from "./profile";
@@ -40,19 +40,32 @@ export class MemoryTrialFunnelCounter implements TrialFunnelCounter {
   }
 }
 
+/** Sin la migración 0046 (la tabla aún no existe) el contador descarta en silencio. */
+const missingTable = (e: unknown) => (e as { code?: string } | null)?.code === "ER_NO_SUCH_TABLE";
+
 export class MysqlTrialFunnelCounter implements TrialFunnelCounter {
   constructor(private pool: mysql.Pool) {}
   async add(step: LandingStep, k: { day: string; channel: string; medium: string; campaign: string }) {
-    await this.pool.query(
-      "INSERT INTO funnel_landing_counts (day, step, channel, medium, campaign, count) VALUES (?, ?, ?, ?, ?, 1) ON DUPLICATE KEY UPDATE count = count + 1",
-      [k.day, step, k.channel, k.medium, k.campaign],
-    );
+    try {
+      await this.pool.query(
+        "INSERT INTO funnel_landing_counts (day, step, channel, medium, campaign, count) VALUES (?, ?, ?, ?, ?, 1) ON DUPLICATE KEY UPDATE count = count + 1",
+        [k.day, step, k.channel, k.medium, k.campaign],
+      );
+    } catch (e) {
+      if (!missingTable(e)) throw e;
+    }
   }
   async counts(f: { from: string; to: string }) {
-    const [rows] = await this.pool.query<mysql.RowDataPacket[]>(
-      "SELECT DATE_FORMAT(day, '%Y-%m-%d') AS day, step, channel, medium, campaign, count FROM funnel_landing_counts WHERE day BETWEEN ? AND ? ORDER BY day",
-      [f.from, f.to],
-    );
+    let rows: mysql.RowDataPacket[];
+    try {
+      [rows] = await this.pool.query<mysql.RowDataPacket[]>(
+        "SELECT DATE_FORMAT(day, '%Y-%m-%d') AS day, step, channel, medium, campaign, count FROM funnel_landing_counts WHERE day BETWEEN ? AND ? ORDER BY day",
+        [f.from, f.to],
+      );
+    } catch (e) {
+      if (missingTable(e)) return [];
+      throw e;
+    }
     return rows.map((r) => ({ day: String(r.day), step: r.step as LandingStep, channel: String(r.channel), medium: String(r.medium), campaign: String(r.campaign), count: Number(r.count) }));
   }
 }
