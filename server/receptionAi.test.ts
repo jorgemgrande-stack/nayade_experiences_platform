@@ -28,7 +28,7 @@ import {
   type SettingsInput,
 } from "../shared/receptionAi";
 import { MemoryReceptionStore } from "./receptionAi/store";
-import { ReceptionService, unavailableToolResults, type LeadInput, type LlmMessage } from "./receptionAi/service";
+import { LEADS_FULL_MESSAGE, ReceptionService, unavailableToolResults, type LeadInput, type LlmMessage } from "./receptionAi/service";
 import { NET_PUBLIC_PATH, createNetPublicRouter } from "./netPublic/router";
 import { TASK_NAV } from "../shared/adminNav";
 import { TRPC_ROUTER_CAPABILITIES } from "./_core/capabilities/routeGuard";
@@ -73,8 +73,8 @@ describe("lógica pura de la recepcionista", () => {
     expect(settingsProblem(input())).toBeNull();
     expect(settingsProblem(input({ assistantName: " " }))).toMatch(/nombre/);
     expect(settingsProblem(input({ transferEnabled: true, transferNumber: "123" }))).toMatch(/teléfono válido/);
-    expect(settingsProblem(input({ chatDailyLimit: 0 }))).toMatch(/24 horas/);
-    expect(settingsProblem(input({ chatDailyLimit: RECEPTION_LIMITS.chatDailyMax + 1 }))).toMatch(/24 horas/);
+    expect(settingsProblem(input({ chatDailyLimit: 0 }))).toMatch(/máximo diario/);
+    expect(settingsProblem(input({ chatDailyLimit: RECEPTION_LIMITS.chatDailyMax + 1 }))).toMatch(/máximo diario/);
     expect(settingsProblem(input({ timezone: "Marte/Olympus" }))).toMatch(/Zona horaria/);
   });
 
@@ -335,7 +335,7 @@ describe("servicio: chat de la web", () => {
     await expect(w.svc.chatSend(s, T, "   ")).rejects.toMatchObject({ code: "invalid_input" });
   });
 
-  it("sin IA o al llegar al máximo de 24 horas, respuesta fija sin llamar a la IA", async () => {
+  it("sin IA o al llegar al máximo diario, respuesta fija sin llamar a la IA", async () => {
     const s = await w.store.settings();
     w.llm.fail = true;
     expect(await w.svc.chatSend(s, T, "Hola")).toEqual({ origin: "fallback" });
@@ -346,6 +346,59 @@ describe("servicio: chat de la web", () => {
     expect(await w.svc.chatSend(s, "c".repeat(32), "Otra")).toEqual({ origin: "fallback" });
     expect(w.llmCalls.length).toBe(calls);
     expect((await w.svc.chatView(s, "c".repeat(32))).messages[1].content).toMatch(/déjanos tus datos|Si nos dejas tus datos/i);
+  });
+
+  it("máximo diario atómico: con mensajes simultáneos la IA responde como mucho el máximo, por día de la empresa", async () => {
+    const s = { ...(await w.store.settings()), chatDailyLimit: 2 };
+    let release!: () => void;
+    const gate = new Promise<void>((r) => (release = r));
+    const llm = (w.svc as unknown as { d: { llm: (m: LlmMessage[]) => Promise<string> } }).d;
+    const real = llm.llm;
+    llm.llm = async (m) => {
+      await gate; // todas las peticiones llegan antes de que responda ninguna
+      return real(m);
+    };
+    const sends = Array.from({ length: 5 }, (_, i) => w.svc.chatSend(s, String.fromCharCode(100 + i).repeat(32), `Pregunta ${i}`));
+    await new Promise((r) => setTimeout(r, 10));
+    release();
+    const origins = (await Promise.all(sends)).map((r) => r.origin);
+    expect(origins.filter((o) => o === "ai")).toHaveLength(2);
+    expect(w.llmCalls).toHaveLength(2);
+    // Clave del cupo: la fecha del día en la zona de la empresa (Europe/Madrid)
+    expect(w.store.quotas.get("2026-11-10:chat_reply")).toBe(2);
+  });
+
+  it("si la IA falla, el turno reservado vuelve al cupo", async () => {
+    const s = { ...(await w.store.settings()), chatDailyLimit: 1 };
+    w.llm.fail = true;
+    expect((await w.svc.chatSend(s, T, "Hola")).origin).toBe("fallback");
+    expect(w.store.quotas.get("2026-11-10:chat_reply")).toBe(0);
+    w.llm.fail = false;
+    expect((await w.svc.chatSend(s, T, "Otra vez")).origin).toBe("ai");
+  });
+
+  it("tope diario de solicitudes del chat por empresa: al superarlo, mensaje amable y sin crear nada en el CRM", async () => {
+    const s = await w.store.settings();
+    const base = { kind: "info" as const, name: "Ana Prueba", phone: "", email: "ana@cliente.example", note: "", consent: true };
+    w.store.quotas.set("2026-11-10:chat_lead", RECEPTION_LIMITS.chatLeadsPerDay - 2);
+    const tries = await Promise.allSettled(["e", "f", "g"].map((c) => w.svc.chatLead(s, c.repeat(32), base)));
+    expect(tries.filter((t) => t.status === "fulfilled")).toHaveLength(2);
+    const rejected = tries.find((t) => t.status === "rejected") as PromiseRejectedResult;
+    expect(rejected.reason).toMatchObject({ code: "invalid_input", message: LEADS_FULL_MESSAGE });
+    expect(w.leads).toHaveLength(2);
+    await expect(w.svc.chatLead(s, "h".repeat(32), base)).rejects.toThrow(LEADS_FULL_MESSAGE);
+    expect(w.leads).toHaveLength(2);
+    expect(w.store.convs.filter((c) => c.leadId)).toHaveLength(2);
+  });
+
+  it("si el CRM falla al crear la solicitud, la plaza vuelve al cupo", async () => {
+    const s = await w.store.settings();
+    const d = (w.svc as unknown as { d: { createLead: (l: LeadInput) => Promise<number> } }).d;
+    d.createLead = async () => {
+      throw new Error("CRM no disponible");
+    };
+    await expect(w.svc.chatLead(s, T, { kind: "info", name: "Ana", phone: "", email: "ana@cliente.example", note: "", consent: true })).rejects.toThrow(/CRM/);
+    expect(w.store.quotas.get("2026-11-10:chat_lead")).toBe(0);
   });
 
   it("como mucho 20 mensajes del cliente por conversación", async () => {

@@ -6,14 +6,16 @@
  *    de su bóveda); atiende las herramientas que el asistente llama durante la llamada (disponibilidad orientativa,
  *    crear solicitud, ¿hay alguien del equipo?) y registra el informe final de cada llamada.
  *  - Texto: chat de la web de la empresa con la IA central del Core y el mismo conocimiento, con un máximo de respuestas
- *    en 24 horas que elige la empresa (además de la cuota de IA de la empresa en Resource Manager) y alta de la
- *    solicitud en el CRM con un formulario explícito (la IA del chat no tiene herramientas).
+ *    al día que elige la empresa (reserva atómica por día natural de su zona horaria, además de la cuota de IA de la
+ *    empresa en Resource Manager) y alta de la solicitud en el CRM con un formulario explícito, con un tope diario de
+ *    solicitudes por empresa (la IA del chat no tiene herramientas).
  *  - Registro de conversaciones (llamadas y chats) con su resultado; el equipo puede corregirlo.
  */
 import crypto from "node:crypto";
 import { usableWebhookSecret } from "../_core/webhookSecret";
 import { placeholderEmail } from "../../shared/placeholderEmail";
 import {
+  DEFAULT_TIMEZONE,
   RECEPTION_LIMITS,
   RECEPTION_MANUAL_OUTCOMES,
   VAPI_TOOL_NAMES,
@@ -25,6 +27,7 @@ import {
   describeHours,
   isDay,
   isHumanHoursNow,
+  isValidTimezone,
   knowledgeProblem,
   localClock,
   matchCatalog,
@@ -117,6 +120,8 @@ export interface ChatView {
 }
 
 const FALLBACK_REPLY = "Ahora mismo no puedo responder a eso. Si nos dejas tus datos en el formulario de abajo, el equipo te contestará.";
+/** Al llegar al máximo diario de solicitudes desde el chat: sin crear nada en el CRM. */
+export const LEADS_FULL_MESSAGE = "Hoy hemos recibido muchas solicitudes por el chat y no podemos registrar más. Por favor, contacta con nosotros por teléfono o correo electrónico y te atenderemos encantados.";
 const sha = (s: string) => crypto.createHash("sha256").update(s).digest("hex");
 const EMAIL_RE = /^[^\s@]{1,64}@[^\s@]{1,190}\.[^\s@]{2,}$/;
 
@@ -444,6 +449,11 @@ export class ReceptionService {
     return this.d.chatKeys.verify(key, s.chatKeyVersion) ? s : null;
   }
 
+  /** Fecha de hoy (AAAA-MM-DD) en la zona horaria de la empresa: clave de los cupos diarios del chat. */
+  private today(settings: ReceptionSettings): string {
+    return localClock(this.now(), isValidTimezone(settings.timezone) ? settings.timezone : DEFAULT_TIMEZONE).date;
+  }
+
   private chatRef(token: string) {
     return sha(`reception-chat:${token}`);
   }
@@ -484,8 +494,10 @@ export class ReceptionService {
 
     let reply: string | null = null;
     let origin: "ai" | "fallback" = "fallback";
-    const usedToday = await this.d.store.aiRepliesSince(86_400);
-    if (usedToday < settings.chatDailyLimit) {
+    // Reserva atómica del turno en el cupo diario ANTES de llamar a la IA: dos mensajes a la vez nunca superan el máximo.
+    // Si la IA no llega a responder, el turno se devuelve al cupo (como antes, solo cuentan las respuestas de la IA)
+    const day = this.today(settings);
+    if (await this.d.store.reserveDaily("chat_reply", day, settings.chatDailyLimit)) {
       try {
         const past = history.filter((m): m is StoredMessage & { role: "user" | "assistant" } => m.role !== "tool").slice(-RECEPTION_LIMITS.chatHistoryMax);
         const messages: LlmMessage[] = [{ role: "system", content: await this.promptFor("chat", settings) }, ...past.map((m) => ({ role: m.role, content: m.content })), { role: "user", content }];
@@ -494,6 +506,7 @@ export class ReceptionService {
       } catch {
         reply = null;
       }
+      if (origin !== "ai") await this.d.store.releaseDaily("chat_reply", day).catch(() => undefined);
     }
     await this.d.store.addMessage(conv.id, "assistant", origin, reply ?? FALLBACK_REPLY);
     if (origin === "ai" && conv.outcome === "open" && conv.outcomeSource === "auto") await this.d.store.updateConversation(conv.id, { outcome: "resolved" });
@@ -517,11 +530,20 @@ export class ReceptionService {
 
     const conv = await this.d.store.ensureConversation("chat", this.chatRef(token));
     if (conv.leadId) return { leadId: conv.leadId, already: true };
+    // Tope diario de solicitudes desde el chat por empresa (reserva atómica): al superarlo no se crea nada en el CRM
+    const day = this.today(settings);
+    if (!(await this.d.store.reserveDaily("chat_lead", day, RECEPTION_LIMITS.chatLeadsPerDay))) throw invalid(LEADS_FULL_MESSAGE);
     const note = cleanText(f.note, RECEPTION_LIMITS.noteMax);
     const msgs = (await this.d.store.messages(conv.id, 10)).filter((m) => m.role !== "tool");
     const transcript = msgs.map((m) => `${m.role === "user" ? "Cliente" : "IA"}: ${oneLine(m.content).slice(0, 200)}`).join(" | ");
     const message = `[Recepcionista IA · chat web] ${isCallback ? "Pide que le llamen" : "Solicitud de información"}${note ? `: ${note}` : ""}${transcript ? `\nConversación: ${transcript}` : ""}`.slice(0, 2500);
-    const leadId = await this.d.createLead({ name, email: email ?? placeholderEmail("recepcion", `${Date.now()}`), phone: phone ?? undefined, message, source: "recepcion_ia_chat" });
+    let leadId: number;
+    try {
+      leadId = await this.d.createLead({ name, email: email ?? placeholderEmail("recepcion", `${Date.now()}`), phone: phone ?? undefined, message, source: "recepcion_ia_chat" });
+    } catch (e) {
+      await this.d.store.releaseDaily("chat_lead", day).catch(() => undefined); // no se creó nada: la plaza vuelve al cupo
+      throw e;
+    }
     await this.d.store.updateConversation(conv.id, {
       leadId,
       customerName: name,
