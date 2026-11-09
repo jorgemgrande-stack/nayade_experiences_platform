@@ -12,6 +12,7 @@ import { integrationEnv } from "./_core/tenantConfig";
 import { isMultiTenant } from "./_core/tenant";
 import { metaPixelId } from "./_core/theme";
 import { getSystemSetting } from "./config";
+import { scrub } from "./adsManager/connectors";
 
 /**
  * Configuración de CAPI de la empresa en curso, leída EN CADA ENVÍO (07/11/2026). Antes se leía una sola vez al cargar el
@@ -137,18 +138,21 @@ export async function sendCapiEvent(args: CapiEventArgs): Promise<{ ok: boolean;
     payload.test_event_code = TEST_EVENT_CODE;
   }
 
-  const url = `https://graph.facebook.com/${API_VERSION}/${PIXEL_ID}/events?access_token=${ACCESS_TOKEN}`;
+  // El token va en la cabecera Authorization, nunca en la URL
+  const url = `https://graph.facebook.com/${API_VERSION}/${PIXEL_ID}/events`;
   const response = await fetch(url, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${ACCESS_TOKEN}` },
     body: JSON.stringify(payload),
   });
 
   const result = await response.json();
 
   if (!response.ok) {
-    console.error('[Meta CAPI] Error from Meta API:', result);
-    return { ok: false, result };
+    // Por si Meta repitiera el token en su respuesta: se quita antes de registrarla o devolverla
+    const clean = scrub(JSON.stringify(result ?? null), [ACCESS_TOKEN]);
+    console.error('[Meta CAPI] Error from Meta API:', clean);
+    return { ok: false, result: clean };
   }
 
   return { ok: true, result };
@@ -188,8 +192,9 @@ metaCapiRouter.post('/api/meta-capi', async (req: Request, res: Response) => {
     }
     return res.json({ success: true, result: result.result });
   } catch (error: unknown) {
-    console.error('[Meta CAPI] Route error:', error);
-    const message = error instanceof Error ? error.message : 'Unknown error';
+    const token = (await capiConfig().catch(() => null))?.accessToken;
+    const message = scrub(error instanceof Error ? error.message : 'Unknown error', token ? [token] : []);
+    console.error('[Meta CAPI] Route error:', message);
     return res.status(500).json({ error: message });
   }
 });
