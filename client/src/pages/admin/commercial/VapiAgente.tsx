@@ -476,8 +476,8 @@ export default function VapiAgente() {
                 <Webhook className="w-3 h-3" /> URL del webhook — pega esta URL en el panel de Vapi
               </div>
               <div className="flex items-center gap-2">
-                <code className="flex-1 text-xs bg-foreground/5 border border-border/40 rounded px-3 py-1.5 text-sky-300 truncate">
-                  {webhookUrl}{creds?.webhookSecret ? `  (secret: ${creds.webhookSecret})` : ""}
+                <code className="flex-1 text-xs bg-foreground/5 border border-border/40 rounded px-3 py-1.5 text-sky-300 min-w-0 break-all">
+                  {webhookUrl}
                 </code>
                 <Button
                   size="sm"

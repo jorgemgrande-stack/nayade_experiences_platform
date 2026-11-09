@@ -572,3 +572,15 @@ describe("«Llamadas IA › Configuración» nunca devuelve credenciales en clar
     expect(json).not.toContain("123");
   });
 });
+
+describe("pantalla de llamadas: la dirección del webhook sin la clave", () => {
+  it("no muestra «(secret: …)» y no corta la dirección con truncate", async () => {
+    const fs = await import("node:fs");
+    const path = await import("node:path");
+    const src = fs.readFileSync(path.resolve(__dirname, "../client/src/pages/admin/commercial/VapiAgente.tsx"), "utf8");
+    expect(src).not.toContain("(secret:");
+    const line = src.split(/\r?\n/).find((l) => l.includes("text-sky-300") && l.includes("<code"))!;
+    expect(line).toContain("break-all");
+    expect(line).not.toMatch(/\btruncate\b/);
+  });
+});
