@@ -12,7 +12,7 @@ import { getDb } from "../db";
 import { madridDateKey, madridYear } from "../utils/timezone";
 import { expenseCategories } from "../../drizzle/schema";
 import type { EntryLine, PostedLine } from "../finance/types";
-import { ACC_MAP_KEYS, ACC_MANUAL_JOURNALS, isAccDate, type AccAccountMap, type AccJournal, type AccOrigin } from "../../shared/accountingGeneral";
+import { ACC_DEFAULT_MAP, ACC_MAP_KEYS, ACC_MANUAL_JOURNALS, ACC_PGC_SEED, isAccDate, type AccAccountMap, type AccJournal, type AccOrigin } from "../../shared/accountingGeneral";
 import {
   AccError,
   autoReversalDate,
@@ -71,13 +71,28 @@ async function run<T>(fn: (d: Db) => Promise<T>): Promise<T> {
   }
 }
 
-/** Ajustes de la empresa; la primera vez siembra el plan de cuentas del PGC de pymes (inicio: 1 de enero). */
+/**
+ * Ajustes de la empresa para una MUTACIÓN; la primera vez siembra el plan de cuentas del PGC de pymes (inicio: 1 de
+ * enero). Las consultas usan `current` y `chartMap`, que no escriben (en solo lectura no se crea nada).
+ */
 async function ready(db: Db): Promise<store.AccSettings> {
   const s = await store.getSettings(db);
   if (s) return s;
   await store.seed(db as unknown as store.TxExec, `${madridYear()}-01-01`);
   return (await store.getSettings(db))!;
 }
+
+/** Ajustes para una consulta, sin escribir: si la empresa aún no ha empezado, los de por defecto. */
+async function current(db: Db, now = new Date()): Promise<store.AccSettings> {
+  return (await store.getSettings(db)) ?? { startDate: `${madridYear(now)}-01-01`, lockedUntil: null, map: { ...ACC_DEFAULT_MAP }, lastSyncAt: null, lastSync: null };
+}
+
+/** Plan de cuentas para una consulta, sin escribir: el guardado o, si aún no se sembró, el del PGC de pymes. */
+async function chart(db: Db): Promise<Array<AccAccount & { isSeed: boolean }>> {
+  const list = await store.listAccounts(db);
+  return list.length ? list : ACC_PGC_SEED.map((a) => ({ code: a.code, name: a.name, type: a.type, parentCode: null, isPostable: true, active: true, isSeed: true }));
+}
+const chartMap = async (db: Db) => new Map((await chart(db)).map((a) => [a.code, a as AccAccount]));
 
 const names = (accounts: ReadonlyMap<string, AccAccount>) => new Map(Array.from(accounts, ([c, a]) => [c, a.name]));
 
@@ -211,12 +226,12 @@ export async function sync(userId: number | null, now = new Date()): Promise<Syn
 
 export async function overview(now = new Date()) {
   return run(async (db) => {
-    const s = await ready(db);
+    const s = await current(db, now);
     const year = madridYear(now);
     const [counts, unbalanced, accounts, totals, yearTotals] = await Promise.all([
       store.counts(db),
       store.unbalancedEntries(db),
-      store.accountMap(db),
+      chartMap(db),
       store.accountTotals(db, {}),
       store.accountTotals(db, { from: `${year}-01-01`, to: `${year}-12-31` }),
     ]);
@@ -246,9 +261,9 @@ export async function overview(now = new Date()) {
 
 export async function accountsList() {
   return run(async (db) => {
-    const s = await ready(db);
+    const s = await current(db);
     const used = new Set(Object.values(s.map));
-    return (await store.listAccounts(db)).map((a) => ({ ...a, usedByAutomatic: used.has(a.code) }));
+    return (await chart(db)).map((a) => ({ ...a, usedByAutomatic: used.has(a.code) }));
   });
 }
 
@@ -285,7 +300,7 @@ export async function updateAccount(input: { code: string; name: string; active:
 
 export async function settingsView() {
   return run(async (db) => {
-    const s = await ready(db);
+    const s = await current(db);
     const [cats, catAccounts, counts] = await Promise.all([
       db.select({ id: expenseCategories.id, name: expenseCategories.name, active: expenseCategories.active }).from(expenseCategories),
       store.categoryAccounts(db),
@@ -384,10 +399,9 @@ export async function reverseManualEntry(input: { id: number; date?: string | nu
 export async function journal(input: { from: string; to: string; origin?: AccOrigin | null; page: number; pageSize: number }) {
   return run(async (db) => {
     checkPeriod(input.from, input.to);
-    await ready(db);
     const [r, accounts] = await Promise.all([
       store.listEntries(db, { from: input.from, to: input.to, origin: input.origin ?? null, limit: input.pageSize, offset: (input.page - 1) * input.pageSize }),
-      store.accountMap(db),
+      chartMap(db),
     ]);
     return { total: r.total, items: r.items.map((e) => ({ ...e, lines: e.lines.map((l) => ({ ...l, accountName: accounts.get(l.accountCode)?.name ?? "" })) })) };
   });
@@ -395,7 +409,7 @@ export async function journal(input: { from: string; to: string; origin?: AccOri
 
 async function ledgerData(db: Db, input: { account: string; from: string; to: string }) {
   checkPeriod(input.from, input.to);
-  const accounts = await store.accountMap(db);
+  const accounts = await chartMap(db);
   const a = accounts.get(input.account);
   if (!a) throw new AccError("not_found", `La cuenta ${input.account} no existe`);
   const [before, lines] = await Promise.all([store.postedLines(db, { before: input.from, accountPrefix: a.code }), store.postedLines(db, { from: input.from, to: input.to, accountPrefix: a.code })]);
@@ -404,27 +418,24 @@ async function ledgerData(db: Db, input: { account: string; from: string; to: st
 
 export async function ledgerView(input: { account: string; from: string; to: string }) {
   return run(async (db) => {
-    await ready(db);
     return ledgerData(db, input);
   });
 }
 
 async function trialData(db: Db, from: string, to: string) {
   checkPeriod(from, to);
-  const [totals, accounts] = await Promise.all([store.accountTotals(db, { from, to }), store.accountMap(db)]);
+  const [totals, accounts] = await Promise.all([store.accountTotals(db, { from, to }), chartMap(db)]);
   return { accounts, totals, trial: trialBalance(totals, accounts) };
 }
 
 export async function trialBalanceView(input: { from: string; to: string }) {
   return run(async (db) => {
-    await ready(db);
     return (await trialData(db, input.from, input.to)).trial;
   });
 }
 
 export async function profitAndLossView(input: { from: string; to: string }) {
   return run(async (db) => {
-    await ready(db);
     const d = await trialData(db, input.from, input.to);
     return profitAndLoss(d.totals, names(d.accounts));
   });
@@ -437,7 +448,6 @@ export type ExportKind = "journal" | "ledger" | "trial" | "pnl" | "workbook";
 export async function exportFile(input: { kind: ExportKind; from: string; to: string; account?: string | null }): Promise<{ fileName: string; mime: string; base64: string }> {
   return run(async (db) => {
     checkPeriod(input.from, input.to);
-    await ready(db);
     const suffix = `${input.from}_${input.to}`;
     const csv = (name: string, body: string) => ({ fileName: `${name}_${suffix}.csv`, mime: "text/csv;charset=utf-8", base64: Buffer.from(body, "utf8").toString("base64") });
     if (input.kind === "ledger") {

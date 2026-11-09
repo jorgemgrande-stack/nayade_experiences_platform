@@ -61,12 +61,20 @@ describe.skipIf(!URL_)("Contabilidad general · asientos automáticos, manuales,
     expect(errCode(await q("overview", undefined, agA))).toBe("FORBIDDEN");
   });
 
-  it("al empezar siembra el plan de cuentas del PGC de pymes y los ajustes (inicio: 1 de enero)", async () => {
+  it("las consultas no escriben (también en solo lectura); la primera mutación siembra el plan de cuentas y los ajustes (inicio: 1 de enero)", async () => {
+    await ess.setCapability("a", CAP, "read_only");
+    for (const proc of ["overview", "accounts", "settings"]) expect((await q(proc)).status).toBe(200);
+    expect((await q("trialBalance", period())).status).toBe(200);
+    expect((await q("ledger", { ...period(), account: "430" })).status).toBe(200);
+    expect((await q("export", { ...period(), kind: "workbook" })).status).toBe(200);
+    await ess.setCapability("a", CAP, "active");
     const o = await ok(q("overview"));
     expect(o.settings.startDate).toBe(`${y()}-01-01`);
     expect(o.counts.entries).toBe(0);
     const accounts = await ok(q("accounts"));
     for (const c of ["430", "700", "477", "472", "410", "570", "572", "4751", "129"]) expect(accounts.map((a: any) => a.code)).toContain(c);
+    const written = async () => (await ess.sql("a", "SELECT (SELECT COUNT(*) FROM acc_settings) + (SELECT COUNT(*) FROM acc_accounts) AS n"))[0].n;
+    expect(Number(await written())).toBe(0); // nada escrito por las consultas
     // Subcuenta: hereda el tipo
     const sub = await ok(m("createAccount", { code: "57200001", name: "Banco QA" }));
     expect(sub).toMatchObject({ parentCode: "572", type: "asset" });
