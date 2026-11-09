@@ -8,7 +8,7 @@ import { trialChanged } from "../commercialEvents/derive";
 import type { CommercialEventSink } from "../commercialEvents/types";
 import type { TrialAction, TrialState } from "./machine";
 import { canonicalMailbox } from "./mailbox";
-import type { TrialAttribution, TrialProfile, TrialTerms, TrialTestMark } from "./profile";
+import type { TrialAttribution, TrialPrivacy, TrialProfile, TrialTerms, TrialTestMark } from "./profile";
 
 /** Titular particular de un plan personal (sin razón social). */
 export interface TrialHolder {
@@ -29,6 +29,8 @@ export interface TrialConfiguration {
   attribution?: TrialAttribution;
   /** Aceptación de las condiciones (fecha y versión): obligatoria en el alta pública desde el 09/11/2026. */
   terms?: TrialTerms;
+  /** Aceptación de la política de privacidad, aparte (fecha y versión; `null` = no informada): desde el 10/11/2026. */
+  privacy?: TrialPrivacy;
   /** Registro técnico o de prueba (acción auditada `marked_test`): fuera del embudo y de los informes. */
   test?: TrialTestMark;
   /** Baja de los recordatorios de la prueba (enlace firmado del correo): no se le vuelve a enviar ninguno. */

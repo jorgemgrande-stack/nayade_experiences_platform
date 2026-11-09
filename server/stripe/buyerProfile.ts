@@ -16,6 +16,7 @@
  * Un identificador fiscal NUNCA se da por válido por su formato: se guarda como «sin verificar». La validez
  * (p. ej. VIES para la inversión del sujeto pasivo) la determina el proceso fiscal, no este módulo.
  */
+import { isAcceptedPrivacyVersion } from "../privacyVersion";
 import crypto from "node:crypto";
 import { z } from "zod";
 
@@ -237,18 +238,21 @@ export type ConsentInput = z.infer<typeof consentInput>;
 export function buildConsent(orderId: number, type: BuyerType, input: ConsentInput, v: ConsentVersions, source: ConsentRecord["source"], now: number): ConsentRecord {
   const req = consentRequirements(type, v);
   if (input.termsVersion !== req.terms) throw new BuyerProfileError("consent_missing", "Las condiciones aceptadas no son las vigentes");
-  if (req.privacy && (input.privacy !== true || input.privacyVersion !== req.privacy)) throw new BuyerProfileError("consent_missing", "Falta aceptar la política de privacidad vigente");
+  // Privacidad: exigida si hay CP_PRIVACY_VERSION; válidas solo las de la lista cerrada (server/privacyVersion.ts). Se
+  // registra la versión que la persona aceptó
+  const privacyVersion = req.privacy && isAcceptedPrivacyVersion(input.privacyVersion) ? input.privacyVersion.trim() : null;
+  if (req.privacy && (input.privacy !== true || !privacyVersion)) throw new BuyerProfileError("consent_missing", "Falta aceptar la política de privacidad vigente");
   if (req.precontract && input.precontractVersion !== req.precontract) throw new BuyerProfileError("consent_missing", "Falta la confirmación de la información precontractual vigente");
   if (req.immediateExecution && input.immediateExecution !== true) throw new BuyerProfileError("consent_missing", "Falta el reconocimiento expreso sobre el desistimiento y la ejecución inmediata");
   const evidence = crypto
     .createHash("sha256")
-    .update([orderId, type, req.terms, req.privacy ?? "-", req.precontract ?? "-", req.immediateExecution ? "ie" : "-", now].join("|"))
+    .update([orderId, type, req.terms, privacyVersion ?? "-", req.precontract ?? "-", req.immediateExecution ? "ie" : "-", now].join("|"))
     .digest("hex")
     .slice(0, 16);
   return {
     source,
     terms: { version: req.terms, at: now },
-    privacy: req.privacy ? { version: req.privacy, at: now } : null,
+    privacy: privacyVersion ? { version: privacyVersion, at: now } : null,
     precontract: req.precontract ? { version: req.precontract, at: now } : null,
     immediateExecution: req.immediateExecution ? { at: now } : null,
     evidence,

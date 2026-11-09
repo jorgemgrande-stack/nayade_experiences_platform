@@ -27,6 +27,7 @@ import { stableHash } from "../subscriptions/pricing";
 import type { CatalogPort } from "../subscriptions/ports";
 import type { TrialRequest } from "../trials/store";
 import { BuyerProfileError, buildConsent, buyerProfileInput, toBuyerProfile, type ConsentVersions } from "./buyerProfile";
+import { currentPrivacyVersion } from "../privacyVersion";
 import { SELF_SERVICE_PLANS } from "./catalog";
 import { StripeCheckoutError, type CheckoutStart } from "./checkout";
 import type { StripeMode } from "./config";
@@ -140,7 +141,7 @@ export class PanelConversionService {
       // En live, Stripe Tax calcula el impuesto en el pago con el domicilio del comprador; en pruebas, neto sin impuesto
       taxNotice: this.d.mode === "live" ? "Los impuestos se calculan en el pago según tu domicilio fiscal." : "Entorno de pruebas: importes netos, sin impuestos y sin cobro real.",
       termsVersion: this.d.termsVersion,
-      privacyVersion: this.d.consent?.privacy ?? null,
+      privacyVersion: currentPrivacyVersion(this.d.consent?.privacy),
     };
   }
 
