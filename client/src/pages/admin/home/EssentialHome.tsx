@@ -18,7 +18,7 @@ import { WelcomeScreen } from "@/components/onboarding/WelcomeScreen";
 import { SETUP_WIZARD_PATH } from "@/components/SetupWizardLink";
 import { SetupStatusCard } from "@/components/onboarding/SetupStatusCard";
 import { TrialFirstSteps } from "@/components/onboarding/TrialFirstSteps";
-import { trialConversionHref } from "@shared/subscriptionRecovery";
+import { PLANS_HREF, trialConversionHref } from "@shared/subscriptionRecovery";
 import { configurationSteps, shouldOpenSetupWizard } from "@shared/setupWizard";
 import { cn } from "@/lib/utils";
 import { TONE_BADGE, TONE_SURFACE, TONE_TEXT } from "@/lib/panelTones";
@@ -160,7 +160,8 @@ export default function EssentialHome() {
       tone: data.trial.daysLeft <= 3 ? "warn" : "info",
       text: <>Estás probando <strong>{planName}</strong>: te {data.trial.daysLeft === 1 ? "queda" : "quedan"} <strong>{data.trial.daysLeft} {data.trial.daysLeft === 1 ? "día" : "días"}</strong>. Si contratas, conservas todo lo que hayas creado.</>,
       href: trialConversionHref(data.plan?.key, conversion.data?.enabled),
-      cta: `Contratar ${planName}`,
+      // Sin contratación desde la prueba (o mientras se comprueba) se ofrecen los planes, sin prometer el pago aquí
+      cta: trialConversionHref(data.plan?.key, conversion.data?.enabled) === PLANS_HREF ? "Ver los planes" : `Contratar ${planName}`,
     });
   }
   if (w && !w.facts.fiscal && sub.can("bill-invoices")) {

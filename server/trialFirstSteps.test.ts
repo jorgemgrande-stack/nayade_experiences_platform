@@ -63,6 +63,12 @@ describe("hitos de activación hacia el plano de control", () => {
     await expect(reportTrialMilestones(down.client, "t-1", facts(), 1)).resolves.toEqual([]);
     expect(await reportTrialMilestones(down.client, "t-1", facts(), 31 * 60_000)).toEqual([]);
     expect(down.calls.filter((c) => c[1] === "first_access")).toHaveLength(2);
+    // Un 403 o un 400 no se repite en este proceso
+    _resetTrialMilestonesForTests();
+    const denied = fake(() => new CommerceError(403, "forbidden", "No"));
+    await reportTrialMilestones(denied.client, "t-1", facts(), 1);
+    await reportTrialMilestones(denied.client, "t-1", facts(), 99 * 60_000);
+    expect(denied.calls.filter((c) => c[1] === "first_access")).toHaveLength(1);
   });
 
   it("el cliente llama a la ruta del plano de control con el tenant en la ruta y sin datos personales", async () => {

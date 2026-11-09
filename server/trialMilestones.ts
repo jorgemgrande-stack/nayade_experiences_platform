@@ -32,7 +32,11 @@ async function send(client: CommerceClient, tenantId: string, milestone: TrialMi
     return true;
   } catch (e) {
     if (e instanceof CommerceError && e.status === 404) missingSince = now;
-    else opsLog("warn", "Trials", "trial_milestone_failed", { tenantId, milestone, status: e instanceof CommerceError ? e.status : null });
+    // Otro rechazo del plano de control (permiso o formato): no se insiste en este proceso
+    else if (e instanceof CommerceError && e.status >= 400 && e.status < 500 && e.status !== 429) {
+      sent.set(k, Infinity);
+      opsLog("warn", "Trials", "trial_milestone_rejected", { tenantId, milestone, status: e.status });
+    } else opsLog("warn", "Trials", "trial_milestone_failed", { tenantId, milestone, status: e instanceof CommerceError ? e.status : null });
     return false;
   }
 }
