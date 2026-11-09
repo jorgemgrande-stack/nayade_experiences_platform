@@ -29,6 +29,8 @@ import { MemoryCapabilityStore } from "./_core/capabilities/store";
 import { MemoryTrialStore } from "./trials/store";
 import { MemoryTrialFunnelCounter, MysqlTrialFunnelCounter } from "./trials/funnel";
 import { normalizeAttribution, normalizeProfile } from "./trials/profile";
+import { TrialService } from "./trials/service";
+import { ACCEPTED_PRIVACY_VERSIONS } from "./privacyVersion";
 import { ProvisioningService } from "./_core/provisioning/service";
 import { MemoryProvisioningStore } from "./_core/provisioning/ports";
 import { BUILTIN_MODULES } from "./_core/modules/builtin";
@@ -329,5 +331,53 @@ describe("registros técnicos o de prueba: fuera del embudo, sin borrar nada", (
     expect(after.excluded.trials).toBeGreaterThanOrEqual(1);
     // Nada se ha borrado: el contador sigue teniendo la visita
     expect(Array.from(funnel.rows.values()).some((x) => x.channel === "canal-tecnico")).toBe(true);
+  });
+});
+
+describe("versión de la política de privacidad (10/11/2026)", () => {
+  // Cuerpo IDÉNTICO al que envía hoy el formulario de production (sin privacyVersion, condiciones 2026-10-21).
+  // Solo tres altas por HTTP (el límite por IP es de 20 por hora y el resto del fichero usa 17); el resto, en el servicio.
+  const PRODUCTION_FORM = { fullName: "Marta Prieto Gil", sector: "comercio", country: "ES", termsAccepted: true, termsVersion: "2026-10-21", marketingConsent: false, attribution: { source: "google", landingPath: "/prueba-gratuita" }, website: "" };
+
+  it("formulario anterior abierto: se acepta y guarda la privacidad como no informada, aparte de las condiciones", async () => {
+    expect((await signup("anterior@tienda-prieto.example", "Tienda Prieto", PRODUCTION_FORM)).status).toBe(202);
+    const t = (await trialStore.list({})).find((x) => x.email === "anterior@tienda-prieto.example")!;
+    expect(t.configuration.terms).toEqual({ acceptedAt: clock, version: "2026-10-21" });
+    expect(t.configuration.privacy).toEqual({ acceptedAt: clock, version: null });
+  });
+
+  it("formulario nuevo (privacidad 2026-11-10, sin casilla comercial): cuatro marcas y ningún consentimiento comercial", async () => {
+    const before = consentsGranted.length;
+    expect((await signup("nueva@tienda-prieto.example", "Tienda Prieto Nueva", { ...PRODUCTION_FORM, privacyVersion: "2026-11-10" })).status).toBe(202);
+    const { r, trialId } = await verifyLast("nueva@tienda-prieto.example");
+    expect(r.status).toBe(200);
+    const t = (await trialStore.get(trialId))!;
+    expect(t.configuration.terms).toEqual({ acceptedAt: expect.any(Number), version: "2026-10-21" });
+    expect(t.configuration.privacy).toEqual({ acceptedAt: expect.any(Number), version: "2026-11-10" });
+    expect(t.configuration.profile).toMatchObject({ marketingConsent: false, marketingConsentAt: null });
+    expect(consentsGranted.length).toBe(before);
+  });
+
+  it("una versión de la privacidad desconocida: 400 con el motivo y no se crea nada", async () => {
+    const r = await signup("desconocida@tienda-prieto.example", "Tienda Desconocida", { ...PRODUCTION_FORM, privacyVersion: "2026-11-11" });
+    expect(r.status).toBe(400);
+    expect(r.json.message).toMatch(/política de privacidad ha cambiado/);
+    expect((await trialStore.list({})).some((x) => x.email.startsWith("desconocida@"))).toBe(false);
+  });
+
+  it("en el servicio: solo 2026-10-25 y 2026-11-10; sin versión, no informada; cualquier otra se rechaza", async () => {
+    const store = new MemoryTrialStore();
+    const svc = new TrialService({ store, now: () => 5000 });
+    const reg = (email: string, privacyVersion?: unknown) =>
+      svc.register({ email, companyName: "Tienda Servicio", configuration: { plan: null, addons: [] }, terms: { accepted: true, version: "2026-10-21", privacyVersion }, idempotencyKey: key() + key() });
+    for (const v of ["2026-10-25", "2026-11-10", undefined]) {
+      const out = await reg(`svc-${v ?? "sin"}@tienda.example`, v);
+      expect(out.trial.configuration.terms).toEqual({ acceptedAt: 5000, version: "2026-10-21" });
+      expect(out.trial.configuration.privacy).toEqual({ acceptedAt: 5000, version: v ?? null });
+    }
+    for (const v of ["2026-10-21", "2026-11-11", "p1", 20261110]) {
+      await expect(reg(`svc-mala@tienda.example`, v), String(v)).rejects.toMatchObject({ code: "invalid_input" });
+    }
+    expect(ACCEPTED_PRIVACY_VERSIONS).toEqual(["2026-10-25", "2026-11-10"]);
   });
 });
