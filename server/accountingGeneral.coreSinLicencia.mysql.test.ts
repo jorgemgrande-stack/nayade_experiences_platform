@@ -42,8 +42,9 @@ describe.skipIf(!URL_)("Core sin contabilidad general: Gastos, Gestoría y caja 
     await ess?.close();
   });
 
-  it("la empresa no tiene la contabilidad general", async () => {
-    expect(isLicenseDenied(await ess.q("a", "accountingGeneral.overview", undefined, adA), "accounting-general")).toBe(true);
+  it("la empresa no tiene la contabilidad general (sin licencia en esta rama; sin el módulo en integration/elephant-source)", async () => {
+    const r = await ess.q("a", "accountingGeneral.overview", undefined, adA);
+    expect(isLicenseDenied(r, "accounting-general") || r.status === 404).toBe(true);
   });
 
   it("Gastos: el desglose guardado de un gasto con retención y de uno sin tipo de IVA (21 % por defecto), como siempre", async () => {
