@@ -90,6 +90,8 @@ export const TRPC_ROUTER_CAPABILITIES: Record<string, string> = {
   cardTerminalOperations: "bank-import-pos",
   cardTerminalBatches: "bank-import-pos",
   vapiCalls: "voice-ai",
+  // Elephant Voice · puesta en marcha del asistente de Vapi (los procedimientos la comprueban también)
+  voiceSetup: "voice-ai",
   ghlInbox: "whatsapp-ai",
   ticketing: "deals-coupons",
   suppliers: "supplier-settlements",
@@ -100,6 +102,8 @@ export const TRPC_ROUTER_CAPABILITIES: Record<string, string> = {
   brevoMarketing: "email-campaigns",
   // Elephant Connect · GEO Control: visibilidad de la marca en los motores de IA generativa (los procedimientos la comprueban también)
   geoControl: "geo-control",
+  // Venta multicanal: canales externos, cupos, ventas de canal y conciliación (los procedimientos la comprueban también)
+  multichannel: "multichannel",
   // Elephant Connect · SEO Control: palabras clave, posiciones, auditoría on-page y reseñas (los procedimientos la comprueban también)
   seoControl: "seo-control",
   // Elephant Connect · Ads Manager: inversión y resultados de Meta Ads y Google Ads con las ventas (los procedimientos la comprueban también)

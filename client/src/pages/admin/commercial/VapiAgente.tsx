@@ -1,5 +1,8 @@
 import React, { useState } from "react";
 import { trpc } from "@/lib/trpc";
+import { Link } from "wouter";
+import { useAuth } from "@/_core/hooks/useAuth";
+import { VOICE_SETUP_PATH } from "@shared/voiceSetup";
 import AdminLayout from "@/components/AdminLayout";
 import { toast } from "sonner";
 import {
@@ -7,7 +10,7 @@ import {
   Clock, CheckCircle2, User, FileText, ChevronDown,
   ChevronUp, Mic, BarChart3, AlertTriangle, Bot,
   ExternalLink, UserPlus, Eye, EyeOff, Settings, Copy,
-  KeyRound, Webhook,
+  KeyRound, Webhook, Rocket,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -315,6 +318,8 @@ export default function VapiAgente() {
   const [credApiKey, setCredApiKey] = useState("");
   const [credSecret, setCredSecret] = useState("");
   const PAGE_SIZE = 50;
+  const { user } = useAuth();
+  const isAdmin = user?.role === "admin";
 
   const { data: stats } = trpc.vapiCalls.getStats.useQuery(
     undefined, { refetchInterval: 60000 }
@@ -371,6 +376,15 @@ export default function VapiAgente() {
             </div>
           </div>
           <div className="flex items-center gap-2">
+            {/* Asistente de alta de Vapi (solo administración; el servidor lo vuelve a comprobar) */}
+            {isAdmin && (
+              <Link href={VOICE_SETUP_PATH}>
+                <Button size="sm" variant="outline" className="gap-1">
+                  <Rocket className="w-3 h-3" />
+                  Puesta en marcha
+                </Button>
+              </Link>
+            )}
             <Button
               size="sm"
               variant="outline"
@@ -462,8 +476,8 @@ export default function VapiAgente() {
                 <Webhook className="w-3 h-3" /> URL del webhook — pega esta URL en el panel de Vapi
               </div>
               <div className="flex items-center gap-2">
-                <code className="flex-1 text-xs bg-foreground/5 border border-border/40 rounded px-3 py-1.5 text-sky-300 truncate">
-                  {webhookUrl}{creds?.webhookSecret ? `  (secret: ${creds.webhookSecret})` : ""}
+                <code className="flex-1 text-xs bg-foreground/5 border border-border/40 rounded px-3 py-1.5 text-sky-300 min-w-0 break-all">
+                  {webhookUrl}
                 </code>
                 <Button
                   size="sm"
