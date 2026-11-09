@@ -113,7 +113,7 @@ export const PROVIDERS: ProviderDef[] = [
     description: "Asistente de voz y registro de llamadas.",
     capabilities: ["Recibir el registro de llamadas por webhook", "Consultar asistentes"],
     check: "Listado de asistentes (1 elemento): solo lectura",
-    panel: { group: "customer", title: "Asistente de voz (VAPI)", summary: "Atiende llamadas con un asistente de voz y guarda el registro de cada llamada.", requires: ["voice-ai"] },
+    panel: { group: "customer", title: "Asistente de voz (VAPI)", summary: "Atiende llamadas con un asistente de voz y guarda el registro de cada llamada.", requires: ["voice-ai", "reception-ai"] },
     fields: [
       { key: "apiKey", label: "API key", secret: true, env: "VAPI_API_KEY", pattern: TOKEN_RE, panel: { label: "Clave de acceso", help: "Está en tu cuenta de VAPI, en el apartado de claves (usa la privada).", formatMessage: "Cópiala completa, sin espacios." } },
       { key: "webhookSecret", label: "Secreto del webhook", secret: true, env: "VAPI_WEBHOOK_SECRET", pattern: TOKEN_RE, panel: { label: "Clave de verificación de llamadas", help: "La eliges tú y la escribes igual en la configuración de tu asistente en VAPI.", formatMessage: "Al menos 8 caracteres, sin espacios." } },

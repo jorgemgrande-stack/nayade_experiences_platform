@@ -104,6 +104,8 @@ export const TRPC_ROUTER_CAPABILITIES: Record<string, string> = {
   seoControl: "seo-control",
   // Elephant Connect · Ads Manager: inversión y resultados de Meta Ads y Google Ads con las ventas (los procedimientos la comprueban también)
   adsManager: "ads-manager",
+  // Elephant Connect · Reception AI: recepcionista virtual con IA (voz con el Vapi de la empresa y chat web; los procedimientos la comprueban también)
+  receptionAi: "reception-ai",
   // Correo transaccional con el Postmark propio de la empresa (notificaciones por email, incluidas en Essential)
   postmarkTenant: "comms-email",
   // Elephant Net

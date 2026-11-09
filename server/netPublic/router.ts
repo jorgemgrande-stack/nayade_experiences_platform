@@ -8,6 +8,7 @@
  *  - GET/POST /baja/<token>      Connect Brevo · baja de las comunicaciones comerciales (idempotente).
  *  - GET/POST /contrato/<token>  Contratos y firma electrónica · firma (o rechazo) a distancia del contrato (un solo uso).
  *  - GET /ical/<token>.ics        Hotel Net · calendario iCal de disponibilidad de una tipología o habitación (canales).
+ *  - GET/POST /recepcion/<clave> Elephant Reception AI · chat de la recepcionista virtual en la web de la empresa.
  *
  * Antiabuso: límite por IP (todas las peticiones y, más estricto, los envíos; en la carta de mesa, más alto porque un
  * comedor comparte la IP de su wifi) y por enlace (envíos con el mismo token, p. ej. por mesa); rutas sensibles a
@@ -34,9 +35,10 @@ import { ESIGN_LIMITS, SIMPLE_SIGNATURE_NOTICE, formatAmount } from "../../share
 import { DOC_TYPES, SEXES } from "../hotelGuests";
 import { ICAL_FILE_RE } from "../hotelIcal";
 import { exportCalendar, icalAvailable, resolveExport } from "../hotelIcalDb";
+import { receptionChatHandlers, type ReceptionChatDeps } from "./receptionChat";
 
 /** Rutas públicas de este módulo (las comprueba el lector de cuerpos y la prueba de rutas). */
-export const NET_PUBLIC_PATH = /^\/(mesa|check-in|firma|baja|contrato|ical)\/[^/]+\/?$/;
+export const NET_PUBLIC_PATH = /^\/(mesa|check-in|firma|baja|contrato|ical|recepcion)\/[^/]+\/?$/;
 export const NET_PUBLIC_BODY_LIMIT = 8 * 1024;
 
 const urlencoded = express.urlencoded({ extended: false, limit: NET_PUBLIC_BODY_LIMIT, parameterLimit: 400 });
@@ -90,6 +92,10 @@ export interface NetPublicRouterOptions {
   mesaPostsPerIp?: number;
   /** Calendarios iCal: peticiones por IP y minuto (los canales consultan muchos calendarios desde pocas IP). */
   icalPerIpPerMinute?: number;
+  /** Chat de la recepcionista: mensajes por IP cada 10 minutos (todos los visitantes comparten el enlace de la empresa). */
+  chatPostsPerIp?: number;
+  /** Chat de la recepcionista: dependencias (pruebas). */
+  receptionChat?: ReceptionChatDeps;
 }
 
 /** Ruta sin barra final (la misma clave por enlace con y sin ella). El token conserva sus mayúsculas: es parte del secreto. */
@@ -474,6 +480,11 @@ export function createNetPublicRouter(opts: NetPublicRouterOptions = {}): Router
   r.get("/contrato/:token", all, esignGet);
   r.post("/contrato/:token", ...post, esignPost);
   r.get("/ical/:file", icalAll, icalGet);
+  // El enlace del chat es el mismo para todos los visitantes de la empresa: sin límite por enlace, solo por IP
+  const chat = receptionChatHandlers(opts.receptionChat);
+  const chatPosts = limiter(10 * 60_000, opts.chatPostsPerIp ?? 30, (req) => `chat-posts:${ip(req)}`);
+  r.get("/recepcion/:token", all, chat.get);
+  r.post("/recepcion/:token", all, chatPosts, netPublicBodyParser, chat.post);
   r.use((err: unknown, _req: Request, res: Response, next: NextFunction) => {
     if (res.headersSent) return next(err);
     return failure(res, "Error");
