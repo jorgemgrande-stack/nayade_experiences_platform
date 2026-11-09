@@ -10,7 +10,7 @@
 import { sql, type SQL } from "drizzle-orm";
 import { getTenantDatabase } from "../_core/dbRegistry";
 import { ModuleNotInstalled } from "../sdk";
-import type { CashMove, ChargeStatus, DepositMethod, DepositStatus, PayMethod, SettlementPlan } from "../../shared/skiDeposits";
+import { keyAttempt, type CashMove, type ChargeStatus, type DepositMethod, type DepositStatus, type PayMethod, type SettlementPlan } from "../../shared/skiDeposits";
 import { SKI_RENTAL_ID } from "./manifest";
 import { CASH_DEPOSIT_KIND, cashKindsInUse, recordCashMovementKind } from "../cashMovementKindsDb";
 
@@ -97,13 +97,16 @@ export interface DepositAttachment {
   createdBy: string;
   createdAt: number;
 }
-/** Venta del TPV de un cargo (por su clave). */
-export interface ChargeSale {
+/** Venta del TPV de un cargo o de una liquidación (por su clave). */
+export interface KeyedSale {
   id: number;
   sessionId: number;
   status: string;
   ticketNumber: string | null;
   key: string;
+  /** Intento de la clave (1 = la base). */
+  attempt: number;
+  createdAt: number;
   method: PayMethod | null;
 }
 export interface CashSessionInfo {
@@ -390,10 +393,6 @@ export class TenantDbDepositStore {
       await db.execute(sql`UPDATE ski_deposits SET damage_sale_id = ${saleId} WHERE id = ${depositId} AND status = 'settling' AND damage_sale_id IS NULL`);
     });
   }
-  /** Venta del TPV por su clave de idempotencia (para recuperar una venta creada en un intento anterior). */
-  saleByKey(key: string) {
-    return this.one(sql`SELECT id, sessionId, status_ts FROM tpv_sales WHERE idempotencyKey = ${key}`, (r) => ({ id: Number(r.id), sessionId: Number(r.sessionId), status: String(r.status_ts) }));
-  }
   /**
    * Liquidación a medias cuya caja se cerró: pasa a otra sesión ABIERTA de la misma sede (`check` la valida con la
    * sesión bloqueada) para terminarla. Solo si sigue «settling».
@@ -464,7 +463,8 @@ export class TenantDbDepositStore {
             VALUES (${x.siteId}, ${x.deliveryId}, ${dep ? Number(dep.id) : null}, ${x.requestKey}, ${x.amountCents}, ${x.reason.slice(0, 300)}, 'pending', ${actor.slice(0, 100)}, ${now})`);
         if (Number((ins as unknown as [{ affectedRows: number }])[0].affectedRows) === 0) {
           // Lectura con bloqueo: ve la fila ya confirmada por el otro intento (la instantánea de la transacción, no)
-          const [prev] = rowsOf(await tx.execute(sql`SELECT id FROM ski_deposit_charges WHERE site_id = ${x.siteId} AND request_key = ${x.requestKey} FOR UPDATE`));
+          // (compartida: el INSERT IGNORE ya tomó un bloqueo S sobre la fila; pedir X con dos esperando interbloquea)
+          const [prev] = rowsOf(await tx.execute(sql`SELECT id FROM ski_deposit_charges WHERE site_id = ${x.siteId} AND request_key = ${x.requestKey} LOCK IN SHARE MODE`));
           if (!prev) throw new Error("No se pudo registrar el cargo");
           return { id: Number(prev.id), replayed: true };
         }
@@ -475,16 +475,24 @@ export class TenantDbDepositStore {
     );
   }
   /**
-   * Ventas del TPV de un cargo, por sus claves (`skichg-<id>-pay`, `-pay-2`…; ver chargeSaleKey), con la forma de pago.
-   * Las ventas que fallaron al grabarse no aparecen: el TPV les quita la clave.
+   * Ventas del TPV de una clave de idempotencia y de sus intentos siguientes (`<base>`, `<base>-2`…; ver
+   * shared/skiDeposits.ts), con la forma de pago. Las que fallaron al grabarse no aparecen: el TPV les quita la clave.
    */
-  chargeSales(chargeId: number) {
-    const base = `skichg-${chargeId}-pay`;
+  keyedSales(base: string) {
     return this.many(
-      sql`SELECT s.id, s.sessionId, s.status_ts, s.ticketNumber, s.idempotencyKey,
+      sql`SELECT s.id, s.sessionId, s.status_ts, s.ticketNumber, s.idempotencyKey, s.createdAt,
             (SELECT p.method_tsp FROM tpv_sale_payments p WHERE p.saleId = s.id ORDER BY p.id LIMIT 1) AS method
           FROM tpv_sales s WHERE s.idempotencyKey = ${base} OR s.idempotencyKey LIKE ${`${base}-%`} ORDER BY s.id`,
-      (r): ChargeSale => ({ id: Number(r.id), sessionId: Number(r.sessionId), status: String(r.status_ts), ticketNumber: str(r.ticketNumber), key: String(r.idempotencyKey), method: (str(r.method) as PayMethod | null) ?? null }),
+      (r): KeyedSale => ({
+        id: Number(r.id),
+        sessionId: Number(r.sessionId),
+        status: String(r.status_ts),
+        ticketNumber: str(r.ticketNumber),
+        key: String(r.idempotencyKey),
+        attempt: keyAttempt(base, String(r.idempotencyKey)),
+        createdAt: Number(r.createdAt),
+        method: (str(r.method) as PayMethod | null) ?? null,
+      }),
     );
   }
   /**

@@ -26,7 +26,7 @@ import { tpvRouter } from "../routers/tpv";
 import { DEPOSIT_METHODS, MAX_DEPOSIT_CENTS, PAY_METHODS, REQUEST_KEY_RE, centsToEuros } from "../../shared/skiDeposits";
 import { MAX_PHOTO_BYTES, SkiDepositService, type CreateDamageSale } from "./depositService";
 import { TenantDbDepositStore } from "./depositStore";
-import { withTenantLock } from "../tpvSaleIdempotency";
+import { abandonStalePendingSale, withTenantLock } from "../tpvSaleIdempotency";
 
 /** Espera máxima (s) por el bloqueo de un cargo o una fianza; las pruebas la acortan. */
 export const depositLockWait = { seconds: 30 };
@@ -61,6 +61,7 @@ const deposits = new SkiDepositService({
   photosEnabled: objectStorageEnabled,
   // Un cobro o una liquidación a la vez por cargo o por fianza, en todas las réplicas (bloqueo con nombre de MySQL)
   lock: (scope, key, fn) => withTenantLock(scope, key, depositLockWait.seconds, "Este cobro ya se está registrando. Espera unos segundos y revisa el cargo antes de repetirlo.", fn),
+  abandonStaleSale: abandonStalePendingSale,
 });
 
 /**

@@ -62,9 +62,11 @@ class Gate {
  *  - Por grupo (la parte del ámbito antes del primer «_»: «tpv», «ski»): cuántos bloqueos de claves DISTINTAS se
  *    retienen a la vez. Quien tiene un bloqueo con nombre retiene una conexión del pool y necesita otra para trabajar;
  *    sin límite, con tantas ventas simultáneas como conexiones (4 por empresa en multiempresa) cada una retenía una y
- *    esperaba otra para siempre (interbloqueo dentro del pool). El límite deja siempre conexiones para trabajar:
- *    «ski» (cargo o fianza, que dentro coge el de la venta) 1; «tpv», (conexiones − 2) / 2, al menos 1. Así, como
- *    mucho 1 + 2·tpv conexiones retenidas o en uso por quienes tienen bloqueo, más la de trabajo del «ski».
+ *    esperaba otra para siempre (interbloqueo dentro del pool). El límite deja siempre al menos una conexión libre
+ *    para trabajar (ningún dueño de un bloqueo necesita dos de trabajo a la vez): «ski» (cargo o fianza, que dentro
+ *    coge el de la venta) 1; «tpv», conexiones − 2, al menos 1. Así «ski» + «tpv» ≤ conexiones − 1.
+ *  - Con menos de 3 conexiones no caben los dos bloqueos anidados más una de trabajo: «ski» se queda en la cola en
+ *    memoria de este proceso (sin GET_LOCK) y solo la venta usa el bloqueo de MySQL.
  *  Entre procesos, el bloqueo de MySQL sigue siendo el que manda.
  */
 const gates = new WeakMap<object, Map<string, Gate>>();
@@ -75,7 +77,7 @@ function poolLimit(pool: unknown): number {
   return Number.isInteger(n) && n > 0 ? n : 4;
 }
 export function groupCapacity(group: string, connectionLimit: number): number {
-  return group === "tpv" ? Math.max(1, Math.floor((connectionLimit - 2) / 2)) : 1;
+  return group === "tpv" ? Math.max(1, connectionLimit - 2) : 1;
 }
 
 /**
@@ -100,14 +102,19 @@ export async function withTenantLock<T>(scope: string, key: string, waitSeconds:
   };
   const keyId = `k:${scope}:${key}`;
   const keyGate = gateOf(keyId, 1);
-  const groupGate = gateOf(`g:${group}`, groupCapacity(group, poolLimit(pool)));
+  const limit = poolLimit(pool);
+  const groupGate = gateOf(`g:${group}`, groupCapacity(group, limit));
+  const inMemoryOnly = group !== "tpv" && limit < 3;
   const busy = () => new TRPCError({ code: "CONFLICT", message: busyMessage });
+  // Cola local agotada: el cobro ni siquiera ha empezado
+  const crowded = () => new TRPCError({ code: "CONFLICT", message: "Hay muchos cobros a la vez en esta empresa: no se ha cobrado nada; repítelo en unos segundos." });
   const deadline = Date.now() + waitSeconds * 1000;
   if (!(await keyGate.enter(deadline))) throw busy();
   try {
     for (;;) {
-      if (!(await groupGate.enter(deadline))) throw busy();
+      if (!(await groupGate.enter(deadline))) throw crowded();
       try {
+        if (inMemoryOnly) return await fn();
         const conn: mysql.PoolConnection = await legacyPool().getConnection();
         let released = true;
         try {
@@ -140,6 +147,27 @@ export async function withTenantLock<T>(scope: string, key: string, waitSeconds:
 /** Ejecuta `fn` con el bloqueo de esa clave de venta. */
 export function withSaleKeyLock<T>(key: string, fn: () => Promise<T>): Promise<T> {
   return withTenantLock("tpv_sale", key, LOCK_WAIT_SECONDS, "Este cobro ya se está registrando. Espera unos segundos y revisa las ventas de la caja antes de repetirlo.", fn);
+}
+
+/** Antigüedad a partir de la cual una venta «pendiente» se da por abandonada (proceso caído a mitad del cobro). */
+export const STALE_PENDING_SALE_MS = 15 * 60_000;
+
+/**
+ * Venta «pendiente» abandonada: el proceso cayó entre numerarla y grabar su núcleo (sin líneas, cobros ni asientos; lo
+ * grabado va todo en la transacción que la pasa a cobrada). Con el bloqueo de su clave, se anula con motivo y se le
+ * quita la clave, igual que hace el propio cobro cuando falla, para que el reintento pueda cobrar. Solo si sigue
+ * pendiente y tiene más de STALE_PENDING_SALE_MS. Devuelve si la ha anulado.
+ */
+export function abandonStalePendingSale(key: string, now = Date.now()): Promise<boolean> {
+  return withSaleKeyLock(key, async () => {
+    const [r] = await legacyPool().query<mysql.ResultSetHeader>(
+      `UPDATE tpv_sales SET status_ts = 'cancelled', idempotencyKey = NULL,
+         notes = CONCAT_WS(' · ', NULLIF(notes, ''), CONCAT('[VENTA NO REGISTRADA] ', ticketNumber, ': cobro interrumpido sin grabarse; anulada al reintentar (sin líneas, cobros, reservas ni asientos).'))
+       WHERE idempotencyKey = ? AND status_ts = 'pending' AND createdAt < ?`,
+      [key, now - STALE_PENDING_SALE_MS],
+    );
+    return r.affectedRows > 0;
+  });
 }
 
 export interface KeyedSale {
