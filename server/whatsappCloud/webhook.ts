@@ -42,6 +42,9 @@ export interface InboundMessage {
   kind: string;
   text: string;
 }
+/** Avisos de WhatsApp y tipos que no se muestran: se guardan, pero no cuentan como no leídos ni abren la ventana ni la IA. */
+export const QUIET_KINDS: ReadonlySet<string> = new Set(["system", "unsupported"]);
+
 export interface StatusUpdate {
   wamid: string;
   status: MessageStatus;
@@ -82,6 +85,8 @@ function textOf(m: any): { kind: string; text: string } {
       return { kind: type, text: `[${{ image: "Imagen", video: "Vídeo", document: "Documento", audio: "Audio", sticker: "Sticker" }[type]}]${m[type]?.caption ? ` ${str(m[type].caption, 1000)}` : ""}` };
     case "location":
       return { kind: "location", text: `[Ubicación] ${str(m.location?.name ?? "", 200)}`.trim() };
+    case "system":
+      return { kind: "system", text: `[Aviso de WhatsApp] ${str(m.system?.body ?? "", 500)}`.trim() };
     default:
       return { kind: "unsupported", text: "[Mensaje de un tipo que no se muestra aquí]" };
   }
@@ -106,6 +111,8 @@ export function parseWebhook(payload: any, phoneNumberId: string): ParsedWebhook
         const wamid = str(m?.id, 160);
         const from = str(m?.from, 32);
         if (!wamid || !WA_ID_RE.test(from)) continue;
+        // Las reacciones (un emoji sobre otro mensaje) no son mensajes: no se guardan ni cuentan
+        if (m.type === "reaction") continue;
         out.messages.push({ wamid, from, name: names.get(from) || null, at: tsIso(m.timestamp), ...textOf(m) });
       }
       for (const s of Array.isArray(v.statuses) ? v.statuses.slice(0, 200) : []) {

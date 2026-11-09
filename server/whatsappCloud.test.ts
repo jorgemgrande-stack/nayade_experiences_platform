@@ -422,3 +422,27 @@ describe("revisión: respuesta automática diferida en la empresa del webhook", 
     expect(done).toBe(true);
   });
 });
+
+describe("revisión: reacciones, avisos y tipos no admitidos", () => {
+  const withMessages = (messages: any[]) => ({
+    object: "whatsapp_business_account",
+    entry: [{ changes: [{ field: "messages", value: { metadata: { phone_number_id: PHONE }, contacts: [{ wa_id: "34611222333", profile: { name: "Ana QA" } }], messages } }] }],
+  });
+  const ts = String(Math.floor(NOW.getTime() / 1000) - 30);
+  it("las reacciones no se guardan; avisos y no admitidos se guardan sin no leídos, sin ventana y sin IA", async () => {
+    const { svc, store } = setup();
+    await svc.saveSettings(AUTO_ALL, 1);
+    const r = await svc.handleWebhook(
+      withMessages([
+        { id: "wamid.RX", from: "34611222333", timestamp: ts, type: "reaction", reaction: { message_id: "wamid.OUT1", emoji: "👍" } },
+        { id: "wamid.SY", from: "34611222333", timestamp: ts, type: "system", system: { body: "El cliente ha cambiado de número" } },
+        { id: "wamid.UN", from: "34611222333", timestamp: ts, type: "unsupported" },
+      ]),
+    );
+    expect(r.inbound).toEqual([]);
+    expect(store.msgs.map((m) => [m.wamid, m.kind])).toEqual([["wamid.SY", "system"], ["wamid.UN", "unsupported"]]);
+    expect(store.convs[0]).toMatchObject({ unreadCount: 0, lastInboundAt: null });
+    expect(await svc.autoReply(1, 2)).toBe("ignored");
+    expect(store.msgs.some((m) => m.direction === "out")).toBe(false);
+  });
+});

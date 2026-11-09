@@ -77,6 +77,8 @@ export interface InboundInput {
   kind: string;
   body: string;
   at: string;
+  /** Aviso de WhatsApp o tipo no admitido: se guarda, sin contar como no leído ni tocar la ventana ni la vista previa. */
+  quiet?: boolean;
 }
 export interface OutboundInput {
   wamid: string | null;
@@ -228,6 +230,7 @@ export class MemoryWhatsappStore implements WhatsappStore {
     if (this.msgs.some((x) => x.wamid === m.wamid)) return null;
     const id = this.msgs.length + 1;
     this.msgs.push({ id, conversationId, wamid: m.wamid, direction: "in", kind: m.kind, body: m.body, templateName: null, origin: "customer", status: "received", errorCode: null, errorTitle: null, sentBy: null, createdAt: this.nowIso(), statusAt: null });
+    if (m.quiet) return id;
     const c = this.convs.find((x) => x.id === conversationId)!;
     if (!c.lastInboundAt || m.at > c.lastInboundAt) c.lastInboundAt = m.at;
     c.lastMessageAt = this.nowIso();
@@ -361,6 +364,7 @@ export class TenantDbWhatsappStore implements WhatsappStore {
         INSERT IGNORE INTO whatsapp_messages (conversation_id, wamid, direction, kind, body, origin, status, wa_timestamp)
         VALUES (${conversationId}, ${m.wamid}, 'in', ${m.kind}, ${m.body.slice(0, 4096)}, 'customer', 'received', ${at})`);
       if (affected(res) !== 1) return null;
+      if (m.quiet) return insertId(res);
       await db.execute(sql`
         UPDATE whatsapp_conversations
            SET last_inbound_at = IF(last_inbound_at IS NULL OR last_inbound_at < ${at}, ${at}, last_inbound_at),

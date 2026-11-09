@@ -27,7 +27,7 @@ import {
 import { DEFAULT_TIMEZONE, cleanText, isHumanHoursNow, isValidTimezone, localClock, oneLine, sortHours } from "../../shared/receptionAi";
 import { usableWebhookSecret } from "../_core/webhookSecret";
 import { GraphError, listTemplates, sendTemplate, sendText, usableCredentials, verifyConnection, type ConnectionInfo, type GraphFetch, type WhatsappCredentials } from "./graph";
-import { parseWebhook } from "./webhook";
+import { QUIET_KINDS, parseWebhook } from "./webhook";
 import type { ConversationListFilter, WaConversation, WaMessage, WhatsappStore } from "./store";
 
 export class WhatsappError extends Error {
@@ -301,7 +301,7 @@ export class WhatsappService {
       if (settings.aiMode !== "auto") return "off";
       const c = await this.d.store.conversation(conversationId);
       const inbound = await this.d.store.message(messageId);
-      if (!c || !inbound || inbound.direction !== "in") return "ignored";
+      if (!c || !inbound || inbound.direction !== "in" || QUIET_KINDS.has(inbound.kind)) return "ignored";
       if (c.needsHuman) return "needs_human";
       const log = (outcome: Parameters<WhatsappStore["addAiLog"]>[0]["outcome"], reply: string | null = null) => this.d.store.addAiLog({ conversationId, messageId, mode: "auto", outcome, reply, actor: null });
       const cr = usableCredentials(await this.d.credentials());
@@ -375,9 +375,11 @@ export class WhatsappService {
     let duplicates = 0;
     for (const m of p.messages) {
       const conv = await this.d.store.ensureConversation(c.phoneNumberId, m.from, m.name);
-      const id = await this.d.store.addInbound(conv.id, { wamid: m.wamid, kind: m.kind, body: m.text || "[Mensaje vacío]", at: m.at });
+      const quiet = QUIET_KINDS.has(m.kind);
+      const id = await this.d.store.addInbound(conv.id, { wamid: m.wamid, kind: m.kind, body: m.text || "[Mensaje vacío]", at: m.at, quiet });
       if (id == null) duplicates++;
-      else inbound.push({ conversationId: conv.id, messageId: id });
+      // Solo los mensajes reales del cliente pasan a la respuesta automática
+      else if (!quiet) inbound.push({ conversationId: conv.id, messageId: id });
     }
     let statuses = 0;
     for (const s of p.statuses) {
