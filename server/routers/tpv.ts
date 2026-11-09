@@ -45,9 +45,11 @@ import { eq, and, or, like, desc, sql, gte, lte, inArray } from "drizzle-orm";
 import { TRPCError } from "@trpc/server";
 import { generateDocumentNumber } from "../documentNumbers";
 import { currentTpvScope } from "../tpvCatalogScope";
-import { IDEMPOTENCY_KEY_RE, withSaleKeyLock, findSaleByIdempotencyKey, resolveExistingSale, isIdempotencyKeyConflict } from "../tpvSaleIdempotency";
+import { IDEMPOTENCY_KEY_RE, withSaleKeyLock, withTenantLock, findSaleByIdempotencyKey, resolveExistingSale, isIdempotencyKeyConflict } from "../tpvSaleIdempotency";
 import { computeSessionPaymentTotals, receivedSaleCondition } from "../tpvSessionTotals";
 import { tpvReportsRouter } from "./tpvReports";
+import { addCorrection, CORRECTION_KINDS, companyCutoff, correctionsCashDelta, countActiveRegisters, currentTpvPlan, getClosureSnapshot, listCorrections, recordClosureSnapshot, registerOperationalDay, setCompanyCutoff, tpvAdvancedAllowed, withRegisterSlot } from "../tpvRulesDb";
+import { CUTOFF_RE, DEFAULT_CUTOFF } from "../../shared/tpvPlan";
 import { applySaleStock, assertStockAvailable, type StockSaleLine } from "../inventoryDb";
 import { issuePurchasePoints, issueTpvSalePointsAfterLink, type IssueResult } from "../loyaltyDb";
 
@@ -389,10 +391,66 @@ export const tpvRouter = router({
     .mutation(async ({ input }) => {
       // Sede de la caja (Business, multi-site): sin indicarla, la principal
       const siteId = await resolveSiteForWrite(input.siteId);
-      const [result] = await db.insert(cashRegisters).values({ name: input.name, location: input.location || null, isActive: true, createdAt: Date.now(), siteId });
-      const id = (result as any).insertId as number;
+      // Límite de cajas activas del plan (Essential 1, Business 3, Enterprise uso razonable), comprobado aquí y con
+      // el bloqueo de cajas de la empresa: dos altas a la vez no lo superan. Las cajas que ya hay no se tocan.
+      const id = await withRegisterSlot(async () => {
+        const [result] = await db.insert(cashRegisters).values({ name: input.name, location: input.location || null, isActive: true, createdAt: Date.now(), siteId });
+        return (result as any).insertId as number;
+      });
       const [register] = await db.select().from(cashRegisters).where(eq(cashRegisters.id, id));
       return register;
+    }),
+
+  // Desactivar o volver a activar una caja. Desactivarla conserva todo su histórico (sesiones, ventas, cierres) y
+  // libera su plaza; activarla ocupa una plaza del plan. Con una sesión abierta no se desactiva.
+  setRegisterActive: tpvBackofficeProc
+    .input(z.object({ registerId: z.number().int().positive(), active: z.boolean() }))
+    .mutation(async ({ input }) => {
+      const [register] = await db.select({ id: cashRegisters.id, isActive: cashRegisters.isActive }).from(cashRegisters).where(eq(cashRegisters.id, input.registerId));
+      if (!register) throw new TRPCError({ code: "NOT_FOUND", message: "La caja no existe" });
+      if (register.isActive !== input.active) {
+        if (input.active) {
+          await withRegisterSlot(async () => {
+            await db.update(cashRegisters).set({ isActive: true }).where(eq(cashRegisters.id, input.registerId));
+          });
+        } else {
+          const [open] = await db.select({ id: cashSessions.id }).from(cashSessions).where(and(eq(cashSessions.registerId, input.registerId), eq(cashSessions.status, "open"))).limit(1);
+          if (open) throw new TRPCError({ code: "CONFLICT", message: "Cierra la caja antes de desactivarla" });
+          await db.update(cashRegisters).set({ isActive: false }).where(eq(cashRegisters.id, input.registerId));
+        }
+      }
+      const [updated] = await db.select().from(cashRegisters).where(eq(cashRegisters.id, input.registerId));
+      return updated;
+    }),
+
+  // Todas las cajas (también las desactivadas, con su histórico) para la administración del TPV
+  listAllRegisters: tpvBackofficeProc.query(async () => {
+    return await db.select().from(cashRegisters).orderBy(desc(cashRegisters.isActive), cashRegisters.id);
+  }),
+
+  // Lo que incluye el plan en la caja y el uso actual: lo pinta el panel; quien decide es el servidor
+  planInfo: tpvAccessProc.query(async () => {
+    const [plan, activeRegisters, advanced, cutoff] = await Promise.all([
+      currentTpvPlan().catch(() => null),
+      countActiveRegisters(),
+      tpvAdvancedAllowed(false),
+      companyCutoff(),
+    ]);
+    return { plan, activeRegisters, advanced, cutoff };
+  }),
+
+  // Hora de corte operativo: de la empresa (registerId ausente) o de una caja (null = la de la empresa)
+  setCutoffTime: tpvBackofficeProc
+    .input(z.object({ registerId: z.number().int().positive().optional(), cutoff: z.string().regex(CUTOFF_RE).nullable() }))
+    .mutation(async ({ input }) => {
+      if (input.registerId) {
+        const [register] = await db.select({ id: cashRegisters.id }).from(cashRegisters).where(eq(cashRegisters.id, input.registerId));
+        if (!register) throw new TRPCError({ code: "NOT_FOUND", message: "La caja no existe" });
+        await db.update(cashRegisters).set({ cutoffTime: input.cutoff }).where(eq(cashRegisters.id, input.registerId));
+      } else {
+        await setCompanyCutoff(input.cutoff ?? DEFAULT_CUTOFF);
+      }
+      return { ok: true };
     }),
 
   // Cambiar la caja de sede (Business, multi-site). Las sesiones ya abiertas o cerradas conservan la sede que tenían.
@@ -433,6 +491,8 @@ export const tpvRouter = router({
         registerId: z.number(),
         openingAmount: z.number().min(0),
         notes: z.string().optional(),
+        // Clave del intento (la genera el TPV): un doble clic o un reintento no abre dos veces
+        idempotencyKey: z.string().regex(IDEMPOTENCY_KEY_RE).optional(),
       })
     )
     .mutation(async ({ input, ctx }) => {
@@ -440,35 +500,47 @@ export const tpvRouter = router({
       if (!register) throw new TRPCError({ code: "NOT_FOUND", message: "La caja no existe o está desactivada" });
       // Varias sedes (Business): solo se abre una caja de una sede en la que trabaja el usuario
       if (!(await userMayUseSite(ctx.user, register.siteId ?? null))) throw new TRPCError({ code: "FORBIDDEN", message: "Esta caja es de una sede en la que no trabajas" });
-      // Check no open session exists
-      const existing = await db
-        .select()
-        .from(cashSessions)
-        .where(
-          and(
-            eq(cashSessions.registerId, input.registerId),
-            eq(cashSessions.status, "open")
-          )
-        )
-        .limit(1);
-      if (existing.length > 0) {
-        throw new TRPCError({
-          code: "CONFLICT",
-          message: "Ya existe una sesión abierta para esta caja",
-        });
+      // Apertura idempotente: repetir con la misma clave devuelve la sesión ya abierta (sin otro correo)
+      if (input.idempotencyKey) {
+        const [same] = await db.select().from(cashSessions).where(eq(cashSessions.openKey, input.idempotencyKey));
+        if (same) {
+          if (same.registerId !== input.registerId) throw new TRPCError({ code: "CONFLICT", message: "Esa clave ya se usó para abrir otra caja" });
+          return same;
+        }
       }
-      const [result] = await db.insert(cashSessions).values({
-        registerId: input.registerId,
-        cashierUserId: ctx.user.id,
-        cashierName: ctx.user.name ?? ctx.user.email ?? "Cajero",
-        openingAmount: String(input.openingAmount),
-        status: "open",
-        notes: input.notes,
-        openedAt: Date.now(),
-        siteId: register.siteId ?? null,
+      // Una sola sesión abierta por caja, también con dos aperturas a la vez: comprobación e inserción con el bloqueo
+      // de la caja
+      const opened = await withTenantLock("tpv_session", `r${input.registerId}`, 10, "Se está abriendo esta caja. Espera unos segundos.", async () => {
+        if (input.idempotencyKey) {
+          const [same] = await db.select().from(cashSessions).where(eq(cashSessions.openKey, input.idempotencyKey));
+          if (same) return { session: same, replay: true };
+        }
+        const existing = await db
+          .select({ id: cashSessions.id })
+          .from(cashSessions)
+          .where(and(eq(cashSessions.registerId, input.registerId), eq(cashSessions.status, "open")))
+          .limit(1);
+        if (existing.length > 0) {
+          throw new TRPCError({ code: "CONFLICT", message: "Ya existe una sesión abierta para esta caja" });
+        }
+        const [result] = await db.insert(cashSessions).values({
+          registerId: input.registerId,
+          cashierUserId: ctx.user.id,
+          cashierName: ctx.user.name ?? ctx.user.email ?? "Cajero",
+          openingAmount: String(input.openingAmount),
+          status: "open",
+          notes: input.notes,
+          openedAt: Date.now(),
+          siteId: register.siteId ?? null,
+          openKey: input.idempotencyKey ?? null,
+        });
+        const newId = (result as any).insertId as number;
+        const [row] = await db.select().from(cashSessions).where(eq(cashSessions.id, newId));
+        return { session: row, replay: false };
       });
-      const id = (result as any).insertId as number;
-      const [session] = await db.select().from(cashSessions).where(eq(cashSessions.id, id));
+      if (opened.replay) return opened.session;
+      const session = opened.session;
+      const id = session.id;
 
       // Email de apertura (no bloquea si falla)
       try {
@@ -502,15 +574,20 @@ export const tpvRouter = router({
         sessionId: z.number(),
         countedCash: z.number(),
         notes: z.string().optional(),
+        // Clave del intento (la genera el TPV): repetir el mismo cierre devuelve la sesión ya cerrada
+        idempotencyKey: z.string().regex(IDEMPOTENCY_KEY_RE).optional(),
       })
     )
-    .mutation(async ({ input }) => {
+    .mutation(async ({ input, ctx }) => {
       const [session] = await db
         .select()
         .from(cashSessions)
         .where(eq(cashSessions.id, input.sessionId));
       if (!session) throw new TRPCError({ code: "NOT_FOUND", message: "Sesión no encontrada" });
+      const replayOf = (s: typeof session) => (input.idempotencyKey && s.closeKey === input.idempotencyKey ? s : null);
       if (session.status === "closed") {
+        const replay = replayOf(session);
+        if (replay) return replay;
         throw new TRPCError({ code: "CONFLICT", message: "La sesión ya está cerrada" });
       }
 
@@ -519,9 +596,13 @@ export const tpvRouter = router({
       // ventas en una sesión cerrada. Adaptado de Skicenter (server/routers/tpv.ts, commit 3cdc678f).
       const claimedAt = Date.now();
       const [claim] = await db.update(cashSessions)
-        .set({ status: "closed", closedAt: claimedAt })
+        .set({ status: "closed", closedAt: claimedAt, closeKey: input.idempotencyKey ?? null })
         .where(and(eq(cashSessions.id, input.sessionId), eq(cashSessions.status, "open")));
       if (Number((claim as any)?.affectedRows ?? 0) !== 1) {
+        // Otro intento con la misma clave lo ha cerrado a la vez: es el mismo cierre
+        const [now] = await db.select().from(cashSessions).where(eq(cashSessions.id, input.sessionId));
+        const replay = now ? replayOf(now) : null;
+        if (replay) return replay;
         throw new TRPCError({ code: "CONFLICT", message: "La sesión ya está cerrada" });
       }
 
@@ -559,6 +640,32 @@ export const tpvRouter = router({
 
       const [updated] = await db.select().from(cashSessions).where(eq(cashSessions.id, input.sessionId));
 
+      // Día operativo del cierre (hora de corte de la caja o de la empresa; por defecto 00:00 en su zona: la fecha de
+      // siempre) y foto inmutable del cierre: se escribe una vez y nunca se modifica (los ajustes van aparte)
+      const [regCutoff] = await db.select({ cutoffTime: cashRegisters.cutoffTime }).from(cashRegisters).where(eq(cashRegisters.id, session.registerId));
+      const sessionDay = await registerOperationalDay(Number(session.openedAt), regCutoff?.cutoffTime ?? null).catch(() => madridDateKey(new Date(Number(session.openedAt))));
+      try {
+        await recordClosureSnapshot({
+          sessionId: session.id,
+          registerId: session.registerId,
+          siteId: session.siteId ?? null,
+          operationalDay: sessionDay,
+          openingAmount: openingAmt,
+          totalCash, totalCard, totalBizum, totalMixed,
+          manualIn: totalManualIn,
+          manualOut: totalManualOut,
+          expectedCash: closingAmount,
+          countedCash: input.countedCash,
+          difference: cashDifference,
+          closedBy: typeof ctx.user.id === "number" ? ctx.user.id : null,
+          closedByName: ctx.user.name ?? ctx.user.email ?? null,
+          openedAt: Number(session.openedAt),
+          closedAt: claimedAt,
+        });
+      } catch (e) {
+        console.error("[TPV] Error guardando la foto del cierre:", e);
+      }
+
       // Crear cierre contable en fin_cash_closures (idempotente, no bloquea si falla)
       try {
         const [defaultAcc] = await db
@@ -578,7 +685,7 @@ export const tpvRouter = router({
             .limit(1);
 
           if (!existingClosure) {
-            const closureDate = madridDateKey(new Date(Number(session.openedAt)));
+            const closureDate = sessionDay;
             const cashTolerance = parseFloat(await getSystemSetting('cash_register_tolerance', '0.01')) || 0.01;
             const alertThreshold = parseFloat(await getSystemSetting('cash_alert_threshold', '20')) || 20;
             const closureStatus = Math.abs(cashDifference) < cashTolerance ? "balanced" : "difference";
@@ -652,11 +759,73 @@ export const tpvRouter = router({
       // cobrados en efectivo aparecían como 0€ esperado).
       const { totalCash, totalCard, totalBizum, totalMixed } = await computeSessionPaymentTotals(input.sessionId);
 
+      // Cierre inmutable y correcciones posteriores (aparte: nunca cambian el cierre)
+      const [closure, corrections] = await Promise.all([getClosureSnapshot(input.sessionId), listCorrections(input.sessionId)]);
+
       return {
         session, sales, movements,
         totalSales, totalOut, totalIn,
         totalCash, totalCard, totalBizum, totalMixed,
+        closure, corrections, correctionsCashDelta: correctionsCashDelta(corrections),
       };
+    }),
+
+  // Resumen diario (todos los planes): por caja, las sesiones del día operativo (hora de corte de la caja o de la
+  // empresa), lo cobrado por método, los movimientos, las correcciones y la diferencia de los cierres
+  dailySummary: tpvOpenCloseProc
+    .input(z.object({ day: z.string().regex(/^\d{4}-\d{2}-\d{2}$/) }))
+    .query(async ({ input, ctx }) => {
+      const base = Date.parse(`${input.day}T00:00:00Z`);
+      if (!Number.isFinite(base)) throw new TRPCError({ code: "BAD_REQUEST", message: "Fecha no válida" });
+      // Margen de un día a cada lado (zona horaria y hora de corte); después se filtra por el día operativo exacto
+      const candidates = await db.select().from(cashSessions).where(and(gte(cashSessions.openedAt, base - 86_400_000), lte(cashSessions.openedAt, base + 2 * 86_400_000)));
+      let registers = await db.select().from(cashRegisters);
+      const scope = await userSiteScope(ctx.user);
+      if (scope) {
+        const primary = registers.some((r) => !r.siteId) ? (await companySites()).primarySiteId : "";
+        registers = registers.filter((r) => scope.includes(siteOfStored(r.siteId, primary)));
+      }
+      const regById = new Map(registers.map((r) => [r.id, r]));
+      const rowsOut = new Map<number, { registerId: number; registerName: string; sessions: number; open: number; salesCount: number; salesTotal: number; totalCash: number; totalCard: number; totalBizum: number; totalOther: number; manualIn: number; manualOut: number; corrections: number; difference: number }>();
+      for (const s of candidates) {
+        const reg = regById.get(s.registerId);
+        if (!reg) continue;
+        if ((await registerOperationalDay(Number(s.openedAt), reg.cutoffTime ?? null)) !== input.day) continue;
+        const acc = rowsOut.get(reg.id) ?? { registerId: reg.id, registerName: reg.name, sessions: 0, open: 0, salesCount: 0, salesTotal: 0, totalCash: 0, totalCard: 0, totalBizum: 0, totalOther: 0, manualIn: 0, manualOut: 0, corrections: 0, difference: 0 };
+        acc.sessions += 1;
+        if (s.status === "open") acc.open += 1;
+        const t = await computeSessionPaymentTotals(s.id);
+        acc.totalCash += t.totalCash; acc.totalCard += t.totalCard; acc.totalBizum += t.totalBizum; acc.totalOther += t.totalMixed;
+        const sales = await db.select({ total: tpvSales.total }).from(tpvSales).where(and(eq(tpvSales.sessionId, s.id), receivedSaleCondition()));
+        acc.salesCount += sales.length;
+        acc.salesTotal += sales.reduce((a, x) => a + Number(x.total), 0);
+        const moves = await db.select({ type: cashMovements.type, amount: cashMovements.amount }).from(cashMovements).where(eq(cashMovements.sessionId, s.id));
+        for (const m of moves) { if (m.type === "in") acc.manualIn += Number(m.amount); else acc.manualOut += Number(m.amount); }
+        acc.corrections += correctionsCashDelta(await listCorrections(s.id));
+        if (s.status === "closed") acc.difference += Number(s.cashDifference ?? 0);
+        rowsOut.set(reg.id, acc);
+      }
+      const round = (n: number) => Math.round(n * 100) / 100;
+      const list = Array.from(rowsOut.values()).map((r) => Object.fromEntries(Object.entries(r).map(([k, v]) => [k, typeof v === "number" && !["registerId", "sessions", "open", "salesCount"].includes(k) ? round(v) : v])) as typeof r);
+      return { day: input.day, registers: list };
+    }),
+
+  // Corrección trazable de una caja YA cerrada (entrada, salida o ajuste del recuento): con motivo, autor y clave;
+  // se registra aparte y el cierre no cambia. La caja abierta usa los movimientos ordinarios.
+  addClosedSessionCorrection: tpvBackofficeProc
+    .input(z.object({
+      sessionId: z.number().int().positive(),
+      kind: z.enum(CORRECTION_KINDS),
+      amount: z.number().refine((n) => Number.isFinite(n) && n !== 0 && Math.abs(n) < 1e7, "Importe no válido"),
+      reason: z.string().trim().min(5).max(500),
+      idempotencyKey: z.string().regex(IDEMPOTENCY_KEY_RE),
+    }))
+    .mutation(async ({ input, ctx }) => {
+      const [session] = await db.select({ status: cashSessions.status }).from(cashSessions).where(eq(cashSessions.id, input.sessionId));
+      if (!session) throw new TRPCError({ code: "NOT_FOUND", message: "Sesión no encontrada" });
+      if (session.status !== "closed") throw new TRPCError({ code: "BAD_REQUEST", message: "La caja está abierta: registra un movimiento de caja normal" });
+      if (input.kind !== "count_adjustment" && input.amount < 0) throw new TRPCError({ code: "BAD_REQUEST", message: "El importe de una entrada o salida es positivo" });
+      return addCorrection({ ...input, key: input.idempotencyKey, userId: typeof ctx.user.id === "number" ? ctx.user.id : null, userName: ctx.user.name ?? ctx.user.email ?? null });
     }),
 
   // -- CASH MOVEMENTS ---------------------------------------------------------
@@ -673,6 +842,8 @@ export const tpvRouter = router({
         outKind: z.enum(CASH_OUT_KINDS).optional(),
         // Para entradas: "fondo" (desde la Caja Central) o "cobro" (cobro pendiente). Solo lo usa la contabilidad.
         inKind: z.enum(CASH_IN_KINDS).optional(),
+        // Clave del intento (la genera el TPV): un reintento no duplica el movimiento ni su apunte contable
+        idempotencyKey: z.string().regex(IDEMPOTENCY_KEY_RE).optional(),
       })
     )
     .mutation(async ({ input: raw, ctx }) => {
@@ -683,6 +854,18 @@ export const tpvRouter = router({
         throw new TRPCError({ code: "BAD_REQUEST", message: "Tipo de salida no válido" });
       }
       const input = { ...raw, outKind: raw.outKind ?? ("gasto" as const) };
+      // Idempotencia: repetir con la misma clave devuelve el movimiento ya grabado, sin volver a contabilizarlo
+      const replayed = async () => {
+        if (!raw.idempotencyKey) return null;
+        const [same] = await db.select().from(cashMovements).where(eq(cashMovements.idempotencyKey, raw.idempotencyKey));
+        if (!same) return null;
+        if (same.sessionId !== raw.sessionId || same.type !== raw.type || Math.abs(Number(same.amount) - raw.amount) >= 0.005) {
+          throw new TRPCError({ code: "CONFLICT", message: "Esa clave ya se usó para otro movimiento de caja" });
+        }
+        return same;
+      };
+      const previous = await replayed();
+      if (previous) return previous;
       const values = {
         sessionId: input.sessionId,
         type: input.type,
@@ -690,20 +873,29 @@ export const tpvRouter = router({
         reason: input.reason,
         cashierName: ctx.user.name ?? ctx.user.email ?? "Cajero",
         createdAt: Date.now(),
+        idempotencyKey: raw.idempotencyKey ?? null,
       };
       let id: number;
-      if (!accounting) {
-        // Exactamente como siempre: sin transacción ni nada de la contabilidad
-        const [result] = await db.insert(cashMovements).values(values);
-        id = (result as any).insertId as number;
-      } else {
-        // Con la contabilidad en uso, el tipo se guarda en la misma transacción que el movimiento
+      try {
+        // Una caja cerrada no admite movimientos ordinarios: la sesión se bloquea (como al cobrar) y un cierre
+        // simultáneo espera o lo rechaza. Para corregir una caja ya cerrada: tpv.addClosedSessionCorrection.
+        // El tipo del movimiento solo se guarda con la contabilidad general en uso, en la misma transacción.
         id = await db.transaction(async (tx) => {
+          const [locked] = await tx.select({ status: cashSessions.status }).from(cashSessions).where(eq(cashSessions.id, input.sessionId)).for("update");
+          if (!locked) throw new TRPCError({ code: "NOT_FOUND", message: "Sesión de caja no encontrada" });
+          if (locked.status !== "open") throw new TRPCError({ code: "CONFLICT", message: "La caja está cerrada. Para corregir una caja ya cerrada, usa «Corrección de caja cerrada» en la administración del TPV." });
           const [result] = await tx.insert(cashMovements).values(values);
           const movementId = (result as any).insertId as number;
-          await recordCashMovementKind(tx, movementId, explicitCashMoveKind(raw));
+          if (accounting) await recordCashMovementKind(tx, movementId, explicitCashMoveKind(raw));
           return movementId;
         });
+      } catch (e) {
+        // Dos intentos a la vez con la misma clave: el segundo devuelve el del primero
+        const err = e as { message?: string; code?: string; cause?: { message?: string; code?: string } };
+        const dup = /Duplicate entry|ER_DUP_ENTRY/.test(`${err?.code ?? ""} ${err?.message ?? ""} ${err?.cause?.code ?? ""} ${err?.cause?.message ?? ""}`);
+        const again = raw.idempotencyKey && dup ? await replayed() : null;
+        if (again) return again;
+        throw e;
       }
       const [movement] = await db.select().from(cashMovements).where(eq(cashMovements.id, id));
 

@@ -4,8 +4,9 @@
  *   getSessionSummary → { session, sales, movements, totalSales, totalOut, totalIn }
  *   closeSession → input: { sessionId, countedCash, notes? }
  */
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { trpc } from "@/lib/trpc";
+import { newAttemptKey } from "./tpvKeys";
 import { formatEur } from "@shared/creditNoteForm";
 import { parseCashInput } from "@shared/cashAmount";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -25,6 +26,9 @@ interface Props {
 export default function TpvCloseSession({ open, sessionId, onClose, onClosed }: Props) {
   const [countedCash, setCountedCash] = useState("");
   const [notes, setNotes] = useState("");
+  // Clave del intento: repetir el mismo cierre (doble clic o reintento) devuelve la caja ya cerrada
+  const [attemptKey, setAttemptKey] = useState(newAttemptKey);
+  useEffect(() => { if (open) setAttemptKey(newAttemptKey()); }, [open]);
 
   const { data: summary } = trpc.tpv.getSessionSummary.useQuery(
     { sessionId },
@@ -179,6 +183,7 @@ export default function TpvCloseSession({ open, sessionId, onClose, onClosed }: 
                   sessionId,
                   countedCash: counted,
                   notes: notes || undefined,
+                  idempotencyKey: attemptKey,
                 });
               }}
               disabled={closeMut.isPending}

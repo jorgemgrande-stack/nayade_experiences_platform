@@ -40,6 +40,8 @@ describe.skipIf(!URL_)("TPV — informes (aplicación real, dos empresas nuevas)
     const corte = await product("a", "corte", "Corte de pelo", "Peluquería", "21", "100.00");
     const libro = await product("a", "libro", "Libro", "Librería", "4", "20.00");
     const cafe = await product("b", "cafe", "Café", "Bebidas", "10", "2.00");
+    // Varias cajas activas: plan Business (Essential incluye una; estrategia TPV 09/11/2026)
+    await ess.setCapability("a", "reports-advanced", "active");
     regA1 = data(await ess.m("a", "tpv.createRegister", { name: "Mostrador" }, adm.a)).id;
     regA2 = data(await ess.m("a", "tpv.createRegister", { name: "Terraza" }, adm.a)).id;
     const regB = data(await ess.m("b", "tpv.createRegister", { name: "Barra" }, adm.b)).id;

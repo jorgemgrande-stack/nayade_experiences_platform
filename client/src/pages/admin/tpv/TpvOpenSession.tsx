@@ -1,8 +1,9 @@
 /**
  * TpvOpenSession — Modal de apertura de caja
  */
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { trpc } from "@/lib/trpc";
+import { newAttemptKey } from "./tpvKeys";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -20,6 +21,9 @@ interface Props {
 export default function TpvOpenSession({ open, registerId, onClose, onOpened }: Props) {
   const [openingAmount, setOpeningAmount] = useState("0");
   const [notes, setNotes] = useState("");
+  // Clave del intento: un doble clic o un reintento no abre la caja dos veces
+  const [attemptKey, setAttemptKey] = useState(newAttemptKey);
+  useEffect(() => { if (open) setAttemptKey(newAttemptKey()); }, [open]);
 
   const openMut = trpc.tpv.openSession.useMutation({
     onSuccess: (session) => {
@@ -34,6 +38,7 @@ export default function TpvOpenSession({ open, registerId, onClose, onOpened }: 
       registerId,
       openingAmount: parseFloat(openingAmount) || 0,
       notes: notes || undefined,
+      idempotencyKey: attemptKey,
     });
   };
 

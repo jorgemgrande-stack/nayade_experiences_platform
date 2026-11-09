@@ -1569,6 +1569,8 @@ export const cashRegisters = mysqlTable("cash_registers", {
   createdAt: bigint("createdAt", { mode: "number" }).notNull().$defaultFn(() => Date.now()),
   // Migración 0024: sede de la caja (registro del plano de control); NULL = sede principal
   siteId: varchar("site_id", { length: 63 }),
+  // Migración 0063: hora de corte operativo propia de la caja (HH:MM); NULL = la de la empresa (tpv_cutoff_time)
+  cutoffTime: varchar("cutoff_time", { length: 5 }),
 });
 export type CashRegister =typeof cashRegisters.$inferSelect;
 
@@ -1594,6 +1596,9 @@ export const cashSessions = mysqlTable("cash_sessions", {
   closedAt: bigint("closedAt", { mode: "number" }),
   // Migración 0024: sede de la caja al abrir la sesión (no cambia si la caja se mueve después); NULL = principal
   siteId: varchar("site_id", { length: 63 }),
+  // Migración 0063: clave del intento de apertura y de cierre (idempotencia; NULL no colisiona)
+  openKey: varchar("open_key", { length: 64 }),
+  closeKey: varchar("close_key", { length: 64 }),
 });
 export type CashSession =typeof cashSessions.$inferSelect;
 
@@ -1606,6 +1611,8 @@ export const cashMovements = mysqlTable("cash_movements", {
   reason: varchar("reason", { length: 300 }).notNull(),
   cashierName: varchar("cashierName", { length: 200 }),
   createdAt: bigint("createdAt", { mode: "number" }).notNull().$defaultFn(() => Date.now()),
+  // Migración 0063: clave del intento (idempotencia; NULL no colisiona)
+  idempotencyKey: varchar("idempotency_key", { length: 64 }),
 });
 export type CashMovement = typeof cashMovements.$inferSelect;
 

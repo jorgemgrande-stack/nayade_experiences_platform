@@ -40,6 +40,8 @@ describe.skipIf(!URL_)("TPV — cobro sin duplicados y cliente enlazado (aplicac
     await ess.m("a", "products.create", { slug: "revision", title: "Revisión", categoryId: c.id, locationId: l.id, basePrice: "50.00", taxRate: "21" }, admA);
     productId = (await ess.sql("a", "SELECT id FROM experiences WHERE slug = 'revision'"))[0].id;
     await ess.sql("a", "UPDATE experiences SET isPresentialSale = 1 WHERE id = ?", [productId]);
+    // Varias cajas activas: plan Business (Essential incluye una; estrategia TPV 09/11/2026)
+    await ess.setCapability("a", "reports-advanced", "active");
     registerId = data(await ess.m("a", "tpv.createRegister", { name: "Mostrador" }, admA)).id;
     sessionId = data(await ess.m("a", "tpv.openSession", { registerId, openingAmount: 0 }, agA)).id;
   }, 300_000);

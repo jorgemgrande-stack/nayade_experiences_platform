@@ -22,6 +22,9 @@ import { selectClass } from "@/components/admin/crm/CrmParts";
 import { validateCashRegisterForm } from "@shared/formValidation";
 import { toast } from "sonner";
 import { Link } from "wouter";
+import TpvPlanPanel from "./TpvPlanPanel";
+import TpvDailySummary from "./TpvDailySummary";
+import TpvClosedCorrections from "./TpvClosedCorrections";
 import {
   Receipt, TrendingUp, CreditCard, Banknote, Smartphone,
   Calendar, Clock, User, ChevronRight, ExternalLink, Search,
@@ -69,15 +72,30 @@ export default function TpvBackoffice() {
   const sub = usePanelSubscription();
   const canManageCash = sub.canWrite("bill-cash");
   const registersQ = trpc.tpv.getRegisters.useQuery();
-  const registers = registersQ.data ?? [];
+  // Para administrar: también las desactivadas (conservan su histórico y se pueden volver a activar si cabe en el plan)
+  const allRegistersQ = trpc.tpv.listAllRegisters.useQuery();
+  const registers = allRegistersQ.data ?? registersQ.data ?? [];
   const [showNewRegister, setShowNewRegister] = useState(false);
+  const invalidateRegisters = () => {
+    utils.tpv.getRegisters.invalidate();
+    utils.tpv.listAllRegisters.invalidate();
+    utils.tpv.planInfo.invalidate();
+  };
+  const setRegisterActive = trpc.tpv.setRegisterActive.useMutation({
+    onSuccess: (r) => { invalidateRegisters(); toast.success(r?.isActive ? `Caja «${r.name}» activada` : `Caja «${r?.name}» desactivada. Su historial se conserva.`); },
+    onError: (e) => toast.error(errorMessage(e, "No se ha podido cambiar la caja.")),
+  });
+  const setRegisterCutoff = trpc.tpv.setCutoffTime.useMutation({
+    onSuccess: () => { invalidateRegisters(); toast.success("Hora de cambio de día de la caja guardada"); },
+    onError: (e) => toast.error(errorMessage(e, "No se ha podido guardar la hora.")),
+  });
   const [regForm, setRegForm] = useState({ name: "", location: "", siteId: "" });
   const [regSubmitted, setRegSubmitted] = useState(false);
   const [regServerError, setRegServerError] = useState<string | null>(null);
   const regErrors = validateCashRegisterForm(regForm, registers.map((r) => r.name));
   const createRegister = trpc.tpv.createRegister.useMutation({
     onSuccess: (r) => {
-      utils.tpv.getRegisters.invalidate();
+      invalidateRegisters();
       setShowNewRegister(false);
       setRegForm({ name: "", location: "", siteId: "" });
       setRegSubmitted(false);
@@ -137,6 +155,10 @@ export default function TpvBackoffice() {
           </div>
         </div>
 
+        {/* Lo que incluye el plan y el resumen del día */}
+        <TpvPlanPanel canManage={canManageCash} />
+        <TpvDailySummary />
+
         {/* Cajas */}
         <section aria-labelledby="tpv-cajas" className="space-y-3">
           <div className="flex flex-wrap items-center justify-between gap-3">
@@ -169,8 +191,11 @@ export default function TpvBackoffice() {
           ) : (
             <ul className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2">
               {registers.map((r) => (
-                <li key={r.id} className="rounded-xl p-3 border border-border bg-card">
-                  <p className="text-sm font-medium text-foreground">{r.name}</p>
+                <li key={r.id} className={`rounded-xl p-3 border border-border ${r.isActive ? "bg-card" : "bg-muted/40"}`}>
+                  <div className="flex items-start justify-between gap-2">
+                    <p className="text-sm font-medium text-foreground">{r.name}</p>
+                    {!r.isActive && <Badge variant="outline" className="text-xs">Desactivada</Badge>}
+                  </div>
                   {r.location && (
                     <p className="flex items-center gap-1 text-xs text-muted-foreground mt-0.5">
                       <MapPin className="w-3 h-3" aria-hidden="true" />
@@ -191,6 +216,31 @@ export default function TpvBackoffice() {
                       </select>
                     </div>
                   )}
+                  <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
+                    <label className="flex items-center gap-1 text-xs text-muted-foreground" title="Hora de cambio de día de esta caja (vacío: la de la empresa)">
+                      <Clock className="w-3 h-3" aria-hidden="true" />
+                      <span className="sr-only">Hora de cambio de día de {r.name}</span>
+                      <input
+                        type="time"
+                        className="bg-transparent text-xs text-foreground border border-border rounded px-1 py-0.5"
+                        defaultValue={r.cutoffTime ?? ""}
+                        disabled={!canManageCash || setRegisterCutoff.isPending}
+                        onBlur={(e) => {
+                          const v = e.target.value || null;
+                          if (v !== (r.cutoffTime ?? null)) setRegisterCutoff.mutate({ registerId: r.id, cutoff: v });
+                        }}
+                      />
+                    </label>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className="h-7 px-2 text-xs"
+                      disabled={!canManageCash || setRegisterActive.isPending}
+                      onClick={() => setRegisterActive.mutate({ registerId: r.id, active: !r.isActive })}
+                    >
+                      {r.isActive ? "Desactivar" : "Activar"}
+                    </Button>
+                  </div>
                 </li>
               ))}
             </ul>
@@ -385,6 +435,10 @@ export default function TpvBackoffice() {
                     </div>
                   </CardContent>
                 </Card>
+
+                {sessionDetail.session.status === "closed" && (
+                  <TpvClosedCorrections sessionId={sessionDetail.session.id} corrections={sessionDetail.corrections ?? []} canManage={canManageCash} />
+                )}
 
                 <Tabs defaultValue="sales">
                   <TabsList className="bg-muted border border-border">
