@@ -3,6 +3,10 @@
  * Lógica pura salvo `toastError`; la usan PanelStates y las pantallas del panel.
  */
 import { toast } from "sonner";
+import { isReadOnlyBlockError } from "@shared/subscriptionRecovery";
+
+/** Rechazo de escritura con la licencia en consulta (el aviso con la acción de reactivar lo da readOnlyBlock.ts). */
+const READ_ONLY_TEXT = "Tu plan está en solo lectura: puedes consultar tus datos, pero no hacer cambios.";
 
 type ErrLike = { data?: { code?: string; httpStatus?: number }; message?: string } | null | undefined;
 
@@ -40,6 +44,7 @@ export function serverMessage(err: unknown): string | null {
 export function errorToastMessage(err: unknown, fallback = "No se ha podido completar la operación. Inténtalo de nuevo."): string {
   const e = err as ErrLike;
   const code = e?.data?.code;
+  if (isReadOnlyBlockError(err)) return READ_ONLY_TEXT;
   if (code === "UNAUTHORIZED" || e?.data?.httpStatus === 401) return errorMessage(err);
   if (e?.message && NETWORK_RE.test(e.message)) return errorMessage(err);
   const fromServer = serverMessage(err);

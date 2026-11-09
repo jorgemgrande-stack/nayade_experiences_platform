@@ -18,6 +18,7 @@ const FIXED = /\b(?:[a-z-]+:)*(?:bg|text|border|ring|from|to|via|fill|stroke|out
 const MIGRATED = [
   "components/admin/PanelUi.tsx",
   "components/admin/PanelStates.tsx",
+  "components/admin/SubscriptionRecoveryBanner.tsx",
   "components/admin/crm/ClientImportDialog.tsx",
   "components/admin/crm/ClientFormDialog.tsx",
   "components/onboarding/SetupStatusCard.tsx",

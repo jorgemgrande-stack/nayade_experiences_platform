@@ -20,6 +20,7 @@ import { useTheme } from "@/contexts/ThemeContext";
 import MaintenanceModeControl, { maintenanceControlMode } from "./admin/MaintenanceModeControl";
 
 import { usePanelSubscription } from "@/hooks/usePanelSubscription";
+import { SubscriptionRecoveryBanner } from "./admin/SubscriptionRecoveryBanner";
 import {
   LEGACY_SECTIONS, TASK_NAV, resolveNav,
   type NavIcon, type ResolvedItem, type ResolvedSection,
@@ -342,9 +343,6 @@ export default function AdminLayout({ children, title }: AdminLayoutProps) {
     );
     const isNew = isNewExtension(item.extension, discovered, nowMs);
     const newTag = isNew && showLabels && <NewPill />;
-    const readOnlyTag = item.readOnly && showLabels && (
-      <span className="text-[10px] font-medium rounded px-1.5 py-0.5 bg-sidebar-accent text-sidebar-foreground/80">Solo lectura</span>
-    );
 
     if (item.children) {
       const isExpanded = expandedItems.includes(id) || active || item.children.some((c) => isChildActive(c.href));
@@ -369,7 +367,6 @@ export default function AdminLayout({ children, title }: AdminLayoutProps) {
             {showLabels ? (
               <>
                 <span className="flex-1 text-left">{item.label}</span>
-                {readOnlyTag}
                 {newTag}
                 {badgeEl}
                 <ChevronDown className={cn("w-3.5 h-3.5 transition-transform", isExpanded && "rotate-180")} aria-hidden="true" />
@@ -396,7 +393,6 @@ export default function AdminLayout({ children, title }: AdminLayoutProps) {
                       )}
                     >
                       <span className="flex-1">{child.label}</span>
-                      {child.readOnly && <span className="text-[10px] text-sidebar-foreground/70">Solo lectura</span>}
                     </Link>
                   </li>
                 );
@@ -426,7 +422,6 @@ export default function AdminLayout({ children, title }: AdminLayoutProps) {
           {showLabels ? (
             <>
               <span className="flex-1">{item.label}</span>
-              {readOnlyTag}
                 {newTag}
               {badgeEl}
             </>
@@ -644,7 +639,8 @@ export default function AdminLayout({ children, title }: AdminLayoutProps) {
           )}
           <div className="ml-auto flex items-center gap-2 sm:gap-3 shrink-0">
             {/* Prueba gratuita: días restantes (dato del servidor) */}
-            {isTaskNav && trialInfo && userRole === "admin" && (
+            {/* Terminada la prueba no se repite aquí: lo dice el aviso único de recuperación */}
+            {isTaskNav && trialInfo && trialInfo.daysLeft > 0 && userRole === "admin" && (
               <Link
                 href="/admin/suscripcion"
                 className={cn(
@@ -656,9 +652,7 @@ export default function AdminLayout({ children, title }: AdminLayoutProps) {
                 )}
               >
                 <Rocket className="w-3.5 h-3.5" aria-hidden="true" />
-                {trialInfo.daysLeft > 0
-                  ? `Prueba: ${trialInfo.daysLeft} ${trialInfo.daysLeft === 1 ? "día" : "días"}`
-                  : "Prueba finalizada"}
+                {`Prueba: ${trialInfo.daysLeft} ${trialInfo.daysLeft === 1 ? "día" : "días"}`}
               </Link>
             )}
             {maintenanceMode && <MaintenanceModeControl mode={maintenanceMode} />}
@@ -841,6 +835,7 @@ export default function AdminLayout({ children, title }: AdminLayoutProps) {
 
         {/* Page Content */}
         <main id="contenido-principal" tabIndex={-1} className="flex-1 p-4 sm:p-6 overflow-auto focus:outline-none">
+          {isTaskNav && <SubscriptionRecoveryBanner role={userRole} />}
           {children}
         </main>
       </div>
