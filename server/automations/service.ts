@@ -148,6 +148,16 @@ export class AutomationService {
     return now + (max + 60) * 60_000;
   }
 
+  /**
+   * Desde cuándo buscar candidatas en una pasada: lo posterior a encender la regla, pero nunca más atrás que el último
+   * paso más el margen de recuperación. Lo anterior ya no puede ejecutar ningún paso (estaría fuera de plazo), así que
+   * no ocupa la ventana de búsqueda: con mucho volumen, los hechos nuevos siempre entran.
+   */
+  scanSince(rule: Pick<StoredRule, "steps" | "enabledAt">, now: number): number {
+    const maxDelay = Math.max(0, ...rule.steps.map((s) => s.delayMinutes));
+    return Math.max(rule.enabledAt ?? now, now - (maxDelay + AUTOMATION_LIMITS.catchUpMinutes) * 60_000);
+  }
+
   private async *pages(rule: Pick<StoredRule, "trigger" | "steps" | "conditions">, since: number, now: number): AsyncGenerator<AutomationEntity[]> {
     const horizon = this.horizonOf(rule, now);
     for (let p = 0; p < MAX_PAGES; p++) {
@@ -177,7 +187,7 @@ export class AutomationService {
       let ruleUsed = await this.d.store.usedOn(day, rule.id);
       let capped = false;
       const entityType = (AUTOMATION_TRIGGERS[rule.trigger] as TriggerDef).entity;
-      for await (const list of this.pages(rule, rule.enabledAt!, now)) {
+      for await (const list of this.pages(rule, this.scanSince(rule, now), now)) {
         const runs = await this.d.store.runsFor(rule.id, entityType, list.map((e) => e.id));
         for (const e of list) {
           const plan = planEntity(rule, e.anchorAt, runs.filter((r) => r.entityId === e.id), now, rule.enabledAt!);

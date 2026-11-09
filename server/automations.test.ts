@@ -188,6 +188,18 @@ describe("tarea programada (runPass)", () => {
     expect(s.sent).toHaveLength(2);
   });
 
+  it("con más de 5000 candidatas antiguas, los hechos nuevos siguen entrando (ventana desde el último paso posible)", async () => {
+    const old = Array.from({ length: 6000 }, (_, i) => entity({ id: i + 1, anchorAt: T0 + 1000 + i * 1000 }));
+    const fresh = entity({ id: 99_999, anchorAt: T0 + 10 * D - H });
+    const s = setup(emailRule(), [...old, fresh]);
+    const r = await s.svc.create(emailRule(), 1);
+    await s.svc.setEnabled(r.id, true, 1);
+    s.at(T0 + 10 * D);
+    expect(s.svc.scanSince({ steps: r.steps, enabledAt: T0 }, s.now)).toBe(s.now - AUTOMATION_LIMITS.catchUpMinutes * 60_000);
+    expect(await s.svc.runPass()).toMatchObject({ done: 1 });
+    expect(s.sent.map((m) => m.to)).toEqual(["cliente99999@clientes.example"]);
+  });
+
   it("topes por día de la regla: lo que no cabe espera al día siguiente", async () => {
     const ents = [1, 2, 3, 4, 5].map((i) => entity({ id: i, anchorAt: T0 + i * 60_000 }));
     const s = setup(emailRule({ dailyCap: 2 }), ents);
