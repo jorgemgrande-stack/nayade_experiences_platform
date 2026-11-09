@@ -393,6 +393,7 @@ export const TASK_NAV: NavSection[] = [
       // Automatizaciones avanzadas: reglas, secuencias, plantillas, historial y prueba (solo administración)
       { label: "Automatizaciones", href: "/admin/automatizaciones", key: "x-automatizaciones", icon: "target", roles: ADMIN, capabilities: ["automations-advanced"] },
       { label: "Impuestos y gestoría", href: "/admin/gestoria", key: "x-gestoria", icon: "receipt", roles: ADMIN, capabilities: ["tax-filings"] },
+      { label: "Contabilidad general", href: "/admin/contabilidad/general", key: "x-contabilidad", icon: "chart", roles: ADMIN, capabilities: ["accounting-general"] },
       {
         label: "Bancos y TPV", href: "/admin/contabilidad/movimientos-bancarios", key: "x-bancos", icon: "creditCard", roles: ADMIN, capabilities: ["bank-import-pos"],
         children: [
@@ -403,7 +404,15 @@ export const TASK_NAV: NavSection[] = [
           { label: "Conciliación TPV", href: "/admin/contabilidad/conciliacion-tpv", capabilities: ["bank-import-pos"] },
         ],
       },
-      { label: "WhatsApp", href: "/admin/atencion-comercial/whatsapp", key: "x-whatsapp", icon: "message", roles: SALES, capabilities: ["whatsapp-ai"] },
+      {
+        label: "WhatsApp", href: "/admin/atencion-comercial/whatsapp-business", key: "x-whatsapp", icon: "message", roles: SALES, capabilities: ["whatsapp-ai"],
+        children: [
+          // WhatsApp Cloud API con el número propio de la empresa (Elephant WhatsApp AI)
+          { label: "WhatsApp Business", href: "/admin/atencion-comercial/whatsapp-business", capabilities: ["whatsapp-ai"] },
+          // Bandeja heredada a través de GoHighLevel (solo para quien ya trabaja con GHL)
+          { label: "Bandeja GoHighLevel", href: "/admin/atencion-comercial/whatsapp", capabilities: ["whatsapp-ai"] },
+        ],
+      },
       {
         label: "Llamadas IA", href: "/admin/atencion-comercial/agente-ia", key: "x-voz", icon: "bot", roles: SALES, capabilities: ["voice-ai"],
         children: [

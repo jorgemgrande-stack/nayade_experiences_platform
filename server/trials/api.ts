@@ -23,6 +23,7 @@ import { opsLog } from "../_core/ops/log";
 import { APPROVAL_CATEGORIES, OrderError, type ApprovalCategory } from "../orchestrator/types";
 import { LIFE_PLAN } from "../../shared/personalPlans";
 import { LANDING_STEPS, countLandingStep, summarizeLanding, type TrialFunnelCounter } from "./funnel";
+import { normalizeChannel } from "./profile";
 import { TRIAL_FUNNEL_STAGES, TRIAL_MILESTONES } from "./store";
 
 /** Procedencia que envía la web (UTM, dominio de referencia y página de entrada); se sanea en ./profile.ts. */
@@ -35,9 +36,54 @@ const attributionSchema = z
     content: z.string().max(200).nullable().optional(),
     referrerHost: z.string().max(253).nullable().optional(),
     landingPath: z.string().max(300).nullable().optional(),
+    // Solo la red del clic de anuncio (gclid → google, fbclid → meta, msclkid → microsoft), nunca el identificador
+    adClick: z.string().max(20).nullable().optional(),
   })
   // Claves desconocidas (gclid, fbclid…) se descartan: la medición nunca impide registrarse
   .strip();
+
+/** Baja de los recordatorios: verifica el enlace firmado y registra la baja en la prueba. */
+export interface TrialRemindersOptOut {
+  verify(token: unknown): number | null | Promise<number | null>;
+  optOut(trialId: number): Promise<boolean>;
+}
+
+const escHtml = (s: string) => s.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]!);
+function optOutPage(res: Response, status: number, title: string, body: string) {
+  res.status(status);
+  res.setHeader("Content-Type", "text/html; charset=utf-8");
+  res.setHeader("Cache-Control", "no-store");
+  res.setHeader("Referrer-Policy", "no-referrer");
+  res.setHeader("X-Frame-Options", "DENY");
+  res.setHeader("X-Robots-Tag", "noindex, nofollow");
+  res.setHeader("Content-Security-Policy", "default-src 'none'; style-src 'unsafe-inline'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'");
+  res.send(
+    `<!doctype html><html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex,nofollow"><title>${escHtml(title)}</title>` +
+      `<style>body{margin:0;background:#F7F7F9;font-family:'Segoe UI',Arial,sans-serif;color:#111827}main{max-width:560px;margin:40px auto;padding:0 16px}.s{background:#fff;border:1px solid #ECECEF;border-radius:16px;padding:28px 30px;border-top:3px solid #FF3131}h1{font-size:24px;margin:0 0 12px}p{font-size:15px;line-height:23px;color:#374151}button{background:#FF3131;color:#fff;border:0;border-radius:10px;padding:12px 22px;font-size:15px;font-weight:700;cursor:pointer}</style></head>` +
+      `<body><main><div class="s"><h1>${escHtml(title)}</h1>${body}</div></main></body></html>`,
+  );
+}
+function remindersOptOutRouter(o: TrialRemindersOptOut): Router {
+  const r = express.Router();
+  r.use(rateLimit({ windowMs: 60_000, limit: 30, standardHeaders: true, legacyHeaders: false, keyGenerator: (req) => `trial-optout:${ipKeyGenerator(req.ip ?? "")}` }));
+  const tokenOf = (req: Request) => (typeof req.query.t === "string" ? req.query.t.slice(0, 200) : "");
+  const invalid = (res: Response) => optOutPage(res, 404, "Enlace no válido", "<p>Este enlace no es válido. Si necesitas ayuda, escríbenos a soporte@bigelephant.es.</p>");
+  r.get("/", async (req, res) => {
+    if ((await Promise.resolve(o.verify(tokenOf(req))).catch(() => null)) === null) return invalid(res);
+    optOutPage(res, 200, "Recordatorios de tu prueba gratuita", `<p>Si confirmas, dejaremos de enviarte recordatorios para completar tu prueba (verificar el correo, entrar en tu panel o dar tus primeros pasos).</p><p>Seguirás recibiendo los avisos imprescindibles de tu prueba, como el de su vencimiento.</p><form method="post" action="${escHtml(`${req.baseUrl}?t=${encodeURIComponent(tokenOf(req))}`)}"><button type="submit">Dejar de recibir recordatorios</button></form>`);
+  });
+  r.post("/", express.urlencoded({ extended: false, limit: "2kb" }), async (req, res) => {
+    const id = await Promise.resolve(o.verify(tokenOf(req))).catch(() => null);
+    if (id === null) return invalid(res);
+    try {
+      await o.optOut(id);
+      optOutPage(res, 200, "Baja registrada", "<p>No volverás a recibir recordatorios de tu prueba gratuita.</p><p>Si cambias de opinión, escríbenos a soporte@bigelephant.es.</p>");
+    } catch {
+      optOutPage(res, 500, "No disponible", "<p>No hemos podido registrar la baja. Inténtalo de nuevo en unos minutos.</p>");
+    }
+  });
+  return r;
+}
 
 /**
  * Conversión de una prueba a pago por EXCEPCIÓN administrativa: la hace el orquestador con un pedido de
@@ -55,8 +101,10 @@ const wrap = (fn: (req: Request, res: Response) => Promise<void>) => (req: Reque
   });
 const who = (req: Request) => `${getAuth(req)!.actor.type}:${getAuth(req)!.actor.id}`;
 
-export function createPublicTrialRouter(o: { onboarding: TrialOnboardingService; autoProvision: boolean; perIpHour?: number; resendPerIpHour?: number; funnel?: TrialFunnelCounter | null; funnelPerIpHour?: number; now?: () => number }): Router {
+export function createPublicTrialRouter(o: { onboarding: TrialOnboardingService; autoProvision: boolean; perIpHour?: number; resendPerIpHour?: number; funnel?: TrialFunnelCounter | null; funnelPerIpHour?: number; now?: () => number; reminders?: TrialRemindersOptOut | null }): Router {
   const r = express.Router();
+  // Baja de los recordatorios (enlace firmado del correo): GET muestra la confirmación, POST la registra
+  if (o.reminders) r.use("/recordatorios", remindersOptOutRouter(o.reminders));
   // Contador anónimo de la página (visita e inicio del formulario): antes del límite del alta, con el suyo propio.
   // Responde 202 siempre (también sin la migración 0046 o si falla): la medición nunca molesta a quien se registra.
   r.post(
@@ -122,8 +170,11 @@ export function createPublicTrialRouter(o: { onboarding: TrialOnboardingService;
         .parse(req.body);
       // Campo trampa: los robots lo rellenan; se responde igual que a una persona, sin crear nada
       if (b.website) return void res.status(202).json(ACCEPTED);
+      // Desde el 09/11/2026 toda alta pública exige la aceptación expresa con su versión (también la del formulario
+      // anterior y la del plan Life): sin ella, 400 con el motivo para la persona y no se crea nada
+      const terms = { accepted: b.termsAccepted, version: b.termsVersion };
       try {
-        if (b.plan === LIFE_PLAN) await o.onboarding.registerLife({ email: b.email, holder: b.holder!, householdName: b.householdName ?? null, idempotencyKey: b.idempotencyKey, ip: req.ip ?? null });
+        if (b.plan === LIFE_PLAN) await o.onboarding.registerLife({ email: b.email, holder: b.holder!, householdName: b.householdName ?? null, terms, idempotencyKey: b.idempotencyKey, ip: req.ip ?? null });
         else
           await o.onboarding.register({
             email: b.email,
@@ -131,6 +182,7 @@ export function createPublicTrialRouter(o: { onboarding: TrialOnboardingService;
             // Con el formulario nuevo, el responsable va con su aceptación expresa; el anterior (solo correo y empresa) sigue valiendo
             profile: b.fullName !== undefined ? { fullName: b.fullName, sector: b.sector ?? null, phone: b.phone ?? null, country: b.country ?? null, termsAccepted: b.termsAccepted === true, termsVersion: b.termsVersion ?? null, marketingConsent: b.marketingConsent === true } : null,
             attribution: b.attribution ?? null,
+            terms,
             idempotencyKey: b.idempotencyKey,
             ip: req.ip ?? null,
           });
@@ -216,9 +268,41 @@ export function createTrialAdminRouter(o: { onboarding: TrialOnboardingService; 
       const from = Date.parse(`${q.from}T00:00:00Z`);
       const to = Date.parse(`${q.to}T00:00:00Z`) + 86_400_000;
       if (!(from < to) || to - from > 367 * 86_400_000) throw new TrialError("invalid_input", "Rango de días no válido (máximo un año)");
-      const [{ rows, truncated }, landing] = await Promise.all([o.store.funnel({ from, to }), o.funnel ? o.funnel.counts({ from: q.from, to: q.to }).catch(() => null) : Promise.resolve(null)]);
+      // Registros técnicos fuera: pruebas marcadas y canales técnicos (visitas y altas de verificación)
+      const testChannels = o.funnel ? await o.funnel.testChannels().catch(() => []) : [];
+      const exclude = new Set(testChannels.map((c) => c.channel));
+      const [{ rows, truncated, excluded }, landing] = await Promise.all([o.store.funnel({ from, to, excludeChannels: exclude }), o.funnel ? o.funnel.counts({ from: q.from, to: q.to }).catch(() => null) : Promise.resolve(null)]);
       const totals = Object.fromEntries(TRIAL_FUNNEL_STAGES.map((s) => [s, rows.reduce((n, x) => n + x.stages[s], 0)]));
-      res.json({ from: q.from, to: q.to, truncated, landing: landing ? summarizeLanding(landing) : null, totals, rows });
+      res.json({ from: q.from, to: q.to, truncated, landing: landing ? summarizeLanding(landing, exclude) : null, totals, rows, excluded: { trials: excluded, channels: testChannels.map((c) => c.channel) } });
+    }),
+  );
+
+  // Canales técnicos del embudo (CRM 0047): marcar uno lo saca del embudo sin borrar nada; queda quién, cuándo y por qué
+  r.get(
+    "/funnel/test-channels",
+    requireScope("subscriptions:read"),
+    wrap(async (_req, res) => {
+      res.json({ channels: o.funnel ? await o.funnel.testChannels() : [] });
+    }),
+  );
+  r.post(
+    "/funnel/test-channels",
+    requireScope("subscriptions:write"),
+    wrap(async (req, res) => {
+      const b = z.object({ channel: z.string().trim().min(1).max(60), reason: z.string().trim().min(5).max(200) }).strict().parse(req.body);
+      if (!o.funnel) throw new TrialError("unavailable", "El contador del embudo no está disponible");
+      // El mismo valor que guardan los contadores y las pruebas (minúsculas, sin «www.», espacios a guiones)
+      const channel = normalizeChannel(b.channel);
+      if (!channel) throw new TrialError("invalid_input", "Canal no válido: usa el utm_source o el dominio tal como aparece en el embudo");
+      let marked: boolean;
+      try {
+        marked = await o.funnel.markTestChannel({ channel, reason: b.reason, actor: who(req), createdAt: Date.now() });
+      } catch (e) {
+        if ((e as { code?: string } | null)?.code === "ER_NO_SUCH_TABLE") throw new TrialError("unavailable", "Falta la migración 0047 del CRM");
+        throw e;
+      }
+      opsLog("info", "Trials", "funnel_test_channel_marked", { channel, actor: who(req), marked });
+      res.status(marked ? 201 : 200).json({ marked, channels: await o.funnel.testChannels() });
     }),
   );
 
@@ -256,6 +340,15 @@ export function createTrialAdminRouter(o: { onboarding: TrialOnboardingService; 
     }),
   );
   // Suspender y reactivar cambian también las licencias de la empresa: exigen entitlements:write
+  // Marca de registro técnico o de prueba (auditada en el historial como `marked_test`)
+  r.post(
+    "/:id/mark-test",
+    requireScope("subscriptions:write"),
+    wrap(async (req, res) => {
+      const b = z.object({ reason: z.string().trim().min(5).max(200) }).strict().parse(req.body);
+      res.json({ trial: TrialService.view(await o.trials.markTest(id.parse(req.params.id), b.reason, who(req))) });
+    }),
+  );
   r.post(
     "/:id/suspend",
     requireScope("subscriptions:write"),

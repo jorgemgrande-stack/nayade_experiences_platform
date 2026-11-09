@@ -310,7 +310,7 @@ describe.skipIf(!URL_)("prueba gratuita de Essential de punta a punta (MySQL rea
   let cookie = "";
 
   it("registro: respuesta genérica, enlace de verificación solo por correo", async () => {
-    const r = await cpCall("POST", "/public/trial", { body: { email: OWNER, companyName: COMPANY, idempotencyKey: crypto.randomBytes(12).toString("hex") } });
+    const r = await cpCall("POST", "/public/trial", { body: { email: OWNER, companyName: COMPANY, termsAccepted: true, termsVersion: "2026-10-21", idempotencyKey: crypto.randomBytes(12).toString("hex") } });
     expect(r.status).toBe(202);
     expect(r.raw).not.toMatch(/token/i);
     const link = verificationLink(OWNER);
@@ -444,7 +444,7 @@ describe.skipIf(!URL_)("prueba gratuita de Essential de punta a punta (MySQL rea
   let otherTenant = "";
   it("registros simultáneos: mismo correo → una sola prueba; misma empresa con dos correos → dos plataformas distintas", async () => {
     const same = await Promise.all(
-      Array.from({ length: 5 }, () => cpCall("POST", "/public/trial", { body: { email: `carrera-${run}@taller.example`, companyName: "Taller Carrera", idempotencyKey: crypto.randomBytes(12).toString("hex") } })),
+      Array.from({ length: 5 }, () => cpCall("POST", "/public/trial", { body: { email: `carrera-${run}@taller.example`, companyName: "Taller Carrera", termsAccepted: true, termsVersion: "2026-10-21", idempotencyKey: crypto.randomBytes(12).toString("hex") } })),
     );
     expect(same.every((r) => r.status === 202)).toBe(true);
     const [n] = await crmPool.query<mysql.RowDataPacket[]>("SELECT COUNT(*) AS n FROM trial_requests WHERE email = ?", [`carrera-${run}@taller.example`]);
@@ -452,7 +452,7 @@ describe.skipIf(!URL_)("prueba gratuita de Essential de punta a punta (MySQL rea
     expect(trialOutbox.filter((x) => x.tag === "trial_verification" && x.to === `carrera-${run}@taller.example`)).toHaveLength(1);
 
     const emails = [`ana-${run}@gemelas.example`, `eva-${run}@gemelas2.example`];
-    await Promise.all(emails.map((email) => cpCall("POST", "/public/trial", { body: { email, companyName: `Empresa Gemela ${run}`, idempotencyKey: crypto.randomBytes(12).toString("hex") } })));
+    await Promise.all(emails.map((email) => cpCall("POST", "/public/trial", { body: { email, companyName: `Empresa Gemela ${run}`, termsAccepted: true, termsVersion: "2026-10-21", idempotencyKey: crypto.randomBytes(12).toString("hex") } })));
     const a = verificationLink(emails[0]);
     const b = verificationLink(emails[1]);
     // Verificación doble y simultánea del mismo enlace (doble clic) + la otra empresa a la vez

@@ -108,10 +108,14 @@ export const TRPC_ROUTER_CAPABILITIES: Record<string, string> = {
   seoControl: "seo-control",
   // Elephant Connect · Ads Manager: inversión y resultados de Meta Ads y Google Ads con las ventas (los procedimientos la comprueban también)
   adsManager: "ads-manager",
+  // Extra · Contabilidad general: libro diario, mayor, balances y asientos automáticos de la empresa (los procedimientos la comprueban también)
+  accountingGeneral: "accounting-general",
   // `marketingPack` (resumen del Paquete Marketing) no está aquí a propósito: basta CUALQUIERA de sus cuatro capacidades y
   // esta tabla solo admite una; lo comprueba server/marketingPack.ts bloque a bloque (sin ninguna, 403)
   // Elephant Connect · Reception AI: recepcionista virtual con IA (voz con el Vapi de la empresa y chat web; los procedimientos la comprueban también)
   receptionAi: "reception-ai",
+  // Elephant Connect · WhatsApp AI: WhatsApp Cloud API con el número de la empresa y respuestas con IA (los procedimientos la comprueban también)
+  whatsappCloud: "whatsapp-ai",
   // Elephant Connect · Copilot avanzado: asistente de IA con herramientas de solo lectura del Core (los procedimientos la comprueban también)
   copilot: "copilot-advanced",
   // Elephant Connect · Automatizaciones avanzadas: reglas, secuencias y su historial (los procedimientos la comprueban también)

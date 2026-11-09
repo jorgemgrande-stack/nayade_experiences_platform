@@ -134,6 +134,27 @@ export const PROVIDERS: ProviderDef[] = [
     ],
   },
   {
+    // Elephant WhatsApp AI: WhatsApp Cloud API de Meta con el número y la app PROPIOS de la empresa. La clave de acceso va
+    // siempre en la cabecera Authorization (nunca en la URL); el App Secret verifica la firma de los mensajes entrantes
+    id: "whatsapp_cloud",
+    name: "WhatsApp Business (Cloud API de Meta)",
+    description: "Bandeja de WhatsApp Business con el número de la empresa: mensajes entrantes por webhook firmado, respuestas, plantillas aprobadas y respuestas con IA.",
+    capabilities: [
+      "Recibir los mensajes y los estados de entrega de tu número por webhook (firma comprobada con la clave secreta de tu app)",
+      "Enviar respuestas de texto dentro de la ventana de 24 h y plantillas aprobadas de tu cuenta",
+      "Consultar los datos de tu número y la lista de plantillas aprobadas (solo lectura)",
+    ],
+    check: "Consulta de los datos del número de WhatsApp Business y de su cuenta: solo lectura",
+    panel: { group: "customer", title: "WhatsApp Business", summary: "Atiende el WhatsApp de tu empresa desde el panel, con plantillas y respuestas con IA.", requires: ["whatsapp-ai"] },
+    fields: [
+      { key: "phoneNumberId", label: "Phone number ID", secret: false, required: true, pattern: /^\d{5,30}$/, panel: { label: "Identificador del número", help: "En tu app de Meta, en WhatsApp › Configuración de la API, junto a tu número.", formatMessage: "Solo cifras." } },
+      { key: "wabaId", label: "WhatsApp Business Account ID", secret: false, required: true, pattern: /^\d{5,30}$/, panel: { label: "Identificador de la cuenta de WhatsApp Business", help: "En la misma pantalla de tu app de Meta, o en la configuración del negocio › Cuentas de WhatsApp.", formatMessage: "Solo cifras." } },
+      { key: "accessToken", label: "Token de acceso del usuario del sistema", secret: true, required: true, pattern: TOKEN_RE, panel: { label: "Clave de acceso", help: "Créala en la configuración del negocio de Meta con un usuario del sistema que tenga tu cuenta de WhatsApp asignada y los permisos de gestión y mensajes de WhatsApp.", formatMessage: "Cópiala completa, sin espacios." } },
+      { key: "appSecret", label: "App Secret", secret: true, required: true, pattern: /^[A-Za-z0-9]{16,128}$/, panel: { label: "Clave secreta de tu app", help: "En tu app de Meta, en Configuración de la app › Básica. Sirve para comprobar que cada mensaje que llega lo envía Meta.", formatMessage: "Solo letras y números, sin espacios." } },
+      { key: "verifyToken", label: "Token de verificación del webhook", secret: true, required: true, pattern: /^[\x21-\x7e]{24,256}$/, panel: { label: "Clave de verificación de mensajes", help: "La eliges tú (al menos 24 caracteres) y la escribes igual en tu app de Meta, junto a la dirección que te indica la pantalla de WhatsApp.", formatMessage: "Al menos 24 caracteres, sin espacios." } },
+    ],
+  },
+  {
     id: "redsys",
     name: "Redsys (TPV virtual)",
     description: "Cobros con tarjeta en la cuenta de la propia empresa.",

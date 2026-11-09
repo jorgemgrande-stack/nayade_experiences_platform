@@ -193,7 +193,9 @@ import { multichannelRouter } from "./routers/multichannel";
 import { seoControlRouter } from "./routers/seoControl";
 import { marketingPackRouter } from "./routers/marketingPack";
 import { adsManagerRouter } from "./adsManager/router";
+import { accountingGeneralRouter } from "./accountingGeneral/router";
 import { receptionAiRouter } from "./receptionAi/router";
+import { whatsappCloudRouter } from "./whatsappCloud/router";
 import { copilotRouter } from "./copilot/router";
 import { automationsRouter } from "./automations/router";
 import { postmarkTenantRouter } from "./routers/postmarkTenant";
@@ -2671,9 +2673,11 @@ export const appRouter = router({
   multichannel: multichannelRouter,
   seoControl: seoControlRouter,
   adsManager: adsManagerRouter,
+  accountingGeneral: accountingGeneralRouter,
   // Paquete Marketing: puesta en marcha y resumen de sus cuatro módulos (cada bloque con su licencia; ver el router)
   marketingPack: marketingPackRouter,
   receptionAi: receptionAiRouter,
+  whatsappCloud: whatsappCloudRouter,
   copilot: copilotRouter,
   automations: automationsRouter,
   postmarkTenant: postmarkTenantRouter,

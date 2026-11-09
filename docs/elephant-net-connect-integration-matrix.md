@@ -130,7 +130,7 @@ En el Core, cada empresa guarda sus credenciales en una bóveda (`server/_core/c
 | Meta CAPI + Pixel | Core / Skicenter `metaCapi/` | A | corregido el fallo por empresa (PR #674) | portar reintentos y salud de `metaCapi/` |
 | Redsys con varios TPV | Skicenter | A | pendiente | tablas `redsys_tpvs` y log por empresa |
 | Veturis (hoteles XML) | Skicenter | A/B | pendiente | credenciales de cada agencia; confirmar si exige IP en lista blanca |
-| WhatsApp Cloud API | Skicenter | B | pendiente | requiere la app de Meta de Big Elephant (Embedded Signup) y webhook por `phone_number_id` |
+| WhatsApp Cloud API | Skicenter | B | en curso (Elephant WhatsApp AI, migración 0061) | app y número PROPIOS de cada empresa en su bóveda (`whatsapp_cloud`); webhook en su dominio con firma de su App Secret y filtro por `phone_number_id`. Bloqueo externo: verificación de la empresa y de la app en Meta y número aprobado |
 | Meta Lead Ads | Skicenter | B | pendiente | suscripción de página por empresa |
 | Brevo marketing (contactos, listas, campañas) | Skicenter | B | pendiente | separar del Brevo de correo de la plataforma |
 | Google Ads | Skicenter | B | pendiente | token de desarrollador de la plataforma y OAuth por empresa |
@@ -178,6 +178,7 @@ En el Core, cada empresa guarda sus credenciales en una bóveda (`server/_core/c
 | Care Net · recordatorios de cita por correo | #720 | fusionado (0051) |
 | Ski Net · fianzas del alquiler y cargos por daños | #721 | en curso (0052) |
 | Tanda C: fichas de Care, Ski, Restaurant y Travel Net al día (Hotel Net bloqueado por el borrador ajeno v10) | esta PR | en curso |
+| Elephant WhatsApp AI · WhatsApp Cloud API por empresa, bandeja con ventana de 24 h y plantillas, IA (sugerencias y automática con tope) y revisión `review20261109whatsapp.ts` | PR de esta entrega | en curso (0061) |
 | Pack Marketing: «Marketing · Puesta en marcha y resumen» (`/admin/marketing/resumen`, `marketingPack.summary`) y revisión de catálogo preparada (`review20261109packmarketing.ts`, sin lanzar) | `feat/pack-marketing` | en curso (sin migración) |
 | Elephant Voice · asistente de alta de Vapi en el panel (sin migración; catálogo sin cambios) | #740 | fusionado |
 | Connect · Automatizaciones avanzadas: motor de reglas por empresa (5 disparadores, condiciones, pasos con retardo, correo/tarea/aviso/etapa/etiqueta, historial, topes, «probar»); revisión `review20261109automations.ts` preparada sin lanzar | Frente C | en curso (0062) |
@@ -215,7 +216,7 @@ Inventario accionable de lo que se vende en `/admin/ampliar`. Estado público de
 | Finance Sync (`bank-import-pos`, `bank-reconciliation`) | Extractos de **cualquier banco** (Norma 43, Excel o CSV, #716), operaciones y remesas del datáfono, conciliación | Buzón IMAP de la empresa (tickets del datáfono) | Implantación acompañada (ficha actualizada en la tanda B) | Asistente del buzón del datáfono en el panel; después, venta directa. |
 | Voice (`voice-ai`) | Llamadas Vapi, leads y registro de minutos; **asistente de alta en el panel** (Llamadas IA › Puesta en marcha): clave privada validada contra Vapi y guardada en la bóveda, elección de asistente y número, webhook al dominio de la empresa con clave de 24+ caracteres, llamada de prueba y último evento, comprobación en Vapi y desconexión | Cuenta Vapi de la empresa (bóveda); Vapi factura los minutos en esa cuenta | Implantación acompañada (`on_request`, sin Price: venta asistida) | Hecho el asistente de alta. Queda en venta asistida por decisión comercial. Netelip: bloqueo externo (IP de salida fija). |
 | POS (`pos-advanced`) | El TPV avanzado existe, pero lo licencia `bill-cash` (Essential) | — | Implantación acompañada | Frontera entre la caja básica y la avanzada. Es una decisión de negocio: hoy la tienen los clientes de Essential. Propuesta escrita en [elephant-pos-propuesta.md](elephant-pos-propuesta.md) (09/11/2026), pendiente de las decisiones de Jorge. |
-| WhatsApp AI (`whatsapp-ai`) | Bandeja a través de GHL | Cuenta GHL o app de Meta de Big Elephant | En preparación | WhatsApp Cloud API directa y respuestas con IA. |
+| WhatsApp AI (`whatsapp-ai`) | WhatsApp Cloud API con el número de la empresa: webhook firmado e idempotente, estados de entrega, bandeja con ventana de 24 h y plantillas aprobadas, sugerencias de IA y respuesta automática opcional con horario, tope diario y traspaso a persona (migración 0061). La bandeja de GHL sigue para quien la usa | App de Meta, negocio y número verificados y aprobados de la empresa (bóveda `whatsapp_cloud`); plantillas aprobadas por Meta | En preparación → implantación acompañada con `review20261109whatsapp.ts` (preparada, sin lanzar) | Bloqueo externo: verificación de la empresa y la app en Meta y número aprobado. Las conversaciones las factura Meta. |
 | Campaigns (`email-campaigns`) | Sincronización de clientes con consentimiento a la lista de Brevo de la empresa | Cuenta Brevo de la empresa | Próximamente | Envío de campañas desde el Core. Brevo no es un producto de correo nuevo. |
 | Automatizaciones (`automations-advanced`) | Motor de reglas por empresa (`server/automations`, migración 0062): oportunidad nueva, presupuesto sin respuesta, reserva confirmada, reserva próxima y factura sin cobrar; correo al cliente (comercial solo con consentimiento), tarea, aviso en la campana, etapa y etiqueta; historial, topes diarios, reintentos y «probar». Pantalla «Automatizaciones» (solo administración) | Correo de la empresa | En preparación (revisión preparada a implantación acompañada, sin lanzar) | Lanzar `catalog-review` tras fusionar. Ningún plan la incluye en production. |
 | Copilot avanzado (`copilot-advanced`) | Proveedor de IA central | IA de la plataforma | Próximamente | Hay un borrador ajeno (v6): bloqueo. |
@@ -251,7 +252,7 @@ Inventario accionable de lo que se vende en `/admin/ampliar`. Estado público de
 - **Life Net.** Hay que decidir el modelo comercial (hogar con Essential o producto personal sin Core) antes de programar.
 - **Conectores con requisitos externos:**
   - Veturis: credenciales, certificación e IP en lista blanca.
-  - WhatsApp Cloud API: app de Meta de Big Elephant.
+  - WhatsApp Cloud API: cada empresa con su app de Meta, su negocio verificado y su número aprobado (ya no depende de una app de Big Elephant).
   - Grandvalira y Netelip: IP de salida fija (Netelip es la telefonía propia de Voice; con Vapi no hace falta).
   - WebBeds: certificación.
   - Google Ads, GA4 y Business Profile: OAuth y token de la plataforma.

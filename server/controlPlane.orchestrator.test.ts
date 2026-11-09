@@ -167,7 +167,7 @@ describe("A. prueba Essential → suscripción de pago con un pago de prueba ver
   const orderKey = key();
 
   it("la prueba de 15 días deja Essential con licencias que caducan al final", async () => {
-    await ok(call("POST", "/public/trial", { token: null, body: { email: "marta@pinar.example", companyName: "Pinar Ensayo SL", idempotencyKey: key() } }), 202);
+    await ok(call("POST", "/public/trial", { token: null, body: { email: "marta@pinar.example", companyName: "Pinar Ensayo SL", termsAccepted: true, termsVersion: "2026-10-21", idempotencyKey: key() } }), 202);
     const v = outbox.find((m) => m.kind === "verification")!;
     s.trialId = v.data.trialId as number;
     await ok(call("POST", "/public/trial/verify", { token: null, body: { id: s.trialId, token: v.data.token } }));
