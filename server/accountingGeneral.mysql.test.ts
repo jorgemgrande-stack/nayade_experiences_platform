@@ -178,13 +178,23 @@ describe.skipIf(!URL_)("Contabilidad general · asientos automáticos, manuales,
     const st = await ok(q("settings"));
     expect(st.startDateEditable).toBe(false);
     expect(errCode(await m("saveSettings", { startDate: `${y()}-02-01`, lockedUntil: null, map: st.map }))).toBe("CONFLICT");
-    await ok(m("saveSettings", { startDate: st.startDate, lockedUntil: `${y()}-01-31`, map: st.map }));
-    const r = await m("createEntry", { date: `${y()}-01-10`, journal: "GEN", description: "Tarde", lines: [{ accountCode: "629", debitCents: 100, creditCents: 0 }, { accountCode: "570", debitCents: 0, creditCents: 100 }] });
+    // Bloqueado hasta ayer (el 1 de enero no hay un día anterior en el ejercicio: hasta hoy, y entonces espera)
+    const dayBefore = (d: string) => new Date(Date.parse(`${d}T12:00:00Z`) - 86_400_000).toISOString().slice(0, 10);
+    const lock = today() > `${y()}-01-01` ? dayBefore(today()) : today();
+    await ok(m("saveSettings", { startDate: st.startDate, lockedUntil: lock, map: st.map }));
+    const r = await m("createEntry", { date: lock, journal: "GEN", description: "Tarde", lines: [{ accountCode: "629", debitCents: 100, creditCents: 0 }, { accountCode: "570", debitCents: 0, creditCents: 100 }] });
     expect(errCode(r)).toBe("CONFLICT");
     // Un gasto nuevo con fecha en el periodo bloqueado: se contabiliza el primer día abierto (hoy), una sola vez
-    expect(today() > `${y()}-01-31`).toBe(true); // (la prueba usa enero: no se ejecuta en enero)
-    await ess.sql("a", "INSERT INTO expenses (date, concept, amount, categoryId, costCenterId, paymentMethod, taxRate, taxAmount, fiscalReviewStatus) VALUES (?, 'Tardío', 12.10, 1, 1, 'cash', 21, 2.10, 'revisado')", [`${y()}-01-25`]);
+    await ess.sql("a", "INSERT INTO expenses (date, concept, amount, categoryId, costCenterId, paymentMethod, taxRate, taxAmount, fiscalReviewStatus) VALUES (?, 'Tardío', 12.10, 1, 1, 'cash', 21, 2.10, 'revisado')", [lock]);
     const [late] = await ess.sql("a", "SELECT id FROM expenses WHERE concept = 'Tardío'");
+    if (lock === today()) {
+      // 1 de enero: hoy también está bloqueado, así que espera (sin contabilizarse) hasta que se desbloquee
+      expect(await ok(m("sync", undefined))).toMatchObject({ created: 0, blocked: 2 });
+      await ok(m("saveSettings", { startDate: st.startDate, lockedUntil: null, map: st.map }));
+      expect(await ok(m("sync", undefined))).toMatchObject({ created: 2, blocked: 0 });
+      expect(await ok(m("sync", undefined))).toMatchObject({ created: 0, replaced: 0, reversed: 0 });
+      return;
+    }
     const s = await ok(m("sync", undefined));
     expect(s).toMatchObject({ created: 2, deferred: 2, blocked: 0 });
     const [e] = await ess.sql("a", "SELECT DATE_FORMAT(entry_date, '%Y-%m-%d') AS d, description FROM acc_entries WHERE source_key LIKE ?", [`gasto:${late.id}#%`]);
