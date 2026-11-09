@@ -600,3 +600,11 @@ describe("pantalla de llamadas: la dirección del webhook sin la clave", () => {
     expect(line).not.toMatch(/\btruncate\b/);
   });
 });
+
+describe("llamada de prueba: precisión de la base", () => {
+  it("una llamada registrada en el mismo segundo de la conexión (sin milisegundos) cuenta; la del segundo anterior, no", () => {
+    const call = (at: string) => ({ at, durationSeconds: 1, status: null });
+    expect(testCallReceived({ connectedAt: "2026-11-09T10:54:51.596Z", lastCall: call("2026-11-09T10:54:51.000Z") })).toBe(true);
+    expect(testCallReceived({ connectedAt: "2026-11-09T10:54:51.596Z", lastCall: call("2026-11-09T10:54:50.999Z") })).toBe(false);
+  });
+});

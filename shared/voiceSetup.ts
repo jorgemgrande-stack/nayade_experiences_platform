@@ -68,7 +68,8 @@ const fmt = (iso: string) =>
  */
 export function testCallReceived(f: Pick<VoiceSetupFacts, "connectedAt" | "lastCall">): boolean {
   if (!f.connectedAt || !f.lastCall) return false;
-  return Date.parse(f.lastCall.at) >= Date.parse(f.connectedAt);
+  // Al segundo: vapi_calls.createdAt no guarda milisegundos y la conexión sí
+  return Math.floor(Date.parse(f.lastCall.at) / 1000) >= Math.floor(Date.parse(f.connectedAt) / 1000);
 }
 
 export function voiceSetup(f: VoiceSetupFacts): VoiceSetup {
