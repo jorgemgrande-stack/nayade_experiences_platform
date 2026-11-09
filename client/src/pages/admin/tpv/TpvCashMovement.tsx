@@ -10,6 +10,7 @@ import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
 import { ArrowDownLeft, ArrowUpRight, Banknote } from "lucide-react";
 import TpvCashMovementAccounting from "./TpvCashMovementAccounting";
+import { newAttemptKey } from "./tpvKeys";
 
 interface Props {
   open: boolean;
@@ -48,6 +49,9 @@ export default function TpvCashMovement(props: Props) {
 function CoreCashMovement({ open, type, sessionId, onClose }: Props) {
   const [amount, setAmount] = useState("");
   const [reason, setReason] = useState("");
+  // Clave del intento: un doble clic o un reintento no duplica el movimiento ni su apunte
+  const [attemptKey, setAttemptKey] = useState(newAttemptKey);
+  useEffect(() => { if (open) setAttemptKey(newAttemptKey()); }, [open]);
   // Solo para salidas: "gasto" (compra/proveedor) o "traspaso" (a Caja Central).
   const [outKind, setOutKind] = useState<"gasto" | "traspaso">("gasto");
 
@@ -174,6 +178,7 @@ function CoreCashMovement({ open, type, sessionId, onClose }: Props) {
                 movMut.mutate({
                   sessionId,
                   type,
+                  idempotencyKey: attemptKey,
                   amount: parseFloat(amount) || 0,
                   reason: reason || (type === "out" && outKind === "traspaso" ? "Traspaso a Caja Central" : "Sin motivo"),
                   outKind,
