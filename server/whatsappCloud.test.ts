@@ -496,3 +496,20 @@ describe("revisión: base de conocimiento editable con whatsapp-ai", () => {
     expect(page).toContain("compartida con la Recepcionista IA");
   });
 });
+
+describe("revisión: solo se escribe desde el número de la conversación", () => {
+  it("si la empresa cambió de número, las conversaciones del anterior no se responden ni con plantilla ni con la IA", async () => {
+    const templates = [{ name: "seguimiento", status: "APPROVED", language: "es", category: "UTILITY", components: [{ type: "BODY", text: "Hola" }] }];
+    const creds: Record<string, string> = { ...CREDS };
+    const graph = fakeGraph({ templates });
+    const { svc, store } = setup({ creds, graph });
+    await svc.saveSettings(AUTO_ALL, 1);
+    const m = await lastIn(svc, {});
+    creds.phoneNumberId = "1098765432199"; // número nuevo
+    await expect(svc.reply(1, "Hola", 1)).rejects.toMatchObject({ code: "invalid_input" });
+    await expect(svc.sendTemplate(1, { name: "seguimiento", language: "es", params: [] }, 1)).rejects.toMatchObject({ code: "invalid_input" });
+    expect(await svc.autoReply(m.conversationId, m.messageId)).toBe("other_number");
+    expect(graph.calls.filter((c) => c.method === "POST")).toHaveLength(0);
+    expect(store.msgs.filter((x) => x.direction === "out")).toHaveLength(0);
+  });
+});

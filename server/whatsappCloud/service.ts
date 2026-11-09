@@ -197,6 +197,15 @@ export class WhatsappService {
     await this.d.store.setNeedsHuman(id, value);
   }
 
+  /**
+   * La conversación es del número configurado ahora: si la empresa cambió de número, las conversaciones del anterior se
+   * consultan, pero no se escriben desde el número nuevo (el cliente no reconocería al remitente).
+   */
+  private sameNumber(c: WaConversation, cr: WhatsappCredentials): WhatsappCredentials {
+    if (c.phoneNumberId !== cr.phoneNumberId) throw invalid("Esta conversación es de otro número de WhatsApp Business de tu empresa: no se puede responder desde el número conectado ahora.");
+    return cr;
+  }
+
   /** Envía y registra; un fallo de Meta queda registrado como «No entregado» y se informa al agente. */
   private async deliver(c: WaConversation, m: Omit<Parameters<WhatsappStore["addOutbound"]>[1], "wamid" | "status">, send: (cr: WhatsappCredentials) => Promise<string>, cr: WhatsappCredentials): Promise<WaMessage> {
     const id = await this.d.store.addOutbound(c.id, { ...m, wamid: null, status: "pending" });
@@ -219,7 +228,7 @@ export class WhatsappService {
     const c = await this.conv(id);
     if (!windowOpen(c.lastInboundAt, this.now()))
       throw new WhatsappError("outside_window", "Han pasado más de 24 horas desde el último mensaje del cliente: WhatsApp solo permite escribirle con una plantilla aprobada.");
-    const cr = await this.creds();
+    const cr = this.sameNumber(c, await this.creds());
     const m = await this.deliver(c, { kind: "text", body, templateName: null, origin: fromSuggestion ? "ai_suggested" : "agent", sentBy: actor }, (k) => sendText(this.d.fetch, k, c.waId, body), cr);
     await this.d.store.markRead(id);
     return m;
@@ -228,11 +237,12 @@ export class WhatsappService {
   /** Plantilla aprobada de la WABA (se comprueba en Meta que existe, está aprobada y lleva sus variables). */
   async sendTemplate(id: number, t: { name: string; language: string; params: string[] }, actor: number | null): Promise<WaMessage> {
     const c = await this.conv(id);
+    this.sameNumber(c, await this.creds());
     const tpl = (await this.templates()).find((x) => x.name === t.name && x.language === t.language);
     if (!tpl) throw invalid("Esa plantilla no está aprobada en tu cuenta de WhatsApp Business.");
     const params = t.params.map((p) => cleanText(p, WHATSAPP_LIMITS.templateParamMax, false) ?? "");
     if (params.length !== tpl.params || params.some((p) => !p)) throw invalid(`La plantilla necesita ${tpl.params} ${tpl.params === 1 ? "dato" : "datos"} para rellenarla.`);
-    const cr = await this.creds();
+    const cr = this.sameNumber(c, await this.creds());
     return this.deliver(c, { kind: "template", body: renderTemplate(tpl.body || `[Plantilla ${tpl.name}]`, params), templateName: `${tpl.name}:${tpl.language}`, origin: "agent", sentBy: actor }, (k) => sendTemplate(this.d.fetch, k, c.waId, { name: tpl.name, language: tpl.language, params }), cr);
   }
 
@@ -308,6 +318,7 @@ export class WhatsappService {
       const log = (outcome: Parameters<WhatsappStore["addAiLog"]>[0]["outcome"], reply: string | null = null) => this.d.store.addAiLog({ conversationId, messageId, mode: "auto", outcome, reply, actor: null });
       const cr = usableCredentials(await this.d.credentials());
       if (!cr) return "not_configured";
+      if (cr.phoneNumberId !== c.phoneNumberId) return "other_number";
       if (wantsHuman(inbound.body, settings.handoffKeywords) || c.aiAutoReplies >= WHATSAPP_LIMITS.autoPerConversation) {
         await this.d.store.setNeedsHuman(conversationId, true);
         await log("handoff", HANDOFF_REPLY);
