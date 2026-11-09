@@ -57,6 +57,9 @@ export function openPathResolver(sources: Array<{ capability: string | null; pan
 type NavLeafLike = { href: string; capabilities?: string[]; roles?: string[]; flagKey?: string };
 export function navOpenPathResolver(sections: ReadonlyArray<{ items: ReadonlyArray<NavLeafLike & { children?: ReadonlyArray<NavLeafLike> }> }>, role?: string): (capabilities: string[]) => string | null {
   const byCap = new Map<string, string>();
+  // Entradas de varias capacidades (p. ej. el resumen del Paquete Marketing): solo cuando se piden exactamente esas
+  const bySet = new Map<string, string>();
+  const setKey = (caps: readonly string[]) => [...caps].sort().join("|");
   for (const s of sections)
     for (const i of s.items)
       for (const leaf of [i, ...(i.children ?? [])]) {
@@ -64,9 +67,13 @@ export function navOpenPathResolver(sections: ReadonlyArray<{ items: ReadonlyArr
         const roles = leaf.roles ?? i.roles;
         if (role !== undefined && roles && !roles.includes(role)) continue;
         if (leaf.flagKey || i.flagKey) continue;
-        if (caps.length === 1 && leaf.href.startsWith("/admin/") && !byCap.has(caps[0])) byCap.set(caps[0], leaf.href);
+        if (!leaf.href.startsWith("/admin/")) continue;
+        if (caps.length === 1 && !byCap.has(caps[0])) byCap.set(caps[0], leaf.href);
+        if (caps.length > 1 && !bySet.has(setKey(caps))) bySet.set(setKey(caps), leaf.href);
       }
   return (caps) => {
+    const exact = caps.length > 1 ? bySet.get(setKey(caps)) : undefined;
+    if (exact) return exact;
     for (const c of caps) {
       const p = byCap.get(c);
       if (p) return p;

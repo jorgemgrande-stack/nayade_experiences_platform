@@ -76,6 +76,7 @@ import { REVIEW_ID_2026_11_08, applyCatalogAdditions } from "../catalog/review20
 import { DIRECT_SALE_2026_11_08, REVIEW_ID_2026_11_08_CONNECT, applyDirectSaleReview } from "../catalog/review20261108connect";
 import { CAMPAIGNS_LISTING_2026_11_08, FINANCE_SYNC_DIRECT_SALE, REVIEW_ID_2026_11_08_CAMPAIGNS } from "../catalog/review20261108campaigns";
 import { MARKETING_LISTINGS_2026_11_09, REVIEW_ID_2026_11_09_MARKETING } from "../catalog/review20261109marketing";
+import { PACK_MARKETING_LISTING_2026_11_09, REVIEW_ID_2026_11_09_PACK_MARKETING } from "../catalog/review20261109packmarketing";
 import { REVIEW_ID_2026_11_08_FICHAS, applyListingReview } from "../catalog/review20261108fichas";
 import { NET_LISTINGS_2026_11_08, REVIEW_ID_2026_11_08_NET } from "../catalog/review20261108net";
 import { MysqlStripeStore } from "../stripe/store";
@@ -513,6 +514,8 @@ async function main() {
           const repCampaigns = await applyListingReview(svc, webStore, { apply, author: `operacion:${REVIEW_ID_2026_11_08_CAMPAIGNS}`, changes: CAMPAIGNS_LISTING_2026_11_08 });
           // 09/11/2026: SEO Control, Ads Manager y Reception AI en implantación acompañada (portados de Skicenter)
           const repMarketing = await applyListingReview(svc, webStore, { apply, author: `operacion:${REVIEW_ID_2026_11_09_MARKETING}`, changes: MARKETING_LISTINGS_2026_11_09 });
+          // 09/11/2026: Paquete Marketing en implantación acompañada (sus cuatro componentes ya se contratan; sin Price de Stripe)
+          const repPackMarketing = await applyListingReview(svc, webStore, { apply, author: `operacion:${REVIEW_ID_2026_11_09_PACK_MARKETING}`, changes: PACK_MARKETING_LISTING_2026_11_09 });
           const repConnect = await applyDirectSaleReview(svc, webStore, async (id) => !!(await stripeStore.priceForWebPrice(id)), { apply, author: `operacion:${REVIEW_ID_2026_11_08_CONNECT}`, changes: [...DIRECT_SALE_2026_11_08, FINANCE_SYNC_DIRECT_SALE] });
           const pricesFinal = new Map((await webStore.listPrices()).map((p) => [p.id, `${p.status}:${p.amountCents}`]));
           const pricesIntactConnect = pricesFinal.size === pricesAfter.size && Array.from(pricesAfter).every(([id, v]) => pricesFinal.get(id) === v);
@@ -527,6 +530,7 @@ async function main() {
                 { revision: REVIEW_ID_2026_11_08_NET, ...repNet },
                 { revision: REVIEW_ID_2026_11_08_CAMPAIGNS, ...repCampaigns },
                 { revision: REVIEW_ID_2026_11_09_MARKETING, ...repMarketing },
+                { revision: REVIEW_ID_2026_11_09_PACK_MARKETING, ...repPackMarketing },
                 { revision: REVIEW_ID_2026_11_08_CONNECT, modoStripe: stripeMode, ...repConnect, preciosIntactos: pricesIntactConnect },
               ],
             }),
