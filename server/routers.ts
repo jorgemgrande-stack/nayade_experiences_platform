@@ -195,6 +195,7 @@ import { marketingPackRouter } from "./routers/marketingPack";
 import { adsManagerRouter } from "./adsManager/router";
 import { accountingGeneralRouter } from "./accountingGeneral/router";
 import { receptionAiRouter } from "./receptionAi/router";
+import { whatsappCloudRouter } from "./whatsappCloud/router";
 import { copilotRouter } from "./copilot/router";
 import { postmarkTenantRouter } from "./routers/postmarkTenant";
 import { installSectorLoyalty } from "./loyaltySectors";
@@ -2675,6 +2676,7 @@ export const appRouter = router({
   // Paquete Marketing: puesta en marcha y resumen de sus cuatro módulos (cada bloque con su licencia; ver el router)
   marketingPack: marketingPackRouter,
   receptionAi: receptionAiRouter,
+  whatsappCloud: whatsappCloudRouter,
   copilot: copilotRouter,
   postmarkTenant: postmarkTenantRouter,
   crm: crmRouter,
