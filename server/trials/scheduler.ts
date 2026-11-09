@@ -26,6 +26,7 @@ import type { AlertFacts } from "../adminAlerts/catalog";
 import { NOTICE_DAYS, type TrialNotifier } from "./onboarding";
 import { TrialError, TrialService, type TrialLimits } from "./service";
 import type { TrialRequest, TrialStore } from "./store";
+import { dueReminder, reminderKey } from "./reminders";
 
 const DAY = 86_400_000;
 export const SCHEDULER_ACTOR = "system:trial-scheduler";
@@ -99,6 +100,8 @@ export interface TickResult {
   skipped: "locked" | null;
   expired: number;
   noticesQueued: number;
+  /** Recordatorios enviados (correo sin verificar, sin entrar en el panel, sin primera acción). */
+  remindersQueued: number;
   verificationsExpired: number;
   /** Altas incompletas reintentadas, completadas en este tick y abandonadas (reintentos agotados). */
   activationsRetried: number;
@@ -109,8 +112,13 @@ export interface TickResult {
 
 export interface TrialSchedulerDeps {
   store: TrialStore;
-  /** Solo hace falta el aviso de vencimiento. */
-  notify: Pick<TrialNotifier, "expiryNotice">;
+  /** El aviso de vencimiento; con `verification` y `reminder`, también los recordatorios (./reminders.ts). */
+  notify: Pick<TrialNotifier, "expiryNotice"> & Partial<Pick<TrialNotifier, "verification" | "reminder">>;
+  /**
+   * Recordatorios: dominio de las plataformas (enlace al panel) y enlace de baja de cada prueba. Sin esto, o sin
+   * `notify.reminder`, no se envía ninguno.
+   */
+  reminders?: { platformDomain: string | null; optOutUrl: (trialId: number) => string | null };
   lock: SchedulerLock;
   now?: () => number;
   limits?: Partial<TrialLimits>;
@@ -142,7 +150,7 @@ export class TrialScheduler {
   }
 
   async tick(now = this.now()): Promise<TickResult> {
-    const out: TickResult = { at: now, skipped: null, expired: 0, noticesQueued: 0, verificationsExpired: 0, activationsRetried: 0, activationsRecovered: 0, activationsGaveUp: 0, errors: 0 };
+    const out: TickResult = { at: now, skipped: null, expired: 0, noticesQueued: 0, remindersQueued: 0, verificationsExpired: 0, activationsRetried: 0, activationsRecovered: 0, activationsGaveUp: 0, errors: 0 };
     const release = await this.d.lock.acquire(SCHEDULER_LOCK);
     if (!release) {
       out.skipped = "locked";
@@ -155,10 +163,11 @@ export class TrialScheduler {
       await this.queueNotices(trials, now, out);
       await this.expireStaleVerifications(trials, now, out);
       await this.recoverActivations(trials, now, out);
+      await this.queueReminders(trials, now, out);
     } finally {
       await release().catch(() => undefined);
     }
-    if (out.expired || out.noticesQueued || out.verificationsExpired || out.activationsRetried || out.activationsGaveUp || out.errors) this.log(out.errors ? "warn" : "info", "scheduler_tick", { ...out });
+    if (out.expired || out.noticesQueued || out.remindersQueued || out.verificationsExpired || out.activationsRetried || out.activationsGaveUp || out.errors) this.log(out.errors ? "warn" : "info", "scheduler_tick", { ...out });
     return out;
   }
 
@@ -211,6 +220,44 @@ export class TrialScheduler {
       } catch (e) {
         out.errors++;
         this.log("error", "scheduler_notice_failed", { trialId: t.id, error: e instanceof Error ? e.name : "error" });
+      }
+    }
+  }
+
+  /**
+   * Recordatorios de servicio (./reminders.ts): uno por prueba, tipo y paso, solo mientras su objetivo siga sin
+   * cumplirse. La constancia (`notice_queued` con la clave) se deja después de encolarlo; si falla, se reintenta.
+   */
+  private async queueReminders(trials: TrialService, now: number, out: TickResult) {
+    const r = this.d.reminders;
+    if (!r) return;
+    const candidates = [
+      ...(this.d.notify.verification ? await this.d.store.list({ states: ["pending_verification"], limit: this.batch }) : []),
+      ...(this.d.notify.reminder ? await this.d.store.list({ states: ["active"], limit: this.batch }) : []),
+    ];
+    for (const t of candidates) {
+      if (this.isExempt(t)) continue;
+      try {
+        const evs = await this.d.store.events(t.id);
+        const actions = new Set(evs.map((e) => e.action as string));
+        const notices = new Set(evs.filter((e) => e.action === "notice_queued").map((e) => e.detail ?? ""));
+        const kind = dueReminder(t, actions, notices, now);
+        if (!kind) continue;
+        const key = reminderKey(kind);
+        if (kind === "verify") {
+          // El reenvío de siempre (enlace nuevo, el anterior deja de valer) con su espera mínima y su máximo diario
+          const res = await trials.resendVerification({ trialId: t.id }, SCHEDULER_ACTOR);
+          if (res.outcome === "resent" && res.verificationToken) await this.d.notify.verification!(t.email, { trialId: t.id, token: res.verificationToken, resend: true });
+          // Pendiente de la espera mínima: se reintenta; en cualquier otro caso no se insiste más
+          if (res.outcome === "cooldown") continue;
+        } else {
+          await this.d.notify.reminder!(t.email, { trialId: t.id, kind, key: `trial:${t.id}:${key}`, domain: r.platformDomain && t.tenantId ? `${t.tenantId}.${r.platformDomain}` : null, endsAt: t.endsAt, optOutUrl: r.optOutUrl(t.id) });
+        }
+        await trials.recordNotice(t.id, key, SCHEDULER_ACTOR);
+        out.remindersQueued++;
+      } catch (e) {
+        out.errors++;
+        this.log("error", "scheduler_reminder_failed", { trialId: t.id, error: e instanceof Error ? e.name : "error" });
       }
     }
   }

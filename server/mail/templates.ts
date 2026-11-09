@@ -181,6 +181,29 @@ export function platformTemplates(o: PlatformTemplateOptions = {}) {
     },
     trialExpired,
     /**
+     * Recordatorio de SERVICIO de la prueba (server/trials/reminders.ts): sin ofertas. `setup`: aún no ha entrado en su
+     * panel; `first_action`: aún sin su primer cliente, presupuesto o venta. Siempre con el enlace de baja.
+     */
+    trialReminder(i: { kind: "setup" | "first_action"; host: string | null; endsAt: number | null; optOutUrl: string | null }) {
+      const until = i.endsAt ? `Tu prueba gratuita dura hasta el ${fmtDate(i.endsAt)}.` : null;
+      const optOut = i.optOutUrl ? [{ help: { title: "¿Prefieres no recibir estos recordatorios?", text: "Puedes darte de baja cuando quieras; seguirás recibiendo los avisos imprescindibles de tu prueba.", link: { label: "Dejar de recibir recordatorios", url: i.optOutUrl } } }] : [];
+      if (i.kind === "setup")
+        return e({
+          family: "experiential", eyebrow: "Tu prueba gratuita", hero: "calendario",
+          title: "Tu espacio te está esperando", subject: `Tu prueba de ${PLATFORM_BRAND} está lista para empezar`,
+          intro: ["Tu plataforma ya está creada, pero todavía no has entrado. En unos minutos puedes tener los datos de tu empresa y tu primer cliente.", ...(until ? [until] : [])],
+          blocks: [{ p: "Si no encuentras el enlace para definir tu contraseña, entra en tu dirección y usa «¿Has olvidado tu contraseña?»." }, ...optOut],
+          cta: enter(i.host, "Entrar en mi panel"),
+        });
+      return e({
+        family: "experiential", eyebrow: "Tu prueba gratuita", hero: "exito",
+        title: "Da tu primer paso en Elephant Core", subject: "Crea tu primer cliente o presupuesto en dos minutos",
+        intro: ["Ya has entrado en tu panel. El siguiente paso es el que más se nota: crea tu primer cliente o tu primer presupuesto.", ...(until ? [until] : [])],
+        blocks: [{ p: "En el Inicio tienes la guía «Empieza en tres pasos» con cada paso y su estado." }, ...optOut],
+        cta: enter(i.host, "Ir a mi panel"),
+      });
+    },
+    /**
      * Cambios de la prueba que decide el equipo: ampliación, pausa y reactivación. Nunca incluye el motivo interno
      * de una pausa (puede ser sensible): solo que los datos se conservan y cómo retomarla.
      */

@@ -209,6 +209,15 @@ export function trialCompanyFields(p: TrialProfile | null, a: TrialAttribution |
   };
 }
 
+/** Texto exacto de la casilla comercial del formulario (www.bigelephant.es/prueba-gratuita) para la evidencia. */
+export const TRIAL_MARKETING_TEXT = "Quiero recibir novedades y ofertas de Big Elephant (opcional, puedes darte de baja cuando quieras).";
+
+/** Evidencia del consentimiento comercial: casilla, fecha y versión de las condiciones. */
+export function trialMarketingEvidence(p: TrialProfile): string {
+  const day = new Date(p.marketingConsentAt ?? p.termsAcceptedAt).toISOString().slice(0, 10);
+  return `Formulario de la prueba gratuita (www.bigelephant.es/prueba-gratuita), casilla no premarcada: «${TRIAL_MARKETING_TEXT}» Marcada el ${day}${p.termsVersion ? `; condiciones ${p.termsVersion}` : ""}.`.slice(0, 500);
+}
+
 /** Contacto principal (propietario) de la empresa del CRM: el responsable que se registró en la prueba. */
 export function trialOwnerContact(p: TrialProfile, email: string) {
   const { firstName, lastName } = splitFullName(p.fullName);

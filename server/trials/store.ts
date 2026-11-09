@@ -31,6 +31,8 @@ export interface TrialConfiguration {
   terms?: TrialTerms;
   /** Registro técnico o de prueba (acción auditada `marked_test`): fuera del embudo y de los informes. */
   test?: TrialTestMark;
+  /** Baja de los recordatorios de la prueba (enlace firmado del correo): no se le vuelve a enviar ninguno. */
+  reminders?: { optOutAt: number };
 }
 
 export interface TrialRequest {
@@ -74,7 +76,7 @@ export interface TrialEvent {
  * Anotación sin cambio de estado ni de versión: `notice_queued` (aviso encolado), `activation_retry` (reintento
  * automático del alta incompleta) y `activation_gave_up` (reintentos agotados; queda para una persona).
  */
-export type TrialNoteAction = "notice_queued" | "activation_retry" | "activation_gave_up" | "marked_test" | TrialMilestone;
+export type TrialNoteAction = "notice_queued" | "activation_retry" | "activation_gave_up" | "marked_test" | "reminders_opt_out" | TrialMilestone;
 /**
  * Hitos de activación que comunica el panel de la empresa (una sola vez cada uno): primer acceso del propietario y
  * primera acción útil (cliente, presupuesto, factura, venta o producto).
@@ -126,6 +128,8 @@ export interface TrialStore {
    * cambiado y la prueba no estaba ya marcada. Devuelve la prueba o null si no se ha escrito nada.
    */
   setTestMark(id: number, expectedVersion: number, mark: TrialTestMark): Promise<TrialRequest | null>;
+  /** Registra la baja de los recordatorios (solo la clave `reminders`, solo si no estaba). Devuelve si se ha escrito. */
+  setRemindersOptOut(id: number, at: number): Promise<boolean>;
 }
 
 /** Etapas del embudo que salen de las pruebas (las visitas e inicios del formulario, del contador anónimo de ./funnel.ts). */
@@ -282,6 +286,12 @@ export class MemoryTrialStore implements TrialStore {
     const items = kept.map((trial) => ({ trial, actions: new Set(this.evs.filter((e) => e.trialId === trial.id).map((e) => e.action as string)) }));
     return { rows: aggregateFunnel(items), truncated: false, excluded: inRange.length - kept.length };
   }
+  async setRemindersOptOut(id: number, at: number) {
+    const cur = this.rows.get(id);
+    if (!cur || cur.configuration?.reminders) return false;
+    cur.configuration = { ...cur.configuration, reminders: { optOutAt: at } };
+    return true;
+  }
   async setTestMark(id: number, expectedVersion: number, mark: TrialTestMark) {
     const cur = this.rows.get(id);
     if (!cur || cur.version !== expectedVersion || cur.configuration?.test) return null;
@@ -421,6 +431,13 @@ export class MysqlTrialStore implements TrialStore {
   async byTenant(tenantId: string) {
     const [r] = await this.pool.query<mysql.RowDataPacket[]>("SELECT * FROM trial_requests WHERE tenant_id = ? LIMIT 1", [tenantId]);
     return r[0] ? row(r[0]) : null;
+  }
+  async setRemindersOptOut(id: number, at: number) {
+    const [r] = await this.pool.query<mysql.ResultSetHeader>(
+      "UPDATE trial_requests SET configuration = JSON_SET(configuration, '$.reminders', CAST(? AS JSON)) WHERE id = ? AND JSON_EXTRACT(configuration, '$.reminders') IS NULL",
+      [JSON.stringify({ optOutAt: at }), id],
+    );
+    return r.affectedRows === 1;
   }
   async setTestMark(id: number, expectedVersion: number, mark: TrialTestMark) {
     // Solo la clave `test`, y solo si no existía: dos marcas a la vez no se pisan ni pisan otros cambios

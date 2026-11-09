@@ -117,9 +117,9 @@ import { LicensingError, LicensingService } from "../licensing/service";
 import type { TenantLimitStore } from "../_core/limits/store";
 import { TrialService, type TrialLimits } from "../trials/service";
 import type { TrialStore } from "../trials/store";
-import { trialCompanyFields, trialOwnerContact } from "../trials/profile";
+import { trialCompanyFields, trialMarketingEvidence, trialOwnerContact } from "../trials/profile";
 import { TrialOnboardingService, type TrialLicenceSync, type TrialNotifier } from "../trials/onboarding";
-import { createPublicTrialRouter, createTrialAdminRouter, createTrialMilestoneRouter, type TrialExceptionConversion } from "../trials/api";
+import { createPublicTrialRouter, createTrialAdminRouter, createTrialMilestoneRouter, type TrialExceptionConversion, type TrialRemindersOptOut } from "../trials/api";
 import type { TrialFunnelCounter } from "../trials/funnel";
 import { OrderError, TERMINAL_STATES } from "../orchestrator/types";
 import { OrganizationError, OrganizationService, type OrganizationStore } from "../organization/service";
@@ -313,7 +313,7 @@ export interface ControlPlaneDeps {
    * sin datos personales ni tokens: no se envía nada). `activation`: aquí se publica la activación de la prueba
    * (la misma instancia que usan las rutas) para que la tarea programada reintente las altas incompletas.
    */
-  trials?: { store: TrialStore; funnel?: TrialFunnelCounter | null; publicEnabled?: boolean; autoProvision?: boolean; lifeTrials?: boolean; notify?: TrialNotifier; limits?: Partial<TrialLimits>; blockedDomains?: string[]; activation?: { activate?: (trialId: number, actor: string) => Promise<unknown>; syncLicences?: (trialId: number, actor: string) => Promise<TrialLicenceSync> } };
+  trials?: { store: TrialStore; funnel?: TrialFunnelCounter | null; remindersOptOut?: TrialRemindersOptOut | null; marketingConsent?: (contactId: number, evidence: string) => Promise<void>; publicEnabled?: boolean; autoProvision?: boolean; lifeTrials?: boolean; notify?: TrialNotifier; limits?: Partial<TrialLimits>; blockedDomains?: string[]; activation?: { activate?: (trialId: number, actor: string) => Promise<unknown>; syncLicences?: (trialId: number, actor: string) => Promise<TrialLicenceSync> } };
   /** Sedes y entidades fiscales (registro 0009), con los límites del plan contratado. */
   organization?: OrganizationStore;
   /** Registro de eventos comerciales (CRM 0015), solo lectura. */
@@ -2106,7 +2106,12 @@ export function createControlPlaneApp(d: ControlPlaneDeps): Express {
             // El responsable de la prueba, contacto principal de la empresa (propietario). Un fallo aquí no deja la prueba sin activar.
             if (input.profile) {
               try {
-                await crmD.service.createContact(company.id, trialOwnerContact(input.profile, input.email), actor);
+                const contact = await crmD.service.createContact(company.id, trialOwnerContact(input.profile, input.email), actor);
+                // Consentimiento comercial del formulario en el registro de consentimientos (el que filtra los envíos
+                // comerciales), con su evidencia: novedades y promociones. Sin marcar, no se registra nada.
+                if (input.profile.marketingConsent && d.trials?.marketingConsent) {
+                  await d.trials.marketingConsent(contact.id, trialMarketingEvidence(input.profile)).catch((e) => opsLog("warn", "Trials", "trial_marketing_consent_failed", { companyId: company.id, error: e instanceof Error ? e.name : "error" }));
+                }
               } catch (e) {
                 opsLog("warn", "Trials", "trial_owner_contact_failed", { companyId: company.id, error: e instanceof Error ? e.name : "error" });
               }
@@ -2126,7 +2131,7 @@ export function createControlPlaneApp(d: ControlPlaneDeps): Express {
       router.use("/trials", createTrialAdminRouter({ onboarding, trials: trialService, store: d.trials.store, convert: trialConversion, funnel: d.trials.funnel ?? null }));
       // Hitos de activación que comunica el panel de la empresa (primer acceso y primera acción útil)
       router.use("/commerce", createTrialMilestoneRouter({ trials: trialService }));
-      if (d.trials.publicEnabled) publicTrial = createPublicTrialRouter({ onboarding, autoProvision: !!d.trials.autoProvision, funnel: d.trials.funnel ?? null, now: d.subscriptions.now });
+      if (d.trials.publicEnabled) publicTrial = createPublicTrialRouter({ onboarding, autoProvision: !!d.trials.autoProvision, funnel: d.trials.funnel ?? null, now: d.subscriptions.now, reminders: d.trials.remindersOptOut ?? null });
       if (d.trials.activation) d.trials.activation.activate = (trialId, actor) => onboarding.activate(trialId, actor);
       // Reconciliación del fin de las licencias de las pruebas (la monta main.ts con su propio intervalo)
       if (d.trials.activation) d.trials.activation.syncLicences = (trialId, actor) => onboarding.syncLicences(trialId, actor);
