@@ -395,3 +395,12 @@ describe("revisión: devolver la conversación a la IA", () => {
     expect(await svc.autoReply(again.conversationId, again.messageId)).toBe("sent");
   });
 });
+
+describe("revisión: palabras de traspaso por defecto", () => {
+  it("no saltan con «persona» suelta (precio por persona, 4 personas) y sí con las frases de traspaso", () => {
+    const k = DEFAULT_WHATSAPP_SETTINGS.handoffKeywords;
+    expect(k).toBe("hablar con una persona, persona real, humano, agente, reclamación, queja");
+    for (const t of ["¿Cuánto cuesta por persona?", "Somos 4 personas el sábado", "¿Una persona sola puede ir?"]) expect(wantsHuman(t, k), t).toBe(false);
+    for (const t of ["Quiero hablar con una persona", "¿Eres una persona real?", "Pásame con un humano", "Quiero poner una reclamación", "Tengo una QUEJA"]) expect(wantsHuman(t, k), t).toBe(true);
+  });
+});

@@ -60,7 +60,8 @@ export const WHATSAPP_LIMITS = {
   templateParamMax: 300,
 } as const;
 
-export const DEFAULT_HANDOFF_KEYWORDS = "persona, humano, agente, hablar con alguien, reclamación, queja";
+/** Sin «persona» suelta: «personas», «por persona» o «para 4 personas» son preguntas normales de reserva. */
+export const DEFAULT_HANDOFF_KEYWORDS = "hablar con una persona, persona real, humano, agente, reclamación, queja";
 
 export interface WhatsappSettings {
   aiMode: WhatsappAiMode;
