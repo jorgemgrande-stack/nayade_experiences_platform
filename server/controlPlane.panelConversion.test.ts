@@ -34,6 +34,7 @@ import type { StripeConfig } from "./stripe/config";
 import { stripeWebhookVerifier, type GwEvent } from "./stripe/gateway";
 import { MemoryStripeStore } from "./stripe/store";
 import { FakeStripeGateway } from "./stripe/testing";
+import { buildSubscriptionOverview } from "./subscriptionOverview";
 
 const ADMIN = "panel-conversion-admin-token-aaaaaaaaaaaa";
 const CORE = "panel-conversion-core-token-bbbbbbbbbbbbb";
@@ -264,5 +265,28 @@ describe("contratación desde el panel de una empresa en prueba (doble de Stripe
     expect((await start(t.tenantId!, { buyer: { type: "business", legalName: "X" } })).status).toBe(400);
     expect(gw.sessions.size).toBe(sessions);
     expect(await orders.list({ trialId: t.id, limit: 10 })).toEqual([]);
+  });
+
+  it("prueba FINALIZADA («Contratar mi plan» del aviso): solo lectura hasta el webhook; después licencias sin caducidad, sin tocar a otra empresa", async () => {
+    const t = await trial("panel@finalizada.example", "Panel Finalizada SL");
+    const other = await trial("panel@otra-finalizada.example", "Panel Otra Finalizada SL");
+    // Vencen las dos pruebas y una persona las marca como terminadas
+    clock = Math.max(t.endsAt!, other.endsAt!) + 86_400_000;
+    await ok(call("POST", `/trials/${t.id}/expire`, { body: {} }));
+    await ok(call("POST", `/trials/${other.id}/expire`, { body: {} }));
+    const stateOf = async (tenantId: string) => buildSubscriptionOverview({ mode: "multi", enforcing: true, grants: await caps.list(tenantId), now: clock }).state;
+    expect(await stateOf(t.tenantId!)).toBe("trial_expired");
+    const s = await ok(start(t.tenantId!, {}));
+    // Abrir el pago o volver del navegador no concede nada
+    expect(await stateOf(t.tenantId!)).toBe("trial_expired");
+    gw.completeSession(s.sessionId);
+    expect(await stateOf(t.tenantId!)).toBe("trial_expired");
+    await ok(stripeWebhook(gw.events.find((e) => e.type === "checkout.session.completed" && e.objectId === s.sessionId)!));
+    const order = (await orders.list({ trialId: t.id, limit: 10 }))[0];
+    await until(async () => (await orders.get(order.id))?.state === "active");
+    expect(await stateOf(t.tenantId!)).toBe("active");
+    expect((await caps.list(t.tenantId!)).every((g) => g.status === "active" && g.validUntil === null)).toBe(true);
+    // La otra empresa sigue en consulta
+    expect(await stateOf(other.tenantId!)).toBe("trial_expired");
   });
 });

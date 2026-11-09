@@ -4,7 +4,7 @@
  * adicionales, facturación, datos y desistimiento. Todo se lee del servidor (subscription.*, connect.catalog); aquí
  * no se calcula ningún precio ni se decide quién puede contratar.
  */
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Link, useSearch } from "wouter";
 import { ArrowUpRight, CalendarClock, CheckCircle2, Clock, CreditCard, Eye, Hourglass, Info, Rocket, ShieldAlert, Sparkles } from "lucide-react";
 import AdminLayout from "@/components/AdminLayout";
@@ -76,7 +76,7 @@ const STATE_META: Record<string, { label: string; tone: string }> = {
   trial: { label: "Prueba gratuita", tone: "bg-sky-100 text-sky-900 dark:bg-sky-500/15 dark:text-sky-200" },
   trial_expired: { label: "Prueba finalizada", tone: "bg-amber-100 text-amber-900 dark:bg-amber-500/15 dark:text-amber-200" },
   active: { label: "Activa", tone: "bg-emerald-100 text-emerald-900 dark:bg-emerald-500/15 dark:text-emerald-200" },
-  read_only: { label: "Solo lectura", tone: "bg-amber-100 text-amber-900 dark:bg-amber-500/15 dark:text-amber-200" },
+  read_only: { label: "Finalizada", tone: "bg-amber-100 text-amber-900 dark:bg-amber-500/15 dark:text-amber-200" },
   suspended: { label: "Suspendida", tone: "bg-red-100 text-red-900 dark:bg-red-500/15 dark:text-red-200" },
   cancelled: { label: "Cancelada", tone: "bg-muted text-foreground" },
   pending: { label: "Pendiente de activar", tone: "bg-muted text-foreground" },
@@ -167,6 +167,13 @@ export default function SubscriptionPage() {
   const c = contract.data?.contract ?? null;
   const renewal = period?.cancelAt ? { label: "Fin del servicio", at: period.cancelAt } : period?.renewsAt ? { label: "Próxima renovación", at: period.renewsAt } : null;
   const conversionOn = !!conversion.data?.enabled;
+  // «Reactivar mi plan» desde el aviso del panel: /admin/suscripcion#planes (se desplaza cuando ya hay planes)
+  const hashDone = useRef(false);
+  useEffect(() => {
+    if (hashDone.current || cards.length === 0 || window.location.hash !== "#planes") return;
+    hashDone.current = true;
+    scrollTo("planes");
+  }, [cards.length]);
   const onConvert = (plan: SelfServicePlanKey) => {
     setRequested({ plan, at: Date.now() });
     scrollTo("contratar");
@@ -249,7 +256,7 @@ export default function SubscriptionPage() {
                   </p>
                 )}
                 {data.state === "read_only" && !data.trial && (
-                  <p className="text-sm text-amber-800 dark:text-amber-300">Tu cuenta está en solo lectura: puedes consultar tus datos, pero no crear ni modificar.</p>
+                  <p className="text-sm text-amber-800 dark:text-amber-300">Tu suscripción ha finalizado. Tus datos siguen disponibles: reactiva tu plan para volver a crear y editar.</p>
                 )}
                 {data.state === "suspended" && (
                   <p className="text-sm text-red-800 dark:text-red-300">Tu suscripción está suspendida. Contacta con tu responsable de cuenta para reactivarla.</p>
