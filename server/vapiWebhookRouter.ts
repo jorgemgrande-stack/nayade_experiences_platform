@@ -27,6 +27,7 @@ import { placeholderEmail } from "../shared/placeholderEmail";
 import { recordSync } from "./_core/credentials/health";
 import { publicBaseUrl } from "./_core/productIdentity";
 import { meterVoiceCall } from "./_core/externalMetering";
+import { installReceptionTools, recordReceptionCallReport } from "./receptionAi/vapiTools";
 
 const _pool = legacyPool();
 const _db = legacyDb();
@@ -138,6 +139,9 @@ export async function initVapiTables(): Promise<void> {
 
 const vapiWebhookRouter = express.Router();
 
+// Elephant Reception AI: herramientas del asistente de voz (disponibilidad, solicitudes, ¿hay alguien del equipo?)
+installReceptionTools(vapiWebhookRouter);
+
 vapiWebhookRouter.post("/api/vapi/webhook", express.json({ limit: "1mb" }), async (req, res) => {
   // 1. Secreto opcional — env var con fallback a BD
   const [secretRows]: any = await _pool.execute(
@@ -160,6 +164,8 @@ vapiWebhookRouter.post("/api/vapi/webhook", express.json({ limit: "1mb" }), asyn
   // Consumo de Vapi (minutos y coste) con el informe final de la llamada, que llega una vez por llamada
   const report = payload.message ?? payload;
   if (report?.type === "end-of-call-report") meterVoiceCall(report.durationSeconds ?? report.call?.duration, report.cost ?? report.call?.cost, "webhook");
+  // Elephant Reception AI: si la llamada es del asistente de la recepcionista, su resultado entra en su registro
+  if (report?.type === "end-of-call-report") await recordReceptionCallReport(payload);
 
   // 2. Extraer datos del contacto (VAPI puede enviarlos en distintas estructuras)
   const c = payload.contact ?? payload.customer ?? payload;

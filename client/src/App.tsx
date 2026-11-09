@@ -241,6 +241,7 @@ const ProposalsPage = lazy(() => import("./pages/admin/crm/ProposalsPage"));
 const CommercialFollowupDashboard = lazy(() => import("./pages/admin/commercial/CommercialFollowupDashboard"));
 const WhatsAppGHLInbox = lazy(() => import("./pages/admin/commercial/WhatsAppGHLInbox"));
 const VapiAgente = lazy(() => import("./pages/admin/commercial/VapiAgente"));
+const ReceptionAi = lazy(() => import("./pages/admin/commercial/ReceptionAi"));
 const EmailInbox = lazy(() => import("./pages/admin/commercial/EmailInbox"));
 const EmailAccountsSettings = lazy(() => import("./pages/admin/settings/EmailAccountsSettings"));
 const SolicitarAnulacion = lazy(() => import("./pages/SolicitarAnulacion"));
@@ -532,6 +533,7 @@ function Router() {
       {/* Atención Comercial */}
       <Route path="/admin/atencion-comercial/whatsapp">{() => <Suspense fallback={<AdminLoadingFallback />}><WhatsAppGHLInbox /></Suspense>}</Route>
       <Route path="/admin/atencion-comercial/agente-ia">{() => <Suspense fallback={<AdminLoadingFallback />}><VapiAgente /></Suspense>}</Route>
+      <Route path="/admin/atencion-comercial/recepcionista">{() => <Suspense fallback={<AdminLoadingFallback />}><ReceptionAi /></Suspense>}</Route>
       <Route path="/admin/atencion-comercial/email">{() => <Suspense fallback={<AdminLoadingFallback />}><EmailInbox /></Suspense>}</Route>
       <Route path="/admin/atencion-comercial">{() => <Suspense fallback={<AdminLoadingFallback />}><CommercialFollowupDashboard /></Suspense>}</Route>
 
