@@ -199,6 +199,10 @@ export class PlatformMailer {
         if (i.daysLeft > 0 && i.daysLeft <= 3)
           await this.alert("admin.trial_ending", { key: `trial:${i.trialId}:ending:${i.endsAt}`, occurredAt: Date.now(), summary: `La prueba termina en ${i.daysLeft} día${i.daysLeft === 1 ? "" : "s"} y todavía no se ha contratado ningún plan.`, status: { label: `Termina en ${i.daysLeft} día${i.daysLeft === 1 ? "" : "s"}`, tone: "warning" }, details: [{ label: "Fin de la prueba", value: new Date(i.endsAt).toLocaleDateString("es-ES", { timeZone: "Europe/Madrid", day: "numeric", month: "long", year: "numeric" }) }], link: "#/operacion/pruebas" });
       },
+      // Recordatorio de servicio (categoría «onboarding»): la clave es la de la prueba, el tipo y el paso
+      reminder: async (to, i) => {
+        await this.send(PLATFORM_TENANT, i.key, "onboarding", to, this.t.trialReminder({ kind: i.kind, host: i.domain, endsAt: i.endsAt, optOutUrl: i.optOutUrl }));
+      },
       // Una transición, un aviso: la versión de la prueba tras el cambio forma parte de la clave
       statusNotice: async (to, i) => {
         await this.send(PLATFORM_TENANT, `trial:${i.trialId}:status:${i.kind}:v${i.version}`, "trial_status", to, this.t.trialStatus({ kind: i.kind, endsAt: i.endsAt, host: i.domain }));

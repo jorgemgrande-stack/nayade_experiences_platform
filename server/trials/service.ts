@@ -361,6 +361,19 @@ export class TrialService {
     throw new TrialError("conflict", "La prueba cambió mientras tanto; recarga");
   }
 
+  /**
+   * Baja de los recordatorios de la prueba (enlace firmado del correo). Idempotente; queda en el historial
+   * (`reminders_opt_out`). Los avisos de servicio imprescindibles (verificación pedida, bienvenida, vencimiento) siguen.
+   */
+  async optOutReminders(id: number, actor: string): Promise<{ trialId: number; changed: boolean } | null> {
+    const t = await this.d.store.get(id);
+    if (!t) return null;
+    const at = this.now();
+    const changed = await this.d.store.setRemindersOptOut(t.id, at);
+    if (changed) await this.d.store.note(t.id, { action: "reminders_opt_out", detail: "link", actor, at });
+    return { trialId: t.id, changed };
+  }
+
   async recordNotice(id: number, key: string, actor: string) {
     await this.d.store.note(id, { action: "notice_queued", detail: key, actor, at: this.now() });
   }
