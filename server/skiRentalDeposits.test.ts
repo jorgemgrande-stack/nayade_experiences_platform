@@ -12,6 +12,7 @@ import {
   chargeSaleKey,
   collectMovements,
   dayTotals,
+  keyAttempt,
   madridDay,
   needsCashSession,
   parseEurosToCents,
@@ -24,7 +25,7 @@ import {
   suggestDeposit,
   type DepositRow,
 } from "../shared/skiDeposits";
-import { IDEMPOTENCY_KEY_RE } from "./tpvSaleIdempotency";
+import { IDEMPOTENCY_KEY_RE, groupCapacity } from "./tpvSaleIdempotency";
 import { imageTypeOf } from "./skiRental/depositService";
 
 describe("importes en céntimos", () => {
@@ -179,6 +180,25 @@ describe("estados", () => {
     // Una liquidación nueva con otro importe retenido nunca reutiliza la venta de la anterior
     expect(retentionSaleKey(5, 100)).not.toBe(retentionSaleKey(5, 200));
     expect(retentionSaleKey(5, 100)).toBe(retentionSaleKey(5, 100));
+  });
+  it("cargo: el primer cobro usa la clave de siempre; tras una venta anulada en el TPV, la siguiente", () => {
+    expect(chargeSaleKey(7)).toBe("skichg-7-pay");
+    expect(chargeSaleKey(7, 1)).toBe("skichg-7-pay");
+    expect(chargeSaleKey(7, 2)).toBe("skichg-7-pay-2");
+    expect(IDEMPOTENCY_KEY_RE.test(chargeSaleKey(4294967295, 999))).toBe(true);
+    // Las claves de un cargo nunca empiezan por las de otro (se buscan por prefijo «skichg-<id>-pay»)
+    expect(chargeSaleKey(12).startsWith(chargeSaleKey(1))).toBe(false);
+    expect(retentionSaleKey(5, 100, 3)).toBe("skidep-5-r100-3");
+    expect(keyAttempt("skidep-5-r100", "skidep-5-r100")).toBe(1);
+    expect(keyAttempt("skidep-5-r100", "skidep-5-r100-3")).toBe(3);
+    expect(keyAttempt("skidep-5-r100", "skidep-5-r1000")).toBe(0);
+    expect(keyAttempt("skichg-7-pay", "skichg-7-pay-x")).toBe(0);
+  });
+  it("límite de bloqueos simultáneos por grupo: siempre queda una conexión libre para trabajar", () => {
+    for (const n of [3, 4, 10, 50]) expect(groupCapacity("tpv", n) + groupCapacity("ski", n)).toBe(n - 1);
+    expect(groupCapacity("tpv", 4)).toBe(2);
+    expect(groupCapacity("tpv", 2)).toBe(1);
+    expect(groupCapacity("ski", 10)).toBe(1);
   });
 });
 
