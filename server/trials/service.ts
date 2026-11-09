@@ -19,7 +19,7 @@ import { TERMINAL, nextState, type TrialAction, type TrialState } from "./machin
 import { TrialConflict, type TrialHolder, type TrialPatch, type TrialRequest, type TrialStore } from "./store";
 import { canonicalMailbox, mailboxOf } from "./mailbox";
 import { TRIAL_MILESTONES, type TrialMilestone } from "./store";
-import { TrialProfileError, normalizeAttribution, normalizeProfile, type TrialAttributionInput, type TrialProfileInput } from "./profile";
+import { TrialProfileError, normalizeAttribution, normalizeProfile, normalizeTerms, type TrialAttributionInput, type TrialProfileInput } from "./profile";
 
 export { canonicalMailbox, mailboxOf };
 
@@ -148,7 +148,7 @@ export class TrialService {
    * de verificación EN CLARO solo al crearla (para que el remitente lo envíe por correo) y nunca lo
    * guarda.
    */
-  async register(input: { email: string; companyName: string; configuration: { plan: string | null; addons: string[]; holder?: TrialHolder }; profile?: TrialProfileInput | null; attribution?: TrialAttributionInput | null; idempotencyKey: string; ip?: string | null }) {
+  async register(input: { email: string; companyName: string; configuration: { plan: string | null; addons: string[]; holder?: TrialHolder }; profile?: TrialProfileInput | null; attribution?: TrialAttributionInput | null; terms?: { accepted: unknown; version: unknown } | null; idempotencyKey: string; ip?: string | null }) {
     const email = input.email.trim().toLowerCase();
     const m = EMAIL_RE.exec(email);
     if (!m || email.length > 254) throw new TrialError("invalid_input", "Correo no válido");
@@ -168,7 +168,10 @@ export class TrialService {
 
     // Responsable de la prueba y procedencia (formulario de la web): validados aquí, guardados en la configuración
     let profile: ReturnType<typeof normalizeProfile> | null = null;
+    let terms: ReturnType<typeof normalizeTerms> | null = null;
     try {
+      // Aceptación de las condiciones con su versión: la exige el alta pública (la del operador no la pasa)
+      terms = input.terms ? normalizeTerms(input.terms.accepted, input.terms.version, this.now()) : null;
       profile = input.profile ? normalizeProfile(input.profile, this.now()) : null;
     } catch (e) {
       if (e instanceof TrialProfileError) throw new TrialError("invalid_input", e.message);
@@ -199,7 +202,7 @@ export class TrialService {
           email,
           emailDomain: domain,
           companyName: company,
-          configuration: { plan: input.configuration.plan, addons, ...(holder ? { holder } : {}), ...(profile ? { profile } : {}), ...(attribution ? { attribution } : {}) },
+          configuration: { plan: input.configuration.plan, addons, ...(holder ? { holder } : {}), ...(profile ? { profile } : {}), ...(attribution ? { attribution } : {}), ...(terms ? { terms } : {}) },
           state: "pending_verification",
           verificationTokenHash: sha256(token),
           verificationExpiresAt: now + this.limits.verificationTtlMs,
@@ -334,6 +337,27 @@ export class TrialService {
     // También si ya estaba: el almacén no lo duplica y reintenta su evento comercial (por si aquel falló)
     await this.d.store.note(t.id, { action: milestone, detail: clean, actor, at: this.now() });
     return { recorded: !already, trialId: t.id };
+  }
+
+  /**
+   * Marca una prueba como registro técnico o de prueba (acción auditada `marked_test`, con motivo): sale del embudo y
+   * de los informes; no cambia su estado ni borra nada. Idempotente: si ya estaba marcada, la devuelve tal cual.
+   */
+  async markTest(id: number, reason: string, actor: string): Promise<TrialRequest> {
+    const why = reason.trim();
+    if (why.length < 5 || why.length > 200) throw new TrialError("invalid_input", "Indica el motivo (entre 5 y 200 caracteres)");
+    for (let attempt = 0; attempt < 3; attempt++) {
+      const t = await this.d.store.get(id);
+      if (!t) throw new TrialError("not_found", "Prueba no encontrada");
+      if (t.configuration?.test) return t;
+      const at = this.now();
+      const updated = await this.d.store.setConfiguration(t.id, t.version, { ...t.configuration, test: { at, actor, reason: why } });
+      if (updated) {
+        await this.d.store.note(t.id, { action: "marked_test", detail: why, actor, at });
+        return updated;
+      }
+    }
+    throw new TrialError("conflict", "La prueba cambió mientras tanto; recarga");
   }
 
   async recordNotice(id: number, key: string, actor: string) {

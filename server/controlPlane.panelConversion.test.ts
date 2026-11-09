@@ -106,7 +106,7 @@ const start = (tenantId: string, b: Record<string, unknown>, token = CORE) =>
 
 /** Empresa en prueba gratuita activa (registro público + verificación + alta automática). */
 async function trial(email: string, companyName: string) {
-  await ok(call("POST", "/public/trial", { token: null, body: { email, companyName, idempotencyKey: key() } }), 202);
+  await ok(call("POST", "/public/trial", { token: null, body: { email, companyName, termsAccepted: true, termsVersion: "2026-10-21", idempotencyKey: key() } }), 202);
   const v = outbox.filter((m) => m.kind === "verification" && m.to === email).at(-1)!;
   await ok(call("POST", "/public/trial/verify", { token: null, body: { id: v.data.trialId, token: v.data.token } }));
   return (await trialStore.get(v.data.trialId as number))!;

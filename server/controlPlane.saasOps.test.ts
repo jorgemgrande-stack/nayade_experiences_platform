@@ -161,7 +161,7 @@ describe("Operación SaaS: endpoints del plano de control", () => {
   let tenantId = "";
 
   beforeAll(async () => {
-    await call("POST", "/public/trial", { body: { email: "ana@hotelsol.example", companyName: "Hotel Sol", idempotencyKey: key() } });
+    await call("POST", "/public/trial", { body: { email: "ana@hotelsol.example", companyName: "Hotel Sol", termsAccepted: true, termsVersion: "2026-10-21", idempotencyKey: key() } });
     const v = outbox.find((m) => m.kind === "verification")!;
     trialId = v.data.trialId as number;
     const r = await call("POST", "/public/trial/verify", { body: { id: trialId, token: v.data.token } });
@@ -284,7 +284,7 @@ describe("Operación SaaS: endpoints del plano de control", () => {
 
 describe("correos de la prueba y del orquestador: solo por el puerto de avisos, nada real", () => {
   it("la conversión de prueba a pago sin pedido no se hace ni envía nada; los avisos van por el puerto (aquí, un buzón en memoria)", async () => {
-    await call("POST", "/public/trial", { body: { email: "eva@casa.example", companyName: "Casa Eva", idempotencyKey: key() } });
+    await call("POST", "/public/trial", { body: { email: "eva@casa.example", companyName: "Casa Eva", termsAccepted: true, termsVersion: "2026-10-21", idempotencyKey: key() } });
     const v = outbox.filter((m) => m.kind === "verification").at(-1)!;
     await call("POST", "/public/trial/verify", { body: { id: v.data.trialId, token: v.data.token } });
     const sent = outbox.length;
@@ -299,7 +299,7 @@ describe("correos de la prueba y del orquestador: solo por el puerto de avisos, 
     const logs: string[] = [];
     const spy = vi.spyOn(console, "log").mockImplementation((...a: unknown[]) => void logs.push(a.map(String).join(" ")));
     try {
-      const r = await call("POST", "/public/trial", { port: quietPort, body: { email: "sin@aviso.example", companyName: "Sin Aviso", idempotencyKey: key() } });
+      const r = await call("POST", "/public/trial", { port: quietPort, body: { email: "sin@aviso.example", companyName: "Sin Aviso", termsAccepted: true, termsVersion: "2026-10-21", idempotencyKey: key() } });
       expect(r.status).toBe(202);
     } finally {
       spy.mockRestore();
