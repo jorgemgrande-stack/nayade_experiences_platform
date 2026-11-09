@@ -371,7 +371,7 @@ export async function confirmExpenseTax(input: { expenseId: number; confirmed: b
   return run(async (db) => {
     await ready(db);
     if (!input.confirmed) {
-      await store.deleteTaxReview(db, input.expenseId);
+      await store.retractTaxReview(db, input.expenseId, userId);
       return { ok: true };
     }
     const [e] = await db

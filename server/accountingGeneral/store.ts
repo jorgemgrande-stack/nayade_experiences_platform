@@ -5,7 +5,7 @@
  */
 import { sql, type SQL } from "drizzle-orm";
 import type { EntryLine, PostedLine } from "../finance/types";
-import { ACC_DEFAULT_MAP, ACC_MAP_KEYS, ACC_PGC_SEED, type AccAccountMap, type AccAccountType, type AccJournal, type AccOrigin } from "../../shared/accountingGeneral";
+import { ACC_TAX_REVIEW_RETRACTED, ACC_DEFAULT_MAP, ACC_MAP_KEYS, ACC_PGC_SEED, type AccAccountMap, type AccAccountType, type AccJournal, type AccOrigin } from "../../shared/accountingGeneral";
 import type { AccAccount, AccDraft } from "./rules";
 
 export interface Exec {
@@ -156,8 +156,10 @@ export async function upsertTaxReview(exec: Exec, r: { expenseId: number; amount
     ON DUPLICATE KEY UPDATE amount_cents = VALUES(amount_cents), tax_rate_bp = VALUES(tax_rate_bp), tax_cents = VALUES(tax_cents),
       invoice_type = VALUES(invoice_type), confirmed_by = VALUES(confirmed_by), confirmed_at = CURRENT_TIMESTAMP(3)`);
 }
-export async function deleteTaxReview(exec: Exec, expenseId: number): Promise<void> {
-  await exec.execute(sql`DELETE FROM acc_expense_tax_reviews WHERE expense_id = ${expenseId}`);
+/** Retira la confirmación sin borrarla: queda anulada (ACC_TAX_REVIEW_RETRACTED) con quién la retiró y cuándo. */
+export async function retractTaxReview(exec: Exec, expenseId: number, userId: number | null): Promise<void> {
+  await exec.execute(sql`UPDATE acc_expense_tax_reviews SET invoice_type = ${ACC_TAX_REVIEW_RETRACTED}, confirmed_by = ${userId}, confirmed_at = CURRENT_TIMESTAMP(3)
+    WHERE expense_id = ${expenseId}`);
 }
 
 // ─── Estado contable de los documentos ────────────────────────────────────────
