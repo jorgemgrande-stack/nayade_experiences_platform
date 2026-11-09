@@ -17,34 +17,52 @@ interface Props {
   onClose: () => void;
 }
 
-const QUICK_REASONS_OUT = [
-  "Pago a proveedor",
-  "Cambio de caja",
-  "Gastos operativos",
-  "Devolución efectivo",
+type OutKind = "gasto" | "devolucion" | "traspaso";
+type InKind = "fondo" | "cobro";
+
+// Cada motivo rápido fija también su tipo (la contabilidad usa el tipo, no el texto)
+const QUICK_REASONS_OUT: Array<{ reason: string; kind: OutKind }> = [
+  { reason: "Pago a proveedor", kind: "gasto" },
+  { reason: "Cambio de caja", kind: "traspaso" },
+  { reason: "Gastos operativos", kind: "gasto" },
+  { reason: "Devolución efectivo", kind: "devolucion" },
 ];
-const QUICK_REASONS_IN = [
-  "Fondo adicional",
-  "Reposición caja",
-  "Cobro pendiente",
+const QUICK_REASONS_IN: Array<{ reason: string; kind: InKind }> = [
+  { reason: "Fondo adicional", kind: "fondo" },
+  { reason: "Reposición caja", kind: "fondo" },
+  { reason: "Cobro pendiente", kind: "cobro" },
+];
+
+const OUT_KINDS: Array<{ kind: OutKind; label: string; hint: string; active: string }> = [
+  { kind: "gasto", label: "Gasto", hint: "compra / proveedor", active: "bg-danger/10 border-danger text-danger" },
+  { kind: "devolucion", label: "Devolución", hint: "a un cliente, no es gasto", active: "bg-warning/10 border-warning text-warning" },
+  { kind: "traspaso", label: "Traspaso a Caja Central", hint: "no es gasto, se guarda", active: "bg-info/10 border-info text-info" },
+];
+const IN_KINDS: Array<{ kind: InKind; label: string; hint: string }> = [
+  { kind: "fondo", label: "Fondo de caja", hint: "desde la Caja Central" },
+  { kind: "cobro", label: "Cobro pendiente", hint: "de un cliente" },
 ];
 
 export default function TpvCashMovement({ open, type, sessionId, onClose }: Props) {
   const [amount, setAmount] = useState("");
   const [reason, setReason] = useState("");
-  // Solo para salidas: "gasto" (compra/proveedor) o "traspaso" (a Caja Central).
-  const [outKind, setOutKind] = useState<"gasto" | "traspaso">("gasto");
+  // Salidas: "gasto" (compra/proveedor), "devolucion" (a un cliente) o "traspaso" (a Caja Central). Sin valor por
+  // defecto: una devolución registrada como gasto inventaba un gasto en la contabilidad.
+  const [outKind, setOutKind] = useState<OutKind | null>(null);
+  const [inKind, setInKind] = useState<InKind>("fondo");
 
   const movMut = trpc.tpv.addCashMovement.useMutation({
     onSuccess: () => {
       toast.success(
         type === "in" ? "Entrada registrada"
           : outKind === "traspaso" ? "Traspaso a Caja Central registrado"
+          : outKind === "devolucion" ? "Devolución registrada"
           : "Salida registrada",
       );
       setAmount("");
       setReason("");
-      setOutKind("gasto");
+      setOutKind(null);
+      setInKind("fondo");
       onClose();
     },
     onError: (err) => toast.error(err.message),
@@ -85,37 +103,53 @@ export default function TpvCashMovement({ open, type, sessionId, onClose }: Prop
           {type === "out" && (
             <div className="space-y-1">
               <Label className="text-gray-300 text-sm">Tipo de salida</Label>
-              <div className="grid grid-cols-2 gap-2">
-                <button
-                  type="button"
-                  onClick={() => setOutKind("gasto")}
-                  className={`text-xs font-semibold px-2 py-2.5 rounded-lg border transition-colors ${
-                    outKind === "gasto"
-                      ? "bg-danger/10 border-danger text-danger"
-                      : "bg-gray-800 border-gray-700 text-gray-400 hover:text-white"
-                  }`}
-                >
-                  Gasto
-                  <span className="block text-[10px] font-normal opacity-70">compra / proveedor</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setOutKind("traspaso")}
-                  className={`text-xs font-semibold px-2 py-2.5 rounded-lg border transition-colors ${
-                    outKind === "traspaso"
-                      ? "bg-info/10 border-info text-info"
-                      : "bg-gray-800 border-gray-700 text-gray-400 hover:text-white"
-                  }`}
-                >
-                  Traspaso a Caja Central
-                  <span className="block text-[10px] font-normal opacity-70">no es gasto, se guarda</span>
-                </button>
+              <div className="grid grid-cols-3 gap-2">
+                {OUT_KINDS.map((k) => (
+                  <button
+                    key={k.kind}
+                    type="button"
+                    onClick={() => setOutKind(k.kind)}
+                    className={`text-xs font-semibold px-2 py-2.5 rounded-lg border transition-colors ${
+                      outKind === k.kind ? k.active : "bg-gray-800 border-gray-700 text-gray-400 hover:text-white"
+                    }`}
+                  >
+                    {k.label}
+                    <span className="block text-[10px] font-normal opacity-70">{k.hint}</span>
+                  </button>
+                ))}
               </div>
+              {outKind === null && <p className="text-[11px] text-gray-400 pt-1">Elige el tipo de salida.</p>}
+              {outKind === "devolucion" && (
+                <p className="text-[11px] text-warning pt-1">
+                  Devuelve efectivo a un cliente (venta anulada o devuelta). No cuenta como gasto.
+                </p>
+              )}
               {outKind === "traspaso" && (
                 <p className="text-[11px] text-info pt-1">
                   El efectivo sale del cajón pero se conserva en la Caja Central. No cuenta como gasto.
                 </p>
               )}
+            </div>
+          )}
+
+          {type === "in" && (
+            <div className="space-y-1">
+              <Label className="text-gray-300 text-sm">Tipo de entrada</Label>
+              <div className="grid grid-cols-2 gap-2">
+                {IN_KINDS.map((k) => (
+                  <button
+                    key={k.kind}
+                    type="button"
+                    onClick={() => setInKind(k.kind)}
+                    className={`text-xs font-semibold px-2 py-2.5 rounded-lg border transition-colors ${
+                      inKind === k.kind ? "bg-success/10 border-success text-success" : "bg-gray-800 border-gray-700 text-gray-400 hover:text-white"
+                    }`}
+                  >
+                    {k.label}
+                    <span className="block text-[10px] font-normal opacity-70">{k.hint}</span>
+                  </button>
+                ))}
+              </div>
             </div>
           )}
 
@@ -128,13 +162,17 @@ export default function TpvCashMovement({ open, type, sessionId, onClose }: Prop
               placeholder="Describe el motivo..."
             />
             <div className="flex flex-wrap gap-1 pt-1">
-              {quickReasons.map((r) => (
+              {quickReasons.map((q) => (
                 <button
-                  key={r}
-                  onClick={() => setReason(r)}
+                  key={q.reason}
+                  onClick={() => {
+                    setReason(q.reason);
+                    if (type === "out") setOutKind(q.kind as OutKind);
+                    else setInKind(q.kind as InKind);
+                  }}
                   className="text-xs bg-gray-800 hover:bg-gray-700 text-gray-300 px-2 py-1 rounded-full border border-gray-700 transition-colors"
                 >
-                  {r}
+                  {q.reason}
                 </button>
               ))}
             </div>
@@ -160,10 +198,10 @@ export default function TpvCashMovement({ open, type, sessionId, onClose }: Prop
                   type,
                   amount: parseFloat(amount) || 0,
                   reason: reason || (type === "out" && outKind === "traspaso" ? "Traspaso a Caja Central" : "Sin motivo"),
-                  outKind,
+                  ...(type === "out" ? { outKind: outKind ?? undefined } : { inKind }),
                 })
               }
-              disabled={movMut.isPending || !amount || parseFloat(amount) <= 0}
+              disabled={movMut.isPending || !amount || parseFloat(amount) <= 0 || (type === "out" && outKind === null)}
             >
               {movMut.isPending ? "Guardando..." : "Registrar"}
             </Button>

@@ -335,6 +335,7 @@ export async function saveSettings(input: { startDate: string; lockedUntil: stri
     for (const k of ACC_MAP_KEYS) checkPostable(accounts, input.map[k], `Cuenta «${k}»`);
     if (input.map.cash === input.map.cashBridge) throw new AccError("invalid_input", "La caja y el puente de caja deben ser cuentas distintas");
     if (input.map.cash === input.map.bank) throw new AccError("invalid_input", "La caja y el banco deben ser cuentas distintas");
+    if (input.map.cash === input.map.centralCash) throw new AccError("invalid_input", "La caja del TPV y la Caja Central deben ser cuentas distintas");
     await store.saveSettings(db, input, userId);
     return { ok: true };
   });

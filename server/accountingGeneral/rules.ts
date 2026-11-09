@@ -161,21 +161,22 @@ export function saleEntry(doc: SaleDoc, map: AccAccountMap): AccDraft | null {
 }
 
 /**
- * Ticket anulado o devuelto después de cobrarlo (no cuenta como venta). Su efectivo sí entró en el cajón y lo devuelto
- * sale con un movimiento manual de salida (`cash_movements`, que ya contabiliza Debe 555 · Haber 570; ver
- * server/tpvSessionTotals.ts). Para que esa salida no abone la caja por segunda vez, el cobro en efectivo queda en el
- * puente de caja: Debe 570 · Haber 555 (diario CAJ). Lo cobrado con tarjeta o Bizum se devuelve por el mismo medio y no
- * deja asiento. Null si no hubo cobro en efectivo.
+ * Ticket anulado o devuelto después de cobrarlo (no cuenta como venta: dailyControl.cancelOperation,
+ * cancellations.*). Anularlo no mueve dinero: su efectivo entró en el cajón y sigue ahí, así que la anulación no toca
+ * la caja. Lo cobrado en efectivo queda como saldo a favor del cliente: Debe 570 · Haber 430 (diario CAJ). Si después
+ * se le devuelve en efectivo (salida «devolucion» del TPV: Debe 430 · Haber 570), el 430 y la caja quedan como deben; si
+ * se compensa con un bono o se devuelve por transferencia, el saldo a favor del cliente queda en el 430 hasta que se
+ * aplique. Lo cobrado con tarjeta o Bizum se devuelve por el mismo medio y no deja asiento. Null sin cobro en efectivo.
  */
 export function voidTicketCashEntry(t: { number: string; date: string; cashCents: number }, map: AccAccountMap): AccDraft | null {
   if (t.cashCents === 0) return null;
-  const text = short(`Ticket ${t.number} anulado o devuelto: efectivo cobrado, pendiente de su salida de caja`, 300);
+  const text = short(`Ticket ${t.number} anulado o devuelto: efectivo cobrado, a favor del cliente`, 300);
   return {
     journal: "CAJ",
     date: t.date,
     description: text,
     origin: "ticket",
-    lines: [...signed(map.cash, t.cashCents, "debit", { description: text }), ...signed(map.cashBridge, t.cashCents, "credit", { description: text })],
+    lines: [...signed(map.cash, t.cashCents, "debit", { description: text }), ...signed(map.customers, t.cashCents, "credit", { description: text })],
   };
 }
 
@@ -299,10 +300,32 @@ export function cashCloseEntry(c: { sessionId: number; date: string; differenceC
   };
 }
 
-/** Entrada o salida manual de la caja del TPV (`cashEntry` de las corporativas) contra el puente de caja. */
-export function cashMoveEntry(m: { id: number; date: string; type: "in" | "out"; amountCents: number; reason: string }, map: AccAccountMap): AccDraft | null {
+/** Tipo de un movimiento manual de la caja del TPV (server/cashMovementKindsDb.ts); null si no consta. */
+export type CashMoveKind = "gasto" | "devolucion" | "traspaso" | "fondo" | "cobro";
+
+/** ¿El motivo es el de una devolución de efectivo? (la misma regla que server/cashMovementKindsDb.ts) */
+export const looksLikeRefund = (reason: string) => /devoluci[oó]n|reembols/i.test(reason);
+
+/**
+ * Contrapartida real de un movimiento manual de la caja del TPV:
+ *  - salida «gasto»: el puente de caja; la salda el pago de su gasto (`expenses.source = tpv`, Debe 555 al pagar);
+ *  - salida «devolucion»: clientes (devuelve el saldo a favor que dejó el ticket anulado o el abono);
+ *  - salida «traspaso» y entrada «fondo»: la Caja Central;
+ *  - entrada «cobro»: clientes (cobro pendiente).
+ * Sin tipo (movimientos anteriores o de otros módulos, como las fianzas del alquiler): una salida con motivo de
+ * devolución, contra clientes; lo demás, al puente de caja (pendiente de aplicar, visible en el 555).
+ */
+export function cashMoveCounterpart(m: { type: "in" | "out"; reason: string; kind?: CashMoveKind | null }, map: AccAccountMap): string {
+  const kind = m.kind ?? (m.type === "out" && looksLikeRefund(m.reason) ? "devolucion" : null);
+  if (kind === "devolucion" || kind === "cobro") return map.customers;
+  if (kind === "traspaso" || kind === "fondo") return map.centralCash;
+  return map.cashBridge;
+}
+
+/** Entrada o salida manual de la caja del TPV (`cashEntry` de las corporativas), contra su contrapartida real. */
+export function cashMoveEntry(m: { id: number; date: string; type: "in" | "out"; amountCents: number; reason: string; kind?: CashMoveKind | null }, map: AccAccountMap): AccDraft | null {
   if (m.amountCents === 0) return null;
-  const e = cashEntry({ amountCents: m.type === "in" ? Math.abs(m.amountCents) : -Math.abs(m.amountCents), movedOn: m.date, description: m.reason.trim() || `Movimiento de caja #${m.id}` }, map.cash, map.cashBridge, "");
+  const e = cashEntry({ amountCents: m.type === "in" ? Math.abs(m.amountCents) : -Math.abs(m.amountCents), movedOn: m.date, description: m.reason.trim() || `Movimiento de caja #${m.id}` }, map.cash, cashMoveCounterpart(m, map), "");
   return { journal: "CAJ", date: e.date, description: e.description, origin: "cash_move", lines: e.lines };
 }
 

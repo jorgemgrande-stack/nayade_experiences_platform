@@ -10,13 +10,13 @@
  * Cada documento se resuelve en lo que pide hoy (`Desired`) bajo su clave natural. Un grupo que no puede leerse se
  * omite entero (sus asientos no se tocan) y queda en el resumen.
  */
-import { and, eq, gte, inArray, isNotNull, or } from "drizzle-orm";
+import { and, eq, gte, inArray, isNotNull, or, sql, type SQL } from "drizzle-orm";
 import { bankMovementLinks, bankMovements, cashMovements, cashRegisters, cashSessions, expenseSuppliers, expenses, invoices, tpvSalePayments } from "../../drizzle/schema";
 import { listFiscalDocuments, madridDayRange } from "../fiscalDocumentsDb";
 import { madridDayKey } from "../../shared/gestoriaExportPeriod";
 import { madridMidnightMs } from "../utils/timezone";
 import { isAccDate, type AccAccountMap } from "../../shared/accountingGeneral";
-import { cashCloseEntry, categoryRole, desiredOf, cashMoveEntry, centsOf, collectionEntry, expenseEntry, expensePaymentEntry, saleEntry, type Desired, type ExpenseDoc, type ExpenseMethod, type SaleDoc, type TpvMethod, voidTicketCashEntry } from "./rules";
+import { cashCloseEntry, categoryRole, desiredOf, cashMoveEntry, centsOf, collectionEntry, expenseEntry, expensePaymentEntry, saleEntry, type Desired, type ExpenseDoc, type ExpenseMethod, type SaleDoc, type TpvMethod, type CashMoveKind, looksLikeRefund, voidTicketCashEntry } from "./rules";
 
 /** Grupos de documentos y el prefijo de su clave. */
 export const SOURCE_GROUPS = {
@@ -51,7 +51,8 @@ export interface SourceRead {
   review: Array<{ key: string; message: string }>;
 }
 
-type Db = { select: (...a: any[]) => any };
+type Db = { select: (...a: any[]) => any; execute: (q: SQL) => Promise<unknown> };
+const CASH_KINDS = new Set<string>(["gasto", "devolucion", "traspaso", "fondo", "cobro"]);
 const END = "2100-12-31";
 const text = (v: unknown) => (v == null ? "" : String(v));
 
@@ -164,6 +165,16 @@ async function readExpenses(db: Db, ctx: SourceContext, out: SourceRead) {
       out.desired.set(`pago:${r.id}`, { kind: "keep" });
       continue;
     }
+    // Retirada del TPV que en realidad es una devolución a un cliente (registrada como «gasto», la opción que el TPV
+    // traía por defecto): no es gasto. Su movimiento de caja ya la contabiliza contra clientes (cashMoveCounterpart).
+    if (r.source === "tpv" && looksLikeRefund(text(r.concept))) {
+      if (date >= ctx.startDate) {
+        out.desired.set(`gasto:${r.id}`, { kind: "none" });
+        out.desired.set(`pago:${r.id}`, { kind: "none" });
+        out.review.push({ key: `gasto:${r.id}`, message: `El gasto #${r.id} (${text(r.concept).slice(0, 80)}) es una devolución de efectivo registrada como gasto en el TPV: no se contabiliza como gasto. Bórralo en Gastos` });
+      }
+      continue;
+    }
     const doc = expenseDocOf(r, date, paidOn.get(Number(r.id)), ctx);
     const asRoles = (roles: boolean): ExpenseDoc => (roles ? { ...doc, expenseAccount: categoryRole(Number(r.categoryId)) } : doc);
     // Anterior al inicio de la contabilidad: el gasto va en el asiento de apertura (no se contabiliza solo), pero su
@@ -244,8 +255,14 @@ async function readCash(db: Db, ctx: SourceContext, out: SourceRead) {
     .select({ id: cashMovements.id, type: cashMovements.type, amount: cashMovements.amount, reason: cashMovements.reason, createdAt: cashMovements.createdAt })
     .from(cashMovements)
     .where(gte(cashMovements.createdAt, since));
+  // Tipo de cada movimiento (tpv.addCashMovement): su contrapartida real
+  const kinds = new Map<number, CashMoveKind>();
+  if ((moves as unknown[]).length) {
+    const [kr] = (await db.execute(sql`SELECT movement_id, kind FROM acc_cash_movement_kinds`)) as unknown as [Array<{ movement_id: number; kind: string }>];
+    for (const k of kr) if (CASH_KINDS.has(k.kind)) kinds.set(Number(k.movement_id), k.kind as CashMoveKind);
+  }
   for (const m of moves as Array<{ id: number; type: "in" | "out"; amount: string; reason: string; createdAt: number }>) {
-    const c = { id: m.id, date: madridDayKey(new Date(Number(m.createdAt))), type: m.type, amountCents: centsOf(m.amount), reason: m.reason ?? "" };
+    const c = { id: m.id, date: madridDayKey(new Date(Number(m.createdAt))), type: m.type, amountCents: centsOf(m.amount), reason: m.reason ?? "", kind: kinds.get(Number(m.id)) ?? null };
     out.desired.set(`cajamov:${m.id}`, desiredOf((map) => cashMoveEntry(c, map), ctx.map));
   }
 }

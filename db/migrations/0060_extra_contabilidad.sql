@@ -102,3 +102,14 @@ CREATE TABLE IF NOT EXISTS acc_sources (
   PRIMARY KEY (source_key),
   KEY idx_acc_sources_entry (entry_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- `acc_cash_movement_kinds`: tipo de cada movimiento manual de la caja del TPV (`cash_movements`, sin tocar esa
+--   tabla): salida «gasto», «devolucion» o «traspaso» (a la Caja Central) y entrada «fondo» (desde la Caja Central) o
+--   «cobro». Lo escribe tpv.addCashMovement (server/cashMovementKindsDb.ts) para que cada movimiento se contabilice una
+--   sola vez y contra su contrapartida real. Sin fila (movimientos anteriores o de otros módulos): puente de caja.
+CREATE TABLE IF NOT EXISTS acc_cash_movement_kinds (
+  movement_id  INT           NOT NULL,
+  kind         VARCHAR(16)   NOT NULL,
+  created_at   DATETIME(3)   NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+  PRIMARY KEY (movement_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;

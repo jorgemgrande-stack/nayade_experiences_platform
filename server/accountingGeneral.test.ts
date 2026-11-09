@@ -10,6 +10,7 @@ import {
   AccError,
   autoReversalDate,
   cashCloseEntry,
+  cashMoveCounterpart,
   cashMoveEntry,
   categoryRole,
   collectionEntry,
@@ -34,6 +35,7 @@ import {
   workbookXlsx,
   type AccAccount,
   type AccDraft,
+  type CashMoveKind,
   type Desired,
   type ExpenseDoc,
   type SaleDoc,
@@ -262,8 +264,36 @@ describe("caja del TPV", () => {
     expect(total("555")).toBe(0);
     expect(total("700")).toBe(0);
     expect(total("477")).toBe(0);
+    expect(total("430")).toBe(0);
     validateDraft(pending, accounts);
     expect(voidTicketCashEntry({ number: "T-5", date: "2026-03-03", cashCents: 0 }, map)).toBeNull(); // solo tarjeta: nada
+    // Anulado sin salida de efectivo (bono, sin devolución o devolución por transferencia): la caja no se toca y el 555
+    // queda a cero; el efectivo queda a favor del cliente en el 430
+    const kept = [sold, reversal, pending];
+    const keptTotal = (code: string) => kept.reduce((a, d) => a + side(d, code), 0);
+    expect(keptTotal("570")).toBe(12100);
+    expect(keptTotal("555")).toBe(0);
+    expect(keptTotal("430")).toBe(-12100);
+  });
+
+  it("cada movimiento manual de la caja, contra su contrapartida real (el 555 solo para el gasto del TPV, que lo salda)", () => {
+    const mv = (type: "in" | "out", kind: CashMoveKind | null, reason = "Motivo") => cashMoveEntry({ id: 1, date: "2026-03-03", type, amountCents: 5000, reason, kind }, map)!;
+    const other = (d: AccDraft) => d.lines.find((l) => l.accountCode !== "570")!;
+    expect(other(mv("out", "traspaso")).accountCode).toBe("5701"); // a la Caja Central
+    expect(side(mv("out", "traspaso"), "5701")).toBe(5000);
+    expect(other(mv("in", "fondo")).accountCode).toBe("5701"); // fondo desde la Caja Central
+    expect(side(mv("in", "fondo"), "570")).toBe(5000);
+    expect(other(mv("out", "devolucion")).accountCode).toBe("430");
+    expect(other(mv("in", "cobro")).accountCode).toBe("430");
+    expect(other(mv("out", "gasto")).accountCode).toBe("555");
+    // Sin tipo: una devolución por su motivo, contra clientes; lo demás, al puente (pendiente de aplicar)
+    expect(other(mv("out", null, "Devolución efectivo")).accountCode).toBe("430");
+    expect(other(mv("out", null, "Ingreso en banco")).accountCode).toBe("555");
+    expect(cashMoveCounterpart({ type: "out", reason: "Reembolso cliente", kind: null }, map)).toBe("430");
+    for (const d of [mv("out", "traspaso"), mv("in", "fondo"), mv("out", "devolucion"), mv("in", "cobro")]) validateDraft(d, accounts);
+    // Traspaso y vuelta del fondo: la caja y la Caja Central quedan como estaban, y nada pasa por el 555
+    const pair = [mv("out", "traspaso"), mv("in", "fondo")];
+    expect(pair.reduce((a, d) => a + side(d, "570") + side(d, "5701") + side(d, "555"), 0)).toBe(0);
   });
 });
 
