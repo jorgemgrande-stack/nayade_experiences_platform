@@ -27,7 +27,8 @@ export interface VisibilityInput {
  */
 export function integrationVisible(p: ProviderDef, configured: boolean, v: VisibilityInput): boolean {
   if (configured) return true;
-  if (p.panel.legacy) return false;
+  // Heredada con capacidad (Meta con Elephant Ads Manager): solo para las empresas que la tienen contratada
+  if (p.panel.legacy) return !!(v.licensed && p.panel.requires?.some((c) => v.can(c)));
   if (!v.licensed || !p.panel.requires?.length) return true;
   return p.panel.requires.some((c) => v.can(c));
 }
