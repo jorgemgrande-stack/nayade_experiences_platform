@@ -524,3 +524,38 @@ describe("dirección del webhook: solo el dominio de la empresa", () => {
     }
   });
 });
+
+describe("conectar: nada se escribe en Vapi con datos que no cuadran", () => {
+  it("si Vapi devuelve otro identificador (o uno inválido), BAD_GATEWAY sin ningún PATCH", async () => {
+    const t = makeDeps();
+    await saveVoiceKey(t.deps, KEY, admin);
+    t.vapi.state.assistants.get(A2).id = "../../otro";
+    const e = await errOf(connectVoice(t.deps, { assistantId: A2, phoneNumberId: P2, replaceExisting: true }, admin));
+    expect(e.code).toBe("BAD_GATEWAY");
+    t.vapi.state.assistants.get(A2).id = A1;
+    expect((await errOf(connectVoice(t.deps, { assistantId: A2, phoneNumberId: P2, replaceExisting: true }, admin))).code).toBe("BAD_GATEWAY");
+    expect(t.vapi.state.calls.filter((c) => c.method === "PATCH")).toHaveLength(0);
+  });
+
+  it("si falla el guardado final de la elección, BAD_GATEWAY con un mensaje claro", async () => {
+    const t = makeDeps();
+    await saveVoiceKey(t.deps, KEY, admin);
+    await t.vault.save("vapi", { webhookSecret: "clave-de-verificacion-ya-guardada-" + run }, "u");
+    const real = t.deps.vault;
+    t.deps.vault = () => {
+      const v = real();
+      return {
+        status: (ids?: string[]) => v.status(ids),
+        resolve: (p: string) => v.resolve(p),
+        save: async (p: string, values: Record<string, string>, by: string) => {
+          if ("setupAssistantId" in values) throw new Error("BD caída");
+          return v.save(p, values, by);
+        },
+      };
+    };
+    const e = await errOf(connectVoice(t.deps, { assistantId: A2, phoneNumberId: P2, replaceExisting: true }, admin));
+    expect(e.code).toBe("BAD_GATEWAY");
+    expect(e.message).toContain("Conectar con Vapi");
+    expect(e.message).not.toContain("BD caída");
+  });
+});

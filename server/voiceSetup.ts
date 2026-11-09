@@ -346,6 +346,21 @@ export async function connectVoice(deps: VoiceSetupDeps, input: ConnectInput, ac
   const assistant = assistantOption(a.json, webhookUrl);
   const phone = phoneOption(p.json);
   if (!assistant || !phone) throw new VoiceSetupError("BAD_GATEWAY", "Vapi ha devuelto una respuesta inesperada.");
+  // Antes de escribir nada en Vapi: lo que devolvió es lo pedido y lo que se guardará pasa la validación de la bóveda
+  // (así el guardado final no puede fallar por formato con Vapi ya cambiado)
+  if (!idRe.test(assistant.id) || !idRe.test(phone.id) || assistant.id !== input.assistantId || phone.id !== input.phoneNumberId) {
+    throw new VoiceSetupError("BAD_GATEWAY", "Vapi ha devuelto un asistente o un número que no corresponde: no se ha cambiado nada.");
+  }
+  const selection = {
+    setupAssistantId: assistant.id,
+    setupAssistantName: assistant.name,
+    setupPhoneNumberId: phone.id,
+    setupPhoneNumber: phone.number ?? phone.name ?? phone.id,
+    setupConnectedAt: deps.now().toISOString(),
+  };
+  if (fieldProblems(getProvider(VAPI_PROVIDER)!, selection).length) {
+    throw new VoiceSetupError("BAD_GATEWAY", "Vapi ha devuelto un nombre o un número que no se puede guardar: no se ha cambiado nada.");
+  }
 
   if (!input.replaceExisting) {
     const conflicts: string[] = [];
@@ -376,17 +391,11 @@ export async function connectVoice(deps: VoiceSetupDeps, input: ConnectInput, ac
     if (pp.status >= 400) throw new VoiceSetupError("BAD_GATEWAY", `El asistente ya está conectado, pero Vapi no ha aceptado asignarle el número (HTTP ${pp.status}). Asígnalo en dashboard.vapi.ai › Phone Numbers o inténtalo de nuevo.`);
   }
 
-  await deps.vault().save(
-    VAPI_PROVIDER,
-    {
-      setupAssistantId: assistant.id,
-      setupAssistantName: assistant.name,
-      setupPhoneNumberId: phone.id,
-      setupPhoneNumber: phone.number ?? phone.name ?? phone.id,
-      setupConnectedAt: deps.now().toISOString(),
-    },
-    actorOf(actor.id),
-  );
+  try {
+    await deps.vault().save(VAPI_PROVIDER, selection, actorOf(actor.id));
+  } catch {
+    throw new VoiceSetupError("BAD_GATEWAY", "Vapi ya está configurado, pero no se ha podido guardar la elección en tu panel. Pulsa «Conectar con Vapi» de nuevo.");
+  }
   await deps.recordCheck("connected", "Llamadas conectadas: asistente y número configurados en Vapi", actorOf(actor.id)).catch(() => undefined);
   console.warn(JSON.stringify({ ctx: "VoiceSetup", event: "connected", secretGenerated, user: actor.id }));
   return { assistantName: assistant.name, phoneNumber: phone.number, secretGenerated, webhookUrl };
