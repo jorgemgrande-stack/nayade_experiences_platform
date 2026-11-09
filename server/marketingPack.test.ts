@@ -148,6 +148,8 @@ describe("resumen del Paquete Marketing (lógica pura)", () => {
     expect(s).toMatchObject({ included: 4, ready: 0, complete: true });
     expect(s.modules.map((m) => m.state)).toEqual(["to_start", "to_start", "to_start", "to_start"]);
     expect(mod(s, "ads").nextStep!.href).toBe("/admin/marketing/ads?tab=importar");
+    // Texto y enlace coherentes: la pestaña «Importar» tiene el CSV y el acceso a conectar las cuentas
+    expect(mod(s, "ads").nextStep!.label).toMatch(/CSV.*«Importar»/);
     expect(mod(s, "campaigns").nextStep!.href).toBe("/admin/configuracion/integraciones");
     expect(mod(s, "seo").nextStep!.href).toBe("/admin/configuracion/integraciones");
     expect(mod(s, "geo").nextStep!.href).toBe("/admin/marketing/geo?tab=ajustes");
@@ -169,6 +171,9 @@ describe("resumen del Paquete Marketing (lógica pura)", () => {
     s = marketingPackSummary(all({ ads: { licence: "active", facts: { ...ads0, metaConnected: true, campaigns: 2, spendCents: 50_000, sales: 4, roas: 3.25 } } }), TODAY);
     expect(mod(s, "ads").figures.map((f) => f.value.replace(/\s/g, " "))).toEqual(["500 €", "4", "3,3×"]);
     expect(mod(s, "ads").nextStep!.href).toBe("/admin/marketing/ads");
+    // Varias monedas: ni importe ni ROAS sumados en una sola
+    s = marketingPackSummary(all({ ads: { licence: "active", facts: { ...ads0, metaConnected: true, campaigns: 2, spendCents: 50_000, sales: 4, roas: 3.25, mixedCurrencies: true } } }), TODAY);
+    expect(mod(s, "ads").figures.map((f) => f.value)).toEqual(["Varias monedas", "4", "Varias monedas"]);
     s = marketingPackSummary(all({ ads: { licence: "active", facts: { ...ads0, googleConnected: true } } }), TODAY);
     expect(mod(s, "ads").state).toBe("in_progress");
   });
@@ -181,6 +186,10 @@ describe("resumen del Paquete Marketing (lógica pura)", () => {
     expect(mod(s, "campaigns").checks[1].label).toBe("Lista de Brevo elegida: Clientes");
     s = marketingPackSummary(all({ campaigns: { licence: "active", facts: { ...camp0, brevoConnected: true, listName: "Clientes", consentsGranted: 12000, campaignsSent: 3, lastOpenRate: 0.4234 } } }), TODAY);
     expect(mod(s, "campaigns").figures.map((f) => f.value)).toEqual(["12.000", "3", "42 %"]);
+    expect(mod(s, "campaigns").figures[1].label).toBe("Campañas enviadas");
+    // Recuento sobre el listado con tope: se rotula como tal
+    s = marketingPackSummary(all({ campaigns: { licence: "active", facts: { ...camp0, brevoConnected: true, listName: "Clientes", campaignsSent: 97, campaignsCapped: 100 } } }), TODAY);
+    expect(mod(s, "campaigns").figures[1]).toEqual({ label: "Campañas enviadas (de las últimas 100)", value: "97" });
   });
 
   it("SEO Control: Search Console y palabras clave; después importación y auditoría", () => {
@@ -213,6 +222,8 @@ describe("resumen del Paquete Marketing (lógica pura)", () => {
     const s = marketingPackSummary(all({ geo: { licence: "read_only", facts: geo0 }, seo: { licence: "active", error: "SEO Control aún no está preparado en tu empresa" } }), TODAY);
     expect(mod(s, "geo")).toMatchObject({ readOnly: true });
     expect(mod(s, "geo").message).toMatch(/solo lectura/);
+    // En solo lectura no se propone configurar nada: solo consultar la pantalla del módulo
+    expect(mod(s, "geo").nextStep).toEqual({ label: "Consulta los datos de GEO Control", href: "/admin/marketing/geo" });
     expect(mod(s, "seo")).toMatchObject({ state: "unavailable", message: "SEO Control aún no está preparado en tu empresa", nextStep: { href: "/admin/marketing/seo" } });
   });
 });
@@ -275,6 +286,29 @@ describe("agregador del resumen (dependencias de prueba)", () => {
     expect(mod(s, "seo").message).toMatch(/0054_connect_seo_control/);
     expect(JSON.stringify(s)).not.toMatch(/supersecreto|ECONNREFUSED|10\.0\.0\.5/);
     expect(mod(s, "geo").state).toBe("to_start");
+  });
+
+  it("un fallo al comprobar una licencia no es «no contratado»: ese bloque queda no disponible", async () => {
+    const read: string[] = [];
+    const d = deps({ "geo-control": "active" }, {}, read);
+    const s = await getMarketingPackSummary({
+      ...d,
+      licence: async (c) => {
+        if (c === "seo-control") throw new Error("registro caído");
+        return c === "geo-control" ? "active" : null;
+      },
+    });
+    expect(mod(s, "seo")).toMatchObject({ state: "unavailable", nextStep: null });
+    expect(mod(s, "seo").message).toMatch(/No se ha podido comprobar la licencia de SEO Control/);
+    expect(mod(s, "ads").state).toBe("not_included");
+    expect(read).toEqual(["geo"]);
+  });
+
+  it("si no se puede comprobar ninguna licencia: error interno, no 403", async () => {
+    const d = deps({});
+    await expect(getMarketingPackSummary({ ...d, licence: async () => Promise.reject(new Error("caído")) })).rejects.toMatchObject({ code: "INTERNAL_SERVER_ERROR" });
+    // Sin ninguna concedida y alguna sin comprobar: tampoco se afirma «no incluido»
+    await expect(getMarketingPackSummary({ ...d, licence: async (c) => (c === "ads-manager" ? Promise.reject(new Error("caído")) : null) })).rejects.toMatchObject({ code: "INTERNAL_SERVER_ERROR" });
   });
 
   it("la respuesta no lleva campos de credenciales", async () => {

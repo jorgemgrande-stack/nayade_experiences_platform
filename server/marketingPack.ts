@@ -43,14 +43,20 @@ function safeMessage(e: unknown, name: string): string {
 }
 
 export async function getMarketingPackSummary(deps: MarketingPackDeps): Promise<MarketingPackSummary> {
-  const licences = await Promise.all(MARKETING_PACK_MODULES.map((m) => deps.licence(m.capability).catch((): ModuleLicence => null)));
-  if (licences.every((l) => l === null)) {
+  // Un fallo al comprobar una licencia NO es «no contratado»: ese bloque queda «No disponible ahora»
+  const licences = await Promise.all(MARKETING_PACK_MODULES.map((m) => deps.licence(m.capability).catch((): "unknown" => "unknown")));
+  if (!licences.some((l) => l === "active" || l === "read_only")) {
+    if (licences.some((l) => l === "unknown")) {
+      console.warn(JSON.stringify({ ctx: "MarketingPack", event: "licence_check_failed", failed: licences.filter((l) => l === "unknown").length }));
+      throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "No se ha podido comprobar tu licencia ahora mismo. Inténtalo de nuevo en unos minutos." });
+    }
     throw new TRPCError({ code: "FORBIDDEN", message: "Ningún módulo del Paquete Marketing está incluido en tu plan." });
   }
   const entries = await Promise.all(
     MARKETING_PACK_MODULES.map(async (m, i): Promise<[MarketingModuleId, ModuleInput<unknown>]> => {
       const licence = licences[i];
       if (licence === null) return [m.id, { licence: null }];
+      if (licence === "unknown") return [m.id, { licence, error: `No se ha podido comprobar la licencia de ${m.name} ahora mismo. Inténtalo de nuevo en unos minutos.` }];
       try {
         return [m.id, { licence, facts: await deps.facts[m.id]() }];
       } catch (e) {
@@ -65,6 +71,9 @@ export async function getMarketingPackSummary(deps: MarketingPackDeps): Promise<
 
 // ─── Lecturas de cada módulo con sus servicios existentes ────────────────────────────────────────────────────────────
 
+/** Tope del listado de campañas de correo (CampaignService.list). */
+export const CAMPAIGN_LIST_LIMIT = 100;
+
 export async function readAdsFacts(): Promise<AdsFacts> {
   const { adsManagerService } = await import("./adsManager/runtime");
   const svc = adsManagerService();
@@ -78,6 +87,8 @@ export async function readAdsFacts(): Promise<AdsFacts> {
     sales: dash.totals.sales,
     roas: dash.totals.kpis.roas,
     currency: dash.currencies.length === 1 ? dash.currencies[0]! : "EUR",
+    // Con varias monedas no se suman importes en una sola
+    mixedCurrencies: dash.currencies.length > 1,
   };
 }
 
@@ -93,6 +104,8 @@ export async function readCampaignsFacts(): Promise<CampaignsFacts> {
     consentsGranted: status.consents.granted,
     lastSync: status.lastRun ? { status: status.lastRun.status, finishedAt: status.lastRun.finishedAt } : null,
     campaignsSent: sent.length,
+    // campaignService().list() devuelve las últimas CAMPAIGN_LIST_LIMIT: el recuento se rotula como tal
+    campaignsCapped: list.length >= CAMPAIGN_LIST_LIMIT ? CAMPAIGN_LIST_LIMIT : null,
     lastOpenRate: last?.stats ? Math.min(1, last.stats.opens / last.stats.delivered) : null,
   };
 }

@@ -43,6 +43,8 @@ export interface AdsFacts {
   sales: number | null;
   roas: number | null;
   currency: string;
+  /** Campañas con datos en más de una moneda: no se suman en un importe. */
+  mixedCurrencies?: boolean;
 }
 
 export interface CampaignsFacts {
@@ -52,6 +54,8 @@ export interface CampaignsFacts {
   consentsGranted: number;
   lastSync: { status: string; finishedAt: string | null } | null;
   campaignsSent: number;
+  /** El recuento sale de las últimas campañas (el listado tiene tope): puede haber más. */
+  campaignsCapped?: number | null;
   /** Última campaña enviada con estadísticas: aperturas sobre entregados (0–1). */
   lastOpenRate: number | null;
 }
@@ -86,7 +90,8 @@ export interface FactsById {
 /** Estado de la licencia de un módulo para esta empresa. */
 export type ModuleLicence = "active" | "read_only" | null;
 
-export type ModuleInput<F> = { licence: null } | { licence: "active" | "read_only"; facts: F } | { licence: "active" | "read_only"; error: string };
+/** `unknown`: no se pudo comprobar la licencia (no es «no contratado»). */
+export type ModuleInput<F> = { licence: null } | { licence: "active" | "read_only"; facts: F } | { licence: "active" | "read_only" | "unknown"; error: string };
 
 export type MarketingPackInput = { [K in MarketingModuleId]: ModuleInput<FactsById[K]> };
 
@@ -155,6 +160,7 @@ function daysBetween(from: string, to: string): number {
   return Math.round((Date.parse(`${to}T00:00:00Z`) - Date.parse(`${from}T00:00:00Z`)) / 86_400_000);
 }
 const NO_DATA = "Sin datos";
+const MIXED = "Varias monedas";
 
 // ── Reglas por módulo ─────────────────────────────────────────────────────────────────────────────────────────────────
 
@@ -174,7 +180,7 @@ function adsBody(f: AdsFacts, href: string): ModuleBody {
     { label: "Ventas relacionadas con tus campañas (etiquetas UTM o informe de transacciones)", done: f.sales != null },
   ];
   const nextStep = !source
-    ? { label: "Conecta Meta Ads o Google Ads en Integraciones, o importa su informe CSV", href: `${href}?tab=importar` }
+    ? { label: "Importa el informe CSV de Meta Ads o Google Ads, o conecta tus cuentas desde «Importar»", href: `${href}?tab=importar` }
     : f.campaigns === 0
       ? { label: "Importa los datos de tus campañas", href: `${href}?tab=importar` }
       : f.sales == null
@@ -185,9 +191,9 @@ function adsBody(f: AdsFacts, href: string): ModuleBody {
     nextStep,
     ready: source && f.campaigns > 0,
     figures: [
-      { label: "Inversión (30 días)", value: f.campaigns > 0 ? money(f.spendCents, f.currency) : NO_DATA },
+      { label: "Inversión (30 días)", value: f.campaigns === 0 ? NO_DATA : f.mixedCurrencies ? MIXED : money(f.spendCents, f.currency) },
       { label: "Ventas atribuidas (30 días)", value: f.sales == null ? NO_DATA : intFmt.format(f.sales) },
-      { label: "ROAS (30 días)", value: f.roas == null ? NO_DATA : `${dec1(f.roas)}×` },
+      { label: "ROAS (30 días)", value: f.roas == null ? NO_DATA : f.mixedCurrencies ? MIXED : `${dec1(f.roas)}×` },
     ],
   };
 }
@@ -215,7 +221,7 @@ function campaignsBody(f: CampaignsFacts, href: string): ModuleBody {
     ready: f.brevoConnected && list,
     figures: [
       { label: "Clientes con consentimiento", value: intFmt.format(f.consentsGranted) },
-      { label: "Campañas enviadas", value: intFmt.format(f.campaignsSent) },
+      { label: f.campaignsCapped ? `Campañas enviadas (de las últimas ${f.campaignsCapped})` : "Campañas enviadas", value: intFmt.format(f.campaignsSent) },
       { label: "Apertura de la última campaña", value: f.lastOpenRate == null ? NO_DATA : pct(f.lastOpenRate) },
     ],
   };
@@ -300,6 +306,9 @@ export function marketingPackSummary(input: MarketingPackInput, today: string): 
       return { ...base, state: "not_included", stateLabel: MODULE_STATE_LABEL.not_included, readOnly: false, checks: [], figures: [], nextStep: { label: `Añade ${m.name} o el Paquete Marketing`, href: UPGRADE_HREF }, message: null };
     }
     const readOnly = inp.licence === "read_only";
+    if (inp.licence === "unknown") {
+      return { ...base, state: "unavailable", stateLabel: MODULE_STATE_LABEL.unavailable, readOnly: false, checks: [], figures: [], nextStep: null, message: "error" in inp ? inp.error : null };
+    }
     const roMessage = readOnly ? "Tu licencia está en solo lectura: puedes consultar los datos, pero no cambiar la configuración." : null;
     if ("error" in inp) {
       return { ...base, state: "unavailable", stateLabel: MODULE_STATE_LABEL.unavailable, readOnly, checks: [], figures: [], nextStep: { label: `Abrir ${m.name}`, href: m.href }, message: inp.error };
@@ -307,7 +316,9 @@ export function marketingPackSummary(input: MarketingPackInput, today: string): 
     const b = bodyOf(m.id, inp.facts, m.href, today);
     const required = b.checks.filter((c) => !c.optional);
     const state: MarketingModuleState = b.ready ? "ready" : required.some((c) => c.done) ? "in_progress" : "to_start";
-    return { ...base, state, stateLabel: MODULE_STATE_LABEL[state], readOnly, checks: b.checks, figures: b.figures, nextStep: b.nextStep, message: roMessage };
+    // En solo lectura no se propone configurar nada: solo consultar
+    const nextStep = readOnly ? { label: `Consulta los datos de ${m.name}`, href: m.href } : b.nextStep;
+    return { ...base, state, stateLabel: MODULE_STATE_LABEL[state], readOnly, checks: b.checks, figures: b.figures, nextStep, message: roMessage };
   });
   const included = modules.filter((m) => m.state !== "not_included").length;
   return { modules, included, ready: modules.filter((m) => m.state === "ready").length, complete: included === MARKETING_PACK_MODULES.length };
