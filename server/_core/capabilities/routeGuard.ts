@@ -100,6 +100,8 @@ export const TRPC_ROUTER_CAPABILITIES: Record<string, string> = {
   brevoMarketing: "email-campaigns",
   // Elephant Connect · GEO Control: visibilidad de la marca en los motores de IA generativa (los procedimientos la comprueban también)
   geoControl: "geo-control",
+  // Elephant Connect · SEO Control: palabras clave, posiciones, auditoría on-page y reseñas (los procedimientos la comprueban también)
+  seoControl: "seo-control",
   // Correo transaccional con el Postmark propio de la empresa (notificaciones por email, incluidas en Essential)
   postmarkTenant: "comms-email",
   // Elephant Net
