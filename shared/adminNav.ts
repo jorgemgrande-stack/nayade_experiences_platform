@@ -388,6 +388,8 @@ export const TASK_NAV: NavSection[] = [
     id: "contratados",
     label: "Módulos contratados",
     items: [
+      // Elephant Copilot avanzado: preguntas sobre los datos de la empresa y redacción asistida (cada herramienta exige además su permiso)
+      { label: "Copilot", href: "/admin/copilot", key: "x-copilot", icon: "sparkles", roles: SALES, capabilities: ["copilot-advanced"] },
       { label: "Impuestos y gestoría", href: "/admin/gestoria", key: "x-gestoria", icon: "receipt", roles: ADMIN, capabilities: ["tax-filings"] },
       {
         label: "Bancos y TPV", href: "/admin/contabilidad/movimientos-bancarios", key: "x-bancos", icon: "creditCard", roles: ADMIN, capabilities: ["bank-import-pos"],
@@ -410,6 +412,7 @@ export const TASK_NAV: NavSection[] = [
       },
       { label: "Recepcionista IA", href: "/admin/atencion-comercial/recepcionista", key: "x-recepcion", icon: "bot", roles: SALES, capabilities: ["reception-ai"] },
       { label: "Cupones y plataformas", href: "/admin/marketing/cupones", key: "x-cupones", icon: "tag", roles: ADMIN, capabilities: ["deals-coupons"] },
+      { label: "Venta multicanal", href: "/admin/multicanal", key: "x-multicanal", icon: "globe", roles: ADMIN, capabilities: ["multichannel"] },
       { label: "Campañas de correo", href: "/admin/marketing/campanas", key: "x-campanas", icon: "mail", roles: ADMIN, capabilities: ["email-campaigns"] },
       { label: "Email marketing (Brevo)", href: "/admin/marketing/brevo", key: "x-brevo", icon: "mail", roles: ADMIN, capabilities: ["email-campaigns"] },
       { label: "Visibilidad en IA (GEO)", href: "/admin/marketing/geo", key: "x-geo", icon: "sparkles", roles: ADMIN, capabilities: ["geo-control"] },

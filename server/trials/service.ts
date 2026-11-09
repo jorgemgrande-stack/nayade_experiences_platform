@@ -18,6 +18,8 @@ import crypto from "node:crypto";
 import { TERMINAL, nextState, type TrialAction, type TrialState } from "./machine";
 import { TrialConflict, type TrialHolder, type TrialPatch, type TrialRequest, type TrialStore } from "./store";
 import { canonicalMailbox, mailboxOf } from "./mailbox";
+import { TRIAL_MILESTONES, type TrialMilestone } from "./store";
+import { TrialProfileError, normalizeAttribution, normalizeProfile, type TrialAttributionInput, type TrialProfileInput } from "./profile";
 
 export { canonicalMailbox, mailboxOf };
 
@@ -146,7 +148,7 @@ export class TrialService {
    * de verificación EN CLARO solo al crearla (para que el remitente lo envíe por correo) y nunca lo
    * guarda.
    */
-  async register(input: { email: string; companyName: string; configuration: { plan: string | null; addons: string[]; holder?: TrialHolder }; idempotencyKey: string; ip?: string | null }) {
+  async register(input: { email: string; companyName: string; configuration: { plan: string | null; addons: string[]; holder?: TrialHolder }; profile?: TrialProfileInput | null; attribution?: TrialAttributionInput | null; idempotencyKey: string; ip?: string | null }) {
     const email = input.email.trim().toLowerCase();
     const m = EMAIL_RE.exec(email);
     if (!m || email.length > 254) throw new TrialError("invalid_input", "Correo no válido");
@@ -163,6 +165,16 @@ export class TrialService {
     if (holder && (!holder.firstName || holder.firstName.length > 80 || !holder.lastName || holder.lastName.length > 120 || (holder.taxId && !/^[A-Z0-9]{8,12}$/.test(holder.taxId)))) {
       throw new TrialError("invalid_input", "Indica nombre y apellidos del titular (el NIF es opcional)");
     }
+
+    // Responsable de la prueba y procedencia (formulario de la web): validados aquí, guardados en la configuración
+    let profile: ReturnType<typeof normalizeProfile> | null = null;
+    try {
+      profile = input.profile ? normalizeProfile(input.profile, this.now()) : null;
+    } catch (e) {
+      if (e instanceof TrialProfileError) throw new TrialError("invalid_input", e.message);
+      throw e;
+    }
+    const attribution = normalizeAttribution(input.attribution);
 
     const domain = m[1];
     if (this.blocked.has(domain)) throw new TrialError("invalid_input", "Usa una dirección de correo permanente (de tu empresa o personal)");
@@ -187,7 +199,7 @@ export class TrialService {
           email,
           emailDomain: domain,
           companyName: company,
-          configuration: { plan: input.configuration.plan, addons, ...(holder ? { holder } : {}) },
+          configuration: { plan: input.configuration.plan, addons, ...(holder ? { holder } : {}), ...(profile ? { profile } : {}), ...(attribution ? { attribution } : {}) },
           state: "pending_verification",
           verificationTokenHash: sha256(token),
           verificationExpiresAt: now + this.limits.verificationTtlMs,
@@ -308,6 +320,22 @@ export class TrialService {
     return (await this.d.store.events(id)).some((e) => e.action === "notice_queued" && e.detail === key);
   }
   /** Deja constancia de un aviso encolado (sin cambiar estado ni versión). */
+  /**
+   * Hito de activación que comunica el panel de la empresa (primer acceso, primera acción útil). Una sola vez por
+   * prueba y solo mientras la prueba tiene plataforma; `detail` es una clave corta (p. ej. «client»), nunca datos
+   * personales. Devuelve si se ha anotado ahora.
+   */
+  async recordMilestone(tenantId: string, milestone: TrialMilestone, detail: string | null, actor: string): Promise<{ recorded: boolean; trialId: number | null }> {
+    if (!(TRIAL_MILESTONES as readonly string[]).includes(milestone)) throw new TrialError("invalid_input", "Hito no válido");
+    const t = await this.d.store.byTenant(tenantId);
+    if (!t || !["active", "expired", "suspended", "converted"].includes(t.state)) return { recorded: false, trialId: t?.id ?? null };
+    const already = (await this.d.store.events(t.id)).some((e) => e.action === milestone);
+    const clean = detail && /^[a-z0-9_-]{1,40}$/.test(detail) ? detail : milestone;
+    // También si ya estaba: el almacén no lo duplica y reintenta su evento comercial (por si aquel falló)
+    await this.d.store.note(t.id, { action: milestone, detail: clean, actor, at: this.now() });
+    return { recorded: !already, trialId: t.id };
+  }
+
   async recordNotice(id: number, key: string, actor: string) {
     await this.d.store.note(id, { action: "notice_queued", detail: key, actor, at: this.now() });
   }

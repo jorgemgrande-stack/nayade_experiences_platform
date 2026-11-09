@@ -29,6 +29,9 @@ export const COMMERCIAL_EVENT_TYPES = [
   "trial.converted",
   "trial.rejected",
   "trial.cancelled",
+  // Hitos de activación del panel: primer acceso del propietario y primera acción útil
+  "trial.first_access",
+  "trial.first_action",
   // Pedido (contratación, impago, cancelación)
   "order.created",
   "order.quoted",
