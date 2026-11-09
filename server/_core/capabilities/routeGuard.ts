@@ -90,6 +90,8 @@ export const TRPC_ROUTER_CAPABILITIES: Record<string, string> = {
   cardTerminalOperations: "bank-import-pos",
   cardTerminalBatches: "bank-import-pos",
   vapiCalls: "voice-ai",
+  // Elephant Voice · puesta en marcha del asistente de Vapi (los procedimientos la comprueban también)
+  voiceSetup: "voice-ai",
   ghlInbox: "whatsapp-ai",
   ticketing: "deals-coupons",
   suppliers: "supplier-settlements",
