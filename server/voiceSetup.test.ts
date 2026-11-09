@@ -506,3 +506,21 @@ describe("de dónde salen las claves de Vapi (desconectar debe dejar el webhook 
     expect(configuredVapiApiKey({ multi: false, vault: undefined, legacy: "db" })).toBe("db");
   });
 });
+
+describe("dirección del webhook: solo el dominio de la empresa", () => {
+  it("con dominio público https, su /api/vapi/webhook; sin él, vacía (y conectar no sigue)", async () => {
+    const { voiceWebhookUrl } = await import("./voiceSetup");
+    expect(voiceWebhookUrl("https://acme.elephantsource.es")).toBe(WEBHOOK);
+    expect(voiceWebhookUrl("https://acme.elephantsource.es/")).toBe(WEBHOOK);
+    for (const bad of [null, undefined, "", "http://acme.example", "https://acme.example/otra/ruta"]) expect(voiceWebhookUrl(bad)).toBe("");
+    // La dirección de la plataforma (APP_URL) no interviene: la función solo recibe el dominio de la empresa
+    const prev = process.env.APP_URL;
+    process.env.APP_URL = "https://plataforma.example";
+    try {
+      expect(voiceWebhookUrl(null)).toBe("");
+    } finally {
+      if (prev === undefined) delete process.env.APP_URL;
+      else process.env.APP_URL = prev;
+    }
+  });
+});

@@ -29,6 +29,7 @@ import type { TestResult } from "./_core/credentials/testers";
 import { MIN_WEBHOOK_SECRET_LENGTH, usableWebhookSecret } from "./_core/webhookSecret";
 import {
   VOICE_SERVER_MESSAGES,
+  VOICE_WEBHOOK_PATH,
   voiceSetup,
   type VoiceAssistantOption,
   type VoicePhoneOption,
@@ -104,6 +105,15 @@ export interface VoiceSetupView extends VoiceSetup {
   connectedAt: string | null;
   lastEventAt: string | null;
   lastCall: VoiceSetupFacts["lastCall"];
+}
+
+/**
+ * Dirección del webhook de la empresa: SOLO su dominio público (`tenantPublicUrl()`), con https. Sin él, "" (y
+ * conectar responde PRECONDITION_FAILED): nunca la dirección de la plataforma, que no es de la empresa.
+ */
+export function voiceWebhookUrl(tenantUrl: string | null | undefined): string {
+  const base = (tenantUrl ?? "").trim().replace(/\/+$/, "");
+  return /^https:\/\/[^\s/]+$/.test(base) ? `${base}${VOICE_WEBHOOK_PATH}` : "";
 }
 
 /** Clave nueva conforme al Core: 24 bytes aleatorios en base64url (32 caracteres). */
@@ -431,26 +441,23 @@ export async function disconnectVoice(deps: VoiceSetupDeps, actor: { id: number 
 let defaultLimiter: ((key: string) => boolean) | null = null;
 
 export async function defaultVoiceSetupDeps(): Promise<VoiceSetupDeps> {
-  const [{ isMultiTenant, getTenantId }, { getVault }, health, { testProvider }, { meteredFetch }, { publicBaseUrl }, { createRateLimiter }, { getDb }, { sql }] = await Promise.all([
+  const [{ isMultiTenant, getTenantId }, { getVault }, health, { testProvider }, { meteredFetch }, { tenantPublicUrl }, { createRateLimiter }, { getDb }, { sql }] = await Promise.all([
     import("./_core/tenant"),
     import("./_core/credentials/runtime"),
     import("./_core/credentials/health"),
     import("./_core/credentials/testers"),
     import("./_core/externalMetering"),
-    import("./_core/productIdentity"),
+    import("./_core/tenantIdentity"),
     import("./financeSyncSetup"),
     import("./db"),
     import("drizzle-orm"),
   ]);
-  const { VOICE_WEBHOOK_PATH } = await import("../shared/voiceSetup");
   defaultLimiter ??= createRateLimiter(VAPI_CALL_LIMIT.max, VAPI_CALL_LIMIT.windowMs);
   return {
     multi: () => isMultiTenant(),
     tenantId: () => getTenantId(),
-    webhookUrl: () => {
-      const base = publicBaseUrl().replace(/\/+$/, "");
-      return base ? `${base}${VOICE_WEBHOOK_PATH}` : "";
-    },
+    // Solo el dominio público de la empresa en curso: nunca APP_URL de la plataforma (los avisos irían a otra parte)
+    webhookUrl: () => voiceWebhookUrl(tenantPublicUrl()),
     vault: () => getVault(),
     health: async () => (await health.integrationHealth()).providers,
     recordCheck: (outcome, message, actor) => health.recordCheck(VAPI_PROVIDER, outcome, message, actor),
