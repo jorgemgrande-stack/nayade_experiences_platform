@@ -35,7 +35,7 @@ import {
 } from "../emailTemplates";
 import { storagePut } from "../storage";
 import { generateDocumentNumber } from "../documentNumbers";
-import { logActivity, getGHLCredentials } from "../db";
+import { logActivity, getGHLCredentials, voidConfirmedOperation } from "../db";
 import { createGHLContact, updateGHLContact } from "../ghl";
 import { getBusinessEmail } from "../config";
 import { legacyDb, legacyPool } from "../_core/legacyDb";
@@ -152,31 +152,10 @@ async function propagateCancellation(params: {
         .set({ status: "cancelled" })
         .where(eq(tpvSales.reservationId, reservationId));
 
-      // -- Marcar transacciones de ingreso originales como reversadas -------
-      // Bug #3 del audit: el ingreso original seguía con status='completado'
-      // mientras se creaba una nueva transacción de reembolso, dejando ambos
-      // movimientos sueltos en el libro contable sin relación visible.
-      //
-      // - Si hay devolución real ? status='reembolsado' + operationStatus='reembolsada'
-      // - Si solo se anula sin devolución (bono o ninguna) ? mantener status='completado'
-      //   (el dinero se quedó) pero operationStatus='anulada' para que la operativa
-      //   refleje que la reserva ya no existe.
+      // -- Ingreso original reversado y estado operativo anulado ------------
+      // (misma lógica que las cancelaciones de la Venta multicanal: voidConfirmedOperation)
       const hasRefund = compensationType === "devolucion" && refundAmount != null && refundAmount > 0;
-      await tx.update(transactions)
-        .set(hasRefund
-          ? { status: "reembolsado" as const, operationStatus: "reembolsada" as const }
-          : { operationStatus: "anulada" as const }
-        )
-        .where(and(
-          eq(transactions.reservationId, reservationId),
-          eq(transactions.type, "ingreso"),
-          eq(transactions.status, "completado")
-        ));
-
-      // -- Actualizar estado operativo --------------------------------------
-      await tx.update(reservationOperational)
-        .set({ opStatus: "anulado", updatedBy: adminUserId })
-        .where(eq(reservationOperational.reservationId, reservationId));
+      await voidConfirmedOperation(tx, reservationId, { refunded: hasRefund, updatedBy: adminUserId });
 
       // -- Cerrar expediente REAV si existe ----------------------------------
       const [reavExp] = await tx.select({ id: reavExpedients.id })

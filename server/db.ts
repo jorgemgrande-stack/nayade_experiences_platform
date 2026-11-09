@@ -2517,3 +2517,33 @@ export async function postConfirmOperation(params: {
   return { bookingId, transactionId };
 }
 
+/**
+ * Al anular una reserva, deshace en contabilidad y en Operaciones lo que dejó `postConfirmOperation`, dentro de la
+ * transacción del llamador (anulaciones del CRM y cancelaciones de la Venta multicanal).
+ *
+ * - Ingreso original: con devolución real, status='reembolsado' + operationStatus='reembolsada'; si solo se anula sin
+ *   devolución (bono o ninguna), se mantiene status='completado' (el dinero se quedó) pero operationStatus='anulada'
+ *   para que la operativa refleje que la reserva ya no existe. Sin esto el ingreso seguía 'completado' mientras se
+ *   creaba la transacción de reembolso (bug #3 del audit).
+ * - Estado operativo: 'anulado'.
+ */
+export async function voidConfirmedOperation(
+  tx: Pick<NonNullable<Awaited<ReturnType<typeof getDb>>>, "update">,
+  reservationId: number,
+  opts: { refunded: boolean; updatedBy?: number | null },
+) {
+  await tx.update(transactions)
+    .set(opts.refunded
+      ? { status: "reembolsado" as const, operationStatus: "reembolsada" as const }
+      : { operationStatus: "anulada" as const }
+    )
+    .where(and(
+      eq(transactions.reservationId, reservationId),
+      eq(transactions.type, "ingreso"),
+      eq(transactions.status, "completado")
+    ));
+  await tx.update(reservationOperational)
+    .set({ opStatus: "anulado", updatedBy: opts.updatedBy ?? null })
+    .where(eq(reservationOperational.reservationId, reservationId));
+}
+
