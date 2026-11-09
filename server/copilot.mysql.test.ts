@@ -140,6 +140,46 @@ describe.skipIf(!URL_)("Copilot avanzado · licencia, roles, herramientas y aisl
     }
   });
 
+  it("con volumen por encima de los antiguos límites (20 000 líneas, 5000 reservas, 2000 facturas): totales completos, agregados en SQL", async () => {
+    // Empresa B (sus totales ya se han comprobado a cero arriba): 20 010 líneas cobradas hoy, dos por pedido
+    const now = Date.now();
+    const today = new Date(now + 3600_000).toISOString().slice(0, 10);
+    const digits = "(SELECT 0 d UNION ALL SELECT 1 UNION ALL SELECT 2 UNION ALL SELECT 3 UNION ALL SELECT 4 UNION ALL SELECT 5 UNION ALL SELECT 6 UNION ALL SELECT 7 UNION ALL SELECT 8 UNION ALL SELECT 9)";
+    const seq = (max: number) => `(SELECT a.d + 10 * b.d + 100 * c.d + 1000 * e.d + 10000 * f.d AS n FROM ${digits} a, ${digits} b, ${digits} c, ${digits} e, ${digits} f) s WHERE s.n < ${max}`;
+    await ess.sql(
+      "b",
+      `INSERT INTO reservations (product_id, product_name, booking_date, people, amount_total, amount_paid, status, status_payment, customer_name, merchant_order, created_at, updated_at, paid_at)
+       SELECT 1, 'Volumen QA', ?, 1, 100, 100, 'paid', 'PAGADO', 'Cliente QA', CONCAT('VOL', FLOOR(s.n / 2)), ?, ?, ? FROM ${seq(20_010)}`,
+      [today, now, now, now],
+    );
+    // Una anulada no ocupa plaza
+    await ess.sql("b", "INSERT INTO reservations (product_id, product_name, booking_date, people, amount_total, amount_paid, status, status_reservation, customer_name, merchant_order, created_at, updated_at) VALUES (1, 'Volumen QA', ?, 50, 100, 0, 'pending_payment', 'ANULADA', 'Cliente QA', 'VOLX', ?, ?)", [today, now, now]);
+    // 2005 facturas de 10 €; a una le resta un abono de 4 € y otra queda abonada del todo (no cuenta)
+    await ess.sql(
+      "b",
+      `INSERT INTO invoices (invoiceNumber, clientName, clientEmail, itemsJson, subtotal, taxRate, taxAmount, total, status, issuedAt)
+       SELECT CONCAT('VOL-', s.n), 'Cliente QA', '', '[]', 8.26, 21, 1.74, 10, 'enviada', ? FROM ${seq(2006)}`,
+      [new Date(now - 86_400_000)],
+    );
+    // La del abono parcial es la más antigua: encabeza el detalle
+    await ess.sql("b", "UPDATE invoices SET issuedAt = ? WHERE invoiceNumber = 'VOL-0'", [new Date(now - 3 * 86_400_000)]);
+    const [first] = await ess.sql("b", "SELECT id FROM invoices WHERE invoiceNumber = 'VOL-0'");
+    const [last] = await ess.sql("b", "SELECT id FROM invoices WHERE invoiceNumber = 'VOL-2005'");
+    await ess.sql("b", "INSERT INTO invoices (invoiceNumber, clientName, clientEmail, itemsJson, subtotal, taxRate, taxAmount, total, status, invoiceType, creditNoteForId) VALUES ('VOL-A1', 'Cliente QA', '', '[]', -3.31, 21, -0.69, -4, 'generada', 'abono', ?), ('VOL-A2', 'Cliente QA', '', '[]', -8.26, 21, -1.74, -10, 'generada', 'abono', ?)", [first.id, last.id]);
+
+    const sales = (await ok(q("quick", { tool: "ventas_periodo", args: {} }, adB, "b"))).result;
+    expect(sales).toMatchObject({ total: 20_010, operaciones: 10_005, ticketMedio: 2 });
+    expect(sales.evolucion.reduce((t: number, e: any) => t + e.total, 0)).toBe(20_010);
+    const top = (await ok(q("quick", { tool: "top_productos", args: {} }, adB, "b"))).result;
+    expect(top.productos[0]).toEqual({ producto: "Volumen QA", importe: 20_010, personas: 20_010, ventas: 20_010 });
+    const occ = (await ok(q("quick", { tool: "ocupacion", args: { dias: 1, desde: today } }, adB, "b"))).result;
+    expect(occ.dias).toEqual([expect.objectContaining({ fecha: today, producto: "Volumen QA", personas: 20_010 })]);
+    const inv = (await ok(q("quick", { tool: "facturas_pendientes", args: {} }, adB, "b"))).result;
+    expect(inv).toMatchObject({ facturasPendientes: 2005, importePendiente: 20_046, nota: "Se muestran las 15 más antiguas de 2005." });
+    expect(inv.detalle).toHaveLength(15);
+    expect(inv.detalle[0]).toMatchObject({ numero: "VOL-0", pendiente: 6 });
+  }, 120_000);
+
   it("en solo lectura: historial y consultas rápidas sí; preguntas nuevas, no", async () => {
     await ess.setCapability("a", CAP, "read_only");
     expect(Array.isArray(await ok(q("conversations")))).toBe(true);

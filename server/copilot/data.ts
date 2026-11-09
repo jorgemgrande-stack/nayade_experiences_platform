@@ -1,7 +1,8 @@
 /**
  * Lecturas del Core que usan las herramientas de Elephant Copilot. SOLO LECTURA (SELECT) y SQL parametrizado, siempre
  * sobre la BD de la empresa en curso (`getTenantDatabase()` resuelve la de la petición): nunca mezcla empresas.
- * La agregación y el formato viven en server/copilot/tools.ts (puros, con pruebas); aquí solo filas.
+ * Los totales (ventas, ocupación, facturas pendientes) se agregan aquí en SQL para que sean completos con cualquier
+ * volumen; el reparto y el formato viven en server/copilot/tools.ts (puros, con pruebas).
  */
 import { sql } from "drizzle-orm";
 import { getTenantDatabase } from "../_core/dbRegistry";
@@ -16,20 +17,26 @@ const numOrNull = (v: unknown) => (v == null || v === "" ? null : num(v));
 const str = (v: unknown) => (v == null || v === "" ? null : String(v));
 const ms = (v: unknown) => (v == null ? null : v instanceof Date ? v.getTime() : typeof v === "number" ? v : Date.parse(String(v)) || null);
 
-export interface SaleRow { id: number; merchantOrder: string | null; at: number; amountTotal: number; amountPaid: number; productId: number; productName: string; people: number }
+/** Ventas cobradas agregadas en SQL: total y operaciones exactos del periodo, y su reparto por hora (UTC). */
+export interface SalesSummary { cents: number; ops: number; byHour: Array<{ hourStartMs: number; cents: number; ops: number }> }
+export interface ProductSalesRow { productId: number; productName: string; cents: number; people: number; lines: number }
+export interface OccupancyRow { bookingDate: string; productId: number; productName: string; people: number }
 export interface ReservationRow { id: number; number: string | null; bookingDate: string; time: string | null; productId: number; productName: string; people: number; customerName: string; status: string; statusReservation: string | null; statusPayment: string | null; slotId: number | null }
 export interface SlotRow { id: number; productId: number; label: string; startTime: string | null; daysOfWeek: string | null; capacity: number | null }
 export interface ClientRow { id: number; name: string; email: string; phone: string | null; company: string | null; city: string | null; notes: string | null; tags: string[]; totalBookings: number; totalSpent: number; lastBookingAt: number | null; createdAt: number | null }
 export interface LeadRow { id: number; name: string; company: string | null; status: string; priority: string; source: string | null; product: string | null; createdAt: number | null; lastContactAt: number | null }
 export interface QuoteRow { id: number; number: string; title: string; total: number; status: string; sentAt: number | null; validUntil: number | null }
-export interface InvoiceRow { id: number; number: string; clientName: string; total: number; status: string; issuedAt: number | null }
-export interface CreditRow { creditNoteForId: number | null; total: number }
+export interface UnpaidInvoiceRow { id: number; number: string; clientName: string; status: string; issuedAt: number | null; pendingCents: number }
+/** Facturas pendientes de cobro tras sus abonos: recuento e importe exactos (SQL) y las `max` más antiguas. */
+export interface UnpaidInvoices { count: number; cents: number; rows: UnpaidInvoiceRow[] }
 export interface HrSummaryRows { leave: Array<{ type: string; requests: number; days: number }>; pending: number; openClocks: number }
 export interface ProductRow { id: number; title: string; shortDescription: string | null; description: string | null; duration: string | null; basePrice: number | null; currency: string; minPersons: number | null; maxPersons: number | null; includes: string[] }
 
 /** Puerto de datos de Copilot (en pruebas, un doble en memoria). */
 export interface CopilotData {
-  paidSales(fromMs: number, toMsExclusive: number): Promise<SaleRow[]>;
+  salesSummary(fromMs: number, toMsExclusive: number): Promise<SalesSummary>;
+  salesByProduct(fromMs: number, toMsExclusive: number): Promise<ProductSalesRow[]>;
+  occupancy(fromDay: string, toDay: string): Promise<OccupancyRow[]>;
   reservations(fromDay: string, toDay: string, max: number): Promise<ReservationRow[]>;
   activeSlots(productIds: number[]): Promise<SlotRow[]>;
   searchClients(text: string | null, max: number): Promise<ClientRow[]>;
@@ -37,8 +44,7 @@ export interface CopilotData {
   clientReservations(clientId: number, email: string, max: number): Promise<ReservationRow[]>;
   openLeads(fromMs: number | null, toMsExclusive: number | null, max: number): Promise<{ rows: LeadRow[]; byStatus: Array<{ status: string; n: number }> }>;
   pendingQuotes(max: number): Promise<{ rows: QuoteRow[]; count: number; total: number }>;
-  unpaidInvoices(): Promise<InvoiceRow[]>;
-  credits(invoiceIds: number[]): Promise<CreditRow[]>;
+  unpaidInvoices(max: number): Promise<UnpaidInvoices>;
   hrSummary(fromDay: string, toDay: string): Promise<HrSummaryRows>;
   product(id: number): Promise<ProductRow | null>;
 }
@@ -98,25 +104,55 @@ function toClient(r: Row): ClientRow {
   };
 }
 
+// Ventas cobradas: reservas en estado pagado (las escriben la tienda online, las reservas y presupuestos cobrados y
+// cada venta del TPV). Importe cobrado si lo hay, si no el total; una operación por pedido (número de pedido).
+const SALE_AT = sql`COALESCE(paid_at, created_at)`;
+const SALE_CENTS = sql`CASE WHEN COALESCE(amount_paid, 0) > 0 THEN amount_paid ELSE amount_total END`;
+const SALE_KEY = sql`CASE WHEN merchant_order IS NULL OR merchant_order = '' THEN CONCAT('r:', id) ELSE CONCAT('p:', merchant_order) END`;
+const paidSalesWhere = (fromMs: number, toMsExclusive: number) => sql`status = 'paid' AND ${SALE_AT} >= ${fromMs} AND ${SALE_AT} < ${toMsExclusive}`;
+// Reservas que ocupan plaza: pagadas o pendientes de pago, no anuladas ni no presentadas
+const ACTIVE_RESERVATION = sql`status IN ('paid', 'pending_payment') AND (status_reservation IS NULL OR status_reservation NOT IN ('ANULADA', 'NO_SHOW'))`;
+
 const RESERVATION_COLUMNS = sql`id, reservation_number, booking_date, selected_time, product_id, product_name, people, customer_name, status, status_reservation, status_payment, selected_time_slot_id`;
 
 export class TenantDbCopilotData implements CopilotData {
-  async paidSales(fromMs: number, toMsExclusive: number): Promise<SaleRow[]> {
-    const rows = await q(sql`
-      SELECT id, merchant_order, COALESCE(paid_at, created_at) AS at, amount_total, amount_paid, product_id, product_name, people
+  // Agregado en SQL (sin traer líneas): con cualquier volumen el total es completo
+  async salesSummary(fromMs: number, toMsExclusive: number): Promise<SalesSummary> {
+    const where = paidSalesWhere(fromMs, toMsExclusive);
+    const agg = (await q(sql`SELECT COALESCE(SUM(${SALE_CENTS}), 0) AS cents, COUNT(DISTINCT ${SALE_KEY}) AS ops FROM reservations WHERE ${where}`))[0] ?? {};
+    // Por hora: el día de Madrid de cada hora es exacto (su desfase es de horas enteras) y son como mucho 24 filas por día
+    const byHour = await q(sql`
+      SELECT FLOOR(${SALE_AT} / 3600000) AS h, COALESCE(SUM(${SALE_CENTS}), 0) AS cents, COUNT(DISTINCT ${SALE_KEY}) AS ops
         FROM reservations
-       WHERE status = 'paid' AND COALESCE(paid_at, created_at) >= ${fromMs} AND COALESCE(paid_at, created_at) < ${toMsExclusive}
-       LIMIT 20000`);
-    return rows.map((r) => ({ id: num(r.id), merchantOrder: str(r.merchant_order), at: num(r.at), amountTotal: num(r.amount_total), amountPaid: num(r.amount_paid), productId: num(r.product_id), productName: String(r.product_name ?? ""), people: num(r.people) }));
+       WHERE ${where}
+       GROUP BY h`);
+    return { cents: num(agg.cents), ops: num(agg.ops), byHour: byHour.map((r) => ({ hourStartMs: num(r.h) * 3600000, cents: num(r.cents), ops: num(r.ops) })) };
+  }
+
+  async salesByProduct(fromMs: number, toMsExclusive: number): Promise<ProductSalesRow[]> {
+    const rows = await q(sql`
+      SELECT product_id, product_name, COALESCE(SUM(${SALE_CENTS}), 0) AS cents, COALESCE(SUM(people), 0) AS people, COUNT(*) AS n
+        FROM reservations
+       WHERE ${paidSalesWhere(fromMs, toMsExclusive)}
+       GROUP BY product_id, product_name`);
+    return rows.map((r) => ({ productId: num(r.product_id), productName: String(r.product_name ?? ""), cents: num(r.cents), people: num(r.people), lines: num(r.n) }));
+  }
+
+  // Personas por día y producto agregadas en SQL: no depende de cuántas reservas haya
+  async occupancy(fromDay: string, toDay: string): Promise<OccupancyRow[]> {
+    const rows = await q(sql`
+      SELECT booking_date, product_id, MIN(product_name) AS product_name, COALESCE(SUM(people), 0) AS people
+        FROM reservations
+       WHERE booking_date >= ${fromDay} AND booking_date <= ${toDay} AND ${ACTIVE_RESERVATION}
+       GROUP BY booking_date, product_id`);
+    return rows.map((r) => ({ bookingDate: String(r.booking_date ?? ""), productId: num(r.product_id), productName: String(r.product_name ?? ""), people: num(r.people) }));
   }
 
   async reservations(fromDay: string, toDay: string, max: number): Promise<ReservationRow[]> {
     const rows = await q(sql`
       SELECT ${RESERVATION_COLUMNS}
         FROM reservations
-       WHERE booking_date >= ${fromDay} AND booking_date <= ${toDay}
-         AND status IN ('paid', 'pending_payment')
-         AND (status_reservation IS NULL OR status_reservation NOT IN ('ANULADA', 'NO_SHOW'))
+       WHERE booking_date >= ${fromDay} AND booking_date <= ${toDay} AND ${ACTIVE_RESERVATION}
        ORDER BY booking_date, selected_time, id
        LIMIT ${max}`);
     return rows.map(toReservation);
@@ -177,22 +213,26 @@ export class TenantDbCopilotData implements CopilotData {
     };
   }
 
-  async unpaidInvoices(): Promise<InvoiceRow[]> {
-    // La misma regla que la portada del panel (server/coreHomeDb.ts): emitidas o enviadas, sin pedido cobrado enlazado
-    const rows = await q(sql`
-      SELECT i.id, i.invoiceNumber, i.clientName, i.total, i.status, i.issuedAt
+  async unpaidInvoices(max: number): Promise<UnpaidInvoices> {
+    // La misma regla que la portada del panel (server/coreHomeDb.ts, unpaidAfterCredits): emitidas o enviadas, sin
+    // pedido cobrado enlazado, menos sus abonos no anulados; solo las que aún tienen algo pendiente. Recuento e
+    // importe agregados en SQL: son exactos aunque haya miles de facturas.
+    const pending = sql`ROUND(i.total * 100) - ROUND(COALESCE(c.credited, 0) * 100)`;
+    const from = sql`
         FROM invoices i
+        LEFT JOIN (SELECT creditNoteForId, SUM(ABS(total)) AS credited FROM invoices
+                    WHERE invoiceType = 'abono' AND status <> 'anulada' AND creditNoteForId IS NOT NULL
+                    GROUP BY creditNoteForId) c ON c.creditNoteForId = i.id
        WHERE i.status IN ('generada', 'enviada') AND i.invoiceType = 'factura'
          AND NOT EXISTS (SELECT 1 FROM reservations r WHERE r.status = 'paid' AND (r.id = i.reservationId OR r.invoiceId = i.id))
-       ORDER BY i.issuedAt, i.id
-       LIMIT 2000`);
-    return rows.map((r) => ({ id: num(r.id), number: String(r.invoiceNumber ?? ""), clientName: String(r.clientName ?? ""), total: num(r.total), status: String(r.status), issuedAt: ms(r.issuedAt) }));
-  }
-
-  async credits(invoiceIds: number[]): Promise<CreditRow[]> {
-    if (!invoiceIds.length) return [];
-    const rows = await q(sql`SELECT creditNoteForId, total FROM invoices WHERE invoiceType = 'abono' AND status <> 'anulada' AND creditNoteForId IN (${list(invoiceIds)})`);
-    return rows.map((r) => ({ creditNoteForId: numOrNull(r.creditNoteForId), total: num(r.total) }));
+         AND ${pending} > 0`;
+    const agg = (await q(sql`SELECT COUNT(*) AS n, COALESCE(SUM(${pending}), 0) AS cents ${from}`))[0] ?? {};
+    const rows = await q(sql`SELECT i.id, i.invoiceNumber, i.clientName, i.status, i.issuedAt, ${pending} AS pending_cents ${from} ORDER BY i.issuedAt, i.id LIMIT ${max}`);
+    return {
+      count: num(agg.n),
+      cents: num(agg.cents),
+      rows: rows.map((r) => ({ id: num(r.id), number: String(r.invoiceNumber ?? ""), clientName: String(r.clientName ?? ""), status: String(r.status), issuedAt: ms(r.issuedAt), pendingCents: num(r.pending_cents) })),
+    };
   }
 
   async hrSummary(fromDay: string, toDay: string): Promise<HrSummaryRows> {

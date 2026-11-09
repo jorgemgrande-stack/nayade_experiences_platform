@@ -24,7 +24,7 @@ import {
 import { runTool, parseToolArgs } from "./copilot/tools";
 import { CopilotError, CopilotService, AI_UNAVAILABLE_MESSAGE, type LlmFn, type LlmReply, type CopilotActor } from "./copilot/service";
 import { MemoryCopilotStore } from "./copilot/store";
-import type { CopilotData, ClientRow, ReservationRow, SaleRow, SlotRow } from "./copilot/data";
+import type { CopilotData, ClientRow, ReservationRow, SlotRow, UnpaidInvoices } from "./copilot/data";
 import { QuotaExceededError } from "./_core/erm/types";
 import { TRPC_ROUTER_CAPABILITIES, capabilityForProcedure } from "./_core/capabilities/routeGuard";
 import { TASK_NAV } from "../shared/adminNav";
@@ -39,6 +39,11 @@ const actor = (userId: number, a: CopilotAccess, name = "Ana"): CopilotActor => 
 
 // ── Doble de datos ─────────────────────────────────────────────────────────────
 
+// Línea de venta cobrada; el doble agrega como el SQL de server/copilot/data.ts
+interface SaleRow { id: number; merchantOrder: string | null; at: number; amountTotal: number; amountPaid: number; productId: number; productName: string; people: number }
+const saleCents = (r: SaleRow) => (r.amountPaid > 0 ? r.amountPaid : r.amountTotal);
+const saleKey = (r: SaleRow) => (r.merchantOrder ? `p:${r.merchantOrder}` : `r:${r.id}`);
+
 class FakeData implements CopilotData {
   calls: string[] = [];
   sales: SaleRow[] = [];
@@ -47,9 +52,52 @@ class FakeData implements CopilotData {
   clients: ClientRow[] = [];
   invoices: Array<{ id: number; number: string; clientName: string; total: number; status: string; issuedAt: number | null }> = [];
   creditRows: Array<{ creditNoteForId: number | null; total: number }> = [];
-  async paidSales(fromMs: number, toMs: number) {
-    this.calls.push("paidSales");
+  /** Si se fija, `unpaidInvoices` devuelve esto tal cual (agregado de SQL simulado). */
+  unpaidOverride: UnpaidInvoices | null = null;
+  private salesIn(fromMs: number, toMs: number) {
     return this.sales.filter((s) => s.at >= fromMs && s.at < toMs);
+  }
+  async salesSummary(fromMs: number, toMs: number) {
+    this.calls.push("salesSummary");
+    const rows = this.salesIn(fromMs, toMs);
+    const hours = new Map<number, { cents: number; keys: Set<string> }>();
+    for (const r of rows) {
+      const h = Math.floor(r.at / 3600000) * 3600000;
+      const s = hours.get(h) ?? { cents: 0, keys: new Set<string>() };
+      s.cents += saleCents(r);
+      s.keys.add(saleKey(r));
+      hours.set(h, s);
+    }
+    return {
+      cents: rows.reduce((t, r) => t + saleCents(r), 0),
+      ops: new Set(rows.map(saleKey)).size,
+      byHour: Array.from(hours.entries()).map(([hourStartMs, s]) => ({ hourStartMs, cents: s.cents, ops: s.keys.size })),
+    };
+  }
+  async salesByProduct(fromMs: number, toMs: number) {
+    this.calls.push("salesByProduct");
+    const by = new Map<string, { productId: number; productName: string; cents: number; people: number; lines: number }>();
+    for (const r of this.salesIn(fromMs, toMs)) {
+      const k = `${r.productId}|${r.productName}`;
+      const s = by.get(k) ?? { productId: r.productId, productName: r.productName, cents: 0, people: 0, lines: 0 };
+      s.cents += saleCents(r);
+      s.people += r.people;
+      s.lines += 1;
+      by.set(k, s);
+    }
+    return Array.from(by.values());
+  }
+  async occupancy(from: string, to: string) {
+    this.calls.push("occupancy");
+    const by = new Map<string, { bookingDate: string; productId: number; productName: string; people: number }>();
+    for (const r of this.res) {
+      if (r.bookingDate < from || r.bookingDate > to || !["paid", "pending_payment"].includes(r.status) || ["ANULADA", "NO_SHOW"].includes(r.statusReservation ?? "")) continue;
+      const k = `${r.bookingDate}|${r.productId}`;
+      const s = by.get(k) ?? { bookingDate: r.bookingDate, productId: r.productId, productName: r.productName, people: 0 };
+      s.people += r.people;
+      by.set(k, s);
+    }
+    return Array.from(by.values());
   }
   async reservations(from: string, to: string, max: number) {
     this.calls.push("reservations");
@@ -75,12 +123,17 @@ class FakeData implements CopilotData {
   async pendingQuotes() {
     return { rows: [], count: 0, total: 0 };
   }
-  async unpaidInvoices() {
+  async unpaidInvoices(max: number) {
     this.calls.push("unpaidInvoices");
-    return this.invoices;
-  }
-  async credits(ids: number[]) {
-    return this.creditRows.filter((c) => c.creditNoteForId != null && ids.includes(c.creditNoteForId));
+    if (this.unpaidOverride) return this.unpaidOverride;
+    const pending = this.invoices
+      .map((i) => ({ i, cents: Math.round(i.total * 100) - Math.round(this.creditRows.filter((c) => c.creditNoteForId === i.id).reduce((t, c) => t + Math.abs(c.total), 0) * 100) }))
+      .filter((x) => x.cents > 0);
+    return {
+      count: pending.length,
+      cents: pending.reduce((t, x) => t + x.cents, 0),
+      rows: pending.slice(0, max).map(({ i, cents }) => ({ id: i.id, number: i.number, clientName: i.clientName, status: i.status, issuedAt: i.issuedAt, pendingCents: cents })),
+    };
   }
   async hrSummary() {
     this.calls.push("hrSummary");
@@ -207,6 +260,25 @@ describe("herramientas de solo lectura", () => {
     const r = await runTool("facturas_pendientes", {}, data, NOW);
     expect(r).toMatchObject({ facturasPendientes: 1, importePendiente: 70 });
     expect(r.detalle).toEqual([{ numero: "F-1", cliente: "Ana", pendiente: 70, emitida: "2026-10-11", dias: 30, estado: "enviada" }]);
+  });
+
+  it("sin cortes silenciosos: totales del agregado SQL y aviso cuando el detalle no es completo", async () => {
+    // Facturas: el recuento y el importe vienen del agregado, aunque el detalle traiga solo las más antiguas
+    data.unpaidOverride = { count: 2500, cents: 123456789, rows: [{ id: 1, number: "F-1", clientName: "Ana", status: "enviada", issuedAt: NOW, pendingCents: 1000 }] };
+    const f = await runTool("facturas_pendientes", { limite: 1 }, data, NOW);
+    expect(f).toMatchObject({ facturasPendientes: 2500, importePendiente: 1234567.89, nota: "Se muestran las 1 más antiguas de 2500." });
+    // Ventas: total y operaciones del agregado; las líneas de un pedido cuentan una vez
+    data.sales = Array.from({ length: 25_000 }, (_, i) => sale({ id: i + 1, merchantOrder: `P${Math.floor(i / 2)}`, amountPaid: 100, at: NOW - 3600_000 }));
+    expect(await runTool("ventas_periodo", {}, data, NOW)).toMatchObject({ total: 25_000, operaciones: 12_500, ticketMedio: 2 });
+    // Ocupación: más combinaciones de día y producto de las que se muestran → la nota lo dice
+    data.res = Array.from({ length: 130 }, (_, i) => reservation({ id: i + 1, productId: i + 1, productName: `P${String(i).padStart(3, "0")}`, people: 1 }));
+    data.res.push(reservation({ id: 999, productId: 1, productName: "P000", people: 50, statusReservation: "ANULADA" }));
+    const o = await runTool("ocupacion", { dias: 1 }, data, NOW);
+    expect(o.dias as any[]).toHaveLength(120);
+    expect((o.dias as any[])[0]).toMatchObject({ producto: "P000", personas: 1 });
+    expect(o.nota).toMatch(/Lista incompleta: se muestran 120 de 130/);
+    data.res = data.res.slice(0, 3);
+    expect((await runTool("ocupacion", { dias: 1 }, data, NOW)).nota).not.toMatch(/incompleta/);
   });
 
   it("parámetros: valores por defecto, null ignorado, fuera de rango rechazado", () => {
