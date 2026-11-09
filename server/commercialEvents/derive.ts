@@ -206,10 +206,25 @@ const TRIAL_EVENT: Record<string, CommercialEventType> = {
   reject: "trial.rejected",
   cancel: "trial.cancelled",
   expire_verification: "trial.cancelled",
+  // Hitos de activación que comunica el panel (anotaciones sin cambio de estado)
+  first_access: "trial.first_access",
+  first_action: "trial.first_action",
 };
 
 function trialData(t: TrialRequest) {
-  return cleanData({ plan: t.configuration?.plan ?? null, addons: t.configuration?.addons ?? [], startsAt: t.startsAt, endsAt: t.endsAt, extensionsUsed: t.extensionsUsed, convertedSubscriptionId: t.convertedSubscriptionId });
+  // Sector, país y procedencia (UTM sin datos personales): nunca el nombre, el teléfono ni el correo
+  const p = t.configuration?.profile;
+  const a = t.configuration?.attribution;
+  return cleanData({
+    plan: t.configuration?.plan ?? null,
+    addons: t.configuration?.addons ?? [],
+    startsAt: t.startsAt,
+    endsAt: t.endsAt,
+    extensionsUsed: t.extensionsUsed,
+    convertedSubscriptionId: t.convertedSubscriptionId,
+    ...(p ? { sector: p.sector, country: p.country, marketingConsent: p.marketingConsent } : {}),
+    ...(a ? { source: a.source, medium: a.medium, campaign: a.campaign, referrerHost: a.referrerHost } : {}),
+  });
 }
 
 /** Alta o transición de una prueba (`action` = acción de la máquina, o `registered` en el alta). */

@@ -12,26 +12,19 @@ import { Button } from "@/components/ui/button";
 import { PanelError, PanelLoading } from "@/components/admin/PanelStates";
 import { usePanelSubscription } from "@/hooks/usePanelSubscription";
 import { trpc } from "@/lib/trpc";
+import { exportAccountNotice } from "@shared/subscriptionRecovery";
 
 const fmtDateTime = (ms: number) => new Date(ms).toLocaleString("es-ES", { day: "numeric", month: "long", year: "numeric", hour: "2-digit", minute: "2-digit" });
-const fmtDate = (ms: number) => new Date(ms).toLocaleDateString("es-ES", { day: "numeric", month: "long", year: "numeric" });
 const fmtSize = (b: number) => (b >= 1048576 ? `${(b / 1048576).toLocaleString("es-ES", { maximumFractionDigits: 1 })} MB` : `${Math.max(1, Math.round(b / 1024)).toLocaleString("es-ES")} KB`);
 const fmtNum = (n: number | null) => (n ?? 0).toLocaleString("es-ES");
 
-/** Aviso según el estado de la cuenta: la exportación sigue disponible en solo lectura y suspendida. */
-function AccountNotice() {
+/** Aviso según el estado de la cuenta (la exportación sigue disponible en solo lectura y suspendida), con quién exporta. */
+function AccountNotice({ canExport }: { canExport: boolean }) {
   const sub = usePanelSubscription();
   const d = sub.data;
   if (!d || d.licensing !== "capabilities") return null;
-  const readOnlyUntil = d.capabilities.filter((c) => (c.status === "read_only" || c.status === "expired") && c.validUntil).map((c) => c.validUntil as number);
-  const until = readOnlyUntil.length ? Math.min(...readOnlyUntil) : null;
-  let text: string | null = null;
-  if (d.state === "trial") text = "Estás en la prueba gratuita: puedes exportar tus datos cuando quieras.";
-  else if (d.state === "trial_expired") text = "Tu prueba ha terminado y la cuenta está en solo lectura: puedes seguir exportando tus datos.";
-  else if (d.state === "read_only") text = until ? `Tu cuenta está en solo lectura hasta el ${fmtDate(until)}: hasta entonces puedes consultar y exportar tus datos.` : "Tu cuenta está en solo lectura: puedes consultar y exportar tus datos.";
-  else if (d.state === "suspended") text = "Tu suscripción está suspendida: el panel sigue disponible para consultar y exportar tus datos.";
-  else if (d.state === "cancelled" || d.state === "none")
-    text = "El periodo de solo lectura ha terminado. Puedes seguir exportando tus datos mientras la cuenta no se archive: te recomendamos descargarlos cuanto antes.";
+  // La consulta solo se promete si existe hoy (subscription.overview.consultation, mismas reglas que el servidor)
+  const text = exportAccountNotice(d.state, d.consultation, canExport);
   if (!text) return null;
   return (
     <div className="rounded-xl border border-amber-300/60 bg-amber-50 dark:bg-amber-500/10 p-4 flex gap-3" role="status">
@@ -228,7 +221,7 @@ export default function DataExportPage() {
           <p className="text-sm text-muted-foreground">Una copia de tus datos y ficheros en un ZIP con CSV (para hojas de cálculo) y JSON (para otros sistemas).</p>
         </div>
 
-        <AccountNotice />
+        {s && <AccountNotice canExport={s.canExport} />}
 
         {status.isLoading && <PanelLoading label="Comprobando tu acceso…" />}
         {status.isError && <PanelError error={status.error} onRetry={() => status.refetch()} title="No se ha podido comprobar tu acceso" />}

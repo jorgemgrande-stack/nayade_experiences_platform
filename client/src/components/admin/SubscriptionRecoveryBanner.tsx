@@ -63,7 +63,7 @@ export function SubscriptionRecoveryBanner({ role }: { role: string }) {
         <div className="min-w-0">
           <h2 id="aviso-suscripcion" className="font-semibold text-foreground">{view.title}</h2>
           <p className="mt-0.5 text-sm text-foreground/90">{view.text}</p>
-          <p className="mt-1 text-xs text-muted-foreground">{view.secondary}</p>
+          {view.secondary && <p className="mt-1 text-xs text-muted-foreground">{view.secondary}</p>}
         </div>
       </div>
       {cta && (
