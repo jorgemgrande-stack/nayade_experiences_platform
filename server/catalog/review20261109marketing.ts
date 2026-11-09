@@ -2,7 +2,8 @@
  * Revisión del catálogo del 09/11/2026 — Activación del marketplace, tanda de módulos portados de Skicenter: Elephant
  * SEO Control (#728), Ads Manager (#729) y Reception AI (#727) pasan de «Próximamente» a «Implantación acompañada», con
  * una ficha que dice qué hacen y qué credenciales externas aporta el cliente. Sin checkout ni Price de Stripe: el botón
- * «Solicitar información» crea la solicitud en el CRM y el equipo concede la licencia.
+ * «Solicitar información» crea la solicitud en el CRM y el equipo concede la licencia. Los productos «connect» bajo solicitud
+ * preparan su Price por defecto (server/stripe/catalog.ts isPrepared): aquí se fija `stripePrepared: false` para que no.
  *
  * Reception AI deja el nivel de implantación 3 («desarrollo nuevo», que no se vende) porque ya está desarrollado en el
  * Core: pasa a 1 («activable desde el Core»).
@@ -18,7 +19,7 @@ export const REVIEW_ID_2026_11_09_MARKETING = "revision-catalogo-2026-11-09-mark
 const INTEREST = { a: "Sí, cuando la ficha muestra el botón «Me interesa»: tu solicitud llega a nuestro equipo.", q: "¿Puedo dejar mi interés?" };
 const COMING_SOON = { activation: "Todavía no se puede contratar: estará disponible próximamente." };
 const CAN_I = { a: "Todavía no. Mientras esté en preparación o próximamente no se puede contratar.", q: "¿Puedo contratarlo ya?" };
-const common = { status: { from: "coming_soon" as const, to: "on_request" as const }, technical: { from: "planned" as const, to: "partial" as const }, activation: { from: "none" as const, to: "feature" as const }, functionalGrade: "in_use" as const };
+const common = { status: { from: "coming_soon" as const, to: "on_request" as const }, technical: { from: "planned" as const, to: "partial" as const }, activation: { from: "none" as const, to: "feature" as const }, functionalGrade: "in_use" as const, stripePrepared: false };
 
 export const MARKETING_LISTINGS_2026_11_09: readonly ListingChange[] = [
   {
@@ -31,7 +32,7 @@ export const MARKETING_LISTINGS_2026_11_09: readonly ListingChange[] = [
       headline: { from: "Próximamente: tu SEO y tus reseñas bajo control.", to: "Tu SEO y tus reseñas bajo control." },
       longDescription: {
         from: "Control y seguimiento SEO y reputación en Google Business Profile y TripAdvisor.",
-        to: "Palabras clave con su posición, clics e impresiones de Google Search Console, auditoría de las páginas de tu web (título, descripción, encabezados, indexación y enlaces rotos) y tus reseñas, con avisos cuando algo empeora.",
+        to: "Palabras clave con su posición, clics e impresiones de Google Search Console, auditoría de las páginas de tu web (título, descripción, encabezados, indexación y enlaces rotos) y tus reseñas, con avisos en el panel cuando algo empeora.",
       },
       valueProposition: {
         from: "Próximamente: sigue tu posición en los buscadores y tus reseñas en Google Business Profile y TripAdvisor desde un solo sitio.",
@@ -54,7 +55,7 @@ export const MARKETING_LISTINGS_2026_11_09: readonly ListingChange[] = [
           REQUEST_STEP,
           { title: "Conexiones", text: "Conectas tu Search Console y, si quieres, tu ficha de Google y TripAdvisor con las credenciales de tu empresa." },
           { title: "Palabras clave", text: "Das de alta tus palabras clave y la página de tu web que debe posicionar cada una." },
-          { title: "Seguimiento", text: "Sigues su evolución, auditas tu web y recibes avisos cuando una posición cae o una página deja de indexarse." },
+          { title: "Seguimiento", text: "Sigues su evolución, auditas tu web y ves avisos en el panel cuando una posición cae o una página deja de indexarse." },
         ],
       },
       faq: {
@@ -103,7 +104,7 @@ export const MARKETING_LISTINGS_2026_11_09: readonly ListingChange[] = [
           REQUEST_STEP,
           { title: "Cuentas publicitarias", text: "Conectas Meta Ads y Google Ads con las credenciales de tu empresa, o importas sus informes en CSV." },
           { title: "Ventas", text: "Relacionas tus ventas con cada campaña con el informe de transacciones o etiquetándolas en el panel." },
-          { title: "Control", text: "Sigues inversión, ROAS y coste por venta, fijas presupuestos y recibes avisos de gasto y de campañas sin conversiones." },
+          { title: "Control", text: "Sigues inversión, ROAS y coste por venta, fijas presupuestos y ves avisos en el panel de gasto y de campañas sin conversiones." },
         ],
       },
       faq: {

@@ -1,6 +1,6 @@
 /**
  * Revisión del catálogo del 09/11/2026: SEO Control, Ads Manager y Reception AI a implantación acompañada con su ficha real
- * (sin checkout ni Price de Stripe).
+ * (sin checkout ni Price de Stripe: `stripePrepared: false`).
  */
 import { describe, expect, it } from "vitest";
 import { seedElephantSource } from "./catalog/seed";
@@ -60,6 +60,7 @@ describe("revisión del 09/11/2026: SEO Control, Ads Manager y Reception AI", ()
       expect(d.commercial?.faq?.[0].q, key).toBe("¿Cómo se pone en marcha?");
     }
     expect(productDraft.parse((await k.store.getEntry("product", "connect-reception-ai"))!.draft).catalog.implementationLevel).toBe(1);
+    for (const key of KEYS) expect(productDraft.parse((await k.store.getEntry("product", key))!.draft).catalog.stripePrepared, key).toBe(false);
     // Sin checkout: implantación asistida en la web y el cotizador
     const cat = quoteCatalogFromSite(await k.svc.site("published"));
     for (const key of KEYS) expect(cat.products.find((p) => p.key === key)!.offer, key).toMatchObject({ modality: "assisted", checkout: false });
