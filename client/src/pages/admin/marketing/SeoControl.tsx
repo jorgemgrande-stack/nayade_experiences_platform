@@ -403,7 +403,7 @@ function SearchConsole() {
 function Audit() {
   const utils = trpc.useUtils();
   const q = trpc.seoControl.audit.useQuery(undefined, { retry: false });
-  const domains = trpc.seoControl.domains.useQuery(undefined, { retry: false });
+  const domains = trpc.seoControl.webHosts.useQuery(undefined, { retry: false });
   const runAudit = trpc.seoControl.runAudit.useMutation({ onSuccess: () => (toast.success("Auditoría terminada"), utils.seoControl.invalidate()), onError: (e) => toastError(e) });
   const [open, setOpen] = useState<string | null>(null);
   if (q.isLoading) return <PanelLoading />;

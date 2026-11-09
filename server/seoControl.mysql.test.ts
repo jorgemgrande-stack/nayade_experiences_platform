@@ -87,7 +87,7 @@ describe.skipIf(!URL_)("SEO Control · palabras clave, Search Console, auditorí
     expect(errCode(await m("syncReviews", { source: "google" }))).toBe("PRECONDITION_FAILED");
     expect(errCode(await m("syncReviews", { source: "tripadvisor" }))).toBe("PRECONDITION_FAILED");
     expect(calls).toHaveLength(0);
-    host = (await ok(q("domains"))).hosts[0];
+    host = (await ok(q("webHosts"))).hosts[0];
     expect(host).toBeTruthy();
   });
 

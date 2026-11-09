@@ -26,7 +26,7 @@ export const seoControlRouter = router({
     .input(z.object({ days: z.number().int().min(14).max(400).default(90) }).optional())
     .query(({ input }) => seo.dashboard({ days: input?.days ?? 90 })),
   connectors: licensed.query(() => seo.connectors()),
-  domains: licensed.query(async () => ({ hosts: await seo.companyHosts() })),
+  webHosts: licensed.query(async () => ({ hosts: await seo.companyHosts() })),
 
   // ── Palabras clave y posiciones ─────────────────────────────────────────
   keywords: licensed.input(z.object({ includeArchived: z.boolean().optional() }).optional()).query(({ input }) => seo.listKeywords(input?.includeArchived)),
