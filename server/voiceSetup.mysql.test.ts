@@ -183,6 +183,6 @@ describe.skipIf(!URL_)("Voice · asistente de alta de Vapi (aplicación real, do
     expect(await ess.sql("a", "SELECT vapiCallId FROM vapi_calls")).toHaveLength(1);
     // El formulario heredado de «Llamadas IA › Configuración» ya no escribe site_settings en multiempresa
     expect(errCode(await ess.m("a", "vapiCalls.saveCredentials", { apiKey: KEY_A, webhookSecret: legacy }, adA))).toBe("PRECONDITION_FAILED");
-    expect(await ok(ess.q("a", "vapiCalls.getCredentials", undefined, adA))).toMatchObject({ hasApiKey: false, webhookSecret: "" });
+    expect(await ok(ess.q("a", "vapiCalls.getCredentials", undefined, adA))).toEqual({ hasApiKey: false, apiKeyMasked: "", hasWebhookSecret: false, webhookSecret: "" });
   });
 });

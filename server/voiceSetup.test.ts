@@ -559,3 +559,16 @@ describe("conectar: nada se escribe en Vapi con datos que no cuadran", () => {
     expect(e.message).not.toContain("BD caída");
   });
 });
+
+describe("«Llamadas IA › Configuración» nunca devuelve credenciales en claro", () => {
+  it("clave: solo los 4 últimos; clave de verificación corta: nada; utilizable: los 4 últimos", async () => {
+    const { maskedVapiCredentials } = await import("./vapiCredentialsSource");
+    const long = "clave-de-verificacion-larga-" + run;
+    expect(maskedVapiCredentials(KEY, long)).toEqual({ hasApiKey: true, apiKeyMasked: `••••${KEY.slice(-4)}`, hasWebhookSecret: true, webhookSecret: `••••${long.slice(-4)}` });
+    expect(maskedVapiCredentials(KEY, "corta123")).toMatchObject({ hasWebhookSecret: true, webhookSecret: "••••" });
+    expect(maskedVapiCredentials("", "")).toEqual({ hasApiKey: false, apiKeyMasked: "", hasWebhookSecret: false, webhookSecret: "" });
+    const json = JSON.stringify(maskedVapiCredentials(KEY, "corta123"));
+    expect(json).not.toContain(KEY.slice(0, 8));
+    expect(json).not.toContain("123");
+  });
+});

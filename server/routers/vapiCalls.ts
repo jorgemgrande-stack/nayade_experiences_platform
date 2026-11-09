@@ -12,7 +12,7 @@ import { createLead } from "../db";
 import { legacyDb, legacyPool } from "../_core/legacyDb";
 import { integrationEnv } from "../_core/tenantConfig";
 import { isMultiTenant } from "../_core/tenant";
-import { configuredVapiApiKey, configuredVapiWebhookSecret } from "../vapiCredentialsSource";
+import { configuredVapiApiKey, configuredVapiWebhookSecret, maskedVapiCredentials } from "../vapiCredentialsSource";
 import { MIN_WEBHOOK_SECRET_LENGTH, usableWebhookSecret } from "../_core/webhookSecret";
 import { placeholderEmail } from "../../shared/placeholderEmail";
 import { meteredFetch, meterVoiceCall } from "../_core/externalMetering";
@@ -230,11 +230,7 @@ export const vapiCallsRouter = router({
     const apiKey = configuredVapiApiKey({ multi: isMultiTenant(), vault: integrationEnv("VAPI_API_KEY"), legacy: map.vapiApiKey });
     const webhookSecret = configuredVapiWebhookSecret({ multi: isMultiTenant(), vault: integrationEnv("VAPI_WEBHOOK_SECRET"), legacy: map.vapiWebhookSecret, ghl: undefined });
     // Nunca en claro: la clave de verificación solo se ve enmascarada (la configura en Vapi la puesta en marcha)
-    return {
-      hasApiKey: !!apiKey,
-      apiKeyMasked: apiKey ? `${apiKey.slice(0, 8)}…${apiKey.slice(-4)}` : "",
-      webhookSecret: webhookSecret ? `••••${webhookSecret.slice(-4)}` : "",
-    };
+    return maskedVapiCredentials(apiKey, webhookSecret);
   }),
 
   saveCredentials: staffProcedure
