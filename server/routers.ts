@@ -193,6 +193,7 @@ import { seoControlRouter } from "./routers/seoControl";
 import { adsManagerRouter } from "./adsManager/router";
 import { receptionAiRouter } from "./receptionAi/router";
 import { whatsappCloudRouter } from "./whatsappCloud/router";
+import { copilotRouter } from "./copilot/router";
 import { postmarkTenantRouter } from "./routers/postmarkTenant";
 import { installSectorLoyalty } from "./loyaltySectors";
 import { getSdkRuntime } from "./sdk";
@@ -2668,6 +2669,7 @@ export const appRouter = router({
   adsManager: adsManagerRouter,
   receptionAi: receptionAiRouter,
   whatsappCloud: whatsappCloudRouter,
+  copilot: copilotRouter,
   postmarkTenant: postmarkTenantRouter,
   crm: crmRouter,
   commercialFollowup: commercialFollowupRouter,

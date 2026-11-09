@@ -243,6 +243,7 @@ const WhatsAppGHLInbox = lazy(() => import("./pages/admin/commercial/WhatsAppGHL
 const WhatsAppCloud = lazy(() => import("./pages/admin/commercial/WhatsAppCloud"));
 const VapiAgente = lazy(() => import("./pages/admin/commercial/VapiAgente"));
 const ReceptionAi = lazy(() => import("./pages/admin/commercial/ReceptionAi"));
+const Copilot = lazy(() => import("./pages/admin/Copilot"));
 const EmailInbox = lazy(() => import("./pages/admin/commercial/EmailInbox"));
 const EmailAccountsSettings = lazy(() => import("./pages/admin/settings/EmailAccountsSettings"));
 const SolicitarAnulacion = lazy(() => import("./pages/SolicitarAnulacion"));
@@ -539,6 +540,7 @@ function Router() {
       <Route path="/admin/atencion-comercial/whatsapp">{() => <Suspense fallback={<AdminLoadingFallback />}><WhatsAppGHLInbox /></Suspense>}</Route>
       <Route path="/admin/atencion-comercial/whatsapp-business">{() => <Suspense fallback={<AdminLoadingFallback />}><WhatsAppCloud /></Suspense>}</Route>
       <Route path="/admin/atencion-comercial/agente-ia">{() => <Suspense fallback={<AdminLoadingFallback />}><VapiAgente /></Suspense>}</Route>
+      <Route path="/admin/copilot">{() => <Suspense fallback={<AdminLoadingFallback />}><Copilot /></Suspense>}</Route>
       <Route path="/admin/atencion-comercial/recepcionista">{() => <Suspense fallback={<AdminLoadingFallback />}><ReceptionAi /></Suspense>}</Route>
       <Route path="/admin/atencion-comercial/email">{() => <Suspense fallback={<AdminLoadingFallback />}><EmailInbox /></Suspense>}</Route>
       <Route path="/admin/atencion-comercial">{() => <Suspense fallback={<AdminLoadingFallback />}><CommercialFollowupDashboard /></Suspense>}</Route>
