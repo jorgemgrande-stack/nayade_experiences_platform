@@ -11,6 +11,7 @@ import { getTenantDatabase } from "../_core/dbRegistry";
 import { parseHours } from "../../shared/receptionAi";
 import {
   DEFAULT_WHATSAPP_SETTINGS,
+  nextStatus,
   MESSAGE_STATUSES,
   WHATSAPP_AI_MODES,
   type AiLogMode,
@@ -111,7 +112,12 @@ export interface WhatsappStore {
   addOutbound(conversationId: number, m: OutboundInput): Promise<number>;
   message(id: number): Promise<WaMessage | null>;
   messageByWamid(wamid: string): Promise<WaMessage | null>;
-  updateMessageStatus(id: number, p: { status: MessageStatus; at: string | null; errorCode?: string | null; errorTitle?: string | null; wamid?: string | null }): Promise<void>;
+  /**
+   * Estado de entrega: SOLO avanza (nextStatus, también en SQL de forma atómica): un estado más avanzado que ya llegó
+   * por el webhook nunca se pisa (p. ej. «leído» no vuelve a «enviado»). El wamid, si se da, se guarda siempre; los
+   * datos del error, solo si el estado cambia. Devuelve si el estado cambió.
+   */
+  updateMessageStatus(id: number, p: { status: MessageStatus; at: string | null; errorCode?: string | null; errorTitle?: string | null; wamid?: string | null }): Promise<boolean>;
   messages(conversationId: number, limit: number): Promise<WaMessage[]>;
   markRead(conversationId: number): Promise<void>;
   /** Marca o quita «espera a una persona»; al quitarlo (devolver a la IA) reinicia el contador de respuestas automáticas. */
@@ -257,11 +263,14 @@ export class MemoryWhatsappStore implements WhatsappStore {
   }
   async updateMessageStatus(id: number, p: { status: MessageStatus; at: string | null; errorCode?: string | null; errorTitle?: string | null; wamid?: string | null }) {
     const m = this.msgs.find((x) => x.id === id)!;
-    m.status = p.status;
+    if (p.wamid !== undefined) m.wamid = p.wamid;
+    const next = nextStatus(m.status, p.status);
+    if (next === m.status) return false;
+    m.status = next;
     m.statusAt = p.at;
     if (p.errorCode !== undefined) m.errorCode = p.errorCode;
     if (p.errorTitle !== undefined) m.errorTitle = p.errorTitle;
-    if (p.wamid !== undefined) m.wamid = p.wamid;
+    return true;
   }
   async messages(conversationId: number, limit: number) {
     return this.msgs.filter((m) => m.conversationId === conversationId).slice(-limit).map((m) => ({ ...m }));
@@ -396,11 +405,20 @@ export class TenantDbWhatsappStore implements WhatsappStore {
   }
   updateMessageStatus(id: number, p: { status: MessageStatus; at: string | null; errorCode?: string | null; errorTitle?: string | null; wamid?: string | null }) {
     return this.exec(async (db) => {
-      const sets: SQL[] = [sql`status = ${p.status}`, sql`status_at = ${p.at ? toDbTime(p.at) : null}`];
-      if (p.errorCode !== undefined) sets.push(sql`error_code = ${p.errorCode}`);
-      if (p.errorTitle !== undefined) sets.push(sql`error_title = ${p.errorTitle}`);
+      // nextStatus en SQL: solo avanza, y nunca desde «leído» ni «no entregado». MySQL asigna de izquierda a derecha con
+      // los valores ya cambiados, así que `status` va la última y las demás columnas miran el estado anterior
+      const rank = (v: SQL) => sql`FIELD(${v}, 'received', 'pending', 'sent', 'delivered', 'read', 'failed')`;
+      const adv = sql`(status NOT IN ('read', 'failed') AND ${rank(sql`status`)} < ${rank(sql`${p.status}`)})`;
+      const sets: SQL[] = [];
       if (p.wamid !== undefined) sets.push(sql`wamid = ${p.wamid}`);
+      sets.push(sql`status_at = IF(${adv}, ${p.at ? toDbTime(p.at) : null}, status_at)`);
+      if (p.errorCode !== undefined) sets.push(sql`error_code = IF(${adv}, ${p.errorCode}, error_code)`);
+      if (p.errorTitle !== undefined) sets.push(sql`error_title = IF(${adv}, ${p.errorTitle}, error_title)`);
+      sets.push(sql`status = IF(${adv}, ${p.status}, status)`);
+      const before = rowsOf(await db.execute(sql`SELECT status FROM whatsapp_messages WHERE id = ${id}`))[0]?.status;
       await db.execute(sql`UPDATE whatsapp_messages SET ${sql.join(sets, sql`, `)} WHERE id = ${id}`);
+      const after = rowsOf(await db.execute(sql`SELECT status FROM whatsapp_messages WHERE id = ${id}`))[0]?.status;
+      return before !== after;
     });
   }
   messages(conversationId: number, limit: number) {

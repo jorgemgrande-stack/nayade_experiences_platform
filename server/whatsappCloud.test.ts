@@ -461,3 +461,27 @@ describe("revisión: para recibir basta el número y la clave secreta de la app"
     expect((await setup({ creds: { phoneNumberId: PHONE, verifyToken: VERIFY } }).svc.status()).webhookReady).toBe(false);
   });
 });
+
+describe("revisión: el estado tras el envío no pisa uno más avanzado", () => {
+  it("si «entregado» o «leído» llega antes de guardar el envío, se queda; el wamid sí se guarda", async () => {
+    const base = fakeGraph();
+    let store: InstanceType<typeof MemoryWhatsappStore> | null = null;
+    const graph = {
+      calls: base.calls,
+      fetch: async (url: string, init: any) => {
+        const r = await base.fetch(url, init);
+        // Mientras Meta responde, su webhook ya marcó el mensaje como leído
+        if (init.method === "POST") await store!.updateMessageStatus(store!.msgs.at(-1)!.id, { status: "read", at: NOW.toISOString() });
+        return r;
+      },
+    };
+    const k = setup({ graph: graph as any });
+    store = k.store;
+    await k.svc.handleWebhook(inboundPayload());
+    const m = await k.svc.reply(1, "Hola", 1);
+    expect(m).toMatchObject({ status: "read", wamid: "wamid.OUT1" });
+    expect(await k.store.updateMessageStatus(m.id, { status: "delivered", at: null })).toBe(false);
+    expect(await k.store.updateMessageStatus(m.id, { status: "failed", at: null, errorTitle: "x" })).toBe(false);
+    expect((await k.store.message(m.id))!.status).toBe("read");
+  });
+});

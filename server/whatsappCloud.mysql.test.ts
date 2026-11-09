@@ -144,6 +144,9 @@ describe.skipIf(!URL_)("WhatsApp AI · conexión, webhook, bandeja e IA (aplicac
     expect(send.body).toMatchObject({ messaging_product: "whatsapp", to: "34611222333", type: "text", text: { body: "Sí, gratuito junto al puerto." } });
     const st = payload(CREDS.a.phoneNumberId, { statuses: [{ id: sent.wamid, status: "delivered", timestamp: String(Math.floor(Date.now() / 1000)), recipient_id: "34611222333" }] });
     expect((await post("a", st, CREDS.a.appSecret)).json).toMatchObject({ statuses: 1 });
+    // El estado solo avanza (en SQL): «enviado» repetido después de «entregado» no lo hace retroceder
+    const back = payload(CREDS.a.phoneNumberId, { statuses: [{ id: sent.wamid, status: "sent", timestamp: String(Math.floor(Date.now() / 1000)), recipient_id: "34611222333" }] });
+    expect((await post("a", back, CREDS.a.appSecret)).json).toMatchObject({ statuses: 0 });
     const d = await ok(q("conversation", { id: c.id }, agA));
     expect(d.messages.map((x: any) => [x.direction, x.status])).toEqual([["in", "received"], ["out", "delivered"]]);
     // B no ve nada de A

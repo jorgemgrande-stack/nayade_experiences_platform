@@ -14,7 +14,6 @@
 import {
   WHATSAPP_LIMITS,
   WHATSAPP_WEBHOOK_PATH,
-  nextStatus,
   renderTemplate,
   wantsHuman,
   whatsappSettingsProblem,
@@ -391,10 +390,8 @@ export class WhatsappService {
       if (!msg || msg.direction !== "out") continue;
       const conv = await this.d.store.conversation(msg.conversationId);
       if (!conv || conv.phoneNumberId !== c.phoneNumberId) continue;
-      const next = nextStatus(msg.status, s.status);
-      if (next === msg.status) continue;
-      await this.d.store.updateMessageStatus(msg.id, { status: next, at: s.at, ...(next === "failed" ? { errorCode: s.errorCode, errorTitle: s.errorTitle } : {}) });
-      statuses++;
+      // La tienda solo deja avanzar el estado (atómico): dos webhooks a la vez o desordenados no lo hacen retroceder
+      if (await this.d.store.updateMessageStatus(msg.id, { status: s.status, at: s.at, ...(s.status === "failed" ? { errorCode: s.errorCode, errorTitle: s.errorTitle } : {}) })) statuses++;
     }
     return { inbound, duplicates, statuses, foreign: p.foreign };
   }
