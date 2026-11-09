@@ -22,7 +22,8 @@ const { DEFAULT_WHATSAPP_SETTINGS, nextStatus, templateParamCount, wantsHuman, w
 // Martes 10 de noviembre de 2026, 22:00 en Madrid (21:00 UTC)
 const NOW = new Date("2026-11-10T21:00:00Z");
 const TOKEN = "EAAGtoken-de-prueba-whatsapp-0123456789";
-const APP_SECRET = "appsecretdeprueba0123456789abcdef";
+// Valores ficticios de prueba (no son claves)
+const APP_SECRET = "s".repeat(32);
 const VERIFY = "verificacion-de-prueba-0123456789";
 const PHONE = "1098765432101";
 const CREDS = { phoneNumberId: PHONE, wabaId: "2098765432102", accessToken: TOKEN, appSecret: APP_SECRET, verifyToken: VERIFY };
