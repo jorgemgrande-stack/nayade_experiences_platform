@@ -405,7 +405,13 @@ function Sales() {
   const cancel = trpc.multichannel.cancelSale.useMutation({ onSuccess: (r) => (outcome(r), refresh()), onError: (e) => toastError(e) });
   const retry = trpc.multichannel.retrySale.useMutation({ onSuccess: (r) => (outcome(r), refresh()), onError: (e) => toastError(e) });
   const retryOps = trpc.multichannel.retryOperation.useMutation({
-    onSuccess: (r) => (r.opsStatus === "hecho" ? toast.success("Contabilidad y Operaciones completadas") : toast.warning(r.problem ?? "No se ha podido completar"), refresh()),
+    onSuccess: (r) => {
+      if (r.opsStatus === "hecho") toast.success("Contabilidad y Operaciones completadas");
+      else if (r.opsStatus === "anulada") toast.success("La venta está cancelada: se han anulado su ingreso, su booking y su ficha en Operaciones");
+      else if (r.opsStatus === "pendiente") toast.info("Otro proceso está completando este paso ahora mismo. Vuelve a mirarlo en unos minutos.");
+      else toast.warning(r.problem ?? "No se ha podido completar: inténtalo de nuevo en unos minutos");
+      refresh();
+    },
     onError: (e) => toastError(e),
   });
   const record = trpc.multichannel.recordSale.useMutation({ onSuccess: (r) => (outcome(r), r.status === "registrada" && setManual(null), refresh()), onError: (e) => toastError(e) });
@@ -453,11 +459,11 @@ function Sales() {
                   <td className="p-2">{s.externalCode ?? "—"}<br /><span className="text-xs text-muted-foreground">{s.serviceDay ?? "—"}{s.serviceEndDay ? ` → ${s.serviceEndDay}` : ""}{s.serviceTime ? ` · ${s.serviceTime}` : ""} · {s.units} ud.</span></td>
                   <td className="p-2 text-right">{eur(s.grossCents)}</td>
                   <td className="p-2 text-right">{eur(s.commissionCents)}</td>
-                  <td className="p-2"><Badge variant={STATUS_VARIANT[s.status]}>{MC_SALE_STATUS_LABELS[s.status]}</Badge>{s.problem && <p className="mt-1 max-w-[260px] text-xs text-muted-foreground">{s.problem}</p>}{s.status === "registrada" && s.opsStatus === "error" && <p className="mt-1 max-w-[260px] text-xs text-destructive">{s.opsError ?? "Contabilidad y Operaciones sin completar."}</p>}</td>
+                  <td className="p-2"><Badge variant={STATUS_VARIANT[s.status]}>{MC_SALE_STATUS_LABELS[s.status]}</Badge>{s.problem && <p className="mt-1 max-w-[260px] text-xs text-muted-foreground">{s.problem}</p>}{(s.status === "registrada" || s.status === "cancelada") && s.opsStatus === "error" && <p className="mt-1 max-w-[260px] text-xs text-destructive">{s.opsError ?? (s.status === "cancelada" ? "Falta anular su contabilidad y Operaciones." : "Contabilidad y Operaciones sin completar.")}</p>}</td>
                   <td className="p-2 text-xs">{s.reservationNumber ?? "—"}{s.settlementId ? <><br /><span className="text-muted-foreground">Liquidada</span></> : null}</td>
                   <td className="whitespace-nowrap p-2">
                     {["sin_cupo", "sin_plaza", "rechazada"].includes(s.status) && <Button size="sm" variant="outline" disabled={retry.isPending} onClick={() => retry.mutate({ id: s.id })}><RotateCcw className="mr-1 h-4 w-4" aria-hidden="true" />Reintentar</Button>}
-                    {s.status === "registrada" && s.opsStatus === "error" && <Button size="sm" variant="outline" disabled={retryOps.isPending} onClick={() => retryOps.mutate({ id: s.id })}><RotateCcw className="mr-1 h-4 w-4" aria-hidden="true" />Completar contabilidad</Button>}
+                    {(s.status === "registrada" || s.status === "cancelada") && s.reservationId != null && s.opsStatus === "error" && <Button size="sm" variant="outline" disabled={retryOps.isPending} onClick={() => retryOps.mutate({ id: s.id })}><RotateCcw className="mr-1 h-4 w-4" aria-hidden="true" />{s.status === "cancelada" ? "Anular contabilidad" : "Completar contabilidad"}</Button>}
                     {s.status !== "cancelada" && <Button size="sm" variant="ghost" disabled={cancel.isPending} onClick={() => window.confirm("¿Cancelar esta venta? Se anula la reserva del Core y se devuelve el cupo.") && cancel.mutate({ id: s.id })}><Ban className="mr-1 h-4 w-4" aria-hidden="true" />Cancelar</Button>}
                   </td>
                 </tr>
@@ -613,15 +619,15 @@ function Reconciliation() {
           {q.data!.opsFailed.length > 0 && (
             <div className={sectionClass}>
               <p className="font-medium text-foreground">Ventas sin contabilidad ni Operaciones</p>
-              <p className="text-sm text-muted-foreground">La reserva está creada y pagada por el canal, pero falta su transacción de ingreso o su ficha en Operaciones. Complétalas en «Ventas» con «Completar contabilidad» (no se duplica nada).</p>
-              <ul className="space-y-1 text-sm">{q.data!.opsFailed.map((s) => <li key={s.id}>{s.channelName} · <span className="font-mono text-xs">{s.externalRef}</span> · {s.serviceDay} · reserva {s.reservationNumber ?? "—"}{s.opsError ? `: ${s.opsError}` : ""}</li>)}</ul>
+              <p className="text-sm text-muted-foreground">Registradas: la reserva está creada y pagada por el canal, pero falta su transacción de ingreso, su booking o su ficha en Operaciones; complétalas en «Ventas» con «Completar contabilidad». Canceladas: no se pudo anular lo que crearon; usa «Anular contabilidad». En ningún caso se duplica nada.</p>
+              <ul className="space-y-1 text-sm">{q.data!.opsFailed.map((s) => <li key={s.id}>{s.channelName} · <span className="font-mono text-xs">{s.externalRef}</span> · {MC_SALE_STATUS_LABELS[s.status]} · {s.serviceDay} · reserva {s.reservationNumber ?? "—"}{s.opsError ? `: ${s.opsError}` : ""}</li>)}</ul>
             </div>
           )}
-          {q.data!.orphanIncome.length > 0 && (
+          {q.data!.cancelledLeftovers.length > 0 && (
             <div className={sectionClass}>
-              <p className="font-medium text-foreground">Ingresos de ventas canceladas</p>
-              <p className="text-sm text-muted-foreground">Ventas canceladas por el canal cuyo ingreso sigue vigente en Contabilidad. Revísalo en Contabilidad.</p>
-              <ul className="space-y-1 text-sm">{q.data!.orphanIncome.map((s) => <li key={s.id}>{s.channelName} · <span className="font-mono text-xs">{s.externalRef}</span> · {s.serviceDay} · reserva {s.reservationNumber ?? "—"}</li>)}</ul>
+              <p className="font-medium text-foreground">Restos de ventas canceladas</p>
+              <p className="text-sm text-muted-foreground">Ventas canceladas por el canal que aún tienen vigente su ingreso en Contabilidad, su booking o su ficha en Operaciones. Si la venta aparece arriba, anúlalos con «Anular contabilidad»; si no, revísalos en Contabilidad y Operaciones.</p>
+              <ul className="space-y-1 text-sm">{q.data!.cancelledLeftovers.map((s) => <li key={s.id}>{s.channelName} · <span className="font-mono text-xs">{s.externalRef}</span> · {s.serviceDay} · reserva {s.reservationNumber ?? "—"}: {s.leftovers.join(", ")}</li>)}</ul>
             </div>
           )}
           {q.data!.pending.length > 0 && (

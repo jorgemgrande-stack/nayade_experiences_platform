@@ -543,7 +543,7 @@ export const defaultAfterRegister: McAfterRegister = async (s) => {
   if (r.transactionId == null) throw new Error("No se ha creado la transacción contable de la reserva.");
   // La ficha de Operaciones no la devuelve: se comprueba que existe (sin ella la venta no aparece en Operaciones)
   const db = await getDb();
-  if (!db || (await rows(db, sql`SELECT id FROM reservation_operational WHERE reservation_id = ${s.reservationId} LIMIT 1`)).length === 0) {
+  if (!db || (await rows(db, sql`SELECT id FROM reservation_operational WHERE reservation_id = ${s.reservationId} AND reservation_type = 'activity' LIMIT 1`)).length === 0) {
     throw new Error("No se ha creado la ficha de la reserva en Operaciones.");
   }
 };
@@ -589,14 +589,21 @@ const newOpsClaim = () => crypto.randomBytes(8).toString("hex");
 const OPS_DUE = sql`(s.ops_status = 'error' OR (s.ops_status = 'pendiente' AND s.ops_at < (CURRENT_TIMESTAMP(3) - INTERVAL 10 MINUTE)))`;
 
 /**
- * Reserva (bajo bloqueo de la fila de la venta) el paso de contabilidad y Operaciones de una venta registrada que lo
- * tiene pendiente y devuelve lo que necesita `postConfirmOperation`; si no hay nada que hacer, el motivo.
+ * Reserva (bajo bloqueo de la fila de la venta) el paso de contabilidad y Operaciones que una venta tiene pendiente y
+ * devuelve lo que necesita `postConfirmOperation`; si no hay nada que hacer, el motivo. Una venta cancelada cuyo cierre
+ * falló (ops_status «error») se reclama solo para deshacer lo creado (`undoOnly`).
  */
-async function claimOps(d: Db, saleId: number): Promise<{ payload: Parameters<McAfterRegister>[0]; claim: string } | { problem: string }> {
+async function claimOps(d: Db, saleId: number): Promise<{ payload: Parameters<McAfterRegister>[0]; claim: string; undoOnly: boolean } | { problem: string }> {
   return inTx(d, async (tx) => {
     const [s] = await rows(tx, sql`SELECT s.*, ${OPS_DUE} AS ops_due FROM mc_sales s WHERE s.id = ${saleId} FOR UPDATE`);
     if (!s) return { problem: "La venta no existe." };
-    if (s.status !== "registrada" || s.reservation_id == null || !bool(s.ops_due)) return { problem: "Esa venta no tiene pendiente el paso de contabilidad y Operaciones." };
+    if (s.reservation_id == null || !bool(s.ops_due) || (s.status !== "registrada" && s.status !== "cancelada")) return { problem: "Esa venta no tiene pendiente el paso de contabilidad y Operaciones." };
+    if (s.status === "cancelada") {
+      const claim = newOpsClaim();
+      await tx.execute(sql`UPDATE mc_sales SET ops_status = 'pendiente', ops_at = CURRENT_TIMESTAMP(3), ops_claim = ${claim} WHERE id = ${saleId}`);
+      const none = { reservationId: num(s.reservation_id), productId: 0, productName: "", day: String(s.service_day ?? ""), people: 0, grossCents: 0, netCents: 0, customerName: "", customerEmail: null, customerPhone: null, channelName: "", ref: String(s.external_ref), merchantOrder: "" };
+      return { claim, undoOnly: true, payload: none };
+    }
     const [r] = await rows(tx, sql`SELECT product_id, product_name, merchant_order, status, status_reservation FROM reservations WHERE id = ${num(s.reservation_id)}`);
     if (!r || r.status === "cancelled" || r.status_reservation === "ANULADA") return { problem: "La reserva del Core está anulada: cancela la venta en lugar de completarla." };
     const [c] = await rows(tx, sql`SELECT name FROM mc_channels WHERE id = ${num(s.channel_id)}`);
@@ -604,6 +611,7 @@ async function claimOps(d: Db, saleId: number): Promise<{ payload: Parameters<Mc
     await tx.execute(sql`UPDATE mc_sales SET ops_status = 'pendiente', ops_at = CURRENT_TIMESTAMP(3), ops_claim = ${claim} WHERE id = ${saleId}`);
     return {
       claim,
+      undoOnly: false,
       payload: {
         reservationId: num(s.reservation_id), productId: num(r.product_id), productName: String(r.product_name), day: String(s.service_day), people: num(s.people) || 1,
         grossCents: num(s.gross_cents), netCents: num(s.net_cents), customerName: str(s.customer_name) ?? "", customerEmail: str(s.customer_email), customerPhone: str(s.customer_phone),
@@ -639,9 +647,13 @@ async function completeOps(d: Db, saleId: number, claim: string, payload: Parame
       await tx.execute(sql`UPDATE mc_sales SET ops_status = ${status}, ops_error = ${cancelled ? null : opsError}, ops_at = CURRENT_TIMESTAMP(3), ops_claim = NULL WHERE id = ${saleId}`);
     });
   } catch (e) {
-    // Sin poder cerrar el paso bajo bloqueo (p. ej. la anulación falló): queda en error para reintentarlo
-    console.error(JSON.stringify({ ctx: "Multicanal", event: "after_register_close_failed", saleId, error: e instanceof Error ? e.message.slice(0, 200) : "error" }));
-    await d.execute(sql`UPDATE mc_sales SET ops_status = 'error', ops_error = ${(opsError ?? "No se ha podido cerrar el paso de contabilidad y Operaciones.").slice(0, 500)}, ops_at = CURRENT_TIMESTAMP(3), ops_claim = NULL WHERE id = ${saleId} AND ops_claim = ${claim}`);
+    // Sin poder cerrar el paso bajo bloqueo (p. ej. falló la anulación de una venta cancelada): queda en error y se
+    // repara con retryOperation (en una venta cancelada, solo vuelve a deshacer lo creado)
+    let reason = e instanceof Error ? e.message : "error";
+    // El motivo de MySQL (no la consulta entera que envuelve drizzle)
+    for (let x: any = e, i = 0; x && i < 6; x = x.cause, i++) if (typeof x.sqlMessage === "string") reason = x.sqlMessage;
+    console.error(JSON.stringify({ ctx: "Multicanal", event: "after_register_close_failed", saleId, error: reason.slice(0, 200) }));
+    await d.execute(sql`UPDATE mc_sales SET ops_status = 'error', ops_error = ${(opsError ?? `No se ha podido cerrar el paso de contabilidad y Operaciones: ${reason}`).slice(0, 500)}, ops_at = CURRENT_TIMESTAMP(3), ops_claim = NULL WHERE id = ${saleId} AND ops_claim = ${claim}`);
   }
   const [r] = await rows(d, sql`SELECT ops_status FROM mc_sales WHERE id = ${saleId}`);
   return str(r?.ops_status);
@@ -904,7 +916,7 @@ async function cancelLocked(tx: Exec, sale: any, now: number, actorId: number | 
       await undoConfirmedOperation(tx, rid, actorId);
     }
   }
-  await tx.execute(sql`UPDATE mc_sales SET status = 'cancelada', cancelled_at = CURRENT_TIMESTAMP(3) WHERE id = ${num(sale.id)}`);
+  await tx.execute(sql`UPDATE mc_sales SET status = 'cancelada', cancelled_at = CURRENT_TIMESTAMP(3), ops_status = IF(ops_status = 'error', 'anulada', ops_status), ops_error = IF(ops_status = 'anulada', NULL, ops_error) WHERE id = ${num(sale.id)}`);
 }
 
 async function cancelByRef(d: Db, channel: ChannelRow, ref: string, o: { source: McSaleSource; importId?: number | null; actorId?: number | null }, now: number): Promise<McIngestOutcome> {
@@ -976,9 +988,10 @@ export async function retryOperation(saleId: number, actor: McActor, after?: McA
   return run(async (d) => {
     const c = await claimOps(d, saleId);
     if ("problem" in c) throw bad(c.problem);
-    const opsStatus = await completeOps(d, saleId, c.claim, c.payload, after ?? defaultAfterRegister);
+    // Venta cancelada: no se vuelve a crear nada, solo se deshace (completeOps lo hace bajo bloqueo)
+    const opsStatus = await completeOps(d, saleId, c.claim, c.payload, c.undoOnly ? async () => {} : after ?? defaultAfterRegister);
     const [s] = await rows(d, sql`SELECT ops_error FROM mc_sales WHERE id = ${saleId}`);
-    return { saleId, opsStatus, problem: opsStatus === "hecho" ? null : str(s?.ops_error) };
+    return { saleId, opsStatus, problem: opsStatus === "hecho" || opsStatus === "anulada" ? null : str(s?.ops_error) };
   });
 }
 
@@ -1158,19 +1171,27 @@ export async function reconciliation(f: { from?: string; to?: string; channelId?
         ${f.channelId ? sql`AND s.channel_id = ${f.channelId}` : sql``}
       ORDER BY s.id DESC LIMIT 100`)).map(mapSale);
     const pending = (await rows(d, sql`${SALE_SELECT} WHERE s.status IN ('sin_cupo', 'sin_plaza', 'rechazada') ${f.channelId ? sql`AND s.channel_id = ${f.channelId}` : sql``} ORDER BY s.id DESC LIMIT 100`)).map(mapSale);
-    // Ventas registradas sin su contabilidad u Operaciones (se completan desde «Ventas»)
-    const opsFailed = (await rows(d, sql`${SALE_SELECT} WHERE s.status = 'registrada' AND ${OPS_DUE} ${f.channelId ? sql`AND s.channel_id = ${f.channelId}` : sql``} ORDER BY s.id DESC LIMIT 100`)).map(mapSale);
-    // Ingresos huérfanos: transacción de ingreso aún vigente de una venta cancelada
-    const orphanIncome = (await rows(d, sql`
-      ${SALE_SELECT} WHERE s.status = 'cancelada' AND s.reservation_id IS NOT NULL ${f.channelId ? sql`AND s.channel_id = ${f.channelId}` : sql``}
-        AND EXISTS (SELECT 1 FROM transactions t WHERE t.reservationId_tx = s.reservation_id AND t.type = 'ingreso' AND t.status = 'completado' AND t.operationStatus = 'confirmada')
-      ORDER BY s.id DESC LIMIT 100`)).map(mapSale);
+    // Ventas registradas sin su contabilidad u Operaciones, o canceladas sin deshacer (se reparan desde «Ventas»)
+    const opsFailed = (await rows(d, sql`${SALE_SELECT} WHERE s.status IN ('registrada', 'cancelada') AND s.reservation_id IS NOT NULL AND ${OPS_DUE} ${f.channelId ? sql`AND s.channel_id = ${f.channelId}` : sql``} ORDER BY s.id DESC LIMIT 100`)).map(mapSale);
+    // Restos de ventas canceladas: ingreso aún vigente, booking sin cancelar o ficha de Operaciones sin anular
+    const cancelledLeftovers = (await rows(d, sql`
+      SELECT * FROM (
+        SELECT x.*,
+          EXISTS (SELECT 1 FROM transactions t WHERE t.reservationId_tx = x.reservation_id AND t.type = 'ingreso' AND t.status = 'completado' AND t.operationStatus = 'confirmada') AS left_income,
+          EXISTS (SELECT 1 FROM bookings b WHERE b.reservationId = x.reservation_id AND b.status <> 'cancelado') AS left_booking,
+          EXISTS (SELECT 1 FROM reservation_operational o WHERE o.reservation_id = x.reservation_id AND o.op_status <> 'anulado') AS left_ops
+        FROM (${SALE_SELECT} WHERE s.status = 'cancelada' AND s.reservation_id IS NOT NULL ${f.channelId ? sql`AND s.channel_id = ${f.channelId}` : sql``}) x
+      ) y WHERE left_income OR left_booking OR left_ops
+      ORDER BY id DESC LIMIT 100`)).map((r) => ({
+        ...mapSale(r),
+        leftovers: [bool(r.left_income) && "ingreso", bool(r.left_booking) && "booking", bool(r.left_ops) && "ficha de Operaciones"].filter((x): x is string => !!x),
+      }));
     const settlements = (await rows(d, sql`SELECT * FROM mc_settlements ${f.channelId ? sql`WHERE channel_id = ${f.channelId}` : sql``} ORDER BY id DESC LIMIT 50`)).map((s) => ({
       id: num(s.id), channelId: num(s.channel_id), channelName: names.get(num(s.channel_id)) ?? "", periodFrom: String(s.period_from), periodTo: String(s.period_to), reference: str(s.reference),
       salesCount: num(s.sales_count), expectedNetCents: num(s.expected_net_cents), receivedCents: s.received_cents == null ? null : num(s.received_cents),
       differenceCents: s.received_cents == null ? null : num(s.received_cents) - num(s.expected_net_cents), note: str(s.note), createdAt: iso(s.created_at),
     }));
-    return { from, to, totals: totals.map((t) => ({ ...t, channelName: names.get(t.channelId) ?? "" })), mismatches, pending, opsFailed, orphanIncome, settlements };
+    return { from, to, totals: totals.map((t) => ({ ...t, channelName: names.get(t.channelId) ?? "" })), mismatches, pending, opsFailed, cancelledLeftovers, settlements };
   });
 }
 

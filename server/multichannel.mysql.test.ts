@@ -246,7 +246,7 @@ describe.skipIf(!URL_)("Venta multicanal · canales, cupo, ventas sin sobreventa
     expect(await ess.sql("a", "SELECT op_status FROM reservation_operational WHERE reservation_id = ?", [rid])).toEqual([{ op_status: "anulado" }]);
     expect(await ess.sql("a", "SELECT status FROM bookings WHERE reservationId = ?", [rid])).toEqual([{ status: "cancelado" }]);
     // Conciliación: sin ingresos huérfanos de ventas canceladas; repetir la cancelación no cambia nada
-    expect((await ok(q("reconciliation", { channelId, from: day(20), to: day(30) }))).orphanIncome).toEqual([]);
+    expect((await ok(q("reconciliation", { channelId, from: day(20), to: day(30) }))).cancelledLeftovers).toEqual([]);
     expect((await post({ ref: "PC-1", event: "cancelacion" })).json.results[0]).toMatchObject({ status: "cancelada", duplicate: true });
     expect((await ess.sql("a", "SELECT COUNT(*) AS n FROM transactions WHERE reservationId_tx = ?", [rid]))[0].n).toBe(1);
   });
@@ -324,7 +324,7 @@ describe.skipIf(!URL_)("Venta multicanal · canales, cupo, ventas sin sobreventa
     expect(await ess.sql("a", "SELECT op_status FROM reservation_operational WHERE reservation_id = ?", [s.reservation_id])).toEqual([{ op_status: "anulado" }]);
     expect(await ess.sql("a", "SELECT status FROM bookings WHERE reservationId = ?", [s.reservation_id])).toEqual([{ status: "cancelado" }]);
     const rec = await ok(q("reconciliation", { channelId, from: day(20), to: day(30) }));
-    expect(rec.orphanIncome).toEqual([]);
+    expect(rec.cancelledLeftovers).toEqual([]);
     expect(rec.opsFailed).toEqual([]);
   });
 
@@ -369,18 +369,62 @@ describe.skipIf(!URL_)("Venta multicanal · canales, cupo, ventas sin sobreventa
     expect((await ops("R3-1")).ops_status).toBe("hecho");
   });
 
-  it("sin ficha en Operaciones el paso no queda hecho: se marca y se completa al reintentar", async () => {
-    await ess.sql("a", "RENAME TABLE reservation_operational TO reservation_operational_qa_off");
+  it("sin ficha en Operaciones (0 filas, con la tabla presente) el paso no queda hecho: se marca y se completa al reintentar", async () => {
+    // La ficha no llega a crearse: un disparador rechaza su alta (la tabla existe y queda sin filas para la reserva)
+    await ess.sql("a", "CREATE TRIGGER qa_mc_sin_ficha BEFORE INSERT ON reservation_operational FOR EACH ROW SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'qa: sin ficha'");
     try {
       expect((await post(sale("FICHA-1", "KAYAK", { date: day(25) }))).json.results[0]).toMatchObject({ status: "registrada" });
     } finally {
-      await ess.sql("a", "RENAME TABLE reservation_operational_qa_off TO reservation_operational");
+      await ess.sql("a", "DROP TRIGGER IF EXISTS qa_mc_sin_ficha");
     }
     const [s] = await ess.sql("a", "SELECT id, reservation_id, ops_status, ops_error FROM mc_sales WHERE external_ref = 'FICHA-1'");
-    expect(s.ops_status).toBe("error");
-    expect(s.ops_error).toContain("Operaciones");
-    expect(await ok(m("retryOperation", { id: s.id }))).toMatchObject({ opsStatus: "hecho" });
-    expect(await ess.sql("a", "SELECT op_status FROM reservation_operational WHERE reservation_id = ?", [s.reservation_id])).toEqual([{ op_status: "confirmado" }]);
+    expect(await ess.sql("a", "SELECT id FROM reservation_operational WHERE reservation_id = ?", [s.reservation_id])).toEqual([]);
+    expect(s).toMatchObject({ ops_status: "error", ops_error: "Contabilidad y Operaciones sin completar: No se ha creado la ficha de la reserva en Operaciones." });
+    expect(await ok(m("retryOperation", { id: s.id }))).toMatchObject({ opsStatus: "hecho", problem: null });
+    expect(await ess.sql("a", "SELECT reservation_type, op_status FROM reservation_operational WHERE reservation_id = ?", [s.reservation_id])).toEqual([{ reservation_type: "activity", op_status: "confirmado" }]);
+  });
+
+  it("una ficha de otro tipo (restaurant) con el mismo id de reserva no cuenta: el paso no queda hecho", async () => {
+    const { mc, actor, inA, input, ops } = await direct();
+    await inA(() => mc.recordSale(channelId, input("FICHA-2"), actor, async (p) => {
+      // Antes del paso ya hay una ficha de restaurante con ese id: la de actividad no se puede crear (id único)
+      await ess.sql("a", "INSERT INTO reservation_operational (reservation_id, reservation_type, op_status) VALUES (?, 'restaurant', 'confirmado')", [p.reservationId]);
+      await mc.defaultAfterRegister(p);
+    }));
+    const s = await ops("FICHA-2");
+    expect(s).toMatchObject({ status: "registrada", ops_status: "error", ops_error: "Contabilidad y Operaciones sin completar: No se ha creado la ficha de la reserva en Operaciones." });
+    expect(await ess.sql("a", "SELECT reservation_type FROM reservation_operational WHERE reservation_id = ?", [s.reservation_id])).toEqual([{ reservation_type: "restaurant" }]);
+    expect((await ok(q("reconciliation", { channelId, from: day(20), to: day(30) }))).opsFailed.map((x: any) => x.externalRef)).toContain("FICHA-2");
+  });
+
+  it("si falla el cierre de una venta cancelada, se ve en la conciliación y retryOperation solo deshace lo creado, una vez", async () => {
+    const { mc, actor, inA, input, ops, txOf } = await direct();
+    await inA(() => mc.recordSale(channelId, input("CXL-2"), actor, async (p) => {
+      // El canal cancela; después el paso crea booking, ingreso y ficha, y el cierre no puede anular el booking
+      expect((await post({ ref: "CXL-2", event: "cancelacion" })).json.results[0]).toMatchObject({ status: "cancelada" });
+      await mc.defaultAfterRegister(p);
+      await ess.sql("a", "CREATE TRIGGER qa_mc_sin_anular BEFORE UPDATE ON bookings FOR EACH ROW SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'qa: booking bloqueado'");
+    }));
+    await ess.sql("a", "DROP TRIGGER IF EXISTS qa_mc_sin_anular");
+    const s = await ops("CXL-2");
+    expect(s).toMatchObject({ status: "cancelada", ops_status: "error", ops_claim: null });
+    expect(s.ops_error).toBe("No se ha podido cerrar el paso de contabilidad y Operaciones: qa: booking bloqueado");
+    // Todo lo creado sigue vigente (el cierre se deshizo entero) y la conciliación lo muestra
+    expect(await txOf(s.reservation_id)).toEqual([{ status: "completado", operationStatus: "confirmada" }]);
+    let rec = await ok(q("reconciliation", { channelId, from: day(20), to: day(30) }));
+    expect(rec.opsFailed.map((x: any) => x.externalRef)).toContain("CXL-2");
+    expect(rec.cancelledLeftovers.find((x: any) => x.externalRef === "CXL-2")).toMatchObject({ leftovers: ["ingreso", "booking", "ficha de Operaciones"] });
+    // Reparación: solo se deshace (no se crea nada nuevo) y queda «anulada»
+    expect(await ok(m("retryOperation", { id: s.id }))).toMatchObject({ opsStatus: "anulada", problem: null });
+    expect(await txOf(s.reservation_id)).toEqual([{ status: "reembolsado", operationStatus: "reembolsada" }]);
+    expect(await ess.sql("a", "SELECT status FROM bookings WHERE reservationId = ?", [s.reservation_id])).toEqual([{ status: "cancelado" }]);
+    expect(await ess.sql("a", "SELECT op_status FROM reservation_operational WHERE reservation_id = ?", [s.reservation_id])).toEqual([{ op_status: "anulado" }]);
+    rec = await ok(q("reconciliation", { channelId, from: day(20), to: day(30) }));
+    expect(rec.opsFailed.map((x: any) => x.externalRef)).not.toContain("CXL-2");
+    expect(rec.cancelledLeftovers).toEqual([]);
+    // Idempotente: no hay nada más que reparar
+    expect(errCode(await m("retryOperation", { id: s.id }))).toBe("BAD_REQUEST");
+    expect(await txOf(s.reservation_id)).toHaveLength(1);
   });
 
   it("aislamiento: la empresa B no ve los canales de A y el enlace de A no sirve en B", async () => {
