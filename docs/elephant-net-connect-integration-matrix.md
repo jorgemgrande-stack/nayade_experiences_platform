@@ -178,6 +178,7 @@ En el Core, cada empresa guarda sus credenciales en una bóveda (`server/_core/c
 | Care Net · recordatorios de cita por correo | #720 | fusionado (0051) |
 | Ski Net · fianzas del alquiler y cargos por daños | #721 | en curso (0052) |
 | Tanda C: fichas de Care, Ski, Restaurant y Travel Net al día (Hotel Net bloqueado por el borrador ajeno v10) | esta PR | en curso |
+| Pack Marketing: «Marketing · Puesta en marcha y resumen» (`/admin/marketing/resumen`, `marketingPack.summary`) y revisión de catálogo preparada (`review20261109packmarketing.ts`, sin lanzar) | `feat/pack-marketing` | en curso (sin migración) |
 
 ## Activación del marketplace (encargo del 08/11/2026)
 
@@ -219,11 +220,18 @@ Inventario accionable de lo que se vende en `/admin/ampliar`. Estado público de
 | GEO Control (`geo-control`) | Consultas, observaciones por asistente de IA, presencia y citación, cambios, competidores y oportunidades (#717, migración 0048) | IA central (opcional) | Implantación acompañada (tanda B) | Venta directa con su Price de Stripe Live. |
 | Reception AI, Ads Manager, SEO Control | Sin código en el Core (base en Skicenter) | Vapi o Meta; Meta/Google Ads; Google Business Profile | Próximamente | Portar desde Skicenter. |
 | Contratos y firma (`contracts-esign`) | Plantillas, contratos, firma simple por enlace `/contrato/<token>` o en el panel, evidencias y PDF (#718, migración 0049) | — | Implantación acompañada (tanda B) | Venta directa con su Price de Stripe Live (`stripePrepared`). |
+| Paquete Marketing (`ads-manager`, `email-campaigns`, `seo-control`, `geo-control`) | Los cuatro módulos y su puesta en marcha y resumen (`/admin/marketing/resumen`) | Las de sus componentes (Brevo, Meta/Google Ads o CSV, Search Console, GBP/TripAdvisor opcional) | Próximamente (revisión preparada: implantación acompañada) | Lanzar `catalog-review` (coordinador). |
 | Venta multicanal, Contabilidad general | Sin código genérico | Canales | Próximamente | Desarrollo nuevo. |
 
 **Paquetes (sección 5).**
 - **Finance:** sus componentes son reales salvo `bank-reconciliation`. Seguirá en implantación acompañada hasta que Tax y Finance Sync estén a la venta.
-- **Communications, Marketing y AI:** incluyen capacidades sin función (`reception-ai`, `ads-manager`, `seo-control`, `geo-control`, `copilot-advanced`, `automations-advanced`). No se abren a la venta.
+- **Marketing (09/11/2026, `feat/pack-marketing`):**
+  - Sus cuatro componentes funcionan en el Core y se contratan: Ads Manager (#729), Campaigns (#725/#726) y SEO Control (#728) en implantación acompañada; GEO Control (#717) disponible.
+  - La licencia del paquete concede `ads-manager`, `email-campaigns`, `seo-control` y `geo-control` (con prueba) y el menú muestra sus entradas.
+  - «Marketing · Puesta en marcha y resumen» (`/admin/marketing/resumen`, `marketingPack.summary`): estado real, siguiente paso y cifras de cada módulo; lo no incluido, con enlace a `/admin/ampliar`. «Gestionar» del paquete lleva allí.
+  - Revisión preparada, **sin lanzar** (`review20261109packmarketing.ts`, orden `catalog-review`): «Próximamente» → implantación acompañada, sin Price de Stripe ni cambio de precio.
+  - Lo aporta el cliente: cuenta de Brevo; Meta Ads o Google Ads, o sus CSV; Search Console (y, opcional, Google Business Profile y TripAdvisor). La IA central de GEO es opcional.
+- **Communications y AI:** incluyen capacidades sin función completa (`copilot-advanced`, `automations-advanced`). No se abren a la venta.
 
 **Net.**
 - **Hotel Net:** pendiente de que el operador publique su borrador v10; no se toca.
