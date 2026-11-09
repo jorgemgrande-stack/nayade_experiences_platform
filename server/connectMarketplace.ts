@@ -15,10 +15,10 @@ import { parseActivation, parseConnectCard, parseConnectOffer, parseConnectPrice
 import { categoryOf, deriveConnectState, shownInShowcase, type CheckoutVia, type ConnectCategoryId, type ConnectState } from "../shared/connectMarketplace";
 import type { ConnectGalleryItem, ConnectImage, ConnectPrice, ConnectSheet } from "../shared/connectCard";
 import type { ConnectActivation } from "../shared/connectShowcase";
-import { isNetLegacyExtension, netProductOf, type NetArea, type NetSegment } from "../shared/netProducts";
+import { isNetLegacyExtension, netProductOf, netProductOfLegacy, type NetArea, type NetSegment } from "../shared/netProducts";
 
 /** Producto tal como llega del canal: lo de siempre y, opcionalmente, la ficha y los precios aprobados. */
-export type ChannelCatalogItem = PanelCatalogItemView & { card?: unknown; prices?: unknown; offer?: unknown; activation?: unknown };
+export type ChannelCatalogItem = PanelCatalogItemView & { card?: unknown; prices?: unknown; offer?: unknown; activation?: unknown; legacy?: unknown };
 
 export interface ConnectItem {
   key: string;
@@ -70,6 +70,11 @@ export interface ConnectItem {
   replaces: Array<{ key: string; name: string }>;
   /** Producto de Elephant Net (uno de los 7): licencia, funcionalidades por áreas y contrataciones anteriores; null si no. */
   net: ConnectNetInfo | null;
+  /**
+   * Producto heredado (retirado de la venta): solo aparece si la empresa lo tiene contratado, para consultarlo en «Mis
+   * módulos»; nunca se compra. `replacedBy`: la solución completa que lo incluye. null si se vende con normalidad.
+   */
+  legacy: { replacedBy: { key: string; name: string } | null } | null;
 }
 
 /** Datos de un producto Elephant Net en el escaparate (shared/netProducts.ts). */
@@ -84,6 +89,16 @@ export interface ConnectNetInfo {
   /** Antiguas extensiones que la empresa tiene contratadas (condiciones anteriores, que se conservan). */
   legacyContracted: Array<{ key: string; name: string }>;
 }
+
+/** Texto de un producto heredado que la empresa conserva. */
+export const legacyKeptText = (product: string | null) =>
+  `Producto heredado: lo conservas con tus condiciones contratadas, pero ya no se contrata por separado${product ? `; forma parte de ${product}` : ""}.`;
+
+/** Sucesor declarado por el catálogo (`legacy.replacedBy`), con lectura tolerante. */
+const legacyOf = (raw: unknown): { replacedBy: string } | null => {
+  const r = raw as { replacedBy?: unknown } | null | undefined;
+  return r && typeof r === "object" && typeof r.replacedBy === "string" && r.replacedBy ? { replacedBy: r.replacedBy } : null;
+};
 
 /** Texto de la ficha de un producto Net cuyas funciones ya tiene la empresa por una contratación anterior. */
 export const legacyEquivalentText = (product: string, names: string[]) =>
@@ -152,9 +167,17 @@ export function buildConnectCatalog(
 
   // Elephant Net: 7 productos. Las antiguas extensiones sectoriales no se muestran como producto (07/11/2026). Life Net
   // es personal: fuera del escaparate de las empresas (08/11/2026)
-  const shownItems = catalog.items.filter((i) => !isNetLegacyExtension(i.key) && shownInShowcase(i.key, plan));
+  // 09/11/2026: lo heredado (registro de Net o marca `legacy` del catálogo) solo se muestra a quien lo tiene contratado
+  const isLegacy = (i: ChannelCatalogItem) => isNetLegacyExtension(i.key) || !!legacyOf(i.legacy);
+  const kept = (i: ChannelCatalogItem) => {
+    const s = parseActivation(i.activation)?.state;
+    return s === "active" || s === "suspended";
+  };
+  const shownItems = catalog.items.filter((i) => (!isLegacy(i) || kept(i)) && shownInShowcase(i.key, plan));
   return shownItems.map((item): ConnectItem => {
     const np = netProductOf(item.key);
+    const legacyDecl = isLegacy(item) ? (legacyOf(item.legacy) ?? (netProductOfLegacy(item.key) ? { replacedBy: netProductOfLegacy(item.key)!.key } : null)) : null;
+    const successor = legacyDecl ? { key: legacyDecl.replacedBy, name: netProductOf(legacyDecl.replacedBy)?.name ?? productName(legacyDecl.replacedBy) } : null;
     const seed = seedOf(item.key);
     const d = seed?.draft;
     const card = parseConnectCard(item.card);
@@ -177,6 +200,7 @@ export function buildConnectCatalog(
     );
     const state = derived.state;
     const reasons = [...derived.reasons];
+    if (isLegacy(item)) reasons.push(legacyKeptText(successor?.name ?? null));
     if (includedIn && state === "active") reasons.push(includedInText(includedIn.name));
     if (equivalent && np) reasons.push(legacyEquivalentText(np.name, replaces.map((r) => r.name)));
     else if (replaces.length > 0) reasons.push(replacesText(replaces.map((r) => r.name)));
@@ -185,7 +209,9 @@ export function buildConnectCatalog(
       ? [{ kind: "monthly", amountCents: item.monthly.amountCents, currency: item.monthly.currency, unit: item.monthly.unit, taxRateBp: null, taxIncluded: item.monthly.taxIncluded }]
       : [];
     const offer = card?.offer ?? parseConnectOffer(item.offer);
-    const related = Array.from(new Set([...(c?.related ?? []), ...(c?.compatibleExtensions ?? [])])).filter((k) => k !== item.key && byKey.has(k) && !isNetLegacyExtension(k) && shownInShowcase(k, plan));
+    const related = Array.from(new Set([...(c?.related ?? []), ...(c?.compatibleExtensions ?? [])])).filter((k) => k !== item.key && byKey.has(k) && !isLegacy(byKey.get(k)!) && shownInShowcase(k, plan));
+    // Funcionalidades incluidas: las que publica el catálogo; si aún no las publica, las del registro de Net
+    const areas: NetArea[] = np ? (c?.includedFeatures ?? np.areas) : [];
     const sheet: ConnectSheet = {
       headline: c?.headline ?? null,
       valueProposition: c?.valueProposition ?? null,
@@ -223,11 +249,11 @@ export function buildConnectCatalog(
       capabilities,
       monthly: item.monthly,
       // Solo se compra lo que está disponible para esta empresa (nunca algo contratado, en curso o sin requisitos)
-      purchasable: item.purchasable && state === "available",
+      purchasable: item.purchasable && state === "available" && !isLegacy(item),
       tagline: card?.tagline ?? (d?.tagline || null),
       // Net: la descripción y lo incluido son los del producto unificado (no los de los antiguos submódulos)
       description: np ? np.summary : (card?.description ?? (d?.description || null)),
-      includes: np ? np.areas.map((a) => (a.features.every((f) => f.status === "coming_soon") ? `${a.title} (próximamente)` : a.title)) : pick(card?.includes, d?.includes ?? []),
+      includes: np ? areas.map((a) => (a.features.every((f) => f.status === "coming_soon") ? `${a.title} (próximamente)` : a.title)) : pick(card?.includes, d?.includes ?? []),
       requirements: pick(card?.requirements, d?.requirements ?? []),
       forWho: c?.forWho ?? card?.presentation?.forWho ?? d?.presentation.forWho ?? null,
       thirdPartyCosts: card?.thirdPartyCosts ?? d?.thirdPartyCosts ?? np?.note ?? null,
@@ -249,8 +275,9 @@ export function buildConnectCatalog(
       includedIn,
       replaces,
       net: np
-        ? { licence: np.licence, segment: np.segment, summary: np.summary, benefits: np.benefits, areas: np.areas, note: np.note ?? null, homePath: np.homePath, legacyContracted: replaces }
+        ? { licence: np.licence, segment: np.segment, summary: np.summary, benefits: np.benefits, areas, note: np.note ?? null, homePath: np.homePath, legacyContracted: replaces }
         : null,
+      legacy: legacyDecl ? { replacedBy: successor } : null,
     };
   });
 }

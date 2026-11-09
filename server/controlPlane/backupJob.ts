@@ -84,7 +84,8 @@ import { NET_LISTINGS_2026_11_08, REVIEW_ID_2026_11_08_NET } from "../catalog/re
 import { MysqlStripeStore } from "../stripe/store";
 import { IMPORT_AUTHOR, importCommercialSpecs } from "../catalog/commercial/importSpecs";
 import { publishBatch, revertLastBatch } from "../catalog/commercial/publishBatch";
-import { commercialIntegrity } from "../catalog/commercial/integrity";
+import { commercialIntegrity, netContracts } from "../catalog/commercial/integrity";
+import { REVIEW_ID_2026_11_09_NET_UNIFICATION, applyNetUnification, catalogGuard, guardDiff } from "../catalog/review20261109netunificacion";
 
 const args = process.argv.slice(2);
 const cmd = args[0] && !args[0].startsWith("--") ? args[0] : "run";
@@ -523,6 +524,14 @@ async function main() {
           // 09/11/2026: Paquete Marketing en implantación acompañada (sus cuatro componentes ya se contratan; sin Price de Stripe)
           const repPackMarketing = await applyListingReview(svc, webStore, { apply, author: `operacion:${REVIEW_ID_2026_11_09_PACK_MARKETING}`, changes: PACK_MARKETING_LISTING_2026_11_09 });
           const repConnect = await applyDirectSaleReview(svc, webStore, async (id) => !!(await stripeStore.priceForWebPrice(id)), { apply, author: `operacion:${REVIEW_ID_2026_11_08_CONNECT}`, changes: [...DIRECT_SALE_2026_11_08, FINANCE_SYNC_DIRECT_SALE] });
+          // 09/11/2026: unificación comercial de Elephant Net (7 soluciones completas; 19 módulos sueltos heredados). Fotos de
+          // solo lectura antes y después: contratos y licencias Net (deben ser idénticos) y huella del catálogo fuera de lo previsto
+          const netBefore = await netContracts(crmPool, pool);
+          const guardBefore = await catalogGuard(webStore);
+          const repNetUnification = await applyNetUnification(svc, webStore, { apply, author: `operacion:${REVIEW_ID_2026_11_09_NET_UNIFICATION}` });
+          const guardChanged = guardDiff(guardBefore, await catalogGuard(webStore));
+          const netAfter = await netContracts(crmPool, pool);
+          const netIntact = JSON.stringify(netBefore) === JSON.stringify(netAfter);
           const pricesFinal = new Map((await webStore.listPrices()).map((p) => [p.id, `${p.status}:${p.amountCents}`]));
           const pricesIntactConnect = pricesFinal.size === pricesAfter.size && Array.from(pricesAfter).every(([id, v]) => pricesFinal.get(id) === v);
           // Una sola línea (el registro de Railway la guarda en los atributos si es JSON)
@@ -540,10 +549,11 @@ async function main() {
                 { revision: REVIEW_ID_2026_11_09_AUTOMATIONS, ...repAutomations },
                 { revision: REVIEW_ID_2026_11_09_PACK_MARKETING, ...repPackMarketing },
                 { revision: REVIEW_ID_2026_11_08_CONNECT, modoStripe: stripeMode, ...repConnect, preciosIntactos: pricesIntactConnect },
+                { revision: REVIEW_ID_2026_11_09_NET_UNIFICATION, ...repNetUnification, catalogoFueraDeLoPrevisto: guardChanged, contratosNetIntactos: netIntact, contratosNet: netAfter },
               ],
             }),
           );
-          if (!otherPricesIntact || !pricesIntactConnect) process.exitCode = 1;
+          if (!otherPricesIntact || !pricesIntactConnect || guardChanged.length > 0 || !netIntact) process.exitCode = 1;
           // Un conflicto (estado cambiado desde el CRM o borrador ajeno) no es un fallo: se informa y se respeta
         } finally {
           await crmPool.end().catch(() => undefined);
