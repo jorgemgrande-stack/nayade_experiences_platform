@@ -13,7 +13,7 @@
  */
 import { CAPABILITIES, capability, type CapabilityGroup, type CapabilityTier } from "./catalog/capabilities";
 import { PRODUCTS } from "./catalog/elephantSourceV1";
-import { decide, type CapabilityGrant } from "./_core/capabilities/model";
+import { COMPANY_WIDE, decide, type CapabilityGrant } from "./_core/capabilities/model";
 import { LIFE_CAPABILITIES, LIFE_PLAN } from "../shared/personalPlans";
 
 export type EffectiveCapabilityStatus = "active" | "read_only" | "expired" | "contracted" | "pending_setup" | "suspended" | "cancelled";
@@ -38,6 +38,20 @@ export interface SubscriptionLimit {
   used: number | null;
 }
 
+/**
+ * Derecho de consulta HOY con las licencias de la empresa (mismas reglas que decide(); no concede ni quita nada):
+ *  - `available`: alguna capacidad se puede consultar (en vigor, prueba vencida o solo lectura dentro de plazo);
+ *  - `until`: fin del plazo de solo lectura (el más próximo si hay varios; p. ej. los READ_ONLY_DAYS tras terminar la
+ *    suscripción); null si lo que se consulta no tiene plazo (p. ej. una prueba vencida);
+ *  - `endedAt`: sin consulta, fecha en que terminó el plazo de solo lectura, si aún consta (antes de que el motor del
+ *    ciclo de vida cancele esas licencias); null si no consta (suspendida, cancelada…).
+ */
+export interface SubscriptionConsultation {
+  available: boolean;
+  until: number | null;
+  endedAt: number | null;
+}
+
 export interface SubscriptionOverview {
   mode: "single" | "multi";
   licensing: "legacy" | "capabilities";
@@ -52,6 +66,8 @@ export interface SubscriptionOverview {
   limits: SubscriptionLimit[];
   /** Enlace a la web comercial para ampliar o contratar (configurable); null si no está configurado. */
   upgradeUrl: string | null;
+  /** Derecho de consulta vigente y su plazo (solo informativo: el acceso lo decide el servidor en cada operación). */
+  consultation: SubscriptionConsultation;
 }
 
 const DAY = 24 * 60 * 60 * 1000;
@@ -70,6 +86,31 @@ export function effectiveStatus(grants: CapabilityGrant[], capabilityId: string,
   const read = decide(grants, capabilityId, { write: false, now });
   if (read.allowed) return write.status === "expired" ? "expired" : "read_only";
   return write.status as EffectiveCapabilityStatus;
+}
+
+/**
+ * Derecho de consulta con las licencias de empresa (las mismas que evalúa effectiveStatus). La licencia que manda es
+ * la de decide(): la más favorable (activa > solo lectura > el resto).
+ */
+export function consultationOf(grants: CapabilityGrant[], capabilityIds: string[], now: number): SubscriptionConsultation {
+  const rank = (s: CapabilityGrant["status"]) => (s === "active" ? 3 : s === "read_only" ? 2 : 1);
+  let available = false;
+  const deadlines: number[] = [];
+  const ended: number[] = [];
+  for (const id of capabilityIds) {
+    const best = grants.filter((g) => g.capabilityId === id && g.siteId === COMPANY_WIDE).sort((a, b) => rank(b.status) - rank(a.status))[0];
+    if (!best) continue;
+    const timedReadOnly = best.status === "read_only" && best.validUntil !== null;
+    if (decide(grants, id, { write: false, now }).allowed) {
+      available = true;
+      if (timedReadOnly) deadlines.push(best.validUntil as number);
+    } else if (timedReadOnly) ended.push(best.validUntil as number);
+  }
+  return {
+    available,
+    until: available && deadlines.length ? Math.min(...deadlines) : null,
+    endedAt: !available && ended.length ? Math.max(...ended) : null,
+  };
 }
 
 /** Solo una URL https sin credenciales; cualquier otra cosa se descarta. */
@@ -95,7 +136,7 @@ export function buildSubscriptionOverview(o: {
 }): SubscriptionOverview {
   const mode = o.mode === "multi" ? "multi" : "single";
   const upgradeUrl = safeUpgradeUrl(o.upgradeUrl);
-  const base: SubscriptionOverview = { mode, licensing: "legacy", plan: null, state: "none", trial: null, capabilities: [], visible: [], readOnly: [], limits: [], upgradeUrl };
+  const base: SubscriptionOverview = { mode, licensing: "legacy", plan: null, state: "none", trial: null, capabilities: [], visible: [], readOnly: [], limits: [], upgradeUrl, consultation: { available: true, until: null, endedAt: null } };
   if (mode === "single") return base;
   if (o.grants.length === 0 && !o.enforcing) return base;
 
@@ -143,5 +184,7 @@ export function buildSubscriptionOverview(o: {
     return { metric, label: LIMIT_LABELS[metric], included: q ? q.included : null, used: metric === "users" ? (o.usedUsers ?? null) : null };
   });
 
-  return { mode, licensing: "capabilities", plan, state, trial, capabilities: caps, visible, readOnly, limits: plan ? limits : [], upgradeUrl };
+  // Sin aplicación de licencias (CAPABILITY_ENFORCEMENT apagado) el acceso lo permite todo: la consulta también
+  const consultation = o.enforcing ? consultationOf(o.grants, caps.map((c) => c.id), o.now) : { available: true, until: null, endedAt: null };
+  return { mode, licensing: "capabilities", plan, state, trial, capabilities: caps, visible, readOnly, limits: plan ? limits : [], upgradeUrl, consultation };
 }
