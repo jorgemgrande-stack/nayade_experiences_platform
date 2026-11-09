@@ -388,6 +388,8 @@ export const TASK_NAV: NavSection[] = [
     id: "contratados",
     label: "Módulos contratados",
     items: [
+      // Elephant Copilot avanzado: preguntas sobre los datos de la empresa y redacción asistida (cada herramienta exige además su permiso)
+      { label: "Copilot", href: "/admin/copilot", key: "x-copilot", icon: "sparkles", roles: SALES, capabilities: ["copilot-advanced"] },
       { label: "Impuestos y gestoría", href: "/admin/gestoria", key: "x-gestoria", icon: "receipt", roles: ADMIN, capabilities: ["tax-filings"] },
       {
         label: "Bancos y TPV", href: "/admin/contabilidad/movimientos-bancarios", key: "x-bancos", icon: "creditCard", roles: ADMIN, capabilities: ["bank-import-pos"],
