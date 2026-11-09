@@ -337,7 +337,7 @@ function SettingsTab() {
       <section className={sectionClass}>
         <h2 className="text-base font-semibold text-foreground">Chat de tu web</h2>
         <label className="flex items-center gap-2 text-sm text-foreground"><Checkbox checked={form.chatEnabled} onCheckedChange={(v) => set("chatEnabled", v === true)} />Chat de la recepcionista activo</label>
-        <Field label="Máximo de respuestas de IA en 24 horas" hint="Lo eliges tú. Al llegar al máximo, el chat invita a dejar los datos sin usar la IA. Las respuestas cuentan en el consumo de IA de tu empresa.">
+        <Field label="Máximo de respuestas de IA al día" hint="Lo eliges tú (se cuenta por día natural en la zona horaria de tu empresa). Al llegar al máximo, el chat invita a dejar los datos sin usar la IA. Las respuestas cuentan en el consumo de IA de tu empresa.">
           <Input type="number" className="w-40" min={RECEPTION_LIMITS.chatDailyMin} max={RECEPTION_LIMITS.chatDailyMax} value={form.chatDailyLimit} onChange={(e) => set("chatDailyLimit", Number(e.target.value))} />
         </Field>
       </section>
@@ -527,7 +527,7 @@ function ChatTab() {
         <Button variant="outline" asChild><a href={d.chatUrl} target="_blank" rel="noopener">Abrir el chat</a></Button>
         <Button variant="outline" onClick={() => regen.mutate()} disabled={regen.isPending}><RefreshCw className="mr-2 h-4 w-4" />Generar un enlace nuevo</Button>
       </div>
-      <p className="text-xs text-muted-foreground">Cada conversación tiene como mucho {RECEPTION_LIMITS.chatTurnsMax} mensajes del cliente. Las respuestas cuentan en el consumo de IA de tu empresa; el máximo de respuestas en 24 horas lo eliges en «Configuración».</p>
+      <p className="text-xs text-muted-foreground">Cada conversación tiene como mucho {RECEPTION_LIMITS.chatTurnsMax} mensajes del cliente. Las respuestas cuentan en el consumo de IA de tu empresa; el máximo de respuestas al día lo eliges en «Configuración».</p>
     </section>
   );
 }

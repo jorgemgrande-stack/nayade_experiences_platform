@@ -48,7 +48,7 @@ class ConnectorFailure extends Error {
 }
 
 /** Quita de un texto cualquier cosa con forma de clave (por si la plataforma la repite en su mensaje). */
-const scrub = (s: string, secrets: string[]) => {
+export const scrub = (s: string, secrets: string[]) => {
   let out = s;
   for (const x of secrets) if (x && x.length >= 6) out = out.split(x).join("***");
   return out.replace(/access_token=[^&\s"]+/gi, "access_token=***").replace(/[\r\n\t]+/g, " ").slice(0, 300);

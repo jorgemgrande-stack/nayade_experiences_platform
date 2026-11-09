@@ -75,10 +75,12 @@ export const RECEPTION_LIMITS = {
   chatTurnsMax: 20,
   /** Chat web: mensajes anteriores que se envían a la IA con cada pregunta. */
   chatHistoryMax: 12,
-  /** Chat web: respuestas de IA en 24 horas (lo elige la empresa dentro de este margen). */
+  /** Chat web: respuestas de IA al día, por día natural de la zona de la empresa (lo elige dentro de este margen). */
   chatDailyMin: 1,
   chatDailyMax: 2000,
   chatDailyDefault: 100,
+  /** Chat web: solicitudes («Déjanos tus datos») por empresa y día. */
+  chatLeadsPerDay: 50,
   noteMax: 600,
 } as const;
 
@@ -316,7 +318,7 @@ export function settingsProblem(s: SettingsInput): string | null {
   if (h) return h;
   if (s.transferEnabled && !normalizePhone(s.transferNumber)) return "Para pasar llamadas al equipo indica un teléfono válido (por ejemplo, +34 600 000 000).";
   if (!Number.isInteger(s.chatDailyLimit) || s.chatDailyLimit < RECEPTION_LIMITS.chatDailyMin || s.chatDailyLimit > RECEPTION_LIMITS.chatDailyMax) {
-    return `El máximo de respuestas del chat en 24 horas va de ${RECEPTION_LIMITS.chatDailyMin} a ${RECEPTION_LIMITS.chatDailyMax}.`;
+    return `El máximo diario de respuestas del chat va de ${RECEPTION_LIMITS.chatDailyMin} a ${RECEPTION_LIMITS.chatDailyMax}.`;
   }
   return null;
 }

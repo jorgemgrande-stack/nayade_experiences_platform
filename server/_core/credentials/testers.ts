@@ -162,7 +162,8 @@ async function testProviderRaw(provider: string, v: Record<string, string>, fetc
       if (!token) return { ok: false, message: "Falta el token de acceso" };
       const account = v.adAccountId?.match(/^(?:act_)?(\d{5,20})$/)?.[1];
       if (account) return get(fetchImpl, `https://graph.facebook.com/v21.0/act_${account}?fields=name`, { Authorization: `Bearer ${v.adsAccessToken || token}` });
-      return get(fetchImpl, `https://graph.facebook.com/v21.0/me?access_token=${encodeURIComponent(token)}`, {});
+      // El token va en la cabecera, nunca en la URL (no queda en registros intermedios ni en mensajes de error)
+      return get(fetchImpl, "https://graph.facebook.com/v21.0/me", { Authorization: `Bearer ${token}` });
     }
     case "google_ads": {
       // Solo lectura: renueva el acceso y consulta un día de la cuenta (Elephant Ads Manager)
