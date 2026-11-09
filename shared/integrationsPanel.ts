@@ -36,6 +36,8 @@ export interface PanelField {
   options: Array<{ value: string; label: string }>;
   /** Expresión del formato admitido (la misma que valida el servidor), para avisar antes de guardar. */
   pattern: string | null;
+  /** Longitud máxima si no es la general (1024), p. ej. el JSON de una cuenta de servicio. */
+  maxLength?: number;
   formatMessage: string | null;
   example: string | null;
   set: boolean;
@@ -58,10 +60,10 @@ export interface PanelIntegration {
 }
 
 /** Aviso de formato en español para un valor escrito; null si es válido o está vacío (vacío = conservar o borrar). */
-export function fieldFormatProblem(f: Pick<PanelField, "control" | "options" | "pattern" | "formatMessage">, value: string): string | null {
+export function fieldFormatProblem(f: Pick<PanelField, "control" | "options" | "pattern" | "formatMessage" | "maxLength">, value: string): string | null {
   if (value === "") return null;
   if (f.control === "choice" || f.control === "yesno") return f.options.some((o) => o.value === value) ? null : "Elige una de las opciones.";
-  if (value.length > 1024) return "Es demasiado largo.";
+  if (value.length > (f.maxLength ?? 1024)) return "Es demasiado largo.";
   if (!f.pattern) return null;
   try {
     return new RegExp(f.pattern).test(value) ? null : f.formatMessage ?? "El formato no es válido.";
