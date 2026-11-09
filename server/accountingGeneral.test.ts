@@ -34,7 +34,7 @@ import {
   type ExpenseDoc,
   type SaleDoc,
 } from "./accountingGeneral/rules";
-import { keyInGroups } from "./accountingGeneral/sources";
+import { expenseDocOf, keyInGroups } from "./accountingGeneral/sources";
 import type { PostedLine } from "./finance/types";
 
 const map = ACC_DEFAULT_MAP;
@@ -201,6 +201,30 @@ describe("caja del TPV", () => {
     const o = cashMoveEntry({ id: 2, date: "2026-03-01", type: "out", amountCents: 2000, reason: "Ingreso en banco" }, map)!;
     expect(side(o, "570")).toBe(-2000);
     expect(side(o, "555")).toBe(2000);
+  });
+
+  it("retirada de caja del TPV de tipo gasto (cash_movements + expenses source tpv): la caja se abona una sola vez y sin IVA inventado", () => {
+    // Lo que guarda tpv.addCashMovement: el movimiento de salida y un gasto en efectivo con el 21 % por defecto y sin cuota
+    const move = cashMoveEntry({ id: 9, date: "2026-03-02", type: "out", amountCents: 3000, reason: "Compra de hielo" }, map)!;
+    const row = { id: 50, date: "2026-03-02", concept: "Retirada de caja TPV — Compra de hielo", amount: "30.00", taxRate: "21.00", taxAmount: null, deductiblePercent: "100.00", categoryId: 3, paymentMethod: "cash", source: "tpv", fiscalReviewStatus: "pendiente" };
+    const ctx = { map, categoryAccounts: new Map([[3, "600"]]) };
+    const doc = expenseDocOf(row, "2026-03-02", undefined, ctx);
+    const all = [move, expenseEntry(doc, map)!, expensePaymentEntry(doc, map)!];
+    const total = (code: string) => all.reduce((a, d) => a + side(d, code), 0);
+    expect(total("570")).toBe(-3000); // una sola salida de caja
+    expect(total("555")).toBe(0); // el puente queda saldado
+    expect(total("410")).toBe(0);
+    expect(total("472")).toBe(0); // sin IVA soportado que no existe
+    expect(total("600")).toBe(3000);
+    for (const d of all) validateDraft(d, accounts);
+    // Revisado en el formulario de gastos: entonces sí lleva su IVA real
+    const reviewed = expenseDocOf({ ...row, taxRate: "10.00", taxAmount: "2.73", fiscalReviewStatus: "revisado" }, "2026-03-02", undefined, ctx);
+    expect(side(expenseEntry(reviewed, map)!, "472")).toBe(273);
+    expect(side(expensePaymentEntry(reviewed, map)!, "555")).toBe(-3000);
+    // Un gasto en efectivo que no viene del TPV sigue saliendo de la caja y con el IVA derivado de su tipo
+    const manual = expenseDocOf({ ...row, source: "manual" }, "2026-03-02", undefined, ctx);
+    expect(side(expensePaymentEntry(manual, map)!, "570")).toBe(-3000);
+    expect(side(expenseEntry(manual, map)!, "472")).toBe(521);
   });
 });
 

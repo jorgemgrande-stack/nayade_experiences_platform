@@ -132,6 +132,7 @@ async function readExpenses(db: Db, ctx: SourceContext, out: SourceRead) {
       categoryId: expenses.categoryId,
       paymentMethod: expenses.paymentMethod,
       source: expenses.source,
+      fiscalReviewStatus: expenses.fiscalReviewStatus,
     })
     .from(expenses)
     .leftJoin(expenseSuppliers, eq(expenseSuppliers.id, expenses.supplierId));
@@ -157,30 +158,49 @@ async function readExpenses(db: Db, ctx: SourceContext, out: SourceRead) {
     }
     // Anterior al inicio de la contabilidad: no se contabiliza solo (va en el asiento de apertura)
     if (date < ctx.startDate) continue;
-    const totalCents = centsOf(r.amount);
-    const rate = Number(r.taxRate ?? 21);
-    const taxCents = r.taxAmount != null && Number.isFinite(Number(r.taxAmount)) ? centsOf(r.taxAmount) : centsOf(calcGeneralTax(Number(r.amount ?? 0), Number.isFinite(rate) ? rate : 21).taxAmount);
-    const ded = Number(r.deductiblePercent ?? 100);
-    const doc: ExpenseDoc = {
-      id: Number(r.id),
-      date,
-      concept: text(r.concept),
-      supplierName: text(r.supplier || r.supplierName),
-      totalCents,
-      taxCents,
-      rateBp: Math.round((Number.isFinite(rate) ? rate : 0) * 100),
-      deductibleBp: Math.max(0, Math.min(10_000, Math.round((Number.isFinite(ded) ? ded : 100) * 100))),
-      retentionCents: centsOf(r.retentionAmount),
-      payroll: typeof r.source === "string" && r.source.startsWith("hr_"),
-      expenseAccount: ctx.categoryAccounts.get(Number(r.categoryId)) ?? ctx.map.defaultExpense,
-      method: (r.paymentMethod ?? "transfer") as ExpenseMethod,
-      paidOn: paidOn.get(Number(r.id)) ?? (isAccDate(expenseDate) ? expenseDate : date),
-    };
+    const doc = expenseDocOf(r, date, paidOn.get(Number(r.id)), ctx);
     const e = expenseEntry(doc, ctx.map);
     const p = expensePaymentEntry(doc, ctx.map);
     out.desired.set(`gasto:${doc.id}`, e ? { kind: "entry", draft: e } : { kind: "none" });
     out.desired.set(`pago:${doc.id}`, p ? { kind: "entry", draft: p } : { kind: "none" });
   }
+}
+
+/**
+ * Fila de `expenses` → gasto contable (puro). `date` es la de devengo ya validada; `bankPaidOn`, la del movimiento
+ * bancario conciliado, si lo hay.
+ *
+ * Retirada de caja del TPV de tipo «gasto» (`source = "tpv"`, `tpv.addCashMovement`): el TPV guarda a la vez el
+ * movimiento de caja (`cash_movements`, que ya contabiliza la salida: Debe 555 · Haber 570) y este gasto. Para que la
+ * caja se abone una sola vez, el pago del gasto va contra el puente de caja (como `tpv_cash`) y no otra vez contra la
+ * caja: el 555 queda saldado y el gasto, en la cuenta de su categoría. El IVA es el real: el TPV no lo registra y la
+ * columna `taxRate` trae un 21 % por defecto, así que solo hay IVA soportado si el gasto se revisó en el formulario de
+ * gastos (`fiscalReviewStatus = revisado`); si no, todo el importe es gasto, sin IVA.
+ */
+export function expenseDocOf(r: any, date: string, bankPaidOn: string | undefined, ctx: Pick<SourceContext, "map" | "categoryAccounts">): ExpenseDoc {
+  const expenseDate = text(r.date).slice(0, 10);
+  const fromTpv = r.source === "tpv";
+  const noRealTax = fromTpv && r.fiscalReviewStatus !== "revisado";
+  const storedRate = Number(r.taxRate ?? 21);
+  const rate = noRealTax ? 0 : Number.isFinite(storedRate) ? storedRate : 21;
+  const taxCents = noRealTax ? 0 : r.taxAmount != null && Number.isFinite(Number(r.taxAmount)) ? centsOf(r.taxAmount) : centsOf(calcGeneralTax(Number(r.amount ?? 0), rate).taxAmount);
+  const ded = Number(r.deductiblePercent ?? 100);
+  const method = (r.paymentMethod ?? "transfer") as ExpenseMethod;
+  return {
+    id: Number(r.id),
+    date,
+    concept: text(r.concept),
+    supplierName: text(r.supplier || r.supplierName),
+    totalCents: centsOf(r.amount),
+    taxCents,
+    rateBp: Math.round(rate * 100),
+    deductibleBp: Math.max(0, Math.min(10_000, Math.round((Number.isFinite(ded) ? ded : 100) * 100))),
+    retentionCents: centsOf(r.retentionAmount),
+    payroll: typeof r.source === "string" && r.source.startsWith("hr_"),
+    expenseAccount: ctx.categoryAccounts.get(Number(r.categoryId)) ?? ctx.map.defaultExpense,
+    method: fromTpv && method === "cash" ? "tpv_cash" : method,
+    paidOn: bankPaidOn ?? (isAccDate(expenseDate) ? expenseDate : date),
+  };
 }
 
 async function readCash(db: Db, ctx: SourceContext, out: SourceRead) {

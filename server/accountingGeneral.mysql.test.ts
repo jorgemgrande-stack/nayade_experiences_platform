@@ -182,6 +182,21 @@ describe.skipIf(!URL_)("Contabilidad general · asientos automáticos, manuales,
     expect((await ok(m("sync", undefined))).created).toBe(2);
   });
 
+  it("retirada de caja del TPV de tipo gasto: la caja baja una sola vez, el puente queda saldado y sin IVA inventado", async () => {
+    const [b570, b555, b472] = [await balance("570"), await balance("555"), await balance("472")];
+    // Lo que deja tpv.addCashMovement (outKind gasto): el movimiento de caja y un gasto en efectivo con source tpv
+    const [ses] = await ess.sql("a", "SELECT id FROM cash_sessions ORDER BY id DESC LIMIT 1");
+    await ess.sql("a", "INSERT INTO cash_movements (sessionId, type_cm, amount, reason, cashierName, createdAt) VALUES (?, 'out', 30.00, 'Compra de hielo', 'Cajero', ?)", [ses.id, noon(d2()).getTime()]);
+    await ess.sql("a", "INSERT INTO expenses (date, concept, amount, categoryId, costCenterId, paymentMethod, status, source) VALUES (?, 'Retirada de caja TPV — Compra de hielo', 30.00, 1, 1, 'cash', 'conciliado', 'tpv')", [d2()]);
+    const s = await ok(m("sync", undefined));
+    expect(s.errors).toEqual([]);
+    expect(s.created).toBe(3); // movimiento de caja, gasto y su pago
+    expect((await balance("570")) - b570).toBe(-3000);
+    expect((await balance("555")) - b555).toBe(0);
+    expect((await balance("472")) - b472).toBe(0);
+    expect((await ok(q("overview"))).balanced).toBe(true);
+  });
+
   it("libros y exportaciones para la gestoría: diario, mayor, sumas y saldos, pérdidas y ganancias y Excel", async () => {
     const j = await ok(q("export", { ...period(), kind: "journal" }));
     const csv = Buffer.from(j.base64, "base64").toString("utf8");
