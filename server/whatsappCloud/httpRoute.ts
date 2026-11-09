@@ -33,6 +33,9 @@ export const whatsappWebhookBodyParser: RequestHandler = (req, res, next) => {
   });
 };
 
+/** Lo único que se registra de un error: su nombre y su código (nunca el mensaje). */
+export const errorInfo = (e: unknown) => ({ error: e instanceof Error ? e.name.slice(0, 60) : "error", code: typeof (e as { code?: unknown })?.code === "string" || typeof (e as { code?: unknown })?.code === "number" ? String((e as { code: unknown }).code).slice(0, 40) : null });
+
 const log = (event: string, extra: Record<string, unknown> = {}) => console.warn(JSON.stringify({ ctx: "WhatsAppAI", event, ...extra }));
 
 export interface WebhookDeps {
@@ -85,7 +88,8 @@ export function whatsappEventsHandler(d: WebhookDeps = {}) {
         log("ignored_not_installed");
         return void res.status(200).json({ ok: true, ignored: "not_installed" });
       }
-      log("webhook_error", { error: e instanceof Error ? e.message.slice(0, 200) : "error" });
+      // Solo el tipo y el código del error: el mensaje puede llevar datos del cliente o de la conexión
+      log("webhook_error", errorInfo(e));
       return void res.status(500).json({ error: "error" });
     }
     res.status(200).json({ ok: true, received: r.inbound.length, duplicates: r.duplicates, statuses: r.statuses });
@@ -108,7 +112,7 @@ export function tenantDeferral(o: { tenantId?: () => string; run?: <T>(tenantId:
     const tenantId = (o.tenantId ?? getTenantId)();
     const run = o.run ?? withTenantDb;
     (o.schedule ?? setImmediate)(() => {
-      void run(tenantId, fn).catch((e: unknown) => log("auto_reply_error", { error: e instanceof Error ? e.name : "error" }));
+      void run(tenantId, fn).catch((e: unknown) => log("auto_reply_error", errorInfo(e)));
     });
   };
 }

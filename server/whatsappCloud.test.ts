@@ -539,3 +539,24 @@ describe("revisión: reserva atómica por conversación", () => {
     expect((await off.store.conversation(1))!.needsHuman).toBe(false);
   });
 });
+
+describe("revisión: el registro de errores del webhook no lleva el mensaje", () => {
+  it("webhook_error solo con el nombre y el código del error", async () => {
+    const { errorInfo } = await import("./whatsappCloud/httpRoute");
+    const raw = Buffer.from(JSON.stringify(inboundPayload()));
+    const secretLike = `Duplicate entry '34611222333' token=${TOKEN}`;
+    const err = Object.assign(new Error(secretLike), { code: "ER_DUP_ENTRY" });
+    const svc = { handleWebhook: async () => Promise.reject(err) } as any;
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    const r: any = { status: (c: number) => ((r.code = c), r), json: () => r };
+    await whatsappEventsHandler({ credentials: async () => CREDS, licensed: async () => true, service: () => svc })({ body: raw, headers: { "x-hub-signature-256": sign(raw) } } as any, r);
+    expect(r.code).toBe(500);
+    const logged = warn.mock.calls.map((c) => String(c[0])).join("\n");
+    warn.mockRestore();
+    expect(logged).toContain('"event":"webhook_error"');
+    expect(logged).toContain('"code":"ER_DUP_ENTRY"');
+    expect(logged).not.toContain("34611222333");
+    expect(logged).not.toContain(TOKEN);
+    expect(errorInfo(err)).toEqual({ error: "Error", code: "ER_DUP_ENTRY" });
+  });
+});
