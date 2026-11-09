@@ -35,6 +35,8 @@ export const accountingGeneralRouter = router({
   // ── Ajustes ─────────────────────────────────────────────────────────────
   settings: licensed.query(() => svc.settingsView()),
   saveSettings: licensed.input(z.object({ startDate: date, lockedUntil: date.nullable(), map: accountMap })).mutation(({ ctx, input }) => svc.saveSettings(input, ctx.user.id)),
+  /** Confirma (o retira) el desglose de IVA de un gasto con su factura: solo para la contabilidad general. */
+  confirmExpenseTax: licensed.input(z.object({ expenseId: z.number().int().positive(), confirmed: z.boolean() })).mutation(({ ctx, input }) => svc.confirmExpenseTax(input, ctx.user.id)),
   saveCategoryAccount: licensed.input(z.object({ categoryId: z.number().int().positive(), accountCode: code.nullable() })).mutation(({ ctx, input }) => svc.saveCategoryAccount(input, ctx.user.id)),
 
   // ── Asientos manuales ───────────────────────────────────────────────────

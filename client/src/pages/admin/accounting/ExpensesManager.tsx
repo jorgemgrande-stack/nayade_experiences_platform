@@ -72,8 +72,6 @@ type ExpenseForm = {
   supplierNif: string;
   retentionPercent: string;
   accrualDate: string;
-  /** La persona ha comprobado el desglose de IVA con la factura (solo entonces se deduce en Contabilidad general). */
-  taxReviewed: boolean;
   // ── Tratamiento operativo ──
   // true: computa en P&L/EBITDA/KPIs. false: "solo fiscal" (no afecta KPIs).
   isOperational: boolean;
@@ -89,19 +87,14 @@ const emptyForm: ExpenseForm = {
   paymentMethod: "transfer",
   status: "pending",
   notes: "",
-  // Sin tipo de IVA precargado: el desglose se elige con la factura delante (nunca un 21 % por defecto)
-  taxRate: "",
+  taxRate: "21",
   deductiblePercent: "100",
   invoiceType: "ordinaria",
   supplierNif: "",
   retentionPercent: "",
   accrualDate: "",
-  taxReviewed: false,
   isOperational: true,
 };
-
-/** Tipos de factura que nunca deducen IVA soportado (no se puede marcar el desglose como revisado). */
-const NON_DEDUCTIBLE_INVOICE_TYPES = ["sin_factura", "exenta"];
 
 /**
  * IVA soportado (cuota) de un gasto. Si el gasto tiene el desglose fiscal
@@ -339,15 +332,12 @@ export default function ExpensesManager() {
       paymentMethod: e.paymentMethod,
       status: e.status,
       notes: e.notes ?? "",
-      // Solo el desglose revisado se precarga: un gasto sin revisar (TPV, banco, formulario público, regularización
-      // al 21 %) se abre sin tipo de IVA
-      taxRate: (e as any).fiscalReviewStatus === "revisado" && e.taxRate != null ? String(Number(e.taxRate)) : "",
+      taxRate: e.taxRate != null ? String(e.taxRate) : "21",
       deductiblePercent: e.deductiblePercent != null ? String(e.deductiblePercent) : "100",
       invoiceType: e.invoiceType ?? "ordinaria",
       supplierNif: e.supplierNif ?? "",
       retentionPercent: e.retentionPercent != null ? String(e.retentionPercent) : "",
       accrualDate: e.accrualDate ?? "",
-      taxReviewed: (e as any).fiscalReviewStatus === "revisado",
       isOperational: (e as any).isOperational ?? true,
     });
     setPendingFiles([]);
@@ -372,9 +362,8 @@ export default function ExpensesManager() {
       status: form.status as "pending" | "justified" | "accounted",
       notes: form.notes,
       // ── Datos fiscales (IVA soportado) ──
-      taxRate: form.taxRate || undefined,
+      taxRate: form.taxRate,
       deductiblePercent: form.deductiblePercent,
-      taxReviewed: form.taxReviewed && !!form.taxRate && !NON_DEDUCTIBLE_INVOICE_TYPES.includes(form.invoiceType),
       invoiceType: form.invoiceType as "ordinaria" | "simplificada" | "intracomunitaria" | "importacion" | "exenta" | "sin_factura",
       supplierNif: form.supplierNif || undefined,
       retentionPercent: form.retentionPercent || undefined,
@@ -1135,10 +1124,9 @@ export default function ExpensesManager() {
                 </div>
                 <div>
                   <Label className="text-xs">Tipo de IVA</Label>
-                  <Select value={form.taxRate || "none"} onValueChange={(v) => setForm({ ...form, taxRate: v === "none" ? "" : v, taxReviewed: v === "none" ? false : form.taxReviewed })}>
+                  <Select value={form.taxRate} onValueChange={(v) => setForm({ ...form, taxRate: v })}>
                     <SelectTrigger><SelectValue /></SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="none">Sin desglose</SelectItem>
                       <SelectItem value="21">21 %</SelectItem>
                       <SelectItem value="10">10 %</SelectItem>
                       <SelectItem value="4">4 %</SelectItem>
@@ -1156,9 +1144,6 @@ export default function ExpensesManager() {
                 </div>
               </div>
               {(() => {
-                if (!form.taxRate) {
-                  return <p className="text-xs text-foreground/60">Sin desglose de IVA: no se deduce IVA soportado en Contabilidad general hasta que elijas el tipo y lo marques como revisado.</p>;
-                }
                 const total = parseFloat(form.amount) || 0;
                 const rate = parseFloat(form.taxRate) || 0;
                 const base = total / (1 + rate / 100);
@@ -1208,28 +1193,6 @@ export default function ExpensesManager() {
                   />
                 </div>
               </div>
-              {(() => {
-                const blocked = !form.taxRate || NON_DEDUCTIBLE_INVOICE_TYPES.includes(form.invoiceType);
-                return (
-                  <label className="flex items-start gap-2 text-xs text-foreground">
-                    <input
-                      type="checkbox"
-                      className="mt-0.5"
-                      checked={form.taxReviewed && !blocked}
-                      disabled={blocked}
-                      onChange={(e) => setForm({ ...form, taxReviewed: e.target.checked })}
-                    />
-                    <span>
-                      Desglose de IVA revisado con la factura
-                      <span className="block text-foreground/50">
-                        {blocked
-                          ? "Sin tipo de IVA, o factura exenta o sin factura: no se deduce IVA."
-                          : "Solo un desglose revisado deduce IVA soportado en Contabilidad general."}
-                      </span>
-                    </span>
-                  </label>
-                );
-              })()}
               <p className="text-[11px] text-foreground/40">
                 El importe del gasto se entiende como total con IVA incluido. La base y la cuota se calculan automáticamente.
               </p>

@@ -102,7 +102,7 @@ export const ACC_MAP_LABELS: Record<AccMapKey, string> = {
 };
 
 /** Subconjunto del PGC de pymes que se siembra al empezar (el mismo de las finanzas corporativas, adaptado). */
-export const ACC_PGC_SEED: ReadonlyArray<{ code: string; name: string; type: AccAccountType }> = [
+export const ACC_PGC_SEED: ReadonlyArray<{ code: string; name: string; type: AccAccountType; parentCode?: string }> = [
   { code: "100", name: "Capital social", type: "equity" },
   { code: "112", name: "Reserva legal", type: "equity" },
   { code: "113", name: "Reservas voluntarias", type: "equity" },
@@ -141,7 +141,7 @@ export const ACC_PGC_SEED: ReadonlyArray<{ code: string; name: string; type: Acc
   { code: "551", name: "Cuenta corriente con socios y administradores", type: "asset" },
   { code: "555", name: "Partidas pendientes de aplicación", type: "asset" },
   { code: "570", name: "Caja, euros", type: "asset" },
-  { code: "5701", name: "Caja central", type: "asset" },
+  { code: "5701", name: "Caja central", type: "asset", parentCode: "570" },
   { code: "572", name: "Bancos e instituciones de crédito c/c vista, euros", type: "asset" },
   { code: "600", name: "Compras de mercaderías", type: "expense" },
   { code: "607", name: "Trabajos realizados por otras empresas", type: "expense" },

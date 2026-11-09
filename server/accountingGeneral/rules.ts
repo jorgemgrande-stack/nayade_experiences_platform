@@ -303,8 +303,15 @@ export function cashCloseEntry(c: { sessionId: number; date: string; differenceC
 /** Tipo de un movimiento manual de la caja del TPV (server/cashMovementKindsDb.ts); null si no consta. */
 export type CashMoveKind = "gasto" | "devolucion" | "traspaso" | "fondo" | "cobro";
 
-/** ¿El motivo es el de una devolución de efectivo? (la misma regla que server/cashMovementKindsDb.ts) */
-export const looksLikeRefund = (reason: string) => /devoluci[oó]n|reembols/i.test(reason);
+/**
+ * ¿El motivo parece el de una devolución de efectivo a un cliente? Solo se usa cuando el movimiento NO tiene tipo
+ * explícito (movimientos anteriores o creados por API sin `outKind`): nunca pisa la elección del cajero.
+ */
+export const looksLikeRefund = (reason: string) => /devoluci[oó]n|reembols|refund|abono (a|al) cliente/i.test(reason);
+
+/** Tipo con el que se contabiliza un movimiento: el explícito o, sin él, una salida con motivo de devolución. */
+export const effectiveCashKind = (m: { type: "in" | "out"; reason: string; kind?: CashMoveKind | null }): CashMoveKind | null =>
+  m.kind ?? (m.type === "out" && looksLikeRefund(m.reason) ? "devolucion" : null);
 
 /**
  * Contrapartida real de un movimiento manual de la caja del TPV:
@@ -312,11 +319,12 @@ export const looksLikeRefund = (reason: string) => /devoluci[oó]n|reembols/i.te
  *  - salida «devolucion»: clientes (devuelve el saldo a favor que dejó el ticket anulado o el abono);
  *  - salida «traspaso» y entrada «fondo»: la Caja Central;
  *  - entrada «cobro»: clientes (cobro pendiente).
- * Sin tipo (movimientos anteriores o de otros módulos, como las fianzas del alquiler): una salida con motivo de
- * devolución, contra clientes; lo demás, al puente de caja (pendiente de aplicar, visible en el 555).
+ * Sin tipo explícito (movimientos anteriores, por API o de otros módulos, como las fianzas del alquiler): una salida con
+ * motivo de devolución, contra clientes; lo demás, al puente de caja (pendiente de aplicar, visible en el 555; las
+ * entradas sin tipo quedan además «para revisar»).
  */
 export function cashMoveCounterpart(m: { type: "in" | "out"; reason: string; kind?: CashMoveKind | null }, map: AccAccountMap): string {
-  const kind = m.kind ?? (m.type === "out" && looksLikeRefund(m.reason) ? "devolucion" : null);
+  const kind = effectiveCashKind(m);
   if (kind === "devolucion" || kind === "cobro") return map.customers;
   if (kind === "traspaso" || kind === "fondo") return map.centralCash;
   return map.cashBridge;

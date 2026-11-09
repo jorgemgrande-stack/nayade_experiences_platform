@@ -16,7 +16,7 @@ import { listFiscalDocuments, madridDayRange } from "../fiscalDocumentsDb";
 import { madridDayKey } from "../../shared/gestoriaExportPeriod";
 import { madridMidnightMs } from "../utils/timezone";
 import { isAccDate, type AccAccountMap } from "../../shared/accountingGeneral";
-import { cashCloseEntry, categoryRole, desiredOf, cashMoveEntry, centsOf, collectionEntry, expenseEntry, expensePaymentEntry, saleEntry, type Desired, type ExpenseDoc, type ExpenseMethod, type SaleDoc, type TpvMethod, type CashMoveKind, looksLikeRefund, voidTicketCashEntry } from "./rules";
+import { cashCloseEntry, categoryRole, desiredOf, cashMoveEntry, centsOf, collectionEntry, expenseEntry, expensePaymentEntry, saleEntry, type Desired, type ExpenseDoc, type ExpenseMethod, type SaleDoc, type TpvMethod, type CashMoveKind, effectiveCashKind, looksLikeRefund, voidTicketCashEntry } from "./rules";
 
 /** Grupos de documentos y el prefijo de su clave. */
 export const SOURCE_GROUPS = {
@@ -47,8 +47,30 @@ export interface SourceRead {
   failed: Array<{ group: SourceGroup; message: string }>;
   /** Documentos que no se pudieron convertir en asiento (datos incompletos). */
   problems: Array<{ key: string; message: string }>;
-  /** Contabilizados, pero para revisar (gastos sin IVA real: sin IVA soportado). */
-  review: Array<{ key: string; message: string }>;
+  /** Contabilizados, pero para revisar (gastos sin IVA confirmado, movimientos de caja sin tipo…). */
+  review: ReviewItem[];
+}
+
+/** Algo contabilizado que conviene revisar; `canConfirm`: un gasto con desglose guardado cuyo IVA se puede confirmar. */
+export interface ReviewItem {
+  key: string;
+  message: string;
+  expenseId?: number;
+  canConfirm?: boolean;
+}
+
+/** Desglose de IVA de un gasto confirmado en la contabilidad general (acc_expense_tax_reviews). */
+export interface TaxConfirmation {
+  amountCents: number;
+  taxRateBp: number;
+  taxCents: number;
+  invoiceType: string | null;
+}
+
+/** ¿La confirmación sigue valiendo? Solo si el gasto no ha cambiado (importe, tipo, cuota y tipo de factura). */
+export function taxConfirmationMatches(c: TaxConfirmation | null | undefined, r: { amount: unknown; taxRate: unknown; taxAmount: unknown; invoiceType?: unknown }): boolean {
+  if (!c || r.taxAmount == null || r.taxRate == null) return false;
+  return c.amountCents === centsOf(r.amount) && c.taxRateBp === Math.round(Number(r.taxRate) * 100) && c.taxCents === centsOf(r.taxAmount) && (c.invoiceType ?? null) === ((r.invoiceType as string | null) ?? null);
 }
 
 type Db = { select: (...a: any[]) => any; execute: (q: SQL) => Promise<unknown> };
@@ -140,7 +162,6 @@ async function readExpenses(db: Db, ctx: SourceContext, out: SourceRead) {
       categoryId: expenses.categoryId,
       paymentMethod: expenses.paymentMethod,
       source: expenses.source,
-      fiscalReviewStatus: expenses.fiscalReviewStatus,
       invoiceType: expenses.invoiceType,
     })
     .from(expenses)
@@ -155,6 +176,16 @@ async function readExpenses(db: Db, ctx: SourceContext, out: SourceRead) {
     const f = text(l.fecha).slice(0, 10);
     if (isAccDate(f) && (!paidOn.has(l.expenseId) || f < paidOn.get(l.expenseId)!)) paidOn.set(l.expenseId, f);
   }
+  // IVA confirmado en la contabilidad general (nunca se lee fiscalReviewStatus ni se toca el gasto)
+  const [confRows] = (await db.execute(sql`SELECT expense_id, amount_cents, tax_rate_bp, tax_cents, invoice_type FROM acc_expense_tax_reviews`)) as unknown as [any[]];
+  const confirmations = new Map<number, TaxConfirmation>(
+    confRows.map((c) => [Number(c.expense_id), { amountCents: Number(c.amount_cents), taxRateBp: Number(c.tax_rate_bp), taxCents: Number(c.tax_cents), invoiceType: c.invoice_type == null ? null : String(c.invoice_type) }]),
+  );
+  // Salidas del TPV con el gasto que crearon (tipo explícito o NULL, y su motivo)
+  const [moveRows] = (await db.execute(sql`SELECT k.expense_id, k.kind, m.reason FROM acc_cash_movement_kinds k JOIN cash_movements m ON m.id = k.movement_id WHERE k.expense_id IS NOT NULL`)) as unknown as [any[]];
+  const tpvMoves = new Map<number, { kind: CashMoveKind | null; reason: string }>(
+    moveRows.map((x) => [Number(x.expense_id), { kind: CASH_KINDS.has(String(x.kind)) ? (String(x.kind) as CashMoveKind) : null, reason: text(x.reason) }]),
+  );
   for (const r of rs as any[]) {
     const expenseDate = text(r.date).slice(0, 10);
     const date = r.accrualDate && isAccDate(text(r.accrualDate).slice(0, 10)) ? text(r.accrualDate).slice(0, 10) : expenseDate;
@@ -165,17 +196,20 @@ async function readExpenses(db: Db, ctx: SourceContext, out: SourceRead) {
       out.desired.set(`pago:${r.id}`, { kind: "keep" });
       continue;
     }
-    // Retirada del TPV que en realidad es una devolución a un cliente (registrada como «gasto», la opción que el TPV
-    // traía por defecto): no es gasto. Su movimiento de caja ya la contabiliza contra clientes (cashMoveCounterpart).
-    if (r.source === "tpv" && looksLikeRefund(text(r.concept))) {
+    // Retirada del TPV que en realidad es una devolución a un cliente, SOLO si el cajero no eligió el tipo (movimiento
+    // anterior o por API, que el TPV registra como gasto): no se contabiliza como gasto. Su movimiento de caja ya la
+    // contabiliza contra clientes. Un «gasto» elegido por el cajero siempre es gasto, diga lo que diga el motivo.
+    const tpvMove = r.source === "tpv" ? tpvMoves.get(Number(r.id)) : undefined;
+    const tpvRefund = r.source === "tpv" && (tpvMove ? effectiveCashKind({ type: "out", reason: tpvMove.reason, kind: tpvMove.kind }) === "devolucion" : looksLikeRefund(text(r.concept)));
+    if (tpvRefund) {
       if (date >= ctx.startDate) {
         out.desired.set(`gasto:${r.id}`, { kind: "none" });
         out.desired.set(`pago:${r.id}`, { kind: "none" });
-        out.review.push({ key: `gasto:${r.id}`, message: `El gasto #${r.id} (${text(r.concept).slice(0, 80)}) es una devolución de efectivo registrada como gasto en el TPV: no se contabiliza como gasto. Bórralo en Gastos` });
+        out.review.push({ key: `gasto:${r.id}`, message: `El gasto #${r.id} (${text(r.concept).slice(0, 80)}) parece una devolución de efectivo registrada sin tipo en el TPV: no se contabiliza como gasto. Si era un gasto, corrígelo con un asiento manual`, expenseId: Number(r.id) });
       }
       continue;
     }
-    const doc = expenseDocOf(r, date, paidOn.get(Number(r.id)), ctx);
+    const doc = expenseDocOf(r, date, paidOn.get(Number(r.id)), ctx, confirmations.get(Number(r.id)));
     const asRoles = (roles: boolean): ExpenseDoc => (roles ? { ...doc, expenseAccount: categoryRole(Number(r.categoryId)) } : doc);
     // Anterior al inicio de la contabilidad: el gasto va en el asiento de apertura (no se contabiliza solo), pero su
     // pago, si es posterior al inicio, sí: contra el saldo de apertura de proveedores
@@ -184,7 +218,14 @@ async function readExpenses(db: Db, ctx: SourceContext, out: SourceRead) {
       continue;
     }
     if (doc.taxUnknown && doc.totalCents !== 0) {
-      out.review.push({ key: `gasto:${doc.id}`, message: `El gasto #${doc.id} (${doc.concept.slice(0, 80) || "sin concepto"}) no tiene el IVA revisado: se contabiliza sin IVA soportado hasta que se revise en Gastos` });
+      const canConfirm = r.taxAmount != null && Number.isFinite(Number(r.taxAmount)) && r.taxRate != null;
+      const detail = canConfirm ? ` (en Gastos: IVA ${Number(r.taxRate)} %, cuota ${Number(r.taxAmount).toFixed(2).replace(".", ",")} €)` : " (sin cuota guardada en Gastos)";
+      out.review.push({
+        key: `gasto:${doc.id}`,
+        message: `El gasto #${doc.id} (${doc.concept.slice(0, 80) || "sin concepto"}) no tiene el IVA confirmado con la factura${detail}: se contabiliza sin IVA soportado`,
+        expenseId: doc.id,
+        canConfirm,
+      });
     }
     // Huella con la categoría (no con la cuenta que tenga asignada): ver desiredOf
     out.desired.set(`gasto:${doc.id}`, desiredOf((m, roles) => expenseEntry(asRoles(roles), m), ctx.map));
@@ -201,14 +242,12 @@ async function readExpenses(db: Db, ctx: SourceContext, out: SourceRead) {
  * caja se abone una sola vez, el pago del gasto va contra el puente de caja (como `tpv_cash`) y no otra vez contra la
  * caja: el 555 queda saldado y el gasto, en la cuenta de su categoría.
  *
- * IVA soportado: solo el de datos reales. La columna `taxRate` trae un 21 % por defecto y la regularización de gastos
- * antiguos (`expenses.backfillFiscal`) guarda cuotas estimadas al 21 % como «pendiente»; los gastos del TPV, de la
- * conciliación bancaria, del formulario público o de los recurrentes no traen desglose. El único desglose real es el del
- * formulario de gastos, que lo marca `fiscalReviewStatus = revisado`. Sin él (o sin cuota guardada), el gasto se
- * contabiliza sin IVA soportado (`taxUnknown`, para revisar): todo el importe va a su cuenta de gasto. Al revisarlo, el
- * documento cambia y su asiento se corrige solo.
+ * IVA soportado: solo el CONFIRMADO en la contabilidad general (`acc_expense_tax_reviews`, `confirmation`) y si sigue
+ * coincidiendo con el gasto. Los campos fiscales del Core (`taxRate`, que trae un 21 % por defecto, `taxBase`,
+ * `taxAmount`, la retención y `fiscalReviewStatus`) no se tocan ni bastan: el 303, el 111 y la gestoría siguen igual. Sin
+ * confirmación, el gasto se contabiliza sin IVA soportado (`taxUnknown`, para revisar). Sin factura o exenta, nunca.
  */
-export function expenseDocOf(r: any, date: string, bankPaidOn: string | undefined, ctx: Pick<SourceContext, "map" | "categoryAccounts">): ExpenseDoc {
+export function expenseDocOf(r: any, date: string, bankPaidOn: string | undefined, ctx: Pick<SourceContext, "map" | "categoryAccounts">, confirmation?: TaxConfirmation | null): ExpenseDoc {
   const expenseDate = text(r.date).slice(0, 10);
   const fromTpv = r.source === "tpv";
   const payroll = typeof r.source === "string" && r.source.startsWith("hr_");
@@ -216,7 +255,7 @@ export function expenseDocOf(r: any, date: string, bankPaidOn: string | undefine
   const storedTax = Number(r.taxAmount);
   // Sin factura o exenta: nunca deduce (no hay nada que revisar)
   const nonDeductible = r.invoiceType === "sin_factura" || r.invoiceType === "exenta";
-  const taxKnown = !nonDeductible && r.fiscalReviewStatus === "revisado" && r.taxAmount != null && Number.isFinite(storedTax) && r.taxRate != null && Number.isFinite(storedRate);
+  const taxKnown = !nonDeductible && taxConfirmationMatches(confirmation, r) && Number.isFinite(storedTax) && Number.isFinite(storedRate);
   const taxUnknown = !payroll && !nonDeductible && !taxKnown;
   const rate = taxKnown ? storedRate : 0;
   const taxCents = taxKnown ? centsOf(storedTax) : 0;
@@ -264,6 +303,12 @@ async function readCash(db: Db, ctx: SourceContext, out: SourceRead) {
   for (const m of moves as Array<{ id: number; type: "in" | "out"; amount: string; reason: string; createdAt: number }>) {
     const c = { id: m.id, date: madridDayKey(new Date(Number(m.createdAt))), type: m.type, amountCents: centsOf(m.amount), reason: m.reason ?? "", kind: kinds.get(Number(m.id)) ?? null };
     out.desired.set(`cajamov:${m.id}`, desiredOf((map) => cashMoveEntry(c, map), ctx.map));
+    // Sin tipo elegido por el cajero: una entrada queda en el puente de caja y una salida con motivo de devolución, contra
+    // clientes; las dos, para revisar
+    if (c.kind == null && c.amountCents !== 0) {
+      if (m.type === "in") out.review.push({ key: `cajamov:${m.id}`, message: `Entrada de caja #${m.id} (${c.reason.slice(0, 80)}) sin tipo: queda en el puente de caja (555) hasta aplicarla` });
+      else if (effectiveCashKind(c) === "devolucion") out.review.push({ key: `cajamov:${m.id}`, message: `Salida de caja #${m.id} (${c.reason.slice(0, 80)}) sin tipo: por su motivo se contabiliza como devolución a un cliente` });
+    }
   }
 }
 

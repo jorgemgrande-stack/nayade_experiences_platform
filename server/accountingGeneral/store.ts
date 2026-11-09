@@ -86,7 +86,7 @@ export async function getSettings(exec: Exec): Promise<AccSettings | null> {
  */
 export async function seed(exec: TxExec, startDate: string): Promise<void> {
   await exec.transaction(async (tx) => {
-    const values = ACC_PGC_SEED.map((a) => sql`(${a.code}, ${a.name}, ${a.type}, NULL, 1, 1, 1)`);
+    const values = ACC_PGC_SEED.map((a) => sql`(${a.code}, ${a.name}, ${a.type}, ${a.parentCode ?? null}, 1, 1, 1)`);
     await tx.execute(sql`INSERT IGNORE INTO acc_accounts (code, name, type, parent_code, is_postable, active, is_seed) VALUES ${sql.join(values, sql`, `)}`);
     await tx.execute(sql`INSERT IGNORE INTO acc_settings (id, start_date, account_map) VALUES (1, ${startDate}, ${JSON.stringify(ACC_DEFAULT_MAP)})`);
   });
@@ -141,6 +141,18 @@ export async function setCategoryAccount(exec: Exec, categoryId: number, code: s
   }
   await exec.execute(sql`INSERT INTO acc_category_accounts (category_id, account_code, updated_by) VALUES (${categoryId}, ${code}, ${userId})
     ON DUPLICATE KEY UPDATE account_code = VALUES(account_code), updated_by = VALUES(updated_by)`);
+}
+
+// ─── IVA confirmado de los gastos ─────────────────────────────────────────────
+
+export async function upsertTaxReview(exec: Exec, r: { expenseId: number; amountCents: number; taxRateBp: number; taxCents: number; invoiceType: string | null }, userId: number | null): Promise<void> {
+  await exec.execute(sql`INSERT INTO acc_expense_tax_reviews (expense_id, amount_cents, tax_rate_bp, tax_cents, invoice_type, confirmed_by)
+    VALUES (${r.expenseId}, ${r.amountCents}, ${r.taxRateBp}, ${r.taxCents}, ${r.invoiceType}, ${userId})
+    ON DUPLICATE KEY UPDATE amount_cents = VALUES(amount_cents), tax_rate_bp = VALUES(tax_rate_bp), tax_cents = VALUES(tax_cents),
+      invoice_type = VALUES(invoice_type), confirmed_by = VALUES(confirmed_by), confirmed_at = CURRENT_TIMESTAMP(3)`);
+}
+export async function deleteTaxReview(exec: Exec, expenseId: number): Promise<void> {
+  await exec.execute(sql`DELETE FROM acc_expense_tax_reviews WHERE expense_id = ${expenseId}`);
 }
 
 // ─── Estado contable de los documentos ────────────────────────────────────────

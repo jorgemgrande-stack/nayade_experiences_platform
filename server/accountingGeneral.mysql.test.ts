@@ -35,6 +35,11 @@ describe.skipIf(!URL_)("Contabilidad general · asientos automáticos, manuales,
     return data(r);
   };
   const period = () => ({ from: `${y()}-01-01`, to: `${y()}-12-31` });
+  /** Confirma en la contabilidad general el IVA de un gasto tal como está guardado (no toca el gasto). */
+  const confirmTax = async (concept: string) => {
+    const [e] = await ess.sql("a", "SELECT id FROM expenses WHERE concept = ?", [concept]);
+    await ok(m("confirmExpenseTax", { expenseId: e.id, confirmed: true }));
+  };
   const balance = async (code: string, co: "a" | "b" = "a") => {
     const tb = await ok(q("trialBalance", period(), co === "a" ? adA : adB, co));
     return tb.items.filter((r: any) => r.code === code).reduce((a: number, r: any) => a + r.balanceCents, 0);
@@ -104,6 +109,7 @@ describe.skipIf(!URL_)("Contabilidad general · asientos automáticos, manuales,
     await ok(m("saveCategoryAccount", { categoryId: cat.id, accountCode: "623" }));
     await ess.sql("a", `INSERT INTO expenses (date, concept, amount, categoryId, costCenterId, paymentMethod, taxBase, taxRate, taxAmount, deductiblePercent, retentionAmount, supplierName, fiscalReviewStatus)
       VALUES (?, 'Asesoría fiscal', 121.00, ?, 1, 'transfer', 100.00, 21, 21.00, 100, 15.00, 'Gestoría QA', 'revisado')`, [d2(), cat.id]);
+    await confirmTax("Asesoría fiscal");
 
     const s = await ok(m("sync", undefined));
     expect(s.errors).toEqual([]);
@@ -131,6 +137,7 @@ describe.skipIf(!URL_)("Contabilidad general · asientos automáticos, manuales,
     const before = (await ok(q("overview"))).counts.entries;
     expect((await ok(m("sync", undefined))).created).toBe(0);
     await ess.sql("a", "INSERT INTO expenses (date, concept, amount, categoryId, costCenterId, paymentMethod, taxRate, taxAmount, fiscalReviewStatus) VALUES (?, 'Material', 60.50, 1, 1, 'cash', 21, 10.50, 'revisado')", [d2()]);
+    await confirmTax("Material");
     const [exp] = await ess.sql("a", "SELECT id FROM expenses WHERE concept = 'Material'");
     const [r1, r2] = await Promise.all([m("sync", undefined), m("sync", undefined)]);
     expect([r1.status, r2.status]).toEqual([200, 200]);
@@ -142,6 +149,7 @@ describe.skipIf(!URL_)("Contabilidad general · asientos automáticos, manuales,
 
   it("si el documento cambia, se revierte su asiento y se contabiliza el nuevo; si se anula, se revierte", async () => {
     await ess.sql("a", "UPDATE expenses SET amount = 72.60, taxAmount = 12.60 WHERE concept = 'Material'");
+    await confirmTax("Material"); // el gasto cambió: se vuelve a confirmar su IVA
     const s = await ok(m("sync", undefined));
     expect(s.replaced).toBe(2); // gasto y pago
     expect(await balance("472")).toBe(2100 + 1260);
@@ -186,6 +194,7 @@ describe.skipIf(!URL_)("Contabilidad general · asientos automáticos, manuales,
     expect(errCode(r)).toBe("CONFLICT");
     // Un gasto nuevo con fecha en el periodo bloqueado: se contabiliza el primer día abierto (hoy), una sola vez
     await ess.sql("a", "INSERT INTO expenses (date, concept, amount, categoryId, costCenterId, paymentMethod, taxRate, taxAmount, fiscalReviewStatus) VALUES (?, 'Tardío', 12.10, 1, 1, 'cash', 21, 2.10, 'revisado')", [lock]);
+    await confirmTax("Tardío");
     const [late] = await ess.sql("a", "SELECT id FROM expenses WHERE concept = 'Tardío'");
     if (lock === today()) {
       // 1 de enero: hoy también está bloqueado, así que espera (sin contabilizarse) hasta que se desbloquee
@@ -204,6 +213,7 @@ describe.skipIf(!URL_)("Contabilidad general · asientos automáticos, manuales,
     expect(await ok(m("sync", undefined))).toMatchObject({ created: 0, replaced: 0, reversed: 0, deferred: 0, blocked: 0 });
     // Si cambia el documento del periodo bloqueado, se corrige hoy, una vez
     await ess.sql("a", "UPDATE expenses SET amount = 24.20, taxAmount = 4.20 WHERE id = ?", [late.id]);
+    await confirmTax("Tardío");
     expect(await ok(m("sync", undefined))).toMatchObject({ replaced: 2, deferred: 2, blocked: 0 });
     expect(await ok(m("sync", undefined))).toMatchObject({ created: 0, replaced: 0, reversed: 0, blocked: 0 });
     // Al desbloquear no se vuelve a contabilizar nada
@@ -237,8 +247,12 @@ describe.skipIf(!URL_)("Contabilidad general · asientos automáticos, manuales,
     expect(s.review.map((r: any) => r.key)).toContain(`gasto:${exp.id}`);
     expect((await balance("472")) - b472).toBe(0);
     expect((await balance("623")) - b623).toBe(12100);
-    // Revisado en el formulario de gastos (10 %): el documento cambió y su asiento se sustituye con el IVA real
+    // «Revisado» en el Core (10 %) no basta: sigue sin IVA
     await ess.sql("a", "UPDATE expenses SET taxRate = 10, taxBase = 110.00, taxAmount = 11.00, fiscalReviewStatus = 'revisado' WHERE id = ?", [exp.id]);
+    expect((await ok(m("sync", undefined))).review.map((r: any) => r.key)).toContain(`gasto:${exp.id}`);
+    expect((await balance("472")) - b472).toBe(0);
+    // Confirmado en la contabilidad con la factura: el asiento se sustituye con el IVA confirmado
+    await confirmTax("Sin desglose QA");
     const s2 = await ok(m("sync", undefined));
     expect(s2.replaced).toBe(1);
     expect(s2.review.map((r: any) => r.key)).not.toContain(`gasto:${exp.id}`);
@@ -320,6 +334,7 @@ describe.skipIf(!URL_)("Contabilidad general · asientos automáticos, manuales,
     // Lo nuevo sí va con las cuentas nuevas
     const b629 = await balance("629");
     await ess.sql("a", "INSERT INTO expenses (date, concept, amount, categoryId, costCenterId, paymentMethod, taxRate, taxBase, taxAmount, fiscalReviewStatus) VALUES (?, 'Asesoría nueva', 60.50, ?, 1, 'transfer', 21, 50.00, 10.50, 'revisado')", [d2(), cat.id]);
+    await confirmTax("Asesoría nueva");
     expect((await ok(m("sync", undefined))).created).toBe(2);
     expect((await balance("629")) - b629).toBe(5000);
     expect(await balance("400")).toBe(0); // registrado y pagado contra la cuenta nueva de proveedores

@@ -103,13 +103,30 @@ CREATE TABLE IF NOT EXISTS acc_sources (
   KEY idx_acc_sources_entry (entry_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
--- `acc_cash_movement_kinds`: tipo de cada movimiento manual de la caja del TPV (`cash_movements`, sin tocar esa
---   tabla): salida «gasto», «devolucion» o «traspaso» (a la Caja Central) y entrada «fondo» (desde la Caja Central) o
---   «cobro». Lo escribe tpv.addCashMovement (server/cashMovementKindsDb.ts) para que cada movimiento se contabilice una
---   sola vez y contra su contrapartida real. Sin fila (movimientos anteriores o de otros módulos): puente de caja.
+-- `acc_cash_movement_kinds`: tipo que el cajero eligió para cada movimiento manual de la caja del TPV (`cash_movements`,
+--   sin tocar esa tabla): salida «gasto», «devolucion» o «traspaso» (a la Caja Central) y entrada «fondo» (desde la Caja
+--   Central) o «cobro»; NULL si no se eligió (llamadas por API). `expense_id`: el gasto que el TPV creó para la salida.
+--   Lo escribe tpv.addCashMovement en la misma transacción que el movimiento (server/cashMovementKindsDb.ts). Solo lo lee
+--   la contabilidad general: no cambia nada del TPV ni de los gastos.
 CREATE TABLE IF NOT EXISTS acc_cash_movement_kinds (
   movement_id  INT           NOT NULL,
-  kind         VARCHAR(16)   NOT NULL,
+  kind         VARCHAR(16)   NULL DEFAULT NULL,
+  expense_id   INT           NULL DEFAULT NULL,
   created_at   DATETIME(3)   NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
-  PRIMARY KEY (movement_id)
+  PRIMARY KEY (movement_id),
+  KEY idx_acc_cash_movement_kinds_expense (expense_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- `acc_expense_tax_reviews`: confirmación, en la contabilidad general, del desglose de IVA de un gasto con su factura.
+--   Guarda el desglose confirmado (importe, tipo, cuota y tipo de factura): si el gasto cambia después, la confirmación
+--   deja de valer. No toca `expenses` ni ningún cálculo fiscal del Core (303, 390, 111, 190, Sociedades, CSV).
+CREATE TABLE IF NOT EXISTS acc_expense_tax_reviews (
+  expense_id    INT           NOT NULL,
+  amount_cents  BIGINT        NOT NULL,
+  tax_rate_bp   INT           NOT NULL,
+  tax_cents     BIGINT        NOT NULL,
+  invoice_type  VARCHAR(20)   NULL DEFAULT NULL,
+  confirmed_by  INT           NULL DEFAULT NULL,
+  confirmed_at  DATETIME(3)   NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+  PRIMARY KEY (expense_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;

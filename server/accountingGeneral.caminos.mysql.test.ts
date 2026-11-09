@@ -1,7 +1,8 @@
 /**
  * Contabilidad general por los CAMINOS REALES del Core (opt-in, REGISTRY_TEST_DATABASE_URL), sin datos insertados a
  * mano: ventas y movimientos de la caja del TPV (`tpv.createSale`, `tpv.addCashMovement` con cada tipo), anulaciones
- * (`dailyControl.cancelOperation`, `cancellations.cancelReservationDirect`) y gastos (`expenses.create`/`update`).
+ * (`dailyControl.cancelOperation`, `cancellations.cancelReservationDirect`), gastos (`financial.expenses.create`/`update`)
+ * y la confirmación del IVA en la contabilidad (`accountingGeneral.confirmExpenseTax`).
  * Requisitos: cada movimiento de caja se contabiliza una vez y contra su contrapartida real, el puente de caja (555)
  * vuelve a cero en los casos normales y el IVA soportado sale solo de datos confirmados.
  * TEST_MIGRATIONS_DIR permite apuntar a una copia del carril sin huecos mientras se fusionan las anteriores.
@@ -41,11 +42,11 @@ describe.skipIf(!URL_)("Contabilidad general · caminos reales del Core (TPV, an
   const delta = async (before: Record<string, number>) => Object.fromEntries(await Promise.all(Object.keys(before).map(async (c) => [c, (await balance(c)) - before[c]] as const)));
   const cashSale = async (amount = 24.2) => ok(await ess.m("a", "tpv.createSale", { sessionId, items: [{ productType: "experience", productId, productName: "Escobillas", quantity: 1, unitPrice: amount }], payments: [{ method: "cash", amount }] }, agA), "venta en efectivo").sale;
   const move = async (input: Record<string, unknown>) => ok(await ess.m("a", "tpv.addCashMovement", { sessionId, ...input }, agA), "movimiento de caja");
-  /** El gasto de una retirada del TPV se crea en segundo plano: se espera a que aparezca. */
+  /** El gasto de una retirada del TPV se crea en segundo plano: se espera a que aparezca enlazado con su movimiento. */
   const tpvExpense = async (concept: string) => {
     for (let i = 0; i < 40; i++) {
-      const [e] = await ess.sql("a", "SELECT id, date FROM expenses WHERE source = 'tpv' AND concept LIKE ?", [`%${concept}%`]);
-      if (e) return e;
+      const [e] = await ess.sql("a", "SELECT x.id, x.date FROM expenses x JOIN acc_cash_movement_kinds k ON k.expense_id = x.id WHERE x.source = 'tpv' AND x.concept LIKE ?", [`%${concept}%`]);
+      if (e) return e; // creado y enlazado con su movimiento
       await sleep(150);
     }
     return null;
@@ -77,33 +78,55 @@ describe.skipIf(!URL_)("Contabilidad general · caminos reales del Core (TPV, an
     await ess?.close();
   });
 
-  it("retirada de tipo gasto: la caja baja una vez, el 555 vuelve a cero, sin IVA inventado y con la fecha de Madrid", async () => {
+
+  const count = async (q: string, p: unknown[] = []) => Number((await ess.sql("a", q, p))[0].n);
+
+  it("retirada de tipo gasto: la caja baja una vez, el 555 vuelve a cero y sin IVA sin confirmar (aunque el Core la marque «revisada»)", async () => {
     const b = await balances(["570", "555", "472"]);
     await move({ type: "out", amount: 30, reason: "Compra de hielo", outKind: "gasto" });
     const e = await tpvExpense("Compra de hielo");
     expect(e).not.toBeNull();
-    expect(e.date).toBe(today());
     await sync();
     expect(await delta(b)).toEqual({ "570": -3000, "555": 0, "472": 0 });
-    // Editarla en Gastos con un tipo de IVA pero sin confirmar el desglose no deduce nada
+    // Editarla en Gastos con un 21 %: el Core la marca «revisada» como siempre, pero la contabilidad no deduce sin confirmar
     ok(await ess.m("a", "financial.expenses.update", { id: e.id, date: e.date, concept: "Retirada de caja TPV — Compra de hielo", amount: "30.00", categoryId: catId, costCenterId: ccId, paymentMethod: "cash", taxRate: "21" }, adA), "editar el gasto");
-    expect((await ess.sql("a", "SELECT fiscalReviewStatus FROM expenses WHERE id = ?", [e.id]))[0].fiscalReviewStatus).toBe("pendiente");
+    expect((await ess.sql("a", "SELECT fiscalReviewStatus FROM expenses WHERE id = ?", [e.id]))[0].fiscalReviewStatus).toBe("revisado");
     await sync();
     expect(await delta(b)).toEqual({ "570": -3000, "555": 0, "472": 0 });
   });
 
-  it("venta en efectivo anulada (control diario) y devuelta con la opción por defecto «gasto»: ni gasto falso ni 555", async () => {
+  it("«Reembolso de gasolina» elegido como gasto sigue creando el gasto y contabilizándose como gasto (el motivo no pisa el tipo)", async () => {
+    const b = await balances(["570", "555", "629"]);
+    await move({ type: "out", amount: 15, reason: "Reembolso de gasolina", outKind: "gasto" });
+    expect(await tpvExpense("Reembolso de gasolina")).not.toBeNull();
+    await sync();
+    expect(await delta(b)).toEqual({ "570": -1500, "555": 0, "629": 1500 });
+  });
+
+  it("venta en efectivo anulada (control diario) y devuelta con «Devolución» elegida por el cajero: sin gasto y sin 555", async () => {
     const b = await balances(["570", "555", "430", "700", "477"]);
     const s = await cashSale(24.2);
     await sync();
     expect((await delta(b))["570"]).toBe(2420);
     ok(await ess.m("a", "dailyControl.cancelOperation", { type: "tpv", id: s.id }, adA), "anular la venta");
-    // El cajero devuelve el efectivo con la opción que el TPV traía por defecto (gasto) y el motivo rápido
-    await move({ type: "out", amount: 24.2, reason: "Devolución efectivo", outKind: "gasto" });
+    await move({ type: "out", amount: 24.2, reason: "Devolución efectivo", outKind: "devolucion" });
     await sleep(800);
-    expect(await ess.sql("a", "SELECT COUNT(*) AS n FROM expenses WHERE concept LIKE '%Devolución efectivo%'")).toEqual([{ n: 0 }]);
+    expect(await count("SELECT COUNT(*) AS n FROM expenses WHERE concept LIKE '%Devolución efectivo%'")).toBe(0);
     await sync();
     expect(await delta(b)).toEqual({ "570": 0, "555": 0, "430": 0, "700": 0, "477": 0 });
+  });
+
+  it("devolución por API sin tipo: el TPV crea el gasto como siempre; la contabilidad la trata como devolución y la marca para revisar", async () => {
+    const b = await balances(["570", "555", "430", "629"]);
+    const s = await cashSale(12.1);
+    await sync();
+    ok(await ess.m("a", "dailyControl.cancelOperation", { type: "tpv", id: s.id }, adA), "anular la venta");
+    const mv = await move({ type: "out", amount: 12.1, reason: "Devolución ticket API" }); // sin outKind
+    const e = await tpvExpense("Devolución ticket API");
+    expect(e).not.toBeNull(); // el Core no cambia
+    const r = await sync();
+    expect(r.review.map((x: any) => x.key)).toEqual(expect.arrayContaining([`gasto:${e.id}`, `cajamov:${mv.id}`]));
+    expect(await delta(b)).toEqual({ "570": 0, "555": 0, "430": 0, "629": 0 });
   });
 
   it("anulación sin salida de efectivo (anulaciones, compensación con bono): no toca la caja ni el 555", async () => {
@@ -115,19 +138,18 @@ describe.skipIf(!URL_)("Contabilidad general · caminos reales del Core (TPV, an
     ok(await ess.m("a", "cancellations.cancelReservationDirect", { reservationId: sale.reservationId, reason: "desistimiento", compensationType: "bono" }, adA), "anular con bono");
     expect((await ess.sql("a", "SELECT status_ts AS s FROM tpv_sales WHERE id = ?", [s.id]))[0].s).toBe("cancelled");
     await sync();
-    // El efectivo sigue en el cajón; queda a favor del cliente (430) y la venta deja de contar
     expect(await delta(b)).toEqual({ "570": 1210, "555": 0, "430": -1210, "700": 0 });
   });
 
-  it("traspaso a la Caja Central y fondo desde ella: contra la Caja Central (5701), nunca el 555", async () => {
+  it("traspaso a la Caja Central y fondo desde ella: contra la Caja Central (5701, subcuenta de la 570), nunca el 555", async () => {
     const b = await balances(["570", "5701", "555"]);
     await move({ type: "out", amount: 50, reason: "Cambio de caja", outKind: "traspaso" });
     await sync();
     expect(await delta(b)).toEqual({ "570": -5000, "5701": 5000, "555": 0 });
-    await move({ type: "in", amount: 20, reason: "Fondo adicional", inKind: "fondo" });
-    await move({ type: "in", amount: 30, reason: "Reposición caja" }); // sin tipo: fondo
+    await move({ type: "in", amount: 50, reason: "Fondo adicional", inKind: "fondo" });
     await sync();
     expect(await delta(b)).toEqual({ "570": 0, "5701": 0, "555": 0 });
+    expect((await ess.sql("a", "SELECT parent_code FROM acc_accounts WHERE code = '5701'"))[0].parent_code).toBe("570");
   });
 
   it("entrada de un cobro pendiente: contra clientes", async () => {
@@ -137,29 +159,38 @@ describe.skipIf(!URL_)("Contabilidad general · caminos reales del Core (TPV, an
     expect(await delta(b)).toEqual({ "570": 1000, "430": -1000, "555": 0 });
   });
 
-  it("IVA solo de datos confirmados (expenses.create/update): sin tipo, sin IVA; confirmado, su IVA; sin factura, nunca", async () => {
+  it("IVA solo confirmado en la contabilidad: el gasto del Core no cambia; sin confirmar, sin IVA; confirmado, su IVA; si cambia, otra vez sin", async () => {
     const b = await balances(["472"]);
-    const base = { date: today(), concept: "Material QA", amount: "110.00", categoryId: catId, costCenterId: ccId, paymentMethod: "transfer" };
-    const { id } = ok(await ess.m("a", "financial.expenses.create", base, adA), "crear gasto sin tipo");
-    const [row] = await ess.sql("a", "SELECT taxBase, taxAmount, fiscalReviewStatus FROM expenses WHERE id = ?", [id]);
-    expect(row).toEqual({ taxBase: null, taxAmount: null, fiscalReviewStatus: "pendiente" });
+    const base = { date: today(), concept: "Material QA", amount: "121.00", categoryId: catId, costCenterId: ccId, paymentMethod: "transfer" };
+    const { id } = ok(await ess.m("a", "financial.expenses.create", base, adA), "crear gasto");
+    // El Core guarda su desglose como siempre (21 % si no llega el tipo)
+    const [row] = await ess.sql("a", "SELECT taxRate, taxBase, taxAmount, fiscalReviewStatus FROM expenses WHERE id = ?", [id]);
+    expect([Number(row.taxRate), Number(row.taxBase), Number(row.taxAmount), row.fiscalReviewStatus]).toEqual([21, 100, 21, "revisado"]);
     const s1 = await sync();
-    expect(s1.review.map((r: any) => r.key)).toContain(`gasto:${id}`);
+    expect(s1.review.find((r: any) => r.key === `gasto:${id}`)).toMatchObject({ expenseId: id, canConfirm: true });
     expect((await delta(b))["472"]).toBe(0);
-    // Con tipo y desglose confirmado: su IVA real (10 %)
-    ok(await ess.m("a", "financial.expenses.update", { id, ...base, taxRate: "10", invoiceType: "ordinaria", taxReviewed: true }, adA), "confirmar el desglose");
+    // Confirmado con la factura: su IVA, sin tocar el gasto
+    ok(await ess.m("a", "accountingGeneral.confirmExpenseTax", { expenseId: id, confirmed: true }, adA), "confirmar IVA");
+    expect(await ess.sql("a", "SELECT taxRate, taxBase, taxAmount, fiscalReviewStatus FROM expenses WHERE id = ?", [id])).toEqual([row]);
     await sync();
-    expect((await delta(b))["472"]).toBe(1000);
-    // Sin factura: aunque se marque, nunca deduce
-    ok(await ess.m("a", "financial.expenses.update", { id, ...base, taxRate: "10", invoiceType: "sin_factura", taxReviewed: true }, adA), "sin factura");
-    expect((await ess.sql("a", "SELECT fiscalReviewStatus FROM expenses WHERE id = ?", [id]))[0].fiscalReviewStatus).toBe("pendiente");
-    const s3 = await sync();
+    expect((await delta(b))["472"]).toBe(2100);
+    // Pasa a «sin factura»: la confirmación deja de valer y no se puede confirmar
+    ok(await ess.m("a", "financial.expenses.update", { id, ...base, taxRate: "21", invoiceType: "sin_factura" }, adA), "sin factura");
+    await sync();
     expect((await delta(b))["472"]).toBe(0);
-    expect(s3.review.map((r: any) => r.key)).not.toContain(`gasto:${id}`);
+    expect((await ess.m("a", "accountingGeneral.confirmExpenseTax", { expenseId: id, confirmed: true }, adA)).status).toBe(409);
   });
 
   it("al final, el puente de caja (555) está a cero y todo cuadra", async () => {
     expect(await balance("555")).toBe(0);
     expect(ok(await ess.q("a", "accountingGeneral.overview", undefined, adA), "resumen").balanced).toBe(true);
+  });
+
+  it("entrada sin tipo (por API): al puente de caja y para revisar, nunca a la Caja Central", async () => {
+    const b = await balances(["570", "5701", "555"]);
+    const mv = await move({ type: "in", amount: 5, reason: "Fondo adicional" });
+    const r = await sync();
+    expect(r.review.map((x: any) => x.key)).toContain(`cajamov:${mv.id}`);
+    expect(await delta(b)).toEqual({ "570": 500, "5701": 0, "555": -500 });
   });
 });

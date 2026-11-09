@@ -125,6 +125,14 @@ function Kpi({ label, value, hint }: { label: string; value: string; hint?: stri
 
 function Summary({ syncing, onSync }: { syncing: boolean; onSync: () => void }) {
   const q = trpc.accountingGeneral.overview.useQuery();
+  // Solo escribe la confirmación de la contabilidad general: el gasto y sus impuestos en el Core no cambian
+  const confirmTax = trpc.accountingGeneral.confirmExpenseTax.useMutation({
+    onSuccess: () => {
+      toast.success("IVA confirmado para la contabilidad general");
+      onSync();
+    },
+    onError: (e) => toastError(e),
+  });
   if (q.isLoading) return <PanelLoading />;
   if (q.error) return <PanelError error={q.error} onRetry={() => q.refetch()} />;
   const d = q.data!;
@@ -175,13 +183,20 @@ function Summary({ syncing, onSync }: { syncing: boolean; onSync: () => void }) 
         {last && (last.review?.length ?? 0) > 0 && (
           <div className="space-y-1 rounded-lg border border-border bg-muted/40 p-3 text-sm">
             <p className="flex items-center gap-1 font-medium text-foreground">
-              <AlertTriangle className="h-4 w-4 text-muted-foreground" aria-hidden="true" /> Para revisar: {last.reviewCount} gastos sin IVA revisado
+              <AlertTriangle className="h-4 w-4 text-muted-foreground" aria-hidden="true" /> Para revisar: {last.reviewCount}
             </p>
-            <p className="text-muted-foreground">Se contabilizan sin IVA soportado (nunca se supone un 21 %). Revisa su desglose en Gastos y actualiza los asientos: se corrigen solos.</p>
-            <ul className="space-y-0.5 text-muted-foreground">
+            <p className="text-muted-foreground">
+              Un gasto deduce IVA soportado solo si confirmas aquí su desglose con la factura (nunca se supone un 21 %). Confirmarlo no cambia el gasto ni sus impuestos en Gastos o Gestoría; si el gasto cambia, hay que volver a confirmarlo.
+            </p>
+            <ul className="space-y-1 text-muted-foreground">
               {last.review.map((e) => (
-                <li key={e.key} className="break-words">
-                  {e.message}
+                <li key={e.key} className="flex flex-wrap items-center gap-2 break-words">
+                  <span className="min-w-0 flex-1">{e.message}</span>
+                  {e.canConfirm && e.expenseId != null && (
+                    <Button size="sm" variant="outline" disabled={confirmTax.isPending || syncing} onClick={() => confirmTax.mutate({ expenseId: e.expenseId!, confirmed: true })}>
+                      Desglose revisado con la factura
+                    </Button>
+                  )}
                 </li>
               ))}
             </ul>

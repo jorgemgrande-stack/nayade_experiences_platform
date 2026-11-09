@@ -40,7 +40,7 @@ import {
   type ExpenseDoc,
   type SaleDoc,
 } from "./accountingGeneral/rules";
-import { expenseDocOf, keyInGroups } from "./accountingGeneral/sources";
+import { expenseDocOf, keyInGroups, taxConfirmationMatches } from "./accountingGeneral/sources";
 import type { PostedLine } from "./finance/types";
 
 const map = ACC_DEFAULT_MAP;
@@ -224,7 +224,8 @@ describe("caja del TPV", () => {
     expect(total("600")).toBe(3000);
     for (const d of all) validateDraft(d, accounts);
     // Revisado en el formulario de gastos: entonces sí lleva su IVA real
-    const reviewed = expenseDocOf({ ...row, taxRate: "10.00", taxAmount: "2.73", fiscalReviewStatus: "revisado" }, "2026-03-02", undefined, ctx);
+    const reviewedRow = { ...row, taxRate: "10.00", taxAmount: "2.73" };
+    const reviewed = expenseDocOf(reviewedRow, "2026-03-02", undefined, ctx, { amountCents: 3000, taxRateBp: 1000, taxCents: 273, invoiceType: null });
     expect(side(expenseEntry(reviewed, map)!, "472")).toBe(273);
     expect(side(expensePaymentEntry(reviewed, map)!, "555")).toBe(-3000);
     // Un gasto en efectivo que no viene del TPV sigue saliendo de la caja
@@ -232,7 +233,7 @@ describe("caja del TPV", () => {
     expect(side(expensePaymentEntry(manual, map)!, "570")).toBe(-3000);
   });
 
-  it("IVA soportado solo de datos reales: nunca se deriva un 21 % por defecto; sin desglose revisado, sin IVA y para revisar", () => {
+  it("IVA soportado solo confirmado en la contabilidad: ni el 21 % por defecto ni «revisado» del Core bastan", () => {
     const ctx = { map, categoryAccounts: new Map<number, string>() };
     const row = { id: 60, date: "2026-03-02", concept: "Material", amount: "121.00", taxRate: "21.00", taxAmount: null, deductiblePercent: "100.00", categoryId: 1, paymentMethod: "transfer", source: "manual", fiscalReviewStatus: "pendiente" };
     // Sin cuota guardada (taxRate trae el 21 % por defecto): sin IVA
@@ -245,10 +246,21 @@ describe("caja del TPV", () => {
     // Cuota estimada por la regularización de gastos antiguos (pendiente de revisar): tampoco
     const estimated = expenseDocOf({ ...row, taxBase: "100.00", taxAmount: "21.00" }, "2026-03-02", undefined, ctx);
     expect(side(expenseEntry(estimated, map)!, "472")).toBe(0);
-    // Revisada en el formulario de gastos: su IVA real (aquí un 10 %)
-    const real = expenseDocOf({ ...row, amount: "110.00", taxRate: "10.00", taxAmount: "10.00", fiscalReviewStatus: "revisado" }, "2026-03-02", undefined, ctx);
+    // «Revisado» en el Core (el formulario lo marca siempre, también con el 21 % precargado): tampoco
+    const coreReviewed = { ...row, amount: "110.00", taxRate: "10.00", taxAmount: "10.00", invoiceType: "ordinaria", fiscalReviewStatus: "revisado" };
+    expect(side(expenseEntry(expenseDocOf(coreReviewed, "2026-03-02", undefined, ctx), map)!, "472")).toBe(0);
+    // Confirmado en la contabilidad con la factura: su IVA (aquí un 10 %)
+    const conf = { amountCents: 11000, taxRateBp: 1000, taxCents: 1000, invoiceType: "ordinaria" };
+    const real = expenseDocOf(coreReviewed, "2026-03-02", undefined, ctx, conf);
     expect(real.taxUnknown).toBe(false);
     expect(side(expenseEntry(real, map)!, "472")).toBe(1000);
+    // Si el gasto cambia después de confirmarlo (importe, tipo, cuota o tipo de factura), la confirmación deja de valer
+    expect(taxConfirmationMatches(conf, coreReviewed)).toBe(true);
+    expect(taxConfirmationMatches(conf, { ...coreReviewed, amount: "121.00" })).toBe(false);
+    expect(taxConfirmationMatches(conf, { ...coreReviewed, taxAmount: "11.00" })).toBe(false);
+    expect(taxConfirmationMatches(conf, { ...coreReviewed, invoiceType: "simplificada" })).toBe(false);
+    // Sin factura o exenta: nunca, aunque se hubiera confirmado
+    expect(side(expenseEntry(expenseDocOf({ ...coreReviewed, invoiceType: "sin_factura" }, "2026-03-02", undefined, ctx, { ...conf, invoiceType: "sin_factura" }), map)!, "472")).toBe(0);
     // Nóminas de RRHH: sin IVA por naturaleza, no se marcan para revisar
     expect(expenseDocOf({ ...row, source: "hr_payroll" }, "2026-03-02", undefined, ctx).taxUnknown).toBe(false);
   });
@@ -289,6 +301,13 @@ describe("caja del TPV", () => {
     // Sin tipo: una devolución por su motivo, contra clientes; lo demás, al puente (pendiente de aplicar)
     expect(other(mv("out", null, "Devolución efectivo")).accountCode).toBe("430");
     expect(other(mv("out", null, "Ingreso en banco")).accountCode).toBe("555");
+    // El motivo NUNCA pisa el tipo elegido: «Reembolso de gasolina» como gasto sigue siendo gasto
+    expect(other(mv("out", "gasto", "Reembolso de gasolina")).accountCode).toBe("555");
+    expect(other(mv("out", "gasto", "Devolución de fianza")).accountCode).toBe("555");
+    // Entrada sin tipo: al puente (para revisar), nunca a la Caja Central
+    expect(other(mv("in", null, "Fondo adicional")).accountCode).toBe("555");
+    expect(cashMoveCounterpart({ type: "out", reason: "Refund ticket", kind: null }, map)).toBe("430");
+    expect(cashMoveCounterpart({ type: "out", reason: "Abono al cliente", kind: null }, map)).toBe("430");
     expect(cashMoveCounterpart({ type: "out", reason: "Reembolso cliente", kind: null }, map)).toBe("430");
     for (const d of [mv("out", "traspaso"), mv("in", "fondo"), mv("out", "devolucion"), mv("in", "cobro")]) validateDraft(d, accounts);
     // Traspaso y vuelta del fondo: la caja y la Caja Central quedan como estaban, y nada pasa por el 555

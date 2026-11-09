@@ -10,7 +10,7 @@ import { madridDateKey } from "../utils/timezone";
 import { createReavExpedient, attachReavDocument, upsertClientFromReservation, postConfirmOperation, logActivity, getGHLCredentials } from "../db";
 import { createGHLContact, triggerGHLWorkflow, syncLeadUrlsToGHL } from "../ghl";
 import { createCashMovementIfNotExists, getDefaultCashAccountId, recordCashTransferToCentral } from "./cashRegisterHelper";
-import { CASH_IN_KINDS, CASH_OUT_KINDS, recordCashMovementKind, resolveCashMoveKind, type CashOutKind } from "../cashMovementKindsDb";
+import { CASH_IN_KINDS, CASH_OUT_KINDS, explicitCashMoveKind, linkCashMovementExpense, recordCashMovementKind } from "../cashMovementKindsDb";
 import { calcularREAVSimple } from "../reav";
 import { getDailyControlCenter } from "./dailyControl";
 import {
@@ -664,28 +664,30 @@ export const tpvRouter = router({
         type: z.enum(["out", "in"]),
         amount: z.number().positive(),
         reason: z.string().min(1),
-        // Para salidas: "gasto" (compra/proveedor ? gasto real), "devolucion" (devolución de efectivo a un cliente:
-        // NO es gasto) o "traspaso" (llevar el efectivo a la Caja Central ? movimiento interno, NO gasto). Sin indicarlo,
-        // o con un motivo de devolución, se resuelve con resolveCashMoveKind (server/cashMovementKindsDb.ts).
+        // Para salidas: "gasto" (compra/proveedor ? gasto real; por defecto, como siempre), "traspaso"
+        // (llevar el efectivo a la Caja Central ? movimiento interno, NO gasto) o "devolucion" (devolución de
+        // efectivo a un cliente, elegida por el cajero: NO es gasto).
         outKind: z.enum(CASH_OUT_KINDS).optional(),
-        // Para entradas: "fondo" (desde la Caja Central, por defecto) o "cobro" (cobro pendiente de un cliente).
+        // Para entradas: "fondo" (desde la Caja Central) o "cobro" (cobro pendiente). Solo lo usa la contabilidad.
         inKind: z.enum(CASH_IN_KINDS).optional(),
       })
     )
     .mutation(async ({ input: raw, ctx }) => {
-      const kind = resolveCashMoveKind(raw);
-      const input = { ...raw, outKind: raw.type === "out" ? (kind as CashOutKind) : undefined };
-      const [result] = await db.insert(cashMovements).values({
-        sessionId: input.sessionId,
-        type: input.type,
-        amount: String(input.amount),
-        reason: input.reason,
-        cashierName: ctx.user.name ?? ctx.user.email ?? "Cajero",
-        createdAt: Date.now(),
+      // Sin tipo, el TPV se comporta como siempre (gasto); la contabilidad general solo guarda el tipo explícito
+      const input = { ...raw, outKind: raw.outKind ?? ("gasto" as const) };
+      const id = await db.transaction(async (tx) => {
+        const [result] = await tx.insert(cashMovements).values({
+          sessionId: input.sessionId,
+          type: input.type,
+          amount: String(input.amount),
+          reason: input.reason,
+          cashierName: ctx.user.name ?? ctx.user.email ?? "Cajero",
+          createdAt: Date.now(),
+        });
+        const movementId = (result as any).insertId as number;
+        await recordCashMovementKind(tx, movementId, explicitCashMoveKind(raw));
+        return movementId;
       });
-      const id = (result as any).insertId as number;
-      // Tipo del movimiento para la contabilidad general (una sola vez y contra su contrapartida real)
-      await recordCashMovementKind(id, kind);
       const [movement] = await db.select().from(cashMovements).where(eq(cashMovements.id, id));
 
       // Propagación a Contabilidad ? Caja (fire-and-forget, no bloquea TPV).
@@ -702,8 +704,7 @@ export const tpvRouter = router({
       if (input.type === "out") {
         (async () => {
           try {
-            // Fecha de Madrid, la misma que la del movimiento de caja (no la de UTC)
-            const today = madridDateKey();
+            const today = new Date().toISOString().slice(0, 10);
             const cashAccountId = await getDefaultCashAccountId();
 
             if (input.outKind === "traspaso") {
@@ -722,7 +723,7 @@ export const tpvRouter = router({
               return;
             }
 
-            // DEVOLUCIÓN de efectivo a un cliente: sale de la caja, pero NO es gasto (no se crea `expenses`).
+            // DEVOLUCIÓN de efectivo a un cliente (elegida por el cajero): sale de la caja, pero NO es gasto.
             if (input.outKind === "devolucion") {
               if (cashAccountId) {
                 await db.insert(finCashMovements).values({
@@ -772,7 +773,7 @@ export const tpvRouter = router({
               .from(costCenters).where(eq(costCenters.active, true)).limit(1);
 
             if (cat && cc) {
-              await db.insert(expenses).values({
+              const [expRes] = await db.insert(expenses).values({
                 date: today,
                 concept,
                 amount: String(input.amount),
@@ -784,6 +785,8 @@ export const tpvRouter = router({
                 source: "tpv",
                 createdBy: ctx.user.id ? Number(ctx.user.id) : undefined,
               });
+              // Contabilidad general: el gasto de esta salida (para contabilizarla una sola vez)
+              await linkCashMovementExpense(id, Number((expRes as any).insertId));
             }
           } catch (e) {
             console.error("[TPV] Error registrando retirada en contabilidad:", e);
@@ -792,7 +795,7 @@ export const tpvRouter = router({
       } else if (input.type === "in") {
         (async () => {
           try {
-            const today = madridDateKey();
+            const today = new Date().toISOString().slice(0, 10);
             const concept = `Entrada de caja TPV — ${input.reason}`;
             const cashAccountId = await getDefaultCashAccountId();
             if (cashAccountId) {

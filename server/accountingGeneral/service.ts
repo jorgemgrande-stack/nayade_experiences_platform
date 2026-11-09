@@ -35,7 +35,10 @@ import {
   type SyncAction,
 } from "./rules";
 import * as store from "./store";
-import { keyInGroups, readSources, SOURCE_GROUP_LABELS } from "./sources";
+import { keyInGroups, readSources, SOURCE_GROUP_LABELS, type ReviewItem } from "./sources";
+import { eq } from "drizzle-orm";
+import { expenses } from "../../drizzle/schema";
+import { centsOf } from "./rules";
 
 export const ACC_NOT_INSTALLED_MESSAGE =
   "La contabilidad general aún no está preparada en tu empresa: falta aplicar la actualización 0060_extra_contabilidad de su base de datos. Inténtalo de nuevo en unos minutos.";
@@ -90,7 +93,7 @@ async function current(db: Db, now = new Date()): Promise<store.AccSettings> {
 /** Plan de cuentas para una consulta, sin escribir: el guardado o, si aún no se sembró, el del PGC de pymes. */
 async function chart(db: Db): Promise<Array<AccAccount & { isSeed: boolean }>> {
   const list = await store.listAccounts(db);
-  return list.length ? list : ACC_PGC_SEED.map((a) => ({ code: a.code, name: a.name, type: a.type, parentCode: null, isPostable: true, active: true, isSeed: true }));
+  return list.length ? list : ACC_PGC_SEED.map((a) => ({ code: a.code, name: a.name, type: a.type, parentCode: a.parentCode ?? null, isPostable: true, active: true, isSeed: true }));
 }
 const chartMap = async (db: Db) => new Map((await chart(db)).map((a) => [a.code, a as AccAccount]));
 
@@ -132,7 +135,7 @@ export interface SyncSummary {
   truncated: boolean;
   errors: Array<{ key: string; message: string }>;
   /** Contabilizados, pero para revisar (gastos sin IVA real); hasta 50, y cuántos hay. */
-  review: Array<{ key: string; message: string }>;
+  review: ReviewItem[];
   reviewCount: number;
   failedGroups: Array<{ group: string; message: string }>;
 }
@@ -349,6 +352,33 @@ export async function saveCategoryAccount(input: { categoryId: number; accountCo
       checkPostable(await store.accountMap(db), input.accountCode, "Categoría");
     }
     await store.setCategoryAccount(db, input.categoryId, input.accountCode, userId);
+    return { ok: true };
+  });
+}
+
+// ─── IVA confirmado de los gastos ───────────────────────────────────────────────
+
+/**
+ * Confirma (o retira) en la contabilidad general el desglose de IVA de un gasto, tal como está guardado en Gastos.
+ * Solo escribe `acc_expense_tax_reviews`: el gasto y todos los cálculos fiscales del Core (303, 390, 111, 190,
+ * Sociedades, CSV para la gestoría) quedan igual. Si el gasto cambia después, la confirmación deja de valer.
+ */
+export async function confirmExpenseTax(input: { expenseId: number; confirmed: boolean }, userId: number | null) {
+  return run(async (db) => {
+    await ready(db);
+    if (!input.confirmed) {
+      await store.deleteTaxReview(db, input.expenseId);
+      return { ok: true };
+    }
+    const [e] = await db
+      .select({ amount: expenses.amount, taxRate: expenses.taxRate, taxAmount: expenses.taxAmount, invoiceType: expenses.invoiceType, source: expenses.source })
+      .from(expenses)
+      .where(eq(expenses.id, input.expenseId));
+    if (!e) throw new AccError("not_found", `El gasto #${input.expenseId} no existe`);
+    if (typeof e.source === "string" && e.source.startsWith("hr_")) throw new AccError("invalid_state", "Las nóminas no llevan IVA");
+    if (e.invoiceType === "sin_factura" || e.invoiceType === "exenta") throw new AccError("invalid_state", "Un gasto sin factura o exento no deduce IVA");
+    if (e.taxAmount == null || e.taxRate == null) throw new AccError("invalid_state", "El gasto no tiene la cuota de IVA guardada: complétala en Gastos");
+    await store.upsertTaxReview(db, { expenseId: input.expenseId, amountCents: centsOf(e.amount), taxRateBp: Math.round(Number(e.taxRate) * 100), taxCents: centsOf(e.taxAmount), invoiceType: e.invoiceType ?? null }, userId);
     return { ok: true };
   });
 }

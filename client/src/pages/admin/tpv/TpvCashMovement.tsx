@@ -49,7 +49,7 @@ export default function TpvCashMovement({ open, type, sessionId, onClose }: Prop
   // Salidas: "gasto" (compra/proveedor), "devolucion" (a un cliente) o "traspaso" (a Caja Central). Sin valor por
   // defecto: una devolución registrada como gasto inventaba un gasto en la contabilidad.
   const [outKind, setOutKind] = useState<OutKind | null>(null);
-  const [inKind, setInKind] = useState<InKind>("fondo");
+  const [inKind, setInKind] = useState<InKind | null>(null);
 
   const movMut = trpc.tpv.addCashMovement.useMutation({
     onSuccess: () => {
@@ -62,7 +62,7 @@ export default function TpvCashMovement({ open, type, sessionId, onClose }: Prop
       setAmount("");
       setReason("");
       setOutKind(null);
-      setInKind("fondo");
+      setInKind(null);
       onClose();
     },
     onError: (err) => toast.error(err.message),
@@ -150,6 +150,7 @@ export default function TpvCashMovement({ open, type, sessionId, onClose }: Prop
                   </button>
                 ))}
               </div>
+              {inKind === null && <p className="text-[11px] text-gray-400 pt-1">Elige el tipo de entrada.</p>}
             </div>
           )}
 
@@ -198,10 +199,10 @@ export default function TpvCashMovement({ open, type, sessionId, onClose }: Prop
                   type,
                   amount: parseFloat(amount) || 0,
                   reason: reason || (type === "out" && outKind === "traspaso" ? "Traspaso a Caja Central" : "Sin motivo"),
-                  ...(type === "out" ? { outKind: outKind ?? undefined } : { inKind }),
+                  ...(type === "out" ? { outKind: outKind ?? undefined } : { inKind: inKind ?? undefined }),
                 })
               }
-              disabled={movMut.isPending || !amount || parseFloat(amount) <= 0 || (type === "out" && outKind === null)}
+              disabled={movMut.isPending || !amount || parseFloat(amount) <= 0 || (type === "out" ? outKind === null : inKind === null)}
             >
               {movMut.isPending ? "Guardando..." : "Registrar"}
             </Button>
