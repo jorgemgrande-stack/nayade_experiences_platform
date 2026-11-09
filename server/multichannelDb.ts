@@ -21,7 +21,7 @@
 import crypto from "node:crypto";
 import { TRPCError } from "@trpc/server";
 import { sql, type SQL } from "drizzle-orm";
-import { getDb, createReservation, generateReservationNumber, postConfirmOperation } from "./db";
+import { getDb, createReservation, generateReservationNumber, postConfirmOperation, voidConfirmedOperation } from "./db";
 import { isDeadlock } from "./creditNoteNumber";
 import { isMultiTenant, getTenantIdOrDefault } from "./_core/tenant";
 import { holdConfirmedForChannelSale, hotelRoomFree, releaseInventoryHold, spaSlotFree } from "./inventoryHoldsDb";
@@ -56,7 +56,7 @@ import {
 } from "../shared/multichannel";
 
 type Db = NonNullable<Awaited<ReturnType<typeof getDb>>>;
-type Exec = Pick<Db, "execute" | "insert">;
+type Exec = Pick<Db, "execute" | "insert" | "update">;
 
 export { MC_CAPABILITY };
 export const MC_NOT_INSTALLED_MESSAGE =
@@ -520,7 +520,7 @@ export interface McIngestOutcome {
 export type McAfterRegister = (s: { reservationId: number; productId: number; productName: string; day: string; people: number; grossCents: number; netCents: number; customerName: string; customerEmail: string | null; customerPhone: string | null; channelName: string; ref: string; merchantOrder: string }) => Promise<void>;
 
 export const defaultAfterRegister: McAfterRegister = async (s) => {
-  await postConfirmOperation({
+  const r = await postConfirmOperation({
     reservationId: s.reservationId,
     productId: s.productId,
     productName: s.productName,
@@ -538,7 +538,98 @@ export const defaultAfterRegister: McAfterRegister = async (s) => {
     sourceChannel: "otro",
     sendConfirmationEmail: false,
   });
+  // postConfirmOperation registra sus errores y sigue: sin booking o sin transacción, el paso no se ha completado
+  if (r.bookingId == null) throw new Error("No se ha creado el booking operativo de la reserva.");
+  if (r.transactionId == null) throw new Error("No se ha creado la transacción contable de la reserva.");
 };
+
+/** Datos originales de la venta (se guardan para reintentarla exactamente igual). */
+function saleInputJson(s: McSaleInput): string {
+  const { ref, code, day, endDay, time, units, people, grossCents, commissionCents, customerName, customerEmail, customerPhone } = s;
+  return JSON.stringify({ ref, code, day, endDay, time, units, people, grossCents, commissionCents, customerName, customerEmail, customerPhone });
+}
+
+/** La venta tal como llegó (`sale_input`) o, si falta, sus columnas. */
+export function storedSaleInput(sale: any): McSaleInput {
+  let j: Partial<McSaleInput> = {};
+  try {
+    const parsed = sale.sale_input ? JSON.parse(String(sale.sale_input)) : null;
+    if (parsed && typeof parsed === "object") j = parsed;
+  } catch {
+    /* columnas */
+  }
+  const nn = (v: unknown) => (v == null ? null : Number(v));
+  const has = (k: keyof McSaleInput) => Object.prototype.hasOwnProperty.call(j, k);
+  return {
+    ref: String(sale.external_ref),
+    event: "venta",
+    code: has("code") ? j.code ?? null : str(sale.product_code) ?? str(sale.external_code),
+    day: has("day") ? j.day ?? null : str(sale.service_day),
+    endDay: has("endDay") ? j.endDay ?? null : str(sale.service_end_day),
+    time: has("time") ? j.time ?? null : str(sale.service_time),
+    units: Number(j.units ?? sale.units) || 1,
+    people: has("people") ? nn(j.people) : null,
+    grossCents: has("grossCents") ? nn(j.grossCents) : sale.gross_cents ? num(sale.gross_cents) : null,
+    commissionCents: has("commissionCents") ? nn(j.commissionCents) : null,
+    customerName: has("customerName") ? j.customerName ?? null : str(sale.customer_name),
+    customerEmail: has("customerEmail") ? j.customerEmail ?? null : str(sale.customer_email),
+    customerPhone: has("customerPhone") ? j.customerPhone ?? null : str(sale.customer_phone),
+  };
+}
+
+/** Paso de contabilidad y Operaciones que falló o quedó a medias (pendiente hace más de 10 minutos). */
+const OPS_DUE = sql`(s.ops_status = 'error' OR (s.ops_status = 'pendiente' AND s.ops_at < (CURRENT_TIMESTAMP(3) - INTERVAL 10 MINUTE)))`;
+
+/**
+ * Reserva (bajo bloqueo de la fila de la venta) el paso de contabilidad y Operaciones de una venta registrada que lo
+ * tiene pendiente y devuelve lo que necesita `postConfirmOperation`; si no hay nada que hacer, el motivo.
+ */
+async function claimOps(d: Db, saleId: number): Promise<{ payload: Parameters<McAfterRegister>[0] } | { problem: string }> {
+  return inTx(d, async (tx) => {
+    const [s] = await rows(tx, sql`SELECT s.*, ${OPS_DUE} AS ops_due FROM mc_sales s WHERE s.id = ${saleId} FOR UPDATE`);
+    if (!s) return { problem: "La venta no existe." };
+    if (s.status !== "registrada" || s.reservation_id == null || !bool(s.ops_due)) return { problem: "Esa venta no tiene pendiente el paso de contabilidad y Operaciones." };
+    const [r] = await rows(tx, sql`SELECT product_id, product_name, merchant_order, status, status_reservation FROM reservations WHERE id = ${num(s.reservation_id)}`);
+    if (!r || r.status === "cancelled" || r.status_reservation === "ANULADA") return { problem: "La reserva del Core está anulada: cancela la venta en lugar de completarla." };
+    const [c] = await rows(tx, sql`SELECT name FROM mc_channels WHERE id = ${num(s.channel_id)}`);
+    await tx.execute(sql`UPDATE mc_sales SET ops_status = 'pendiente', ops_at = CURRENT_TIMESTAMP(3) WHERE id = ${saleId}`);
+    return {
+      payload: {
+        reservationId: num(s.reservation_id), productId: num(r.product_id), productName: String(r.product_name), day: String(s.service_day), people: num(s.people) || 1,
+        grossCents: num(s.gross_cents), netCents: num(s.net_cents), customerName: str(s.customer_name) ?? "", customerEmail: str(s.customer_email), customerPhone: str(s.customer_phone),
+        channelName: String(c?.name ?? ""), ref: String(s.external_ref), merchantOrder: String(r.merchant_order),
+      },
+    };
+  });
+}
+
+/**
+ * Hace el paso de contabilidad y Operaciones (idempotente: postConfirmOperation no repite booking, transacción ni ficha
+ * operativa de la misma reserva) y deja el resultado en la venta. Si la venta se canceló entretanto, lo deshace.
+ */
+async function completeOps(d: Db, saleId: number, payload: Parameters<McAfterRegister>[0], after: McAfterRegister): Promise<"hecho" | "error"> {
+  try {
+    await after(payload);
+  } catch (e) {
+    const message = e instanceof Error ? e.message : "Error";
+    console.error(JSON.stringify({ ctx: "Multicanal", event: "after_register_failed", saleId, error: message.slice(0, 200) }));
+    await d.execute(sql`UPDATE mc_sales SET ops_status = 'error', ops_error = ${`Contabilidad y Operaciones sin completar: ${message}`.slice(0, 500)}, ops_at = CURRENT_TIMESTAMP(3) WHERE id = ${saleId}`);
+    return "error";
+  }
+  await inTx(d, async (tx) => {
+    const [s] = await rows(tx, sql`SELECT status, reservation_id FROM mc_sales WHERE id = ${saleId} FOR UPDATE`);
+    await tx.execute(sql`UPDATE mc_sales SET ops_status = 'hecho', ops_error = NULL, ops_at = CURRENT_TIMESTAMP(3) WHERE id = ${saleId}`);
+    if (s?.status === "cancelada" && s.reservation_id != null) await undoConfirmedOperation(tx, num(s.reservation_id), null);
+  });
+  return "hecho";
+}
+
+/** Deshace lo que dejó postConfirmOperation (misma lógica que las anulaciones del CRM) y anula el booking operativo. */
+async function undoConfirmedOperation(tx: Exec, reservationId: number, actorId: number | null): Promise<void> {
+  // El canal cancela y reembolsa al cliente: ese ingreso no llega a la empresa
+  await voidConfirmedOperation(tx, reservationId, { refunded: true, updatedBy: actorId });
+  await tx.execute(sql`UPDATE bookings SET status = 'cancelado' WHERE reservationId = ${reservationId} AND status <> 'cancelado'`);
+}
 
 interface ChannelRow {
   id: number;
@@ -630,10 +721,13 @@ export async function ingestSale(
   // una segunda conexión dentro de ella): repetir o rechazar ventas no gasta numeración
   let reservationNumber: string | null = null;
   let registered: Parameters<McAfterRegister>[0] | null = null;
+  let opsRetryId = 0;
   const attempt = () => inTx(d, async (tx): Promise<McIngestOutcome> => {
     // 1. La fila de la venta (bloqueada): si ya está registrada o cancelada, no se repite nada
-    let [sale] = await rows(tx, sql`SELECT id, status, reservation_id FROM mc_sales WHERE channel_id = ${channel.id} AND external_ref = ${s.ref} FOR UPDATE`);
+    let [sale] = await rows(tx, sql`SELECT id, status, reservation_id, ops_status FROM mc_sales WHERE channel_id = ${channel.id} AND external_ref = ${s.ref} FOR UPDATE`);
     if (sale && !MC_RETRYABLE.has(String(sale.status))) {
+      // Reenvío de una venta registrada sin su paso de contabilidad y Operaciones: se completa después (si toca)
+      if (sale.status === "registrada" && sale.ops_status !== "hecho") opsRetryId = num(sale.id);
       return { ref: s.ref, status: sale.status, saleId: num(sale.id), reservationId: sale.reservation_id == null ? null : num(sale.reservation_id), duplicate: true, problem: null };
     }
     if (!sale) {
@@ -650,8 +744,15 @@ export async function ingestSale(
       }
     }
     const saleId = num(sale.id);
-    const fail = async (status: "rechazada" | "sin_cupo" | "sin_plaza", problem: string, extra: SQL = sql``): Promise<McIngestOutcome> => {
-      await tx.execute(sql`UPDATE mc_sales SET status = ${status}, problem = ${problem.slice(0, 500)}, units = ${s.units}, service_day = ${s.day}, service_time = ${s.time} ${extra} WHERE id = ${saleId}`);
+    // Una venta que no entra conserva todos sus datos (sale_input y columnas visibles) para reintentarla tal cual
+    const okCents = (v: number | null | undefined) => (v != null && Number.isInteger(v) && v >= 0 && v <= MC_LIMITS.maxCents ? v : 0);
+    const fail = async (status: "rechazada" | "sin_cupo" | "sin_plaza", problem: string, known: { listingId?: number; gross?: number; commission?: number; net?: number } = {}): Promise<McIngestOutcome> => {
+      await tx.execute(sql`
+        UPDATE mc_sales SET status = ${status}, problem = ${problem.slice(0, 500)}, listing_id = ${known.listingId ?? null}, product_code = ${s.code},
+          units = ${s.units}, people = ${s.people ?? s.units}, service_day = ${s.day}, service_end_day = ${s.endDay}, service_time = ${s.time},
+          gross_cents = ${okCents(known.gross ?? s.grossCents)}, commission_cents = ${okCents(known.commission ?? s.commissionCents)}, net_cents = ${known.net ?? 0},
+          customer_name = ${s.customerName}, customer_email = ${s.customerEmail}, customer_phone = ${s.customerPhone}, sale_input = ${saleInputJson(s)}
+        WHERE id = ${saleId}`);
       return { ref: s.ref, status, saleId, reservationId: null, duplicate: false, problem };
     };
 
@@ -660,8 +761,9 @@ export async function ingestSale(
     if (!p.ok) return fail(p.status, p.problem);
     const listingId = num(p.listing.id);
     const gross = s.grossCents ?? (p.listing.unit_price_cents == null ? 0 : num(p.listing.unit_price_cents) * p.units);
-    if (gross < 0 || gross > MC_LIMITS.maxCents) return fail("rechazada", "El importe no es válido.", sql`, listing_id = ${listingId}`);
+    if (gross < 0 || gross > MC_LIMITS.maxCents) return fail("rechazada", "El importe no es válido.", { listingId });
     const { commissionCents, netCents } = commissionOf(gross, { pct: Number(channel.commission_pct ?? 0), fixedCents: num(channel.commission_fixed_cents) }, s.commissionCents);
+    const known = { listingId, gross, commission: commissionCents, net: netCents };
 
     // 3. Cupo del canal: cada día bajo bloqueo de fila (orden por id)
     const days = daysConsumed(p.kind, p.day, p.endDay);
@@ -671,7 +773,7 @@ export async function ingestSale(
       const a = byDay.get(day);
       return !a || num(a.quota_units) - num(a.sold_units) < p.units;
     });
-    if (short.length) return fail("sin_cupo", `Sin cupo para este canal el ${short.slice(0, 5).join(", ")}${short.length > 5 ? "…" : ""}.`, sql`, listing_id = ${listingId}`);
+    if (short.length) return fail("sin_cupo", `Sin cupo para este canal el ${short.slice(0, 5).join(", ")}${short.length > 5 ? "…" : ""}.`, known);
 
     // 4. Plaza en el Core y reserva (misma transacción)
     if (!reservationNumber) throw NEED_NUMBER;
@@ -702,7 +804,7 @@ export async function ingestSale(
         data,
         now,
       );
-      if (!held.ok) return fail("sin_plaza", `El Core no tiene plaza: quedan ${held.available}.`, sql`, listing_id = ${listingId}`);
+      if (!held.ok) return fail("sin_plaza", `El Core no tiene plaza: quedan ${held.available}.`, known);
       reservationId = held.reservation.id;
     } else {
       if (p.expSlotId != null) {
@@ -710,7 +812,7 @@ export async function ingestSale(
         const cap = slot?.capacity == null ? 0 : num(slot.capacity);
         if (cap > 0) {
           const booked = await experienceBooked(tx, p.productId, p.expSlotId, p.day);
-          if (booked + p.people > cap) return fail("sin_plaza", `El Core no tiene plaza en la franja: quedan ${Math.max(0, cap - booked)}.`, sql`, listing_id = ${listingId}`);
+          if (booked + p.people > cap) return fail("sin_plaza", `El Core no tiene plaza en la franja: quedan ${Math.max(0, cap - booked)}.`, known);
         }
       }
       reservationId = (await createReservation(data, tx)).id;
@@ -734,7 +836,8 @@ export async function ingestSale(
       UPDATE mc_sales SET status = 'registrada', problem = NULL, listing_id = ${listingId}, service_day = ${p.day}, service_end_day = ${p.endDay},
         service_time = ${p.time}, units = ${p.units}, people = ${p.people}, gross_cents = ${gross}, commission_cents = ${commissionCents}, net_cents = ${netCents},
         customer_name = ${customerName.slice(0, 200)}, customer_email = ${s.customerEmail}, customer_phone = ${s.customerPhone},
-        reservation_id = ${reservationId}, import_id = ${o.importId ?? null}, sold_at = CURRENT_TIMESTAMP(3)
+        reservation_id = ${reservationId}, import_id = ${o.importId ?? null}, sold_at = CURRENT_TIMESTAMP(3), product_code = ${s.code}, sale_input = ${saleInputJson(s)},
+        ops_status = 'pendiente', ops_error = NULL, ops_at = CURRENT_TIMESTAMP(3)
       WHERE id = ${saleId}`);
     registered = { reservationId, productId: p.productId, productName: p.productName, day: p.day, people: p.people, grossCents: gross, netCents, customerName, customerEmail: s.customerEmail, customerPhone: s.customerPhone, channelName: channel.name, ref: s.ref, merchantOrder };
     return { ref: s.ref, status: "registrada", saleId, reservationId, duplicate: false, problem: null };
@@ -750,18 +853,17 @@ export async function ingestSale(
     outcome = await attempt();
   }
 
-  if (registered) {
-    try {
-      await (o.after ?? defaultAfterRegister)(registered);
-    } catch (e) {
-      console.error(JSON.stringify({ ctx: "Multicanal", event: "after_register_failed", saleId: outcome.saleId, error: e instanceof Error ? e.message.slice(0, 200) : "error" }));
-    }
+  // 7. Contabilidad y Operaciones (fuera de la transacción); si falla, queda marcado en la venta para reintentarlo
+  if (registered) await completeOps(d, outcome.saleId, registered, o.after ?? defaultAfterRegister);
+  else if (opsRetryId) {
+    const c = await claimOps(d, opsRetryId);
+    if ("payload" in c) await completeOps(d, opsRetryId, c.payload, o.after ?? defaultAfterRegister);
   }
   return outcome;
 }
 
 /** Cancela dentro de la transacción: devuelve el cupo, anula la reserva y libera la plaza. Idempotente. */
-async function cancelLocked(tx: Exec, sale: any, now: number): Promise<void> {
+async function cancelLocked(tx: Exec, sale: any, now: number, actorId: number | null): Promise<void> {
   if (sale.status === "registrada") {
     for (const a of await rows(tx, sql`SELECT allocation_id, units FROM mc_sale_allocations WHERE sale_id = ${num(sale.id)} ORDER BY allocation_id`)) {
       await tx.execute(sql`UPDATE mc_allocations SET sold_units = GREATEST(CAST(sold_units AS SIGNED) - ${num(a.units)}, 0) WHERE id = ${num(a.allocation_id)}`);
@@ -770,6 +872,8 @@ async function cancelLocked(tx: Exec, sale: any, now: number): Promise<void> {
       const rid = num(sale.reservation_id);
       await tx.execute(sql`UPDATE reservations SET status = 'cancelled', status_reservation = 'ANULADA', updated_at = ${now} WHERE id = ${rid}`);
       await releaseInventoryHold(rid, "cancelada", tx, now);
+      // Ingreso, ficha operativa y booking de postConfirmOperation (si aún no se había hecho, completeOps lo deshace)
+      await undoConfirmedOperation(tx, rid, actorId);
     }
   }
   await tx.execute(sql`UPDATE mc_sales SET status = 'cancelada', cancelled_at = CURRENT_TIMESTAMP(3) WHERE id = ${num(sale.id)}`);
@@ -788,12 +892,12 @@ async function cancelByRef(d: Db, channel: ChannelRow, ref: string, o: { source:
       } catch (e) {
         if (errCode(e) !== "ER_DUP_ENTRY") throw e;
         const [other] = await rows(tx, sql`SELECT * FROM mc_sales WHERE channel_id = ${channel.id} AND external_ref = ${ref} FOR UPDATE`);
-        if (other.status !== "cancelada") await cancelLocked(tx, other, now);
+        if (other.status !== "cancelada") await cancelLocked(tx, other, now, o.actorId ?? null);
         return { ref, status: "cancelada" as const, saleId: num(other.id), reservationId: other.reservation_id == null ? null : num(other.reservation_id), duplicate: other.status === "cancelada", problem: null };
       }
     }
     if (sale.status === "cancelada") return { ref, status: "cancelada" as const, saleId: num(sale.id), reservationId: sale.reservation_id == null ? null : num(sale.reservation_id), duplicate: true, problem: null };
-    await cancelLocked(tx, sale, now);
+    await cancelLocked(tx, sale, now, o.actorId ?? null);
     return { ref, status: "cancelada" as const, saleId: num(sale.id), reservationId: sale.reservation_id == null ? null : num(sale.reservation_id), duplicate: false, problem: null };
   });
 }
@@ -830,13 +934,23 @@ export async function retrySale(saleId: number, actor: McActor, after?: McAfterR
     const [sale] = await rows(d, sql`SELECT s.*, l.external_code FROM mc_sales s LEFT JOIN mc_listings l ON l.id = s.listing_id WHERE s.id = ${saleId}`);
     if (!sale) throw notFound("La venta");
     if (!MC_RETRYABLE.has(String(sale.status))) throw bad("Solo se reintentan las ventas sin cupo, sin plaza o rechazadas.");
-    if (!sale.service_day) throw bad("Esa venta llegó sin fecha: vuelve a importarla corregida.");
+    // Exactamente la venta que llegó (fechas, importe, comisión, cliente y código del producto)
+    const input = storedSaleInput(sale);
+    if (!input.day) throw bad("Esa venta llegó sin fecha: vuelve a importarla corregida.");
     const c = await channelRow(d, num(sale.channel_id));
-    return ingestSale(c!, {
-      ref: String(sale.external_ref), event: "venta", code: str(sale.external_code), day: String(sale.service_day), endDay: str(sale.service_end_day), time: str(sale.service_time),
-      units: num(sale.units) || 1, people: null, grossCents: sale.gross_cents ? num(sale.gross_cents) : null, commissionCents: null,
-      customerName: str(sale.customer_name), customerEmail: str(sale.customer_email), customerPhone: str(sale.customer_phone),
-    }, { source: "manual", actorId: actor.userId, after });
+    return ingestSale(c!, input, { source: "manual", actorId: actor.userId, after });
+  });
+}
+
+/** Vuelve a hacer el paso de contabilidad y Operaciones de una venta registrada en la que falló. Idempotente. */
+export async function retryOperation(saleId: number, actor: McActor, after?: McAfterRegister): Promise<{ saleId: number; opsStatus: "hecho" | "error"; problem: string | null }> {
+  writer(actor);
+  return run(async (d) => {
+    const c = await claimOps(d, saleId);
+    if ("problem" in c) throw bad(c.problem);
+    const opsStatus = await completeOps(d, saleId, c.payload, after ?? defaultAfterRegister);
+    const [s] = await rows(d, sql`SELECT ops_error FROM mc_sales WHERE id = ${saleId}`);
+    return { saleId, opsStatus, problem: opsStatus === "hecho" ? null : str(s?.ops_error) };
   });
 }
 
@@ -860,6 +974,9 @@ export interface McSaleRow {
   reservationId: number | null;
   reservationNumber: string | null;
   reservationStatus: string | null;
+  /** Paso de contabilidad y Operaciones de una venta registrada: pendiente, hecho o error. */
+  opsStatus: string | null;
+  opsError: string | null;
   settlementId: number | null;
   createdAt: string | null;
 }
@@ -870,7 +987,7 @@ function mapSale(r: any): McSaleRow {
     channelId: num(r.channel_id),
     channelName: String(r.channel_name ?? ""),
     externalRef: String(r.external_ref),
-    externalCode: str(r.external_code),
+    externalCode: str(r.external_code) ?? str(r.product_code),
     source: String(r.source),
     status: r.status as McSaleStatus,
     problem: str(r.problem),
@@ -885,6 +1002,8 @@ function mapSale(r: any): McSaleRow {
     reservationId: r.reservation_id == null ? null : num(r.reservation_id),
     reservationNumber: str(r.reservation_number),
     reservationStatus: str(r.reservation_status),
+    opsStatus: str(r.ops_status),
+    opsError: str(r.ops_error),
     settlementId: r.settlement_id == null ? null : num(r.settlement_id),
     createdAt: iso(r.created_at),
   };
@@ -1011,12 +1130,19 @@ export async function reconciliation(f: { from?: string; to?: string; channelId?
         ${f.channelId ? sql`AND s.channel_id = ${f.channelId}` : sql``}
       ORDER BY s.id DESC LIMIT 100`)).map(mapSale);
     const pending = (await rows(d, sql`${SALE_SELECT} WHERE s.status IN ('sin_cupo', 'sin_plaza', 'rechazada') ${f.channelId ? sql`AND s.channel_id = ${f.channelId}` : sql``} ORDER BY s.id DESC LIMIT 100`)).map(mapSale);
+    // Ventas registradas sin su contabilidad u Operaciones (se completan desde «Ventas»)
+    const opsFailed = (await rows(d, sql`${SALE_SELECT} WHERE s.status = 'registrada' AND ${OPS_DUE} ${f.channelId ? sql`AND s.channel_id = ${f.channelId}` : sql``} ORDER BY s.id DESC LIMIT 100`)).map(mapSale);
+    // Ingresos huérfanos: transacción de ingreso aún vigente de una venta cancelada
+    const orphanIncome = (await rows(d, sql`
+      ${SALE_SELECT} WHERE s.status = 'cancelada' AND s.reservation_id IS NOT NULL ${f.channelId ? sql`AND s.channel_id = ${f.channelId}` : sql``}
+        AND EXISTS (SELECT 1 FROM transactions t WHERE t.reservationId_tx = s.reservation_id AND t.type = 'ingreso' AND t.status = 'completado' AND t.operationStatus = 'confirmada')
+      ORDER BY s.id DESC LIMIT 100`)).map(mapSale);
     const settlements = (await rows(d, sql`SELECT * FROM mc_settlements ${f.channelId ? sql`WHERE channel_id = ${f.channelId}` : sql``} ORDER BY id DESC LIMIT 50`)).map((s) => ({
       id: num(s.id), channelId: num(s.channel_id), channelName: names.get(num(s.channel_id)) ?? "", periodFrom: String(s.period_from), periodTo: String(s.period_to), reference: str(s.reference),
       salesCount: num(s.sales_count), expectedNetCents: num(s.expected_net_cents), receivedCents: s.received_cents == null ? null : num(s.received_cents),
       differenceCents: s.received_cents == null ? null : num(s.received_cents) - num(s.expected_net_cents), note: str(s.note), createdAt: iso(s.created_at),
     }));
-    return { from, to, totals: totals.map((t) => ({ ...t, channelName: names.get(t.channelId) ?? "" })), mismatches, pending, settlements };
+    return { from, to, totals: totals.map((t) => ({ ...t, channelName: names.get(t.channelId) ?? "" })), mismatches, pending, opsFailed, orphanIncome, settlements };
   });
 }
 

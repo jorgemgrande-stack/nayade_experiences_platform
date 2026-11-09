@@ -27,7 +27,7 @@ import {
 import { TRPC_ROUTER_CAPABILITIES, capabilityForProcedure } from "./_core/capabilities/routeGuard";
 import { TASK_NAV } from "../shared/adminNav";
 import { PROVIDERS } from "./_core/credentials/catalog";
-import { inboundTokenHash, newInboundToken } from "./multichannelDb";
+import { inboundTokenHash, newInboundToken, storedSaleInput } from "./multichannelDb";
 import { MC_PUBLIC_POST_PATH, createMultichannelPublicRouter, multichannelBodyParser } from "./multichannel/publicRoutes";
 import { NET_PUBLIC_PATH } from "./netPublic/router";
 
@@ -208,5 +208,18 @@ describe("registro", () => {
     for (const s of statements) expect(s).toMatch(/^CREATE TABLE IF NOT EXISTS mc_[a-z_]+ \(/);
     const down = fs.readFileSync(path.join(dir, "0059_extra_multicanal.down.sql"), "utf8");
     expect(down.match(/mc_[a-z_]+/g)?.sort()).toEqual(statements.map((s) => s.match(/mc_[a-z_]+/)![0]).sort());
+  });
+});
+
+describe("reintento con los datos originales", () => {
+  it("recupera la venta tal como llegó (sale_input), no las columnas por defecto", () => {
+    const sale = parseInboundSale({ ref: "L-1", code: "LOFT", date: "2026-12-01", endDate: "2026-12-04", units: 1, people: 2, amount: 450, commission: 60, customer: { name: "Ana", email: "ana@cliente.example", phone: "600" } });
+    if (!sale.ok) throw new Error(sale.problem);
+    const { event: _e, ...rest } = sale.sale;
+    const row = { external_ref: "L-1", sale_input: JSON.stringify(rest), service_day: "2026-12-01", units: 1, gross_cents: 0, product_code: null, external_code: null };
+    expect(storedSaleInput(row)).toEqual(sale.sale);
+  });
+  it("sin sale_input, usa las columnas guardadas (código del producto incluido)", () => {
+    expect(storedSaleInput({ external_ref: "X", product_code: "KAYAK", service_day: "2026-12-01", service_end_day: null, service_time: "10:00", units: 2, gross_cents: 5000, customer_name: "Eva", customer_email: null, customer_phone: null })).toMatchObject({ code: "KAYAK", day: "2026-12-01", time: "10:00", units: 2, grossCents: 5000, customerName: "Eva" });
   });
 });

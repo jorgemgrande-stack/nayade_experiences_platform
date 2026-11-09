@@ -193,6 +193,94 @@ describe.skipIf(!URL_)("Venta multicanal · canales, cupo, ventas sin sobreventa
     expect(exported.csv.split("\r\n")[0]).toMatch(/^Canal;Referencia;Producto;Fecha/);
   });
 
+  it("reintento con los datos originales: noches, importe, comisión, cliente y producto", async () => {
+    const loftId = (await ess.sql("a", "INSERT INTO room_types (slug, name, totalUnits, basePrice, isActive) VALUES ('qa-mc-loft', 'QA Loft', 1, 70.00, 1)") as any).insertId;
+    const loft = await ok(m("upsertListing", { channelId, externalCode: "LOFT", targetKind: "hotel", targetId: loftId }));
+    await ok(m("setListingActive", { id: loft.id, active: false }));
+    const [d0, d3] = [day(40), day(43)];
+    const body = { ref: "L-1", code: "LOFT", date: d0, endDate: d3, units: 1, amount: 450, commission: 60, customer: { name: "QA Huésped", email: "qa+loft@cliente.example", phone: "+34600000000" } };
+    // Rechazada sin publicación (sin listing_id): el código del producto queda guardado
+    expect((await post(body)).json.results[0]).toMatchObject({ status: "rechazada" });
+    const [rej] = await ess.sql("a", "SELECT id, listing_id FROM mc_sales WHERE external_ref = 'L-1'");
+    expect(rej.listing_id).toBeNull();
+    await ok(m("setListingActive", { id: loft.id, active: true }));
+    // Falta la tercera noche: sin cupo del canal (las 3 noches, no 1)
+    await ok(m("setAllocations", { listingId: loft.id, from: d0, to: day(41), quota: 1 }));
+    expect(await ok(m("retrySale", { id: rej.id }))).toMatchObject({ status: "sin_cupo" });
+    await ok(m("setAllocations", { listingId: loft.id, from: d0, to: day(42), quota: 1 }));
+    expect(await ok(m("retrySale", { id: rej.id }))).toMatchObject({ status: "registrada", duplicate: false });
+    const [s] = await ess.sql("a", "SELECT * FROM mc_sales WHERE id = ?", [rej.id]);
+    expect(s).toMatchObject({ listing_id: loft.id, service_day: d0, service_end_day: d3, gross_cents: 45000, commission_cents: 6000, net_cents: 39000, customer_name: "QA Huésped", customer_email: "qa+loft@cliente.example", customer_phone: "+34600000000" });
+    const nights = await ess.sql("a", "SELECT a.day, a.sold_units FROM mc_allocations a WHERE a.listing_id = ? ORDER BY a.day", [loft.id]);
+    expect(nights.map((n: any) => [n.day, Number(n.sold_units)])).toEqual([[d0, 1], [day(41), 1], [day(42), 1]]);
+    const [r] = await ess.sql("a", "SELECT product_id, product_name, amount_total, amount_paid, customer_name, customer_email, status FROM reservations WHERE id = ?", [s.reservation_id]);
+    expect(r).toMatchObject({ product_id: loftId, amount_total: 45000, amount_paid: 45000, customer_name: "QA Huésped", customer_email: "qa+loft@cliente.example", status: "paid" });
+    expect(r.product_name).toContain("3 noches");
+    // postConfirmOperation real con los datos originales: ingreso por el bruto y booking por el neto, con el cliente
+    expect(await ess.sql("a", "SELECT amount, clientName, clientEmail, status, operationStatus FROM transactions WHERE reservationId_tx = ?", [s.reservation_id])).toEqual([{ amount: "450.00", clientName: "QA Huésped", clientEmail: "qa+loft@cliente.example", status: "completado", operationStatus: "confirmada" }]);
+    expect(await ess.sql("a", "SELECT totalAmount, clientName, clientEmail, status FROM bookings WHERE reservationId = ?", [s.reservation_id])).toEqual([{ totalAmount: "390.00", clientName: "QA Huésped", clientEmail: "qa+loft@cliente.example", status: "confirmado" }]);
+    expect(s.ops_status).toBe("hecho");
+    // Idempotente: ni otro reintento ni el reenvío del canal crean otra reserva u otro ingreso
+    expect(errCode(await m("retrySale", { id: rej.id }))).toBe("BAD_REQUEST");
+    expect((await post(body)).json.results[0]).toMatchObject({ status: "registrada", duplicate: true });
+    expect((await ess.sql("a", "SELECT COUNT(*) AS n FROM reservations WHERE product_id = ?", [loftId]))[0].n).toBe(1);
+    expect((await ess.sql("a", "SELECT COUNT(*) AS n FROM transactions WHERE reservationId_tx = ?", [s.reservation_id]))[0].n).toBe(1);
+    expect(nights.length).toBe(3);
+  });
+
+  it("cancelar desde el canal deshace lo que dejó postConfirmOperation (ingreso, operativa y booking)", async () => {
+    const [listing] = await ess.sql("a", "SELECT id FROM mc_listings WHERE external_code = 'KAYAK'");
+    await ok(m("setAllocations", { listingId: listing.id, from: day(25), to: day(25), quota: 10 }));
+    expect((await post(sale("PC-1", "KAYAK", { date: day(25) }))).json.results[0]).toMatchObject({ status: "registrada" });
+    const [s] = await ess.sql("a", "SELECT reservation_id, ops_status FROM mc_sales WHERE external_ref = 'PC-1'");
+    expect(s.ops_status).toBe("hecho");
+    const rid = s.reservation_id;
+    // Lo que deja el postConfirmOperation real
+    expect(await ess.sql("a", "SELECT type, status, operationStatus, amount FROM transactions WHERE reservationId_tx = ?", [rid])).toMatchObject([{ type: "ingreso", status: "completado", operationStatus: "confirmada", amount: "50.00" }]);
+    expect(await ess.sql("a", "SELECT op_status FROM reservation_operational WHERE reservation_id = ?", [rid])).toEqual([{ op_status: "confirmado" }]);
+    // Importes: ingreso por el bruto (50 €) y booking por el neto (50 − 20 % − 0,50 = 39,50 €), como en Redsys
+    expect(await ess.sql("a", "SELECT status, totalAmount FROM bookings WHERE reservationId = ?", [rid])).toEqual([{ status: "confirmado", totalAmount: "39.50" }]);
+    expect(await ess.sql("a", "SELECT gross_cents, commission_cents, net_cents FROM mc_sales WHERE external_ref = 'PC-1'")).toEqual([{ gross_cents: 5000, commission_cents: 1050, net_cents: 3950 }]);
+    expect((await post({ ref: "PC-1", event: "cancelacion" })).json.results[0]).toMatchObject({ status: "cancelada", duplicate: false });
+    expect(await ess.sql("a", "SELECT status, operationStatus FROM transactions WHERE reservationId_tx = ?", [rid])).toEqual([{ status: "reembolsado", operationStatus: "reembolsada" }]);
+    expect(await ess.sql("a", "SELECT op_status FROM reservation_operational WHERE reservation_id = ?", [rid])).toEqual([{ op_status: "anulado" }]);
+    expect(await ess.sql("a", "SELECT status FROM bookings WHERE reservationId = ?", [rid])).toEqual([{ status: "cancelado" }]);
+    // Conciliación: sin ingresos huérfanos de ventas canceladas; repetir la cancelación no cambia nada
+    expect((await ok(q("reconciliation", { channelId, from: day(20), to: day(30) }))).orphanIncome).toEqual([]);
+    expect((await post({ ref: "PC-1", event: "cancelacion" })).json.results[0]).toMatchObject({ status: "cancelada", duplicate: true });
+    expect((await ess.sql("a", "SELECT COUNT(*) AS n FROM transactions WHERE reservationId_tx = ?", [rid]))[0].n).toBe(1);
+  });
+
+  it("si postConfirmOperation falla tras registrar la venta, queda marcada, se ve en la conciliación y se reintenta una sola vez", async () => {
+    const txCount = async (ref: string) => (await ess.sql("a", "SELECT COUNT(*) AS n FROM transactions t JOIN mc_sales s ON s.reservation_id = t.reservationId_tx WHERE s.external_ref = ?", [ref]))[0].n;
+    await ess.sql("a", "RENAME TABLE transactions TO transactions_qa_off");
+    try {
+      expect((await post(sale("OPS-1", "KAYAK", { date: day(25) }))).json.results[0]).toMatchObject({ status: "registrada" });
+      expect((await post(sale("OPS-2", "KAYAK", { date: day(25) }))).json.results[0]).toMatchObject({ status: "registrada" });
+    } finally {
+      await ess.sql("a", "RENAME TABLE transactions_qa_off TO transactions");
+    }
+    const failed = await ess.sql("a", "SELECT id, external_ref, ops_status, ops_error FROM mc_sales WHERE external_ref IN ('OPS-1', 'OPS-2') ORDER BY external_ref");
+    expect(failed.map((f: any) => f.ops_status)).toEqual(["error", "error"]);
+    expect(failed[0].ops_error).toBeTruthy();
+    const rec = await ok(q("reconciliation", { channelId, from: day(20), to: day(30) }));
+    expect(rec.opsFailed.map((s: any) => s.externalRef).sort()).toEqual(["OPS-1", "OPS-2"]);
+    const listed = await ok(q("sales", { channelId, search: "OPS-1" }));
+    expect(listed.items[0]).toMatchObject({ opsStatus: "error" });
+    // El canal la reenvía: sigue siendo la misma venta (duplicada) y se completa el paso pendiente
+    expect((await post(sale("OPS-1", "KAYAK", { date: day(25) }))).json.results[0]).toMatchObject({ status: "registrada", duplicate: true });
+    expect(await txCount("OPS-1")).toBe(1);
+    // Reintento desde el panel: idempotente
+    expect(await ok(m("retryOperation", { id: failed[1].id }))).toMatchObject({ opsStatus: "hecho" });
+    expect(errCode(await m("retryOperation", { id: failed[1].id }))).toBe("BAD_REQUEST");
+    expect(await txCount("OPS-2")).toBe(1);
+    expect(await ess.sql("a", "SELECT ops_status FROM mc_sales WHERE external_ref IN ('OPS-1', 'OPS-2')")).toEqual([{ ops_status: "hecho" }, { ops_status: "hecho" }]);
+    expect((await ok(q("reconciliation", { channelId, from: day(20), to: day(30) }))).opsFailed).toEqual([]);
+    // Un nuevo reenvío no crea otra transacción
+    await post(sale("OPS-1", "KAYAK", { date: day(25) }));
+    expect(await txCount("OPS-1")).toBe(1);
+  });
+
   it("aislamiento: la empresa B no ve los canales de A y el enlace de A no sirve en B", async () => {
     expect(await ok(q("channels", undefined, adB, "b"))).toEqual([]);
     expect((await post(sale("B-1", "KAYAK"), "b")).status).toBe(404);

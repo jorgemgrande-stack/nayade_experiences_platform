@@ -101,6 +101,7 @@ export const multichannelRouter = router({
     }),
   cancelSale: licensed.input(z.object({ id })).mutation(({ ctx, input }) => mc.cancelSale(input.id, actorOf(ctx))),
   retrySale: licensed.input(z.object({ id })).mutation(({ ctx, input }) => mc.retrySale(input.id, actorOf(ctx))),
+  retryOperation: licensed.input(z.object({ id })).mutation(({ ctx, input }) => mc.retryOperation(input.id, actorOf(ctx))),
   importCsv: licensed
     .input(z.object({ channelId: id, fileName: z.string().max(200).nullish(), text: z.string().min(1).max(MC_LIMITS.csvBytes) }))
     .mutation(({ ctx, input }) => mc.importCsv(input.channelId, input.text, input.fileName ?? null, actorOf(ctx))),

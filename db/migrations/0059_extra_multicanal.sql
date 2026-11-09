@@ -2,7 +2,8 @@
 -- OTA, agencias y canales de entradas como Fourvenues o Weezevent) con su comisión; publicaciones de productos del Core
 -- en cada canal (código del canal → experiencia, tratamiento de spa o tipo de habitación); cupo por canal y día; ventas
 -- recibidas de cada canal (CSV o enlace de entrada), idempotentes por referencia del canal, con la reserva que crean en
--- el Core y lo que consumen del cupo; importaciones de informes y liquidaciones de cada canal. Fechas de calendario como
+-- el Core y lo que consumen del cupo (con los datos originales de cada venta en sale_input para reintentarla tal cual y
+-- el estado del paso de contabilidad y Operaciones en ops_status: pendiente, hecho o error); importaciones de informes y liquidaciones de cada canal. Fechas de calendario como
 -- texto AAAA-MM-DD; importes en céntimos. Solo CREATE TABLE.
 CREATE TABLE IF NOT EXISTS mc_channels (
   id                     INT UNSIGNED  NOT NULL AUTO_INCREMENT,
@@ -79,6 +80,11 @@ CREATE TABLE IF NOT EXISTS mc_sales (
   customer_email    VARCHAR(255)  NULL,
   customer_phone    VARCHAR(50)   NULL,
   reservation_id    INT           NULL,
+  product_code      VARCHAR(80)   NULL,
+  sale_input        TEXT          NULL,
+  ops_status        VARCHAR(12)   NULL,
+  ops_error         VARCHAR(500)  NULL,
+  ops_at            TIMESTAMP(3)  NULL,
   import_id         INT UNSIGNED  NULL,
   settlement_id     INT UNSIGNED  NULL,
   sold_at           TIMESTAMP(3)  NULL,
@@ -90,7 +96,8 @@ CREATE TABLE IF NOT EXISTS mc_sales (
   UNIQUE KEY uq_mc_sales_ref (channel_id, external_ref),
   KEY idx_mc_sales_status (channel_id, status, service_day),
   KEY idx_mc_sales_settlement (settlement_id),
-  KEY idx_mc_sales_reservation (reservation_id)
+  KEY idx_mc_sales_reservation (reservation_id),
+  KEY idx_mc_sales_ops (ops_status)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 CREATE TABLE IF NOT EXISTS mc_sale_allocations (
