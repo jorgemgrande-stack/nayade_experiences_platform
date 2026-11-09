@@ -69,6 +69,13 @@ export const fieldMaxLength = (f: CredentialField) => f.maxLength ?? FIELD_MAX_L
 
 const URL_RE = /^https:\/\/[^\s]{4,500}$/;
 const TOKEN_RE = /^[\x21-\x7e]{8,512}$/; // imprimibles ASCII sin espacios
+/** Clave de verificación de webhooks: al menos 24 caracteres (MIN_WEBHOOK_SECRET_LENGTH de server/_core/webhookSecret.ts). */
+const WEBHOOK_SECRET_RE = /^[\x21-\x7e]{24,512}$/;
+/** Identificador de un recurso de Vapi (UUID). */
+const VAPI_ID_RE = /^[A-Za-z0-9-]{8,80}$/;
+/** Texto corto de una línea (nombre o número que se muestra en el panel). */
+const LABEL_RE = /^[^\r\n\t]{1,120}$/;
+const ISO_RE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{1,3})?Z$/;
 
 const HOST_RE = /^[A-Za-z0-9.-]{3,253}$/;
 const PORT_RE = /^\d{2,5}$/;
@@ -111,12 +118,19 @@ export const PROVIDERS: ProviderDef[] = [
     id: "vapi",
     name: "VAPI",
     description: "Asistente de voz y registro de llamadas.",
-    capabilities: ["Recibir el registro de llamadas por webhook", "Consultar asistentes"],
+    capabilities: ["Recibir el registro de llamadas por webhook", "Consultar asistentes y números", "Configurar el webhook del asistente elegido y asignarle el número elegido (Puesta en marcha de Llamadas IA)"],
     check: "Listado de asistentes (1 elemento): solo lectura",
     panel: { group: "customer", title: "Asistente de voz (VAPI)", summary: "Atiende llamadas con un asistente de voz y guarda el registro de cada llamada.", requires: ["voice-ai", "reception-ai"] },
     fields: [
       { key: "apiKey", label: "API key", secret: true, env: "VAPI_API_KEY", pattern: TOKEN_RE, panel: { label: "Clave de acceso", help: "Está en tu cuenta de VAPI, en el apartado de claves (usa la privada).", formatMessage: "Cópiala completa, sin espacios." } },
-      { key: "webhookSecret", label: "Secreto del webhook", secret: true, env: "VAPI_WEBHOOK_SECRET", pattern: TOKEN_RE, panel: { label: "Clave de verificación de llamadas", help: "La eliges tú y la escribes igual en la configuración de tu asistente en VAPI.", formatMessage: "Al menos 8 caracteres, sin espacios." } },
+      // Mínimo de 24 caracteres, el mismo que exige el webhook (server/_core/webhookSecret.ts): con menos, rechaza las llamadas
+      { key: "webhookSecret", label: "Secreto del webhook", secret: true, env: "VAPI_WEBHOOK_SECRET", pattern: WEBHOOK_SECRET_RE, panel: { label: "Clave de verificación de llamadas", help: "La genera y la configura en tu asistente de VAPI la «Puesta en marcha» de Llamadas IA; si la escribes tú, ponla igual en VAPI.", formatMessage: "Al menos 24 caracteres, sin espacios." } },
+      // Elección de la «Puesta en marcha» de Llamadas IA (server/voiceSetup.ts): no son secretos y no se editan desde aquí
+      { key: "setupAssistantId", label: "Asistente conectado", secret: false, pattern: VAPI_ID_RE, panel: { label: "Asistente conectado", hidden: true } },
+      { key: "setupAssistantName", label: "Nombre del asistente", secret: false, pattern: LABEL_RE, maxLength: 120, panel: { label: "Nombre del asistente", hidden: true } },
+      { key: "setupPhoneNumberId", label: "Número conectado", secret: false, pattern: VAPI_ID_RE, panel: { label: "Número conectado", hidden: true } },
+      { key: "setupPhoneNumber", label: "Número de teléfono", secret: false, pattern: LABEL_RE, maxLength: 120, panel: { label: "Número de teléfono", hidden: true } },
+      { key: "setupConnectedAt", label: "Conectado el", secret: false, pattern: ISO_RE, panel: { label: "Conectado el", hidden: true } },
     ],
   },
   {

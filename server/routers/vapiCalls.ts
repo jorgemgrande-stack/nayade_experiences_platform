@@ -226,10 +226,11 @@ export const vapiCallsRouter = router({
     for (const r of (rows as any[])) map[r.key] = r.value ?? "";
     const apiKey = integrationEnv("VAPI_API_KEY") || map.vapiApiKey || "";
     const webhookSecret = integrationEnv("VAPI_WEBHOOK_SECRET") || map.vapiWebhookSecret || "";
+    // Nunca en claro: la clave de verificación solo se ve enmascarada (la configura en Vapi la puesta en marcha)
     return {
       hasApiKey: !!apiKey,
       apiKeyMasked: apiKey ? `${apiKey.slice(0, 8)}…${apiKey.slice(-4)}` : "",
-      webhookSecret,
+      webhookSecret: webhookSecret ? `••••${webhookSecret.slice(-4)}` : "",
     };
   }),
 
