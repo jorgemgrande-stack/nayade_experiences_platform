@@ -206,6 +206,7 @@ import { suppliersRouter, settlementsRouter } from "./routers/suppliers";
 import { supplierPortalRouter } from "./routers/supplierPortal";
 import { timeSlotsRouter } from "./routers/timeSlots";
 import { tpvRouter } from "./routers/tpv";
+import { tpvAdvancedRouter } from "./routers/tpvAdvanced";
 import { discountsRouter } from "./routers/discounts";
 import { legoPacksRouter, calculateLegoPackPrice } from "./routers/legoPacks";
 import { expensesModuleRouter } from "./routers/expenses";
@@ -2704,6 +2705,7 @@ export const appRouter = router({
   supplierPortal: supplierPortalRouter,
   timeSlots: timeSlotsRouter,
   tpv: tpvRouter,
+  tpvAdvanced: tpvAdvancedRouter,
   discounts: discountsRouter,
   settlements: settlementsRouter,
   legoPacks: legoPacksRouter,

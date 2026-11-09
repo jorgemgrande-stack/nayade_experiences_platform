@@ -212,6 +212,7 @@ export const LEGACY_NAV: NavItem[] = [
       { label: "Terminal de venta", href: "/admin/tpv" },
       { label: "Historial de cajas", href: "/admin/tpv/cajas" },
       { label: "Informes de caja", href: "/admin/tpv/informes" },
+      { label: "TPV Advanced", href: "/admin/tpv/avanzado" },
     ],
   },
   {
@@ -390,6 +391,8 @@ export const TASK_NAV: NavSection[] = [
     items: [
       // Elephant Copilot avanzado: preguntas sobre los datos de la empresa y redacción asistida (cada herramienta exige además su permiso)
       { label: "Copilot", href: "/admin/copilot", key: "x-copilot", icon: "sparkles", roles: SALES, capabilities: ["copilot-advanced"] },
+      // TPV Advanced: turnos, entregas, arqueos, autorizaciones y auditoría (el equipo de caja también lo usa)
+      { label: "TPV Advanced", href: "/admin/tpv/avanzado", key: "x-tpv-avanzado", icon: "monitor", roles: SALES, capabilities: ["pos-advanced"], flagKey: "tpv_enabled" },
       // Automatizaciones avanzadas: reglas, secuencias, plantillas, historial y prueba (solo administración)
       { label: "Automatizaciones", href: "/admin/automatizaciones", key: "x-automatizaciones", icon: "target", roles: ADMIN, capabilities: ["automations-advanced"] },
       { label: "Impuestos y gestoría", href: "/admin/gestoria", key: "x-gestoria", icon: "receipt", roles: ADMIN, capabilities: ["tax-filings"] },

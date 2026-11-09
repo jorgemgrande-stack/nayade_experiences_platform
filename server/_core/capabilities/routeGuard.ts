@@ -68,6 +68,8 @@ export const TRPC_ROUTER_CAPABILITIES: Record<string, string> = {
   documentNumbers: "bill-series",
   tpv: "bill-cash",
   cashRegister: "bill-cash",
+  // Elephant Connect · TPV Advanced: arqueos, turnos, entregas, autorizaciones, auditoría e informes (los procedimientos la comprueban también)
+  tpvAdvanced: "pos-advanced",
   emailTemplates: "comms-email",
   emailCommunications: "auto-basic",
   admin: "admin-users",
