@@ -187,13 +187,16 @@ export class TrialService {
     const domain = m[1];
     if (this.blocked.has(domain)) throw new TrialError("invalid_input", "Usa una dirección de correo permanente (de tu empresa o personal)");
 
-    const again = await this.d.store.byIdempotencyKey(input.idempotencyKey);
-    if (again) return { trial: again, created: false as const, verificationToken: null };
-    // Mismo envío repetido a la vez (doble clic): si otra petición con la MISMA clave acaba de crearla, se devuelve esa
-    const sameKey = async () => {
-      const t = await this.d.store.byIdempotencyKey(input.idempotencyKey);
-      return t ? { trial: t, created: false as const, verificationToken: null } : null;
+    // La misma clave solo devuelve la solicitud de ESE correo: una clave ajena con otro correo no revela nada de otra prueba
+    const ofKey = (t: TrialRequest | null) => {
+      if (!t) return null;
+      if (t.email !== email) throw new TrialError("conflict", "Ya hay una solicitud de prueba en curso para este correo");
+      return { trial: t, created: false as const, verificationToken: null };
     };
+    const again = ofKey(await this.d.store.byIdempotencyKey(input.idempotencyKey));
+    if (again) return again;
+    // Mismo envío repetido a la vez (doble clic): si otra petición con la MISMA clave acaba de crearla, se devuelve esa
+    const sameKey = async () => ofKey(await this.d.store.byIdempotencyKey(input.idempotencyKey));
     // Un buzón, una prueba abierta: no se revela el estado de la existente
     if (await this.openFor(email, "system:trial")) {
       const same = await sameKey();

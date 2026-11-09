@@ -54,4 +54,11 @@ describe("misma clave a la vez: la existente, nunca el conflicto del correo", ()
     await expect(svc.register(input("otra-clave-de-idempotencia-000000002"))).rejects.toMatchObject({ code: "conflict" });
     await expect(svc.register(input("otra-clave-de-idempotencia-000000002"))).rejects.toBeInstanceOf(TrialError);
   });
+
+  it("la misma clave con otro correo no devuelve la prueba ajena", async () => {
+    const store = new MemoryTrialStore();
+    const svc = new TrialService({ store });
+    await svc.register(input(KEY));
+    await expect(svc.register(input(KEY, "otra-persona@otra.es"))).rejects.toMatchObject({ code: "conflict" });
+  });
 });
