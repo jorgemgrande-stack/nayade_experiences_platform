@@ -11,6 +11,7 @@ import { AlertTriangle, Archive, ArchiveRestore, CheckCircle2, Info, Megaphone, 
 import { toast } from "sonner";
 import AdminLayout from "@/components/AdminLayout";
 import { trpc } from "@/lib/trpc";
+import { tabFromUrl } from "@/lib/tabFromUrl";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -587,7 +588,7 @@ function Settings() {
 }
 
 export default function AdsManager() {
-  const [tab, setTab] = useState("panel");
+  const [tab, setTab] = useState<string>(() => tabFromUrl(["panel", "campanas", "importar", "presupuestos", "medicion", "ajustes"], "panel"));
   const [days, setDays] = useState(30);
   return (
     <AdminLayout>
