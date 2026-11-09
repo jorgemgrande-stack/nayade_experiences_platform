@@ -179,6 +179,7 @@ En el Core, cada empresa guarda sus credenciales en una bóveda (`server/_core/c
 | Ski Net · fianzas del alquiler y cargos por daños | #721 | en curso (0052) |
 | Tanda C: fichas de Care, Ski, Restaurant y Travel Net al día (Hotel Net bloqueado por el borrador ajeno v10) | esta PR | en curso |
 | Pack Marketing: «Marketing · Puesta en marcha y resumen» (`/admin/marketing/resumen`, `marketingPack.summary`) y revisión de catálogo preparada (`review20261109packmarketing.ts`, sin lanzar) | `feat/pack-marketing` | en curso (sin migración) |
+| Elephant Voice · asistente de alta de Vapi en el panel (sin migración; catálogo sin cambios) | #740 | fusionado |
 
 ## Activación del marketplace (encargo del 08/11/2026)
 
@@ -211,8 +212,8 @@ Inventario accionable de lo que se vende en `/admin/ampliar`. Estado público de
 | Deals (`deals-coupons`) | Formulario de canje, reserva y conciliación | — (canje manual) | Implantación acompañada | **Tanda A.** Igual que Partners. |
 | Tax (`tax-filings`) | Estimación de los modelos 303, 390, 111, 190, 200 y 202; calendario con avisos, expedientes y portal de la gestoría | — | Implantación acompañada | **Tanda A.** Igual que Partners. La presentación la hace la gestoría. |
 | Finance Sync (`bank-import-pos`, `bank-reconciliation`) | Extractos de **cualquier banco** (Norma 43, Excel o CSV, #716), operaciones y remesas del datáfono, conciliación | Buzón IMAP de la empresa (tickets del datáfono) | Implantación acompañada (ficha actualizada en la tanda B) | Asistente del buzón del datáfono en el panel; después, venta directa. |
-| Voice (`voice-ai`) | Llamadas Vapi, leads y coste | Cuenta Vapi de la empresa (bóveda) | Implantación acompañada | Asistente de alta de Vapi. Netelip: IP de salida fija. |
-| POS (`pos-advanced`) | El TPV avanzado existe, pero lo licencia `bill-cash` (Essential) | — | Implantación acompañada | Frontera entre la caja básica y la avanzada. Es una decisión de negocio: hoy la tienen los clientes de Essential. |
+| Voice (`voice-ai`) | Llamadas Vapi, leads y registro de minutos; **asistente de alta en el panel** (Llamadas IA › Puesta en marcha): clave privada validada contra Vapi y guardada en la bóveda, elección de asistente y número, webhook al dominio de la empresa con clave de 24+ caracteres, llamada de prueba y último evento, comprobación en Vapi y desconexión | Cuenta Vapi de la empresa (bóveda); Vapi factura los minutos en esa cuenta | Implantación acompañada (`on_request`, sin Price: venta asistida) | Hecho el asistente de alta. Queda en venta asistida por decisión comercial. Netelip: bloqueo externo (IP de salida fija). |
+| POS (`pos-advanced`) | El TPV avanzado existe, pero lo licencia `bill-cash` (Essential) | — | Implantación acompañada | Frontera entre la caja básica y la avanzada. Es una decisión de negocio: hoy la tienen los clientes de Essential. Propuesta escrita en [elephant-pos-propuesta.md](elephant-pos-propuesta.md) (09/11/2026), pendiente de las decisiones de Jorge. |
 | WhatsApp AI (`whatsapp-ai`) | Bandeja a través de GHL | Cuenta GHL o app de Meta de Big Elephant | En preparación | WhatsApp Cloud API directa y respuestas con IA. |
 | Campaigns (`email-campaigns`) | Sincronización de clientes con consentimiento a la lista de Brevo de la empresa | Cuenta Brevo de la empresa | Próximamente | Envío de campañas desde el Core. Brevo no es un producto de correo nuevo. |
 | Automatizaciones (`automations-advanced`) | Recordatorios por correo (`emailAutomationJob`) | — | En preparación | Motor de reglas y flujos licenciado. |
@@ -250,7 +251,7 @@ Inventario accionable de lo que se vende en `/admin/ampliar`. Estado público de
 - **Conectores con requisitos externos:**
   - Veturis: credenciales, certificación e IP en lista blanca.
   - WhatsApp Cloud API: app de Meta de Big Elephant.
-  - Grandvalira y Netelip: IP de salida fija.
+  - Grandvalira y Netelip: IP de salida fija (Netelip es la telefonía propia de Voice; con Vapi no hace falta).
   - WebBeds: certificación.
   - Google Ads, GA4 y Business Profile: OAuth y token de la plataforma.
 - **Venta de los productos Net.** Siguen en su estado comercial del CRM («Próximamente» o «Bajo solicitud»). Pasarlos a «Disponible» para la venta es una decisión comercial (Price y condiciones).

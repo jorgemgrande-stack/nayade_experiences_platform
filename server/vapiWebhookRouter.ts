@@ -28,6 +28,7 @@ import { recordSync } from "./_core/credentials/health";
 import { publicBaseUrl } from "./_core/productIdentity";
 import { meterVoiceCall } from "./_core/externalMetering";
 import { installReceptionTools, recordReceptionCallReport } from "./receptionAi/vapiTools";
+import { configuredVapiWebhookSecret } from "./vapiCredentialsSource";
 
 const _pool = legacyPool();
 const _db = legacyDb();
@@ -148,7 +149,8 @@ vapiWebhookRouter.post("/api/vapi/webhook", express.json({ limit: "1mb" }), asyn
     "SELECT `value` FROM site_settings WHERE `key` = 'vapiWebhookSecret' LIMIT 1"
   ).catch(() => [[]]);
   const dbSecret = (secretRows as any[])[0]?.value ?? "";
-  const configured = integrationEnv("VAPI_WEBHOOK_SECRET") || dbSecret || integrationEnv("GHL_WEBHOOK_SECRET") || "";
+  // Multiempresa: solo la bóveda de la empresa (desconectar la vacía y el webhook queda inactivo); instalación única: como siempre
+  const configured = configuredVapiWebhookSecret({ multi: isMultiTenant(), vault: integrationEnv("VAPI_WEBHOOK_SECRET"), legacy: dbSecret, ghl: integrationEnv("GHL_WEBHOOK_SECRET") });
   // En multiempresa el secreto es obligatorio (sin él, el webhook está inactivo); en instalación única, opcional.
   if (configured || isMultiTenant()) {
     const provided = (req.headers["x-vapi-secret"] as string | undefined) ?? (req.query.secret as string | undefined);
