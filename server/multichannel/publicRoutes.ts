@@ -47,8 +47,10 @@ const noStore = (res: Response) => {
 export function inboundTokenOf(req: Pick<Request, "params" | "headers">): string {
   if (req.params?.token) return String(req.params.token).slice(0, 120);
   const h = req.headers["x-canal-token"];
-  const header = (Array.isArray(h) ? h[0] : h) ?? /^Bearer\s+(\S+)$/i.exec(String(req.headers.authorization ?? ""))?.[1] ?? "";
-  return String(header).trim().slice(0, 120);
+  // Un X-Canal-Token vacío no tapa el de Authorization
+  const own = String((Array.isArray(h) ? h[0] : h) ?? "").trim();
+  const header = own || (/^Bearer\s+(\S+)\s*$/i.exec(String(req.headers.authorization ?? "").trim())?.[1] ?? "");
+  return header.slice(0, 120);
 }
 
 const notFound = (res: Response) => void res.status(404).json({ error: "not_found" });

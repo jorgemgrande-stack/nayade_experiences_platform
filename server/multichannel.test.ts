@@ -162,6 +162,9 @@ describe("enlace de entrada", () => {
     expect(inboundTokenOf({ params: {}, headers: { "x-canal-token": " abc " } } as any)).toBe("abc");
     expect(inboundTokenOf({ params: {}, headers: { authorization: "Bearer xyz" } } as any)).toBe("xyz");
     expect(inboundTokenOf({ params: {}, headers: { authorization: "Basic xyz" } } as any)).toBe("");
+    // Un X-Canal-Token vacío pasa a Authorization: Bearer
+    expect(inboundTokenOf({ params: {}, headers: { "x-canal-token": "", authorization: "Bearer xyz" } } as any)).toBe("xyz");
+    expect(inboundTokenOf({ params: {}, headers: { "x-canal-token": "  ", authorization: "Bearer xyz" } } as any)).toBe("xyz");
     expect(inboundTokenOf({ params: {}, headers: {} } as any)).toBe("");
   });
 
