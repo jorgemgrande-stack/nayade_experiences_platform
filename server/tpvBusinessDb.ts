@@ -26,6 +26,7 @@ async function rows(q: ReturnType<typeof sql>): Promise<Row[]> {
 }
 type Actor = { id: number; role: string; name?: string | null; email?: string | null };
 const actorName = (u: Actor) => u.name ?? u.email ?? null;
+const roleOf = (u: Actor) => String(u.role);
 
 // ─── Operadores por caja ──────────────────────────────────────────────────────
 
@@ -86,7 +87,8 @@ export async function setRegisterOperators(registerId: number, wanted: Array<{ u
 }
 
 async function isTpvAdmin(user: Actor): Promise<boolean> {
-  return checkPermission(user.id, String(user.role), "tpv.backoffice", ["admin"]);
+  const role = roleOf(user);
+  return checkPermission(user.id, role, "tpv.backoffice", ["admin"]);
 }
 
 /**
@@ -109,7 +111,8 @@ export async function assertSessionOperator(sessionId: number, user: Actor): Pro
 
 /** ¿Puede autorizar devoluciones y anulaciones de esa caja? Permiso `tpv.authorize` o supervisor de la caja (Enterprise). */
 export async function canAuthorizeReturns(registerId: number, user: Actor): Promise<boolean> {
-  if (await checkPermission(user.id, String(user.role), "tpv.authorize", ["admin"])) return true;
+  const role = roleOf(user);
+  if (await checkPermission(user.id, role, "tpv.authorize", ["admin"])) return true;
   if (!(await tpvFeatureEnabled("advancedPermissions").catch(() => false))) return false;
   const [r] = await rows(sql`SELECT 1 AS x FROM tpv_register_operators WHERE register_id = ${registerId} AND user_id = ${user.id} AND role = 'supervisor' AND removed_at IS NULL`);
   return !!r;
