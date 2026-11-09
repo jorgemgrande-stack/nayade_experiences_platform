@@ -84,8 +84,8 @@ export interface VoiceSetupDeps {
   vapiFetch: (url: string, init: RequestInit) => Promise<Response>;
   /** Restricciones del periodo de prueba antes de llamar a Vapi (lanza si no se permite). */
   beforeVapi: () => Promise<void>;
-  /** Última llamada registrada de la empresa en curso. */
-  lastCall: () => Promise<VoiceSetupFacts["lastCall"]>;
+  /** Última llamada registrada de la empresa en curso; con `assistantId`, solo de ese asistente. */
+  lastCall: (assistantId: string | null) => Promise<VoiceSetupFacts["lastCall"]>;
   /** Límite de ritmo: true si se admite otra llamada a Vapi con esta clave (y la cuenta). */
   allow: (key: string) => boolean;
   /** Clave de verificación nueva (al menos 24 caracteres). */
@@ -150,12 +150,13 @@ export async function getVoiceSetup(deps: VoiceSetupDeps): Promise<VoiceSetupVie
     const facts = emptyFacts(false);
     return { ...voiceSetup(facts), multi, keyMasked: null, webhookUrl: null, secret: { set: false, usable: false, tooShort: false }, assistant: facts.assistant, phoneNumber: facts.phoneNumber, connectedAt: null, lastEventAt: null, lastCall: null };
   }
-  const [statuses, values, health, lastCall] = await Promise.all([
+  const [statuses, values, health] = await Promise.all([
     deps.vault().status([VAPI_PROVIDER]),
     deps.vault().resolve(VAPI_PROVIDER),
     deps.health().catch(() => [] as HealthLike[]),
-    deps.lastCall().catch(() => null),
   ]);
+  // La llamada de prueba es del asistente conectado
+  const lastCall = await deps.lastCall(values.setupAssistantId || null).catch(() => null);
   const fields = statuses.find((s) => s.id === VAPI_PROVIDER)?.fields ?? [];
   const keyField = fields.find((f) => f.key === "apiKey");
   const h = health.find((x) => x.provider === VAPI_PROVIDER);
@@ -473,11 +474,13 @@ export async function defaultVoiceSetupDeps(): Promise<VoiceSetupDeps> {
     checkKey: (apiKey) => testProvider(VAPI_PROVIDER, { apiKey }, (u, init) => meteredFetch("vapi", u, init as RequestInit, { endpoint: "assistant.list" }) as never),
     vapiFetch: (u, init) => meteredFetch("vapi", u, init, { endpoint: "setup" }),
     beforeVapi: async () => (await import("./trialRestrictions")).assertIntegrationAllowed("vapi"),
-    lastCall: async () => {
+    lastCall: async (assistantId) => {
       const db = await getDb();
       if (!db) return null;
       try {
-        const [rows] = (await (db as any).execute(sql`SELECT createdAt, durationSeconds, status FROM vapi_calls ORDER BY id DESC LIMIT 1`)) as [Array<Record<string, unknown>>];
+        const [rows] = (await (db as any).execute((assistantId
+          ? sql`SELECT createdAt, durationSeconds, status FROM vapi_calls WHERE assistantId = ${assistantId} ORDER BY id DESC LIMIT 1`
+          : sql`SELECT createdAt, durationSeconds, status FROM vapi_calls ORDER BY id DESC LIMIT 1`))) as [Array<Record<string, unknown>>];
         const r = rows?.[0];
         if (!r) return null;
         return { at: new Date(String(r.createdAt)).toISOString(), durationSeconds: r.durationSeconds == null ? null : Number(r.durationSeconds), status: r.status ? String(r.status) : null };

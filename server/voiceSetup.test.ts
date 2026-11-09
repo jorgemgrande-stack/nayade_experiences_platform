@@ -95,6 +95,8 @@ function makeDeps(o: { multi?: boolean; trialBlocked?: boolean; allow?: (k: stri
   const vapi = fakeVapi();
   const checks: Array<{ outcome: string; message: string; at: string }> = [];
   let lastOkSyncAt: string | null = null;
+  const callsByAssistant = new Map<string, string>();
+  const lastCallAsked: Array<string | null> = [];
   let clock = Date.parse("2026-11-09T10:00:00Z");
   const deps: VoiceSetupDeps = {
     multi: () => o.multi ?? true,
@@ -114,7 +116,11 @@ function makeDeps(o: { multi?: boolean; trialBlocked?: boolean; allow?: (k: stri
     beforeVapi: async () => {
       if (o.trialBlocked) throw new VoiceSetupError("PRECONDITION_FAILED", "Durante la prueba gratuita Vapi no está disponible.");
     },
-    lastCall: async () => null,
+    lastCall: async (assistantId) => {
+      lastCallAsked.push(assistantId);
+      const at = assistantId ? callsByAssistant.get(assistantId) : undefined;
+      return at ? { at, durationSeconds: 30, status: "ended" } : null;
+    },
     allow: o.allow ?? (() => true),
     newSecret: generateWebhookSecret,
     now: () => new Date(clock),
@@ -126,6 +132,8 @@ function makeDeps(o: { multi?: boolean; trialBlocked?: boolean; allow?: (k: stri
     vapi,
     checks,
     event: (iso: string) => (lastOkSyncAt = iso),
+    call: (assistantId: string, iso: string) => callsByAssistant.set(assistantId, iso),
+    lastCallAsked,
     tick: (ms: number) => (clock += ms),
   };
 }
@@ -179,9 +187,12 @@ describe("pasos de la puesta en marcha", () => {
   it("la llamada de prueba solo cuenta si llega DESPUÉS de conectar; con ella, listo", () => {
     const base = facts({ key: { saved: true, check: "connected", checkMessage: null }, assistant: { id: A1, name: "Recepción" }, phoneNumber: { id: P1, number: "+34910000001" }, secretUsable: true, connectedAt: "2026-11-09T10:00:00.000Z" });
     expect(stepOf(base, "webhook").status).toBe("done");
-    expect(voiceSetup({ ...base, lastEventAt: "2026-11-09T09:00:00.000Z" }).ready).toBe(false);
-    expect(testCallReceived({ connectedAt: base.connectedAt, lastEventAt: "2026-11-09T09:00:00.000Z" })).toBe(false);
-    const r = voiceSetup({ ...base, lastEventAt: "2026-11-09T10:05:00.000Z" });
+    const call = (at: string) => ({ at, durationSeconds: 30, status: "ended" });
+    // Un aviso cualquiera (p. ej. de otro asistente) no basta: hace falta una llamada del asistente conectado
+    expect(voiceSetup({ ...base, lastEventAt: "2026-11-09T10:05:00.000Z" }).ready).toBe(false);
+    expect(voiceSetup({ ...base, lastCall: call("2026-11-09T09:00:00.000Z") }).ready).toBe(false);
+    expect(testCallReceived({ connectedAt: base.connectedAt, lastCall: call("2026-11-09T09:00:00.000Z") })).toBe(false);
+    const r = voiceSetup({ ...base, lastEventAt: "2026-11-09T10:05:00.000Z", lastCall: call("2026-11-09T10:05:00.000Z") });
     expect(r).toMatchObject({ ready: true, completed: 5, missing: [] });
   });
 
@@ -338,7 +349,12 @@ describe("conectar: webhook de ESTA empresa con clave de al menos 24 caracteres"
     // (con el mismo reloj que la fila de la bóveda: la base de datos; aquí, el del proceso)
     const eventAt = new Date(Date.now() + 60_000).toISOString();
     t.event(eventAt);
+    // El aviso solo no basta: la llamada de otro asistente tampoco
+    t.call(A2, eventAt);
+    expect((await getVoiceSetup(t.deps)).ready).toBe(false);
+    t.call(A1, eventAt);
     const ready = await getVoiceSetup(t.deps);
+    expect(t.lastCallAsked.at(-1)).toBe(A1);
     expect(ready.ready).toBe(true);
     expect(ready.lastEventAt).toBe(eventAt);
   });

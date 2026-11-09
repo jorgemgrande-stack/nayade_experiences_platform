@@ -47,7 +47,7 @@ export interface VoiceSetupFacts {
   connectedAt: string | null;
   /** Último aviso de Vapi aceptado por el Core para esta empresa (ISO). */
   lastEventAt: string | null;
-  /** Última llamada registrada para esta empresa. */
+  /** Última llamada registrada del asistente conectado (o de la empresa, si aún no hay ninguno). */
   lastCall: { at: string; durationSeconds: number | null; status: string | null } | null;
 }
 
@@ -62,10 +62,13 @@ export interface VoiceSetup {
 const fmt = (iso: string) =>
   new Date(iso).toLocaleString("es-ES", { timeZone: "Europe/Madrid", day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" });
 
-/** ¿El último aviso aceptado es posterior a la configuración del webhook? (la llamada de prueba ya entró) */
-export function testCallReceived(f: Pick<VoiceSetupFacts, "connectedAt" | "lastEventAt">): boolean {
-  if (!f.connectedAt || !f.lastEventAt) return false;
-  return Date.parse(f.lastEventAt) >= Date.parse(f.connectedAt);
+/**
+ * ¿Entró la llamada de prueba? Una llamada del asistente conectado registrada después de conectar (un aviso de otro
+ * asistente, o anterior, no cuenta).
+ */
+export function testCallReceived(f: Pick<VoiceSetupFacts, "connectedAt" | "lastCall">): boolean {
+  if (!f.connectedAt || !f.lastCall) return false;
+  return Date.parse(f.lastCall.at) >= Date.parse(f.connectedAt);
 }
 
 export function voiceSetup(f: VoiceSetupFacts): VoiceSetup {
@@ -127,10 +130,10 @@ export function voiceSetup(f: VoiceSetupFacts): VoiceSetup {
       description: "Llama al número elegido y cuelga cuando quieras: al terminar, Vapi envía el informe de la llamada y aparece aquí.",
       status: after(webhookDone, callDone),
       detail: callDone
-        ? `Llamada de prueba recibida: último aviso el ${fmt(f.lastEventAt!)}.`
+        ? `Llamada de prueba recibida el ${fmt(f.lastCall!.at)}.`
         : webhookDone
           ? f.lastEventAt
-            ? `Aún no ha llegado ninguna llamada desde la conexión (último aviso anterior: ${fmt(f.lastEventAt)}).`
+            ? `Aún no ha llegado ninguna llamada de este asistente desde la conexión (último aviso: ${fmt(f.lastEventAt)}).`
             : "Aún no ha llegado ninguna llamada."
           : "Disponible cuando las llamadas estén conectadas.",
     },
