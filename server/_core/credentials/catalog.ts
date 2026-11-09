@@ -134,14 +134,40 @@ export const PROVIDERS: ProviderDef[] = [
   },
   {
     id: "meta",
-    name: "Meta (Conversions API)",
-    description: "Eventos de conversión del sitio.",
-    capabilities: ["Enviar eventos de conversión del sitio"],
-    check: "Consulta de la identidad del token: solo lectura",
-    panel: { group: "marketing", title: "Medición de anuncios de Meta", summary: "Envía a Meta las compras de tu web para medir tus anuncios de Facebook e Instagram.", legacy: true },
+    name: "Meta (Conversions API y Marketing API)",
+    description: "Eventos de conversión del sitio y, con Elephant Ads Manager, lectura diaria del gasto y los resultados de las campañas de la cuenta publicitaria de la empresa.",
+    capabilities: [
+      "Enviar eventos de conversión del sitio",
+      "Leer cada día el gasto, las impresiones, los clics y las compras de las campañas de la cuenta publicitaria (solo lectura: nunca crea ni modifica campañas)",
+    ],
+    check: "Consulta de la identidad del token o, si hay cuenta publicitaria, de su nombre: solo lectura",
+    // Heredada (solo se ve si ya está configurada), salvo para las empresas con Elephant Ads Manager, que la necesitan
+    panel: { group: "marketing", title: "Medición de anuncios de Meta", summary: "Envía a Meta las compras de tu web para medir tus anuncios de Facebook e Instagram y, con Ads Manager, trae cada día lo que gastan y consiguen tus campañas.", legacy: true, requires: ["ads-manager"] },
     fields: [
       { key: "capiAccessToken", label: "Token de acceso", secret: true, env: "META_CAPI_ACCESS_TOKEN", pattern: TOKEN_RE, panel: { label: "Clave de acceso", help: "Se genera en el Administrador de eventos de Meta, en la configuración de tu píxel.", formatMessage: "Cópiala completa, sin espacios." } },
       { key: "capiTestEventCode", label: "Código de evento de prueba", secret: false, env: "META_CAPI_TEST_EVENT_CODE", pattern: /^[A-Za-z0-9_-]{3,40}$/, panel: { label: "Código de prueba (opcional)", help: "Solo para comprobar que llegan los datos; normalmente, déjalo vacío.", formatMessage: "Solo letras, números, guiones y guiones bajos." } },
+      // Elephant Ads Manager: lectura de la cuenta publicitaria PROPIA de la empresa (sin ellos, el panel funciona con CSV)
+      { key: "adAccountId", label: "Cuenta publicitaria (act_…)", secret: false, pattern: /^(act_)?\d{5,20}$/, hint: "act_1234567890", panel: { label: "Número de tu cuenta publicitaria", help: "Está en el Administrador de anuncios de Meta, junto al nombre de la cuenta (puede empezar por «act_»).", formatMessage: "Solo cifras, con o sin «act_» delante." } },
+      { key: "adsAccessToken", label: "Token de lectura de anuncios (ads_read)", secret: true, pattern: TOKEN_RE, panel: { label: "Clave de lectura de tus anuncios", help: "Créala en la configuración del negocio de Meta con un usuario del sistema que tenga acceso a la cuenta publicitaria y permiso para leer anuncios. Si la clave de acceso de arriba ya tiene ese permiso, puedes dejarla vacía.", formatMessage: "Cópiala completa, sin espacios." } },
+    ],
+  },
+  {
+    // Elephant Ads Manager: cuenta de Google Ads PROPIA de cada empresa, solo lectura (GAQL sobre campaign). Google exige
+    // un token de desarrollador aprobado y un cliente OAuth: sin todos los datos, la conexión está desactivada y el panel
+    // funciona con el CSV del informe de Google Ads. Nunca una cuenta ni un token de otra empresa o de la plataforma
+    id: "google_ads",
+    name: "Google Ads (solo lectura)",
+    description: "Lectura diaria del coste, las impresiones, los clics y las conversiones de las campañas de la cuenta de Google Ads de la empresa para Elephant Ads Manager.",
+    capabilities: ["Leer cada día el coste, las impresiones, los clics y las conversiones de las campañas (solo lectura: nunca crea ni modifica campañas)"],
+    check: "Renovación del acceso y consulta de la cuenta y de un día de sus campañas: solo lectura",
+    panel: { group: "marketing", title: "Google Ads", summary: "Trae cada día lo que gastan y consiguen tus campañas de Google para verlas junto a tus ventas. Si no lo configuras, puedes subir el informe de Google Ads a mano.", requires: ["ads-manager"] },
+    fields: [
+      { key: "customerId", label: "ID de cliente de Google Ads", secret: false, required: true, pattern: /^\d{3}-?\d{3}-?\d{4}$/, hint: "123-456-7890", panel: { label: "Número de tu cuenta de Google Ads", help: "Aparece arriba a la derecha en Google Ads, con el formato 123-456-7890.", formatMessage: "Son 10 cifras, con o sin guiones (123-456-7890)." } },
+      { key: "loginCustomerId", label: "ID de la cuenta de administrador (MCC)", secret: false, pattern: /^\d{3}-?\d{3}-?\d{4}$/, panel: { label: "Número de tu cuenta de administrador (opcional)", help: "Solo si entras en la cuenta a través de una cuenta de administrador (la de tu agencia o la tuya).", formatMessage: "Son 10 cifras, con o sin guiones (123-456-7890)." } },
+      { key: "developerToken", label: "Token de desarrollador", secret: true, required: true, pattern: /^[A-Za-z0-9_-]{16,64}$/, panel: { label: "Clave de desarrollador de Google Ads", help: "Se solicita a Google en el Centro de la API de tu cuenta de administrador (Herramientas → Centro de la API) y debe estar aprobada.", formatMessage: "Letras, números, guiones y guiones bajos, sin espacios." } },
+      { key: "clientId", label: "ID de cliente OAuth", secret: false, required: true, pattern: /^[A-Za-z0-9._-]{10,200}\.apps\.googleusercontent\.com$/, panel: { label: "Identificador de la aplicación de Google", help: "Se crea en Google Cloud (Credenciales → ID de cliente de OAuth) con la API de Google Ads activada. Termina en «.apps.googleusercontent.com».", formatMessage: "Debe terminar en «.apps.googleusercontent.com»." } },
+      { key: "clientSecret", label: "Secreto de cliente OAuth", secret: true, required: true, pattern: TOKEN_RE, panel: { label: "Clave secreta de la aplicación de Google", help: "Se muestra junto al identificador de la aplicación en Google Cloud.", formatMessage: "Cópiala completa, sin espacios." } },
+      { key: "refreshToken", label: "Refresh token (ámbito adwords)", secret: true, required: true, pattern: TOKEN_RE, panel: { label: "Permiso de lectura de tu cuenta", help: "Se obtiene al autorizar esa aplicación con el usuario de Google que entra en tu cuenta de Google Ads (permiso de Google Ads).", formatMessage: "Cópialo completo, sin espacios." } },
     ],
   },
   {

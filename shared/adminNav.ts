@@ -405,6 +405,7 @@ export const TASK_NAV: NavSection[] = [
       { label: "Campañas de correo", href: "/admin/marketing/campanas", key: "x-campanas", icon: "mail", roles: ADMIN, capabilities: ["email-campaigns"] },
       { label: "Email marketing (Brevo)", href: "/admin/marketing/brevo", key: "x-brevo", icon: "mail", roles: ADMIN, capabilities: ["email-campaigns"] },
       { label: "Visibilidad en IA (GEO)", href: "/admin/marketing/geo", key: "x-geo", icon: "sparkles", roles: ADMIN, capabilities: ["geo-control"] },
+      { label: "Publicidad (Ads Manager)", href: "/admin/marketing/ads", key: "x-ads", icon: "chart", roles: ADMIN, capabilities: ["ads-manager"] },
       {
         label: "Proveedores", href: "/admin/suppliers", key: "x-proveedores", icon: "truck", roles: ADMIN, capabilities: ["supplier-settlements"],
         children: [
