@@ -35,6 +35,23 @@ describe("estado de un módulo para la empresa", () => {
     expect(deriveConnectState(mod(), ctx({ "cap-a": "read_only", "cap-b": "read_only" })).state).toBe("incident");
     expect(deriveConnectState(mod(), ctx({ "cap-a": "expired", "cap-b": "active" })).state).toBe("incident");
   });
+  it("solo lectura o caducada: el texto solo promete la consulta que permite hoy el servidor", () => {
+    const reason = (caps: Record<string, ConnectCapabilityStatus>, consultation?: { available: boolean; until: number | null; endedAt: number | null } | null) =>
+      deriveConnectState(mod(), { ...ctx(caps), consultation }).reasons[0];
+    const RO = { "cap-a": "read_only", "cap-b": "read_only" } as const;
+    const EXP = { "cap-a": "expired", "cap-b": "expired" } as const;
+    expect(reason(RO)).toBe("Está en solo lectura: puedes consultar tus datos, pero no trabajar con ellos.");
+    // Caducada sin el dato de consulta: no se promete consulta
+    expect(reason(EXP)).not.toMatch(/consultar/);
+    // Prueba vencida que se puede leer
+    expect(reason(EXP, { available: true, until: null, endedAt: null })).toMatch(/puedes consultar/);
+    // Consulta con plazo
+    expect(reason(RO, { available: true, until: Date.UTC(2026, 11, 9, 12), endedAt: null })).toContain("hasta el 9 de diciembre de 2026");
+    // Plazo de consulta terminado: ni «solo lectura» ni «puedes consultar»
+    const closed = reason(EXP, { available: false, until: null, endedAt: Date.UTC(2026, 10, 1, 12) });
+    expect(closed).toContain("El plazo de consulta terminó el 1 de noviembre de 2026");
+    expect(closed).not.toMatch(/puedes consultar|solo lectura/);
+  });
   it("pendiente de configuración y en proceso de activación según la licencia", () => {
     expect(deriveConnectState(mod(), ctx({ "cap-a": "pending_setup", "cap-b": "active" })).state).toBe("pending_setup");
     expect(deriveConnectState(mod(), ctx({ "cap-a": "contracted", "cap-b": "contracted" })).state).toBe("activating");

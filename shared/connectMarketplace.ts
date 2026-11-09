@@ -12,6 +12,7 @@
  *  - «Contratada y activa» solo con TODAS sus capacidades activas en las licencias.
  */
 import { isPersonalPlan, isPersonalProduct } from "./personalPlans";
+import { formatConsultDate, type RecoveryConsultation } from "./subscriptionRecovery";
 
 /**
  * ¿Sale este producto en el escaparate del panel? (decisión J7 de Jorge, 08/11/2026). Los productos personales (Life
@@ -70,6 +71,11 @@ export interface ConnectStateContext {
   productName?: (key: string) => string;
   /** Hay un pedido propio en curso para este producto (aún sin confirmar por el backend). */
   pendingOrder?: boolean;
+  /**
+   * Derecho de consulta real de las capacidades del producto (server/subscriptionOverview.ts consultationOf, el mismo
+   * cálculo que subscription.overview.consultation). Sin el dato no se promete consulta para una licencia `expired`.
+   */
+  consultation?: RecoveryConsultation | null;
 }
 
 export interface ConnectStateResult {
@@ -79,6 +85,19 @@ export interface ConnectStateResult {
 }
 
 const PLAN_NAMES: Record<string, string> = { essential: "Essential", business: "Business", enterprise: "Enterprise" };
+
+/**
+ * Licencia en solo lectura o vencida: solo se promete la consulta que permite hoy el servidor (los mismos plazos que el
+ * aviso del panel, shared/subscriptionRecovery.ts). `read_only` se lee por definición; `expired` es tanto una prueba
+ * vencida (se lee) como un plazo de consulta terminado (no se lee), así que sin el dato no se promete nada.
+ */
+export function lapsedLicenceText(readOnly: boolean, consultation: RecoveryConsultation | null | undefined): string {
+  if (consultation?.available === false)
+    return `${consultation.endedAt ? `El plazo de consulta terminó el ${formatConsultDate(consultation.endedAt)}` : "Ya no se puede consultar"}: tus datos se conservan. Reactívala desde «Suscripción» para volver a usarla.`;
+  if (consultation?.available && consultation.until) return `Está en solo lectura hasta el ${formatConsultDate(consultation.until)}: puedes consultar tus datos, pero no trabajar con ellos.`;
+  if (consultation?.available || readOnly) return "Está en solo lectura: puedes consultar tus datos, pero no trabajar con ellos.";
+  return "La licencia no permite hacer cambios ahora mismo. Revisa el estado de tu suscripción.";
+}
 
 export function deriveConnectState(item: ConnectStateInput, ctx: ConnectStateContext): ConnectStateResult {
   // 1. Lo que dicen las licencias (módulos enteros; las ampliaciones por unidades no tienen estado «contratado»)
@@ -90,7 +109,7 @@ export function deriveConnectState(item: ConnectStateInput, ctx: ConnectStateCon
     if (statuses.every((s) => s === "active")) return { state: "active", reasons: [] };
     if (statuses.some((s) => s !== null)) {
       if (statuses.includes("suspended")) return { state: "incident", reasons: ["La licencia está suspendida. Escríbenos y lo revisamos contigo."] };
-      if (statuses.includes("read_only") || statuses.includes("expired")) return { state: "incident", reasons: ["Está en solo lectura: puedes consultar tus datos, pero no trabajar con ellos."] };
+      if (statuses.includes("read_only") || statuses.includes("expired")) return { state: "incident", reasons: [lapsedLicenceText(statuses.includes("read_only"), ctx.consultation)] };
       if (statuses.includes("pending_setup")) return { state: "pending_setup", reasons: ["Ya está contratada; falta terminar la configuración para empezar a usarla."] };
       if (statuses.includes("contracted")) return { state: "activating", reasons: ["Ya está contratada; la estamos activando."] };
       // Unas capacidades activas y otras sin licencia: activación incompleta

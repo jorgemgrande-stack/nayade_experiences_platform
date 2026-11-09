@@ -8,7 +8,7 @@
  * beneficios, ni preguntas, ni imágenes inventadas. Precios: solo los que publica el canal (los aprobados).
  */
 import type { CapabilityGrant } from "./_core/capabilities/model";
-import { effectiveStatus } from "./subscriptionOverview";
+import { consultationOf, effectiveStatus } from "./subscriptionOverview";
 import { PRODUCTS } from "./catalog/elephantSourceV1";
 import type { PanelCatalogItemView } from "./panelModules";
 import { parseActivation, parseConnectCard, parseConnectOffer, parseConnectPrices } from "./connectCard";
@@ -164,7 +164,7 @@ export function buildConnectCatalog(
     // las suyas; su estado es el comercial (se puede contratar en sustitución de los módulos)
     const derived = deriveConnectState(
       { kind: item.kind, commercialStatus: item.commercialStatus, capabilities: replaces.length > 0 && !equivalent ? [] : capabilities, dependencies, plans },
-      { capabilityStatus, plan, productActive, productName },
+      { capabilityStatus, plan, productActive, productName, consultation: capabilities.length > 0 ? consultationOf(grants, capabilities, now) : null },
     );
     const state = derived.state;
     const reasons = [...derived.reasons];
