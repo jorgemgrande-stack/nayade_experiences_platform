@@ -3,6 +3,7 @@ import { VeturisClient, VeturisNetworkError, type VeturisFetch } from "../../tra
 import { postmarkServerInfo } from "../../mail/tenantPostmark";
 import type { FetchLike } from "../../mail/providers";
 import { MailHostError, resolveMailHost, systemHostResolver, type HostResolver } from "./mailHost";
+import { testSeoProvider, type SeoFetch } from "../../seoControl/connectors";
 
 /**
  * Comprobación de credenciales por proveedor. Nunca devuelve ni registra el secreto; el
@@ -189,6 +190,12 @@ async function testProviderRaw(provider: string, v: Record<string, string>, fetc
     }
     case "veturis":
       return veturisCheck(v, fetchImpl as unknown as VeturisFetch);
+    // Elephant SEO Control: solo lectura con las credenciales de la empresa (server/seoControl/connectors.ts)
+    case "google_search_console":
+    case "google_business_profile":
+    case "tripadvisor":
+      // Con el fetch global por defecto se usa el del conector (sustituible en pruebas); si no, el inyectado
+      return (await testSeoProvider(provider, v, fetchImpl === (globalThis.fetch as unknown) ? undefined : (fetchImpl as unknown as SeoFetch)))!;
     case "redsys": {
       // Sin red: Redsys no ofrece un ping; se valida que la configuración sea utilizable
       if (!v.merchantCode || !v.merchantKey) return { ok: false, message: "Faltan el número de comercio o la clave secreta" };

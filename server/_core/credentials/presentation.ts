@@ -6,7 +6,7 @@
  * que vuelve a validar con `validateFields`. Credenciales propias de cada empresa: lo que no está configurado queda
  * desactivado y nunca se usa una cuenta ajena.
  */
-import { PROVIDERS, type ProviderDef } from "./catalog";
+import { PROVIDERS, fieldMaxLength, type ProviderDef } from "./catalog";
 import type { ProviderStatus } from "./vault";
 import type { Connection } from "./health";
 import { INTEGRATION_GROUPS, STATE_LABEL, type IntegrationState, type PanelField, type PanelIntegration } from "../../../shared/integrationsPanel";
@@ -76,6 +76,7 @@ function panelFields(p: ProviderDef, status: ProviderStatus): PanelField[] {
           ? [{ value: "true", label: "Sí" }, { value: "false", label: "No" }]
           : (f.options ?? []).map((o) => ({ value: o, label: ui?.optionLabels?.[o] ?? o })),
       pattern: f.pattern ? f.pattern.source : null,
+      ...(f.maxLength ? { maxLength: f.maxLength } : {}),
       formatMessage: ui?.formatMessage ?? null,
       example: f.hint ?? null,
       set: !!s?.set,
@@ -126,7 +127,7 @@ export function fieldProblems(p: ProviderDef, values: Record<string, string>): s
     if (v === "") continue;
     const label = f.panel?.label ?? f.label;
     if (f.options && !f.options.includes(v)) problems.push(`${label}: elige una de las opciones.`);
-    else if ((f.pattern && !f.pattern.test(v)) || v.length > 1024) problems.push(`${label}: ${f.panel?.formatMessage ?? "el formato no es válido."}`);
+    else if ((f.pattern && !f.pattern.test(v)) || v.length > fieldMaxLength(f)) problems.push(`${label}: ${f.panel?.formatMessage ?? "el formato no es válido."}`);
   }
   return problems;
 }

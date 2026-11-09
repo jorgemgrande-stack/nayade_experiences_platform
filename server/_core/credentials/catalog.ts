@@ -15,6 +15,8 @@ export interface CredentialField {
   /** Nombre de la variable de entorno histórica equivalente. */
   env?: string;
   pattern?: RegExp;
+  /** Longitud máxima del valor (por defecto, FIELD_MAX_LENGTH). */
+  maxLength?: number;
   hint?: string;
   options?: string[];
   /** Presentación en el panel de la empresa (no cambia cómo se guarda ni se valida el valor). */
@@ -60,6 +62,10 @@ export interface ProviderDef {
   /** Presentación en el panel de la empresa. */
   panel: ProviderPanel;
 }
+
+/** Longitud máxima por defecto de un valor de la bóveda. */
+export const FIELD_MAX_LENGTH = 1024;
+export const fieldMaxLength = (f: CredentialField) => f.maxLength ?? FIELD_MAX_LENGTH;
 
 const URL_RE = /^https:\/\/[^\s]{4,500}$/;
 const TOKEN_RE = /^[\x21-\x7e]{8,512}$/; // imprimibles ASCII sin espacios
@@ -268,6 +274,49 @@ export const PROVIDERS: ProviderDef[] = [
       { key: "agencyPassword", label: "Clave de la agencia", secret: true, required: true, pattern: PASSWORD_RE, panel: { label: "Clave de tu agencia en Veturis", formatMessage: "La clave no puede tener saltos de línea." } },
     ],
   },
+  {
+    // Search Console PROPIO de cada empresa: su cuenta de servicio de Google Cloud con acceso a su propiedad (como
+    // Skicenter, sin OAuth de Big Elephant). Elephant SEO Control (server/seoControl/connectors.ts)
+    id: "google_search_console",
+    name: "Google Search Console",
+    description: "Importa de tu propiedad de Search Console los clics, las impresiones y la posición media de tus palabras clave y páginas.",
+    capabilities: ["Listar las propiedades a las que tiene acceso la cuenta de servicio (solo lectura)", "Leer el rendimiento de búsqueda de tu propiedad por consulta, página y día (solo lectura)"],
+    check: "Inicio de sesión de la cuenta de servicio y listado de propiedades (sites.list): solo lectura",
+    panel: { group: "marketing", title: "Google Search Console", summary: "Posiciones, clics e impresiones de tu web en Google para el seguimiento SEO.", requires: ["seo-control"] },
+    fields: [
+      { key: "serviceAccountJson", label: "JSON de la cuenta de servicio", secret: true, required: true, maxLength: 6000, pattern: /^\s*\{[\s\S]*"private_key"[\s\S]*\}\s*$/, panel: { label: "Cuenta de servicio de Google (JSON)", help: "En Google Cloud: crea una cuenta de servicio, genera una clave JSON y pega aquí el contenido completo del fichero. Después añade el correo de la cuenta como usuario de tu propiedad en Search Console.", formatMessage: "Pega el contenido completo del fichero JSON (empieza por «{» e incluye «private_key»)." } },
+      { key: "siteUrl", label: "Propiedad", secret: false, required: true, pattern: /^(sc-domain:[A-Za-z0-9.-]{3,253}|https?:\/\/[^\s/]{3,253}\/[^\s]{0,200})$/, hint: "sc-domain:miempresa.es", panel: { label: "Propiedad de Search Console", help: "Tal como aparece en Search Console: «sc-domain:miempresa.es» para una propiedad de dominio o «https://www.miempresa.es/» para una de prefijo de URL.", formatMessage: "Escribe «sc-domain:tudominio.es» o la URL completa terminada en «/»." } },
+    ],
+  },
+  {
+    // Ficha PROPIA de la empresa en Google Business Profile: su cliente OAuth y su token de actualización (Skicenter usa
+    // el mismo flujo con su app; aquí cada empresa trae la suya). Solo lectura de reseñas
+    id: "google_business_profile",
+    name: "Google Business Profile",
+    description: "Lee las reseñas de la ficha de tu negocio en Google para verlas en SEO Control junto al resto.",
+    capabilities: ["Renovar el acceso con tu token de actualización", "Listar tus cuentas y leer las reseñas de tu ficha (solo lectura: no responde ni edita nada)"],
+    check: "Renovación del token y listado de cuentas: solo lectura",
+    panel: { group: "marketing", title: "Reseñas de Google (Business Profile)", summary: "Reseñas de tu ficha de Google en el panel de SEO Control.", requires: ["seo-control"] },
+    fields: [
+      { key: "clientId", label: "ID de cliente OAuth", secret: false, required: true, pattern: /^[A-Za-z0-9._-]{10,200}$/, panel: { label: "ID de cliente OAuth", help: "En tu proyecto de Google Cloud con acceso aprobado a la API de Business Profile: «APIs y servicios» → «Credenciales».", formatMessage: "Cópialo completo, sin espacios." } },
+      { key: "clientSecret", label: "Secreto del cliente OAuth", secret: true, required: true, pattern: TOKEN_RE, panel: { label: "Secreto del cliente OAuth", formatMessage: "Cópialo completo, sin espacios." } },
+      { key: "refreshToken", label: "Token de actualización", secret: true, required: true, pattern: TOKEN_RE, panel: { label: "Token de actualización", help: "Se obtiene autorizando tu cliente OAuth con la cuenta que gestiona la ficha (permiso business.manage).", formatMessage: "Cópialo completo, sin espacios." } },
+      { key: "locationPath", label: "Ficha", secret: false, required: true, pattern: /^accounts\/[A-Za-z0-9_-]{1,64}\/locations\/[A-Za-z0-9_-]{1,64}$/, hint: "accounts/123/locations/456", panel: { label: "Identificador de la ficha", help: "Con la forma accounts/{cuenta}/locations/{ficha}.", formatMessage: "Debe tener la forma accounts/123/locations/456." } },
+    ],
+  },
+  {
+    // Clave PROPIA de la empresa en la API de contenidos de TripAdvisor (Terra). Solo lectura de reseñas
+    id: "tripadvisor",
+    name: "TripAdvisor",
+    description: "Lee las reseñas más recientes de tu establecimiento en TripAdvisor para verlas en SEO Control.",
+    capabilities: ["Leer las reseñas más recientes de tu establecimiento (solo lectura; cada reseña consume cuota de tu cuenta)"],
+    check: "Lectura de 1 reseña del establecimiento: solo lectura (consume 1 unidad de cuota)",
+    panel: { group: "marketing", title: "Reseñas de TripAdvisor", summary: "Reseñas de tu establecimiento en TripAdvisor en el panel de SEO Control.", requires: ["seo-control"] },
+    fields: [
+      { key: "apiKey", label: "Clave de la API", secret: true, required: true, pattern: TOKEN_RE, panel: { label: "Clave de la API de TripAdvisor", help: "La de tu cuenta de la API de contenidos de TripAdvisor.", formatMessage: "Cópiala completa, sin espacios." } },
+      { key: "locationId", label: "ID del establecimiento", secret: false, required: true, pattern: /^\d{1,12}$/, panel: { label: "Identificador del establecimiento", help: "El número que aparece en la dirección de tu ficha de TripAdvisor (…-d123456-…).", formatMessage: "Solo números." } },
+    ],
+  },
 ];
 
 export function getProvider(id: string): ProviderDef | undefined {
@@ -293,7 +342,7 @@ export function validateFields(provider: ProviderDef, values: Record<string, str
     if (v === "") continue; // vacío = borrar
     if (f.options && !f.options.includes(v)) problems.push(`${k}: valor no permitido`);
     else if (f.pattern && !f.pattern.test(v)) problems.push(`${k}: formato no válido`);
-    else if (v.length > 1024) problems.push(`${k}: demasiado largo`);
+    else if (v.length > fieldMaxLength(f)) problems.push(`${k}: demasiado largo`);
   }
   return problems;
 }
