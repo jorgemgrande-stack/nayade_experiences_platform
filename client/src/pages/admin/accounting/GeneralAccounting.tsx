@@ -171,6 +171,21 @@ function Summary({ syncing, onSync }: { syncing: boolean; onSync: () => void }) 
             </ul>
           </div>
         )}
+        {last && (last.review?.length ?? 0) > 0 && (
+          <div className="space-y-1 rounded-lg border border-border bg-muted/40 p-3 text-sm">
+            <p className="flex items-center gap-1 font-medium text-foreground">
+              <AlertTriangle className="h-4 w-4 text-muted-foreground" aria-hidden="true" /> Para revisar: {last.reviewCount} gastos sin IVA revisado
+            </p>
+            <p className="text-muted-foreground">Se contabilizan sin IVA soportado (nunca se supone un 21 %). Revisa su desglose en Gastos y actualiza los asientos: se corrigen solos.</p>
+            <ul className="space-y-0.5 text-muted-foreground">
+              {last.review.map((e) => (
+                <li key={e.key} className="break-words">
+                  {e.message}
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
         <p className="flex items-center gap-1 text-sm text-muted-foreground">
           {d.balanced ? <CheckCircle2 className="h-4 w-4 text-primary" aria-hidden="true" /> : <AlertTriangle className="h-4 w-4 text-destructive" aria-hidden="true" />}
           {d.balanced ? `Todos los asientos cuadran (${d.counts.entries}: ${d.counts.automatic} automáticos, ${d.counts.manual} manuales y ${d.counts.reversals} reversiones).` : `Hay asientos que no cuadran: ${d.unbalanced.join(", ")}`}

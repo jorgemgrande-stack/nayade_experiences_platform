@@ -94,8 +94,8 @@ describe.skipIf(!URL_)("Contabilidad general · asientos automáticos, manuales,
     await ess.sql("a", "INSERT INTO expense_categories (name) VALUES ('Asesoría QA')");
     const [cat] = await ess.sql("a", "SELECT id FROM expense_categories WHERE name = 'Asesoría QA'");
     await ok(m("saveCategoryAccount", { categoryId: cat.id, accountCode: "623" }));
-    await ess.sql("a", `INSERT INTO expenses (date, concept, amount, categoryId, costCenterId, paymentMethod, taxBase, taxRate, taxAmount, deductiblePercent, retentionAmount, supplierName)
-      VALUES (?, 'Asesoría fiscal', 121.00, ?, 1, 'transfer', 100.00, 21, 21.00, 100, 15.00, 'Gestoría QA')`, [d2(), cat.id]);
+    await ess.sql("a", `INSERT INTO expenses (date, concept, amount, categoryId, costCenterId, paymentMethod, taxBase, taxRate, taxAmount, deductiblePercent, retentionAmount, supplierName, fiscalReviewStatus)
+      VALUES (?, 'Asesoría fiscal', 121.00, ?, 1, 'transfer', 100.00, 21, 21.00, 100, 15.00, 'Gestoría QA', 'revisado')`, [d2(), cat.id]);
 
     const s = await ok(m("sync", undefined));
     expect(s.errors).toEqual([]);
@@ -122,7 +122,7 @@ describe.skipIf(!URL_)("Contabilidad general · asientos automáticos, manuales,
   it("repetir la generación no duplica; dos generaciones a la vez tampoco", async () => {
     const before = (await ok(q("overview"))).counts.entries;
     expect((await ok(m("sync", undefined))).created).toBe(0);
-    await ess.sql("a", "INSERT INTO expenses (date, concept, amount, categoryId, costCenterId, paymentMethod, taxRate, taxAmount) VALUES (?, 'Material', 60.50, 1, 1, 'cash', 21, 10.50)", [d2()]);
+    await ess.sql("a", "INSERT INTO expenses (date, concept, amount, categoryId, costCenterId, paymentMethod, taxRate, taxAmount, fiscalReviewStatus) VALUES (?, 'Material', 60.50, 1, 1, 'cash', 21, 10.50, 'revisado')", [d2()]);
     const [exp] = await ess.sql("a", "SELECT id FROM expenses WHERE concept = 'Material'");
     const [r1, r2] = await Promise.all([m("sync", undefined), m("sync", undefined)]);
     expect([r1.status, r2.status]).toEqual([200, 200]);
@@ -174,7 +174,7 @@ describe.skipIf(!URL_)("Contabilidad general · asientos automáticos, manuales,
     const r = await m("createEntry", { date: `${y()}-01-10`, journal: "GEN", description: "Tarde", lines: [{ accountCode: "629", debitCents: 100, creditCents: 0 }, { accountCode: "570", debitCents: 0, creditCents: 100 }] });
     expect(errCode(r)).toBe("CONFLICT");
     // Un gasto nuevo en el periodo bloqueado queda pendiente (no se contabiliza)
-    await ess.sql("a", "INSERT INTO expenses (date, concept, amount, categoryId, costCenterId, paymentMethod, taxRate, taxAmount) VALUES (?, 'Tardío', 12.10, 1, 1, 'cash', 21, 2.10)", [`${y()}-01-25`]);
+    await ess.sql("a", "INSERT INTO expenses (date, concept, amount, categoryId, costCenterId, paymentMethod, taxRate, taxAmount, fiscalReviewStatus) VALUES (?, 'Tardío', 12.10, 1, 1, 'cash', 21, 2.10, 'revisado')", [`${y()}-01-25`]);
     const s = await ok(m("sync", undefined));
     expect(s.blocked).toBe(2);
     expect(s.created).toBe(0);
@@ -195,6 +195,25 @@ describe.skipIf(!URL_)("Contabilidad general · asientos automáticos, manuales,
     expect((await balance("555")) - b555).toBe(0);
     expect((await balance("472")) - b472).toBe(0);
     expect((await ok(q("overview"))).balanced).toBe(true);
+  });
+
+  it("IVA solo de datos reales: un gasto sin desglose revisado se contabiliza sin IVA y queda para revisar; al revisarlo, se corrige", async () => {
+    const [b472, b623] = [await balance("472"), await balance("623")];
+    // Como los crea la conciliación bancaria o el formulario público: taxRate 21 por defecto, sin cuota, pendiente
+    await ess.sql("a", "INSERT INTO expenses (date, concept, amount, categoryId, costCenterId, paymentMethod) SELECT ?, 'Sin desglose QA', 121.00, id, 1, 'transfer' FROM expense_categories WHERE name = 'Asesoría QA'", [d2()]); // categoría con cuenta 623
+    const [exp] = await ess.sql("a", "SELECT id FROM expenses WHERE concept = 'Sin desglose QA'");
+    const s = await ok(m("sync", undefined));
+    expect(s.errors).toEqual([]);
+    expect(s.review.map((r: any) => r.key)).toContain(`gasto:${exp.id}`);
+    expect((await balance("472")) - b472).toBe(0);
+    expect((await balance("623")) - b623).toBe(12100);
+    // Revisado en el formulario de gastos (10 %): el documento cambió y su asiento se sustituye con el IVA real
+    await ess.sql("a", "UPDATE expenses SET taxRate = 10, taxBase = 110.00, taxAmount = 11.00, fiscalReviewStatus = 'revisado' WHERE id = ?", [exp.id]);
+    const s2 = await ok(m("sync", undefined));
+    expect(s2.replaced).toBe(1);
+    expect(s2.review.map((r: any) => r.key)).not.toContain(`gasto:${exp.id}`);
+    expect((await balance("472")) - b472).toBe(1100);
+    expect((await balance("623")) - b623).toBe(11000);
   });
 
   it("ticket cobrado en efectivo y devuelto con salida manual de caja: la caja entra y sale una sola vez", async () => {

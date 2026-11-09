@@ -14,7 +14,6 @@ import { and, eq, gte, inArray, isNotNull } from "drizzle-orm";
 import { bankMovementLinks, bankMovements, cashMovements, cashRegisters, cashSessions, expenseSuppliers, expenses, invoices, tpvSalePayments } from "../../drizzle/schema";
 import { listFiscalDocuments, madridDayRange } from "../fiscalDocumentsDb";
 import { madridDayKey } from "../../shared/gestoriaExportPeriod";
-import { calcGeneralTax } from "../taxUtils";
 import { madridMidnightMs } from "../utils/timezone";
 import { isAccDate, type AccAccountMap } from "../../shared/accountingGeneral";
 import { cashCloseEntry, cashMoveEntry, centsOf, collectionEntry, expenseEntry, expensePaymentEntry, saleEntry, type Desired, type ExpenseDoc, type ExpenseMethod, type SaleDoc, type TpvMethod, voidTicketCashEntry } from "./rules";
@@ -48,6 +47,8 @@ export interface SourceRead {
   failed: Array<{ group: SourceGroup; message: string }>;
   /** Documentos que no se pudieron convertir en asiento (datos incompletos). */
   problems: Array<{ key: string; message: string }>;
+  /** Contabilizados, pero para revisar (gastos sin IVA real: sin IVA soportado). */
+  review: Array<{ key: string; message: string }>;
 }
 
 type Db = { select: (...a: any[]) => any };
@@ -163,6 +164,9 @@ async function readExpenses(db: Db, ctx: SourceContext, out: SourceRead) {
     // Anterior al inicio de la contabilidad: no se contabiliza solo (va en el asiento de apertura)
     if (date < ctx.startDate) continue;
     const doc = expenseDocOf(r, date, paidOn.get(Number(r.id)), ctx);
+    if (doc.taxUnknown && doc.totalCents !== 0) {
+      out.review.push({ key: `gasto:${doc.id}`, message: `El gasto #${doc.id} (${doc.concept.slice(0, 80) || "sin concepto"}) no tiene el IVA revisado: se contabiliza sin IVA soportado hasta que se revise en Gastos` });
+    }
     const e = expenseEntry(doc, ctx.map);
     const p = expensePaymentEntry(doc, ctx.map);
     out.desired.set(`gasto:${doc.id}`, e ? { kind: "entry", draft: e } : { kind: "none" });
@@ -177,17 +181,25 @@ async function readExpenses(db: Db, ctx: SourceContext, out: SourceRead) {
  * Retirada de caja del TPV de tipo «gasto» (`source = "tpv"`, `tpv.addCashMovement`): el TPV guarda a la vez el
  * movimiento de caja (`cash_movements`, que ya contabiliza la salida: Debe 555 · Haber 570) y este gasto. Para que la
  * caja se abone una sola vez, el pago del gasto va contra el puente de caja (como `tpv_cash`) y no otra vez contra la
- * caja: el 555 queda saldado y el gasto, en la cuenta de su categoría. El IVA es el real: el TPV no lo registra y la
- * columna `taxRate` trae un 21 % por defecto, así que solo hay IVA soportado si el gasto se revisó en el formulario de
- * gastos (`fiscalReviewStatus = revisado`); si no, todo el importe es gasto, sin IVA.
+ * caja: el 555 queda saldado y el gasto, en la cuenta de su categoría.
+ *
+ * IVA soportado: solo el de datos reales. La columna `taxRate` trae un 21 % por defecto y la regularización de gastos
+ * antiguos (`expenses.backfillFiscal`) guarda cuotas estimadas al 21 % como «pendiente»; los gastos del TPV, de la
+ * conciliación bancaria, del formulario público o de los recurrentes no traen desglose. El único desglose real es el del
+ * formulario de gastos, que lo marca `fiscalReviewStatus = revisado`. Sin él (o sin cuota guardada), el gasto se
+ * contabiliza sin IVA soportado (`taxUnknown`, para revisar): todo el importe va a su cuenta de gasto. Al revisarlo, el
+ * documento cambia y su asiento se corrige solo.
  */
 export function expenseDocOf(r: any, date: string, bankPaidOn: string | undefined, ctx: Pick<SourceContext, "map" | "categoryAccounts">): ExpenseDoc {
   const expenseDate = text(r.date).slice(0, 10);
   const fromTpv = r.source === "tpv";
-  const noRealTax = fromTpv && r.fiscalReviewStatus !== "revisado";
-  const storedRate = Number(r.taxRate ?? 21);
-  const rate = noRealTax ? 0 : Number.isFinite(storedRate) ? storedRate : 21;
-  const taxCents = noRealTax ? 0 : r.taxAmount != null && Number.isFinite(Number(r.taxAmount)) ? centsOf(r.taxAmount) : centsOf(calcGeneralTax(Number(r.amount ?? 0), rate).taxAmount);
+  const payroll = typeof r.source === "string" && r.source.startsWith("hr_");
+  const storedRate = Number(r.taxRate);
+  const storedTax = Number(r.taxAmount);
+  const taxKnown = r.fiscalReviewStatus === "revisado" && r.taxAmount != null && Number.isFinite(storedTax) && r.taxRate != null && Number.isFinite(storedRate);
+  const taxUnknown = !payroll && !taxKnown;
+  const rate = taxKnown ? storedRate : 0;
+  const taxCents = taxKnown ? centsOf(storedTax) : 0;
   const ded = Number(r.deductiblePercent ?? 100);
   const method = (r.paymentMethod ?? "transfer") as ExpenseMethod;
   return {
@@ -200,7 +212,8 @@ export function expenseDocOf(r: any, date: string, bankPaidOn: string | undefine
     rateBp: Math.round(rate * 100),
     deductibleBp: Math.max(0, Math.min(10_000, Math.round((Number.isFinite(ded) ? ded : 100) * 100))),
     retentionCents: centsOf(r.retentionAmount),
-    payroll: typeof r.source === "string" && r.source.startsWith("hr_"),
+    payroll,
+    taxUnknown,
     expenseAccount: ctx.categoryAccounts.get(Number(r.categoryId)) ?? ctx.map.defaultExpense,
     method: fromTpv && method === "cash" ? "tpv_cash" : method,
     paidOn: bankPaidOn ?? (isAccDate(expenseDate) ? expenseDate : date),
@@ -237,13 +250,14 @@ const READERS: Record<SourceGroup, (db: Db, ctx: SourceContext, out: SourceRead)
 
 /** Lee todos los grupos; uno que falle no impide los demás. */
 export async function readSources(db: Db, ctx: SourceContext): Promise<SourceRead> {
-  const out: SourceRead = { desired: new Map(), groups: [], failed: [], problems: [] };
+  const out: SourceRead = { desired: new Map(), groups: [], failed: [], problems: [], review: [] };
   for (const g of Object.keys(READERS) as SourceGroup[]) {
-    const part: SourceRead = { desired: new Map(), groups: [], failed: [], problems: [] };
+    const part: SourceRead = { desired: new Map(), groups: [], failed: [], problems: [], review: [] };
     try {
       await READERS[g](db, ctx, part);
       part.desired.forEach((v, k) => out.desired.set(k, v));
       out.problems.push(...part.problems);
+      out.review.push(...part.review);
       out.groups.push(g);
     } catch (e) {
       out.failed.push({ group: g, message: e instanceof Error ? e.message.slice(0, 300) : "Error desconocido" });

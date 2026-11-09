@@ -112,6 +112,9 @@ export interface SyncSummary {
   blocked: number;
   truncated: boolean;
   errors: Array<{ key: string; message: string }>;
+  /** Contabilizados, pero para revisar (gastos sin IVA real); hasta 50, y cuántos hay. */
+  review: Array<{ key: string; message: string }>;
+  reviewCount: number;
   failedGroups: Array<{ group: string; message: string }>;
 }
 
@@ -165,6 +168,8 @@ export async function sync(userId: number | null, now = new Date()): Promise<Syn
       blocked: 0,
       truncated: actions.length > MAX_ACTIONS_PER_SYNC,
       errors: read.problems.slice(0, 50),
+      review: read.review.slice(0, 50),
+      reviewCount: read.review.length,
       failedGroups: read.failed.map((f) => ({ group: SOURCE_GROUP_LABELS[f.group], message: f.message })),
     };
     const pending = new Set(actions.map((a) => a.key));

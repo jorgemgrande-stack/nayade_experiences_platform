@@ -222,10 +222,30 @@ describe("caja del TPV", () => {
     const reviewed = expenseDocOf({ ...row, taxRate: "10.00", taxAmount: "2.73", fiscalReviewStatus: "revisado" }, "2026-03-02", undefined, ctx);
     expect(side(expenseEntry(reviewed, map)!, "472")).toBe(273);
     expect(side(expensePaymentEntry(reviewed, map)!, "555")).toBe(-3000);
-    // Un gasto en efectivo que no viene del TPV sigue saliendo de la caja y con el IVA derivado de su tipo
+    // Un gasto en efectivo que no viene del TPV sigue saliendo de la caja
     const manual = expenseDocOf({ ...row, source: "manual" }, "2026-03-02", undefined, ctx);
     expect(side(expensePaymentEntry(manual, map)!, "570")).toBe(-3000);
-    expect(side(expenseEntry(manual, map)!, "472")).toBe(521);
+  });
+
+  it("IVA soportado solo de datos reales: nunca se deriva un 21 % por defecto; sin desglose revisado, sin IVA y para revisar", () => {
+    const ctx = { map, categoryAccounts: new Map<number, string>() };
+    const row = { id: 60, date: "2026-03-02", concept: "Material", amount: "121.00", taxRate: "21.00", taxAmount: null, deductiblePercent: "100.00", categoryId: 1, paymentMethod: "transfer", source: "manual", fiscalReviewStatus: "pendiente" };
+    // Sin cuota guardada (taxRate trae el 21 % por defecto): sin IVA
+    const none = expenseDocOf(row, "2026-03-02", undefined, ctx);
+    expect(none.taxUnknown).toBe(true);
+    const e1 = expenseEntry(none, map)!;
+    expect(side(e1, "472")).toBe(0);
+    expect(side(e1, "629")).toBe(12100);
+    expect(e1.lines.find((l) => l.accountCode === "629")!.taxRateBp).toBeNull(); // no se presenta como un 0 % ni un 21 %
+    // Cuota estimada por la regularización de gastos antiguos (pendiente de revisar): tampoco
+    const estimated = expenseDocOf({ ...row, taxBase: "100.00", taxAmount: "21.00" }, "2026-03-02", undefined, ctx);
+    expect(side(expenseEntry(estimated, map)!, "472")).toBe(0);
+    // Revisada en el formulario de gastos: su IVA real (aquí un 10 %)
+    const real = expenseDocOf({ ...row, amount: "110.00", taxRate: "10.00", taxAmount: "10.00", fiscalReviewStatus: "revisado" }, "2026-03-02", undefined, ctx);
+    expect(real.taxUnknown).toBe(false);
+    expect(side(expenseEntry(real, map)!, "472")).toBe(1000);
+    // Nóminas de RRHH: sin IVA por naturaleza, no se marcan para revisar
+    expect(expenseDocOf({ ...row, source: "hr_payroll" }, "2026-03-02", undefined, ctx).taxUnknown).toBe(false);
   });
 
   it("ticket devuelto en efectivo (venta revertida + salida manual de caja): la caja no se abona dos veces", () => {

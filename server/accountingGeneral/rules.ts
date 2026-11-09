@@ -203,6 +203,8 @@ export interface ExpenseDoc {
   retentionCents: number;
   /** Nómina, Seguridad Social o bonus de RRHH (origen `hr_*`): sin IVA y contra remuneraciones pendientes. */
   payroll: boolean;
+  /** Sin desglose de IVA real (no revisado en el formulario de gastos): sin IVA soportado y para revisar. */
+  taxUnknown?: boolean;
   expenseAccount: string;
   method: ExpenseMethod;
   /** Fecha del pago: la del movimiento bancario conciliado o, si no hay, la del gasto. */
@@ -236,7 +238,7 @@ export function expenseEntry(e: ExpenseDoc, map: AccAccountMap): AccDraft | null
     description: short(`Gasto: ${concept}${who}`, 500),
     origin: "expense",
     lines: [
-      ...signed(e.expenseAccount, a.baseCents + a.nonDeductibleTaxCents, "debit", { description: concept, taxRateBp: e.payroll ? null : e.rateBp, taxBaseCents: a.baseCents }),
+      ...signed(e.expenseAccount, a.baseCents + a.nonDeductibleTaxCents, "debit", { description: concept, taxRateBp: e.payroll || e.taxUnknown ? null : e.rateBp, taxBaseCents: e.payroll || e.taxUnknown ? null : a.baseCents }),
       ...signed(map.vatInput, a.deductibleTaxCents, "debit", { description: `IVA soportado ${pctLabel(e.rateBp)}`, taxRateBp: e.rateBp, taxBaseCents: a.baseCents }),
       ...signed(map.withholding, a.retentionCents, "credit", { description: "Retención" }),
       ...signed(counterpart, a.payableCents, "credit", { description: concept }),
