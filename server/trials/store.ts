@@ -183,6 +183,11 @@ export interface TrialListFilter {
   verificationExpiredBefore?: number;
   /** Creadas antes de este instante. */
   createdBefore?: number;
+  /** Creadas después de este instante (ventanas de los recordatorios). */
+  createdAfter?: number;
+  /** Con la prueba iniciada (startsAt) dentro de [startsAfter, startsBefore]. */
+  startsAfter?: number;
+  startsBefore?: number;
   /** Último cambio (o el alta, si no tiene) antes de este instante. */
   updatedBefore?: number;
   limit?: number;
@@ -268,6 +273,9 @@ export class MemoryTrialStore implements TrialStore {
           (f.extensionRequested === undefined || (r.extensionRequestedAt !== null) === f.extensionRequested) &&
           (f.verificationExpiredBefore === undefined || (r.verificationExpiresAt !== null && r.verificationExpiresAt <= f.verificationExpiredBefore)) &&
           (f.createdBefore === undefined || r.createdAt <= f.createdBefore) &&
+          (f.createdAfter === undefined || r.createdAt >= f.createdAfter) &&
+          (f.startsAfter === undefined || (r.startsAt !== null && r.startsAt >= f.startsAfter)) &&
+          (f.startsBefore === undefined || (r.startsAt !== null && r.startsAt <= f.startsBefore)) &&
           (f.updatedBefore === undefined || (r.updatedAt ?? r.createdAt) <= f.updatedBefore),
       )
       .slice(0, f.limit ?? 200)
@@ -511,6 +519,9 @@ export class MysqlTrialStore implements TrialStore {
     if (f.extensionRequested !== undefined) w.push(f.extensionRequested ? "extension_requested_at IS NOT NULL" : "extension_requested_at IS NULL");
     if (f.verificationExpiredBefore !== undefined) (w.push("verification_expires_at IS NOT NULL AND verification_expires_at <= ?"), a.push(f.verificationExpiredBefore));
     if (f.createdBefore !== undefined) (w.push("created_at <= ?"), a.push(f.createdBefore));
+    if (f.createdAfter !== undefined) (w.push("created_at >= ?"), a.push(f.createdAfter));
+    if (f.startsAfter !== undefined) (w.push("starts_at IS NOT NULL AND starts_at >= ?"), a.push(f.startsAfter));
+    if (f.startsBefore !== undefined) (w.push("starts_at IS NOT NULL AND starts_at <= ?"), a.push(f.startsBefore));
     if (f.updatedBefore !== undefined) (w.push("COALESCE(updated_at, created_at) <= ?"), a.push(f.updatedBefore));
     const [r] = await this.pool.query<mysql.RowDataPacket[]>(`SELECT * FROM trial_requests${w.length ? ` WHERE ${w.join(" AND ")}` : ""} ORDER BY id LIMIT ?`, [...a, Math.min(f.limit ?? 200, 1000)]);
     return r.map(row);

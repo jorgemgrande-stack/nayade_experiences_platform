@@ -68,6 +68,9 @@ describe("cuándo toca cada recordatorio (lógica pura)", () => {
     expect(dueReminder(t, none, none, T0 + 25 * H)).toBe("verify");
     expect(dueReminder(t, none, new Set([reminderKey("verify")]), T0 + 25 * H)).toBeNull();
     expect(dueReminder(t, none, none, T0 + 6 * D + H)).toBeNull();
+    // Con un reenvío manual a las 10 h, se cuenta desde ese enlace: a las 21 h todavía no, a las 31 h sí
+    expect(dueReminder(t, none, none, T0 + 21 * H, T0 + 10 * H)).toBeNull();
+    expect(dueReminder(t, none, none, T0 + 31 * H, T0 + 10 * H)).toBe("verify");
     expect(dueReminder({ ...t, configuration: { ...t.configuration, test: { at: T0, actor: "op", reason: "prueba técnica" } } }, none, none, T0 + 25 * H)).toBeNull();
     expect(dueReminder({ ...t, configuration: { ...t.configuration, reminders: { optOutAt: T0 } } }, none, none, T0 + 25 * H)).toBeNull();
   });
@@ -120,10 +123,31 @@ describe("tarea programada: idempotencia por prueba, tipo y paso, y cancelación
     const out = await activeTrial();
     expect(await svc.optOutReminders(out.id, "web:enlace")).toEqual({ trialId: out.id, changed: true });
     expect(await svc.optOutReminders(out.id, "web:enlace")).toEqual({ trialId: out.id, changed: false });
-    clock = T0 + 10 * D;
+    clock = T0 + 49 * H; // dentro de la ventana de (b): solo la marca y la baja los dejan fuera
     await scheduler.tick();
     expect(sent).toHaveLength(0);
     expect((await store.events(out.id)).filter((e) => e.action === "reminders_opt_out")).toHaveLength(1);
+  });
+});
+
+describe("ventanas: sin avisos atrasados", () => {
+  it("(b) y (c) solo dentro de su ventana de 2 días; con la primera acción sin el primer acceso, ninguno", async () => {
+    const t = await activeTrial();
+    const none = new Set<string>();
+    const s0 = t.startsAt!;
+    expect(dueReminder(t, none, none, s0 + 2 * D + H)).toBe("setup");
+    expect(dueReminder(t, none, none, s0 + 4 * D + H)).toBeNull();
+    const accessed = new Set(["first_access"]);
+    expect(dueReminder(t, accessed, none, s0 + 4 * D + H)).toBe("first_action");
+    expect(dueReminder(t, accessed, none, s0 + 6 * D + H)).toBeNull();
+    expect(dueReminder(t, new Set(["first_action"]), none, s0 + 2 * D + H)).toBeNull();
+  });
+
+  it("tras una parada larga, la tarea no envía a pruebas fuera de ventana", async () => {
+    await activeTrial();
+    clock = T0 + 9 * D;
+    await scheduler.tick();
+    expect(sent).toHaveLength(0);
   });
 });
 

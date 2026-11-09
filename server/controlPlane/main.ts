@@ -437,18 +437,31 @@ async function main() {
     if (trials) trials.funnel = new MysqlTrialFunnelCounter(trialPool);
     // Recordatorios de la prueba (server/trials/reminders.ts): enlace de baja firmado con el secreto de los enlaces del
     // CRM (0031) y servido por el CRM en /cp/v1/public/trial/recordatorios. Sin el secreto o sin origen, sin recordatorios.
-    let reminderLinks: { signer: LinkSigner; origin: string } | null = null;
-    if (trials) {
+    // El secreto se resuelve al usarlo (la tabla 0031 puede llegar con las migraciones después de arrancar) y la baja
+    // solo existe con el alta pública abierta: sin ella no se envía ningún recordatorio (el enlace daría 404).
+    let reminderLinks: { signer: () => Promise<LinkSigner | null>; origin: string } | null = null;
+    if (trials && trials.publicEnabled) {
       const origin = crmPublicOrigin(process.env);
-      const signer = await linkSecretFromDb(trialPool).then((s) => new LinkSigner(s), () => null);
-      if (origin && signer) {
+      let cached: LinkSigner | null = null;
+      let warned = false;
+      const signer = async () => {
+        if (cached) return cached;
+        try {
+          cached = new LinkSigner(await linkSecretFromDb(trialPool));
+        } catch (e) {
+          if (!warned) console.log(JSON.stringify({ ctx: "Trials", event: "reminder_links_unavailable", reason: e instanceof Error ? e.name : "error" }));
+          warned = true;
+        }
+        return cached;
+      };
+      if (origin) {
         reminderLinks = { signer, origin };
         const store = trials.store;
         trials.remindersOptOut = {
-          verify: (token) => signer.verifyTrialReminders(token),
+          verify: async (token) => (await signer())?.verifyTrialReminders(token) ?? null,
           optOut: async (id) => !!(await new TrialService({ store }).optOutReminders(id, "web:enlace"))?.changed,
         };
-      }
+      } else console.log(JSON.stringify({ ctx: "Trials", event: "reminder_links_unavailable", reason: "no_public_origin" }));
     }
     console.log(JSON.stringify({ ctx: "Trials", enabled: ready, publicEnabled: trials?.publicEnabled ?? false, autoProvision: trials?.autoProvision ?? false, email: { mode: email?.mode ?? "off", provider: email?.provider ?? null, ...(email?.reason ? { reason: email.reason } : {}) }, ...(ready ? {} : { reason: "migration_0007_missing" }) }));
     // Tarea programada de vencimiento y avisos: APAGADA salvo CP_TRIALS_SCHEDULER_ENABLED=1. Una sola réplica
@@ -459,7 +472,15 @@ async function main() {
       const t = trials;
       const recovery = () => (t.activation.activate ? { autoProvision: t.autoProvision, activate: t.activation.activate, raise: (id: string, f: Parameters<AdminAlertService["raise"]>[1]) => (adminAlerts ? adminAlerts.raise(id, f) : Promise.resolve(null)) } : null);
       const links = reminderLinks;
-      const reminders = links ? { platformDomain: platformDomain ?? null, optOutUrl: (id: number) => `${links.origin}/cp/v1/public/trial/recordatorios?t=${encodeURIComponent(links.signer.trialRemindersToken(id))}` } : undefined;
+      const reminders = links
+        ? {
+            platformDomain: platformDomain ?? null,
+            optOutUrl: async (id: number) => {
+              const s = await links.signer();
+              return s ? `${links.origin}/cp/v1/public/trial/recordatorios?t=${encodeURIComponent(s.trialRemindersToken(id))}` : null;
+            },
+          }
+        : undefined;
       startTrialScheduler({ scheduler: new TrialScheduler({ store: trials.store, notify, lock: mysqlAdvisoryLock(trialPool), recovery, reminders }), env: process.env });
       // Fin de las licencias = fin de la prueba (ampliaciones): ENCENDIDA salvo CP_TRIAL_LICENCE_SYNC=off; solo alinea fechas
       startTrialLicenceSync({ reconciler: new TrialLicenceReconciler({ store: trials.store, sync: () => t.activation.syncLicences ?? null, lock: mysqlAdvisoryLock(trialPool) }), env: process.env });

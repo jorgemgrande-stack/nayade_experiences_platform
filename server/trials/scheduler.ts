@@ -26,7 +26,7 @@ import type { AlertFacts } from "../adminAlerts/catalog";
 import { NOTICE_DAYS, type TrialNotifier } from "./onboarding";
 import { TrialError, TrialService, type TrialLimits } from "./service";
 import type { TrialRequest, TrialStore } from "./store";
-import { dueReminder, reminderKey } from "./reminders";
+import { REMINDER_AFTER_MS, REMINDER_WINDOW_MS, VERIFY_UNTIL_MS, dueReminder, reminderKey } from "./reminders";
 
 const DAY = 86_400_000;
 export const SCHEDULER_ACTOR = "system:trial-scheduler";
@@ -118,7 +118,7 @@ export interface TrialSchedulerDeps {
    * Recordatorios: dominio de las plataformas (enlace al panel) y enlace de baja de cada prueba. Sin esto, o sin
    * `notify.reminder`, no se envía ninguno.
    */
-  reminders?: { platformDomain: string | null; optOutUrl: (trialId: number) => string | null };
+  reminders?: { platformDomain: string | null; optOutUrl: (trialId: number) => string | null | Promise<string | null> };
   lock: SchedulerLock;
   now?: () => number;
   limits?: Partial<TrialLimits>;
@@ -231,9 +231,10 @@ export class TrialScheduler {
   private async queueReminders(trials: TrialService, now: number, out: TickResult) {
     const r = this.d.reminders;
     if (!r) return;
+    // Solo las pruebas dentro de las ventanas de los recordatorios (acotado en la consulta, no las 200 primeras)
     const candidates = [
-      ...(this.d.notify.verification ? await this.d.store.list({ states: ["pending_verification"], limit: this.batch }) : []),
-      ...(this.d.notify.reminder ? await this.d.store.list({ states: ["active"], limit: this.batch }) : []),
+      ...(this.d.notify.verification ? await this.d.store.list({ states: ["pending_verification"], createdAfter: now - VERIFY_UNTIL_MS, createdBefore: now - REMINDER_AFTER_MS.verify, limit: this.batch }) : []),
+      ...(this.d.notify.reminder ? await this.d.store.list({ states: ["active"], startsAfter: now - REMINDER_AFTER_MS.first_action - REMINDER_WINDOW_MS, startsBefore: now - REMINDER_AFTER_MS.setup, limit: this.batch }) : []),
     ];
     for (const t of candidates) {
       if (this.isExempt(t)) continue;
@@ -241,7 +242,8 @@ export class TrialScheduler {
         const evs = await this.d.store.events(t.id);
         const actions = new Set(evs.map((e) => e.action as string));
         const notices = new Set(evs.filter((e) => e.action === "notice_queued").map((e) => e.detail ?? ""));
-        const kind = dueReminder(t, actions, notices, now);
+        const lastLinkAt = Math.max(t.createdAt, ...evs.filter((e) => e.action === "resend_verification").map((e) => e.createdAt));
+        const kind = dueReminder(t, actions, notices, now, lastLinkAt);
         if (!kind) continue;
         const key = reminderKey(kind);
         if (kind === "verify") {
@@ -251,7 +253,7 @@ export class TrialScheduler {
           // Pendiente de la espera mínima: se reintenta; en cualquier otro caso no se insiste más
           if (res.outcome === "cooldown") continue;
         } else {
-          await this.d.notify.reminder!(t.email, { trialId: t.id, kind, key: `trial:${t.id}:${key}`, domain: r.platformDomain && t.tenantId ? `${t.tenantId}.${r.platformDomain}` : null, endsAt: t.endsAt, optOutUrl: r.optOutUrl(t.id) });
+          await this.d.notify.reminder!(t.email, { trialId: t.id, kind, key: `trial:${t.id}:${key}`, domain: r.platformDomain && t.tenantId ? `${t.tenantId}.${r.platformDomain}` : null, endsAt: t.endsAt, optOutUrl: await r.optOutUrl(t.id) });
         }
         await trials.recordNotice(t.id, key, SCHEDULER_ACTOR);
         out.remindersQueued++;

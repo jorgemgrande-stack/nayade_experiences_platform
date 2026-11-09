@@ -44,7 +44,7 @@ const attributionSchema = z
 
 /** Baja de los recordatorios: verifica el enlace firmado y registra la baja en la prueba. */
 export interface TrialRemindersOptOut {
-  verify(token: unknown): number | null;
+  verify(token: unknown): number | null | Promise<number | null>;
   optOut(trialId: number): Promise<boolean>;
 }
 
@@ -68,12 +68,12 @@ function remindersOptOutRouter(o: TrialRemindersOptOut): Router {
   r.use(rateLimit({ windowMs: 60_000, limit: 30, standardHeaders: true, legacyHeaders: false, keyGenerator: (req) => `trial-optout:${ipKeyGenerator(req.ip ?? "")}` }));
   const tokenOf = (req: Request) => (typeof req.query.t === "string" ? req.query.t.slice(0, 200) : "");
   const invalid = (res: Response) => optOutPage(res, 404, "Enlace no válido", "<p>Este enlace no es válido. Si necesitas ayuda, escríbenos a soporte@bigelephant.es.</p>");
-  r.get("/", (req, res) => {
-    if (o.verify(tokenOf(req)) === null) return invalid(res);
+  r.get("/", async (req, res) => {
+    if ((await Promise.resolve(o.verify(tokenOf(req))).catch(() => null)) === null) return invalid(res);
     optOutPage(res, 200, "Recordatorios de tu prueba gratuita", `<p>Si confirmas, dejaremos de enviarte recordatorios para completar tu prueba (verificar el correo, entrar en tu panel o dar tus primeros pasos).</p><p>Seguirás recibiendo los avisos imprescindibles de tu prueba, como el de su vencimiento.</p><form method="post" action="${escHtml(`${req.baseUrl}?t=${encodeURIComponent(tokenOf(req))}`)}"><button type="submit">Dejar de recibir recordatorios</button></form>`);
   });
   r.post("/", express.urlencoded({ extended: false, limit: "2kb" }), async (req, res) => {
-    const id = o.verify(tokenOf(req));
+    const id = await Promise.resolve(o.verify(tokenOf(req))).catch(() => null);
     if (id === null) return invalid(res);
     try {
       await o.optOut(id);
