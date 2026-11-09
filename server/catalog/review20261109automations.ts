@@ -7,12 +7,12 @@
  *
  * El nivel de implantación pasa de 2 («portable») a 1 («activable desde el Core»). Ningún plan la incluye hoy en
  * production (Business no concede `automations-advanced`): la ficha no lo dice y sus reglas de capacidad no cambian.
- * No toca el Paquete AI Suite ni Copilot.
+ * No toca el Paquete AI Suite ni Copilot. Sin «Cómo funciona»: ese bloque está oculto en la ficha publicada.
  *
  * Mecanismo y garantías: applyListingReview (review20261108fichas.ts): cada campo solo cambia desde su valor publicado
  * de partida (los «from» son los publicados en production el 09/11/2026); nunca un borrador ajeno; sin precios.
  */
-import { ASSISTED_ACTIVATION, REQUEST_STEP } from "./review20261108connect";
+import { ASSISTED_ACTIVATION } from "./review20261108connect";
 import { ASSISTED_FAQ, type ListingChange } from "./review20261108fichas";
 
 export const REVIEW_ID_2026_11_09_AUTOMATIONS = "revision-catalogo-2026-11-09-automatizaciones";
@@ -60,15 +60,6 @@ export const AUTOMATIONS_LISTING_2026_11_09: readonly ListingChange[] = [
         to: ["Pantalla «Automatizaciones» en Módulos contratados, con reglas, plantillas, historial y prueba", "Avisos al equipo en la campana del panel"],
       },
       terms: { from: { activation: "Todavía no se puede contratar: está en preparación." }, to: { activation: ASSISTED_ACTIVATION } },
-      howItWorks: {
-        from: undefined,
-        to: [
-          REQUEST_STEP,
-          { title: "Reglas", text: "Eliges cuándo (oportunidad, presupuesto, reserva o factura), las condiciones y los pasos, o partes de una plantilla." },
-          { title: "Prueba", text: "Pruebas la regla con lo ocurrido en los últimos días y ves qué haría, sin enviar ni crear nada." },
-          { title: "En marcha", text: "La enciendes cuando estés conforme y sigues cada ejecución en su historial, con topes diarios." },
-        ],
-      },
       faq: {
         from: IN_PREPARATION_FAQ,
         to: [
@@ -77,7 +68,7 @@ export const AUTOMATIONS_LISTING_2026_11_09: readonly ListingChange[] = [
             q: "¿Qué puede hacer una regla?",
             a: "Cuando entra una oportunidad, un presupuesto enviado sigue sin respuesta, se confirma una reserva, se acerca la fecha de una reserva o una factura sigue sin cobrar, puede enviar un correo al cliente, crear una tarea, avisar a tu equipo en el panel o mover y etiquetar la oportunidad, en hasta cinco pasos con retardo.",
           },
-          { q: "¿Envía publicidad?", a: "No. Es para comunicaciones operativas y seguimientos. Un correo comercial solo sale a quien ha aceptado recibir comunicaciones comerciales; boletines y promociones se hacen con Elephant Campaigns." },
+          { q: "¿Envía publicidad?", a: "No. Es para comunicaciones operativas y seguimientos. Un correo comercial solo sale a quien ha aceptado recibir comunicaciones comerciales, con su enlace de baja; boletines y promociones se hacen con Elephant Campaigns." },
           { q: "¿Qué automatizaciones tengo ya en mi plan?", a: "Las automatizaciones básicas forman parte de tu plan." },
           { q: "¿Forma parte de algún paquete?", a: "Sí, del Paquete AI Suite, junto con Elephant Copilot avanzado." },
         ],

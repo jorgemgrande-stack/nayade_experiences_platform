@@ -51,7 +51,7 @@ describe("revisión del 09/11/2026: Automatizaciones avanzadas", () => {
     // Simulación que se reporta al coordinador
     console.log(`[simulación ${REVIEW_ID_2026_11_09_AUTOMATIONS}]`, JSON.stringify(sim, null, 2));
     expect(sim.conflicts).toEqual([]);
-    expect(sim.changed).toEqual([`${KEY}: in_preparation → on_request; ficha (cta, longDescription, valueProposition, benefits, excludes, integrations, coreIntegration, terms, howItWorks, faq)`]);
+    expect(sim.changed).toEqual([`${KEY}: in_preparation → on_request; ficha (cta, longDescription, valueProposition, benefits, excludes, integrations, coreIntegration, terms, faq)`]);
     const r = await applyListingReview(k.svc, k.store, { apply: true, author: AUTHOR, changes: AUTOMATIONS_LISTING_2026_11_09 });
     expect(r.conflicts).toEqual([]);
     expect(JSON.stringify(await k.store.listPrices())).toBe(prices);
@@ -59,6 +59,8 @@ describe("revisión del 09/11/2026: Automatizaciones avanzadas", () => {
     const d = productDraft.parse((await k.store.getEntry("product", KEY))!.draft);
     expect(d).toMatchObject({ technicalStatus: "partial", activation: { kind: "feature" }, catalog: { commercialStatus: "on_request", implementationLevel: 1, stripePrepared: false }, commercial: { cta: "contact", capacityRules: ["Por empresa"] } });
     expect(d.commercial?.faq?.[0].q).toBe("¿Cómo se pone en marcha?");
+    // «Cómo funciona» está oculto en la ficha publicada: la revisión no lo promete
+    expect(d.commercial?.howItWorks).toBeUndefined();
     // Ficha honesta: los cinco disparadores y las acciones reales; nada de «Próximamente» ni de inclusión en Business
     const text = JSON.stringify(d.commercial);
     for (const s of ["oportunidad", "presupuesto", "reserva", "factura", "correo", "tarea", "avisar", "etiquet"]) expect(text.toLowerCase()).toContain(s);
