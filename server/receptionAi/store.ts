@@ -23,12 +23,14 @@ import {
 
 export class ReceptionNotInstalled extends Error {
   constructor() {
-    super("La recepcionista virtual aún no está preparada en tu empresa: falta aplicar la actualización 0056_connect_reception_ai de su base de datos.");
+    super("La recepcionista virtual aún no está preparada en tu empresa: falta aplicar las actualizaciones 0056_connect_reception_ai y 0057_reception_ai_cupos de su base de datos.");
     this.name = "ReceptionNotInstalled";
   }
 }
 
 export type MessageRole = "user" | "assistant" | "tool";
+/** Cupos diarios del chat (migración 0057): respuestas de la IA y solicitudes creadas desde el chat. */
+export type ReceptionQuotaKind = "chat_reply" | "chat_lead";
 /** customer: lo escribe o dice el cliente · ai: respuesta de la IA · fallback: respuesta fija sin IA · tool: herramienta de voz. */
 export type MessageOrigin = "customer" | "ai" | "fallback" | "tool";
 
@@ -99,6 +101,13 @@ export interface ReceptionStore {
   conversations(f: ConversationFilter): Promise<{ rows: Conversation[]; total: number }>;
   /** Respuestas de la IA (chat) en los últimos `seconds` segundos. */
   aiRepliesSince(seconds: number): Promise<number>;
+  /**
+   * Reserva atómica de una unidad del cupo diario `kind` del día `day` (AAAA-MM-DD en la zona de la empresa). true si
+   * quedaba cupo (y ya está consumido); false si se ha llegado a `limit`. Dos peticiones a la vez nunca superan el máximo.
+   */
+  reserveDaily(kind: ReceptionQuotaKind, day: string, limit: number): Promise<boolean>;
+  /** Devuelve al cupo una unidad reservada que no se llegó a usar (la IA no respondió o no se creó la solicitud). */
+  releaseDaily(kind: ReceptionQuotaKind, day: string): Promise<void>;
   stats(days: number): Promise<Array<{ channel: ReceptionChannel; outcome: ReceptionOutcome; n: number }>>;
 }
 
@@ -184,6 +193,7 @@ export class MemoryReceptionStore implements ReceptionStore {
   convs: Conversation[] = [];
   msgs: Array<StoredMessage & { conversationId: number; at: number }> = [];
   clock: () => number = () => Date.now();
+  quotas = new Map<string, number>();
 
   async settings() {
     return structuredClone(this.set);
@@ -266,6 +276,17 @@ export class MemoryReceptionStore implements ReceptionStore {
   async aiRepliesSince(seconds: number) {
     const since = this.clock() - seconds * 1000;
     return this.msgs.filter((m) => m.origin === "ai" && m.at >= since).length;
+  }
+  async reserveDaily(kind: ReceptionQuotaKind, day: string, limit: number) {
+    const k = `${day}:${kind}`;
+    const used = this.quotas.get(k) ?? 0;
+    if (used >= limit) return false;
+    this.quotas.set(k, used + 1);
+    return true;
+  }
+  async releaseDaily(kind: ReceptionQuotaKind, day: string) {
+    const k = `${day}:${kind}`;
+    this.quotas.set(k, Math.max(0, (this.quotas.get(k) ?? 0) - 1));
   }
   async stats(days: number) {
     const since = this.clock() - days * 86_400_000;
@@ -424,6 +445,19 @@ export class TenantDbReceptionStore implements ReceptionStore {
   }
   aiRepliesSince(seconds: number) {
     return this.exec(async (db) => Number(rowsOf(await db.execute(sql`SELECT COUNT(*) AS n FROM reception_messages WHERE origin = 'ai' AND created_at >= NOW(3) - INTERVAL ${seconds} SECOND`))[0]?.n ?? 0));
+  }
+  reserveDaily(kind: ReceptionQuotaKind, day: string, limit: number) {
+    return this.exec(async (db) => {
+      // La fila del día existe (idempotente) y el UPDATE condicionado consume una unidad solo si queda cupo: el bloqueo
+      // de fila de InnoDB serializa las peticiones simultáneas, así que nunca se supera el máximo
+      await db.execute(sql`INSERT IGNORE INTO reception_ai_cupos (dia, tipo, usados) VALUES (${day}, ${kind}, 0)`);
+      return affected(await db.execute(sql`UPDATE reception_ai_cupos SET usados = usados + 1 WHERE dia = ${day} AND tipo = ${kind} AND usados < ${limit}`)) === 1;
+    });
+  }
+  releaseDaily(kind: ReceptionQuotaKind, day: string) {
+    return this.exec(async (db) => {
+      await db.execute(sql`UPDATE reception_ai_cupos SET usados = usados - 1 WHERE dia = ${day} AND tipo = ${kind} AND usados > 0`);
+    });
   }
   stats(days: number) {
     return this.exec(async (db) =>

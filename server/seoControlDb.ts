@@ -19,7 +19,7 @@ import crypto from "node:crypto";
 import { TRPCError } from "@trpc/server";
 import { sql, type SQL } from "drizzle-orm";
 import { getDb } from "./db";
-import { isMultiTenant } from "./_core/tenant";
+import { getTenantIdOrDefault, isMultiTenant } from "./_core/tenant";
 import { warmTenantIdentity } from "./_core/tenantIdentity";
 import { getVault } from "./_core/credentials/runtime";
 import {
@@ -489,8 +489,24 @@ function mapAuditPage(r: any): SeoAuditPage {
   };
 }
 
+/** Auditorías en curso por empresa en este proceso (como `running` de Ads Manager): una a la vez por empresa. */
+const auditsRunning = new Set<string>();
+export const AUDIT_RUNNING_MESSAGE = "Ya hay una auditoría de tu web en curso. Espera a que termine para lanzar otra.";
+
 export async function runAudit(input: { startUrl?: string | null }, actor: SeoActor) {
   writer(actor);
+  // Candado en memoria tomado antes de cualquier espera: dos peticiones simultáneas no pueden pasar las dos
+  const key = getTenantIdOrDefault();
+  if (auditsRunning.has(key)) throw new TRPCError({ code: "CONFLICT", message: AUDIT_RUNNING_MESSAGE });
+  auditsRunning.add(key);
+  try {
+    return await runAuditLocked(input, actor);
+  } finally {
+    auditsRunning.delete(key);
+  }
+}
+
+async function runAuditLocked(input: { startUrl?: string | null }, actor: SeoActor) {
   const hosts = await companyHosts();
   if (!hosts.length) throw precondition("Tu empresa aún no tiene una web pública con dominio: no hay nada que auditar.");
   const startUrl = input.startUrl?.trim() || `https://${hosts[0]}/`;
