@@ -87,6 +87,8 @@ export interface CommerceClient {
   request(tenantId: string, input: ModuleRequestInput): Promise<unknown>;
   /** Medición del marketplace (lotes de como mucho 50 eventos sin datos personales). Opcional en los dobles de prueba. */
   events?(tenantId: string, events: Array<{ id: string; type: string; productKey?: string; slideId?: string; at: string }>): Promise<unknown>;
+  /** Hito de activación de la prueba (primer acceso o primera acción útil; server/trialMilestones.ts). Opcional en los dobles. */
+  trialMilestone?(tenantId: string, milestone: "first_access" | "first_action", detail: string | null): Promise<{ recorded: boolean }>;
   /** Consumo de la empresa frente a los límites de su plan (Elephant Resource Manager). */
   usage(tenantId: string): Promise<unknown>;
   /** «Mi plan»: contrato vigente, periodo, cobro y facturas de la empresa (solo lectura). */
@@ -201,6 +203,7 @@ export function commerceClientFromEnv(env: NodeJS.ProcessEnv = process.env, fetc
       }
     },
     events: async (tenantId, events) => await call("POST", `${seg(tenantId)}/events`, { events }),
+    trialMilestone: async (tenantId, milestone, detail) => (await call("POST", `${seg(tenantId)}/trial-milestones`, { milestone, ...(detail ? { detail } : {}) })) as { recorded: boolean },
     usage: async (tenantId) => ((await call("GET", `${seg(tenantId)}/usage`)) as { usage: unknown }).usage,
     plan: async (tenantId) => ((await call("GET", `${seg(tenantId)}/plan`)) as { plan: unknown }).plan,
     invoiceDocument: async (tenantId, id) => ((await call("GET", `${seg(tenantId)}/invoices/${id}/document`)) as { html: string }).html,

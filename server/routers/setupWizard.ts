@@ -12,7 +12,10 @@
 import { z } from "zod";
 import { TRPCError } from "@trpc/server";
 import { router, permissionProcedure } from "../_core/trpc";
-import { getTenantMode } from "../_core/tenant";
+import { getTenantId, getTenantMode } from "../_core/tenant";
+import { commerceClientFromEnv } from "../commerceClient";
+import { reportTrialMilestones } from "../trialMilestones";
+import { isTrialTenant } from "../trialPayments";
 import { OWN_LEGAL_SETTING_KEYS, formatLegalAddress, tenantFiscalIdentity } from "../tenantBrand";
 import { currentLegalCompany } from "../invoiceHtml";
 import { warmTenantIdentity } from "../_core/tenantIdentity";
@@ -211,6 +214,13 @@ export const setupWizardRouter = router({
     void onboardingFirstAccess(progress, recipient(ctx));
     // Y su fecha, una sola vez: de ella cuentan los recordatorios de configuración incompleta (onboardingReminders.ts)
     if (progress.updatedAt === null && progress.completedAt === null) void recordOnboardingFirstAccess(typeof ctx.user.id === "number" ? ctx.user.id : null, Date.now()).catch(() => undefined);
+    // Hitos de la prueba (primer acceso y primera acción útil) al plano de control, en segundo plano y sin datos personales
+    // Todo dentro de la promesa: un canal mal configurado nunca hace fallar el estado del asistente. Solo empresas en prueba.
+    if (getTenantMode() === "multi") {
+      void Promise.resolve()
+        .then(async () => ((await isTrialTenant()) ? reportTrialMilestones(commerceClientFromEnv(), getTenantId(), state.facts, Date.now()) : []))
+        .catch(() => undefined);
+    }
     const caps = state.capabilities;
     return {
       progress,
