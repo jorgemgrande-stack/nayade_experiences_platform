@@ -176,28 +176,44 @@ const expenseInputSchema = z.object({
   supplierName: z.string().optional(),
   retentionPercent: z.string().optional(),
   accrualDate: z.string().optional(),
+  // La persona confirma el desglose de IVA con la factura (solo entonces queda «revisado»)
+  taxReviewed: z.boolean().optional(),
   // Tratamiento operativo: true = computa en P&L/EBITDA/KPIs;
   // false = "solo fiscal" (gestoría/IVA/IS/tesorería sí, pero NO en KPIs operativos).
   // Default true para mantener compatibilidad con la UX existente.
   isOperational: z.boolean().default(true),
 });
 
+/** Tipos de factura que nunca dan derecho a deducir IVA soportado. */
+const NON_DEDUCTIBLE_INVOICE_TYPES = new Set(["sin_factura", "exenta"]);
+
 /**
  * Deriva el desglose fiscal de un gasto. El `amount` es el total CON IVA:
  * base = total / (1 + tipo/100). La retención se calcula sobre la base.
- * Marca el gasto como `revisado` porque el desglose llega del formulario.
+ *
+ * Sin tipo de IVA no se supone ninguno (antes, un 21 % por defecto): el gasto queda sin desglose (base y cuota vacías;
+ * la columna `taxRate` es NOT NULL con 21 por defecto y no se toca, pero sin desglose revisado no cuenta como dato). Solo queda `revisado` cuando la persona confirma el desglose de forma explícita (`taxReviewed`), hay tipo
+ * y el tipo de factura admite deducción (`sin_factura` y `exenta` nunca). Si no, `pendiente`. El Modelo 303
+ * (server/gestoriaTax.ts) no cambia: sigue leyendo la cuota guardada o derivándola como antes.
  */
-function computeExpenseFiscal(input: { amount: string; taxRate?: string; retentionPercent?: string }) {
+export function computeExpenseFiscal(input: { amount: string; taxRate?: string; retentionPercent?: string; invoiceType?: string; taxReviewed?: boolean }) {
   const total = parseFloat(input.amount) || 0;
-  const rate = input.taxRate != null ? parseFloat(input.taxRate) || 0 : 21;
-  const { taxBase, taxAmount } = calcGeneralTax(total, rate);
+  const rawRate = input.taxRate != null && input.taxRate.trim() !== "" ? parseFloat(input.taxRate) : NaN;
+  const hasRate = Number.isFinite(rawRate);
   const retPct = input.retentionPercent ? parseFloat(input.retentionPercent) || 0 : 0;
+  const reviewed = input.taxReviewed === true && hasRate && !NON_DEDUCTIBLE_INVOICE_TYPES.has(input.invoiceType ?? "ordinaria");
+  if (!hasRate) {
+    const retentionAmount = retPct > 0 ? Number((total * retPct / 100).toFixed(2)) : null;
+    return { taxBase: null, taxAmount: null, retentionAmount: retentionAmount != null ? String(retentionAmount) : null, fiscalReviewStatus: "pendiente" as const };
+  }
+  const { taxBase, taxAmount } = calcGeneralTax(total, rawRate);
   const retentionAmount = retPct > 0 ? Number((taxBase * retPct / 100).toFixed(2)) : null;
   return {
+    taxRate: String(rawRate),
     taxBase: String(taxBase),
     taxAmount: String(taxAmount),
     retentionAmount: retentionAmount != null ? String(retentionAmount) : null,
-    fiscalReviewStatus: "revisado" as const,
+    fiscalReviewStatus: reviewed ? ("revisado" as const) : ("pendiente" as const),
   };
 }
 
@@ -276,13 +292,13 @@ const expensesRouter = router({
 
   create: manageProcedure
     .input(expenseInputSchema)
-    .mutation(async ({ input, ctx }) => {
+    .mutation(async ({ input: { taxReviewed, ...input }, ctx }) => {
       const [res] = await db.insert(expenses).values({
         ...input,
         supplierId: input.supplierId ?? null,
         reservationId: input.reservationId ?? null,
         productId: input.productId ?? null,
-        ...computeExpenseFiscal(input),
+        ...computeExpenseFiscal({ ...input, taxReviewed }),
         createdBy: ctx.user.id,
       });
       const expenseId = (res as { insertId: number }).insertId;
@@ -311,13 +327,13 @@ const expensesRouter = router({
   update: manageProcedure
     .input(expenseInputSchema.extend({ id: z.number() }))
     .mutation(async ({ input, ctx }) => {
-      const { id, ...data } = input;
+      const { id, taxReviewed, ...data } = input;
       await db.update(expenses).set({
         ...data,
         supplierId: data.supplierId ?? null,
         reservationId: data.reservationId ?? null,
         productId: data.productId ?? null,
-        ...computeExpenseFiscal(data),
+        ...computeExpenseFiscal({ ...data, taxReviewed }),
       }).where(eq(expenses.id, id));
       if (data.paymentMethod === "cash" || data.paymentMethod === "tpv_cash") {
         try {

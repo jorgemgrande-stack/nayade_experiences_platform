@@ -140,6 +140,7 @@ async function readExpenses(db: Db, ctx: SourceContext, out: SourceRead) {
       paymentMethod: expenses.paymentMethod,
       source: expenses.source,
       fiscalReviewStatus: expenses.fiscalReviewStatus,
+      invoiceType: expenses.invoiceType,
     })
     .from(expenses)
     .leftJoin(expenseSuppliers, eq(expenseSuppliers.id, expenses.supplierId));
@@ -202,8 +203,10 @@ export function expenseDocOf(r: any, date: string, bankPaidOn: string | undefine
   const payroll = typeof r.source === "string" && r.source.startsWith("hr_");
   const storedRate = Number(r.taxRate);
   const storedTax = Number(r.taxAmount);
-  const taxKnown = r.fiscalReviewStatus === "revisado" && r.taxAmount != null && Number.isFinite(storedTax) && r.taxRate != null && Number.isFinite(storedRate);
-  const taxUnknown = !payroll && !taxKnown;
+  // Sin factura o exenta: nunca deduce (no hay nada que revisar)
+  const nonDeductible = r.invoiceType === "sin_factura" || r.invoiceType === "exenta";
+  const taxKnown = !nonDeductible && r.fiscalReviewStatus === "revisado" && r.taxAmount != null && Number.isFinite(storedTax) && r.taxRate != null && Number.isFinite(storedRate);
+  const taxUnknown = !payroll && !nonDeductible && !taxKnown;
   const rate = taxKnown ? storedRate : 0;
   const taxCents = taxKnown ? centsOf(storedTax) : 0;
   const ded = Number(r.deductiblePercent ?? 100);
