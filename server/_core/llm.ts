@@ -259,6 +259,22 @@ const normalizeResponseFormat = ({
 /** Tokens de salida que se reservan antes de la llamada (lo que pase de aquí entra por la medición posterior). */
 export const LLM_OUTPUT_RESERVE = 1024;
 
+/** Tope de tokens de salida por llamada (y valor por defecto si quien llama no indica `maxTokens`). */
+export const MAX_OUTPUT_TOKENS = 32768;
+/** Mínimo cuando se pide razonamiento (`thinking`): el tope de salida debe superar su presupuesto de 128 tokens. */
+const MIN_OUTPUT_TOKENS_WITH_THINKING = 256;
+
+/**
+ * Tokens de salida de la llamada: `maxTokens` (o `max_tokens`) si es un entero positivo, nunca por encima de
+ * MAX_OUTPUT_TOKENS; sin indicarlo, MAX_OUTPUT_TOKENS como hasta ahora.
+ */
+export function resolveMaxTokens(params: Pick<InvokeParams, "maxTokens" | "max_tokens">, withThinking = false): number {
+  const asked = params.maxTokens ?? params.max_tokens;
+  if (typeof asked !== "number" || !Number.isFinite(asked) || asked < 1) return MAX_OUTPUT_TOKENS;
+  const n = Math.min(MAX_OUTPUT_TOKENS, Math.floor(asked));
+  return withThinking ? Math.max(MIN_OUTPUT_TOKENS_WITH_THINKING, n) : n;
+}
+
 /**
  * Estimación de los tokens de entrada antes de la llamada (≈ 4 caracteres por token del texto, más 4 por mensaje). Las
  * imágenes y ficheros no cuentan: se miden después con lo que devuelve el proveedor. Pura.
@@ -316,7 +332,7 @@ export async function invokeLLM(params: InvokeParams): Promise<InvokeResult> {
     payload.tool_choice = normalizedToolChoice;
   }
 
-  payload.max_tokens = 32768
+  payload.max_tokens = resolveMaxTokens(params, provider.source === "installation");
   if (provider.source === "installation") payload.thinking = {
     "budget_tokens": 128
   }

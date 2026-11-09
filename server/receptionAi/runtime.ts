@@ -23,6 +23,8 @@ export const RECEPTION_TOOLS_PATH = "/api/vapi/reception/tools";
 export const VAPI_WEBHOOK_PATH = "/api/vapi/webhook";
 /** Enlace del chat: `/recepcion/<clave>`; la clave es la firma de la empresa y de la versión del enlace. */
 export const CHAT_KEY_RE = /^[A-Za-z0-9_-]{32}$/;
+/** Tope de tokens de salida de cada respuesta de la recepcionista (el texto se recorta además a 2000 caracteres). */
+export const RECEPTION_MAX_TOKENS = 600;
 
 const store = new TenantDbReceptionStore();
 const url = (path: string) => `${publicBaseUrl().replace(/\/+$/, "")}${path}`;
@@ -60,7 +62,8 @@ export function receptionService(): ReceptionService {
       return typeof r === "number" ? r : r.id;
     },
     llm: async (messages: LlmMessage[]) => {
-      const res = await invokeLLM({ messages });
+      // Respuestas breves de recepción: tope de salida acotado
+      const res = await invokeLLM({ messages, maxTokens: RECEPTION_MAX_TOKENS });
       return textOf(res.choices?.[0]?.message?.content).trim();
     },
     vapi: {

@@ -27,11 +27,16 @@ const licensed = adminProcedure.use(async ({ type, next }) => {
  * Respuesta de referencia con la IA central del Core (proveedor de la empresa o el central de Big Elephant; consumo
  * medido y limitado por empresa en `invokeLLM`). Es una estimación: el modelo no navega ni ve lo que ve un usuario.
  */
-const askCentralAi: geo.AskAi = async (question, context) => {
+/** Tope de salida de la respuesta de referencia. */
+export const GEO_REFERENCE_MAX_TOKENS = 1500;
+
+export const askCentralAi: geo.AskAi = async (question, context) => {
   const where = [context.sector, context.zone].filter(Boolean).join(" · ");
   let res;
   try {
     res = await invokeLLM({
+      // Respuesta breve (máximo 180 palabras) más las listas de negocios y URL en JSON
+      maxTokens: GEO_REFERENCE_MAX_TOKENS,
       messages: [
         {
           role: "system",

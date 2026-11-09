@@ -72,6 +72,19 @@ describe("proveedor de IA por empresa", () => {
     expect(JSON.stringify(fetchMock.mock.calls)).not.toContain("clave-heredada-forge");
   });
 
+  it("max_tokens: el que pide quien llama (sin pasar del tope) y, si no pide nada, el de siempre", async () => {
+    process.env.ES_AI_API_URL = "https://ia.bigelephant.example/v1";
+    process.env.ES_AI_API_KEY = "clave-central";
+    await runWithTenant("empresa-a", async () => {
+      setResolvedCredentials({});
+      await invokeLLM({ messages: [{ role: "user", content: "hola" }] });
+      await invokeLLM({ messages: [{ role: "user", content: "hola" }], maxTokens: 600 });
+      await invokeLLM({ messages: [{ role: "user", content: "hola" }], maxTokens: 100_000 });
+    });
+    const sent = fetchMock.mock.calls.map((c) => JSON.parse(String((c as [string, RequestInit])[1].body)).max_tokens);
+    expect(sent).toEqual([32768, 600, 32768]);
+  });
+
   it("clave propia de una empresa (prevista): prevalece sobre la central solo para esa empresa", async () => {
     process.env.ES_AI_API_URL = "https://ia.bigelephant.example/v1";
     process.env.ES_AI_API_KEY = "clave-central";
