@@ -11,8 +11,9 @@
  */
 import { TRPCError } from "@trpc/server";
 import { eq, sql } from "drizzle-orm";
-import { cashRegisters } from "../drizzle/schema";
+import { cashRegisters, type CashSession } from "../drizzle/schema";
 import { getCapabilityAccess } from "./_core/capabilities/access";
+import { decide } from "./_core/capabilities/model";
 import { legacyDb } from "./_core/legacyDb";
 import { getSystemSetting } from "./config";
 import { licenceSummary } from "./planSeats";
@@ -101,9 +102,9 @@ export async function companyCutoff(): Promise<{ cutoff: string; timeZone: strin
   return { cutoff: CUTOFF_RE.test(c) ? c : DEFAULT_CUTOFF, timeZone: safeTimeZone(tz) };
 }
 
-/** Día operativo de un instante para una caja (su corte, o el de la empresa). */
-export async function registerOperationalDay(ms: number, registerCutoff: string | null | undefined): Promise<string> {
-  const company = await companyCutoff();
+/** Día operativo de un instante para una caja (su corte, o el de la empresa; se puede pasar ya leído). */
+export async function registerOperationalDay(ms: number, registerCutoff: string | null | undefined, companyCfg?: { cutoff: string; timeZone: string }): Promise<string> {
+  const company = companyCfg ?? (await companyCutoff());
   const cutoff = registerCutoff && CUTOFF_RE.test(registerCutoff) ? registerCutoff : company.cutoff;
   return operationalDay(ms, cutoff, company.timeZone);
 }
@@ -140,10 +141,41 @@ export interface ClosureSnapshot {
 const money = (n: number) => (Math.round(n * 100) / 100).toFixed(2);
 
 /** Foto del cierre: se escribe UNA vez (INSERT IGNORE). Nunca se actualiza ni se borra. */
-export async function recordClosureSnapshot(s: ClosureSnapshot): Promise<void> {
-  await db.execute(sql`INSERT IGNORE INTO tpv_session_closures
+export async function recordClosureSnapshot(s: ClosureSnapshot, exec: { execute: (q: ReturnType<typeof sql>) => Promise<unknown> } = db): Promise<void> {
+  await exec.execute(sql`INSERT IGNORE INTO tpv_session_closures
     (session_id, register_id, site_id, operational_day, opening_amount, total_cash, total_card, total_bizum, total_mixed, manual_in, manual_out, expected_cash, counted_cash, difference, closed_by, closed_by_name, opened_at, closed_at)
     VALUES (${s.sessionId}, ${s.registerId}, ${s.siteId}, ${s.operationalDay}, ${money(s.openingAmount)}, ${money(s.totalCash)}, ${money(s.totalCard)}, ${money(s.totalBizum)}, ${money(s.totalMixed)}, ${money(s.manualIn)}, ${money(s.manualOut)}, ${money(s.expectedCash)}, ${money(s.countedCash)}, ${money(s.difference)}, ${s.closedBy}, ${s.closedByName}, ${s.openedAt}, ${s.closedAt})`);
+}
+
+/**
+ * Repara la foto de un cierre que no la tenga (p. ej. si el proceso cayó justo después de cerrar): la rehace con los
+ * totales que guardó la sesión. Idempotente (INSERT IGNORE); nunca cambia una foto existente.
+ */
+export async function ensureClosureSnapshot(row: CashSession): Promise<void> {
+  if (row.status !== "closed" || row.closingAmount == null || row.countedCash == null) return;
+  if (await getClosureSnapshot(row.id)) return;
+  const [reg] = await db.select({ cutoffTime: cashRegisters.cutoffTime }).from(cashRegisters).where(eq(cashRegisters.id, row.registerId));
+  const n = (v: unknown) => Number(v ?? 0) || 0;
+  await recordClosureSnapshot({
+    sessionId: row.id,
+    registerId: row.registerId,
+    siteId: row.siteId ?? null,
+    operationalDay: await registerOperationalDay(Number(row.openedAt), reg?.cutoffTime ?? null),
+    openingAmount: n(row.openingAmount),
+    totalCash: n(row.totalCash),
+    totalCard: n(row.totalCard),
+    totalBizum: n(row.totalBizum),
+    totalMixed: n(row.totalMixed),
+    manualIn: n(row.totalManualIn),
+    manualOut: n(row.totalManualOut),
+    expectedCash: n(row.closingAmount),
+    countedCash: n(row.countedCash),
+    difference: n(row.cashDifference),
+    closedBy: null,
+    closedByName: null,
+    openedAt: Number(row.openedAt),
+    closedAt: Number(row.closedAt ?? Date.now()),
+  });
 }
 
 export async function getClosureSnapshot(sessionId: number): Promise<Row | null> {
@@ -188,7 +220,8 @@ export async function addCorrection(input: { sessionId: number; kind: Correction
     const [r] = await rows(sql`SELECT * FROM tpv_session_corrections WHERE idempotency_key = ${input.key}`);
     return r ? toCorrection(r) : null;
   };
-  const same = (c: CorrectionRow) => c.sessionId === input.sessionId && c.kind === input.kind && Math.abs(c.amount - input.amount) < 0.005;
+  const cents = Math.round(input.amount * 100);
+  const same = (c: CorrectionRow) => c.sessionId === input.sessionId && c.kind === input.kind && Math.round(c.amount * 100) === cents;
   const existing = await find();
   if (existing) {
     if (!same(existing)) throw new TRPCError({ code: "CONFLICT", message: "Esa clave ya se usó para otra corrección" });
@@ -196,11 +229,12 @@ export async function addCorrection(input: { sessionId: number; kind: Correction
   }
   try {
     await db.execute(sql`INSERT INTO tpv_session_corrections (session_id, kind, amount, reason, created_by, created_by_name, idempotency_key, created_at)
-      VALUES (${input.sessionId}, ${input.kind}, ${money(input.amount)}, ${input.reason}, ${input.userId}, ${input.userName}, ${input.key}, ${Date.now()})`);
+      VALUES (${input.sessionId}, ${input.kind}, ${(cents / 100).toFixed(2)}, ${input.reason}, ${input.userId}, ${input.userName}, ${input.key}, ${Date.now()})`);
   } catch (e) {
     // Dos intentos a la vez con la misma clave: el segundo devuelve la del primero
     const again = await find();
     if (again && same(again)) return again;
+    if (again) throw new TRPCError({ code: "CONFLICT", message: "Esa clave ya se usó para otra corrección" });
     throw e;
   }
   return (await find())!;
@@ -216,4 +250,22 @@ export function correctionsCashDelta(list: Pick<CorrectionRow, "kind" | "amount"
 export async function setCompanyCutoff(cutoff: string): Promise<void> {
   if (!CUTOFF_RE.test(cutoff)) throw new TRPCError({ code: "BAD_REQUEST", message: "Hora de corte no válida (HH:MM)" });
   await upsertSettings([{ key: CUTOFF_SETTING, value: cutoff, label: "Hora de corte operativo del TPV", category: "general" }]);
+}
+
+/** ¿Error de clave única duplicada de MySQL (también envuelto por drizzle)? */
+export function isDuplicateKeyError(e: unknown): boolean {
+  const err = e as { message?: string; code?: string; cause?: { message?: string; code?: string } } | null;
+  return /Duplicate entry|ER_DUP_ENTRY/.test(`${err?.code ?? ""} ${err?.message ?? ""} ${err?.cause?.code ?? ""} ${err?.cause?.message ?? ""}`);
+}
+
+/** ¿Tiene la empresa TPV Advanced contratado (para mostrarlo)? En la instalación única, sí. */
+export async function tpvAdvancedContracted(): Promise<boolean> {
+  try {
+    const access = getCapabilityAccess();
+    const grants = await access.grants();
+    if (!grants) return true;
+    return decide(grants, TPV_ADVANCED_CAPABILITY, { write: false, now: access.currentTime() }).allowed;
+  } catch {
+    return false;
+  }
 }
