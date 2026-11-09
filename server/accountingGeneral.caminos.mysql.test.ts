@@ -7,7 +7,7 @@
  * vuelve a cero en los casos normales y el IVA soportado sale solo de datos confirmados.
  * TEST_MIGRATIONS_DIR permite apuntar a una copia del carril sin huecos mientras se fusionan las anteriores.
  */
-import { describe, it, expect, beforeAll, afterAll } from "vitest";
+import { describe, it, expect, beforeAll, afterAll, vi } from "vitest";
 import { startEssentialApp, data, type EssentialApp, type Res } from "./essentialApp.testkit";
 
 const URL_ = process.env.REGISTRY_TEST_DATABASE_URL;
@@ -192,5 +192,27 @@ describe.skipIf(!URL_)("Contabilidad general · caminos reales del Core (TPV, an
     const r = await sync();
     expect(r.review.map((x: any) => x.key)).toContain(`cajamov:${mv.id}`);
     expect(await delta(b)).toEqual({ "570": 500, "5701": 0, "555": -500 });
+  });
+
+  it("sin la 0060 (sin acc_cash_movement_kinds): el movimiento se guarda igual y solo se avisa una vez", async () => {
+    await ess.sql("a", "DROP TABLE acc_cash_movement_kinds");
+    const warn = vi.spyOn(console, "warn");
+    try {
+      const before = await count("SELECT COUNT(*) AS n FROM cash_movements");
+      const m1 = await move({ type: "out", amount: 2, reason: "Hielo sin 0060", outKind: "gasto" });
+      const m2 = await move({ type: "in", amount: 2, reason: "Fondo sin 0060", inKind: "fondo" });
+      expect([m1.id, m2.id].every(Boolean)).toBe(true);
+      expect(await count("SELECT COUNT(*) AS n FROM cash_movements")).toBe(before + 2);
+      expect(warn.mock.calls.filter((c) => String(c[0]).includes("0060")).length).toBe(1);
+      // El TPV sigue creando el gasto de la retirada
+      let n = 0;
+      for (let i = 0; i < 40 && n === 0; i++) {
+        await sleep(150);
+        n = await count("SELECT COUNT(*) AS n FROM expenses WHERE concept LIKE '%Hielo sin 0060%'");
+      }
+      expect(n).toBe(1);
+    } finally {
+      warn.mockRestore();
+    }
   });
 });

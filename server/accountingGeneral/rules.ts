@@ -301,7 +301,7 @@ export function cashCloseEntry(c: { sessionId: number; date: string; differenceC
 }
 
 /** Tipo de un movimiento manual de la caja del TPV (server/cashMovementKindsDb.ts); null si no consta. */
-export type CashMoveKind = "gasto" | "devolucion" | "traspaso" | "fondo" | "cobro";
+export type CashMoveKind = "gasto" | "devolucion" | "traspaso" | "fondo" | "cobro" | "fianza";
 
 /**
  * ¿El motivo parece el de una devolución de efectivo a un cliente? Solo se usa cuando el movimiento NO tiene tipo
@@ -318,7 +318,9 @@ export const effectiveCashKind = (m: { type: "in" | "out"; reason: string; kind?
  *  - salida «gasto»: el puente de caja; la salda el pago de su gasto (`expenses.source = tpv`, Debe 555 al pagar);
  *  - salida «devolucion»: clientes (devuelve el saldo a favor que dejó el ticket anulado o el abono);
  *  - salida «traspaso» y entrada «fondo»: la Caja Central;
- *  - entrada «cobro»: clientes (cobro pendiente).
+ *  - entrada «cobro»: clientes (cobro pendiente);
+ *  - «fianza» (alquiler, server/skiRental/depositStore.ts): fianzas recibidas (560); su cobro y su devolución, o la
+ *    parte aplicada a la venta de daños (que entra como venta del TPV), se saldan entre sí.
  * Sin tipo explícito (movimientos anteriores, por API o de otros módulos, como las fianzas del alquiler): una salida con
  * motivo de devolución, contra clientes; lo demás, al puente de caja (pendiente de aplicar, visible en el 555; las
  * entradas sin tipo quedan además «para revisar»).
@@ -327,6 +329,7 @@ export function cashMoveCounterpart(m: { type: "in" | "out"; reason: string; kin
   const kind = effectiveCashKind(m);
   if (kind === "devolucion" || kind === "cobro") return map.customers;
   if (kind === "traspaso" || kind === "fondo") return map.centralCash;
+  if (kind === "fianza") return map.deposits;
   return map.cashBridge;
 }
 

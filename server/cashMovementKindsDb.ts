@@ -17,7 +17,9 @@ export const CASH_OUT_KINDS = ["gasto", "devolucion", "traspaso"] as const;
 export const CASH_IN_KINDS = ["fondo", "cobro"] as const;
 export type CashOutKind = (typeof CASH_OUT_KINDS)[number];
 export type CashInKind = (typeof CASH_IN_KINDS)[number];
-export type CashMoveKind = CashOutKind | CashInKind;
+/** Fianzas del alquiler (server/skiRental/depositStore.ts): cobro y devolución, contra fianzas recibidas. */
+export const CASH_DEPOSIT_KIND = "fianza" as const;
+export type CashMoveKind = CashOutKind | CashInKind | typeof CASH_DEPOSIT_KIND;
 
 /** Tipo explícito de un movimiento (el que eligió el cajero) o null si no se indicó. */
 export function explicitCashMoveKind(m: { type: "in" | "out"; outKind?: CashOutKind | null; inKind?: CashInKind | null }): CashMoveKind | null {

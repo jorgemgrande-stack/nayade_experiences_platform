@@ -11,6 +11,8 @@ import { createReavExpedient, attachReavDocument, upsertClientFromReservation, p
 import { createGHLContact, triggerGHLWorkflow, syncLeadUrlsToGHL } from "../ghl";
 import { createCashMovementIfNotExists, getDefaultCashAccountId, recordCashTransferToCentral } from "./cashRegisterHelper";
 import { CASH_IN_KINDS, CASH_OUT_KINDS, explicitCashMoveKind, linkCashMovementExpense, recordCashMovementKind } from "../cashMovementKindsDb";
+import { getCapabilityAccess } from "../_core/capabilities/access";
+import { ACC_CAPABILITY } from "../../shared/accountingGeneral";
 import { calcularREAVSimple } from "../reav";
 import { getDailyControlCenter } from "./dailyControl";
 import {
@@ -673,8 +675,14 @@ export const tpvRouter = router({
       })
     )
     .mutation(async ({ input: raw, ctx }) => {
-      // Sin tipo, el TPV se comporta como siempre (gasto); la contabilidad general solo guarda el tipo explícito
+      // Sin la contabilidad general (accounting-general), el TPV es el de siempre: solo «gasto» (por defecto) o
+      // «traspaso», y no se guarda ningún tipo. Con ella, además «devolucion» y el tipo explícito para contabilizarlo.
+      const accounting = (await getCapabilityAccess().check(ACC_CAPABILITY, { write: true })).allowed;
+      if (!accounting && raw.outKind === "devolucion") {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "Tipo de salida no válido" });
+      }
       const input = { ...raw, outKind: raw.outKind ?? ("gasto" as const) };
+      const kind = accounting ? explicitCashMoveKind(raw) : null;
       const id = await db.transaction(async (tx) => {
         const [result] = await tx.insert(cashMovements).values({
           sessionId: input.sessionId,
@@ -685,7 +693,7 @@ export const tpvRouter = router({
           createdAt: Date.now(),
         });
         const movementId = (result as any).insertId as number;
-        await recordCashMovementKind(tx, movementId, explicitCashMoveKind(raw));
+        await recordCashMovementKind(tx, movementId, kind);
         return movementId;
       });
       const [movement] = await db.select().from(cashMovements).where(eq(cashMovements.id, id));

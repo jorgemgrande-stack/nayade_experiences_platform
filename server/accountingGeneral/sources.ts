@@ -74,7 +74,7 @@ export function taxConfirmationMatches(c: TaxConfirmation | null | undefined, r:
 }
 
 type Db = { select: (...a: any[]) => any; execute: (q: SQL) => Promise<unknown> };
-const CASH_KINDS = new Set<string>(["gasto", "devolucion", "traspaso", "fondo", "cobro"]);
+const CASH_KINDS = new Set<string>(["gasto", "devolucion", "traspaso", "fondo", "cobro", "fianza"]);
 const END = "2100-12-31";
 const text = (v: unknown) => (v == null ? "" : String(v));
 
@@ -294,21 +294,40 @@ async function readCash(db: Db, ctx: SourceContext, out: SourceRead) {
     .select({ id: cashMovements.id, type: cashMovements.type, amount: cashMovements.amount, reason: cashMovements.reason, createdAt: cashMovements.createdAt })
     .from(cashMovements)
     .where(gte(cashMovements.createdAt, since));
-  // Tipo de cada movimiento (tpv.addCashMovement): su contrapartida real
+  // Tipo de cada movimiento (tpv.addCashMovement, depositStore) y el gasto que creó: su contrapartida real
   const kinds = new Map<number, CashMoveKind>();
+  const linkedExpense = new Set<number>();
+  const tpvExpenseKeys = new Set<string>();
   if ((moves as unknown[]).length) {
-    const [kr] = (await db.execute(sql`SELECT movement_id, kind FROM acc_cash_movement_kinds`)) as unknown as [Array<{ movement_id: number; kind: string }>];
-    for (const k of kr) if (CASH_KINDS.has(k.kind)) kinds.set(Number(k.movement_id), k.kind as CashMoveKind);
+    const [kr] = (await db.execute(sql`SELECT movement_id, kind, expense_id FROM acc_cash_movement_kinds`)) as unknown as [Array<{ movement_id: number; kind: string | null; expense_id: number | null }>];
+    for (const k of kr) {
+      if (k.kind != null && CASH_KINDS.has(k.kind)) kinds.set(Number(k.movement_id), k.kind as CashMoveKind);
+      if (k.expense_id != null) linkedExpense.add(Number(k.movement_id));
+    }
+    // Fianzas del alquiler anteriores a la 0060: las identifica su evento (ski_deposit_events.cash_movement_id)
+    try {
+      const [dr] = (await db.execute(sql`SELECT DISTINCT cash_movement_id AS id FROM ski_deposit_events WHERE cash_movement_id IS NOT NULL`)) as unknown as [Array<{ id: number }>];
+      for (const d of dr) if (!kinds.has(Number(d.id))) kinds.set(Number(d.id), "fianza");
+    } catch {
+      // Sin el alquiler instalado no hay fianzas
+    }
+    // Gastos que el TPV creó para salidas anteriores a su enlace (mismo motivo e importe)
+    const tx = await db.select({ concept: expenses.concept, amount: expenses.amount }).from(expenses).where(eq(expenses.source, "tpv"));
+    for (const e of tx as Array<{ concept: string; amount: string }>) tpvExpenseKeys.add(`${text(e.concept)}|${centsOf(e.amount)}`);
   }
   for (const m of moves as Array<{ id: number; type: "in" | "out"; amount: string; reason: string; createdAt: number }>) {
     const c = { id: m.id, date: madridDayKey(new Date(Number(m.createdAt))), type: m.type, amountCents: centsOf(m.amount), reason: m.reason ?? "", kind: kinds.get(Number(m.id)) ?? null };
     out.desired.set(`cajamov:${m.id}`, desiredOf((map) => cashMoveEntry(c, map), ctx.map));
-    // Sin tipo elegido por el cajero: una entrada queda en el puente de caja y una salida con motivo de devolución, contra
-    // clientes; las dos, para revisar
-    if (c.kind == null && c.amountCents !== 0) {
-      if (m.type === "in") out.review.push({ key: `cajamov:${m.id}`, message: `Entrada de caja #${m.id} (${c.reason.slice(0, 80)}) sin tipo: queda en el puente de caja (555) hasta aplicarla` });
-      else if (effectiveCashKind(c) === "devolucion") out.review.push({ key: `cajamov:${m.id}`, message: `Salida de caja #${m.id} (${c.reason.slice(0, 80)}) sin tipo: por su motivo se contabiliza como devolución a un cliente` });
-    }
+    if (c.amountCents === 0) continue;
+    const key = `cajamov:${m.id}`;
+    const what = `${m.type === "in" ? "Entrada" : "Salida"} de caja #${m.id} (${c.reason.slice(0, 80)})`;
+    const effective = effectiveCashKind(c);
+    // Lo que queda en el puente de caja (555) sin nada que lo salde, para revisar
+    const clearedByExpense = linkedExpense.has(Number(m.id)) || tpvExpenseKeys.has(`Retirada de caja TPV — ${c.reason}|${c.amountCents}`);
+    if (m.type === "in" && c.kind == null) out.review.push({ key, message: `${what} sin tipo: queda en el puente de caja (555) hasta aplicarla` });
+    else if (m.type === "out" && c.kind == null && effective === "devolucion") out.review.push({ key, message: `${what} sin tipo: por su motivo se contabiliza como devolución a un cliente` });
+    else if (m.type === "out" && effective === "gasto" && !clearedByExpense) out.review.push({ key, message: `${what} de tipo gasto sin su gasto (¿faltaba la categoría o el centro de coste?): queda en el puente de caja (555)` });
+    else if (m.type === "out" && effective == null && !clearedByExpense) out.review.push({ key, message: `${what} sin tipo y sin gasto que la salde (¿un traspaso anterior?): queda en el puente de caja (555)` });
   }
 }
 

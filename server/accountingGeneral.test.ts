@@ -308,6 +308,12 @@ describe("caja del TPV", () => {
     expect(other(mv("in", null, "Fondo adicional")).accountCode).toBe("555");
     expect(cashMoveCounterpart({ type: "out", reason: "Refund ticket", kind: null }, map)).toBe("430");
     expect(cashMoveCounterpart({ type: "out", reason: "Abono al cliente", kind: null }, map)).toBe("430");
+    // Fianzas del alquiler: contra fianzas recibidas (560), aunque el motivo diga «Devolución»; cobro y devolución se saldan
+    expect(cashMoveCounterpart({ type: "out", reason: "Devolución fianza alquiler #7", kind: "fianza" }, map)).toBe("560");
+    const deposit = [mv("in", "fianza", "Fianza alquiler #7"), mv("out", "fianza", "Devolución fianza alquiler #7")];
+    expect(deposit.reduce((a, d) => a + side(d, "560") + side(d, "570") + side(d, "555") + side(d, "430"), 0)).toBe(0);
+    expect(side(deposit[0], "560")).toBe(-5000);
+    for (const d of deposit) validateDraft(d, accounts);
     expect(cashMoveCounterpart({ type: "out", reason: "Reembolso cliente", kind: null }, map)).toBe("430");
     for (const d of [mv("out", "traspaso"), mv("in", "fondo"), mv("out", "devolucion"), mv("in", "cobro")]) validateDraft(d, accounts);
     // Traspaso y vuelta del fondo: la caja y la Caja Central quedan como estaban, y nada pasa por el 555

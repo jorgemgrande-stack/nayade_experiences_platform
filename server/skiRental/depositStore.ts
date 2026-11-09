@@ -12,6 +12,7 @@ import { getTenantDatabase } from "../_core/dbRegistry";
 import { ModuleNotInstalled } from "../sdk";
 import type { CashMove, ChargeStatus, DepositMethod, DepositStatus, PayMethod, SettlementPlan } from "../../shared/skiDeposits";
 import { SKI_RENTAL_ID } from "./manifest";
+import { CASH_DEPOSIT_KIND, recordCashMovementKind } from "../cashMovementKindsDb";
 
 type Row = Record<string, unknown>;
 type Db = NonNullable<Awaited<ReturnType<typeof getTenantDatabase>>>;
@@ -193,10 +194,13 @@ async function addEvent(tx: Exec, e: NewEvent, actor: string, now: number) {
 
 /** Movimiento manual en la sesión de caja del TPV (`cash_movements`, importes en euros con dos decimales). */
 async function addCashMovement(tx: Exec, sessionId: number, m: CashMove, cashierName: string, now: number): Promise<number> {
-  return insertIdOf(
+  const id = insertIdOf(
     await tx.execute(sql`INSERT INTO cash_movements (sessionId, type_cm, amount, reason, cashierName, createdAt)
       VALUES (${sessionId}, ${m.type}, ${(m.cents / 100).toFixed(2)}, ${m.reason.slice(0, 300)}, ${cashierName.slice(0, 200)}, ${now})`),
   );
+  // Contabilidad general: es una fianza (cobro o devolución), en la misma transacción (sin la 0060, nada)
+  await recordCashMovementKind(tx, id, CASH_DEPOSIT_KIND);
+  return id;
 }
 
 async function lockedSession(tx: Exec, sessionId: number): Promise<CashSessionInfo | null> {

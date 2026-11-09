@@ -371,4 +371,26 @@ describe.skipIf(!URL_)("Ski Net · fianzas del alquiler (routers reales, TPV del
     expect(ok(await mutate("skiRental.settleDeposit", { ...NORTE, depositId: dep.id, damageCents: 2000, reason: "Fijación rota", sessionId: sessNorte })).replayed).toBe(true);
     expect(await count("SELECT COUNT(*) AS n FROM cash_movements WHERE reason LIKE ?", [`%alquiler #${d4}`])).toBe(3);
   });
+
+  it("contabilidad general: las fianzas en efectivo, contra fianzas recibidas (560); su cobro y su devolución se saldan y no tocan el 555 ni el 430", async () => {
+    // Cada movimiento de fianza guardó su tipo en la misma transacción
+    expect(await count("SELECT COUNT(*) AS n FROM cash_movements m LEFT JOIN acc_cash_movement_kinds k ON k.movement_id = m.id WHERE m.reason LIKE '%fianza%' AND (k.kind IS NULL OR k.kind <> 'fianza')")).toBe(0);
+    await license("active", "", "accounting-general");
+    const s = ok(await mutate("accountingGeneral.sync", undefined));
+    expect(s.errors).toEqual([]);
+    const sum = async (code: string) => {
+      const [[r]] = (await tenantDb.query<mysql.RowDataPacket[]>(
+        "SELECT COALESCE(SUM(CAST(l.debit_cents AS SIGNED) - CAST(l.credit_cents AS SIGNED)), 0) AS n FROM acc_entry_lines l JOIN acc_entries e ON e.id = l.entry_id WHERE e.source_key LIKE 'cajamov:%' AND l.account_code = ?",
+        [code],
+      )) as unknown as [[{ n: number }]];
+      return Number(r.n);
+    };
+    // Fianzas cobradas en efectivo (130 + 60), todas liquidadas: devueltas o aplicadas a la venta de daños
+    expect(await sum("560")).toBe(0);
+    expect(await sum("555")).toBe(0);
+    expect(await sum("430")).toBe(0);
+    expect(await count("SELECT COUNT(*) AS n FROM acc_entry_lines l JOIN acc_entries e ON e.id = l.entry_id WHERE e.source_key LIKE 'cajamov:%' AND l.account_code = '560'")).toBeGreaterThan(0);
+    // La devolución de una fianza no se toma por una devolución a un cliente ni queda para revisar
+    expect(s.review.filter((r: any) => String(r.key).startsWith("cajamov:"))).toEqual([]);
+  });
 });

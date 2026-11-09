@@ -92,9 +92,14 @@ describe.skipIf(!URL_)("Core sin contabilidad general: Gastos, Gestoría y caja 
     await move({ type: "out", amount: 7, reason: "Reembolso de gasolina" }); // sin tipo: gasto, como siempre
     await move({ type: "out", amount: 20, reason: "Cambio de caja", outKind: "traspaso" });
     await move({ type: "in", amount: 5, reason: "Fondo adicional" });
+    // Los motivos rápidos del modal de siempre, con su tipo por defecto («gasto»): siguen creando el gasto
+    await move({ type: "out", amount: 4, reason: "Devolución efectivo", outKind: "gasto" });
+    await move({ type: "out", amount: 3, reason: "Cambio de caja", outKind: "gasto" });
+    // Sin la licencia, «devolucion» no es un tipo válido (como siempre)
+    expect((await ess.m("a", "tpv.addCashMovement", { sessionId, type: "out", amount: 1, reason: "x", outKind: "devolucion" }, agA)).status).toBe(400);
     // Las retiradas de tipo gasto (también la que no lo indica) crean su gasto en segundo plano; el traspaso, no
     let tpvExpenses: any[] = [];
-    for (let i = 0; i < 40 && tpvExpenses.length < 2; i++) {
+    for (let i = 0; i < 40 && tpvExpenses.length < 4; i++) {
       await sleep(150);
       tpvExpenses = await ess.sql("a", "SELECT concept, amount, paymentMethod, status FROM expenses WHERE source = 'tpv' ORDER BY id");
     }
@@ -103,11 +108,13 @@ describe.skipIf(!URL_)("Core sin contabilidad general: Gastos, Gestoría y caja 
     expect(tpvExpenses.map((e: any) => [e.concept, Number(e.amount), e.paymentMethod, e.status])).toEqual([
       ["Retirada de caja TPV — Compra de hielo", 10, "cash", "conciliado"],
       ["Retirada de caja TPV — Reembolso de gasolina", 7, "cash", "conciliado"],
+      ["Retirada de caja TPV — Devolución efectivo", 4, "cash", "conciliado"],
+      ["Retirada de caja TPV — Cambio de caja", 3, "cash", "conciliado"],
     ]);
     const sum = ok(await ess.q("a", "tpv.getSessionSummary", { sessionId }, agA), "resumen de caja");
     expect(sum.totalCash).toBe(24.2);
-    const closed = ok(await ess.m("a", "tpv.closeSession", { sessionId, countedCash: 92.2 }, agA), "cerrar caja");
+    const closed = ok(await ess.m("a", "tpv.closeSession", { sessionId, countedCash: 85.2 }, agA), "cerrar caja");
     const s = closed;
-    expect([Number(s.closingAmount), Number(s.cashDifference), Number(s.totalManualOut), Number(s.totalManualIn), Number(s.totalCash)]).toEqual([92.2, 0, 37, 5, 24.2]);
+    expect([Number(s.closingAmount), Number(s.cashDifference), Number(s.totalManualOut), Number(s.totalManualIn), Number(s.totalCash)]).toEqual([85.2, 0, 44, 5, 24.2]);
   });
 });
