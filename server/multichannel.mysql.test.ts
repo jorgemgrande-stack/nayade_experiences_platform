@@ -292,6 +292,97 @@ describe.skipIf(!URL_)("Venta multicanal · canales, cupo, ventas sin sobreventa
     expect((await ess.call("a", "POST", "/canal/ventas", { body: sale("HDR-3", "KAYAK") })).status).toBe(404);
   });
 
+  // Llamadas directas a multichannelDb en la empresa A (mismo proceso que la aplicación) para intercalar pasos
+  const direct = async () => {
+    const mc = await import("./multichannelDb");
+    const { withTenantDb } = await import("./_core/dbRegistry");
+    const { parseInboundSale } = await import("../shared/multichannel");
+    const actor = { userId: await ess.userId("a", "admin"), role: "admin" };
+    const inA = <T,>(fn: () => Promise<T>) => withTenantDb(ess.ids.a, fn);
+    const input = (ref: string) => {
+      const p = parseInboundSale(sale(ref, "KAYAK", { date: day(25) }));
+      if (!p.ok) throw new Error(p.problem);
+      return p.sale;
+    };
+    const ops = async (ref: string) => (await ess.sql("a", "SELECT id, status, reservation_id, ops_status, ops_error, ops_claim FROM mc_sales WHERE external_ref = ?", [ref]))[0];
+    const txOf = (rid: number) => ess.sql("a", "SELECT status, operationStatus FROM transactions WHERE reservationId_tx = ?", [rid]);
+    return { mc, actor, inA, input, ops, txOf };
+  };
+
+  it("si el canal cancela mientras el paso está pendiente y el paso falla, se deshace lo creado: ningún huérfano", async () => {
+    const { mc, actor, inA, input, ops, txOf } = await direct();
+    const out = await inA(() => mc.recordSale(channelId, input("CXL-1"), actor, async (p) => {
+      // El canal cancela con el paso en curso; luego el paso crea booking, ingreso y ficha y falla
+      expect((await post({ ref: "CXL-1", event: "cancelacion" })).json.results[0]).toMatchObject({ status: "cancelada", duplicate: false });
+      await mc.defaultAfterRegister(p);
+      throw new Error("fallo simulado tras crear booking, ingreso y ficha");
+    }));
+    expect(out.status).toBe("registrada");
+    const s = await ops("CXL-1");
+    expect(s).toMatchObject({ status: "cancelada", ops_status: "anulada", ops_claim: null });
+    expect(await txOf(s.reservation_id)).toEqual([{ status: "reembolsado", operationStatus: "reembolsada" }]);
+    expect(await ess.sql("a", "SELECT op_status FROM reservation_operational WHERE reservation_id = ?", [s.reservation_id])).toEqual([{ op_status: "anulado" }]);
+    expect(await ess.sql("a", "SELECT status FROM bookings WHERE reservationId = ?", [s.reservation_id])).toEqual([{ status: "cancelado" }]);
+    const rec = await ok(q("reconciliation", { channelId, from: day(20), to: day(30) }));
+    expect(rec.orphanIncome).toEqual([]);
+    expect(rec.opsFailed).toEqual([]);
+  });
+
+  it("un reintento que tarda más que su reclamo no pisa el resultado del que lo retomó", async () => {
+    const { mc, actor, inA, input, ops, txOf } = await direct();
+    const first = await inA(() => mc.recordSale(channelId, input("STALE-1"), actor, async () => { throw new Error("fallo inicial"); }));
+    expect((await ops("STALE-1")).ops_status).toBe("error");
+    let second: any = null;
+    const slow = await inA(() => mc.retryOperation(first.saleId, actor, async () => {
+      // Pasan más de 10 minutos: otro reintento retoma el paso y lo completa
+      await ess.sql("a", "UPDATE mc_sales SET ops_at = CURRENT_TIMESTAMP(3) - INTERVAL 11 MINUTE WHERE id = ?", [first.saleId]);
+      second = await inA(() => mc.retryOperation(first.saleId, actor));
+      throw new Error("el primer reintento falla tarde");
+    }));
+    expect(second).toMatchObject({ opsStatus: "hecho" });
+    expect(slow.opsStatus).toBe("hecho");
+    const s = await ops("STALE-1");
+    expect(s).toMatchObject({ ops_status: "hecho", ops_error: null, ops_claim: null });
+    expect(await txOf(s.reservation_id)).toEqual([{ status: "completado", operationStatus: "confirmada" }]);
+  });
+
+  it("concurrencia: dos reintentos a la vez del paso fallido → uno lo hace, el otro no hace nada; un solo ingreso", async () => {
+    const { mc, actor, inA, input, ops, txOf } = await direct();
+    await inA(() => mc.recordSale(channelId, input("R2-1"), actor, async () => { throw new Error("fallo inicial"); }));
+    const { id, reservation_id } = await ops("R2-1");
+    const rs = await Promise.all([m("retryOperation", { id }), m("retryOperation", { id })]);
+    expect(rs.map((r) => (r.status === 200 ? data(r).opsStatus : errCode(r))).sort()).toEqual(["BAD_REQUEST", "hecho"]);
+    expect(await txOf(reservation_id)).toHaveLength(1);
+    expect(await ess.sql("a", "SELECT COUNT(*) AS n FROM bookings WHERE reservationId = ?", [reservation_id])).toEqual([{ n: 1 }]);
+    expect(await ess.sql("a", "SELECT COUNT(*) AS n FROM reservation_operational WHERE reservation_id = ?", [reservation_id])).toEqual([{ n: 1 }]);
+    expect((await ops("R2-1")).ops_status).toBe("hecho");
+  });
+
+  it("concurrencia: un reintento a la vez que el reenvío del canal → un solo ingreso y el paso hecho", async () => {
+    const { mc, actor, inA, input, ops, txOf } = await direct();
+    await inA(() => mc.recordSale(channelId, input("R3-1"), actor, async () => { throw new Error("fallo inicial"); }));
+    const { id, reservation_id } = await ops("R3-1");
+    const [retried, resent] = await Promise.all([m("retryOperation", { id }), post(sale("R3-1", "KAYAK", { date: day(25) }))]);
+    expect(retried.status === 200 ? data(retried).opsStatus : errCode(retried)).toMatch(/^(hecho|BAD_REQUEST)$/);
+    expect(resent.json.results[0]).toMatchObject({ status: "registrada", duplicate: true });
+    expect(await txOf(reservation_id)).toHaveLength(1);
+    expect((await ops("R3-1")).ops_status).toBe("hecho");
+  });
+
+  it("sin ficha en Operaciones el paso no queda hecho: se marca y se completa al reintentar", async () => {
+    await ess.sql("a", "RENAME TABLE reservation_operational TO reservation_operational_qa_off");
+    try {
+      expect((await post(sale("FICHA-1", "KAYAK", { date: day(25) }))).json.results[0]).toMatchObject({ status: "registrada" });
+    } finally {
+      await ess.sql("a", "RENAME TABLE reservation_operational_qa_off TO reservation_operational");
+    }
+    const [s] = await ess.sql("a", "SELECT id, reservation_id, ops_status, ops_error FROM mc_sales WHERE external_ref = 'FICHA-1'");
+    expect(s.ops_status).toBe("error");
+    expect(s.ops_error).toContain("Operaciones");
+    expect(await ok(m("retryOperation", { id: s.id }))).toMatchObject({ opsStatus: "hecho" });
+    expect(await ess.sql("a", "SELECT op_status FROM reservation_operational WHERE reservation_id = ?", [s.reservation_id])).toEqual([{ op_status: "confirmado" }]);
+  });
+
   it("aislamiento: la empresa B no ve los canales de A y el enlace de A no sirve en B", async () => {
     expect(await ok(q("channels", undefined, adB, "b"))).toEqual([]);
     expect((await post(sale("B-1", "KAYAK"), "b")).status).toBe(404);

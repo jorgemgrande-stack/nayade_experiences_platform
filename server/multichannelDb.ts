@@ -541,6 +541,11 @@ export const defaultAfterRegister: McAfterRegister = async (s) => {
   // postConfirmOperation registra sus errores y sigue: sin booking o sin transacción, el paso no se ha completado
   if (r.bookingId == null) throw new Error("No se ha creado el booking operativo de la reserva.");
   if (r.transactionId == null) throw new Error("No se ha creado la transacción contable de la reserva.");
+  // La ficha de Operaciones no la devuelve: se comprueba que existe (sin ella la venta no aparece en Operaciones)
+  const db = await getDb();
+  if (!db || (await rows(db, sql`SELECT id FROM reservation_operational WHERE reservation_id = ${s.reservationId} LIMIT 1`)).length === 0) {
+    throw new Error("No se ha creado la ficha de la reserva en Operaciones.");
+  }
 };
 
 /** Datos originales de la venta (se guardan para reintentarla exactamente igual). */
@@ -578,13 +583,16 @@ export function storedSaleInput(sale: any): McSaleInput {
 }
 
 /** Paso de contabilidad y Operaciones que falló o quedó a medias (pendiente hace más de 10 minutos). */
+/** Token de un reclamo del paso de contabilidad y Operaciones: solo quien lo tiene deja el resultado. */
+const newOpsClaim = () => crypto.randomBytes(8).toString("hex");
+
 const OPS_DUE = sql`(s.ops_status = 'error' OR (s.ops_status = 'pendiente' AND s.ops_at < (CURRENT_TIMESTAMP(3) - INTERVAL 10 MINUTE)))`;
 
 /**
  * Reserva (bajo bloqueo de la fila de la venta) el paso de contabilidad y Operaciones de una venta registrada que lo
  * tiene pendiente y devuelve lo que necesita `postConfirmOperation`; si no hay nada que hacer, el motivo.
  */
-async function claimOps(d: Db, saleId: number): Promise<{ payload: Parameters<McAfterRegister>[0] } | { problem: string }> {
+async function claimOps(d: Db, saleId: number): Promise<{ payload: Parameters<McAfterRegister>[0]; claim: string } | { problem: string }> {
   return inTx(d, async (tx) => {
     const [s] = await rows(tx, sql`SELECT s.*, ${OPS_DUE} AS ops_due FROM mc_sales s WHERE s.id = ${saleId} FOR UPDATE`);
     if (!s) return { problem: "La venta no existe." };
@@ -592,8 +600,10 @@ async function claimOps(d: Db, saleId: number): Promise<{ payload: Parameters<Mc
     const [r] = await rows(tx, sql`SELECT product_id, product_name, merchant_order, status, status_reservation FROM reservations WHERE id = ${num(s.reservation_id)}`);
     if (!r || r.status === "cancelled" || r.status_reservation === "ANULADA") return { problem: "La reserva del Core está anulada: cancela la venta en lugar de completarla." };
     const [c] = await rows(tx, sql`SELECT name FROM mc_channels WHERE id = ${num(s.channel_id)}`);
-    await tx.execute(sql`UPDATE mc_sales SET ops_status = 'pendiente', ops_at = CURRENT_TIMESTAMP(3) WHERE id = ${saleId}`);
+    const claim = newOpsClaim();
+    await tx.execute(sql`UPDATE mc_sales SET ops_status = 'pendiente', ops_at = CURRENT_TIMESTAMP(3), ops_claim = ${claim} WHERE id = ${saleId}`);
     return {
+      claim,
       payload: {
         reservationId: num(s.reservation_id), productId: num(r.product_id), productName: String(r.product_name), day: String(s.service_day), people: num(s.people) || 1,
         grossCents: num(s.gross_cents), netCents: num(s.net_cents), customerName: str(s.customer_name) ?? "", customerEmail: str(s.customer_email), customerPhone: str(s.customer_phone),
@@ -605,23 +615,36 @@ async function claimOps(d: Db, saleId: number): Promise<{ payload: Parameters<Mc
 
 /**
  * Hace el paso de contabilidad y Operaciones (idempotente: postConfirmOperation no repite booking, transacción ni ficha
- * operativa de la misma reserva) y deja el resultado en la venta. Si la venta se canceló entretanto, lo deshace.
+ * operativa de la misma reserva) y deja el resultado en la venta bajo bloqueo de su fila, solo si el reclamo `claim`
+ * sigue siendo suyo (otro reintento pudo tomarlo si este tardó más de 10 minutos). Si la venta se canceló entretanto,
+ * deshace lo creado, también cuando el paso falló a medias.
  */
-async function completeOps(d: Db, saleId: number, payload: Parameters<McAfterRegister>[0], after: McAfterRegister): Promise<"hecho" | "error"> {
+async function completeOps(d: Db, saleId: number, claim: string, payload: Parameters<McAfterRegister>[0], after: McAfterRegister): Promise<string | null> {
+  let failure: string | null = null;
   try {
     await after(payload);
   } catch (e) {
-    const message = e instanceof Error ? e.message : "Error";
-    console.error(JSON.stringify({ ctx: "Multicanal", event: "after_register_failed", saleId, error: message.slice(0, 200) }));
-    await d.execute(sql`UPDATE mc_sales SET ops_status = 'error', ops_error = ${`Contabilidad y Operaciones sin completar: ${message}`.slice(0, 500)}, ops_at = CURRENT_TIMESTAMP(3) WHERE id = ${saleId}`);
-    return "error";
+    failure = e instanceof Error ? e.message : "Error";
+    console.error(JSON.stringify({ ctx: "Multicanal", event: "after_register_failed", saleId, error: failure.slice(0, 200) }));
   }
-  await inTx(d, async (tx) => {
-    const [s] = await rows(tx, sql`SELECT status, reservation_id FROM mc_sales WHERE id = ${saleId} FOR UPDATE`);
-    await tx.execute(sql`UPDATE mc_sales SET ops_status = 'hecho', ops_error = NULL, ops_at = CURRENT_TIMESTAMP(3) WHERE id = ${saleId}`);
-    if (s?.status === "cancelada" && s.reservation_id != null) await undoConfirmedOperation(tx, num(s.reservation_id), null);
-  });
-  return "hecho";
+  const opsError = failure == null ? null : `Contabilidad y Operaciones sin completar: ${failure}`.slice(0, 500);
+  try {
+    await inTx(d, async (tx) => {
+      const [s] = await rows(tx, sql`SELECT status, reservation_id, ops_claim FROM mc_sales WHERE id = ${saleId} FOR UPDATE`);
+      if (!s) return;
+      const cancelled = s.status === "cancelada";
+      if (cancelled && s.reservation_id != null) await undoConfirmedOperation(tx, num(s.reservation_id), null);
+      if (s.ops_claim !== claim) return;
+      const status = cancelled ? "anulada" : failure == null ? "hecho" : "error";
+      await tx.execute(sql`UPDATE mc_sales SET ops_status = ${status}, ops_error = ${cancelled ? null : opsError}, ops_at = CURRENT_TIMESTAMP(3), ops_claim = NULL WHERE id = ${saleId}`);
+    });
+  } catch (e) {
+    // Sin poder cerrar el paso bajo bloqueo (p. ej. la anulación falló): queda en error para reintentarlo
+    console.error(JSON.stringify({ ctx: "Multicanal", event: "after_register_close_failed", saleId, error: e instanceof Error ? e.message.slice(0, 200) : "error" }));
+    await d.execute(sql`UPDATE mc_sales SET ops_status = 'error', ops_error = ${(opsError ?? "No se ha podido cerrar el paso de contabilidad y Operaciones.").slice(0, 500)}, ops_at = CURRENT_TIMESTAMP(3), ops_claim = NULL WHERE id = ${saleId} AND ops_claim = ${claim}`);
+  }
+  const [r] = await rows(d, sql`SELECT ops_status FROM mc_sales WHERE id = ${saleId}`);
+  return str(r?.ops_status);
 }
 
 /** Deshace lo que dejó postConfirmOperation (misma lógica que las anulaciones del CRM) y anula el booking operativo. */
@@ -722,7 +745,12 @@ export async function ingestSale(
   let reservationNumber: string | null = null;
   let registered: Parameters<McAfterRegister>[0] | null = null;
   let opsRetryId = 0;
+  let claim = "";
   const attempt = () => inTx(d, async (tx): Promise<McIngestOutcome> => {
+    // Cada intento (también tras un interbloqueo) empieza sin lo que dejó el anterior
+    registered = null;
+    opsRetryId = 0;
+    claim = newOpsClaim();
     // 1. La fila de la venta (bloqueada): si ya está registrada o cancelada, no se repite nada
     let [sale] = await rows(tx, sql`SELECT id, status, reservation_id, ops_status FROM mc_sales WHERE channel_id = ${channel.id} AND external_ref = ${s.ref} FOR UPDATE`);
     if (sale && !MC_RETRYABLE.has(String(sale.status))) {
@@ -837,7 +865,7 @@ export async function ingestSale(
         service_time = ${p.time}, units = ${p.units}, people = ${p.people}, gross_cents = ${gross}, commission_cents = ${commissionCents}, net_cents = ${netCents},
         customer_name = ${customerName.slice(0, 200)}, customer_email = ${s.customerEmail}, customer_phone = ${s.customerPhone},
         reservation_id = ${reservationId}, import_id = ${o.importId ?? null}, sold_at = CURRENT_TIMESTAMP(3), product_code = ${s.code}, sale_input = ${saleInputJson(s)},
-        ops_status = 'pendiente', ops_error = NULL, ops_at = CURRENT_TIMESTAMP(3)
+        ops_status = 'pendiente', ops_error = NULL, ops_at = CURRENT_TIMESTAMP(3), ops_claim = ${claim}
       WHERE id = ${saleId}`);
     registered = { reservationId, productId: p.productId, productName: p.productName, day: p.day, people: p.people, grossCents: gross, netCents, customerName, customerEmail: s.customerEmail, customerPhone: s.customerPhone, channelName: channel.name, ref: s.ref, merchantOrder };
     return { ref: s.ref, status: "registrada", saleId, reservationId, duplicate: false, problem: null };
@@ -854,10 +882,10 @@ export async function ingestSale(
   }
 
   // 7. Contabilidad y Operaciones (fuera de la transacción); si falla, queda marcado en la venta para reintentarlo
-  if (registered) await completeOps(d, outcome.saleId, registered, o.after ?? defaultAfterRegister);
+  if (registered) await completeOps(d, outcome.saleId, claim, registered, o.after ?? defaultAfterRegister);
   else if (opsRetryId) {
     const c = await claimOps(d, opsRetryId);
-    if ("payload" in c) await completeOps(d, opsRetryId, c.payload, o.after ?? defaultAfterRegister);
+    if ("payload" in c) await completeOps(d, opsRetryId, c.claim, c.payload, o.after ?? defaultAfterRegister);
   }
   return outcome;
 }
@@ -943,12 +971,12 @@ export async function retrySale(saleId: number, actor: McActor, after?: McAfterR
 }
 
 /** Vuelve a hacer el paso de contabilidad y Operaciones de una venta registrada en la que falló. Idempotente. */
-export async function retryOperation(saleId: number, actor: McActor, after?: McAfterRegister): Promise<{ saleId: number; opsStatus: "hecho" | "error"; problem: string | null }> {
+export async function retryOperation(saleId: number, actor: McActor, after?: McAfterRegister): Promise<{ saleId: number; opsStatus: string | null; problem: string | null }> {
   writer(actor);
   return run(async (d) => {
     const c = await claimOps(d, saleId);
     if ("problem" in c) throw bad(c.problem);
-    const opsStatus = await completeOps(d, saleId, c.payload, after ?? defaultAfterRegister);
+    const opsStatus = await completeOps(d, saleId, c.claim, c.payload, after ?? defaultAfterRegister);
     const [s] = await rows(d, sql`SELECT ops_error FROM mc_sales WHERE id = ${saleId}`);
     return { saleId, opsStatus, problem: opsStatus === "hecho" ? null : str(s?.ops_error) };
   });

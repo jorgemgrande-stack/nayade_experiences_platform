@@ -3,7 +3,8 @@
 -- en cada canal (código del canal → experiencia, tratamiento de spa o tipo de habitación); cupo por canal y día; ventas
 -- recibidas de cada canal (CSV o enlace de entrada), idempotentes por referencia del canal, con la reserva que crean en
 -- el Core y lo que consumen del cupo (con los datos originales de cada venta en sale_input para reintentarla tal cual y
--- el estado del paso de contabilidad y Operaciones en ops_status: pendiente, hecho o error); importaciones de informes y liquidaciones de cada canal. Fechas de calendario como
+-- el estado del paso de contabilidad y Operaciones en ops_status: pendiente, hecho, error o anulada, con el
+-- reclamo de quien lo ejecuta en ops_claim); importaciones de informes y liquidaciones de cada canal. Fechas de calendario como
 -- texto AAAA-MM-DD; importes en céntimos. Solo CREATE TABLE.
 CREATE TABLE IF NOT EXISTS mc_channels (
   id                     INT UNSIGNED  NOT NULL AUTO_INCREMENT,
@@ -85,6 +86,7 @@ CREATE TABLE IF NOT EXISTS mc_sales (
   ops_status        VARCHAR(12)   NULL,
   ops_error         VARCHAR(500)  NULL,
   ops_at            TIMESTAMP(3)  NULL,
+  ops_claim         CHAR(16)      NULL,
   import_id         INT UNSIGNED  NULL,
   settlement_id     INT UNSIGNED  NULL,
   sold_at           TIMESTAMP(3)  NULL,
