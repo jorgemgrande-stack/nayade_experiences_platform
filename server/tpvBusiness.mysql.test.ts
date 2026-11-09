@@ -8,9 +8,12 @@
  *  - Bajar de plan conserva asignaciones y solicitudes (dejan de aplicarse) y no borra nada.
  */
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
-import fs from "node:fs";
-import path from "node:path";
+import mysql from "mysql2/promise";
 import { startEssentialApp, data, errCode, type EssentialApp } from "./essentialApp.testkit";
+import { mysqlSeedCandidates, mysqlSeedMarkerWriter, seedTpvAcquiredRights } from "./licensing/tpvAcquiredRights";
+import { _resetTpvSeedMarkerCache } from "./tpvSeedMarker";
+import { MysqlCapabilityStore } from "./_core/capabilities/store";
+import { getCapabilityAccess } from "./_core/capabilities/access";
 
 const URL_ = process.env.REGISTRY_TEST_DATABASE_URL;
 const key = (s: string) => `k-${s}-${Math.random().toString(36).slice(2, 10)}`;
@@ -32,6 +35,18 @@ describe.skipIf(!URL_)("Caja Business y Enterprise (aplicación real)", () => {
     return data(r);
   };
 
+  /** Marca de la siembra del derecho adquirido en el registro (la escribe la tarea tpv-acquired-rights --apply). */
+  const setMarker = async (on: boolean) => {
+    const reg = mysql.createPool({ uri: process.env.REGISTRY_DATABASE_URL!, connectionLimit: 1 });
+    try {
+      if (on) await reg.query("INSERT INTO registry_meta (k, v) VALUES ('tpv_acquired_rights_seed', ?) ON DUPLICATE KEY UPDATE v = VALUES(v)", [JSON.stringify({ at: Date.now(), version: "tpv-2026-11-10/1", granted: 0 })]);
+      else await reg.query("UPDATE registry_meta SET v = '' WHERE k = 'tpv_acquired_rights_seed'");
+    } finally {
+      await reg.end();
+    }
+    _resetTpvSeedMarkerCache();
+  };
+
   beforeAll(async () => {
     ess = await startEssentialApp(URL_!, "tpvbiz");
     admA = await ess.login("a", "admin");
@@ -39,8 +54,8 @@ describe.skipIf(!URL_)("Caja Business y Enterprise (aplicación real)", () => {
     agB = await ess.login("b", "agente");
     agBId = await ess.userId("b", "agente");
     ctlBId = await ess.userId("b", "controler");
-    // Empresas NUEVAS: la migración 0064 corre antes de crear su primer usuario y no les siembra derecho adquirido
-    for (const co of ["a", "b"] as const) expect((await ess.sql(co, "SELECT COUNT(*) AS n FROM tpv_acquired_rights"))[0].n).toBe(0);
+    // Siembra ya hecha (marca en el registro): el reparto nuevo se aplica a quien no tenga el derecho adquirido
+    await setMarker(true);
     await ess.setCapability("b", "reports-advanced", "active"); // capacidad de Business → plan Business
     regB = data(await ess.m("b", "tpv.createRegister", { name: "Mostrador B" }, admB)).id;
     await ess.m("b", "products.createCategory", { slug: "servicios", name: "Servicios" }, admB);
@@ -155,32 +170,53 @@ describe.skipIf(!URL_)("Caja Business y Enterprise (aplicación real)", () => {
     expect(Number((await ess.sql("b", "SELECT cashDifference AS d FROM cash_sessions WHERE id = ?", [s.id]))[0].d)).toBe(0);
   });
 
-  it("derecho adquirido: la siembra de la 0064 en una empresa Essential existente conserva informes y supervisión de cierres, también al renovar", async () => {
-    // Se ejecuta la MISMA sentencia de siembra de la migración sobre A, que ya tiene usuarios (empresa existente)
-    const mig = fs.readFileSync(path.join(__dirname, "../db/migrations/0064_tpv_business.sql"), "utf8");
-    const seed = mig.slice(mig.lastIndexOf("INSERT INTO tpv_acquired_rights")).trim().replace(/;$/, "");
-    await ess.sql("a", seed);
-    await ess.sql("a", seed); // idempotente: no duplica
-    expect((await ess.sql("a", "SELECT COUNT(*) AS n FROM tpv_acquired_rights WHERE status = 'seeded' AND origin = 'migracion-0064'"))[0].n).toBe(3);
+  it("seguro: sin la marca de la siembra, una Essential conserva informes y supervisión de cierres", async () => {
+    await setMarker(false);
+    expect((await ess.q("a", "tpv.reports.summary", { dateFrom: today(), dateTo: today() }, admA)).status).toBe(200);
+    expect(errCode(await ess.m("a", "cashRegister.reviewClosure", { closureId: 999999, notes: "x" }, admA))).toBe("NOT_FOUND");
+    expect(data(await ess.q("a", "tpv.planInfo", undefined, admA)).seeded).toBe(false);
+    // Lo nuevo de Business sigue siendo de Business
+    expect(errCode(await ess.m("a", "tpv.requestReturn", { saleId: 1, action: "cancel", reason: "Prueba de plan", idempotencyKey: key("z") }, admA))).toBe("FORBIDDEN");
+    await setMarker(true);
+    expect((await ess.q("a", "tpv.reports.summary", { dateFrom: today(), dateTo: today() }, admA)).status).toBe(403);
+  });
+
+  it("derecho adquirido: la siembra concede la licencia solo a quien tenía la caja del plan; se conserva al renovar", async () => {
+    // A (Essential con la caja del plan) es una empresa existente; B se trata como nueva: no tiene la caja al sembrar
+    await ess.setCapability("b", "bill-cash", null);
+    const reg = mysql.createPool({ uri: process.env.REGISTRY_DATABASE_URL!, connectionLimit: 2 });
+    try {
+      await setMarker(true);
+      const d = { candidates: mysqlSeedCandidates(reg), store: new MysqlCapabilityStore(reg), writeMarker: mysqlSeedMarkerWriter(reg) };
+      const dry = await seedTpvAcquiredRights(d, { apply: false });
+      expect([dry.concedidas, dry.porPlan]).toEqual([[ess.ids.a], { essential: 1 }]);
+      expect(errCode(await ess.q("a", "tpv.reports.summary", { dateFrom: today(), dateTo: today() }, admA))).toBe("FORBIDDEN"); // la simulación no concede nada
+      const done = await seedTpvAcquiredRights(d, { apply: true });
+      expect(done.concedidas).toEqual([ess.ids.a]);
+      expect((await seedTpvAcquiredRights(d, { apply: true })).yaConcedidas).toEqual([ess.ids.a]); // idempotente
+      const [m] = (await reg.query("SELECT v FROM registry_meta WHERE k = 'tpv_acquired_rights_seed'")) as any[];
+      expect(JSON.parse(m[0].v)).toMatchObject({ version: "tpv-2026-11-10/1", granted: 1 });
+      _resetTpvSeedMarkerCache();
+      const [ev] = (await reg.query("SELECT source, actor, reason FROM tenant_capability_events WHERE tenant_id = ? AND capability_id = 'tpv-acquired-rights'", [ess.ids.a])) as any[];
+      expect([ev[0].source, ev[0].actor]).toEqual(["acquired:tpv-2026-11-10", "operacion:tpv-derechos-adquiridos"]);
+    } finally {
+      await reg.end();
+    }
+    await ess.setCapability("b", "bill-cash", "active");
+    getCapabilityAccess().invalidate(ess.ids.a);
+    // A conserva informes por periodo y supervisión y diferencias de cierres
     expect((await ess.q("a", "tpv.reports.summary", { dateFrom: today(), dateTo: today() }, admA)).status).toBe(200);
     expect(errCode(await ess.m("a", "cashRegister.reviewClosure", { closureId: 999999, notes: "x" }, admA))).toBe("NOT_FOUND");
     expect(errCode(await ess.m("a", "cashRegister.acceptDifference", { closureId: 999999, notes: "x" }, admA))).toBe("NOT_FOUND");
-    // Confirmado con sus licencias (tenía la caja del plan) y trazado
-    const rows = await ess.sql("a", "SELECT feature, origin, status, confirmed_at FROM tpv_acquired_rights ORDER BY feature");
-    expect(rows.map((r: any) => [r.feature, r.origin, r.status, r.confirmed_at != null])).toEqual([
-      ["cashDifferences", "migracion-0064", "granted", true],
-      ["closureSupervision", "migracion-0064", "granted", true],
-      ["detailedReports", "migracion-0064", "granted", true],
-    ]);
     // Lo nuevo de Business no forma parte del derecho adquirido
     expect(errCode(await ess.m("a", "tpv.requestReturn", { saleId: 1, action: "cancel", reason: "Prueba de plan", idempotencyKey: key("y") }, admA))).toBe("FORBIDDEN");
     const info = data(await ess.q("a", "tpv.planInfo", undefined, admA));
-    expect([info.plan.tier, info.acquired.features.sort()]).toEqual(["essential", ["cashDifferences", "closureSupervision", "detailedReports"]]);
-    // Renovación (las licencias del plan se vuelven a aplicar): lo conserva
+    expect([info.plan.tier, info.acquired.features.sort(), info.acquired.grant.source]).toEqual(["essential", ["cashDifferences", "closureSupervision", "detailedReports"], "acquired:tpv-2026-11-10"]);
+    // Renovación (las licencias del plan se vuelven a aplicar con su origen): lo conserva
     await ess.markPaid("a");
     expect((await ess.q("a", "tpv.reports.summary", { dateFrom: today(), dateTo: today() }, admA)).status).toBe(200);
-    // Aislamiento: B no recibe nada de A
-    expect((await ess.sql("b", "SELECT COUNT(*) AS n FROM tpv_acquired_rights"))[0].n).toBe(0);
+    // Aislamiento: B (nueva) no recibe nada
+    expect(data(await ess.q("b", "tpv.planInfo", undefined, admB)).acquired.grant).toBeNull();
   });
 
   it("bajar de plan: se conservan asignaciones y solicitudes y dejan de aplicarse", async () => {

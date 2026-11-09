@@ -51,6 +51,7 @@ import { computeSessionPaymentTotals, receivedSaleCondition } from "../tpvSessio
 import { tpvReportsRouter } from "./tpvReports";
 import { assertRegisterOperator, assertSessionOperator, canAuthorizeReturns, decideReturn, listRegisterOperators, listReturnRequests, OPERATOR_ROLES, requestReturn, RETURN_ACTIONS, setRegisterOperators, supervisionOverview } from "../tpvBusinessDb";
 import { acquiredRights, assertTpvFeature, postCorrectionToTreasury, tpvFeatureEnabled } from "../tpvRulesDb";
+import { tpvSeedMarker } from "../tpvSeedMarker";
 import { addCorrection, CORRECTION_KINDS, companyCutoff, correctionsCashDelta, countActiveRegisters, currentTpvPlan, ensureClosureSnapshot, getClosureSnapshot, isDuplicateKeyError, listCorrections, recordClosureSnapshot, registerOperationalDay, setCompanyCutoff, tpvAdvancedContracted, withRegisterSlot } from "../tpvRulesDb";
 import { CUTOFF_RE, DEFAULT_CUTOFF } from "../../shared/tpvPlan";
 import { applySaleStock, assertStockAvailable, type StockSaleLine } from "../inventoryDb";
@@ -444,8 +445,9 @@ export const tpvRouter = router({
       acquiredRights(),
     ]);
     // Derecho adquirido: lo que la empresa conserva aunque su plan ya no lo incluya (solo se muestra en Essential)
-    const acquired = plan?.tier === "essential" ? { features: rights.features, cutoff: rights.cutoff } : { features: [], cutoff: rights.cutoff };
-    return { plan, activeRegisters, advanced, cutoff, acquired };
+    const acquired = plan?.tier === "essential" ? { features: rights.features, cutoff: rights.cutoff, grant: rights.grant } : { features: [], cutoff: rights.cutoff, grant: rights.grant };
+    const seeded = !!(await tpvSeedMarker());
+    return { plan, activeRegisters, advanced, cutoff, acquired, seeded };
   }),
 
   // Hora de corte operativo: de la empresa (registerId ausente) o de una caja (null = la de la empresa)

@@ -18,7 +18,7 @@ describe("actualización de production", () => {
     expect(isAllowedDrill("node dist-cp/backup-job.js restore-tenant --any --apply")).toBe(true);
     expect(isAllowedDrill("node dist-cp/backup-job.js restore-tenant --any --apply --switch")).toBe(false);
     expect(isAllowedDrill("node dist-cp/backup-job.js restore-platform crm --apply")).toBe(false);
-    expect(DRILL_ALLOWED.length).toBe(16);
+    expect(DRILL_ALLOWED.length).toBe(17);
   });
 
   it("el Core de production usa la referencia al bucket de ficheros", () => {

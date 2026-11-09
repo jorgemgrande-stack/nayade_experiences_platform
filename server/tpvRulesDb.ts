@@ -14,6 +14,8 @@ import { eq, sql } from "drizzle-orm";
 import { cashRegisters, type CashSession } from "../drizzle/schema";
 import { getCapabilityAccess } from "./_core/capabilities/access";
 import { decide } from "./_core/capabilities/model";
+import { TPV_ACQUIRED_RIGHTS_CAPABILITY } from "./licensing/tpvAcquiredRights";
+import { tpvSeedMarker } from "./tpvSeedMarker";
 import { legacyDb } from "./_core/legacyDb";
 import { getSystemSetting } from "./config";
 import { licenceSummary } from "./planSeats";
@@ -49,6 +51,8 @@ export async function currentTpvTier(): Promise<TpvTier> {
 export async function currentTpvPlan(): Promise<TpvPlanInfo> {
   const info = tpvPlanInfo(await currentTpvTier());
   if (info.tier !== "essential") return info;
+  // Seguro: hasta que la siembra del derecho adquirido haya corrido (marca en el registro), Essential conserva todo
+  if (!(await tpvSeedMarker())) return withAcquiredRights(info, TPV_GRANDFATHERED_FEATURES);
   return withAcquiredRights(info, (await acquiredRights()).features);
 }
 
@@ -57,33 +61,23 @@ export async function currentTpvPlan(): Promise<TpvPlanInfo> {
 export interface AcquiredRights {
   features: TpvFeature[];
   cutoff: string;
-  /** Filas del registro por función: origen, fecha y estado (trazabilidad). */
-  records: Array<{ feature: string; origin: string; grantedAt: number; status: string; confirmedAt: number | null }>;
+  /** Licencia que lo concede (trazabilidad): origen, estado y fecha; null si la empresa no lo tiene. */
+  grant: { source: string; status: string; updatedAt: number; updatedBy: string } | null;
 }
 
 /**
- * Derechos adquiridos de la empresa en curso (tabla `tpv_acquired_rights`, sembrada por la migración 0064 en cada
- * empresa que ya existía; las nuevas no la tienen). La primera vez se CONFIRMA con sus licencias de ese momento: si
- * tenía la caja del plan (`bill-cash`, en cualquier estado salvo cancelada), queda `granted`; si no, `not_eligible`.
- * Desde entonces manda lo guardado: no depende de las licencias, así que se mantiene al renovar o al cambiar de
- * periodicidad, y nunca se retira solo. Ante un fallo, ninguno (el plan no cambia y nada se guarda).
+ * Derechos adquiridos de la empresa en curso: la licencia `tpv-acquired-rights` que concede la siembra
+ * (server/licensing/tpvAcquiredRights.ts) a cada empresa que tenía la caja del plan antes del cambio. No la toca
+ * ninguna suscripción (otro origen), así que se mantiene al renovar o al cambiar de periodicidad. Ante un fallo de
+ * lectura, ninguno: el plan no cambia.
  */
 export async function acquiredRights(): Promise<AcquiredRights> {
-  const none: AcquiredRights = { features: [], cutoff: TPV_ACQUIRED_RIGHTS_CUTOFF, records: [] };
+  const none: AcquiredRights = { features: [], cutoff: TPV_ACQUIRED_RIGHTS_CUTOFF, grant: null };
   try {
-    let list = await rows(sql`SELECT feature, origin, granted_at, status, confirmed_at FROM tpv_acquired_rights`);
-    if (list.some((r) => r.status === "seeded")) {
-      // «La tenía»: la caja del plan concedida (activa, en solo lectura o suspendida; no cancelada ni solo contratada)
-      // o, sin aplicar todavía las licencias por capacidad, la caja de siempre
-      const access = getCapabilityAccess();
-      const grants = await access.grants();
-      const had = !grants || !access.enforcing() || grants.some((g) => g.capabilityId === "bill-cash" && g.siteId === "" && g.status !== "cancelled" && g.status !== "contracted");
-      await db.execute(sql`UPDATE tpv_acquired_rights SET status = ${had ? "granted" : "not_eligible"}, confirmed_at = ${Date.now()} WHERE status = 'seeded'`);
-      list = await rows(sql`SELECT feature, origin, granted_at, status, confirmed_at FROM tpv_acquired_rights`);
-    }
-    const records = list.map((r) => ({ feature: String(r.feature), origin: String(r.origin), grantedAt: Number(r.granted_at), status: String(r.status), confirmedAt: r.confirmed_at == null ? null : Number(r.confirmed_at) }));
-    const features = records.filter((r) => r.status === "granted" && (TPV_GRANDFATHERED_FEATURES as readonly string[]).includes(r.feature)).map((r) => r.feature as TpvFeature);
-    return { features, cutoff: TPV_ACQUIRED_RIGHTS_CUTOFF, records };
+    const grants = await getCapabilityAccess().grants();
+    const g = grants?.find((x) => x.capabilityId === TPV_ACQUIRED_RIGHTS_CAPABILITY && x.siteId === "" && (x.status === "active" || x.status === "read_only"));
+    if (!g) return none;
+    return { features: [...TPV_GRANDFATHERED_FEATURES], cutoff: TPV_ACQUIRED_RIGHTS_CUTOFF, grant: { source: g.source, status: g.status, updatedAt: g.updatedAt, updatedBy: g.updatedBy } };
   } catch {
     return none;
   }

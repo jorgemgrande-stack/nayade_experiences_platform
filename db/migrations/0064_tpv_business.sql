@@ -57,23 +57,3 @@ CREATE TABLE IF NOT EXISTS tpv_return_requests (
 ALTER TABLE tpv_session_corrections
   ADD COLUMN fin_movement_id INT NULL DEFAULT NULL;
 
--- `tpv_acquired_rights`: derecho adquirido (decisión de Jorge del 10/11/2026, opción A). Las empresas que ya tenían
---   los informes por periodo y por cajero y la revisión y los ajustes de cierres (Essential los incluía) los
---   conservan; el nuevo reparto por planes solo se aplica a las nuevas. Una fila por función, con su origen y fecha.
---   Se siembra AQUÍ solo en las empresas que ya existen (con algún usuario): en una empresa nueva la migración corre
---   antes de crear su primer usuario y no siembra nada. La aplicación confirma cada fila sembrada con las licencias
---   de ese momento (`granted` si tenía la caja del plan, `not_eligible` si no) y desde entonces no cambia: se mantiene
---   en las renovaciones y en los cambios de periodicidad.
-CREATE TABLE IF NOT EXISTS tpv_acquired_rights (
-  feature          VARCHAR(32)   NOT NULL,
-  origin           VARCHAR(64)   NOT NULL,
-  granted_at       BIGINT        NOT NULL,
-  status           VARCHAR(16)   NOT NULL DEFAULT 'seeded',
-  confirmed_at     BIGINT        NULL,
-  PRIMARY KEY (feature)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
-
-INSERT INTO tpv_acquired_rights (feature, origin, granted_at, status)
-  SELECT f.feature, 'migracion-0064', CAST(UNIX_TIMESTAMP(CURRENT_TIMESTAMP(3)) * 1000 AS UNSIGNED), 'seeded'
-  FROM (SELECT 'detailedReports' AS feature UNION ALL SELECT 'closureSupervision' UNION ALL SELECT 'cashDifferences') f
-  WHERE EXISTS (SELECT 1 FROM users) AND NOT EXISTS (SELECT 1 FROM tpv_acquired_rights);
