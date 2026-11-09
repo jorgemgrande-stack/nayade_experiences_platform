@@ -197,6 +197,27 @@ describe.skipIf(!URL_)("Contabilidad general · asientos automáticos, manuales,
     expect((await ok(q("overview"))).balanced).toBe(true);
   });
 
+  it("ticket cobrado en efectivo y devuelto con salida manual de caja: la caja entra y sale una sola vez", async () => {
+    const [b570, b555, b700] = [await balance("570"), await balance("555"), await balance("700")];
+    const at = noon(d2());
+    const [ses] = await ess.sql("a", "SELECT id FROM cash_sessions ORDER BY id DESC LIMIT 1");
+    await ess.sql("a", "INSERT INTO tpv_sales (ticketNumber, sessionId, subtotal, total, status_ts, createdAt, paidAt) VALUES ('T-QA-DEV', ?, 12.10, 12.10, 'paid', ?, ?)", [ses.id, at.getTime(), at.getTime()]);
+    const [sale] = await ess.sql("a", "SELECT id FROM tpv_sales WHERE ticketNumber = 'T-QA-DEV'");
+    await ess.sql("a", "INSERT INTO tpv_sale_items (saleId, productType_tsi, productId, productName, unitPrice, subtotal_tsi, fiscalRegime_tsi, taxRate_tsi) VALUES (?, 'experience', 1, 'Actividad', 12.10, 12.10, 'general', 21)", [sale.id]);
+    await ess.sql("a", "INSERT INTO tpv_sale_payments (saleId, method_tsp, amount_tsp, status_tsp, createdAt) VALUES (?, 'cash', 12.10, 'completed', ?)", [sale.id, at.getTime()]);
+    expect((await ok(m("sync", undefined))).created).toBe(1);
+    expect((await balance("570")) - b570).toBe(1210);
+    // Se devuelve: la venta pasa a refunded y el efectivo sale con su movimiento manual (como lo pide el cierre de caja)
+    await ess.sql("a", "UPDATE tpv_sales SET status_ts = 'refunded' WHERE id = ?", [sale.id]);
+    await ess.sql("a", "INSERT INTO cash_movements (sessionId, type_cm, amount, reason, cashierName, createdAt) VALUES (?, 'out', 12.10, 'Devolución T-QA-DEV', 'Cajero', ?)", [ses.id, at.getTime()]);
+    const s = await ok(m("sync", undefined));
+    expect(s.errors).toEqual([]);
+    expect((await balance("570")) - b570).toBe(0);
+    expect((await balance("555")) - b555).toBe(0);
+    expect((await balance("700")) - b700).toBe(0);
+    expect((await ok(q("overview"))).balanced).toBe(true);
+  });
+
   it("libros y exportaciones para la gestoría: diario, mayor, sumas y saldos, pérdidas y ganancias y Excel", async () => {
     const j = await ok(q("export", { ...period(), kind: "journal" }));
     const csv = Buffer.from(j.base64, "base64").toString("utf8");

@@ -27,6 +27,7 @@ import {
   subaccountParent,
   trialBalance,
   validateDraft,
+  voidTicketCashEntry,
   workbookXlsx,
   type AccAccount,
   type AccDraft,
@@ -225,6 +226,21 @@ describe("caja del TPV", () => {
     const manual = expenseDocOf({ ...row, source: "manual" }, "2026-03-02", undefined, ctx);
     expect(side(expensePaymentEntry(manual, map)!, "570")).toBe(-3000);
     expect(side(expenseEntry(manual, map)!, "472")).toBe(521);
+  });
+
+  it("ticket devuelto en efectivo (venta revertida + salida manual de caja): la caja no se abona dos veces", () => {
+    const sold = saleEntry({ kind: "ticket", id: 4, number: "T-4", date: "2026-03-03", clientName: "", rectifies: "", byRate: [{ rateBp: 2100, baseCents: 10000, taxCents: 2100 }], totalCents: 12100, payments: [{ method: "cash", cents: 12100 }] }, map)!;
+    const reversal = reversalDraft({ id: 1, year: 2026, number: 1, journal: sold.journal, lines: validateDraft(sold, accounts) }, "2026-03-03", "devuelto");
+    const pending = voidTicketCashEntry({ number: "T-4", date: "2026-03-03", cashCents: 12100 }, map)!;
+    const refund = cashMoveEntry({ id: 10, date: "2026-03-03", type: "out", amountCents: 12100, reason: "Devolución T-4" }, map)!;
+    const all = [sold, reversal, pending, refund];
+    const total = (code: string) => all.reduce((a, d) => a + side(d, code), 0);
+    expect(total("570")).toBe(0); // entró y salió una vez
+    expect(total("555")).toBe(0);
+    expect(total("700")).toBe(0);
+    expect(total("477")).toBe(0);
+    validateDraft(pending, accounts);
+    expect(voidTicketCashEntry({ number: "T-5", date: "2026-03-03", cashCents: 0 }, map)).toBeNull(); // solo tarjeta: nada
   });
 });
 

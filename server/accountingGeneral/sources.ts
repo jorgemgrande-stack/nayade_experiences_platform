@@ -17,7 +17,7 @@ import { madridDayKey } from "../../shared/gestoriaExportPeriod";
 import { calcGeneralTax } from "../taxUtils";
 import { madridMidnightMs } from "../utils/timezone";
 import { isAccDate, type AccAccountMap } from "../../shared/accountingGeneral";
-import { cashCloseEntry, cashMoveEntry, centsOf, collectionEntry, expenseEntry, expensePaymentEntry, saleEntry, type Desired, type ExpenseDoc, type ExpenseMethod, type SaleDoc, type TpvMethod } from "./rules";
+import { cashCloseEntry, cashMoveEntry, centsOf, collectionEntry, expenseEntry, expensePaymentEntry, saleEntry, type Desired, type ExpenseDoc, type ExpenseMethod, type SaleDoc, type TpvMethod, voidTicketCashEntry } from "./rules";
 
 /** Grupos de documentos y el prefijo de su clave. */
 export const SOURCE_GROUPS = {
@@ -56,7 +56,9 @@ const text = (v: unknown) => (v == null ? "" : String(v));
 
 async function readSales(db: Db, ctx: SourceContext, out: SourceRead) {
   const docs = await listFiscalDocuments(madridDayRange(ctx.startDate, END));
-  const ticketIds = docs.filter((d) => d.kind === "ticket" && d.counts).map((d) => d.id);
+  // Tickets que cuentan y los anulados o devueltos después de cobrarlos (no los sustituidos por una factura)
+  const voided = (d: (typeof docs)[number]) => d.kind === "ticket" && !d.counts && !d.substitutedBy;
+  const ticketIds = docs.filter((d) => d.kind === "ticket" && (d.counts || voided(d))).map((d) => d.id);
   const payments = new Map<number, Array<{ method: TpvMethod; cents: number }>>();
   for (let i = 0; i < ticketIds.length; i += 1000) {
     const part = ticketIds.slice(i, i + 1000);
@@ -73,7 +75,9 @@ async function readSales(db: Db, ctx: SourceContext, out: SourceRead) {
   for (const d of docs) {
     const key = `${d.kind === "ticket" ? "tpv" : "inv"}:${d.id}`;
     if (!d.counts) {
-      out.desired.set(key, { kind: "none" });
+      const cashCents = voided(d) ? (payments.get(d.id) ?? []).filter((p) => p.method === "cash").reduce((a, p) => a + p.cents, 0) : 0;
+      const draft = voidTicketCashEntry({ number: d.number, date: madridDayKey(d.issuedAt), cashCents }, ctx.map);
+      out.desired.set(key, draft ? { kind: "entry", draft } : { kind: "none" });
       continue;
     }
     const doc: SaleDoc = {

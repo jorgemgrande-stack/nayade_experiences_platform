@@ -142,6 +142,25 @@ export function saleEntry(doc: SaleDoc, map: AccAccountMap): AccDraft | null {
   return { journal: "VEN", date: doc.date, description: short(`${label} ${doc.number}${ref}${who}`, 500), origin: doc.kind === "ticket" ? "ticket" : "invoice", lines };
 }
 
+/**
+ * Ticket anulado o devuelto después de cobrarlo (no cuenta como venta). Su efectivo sí entró en el cajón y lo devuelto
+ * sale con un movimiento manual de salida (`cash_movements`, que ya contabiliza Debe 555 · Haber 570; ver
+ * server/tpvSessionTotals.ts). Para que esa salida no abone la caja por segunda vez, el cobro en efectivo queda en el
+ * puente de caja: Debe 570 · Haber 555 (diario CAJ). Lo cobrado con tarjeta o Bizum se devuelve por el mismo medio y no
+ * deja asiento. Null si no hubo cobro en efectivo.
+ */
+export function voidTicketCashEntry(t: { number: string; date: string; cashCents: number }, map: AccAccountMap): AccDraft | null {
+  if (t.cashCents === 0) return null;
+  const text = short(`Ticket ${t.number} anulado o devuelto: efectivo cobrado, pendiente de su salida de caja`, 300);
+  return {
+    journal: "CAJ",
+    date: t.date,
+    description: text,
+    origin: "ticket",
+    lines: [...signed(map.cash, t.cashCents, "debit", { description: text }), ...signed(map.cashBridge, t.cashCents, "credit", { description: text })],
+  };
+}
+
 // ── Cobros de facturas ─────────────────────────────────────────────────────────────────────────────────────────────
 
 /** Método de cobro guardado en la factura → tesorería. */
