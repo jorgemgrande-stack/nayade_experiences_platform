@@ -106,6 +106,8 @@ export const TRPC_ROUTER_CAPABILITIES: Record<string, string> = {
   adsManager: "ads-manager",
   // Elephant Connect · Reception AI: recepcionista virtual con IA (voz con el Vapi de la empresa y chat web; los procedimientos la comprueban también)
   receptionAi: "reception-ai",
+  // Elephant Connect · WhatsApp AI: WhatsApp Cloud API con el número de la empresa y respuestas con IA (los procedimientos la comprueban también)
+  whatsappCloud: "whatsapp-ai",
   // Elephant Connect · Copilot avanzado: asistente de IA con herramientas de solo lectura del Core (los procedimientos la comprueban también)
   copilot: "copilot-advanced",
   // Correo transaccional con el Postmark propio de la empresa (notificaciones por email, incluidas en Essential)
