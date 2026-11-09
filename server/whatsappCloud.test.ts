@@ -362,16 +362,16 @@ describe("licencia whatsapp-ai en el panel", () => {
 });
 
 describe("migración de WhatsApp AI", () => {
-  it("es la 0062 (con su reversión), solo CREATE TABLE, y los avisos la nombran así", async () => {
+  it("es la 0061 (con su reversión), solo CREATE TABLE, y los avisos la nombran así", async () => {
     const fs = await import("node:fs");
     const path = await import("node:path");
     const dir = path.resolve(__dirname, "../db/migrations");
-    const up = fs.readFileSync(path.join(dir, "0062_connect_whatsapp_ai.sql"), "utf8");
-    expect(fs.existsSync(path.join(dir, "0062_connect_whatsapp_ai.down.sql"))).toBe(true);
-    expect(fs.readdirSync(dir).some((f) => f.includes("whatsapp") && !f.startsWith("0062_"))).toBe(false);
+    const up = fs.readFileSync(path.join(dir, "0061_connect_whatsapp_ai.sql"), "utf8");
+    expect(fs.existsSync(path.join(dir, "0061_connect_whatsapp_ai.down.sql"))).toBe(true);
+    expect(fs.readdirSync(dir).some((f) => f.includes("whatsapp") && !f.startsWith("0061_"))).toBe(false);
     expect(up.match(/^\s*(CREATE|ALTER|DROP|INSERT|UPDATE|DELETE)\b/gim)?.every((s) => /CREATE/i.test(s))).toBe(true);
     const { WhatsappNotInstalled } = await import("./whatsappCloud/store");
-    expect(new WhatsappNotInstalled().message).toContain("0062_connect_whatsapp_ai");
+    expect(new WhatsappNotInstalled().message).toContain("0061_connect_whatsapp_ai");
   });
 });
 

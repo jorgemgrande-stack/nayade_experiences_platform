@@ -1,6 +1,6 @@
 /**
  * Elephant WhatsApp AI con la aplicación real sobre MySQL (opt-in, REGISTRY_TEST_DATABASE_URL): dos empresas nuevas
- * desde la baseline y las migraciones de empresa (incluida la 0062). Licencia whatsapp-ai (sin ella, 403; en solo
+ * desde la baseline y las migraciones de empresa (incluida la 0061). Licencia whatsapp-ai (sin ella, 403; en solo
  * lectura, solo consultas), credencial `whatsapp_cloud` de cada empresa en su bóveda, webhook público por el dominio de
  * cada empresa (token de verificación, firma con su App Secret, idempotencia por wamid y estados de entrega), bandeja
  * con la ventana de 24 h, IA sin proveedor configurado (no inventa nada: registra el fallo y el cupo vuelve) y
