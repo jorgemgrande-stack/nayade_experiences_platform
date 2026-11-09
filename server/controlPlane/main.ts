@@ -45,7 +45,9 @@ import { MysqlSubscriptionStore } from "../subscriptions/store";
 import { MysqlCapabilityStore } from "../_core/capabilities/store";
 import { MysqlTenantLimitStore } from "../_core/limits/store";
 import { MysqlTrialStore } from "../trials/store";
+import { TrialService } from "../trials/service";
 import { MysqlTrialFunnelCounter } from "../trials/funnel";
+import type { TrialRemindersOptOut } from "../trials/api";
 import { MysqlCommercialEventLog, commercialEventsProblem } from "../commercialEvents/log";
 import { trialNotifierFromEnv } from "../trials/emailNotifier";
 import { TrialScheduler, mysqlAdvisoryLock, startTrialScheduler } from "../trials/scheduler";
@@ -421,7 +423,7 @@ async function main() {
   // públicas y la activación automática solo con CP_PUBLIC_TRIAL_ENABLED=1 / CP_TRIAL_AUTO_PROVISION=1.
   // No se envía ningún correo salvo con CP_TRIAL_EMAIL_MODE=sandbox|live y SMTP configurado; por defecto el
   // aviso solo deja constancia sin datos personales.
-  let trials: { store: MysqlTrialStore; funnel?: MysqlTrialFunnelCounter | null; publicEnabled: boolean; autoProvision: boolean; lifeTrials?: boolean; notify?: TrialNotifier; blockedDomains: string[]; activation: { activate?: (trialId: number, actor: string) => Promise<unknown>; syncLicences?: (trialId: number, actor: string) => Promise<TrialLicenceSync> } } | undefined;
+  let trials: { store: MysqlTrialStore; funnel?: MysqlTrialFunnelCounter | null; remindersOptOut?: TrialRemindersOptOut | null; marketingConsent?: (contactId: number, evidence: string) => Promise<void>; publicEnabled: boolean; autoProvision: boolean; lifeTrials?: boolean; notify?: TrialNotifier; blockedDomains: string[]; activation: { activate?: (trialId: number, actor: string) => Promise<unknown>; syncLicences?: (trialId: number, actor: string) => Promise<TrialLicenceSync> } } | undefined;
   if (crmPool && subscriptions) {
     const trialPool = crmPool;
     const ready = await trialPool.query("SELECT 1 FROM trial_requests LIMIT 0").then(() => true, () => false);
@@ -433,6 +435,34 @@ async function main() {
     // Contador anónimo de la página de la prueba (CRM 0046). Se crea siempre: las migraciones de live se aplican después
     // de arrancar, y mientras falte la tabla el contador descarta sin error (server/trials/funnel.ts)
     if (trials) trials.funnel = new MysqlTrialFunnelCounter(trialPool);
+    // Recordatorios de la prueba (server/trials/reminders.ts): enlace de baja firmado con el secreto de los enlaces del
+    // CRM (0031) y servido por el CRM en /cp/v1/public/trial/recordatorios. Sin el secreto o sin origen, sin recordatorios.
+    // El secreto se resuelve al usarlo (la tabla 0031 puede llegar con las migraciones después de arrancar) y la baja
+    // solo existe con el alta pública abierta: sin ella no se envía ningún recordatorio (el enlace daría 404).
+    let reminderLinks: { signer: () => Promise<LinkSigner | null>; origin: string } | null = null;
+    if (trials && trials.publicEnabled) {
+      const origin = crmPublicOrigin(process.env);
+      let cached: LinkSigner | null = null;
+      let warned = false;
+      const signer = async () => {
+        if (cached) return cached;
+        try {
+          cached = new LinkSigner(await linkSecretFromDb(trialPool));
+        } catch (e) {
+          if (!warned) console.log(JSON.stringify({ ctx: "Trials", event: "reminder_links_unavailable", reason: e instanceof Error ? e.name : "error" }));
+          warned = true;
+        }
+        return cached;
+      };
+      if (origin) {
+        reminderLinks = { signer, origin };
+        const store = trials.store;
+        trials.remindersOptOut = {
+          verify: async (token) => (await signer())?.verifyTrialReminders(token) ?? null,
+          optOut: async (id) => !!(await new TrialService({ store }).optOutReminders(id, "web:enlace"))?.changed,
+        };
+      } else console.log(JSON.stringify({ ctx: "Trials", event: "reminder_links_unavailable", reason: "no_public_origin" }));
+    }
     console.log(JSON.stringify({ ctx: "Trials", enabled: ready, publicEnabled: trials?.publicEnabled ?? false, autoProvision: trials?.autoProvision ?? false, email: { mode: email?.mode ?? "off", provider: email?.provider ?? null, ...(email?.reason ? { reason: email.reason } : {}) }, ...(ready ? {} : { reason: "migration_0007_missing" }) }));
     // Tarea programada de vencimiento y avisos: APAGADA salvo CP_TRIALS_SCHEDULER_ENABLED=1. Una sola réplica
     // trabaja en cada tick (GET_LOCK); nunca suspende, cancela ni borra. Sin notificador, los avisos solo se registran.
@@ -441,7 +471,17 @@ async function main() {
       const notify = trials.notify ?? { expiryNotice: async (_to: string, i: { trialId: number; daysLeft: number }) => void console.log(JSON.stringify({ ctx: "Trials", event: "expiry_notice_not_sent", trialId: i.trialId, daysLeft: i.daysLeft })) };
       const t = trials;
       const recovery = () => (t.activation.activate ? { autoProvision: t.autoProvision, activate: t.activation.activate, raise: (id: string, f: Parameters<AdminAlertService["raise"]>[1]) => (adminAlerts ? adminAlerts.raise(id, f) : Promise.resolve(null)) } : null);
-      startTrialScheduler({ scheduler: new TrialScheduler({ store: trials.store, notify, lock: mysqlAdvisoryLock(trialPool), recovery }), env: process.env });
+      const links = reminderLinks;
+      const reminders = links
+        ? {
+            platformDomain: platformDomain ?? null,
+            optOutUrl: async (id: number) => {
+              const s = await links.signer();
+              return s ? `${links.origin}/cp/v1/public/trial/recordatorios?t=${encodeURIComponent(s.trialRemindersToken(id))}` : null;
+            },
+          }
+        : undefined;
+      startTrialScheduler({ scheduler: new TrialScheduler({ store: trials.store, notify, lock: mysqlAdvisoryLock(trialPool), recovery, reminders }), env: process.env });
       // Fin de las licencias = fin de la prueba (ampliaciones): ENCENDIDA salvo CP_TRIAL_LICENCE_SYNC=off; solo alinea fechas
       startTrialLicenceSync({ reconciler: new TrialLicenceReconciler({ store: trials.store, sync: () => t.activation.syncLicences ?? null, lock: mysqlAdvisoryLock(trialPool) }), env: process.env });
     }
@@ -914,10 +954,17 @@ async function main() {
     const mailer = platformMail.mailer;
     const outbox = new MysqlMailStore(commPool);
     const asSurvey = (t: { id: number; tenantId: string; title: string; status: string; requester: string | null; resolvedAt: number | null }) => ({ id: t.id, tenantId: t.tenantId, title: t.title, status: t.status, requester: t.requester, resolvedAt: t.resolvedAt });
+    const consents = new ConsentService({ store: new MysqlConsentStore(commPool), contactExists: async (id) => !!(await crmStore.get("contacts", id)) });
+    // Casilla comercial del formulario de la prueba → consentimiento registrado (novedades y promociones) con su evidencia
+    if (trials) {
+      trials.marketingConsent = async (contactId, evidence) => {
+        for (const purpose of ["newsletter", "promotions"] as const) await consents.record(contactId, { purpose, status: "granted", source: "web:prueba-gratuita", evidence }, "web:prueba-gratuita");
+      };
+    }
     const comms = new CommunicationsService({
       store: new MysqlSendStore(commPool),
       crm: crmStore,
-      consents: new ConsentService({ store: new MysqlConsentStore(commPool), contactExists: async (id) => !!(await crmStore.get("contacts", id)) }),
+      consents,
       signer: new LinkSigner(await linkSecretFromDb(commPool)),
       publicOrigin: commOrigin,
       mailer: mailer ? { send: (t, k, c, to, content, o) => mailer.send(t, k, c, to, content, o), status: (id) => mailer.service.status(id) } : null,

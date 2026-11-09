@@ -48,6 +48,7 @@ const subsStore = new MemorySubscriptionStore();
 const commercial: CommercialEventDraft[] = [];
 const trialStore = new MemoryTrialStore({ append: async (_tx, drafts) => (commercial.push(...drafts), { written: drafts.length, duplicates: 0 }) });
 const funnel = new MemoryTrialFunnelCounter();
+const consentsGranted: Array<{ contactId: number; evidence: string }> = [];
 const outbox: Array<{ kind: string; to: string; data: Record<string, unknown> }> = [];
 const admins: Array<{ email: string; name: string }> = [];
 
@@ -131,7 +132,7 @@ beforeAll(async () => {
     web: { store: webStore },
     subscriptions: { store: subsStore, now: () => clock },
     capabilities: caps,
-    trials: { store: trialStore, funnel, publicEnabled: true, autoProvision: true, notify },
+    trials: { store: trialStore, funnel, publicEnabled: true, autoProvision: true, notify, marketingConsent: async (contactId: number, evidence: string) => void consentsGranted.push({ contactId, evidence }) },
   });
   server = http.createServer(app);
   await new Promise<void>((r) => server.listen(0, "127.0.0.1", r));
@@ -192,6 +193,8 @@ describe("alta con el formulario nuevo", () => {
     expect(contacts).toHaveLength(1);
     expect(contacts[0]).toMatchObject({ name: "Lucía Martín Ruiz", firstName: "Lucía", lastName: "Martín Ruiz", email: "lucia@estudio-martin.example", isPrimary: true, role: "Propietario (prueba gratuita)" });
     expect(contacts[0].notes).toMatch(/Acepta comunicaciones comerciales/);
+    // La casilla comercial queda en el registro de consentimientos (el que filtra los envíos comerciales), con su evidencia
+    expect(consentsGranted).toEqual([{ contactId: contacts[0].id, evidence: expect.stringMatching(/casilla no premarcada: «Quiero recibir novedades y ofertas de Big Elephant.*condiciones 2026-10-31/) }]);
     // Registro comercial: sector y procedencia, nunca datos personales
     const mine = commercial.filter((e) => e.trialId === trialId);
     expect(mine.map((e) => e.type)).toEqual(expect.arrayContaining(["trial.requested", "trial.verified", "trial.started"]));

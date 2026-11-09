@@ -51,6 +51,21 @@ export interface TrialNotifier {
    * (clave de idempotencia: una transición, un aviso). Opcional: un notificador sin él no avisa.
    */
   statusNotice?(to: string, info: TrialStatusNotice): Promise<void>;
+  /**
+   * Recordatorio de servicio (server/trials/reminders.ts): `setup`, aún no ha entrado en su panel; `first_action`, aún
+   * sin su primera acción útil. `optOutUrl`: baja de los recordatorios. Opcional: sin él no se recuerda nada.
+   */
+  reminder?(to: string, info: TrialReminderNotice): Promise<void>;
+}
+
+export interface TrialReminderNotice {
+  trialId: number;
+  kind: "setup" | "first_action";
+  /** Clave idempotente (tipo y paso). */
+  key: string;
+  domain: string | null;
+  endsAt: number | null;
+  optOutUrl: string | null;
 }
 
 export interface TrialStatusNotice {

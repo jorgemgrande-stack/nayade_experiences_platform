@@ -44,6 +44,19 @@ export class LinkSigner {
     return same(this.mac(`comm-unsub:${contactId}:${scope}`), m[3]) ? { contactId, scope } : null;
   }
 
+  /** Baja de los recordatorios de una prueba gratuita: `<prueba>.<firma>` (server/trials/reminders.ts). */
+  trialRemindersToken(trialId: number): string {
+    if (!Number.isSafeInteger(trialId) || trialId <= 0) throw new Error("Prueba no válida");
+    return `${trialId}.${this.mac(`trial-reminders:${trialId}`)}`;
+  }
+  verifyTrialReminders(token: unknown): number | null {
+    if (typeof token !== "string") return null;
+    const m = SURVEY.exec(token.trim());
+    if (!m) return null;
+    const id = Number(m[1]);
+    return same(this.mac(`trial-reminders:${id}`), m[2]) ? id : null;
+  }
+
   surveyToken(ticketId: number): string {
     if (!Number.isSafeInteger(ticketId) || ticketId <= 0) throw new Error("Ticket no válido");
     return `${ticketId}.${this.mac(`comm-survey:${ticketId}`)}`;
