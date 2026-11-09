@@ -374,3 +374,24 @@ describe("migración de WhatsApp AI", () => {
     expect(new WhatsappNotInstalled().message).toContain("0062_connect_whatsapp_ai");
   });
 });
+
+const AUTO_ALL = { ...DEFAULT_WHATSAPP_SETTINGS, aiMode: "auto" as const, autoHours: [{ day: 2 as const, from: "00:00", to: "23:59" }], autoDailyLimit: 100 };
+const lastIn = async (svc: InstanceType<typeof WhatsappService>, o: Parameters<typeof inboundPayload>[0]) => (await svc.handleWebhook(inboundPayload(o))).inbound.at(-1)!;
+
+describe("revisión: devolver la conversación a la IA", () => {
+  it("setNeedsHuman(false) reinicia el contador de respuestas automáticas y la IA vuelve a responder", async () => {
+    const { svc, store } = setup();
+    await svc.saveSettings(AUTO_ALL, 1);
+    for (let i = 0; i < 5; i++) {
+      const m = await lastIn(svc, { wamid: `wamid.R${i}`, text: `pregunta ${i}` });
+      expect(await svc.autoReply(m.conversationId, m.messageId)).toBe("sent");
+    }
+    const sixth = await lastIn(svc, { wamid: "wamid.R5", text: "otra" });
+    expect(await svc.autoReply(sixth.conversationId, sixth.messageId)).toBe("handoff");
+    expect(await store.conversation(1)).toMatchObject({ needsHuman: true, aiAutoReplies: 5 });
+    await svc.setNeedsHuman(1, false);
+    expect(await store.conversation(1)).toMatchObject({ needsHuman: false, aiAutoReplies: 0 });
+    const again = await lastIn(svc, { wamid: "wamid.R6", text: "¿y el parking?" });
+    expect(await svc.autoReply(again.conversationId, again.messageId)).toBe("sent");
+  });
+});

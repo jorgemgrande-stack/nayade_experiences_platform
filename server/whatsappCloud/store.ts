@@ -112,6 +112,7 @@ export interface WhatsappStore {
   updateMessageStatus(id: number, p: { status: MessageStatus; at: string | null; errorCode?: string | null; errorTitle?: string | null; wamid?: string | null }): Promise<void>;
   messages(conversationId: number, limit: number): Promise<WaMessage[]>;
   markRead(conversationId: number): Promise<void>;
+  /** Marca o quita «espera a una persona»; al quitarlo (devolver a la IA) reinicia el contador de respuestas automáticas. */
   setNeedsHuman(conversationId: number, value: boolean): Promise<void>;
   incAutoReplies(conversationId: number): Promise<void>;
   addAiLog(e: { conversationId: number; messageId: number | null; mode: AiLogMode; outcome: AiLogOutcome; reply: string | null; actor: number | null }): Promise<void>;
@@ -268,7 +269,11 @@ export class MemoryWhatsappStore implements WhatsappStore {
   }
   async setNeedsHuman(conversationId: number, value: boolean) {
     const c = this.convs.find((x) => x.id === conversationId);
-    if (c) c.needsHuman = value;
+    if (c) {
+      c.needsHuman = value;
+      // Devolver la conversación a la IA reinicia su contador de respuestas automáticas
+      if (!value) c.aiAutoReplies = 0;
+    }
   }
   async incAutoReplies(conversationId: number) {
     const c = this.convs.find((x) => x.id === conversationId);
@@ -403,7 +408,8 @@ export class TenantDbWhatsappStore implements WhatsappStore {
     return this.exec(async (db) => void (await db.execute(sql`UPDATE whatsapp_conversations SET unread_count = 0 WHERE id = ${conversationId}`)));
   }
   setNeedsHuman(conversationId: number, value: boolean) {
-    return this.exec(async (db) => void (await db.execute(sql`UPDATE whatsapp_conversations SET needs_human = ${value ? 1 : 0} WHERE id = ${conversationId}`)));
+    // Devolver la conversación a la IA (false) reinicia su contador de respuestas automáticas
+    return this.exec(async (db) => void (await db.execute(value ? sql`UPDATE whatsapp_conversations SET needs_human = 1 WHERE id = ${conversationId}` : sql`UPDATE whatsapp_conversations SET needs_human = 0, ai_auto_replies = 0 WHERE id = ${conversationId}`)));
   }
   incAutoReplies(conversationId: number) {
     return this.exec(async (db) => void (await db.execute(sql`UPDATE whatsapp_conversations SET ai_auto_replies = ai_auto_replies + 1 WHERE id = ${conversationId}`)));
