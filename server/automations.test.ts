@@ -143,8 +143,9 @@ describe("secuencias con retardo (planEntity)", () => {
     expect(planEntity(rule, T0, [run(0, "failed", 1, T0 + 3 * D)], T0 + 3 * D + 10 * 60_000, T0)).toMatchObject({ kind: "wait" });
     expect(planEntity(rule, T0, [run(0, "failed", 1, T0 + 3 * D)], T0 + 3 * D + 15 * 60_000, T0)).toMatchObject({ kind: "run", step: 0, retry: true });
     expect(planEntity(rule, T0, [run(0, "failed", AUTOMATION_LIMITS.maxAttempts)], T0 + 4 * D, T0)).toMatchObject({ kind: "wait", until: T0 + 7 * D });
-    expect(planEntity(rule, T0, [run(0, "running", 1, T0 + 3 * D)], T0 + 3 * D + 20 * 60_000, T0)).toMatchObject({ kind: "run", step: 0, retry: true, exhausted: false });
-    expect(planEntity(rule, T0, [run(0, "running", 3, T0 + 3 * D)], T0 + 3 * D + 20 * 60_000, T0)).toMatchObject({ kind: "run", exhausted: true });
+    expect(planEntity(rule, T0, [run(0, "running", 1, T0 + 3 * D)], T0 + 3 * D + 30 * 60_000, T0)).toMatchObject({ kind: "wait" }); // en curso: aún no se da por abandonado
+    expect(planEntity(rule, T0, [run(0, "running", 1, T0 + 3 * D)], T0 + 3 * D + 61 * 60_000, T0)).toMatchObject({ kind: "run", step: 0, retry: true, exhausted: false });
+    expect(planEntity(rule, T0, [run(0, "running", 3, T0 + 3 * D)], T0 + 3 * D + 61 * 60_000, T0)).toMatchObject({ kind: "run", exhausted: true });
   });
   it("clave estable por paso: añadir o reordenar pasos no confunde sus ejecuciones; el reintento guarda la acción nueva", async () => {
     const v = validateRule(emailRule({ steps: [{ delayMinutes: 60, action: { kind: "notify", title: "b", body: "" } }, { key: "keepme1", delayMinutes: 0, action: { kind: "notify", title: "a", body: "" } }] }));

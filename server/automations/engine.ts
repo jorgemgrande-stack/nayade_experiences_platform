@@ -118,9 +118,10 @@ export function stepDueAt(trigger: AutomationTrigger, anchorAt: number, delayMin
   return (AUTOMATION_TRIGGERS[trigger] as TriggerDef).timing === "before" ? anchorAt - delayMinutes * MIN : anchorAt + delayMinutes * MIN;
 }
 
-/** Espera antes de reintentar un paso fallido: 15 min por intento hecho. Un paso «en curso» más de 15 min se da por abandonado. */
+/** Espera antes de reintentar un paso fallido: 15 min por intento hecho. Un paso «en curso» más de 60 min se da por abandonado
+ * (un envío o una tarea tardan segundos; con 60 min no se repite una acción lenta que aún no se ha cerrado). */
 export const retryBackoffMs = (attempts: number) => Math.max(1, attempts) * 15 * MIN;
-export const STALE_RUNNING_MS = 15 * MIN;
+export const STALE_RUNNING_MS = 60 * MIN;
 
 export function isTerminal(r: Pick<RunRow, "status" | "attempts">, maxAttempts: number = AUTOMATION_LIMITS.maxAttempts): boolean {
   return r.status === "done" || r.status === "skipped" || (r.status === "failed" && r.attempts >= maxAttempts);
