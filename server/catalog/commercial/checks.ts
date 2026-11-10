@@ -23,8 +23,26 @@ export const PROPOSAL_RE = /propuest[oa]s?\b|pendientes? de (aprobaci|ratificaci
  * `catalog.inclusions` (dato estructurado), no desde texto libre.
  */
 export const PLAN_RULE_RE = /incluid[oa]s? en (tu plan|business|enterprise|essential)|derechos? del plan|tope de empleados|en enterprise sin tope/i;
-/** Elephant Core incluido en una solución Elephant Net, afirmado en texto: solo cuando la contratación lo aplica. */
+/**
+ * Elephant Core incluido en una solución Elephant Net, afirmado en texto. La regla «Core incluido» está retirada (10/11/2026:
+ * Elephant Core y Elephant Net se contratan por separado), así que afirmarlo siempre contradice la contratación. Para
+ * validar un texto se usa `affirmsNetCore`, que no confunde la negación («no incluye Elephant Core») con la afirmación.
+ */
 export const NET_CORE_RE = /(elephant )?core (essential )?incluid[oa]|incluye (elephant )?core|plataforma de gesti[oó]n (big elephant )?incluida|sin plan (de elephant core|core) aparte/i;
+/** Negación de esa inclusión («no incluye Elephant Core», «sin Core incluido», «ni trae Core»): es la regla vigente, nunca un problema. */
+const NET_CORE_NEGATED_RE = /\b(?:no|ni|nunca|tampoco)[ \t]+(?:se[ \t]+)?(?:incluyen?|llevan?|traen?)[ \t]+(?:elephant[ \t]+)?core(?:[ \t]+essential)?(?:[ \t]+incluid[oa])?|\bsin[ \t]+(?:elephant[ \t]+)?core(?:[ \t]+essential)?[ \t]+incluid[oa]/gi;
+/**
+ * El texto AFIRMA que Elephant Core va incluido. Una negación no cuenta, salvo dentro de una pregunta («¿No incluye
+ * Elephant Core? Sí…»), donde no niega nada. La negación va en la misma línea que su verbo.
+ */
+export function affirmsNetCore(t: string): boolean {
+  const stripped = t.replace(NET_CORE_NEGATED_RE, (m: string, at: number) => {
+    const before = t.slice(0, at);
+    const inQuestion = before.lastIndexOf("¿") > before.lastIndexOf("?");
+    return inQuestion ? m : " ";
+  });
+  return NET_CORE_RE.test(stripped);
+}
 /** Estados internos («pendiente») escritos en un texto público: son decisiones del equipo, no información al cliente. */
 export const PENDING_RE = /\bpendiente\b/i;
 /** Límites o usos de IA incluidos: el límite de consumo de IA aún no está decidido. */
@@ -68,7 +86,8 @@ export function textProblems(t: string, opts: { policyEnabled?: boolean; planInc
   if (INSTANT_RE.test(t)) out.push(`promete activación inmediata (${q})`);
   if (PROPOSAL_RE.test(t)) out.push(`publica una regla sin aprobar (${q})`);
   if (!opts.policyEnabled && PLAN_RULE_RE.test(t)) out.push(`afirma una inclusión en un plan (${q}) y la política comercial no está activa`);
-  if (!opts.policyEnabled && NET_CORE_RE.test(t)) out.push(`afirma que Elephant Core está incluido (${q}) y esa inclusión todavía no se aplica en la contratación`);
+  // Regla retirada (10/11/2026): con la política comercial activa o no, ninguna solución Net incluye Core
+  if (affirmsNetCore(t)) out.push(`afirma que Elephant Core está incluido (${q}): Elephant Core y Elephant Net se contratan por separado y ninguna solución lo incluye`);
   if (PENDING_RE.test(t)) out.push(`muestra un estado interno «pendiente» (${q})`);
   if (AI_LIMIT_RE.test(t)) out.push(`afirma un límite o un uso de IA incluido (${q}) y el límite de IA no está decidido`);
   if (INTERNAL_REF_RE.test(t)) out.push(`lleva una referencia interna (${q})`);
