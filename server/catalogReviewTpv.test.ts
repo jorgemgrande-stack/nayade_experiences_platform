@@ -42,8 +42,6 @@ async function production(price19 = true) {
       ...(direct ? { technicalStatus: "available" as const } : {}),
       catalog: {
         ...d.catalog,
-        // En production connect-pos sigue «por sede» (la semilla ya lo trae por empresa)
-        ...(c.key === "connect-pos" ? { scope: "site" as const, chargeUnit: "por sede" } : {}),
         ...(direct ? { commercialStatus: "available" as const, offer: { modality: "immediate" as const, trial: true, checkout: true } } : {}),
       },
       commercial,
@@ -146,7 +144,7 @@ describe("revisión del 09/11/2026: estrategia del TPV", () => {
     const sim = await run(k);
     // connect-pos no cambia, y con él tampoco la ficha que dice «por empresa»
     expect(sim.conflicts).toHaveLength(3);
-    expect(sim.conflicts.find((c) => c.startsWith("addon-site-business"))).toMatch(/antes hay que cambiar el ámbito de «connect-pos»/);
+    expect(sim.conflicts.find((c) => c.startsWith("addon-site-business"))).toMatch(/depende de «connect-pos»/);
     expect(sim.conflicts.find((c) => c.startsWith("connect-pos"))).toMatch(/«tagline» del producto/);
     expect(sim.conflicts.find((c) => c.startsWith("essential"))).toMatch(/«benefits»/);
     expect(sim.changed).toHaveLength(KEYS.length - 3);
@@ -158,8 +156,8 @@ describe("revisión del 09/11/2026: estrategia del TPV", () => {
     const before = (await k.store.getEntry("product", "connect-pos"))!;
     const r = await run(k, true);
     expect(r.conflicts.map((c) => c.split(":")[0])).toEqual(["connect-pos", "addon-site-business"]);
-    expect(r.conflicts[0]).toBe("connect-pos: el precio aprobado (mensual) debe ser 19,00 € y ahora es 25,00 €: antes hay que aprobarlo en el CRM (la revisión no toca precios); se deja como lo decidió el CRM");
-    expect(r.conflicts[1]).toMatch(/ámbito de «connect-pos» a «company».*ahora «site», «por sede»/);
+    expect(r.conflicts[0]).toBe("connect-pos: el precio aprobado (mensual) debe ser 19,00 € sin IVA y sin unidad, y ahora es 25,00 €: antes hay que aprobarlo en el CRM (la revisión no toca precios); se deja como lo decidió el CRM");
+    expect(r.conflicts[1]).toBe("addon-site-business: depende de «connect-pos», que esta revisión no ha podido dejar por empresa (ver su conflicto); se deja como lo decidió el CRM");
     expect(r.changed).toHaveLength(KEYS.length - 2);
     const after = (await k.store.getEntry("product", "connect-pos"))!;
     expect(after.draftVersion).toBe(before.draftVersion);
@@ -257,6 +255,53 @@ describe("revisión del 09/11/2026: estrategia del TPV", () => {
     expect(again.already).toEqual(KEYS);
     expect(again.borradores!.map((b) => b.key)).toEqual(["essential", "business", "enterprise"]);
     for (const e of await k.store.listEntries({ kind: "product" })) expect(e.draftVersion, e.key).toBe(versions.get(e.key));
+  });
+
+  it("si connect-pos no llega a publicarse (fallo al guardar), la ficha que dice «por empresa» tampoco cambia", async () => {
+    const k = await production();
+    const real = k.svc.save.bind(k.svc);
+    k.svc.save = async (...a: Parameters<typeof real>) => {
+      if (a[1] === "connect-pos") throw new Error("corte");
+      return real(...a);
+    };
+    const r = await run(k, true);
+    expect(r.conflicts.map((c) => c.split(":")[0])).toEqual(["connect-pos", "addon-site-business"]);
+    expect(r.conflicts[1]).toMatch(/depende de «connect-pos»/);
+    expect(JSON.stringify(((await k.store.getEntry("product", "addon-site-business"))!.published as Record<string, any>).commercial)).toMatch(/Elephant POS/);
+    k.svc.save = real;
+    const next = await run(k, true);
+    expect(next.conflicts).toEqual([]);
+    expect(next.changed.map((c) => c.split(":")[0])).toEqual(["connect-pos", "addon-site-business"]);
+  });
+
+  it("precio de 19 € con IVA incluido, por unidad o duplicado: no vale", async () => {
+    for (const [input, text] of [
+      [{ taxIncluded: true }, /19,00 € con IVA incluido/],
+      [{ unit: "sede" }, /19,00 € por sede y 25,00 €|25,00 € y 19,00 € por sede/],
+    ] as const) {
+      const k = await production(false);
+      const price = await k.svc.addPrice("connect-pos", { kind: "monthly", amountCents: 1900, taxRateBp: 2100, ...input }, "operator:jorge");
+      await k.svc.approvePrice(price.id, "operator:jorge");
+      const r = await run(k, true);
+      expect(r.conflicts.find((c) => c.startsWith("connect-pos"))).toMatch(text);
+      expect(productDraft.parse((await k.store.getEntry("product", "connect-pos"))!.draft).name).toBe("Elephant POS");
+    }
+  });
+
+  it("un borrador ajeno que cambia el mismo campo que la revisión: no se escribe nada de ese producto (conflicto)", async () => {
+    const k = await production();
+    const e = (await k.store.getEntry("product", "business"))!;
+    const d = productDraft.parse(e.draft);
+    await k.svc.save("product", "business", { draft: { ...d, description: "Descripción del importador, sin publicar.", commercial: { headline: "Para equipos", cta: "contact" } }, expectedVersion: e.draftVersion }, "catalogo:especificaciones-comerciales");
+    const before = (await k.store.getEntry("product", "business"))!;
+    const r = await run(k, true);
+    expect(r.conflicts).toHaveLength(1);
+    expect(r.conflicts[0]).toMatch(/^business: el borrador v\d+ cambia campo\(s\) que también cambia la revisión \(description\); no se guarda ni se publica: se resuelve en el CRM$/);
+    expect(r.borradores!.find((b) => b.key === "business")!.retenido.find((x) => x.campo === "description")).toMatchObject({ borrador: "Descripción del importador, sin publicar." });
+    const after = (await k.store.getEntry("product", "business"))!;
+    expect(after.draftVersion).toBe(before.draftVersion);
+    expect(after.publishedVersion).toBe(before.publishedVersion);
+    expect(r.changed).toHaveLength(KEYS.length - 1);
   });
 
   it("sin la marca overDraft, un borrador ajeno sigue siendo un conflicto (las revisiones anteriores no cambian)", async () => {

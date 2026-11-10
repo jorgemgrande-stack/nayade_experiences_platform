@@ -308,10 +308,12 @@ const CONNECT: SeedProduct[] = [
   }),
   connect({ key: "connect-tax", name: "Elephant Tax", group: "finance", tagline: "Declaraciones y modelos fiscales con tu gestoría.", tech: "partial", commercial: "on_request", monthly: 19, capabilities: ["tax-filings"], icon: "file-text" }),
   connect({ key: "connect-partners", name: "Elephant Partners", group: "finance", tagline: "Liquidaciones de proveedores y colaboradores.", tech: "partial", commercial: "on_request", monthly: 19, capabilities: ["supplier-settlements"], icon: "handshake" }),
-  // TPV Advanced: por empresa y sin unidad de cobro (decisión de Jorge del 10/11/2026; antes «por sede»), como lo deja la
-  // revisión review20261109tpv.ts. PENDIENTE: la tarifa pasa a 19 € cuando se apruebe en el CRM; entonces hay que cambiar
-  // aquí `monthly` (y las simulaciones que usan 25 €), o la semilla volvería a aprobar el precio de 25 €
-  connect({ key: "connect-pos", name: "TPV Advanced", group: "pos", scope: "company", tagline: "Arqueos, turnos y auditoría sobre la caja de tu plan.", tech: "partial", commercial: "on_request", monthly: 25, capabilities: ["pos-advanced"], icon: "credit-card" }),
+  // TPV Advanced. PENDIENTE (decisión de Jorge del 10/11/2026: por empresa, sin unidad de cobro y 19 €/mes): la semilla
+  // sigue con los valores de production de hoy («por sede», 25 €) hasta que se apruebe el precio en el CRM y se aplique la
+  // revisión review20261109tpv.ts. Después hay que cambiar AQUÍ, en un mismo commit, `scope: "company"`, quitar
+  // `chargeUnit` y `monthly: 19` (y las simulaciones que usan 25 €). Hasta entonces NO se ejecuta la semilla en
+  // production: revertiría el ámbito y volvería a aprobar el precio de 25 €
+  connect({ key: "connect-pos", name: "TPV Advanced", group: "pos", scope: "site", tagline: "Arqueos, turnos y auditoría sobre la caja de tu plan.", tech: "partial", commercial: "on_request", monthly: 25, capabilities: ["pos-advanced"], chargeUnit: "por sede", icon: "credit-card" }),
   connect({ key: "connect-deals", name: "Elephant Deals", group: "deals", tagline: "Groupon y cuponeras: canje y conciliación.", tech: "partial", commercial: "on_request", monthly: 19, capabilities: ["deals-coupons"], icon: "tag" }),
   connect({ key: "connect-finance-sync", name: "Elephant Finance Sync", group: "finance", tagline: "Importación bancaria, conciliación y operaciones de TPV.", tech: "partial", commercial: "on_request", monthly: 19, capabilities: ["bank-reconciliation", "bank-import-pos"], icon: "refresh" }),
   connect({ key: "connect-copilot", name: "Elephant Copilot avanzado", group: "ai", tagline: "Asistente de IA avanzado en todo el producto.", tech: "planned", commercial: "coming_soon", monthly: 29, capabilities: ["copilot-advanced"], thirdPartyCosts: "Consumo de IA por encima del incluido, aparte según uso.", icon: "sparkles" }),

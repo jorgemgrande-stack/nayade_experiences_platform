@@ -312,9 +312,13 @@ const eur = (cents: number) => `${(cents / 100).toFixed(2).replace(".", ",")} �
  */
 export async function applyListingReview(svc: WebAdminService, store: WebStore, o: { apply?: boolean; author: string; changes?: readonly ListingChange[]; overDraft?: boolean }): Promise<ListingReport> {
   const r: ListingReport = { apply: !!o.apply, changed: [], already: [], conflicts: [] };
-  /** Productos cuyo ámbito queda como pide esta misma revisión (también en simulación): ámbito y unidad de cobro. */
+  /**
+   * Productos cuyo ámbito queda como pide esta misma revisión: ya estaba, o se ha cambiado en esta ejecución (con
+   * `apply`, solo después de publicarlo; en simulación, si se cambiaría).
+   */
   const scoped = new Map<string, { scope: string; chargeUnit: string | null }>();
-  for (const c of o.changes ?? LISTINGS_2026_11_08) {
+  const changes = o.changes ?? LISTINGS_2026_11_08;
+  for (const c of changes) {
     const cur = await store.getEntry("product", c.key);
     if (!cur) {
       r.conflicts.push(`${c.key}: no existe en el catálogo`);
@@ -346,14 +350,19 @@ export async function applyListingReview(svc: WebAdminService, store: WebStore, 
     if (c.requiresCatalog) {
       const q = c.requiresCatalog;
       const other = q.key === c.key ? cur : await store.getEntry("product", q.key);
-      const oc = scoped.get(q.key) ?? (other ? productDraft.parse(other.published ?? other.draft).catalog : null);
-      if (!oc || oc.scope !== q.scope || (oc.chargeUnit ?? null) !== q.chargeUnit) pre.push(`antes hay que cambiar el ámbito de «${q.key}» a «${q.scope}» y su unidad de cobro a «${q.chargeUnit ?? "ninguna"}» (ahora «${oc?.scope ?? "?"}», «${oc?.chargeUnit ?? "ninguna"}»)`);
+      // Si esta misma revisión cambia el ámbito de ese producto, solo vale que ESTA ejecución lo haya dejado resuelto (con
+      // su precio y sus valores de partida): no basta con que el ámbito publicado coincida por otra vía
+      const ownChange = q.key !== c.key && changes.some((x) => x.key === q.key && x.catalogScope);
+      const oc = scoped.get(q.key) ?? (ownChange ? null : other ? productDraft.parse(other.published ?? other.draft).catalog : null);
+      if (ownChange && !oc) pre.push(`depende de «${q.key}», que esta revisión no ha podido dejar por empresa (ver su conflicto)`);
+      else if (!oc || oc.scope !== q.scope || (oc.chargeUnit ?? null) !== q.chargeUnit) pre.push(`antes hay que cambiar el ámbito de «${q.key}» a «${q.scope}» y su unidad de cobro a «${q.chargeUnit ?? "ninguna"}» (ahora «${oc?.scope ?? "?"}», «${oc?.chargeUnit ?? "ninguna"}»)`);
     }
     if (c.requiresPrice) {
       const q = c.requiresPrice;
       const approved = (await store.listPrices(cur.id)).filter((p) => p.status === "approved" && p.kind === q.kind && p.currency === "EUR");
-      if (approved.length !== 1 || approved[0].amountCents !== q.amountCents)
-        pre.push(`el precio aprobado (${q.kind === "monthly" ? "mensual" : "anual"}) debe ser ${eur(q.amountCents)} y ahora es ${approved.length ? approved.map((p) => eur(p.amountCents)).join(" y ") : "ninguno"}: antes hay que aprobarlo en el CRM (la revisión no toca precios)`);
+      // Un solo precio vigente de ese tipo, por el importe exacto, sin unidad y sin IVA incluido (como los del catálogo)
+      if (approved.length !== 1 || approved[0].amountCents !== q.amountCents || approved[0].unit !== null || approved[0].taxIncluded)
+        pre.push(`el precio aprobado (${q.kind === "monthly" ? "mensual" : "anual"}) debe ser ${eur(q.amountCents)} sin IVA y sin unidad, y ahora es ${approved.length ? approved.map((p) => `${eur(p.amountCents)}${p.unit ? ` por ${p.unit}` : ""}${p.taxIncluded ? " con IVA incluido" : ""}`).join(" y ") : "ninguno"}: antes hay que aprobarlo en el CRM (la revisión no toca precios)`);
     }
     if (!upToDate) {
       if (!o.overDraft) {
@@ -369,6 +378,8 @@ export async function applyListingReview(svc: WebAdminService, store: WebStore, 
           reviewed: (base) => (directSaleDone(base, c) || isDone(base, c) ? base : productDraft.parse(target(base, c))),
           startProblems: (base) => (directSaleDone(base, c) || isDone(base, c) ? [] : [...pre, ...startProblems(base, c)]),
           retain: () => true,
+          // Si el borrador cambia un campo que también cambia la revisión, no se escribe nada: se resuelve en el CRM
+          retainedClashBlocks: true,
         },
       });
       if (out.state !== "none" && out.report) (r.borradores ??= []).push(out.report);
@@ -381,6 +392,10 @@ export async function applyListingReview(svc: WebAdminService, store: WebStore, 
       } else if (out.state === "blocked") r.conflicts.push(`${c.key}: ${out.reason}`);
       continue;
     }
+    if (!d.commercial && Object.keys(c.fields).length) {
+      r.conflicts.push(`${c.key}: no tiene ficha comercial`);
+      continue;
+    }
     // Ya en venta directa (review20261108connect.ts): esta revisión ya hizo su parte y no la deshace
     if (directSaleDone(d, c)) {
       r.already.push(`${c.key} (en venta directa)`);
@@ -388,10 +403,11 @@ export async function applyListingReview(svc: WebAdminService, store: WebStore, 
     }
     const problems = [...pre, ...startProblems(d, c)];
     if (problems.length) {
-      r.conflicts.push(`${c.key}: ${problems[0] === "no tiene ficha comercial" && problems.length === 1 ? problems[0] : `${problems.join("; ")}; se deja como lo decidió el CRM`}`);
+      r.conflicts.push(`${c.key}: ${problems.join("; ")}; se deja como lo decidió el CRM`);
       continue;
     }
-    settled();
+    // En simulación se da por resuelto lo que se cambiaría; con `apply`, solo después de publicarlo
+    if (!o.apply) settled();
     const scopeChange = c.catalogScope && (d.catalog.scope !== c.catalogScope.scope.to || (d.catalog.chargeUnit ?? null) !== c.catalogScope.chargeUnit.to) ? `ámbito «${d.catalog.scope}» → «${c.catalogScope.scope.to}», unidad de cobro «${d.catalog.chargeUnit ?? "ninguna"}» → «${c.catalogScope.chargeUnit.to ?? "ninguna"}»` : "";
     const what = [scopeChange, Object.keys(c.product ?? {}).length ? `producto (${Object.keys(c.product ?? {}).join(", ")})` : "", Object.keys(c.fields).length ? `ficha (${Object.keys(c.fields).join(", ")})` : ""].filter(Boolean).join("; ");
     r.changed.push(`${c.key}: ${c.status ? `${c.status.from} → ${c.status.to}; ` : ""}${what}`);
@@ -399,6 +415,7 @@ export async function applyListingReview(svc: WebAdminService, store: WebStore, 
     try {
       const saved = await svc.save("product", c.key, { draft: target(d, c), expectedVersion: cur.draftVersion }, o.author);
       await svc.publish("product", c.key, saved.draftVersion, o.author);
+      settled();
     } catch (e) {
       r.changed.pop();
       r.conflicts.push(`${c.key}: no se pudo publicar la ficha (${e instanceof Error ? e.message : String(e)}); se revisa en el CRM`);
