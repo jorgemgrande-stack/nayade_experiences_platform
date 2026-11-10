@@ -30,9 +30,19 @@ export const PLAN_RULE_RE = /incluid[oa]s? en (tu plan|business|enterprise|essen
  */
 export const NET_CORE_RE = /(elephant )?core (essential )?incluid[oa]|incluye (elephant )?core|plataforma de gesti[oó]n (big elephant )?incluida|sin plan (de elephant core|core) aparte/i;
 /** Negación de esa inclusión («no incluye Elephant Core», «sin Core incluido», «ni trae Core»): es la regla vigente, nunca un problema. */
-const NET_CORE_NEGATED_RE = /\b(?:no|ni|nunca|tampoco)\s+(?:se\s+)?(?:incluyen?|llevan?|traen?)\s+(?:elephant\s+)?core(?:\s+essential)?(?:\s+incluid[oa])?|\bsin\s+(?:elephant\s+)?core(?:\s+essential)?\s+incluid[oa]/gi;
-/** El texto AFIRMA que Elephant Core va incluido (una negación no cuenta). */
-export const affirmsNetCore = (t: string): boolean => NET_CORE_RE.test(t.replace(NET_CORE_NEGATED_RE, " "));
+const NET_CORE_NEGATED_RE = /\b(?:no|ni|nunca|tampoco)[ \t]+(?:se[ \t]+)?(?:incluyen?|llevan?|traen?)[ \t]+(?:elephant[ \t]+)?core(?:[ \t]+essential)?(?:[ \t]+incluid[oa])?|\bsin[ \t]+(?:elephant[ \t]+)?core(?:[ \t]+essential)?[ \t]+incluid[oa]/gi;
+/**
+ * El texto AFIRMA que Elephant Core va incluido. Una negación no cuenta, salvo dentro de una pregunta («¿No incluye
+ * Elephant Core? Sí…»), donde no niega nada. La negación va en la misma línea que su verbo.
+ */
+export function affirmsNetCore(t: string): boolean {
+  const stripped = t.replace(NET_CORE_NEGATED_RE, (m: string, at: number) => {
+    const before = t.slice(0, at);
+    const inQuestion = before.lastIndexOf("¿") > before.lastIndexOf("?");
+    return inQuestion ? m : " ";
+  });
+  return NET_CORE_RE.test(stripped);
+}
 /** Estados internos («pendiente») escritos en un texto público: son decisiones del equipo, no información al cliente. */
 export const PENDING_RE = /\bpendiente\b/i;
 /** Límites o usos de IA incluidos: el límite de consumo de IA aún no está decidido. */
