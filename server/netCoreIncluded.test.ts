@@ -21,7 +21,7 @@ import { quoteCatalogFromSeed } from "./catalog/commercial/seedCatalog";
 import { commercialQuote, previewPlanChange, type CommercialQuoteRequest } from "./catalog/commercial/commercialQuote";
 import { CATALOG_POLICY, NET_COMPLETE, PROPOSED_POLICY, RETIRED_NET_CORE_INCLUDED, type CommercialPolicy } from "./catalog/commercial/policy";
 import { netIssues, netSimulations } from "./catalog/commercial/netSimulations";
-import { textProblems } from "./catalog/commercial/checks";
+import { affirmsNetCore, textProblems } from "./catalog/commercial/checks";
 import { seedElephantSource } from "./catalog/seed";
 import { importCommercialSpecs } from "./catalog/commercial/importSpecs";
 import { productDraft, publicView } from "./web/schemas";
@@ -243,7 +243,7 @@ describe("catálogo: importación, publicación y validaciones", () => {
     expect((await svc.commercialReview()).products.find((p) => p.key === "ski-net-complete")!.warnings.join()).toMatch(/«Core incluido» está retirado/);
   });
 
-  it("validaciones: Core incluido solo en soluciones Net; texto «Core incluido» bloqueado mientras no se aplique", async () => {
+  it("validaciones: Core incluido solo en soluciones Net; un texto que afirma «Core incluido» se bloquea siempre y uno que lo niega, nunca", async () => {
     const store = new MemoryWebStore();
     const svc = new WebAdminService({ store, refs });
     await seedElephantSource(svc, store);
@@ -251,6 +251,17 @@ describe("catálogo: importación, publicación y validaciones", () => {
     const d = productDraft.parse(e.draft);
     await expect(svc.save("product", "connect-pos", { draft: { ...d, catalog: { ...d.catalog, coreIncluded: { plan: "essential", status: "approved" } } }, expectedVersion: e.draftVersion }, "t")).rejects.toThrow(/Solo una solución Elephant Net completa/);
     expect(textProblems("Elephant Core incluido en todas las soluciones").join()).toMatch(/Core está incluido/);
-    expect(textProblems("Elephant Core incluido en todas las soluciones", { policyEnabled: true })).toEqual([]);
+    // Regla retirada (10/11/2026): se bloquea también con la política comercial activa, y el mensaje dice la regla vigente
+    expect(textProblems("Elephant Core incluido en todas las soluciones", { policyEnabled: true }).join()).toMatch(/Core está incluido/);
+    expect(textProblems("Hotel Net incluye Elephant Core Essential")).toEqual(["afirma que Elephant Core está incluido («Hotel Net incluye Elephant Core Essential»): Elephant Core y Elephant Net se contratan por separado y ninguna solución lo incluye"]);
+    expect(textProblems("Hotel Net incluye Elephant Core Essential").join()).not.toMatch(/todavía no se aplica/);
+    for (const t of ["Con la plataforma de gestión incluida", "Sin plan de Elephant Core aparte", "No solo incluye Elephant Core: también el TPV"]) expect(affirmsNetCore(t), t).toBe(true);
+    // Negar la inclusión es decir la regla vigente: no se bloquea
+    for (const t of ["No incluye Elephant Core", "Hotel Net no incluye Elephant Core Essential: se contrata con tu plan", "Las soluciones Net no incluyen Core", "Sin Core incluido", "Ni incluye Elephant Core ni lo sustituye", "No trae Elephant Core incluido", "Elephant Core no está incluido", "Necesitas un plan de Elephant Core, que se contrata aparte"]) {
+      expect(affirmsNetCore(t), t).toBe(false);
+      expect(textProblems(t), t).toEqual([]);
+    }
+    // Una negación no tapa una afirmación en el mismo texto
+    expect(affirmsNetCore("No incluye Elephant Core Business, pero Elephant Core Essential incluido")).toBe(true);
   });
 });
