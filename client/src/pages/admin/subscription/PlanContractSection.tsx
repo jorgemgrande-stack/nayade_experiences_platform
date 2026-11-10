@@ -8,6 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { trpc } from "@/lib/trpc";
+import { CustomTermsSection } from "./CustomTermsSection";
 
 const fmtDate = (ms: number) => new Date(ms).toLocaleDateString("es-ES", { day: "numeric", month: "long", year: "numeric" });
 const money = (cents: number, currency: string) => new Intl.NumberFormat("es-ES", { style: "currency", currency }).format(cents / 100);
@@ -53,6 +54,9 @@ export function PlanContractSection({ isTrial }: { isTrial: boolean }) {
   const c = p.contract;
   const st = c ? ORDER_STATE[c.state] : undefined;
   return (
+    <>
+    {/* Condiciones pactadas con la empresa (solo lectura, con la presentación elegida por Big Elephant) */}
+    {p.customTerms && <CustomTermsSection terms={p.customTerms} />}
     <section className="rounded-2xl border border-border bg-card p-6 space-y-4" aria-labelledby="sub-contract">
       <h2 id="sub-contract" className="font-semibold text-foreground">Contrato y facturación</h2>
       {!c ? (
@@ -70,7 +74,7 @@ export function PlanContractSection({ isTrial }: { isTrial: boolean }) {
             </div>
             <div>
               <dt className="text-muted-foreground">Importe {c.interval === "year" ? "anual" : "mensual"}</dt>
-              <dd className="font-medium text-foreground">{c.recurringNetCents === null ? "Según contrato" : `${money(c.recurringNetCents, c.currency)} + IVA`}</dd>
+              <dd className="font-medium text-foreground">{p.customTerms ? `${money(p.customTerms.today.netCents, p.customTerms.current.currency)} + IVA` : c.recurringNetCents === null ? "Según contrato" : `${money(c.recurringNetCents, c.currency)} + IVA`}</dd>
             </div>
             <div>
               <dt className="text-muted-foreground">{p.period?.cancelAt ? "Fin del servicio" : "Próxima renovación"}</dt>
@@ -112,5 +116,6 @@ export function PlanContractSection({ isTrial }: { isTrial: boolean }) {
       )}
       {viewing !== null && <InvoiceViewer id={viewing} onClose={() => setViewing(null)} />}
     </section>
+    </>
   );
 }

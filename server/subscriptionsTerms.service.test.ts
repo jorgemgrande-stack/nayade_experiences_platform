@@ -11,6 +11,8 @@ import { ShadowBillingService } from "./subscriptions/shadow";
 import { MemorySubscriptionStore } from "./subscriptions/store";
 import { CommercialTermsService, TermsError, effectiveStatus, type LineInput, type TermsInput } from "./commercialTerms/service";
 import { MemoryTermsStore } from "./commercialTerms/store";
+import { tenantTermsReader } from "./commercialTerms/tenantView";
+import { TenantPlanService } from "./commerce/tenantPlan";
 
 const A = "operator:ana";
 const B = "operator:berta";
@@ -741,5 +743,72 @@ describe("secuencias de operaciones (hallazgos de la revisión independiente)", 
     const d = await terms.createForSubscription(sub.id, input([cat("essential", "essM", { negotiatedUnitCents: 1900 })]), A);
     expect((await terms.preview(d.id)).differenceVsOfficialCents).toBe(-1000);
     expect((await fails(terms.ofSubscription(999_999))).code).toBe("not_found");
+  });
+});
+
+describe("panel de la empresa («Mi plan»): solo lectura y con la presentación elegida", () => {
+  const reader = () => tenantTermsReader(terms, termsStore, store, () => clock);
+  const withTenant = (subId: number, tenantId: string) => store.mutate(subId, null, "t", clock, async () => ({ patch: { tenantId }, event: { kind: "contract_linked" as const, before: null, after: null, reason: null }, result: null }));
+
+  it("Caso 20 — con cuota global la empresa ve lo incluido y la cuota, nunca los precios por partida", async () => {
+    const sub = await newSub();
+    await withTenant(sub.id, "acme");
+    await apply(sub.id, input(EXAMPLE(), { pricingMode: "global", globalAmountCents: 12900, presentation: "global", packageName: "Paquete hotel" }));
+    const seen = (await reader()("acme", 1))!;
+    expect(seen.current).toMatchObject({ presentation: "global", packageName: "Paquete hotel", breakdown: null, recurring: { netCents: 12900, taxCents: 2709, totalCents: 15609 } });
+    expect(seen.current.included.map((l) => l.name)).toEqual(["Essential", "Hotel Net", "Conector WhatsApp", "Mantenimiento personalizado"]);
+    expect(seen.today).toEqual({ netCents: 12900, taxCents: 2709, totalCents: 15609 });
+    const json = JSON.stringify(seen);
+    for (const cents of Object.values(await amounts(sub.id))) expect(new RegExp(`[^0-9]${cents}[^0-9]`).test(json)).toBe(false);
+    expect(json).not.toMatch(/official|negotiated/i);
+    // Lo mismo dentro del resumen de «Mi plan»
+    const plan = new TenantPlanService({ companyOfTenant: async () => ({ id: 1, name: "Acme" }), orders: async () => [], subscription: async () => null, customTerms: reader(), billingPortalEnabled: false });
+    const summary = await plan.summary("acme");
+    expect(summary.contract).toBeNull();
+    expect(summary.customTerms).toEqual(seen);
+  });
+
+  it("Caso 21 — con desglose ve cada partida con su precio y sus descuentos", async () => {
+    const sub = await newSub();
+    await withTenant(sub.id, "acme");
+    await apply(sub.id, input([cat("essential", "essM"), cat("hotel-net", "hotM", { negotiatedUnitCents: 9900 })], { adjustments: [{ line: 1, type: "discount", mode: "percent", value: 1000, recurrence: "recurring", note: "fidelidad" }] }));
+    const seen = (await reader()("acme", 1))!;
+    expect(seen.current.breakdown!.lines).toEqual([
+      { name: "Essential", quantity: 1, baseCents: 2900, adjustments: [], netCents: 2900, taxRateBp: 2100 },
+      { name: "Hotel Net", quantity: 1, baseCents: 9900, adjustments: [{ label: "Descuento 10 %: fidelidad", cents: -990 }], netCents: 8910, taxRateBp: 2100 },
+    ]);
+  });
+
+  it("Caso 29 — una empresa no ve las condiciones de otra; sin acuerdo no se muestra nada", async () => {
+    const one = await newSub(1);
+    const two = await newSub(2);
+    await withTenant(one.id, "acme");
+    await withTenant(two.id, "otra");
+    await apply(one.id, input([cat("essential", "essM", { negotiatedUnitCents: 100 })]));
+    expect(await reader()("otra", 2)).toBeNull();
+    // Ni pidiendo la empresa de otro con su propio tenant
+    expect(await reader()("otra", 1)).toBeNull();
+    expect((await reader()("acme", 1))!.today.netCents).toBe(100);
+    // Si falla la lectura, «Mi plan» sigue funcionando
+    const plan = new TenantPlanService({ companyOfTenant: async () => ({ id: 2, name: "Otra" }), orders: async () => [], subscription: async () => null, customTerms: async () => { throw new Error("caída"); }, billingPortalEnabled: false });
+    expect((await plan.summary("otra")).customTerms).toBeNull();
+  });
+
+  it("muestra la cuota que rige hoy y las condiciones ya pactadas para más adelante", async () => {
+    const sub = await newSub();
+    await withTenant(sub.id, "acme");
+    await apply(sub.id, input([cat("essential", "essM")], { adjustments: [{ line: 0, type: "discount", mode: "percent", value: 5000, recurrence: "recurring", endsAt: MONTH(1) }] }));
+    clock += DAY;
+    await apply(sub.id, input([cat("essential", "essM", { negotiatedUnitCents: 3900 })], { effectiveFrom: MONTH(2) }));
+    const before = (await reader()("acme", 1))!;
+    expect(before.today.netCents).toBe(1450);
+    expect(before.current.scheduledChanges).toEqual([expect.objectContaining({ at: MONTH(1), netCents: 2900 })]);
+    expect(before.upcoming).toMatchObject({ recurring: { netCents: 3900 }, validity: { from: MONTH(2) } });
+    clock = MONTH(1) + DAY;
+    expect((await reader()("acme", 1))!.today.netCents).toBe(2900);
+    clock = MONTH(2) + DAY;
+    const later = (await reader()("acme", 1))!;
+    expect(later.today.netCents).toBe(3900);
+    expect(later.upcoming).toBeNull();
   });
 });

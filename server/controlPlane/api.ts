@@ -102,6 +102,8 @@ import { createMediaAdminRouter, createPublicMediaRouter, MediaService, type Med
 import { createPublicSiteRouter } from "../web/publicSite";
 import { createSubscriptionsRouter } from "../subscriptions/api";
 import { createCommercialTermsRouter } from "../commercialTerms/api";
+import { TermsAcceptanceService, createTermsAcceptanceRouter, createTermsPublicAcceptanceRouter } from "../commercialTerms/acceptance";
+import { tenantTermsReader } from "../commercialTerms/tenantView";
 import { CommercialTermsService } from "../commercialTerms/service";
 import type { TermsStore } from "../commercialTerms/store";
 import { catalogFromWebStore, crmFromStore } from "../subscriptions/ports";
@@ -714,6 +716,10 @@ export function createControlPlaneApp(d: ControlPlaneDeps): Express {
   let publicCheckout: express.Router | null = null;
   // Aceptación pública de contratos de servicios externos (solo con el token del enlace): se asigna con Stripe
   let publicAcceptance: express.Router | null = null;
+  // Aceptación pública de condiciones comerciales personalizadas (solo con el token del enlace): reservada ANTES de la
+  // de servicios externos, de la que cuelga; se asigna con las suscripciones
+  let publicTermsAcceptance: express.Router | null = null;
+  router.use("/public/contract-acceptance/condiciones", (req, res, next) => (publicTermsAcceptance ? publicTermsAcceptance(req, res, next) : void res.status(404).json({ error: "not_found" })));
   router.use("/public/contract-acceptance", (req, res, next) => (publicAcceptance ? publicAcceptance(req, res, next) : void res.status(404).json({ error: "not_found" })));
   router.use("/public/checkout", (req, res, next) => (publicCheckout ? publicCheckout(req, res, next) : void res.status(404).json({ error: "not_found" })));
   // Baja de comunicaciones comerciales y encuesta de soporte del Centro de envíos (solo con el enlace firmado)
@@ -1968,6 +1974,7 @@ export function createControlPlaneApp(d: ControlPlaneDeps): Express {
         return false;
       },
     });
+    let customTermsOfTenant: ReturnType<typeof tenantTermsReader> | null = null;
     // Condiciones comerciales personalizadas: antes del router de suscripciones (que responde 404 a lo que no conoce)
     const orderStoreForTerms = d.orders?.store;
     const commercialTerms = d.subscriptions.terms
@@ -1982,7 +1989,35 @@ export function createControlPlaneApp(d: ControlPlaneDeps): Express {
           stripeBilled: orderStoreForTerms ? async (sid) => (await subscriptionBilling(orderStoreForTerms, sid)).source === "stripe" : undefined,
         })
       : null;
-    if (commercialTerms) router.use(createCommercialTermsRouter(commercialTerms));
+    // Contrato y aceptación del cliente: mismo circuito y misma tabla de aceptaciones que los servicios externos
+    const termsAcceptance =
+      commercialTerms && d.subscriptions.terms && d.external
+        ? new TermsAcceptanceService({
+            terms: commercialTerms,
+            termsStore: d.subscriptions.terms,
+            subscriptions: svc,
+            subscriptionStore: d.subscriptions.store,
+            crm: d.crm.service,
+            crmStore: d.crm.store,
+            acceptances: d.external.store,
+            url: `${d.external.urls.acceptance}/condiciones`,
+            ipSalt: d.external.ipSalt,
+            now: d.subscriptions.now,
+          })
+        : null;
+    if (termsAcceptance) {
+      router.use(createTermsAcceptanceRouter(termsAcceptance));
+      publicTermsAcceptance = createTermsPublicAcceptanceRouter(termsAcceptance);
+    }
+    if (commercialTerms) {
+      router.use(
+        createCommercialTermsRouter(commercialTerms, {
+          withdraw: termsAcceptance ? async (id, reason, actor) => termsAcceptance.withdraw(id, { reason, expectedRevision: (await commercialTerms.must(id)).revision }, actor) : undefined,
+        }),
+      );
+    }
+    // Lo que la empresa ve de sus condiciones (solo lectura, con la presentación elegida): lo usa «Mi plan»
+    customTermsOfTenant = commercialTerms && d.subscriptions.terms ? tenantTermsReader(commercialTerms, d.subscriptions.terms, d.subscriptions.store, d.subscriptions.now ?? Date.now) : null;
     // Antes de calcular un periodo se resuelve el fin de las condiciones temporales (tarifa oficial vigente ese día)
     const shadowBilling = new ShadowBillingService({ store: d.subscriptions.store, crm: crmPort, now: d.subscriptions.now, settle: commercialTerms ? (sid) => commercialTerms.settleDue(sid) : undefined });
     if (d.capabilities) {
@@ -2648,6 +2683,7 @@ export function createControlPlaneApp(d: ControlPlaneDeps): Express {
         },
         orders: (companyId) => orderStore.list({ companyId }),
         subscription: (id) => svc.must(id).catch(() => null),
+        customTerms: customTermsOfTenant ?? undefined,
         invoices: inv ? (companyId) => inv.store.list({ companyId, limit: 100 }) : undefined,
         invoiceHtml: inv ? (i) => invoiceHtml(i, issuer) : undefined,
         stripeStatus: stripe

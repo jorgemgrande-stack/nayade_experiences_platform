@@ -95,7 +95,7 @@ const termsShape = {
 const termsInput = z.object(termsShape).strict();
 const revision = z.number().int().min(1);
 
-export function createCommercialTermsRouter(svc: CommercialTermsService): Router {
+export function createCommercialTermsRouter(svc: CommercialTermsService, hooks: { /** Antes de anular unas condiciones enviadas a aceptación: revoca el enlace y devuelve el contrato a borrador. */ withdraw?: (id: number, reason: string, actor: string) => Promise<{ revision: number } | null> } = {}): Router {
   const r = express.Router();
   const who = (req: Request) => `${getAuth(req)!.actor.type}:${getAuth(req)!.actor.id}`;
   const manage = requireCustomPricing();
@@ -143,7 +143,9 @@ export function createCommercialTermsRouter(svc: CommercialTermsService): Router
   }));
   r.post("/commercial-terms/:id/cancel", manage, wrap(async (req, res) => {
     const b = z.object({ reason, expectedRevision: revision }).strict().parse(req.body);
-    res.json({ terms: await svc.cancelDraft(id.parse(req.params.id), b, b.expectedRevision, who(req)) });
+    const tid = id.parse(req.params.id);
+    const withdrawn = hooks.withdraw && (await svc.must(tid)).status === "pending_acceptance" ? await hooks.withdraw(tid, b.reason, who(req)) : null;
+    res.json({ terms: await svc.cancelDraft(tid, b, withdrawn ? withdrawn.revision : b.expectedRevision, who(req)) });
   }));
   r.post("/commercial-terms/:id/prepare-contracting", manage, wrap(async (req, res) => {
     const b = z.object({ expectedRevision: revision, trialDays: z.number().int().min(0).max(60).optional(), reason: reason.nullable().optional() }).strict().parse(req.body);

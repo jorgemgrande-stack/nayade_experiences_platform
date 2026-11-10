@@ -22,6 +22,7 @@ import { MemoryCapabilityStore } from "./_core/capabilities/store";
 import { BUILTIN_MODULES } from "./_core/modules/builtin";
 import { seedElephantSource } from "./catalog/seed";
 import { MemoryTermsStore } from "./commercialTerms/store";
+import { MemoryExternalStore } from "./external/store";
 import { CUSTOM_PRICING_SCOPE, canManageCustomPricing, customPricingScopeDefined } from "./commercialTerms/permission";
 import { TPV_ACQUIRED_RIGHTS_CAPABILITY, TPV_ACQUIRED_RIGHTS_SOURCE } from "./licensing/tpvAcquiredRights";
 
@@ -40,6 +41,10 @@ let subscriptionId = 0;
 let otherSubscriptionId = 0;
 let hotelCompanyId = 0;
 let referenceCompanyId = 0;
+let contractCompanyId = 0;
+const acceptanceStore = new MemoryExternalStore("test");
+const crmStore = new MemoryCrmStore();
+const PUBLIC = "https://admin.example.test/cp/v1/public/contract-acceptance";
 let P: Record<string, number> = {};
 const caps = new MemoryCapabilityStore();
 const subsStore = new MemorySubscriptionStore();
@@ -78,12 +83,12 @@ beforeAll(async () => {
   const ring = keyringFromEnv({ REGISTRY_KEYS: `k1:${crypto.randomBytes(32).toString("base64")}`, REGISTRY_ACTIVE_KEY_ID: "k1" } as NodeJS.ProcessEnv);
   const registry = new TenantRegistryService(reg, () => ring);
   await registry.createTenant({ id: "acme", displayName: "Acme" }, { type: "operator", id: "test" });
-  const crmStore = new MemoryCrmStore();
   const crm = new CrmService({ store: crmStore });
   const company = await crm.createCompany({ name: "Acme" }, "t");
   const other = await crm.createCompany({ name: "Otra" }, "t");
   hotelCompanyId = (await crm.createCompany({ name: "Hotel Ejemplo" }, "t")).id;
   referenceCompanyId = (await crm.createCompany({ name: "Hotel a tarifa oficial" }, "t")).id;
+  contractCompanyId = (await crm.createCompany({ name: "Hotel con contrato", legalName: "Hotel con Contrato, S.L.", taxId: "B12345674" }, "t")).id;
   const webStore = new MemoryWebStore();
   const web = new WebAdminService({ store: webStore, refs: { moduleIds: BUILTIN_MODULES.map((m) => m.id), planIds: () => null }, now: () => clock });
   await seedElephantSource(web, webStore);
@@ -111,6 +116,8 @@ beforeAll(async () => {
     crm: { service: crm, store: crmStore },
     web: { store: webStore },
     subscriptions: { store: subsStore, now: () => clock, terms: new MemoryTermsStore() },
+    // Página pública y tabla de aceptaciones de los servicios externos (el mismo circuito)
+    external: { store: acceptanceStore, urls: { acceptance: PUBLIC, setupSuccess: `${PUBLIC}/autorizado`, setupCancel: `${PUBLIC}/cancelado`, portalReturn: `${PUBLIC}/portal` }, ipSalt: "sal-de-pruebas-para-seudonimizar-ips" },
     capabilities: caps,
   });
   server = http.createServer(app);
@@ -346,5 +353,196 @@ describe("caso final — Essential + Hotel Net + WhatsApp Connect por 129 €/me
     expect(official("essential") + official("hotel-net-complete") + official("connect-whatsapp-ai")).toBeGreaterThan(12900);
     const others = (await call("GET", `/subscriptions/${otherSubscriptionId}`, { token: TOK.admin })).json;
     expect(others.items.every((i: { termsId?: number | null }) => i.termsId == null)).toBe(true);
+  });
+});
+
+/** Petición sin JSON (la página pública es HTML y su formulario, urlencoded). */
+const raw = (method: string, path: string, form?: Record<string, string>) =>
+  new Promise<{ status: number; body: string; headers: http.IncomingHttpHeaders }>((resolve, reject) => {
+    const data = form ? new URLSearchParams(form).toString() : undefined;
+    const req = http.request({ host: "127.0.0.1", port, path: `/cp/v1${path}`, method, headers: { ...(data ? { "content-type": "application/x-www-form-urlencoded", "content-length": Buffer.byteLength(data) } : {}), "user-agent": "navegador-de-prueba" } }, (res) => {
+      let b = "";
+      res.on("data", (c) => (b += c));
+      res.on("end", () => resolve({ status: res.statusCode ?? 0, body: b, headers: res.headers }));
+    });
+    req.on("error", reject);
+    if (data) req.write(data);
+    req.end();
+  });
+const publicPath = (url: string) => url.replace("https://admin.example.test/cp/v1", "");
+
+/**
+ * Caso 22 y caso final con CONTRATO: el mismo paquete de 129 €/mes, ahora con aceptación del cliente. Nada se activa
+ * antes de aceptar; al aceptar quedan el contrato firmado con sus evidencias, la suscripción y la facturación simulada.
+ */
+describe("Caso 22 — contrato y aceptación del cliente (paquete de 129 €/mes)", () => {
+  let termsId = 0;
+  let revision = 0;
+  let url = "";
+  let contractId = 0;
+  let sid = 0;
+  const pkg = (over: Record<string, unknown> = {}) => ({
+    companyId: contractCompanyId,
+    interval: "month",
+    pricingMode: "global",
+    globalAmountCents: 12900,
+    presentation: "global",
+    packageName: "Paquete Hotel",
+    requiresAcceptance: true,
+    reason: "Oferta negociada con el cliente",
+    lines: [
+      { kind: "catalog", productKey: "essential", priceId: P.essential },
+      { kind: "catalog", productKey: "hotel-net-complete", priceId: P["hotel-net-complete"] },
+      { kind: "catalog", productKey: "connect-whatsapp-ai", priceId: P["connect-whatsapp-ai"] },
+    ],
+    ...over,
+  });
+  const signer = { name: "Marta Ruiz", email: "marta@hotel-ejemplo.test", role: "Administradora única" };
+
+  it("lo que depende de la aceptación no se activa por adelantado", async () => {
+    const created = await call("POST", "/commercial-terms/packages", { token: TOK.admin, body: pkg() });
+    expect(created.status).toBe(201);
+    termsId = created.json.terms.id;
+    revision = created.json.terms.revision;
+    expect(created.json.terms).toMatchObject({ requiresAcceptance: true, acceptanceStatus: "pending" });
+    const early = await call("POST", `/commercial-terms/${termsId}/prepare-contracting`, { token: TOK.admin, body: { expectedRevision: revision } });
+    expect(early.status).toBe(409);
+    expect(early.json.details).toMatchObject({ reason: "acceptance_required" });
+    expect((await call("GET", `/subscriptions?companyId=${contractCompanyId}`, { token: TOK.admin })).json.subscriptions).toEqual([]);
+  });
+
+  it("el documento respeta la presentación de cuota global: ni precios por partida ni tarifa oficial", async () => {
+    const doc = (await call("GET", `/commercial-terms/${termsId}/document`, { token: TOK.sales })).json;
+    expect(doc.text).toContain("Cliente: Hotel con Contrato, S.L. (NIF B12345674)");
+    expect(doc.text).toMatch(/Cuota global pactada: 129,00\s€ al mes, más impuestos/);
+    expect(doc.text).toMatch(/Total con impuestos: 156,09\s€ al mes\./);
+    expect(doc.view.breakdown).toBeNull();
+    const preview = (await call("GET", `/commercial-terms/${termsId}/preview`, { token: TOK.admin })).json;
+    for (const l of preview.summary.recurring.lines) {
+      expect(new RegExp(`(^|[^0-9.,])${(l.netCents / 100).toFixed(2).replace(".", ",")}\\s€`, "m").test(doc.text)).toBe(false);
+      expect(new RegExp(`(^|[^0-9.,])${(l.officialCents / 100).toFixed(2).replace(".", ",")}\\s€`, "m").test(doc.text)).toBe(false);
+    }
+  });
+
+  it("solo quien gestiona precios envía a aceptación; el enlace es personal y el acuerdo deja de ser editable", async () => {
+    for (const token of [TOK.sales, TOK.service, TOK.tenant]) expect((await call("POST", `/commercial-terms/${termsId}/acceptance`, { token, body: { signer, expectedRevision: revision } })).status).toBe(403);
+    const sent = await call("POST", `/commercial-terms/${termsId}/acceptance`, { token: TOK.admin, body: { signer, expectedRevision: revision } });
+    expect(sent.status).toBe(201);
+    url = sent.json.url;
+    contractId = sent.json.contract.id;
+    expect(url).toMatch(/^https:\/\/admin\.example\.test\/cp\/v1\/public\/contract-acceptance\/condiciones\?token=[A-Za-z0-9_-]{40,60}$/);
+    expect(sent.json.terms).toMatchObject({ status: "pending_acceptance", acceptanceStatus: "pending", contractId });
+    revision = sent.json.terms.revision;
+    const contract = (await crmStore.get("contracts", contractId))!;
+    expect(contract).toMatchObject({ status: "sent", companyId: contractCompanyId, amountCents: 12900, billingInterval: "month" });
+    expect(contract.conditions).toContain("Cuota global pactada");
+    // El enlace nunca se guarda en claro ni se devuelve al consultar el estado
+    const status = (await call("GET", `/commercial-terms/${termsId}/acceptance`, { token: TOK.sales })).json;
+    expect(JSON.stringify(status)).not.toContain(url.split("token=")[1]);
+    expect(status.acceptances).toEqual([expect.objectContaining({ status: "pending", signerEmail: "marta@hotel-ejemplo.test", documentSha256: sent.json.documentSha256 })]);
+    // Enviado a aceptación, no se edita (habría que retirarlo antes)
+    expect((await call("PUT", `/commercial-terms/${termsId}`, { token: TOK.admin, body: { ...pkg({ globalAmountCents: 9900 }), companyId: undefined, expectedRevision: revision } })).status).toBeGreaterThanOrEqual(400);
+  });
+
+  it("si las condiciones se retiran y cambian, el enlace antiguo deja de valer", async () => {
+    const back = await call("POST", `/commercial-terms/${termsId}/acceptance/withdraw`, { token: TOK.admin, body: { reason: "El cliente pide otra cuota", expectedRevision: revision } });
+    expect(back.status).toBe(200);
+    expect(back.json.terms.status).toBe("draft");
+    expect((await raw("GET", publicPath(url))).status).toBe(409);
+    const { companyId: _c, ...edit } = pkg({ conditions: "Soporte prioritario." });
+    const saved = await call("PUT", `/commercial-terms/${termsId}`, { token: TOK.admin, body: { ...edit, expectedRevision: back.json.terms.revision } });
+    expect(saved.status).toBe(200);
+    const again = await call("POST", `/commercial-terms/${termsId}/acceptance`, { token: TOK.admin, body: { signer, expectedRevision: saved.json.terms.revision } });
+    expect(again.status).toBe(201);
+    // Mismo contrato (seguía en borrador), versión nueva, enlace nuevo
+    expect(again.json.contract.id).toBe(contractId);
+    expect(again.json.url).not.toBe(url);
+    expect((await raw("GET", publicPath(url))).status).toBe(409);
+    url = again.json.url;
+  });
+
+  it("el firmante ve el documento exacto, sin sesión, y debe marcar la aceptación", async () => {
+    const page = await raw("GET", publicPath(url));
+    expect(page.status).toBe(200);
+    expect(page.headers["cache-control"]).toBe("no-store");
+    expect(page.body).toMatch(/Cuota global pactada: 129,00\s€ al mes/);
+    expect(page.body).toContain("Marta Ruiz");
+    expect(page.body).toContain("Soporte prioritario.");
+    expect(page.body).not.toContain("<script");
+    const token = url.split("token=")[1];
+    expect((await raw("POST", publicPath(url), { token, name: "Marta Ruiz" })).status).toBe(400);
+    expect((await raw("GET", "/public/contract-acceptance/condiciones?token=" + "x".repeat(43))).status).toBe(404);
+    expect((await call("GET", `/subscriptions?companyId=${contractCompanyId}`, { token: TOK.admin })).json.subscriptions).toEqual([]);
+  });
+
+  it("al aceptar: contrato firmado con evidencias, suscripción creada y enlazada, condiciones activas", async () => {
+    const token = url.split("token=")[1];
+    const done = await raw("POST", publicPath(url), { token, name: "Marta Ruiz Gómez", taxId: "00000000T", accept: "1" });
+    expect(done.status).toBe(200);
+    expect(done.body).toContain("Condiciones aceptadas");
+    expect(done.body).toContain("quedan activadas");
+    const terms = (await call("GET", `/commercial-terms/${termsId}`, { token: TOK.admin })).json;
+    expect(terms.terms).toMatchObject({ status: "active", acceptanceStatus: "accepted", contractId });
+    sid = terms.terms.subscriptionId;
+    expect(terms.events.map((e: { kind: string }) => e.kind)).toEqual(expect.arrayContaining(["acceptance_requested", "acceptance_withdrawn", "accepted", "subscription_created", "activated"]));
+    const accepted = terms.events.find((e: { kind: string }) => e.kind === "accepted");
+    expect(accepted).toMatchObject({ actor: "public:acceptance", acceptanceStatus: "accepted" });
+    // Contrato del CRM: firmado electrónicamente, con la referencia de la aceptación y su versión guardada
+    const contract = (await crmStore.get("contracts", contractId))!;
+    expect(contract).toMatchObject({ status: "signed", signatureMethod: "electronic" });
+    expect(contract.signatureRef).toMatch(/^aceptacion:\d+:[0-9a-f]{16}$/);
+    // Evidencias: identidad declarada, fecha, huella del documento, IP seudonimizada y navegador
+    const status = (await call("GET", `/commercial-terms/${termsId}/acceptance`, { token: TOK.admin })).json;
+    const ok = status.acceptances.find((a: { status: string }) => a.status === "accepted");
+    expect(ok).toMatchObject({ acceptedName: "Marta Ruiz Gómez", contractVersion: contract.version });
+    expect(ok.acceptedAt).toBe(clock);
+    const row = (await acceptanceStore.acceptances(contractId)).find((a) => a.status === "accepted")!;
+    expect(row.acceptedIpHash).toMatch(/^[0-9a-f]{64}$/);
+    expect(row.acceptedUserAgent).toBe("navegador-de-prueba");
+    expect(row.consentText).toContain("Marta Ruiz");
+    expect(row.documentSha256).toBe(ok.documentSha256);
+    // Las aceptaciones anteriores (retiradas) siguen ahí, revocadas: nada se borra
+    expect(status.acceptances.map((a: { status: string }) => a.status).sort()).toEqual(["accepted", "revoked"]);
+    // Suscripción: una, con los tres productos, la cuota pactada y enlazada con el contrato firmado
+    const detail = (await call("GET", `/subscriptions/${sid}`, { token: TOK.admin })).json;
+    expect(detail.subscription).toMatchObject({ companyId: contractCompanyId, contractId, status: "active" });
+    const live = detail.items.filter((i: { effectiveTo: number | null }) => i.effectiveTo === null);
+    expect(live.map((i: { productKey: string }) => i.productKey).sort()).toEqual(["connect-whatsapp-ai", "essential", "hotel-net-complete"]);
+    expect(live.reduce((a: number, i: { lineAmountCents: number }) => a + i.lineAmountCents, 0)).toBe(12900);
+    const invoice = (await call("POST", `/subscriptions/${sid}/shadow`, { token: TOK.admin, body: {} })).json.results[0].invoice;
+    expect(invoice).toMatchObject({ subtotalCents: 12900, taxCents: 2709, totalCents: 15609 });
+  });
+
+  it("el enlace es de un solo uso", async () => {
+    const token = url.split("token=")[1];
+    expect((await raw("GET", publicPath(url))).status).toBe(409);
+    expect((await raw("POST", publicPath(url), { token, name: "Otra Persona", accept: "1" })).status).toBe(409);
+  });
+
+  it("un contrato firmado no se sobrescribe: unas condiciones nuevas son otro contrato, enlazado con el anterior", async () => {
+    const signedBefore = (await crmStore.get("contracts", contractId))!;
+    clock += 86_400_000;
+    const sub = (await call("GET", `/subscriptions/${sid}`, { token: TOK.admin })).json.subscription;
+    const { companyId: _c, interval: _i, ...lines } = pkg({ globalAmountCents: 11900, reason: "Renegociación anual" });
+    const created = await call("POST", `/subscriptions/${sid}/terms`, { token: TOK.admin, body: lines });
+    expect(created.status).toBe(201);
+    // Sin aceptar, no se puede activar desde el CRM
+    expect((await call("POST", `/commercial-terms/${created.json.terms.id}/activate`, { token: TOK.admin, body: { expectedRevision: created.json.terms.revision, expectedVersion: sub.version } })).json.details).toMatchObject({ reason: "acceptance_required" });
+    const sent = await call("POST", `/commercial-terms/${created.json.terms.id}/acceptance`, { token: TOK.admin, body: { signer, expectedRevision: created.json.terms.revision } });
+    expect(sent.status).toBe(201);
+    expect(sent.json.contract.id).not.toBe(contractId);
+    const next = (await crmStore.get("contracts", sent.json.contract.id))!;
+    expect(next).toMatchObject({ previousContractId: contractId, status: "sent", amountCents: 11900 });
+    const token = sent.json.url.split("token=")[1];
+    expect((await raw("POST", publicPath(sent.json.url), { token, name: "Marta Ruiz Gómez", accept: "1" })).status).toBe(200);
+    // El contrato anterior sigue firmado e idéntico; la suscripción es la misma y pasa al contrato nuevo
+    expect(await crmStore.get("contracts", contractId)).toEqual(signedBefore);
+    const after = (await call("GET", `/subscriptions/${sid}`, { token: TOK.admin })).json;
+    expect(after.subscription).toMatchObject({ id: sid, contractId: sent.json.contract.id });
+    expect((await call("GET", `/subscriptions?companyId=${contractCompanyId}`, { token: TOK.admin })).json.subscriptions).toHaveLength(1);
+    const versions = await crmStore.list("contractVersions", { contractId });
+    expect(versions.length).toBeGreaterThan(0);
+    const history = (await call("GET", `/subscriptions/${sid}/terms`, { token: TOK.admin })).json;
+    expect(history.currentRecurring).toMatchObject({ netCents: 11900 });
   });
 });

@@ -795,7 +795,14 @@ export class CommercialTermsService {
 
   async ofCompany(companyId: number) {
     const now = this.now();
-    return { terms: (await this.d.store.list({ companyId })).map((t) => ({ ...t, effectiveStatus: effectiveStatus(t, now) })) };
+    const all = await this.d.store.list({ companyId });
+    const out = [];
+    for (const t of all) {
+      // Paquete cuya contratación se cortó tras crear la suscripción: sigue siendo un borrador y se puede reintentar
+      const interruptedPackage = (t.status === "draft" || t.status === "pending_acceptance") && t.subscriptionId !== null && (await this.d.store.events({ termsId: t.id })).some((e) => e.kind === "subscription_created");
+      out.push({ ...t, effectiveStatus: effectiveStatus(t, now), interruptedPackage });
+    }
+    return { terms: out };
   }
 }
 
