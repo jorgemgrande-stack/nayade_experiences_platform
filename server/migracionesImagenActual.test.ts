@@ -59,11 +59,11 @@ describe("migraciones con la imagen del commit que se publica", () => {
 });
 
 describe("publicación: una espera agotada vuelve atrás", () => {
-  it("publish y publish-crm usan waitOrCancel (cancela el despliegue en curso y devuelve TIMEOUT, que es un fallo)", () => {
-    expect(script).toMatch(/async function waitOrCancel\(/);
+  it("publish y publish-crm usan waitOwnOrCancel (cancela SU despliegue en curso y devuelve TIMEOUT, que es un fallo)", () => {
+    expect(script).toMatch(/const waitOwnOrCancel = /);
     expect(script).toMatch(/deploymentCancel/);
-    const publish = script.slice(script.indexOf('if (cmd === "publish")'), script.indexOf('if (cmd === "active-crm")'));
-    expect(publish).toContain("await waitOrCancel(sid, sc.environmentId, before)");
-    expect(publish).not.toContain("await waitFor(sid, sc.environmentId, before)");
+    expect(script).toContain("await waitOwnOrCancel(sid, sc.environmentId, before, mark)");
+    expect(script).toContain("await waitOwnOrCancel(sid, sc.environmentId, before, note)");
+    expect(script).not.toMatch(/\bwaitFor\(/);
   });
 });

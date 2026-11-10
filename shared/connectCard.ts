@@ -179,7 +179,12 @@ export function taxLabel(p: Pick<ConnectPrice, "taxIncluded" | "taxRateBp">): st
   return `${p.taxIncluded ? "IVA incluido" : "IVA no incluido"}${rate}`;
 }
 
-export const formatMoney = (cents: number, currency: string) => new Intl.NumberFormat("es-ES", { style: "currency", currency }).format(cents / 100);
+/**
+ * Importe con separador de miles también en cuatro cifras («1.899,00 €»): el formato es-ES por defecto no agrupa los
+ * miles hasta las cinco cifras («1899,00 €»). Mismo importe, mismos céntimos y misma moneda: solo cambia la agrupación.
+ * Lo usan el marketplace y los importes de los planes (`planMoney` es este mismo).
+ */
+export const formatMoney = (cents: number, currency: string) => new Intl.NumberFormat("es-ES", { style: "currency", currency, useGrouping: "always" } as Intl.NumberFormatOptions).format(cents / 100);
 
 /** Precios en orden de lectura: mensual, anual, pago único, alta; los desconocidos al final. */
 export function sortPrices(prices: ConnectPrice[]): ConnectPrice[] {
