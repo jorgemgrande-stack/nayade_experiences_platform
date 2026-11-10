@@ -64,34 +64,9 @@ export const COMMERCIAL_RULES: readonly CommercialRule[] = [
     todayEffect: "Ninguno: el cotizador ya la separa (implementation[].amountCents = null)",
     requires: ["Tarifas o criterios de implantación (decisión 9)", "Texto definitivo de la implantación (decisión 10)", "Contrato y cobro de la implantación fuera de la suscripción"],
   },
-  {
-    id: "net-core-incluido",
-    title: "Elephant Net completo con Elephant Core Essential incluido en su precio total (3 usuarios, 1 sede)",
-    status: "approved",
-    where: "catalog.coreIncluded de cada solución Elephant Net completa (hotel, ski, travel, restaurant, care y social-token)",
-    todayEffect: "Ninguno: la web y los cobros siguen sumando el plan de Elephant Core y el Net (dos cuotas)",
-    requires: [
-      "Pedidos, licencias y Stripe con el producto compuesto: licencia base de Core sin partida de plan cobrada (contrato Stripe v3)",
-      "Encender la política comercial y volver a publicar los Net",
-      "Mensaje «Elephant Core incluido» en la web solo cuando la contratación lo aplique",
-    ],
-  },
-  {
-    id: "net-ampliacion-core",
-    title: "Ampliar el Core de un Elephant Net: Business +50 €/mes o +480 €/año; Enterprise +170 €/mes (sin tarifa anual)",
-    status: "approved",
-    where: "catalog.coreIncluded.upgrade (difference, yearlyPlans: business) de cada Net; Enterprise anual, por presupuesto",
-    todayEffect: "Ninguno: hoy se cobra el plan completo además del Net",
-    requires: ["Mecánica de cobro en Stripe validada en sandbox: cupón o tarifa derivada (scripts/catalog/netCoreStripeSandbox.ts)", "Encender la política comercial y volver a publicar los Net"],
-  },
-  {
-    id: "net-adicionales",
-    title: "Varias soluciones Elephant Net en una empresa sin pagar Elephant Core dos veces (−29 €/mes por Net adicional; nunca dos veces el mismo Net)",
-    status: "approved",
-    where: "catalog.coreIncluded.additional (core_credit): cada Net adicional, a su precio menos la tarifa mensual de Essential; sin regla, por presupuesto",
-    todayEffect: "Ninguno: hoy cada Net se cobra completo junto al plan",
-    requires: ["Mecánica de cobro en Stripe validada en sandbox", "Traspaso del Core al cancelar el Net que lo aporta (contrato Stripe v3)"],
-  },
+  // 10/11/2026: las tres reglas de «Elephant Net con Elephant Core incluido» (net-core-incluido, net-ampliacion-core y
+  // net-adicionales) están RETIRADAS por decisión de Jorge: Core y Net se contratan por separado. Su mecánica queda como
+  // código inactivo (commercialQuote.ts, policy.ts → RETIRED_NET_CORE_INCLUDED)
   {
     id: "enterprise-ampliaciones-presupuesto",
     title: "Ampliaciones de Enterprise por presupuesto mientras no exista tarifa aprobada",

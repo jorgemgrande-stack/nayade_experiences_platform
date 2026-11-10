@@ -5,6 +5,7 @@
 import { describe, expect, it } from "vitest";
 import { seedElephantSource } from "./catalog/seed";
 import { NET_UNIFICATION_2026_11_09, REVIEW_ID_2026_11_09_NET_UNIFICATION, applyNetUnification, catalogGuard, guardDiff, type NetUnificationChange } from "./catalog/review20261109netunificacion";
+import { RETIRED_NET_CORE_INCLUDED } from "./catalog/commercial/policy";
 import { productDraft } from "./web/schemas";
 import { WebAdminService } from "./web/service";
 import { MemoryWebStore } from "./web/store";
@@ -116,7 +117,7 @@ describe("revisión del 09/11/2026: unificación comercial de Elephant Net", () 
     expect(again.already).toHaveLength(26);
   });
 
-  it("no publica un borrador ajeno ni pisa lo que cambió en el CRM", async () => {
+  it("un borrador ajeno sin cambios no estorba; lo que cambió en el CRM no se pisa", async () => {
     const k = await production();
     const e = (await k.store.getEntry("product", "ski-net-complete"))!;
     await k.svc.save("product", "ski-net-complete", { draft: e.draft, expectedVersion: e.draftVersion }, "operator:2");
@@ -125,7 +126,249 @@ describe("revisión del 09/11/2026: unificación comercial de Elephant Net", () 
     const saved = await k.svc.save("product", "hotel-net-pms", { draft: { ...d, catalog: { ...d.catalog, legacy: { replacedBy: "travel-net-complete", since: "2026-11-01" } } }, expectedVersion: pms.draftVersion }, "operator:2");
     await k.svc.publish("product", "hotel-net-pms", saved.draftVersion, "operator:2");
     const r = await applyNetUnification(k.svc, k.store, { apply: true, author: AUTHOR });
-    expect(r.conflicts.map((c) => c.split(":")[0]).sort()).toEqual(["hotel-net-pms", "ski-net-complete"]);
+    expect(r.conflicts.map((c) => c.split(":")[0]).sort()).toEqual(["hotel-net-pms"]);
+    // El borrador ajeno de Ski Net era idéntico a lo publicado: la unificación se publica y no queda borrador pendiente
+    const ski = (await k.store.getEntry("product", "ski-net-complete"))!;
+    expect(ski.publishedVersion).toBe(ski.draftVersion);
+    expect((ski.published as { name: string }).name).toBe("Ski Net");
+  });
+});
+
+/**
+ * Borrador ajeno (10/11/2026). El de Hotel Net en production (v10 sobre la v8 publicada) lo dejaron la importación de
+ * fichas y la revisión del 07/11: estado, nivel, «Core incluido», SEO, problema, integraciones y descripción larga.
+ */
+const IMPORTER = "catalogo:especificaciones-comerciales";
+const HOTEL = "hotel-net-complete";
+const DRAFT_LONG = "Un solo producto para tu alojamiento: PMS, motor de reservas y housekeeping. El Channel Manager llegará próximamente, incluido sin coste adicional.";
+const DRAFT_PROBLEM = "Un alojamiento necesita gestión, venta directa, recepción y limpieza en un solo sistema.";
+async function withDraft(k: Awaited<ReturnType<typeof production>>, key: string, change: (d: ReturnType<typeof productDraft.parse>) => unknown, author = IMPORTER) {
+  const e = (await k.store.getEntry("product", key))!;
+  return k.svc.save("product", key, { draft: change(productDraft.parse(e.draft)), expectedVersion: e.draftVersion }, author);
+}
+/** El borrador v10 de Hotel Net, con los campos que tiene en production. */
+const hotelV10 = (d: ReturnType<typeof productDraft.parse>, extra: Record<string, unknown> = {}) => ({
+  ...d,
+  catalog: { ...d.catalog, commercialStatus: "on_request", implementationLevel: 1, coreIncluded: RETIRED_NET_CORE_INCLUDED[HOTEL] },
+  commercial: { ...d.commercial, problem: DRAFT_PROBLEM, integrations: ["Pasarela de pago del alojamiento"], longDescription: DRAFT_LONG, ...extra },
+  internal: { ...d.internal, evidence: "Importado de las especificaciones comerciales.", sources: ["F-HOTEL-1"] },
+});
+const entry = async (k: Awaited<ReturnType<typeof production>>, key: string) => (await k.store.getEntry("product", key))!;
+
+describe("unificación sobre un borrador ajeno", () => {
+  it("Hotel Net: publica la unificación con los cambios del borrador, retira «Core incluido» y no deja borrador pendiente; repetir no cambia nada", async () => {
+    const k = await production();
+    const prices = JSON.stringify(await k.store.listPrices());
+    const guard = await catalogGuard(k.store);
+    const before = await entry(k, HOTEL);
+    await withDraft(k, HOTEL, (d) => hotelV10(d));
+    const pending = await entry(k, HOTEL);
+    expect(pending.publishedVersion).toBe(before.draftVersion);
+
+    // Simulación: no escribe nada y enseña el diff campo a campo con su origen
+    const sim = await applyNetUnification(k.svc, k.store, { author: AUTHOR });
+    expect(sim.conflicts).toEqual([]);
+    expect((await entry(k, HOTEL)).draftVersion).toBe(pending.draftVersion);
+    const rep = sim.borradores.find((b) => b.key === HOTEL)!;
+    expect(rep.borrador).toMatchObject({ version: pending.draftVersion, versionPublicada: before.draftVersion, autor: IMPORTER });
+    const origin = Object.fromEntries(rep.diff.map((x) => [x.campo, x.origen]));
+    expect(origin).toMatchObject({
+      name: "revisión",
+      "catalog.commercialStatus": "ambos",
+      "catalog.implementationLevel": "ambos",
+      "commercial.problem": "borrador",
+      "commercial.integrations": "borrador",
+      "commercial.includedFeatures": "revisión",
+      "commercial.faq": "revisión",
+      "commercial.terms.activation": "revisión",
+      "internal.sources": "borrador",
+      "internal.evidence": "ambos (nota interna: se conservan las dos)",
+    });
+    // La descripción larga la cambian los dos: manda la unificación porque el borrador dice «próximamente»
+    expect(origin["commercial.longDescription"]).toMatch(/^revisión \(el texto del borrador dice «próximamente»/);
+    expect(rep.diff.find((x) => x.campo === "commercial.problem")).toMatchObject({ resultado: DRAFT_PROBLEM });
+    expect(rep.enDisputa).toEqual([]);
+    expect(rep.retenido).toEqual([]);
+    expect(rep.retirado.map((x) => x.campo)).toEqual(["catalog.coreIncluded"]);
+    expect(sim.anunciaCore).toEqual([`${HOTEL} (borrador) catalog.coreIncluded`]);
+
+    const r = await applyNetUnification(k.svc, k.store, { apply: true, author: AUTHOR });
+    expect(r.conflicts).toEqual([]);
+    expect(r.changed.find((x) => x.startsWith(HOTEL))).toMatch(/no queda borrador pendiente/);
+    const after = await entry(k, HOTEL);
+    expect(after.publishedVersion).toBe(after.draftVersion);
+    expect(after.updatedBy).toBe(AUTHOR);
+    const pub = after.published as Record<string, any>;
+    expect(pub.name).toBe("Hotel Net");
+    expect(pub.catalog.commercialStatus).toBe("on_request");
+    expect(pub.catalog.implementationLevel).toBe(1);
+    expect(pub.catalog.coreIncluded).toBeUndefined();
+    expect(pub.commercial.problem).toBe(DRAFT_PROBLEM);
+    expect(pub.commercial.integrations).toEqual(["Pasarela de pago del alojamiento"]);
+    expect(pub.commercial.longDescription).toMatch(/^La solución completa para hoteles/);
+    expect(JSON.stringify({ ...pub.commercial, includedFeatures: undefined })).not.toMatch(/próximamente|Todavía no/i);
+    const draft = productDraft.parse(after.draft);
+    expect(draft.catalog.coreIncluded).toBeUndefined();
+    expect(draft.internal.sources).toEqual(["F-HOTEL-1"]);
+    expect(draft.internal.evidence).toMatch(/^Importado de las especificaciones comerciales\. · Unificación comercial/);
+    // Sin tocar precios, licencias, componentes ni otros productos
+    expect(JSON.stringify(await k.store.listPrices())).toBe(prices);
+    expect(guardDiff(guard, await catalogGuard(k.store))).toEqual([]);
+    expect(r.anunciaCore).toEqual([]);
+
+    const again = await applyNetUnification(k.svc, k.store, { apply: true, author: AUTHOR });
+    expect(again.changed).toEqual([]);
+    expect(again.conflicts).toEqual([]);
+    expect(again.already).toHaveLength(26);
+    expect(again.borradores).toEqual([]);
+    expect((await entry(k, HOTEL)).draftVersion).toBe(after.draftVersion);
+  });
+
+  it("campo en disputa: no se guarda ni se publica nada hasta que haya una decisión sobre esa versión del borrador", async () => {
+    const k = await production();
+    const faq = [{ q: "¿Qué incluye?", a: "PMS, motor de reservas y housekeeping, con el alta guiada por nuestro equipo." }];
+    await withDraft(k, HOTEL, (d) => hotelV10(d, { faq }));
+    const pending = await entry(k, HOTEL);
+    const r = await applyNetUnification(k.svc, k.store, { apply: true, author: AUTHOR });
+    expect(r.conflicts).toHaveLength(1);
+    expect(r.conflicts[0]).toMatch(/^hotel-net-complete: 1 campo\(s\) en disputa \(commercial\.faq\); el borrador v\d+ queda intacto/);
+    const rep = r.borradores.find((b) => b.key === HOTEL)!;
+    expect(rep.enDisputa).toHaveLength(1);
+    expect(rep.enDisputa[0]).toMatchObject({ campo: "commercial.faq", borrador: faq });
+    expect((rep.enDisputa[0].publicado as unknown[]).length).toBe(4);
+    expect((rep.enDisputa[0].revision as Array<{ q: string }>)[0].q).toBe("¿Qué incluye?");
+    const untouched = await entry(k, HOTEL);
+    expect(untouched.draftVersion).toBe(pending.draftVersion);
+    expect(untouched.publishedVersion).toBe(pending.publishedVersion);
+    expect(untouched.updatedBy).toBe(IMPORTER);
+    // Los otros 25 cambios no dependen de Hotel
+    expect(r.changed).toHaveLength(25);
+
+    // Una decisión tomada sobre otra versión del borrador no vale
+    const stale = await applyNetUnification(k.svc, k.store, { apply: true, author: AUTHOR, decisions: [{ key: HOTEL, campo: "commercial.faq", gana: "borrador", borradorVersion: pending.draftVersion - 1, nota: "Jorge, 10/11/2026" }] });
+    expect(stale.conflicts[0]).toMatch(/en disputa/);
+    expect(stale.borradores[0].decisionesIgnoradas[0]).toMatch(/se tomó sobre el borrador v/);
+    expect((await entry(k, HOTEL)).draftVersion).toBe(pending.draftVersion);
+
+    // Con la decisión sobre esta versión, manda lo decidido (aquí, el borrador)
+    const ok = await applyNetUnification(k.svc, k.store, { apply: true, author: AUTHOR, decisions: [{ key: HOTEL, campo: "commercial.faq", gana: "borrador", borradorVersion: pending.draftVersion, nota: "Jorge, 10/11/2026" }] });
+    expect(ok.conflicts).toEqual([]);
+    expect(ok.borradores[0].decisionesAplicadas).toEqual(["commercial.faq: borrador (Jorge, 10/11/2026)"]);
+    const after = await entry(k, HOTEL);
+    expect(after.publishedVersion).toBe(after.draftVersion);
+    expect((after.published as Record<string, any>).commercial.faq).toEqual(faq);
+    expect((after.published as Record<string, any>).name).toBe("Hotel Net");
+    // Y la siguiente ejecución lo respeta: figura como conflicto con lo decidido en el CRM, sin tocarlo
+    const again = await applyNetUnification(k.svc, k.store, { apply: true, author: AUTHOR });
+    expect(again.changed).toEqual([]);
+    expect(again.conflicts).toEqual(["hotel-net-complete: el campo «faq» de la ficha ya no es el de partida; se deja como lo decidió el CRM"]);
+    expect(((await entry(k, HOTEL)).published as Record<string, any>).commercial.faq).toEqual(faq);
+  });
+
+  it("un cambio del borrador en el modelo del catálogo no se publica: queda retenido en el borrador", async () => {
+    const k = await production();
+    await withDraft(k, HOTEL, (d) => ({ ...hotelV10(d), catalog: { ...(hotelV10(d).catalog as object), chargeUnit: "por alojamiento" } }));
+    const guard = await catalogGuard(k.store);
+    const r = await applyNetUnification(k.svc, k.store, { apply: true, author: AUTHOR });
+    expect(r.conflicts).toEqual([]);
+    expect(r.borradores[0].retenido).toEqual([{ campo: "catalog.chargeUnit", publicado: null, borrador: "por alojamiento" }]);
+    const after = await entry(k, HOTEL);
+    expect((after.published as Record<string, any>).catalog.chargeUnit ?? null).toBeNull();
+    expect((after.published as Record<string, any>).commercial.problem).toBe(DRAFT_PROBLEM);
+    expect(after.publishedVersion).toBe(after.draftVersion - 1);
+    expect(productDraft.parse(after.draft).catalog.chargeUnit).toBe("por alojamiento");
+    expect(productDraft.parse(after.draft).catalog.coreIncluded).toBeUndefined();
+    expect(guardDiff(guard, await catalogGuard(k.store))).toEqual([]);
+    const again = await applyNetUnification(k.svc, k.store, { apply: true, author: AUTHOR });
+    expect(again.changed).toEqual([]);
+    expect(again.already).toContain(HOTEL);
+    expect(again.borradores[0].retenido.map((x) => x.campo)).toEqual(["catalog.chargeUnit"]);
+    expect((await entry(k, HOTEL)).draftVersion).toBe(after.draftVersion);
+  });
+
+  it("otra solución con borrador ajeno: se publica solo la unificación; los cambios del borrador siguen pendientes y «Core incluido» se retira", async () => {
+    const k = await production();
+    const KEY = "restaurant-net-complete";
+    await withDraft(k, KEY, (d) => ({ ...d, catalog: { ...d.catalog, coreIncluded: RETIRED_NET_CORE_INCLUDED[KEY] }, commercial: { ...d.commercial, problem: "Texto del operador sin publicar." } }), "operator:2");
+    const r = await applyNetUnification(k.svc, k.store, { apply: true, author: AUTHOR });
+    expect(r.conflicts).toEqual([]);
+    const rep = r.borradores.find((b) => b.key === KEY)!;
+    expect(rep.retenido.map((x) => x.campo)).toEqual(["commercial.problem"]);
+    expect(rep.retirado.length).toBeGreaterThan(0);
+    const after = await entry(k, KEY);
+    const pub = after.published as Record<string, any>;
+    expect(pub.name).toBe("Restaurant Net");
+    expect(pub.commercial.problem).not.toBe("Texto del operador sin publicar.");
+    // El borrador sigue pendiente, con su cambio y con la unificación, y ya sin «Core incluido»
+    expect(after.draftVersion).toBe(after.publishedVersion! + 1);
+    const draft = productDraft.parse(after.draft);
+    expect(draft.commercial?.problem).toBe("Texto del operador sin publicar.");
+    expect(draft.name).toBe("Restaurant Net");
+    expect(draft.catalog.coreIncluded).toBeUndefined();
+    expect(r.anunciaCore).toEqual([]);
+    const again = await applyNetUnification(k.svc, k.store, { apply: true, author: AUTHOR });
+    expect(again.changed).toEqual([]);
+    expect(again.already).toHaveLength(26);
+    expect((await entry(k, KEY)).draftVersion).toBe(after.draftVersion);
+  });
+
+  it("sin borrador pendiente: «Core incluido» se retira de la versión publicada sin cambiar lo que ve el público", async () => {
+    const k = await production();
+    const KEY = "restaurant-net-complete";
+    const saved = await withDraft(k, KEY, (d) => ({ ...d, catalog: { ...d.catalog, coreIncluded: RETIRED_NET_CORE_INCLUDED[KEY] } }), "operator:1");
+    await k.svc.publish("product", KEY, saved.draftVersion, "operator:1");
+    await applyNetUnification(k.svc, k.store, { apply: true, author: AUTHOR, changes: NET_UNIFICATION_2026_11_09.map((c) => ({ ...c, dropCoreIncluded: false })) });
+    const unified = await entry(k, KEY);
+    expect(productDraft.parse(unified.draft).catalog.coreIncluded).toBeDefined();
+    const sim = await applyNetUnification(k.svc, k.store, { author: AUTHOR });
+    expect(sim.changed).toEqual([`${KEY}: se retira catalog.coreIncluded (Core y Net se contratan por separado)`]);
+    expect(sim.anunciaCore).toEqual([`${KEY} (borrador) catalog.coreIncluded`]);
+    const r = await applyNetUnification(k.svc, k.store, { apply: true, author: AUTHOR });
+    expect(r.conflicts).toEqual([]);
+    expect(r.anunciaCore).toEqual([]);
+    const after = await entry(k, KEY);
+    expect(after.publishedVersion).toBe(after.draftVersion);
+    expect(productDraft.parse(after.draft).catalog.coreIncluded).toBeUndefined();
+    expect(after.published).toEqual(unified.published);
+  });
+
+  it("una ejecución interrumpida se retoma sin perder lo retenido ni publicarlo", async () => {
+    const k = await production();
+    const KEY = "ski-net-complete";
+    await withDraft(k, KEY, (d) => ({ ...d, commercial: { ...d.commercial, problem: "Texto del operador sin publicar." } }), "operator:2");
+    const real = k.svc.republishVersion.bind(k.svc);
+    k.svc.republishVersion = async () => {
+      throw new Error("corte");
+    };
+    const cut = await applyNetUnification(k.svc, k.store, { apply: true, author: AUTHOR });
+    expect(cut.conflicts).toEqual([`${KEY}: no se pudo guardar o publicar (corte); se revisa en el CRM`]);
+    const mid = await entry(k, KEY);
+    expect((mid.published as { name: string }).name).toBe("Ski Net Complete");
+    expect(productDraft.parse(mid.draft).commercial?.problem).toBe("Texto del operador sin publicar.");
+    k.svc.republishVersion = real;
+    const r = await applyNetUnification(k.svc, k.store, { apply: true, author: AUTHOR });
+    expect(r.conflicts).toEqual([]);
+    expect(r.borradores[0].borrador.autor).toBe("operator:2");
+    const after = await entry(k, KEY);
+    const pub = after.published as Record<string, any>;
+    expect(pub.name).toBe("Ski Net");
+    expect(pub.commercial.problem).not.toBe("Texto del operador sin publicar.");
+    expect(productDraft.parse(after.draft).commercial?.problem).toBe("Texto del operador sin publicar.");
+    expect(productDraft.parse(after.draft).name).toBe("Ski Net");
+    const again = await applyNetUnification(k.svc, k.store, { apply: true, author: AUTHOR });
+    expect(again.changed).toEqual([]);
+    expect((await entry(k, KEY)).draftVersion).toBe(after.draftVersion);
+  });
+
+  it("un texto del borrador que anuncia Core incluido no se publica y se lista", async () => {
+    const k = await production();
+    await withDraft(k, HOTEL, (d) => hotelV10(d, { problem: "Con Elephant Core Essential incluido en el precio." }));
+    const pending = await entry(k, HOTEL);
+    const r = await applyNetUnification(k.svc, k.store, { apply: true, author: AUTHOR });
+    expect(r.conflicts).toHaveLength(1);
+    expect(r.conflicts[0]).toMatch(/^hotel-net-complete: el resultado anunciaría Elephant Core incluido \(commercial\.problem: «Con Elephant Core Essential incluido en el precio\.»\)/);
+    expect(r.anunciaCore).toEqual([`${HOTEL} (borrador) commercial.problem: «Con Elephant Core Essential incluido en el precio.»`, `${HOTEL} (borrador) catalog.coreIncluded`]);
+    expect((await entry(k, HOTEL)).draftVersion).toBe(pending.draftVersion);
   });
 });
 

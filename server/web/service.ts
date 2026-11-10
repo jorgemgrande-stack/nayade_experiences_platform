@@ -281,11 +281,12 @@ export class WebAdminService {
     return e;
   }
 
-  /** Lo que impediría publicar el borrador actual (vacío = publicable). No publica nada. */
-  async publishProblems(kind: EntryKind, key: string): Promise<string[]> {
+  /** Lo que impediría publicar el borrador actual, o `candidate` si se guardara como borrador (vacío = publicable). No guarda ni publica nada. */
+  async publishProblems(kind: EntryKind, key: string, candidate?: unknown): Promise<string[]> {
     const cur = await this.must(kind, key);
     try {
-      const draft = this.parse(kind, cur.draft);
+      const draft = this.parse(kind, candidate ?? cur.draft);
+      if (candidate !== undefined && kind === "product") this.checkProductShape(cur.family as Family, draft as ProductDraft);
       if (kind === "product") await this.checkPublishable(cur, draft as ProductDraft);
       if (kind === "marketplace_slide") await this.checkSlide(draft as MarketplaceSlideDraft);
       return [];

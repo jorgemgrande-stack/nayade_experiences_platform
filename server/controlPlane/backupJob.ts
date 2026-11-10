@@ -532,6 +532,9 @@ async function main() {
           const netAt = Date.now();
           const netBefore = await netContracts(crmPool, pool, netAt);
           const guardBefore = await catalogGuard(webStore);
+          // 10/11/2026: un producto con borrador ajeno ya no queda como conflicto (se aplica sobre lo publicado y el borrador se
+          // conserva; en Hotel Net se publican también sus cambios, por decisión de Jorge) y se retira «Core incluido» de las
+          // siete soluciones. El informe lleva el diff campo a campo (`borradores`) y los textos que anuncien Core (`anunciaCore`)
           const repNetUnification = await applyNetUnification(svc, webStore, { apply, author: `operacion:${REVIEW_ID_2026_11_09_NET_UNIFICATION}` });
           const guardChanged = guardDiff(guardBefore, await catalogGuard(webStore));
           const netAfter = await netContracts(crmPool, pool, netAt);
