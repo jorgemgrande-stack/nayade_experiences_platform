@@ -112,6 +112,7 @@ async function waitOwnOrCancel(serviceIdValue: string, environmentId: string, af
     last = st.id;
     if (Date.now() - t0 > timeoutMs) {
       if (last) await api("mutation($id:String!){ deploymentCancel(id:$id) }", { id: last }).catch(() => undefined);
+      else console.error(`AVISO: el despliegue de la subida «${mark}» no apareció en Railway durante la espera`);
       return { id: last ?? "?", status: "TIMEOUT" };
     }
     await new Promise((r) => setTimeout(r, 15_000));
@@ -1288,6 +1289,8 @@ async function main() {
       if (d?.status === "SUPERSEDED") {
         // Otro despliegue posterior (p. ej. el nativo de una fusión nueva) sustituyó al nuestro: no se vuelve atrás
         console.error(`${name}: sustituido por el despliegue posterior ${d.by}; no se vuelve atrás. Publica el commit nuevo cuando termine su CI.`);
+        const earlier = done.slice(0, -1).map((x) => x.name);
+        if (earlier.length) console.error(`AVISO: ${earlier.join(", ")} ya se publicaron con ${sha.slice(0, 12)} en esta ejecución: hasta la publicación nueva puede haber versiones mezcladas.`);
         process.exit(1);
       }
       if (d?.status !== "SUCCESS") {

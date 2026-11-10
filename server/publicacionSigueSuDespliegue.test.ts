@@ -34,6 +34,8 @@ describe("la publicación sigue su propio despliegue", () => {
   it("solo cuenta la subida con el mensaje de esta publicación y posterior al punto de partida", () => {
     const otherUp = up("x1", "SUCCESS", "nayade_experiences_platform 1111111111111111111111111111111111111111");
     expect(ownDeployState([otherUp, prev], { after: "b017225e", mark: OWN })).toEqual({ state: "pending", id: null });
+    // Sin el punto de partida entre los consultados, se sigue esperando (nunca se toma una subida antigua)
+    expect(ownDeployState([up("viejo", "SUCCESS")], { after: "b017225e", mark: OWN })).toEqual({ state: "pending", id: null });
     // Una subida anterior con el mismo commit (otra ejecución) no cuenta
     expect(ownDeployState([prev, up("viejo", "SUCCESS")], { after: "b017225e", mark: OWN })).toEqual({ state: "pending", id: null });
   });

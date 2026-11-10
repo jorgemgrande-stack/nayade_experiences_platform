@@ -1075,6 +1075,8 @@ export type OwnDeployState = { state: "pending"; id: string | null } | { state: 
 const DEPLOY_FINAL = new Set(["SUCCESS", "FAILED", "CRASHED", "REMOVED", "SKIPPED"]);
 export function ownDeployState(nodes: ReadonlyArray<{ id: string; status: string; meta: unknown }>, o: { after: string | null; mark: string }): OwnDeployState {
   const cut = o.after ? nodes.findIndex((n) => n.id === o.after) : -1;
+  // Sin el punto de partida entre los consultados no se puede saber qué es nuevo: se sigue esperando
+  if (o.after && cut < 0) return { state: "pending", id: null };
   const fresh = cut >= 0 ? nodes.slice(0, cut) : nodes.slice();
   // El propio: el más antiguo de los nuevos que no es nativo y lleva el mensaje de la subida
   let ownIdx = -1;
