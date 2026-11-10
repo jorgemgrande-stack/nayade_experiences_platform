@@ -18,6 +18,7 @@
  *    son heredados desde la unificación de Elephant Net (review20261109netunificacion.ts, que se aplica antes que esta) y
  *    no se tocan; las soluciones completas cobran en la caja del plan y TPV Advanced no cobra nada que ya incluyan
  *    (TPV de restauración, comandas, camareros y cobro de mesa; fianzas y cargos por daños; cargo a habitación).
+ *  - Restaurant Net (la solución completa) añade a su FAQ «¿Necesito TPV Advanced?» (no: lo de restauración ya lo incluye).
  *  - Essential describe el reparto de las contrataciones nuevas; quien ya lo tenía conserva los informes de caja por
  *    periodo y por cajero y la revisión y los ajustes de cierres (migración 0064), y la ficha lo dice.
  *
@@ -38,6 +39,13 @@ import { REQUEST_STEP } from "./review20261108connect";
 export const REVIEW_ID_2026_11_09_TPV = "revision-catalogo-2026-11-09-tpv";
 
 const VAT_FAQ = { a: "No. Los importes del catálogo son sin IVA; el 21 % se añade aparte.", q: "¿El precio incluye IVA?" };
+
+/** FAQ de Restaurant Net tal como la deja la unificación de Elephant Net (review20261109netunificacion.ts, sin «próximamente»). */
+const RESTAURANT_FAQ_AFTER_NET_UNIFICATION = [
+  { q: "¿Qué incluye?", a: "Reservas y mesas, sala y comandas, carta, cocina con pantalla KDS y cobro en el TPV. Los escandallos y la ficha de clientes con sus preferencias están en implantación, incluidos sin coste adicional." },
+  ASSISTED_FAQ,
+  { q: "¿Incluye la caja?", a: "No trae una caja aparte: cobras con la caja (TPV) de tu plan de Elephant Core." },
+];
 
 /** Ámbito por empresa de TPV Advanced, cambiado en el CRM antes de publicar las fichas que lo dicen. */
 const POS_PER_COMPANY = { key: "connect-pos", scope: "company", chargeUnit: null } as const;
@@ -193,6 +201,23 @@ export const TPV_LISTINGS_2026_11_09: readonly ListingChange[] = [
       seo: {
         from: { slug: "pos", title: "TPV para varias cajas y cajeros | Big Elephant POS", description: "Varias cajas por sede, rol de cajero, backoffice y revisión de cierres para comercios y restauración." },
         to: { slug: "pos", title: "TPV Advanced: arqueos, turnos y auditoría | Big Elephant", description: "Arqueos avanzados, turnos, entrega de caja entre operadores, autorizaciones y auditoría sobre la caja de tu plan." },
+      },
+    },
+  },
+  {
+    // Solución completa (no un módulo heredado): aprobado por main el 10/11/2026. Parte de la FAQ que deja la unificación de
+    // Net, que se aplica antes que esta revisión en catalog-review; solo se añade una pregunta
+    key: "restaurant-net-complete",
+    fields: {
+      faq: {
+        from: RESTAURANT_FAQ_AFTER_NET_UNIFICATION,
+        to: [
+          ...RESTAURANT_FAQ_AFTER_NET_UNIFICATION,
+          {
+            q: "¿Necesito TPV Advanced?",
+            a: "No. El TPV de restauración, las comandas, los camareros y el cobro de mesa vienen en Restaurant Net y se cobran en la caja de tu plan. TPV Advanced solo añade, si lo necesitas, arqueos avanzados, turnos, entregas de caja entre operadores, autorizaciones especiales y auditoría.",
+          },
+        ],
       },
     },
   },
