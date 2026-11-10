@@ -90,6 +90,7 @@ import { publishBatch, revertLastBatch } from "../catalog/commercial/publishBatc
 import { commercialIntegrity, netContracts } from "../catalog/commercial/integrity";
 import { REVIEW_ID_2026_11_09_NET_UNIFICATION, applyNetUnification, catalogGuard, guardDiff } from "../catalog/review20261109netunificacion";
 import { REVIEW_ID_2026_11_10_STN, applyStnScopeReview } from "../catalog/review20261110stn";
+import { NET_LEGACY_LISTINGS_2026_11_10, REVIEW_ID_2026_11_10_NET_LEGACY } from "../catalog/review20261110netheredados";
 
 const args = process.argv.slice(2);
 const cmd = args[0] && !args[0].startsWith("--") ? args[0] : "run";
@@ -546,6 +547,9 @@ async function main() {
           // unificación de Elephant Net. Sin precios: exige que el de connect-pos ya sea 19 € (aprobado antes en el CRM) y
           // cambia ella su ámbito a «por empresa». Con borrador ajeno (planes), se aplica sobre lo publicado y lo conserva
           const repTpv = await applyListingReview(svc, webStore, { apply, author: `operacion:${REVIEW_ID_2026_11_09_TPV}`, changes: TPV_LISTINGS_2026_11_09, overDraft: true });
+          // 10/11/2026: restos de texto en los módulos Net heredados («próximamente» y comparaciones con módulos sueltos).
+          // Solo textos, cada campo desde su valor publicado de partida; con borrador ajeno, sobre lo publicado y lo conserva
+          const repNetLegacy = await applyListingReview(svc, webStore, { apply, author: `operacion:${REVIEW_ID_2026_11_10_NET_LEGACY}`, changes: NET_LEGACY_LISTINGS_2026_11_10, overDraft: true });
           const pricesFinal = new Map((await webStore.listPrices()).map((p) => [p.id, `${p.status}:${p.amountCents}`]));
           const pricesIntactConnect = pricesFinal.size === pricesAfter.size && Array.from(pricesAfter).every(([id, v]) => pricesFinal.get(id) === v);
           // Una sola línea (el registro de Railway la guarda en los atributos si es JSON)
@@ -566,6 +570,7 @@ async function main() {
                 { revision: REVIEW_ID_2026_11_09_NET_UNIFICATION, ...repNetUnification, catalogoFueraDeLoPrevisto: guardChanged, contratosNetIntactos: netIntact, contratosNet: netAfter },
                 { revision: REVIEW_ID_2026_11_10_STN, ...repStn },
                 { revision: REVIEW_ID_2026_11_09_TPV, ...repTpv },
+                { revision: REVIEW_ID_2026_11_10_NET_LEGACY, ...repNetLegacy },
               ],
             }),
           );
