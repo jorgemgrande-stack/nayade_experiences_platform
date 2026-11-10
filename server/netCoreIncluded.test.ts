@@ -264,8 +264,7 @@ describe("catálogo: importación, publicación y validaciones", () => {
     // Con la política comercial activa, igual
     expect(textProblems("No incluye Elephant Core", { policyEnabled: true })).toEqual([]);
     // Una negación dentro de una pregunta no niega nada, ni la que queda en otra línea que su verbo
-    for (const t of ["¿No incluye Elephant Core? Sí, lo incluye.", "¿Que no incluye Elephant Core? Al contrario.", "No
-Incluye Elephant Core Essential"]) expect(affirmsNetCore(t), t).toBe(true);
+    for (const t of ["¿No incluye Elephant Core? Sí, lo incluye.", "¿Que no incluye Elephant Core? Al contrario.", "No\nIncluye Elephant Core Essential"]) expect(affirmsNetCore(t), t).toBe(true);
     expect(affirmsNetCore("¿Trae la caja? Sí. No incluye Elephant Core.")).toBe(false);
     // Una negación no tapa una afirmación en el mismo texto
     expect(affirmsNetCore("No incluye Elephant Core Business, pero Elephant Core Essential incluido")).toBe(true);
