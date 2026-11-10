@@ -1058,3 +1058,38 @@ export function commerceChannelPlan(raw: { controlplane: Record<string, string>;
   if (url !== wantUrl) plan.core.push({ name: "CP_COMMERCE_URL", value: wantUrl });
   return plan;
 }
+
+/**
+ * Espera de una publicación con `railway up`: se sigue SU despliegue (el no nativo cuyo mensaje es el de la subida,
+ * `-m "<repo> <commit>"`), no «el último del servicio». Un despliegue nativo posterior (una fusión que llega mientras
+ * tanto y espera a su CI) ya no hace que la espera se agote ni que se vuelva atrás lo que sí se publicó bien
+ * (incidente del 10/11/2026: f0bde492 sano, deshecho por el despliegue nativo de be0fb32b).
+ *
+ * `nodes`: despliegues del servicio, del más reciente al más antiguo. `after`: el último que había antes de subir.
+ *  - pending: aún no aparece el propio o no ha terminado;
+ *  - done: el propio terminó (SUCCESS, FAILED, CRASHED…);
+ *  - superseded: el propio quedó REMOVED porque llegó otro posterior; NO es un fallo del propio y no se vuelve atrás
+ *    (lo que sirve el servicio es ya responsabilidad de ese despliegue posterior).
+ */
+export type OwnDeployState = { state: "pending"; id: string | null } | { state: "done"; id: string; status: string } | { state: "superseded"; id: string; by: string };
+const DEPLOY_FINAL = new Set(["SUCCESS", "FAILED", "CRASHED", "REMOVED", "SKIPPED"]);
+export function ownDeployState(nodes: ReadonlyArray<{ id: string; status: string; meta: unknown }>, o: { after: string | null; mark: string }): OwnDeployState {
+  const cut = o.after ? nodes.findIndex((n) => n.id === o.after) : -1;
+  // Sin el punto de partida entre los consultados no se puede saber qué es nuevo: se sigue esperando
+  if (o.after && cut < 0) return { state: "pending", id: null };
+  const fresh = cut >= 0 ? nodes.slice(0, cut) : nodes.slice();
+  // El propio: el más antiguo de los nuevos que no es nativo y lleva el mensaje de la subida
+  let ownIdx = -1;
+  for (let i = fresh.length - 1; i >= 0; i--) {
+    const n = fresh[i];
+    if (!isNativeDeploy(n.meta) && JSON.stringify(n.meta ?? {}).includes(o.mark)) {
+      ownIdx = i;
+      break;
+    }
+  }
+  if (ownIdx < 0) return { state: "pending", id: null };
+  const own = fresh[ownIdx];
+  if (!DEPLOY_FINAL.has(own.status)) return { state: "pending", id: own.id };
+  if (own.status === "REMOVED" && ownIdx > 0) return { state: "superseded", id: own.id, by: fresh[ownIdx - 1].id };
+  return { state: "done", id: own.id, status: own.status };
+}
