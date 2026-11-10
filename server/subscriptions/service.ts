@@ -725,7 +725,7 @@ export function licencePlan(sub: Subscription, items: SubscriptionItem[], now: n
     note:
       sub.status === "trialing"
         ? "Prueba gratuita: las licencias del plan están aplicadas de verdad hasta el fin de la prueba (las mueve la ampliación de la prueba). La facturación simulada no cobra ni concede nada."
-        : "Simulación: la facturación simulada no concede ni retira ninguna licencia.",
+        : "Simulación: no se concede ni se retira ninguna licencia.",
     plan: live.find((i) => i.family === "core_plan" && i.activationKind === "plan")?.activationRef ?? null,
     modules: live
       .filter((i) => i.activationKind === "module" && i.activationRef)
