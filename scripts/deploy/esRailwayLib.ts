@@ -1098,12 +1098,12 @@ export function isRollbackOf(meta: unknown, target: unknown): boolean {
 export function ownDeployState(nodes: ReadonlyArray<{ id: string; status: string; meta: unknown }>, o: { after: string | null } & OwnDeployTarget): OwnDeployState {
   let pool: ReadonlyArray<{ id: string; status: string; meta: unknown }>;
   let isOwn: (n: { id: string; meta: unknown }) => boolean;
+  const cut = o.after ? nodes.findIndex((n) => n.id === o.after) : -1;
   if ("id" in o) {
     // Con identificador no hace falta el punto de partida
     pool = nodes;
     isOwn = (n) => n.id === o.id;
   } else {
-    const cut = o.after ? nodes.findIndex((n) => n.id === o.after) : -1;
     // Sin el punto de partida entre los consultados no se puede saber qué es nuevo: se sigue esperando
     if (o.after && cut < 0) return { state: "pending", id: null };
     pool = cut >= 0 ? nodes.slice(0, cut) : nodes.slice();
@@ -1122,6 +1122,14 @@ export function ownDeployState(nodes: ReadonlyArray<{ id: string; status: string
   if (ownIdx < 0) return { state: "pending", id: null };
   const own = pool[ownIdx];
   if (!DEPLOY_FINAL.has(own.status)) return { state: "pending", id: own.id };
-  if (own.status === "REMOVED" && ownIdx > 0) return { state: "superseded", id: own.id, by: pool[ownIdx - 1].id };
+  if (own.status === "REMOVED") {
+    if (ownIdx > 0) return { state: "superseded", id: own.id, by: pool[ownIdx - 1].id };
+    // También lo sustituye uno creado ANTES que él pero después del punto de partida (un nativo que esperaba a su CI y
+    // se activó más tarde): está activo o en curso mientras el propio ya está retirado
+    if (cut > 0) {
+      const earlier = nodes.slice(1, cut).find((n) => n.id !== own.id && (n.status === "SUCCESS" || !DEPLOY_FINAL.has(n.status)));
+      if (earlier) return { state: "superseded", id: own.id, by: earlier.id };
+    }
+  }
   return { state: "done", id: own.id, status: own.status };
 }

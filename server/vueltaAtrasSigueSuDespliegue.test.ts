@@ -50,6 +50,21 @@ describe("la vuelta atrás sigue su propio despliegue", () => {
     expect(ownDeployState([incoming("SUCCESS"), rb("REMOVED"), failed, target], want)).toEqual({ state: "superseded", id: "238fd6fe", by: "df94ec1c" });
   });
 
+  it("también la sustituye un nativo creado antes que ella (esperaba a su CI) y activado después", () => {
+    expect(ownDeployState([rb("REMOVED"), incoming("SUCCESS"), failed, target], want)).toEqual({ state: "superseded", id: "238fd6fe", by: "df94ec1c" });
+    expect(ownDeployState([rb("REMOVED"), incoming("DEPLOYING"), failed, target], want)).toEqual({ state: "superseded", id: "238fd6fe", by: "df94ec1c" });
+    // Lo mismo para una subida con marca (publicación) y para una orden seguida por identificador
+    const mark = "nayade_experiences_platform f0bde4924a0f3dda2676c9174c4ccc833b576e1e";
+    const up = node("af9a29ed", "REMOVED", { reason: "deploy", cliMessage: mark });
+    expect(ownDeployState([up, incoming("SUCCESS"), target], { after: "b017225e", mark })).toEqual({ state: "superseded", id: "af9a29ed", by: "df94ec1c" });
+    expect(ownDeployState([up, incoming("SUCCESS"), target], { after: "b017225e", id: "af9a29ed" })).toEqual({ state: "superseded", id: "af9a29ed", by: "df94ec1c" });
+    // Retirada sin nadie que la sustituya (el anterior nuevo falló, se omitió o también está retirado): es su estado, no «superseded»
+    expect(ownDeployState([rb("REMOVED"), incoming("FAILED"), failed, target], want)).toEqual({ state: "done", id: "238fd6fe", status: "REMOVED" });
+    expect(ownDeployState([rb("REMOVED"), incoming("SKIPPED"), failed, target], want)).toEqual({ state: "done", id: "238fd6fe", status: "REMOVED" });
+    // Lo que había ANTES del punto de partida nunca cuenta como sustituto
+    expect(ownDeployState([rb("REMOVED"), failed, node("prev", "SUCCESS", nativeMeta(SHA_NEW)), target], want)).toEqual({ state: "done", id: "238fd6fe", status: "REMOVED" });
+  });
+
   it("solo cuenta una vuelta atrás nueva y con el origen del destino", () => {
     // Una vuelta atrás anterior al punto de partida (otra ejecución) no cuenta
     expect(ownDeployState([failed, rb("SUCCESS"), target], want)).toEqual({ state: "pending", id: null });
@@ -113,7 +128,8 @@ describe("esRailway.ts no espera «al último despliegue del servicio»", () => 
     expect(src).not.toMatch(/\bwaitFor\(/);
     // `latest` solo sirve para anotar el punto de partida (o el despliegue que se va a redesplegar), nunca para esperar
     const waitOwn = src.slice(src.indexOf("async function waitOwn("), src.indexOf("const waitOwnOrCancel"));
-    expect(waitOwn).toContain("ownDeployState(await deployments(");
+    expect(waitOwn).toContain("const nodes = await deployments(serviceIdValue, environmentId, 20);");
+    expect(waitOwn).toContain("ownDeployState(nodes, target)");
     expect(waitOwn).not.toContain("latest(");
   });
 
@@ -134,5 +150,30 @@ describe("esRailway.ts no espera «al último despliegue del servicio»", () => 
   it("solo la publicación ordinaria cancela su subida al agotarse la espera", () => {
     expect(src.match(/cancel: true/g)?.length).toBe(1);
     expect(src.match(/await waitOwnOrCancel\(/g)?.length).toBe(2);
+  });
+});
+
+describe("los llamadores tratan los estados nuevos de la espera", () => {
+  const src = fs.readFileSync(path.resolve(__dirname, "../scripts/deploy/esRailway.ts"), "utf8").replace(/\r/g, "");
+  const block = (from: string, to: string) => src.slice(src.indexOf(from), src.indexOf(to, src.indexOf(from)));
+
+  it("revert: una vuelta atrás que no queda en SUCCESS hace fallar la orden aunque el servicio responda", () => {
+    const revert = block('if (cmd === "revert")', 'if (cmd === "rollback-recorded")');
+    expect(revert).toContain('if (reverted !== "SUCCESS") process.exit(1);');
+    expect(revert.indexOf('if (reverted !== "SUCCESS")')).toBeLessThan(revert.indexOf("functional(env)"));
+  });
+
+  it("drill: con la espera agotada falla sin relanzar el reposo; un reposo que no queda bien se avisa", () => {
+    const drill = src.slice(src.indexOf('if (cmd === "drill")'));
+    expect(drill.indexOf('if (d.status === "TIMEOUT")')).toBeGreaterThan(0);
+    expect(drill.indexOf('if (d.status === "TIMEOUT")')).toBeLessThan(drill.indexOf("await setAndDeploy(DRILL_IDLE)"));
+    expect(drill).toMatch(/if \(d\.status === "TIMEOUT"\) \{[\s\S]{0,400}?process\.exit\(1\);/);
+    expect(drill).toContain('if (idle.status === "SUCCESS")');
+  });
+
+  it("identificador que no aparece: tras varias consultas se sigue al primero posterior, con aviso", () => {
+    const waitOwn = block("async function waitOwn(", "const waitOwnOrCancel");
+    expect(waitOwn).toContain("ownDeployState(nodes, { after: target.after, first: true })");
+    expect(waitOwn).toContain("++missing >= 4");
   });
 });

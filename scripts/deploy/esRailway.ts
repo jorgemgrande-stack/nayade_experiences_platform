@@ -107,8 +107,19 @@ async function waitOwn(serviceIdValue: string, environmentId: string, target: { 
   const t0 = Date.now();
   const timeoutMs = o.timeoutMs ?? 25 * 60_000;
   let last: string | null = null;
+  let missing = 0;
   for (;;) {
-    const st = ownDeployState(await deployments(serviceIdValue, environmentId, 20), target);
+    const nodes = await deployments(serviceIdValue, environmentId, 20);
+    let st = ownDeployState(nodes, target);
+    // Red de seguridad: si el identificador devuelto no aparece en varias consultas seguidas pero sí hay un despliegue
+    // nuevo, se sigue al primero que apareció tras el punto de partida (nunca al último)
+    if ("id" in target && st.state === "pending" && st.id === null) {
+      const fallback = ownDeployState(nodes, { after: target.after, first: true });
+      if (target.after && (fallback.state !== "pending" || fallback.id !== null) && ++missing >= 4) {
+        if (missing === 4) console.error(`AVISO: el despliegue ${target.id} de ${o.what ?? "la orden"} no aparece en Railway; se sigue al primero posterior al punto de partida`);
+        st = fallback;
+      }
+    }
     if (st.state === "done") return { id: st.id, status: st.status };
     if (st.state === "superseded") return { id: st.id, status: "SUPERSEDED", by: st.by };
     last = st.id;
@@ -127,7 +138,10 @@ async function redeploySameImage(serviceIdValue: string, environmentId: string, 
   const after = (await latest(serviceIdValue, environmentId))?.id ?? null;
   const r = await api<{ deploymentRedeploy: { id?: string } | null }>("mutation($id:String!){ deploymentRedeploy(id:$id, usePreviousImageTag:true){ id } }", { id: deploymentId });
   const id = r.deploymentRedeploy?.id;
-  return waitOwn(serviceIdValue, environmentId, id && id !== deploymentId ? { after, id } : { after, first: true }, { what: "el redespliegue" });
+  const d = await waitOwn(serviceIdValue, environmentId, id && id !== deploymentId ? { after, id } : { after, first: true }, { what: "el redespliegue" });
+  if (d.status === "SUPERSEDED") console.error(`AVISO: el redespliegue ${d.id} quedó sustituido por el despliegue posterior ${d.by}`);
+  if (d.status === "TIMEOUT") console.error(`AVISO: el redespliegue ${d.id} no terminó en el tiempo de espera`);
+  return d;
 }
 
 async function logs(deploymentId: string, limit = 400): Promise<string> {
@@ -160,6 +174,7 @@ async function rollback(serviceIdValue: string, environmentId: string, deploymen
   const list = await deployments(serviceIdValue, environmentId, 20);
   const before = list[0]?.id ?? null;
   const target = list.find((x) => x.id === deploymentId);
+  if (!target) console.error(`AVISO: ${deploymentId} no está entre los últimos despliegues: se seguirá la primera vuelta atrás nueva del servicio`);
   await api("mutation($id:String!){ deploymentRollback(id:$id) }", { id: deploymentId });
   const d = await waitOwn(serviceIdValue, environmentId, { after: before, rollbackOf: target?.meta ?? null }, { what: `la vuelta atrás a ${deploymentId}` });
   return d.status === "SUPERSEDED" ? `SUPERSEDED (sustituida por el despliegue posterior ${d.by})` : d.status;
@@ -1398,7 +1413,10 @@ async function main() {
     const repo = service === "crm" ? REPOSITORIES.crm : service === "web" ? REPOSITORIES.web : REPOSITORIES.core;
     const prev = i >= 0 ? list.slice(i + 1).find((x) => x.status === "REMOVED" && shaFromDeployMeta(x.meta, repo)) : undefined;
     if (!prev) throw new Error(`${service}: no hay un despliegue anterior al que volver`);
-    console.log(`${service}: vuelve a ${prev.id} (commit ${shaFromDeployMeta(prev.meta, repo)?.slice(0, 12)}) → ${await rollback(sid, sc.environmentId, prev.id)}`);
+    const reverted = await rollback(sid, sc.environmentId, prev.id);
+    console.log(`${service}: vuelve a ${prev.id} (commit ${shaFromDeployMeta(prev.meta, repo)?.slice(0, 12)}) → ${reverted}`);
+    // Una vuelta atrás que no queda activa es un fallo, aunque lo que sigue sirviendo responda bien
+    if (reverted !== "SUCCESS") process.exit(1);
     if (!(await functional(env))) process.exit(1);
     return;
   }
@@ -1488,12 +1506,18 @@ async function main() {
       return waitOwn(sid, sc.environmentId, own ? { after: before, id: own } : { after: before, first: true }, { what: "la orden de restore-drill" });
     };
     const d = await setAndDeploy(command);
+    if (d.status === "TIMEOUT") {
+      // Como antes: no se relanza el reposo por encima de una orden que puede seguir en curso
+      console.error(`La orden «${command}» no terminó en el tiempo de espera: el paso falla (restore-drill NO se devuelve a «${DRILL_IDLE}»).`);
+      process.exit(1);
+    }
     // El registro tarda en estar completo tras terminar la orden: se espera un poco antes de leerlo
     await new Promise((r) => setTimeout(r, 20_000));
     const out = d.id === "?" ? "" : await logs(d.id);
     console.log(`restore-drill «${command}» → ${d.status}\n${out}`);
-    await setAndDeploy(DRILL_IDLE);
-    console.log(`restore-drill devuelto a «${DRILL_IDLE}»`);
+    const idle = await setAndDeploy(DRILL_IDLE);
+    if (idle.status === "SUCCESS") console.log(`restore-drill devuelto a «${DRILL_IDLE}»`);
+    else console.error(`AVISO: restore-drill no quedó en «${DRILL_IDLE}» (${idle.status})`);
     // Una orden que no termina bien (p. ej. una copia que no se sube) es un FALLO del paso, nunca un éxito
     // El contenedor puede salir con error después de que Railway lo dé por bueno: la marca del registro manda
     const failed = /Orden fallida:/.test(out);
