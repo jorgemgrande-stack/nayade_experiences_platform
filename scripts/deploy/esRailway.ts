@@ -47,6 +47,7 @@ import { DRILL_IDLE, EXCLUDED_FROM_EXPORT, GATEWAY_COPIED_VARS, GATEWAY_TEMPLATE
 import { ERM_DB_SERVICE, ERM_PASSWORD_VAR, LIVE_PLATFORM_DOMAIN_DEFAULT, livePlatformDomainProblems, meteringPlan, platformDomainsValue } from "./esRailwayLib";
 import { ACCESS_CHECKS, ACCESS_PROBE_USER, CATALOG_STAMP_FILE, WEB_CATALOG_SITE, accessProblems } from "./esRailwayLib";
 import { externalExtraordinaryChanges, extraordinaryChanges } from "./esRailwayLib";
+import { ownDeployState } from "./esRailwayLib";
 import { CORE_COMMERCE_SCOPES, CORE_COMMERCE_TOKEN_ID, commerceChannelPlan } from "./esRailwayLib";
 import { CRM_CHECKS, CRM_VERSION_FILE, CRM_VERSION_URL, externalLockedChanges, FUNCTIONAL_CHECKS, ORDINARY_SERVICES, WEB_CHECKS, crmProtectedChanges, hasMigrations, isExternalService, isNativeDeploy, protectedChanges, shaFromDeployMeta } from "./esRailwayLib";
 import { REPOSITORIES } from "../../shared/repositories";
@@ -97,16 +98,23 @@ async function latest(serviceIdValue: string, environmentId: string) {
 
 const FINAL = new Set(["SUCCESS", "FAILED", "CRASHED", "REMOVED", "SKIPPED"]);
 /**
- * Como waitFor, pero una espera agotada es un FALLO normal (estado «TIMEOUT»): se cancela el despliegue en curso para
- * que no se active después y quien llama vuelve atrás como en cualquier otro fallo, en lugar de terminar sin hacerlo.
+ * Espera a SU despliegue (el de la subida con el mensaje `mark`), no al último del servicio: un despliegue nativo
+ * posterior no la agota ni provoca una vuelta atrás de lo que sí se publicó bien. Agotada la espera, se cancela solo el
+ * propio (nunca uno nativo ajeno) y se devuelve «TIMEOUT». Si el propio quedó sustituido por otro posterior, «SUPERSEDED».
  */
-async function waitOrCancel(serviceIdValue: string, environmentId: string, after: string | null): Promise<{ id: string; status: string }> {
-  try {
-    return await waitFor(serviceIdValue, environmentId, after);
-  } catch {
-    const pending = await latest(serviceIdValue, environmentId).catch(() => null);
-    if (pending && pending.id !== after && !FINAL.has(pending.status)) await api("mutation($id:String!){ deploymentCancel(id:$id) }", { id: pending.id }).catch(() => undefined);
-    return { id: pending?.id ?? "?", status: "TIMEOUT" };
+async function waitOwnOrCancel(serviceIdValue: string, environmentId: string, after: string | null, mark: string, timeoutMs = 25 * 60_000): Promise<{ id: string; status: string; by?: string }> {
+  const t0 = Date.now();
+  let last: string | null = null;
+  for (;;) {
+    const st = ownDeployState(await deployments(serviceIdValue, environmentId, 20), { after, mark });
+    if (st.state === "done") return { id: st.id, status: st.status };
+    if (st.state === "superseded") return { id: st.id, status: "SUPERSEDED", by: st.by };
+    last = st.id;
+    if (Date.now() - t0 > timeoutMs) {
+      if (last) await api("mutation($id:String!){ deploymentCancel(id:$id) }", { id: last }).catch(() => undefined);
+      return { id: last ?? "?", status: "TIMEOUT" };
+    }
+    await new Promise((r) => setTimeout(r, 15_000));
   }
 }
 async function waitFor(serviceIdValue: string, environmentId: string, after: string | null, timeoutMs = 25 * 60_000) {
@@ -1273,9 +1281,15 @@ async function main() {
       }
       const before = (await latest(sid, sc.environmentId))?.id ?? null;
       done.push({ name, sid, prev: cur?.id ?? null });
-      const r = spawnSync("railway", ["up", dir, "--path-as-root", "-s", name, "-e", env, "--detach", "-m", `${REPOSITORIES.core} ${sha}`], { encoding: "utf8", env: process.env });
-      const d = r.status === 0 ? await waitOrCancel(sid, sc.environmentId, before) : null;
+      const mark = `${REPOSITORIES.core} ${sha}`;
+      const r = spawnSync("railway", ["up", dir, "--path-as-root", "-s", name, "-e", env, "--detach", "-m", mark], { encoding: "utf8", env: process.env });
+      const d = r.status === 0 ? await waitOwnOrCancel(sid, sc.environmentId, before, mark) : null;
       console.log(`${name}: ${d ? `despliegue ${d.id} → ${d.status}` : `railway up falló: ${scrub(r.stderr || r.stdout || "").slice(0, 300)}`}`);
+      if (d?.status === "SUPERSEDED") {
+        // Otro despliegue posterior (p. ej. el nativo de una fusión nueva) sustituyó al nuestro: no se vuelve atrás
+        console.error(`${name}: sustituido por el despliegue posterior ${d.by}; no se vuelve atrás. Publica el commit nuevo cuando termine su CI.`);
+        process.exit(1);
+      }
       if (d?.status !== "SUCCESS") {
         if (d && d.status !== "TIMEOUT") console.log((await logs(d.id, 120)).split("\n").slice(-40).join("\n"));
         await rollbackAll();
@@ -1355,8 +1369,12 @@ async function main() {
     }
     const before = (await latest(sid, sc.environmentId))?.id ?? null;
     const r = spawnSync("railway", ["up", dir, "--path-as-root", "-s", ext.service, "-e", env, "--detach", "-m", note], { encoding: "utf8", env: process.env });
-    const d = r.status === 0 ? await waitOrCancel(sid, sc.environmentId, before) : null;
+    const d = r.status === 0 ? await waitOwnOrCancel(sid, sc.environmentId, before, note) : null;
     console.log(`${ext.service}: ${d ? `despliegue ${d.id} → ${d.status}` : `railway up falló: ${scrub(r.stderr || r.stdout || "").slice(0, 300)}`}`);
+    if (d?.status === "SUPERSEDED") {
+      console.error(`${ext.service}: sustituido por el despliegue posterior ${d.by}; no se vuelve atrás.`);
+      process.exit(1);
+    }
     const ok = d?.status === "SUCCESS" && (await functional(env, ext.checks)) && (ext.service !== "crm" || (await servedCrmVersion(env, sha)));
     if (!ok) {
       if (d && d.status !== "SUCCESS" && d.status !== "TIMEOUT") console.log((await logs(d.id, 120)).split("\n").slice(-40).join("\n"));
