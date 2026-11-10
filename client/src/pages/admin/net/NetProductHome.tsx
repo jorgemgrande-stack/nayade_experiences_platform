@@ -1,6 +1,6 @@
 /**
  * Panel general de un producto Elephant Net (/admin/net/:producto): qué incluye la licencia, con el estado real de
- * cada funcionalidad («Disponible» o «Próximamente»), y accesos a sus herramientas. Lo protege el guardián de rutas con
+ * cada funcionalidad («Disponible» o «En implantación»), y accesos a sus herramientas. Lo protege el guardián de rutas con
  * la licencia del producto (shared/panelExtensions.ts); esta página no concede nada.
  */
 import { Link, useParams } from "wouter";
@@ -51,7 +51,7 @@ export default function NetProductHome() {
               <p className="max-w-3xl text-sm text-muted-foreground">{product.summary}</p>
               <p className="text-xs text-muted-foreground">
                 Licencia {product.licence} · {counts.available} funcionalidades disponibles
-                {counts.comingSoon > 0 ? ` · ${counts.comingSoon} próximamente, incluidas sin coste adicional` : ""}
+                {counts.comingSoon > 0 ? ` · ${counts.comingSoon} en implantación, incluidas sin coste adicional` : ""}
               </p>
             </div>
           </div>

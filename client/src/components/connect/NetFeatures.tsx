@@ -1,6 +1,6 @@
 /**
  * Funcionalidades de un producto Elephant Net agrupadas por áreas, con su estado real: «Disponible» (operativa hoy) o
- * «Próximamente» (incluida en el producto, pendiente de desarrollo; nunca una extensión de pago aparte).
+ * «En implantación» (incluida en el producto, pendiente de desarrollo; nunca una extensión de pago aparte).
  * La usan la ficha del marketplace y la portada del producto en el panel.
  */
 import { CheckCircle2, Clock } from "lucide-react";
@@ -14,7 +14,7 @@ export function NetFeatureAreas({ areas, title = "Funcionalidades incluidas", in
         <h2 id="net-areas-t" className="text-lg font-bold text-foreground">
           {title}
         </h2>
-        <p className="text-sm text-muted-foreground">{intro ?? "Todo va incluido en el producto, sin extensiones adicionales. Lo marcado como «Próximamente» se activará en tu producto cuando esté listo, sin coste extra."}</p>
+        <p className="text-sm text-muted-foreground">{intro ?? "Todo va incluido en el producto, sin extensiones adicionales. Lo marcado como «En implantación» se activará en tu producto cuando esté listo, sin coste extra."}</p>
       </div>
       <div className="grid gap-4 md:grid-cols-2">
         {areas.map((a) => (
@@ -33,7 +33,7 @@ export function NetFeatureAreas({ areas, title = "Funcionalidades incluidas", in
                       f.status === "available" ? "border-primary/30 bg-primary/10 text-foreground" : "border-border bg-muted text-muted-foreground",
                     )}
                   >
-                    {f.status === "available" ? "Disponible" : "Próximamente"}
+                    {f.status === "available" ? "Disponible" : "En implantación"}
                   </span>
                 </li>
               ))}

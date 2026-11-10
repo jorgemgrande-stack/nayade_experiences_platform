@@ -88,6 +88,7 @@ import { IMPORT_AUTHOR, importCommercialSpecs } from "../catalog/commercial/impo
 import { publishBatch, revertLastBatch } from "../catalog/commercial/publishBatch";
 import { commercialIntegrity, netContracts } from "../catalog/commercial/integrity";
 import { REVIEW_ID_2026_11_09_NET_UNIFICATION, applyNetUnification, catalogGuard, guardDiff } from "../catalog/review20261109netunificacion";
+import { REVIEW_ID_2026_11_10_STN, applyStnScopeReview } from "../catalog/review20261110stn";
 
 const args = process.argv.slice(2);
 const cmd = args[0] && !args[0].startsWith("--") ? args[0] : "run";
@@ -535,6 +536,8 @@ async function main() {
           const guardChanged = guardDiff(guardBefore, await catalogGuard(webStore));
           const netAfter = await netContracts(crmPool, pool, netAt);
           const netIntact = JSON.stringify(netBefore) === JSON.stringify(netAfter);
+          // 10/11/2026: Social Token Net por empresa (ámbito del catálogo y descripción larga); sin precios ni licencias
+          const repStn = await applyStnScopeReview(svc, webStore, { apply, author: `operacion:${REVIEW_ID_2026_11_10_STN}` });
           const pricesFinal = new Map((await webStore.listPrices()).map((p) => [p.id, `${p.status}:${p.amountCents}`]));
           const pricesIntactConnect = pricesFinal.size === pricesAfter.size && Array.from(pricesAfter).every(([id, v]) => pricesFinal.get(id) === v);
           // Una sola línea (el registro de Railway la guarda en los atributos si es JSON)
@@ -553,6 +556,7 @@ async function main() {
                 { revision: REVIEW_ID_2026_11_09_PACK_MARKETING, ...repPackMarketing },
                 { revision: REVIEW_ID_2026_11_08_CONNECT, modoStripe: stripeMode, ...repConnect, preciosIntactos: pricesIntactConnect },
                 { revision: REVIEW_ID_2026_11_09_NET_UNIFICATION, ...repNetUnification, catalogoFueraDeLoPrevisto: guardChanged, contratosNetIntactos: netIntact, contratosNet: netAfter },
+                { revision: REVIEW_ID_2026_11_10_STN, ...repStn },
               ],
             }),
           );
