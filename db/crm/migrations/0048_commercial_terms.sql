@@ -6,7 +6,8 @@
 --   que ocurre al vencer), aceptación contractual y resultado de sincronización. `subscription_id` NULL = borrador de
 --   paquete para una contratación nueva. `revision` es la versión del borrador (dos administradores no se pisan).
 -- `commercial_terms_lines`: partidas del acuerdo, de catálogo (con su precio oficial de referencia) o a medida (sin
---   producto: nunca conceden licencias). Cada guardado del borrador escribe una revisión nueva; nada se reescribe.
+--   producto: nunca conceden licencias). `line_ref` identifica la misma partida entre versiones del acuerdo (la clave
+--   del producto o, en una partida a medida, una referencia generada). Cada guardado del borrador escribe una revisión nueva; nada se reescribe.
 -- `commercial_terms_adjustments`: descuentos y recargos, porcentuales o fijos, por partida o globales, recurrentes o
 --   de un solo uso.
 -- `commercial_terms_events`: historial inmutable (solo inserciones) con motivo obligatorio, valores anteriores y
@@ -66,6 +67,7 @@ CREATE TABLE commercial_terms_lines (
   terms_id INT NOT NULL,
   revision INT NOT NULL,
   line_kind ENUM('catalog','custom') NOT NULL,
+  line_ref VARCHAR(80) NOT NULL,
   concept VARCHAR(30) NOT NULL,
   product_key VARCHAR(80) NULL,
   price_id INT NULL,

@@ -12,6 +12,7 @@ const MONTH = (n: number) => Date.UTC(2026, 10 + n, 1, 10);
 let seq = 0;
 const cat = (name: string, officialUnitCents: number, over: Partial<TermsLine> = {}): TermsLine => ({
   id: ++seq,
+  ref: name.toLowerCase().replace(/s+/g, "-"),
   kind: "catalog",
   concept: "connect",
   productKey: name.toLowerCase().replace(/\s+/g, "-"),
@@ -35,6 +36,7 @@ const hotel = (over: Partial<TermsLine> = {}) => cat("Hotel Net", 11900, { conce
 const whatsapp = (over: Partial<TermsLine> = {}) => cat("Conector WhatsApp", 1900, { concept: "whatsapp", ...over });
 const custom = (name: string, cents: number, over: Partial<TermsLine> = {}): TermsLine => ({
   id: ++seq,
+  ref: `custom-${seq + 1}`,
   kind: "custom",
   concept: "maintenance",
   productKey: null,
