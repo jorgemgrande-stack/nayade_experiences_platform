@@ -17,6 +17,7 @@
 import { productDraft, type ProductDraft } from "../web/schemas";
 import type { WebAdminService } from "../web/service";
 import type { WebStore } from "../web/store";
+import { reviewOverDraft, type OverDraftReport } from "./overDraft";
 import { ASSISTED_ACTIVATION, REQUEST_STEP } from "./review20261108connect";
 
 export const REVIEW_ID_2026_11_08_FICHAS = "revision-catalogo-2026-11-08-fichas";
@@ -26,7 +27,8 @@ type Field = keyof Commercial;
 
 export interface ListingChange {
   key: string;
-  evidence: string;
+  /** Evidencia del estado comercial; sin ella se conserva la que ya tenga el producto (cambios solo de textos). */
+  evidence?: string;
   /** Estados de partida y de llegada (sin `status`, no cambia). */
   status?: { from: ProductDraft["catalog"]["commercialStatus"]; to: ProductDraft["catalog"]["commercialStatus"] };
   technical?: { from: ProductDraft["technicalStatus"]; to: ProductDraft["technicalStatus"] };
@@ -39,7 +41,30 @@ export interface ListingChange {
   implementationLevel?: { from: 1 | 2 | 3 | undefined; to: 1 | 2 | 3 };
   /** Campos de la ficha: valor publicado de partida y valor nuevo. */
   fields: Partial<Record<Field, { from: unknown; to: unknown }>>;
+  /** Textos del producto fuera de la ficha (nombre, frase corta y descripción): de partida y nuevo. */
+  product?: Partial<Record<ProductText, { from: string; to: string }>>;
+  /**
+   * Solo textos de un producto que ya está en venta directa (un plan): la revisión también le aplica. Sin esta marca,
+   * un producto en venta directa se da por hecho y no se toca (review20261108connect.ts ya hizo su parte).
+   */
+  inDirectSale?: boolean;
+  /**
+   * Condición previa en el catálogo de un producto (el propio u otro): ámbito y unidad de cobro ya cambiados en el CRM.
+   * Sin cumplirse, la ficha no cambia (conflicto) para no publicar un texto que contradiga el precio vigente.
+   */
+  requiresCatalog?: { key: string; scope: "company" | "site"; chargeUnit: string | null };
+  /**
+   * Ámbito de la licencia y unidad de cobro del propio producto (el editor del CRM no tiene campos para ellos): de
+   * partida y nuevos. Solo cambian desde su valor publicado de partida.
+   */
+  catalogScope?: { scope: { from: "company" | "site"; to: "company" | "site" }; chargeUnit: { from: string | null; to: string | null } };
+  /**
+   * Condición previa: el precio aprobado vigente de ese tipo (en EUR) debe ser exactamente este. La revisión nunca toca
+   * precios: el precio se cambia antes en el CRM. Sin cumplirse, el producto no cambia (conflicto).
+   */
+  requiresPrice?: { kind: "monthly" | "yearly"; amountCents: number };
 }
+type ProductText = "name" | "tagline" | "description";
 
 export const ASSISTED_FAQ = { q: "¿Cómo se pone en marcha?", a: "Es una implantación acompañada: envías la solicitud desde el panel y nuestro equipo la activa contigo. Enviar la solicitud no activa ni cobra nada por sí solo." };
 const COMING_SOON_ACTIVATION = { activation: "Todavía no se puede contratar: estará disponible próximamente." };
@@ -199,6 +224,8 @@ export interface ListingReport {
   changed: string[];
   already: string[];
   conflicts: string[];
+  /** Solo con `overDraft` y si hay productos con borrador ajeno: diff campo a campo y lo que queda retenido en el borrador. */
+  borradores?: OverDraftReport[];
 }
 
 /** Igualdad estructural de JSON (orden de claves indiferente). */
@@ -215,14 +242,22 @@ function same(a: unknown, b: unknown): boolean {
 function target(d: ProductDraft, c: ListingChange): ProductDraft {
   const m: Commercial = { ...(d.commercial as Commercial) };
   for (const [f, v] of Object.entries(c.fields) as Array<[Field, { to: unknown }]>) (m as Record<string, unknown>)[f] = v.to;
+  const texts = Object.fromEntries((Object.entries(c.product ?? {}) as Array<[ProductText, { to: string }]>).map(([f, v]) => [f, v.to]));
   return {
     ...d,
+    ...texts,
     ...(c.thirdPartyCosts ? { thirdPartyCosts: c.thirdPartyCosts.to } : {}),
     technicalStatus: c.technical?.to ?? d.technicalStatus,
     activation: c.activation ? { ...d.activation, kind: c.activation.to } : d.activation,
-    catalog: { ...d.catalog, commercialStatus: c.status?.to ?? d.catalog.commercialStatus, ...(c.stripePrepared !== undefined ? { stripePrepared: c.stripePrepared } : {}), ...(c.implementationLevel ? { implementationLevel: c.implementationLevel.to } : {}) },
-    commercial: m,
-    internal: { ...d.internal, evidence: c.evidence, ...(c.functionalGrade ? { functionalGrade: c.functionalGrade } : {}) },
+    catalog: {
+      ...d.catalog,
+      commercialStatus: c.status?.to ?? d.catalog.commercialStatus,
+      ...(c.stripePrepared !== undefined ? { stripePrepared: c.stripePrepared } : {}),
+      ...(c.implementationLevel ? { implementationLevel: c.implementationLevel.to } : {}),
+      ...(c.catalogScope ? { scope: c.catalogScope.scope.to, chargeUnit: c.catalogScope.chargeUnit.to } : {}),
+    },
+    commercial: Object.keys(c.fields).length ? m : d.commercial,
+    internal: { ...d.internal, ...(c.evidence !== undefined ? { evidence: c.evidence } : {}), ...(c.functionalGrade ? { functionalGrade: c.functionalGrade } : {}) },
   };
 }
 
@@ -230,18 +265,60 @@ function isDone(d: ProductDraft, c: ListingChange): boolean {
   const t = target(d, c);
   return (
     same(d.commercial, t.commercial) &&
+    (Object.keys(c.product ?? {}) as ProductText[]).every((f) => d[f] === t[f]) &&
     d.technicalStatus === t.technicalStatus &&
     d.activation.kind === t.activation.kind &&
     d.catalog.commercialStatus === t.catalog.commercialStatus &&
     (c.stripePrepared === undefined || d.catalog.stripePrepared === c.stripePrepared) &&
     (!c.thirdPartyCosts || d.thirdPartyCosts === c.thirdPartyCosts.to) &&
-    (!c.implementationLevel || d.catalog.implementationLevel === c.implementationLevel.to)
+    (!c.implementationLevel || d.catalog.implementationLevel === c.implementationLevel.to) &&
+    (!c.catalogScope || (d.catalog.scope === c.catalogScope.scope.to && (d.catalog.chargeUnit ?? null) === c.catalogScope.chargeUnit.to))
   );
 }
 
-export async function applyListingReview(svc: WebAdminService, store: WebStore, o: { apply?: boolean; author: string; changes?: readonly ListingChange[] }): Promise<ListingReport> {
+/** Ya en venta directa (review20261108connect.ts): la revisión ya hizo su parte y no la deshace (salvo `inDirectSale`). */
+const directSaleDone = (d: ProductDraft, c: ListingChange) => !c.inDirectSale && d.catalog.commercialStatus === "available" && d.technicalStatus === "available" && d.catalog.offer?.modality === "immediate";
+
+/** Lo que impide aplicar el cambio: valores que ya no son ni los de partida ni los nuevos (vacío = se puede aplicar). */
+function startProblems(d: ProductDraft, c: ListingChange): string[] {
+  const problems: string[] = [];
+  if (!d.commercial && Object.keys(c.fields).length) return ["no tiene ficha comercial"];
+  if (c.implementationLevel && d.catalog.implementationLevel !== c.implementationLevel.from && d.catalog.implementationLevel !== c.implementationLevel.to) problems.push(`nivel de implantación «${d.catalog.implementationLevel}» (se esperaba «${c.implementationLevel.from}»)`);
+  if (c.thirdPartyCosts && d.thirdPartyCosts !== c.thirdPartyCosts.from && d.thirdPartyCosts !== c.thirdPartyCosts.to) problems.push("los costes de terceros ya no son los de partida");
+  if (c.stripePrepared !== undefined && d.catalog.stripePrepared !== undefined && d.catalog.stripePrepared !== c.stripePrepared) problems.push(`«stripePrepared» decidido en el CRM (${d.catalog.stripePrepared})`);
+  if (c.status && d.catalog.commercialStatus !== c.status.from && d.catalog.commercialStatus !== c.status.to) problems.push(`estado «${d.catalog.commercialStatus}» (se esperaba «${c.status.from}»)`);
+  if (c.technical && d.technicalStatus !== c.technical.from && d.technicalStatus !== c.technical.to) problems.push(`estado técnico «${d.technicalStatus}» (se esperaba «${c.technical.from}»)`);
+  if (c.activation && d.activation.kind !== c.activation.from && d.activation.kind !== c.activation.to) problems.push(`activación «${d.activation.kind}» (se esperaba «${c.activation.from}»)`);
+  if (c.catalogScope) {
+    const s = c.catalogScope;
+    const unit = d.catalog.chargeUnit ?? null;
+    if (d.catalog.scope !== s.scope.from && d.catalog.scope !== s.scope.to) problems.push(`ámbito «${d.catalog.scope}» (se esperaba «${s.scope.from}»)`);
+    if (unit !== s.chargeUnit.from && unit !== s.chargeUnit.to) problems.push(`unidad de cobro «${unit ?? "ninguna"}» (se esperaba «${s.chargeUnit.from ?? "ninguna"}»)`);
+  }
+  for (const [f, v] of Object.entries(c.fields) as Array<[Field, { from: unknown; to: unknown }]>) {
+    const now = (d.commercial as Record<string, unknown>)[f];
+    if (!same(now, v.from) && !same(now, v.to)) problems.push(`el campo «${f}» de la ficha ya no es el de partida`);
+  }
+  for (const [f, v] of Object.entries(c.product ?? {}) as Array<[ProductText, { from: string; to: string }]>) if (d[f] !== v.from && d[f] !== v.to) problems.push(`el texto «${f}» del producto ya no es el de partida`);
+  return problems;
+}
+
+const eur = (cents: number) => `${(cents / 100).toFixed(2).replace(".", ",")} €`;
+
+/**
+ * `overDraft` (10/11/2026): un producto con borrador ajeno sin publicar ya no queda como conflicto. La revisión se aplica
+ * sobre lo PUBLICADO y el borrador se vuelve a guardar con los mismos cambios (server/catalog/overDraft.ts): TODOS los
+ * cambios del borrador siguen pendientes, sin publicarse («retenido»). Sin la marca, el comportamiento de siempre.
+ */
+export async function applyListingReview(svc: WebAdminService, store: WebStore, o: { apply?: boolean; author: string; changes?: readonly ListingChange[]; overDraft?: boolean }): Promise<ListingReport> {
   const r: ListingReport = { apply: !!o.apply, changed: [], already: [], conflicts: [] };
-  for (const c of o.changes ?? LISTINGS_2026_11_08) {
+  /**
+   * Productos cuyo ámbito queda como pide esta misma revisión: ya estaba, o se ha cambiado en esta ejecución (con
+   * `apply`, solo después de publicarlo; en simulación, si se cambiaría).
+   */
+  const scoped = new Map<string, { scope: string; chargeUnit: string | null }>();
+  const changes = o.changes ?? LISTINGS_2026_11_08;
+  for (const c of changes) {
     const cur = await store.getEntry("product", c.key);
     if (!cur) {
       r.conflicts.push(`${c.key}: no existe en el catálogo`);
@@ -249,12 +326,17 @@ export async function applyListingReview(svc: WebAdminService, store: WebStore, 
     }
     const d = productDraft.parse(cur.draft);
     const upToDate = cur.publication === "published" && cur.publishedVersion === cur.draftVersion;
+    const settled = () => {
+      if (c.catalogScope) scoped.set(c.key, { scope: c.catalogScope.scope.to, chargeUnit: c.catalogScope.chargeUnit.to });
+    };
     if (isDone(d, c) && upToDate) {
       r.already.push(c.key);
+      settled();
       continue;
     }
-    // Ficha propia guardada y sin publicar (una ejecución anterior se interrumpió): se publica
-    if (isDone(d, c) && cur.publication === "published" && !upToDate && cur.updatedBy === o.author) {
+    // Ficha propia guardada y sin publicar (una ejecución anterior se interrumpió): se publica. Con `overDraft` la
+    // retoma el mecanismo del borrador ajeno, que nunca publica a ciegas (el borrador puede llevar cambios retenidos)
+    if (!o.overDraft && isDone(d, c) && cur.publication === "published" && !upToDate && cur.updatedBy === o.author) {
       r.changed.push(`${c.key}: se publica la ficha ya guardada`);
       if (o.apply) await svc.publish("product", c.key, cur.draftVersion, o.author).catch((e) => void r.conflicts.push(`${c.key}: no se pudo publicar (${e instanceof Error ? e.message : String(e)})`));
       continue;
@@ -263,39 +345,77 @@ export async function applyListingReview(svc: WebAdminService, store: WebStore, 
       r.conflicts.push(`${c.key}: no está publicado (${cur.publication}); se decide en el CRM`);
       continue;
     }
+    // Condiciones previas fuera del producto: el ámbito de otro producto y el precio aprobado
+    const pre: string[] = [];
+    if (c.requiresCatalog) {
+      const q = c.requiresCatalog;
+      const other = q.key === c.key ? cur : await store.getEntry("product", q.key);
+      // Si esta misma revisión cambia el ámbito de ese producto, solo vale que ESTA ejecución lo haya dejado resuelto (con
+      // su precio y sus valores de partida): no basta con que el ámbito publicado coincida por otra vía
+      const ownChange = q.key !== c.key && changes.some((x) => x.key === q.key && x.catalogScope);
+      const oc = scoped.get(q.key) ?? (ownChange ? null : other ? productDraft.parse(other.published ?? other.draft).catalog : null);
+      if (ownChange && !oc) pre.push(`depende de «${q.key}», que esta revisión no ha podido dejar por empresa (ver su conflicto)`);
+      else if (!oc || oc.scope !== q.scope || (oc.chargeUnit ?? null) !== q.chargeUnit) pre.push(`antes hay que cambiar el ámbito de «${q.key}» a «${q.scope}» y su unidad de cobro a «${q.chargeUnit ?? "ninguna"}» (ahora «${oc?.scope ?? "?"}», «${oc?.chargeUnit ?? "ninguna"}»)`);
+    }
+    if (c.requiresPrice) {
+      const q = c.requiresPrice;
+      const approved = (await store.listPrices(cur.id)).filter((p) => p.status === "approved" && p.kind === q.kind && p.currency === "EUR");
+      // Un solo precio vigente de ese tipo, por el importe exacto, sin unidad y sin IVA incluido (como los del catálogo)
+      if (approved.length !== 1 || approved[0].amountCents !== q.amountCents || approved[0].unit !== null || approved[0].taxIncluded)
+        pre.push(`el precio aprobado (${q.kind === "monthly" ? "mensual" : "anual"}) debe ser ${eur(q.amountCents)} sin IVA y sin unidad, y ahora es ${approved.length ? approved.map((p) => `${eur(p.amountCents)}${p.unit ? ` por ${p.unit}` : ""}${p.taxIncluded ? " con IVA incluido" : ""}`).join(" y ") : "ninguno"}: antes hay que aprobarlo en el CRM (la revisión no toca precios)`);
+    }
     if (!upToDate) {
-      r.conflicts.push(`${c.key}: tiene cambios sin publicar en el CRM; no se publica un borrador ajeno`);
+      if (!o.overDraft) {
+        r.conflicts.push(`${c.key}: tiene cambios sin publicar en el CRM; no se publica un borrador ajeno`);
+        continue;
+      }
+      // Borrador ajeno: la revisión se aplica sobre lo publicado y todos los cambios del borrador siguen pendientes
+      const out = await reviewOverDraft(svc, store, {
+        key: c.key,
+        author: o.author,
+        apply: o.apply,
+        policy: {
+          reviewed: (base) => (directSaleDone(base, c) || isDone(base, c) ? base : productDraft.parse(target(base, c))),
+          startProblems: (base) => (directSaleDone(base, c) || isDone(base, c) ? [] : [...pre, ...startProblems(base, c)]),
+          retain: () => true,
+          // Si el borrador cambia un campo que también cambia la revisión, no se escribe nada: se resuelve en el CRM
+          retainedClashBlocks: true,
+        },
+      });
+      if (out.state !== "none" && out.report) (r.borradores ??= []).push(out.report);
+      if (out.state === "already") {
+        r.already.push(c.key);
+        settled();
+      } else if (out.state === "changed") {
+        r.changed.push(`${c.key}: ${out.summary}`);
+        settled();
+      } else if (out.state === "blocked") r.conflicts.push(`${c.key}: ${out.reason}`);
       continue;
     }
-    if (!d.commercial) {
+    if (!d.commercial && Object.keys(c.fields).length) {
       r.conflicts.push(`${c.key}: no tiene ficha comercial`);
       continue;
     }
     // Ya en venta directa (review20261108connect.ts): esta revisión ya hizo su parte y no la deshace
-    if (d.catalog.commercialStatus === "available" && d.technicalStatus === "available" && d.catalog.offer?.modality === "immediate") {
+    if (directSaleDone(d, c)) {
       r.already.push(`${c.key} (en venta directa)`);
       continue;
     }
-    const problems: string[] = [];
-    if (c.implementationLevel && d.catalog.implementationLevel !== c.implementationLevel.from && d.catalog.implementationLevel !== c.implementationLevel.to) problems.push(`nivel de implantación «${d.catalog.implementationLevel}» (se esperaba «${c.implementationLevel.from}»)`);
-    if (c.thirdPartyCosts && d.thirdPartyCosts !== c.thirdPartyCosts.from && d.thirdPartyCosts !== c.thirdPartyCosts.to) problems.push("los costes de terceros ya no son los de partida");
-    if (c.stripePrepared !== undefined && d.catalog.stripePrepared !== undefined && d.catalog.stripePrepared !== c.stripePrepared) problems.push(`«stripePrepared» decidido en el CRM (${d.catalog.stripePrepared})`);
-    if (c.status && d.catalog.commercialStatus !== c.status.from && d.catalog.commercialStatus !== c.status.to) problems.push(`estado «${d.catalog.commercialStatus}» (se esperaba «${c.status.from}»)`);
-    if (c.technical && d.technicalStatus !== c.technical.from && d.technicalStatus !== c.technical.to) problems.push(`estado técnico «${d.technicalStatus}» (se esperaba «${c.technical.from}»)`);
-    if (c.activation && d.activation.kind !== c.activation.from && d.activation.kind !== c.activation.to) problems.push(`activación «${d.activation.kind}» (se esperaba «${c.activation.from}»)`);
-    for (const [f, v] of Object.entries(c.fields) as Array<[Field, { from: unknown; to: unknown }]>) {
-      const now = (d.commercial as Record<string, unknown>)[f];
-      if (!same(now, v.from) && !same(now, v.to)) problems.push(`el campo «${f}» de la ficha ya no es el de partida`);
-    }
+    const problems = [...pre, ...startProblems(d, c)];
     if (problems.length) {
       r.conflicts.push(`${c.key}: ${problems.join("; ")}; se deja como lo decidió el CRM`);
       continue;
     }
-    r.changed.push(`${c.key}: ${c.status ? `${c.status.from} → ${c.status.to}; ` : ""}ficha (${Object.keys(c.fields).join(", ")})`);
+    // En simulación se da por resuelto lo que se cambiaría; con `apply`, solo después de publicarlo
+    if (!o.apply) settled();
+    const scopeChange = c.catalogScope && (d.catalog.scope !== c.catalogScope.scope.to || (d.catalog.chargeUnit ?? null) !== c.catalogScope.chargeUnit.to) ? `ámbito «${d.catalog.scope}» → «${c.catalogScope.scope.to}», unidad de cobro «${d.catalog.chargeUnit ?? "ninguna"}» → «${c.catalogScope.chargeUnit.to ?? "ninguna"}»` : "";
+    const what = [scopeChange, Object.keys(c.product ?? {}).length ? `producto (${Object.keys(c.product ?? {}).join(", ")})` : "", Object.keys(c.fields).length ? `ficha (${Object.keys(c.fields).join(", ")})` : ""].filter(Boolean).join("; ");
+    r.changed.push(`${c.key}: ${c.status ? `${c.status.from} → ${c.status.to}; ` : ""}${what}`);
     if (!o.apply) continue;
     try {
       const saved = await svc.save("product", c.key, { draft: target(d, c), expectedVersion: cur.draftVersion }, o.author);
       await svc.publish("product", c.key, saved.draftVersion, o.author);
+      settled();
     } catch (e) {
       r.changed.pop();
       r.conflicts.push(`${c.key}: no se pudo publicar la ficha (${e instanceof Error ? e.message : String(e)}); se revisa en el CRM`);

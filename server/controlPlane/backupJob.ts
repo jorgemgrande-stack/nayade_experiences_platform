@@ -79,6 +79,7 @@ import { MARKETING_LISTINGS_2026_11_09, REVIEW_ID_2026_11_09_MARKETING } from ".
 import { REVIEW_ID_2026_11_09_WHATSAPP, WHATSAPP_LISTING_2026_11_09 } from "../catalog/review20261109whatsapp";
 import { AUTOMATIONS_LISTING_2026_11_09, REVIEW_ID_2026_11_09_AUTOMATIONS } from "../catalog/review20261109automations";
 import { PACK_MARKETING_LISTING_2026_11_09, REVIEW_ID_2026_11_09_PACK_MARKETING } from "../catalog/review20261109packmarketing";
+import { REVIEW_ID_2026_11_09_TPV, TPV_LISTINGS_2026_11_09 } from "../catalog/review20261109tpv";
 import { REVIEW_ID_2026_11_08_FICHAS, applyListingReview } from "../catalog/review20261108fichas";
 import { mysqlSeedCandidates, mysqlSeedMarkerWriter, seedTpvAcquiredRights } from "../licensing/tpvAcquiredRights";
 import { MysqlCapabilityStore } from "../_core/capabilities/store";
@@ -541,6 +542,10 @@ async function main() {
           const netIntact = JSON.stringify(netBefore) === JSON.stringify(netAfter);
           // 10/11/2026: Social Token Net por empresa (ámbito del catálogo y descripción larga); sin precios ni licencias
           const repStn = await applyStnScopeReview(svc, webStore, { apply, author: `operacion:${REVIEW_ID_2026_11_10_STN}` });
+          // 09/11/2026: estrategia del TPV (caja de cada plan y TPV Advanced, la ficha de connect-pos), después de la
+          // unificación de Elephant Net. Sin precios: exige que el de connect-pos ya sea 19 € (aprobado antes en el CRM) y
+          // cambia ella su ámbito a «por empresa». Con borrador ajeno (planes), se aplica sobre lo publicado y lo conserva
+          const repTpv = await applyListingReview(svc, webStore, { apply, author: `operacion:${REVIEW_ID_2026_11_09_TPV}`, changes: TPV_LISTINGS_2026_11_09, overDraft: true });
           const pricesFinal = new Map((await webStore.listPrices()).map((p) => [p.id, `${p.status}:${p.amountCents}`]));
           const pricesIntactConnect = pricesFinal.size === pricesAfter.size && Array.from(pricesAfter).every(([id, v]) => pricesFinal.get(id) === v);
           // Una sola línea (el registro de Railway la guarda en los atributos si es JSON)
@@ -560,6 +565,7 @@ async function main() {
                 { revision: REVIEW_ID_2026_11_08_CONNECT, modoStripe: stripeMode, ...repConnect, preciosIntactos: pricesIntactConnect },
                 { revision: REVIEW_ID_2026_11_09_NET_UNIFICATION, ...repNetUnification, catalogoFueraDeLoPrevisto: guardChanged, contratosNetIntactos: netIntact, contratosNet: netAfter },
                 { revision: REVIEW_ID_2026_11_10_STN, ...repStn },
+                { revision: REVIEW_ID_2026_11_09_TPV, ...repTpv },
               ],
             }),
           );

@@ -363,7 +363,7 @@ describe("suscripciones modulares: plan + módulos + ampliaciones en una suscrip
     const pos = await contracted("Modular Bajo Solicitud SL", { plan: "essential", interval: "month", items: [{ key: "connect-pos" }] });
     const blocked = await call("POST", `/stripe/orders/${pos.orderId}/checkout`);
     expect(blocked.status).toBe(409);
-    expect(blocked.json.message).toMatch(/«Elephant POS[^»]*» todavía no se contrata en línea/);
+    expect(blocked.json.message).toMatch(/«TPV Advanced[^»]*» todavía no se contrata en línea/);
     // Una suscripción anual antigua en modo clásico no admite partidas mensuales: se explica y no se toca Stripe
     const { orderId } = await contracted("Modular Clásica SL", { plan: "essential", interval: "year", items: [] });
     const s = await ok(call("POST", `/stripe/orders/${orderId}/checkout`));
