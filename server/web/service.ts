@@ -113,6 +113,12 @@ const publicPrice = (p: WebPrice, draft = false): PublicPrice => ({
   ...(draft ? { draft: true } : {}),
 });
 
+/** Marca de heredado de un borrador de producto (`catalog.legacy`), o null. */
+function legacyOf(draft: unknown): { since: string; replacedBy: string } | null {
+  const l = (draft as { catalog?: { legacy?: { since?: unknown; replacedBy?: unknown } | null } }).catalog?.legacy;
+  return l && typeof l.since === "string" && typeof l.replacedBy === "string" ? { since: l.since, replacedBy: l.replacedBy } : null;
+}
+
 export class WebAdminService {
   private now: () => number;
   constructor(
@@ -146,6 +152,8 @@ export class WebAdminService {
       // Disponibilidad comercial (borrador) y si su evidencia está registrada (el texto es interno y no viaja aquí)
       commercialStatus: e.kind === "product" ? ((e.draft as { catalog?: { commercialStatus?: string } }).catalog?.commercialStatus ?? "on_request") : null,
       hasEvidence: e.kind === "product" ? !!(e.draft as { internal?: { evidence?: string | null } }).internal?.evidence : null,
+      // Producto heredado (retirado de la venta) y el que lo sustituye, según el borrador; null si no lo es
+      legacy: e.kind === "product" ? legacyOf(e.draft) : null,
       publication: e.publication,
       draftVersion: e.draftVersion,
       publishedVersion: e.publishedVersion,

@@ -30,7 +30,7 @@ La base del CRM (`web_entries`) es la fuente de verdad, y se edita en **CRM → 
 
 La web toma lo publicado al compilarse (`/cp/v1/public/site`). Tras publicar, hay que desplegar la web: acción `desplegar-web`.
 
-La semilla `server/catalog/elephantSourceV1.ts` solo carga lo que falta. En una base existente nunca revierte el estado comercial ni la evidencia decididos en el CRM (`seed.ts`, `keepCommercialState`).
+La semilla `server/catalog/elephantSourceV1.ts` solo carga lo que falta. En una base existente nunca revierte el estado comercial ni la evidencia decididos en el CRM (`seed.ts`, `keepCommercialState`), ni escribe sobre una entrada o un precio que haya guardado, publicado, aprobado o retirado otro autor: lo lista como conflicto.
 
 ## Revisiones en bloque
 

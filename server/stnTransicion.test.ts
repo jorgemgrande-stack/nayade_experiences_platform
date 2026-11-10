@@ -39,6 +39,7 @@ import { ProvisioningService } from "./_core/provisioning/service";
 import { MemoryProvisioningStore } from "./_core/provisioning/ports";
 import { BUILTIN_MODULES } from "./_core/modules/builtin";
 import { seedElephantSource } from "./catalog/seed";
+import { beforeNetUnification } from "./catalog/seedHistory.testkit";
 import { capabilitiesOfTier } from "./catalog/capabilities";
 import { MemoryOrderStore } from "./orchestrator/store";
 import type { TrialNotifier } from "./trials/onboarding";
@@ -154,7 +155,7 @@ beforeAll(async () => {
     sleep: async () => undefined,
   });
   const web = new WebAdminService({ store: webStore, refs: { moduleIds: BUILTIN_MODULES.map((m) => m.id), planIds: () => null }, now: () => clock });
-  await seedElephantSource(web, webStore);
+  await seedElephantSource(web, webStore, { products: beforeNetUnification() });
   // Aprobados para venta libre SOLO en esta prueba (en el catálogo real nada está «available»)
   for (const key of [...FOR_SALE, INTERNAL]) {
     const { entry: e } = await web.get("product", key);

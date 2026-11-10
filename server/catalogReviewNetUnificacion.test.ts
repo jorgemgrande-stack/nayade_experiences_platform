@@ -4,6 +4,7 @@
  */
 import { describe, expect, it } from "vitest";
 import { seedElephantSource } from "./catalog/seed";
+import { beforeNetUnification } from "./catalog/seedHistory.testkit";
 import { NET_UNIFICATION_2026_11_09, PUBLISH_FOREIGN_DRAFT, REVIEW_ID_2026_11_09_NET_UNIFICATION, applyNetUnification, catalogGuard, coreIncludedTexts, guardDiff, type ForeignDraftAuthorization, type NetUnificationChange } from "./catalog/review20261109netunificacion";
 import { RETIRED_NET_CORE_INCLUDED } from "./catalog/commercial/policy";
 import { productDraft } from "./web/schemas";
@@ -25,7 +26,7 @@ const SOLUTIONS = NET_PRODUCTS.map((p) => p.key);
 async function production() {
   const store = new MemoryWebStore();
   const svc = new WebAdminService({ store, refs, now: () => 1_790_000_000_000 });
-  await seedElephantSource(svc, store);
+  await seedElephantSource(svc, store, { products: beforeNetUnification() });
   for (const c of NET_UNIFICATION_2026_11_09) {
     const e = (await store.getEntry("product", c.key))!;
     const d = productDraft.parse(e.draft);

@@ -16,6 +16,8 @@
  *  - Dependencias y compatibilidades se validan contra lo elegido, lo incluido en paquetes y lo contratado.
  *  - Usuarios, sedes y almacenamiento por encima de lo incluido añaden su complemento si el plan lo
  *    admite. Si no, error. Si el plan lo deja «por contrato», aviso.
+ *  - Un producto por empresa y sin unidad de cobro se contrata una sola vez: una cantidad mayor que 1 es un error
+ *    (nunca se multiplica su precio por las sedes).
  *  - Importes en céntimos enteros; el IVA se calcula aparte y se redondea por periodo.
  *  - `contractable` dice si se puede contratar directamente, solo bajo solicitud o todavía no.
  */
@@ -59,7 +61,7 @@ export interface QuoteCatalog {
 export interface QuoteRequest {
   plan: string;
   interval: "month" | "year";
-  /** Net, Connect, extras y servicios. Cantidad: sedes donde se activa (ámbito sede) o unidades. */
+  /** Net, Connect, extras y servicios. Cantidad: sedes donde se activa (ámbito sede) o unidades (precio con unidad); por empresa y sin unidad, solo 1. */
   items?: Array<{ key: string; quantity?: number }>;
   /** Ya contratado (cambios sobre una suscripción existente). */
   owned?: string[];
@@ -210,6 +212,11 @@ export function quote(catalog: QuoteCatalog, req: QuoteRequest): QuoteResult {
     const q = it.quantity ?? 1;
     if (!Number.isInteger(q) || q < 1 || q > MAX_QTY) {
       errors.push(`Cantidad no válida para «${p.name}»`);
+      continue;
+    }
+    // Por empresa y sin unidad de cobro: una sola contratación, tenga la empresa las sedes que tenga (nunca precio × cantidad)
+    if (q > 1 && singlePerCompany(p)) {
+      errors.push(perCompanyQuantityText(p.name, q));
       continue;
     }
     if (selected.has(p.key)) {
@@ -391,6 +398,21 @@ export function includingBundle(key: string, owned: Iterable<string>, byKey: Map
   }
   return null;
 }
+
+/**
+ * Producto que se contrata una sola vez por empresa: ámbito `company` y ninguna cuota (mensual o anual) con unidad de cobro (p. ej. TPV
+ * Advanced desde el 10/11/2026). No lo son los que se cobran por unidad (`unit`: «por integración»), los productos por
+ * sede (su cantidad son las sedes donde se activan), los complementos de cantidad ni los servicios (alojamientos, dominios).
+ * Un precio de consumo o de pago único con unidad («por minuto») no cambia que la cuota sea por empresa.
+ */
+export function singlePerCompany(p: Pick<QuoteCatalogProduct, "family" | "scope" | "prices">): boolean {
+  return p.scope === "company" && p.family !== "service" && p.family !== "addon" && p.family !== "core_plan" && p.prices.filter((x) => x.kind === "monthly" || x.kind === "yearly").every((x) => !x.unit);
+}
+/**
+ * Texto del rechazo. Pedidos, checkout y compra del panel lo reciben porque cotizan con `quote()`. El alta manual de una
+ * partida por el operador (server/subscriptions) no cotiza: ahí la cantidad la decide el operador.
+ */
+export const perCompanyQuantityText = (name: string, quantity: number) => `«${name}» se contrata por empresa, no por sede ni por unidades: la cantidad es 1 (se indicó ${quantity})`;
 
 function pickPrice(p: QuoteCatalogProduct, interval: "month" | "year"): QuoteCatalogPrice | undefined {
   if (interval === "year") {
