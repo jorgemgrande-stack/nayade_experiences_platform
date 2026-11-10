@@ -89,8 +89,8 @@ Los seis importes que el encargo pide distinguir:
 - **Ajuste de un solo uso sobre las cuotas:** es una partida de abono que se aplica en la primera renovación desde su
   fecha, una vez y sin prorratear.
 - **Condición siguiente ya programada:** se activa junto con la primera, en la misma mutación.
-- **Tarifa oficial vigente en la fecha del cambio:** `settleDue` (idempotente; se ejecuta al consultar las condiciones
-  de la suscripción) lee el catálogo, sustituye la partida provisional si el importe difiere y deja registrado el
+- **Tarifa oficial vigente en la fecha del cambio:** `settleDue` (idempotente; lo lanza la facturación antes de
+  calcular un periodo) lee el catálogo, sustituye la partida provisional si el importe difiere y deja registrado el
   importe aplicado. Si no se ejecutara, seguiría valiendo la tarifa provisional (la fijada al pactar).
 - **Cambio de periodicidad:** dentro de un acuerdo, con los precios de referencia de la nueva periodicidad y solo con
   fecha efectiva en la próxima renovación.
@@ -123,7 +123,7 @@ Una sola función (`canManageCustomPricing` / `requireCustomPricing`):
 | Ruta | Qué hace |
 |---|---|
 | `GET /commercial-terms/access` | Si quien pregunta puede gestionar precios personalizados |
-| `GET /subscriptions/:id/terms` | Acuerdos e historial de la suscripción (resuelve antes las condiciones vencidas) |
+| `GET /subscriptions/:id/terms` | Acuerdos e historial de la suscripción, con la cuota que rige hoy |
 | `GET /subscriptions/:id/terms/base` | Punto de partida para modificar: lo que la suscripción tiene ahora |
 | `POST /subscriptions/:id/terms` | Borrador de condiciones |
 | `POST /subscriptions/:id/terms/restore-official` | Restaura las tarifas oficiales |
@@ -142,6 +142,8 @@ Una sola función (`canManageCustomPricing` / `requireCustomPricing`):
 - Con cuota global, las partidas recurrentes comparten la vigencia del acuerdo.
 - Los consumos (`usage`) no forman parte de un acuerdo: sus partidas no se tocan.
 - Solo se encadena una condición programada detrás de otra.
+- Un acuerdo ya programado se deja sin efecto aplicando otro (o restaurando las tarifas oficiales); no hay una anulación aparte.
+- En una suscripción con acuerdo, las operaciones ordinarias de la ficha (cambiar plan, añadir o retirar partidas, cambiar cantidades) se rechazan: se modifica desde el acuerdo.
 
 ## Casos de aceptación → pruebas
 
@@ -182,3 +184,6 @@ Se completa en cada fase. `C` = `server/subscriptionsTerms.compute.test.ts` (cá
 | 28. Conservación de derechos adquiridos | A «Casos 27 y 28» |
 | 29. Aislamiento entre tenants | S «Caso 29»; A «Caso 29» y «una empresa no puede leer ni modificar sus precios negociados» |
 | 30. Actualización posterior del catálogo sin pérdida del precio negociado | S «Caso 13 … Caso 30» |
+
+**Caso final del propietario** (Essential + Hotel Net + WhatsApp Connect por 129 €/mes + IVA, desde el CRM, con
+licencias y facturación simulada coherentes): A «caso final — Essential + Hotel Net + WhatsApp Connect por 129 €/mes + IVA».

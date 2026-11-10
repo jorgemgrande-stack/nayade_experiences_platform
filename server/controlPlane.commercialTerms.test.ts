@@ -38,6 +38,8 @@ let port = 0;
 let clock = Date.UTC(2026, 10, 1, 10);
 let subscriptionId = 0;
 let otherSubscriptionId = 0;
+let hotelCompanyId = 0;
+let referenceCompanyId = 0;
 let P: Record<string, number> = {};
 const caps = new MemoryCapabilityStore();
 const subsStore = new MemorySubscriptionStore();
@@ -80,10 +82,12 @@ beforeAll(async () => {
   const crm = new CrmService({ store: crmStore });
   const company = await crm.createCompany({ name: "Acme" }, "t");
   const other = await crm.createCompany({ name: "Otra" }, "t");
+  hotelCompanyId = (await crm.createCompany({ name: "Hotel Ejemplo" }, "t")).id;
+  referenceCompanyId = (await crm.createCompany({ name: "Hotel a tarifa oficial" }, "t")).id;
   const webStore = new MemoryWebStore();
   const web = new WebAdminService({ store: webStore, refs: { moduleIds: BUILTIN_MODULES.map((m) => m.id), planIds: () => null }, now: () => clock });
   await seedElephantSource(web, webStore);
-  for (const key of ["essential", "connect-voice"]) P[key] = (await webStore.listPrices((await webStore.getEntry("product", key))!.id)).find((p) => p.status === "approved" && p.kind === "monthly")!.id;
+  for (const key of ["essential", "connect-voice", "hotel-net-complete", "connect-whatsapp-ai"]) P[key] = (await webStore.listPrices((await webStore.getEntry("product", key))!.id)).find((p) => p.status === "approved" && p.kind === "monthly")!.id;
   const admin = ROLE_SCOPES.admin.filter((s) => !s.startsWith("commerce:"));
   const app = createControlPlaneApp({
     tokens: [
@@ -251,5 +255,96 @@ describe("flujo completo por la API", () => {
     expect(restored.status).toBe(200);
     expect((await call("POST", `/subscriptions/${subscriptionId}/licences/apply`, { token: TOK.licences, body: { activate: true, reason: "Comprobación" } })).json.applied).toEqual([]);
     expect((await caps.list("acme")).find((g) => g.capabilityId === TPV_ACQUIRED_RIGHTS_CAPABILITY)).toMatchObject({ status: "active", source: TPV_ACQUIRED_RIGHTS_SOURCE });
+  });
+});
+
+/**
+ * Caso de aceptación final del propietario: contratar desde el CRM Essential + Hotel Net + WhatsApp Connect por una
+ * cuota global negociada de 129 €/mes + IVA, con licencias y facturación (simulada) coherentes.
+ */
+describe("caso final — Essential + Hotel Net + WhatsApp Connect por 129 €/mes + IVA", () => {
+  let termsId = 0;
+  let revision = 0;
+  let sid = 0;
+
+  it("1. el administrador crea el paquete con cuota global y ve la vista previa", async () => {
+    const created = await call("POST", "/commercial-terms/packages", {
+      token: TOK.admin,
+      body: {
+        companyId: hotelCompanyId,
+        interval: "month",
+        pricingMode: "global",
+        globalAmountCents: 12900,
+        presentation: "global",
+        packageName: "Paquete Hotel",
+        reason: "Oferta negociada con el cliente",
+        lines: [
+          { kind: "catalog", productKey: "essential", priceId: P.essential },
+          { kind: "catalog", productKey: "hotel-net-complete", priceId: P["hotel-net-complete"] },
+          { kind: "catalog", productKey: "connect-whatsapp-ai", priceId: P["connect-whatsapp-ai"] },
+        ],
+      },
+    });
+    expect(created.status).toBe(201);
+    termsId = created.json.terms.id;
+    revision = created.json.terms.revision;
+    expect(created.json.terms).toMatchObject({ status: "draft", subscriptionId: null, pricingMode: "global", globalAmountCents: 12900, presentation: "global" });
+    const preview = (await call("GET", `/commercial-terms/${termsId}/preview`, { token: TOK.admin })).json;
+    // 129,00 € + 21 % = 156,09 €; la tarifa oficial de referencia sigue a la vista del administrador
+    expect(preview.summary.recurring).toMatchObject({ netCents: 12900, taxCents: 2709, totalCents: 15609 });
+    expect(preview.summary.recurring.lines.map((l: { name: string }) => l.name)).toHaveLength(3);
+    expect(preview.summary.recurring.lines.reduce((a: number, l: { netCents: number }) => a + l.netCents, 0)).toBe(12900);
+    expect(preview.differenceVsOfficialCents).toBe(12900 - preview.summary.recurring.officialCents);
+    expect(preview.licences.products.added.map((p: { key: string }) => p.key)).toEqual(["essential", "hotel-net-complete", "connect-whatsapp-ai"]);
+  });
+
+  it("2. prepara la contratación: una suscripción con los tres productos identificados y la cuota pactada", async () => {
+    const done = await call("POST", `/commercial-terms/${termsId}/prepare-contracting`, { token: TOK.admin, body: { expectedRevision: revision } });
+    expect(done.status).toBe(200);
+    sid = done.json.subscription.id;
+    expect(done.json.terms).toMatchObject({ status: "active", subscriptionId: sid });
+    const detail = (await call("GET", `/subscriptions/${sid}`, { token: TOK.admin })).json;
+    const live = detail.items.filter((i: { effectiveTo: number | null }) => i.effectiveTo === null);
+    expect(live.map((i: { productKey: string }) => i.productKey).sort()).toEqual(["connect-whatsapp-ai", "essential", "hotel-net-complete"]);
+    expect(live.reduce((a: number, i: { lineAmountCents: number }) => a + i.lineAmountCents, 0)).toBe(12900);
+    expect(live.every((i: { priceSource: string; discount: unknown }) => i.priceSource === "contract" && i.discount === null)).toBe(true);
+    expect(detail.billing).toEqual({ source: "shadow" });
+  });
+
+  it("3. licencias: exactamente las de los tres productos a tarifa oficial; el precio no interviene", async () => {
+    await subsStore.mutate(sid, null, "t", clock, async () => ({ patch: { tenantId: "hotel-ejemplo" }, event: { kind: "contract_linked", before: null, after: null, reason: null }, result: null }));
+    const negotiated = (await call("POST", `/subscriptions/${sid}/licences/preview`, { token: TOK.licences, body: { activate: true } })).json;
+    // La misma composición contratada a tarifa oficial, sin acuerdo
+    const plain = await call("POST", "/subscriptions", {
+      token: TOK.admin,
+      body: { companyId: referenceCompanyId, interval: "month", plan: { productKey: "essential", priceId: P.essential }, addons: [{ productKey: "hotel-net-complete", priceId: P["hotel-net-complete"] }, { productKey: "connect-whatsapp-ai", priceId: P["connect-whatsapp-ai"] }] },
+    });
+    expect(plain.status).toBe(201);
+    await subsStore.mutate(plain.json.subscription.id, null, "t", clock, async () => ({ patch: { tenantId: "hotel-oficial" }, event: { kind: "contract_linked", before: null, after: null, reason: null }, result: null }));
+    const official = (await call("POST", `/subscriptions/${plain.json.subscription.id}/licences/preview`, { token: TOK.licences, body: { activate: true } })).json;
+    const capsOf = (p: { changes: Array<{ capabilityId: string; status: string }> }) => p.changes.filter((c) => c.status === "active").map((c) => c.capabilityId).sort();
+    expect(capsOf(negotiated).length).toBeGreaterThan(0);
+    expect(capsOf(negotiated)).toEqual(capsOf(official));
+  });
+
+  it("4. facturación simulada: 129,00 € + 27,09 € de IVA = 156,09 €, con el detalle por producto, y no se duplica", async () => {
+    const first = await call("POST", `/subscriptions/${sid}/shadow`, { token: TOK.admin, body: {} });
+    expect(first.status).toBe(200);
+    expect(first.json.results).toHaveLength(1);
+    const invoice = first.json.results[0].invoice;
+    expect(invoice).toMatchObject({ kind: "renewal", subtotalCents: 12900, discountCents: 0, taxCents: 2709, totalCents: 15609, currency: "EUR" });
+    // La factura lleva siempre el detalle fiscal por concepto, aunque la oferta sea de cuota global
+    expect(invoice.lines.map((l: { productKey: string }) => l.productKey).sort()).toEqual(["connect-whatsapp-ai", "essential", "hotel-net-complete"]);
+    expect(invoice.lines.reduce((a: number, l: { taxCents: number }) => a + l.taxCents, 0)).toBe(2709);
+    const again = await call("POST", `/subscriptions/${sid}/shadow`, { token: TOK.admin, body: {} });
+    expect(again.json.results.map((r: { created: boolean; drift: unknown }) => [r.created, r.drift])).toEqual([[false, null]]);
+  });
+
+  it("5. el catálogo y las demás empresas no cambian", async () => {
+    const offer = (await call("GET", "/subscriptions/offer", { token: TOK.admin })).json.products as Array<{ key: string; prices: Array<{ id: number; amountCents: number }> }>;
+    const official = (key: string) => offer.find((p) => p.key === key)!.prices.find((x) => x.id === P[key])!.amountCents;
+    expect(official("essential") + official("hotel-net-complete") + official("connect-whatsapp-ai")).toBeGreaterThan(12900);
+    const others = (await call("GET", `/subscriptions/${otherSubscriptionId}`, { token: TOK.admin })).json;
+    expect(others.items.every((i: { termsId?: number | null }) => i.termsId == null)).toBe(true);
   });
 });

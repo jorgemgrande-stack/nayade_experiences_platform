@@ -441,6 +441,7 @@ export class CommercialTermsService {
     const after = t.lines.filter((l) => l.kind === "catalog" && isRecurring(l) && (l.startsAt ?? from) <= from && (l.endsAt === null || l.endsAt > from));
     const modulesAfter = after.filter((l) => l.catalog!.activationKind === "module" && l.catalog!.activationRef).map((l) => l.catalog!.activationRef!);
     const modulesBefore = planBefore?.modules.map((m) => m.moduleId) ?? [];
+    const productsBefore = new Map((sub && sub.status !== "canceled" ? activeAt(items, Math.max(now, Math.min(from, sub.currentPeriodEnd - 1))) : []).filter((i) => recurringPrice(i.priceKind) && !i.productKey.includes(":")).map((i) => [i.productKey, i.productName] as const));
     const planAfter = after.find((l) => l.catalog!.family === "core_plan" && l.catalog!.activationKind === "plan")?.catalog!.activationRef ?? null;
     return {
       terms: { ...t, effectiveStatus: effectiveStatus(t, now) },
@@ -461,6 +462,12 @@ export class CommercialTermsService {
         added: modulesAfter.filter((m) => !modulesBefore.includes(m)),
         removed: modulesBefore.filter((m) => !modulesAfter.includes(m)),
         kept: modulesAfter.filter((m) => modulesBefore.includes(m)),
+        // Productos de catálogo (los que conceden derechos) que entran, salen o se conservan
+        products: {
+          added: after.filter((l) => !productsBefore.has(l.productKey!)).map((l) => ({ key: l.productKey!, name: l.name })),
+          removed: Array.from(productsBefore).filter(([k]) => !after.some((l) => l.productKey === k)).map(([key, name]) => ({ key, name })),
+          kept: after.filter((l) => productsBefore.has(l.productKey!)).map((l) => ({ key: l.productKey!, name: l.name })),
+        },
       },
     };
   }
