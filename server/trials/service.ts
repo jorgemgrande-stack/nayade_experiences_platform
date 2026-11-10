@@ -15,7 +15,17 @@
  *  - Cada cambio exige la versión leída y queda auditado.
  */
 import crypto from "node:crypto";
-import { TERMINAL, nextState, type TrialAction, type TrialState } from "./machine";
+import { TERMINAL, effectiveTrialState, nextState, type TrialAction, type TrialState } from "./machine";
+import {
+  ADMIN_EXTENSION_KEY_RE,
+  ADMIN_EXTENSION_REASON_MAX,
+  ADMIN_EXTENSION_REASON_MIN,
+  AdminExtensionInputError,
+  decodeAdminExtensionDetail,
+  encodeAdminExtensionDetail,
+  planAdminExtension,
+  type AdminExtensionInput,
+} from "./adminExtension";
 import { TrialConflict, type TrialHolder, type TrialPatch, type TrialRequest, type TrialStore } from "./store";
 import { canonicalMailbox, mailboxOf } from "./mailbox";
 import { TRIAL_MILESTONES, type TrialMilestone } from "./store";
@@ -444,6 +454,36 @@ export class TrialService {
     return this.move(id, expectedVersion, "approve_extension", actor, (x) => ({ endsAt: base + days * DAY, extensionsUsed: x.extensionsUsed + 1, extensionRequestedAt: null }), `+${days} días`);
   }
 
+  /**
+   * Ampliación ADMINISTRATIVA (CRM): nueva fecha de fin o días que se añaden, con motivo y clave de idempotencia. Sin el
+   * tope de la ampliación de autoservicio (no consume `extensionsUsed`), válida sobre una prueba vencida (vuelve a
+   * «activa») y auditada en el historial con el fin anterior y el nuevo. Repetir la misma clave devuelve el resultado
+   * ya registrado sin ampliar otra vez (también si la versión cambió por esa misma operación).
+   */
+  async adminExtend(id: number, o: { expectedVersion: number; input: AdminExtensionInput; reason: string; idempotencyKey: string; actor: string }) {
+    const reason = o.reason.trim();
+    if (reason.length < ADMIN_EXTENSION_REASON_MIN || reason.length > ADMIN_EXTENSION_REASON_MAX) throw new TrialError("invalid_input", `Indica el motivo (${ADMIN_EXTENSION_REASON_MIN}–${ADMIN_EXTENSION_REASON_MAX} caracteres)`);
+    if (!ADMIN_EXTENSION_KEY_RE.test(o.idempotencyKey)) throw new TrialError("invalid_input", "Clave de idempotencia no válida");
+    const t = await this.must(id);
+    const done = (await this.d.store.events(id)).map((e) => (e.action === "admin_extend" ? decodeAdminExtensionDetail(e.detail) : null)).find((d) => d?.key === o.idempotencyKey);
+    if (done) return { trial: t, replayed: true, before: done.before, after: done.after };
+    const plan = this.planAdminExtension(t, o.input);
+    const trial = await this.move(id, o.expectedVersion, "admin_extend", o.actor, () => ({ endsAt: plan.after, extensionRequestedAt: null }), encodeAdminExtensionDetail({ ...plan, key: o.idempotencyKey, reason }));
+    return { trial, replayed: false, before: plan.before, after: plan.after };
+  }
+
+  /** Vista previa de la ampliación administrativa (no cambia nada): fin actual y nuevo, o el error del operador. */
+  planAdminExtension(t: TrialRequest, input: AdminExtensionInput) {
+    if (!nextState(t.state, "admin_extend")) throw new TrialError("invalid_state", `No se puede ampliar una prueba en «${t.state}»`);
+    if (!t.tenantId) throw new TrialError("invalid_state", "La prueba todavía no tiene plataforma");
+    try {
+      return planAdminExtension(t, input, this.now());
+    } catch (e) {
+      if (e instanceof AdminExtensionInputError) throw new TrialError("invalid_input", e.message);
+      throw e;
+    }
+  }
+
   /** Marca como vencida una prueba cuyo plazo ya pasó. Lo decide una persona: nada lo llama solo. */
   async markExpired(id: number, expectedVersion: number, actor: string) {
     const t = await this.must(id);
@@ -497,8 +537,9 @@ export class TrialService {
   }
 
   /** Vista segura (sin hash de token ni IP). */
-  static view(t: TrialRequest) {
+  static view(t: TrialRequest, now: number = Date.now()) {
     const { verificationTokenHash: _h, ipHash: _ip, idempotencyKey: _k, ...rest } = t;
-    return { ...rest, terminal: TERMINAL.has(t.state as TrialState) };
+    // Estado efectivo por fecha: una prueba «activa» con el fin ya pasado se muestra vencida (machine.ts)
+    return { ...rest, terminal: TERMINAL.has(t.state as TrialState), effectiveState: effectiveTrialState(t, now) };
   }
 }

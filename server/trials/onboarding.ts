@@ -23,6 +23,7 @@ import type { SubscriptionService } from "../subscriptions/service";
 import { opsLog } from "../_core/ops/log";
 import { LIFE_PLAN, LIFE_TRIAL_DAYS } from "../../shared/personalPlans";
 import { nextState } from "./machine";
+import type { AdminExtensionInput } from "./adminExtension";
 import { TrialError, TrialService } from "./service";
 import type { TrialHolder, TrialRequest } from "./store";
 import type { TrialAttribution, TrialAttributionInput, TrialProfile, TrialProfileInput } from "./profile";
@@ -370,6 +371,22 @@ export class TrialOnboardingService {
     await this.syncLicencesSafely(t.id, o.actor, "approve_extension");
     await this.tellStatus(t, "extended");
     return t;
+  }
+
+  /**
+   * Ampliación ADMINISTRATIVA desde el CRM (separada del autoservicio y de la facturación simulada): nuevo fin de la
+   * prueba, y la suscripción en prueba y la caducidad de sus licencias pasan a ese fin, así que el tenant vuelve a
+   * operar en cuanto caduca su caché de licencias (30 s), sin esperar a ninguna renovación. Idempotente por clave: un
+   * reintento con la misma clave no amplía otra vez y vuelve a intentar la alineación (por si falló la primera vez).
+   * Nunca cobra, factura, cambia el precio ni toca licencias de otro origen (p. ej. `tpv-acquired-rights`) o de otra
+   * empresa. El aviso al cliente es opcional (`notify`) y solo en la primera aplicación.
+   */
+  async adminExtend(trialId: number, o: { expectedVersion: number; input: AdminExtensionInput; reason: string; idempotencyKey: string; notify?: boolean; actor: string }) {
+    const r = await this.d.trials.adminExtend(trialId, o);
+    const licences = await this.syncLicencesSafely(r.trial.id, o.actor, "admin_extend");
+    opsLog("info", "Trials", "trial_admin_extended", { trialId: r.trial.id, tenantId: r.trial.tenantId, before: r.before, after: r.after, replayed: r.replayed, actor: o.actor, licences: licences?.outcome ?? "failed" });
+    if (!r.replayed && o.notify) await this.tellStatus(r.trial, "extended");
+    return { ...r, licences };
   }
 
   /**

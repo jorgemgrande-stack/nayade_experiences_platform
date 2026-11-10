@@ -18,7 +18,8 @@ import { getAuth, requireScope } from "../controlPlane/auth";
 import type { TrialOnboardingService } from "./onboarding";
 import { TrialError, TrialService } from "./service";
 import type { TrialStore } from "./store";
-import { TRIAL_STATES } from "./machine";
+import { TRIAL_STATES, effectiveTrialState } from "./machine";
+import { ADMIN_EXTENSION_MAX_DAYS } from "./adminExtension";
 import { opsLog } from "../_core/ops/log";
 import { APPROVAL_CATEGORIES, OrderError, type ApprovalCategory } from "../orchestrator/types";
 import { LIFE_PLAN } from "../../shared/personalPlans";
@@ -422,6 +423,53 @@ export function createTrialAdminRouter(o: { onboarding: TrialOnboardingService; 
     wrap(async (req, res) => {
       const b = z.object({ days: z.number().int().min(1).max(30), expectedVersion: z.number().int().min(1) }).strict().parse(req.body);
       res.json({ trial: TrialService.view(await o.onboarding.approveExtension(id.parse(req.params.id), { expectedVersion: b.expectedVersion, days: b.days, actor: who(req) })) });
+    }),
+  );
+  // Una sola forma: la fecha o los días (las dos a la vez, o ninguna, es 400)
+  const definedOnly = (o: Record<string, unknown>) => Object.fromEntries(Object.entries(o).filter(([, v]) => v !== undefined));
+  // Ampliación ADMINISTRATIVA (CRM): nueva fecha (día en hora de España) o días; motivo y clave de idempotencia. Mueve
+  // también la caducidad de las licencias de la prueba: exige entitlements:write, como suspender y reactivar.
+  const adminInput = z.union([
+    z.object({ until: z.string().regex(/^\d{4}-\d{2}-\d{2}$/) }).strict(),
+    z.object({ days: z.number().int().min(1).max(ADMIN_EXTENSION_MAX_DAYS) }).strict(),
+  ]);
+  r.get(
+    "/:id/admin-extension/preview",
+    requireScope("subscriptions:read"),
+    wrap(async (req, res) => {
+      const q = z.object({ until: z.string().optional(), days: z.coerce.number().int().optional() }).parse(req.query);
+      const input = adminInput.parse(definedOnly({ until: q.until, days: q.days }));
+      const t = await o.trials.must(id.parse(req.params.id));
+      const plan = o.trials.planAdminExtension(t, input);
+      const now = Date.now();
+      res.json({ trialId: t.id, version: t.version, state: t.state, effectiveState: effectiveTrialState(t, now), currentEndsAt: plan.before, newEndsAt: plan.after, timeZone: "Europe/Madrid" });
+    }),
+  );
+  r.post(
+    "/:id/admin-extension",
+    requireScope("subscriptions:write"),
+    requireScope("entitlements:write"),
+    wrap(async (req, res) => {
+      const b = z
+        .object({
+          expectedVersion: z.number().int().min(1),
+          until: z.string().optional(),
+          days: z.number().int().optional(),
+          reason: z.string().trim().min(5).max(160),
+          idempotencyKey: z.string().regex(/^[A-Za-z0-9_-]{8,64}$/),
+          notify: z.boolean().optional(),
+        })
+        .strict()
+        .parse(req.body);
+      const input = adminInput.parse(definedOnly({ until: b.until, days: b.days }));
+      const out = await o.onboarding.adminExtend(id.parse(req.params.id), { expectedVersion: b.expectedVersion, input, reason: b.reason, idempotencyKey: b.idempotencyKey, notify: b.notify ?? false, actor: who(req) });
+      res.json({
+        trial: TrialService.view(out.trial),
+        replayed: out.replayed,
+        before: out.before,
+        after: out.after,
+        licences: out.licences ? { outcome: out.licences.outcome, reason: out.licences.reason ?? null, licencesChanged: out.licences.licencesChanged ?? 0, subscriptionMoved: !!out.licences.subscriptionMoved } : { outcome: "pending", reason: "sync_failed", licencesChanged: 0, subscriptionMoved: false },
+      });
     }),
   );
   r.post(
