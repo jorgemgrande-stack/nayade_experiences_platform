@@ -31,6 +31,7 @@ import { ProvisioningService } from "./_core/provisioning/service";
 import { MemoryProvisioningStore } from "./_core/provisioning/ports";
 import { BUILTIN_MODULES } from "./_core/modules/builtin";
 import { seedElephantSource } from "./catalog/seed";
+import { beforeNetUnification } from "./catalog/seedHistory.testkit";
 import { capabilitiesOfTier } from "./catalog/capabilities";
 import { MemoryOrderStore } from "./orchestrator/store";
 import { SignedTestProvider } from "./orchestrator/payments";
@@ -127,7 +128,7 @@ beforeAll(async () => {
     now: () => clock,
     sleep: async () => undefined,
   });
-  await seedElephantSource(new WebAdminService({ store: webStore, refs: { moduleIds: BUILTIN_MODULES.map((m) => m.id), planIds: () => null }, now: () => clock }), webStore);
+  await seedElephantSource(new WebAdminService({ store: webStore, refs: { moduleIds: BUILTIN_MODULES.map((m) => m.id), planIds: () => null }, now: () => clock }), webStore, { products: beforeNetUnification() });
   const crm = new CrmService({ store: crmStore, activation: createContractActivation({ provisioning, platformDomain: "elephant.test", actor: { type: "operator", id: "test" } }), now: () => clock });
   const all = ["crm:read", "crm:write", "web:read", "provisioning:write", "subscriptions:read", "subscriptions:write", "entitlements:write", "tenants:read", "orders:read", "orders:write", "orders:approve", "billing:write"] as const;
   const app = createControlPlaneApp({

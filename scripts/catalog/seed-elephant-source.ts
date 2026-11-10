@@ -9,6 +9,9 @@
  * - Por defecto SOLO simula. Con `--apply` sobre una BD que no sea local exige
  *   `--confirm-database <nombre>` (como el ejecutor de migraciones).
  * - Idempotente; nunca despublica ni borra; todo queda auditado con el autor de la semilla.
+ * - Solo escribe sobre lo suyo: lo guardado, publicado o despublicado por el CRM o por una revisión de catálogo se respeta
+ *   y sale en `conflicts` (con sus diferencias); un borrador ajeno pendiente, en `pending`; nunca vuelve a aprobar un
+ *   precio retirado. Con conflictos termina con código 2 (server/catalog/seed.ts).
  * - Nunca imprime la URL ni credenciales.
  */
 import mysql from "mysql2/promise";

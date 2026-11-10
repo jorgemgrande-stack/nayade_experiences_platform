@@ -63,7 +63,7 @@ describe("tarifas oficiales v1 (sin IVA)", () => {
       "care-net-agenda": 29, "care-net-clinical": 39, "care-net-treatments": 19, "care-net-complete": 69,
       "life-net": 9, "social-token-net-communities": 39, "social-token-net-tokens": 29, "social-token-net-complete": 59,
       "connect-whatsapp-ai": 29, "connect-voice": 39, "connect-reception-ai": 49, "connect-people": 19, "connect-tax": 19, "connect-partners": 19,
-      "connect-pos": 25, "connect-deals": 19, "connect-finance-sync": 19, "connect-copilot": 29, "connect-ads-manager": 29, "connect-campaigns": 19,
+      "connect-pos": 19, "connect-deals": 19, "connect-finance-sync": 19, "connect-copilot": 29, "connect-ads-manager": 29, "connect-campaigns": 19,
       "connect-seo-control": 29, "connect-geo-control": 29, "connect-automations": 29,
       "connect-pack-communications": 99, "connect-pack-marketing": 79, "connect-pack-finance": 45, "connect-pack-ai": 49,
       "extra-contracts-esign": 15, "extra-multichannel": 29, "extra-accounting": 29, "service-hosting-basic": 12, "service-hosting-advanced": 29,
@@ -226,9 +226,40 @@ describe("cotizador", () => {
     expect(q({ plan: "business", fiscalEntities: 2 }).errors.join()).toMatch(/Enterprise/);
   });
   it("activación por sede y precio por unidad", () => {
-    expect(q({ plan: "business", sites: 3, items: [{ key: "connect-pos", quantity: 3 }] }).lines.find((l) => l.key === "connect-pos")!.amountCents).toBe(eur(75));
-    expect(q({ items: [{ key: "connect-pos", quantity: 2 }] }).errors.join()).toMatch(/2 sedes/);
+    expect(q({ plan: "business", sites: 3, items: [{ key: "hotel-net-complete", quantity: 3 }] }).lines.find((l) => l.key === "hotel-net-complete")!.amountCents).toBe(eur(357));
+    expect(q({ items: [{ key: "hotel-net-complete", quantity: 2 }] }).errors.join()).toMatch(/2 sedes/);
     expect(q({ items: [{ key: "travel-net-agency" }, { key: "travel-net-connectors", quantity: 3 }] }).lines.find((l) => l.key === "travel-net-connectors")!.amountCents).toBe(eur(87));
+  });
+  it("por empresa y sin unidad de cobro (TPV Advanced a 19 €): una sola contratación aunque haya varias sedes", () => {
+    // El estado final de `connect-pos` (10/11/2026): ámbito `company`, 19 € al mes y sin unidad de cobro
+    const perCompany: QuoteCatalog = {
+      ...cat,
+      products: cat.products.map((p) => (p.key === "connect-pos" ? { ...p, scope: "company" as const, prices: [{ kind: "monthly" as const, amountCents: eur(19), currency: "EUR", unit: null, taxRateBp: 2100, taxIncluded: false }] } : p)),
+    };
+    const qc = (r: Partial<QuoteRequest>) => quote(perCompany, { plan: "business", interval: "month", ...r });
+    // Tres sedes: se cobra una vez (19 €), nunca 19 € × 3
+    const one = qc({ sites: 3, items: [{ key: "connect-pos" }] });
+    expect(one.errors).toEqual([]);
+    expect(one.lines.find((l) => l.key === "connect-pos")).toMatchObject({ quantity: 1, unitCents: eur(19), amountCents: eur(19) });
+    expect(one.totals.monthlyCents).toBe(eur(79 + 19));
+    expect(qc({ sites: 3, items: [{ key: "connect-pos", quantity: 1 }] }).totals.monthlyCents).toBe(eur(79 + 19));
+    // Una cantidad mayor se rechaza (no se multiplica ni se corrige en silencio), con varias sedes o con una
+    for (const r of [qc({ sites: 3, items: [{ key: "connect-pos", quantity: 3 }] }), qc({ items: [{ key: "connect-pos", quantity: 2 }] })]) {
+      expect(r.ok).toBe(false);
+      expect(r.errors).toEqual([expect.stringMatching(/^«TPV Advanced» se contrata por empresa, no por sede ni por unidades: la cantidad es 1 \(se indicó [23]\)$/)]);
+      expect(r.lines.some((l) => l.key === "connect-pos")).toBe(false);
+      expect(r.totals.monthlyCents).toBe(eur(79));
+    }
+    // Igual que las demás extensiones por empresa (People) y las soluciones por empresa (Social Token Net)
+    expect(q({ items: [{ key: "connect-people", quantity: 2 }] }).errors.join()).toMatch(/«Elephant People» se contrata por empresa/);
+    expect(q({ items: [{ key: "social-token-net-complete", quantity: 2 }] }).errors.join()).toMatch(/se contrata por empresa/);
+    // Un precio de consumo con unidad («por minuto») no convierte la cuota en «por unidad»
+    const withUsage: QuoteCatalog = { ...cat, products: cat.products.map((p) => (p.key === "connect-voice" ? { ...p, prices: [...p.prices, { kind: "usage" as const, amountCents: 5, currency: "EUR", unit: "minuto", taxRateBp: 2100, taxIncluded: false }] } : p)) };
+    expect(quote(withUsage, { plan: "business", interval: "month", sites: 3, items: [{ key: "connect-voice", quantity: 3 }] }).errors.join()).toMatch(/«Elephant Voice» se contrata por empresa/);
+    // Siguen admitiendo cantidad: por sede (hasta las sedes), por unidad de cobro y los servicios
+    expect(q({ plan: "business", sites: 3, items: [{ key: "hotel-net-complete", quantity: 3 }] }).lines.find((l) => l.key === "hotel-net-complete")!.amountCents).toBe(eur(357));
+    expect(q({ items: [{ key: "travel-net-agency" }, { key: "travel-net-connectors", quantity: 3 }] }).errors).toEqual([]);
+    expect(q({ items: [{ key: "service-hosting-basic", quantity: 2 }] }).lines.find((l) => l.key === "service-hosting-basic")!.amountCents).toBe(eur(24));
   });
   it("contratabilidad honesta: solicitar activación o todavía no disponible", () => {
     expect(q({}).contractable).toBe("request");
