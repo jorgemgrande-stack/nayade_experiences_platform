@@ -105,6 +105,12 @@ export interface OverDraftPolicy {
   startProblems?: (base: ProductDraft) => string[];
   /** Cambios del borrador que NO se publican (siguen pendientes en el borrador). */
   retain: (campo: string) => boolean;
+  /**
+   * Un cambio retenido que choca con la revisión (los dos cambian el campo con valores distintos) deja el borrador con su
+   * valor: si después se publica desde el CRM, pisa el de la revisión. Con `true`, ese choque bloquea el producto (no se
+   * escribe nada) en lugar de publicarse la revisión y quedar el aviso solo en `retenido[].revision`.
+   */
+  retainedClashBlocks?: boolean;
   /** Cambios del borrador que se descartan (ni se publican ni siguen en el borrador). Va antes que `retain`. */
   drop?: (campo: string) => boolean;
   /**
@@ -279,8 +285,11 @@ export async function reviewOverDraft(
     .map((x) => `${x.campo}: ${x.gana} — ${x.borradorVersion !== report.borrador.version ? `se tomó sobre el borrador v${x.borradorVersion} y el actual es el v${report.borrador.version}` : "no corresponde a ningún campo en disputa"}`);
 
   const start = policy.startProblems?.(base.data) ?? [];
-  if (start.length) return { state: "blocked", reason: `lo publicado ya no es el punto de partida de la revisión (${start.join("; ")}); no se guarda ni se publica`, report };
+  if (start.length) return { state: "blocked", reason: `la revisión no se puede aplicar sobre lo publicado (${start.join("; ")}); no se guarda ni se publica`, report };
   if (report.enDisputa.length) return { state: "blocked", reason: `${report.enDisputa.length} campo(s) en disputa (${report.enDisputa.map((p) => p.campo).join(", ")}); el borrador v${report.borrador.version} queda intacto, sin guardar ni publicar`, report };
+  const clashes = report.retenido.filter((x) => "revision" in x);
+  if (policy.retainedClashBlocks && clashes.length)
+    return { state: "blocked", reason: `el borrador v${report.borrador.version} cambia campo(s) que también cambia la revisión (${clashes.map((x) => x.campo).join(", ")}); no se guarda ni se publica: se resuelve en el CRM`, report };
   const toPublish = productDraft.safeParse(merged.p);
   const nextDraft = productDraft.safeParse(merged.n);
   const invalid = !toPublish.success ? toPublish.error : !nextDraft.success ? nextDraft.error : null;
