@@ -136,8 +136,7 @@ export function validateTerms(t: Pick<Terms, "pricingMode" | "globalAmountCents"
   if (!/^[A-Z]{3}$/.test(t.currency)) out.push("Moneda no válida");
   if (!t.lines.length) out.push("El acuerdo no tiene partidas");
   if (new Set(t.lines.map((l) => l.id)).size !== t.lines.length) out.push("Partidas repetidas");
-  const liveRefs = t.lines.filter(isRecurring).map((l) => l.ref);
-  if (new Set(liveRefs).size !== liveRefs.length) out.push("Un mismo producto o servicio no puede figurar dos veces como cuota recurrente");
+  if (new Set(t.lines.map((l) => l.ref)).size !== t.lines.length) out.push("Un mismo producto o servicio no puede figurar dos veces en el acuerdo");
   const recurring = t.lines.filter(isRecurring);
   for (const l of t.lines) {
     const n = `«${l.name || "partida"}»`;

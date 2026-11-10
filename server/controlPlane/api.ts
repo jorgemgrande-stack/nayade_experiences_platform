@@ -101,6 +101,9 @@ import { createWebAdminRouter } from "../web/api";
 import { createMediaAdminRouter, createPublicMediaRouter, MediaService, type MediaStore } from "../web/media";
 import { createPublicSiteRouter } from "../web/publicSite";
 import { createSubscriptionsRouter } from "../subscriptions/api";
+import { createCommercialTermsRouter } from "../commercialTerms/api";
+import { CommercialTermsService } from "../commercialTerms/service";
+import type { TermsStore } from "../commercialTerms/store";
 import { catalogFromWebStore, crmFromStore } from "../subscriptions/ports";
 import { SubscriptionService as ContractSubscriptionService } from "../subscriptions/service";
 import { ShadowBillingService } from "../subscriptions/shadow";
@@ -301,7 +304,7 @@ export interface ControlPlaneDeps {
    * Suscripciones v1 en MODO SOMBRA (BD del CRM, migración 0006). Requiere `crm` y `web` (precios
    * aprobados del catálogo). Nunca cobra, emite facturas fiscales ni toca licencias.
    */
-  subscriptions?: { store: SubscriptionStore; now?: () => number };
+  subscriptions?: { store: SubscriptionStore; now?: () => number; /** Condiciones comerciales personalizadas (CRM 0048). Sin almacén no hay rutas. */ terms?: TermsStore };
   /** Licencias por capacidad (registro, migración 0008). Sin ellas no se aplican licencias desde suscripciones. */
   capabilities?: CapabilityStore;
   /** Límites contratados y uso declarado por cada empresa (registro 0013). */
@@ -1966,6 +1969,24 @@ export function createControlPlaneApp(d: ControlPlaneDeps): Express {
       },
     });
     const shadowBilling = new ShadowBillingService({ store: d.subscriptions.store, crm: crmPort, now: d.subscriptions.now });
+    // Condiciones comerciales personalizadas: antes del router de suscripciones (que responde 404 a lo que no conoce)
+    if (d.subscriptions.terms) {
+      const orderStoreForTerms = d.orders?.store;
+      router.use(
+        createCommercialTermsRouter(
+          new CommercialTermsService({
+            store: d.subscriptions.terms,
+            subscriptions: svc,
+            subscriptionStore: d.subscriptions.store,
+            catalog: catalogFromWebStore(d.web.store),
+            crm: crmPort,
+            now: d.subscriptions.now,
+            // Una suscripción cobrada en Stripe no admite condiciones personalizadas mientras no se habilite su cobro
+            stripeBilled: orderStoreForTerms ? async (sid) => (await subscriptionBilling(orderStoreForTerms, sid)).source === "stripe" : undefined,
+          }),
+        ),
+      );
+    }
     if (d.capabilities) {
       // Licencias por capacidad: Elephant Control es la autoridad técnica. Antes del router de
       // suscripciones (que responde 404 a lo que no conoce).

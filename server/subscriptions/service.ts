@@ -157,7 +157,7 @@ export class SubscriptionService {
     state(legacyProductText(product.name, successor?.name ?? product.legacy.replacedBy));
   }
 
-  private async checkComposition(items: Array<Pick<SubscriptionItem, "productKey" | "family">>) {
+  async checkComposition(items: Array<Pick<SubscriptionItem, "productKey" | "family">>) {
     const keys = new Set(items.map((i) => i.productKey));
     const plan = items.find((i) => i.family === "core_plan");
     if (!plan) state("Una suscripción necesita exactamente un plan Core");
@@ -569,7 +569,8 @@ export class SubscriptionService {
       }
       const items = await tx.items();
       // Condiciones vigentes justo antes de cancelar (no las programadas que nunca llegaron a aplicarse)
-      const lastActive = activeAt(items, (sub.canceledAt ?? 0) - 1).filter((i) => i.family !== "service");
+      // Los servicios de pago único no vuelven; las cuotas recurrentes de un acuerdo (también las de partidas a medida), sí
+      const lastActive = activeAt(items, (sub.canceledAt ?? 0) - 1).filter((i) => i.family !== "service" || isRecurring(i.priceKind));
       if (!lastActive.some((i) => i.family === "core_plan")) state("No se encuentran las condiciones vigentes al cancelar");
       const start = Math.max(this.now(), sub.canceledAt ?? 0);
       const anchorDay = new Date(start).getUTCDate();

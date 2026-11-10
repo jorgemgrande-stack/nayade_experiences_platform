@@ -42,6 +42,7 @@ import { MysqlWebStore } from "../web/store";
 import { MysqlMediaStore } from "../web/media";
 import { MysqlPanelEventStore, purgePanelEventKeys } from "../commerce/panelEvents";
 import { MysqlSubscriptionStore } from "../subscriptions/store";
+import { MysqlTermsStore } from "../commercialTerms/store";
 import { MysqlCapabilityStore } from "../_core/capabilities/store";
 import { MysqlTenantLimitStore } from "../_core/limits/store";
 import { MysqlTrialStore } from "../trials/store";
@@ -412,12 +413,16 @@ async function main() {
   console.log(JSON.stringify({ ctx: "Organization", enabled: organizationReady, ...(organizationReady ? {} : { reason: "registry_migration_0009_missing" }) }));
 
   // Suscripciones en modo sombra: misma BD del CRM; solo si la migración 0006 está aplicada
-  let subscriptions: { store: MysqlSubscriptionStore } | undefined;
+  let subscriptions: { store: MysqlSubscriptionStore; terms?: MysqlTermsStore } | undefined;
   if (crmPool && web) {
     const subsPool = crmPool;
     const ready = await subsPool.query("SELECT 1 FROM subscriptions LIMIT 0").then(() => true, () => false);
     if (ready) subscriptions = { store: new MysqlSubscriptionStore(subsPool, commercialEvents) };
     console.log(JSON.stringify({ ctx: "Subscriptions", enabled: ready, mode: "shadow", ...(ready ? {} : { reason: "migration_0006_missing" }) }));
+    // Condiciones comerciales personalizadas: solo si la migración 0048 del CRM está aplicada
+    const termsReady = ready && (await subsPool.query("SELECT 1 FROM commercial_terms LIMIT 0").then(() => true, () => false));
+    if (subscriptions && termsReady) subscriptions.terms = new MysqlTermsStore(subsPool);
+    console.log(JSON.stringify({ ctx: "CommercialTerms", enabled: termsReady, ...(termsReady ? {} : { reason: "crm_migration_0048_missing" }) }));
   }
 
   // Prueba gratuita de Essential: misma BD del CRM; solo si la migración 0007 está aplicada. Las rutas
