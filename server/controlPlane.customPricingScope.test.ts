@@ -55,6 +55,15 @@ describe("tokens de servicio y SSO", () => {
     const plan = commerceChannelPlan({ controlplane: { PORT: "4100", CP_TOKENS: "[]" }, core: {} }, { newTokenSha256: sha("nuevo") });
     const created = (JSON.parse(plan.cpTokens!) as Array<{ id: string; scopes: string[] }>).find((t) => t.id === CORE_COMMERCE_TOKEN_ID)!;
     expect(created.scopes).not.toContain(CUSTOM_PRICING);
+    // Rotación: una entrada core-commerce que ya no corresponde al token del Core se sustituye con los mismos tres ámbitos
+    const other = { id: "crm", sha256: sha("crm"), scopes: ["subscriptions:write", "orders:approve"] };
+    const stale = { id: CORE_COMMERCE_TOKEN_ID, sha256: sha("antiguo"), scopes: ["commerce:purchase"] };
+    const rotated = commerceChannelPlan({ controlplane: { PORT: "4100", CP_TOKENS: JSON.stringify([other, stale]) }, core: { CP_COMMERCE_TOKEN: "perdido" } }, { newTokenSha256: sha("nuevo") });
+    expect(JSON.parse(rotated.cpTokens!)).toEqual([other, { id: CORE_COMMERCE_TOKEN_ID, sha256: sha("nuevo"), scopes: ["commerce:purchase", "commerce:withdrawal", "commerce:support"] }]);
+    // Token del Core aceptado por otra entrada: no se reescribe CP_TOKENS (nadie gana ámbitos)
+    const boot = { id: "arranque", sha256: sha("arranque"), scopes: [...CORE_COMMERCE_SCOPES, "ops:read"] };
+    const kept = commerceChannelPlan({ controlplane: { PORT: "4100", CP_TOKENS: JSON.stringify([boot]) }, core: { CP_COMMERCE_TOKEN: "arranque" } }, { newTokenSha256: sha("nuevo") });
+    expect(kept.cpTokens).toBeNull();
   });
 
   it("un token existente conserva exactamente sus ámbitos: no hay comodines ni ámbitos implícitos", () => {

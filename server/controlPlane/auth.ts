@@ -59,7 +59,8 @@ export const SCOPES = [
   "orders:approve",
   // Precios y paquetes personalizados de una suscripción (condiciones comerciales negociadas): permiso PROPIO. No lo da
   // subscriptions:write ni orders:approve, y tenerlo no da aquellos. Solo superadministrador y administrador
-  // (operatorRoles.ts); un token de servicio solo lo tendría si se le asigna expresamente en CP_TOKENS
+  // (operatorRoles.ts); un token de servicio o un usuario SSO solo lo tendrían si se les asigna expresamente
+  // (CP_TOKENS, CP_OIDC_USERS)
   "commercial.subscription.custom_pricing.manage",
   // Compra de módulos desde la plataforma: SOLO el token de servicio del Core (tenant de la sesión del Core)
   "commerce:purchase",
