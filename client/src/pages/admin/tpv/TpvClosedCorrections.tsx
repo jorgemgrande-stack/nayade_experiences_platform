@@ -27,6 +27,9 @@ export default function TpvClosedCorrections({ sessionId, corrections, canManage
   const [open, setOpen] = useState(false);
   const [form, setForm] = useState({ kind: "cash_in", amount: "", reason: "" });
   const [attempt, setAttempt] = useState(newAttemptKey);
+  // TPV Advanced: número de la autorización de un supervisor, si la regla de la empresa la pide
+  const [authId, setAuthId] = useState("");
+  const advanced = trpc.tpv.planInfo.useQuery(undefined, { retry: false, staleTime: 60_000 }).data?.advanced === true;
   const add = trpc.tpv.addClosedSessionCorrection.useMutation({
     onSuccess: () => {
       utils.tpv.getSessionSummary.invalidate({ sessionId });
@@ -64,7 +67,7 @@ export default function TpvClosedCorrections({ sessionId, corrections, canManage
       {open && (
         <form
           className="grid gap-2 sm:grid-cols-3"
-          onSubmit={(e) => { e.preventDefault(); if (valid) add.mutate({ sessionId, kind: form.kind as "cash_in", amount, reason: form.reason.trim(), idempotencyKey: attempt }); }}
+          onSubmit={(e) => { e.preventDefault(); if (valid) add.mutate({ sessionId, kind: form.kind as "cash_in", amount, reason: form.reason.trim(), idempotencyKey: attempt, ...(authId ? { authorizationId: Number(authId) } : {}) }); }}
         >
           <div className="space-y-1">
             <Label htmlFor="corr-kind">Tipo</Label>
@@ -76,6 +79,12 @@ export default function TpvClosedCorrections({ sessionId, corrections, canManage
             <Label htmlFor="corr-amount">Importe (€)</Label>
             <Input id="corr-amount" inputMode="decimal" value={form.amount} onChange={(e) => setForm((f) => ({ ...f, amount: e.target.value }))} placeholder={form.kind === "count_adjustment" ? "Ej.: -5,00" : "Ej.: 12,50"} />
           </div>
+          {advanced && (
+            <div className="space-y-1">
+              <Label htmlFor="corr-auth">Autorización (si te la piden)</Label>
+              <Input id="corr-auth" inputMode="numeric" value={authId} onChange={(e) => setAuthId(e.target.value.replace(/\D/g, ""))} placeholder="Nº de autorización" />
+            </div>
+          )}
           <div className="space-y-1 sm:col-span-3">
             <Label htmlFor="corr-reason">Motivo</Label>
             <Input id="corr-reason" maxLength={500} value={form.reason} onChange={(e) => setForm((f) => ({ ...f, reason: e.target.value }))} placeholder="Qué pasó y por qué se corrige" />

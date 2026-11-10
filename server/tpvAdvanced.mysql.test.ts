@@ -200,4 +200,28 @@ describe.skipIf(!URL_)("TPV Advanced (aplicación real)", () => {
     expect(errCode(await ess.m("b", "tpvAdvanced.cancelHandover", { handoverId: h.id }, admB))).toBe("NOT_FOUND");
     expect((await ess.sql("b", "SELECT COUNT(*) AS n FROM tpv_adv_counts"))[0].n).toBe(0);
   });
+
+  it("autorizaciones aplicadas al TPV: salida por encima del umbral y corrección de caja cerrada exigen una autorización aprobada, que se consume una vez", async () => {
+    await ess.setCapability("a", "pos-advanced", "active");
+    const [reg] = await ess.sql("a", "SELECT id FROM cash_registers WHERE isActive = 1 LIMIT 1");
+    const [prev] = await ess.sql("a", "SELECT id FROM cash_sessions WHERE registerId = ? AND status_cs = 'open'", [reg.id]);
+    if (prev) await ess.m("a", "tpv.closeSession", { sessionId: prev.id, countedCash: 0 }, admA);
+    const s = data(await ess.m("a", "tpv.openSession", { registerId: reg.id, openingAmount: 500, idempotencyKey: key("ab") }, agA));
+    data(await ess.m("a", "tpvAdvanced.setRule", { kind: "cash_out", enabled: true, threshold: 100 }, admA));
+    // Por debajo del umbral, como siempre
+    expect((await ess.m("a", "tpv.addCashMovement", { sessionId: s.id, type: "out", amount: 20, reason: "Cambio", outKind: "traspaso", idempotencyKey: key("m1") }, agA)).status).toBe(200);
+    // Por encima: sin autorización, no
+    const mk = key("m2");
+    const big = { sessionId: s.id, type: "out", amount: 150, reason: "Pago a proveedor", outKind: "traspaso", idempotencyKey: mk };
+    expect(errCode(await ess.m("a", "tpv.addCashMovement", big, agA))).toBe("FORBIDDEN");
+    const a = data(await ess.m("a", "tpvAdvanced.requestAuthorization", { kind: "cash_out", sessionId: s.id, amount: 150, reason: "Pago a proveedor", idempotencyKey: key("rq") }, agA));
+    data(await ess.m("a", "tpvAdvanced.decideAuthorization", { id: a.id, approve: true }, admA));
+    expect((await ess.m("a", "tpv.addCashMovement", { ...big, authorizationId: a.id }, agA)).status).toBe(200);
+    // La misma autorización no vale para otra salida
+    expect(errCode(await ess.m("a", "tpv.addCashMovement", { ...big, idempotencyKey: key("m3"), authorizationId: a.id }, agA))).toBe("CONFLICT");
+    // Quien puede autorizar no necesita pedirla
+    expect((await ess.m("a", "tpv.addCashMovement", { ...big, idempotencyKey: key("m4") }, admA)).status).toBe(200);
+    data(await ess.m("a", "tpvAdvanced.setRule", { kind: "cash_out", enabled: false, threshold: 100 }, admA));
+    expect((await ess.m("a", "tpv.addCashMovement", { ...big, idempotencyKey: key("m5") }, agA)).status).toBe(200);
+  });
 });

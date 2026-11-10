@@ -42,6 +42,9 @@ export default function TpvCashMovementAccounting({ open, type, sessionId, onClo
   const [reason, setReason] = useState("");
   // Clave del intento: un doble clic o un reintento no duplica el movimiento ni su apunte
   const [attemptKey, setAttemptKey] = useState(newAttemptKey);
+  // TPV Advanced: número de la autorización de un supervisor, si la regla de la empresa la pide
+  const [authId, setAuthId] = useState("");
+  const advanced = trpc.tpv.planInfo.useQuery(undefined, { retry: false, staleTime: 60_000 }).data?.advanced === true;
   useEffect(() => { if (open) setAttemptKey(newAttemptKey()); }, [open]);
   // Salidas: "gasto" (compra/proveedor), "devolucion" (a un cliente) o "traspaso" (a Caja Central). Sin valor por
   // defecto: una devolución registrada como gasto inventaba un gasto en la contabilidad.
@@ -152,6 +155,12 @@ export default function TpvCashMovementAccounting({ open, type, sessionId, onClo
           )}
 
           <div className="space-y-1">
+            {advanced && type === "out" && (
+              <div className="space-y-1">
+                <Label className="text-gray-300 text-sm">Autorización (si te la piden)</Label>
+                <Input inputMode="numeric" value={authId} onChange={(e) => setAuthId(e.target.value.replace(/\D/g, ""))} placeholder="Nº de autorización" className="bg-gray-800 border-gray-700 text-white" />
+              </div>
+            )}
             <Label className="text-gray-300 text-sm">Motivo</Label>
             <Input
               value={reason}
@@ -191,6 +200,7 @@ export default function TpvCashMovementAccounting({ open, type, sessionId, onClo
                   sessionId,
                   type,
                   idempotencyKey: attemptKey,
+                  ...(authId ? { authorizationId: Number(authId) } : {}),
                   amount: parseFloat(amount) || 0,
                   reason: reason || (type === "out" && outKind === "traspaso" ? "Traspaso a Caja Central" : "Sin motivo"),
                   ...(type === "out" ? { outKind: outKind ?? undefined } : { inKind: inKind ?? undefined }),

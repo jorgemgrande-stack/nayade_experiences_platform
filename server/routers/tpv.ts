@@ -50,8 +50,10 @@ import { IDEMPOTENCY_KEY_RE, withSaleKeyLock, withTenantLock, findSaleByIdempote
 import { computeSessionPaymentTotals, receivedSaleCondition } from "../tpvSessionTotals";
 import { tpvReportsRouter } from "./tpvReports";
 import { assertRegisterOperator, assertSessionOperator, canAuthorizeReturns, decideReturn, listRegisterOperators, listReturnRequests, OPERATOR_ROLES, requestReturn, RETURN_ACTIONS, setRegisterOperators, supervisionOverview } from "../tpvBusinessDb";
-import { acquiredRights, assertTpvFeature, postCorrectionToTreasury, tpvFeatureEnabled } from "../tpvRulesDb";
+import { acquiredRights, assertTpvFeature, postCorrectionToTreasury, tpvAdvancedAllowed, tpvFeatureEnabled } from "../tpvRulesDb";
 import { tpvSeedMarker } from "../tpvSeedMarker";
+import { checkRequirement, consumeAuthorization } from "../tpvAdvancedDb";
+import { checkPermission } from "../customRolesAccess";
 import { addCorrection, CORRECTION_KINDS, companyCutoff, correctionsCashDelta, countActiveRegisters, currentTpvPlan, ensureClosureSnapshot, getClosureSnapshot, isDuplicateKeyError, listCorrections, recordClosureSnapshot, registerOperationalDay, setCompanyCutoff, tpvAdvancedContracted, withRegisterSlot } from "../tpvRulesDb";
 import { CUTOFF_RE, DEFAULT_CUTOFF } from "../../shared/tpvPlan";
 import { applySaleStock, assertStockAvailable, type StockSaleLine } from "../inventoryDb";
@@ -69,6 +71,21 @@ const tpvOpenCloseProc = permissionProcedure("tpv.open_close", ["admin", "agente
 const tpvBackofficeProc= permissionProcedure("tpv.backoffice", ["admin"]);
 
 // --- HELPERS -----------------------------------------------------------------
+/**
+ * Autorizaciones especiales de TPV Advanced: si la empresa tiene activa la regla de esa operación (por defecto, ninguna)
+ * y quien opera no puede autorizar, la operación exige una autorización aprobada de un supervisor, que se consume una
+ * sola vez para esta operación (`usedRef`). Sin TPV Advanced no cambia nada.
+ */
+async function requireSpecialAuthorization(o: { kind: "cash_out" | "closed_correction"; amount: number; sessionId: number; authorizationId?: number; usedRef: string; user: { id: number; role: unknown } }) {
+  if (!(await tpvAdvancedAllowed(true))) return;
+  const { required } = await checkRequirement(o.kind, o.amount);
+  if (!required) return;
+  const role = String(o.user.role);
+  if (await checkPermission(o.user.id, role, "tpv.authorize", ["admin"])) return;
+  if (!o.authorizationId) throw new TRPCError({ code: "FORBIDDEN", message: "Esta operación necesita la autorización de un supervisor: pídela en TPV Advanced › Autorizaciones e indica su número." });
+  await consumeAuthorization({ id: o.authorizationId, kind: o.kind, amount: o.amount, sessionId: o.sessionId, usedRef: o.usedRef });
+}
+
 // generateTicketNumber y generateReservationRef reemplazadas por el helper centralizado
 async function generateTicketNumber(userId?: string): Promise<string> {
   return generateDocumentNumber("tpv", "tpv:createSale", userId ?? "system");
@@ -900,12 +917,14 @@ export const tpvRouter = router({
       amount: z.number().refine((n) => Number.isFinite(n) && n !== 0 && Math.abs(n) < 1e7, "Importe no válido"),
       reason: z.string().trim().min(5).max(500),
       idempotencyKey: z.string().regex(IDEMPOTENCY_KEY_RE),
+      authorizationId: z.number().int().positive().optional(),
     }))
     .mutation(async ({ input, ctx }) => {
       const [session] = await db.select({ status: cashSessions.status }).from(cashSessions).where(eq(cashSessions.id, input.sessionId));
       if (!session) throw new TRPCError({ code: "NOT_FOUND", message: "Sesión no encontrada" });
       if (session.status !== "closed") throw new TRPCError({ code: "BAD_REQUEST", message: "La caja está abierta: registra un movimiento de caja normal" });
       if (input.kind !== "count_adjustment" && input.amount < 0) throw new TRPCError({ code: "BAD_REQUEST", message: "El importe de una entrada o salida es positivo" });
+      await requireSpecialAuthorization({ kind: "closed_correction", amount: input.amount, sessionId: input.sessionId, authorizationId: input.authorizationId, usedRef: `corr-${input.idempotencyKey}`, user: ctx.user });
       const correction = await addCorrection({ ...input, key: input.idempotencyKey, userId: typeof ctx.user.id === "number" ? ctx.user.id : null, userName: ctx.user.name ?? ctx.user.email ?? null });
       // Ajuste aparte en la caja contable (una sola vez; también al repetir si aún no se había reflejado)
       try {
@@ -932,6 +951,8 @@ export const tpvRouter = router({
         inKind: z.enum(CASH_IN_KINDS).optional(),
         // Clave del intento (la genera el TPV): un reintento no duplica el movimiento ni su apunte contable
         idempotencyKey: z.string().regex(IDEMPOTENCY_KEY_RE).optional(),
+        // TPV Advanced: autorización aprobada de un supervisor, si la regla de la empresa la exige
+        authorizationId: z.number().int().positive().optional(),
       })
     )
     .mutation(async ({ input: raw, ctx }) => {
@@ -959,6 +980,8 @@ export const tpvRouter = router({
       };
       const previous = await replayed();
       if (previous) return previous;
+      // TPV Advanced: salida de efectivo por encima del umbral (si la empresa tiene la regla activa)
+      if (input.type === "out") await requireSpecialAuthorization({ kind: "cash_out", amount: input.amount, sessionId: input.sessionId, authorizationId: raw.authorizationId, usedRef: `mov-${raw.idempotencyKey ?? `${input.sessionId}-${Date.now()}`}`, user: ctx.user });
       const values = {
         sessionId: input.sessionId,
         type: input.type,
