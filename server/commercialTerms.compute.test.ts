@@ -12,7 +12,7 @@ const MONTH = (n: number) => Date.UTC(2026, 10 + n, 1, 10);
 let seq = 0;
 const cat = (name: string, officialUnitCents: number, over: Partial<TermsLine> = {}): TermsLine => ({
   id: ++seq,
-  ref: name.toLowerCase().replace(/s+/g, "-"),
+  ref: name.toLowerCase().replace(/\s+/g, "-"),
   kind: "catalog",
   concept: "connect",
   productKey: name.toLowerCase().replace(/\s+/g, "-"),
