@@ -15,27 +15,27 @@ import { PRODUCTS } from "./catalog/elephantSourceV1";
 
 const refs = { moduleIds: BUILTIN_MODULES.map((m) => m.id), planIds: () => null };
 const AUTHOR = `operacion:${REVIEW_ID_2026_11_10_STN}`;
-const KEY = STN_SCOPE_2026_11_10.key;
+const PRODUCTO_STN = STN_SCOPE_2026_11_10.key;
 
 /** Catálogo de partida: la semilla con Social Token Net como estaba publicado en production el 10/11/2026. */
 async function production() {
   const store = new MemoryWebStore();
   const svc = new WebAdminService({ store, refs, now: () => 1_790_000_000_000 });
   await seedElephantSource(svc, store);
-  const e = (await store.getEntry("product", KEY))!;
+  const e = (await store.getEntry("product", PRODUCTO_STN))!;
   const d = productDraft.parse(e.draft);
   const draft = productDraft.parse({ ...d, catalog: { ...d.catalog, scope: "site" }, commercial: { ...d.commercial!, longDescription: STN_SCOPE_2026_11_10.longDescription.from } });
-  const saved = await svc.save("product", KEY, { draft, expectedVersion: e.draftVersion }, "operator:1");
-  await svc.publish("product", KEY, saved.draftVersion, "operator:1");
+  const saved = await svc.save("product", PRODUCTO_STN, { draft, expectedVersion: e.draftVersion }, "operator:1");
+  await svc.publish("product", PRODUCTO_STN, saved.draftVersion, "operator:1");
   return { store, svc };
 }
 
-const stn = async (store: MemoryWebStore) => productDraft.parse((await store.getEntry("product", KEY))!.draft);
+const stn = async (store: MemoryWebStore) => productDraft.parse((await store.getEntry("product", PRODUCTO_STN))!.draft);
 
 describe("revisión del 10/11/2026: Social Token Net por empresa", () => {
   it("la semilla ya lo declara por empresa, como sus módulos heredados, y sin «paquete»", () => {
     const byKey = new Map(PRODUCTS.map((p) => [p.key, p]));
-    expect(byKey.get(KEY)?.draft.catalog.scope).toBe("company");
+    expect(byKey.get(PRODUCTO_STN)?.draft.catalog.scope).toBe("company");
     for (const k of ["social-token-net-communities", "social-token-net-tokens"]) expect(byKey.get(k)?.draft.catalog.scope).toBe("company");
     // Las demás soluciones Net siguen como estaban
     expect(byKey.get("hotel-net-complete")?.draft.catalog.scope).toBe("site");
@@ -50,7 +50,7 @@ describe("revisión del 10/11/2026: Social Token Net por empresa", () => {
 
     const sim = await applyStnScopeReview(k.svc, k.store, { author: AUTHOR });
     expect(sim).toMatchObject({ apply: false, conflicts: [], already: [] });
-    expect(sim.changed).toEqual([`${KEY}: ámbito site → company; ficha (longDescription)`]);
+    expect(sim.changed).toEqual([`${PRODUCTO_STN}: ámbito site → company; ficha (longDescription)`]);
     expect((await stn(k.store)).catalog.scope).toBe("site");
 
     const r = await applyStnScopeReview(k.svc, k.store, { apply: true, author: AUTHOR });
@@ -63,33 +63,33 @@ describe("revisión del 10/11/2026: Social Token Net por empresa", () => {
     expect(JSON.stringify(await k.store.listPrices())).toBe(prices);
     expect({ ...after.catalog, scope: "site" }).toEqual(before.catalog);
     expect({ ...after.commercial, longDescription: before.commercial?.longDescription }).toEqual(before.commercial);
-    const e = (await k.store.getEntry("product", KEY))!;
+    const e = (await k.store.getEntry("product", PRODUCTO_STN))!;
     expect(e.publishedVersion).toBe(e.draftVersion);
     const capsAfter = quoteCatalogFromSite(await k.svc.site("published"));
     const byB = new Map(capsBefore.products.map((p) => [p.key, p]));
     const byA = new Map(capsAfter.products.map((p) => [p.key, p]));
     for (const [key, p] of Array.from(byB)) expect(Array.from(capabilitiesOf(byA.get(key), byA)).sort(), key).toEqual(Array.from(capabilitiesOf(p, byB)).sort());
-    expect(byA.get(KEY)?.scope).toBe("company");
+    expect(byA.get(PRODUCTO_STN)?.scope).toBe("company");
 
     const again = await applyStnScopeReview(k.svc, k.store, { apply: true, author: AUTHOR });
-    expect(again).toMatchObject({ changed: [], conflicts: [], already: [KEY] });
+    expect(again).toMatchObject({ changed: [], conflicts: [], already: [PRODUCTO_STN] });
   });
 
   it("respeta un borrador ajeno y un texto cambiado desde el CRM", async () => {
     const k = await production();
-    const e = (await k.store.getEntry("product", KEY))!;
+    const e = (await k.store.getEntry("product", PRODUCTO_STN))!;
     const d = productDraft.parse(e.draft);
-    await k.svc.save("product", KEY, { draft: { ...d, tagline: "Borrador del operador" }, expectedVersion: e.draftVersion }, "operator:2");
+    await k.svc.save("product", PRODUCTO_STN, { draft: { ...d, tagline: "Borrador del operador" }, expectedVersion: e.draftVersion }, "operator:2");
     const r = await applyStnScopeReview(k.svc, k.store, { apply: true, author: AUTHOR });
     expect(r.changed).toEqual([]);
     expect(r.conflicts[0]).toMatch(/borrador ajeno/);
     expect((await stn(k.store)).catalog.scope).toBe("site");
 
     const k2 = await production();
-    const e2 = (await k2.store.getEntry("product", KEY))!;
+    const e2 = (await k2.store.getEntry("product", PRODUCTO_STN))!;
     const d2 = productDraft.parse(e2.draft);
-    const saved = await k2.svc.save("product", KEY, { draft: { ...d2, commercial: { ...d2.commercial!, longDescription: "Texto del CRM" } }, expectedVersion: e2.draftVersion }, "operator:2");
-    await k2.svc.publish("product", KEY, saved.draftVersion, "operator:2");
+    const saved = await k2.svc.save("product", PRODUCTO_STN, { draft: { ...d2, commercial: { ...d2.commercial!, longDescription: "Texto del CRM" } }, expectedVersion: e2.draftVersion }, "operator:2");
+    await k2.svc.publish("product", PRODUCTO_STN, saved.draftVersion, "operator:2");
     const r2 = await applyStnScopeReview(k2.svc, k2.store, { apply: true, author: AUTHOR });
     expect(r2.changed).toEqual([]);
     expect(r2.conflicts[0]).toMatch(/descripción larga/);
