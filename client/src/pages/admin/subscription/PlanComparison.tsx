@@ -13,7 +13,7 @@ import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { formatMoney } from "@shared/connectCard";
 import type { PanelPlanInfo, PlanCardModel, PlanRequestView, SelfServicePlanKey } from "@shared/subscriptionPlans";
-import { cardBenefits, cardLimits, groupedComparisonRows, isGrowthOption, planPresentation, taxLabel, type PlanIconKey } from "@shared/planPresentation";
+import { cardBenefits, cardLimits, groupedComparisonRows, isGrowthOption, planMoney, planPresentation, taxLabel, type PlanIconKey } from "@shared/planPresentation";
 import { PlanRequestCta, openRequestFor } from "./PlanRequests";
 import { PlanChangeDialog, type PlanOption } from "./SelfServiceSection";
 
@@ -37,7 +37,7 @@ function PriceBox({ plan }: { plan: PanelPlanInfo }) {
         <div key={c.key} className="min-w-0 px-3 py-3 text-center sm:px-4">
           <dt className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">{c.label}</dt>
           <dd className="mt-1 flex flex-wrap items-baseline justify-center gap-x-1 text-foreground">
-            <strong className="text-xl font-extrabold tracking-tight sm:text-2xl">{formatMoney(c.price.amountCents, c.price.currency)}</strong>
+            <strong className="text-xl font-extrabold tracking-tight sm:text-2xl">{planMoney(c.price.amountCents, c.price.currency)}</strong>
             <span className="text-xs text-muted-foreground">
               {c.per} {taxLabel(c.price)}
             </span>
@@ -133,12 +133,14 @@ function PlanCard({
           </dl>
         )}
 
+        {card.isCurrent && card.currentLabel === "Prueba gratuita" && <p className="text-xs text-muted-foreground">Lo estás probando gratis: no se te ha cobrado nada.</p>}
+
+        {/* Pie de altura fija (precio, acción, detalle) para que precios y botones queden alineados entre tarjetas */}
         <div className="mt-auto space-y-3 pt-1">
           <PriceBox plan={plan} />
-          {card.isCurrent && card.currentLabel === "Prueba gratuita" && (
-            <p className="text-center text-xs text-muted-foreground">Lo estás probando gratis: no se te ha cobrado nada.</p>
-          )}
-          <PlanAction card={card} requests={requests} onConvert={onConvert} onChange={onChange} />
+          <div className="flex min-h-12 flex-col justify-center gap-1.5 [&_button]:min-h-12">
+            <PlanAction card={card} requests={requests} onConvert={onConvert} onChange={onChange} />
+          </div>
           <button
             type="button"
             onClick={scrollToComparison}
@@ -237,7 +239,7 @@ interface CompareGroup {
 
 /** Todas las filas de la comparativa (precios, límites agrupados y lo que incluye): nada de lo publicado se oculta. */
 function comparisonModel(cards: PlanCardModel[]): CompareGroup[] {
-  const price = (p: PanelPlanInfo["monthly"], per: string) => (p ? `${formatMoney(p.amountCents, p.currency)} ${per} · ${taxLabel(p)}` : null);
+  const price = (p: PanelPlanInfo["monthly"], per: string) => (p ? `${planMoney(p.amountCents, p.currency)} ${per} · ${taxLabel(p)}` : null);
   const groups: CompareGroup[] = [
     {
       id: "price",
