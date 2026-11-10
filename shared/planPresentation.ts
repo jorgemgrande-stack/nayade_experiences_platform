@@ -5,6 +5,7 @@
  * límites salen SIEMPRE del catálogo publicado) ni decide qué se puede contratar (eso sigue en subscriptionPlans y el
  * servidor). Un plan que no esté aquí se presenta con lo que publica el catálogo.
  */
+import { formatMoney } from "./connectCard";
 import type { PanelPlanInfo, PlanCardModel, PlanPrice } from "./subscriptionPlans";
 
 export type PlanIconKey = "rocket" | "trending" | "building" | "layers";
@@ -139,9 +140,7 @@ export function isGrowthOption(card: Pick<PlanCardModel, "isCurrent" | "plan">, 
 }
 
 /**
- * Importe de un plan con separador de miles también en cuatro cifras («1.899,00 €», como en las creatividades): el
- * formato es-ES por defecto no agrupa los miles con cuatro cifras. Mismo importe, solo formato.
+ * Importe de un plan con separador de miles también en cuatro cifras («1.899,00 €», como en las creatividades). Es el
+ * mismo formateador que el del marketplace (`formatMoney`): una sola función para los dos.
  */
-export function planMoney(cents: number, currency: string): string {
-  return new Intl.NumberFormat("es-ES", { style: "currency", currency, minimumFractionDigits: 2, maximumFractionDigits: 2, useGrouping: "always" } as Intl.NumberFormatOptions).format(cents / 100);
-}
+export const planMoney = formatMoney;
