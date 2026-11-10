@@ -164,6 +164,7 @@ import { StripeReconciler, startStripeWorker } from "../stripe/reconcile";
 import { stripeWebhookHandler } from "../stripe/webhook";
 import { checkoutStatus, sessionIdRe } from "../stripe/status";
 import { SelfServiceCheckout, buyerEligibility, createSelfServiceRouter } from "../stripe/selfService";
+import { PublicCart } from "../stripe/publicCart";
 import { PanelConversionService, createPanelConversionRouter } from "../stripe/panelConversion";
 import { VatVerifier, type ViesPort } from "../stripe/vies";
 import { WithdrawalService } from "../withdrawals/service";
@@ -368,6 +369,11 @@ export interface ControlPlaneDeps {
     publicStatus: boolean;
     /** Contratación por autoservicio (`/public/checkout/start`). Apagada salvo CP_PUBLIC_SELF_SERVICE_ENABLED=1. */
     selfService: boolean;
+    /**
+     * Productos (además del plan) que se pueden comprar en la web con el autoservicio (CP_PUBLIC_CHECKOUT_PRODUCTS).
+     * Vacío o ausente: ninguno, solo el plan.
+     */
+    publicProducts?: ReadonlySet<string>;
     /** Contratación desde el panel de una empresa en prueba (`/commerce/.../conversion`). Apagada salvo CP_PANEL_CONVERSION_ENABLED=1. */
     panelConversion?: boolean;
     /** Versión publicada de las condiciones de contratación (CP_TERMS_VERSION); sin ella el autoservicio no funciona. */
@@ -2385,7 +2391,11 @@ export function createControlPlaneApp(d: ControlPlaneDeps): Express {
         if (st.publicStatus || selfServiceOk) {
           const pc = express.Router();
           if (selfServiceOk) {
-            const ss = new SelfServiceCheckout({ crm: d.crm.service, orders: d.orders.store, orchestrator, checkout: checkout!, catalog: stripeCatalog, ticketSecret: d.publicIntake!.secret, origins: publicOrigins, termsVersion: st.termsVersion, now: d.subscriptions.now, buyers: st.store, mode: st.config.mode, consent: st.fiscal?.consent, vat, eligibility: st.fiscal ? { scenarios: st.fiscal.scenarios, taxExpectations: st.fiscal.taxExpectations ?? new Map(), countries: st.fiscal.countries ?? new Map(), consumerRates: st.fiscal.consumerRates ?? new Map(), consent: st.fiscal.consent } : undefined });
+            // Carrito «plan + productos en línea»: con el catálogo publicado y la lista blanca (vacía: solo el plan)
+            const cart = siteAdmin
+              ? new PublicCart({ allowed: st.publicProducts ?? new Set(), catalog: stripeCatalog, site: async () => quoteCatalogFromSite(await siteAdmin.site("published")), store: st.store, gateway: st.gateway, requireExclusive: checkout!.taxPolicy === "stripe_tax_exclusive", deferredItems: !!deferredItems })
+              : undefined;
+            const ss = new SelfServiceCheckout({ crm: d.crm.service, orders: d.orders.store, orchestrator, checkout: checkout!, catalog: stripeCatalog, ticketSecret: d.publicIntake!.secret, origins: publicOrigins, termsVersion: st.termsVersion, now: d.subscriptions.now, buyers: st.store, mode: st.config.mode, consent: st.fiscal?.consent, vat, eligibility: st.fiscal ? { scenarios: st.fiscal.scenarios, taxExpectations: st.fiscal.taxExpectations ?? new Map(), countries: st.fiscal.countries ?? new Map(), consumerRates: st.fiscal.consumerRates ?? new Map(), consent: st.fiscal.consent } : undefined, cart, taxTreatment: checkout!.taxPolicy });
             pc.use(createSelfServiceRouter(ss, publicOrigins));
           }
           if (st.publicStatus) pc.get(

@@ -47,6 +47,7 @@ import { z } from "zod";
 import { opsLog } from "../_core/ops/log";
 import { recordFailure } from "../_core/ops/failureAlerts";
 import { checkTicket } from "../crm/publicApi";
+import { CrmError } from "../crm/types";
 import type { CatalogPort } from "../subscriptions/ports";
 import type { CommercialOrder } from "../orchestrator/types";
 import { CHECKOUT_PLANS, isPersonalCheckoutPlan } from "./catalog";
@@ -57,6 +58,31 @@ import { BUYER_TYPES, BuyerProfileError, buildConsent, buyerProfileInput, toBuye
 import { desiredCatalog } from "./catalog";
 import { checkEligibility, priceFor, type EligibilityConfig, type EligibilityResult } from "./eligibility";
 import { needsVies, type VatVerifier } from "./vies";
+import { PUBLIC_CART_MAX_PRODUCTS, PublicCartError, type PublicCart } from "./publicCart";
+import { displayPrice } from "./buyerProfile";
+
+const productKey = z.string().trim().regex(/^[a-z0-9][a-z0-9-]{0,62}$/);
+/** Productos del carrito (además del plan): solo claves, nunca importes. */
+const cartProducts = z.array(productKey).max(PUBLIC_CART_MAX_PRODUCTS);
+
+/** Presupuesto del carrito antes de pagar (no crea ni guarda nada). */
+export const cartQuoteBody = z
+  .object({
+    plan: z.string().trim().min(1).max(63),
+    interval: z.enum(["month", "year"]),
+    products: cartProducts.optional(),
+    buyer: z
+      .object({
+        type: z.enum(BUYER_TYPES),
+        country: z.string().trim().toUpperCase().regex(/^[A-Z]{2}$/),
+        postalCode: z.string().trim().max(12).optional(),
+        taxId: z.string().trim().max(40).optional(),
+      })
+      .strict()
+      .optional(),
+  })
+  .strict();
+export type CartQuoteBody = z.infer<typeof cartQuoteBody>;
 
 export const eligibilityQuery = z
   .object({
@@ -75,6 +101,8 @@ export const selfServiceBody = z
     idempotencyKey: z.string().uuid(),
     plan: z.enum(CHECKOUT_PLANS),
     interval: z.enum(["month", "year"]),
+    /** Soluciones Net y extensiones Connect habilitadas para la venta en línea (lista blanca del servidor). */
+    products: cartProducts.optional(),
     company: z.object({ name: z.string().trim().min(2).max(160), taxId: z.string().trim().max(40).optional() }).strict().optional(),
     /** Plan personal: nombre del hogar (opcional y editable después). Nunca razón social. */
     household: z.object({ name: z.string().trim().min(2).max(160) }).strict().optional(),
@@ -128,6 +156,13 @@ export interface SelfServiceDeps {
   mode?: StripeMode;
   /** Versiones de consentimiento vigentes (condiciones, privacidad, precontractual) y decisión sobre el desistimiento. */
   consent?: ConsentVersions;
+  /**
+   * Carrito público (plan + productos en línea; ./publicCart.ts). Sin él, solo se contrata el plan, como antes, y
+   * cualquier producto se rechaza.
+   */
+  cart?: PublicCart;
+  /** Tratamiento fiscal con el que se cobraría (StripeCheckoutService.taxPolicy); null: no se cobra. */
+  taxTreatment?: string | null;
   now?: () => number;
   minFillMs?: number;
   maxAgeMs?: number;
@@ -181,10 +216,23 @@ export class SelfServiceCheckout {
     const product = await this.d.catalog.product(b.plan);
     if (!product || product.commercialStatus !== "available" || product.internalOnly) throw new SelfServiceError(409, "plan_not_self_service", "Este plan todavía no se contrata en línea: solicita la contratación y te contactaremos");
 
+    // Carrito: el servidor valida plan, productos, compatibilidades y Prices ANTES de crear nada
+    const products = Array.from(new Set(b.products ?? []));
+    if (products.length && !this.d.cart) throw new PublicCartError("no_online", "Los productos todavía no se contratan en línea: contrata el plan y añádelos después desde el panel", products[0]);
+    const cart = this.d.cart ? await this.d.cart.validate({ plan: b.plan, interval: b.interval, products }) : null;
+
     const key = orderKeyOf(b.idempotencyKey);
-    // Repetición de la MISMA petición: el mismo pedido y la misma sesión de pago (sin otra empresa)
+    // Repetición de la MISMA petición: el mismo pedido y la misma sesión de pago (sin otra empresa). La misma clave con
+    // otro carrito no reutiliza el pedido de antes: se rechaza (la web genera una clave por carrito)
     const existing = await this.d.orders.byKey(key);
-    if (existing) return this.d.checkout.start(existing.id, ACTOR);
+    if (existing) {
+      const prev = existing.request;
+      const had = (prev?.items ?? []).map((i) => i.key).sort().join(",");
+      if (prev && (prev.plan !== b.plan || prev.interval !== b.interval || had !== [...products].sort().join(","))) {
+        throw new SelfServiceError(409, "idempotency_mismatch", "Esta contratación ya se inició con otra selección: vuelve a revisar el carrito");
+      }
+      return this.d.checkout.start(existing.id, ACTOR);
+    }
 
     const now = this.now();
     const recent = (this.perEmail.get(b.admin.email) ?? []).filter((x) => now - x < 3600_000);
@@ -217,7 +265,7 @@ export class SelfServiceCheckout {
     const taxId = b.buyer ? b.buyer.taxId : b.company!.taxId;
     const company = await this.d.crm.createCompany({ name, ...(taxId ? { taxId } : {}), email: b.admin.email }, ACTOR);
     await this.d.crm.createContact(company.id, { name: b.admin.name, email: b.admin.email, role: "Administración", isPrimary: true }, ACTOR);
-    const { order } = await this.d.orchestrator.create({ idempotencyKey: key, companyId: company.id, request: { plan: b.plan, interval: b.interval, items: [] } }, ACTOR);
+    const { order } = await this.d.orchestrator.create({ idempotencyKey: key, companyId: company.id, request: { plan: b.plan, interval: b.interval, items: cart ? cart.request.items : [] } }, ACTOR);
     if (b.buyer) {
       try {
         const consent = buildConsent(order.id, b.buyer.type, b.consents, versions, "web", now);
@@ -230,8 +278,60 @@ export class SelfServiceCheckout {
     const evidence = crypto.createHash("sha256").update(`${key}|${b.consents.termsVersion}|${now}`).digest("hex").slice(0, 16);
     const accepted = (await this.d.orchestrator.accept(order.id, { signatureRef: `web-terms:${b.consents.termsVersion}:${evidence}` }, ACTOR)).order;
     if (accepted.state !== "contracted") throw new SelfServiceError(409, "not_contracted", "No se ha podido preparar la contratación");
-    opsLog("info", "SelfService", "order_ready", { orderId: order.id, plan: b.plan, interval: b.interval, ...(b.buyer ? { buyerType: b.buyer.type } : {}) });
+    opsLog("info", "SelfService", "order_ready", { orderId: order.id, plan: b.plan, interval: b.interval, products: products.length,...(b.buyer ? { buyerType: b.buyer.type } : {}) });
     return this.d.checkout.start(order.id, ACTOR);
+  }
+
+  /** Error tipado si falta el plan o no es un plan de Checkout (null si el plan es de los de Checkout). */
+  async planProblem(plan: unknown): Promise<PublicCartError | null> {
+    if (typeof plan === "string" && (CHECKOUT_PLANS as readonly string[]).includes(plan)) return null;
+    if (!this.d.cart) return typeof plan === "string" && plan.trim() ? null : new PublicCartError("plan_required", "Elige un plan Elephant Core: es obligatorio en toda contratación");
+    return this.d.cart.checkPlan(plan).then(
+      () => null,
+      (e) => (e instanceof PublicCartError ? e : Promise.reject(e)),
+    );
+  }
+
+  /** Qué se puede comprar en línea (planes y productos de la lista blanca que pasan todas las reglas). */
+  async offer() {
+    if (!this.d.cart) throw new PublicCartError("unavailable", "La venta en línea no está disponible");
+    return { enabled: true, ...(await this.d.cart.offer()) };
+  }
+
+  /**
+   * Presupuesto del carrito calculado por el servidor (no crea ni guarda nada): las mismas reglas y los mismos importes
+   * que cobrará Stripe. El impuesto es orientativo: el definitivo lo calcula Stripe Tax en la página de pago.
+   */
+  async quote(b: CartQuoteBody) {
+    if (!this.d.cart) throw new PublicCartError("unavailable", "La venta en línea no está disponible");
+    const v = await this.d.cart.validate({ plan: b.plan, interval: b.interval, products: b.products ?? [] });
+    const lines = [...v.lines.recurring, ...v.lines.deferred];
+    const treatment = this.d.taxTreatment ?? null;
+    let rateBp: number | null = null;
+    let eligibility: { eligible: boolean; reasons: string[]; scenario: string | null } | undefined;
+    if (treatment === "stripe_tax_exclusive") {
+      if (b.buyer) {
+        const r = await this.eligibilityOf(b.buyer);
+        const reasons = r.reasons.filter((x) => x !== "address_incomplete");
+        eligibility = { eligible: reasons.length === 0, reasons, scenario: r.scenario };
+        // Particulares con tipo decidido: ese. España peninsular sujeta a IVA: el del catálogo. Inversión del sujeto
+        // pasivo o no sujeto: sin impuesto en la factura. Lo demás, sin estimación
+        rateBp = !eligibility.eligible
+          ? null
+          : (r.displayRateBp ?? (r.taxExpectation === "taxed" && r.territory === "es_mainland" ? v.quote.totals.taxRateBp : r.taxExpectation === "reverse_charge" || r.taxExpectation === "not_subject" ? 0 : null));
+      } else rateBp = v.quote.totals.taxRateBp;
+    }
+    const est = displayPrice(v.lines.firstChargeCents, rateBp);
+    return {
+      ok: true as const,
+      catalogVersion: v.quote.catalogVersion,
+      currency: "EUR" as const,
+      plan: v.quote.plan,
+      lines: lines.map((l) => ({ key: l.productKey, name: l.name, family: v.quote.lines.find((x) => x.key === l.productKey)?.family ?? null, quantity: l.quantity, unitCents: l.unitAmountCents, amountCents: l.unitAmountCents * l.quantity, interval: l.interval })),
+      totals: { firstChargeNetCents: v.lines.firstChargeCents, monthlyNetCents: v.lines.monthlyCents, yearlyNetCents: v.lines.yearlyCents },
+      tax: { treatment, estimatedRateBp: est.rateBp, estimatedTaxCents: est.taxCents, estimatedGrossCents: est.grossCents, final: false as const },
+      ...(eligibility ? { eligibility } : {}),
+    };
   }
 
   /** Elegibilidad de un comprador con la configuración aprobada (en live, con domicilio si se puede guardar). */
@@ -264,8 +364,55 @@ export class SelfServiceCheckout {
   }
 }
 
+/** Respuesta de error tipada del carrito y del autoservicio (la web muestra `message`). */
+function sendError(res: Response, e: unknown, ctx: string): void {
+  if (e instanceof PublicCartError) return void res.status(e.status).json({ error: e.code, message: e.message, ...(e.product ? { product: e.product } : {}) });
+  if (e instanceof SelfServiceError) return void res.status(e.status).json({ error: e.code, message: e.message });
+  if (e instanceof StripeCheckoutError) return void res.status(e.code === "not_found" ? 404 : 409).json({ error: e.code, message: "No se ha podido iniciar el pago" });
+  // Ya hay una empresa con ese identificador fiscal: no se crea otra (ni otra suscripción); se amplía desde su panel
+  if (e instanceof CrmError && e.code === "conflict") return void res.status(409).json({ error: "company_exists", message: "Ya hay una empresa registrada con este NIF: entra en tu panel para añadir productos o escríbenos y te ayudamos" });
+  opsLog("error", "SelfService", ctx, { error: e instanceof Error ? e.name : "error" });
+  if (ctx === "internal_error") recordFailure("stripe.self_service_failed");
+  res.status(500).json({ error: "internal_error", message: "Error interno" });
+}
+
 export function createSelfServiceRouter(svc: SelfServiceCheckout, origins: Set<string>): Router {
   const r = express.Router();
+  const originOk = (req: Request, res: Response) => {
+    res.setHeader("Cache-Control", "no-store");
+    const o = req.headers.origin;
+    if (typeof o === "string" && origins.has(o)) return true;
+    res.status(403).json({ error: "origin_not_allowed" });
+    return false;
+  };
+  /** Sin plan (o con un producto en su lugar): error tipado antes de validar el resto del formulario. */
+  const planProblem = (body: unknown) => svc.planProblem((body as { plan?: unknown } | null)?.plan);
+  r.get(
+    "/offer",
+    rateLimit({ windowMs: 60_000, limit: 60, standardHeaders: true, legacyHeaders: false, keyGenerator: (req) => `ip:${ipKeyGenerator(req.ip ?? "")}` }),
+    (req: Request, res: Response) => {
+      if (!originOk(req, res)) return;
+      svc
+        .offer()
+        .then((x) => res.json(x))
+        .catch((e) => sendError(res, e, "offer_error"));
+    },
+  );
+  r.post(
+    "/quote",
+    rateLimit({ windowMs: 60_000, limit: 30, standardHeaders: true, legacyHeaders: false, keyGenerator: (req) => `ip:${ipKeyGenerator(req.ip ?? "")}` }),
+    (req: Request, res: Response) => {
+      if (!originOk(req, res)) return;
+      planProblem(req.body)
+        .then((p) => {
+          if (p) throw p;
+          const parsed = cartQuoteBody.safeParse(req.body);
+          if (!parsed.success) return void res.status(400).json({ error: "invalid_request", message: "Revisa el plan, la periodicidad y los productos" });
+          return svc.quote(parsed.data).then((x) => void res.json(x));
+        })
+        .catch((e) => sendError(res, e, "quote_error"));
+    },
+  );
   r.post(
     "/eligibility",
     rateLimit({ windowMs: 60_000, limit: 30, standardHeaders: true, legacyHeaders: false, keyGenerator: (req) => `ip:${ipKeyGenerator(req.ip ?? "")}` }),
@@ -291,18 +438,14 @@ export function createSelfServiceRouter(svc: SelfServiceCheckout, origins: Set<s
       res.setHeader("Cache-Control", "no-store");
       const o = req.headers.origin;
       if (typeof o !== "string" || !origins.has(o)) return void res.status(403).json({ error: "origin_not_allowed" });
-      const parsed = selfServiceBody.safeParse(req.body);
-      if (!parsed.success) return void res.status(400).json({ error: "invalid_request", message: "Revisa los datos del formulario" });
-      svc
-        .start(parsed.data)
-        .then((s) => res.json({ sessionId: s.sessionId, url: s.url, expiresAt: s.expiresAt }))
-        .catch((e) => {
-          if (e instanceof SelfServiceError) return void res.status(e.status).json({ error: e.code, message: e.message });
-          if (e instanceof StripeCheckoutError) return void res.status(e.code === "not_found" ? 404 : 409).json({ error: e.code, message: "No se ha podido iniciar el pago" });
-          opsLog("error", "SelfService", "internal_error", { error: e instanceof Error ? e.name : "error" });
-          recordFailure("stripe.self_service_failed");
-          res.status(500).json({ error: "internal_error", message: "Error interno" });
-        });
+      planProblem(req.body)
+        .then((p) => {
+          if (p) throw p;
+          const parsed = selfServiceBody.safeParse(req.body);
+          if (!parsed.success) return void res.status(400).json({ error: "invalid_request", message: "Revisa los datos del formulario" });
+          return svc.start(parsed.data).then((s) => void res.json({ sessionId: s.sessionId, url: s.url, expiresAt: s.expiresAt }));
+        })
+        .catch((e) => sendError(res, e, "internal_error"));
     },
   );
   return r;

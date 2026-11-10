@@ -223,3 +223,56 @@ describe("autoservicio con perfil fiscal del comprador (B2B y B2C)", () => {
     expect(selfServiceBody.safeParse(without(body())).success).toBe(false);
   });
 });
+
+describe("checkout unificado: carrito en el autoservicio", () => {
+  beforeEach(() => void (clock = Date.UTC(2026, 10, 10, 10)));
+  const fakeCart = (calls: string[]) =>
+    ({
+      checkPlan: async () => undefined,
+      offer: async () => ({ plans: [], products: [], catalogVersion: "v", currency: "EUR", taxIncluded: false }),
+      validate: async (i: { plan: string; interval: string; products?: string[] }) => {
+        calls.push(`${i.plan}+${(i.products ?? []).join(",")}`);
+        const line = (productKey: string, cents: number) => ({ productKey, name: productKey, interval: "month" as const, quantity: 1, unitAmountCents: cents, stripePriceId: `price_${productKey}`, stripeProductId: `prod_${productKey}` });
+        return {
+          request: { plan: i.plan, interval: i.interval, items: (i.products ?? []).map((key) => ({ key })) },
+          quote: { catalogVersion: "v", plan: { key: i.plan, name: "Essential", interval: "month" }, lines: [{ key: "essential", family: "core_plan" }, { key: "social-token-net-complete", family: "net_bundle" }], totals: { taxRateBp: 2100 } },
+          lines: { recurring: [line("essential", 2900), line("social-token-net-complete", 5900)], deferred: [], firstChargeCents: 8800, monthlyCents: 8800, yearlyCents: 0 },
+        };
+      },
+    }) as never;
+
+  it("sin carrito configurado, un producto se rechaza ANTES de crear nada", async () => {
+    const { svc, calls } = setup();
+    await expect(svc.start(body({ products: ["social-token-net-complete"] }))).rejects.toMatchObject({ code: "no_online", product: "social-token-net-complete" });
+    expect(calls.companies).toBe(0);
+  });
+
+  it("presupuesto en live con Stripe Tax: estimación orientativa del 21 % sobre 88 € (no definitiva)", async () => {
+    const { svc } = setup();
+    const calls: string[] = [];
+    const live = new SelfServiceCheckout({ ...(svc as unknown as { d: ConstructorParameters<typeof SelfServiceCheckout>[0] }).d, cart: fakeCart(calls), taxTreatment: "stripe_tax_exclusive" });
+    const q = await live.quote({ plan: "essential", interval: "month", products: ["social-token-net-complete"] });
+    expect(q.totals.firstChargeNetCents).toBe(8800);
+    expect(q.tax).toEqual({ treatment: "stripe_tax_exclusive", estimatedRateBp: 2100, estimatedTaxCents: 1848, estimatedGrossCents: 10648, final: false });
+    // Comprador no habilitado (sin escenarios aprobados): sin estimación y con los motivos
+    const nb = await live.quote({ plan: "essential", interval: "month", products: [], buyer: { type: "business", country: "ES", postalCode: "28002", taxId: "B12345674" } });
+    expect(nb.eligibility?.eligible).toBe(false);
+    expect(nb.tax.estimatedRateBp).toBeNull();
+    // En pruebas: neto sin impuestos
+    const test = new SelfServiceCheckout({ ...(svc as unknown as { d: ConstructorParameters<typeof SelfServiceCheckout>[0] }).d, cart: fakeCart(calls), taxTreatment: "test_net_no_tax" });
+    expect((await test.quote({ plan: "essential", interval: "month" })).tax).toMatchObject({ treatment: "test_net_no_tax", estimatedRateBp: null });
+  });
+
+  it("el pedido lleva los productos validados por el servidor; la misma clave con otro carrito se rechaza", async () => {
+    const { svc, calls } = setup();
+    const seen: string[] = [];
+    const created: unknown[] = [];
+    const d = (svc as unknown as { d: ConstructorParameters<typeof SelfServiceCheckout>[0] }).d;
+    const withCart = new SelfServiceCheckout({ ...d, cart: fakeCart(seen), orchestrator: { ...d.orchestrator, create: async (i) => (created.push(i.request), d.orchestrator.create(i)) } });
+    const b = body({ products: ["social-token-net-complete"] });
+    await withCart.start(b);
+    expect(created).toEqual([{ plan: "essential", interval: "month", items: [{ key: "social-token-net-complete" }] }]);
+    expect(seen).toEqual(["essential+social-token-net-complete"]);
+    expect(calls.companies).toBe(1);
+  });
+});
