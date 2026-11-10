@@ -11,7 +11,7 @@ import express, { type NextFunction, type Request, type Response, type Router } 
 import { z } from "zod";
 import { getAuth, requireScope } from "../controlPlane/auth";
 import type { SubscriptionBilling } from "../orchestrator/subscriptionBilling";
-import type { SubscriptionService } from "./service";
+import { subscriptionEffective, type SubscriptionService } from "./service";
 import type { ShadowBillingService } from "./shadow";
 import { SubscriptionError } from "./types";
 import { opsLog } from "../_core/ops/log";
@@ -66,7 +66,8 @@ export function createSubscriptionsRouter(svc: SubscriptionService, shadow: Shad
   r.get("/", requireScope("subscriptions:read"), wrap(async (req, res) => {
     const q = z.object({ companyId: z.coerce.number().int().positive().optional(), status: z.enum(["trialing", "active", "canceled"]).optional() }).parse(req.query);
     const list = await svc.list(q);
-    res.json({ subscriptions: await Promise.all(list.map(async (s) => ({ ...s, billing: await billing(s.id) }))) });
+    const now = Date.now();
+    res.json({ subscriptions: await Promise.all(list.map(async (s) => ({ ...s, effective: subscriptionEffective(s, now), billing: await billing(s.id) }))) });
   }));
   // Productos publicados con precios aprobados: lo que se puede contratar hoy
   r.get("/offer", requireScope("subscriptions:read"), wrap(async (_req, res) => void res.json({ products: await svc.offer() })));
@@ -88,7 +89,8 @@ export function createSubscriptionsRouter(svc: SubscriptionService, shadow: Shad
   }));
   r.get("/:id", requireScope("subscriptions:read"), wrap(async (req, res) => {
     const sid = id.parse(req.params.id);
-    res.json({ ...(await svc.detail(sid)), billing: await billing(sid) });
+    const d = await svc.detail(sid);
+    res.json({ ...d, effective: subscriptionEffective(d.subscription, Date.now()), billing: await billing(sid) });
   }));
   r.get("/:id/preview", requireScope("subscriptions:read"), wrap(async (req, res) => void res.json(await shadow.preview(id.parse(req.params.id)))));
 

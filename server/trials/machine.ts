@@ -7,6 +7,7 @@
  *   pending_verification ─expire_verification→ cancelled (sin verificar y con el enlace caducado: libera el correo)
  *   active ─mark_expired→ expired   (solo si ya venció: una persona o la tarea programada, apagada por defecto)
  *   active|expired ─approve_extension→ active
+ *   active|expired ─admin_extend→ active   (ampliación administrativa: nueva fecha de fin, sin el tope del autoservicio)
  *   active|expired ─suspend→ suspended ─reactivate→ active
  *   active|expired|suspended ─convert→ converted (suscripción)
  *   pending_verification|verified ─reject→ rejected
@@ -27,6 +28,7 @@ export type TrialAction =
   | "provisioning_failed"
   | "request_extension"
   | "approve_extension"
+  | "admin_extend"
   | "mark_expired"
   | "suspend"
   | "reactivate"
@@ -45,6 +47,7 @@ export const TRANSITIONS: Record<TrialAction, { from: readonly TrialState[]; to:
   provisioning_failed: { from: ["provisioning"], to: "verified" },
   request_extension: { from: ["active", "expired"], to: "same" },
   approve_extension: { from: ["active", "expired"], to: "active" },
+  admin_extend: { from: ["active", "expired"], to: "active" },
   mark_expired: { from: ["active"], to: "expired" },
   suspend: { from: ["active", "expired"], to: "suspended" },
   reactivate: { from: ["suspended"], to: "active" },
@@ -58,4 +61,13 @@ export function nextState(from: TrialState, action: TrialAction): TrialState | n
   const t = TRANSITIONS[action];
   if (!t.from.includes(from)) return null;
   return t.to === "same" ? from : t.to;
+}
+
+/**
+ * Estado EFECTIVO de una prueba en un instante: una prueba «activa» cuyo fin ya pasó está vencida aunque nadie la haya
+ * marcado (la tarea programada se retrasa, se reinicia o se salta las empresas exentas, como Skibox). Lo usan el CRM y
+ * el plano de control para no mostrar nunca como activa una prueba vencida. No cambia nada guardado.
+ */
+export function effectiveTrialState(t: { state: TrialState; endsAt: number | null }, now: number): TrialState {
+  return t.state === "active" && t.endsAt !== null && t.endsAt <= now ? "expired" : t.state;
 }
