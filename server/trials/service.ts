@@ -21,6 +21,7 @@ import {
   ADMIN_EXTENSION_REASON_MAX,
   ADMIN_EXTENSION_REASON_MIN,
   AdminExtensionInputError,
+  adminExtensionInputTag,
   decodeAdminExtensionDetail,
   encodeAdminExtensionDetail,
   planAdminExtension,
@@ -464,17 +465,14 @@ export class TrialService {
     const reason = o.reason.trim();
     if (reason.length < ADMIN_EXTENSION_REASON_MIN || reason.length > ADMIN_EXTENSION_REASON_MAX) throw new TrialError("invalid_input", `Indica el motivo (${ADMIN_EXTENSION_REASON_MIN}–${ADMIN_EXTENSION_REASON_MAX} caracteres)`);
     if (!ADMIN_EXTENSION_KEY_RE.test(o.idempotencyKey)) throw new TrialError("invalid_input", "Clave de idempotencia no válida");
-    const replay = async () => {
-      const done = (await this.d.store.events(id)).map((e) => (e.action === "admin_extend" ? decodeAdminExtensionDetail(e.detail) : null)).find((d) => d?.key === o.idempotencyKey);
-      return done ? { trial: await this.must(id), replayed: true, before: done.before, after: done.after, days: done.days } : null;
-    };
+    const replay = () => this.adminExtensionReplay(id, o.idempotencyKey, o.input);
     const t = await this.must(id);
     const prior = await replay();
     if (prior) return prior;
     const plan = this.planAdminExtension(t, o.input);
     try {
       // Versión esperada: dos administradores a la vez → uno aplica y el otro recibe «conflicto» (nunca se pisan)
-      const trial = await this.move(id, o.expectedVersion, "admin_extend", o.actor, () => ({ endsAt: plan.after, extensionRequestedAt: null }), encodeAdminExtensionDetail({ ...plan, key: o.idempotencyKey, reason }));
+      const trial = await this.move(id, o.expectedVersion, "admin_extend", o.actor, () => ({ endsAt: plan.after, extensionRequestedAt: null }), encodeAdminExtensionDetail({ ...plan, key: o.idempotencyKey, input: adminExtensionInputTag(o.input), reason }));
       return { trial, replayed: false, before: plan.before, after: plan.after, days: plan.days };
     } catch (e) {
       // La MISMA operación enviada dos veces a la vez: la que pierde devuelve la que ganó
@@ -484,6 +482,35 @@ export class TrialService {
       }
       throw e;
     }
+  }
+
+  /**
+   * Ampliación ya registrada con esa clave (reintento), o null. La misma clave con OTROS datos es un conflicto: nunca se
+   * devuelve en silencio el resultado de una operación distinta.
+   */
+  async adminExtensionReplay(id: number, key: string, input: AdminExtensionInput) {
+    const done = (await this.d.store.events(id)).map((e) => (e.action === "admin_extend" ? decodeAdminExtensionDetail(e.detail) : null)).find((d) => d?.key === key);
+    if (!done) return null;
+    if (done.input !== undefined && done.input !== adminExtensionInputTag(input)) throw new TrialError("conflict", "Esa operación ya se registró con otros datos: vuelve a abrir el diálogo para hacer una ampliación nueva");
+    return { trial: await this.must(id), replayed: true, before: done.before, after: done.after, days: done.days };
+  }
+
+  /**
+   * Claves de ampliaciones administrativas cuyo ÚLTIMO resultado anotado es «pending» (la propagación a las licencias
+   * no se completó): la reconciliación periódica las completa y anota «applied».
+   */
+  async pendingAdminExtensions(id: number): Promise<string[]> {
+    const last = new Map<string, string>();
+    for (const e of await this.d.store.events(id)) {
+      if (e.action !== "admin_extend_result" || !e.detail) continue;
+      try {
+        const d = JSON.parse(e.detail) as { key?: string; result?: string };
+        if (d.key && d.result) last.set(d.key, d.result);
+      } catch {
+        /* detalle ilegible: se ignora */
+      }
+    }
+    return Array.from(last.entries()).filter(([, r]) => r === "pending").map(([k]) => k);
   }
 
   /** Anota el resultado de la propagación de una ampliación administrativa (historial solo de anexado). */

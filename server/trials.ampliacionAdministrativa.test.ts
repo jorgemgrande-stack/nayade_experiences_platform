@@ -16,7 +16,7 @@ import { TrialOnboardingService, type TrialNotifier, type TrialStatusNotice } fr
 import { TrialLicenceReconciler } from "./trials/licenceSync";
 import { TrialScheduler, memoryLock } from "./trials/scheduler";
 import { effectiveTrialState } from "./trials/machine";
-import { decodeAdminExtensionDetail, madridDay, madridEndOfDay, planAdminExtension } from "./trials/adminExtension";
+import { addMadridDays, decodeAdminExtensionDetail, madridDay, madridEndOfDay, planAdminExtension } from "./trials/adminExtension";
 import { createTrialAdminRouter } from "./trials/api";
 import { authenticate, hashToken } from "./controlPlane/auth";
 import { MemoryCapabilityStore } from "./_core/capabilities/store";
@@ -184,7 +184,7 @@ describe("ampliación administrativa", () => {
     const ev = (await trialStore.events(trial.id)).filter((e) => e.action === "admin_extend");
     expect(ev).toHaveLength(1);
     expect(ev[0]).toMatchObject({ actor: "operator:jorge", createdAt: TODAY, fromState: "active", toState: "active" });
-    expect(decodeAdminExtensionDetail(ev[0].detail)).toEqual({ before: SKIBOX_END, after: preview.after, days: preview.days, key: key("a"), reason: "Ampliación pactada con el cliente" });
+    expect(decodeAdminExtensionDetail(ev[0].detail)).toEqual({ before: SKIBOX_END, after: preview.after, days: preview.days, key: key("a"), input: "u:2026-11-30", reason: "Ampliación pactada con el cliente" });
     // Resultado auditado aparte (la ampliación nunca se sobrescribe)
     const res = (await trialStore.events(trial.id)).filter((e) => e.action === "admin_extend_result");
     expect(res.map((e) => JSON.parse(e.detail!))).toEqual([expect.objectContaining({ key: key("a"), result: "applied", subscriptionId })]);
@@ -316,8 +316,8 @@ describe("ampliación administrativa", () => {
       t = r.trial;
     }
     expect(ends[0]).toBe(TODAY + 30 * DAY);
-    for (let i = 1; i < 5; i++) expect(ends[i]).toBe(ends[i - 1] + 30 * DAY);
-    expect(ends[5]).toBe(ends[4] + 400 * DAY); // más de un año acumulado: sin tope
+    for (let i = 1; i < 5; i++) expect(ends[i]).toBe(addMadridDays(ends[i - 1], 30)); // días civiles (cruza el cambio de hora)
+    expect(ends[5]).toBe(addMadridDays(ends[4], 400)); // más de un año acumulado: sin tope
     expect(t.extensionsUsed).toBe(1); // el cupo del autoservicio no se toca
     const ev = (await trialStore.events(t.id)).filter((e) => e.action === "admin_extend").map((e) => decodeAdminExtensionDetail(e.detail)!);
     expect(ev.map((d) => d.after)).toEqual(ends); // ninguna se sobrescribe
@@ -387,6 +387,81 @@ describe("ampliación administrativa", () => {
     expect((await trialStore.events(t.id)).filter((e) => e.action === "admin_extend")).toHaveLength(2);
   });
 
+  it("carrera: la reconciliación que leyó el fin antiguo no devuelve la suscripción ni las licencias a esa fecha", async () => {
+    const { trial, tenantId, subscriptionId } = await skiboxToday();
+    // La reconciliación lee la prueba (fin antiguo) y, antes de leer la suscripción, termina una ampliación
+    const realMust = trials.must.bind(trials);
+    let ext: Awaited<ReturnType<typeof onboarding.adminExtend>> | null = null;
+    let first = true;
+    trials.must = async (id: number) => {
+      const t = await realMust(id);
+      if (first) {
+        first = false;
+        ext = await onboarding.adminExtend(id, { expectedVersion: t.version, input: { days: 30 }, reason: "Ampliación en paralelo", idempotencyKey: key("race"), actor: "operator:jorge" });
+      }
+      return t;
+    };
+    const r = await onboarding.syncLicences(trial.id, "system:trial-licence-sync");
+    trials.must = realMust;
+    expect(r).toMatchObject({ outcome: "skipped", reason: "changed" });
+    expect(ext!.result).toBe("applied");
+    expect((await subs.must(subscriptionId)).trialEnd).toBe(ext!.after);
+    expect((await grantsOf(tenantId, subscriptionId)).every((g) => g.validUntil === ext!.after)).toBe(true);
+    // Y aunque la suscripción quedara por delante de la prueba, un proceso automático nunca la acorta
+    const sub = await subs.must(subscriptionId);
+    await subs.setTrialEnd(subscriptionId, { trialEnd: ext!.after + 5 * DAY }, sub.version, "op");
+    const rec = new TrialLicenceReconciler({ store: trialStore, sync: () => (id, actor) => onboarding.syncLicences(id, actor), lock: memoryLock(), now: () => clock, log: () => undefined });
+    await rec.tick();
+    expect((await subs.must(subscriptionId)).trialEnd).toBe(ext!.after + 5 * DAY);
+    expect(await canWrite(tenantId)).toBe(true);
+  });
+
+  it("la reconciliación general no deshace un «solo lectura» puesto a mano; una ampliación sí reactiva", async () => {
+    const { trial, tenantId, subscriptionId } = await startTrial("Manual");
+    const lic = (onboarding as unknown as { d: { licensing: LicensingService } }).d.licensing;
+    await lic.setStatus(tenantId, "crm-leads", "read_only", { actor: "op", reason: "Decisión de un operador" });
+    const rec = new TrialLicenceReconciler({ store: trialStore, sync: () => (id, actor) => onboarding.syncLicences(id, actor), lock: memoryLock(), now: () => clock, log: () => undefined });
+    for (let i = 0; i < 2; i++) await rec.tick();
+    expect((await grantsOf(tenantId, subscriptionId)).find((g) => g.capabilityId === "crm-leads")?.status).toBe("read_only");
+    await onboarding.adminExtend(trial.id, { expectedVersion: trial.version, input: { days: 3 }, reason: "Ampliación explícita", idempotencyKey: key("man"), actor: "op" });
+    expect((await grantsOf(tenantId, subscriptionId)).find((g) => g.capabilityId === "crm-leads")?.status).toBe("active");
+  });
+
+  it("una ampliación «pending» la completa la reconciliación y anota «applied»", async () => {
+    const { trial, tenantId, subscriptionId } = await skiboxToday();
+    const lic = (onboarding as unknown as { d: { licensing: LicensingService } }).d.licensing;
+    await lic.setStatus(tenantId, "crm-leads", "read_only", { actor: "op", reason: "Fin de la prueba" });
+    const real = lic.restoreTrialAccess.bind(lic);
+    lic.restoreTrialAccess = async () => Promise.reject(new Error("registro caído"));
+    const r = await onboarding.adminExtend(trial.id, { expectedVersion: trial.version, input: { days: 7 }, reason: "Con el registro caído", idempotencyKey: key("pend"), actor: "op" });
+    expect(r.result).toBe("pending");
+    lic.restoreTrialAccess = real;
+    const rec = new TrialLicenceReconciler({ store: trialStore, sync: () => (id, actor) => onboarding.syncLicences(id, actor), lock: memoryLock(), now: () => clock, log: () => undefined });
+    await rec.tick();
+    expect((await grantsOf(tenantId, subscriptionId)).find((g) => g.capabilityId === "crm-leads")?.status).toBe("active");
+    const results = (await trialStore.events(trial.id)).filter((e) => e.action === "admin_extend_result").map((e) => JSON.parse(e.detail!));
+    expect(results.map((x) => x.result)).toEqual(["pending", "applied"]);
+    expect(await trials.pendingAdminExtensions(trial.id)).toEqual([]);
+  });
+
+  it("la misma clave con otros datos es un conflicto; el reintento se reconoce aunque la suscripción ya no esté en prueba", async () => {
+    const { trial, subscriptionId } = await skiboxToday();
+    const op = { expectedVersion: trial.version, input: { days: 5 }, reason: "Primera", idempotencyKey: key("same"), actor: "op" } as const;
+    const first = await onboarding.adminExtend(trial.id, op);
+    await expect(onboarding.adminExtend(trial.id, { ...op, input: { days: 9 } })).rejects.toMatchObject({ code: "conflict" });
+    const sub = await subs.must(subscriptionId);
+    await subs.endTrial(subscriptionId, { reason: "pago" }, sub.version, "op");
+    const again = await onboarding.adminExtend(trial.id, op);
+    expect(again).toMatchObject({ replayed: true, after: first.after });
+  });
+
+  it("«N días» son días civiles de España: el cambio de hora no desplaza el fin", () => {
+    const end = Date.UTC(2026, 9, 20, 21, 59, 59); // 20/10 23:59:59 (UTC+2)
+    const r = planAdminExtension({ endsAt: end }, { days: 10 }, Date.UTC(2026, 9, 20, 8));
+    expect(r.after).toBe(Date.UTC(2026, 9, 30, 22, 59, 59)); // 30/10 23:59:59 (UTC+1)
+    expect(r.days).toBe(10);
+  });
+
   it("fechas en hora de España, también con el cambio de hora", () => {
     expect(madridEndOfDay("2026-07-15")).toBe(Date.UTC(2026, 6, 15, 21, 59, 59)); // verano, UTC+2
     expect(madridEndOfDay("2026-10-25")).toBe(Date.UTC(2026, 9, 25, 22, 59, 59)); // día del cambio, ya UTC+1
@@ -396,11 +471,13 @@ describe("ampliación administrativa", () => {
 });
 
 describe("rutas del plano de control", () => {
-  async function serve(scopes: string[], actorType: "operator" | "crm" = "operator") {
-    const token = "token-de-prueba-ampliacion-0123456789";
+  async function serve(scopes: string[], who: "person" | "service" | "service-as-operator" = "person") {
+    const person = who === "person";
+    const token = person ? "cabecera.sesion-sso-de-prueba.firma" : "token-de-prueba-ampliacion-0123456789";
     const app = express();
     app.use(express.json());
-    app.use(authenticate([{ id: actorType === "operator" ? "jorge" : "crm", sha256: hashToken(token), scopes, actorType } as never]));
+    const service = { id: "crm", sha256: hashToken(token), scopes, ...(who === "service-as-operator" ? { actorType: "operator" } : {}) };
+    app.use(authenticate(person ? [] : [service as never], async (t) => (t === token ? { email: "jorge@bigelephant.es", scopes: scopes as never } : null)));
     app.use("/trials", createTrialAdminRouter({ onboarding, trials, store: trialStore }));
     const server = http.createServer(app);
     await new Promise<void>((r) => server.listen(0, "127.0.0.1", r));
@@ -434,13 +511,28 @@ describe("rutas del plano de control", () => {
     }
   });
 
-  it("un token de integración (no una persona) no amplía, aunque tenga los ámbitos", async () => {
+  it("un token de integración (no una persona) no amplía, aunque tenga los ámbitos o se declare «operator»", async () => {
     const { trial } = await skiboxToday();
-    const s = await serve(["subscriptions:read", "subscriptions:write", "entitlements:write"], "crm");
+    for (const who of ["service", "service-as-operator"] as const) {
+      const s = await serve(["subscriptions:read", "subscriptions:write", "entitlements:write"], who);
+      try {
+        const r = await s.call("POST", `/${trial.id}/admin-extension`, { expectedVersion: trial.version, days: 3, reason: "Integración", idempotencyKey: key("tk") });
+        expect(r.status).toBe(403);
+      } finally {
+        await s.close();
+      }
+    }
+    expect((await trials.must(trial.id)).endsAt).toBe(SKIBOX_END);
+  });
+
+  it("listado por plataforma (ficha de la suscripción): solo la prueba de ese tenant", async () => {
+    const { trial, tenantId } = await skiboxToday();
+    await startTrial("Otra");
+    const s = await serve(["subscriptions:read"]);
     try {
-      const r = await s.call("POST", `/${trial.id}/admin-extension`, { expectedVersion: trial.version, days: 3, reason: "Integración", idempotencyKey: key("tk") });
-      expect(r.status).toBe(403);
-      expect((await trials.must(trial.id)).endsAt).toBe(SKIBOX_END);
+      const r = await s.call("GET", `/?tenantId=${tenantId}&state=active,expired,suspended`);
+      expect((r.body.trials as Array<{ id: number }>).map((t) => t.id)).toEqual([trial.id]);
+      expect((await s.call("GET", "/?tenantId=no-existe")).body.trials).toEqual([]);
     } finally {
       await s.close();
     }

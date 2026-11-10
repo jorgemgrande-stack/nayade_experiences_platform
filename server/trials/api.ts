@@ -314,6 +314,12 @@ export function createTrialAdminRouter(o: { onboarding: TrialOnboardingService; 
     requireScope("subscriptions:read"),
     wrap(async (req, res) => {
       const states = z.array(z.enum(TRIAL_STATES)).optional().parse(typeof req.query.state === "string" ? req.query.state.split(",") : undefined);
+      // Prueba de una plataforma (ficha de la suscripción en el CRM): sin depender del tope de 200 del listado
+      if (typeof req.query.tenantId === "string") {
+        const tenantId = z.string().regex(/^[a-z0-9][a-z0-9-]{1,62}$/).parse(req.query.tenantId);
+        const t = await o.store.byTenant(tenantId);
+        return void res.json({ trials: t && (!states || states.includes(t.state)) ? [TrialService.view(t)] : [] });
+      }
       res.json({ trials: (await o.store.list({ states, limit: 200 })).map((t) => TrialService.view(t)) });
     }),
   );
@@ -433,7 +439,11 @@ export function createTrialAdminRouter(o: { onboarding: TrialOnboardingService; 
   // integración no amplía pruebas.
   const adminInput = z.union([z.object({ until: z.string().regex(ADMIN_EXTENSION_UNTIL_RE) }).strict(), z.object({ days: z.number().int().min(1) }).strict()]);
   const centralAdmin = (req: Request, res: Response, next: NextFunction) => {
-    if (getAuth(req)?.actor.type !== "operator") return void res.status(403).json({ error: "forbidden", message: "Solo un administrador central puede ampliar una prueba" });
+    // Una PERSONA: sesión de operador del CRM (cookie) o sesión SSO corporativa. Nunca un token de servicio, aunque se
+    // haya configurado con actorType «operator». Los ámbitos (subscriptions:write + entitlements:write) solo los tienen
+    // los roles de administración central (operatorRoles.ts).
+    const a = getAuth(req);
+    if (!a || !(a.operator || a.tokenId.startsWith("sso:"))) return void res.status(403).json({ error: "forbidden", message: "Solo un administrador central puede ampliar una prueba" });
     next();
   };
   r.get(

@@ -83,14 +83,33 @@ export function planAdminExtension(current: { endsAt: number | null }, input: Ad
   else {
     const days = input.days;
     if (!Number.isSafeInteger(days) || days < 1) throw new AdminExtensionInputError("Indica un número entero de días (1 o más)");
-    after = Math.max(current.endsAt ?? now, now) + days * DAY;
+    after = addMadridDays(Math.max(current.endsAt ?? now, now), days);
   }
   if (!Number.isSafeInteger(after) || after >= ADMIN_EXTENSION_TECHNICAL_LIMIT) throw new AdminExtensionInputError("Fecha no válida: tiene que ser anterior a 2100");
   if (after <= now) throw new AdminExtensionInputError("La nueva fecha de fin tiene que ser futura");
   if (current.endsAt !== null && after <= current.endsAt) throw new AdminExtensionInputError("La nueva fecha de fin tiene que ser posterior a la actual");
-  // Días añadidos sobre el fin vigente (o desde ahora si ya había vencido), con dos decimales
-  const days = Math.round(((after - Math.max(current.endsAt ?? now, now)) / DAY) * 100) / 100;
+  // Días añadidos sobre el fin vigente (o desde ahora si ya había vencido), con dos decimales (por días: los indicados)
+  const days = input.days !== undefined ? input.days : Math.round(((after - Math.max(current.endsAt ?? now, now)) / DAY) * 100) / 100;
   return { before: current.endsAt, after, days };
+}
+
+/**
+ * Suma N días CIVILES de España conservando la hora local (un cambio de hora en medio no desplaza el fin una hora):
+ * p. ej. 23:59:59 del 20/10 + 10 días = 23:59:59 del 30/10, aunque el 25/10 cambie la hora.
+ */
+export function addMadridDays(at: number, days: number): number {
+  const p = Object.fromEntries(
+    new Intl.DateTimeFormat("en-GB", { timeZone: "Europe/Madrid", year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", second: "2-digit", hourCycle: "h23" })
+      .formatToParts(at)
+      .map((x) => [x.type, x.value]),
+  );
+  const day = new Date(Date.UTC(+p.year, +p.month - 1, +p.day + days, 12)).toISOString().slice(0, 10);
+  return madridWallTime(day, `${p.hour}:${p.minute}:${p.second}`) + (at % 1000);
+}
+
+/** Huella corta de la entrada (para detectar la misma clave de idempotencia reutilizada con otros datos). */
+export function adminExtensionInputTag(input: AdminExtensionInput): string {
+  return input.until !== undefined ? `u:${input.until}` : `d:${input.days}`;
 }
 
 export interface AdminExtensionDetail {
@@ -98,6 +117,8 @@ export interface AdminExtensionDetail {
   after: number;
   days: number;
   key: string;
+  /** Entrada de la operación (`adminExtensionInputTag`). */
+  input?: string;
   reason: string;
 }
 
@@ -105,7 +126,7 @@ export interface AdminExtensionDetail {
 export function encodeAdminExtensionDetail(d: AdminExtensionDetail): string {
   let reason = d.reason.trim().slice(0, ADMIN_EXTENSION_REASON_MAX);
   for (;;) {
-    const s = JSON.stringify({ before: d.before, after: d.after, days: d.days, key: d.key, reason });
+    const s = JSON.stringify({ before: d.before, after: d.after, days: d.days, key: d.key, input: d.input, reason });
     if (s.length <= 300 || !reason) return s;
     reason = reason.slice(0, -10);
   }
@@ -116,7 +137,7 @@ export function decodeAdminExtensionDetail(detail: string | null): AdminExtensio
   try {
     const v = JSON.parse(detail) as Partial<AdminExtensionDetail>;
     if (typeof v.after !== "number" || typeof v.key !== "string") return null;
-    return { before: typeof v.before === "number" ? v.before : null, after: v.after, days: typeof v.days === "number" ? v.days : 0, key: v.key, reason: typeof v.reason === "string" ? v.reason : "" };
+    return { before: typeof v.before === "number" ? v.before : null, after: v.after, days: typeof v.days === "number" ? v.days : 0, key: v.key, ...(typeof v.input === "string" ? { input: v.input } : {}), reason: typeof v.reason === "string" ? v.reason : "" };
   } catch {
     return null;
   }
