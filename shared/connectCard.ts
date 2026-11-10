@@ -182,7 +182,7 @@ export function taxLabel(p: Pick<ConnectPrice, "taxIncluded" | "taxRateBp">): st
 /**
  * Importe con separador de miles también en cuatro cifras («1.899,00 €»): el formato es-ES por defecto no agrupa los
  * miles hasta las cinco cifras («1899,00 €»). Mismo importe, mismos céntimos y misma moneda: solo cambia la agrupación.
- * Es el único formateador de importes del marketplace y de los planes (`planMoney` es este mismo).
+ * Lo usan el marketplace y los importes de los planes (`planMoney` es este mismo).
  */
 export const formatMoney = (cents: number, currency: string) => new Intl.NumberFormat("es-ES", { style: "currency", currency, useGrouping: "always" } as Intl.NumberFormatOptions).format(cents / 100);
 
