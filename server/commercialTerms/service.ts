@@ -106,14 +106,16 @@ const REASON_MIN = 5;
 const text = (v: string | null | undefined, max: number) => v?.trim().slice(0, max) || null;
 
 /** Estado efectivo en un instante: un acuerdo activado con fecha futura está «programado»; pasado su fin, «vencido». */
-export function effectiveStatus(t: Pick<TermsRecord, "status" | "effectiveFrom" | "effectiveTo">, now: number): TermsRecord["status"] {
+export function effectiveStatus(t: Pick<TermsRecord, "status" | "effectiveFrom" | "effectiveTo"> & { closedAt?: number | null }, now: number): TermsRecord["status"] {
   if (t.status !== "active" && t.status !== "scheduled") return t.status;
+  // Sustituido por otro acuerdo con fecha futura: vale hasta entonces
+  if (t.closedAt != null && t.closedAt <= now) return "superseded";
   if (t.effectiveTo !== null && t.effectiveTo <= now) return "expired";
   return t.effectiveFrom !== null && t.effectiveFrom > now ? "scheduled" : "active";
 }
 
 /** Clave de la partida de suscripción que materializa un abono de un solo uso. */
-const creditKey = (adjustmentId: number) => `ajuste-${adjustmentId}`;
+const creditKey = (adjustmentId: number) => `ajuste:${adjustmentId}`;
 const isVoid = (i: SubscriptionItem) => i.effectiveTo !== null && i.effectiveTo <= i.effectiveFrom;
 
 export class CommercialTermsService {
@@ -201,9 +203,9 @@ export class CommercialTermsService {
     // El esquema de la API ya rechaza cualquier campo de producto o activación; esta es la segunda barrera
     const extra = Object.keys(i).filter((k) => ["productKey", "priceId", "catalog", "activationKind", "activationRef", "capability", "capabilities", "family"].includes(k));
     if (extra.length) bad(`Una partida a medida no puede llevar producto, activación ni capacidades (${extra.join(", ")})`);
-    let ref = i.ref ?? `custom-${crypto.randomBytes(6).toString("hex")}`;
-    if (!/^custom-[a-z0-9-]{1,60}$/.test(ref)) bad("Referencia de partida a medida no válida");
-    if (await this.d.catalog.product(ref)) ref = `custom-${crypto.randomBytes(8).toString("hex")}`;
+    // «custom:…»: los dos puntos no caben en una clave de producto, así que nunca coincidirá con el catálogo
+    const ref = i.ref ?? `custom:${crypto.randomBytes(6).toString("hex")}`;
+    if (!/^custom:[a-z0-9-]{1,60}$/.test(ref)) bad("Referencia de partida a medida no válida");
     return {
       ref,
       kind: "custom",
@@ -279,6 +281,7 @@ export class CommercialTermsService {
     if (next.effectiveFrom !== effectiveTo) bad("La condición siguiente debe empezar exactamente cuando termina esta");
     if (next.requiresAcceptance) state("La condición siguiente se acepta junto con esta: no puede exigir su propia aceptación");
     if (next.afterEnd === "next_terms") state("Solo se encadena una condición programada: la siguiente no puede llevar otra detrás");
+    await this.checkComposition(next.lines);
     return next;
   }
 
@@ -359,6 +362,7 @@ export class CommercialTermsService {
   async updateDraft(id: number, input: TermsInput, expectedRevision: number, actor: string): Promise<TermsRecord> {
     const cur = await this.must(id);
     if (cur.status !== "draft") state("Solo se edita un borrador: unas condiciones activadas o enviadas a aceptación no se reescriben (crea unas nuevas)");
+    await this.assertNotMaterialized(cur);
     let ctx: { companyId: number; subscriptionId: number | null; interval: TermsInterval; currency: string; kept: ReadonlySet<string>; self?: number };
     if (cur.subscriptionId !== null) ctx = (await this.subscriptionCtx(cur.subscriptionId, input, id)).ctx;
     else ctx = { companyId: cur.companyId, subscriptionId: null, interval: input.interval ?? cur.interval, currency: (input.currency ?? cur.currency).toUpperCase(), kept: new Set<string>(), self: id };
@@ -368,12 +372,19 @@ export class CommercialTermsService {
     );
   }
 
+  /** Una activación que se cortó a medias ya dejó las partidas en la suscripción: solo cabe repetirla para completarla. */
+  private async assertNotMaterialized(t: Pick<TermsRecord, "id" | "subscriptionId">) {
+    if (t.subscriptionId === null) return;
+    if ((await this.d.subscriptionStore.items(t.subscriptionId)).some((i) => i.termsId === t.id)) state("Estas condiciones ya se aplicaron a la suscripción en una activación que no terminó: repite la activación para completarla", { reason: "activation_incomplete" });
+  }
+
   /** Descarta un borrador (queda en el historial como anulado; nunca se borra). */
   async cancelDraft(id: number, input: { reason: string }, expectedRevision: number, actor: string): Promise<TermsRecord> {
     const cur = await this.must(id);
     const reason = (input.reason ?? "").trim();
     if (reason.length < REASON_MIN) bad(`Indica el motivo (al menos ${REASON_MIN} caracteres)`);
     if (cur.status !== "draft" && cur.status !== "pending_acceptance") state("Solo se anula un borrador o unas condiciones pendientes de aceptación");
+    await this.assertNotMaterialized(cur);
     return this.conflict(this.d.store.patch(id, { status: "cancelled", closedAt: this.now() }, this.event("cancelled", actor, reason.slice(0, 500), { before: { status: cur.status }, after: { status: "cancelled" } }), this.now(), expectedRevision));
   }
 
@@ -438,6 +449,8 @@ export class CommercialTermsService {
       summary,
       before,
       difference: difference(before, summary.recurring),
+      // Lo negociado frente a la tarifa oficial de referencia (negativo = por debajo de la tarifa)
+      differenceVsOfficialCents: summary.recurring.netCents - summary.recurring.officialCents,
       prorationNetCents,
       nextCharge: { at: nextAt, netCents: nextNet, taxCents: nextTax, totalCents: nextNet + nextTax },
       nextRenewalAt: sub ? sub.currentPeriodEnd : null,
@@ -493,8 +506,11 @@ export class CommercialTermsService {
     let from: number;
     let beforePicture: ReturnType<CommercialTermsService["current"]> | null = null;
     if (existing.some((i) => i.termsId === t.id)) {
-      // Ya materializado en un intento anterior: solo falta marcar el acuerdo
-      from = Math.min(...existing.filter((i) => i.termsId === t.id).map((i) => i.effectiveFrom));
+      // Ya materializado en un intento anterior: solo falta marcar el acuerdo. Debe ser la MISMA revisión que se aplicó
+      const applied = (await this.d.subscriptionStore.events(subscriptionId)).filter((e) => e.kind === "terms_applied" && (e.after as { termsId?: number } | null)?.termsId === t.id).pop();
+      const info = (applied?.after ?? {}) as { revision?: number; effectiveFrom?: number };
+      if (info.revision !== t.revision) state("Estas condiciones se aplicaron con otra revisión del borrador: no se puede completar la activación; crea unas condiciones nuevas", { reason: "revision_mismatch" });
+      from = info.effectiveFrom ?? Math.min(...existing.filter((i) => i.termsId === t.id).map((i) => i.effectiveFrom));
     } else {
       const out = await this.conflict(
         this.d.subscriptionStore.mutate(subscriptionId, input.expectedVersion, actor, now, async (tx, sub) => {
@@ -504,7 +520,9 @@ export class CommercialTermsService {
           if (t.effectiveTo !== null && t.effectiveTo <= at) state("La vigencia de estas condiciones ya ha terminado: actualiza las fechas");
           if (t.interval !== sub.interval && at !== sub.currentPeriodEnd) state("Un cambio de periodicidad entra en vigor en la próxima renovación: indica esa fecha como fecha efectiva");
           const items = await tx.items();
-          const live = { ...t, effectiveFrom: at };
+          const live = this.liveAt(t, at);
+          const problems = validateTerms(live);
+          if (problems.length) state(`Las condiciones ya no son válidas con la fecha efectiva real: ${problems.join("; ")}`, { problems });
           await this.checkComposition(recurringLinesOf(live, at));
           const before = this.current(sub, items, Math.max(now, Math.min(at, sub.currentPeriodEnd - 1)));
           const planned = [...materialize(live).map((p) => ({ t: live as Pick<Terms, "id" | "interval" | "lines">, p })), ...(next ? materialize(next).map((p) => ({ t: next as Pick<Terms, "id" | "interval" | "lines">, p })) : [])];
@@ -526,11 +544,12 @@ export class CommercialTermsService {
           for (const { t: owner, p } of planned) created.push(await tx.insertItem(this.newItem(owner, p, actor)));
           const s = summarize(live);
           return {
-            patch: t.interval !== sub.interval ? { pendingInterval: t.interval } : {},
+            // Sin cambio de periodicidad, cualquier cambio de periodicidad pendiente (de un acuerdo anterior) queda sin efecto
+            patch: { pendingInterval: t.interval !== sub.interval ? t.interval : null },
             event: {
               kind: "terms_applied" as const,
               before: { termsId: before.lines.find((l) => l.termsId !== null)?.termsId ?? null, recurringNetCents: before.netCents, items: closed },
-              after: { termsId: t.id, pricingMode: t.pricingMode, effectiveFrom: at, effectiveTo: t.effectiveTo, recurringNetCents: s.recurring.netCents, items: created.map((c) => ({ item: c.productKey, lineAmountCents: c.lineAmountCents ?? null, effectiveFrom: c.effectiveFrom, effectiveTo: c.effectiveTo })) },
+              after: { termsId: t.id, revision: t.revision, pricingMode: t.pricingMode, effectiveFrom: at, effectiveTo: t.effectiveTo, recurringNetCents: s.recurring.netCents, items: created.map((c) => ({ item: c.productKey, lineAmountCents: c.lineAmountCents ?? null, effectiveFrom: c.effectiveFrom, effectiveTo: c.effectiveTo })) },
               reason,
             },
             result: { at, before },
@@ -540,13 +559,16 @@ export class CommercialTermsService {
       from = out.result.at;
       beforePicture = out.result.before;
     }
-    const live: Terms = { ...t, effectiveFrom: from };
+    const live: Terms = this.liveAt(t, from);
     const summary = summarize(live);
     const economic = { ...this.economic(summary), before: beforePicture ? { recurringNetCents: beforePicture.netCents } : null, difference: beforePicture ? difference(beforePicture, summary.recurring) : null };
     // Los acuerdos anteriores de la suscripción quedan sustituidos desde la fecha efectiva
     for (const old of await this.d.store.list({ subscriptionId, status: ["active", "scheduled"] })) {
-      if (old.id === t.id || old.id === next?.id) continue;
-      await this.d.store.patch(old.id, { status: "superseded", closedAt: from }, this.event("superseded", actor, reason, { before: { status: old.status }, after: { status: "superseded", by: t.id }, effectiveAt: from }), now);
+      if (old.id === t.id || old.id === next?.id || (old.closedAt !== null && old.closedAt <= from)) continue;
+      // Con fecha futura, el acuerdo anterior sigue vigente hasta entonces (`closedAt`); si aún no había empezado, o el
+      // cambio es inmediato, queda sustituido ya
+      const still = from > now && (old.effectiveFrom ?? 0) < from;
+      await this.d.store.patch(old.id, still ? { closedAt: from } : { status: "superseded", closedAt: from }, this.event("superseded", actor, reason, { before: { status: old.status }, after: { status: "superseded", by: t.id }, effectiveAt: from }), now);
     }
     if (next) {
       await this.d.store.patch(next.id, { status: "scheduled", activatedAt: now, activatedBy: actor, summary: summarize(next), inputHash: stableHash(this.shape(next)) }, this.event("activated", actor, reason, { after: this.shape(next), effectiveAt: next.effectiveFrom, acceptanceStatus: t.acceptanceStatus, syncResult: "not_applicable", economic: this.economic(summarize(next)) }), now);
@@ -560,13 +582,23 @@ export class CommercialTermsService {
     return { terms: done, subscription: (await this.d.subscriptionStore.get(subscriptionId))!, effectiveFrom: from, summary };
   }
 
+  /**
+   * El acuerdo con la fecha efectiva REAL: un cargo único con fecha anterior se lleva a esa fecha (si no, nacería
+   * fuera del periodo y nunca se facturaría) y una cuota con inicio propio ya pasado empieza con el acuerdo.
+   */
+  private liveAt(t: TermsRecord, at: number): TermsRecord {
+    return { ...t, effectiveFrom: at, lines: t.lines.map((l) => (l.startsAt !== null && l.startsAt <= at ? { ...l, startsAt: isRecurring(l) ? null : at } : l)) };
+  }
+
   // ── Punto de partida y restauración de la tarifa oficial ───────────────────────
 
   /** Acuerdo vigente de una suscripción (activado y dentro de su vigencia), si lo hay. */
   async currentTerms(subscriptionId: number): Promise<TermsRecord | null> {
     const now = this.now();
     const all = await this.d.store.list({ subscriptionId, status: ["active", "scheduled"] });
-    return all.filter((t) => effectiveStatus(t, now) === "active").sort((a, b) => b.id - a.id)[0] ?? null;
+    // Además, con partidas suyas vivas: si otra operación (p. ej. la conversión de una prueba) las cerró, ya no rige
+    const liveTerms = new Set((await this.d.subscriptionStore.items(subscriptionId)).filter((i) => i.termsId != null && i.effectiveFrom <= now && (i.effectiveTo === null || i.effectiveTo > now)).map((i) => i.termsId!));
+    return all.filter((t) => effectiveStatus(t, now) === "active" && liveTerms.has(t.id)).sort((a, b) => b.id - a.id)[0] ?? null;
   }
 
   /**
@@ -574,18 +606,18 @@ export class CommercialTermsService {
    * Solo cuotas recurrentes vigentes y cargos aún no llegados: lo ya facturado y los ajustes de un solo uso ya
    * aplicados no se arrastran (no se cobran ni se descuentan dos veces).
    */
-  async base(subscriptionId: number): Promise<{ subscriptionVersion: number; termsId: number | null; input: Omit<TermsInput, "reason">; official: Array<{ line: number; officialUnitCents: number | null; name: string }> }> {
+  async base(subscriptionId: number): Promise<{ subscriptionVersion: number; termsId: number | null; interval: TermsInterval; input: Omit<TermsInput, "reason">; official: Array<{ line: number; officialUnitCents: number | null; name: string; family: string | null }> }> {
     const { sub, items } = await this.subscriptionCtx(subscriptionId, {});
     const now = this.now();
     const cur = await this.currentTerms(subscriptionId);
     const lines: LineInput[] = [];
-    const official: Array<{ line: number; officialUnitCents: number | null; name: string }> = [];
+    const official: Array<{ line: number; officialUnitCents: number | null; name: string; family: string | null }> = [];
     const adjustments: AdjustmentInput[] = [];
     if (cur) {
       const kept = cur.lines.filter((l) => (isRecurring(l) ? l.endsAt === null || l.endsAt > now : (l.startsAt ?? cur.effectiveFrom ?? 0) > now));
       const future = (v: number | null) => (v !== null && v > now ? v : null);
       for (const l of kept) {
-        official.push({ line: lines.length, officialUnitCents: l.officialUnitCents, name: l.name });
+        official.push({ line: lines.length, officialUnitCents: l.officialUnitCents, name: l.name, family: l.catalog?.family ?? null });
         lines.push(
           l.kind === "catalog"
             ? { kind: "catalog", productKey: l.productKey!, priceId: l.priceId!, quantity: l.quantity, negotiatedUnitCents: l.negotiatedUnitCents, ...(isRecurring(l) ? { startsAt: future(l.startsAt) } : { chargeClass: l.chargeClass as "initial" | "extraordinary", startsAt: l.startsAt }), description: l.description, conditions: l.conditions, endsAt: l.endsAt }
@@ -597,32 +629,34 @@ export class CommercialTermsService {
         if (idx === -1) continue;
         adjustments.push({ line: idx, type: a.type, mode: a.mode, value: a.value, recurrence: "recurring", endsAt: a.endsAt, note: a.note });
       }
-      return { subscriptionVersion: sub.version, termsId: cur.id, input: { pricingMode: cur.pricingMode, globalAmountCents: cur.globalAmountCents, presentation: cur.presentation, packageName: cur.packageName, conditions: cur.conditions, effectiveTo: cur.effectiveTo, afterEnd: cur.afterEnd === "next_terms" ? null : cur.afterEnd, requiresAcceptance: cur.requiresAcceptance, lines, adjustments }, official };
+      // Una condición encadenada (`next_terms`) no se arrastra: el punto de partida queda indefinido
+      const chained = cur.afterEnd === "next_terms";
+      return { subscriptionVersion: sub.version, termsId: cur.id, interval: sub.interval, input: { pricingMode: cur.pricingMode, globalAmountCents: cur.globalAmountCents, presentation: cur.presentation, packageName: cur.packageName, conditions: cur.conditions, effectiveTo: chained ? null : cur.effectiveTo, afterEnd: chained ? null : cur.afterEnd, requiresAcceptance: cur.requiresAcceptance, lines, adjustments }, official };
     }
     // Sin acuerdo previo: las partidas tal como están contratadas (precio de catálogo o de contrato y su descuento)
     const origin = new Map<number, TermsRecord | null>();
     for (const i of activeAt(items, now).filter((x) => recurringPrice(x.priceKind))) {
       if (i.priceId === null) {
         // Partida a medida de un acuerdo ya vencido: se conserva con su referencia, su concepto y su precio
-        if (i.termsId == null || !/^custom-/.test(i.productKey)) continue;
+        if (i.termsId == null || !/^custom:/.test(i.productKey)) continue;
         if (!origin.has(i.termsId)) origin.set(i.termsId, await this.d.store.get(i.termsId));
         const src = origin.get(i.termsId)?.lines.find((l) => l.id === i.termsLineId);
         const amount = i.lineAmountCents ?? i.unitAmountCents * i.quantity;
         const whole = amount % i.quantity === 0;
-        official.push({ line: lines.length, officialUnitCents: null, name: i.productName });
+        official.push({ line: lines.length, officialUnitCents: null, name: i.productName, family: null });
         lines.push({ kind: "custom", ref: i.productKey, concept: src?.concept ?? "other", name: i.productName, description: src?.description ?? null, conditions: src?.conditions ?? null, chargeClass: "recurring", quantity: whole ? i.quantity : 1, unitCents: whole ? amount / i.quantity : amount, taxRateBp: i.taxRateBp });
         continue;
       }
       const price = await this.d.catalog.price(i.priceId);
       const officialUnit = price ? (price.taxIncluded ? Math.round((price.amountCents * 10_000) / (10_000 + price.taxRateBp)) : price.amountCents) : null;
       const unit = i.lineAmountCents != null ? Math.round(i.lineAmountCents / i.quantity) : i.taxIncluded ? Math.round((i.unitAmountCents * 10_000) / (10_000 + i.taxRateBp)) : i.unitAmountCents;
-      official.push({ line: lines.length, officialUnitCents: officialUnit, name: i.productName });
+      official.push({ line: lines.length, officialUnitCents: officialUnit, name: i.productName, family: i.family });
       if (i.discount && (i.discount.endsAt === null || i.discount.endsAt > now)) {
         adjustments.push({ line: lines.length, type: "discount", mode: i.discount.kind, value: i.discount.kind === "percent" ? i.discount.value * 100 : i.discount.value, recurrence: "recurring", endsAt: i.discount.endsAt, note: i.discount.note });
       }
       lines.push({ kind: "catalog", productKey: i.productKey, priceId: i.priceId, quantity: i.quantity, negotiatedUnitCents: officialUnit !== null && unit !== officialUnit ? unit : null });
     }
-    return { subscriptionVersion: sub.version, termsId: null, input: { pricingMode: "per_item", presentation: "breakdown", lines, adjustments }, official };
+    return { subscriptionVersion: sub.version, termsId: null, interval: sub.interval, input: { pricingMode: "per_item", presentation: "breakdown", lines, adjustments }, official };
   }
 
   /**
@@ -644,7 +678,15 @@ export class CommercialTermsService {
       lines.push({ ...l, priceId: cur?.id ?? l.priceId, negotiatedUnitCents: null });
     }
     const draft = await this.createForSubscription(subscriptionId, { pricingMode: "per_item", presentation: "breakdown", effectiveFrom: input.effectiveFrom ?? null, lines, adjustments: [], reason: input.reason }, actor);
-    return this.activate(draft.id, { expectedRevision: draft.revision, expectedVersion: input.expectedVersion }, actor);
+    try {
+      return await this.activate(draft.id, { expectedRevision: draft.revision, expectedVersion: input.expectedVersion }, actor);
+    } catch (e) {
+      // Si no llegó a aplicarse, el borrador no queda huérfano (si se aplicó a medias, se completa repitiendo la activación)
+      const left = await this.d.store.get(draft.id);
+      const applied = (await this.d.subscriptionStore.items(subscriptionId)).some((i) => i.termsId === draft.id);
+      if (left?.status === "draft" && !applied) await this.d.store.patch(draft.id, { status: "cancelled", closedAt: this.now() }, this.event("cancelled", actor, "La restauración de la tarifa oficial no pudo aplicarse", { before: { status: "draft" }, after: { status: "cancelled" } }), this.now());
+      throw e;
+    }
   }
 
   // ── Fin de las condiciones temporales ──────────────────────────────────────────
@@ -660,6 +702,8 @@ export class CommercialTermsService {
     let settled = 0;
     for (const t of await this.d.store.list({ subscriptionId, status: ["active", "scheduled"] })) {
       if (t.effectiveTo === null || t.effectiveTo > now) continue;
+      // Sustituido por otro acuerdo antes de vencer: sus partidas posteriores ya no existen
+      if (t.closedAt !== null && t.closedAt <= t.effectiveTo) continue;
       const end = t.effectiveTo;
       const applied: Array<{ item: string; provisionalCents: number; appliedCents: number; priceId: number | null }> = [];
       if (t.afterEnd === "official_current") {
@@ -705,8 +749,15 @@ export class CommercialTermsService {
    */
   async prepareContracting(id: number, input: { expectedRevision: number; trialDays?: number; reason?: string | null }, actor: string) {
     const t = await this.must(id);
-    if (t.subscriptionId !== null) state("Estas condiciones ya pertenecen a una suscripción");
     if (t.status !== "draft" && t.status !== "pending_acceptance") state("Este paquete ya no es un borrador");
+    if (t.subscriptionId !== null) {
+      // Reintento: la suscripción del paquete ya se creó en un intento anterior y falta aplicarle el acuerdo
+      const made = (await this.d.store.events({ termsId: id })).some((e) => e.kind === "subscription_created" && (e.after as { subscriptionId?: number } | null)?.subscriptionId === t.subscriptionId);
+      if (!made) state("Estas condiciones ya pertenecen a una suscripción");
+      if (t.revision !== input.expectedRevision) throw new TermsError("version_conflict", `Otra persona modificó este paquete antes (revisión actual ${t.revision}). Recarga para no perder cambios.`, { current: t.revision });
+      const existing = (await this.d.subscriptionStore.get(t.subscriptionId))!;
+      return this.activate(t.id, { expectedRevision: t.revision, expectedVersion: existing.version, reason: input.reason }, actor, { at: existing.currentPeriodStart });
+    }
     if (t.revision !== input.expectedRevision) throw new TermsError("version_conflict", `Otra persona modificó este paquete antes (revisión actual ${t.revision}). Recarga para no perder cambios.`, { current: t.revision });
     if (t.requiresAcceptance && t.acceptanceStatus !== "accepted") state("Este paquete exige la aceptación del cliente: envíalo a aceptación; la contratación se prepara al aceptarse", { reason: "acceptance_required" });
     const plan = t.lines.find((l) => l.kind === "catalog" && isRecurring(l) && l.catalog!.family === "core_plan");
@@ -727,9 +778,12 @@ export class CommercialTermsService {
 
   /** Acuerdos e historial completo de una suscripción (todas las modificaciones y sus responsables). */
   async ofSubscription(subscriptionId: number) {
+    if (!(await this.d.subscriptionStore.get(subscriptionId))) throw new TermsError("not_found", "Suscripción no encontrada");
     const now = this.now();
     const [terms, events, current] = await Promise.all([this.d.store.list({ subscriptionId }), this.d.store.events({ subscriptionId }), this.currentTerms(subscriptionId)]);
-    return { current: current ? current.id : null, terms: terms.map((t) => ({ ...t, effectiveStatus: effectiveStatus(t, now) })), events, timeZone: "Europe/Madrid" as const };
+    // Cuota recurrente que rige HOY según el acuerdo vigente (la congelada en `summary` es la del día en que entró en vigor)
+    const today = current ? recurringAt(current, now) : null;
+    return { current: current ? current.id : null, currentRecurring: today ? { netCents: today.netCents, taxCents: today.taxCents, totalCents: today.totalCents, officialCents: today.officialCents } : null, terms: terms.map((t) => ({ ...t, effectiveStatus: effectiveStatus(t, now) })), events, timeZone: "Europe/Madrid" as const };
   }
 
   async ofCompany(companyId: number) {

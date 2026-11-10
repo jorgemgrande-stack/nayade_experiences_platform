@@ -130,7 +130,7 @@ describe.skipIf(!URL_)("condiciones personalizadas con MySQL real", () => {
     expect(rows.filter((r) => r.price_kind === "monthly").reduce((a, r) => a + Number(r.line_amount_cents), 0)).toBe(12900);
     expect(byName["hotel-net"]).toMatchObject({ family: "industry_module", activation_kind: "module", activation_ref: "hotel", price_id: P.hotM });
     expect(byName["Mantenimiento personalizado"]).toMatchObject({ family: "service", activation_kind: "none", activation_ref: null, price_id: null });
-    expect(String(byName["Mantenimiento personalizado"].product_key)).toMatch(/^custom-/);
+    expect(String(byName["Mantenimiento personalizado"].product_key)).toMatch(/^custom:/);
     expect(byName["Implantación"]).toMatchObject({ price_kind: "one_time", activation_kind: "none" });
     expect(Number(byName["Implantación"].line_amount_cents)).toBe(50000);
     const credit = rows.find((r) => r.terms_line_id === null)!;
@@ -171,7 +171,7 @@ describe.skipIf(!URL_)("condiciones personalizadas con MySQL real", () => {
   it("el esquema rechaza una partida a medida con producto y una cuota global incoherente", async () => {
     const [t] = await pool.query<mysql.RowDataPacket[]>("SELECT id FROM commercial_terms ORDER BY id LIMIT 1");
     await expect(
-      pool.query("INSERT INTO commercial_terms_lines (terms_id, revision, line_kind, line_ref, concept, product_key, name, charge_class, quantity, negotiated_unit_cents, tax_rate_bp) VALUES (?, 99, 'custom', 'custom-x', 'other', 'hotel-net', 'Hotel de regalo', 'recurring', 1, 0, 2100)", [t[0].id]),
+      pool.query("INSERT INTO commercial_terms_lines (terms_id, revision, line_kind, line_ref, concept, product_key, name, charge_class, quantity, negotiated_unit_cents, tax_rate_bp) VALUES (?, 99, 'custom', 'custom:x', 'other', 'hotel-net', 'Hotel de regalo', 'recurring', 1, 0, 2100)", [t[0].id]),
     ).rejects.toThrow(/chk_terms_line_custom/);
     await expect(pool.query("INSERT INTO commercial_terms (company_id, pricing_mode, global_amount_cents, billing_interval, reason, created_at, created_by) VALUES (1, 'per_item', 100, 'month', 'prueba de esquema', 1, 'x')")).rejects.toThrow(/chk_terms_global/);
     await expect(pool.query("INSERT INTO commercial_terms (company_id, pricing_mode, global_amount_cents, billing_interval, reason, created_at, created_by) VALUES (1, 'global', NULL, 'month', 'prueba de esquema', 1, 'x')")).rejects.toThrow(/chk_terms_global/);

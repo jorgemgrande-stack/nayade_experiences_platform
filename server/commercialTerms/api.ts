@@ -52,7 +52,7 @@ const catalogLine = z
 const customLine = z
   .object({
     kind: z.literal("custom"),
-    ref: z.string().regex(/^custom-[a-z0-9-]{1,60}$/).optional(),
+    ref: z.string().regex(/^custom:[a-z0-9-]{1,60}$/).optional(),
     concept: z.enum(CONCEPTS).refine((c) => c !== "core_plan", "un plan Core solo puede ser un producto del catálogo"),
     name: z.string().trim().min(1).max(160),
     description: longText,
@@ -108,10 +108,7 @@ export function createCommercialTermsRouter(svc: CommercialTermsService): Router
   }));
 
   r.get("/subscriptions/:id/terms", read, wrap(async (req, res) => {
-    const sid = id.parse(req.params.id);
-    // Las condiciones temporales vencidas se resuelven solas al consultar (idempotente; nunca bloquea la lectura)
-    await svc.settleDue(sid).catch((e) => opsLog("warn", "CommercialTerms", "settle_failed", { subscriptionId: sid, error: e instanceof Error ? e.name : "error" }));
-    res.json(await svc.ofSubscription(sid));
+    res.json(await svc.ofSubscription(id.parse(req.params.id)));
   }));
   r.get("/subscriptions/:id/terms/base", read, wrap(async (req, res) => void res.json(await svc.base(id.parse(req.params.id)))));
   r.post("/subscriptions/:id/terms", manage, wrap(async (req, res) => {

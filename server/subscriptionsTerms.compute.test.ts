@@ -36,7 +36,7 @@ const hotel = (over: Partial<TermsLine> = {}) => cat("Hotel Net", 11900, { conce
 const whatsapp = (over: Partial<TermsLine> = {}) => cat("Conector WhatsApp", 1900, { concept: "whatsapp", ...over });
 const custom = (name: string, cents: number, over: Partial<TermsLine> = {}): TermsLine => ({
   id: ++seq,
-  ref: `custom-${seq + 1}`,
+  ref: `custom:${seq + 1}`,
   kind: "custom",
   concept: "maintenance",
   productKey: null,

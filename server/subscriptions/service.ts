@@ -316,6 +316,7 @@ export class SubscriptionService {
       this.assertOpen(sub);
       const now = this.now();
       const items = await tx.items();
+      this.assertNoTerms(items);
       const current = activeAt(items, now).find((i) => i.productKey === product.key);
       if (!current) state(`«${product.name}» no está contratada: la primera compra se añade como partida nueva`);
       if (current.effectiveTo !== null) state(`«${product.name}» ya tiene una baja programada`);
@@ -343,6 +344,17 @@ export class SubscriptionService {
     });
   }
 
+  /**
+   * Una suscripción con condiciones comerciales personalizadas (partidas de un acuerdo vigentes o programadas) se
+   * modifica desde su acuerdo: una operación ordinaria dejaría el acuerdo y lo contratado diciendo cosas distintas
+   * (importes del periodo sin recalcular, tramos futuros que reaparecen).
+   */
+  private assertNoTerms(items: SubscriptionItem[]) {
+    const now = this.now();
+    const live = items.filter((i) => i.termsId != null && isRecurring(i.priceKind) && (i.effectiveTo === null ? true : i.effectiveTo > now && i.effectiveTo > i.effectiveFrom));
+    if (live.length) state("Esta suscripción tiene condiciones comerciales personalizadas: los cambios se hacen desde «Personalizar condiciones comerciales»", { reason: "custom_terms" });
+  }
+
   private assertNoScheduled(items: SubscriptionItem[], sub: Subscription, family?: Family) {
     const future = items.filter((i) => i.effectiveFrom > this.now() && (!family || i.family === family));
     if (future.length) state("Ya hay un cambio programado para la próxima renovación; espera a que se aplique", { scheduled: future.map((i) => i.productKey) });
@@ -355,6 +367,7 @@ export class SubscriptionService {
     return this.d.store.mutate(id, expectedVersion, actor, this.now(), async (tx, sub) => {
       this.assertOpen(sub);
       const items = await tx.items();
+      this.assertNoTerms(items);
       this.assertNoScheduled(items, sub, "core_plan");
       const current = activeAt(items, this.now()).find((i) => i.family === "core_plan");
       if (!current) state("La suscripción no tiene plan Core vigente");
@@ -390,6 +403,7 @@ export class SubscriptionService {
     return this.d.store.mutate(id, expectedVersion, actor, this.now(), async (tx, sub) => {
       this.assertOpen(sub);
       const items = await tx.items();
+      this.assertNoTerms(items);
       await this.checkContractPrice(input.item, sub.contractId, sub.id);
       const probe = await this.snapshot(input.item, ADDON_FAMILIES, sub, 0, actor);
       if (input.newSale) await this.assertNotLegacy(probe.product, new Set(items.filter((i) => i.effectiveTo === null || i.effectiveTo > this.now()).map((i) => i.productKey)));
@@ -433,6 +447,7 @@ export class SubscriptionService {
       const items = await tx.items();
       const it = items.find((i) => i.id === itemId);
       if (!it) throw new SubscriptionError("not_found", "Partida no encontrada");
+      this.assertNoTerms(items);
       if (it.family === "core_plan") state("El plan Core no se quita: cambia de plan o cancela la suscripción");
       if (it.family === "service" && it.effectiveFrom <= this.now()) state("Un servicio de pago único ya prestado no se puede quitar");
       if (it.effectiveTo !== null && it.effectiveTo <= this.now()) state("La partida ya no está vigente");
@@ -576,7 +591,21 @@ export class SubscriptionService {
       const anchorDay = new Date(start).getUTCDate();
       for (const i of lastActive) {
         const { id: _i, subscriptionId: _s, ...rest } = i;
-        await tx.insertItem({ ...rest, effectiveFrom: start, effectiveTo: null, createdAt: this.now(), createdBy: actor });
+        if (i.termsId == null) {
+          await tx.insertItem({ ...rest, effectiveFrom: start, effectiveTo: null, createdAt: this.now(), createdBy: actor });
+          continue;
+        }
+        // Partida de un acuerdo: vuelve con sus tramos FUTUROS (fin de un descuento temporal, vuelta a la tarifa
+        // oficial), que la cancelación dejó sin ventana. Un precio temporal no se convierte en permanente
+        const later = new Map<number, SubscriptionItem>();
+        for (const x of items) if (x.id !== i.id && x.termsId != null && x.productKey === i.productKey && x.priceKind === i.priceKind && x.effectiveFrom >= (sub.canceledAt ?? 0) && x.effectiveTo === x.effectiveFrom) later.set(x.effectiveFrom, x);
+        const chain = [i, ...Array.from(later.values()).sort((a, b) => a.effectiveFrom - b.effectiveFrom)];
+        for (let k = 0; k < chain.length; k++) {
+          const to = k + 1 < chain.length ? chain[k + 1].effectiveFrom : null;
+          if (to !== null && to <= start) continue;
+          const { id: _ci, subscriptionId: _cs, ...snap } = chain[k];
+          await tx.insertItem({ ...snap, effectiveFrom: Math.max(start, k === 0 ? start : chain[k].effectiveFrom), effectiveTo: to, createdAt: this.now(), createdBy: actor });
+        }
       }
       return {
         patch: { status: "active", canceledAt: null, cancelAt: null, anchorDay, currentPeriodStart: start, currentPeriodEnd: periodEnd(start, sub.interval, anchorDay), trialEnd: null },

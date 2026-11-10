@@ -1968,25 +1968,23 @@ export function createControlPlaneApp(d: ControlPlaneDeps): Express {
         return false;
       },
     });
-    const shadowBilling = new ShadowBillingService({ store: d.subscriptions.store, crm: crmPort, now: d.subscriptions.now });
     // Condiciones comerciales personalizadas: antes del router de suscripciones (que responde 404 a lo que no conoce)
-    if (d.subscriptions.terms) {
-      const orderStoreForTerms = d.orders?.store;
-      router.use(
-        createCommercialTermsRouter(
-          new CommercialTermsService({
-            store: d.subscriptions.terms,
-            subscriptions: svc,
-            subscriptionStore: d.subscriptions.store,
-            catalog: catalogFromWebStore(d.web.store),
-            crm: crmPort,
-            now: d.subscriptions.now,
-            // Una suscripción cobrada en Stripe no admite condiciones personalizadas mientras no se habilite su cobro
-            stripeBilled: orderStoreForTerms ? async (sid) => (await subscriptionBilling(orderStoreForTerms, sid)).source === "stripe" : undefined,
-          }),
-        ),
-      );
-    }
+    const orderStoreForTerms = d.orders?.store;
+    const commercialTerms = d.subscriptions.terms
+      ? new CommercialTermsService({
+          store: d.subscriptions.terms,
+          subscriptions: svc,
+          subscriptionStore: d.subscriptions.store,
+          catalog: catalogFromWebStore(d.web.store),
+          crm: crmPort,
+          now: d.subscriptions.now,
+          // Una suscripción cobrada en Stripe no admite condiciones personalizadas mientras no se habilite su cobro
+          stripeBilled: orderStoreForTerms ? async (sid) => (await subscriptionBilling(orderStoreForTerms, sid)).source === "stripe" : undefined,
+        })
+      : null;
+    if (commercialTerms) router.use(createCommercialTermsRouter(commercialTerms));
+    // Antes de calcular un periodo se resuelve el fin de las condiciones temporales (tarifa oficial vigente ese día)
+    const shadowBilling = new ShadowBillingService({ store: d.subscriptions.store, crm: crmPort, now: d.subscriptions.now, settle: commercialTerms ? (sid) => commercialTerms.settleDue(sid) : undefined });
     if (d.capabilities) {
       // Licencias por capacidad: Elephant Control es la autoridad técnica. Antes del router de
       // suscripciones (que responde 404 a lo que no conoce).

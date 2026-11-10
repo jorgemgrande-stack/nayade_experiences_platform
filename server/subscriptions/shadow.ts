@@ -73,7 +73,7 @@ function regroupTax(lines: ShadowLine[]): ShadowLine[] {
 
 export class ShadowBillingService {
   private now: () => number;
-  constructor(private d: { store: SubscriptionStore; crm: CrmPort; now?: () => number }) {
+  constructor(private d: { store: SubscriptionStore; crm: CrmPort; now?: () => number; /** Antes de calcular: resuelve lo que dependa de la fecha (fin de condiciones temporales de un acuerdo). Nunca bloquea el cálculo. */ settle?: (subscriptionId: number) => Promise<unknown> }) {
     this.now = d.now ?? Date.now;
   }
 
@@ -124,14 +124,19 @@ export class ShadowBillingService {
     const renewing = items.filter((i) => isRecurring(i.priceKind) && i.priceKind === recurringKind(sub.interval) && i.effectiveFrom <= S && (i.effectiveTo === null || i.effectiveTo > S));
     // Abonos de un solo uso de un acuerdo: en la PRIMERA renovación desde su fecha (la de este periodo si su fecha cae
     // después del inicio del periodo anterior y no más tarde que el de este). Así se aplican una vez y nunca se prorratean
+    // Con periodo de prueba, la primera renovación con importe es la del primer periodo que termina después de la prueba
     const previousStart = addMonthsUTC(S, -intervalMonths(sub.interval), sub.anchorDay);
-    const credits = items.filter((i) => isCredit(i) && !voided(i) && i.effectiveFrom <= S && i.effectiveFrom > previousStart);
+    const firstBillable = (from: number) => {
+      const paidFrom = Math.max(from, sub.trialEnd ?? 0);
+      return S >= from && E > paidFrom && !(previousStart >= from && S > paidFrom);
+    };
+    const credits = items.filter((i) => isCredit(i) && !voided(i) && firstBillable(i.effectiveFrom));
     if (renewing.length && billable > 0) {
       drafts.push(
         make(
           "renewal",
           "",
-          [...renewing.map((i) => line(i, S, billable, `${i.productName} · periodo completo`)), ...credits.map((i) => line(i, S, 1, i.productName))],
+          [...renewing.map((i) => line(i, S, billable, `${i.productName} · periodo completo`)), ...credits.map((i) => line(i, S, billable, i.productName))],
           credits.length ? { items: renewing.map(itemInput), credits: credits.map(itemInput) } : renewing.map(itemInput),
         ),
       );
@@ -166,7 +171,16 @@ export class ShadowBillingService {
       const lines = [line(i, i.effectiveFrom, frac, `${i.productName} · alta a mitad de periodo`)];
       const inputs = [itemInput(i)];
       if (i.termsId != null) {
-        const prev = items.find((p) => continues(p, i));
+        // De la cadena de tramos anteriores de este periodo, el de mayor importe: es lo que el cliente ya tiene pagado
+        // por el resto del periodo (una bajada no genera abono, así que volver a subir no se cobra otra vez)
+        const amountOf = (x: SubscriptionItem) => x.lineAmountCents ?? x.unitAmountCents * x.quantity;
+        let prev: SubscriptionItem | undefined;
+        for (let cur: SubscriptionItem | undefined = items.find((p) => continues(p, i)), guard = 0; cur && guard < 200; guard++) {
+          const c: SubscriptionItem = cur;
+          if (c.effectiveTo !== null && c.effectiveTo <= own.start) break;
+          if (!prev || amountOf(c) > amountOf(prev)) prev = c;
+          cur = c.effectiveFrom > own.start ? items.find((p) => continues(p, c)) : undefined;
+        }
         if (prev) {
           lines.push(line(prev, i.effectiveFrom, coverage(own.start, own.end, Math.max(i.effectiveFrom, sub.trialEnd ?? 0), null), `${prev.productName} · parte no consumida`, -1));
           inputs.push(itemInput(prev));
@@ -179,7 +193,9 @@ export class ShadowBillingService {
           inputs.push(itemInput(prev));
         }
       }
-      drafts.push(make("proration", `item:${i.id}`, lines, inputs, own));
+      // Identidad estable del tramo de un acuerdo: si la partida se sustituye (tarifa vigente en la fecha del cambio), la
+      // factura es la misma y, si ya estaba registrada, se informa de la diferencia en lugar de duplicarla
+      drafts.push(make("proration", i.termsId != null ? `t:${stableHash(i.productKey).slice(0, 12)}:${i.effectiveFrom}` :`item:${i.id}`, lines, inputs, own));
     }
 
     // Servicios de pago único
@@ -207,6 +223,7 @@ export class ShadowBillingService {
 
   /** Calcula y REGISTRA el periodo vigente. Idempotente. */
   async simulateCurrent(subscriptionId: number, actor: string) {
+    await this.d.settle?.(subscriptionId).catch(() => undefined);
     const sub = await this.d.store.get(subscriptionId);
     if (!sub) throw new SubscriptionError("not_found", "Suscripción no encontrada");
     const { drafts, pending } = await this.compute(sub, actor);
@@ -221,6 +238,7 @@ export class ShadowBillingService {
 
   /** Vista previa sin registrar (p. ej. qué se calcularía hoy). */
   async preview(subscriptionId: number) {
+    await this.d.settle?.(subscriptionId).catch(() => undefined);
     const sub = await this.d.store.get(subscriptionId);
     if (!sub) throw new SubscriptionError("not_found", "Suscripción no encontrada");
     return this.compute(sub, "preview");

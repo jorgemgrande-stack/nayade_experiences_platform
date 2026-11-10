@@ -74,7 +74,8 @@ beforeEach(async () => {
   termsStore = new MemoryTermsStore();
   const catalog = catalogFromWebStore(webStore);
   subs = new SubscriptionService({ store, catalog, crm, now: () => clock });
-  shadow = new ShadowBillingService({ store, crm, now: () => clock });
+  // Como en el plano de control: antes de calcular un periodo se resuelve el fin de las condiciones temporales
+  shadow = new ShadowBillingService({ store, crm, now: () => clock, settle: (id) => terms.settleDue(id) });
   terms = new CommercialTermsService({ store: termsStore, subscriptions: subs, subscriptionStore: store, catalog, crm, now: () => clock, stripeBilled: async () => stripeBilled });
 });
 
@@ -328,7 +329,7 @@ describe("licencias: dependen de los productos, no del importe", () => {
     expect(after.modules.map((m) => m.moduleId)).toEqual(["hotel"]);
     const customItem = (await live(sub.id)).find((i) => i.productName.startsWith("Restaurant Net"))!;
     expect(customItem).toMatchObject({ activationKind: "none", activationRef: null, priceId: null, family: "service" });
-    expect(customItem.productKey).toMatch(/^custom-/);
+    expect(customItem.productKey).toMatch(/^custom:/);
     expect(await catalogFromWebStore(webStore).product(customItem.productKey)).toBeNull();
   });
 
@@ -540,5 +541,205 @@ describe("restaurar tarifas oficiales, punto de partida y paquetes", () => {
     const [renewal] = await billPeriod(sub.id);
     expect(renewal).toMatchObject({ subtotalCents: 24000, periodStart: MONTH(1), periodEnd: Date.UTC(2027, 11, 1, 10) });
     expect((await subs.must(sub.id)).interval).toBe("year");
+  });
+});
+
+describe("secuencias de operaciones (hallazgos de la revisión independiente)", () => {
+  const subFails = async (p: Promise<unknown>) => {
+    try {
+      await p;
+    } catch (e) {
+      return e as { code?: string; message: string; details?: Record<string, unknown> };
+    }
+    throw new Error("se esperaba un error");
+  };
+
+  it("bajar y volver a subir en el mismo periodo no cobra por encima de lo ya pagado", async () => {
+    const sub = await newSub();
+    await shadow.simulateCurrent(sub.id, "system:test");
+    clock = T0 + 10 * DAY;
+    await apply(sub.id, input([cat("essential", "essM", { negotiatedUnitCents: 1000 })]));
+    clock = T0 + 20 * DAY;
+    await terms.restoreOfficial(sub.id, { reason: "Vuelta a la tarifa oficial", expectedVersion: await version(sub.id) }, A);
+    const drafts = (await shadow.preview(sub.id)).drafts;
+    // 29 € de la renovación y nada más: el periodo nunca costó más de 29 €
+    expect(drafts.reduce((x, d) => x + d.subtotalCents - d.discountCents, 0)).toBe(2900);
+    // Y subir por encima sí cobra solo la diferencia sobre lo ya pagado
+    clock = T0 + 25 * DAY;
+    await apply(sub.id, input([cat("essential", "essM", { negotiatedUnitCents: 5900 })]));
+    const after = (await shadow.preview(sub.id)).drafts;
+    expect(after.reduce((x, d) => x + d.subtotalCents - d.discountCents, 0)).toBe(2900 + Math.floor((5900 * 5) / 30) - Math.floor((2900 * 5) / 30));
+  });
+
+  it("un cambio de periodicidad programado queda sin efecto si después se aplica otro acuerdo sin ese cambio", async () => {
+    const sub = await newSub();
+    await apply(sub.id, input([cat("essential", "essY")], { interval: "year", effectiveFrom: MONTH(1) }));
+    expect((await subs.must(sub.id)).pendingInterval).toBe("year");
+    clock += DAY;
+    await apply(sub.id, input([cat("essential", "essM", { negotiatedUnitCents: 1900 })]));
+    expect((await subs.must(sub.id)).pendingInterval).toBeNull();
+    clock = MONTH(1) + 1000;
+    const [renewal] = await billPeriod(sub.id);
+    expect(renewal).toMatchObject({ subtotalCents: 1900, periodEnd: MONTH(2) });
+    expect((await subs.must(sub.id)).interval).toBe("month");
+  });
+
+  it("las operaciones ordinarias de la ficha se rechazan en una suscripción con acuerdo (se modifica desde el acuerdo)", async () => {
+    const sub = await newSub();
+    await apply(sub.id, input([cat("essential", "essM"), cat("whatsapp", "waM")], { adjustments: [{ line: 1, type: "discount", mode: "percent", value: 5000, recurrence: "recurring", endsAt: MONTH(2) }] }));
+    const v = await version(sub.id);
+    const wa = (await live(sub.id)).find((i) => i.productKey === "whatsapp")!;
+    for (const attempt of [
+      subs.removeItem(sub.id, wa.id, {}, v, A),
+      subs.changePlan(sub.id, { plan: { productKey: "business", priceId: P.busM } }, v, A),
+      subs.addItem(sub.id, { item: { productKey: "hotel-net", priceId: P.hotM } }, v, A),
+    ]) {
+      const e = await subFails(attempt);
+      expect(e).toMatchObject({ code: "invalid_state", details: { reason: "custom_terms" } });
+    }
+    // Nada cambió: el tramo futuro del descuento temporal sigue en su sitio
+    expect(await version(sub.id)).toBe(v);
+    expect(await amounts(sub.id, MONTH(2) + 1)).toEqual({ Essential: 2900, "Conector WhatsApp": 1900 });
+    // Una suscripción sin acuerdo sigue operándose como siempre
+    const plain = await newSub(2);
+    await subs.addItem(plain.id, { item: { productKey: "whatsapp", priceId: P.waM } }, plain.version, A);
+  });
+
+  it("cancelar y reactivar no convierte un precio temporal en permanente", async () => {
+    const sub = await newSub();
+    await apply(sub.id, input([cat("essential", "essM", { negotiatedUnitCents: 1000 })], { effectiveTo: MONTH(3), afterEnd: "official_snapshot" }));
+    await subs.scheduleCancel(sub.id, { reason: "Baja solicitada" }, await version(sub.id), A);
+    clock = MONTH(1) + 1000;
+    await subs.applyRenewals(sub.id, "system:test");
+    expect((await subs.must(sub.id)).status).toBe("canceled");
+    clock = MONTH(1) + 2 * DAY;
+    await subs.reactivate(sub.id, { reason: "Vuelve" }, await version(sub.id), A);
+    expect(await amounts(sub.id)).toEqual({ Essential: 1000 });
+    expect(await amounts(sub.id, MONTH(3) + 1)).toEqual({ Essential: 2900 });
+  });
+
+  it("la tarifa oficial vigente se resuelve antes de facturar, sin duplicar lo ya registrado", async () => {
+    const sub = await newSub();
+    // Vence a mitad del segundo periodo
+    await apply(sub.id, input([cat("essential", "essM", { negotiatedUnitCents: 1900 })], { effectiveTo: MONTH(1) + 15 * DAY, afterEnd: "official_current" }));
+    clock = MONTH(1) + 1000;
+    await billPeriod(sub.id);
+    const before = await store.shadowInvoices(sub.id);
+    expect(before.filter((i) => i.kind === "proration")).toHaveLength(1);
+    await price("essM2", "essential", "monthly", 3900);
+    clock = MONTH(1) + 16 * DAY;
+    const out = await shadow.simulateCurrent(sub.id, "system:test");
+    // Misma factura de prorrateo (no una segunda), con aviso de que el recálculo difiere de lo registrado
+    const all = await store.shadowInvoices(sub.id);
+    expect(all.filter((i) => i.kind === "proration")).toHaveLength(1);
+    expect(out.results.find((r) => r.invoice.kind === "proration")).toMatchObject({ created: false, drift: expect.objectContaining({ recalculatedTotalCents: expect.any(Number) }) });
+    expect(await amounts(sub.id)).toEqual({ Essential: 3900 });
+    // En la renovación siguiente ya rige la tarifa vigente
+    clock = MONTH(2) + 1000;
+    expect((await billPeriod(sub.id))[0].subtotalCents).toBe(3900);
+  });
+
+  it("si vence justo en una renovación, esa renovación ya factura la tarifa vigente", async () => {
+    const sub = await newSub();
+    await apply(sub.id, input([cat("essential", "essM", { negotiatedUnitCents: 1900 })], { effectiveTo: MONTH(2), afterEnd: "official_current" }));
+    await price("essM2", "essential", "monthly", 3900);
+    clock = MONTH(2) + 1000;
+    const [renewal] = await billPeriod(sub.id);
+    expect(renewal.subtotalCents).toBe(3900);
+    expect((await shadow.simulateCurrent(sub.id, "system:test")).results.map((r) => r.drift)).toEqual([null]);
+  });
+
+  it("descuento de un solo uso con periodo de prueba: se aplica una vez, en la primera renovación con importe", async () => {
+    const half = { line: 0, type: "discount" as const, mode: "percent" as const, value: 5000, recurrence: "once" as const };
+    // Prueba de 15 días: la primera factura es medio periodo, con su 50 %
+    const short = await subs.create({ companyId: 1, interval: "month", trialDays: 15, plan: { productKey: "essential", priceId: P.essM } }, A);
+    await apply(short.id, input([cat("essential", "essM")], { adjustments: [half] }));
+    const s1 = (await shadow.preview(short.id)).drafts.filter((d) => d.kind !== "proration");
+    expect(s1.map((d) => d.subtotalCents - d.discountCents)).toEqual([Math.floor(2900 / 2) - Math.floor(1450 / 2)]);
+    // Prueba de 45 días: el primer periodo no se factura y el descuento espera al primero que sí
+    const long = await subs.create({ companyId: 2, interval: "month", trialDays: 45, plan: { productKey: "essential", priceId: P.essM } }, A);
+    await apply(long.id, input([cat("essential", "essM")], { adjustments: [half] }));
+    expect((await shadow.preview(long.id)).drafts).toHaveLength(0);
+    clock = MONTH(1) + 1000;
+    await subs.applyRenewals(long.id, "system:test");
+    const second = (await shadow.preview(long.id)).drafts;
+    expect(second).toHaveLength(1);
+    expect(second[0].lines.some((l) => l.netCents < 0)).toBe(true);
+    clock = MONTH(2) + 1000;
+    await subs.applyRenewals(long.id, "system:test");
+    const third = (await shadow.preview(long.id)).drafts;
+    expect(third.map((d) => d.subtotalCents - d.discountCents)).toEqual([2900]);
+    expect(third[0].lines.every((l) => l.netCents >= 0)).toBe(true);
+  });
+
+  it("un borrador aplicado a medias no se edita ni se anula: solo se completa su activación", async () => {
+    const sub = await newSub();
+    const d = await terms.createForSubscription(sub.id, input([cat("essential", "essM", { negotiatedUnitCents: 1000 })]), A);
+    const patch = termsStore.patch.bind(termsStore);
+    let broken = true;
+    termsStore.patch = async (...args: Parameters<typeof patch>) => {
+      if (broken) throw new Error("corte de conexión");
+      return patch(...args);
+    };
+    await expect(terms.activate(d.id, { expectedRevision: d.revision, expectedVersion: await version(sub.id) }, A)).rejects.toThrow("corte de conexión");
+    broken = false;
+    expect(await fails(terms.updateDraft(d.id, input([cat("essential", "essM", { negotiatedUnitCents: 500 }), cat("hotel-net", "hotM")]), d.revision, A))).toMatchObject({ code: "invalid_state", details: { reason: "activation_incomplete" } });
+    expect((await fails(terms.cancelDraft(d.id, { reason: "Me arrepiento" }, d.revision, A))).details).toMatchObject({ reason: "activation_incomplete" });
+    const out = await terms.activate(d.id, { expectedRevision: d.revision, expectedVersion: await version(sub.id) }, A);
+    expect(out.summary.recurring.netCents).toBe(1000);
+    expect(await amounts(sub.id)).toEqual({ Essential: 1000 });
+  });
+
+  it("al programar un acuerdo para más adelante, el vigente sigue siéndolo hasta esa fecha", async () => {
+    const sub = await newSub();
+    const first = await apply(sub.id, input([cat("essential", "essM", { negotiatedUnitCents: 1000 })]));
+    clock += DAY;
+    const second = await apply(sub.id, input([cat("essential", "essM", { negotiatedUnitCents: 2000 })], { effectiveFrom: MONTH(1) }));
+    let all = await terms.ofSubscription(sub.id);
+    expect(all.current).toBe(first.terms.id);
+    expect(all.currentRecurring).toMatchObject({ netCents: 1000 });
+    expect(all.terms.map((t) => t.effectiveStatus)).toEqual(["active", "scheduled"]);
+    expect((await terms.base(sub.id)).termsId).toBe(first.terms.id);
+    clock = MONTH(1) + 1000;
+    all = await terms.ofSubscription(sub.id);
+    expect(all.current).toBe(second.terms.id);
+    expect(all.terms.map((t) => t.effectiveStatus)).toEqual(["superseded", "active"]);
+    expect((await billPeriod(sub.id))[0].subtotalCents).toBe(2000);
+  });
+
+  it("un cargo único con fecha ya pasada al activar se lleva a la fecha efectiva y se factura", async () => {
+    const sub = await newSub();
+    const d = await terms.createForSubscription(sub.id, input([cat("essential", "essM"), custom("Implantación", 30000, { chargeClass: "initial", concept: "implementation", startsAt: T0 + 5 * DAY })]), A);
+    clock = MONTH(1) + 5 * DAY;
+    await subs.applyRenewals(sub.id, "system:test");
+    await terms.activate(d.id, { expectedRevision: d.revision, expectedVersion: await version(sub.id) }, A);
+    const drafts = (await shadow.preview(sub.id)).drafts;
+    expect(drafts.filter((x) => x.kind === "one_time").map((x) => x.subtotalCents)).toEqual([30000]);
+  });
+
+  it("preparar la contratación de un paquete se puede repetir si se cortó tras crear la suscripción", async () => {
+    const draft = await terms.createPackage(2, input([cat("essential", "essM"), custom("Mantenimiento", 5000)], { interval: "month" }), A);
+    const mutate = store.mutate.bind(store);
+    let broken = true;
+    store.mutate = (async (...args: Parameters<typeof mutate>) => {
+      if (broken) throw new Error("corte de conexión");
+      return mutate(...args);
+    }) as typeof store.mutate;
+    await expect(terms.prepareContracting(draft.id, { expectedRevision: draft.revision }, A)).rejects.toThrow("corte de conexión");
+    broken = false;
+    const left = await terms.must(draft.id);
+    expect(left).toMatchObject({ status: "draft" });
+    expect(left.subscriptionId).not.toBeNull();
+    const out = await terms.prepareContracting(draft.id, { expectedRevision: left.revision }, A);
+    expect(out.terms.status).toBe("active");
+    expect((await store.list({ companyId: 2 })).length).toBe(1);
+    expect((await shadow.preview(out.subscription.id)).drafts.map((x) => [x.kind, x.subtotalCents])).toEqual([["renewal", 7900]]);
+  });
+
+  it("la vista previa da la diferencia frente a la tarifa oficial y una suscripción inexistente es un 404", async () => {
+    const sub = await newSub();
+    const d = await terms.createForSubscription(sub.id, input([cat("essential", "essM", { negotiatedUnitCents: 1900 })]), A);
+    expect((await terms.preview(d.id)).differenceVsOfficialCents).toBe(-1000);
+    expect((await fails(terms.ofSubscription(999_999))).code).toBe("not_found");
   });
 });
