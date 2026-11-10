@@ -1,6 +1,11 @@
 /**
  * Elephant Net completo con Elephant Core incluido (decisión comercial del 27/10/2026), en el cotizador comercial.
  *
+ * REGLA RETIRADA el 10/11/2026 (decisión definitiva de Jorge: Core y Net se contratan por separado, con precios y derechos
+ * separados). Ninguna política vigente ni propuesta la lleva, la importación de fichas ya no la escribe y la revisión del
+ * catálogo la retira de los borradores. Estas pruebas cubren la mecánica del cotizador, que queda como CÓDIGO INACTIVO
+ * (`RETIRED_NET_CORE_INCLUDED`), y que la regla ya no se propone ni se anuncia.
+ *
  *  - Regresión: sin la regla (política vigente o publicada con la política apagada), mismos importes que hoy.
  *  - Core independiente; cada Net completo con Core incluido a su precio total (una sola cuota).
  *  - Ampliación a Business y Enterprise cobrando solo la diferencia; anual con la misma periodicidad.
@@ -14,7 +19,7 @@ import { describe, it, expect } from "vitest";
 import { quote, type QuoteRequest } from "./catalog/quote";
 import { quoteCatalogFromSeed } from "./catalog/commercial/seedCatalog";
 import { commercialQuote, previewPlanChange, type CommercialQuoteRequest } from "./catalog/commercial/commercialQuote";
-import { CATALOG_POLICY, NET_COMPLETE, PROPOSED_POLICY, type CommercialPolicy } from "./catalog/commercial/policy";
+import { CATALOG_POLICY, NET_COMPLETE, PROPOSED_POLICY, RETIRED_NET_CORE_INCLUDED, type CommercialPolicy } from "./catalog/commercial/policy";
 import { netIssues, netSimulations } from "./catalog/commercial/netSimulations";
 import { textProblems } from "./catalog/commercial/checks";
 import { seedElephantSource } from "./catalog/seed";
@@ -27,7 +32,9 @@ import { BUILTIN_MODULES } from "./_core/modules/builtin";
 const cat = quoteCatalogFromSeed();
 const eur = (n: number) => Math.round(n * 100);
 /** Solo la regla del Net (sin el resto de propuestas), para aislar su efecto */
-const NET_ONLY: CommercialPolicy = { ...CATALOG_POLICY, id: "solo-net", coreIncluded: PROPOSED_POLICY.coreIncluded };
+const NET_ONLY: CommercialPolicy = { ...CATALOG_POLICY, id: "solo-net", coreIncluded: RETIRED_NET_CORE_INCLUDED };
+/** La política propuesta con la regla retirada (para la mecánica inactiva). */
+const WITH_CORE: CommercialPolicy = { ...PROPOSED_POLICY, id: "propuesta-con-core-retirado", coreIncluded: RETIRED_NET_CORE_INCLUDED };
 const q = (r: CommercialQuoteRequest, p: CommercialPolicy = NET_ONLY) => commercialQuote(cat, p, r);
 const m = (r: CommercialQuoteRequest) => q(r).recurring.monthlyCents;
 const ess = { plan: "essential", interval: "month" as const };
@@ -152,7 +159,7 @@ describe("Elephant Net completo con Core incluido", () => {
   it("con la política propuesta completa (inclusiones de Business incluidas) tampoco se cobra Core dos veces", () => {
     for (const k of NET_COMPLETE) for (const plan of ["essential", "business", "enterprise"]) {
       const r: CommercialQuoteRequest = { plan, interval: "month", items: [{ key: k }] };
-      expect(netIssues(commercialQuote(cat, PROPOSED_POLICY, r), r, cat, PROPOSED_POLICY), `${k} ${plan}`).toEqual([]);
+      expect(netIssues(commercialQuote(cat, WITH_CORE, r), r, cat, WITH_CORE), `${k} ${plan}`).toEqual([]);
     }
   });
 });
@@ -170,8 +177,8 @@ describe("versión inmutable de la política y contratos históricos", () => {
   it("contratos históricos: mismos importes con «legacy» para todas las soluciones, planes y periodicidades", () => {
     for (const k of NET_COMPLETE) for (const plan of ["essential", "business", "enterprise"]) for (const interval of ["month", "year"] as const) {
       const r: CommercialQuoteRequest = { plan, interval, contractModel: "legacy", items: [{ key: k }] };
-      const c = commercialQuote(cat, PROPOSED_POLICY, r);
-      const old = commercialQuote(cat, { ...PROPOSED_POLICY, coreIncluded: {} }, r);
+      const c = commercialQuote(cat, WITH_CORE, r);
+      const old = commercialQuote(cat, { ...WITH_CORE, coreIncluded: {} }, r);
       expect(c.recurring, `${k} ${plan} ${interval}`).toEqual(old.recurring);
       expect(c.netCore.nets).toEqual([]);
     }
@@ -194,7 +201,7 @@ describe("simulaciones de todas las soluciones Net y detección de incidencias",
   it("detecta Core cobrado dos veces, partidas duplicadas y Net sin Core incluido", () => {
     const r = commercialQuote(cat, CATALOG_POLICY, { ...ess, items: [{ key: "ski-net-complete" }] });
     expect(netIssues(r, { ...ess, items: [{ key: "ski-net-complete" }] }, cat, NET_ONLY).join()).toMatch(/Core facturado dos veces/);
-    const partial: CommercialPolicy = { ...CATALOG_POLICY, coreIncluded: { "ski-net-complete": PROPOSED_POLICY.coreIncluded!["ski-net-complete"] } };
+    const partial: CommercialPolicy = { ...CATALOG_POLICY, coreIncluded: { "ski-net-complete": WITH_CORE.coreIncluded!["ski-net-complete"] } };
     expect(netSimulations(cat, partial).withoutCore).toContain("hotel-net-complete");
   });
 });
@@ -202,31 +209,38 @@ describe("simulaciones de todas las soluciones Net y detección de incidencias",
 describe("catálogo: importación, publicación y validaciones", () => {
   const refs = { moduleIds: BUILTIN_MODULES.map((x) => x.id), planIds: () => null };
 
-  it("la importación deja Core incluido en los seis Net (borrador) y no publica nada; la proyección pública lo quita con la política apagada", async () => {
+  it("la política propuesta ya no lleva «Core incluido» y la importación no lo escribe en ningún Net; la proyección pública lo quita con la política apagada", async () => {
+    expect(PROPOSED_POLICY.coreIncluded).toEqual({});
+    expect(CATALOG_POLICY.coreIncluded).toBeUndefined();
     const store = new MemoryWebStore();
     const svc = new WebAdminService({ store, refs });
     await seedElephantSource(svc, store);
     const before = await svc.publicSite("published");
     await importCommercialSpecs(svc, store, { dryRun: false });
-    for (const k of NET_COMPLETE) expect(productDraft.parse((await store.getEntry("product", k))!.draft).catalog.coreIncluded, k).toEqual({ plan: "essential", status: "approved", upgrade: { kind: "difference", status: "approved", yearlyPlans: ["business"] }, additional: { kind: "core_credit", status: "approved" } });
+    for (const k of NET_COMPLETE) expect(productDraft.parse((await store.getEntry("product", k))!.draft).catalog.coreIncluded, k).toBeUndefined();
     expect((await svc.publicSite("published")).version).toBe(before.version);
-    const d = productDraft.parse((await store.getEntry("product", "ski-net-complete"))!.draft);
+    // Un borrador antiguo que todavía la lleve: nunca sale con la política apagada
+    const ski = productDraft.parse((await store.getEntry("product", "ski-net-complete"))!.draft);
+    const d = { ...ski, catalog: { ...ski.catalog, coreIncluded: RETIRED_NET_CORE_INCLUDED["ski-net-complete"] } };
     expect((publicView("product", d as unknown as Record<string, unknown>) as { catalog: Record<string, unknown> }).catalog.coreIncluded).toBeUndefined();
     // Con la política activa sale lo aprobado: la inclusión, la ampliación (anual solo Business) y el Net adicional
     const on = (publicView("product", d as unknown as Record<string, unknown>, { policy: true }) as { catalog: Record<string, unknown> }).catalog.coreIncluded;
     expect(on).toEqual({ plan: "essential", status: "approved", upgrade: { kind: "difference", status: "approved", yearlyPlans: ["business"] }, additional: { kind: "core_credit", status: "approved" } });
-    // El simulador con los borradores ya compone el Net
+    // Core y Net se suman, también con los borradores (29 + 99)
     const { catalog, policy } = await svc.commercialCatalog("proposed");
-    expect(commercialQuote(catalog, policy, { ...ess, items: [{ key: "ski-net-complete" }] }).recurring.monthlyCents).toBe(eur(99));
+    expect(commercialQuote(catalog, policy, { ...ess, items: [{ key: "ski-net-complete" }] }).recurring.monthlyCents).toBe(eur(128));
     const pub = await svc.commercialCatalog("published");
     expect(commercialQuote(pub.catalog, pub.policy, { ...ess, items: [{ key: "ski-net-complete" }] }).recurring.monthlyCents).toBe(eur(128));
-    // Revisión: Core incluido aprobado sin efecto y reglas propuestas visibles; las tres reglas nuevas registradas
+    // Revisión: ningún aviso de Core incluido y las tres reglas retiradas ya no figuran
     const rev = await svc.commercialReview();
-    const ski = rev.products.find((p) => p.key === "ski-net-complete")!;
-    expect(ski.warnings.join()).toMatch(/Core incluido aprobado sin efecto/);
-    expect(ski.pending.join()).not.toMatch(/Ampliación de Core|Net adicional/);
-    expect(ski.blocking).toEqual([]);
-    expect(rev.rules.filter((x) => x.id.startsWith("net-")).map((x) => `${x.id}:${x.active}`)).toEqual(["net-core-incluido:false", "net-ampliacion-core:false", "net-adicionales:false"]);
+    const skiReview = rev.products.find((p) => p.key === "ski-net-complete")!;
+    expect(skiReview.warnings.join()).not.toMatch(/Core incluido/);
+    expect(skiReview.blocking).toEqual([]);
+    expect(rev.rules.filter((x) => x.id.startsWith("net-"))).toEqual([]);
+    // Un borrador que todavía la lleve se avisa como retirada
+    const saved = await svc.save("product", "ski-net-complete", { draft: d, expectedVersion: (await store.getEntry("product", "ski-net-complete"))!.draftVersion }, "operator:1");
+    expect(saved.draftVersion).toBeGreaterThan(1);
+    expect((await svc.commercialReview()).products.find((p) => p.key === "ski-net-complete")!.warnings.join()).toMatch(/«Core incluido» está retirado/);
   });
 
   it("validaciones: Core incluido solo en soluciones Net; texto «Core incluido» bloqueado mientras no se aplique", async () => {

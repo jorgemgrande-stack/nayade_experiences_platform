@@ -97,6 +97,8 @@ Elephant People no se incluye en ningún plan (decisión del 01/11/2026): es una
 
 ## Elephant Net completo con Elephant Core incluido (decisión del 27/10/2026)
 
+> **RETIRADA el 10/11/2026 (decisión definitiva de Jorge).** Las soluciones Elephant Net **no** incluyen Elephant Core Essential: el modelo es Core + Net, con precios y derechos separados (Essential 29 € + Hotel Net 119 € = 148 €/mes antes de impuestos). La regla nunca llegó a publicarse ni a cobrarse. La política propuesta ya no la lleva, la importación de fichas no escribe `catalog.coreIncluded`, la revisión `review20261109netunificacion.ts` lo retira de los borradores y las tres reglas `net-*` ya no figuran entre las reglas preparadas. La mecánica del cotizador descrita abajo queda como **código inactivo** (`RETIRED_NET_CORE_INCLUDED` en `policy.ts`, `commercialQuote.ts`, `fromCatalog.ts`, `netSimulations.ts`, `scripts/catalog/netCoreStripeSandbox.ts`), con sus pruebas. Lo que sigue se conserva solo como referencia histórica.
+
 **Modelo.** Una solución Elephant Net completa equivale a Elephant Core Essential más la solución sectorial, por el precio total del paquete. Essential incluye 3 usuarios, 1 sede y sus capacidades. Una empresa nunca paga Elephant Core dos veces.
 
 **Qué productos lo llevan.** Solo las soluciones completas (familia `net_bundle`):

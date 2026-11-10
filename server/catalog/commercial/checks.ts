@@ -188,8 +188,9 @@ export function commercialChecks(entry: CheckEntry, all: readonly CheckEntry[], 
   // ── Elephant Core incluido en las soluciones Elephant Net completas ──
   if (entry.family === "net_bundle") {
     const ci = c.coreIncluded;
-    if (!ci) warnings.push("Elephant Net sin Elephant Core incluido: se vendería sumado a un plan (dos cuotas)");
-    else {
+    // 10/11/2026: Core y Net se contratan por separado; la regla «Core incluido» está retirada
+    if (ci) {
+      warnings.push("«Core incluido» está retirado (10/11/2026: Elephant Core y Elephant Net se contratan por separado): quítalo del borrador");
       const plan = byKey.get(ci.plan);
       if (!plan || plan.family !== "core_plan") blocking.push(`el Core incluido «${ci.plan}» no es un plan de Elephant Core`);
       else {
@@ -202,7 +203,6 @@ export function commercialChecks(entry: CheckEntry, all: readonly CheckEntry[], 
       else if (ci.upgrade.status === "proposed") pending.push("Ampliación de Core cobrando la diferencia de tarifas (propuesta)");
       if (!ci.additional) warnings.push("sin regla de Net adicional: una segunda solución Elephant Net se presupuestaría");
       else if (ci.additional.status === "proposed") pending.push("Net adicional sin volver a cobrar Core (propuesta)");
-      if (ci.status === "approved" && !opts.policyEnabled) warnings.push("Core incluido aprobado sin efecto todavía (política comercial desactivada): la web y los cobros siguen sumando el plan");
     }
     // Un paquete Net no incluye otro paquete ni un plan (Core se cuenta una vez)
     for (const k of c.bundleOf) if (["net_bundle", "core_plan"].includes(byKey.get(k)?.family ?? "")) blocking.push(`«${k}» no puede ser componente de una solución Elephant Net`);

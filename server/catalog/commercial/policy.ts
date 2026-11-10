@@ -68,14 +68,28 @@ export interface NetCoreInclusion {
   additional?: { kind: "core_credit"; status: DecisionStatus };
 }
 
-/** Soluciones Elephant Net completas (paquetes de la familia net_bundle) con Elephant Core Essential incluido. */
+/**
+ * RETIRADA el 10/11/2026 (decisión definitiva de Jorge): las soluciones Elephant Net NO incluyen Elephant Core Essential.
+ * El modelo es Core + Net, con precios y derechos separados (Essential 29 € + Hotel Net 119 € = 148 €/mes antes de
+ * impuestos). La regla nunca llegó a publicarse ni a cobrarse (la política comercial sigue apagada). La política
+ * propuesta ya no la lleva, así que la importación de fichas no vuelve a escribir `catalog.coreIncluded`, y la revisión
+ * del catálogo (review20261109netunificacion.ts) lo retira de los borradores. La mecánica del cotizador
+ * (commercialQuote.ts, fromCatalog.ts, netSimulations.ts) queda como CÓDIGO INACTIVO, con sus pruebas, sobre
+ * `RETIRED_NET_CORE_INCLUDED`.
+ */
+/** Soluciones Elephant Net completas (paquetes de la familia net_bundle). */
 export const NET_COMPLETE = ["hotel-net-complete", "ski-net-complete", "travel-net-complete", "restaurant-net-complete", "care-net-complete", "social-token-net-complete"] as const;
 /**
  * Decisiones comerciales del 27/10/2026 (cierre Elephant Net + Core): Core Essential incluido; ampliación a Business
  * 50 €/mes o 480 €/año y a Enterprise 170 €/mes (sin tarifa anual de la ampliación a Enterprise: por presupuesto);
- * cada Net adicional, −29 €/mes. Todo aprobado y sin efecto hasta encender la política.
+ * cada Net adicional, −29 €/mes. Retiradas el 10/11/2026 (ver arriba): solo para el código inactivo y sus pruebas.
  */
 const NET_CORE: NetCoreInclusion = { plan: "essential", status: "approved", upgrade: { kind: "difference", status: "approved", yearlyPlans: ["business"] }, additional: { kind: "core_credit", status: "approved" } };
+
+/** Regla retirada «Core incluido» de las seis soluciones (10/11/2026): ninguna política vigente ni propuesta la usa. */
+export const RETIRED_NET_CORE_INCLUDED: Record<string, NetCoreInclusion> = Object.fromEntries(
+  NET_COMPLETE.map((k) => [k, { ...NET_CORE, upgrade: { ...NET_CORE.upgrade!, yearlyPlans: [...NET_CORE.upgrade!.yearlyPlans!] }, additional: { ...NET_CORE.additional! } }]),
+);
 
 /** Comportamiento vigente: sin inclusiones, sin cupos de Enterprise, paquetes como hoy. */
 export const CATALOG_POLICY: CommercialPolicy = {
@@ -110,7 +124,8 @@ export const PROPOSED_POLICY: CommercialPolicy = {
   ],
   bundleRule: { kind: "min2", status: "proposed" },
   quoteOnRequestPlans: ["enterprise"],
-  coreIncluded: Object.fromEntries(NET_COMPLETE.map((k) => [k, { ...NET_CORE, upgrade: { ...NET_CORE.upgrade!, yearlyPlans: [...NET_CORE.upgrade!.yearlyPlans!] }, additional: { ...NET_CORE.additional! } }])),
+  // Sin «Core incluido»: retirado el 10/11/2026 (Core y Net se contratan por separado)
+  coreIncluded: {},
 };
 
 /** Reglas pendientes de aprobación de una política (para avisos en el CRM y en las pruebas). */
