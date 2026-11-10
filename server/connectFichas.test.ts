@@ -49,7 +49,7 @@ import { runWithTenant } from "./_core/tenant";
 import { parseConnectCard, advertisesRequests, parseMarketplaceHeaders } from "./connectCard";
 import { buildConnectCatalog, type ChannelCatalogItem } from "./connectMarketplace";
 import { brandHeaders, connectAction, CONNECT_BRANDS } from "../shared/connectMarketplace";
-import { EMPTY_SHEET, headlinePrice, periodLabel, sortPrices, taxLabel } from "../shared/connectCard";
+import { EMPTY_SHEET, formatMoney, headlinePrice, periodLabel, sortPrices, taxLabel } from "../shared/connectCard";
 
 const NOW = Date.UTC(2026, 10, 1, 12);
 const T = "empresa-fichas";
@@ -207,6 +207,35 @@ describe("precios: periodicidad e IVA", () => {
     expect(headlinePrice([p("yearly", 2), p("monthly", 3)])).toMatchObject({ price: { kind: "monthly" }, from: true });
     expect(headlinePrice([p("monthly", 3)])).toMatchObject({ from: false });
     expect(headlinePrice([])).toBeNull();
+  });
+  it("importes: separador de miles español desde las cuatro cifras («1.899,00 €», no «1899,00 €»)", () => {
+    const text = (cents: number, currency = "EUR") => formatMoney(cents, currency).replace(/\s/g, " ");
+    expect(text(189900)).toBe("1.899,00 €");
+    expect(text(100000)).toBe("1.000,00 €");
+    expect(text(999999)).toBe("9.999,99 €");
+    expect(text(1250050)).toBe("12.500,50 €");
+    expect(text(123456789)).toBe("1.234.567,89 €");
+    // Por debajo de mil no cambia nada
+    expect(text(99999)).toBe("999,99 €");
+    expect(text(2900)).toBe("29,00 €");
+    expect(text(5)).toBe("0,05 €");
+    expect(text(0)).toBe("0,00 €");
+    expect(text(-189900)).toBe("-1.899,00 €");
+  });
+  it("importes: solo cambia la agrupación; céntimos, moneda y redondeo son los de antes", () => {
+    const before = (cents: number, currency: string) => new Intl.NumberFormat("es-ES", { style: "currency", currency }).format(cents / 100);
+    for (const currency of ["EUR", "USD", "GBP", "JPY"]) {
+      for (const cents of [0, 1, 5, 99, 100, 2900, 75900, 99999, 100000, 100001, 189900, 189950, 189999, 999999, 1000000, 1250050, 123456789, -189900, 1899.4, 1899.5, 189900.6]) {
+        const now = formatMoney(cents, currency);
+        // Quitando el punto de los miles queda exactamente el texto anterior (que en es-ES ya agrupaba desde cinco cifras)
+        expect(now.replace(/\./g, ""), `${cents} ${currency}`).toBe(before(cents, currency).replace(/\./g, ""));
+        if (Math.abs(cents) >= 100000) expect(now, `${cents} ${currency}`).toMatch(/\d\.\d{3}/);
+      }
+    }
+  });
+  it("planes y marketplace comparten el mismo formateador", async () => {
+    const { planMoney } = await import("../shared/planPresentation");
+    expect(planMoney).toBe(formatMoney);
   });
 });
 
