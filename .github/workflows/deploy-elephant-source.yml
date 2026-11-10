@@ -71,6 +71,8 @@ on:
           - correo-production-activar
           - catalogo-revision
           - catalogo-revision-aplicar
+          - derechos-adquiridos-tpv
+          - derechos-adquiridos-tpv-aplicar
           - catalogo-fichas
           - catalogo-fichas-aplicar
           - catalogo-fichas-publicar
@@ -145,7 +147,7 @@ jobs:
     # Production: lo ordinario (publicar, revertir, solo lectura, copias y revisiones auditadas; ORDINARY_PRODUCTION_ACTIONS
     # en scripts/deploy/esRailwayLib.ts) va sin aprobación; lo extraordinario (variables, secretos, correo real, almacenamiento,
     # migraciones o restauraciones a mano), por el entorno protegido. Orden permanente del propietario (26/10/2026).
-    environment: ${{ inputs.environment == 'production' && (contains(fromJSON('["publicar","estado","verificar-token","comprobar-salud","diagnostico-almacenamiento","copia-de-seguridad","verificar-copia","migraciones-plataforma-simulacion","migraciones-simulacion","verificar-migraciones","huerfanos","correo-acceso-estado","avisos-solicitudes-estado","connect-canal-estado","dominios-estado","medicion-comprobar","simular-purga-empresas-prueba","catalogo-revision","catalogo-revision-aplicar","catalogo-fichas","catalogo-fichas-aplicar","catalogo-fichas-publicar","catalogo-fichas-publicar-aplicar","catalogo-fichas-revertir","catalogo-fichas-revertir-aplicar","catalogo-fichas-integridad"]'), inputs.action) || startsWith(inputs.action, 'revertir-')) && 'elephant-source-production-despliegue' || format('elephant-source-{0}', inputs.environment) }}
+    environment: ${{ inputs.environment == 'production' && (contains(fromJSON('["publicar","estado","verificar-token","comprobar-salud","diagnostico-almacenamiento","copia-de-seguridad","verificar-copia","migraciones-plataforma-simulacion","migraciones-simulacion","verificar-migraciones","huerfanos","correo-acceso-estado","avisos-solicitudes-estado","connect-canal-estado","dominios-estado","medicion-comprobar","simular-purga-empresas-prueba","catalogo-revision","catalogo-revision-aplicar","derechos-adquiridos-tpv","derechos-adquiridos-tpv-aplicar","catalogo-fichas","catalogo-fichas-aplicar","catalogo-fichas-publicar","catalogo-fichas-publicar-aplicar","catalogo-fichas-revertir","catalogo-fichas-revertir-aplicar","catalogo-fichas-integridad"]'), inputs.action) || startsWith(inputs.action, 'revertir-')) && 'elephant-source-production-despliegue' || format('elephant-source-{0}', inputs.environment) }}
     timeout-minutes: 60
     env:
       RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
@@ -186,7 +188,7 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: CLI de Railway (versión fijada)
-        if: startsWith(inputs.action, 'desplegar-') || inputs.action == 'publicar' || inputs.action == 'preparar-pruebas-live' || inputs.action == 'correo-pruebas-live' || inputs.action == 'preparar-production' || inputs.action == 'aplicar-production' || inputs.action == 'simular-purga-empresas-prueba' || inputs.action == 'purgar-empresas-prueba' || inputs.action == 'medicion-preparar' || inputs.action == 'medicion-comprobar' || startsWith(inputs.action, 'migraciones-') || inputs.action == 'verificar-migraciones' || startsWith(inputs.action, 'catalogo-revision') || startsWith(inputs.action, 'catalogo-fichas')
+        if: startsWith(inputs.action, 'desplegar-') || inputs.action == 'publicar' || inputs.action == 'preparar-pruebas-live' || inputs.action == 'correo-pruebas-live' || inputs.action == 'preparar-production' || inputs.action == 'aplicar-production' || inputs.action == 'simular-purga-empresas-prueba' || inputs.action == 'purgar-empresas-prueba' || inputs.action == 'medicion-preparar' || inputs.action == 'medicion-comprobar' || startsWith(inputs.action, 'migraciones-') || inputs.action == 'verificar-migraciones' || startsWith(inputs.action, 'catalogo-revision') || startsWith(inputs.action, 'derechos-adquiridos-tpv') || startsWith(inputs.action, 'catalogo-fichas')
         run: npm install -g @railway/cli@5.68.0
 
       - name: Verificar que el token es de Elephant Source y del entorno elegido
@@ -250,7 +252,7 @@ jobs:
         run: pnpm exec tsx scripts/deploy/esRailway.ts mail-live --env "${ES_ENV}" --allow "${ES_MAIL_ALLOW}"
 
       - name: Commit a desplegar (debe pertenecer a integration/elephant-source)
-        if: startsWith(inputs.action, 'desplegar-') || inputs.action == 'publicar' || inputs.action == 'preparar-pruebas-live' || inputs.action == 'correo-pruebas-live' || inputs.action == 'preparar-production' || inputs.action == 'aplicar-production' || inputs.action == 'simular-purga-empresas-prueba' || inputs.action == 'purgar-empresas-prueba' || inputs.action == 'medicion-preparar' || inputs.action == 'medicion-comprobar' || startsWith(inputs.action, 'migraciones-') || inputs.action == 'verificar-migraciones' || startsWith(inputs.action, 'catalogo-revision') || startsWith(inputs.action, 'catalogo-fichas')
+        if: startsWith(inputs.action, 'desplegar-') || inputs.action == 'publicar' || inputs.action == 'preparar-pruebas-live' || inputs.action == 'correo-pruebas-live' || inputs.action == 'preparar-production' || inputs.action == 'aplicar-production' || inputs.action == 'simular-purga-empresas-prueba' || inputs.action == 'purgar-empresas-prueba' || inputs.action == 'medicion-preparar' || inputs.action == 'medicion-comprobar' || startsWith(inputs.action, 'migraciones-') || inputs.action == 'verificar-migraciones' || startsWith(inputs.action, 'catalogo-revision') || startsWith(inputs.action, 'derechos-adquiridos-tpv') || startsWith(inputs.action, 'catalogo-fichas')
         run: |
           SHA="${ES_COMMIT:-${GITHUB_SHA}}"
           git merge-base --is-ancestor "${SHA}" "${GITHUB_SHA}" || { echo "El commit ${SHA} no es de integration/elephant-source"; exit 1; }
@@ -345,7 +347,7 @@ jobs:
           esac
 
       - name: Export del commit (sin railway.toml ni datos de semilla)
-        if: startsWith(inputs.action, 'desplegar-') || inputs.action == 'publicar' || inputs.action == 'preparar-pruebas-live' || inputs.action == 'correo-pruebas-live' || inputs.action == 'preparar-production' || inputs.action == 'aplicar-production' || inputs.action == 'simular-purga-empresas-prueba' || inputs.action == 'purgar-empresas-prueba' || inputs.action == 'medicion-preparar' || inputs.action == 'medicion-comprobar' || startsWith(inputs.action, 'migraciones-') || inputs.action == 'verificar-migraciones' || startsWith(inputs.action, 'catalogo-revision') || startsWith(inputs.action, 'catalogo-fichas')
+        if: startsWith(inputs.action, 'desplegar-') || inputs.action == 'publicar' || inputs.action == 'preparar-pruebas-live' || inputs.action == 'correo-pruebas-live' || inputs.action == 'preparar-production' || inputs.action == 'aplicar-production' || inputs.action == 'simular-purga-empresas-prueba' || inputs.action == 'purgar-empresas-prueba' || inputs.action == 'medicion-preparar' || inputs.action == 'medicion-comprobar' || startsWith(inputs.action, 'migraciones-') || inputs.action == 'verificar-migraciones' || startsWith(inputs.action, 'catalogo-revision') || startsWith(inputs.action, 'derechos-adquiridos-tpv') || startsWith(inputs.action, 'catalogo-fichas')
         run: pnpm exec tsx scripts/deploy/esRailway.ts export --sha "${ES_DEPLOY_SHA}" --out "${RUNNER_TEMP}/export"
 
       # Migraciones sueltas: viajan en la imagen de restore-drill, así que primero se despliega la de ESTE commit y cada
@@ -397,6 +399,18 @@ jobs:
           pnpm exec tsx scripts/deploy/esRailway.ts drill --env "${ES_ENV}" --expect-sha "${ES_DEPLOY_SHA}" --command "node dist-cp/backup-job.js catalog-review"
           if [ "${ES_ACTION}" = "catalogo-revision-aplicar" ]; then
             pnpm exec tsx scripts/deploy/esRailway.ts drill --env "${ES_ENV}" --expect-sha "${ES_DEPLOY_SHA}" --command "node dist-cp/backup-job.js catalog-review --apply"
+          fi
+
+      # Derecho adquirido del TPV (estrategia TPV, opción A del 10/11/2026): restore-drill con ESTE commit y la orden
+      # tpv-acquired-rights (simulación, o aplicación: licencia tpv-acquired-rights a cada empresa con la caja del plan y marca
+      # de sembrado en el registro). Nunca toca suscripciones, precios, Stripe ni cobros.
+      - name: Derecho adquirido del TPV
+        if: startsWith(inputs.action, 'derechos-adquiridos-tpv')
+        run: |
+          pnpm exec tsx scripts/deploy/esRailway.ts deploy --env "${ES_ENV}" --service restore-drill --dir "${RUNNER_TEMP}/export" --sha "${ES_DEPLOY_SHA}"
+          pnpm exec tsx scripts/deploy/esRailway.ts drill --env "${ES_ENV}" --expect-sha "${ES_DEPLOY_SHA}" --command "node dist-cp/backup-job.js tpv-acquired-rights"
+          if [ "${ES_ACTION}" = "derechos-adquiridos-tpv-aplicar" ]; then
+            pnpm exec tsx scripts/deploy/esRailway.ts drill --env "${ES_ENV}" --expect-sha "${ES_DEPLOY_SHA}" --command "node dist-cp/backup-job.js tpv-acquired-rights --apply"
           fi
 
       # Fichas comerciales (docs/runbooks/CATALOGO_COMERCIAL_UNIFICADO.md): restore-drill con ESTE commit y la orden

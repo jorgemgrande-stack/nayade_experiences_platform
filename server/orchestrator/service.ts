@@ -18,7 +18,7 @@
  *    licencias; nunca se borran datos. Nada de esto ocurre solo: lo aplica `review`, una acción explícita.
  */
 import crypto from "node:crypto";
-import type { QuoteRequest, QuoteResult } from "../catalog/quote";
+import { legacyProductText, type QuoteRequest, type QuoteResult } from "../catalog/quote";
 import { parseQuoteRequest } from "../catalog/request";
 import type { CapabilityStore } from "../_core/capabilities/store";
 import type { CrmService } from "../crm/service";
@@ -249,6 +249,18 @@ export class CommercialOrchestrator {
     const parsed = parseQuoteRequest(base.request, { allowOwned: false });
     if (!parsed.ok) throw new OrderError("invalid_input", parsed.message);
     const request = { ...parsed.value, items: parsed.value.items ?? [] };
+    // Productos heredados (09/11/2026): quien ya los tiene los conserva en sus cambios; nunca entran como contratación nueva
+    // Lo conservado: lo del pedido o la prueba de partida y las partidas vivas de su suscripción (lo añadido desde el CRM)
+    const kept = new Set(base.kept ?? []);
+    if (base.subscriptionId !== null) {
+      const at = this.now();
+      for (const i of await this.d.subscriptionStore.items(base.subscriptionId)) if (i.effectiveTo === null || i.effectiveTo > at) kept.add(i.productKey);
+    }
+    for (const it of request.items) {
+      if (kept.has(it.key)) continue;
+      const p = await this.d.catalog.product(it.key);
+      if (p?.legacy) throw new OrderError("invalid_state", legacyProductText(p.name, (await this.d.catalog.product(p.legacy.replacedBy))?.name ?? p.legacy.replacedBy));
+    }
     const { order, created } = await this.d.store.insert({
       idempotencyKey,
       payloadHash,
@@ -274,7 +286,7 @@ export class CommercialOrchestrator {
     return { created, ...(await this.advance(order.id, actor)) };
   }
 
-  private async resolveSource(input: CreateOrderInput): Promise<{ kind: CommercialOrder["kind"]; companyId: number; request: unknown; subscriptionId: number | null; tenantId: string | null }> {
+  private async resolveSource(input: CreateOrderInput): Promise<{ kind: CommercialOrder["kind"]; companyId: number; request: unknown; subscriptionId: number | null; tenantId: string | null; kept?: string[] }> {
     if (input.changeOf !== undefined) {
       const prev = await this.must(input.changeOf);
       if (!LIVE.includes(prev.state)) throw new OrderError("invalid_state", "Solo se cambia un pedido activo (también en gracia o suspendido)");
@@ -284,7 +296,7 @@ export class CommercialOrchestrator {
         throw new OrderError("invalid_input", "Cambia el plan y la periodicidad en dos pedidos distintos (primero el plan)");
       }
       if (r.ok && stableHash({ ...r.value, items: r.value.items ?? [] }) === stableHash(prev.request)) throw new OrderError("invalid_input", "Es la misma configuración que la vigente");
-      return { kind: "change", companyId: prev.companyId, request: input.request, subscriptionId: prev.subscriptionId, tenantId: prev.tenantId };
+      return { kind: "change", companyId: prev.companyId, request: input.request, subscriptionId: prev.subscriptionId, tenantId: prev.tenantId, kept: prev.request.items.map((i) => i.key) };
     }
     if (input.trialId !== undefined) {
       if (!this.d.trials) throw new OrderError("unavailable", "Las pruebas no están configuradas");
@@ -295,7 +307,7 @@ export class CommercialOrchestrator {
       const sub = (await this.d.subscriptions.list({ companyId: company.id })).find((s) => s.status !== "canceled");
       if (!sub) throw new OrderError("invalid_state", "La prueba no tiene suscripción");
       const request = input.request ?? { plan: t.configuration.plan ?? "essential", interval: input.interval ?? "month", items: t.configuration.addons.map((key) => ({ key })) };
-      return { kind: "trial_conversion", companyId: company.id, request, subscriptionId: sub.id, tenantId: t.tenantId };
+      return { kind: "trial_conversion", companyId: company.id, request, subscriptionId: sub.id, tenantId: t.tenantId, kept: t.configuration.addons };
     }
     let companyId: number;
     let request = input.request;

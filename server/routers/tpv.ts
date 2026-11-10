@@ -40,6 +40,7 @@ import {
   costCenters,
   invoices,
   leads,
+  users,
 } from "../../drizzle/schema";
 import { eq, and, or, like, desc, sql, gte, lte, inArray } from "drizzle-orm";
 import { TRPCError } from "@trpc/server";
@@ -48,7 +49,10 @@ import { currentTpvScope } from "../tpvCatalogScope";
 import { IDEMPOTENCY_KEY_RE, withSaleKeyLock, withTenantLock, findSaleByIdempotencyKey, resolveExistingSale, isIdempotencyKeyConflict } from "../tpvSaleIdempotency";
 import { computeSessionPaymentTotals, receivedSaleCondition } from "../tpvSessionTotals";
 import { tpvReportsRouter } from "./tpvReports";
-import { addCorrection, CORRECTION_KINDS, companyCutoff, correctionsCashDelta, countActiveRegisters, currentTpvPlan, getClosureSnapshot, listCorrections, recordClosureSnapshot, registerOperationalDay, setCompanyCutoff, tpvAdvancedAllowed, withRegisterSlot } from "../tpvRulesDb";
+import { assertRegisterOperator, assertSessionOperator, canAuthorizeReturns, decideReturn, listRegisterOperators, listReturnRequests, OPERATOR_ROLES, requestReturn, RETURN_ACTIONS, setRegisterOperators, supervisionOverview } from "../tpvBusinessDb";
+import { acquiredRights, assertTpvFeature, postCorrectionToTreasury, tpvFeatureEnabled } from "../tpvRulesDb";
+import { tpvSeedMarker } from "../tpvSeedMarker";
+import { addCorrection, CORRECTION_KINDS, companyCutoff, correctionsCashDelta, countActiveRegisters, currentTpvPlan, ensureClosureSnapshot, getClosureSnapshot, isDuplicateKeyError, listCorrections, recordClosureSnapshot, registerOperationalDay, setCompanyCutoff, tpvAdvancedContracted, withRegisterSlot } from "../tpvRulesDb";
 import { CUTOFF_RE, DEFAULT_CUTOFF } from "../../shared/tpvPlan";
 import { applySaleStock, assertStockAvailable, type StockSaleLine } from "../inventoryDb";
 import { issuePurchasePoints, issueTpvSalePointsAfterLink, type IssueResult } from "../loyaltyDb";
@@ -414,9 +418,12 @@ export const tpvRouter = router({
             await db.update(cashRegisters).set({ isActive: true }).where(eq(cashRegisters.id, input.registerId));
           });
         } else {
-          const [open] = await db.select({ id: cashSessions.id }).from(cashSessions).where(and(eq(cashSessions.registerId, input.registerId), eq(cashSessions.status, "open"))).limit(1);
-          if (open) throw new TRPCError({ code: "CONFLICT", message: "Cierra la caja antes de desactivarla" });
-          await db.update(cashRegisters).set({ isActive: false }).where(eq(cashRegisters.id, input.registerId));
+          // Con el bloqueo de la caja: una apertura simultánea espera y después ve la caja desactivada
+          await withTenantLock("tpv_session", `r${input.registerId}`, 10, "La caja está ocupada con otra operación. Inténtalo de nuevo en unos segundos.", async () => {
+            const [open] = await db.select({ id: cashSessions.id }).from(cashSessions).where(and(eq(cashSessions.registerId, input.registerId), eq(cashSessions.status, "open"))).limit(1);
+            if (open) throw new TRPCError({ code: "CONFLICT", message: "Cierra la caja antes de desactivarla" });
+            await db.update(cashRegisters).set({ isActive: false }).where(eq(cashRegisters.id, input.registerId));
+          });
         }
       }
       const [updated] = await db.select().from(cashRegisters).where(eq(cashRegisters.id, input.registerId));
@@ -430,13 +437,17 @@ export const tpvRouter = router({
 
   // Lo que incluye el plan en la caja y el uso actual: lo pinta el panel; quien decide es el servidor
   planInfo: tpvAccessProc.query(async () => {
-    const [plan, activeRegisters, advanced, cutoff] = await Promise.all([
+    const [plan, activeRegisters, advanced, cutoff, rights] = await Promise.all([
       currentTpvPlan().catch(() => null),
       countActiveRegisters(),
-      tpvAdvancedAllowed(false),
+      tpvAdvancedContracted(),
       companyCutoff(),
+      acquiredRights(),
     ]);
-    return { plan, activeRegisters, advanced, cutoff };
+    // Derecho adquirido: lo que la empresa conserva aunque su plan ya no lo incluya (solo se muestra en Essential)
+    const acquired = plan?.tier === "essential" ? { features: rights.features, cutoff: rights.cutoff, grant: rights.grant } : { features: [], cutoff: rights.cutoff, grant: rights.grant };
+    const seeded = !!(await tpvSeedMarker());
+    return { plan, activeRegisters, advanced, cutoff, acquired, seeded };
   }),
 
   // Hora de corte operativo: de la empresa (registerId ausente) o de una caja (null = la de la empresa)
@@ -500,6 +511,8 @@ export const tpvRouter = router({
       if (!register) throw new TRPCError({ code: "NOT_FOUND", message: "La caja no existe o está desactivada" });
       // Varias sedes (Business): solo se abre una caja de una sede en la que trabaja el usuario
       if (!(await userMayUseSite(ctx.user, register.siteId ?? null))) throw new TRPCError({ code: "FORBIDDEN", message: "Esta caja es de una sede en la que no trabajas" });
+      // Operadores por caja (Business): con operadores asignados, solo ellos y la administración del TPV
+      await assertRegisterOperator(input.registerId, ctx.user);
       // Apertura idempotente: repetir con la misma clave devuelve la sesión ya abierta (sin otro correo)
       if (input.idempotencyKey) {
         const [same] = await db.select().from(cashSessions).where(eq(cashSessions.openKey, input.idempotencyKey));
@@ -510,11 +523,17 @@ export const tpvRouter = router({
       }
       // Una sola sesión abierta por caja, también con dos aperturas a la vez: comprobación e inserción con el bloqueo
       // de la caja
-      const opened = await withTenantLock("tpv_session", `r${input.registerId}`, 10, "Se está abriendo esta caja. Espera unos segundos.", async () => {
+      const opened = await withTenantLock("tpv_session", `r${input.registerId}`, 10, "La caja está ocupada con otra operación. Inténtalo de nuevo en unos segundos.", async () => {
         if (input.idempotencyKey) {
           const [same] = await db.select().from(cashSessions).where(eq(cashSessions.openKey, input.idempotencyKey));
-          if (same) return { session: same, replay: true };
+          if (same) {
+            if (same.registerId !== input.registerId) throw new TRPCError({ code: "CONFLICT", message: "Esa clave ya se usó para abrir otra caja" });
+            return { session: same, replay: true };
+          }
         }
+        // Puede haberse desactivado mientras se esperaba el bloqueo
+        const [still] = await db.select({ isActive: cashRegisters.isActive }).from(cashRegisters).where(eq(cashRegisters.id, input.registerId));
+        if (!still?.isActive) throw new TRPCError({ code: "NOT_FOUND", message: "La caja no existe o está desactivada" });
         const existing = await db
           .select({ id: cashSessions.id })
           .from(cashSessions)
@@ -533,6 +552,9 @@ export const tpvRouter = router({
           openedAt: Date.now(),
           siteId: register.siteId ?? null,
           openKey: input.idempotencyKey ?? null,
+        }).catch((e) => {
+          if (isDuplicateKeyError(e)) throw new TRPCError({ code: "CONFLICT", message: "Esa clave ya se usó para abrir otra caja" });
+          throw e;
         });
         const newId = (result as any).insertId as number;
         const [row] = await db.select().from(cashSessions).where(eq(cashSessions.id, newId));
@@ -584,10 +606,15 @@ export const tpvRouter = router({
         .from(cashSessions)
         .where(eq(cashSessions.id, input.sessionId));
       if (!session) throw new TRPCError({ code: "NOT_FOUND", message: "Sesión no encontrada" });
+      await assertRegisterOperator(session.registerId, ctx.user);
       const replayOf = (s: typeof session) => (input.idempotencyKey && s.closeKey === input.idempotencyKey ? s : null);
       if (session.status === "closed") {
         const replay = replayOf(session);
-        if (replay) return replay;
+        if (replay) {
+          // Si el primer intento cayó antes de guardar la foto del cierre, se rehace con lo que guardó la sesión
+          await ensureClosureSnapshot(replay).catch((e) => console.error("[TPV] Error reparando la foto del cierre:", e));
+          return replay;
+        }
         throw new TRPCError({ code: "CONFLICT", message: "La sesión ya está cerrada" });
       }
 
@@ -597,7 +624,11 @@ export const tpvRouter = router({
       const claimedAt = Date.now();
       const [claim] = await db.update(cashSessions)
         .set({ status: "closed", closedAt: claimedAt, closeKey: input.idempotencyKey ?? null })
-        .where(and(eq(cashSessions.id, input.sessionId), eq(cashSessions.status, "open")));
+        .where(and(eq(cashSessions.id, input.sessionId), eq(cashSessions.status, "open")))
+        .catch((e) => {
+          if (isDuplicateKeyError(e)) throw new TRPCError({ code: "CONFLICT", message: "Esa clave ya se usó para cerrar otra caja" });
+          throw e;
+        });
       if (Number((claim as any)?.affectedRows ?? 0) !== 1) {
         // Otro intento con la misma clave lo ha cerrado a la vez: es el mismo cierre
         const [now] = await db.select().from(cashSessions).where(eq(cashSessions.id, input.sessionId));
@@ -625,26 +656,24 @@ export const tpvRouter = router({
       const closingAmount = openingAmt + totalCash + totalManualIn - totalManualOut;
       const cashDifference = input.countedCash - closingAmount;
 
-      await db.update(cashSessions).set({
-        countedCash: String(input.countedCash),
-        closingAmount: String(closingAmount),
-        cashDifference: String(cashDifference),
-        totalCash: String(totalCash),
-        totalCard: String(totalCard),
-        totalBizum: String(totalBizum),
-        totalMixed: String(totalMixed),
-        totalManualOut: String(totalManualOut),
-        totalManualIn: String(totalManualIn),
-        notes: input.notes ?? session.notes,
-      }).where(eq(cashSessions.id, input.sessionId));
-
-      const [updated] = await db.select().from(cashSessions).where(eq(cashSessions.id, input.sessionId));
-
       // Día operativo del cierre (hora de corte de la caja o de la empresa; por defecto 00:00 en su zona: la fecha de
-      // siempre) y foto inmutable del cierre: se escribe una vez y nunca se modifica (los ajustes van aparte)
+      // siempre) y foto inmutable del cierre: se escribe una vez y nunca se modifica (los ajustes van aparte). Los
+      // totales y la foto se guardan en la misma transacción.
       const [regCutoff] = await db.select({ cutoffTime: cashRegisters.cutoffTime }).from(cashRegisters).where(eq(cashRegisters.id, session.registerId));
       const sessionDay = await registerOperationalDay(Number(session.openedAt), regCutoff?.cutoffTime ?? null).catch(() => madridDateKey(new Date(Number(session.openedAt))));
-      try {
+      await db.transaction(async (tx) => {
+        await tx.update(cashSessions).set({
+          countedCash: String(input.countedCash),
+          closingAmount: String(closingAmount),
+          cashDifference: String(cashDifference),
+          totalCash: String(totalCash),
+          totalCard: String(totalCard),
+          totalBizum: String(totalBizum),
+          totalMixed: String(totalMixed),
+          totalManualOut: String(totalManualOut),
+          totalManualIn: String(totalManualIn),
+          notes: input.notes ?? session.notes,
+        }).where(eq(cashSessions.id, input.sessionId));
         await recordClosureSnapshot({
           sessionId: session.id,
           registerId: session.registerId,
@@ -661,10 +690,10 @@ export const tpvRouter = router({
           closedByName: ctx.user.name ?? ctx.user.email ?? null,
           openedAt: Number(session.openedAt),
           closedAt: claimedAt,
-        });
-      } catch (e) {
-        console.error("[TPV] Error guardando la foto del cierre:", e);
-      }
+        }, tx);
+      });
+
+      const [updated] = await db.select().from(cashSessions).where(eq(cashSessions.id, input.sessionId));
 
       // Crear cierre contable en fin_cash_closures (idempotente, no bloquea si falla)
       try {
@@ -786,11 +815,20 @@ export const tpvRouter = router({
         registers = registers.filter((r) => scope.includes(siteOfStored(r.siteId, primary)));
       }
       const regById = new Map(registers.map((r) => [r.id, r]));
+      const company = await companyCutoff();
+      // Sesiones cerradas: el día operativo que quedó en la foto del cierre (no cambia si después cambia la hora de corte)
+      const closedIds = candidates.filter((s) => s.status === "closed").map((s) => s.id);
+      const snapDays = new Map<number, string>();
+      if (closedIds.length) {
+        const [snapRows] = (await db.execute(sql`SELECT session_id, operational_day FROM tpv_session_closures WHERE session_id IN (${sql.join(closedIds.map((i) => sql`${i}`), sql`, `)})`)) as unknown as [Array<{ session_id: number; operational_day: string }>];
+        for (const r of snapRows ?? []) snapDays.set(Number(r.session_id), String(r.operational_day));
+      }
       const rowsOut = new Map<number, { registerId: number; registerName: string; sessions: number; open: number; salesCount: number; salesTotal: number; totalCash: number; totalCard: number; totalBizum: number; totalOther: number; manualIn: number; manualOut: number; corrections: number; difference: number }>();
       for (const s of candidates) {
         const reg = regById.get(s.registerId);
         if (!reg) continue;
-        if ((await registerOperationalDay(Number(s.openedAt), reg.cutoffTime ?? null)) !== input.day) continue;
+        const sDay = snapDays.get(s.id) ?? (await registerOperationalDay(Number(s.openedAt), reg.cutoffTime ?? null, company));
+        if (sDay !== input.day) continue;
         const acc = rowsOut.get(reg.id) ?? { registerId: reg.id, registerName: reg.name, sessions: 0, open: 0, salesCount: 0, salesTotal: 0, totalCash: 0, totalCard: 0, totalBizum: 0, totalOther: 0, manualIn: 0, manualOut: 0, corrections: 0, difference: 0 };
         acc.sessions += 1;
         if (s.status === "open") acc.open += 1;
@@ -810,6 +848,49 @@ export const tpvRouter = router({
       return { day: input.day, registers: list };
     }),
 
+  // -- BUSINESS: OPERADORES POR CAJA ---------------------------------------------
+  registerOperators: tpvBackofficeProc
+    .input(z.object({ registerId: z.number().int().positive().optional() }).optional())
+    .query(async ({ input }) => listRegisterOperators(input?.registerId)),
+
+  setRegisterOperators: tpvBackofficeProc
+    .input(z.object({ registerId: z.number().int().positive(), operators: z.array(z.object({ userId: z.number().int().positive(), role: z.enum(OPERATOR_ROLES) })).max(100) }))
+    .mutation(async ({ input, ctx }) => setRegisterOperators(input.registerId, input.operators, ctx.user)),
+
+  // Usuarios que se pueden asignar a una caja (personal con acceso al TPV)
+  assignableOperators: tpvBackofficeProc.query(async () => {
+    return await db.select({ id: users.id, name: users.name, email: users.email, role: users.role }).from(users)
+      .where(and(eq(users.isActive, true), inArray(users.role, ["admin", "agente", "monitor", "adminrest", "controler"])));
+  }),
+
+  // -- BUSINESS: DEVOLUCIONES Y ANULACIONES AUTORIZADAS ----------------------------
+  requestReturn: tpvSellProc
+    .input(z.object({ saleId: z.number().int().positive(), action: z.enum(RETURN_ACTIONS), reason: z.string().trim().min(5).max(500), idempotencyKey: z.string().regex(IDEMPOTENCY_KEY_RE) }))
+    .mutation(async ({ input, ctx }) => requestReturn({ saleId: input.saleId, action: input.action, reason: input.reason, key: input.idempotencyKey }, ctx.user)),
+
+  // Quien autoriza ve todas (de sus cajas); el resto, las suyas
+  listReturnRequests: tpvAccessProc
+    .input(z.object({ status: z.enum(["pending", "approved", "rejected"]).optional() }).optional())
+    .query(async ({ input, ctx }) => {
+      if (!(await tpvFeatureEnabled("authorizedReturns"))) return { enabled: false, canAuthorize: false, requests: [] };
+      const all = await listReturnRequests({ status: input?.status });
+      const regs = Array.from(new Set(all.map((r) => r.registerId)));
+      const allowed = new Set<number>();
+      for (const r of regs) if (await canAuthorizeReturns(r, ctx.user)) allowed.add(r);
+      const canAuthorize = await canAuthorizeReturns(0, ctx.user);
+      return { enabled: true, canAuthorize: canAuthorize || allowed.size > 0, requests: all.filter((r) => allowed.has(r.registerId) || r.requestedBy === ctx.user.id) };
+    }),
+
+  decideReturn: tpvAccessProc
+    .input(z.object({ id: z.number().int().positive(), approve: z.boolean(), notes: z.string().trim().max(500).optional() }))
+    .mutation(async ({ input, ctx }) => decideReturn(input, ctx.user)),
+
+  // -- ENTERPRISE: SUPERVISIÓN CENTRALIZADA ----------------------------------------
+  supervision: tpvBackofficeProc.query(async () => {
+    await assertTpvFeature("centralSupervision");
+    return supervisionOverview();
+  }),
+
   // Corrección trazable de una caja YA cerrada (entrada, salida o ajuste del recuento): con motivo, autor y clave;
   // se registra aparte y el cierre no cambia. La caja abierta usa los movimientos ordinarios.
   addClosedSessionCorrection: tpvBackofficeProc
@@ -825,7 +906,14 @@ export const tpvRouter = router({
       if (!session) throw new TRPCError({ code: "NOT_FOUND", message: "Sesión no encontrada" });
       if (session.status !== "closed") throw new TRPCError({ code: "BAD_REQUEST", message: "La caja está abierta: registra un movimiento de caja normal" });
       if (input.kind !== "count_adjustment" && input.amount < 0) throw new TRPCError({ code: "BAD_REQUEST", message: "El importe de una entrada o salida es positivo" });
-      return addCorrection({ ...input, key: input.idempotencyKey, userId: typeof ctx.user.id === "number" ? ctx.user.id : null, userName: ctx.user.name ?? ctx.user.email ?? null });
+      const correction = await addCorrection({ ...input, key: input.idempotencyKey, userId: typeof ctx.user.id === "number" ? ctx.user.id : null, userName: ctx.user.name ?? ctx.user.email ?? null });
+      // Ajuste aparte en la caja contable (una sola vez; también al repetir si aún no se había reflejado)
+      try {
+        await postCorrectionToTreasury(correction);
+      } catch (e) {
+        console.error("[TPV] Error reflejando la corrección en la caja contable:", e);
+      }
+      return correction;
     }),
 
   // -- CASH MOVEMENTS ---------------------------------------------------------
@@ -847,19 +935,24 @@ export const tpvRouter = router({
       })
     )
     .mutation(async ({ input: raw, ctx }) => {
+      // Operadores por caja (Business)
+      await assertSessionOperator(raw.sessionId, ctx.user);
       // Sin la contabilidad general en uso (licencia y acc_settings iniciado; ver cashKindsInUse), el TPV es el de siempre: solo «gasto» (por defecto) o
       // «traspaso», y no se guarda ningún tipo. Con ella, además «devolucion» y el tipo explícito para contabilizarlo.
       const accounting = await cashKindsInUse();
       if (!accounting && raw.outKind === "devolucion") {
         throw new TRPCError({ code: "BAD_REQUEST", message: "Tipo de salida no válido" });
       }
-      const input = { ...raw, outKind: raw.outKind ?? ("gasto" as const) };
+      // Importe en céntimos (lo que guarda DECIMAL(10,2)): la repetición se compara con lo guardado
+      const amountCents = Math.round(raw.amount * 100);
+      if (amountCents <= 0) throw new TRPCError({ code: "BAD_REQUEST", message: "Importe no válido" });
+      const input = { ...raw, amount: amountCents / 100, outKind: raw.outKind ?? ("gasto" as const) };
       // Idempotencia: repetir con la misma clave devuelve el movimiento ya grabado, sin volver a contabilizarlo
       const replayed = async () => {
         if (!raw.idempotencyKey) return null;
         const [same] = await db.select().from(cashMovements).where(eq(cashMovements.idempotencyKey, raw.idempotencyKey));
         if (!same) return null;
-        if (same.sessionId !== raw.sessionId || same.type !== raw.type || Math.abs(Number(same.amount) - raw.amount) >= 0.005) {
+        if (same.sessionId !== raw.sessionId || same.type !== raw.type || Math.round(Number(same.amount) * 100) !== amountCents) {
           throw new TRPCError({ code: "CONFLICT", message: "Esa clave ya se usó para otro movimiento de caja" });
         }
         return same;
@@ -891,9 +984,7 @@ export const tpvRouter = router({
         });
       } catch (e) {
         // Dos intentos a la vez con la misma clave: el segundo devuelve el del primero
-        const err = e as { message?: string; code?: string; cause?: { message?: string; code?: string } };
-        const dup = /Duplicate entry|ER_DUP_ENTRY/.test(`${err?.code ?? ""} ${err?.message ?? ""} ${err?.cause?.code ?? ""} ${err?.cause?.message ?? ""}`);
-        const again = raw.idempotencyKey && dup ? await replayed() : null;
+        const again = raw.idempotencyKey && isDuplicateKeyError(e) ? await replayed() : null;
         if (again) return again;
         throw e;
       }
@@ -1207,6 +1298,8 @@ export const tpvRouter = router({
       })
     )
     .mutation(async ({ input, ctx }) => {
+      // Operadores por caja (Business): con operadores asignados, solo ellos y la administración del TPV cobran
+      await assertSessionOperator(input.sessionId, ctx.user);
       // -- 0. Reglas de precios (Business): ajustan el precio por unidad de los productos del catálogo antes de los
       // descuentos de siempre; la línea guarda el precio resultante y la nota de la regla. Sin reglas, nada cambia.
       input.items = await applyTpvPricingRules(input.items, input.serviceDate ?? null);

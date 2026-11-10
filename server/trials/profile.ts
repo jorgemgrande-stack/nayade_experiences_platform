@@ -10,6 +10,8 @@
  * registro de eventos comerciales; el nombre, el teléfono y el correo nunca.
  */
 
+import { isAcceptedPrivacyVersion } from "../privacyVersion";
+
 /** Sectores del formulario (claves estables; la web pinta sus etiquetas). */
 export const TRIAL_SECTORS = [
   "servicios-profesionales",
@@ -94,6 +96,27 @@ export function normalizeTerms(accepted: unknown, version: unknown, now: number)
   const v = typeof version === "string" ? version.trim() : "";
   if (!v || v.length > 40 || !/^[\w.:-]+$/.test(v)) throw new TrialProfileError("Falta la versión de las condiciones aceptadas: recarga la página y vuelve a intentarlo");
   return { acceptedAt: now, version: v };
+}
+
+/**
+ * Aceptación de la política de privacidad, registrada APARTE de la de las condiciones (10/11/2026): misma casilla, con
+ * su propia versión y fecha. `version: null` significa «no informada»: el formulario anterior no la enviaba y no se
+ * supone ninguna.
+ */
+export interface TrialPrivacy {
+  acceptedAt: number;
+  version: string | null;
+}
+
+/**
+ * Valida la versión de la privacidad aceptada. Sin versión (formulario anterior), se registra como no informada; con
+ * versión, solo valen las de la lista cerrada (server/privacyVersion.ts). Lanza TrialProfileError con un mensaje.
+ */
+export function normalizePrivacy(accepted: unknown, version: unknown, now: number): TrialPrivacy {
+  if (accepted !== true) throw new TrialProfileError("Hay que aceptar la política de privacidad y las condiciones de la prueba");
+  if (version === undefined || version === null || (typeof version === "string" && !version.trim())) return { acceptedAt: now, version: null };
+  if (typeof version !== "string" || !isAcceptedPrivacyVersion(version)) throw new TrialProfileError("La política de privacidad ha cambiado: recarga la página y vuelve a aceptarla");
+  return { acceptedAt: now, version: version.trim() };
 }
 
 export class TrialProfileError extends Error {

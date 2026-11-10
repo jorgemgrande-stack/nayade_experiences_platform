@@ -44,6 +44,8 @@ export interface TenantRuntime {
   identity: TenantIdentitySource;
   /** Concesiones de soporte delegado (solo lectura). */
   support: MysqlSupportReader;
+  /** Valor de `registry_meta` (solo lectura); null si no existe. */
+  meta(key: string): Promise<string | null>;
   /** Comprueba que la BD del registro responde (salud); rechaza si no. */
   ping(): Promise<void>;
   /** Conexiones del servidor MySQL compartido (máximo y en uso, de todos los servicios): capacidad global. */
@@ -115,6 +117,11 @@ export function createTenantRuntime(
     quotaExceptions: new MysqlQuotaExceptionReader(pool),
     support: new MysqlSupportReader(pool),
     identity: registryIdentitySource(store, new MysqlOrganizationStore(pool)),
+    async meta(key: string) {
+      const [rows] = await pool.query("SELECT v FROM registry_meta WHERE k = ?", [key]);
+      const r = (rows as Array<{ v: unknown }>)[0];
+      return r ? String(r.v) : null;
+    },
     async ping() {
       await pool.query("SELECT 1");
     },

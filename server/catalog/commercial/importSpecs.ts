@@ -131,7 +131,7 @@ function marketplaceFields(draft: ProductDraft, spec: ProductSpec, keep: (t: str
 /** Campos que escribe la importación; todo lo demás del borrador debe quedar igual. */
 const OWNED: Record<string, string[] | true> = {
   commercial: true,
-  catalog: ["implementationLevel", "inclusions", "quotaProposals", "quoteOnRequest", "bundleRule", "coreIncluded"],
+  catalog: ["implementationLevel", "inclusions", "quotaProposals", "quoteOnRequest", "bundleRule", "coreIncluded", "legacy"],
   internal: ["evidence", "functionalGrade", "sources", "pendingDecisions"],
 };
 

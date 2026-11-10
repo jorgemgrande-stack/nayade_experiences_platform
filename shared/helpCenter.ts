@@ -231,12 +231,12 @@ export const HELP_ARTICLES: HelpArticle[] = [
   {
     id: "cambiar-plan",
     title: "Contratar o cambiar de plan",
-    summary: "El cambio de plan no se hace dentro del panel: desde Suscripción accedes a las opciones de contratación de Elephant Source.",
+    summary: "Desde Suscripción comparas los planes y, según tu situación, contratas, cambias de plan o envías una solicitud a Elephant Source.",
     contexts: [],
     steps: [
-      "Ve a Suscripción › Plan y uso.",
-      "Usa «Contratar el plan» (durante la prueba), «Ver opciones de contratación» o, en la sección «Ampliar», «Ver planes y módulos». Se abren en otra pestaña.",
-      "Si no aparece ningún botón, la pantalla te indica que escribas a tu contacto comercial de Elephant Source para ampliar o contratar.",
+      "Ve a Suscripción › Plan y uso y pulsa «Comparar planes» para ver las tarjetas y la comparativa completa.",
+      "Durante la prueba, «Contratar un plan» abre la contratación en tres pasos (plan y ampliaciones, datos de facturación y revisión) y después el pago seguro. Con una suscripción activa, el botón del plan muestra el importe antes de confirmar el cambio.",
+      "Lo que no se contrata en línea (por ejemplo, Enterprise) se pide con el botón de solicitud del plan: nuestro equipo te contacta. Para módulos y soluciones sectoriales, usa «Ir al marketplace».",
     ],
     notes: ["Los cambios de plan los aplica Elephant Source; cuando se activan, el menú y los límites del panel se actualizan solos."],
     links: [{ label: "Ir a Plan y uso", href: "/admin/suscripcion#ampliar" }],

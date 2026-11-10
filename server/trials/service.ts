@@ -19,7 +19,7 @@ import { TERMINAL, nextState, type TrialAction, type TrialState } from "./machin
 import { TrialConflict, type TrialHolder, type TrialPatch, type TrialRequest, type TrialStore } from "./store";
 import { canonicalMailbox, mailboxOf } from "./mailbox";
 import { TRIAL_MILESTONES, type TrialMilestone } from "./store";
-import { TrialProfileError, normalizeAttribution, normalizeProfile, normalizeTerms, type TrialAttributionInput, type TrialProfileInput } from "./profile";
+import { TrialProfileError, normalizeAttribution, normalizePrivacy, normalizeProfile, normalizeTerms, type TrialAttributionInput, type TrialProfileInput } from "./profile";
 
 export { canonicalMailbox, mailboxOf };
 
@@ -148,7 +148,7 @@ export class TrialService {
    * de verificación EN CLARO solo al crearla (para que el remitente lo envíe por correo) y nunca lo
    * guarda.
    */
-  async register(input: { email: string; companyName: string; configuration: { plan: string | null; addons: string[]; holder?: TrialHolder }; profile?: TrialProfileInput | null; attribution?: TrialAttributionInput | null; terms?: { accepted: unknown; version: unknown } | null; idempotencyKey: string; ip?: string | null }) {
+  async register(input: { email: string; companyName: string; configuration: { plan: string | null; addons: string[]; holder?: TrialHolder }; profile?: TrialProfileInput | null; attribution?: TrialAttributionInput | null; terms?: { accepted: unknown; version: unknown; privacyVersion?: unknown } | null; idempotencyKey: string; ip?: string | null }) {
     const email = input.email.trim().toLowerCase();
     const m = EMAIL_RE.exec(email);
     if (!m || email.length > 254) throw new TrialError("invalid_input", "Correo no válido");
@@ -169,10 +169,15 @@ export class TrialService {
     // Responsable de la prueba y procedencia (formulario de la web): validados aquí, guardados en la configuración
     let profile: ReturnType<typeof normalizeProfile> | null = null;
     let terms: ReturnType<typeof normalizeTerms> | null = null;
+    let privacy: ReturnType<typeof normalizePrivacy> | null = null;
+    // Una sola marca de tiempo: condiciones y privacidad se aceptan con la misma casilla
+    const acceptedAt = this.now();
     try {
       // Aceptación de las condiciones con su versión: la exige el alta pública (la del operador no la pasa)
-      terms = input.terms ? normalizeTerms(input.terms.accepted, input.terms.version, this.now()) : null;
-      profile = input.profile ? normalizeProfile(input.profile, this.now()) : null;
+      terms = input.terms ? normalizeTerms(input.terms.accepted, input.terms.version, acceptedAt) : null;
+      // La privacidad, aparte: su versión y su fecha (sin versión, «no informada»; una versión desconocida, rechazada)
+      privacy = input.terms ? normalizePrivacy(input.terms.accepted, input.terms.privacyVersion, acceptedAt) : null;
+      profile = input.profile ? normalizeProfile(input.profile, acceptedAt) : null;
     } catch (e) {
       if (e instanceof TrialProfileError) throw new TrialError("invalid_input", e.message);
       throw e;
@@ -202,7 +207,7 @@ export class TrialService {
           email,
           emailDomain: domain,
           companyName: company,
-          configuration: { plan: input.configuration.plan, addons, ...(holder ? { holder } : {}), ...(profile ? { profile } : {}), ...(attribution ? { attribution } : {}), ...(terms ? { terms } : {}) },
+          configuration: { plan: input.configuration.plan, addons, ...(holder ? { holder } : {}), ...(profile ? { profile } : {}), ...(attribution ? { attribution } : {}), ...(terms ? { terms } : {}), ...(privacy ? { privacy } : {}) },
           state: "pending_verification",
           verificationTokenHash: sha256(token),
           verificationExpiresAt: now + this.limits.verificationTtlMs,

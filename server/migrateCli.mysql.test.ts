@@ -204,6 +204,8 @@ d("ejecutor de migraciones contra MySQL real", () => {
     // 0024 añade la sede a las cajas y a sus sesiones: basta con que existan
     await t.pool.query("CREATE TABLE cash_registers (id INT PRIMARY KEY)");
     await t.pool.query("CREATE TABLE cash_sessions (id INT PRIMARY KEY)");
+    // 0063 añade la clave de idempotencia a los movimientos de caja: basta con que exista
+    await t.pool.query("CREATE TABLE cash_movements (id INT PRIMARY KEY)");
     // 0020 amplía `invoices` y copia los ajustes fiscales de `system_settings` y `site_settings`: basta con que existan
     await t.pool.query("CREATE TABLE invoices (id INT PRIMARY KEY)");
     await t.pool.query("CREATE TABLE system_settings (id INT PRIMARY KEY, `key` VARCHAR(128) NOT NULL, value TEXT NULL)");

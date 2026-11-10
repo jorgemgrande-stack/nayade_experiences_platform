@@ -51,7 +51,7 @@ export interface OfferConfig {
 /** Lo mínimo del producto que decide la modalidad (sirve un borrador, lo publicado o la salida pública). */
 export interface OfferSource {
   technicalStatus?: string | null;
-  catalog?: { commercialStatus?: string | null; offer?: OfferConfig | null } | null;
+  catalog?: { commercialStatus?: string | null; offer?: OfferConfig | null; legacy?: { replacedBy?: string } | null } | null;
   /** Precios publicados (`draft: true` en la vista previa) o del catálogo (`status`). */
   prices?: ReadonlyArray<object> | null;
 }
@@ -83,7 +83,11 @@ export function effectiveOffer(product: OfferSource): EffectiveOffer {
 
   let modality: OfferModality = cfg.modality === "immediate" ? "immediate" : "assisted";
   if (modality === "immediate") {
-    if (commercial !== "available") {
+    // Producto heredado (09/11/2026): ya no se contrata; se conserva para quien lo tiene
+    if (product.catalog?.legacy) {
+      reasons.push(`Producto heredado: ya no admite contrataciones nuevas${product.catalog.legacy.replacedBy ? ` (se contrata «${product.catalog.legacy.replacedBy}»)` : ""}`);
+      modality = "assisted";
+    } else if (commercial !== "available") {
       reasons.push(`Se ofrecerá como implantación asistida porque el estado comercial es «${COMMERCIAL_LABEL[commercial] ?? commercial}»`);
       modality = "assisted";
     } else if (technical !== "available") {

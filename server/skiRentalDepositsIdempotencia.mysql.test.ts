@@ -392,6 +392,33 @@ describe.skipIf(!URL_)("Ski Net · cobro idempotente del cargo por daños y de l
     await coherent(id3);
   }, 60_000);
 
+  it("venta «pendiente» de un proceso caído: reciente, el cobro espera; abandonada (más de 15 min), se anula y el cobro usa otra clave", async () => {
+    const id = await newCharge(3500);
+    const stuck = await strandedSale(`skichg-${id}-pay`, 35);
+    // Estado que deja un proceso caído entre numerar la venta y grabar su núcleo
+    await tenantDb.query("UPDATE tpv_sales SET status_ts = 'pending' WHERE id = ?", [stuck.id]);
+    expect(fail(await pay(id))).toMatchObject({ status: 409, message: expect.stringMatching(/sigue registrándose/) });
+    expect(fail(await mutate("skiRental.cancelDamageCharge", { ...NORTE, chargeId: id, reason: "Error" })).status).toBe(409);
+    await tenantDb.query("UPDATE tpv_sales SET createdAt = ? WHERE id = ?", [Date.now() - 20 * 60_000, stuck.id]);
+    const r = ok(await pay(id));
+    expect(r).toMatchObject({ replayed: false, charge: { status: "paid" } });
+    const [[old]] = (await tenantDb.query<mysql.RowDataPacket[]>("SELECT status_ts AS s, idempotencyKey AS k, notes FROM tpv_sales WHERE id = ?", [stuck.id])) as unknown as [[any]];
+    expect(old).toMatchObject({ s: "cancelled", k: null });
+    expect(String(old.notes)).toMatch(/VENTA NO REGISTRADA/);
+    const [[k]] = (await tenantDb.query<mysql.RowDataPacket[]>("SELECT idempotencyKey AS k FROM tpv_sales WHERE id = ?", [r.charge.tpvSaleId])) as unknown as [[any]];
+    // La anulada soltó su clave (como hace el TPV al fallar): el cobro nuevo vuelve a usar la de siempre
+    expect(k.k).toBe(`skichg-${id}-pay`);
+    await coherent(id);
+  }, 60_000);
+
+  it("alta del cargo con triple clic: un solo cargo, sin interbloqueos", async () => {
+    const key = `req-${run}-triple`;
+    const rs = await Promise.all([1, 2, 3, 4].map(() => mutate("skiRental.createDamageCharge", { ...NORTE, deliveryId: delivery, amountCents: 900, reason: "Triple clic", requestKey: key })));
+    expect(rs.map((r) => r.status)).toEqual([200, 200, 200, 200]);
+    expect(new Set(rs.map((r) => ok(r).charge.id)).size).toBe(1);
+    expect(await count("SELECT COUNT(*) AS n FROM ski_deposit_charges WHERE request_key = ?", [key])).toBe(1);
+  }, 60_000);
+
   const newDeposit = async (amountCents: number) => {
     const code = `SKI-0000${2 + nDep++}`;
     const d = ok(await mutate("skiRental.createDelivery", { ...NORTE, storeId, customerName: "Fianza", startDate: "2026-12-20", expectedReturnDate: "2026-12-21", lines: [{ code, requestedType: "ski" }] })).id;
@@ -424,6 +451,24 @@ describe.skipIf(!URL_)("Ski Net · cobro idempotente del cargo por daños y de l
     const sale = await strandedSale(`skidep-${depId}-r1500`, 15);
     const r = ok(await mutate("skiRental.settleDeposit", { ...NORTE, depositId: depId, damageCents: 1500, reason: "Golpe", sessionId: sess }));
     expect(r.deposit).toMatchObject({ status: "retained_partial", damageSaleId: Number(sale.id), retainedCents: 1500 });
+    expect(await depSales(depId)).toBe(1);
+    expect(await depMoves(d)).toBe(3);
+  }, 60_000);
+
+  it("liquidación: la venta de daños se anuló en el TPV con la fianza «liquidándose»; el reintento cobra con otra clave y la cierra", async () => {
+    const { d, depId } = await newDeposit(3000);
+    // Liquidación reservada con su plan y su venta anulada después en el TPV, sin llegar a cerrarse
+    await tenantDb.query(
+      "UPDATE ski_deposits SET status = 'settling', damage_cents = 1000, refunded_cents = 2000, retained_cents = 1000, settle_session_id = ?, settle_reason = 'Golpe', settled_by = 'user:1' WHERE id = ?",
+      [sess, depId],
+    );
+    const voided = await strandedSale(`skidep-${depId}-r1000`, 10);
+    await tenantDb.query("UPDATE tpv_sales SET status_ts = 'cancelled' WHERE id = ?", [voided.id]);
+    const r = ok(await mutate("skiRental.settleDeposit", { ...NORTE, depositId: depId, damageCents: 1000, reason: "Golpe", sessionId: sess }));
+    expect(r.deposit).toMatchObject({ status: "retained_partial", retainedCents: 1000 });
+    expect(r.deposit.damageSaleId).not.toBe(Number(voided.id));
+    const [[k]] = (await tenantDb.query<mysql.RowDataPacket[]>("SELECT idempotencyKey AS k, status_ts AS s FROM tpv_sales WHERE id = ?", [r.deposit.damageSaleId])) as unknown as [[any]];
+    expect(k).toMatchObject({ k: `skidep-${depId}-r1000-2`, s: "paid" });
     expect(await depSales(depId)).toBe(1);
     expect(await depMoves(d)).toBe(3);
   }, 60_000);

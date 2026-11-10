@@ -11,13 +11,17 @@
  */
 import { TRPCError } from "@trpc/server";
 import { eq, sql } from "drizzle-orm";
-import { cashRegisters } from "../drizzle/schema";
+import { cashRegisters, type CashSession } from "../drizzle/schema";
 import { getCapabilityAccess } from "./_core/capabilities/access";
+import { decide } from "./_core/capabilities/model";
+import { TPV_ACQUIRED_RIGHTS_CAPABILITY } from "./licensing/tpvAcquiredRights";
+import { tpvSeedMarker } from "./tpvSeedMarker";
 import { legacyDb } from "./_core/legacyDb";
 import { getSystemSetting } from "./config";
 import { licenceSummary } from "./planSeats";
 import { withTenantLock } from "./tpvSaleIdempotency";
 import { upsertSettings } from "./setupWizardDb";
+import { getDefaultCashAccountId } from "./routers/cashRegisterHelper";
 import {
   CUTOFF_RE,
   DEFAULT_CUTOFF,
@@ -28,6 +32,9 @@ import {
   safeTimeZone,
   tpvPlanInfo,
   type TpvFeature,
+  TPV_ACQUIRED_RIGHTS_CUTOFF,
+  TPV_GRANDFATHERED_FEATURES,
+  withAcquiredRights,
   type TpvPlanInfo,
   type TpvTier,
 } from "../shared/tpvPlan";
@@ -42,7 +49,38 @@ export async function currentTpvTier(): Promise<TpvTier> {
 }
 
 export async function currentTpvPlan(): Promise<TpvPlanInfo> {
-  return tpvPlanInfo(await currentTpvTier());
+  const info = tpvPlanInfo(await currentTpvTier());
+  if (info.tier !== "essential") return info;
+  // Seguro: hasta que la siembra del derecho adquirido haya corrido (marca en el registro), Essential conserva todo
+  if (!(await tpvSeedMarker())) return withAcquiredRights(info, TPV_GRANDFATHERED_FEATURES);
+  return withAcquiredRights(info, (await acquiredRights()).features);
+}
+
+// ─── Derecho adquirido (empresas que ya tenían estas funciones) ──────────────
+
+export interface AcquiredRights {
+  features: TpvFeature[];
+  cutoff: string;
+  /** Licencia que lo concede (trazabilidad): origen, estado y fecha; null si la empresa no lo tiene. */
+  grant: { source: string; status: string; updatedAt: number; updatedBy: string } | null;
+}
+
+/**
+ * Derechos adquiridos de la empresa en curso: la licencia `tpv-acquired-rights` que concede la siembra
+ * (server/licensing/tpvAcquiredRights.ts) a cada empresa que tenía la caja del plan antes del cambio. No la toca
+ * ninguna suscripción (otro origen), así que se mantiene al renovar o al cambiar de periodicidad. Ante un fallo de
+ * lectura, ninguno: el plan no cambia.
+ */
+export async function acquiredRights(): Promise<AcquiredRights> {
+  const none: AcquiredRights = { features: [], cutoff: TPV_ACQUIRED_RIGHTS_CUTOFF, grant: null };
+  try {
+    const grants = await getCapabilityAccess().grants();
+    const g = grants?.find((x) => x.capabilityId === TPV_ACQUIRED_RIGHTS_CAPABILITY && x.siteId === "" && (x.status === "active" || x.status === "read_only"));
+    if (!g) return none;
+    return { features: [...TPV_GRANDFATHERED_FEATURES], cutoff: TPV_ACQUIRED_RIGHTS_CUTOFF, grant: { source: g.source, status: g.status, updatedAt: g.updatedAt, updatedBy: g.updatedBy } };
+  } catch {
+    return none;
+  }
 }
 
 /** Plan para comprobar una operación: si no puede leerse, falla cerrado con un error recuperable. */
@@ -101,9 +139,9 @@ export async function companyCutoff(): Promise<{ cutoff: string; timeZone: strin
   return { cutoff: CUTOFF_RE.test(c) ? c : DEFAULT_CUTOFF, timeZone: safeTimeZone(tz) };
 }
 
-/** Día operativo de un instante para una caja (su corte, o el de la empresa). */
-export async function registerOperationalDay(ms: number, registerCutoff: string | null | undefined): Promise<string> {
-  const company = await companyCutoff();
+/** Día operativo de un instante para una caja (su corte, o el de la empresa; se puede pasar ya leído). */
+export async function registerOperationalDay(ms: number, registerCutoff: string | null | undefined, companyCfg?: { cutoff: string; timeZone: string }): Promise<string> {
+  const company = companyCfg ?? (await companyCutoff());
   const cutoff = registerCutoff && CUTOFF_RE.test(registerCutoff) ? registerCutoff : company.cutoff;
   return operationalDay(ms, cutoff, company.timeZone);
 }
@@ -140,10 +178,41 @@ export interface ClosureSnapshot {
 const money = (n: number) => (Math.round(n * 100) / 100).toFixed(2);
 
 /** Foto del cierre: se escribe UNA vez (INSERT IGNORE). Nunca se actualiza ni se borra. */
-export async function recordClosureSnapshot(s: ClosureSnapshot): Promise<void> {
-  await db.execute(sql`INSERT IGNORE INTO tpv_session_closures
+export async function recordClosureSnapshot(s: ClosureSnapshot, exec: { execute: (q: ReturnType<typeof sql>) => Promise<unknown> } = db): Promise<void> {
+  await exec.execute(sql`INSERT IGNORE INTO tpv_session_closures
     (session_id, register_id, site_id, operational_day, opening_amount, total_cash, total_card, total_bizum, total_mixed, manual_in, manual_out, expected_cash, counted_cash, difference, closed_by, closed_by_name, opened_at, closed_at)
     VALUES (${s.sessionId}, ${s.registerId}, ${s.siteId}, ${s.operationalDay}, ${money(s.openingAmount)}, ${money(s.totalCash)}, ${money(s.totalCard)}, ${money(s.totalBizum)}, ${money(s.totalMixed)}, ${money(s.manualIn)}, ${money(s.manualOut)}, ${money(s.expectedCash)}, ${money(s.countedCash)}, ${money(s.difference)}, ${s.closedBy}, ${s.closedByName}, ${s.openedAt}, ${s.closedAt})`);
+}
+
+/**
+ * Repara la foto de un cierre que no la tenga (p. ej. si el proceso cayó justo después de cerrar): la rehace con los
+ * totales que guardó la sesión. Idempotente (INSERT IGNORE); nunca cambia una foto existente.
+ */
+export async function ensureClosureSnapshot(row: CashSession): Promise<void> {
+  if (row.status !== "closed" || row.closingAmount == null || row.countedCash == null) return;
+  if (await getClosureSnapshot(row.id)) return;
+  const [reg] = await db.select({ cutoffTime: cashRegisters.cutoffTime }).from(cashRegisters).where(eq(cashRegisters.id, row.registerId));
+  const n = (v: unknown) => Number(v ?? 0) || 0;
+  await recordClosureSnapshot({
+    sessionId: row.id,
+    registerId: row.registerId,
+    siteId: row.siteId ?? null,
+    operationalDay: await registerOperationalDay(Number(row.openedAt), reg?.cutoffTime ?? null),
+    openingAmount: n(row.openingAmount),
+    totalCash: n(row.totalCash),
+    totalCard: n(row.totalCard),
+    totalBizum: n(row.totalBizum),
+    totalMixed: n(row.totalMixed),
+    manualIn: n(row.totalManualIn),
+    manualOut: n(row.totalManualOut),
+    expectedCash: n(row.closingAmount),
+    countedCash: n(row.countedCash),
+    difference: n(row.cashDifference),
+    closedBy: null,
+    closedByName: null,
+    openedAt: Number(row.openedAt),
+    closedAt: Number(row.closedAt ?? Date.now()),
+  });
 }
 
 export async function getClosureSnapshot(sessionId: number): Promise<Row | null> {
@@ -188,7 +257,8 @@ export async function addCorrection(input: { sessionId: number; kind: Correction
     const [r] = await rows(sql`SELECT * FROM tpv_session_corrections WHERE idempotency_key = ${input.key}`);
     return r ? toCorrection(r) : null;
   };
-  const same = (c: CorrectionRow) => c.sessionId === input.sessionId && c.kind === input.kind && Math.abs(c.amount - input.amount) < 0.005;
+  const cents = Math.round(input.amount * 100);
+  const same = (c: CorrectionRow) => c.sessionId === input.sessionId && c.kind === input.kind && Math.round(c.amount * 100) === cents;
   const existing = await find();
   if (existing) {
     if (!same(existing)) throw new TRPCError({ code: "CONFLICT", message: "Esa clave ya se usó para otra corrección" });
@@ -196,14 +266,44 @@ export async function addCorrection(input: { sessionId: number; kind: Correction
   }
   try {
     await db.execute(sql`INSERT INTO tpv_session_corrections (session_id, kind, amount, reason, created_by, created_by_name, idempotency_key, created_at)
-      VALUES (${input.sessionId}, ${input.kind}, ${money(input.amount)}, ${input.reason}, ${input.userId}, ${input.userName}, ${input.key}, ${Date.now()})`);
+      VALUES (${input.sessionId}, ${input.kind}, ${(cents / 100).toFixed(2)}, ${input.reason}, ${input.userId}, ${input.userName}, ${input.key}, ${Date.now()})`);
   } catch (e) {
     // Dos intentos a la vez con la misma clave: el segundo devuelve la del primero
     const again = await find();
     if (again && same(again)) return again;
+    if (again) throw new TRPCError({ code: "CONFLICT", message: "Esa clave ya se usó para otra corrección" });
     throw e;
   }
   return (await find())!;
+}
+
+/**
+ * Refleja una corrección en la caja contable (fin_cash_movements): un movimiento de ajuste aparte, enlazado a la
+ * corrección (`fin_movement_id`, y `related_entity_id` = id de la corrección), con su motivo y autor, en el día operativo
+ * del cierre y con el saldo de la cuenta actualizado. Nunca toca el cierre. Una sola vez: se reclama la corrección en la
+ * misma transacción (dos intentos a la vez no la reflejan dos veces). Sin cuenta de caja principal, queda pendiente
+ * (NULL) y se refleja al repetir la corrección cuando la haya. La contabilidad general la lee de
+ * tpv_session_corrections (clave `cajacorr:<id>`), no de aquí: se contabiliza una sola vez.
+ */
+export async function postCorrectionToTreasury(c: CorrectionRow): Promise<number | null> {
+  const accountId = await getDefaultCashAccountId();
+  if (!accountId) return null;
+  const snap = await getClosureSnapshot(c.sessionId);
+  const day = snap?.operational_day ? String(snap.operational_day) : await registerOperationalDay(c.createdAt, null);
+  const income = c.kind === "cash_in" || (c.kind === "count_adjustment" && c.amount > 0);
+  const abs = Math.abs(c.amount);
+  const label = c.kind === "cash_in" ? "Entrada" : c.kind === "cash_out" ? "Salida" : "Ajuste del recuento";
+  return db.transaction(async (tx) => {
+    const [claim] = (await tx.execute(sql`UPDATE tpv_session_corrections SET fin_movement_id = 0 WHERE id = ${c.id} AND fin_movement_id IS NULL`)) as unknown as [{ affectedRows?: number }];
+    if (Number(claim?.affectedRows ?? 0) !== 1) return null;
+    const [res] = (await tx.execute(sql`INSERT INTO fin_cash_movements (account_id, date, type_fcm, amount, concept, category, related_entity_type, related_entity_id, notes, created_by)
+      VALUES (${accountId}, ${day}, ${income ? "income" : "expense"}, ${abs.toFixed(2)}, ${`${label} tras el cierre de caja TPV #${c.sessionId}`.slice(0, 512)}, 'cash_adjustment', 'manual', ${c.id},
+        ${`Corrección #${c.id} de la caja cerrada (sesión TPV #${c.sessionId}) por ${c.createdByName ?? "—"}. Motivo: ${c.reason}`}, ${c.createdBy})`)) as unknown as [{ insertId: number }];
+    const movementId = Number(res.insertId);
+    await tx.execute(sql`UPDATE fin_cash_accounts SET current_balance = current_balance + ${income ? abs : -abs} WHERE id = ${accountId}`);
+    await tx.execute(sql`UPDATE tpv_session_corrections SET fin_movement_id = ${movementId} WHERE id = ${c.id}`);
+    return movementId;
+  });
 }
 
 /** Efecto de las correcciones en el efectivo de la sesión (entradas suman, salidas y ajustes negativos restan). */
@@ -216,4 +316,22 @@ export function correctionsCashDelta(list: Pick<CorrectionRow, "kind" | "amount"
 export async function setCompanyCutoff(cutoff: string): Promise<void> {
   if (!CUTOFF_RE.test(cutoff)) throw new TRPCError({ code: "BAD_REQUEST", message: "Hora de corte no válida (HH:MM)" });
   await upsertSettings([{ key: CUTOFF_SETTING, value: cutoff, label: "Hora de corte operativo del TPV", category: "general" }]);
+}
+
+/** ¿Error de clave única duplicada de MySQL (también envuelto por drizzle)? */
+export function isDuplicateKeyError(e: unknown): boolean {
+  const err = e as { message?: string; code?: string; cause?: { message?: string; code?: string } } | null;
+  return /Duplicate entry|ER_DUP_ENTRY/.test(`${err?.code ?? ""} ${err?.message ?? ""} ${err?.cause?.code ?? ""} ${err?.cause?.message ?? ""}`);
+}
+
+/** ¿Tiene la empresa TPV Advanced contratado (para mostrarlo)? En la instalación única, sí. */
+export async function tpvAdvancedContracted(): Promise<boolean> {
+  try {
+    const access = getCapabilityAccess();
+    const grants = await access.grants();
+    if (!grants) return true;
+    return decide(grants, TPV_ADVANCED_CAPABILITY, { write: false, now: access.currentTime() }).allowed;
+  } catch {
+    return false;
+  }
 }

@@ -17,6 +17,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { TpvSessionReturns } from "./TpvBusiness";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { LegoPackLineSelector } from "@/components/LegoPackLineSelector";
 import { toast } from "sonner";
@@ -749,6 +750,7 @@ export default function TpvScreen() {
           >
             Cerrar caja
           </Button>
+          {sessionId && <TpvSessionReturns sessionId={sessionId} />}
           <Button
             size="sm"
             variant="ghost"

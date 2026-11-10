@@ -30,7 +30,7 @@ describe("Caja por plan (estrategia TPV 09/11/2026)", () => {
   });
 
   it("mensaje de una función superior: qué es y dónde ampliar", () => {
-    expect(featureNotIncludedMessage("registerOperators")).toBe("Operadores y permisos por caja forma parte del plan Business. Puedes ampliar tu plan desde «Suscripción».");
+    expect(featureNotIncludedMessage("registerOperators")).toBe("«Operadores y permisos por caja» se incluye en el plan Business. Puedes ampliar tu plan desde «Suscripción».");
     expect(featureNotIncludedMessage("consolidatedReports")).toMatch(/Enterprise/);
   });
 

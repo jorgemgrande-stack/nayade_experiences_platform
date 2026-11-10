@@ -94,12 +94,24 @@ describe.skipIf(!URL_)("Caja por plan: límites, cierres e idempotencia (aplicac
     expect((await ess.sql("b", "SELECT COUNT(*) AS n FROM cash_movements WHERE idempotency_key = ?", [k]))[0].n).toBe(1);
     // La misma clave con otro importe: conflicto
     expect(errCode(await ess.m("b", "tpv.addCashMovement", { ...mv, amount: 8 }, agB))).toBe("CONFLICT");
+    // Importe con más de dos decimales: se guarda en céntimos y la repetición devuelve el mismo movimiento
+    const k3 = key("dec");
+    const d1 = data(await ess.m("b", "tpv.addCashMovement", { sessionId: open.id, type: "in", amount: 7.005, reason: "Redondeo", idempotencyKey: k3 }, agB));
+    const d2 = data(await ess.m("b", "tpv.addCashMovement", { sessionId: open.id, type: "in", amount: 7.005, reason: "Redondeo", idempotencyKey: k3 }, agB));
+    expect([d2.id, Number(d2.amount)]).toEqual([d1.id, 7.01]);
+    // La misma clave de apertura en otra caja: conflicto (no un error del servidor)
+    const [reg1] = await ess.sql("b", "SELECT id FROM cash_registers WHERE name = 'B1'");
+    const [used] = await ess.sql("b", "SELECT open_key FROM cash_sessions WHERE open_key IS NOT NULL AND registerId <> ? LIMIT 1", [reg1.id]);
+    expect(errCode(await ess.m("b", "tpv.openSession", { registerId: reg1.id, openingAmount: 0, idempotencyKey: used.open_key }, agB))).toBe("CONFLICT");
     // Cierre idempotente
     const ck = key("cierre");
-    const c1 = await ess.m("b", "tpv.closeSession", { sessionId: open.id, countedCash: -7, idempotencyKey: ck }, agB);
-    const c2 = await ess.m("b", "tpv.closeSession", { sessionId: open.id, countedCash: -7, idempotencyKey: ck }, agB);
+    const c1 = await ess.m("b", "tpv.closeSession", { sessionId: open.id, countedCash: 0.01, idempotencyKey: ck }, agB);
+    // Si el primer cierre hubiera caído antes de la foto, la repetición la rehace
+    await ess.sql("b", "DELETE FROM tpv_session_closures WHERE session_id = ?", [open.id]);
+    const c2 = await ess.m("b", "tpv.closeSession", { sessionId: open.id, countedCash: 0.01, idempotencyKey: ck }, agB);
+    expect((await ess.sql("b", "SELECT COUNT(*) AS n FROM tpv_session_closures WHERE session_id = ?", [open.id]))[0].n).toBe(1);
     expect([c1.status, c2.status]).toEqual([200, 200]);
-    expect(errCode(await ess.m("b", "tpv.closeSession", { sessionId: open.id, countedCash: -7 }, agB))).toBe("CONFLICT");
+    expect(errCode(await ess.m("b", "tpv.closeSession", { sessionId: open.id, countedCash: 0.01 }, agB))).toBe("CONFLICT");
     // Caja cerrada: ningún movimiento ordinario
     const late = await ess.m("b", "tpv.addCashMovement", { sessionId: open.id, type: "in", amount: 3, reason: "Tarde" }, agB);
     expect(errCode(late)).toBe("CONFLICT");
@@ -109,7 +121,7 @@ describe.skipIf(!URL_)("Caja por plan: límites, cierres e idempotencia (aplicac
   it("cierre inmutable y corrección trazable aparte (idempotente, solo administración)", async () => {
     const [s] = await ess.sql("b", "SELECT id, cashDifference FROM cash_sessions WHERE close_key IS NOT NULL ORDER BY id DESC LIMIT 1");
     const [snap] = await ess.sql("b", "SELECT * FROM tpv_session_closures WHERE session_id = ?", [s.id]);
-    expect([Number(snap.manual_out), Number(snap.expected_cash), Number(snap.counted_cash), Number(snap.difference)]).toEqual([7, -7, -7, 0]);
+    expect([Number(snap.manual_out), Number(snap.expected_cash), Number(snap.counted_cash), Number(snap.difference)]).toEqual([7, 0.01, 0.01, 0]);
     expect(snap.operational_day).toMatch(/^\d{4}-\d{2}-\d{2}$/);
     const ck = key("corr");
     const input = { sessionId: s.id, kind: "cash_in", amount: 3, reason: "Venta en efectivo apuntada tarde", idempotencyKey: ck };

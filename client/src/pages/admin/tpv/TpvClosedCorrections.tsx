@@ -6,6 +6,7 @@ import { useState } from "react";
 import { toast } from "sonner";
 import { trpc } from "@/lib/trpc";
 import { formatEur } from "@shared/creditNoteForm";
+import { parseCashInput } from "@shared/cashAmount";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -36,7 +37,11 @@ export default function TpvClosedCorrections({ sessionId, corrections, canManage
     },
     onError: (e) => toast.error(errorMessage(e, "No se ha podido registrar la corrección.")),
   });
-  const amount = Number(form.amount.replace(",", "."));
+  // Admite «1.234,56» y, en el ajuste del recuento, el signo menos
+  const raw = form.amount.trim();
+  const negative = raw.startsWith("-");
+  const parsed = parseCashInput(negative ? raw.slice(1) : raw);
+  const amount = parsed === null ? NaN : negative ? -parsed : parsed;
   const valid = Number.isFinite(amount) && amount !== 0 && (form.kind === "count_adjustment" || amount > 0) && form.reason.trim().length >= 5;
 
   return (

@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { ACCEPTED_PRIVACY_VERSIONS, currentPrivacyVersion } from "../privacyVersion";
 import {
   BuyerProfileError,
   FISCAL_SCENARIOS,
@@ -19,7 +20,7 @@ import {
   type ConsentVersions,
 } from "./buyerProfile";
 
-const V: ConsentVersions = { terms: "c-2026-10", privacy: "p-2026-10", precontract: "pre-2026-10", withdrawal: "immediate_execution_ack" };
+const V: ConsentVersions = { terms: "c-2026-10", privacy: "2026-10-25", precontract: "pre-2026-10", withdrawal: "immediate_execution_ack" };
 
 describe("territorio fiscal", () => {
   it("España: península y Baleares; Canarias, Ceuta y Melilla por código postal; sin CP válido no se decide", () => {
@@ -146,5 +147,29 @@ describe("impuesto esperado por escenario y precio con impuestos", () => {
     expect(() => displayPrice(2900, 21)).not.toThrow();
     expect(() => displayPrice(2900, 10_001)).toThrow(RangeError);
     expect(() => displayPrice(29.5, 2100)).toThrow(RangeError);
+  });
+});
+
+describe("versiones de la privacidad admitidas al contratar (10/11/2026)", () => {
+  const empresa = { terms: true as const, termsVersion: V.terms!, privacy: true as const };
+  it("con la variable de production (2026-10-25) valen la página anterior y la nueva, y se registra la aceptada", () => {
+    for (const v of ["2026-10-25", "2026-11-10"]) {
+      expect(buildConsent(7, "business", { ...empresa, privacyVersion: v }, V, "web", 2000).privacy).toEqual({ version: v, at: 2000 });
+    }
+  });
+  it("cualquier otra versión se rechaza, también si la variable tiene otro valor (no amplía la lista)", () => {
+    for (const configured of ["2026-10-25", "2026-12-01", "p-otra"]) {
+      const vs = { ...V, privacy: configured };
+      for (const bad of ["2026-10-21", "2026-11-11", configured === "2026-10-25" ? "p-otra" : configured, undefined]) {
+        expect(() => buildConsent(7, "business", { ...empresa, privacyVersion: bad }, vs, "web", 1), `${configured}/${bad}`).toThrow(/privacidad/);
+      }
+      expect(buildConsent(7, "business", { ...empresa, privacyVersion: "2026-11-10" }, vs, "web", 1).privacy?.version).toBe("2026-11-10");
+    }
+    expect(ACCEPTED_PRIVACY_VERSIONS).toEqual(["2026-10-25", "2026-11-10"]);
+  });
+  it("sin variable no se exige la privacidad (como hasta ahora) y el panel no muestra versión; con ella, la vigente", () => {
+    expect(buildConsent(7, "business", { ...empresa, privacyVersion: "cualquiera" }, { ...V, privacy: null }, "web", 1).privacy).toBeNull();
+    expect(currentPrivacyVersion(null)).toBeNull();
+    expect(currentPrivacyVersion("2026-10-25")).toBe("2026-11-10");
   });
 });

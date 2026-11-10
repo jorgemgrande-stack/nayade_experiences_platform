@@ -8,7 +8,7 @@ import { FiscalConfigError, type ConsentVersions, type FiscalScenario, type TaxT
 import { checkEligibility, consumerRatesFromEnv, eligibilitySummary, priceFor, scenarioCountriesFromEnv, type EligibilityConfig } from "./eligibility";
 import { checkTaxId } from "./taxIds";
 
-const DECIDED: ConsentVersions = { terms: "v1", privacy: "p1", precontract: "pre1", withdrawal: "immediate_execution_ack" };
+const DECIDED: ConsentVersions = { terms: "v1", privacy: "2026-10-25", precontract: "pre1", withdrawal: "immediate_execution_ack" };
 const cfg = (o: { scenarios?: FiscalScenario[]; expectations?: Array<[FiscalScenario, TaxTreatment]>; countries?: string; rates?: string; consent?: ConsentVersions } = {}): EligibilityConfig => ({
   scenarios: new Set(o.scenarios ?? []),
   taxExpectations: new Map(o.expectations ?? []),

@@ -67,6 +67,9 @@ describe("órdenes de operación permitidas", () => {
     expect(isAllowedDrill("node dist-cp/backup-job.js catalog-review")).toBe(true);
     expect(isAllowedDrill("node dist-cp/backup-job.js catalog-review --apply")).toBe(true);
     expect(isAllowedDrill("node dist-cp/backup-job.js catalog-review --apply --force")).toBe(false);
+    expect(isAllowedDrill("node dist-cp/backup-job.js tpv-acquired-rights")).toBe(true);
+    expect(isAllowedDrill("node dist-cp/backup-job.js tpv-acquired-rights --apply")).toBe(true);
+    expect(isAllowedDrill("node dist-cp/backup-job.js tpv-acquired-rights --apply --force")).toBe(false);
     expect(isAllowedDrill("node dist-cp/backup-job.js catalog-commercial-import")).toBe(true);
     expect(isAllowedDrill("node dist-cp/backup-job.js catalog-commercial-import --apply")).toBe(true);
     expect(isAllowedDrill("node dist-cp/backup-job.js catalog-commercial-import --apply --publish")).toBe(false);

@@ -22,8 +22,9 @@ const ESSENTIAL_INCLUDES = [
   "Integración con tus ventas y tu facturación",
 ];
 
-export function registersLabel(max: number | null): string {
+export function registersLabel(max: number | null, tier?: string): string {
   if (max === null) return "Cajas sin límite";
+  if (tier === "enterprise") return "Cajas sin límite fijo (uso razonable)";
   return max === 1 ? "1 caja activa" : `Hasta ${max} cajas activas`;
 }
 
@@ -43,7 +44,7 @@ export default function TpvPlanPanel({ canManage }: { canManage: boolean }) {
   const notIncluded = TPV_FEATURES.filter((f) => plan && !plan.features[f]);
   const byTier = (t: "business" | "enterprise") => notIncluded.filter((f: TpvFeature) => tierForFeature(f) === t);
   const max = plan?.maxActiveRegisters ?? null;
-  const atLimit = max !== null && activeRegisters >= max;
+  const atLimit = max !== null && tier !== "enterprise" && activeRegisters >= max;
 
   return (
     <section aria-labelledby="tpv-plan" className="rounded-xl border border-border bg-card p-4 space-y-4">
@@ -53,7 +54,7 @@ export default function TpvPlanPanel({ canManage }: { canManage: boolean }) {
             {tier === "full" ? "Tu caja" : `Tu caja en el plan ${TPV_TIER_NAMES[tier]}`}
           </h2>
           <p className="text-sm text-muted-foreground mt-0.5">
-            {registersLabel(max)} · tienes {activeRegisters} {activeRegisters === 1 ? "activa" : "activas"}
+            {registersLabel(max, tier)} · tienes {activeRegisters} {activeRegisters === 1 ? "activa" : "activas"}
             {atLimit && tier !== "full" ? ". Para añadir otra, desactiva una o amplía tu plan." : ""}
           </p>
         </div>
@@ -75,6 +76,11 @@ export default function TpvPlanPanel({ canManage }: { canManage: boolean }) {
               </li>
             ))}
           </ul>
+          {q.data.acquired.features.length > 0 && (
+            <p className="text-xs text-muted-foreground mt-2">
+              Como ya las tenías antes del cambio de planes del {q.data.acquired.cutoff.split("-").reverse().join("/")}, conservas {q.data.acquired.features.map((f) => TPV_FEATURE_LABELS[f as TpvFeature].toLowerCase()).join(", ")}.
+            </p>
+          )}
         </div>
         <div className="space-y-3">
           {(["business", "enterprise"] as const).map((t) =>
