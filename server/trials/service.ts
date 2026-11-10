@@ -464,12 +464,31 @@ export class TrialService {
     const reason = o.reason.trim();
     if (reason.length < ADMIN_EXTENSION_REASON_MIN || reason.length > ADMIN_EXTENSION_REASON_MAX) throw new TrialError("invalid_input", `Indica el motivo (${ADMIN_EXTENSION_REASON_MIN}–${ADMIN_EXTENSION_REASON_MAX} caracteres)`);
     if (!ADMIN_EXTENSION_KEY_RE.test(o.idempotencyKey)) throw new TrialError("invalid_input", "Clave de idempotencia no válida");
+    const replay = async () => {
+      const done = (await this.d.store.events(id)).map((e) => (e.action === "admin_extend" ? decodeAdminExtensionDetail(e.detail) : null)).find((d) => d?.key === o.idempotencyKey);
+      return done ? { trial: await this.must(id), replayed: true, before: done.before, after: done.after, days: done.days } : null;
+    };
     const t = await this.must(id);
-    const done = (await this.d.store.events(id)).map((e) => (e.action === "admin_extend" ? decodeAdminExtensionDetail(e.detail) : null)).find((d) => d?.key === o.idempotencyKey);
-    if (done) return { trial: t, replayed: true, before: done.before, after: done.after };
+    const prior = await replay();
+    if (prior) return prior;
     const plan = this.planAdminExtension(t, o.input);
-    const trial = await this.move(id, o.expectedVersion, "admin_extend", o.actor, () => ({ endsAt: plan.after, extensionRequestedAt: null }), encodeAdminExtensionDetail({ ...plan, key: o.idempotencyKey, reason }));
-    return { trial, replayed: false, before: plan.before, after: plan.after };
+    try {
+      // Versión esperada: dos administradores a la vez → uno aplica y el otro recibe «conflicto» (nunca se pisan)
+      const trial = await this.move(id, o.expectedVersion, "admin_extend", o.actor, () => ({ endsAt: plan.after, extensionRequestedAt: null }), encodeAdminExtensionDetail({ ...plan, key: o.idempotencyKey, reason }));
+      return { trial, replayed: false, before: plan.before, after: plan.after, days: plan.days };
+    } catch (e) {
+      // La MISMA operación enviada dos veces a la vez: la que pierde devuelve la que ganó
+      if (e instanceof TrialError && e.code === "conflict") {
+        const won = await replay();
+        if (won) return won;
+      }
+      throw e;
+    }
+  }
+
+  /** Anota el resultado de la propagación de una ampliación administrativa (historial solo de anexado). */
+  async recordAdminExtensionResult(id: number, detail: string, actor: string) {
+    await this.d.store.note(id, { action: "admin_extend_result", detail, actor, at: this.now() });
   }
 
   /** Vista previa de la ampliación administrativa (no cambia nada): fin actual y nuevo, o el error del operador. */

@@ -166,7 +166,7 @@ describe("ampliación administrativa", () => {
     expect(preview.after).toBe(Date.UTC(2026, 10, 30, 22, 59, 59)); // 30/11 23:59:59 en España (UTC+1)
 
     const r = await onboarding.adminExtend(trial.id, { expectedVersion: trial.version, input: { until: "2026-11-30" }, reason: "Ampliación pactada con el cliente", idempotencyKey: key("a"), actor: "operator:jorge" });
-    expect(r).toMatchObject({ replayed: false, before: SKIBOX_END, after: preview.after });
+    expect(r).toMatchObject({ result: "applied", replayed: false, before: SKIBOX_END, after: preview.after });
     expect(r.licences).toMatchObject({ outcome: "aligned", subscriptionMoved: true });
     expect(r.trial).toMatchObject({ state: "active", endsAt: preview.after, extensionsUsed: 1 }); // no consume el autoservicio
     expect(madridDay(r.trial.endsAt!)).toBe("2026-11-30");
@@ -184,7 +184,10 @@ describe("ampliación administrativa", () => {
     const ev = (await trialStore.events(trial.id)).filter((e) => e.action === "admin_extend");
     expect(ev).toHaveLength(1);
     expect(ev[0]).toMatchObject({ actor: "operator:jorge", createdAt: TODAY, fromState: "active", toState: "active" });
-    expect(decodeAdminExtensionDetail(ev[0].detail)).toEqual({ before: SKIBOX_END, after: preview.after, key: key("a"), reason: "Ampliación pactada con el cliente" });
+    expect(decodeAdminExtensionDetail(ev[0].detail)).toEqual({ before: SKIBOX_END, after: preview.after, days: preview.days, key: key("a"), reason: "Ampliación pactada con el cliente" });
+    // Resultado auditado aparte (la ampliación nunca se sobrescribe)
+    const res = (await trialStore.events(trial.id)).filter((e) => e.action === "admin_extend_result");
+    expect(res.map((e) => JSON.parse(e.detail!))).toEqual([expect.objectContaining({ key: key("a"), result: "applied", subscriptionId })]);
     expect(ev[0].detail!.length).toBeLessThanOrEqual(300);
 
     // Derechos adquiridos y resto intactos; sin segunda suscripción, sin cambio de precio, sin cobros ni facturas
@@ -236,12 +239,17 @@ describe("ampliación administrativa", () => {
     lic.syncValidUntil = async () => Promise.reject(new Error("registro caído"));
     const input = { expectedVersion: trial.version, input: { until: "2026-11-20" }, reason: "Corte de comunicación", idempotencyKey: key("f"), actor: "op" } as const;
     const first = await onboarding.adminExtend(trial.id, input);
+    // No se informa de éxito: queda pendiente (y anotado) para reintento
     expect(first.licences).toBeNull();
+    expect(first.result).toBe("pending");
     expect(await canWrite(tenantId)).toBe(false);
     lic.syncValidUntil = real;
     const again = await onboarding.adminExtend(trial.id, input);
     expect(again.replayed).toBe(true);
+    expect(again.result).toBe("applied");
     expect(again.licences).toMatchObject({ outcome: "aligned" });
+    expect((await trialStore.events(trial.id)).filter((e) => e.action === "admin_extend_result").map((e) => JSON.parse(e.detail!).result)).toEqual(["pending", "applied"]);
+    expect((await trialStore.events(trial.id)).filter((e) => e.action === "admin_extend")).toHaveLength(1);
     expect((await grantsOf(tenantId, subscriptionId)).every((g) => g.validUntil === first.after)).toBe(true);
     expect(await canWrite(tenantId)).toBe(true);
   });
@@ -277,12 +285,13 @@ describe("ampliación administrativa", () => {
     expect(await trials.must(b.trial.id)).toEqual(bTrial);
   });
 
-  it("validaciones: no acorta, no al pasado, máximo un año, motivo y clave obligatorios, no en suspendidas", async () => {
+  it("validaciones técnicas: no acorta, no al pasado, fecha válida (antes de 2100), motivo y clave obligatorios, no en suspendidas", async () => {
     const { trial } = await skiboxToday();
     const base = { expectedVersion: trial.version, reason: "Motivo suficiente", idempotencyKey: key("i"), actor: "op" };
     await expect(onboarding.adminExtend(trial.id, { ...base, input: { until: "2026-11-09" } })).rejects.toMatchObject({ code: "invalid_input" }); // ya pasado
     await expect(onboarding.adminExtend(trial.id, { ...base, input: { until: "2026-02-30" } })).rejects.toMatchObject({ code: "invalid_input" });
-    await expect(onboarding.adminExtend(trial.id, { ...base, input: { until: "2027-12-31" } })).rejects.toMatchObject({ code: "invalid_input" });
+    await expect(onboarding.adminExtend(trial.id, { ...base, input: { until: "2100-01-01" } })).rejects.toMatchObject({ code: "invalid_input" });
+    await expect(onboarding.adminExtend(trial.id, { ...base, input: { until: "2026-12-01T24:00" } })).rejects.toMatchObject({ code: "invalid_input" });
     await expect(onboarding.adminExtend(trial.id, { ...base, input: { days: 0 } })).rejects.toMatchObject({ code: "invalid_input" });
     await expect(onboarding.adminExtend(trial.id, { ...base, reason: "no", input: { days: 3 } })).rejects.toMatchObject({ code: "invalid_input" });
     await expect(onboarding.adminExtend(trial.id, { ...base, idempotencyKey: "x", input: { days: 3 } })).rejects.toMatchObject({ code: "invalid_input" });
@@ -296,6 +305,88 @@ describe("ampliación administrativa", () => {
     expect((await trialStore.events(trial.id)).some((e) => e.action === "admin_extend")).toBe(false);
   });
 
+  it("sin límites: 1.ª, 2.ª, 3.ª… ampliaciones sucesivas, sin contador, con el autoservicio agotado y duración larga", async () => {
+    const { trial, tenantId, subscriptionId } = await skiboxToday();
+    let t = trial;
+    const ends: number[] = [];
+    for (let i = 1; i <= 6; i++) {
+      const r = await onboarding.adminExtend(t.id, { expectedVersion: t.version, input: { days: i === 6 ? 400 : 30 }, reason: `Ampliación número ${i}`, idempotencyKey: key(`n${i}`), actor: "operator:jorge" });
+      expect(r.result).toBe("applied");
+      ends.push(r.after);
+      t = r.trial;
+    }
+    expect(ends[0]).toBe(TODAY + 30 * DAY);
+    for (let i = 1; i < 5; i++) expect(ends[i]).toBe(ends[i - 1] + 30 * DAY);
+    expect(ends[5]).toBe(ends[4] + 400 * DAY); // más de un año acumulado: sin tope
+    expect(t.extensionsUsed).toBe(1); // el cupo del autoservicio no se toca
+    const ev = (await trialStore.events(t.id)).filter((e) => e.action === "admin_extend").map((e) => decodeAdminExtensionDetail(e.detail)!);
+    expect(ev.map((d) => d.after)).toEqual(ends); // ninguna se sobrescribe
+    expect(ev[0].before).toBe(SKIBOX_END);
+    for (let i = 1; i < ev.length; i++) expect(ev[i].before).toBe(ev[i - 1].after);
+    // Una licencia por capacidad, sin duplicados, todas hasta el último fin
+    const g = await grantsOf(tenantId, subscriptionId);
+    expect(new Set(g.map((x) => x.capabilityId)).size).toBe(g.length);
+    expect(g.every((x) => x.status === "active" && x.validUntil === ends[5])).toBe(true);
+  });
+
+  it("por fecha y hora (hora de España)", async () => {
+    const { trial } = await skiboxToday();
+    const r = await onboarding.adminExtend(trial.id, { expectedVersion: trial.version, input: { until: "2026-11-25T18:30" }, reason: "Hasta la tarde del 25", idempotencyKey: key("fh"), actor: "op" });
+    expect(r.after).toBe(Date.UTC(2026, 10, 25, 17, 30));
+    expect(r.days).toBe(15.35);
+  });
+
+  it("reactivación real: licencias del plan en solo lectura por el vencimiento vuelven a activas; suspendidas, canceladas y TPV intactas", async () => {
+    const { trial, tenantId, subscriptionId } = await skiboxToday();
+    const lic = (onboarding as unknown as { d: { licensing: LicensingService } }).d.licensing;
+    await lic.setStatus(tenantId, "crm-leads", "read_only", { actor: "op", reason: "Fin de la prueba" });
+    await lic.setStatus(tenantId, "bill-cash", "read_only", { actor: "op", reason: "Fin de la prueba" });
+    await lic.setStatus(tenantId, "cms-blog", "suspended", { actor: "op", reason: "Bloqueo por otro motivo" });
+    await lic.setStatus(tenantId, "cms-seo", "cancelled", { actor: "op", reason: "Baja decidida por un operador" });
+    const tpv = (await caps.list(tenantId)).find((g) => g.capabilityId === "tpv-acquired-rights");
+    const r = await onboarding.adminExtend(trial.id, { expectedVersion: trial.version, input: { days: 10 }, reason: "Reactivar la prueba", idempotencyKey: key("ro"), actor: "op" });
+    expect(r.result).toBe("applied");
+    const g = await grantsOf(tenantId, subscriptionId);
+    expect(g.find((x) => x.capabilityId === "crm-leads")).toMatchObject({ status: "active", validUntil: r.after });
+    expect(g.find((x) => x.capabilityId === "bill-cash")).toMatchObject({ status: "active", validUntil: r.after });
+    expect(g.find((x) => x.capabilityId === "cms-blog")).toMatchObject({ status: "suspended" });
+    expect(g.find((x) => x.capabilityId === "cms-seo")).toMatchObject({ status: "cancelled" });
+    expect((await caps.list(tenantId)).find((x) => x.capabilityId === "tpv-acquired-rights")).toEqual(tpv);
+    expect(await canWrite(tenantId)).toBe(true);
+    expect((await overview(tenantId)).state).toBe("trial");
+  });
+
+  it("no reactiva una suscripción cancelada ni ya de pago: se rechaza sin cambiar nada", async () => {
+    const a = await startTrial("Cancelada");
+    const sa = await subs.must(a.subscriptionId);
+    await subs.scheduleCancel(a.subscriptionId, { reason: "Baja del cliente" }, sa.version, "op");
+    clock = (await subs.must(a.subscriptionId)).currentPeriodEnd + 1;
+    await subs.applyRenewals(a.subscriptionId, "op");
+    expect((await subs.must(a.subscriptionId)).status).toBe("canceled");
+    const ta = await trials.must(a.trial.id);
+    await expect(onboarding.adminExtend(ta.id, { expectedVersion: ta.version, input: { days: 5 }, reason: "No debe reactivar", idempotencyKey: key("ca"), actor: "op" })).rejects.toThrow(/cancelada/);
+    expect(await trials.must(ta.id)).toEqual(ta);
+    const b = await startTrial("Pagada");
+    const sb = await subs.must(b.subscriptionId);
+    await subs.endTrial(b.subscriptionId, { reason: "pago" }, sb.version, "op");
+    await expect(onboarding.adminExtend(b.trial.id, { expectedVersion: b.trial.version, input: { days: 5 }, reason: "Ya es de pago", idempotencyKey: key("cb"), actor: "op" })).rejects.toThrow(/ya no está en prueba/);
+  });
+
+  it("concurrencia: dos administradores a la vez → una ampliación y un conflicto; la misma operación duplicada → una sola", async () => {
+    const { trial } = await skiboxToday();
+    const two = await Promise.allSettled([
+      onboarding.adminExtend(trial.id, { expectedVersion: trial.version, input: { days: 5 }, reason: "Administrador A", idempotencyKey: key("ca1"), actor: "operator:a" }),
+      onboarding.adminExtend(trial.id, { expectedVersion: trial.version, input: { days: 9 }, reason: "Administrador B", idempotencyKey: key("cb1"), actor: "operator:b" }),
+    ]);
+    expect(two.filter((x) => x.status === "fulfilled")).toHaveLength(1);
+    expect(two.filter((x) => x.status === "rejected").map((x) => (x as PromiseRejectedResult).reason.code)).toEqual(["conflict"]);
+    const t = await trials.must(trial.id);
+    const same = { expectedVersion: t.version, input: { days: 3 }, reason: "Doble clic", idempotencyKey: key("dup"), actor: "op" } as const;
+    const dup = await Promise.all([onboarding.adminExtend(t.id, same), onboarding.adminExtend(t.id, same)]);
+    expect(dup.map((d) => d.after)).toEqual([dup[0].after, dup[0].after]);
+    expect((await trialStore.events(t.id)).filter((e) => e.action === "admin_extend")).toHaveLength(2);
+  });
+
   it("fechas en hora de España, también con el cambio de hora", () => {
     expect(madridEndOfDay("2026-07-15")).toBe(Date.UTC(2026, 6, 15, 21, 59, 59)); // verano, UTC+2
     expect(madridEndOfDay("2026-10-25")).toBe(Date.UTC(2026, 9, 25, 22, 59, 59)); // día del cambio, ya UTC+1
@@ -305,11 +396,11 @@ describe("ampliación administrativa", () => {
 });
 
 describe("rutas del plano de control", () => {
-  async function serve(scopes: string[]) {
+  async function serve(scopes: string[], actorType: "operator" | "crm" = "operator") {
     const token = "token-de-prueba-ampliacion-0123456789";
     const app = express();
     app.use(express.json());
-    app.use(authenticate([{ id: "crm", sha256: hashToken(token), scopes } as never]));
+    app.use(authenticate([{ id: actorType === "operator" ? "jorge" : "crm", sha256: hashToken(token), scopes, actorType } as never]));
     app.use("/trials", createTrialAdminRouter({ onboarding, trials, store: trialStore }));
     const server = http.createServer(app);
     await new Promise<void>((r) => server.listen(0, "127.0.0.1", r));
@@ -334,11 +425,23 @@ describe("rutas del plano de control", () => {
       const bad = await s.call("POST", `/${trial.id}/admin-extension`, { expectedVersion: trial.version, until: "2026-11-30", days: 3, reason: "Las dos cosas", idempotencyKey: key("j") });
       expect(bad.status).toBe(400);
       const ok = await s.call("POST", `/${trial.id}/admin-extension`, { expectedVersion: trial.version, until: "2026-11-30", reason: "Ampliación desde el CRM", idempotencyKey: key("j") });
-      expect(ok).toMatchObject({ status: 200, body: { replayed: false, before: SKIBOX_END, licences: { outcome: "aligned" }, trial: { state: "active", effectiveState: "active" } } });
+      expect(ok).toMatchObject({ status: 200, body: { result: "applied", replayed: false, before: SKIBOX_END, licences: { outcome: "aligned" }, trial: { state: "active", effectiveState: "active" } } });
       const again = await s.call("POST", `/${trial.id}/admin-extension`, { expectedVersion: trial.version, until: "2026-11-30", reason: "Ampliación desde el CRM", idempotencyKey: key("j") });
-      expect(again).toMatchObject({ status: 200, body: { replayed: true } });
+      expect(again).toMatchObject({ status: 200, body: { replayed: true, result: "applied" } });
     } finally {
       Date.now = realNow;
+      await s.close();
+    }
+  });
+
+  it("un token de integración (no una persona) no amplía, aunque tenga los ámbitos", async () => {
+    const { trial } = await skiboxToday();
+    const s = await serve(["subscriptions:read", "subscriptions:write", "entitlements:write"], "crm");
+    try {
+      const r = await s.call("POST", `/${trial.id}/admin-extension`, { expectedVersion: trial.version, days: 3, reason: "Integración", idempotencyKey: key("tk") });
+      expect(r.status).toBe(403);
+      expect((await trials.must(trial.id)).endsAt).toBe(SKIBOX_END);
+    } finally {
       await s.close();
     }
   });

@@ -19,7 +19,7 @@ import type { TrialOnboardingService } from "./onboarding";
 import { TrialError, TrialService } from "./service";
 import type { TrialStore } from "./store";
 import { TRIAL_STATES, effectiveTrialState } from "./machine";
-import { ADMIN_EXTENSION_MAX_DAYS } from "./adminExtension";
+import { ADMIN_EXTENSION_UNTIL_RE } from "./adminExtension";
 import { opsLog } from "../_core/ops/log";
 import { APPROVAL_CATEGORIES, OrderError, type ApprovalCategory } from "../orchestrator/types";
 import { LIFE_PLAN } from "../../shared/personalPlans";
@@ -427,12 +427,15 @@ export function createTrialAdminRouter(o: { onboarding: TrialOnboardingService; 
   );
   // Una sola forma: la fecha o los días (las dos a la vez, o ninguna, es 400)
   const definedOnly = (o: Record<string, unknown>) => Object.fromEntries(Object.entries(o).filter(([, v]) => v !== undefined));
-  // Ampliación ADMINISTRATIVA (CRM): nueva fecha (día en hora de España) o días; motivo y clave de idempotencia. Mueve
-  // también la caducidad de las licencias de la prueba: exige entitlements:write, como suspender y reactivar.
-  const adminInput = z.union([
-    z.object({ until: z.string().regex(/^\d{4}-\d{2}-\d{2}$/) }).strict(),
-    z.object({ days: z.number().int().min(1).max(ADMIN_EXTENSION_MAX_DAYS) }).strict(),
-  ]);
+  // Ampliación ADMINISTRATIVA (CRM; decisión de Jorge del 10/11/2026: sin límites de veces, días ni duración): nueva
+  // fecha (día, o fecha y hora, en hora de España) o días; motivo y clave de idempotencia. Mueve y reactiva las licencias
+  // de la prueba: exige entitlements:write, como suspender y reactivar, y una PERSONA (operador central): un token de
+  // integración no amplía pruebas.
+  const adminInput = z.union([z.object({ until: z.string().regex(ADMIN_EXTENSION_UNTIL_RE) }).strict(), z.object({ days: z.number().int().min(1) }).strict()]);
+  const centralAdmin = (req: Request, res: Response, next: NextFunction) => {
+    if (getAuth(req)?.actor.type !== "operator") return void res.status(403).json({ error: "forbidden", message: "Solo un administrador central puede ampliar una prueba" });
+    next();
+  };
   r.get(
     "/:id/admin-extension/preview",
     requireScope("subscriptions:read"),
@@ -442,13 +445,14 @@ export function createTrialAdminRouter(o: { onboarding: TrialOnboardingService; 
       const t = await o.trials.must(id.parse(req.params.id));
       const plan = o.trials.planAdminExtension(t, input);
       const now = Date.now();
-      res.json({ trialId: t.id, version: t.version, state: t.state, effectiveState: effectiveTrialState(t, now), currentEndsAt: plan.before, newEndsAt: plan.after, timeZone: "Europe/Madrid" });
+      res.json({ trialId: t.id, version: t.version, state: t.state, effectiveState: effectiveTrialState(t, now), currentEndsAt: plan.before, newEndsAt: plan.after, days: plan.days, extensionsUsed: t.extensionsUsed, timeZone: "Europe/Madrid" });
     }),
   );
   r.post(
     "/:id/admin-extension",
     requireScope("subscriptions:write"),
     requireScope("entitlements:write"),
+    centralAdmin,
     wrap(async (req, res) => {
       const b = z
         .object({
@@ -463,11 +467,14 @@ export function createTrialAdminRouter(o: { onboarding: TrialOnboardingService; 
         .parse(req.body);
       const input = adminInput.parse(definedOnly({ until: b.until, days: b.days }));
       const out = await o.onboarding.adminExtend(id.parse(req.params.id), { expectedVersion: b.expectedVersion, input, reason: b.reason, idempotencyKey: b.idempotencyKey, notify: b.notify ?? false, actor: who(req) });
-      res.json({
+      // 200 solo si los derechos efectivos del tenant ya están actualizados; si no, 202 «pending» (queda para reintento)
+      res.status(out.result === "applied" ? 200 : 202).json({
         trial: TrialService.view(out.trial),
+        result: out.result,
         replayed: out.replayed,
         before: out.before,
         after: out.after,
+        days: out.days,
         licences: out.licences ? { outcome: out.licences.outcome, reason: out.licences.reason ?? null, licencesChanged: out.licences.licencesChanged ?? 0, subscriptionMoved: !!out.licences.subscriptionMoved } : { outcome: "pending", reason: "sync_failed", licencesChanged: 0, subscriptionMoved: false },
       });
     }),

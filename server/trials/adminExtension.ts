@@ -2,25 +2,28 @@
  * Ampliación ADMINISTRATIVA de una prueba gratuita (decisión del equipo desde el CRM), separada de la ampliación de
  * autoservicio (`approve_extension`, con su tope de ampliaciones y días) y de la facturación simulada.
  *
- *  - Se indica la nueva fecha de fin (día civil en hora de España: la prueba dura hasta las 23:59:59 de ese día) o los
- *    días que se añaden (desde el fin actual, o desde ahora si ya venció).
- *  - Vale también para una prueba vencida. Nunca acorta la prueba ni la deja en el pasado.
- *  - Queda en el historial de la prueba (`admin_extend`) con el operador, la fecha, el motivo, el fin anterior y el
- *    nuevo, y la clave de idempotencia: repetir la misma operación (p. ej. tras un corte de red) no amplía dos veces.
- *  - Sin cobros, facturas, cambios de precio ni segunda suscripción: solo mueve el fin de la prueba; la suscripción en
- *    prueba y la caducidad de sus licencias se alinean después (`TrialOnboardingService.syncLicences`).
+ * Decisión de Jorge (10/11/2026): SIN LÍMITES. Sin tope de ampliaciones, de días ni de duración acumulada; vale para
+ * pruebas activas, vencidas o ya ampliadas, y no consume el cupo del autoservicio. Solo se conservan las validaciones
+ * TÉCNICAS de una fecha válida: posterior a ahora y al fin actual (ampliar nunca acorta), y anterior al año 2100.
+ *
+ *  - Se indica la nueva fecha (día civil, hasta las 23:59:59, o fecha y hora, siempre en hora de España) o los días que
+ *    se añaden (desde el fin actual, o desde ahora si ya venció).
+ *  - Queda en el historial de la prueba (`admin_extend`, solo de anexado) con el operador, la fecha, el motivo, el fin
+ *    anterior y el nuevo, los días añadidos y la clave de idempotencia; el resultado de la propagación a las licencias
+ *    se anota aparte (`admin_extend_result`). Repetir la misma clave no amplía dos veces.
+ *  - Sin cobros, facturas, cambios de precio ni segunda suscripción.
  *
  * Este fichero es puro (sin E/S): cálculo de la nueva fecha y formato del detalle del historial (máx. 300 caracteres).
  */
 
 const DAY = 86_400_000;
-/** Tope de seguridad de la nueva fecha: un año desde hoy. */
-export const ADMIN_EXTENSION_MAX_AHEAD_MS = 366 * DAY;
-/** Días que se pueden añadir de una vez. */
-export const ADMIN_EXTENSION_MAX_DAYS = 366;
+/** Validación técnica (no comercial): una fecha anterior al 01/01/2100. */
+export const ADMIN_EXTENSION_TECHNICAL_LIMIT = Date.UTC(2100, 0, 1);
 export const ADMIN_EXTENSION_REASON_MIN = 5;
 export const ADMIN_EXTENSION_REASON_MAX = 160;
 export const ADMIN_EXTENSION_KEY_RE = /^[A-Za-z0-9_-]{8,64}$/;
+/** «AAAA-MM-DD» (hasta las 23:59:59) o «AAAA-MM-DDTHH:mm» (hora de España). */
+export const ADMIN_EXTENSION_UNTIL_RE = /^\d{4}-\d{2}-\d{2}(T\d{2}:\d{2})?$/;
 
 export type AdminExtensionInput = { until: string; days?: undefined } | { days: number; until?: undefined };
 
@@ -34,9 +37,12 @@ function madridOffset(t: number): number {
   return Date.UTC(+p.year, +p.month - 1, +p.day, +p.hour, +p.minute, +p.second) - Math.floor(t / 1000) * 1000;
 }
 
-/** Instante UTC de las 00:00 de Madrid de un día AAAA-MM-DD (con el desfase de esa medianoche). */
-export function madridMidnight(iso: string): number {
-  const base = Date.parse(`${iso}T00:00:00Z`);
+/**
+ * Instante UTC de una hora de pared de Madrid (AAAA-MM-DD y HH:mm:ss). Se calcula con el desfase de ESE instante (dos
+ * pasadas), así que el día del cambio de hora también sale bien.
+ */
+export function madridWallTime(iso: string, time = "00:00:00"): number {
+  const base = Date.parse(`${iso}T${time}Z`);
   let t = base - madridOffset(base);
   t = base - madridOffset(t);
   return t;
@@ -49,39 +55,48 @@ export function madridDay(at: number): string {
 
 /** Último segundo (23:59:59) de un día civil en Madrid. */
 export function madridEndOfDay(iso: string): number {
-  const next = new Date(Date.parse(`${iso}T12:00:00Z`) + DAY).toISOString().slice(0, 10);
-  return madridMidnight(next) - 1000;
+  return madridWallTime(iso, "23:59:59");
 }
-
-const ISO_DAY = /^\d{4}-\d{2}-\d{2}$/;
 
 export class AdminExtensionInputError extends Error {}
 
+const validDay = (iso: string) => !Number.isNaN(Date.parse(`${iso}T12:00:00Z`)) && new Date(`${iso}T12:00:00Z`).toISOString().slice(0, 10) === iso;
+
+/** Instante de `until`: el día entero (23:59:59) o la fecha y hora indicadas, en hora de España. */
+export function untilInstant(until: string): number {
+  if (!ADMIN_EXTENSION_UNTIL_RE.test(until)) throw new AdminExtensionInputError("Fecha no válida (AAAA-MM-DD o AAAA-MM-DDTHH:mm)");
+  const [day, time] = until.split("T");
+  if (!validDay(day)) throw new AdminExtensionInputError("Fecha no válida");
+  if (time === undefined) return madridEndOfDay(day);
+  const [h, m] = time.split(":").map(Number);
+  if (h > 23 || m > 59) throw new AdminExtensionInputError("Hora no válida");
+  return madridWallTime(day, `${time}:00`);
+}
+
 /**
- * Nueva fecha de fin. Lanza `AdminExtensionInputError` (mensaje para el operador) si no es válida: fecha mal formada,
- * no posterior al fin actual, en el pasado o más allá del tope.
+ * Nueva fecha de fin. Lanza `AdminExtensionInputError` (mensaje para el operador) si no es TÉCNICAMENTE válida: fecha
+ * mal formada, no posterior a ahora ni al fin actual, o a partir de 2100. Sin límites comerciales.
  */
-export function planAdminExtension(current: { endsAt: number | null }, input: AdminExtensionInput, now: number): { before: number | null; after: number } {
+export function planAdminExtension(current: { endsAt: number | null }, input: AdminExtensionInput, now: number): { before: number | null; after: number; days: number } {
   let after: number;
-  if (input.until !== undefined) {
-    if (!ISO_DAY.test(input.until) || Number.isNaN(Date.parse(`${input.until}T12:00:00Z`)) || new Date(`${input.until}T12:00:00Z`).toISOString().slice(0, 10) !== input.until) {
-      throw new AdminExtensionInputError("Fecha no válida (AAAA-MM-DD)");
-    }
-    after = madridEndOfDay(input.until);
-  } else {
+  if (input.until !== undefined) after = untilInstant(input.until);
+  else {
     const days = input.days;
-    if (!Number.isInteger(days) || days < 1 || days > ADMIN_EXTENSION_MAX_DAYS) throw new AdminExtensionInputError(`Entre 1 y ${ADMIN_EXTENSION_MAX_DAYS} días`);
+    if (!Number.isSafeInteger(days) || days < 1) throw new AdminExtensionInputError("Indica un número entero de días (1 o más)");
     after = Math.max(current.endsAt ?? now, now) + days * DAY;
   }
+  if (!Number.isSafeInteger(after) || after >= ADMIN_EXTENSION_TECHNICAL_LIMIT) throw new AdminExtensionInputError("Fecha no válida: tiene que ser anterior a 2100");
   if (after <= now) throw new AdminExtensionInputError("La nueva fecha de fin tiene que ser futura");
   if (current.endsAt !== null && after <= current.endsAt) throw new AdminExtensionInputError("La nueva fecha de fin tiene que ser posterior a la actual");
-  if (after > now + ADMIN_EXTENSION_MAX_AHEAD_MS) throw new AdminExtensionInputError("Como mucho, un año desde hoy");
-  return { before: current.endsAt, after };
+  // Días añadidos sobre el fin vigente (o desde ahora si ya había vencido), con dos decimales
+  const days = Math.round(((after - Math.max(current.endsAt ?? now, now)) / DAY) * 100) / 100;
+  return { before: current.endsAt, after, days };
 }
 
 export interface AdminExtensionDetail {
   before: number | null;
   after: number;
+  days: number;
   key: string;
   reason: string;
 }
@@ -90,7 +105,7 @@ export interface AdminExtensionDetail {
 export function encodeAdminExtensionDetail(d: AdminExtensionDetail): string {
   let reason = d.reason.trim().slice(0, ADMIN_EXTENSION_REASON_MAX);
   for (;;) {
-    const s = JSON.stringify({ before: d.before, after: d.after, key: d.key, reason });
+    const s = JSON.stringify({ before: d.before, after: d.after, days: d.days, key: d.key, reason });
     if (s.length <= 300 || !reason) return s;
     reason = reason.slice(0, -10);
   }
@@ -101,8 +116,21 @@ export function decodeAdminExtensionDetail(detail: string | null): AdminExtensio
   try {
     const v = JSON.parse(detail) as Partial<AdminExtensionDetail>;
     if (typeof v.after !== "number" || typeof v.key !== "string") return null;
-    return { before: typeof v.before === "number" ? v.before : null, after: v.after, key: v.key, reason: typeof v.reason === "string" ? v.reason : "" };
+    return { before: typeof v.before === "number" ? v.before : null, after: v.after, days: typeof v.days === "number" ? v.days : 0, key: v.key, reason: typeof v.reason === "string" ? v.reason : "" };
   } catch {
     return null;
   }
+}
+
+/** Resultado de la propagación a las licencias, anotado tras cada ampliación (y en cada reintento con la misma clave). */
+export interface AdminExtensionResultDetail {
+  key: string;
+  /** `applied`: derechos efectivos actualizados; `pending`: no se pudo, la reconciliación periódica lo reintenta. */
+  result: "applied" | "pending";
+  subscriptionId: number | null;
+  licencesChanged: number;
+  reason: string | null;
+}
+export function encodeAdminExtensionResult(d: AdminExtensionResultDetail): string {
+  return JSON.stringify(d).slice(0, 300);
 }

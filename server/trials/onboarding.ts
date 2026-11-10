@@ -23,7 +23,7 @@ import type { SubscriptionService } from "../subscriptions/service";
 import { opsLog } from "../_core/ops/log";
 import { LIFE_PLAN, LIFE_TRIAL_DAYS } from "../../shared/personalPlans";
 import { nextState } from "./machine";
-import type { AdminExtensionInput } from "./adminExtension";
+import { encodeAdminExtensionResult, type AdminExtensionInput } from "./adminExtension";
 import { TrialError, TrialService } from "./service";
 import type { TrialHolder, TrialRequest } from "./store";
 import type { TrialAttribution, TrialAttributionInput, TrialProfile, TrialProfileInput } from "./profile";
@@ -92,7 +92,7 @@ export interface TrialOnboardingDeps {
   platformDomain: string;
   companies: CompanyPort;
   subscriptions: Pick<SubscriptionService, "create" | "list" | "detail" | "endTrial" | "changePlan"> & Partial<Pick<SubscriptionService, "setTrialEnd">>;
-  licensing: Pick<LicensingService, "apply"> & Partial<Pick<LicensingService, "list" | "setStatus" | "syncValidUntil">>;
+  licensing: Pick<LicensingService, "apply"> & Partial<Pick<LicensingService, "list" | "setStatus" | "syncValidUntil" | "restoreTrialAccess">>;
   /** Id del precio aprobado vigente de un producto (catálogo publicado). */
   priceOf: (productKey: string, kind: "monthly" | "yearly") => Promise<number | null>;
   notify: TrialNotifier;
@@ -382,11 +382,47 @@ export class TrialOnboardingService {
    * empresa. El aviso al cliente es opcional (`notify`) y solo en la primera aplicación.
    */
   async adminExtend(trialId: number, o: { expectedVersion: number; input: AdminExtensionInput; reason: string; idempotencyKey: string; notify?: boolean; actor: string }) {
+    const before = await this.d.trials.must(trialId);
+    // Antes de cambiar nada: la prueba tiene que tener su suscripción EN PRUEBA. Una suscripción cancelada, ya de pago o
+    // bloqueada por otro motivo no se reactiva desde aquí (tiene su propia operación explícita).
+    if (before.tenantId) await this.assertExtendableSubscription(before.tenantId);
     const r = await this.d.trials.adminExtend(trialId, o);
     const licences = await this.syncLicencesSafely(r.trial.id, o.actor, "admin_extend");
-    opsLog("info", "Trials", "trial_admin_extended", { trialId: r.trial.id, tenantId: r.trial.tenantId, before: r.before, after: r.after, replayed: r.replayed, actor: o.actor, licences: licences?.outcome ?? "failed" });
+    const verified = licences && (licences.outcome === "aligned" || licences.outcome === "in_sync") ? await this.trialAccessUpToDate(r.trial, licences.subscriptionId ?? null) : false;
+    const result = verified ? "applied" : "pending";
+    // Resultado en el historial (cada intento queda; nunca se sobrescribe la ampliación). «pending»: la reconciliación
+    // periódica (cada 5 min) lo completa y el reintento con la misma clave vuelve a intentarlo y a comprobarlo
+    await this.d.trials
+      .recordAdminExtensionResult(r.trial.id, encodeAdminExtensionResult({ key: o.idempotencyKey, result, subscriptionId: licences?.subscriptionId ?? null, licencesChanged: licences?.licencesChanged ?? 0, reason: verified ? null : (licences?.reason ?? (licences ? "not_verified" : "sync_failed")) }), o.actor)
+      .catch((e) => opsLog("warn", "Trials", "admin_extend_result_not_recorded", { trialId: r.trial.id, error: e instanceof Error ? e.name : "error" }));
+    opsLog(verified ? "info" : "warn", "Trials", "trial_admin_extended", { trialId: r.trial.id, tenantId: r.trial.tenantId, before: r.before, after: r.after, days: r.days, replayed: r.replayed, actor: o.actor, result, licences: licences?.outcome ?? "failed" });
     if (!r.replayed && o.notify) await this.tellStatus(r.trial, "extended");
-    return { ...r, licences };
+    return { ...r, result, licences } as const;
+  }
+
+  /** La suscripción de la prueba existe, es de ese tenant y está EN PRUEBA; si no, la ampliación se rechaza sin cambiar nada. */
+  private async assertExtendableSubscription(tenantId: string) {
+    const company = await this.d.companies.byTenant(tenantId);
+    const all = company ? await this.d.subscriptions.list({ companyId: company.id }) : [];
+    const mine = all.filter((s) => s.tenantId === tenantId);
+    const open = mine.find((s) => s.status !== "canceled");
+    if (!open) throw new TrialError("invalid_state", mine.length ? "La suscripción de la prueba está cancelada: se reactiva con su propia operación, no ampliando la prueba" : "La prueba no tiene suscripción en prueba");
+    if (open.status !== "trialing") throw new TrialError("invalid_state", "La suscripción ya no está en prueba: no se amplía la prueba");
+  }
+
+  /**
+   * Comprobación de los derechos efectivos tras ampliar: las licencias del plan de prueba (las de su suscripción que no
+   * estén suspendidas ni canceladas por otro motivo) están activas hasta el nuevo fin. Sin lista de licencias, no se
+   * puede comprobar: no se da por hecho.
+   */
+  private async trialAccessUpToDate(t: TrialRequest, subscriptionId: number | null) {
+    if (!t.tenantId || subscriptionId === null || !this.d.licensing.list || t.endsAt === null) return false;
+    try {
+      const own = (await this.d.licensing.list(t.tenantId)).filter((g) => g.source === `subscription:${subscriptionId}` && g.status !== "suspended" && g.status !== "cancelled");
+      return own.length > 0 && own.every((g) => g.status === "active" && g.validUntil !== null && Math.abs(g.validUntil - t.endsAt!) <= TRIAL_END_TOLERANCE_MS);
+    } catch {
+      return false;
+    }
   }
 
   /**
@@ -403,7 +439,11 @@ export class TrialOnboardingService {
     if (!sub) return { ...base, outcome: "skipped", reason: "no_trial_subscription" };
     const subscriptionMoved = await this.alignSubscription(t, sub, actor);
     const lic = await this.d.licensing.syncValidUntil(sub.id, { actor, reason: `Fin de la prueba gratuita #${t.id}` });
-    return { ...base, outcome: subscriptionMoved || lic.changed > 0 ? "aligned" : "in_sync", subscriptionId: sub.id, endsAt: t.endsAt, subscriptionMoved, licencesChanged: lic.changed };
+    // Prueba vigente (p. ej. recién ampliada tras vencer): las licencias del plan en solo lectura por el vencimiento
+    // vuelven a activas y las que falten se dan de alta. Nunca las suspendidas o canceladas, ni otros orígenes.
+    const restored = t.state === "active" && t.endsAt > this.now() && this.d.licensing.restoreTrialAccess ? (await this.d.licensing.restoreTrialAccess(sub.id, { actor, reason: `Acceso de la prueba gratuita #${t.id}` })).changed : 0;
+    const changed = lic.changed + restored;
+    return { ...base, outcome: subscriptionMoved || changed > 0 ? "aligned" : "in_sync", subscriptionId: sub.id, endsAt: t.endsAt, subscriptionMoved, licencesChanged: changed };
   }
 
   /** `syncLicences` sin propagar el fallo: el cambio de la prueba ya está hecho y la reconciliación lo completará. */
