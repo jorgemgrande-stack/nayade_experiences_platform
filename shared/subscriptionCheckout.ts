@@ -44,9 +44,10 @@ export interface CheckoutCatalogItem {
   checkoutVia?: CheckoutVia;
   /**
    * Antiguo módulo suelto sustituido por un producto completo (unificación de Elephant Net, campo aditivo de
-   * connect.catalog `{ replacedBy, since }`). Nunca se ofrece: si la empresa lo tiene, se muestra como contratado.
+   * connect.catalog, p. ej. `{ replacedBy: { key, name } }`). Solo importa si está: nunca se ofrece y, si la empresa lo
+   * tiene, se muestra como contratado.
    */
-  legacy?: { replacedBy?: string | null; since?: string | number | null } | null;
+  legacy?: unknown;
 }
 
 export interface CheckoutExtension<T extends CheckoutCatalogItem = CheckoutCatalogItem> {

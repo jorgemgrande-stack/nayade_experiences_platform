@@ -137,3 +137,11 @@ export function isGrowthOption(card: Pick<PlanCardModel, "isCurrent" | "plan">, 
   if (!currentKey || PLAN_RANK[currentKey] === undefined) return true;
   return (PLAN_RANK[card.plan.key] ?? -1) > PLAN_RANK[currentKey];
 }
+
+/**
+ * Importe de un plan con separador de miles también en cuatro cifras («1.899,00 €», como en las creatividades): el
+ * formato es-ES por defecto no agrupa los miles con cuatro cifras. Mismo importe, solo formato.
+ */
+export function planMoney(cents: number, currency: string): string {
+  return new Intl.NumberFormat("es-ES", { style: "currency", currency, minimumFractionDigits: 2, maximumFractionDigits: 2, useGrouping: "always" } as Intl.NumberFormatOptions).format(cents / 100);
+}

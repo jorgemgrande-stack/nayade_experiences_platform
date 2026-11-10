@@ -86,7 +86,8 @@ const DESCRIPTION_FROM: Record<string, string> = {
  */
 export function scrubComingSoon(t: string): string {
   return t
-    .replace(/Próximamente: (\p{L})/gu, (_m, c: string) => c.toUpperCase())
+    // Sin el flag `u` (no lo admite el target de tsconfig): letras latinas, también acentuadas y la ñ (À-Ö, Ø-ö, ø-ÿ)
+    .replace(/Próximamente: ([A-Za-zÀ-ÖØ-öø-ÿ])/g, (_m, c: string) => c.toUpperCase())
     .replace(/llegarán próximamente/g, "están en implantación")
     .replace(/llegará próximamente/g, "está en implantación")
     .replace(/se abrirá próximamente/g, "se abrirá en breve")

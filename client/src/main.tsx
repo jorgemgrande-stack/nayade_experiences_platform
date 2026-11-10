@@ -10,6 +10,10 @@ import App from "./App";
 import { CartProvider } from "./contexts/CartContext";
 import { getLoginUrl } from "./const";
 import "./index.css";
+import { installStaleBuildReload } from "@/lib/staleBuildReload";
+
+// Pantalla abierta durante un despliegue: si falta una página de la versión anterior, recarga una vez
+installStaleBuildReload(window);
 
 const queryClient = new QueryClient();
 
