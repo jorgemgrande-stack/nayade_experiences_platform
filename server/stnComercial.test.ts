@@ -13,6 +13,7 @@
 import { describe, it, expect, beforeAll } from "vitest";
 import { quote, type QuoteCatalog } from "./catalog/quote";
 import { seedElephantSource } from "./catalog/seed";
+import { beforeNetUnification } from "./catalog/seedHistory.testkit";
 import { quoteCatalogFromSite } from "./catalog/snapshot";
 import { PRODUCTS } from "./catalog/elephantSourceV1";
 import { WebAdminService } from "./web/service";
@@ -36,7 +37,7 @@ let forSale: QuoteCatalog;
 beforeAll(async () => {
   const webStore = new MemoryWebStore();
   const web = new WebAdminService({ store: webStore, refs: { moduleIds: BUILTIN_MODULES.map((m) => m.id), planIds: () => null }, now: () => T0 });
-  await seedElephantSource(web, webStore);
+  await seedElephantSource(web, webStore, { products: beforeNetUnification() });
   catalog = quoteCatalogFromSite(await web.site("published"));
   forSale = { ...catalog, products: catalog.products.map((p) => ([COM, TOK, CPL].includes(p.key) ? { ...p, commercialStatus: "available" as const, technicalStatus: "available" } : p)) };
 });
@@ -114,7 +115,9 @@ describe("pedidos: el paquete y un componente juntos se rechazan antes de cobrar
       err = e;
     }
     const message = err instanceof OrderError ? err.message : (order?.lastError ?? "");
-    expect(message).toMatch(/Comunidades» ya va incluido en «Social Token Net».*Elige el paquete o sus módulos, no los dos/);
+    // El catálogo vigente marca Comunidades como heredado (unificación de Elephant Net): el pedido se rechaza por eso, antes
+    // incluso de mirar que la solución ya lo incluye
+    expect(message).toMatch(/«Social Token Net · Comunidades» ya no se contrata por separado: forma parte de Social Token Net/);
     if (order) expect(["requested", "rejected"]).toContain(order.state);
     expect(await c.orders.payments(order?.id ?? -1).catch(() => [])).toEqual([]);
     expect(await c.caps.list(base.tenantId!)).toEqual(before);

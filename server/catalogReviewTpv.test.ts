@@ -5,6 +5,7 @@
  */
 import { describe, expect, it } from "vitest";
 import { seedElephantSource } from "./catalog/seed";
+import { beforeTpvPerCompany } from "./catalog/seedHistory.testkit";
 import { applyListingReview } from "./catalog/review20261108fichas";
 import { REVIEW_ID_2026_11_09_TPV, TPV_LISTINGS_2026_11_09 } from "./catalog/review20261109tpv";
 import { quoteCatalogFromSite } from "./catalog/snapshot";
@@ -28,7 +29,7 @@ const POS_LINE = "connect-pos: ámbito «site» → «company», unidad de cobro
 async function production(price19 = true) {
   const store = new MemoryWebStore();
   const svc = new WebAdminService({ store, refs, now: () => 1_790_000_000_000 });
-  await seedElephantSource(svc, store);
+  await seedElephantSource(svc, store, { products: beforeTpvPerCompany() });
   for (const c of TPV_LISTINGS_2026_11_09) {
     const e = (await store.getEntry("product", c.key))!;
     const d = productDraft.parse(e.draft);

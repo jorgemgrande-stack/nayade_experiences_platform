@@ -16,7 +16,12 @@
  *   - on_request («Implantación acompañada»): operativo; el equipo lo implanta con el cliente.
  *   - in_preparation («En preparación»): hay código, pero falta desarrollo o validación para implantarlo.
  *   - coming_soon («Próximamente»): previsto, sin código que se pueda implantar.
- * La semilla solo crea lo que falta: en una BD existente, el estado comercial lo decide el CRM (seed.ts).
+ * La semilla solo crea lo que falta y solo actualiza lo que sigue siendo suyo: en una BD con vida, el catálogo lo deciden
+ * el CRM y las revisiones (seed.ts), y la semilla lista las diferencias sin escribir.
+ *
+ * Estado que recoge (10/11/2026): Elephant Net unificado (7 soluciones; los 19 módulos sueltos, heredados con
+ * `catalog.legacy`), ninguna solución Net incluye Elephant Core (sin `catalog.coreIncluded`), Social Token Net por
+ * empresa, Hotel Net en implantación acompañada y TPV Advanced (`connect-pos`) por empresa a 19 €/mes.
  *
  * Composición de los paquetes Connect: APROBADA por negocio (16/10/2026).
  *
@@ -27,6 +32,7 @@
 import { capabilitiesOfTier } from "./capabilities";
 import { EVIDENCE_2026_10_25, STATUS_REVIEW_2026_10_25 } from "./review20261025";
 import { STATUS_REVIEW_2026_11_07 } from "./review20261107";
+import { netProductOfLegacy } from "../../shared/netProducts";
 import { HOUSEHOLD_MEMBERS_METRIC, LIFE_CAPABILITIES, LIFE_HOUSEHOLD_MEMBERS_INCLUDED, LIFE_MONTHLY_BASE_CENTS, LIFE_PLAN } from "../../shared/personalPlans";
 import type { ProductDraft } from "../web/schemas";
 
@@ -85,6 +91,8 @@ interface P {
   chargeUnit?: string;
   icon?: string;
   notes?: string;
+  /** Producto heredado (retirado de la venta): la solución que lo incluye. */
+  legacy?: { since: string; replacedBy: string };
 }
 
 const billingModelOf = (f: Fam): ProductDraft["billingModel"] => (f === "core_plan" ? "subscription" : "recurring_addon");
@@ -129,6 +137,7 @@ function product(p: P): SeedProduct {
       quotas: (p.quotas ?? []).map((q) => ({ metric: q.metric, included: q.included, unit: q.unit ?? "" })),
       addonFor: p.addonFor ? { metric: p.addonFor.metric, step: p.addonFor.step, plans: p.addonFor.plans ?? [] } : null,
       chargeUnit: p.chargeUnit ?? null,
+      ...(p.legacy ? { legacy: p.legacy } : {}),
     },
     internal: { notes: p.notes ?? null, costCents: null, marginNote: null, evidence: evidenceOf(p.key) },
   };
@@ -235,8 +244,15 @@ const CORE: SeedProduct[] = [
  * (shared/netProducts.ts). Life Net es un producto, no un componente.
  */
 const LEGACY_NOTE = "Componente interno del producto Elephant Net: no se vende por separado desde el 07/11/2026.";
-const net = (p: Omit<P, "family" | "scope"> & { scope?: "company" | "site" }) =>
-  product({ ...p, family: "net_module", scope: p.scope ?? "site", notes: p.key === "life-net" ? p.notes : [LEGACY_NOTE, p.notes].filter(Boolean).join(" ") });
+/** Fecha de retirada de la venta de los módulos sueltos (unificación de Elephant Net, review20261109netunificacion.ts). */
+const NET_LEGACY_SINCE = "2026-11-09";
+/** Marca de heredado de un módulo suelto: la solución de su sector, que lo incluye (shared/netProducts.ts). Life Net no lo es. */
+const legacyOf = (key: string) => {
+  const solution = netProductOfLegacy(key);
+  return solution ? { since: NET_LEGACY_SINCE, replacedBy: solution.key } : undefined;
+};
+const net = (p: Omit<P, "family" | "scope" | "legacy"> & { scope?: "company" | "site" }) =>
+  product({ ...p, family: "net_module", scope: p.scope ?? "site", legacy: legacyOf(p.key), notes: p.key === "life-net" ? p.notes : [LEGACY_NOTE, p.notes].filter(Boolean).join(" ") });
 const netBundle = (p: Omit<P, "family" | "scope"> & { scope?: "company" | "site" }) => product({ ...p, family: "net_bundle", scope: p.scope ?? "site" });
 const DEPS_NOTE = `Dependencias entre submódulos: ${PROPOSAL}`;
 /** Naturaleza de los puntos de Social Token Net · Tokens internos (decisión de Jorge, 05/11/2026): se contrata sin Comunidades. */
@@ -308,12 +324,10 @@ const CONNECT: SeedProduct[] = [
   }),
   connect({ key: "connect-tax", name: "Elephant Tax", group: "finance", tagline: "Declaraciones y modelos fiscales con tu gestoría.", tech: "partial", commercial: "on_request", monthly: 19, capabilities: ["tax-filings"], icon: "file-text" }),
   connect({ key: "connect-partners", name: "Elephant Partners", group: "finance", tagline: "Liquidaciones de proveedores y colaboradores.", tech: "partial", commercial: "on_request", monthly: 19, capabilities: ["supplier-settlements"], icon: "handshake" }),
-  // TPV Advanced. PENDIENTE (decisión de Jorge del 10/11/2026: por empresa, sin unidad de cobro y 19 €/mes): la semilla
-  // sigue con los valores de production de hoy («por sede», 25 €) hasta que se apruebe el precio en el CRM y se aplique la
-  // revisión review20261109tpv.ts. Después hay que cambiar AQUÍ, en un mismo commit, `scope: "company"`, quitar
-  // `chargeUnit` y `monthly: 19` (y las simulaciones que usan 25 €). Hasta entonces NO se ejecuta la semilla en
-  // production: revertiría el ámbito y volvería a aprobar el precio de 25 €
-  connect({ key: "connect-pos", name: "TPV Advanced", group: "pos", scope: "site", tagline: "Arqueos, turnos y auditoría sobre la caja de tu plan.", tech: "partial", commercial: "on_request", monthly: 25, capabilities: ["pos-advanced"], chargeUnit: "por sede", icon: "credit-card" }),
+  // TPV Advanced (decisión de Jorge del 10/11/2026, review20261109tpv.ts): por empresa, sin unidad de cobro y 19 €/mes
+  // (antes «Elephant POS», por sede y 25 €). El precio lo aprueba el CRM y el ámbito lo cambia la revisión: la semilla
+  // solo recoge el estado final y nunca lo impone sobre lo publicado (seed.ts)
+  connect({ key: "connect-pos", name: "TPV Advanced", group: "pos", tagline: "Arqueos, turnos y auditoría sobre la caja de tu plan.", tech: "partial", commercial: "on_request", monthly: 19, capabilities: ["pos-advanced"], icon: "credit-card" }),
   connect({ key: "connect-deals", name: "Elephant Deals", group: "deals", tagline: "Groupon y cuponeras: canje y conciliación.", tech: "partial", commercial: "on_request", monthly: 19, capabilities: ["deals-coupons"], icon: "tag" }),
   connect({ key: "connect-finance-sync", name: "Elephant Finance Sync", group: "finance", tagline: "Importación bancaria, conciliación y operaciones de TPV.", tech: "partial", commercial: "on_request", monthly: 19, capabilities: ["bank-reconciliation", "bank-import-pos"], icon: "refresh" }),
   connect({ key: "connect-copilot", name: "Elephant Copilot avanzado", group: "ai", tagline: "Asistente de IA avanzado en todo el producto.", tech: "planned", commercial: "coming_soon", monthly: 29, capabilities: ["copilot-advanced"], thirdPartyCosts: "Consumo de IA por encima del incluido, aparte según uso.", icon: "sparkles" }),

@@ -47,9 +47,9 @@ describe("las seis simulaciones de la especificación (§14)", () => {
     expect(r.discounts.planInclusionCents).toBe(eur(29 + 15));
     expect(q(P, { plan: "business", interval: "year", users: 10, items: [{ key: "connect-pack-finance" }] }).recurring.annualizedCents).toBe(eur(1299));
   });
-  it("3. comercio: Essential + 1 usuario + Campaigns = 54 €; con POS, 79 €", () => {
+  it("3. comercio: Essential + 1 usuario + Campaigns = 54 €; con TPV Advanced, 73 €", () => {
     expect(q(P, { plan: "essential", interval: "month", users: 4, items: [{ key: "connect-campaigns" }] }).recurring.monthlyCents).toBe(eur(54));
-    expect(q(P, { plan: "essential", interval: "month", users: 4, items: [{ key: "connect-campaigns" }, { key: "connect-pos" }] }).recurring.monthlyCents).toBe(eur(79));
+    expect(q(P, { plan: "essential", interval: "month", users: 4, items: [{ key: "connect-campaigns" }, { key: "connect-pos" }] }).recurring.monthlyCents).toBe(eur(73));
   });
   it("4. restaurante: Essential + Reservas + People = 67 €; Business, 117 € (People se cobra aparte)", () => {
     expect(q(P, { plan: "essential", interval: "month", users: 3, employees: 8, items: [{ key: "restaurant-net-bookings" }, { key: "connect-people" }] }).recurring.monthlyCents).toBe(eur(67));
@@ -65,20 +65,22 @@ describe("las seis simulaciones de la especificación (§14)", () => {
     expect(q(P, { plan: "business", interval: "year", users: 10, items }).recurring.annualizedCents).toBe(eur(2283));
     expect(q(P, { plan: "essential", interval: "month", users: 10, items: [...items, { key: "connect-people" }] }).recurring.monthlyCents).toBe(eur(217));
   });
-  it("6. multisede: Enterprise + POS × 3 = 274 €; Business con lo mismo, 278 €", () => {
-    const e = q(P, { plan: "enterprise", interval: "month", users: 25, sites: 3, employees: 25, items: [{ key: "connect-pos", quantity: 3 }] });
+  it("6. multisede (3 sedes): Enterprise + TPV Advanced = 218 € (por empresa, no × 3); Business con lo mismo, 222 €", () => {
+    const e = q(P, { plan: "enterprise", interval: "month", users: 25, sites: 3, employees: 25, items: [{ key: "connect-pos" }] });
     expect(e.errors).toEqual([]);
-    expect(e.recurring.monthlyCents).toBe(eur(274));
+    expect(e.recurring.monthlyCents).toBe(eur(218));
+    // Por empresa y sin unidad de cobro: pedirlo por las tres sedes es un error, nunca 19 € × 3
+    expect(q(P, { plan: "enterprise", interval: "month", users: 25, sites: 3, employees: 25, items: [{ key: "connect-pos", quantity: 3 }] }).errors.join()).toMatch(/«TPV Advanced» se contrata por empresa/);
     expect(e.lines.some((l) => l.status === "on_quote")).toBe(false);
-    expect(q(P, { plan: "enterprise", interval: "year", users: 25, sites: 3, items: [{ key: "connect-pos", quantity: 3 }] }).recurring.annualizedCents).toBe(eur(2799));
-    const b = q(P, { plan: "business", interval: "month", users: 25, sites: 3, employees: 25, items: [{ key: "connect-pos", quantity: 3 }, { key: "connect-pack-finance" }, { key: "extra-accounting" }] });
-    expect(b.recurring.monthlyCents).toBe(eur(278));
+    expect(q(P, { plan: "enterprise", interval: "year", users: 25, sites: 3, items: [{ key: "connect-pos" }] }).recurring.annualizedCents).toBe(eur(2127));
+    const b = q(P, { plan: "business", interval: "month", users: 25, sites: 3, employees: 25, items: [{ key: "connect-pos" }, { key: "connect-pack-finance" }, { key: "extra-accounting" }] });
+    expect(b.recurring.monthlyCents).toBe(eur(222));
     // Ningún plan añade People por tener empleados: solo si se pide, y se cobra
     expect(line(b, "connect-people")).toBeUndefined();
     expect(line(e, "connect-people")).toBeUndefined();
-    const ep = q(P, { plan: "enterprise", interval: "month", users: 25, sites: 3, employees: 25, items: [{ key: "connect-pos", quantity: 3 }, { key: "connect-people" }] });
+    const ep = q(P, { plan: "enterprise", interval: "month", users: 25, sites: 3, employees: 25, items: [{ key: "connect-pos" }, { key: "connect-people" }] });
     expect(ep.errors).toEqual([]);
-    expect(ep.recurring.monthlyCents).toBe(eur(274 + 19));
+    expect(ep.recurring.monthlyCents).toBe(eur(218 + 19));
     expect(line(ep, "connect-people")).toMatchObject({ status: "charged", amountCents: eur(19) });
   });
 });

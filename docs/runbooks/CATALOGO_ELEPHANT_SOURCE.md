@@ -52,6 +52,12 @@
 - Nunca despublica ni borra.
 - Cada cambio queda auditado con el autor `catalogo:elephant-source-v1`.
 - Si una clave existe con otra familia, lo informa en `conflicts` y no la toca.
+- **Solo escribe sobre lo suyo** (10/11/2026). En una base con vida, el catálogo lo deciden el CRM y las revisiones de catálogo:
+  - Actualiza una entrada solo si su último guardado y su publicación son de la propia semilla. Lo guardado, publicado o despublicado por otro autor se respeta: las diferencias con la semilla salen en `conflicts`, sin escribir.
+  - Nunca sobrescribe ni publica un borrador ajeno pendiente: lo lista en `pending`.
+  - Nunca vuelve a aprobar un precio retirado ni sustituye uno aprobado en el CRM: lo lista en `conflicts`.
+  - En production es, por tanto, una orden informativa: lo que haya que cambiar se cambia con una revisión de catálogo (`catalog-review`) o desde el CRM.
+- Termina con código 2 si hay conflictos (no es un fallo: es lo que se ha respetado).
 
 ## Instantánea para la web
 

@@ -200,11 +200,11 @@ describe("política desde los borradores (simulador)", () => {
       { plan: "essential", interval: "month" as const, users: 4, items: [{ key: "connect-campaigns" }, { key: "connect-pos" }] },
       { plan: "business", interval: "month" as const, users: 3, employees: 8, items: [{ key: "restaurant-net-bookings" }, { key: "connect-people" }] },
       { plan: "business", interval: "year" as const, users: 10, items: [{ key: "hotel-net-pms" }, { key: "hotel-net-booking-engine" }, { key: "connect-voice" }] },
-      { plan: "enterprise", interval: "month" as const, users: 25, sites: 3, employees: 25, items: [{ key: "connect-pos", quantity: 3 }] },
+      { plan: "enterprise", interval: "month" as const, users: 25, sites: 3, employees: 25, items: [{ key: "connect-pos" }] },
       { plan: "business", interval: "month" as const, items: [{ key: "connect-pack-ai" }] },
     ];
     // Con People cobrado aparte en todos los planes: Business + Finance + People = 143; restaurante en Business = 117
-    const expected = [48, 143, 79, 117, null, 274, null];
+    const expected = [48, 143, 73, 117, null, 218, null];
     reqs.forEach((r, i) => {
       const fromDrafts = commercialQuote(catalog, policy, r);
       const fromSpec = commercialQuote(catalog, PROPOSED_POLICY, r);
@@ -405,7 +405,7 @@ describe("API: cotizador comercial, revisión y simulador", () => {
   });
 
   it("simulador: con los borradores aplica lo propuesto y lo marca; con lo publicado, nada", async () => {
-    const request = { plan: "enterprise", interval: "month", users: 40, sites: 3, items: [{ key: "connect-pos", quantity: 3 }] };
+    const request = { plan: "enterprise", interval: "month", users: 40, sites: 3, items: [{ key: "connect-pos" }] };
     const prop = await call("POST", "/web/commercial/simulate", { token: TOK.read, body: { policy: "proposed", request, recommend: true } });
     expect(prop.status).toBe(200);
     expect(prop.json.policy.neutral).toBe(false);

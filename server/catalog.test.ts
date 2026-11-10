@@ -63,7 +63,7 @@ describe("tarifas oficiales v1 (sin IVA)", () => {
       "care-net-agenda": 29, "care-net-clinical": 39, "care-net-treatments": 19, "care-net-complete": 69,
       "life-net": 9, "social-token-net-communities": 39, "social-token-net-tokens": 29, "social-token-net-complete": 59,
       "connect-whatsapp-ai": 29, "connect-voice": 39, "connect-reception-ai": 49, "connect-people": 19, "connect-tax": 19, "connect-partners": 19,
-      "connect-pos": 25, "connect-deals": 19, "connect-finance-sync": 19, "connect-copilot": 29, "connect-ads-manager": 29, "connect-campaigns": 19,
+      "connect-pos": 19, "connect-deals": 19, "connect-finance-sync": 19, "connect-copilot": 29, "connect-ads-manager": 29, "connect-campaigns": 19,
       "connect-seo-control": 29, "connect-geo-control": 29, "connect-automations": 29,
       "connect-pack-communications": 99, "connect-pack-marketing": 79, "connect-pack-finance": 45, "connect-pack-ai": 49,
       "extra-contracts-esign": 15, "extra-multichannel": 29, "extra-accounting": 29, "service-hosting-basic": 12, "service-hosting-advanced": 29,
@@ -226,8 +226,8 @@ describe("cotizador", () => {
     expect(q({ plan: "business", fiscalEntities: 2 }).errors.join()).toMatch(/Enterprise/);
   });
   it("activación por sede y precio por unidad", () => {
-    expect(q({ plan: "business", sites: 3, items: [{ key: "connect-pos", quantity: 3 }] }).lines.find((l) => l.key === "connect-pos")!.amountCents).toBe(eur(75));
-    expect(q({ items: [{ key: "connect-pos", quantity: 2 }] }).errors.join()).toMatch(/2 sedes/);
+    expect(q({ plan: "business", sites: 3, items: [{ key: "hotel-net-complete", quantity: 3 }] }).lines.find((l) => l.key === "hotel-net-complete")!.amountCents).toBe(eur(357));
+    expect(q({ items: [{ key: "hotel-net-complete", quantity: 2 }] }).errors.join()).toMatch(/2 sedes/);
     expect(q({ items: [{ key: "travel-net-agency" }, { key: "travel-net-connectors", quantity: 3 }] }).lines.find((l) => l.key === "travel-net-connectors")!.amountCents).toBe(eur(87));
   });
   it("por empresa y sin unidad de cobro (TPV Advanced a 19 €): una sola contratación aunque haya varias sedes", () => {
