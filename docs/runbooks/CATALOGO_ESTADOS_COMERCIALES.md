@@ -37,7 +37,7 @@ La semilla `server/catalog/elephantSourceV1.ts` solo carga lo que falta. En una 
 Una revisión, como `server/catalog/review20261025.ts`, lista cada cambio con su estado de partida y su evidencia. La orden `catalog-review` la aplica por el flujo normal del CRM (guardar y publicar, con autor `operacion:<revisión>`):
 
 - Solo cambia lo que sigue en su estado de partida. Si alguien lo cambió desde el CRM, se informa y no se toca.
-- Si un producto tiene cambios sin publicar, lo deja sin tocar: nunca publica un borrador ajeno.
+- Si un producto tiene cambios sin publicar, lo deja sin tocar: nunca publica un borrador ajeno. Excepción (10/11/2026): las revisiones que usan `server/catalog/overDraft.ts` (la unificación de Elephant Net) se aplican sobre lo **publicado** y vuelven a guardar el borrador con los mismos cambios. Los cambios del borrador siguen pendientes («retenido»), salvo en los productos con autorización expresa para publicarlos (Hotel Net). Si el borrador y la revisión cambian un mismo campo con valores distintos, el campo queda «en disputa»: no se guarda ni se publica nada de ese producto hasta que haya una decisión escrita en la revisión. La simulación imprime el diff campo a campo (`borradores`).
 - No toca precios.
 - Repetirla no cambia nada.
 

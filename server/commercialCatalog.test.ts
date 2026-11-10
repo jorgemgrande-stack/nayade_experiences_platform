@@ -381,14 +381,12 @@ describe("API: cotizador comercial, revisión y simulador", () => {
     expect((await call("GET", "/web/commercial/net-simulations", { token: TOK.crm })).status).toBe(403);
   });
 
-  it("simulaciones Elephant Net: con los borradores componen el Core; con lo publicado (política apagada), nada", async () => {
+  it("simulaciones Elephant Net: la regla «Core incluido» está retirada (10/11/2026) y ni los borradores ni lo publicado la componen", async () => {
     const prop = await call("GET", "/web/commercial/net-simulations?policy=proposed", { token: TOK.read });
     expect(prop.status).toBe(200);
     expect(prop.json.policyEnabled).toBe(false);
-    expect(prop.json.nets.length).toBe(6);
-    const ski = prop.json.nets.find((n: { key: string }) => n.key === "ski-net-complete");
-    expect(ski.scenarios[0].composed.monthlyCents).toBe(9900);
-    expect(ski.issues).toEqual([]);
+    expect(prop.json.nets).toEqual([]);
+    expect(prop.json.withoutCore.length).toBe(6);
     const pub = await call("GET", "/web/commercial/net-simulations?policy=published", { token: TOK.read });
     expect(pub.json.nets).toEqual([]);
     expect(pub.json.withoutCore.length).toBe(6);
