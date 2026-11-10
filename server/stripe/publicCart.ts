@@ -13,7 +13,9 @@
  *  - las partidas de Stripe con los Prices REALES (`checkoutLines.ts`): importes, moneda, periodicidad y sin IVA.
  *
  * No guarda nada ni crea nada. El pedido y la sesión de pago los crea el autoservicio (`selfService.ts`) con lo
- * validado aquí, y el cobro vuelve a comprobarlo todo (`checkout.ts`).
+ * validado aquí. Al abrir el pago, `checkout.ts` vuelve a comprobar el estado comercial, los Prices reales y los importes;
+ * la lista blanca, lo heredado y la modalidad solo se comprueban aquí (al iniciar o reanudar el pago). Una sesión abierta
+ * dura como mucho 2 h (SESSION_TTL_MS): retirar un producto no cierra las sesiones que ya estuvieran abiertas.
  */
 import { quote as runQuote, legacyProductText, type QuoteCatalog, type QuoteRequest, type QuoteResult } from "../catalog/quote";
 import { legacyExtensionText } from "../../shared/netProducts";
@@ -71,9 +73,11 @@ export interface PublicCartDeps {
   gateway: Pick<StripeGateway, "pricesByLookupKeys">;
   /** Stripe Tax en live: Prices sin IVA obligatorios. */
   requireExclusive?: boolean;
-  /** ¿Se renuevan las partidas mensuales de un plan anual? Sin ello, esa combinación no se vende en línea. */
-  deferredItems?: boolean;
+  now?: () => number;
 }
+
+/** Vida de la copia de los Prices de Stripe que usa el presupuesto (el alta y el cobro los leen siempre en vivo). */
+export const QUOTE_PRICE_CACHE_MS = 60_000;
 
 export interface PublicCartValidation {
   request: QuoteRequest & { items: Array<{ key: string }> };
@@ -92,19 +96,42 @@ export interface PublicOfferItem {
 }
 
 export class PublicCart {
+  private priceCache = new Map<string, { at: number; prices: Awaited<ReturnType<StripeGateway["pricesByLookupKeys"]>> }>();
   constructor(private d: PublicCartDeps) {}
+
+  /** Lectura de Prices para el presupuesto, con copia corta: el presupuesto público no multiplica las llamadas a Stripe. */
+  private cachedGateway(): Pick<StripeGateway, "pricesByLookupKeys"> {
+    return {
+      pricesByLookupKeys: async (keys) => {
+        const now = (this.d.now ?? Date.now)();
+        const id = [...keys].sort().join(",");
+        const hit = this.priceCache.get(id);
+        if (hit && now - hit.at < QUOTE_PRICE_CACHE_MS) return hit.prices;
+        const prices = await this.d.gateway.pricesByLookupKeys(keys);
+        if (this.priceCache.size > 500) this.priceCache.clear();
+        this.priceCache.set(id, { at: now, prices });
+        return prices;
+      },
+    };
+  }
 
   /** Qué se puede comprar en línea ahora mismo: planes y productos que pasan TODAS las reglas (sin llamar a Stripe). */
   async offer(): Promise<{ plans: PublicOfferItem[]; products: PublicOfferItem[]; catalogVersion: string; currency: "EUR"; taxIncluded: false }> {
     const site = await this.d.site();
+    const offer = await this.d.catalog.offer();
     const plans: PublicOfferItem[] = [];
     const products: PublicOfferItem[] = [];
+    // Solo se omite lo que no se vende en línea; un fallo de infraestructura sí se propaga (503, no una lista vacía)
+    const onlyCart = (e: unknown) => {
+      if (e instanceof PublicCartError) return null;
+      throw e;
+    };
     for (const key of CHECKOUT_PLANS) {
-      const item = await this.sellable(site, key, true).catch(() => null);
+      const item = await this.sellable(site, offer, key, true).catch(onlyCart);
       if (item) plans.push(item);
     }
     for (const key of Array.from(this.d.allowed).sort()) {
-      const item = await this.sellable(site, key, false).catch(() => null);
+      const item = await this.sellable(site, offer, key, false).catch(onlyCart);
       if (item) products.push(item);
     }
     return { plans, products, catalogVersion: site.version, currency: "EUR", taxIncluded: false };
@@ -120,17 +147,18 @@ export class PublicCart {
   }
 
   /** Valida el carrito completo y devuelve la petición del pedido, el presupuesto del servidor y las partidas de Stripe. */
-  async validate(input: PublicCartInput): Promise<PublicCartValidation> {
+  async validate(input: PublicCartInput, opts: { cachedPrices?: boolean } = {}): Promise<PublicCartValidation> {
     await this.checkPlan(input.plan);
     const products = Array.from(new Set((input.products ?? []).map((k) => String(k).trim()).filter(Boolean)));
     if (products.length > PUBLIC_CART_MAX_PRODUCTS) throw new PublicCartError("too_many_products", `Demasiados productos en una contratación (máximo ${PUBLIC_CART_MAX_PRODUCTS})`);
     if (isPersonalCheckoutPlan(input.plan) && input.interval !== "month") throw new PublicCartError("incompatible", "El plan personal solo tiene tarifa mensual");
     const site = await this.d.site();
-    const plan = await this.sellable(site, input.plan, true);
+    const offer = await this.d.catalog.offer();
+    const plan = await this.sellable(site, offer, input.plan, true);
     if ((input.interval === "year" ? plan.yearlyCents : plan.monthlyCents) === null) throw new PublicCartError("plan_not_self_service", `«${plan.name}» no tiene tarifa ${input.interval === "year" ? "anual" : "mensual"} en línea`);
     for (const key of products) {
       if ((CHECKOUT_PLANS as readonly string[]).includes(key)) throw new PublicCartError("incompatible", "Solo se contrata un plan Elephant Core por contratación", key);
-      await this.sellable(site, key, false);
+      await this.sellable(site, offer, key, false);
     }
     // Un paquete y uno de sus componentes, nunca juntos (el pedido lo rechazaría después de crear la empresa)
     for (const key of products) {
@@ -154,12 +182,16 @@ export class PublicCart {
     };
     let lines: CheckoutLinePlan;
     try {
-      lines = await planCheckoutLines({ catalog: this.d.catalog, store: this.d.store, gateway: this.d.gateway }, { request, quote: orderQuote as never }, q, { requireExclusive: !!this.d.requireExclusive });
+      lines = await planCheckoutLines({ catalog: this.d.catalog, store: this.d.store, gateway: opts.cachedPrices ? this.cachedGateway() : this.d.gateway }, { request, quote: orderQuote as never }, q, { requireExclusive: !!this.d.requireExclusive });
     } catch (e) {
       if (e instanceof CheckoutLinesError) throw new PublicCartError(e.code === "unsupported" ? "no_online" : "unavailable", e.code === "unsupported" ? e.message : "La venta en línea no está disponible ahora mismo: inténtalo más tarde");
       throw e;
     }
-    if (lines.deferred.length && !this.d.deferredItems) throw new PublicCartError("incompatible", `Con el plan anual, ${lines.deferred.map((l) => `«${l.name}»`).join(", ")} solo tiene tarifa mensual: elige el plan mensual`, lines.deferred[0].productKey);
+    // Plan anual con un producto solo mensual: Stripe Checkout no crea suscripciones con periodicidades mixtas
+    // (https://docs.stripe.com/billing/subscriptions/mixed-interval, «Limitations»). El Core sabe cobrar el primer mes aparte
+    // y añadir la partida después (deferredItems.ts), pero esa vía no se abre a la web hasta validarla en el sandbox y que
+    // Jorge la apruebe: en línea, solo periodicidades iguales
+    if (lines.deferred.length) throw new PublicCartError("incompatible", `${lines.deferred.map((l) => `«${l.name}»`).join(", ")} solo se contrata mensualmente: elige el plan mensual`, lines.deferred[0].productKey);
     return { request, quote: q, lines };
   }
 
@@ -167,7 +199,7 @@ export class PublicCart {
    * Un plan o producto vendible en línea, o el error tipado de por qué no. Solo lee el catálogo y los enlaces locales
    * con Stripe (el Price real se comprueba en `validate`).
    */
-  private async sellable(site: QuoteCatalog, key: string, isPlan: boolean): Promise<PublicOfferItem> {
+  private async sellable(site: QuoteCatalog, offerList: Awaited<ReturnType<CatalogPort["offer"]>>, key: string, isPlan: boolean): Promise<PublicOfferItem> {
     if (!KEY_RE.test(key)) throw new PublicCartError("no_online", "Producto no válido", key);
     const noOnline = (why = "no se contrata en línea") => new PublicCartError(isPlan ? "plan_not_self_service" : "no_online", `«${q?.name ?? key}» ${why}: solicita información y te contactaremos`, isPlan ? undefined : key);
     const q = site.products.find((x) => x.key === key);
@@ -182,9 +214,9 @@ export class PublicCart {
     }
     if (!p || !q || p.commercialStatus !== "available" || q.commercialStatus !== "available" || p.internalOnly) throw noOnline();
     if (isPlan ? p.family !== "core_plan" : !PURCHASABLE_FAMILIES.has(p.family) || !!p.addonFor || !!q.addonFor) throw noOnline();
-    // Oferta comercial: contratación inmediata con Checkout (lo «bajo solicitud» o asistido, no)
-    if (q.offer && (!q.offer.checkout || q.offer.modality !== "immediate")) throw noOnline();
-    const offer = (await this.d.catalog.offer()).find((x) => x.key === key);
+    // Oferta comercial: contratación inmediata con Checkout (lo «bajo solicitud», asistido o sin oferta, no)
+    if (!q.offer?.checkout || q.offer.modality !== "immediate") throw noOnline();
+    const offer = offerList.find((x) => x.key === key);
     const approved = (kind: "monthly" | "yearly") => (offer?.prices ?? []).filter((x) => x.kind === kind && x.status === "approved" && x.currency.toUpperCase() === "EUR");
     const linked = async (kind: "monthly" | "yearly") => {
       const list = approved(kind);

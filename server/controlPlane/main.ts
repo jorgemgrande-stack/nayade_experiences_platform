@@ -581,8 +581,14 @@ async function main() {
     const purchasesEnabled = process.env.CP_COMMERCE_PURCHASES_ENABLED === "1";
     // Empresas de prueba que pueden comprar productos internos (vacío: ninguna). Un id no válido impide arrancar
     const internalTenants = internalTenantsFromEnv(process.env);
-    // Productos comprables en la web además del plan (vacío: ninguno). Una clave no válida impide arrancar
-    const publicProducts = publicCheckoutProductsFromEnv(process.env);
+    // Productos comprables en la web además del plan (vacío: ninguno). Una lista no válida se ignora entera (solo plan)
+    // y se avisa en el registro: una errata no impide arrancar ni abre la venta a otra cosa
+    let publicProducts: ReadonlySet<string> = new Set();
+    try {
+      publicProducts = publicCheckoutProductsFromEnv(process.env);
+    } catch (e) {
+      console.log(JSON.stringify({ ctx: "Stripe", event: "public_products_invalid", error: e instanceof Error ? e.message : "error" }));
+    }
     if (ready)
       stripe = {
         config: stripeConfig,

@@ -2393,9 +2393,9 @@ export function createControlPlaneApp(d: ControlPlaneDeps): Express {
           if (selfServiceOk) {
             // Carrito «plan + productos en línea»: con el catálogo publicado y la lista blanca (vacía: solo el plan)
             const cart = siteAdmin
-              ? new PublicCart({ allowed: st.publicProducts ?? new Set(), catalog: stripeCatalog, site: async () => quoteCatalogFromSite(await siteAdmin.site("published")), store: st.store, gateway: st.gateway, requireExclusive: checkout!.taxPolicy === "stripe_tax_exclusive", deferredItems: !!deferredItems })
+              ? new PublicCart({ allowed: st.publicProducts ?? new Set(), catalog: stripeCatalog, site: async () => quoteCatalogFromSite(await siteAdmin.site("published")), store: st.store, gateway: st.gateway, requireExclusive: checkout!.taxPolicy === "stripe_tax_exclusive" })
               : undefined;
-            const ss = new SelfServiceCheckout({ crm: d.crm.service, orders: d.orders.store, orchestrator, checkout: checkout!, catalog: stripeCatalog, ticketSecret: d.publicIntake!.secret, origins: publicOrigins, termsVersion: st.termsVersion, now: d.subscriptions.now, buyers: st.store, mode: st.config.mode, consent: st.fiscal?.consent, vat, eligibility: st.fiscal ? { scenarios: st.fiscal.scenarios, taxExpectations: st.fiscal.taxExpectations ?? new Map(), countries: st.fiscal.countries ?? new Map(), consumerRates: st.fiscal.consumerRates ?? new Map(), consent: st.fiscal.consent } : undefined, cart, taxTreatment: checkout!.taxPolicy });
+            const ss = new SelfServiceCheckout({ crm: d.crm.service, orders: d.orders.store, orchestrator, checkout: checkout!, catalog: stripeCatalog, ticketSecret: d.publicIntake!.secret, origins: publicOrigins, termsVersion: st.termsVersion, now: d.subscriptions.now, buyers: st.store, mode: st.config.mode, consent: st.fiscal?.consent, vat, eligibility: st.fiscal ? { scenarios: st.fiscal.scenarios, taxExpectations: st.fiscal.taxExpectations ?? new Map(), countries: st.fiscal.countries ?? new Map(), consumerRates: st.fiscal.consumerRates ?? new Map(), consent: st.fiscal.consent } : undefined, cart, taxTreatment: checkout!.taxPolicy, sessions: st.store });
             pc.use(createSelfServiceRouter(ss, publicOrigins));
           }
           if (st.publicStatus) pc.get(

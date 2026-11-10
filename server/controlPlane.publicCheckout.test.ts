@@ -269,12 +269,10 @@ describe("checkout unificado de la web: plan + productos en línea", { timeout: 
     // Coincide con la cotización pública del configurador
     const pub = await call(env, "POST", "/public/site/quote", { body: { plan: "essential", interval: "month", items: [{ key: "social-token-net-complete" }] } });
     expect(pub.json.totals.monthlyCents).toBe(r.json.totals.firstChargeNetCents);
-    // Plan anual con un producto solo mensual: el primer mes va en el mismo pago y se renueva cada mes en la misma suscripción
-    const y = await call(env, "POST", "/public/checkout/quote", { body: { plan: "essential", interval: "year", products: ["social-token-net-complete"] } });
+    // Plan anual sin productos: el anual del plan
+    const y = await call(env, "POST", "/public/checkout/quote", { body: { plan: "essential", interval: "year" } });
     expect(y.status).toBe(200);
-    expect(y.json.lines.map((l: { key: string; interval: string }) => [l.key, l.interval])).toEqual([["essential", "year"], ["social-token-net-complete", "month"]]);
-    expect(y.json.totals.monthlyNetCents).toBe(5900);
-    expect(y.json.totals.firstChargeNetCents).toBe(y.json.totals.yearlyNetCents + 5900);
+    expect(y.json.lines.map((l: { key: string; interval: string }) => [l.key, l.interval])).toEqual([["essential", "year"]]);
     // Solo el plan (lista vacía de productos)
     expect((await call(env, "POST", "/public/checkout/quote", { body: { plan: "business", interval: "month" } })).json.lines).toHaveLength(1);
   });
@@ -290,6 +288,7 @@ describe("checkout unificado de la web: plan + productos en línea", { timeout: 
     ["componente heredado junto a su paquete", { plan: "essential", interval: "month", products: ["social-token-net-complete", "social-token-net-communities"] }, 409, "legacy", "social-token-net-communities"],
     ["paquete y su componente", { plan: "essential", interval: "month", products: ["connect-pack-finance", "connect-tax"] }, 409, "incompatible", "connect-tax"],
     ["a la venta sin Checkout (implantación asistida)", { plan: "essential", interval: "month", products: ["connect-finance-sync"] }, 409, "no_online", "connect-finance-sync"],
+    ["plan anual con un producto solo mensual (Checkout no mezcla periodicidades)", { plan: "essential", interval: "year", products: ["social-token-net-complete"] }, 409, "incompatible", "social-token-net-complete"],
     ["clave desconocida", { plan: "essential", interval: "month", products: ["no-existe"] }, 409, "no_online", "no-existe"],
     ["importe enviado por la web", { plan: "essential", interval: "month", products: ["social-token-net-complete"], amountCents: 100 }, 400, "invalid_request", undefined],
   ])("presupuesto rechazado: %s", async (_n, body, status, code, product) => {
@@ -317,9 +316,45 @@ describe("checkout unificado de la web: plan + productos en línea", { timeout: 
     expect([b.json.sessionId, c.json.sessionId]).toEqual([a.json.sessionId, a.json.sessionId]);
     expect(sessionsCreated(env)).toHaveLength(created);
     expect((await env.crmStore.list("companies", {})).length).toBe(companiesBefore + 1);
-    // Misma clave con otro carrito: no reutiliza el pedido de antes
+    // El comprador vuelve y cambia el carrito (misma clave): el pedido sin pagar se cierra (sesión caducada en Stripe y
+    // pedido rechazado) y se crea otro para la MISMA empresa; volver al carrito anterior abre otro pedido, nunca dos vivos
+    const firstOrder = (await env.stripeStore.session(a.json.sessionId))!.orderId;
     const d = await call(env, "POST", "/public/checkout/start", { body: { ...body, products: [] } });
-    expect(d).toMatchObject({ status: 409, json: { error: "idempotency_mismatch" } });
+    expect(d.status).toBe(200);
+    expect(d.json.sessionId).not.toBe(a.json.sessionId);
+    expect(env.gw.sessions.get(a.json.sessionId)!.status).toBe("expired");
+    expect((await env.orders.get(firstOrder))!.state).toBe("rejected");
+    const second = (await env.orders.get((await env.stripeStore.session(d.json.sessionId))!.orderId))!;
+    expect(second).toMatchObject({ state: "contracted", companyId: (await env.orders.get(firstOrder))!.companyId, request: { items: [] } });
+    expect((await env.crmStore.list("companies", {})).length).toBe(companiesBefore + 1);
+    const e = await call(env, "POST", "/public/checkout/start", { body });
+    expect(e.status).toBe(200);
+    expect((await env.orders.get(second.id))!.state).toBe("rejected");
+    const live = (await env.orders.list({ companyId: second.companyId })).filter((o) => o.state === "contracted");
+    expect(live).toHaveLength(1);
+    expect(live[0].request.items).toEqual([{ key: "social-token-net-complete" }]);
+    // Repetir la última selección: la misma sesión
+    expect((await call(env, "POST", "/public/checkout/start", { body })).json.sessionId).toBe(e.json.sessionId);
+  });
+
+  it("el total que vio el comprador debe seguir siendo el que se cobrará (price_changed)", async () => {
+    const r1 = await call(env, "POST", "/public/checkout/start", { body: startBody({ expectedFirstChargeNetCents: 8000 }) });
+    expect(r1).toMatchObject({ status: 409, json: { error: "price_changed" } });
+    const r2 = await call(env, "POST", "/public/checkout/start", { body: startBody({ expectedFirstChargeNetCents: 8800 }) });
+    expect(r2.status).toBe(200);
+  });
+
+});
+
+// Otro plano de control (límite de 10 altas por hora e IP en /start)
+describe("checkout unificado de la web: rechazos del alta", { timeout: 60_000 }, () => {
+  let env: Env;
+  beforeAll(async () => {
+    env = await boot({ selfService: true, allowed: ALLOWED });
+  });
+  afterAll(async () => {
+    env.server.closeAllConnections();
+    await new Promise<void>((r) => env.server.close(() => r()));
   });
 
   it("rechazos antes de crear nada: plan ausente, producto no habilitado, importes en el cuerpo", async () => {
@@ -378,6 +413,10 @@ describe("checkout unificado de la web: pago, reintentos y aislamiento", { timeo
     const again = await call(env, "POST", "/public/checkout/start", { body: { ...body, ticket: issueTicket(SECRET, clock - 10_000) } });
     expect(again.status).toBe(409);
     expect(sessionsCreated(env).filter((c) => (c.input as CheckoutSessionInput).metadata.es_order_id === String(orderId))).toHaveLength(1);
+    // Pagado: cambiar el carrito con la misma clave tampoco abre otro pago ni toca el pedido pagado
+    const changed = await call(env, "POST", "/public/checkout/start", { body: { ...body, products: [], ticket: issueTicket(SECRET, clock - 10_000) } });
+    expect(changed).toMatchObject({ status: 409, json: { error: "payment_in_progress" } });
+    expect((await env.orders.get(orderId))!.state).toBe("active");
   });
 
   it("pago caducado: la misma clave reabre otra sesión del MISMO pedido", async () => {
@@ -427,6 +466,18 @@ describe("checkout unificado de la web: pago, reintentos y aislamiento", { timeo
     } finally {
       price.unitAmount = original;
     }
+  });
+});
+
+describe("doble de Stripe: Checkout no admite periodicidades mixtas", () => {
+  it("una sesión con un Price anual y otro mensual se rechaza como en Stripe", async () => {
+    const gw = new FakeStripeGateway();
+    gw.addPrice({ id: "price_y", productId: "prod_a", interval: "year", unitAmount: 29000 });
+    gw.addPrice({ id: "price_m", productId: "prod_b", interval: "month", unitAmount: 5900 });
+    const input = { customerId: "cus_1", priceId: "price_y", lineItems: [{ priceId: "price_y", quantity: 1 }, { priceId: "price_m", quantity: 1 }], clientReferenceId: "x", metadata: {}, successUrl: "https://a.example/ok", cancelUrl: "https://a.example/ko", expiresAt: 1, integrationIdentifier: "t", notice: "n" } as CheckoutSessionInput;
+    await expect(gw.createCheckoutSession(input, "k1")).rejects.toMatchObject({ code: "invalid_request_error" });
+    // Misma periodicidad: se crea
+    await expect(gw.createCheckoutSession({ ...input, lineItems: [{ priceId: "price_m", quantity: 1 }], priceId: "price_m" }, "k2")).resolves.toMatchObject({ status: "open" });
   });
 });
 

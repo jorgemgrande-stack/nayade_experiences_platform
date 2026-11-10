@@ -31,7 +31,7 @@ function setup(o: { status?: string; terms?: string | null; mode?: "test" | "liv
     orchestrator: {
       create: async (i) => {
         calls.orders++;
-        const ord = { id: 500 + calls.orders, state: "quoted", companyId: i.companyId, idempotencyKey: i.idempotencyKey } as unknown as CommercialOrder;
+        const ord = { id: 500 + calls.orders, state: "quoted", companyId: i.companyId, idempotencyKey: i.idempotencyKey, request: i.request } as unknown as CommercialOrder;
         orders.set(i.idempotencyKey, ord);
         return { order: ord };
       },
@@ -263,7 +263,7 @@ describe("checkout unificado: carrito en el autoservicio", () => {
     expect((await test.quote({ plan: "essential", interval: "month" })).tax).toMatchObject({ treatment: "test_net_no_tax", estimatedRateBp: null });
   });
 
-  it("el pedido lleva los productos validados por el servidor; la misma clave con otro carrito se rechaza", async () => {
+  it("el pedido lleva los productos validados por el servidor; sin poder sustituir pedidos, la misma clave con otro carrito se rechaza", async () => {
     const { svc, calls } = setup();
     const seen: string[] = [];
     const created: unknown[] = [];
@@ -273,6 +273,8 @@ describe("checkout unificado: carrito en el autoservicio", () => {
     await withCart.start(b);
     expect(created).toEqual([{ plan: "essential", interval: "month", items: [{ key: "social-token-net-complete" }] }]);
     expect(seen).toEqual(["essential+social-token-net-complete"]);
+    expect(calls.companies).toBe(1);
+    await expect(withCart.start({ ...b, products: [], ticket: issueTicket(SECRET, clock - 10_000) })).rejects.toMatchObject({ code: "idempotency_mismatch" });
     expect(calls.companies).toBe(1);
   });
 });
