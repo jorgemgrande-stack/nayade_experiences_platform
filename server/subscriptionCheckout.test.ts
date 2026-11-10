@@ -62,7 +62,7 @@ describe("ampliaciones en el alta", () => {
   });
 
   it("unificación de Elephant Net: un módulo suelto retirado nunca se ofrece; si se tiene, se muestra como activo", () => {
-    const legacy = { replacedBy: "hotel-net-complete", since: "2026-11-07" };
+    const legacy = { replacedBy: { key: "hotel-net-complete", name: "Hotel Net" } };
     const out = checkoutExtensions([item("hotel-net-pms", { legacy }), item("hotel-net-channel", { legacy, state: "active", checkoutVia: null }), item("hotel-net-rates", { legacy, state: "on_request", checkoutVia: null })], "essential");
     expect(out.map((e) => [e.item.key, e.group, e.selectable])).toEqual([["hotel-net-channel", "contracted", false]]);
     expect(out[0].note).toMatch(/Contratación anterior/);

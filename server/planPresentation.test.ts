@@ -124,3 +124,12 @@ describe("presentación de los planes", () => {
     expect(isGrowthOption({ isCurrent: false, plan: plan("business") }, "essential")).toBe(false);
   });
 });
+
+describe("formato de los importes de los planes", () => {
+  it("agrupa los miles también con cuatro cifras y no cambia el importe", async () => {
+    const { planMoney } = await import("../shared/planPresentation");
+    expect(planMoney(189900, "EUR").replace(/\s/g, " ")).toBe("1.899,00 €");
+    expect(planMoney(2900, "EUR").replace(/\s/g, " ")).toBe("29,00 €");
+    expect(planMoney(75900, "EUR").replace(/\s/g, " ")).toBe("759,00 €");
+  });
+});
