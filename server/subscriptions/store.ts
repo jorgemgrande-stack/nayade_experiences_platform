@@ -338,6 +338,9 @@ function itemRow(r: Record<string, unknown>): SubscriptionItem {
     effectiveTo: num(r.effective_to),
     createdAt: Number(r.created_at),
     createdBy: String(r.created_by),
+    termsId: num(r.terms_id),
+    termsLineId: num(r.terms_line_id),
+    lineAmountCents: num(r.line_amount_cents),
   };
 }
 function invoiceRow(r: Record<string, unknown>): ShadowInvoice {
@@ -376,14 +379,19 @@ function chargeRow(r: Record<string, unknown>): ShadowCharge {
   };
 }
 
-/** `lines`: la BD tiene las columnas de partida comercial (CRM 0017); sin ellas se inserta como antes. */
+/**
+ * `lines`: la BD tiene las columnas de partida comercial (CRM 0017); sin ellas se inserta como antes. Las columnas de
+ * condiciones personalizadas (CRM 0048) solo se escriben en las partidas que salen de un acuerdo: una partida ordinaria
+ * se inserta igual con la migración aplicada o sin ella.
+ */
 async function insertItemSql(c: Q, subscriptionId: number, i: NewItem, lines = false): Promise<SubscriptionItem> {
-  const extraCols = lines ? ", line_kind, metric" : "";
-  const extraVals = lines ? [i.lineKind ?? null, i.metric ?? null] : [];
+  const terms = i.termsId != null || i.lineAmountCents != null;
+  const extraCols = (lines ? ", line_kind, metric" : "") + (terms ? ", terms_id, terms_line_id, line_amount_cents" : "");
+  const extraVals = [...(lines ? [i.lineKind ?? null, i.metric ?? null] : []), ...(terms ? [i.termsId ?? null, i.termsLineId ?? null, i.lineAmountCents ?? null] : [])];
   const [res] = await c.query<mysql.ResultSetHeader>(
     `INSERT INTO subscription_items (subscription_id, family, product_key, product_name, activation_kind, activation_ref, price_id, price_source,
        price_kind, unit_amount_cents, unit, quantity, tax_rate_bp, tax_included, discount_kind, discount_value, discount_ends_at, discount_note,
-       effective_from, effective_to, created_at, created_by${extraCols}) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?${lines ? ",?,?" : ""})`,
+       effective_from, effective_to, created_at, created_by${extraCols}) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?${extraVals.map(() => ",?").join("")})`,
     [
       subscriptionId, i.family, i.productKey, i.productName, i.activationKind, i.activationRef, i.priceId, i.priceSource,
       i.priceKind, i.unitAmountCents, i.unit, i.quantity, i.taxRateBp, i.taxIncluded ? 1 : 0, i.discount?.kind ?? null, i.discount?.value ?? null,

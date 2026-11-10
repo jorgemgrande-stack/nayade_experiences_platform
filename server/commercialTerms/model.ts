@@ -43,7 +43,7 @@ export interface TermsLine {
   id: number;
   /**
    * Identidad ESTABLE de la partida entre versiones del acuerdo: la clave del producto o, en una partida a medida, una
-   * referencia generada por el servidor (`custom-…`). Es la clave de la partida materializada en la suscripción.
+   * referencia generada por el servidor (`custom:…`, imposible como clave de producto del catálogo). Es la clave de la partida materializada en la suscripción.
    */
   ref: string;
   kind: LineKind;
@@ -136,8 +136,7 @@ export function validateTerms(t: Pick<Terms, "pricingMode" | "globalAmountCents"
   if (!/^[A-Z]{3}$/.test(t.currency)) out.push("Moneda no válida");
   if (!t.lines.length) out.push("El acuerdo no tiene partidas");
   if (new Set(t.lines.map((l) => l.id)).size !== t.lines.length) out.push("Partidas repetidas");
-  const liveRefs = t.lines.filter(isRecurring).map((l) => l.ref);
-  if (new Set(liveRefs).size !== liveRefs.length) out.push("Un mismo producto o servicio no puede figurar dos veces como cuota recurrente");
+  if (new Set(t.lines.map((l) => l.ref)).size !== t.lines.length) out.push("Un mismo producto o servicio no puede figurar dos veces en el acuerdo");
   const recurring = t.lines.filter(isRecurring);
   for (const l of t.lines) {
     const n = `«${l.name || "partida"}»`;
@@ -157,7 +156,7 @@ export function validateTerms(t: Pick<Terms, "pricingMode" | "globalAmountCents"
       if (l.officialUnitCents !== null) out.push(`${n}: una partida a medida no tiene precio oficial`);
       if (l.negotiatedUnitCents === null) out.push(`${n}: indica el precio de la partida a medida`);
       if (l.concept === "core_plan") out.push(`${n}: un plan Core solo puede ser un producto del catálogo`);
-      if (!/^custom-[a-z0-9-]{1,60}$/.test(l.ref ?? "")) out.push(`${n}: referencia de partida a medida no válida`);
+      if (!/^custom:[a-z0-9-]{1,60}$/.test(l.ref ?? "")) out.push(`${n}: referencia de partida a medida no válida`);
     } else {
       if (!l.productKey || !l.catalog) out.push(`${n}: una partida de catálogo necesita su producto`);
       if (l.ref !== l.productKey) out.push(`${n}: la referencia de una partida de catálogo es la clave de su producto`);

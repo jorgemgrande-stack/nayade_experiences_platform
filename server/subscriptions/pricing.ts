@@ -73,15 +73,15 @@ export const discountActive = (d: Discount | null, at: number): d is Discount =>
  * impuesto (taxIncluded) o no; el resultado separa siempre base, descuento, impuesto y total.
  */
 export function lineAmounts(
-  item: Pick<SubscriptionItem, "unitAmountCents" | "quantity" | "taxRateBp" | "taxIncluded" | "discount">,
+  item: Pick<SubscriptionItem, "unitAmountCents" | "quantity" | "taxRateBp" | "taxIncluded" | "discount" | "lineAmountCents">,
   at: number,
   fraction = 1,
   quantityOverride?: number,
 ): Pick<ShadowLine, "grossCents" | "discountCents" | "netCents" | "taxCents" | "totalCents"> {
   if (!(fraction >= 0 && fraction <= 1)) throw new RangeError("fracción fuera de [0,1]");
   const qty = quantityOverride ?? item.quantity;
-  // Prorrateo a favor del cliente: hacia abajo
-  const gross = Math.floor(item.unitAmountCents * qty * fraction);
+  // Prorrateo a favor del cliente: hacia abajo. Una partida de un acuerdo lleva su importe del periodo ya resuelto
+  const gross = Math.floor((item.lineAmountCents ?? item.unitAmountCents * qty) * fraction);
   let discount = 0;
   if (discountActive(item.discount, at)) {
     discount =
@@ -107,8 +107,8 @@ export function coverage(start: number, end: number, from: number, to: number | 
 }
 
 /** Importe mensual equivalente (para decidir si un cambio de plan es subida o bajada). */
-export function monthlyEquivalent(item: Pick<SubscriptionItem, "unitAmountCents" | "quantity" | "priceKind">): number {
-  const total = item.unitAmountCents * item.quantity;
+export function monthlyEquivalent(item: Pick<SubscriptionItem, "unitAmountCents" | "quantity" | "priceKind" | "lineAmountCents">): number {
+  const total = item.lineAmountCents ?? item.unitAmountCents * item.quantity;
   return item.priceKind === "yearly" ? total / 12 : total;
 }
 

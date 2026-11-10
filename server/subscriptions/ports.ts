@@ -31,6 +31,9 @@ export interface CatalogProduct {
   quotas?: Array<{ metric: string; included: number | null }>;
   /** Producto heredado (retirado de la venta, 09/11/2026): se conserva en lo contratado, sin contrataciones nuevas. */
   legacy?: { replacedBy: string } | null;
+  /** Ámbito de la licencia (`company` o `site`) y unidad de cobro: un producto por empresa y sin unidad se contrata una sola vez. */
+  scope?: "company" | "site" | null;
+  chargeUnit?: string | null;
 }
 export interface CatalogPrice {
   id: number;
@@ -96,7 +99,7 @@ export function catalogFromWebStore(store: WebStore): CatalogPort {
       activation: { kind: string; ref: string | null };
       dependencies?: string[];
       compatibleWith?: string[];
-      catalog?: { commercialStatus?: CatalogProduct["commercialStatus"]; internalOnly?: boolean; stripePrepared?: boolean; bundleOf?: string[]; addonFor?: { metric: string; step: number } | null; quotas?: Array<{ metric: string; included: number | null }>; legacy?: { replacedBy: string } };
+      catalog?: { scope?: "company" | "site"; chargeUnit?: string | null; commercialStatus?: CatalogProduct["commercialStatus"]; internalOnly?: boolean; stripePrepared?: boolean; bundleOf?: string[]; addonFor?: { metric: string; step: number } | null; quotas?: Array<{ metric: string; included: number | null }>; legacy?: { replacedBy: string } };
       billingModel?: string;
     };
     // Un «servicio» con cuota recurrente (alojamiento web) se contrata como complemento recurrente;
@@ -120,6 +123,8 @@ export function catalogFromWebStore(store: WebStore): CatalogPort {
       addonFor: p.catalog?.addonFor ? { metric: p.catalog.addonFor.metric, step: p.catalog.addonFor.step } : null,
       quotas: (p.catalog?.quotas ?? []).map((q) => ({ metric: q.metric, included: q.included })),
       legacy: p.catalog?.legacy ? { replacedBy: p.catalog.legacy.replacedBy } : null,
+      scope: p.catalog?.scope ?? null,
+      chargeUnit: p.catalog?.chargeUnit ?? null,
     };
   };
   const priceOf = (x: Awaited<ReturnType<WebStore["getPrice"]>>, key: string): CatalogPrice | null =>

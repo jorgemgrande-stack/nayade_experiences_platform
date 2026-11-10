@@ -76,6 +76,14 @@ export interface SubscriptionItem {
   effectiveTo: number | null;
   createdAt: number;
   createdBy: string;
+  /** Acuerdo de condiciones personalizadas del que sale la partida (CRM 0048); ausente o null = partida ordinaria. */
+  termsId?: number | null;
+  termsLineId?: number | null;
+  /**
+   * Importe NETO de la partida por periodo (o único), ya con los ajustes del acuerdo resueltos. Sustituye a
+   * unitario × cantidad (una cuota global repartida no siempre da un unitario entero). Negativo = abono de un solo uso.
+   */
+  lineAmountCents?: number | null;
 }
 
 export type EventKind =
@@ -93,7 +101,9 @@ export type EventKind =
   | "contract_linked"
   | "interval_change_scheduled"
   | "renewed"
-  | "canceled";
+  | "canceled"
+  | "terms_applied"
+  | "terms_settled";
 
 export interface SubscriptionEvent {
   id: number;
