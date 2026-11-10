@@ -590,7 +590,7 @@ export const PRODUCT_SPECS: readonly ProductSpec[] = [
   s({
     key: "social-token-net-complete",
     category: "sector_bundle",
-    longDescription: "Comunidad y fidelización en un solo paquete: comunidades y tokens internos.",
+    longDescription: "Solución integral de comunidades y fidelización: comunidades propias de clientes y socios y un programa de puntos internos canjeables por recompensas.",
     problem: "Comunidad y fidelización funcionan mejor juntas.",
     forWho: "Marcas, clubes y asociaciones.",
     includes: ["Comunidades", "Tokens internos"],
