@@ -400,14 +400,18 @@ export function includingBundle(key: string, owned: Iterable<string>, byKey: Map
 }
 
 /**
- * Producto que se contrata una sola vez por empresa: ámbito `company` y ningún precio con unidad de cobro (p. ej. TPV
+ * Producto que se contrata una sola vez por empresa: ámbito `company` y ninguna cuota (mensual o anual) con unidad de cobro (p. ej. TPV
  * Advanced desde el 10/11/2026). No lo son los que se cobran por unidad (`unit`: «por integración»), los productos por
  * sede (su cantidad son las sedes donde se activan), los complementos de cantidad ni los servicios (alojamientos, dominios).
+ * Un precio de consumo o de pago único con unidad («por minuto») no cambia que la cuota sea por empresa.
  */
 export function singlePerCompany(p: Pick<QuoteCatalogProduct, "family" | "scope" | "prices">): boolean {
-  return p.scope === "company" && p.family !== "service" && p.family !== "addon" && p.family !== "core_plan" && p.prices.every((x) => !x.unit);
+  return p.scope === "company" && p.family !== "service" && p.family !== "addon" && p.family !== "core_plan" && p.prices.filter((x) => x.kind === "monthly" || x.kind === "yearly").every((x) => !x.unit);
 }
-/** El mismo texto en la cotización, los pedidos y la compra del panel. */
+/**
+ * Texto del rechazo. Pedidos, checkout y compra del panel lo reciben porque cotizan con `quote()`. El alta manual de una
+ * partida por el operador (server/subscriptions) no cotiza: ahí la cantidad la decide el operador.
+ */
 export const perCompanyQuantityText = (name: string, quantity: number) => `«${name}» se contrata por empresa, no por sede ni por unidades: la cantidad es 1 (se indicó ${quantity})`;
 
 function pickPrice(p: QuoteCatalogProduct, interval: "month" | "year"): QuoteCatalogPrice | undefined {

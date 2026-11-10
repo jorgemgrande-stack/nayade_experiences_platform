@@ -253,6 +253,9 @@ describe("cotizador", () => {
     // Igual que las demás extensiones por empresa (People) y las soluciones por empresa (Social Token Net)
     expect(q({ items: [{ key: "connect-people", quantity: 2 }] }).errors.join()).toMatch(/«Elephant People» se contrata por empresa/);
     expect(q({ items: [{ key: "social-token-net-complete", quantity: 2 }] }).errors.join()).toMatch(/se contrata por empresa/);
+    // Un precio de consumo con unidad («por minuto») no convierte la cuota en «por unidad»
+    const withUsage: QuoteCatalog = { ...cat, products: cat.products.map((p) => (p.key === "connect-voice" ? { ...p, prices: [...p.prices, { kind: "usage" as const, amountCents: 5, currency: "EUR", unit: "minuto", taxRateBp: 2100, taxIncluded: false }] } : p)) };
+    expect(quote(withUsage, { plan: "business", interval: "month", sites: 3, items: [{ key: "connect-voice", quantity: 3 }] }).errors.join()).toMatch(/«Elephant Voice» se contrata por empresa/);
     // Siguen admitiendo cantidad: por sede (hasta las sedes), por unidad de cobro y los servicios
     expect(q({ plan: "business", sites: 3, items: [{ key: "hotel-net-complete", quantity: 3 }] }).lines.find((l) => l.key === "hotel-net-complete")!.amountCents).toBe(eur(357));
     expect(q({ items: [{ key: "travel-net-agency" }, { key: "travel-net-connectors", quantity: 3 }] }).errors).toEqual([]);
