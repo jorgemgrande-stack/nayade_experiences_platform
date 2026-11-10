@@ -17,6 +17,7 @@ import { configureSiteDirectory } from "../../sdk/context";
 import { companySiteDirectory } from "../../sitesDb";
 import { configureCapabilityAccess } from "../capabilities/access";
 import { configureLimitAccess } from "../limits/access";
+import { configureTpvSeedMarker } from "../../tpvSeedMarker";
 import { configureQuotaExceptions } from "../erm/exceptionAccess";
 import { withQuotaExceptions } from "../erm/quota";
 import { warmConfigCache } from "../../config";
@@ -151,6 +152,8 @@ export function installTenantResolution(app: Express, env: NodeJS.ProcessEnv = p
     configureSiteDirectory(companySiteDirectory);
     // Licencias por capacidad (catálogo de Elephant Source); se aplican con CAPABILITY_ENFORCEMENT=on
     configureCapabilityAccess(rt.capabilities);
+    // Marca de la siembra del derecho adquirido del TPV (registro, solo lectura): sin ella, el seguro mantiene lo de siempre
+    configureTpvSeedMarker((k) => runtime.meta(k));
     // Límites contratados (usuarios, almacenamiento) y uso declarado (registro 0013)
     configureLimitAccess(rt.limits);
     // Excepciones comerciales de cuota con caducidad (registro 0016, solo lectura)

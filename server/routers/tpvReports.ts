@@ -9,8 +9,16 @@ import { permissionProcedure, router } from "../_core/trpc";
 import { getTpvReport, listReportRegisters, TpvReportRangeError } from "../tpvReportsDb";
 import { REPORT_SECTIONS, reportCsvFilename, reportSectionCsv } from "../tpvReports";
 import { resolveSiteFilter } from "../sitesDb";
+import { assertTpvFeature } from "../tpvRulesDb";
+import { consolidatedReport } from "../tpvBusinessDb";
 
 const tpvReportsProc = permissionProcedure("tpv.backoffice", ["admin"]);
+// Informes por caja, por empleado y por periodo: Business o superior (estrategia TPV 09/11/2026). Essential tiene el
+// resumen diario (tpv.dailySummary) y el historial de sesiones.
+const detailedReportsProc = tpvReportsProc.use(async ({ next }) => {
+  await assertTpvFeature("detailedReports");
+  return next();
+});
 
 const filterInput = z.object({
   dateFrom: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
@@ -33,12 +41,20 @@ async function loadReport(input: z.infer<typeof filterInput>) {
 export const tpvReportsRouter = router({
   registers: tpvReportsProc.query(() => listReportRegisters()),
 
-  summary: tpvReportsProc.input(filterInput).query(({ input }) => loadReport(input)),
+  summary: detailedReportsProc.input(filterInput).query(({ input }) => loadReport(input)),
 
-  exportCsv: tpvReportsProc
+  exportCsv: detailedReportsProc
     .input(filterInput.extend({ section: z.enum(REPORT_SECTIONS) }))
     .query(async ({ input }) => {
       const report = await loadReport(input);
       return { filename: reportCsvFilename(report, input.section), csv: reportSectionCsv(report, input.section) };
+    }),
+
+  // Informes consolidados por establecimiento (Enterprise)
+  consolidated: tpvReportsProc
+    .input(z.object({ dateFrom: z.string().regex(/^\d{4}-\d{2}-\d{2}$/), dateTo: z.string().regex(/^\d{4}-\d{2}-\d{2}$/) }))
+    .query(async ({ input }) => {
+      await assertTpvFeature("consolidatedReports");
+      return consolidatedReport(input.dateFrom, input.dateTo);
     }),
 });

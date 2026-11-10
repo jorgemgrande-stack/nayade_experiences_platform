@@ -25,6 +25,7 @@ import { Link } from "wouter";
 import TpvPlanPanel from "./TpvPlanPanel";
 import TpvDailySummary from "./TpvDailySummary";
 import TpvClosedCorrections from "./TpvClosedCorrections";
+import { TpvOperatorsEditor, TpvReturnRequests, TpvSupervision } from "./TpvBusiness";
 import {
   Receipt, TrendingUp, CreditCard, Banknote, Smartphone,
   Calendar, Clock, User, ChevronRight, ExternalLink, Search,
@@ -158,6 +159,8 @@ export default function TpvBackoffice() {
         {/* Lo que incluye el plan y el resumen del día */}
         <TpvPlanPanel canManage={canManageCash} />
         <TpvDailySummary />
+        <TpvReturnRequests />
+        <TpvSupervision />
 
         {/* Cajas */}
         <section aria-labelledby="tpv-cajas" className="space-y-3">
@@ -241,6 +244,7 @@ export default function TpvBackoffice() {
                       {r.isActive ? "Desactivar" : "Activar"}
                     </Button>
                   </div>
+                  {r.isActive && <TpvOperatorsEditor registerId={r.id} registerName={r.name} />}
                 </li>
               ))}
             </ul>

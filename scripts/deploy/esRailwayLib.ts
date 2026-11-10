@@ -40,6 +40,8 @@ export const DRILL_ALLOWED: RegExp[] = [
   new RegExp(`^${BJ} catalog-commercial-import( --apply)?$`),
   // Publicación por lotes de las fichas o reversión del último lote (simulación o --apply; solo fichas ya publicadas)
   new RegExp(`^${BJ} catalog-commercial-(publish|revert)( --apply)?$`),
+  // Derecho adquirido del TPV: licencia tpv-acquired-rights a quien tenía la caja del plan y marca de sembrado (simulación o --apply)
+  new RegExp(`^${BJ} tpv-acquired-rights( --apply)?$`),
   // Foto de solo lectura de suscripciones, pedidos, pagos y licencias (recuentos y huellas)
   new RegExp(`^${BJ} commercial-integrity$`),
 ];
@@ -614,6 +616,9 @@ export const ORDINARY_PRODUCTION_ACTIONS = [
   "simular-purga-empresas-prueba",
   "catalogo-revision",
   "catalogo-revision-aplicar",
+  // Derecho adquirido del TPV: licencia auditada (con su evento) y marca de sembrado; simulación o aplicación
+  "derechos-adquiridos-tpv",
+  "derechos-adquiridos-tpv-aplicar",
   "catalogo-fichas",
   "catalogo-fichas-aplicar",
   "catalogo-fichas-publicar",

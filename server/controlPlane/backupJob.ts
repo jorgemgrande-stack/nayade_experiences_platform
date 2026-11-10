@@ -80,6 +80,8 @@ import { REVIEW_ID_2026_11_09_WHATSAPP, WHATSAPP_LISTING_2026_11_09 } from "../c
 import { AUTOMATIONS_LISTING_2026_11_09, REVIEW_ID_2026_11_09_AUTOMATIONS } from "../catalog/review20261109automations";
 import { PACK_MARKETING_LISTING_2026_11_09, REVIEW_ID_2026_11_09_PACK_MARKETING } from "../catalog/review20261109packmarketing";
 import { REVIEW_ID_2026_11_08_FICHAS, applyListingReview } from "../catalog/review20261108fichas";
+import { mysqlSeedCandidates, mysqlSeedMarkerWriter, seedTpvAcquiredRights } from "../licensing/tpvAcquiredRights";
+import { MysqlCapabilityStore } from "../_core/capabilities/store";
 import { NET_LISTINGS_2026_11_08, REVIEW_ID_2026_11_08_NET } from "../catalog/review20261108net";
 import { MysqlStripeStore } from "../stripe/store";
 import { IMPORT_AUTHOR, importCommercialSpecs } from "../catalog/commercial/importSpecs";
@@ -616,6 +618,14 @@ async function main() {
         } finally {
           await crmPool.end().catch(() => undefined);
         }
+        break;
+      }
+      case "tpv-acquired-rights": {
+        // Derecho adquirido del TPV (opción A, 10/11/2026): concede la licencia tpv-acquired-rights a cada empresa con la
+        // caja del plan (bill-cash active, read_only o suspended). Simulación salvo --apply; idempotente. Se ejecuta
+        // ANTES de publicar el reparto por planes de la 0064 (server/licensing/tpvAcquiredRights.ts).
+        const rep = await seedTpvAcquiredRights({ candidates: mysqlSeedCandidates(pool), store: new MysqlCapabilityStore(pool), writeMarker: mysqlSeedMarkerWriter(pool) }, { apply: flag("--apply") });
+        print({ ...rep, concedidas: rep.concedidas.length, yaConcedidas: rep.yaConcedidas.length, empresas: rep.concedidas });
         break;
       }
       case "erm-setup": {

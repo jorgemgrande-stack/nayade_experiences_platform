@@ -14,11 +14,14 @@ import { eq, sql } from "drizzle-orm";
 import { cashRegisters, type CashSession } from "../drizzle/schema";
 import { getCapabilityAccess } from "./_core/capabilities/access";
 import { decide } from "./_core/capabilities/model";
+import { TPV_ACQUIRED_RIGHTS_CAPABILITY } from "./licensing/tpvAcquiredRights";
+import { tpvSeedMarker } from "./tpvSeedMarker";
 import { legacyDb } from "./_core/legacyDb";
 import { getSystemSetting } from "./config";
 import { licenceSummary } from "./planSeats";
 import { withTenantLock } from "./tpvSaleIdempotency";
 import { upsertSettings } from "./setupWizardDb";
+import { getDefaultCashAccountId } from "./routers/cashRegisterHelper";
 import {
   CUTOFF_RE,
   DEFAULT_CUTOFF,
@@ -29,6 +32,9 @@ import {
   safeTimeZone,
   tpvPlanInfo,
   type TpvFeature,
+  TPV_ACQUIRED_RIGHTS_CUTOFF,
+  TPV_GRANDFATHERED_FEATURES,
+  withAcquiredRights,
   type TpvPlanInfo,
   type TpvTier,
 } from "../shared/tpvPlan";
@@ -43,7 +49,38 @@ export async function currentTpvTier(): Promise<TpvTier> {
 }
 
 export async function currentTpvPlan(): Promise<TpvPlanInfo> {
-  return tpvPlanInfo(await currentTpvTier());
+  const info = tpvPlanInfo(await currentTpvTier());
+  if (info.tier !== "essential") return info;
+  // Seguro: hasta que la siembra del derecho adquirido haya corrido (marca en el registro), Essential conserva todo
+  if (!(await tpvSeedMarker())) return withAcquiredRights(info, TPV_GRANDFATHERED_FEATURES);
+  return withAcquiredRights(info, (await acquiredRights()).features);
+}
+
+// ─── Derecho adquirido (empresas que ya tenían estas funciones) ──────────────
+
+export interface AcquiredRights {
+  features: TpvFeature[];
+  cutoff: string;
+  /** Licencia que lo concede (trazabilidad): origen, estado y fecha; null si la empresa no lo tiene. */
+  grant: { source: string; status: string; updatedAt: number; updatedBy: string } | null;
+}
+
+/**
+ * Derechos adquiridos de la empresa en curso: la licencia `tpv-acquired-rights` que concede la siembra
+ * (server/licensing/tpvAcquiredRights.ts) a cada empresa que tenía la caja del plan antes del cambio. No la toca
+ * ninguna suscripción (otro origen), así que se mantiene al renovar o al cambiar de periodicidad. Ante un fallo de
+ * lectura, ninguno: el plan no cambia.
+ */
+export async function acquiredRights(): Promise<AcquiredRights> {
+  const none: AcquiredRights = { features: [], cutoff: TPV_ACQUIRED_RIGHTS_CUTOFF, grant: null };
+  try {
+    const grants = await getCapabilityAccess().grants();
+    const g = grants?.find((x) => x.capabilityId === TPV_ACQUIRED_RIGHTS_CAPABILITY && x.siteId === "" && (x.status === "active" || x.status === "read_only"));
+    if (!g) return none;
+    return { features: [...TPV_GRANDFATHERED_FEATURES], cutoff: TPV_ACQUIRED_RIGHTS_CUTOFF, grant: { source: g.source, status: g.status, updatedAt: g.updatedAt, updatedBy: g.updatedBy } };
+  } catch {
+    return none;
+  }
 }
 
 /** Plan para comprobar una operación: si no puede leerse, falla cerrado con un error recuperable. */
@@ -238,6 +275,35 @@ export async function addCorrection(input: { sessionId: number; kind: Correction
     throw e;
   }
   return (await find())!;
+}
+
+/**
+ * Refleja una corrección en la caja contable (fin_cash_movements): un movimiento de ajuste aparte, enlazado a la
+ * corrección (`fin_movement_id`, y `related_entity_id` = id de la corrección), con su motivo y autor, en el día operativo
+ * del cierre y con el saldo de la cuenta actualizado. Nunca toca el cierre. Una sola vez: se reclama la corrección en la
+ * misma transacción (dos intentos a la vez no la reflejan dos veces). Sin cuenta de caja principal, queda pendiente
+ * (NULL) y se refleja al repetir la corrección cuando la haya. La contabilidad general la lee de
+ * tpv_session_corrections (clave `cajacorr:<id>`), no de aquí: se contabiliza una sola vez.
+ */
+export async function postCorrectionToTreasury(c: CorrectionRow): Promise<number | null> {
+  const accountId = await getDefaultCashAccountId();
+  if (!accountId) return null;
+  const snap = await getClosureSnapshot(c.sessionId);
+  const day = snap?.operational_day ? String(snap.operational_day) : await registerOperationalDay(c.createdAt, null);
+  const income = c.kind === "cash_in" || (c.kind === "count_adjustment" && c.amount > 0);
+  const abs = Math.abs(c.amount);
+  const label = c.kind === "cash_in" ? "Entrada" : c.kind === "cash_out" ? "Salida" : "Ajuste del recuento";
+  return db.transaction(async (tx) => {
+    const [claim] = (await tx.execute(sql`UPDATE tpv_session_corrections SET fin_movement_id = 0 WHERE id = ${c.id} AND fin_movement_id IS NULL`)) as unknown as [{ affectedRows?: number }];
+    if (Number(claim?.affectedRows ?? 0) !== 1) return null;
+    const [res] = (await tx.execute(sql`INSERT INTO fin_cash_movements (account_id, date, type_fcm, amount, concept, category, related_entity_type, related_entity_id, notes, created_by)
+      VALUES (${accountId}, ${day}, ${income ? "income" : "expense"}, ${abs.toFixed(2)}, ${`${label} tras el cierre de caja TPV #${c.sessionId}`.slice(0, 512)}, 'cash_adjustment', 'manual', ${c.id},
+        ${`Corrección #${c.id} de la caja cerrada (sesión TPV #${c.sessionId}) por ${c.createdByName ?? "—"}. Motivo: ${c.reason}`}, ${c.createdBy})`)) as unknown as [{ insertId: number }];
+    const movementId = Number(res.insertId);
+    await tx.execute(sql`UPDATE fin_cash_accounts SET current_balance = current_balance + ${income ? abs : -abs} WHERE id = ${accountId}`);
+    await tx.execute(sql`UPDATE tpv_session_corrections SET fin_movement_id = ${movementId} WHERE id = ${c.id}`);
+    return movementId;
+  });
 }
 
 /** Efecto de las correcciones en el efectivo de la sesión (entradas suman, salidas y ajustes negativos restan). */

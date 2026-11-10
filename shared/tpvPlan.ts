@@ -46,6 +46,22 @@ export function tpvPlanInfo(tier: TpvTier): TpvPlanInfo {
   return { tier, maxActiveRegisters, features };
 }
 
+/**
+ * Derecho adquirido (decisión de Jorge del 10/11/2026, opción A). Estas funciones las daba Essential hasta la estrategia
+ * TPV; las empresas que ya las tenían las conservan aunque su plan ya no las incluya (registro por empresa en
+ * `tpv_acquired_rights`, migración 0064). Las nuevas siguen el reparto por plan.
+ */
+export const TPV_ACQUIRED_RIGHTS_CUTOFF = "2026-11-10";
+export const TPV_GRANDFATHERED_FEATURES: readonly TpvFeature[] = ["detailedReports", "closureSupervision", "cashDifferences"];
+
+/** Plan con los derechos adquiridos de la empresa sumados (nunca quita nada). */
+export function withAcquiredRights(info: TpvPlanInfo, acquired: readonly TpvFeature[]): TpvPlanInfo {
+  if (!acquired.length) return info;
+  const features = { ...info.features };
+  for (const f of acquired) features[f] = true;
+  return { ...info, features };
+}
+
 /** Plan del que forma parte cada función (para explicar dónde está y ofrecer la ampliación). */
 export function tierForFeature(f: TpvFeature): "business" | "enterprise" {
   return BUSINESS_FEATURES.includes(f) ? "business" : "enterprise";
@@ -79,7 +95,7 @@ export const TPV_ADVANCED_LABELS = [
 
 /** Mensaje de una función que el plan no incluye: qué es y cómo tenerla, sin bloquear nada más. */
 export function featureNotIncludedMessage(f: TpvFeature): string {
-  return `${TPV_FEATURE_LABELS[f]} forma parte del plan ${TPV_TIER_NAMES[tierForFeature(f)]}. Puedes ampliar tu plan desde «Suscripción».`;
+  return `«${TPV_FEATURE_LABELS[f]}» se incluye en el plan ${TPV_TIER_NAMES[tierForFeature(f)]}. Puedes ampliar tu plan desde «Suscripción».`;
 }
 
 /** ¿Se puede crear o activar una caja más? Las ya activas nunca se tocan. */
