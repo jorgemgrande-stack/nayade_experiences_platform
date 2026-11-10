@@ -199,6 +199,7 @@ const TRIAL_EVENT: Record<string, CommercialEventType> = {
   provisioned: "trial.started",
   provisioning_failed: "trial.provisioning_failed",
   approve_extension: "trial.extended",
+  admin_extend: "trial.extended",
   mark_expired: "trial.expired",
   suspend: "trial.suspended",
   reactivate: "trial.reactivated",

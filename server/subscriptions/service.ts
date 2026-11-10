@@ -720,7 +720,12 @@ export function licencePlan(sub: Subscription, items: SubscriptionItem[], now: n
   const live = sub.status === "canceled" ? [] : activeAt(items, now);
   return {
     applied: false as const,
-    note: "Simulación: no se concede ni se retira ninguna licencia.",
+    // La facturación simulada no concede ni retira licencias; las de una PRUEBA GRATUITA sí son reales: las aplica el
+    // alta de la prueba con caducidad al fin de la prueba, y su ampliación las mueve (server/trials/onboarding.ts)
+    note:
+      sub.status === "trialing"
+        ? "Prueba gratuita: las licencias del plan están aplicadas de verdad hasta el fin de la prueba (las mueve la ampliación de la prueba). La facturación simulada no cobra ni concede nada."
+        : "Simulación: no se concede ni se retira ninguna licencia.",
     plan: live.find((i) => i.family === "core_plan" && i.activationKind === "plan")?.activationRef ?? null,
     modules: live
       .filter((i) => i.activationKind === "module" && i.activationRef)
@@ -747,3 +752,18 @@ export function itemSchedule(sub: Subscription, items: SubscriptionItem[], now: 
 }
 
 export type { SubscriptionTx };
+
+/**
+ * Estado y fechas EFECTIVOS de una suscripción en un instante, para el CRM (no cambia nada guardado):
+ *  - `status`: «trial_expired» si sigue «en prueba» con el fin de la prueba ya pasado (nadie la pasa a otro estado al
+ *    vencer: la prueba sin contratar no se renueva sola);
+ *  - `nextRenewalAt`: durante la prueba, el fin de la prueba (el periodo mensual simulado no se renueva mientras no se
+ *    contrate); después, el fin del periodo; null si no renueva (cancelada o con la baja programada);
+ *  - `trialEndsAt`: el fin de la prueba (el mismo que la caducidad de sus licencias, que es lo que ve el tenant).
+ */
+export function subscriptionEffective(sub: Pick<Subscription, "status" | "trialEnd" | "currentPeriodEnd" | "cancelAt">, now: number) {
+  const trial = sub.status === "trialing";
+  const status: Subscription["status"] | "trial_expired" = trial && sub.trialEnd !== null && sub.trialEnd <= now ? "trial_expired" : sub.status;
+  const nextRenewalAt = sub.status === "canceled" || sub.cancelAt ? null : trial ? sub.trialEnd : sub.currentPeriodEnd;
+  return { status, nextRenewalAt, trialEndsAt: trial ? sub.trialEnd : null, timeZone: "Europe/Madrid" as const };
+}

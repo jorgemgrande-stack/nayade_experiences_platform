@@ -81,12 +81,15 @@ import { AUTOMATIONS_LISTING_2026_11_09, REVIEW_ID_2026_11_09_AUTOMATIONS } from
 import { PACK_MARKETING_LISTING_2026_11_09, REVIEW_ID_2026_11_09_PACK_MARKETING } from "../catalog/review20261109packmarketing";
 import { REVIEW_ID_2026_11_09_TPV, TPV_LISTINGS_2026_11_09 } from "../catalog/review20261109tpv";
 import { REVIEW_ID_2026_11_08_FICHAS, applyListingReview } from "../catalog/review20261108fichas";
+import { mysqlSeedCandidates, mysqlSeedMarkerWriter, seedTpvAcquiredRights } from "../licensing/tpvAcquiredRights";
+import { MysqlCapabilityStore } from "../_core/capabilities/store";
 import { NET_LISTINGS_2026_11_08, REVIEW_ID_2026_11_08_NET } from "../catalog/review20261108net";
 import { MysqlStripeStore } from "../stripe/store";
 import { IMPORT_AUTHOR, importCommercialSpecs } from "../catalog/commercial/importSpecs";
 import { publishBatch, revertLastBatch } from "../catalog/commercial/publishBatch";
 import { commercialIntegrity, netContracts } from "../catalog/commercial/integrity";
 import { REVIEW_ID_2026_11_09_NET_UNIFICATION, applyNetUnification, catalogGuard, guardDiff } from "../catalog/review20261109netunificacion";
+import { REVIEW_ID_2026_11_10_STN, applyStnScopeReview } from "../catalog/review20261110stn";
 
 const args = process.argv.slice(2);
 const cmd = args[0] && !args[0].startsWith("--") ? args[0] : "run";
@@ -534,6 +537,8 @@ async function main() {
           const guardChanged = guardDiff(guardBefore, await catalogGuard(webStore));
           const netAfter = await netContracts(crmPool, pool, netAt);
           const netIntact = JSON.stringify(netBefore) === JSON.stringify(netAfter);
+          // 10/11/2026: Social Token Net por empresa (ámbito del catálogo y descripción larga); sin precios ni licencias
+          const repStn = await applyStnScopeReview(svc, webStore, { apply, author: `operacion:${REVIEW_ID_2026_11_10_STN}` });
           // 09/11/2026: estrategia del TPV (caja de cada plan y TPV Advanced, la ficha de connect-pos), después de la
           // unificación de Elephant Net. Sin precios: el de connect-pos y su ámbito por empresa se cambian aparte en el CRM
           const repTpv = await applyListingReview(svc, webStore, { apply, author: `operacion:${REVIEW_ID_2026_11_09_TPV}`, changes: TPV_LISTINGS_2026_11_09 });
@@ -555,6 +560,7 @@ async function main() {
                 { revision: REVIEW_ID_2026_11_09_PACK_MARKETING, ...repPackMarketing },
                 { revision: REVIEW_ID_2026_11_08_CONNECT, modoStripe: stripeMode, ...repConnect, preciosIntactos: pricesIntactConnect },
                 { revision: REVIEW_ID_2026_11_09_NET_UNIFICATION, ...repNetUnification, catalogoFueraDeLoPrevisto: guardChanged, contratosNetIntactos: netIntact, contratosNet: netAfter },
+                { revision: REVIEW_ID_2026_11_10_STN, ...repStn },
                 { revision: REVIEW_ID_2026_11_09_TPV, ...repTpv },
               ],
             }),
@@ -621,6 +627,14 @@ async function main() {
         } finally {
           await crmPool.end().catch(() => undefined);
         }
+        break;
+      }
+      case "tpv-acquired-rights": {
+        // Derecho adquirido del TPV (opción A, 10/11/2026): concede la licencia tpv-acquired-rights a cada empresa con la
+        // caja del plan (bill-cash active, read_only o suspended). Simulación salvo --apply; idempotente. Se ejecuta
+        // ANTES de publicar el reparto por planes de la 0064 (server/licensing/tpvAcquiredRights.ts).
+        const rep = await seedTpvAcquiredRights({ candidates: mysqlSeedCandidates(pool), store: new MysqlCapabilityStore(pool), writeMarker: mysqlSeedMarkerWriter(pool) }, { apply: flag("--apply") });
+        print({ ...rep, concedidas: rep.concedidas.length, yaConcedidas: rep.yaConcedidas.length, empresas: rep.concedidas });
         break;
       }
       case "erm-setup": {

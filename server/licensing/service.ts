@@ -172,6 +172,27 @@ export class LicensingService {
   }
 
   /**
+   * Acceso de una PRUEBA vigente (tras ampliarla, también si había vencido): las licencias del plan de prueba que estén
+   * en solo lectura (solo por haber vencido) vuelven a activas con el fin de la prueba, y las del plan que falten se
+   * dan de alta. Nada más: no toca licencias suspendidas o canceladas (bloqueos de otros procesos o de un operador),
+   * ni las de otro origen (derechos adquiridos del TPV, operador, otras suscripciones) ni las de otra empresa. Una
+   * licencia por capacidad (sin duplicados). Solo para una suscripción EN PRUEBA; si no, no hace nada. Idempotente.
+   */
+  async restoreTrialAccess(subscriptionId: number, o: { actor: string; reason?: string | null }) {
+    const plan = await this.preview(subscriptionId, { activate: true });
+    if (plan.status !== "trialing") return { tenantId: plan.tenantId, changed: 0, applied: [] as Awaited<ReturnType<CapabilityStore["apply"]>> };
+    const changes: CapabilityChange[] = [];
+    for (const c of plan.changes) {
+      if (c.status !== "active") continue;
+      const cur = plan.current.find((g) => g.capabilityId === c.capabilityId && g.siteId === c.siteId);
+      if (!cur) changes.push(c);
+      else if (cur.source === plan.source && cur.status === "read_only") changes.push({ ...c, status: "active" });
+    }
+    const applied = changes.length ? await this.d.capabilities.apply(plan.tenantId, changes, { actor: o.actor, reason: o.reason ?? `Acceso de la prueba de la suscripción #${subscriptionId}`, now: this.now() }) : [];
+    return { tenantId: plan.tenantId, changed: changes.length, applied };
+  }
+
+  /**
    * Baja EFECTIVA de módulos: partidas cuya baja ya se cumplió (fin <= ahora) y cuyas licencias acaba de cancelar ESTA
    * sincronización. Un evento por partida (`subscription.module_removal_effective`) con el producto retirado. Nunca por
    * una baja solo programada, por el plan Core (cambio de plan), por una ampliación por cantidad, por un paquete que

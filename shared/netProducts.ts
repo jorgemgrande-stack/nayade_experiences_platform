@@ -10,7 +10,7 @@
  * Stripe, su historial y las licencias concedidas. El nombre comercial ya no lleva «Complete».
  *
  * Estados de cada funcionalidad (honestidad): `available` solo si está operativa hoy en el Core; lo que falta por
- * desarrollar es `coming_soon` («Próximamente»), DENTRO del producto contratado y nunca como extensión de pago.
+ * desarrollar es `coming_soon` («En implantación»; nunca «Próximamente», decisión de Jorge), DENTRO del producto contratado y nunca como extensión de pago.
  *
  * Lógica pura (sin servidor ni React): la usan el marketplace, la compra, el menú y el CRM.
  */
@@ -59,7 +59,7 @@ export const NET_PRODUCTS: readonly NetProduct[] = [
     group: "care",
     segment: "business",
     homePath: "/admin/net/care",
-    summary: "Solución integral para centros de bienestar, masajes, terapias y clínicas: agenda, citas online, tratamientos, bonos, historial de cada cliente y recordatorios de cita por correo en un solo producto. Fichas clínicas: próximamente, incluidas sin coste adicional.",
+    summary: "Solución integral para centros de bienestar, masajes, terapias y clínicas: agenda, citas online, tratamientos, bonos, historial de cada cliente y recordatorios de cita por correo en un solo producto. Fichas clínicas: en implantación, incluidas sin coste adicional.",
     benefits: ["Tus citas, profesionales y cabinas en una sola agenda, sin solapamientos.", "Reservas y cobros online desde tu propia web.", "Tratamientos, bonos y sesiones controlados en el mismo sitio."],
     legacyKeys: ["care-net-agenda", "care-net-clinical", "care-net-treatments"],
     areas: [
@@ -76,7 +76,7 @@ export const NET_PRODUCTS: readonly NetProduct[] = [
     group: "hotel",
     segment: "business",
     homePath: "/admin/net/hotel",
-    summary: "Solución integral para hoteles y alojamientos: PMS, motor de reservas para tu web, check-in y check-out y housekeeping en un solo producto. Channel Manager: próximamente, incluido sin coste adicional.",
+    summary: "Solución integral para hoteles y alojamientos: PMS, motor de reservas para tu web, check-in y check-out y housekeeping en un solo producto. Channel Manager: en implantación, incluido sin coste adicional.",
     benefits: ["Habitaciones, tarifas y ocupación siempre al día.", "Reservas directas en tu web, con pago online y sin comisiones.", "Recepción, check-in, check-out y limpieza coordinados."],
     legacyKeys: ["hotel-net-pms", "hotel-net-channel-manager", "hotel-net-booking-engine", "hotel-net-housekeeping"],
     areas: [
@@ -129,7 +129,7 @@ export const NET_PRODUCTS: readonly NetProduct[] = [
     group: "travel",
     segment: "business",
     homePath: "/admin/net/travel",
-    summary: "Solución integral para agencias de viajes y operadores turísticos: clientes, expedientes, presupuestos, reservas, proveedores con tus márgenes y bonos de viaje en un solo producto. Conectores externos, paquetes dinámicos y circuitos: próximamente, incluidos sin coste adicional.",
+    summary: "Solución integral para agencias de viajes y operadores turísticos: clientes, expedientes, presupuestos, reservas, proveedores con tus márgenes y bonos de viaje en un solo producto. Conectores externos, paquetes dinámicos y circuitos: en implantación, incluidos sin coste adicional.",
     benefits: ["Expedientes, presupuestos y reservas de cada viajero en un único sitio.", "Proveedores turísticos y servicios con tus márgenes comerciales.", "Documentación, bonos y cobro de cada viaje."],
     legacyKeys: ["travel-net-agency", "travel-net-connectors", "travel-net-packages"],
     areas: [

@@ -237,7 +237,7 @@ const CORE: SeedProduct[] = [
 const LEGACY_NOTE = "Componente interno del producto Elephant Net: no se vende por separado desde el 07/11/2026.";
 const net = (p: Omit<P, "family" | "scope"> & { scope?: "company" | "site" }) =>
   product({ ...p, family: "net_module", scope: p.scope ?? "site", notes: p.key === "life-net" ? p.notes : [LEGACY_NOTE, p.notes].filter(Boolean).join(" ") });
-const netBundle = (p: Omit<P, "family" | "scope">) => product({ ...p, family: "net_bundle", scope: "site" });
+const netBundle = (p: Omit<P, "family" | "scope"> & { scope?: "company" | "site" }) => product({ ...p, family: "net_bundle", scope: p.scope ?? "site" });
 const DEPS_NOTE = `Dependencias entre submódulos: ${PROPOSAL}`;
 /** Naturaleza de los puntos de Social Token Net · Tokens internos (decisión de Jorge, 05/11/2026): se contrata sin Comunidades. */
 const TOKENS_R1 = "Puntos internos de fidelización: se canjean solo por recompensas y beneficios dentro del programa de tu negocio.";
@@ -280,7 +280,8 @@ const LIFE: SeedProduct[] = [net({ key: "life-net", name: "Life Net", group: "li
 const SOCIAL: SeedProduct[] = [
   net({ key: "social-token-net-communities", name: "Social Token Net · Comunidades", group: "social-token", scope: "company", tagline: "Comunidades de clientes y socios.", tech: "planned", commercial: "coming_soon", monthly: 39, capabilities: ["social-token-net"], icon: "users" }),
   net({ key: "social-token-net-tokens", name: "Social Token Net · Tokens internos", group: "social-token", scope: "company", tagline: "Puntos y tokens internos de fidelización.", tech: "planned", commercial: "coming_soon", monthly: 29, capabilities: ["social-token-net-tokens"], icon: "coins", requirements: [TOKENS_R1, TOKENS_R2] }),
-  netBundle({ key: "social-token-net-complete", name: "Social Token Net", group: "social-token", tagline: "Solución integral de comunidades y fidelización.", description: "Comunidades y tokens internos de fidelización en un solo producto, sin extensiones adicionales.", tech: "planned", commercial: "coming_soon", monthly: 59, bundleOf: ["social-token-net-communities", "social-token-net-tokens"], forWho: "Marcas, clubes y asociaciones.", icon: "sparkles" }),
+  // Por empresa (10/11/2026, review20261110stn.ts): sus datos y licencias son de la empresa, sin sede
+  netBundle({ key: "social-token-net-complete", name: "Social Token Net", group: "social-token", scope: "company", tagline: "Solución integral de comunidades y fidelización.", description: "Comunidades y tokens internos de fidelización en un solo producto, sin extensiones adicionales.", tech: "planned", commercial: "coming_soon", monthly: 59, bundleOf: ["social-token-net-communities", "social-token-net-tokens"], forWho: "Marcas, clubes y asociaciones.", icon: "sparkles" }),
 ];
 
 // ── Elephant Connect ───────────────────────────────────────────────────────────

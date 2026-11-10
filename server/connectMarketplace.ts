@@ -254,7 +254,7 @@ export function buildConnectCatalog(
       tagline: card?.tagline ?? (d?.tagline || null),
       // Net: la descripción y lo incluido son los del producto unificado (no los de los antiguos submódulos)
       description: np ? np.summary : (card?.description ?? (d?.description || null)),
-      includes: np ? areas.map((a) => (a.features.every((f) => f.status === "coming_soon") ? `${a.title} (próximamente)` : a.title)) : pick(card?.includes, d?.includes ?? []),
+      includes: np ? areas.map((a) => (a.features.every((f) => f.status === "coming_soon") ? `${a.title} (en implantación)` : a.title)) : pick(card?.includes, d?.includes ?? []),
       requirements: pick(card?.requirements, d?.requirements ?? []),
       forWho: c?.forWho ?? card?.presentation?.forWho ?? d?.presentation.forWho ?? null,
       thirdPartyCosts: card?.thirdPartyCosts ?? d?.thirdPartyCosts ?? np?.note ?? null,

@@ -251,7 +251,10 @@ describe.skipIf(!URL_)("contabilidad y facturación Essential (aplicación real)
       expect(json(inv.taxBreakdown)).toEqual([{ rate: 21, base: 90, amount: 18.9 }, { rate: 10, base: 90, amount: 9 }]);
       // Las líneas conservan su fiscalidad sin descontar y el informe de caja reparte el descuento una sola vez
       const today = new Intl.DateTimeFormat("sv", { timeZone: "Europe/Madrid" }).format(new Date());
+      // Los informes por periodo son de Business (estrategia TPV 09/11/2026; las empresas anteriores los conservan por derecho adquirido)
+      await ess.setCapability("a", "reports-advanced", "active");
       const rep = ok(await ess.q("a", "tpv.reports.summary", { dateFrom: today, dateTo: today }, admA), "informe de caja");
+      await ess.setCapability("a", "reports-advanced", null);
       const byRate = Object.fromEntries(rep.byTaxRate.map((t: any) => [t.label, [t.taxBase, t.taxAmount]]));
       // Ventas del día: la de efectivo del resumen y esta (207,90 € cada una, con descuento) y la de 121 € sin descuento
       expect(byRate["IVA 21 %"]).toEqual([280, 58.8]);

@@ -23,6 +23,15 @@
  * Exención explícita por empresa (`TRIAL_RESTRICTIONS_EXEMPT_TENANTS`, lista separada por comas). Sin la variable se
  * aplica la lista por defecto: `t5-skibox`, empresa real que ya opera y que el registro mantiene en `trial`. Con la
  * variable definida (también vacía) manda exactamente su contenido.
+ *
+ * Qué cubre la exención (incidencia Skibox, 10/11/2026):
+ *  - SÍ: no se aplican las restricciones comerciales de la prueba (`restricted` = false: cupos de prueba, dominio
+ *    propio…) y la tarea programada de pruebas ni la marca vencida ni le envía avisos de vencimiento (su contacto es de
+ *    un cliente externo).
+ *  - NO: no alarga la prueba ni da licencias. Las licencias de la prueba caducan en su fecha (`decide()`), así que al
+ *    vencer la empresa pasa a consulta como cualquier otra. El estado EFECTIVO (CRM y plano de control) se calcula por
+ *    fecha (`effectiveTrialState`, `subscriptionEffective`), aunque la prueba siga guardada como «active» porque la
+ *    tarea se la salta. Para que vuelva a operar: ampliación administrativa desde el CRM o contratación.
  */
 import { grantsShowPaid, grantsShowTrial } from "./trialPayments";
 import type { CapabilityGrant } from "./_core/capabilities/model";

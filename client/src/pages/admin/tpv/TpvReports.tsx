@@ -13,6 +13,7 @@ import { Label } from "@/components/ui/label";
 import { PanelEmpty, PanelError, PanelLoading, errorMessage } from "@/components/admin/PanelStates";
 import { BarChart3, Download, ExternalLink, Printer } from "lucide-react";
 import { useCompanySites } from "@/hooks/useCompanySites";
+import { TpvConsolidated } from "./TpvBusiness";
 import {
   PERIOD_PRESETS, presetRange, validateRange, formatEur, formatPct, formatDateKey, formatMadridDateTime, type PeriodPreset,
 } from "./tpvReportsLogic";
@@ -96,7 +97,11 @@ export default function TpvReports() {
   // Varias sedes (Business): filtro por sede (con una sola sede, o en Essential, no se muestra ni se envía)
   const companySites = useCompanySites();
   const query = companySites.enabled && filter.siteId ? filter : { ...filter, siteId: undefined };
-  const reportQ = trpc.tpv.reports.summary.useQuery(query, { enabled: validateRange(filter.dateFrom, filter.dateTo) === null });
+  // Informes por caja, por empleado y por periodo: Business o superior (el servidor lo decide; aquí se explica)
+  const planQ = trpc.tpv.planInfo.useQuery(undefined, { retry: false });
+  const detailed = planQ.data ? (planQ.data.plan?.features.detailedReports ?? true) : null;
+  const consolidatedOn = planQ.data?.plan?.features.consolidatedReports ?? false;
+  const reportQ = trpc.tpv.reports.summary.useQuery(query, { enabled: detailed === true && validateRange(filter.dateFrom, filter.dateTo) === null });
   const r = reportQ.data;
 
   const applyPreset = (p: PeriodPreset) => {
@@ -119,9 +124,31 @@ export default function TpvReports() {
   };
   const card = { onExport: exportSection, exporting };
 
+  if (detailed === false) {
+    return (
+      <AdminLayout>
+        <div className="p-6 space-y-4 max-w-2xl">
+          <h1 className="text-2xl font-bold text-foreground flex items-center gap-2">
+            <BarChart3 className="w-6 h-6 text-primary" aria-hidden="true" />
+            Informes de caja
+          </h1>
+          <div className="rounded-xl border border-border bg-card p-5 space-y-3">
+            <p className="text-sm text-foreground">Los informes por caja, por empleado y por periodo forman parte del plan Business: ventas por cajero, anulaciones, cierres con su descuadre y exportación a CSV, del periodo que elijas.</p>
+            <p className="text-sm text-muted-foreground">Con tu plan tienes el resumen del día y el historial de todas las sesiones de caja en «Cajas».</p>
+            <div className="flex flex-wrap gap-2">
+              <Button asChild variant="outline"><Link href="/admin/tpv/cajas">Ver el resumen del día</Link></Button>
+              <Button asChild><Link href="/admin/suscripcion">Ver planes</Link></Button>
+            </div>
+          </div>
+        </div>
+      </AdminLayout>
+    );
+  }
+
   return (
     <AdminLayout>
       <div className="p-6 space-y-6">
+        {consolidatedOn && <TpvConsolidated dateFrom={filter.dateFrom} dateTo={filter.dateTo} />}
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
             <h1 className="text-2xl font-bold text-foreground flex items-center gap-2">

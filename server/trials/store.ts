@@ -78,7 +78,7 @@ export interface TrialEvent {
  * Anotación sin cambio de estado ni de versión: `notice_queued` (aviso encolado), `activation_retry` (reintento
  * automático del alta incompleta) y `activation_gave_up` (reintentos agotados; queda para una persona).
  */
-export type TrialNoteAction = "notice_queued" | "activation_retry" | "activation_gave_up" | "marked_test" | "reminders_opt_out" | TrialMilestone;
+export type TrialNoteAction = "notice_queued" | "admin_extend_result" | "activation_retry" | "activation_gave_up" | "marked_test" | "reminders_opt_out" | TrialMilestone;
 /**
  * Hitos de activación que comunica el panel de la empresa (una sola vez cada uno): primer acceso del propietario y
  * primera acción útil (cliente, presupuesto, factura, venta o producto).

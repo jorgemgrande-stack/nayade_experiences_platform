@@ -25,6 +25,7 @@ import { Link } from "wouter";
 import TpvPlanPanel from "./TpvPlanPanel";
 import TpvDailySummary from "./TpvDailySummary";
 import TpvClosedCorrections from "./TpvClosedCorrections";
+import { TpvOperatorsEditor, TpvReturnRequests, TpvSupervision } from "./TpvBusiness";
 import {
   Receipt, TrendingUp, CreditCard, Banknote, Smartphone,
   Calendar, Clock, User, ChevronRight, ExternalLink, Search,
@@ -71,6 +72,7 @@ export default function TpvBackoffice() {
   const utils = trpc.useUtils();
   const sub = usePanelSubscription();
   const canManageCash = sub.canWrite("bill-cash");
+  const advancedOn = trpc.tpv.planInfo.useQuery(undefined, { retry: false, staleTime: 60_000 }).data?.advanced === true;
   const registersQ = trpc.tpv.getRegisters.useQuery();
   // Para administrar: también las desactivadas (conservan su histórico y se pueden volver a activar si cabe en el plan)
   const allRegistersQ = trpc.tpv.listAllRegisters.useQuery();
@@ -140,6 +142,13 @@ export default function TpvBackoffice() {
             </p>
           </div>
           <div className="flex gap-2">
+            {advancedOn && (
+              <Link href="/admin/tpv/avanzado">
+                <Button variant="outline" className="gap-2">
+                  TPV Advanced
+                </Button>
+              </Link>
+            )}
             <Link href="/admin/tpv/informes">
               <Button variant="outline" className="gap-2">
                 <TrendingUp className="w-4 h-4" aria-hidden="true" />
@@ -158,6 +167,8 @@ export default function TpvBackoffice() {
         {/* Lo que incluye el plan y el resumen del día */}
         <TpvPlanPanel canManage={canManageCash} />
         <TpvDailySummary />
+        <TpvReturnRequests />
+        <TpvSupervision />
 
         {/* Cajas */}
         <section aria-labelledby="tpv-cajas" className="space-y-3">
@@ -241,6 +252,7 @@ export default function TpvBackoffice() {
                       {r.isActive ? "Desactivar" : "Activar"}
                     </Button>
                   </div>
+                  {r.isActive && <TpvOperatorsEditor registerId={r.id} registerName={r.name} />}
                 </li>
               ))}
             </ul>

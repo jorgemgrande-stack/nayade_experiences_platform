@@ -18,7 +18,8 @@ import { getAuth, requireScope } from "../controlPlane/auth";
 import type { TrialOnboardingService } from "./onboarding";
 import { TrialError, TrialService } from "./service";
 import type { TrialStore } from "./store";
-import { TRIAL_STATES } from "./machine";
+import { TRIAL_STATES, effectiveTrialState } from "./machine";
+import { ADMIN_EXTENSION_UNTIL_RE } from "./adminExtension";
 import { opsLog } from "../_core/ops/log";
 import { APPROVAL_CATEGORIES, OrderError, type ApprovalCategory } from "../orchestrator/types";
 import { LIFE_PLAN } from "../../shared/personalPlans";
@@ -313,6 +314,12 @@ export function createTrialAdminRouter(o: { onboarding: TrialOnboardingService; 
     requireScope("subscriptions:read"),
     wrap(async (req, res) => {
       const states = z.array(z.enum(TRIAL_STATES)).optional().parse(typeof req.query.state === "string" ? req.query.state.split(",") : undefined);
+      // Prueba de una plataforma (ficha de la suscripción en el CRM): sin depender del tope de 200 del listado
+      if (typeof req.query.tenantId === "string") {
+        const tenantId = z.string().regex(/^[a-z0-9][a-z0-9-]{1,62}$/).parse(req.query.tenantId);
+        const t = await o.store.byTenant(tenantId);
+        return void res.json({ trials: t && (!states || states.includes(t.state)) ? [TrialService.view(t)] : [] });
+      }
       res.json({ trials: (await o.store.list({ states, limit: 200 })).map((t) => TrialService.view(t)) });
     }),
   );
@@ -422,6 +429,64 @@ export function createTrialAdminRouter(o: { onboarding: TrialOnboardingService; 
     wrap(async (req, res) => {
       const b = z.object({ days: z.number().int().min(1).max(30), expectedVersion: z.number().int().min(1) }).strict().parse(req.body);
       res.json({ trial: TrialService.view(await o.onboarding.approveExtension(id.parse(req.params.id), { expectedVersion: b.expectedVersion, days: b.days, actor: who(req) })) });
+    }),
+  );
+  // Una sola forma: la fecha o los días (las dos a la vez, o ninguna, es 400)
+  const definedOnly = (o: Record<string, unknown>) => Object.fromEntries(Object.entries(o).filter(([, v]) => v !== undefined));
+  // Ampliación ADMINISTRATIVA (CRM; decisión de Jorge del 10/11/2026: sin límites de veces, días ni duración): nueva
+  // fecha (día, o fecha y hora, en hora de España) o días; motivo y clave de idempotencia. Mueve y reactiva las licencias
+  // de la prueba: exige entitlements:write, como suspender y reactivar, y una PERSONA (operador central): un token de
+  // integración no amplía pruebas.
+  const adminInput = z.union([z.object({ until: z.string().regex(ADMIN_EXTENSION_UNTIL_RE) }).strict(), z.object({ days: z.number().int().min(1) }).strict()]);
+  const centralAdmin = (req: Request, res: Response, next: NextFunction) => {
+    // Una PERSONA: sesión de operador del CRM (cookie) o sesión SSO corporativa. Nunca un token de servicio, aunque se
+    // haya configurado con actorType «operator». Los ámbitos (subscriptions:write + entitlements:write) solo los tienen
+    // los roles de administración central (operatorRoles.ts).
+    const a = getAuth(req);
+    if (!a || !(a.operator || a.tokenId.startsWith("sso:"))) return void res.status(403).json({ error: "forbidden", message: "Solo un administrador central puede ampliar una prueba" });
+    next();
+  };
+  r.get(
+    "/:id/admin-extension/preview",
+    requireScope("subscriptions:read"),
+    wrap(async (req, res) => {
+      const q = z.object({ until: z.string().optional(), days: z.coerce.number().int().optional() }).parse(req.query);
+      const input = adminInput.parse(definedOnly({ until: q.until, days: q.days }));
+      const t = await o.trials.must(id.parse(req.params.id));
+      const plan = o.trials.planAdminExtension(t, input);
+      const now = Date.now();
+      res.json({ trialId: t.id, version: t.version, state: t.state, effectiveState: effectiveTrialState(t, now), currentEndsAt: plan.before, newEndsAt: plan.after, days: plan.days, extensionsUsed: t.extensionsUsed, timeZone: "Europe/Madrid" });
+    }),
+  );
+  r.post(
+    "/:id/admin-extension",
+    requireScope("subscriptions:write"),
+    requireScope("entitlements:write"),
+    centralAdmin,
+    wrap(async (req, res) => {
+      const b = z
+        .object({
+          expectedVersion: z.number().int().min(1),
+          until: z.string().optional(),
+          days: z.number().int().optional(),
+          reason: z.string().trim().min(5).max(160),
+          idempotencyKey: z.string().regex(/^[A-Za-z0-9_-]{8,64}$/),
+          notify: z.boolean().optional(),
+        })
+        .strict()
+        .parse(req.body);
+      const input = adminInput.parse(definedOnly({ until: b.until, days: b.days }));
+      const out = await o.onboarding.adminExtend(id.parse(req.params.id), { expectedVersion: b.expectedVersion, input, reason: b.reason, idempotencyKey: b.idempotencyKey, notify: b.notify ?? false, actor: who(req) });
+      // 200 solo si los derechos efectivos del tenant ya están actualizados; si no, 202 «pending» (queda para reintento)
+      res.status(out.result === "applied" ? 200 : 202).json({
+        trial: TrialService.view(out.trial),
+        result: out.result,
+        replayed: out.replayed,
+        before: out.before,
+        after: out.after,
+        days: out.days,
+        licences: out.licences ? { outcome: out.licences.outcome, reason: out.licences.reason ?? null, licencesChanged: out.licences.licencesChanged ?? 0, subscriptionMoved: !!out.licences.subscriptionMoved } : { outcome: "pending", reason: "sync_failed", licencesChanged: 0, subscriptionMoved: false },
+      });
     }),
   );
   r.post(

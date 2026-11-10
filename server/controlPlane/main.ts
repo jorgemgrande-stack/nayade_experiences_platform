@@ -76,6 +76,7 @@ import { MysqlOperationStore } from "../external/operationsStore";
 import { crmPublicOrigin } from "../external/urls";
 import type { ExternalUrls } from "../external/service";
 import { internalTenantsFromEnv } from "../stripe/purchases";
+import { publicCheckoutProductsFromEnv } from "../stripe/publicCart";
 import { MysqlInvoiceLineStore } from "../stripe/invoiceLines";
 import { notificationsFromEnv } from "../notifications/config";
 import { liveOrdersProblem, liveSchemaProblem } from "../stripe/liveReadiness";
@@ -542,7 +543,7 @@ async function main() {
   };
   // Servicios de clientes externos (CRM 0026): solo con Stripe montado, sus tablas y un origen https del CRM
   let external: { store: MysqlExternalStore; urls: ExternalUrls; ipSalt?: string; liveEnabled?: boolean } | undefined;
-  let stripe: { config: NonNullable<typeof stripeConfig>; store: MysqlStripeStore; gateway: ReturnType<typeof stripeGateway>; urls: ReturnType<typeof checkoutUrlsFromEnv>; checkoutEnabled: boolean; verifyWebhook: ReturnType<typeof stripeWebhookVerifier>; workerEnabled: boolean; publicStatus: boolean; selfService: boolean; panelConversion: boolean; termsVersion: string | null; fiscal: typeof fiscal; purchases?: { enabled: boolean; changes: MysqlSubscriptionChangeStore; internalTenants: ReadonlySet<string> }; invoiceLines?: MysqlInvoiceLineStore; vies?: { client: ReturnType<typeof viesClient>; maxAgeDays: number }; billingPortal?: { enabled: boolean; configurationId: string | null }; selfServiceSubscription?: { cancel: boolean; planChange: boolean } } | undefined;
+  let stripe: { config: NonNullable<typeof stripeConfig>; store: MysqlStripeStore; gateway: ReturnType<typeof stripeGateway>; urls: ReturnType<typeof checkoutUrlsFromEnv>; checkoutEnabled: boolean; verifyWebhook: ReturnType<typeof stripeWebhookVerifier>; workerEnabled: boolean; publicStatus: boolean; selfService: boolean; publicProducts: ReadonlySet<string>; panelConversion: boolean; termsVersion: string | null; fiscal: typeof fiscal; purchases?: { enabled: boolean; changes: MysqlSubscriptionChangeStore; internalTenants: ReadonlySet<string> }; invoiceLines?: MysqlInvoiceLineStore; vies?: { client: ReturnType<typeof viesClient>; maxAgeDays: number }; billingPortal?: { enabled: boolean; configurationId: string | null }; selfServiceSubscription?: { cancel: boolean; planChange: boolean } } | undefined;
   if (stripeConfig) {
     const urls = checkoutUrlsFromEnv(process.env);
     // La bandera sigue apagada por defecto; en live sin política fiscal, Checkout queda apagado aunque esté a 1
@@ -580,6 +581,14 @@ async function main() {
     const purchasesEnabled = process.env.CP_COMMERCE_PURCHASES_ENABLED === "1";
     // Empresas de prueba que pueden comprar productos internos (vacío: ninguna). Un id no válido impide arrancar
     const internalTenants = internalTenantsFromEnv(process.env);
+    // Productos comprables en la web además del plan (vacío: ninguno). Una lista no válida se ignora entera (solo plan)
+    // y se avisa en el registro: una errata no impide arrancar ni abre la venta a otra cosa
+    let publicProducts: ReadonlySet<string> = new Set();
+    try {
+      publicProducts = publicCheckoutProductsFromEnv(process.env);
+    } catch (e) {
+      console.log(JSON.stringify({ ctx: "Stripe", event: "public_products_invalid", error: e instanceof Error ? e.message : "error" }));
+    }
     if (ready)
       stripe = {
         config: stripeConfig,
@@ -591,6 +600,7 @@ async function main() {
         workerEnabled,
         publicStatus,
         selfService,
+        publicProducts,
         panelConversion,
         termsVersion,
         fiscal,
@@ -625,6 +635,7 @@ async function main() {
         worker: ready && workerEnabled,
         publicStatus: ready && publicStatus,
         selfService: ready && selfService,
+        publicProducts: ready ? Array.from(publicProducts) : [],
         panelConversion: ready && panelConversion,
         selfServiceCancel: ready && process.env.CP_SELF_SERVICE_CANCEL_ENABLED === "1",
         selfServicePlanChange: ready && process.env.CP_SELF_SERVICE_PLAN_CHANGE_ENABLED === "1",
