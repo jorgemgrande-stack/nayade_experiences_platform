@@ -76,14 +76,28 @@ const tpvBackofficeProc= permissionProcedure("tpv.backoffice", ["admin"]);
  * y quien opera no puede autorizar, la operación exige una autorización aprobada de un supervisor, que se consume una
  * sola vez para esta operación (`usedRef`). Sin TPV Advanced no cambia nada.
  */
-async function requireSpecialAuthorization(o: { kind: "cash_out" | "closed_correction"; amount: number; sessionId: number; authorizationId?: number; usedRef: string; user: { id: number; role: unknown } }) {
-  if (!(await tpvAdvancedAllowed(true))) return;
-  const { required } = await checkRequirement(o.kind, o.amount);
-  if (!required) return;
+async function requireSpecialAuthorization(o: { kind: "cash_out" | "closed_correction"; amount: number; sessionId: number; authorizationId?: number; usedRef: string; user: { id: number; role: unknown } }): Promise<number | null> {
+  if (!(await tpvAdvancedAllowed(true))) return null;
+  let required = false;
+  try {
+    required = (await checkRequirement(o.kind, o.amount)).required;
+  } catch (e) {
+    // Empresa sin la migración de TPV Advanced (0065) en su esquema: sin reglas, como siempre
+    if (/ER_NO_SUCH_TABLE|doesn't exist/.test(`${(e as any)?.code ?? ""} ${(e as any)?.message ?? ""} ${(e as any)?.cause?.message ?? ""}`)) return null;
+    throw e;
+  }
+  if (!required) return null;
   const role = String(o.user.role);
-  if (await checkPermission(o.user.id, role, "tpv.authorize", ["admin"])) return;
+  if (await checkPermission(o.user.id, role, "tpv.authorize", ["admin"])) return null;
   if (!o.authorizationId) throw new TRPCError({ code: "FORBIDDEN", message: "Esta operación necesita la autorización de un supervisor: pídela en TPV Advanced › Autorizaciones e indica su número." });
-  await consumeAuthorization({ id: o.authorizationId, kind: o.kind, amount: o.amount, sessionId: o.sessionId, usedRef: o.usedRef });
+  await consumeAuthorization({ id: o.authorizationId, kind: o.kind, amount: o.amount, sessionId: o.sessionId, usedRef: o.usedRef, requestedBy: o.user.id });
+  return o.authorizationId;
+}
+
+/** Devuelve a «aprobada» una autorización consumida para una operación que al final no se grabó. */
+async function releaseSpecialAuthorization(id: number | null, usedRef: string): Promise<void> {
+  if (!id) return;
+  await db.execute(sql`UPDATE tpv_adv_authorizations SET status = 'approved', used_at = NULL, used_ref = NULL WHERE id = ${id} AND status = 'used' AND used_ref = ${usedRef}`).catch(() => null);
 }
 
 // generateTicketNumber y generateReservationRef reemplazadas por el helper centralizado
@@ -924,8 +938,14 @@ export const tpvRouter = router({
       if (!session) throw new TRPCError({ code: "NOT_FOUND", message: "Sesión no encontrada" });
       if (session.status !== "closed") throw new TRPCError({ code: "BAD_REQUEST", message: "La caja está abierta: registra un movimiento de caja normal" });
       if (input.kind !== "count_adjustment" && input.amount < 0) throw new TRPCError({ code: "BAD_REQUEST", message: "El importe de una entrada o salida es positivo" });
-      await requireSpecialAuthorization({ kind: "closed_correction", amount: input.amount, sessionId: input.sessionId, authorizationId: input.authorizationId, usedRef: `corr-${input.idempotencyKey}`, user: ctx.user });
-      const correction = await addCorrection({ ...input, key: input.idempotencyKey, userId: typeof ctx.user.id === "number" ? ctx.user.id : null, userName: ctx.user.name ?? ctx.user.email ?? null });
+      // Repetición de una corrección ya grabada: se devuelve sin pedir otra autorización
+      const [already] = (await db.execute(sql`SELECT id FROM tpv_session_corrections WHERE idempotency_key = ${input.idempotencyKey}`)) as unknown as [Array<{ id: number }>];
+      const corrRef = `corr-${input.idempotencyKey}`;
+      const usedAuth = already?.length ? null : await requireSpecialAuthorization({ kind: "closed_correction", amount: input.amount, sessionId: input.sessionId, authorizationId: input.authorizationId, usedRef: corrRef, user: ctx.user });
+      const correction = await addCorrection({ ...input, key: input.idempotencyKey, userId: typeof ctx.user.id === "number" ? ctx.user.id : null, userName: ctx.user.name ?? ctx.user.email ?? null }).catch(async (e) => {
+        await releaseSpecialAuthorization(usedAuth, corrRef);
+        throw e;
+      });
       // Ajuste aparte en la caja contable (una sola vez; también al repetir si aún no se había reflejado)
       try {
         await postCorrectionToTreasury(correction);
@@ -981,7 +1001,9 @@ export const tpvRouter = router({
       const previous = await replayed();
       if (previous) return previous;
       // TPV Advanced: salida de efectivo por encima del umbral (si la empresa tiene la regla activa)
-      if (input.type === "out") await requireSpecialAuthorization({ kind: "cash_out", amount: input.amount, sessionId: input.sessionId, authorizationId: raw.authorizationId, usedRef: `mov-${raw.idempotencyKey ?? `${input.sessionId}-${Date.now()}`}`, user: ctx.user });
+      if (raw.authorizationId && !raw.idempotencyKey) throw new TRPCError({ code: "BAD_REQUEST", message: "Falta la clave del intento para aplicar la autorización" });
+      const movRef = `mov-${raw.idempotencyKey ?? `${input.sessionId}-${Date.now()}`}`;
+      const usedAuth = input.type === "out" ? await requireSpecialAuthorization({ kind: "cash_out", amount: input.amount, sessionId: input.sessionId, authorizationId: raw.authorizationId, usedRef: movRef, user: ctx.user }) : null;
       const values = {
         sessionId: input.sessionId,
         type: input.type,
@@ -1009,6 +1031,8 @@ export const tpvRouter = router({
         // Dos intentos a la vez con la misma clave: el segundo devuelve el del primero
         const again = raw.idempotencyKey && isDuplicateKeyError(e) ? await replayed() : null;
         if (again) return again;
+        // La salida no se grabó (p. ej. la caja se cerró entretanto): la autorización vuelve a estar disponible
+        await releaseSpecialAuthorization(usedAuth, movRef);
         throw e;
       }
       const [movement] = await db.select().from(cashMovements).where(eq(cashMovements.id, id));

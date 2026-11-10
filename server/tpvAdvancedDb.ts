@@ -708,9 +708,11 @@ export async function cancelAuthorization(id: number, actor: Actor, canManage: b
  * Aplica una autorización aprobada a la operación (una sola vez): misma operación, misma caja si la indicaba, importe
  * no mayor que el autorizado y dentro de su validez. Es lo que llamaría el gancho de una operación del TPV.
  */
-export async function consumeAuthorization(input: { id: number; kind: AuthKind; amount?: number | null; sessionId?: number | null; usedRef: string }): Promise<AuthorizationRow> {
+export async function consumeAuthorization(input: { id: number; kind: AuthKind; amount?: number | null; sessionId?: number | null; usedRef: string; requestedBy?: number }): Promise<AuthorizationRow> {
   const a = await getAuthorization(input.id);
   if (a.status === "used" && a.usedRef === input.usedRef) return a;
+  // Desde la caja, la autorización solo la aplica quien la pidió
+  if (input.requestedBy !== undefined && a.requestedBy !== input.requestedBy) throw badRequest("Esta autorización la pidió otra persona.");
   if (a.kind !== input.kind) throw badRequest("Esta autorización es para otra operación.");
   if (!a.usable) throw conflict(a.status === "approved" ? "La autorización ha caducado: pide otra." : "La autorización no está aprobada.");
   if (a.sessionId && a.sessionId !== (input.sessionId ?? null)) throw badRequest("Esta autorización es para otra caja.");

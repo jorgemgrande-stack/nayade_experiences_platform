@@ -54,7 +54,7 @@ function CoreCashMovement({ open, type, sessionId, onClose }: Props) {
   // TPV Advanced: número de la autorización de un supervisor, si la regla de la empresa la pide
   const [authId, setAuthId] = useState("");
   const advanced = trpc.tpv.planInfo.useQuery(undefined, { retry: false, staleTime: 60_000 }).data?.advanced === true;
-  useEffect(() => { if (open) setAttemptKey(newAttemptKey()); }, [open]);
+  useEffect(() => { if (open) { setAttemptKey(newAttemptKey()); setAuthId(""); } }, [open]);
   // Solo para salidas: "gasto" (compra/proveedor) o "traspaso" (a Caja Central).
   const [outKind, setOutKind] = useState<"gasto" | "traspaso">("gasto");
 

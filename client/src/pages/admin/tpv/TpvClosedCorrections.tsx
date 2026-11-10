@@ -35,6 +35,7 @@ export default function TpvClosedCorrections({ sessionId, corrections, canManage
       utils.tpv.getSessionSummary.invalidate({ sessionId });
       setForm({ kind: "cash_in", amount: "", reason: "" });
       setAttempt(newAttemptKey());
+      setAuthId("");
       setOpen(false);
       toast.success("Corrección registrada. El cierre original se conserva.");
     },

@@ -45,7 +45,7 @@ export default function TpvCashMovementAccounting({ open, type, sessionId, onClo
   // TPV Advanced: número de la autorización de un supervisor, si la regla de la empresa la pide
   const [authId, setAuthId] = useState("");
   const advanced = trpc.tpv.planInfo.useQuery(undefined, { retry: false, staleTime: 60_000 }).data?.advanced === true;
-  useEffect(() => { if (open) setAttemptKey(newAttemptKey()); }, [open]);
+  useEffect(() => { if (open) { setAttemptKey(newAttemptKey()); setAuthId(""); } }, [open]);
   // Salidas: "gasto" (compra/proveedor), "devolucion" (a un cliente) o "traspaso" (a Caja Central). Sin valor por
   // defecto: una devolución registrada como gasto inventaba un gasto en la contabilidad.
   const [outKind, setOutKind] = useState<OutKind | null>(null);
