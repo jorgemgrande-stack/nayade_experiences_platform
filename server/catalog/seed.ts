@@ -90,8 +90,17 @@ export async function seedElephantSource(svc: WebAdminService, store: WebStore, 
   /** Productos que la semilla puede seguir escribiendo: los crea ahora o siguen siendo suyos. */
   const own = new Set<string>();
 
-  /** La entrada sigue siendo de la semilla: su último guardado y, si está publicada, su publicación. */
-  const isOwn = (e: WebEntry) => e.updatedBy === author && (e.publication === "draft" || (e.publication === "published" && e.publishedBy === author));
+  /**
+   * La entrada sigue siendo de la semilla: su último guardado y, si está publicada, su publicación; y ninguna versión sin
+   * publicar es de otro autor. Esto último cubre una ejecución antigua de la semilla que guardó encima de un borrador
+   * ajeno (fusionándolo) y no llegó a publicar: ese borrador lleva decisiones ajenas aunque lo firme la semilla.
+   */
+  const foreignAuthors = async (e: WebEntry): Promise<string[]> => {
+    if (e.updatedBy !== author) return [e.updatedBy];
+    if (e.publication === "unpublished" || (e.publication === "published" && e.publishedBy !== author)) return [e.publishedBy ?? e.updatedBy];
+    const since = e.publication === "published" ? (e.publishedVersion ?? 0) : 0;
+    return Array.from(new Set((await store.versions(e.id)).filter((v) => v.version > since && v.author !== author).map((v) => v.author)));
+  };
 
   const upsert = async (kind: EntryKind, key: string, seedDraft: unknown, sortOrder: number, family: string | null) => {
     const id = `${kind}:${key}`;
@@ -104,7 +113,8 @@ export async function seedElephantSource(svc: WebAdminService, store: WebStore, 
     // la semilla nunca los revierte. Para cambiarlos en bloque, una revisión con estado de partida (review*.ts)
     const draftFor = (db: unknown) => (kind === "product" ? keepCommercialState(seedDraft, db) : seedDraft);
 
-    if (cur && !isOwn(cur)) {
+    const foreign = cur ? await foreignAuthors(cur) : [];
+    if (cur && foreign.length) {
       // De otro autor (el CRM o una revisión): se respeta. Solo se informa de en qué difiere de la semilla
       const upToDate = cur.publication === "published" && cur.publishedVersion === cur.draftVersion;
       if (cur.publication === "published" && !upToDate) r.pending.push(id);
@@ -112,8 +122,8 @@ export async function seedElephantSource(svc: WebAdminService, store: WebStore, 
       // La información interna (notas, evidencia) no se publica ni viaja en lo publicado: no cuenta como diferencia
       const diff = differingFields(normal(kind, reference), normal(kind, draftFor(reference))).filter((x) => x !== "internal" && !x.startsWith("internal."));
       if (cur.sortOrder !== sortOrder) diff.push("orden");
-      const who = cur.publication === "published" ? `publicado por «${cur.publishedBy ?? "?"}»` : cur.publication === "unpublished" ? `despublicado (último guardado de «${cur.updatedBy}»)` : `en borrador de «${cur.updatedBy}»`;
-      const draftNote = cur.publication === "published" && !upToDate ? `; tiene un borrador pendiente de «${cur.updatedBy}» que no se sobrescribe ni se publica` : "";
+      const who = cur.publication === "published" ? `publicado por «${cur.publishedBy ?? "?"}»` : cur.publication === "unpublished" ? `despublicado (último guardado de «${cur.updatedBy}»)` : `en borrador de «${foreign.join("», «")}»`;
+      const draftNote = cur.publication === "published" && !upToDate ? `; tiene un borrador pendiente de «${foreign.join("», «")}» que no se sobrescribe ni se publica` : "";
       if (diff.length || cur.publication !== "published") r.conflicts.push(`${key}: ${who}${diff.length ? `; difiere de la semilla en ${diff.join(", ")}` : ""}${draftNote}; se respeta lo decidido en el CRM`);
       else if (upToDate) r.unchanged++;
       return;
@@ -122,23 +132,24 @@ export async function seedElephantSource(svc: WebAdminService, store: WebStore, 
     if (kind === "product") own.add(key);
     const draft = cur ? draftFor(cur.draft) : seedDraft;
     let changed = false;
+    /** La versión que se publica: la que la semilla acaba de guardar o, sin cambios, la suya que ya había. */
+    let version = cur?.draftVersion ?? 1;
     if (!cur) {
       r.created.push(id);
       changed = true;
-      if (!dryRun) await svc.create({ kind, key, family, sortOrder, draft }, author);
+      if (!dryRun) version = (await svc.create({ kind, key, family, sortOrder, draft }, author)).draftVersion;
     } else if (!same(kind, cur.draft, draft) || cur.sortOrder !== sortOrder) {
       r.updated.push(id);
       changed = true;
-      if (!dryRun) await svc.save(kind, key, { draft, sortOrder, expectedVersion: cur.draftVersion }, author);
+      if (!dryRun) version = (await svc.save(kind, key, { draft, sortOrder, expectedVersion: cur.draftVersion }, author)).draftVersion;
     }
     const now = dryRun ? cur : await store.getEntry(kind, key);
     const needsPublish = !now || now.publication !== "published" || now.publishedVersion !== now.draftVersion || changed;
     if (needsPublish) {
       r.published.push(id);
       if (!dryRun) {
-        const e = (await store.getEntry(kind, key))!;
         try {
-          await svc.publish(kind, key, e.draftVersion, author);
+          await svc.publish(kind, key, version, author);
         } catch (err) {
           // Queda en borrador con su causa (p. ej. una ficha que todavía no puede publicarse)
           r.published.pop();

@@ -120,6 +120,37 @@ describe("la semilla solo escribe sobre lo suyo", () => {
     expect((await draftOf(k, "connect-tax")).catalog.stripePrepared).toBe(true);
   });
 
+  it("borrador pendiente firmado por la semilla pero con decisiones ajenas (siembra antigua interrumpida): no se publica", async () => {
+    const k = await kit();
+    // El CRM deja un borrador sin publicar y una siembra antigua guardó encima (fusionándolo) sin llegar a publicar
+    await crmEdit(k, "connect-tax", (d) => ({ ...d, tagline: "Decisión del CRM sin publicar" }), { publish: false });
+    const e = await entry(k, "connect-tax");
+    await k.svc.save("product", "connect-tax", { draft: { ...productDraft.parse(e.draft), description: "Guardado por la siembra antigua" }, expectedVersion: e.draftVersion }, SEED_AUTHOR);
+    expect((await entry(k, "connect-tax")).updatedBy).toBe(SEED_AUTHOR);
+    const before = await fingerprint(k);
+    for (const dryRun of [true, false]) {
+      const r = await seedElephantSource(k.svc, k.store, { dryRun });
+      expect([r.updated, r.published, r.pricesApproved]).toEqual([[], [], []]);
+      expect(r.pending).toEqual(["product:connect-tax"]);
+      // Lo publicado coincide con la semilla: sin conflicto; el borrador queda como pendiente
+      expect(r.conflicts).toEqual([]);
+    }
+    expect(await fingerprint(k)).toBe(before);
+    expect((await entry(k, "connect-tax")).published).not.toMatchObject({ tagline: "Decisión del CRM sin publicar" });
+  });
+
+  it("capacidades: la editada en el CRM también se respeta", async () => {
+    const k = await kit();
+    const c = (await k.store.listEntries({ kind: "capability" }))[0];
+    const saved = await k.svc.save("capability", c.key, { draft: { ...c.draft, name: "Nombre decidido en el CRM" }, expectedVersion: c.draftVersion }, CRM);
+    await k.svc.publish("capability", c.key, saved.draftVersion, CRM);
+    const before = await fingerprint(k);
+    const r = await seedElephantSource(k.svc, k.store);
+    expect(r.conflicts).toEqual([`${c.key}: publicado por «${CRM}»; difiere de la semilla en name; se respeta lo decidido en el CRM`]);
+    expect([r.updated, r.published]).toEqual([[], []]);
+    expect(await fingerprint(k)).toBe(before);
+  });
+
   it("lo despublicado por el CRM no se vuelve a publicar", async () => {
     const k = await kit();
     await k.svc.unpublish("product", "extra-accounting", CRM);

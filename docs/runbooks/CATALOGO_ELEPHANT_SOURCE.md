@@ -56,7 +56,7 @@
   - Actualiza una entrada solo si su último guardado y su publicación son de la propia semilla. Lo guardado, publicado o despublicado por otro autor se respeta: las diferencias con la semilla salen en `conflicts`, sin escribir.
   - Nunca sobrescribe ni publica un borrador ajeno pendiente: lo lista en `pending`.
   - Nunca vuelve a aprobar un precio retirado ni sustituye uno aprobado en el CRM: lo lista en `conflicts`.
-  - En production es, por tanto, una orden informativa: lo que haya que cambiar se cambia con una revisión de catálogo (`catalog-review`) o desde el CRM.
+  - Una entrada que nadie más ha tocado sigue siendo de la semilla y sí se actualiza. En production, ejecuta siempre antes la simulación y revisa `updated`, `published` y `pricesApproved`: lo que haya que cambiar allí se cambia con una revisión de catálogo (`catalog-review`) o desde el CRM.
 - Termina con código 2 si hay conflictos (no es un fallo: es lo que se ha respetado).
 
 ## Instantánea para la web
@@ -84,7 +84,7 @@ pnpm exec tsx scripts/catalog/export-snapshot.ts ../bigelephant-web/src/data/cat
 {
   "plan": "business",
   "interval": "year",
-  "items": [{ "key": "hotel-net-complete" }, { "key": "connect-pos", "quantity": 2 }],
+  "items": [{ "key": "hotel-net-complete" }, { "key": "connect-pos" }],
   "users": 17,
   "sites": 2,
   "storageGb": 60

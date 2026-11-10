@@ -325,8 +325,9 @@ const CONNECT: SeedProduct[] = [
   connect({ key: "connect-tax", name: "Elephant Tax", group: "finance", tagline: "Declaraciones y modelos fiscales con tu gestoría.", tech: "partial", commercial: "on_request", monthly: 19, capabilities: ["tax-filings"], icon: "file-text" }),
   connect({ key: "connect-partners", name: "Elephant Partners", group: "finance", tagline: "Liquidaciones de proveedores y colaboradores.", tech: "partial", commercial: "on_request", monthly: 19, capabilities: ["supplier-settlements"], icon: "handshake" }),
   // TPV Advanced (decisión de Jorge del 10/11/2026, review20261109tpv.ts): por empresa, sin unidad de cobro y 19 €/mes
-  // (antes «Elephant POS», por sede y 25 €). El precio lo aprueba el CRM y el ámbito lo cambia la revisión: la semilla
-  // solo recoge el estado final y nunca lo impone sobre lo publicado (seed.ts)
+  // (antes «Elephant POS», por sede y 25 €). En production el precio lo aprueba el CRM y el ámbito lo cambia la revisión;
+  // la semilla recoge el estado final y no escribe sobre lo que guardó o publicó otro autor (seed.ts). Aun así, NO se
+  // ejecuta la siembra en production antes de aplicar esa revisión, y siempre primero en simulación
   connect({ key: "connect-pos", name: "TPV Advanced", group: "pos", tagline: "Arqueos, turnos y auditoría sobre la caja de tu plan.", tech: "partial", commercial: "on_request", monthly: 19, capabilities: ["pos-advanced"], icon: "credit-card" }),
   connect({ key: "connect-deals", name: "Elephant Deals", group: "deals", tagline: "Groupon y cuponeras: canje y conciliación.", tech: "partial", commercial: "on_request", monthly: 19, capabilities: ["deals-coupons"], icon: "tag" }),
   connect({ key: "connect-finance-sync", name: "Elephant Finance Sync", group: "finance", tagline: "Importación bancaria, conciliación y operaciones de TPV.", tech: "partial", commercial: "on_request", monthly: 19, capabilities: ["bank-reconciliation", "bank-import-pos"], icon: "refresh" }),

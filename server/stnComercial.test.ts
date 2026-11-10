@@ -119,6 +119,15 @@ describe("pedidos: el paquete y un componente juntos se rechazan antes de cobrar
     // incluso de mirar que la solución ya lo incluye
     expect(message).toMatch(/«Social Token Net · Comunidades» ya no se contrata por separado: forma parte de Social Token Net/);
     if (order) expect(["requested", "rejected"]).toContain(order.state);
+    // El paquete y un componente NO heredado juntos: se sigue rechazando con su propio motivo
+    let err2: unknown = null;
+    let order2 = null as Awaited<ReturnType<typeof c.changeWith>>["order"] | null;
+    try {
+      order2 = (await c.changeWith(base, ["connect-pack-finance", "connect-tax"])).order;
+    } catch (e) {
+      err2 = e;
+    }
+    expect(err2 instanceof OrderError ? err2.message : (order2?.lastError ?? "")).toMatch(/ya va incluido en «Paquete Finance».*Elige el paquete o sus módulos, no los dos/);
     expect(await c.orders.payments(order?.id ?? -1).catch(() => [])).toEqual([]);
     expect(await c.caps.list(base.tenantId!)).toEqual(before);
   });
