@@ -203,7 +203,6 @@ export function commercialChecks(entry: CheckEntry, all: readonly CheckEntry[], 
       else if (ci.upgrade.status === "proposed") pending.push("Ampliación de Core cobrando la diferencia de tarifas (propuesta)");
       if (!ci.additional) warnings.push("sin regla de Net adicional: una segunda solución Elephant Net se presupuestaría");
       else if (ci.additional.status === "proposed") pending.push("Net adicional sin volver a cobrar Core (propuesta)");
-
     }
     // Un paquete Net no incluye otro paquete ni un plan (Core se cuenta una vez)
     for (const k of c.bundleOf) if (["net_bundle", "core_plan"].includes(byKey.get(k)?.family ?? "")) blocking.push(`«${k}» no puede ser componente de una solución Elephant Net`);

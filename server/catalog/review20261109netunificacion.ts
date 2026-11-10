@@ -35,7 +35,7 @@
  *
  * Garantías (las de las demás revisiones): flujo normal del CRM (guardar borrador → publicar) con autor, versión e
  * historial; cada campo solo cambia desde su valor publicado de partida (el de https://admin.bigelephant.es/cp/v1/public/site
- * del 09/11/2026) o si ya vale el nuevo; nunca publica un borrador ajeno; idempotente; simulación salvo `--apply`.
+ * del 09/11/2026) o si ya vale el nuevo; los cambios de un borrador ajeno no se publican (salvo los autorizados de Hotel Net, ver arriba); idempotente; simulación salvo `--apply`.
  */
 import { productDraft, type ProductDraft } from "../web/schemas";
 import type { WebAdminService } from "../web/service";
@@ -218,38 +218,59 @@ const same = sameJson;
 
 /** Decisiones de Jorge sobre campos en disputa (vacío: se rellena cuando vea la simulación de production, si hay alguno). */
 export const NET_UNIFICATION_DECISIONS: readonly OverDraftDecision[] = [];
-/** Productos cuyo borrador ajeno también se publica (con autorización expresa): Hotel Net, decisión de Jorge del 10/11/2026. */
-export const PUBLISH_FOREIGN_DRAFT: readonly string[] = ["hotel-net-complete"];
+/** Autorización expresa para publicar también los cambios de un borrador ajeno: vale solo para ESA versión del borrador sobre ESA versión publicada. */
+export interface ForeignDraftAuthorization {
+  key: string;
+  borradorVersion: number;
+  versionPublicada: number;
+  nota: string;
+}
+/** Hotel Net: borrador v10 sobre la v8 publicada (leídos del CRM de production el 10/11/2026). Cualquier otro borrador queda retenido. */
+export const PUBLISH_FOREIGN_DRAFT: readonly ForeignDraftAuthorization[] = [
+  { key: "hotel-net-complete", borradorVersion: 10, versionPublicada: 8, nota: "Jorge, 10/11/2026: «autorizo integrar la unificación en el borrador de la versión 10, conservando los cambios existentes, y publicar después de las verificaciones»" },
+];
 
 /** Elephant Core incluido en una solución Net, afirmado en texto (la regla de las fichas más «Essential incluido»). */
-const CORE_INCLUDED_TEXT = new RegExp(`${NET_CORE_RE.source}|essential (va |viene |está )?incluid[oa]|incluye (el plan )?essential|incluid[oa] (elephant )?core|core gratis`, "i");
-/** Comparaciones con la compra suelta de los antiguos módulos. */
-const LOOSE_MODULES_RE = /descuento|por separado|submódulos|sueltos/i;
+const CORE_INCLUDED_TEXT = new RegExp(`${NET_CORE_RE.source}|essential (va |viene |está )?incluid[oa]|incluye (el plan )?essential|incluid[oa] (elephant )?core|core gratis`, "gi");
+/** Una negación justo antes («no incluye Elephant Core», «sin Core incluido») no anuncia nada: es el modelo vigente. Tampoco una pregunta. */
+const NEGATED_RE = /(^|[^a-záéíóúñ])(no|ni|sin|tampoco|nunca)( (se|lo|la|está|va|viene))?\s*$/i;
+function announcesCore(v: string): boolean {
+  CORE_INCLUDED_TEXT.lastIndex = 0;
+  for (let m = CORE_INCLUDED_TEXT.exec(v); m; m = CORE_INCLUDED_TEXT.exec(v)) {
+    // Una pregunta («¿Incluye Elephant Core?») tampoco afirma nada: lo que cuenta es la respuesta
+    const isQuestion = /^[^.!?]*\?/.test(v.slice(m.index));
+    if (!isQuestion && !NEGATED_RE.test(v.slice(0, m.index))) return true;
+  }
+  return false;
+}
+/** Comparaciones con la compra suelta de los antiguos módulos («por separado» a secas no: Core y Net se contratan por separado). */
+const LOOSE_MODULES_RE = /descuento|submódulos|sueltos|(módulos|extensiones|comprarlos|contratarlos|pagarlos) por separado/i;
 const text = (v: unknown) => JSON.stringify(v ?? null);
 
-/** Textos públicos de un producto (nombre, línea corta, descripción y ficha) que anuncian Core incluido. */
+/** Textos públicos de un producto (todo lo que se publica salvo el modelo del catálogo; nunca la parte interna) que anuncian Core incluido. */
 export function coreIncludedTexts(d: Record<string, unknown> | null | undefined): string[] {
   const out: string[] = [];
   const walk = (v: unknown, path: string): void => {
     if (typeof v === "string") {
-      if (CORE_INCLUDED_TEXT.test(v)) out.push(`${path}: «${v}»`);
+      if (announcesCore(v)) out.push(`${path}: «${v}»`);
     } else if (Array.isArray(v)) v.forEach((x, i) => walk(x, `${path}[${i}]`));
     else if (v && typeof v === "object") for (const [k, x] of Object.entries(v)) walk(x, path ? `${path}.${k}` : k);
   };
-  if (d) for (const k of ["name", "tagline", "description", "commercial"]) walk(d[k], k);
+  if (d) for (const [k, v] of Object.entries(d)) if (k !== "catalog" && k !== "internal") walk(v, k);
   return out;
 }
 
 /** Campos del modelo del catálogo: los cambios de un borrador ajeno en ellos nunca los publica esta revisión (los de `catalogGuard`, más la facturación). */
 function outOfScope(path: string): boolean {
   if (path === "catalog.commercialStatus" || path === "catalog.implementationLevel") return false;
-  return /^(technicalStatus|billingModel|dependencies|activation|catalog)(\.|$)/.test(path);
+  return /^(technicalStatus|billingModel|dependencies|compatibleWith|limits|activation|catalog)(\.|$)/.test(path);
 }
 const isPublicText = (path: string) => path === "tagline" || path === "description" || TEXT_FIELDS.some((f) => path === `commercial.${f}` || path.startsWith(`commercial.${f}.`));
 
 /** Política de la unificación ante un borrador ajeno (ver la cabecera). */
 export function overDraftPolicy(c: NetUnificationChange, publishDraft: boolean): OverDraftPolicy {
   return {
+    // (`publishDraft`: hay autorización expresa para publicar también los cambios de ESTE borrador)
     // Lo ya unificado no se vuelve a tocar (ni su nota interna)
     reviewed: (base) => (isDone(base, c) ? base : target(base, c)),
     startProblems: (base) => startProblems(base, c),
@@ -257,12 +278,12 @@ export function overDraftPolicy(c: NetUnificationChange, publishDraft: boolean):
     retain: (path) => !publishDraft || outOfScope(path),
     auto: (path, v) => {
       if (v.revisionChanged) {
-        if (hasComingSoonWord(v.borrador) || LOOSE_MODULES_RE.test(text(v.borrador))) return { value: v.revision, origen: "revisión (el texto del borrador dice «próximamente» o compara con módulos sueltos)" };
         // Nota interna (nunca se publica): se conservan las dos, la del borrador primero
         if (path === "internal.evidence" && typeof v.borrador === "string" && typeof v.revision === "string") {
           const both = `${v.borrador} · ${v.revision}`;
           return both.length <= 1000 ? { value: both, origen: "ambos (nota interna: se conservan las dos)" } : { value: v.revision, origen: "revisión (nota interna: las dos no caben; la del borrador sigue en el historial)" };
         }
+        if (isPublicText(path) && (hasComingSoonWord(v.borrador) || LOOSE_MODULES_RE.test(text(v.borrador)))) return { value: v.revision, origen: "revisión (el texto del borrador dice «próximamente» o compara con módulos sueltos)" };
         return undefined;
       }
       if (c.scrubText && isPublicText(path) && hasComingSoonWord(v.borrador)) return { value: scrubDeep(v.borrador), origen: "borrador, sin «próximamente»" };
@@ -311,7 +332,8 @@ export function target(d: ProductDraft, c: NetUnificationChange): ProductDraft {
       ...(c.legacy ? { legacy: d.catalog.legacy?.replacedBy === c.legacy.replacedBy ? d.catalog.legacy : c.legacy } : {}),
     },
     ...(commercial ? { commercial } : {}),
-    internal: { ...d.internal, evidence: c.evidence },
+    // Si solo falta retirar «Core incluido», la nota interna se conserva (puede ser de una revisión posterior)
+    internal: { ...d.internal, evidence: c.dropCoreIncluded && d.catalog.coreIncluded !== undefined && isDone({ ...d, catalog: catalogWithoutCore } as ProductDraft, c) ? d.internal.evidence : c.evidence },
   });
 }
 
@@ -335,7 +357,7 @@ export function startProblems(d: ProductDraft, c: NetUnificationChange): string[
 export async function applyNetUnification(
   svc: WebAdminService,
   store: WebStore,
-  o: { apply?: boolean; author: string; changes?: readonly NetUnificationChange[]; decisions?: readonly OverDraftDecision[]; publishForeignDraft?: readonly string[] },
+  o: { apply?: boolean; author: string; changes?: readonly NetUnificationChange[]; decisions?: readonly OverDraftDecision[]; publishForeignDraft?: readonly ForeignDraftAuthorization[] },
 ): Promise<NetUnificationReport> {
   const r: NetUnificationReport = { apply: !!o.apply, changed: [], already: [], conflicts: [], borradores: [], anunciaCore: [] };
   for (const c of o.changes ?? NET_UNIFICATION_2026_11_09) {
@@ -358,8 +380,9 @@ export async function applyNetUnification(
     }
     if (!upToDate) {
       // Borrador ajeno: la revisión se aplica sobre lo publicado y el borrador se conserva (server/catalog/overDraft.ts)
-      const publishDraft = (o.publishForeignDraft ?? PUBLISH_FOREIGN_DRAFT).includes(c.key);
-      const out = await reviewOverDraft(svc, store, { key: c.key, author: o.author, apply: o.apply, policy: overDraftPolicy(c, publishDraft), decisions: o.decisions ?? NET_UNIFICATION_DECISIONS });
+      // La autorización para publicar los cambios del borrador vale solo para su versión (y la publicada) exactas
+      const authorized = (b: { version: number; versionPublicada: number }) => (o.publishForeignDraft ?? PUBLISH_FOREIGN_DRAFT).some((a) => a.key === c.key && a.borradorVersion === b.version && a.versionPublicada === b.versionPublicada);
+      const out = await reviewOverDraft(svc, store, { key: c.key, author: o.author, apply: o.apply, policy: (b) => overDraftPolicy(c, authorized(b)), decisions: o.decisions ?? NET_UNIFICATION_DECISIONS });
       if (out.state !== "none" && out.report) r.borradores.push(out.report);
       if (out.state === "already") r.already.push(c.key);
       else if (out.state === "changed") r.changed.push(`${c.key}: ${out.summary}`);

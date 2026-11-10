@@ -4,7 +4,8 @@
  * Hasta ahora una revisión dejaba ese producto como conflicto («no se publica un borrador ajeno»). Con este mecanismo la
  * revisión se aplica sobre lo PUBLICADO y el borrador se vuelve a guardar con los mismos cambios, sin perder nada de él.
  *
- * Fusión a tres bandas, campo a campo (los objetos se recorren hasta sus hojas; las listas son un solo campo):
+ * Fusión a tres bandas, campo a campo (los objetos se recorren hasta sus hojas; las listas son un solo campo, y también
+ * un objeto que el borrador o la revisión crean o borran entero):
  *  - PUBLICADO: la versión del historial que está publicada (el punto de partida de los dos).
  *  - BORRADOR: el borrador ajeno pendiente.
  *  - REVISIÓN: lo publicado con la revisión aplicada (`reviewed`).
@@ -26,8 +27,9 @@
  *
  * Escritura (solo con `apply`, sin disputas y con el resultado publicable), siempre por el flujo del CRM, con autor e
  * historial: guarda lo que se publica; si hay cambios retenidos, guarda encima el borrador nuevo y publica la versión
- * anterior (`republishVersion`), de modo que en ningún momento lo retenido deja de estar en el historial ni se publica.
- * Una ejecución interrumpida se retoma desde el último borrador ajeno del historial. Idempotente.
+ * anterior (`republishVersion`): lo retenido nunca se publica y siempre está en el historial. Una ejecución interrumpida
+ * se retoma desde el último borrador ajeno del historial; si entre el corte y la reanudación alguien editó el producto en
+ * el CRM sobre un borrador sin lo retenido, no se escribe nada y se avisa (lo retenido está en el historial). Idempotente.
  */
 import { productDraft, type ProductDraft } from "../web/schemas";
 import type { WebAdminService } from "../web/service";
@@ -51,6 +53,8 @@ export interface OverDraftFieldDiff {
   resultado: unknown;
   /** «borrador», «revisión», «ambos», «revisión (regla)», «decisión: …». */
   origen: string;
+  /** El valor del borrador, cuando una regla o una decisión lo descarta (queda en el historial). */
+  borradorDescartado?: unknown;
 }
 export interface OverDraftRetained {
   campo: string;
@@ -140,11 +144,13 @@ type Pair = { p: unknown; n: unknown };
 function merge3(b: unknown, d: unknown, u: unknown, path: string, ctx: MergeCtx): Pair {
   // Un campo retirado (entero, aunque sea un objeto): el cambio del borrador se descarta
   if (ctx.policy.drop?.(path) && !sameJson(b, d)) {
-    ctx.report.retirado.push({ campo: path, publicado: shown(b), borrador: shown(d) });
+    if (d !== undefined) ctx.report.retirado.push({ campo: path, publicado: shown(b), borrador: shown(d) });
     d = b;
   }
-  const all = [b, d, u];
-  if (all.some(isObj) && all.every((v) => v === undefined || isObj(v))) {
+  // Se recorre por dentro solo si el borrador y la revisión conservan el objeto; si uno de los dos lo crea o lo borra
+  // entero, es un solo campo (así un objeto borrado no reaparece vacío)
+  if (isObj(d) && isObj(u) && (b === undefined || isObj(b))) {
+    const all = [b, d, u];
     const keys = Array.from(new Set(all.flatMap((v) => (isObj(v) ? Object.keys(v) : []))));
     const p: Obj = {};
     const n: Obj = {};
@@ -153,8 +159,7 @@ function merge3(b: unknown, d: unknown, u: unknown, path: string, ctx: MergeCtx)
       if (r.p !== undefined) p[k] = r.p;
       if (r.n !== undefined) n[k] = r.n;
     }
-    // Un objeto que se queda sin campos desaparece, salvo que la revisión lo conserve o el borrador lo creara vacío
-    return { p: Object.keys(p).length ? p : isObj(u) ? {} : undefined, n: Object.keys(n).length ? n : isObj(u) || (isObj(d) && !isObj(b)) ? {} : undefined };
+    return { p, n };
   }
   const draftChanged = !sameJson(b, d);
   const revisionChanged = !sameJson(b, u);
@@ -172,12 +177,17 @@ function merge3(b: unknown, d: unknown, u: unknown, path: string, ctx: MergeCtx)
     return { p: u, n: d };
   }
   const auto = ctx.policy.auto?.(path, { publicado: b, borrador: d, revision: u, revisionChanged });
-  if (auto) return row(auto.value, auto.origen);
+  // Cuando se descarta el valor del borrador, el informe lo enseña
+  const discard = (r: Pair): Pair => {
+    if (!sameJson(r.p, d)) ctx.report.diff[ctx.report.diff.length - 1].borradorDescartado = shown(d);
+    return r;
+  };
+  if (auto) return discard(row(auto.value, auto.origen));
   if (!revisionChanged) return row(d, "borrador");
   const decision = ctx.decide(path);
   if (decision) {
     ctx.used.add(path);
-    return row(decision === "borrador" ? d : u, `decisión: ${decision}`);
+    return discard(row(decision === "borrador" ? d : u, `decisión: ${decision}`));
   }
   ctx.report.enDisputa.push({ campo: path, publicado: shown(b), borrador: shown(d), revision: shown(u) });
   return { p: d, n: d };
@@ -192,9 +202,17 @@ const message = (e: unknown) => (e instanceof Error ? e.message : String(e));
 export async function reviewOverDraft(
   svc: WebAdminService,
   store: WebStore,
-  o: { key: string; author: string; apply?: boolean; policy: OverDraftPolicy; decisions?: readonly OverDraftDecision[] },
+  o: {
+    key: string;
+    author: string;
+    apply?: boolean;
+    /** La política, o cómo obtenerla del borrador ajeno (para ligar una autorización a su versión). */
+    policy: OverDraftPolicy | ((borrador: { version: number; versionPublicada: number }) => OverDraftPolicy);
+    decisions?: readonly OverDraftDecision[];
+  },
 ): Promise<OverDraftOutcome> {
-  const { key, author, policy } = o;
+  const { key, author } = o;
+  const policyFor = (version: number, versionPublicada: number) => (typeof o.policy === "function" ? o.policy({ version, versionPublicada }) : o.policy);
   const cur = await store.getEntry("product", key);
   if (!cur) return { state: "blocked", reason: "no existe en el catálogo" };
   if (cur.publication !== "published" || cur.publishedVersion === null) return { state: "blocked", reason: `no está publicado (${cur.publication}); se decide en el CRM` };
@@ -222,6 +240,7 @@ export async function reviewOverDraft(
     decisionesAplicadas: [],
     decisionesIgnoradas: [],
   };
+  const policy = policyFor(report.borrador.version, publishedVersion);
   let reviewed: ProductDraft;
   try {
     reviewed = policy.reviewed(base.data);
@@ -229,6 +248,27 @@ export async function reviewOverDraft(
     return { state: "blocked", reason: `la revisión no se puede aplicar sobre lo publicado (${message(e)}); se revisa en el CRM`, report };
   }
   const mine = (o.decisions ?? []).filter((x) => x.key === key);
+  // Corte entre los dos guardados de una ejecución anterior (quedó como borrador lo que se iba a publicar, sin lo
+  // retenido) y edición posterior en el CRM: el borrador actual ya no lleva lo retenido. No se escribe nada
+  if (cur.updatedBy !== author) {
+    const own = versions.filter((v) => v.version > publishedVersion && v.author === author).sort((a, b) => b.version - a.version)[0];
+    const before = own ? versions.filter((v) => v.version > publishedVersion && v.version < own.version && v.author !== author).sort((a, b) => b.version - a.version)[0] : undefined;
+    const ownDraft = own ? productDraft.safeParse(own.snapshot) : undefined;
+    const beforeDraft = before ? productDraft.safeParse(before.snapshot) : undefined;
+    if (own && before && ownDraft?.success && beforeDraft?.success) {
+      const probe: OverDraftReport = { ...report, diff: [], retenido: [], retirado: [], enDisputa: [] };
+      const prevPolicy = policyFor(before.version, publishedVersion);
+      const prevValid = new Map(mine.filter((x) => x.borradorVersion === before.version).map((x) => [x.campo, x.gana]));
+      const prev = merge3(base.data, beforeDraft.data, prevPolicy.reviewed(base.data), "", { policy: prevPolicy, report: probe, decide: (campo) => prevValid.get(campo), used: new Set() });
+      const prevPublish = productDraft.safeParse(prev.p);
+      if (prevPublish.success && probe.retenido.length && sameJson(ownDraft.data, prevPublish.data))
+        return {
+          state: "blocked",
+          reason: `una ejecución anterior de esta revisión quedó a medias (su v${own.version} no lleva los cambios retenidos del borrador v${before.version}: ${probe.retenido.map((x) => x.campo).join(", ")}) y después se editó en el CRM; lo retenido está en la v${before.version} del historial; se revisa en el CRM`,
+          report,
+        };
+    }
+  }
   const valid = new Map(mine.filter((x) => x.borradorVersion === report.borrador.version).map((x) => [x.campo, x.gana]));
   const ctx: MergeCtx = { policy, report, decide: (campo) => valid.get(campo), used: new Set() };
   const merged = merge3(base.data, draft.data, reviewed, "", ctx);
