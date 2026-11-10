@@ -52,10 +52,12 @@ CREATE TABLE commercial_terms (
   closed_at BIGINT NULL,
   KEY idx_terms_subscription (subscription_id, status),
   KEY idx_terms_company (company_id, status),
+  KEY idx_terms_next (next_terms_id),
   CONSTRAINT fk_terms_company FOREIGN KEY (company_id) REFERENCES crm_companies (id),
   CONSTRAINT fk_terms_subscription FOREIGN KEY (subscription_id) REFERENCES subscriptions (id),
   CONSTRAINT fk_terms_contract FOREIGN KEY (contract_id) REFERENCES crm_contracts (id),
-  CONSTRAINT chk_terms_global CHECK (global_amount_cents IS NULL OR global_amount_cents >= 0),
+  CONSTRAINT fk_terms_next FOREIGN KEY (next_terms_id) REFERENCES commercial_terms (id),
+  CONSTRAINT chk_terms_global CHECK ((pricing_mode = 'global' AND global_amount_cents >= 0) OR (pricing_mode = 'per_item' AND global_amount_cents IS NULL)),
   CONSTRAINT chk_terms_window CHECK (effective_to IS NULL OR effective_from IS NULL OR effective_to > effective_from)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
@@ -84,7 +86,7 @@ CREATE TABLE commercial_terms_lines (
   CONSTRAINT fk_terms_line_price FOREIGN KEY (price_id) REFERENCES web_prices (id),
   CONSTRAINT chk_terms_line_quantity CHECK (quantity >= 1),
   CONSTRAINT chk_terms_line_amounts CHECK ((official_unit_cents IS NULL OR official_unit_cents >= 0) AND (negotiated_unit_cents IS NULL OR negotiated_unit_cents >= 0)),
-  CONSTRAINT chk_terms_line_custom CHECK (line_kind = 'catalog' OR (product_key IS NULL AND price_id IS NULL AND catalog_json IS NULL))
+  CONSTRAINT chk_terms_line_custom CHECK (line_kind = 'catalog' OR (product_key IS NULL AND price_id IS NULL AND catalog_json IS NULL AND official_unit_cents IS NULL))
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 CREATE TABLE commercial_terms_adjustments (

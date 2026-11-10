@@ -111,7 +111,10 @@ export interface Terms {
 }
 
 const MAX_CENTS = 100_000_000;
+/** Tope del importe de una partida (unitario × cantidad): mantiene todo el cálculo dentro de los enteros exactos. */
+const MAX_LINE_CENTS = 10_000_000_000;
 const int = (v: unknown, min: number, max: number) => typeof v === "number" && Number.isInteger(v) && v >= min && v <= max;
+const instant = (v: unknown) => v === null || int(v, 0, 8_640_000_000_000_000);
 
 export const isRecurring = (l: Pick<TermsLine, "chargeClass">) => l.chargeClass === "recurring";
 
@@ -119,8 +122,12 @@ export const isRecurring = (l: Pick<TermsLine, "chargeClass">) => l.chargeClass 
  * Coherencia interna de un acuerdo (sin catálogo ni BD). Devuelve los problemas en español; vacío = válido.
  * Lo que depende del catálogo (producto contratable, composición, cantidad según el ámbito) lo comprueba el servicio.
  */
-export function validateTerms(t: Pick<Terms, "pricingMode" | "globalAmountCents" | "effectiveFrom" | "effectiveTo" | "afterEnd" | "nextTermsId" | "lines" | "adjustments" | "currency">): string[] {
+export function validateTerms(t: Pick<Terms, "pricingMode" | "globalAmountCents" | "effectiveFrom" | "effectiveTo" | "afterEnd" | "nextTermsId" | "lines" | "adjustments" | "currency"> & { id?: number }): string[] {
   const out: string[] = [];
+  if (t.pricingMode !== "per_item" && t.pricingMode !== "global") out.push("Modo de precio no válido");
+  if (!instant(t.effectiveFrom) || !instant(t.effectiveTo)) out.push("Fechas de vigencia no válidas");
+  if (t.afterEnd !== null && !["official_snapshot", "official_current", "next_terms"].includes(t.afterEnd)) out.push("Opción no válida para el fin de la condición");
+  if (t.nextTermsId !== null && t.nextTermsId === t.id) out.push("Una condición no puede sustituirse por sí misma");
   if (!/^[A-Z]{3}$/.test(t.currency)) out.push("Moneda no válida");
   if (!t.lines.length) out.push("El acuerdo no tiene partidas");
   if (new Set(t.lines.map((l) => l.id)).size !== t.lines.length) out.push("Partidas repetidas");
@@ -129,6 +136,10 @@ export function validateTerms(t: Pick<Terms, "pricingMode" | "globalAmountCents"
     const n = `«${l.name || "partida"}»`;
     if (!l.name?.trim()) out.push("Toda partida necesita un nombre comercial");
     if (!CONCEPTS.includes(l.concept)) out.push(`${n}: tipo de concepto no válido`);
+    if (l.kind !== "catalog" && l.kind !== "custom") out.push(`${n}: tipo de partida no válido`);
+    if (!["recurring", "initial", "extraordinary"].includes(l.chargeClass)) out.push(`${n}: clase de cargo no válida`);
+    if (!instant(l.startsAt) || !instant(l.endsAt)) out.push(`${n}: fechas no válidas`);
+    if ((l.negotiatedUnitCents ?? l.officialUnitCents ?? 0) * l.quantity > MAX_LINE_CENTS || (l.officialUnitCents ?? 0) * l.quantity > MAX_LINE_CENTS) out.push(`${n}: el importe de la partida supera el máximo admitido`);
     if (!int(l.quantity, 1, 10_000)) out.push(`${n}: cantidad entre 1 y 10.000`);
     if (!int(l.taxRateBp, 0, 10_000)) out.push(`${n}: tipo de impuesto no válido`);
     if (l.officialUnitCents !== null && !int(l.officialUnitCents, 0, MAX_CENTS)) out.push(`${n}: precio oficial no válido`);
@@ -171,12 +182,19 @@ export function validateTerms(t: Pick<Terms, "pricingMode" | "globalAmountCents"
       out.push("Un ajuste apunta a una partida que no existe");
       continue;
     }
+    if (a.type !== "discount" && a.type !== "surcharge") out.push("Tipo de ajuste no válido");
+    if (a.mode !== "percent" && a.mode !== "amount") out.push("Modo de ajuste no válido");
+    if (a.recurrence !== "recurring" && a.recurrence !== "once") out.push("Recurrencia del ajuste no válida");
+    if (!instant(a.endsAt)) out.push("Fecha de fin del ajuste no válida");
     if (a.mode === "percent") {
       if (!int(a.value, 1, a.type === "discount" ? 10_000 : 100_000)) out.push(a.type === "discount" ? "Descuento porcentual entre 0,01 % y 100 %" : "Recargo porcentual entre 0,01 % y 1.000 %");
     } else if (!int(a.value, 1, MAX_CENTS)) out.push("Importe del ajuste no válido (céntimos enteros, mayor que cero)");
     if (a.recurrence === "once" && a.endsAt !== null) out.push("Un ajuste de un solo uso no tiene fecha de fin");
     if (a.recurrence === "recurring" && line && !isRecurring(line)) out.push(`«${line.name}»: un cargo único solo admite ajustes de un solo uso`);
-    if (a.recurrence === "recurring" && a.lineId === null && !recurring.length) out.push("Un ajuste recurrente global necesita partidas recurrentes");
+    if (a.lineId === null && !recurring.length) out.push("Un ajuste global se aplica a las cuotas recurrentes: el acuerdo no tiene ninguna (aplícalo al cargo único)");
+    // De un solo uso sobre una cuota: se abona en el primer periodo del acuerdo, así que la partida debe estar viva entonces
+    if (a.recurrence === "once" && line && isRecurring(line) && line.startsAt !== null && line.startsAt !== t.effectiveFrom) out.push(`«${line.name}»: un ajuste de un solo uso exige que la partida empiece con el acuerdo`);
+    if (a.endsAt !== null && t.effectiveTo !== null && a.endsAt > t.effectiveTo) out.push("Un ajuste no puede terminar después que el acuerdo");
     if (a.endsAt !== null && t.effectiveFrom !== null && a.endsAt <= t.effectiveFrom) out.push("Un ajuste no puede terminar antes de empezar el acuerdo");
   }
   return Array.from(new Set(out));

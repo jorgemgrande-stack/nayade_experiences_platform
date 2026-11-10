@@ -42,19 +42,24 @@ export function allocateCents(total: number, weights: number[]): number[] {
 
 /**
  * Impuesto por TIPO: para cada tipo, redondea una vez sobre la base sumada y reparte el resultado entre sus líneas
- * (cada una con su redondeo propio; la diferencia de céntimos va a la línea de mayor base). Admite líneas negativas (abonos).
+ * (cada una con su redondeo propio; los céntimos de diferencia, de uno en uno, a las de mayor base). Admite líneas
+ * negativas (abonos), con redondeo simétrico.
  */
 export function groupTax(lines: Array<{ netCents: number; taxRateBp: number }>): number[] {
-  const out = lines.map((l) => Math.round((l.netCents * l.taxRateBp) / 10_000));
+  // Redondeo simétrico: un abono lleva exactamente el impuesto, con signo contrario, de su cargo
+  const round = (x: number) => (x < 0 ? -Math.round(-x) : Math.round(x)) + 0;
+  const out = lines.map((l) => round((l.netCents * l.taxRateBp) / 10_000));
   const rates = Array.from(new Set(lines.map((l) => l.taxRateBp)));
   for (const rate of rates) {
-    const idx = lines.map((l, i) => (l.taxRateBp === rate ? i : -1)).filter((i) => i >= 0);
+    const idx = lines.map((l, i) => (l.taxRateBp === rate && l.netCents !== 0 ? i : -1)).filter((i) => i >= 0);
+    if (!idx.length) continue;
     const base = idx.reduce((a, i) => a + lines[i].netCents, 0);
-    const diff = Math.round((base * rate) / 10_000) - idx.reduce((a, i) => a + out[i], 0);
-    if (diff !== 0) {
-      const top = idx.reduce((best, i) => (Math.abs(lines[i].netCents) > Math.abs(lines[best].netCents) ? i : best), idx[0]);
-      out[top] += diff;
-    }
+    let diff = round((base * rate) / 10_000) - idx.reduce((a, i) => a + out[i], 0);
+    if (diff === 0) continue;
+    // Los céntimos de diferencia, de uno en uno: primero a las líneas del mismo signo, de mayor a menor base
+    const step = diff > 0 ? 1 : -1;
+    const order = idx.slice().sort((a, b) => Number(Math.sign(lines[b].netCents) === step) - Number(Math.sign(lines[a].netCents) === step) || Math.abs(lines[b].netCents) - Math.abs(lines[a].netCents) || a - b);
+    for (let k = 0; diff !== 0; k = (k + 1) % order.length, diff -= step) out[order[k]] += step;
   }
   return out;
 }
@@ -130,6 +135,8 @@ function withTax<T extends { netCents: number; taxRateBp: number }>(lines: T[]):
 
 const lineStart = (t: Pick<Terms, "effectiveFrom">, l: TermsLine) => l.startsAt ?? t.effectiveFrom ?? Number.NEGATIVE_INFINITY;
 const adjustmentLive = (a: Adjustment, at: number) => a.recurrence === "recurring" && (a.endsAt === null || at < a.endsAt);
+/** Orden canónico de aplicación (el resultado no depende del orden en que se guardaron): recargos antes que descuentos, por id. */
+const canonical = <T extends Pick<Adjustment, "id" | "type">>(list: T[]): T[] => list.slice().sort((a, b) => Number(a.type === "discount") - Number(b.type === "discount") || a.id - b.id);
 
 /** Partidas recurrentes vigentes en `at` (cada una con su inicio y fin propios, si los tiene). */
 export function recurringLinesAt(t: Pick<Terms, "effectiveFrom" | "lines">, at: number): TermsLine[] {
@@ -145,7 +152,7 @@ export function recurringAt(t: Terms, at: number): Totals & { at: number; lines:
   const negotiated = t.pricingMode === "global" ? allocateCents(t.globalAmountCents ?? 0, lines.map(referenceOf)) : lines.map(ownPriceOf);
   const net = negotiated.slice();
   const applied: AppliedAdjustment[][] = lines.map(() => []);
-  const live = t.adjustments.filter((a) => adjustmentLive(a, at));
+  const live = canonical(t.adjustments.filter((a) => adjustmentLive(a, at)));
   // 1.º los ajustes de cada partida, sobre su precio negociado (no se encadenan entre sí)
   for (const a of live.filter((x) => x.lineId !== null)) {
     const i = lines.findIndex((l) => l.id === a.lineId);
@@ -156,10 +163,11 @@ export function recurringAt(t: Terms, at: number): Totals & { at: number; lines:
       applied[i].push({ adjustmentId: a.id, cents: delta });
     }
   }
-  // 2.º los ajustes globales, sobre el total ya ajustado, repartidos en proporción
+  // 2.º los ajustes globales, todos sobre el total ya ajustado por partida (tampoco se encadenan), repartidos en proporción
+  const globalBase = net.reduce((x, y) => x + y, 0);
   for (const a of live.filter((x) => x.lineId === null)) {
     const base = net.reduce((x, y) => x + y, 0);
-    const delta = Math.max(-base, adjustmentAmount(a, base));
+    const delta = Math.max(-base, adjustmentAmount(a, globalBase));
     if (delta === 0) continue;
     const parts = allocateCents(Math.abs(delta), net.some((x) => x > 0) ? net : lines.map(referenceOf));
     parts.forEach((p, i) => {
@@ -203,11 +211,12 @@ export interface OnceCredit {
 
 /**
  * Importes ÚNICOS del acuerdo: los cargos (pagos iniciales y trabajos extraordinarios, con sus ajustes de un solo
- * uso) y los ajustes de un solo uso sobre las cuotas recurrentes (se aplican una vez, en el primer periodo).
+ * uso) y los ajustes de un solo uso sobre las cuotas recurrentes (se aplican una vez, en el primer periodo). El
+ * porcentaje de un ajuste de un solo uso se calcula sobre la cuota EFECTIVA del primer periodo (ya con los recurrentes).
  */
 export function oneTime(t: Terms): { charges: OneTimeCharge[]; credits: OnceCredit[] } {
   const start = t.effectiveFrom ?? 0;
-  const once = t.adjustments.filter((a) => a.recurrence === "once");
+  const once = canonical(t.adjustments.filter((a) => a.recurrence === "once"));
   const charges = t.lines
     .filter((l) => !isRecurring(l))
     .sort((a, b) => a.sort - b.sort || a.id - b.id)
@@ -297,10 +306,12 @@ export function summarize(t: Terms): TermsSummary {
   ]);
   const changes: TermsSummary["changes"] = [];
   let last = recurring.netCents;
+  let lastTax = recurring.taxCents;
   for (const p of pts.slice(1)) {
     const r = recurringAt(t, p);
-    if (r.netCents !== last) changes.push({ at: p, netCents: r.netCents, taxCents: r.taxCents, totalCents: r.totalCents });
+    if (r.netCents !== last || r.taxCents !== lastTax) changes.push({ at: p, netCents: r.netCents, taxCents: r.taxCents, totalCents: r.totalCents });
     last = r.netCents;
+    lastTax = r.taxCents;
   }
   return { recurring, charges, chargesTotals: totalsOf(charges), credits, first: totalsOf(firstLines), steady, changes };
 }

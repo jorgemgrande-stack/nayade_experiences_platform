@@ -98,6 +98,19 @@ describe("reparto e impuestos", () => {
     const small = [50, 50, 50].map((netCents) => ({ netCents, taxRateBp: 2100 }));
     expect(sum(small.map((l) => Math.round((l.netCents * l.taxRateBp) / 10_000)))).toBe(33);
     expect(groupTax(small)).toEqual([10, 11, 11]);
+    // Muchas líneas pequeñas: la diferencia se reparte de céntimo en céntimo, no se acumula en una
+    const tiny = groupTax(Array.from({ length: 100 }, () => ({ netCents: 2, taxRateBp: 2100 })));
+    expect(sum(tiny)).toBe(42);
+    expect(Math.max(...tiny)).toBe(1);
+  });
+
+  it("un abono lleva el impuesto de su cargo con signo contrario, también con medios céntimos", () => {
+    expect(groupTax([{ netCents: 50, taxRateBp: 2100 }, { netCents: -50, taxRateBp: 2100 }])).toEqual([11, -11]);
+    expect(groupTax([{ netCents: -1, taxRateBp: 2100 }])).toEqual([0]);
+    const mixed = [2, 2, 2, -3, 2, 2, 2, 2].map((netCents) => ({ netCents, taxRateBp: 2100 }));
+    const tax = groupTax(mixed);
+    expect(sum(tax)).toBe(2); // el 21 % de 0,11 €
+    expect(tax[3]).toBeLessThanOrEqual(0);
   });
 
   it("los tipos distintos se calculan por separado, también con abonos", () => {
@@ -153,8 +166,21 @@ describe("precio individual por partida", () => {
     const r = recurringAt(terms([e, h], { adjustments: [adj({ lineId: e.id, value: 1000 }), adj({ lineId: e.id, value: 1000 }), adj({ value: 5000 })] }), T0);
     // Essential: 2900 − 290 − 290 = 2320; global 50 % de (2320 + 11900) = 7110
     expect(r.netCents).toBe(2320 + 11900 - 7110);
-    expect(sum(r.lines.map((l) => l.adjustmentCents))).toBe(r.adjustmentCents);
-    expect(r.lines.every((l) => l.netCents >= 0)).toBe(true);
+    expect(r.lines.map((l) => l.netCents)).toEqual([1160, 5950]);
+  });
+
+  it("el resultado no depende del orden en que se guardaron los ajustes", () => {
+    const e = essential({ officialUnitCents: 100 });
+    const down = adj({ lineId: e.id, mode: "amount", value: 150 });
+    const up = adj({ lineId: e.id, type: "surcharge", mode: "amount", value: 50 });
+    const half = adj({ value: 5000 });
+    const plus = adj({ type: "surcharge", mode: "amount", value: 1000 });
+    const h = hotel({ officialUnitCents: 10000 });
+    const a = recurringAt(terms([e, h], { adjustments: [down, up, half, plus] }), T0);
+    const b = recurringAt(terms([e, h], { adjustments: [plus, half, up, down] }), T0);
+    expect(a.lines.map((l) => l.netCents)).toEqual(b.lines.map((l) => l.netCents));
+    // Essential: 100 + 50 − 150 = 0; global sobre 10000: +1000 − 5000 = 6000
+    expect(a.netCents).toBe(6000);
   });
 
   it("Caso 24 — impuestos de partidas diferentes", () => {
@@ -233,6 +259,7 @@ describe("cuotas recurrentes y cargos únicos", () => {
     expect(s.charges).toHaveLength(1);
     expect(s.charges[0]).toMatchObject({ at: MONTH(2), netCents: 120000, taxCents: 25200 });
     expect(s.first.netCents).toBe(2900);
+    expect(s.steady.netCents).toBe(2900);
     const items = materialize(t);
     expect(items.filter((i) => i.role === "charge")).toEqual([expect.objectContaining({ from: MONTH(2), amountCents: 120000, to: null })]);
   });
@@ -384,6 +411,27 @@ describe("validación del acuerdo", () => {
     expect(validateTerms(terms([essential()], { adjustments: [adj({ lineId: 999_999 })] })).join(" ")).toMatch(/no existe/);
     expect(validateTerms(terms([essential(), impl], { adjustments: [adj({ lineId: impl.id })] })).join(" ")).toMatch(/solo admite ajustes de un solo uso/);
     expect(validateTerms(terms([essential()], { adjustments: [adj({ recurrence: "once", endsAt: MONTH(1) })] })).join(" ")).toMatch(/no tiene fecha de fin/);
+  });
+
+  it("no deja pasar valores que el cálculo malinterpretaría", () => {
+    expect(validateTerms(terms([essential({ startsAt: Number.NaN })])).join(" ")).toMatch(/fechas no válidas/);
+    expect(validateTerms(terms([essential({ chargeClass: "weekly" as never })])).join(" ")).toMatch(/clase de cargo no válida/);
+    expect(validateTerms(terms([essential()], { adjustments: [adj({ type: "bonus" as never })] })).join(" ")).toMatch(/Tipo de ajuste no válido/);
+    expect(validateTerms({ ...terms([essential()], { effectiveTo: MONTH(3), afterEnd: "next_terms", nextTermsId: 1 }), id: 1 }).join(" ")).toMatch(/sustituirse por sí misma/);
+    expect(validateTerms(terms([essential()], { effectiveTo: MONTH(3), afterEnd: "official_snapshot", adjustments: [adj({ endsAt: MONTH(5) })] })).join(" ")).toMatch(/después que el acuerdo/);
+    expect(validateTerms(terms([essential({ officialUnitCents: 100_000_000, quantity: 10_000 })])).join(" ")).toMatch(/supera el máximo/);
+  });
+
+  it("un ajuste de un solo uso nunca se pierde en silencio: o se aplica o se rechaza", () => {
+    const late = custom("Soporte", 4000, { startsAt: MONTH(1) });
+    expect(validateTerms(terms([essential(), late], { adjustments: [adj({ lineId: late.id, mode: "amount", value: 1000, recurrence: "once" })] })).join(" ")).toMatch(/empiece con el acuerdo/);
+    const impl = custom("Implantación", 50000, { chargeClass: "initial" });
+    expect(validateTerms(terms([impl], { adjustments: [adj({ mode: "amount", value: 10000, recurrence: "once" })] })).join(" ")).toMatch(/no tiene ninguna/);
+  });
+
+  it("al volver a la tarifa oficial, una partida con fin propio lo conserva", () => {
+    const items = materialize(terms([essential(), custom("Soporte", 3000, { endsAt: MONTH(5) })], { effectiveTo: MONTH(3), afterEnd: "official_snapshot" }));
+    expect(items.find((i) => i.role === "after_end" && i.name === "Soporte")).toMatchObject({ from: MONTH(3), to: MONTH(5) });
   });
 
   it("con cuota global las partidas recurrentes comparten la vigencia del acuerdo", () => {

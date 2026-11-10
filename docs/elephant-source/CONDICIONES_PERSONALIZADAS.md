@@ -49,7 +49,7 @@ Los seis importes que el encargo pide distinguir:
 - **Cuota global:** se reparte entre las partidas recurrentes en proporción a su valor de referencia (el oficial; en una
   partida a medida, su precio) por resto mayor: la suma de la asignación es exactamente la cuota pactada.
 - **Ajustes:** primero los de cada partida, sobre su precio negociado (no se encadenan); después los globales, sobre el
-  total ya ajustado, repartidos en proporción. El descuento porcentual redondea hacia arriba y el recargo hacia abajo.
+  total ya ajustado, repartidos en proporción. Tampoco los globales se encadenan entre sí, y el orden es fijo (recargos antes que descuentos): el resultado no depende del orden en que se guardaron. El descuento porcentual redondea hacia arriba y el recargo hacia abajo.
   Ninguna partida queda por debajo de cero.
 - **Impuesto:** por tipo, redondeado una vez sobre la base sumada y repartido a las líneas. Así «129,00 € + 21 %» da
   156,09 € en la oferta, en el contrato y en la factura.
