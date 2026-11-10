@@ -318,8 +318,10 @@ describe("activación en production: orden de los pasos", () => {
     const fs = await import("node:fs");
     const src = fs.readFileSync("scripts/deploy/esRailway.ts", "utf8");
     const block = src.slice(src.indexOf('if (cmd === "lead-notices-mail")'), src.indexOf('if (cmd === "backup-check")'));
-    expect(block.indexOf("deploymentRedeploy")).toBeGreaterThan(0);
-    expect(block.indexOf("deploymentRedeploy")).toBeLessThan(block.indexOf('pm("POST", "/webhooks"'));
+    // El redespliegue de la misma imagen espera a SU despliegue (redeploySameImage), no al último del servicio
+    expect(block.indexOf("redeploySameImage(")).toBeGreaterThan(0);
+    expect(block.indexOf("redeploySameImage(")).toBeLessThan(block.indexOf('pm("POST", "/webhooks"'));
+    expect(src).toContain("deploymentRedeploy(id:$id, usePreviousImageTag:true){ id }");
     expect(block).toContain("if (!plan.changes.length && !needsHook)");
     expect(block).toMatch(/Postmark no guardó el webhook[\s\S]{0,200}process\.exit\(1\)/);
   });

@@ -47,7 +47,7 @@ import { DRILL_IDLE, EXCLUDED_FROM_EXPORT, GATEWAY_COPIED_VARS, GATEWAY_TEMPLATE
 import { ERM_DB_SERVICE, ERM_PASSWORD_VAR, LIVE_PLATFORM_DOMAIN_DEFAULT, livePlatformDomainProblems, meteringPlan, platformDomainsValue } from "./esRailwayLib";
 import { ACCESS_CHECKS, ACCESS_PROBE_USER, CATALOG_STAMP_FILE, WEB_CATALOG_SITE, accessProblems } from "./esRailwayLib";
 import { externalExtraordinaryChanges, extraordinaryChanges } from "./esRailwayLib";
-import { ownDeployState } from "./esRailwayLib";
+import { ownDeployState, type OwnDeployTarget } from "./esRailwayLib";
 import { CORE_COMMERCE_SCOPES, CORE_COMMERCE_TOKEN_ID, commerceChannelPlan } from "./esRailwayLib";
 import { CRM_CHECKS, CRM_VERSION_FILE, CRM_VERSION_URL, externalLockedChanges, FUNCTIONAL_CHECKS, ORDINARY_SERVICES, WEB_CHECKS, crmProtectedChanges, hasMigrations, isExternalService, isNativeDeploy, protectedChanges, shaFromDeployMeta } from "./esRailwayLib";
 import { REPOSITORIES } from "../../shared/repositories";
@@ -97,35 +97,37 @@ async function latest(serviceIdValue: string, environmentId: string) {
 }
 
 const FINAL = new Set(["SUCCESS", "FAILED", "CRASHED", "REMOVED", "SKIPPED"]);
+type OwnWait = { id: string; status: string; by?: string };
 /**
- * Espera a SU despliegue (el de la subida con el mensaje `mark`), no al último del servicio: un despliegue nativo
- * posterior no la agota ni provoca una vuelta atrás de lo que sí se publicó bien. Agotada la espera, se cancela solo el
- * propio (nunca uno nativo ajeno) y se devuelve «TIMEOUT». Si el propio quedó sustituido por otro posterior, «SUPERSEDED».
+ * Espera al despliegue PROPIO de una orden (subida, vuelta atrás, redespliegue), no al último del servicio: un despliegue
+ * nativo que llegue a la vez no se confunde con él. Agotada la espera devuelve «TIMEOUT» (con `cancel`, cancela solo el
+ * propio, nunca uno ajeno). Si el propio quedó sustituido por otro posterior, «SUPERSEDED».
  */
-async function waitOwnOrCancel(serviceIdValue: string, environmentId: string, after: string | null, mark: string, timeoutMs = 25 * 60_000): Promise<{ id: string; status: string; by?: string }> {
+async function waitOwn(serviceIdValue: string, environmentId: string, target: { after: string | null } & OwnDeployTarget, o: { cancel?: boolean; what?: string; timeoutMs?: number } = {}): Promise<OwnWait> {
   const t0 = Date.now();
+  const timeoutMs = o.timeoutMs ?? 25 * 60_000;
   let last: string | null = null;
   for (;;) {
-    const st = ownDeployState(await deployments(serviceIdValue, environmentId, 20), { after, mark });
+    const st = ownDeployState(await deployments(serviceIdValue, environmentId, 20), target);
     if (st.state === "done") return { id: st.id, status: st.status };
     if (st.state === "superseded") return { id: st.id, status: "SUPERSEDED", by: st.by };
     last = st.id;
     if (Date.now() - t0 > timeoutMs) {
-      if (last) await api("mutation($id:String!){ deploymentCancel(id:$id) }", { id: last }).catch(() => undefined);
-      else console.error(`AVISO: el despliegue de la subida «${mark}» no apareció en Railway durante la espera`);
+      if (last && o.cancel) await api("mutation($id:String!){ deploymentCancel(id:$id) }", { id: last }).catch(() => undefined);
+      if (!last) console.error(`AVISO: el despliegue de ${o.what ?? "la orden"} no apareció en Railway durante la espera`);
       return { id: last ?? "?", status: "TIMEOUT" };
     }
     await new Promise((r) => setTimeout(r, 15_000));
   }
 }
-async function waitFor(serviceIdValue: string, environmentId: string, after: string | null, timeoutMs = 25 * 60_000) {
-  const t0 = Date.now();
-  for (;;) {
-    const d = await latest(serviceIdValue, environmentId);
-    if (d && d.id !== after && FINAL.has(d.status)) return d;
-    if (Date.now() - t0 > timeoutMs) throw new Error("tiempo de espera agotado");
-    await new Promise((r) => setTimeout(r, 15_000));
-  }
+/** Espera a SU despliegue (el de la subida con el mensaje `mark`); agotada la espera, lo cancela. */
+const waitOwnOrCancel = (serviceIdValue: string, environmentId: string, after: string | null, mark: string) => waitOwn(serviceIdValue, environmentId, { after, mark }, { cancel: true, what: `la subida «${mark}»` });
+/** Redespliega la MISMA imagen de un despliegue y espera a ESE redespliegue (Railway devuelve su identificador). */
+async function redeploySameImage(serviceIdValue: string, environmentId: string, deploymentId: string): Promise<OwnWait> {
+  const after = (await latest(serviceIdValue, environmentId))?.id ?? null;
+  const r = await api<{ deploymentRedeploy: { id?: string } | null }>("mutation($id:String!){ deploymentRedeploy(id:$id, usePreviousImageTag:true){ id } }", { id: deploymentId });
+  const id = r.deploymentRedeploy?.id;
+  return waitOwn(serviceIdValue, environmentId, id && id !== deploymentId ? { after, id } : { after, first: true }, { what: "el redespliegue" });
 }
 
 async function logs(deploymentId: string, limit = 400): Promise<string> {
@@ -150,11 +152,17 @@ async function active(serviceIdValue: string, environmentId: string) {
   const a = (await deployments(serviceIdValue, environmentId)).find((x) => x.status === "SUCCESS");
   return a ? { id: a.id, sha: shaFromDeployMeta(a.meta, REPOSITORIES.core) } : null;
 }
-/** Vuelve a un despliegue anterior (misma imagen) y espera a que quede activo. */
+/**
+ * Vuelve a un despliegue anterior (misma imagen) y espera a que ESA vuelta atrás quede activa: no al último despliegue
+ * del servicio, que puede ser uno nativo llegado a la vez. Agotada la espera devuelve «TIMEOUT» (sin cancelarla).
+ */
 async function rollback(serviceIdValue: string, environmentId: string, deploymentId: string): Promise<string> {
-  const before = (await latest(serviceIdValue, environmentId))?.id ?? null;
+  const list = await deployments(serviceIdValue, environmentId, 20);
+  const before = list[0]?.id ?? null;
+  const target = list.find((x) => x.id === deploymentId);
   await api("mutation($id:String!){ deploymentRollback(id:$id) }", { id: deploymentId });
-  return (await waitFor(serviceIdValue, environmentId, before)).status;
+  const d = await waitOwn(serviceIdValue, environmentId, { after: before, rollbackOf: target?.meta ?? null }, { what: `la vuelta atrás a ${deploymentId}` });
+  return d.status === "SUPERSEDED" ? `SUPERSEDED (sustituida por el despliegue posterior ${d.by})` : d.status;
 }
 /** Comprobaciones funcionales del entorno; la credencial de la pasarela de live llega por ES_GATEWAY_AUTH (usuario:clave). */
 async function functional(env: string, set: Record<string, Array<{ url: string; expect: number; auth?: boolean }>> = FUNCTIONAL_CHECKS): Promise<boolean> {
@@ -626,12 +634,13 @@ async function main() {
         i: { ...(cfg.builder ? { builder: cfg.builder } : {}), dockerfilePath: cfg.dockerfilePath, rootDirectory: cfg.rootDirectory, healthcheckPath: cfg.healthcheckPath },
       });
       const before = (await latest(sid, sc.environmentId))?.id ?? null;
-      const r = spawnSync("railway", ["up", dir, "--path-as-root", "-s", g.service, "-e", env, "--detach", "-m", `${REPOSITORIES.core} ${sha}`], { encoding: "utf8", env: process.env });
+      const gwMark = `${REPOSITORIES.core} ${sha}`;
+      const r = spawnSync("railway", ["up", dir, "--path-as-root", "-s", g.service, "-e", env, "--detach", "-m", gwMark], { encoding: "utf8", env: process.env });
       if (r.status !== 0) throw new Error(`railway up falló: ${scrub(r.stderr || r.stdout || "").slice(0, 400)}`);
-      const d = await waitFor(sid, sc.environmentId, before);
+      const d = await waitOwn(sid, sc.environmentId, { after: before, mark: gwMark }, { what: `la subida «${gwMark}»` });
       console.log(`${g.service}: despliegue ${d.id} → ${d.status}`);
       if (d.status !== "SUCCESS") {
-        console.log((await logs(d.id, 120)).split("\n").slice(-40).join("\n"));
+        if (d.id !== "?") console.log((await logs(d.id, 120)).split("\n").slice(-40).join("\n"));
         process.exit(1);
       }
       const dm = await api<{ domains: { serviceDomains: Array<{ id: string; domain: string }> } }>(
@@ -773,8 +782,7 @@ async function main() {
       const crmId = await serviceId("crm");
       const before = await latest(crmId, sc.environmentId);
       if (!before) throw new Error("el CRM de live no tiene despliegue que redesplegar");
-      await api("mutation($id:String!){ deploymentRedeploy(id:$id, usePreviousImageTag:true){ id } }", { id: before.id });
-      const d = await waitFor(crmId, sc.environmentId, before.id);
+      const d = await redeploySameImage(crmId, sc.environmentId, before.id);
       console.log(`crm: redesplegado con su misma imagen → ${d.status}`);
       if (d.status !== "SUCCESS") process.exit(1);
     }
@@ -840,8 +848,7 @@ async function main() {
     // El Core toma las variables al redesplegar la MISMA imagen que ya sirve (sin compilar ni cambiar de commit)
     const before = await latest(coreId, sc.environmentId);
     if (!before) throw new Error("core no tiene despliegue que redesplegar");
-    await api("mutation($id:String!){ deploymentRedeploy(id:$id, usePreviousImageTag:true){ id } }", { id: before.id });
-    const d = await waitFor(coreId, sc.environmentId, before.id);
+    const d = await redeploySameImage(coreId, sc.environmentId, before.id);
     console.log(`core: redesplegado con su misma imagen → ${d.status}`);
     if (d.status !== "SUCCESS") process.exit(1);
     return;
@@ -925,8 +932,7 @@ async function main() {
       const id = await serviceId(svc);
       const before = await latest(id, sc.environmentId);
       if (!before) throw new Error(`${svc} no tiene despliegue que redesplegar`);
-      await api("mutation($id:String!){ deploymentRedeploy(id:$id, usePreviousImageTag:true){ id } }", { id: before.id });
-      const d = await waitFor(id, sc.environmentId, before.id);
+      const d = await redeploySameImage(id, sc.environmentId, before.id);
       console.log(`${svc}: redesplegado con su misma imagen → ${d.status}`);
       if (d.status !== "SUCCESS") process.exit(1);
     }
@@ -1027,8 +1033,7 @@ async function main() {
       const id = await serviceId(svc);
       const before = await latest(id, sc.environmentId);
       if (!before) throw new Error(`${svc} no tiene despliegue que redesplegar`);
-      await api("mutation($id:String!){ deploymentRedeploy(id:$id, usePreviousImageTag:true){ id } }", { id: before.id });
-      const d = await waitFor(id, sc.environmentId, before.id);
+      const d = await redeploySameImage(id, sc.environmentId, before.id);
       console.log(`${svc}: redesplegado con su misma imagen → ${d.status}`);
       if (d.status !== "SUCCESS") process.exit(1);
     };
@@ -1079,8 +1084,7 @@ async function main() {
       const id = await serviceId(s);
       const before = await latest(id, sc.environmentId);
       if (!before) throw new Error(`${s} no tiene despliegue que redesplegar`);
-      await api("mutation($id:String!){ deploymentRedeploy(id:$id, usePreviousImageTag:true){ id } }", { id: before.id });
-      const d = await waitFor(id, sc.environmentId, before.id);
+      const d = await redeploySameImage(id, sc.environmentId, before.id);
       console.log(`${s}: redesplegado con su misma imagen → ${d.status}`);
       if (d.status !== "SUCCESS") process.exit(1);
     }
@@ -1128,8 +1132,7 @@ async function main() {
     const id = await serviceId("controlplane");
     const before = await latest(id, sc.environmentId);
     if (!before) throw new Error("controlplane no tiene despliegue que redesplegar");
-    await api("mutation($id:String!){ deploymentRedeploy(id:$id, usePreviousImageTag:true){ id } }", { id: before.id });
-    const d = await waitFor(id, sc.environmentId, before.id);
+    const d = await redeploySameImage(id, sc.environmentId, before.id);
     console.log(`controlplane: redesplegado con su misma imagen → ${d.status}`);
     if (d.status !== "SUCCESS") process.exit(1);
     return;
@@ -1349,7 +1352,7 @@ async function main() {
       const building = (await deployments(sid, sc.environmentId, 3)).find((x) => !FINAL.has(x.status) && isNativeDeploy(x.meta) && shaFromDeployMeta(x.meta, ext.repo) === sha);
       if (building) {
         console.log(`${ext.service}: Railway ya despliega ${sha.slice(0, 12)} en nativo; se espera a que termine`);
-        await waitFor(sid, sc.environmentId, null).catch(() => null);
+        await waitOwn(sid, sc.environmentId, { after: null, id: building.id }, { what: `el despliegue nativo de ${sha.slice(0, 12)}` }).catch(() => null);
       }
     }
     const curNode = (await deployments(sid, sc.environmentId)).find((x) => x.status === "SUCCESS");
@@ -1435,11 +1438,12 @@ async function main() {
     const webCatalog = service === "web" ? await stampWebCatalog(dir) : null;
     const sid = await serviceId(service!);
     const before = (await latest(sid, sc.environmentId))?.id ?? null;
-    const r = spawnSync("railway", ["up", dir, "--path-as-root", "-s", service!, "-e", env, "--detach", "-m", `${repo} ${sha}${webCatalog ? ` catalogo:${webCatalog}` : ""}`], { encoding: "utf8", env: process.env });
+    const upMark = `${repo} ${sha}${webCatalog ? ` catalogo:${webCatalog}` : ""}`;
+    const r = spawnSync("railway", ["up", dir, "--path-as-root", "-s", service!, "-e", env, "--detach", "-m", upMark], { encoding: "utf8", env: process.env });
     if (r.status !== 0) throw new Error(`railway up falló: ${scrub(r.stderr || r.stdout || "").slice(0, 400)}`);
-    const d = await waitFor(sid, sc.environmentId, before);
-    console.log(`${service}: despliegue ${d.id} → ${d.status}`);
-    console.log((await logs(d.id, 120)).split("\n").slice(-60).join("\n"));
+    const d = await waitOwn(sid, sc.environmentId, { after: before, mark: upMark }, { what: `la subida «${upMark}»` });
+    console.log(`${service}: despliegue ${d.id} → ${d.status}${d.by ? ` (por ${d.by})` : ""}`);
+    if (d.id !== "?") console.log((await logs(d.id, 120)).split("\n").slice(-60).join("\n"));
     if (d.status !== "SUCCESS") process.exit(1);
     return;
   }
@@ -1471,19 +1475,22 @@ async function main() {
       await api("mutation($i:VariableUpsertInput!){ variableUpsert(input:$i) }", { i: { projectId, environmentId: sc.environmentId, serviceId: sid, name: "ES_DRILL_COMMAND", value: start, skipDeploys: true } });
       // Imagen ya compilada que relanzar: el último despliegue que llegó a arrancar (terminado, retirado o detenido)
       const built = (await deployments(sid, sc.environmentId, 20)).find((x) => ["SUCCESS", "REMOVED", "CRASHED"].includes(x.status));
+      let own: string | undefined;
       if (runnerReady && built) {
-        await api("mutation($id:String!){ deploymentRedeploy(id:$id, usePreviousImageTag:true){ id } }", { id: built.id });
+        own = (await api<{ deploymentRedeploy: { id?: string } | null }>("mutation($id:String!){ deploymentRedeploy(id:$id, usePreviousImageTag:true){ id } }", { id: built.id })).deploymentRedeploy?.id;
+        if (own === built.id) own = undefined;
       } else {
         await api("mutation($s:String!,$e:String!,$i:ServiceInstanceUpdateInput!){ serviceInstanceUpdate(serviceId:$s, environmentId:$e, input:$i) }", { s: sid, e: sc.environmentId, i: { startCommand: RUNNER } });
-        await api("mutation($s:String!,$e:String!){ serviceInstanceDeployV2(serviceId:$s, environmentId:$e) }", { s: sid, e: sc.environmentId });
+        const v2 = (await api<{ serviceInstanceDeployV2: unknown }>("mutation($s:String!,$e:String!){ serviceInstanceDeployV2(serviceId:$s, environmentId:$e) }", { s: sid, e: sc.environmentId })).serviceInstanceDeployV2;
+        own = typeof v2 === "string" && v2 ? v2 : undefined;
         runnerReady = true;
       }
-      return waitFor(sid, sc.environmentId, before);
+      return waitOwn(sid, sc.environmentId, own ? { after: before, id: own } : { after: before, first: true }, { what: "la orden de restore-drill" });
     };
     const d = await setAndDeploy(command);
     // El registro tarda en estar completo tras terminar la orden: se espera un poco antes de leerlo
     await new Promise((r) => setTimeout(r, 20_000));
-    const out = await logs(d.id);
+    const out = d.id === "?" ? "" : await logs(d.id);
     console.log(`restore-drill «${command}» → ${d.status}\n${out}`);
     await setAndDeploy(DRILL_IDLE);
     console.log(`restore-drill devuelto a «${DRILL_IDLE}»`);
