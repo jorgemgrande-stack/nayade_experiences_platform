@@ -58,7 +58,7 @@ CREATE TABLE commercial_terms (
   CONSTRAINT fk_terms_subscription FOREIGN KEY (subscription_id) REFERENCES subscriptions (id),
   CONSTRAINT fk_terms_contract FOREIGN KEY (contract_id) REFERENCES crm_contracts (id),
   CONSTRAINT fk_terms_next FOREIGN KEY (next_terms_id) REFERENCES commercial_terms (id),
-  CONSTRAINT chk_terms_global CHECK ((pricing_mode = 'global' AND global_amount_cents >= 0) OR (pricing_mode = 'per_item' AND global_amount_cents IS NULL)),
+  CONSTRAINT chk_terms_global CHECK ((pricing_mode = 'global' AND global_amount_cents IS NOT NULL AND global_amount_cents >= 0) OR (pricing_mode = 'per_item' AND global_amount_cents IS NULL)),
   CONSTRAINT chk_terms_window CHECK (effective_to IS NULL OR effective_from IS NULL OR effective_to > effective_from)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
