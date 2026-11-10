@@ -74,6 +74,11 @@ export class FakeStripeGateway implements StripeGateway {
       if (this.idemParams.get(key) !== JSON.stringify(input)) throw new StripeGatewayError("idempotency_error", "Stripe respondió 400 (idempotency_error)", false);
       return this.view(prev);
     }
+    // Como Stripe: una Checkout Session no crea suscripciones con periodicidades mixtas (aunque sean en modo flexible;
+    // https://docs.stripe.com/billing/subscriptions/mixed-interval, «Limitations»)
+    const recurring = (input.lineItems ?? [{ priceId: input.priceId, quantity: 1 }]).filter((l): l is { priceId: string; quantity: number } => "priceId" in l);
+    const intervals = new Set(recurring.map((l) => this.prices.find((p) => p.id === l.priceId)).filter((p) => !!p).map((p) => `${p!.interval}:${p!.intervalCount ?? 1}`));
+    if (intervals.size > 1) throw new StripeGatewayError("invalid_request_error", "Stripe respondió 400: mixed interval subscriptions are not supported in Checkout Sessions", false);
     this.idemParams.set(key, JSON.stringify(input));
     const id = this.next("cs");
     this.sessions.set(id, { id, status: "open", paymentStatus: "unpaid", url: `https://checkout.stripe.test/c/pay/${id}`, customerId: input.customerId, subscriptionId: null, clientReferenceId: input.clientReferenceId, metadata: { ...input.metadata }, expiresAt: input.expiresAt, input });
