@@ -1070,26 +1070,66 @@ export function commerceChannelPlan(raw: { controlplane: Record<string, string>;
  *  - done: el propio terminó (SUCCESS, FAILED, CRASHED…);
  *  - superseded: el propio quedó REMOVED porque llegó otro posterior; NO es un fallo del propio y no se vuelve atrás
  *    (lo que sirve el servicio es ya responsabilidad de ese despliegue posterior).
+ *
+ * Lo mismo vale para las demás órdenes que crean un despliegue (vuelta atrás, redespliegue de la misma imagen): cada una
+ * espera al suyo (`OwnDeployTarget`), nunca al último del servicio.
  */
 export type OwnDeployState = { state: "pending"; id: string | null } | { state: "done"; id: string; status: string } | { state: "superseded"; id: string; by: string };
+/**
+ * Cómo se reconoce el despliegue propio de una orden:
+ *  - mark: subida con `railway up -m <mark>` (no nativa);
+ *  - id: la orden devolvió el identificador (redespliegue de la misma imagen, despliegue de la instancia);
+ *  - rollbackOf: vuelta atrás a un despliegue anterior. Railway no devuelve el identificador: crea uno nuevo con
+ *    `reason: "rollback"` que copia el origen del destino (commit, mensaje de la subida, imagen). `rollbackOf` son los
+ *    metadatos del destino (null si no se conocen: vale cualquier vuelta atrás nueva);
+ *  - first: no hay cómo distinguirlo; se toma el primero que apareció tras el punto de partida (nunca «el último»).
+ */
+export type OwnDeployTarget = { mark: string } | { id: string } | { rollbackOf: unknown } | { first: true };
 const DEPLOY_FINAL = new Set(["SUCCESS", "FAILED", "CRASHED", "REMOVED", "SKIPPED"]);
-export function ownDeployState(nodes: ReadonlyArray<{ id: string; status: string; meta: unknown }>, o: { after: string | null; mark: string }): OwnDeployState {
+const ROLLBACK_ORIGIN_KEYS = ["commitHash", "cliMessage", "imageDigest"] as const;
+/** ¿Es `meta` una vuelta atrás al despliegue de metadatos `target`? Ningún dato de origen común puede contradecirse. */
+export function isRollbackOf(meta: unknown, target: unknown): boolean {
+  if (!meta || typeof meta !== "object" || (meta as { reason?: unknown }).reason !== "rollback") return false;
+  if (!target || typeof target !== "object") return true;
+  const m = meta as Record<string, unknown>;
+  const t = target as Record<string, unknown>;
+  return ROLLBACK_ORIGIN_KEYS.every((k) => typeof m[k] !== "string" || typeof t[k] !== "string" || m[k] === t[k]);
+}
+export function ownDeployState(nodes: ReadonlyArray<{ id: string; status: string; meta: unknown }>, o: { after: string | null } & OwnDeployTarget): OwnDeployState {
+  let pool: ReadonlyArray<{ id: string; status: string; meta: unknown }>;
+  let isOwn: (n: { id: string; meta: unknown }) => boolean;
   const cut = o.after ? nodes.findIndex((n) => n.id === o.after) : -1;
-  // Sin el punto de partida entre los consultados no se puede saber qué es nuevo: se sigue esperando
-  if (o.after && cut < 0) return { state: "pending", id: null };
-  const fresh = cut >= 0 ? nodes.slice(0, cut) : nodes.slice();
-  // El propio: el más antiguo de los nuevos que no es nativo y lleva el mensaje de la subida
+  if ("id" in o) {
+    // Con identificador no hace falta el punto de partida
+    pool = nodes;
+    isOwn = (n) => n.id === o.id;
+  } else {
+    // Sin el punto de partida entre los consultados no se puede saber qué es nuevo: se sigue esperando
+    if (o.after && cut < 0) return { state: "pending", id: null };
+    pool = cut >= 0 ? nodes.slice(0, cut) : nodes.slice();
+    if ("mark" in o) isOwn = (n) => !isNativeDeploy(n.meta) && (n.meta as { reason?: unknown } | null)?.reason !== "rollback" && JSON.stringify(n.meta ?? {}).includes(o.mark);
+    else if ("rollbackOf" in o) isOwn = (n) => isRollbackOf(n.meta, o.rollbackOf);
+    else isOwn = () => true;
+  }
+  // El propio: el más antiguo de los candidatos
   let ownIdx = -1;
-  for (let i = fresh.length - 1; i >= 0; i--) {
-    const n = fresh[i];
-    if (!isNativeDeploy(n.meta) && JSON.stringify(n.meta ?? {}).includes(o.mark)) {
+  for (let i = pool.length - 1; i >= 0; i--) {
+    if (isOwn(pool[i])) {
       ownIdx = i;
       break;
     }
   }
   if (ownIdx < 0) return { state: "pending", id: null };
-  const own = fresh[ownIdx];
+  const own = pool[ownIdx];
   if (!DEPLOY_FINAL.has(own.status)) return { state: "pending", id: own.id };
-  if (own.status === "REMOVED" && ownIdx > 0) return { state: "superseded", id: own.id, by: fresh[ownIdx - 1].id };
+  if (own.status === "REMOVED") {
+    if (ownIdx > 0) return { state: "superseded", id: own.id, by: pool[ownIdx - 1].id };
+    // También lo sustituye uno creado ANTES que él pero después del punto de partida (un nativo que esperaba a su CI y
+    // se activó más tarde): está activo o en curso mientras el propio ya está retirado
+    if (cut > 0) {
+      const earlier = nodes.slice(1, cut).find((n) => n.id !== own.id && (n.status === "SUCCESS" || !DEPLOY_FINAL.has(n.status)));
+      if (earlier) return { state: "superseded", id: own.id, by: earlier.id };
+    }
+  }
   return { state: "done", id: own.id, status: own.status };
 }
