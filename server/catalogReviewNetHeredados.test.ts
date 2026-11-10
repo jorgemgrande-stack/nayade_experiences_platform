@@ -18,7 +18,7 @@ const AUTHOR = `operacion:${REVIEW_ID_2026_11_10_NET_LEGACY}`;
 const CHANGES = NET_LEGACY_LISTINGS_2026_11_10;
 const solutionOf = (key: string) => NET_PRODUCTS.find((p) => p.legacyKeys.includes(key))!;
 /** Lo que la revisión viene a quitar. «Ya no se contrata por separado» es el texto nuevo. */
-const LEFTOVER = /próximamente|submódulo|Net Complete|a Complete|algún paquete|se contrata aparte|se contrata sin|implanta por separado|Todavía no|Contratar ahora/i;
+const LEFTOVER = /próximamente|submódulo|Net Complete|a Complete|algún paquete|se contrata aparte|se contrata sin|implanta por separado|Todavía no|Contratar ahora|En preparación: |serán Care Net|Hotel Net PMS|Ski Net Escuela|Net Sala y comandas|Care Net Agenda|Activación automática/i;
 
 /** Como production el 10/11/2026: los módulos heredados (marca `legacy`) con sus textos de partida publicados por el CRM. */
 async function production() {
@@ -42,8 +42,8 @@ const published = async (k: { store: MemoryWebStore }, key: string) => (await k.
 describe("revisión del 10/11/2026: textos de los módulos Net heredados", () => {
   it("la lista: solo módulos heredados, solo textos, y ningún texto nuevo conserva lo que se quita", () => {
     const legacy = NET_PRODUCTS.flatMap((p) => p.legacyKeys);
-    expect(CHANGES).toHaveLength(16);
-    expect(new Set(CHANGES.map((c) => c.key)).size).toBe(16);
+    expect(CHANGES).toHaveLength(18);
+    expect(new Set(CHANGES.map((c) => c.key)).size).toBe(18);
     for (const c of CHANGES) {
       expect(legacy, c.key).toContain(c.key);
       // Solo textos de la ficha y, como mucho, la línea corta del producto
@@ -56,17 +56,24 @@ describe("revisión del 10/11/2026: textos de los módulos Net heredados", () =>
       expect(from, c.key).toMatch(LEFTOVER);
       // Cada texto nuevo nombra la solución que lo incluye, con su nombre de hoy (sin «Complete»)
       expect(to, c.key).toContain(solutionOf(c.key).name);
-      // Las preguntas frecuentes conservan su número y su orden
-      const faq = c.fields.faq as { from: unknown[]; to: unknown[] } | undefined;
-      if (faq) expect(faq.to, c.key).toHaveLength(faq.from.length);
+      // Las preguntas frecuentes conservan su número y su orden: cada una cambia, como mucho, su texto
+      const faq = c.fields.faq as { from: Array<{ q: string; a: string }>; to: Array<{ q: string; a: string }> } | undefined;
+      if (faq) {
+        expect(faq.to, c.key).toHaveLength(faq.from.length);
+        const untouched = faq.from.filter((x) => !LEFTOVER.test(x.q + x.a));
+        for (const x of untouched) expect(faq.to[faq.from.indexOf(x)], c.key).toEqual(x);
+      }
+      // Solo los que llegaron a venderse dicen «Ya no se contrata…» y «lo conservas»
+      if (!["social-token-net-communities", "social-token-net-tokens"].includes(c.key)) expect(to, c.key).not.toMatch(/Ya no se contrata|lo conservas/);
     }
     // El encargo: hotel-net-pms deja de decir «submódulos aparte, próximamente»
     const pms = CHANGES.find((c) => c.key === "hotel-net-pms")!;
     expect((pms.fields.excludes as { from: string[]; to: string[] }).from).toContain("Channel Manager y Housekeeping (submódulos aparte, próximamente)");
     expect((pms.fields.excludes as { from: string[]; to: string[] }).to).toContain("Channel Manager y Housekeeping (forman parte de Hotel Net)");
+    expect(JSON.stringify(pms.fields.faq!.to)).toContain("es el Channel Manager de Hotel Net, que está en implantación.");
   });
 
-  it("simulación y aplicación: cambian los 16, pasan las comprobaciones del CRM y nada más se toca", async () => {
+  it("simulación y aplicación: cambian los 18, pasan las comprobaciones del CRM y nada más se toca", async () => {
     const k = await production();
     const prices = JSON.stringify(await k.store.listPrices());
     const keys = new Set(CHANGES.map((c) => c.key));
@@ -113,7 +120,7 @@ describe("revisión del 10/11/2026: textos de los módulos Net heredados", () =>
     await k.svc.publish("product", "hotel-net-pms", saved.draftVersion, "operator:1");
     const r = await applyListingReview(k.svc, k.store, { apply: true, author: AUTHOR, changes: CHANGES, overDraft: true });
     expect(r.conflicts).toEqual(["hotel-net-pms: el campo «excludes» de la ficha ya no es el de partida; se deja como lo decidió el CRM"]);
-    expect(r.changed).toHaveLength(15);
+    expect(r.changed).toHaveLength(17);
     const p = await published(k, "hotel-net-pms");
     expect(p.commercial.excludes).toEqual(["Otro texto decidido en el CRM"]);
     expect(JSON.stringify(p.commercial.faq)).toMatch(/se contrata aparte/);

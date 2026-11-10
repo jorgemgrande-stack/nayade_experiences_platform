@@ -4,16 +4,18 @@
  * La unificación de Elephant Net (review20261109netunificacion.ts) marcó los 19 módulos sueltos como heredados
  * (`catalog.legacy`) sin tocar sus fichas, que siguen publicadas para quien ya los tiene (contratos, facturas y
  * «Mis módulos»). Sus textos seguían hablando de ellos como módulos que se venden por separado o que llegarán
- * «próximamente». Esta revisión corrige solo eso, en 16 de los 19 (`hotel-net-booking-engine`, `restaurant-net-bookings` y `care-net-agenda` no tenían nada que corregir):
+ * «próximamente». Esta revisión corrige solo eso, en 18 de los 19 (`restaurant-net-bookings` no tenía nada que corregir):
  *  - `hotel-net-pms`: «Channel Manager y Housekeeping (submódulos aparte, próximamente)» y las dos respuestas de su
  *    FAQ que remitían al Motor de reservas «que se contrata aparte» y al Channel Manager «que llegará próximamente».
- *  - «Próximamente: …» (titular, propuesta de valor y descripción SEO) y «(próximamente)» (título SEO) → «Forma parte de
+ *  - «Próximamente: …» y «En preparación: …» (titular, propuesta de valor y descripción SEO) y «(próximamente)» (título SEO) → «Forma parte de
  *    <solución>: …» y «(parte de <solución>)». No afirma disponibilidad: el estado real de cada funcionalidad lo da la
  *    ficha de la solución (`commercial.includedFeatures`).
- *  - «¿Puedo contratarlo ya?» y las condiciones de activación («Todavía no se puede contratar…», «Sí. Pulsa «Contratar
- *    ahora»…») → ya no se contrata por separado: forma parte de la solución; quien lo tenía lo conserva.
+ *  - «¿Puedo contratarlo ya?» y las condiciones de activación («Todavía no se puede contratar…», «Activación automática…»)
+ *    → no se contrata por separado: forma parte de la solución. Solo los que llegaron a venderse (los dos de Social Token
+ *    Net) dicen «Ya no…» y que quien lo tenía lo conserva.
  *  - Comparaciones con módulos sueltos: «¿Forma parte de algún paquete? Sí, de … Complete», «submódulo …», «se contrata
- *    sin la escuela», «que ya se implanta por separado».
+ *    sin la escuela», «que ya se implanta por separado», «pensado para trabajar con Hotel Net PMS», «serán Care Net …».
+ *  - El Channel Manager se nombra como parte de Hotel Net «en implantación» (su estado en la ficha de la solución).
  *
  * Los textos de partida («from») son los publicados en production el 10/11/2026
  * (https://admin.bigelephant.es/cp/v1/public/site), campo a campo; los nuevos salen de ellos con reglas fijas (el mismo
@@ -86,7 +88,7 @@ export const NET_LEGACY_LISTINGS_2026_11_10: readonly ListingChange[] = [
             "q": "¿Incluye la venta en mi web?"
           },
           {
-            "a": "No. La sincronización con canales es el Channel Manager, que forma parte de Hotel Net.",
+            "a": "No. La sincronización con canales es el Channel Manager de Hotel Net, que está en implantación.",
             "q": "¿Se conecta con Booking u otras OTAs?"
           },
           {
@@ -134,7 +136,7 @@ export const NET_LEGACY_LISTINGS_2026_11_10: readonly ListingChange[] = [
         ],
         "to": [
           {
-            "a": "Ya no se contrata por separado: forma parte de Hotel Net, la solución completa. Si ya lo tenías contratado, lo conservas.",
+            "a": "No se contrata por separado: forma parte de Hotel Net, la solución completa.",
             "q": "¿Puedo contratarlo ya?"
           },
           {
@@ -156,7 +158,7 @@ export const NET_LEGACY_LISTINGS_2026_11_10: readonly ListingChange[] = [
           "activation": "Todavía no se puede contratar: estará disponible próximamente."
         },
         "to": {
-          "activation": "Ya no se contrata por separado: forma parte de Hotel Net."
+          "activation": "No se contrata por separado: forma parte de Hotel Net."
         }
       },
       "seo": {
@@ -170,6 +172,58 @@ export const NET_LEGACY_LISTINGS_2026_11_10: readonly ListingChange[] = [
           "title": "Channel Manager hotelero (parte de Hotel Net) | Big Elephant",
           "description": "Forma parte de Hotel Net: sincronización de disponibilidad y tarifas con los canales de venta de tu alojamiento."
         }
+      }
+    }
+  },
+  {
+    "key": "hotel-net-booking-engine",
+    "inDirectSale": true,
+    "fields": {
+      "faq": {
+        "from": [
+          {
+            "a": "Es una implantación acompañada: envías la solicitud y nuestro equipo la activa y la configura contigo. Enviar la solicitud no activa ni cobra nada por sí solo.",
+            "q": "¿Cómo se pone en marcha?"
+          },
+          {
+            "a": "Con Redsys, usando el TPV virtual de tu propia empresa: las credenciales son tuyas.",
+            "q": "¿Con qué pasarela se cobra?"
+          },
+          {
+            "a": "Sí: el motor publica las tipologías, la disponibilidad y los precios que gestionas con el PMS.",
+            "q": "¿Necesito Hotel Net PMS?"
+          },
+          {
+            "a": "Hoy cada reserva corresponde a una habitación.",
+            "q": "¿Se pueden reservar varias habitaciones a la vez?"
+          },
+          {
+            "a": "No. Los importes del catálogo son sin IVA; el 21 % se añade aparte.",
+            "q": "¿El precio incluye IVA?"
+          }
+        ],
+        "to": [
+          {
+            "a": "Es una implantación acompañada: envías la solicitud y nuestro equipo la activa y la configura contigo. Enviar la solicitud no activa ni cobra nada por sí solo.",
+            "q": "¿Cómo se pone en marcha?"
+          },
+          {
+            "a": "Con Redsys, usando el TPV virtual de tu propia empresa: las credenciales son tuyas.",
+            "q": "¿Con qué pasarela se cobra?"
+          },
+          {
+            "a": "Sí: el motor publica las tipologías, la disponibilidad y los precios que gestionas con el PMS.",
+            "q": "¿Necesito el PMS de Hotel Net?"
+          },
+          {
+            "a": "Hoy cada reserva corresponde a una habitación.",
+            "q": "¿Se pueden reservar varias habitaciones a la vez?"
+          },
+          {
+            "a": "No. Los importes del catálogo son sin IVA; el 21 % se añade aparte.",
+            "q": "¿El precio incluye IVA?"
+          }
+        ]
       }
     }
   },
@@ -206,7 +260,7 @@ export const NET_LEGACY_LISTINGS_2026_11_10: readonly ListingChange[] = [
         ],
         "to": [
           {
-            "a": "Ya no se contrata por separado: forma parte de Hotel Net, la solución completa. Si ya lo tenías contratado, lo conservas.",
+            "a": "No se contrata por separado: forma parte de Hotel Net, la solución completa.",
             "q": "¿Puedo contratarlo ya?"
           },
           {
@@ -218,7 +272,7 @@ export const NET_LEGACY_LISTINGS_2026_11_10: readonly ListingChange[] = [
             "q": "¿Qué hará?"
           },
           {
-            "a": "Sí, está pensado para trabajar con Hotel Net PMS.",
+            "a": "Sí, está pensado para trabajar con el PMS de Hotel Net.",
             "q": "¿Funcionará con el PMS?"
           }
         ]
@@ -228,7 +282,7 @@ export const NET_LEGACY_LISTINGS_2026_11_10: readonly ListingChange[] = [
           "activation": "Todavía no se puede contratar: estará disponible próximamente."
         },
         "to": {
-          "activation": "Ya no se contrata por separado: forma parte de Hotel Net."
+          "activation": "No se contrata por separado: forma parte de Hotel Net."
         }
       },
       "seo": {
@@ -284,7 +338,7 @@ export const NET_LEGACY_LISTINGS_2026_11_10: readonly ListingChange[] = [
         ],
         "to": [
           {
-            "a": "Ya no se contrata por separado: forma parte de Ski Net, la solución completa. Si ya lo tenías contratado, lo conservas.",
+            "a": "No se contrata por separado: forma parte de Ski Net, la solución completa.",
             "q": "¿Puedo contratarlo ya?"
           },
           {
@@ -306,7 +360,7 @@ export const NET_LEGACY_LISTINGS_2026_11_10: readonly ListingChange[] = [
           "activation": "Todavía no se puede contratar: estará disponible próximamente."
         },
         "to": {
-          "activation": "Ya no se contrata por separado: forma parte de Ski Net."
+          "activation": "No se contrata por separado: forma parte de Ski Net."
         }
       }
     }
@@ -315,6 +369,10 @@ export const NET_LEGACY_LISTINGS_2026_11_10: readonly ListingChange[] = [
     "key": "ski-net-rental",
     "inDirectSale": true,
     "fields": {
+      "valueProposition": {
+        "from": "En preparación: el material, los contratos y las fianzas de tu tienda de alquiler bajo control.",
+        "to": "Forma parte de Ski Net: el material, los contratos y las fianzas de tu tienda de alquiler bajo control."
+      },
       "longDescription": {
         "from": "Alquiler de material de esquí: inventario, contratos con firma, taquillas, taller, previsión, cargos y fianzas. Se contrata sin la escuela.",
         "to": "Alquiler de material de esquí: inventario, contratos con firma, taquillas, taller, previsión, cargos y fianzas. Funciona sin la escuela."
@@ -340,7 +398,7 @@ export const NET_LEGACY_LISTINGS_2026_11_10: readonly ListingChange[] = [
         ],
         "to": [
           {
-            "a": "Ya no se contrata por separado: forma parte de Ski Net, la solución completa. Si ya lo tenías contratado, lo conservas.",
+            "a": "No se contrata por separado: forma parte de Ski Net, la solución completa.",
             "q": "¿Puedo contratarlo ya?"
           },
           {
@@ -362,7 +420,7 @@ export const NET_LEGACY_LISTINGS_2026_11_10: readonly ListingChange[] = [
           "activation": "Todavía no se puede contratar: está en preparación."
         },
         "to": {
-          "activation": "Ya no se contrata por separado: forma parte de Ski Net."
+          "activation": "No se contrata por separado: forma parte de Ski Net."
         }
       }
     },
@@ -402,7 +460,7 @@ export const NET_LEGACY_LISTINGS_2026_11_10: readonly ListingChange[] = [
         ],
         "to": [
           {
-            "a": "Ya no se contrata por separado: forma parte de Ski Net, la solución completa. Si ya lo tenías contratado, lo conservas.",
+            "a": "No se contrata por separado: forma parte de Ski Net, la solución completa.",
             "q": "¿Puedo contratarlo ya?"
           },
           {
@@ -410,7 +468,7 @@ export const NET_LEGACY_LISTINGS_2026_11_10: readonly ListingChange[] = [
             "q": "¿Puedo dejar mi interés?"
           },
           {
-            "a": "Está pensado para trabajar con Ski Net Escuela.",
+            "a": "Está pensado para trabajar con la escuela de Ski Net.",
             "q": "¿Funcionará sin la escuela?"
           },
           {
@@ -424,7 +482,7 @@ export const NET_LEGACY_LISTINGS_2026_11_10: readonly ListingChange[] = [
           "activation": "Todavía no se puede contratar: estará disponible próximamente."
         },
         "to": {
-          "activation": "Ya no se contrata por separado: forma parte de Ski Net."
+          "activation": "No se contrata por separado: forma parte de Ski Net."
         }
       }
     }
@@ -458,7 +516,7 @@ export const NET_LEGACY_LISTINGS_2026_11_10: readonly ListingChange[] = [
         ],
         "to": [
           {
-            "a": "Ya no se contrata por separado: forma parte de Ski Net, la solución completa. Si ya lo tenías contratado, lo conservas.",
+            "a": "No se contrata por separado: forma parte de Ski Net, la solución completa.",
             "q": "¿Puedo contratarlo ya?"
           },
           {
@@ -480,7 +538,7 @@ export const NET_LEGACY_LISTINGS_2026_11_10: readonly ListingChange[] = [
           "activation": "Todavía no se puede contratar: estará disponible próximamente."
         },
         "to": {
-          "activation": "Ya no se contrata por separado: forma parte de Ski Net."
+          "activation": "No se contrata por separado: forma parte de Ski Net."
         }
       }
     }
@@ -489,6 +547,10 @@ export const NET_LEGACY_LISTINGS_2026_11_10: readonly ListingChange[] = [
     "key": "travel-net-agency",
     "inDirectSale": true,
     "fields": {
+      "valueProposition": {
+        "from": "En preparación: los expedientes de tu agencia de viajes con el régimen especial de agencias (REAV), tus proveedores y un área de viajes para tus clientes.",
+        "to": "Forma parte de Travel Net: los expedientes de tu agencia de viajes con el régimen especial de agencias (REAV), tus proveedores y un área de viajes para tus clientes."
+      },
       "faq": {
         "from": [
           {
@@ -510,7 +572,7 @@ export const NET_LEGACY_LISTINGS_2026_11_10: readonly ListingChange[] = [
         ],
         "to": [
           {
-            "a": "Ya no se contrata por separado: forma parte de Travel Net, la solución completa. Si ya lo tenías contratado, lo conservas.",
+            "a": "No se contrata por separado: forma parte de Travel Net, la solución completa.",
             "q": "¿Puedo contratarlo ya?"
           },
           {
@@ -532,7 +594,7 @@ export const NET_LEGACY_LISTINGS_2026_11_10: readonly ListingChange[] = [
           "activation": "Todavía no se puede contratar: está en preparación."
         },
         "to": {
-          "activation": "Ya no se contrata por separado: forma parte de Travel Net."
+          "activation": "No se contrata por separado: forma parte de Travel Net."
         }
       }
     }
@@ -566,7 +628,7 @@ export const NET_LEGACY_LISTINGS_2026_11_10: readonly ListingChange[] = [
         ],
         "to": [
           {
-            "a": "Ya no se contrata por separado: forma parte de Travel Net, la solución completa. Si ya lo tenías contratado, lo conservas.",
+            "a": "No se contrata por separado: forma parte de Travel Net, la solución completa.",
             "q": "¿Puedo contratarlo ya?"
           },
           {
@@ -588,7 +650,7 @@ export const NET_LEGACY_LISTINGS_2026_11_10: readonly ListingChange[] = [
           "activation": "Todavía no se puede contratar: estará disponible próximamente."
         },
         "to": {
-          "activation": "Ya no se contrata por separado: forma parte de Travel Net."
+          "activation": "No se contrata por separado: forma parte de Travel Net."
         }
       }
     }
@@ -622,7 +684,7 @@ export const NET_LEGACY_LISTINGS_2026_11_10: readonly ListingChange[] = [
         ],
         "to": [
           {
-            "a": "Ya no se contrata por separado: forma parte de Travel Net, la solución completa. Si ya lo tenías contratado, lo conservas.",
+            "a": "No se contrata por separado: forma parte de Travel Net, la solución completa.",
             "q": "¿Puedo contratarlo ya?"
           },
           {
@@ -644,7 +706,7 @@ export const NET_LEGACY_LISTINGS_2026_11_10: readonly ListingChange[] = [
           "activation": "Todavía no se puede contratar: estará disponible próximamente."
         },
         "to": {
-          "activation": "Ya no se contrata por separado: forma parte de Travel Net."
+          "activation": "No se contrata por separado: forma parte de Travel Net."
         }
       }
     }
@@ -678,7 +740,7 @@ export const NET_LEGACY_LISTINGS_2026_11_10: readonly ListingChange[] = [
         ],
         "to": [
           {
-            "a": "Ya no se contrata por separado: forma parte de Restaurant Net, la solución completa. Si ya lo tenías contratado, lo conservas.",
+            "a": "No se contrata por separado: forma parte de Restaurant Net, la solución completa.",
             "q": "¿Puedo contratarlo ya?"
           },
           {
@@ -700,7 +762,7 @@ export const NET_LEGACY_LISTINGS_2026_11_10: readonly ListingChange[] = [
           "activation": "Todavía no se puede contratar: estará disponible próximamente."
         },
         "to": {
-          "activation": "Ya no se contrata por separado: forma parte de Restaurant Net."
+          "activation": "No se contrata por separado: forma parte de Restaurant Net."
         }
       }
     }
@@ -734,7 +796,7 @@ export const NET_LEGACY_LISTINGS_2026_11_10: readonly ListingChange[] = [
         ],
         "to": [
           {
-            "a": "Ya no se contrata por separado: forma parte de Restaurant Net, la solución completa. Si ya lo tenías contratado, lo conservas.",
+            "a": "No se contrata por separado: forma parte de Restaurant Net, la solución completa.",
             "q": "¿Puedo contratarlo ya?"
           },
           {
@@ -742,7 +804,7 @@ export const NET_LEGACY_LISTINGS_2026_11_10: readonly ListingChange[] = [
             "q": "¿Puedo dejar mi interés?"
           },
           {
-            "a": "Está pensado para trabajar con Restaurant Net Sala y comandas.",
+            "a": "Está pensado para trabajar con la sala y las comandas de Restaurant Net.",
             "q": "¿Funcionará sin Sala y comandas?"
           },
           {
@@ -756,8 +818,60 @@ export const NET_LEGACY_LISTINGS_2026_11_10: readonly ListingChange[] = [
           "activation": "Todavía no se puede contratar: estará disponible próximamente."
         },
         "to": {
-          "activation": "Ya no se contrata por separado: forma parte de Restaurant Net."
+          "activation": "No se contrata por separado: forma parte de Restaurant Net."
         }
+      }
+    }
+  },
+  {
+    "key": "care-net-agenda",
+    "inDirectSale": true,
+    "fields": {
+      "faq": {
+        "from": [
+          {
+            "a": "Es una implantación acompañada: envías la solicitud y nuestro equipo la activa y la configura contigo. Enviar la solicitud no activa ni cobra nada por sí solo.",
+            "q": "¿Cómo se pone en marcha?"
+          },
+          {
+            "a": "Sí. Las plazas se retienen al reservar y cada hueco respeta su capacidad.",
+            "q": "¿Evita las reservas por encima de la capacidad?"
+          },
+          {
+            "a": "No. La historia y el seguimiento especializados serán Care Net Gestión clínica.",
+            "q": "¿Incluye la historia clínica?"
+          },
+          {
+            "a": "No. Los bonos y las sesiones serán Care Net Tratamientos y bonos, que está en preparación.",
+            "q": "¿Incluye bonos de sesiones?"
+          },
+          {
+            "a": "No. Los importes del catálogo son sin IVA; el 21 % se añade aparte.",
+            "q": "¿El precio incluye IVA?"
+          }
+        ],
+        "to": [
+          {
+            "a": "Es una implantación acompañada: envías la solicitud y nuestro equipo la activa y la configura contigo. Enviar la solicitud no activa ni cobra nada por sí solo.",
+            "q": "¿Cómo se pone en marcha?"
+          },
+          {
+            "a": "Sí. Las plazas se retienen al reservar y cada hueco respeta su capacidad.",
+            "q": "¿Evita las reservas por encima de la capacidad?"
+          },
+          {
+            "a": "No. La historia y el seguimiento especializados forman parte de Care Net.",
+            "q": "¿Incluye la historia clínica?"
+          },
+          {
+            "a": "No. Los bonos y las sesiones forman parte de Care Net.",
+            "q": "¿Incluye bonos de sesiones?"
+          },
+          {
+            "a": "No. Los importes del catálogo son sin IVA; el 21 % se añade aparte.",
+            "q": "¿El precio incluye IVA?"
+          }
+        ]
       }
     }
   },
@@ -794,7 +908,7 @@ export const NET_LEGACY_LISTINGS_2026_11_10: readonly ListingChange[] = [
         ],
         "to": [
           {
-            "a": "Ya no se contrata por separado: forma parte de Care Net, la solución completa. Si ya lo tenías contratado, lo conservas.",
+            "a": "No se contrata por separado: forma parte de Care Net, la solución completa.",
             "q": "¿Puedo contratarlo ya?"
           },
           {
@@ -806,7 +920,7 @@ export const NET_LEGACY_LISTINGS_2026_11_10: readonly ListingChange[] = [
             "q": "¿Qué requisitos tendrá?"
           },
           {
-            "a": "Sí, está pensada para trabajar con Care Net Agenda.",
+            "a": "Sí, está pensada para trabajar con la agenda de Care Net.",
             "q": "¿Funcionará con la agenda?"
           }
         ]
@@ -816,7 +930,7 @@ export const NET_LEGACY_LISTINGS_2026_11_10: readonly ListingChange[] = [
           "activation": "Todavía no se puede contratar: estará disponible próximamente."
         },
         "to": {
-          "activation": "Ya no se contrata por separado: forma parte de Care Net."
+          "activation": "No se contrata por separado: forma parte de Care Net."
         }
       },
       "seo": {
@@ -837,6 +951,10 @@ export const NET_LEGACY_LISTINGS_2026_11_10: readonly ListingChange[] = [
     "key": "care-net-treatments",
     "inDirectSale": true,
     "fields": {
+      "valueProposition": {
+        "from": "En preparación: bonos y paquetes de sesiones con el saldo de cada cliente y su venta en el TPV del centro.",
+        "to": "Forma parte de Care Net: bonos y paquetes de sesiones con el saldo de cada cliente y su venta en el TPV del centro."
+      },
       "faq": {
         "from": [
           {
@@ -858,7 +976,7 @@ export const NET_LEGACY_LISTINGS_2026_11_10: readonly ListingChange[] = [
         ],
         "to": [
           {
-            "a": "Ya no se contrata por separado: forma parte de Care Net, la solución completa. Si ya lo tenías contratado, lo conservas.",
+            "a": "No se contrata por separado: forma parte de Care Net, la solución completa.",
             "q": "¿Puedo contratarlo ya?"
           },
           {
@@ -880,7 +998,7 @@ export const NET_LEGACY_LISTINGS_2026_11_10: readonly ListingChange[] = [
           "activation": "Todavía no se puede contratar: está en preparación."
         },
         "to": {
-          "activation": "Ya no se contrata por separado: forma parte de Care Net."
+          "activation": "No se contrata por separado: forma parte de Care Net."
         }
       }
     }
@@ -926,6 +1044,14 @@ export const NET_LEGACY_LISTINGS_2026_11_10: readonly ListingChange[] = [
             "q": "¿Puedo vender entradas en otras plataformas?"
           }
         ]
+      },
+      "terms": {
+        "from": {
+          "activation": "Activación automática: en cuanto se confirma el pago, las funcionalidades contratadas se añaden al administrador de tu empresa."
+        },
+        "to": {
+          "activation": "Ya no se contrata por separado: forma parte de Social Token Net."
+        }
       }
     }
   },
@@ -970,6 +1096,14 @@ export const NET_LEGACY_LISTINGS_2026_11_10: readonly ListingChange[] = [
             "q": "¿Forma parte de Social Token Net?"
           }
         ]
+      },
+      "terms": {
+        "from": {
+          "activation": "Activación automática: en cuanto se confirma el pago, las funcionalidades contratadas se añaden al administrador de tu empresa."
+        },
+        "to": {
+          "activation": "Ya no se contrata por separado: forma parte de Social Token Net."
+        }
       }
     }
   }
