@@ -153,7 +153,13 @@ describe("contrato: vigencia, cambios programados y huella", () => {
     expect(doc(current)).toContain("se aplicará la tarifa oficial de Big Elephant que esté vigente en esa fecha");
     const next = terms([line("Essential", 2900)], { id: 2, pricingMode: "global", globalAmountCents: 14900, effectiveFrom: MONTH(3) });
     const chained = { ...snap, afterEnd: "next_terms" as const, nextTermsId: 2 };
-    expect(doc(chained, next)).toContain(`se aplicarán las condiciones ya pactadas a partir de esa fecha: ${eur(14900)} al mes, más impuestos.`);
+    const chainedText = renderTermsDocument({ view: presentTerms(chained, next), next: presentTerms(next), reference: "CT-1", version: 1, issuer: { legalName: "X", taxId: "Y", address: "Z" }, client: { name: "C", legalName: null, taxId: null }, subscriptionReference: null, startsOnAcceptance: false });
+    expect(chainedText).toContain(`se aplicarán las condiciones ya pactadas a partir de esa fecha, que se detallan en este documento: ${eur(14900)} al mes, más impuestos.`);
+    // La condición siguiente forma parte de lo que se acepta: va completa
+    expect(chainedText).toContain("CONDICIONES A PARTIR DEL 1 DE FEBRERO DE 2027");
+    expect(chainedText).toContain(`Cuota global pactada: ${eur(14900)} al mes`);
+    // Temporal sin fecha de inicio (entra en vigor al aceptarse): el documento se genera igual
+    expect(doc({ ...snap, effectiveFrom: null })).toContain(`se aplicará la tarifa oficial fijada en este acuerdo: ${eur(2900)} al mes`);
     expect(doc(snap)).toContain("Vigencia: hasta el 1 de febrero de 2027, 11:00 (hora peninsular).");
   });
 

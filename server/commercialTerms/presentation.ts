@@ -73,11 +73,12 @@ export function presentTerms(t: Terms, next?: Terms | null): ClientView {
   const label = (id: number) => adjustmentLabel(t.adjustments.find((a) => a.id === id)!, t.currency);
   let afterEndText: string | null = null;
   if (t.effectiveTo !== null) {
-    const after = materialize(t).filter((p) => p.role === "after_end");
+    // Sin fecha de inicio todavía (entra en vigor al aceptarse): las partidas posteriores no dependen de ella
+    const after = materialize({ ...t, effectiveFrom: t.effectiveFrom ?? Math.min(0, t.effectiveTo - 1) }).filter((p) => p.role === "after_end");
     const official = after.reduce((a, p) => a + p.amountCents, 0);
     if (t.afterEnd === "official_snapshot") afterEndText = `Al finalizar esta vigencia se aplicará la tarifa oficial fijada en este acuerdo: ${money(official, t.currency)} ${per(t.interval)}, más impuestos.`;
-    else if (t.afterEnd === "official_current") afterEndText = `Al finalizar esta vigencia se aplicará la tarifa oficial de Big Elephant que esté vigente en esa fecha. A título informativo, la tarifa oficial hoy es de ${money(official, t.currency)} ${per(t.interval)}, más impuestos.`;
-    else if (t.afterEnd === "next_terms") afterEndText = next ? `Al finalizar esta vigencia se aplicarán las condiciones ya pactadas a partir de esa fecha: ${money(summarize(next).recurring.netCents, next.currency)} ${per(next.interval)}, más impuestos.` : "Al finalizar esta vigencia se aplicarán las condiciones ya pactadas a partir de esa fecha.";
+    else if (t.afterEnd === "official_current") afterEndText = `Al finalizar esta vigencia se aplicará la tarifa oficial de Big Elephant que esté vigente en esa fecha. A título informativo, la tarifa oficial de referencia en la fecha de este acuerdo es de ${money(official, t.currency)} ${per(t.interval)}, más impuestos.`;
+    else if (t.afterEnd === "next_terms") afterEndText = next ? `Al finalizar esta vigencia se aplicarán las condiciones ya pactadas a partir de esa fecha, que se detallan en este documento: ${money(summarize(next).recurring.netCents, next.currency)} ${per(next.interval)}, más impuestos.` : "Al finalizar esta vigencia se aplicarán las condiciones ya pactadas a partir de esa fecha.";
   }
   return {
     presentation: t.presentation,
@@ -117,6 +118,8 @@ export interface TermsDocumentInput {
   subscriptionReference: string | null;
   /** Si el acuerdo aún no tiene fecha: «desde su aceptación». */
   startsOnAcceptance: boolean;
+  /** Condición ya programada que sustituye a esta al vencer: forma parte de lo que se acepta, así que va completa. */
+  next?: ClientView | null;
 }
 
 /**
@@ -124,9 +127,27 @@ export interface TermsDocumentInput {
  * texto y la misma huella, que es lo que se presenta al firmante y lo que se registra como aceptado.
  */
 export function renderTermsDocument(i: TermsDocumentInput): string {
+  const out: string[] = [];
   const v = i.view;
   const m = (c: number) => money(c, v.currency);
-  const out: string[] = [];
+  /** Productos y servicios, precio, pagos únicos y condiciones de una vista (la principal o la siguiente). */
+  const economics = (x: ClientView, startsOnAcceptance: boolean) => {
+    const mm = (c: number) => money(c, x.currency);
+    if (x.packageName) out.push(`Paquete: ${x.packageName}.`);
+    for (const l of x.included) out.push(`- ${l.name}${l.quantity > 1 ? ` × ${l.quantity}` : ""}${l.recurring ? "" : " (pago único)"}${l.description ? `. ${l.description}` : ""}${l.conditions ? ` Condiciones particulares: ${l.conditions}` : ""}`);
+    if (x.breakdown) {
+      for (const l of x.breakdown.lines) out.push(`- ${l.name}${l.quantity > 1 ? ` × ${l.quantity}` : ""}: ${mm(l.baseCents)} ${per(x.interval)}${l.adjustments.map((a) => `; ${a.label}: ${mm(a.cents)}`).join("")}${l.adjustments.length ? `; importe: ${mm(l.netCents)}` : ""} (impuesto ${percent(l.taxRateBp)}).`);
+      out.push(`Total negociado: ${mm(x.recurring.netCents)} ${per(x.interval)}, más impuestos.`);
+    } else out.push(`Cuota global pactada: ${mm(x.recurring.netCents)} ${per(x.interval)}, más impuestos, por el conjunto de los productos y servicios recurrentes incluidos.`);
+    for (const g of x.recurring.taxes) out.push(`- Impuesto ${percent(g.rateBp)} sobre ${mm(g.baseCents)}: ${mm(g.taxCents)}.`);
+    out.push(`Total con impuestos: ${mm(x.recurring.totalCents)} ${per(x.interval)}.`);
+    for (const c of x.oneTime) out.push(`- ${c.name} (pago único): ${mm(c.netCents)} más impuestos (${percent(c.taxRateBp)}: ${mm(c.taxCents)}); total ${mm(c.totalCents)}. Se factura una sola vez${startsOnAcceptance ? "" : `, el ${madridDate(c.at)}`}.`);
+    for (const a of x.onceAdjustments) out.push(`- ${a.label}: ${mm(a.cents)} sobre la primera cuota. Se aplica una sola vez.`);
+    for (const c of x.scheduledChanges) out.push(`- Desde el ${madridDate(c.at)}: ${mm(c.netCents)} ${per(x.interval)} más impuestos (total ${mm(c.totalCents)}).`);
+    out.push(x.validity.to === null ? "Vigencia: indefinida, hasta que se modifique mediante un nuevo acuerdo." : `Vigencia: hasta el ${madridDateTime(x.validity.to)}.`);
+    if (x.validity.afterEndText) out.push(x.validity.afterEndText);
+    if (x.conditions?.trim()) out.push(`Condiciones especiales: ${x.conditions.trim()}`);
+  };
   out.push(`CONDICIONES COMERCIALES PARTICULARES ${i.reference} (versión ${i.version})`);
   out.push(`Prestador: ${i.issuer.legalName} (NIF ${i.issuer.taxId}), ${i.issuer.address}`);
   out.push(`Cliente: ${i.client.legalName ?? i.client.name}${i.client.taxId ? ` (NIF ${i.client.taxId})` : ""}`);
@@ -174,6 +195,12 @@ export function renderTermsDocument(i: TermsDocumentInput): string {
   if (v.validity.afterEndText) out.push(v.validity.afterEndText);
   out.push("Ningún cambio tiene efectos retroactivos sobre facturas ya emitidas.");
   out.push("");
+  if (i.next) {
+    out.push(`CONDICIONES A PARTIR DEL ${madridDate(i.next.validity.from ?? v.validity.to ?? 0).toUpperCase()}`);
+    out.push("Al finalizar la vigencia anterior se aplican, sin necesidad de un nuevo acuerdo, las condiciones siguientes:");
+    economics(i.next, false);
+    out.push("");
+  }
   out.push("RENOVACIÓN");
   out.push(`La suscripción se renueva automáticamente por periodos ${v.interval === "year" ? "anuales" : "mensuales"} con las condiciones vigentes en cada momento conforme a este documento, salvo baja comunicada conforme a las condiciones generales.`);
   out.push("");

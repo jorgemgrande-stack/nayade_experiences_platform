@@ -27,7 +27,7 @@ import type { SubscriptionStore } from "../subscriptions/store";
 import { requireCustomPricing } from "./permission";
 import { madridDateTime, money, presentTerms, renderTermsDocument, sha256, type ClientView } from "./presentation";
 import { TermsError, type CommercialTermsService } from "./service";
-import type { TermsRecord, TermsStore } from "./store";
+import { TermsConflict, type TermsRecord, type TermsStore } from "./store";
 
 /** Lo que se reutiliza del almacén de aceptaciones de los servicios externos (misma tabla). */
 export type AcceptanceStore = Pick<ExternalStore, "insertAcceptance" | "acceptanceByToken" | "acceptances" | "markAccepted" | "setAcceptanceStatus">;
@@ -88,6 +88,7 @@ export class TermsAcceptanceService {
       client: { name: company.name, legalName: company.legalName ?? null, taxId: company.taxId ?? null },
       subscriptionReference: sub?.reference ?? null,
       startsOnAcceptance: t.effectiveFrom === null,
+      next: next ? presentTerms(next) : null,
     });
     return { text, sha256: sha256(text), view, reference, version, company: { name: company.name, legalName: company.legalName ?? null } };
   }
@@ -113,6 +114,9 @@ export class TermsAcceptanceService {
     const email = String(input.signer.email ?? "").trim().toLowerCase();
     if (name.length < 3 || name.length > 160 || !EMAIL_RE.test(email)) throw new TermsError("invalid_input", "Indica el nombre y el correo del representante autorizado del cliente");
     const now = this.now();
+    // No se envía a aceptación lo que no se podría activar, ni un documento que no se puede generar
+    await this.d.terms.preflight(t.id);
+    await this.document(t.id);
     const sub = t.subscriptionId !== null ? await this.d.subscriptionStore.get(t.subscriptionId) : null;
     // Contrato del CRM: uno nuevo por acuerdo (el anterior de la suscripción, si lo hay, queda como antecedente intacto)
     let contract = t.contractId !== null ? await this.d.crmStore.get("contracts", t.contractId) : null;
@@ -121,7 +125,14 @@ export class TermsAcceptanceService {
     const fields = { amountCents: summary.recurring.netCents, currency: t.currency, billingInterval: t.interval, autoRenew: true };
     if (!contract) {
       contract = await this.d.crm.createContract({ companyId: t.companyId, ...fields, ...(sub?.contractId ? { previousContractId: sub.contractId } : {}) }, actor);
-      await this.d.termsStore.patch(t.id, { contractId: contract.id }, null, now);
+      // Enlazado ya (con la revisión leída): si otro lo cambió entretanto, se anula el contrato recién creado
+      try {
+        t.revision = (await this.d.termsStore.patch(t.id, { contractId: contract.id }, null, now, t.revision)).revision;
+        t.contractId = contract.id;
+      } catch (e) {
+        await this.d.crm.setContractStatus(contract.id, "cancelled", actor).catch(() => undefined);
+        throw e instanceof TermsConflict ? new TermsError("version_conflict", e.message, { current: e.current }) : e;
+      }
     }
     // El texto lleva la referencia y la versión del contrato: se fija la versión que tendrá tras guardar el texto
     const draft = await this.document(t.id, { reference: contract.reference ?? `CT-${contract.id}`, version: contract.version + 1 });
@@ -157,7 +168,12 @@ export class TermsAcceptanceService {
       { status: "pending_acceptance", acceptanceStatus: "pending", contractId: contract.id, contractVersion: contract.version, acceptanceId: a.id },
       { kind: "acceptance_requested", actor, reason: t.reason, before: { status: t.status }, after: { status: "pending_acceptance", contractId: contract.id, contractVersion: contract.version, documentSha256: final.sha256, signerEmail: email }, effectiveAt: t.effectiveFrom, acceptanceStatus: "pending", syncResult: null, economic: null },
       now,
-    );
+      t.revision,
+    ).catch(async (e) => {
+      // Otro cambio se adelantó: el enlace recién creado no vale
+      await this.d.acceptances.setAcceptanceStatus(a.id, "revoked");
+      throw e instanceof TermsConflict ? new TermsError("version_conflict", e.message, { current: e.current }) : e;
+    });
     await this.d.crm.log("contract", contract.id, "note", `Condiciones comerciales personalizadas enviadas a aceptación a ${email} (versión ${contract.version}, huella ${final.sha256.slice(0, 16)}…)`, actor);
     return { terms, acceptanceId: a.id, url: `${this.d.url}?token=${token}`, expiresAt: a.expiresAt, documentSha256: final.sha256, contract: { id: contract.id, reference: contract.reference, version: contract.version } };
   }
@@ -171,11 +187,39 @@ export class TermsAcceptanceService {
     const reason = String(input.reason ?? "").trim();
     if (reason.length < 5) throw new TermsError("invalid_input", "Indica el motivo (al menos 5 caracteres)");
     if (t.contractId !== null) {
+      // La revocación y la aceptación compiten por la misma fila: solo una gana. Si ganó la aceptación, no se retira
       await this.revokePending(t.contractId);
+      if ((await this.d.acceptances.acceptances(t.contractId)).some((a) => a.id === t.acceptanceId && a.status === "accepted")) throw new TermsError("invalid_state", "El cliente acaba de aceptar estas condiciones: no se retiran");
+    }
+    const out = await this.d.termsStore
+      .patch(t.id, { status: "draft", acceptanceStatus: "pending", acceptanceId: null }, { kind: "acceptance_withdrawn", actor, reason: reason.slice(0, 500), before: { status: "pending_acceptance" }, after: { status: "draft" }, effectiveAt: null, acceptanceStatus: "pending", syncResult: null, economic: null }, this.now(), t.revision)
+      .catch((e) => {
+        throw e instanceof TermsConflict ? new TermsError("version_conflict", e.message, { current: e.current }) : e;
+      });
+    if (t.contractId !== null) {
       const c = await this.d.crmStore.get("contracts", t.contractId);
       if (c?.status === "sent") await this.d.crm.setContractStatus(c.id, "draft", actor);
     }
-    return this.d.termsStore.patch(t.id, { status: "draft", acceptanceStatus: "pending", acceptanceId: null }, { kind: "acceptance_withdrawn", actor, reason: reason.slice(0, 500), before: { status: "pending_acceptance" }, after: { status: "draft" }, effectiveAt: null, acceptanceStatus: "pending", syncResult: null, economic: null }, this.now());
+    return out;
+  }
+
+  /**
+   * Antes de ANULAR unas condiciones con contrato: comprueba la revisión de quien anula, retira el enlace si seguía
+   * pendiente y cancela su contrato del CRM (no queda un contrato huérfano que bloquee la renovación del anterior).
+   * También es la salida de unas condiciones aceptadas que no se pudieron activar.
+   */
+  async releaseForCancel(termsId: number, input: { reason: string; expectedRevision: number }, actor: string): Promise<{ revision: number }> {
+    let t = await this.d.terms.must(termsId);
+    if (t.revision !== input.expectedRevision) throw new TermsError("version_conflict", `Otra persona modificó estas condiciones antes (revisión actual ${t.revision}). Recarga para no perder cambios.`, { current: t.revision });
+    if (t.status === "pending_acceptance" && t.acceptanceStatus !== "accepted") t = await this.withdraw(termsId, input, actor);
+    if (t.contractId !== null) {
+      const c = await this.d.crmStore.get("contracts", t.contractId);
+      if (c && c.status !== "cancelled" && c.status !== "active") {
+        await this.d.crm.setContractStatus(c.id, "cancelled", actor);
+        await this.d.crm.log("contract", c.id, "note", `Condiciones comerciales personalizadas anuladas: ${input.reason}`, actor);
+      }
+    }
+    return { revision: t.revision };
   }
 
   // ── Página pública ─────────────────────────────────────────────────────────────
@@ -192,9 +236,19 @@ export class TermsAcceptanceService {
     }
     const t = (await this.d.termsStore.list({ status: ["pending_acceptance"] })).find((x) => x.acceptanceId === a.id && x.contractId === a.contractId);
     if (!t) throw new TermsError("invalid_state", "Este enlace ya no es válido: solicita uno nuevo");
+    const contract = await this.d.crmStore.get("contracts", a.contractId);
+    if (!contract || contract.status !== "sent") throw new TermsError("invalid_state", "Este contrato ya no está pendiente de aceptación: solicita un enlace nuevo");
     const doc = await this.document(t.id);
-    // Lo aceptado debe ser exactamente lo presentado
-    if (doc.sha256 !== a.documentSha256 || doc.version !== a.contractVersion) throw new TermsError("invalid_state", "Las condiciones han cambiado desde que se envió este enlace: solicita uno nuevo");
+    // Lo aceptado debe ser exactamente lo presentado: el texto REGISTRADO en el contrato, que debe seguir coincidiendo
+    // con las condiciones (si cambiaron el acuerdo, la condición siguiente o los datos del cliente, el enlace no vale)
+    if (doc.sha256 !== a.documentSha256 || doc.version !== a.contractVersion || contract.conditions !== doc.text) throw new TermsError("invalid_state", "Las condiciones han cambiado desde que se envió este enlace: solicita uno nuevo");
+    // Y deben poder activarse todavía (vigencia no vencida, suscripción operable): no se acepta lo que no se activará
+    try {
+      await this.d.terms.preflight(t.id);
+    } catch (e) {
+      if (e instanceof TermsError && e.code !== "not_found") throw new TermsError("invalid_state", "Estas condiciones ya no se pueden aceptar tal como se enviaron: ponte en contacto con Big Elephant para recibir unas actualizadas");
+      throw e;
+    }
     return { a, t, doc };
   }
 
@@ -232,6 +286,7 @@ export class TermsAcceptanceService {
       { acceptanceStatus: "accepted" },
       { kind: "accepted", actor: ACTOR, reason: `Aceptación electrónica de ${name}`, before: { acceptanceStatus: "pending" }, after: { acceptanceStatus: "accepted", acceptanceId: a.id, contractId: a.contractId, contractVersion: doc.version, documentSha256: doc.sha256, acceptedName: name }, effectiveAt: t.effectiveFrom, acceptanceStatus: "accepted", syncResult: null, economic: null },
       now,
+      t.revision,
     );
     await this.d.crm.log("contract", a.contractId, "note", `Condiciones comerciales aceptadas electrónicamente por ${name} (versión ${doc.version}, huella ${doc.sha256.slice(0, 16)}…)`, ACTOR);
     // Lo que dependía de la aceptación se activa ahora. Si falla, la aceptación ya consta y se completa desde el CRM

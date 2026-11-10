@@ -23,7 +23,7 @@ export interface TenantPlanDeps {
   orders(companyId: number): Promise<CommercialOrder[]>;
   subscription(id: number): Promise<SubscriptionRecord | null>;
   /** Condiciones comerciales personalizadas vigentes de la empresa, con la presentación elegida (solo lectura). */
-  customTerms?(tenantId: string, companyId: number): Promise<TenantCustomTerms | null>;
+  customTerms?(tenantId: string, companyId: number, subscriptionId?: number | null): Promise<TenantCustomTerms | null>;
   invoices?(companyId: number): Promise<Invoice[]>;
   invoiceHtml?(inv: Invoice): string;
   /** Estado del cobro en Stripe, si la empresa se cobra allí. */
@@ -90,7 +90,7 @@ export class TenantPlanService {
     const invoices = this.d.invoices ? (await this.d.invoices(company.id)).filter((i) => i.status !== "draft") : [];
     const cancelAt = sub?.cancelAt ?? null;
     // Nunca rompe «Mi plan»: si no se pueden leer, se muestra como si no las hubiera
-    const customTerms = this.d.customTerms ? await this.d.customTerms(tenantId, company.id).catch(() => null) : null;
+    const customTerms = this.d.customTerms ? await this.d.customTerms(tenantId, company.id, order?.subscriptionId ?? null).catch(() => null) : null;
     return {
       customTerms,
       company: { name: company.name },
@@ -102,7 +102,8 @@ export class TenantPlanService {
             plan: order.request.plan,
             interval: order.request.interval,
             items: order.request.items.map((i) => i.key),
-            recurringNetCents: order.quote?.contractAmountCents ?? null,
+            // Con condiciones pactadas rige su cuota: el importe cotizado del pedido (tarifa oficial) no viaja a la empresa
+            recurringNetCents: customTerms ? customTerms.today.netCents : (order.quote?.contractAmountCents ?? null),
             currency: order.quote?.currency ?? sub?.currency ?? "EUR",
             graceEndsAt: order.graceEndsAt,
           }

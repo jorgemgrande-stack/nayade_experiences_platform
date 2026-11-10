@@ -95,7 +95,7 @@ const termsShape = {
 const termsInput = z.object(termsShape).strict();
 const revision = z.number().int().min(1);
 
-export function createCommercialTermsRouter(svc: CommercialTermsService, hooks: { /** Antes de anular unas condiciones enviadas a aceptación: revoca el enlace y devuelve el contrato a borrador. */ withdraw?: (id: number, reason: string, actor: string) => Promise<{ revision: number } | null> } = {}): Router {
+export function createCommercialTermsRouter(svc: CommercialTermsService, hooks: { /** Antes de anular unas condiciones con contrato: comprueba la revisión, revoca el enlace y cancela su contrato. */ release?: (id: number, input: { reason: string; expectedRevision: number }, actor: string) => Promise<{ revision: number }> } = {}): Router {
   const r = express.Router();
   const who = (req: Request) => `${getAuth(req)!.actor.type}:${getAuth(req)!.actor.id}`;
   const manage = requireCustomPricing();
@@ -144,8 +144,8 @@ export function createCommercialTermsRouter(svc: CommercialTermsService, hooks: 
   r.post("/commercial-terms/:id/cancel", manage, wrap(async (req, res) => {
     const b = z.object({ reason, expectedRevision: revision }).strict().parse(req.body);
     const tid = id.parse(req.params.id);
-    const withdrawn = hooks.withdraw && (await svc.must(tid)).status === "pending_acceptance" ? await hooks.withdraw(tid, b.reason, who(req)) : null;
-    res.json({ terms: await svc.cancelDraft(tid, b, withdrawn ? withdrawn.revision : b.expectedRevision, who(req)) });
+    const released = hooks.release && (await svc.must(tid)).contractId !== null ? await hooks.release(tid, b, who(req)) : null;
+    res.json({ terms: await svc.cancelDraft(tid, b, released ? released.revision : b.expectedRevision, who(req)) });
   }));
   r.post("/commercial-terms/:id/prepare-contracting", manage, wrap(async (req, res) => {
     const b = z.object({ expectedRevision: revision, trialDays: z.number().int().min(0).max(60).optional(), reason: reason.nullable().optional() }).strict().parse(req.body);

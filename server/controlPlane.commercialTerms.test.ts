@@ -546,3 +546,147 @@ describe("Caso 22 — contrato y aceptación del cliente (paquete de 129 €/mes
     expect(history.currentRecurring).toMatchObject({ netCents: 11900 });
   });
 });
+
+describe("aceptación: integridad de lo aceptado (hallazgos de la revisión independiente)", () => {
+  const signer = { name: "Marta Ruiz", email: "marta@hotel-ejemplo.test" };
+  const line = (cents: number | null = null) => [{ kind: "catalog", productKey: "essential", priceId: P.essential, negotiatedUnitCents: cents }];
+  let sid = 0;
+  let companyId = 0;
+  const version = async () => (await call("GET", `/subscriptions/${sid}`, { token: TOK.admin })).json.subscription.version as number;
+  const draft = async (over: Record<string, unknown>) => {
+    const r = await call("POST", `/subscriptions/${sid}/terms`, { token: TOK.admin, body: { pricingMode: "per_item", presentation: "breakdown", reason: "Acuerdo comercial negociado", lines: line(1900), requiresAcceptance: true, ...over } });
+    expect(r.status, JSON.stringify(r.json)).toBe(201);
+    return r.json.terms as { id: number; revision: number };
+  };
+  const send = (t: { id: number; revision: number }) => call("POST", `/commercial-terms/${t.id}/acceptance`, { token: TOK.admin, body: { signer, expectedRevision: t.revision } });
+  const accept = (url: string) => raw("POST", publicPath(url), { token: url.split("token=")[1], name: "Marta Ruiz", accept: "1" });
+
+  it("prepara una suscripción propia para estos casos", async () => {
+    companyId = (await crmStore.insert("companies", { ...(await crmStore.get("companies", contractCompanyId))!, id: undefined as never, name: "Empresa de la revisión" } as never)).id;
+    const s = await call("POST", "/subscriptions", { token: TOK.admin, body: { companyId, interval: "month", plan: { productKey: "essential", priceId: P.essential } } });
+    expect(s.status).toBe(201);
+    sid = s.json.subscription.id;
+  });
+
+  it("la condición siguiente va completa en el contrato y no se puede cambiar mientras el acuerdo está enviado", async () => {
+    const end = clock + 40 * 86_400_000;
+    const next = await call("POST", `/subscriptions/${sid}/terms`, { token: TOK.admin, body: { pricingMode: "per_item", presentation: "breakdown", reason: "Condición siguiente", lines: line(2500), effectiveFrom: end, conditions: "Revisión anual." } });
+    expect(next.status).toBe(201);
+    const main = await draft({ effectiveTo: end, afterEnd: "next_terms", nextTermsId: next.json.terms.id });
+    const sent = await send(main);
+    expect(sent.status).toBe(201);
+    const page = await raw("GET", publicPath(sent.json.url));
+    expect(page.body).toContain("CONDICIONES A PARTIR DEL");
+    expect(page.body).toMatch(/25,00\s€ al mes/);
+    expect(page.body).toContain("Revisión anual.");
+    // Intento de colar un cargo y una permanencia en la condición siguiente
+    const sneaky = await call("PUT", `/commercial-terms/${next.json.terms.id}`, {
+      token: TOK.admin,
+      body: { pricingMode: "per_item", presentation: "breakdown", reason: "Cambio posterior", effectiveFrom: end, conditions: "Permanencia de 5 años.", lines: [...line(2500), { kind: "custom", concept: "other", name: "Cargo sorpresa", chargeClass: "initial", unitCents: 500000, taxRateBp: 2100 }], expectedRevision: next.json.terms.revision },
+    });
+    expect(sneaky.status).toBe(409);
+    expect(sneaky.json.details).toMatchObject({ reason: "chained_pending_acceptance" });
+    expect((await call("POST", `/commercial-terms/${next.json.terms.id}/cancel`, { token: TOK.admin, body: { reason: "Quitarla de en medio", expectedRevision: next.json.terms.revision } })).status).toBe(409);
+    // Anular el principal cancela su contrato y libera la siguiente
+    const cancelled = await call("POST", `/commercial-terms/${main.id}/cancel`, { token: TOK.admin, body: { reason: "Se rehace la oferta", expectedRevision: sent.json.terms.revision } });
+    expect(cancelled.status).toBe(200);
+    expect((await crmStore.get("contracts", sent.json.contract.id))!.status).toBe("cancelled");
+    expect((await raw("GET", publicPath(sent.json.url))).status).toBe(409);
+    expect((await call("POST", `/commercial-terms/${next.json.terms.id}/cancel`, { token: TOK.admin, body: { reason: "Ya no hace falta", expectedRevision: next.json.terms.revision } })).status).toBe(200);
+  });
+
+  it("anular exige la revisión de quien anula (el control de concurrencia no se pierde por tener contrato)", async () => {
+    const t = await draft({});
+    const sent = await send(t);
+    const stale = await call("POST", `/commercial-terms/${t.id}/cancel`, { token: TOK.admin, body: { reason: "Con revisión antigua", expectedRevision: t.revision } });
+    expect(stale.status).toBe(409);
+    expect(stale.json.error).toBe("version_conflict");
+    expect((await raw("GET", publicPath(sent.json.url))).status).toBe(200);
+    expect((await call("POST", `/commercial-terms/${t.id}/cancel`, { token: TOK.admin, body: { reason: "Con la revisión vigente", expectedRevision: sent.json.terms.revision } })).status).toBe(200);
+  });
+
+  it("condición temporal sin fecha de inicio (desde la aceptación): el documento se genera y se puede enviar", async () => {
+    const t = await draft({ effectiveTo: clock + 90 * 86_400_000, afterEnd: "official_snapshot" });
+    const doc = await call("GET", `/commercial-terms/${t.id}/document`, { token: TOK.admin });
+    expect(doc.status).toBe(200);
+    expect(doc.json.text).toContain("Entrada en vigor: en el momento de la aceptación de estas condiciones.");
+    expect(doc.json.text).toContain("se aplicará la tarifa oficial fijada en este acuerdo");
+    const sent = await send(t);
+    expect(sent.status).toBe(201);
+    await call("POST", `/commercial-terms/${t.id}/cancel`, { token: TOK.admin, body: { reason: "Solo era la prueba", expectedRevision: sent.json.terms.revision } });
+  });
+
+  it("no se envía ni se acepta lo que ya no se podría activar (vigencia vencida)", async () => {
+    const t = await draft({ effectiveFrom: clock + 86_400_000, effectiveTo: clock + 10 * 86_400_000, afterEnd: "official_snapshot" });
+    const sent = await send(t);
+    expect(sent.status).toBe(201);
+    const saved = clock;
+    clock += 11 * 86_400_000;
+    // Pasada la vigencia: la página ya no ofrece aceptar y no se registra ninguna aceptación
+    expect((await raw("GET", publicPath(sent.json.url))).status).toBe(409);
+    expect((await accept(sent.json.url)).status).toBe(409);
+    expect((await crmStore.get("contracts", sent.json.contract.id))!.status).toBe("sent");
+    expect((await call("GET", `/commercial-terms/${t.id}`, { token: TOK.admin })).json.terms).toMatchObject({ status: "pending_acceptance", acceptanceStatus: "pending" });
+    // Y tiene salida: se anula (con su contrato) y se rehace
+    expect((await call("POST", `/commercial-terms/${t.id}/cancel`, { token: TOK.admin, body: { reason: "Vigencia vencida", expectedRevision: sent.json.terms.revision } })).status).toBe(200);
+    clock = saved;
+    // Tampoco se envía uno ya vencido
+    const late = await draft({ effectiveTo: clock + 86_400_000, afterEnd: "official_snapshot" });
+    clock += 2 * 86_400_000;
+    expect((await send(late)).status).toBe(409);
+    clock = saved;
+    await call("POST", `/commercial-terms/${late.id}/cancel`, { token: TOK.admin, body: { reason: "Vencido antes de enviarse", expectedRevision: late.revision } });
+  });
+
+  it("si el contrato se cancela en el CRM o cambian los datos del cliente, el enlace deja de valer", async () => {
+    const t = await draft({});
+    const sent = await send(t);
+    // Cambia la razón social: el documento ya no es el enviado (comparación de huella)
+    const company = (await crmStore.get("companies", companyId))!;
+    await crmStore.update("companies", companyId, { legalName: "Otra Razón Social, S.L." });
+    const changed = await raw("GET", publicPath(sent.json.url));
+    expect(changed.status).toBe(409);
+    expect(changed.body).toContain("han cambiado desde que se envió este enlace");
+    await crmStore.update("companies", companyId, { legalName: company.legalName });
+    expect((await raw("GET", publicPath(sent.json.url))).status).toBe(200);
+    // Contrato cancelado a mano en el CRM
+    await crmStore.update("contracts", sent.json.contract.id, { status: "cancelled" });
+    expect((await raw("GET", publicPath(sent.json.url))).status).toBe(409);
+    expect((await accept(sent.json.url)).status).toBe(409);
+    expect((await acceptanceStore.acceptances(sent.json.contract.id)).every((a) => a.status !== "accepted")).toBe(true);
+    expect((await call("POST", `/commercial-terms/${t.id}/cancel`, { token: TOK.admin, body: { reason: "Contrato cancelado", expectedRevision: sent.json.terms.revision } })).status).toBe(200);
+  });
+
+  it("retirar y aceptar a la vez: gana uno solo y el acuerdo nunca queda activo y en borrador a la vez", async () => {
+    const t = await draft({});
+    const sent = await send(t);
+    const [w, a] = await Promise.all([call("POST", `/commercial-terms/${t.id}/acceptance/withdraw`, { token: TOK.admin, body: { reason: "Retirada simultánea", expectedRevision: sent.json.terms.revision } }), accept(sent.json.url)]);
+    const terms = (await call("GET", `/commercial-terms/${t.id}`, { token: TOK.admin })).json.terms;
+    const rows = await acceptanceStore.acceptances(sent.json.contract.id);
+    if (a.status === 200) {
+      expect(w.status).toBe(409);
+      expect(terms).toMatchObject({ status: "active", acceptanceStatus: "accepted" });
+      expect(rows.filter((r) => r.status === "accepted")).toHaveLength(1);
+    } else {
+      expect(w.status).toBe(200);
+      expect(terms).toMatchObject({ status: "draft" });
+      expect(rows.some((r) => r.status === "accepted")).toBe(false);
+      await call("POST", `/commercial-terms/${t.id}/cancel`, { token: TOK.admin, body: { reason: "Limpieza de la prueba", expectedRevision: terms.revision } });
+    }
+    // Una retirada posterior a una aceptación se rechaza siempre
+    const t2 = await draft({ lines: line(1700) });
+    const sent2 = await send(t2);
+    expect((await accept(sent2.json.url)).status).toBe(200);
+    const after = (await call("GET", `/commercial-terms/${t2.id}`, { token: TOK.admin })).json.terms;
+    expect(after).toMatchObject({ status: "active", acceptanceStatus: "accepted" });
+    expect((await call("POST", `/commercial-terms/${t2.id}/acceptance/withdraw`, { token: TOK.admin, body: { reason: "Demasiado tarde", expectedRevision: after.revision } })).status).toBe(409);
+    expect(await version()).toBeGreaterThan(1);
+  });
+
+  it("un paquete no lleva fecha efectiva: entra en vigor al contratarlo o al aceptarlo, como dice su contrato", async () => {
+    const body = { companyId, interval: "month", pricingMode: "per_item", presentation: "breakdown", reason: "Paquete con fecha", lines: line(1900), effectiveFrom: clock + 30 * 86_400_000 };
+    const r = await call("POST", "/commercial-terms/packages", { token: TOK.admin, body });
+    expect(r.status).toBe(400);
+    expect(r.json.message).toMatch(/no lleva fecha efectiva/);
+  });
+});

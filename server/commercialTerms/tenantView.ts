@@ -20,11 +20,12 @@ export interface TenantCustomTerms {
 }
 
 export function tenantTermsReader(terms: CommercialTermsService, store: TermsStore, subscriptions: Pick<SubscriptionStore, "list">, now: () => number) {
-  return async (tenantId: string, companyId: number): Promise<TenantCustomTerms | null> => {
-    // La suscripción viva de ESA empresa y ESA plataforma; si no es única, no se muestra nada (nunca la de otra)
+  return async (tenantId: string, companyId: number, subscriptionId?: number | null): Promise<TenantCustomTerms | null> => {
+    // La suscripción viva de ESA empresa y ESA plataforma: la del pedido vigente si la hay; si no, la única que tenga
+    // (si no es única, no se muestra nada). Nunca la de otra empresa
     const live = (await subscriptions.list({ companyId })).filter((s) => s.status !== "canceled" && s.companyId === companyId && (s.tenantId === tenantId || s.tenantId === null));
-    if (live.length !== 1) return null;
-    const sub = live[0];
+    const sub = subscriptionId != null ? live.find((s) => s.id === subscriptionId) : live.length === 1 ? live[0] : undefined;
+    if (!sub) return null;
     const cur = await terms.currentTerms(sub.id);
     if (!cur || cur.companyId !== companyId) return null;
     const all = await store.list({ subscriptionId: sub.id, status: ["active", "scheduled"] });

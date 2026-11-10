@@ -2012,7 +2012,7 @@ export function createControlPlaneApp(d: ControlPlaneDeps): Express {
     if (commercialTerms) {
       router.use(
         createCommercialTermsRouter(commercialTerms, {
-          withdraw: termsAcceptance ? async (id, reason, actor) => termsAcceptance.withdraw(id, { reason, expectedRevision: (await commercialTerms.must(id)).revision }, actor) : undefined,
+          release: termsAcceptance ? (id, input, actor) => termsAcceptance.releaseForCancel(id, input, actor) : undefined,
         }),
       );
     }
