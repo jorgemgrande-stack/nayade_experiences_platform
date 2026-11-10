@@ -137,7 +137,7 @@ describe("Elephant Net completo con Core incluido", () => {
 
   it("Net + extensiones: las extensiones se suman a su precio; implantación fuera de la cuota; consumos aparte", () => {
     const r = q({ ...ess, items: [{ key: "ski-net-complete" }, { key: "connect-pos" }, { key: "connect-people" }] });
-    expect(r.recurring.monthlyCents).toBe(eur(99 + 25 + 19));
+    expect(r.recurring.monthlyCents).toBe(eur(99 + 19 + 19));
     expect(r.implementation.every((i) => i.amountCents === null)).toBe(true);
     expect(r.initial.recurringCents).toBe(r.recurring.monthlyCents);
     const voice = q({ ...ess, items: [{ key: "hotel-net-complete" }, { key: "connect-voice" }] });

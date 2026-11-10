@@ -27,6 +27,7 @@ import { ProvisioningService } from "./_core/provisioning/service";
 import { MemoryProvisioningStore } from "./_core/provisioning/ports";
 import { BUILTIN_MODULES } from "./_core/modules/builtin";
 import { seedElephantSource } from "./catalog/seed";
+import { beforeNetUnification } from "./catalog/seedHistory.testkit";
 
 const DAY = 86_400_000;
 const WEB = "https://web.example";
@@ -89,7 +90,7 @@ beforeAll(async () => {
     now: () => clock,
     sleep: async () => undefined,
   });
-  await seedElephantSource(new WebAdminService({ store: webStore, refs: { moduleIds: BUILTIN_MODULES.map((m) => m.id), planIds: () => null }, now: () => clock }), webStore);
+  await seedElephantSource(new WebAdminService({ store: webStore, refs: { moduleIds: BUILTIN_MODULES.map((m) => m.id), planIds: () => null }, now: () => clock }), webStore, { products: beforeNetUnification() });
   const crm = new CrmService({ store: crmStore, activation: createContractActivation({ provisioning, platformDomain: "elephant.test", actor: { type: "operator", id: "test" } }) });
   const app = createControlPlaneApp({
     tokens: [
