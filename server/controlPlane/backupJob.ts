@@ -543,8 +543,9 @@ async function main() {
           // 10/11/2026: Social Token Net por empresa (ámbito del catálogo y descripción larga); sin precios ni licencias
           const repStn = await applyStnScopeReview(svc, webStore, { apply, author: `operacion:${REVIEW_ID_2026_11_10_STN}` });
           // 09/11/2026: estrategia del TPV (caja de cada plan y TPV Advanced, la ficha de connect-pos), después de la
-          // unificación de Elephant Net. Sin precios: el de connect-pos y su ámbito por empresa se cambian aparte en el CRM
-          const repTpv = await applyListingReview(svc, webStore, { apply, author: `operacion:${REVIEW_ID_2026_11_09_TPV}`, changes: TPV_LISTINGS_2026_11_09 });
+          // unificación de Elephant Net. Sin precios: exige que el de connect-pos ya sea 19 € (aprobado antes en el CRM) y
+          // cambia ella su ámbito a «por empresa». Con borrador ajeno (planes), se aplica sobre lo publicado y lo conserva
+          const repTpv = await applyListingReview(svc, webStore, { apply, author: `operacion:${REVIEW_ID_2026_11_09_TPV}`, changes: TPV_LISTINGS_2026_11_09, overDraft: true });
           const pricesFinal = new Map((await webStore.listPrices()).map((p) => [p.id, `${p.status}:${p.amountCents}`]));
           const pricesIntactConnect = pricesFinal.size === pricesAfter.size && Array.from(pricesAfter).every(([id, v]) => pricesFinal.get(id) === v);
           // Una sola línea (el registro de Railway la guarda en los atributos si es JSON)

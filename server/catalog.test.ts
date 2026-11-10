@@ -227,7 +227,9 @@ describe("cotizador", () => {
   });
   it("activación por sede y precio por unidad", () => {
     expect(q({ plan: "business", sites: 3, items: [{ key: "connect-pos", quantity: 3 }] }).lines.find((l) => l.key === "connect-pos")!.amountCents).toBe(eur(75));
-    expect(q({ items: [{ key: "connect-pos", quantity: 2 }] }).errors.join()).toMatch(/2 sedes/);
+    // TPV Advanced es por empresa desde el 10/11/2026: la comprobación de sedes se prueba con un producto por sede
+    expect(q({ items: [{ key: "connect-pos", quantity: 2 }] }).errors.join()).not.toMatch(/sedes/);
+    expect(q({ items: [{ key: "hotel-net-pms", quantity: 2 }] }).errors.join()).toMatch(/2 sedes/);
     expect(q({ items: [{ key: "travel-net-agency" }, { key: "travel-net-connectors", quantity: 3 }] }).lines.find((l) => l.key === "travel-net-connectors")!.amountCents).toBe(eur(87));
   });
   it("contratabilidad honesta: solicitar activación o todavía no disponible", () => {

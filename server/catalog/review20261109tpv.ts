@@ -22,16 +22,25 @@
  *  - Essential describe el reparto de las contrataciones nuevas; quien ya lo tenía conserva los informes de caja por
  *    periodo y por cajero y la revisión y los ajustes de cierres (migración 0064), y la ficha lo dice.
  *
- * Fuera de esta revisión (lo hace main en el CRM; el mecanismo de revisión nunca toca precios ni la licencia): el
- * precio de `connect-pos` (mensual 2500 → 1900 céntimos sin IVA) y su ámbito (`catalog.scope` site → company,
- * `catalog.chargeUnit` «por sede» → sin unidad). Las fichas que dicen «por empresa» (`connect-pos` y
- * `addon-site-business`) exigen ese ámbito ya publicado (`requiresCatalog`): hasta entonces salen como conflicto y no
- * cambian. La revisión se fusiona cuando la frontera esté programada en el TPV del Core.
+ * Ámbito y precio de TPV Advanced (10/11/2026):
+ *  - El ámbito lo cambia la propia revisión (`catalogScope`): `catalog.scope` site → company y `catalog.chargeUnit`
+ *    «por sede» → sin unidad, cada uno solo desde su valor publicado de partida. El editor del CRM no tiene campos para
+ *    ellos; Jorge lo autorizó el 10/11/2026.
+ *  - El PRECIO no lo toca la revisión (nunca toca precios): se aprueba antes en el CRM (mensual 1900 céntimos sin IVA,
+ *    que retira el de 2500). La revisión lo exige (`requiresPrice`): mientras el precio aprobado no sea 19 €,
+ *    `connect-pos` sale como conflicto y no cambia nada suyo (ni nombre, ni ámbito, ni ficha), y con él
+ *    `addon-site-business`, cuya ficha dice «por empresa» (`requiresCatalog`).
+ *  - La revisión se fusiona cuando la frontera esté programada en el TPV del Core.
+ *
+ * Borradores ajenos (10/11/2026): `essential`, `business` y `enterprise` tienen en production borradores sin publicar
+ * de la importación de fichas. La revisión se aplica con `overDraft` (server/catalog/overDraft.ts): publica sus cambios
+ * sobre lo PUBLICADO y vuelve a guardar el borrador con ellos; el contenido ajeno del borrador (p. ej. la ficha
+ * `commercial` de Business y Enterprise) sigue pendiente, sin publicarse.
  *
  * Mecanismo y garantías: applyListingReview (review20261108fichas.ts): cada campo y cada texto del producto solo
  * cambia desde su valor publicado de partida (los «from» son los publicados en production el 09/11/2026,
- * https://admin.bigelephant.es/cp/v1/public/site); nunca un borrador ajeno; idempotente; simulación por defecto; sin
- * precios, estados, cupos ni licencias. Los planes conservan su evidencia (solo cambian textos).
+ * https://admin.bigelephant.es/cp/v1/public/site); los cambios de un borrador ajeno nunca se publican; idempotente;
+ * simulación por defecto; sin precios, estados, cupos ni capacidades. Los planes conservan su evidencia (solo cambian textos).
  */
 import { ASSISTED_FAQ, type ListingChange } from "./review20261108fichas";
 import { REQUEST_STEP } from "./review20261108connect";
@@ -47,7 +56,7 @@ const RESTAURANT_FAQ_AFTER_NET_UNIFICATION = [
   { q: "¿Incluye la caja?", a: "No trae una caja aparte: cobras con la caja (TPV) de tu plan de Elephant Core." },
 ];
 
-/** Ámbito por empresa de TPV Advanced, cambiado en el CRM antes de publicar las fichas que lo dicen. */
+/** Ámbito por empresa de TPV Advanced (lo cambia esta misma revisión en `connect-pos`), que exigen las fichas que lo dicen. */
 const POS_PER_COMPANY = { key: "connect-pos", scope: "company", chargeUnit: null } as const;
 
 export const TPV_LISTINGS_2026_11_09: readonly ListingChange[] = [
@@ -118,7 +127,11 @@ export const TPV_LISTINGS_2026_11_09: readonly ListingChange[] = [
     evidence:
       "Estrategia del TPV aprobada por Jorge el 09/11/2026: la caja de cada plan (bill-cash; una caja activa en Essential, hasta 3 en Business y sin límite comercial fijo en Enterprise) y TPV Advanced (pos-advanced) con arqueos y conciliaciones avanzadas, turnos, entrega y recepción de caja entre operadores, autorizaciones especiales, auditoría e informes y exportaciones avanzadas, programado en el TPV del Core (server/routers/tpv.ts y cashRegister.ts) antes de aplicar esta revisión. Venta asistida, sin Price de Stripe.",
     stripePrepared: false,
-    requiresCatalog: POS_PER_COMPANY,
+    // El editor del CRM no tiene campos para el ámbito ni la unidad de cobro: los cambia la propia revisión (autorizado
+    // por Jorge el 10/11/2026: por empresa y sin unidad de cobro), desde sus valores publicados de partida
+    catalogScope: { scope: { from: "site", to: "company" }, chargeUnit: { from: "por sede", to: null } },
+    // El precio NO lo toca la revisión: 19 € al mes aprobado antes en el CRM (retira el de 25 €). Hasta entonces, conflicto
+    requiresPrice: { kind: "monthly", amountCents: 1900 },
     product: {
       name: { from: "Elephant POS", to: "TPV Advanced" },
       tagline: { from: "TPV físico avanzado por sede.", to: "Arqueos, turnos y auditoría sobre la caja de tu plan." },
