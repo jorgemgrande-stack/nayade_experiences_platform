@@ -205,6 +205,67 @@ describe("expediente al pagar un producto Net y checklist", () => {
     expect((await svc.detail(ids[0])).paid).toEqual({ circuit: "custom_terms", reference: "condiciones #3" });
   });
 
+  it("clase B: el paquete personalizado lleva plan Core si falta, el Net a su precio publicado y los compromisos; aceptado, el expediente pasa a implantación", async () => {
+    const c = await crm.createCompany({ name: "Restaurante B SL", email: "admin@rest.example" }, "test");
+    const opp = await crm.createOpportunity({ companyId: c.id, title: "Restaurant Net — implantación asistida" }, "test");
+    const created: Array<{ companyId: number; input: Record<string, unknown> }> = [];
+    let plan: string | null = null;
+    const terms = new Map<number, { id: number; status: string; companyId: number }>();
+    const packages = {
+      offer: async () => [
+        { key: "essential", name: "Essential", family: "core_plan", prices: [{ id: 11, kind: "monthly", status: "approved" }] },
+        { key: "restaurant-net-complete", name: "Restaurant Net", family: "industry_module", prices: [{ id: 41, kind: "monthly", status: "approved" }, { id: 42, kind: "yearly", status: "draft" }] },
+        { key: "ski-net-complete", name: "Ski Net", family: "industry_module", prices: [] },
+      ],
+      companyPlan: async () => plan,
+      create: async (companyId: number, input: Record<string, unknown>) => {
+        created.push({ companyId, input });
+        const t = { id: 300 + created.length, status: "draft", companyId };
+        terms.set(t.id, t);
+        return t;
+      },
+      get: async (id: number) => terms.get(id) ?? null,
+    };
+    const svc2 = new ImplementationService({ store, crm, crmStore, solution: async (k) => SOL[k] ?? null, packages: packages as never, now: () => clock });
+    const { order } = await svc2.open({ opportunityId: opp.id, solutionKey: "restaurant-net-complete" }, "operator:laura");
+    const r = await svc2.preparePackage(order.id, "operator:laura");
+    expect(r).toEqual({ termsId: 301, created: true });
+    const input = created[0].input as { lines: unknown[]; conditions: string; requiresAcceptance: boolean; interval: string; packageName: string };
+    expect(created[0].companyId).toBe(c.id);
+    expect(input.lines).toEqual([
+      { kind: "catalog", productKey: "essential", priceId: 11, quantity: 1 },
+      { kind: "catalog", productKey: "restaurant-net-complete", priceId: 41, quantity: 1 },
+    ]);
+    expect(input).toMatchObject({ requiresAcceptance: true, interval: "month", packageName: "Restaurant Net con implantación", pricingMode: "per_item" });
+    expect(input.conditions).toContain("Servicio contratado: Restaurant Net, al precio publicado");
+    expect(input.conditions).toContain(`expediente ${order.reference}`);
+    expect(input.conditions).toContain(netCommitmentsText("restaurant-net-complete")!);
+    expect(input.conditions).toMatch(/En implantación \(incluido en el precio[^)]*\): Clientes y preferencias, Escandallos y costes\./);
+    // Idempotente mientras el borrador siga sin enviar; enviado (o descartado), se prepara otro
+    expect(await svc2.preparePackage(order.id, "operator:laura")).toEqual({ termsId: 301, created: false });
+    terms.get(301)!.status = "cancelled";
+    plan = "business";
+    expect(await svc2.preparePackage(order.id, "operator:laura")).toEqual({ termsId: 302, created: true });
+    expect((created[1].input as { lines: Array<{ productKey: string }> }).lines.map((l) => l.productKey)).toEqual(["restaurant-net-complete"]);
+    // Sin precio publicado o fuera de Net, no
+    const ski = await svc2.open({ opportunityId: opp.id, solutionKey: "ski-net-complete" }, "operator:laura");
+    await expect(svc2.preparePackage(ski.order.id, "operator:laura")).rejects.toThrow(/no tiene precio mensual publicado/);
+    const people = await svc2.open({ opportunityId: opp.id, solutionKey: "connect-people" }, "operator:laura");
+    await expect(svc2.preparePackage(people.order.id, "operator:laura")).rejects.toThrow(/solo para los productos Net de empresa/);
+    // Aceptadas las condiciones (contrato firmado y suscripción): el MISMO expediente pasa a implantación con su checklist
+    const contract = await crm.createContract({ companyId: c.id, planId: "business", modules: [], conditions: "Condiciones personalizadas aceptadas por el cliente", billingInterval: "month" }, "test");
+    const opened = await paidNetOpener({ implementation: svc2, catalog }).fromTerms({ companyId: c.id, contractId: contract.id, subscriptionId: 77, productKeys: ["restaurant-net-complete"], reference: "condiciones #302" });
+    expect(opened).toEqual([order.id]);
+    const after = (await store.get(order.id))!;
+    expect(after).toMatchObject({ status: "accepted", contractId: contract.id, subscriptionId: 77, startMode: "subscription" });
+    expect((await svc2.detail(order.id)).paid).toEqual({ circuit: "custom_terms", reference: "condiciones #302" });
+    expect((await store.milestones(order.id)).map((m) => m.title)).toEqual(templateFor("restaurant-net-complete").items.map((i) => i.title));
+    // Ya contratado: el paquete no se prepara otra vez desde el expediente
+    await expect(svc2.preparePackage(order.id, "operator:laura")).rejects.toThrow(/ya tiene el contrato aceptado/);
+    // Sin el puerto de condiciones personalizadas: no disponible
+    await expect(svc.preparePackage(ski.order.id, "operator:laura")).rejects.toMatchObject({ code: "unavailable" });
+  });
+
   it("aviso del orquestador: al activarse un pedido abre el expediente y el aviso de siempre sale igual (uno no frena al otro)", async () => {
     const seen: string[] = [];
     const ref = { run: { fromOrder: async () => (seen.push("expediente"), [1]), fromTerms: async () => [] } };

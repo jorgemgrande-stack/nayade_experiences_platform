@@ -53,6 +53,8 @@ export const IMPLEMENTATION_EVENT_TYPES = [
   "checklist",
   /** Expediente abierto por un pago (pedido o condiciones aceptadas) de un producto Net. */
   "paid",
+  /** Paquete personalizado preparado desde el expediente (detalle: `condiciones #<id>`). */
+  "package",
 ] as const;
 export type ImplementationEventType = (typeof IMPLEMENTATION_EVENT_TYPES)[number];
 

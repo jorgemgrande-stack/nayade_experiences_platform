@@ -23,6 +23,12 @@ import { buildConnectCatalog } from "./connectMarketplace";
 import { primaryAction } from "../shared/connectShowcase";
 import { ASSISTED_CONTRACT_COPY, NET_SALE_LABEL, NET_SALE_STATE_LABEL, netAvailabilitySplit, netSaleKind } from "../shared/netOffer";
 import { netProductOf } from "../shared/netProducts";
+import { catalogFromWebStore, type CrmPort } from "./subscriptions/ports";
+import { SubscriptionService } from "./subscriptions/service";
+import { MemorySubscriptionStore } from "./subscriptions/store";
+import { CommercialTermsService } from "./commercialTerms/service";
+import { MemoryTermsStore } from "./commercialTerms/store";
+import { netCommitmentsText } from "./implementation/templates";
 
 const NOW = Date.UTC(2026, 10, 11, 12);
 const flush = () => new Promise((r) => setImmediate(r));
@@ -119,5 +125,37 @@ describe("marketplace del panel", () => {
     }
     await expect(receivePanelRequest(d, "t9-hotel", body({ interest: "life-net", idempotencyKey: "clave-life" }))).rejects.toMatchObject({ status: 404 });
     expect(netProductOf("hotel-net-complete")!.segment).toBe("business");
+  });
+});
+
+describe("paquete personalizado desde el expediente (catálogo y condiciones personalizadas reales)", () => {
+  it("el borrador lo acepta el servicio de condiciones: Essential + Hotel Net a precio publicado, con aceptación y los compromisos", async () => {
+    const store = new MemoryCrmStore();
+    const crm = new CrmService({ store, now: () => NOW });
+    const c = await crm.createCompany({ name: "Hotel Paquete", legalName: "Hotel Paquete SL" }, "operator:test");
+    const opp = await crm.createOpportunity({ companyId: c.id, title: "Hotel Net — implantación asistida" }, "operator:test");
+    const catalog = catalogFromWebStore(webStore);
+    const subStore = new MemorySubscriptionStore();
+    const crmPort: CrmPort = { company: async (id) => (id === c.id ? { id, name: "Hotel Paquete" } : null), contract: async () => null };
+    const subs = new SubscriptionService({ store: subStore, catalog, crm: crmPort, now: () => NOW });
+    const terms = new CommercialTermsService({ store: new MemoryTermsStore(), subscriptions: subs, subscriptionStore: subStore, catalog, crm: crmPort, now: () => NOW, stripeBilled: async () => false });
+    const svc = new ImplementationService({
+      store: new MemoryImplementationStore(),
+      crm,
+      crmStore: store,
+      solution: solutionFromWebStore(webStore),
+      packages: { offer: () => catalog.offer(), companyPlan: async () => null, create: (companyId, input, actor) => terms.createPackage(companyId, input, actor), get: (id) => terms.must(id).catch(() => null) },
+      now: () => NOW,
+    });
+    const { order } = await svc.open({ opportunityId: opp.id, solutionKey: "hotel-net-complete" }, "operator:laura");
+    const r = await svc.preparePackage(order.id, "operator:laura");
+    expect(r.created).toBe(true);
+    const t = await terms.must(r.termsId);
+    expect(t).toMatchObject({ companyId: c.id, subscriptionId: null, status: "draft", requiresAcceptance: true, interval: "month", packageName: "Hotel Net con implantación" });
+    expect(t.lines.map((l) => [l.productKey, l.officialUnitCents, l.chargeClass])).toEqual([["essential", 2900, "recurring"], ["hotel-net-complete", 11900, "recurring"]]);
+    expect(t.conditions).toContain(netCommitmentsText("hotel-net-complete")!);
+    expect(t.conditions).toContain("En implantación (incluido en el precio");
+    // Nada se cobra ni se activa: solo un borrador
+    expect(await subStore.list({ companyId: c.id })).toEqual([]);
   });
 });

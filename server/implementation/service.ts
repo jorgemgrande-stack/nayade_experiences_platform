@@ -35,7 +35,7 @@ import {
   type MilestoneKind,
   type StartMode,
 } from "./store";
-import { GENERIC_TEMPLATE, checklistEventDetail, checklistKeyOf, sectionOf, templateFor } from "./templates";
+import { GENERIC_TEMPLATE, checklistEventDetail, checklistKeyOf, netCommitmentsText, sectionOf, templateFor } from "./templates";
 
 export const ASSISTED_TRIAL_DAYS = 15;
 const DAY = 86_400_000;
@@ -119,7 +119,33 @@ export interface ImplementationDeps {
   assignees?: (() => Promise<Assignee[]>) | null;
   /** Marca la solicitud de la web como atendida al abrir el expediente. */
   markAttended?: ((leadRequestId: number, actor: string) => Promise<unknown>) | null;
+  /**
+   * Paquete personalizado de la contratación asistida (clase B, 11/11/2026): borrador de condiciones personalizadas
+   * (server/commercialTerms) con el plan Core si la empresa no lo tiene, el producto Net a su precio publicado y los
+   * compromisos de implantación como condiciones especiales. El operador lo revisa y lo envía a aceptación.
+   */
+  packages?: PackagePort | null;
   now?: () => number;
+}
+
+/** Lo que la implantación usa de las condiciones personalizadas y del catálogo publicado (sin duplicarlos). */
+export interface PackagePort {
+  /** Productos publicados con sus precios aprobados. */
+  offer(): Promise<Array<{ key: string; name: string; family: string; prices: Array<{ id: number; kind: string; status: string }> }>>;
+  /** Plan Core vigente de la empresa (clave) o null si no tiene ninguno. */
+  companyPlan(companyId: number): Promise<string | null>;
+  create(companyId: number, input: PackageDraftInput, actor: string): Promise<{ id: number; status: string }>;
+  get(id: number): Promise<{ id: number; status: string; companyId: number } | null>;
+}
+export interface PackageDraftInput {
+  pricingMode: "per_item";
+  presentation: "breakdown";
+  packageName: string;
+  conditions: string;
+  interval: "month";
+  requiresAcceptance: true;
+  lines: Array<{ kind: "catalog"; productKey: string; priceId: number; quantity: number }>;
+  reason: string;
 }
 
 const clean = (s: unknown, max: number) => (typeof s === "string" && s.trim() ? s.trim().slice(0, max) : null);
@@ -403,10 +429,26 @@ export class ImplementationService {
     const key = clean(input.solutionKey, 64);
     if (!key || !Number.isInteger(input.companyId) || input.companyId <= 0) throw new ImplementationError("invalid_input", "Empresa o solución no válida");
     const same = async () => (await this.d.store.list({ companyId: input.companyId, limit: 500 })).find((o) => o.solutionKey === key && o.status !== "cancelled") ?? null;
+    const reference = (clean(input.reference, 80) ?? "").replace(/\s+/g, " ");
+    const what = `${PAID_CIRCUIT_LABEL[input.circuit]}${reference ? ` ${reference}` : ""}`;
     const existing = await same();
+    // Un expediente de la contratación asistida aún sin contrato (clase B): el pago lo pone en implantación
+    if (existing && input.contractId && (existing.status === "requested" || existing.status === "proposal")) {
+      const order = await this.serial(existing.id, async () => {
+        const cur = await this.must(existing.id);
+        if (cur.status !== "requested" && cur.status !== "proposal") return cur;
+        const at = this.now();
+        const upd = await this.patch(cur, { status: "accepted", contractId: input.contractId, acceptedAt: at, startMode: "subscription", subscriptionId: input.subscriptionId, conditions: cur.conditions ?? `Contratado (${what}). Las condiciones son las del contrato.`, timeline: cur.timeline ?? "A acordar con el cliente en la reunión de arranque", termsBy: cur.termsBy ?? actor.slice(0, 100), termsAt: cur.termsAt ?? at, requestSnapshot: { ...(cur.requestSnapshot ?? {}), source: "paid", circuit: input.circuit, reference, contractId: input.contractId, subscriptionId: input.subscriptionId } });
+        await this.event(cur.id, "paid", actor, `Contratado (${what}): contrato #${input.contractId}${input.subscriptionId ? ` · suscripción #${input.subscriptionId}` : ""}; orden de implantación abierta`);
+        await this.seedChecklist(upd, actor);
+        await this.moveOpportunity(upd, "won", actor);
+        await this.crmNote(upd, `contratado (${what}): orden de implantación abierta`, actor);
+        return upd;
+      });
+      return { order, created: false };
+    }
     if (existing) return { order: existing, created: false };
     const sol = await this.solutionOf(key);
-    const reference = (clean(input.reference, 80) ?? "").replace(/\s+/g, " ");
     let order: ImplementationOrder;
     try {
       order = await this.d.store.create({
@@ -428,7 +470,6 @@ export class ImplementationService {
       if (!won) throw new ImplementationError("conflict", "Ya existe un expediente de esa solución para la empresa");
       return { order: won, created: false };
     }
-    const what = `${PAID_CIRCUIT_LABEL[input.circuit]}${reference ? ` ${reference}` : ""}`;
     await this.event(order.id, "created", actor, `${sol.name} · pagado (${what}): implantación obligatoria antes de ponerlo en marcha`);
     await this.event(order.id, "assigned", actor, `Cola: ${order.queue}`);
     if (input.contractId) {
@@ -448,6 +489,51 @@ export class ImplementationService {
     let position = 0;
     for (const m of t.items) await this.d.store.addMilestone({ orderId: o.id, kind: m.kind, title: m.title, required: m.required, assigneeId: o.assigneeId, assigneeName: o.assigneeName, dueAt: null, note: m.note ?? null, position: position++, createdBy: actor.slice(0, 100), createdAt: this.now() });
     await this.event(o.id, "checklist", actor, checklistEventDetail(t));
+  }
+
+  /**
+   * Borrador del paquete personalizado de un producto Net (clase B) desde su expediente: plan Core si la empresa no lo
+   * tiene (el de la oportunidad o Essential), el producto Net a su precio mensual publicado y las condiciones especiales
+   * con la prestación y los compromisos de implantación (alcance, disponible hoy y EN IMPLANTACIÓN, nunca como
+   * terminado), sacados del catálogo. Requiere aceptación del cliente. Idempotente: mientras el borrador siga sin
+   * enviar se devuelve el mismo. Nada se cobra (el cobro de las condiciones personalizadas tiene su propio interruptor).
+   */
+  async preparePackage(id: number, actor: string): Promise<{ termsId: number; created: boolean }> {
+    return this.serial(id, async () => {
+      const o = await this.must(id);
+      if (!this.d.packages) throw new ImplementationError("unavailable", "Las condiciones personalizadas no están disponibles en este entorno");
+      if (o.status !== "requested" && o.status !== "proposal") throw new ImplementationError("invalid_state", "El expediente ya tiene el contrato aceptado: el paquete ya no se prepara desde aquí");
+      const commitments = netCommitmentsText(o.solutionKey);
+      if (!commitments) throw new ImplementationError("invalid_input", "El paquete con compromisos de implantación es solo para los productos Net de empresa");
+      const prev = [...(await this.d.store.events(o.id))].reverse().find((e) => e.type === "package");
+      const prevId = Number(/#(\d+)/.exec(prev?.detail ?? "")?.[1] ?? 0);
+      if (prevId) {
+        const t = await this.d.packages.get(prevId).catch(() => null);
+        if (t && t.companyId === o.companyId && t.status === "draft") return { termsId: t.id, created: false };
+      }
+      const offer = await this.d.packages.offer();
+      const monthly = (key: string) => offer.find((p) => p.key === key)?.prices.find((x) => x.kind === "monthly" && x.status === "approved") ?? null;
+      const product = offer.find((p) => p.key === o.solutionKey);
+      const productPrice = monthly(o.solutionKey);
+      if (!product || !productPrice) throw new ImplementationError("invalid_state", `«${o.solutionName}» no tiene precio mensual publicado: no se puede preparar el paquete`);
+      const lines: PackageDraftInput["lines"] = [];
+      if (!(await this.d.packages.companyPlan(o.companyId))) {
+        const opp = o.opportunityId ? await this.d.crmStore.get("opportunities", o.opportunityId) : null;
+        const planKey = [opp?.planId, "essential"].find((k) => !!k && offer.some((p) => p.key === k && p.family === "core_plan" && !!monthly(k))) ?? null;
+        if (!planKey) throw new ImplementationError("invalid_state", "No hay un plan Core con precio mensual publicado para incluirlo en el paquete");
+        lines.push({ kind: "catalog", productKey: planKey, priceId: monthly(planKey)!.id, quantity: 1 });
+      }
+      lines.push({ kind: "catalog", productKey: o.solutionKey, priceId: productPrice.id, quantity: 1 });
+      const conditions = [
+        `Servicio contratado: ${product.name}, al precio publicado en el catálogo de Big Elephant (partidas de este acuerdo, IVA aparte).`,
+        `Prestación: el servicio se presta en la plataforma Big Elephant de la empresa, con las condiciones generales de contratación vigentes. Se pone en marcha cuando la implantación está completada (expediente ${o.reference}).`,
+        commitments,
+      ].join("\n\n");
+      const t = await this.d.packages.create(o.companyId, { pricingMode: "per_item", presentation: "breakdown", packageName: `${product.name} con implantación`.slice(0, 160), conditions: conditions.slice(0, 5000), interval: "month", requiresAcceptance: true, lines, reason: `Contratación de ${product.name} con implantación asistida (expediente ${o.reference})`.slice(0, 500) }, actor);
+      await this.event(o.id, "package", actor, `Paquete personalizado: condiciones #${t.id} (borrador para revisar y enviar a aceptación)`);
+      await this.crmNote(o, `paquete personalizado preparado (condiciones #${t.id})`, actor);
+      return { termsId: t.id, created: true };
+    });
   }
 
   // ── 10-11 Hitos y pendientes ──────────────────────────────────────────────────

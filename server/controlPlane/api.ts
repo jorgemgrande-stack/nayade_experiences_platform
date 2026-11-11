@@ -2300,6 +2300,23 @@ export function createControlPlaneApp(d: ControlPlaneDeps): Express {
         platformDomain: d.platformDomain ?? null,
         assignees: d.implementation.assignees ?? null,
         markAttended: webRequests ? (leadRequestId, actor) => webRequests.setStatus(leadRequestId, "attended", actor) : null,
+        // Paquete personalizado de la contratación asistida (clase B): borrador de condiciones personalizadas, sin cobro
+        packages: commercialTerms
+          ? {
+              offer: ((c) => () => c.offer())(catalogFromWebStore(d.web.store)),
+              companyPlan: async (companyId) => {
+                const at = d.subscriptions!.now?.() ?? Date.now();
+                for (const s of await d.subscriptions!.store.list({ companyId })) {
+                  if (s.status === "canceled") continue;
+                  const plan = (await d.subscriptions!.store.items(s.id)).find((i) => i.family === "core_plan" && i.effectiveFrom <= at && (i.effectiveTo === null || i.effectiveTo > at));
+                  if (plan) return plan.productKey;
+                }
+                return null;
+              },
+              create: (companyId, input, actor) => commercialTerms.createPackage(companyId, input, actor),
+              get: async (termsId) => commercialTerms.must(termsId).catch(() => null),
+            }
+          : null,
         now: d.subscriptions.now,
       });
       intakeImplementation.run = (r) => implementation.fromIntake(r);
