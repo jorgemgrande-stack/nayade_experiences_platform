@@ -1098,13 +1098,19 @@ export class NegotiatedBillingService {
     const invoices = await this.d.adapter.invoicesOf(stripeSubscriptionId).catch(() => null);
     if (!invoices) return 0;
     const ids = invoices.filter((i) => i.status && i.status !== "draft" && (i.billingReason === "subscription_cycle" || (i.billingReason === "subscription_create" && !row.checkout?.firstChargeAt))).map((i) => i.id);
-    const before = await this.d.billing.periodsOf(row.subscriptionId, stripeSubscriptionId);
-    const missing = ids.filter((id) => !before.includes(id));
-    if (missing.length) {
-      opsLog("warn", "CommercialTerms", "billing_periods_recounted", { subscriptionId: row.subscriptionId, missing: missing.length });
-      await this.d.billing.notePeriod(row.subscriptionId, stripeSubscriptionId, missing, this.actor);
+    // Un fallo de la base de datos aquí no corta la pasada de esta fila (el resto de la conciliación sigue)
+    try {
+      const before = await this.d.billing.periodsOf(row.subscriptionId, stripeSubscriptionId);
+      const missing = ids.filter((id) => !before.includes(id));
+      if (missing.length) {
+        opsLog("warn", "CommercialTerms", "billing_periods_recounted", { subscriptionId: row.subscriptionId, missing: missing.length });
+        await this.d.billing.notePeriod(row.subscriptionId, stripeSubscriptionId, missing, this.actor);
+      }
+      return missing.length;
+    } catch (e) {
+      opsLog("warn", "CommercialTerms", "billing_periods_recount_failed", { subscriptionId: row.subscriptionId, error: e instanceof Error ? e.name : "error" });
+      return 0;
     }
-    return missing.length;
   }
 
   /** Programa el fin de la suscripción interna en una fecha (el fin del acuerdo). Devuelve si quedó programado. */
