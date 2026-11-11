@@ -2052,13 +2052,9 @@ export function createControlPlaneApp(d: ControlPlaneDeps): Express {
       store: d.subscriptions.store,
       crm: crmPort,
       now: d.subscriptions.now,
-      settle: commercialTerms
-        ? async (sid) => {
-            await commercialTerms.settleDue(sid);
-            // Licencias pendientes de plataforma o fallidas: se reintentan aquí (idempotente; nunca bloquea el cálculo)
-            await termsLicences?.retryIfPending(sid);
-          }
-        : undefined,
+      settle: commercialTerms ? (sid) => commercialTerms.settleDue(sid) : undefined,
+      // Licencias pendientes de plataforma o fallidas: se reintentan al REGISTRAR una simulación, nunca al consultar
+      onSimulate: async (sid) => termsLicences?.retryIfPending(sid),
     });
     if (d.capabilities) {
       // Licencias por capacidad: Elephant Control es la autoridad técnica. Antes del router de
@@ -2079,6 +2075,7 @@ export function createControlPlaneApp(d: ControlPlaneDeps): Express {
         termsLicences = new TermsLicences({
           auto: d.subscriptions.termsLicences?.auto !== false,
           licensing,
+          capabilities: d.capabilities,
           subscriptions: svc,
           subscriptionStore: d.subscriptions.store,
           termsStore: d.subscriptions.terms,

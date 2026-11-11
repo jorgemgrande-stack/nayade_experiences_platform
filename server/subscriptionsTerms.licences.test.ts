@@ -35,7 +35,7 @@ let P: Record<string, number>;
 
 /** Como en el plano de control: tras cada cambio de lo contratado se aplican las licencias. */
 function wire(auto = true) {
-  const licences = new TermsLicences({ auto, licensing, subscriptions: subs, subscriptionStore: store, termsStore, companyTenant: async (id) => tenants.get(id) ?? null, now: () => clock });
+  const licences = new TermsLicences({ auto, licensing, capabilities: caps, subscriptions: subs, subscriptionStore: store, termsStore, companyTenant: async (id) => tenants.get(id) ?? null, now: () => clock });
   const terms = new CommercialTermsService({ store: termsStore, subscriptions: subs, subscriptionStore: store, catalog: catalogFromWebStore(webStore), crm, now: () => clock, afterChange: (sid, actor) => licences.afterChange(sid, actor) });
   return { licences, terms };
 }
@@ -104,21 +104,32 @@ describe("aplicación automática al entrar en vigor el acuerdo", () => {
   });
 
   it("Caso 28 — los derechos adquiridos y las licencias de otro origen no se tocan, tampoco al retirar un producto", async () => {
-    await caps.apply("acme", [{ capabilityId: TPV_ACQUIRED_RIGHTS_CAPABILITY, siteId: "", status: "active", validUntil: null, source: TPV_ACQUIRED_RIGHTS_SOURCE }, { capabilityId: "capacidad-de-operador", siteId: "", status: "active", validUntil: null, source: "operator" }], { actor: "seed", reason: "previas", now: clock });
+    // Una capacidad que Hotel Net también concede, ya dada por un operador, y los derechos adquiridos del TPV
+    const essentialOnly = await officialCapabilities(9, "oficial", []);
+    const hotelCap = (await officialCapabilities(8, "otra", ["hotel-net-complete"])).find((c) => !essentialOnly.includes(c))!;
+    expect(hotelCap).toBeTruthy();
+    await caps.apply("acme", [{ capabilityId: TPV_ACQUIRED_RIGHTS_CAPABILITY, siteId: "", status: "active", validUntil: null, source: TPV_ACQUIRED_RIGHTS_SOURCE }, { capabilityId: hotelCap, siteId: "", status: "active", validUntil: null, source: "operator" }], { actor: "seed", reason: "previas", now: clock });
     const a = await contracted(1, "acme", PACKAGE());
+    // La capacidad del operador NO cambia de dueño: queda anotada como «sin tocar»
+    const ev = (await termsStore.events({ termsId: a.termsId })).find((e) => e.kind === "licences_applied")!;
+    expect((ev.after as { skipped: unknown[] }).skipped).toEqual([{ capabilityId: hotelCap, why: "other_source" }]);
     const before = await granted("acme", a.subId);
+    expect(before).not.toContain(hotelCap);
     clock += 86_400_000;
-    // Nuevo acuerdo sin Hotel Net: se retiran SOLO las licencias de esta suscripción que ya no corresponden
-    const d = await a.terms.createForSubscription(a.subId, PACKAGE({ globalAmountCents: 4900, lines: [cat("essential"), cat("connect-whatsapp-ai")] }), A);
+    // Nuevo acuerdo sin Hotel Net ni WhatsApp: se retiran SOLO las licencias de esta suscripción que ya no corresponden
+    const d = await a.terms.createForSubscription(a.subId, PACKAGE({ globalAmountCents: 2900, lines: [cat("essential")] }), A);
     await a.terms.activate(d.id, { expectedRevision: d.revision, expectedVersion: (await subs.must(a.subId)).version }, A);
     const after = await granted("acme", a.subId);
     expect(after.length).toBeLessThan(before.length);
     expect(after.every((c) => before.includes(c))).toBe(true);
     const others = (await caps.list("acme")).filter((g) => !g.source.startsWith("subscription:"));
-    expect(others.map((g) => [g.capabilityId, g.status, g.source]).sort()).toEqual([
-      ["capacidad-de-operador", "active", "operator"],
-      [TPV_ACQUIRED_RIGHTS_CAPABILITY, "active", TPV_ACQUIRED_RIGHTS_SOURCE],
-    ]);
+    // Al retirar Hotel Net, la del operador sigue activa y suya; los derechos adquiridos, intactos
+    expect(others.map((g) => [g.capabilityId, g.status, g.source]).sort()).toEqual(
+      [
+        [hotelCap, "active", "operator"],
+        [TPV_ACQUIRED_RIGHTS_CAPABILITY, "active", TPV_ACQUIRED_RIGHTS_SOURCE],
+      ].sort(),
+    );
   });
 });
 
@@ -220,5 +231,66 @@ describe("fallos, reintento e interruptor", () => {
     await subs.applyRenewals(a.subId, "system:test");
     await a.licences.retryIfPending(a.subId);
     expect((await granted("acme", a.subId)).length).toBeGreaterThan(base.length);
+  });
+});
+
+describe("aplicación restringida: nunca reactiva, nunca se apropia, nunca retroactiva", () => {
+  it("una licencia suspendida o en solo lectura no se reactiva al activar otro acuerdo ni al llegar una fecha", async () => {
+    const a = await contracted(1, "acme", PACKAGE());
+    const mine = await granted("acme", a.subId);
+    // Impago: un operador suspende una y deja otra en solo lectura (mismo origen de la suscripción)
+    const source = `subscription:${a.subId}`;
+    await caps.apply("acme", [{ capabilityId: mine[0], siteId: "", status: "suspended", validUntil: null, source }, { capabilityId: mine[1], siteId: "", status: "read_only", validUntil: null, source }], { actor: "operator:x", reason: "impago", now: clock });
+    clock += 86_400_000;
+    const d = await a.terms.createForSubscription(a.subId, PACKAGE({ globalAmountCents: 9900 }), A);
+    await a.terms.activate(d.id, { expectedRevision: d.revision, expectedVersion: (await subs.must(a.subId)).version }, A);
+    const state = Object.fromEntries((await caps.list("acme")).map((g) => [g.capabilityId, g.status]));
+    expect(state[mine[0]]).toBe("suspended");
+    expect(state[mine[1]]).toBe("read_only");
+    const out = await a.licences.ensure(a.subId, A, { force: true });
+    expect(out).toMatchObject({ status: "applied", changed: 0 });
+    expect((out as { skipped: Array<{ why: string }> }).skipped.map((x) => x.why).sort()).toEqual(["read_only", "suspended"]);
+    expect((await caps.list("acme")).find((g) => g.capabilityId === mine[0])!.status).toBe("suspended");
+  });
+
+  it("una suscripción en prueba no se toca: sus licencias las gobierna la prueba gratuita", async () => {
+    const w = wire();
+    const sub = await subs.create({ companyId: 1, tenantId: "acme", interval: "month", trialDays: 15, plan: { productKey: "essential", priceId: P.essential } }, A);
+    // Licencias de la prueba, con su caducidad
+    await licensing.apply(sub.id, { activate: true, actor: "trial", reason: "prueba" });
+    const trial = (await caps.list("acme")).map((g) => [g.capabilityId, g.status, g.validUntil]);
+    const draft = await w.terms.createForSubscription(sub.id, PACKAGE(), A);
+    await w.terms.activate(draft.id, { expectedRevision: draft.revision, expectedVersion: sub.version }, A);
+    expect((await caps.list("acme")).map((g) => [g.capabilityId, g.status, g.validUntil])).toEqual(trial);
+    expect(await w.licences.ensure(sub.id, A, { force: true })).toMatchObject({ status: "manual" });
+    expect(await licenceEvents(draft.id)).toEqual([]);
+  });
+
+  it("nunca retroactivo: un acuerdo activado sin esta función no recibe nada al calcular la facturación", async () => {
+    // Acuerdo activado «antes»: sin gancho de licencias y, por tanto, sin eventos de licencias
+    const terms = new CommercialTermsService({ store: termsStore, subscriptions: subs, subscriptionStore: store, catalog: catalogFromWebStore(webStore), crm, now: () => clock });
+    const sub = await subs.create({ companyId: 1, tenantId: "acme", interval: "month", plan: { productKey: "essential", priceId: P.essential } }, A);
+    const draft = await terms.createForSubscription(sub.id, PACKAGE(), A);
+    await terms.activate(draft.id, { expectedRevision: draft.revision, expectedVersion: sub.version }, A);
+    const { licences } = wire();
+    await licences.retryIfPending(sub.id);
+    expect(await caps.list("acme")).toEqual([]);
+    expect(await licenceEvents(draft.id)).toEqual([]);
+    // A mano (o al dar de alta la plataforma de la empresa), sí
+    expect(await licences.ensure(sub.id, A, { force: true })).toMatchObject({ status: "applied" });
+    expect((await granted("acme", sub.id)).length).toBeGreaterThan(0);
+  });
+
+  it("un fallo que se repite no llena el historial, y no se tocan los límites ni cupos de la empresa", async () => {
+    const apply = caps.apply.bind(caps);
+    caps.apply = (async () => {
+      throw new Error("registro de licencias no disponible");
+    }) as typeof caps.apply;
+    const a = await contracted(1, "acme", PACKAGE());
+    for (let n = 0; n < 4; n++) await a.licences.retryIfPending(a.subId);
+    expect(await licenceEvents(a.termsId)).toEqual(["licences_failed"]);
+    caps.apply = apply;
+    // El servicio de licencias de la automática no tiene acceso a los límites: solo calcula (preview) y escribe capacidades
+    expect(Object.keys((a.licences as unknown as { d: { licensing: object } }).d)).not.toContain("limits");
   });
 });

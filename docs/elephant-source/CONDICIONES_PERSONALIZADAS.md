@@ -142,11 +142,20 @@ Los seis importes que el encargo pide distinguir:
 ## Licencias: aplicación automática (`server/commercialTerms/licences.ts`)
 
 Los derechos salen de los **productos de catálogo** de las partidas vigentes de la suscripción, nunca del importe. Los
-calcula y aplica el servicio de licencias de siempre (`LicensingService`), con origen `subscription:<id>`.
+calcula el servicio de licencias de siempre (`LicensingService.preview`), con origen `subscription:<id>`.
+
+- **Aplicación restringida** (más prudente que el «Aplicar licencias» manual de la ficha): solo da de alta capacidades
+  que la empresa no tiene (o propias ya canceladas), da de baja las propias que ya no corresponden y ajusta la
+  caducidad de las propias activas. Nunca reactiva una licencia suspendida o en solo lectura (impago, bloqueo de un
+  operador), nunca toca una licencia de otro origen aunque sea de la misma capacidad (queda anotada como «sin tocar»
+  en el historial) y no cambia límites ni cupos (siguen con «Aplicar licencias» de la ficha).
+- **Una suscripción en prueba no se toca:** sus licencias las gobierna la prueba gratuita.
+- **Nunca retroactivo:** un acuerdo activado antes de existir esta función no recibe nada solo; sí al dar de alta la
+  plataforma de su empresa o a mano.
 
 - **Cuándo se aplican solas:** al entrar en vigor un acuerdo (activación directa o aceptación del cliente), al
   resolverse el fin de una condición temporal y cuando la empresa recibe su plataforma desde el CRM (alta en la
-  plataforma). Las pendientes o fallidas se reintentan antes de cada cálculo de la facturación.
+  plataforma). Las pendientes o fallidas se reintentan al registrar la simulación de un periodo (nunca en una consulta).
 - **Empresa sin plataforma:** no hay dónde aplicar. Queda «pendiente de plataforma» en el historial del acuerdo
   (`licences_pending`) y se aplican al darla de alta. La suscripción toma la plataforma de SU empresa (evento
   `tenant_linked` en su historial); una suscripción nunca cambia de plataforma.
@@ -157,8 +166,8 @@ calcula y aplica el servicio de licencias de siempre (`LicensingService`), con o
 - **Fallos:** si la propagación falla, el acuerdo queda activado igualmente, el fallo queda en el historial
   (`licences_failed`) y se reintenta; también se puede aplicar a mano.
 - **Fechas:** los cambios que dependen solo de la fecha (un acuerdo programado que empieza, una partida con fin
-  propio) se aplican en la siguiente ocasión en que se calcula la facturación de la suscripción; no hay todavía una
-  tarea periódica que lo haga a la hora exacta.
+  propio) se aplican la siguiente vez que se registra la simulación de un periodo de la suscripción; no hay todavía
+  una tarea periódica que lo haga a la hora exacta.
 - **Interruptor:** la aplicación automática viene ENCENDIDA. Solo se apaga con `CP_CUSTOM_TERMS_AUTO_LICENCES=0` (no hay
   que crear ninguna variable para que funcione). Apagada, el enlace de la plataforma y la aplicación siguen a mano.
 - **Riesgo asumido:** con la facturación en simulación, las licencias se conceden sin que haya un cobro detrás (igual

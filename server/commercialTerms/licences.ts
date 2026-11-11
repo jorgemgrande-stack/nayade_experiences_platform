@@ -2,10 +2,17 @@
  * Licencias de una suscripción con condiciones comerciales personalizadas: se aplican SOLAS cuando el acuerdo entra
  * en vigor (activación directa o aceptación del cliente) y cuando la empresa recibe su plataforma después.
  *
- * - Los derechos salen de los PRODUCTOS de catálogo de las partidas vigentes, nunca del importe: los calcula y aplica
- *   el servicio de licencias de siempre (`LicensingService`), con origen `subscription:<id>`. Una partida a medida no
- *   existe en el catálogo y no concede nada. Las licencias de otro origen (derechos adquiridos, operador, otras
- *   suscripciones) no se tocan.
+ * - Los derechos salen de los PRODUCTOS de catálogo de las partidas vigentes, nunca del importe: los calcula el
+ *   servicio de licencias de siempre (`LicensingService.preview`), con origen `subscription:<id>`. Una partida a medida
+ *   no existe en el catálogo y no concede nada.
+ * - Aplicación RESTRINGIDA (más prudente que el «Aplicar licencias» manual de la ficha): solo da de ALTA capacidades
+ *   que la empresa no tiene (o propias ya canceladas), da de BAJA las propias que ya no corresponden y ajusta la
+ *   caducidad de las propias activas. NUNCA reactiva una licencia suspendida o en solo lectura (impago, bloqueo de un
+ *   operador), NUNCA toca una licencia de otro origen (derechos adquiridos, operador, otra suscripción) aunque sea de
+ *   la misma capacidad, y NO cambia límites ni cupos. Lo que no puede aplicar queda anotado para un operador.
+ * - Una suscripción EN PRUEBA no se toca: sus licencias las gobierna el circuito de la prueba gratuita.
+ * - Nunca retroactivo: un acuerdo activado antes de existir esta función no recibe nada solo (sí al dar de alta la
+ *   plataforma de su empresa o a mano).
  * - Idempotente: repetirlo no cambia nada si ya está aplicado.
  * - Sin plataforma no hay dónde aplicar: queda «pendiente de plataforma» en el historial y se aplica al enlazarla. La
  *   suscripción toma la plataforma de SU empresa (enlace auditable en su historial).
@@ -22,6 +29,7 @@ import express, { type Request, type Response, type Router } from "express";
 import { z } from "zod";
 import { getAuth, requireScope } from "../controlPlane/auth";
 import { opsLog } from "../_core/ops/log";
+import type { CapabilityChange, CapabilityStore } from "../_core/capabilities/store";
 import type { LicensingService } from "../licensing/service";
 import type { SubscriptionService } from "../subscriptions/service";
 import type { SubscriptionStore } from "../subscriptions/store";
@@ -32,7 +40,7 @@ import type { TermsEventDraft, TermsStore } from "./store";
 export type LicenceOutcome =
   | { status: "not_applicable" | "manual"; message: string }
   | { status: "pending_tenant"; message: string }
-  | { status: "applied"; tenantId: string; linked: boolean; changed: number; capabilities: string[] }
+  | { status: "applied"; tenantId: string; linked: boolean; changed: number; capabilities: string[]; skipped: Array<{ capabilityId: string; why: "other_source" | "suspended" | "read_only" }> }
   | { status: "failed"; tenantId: string | null; error: string };
 
 const LICENCE_EVENTS = ["licences_applied", "licences_pending", "licences_failed"];
@@ -43,7 +51,9 @@ export class TermsLicences {
     private d: {
       /** Aplicación automática (por defecto, sí). */
       auto: boolean;
-      licensing: Pick<LicensingService, "preview" | "apply">;
+      licensing: Pick<LicensingService, "preview">;
+      /** Registro de licencias: solo para escribir los cambios permitidos. */
+      capabilities: Pick<CapabilityStore, "apply">;
       subscriptions: Pick<SubscriptionService, "linkTenant">;
       subscriptionStore: Pick<SubscriptionStore, "get" | "items" | "list">;
       termsStore: Pick<TermsStore, "events" | "log">;
@@ -67,8 +77,9 @@ export class TermsLicences {
     return { kind, actor, reason: reason.slice(0, 500), before: null, after, effectiveAt: null, acceptanceStatus: null, syncResult: result, economic: null };
   }
 
-  private async last(termsId: number) {
-    return (await this.d.termsStore.events({ termsId })).filter((e) => LICENCE_EVENTS.includes(e.kind)).pop() ?? null;
+  /** Último resultado de licencias de la SUSCRIPCIÓN (de cualquiera de sus acuerdos: el vigente cambia con el tiempo). */
+  private async last(subscriptionId: number) {
+    return (await this.d.termsStore.events({ subscriptionId })).filter((e) => LICENCE_EVENTS.includes(e.kind)).pop() ?? null;
   }
 
   /**
@@ -82,7 +93,10 @@ export class TermsLicences {
     const termsId = await this.owner(subscriptionId);
     if (termsId === null) return { status: "not_applicable", message: "La suscripción no tiene condiciones comerciales personalizadas vigentes" };
     if (!this.d.auto && !o.force) return { status: "manual", message: "La aplicación automática de licencias está apagada: aplícalas desde el CRM" };
-    const last = await this.last(termsId);
+    // Las licencias de una prueba gratuita las gobierna su propio circuito (caducidad, solo lectura al vencer)
+    if (sub.status === "trialing") return { status: "manual", message: "La suscripción está en periodo de prueba: sus licencias las gobierna la prueba gratuita; se aplicarán las del acuerdo cuando termine la prueba" };
+    if (sub.status === "canceled") return { status: "not_applicable", message: "La suscripción está cancelada" };
+    const last = await this.last(subscriptionId);
     // Sin plataforma no hay dónde aplicar: la de la suscripción o, si no tiene, la de su empresa
     const companyTenant = sub.tenantId ? null : await this.d.companyTenant(sub.companyId).catch(() => null);
     const tenantId = sub.tenantId ?? companyTenant;
@@ -92,23 +106,53 @@ export class TermsLicences {
       return { status: "pending_tenant", message };
     }
     // Ya aplicadas y nada ha cambiado: no se repite (sí a mano, tras un cambio o tras un fallo)
-    if (!o.force && !o.changed && sub.tenantId && last?.kind === "licences_applied") return { status: "applied", tenantId, linked: false, changed: 0, capabilities: [] };
+    if (!o.force && !o.changed && sub.tenantId && last?.kind === "licences_applied") return { status: "applied", tenantId, linked: false, changed: 0, capabilities: [], skipped: [] };
     try {
       let linked = false;
       if (!sub.tenantId) {
-        await this.d.subscriptions.linkTenant(subscriptionId, { tenantId, reason: "Plataforma de la empresa" }, actor);
-        linked = true;
+        // Otra llamada simultánea pudo enlazarla ya: no es un fallo
+        const fresh = await this.d.subscriptionStore.get(subscriptionId);
+        if (!fresh?.tenantId) {
+          await this.d.subscriptions.linkTenant(subscriptionId, { tenantId, reason: "Plataforma de la empresa" }, actor);
+          linked = true;
+        } else if (fresh.tenantId !== tenantId) throw new Error("La suscripción ya pertenece a otra plataforma");
       }
-      const out = await this.d.licensing.apply(subscriptionId, { activate: true, actor, reason: `Licencias de las condiciones comerciales personalizadas #${termsId}` });
-      const capabilities = out.changes.filter((c) => c.status === "active").map((c) => c.capabilityId).sort();
-      if (out.applied.length || linked || last?.kind !== "licences_applied") {
-        await this.d.termsStore.log(termsId, this.event("licences_applied", actor, linked ? "Plataforma enlazada y licencias aplicadas" : "Licencias aplicadas", { subscriptionId, tenantId, linked, changed: out.applied.length, capabilities }, "applied"), this.now());
+      const plan = await this.d.licensing.preview(subscriptionId, { activate: true });
+      // Solo lo que es seguro aplicar sin una persona delante
+      const safe: CapabilityChange[] = [];
+      const skipped: Array<{ capabilityId: string; why: "other_source" | "suspended" | "read_only" }> = [];
+      for (const c of plan.changes) {
+        const cur = plan.current.find((g) => g.capabilityId === c.capabilityId && g.siteId === c.siteId);
+        if (!cur) {
+          // Alta de una capacidad que la empresa no tiene
+          if (c.status !== "cancelled") safe.push(c);
+        } else if (cur.source !== plan.source) {
+          // De otro origen (derechos adquiridos, operador, otra suscripción): no se toca ni se cambia de dueño
+          if (c.status !== "cancelled") skipped.push({ capabilityId: c.capabilityId, why: "other_source" });
+        } else if (c.status === "cancelled") {
+          // Propia que ya no corresponde: baja
+          safe.push(c);
+        } else if (cur.status === "suspended" || cur.status === "read_only") {
+          // Bloqueada por impago, vencimiento o un operador: nunca se reactiva sola
+          skipped.push({ capabilityId: c.capabilityId, why: cur.status });
+        } else {
+          // Propia activa (cambia la caducidad) o propia cancelada que vuelve a corresponder
+          safe.push(c);
+        }
       }
-      return { status: "applied", tenantId, linked, changed: out.applied.length, capabilities };
+      const applied = safe.length ? await this.d.capabilities.apply(plan.tenantId, safe, { actor, reason: `Licencias de las condiciones comerciales personalizadas #${termsId}`, now: this.now() }) : [];
+      const capabilities = plan.changes.filter((c) => c.status === "active" && !skipped.some((s) => s.capabilityId === c.capabilityId)).map((c) => c.capabilityId).sort();
+      if (applied.length || linked || last?.kind !== "licences_applied") {
+        const message = `${linked ? "Plataforma enlazada y licencias aplicadas" : "Licencias aplicadas"}${skipped.length ? ` (${skipped.length} sin tocar: de otro origen, suspendidas o en solo lectura)` : ""}`;
+        await this.d.termsStore.log(termsId, this.event("licences_applied", actor, message, { subscriptionId, tenantId, linked, changed: applied.length, capabilities, skipped }, "applied"), this.now());
+      }
+      return { status: "applied", tenantId, linked, changed: applied.length, capabilities, skipped };
     } catch (e) {
       const error = (e instanceof Error ? e.message : "error").slice(0, 300);
       opsLog("warn", "CommercialTerms", "licences_failed", { subscriptionId });
-      await this.d.termsStore.log(termsId, this.event("licences_failed", actor, `No se pudieron aplicar las licencias: ${error}`, { subscriptionId, tenantId }, "failed"), this.now()).catch(() => undefined);
+      // Un fallo que se repite igual no llena el historial
+      const message = `No se pudieron aplicar las licencias: ${error}`.slice(0, 500);
+      if (!(last?.kind === "licences_failed" && last.reason === message)) await this.d.termsStore.log(termsId, this.event("licences_failed", actor, message, { subscriptionId, tenantId }, "failed"), this.now()).catch(() => undefined);
       return { status: "failed", tenantId, error };
     }
   }
@@ -118,13 +162,17 @@ export class TermsLicences {
     return this.ensure(subscriptionId, actor, { changed: true }).catch(() => null);
   }
 
-  /** Pendientes o fallidas: se reintentan cuando hay ocasión (antes de calcular la facturación). Nunca lanza. */
+  /**
+   * Pendientes o fallidas: se reintentan cuando hay ocasión (al REGISTRAR la simulación de un periodo, nunca en una
+   * consulta). Solo si esta función ya había intentado aplicarlas: un acuerdo anterior a ella no recibe nada solo.
+   * Nunca lanza.
+   */
   async retryIfPending(subscriptionId: number, actor = "system:terms-licences"): Promise<void> {
     if (!this.d.auto) return;
     try {
       const termsId = await this.owner(subscriptionId);
       if (termsId === null) return;
-      const last = await this.last(termsId);
+      const last = await this.last(subscriptionId);
       if (last && last.kind === "licences_applied") {
         // Aplicadas: solo se repite si desde entonces ha entrado o salido alguna partida por FECHA (un acuerdo
         // programado que empieza, una partida con fin propio, el fin de una condición temporal)
@@ -134,6 +182,8 @@ export class TermsLicences {
         await this.ensure(subscriptionId, actor, { changed: true });
         return;
       }
+      // Sin ningún intento previo no hay nada que reintentar (nunca retroactivo)
+      if (!last) return;
       await this.ensure(subscriptionId, actor);
     } catch {
       // Se reintentará en la siguiente ocasión
@@ -156,7 +206,7 @@ export class TermsLicences {
     if (!sub) throw new TermsError("not_found", "Suscripción no encontrada");
     const termsId = await this.owner(subscriptionId);
     const tenantId = sub.tenantId ?? (await this.d.companyTenant(sub.companyId).catch(() => null));
-    const last = termsId !== null ? await this.last(termsId) : null;
+    const last = termsId !== null ? await this.last(subscriptionId) : null;
     let plan: { capabilities: string[]; pending: number } | null = null;
     if (tenantId && sub.tenantId) {
       const p = await this.d.licensing.preview(subscriptionId, { activate: true }).catch(() => null);
