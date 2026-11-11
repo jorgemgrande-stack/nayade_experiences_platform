@@ -292,10 +292,11 @@ export class TermsAcceptanceService {
     let mail: { status: string; reason: string | null; outboxId: number | null };
     if (!this.d.mail) mail = { status: "unavailable", reason: "mail_not_configured", outboxId: null };
     else {
-      // Una clave por envío: reenviar el mismo enlace es otro mensaje; repetir la misma llamada, no
-      const n = this.d.links ? (await this.d.links.store.sends(termsId).catch(() => [])).filter((s) => s.acceptanceId === a.id).length + 1 : 1;
+      // Una clave por envío: el primer envío de cada enlace es único por enlace; cada reenvío es otro mensaje (su propia
+      // clave por instante, para que un historial sin registrar nunca convierta un reenvío en «duplicado» silencioso)
+      const key = kind === "resent" ? `terms-acceptance:${a.id}:resend:${at}:${crypto.randomBytes(4).toString("hex")}` : `terms-acceptance:${a.id}:1`;
       try {
-        const r = await this.d.mail.invite(a.signerEmail, `terms-acceptance:${a.id}:${n}`, this.invitation(a, doc, url));
+        const r = await this.d.mail.invite(a.signerEmail, key, this.invitation(a, doc, url));
         mail = { status: r.status, reason: r.reason, outboxId: r.id ?? null };
       } catch (e) {
         mail = { status: "failed", reason: (e instanceof Error ? e.message : "error").slice(0, 200), outboxId: null };
@@ -380,6 +381,8 @@ export class TermsAcceptanceService {
     await this.d.terms.preflight(t.id);
     const now = this.now();
     for (const x of all) if (x.status === "pending") await this.d.acceptances.setAcceptanceStatus(x.id, x.expiresAt <= now ? "expired" : "revoked");
+    // La revocación y la aceptación compiten por la misma fila: si ganó la aceptación, no se regenera nada
+    if ((await this.d.acceptances.acceptances(contract.id)).some((x) => x.status === "accepted")) throw new TermsError("invalid_state", "El cliente acaba de aceptar estas condiciones: ya no hace falta un enlace nuevo");
     const token = crypto.randomBytes(32).toString("base64url");
     const a = await this.d.acceptances.insertAcceptance({
       contractId: contract.id,
