@@ -147,11 +147,14 @@ calcula el servicio de licencias de siempre (`LicensingService.preview`), con or
 - **Aplicación restringida** (más prudente que el «Aplicar licencias» manual de la ficha): solo da de alta capacidades
   que la empresa no tiene (o propias ya canceladas), da de baja las propias que ya no corresponden y ajusta la
   caducidad de las propias activas. Nunca reactiva una licencia suspendida o en solo lectura (impago, bloqueo de un
-  operador), nunca toca una licencia de otro origen aunque sea de la misma capacidad (queda anotada como «sin tocar»
-  en el historial) y no cambia límites ni cupos (siguen con «Aplicar licencias» de la ficha).
+  operador) y nunca toca una licencia de otro origen aunque sea de la misma capacidad (queda anotada como «sin tocar»
+  en el historial).
+- **Límites y cupos, también solos:** a la vez que las capacidades se fijan los límites contratados de la empresa
+  (registro 0013, `tenant_entitlement_limits`): **usuarios**, **sedes** y **almacenamiento (GB)**. No hace falta
+  «Aplicar licencias». Ver el apartado siguiente.
 - **Una suscripción en prueba no se toca:** sus licencias las gobierna la prueba gratuita.
 - **Nunca retroactivo:** un acuerdo activado antes de existir esta función no recibe nada solo; sí al dar de alta la
-  plataforma de su empresa o a mano.
+  plataforma de su empresa o a mano. Única excepción: la puesta al día de los límites (ver más abajo).
 
 - **Cuándo se aplican solas:** al entrar en vigor un acuerdo (activación directa o aceptación del cliente), al
   resolverse el fin de una condición temporal y cuando la empresa recibe su plataforma desde el CRM (alta en la
@@ -173,8 +176,63 @@ calcula el servicio de licencias de siempre (`LicensingService.preview`), con or
 - **Riesgo asumido:** con la facturación en simulación, las licencias se conceden sin que haya un cobro detrás (igual
   que hoy con «Aplicar licencias» de la ficha). La decisión de contratar la toma el administrador central al activar
   el acuerdo o el cliente al aceptarlo.
-- **A mano:** `GET /subscriptions/:id/terms/licences` (plataforma, licencias que corresponden y último resultado) y
-  `POST /subscriptions/:id/terms/licences/apply` (permiso de precios personalizados y `entitlements:write`).
+- **A mano:** `GET /subscriptions/:id/terms/licences` (plataforma, licencias y límites que corresponden y último
+  resultado) y `POST /subscriptions/:id/terms/licences/apply` (permiso de precios personalizados y
+  `entitlements:write`). La aplicación a mano hace exactamente lo mismo que la automática (capacidades y límites, con
+  las mismas cautelas) y sigue disponible con la automática apagada; ya no es un paso necesario.
+- **Qué ve el CRM:** `plan.pending` cuenta solo lo que la aplicación haría (altas, bajas y caducidades de capacidades
+  propias, más los límites que cambiarían): tras aplicarse es 0. Lo que se deja sin tocar a propósito va aparte, en
+  `plan.skipped` (capacidades de otro origen, suspendidas o en solo lectura) y `plan.limits.skipped`.
+  `plan.limits.contracted` son los límites que corresponden al acuerdo; `plan.limits` es null si el plano de control
+  no tiene registro de límites.
+
+### Límites y cupos (usuarios, sedes, almacenamiento)
+
+- **De dónde salen:** del mismo cálculo que las licencias de cualquier suscripción (`LicensingService.limitsFor`), sobre
+  las partidas **vigentes hoy** de la suscripción (las que deja el acuerdo en vigor): lo **incluido en el plan** del
+  acuerdo (`quotas` del producto del catálogo, con su herencia: Business ⊃ Essential) **más las ampliaciones**
+  contratadas, `unidades × paso` de cada complemento (`addonFor`: usuario adicional = 1 usuario, sede adicional = 1
+  sede, bloque de almacenamiento = 10 GB). Un valor «por contrato» del plan queda sin tope técnico (`NULL`). Una
+  métrica que el plan no define no se toca. **El importe no interviene**: ni un descuento del 100 % reduce un límite ni
+  una partida a medida («10 usuarios adicionales» de texto libre) lo amplía.
+- **Cuándo:** en las mismas ocasiones que las capacidades (activación o aceptación del acuerdo, fin de una condición
+  temporal, alta de la plataforma de la empresa, reintento al registrar la simulación de un periodo) y justo después de
+  ellas. Si **otro acuerdo sustituye** al vigente retirando o reduciendo una ampliación, el límite baja con él; si la
+  añade, sube. Un acuerdo programado no adelanta sus ampliaciones. Si el acuerdo simplemente **termina sin partidas
+  posteriores** (la suscripción deja de tener condiciones personalizadas vigentes), no hay nada que aplicar: las
+  capacidades y los límites se quedan como estaban hasta que alguien aplique las licencias de la suscripción.
+- **Cómo se escriben:** con origen `subscription:<id>`, solo lo que cambia (idempotente), y un evento comercial
+  `entitlement.limit_changed` por cada límite que cambia, igual que «Aplicar licencias». Los cambios quedan además en
+  el historial del acuerdo (`licences_applied`, campo `limits`).
+- **Qué no se pisa:**
+  - Las **excepciones de cupo** que concede un operador (registro 0016) viven aparte del límite contratado y siguen
+    aplicándose por encima de él: aquí no se leen ni se escriben.
+  - Un límite que hoy pertenece a **otra suscripción viva** de la misma empresa, o a **otro origen**, no se toca: queda
+    anotado (`limitsSkipped`, motivo `other_source`) para un operador. Si esa otra suscripción está cancelada (o ya no
+    existe), la del acuerdo releva el límite.
+  - Una métrica **sin fila** (o con la de una suscripción ya cancelada) tampoco se escribe si la empresa tiene **otra
+    suscripción viva, también en prueba, enlazada a la misma plataforma**: sin fila, la empresa aplica lo incluido en
+    su plan, y esa otra suscripción puede tener más contratado sin haberlo escrito. Queda anotado (`limitsSkipped`,
+    motivo `other_subscription`) y lo resuelve un operador con «Aplicar licencias» de la suscripción que corresponda.
+  - Estas dos cautelas son la única diferencia con «Aplicar licencias» de la ficha
+    (`POST /subscriptions/:id/licences/apply`), que escribe siempre los límites de la suscripción que se le indica.
+  - **Una suscripción en prueba** o **cancelada** no cambia límites por esta vía.
+- **Sin registro de límites** (migración 0013 del registro sin aplicar): se aplican las capacidades y los límites no
+  se tocan.
+- **Puesta al día:** una suscripción cuyas licencias ya aplicó esta función antes de que fijara los límites los
+  recibe una sola vez, en la siguiente ocasión (al registrar la simulación de un periodo) o al aplicar a mano. Un
+  acuerdo anterior a la aplicación automática sigue sin recibir nada solo.
+- **Fallos:** si la escritura de los límites falla, queda `licences_failed` y se reintenta (las capacidades, ya
+  aplicadas, no se repiten).
+- **Complemento fuera del catálogo publicado:** si el plan sigue publicado pero un complemento contratado deja de
+  estarlo (retirado o con la clave cambiada), su ampliación suma 0 y el límite baja a lo incluido en el plan. Ya ocurría
+  con «Aplicar licencias»; ahora ocurre sin una persona delante. Riesgo conocido.
+- **Dos aplicaciones simultáneas** (p. ej. aceptación y registro de una simulación a la vez) sobre una empresa sin
+  filas pueden interbloquearse en MySQL: la que pierde anota `licences_failed` y el siguiente reintento lo corrige.
+  No deja valores erróneos.
+- **No se comprueba el uso:** si un acuerdo reduce las ampliaciones por debajo de lo que la empresa usa, el límite
+  baja igualmente (como con «Aplicar licencias»). La comprobación de uso de la ficha solo existe al reducir una
+  ampliación de una suscripción ordinaria; en un acuerdo la decide quien lo activa.
 
 ## Facturación y Stripe (fase 4): implementado con dobles y APAGADO
 
@@ -272,8 +330,8 @@ Una sola función (`canManageCustomPricing` / `requireCustomPricing`):
 | `POST /commercial-terms/:id/acceptance` | Envía a aceptación: contrato del CRM y enlace personal del firmante |
 | `POST /commercial-terms/:id/acceptance/withdraw` | Retira unas condiciones enviadas (revoca el enlace; vuelven a borrador) |
 | `GET`/`POST /public/contract-acceptance/condiciones?token=` | Página pública del firmante (sin sesión; HTML sin scripts) |
-| `GET /subscriptions/:id/terms/licences` | Plataforma, licencias que corresponden y último resultado de su aplicación |
-| `POST /subscriptions/:id/terms/licences/apply` | Enlaza la plataforma de la empresa (si falta) y aplica las licencias |
+| `GET /subscriptions/:id/terms/licences` | Plataforma, licencias y límites que corresponden, lo pendiente de aplicar y último resultado |
+| `POST /subscriptions/:id/terms/licences/apply` | Enlaza la plataforma de la empresa (si falta) y aplica las licencias y los límites (lo mismo que hace sola) |
 | `GET /subscriptions/:id/terms/billing` | Plan de cobro de hoy y conciliación con Stripe (sin interruptor: solo el plan) |
 | `POST /subscriptions/:id/terms/billing/sync` | Deja en Stripe lo que la suscripción tiene hoy (sin los tres cerrojos no hace nada) |
 
@@ -294,7 +352,7 @@ Se completa en cada fase. `C` = `server/subscriptionsTerms.compute.test.ts` (cá
 `server/controlPlane.commercialTerms.test.ts` (API y licencias reales), `P` =
 `server/subscriptionsTerms.presentation.test.ts` (presentación y contrato), `B` =
 `server/subscriptionsTerms.billing.test.ts` (cobro con el doble de Stripe), `L` =
-`server/subscriptionsTerms.licences.test.ts` (licencias reales por capacidad), `M` = `server/subscriptionsTerms.mysql.test.ts`
+`server/subscriptionsTerms.licences.test.ts` (licencias reales por capacidad y límites contratados), `M` = `server/subscriptionsTerms.mysql.test.ts`
 (MySQL real).
 
 | Caso | Prueba |

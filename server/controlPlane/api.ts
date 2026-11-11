@@ -2075,6 +2075,8 @@ export function createControlPlaneApp(d: ControlPlaneDeps): Express {
         termsLicences = new TermsLicences({
           auto: d.subscriptions.termsLicences?.auto !== false,
           licensing,
+          // Límites y cupos del acuerdo (plan + ampliaciones): se fijan a la vez que las capacidades
+          limits: d.limits,
           capabilities: d.capabilities,
           subscriptions: svc,
           subscriptionStore: d.subscriptions.store,

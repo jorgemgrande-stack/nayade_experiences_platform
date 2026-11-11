@@ -22,6 +22,7 @@ import { MemoryCapabilityStore } from "./_core/capabilities/store";
 import { BUILTIN_MODULES } from "./_core/modules/builtin";
 import { seedElephantSource } from "./catalog/seed";
 import { MemoryTermsStore } from "./commercialTerms/store";
+import { MemoryTenantLimitStore } from "./_core/limits/store";
 import { MemoryExternalStore } from "./external/store";
 import { CUSTOM_PRICING_SCOPE, canManageCustomPricing, customPricingScopeDefined } from "./commercialTerms/permission";
 import { TPV_ACQUIRED_RIGHTS_CAPABILITY, TPV_ACQUIRED_RIGHTS_SOURCE } from "./licensing/tpvAcquiredRights";
@@ -47,6 +48,7 @@ const crmStore = new MemoryCrmStore();
 const PUBLIC = "https://admin.example.test/cp/v1/public/contract-acceptance";
 let P: Record<string, number> = {};
 const caps = new MemoryCapabilityStore();
+const tenantLimits = new MemoryTenantLimitStore();
 const subsStore = new MemorySubscriptionStore();
 
 const call = (method: string, path: string, o: { token?: string; body?: unknown } = {}) =>
@@ -119,6 +121,7 @@ beforeAll(async () => {
     // Página pública y tabla de aceptaciones de los servicios externos (el mismo circuito)
     external: { store: acceptanceStore, urls: { acceptance: PUBLIC, setupSuccess: `${PUBLIC}/autorizado`, setupCancel: `${PUBLIC}/cancelado`, portalReturn: `${PUBLIC}/portal` }, ipSalt: "sal-de-pruebas-para-seudonimizar-ips" },
     capabilities: caps,
+    limits: tenantLimits,
   });
   server = http.createServer(app);
   await new Promise<void>((r) => server.listen(0, "127.0.0.1", r));
@@ -233,6 +236,9 @@ describe("flujo completo por la API", () => {
     expect(history.json.events.map((e: { kind: string; actor: string }) => [e.kind, e.actor])).toEqual([["draft_created", "operator:ana"], ["activated", "operator:ana"], ["licences_applied", "operator:ana"]]);
     const lic = await call("GET", `/subscriptions/${subscriptionId}/terms/licences`, { token: TOK.sales });
     expect(lic.json).toMatchObject({ automatic: true, tenantId: "acme", linked: true, last: { kind: "licences_applied" }, plan: { pending: 0 } });
+    // …y sus límites (lo incluido en Essential), sin pasar por «Aplicar licencias»: nada queda por aplicar
+    expect(lic.json.plan.limits).toEqual({ contracted: [{ metric: "users", limit: 3 }, { metric: "sites", limit: 1 }, { metric: "storage_gb", limit: 5 }], pending: [], skipped: [] });
+    expect((await tenantLimits.limits("acme")).map((l) => [l.metric, l.limit, l.source])).toEqual([["users", 3, `subscription:${subscriptionId}`], ["sites", 1, `subscription:${subscriptionId}`], ["storage_gb", 5, `subscription:${subscriptionId}`]]);
     // Aplicarlas a mano exige el permiso de precios Y el de licencias
     for (const token of [TOK.sales, TOK.service, TOK.tenant, TOK.licences]) expect((await call("POST", `/subscriptions/${subscriptionId}/terms/licences/apply`, { token, body: {} })).status).toBe(403);
     expect((await call("POST", `/subscriptions/${subscriptionId}/terms/licences/apply`, { token: TOK.admin, body: {} })).json).toMatchObject({ status: "applied", changed: 0 });

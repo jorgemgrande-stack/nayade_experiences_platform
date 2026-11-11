@@ -272,12 +272,18 @@ export class LicensingService {
     return out;
   }
 
-  private async applyLimits(subscriptionId: number, tenantId: string, actor: string): Promise<LimitChange[]> {
+  /**
+   * Escribe los límites contratados de la suscripción (`limitsFor`) con origen `subscription:<id>` y deja un evento
+   * `entitlement.limit_changed` por cada uno que cambia. Idempotente. `only`: solo esas métricas (la aplicación
+   * automática de las condiciones personalizadas deja fuera las que pertenecen a otra suscripción viva).
+   */
+  async applyLimits(subscriptionId: number, tenantId: string, actor: string, o: { only?: LimitMetric[] } = {}): Promise<LimitChange[]> {
     if (!this.d.limits) return [];
     const sub = await this.d.subscriptions.get(subscriptionId);
     if (!sub || sub.status === "canceled") return [];
     const now = this.now();
-    const changes = await this.d.limits.setLimits(tenantId, await this.limitsFor(subscriptionId), { source: `subscription:${subscriptionId}`, actor, now });
+    const wanted = (await this.limitsFor(subscriptionId)).filter((l) => !o.only || o.only.includes(l.metric));
+    const changes = await this.d.limits.setLimits(tenantId, wanted, { source: `subscription:${subscriptionId}`, actor, now });
     if (changes.length && this.d.events) {
       await this.d.events
         .append(
