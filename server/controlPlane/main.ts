@@ -43,6 +43,8 @@ import { MysqlMediaStore } from "../web/media";
 import { MysqlPanelEventStore, purgePanelEventKeys } from "../commerce/panelEvents";
 import { MysqlSubscriptionStore } from "../subscriptions/store";
 import { MysqlTermsStore } from "../commercialTerms/store";
+import { MysqlTermsBillingStore } from "../commercialTerms/billingStore";
+import { describeTermsBilling } from "../commercialTerms/billing";
 import { MysqlCapabilityStore } from "../_core/capabilities/store";
 import { MysqlTenantLimitStore } from "../_core/limits/store";
 import { MysqlTrialStore } from "../trials/store";
@@ -413,7 +415,9 @@ async function main() {
   console.log(JSON.stringify({ ctx: "Organization", enabled: organizationReady, ...(organizationReady ? {} : { reason: "registry_migration_0009_missing" }) }));
 
   // Suscripciones en modo sombra: misma BD del CRM; solo si la migración 0006 está aplicada
-  let subscriptions: { store: MysqlSubscriptionStore; terms?: MysqlTermsStore; termsBilling?: { enabled: boolean }; termsLicences?: { auto: boolean } } | undefined;
+  let subscriptions: { store: MysqlSubscriptionStore; terms?: MysqlTermsStore; termsBilling?: { enabled: boolean; store?: MysqlTermsBillingStore; customProductId?: string }; termsLicences?: { auto: boolean } } | undefined;
+  // Línea de arranque de las condiciones personalizadas: se escribe después de montar Stripe (su cobro depende de él)
+  let termsStartup: { enabled: boolean; billingRegistry: boolean } | null = null;
   if (crmPool && web) {
     const subsPool = crmPool;
     const ready = await subsPool.query("SELECT 1 FROM subscriptions LIMIT 0").then(() => true, () => false);
@@ -422,12 +426,16 @@ async function main() {
     // Condiciones comerciales personalizadas: solo si la migración 0048 del CRM está aplicada
     const termsReady = ready && (await subsPool.query("SELECT 1 FROM commercial_terms LIMIT 0").then(() => true, () => false));
     if (subscriptions && termsReady) subscriptions.terms = new MysqlTermsStore(subsPool);
-    // Cobro en Stripe de condiciones personalizadas: APAGADO salvo CP_CUSTOM_TERMS_BILLING_ENABLED=1. Aun encendido no
-    // llama a Stripe: falta el adaptador validado en Stripe Sandbox (docs/elephant-source/CONDICIONES_PERSONALIZADAS.md)
+    // Cobro en Stripe de condiciones personalizadas: APAGADO salvo CP_CUSTOM_TERMS_BILLING_ENABLED=1. Encendido, solo
+    // cobra lo que un operador ponga a cobrar de forma expresa (registro de la migración 0049 del CRM), sobre el Stripe
+    // de este entorno (docs/elephant-source/CONDICIONES_PERSONALIZADAS.md). CP_CUSTOM_TERMS_STRIPE_PRODUCT (opcional):
+    // id del Product genérico de las partidas a medida, si no es el de por defecto
     if (subscriptions && termsReady) subscriptions.termsBilling = { enabled: process.env.CP_CUSTOM_TERMS_BILLING_ENABLED === "1" };
+    if (subscriptions?.termsBilling) subscriptions.termsBilling.customProductId = (process.env.CP_CUSTOM_TERMS_STRIPE_PRODUCT ?? "").trim() || undefined;
+    const termsBillingRegistry = termsReady && (await subsPool.query("SELECT 1 FROM commercial_terms_billing LIMIT 0").then(() => true, () => false));
     // Licencias de los acuerdos: aplicación automática ENCENDIDA; solo se apaga con CP_CUSTOM_TERMS_AUTO_LICENCES=0
     if (subscriptions && termsReady) subscriptions.termsLicences = { auto: process.env.CP_CUSTOM_TERMS_AUTO_LICENCES !== "0" };
-    console.log(JSON.stringify({ ctx: "CommercialTerms", enabled: termsReady, stripeBilling: subscriptions?.termsBilling?.enabled === true ? "switch_on_without_gateway" : "off", autoLicences: subscriptions?.termsLicences?.auto !== false, ...(termsReady ? {} : { reason: "crm_migration_0048_missing" }) }));
+    termsStartup = { enabled: termsReady, billingRegistry: termsBillingRegistry };
   }
 
   // Prueba gratuita de Essential: misma BD del CRM; solo si la migración 0007 está aplicada. Las rutas
@@ -672,6 +680,20 @@ async function main() {
       external = { store: new MysqlExternalStore(pool, "test"), urls: { acceptance: pub, setupSuccess: `${pub}/autorizado`, setupCancel: `${pub}/cancelado`, portalReturn: `${pub}/portal` }, ipSalt: (process.env.CP_PUBLIC_FORM_SECRET ?? "").trim() || undefined, liveEnabled: false };
     }
     console.log(JSON.stringify({ ctx: "External", mounted: !!external, stripe: false, ...(!tables ? { reason: "migration_0026_missing" } : !origin ? { reason: "crm_origin_missing" } : {}) }));
+  }
+  // Condiciones personalizadas: su cobro usa el Stripe YA montado (misma clave, webhooks y conciliación) y el registro
+  // de la 0049. Sin interruptor no se llama a Stripe; con él, solo se cobra lo que un operador ponga a cobrar
+  if (termsStartup) {
+    if (subscriptions?.termsBilling && termsStartup.billingRegistry && stripe && crmPool) subscriptions.termsBilling.store = new MysqlTermsBillingStore(crmPool, stripe.config.mode);
+    console.log(
+      JSON.stringify({
+        ctx: "CommercialTerms",
+        enabled: termsStartup.enabled,
+        ...describeTermsBilling({ switchOn: subscriptions?.termsBilling?.enabled === true, registry: termsStartup.billingRegistry, stripe: stripe ? { mode: stripe.config.mode, taxPolicy: stripe.config.taxPolicy, urls: !!stripe.urls } : null }),
+        autoLicences: subscriptions?.termsLicences?.auto !== false,
+        ...(termsStartup.enabled ? {} : { reason: "crm_migration_0048_missing" }),
+      }),
+    );
   }
 
   // Facturación propia (CRM 0027): borradores por devengo; expedir solo con CP_INVOICING_ISSUE_ENABLED=1. Mismo entorno

@@ -99,7 +99,9 @@ Los seis importes que el encargo pide distinguir:
 - **Paquete para una contratación nueva:** borrador sin suscripción (`subscription_id` nulo); «preparar contratación»
   crea la suscripción con el plan Core del paquete y le aplica el acuerdo desde su primer instante.
 - **Aceptación:** un acuerdo que exige la aceptación del cliente no se activa hasta que conste aceptado.
-- **Stripe:** una suscripción cobrada por Stripe no admite condiciones personalizadas mientras no se habilite (fase 4).
+- **Stripe:** una suscripción que ya cobra Stripe por el circuito ordinario (un pedido con pagos verificados) no admite
+  condiciones personalizadas, tampoco con el cobro de la fase 4 encendido: ese cobro solo alcanza a las suscripciones que
+  un operador pone a cobrar de forma expresa.
 - **Fallos parciales:** si el proceso se corta entre la mutación de la suscripción y el marcado del acuerdo, repetir
   la activación completa el segundo paso sin volver a materializar.
 - **Licencias:** aquí no se concede ni se retira ninguna. El plan de licencias y `LicensingService` siguen derivando
@@ -176,68 +178,212 @@ calcula el servicio de licencias de siempre (`LicensingService.preview`), con or
 - **A mano:** `GET /subscriptions/:id/terms/licences` (plataforma, licencias que corresponden y último resultado) y
   `POST /subscriptions/:id/terms/licences/apply` (permiso de precios personalizados y `entitlements:write`).
 
-## Facturación y Stripe (fase 4): implementado con dobles y APAGADO
+## Facturación y Stripe (fase 4): implementado sobre el Stripe existente y APAGADO
 
-`server/commercialTerms/billing.ts` conecta el acuerdo con el cobro. Hoy **no cobra nada**: las suscripciones con
-condiciones personalizadas siguen en simulación de facturación.
+Decisión del propietario (11/11/2026): el cobro de las condiciones personalizadas **reutiliza la integración de Stripe
+Live que ya existe** en el plano de control: la misma clave restringida, la misma versión de API, el mismo prefijo de
+entorno, los mismos Customers, el mismo destino de webhooks, la misma conciliación y la misma política fiscal
+(`stripe_tax_exclusive`: importes sin IVA y Stripe Tax). No hay Sandbox aparte, ni claves nuevas, ni otro webhook.
 
-- **Fuente del cobro:** las partidas ya materializadas en la suscripción (las mismas que factura la simulación), con
-  su importe neto del periodo y su tipo de impuesto. Stripe recibe exactamente lo que la simulación factura.
-- **Sin tocar el catálogo de Stripe:** las partidas viajan como precio en línea de ESA suscripción. Un producto de
-  catálogo usa su Product ya existente; una partida a medida, un Product genérico. No se crean Products ni Prices
-  públicos por negociación y los Prices oficiales no se modifican (la pasarela `NegotiatedBillingGateway` ni siquiera
-  tiene una operación para ello).
-- **Cargos únicos y abonos de un solo uso:** importes únicos de la próxima factura, una sola vez y cuando vencen.
-- **Idempotencia:** las partidas recurrentes se comparan siempre con lo que Stripe tiene (si coinciden no se envía
-  nada); cada importe único se busca en Stripe por su clave antes de enviarlo, así que un reintento tardío, con la
-  clave de idempotencia de Stripe ya caducada, tampoco lo duplica. Además, cada llamada lleva su clave estable.
-- **Fallos parciales, errores y reintentos:** `commercial_terms.sync_status` (`none`, `synced`, `failed`) y
-  `sync_detail` (pasos completados, intentos, último error); cada intento deja un evento `sync` en el historial. El
-  reintento continúa por donde se quedó.
-- **Conciliación:** `GET /subscriptions/:id/terms/billing` compara lo que rige hoy con lo que Stripe tiene: partidas,
-  moneda e importes únicos vencidos.
-- **Se planifica por suscripción, no por acuerdo:** se envía lo que la suscripción tiene HOY. Un acuerdo programado no
-  cambia lo que se cobra hoy; al terminar un tramo o vencer una condición temporal se envía lo que rige después; un
-  cargo vencido de un acuerdo ya sustituido se sigue enviando. Nunca se envía una lista vacía.
-- **Cuándo se sincroniza:** al activar unas condiciones y al resolverse el fin de una condición temporal (si el cobro
-  está abierto), y a mano desde el CRM. Los cambios que dependen solo de la fecha (fin de un descuento temporal, un
-  cargo que vence) necesitan una tarea periódica que aún no existe: es un requisito para encender el cobro.
-- **Tres cerrojos**, todos necesarios para que salga una sola llamada:
-  1. el interruptor `CP_CUSTOM_TERMS_BILLING_ENABLED=1` (no existe en ningún entorno: apagado);
-  2. una pasarela validada: hoy solo existe el doble de pruebas (`billingTesting.ts`). El plano de control arranca SIN
-     pasarela, así que aun con el interruptor encendido la respuesta es «pendiente de la validación en Stripe Sandbox»;
-  3. que la suscripción esté enlazada a una suscripción de Stripe.
-- Mientras el cobro no esté abierto (cerrojos 1 y 2), una suscripción cobrada por Stripe no admite condiciones
-  personalizadas (409 `stripe_billed`).
+Hoy **no cobra nada**: el interruptor no existe en ningún entorno. Con él apagado no sale ninguna llamada a Stripe por
+este camino (probado con una pasarela que falla en cualquier llamada).
 
-### Qué falta para validar en Stripe Sandbox (necesita al propietario)
+### Piezas
 
-1. **Claves de Stripe Sandbox** del plano de control en live (no las hay todavía): clave restringida de pruebas y
-   secreto de firma del webhook de ese entorno.
-2. **Escribir el adaptador real** de `NegotiatedBillingGateway` sobre la API de Stripe (no se ha escrito a ciegas):
-   - `applyItems`: `POST /v1/subscriptions/:id` con `items[]` (`price_data`: `currency`, `product`, `unit_amount`,
-     `recurring[interval]`, `tax_behavior=exclusive`; `tax_rates[]`; `metadata[es_line]`), marcando `deleted` las partidas
-     anteriores, con `proration_behavior=none` e `Idempotency-Key`;
-   - `addOneOff`: `POST /v1/invoiceitems` (`customer`, `subscription`, `amount` con signo, `currency`, `tax_rates[]`,
-     `description`) con `Idempotency-Key`;
-   - `current`: `GET /v1/subscriptions/:id` con las partidas y su `metadata[es_line]`;
-   - `findOneOff`: búsqueda del importe único por su metadato (`es_key`) entre los de la suscripción.
-   - Tipos de impuesto con `ensureTaxRate` (ya existe para los servicios externos) y Product genérico de servicios a
-     medida con `ensureServiceProduct` (ídem). Un único Product genérico: lo crea el adaptador en Sandbox; en Live
-     debe autorizarlo el propietario.
-3. **Enlace de la suscripción con Stripe** para una contratación negociada nueva: reutilizar el circuito de los
-   servicios externos (autorización del método de pago en modo `setup`, sin cargo, y alta de la suscripción con precio
-   en línea) o el alta por Checkout con las tarifas oficiales seguida de la sincronización del acuerdo. Decisión
-   pendiente del propietario.
-4. **Decisión fiscal:** la política de impuestos de Live sigue pendiente (`CP_STRIPE_TAX_POLICY`, decisiones DF-2, DF-3
-   y DF-5). El acuerdo lleva tipo de impuesto por partida; hay que decidir si en Live manda ese tipo fijo o Stripe Tax.
-5. **Recorrido de validación en Sandbox** (con relojes de prueba de Stripe): alta del paquete de 129 €, primera factura
-   con implantación, renovación, cambio de cuota a mitad de periodo, descuento de un solo uso, fin de un descuento
-   temporal, reintento tras fallo, conciliación y un impago. Sin cargos reales.
-6. **Tarea periódica de sincronización** en las fechas de corte (fin de tramos, cargos que vencen), con bloqueo para
-   que dos réplicas no la ejecuten a la vez. Sin ella, esos cambios solo llegan a Stripe al sincronizar a mano.
-7. **Periodicidades mezcladas:** comprobar en Sandbox qué admite Stripe; hoy un acuerdo usa una sola periodicidad.
-8. **Autorización del propietario** para encender `CP_CUSTOM_TERMS_BILLING_ENABLED` en cada entorno (operación protegida).
+| Pieza | Qué hace |
+|---|---|
+| `server/commercialTerms/billing.ts` (`TermsBillingService`) | Plan de cobro (lo que la suscripción tiene HOY), sincronización idempotente y conciliación. Ya existía; ahora admite el modo de impuesto de Stripe Tax y el fin programado. |
+| `server/commercialTerms/stripeGateway.ts` (`StripeNegotiatedGateway`) | Adaptador REAL de `NegotiatedBillingGateway` sobre `server/stripe/gateway.ts`. |
+| `server/commercialTerms/stripeBilling.ts` (`NegotiatedBillingService`) | Puesta en cobro por un operador (Checkout), enlace por webhook, estado de pago, licencias y conciliación global. |
+| `server/commercialTerms/billingStore.ts` + migración CRM `0049` | Registro de lo que un operador puso a cobrar (`commercial_terms_billing`) y de sus facturas (`commercial_terms_billing_invoices`). Aditiva. |
+| `server/stripe/events.ts`, `reconcile.ts`, `alerts.ts` | El procesador de webhooks y la conciliación de siempre reconocen las suscripciones negociadas y las entregan a su módulo. |
+
+### Cerrojos (todos necesarios)
+
+1. **Interruptor** `CP_CUSTOM_TERMS_BILLING_ENABLED=1`. Apagado: ninguna llamada a Stripe, ninguna fila nueva.
+2. **Stripe montado** en el entorno, con la migración `0049` y las URLs de Checkout (`CP_STRIPE_SUCCESS_URL`…). En
+   live, además, política fiscal decidida.
+3. **Puesta en cobro expresa**: un administrador con el permiso de precios personalizados pulsa «poner a cobrar» en
+   ESA suscripción (`POST /subscriptions/:id/terms/billing/start`). Es lo único que crea su fila en
+   `commercial_terms_billing`; sin fila no hay enlace y la sincronización responde «sigue en simulación». **Encender
+   el interruptor no cobra a nadie.**
+4. **La pasarela solo toca lo suyo**: antes de leer o escribir relee la suscripción de Stripe y exige que conste en el
+   registro, que lleve `metadata.es_negotiated=1`, que sea de este entorno (`es_env`) y que no sea de un pedido
+   (`es_order_id`) ni de un servicio externo. Una suscripción ordinaria de un cliente nunca pasa de ahí, ni siquiera
+   con un registro manipulado (probado).
+5. Una suscripción que ya cobra el circuito ordinario (un pedido con pagos de Stripe) **no admite condiciones
+   personalizadas ni puesta en cobro** (409 `stripe_billed`), tampoco con el interruptor encendido.
+
+La línea de arranque `{"ctx":"CommercialTerms", …}` dice el estado: `stripeBilling` = `off` | `on` |
+`switch_on_blocked` (con `stripeBillingReasons`: `crm_migration_0049_missing`, `stripe_not_mounted`,
+`checkout_urls_missing`, `tax_policy_pending`), `stripeBillingMode` (`test`/`live`) y
+`stripeBillingScope: "explicit_start_only"`.
+
+### Cómo viajan las partidas a Stripe
+
+- **Precio en línea de ESA suscripción** (`price_data`): un producto de catálogo sobre su Product de Stripe ya
+  enlazado (`stripe_prices`, por su `lookup_key` `es:<producto>:…`); una partida a medida y los cargos únicos, sobre
+  UN Product genérico (`es_terms_custom_service`, o el id de `CP_CUSTOM_TERMS_STRIPE_PRODUCT`). No se crea ni se
+  modifica ningún Price público ni ningún Product del catálogo: el adaptador no tiene operación para ello. En pruebas
+  el Product genérico se crea solo; **en live nunca**: lo crea el propietario (sin él, una partida a medida no se pone
+  a cobrar y el error lo dice).
+- Cada partida lleva `metadata.es_line` (su clave). Las que crea Checkout no la llevan: se reconocen por su Product de
+  catálogo y, si hay partidas a medida, la primera sincronización tras enlazar las sustituye por otras idénticas con
+  su clave (sin prorrateo: ni factura ni cargo).
+- **Impuestos, como el resto del cobro live**: importes sin IVA (`tax_behavior=exclusive`) y `automatic_tax` en la
+  suscripción; no se envían tipos fijos. Por eso Stripe no tiene un tipo por partida: `current()` devuelve
+  `taxRateBp = null` («lo decide Stripe en cada factura») y la comparación de partidas **no compara el tipo cuando es
+  null**. A cambio: (a) la conciliación comprueba que la suscripción calcula el impuesto como dice la política
+  (`tax.mode` frente a `tax.expected`; si no, diferencia `impuestos:…`), y (b) el impuesto REAL de cada factura
+  cobrada se contrasta con el tipo pactado (base × tipo, con un céntimo de holgura por línea) y se guarda en
+  `commercial_terms_billing_invoices.tax_check`; si no cuadra, alerta `stripe.negotiated_tax_mismatch`. Con tipos fijos
+  en la partida (si alguna vez se usan) la comparación sigue siendo exacta.
+- En live, antes de abrir el pago se pasa el **mismo control de elegibilidad fiscal** que el Checkout ordinario, con
+  los datos fiscales de la empresa del CRM (empresa, país, código postal, NIF, domicilio; VIES si el escenario es de
+  inversión del sujeto pasivo). Sin escenario aprobado o sin datos válidos no se crea nada en Stripe.
+- **Sin efectos retroactivos**: `proration_behavior=none`. Un cambio de condiciones rige desde la próxima factura.
+- **Cargos únicos**: los ya vencidos al poner a cobrar van en el primer pago del Checkout; los posteriores, como
+  importe único de la próxima factura (`/v1/invoiceitems`, con `metadata.es_key`). Un **abono de un solo uso** no cabe
+  en Checkout (no admite importes negativos): va a la factura siguiente, una vez; la respuesta de la puesta en cobro
+  lo avisa (`deferredCredits`).
+- **Idempotencia**: claves `es-<ns>-…` en cada escritura; las partidas se comparan con lo que Stripe tiene antes de
+  enviar; cada importe único se busca en Stripe por su clave antes de crearlo (un reintento días después, con las
+  claves de Stripe caducadas, no duplica).
+
+### Puesta en cobro sin duplicados
+
+`POST /subscriptions/:id/terms/billing/start` (permiso de precios personalizados, sesión de persona):
+
+1. Comprueba: interruptor, suscripción activa con condiciones activas y cuotas recurrentes, que no la cobre el circuito
+   ordinario, política fiscal, Products de Stripe de cada partida y, en live, elegibilidad fiscal.
+2. **Customer**: el que la empresa ya tenga en `stripe_customers`; solo si no tiene, se crea (con la misma clave de
+   idempotencia que el Checkout ordinario: dos altas simultáneas reciben el mismo). Nunca un segundo Customer.
+3. **Sesión de Checkout** en modo suscripción con las partidas pactadas: el CLIENTE pone su método de pago en la
+   página de Stripe. La respuesta trae la URL para entregársela, la cuota recurrente y el primer pago (sin impuestos).
+4. Repetir la acción devuelve la **misma sesión** mientras siga viva y ofrezca lo mismo (`reused: true`). Si las
+   condiciones cambian antes de pagar, la sesión anterior se cierra y se abre otra. Una sesión huérfana (caída entre
+   crearla y guardarla) se encuentra por sus metadatos: si está abierta se cierra; si ya está pagada, se adopta. Dos
+   operadores a la vez: una sola sesión (arrendamiento por suscripción).
+5. Al pagar, los **webhooks de siempre** (`checkout.session.completed`, `customer.subscription.*`, `invoice.paid`)
+   enlazan la suscripción de Stripe con la interna. Desde ahí `link()` la resuelve y cambiar las condiciones es la
+   sincronización de siempre (automática al activar un acuerdo, o `POST …/terms/billing/sync`).
+6. Si aparece una **segunda** suscripción de Stripe para una contratación ya enlazada, no se enlaza y salta la alerta
+   `stripe.negotiated_duplicate` (hay que cancelar la sobrante a mano).
+
+### Estado de pago (mismas reglas que el cobro ordinario)
+
+Los eventos de una suscripción negociada no pasan por la comprobación de precios del circuito ordinario (sus precios
+en línea no son del catálogo enlazado: sería una discordancia) ni este toca sus partidas; y al revés, una suscripción
+de un pedido nunca llega a este módulo. El efecto se calcula releyendo la suscripción y su factura en Stripe: un evento
+repetido o fuera de orden no cambia nada.
+
+| Stripe | Contratación (`commercial_terms_billing.status`) | Licencias propias (`subscription:<id>`) |
+|---|---|---|
+| Primer pago cobrado | `active` | Las del contrato (`licences.ts`); el pago no añade ninguna |
+| Renovación cobrada | `active`; factura registrada; el periodo interno avanza | Sin cambios |
+| `past_due` | `past_due`, gracia de 7 días (`GRACE_DAYS`) | Sin cambios durante la gracia |
+| Gracia vencida, o `unpaid` | `suspended` | Suspendidas (solo las propias activas) |
+| Cobro recuperado | `active` | Se devuelven SOLO las que suspendió el impago (no las que bloqueó un operador) |
+| `cancel_at_period_end` | `cancel_scheduled` | Sin cambios hasta el fin |
+| `canceled` | `canceled`; la suscripción interna termina | Solo lectura 30 días (`READ_ONLY_DAYS`) |
+| Reembolso total o disputa perdida del último periodo | `suspended` hasta un pago nuevo | Suspendidas |
+
+Las licencias siguen saliendo del **contrato** (productos del acuerdo); el pago solo las suspende, las deja en solo
+lectura o las devuelve. Las de otro origen (derechos adquiridos, operador, otra suscripción) no se tocan.
+
+**Fin de la contratación:** siempre al final del periodo ya pagado; nunca hay cancelación inmediata ni abono desde
+aquí. Vías: el operador (`…/terms/billing/cancel` y `…/resume`), el cliente desde el portal de Stripe, o cancelar la
+suscripción interna (la sincronización, o la conciliación en su siguiente pasada, programa el fin en Stripe: es la
+única corrección automática, y en el sentido prudente).
+
+Mientras la contratación está `pending` (sesión abierta, sin cobro) no se toca ninguna licencia: siguen como las dejó
+el contrato. Es el mismo riesgo asumido que con la facturación en simulación.
+
+### Conciliación
+
+- `GET /subscriptions/:id/terms/billing`: compara lo que rige hoy con lo que Stripe tiene: partidas, importes,
+  periodicidad, moneda, importes únicos vencidos, modo de impuesto y estado (fin sin programar, cancelada en Stripe).
+- La conciliación periódica de Stripe (`StripeReconciler`, `POST /stripe/reconcile`) relee las suscripciones
+  negociadas (pagos no aplicados, gracia vencida), cierra sus sesiones caducadas y compara todas las enlazadas. El
+  resultado va en `negotiated` (comparadas, con diferencias, errores) y queda en `stripe_sync_state`
+  (`terms_billing_reconcile`). Una diferencia abre la alerta `stripe.negotiated_drift`; **nunca se corrige sola**
+  (salvo programar el fin): la corrige un operador al sincronizar.
+- Alertas nuevas (`server/stripe/alerts.ts`): `stripe.negotiated_drift`, `stripe.negotiated_duplicate`,
+  `stripe.negotiated_invoice_mismatch` (el primer pago no es el ofrecido) y `stripe.negotiated_tax_mismatch`.
+
+### Permisos de la clave restringida
+
+Lo que el adaptador llama y el permiso que le corresponde. La columna «documentado» es lo que
+`STRIPE_FASE_A.md` §5 dice que tiene la clave; **no se ha comprobado contra la clave real** (no se ha hecho ninguna
+llamada a Stripe).
+
+| Llamada | Para qué | Permiso | ¿Documentado en §5? |
+|---|---|---|---|
+| `POST /v1/customers`, `GET /v1/customers/:id` | Customer de la empresa (solo si no tiene) | `customer_write` | Sí |
+| `POST /v1/checkout/sessions` (con `price_data`), `GET`, `expire`, listado por cliente | Sesión de pago | `checkout_session_write` | Sí. **Por comprobar:** si crear precios en línea (`price_data`) exige además escritura de Prices (`plan_write`) |
+| `GET /v1/products/:id` | Product genérico de partidas a medida | `product_read` | Sí |
+| `GET /v1/subscriptions/:id` | Leer partidas y estado | `subscription_read` | Sí |
+| `POST /v1/subscriptions/:id` | Sustituir partidas (`price_data`), programar el fin | `subscription_write` | **No** (§5 lo excluye expresamente). El código de compras y de cancelación de autoservicio ya usa esta llamada: puede que la clave real ya lo tenga |
+| `POST /v1/invoiceitems` | Importes únicos y abonos | Escritura de Invoices (`invoice_write`) | **No** (§5 solo da lectura) |
+| `GET /v1/invoiceitems?customer=` | Buscar un importe único por su clave | Lectura de Invoices | Sí (`invoice_read`), por comprobar que cubre los invoice items |
+| `GET /v1/invoices/:id`, `GET /v1/charges/:id`, `GET /v1/events` | Webhooks y conciliación | Lecturas ya usadas | Sí |
+
+Si falta un permiso, Stripe responde 403: la puesta en cobro o la sincronización fallan con el error a la vista
+(`sync_status = failed`) y no queda nada a medias que se cobre dos veces.
+
+### Procedimiento para encenderlo (propietario)
+
+1. Publicar por el procedimiento habitual y aplicar la migración `0049` del CRM.
+2. Revisar los permisos de la clave restringida (tabla anterior) y añadir los que falten: `subscription_write`,
+   escritura de Invoices y, si Stripe lo pide, `plan_write`.
+3. Si se van a cobrar partidas a medida o cargos únicos: crear en Stripe el Product genérico (nombre visible en la
+   factura, con su código fiscal de Stripe Tax). Si se crea por API con el id `es_terms_custom_service` no hace falta
+   nada más; si se crea en el Dashboard, poner su id en `CP_CUSTOM_TERMS_STRIPE_PRODUCT`.
+4. Comprobar que los productos de catálogo de los acuerdos tienen su Product enlazado (`stripe_prices`).
+5. Encender `CP_CUSTOM_TERMS_BILLING_ENABLED=1` (operación protegida) y comprobar la línea de arranque:
+   `stripeBilling: "on"`, `stripeBillingMode: "live"`.
+6. Primera contratación real, acompañada: poner a cobrar UNA suscripción, revisar la sesión antes de entregarla,
+   comprobar tras el pago el enlace, la primera factura (`tax_check`), `GET …/terms/billing` (`consistent: true`) y,
+   en la primera renovación, el importe y el impuesto.
+7. Para parar: apagar el interruptor (no se inicia ni se sincroniza nada más). Las suscripciones ya enlazadas siguen
+   cobrándose en Stripe y su estado sigue llegando por los webhooks; para dejar de cobrar una, programar su fin.
+
+### Verificado y pendiente de validar con Stripe real
+
+**Verificado con dobles** (sin red): lo descrito arriba; ver la tabla de pruebas (`T`, `G`, `H`, `N`).
+
+**No verificado contra Stripe real** (no se ha hecho ninguna llamada):
+
+- Que la API (versión `2026-09-30.endive`) acepte exactamente estos parámetros: `price_data` con `product` existente
+  y `recurring` en Checkout y en `POST /v1/subscriptions/:id`; `tax_behavior` en `/v1/invoiceitems`; importes
+  negativos en invoice items con Stripe Tax.
+- Que sustituir partidas con `proration_behavior=none` no genere factura ni mueva el ciclo de cobro.
+- Que Stripe Tax calcule el tipo pactado para cada cliente (depende de su dirección, su NIF y el código fiscal de
+  cada Product). La comprobación por factura lo detecta después de cobrar, no antes.
+- Los permisos reales de la clave.
+- Checkout con cliente ya existente: recogida de dirección y NIF (`customer_update`), y métodos de pago asíncronos.
+- El portal de cliente de Stripe frente a una suscripción con precios en línea (qué deja cambiar).
+
+### Limitaciones y riesgos abiertos
+
+- **Nombre en la factura de Stripe:** las partidas a medida y los cargos del primer pago salen con el nombre del
+  Product genérico (una partida de suscripción no admite descripción propia). Los importes únicos posteriores sí
+  llevan su nombre. Alternativa (un Product por servicio) pendiente de decisión.
+- **Cambio a mitad de periodo:** la simulación factura la diferencia hasta el fin del periodo; Stripe, con
+  `proration_behavior=none`, aplica el importe nuevo desde la renovación y no cobra esa diferencia. Si el contrato la
+  exige, hay que enviarla como importe único (no implementado).
+- **Cambio de periodicidad** de una suscripción ya enlazada: no se aplica solo (reiniciaría el ciclo de cobro en
+  Stripe); la sincronización queda en `failed` con el motivo.
+- **Abono de un solo uso al empezar a cobrar:** va a la segunda factura, no a la primera.
+- **Fechas de corte** (fin de un descuento temporal, un cargo que vence): siguen necesitando una sincronización; no
+  hay tarea periódica que la lance sola. La conciliación sí avisa de la diferencia (cada 15 minutos).
+- **Documento fiscal propio:** las facturas de estas suscripciones se registran en `commercial_terms_billing_invoices`
+  pero no entran en la cola de documentos fiscales del circuito ordinario (va ligada a pedidos).
+- **Reembolsos parciales y disputas abiertas:** solo avisan (como en el circuito ordinario).
+- **Licencias nuevas durante una suspensión:** si se activa un acuerdo que añade un producto mientras la contratación
+  está suspendida por impago, la capacidad nueva nace activa (la aplicación de licencias no conoce el estado de pago).
+- Con el interruptor apagado después de haber cobrado, los webhooks de las suscripciones ya enlazadas se siguen
+  atendiendo (lecturas y estado interno).
 
 ## Permisos (`server/commercialTerms/permission.ts`)
 
@@ -275,7 +421,20 @@ Una sola función (`canManageCustomPricing` / `requireCustomPricing`):
 | `GET /subscriptions/:id/terms/licences` | Plataforma, licencias que corresponden y último resultado de su aplicación |
 | `POST /subscriptions/:id/terms/licences/apply` | Enlaza la plataforma de la empresa (si falta) y aplica las licencias |
 | `GET /subscriptions/:id/terms/billing` | Plan de cobro de hoy y conciliación con Stripe (sin interruptor: solo el plan) |
-| `POST /subscriptions/:id/terms/billing/sync` | Deja en Stripe lo que la suscripción tiene hoy (sin los tres cerrojos no hace nada) |
+| `POST /subscriptions/:id/terms/billing/sync` | Deja en Stripe lo que la suscripción tiene hoy (sin los cerrojos no hace nada) |
+| `GET /subscriptions/:id/terms/billing/stripe` | Estado del cobro en Stripe: si se puede poner a cobrar y qué lo impide, sesión de pago, estado, gracia, fin programado y facturas |
+| `POST /subscriptions/:id/terms/billing/start` | Pone a cobrar la suscripción: abre (o reutiliza) la sesión de pago de Stripe para el cliente. Idempotente |
+| `POST /subscriptions/:id/terms/billing/cancel` y `/resume` | Programa el fin de la suscripción de Stripe al final del periodo pagado, o lo deshace |
+
+Las cuatro rutas de `…/terms/billing/…` de Stripe solo existen donde Stripe está montado con la migración `0049`.
+Consultar pide `subscriptions:read`; las acciones, el permiso de precios personalizados y sesión de persona. Códigos:
+409 `disabled` (interruptor apagado), 409 `invalid_state` (con el motivo), 409 `conflict` (otra puesta en cobro en
+curso), 503 `unavailable` (falta algo en Stripe: Product, política fiscal, elegibilidad), 502 `stripe_error`.
+
+Respuesta de `start`: `{ status: "pending", sessionId, url, expiresAt, reused, currency, recurringCents,
+firstChargeCents, taxTreatment, deferredCredits[] }` (la `url` es la página de pago que se entrega al cliente),
+`{ status: "processing", message }` (el cliente ya completó la página y falta la confirmación del cobro) o
+`{ status: "linked", stripeSubscriptionId, state }`.
 
 ## Limitaciones conocidas
 
@@ -296,6 +455,13 @@ Se completa en cada fase. `C` = `server/subscriptionsTerms.compute.test.ts` (cá
 `server/subscriptionsTerms.billing.test.ts` (cobro con el doble de Stripe), `L` =
 `server/subscriptionsTerms.licences.test.ts` (licencias reales por capacidad), `M` = `server/subscriptionsTerms.mysql.test.ts`
 (MySQL real).
+
+Cobro en Stripe con la pasarela real (fase 4), siempre sin red ni claves: `T` = `server/subscriptionsTerms.stripe.test.ts`
+(cerrojos, puesta en cobro sin duplicados, enlace por webhook, estado de pago, licencias, conciliación e idempotencia, con
+el procesador de webhooks y la conciliación reales), `G` = `server/stripe/gateway.negotiated.test.ts` (qué se envía a
+Stripe, con el SDK contra un servidor local), `H` = `server/controlPlane.termsStripeBilling.test.ts` (por HTTP con la
+aplicación real: interruptor, permisos, webhook firmado) y `N` = `server/subscriptionsTerms.stripe.mysql.test.ts`
+(migración 0049 y recorrido con MySQL real).
 
 | Caso | Prueba |
 |---|---|
@@ -321,9 +487,9 @@ Se completa en cada fase. `C` = `server/subscriptionsTerms.compute.test.ts` (cá
 | 20. Presentación global al cliente | P «Caso 20» (vista y contrato); S «Caso 20 — con cuota global la empresa ve…» (panel); A «el documento respeta la presentación de cuota global» |
 | 21. Presentación desglosada | P «Caso 21»; S «Caso 21 — con desglose…» (panel) |
 | 22. Generación y aceptación contractual | A «Caso 22 — contrato y aceptación del cliente (paquete de 129 €/mes)» (8 pruebas); S «lo que exige aceptación del cliente no se activa por adelantado» |
-| 23. Renovación con precio negociado | S «Caso 23»; M «la activación materializa…»; B «Caso 23 — Stripe recibe exactamente lo que factura la simulación» |
-| 24. Impuestos de partidas diferentes | C «Caso 24»; B «Caso 24 — cada concepto viaja con su tipo de impuesto» |
-| 25. Idempotencia de cobros | S «Caso 23 … Caso 25» (simulación); B «Caso 25 — idempotencia de cobros y recuperación ante fallos» (3 pruebas, con el doble de Stripe). Pendiente: repetirlo en Stripe Sandbox |
+| 23. Renovación con precio negociado | S «Caso 23»; M «la activación materializa…»; B «Caso 23 — Stripe recibe exactamente lo que factura la simulación»; T «renovación cobrada: factura registrada y el periodo interno avanza» y «un acuerdo nuevo sustituye las partidas en línea sin prorrateo» |
+| 24. Impuestos de partidas diferentes | C «Caso 24»; B «Caso 24 — cada concepto viaja con su tipo de impuesto» (tipos fijos, con el doble); T «con Stripe Tax no hay tipo fijo por partida…» (política live: el tipo lo calcula Stripe y se contrasta en cada factura) |
+| 25. Idempotencia de cobros | S «Caso 23 … Caso 25» (simulación); B «Caso 25 — idempotencia de cobros y recuperación ante fallos» (3 pruebas, con el doble de Stripe); T «conciliación e idempotencia» (5 pruebas, con la pasarela real: repetir, dos a la vez, fallo parcial con las claves de Stripe caducadas, Stripe caído) y «un webhook repetido o fuera de orden no cambia nada»; N «recorrido completo con almacenes reales». Pendiente: validarlo con Stripe real |
 | 26. Concurrencia de modificaciones | S «Caso 26» y «dos ediciones del mismo borrador»; M «dos administradores desde conexiones distintas» |
 | 27. Conservación de licencias | S «Caso 27»; A «Casos 27 y 28»; L «Caso 27 — el paquete de 129 € concede exactamente las licencias de sus tres productos» y «el precio no interviene» |
 | 28. Conservación de derechos adquiridos | A «Casos 27 y 28»; L «Caso 28 — los derechos adquiridos y las licencias de otro origen no se tocan» |

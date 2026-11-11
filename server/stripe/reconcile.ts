@@ -49,6 +49,15 @@ export interface ReconcileDeps {
   retentionDays?: number;
   /** Modo del entorno (por defecto «test»): solo se registran eventos con su `livemode`. */
   mode?: StripeMode;
+  /**
+   * Condiciones comerciales personalizadas (server/commercialTerms/stripeBilling.ts): sus suscripciones no están en
+   * la copia de las de los pedidos. Se releen igual y se compara lo pactado con lo que Stripe tiene.
+   */
+  negotiated?: {
+    toRefresh(syncedBefore: number, limit: number): Promise<string[]>;
+    closeExpiredSessions(limit: number): Promise<number>;
+    reconcileAll(limit: number): Promise<{ checked: number; drifted: Array<{ subscriptionId: number; differences: Array<{ key: string; kind: string }> }>; errors: number }>;
+  };
 }
 
 export interface ReconcileResult {
@@ -59,6 +68,8 @@ export interface ReconcileResult {
   refreshErrors: number;
   sessionsClosed: number;
   purged: number;
+  /** Condiciones personalizadas: suscripciones comparadas y las que no coinciden con lo pactado (con sus diferencias). */
+  negotiated?: { refreshed: number; checked: number; drifted: Array<{ subscriptionId: number; differences: Array<{ key: string; kind: string }> }>; errors: number };
 }
 
 export class StripeReconciler {
@@ -117,6 +128,19 @@ export class StripeReconciler {
           opsLog("warn", "StripeReconcile", "refresh_failed", { subscriptionId: id, error: e instanceof Error ? e.name : "error" });
         }
       }
+      // 3b. Condiciones personalizadas: misma relectura (pagos no aplicados, impagos con la gracia vencida)
+      let negotiatedRefreshed = 0;
+      if (this.d.negotiated) {
+        for (const id of await this.d.negotiated.toRefresh(this.now() - (this.d.refreshAfterMs ?? 15 * 60_000), 200)) {
+          try {
+            await this.d.processor.handleSubscription(id);
+            negotiatedRefreshed++;
+          } catch (e) {
+            refreshErrors++;
+            opsLog("warn", "StripeReconcile", "refresh_failed", { subscriptionId: id, error: e instanceof Error ? e.name : "error" });
+          }
+        }
+      }
       if (refreshErrors) recordFailure("stripe.reconcile_refresh_failed");
       // 4. Sesiones que caducaron sin evento
       let sessionsClosed = 0;
@@ -126,6 +150,18 @@ export class StripeReconciler {
         if (!status) continue;
         await this.d.store.updateSession(id, { status, paymentStatus: s?.paymentStatus ?? null, completedAt: status === "complete" ? this.now() : null });
         sessionsClosed++;
+      }
+      // 4b. Condiciones personalizadas: sesiones caducadas y comparación de lo pactado con lo que Stripe tiene
+      let negotiated: ReconcileResult["negotiated"];
+      if (this.d.negotiated) {
+        try {
+          sessionsClosed += await this.d.negotiated.closeExpiredSessions(200);
+          negotiated = { refreshed: negotiatedRefreshed, ...(await this.d.negotiated.reconcileAll(200)) };
+          await this.d.store.setState("terms_billing_reconcile", { lastRunAt: this.now(), ...negotiated }, this.now());
+        } catch (e) {
+          recordFailure("stripe.reconcile_refresh_failed");
+          opsLog("warn", "StripeReconcile", "negotiated_failed", { error: e instanceof Error ? e.name : "error" });
+        }
       }
       // Stripe lista primero lo más reciente: si quedaron páginas, el cursor NO avanza (lo pendiente es más antiguo)
       if (!complete) {
@@ -142,7 +178,7 @@ export class StripeReconciler {
         recordFailure("stripe.events_purge_failed");
         opsLog("error", "StripeReconcile", "events_purge_failed", { error: e instanceof Error ? e.name : "error" });
       }
-      return { skipped: false, recovered, events, refreshed, refreshErrors, sessionsClosed, purged };
+      return { skipped: false, recovered, events, refreshed, refreshErrors, sessionsClosed, purged, ...(negotiated ? { negotiated } : {}) };
     } finally {
       await this.d.store.releaseLease(LEASE, until);
     }
