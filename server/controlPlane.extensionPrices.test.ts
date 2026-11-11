@@ -243,7 +243,8 @@ describe("Elephant People «bajo solicitud»: Product y Price propios, enlazados
     const people = preparedDesired.filter((d) => d.productKey === PEOPLE);
     expect(people).toEqual([expect.objectContaining({ kind: "monthly", interval: "month", amountCents: 1900, currency: "EUR", sellable: false, commercialStatus: "on_request", productName: "Elephant People", lookupKey: `es:connect-people:monthly:eur:v${people[0].webPriceId}` })]);
     // Los planes siguen vendibles; lo «próximamente» y «en preparación» no tiene Price
-    expect(preparedDesired.filter((d) => d.sellable).map((d) => d.productKey)).toEqual(["essential", "essential", "business", "business"]);
+    // + Social Token Net: en venta directa en la semilla, como en production (11/11/2026)
+    expect(preparedDesired.filter((d) => d.sellable).map((d) => d.productKey)).toEqual(["essential", "essential", "business", "business", "social-token-net-complete"]);
     for (const k of ["connect-copilot", "connect-campaigns", "connect-whatsapp-ai", "connect-automations", "hotel-net-pms", "addon-user-essential"]) expect(preparedDesired.some((d) => d.productKey === k)).toBe(false);
     expect(preparedDesired.filter((d) => !d.sellable).every((d) => d.commercialStatus === "on_request")).toBe(true);
     expect(preparedSkipped).toEqual([]);
