@@ -2,9 +2,16 @@
  * Contrato y aceptación del cliente de unas condiciones comerciales personalizadas. Reutiliza lo que ya existe:
  *  - los contratos del CRM (`crm_contracts` y sus versiones inmutables; un contrato firmado no se reescribe: unas
  *    condiciones nuevas son SIEMPRE un contrato nuevo, enlazado con el anterior);
- *  - el circuito de aceptación electrónica con evidencias (`crm_contract_acceptances`): enlace personal de un solo
- *    uso (solo se guarda su huella), huella SHA-256 del documento exacto, identidad declarada, fecha, IP seudonimizada
- *    y navegador; si el documento cambia tras enviarse, el enlace deja de valer.
+ *  - el circuito de aceptación electrónica con evidencias (`crm_contract_acceptances`): enlace personal que se busca
+ *    por su huella, huella SHA-256 del documento exacto, identidad declarada, fecha, IP seudonimizada y navegador; si
+ *    el documento cambia tras enviarse, el enlace deja de valer. Abrirlo no lo consume: solo la aceptación lo cierra
+ *    (y también la caducidad, la retirada o un enlace nuevo).
+ *  - el correo transaccional de plataforma (categoría `contract_invitation`, plantilla `contract.terms_invitation`):
+ *    «Enviar a aceptación» manda el contrato al representante autorizado que indica el operador, con las mismas cifras
+ *    del documento. Con la migración 0051 del CRM el enlace se guarda además CIFRADO (`acceptanceLinks.ts`) y el
+ *    operador con el permiso de precios personalizados puede volver a consultarlo, copiarlo, reenviarlo o regenerarlo
+ *    (mismo contrato y misma versión) en cualquier momento, con el historial de envíos.
+ * Nada de esto cobra: enviar, abrir, reenviar o regenerar el enlace no llama a Stripe ni a la facturación.
  *
  * Unas condiciones que exigen aceptación NO se activan por adelantado: se activan al aceptarse (o se prepara la
  * contratación del paquete). Si la activación automática falla, la aceptación queda registrada y el administrador
@@ -24,6 +31,10 @@ import type { ContractAcceptance } from "../external/types";
 import { ISSUER } from "../stripe/issuer";
 import type { SubscriptionService } from "../subscriptions/service";
 import type { SubscriptionStore } from "../subscriptions/store";
+import type { Keyring } from "../_core/tenantRegistry/crypto";
+import type { PdfBlock } from "../documents/brandPdf";
+import type { extraTemplates } from "../mail/extraTemplates";
+import { openAcceptanceToken, sealAcceptanceToken, type AcceptanceLinkStore, type AcceptanceSend, type AcceptanceSendKind } from "./acceptanceLinks";
 import { requireCustomPricing } from "./permission";
 import { madridDateTime, money, presentTerms, renderTermsDocument, sha256, type ClientView } from "./presentation";
 import { TermsError, type CommercialTermsService } from "./service";
@@ -32,9 +43,38 @@ import { TermsConflict, type TermsRecord, type TermsStore } from "./store";
 /** Lo que se reutiliza del almacén de aceptaciones de los servicios externos (misma tabla). */
 export type AcceptanceStore = Pick<ExternalStore, "insertAcceptance" | "acceptanceByToken" | "acceptances" | "markAccepted" | "setAcceptanceStatus">;
 
+/** Datos de la plantilla `contract.terms_invitation`. */
+export type TermsInvitation = Parameters<typeof extraTemplates.termsInvitation>[0];
+/** Envío del contrato por el correo de plataforma (lo da `PlatformMailer.termsAcceptanceMail`). */
+export interface TermsAcceptanceMail {
+  invite(to: string, idempotencyKey: string, i: TermsInvitation): Promise<{ status: string; reason: string | null; duplicate: boolean; id?: number | null }>;
+  /** Estado actual del mensaje en la bandeja de salida (aceptado por el proveedor, entregado, rebotado…). */
+  status?(id: number): Promise<{ status: string; reason: string | null } | null>;
+}
+
 const TOKEN_TTL_MS = 30 * 86_400_000;
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
 const ACTOR = "public:acceptance";
+/** Estados del correo que significan «en camino» (encolado, enviándose, aceptado por el proveedor o entregado). */
+const MAIL_OK = new Set(["pending", "sending", "accepted", "delivered"]);
+/** Motivo legible de un correo que no salió (los códigos son los de la bandeja de salida). */
+export function mailReasonText(status: string, reason: string | null): string | null {
+  if (MAIL_OK.has(status)) return null;
+  const known: Record<string, string> = {
+    mode_off: "El correo está desactivado en este entorno.",
+    sandbox_recipient_not_allowed: "El correo está en modo de pruebas y este destinatario no está autorizado.",
+    scope_not_allowed: "El envío de contratos por correo no está habilitado en este entorno.",
+    sender_unavailable: "No hay remitente de correo configurado en este entorno.",
+    suppressed: "Este destinatario está bloqueado por rebotes o quejas anteriores.",
+    rate_limited_recipient: "Se ha alcanzado el límite de envíos por hora a este destinatario: inténtalo más tarde.",
+    rate_limited_tenant: "Se ha alcanzado el límite de envíos por hora: inténtalo más tarde.",
+    no_provider: "No hay proveedor de correo configurado en este entorno.",
+    invalid_recipient: "La dirección de correo no es válida.",
+    mail_not_configured: "El correo de plataforma no está configurado en este entorno.",
+  };
+  const bounce: Record<string, string> = { bounced: "El correo ha rebotado (dirección inexistente o no válida).", soft_bounced: "Rebote temporal: el proveedor lo reintentará.", blocked: "El proveedor ha bloqueado el envío.", complained: "El destinatario lo marcó como correo no deseado." };
+  return (reason && known[reason]) ?? bounce[status] ?? (reason ? `No se ha enviado: ${reason}` : "No se ha enviado el correo.");
+}
 
 export interface TermsDocument {
   text: string;
@@ -61,6 +101,12 @@ export class TermsAcceptanceService {
       url: string;
       ipSalt?: string;
       now?: () => number;
+      /** Correo de plataforma; sin él, el envío consta como «no disponible» y el enlace se puede copiar. */
+      mail?: TermsAcceptanceMail | null;
+      /** Enlaces recuperables (cifrados) e historial de envíos (CRM 0051); sin ellos, el enlace se entrega una sola vez. */
+      links?: { store: AcceptanceLinkStore; keyring: Keyring } | null;
+      /** Logotipo del PDF del contrato aceptado (sin él, la marca en texto). */
+      logo?: () => Promise<Uint8Array | null>;
     },
   ) {
     this.now = d.now ?? Date.now;
@@ -175,7 +221,259 @@ export class TermsAcceptanceService {
       throw e instanceof TermsConflict ? new TermsError("version_conflict", e.message, { current: e.current }) : e;
     });
     await this.d.crm.log("contract", contract.id, "note", `Condiciones comerciales personalizadas enviadas a aceptación a ${email} (versión ${contract.version}, huella ${final.sha256.slice(0, 16)}…)`, actor);
-    return { terms, acceptanceId: a.id, url: `${this.d.url}?token=${token}`, expiresAt: a.expiresAt, documentSha256: final.sha256, contract: { id: contract.id, reference: contract.reference, version: contract.version } };
+    const url = `${this.d.url}?token=${token}`;
+    const recoverable = await this.keep(a.id, t.id, contract.id, token, now);
+    // El contrato sale por correo al representante; si el correo falla, el enlace sigue valiendo y se reintenta
+    const mail = await this.deliver(t.id, a, url, final, "sent", actor);
+    return { terms, acceptanceId: a.id, url, expiresAt: a.expiresAt, documentSha256: final.sha256, contract: { id: contract.id, reference: contract.reference, version: contract.version }, recoverable, mail };
+  }
+
+  // ── Enlace recuperable y envíos ────────────────────────────────────────────────
+
+  /** Guarda el enlace cifrado (si hay registro 0051). Un fallo no rompe el envío: el enlace se devuelve igualmente. */
+  private async keep(acceptanceId: number, termsId: number, contractId: number, token: string, now: number): Promise<boolean> {
+    if (!this.d.links) return false;
+    try {
+      const sealed = sealAcceptanceToken(token, acceptanceId, this.d.links.keyring);
+      await this.d.links.store.saveLink({ acceptanceId, termsId, contractId, cipher: sealed.cipher, keyId: sealed.keyId, createdAt: now });
+      return true;
+    } catch (e) {
+      opsLog("warn", "CommercialTerms", "acceptance_link_not_stored", { termsId, acceptanceId, error: e instanceof Error ? e.name : "error" });
+      return false;
+    }
+  }
+
+  /** El enlace guardado de una aceptación, descifrado y comprobado contra su huella; null si no se guardó. */
+  private async reveal(a: ContractAcceptance): Promise<string | null> {
+    if (!this.d.links) return null;
+    const stored = await this.d.links.store.link(a.id);
+    if (!stored) return null;
+    let token: string;
+    try {
+      token = openAcceptanceToken(stored, this.d.links.keyring);
+    } catch (e) {
+      opsLog("error", "CommercialTerms", "acceptance_link_unreadable", { acceptanceId: a.id, error: e instanceof Error ? e.name : "error" });
+      return null;
+    }
+    // Lo descifrado debe ser exactamente el enlace de ESTA aceptación (su huella es la que busca la página pública)
+    return (await this.d.acceptances.acceptanceByToken(sha256(token)))?.id === a.id ? token : null;
+  }
+
+  /** Datos del correo: las mismas cifras del documento; con cuota global, ningún importe por partida recurrente. */
+  private invitation(a: Pick<ContractAcceptance, "signerName" | "expiresAt">, doc: TermsDocument, url: string): TermsInvitation {
+    const v = doc.view;
+    const pct = (bp: number) => `${(bp / 100).toLocaleString("es-ES", { maximumFractionDigits: 2 })} %`;
+    const named = (name: string, quantity: number) => `${name}${quantity > 1 ? ` × ${quantity}` : ""}`;
+    return {
+      companyName: doc.company.legalName ?? doc.company.name,
+      signerName: a.signerName,
+      reference: doc.reference,
+      version: doc.version,
+      packageName: v.packageName,
+      services: v.included.map((l) => named(l.name, l.quantity)),
+      lines: v.breakdown ? v.breakdown.lines.map((l) => ({ label: named(l.name, l.quantity), cents: l.netCents })) : null,
+      netCents: v.recurring.netCents,
+      taxes: v.recurring.taxes.map((g) => ({ label: `Impuestos (${pct(g.rateBp)})`, cents: g.taxCents })),
+      totalCents: v.recurring.totalCents,
+      period: v.interval === "year" ? "anual" : "mensual",
+      oneTime: v.oneTime.map((c) => ({ label: c.name, totalCents: c.totalCents })),
+      currency: v.currency,
+      url,
+      expiresAt: a.expiresAt,
+    };
+  }
+
+  /**
+   * Manda el enlace por correo al representante de la aceptación y lo registra (destinatario, fecha, contrato, versión
+   * y resultado). Nunca lanza: un fallo del correo se devuelve con su motivo para reintentarlo sin otro contrato.
+   */
+  private async deliver(termsId: number, a: ContractAcceptance, url: string, doc: TermsDocument, kind: AcceptanceSendKind, actor: string) {
+    const at = this.now();
+    let mail: { status: string; reason: string | null; outboxId: number | null };
+    if (!this.d.mail) mail = { status: "unavailable", reason: "mail_not_configured", outboxId: null };
+    else {
+      // Una clave por envío: reenviar el mismo enlace es otro mensaje; repetir la misma llamada, no
+      const n = this.d.links ? (await this.d.links.store.sends(termsId).catch(() => [])).filter((s) => s.acceptanceId === a.id).length + 1 : 1;
+      try {
+        const r = await this.d.mail.invite(a.signerEmail, `terms-acceptance:${a.id}:${n}`, this.invitation(a, doc, url));
+        mail = { status: r.status, reason: r.reason, outboxId: r.id ?? null };
+      } catch (e) {
+        mail = { status: "failed", reason: (e instanceof Error ? e.message : "error").slice(0, 200), outboxId: null };
+      }
+    }
+    const row = this.d.links
+      ? await this.d.links.store
+          .addSend({ termsId, acceptanceId: a.id, contractId: a.contractId, contractVersion: a.contractVersion, kind, recipientName: a.signerName, recipientEmail: a.signerEmail, outboxId: mail.outboxId, status: mail.status, reason: mail.reason, actor, createdAt: at })
+          .catch((e) => void opsLog("warn", "CommercialTerms", "acceptance_send_not_recorded", { termsId, acceptanceId: a.id, error: e instanceof Error ? e.name : "error" }))
+      : undefined;
+    const ok = MAIL_OK.has(mail.status);
+    const what = kind === "resent" ? "reenviado" : kind === "regenerated" ? "con el enlace nuevo enviado" : "enviado";
+    await this.d.crm.log("contract", a.contractId, "note", ok ? `Correo del contrato ${what} a ${a.signerEmail} (versión ${a.contractVersion})` : `Correo del contrato a ${a.signerEmail} NO enviado: ${mailReasonText(mail.status, mail.reason)}`, actor).catch(() => undefined);
+    if (!ok) opsLog("warn", "CommercialTerms", "acceptance_email_not_sent", { termsId, acceptanceId: a.id, status: mail.status, reason: mail.reason });
+    return { to: a.signerEmail, status: mail.status, reason: mail.reason, message: mailReasonText(mail.status, mail.reason), ok, at, sendId: row ? row.id : null };
+  }
+
+  /** El acuerdo con su aceptación en curso (la última enviada) y todas las de su contrato. */
+  private async current(termsId: number) {
+    const t = await this.d.terms.must(termsId);
+    const all = t.contractId !== null ? await this.d.acceptances.acceptances(t.contractId) : [];
+    return { t, a: all.find((x) => x.id === t.acceptanceId) ?? null, all };
+  }
+
+  private linkState(a: ContractAcceptance): "pending" | "accepted" | "revoked" | "expired" {
+    return a.status === "pending" && a.expiresAt <= this.now() ? "expired" : a.status;
+  }
+
+  /**
+   * El enlace en curso para el operador (permiso de precios personalizados): se puede consultar las veces que haga
+   * falta y NO se consume. Solo se devuelve mientras sirve (pendiente y sin caducar).
+   */
+  async link(termsId: number, actor: string) {
+    const { t, a } = await this.current(termsId);
+    const contract = t.contractId !== null ? await this.d.crmStore.get("contracts", t.contractId) : null;
+    if (!a) return { available: !!this.d.links, acceptanceId: null, status: null, url: null, recoverable: false, expiresAt: null, signer: null, contract: null, documentSha256: null };
+    const status = this.linkState(a);
+    const token = status === "pending" ? await this.reveal(a) : null;
+    if (token) opsLog("info", "CommercialTerms", "acceptance_link_viewed", { termsId, acceptanceId: a.id, actor });
+    return {
+      available: !!this.d.links,
+      acceptanceId: a.id,
+      status,
+      url: token ? `${this.d.url}?token=${token}` : null,
+      recoverable: token !== null,
+      expiresAt: a.expiresAt,
+      signer: { name: a.signerName, email: a.signerEmail, role: a.signerRole },
+      contract: contract ? { id: contract.id, reference: contract.reference, version: a.contractVersion } : null,
+      documentSha256: a.documentSha256,
+    };
+  }
+
+  /** Reenvía por correo el MISMO enlace (no crea contrato ni enlace nuevos). Solo si sigue sirviendo. */
+  async resend(termsId: number, actor: string) {
+    const { t, a } = await this.current(termsId);
+    if (t.status !== "pending_acceptance" || t.acceptanceStatus === "accepted" || !a) throw new TermsError("invalid_state", "Estas condiciones no están pendientes de aceptación");
+    if (this.linkState(a) !== "pending") throw new TermsError("invalid_state", "El enlace ha caducado o ya no es válido: genera uno nuevo con «Regenerar enlace»", { reason: "link_not_pending" });
+    if (!this.d.links) throw new TermsError("invalid_state", "El reenvío del enlace no está disponible en este entorno (falta la migración 0051 del CRM)", { reason: "links_unavailable" });
+    const token = await this.reveal(a);
+    if (!token) throw new TermsError("invalid_state", "Este enlace no se puede recuperar (se generó antes de poder guardarse): genera uno nuevo con «Regenerar enlace»", { reason: "link_not_recoverable" });
+    // Solo se reenvía un enlace que el cliente todavía puede usar (mismo documento, mismo contrato, activable)
+    const { doc } = await this.pending(token);
+    const url = `${this.d.url}?token=${token}`;
+    return { mail: await this.deliver(t.id, a, url, doc, "resent", actor), url, expiresAt: a.expiresAt };
+  }
+
+  /**
+   * Enlace nuevo para el MISMO contrato y la MISMA versión (el anterior caducó, se revocó o se ha filtrado): no
+   * duplica el contrato ni cambia las condiciones. El anterior deja de valer. Por defecto se envía por correo.
+   */
+  async regenerate(termsId: number, input: { expectedRevision: number; send?: boolean }, actor: string) {
+    const { t, a: prev, all } = await this.current(termsId);
+    if (t.status !== "pending_acceptance" || t.acceptanceStatus === "accepted" || t.contractId === null) throw new TermsError("invalid_state", "Solo se regenera el enlace de unas condiciones pendientes de aceptación");
+    if (t.revision !== input.expectedRevision) throw new TermsError("version_conflict", `Otra persona modificó estas condiciones antes (revisión actual ${t.revision}). Recarga para no perder cambios.`, { current: t.revision });
+    const signer = prev ?? all.slice().sort((x, y) => y.id - x.id)[0];
+    if (!signer) throw new TermsError("invalid_state", "Estas condiciones no tienen ningún envío previo: envíalas a aceptación");
+    const contract = await this.d.crmStore.get("contracts", t.contractId);
+    if (!contract || contract.status !== "sent") throw new TermsError("invalid_state", "El contrato de estas condiciones ya no está pendiente de aceptación");
+    // Mismo documento que el contrato registrado: si algo cambió, hay que retirarlas y volver a enviarlas
+    const doc = await this.document(t.id);
+    if (doc.text !== contract.conditions || doc.version !== contract.version) throw new TermsError("invalid_state", "Las condiciones o los datos del cliente han cambiado desde el envío: retíralas y vuelve a enviarlas a aceptación");
+    await this.d.terms.preflight(t.id);
+    const now = this.now();
+    for (const x of all) if (x.status === "pending") await this.d.acceptances.setAcceptanceStatus(x.id, x.expiresAt <= now ? "expired" : "revoked");
+    const token = crypto.randomBytes(32).toString("base64url");
+    const a = await this.d.acceptances.insertAcceptance({
+      contractId: contract.id,
+      contractVersion: contract.version,
+      documentSha256: doc.sha256,
+      tokenSha256: sha256(token),
+      status: "pending",
+      signerName: signer.signerName,
+      signerEmail: signer.signerEmail,
+      signerRole: signer.signerRole,
+      signerTaxId: signer.signerTaxId,
+      acceptedName: null,
+      acceptedTaxId: null,
+      acceptedAt: null,
+      acceptedIpHash: null,
+      acceptedUserAgent: null,
+      consentText: null,
+      expiresAt: now + TOKEN_TTL_MS,
+      createdBy: actor,
+      createdAt: now,
+    });
+    const terms = await this.d.termsStore
+      .patch(t.id, { acceptanceId: a.id }, { kind: "acceptance_link_regenerated", actor, reason: "Enlace de aceptación regenerado (mismo contrato y misma versión)", before: { acceptanceId: prev?.id ?? null }, after: { acceptanceId: a.id, contractId: contract.id, contractVersion: contract.version, documentSha256: doc.sha256, signerEmail: a.signerEmail }, effectiveAt: null, acceptanceStatus: "pending", syncResult: null, economic: null }, now, t.revision)
+      .catch(async (e) => {
+        await this.d.acceptances.setAcceptanceStatus(a.id, "revoked");
+        throw e instanceof TermsConflict ? new TermsError("version_conflict", e.message, { current: e.current }) : e;
+      });
+    await this.d.crm.log("contract", contract.id, "note", `Enlace de aceptación regenerado para ${a.signerEmail} (versión ${contract.version}, huella ${doc.sha256.slice(0, 16)}…); el anterior deja de valer`, actor);
+    const url = `${this.d.url}?token=${token}`;
+    const recoverable = await this.keep(a.id, t.id, contract.id, token, now);
+    const mail = input.send === false ? null : await this.deliver(t.id, a, url, doc, "regenerated", actor);
+    return { terms, acceptanceId: a.id, url, expiresAt: a.expiresAt, documentSha256: doc.sha256, contract: { id: contract.id, reference: contract.reference, version: contract.version }, recoverable, mail };
+  }
+
+  /** Historial de envíos con el estado actual de cada correo (lo actualizan los eventos del proveedor). */
+  private async sendsView(termsId: number) {
+    if (!this.d.links) return [];
+    const rows: AcceptanceSend[] = (await this.d.links.store.sends(termsId)).slice(0, 50);
+    const out = [];
+    for (const s of rows) {
+      const live = s.outboxId && this.d.mail?.status ? await this.d.mail.status(s.outboxId).catch(() => null) : null;
+      const status = live?.status ?? s.status;
+      const reason = live ? live.reason : s.reason;
+      out.push({ id: s.id, acceptanceId: s.acceptanceId, contractId: s.contractId, contractVersion: s.contractVersion, kind: s.kind, recipientName: s.recipientName, recipientEmail: s.recipientEmail, status, reason, message: mailReasonText(status, reason), ok: MAIL_OK.has(status), actor: s.actor, createdAt: s.createdAt });
+    }
+    return out;
+  }
+
+  /** PDF del contrato ACEPTADO: el texto exacto registrado (comprobado con su huella) y las evidencias de la aceptación. */
+  async acceptedContractPdf(termsId: number): Promise<{ pdf: Uint8Array; filename: string }> {
+    const t = await this.d.terms.must(termsId);
+    if (t.acceptanceStatus !== "accepted" || t.contractId === null) throw new TermsError("invalid_state", "Estas condiciones todavía no están aceptadas");
+    const a = (await this.d.acceptances.acceptances(t.contractId)).find((x) => x.status === "accepted");
+    const contract = await this.d.crmStore.get("contracts", t.contractId);
+    if (!a || !contract) throw new TermsError("invalid_state", "No consta la aceptación de estas condiciones");
+    // El texto aceptado: el vigente del contrato o, si cambió después, la versión guardada con la misma huella
+    let text: string | null = typeof contract.conditions === "string" && sha256(contract.conditions) === a.documentSha256 ? contract.conditions : null;
+    if (text === null)
+      for (const v of await this.d.crmStore.list("contractVersions", { contractId: contract.id })) {
+        const c = (v.snapshot as { conditions?: unknown } | null)?.conditions;
+        if (typeof c === "string" && sha256(c) === a.documentSha256) text = c;
+      }
+    if (text === null) throw new TermsError("invalid_state", "No se encuentra el texto exacto aceptado de este contrato");
+    const reference = contract.reference ?? `CT-${contract.id}`;
+    const lines = text.split("\n");
+    const blocks: PdfBlock[] = [{ kind: "title", text: "Condiciones comerciales particulares", subtitle: lines[0] ?? reference }];
+    for (const l of lines.slice(1)) {
+      if (!l.trim()) continue;
+      if (HEADING.test(l.trim())) blocks.push({ kind: "heading", text: l.trim() });
+      else blocks.push({ kind: "paragraph", text: l.startsWith("- ") ? `• ${l.slice(2)}` : l });
+    }
+    blocks.push(
+      { kind: "spacer", height: 6 },
+      {
+        kind: "box",
+        title: "Aceptado electrónicamente",
+        lines: [
+          `Aceptado por ${a.acceptedName ?? a.signerName}${a.acceptedTaxId ? ` (NIF ${a.acceptedTaxId})` : ""} el ${madridDateTime(a.acceptedAt ?? 0)}.`,
+          `Enlace personal enviado a ${a.signerName}${a.signerRole ? ` · ${a.signerRole}` : ""} (${a.signerEmail}).`,
+          `Contrato ${reference}, versión ${a.contractVersion}. Huella SHA-256 del documento aceptado: ${a.documentSha256.slice(0, 32)} ${a.documentSha256.slice(32)}.`,
+          ...(a.consentText ? [`Declaración aceptada: ${a.consentText}`] : []),
+          `Referencia de la aceptación: ${contract.signatureRef ?? `aceptacion:${a.id}`}.`,
+        ],
+      },
+    );
+    const { renderBrandPdf } = await import("../documents/brandPdf");
+    const pdf = await renderBrandPdf({
+      title: `${reference} · condiciones comerciales particulares`,
+      issuer: { legalName: ISSUER.legalName, taxId: ISSUER.taxId, address: `${ISSUER.address.line1}, ${ISSUER.address.line2}, ${ISSUER.address.postalCode} ${ISSUER.address.city}` },
+      logoPng: this.d.logo ? await this.d.logo().catch(() => null) : null,
+      footerNote: `${reference} · versión ${a.contractVersion} · huella SHA-256 ${a.documentSha256}`,
+      blocks,
+    });
+    return { pdf, filename: `${reference}-v${a.contractVersion}-aceptado.pdf` };
   }
 
   /** Retira unas condiciones enviadas a aceptación: revoca el enlace y las devuelve a borrador (el contrato vuelve a borrador). */
@@ -320,8 +618,16 @@ export class TermsAcceptanceService {
     }
   }
 
-  /** Estado de la aceptación de un acuerdo para el CRM (firmante, fechas y evidencias; nunca el enlace). */
+  /**
+   * Estado de la aceptación de un acuerdo para el CRM (firmante, fechas, evidencias e historial de envíos; nunca el
+   * enlace: ese solo lo da `link` con el permiso de precios personalizados).
+   */
   async status(termsId: number) {
+    const base = await this.statusBase(termsId);
+    return { ...base, currentAcceptanceId: (await this.d.terms.must(termsId)).acceptanceId ?? null, sends: await this.sendsView(termsId), recoverableLinks: !!this.d.links, mailAvailable: !!this.d.mail };
+  }
+
+  private async statusBase(termsId: number) {
     const t = await this.d.terms.must(termsId);
     const all = t.contractId !== null ? await this.d.acceptances.acceptances(t.contractId) : [];
     const contract = t.contractId !== null ? await this.d.crmStore.get("contracts", t.contractId) : null;
@@ -361,6 +667,31 @@ export function createTermsAcceptanceRouter(svc: TermsAcceptanceService): Router
   r.post("/commercial-terms/:id/acceptance/withdraw", requireCustomPricing(), wrap(async (req, res) => {
     const b = z.object({ reason: z.string().trim().min(5).max(500), expectedRevision: z.number().int().min(1) }).strict().parse(req.body);
     res.json({ terms: await svc.withdraw(id.parse(req.params.id), b, who(req)) });
+  }));
+  // Enlace en curso (consultarlo no lo consume), reenvío del mismo enlace y enlace nuevo para el mismo contrato
+  r.get("/commercial-terms/:id/acceptance/link", requireCustomPricing(), wrap(async (req, res) => {
+    res.setHeader("Cache-Control", "no-store");
+    res.json(await svc.link(id.parse(req.params.id), who(req)));
+  }));
+  r.post("/commercial-terms/:id/acceptance/resend", requireCustomPricing(), wrap(async (req, res) => {
+    z.object({}).strict().parse(req.body ?? {});
+    res.setHeader("Cache-Control", "no-store");
+    res.json(await svc.resend(id.parse(req.params.id), who(req)));
+  }));
+  r.post("/commercial-terms/:id/acceptance/regenerate", requireCustomPricing(), wrap(async (req, res) => {
+    const b = z.object({ expectedRevision: z.number().int().min(1), send: z.boolean().optional() }).strict().parse(req.body);
+    res.setHeader("Cache-Control", "no-store");
+    res.status(201).json(await svc.regenerate(id.parse(req.params.id), b, who(req)));
+  }));
+  // Contrato aceptado en PDF (texto exacto registrado y evidencias de la aceptación)
+  r.get("/commercial-terms/:id/acceptance/contract.pdf", requireScope("subscriptions:read"), wrap(async (req, res) => {
+    const { pdf, filename } = await svc.acceptedContractPdf(id.parse(req.params.id));
+    res.status(200);
+    res.setHeader("Content-Type", "application/pdf");
+    res.setHeader("Content-Disposition", `attachment; filename="${filename.replace(/[^A-Za-z0-9._-]/g, "_")}"`);
+    res.setHeader("Cache-Control", "no-store");
+    res.setHeader("X-Content-Type-Options", "nosniff");
+    res.send(Buffer.from(pdf));
   }));
   return r;
 }

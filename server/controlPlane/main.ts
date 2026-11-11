@@ -44,6 +44,7 @@ import { MysqlPanelEventStore, purgePanelEventKeys } from "../commerce/panelEven
 import { MysqlSubscriptionStore } from "../subscriptions/store";
 import { MysqlTermsStore } from "../commercialTerms/store";
 import { MysqlTermsBillingStore } from "../commercialTerms/billingStore";
+import { MysqlAcceptanceLinkStore } from "../commercialTerms/acceptanceLinks";
 import { describeTermsBilling } from "../commercialTerms/billing";
 import { MysqlCapabilityStore } from "../_core/capabilities/store";
 import { MysqlTenantLimitStore } from "../_core/limits/store";
@@ -419,6 +420,7 @@ async function main() {
   let subscriptions: { store: MysqlSubscriptionStore; terms?: MysqlTermsStore; termsBilling?: { enabled: boolean; store?: MysqlTermsBillingStore; customProductId?: string }; termsLicences?: { auto: boolean } } | undefined;
   // Línea de arranque de las condiciones personalizadas: se escribe después de montar Stripe (su cobro depende de él)
   let termsStartup: { enabled: boolean; billingRegistry: boolean } | null = null;
+  let termsAcceptanceLinks: { store: MysqlAcceptanceLinkStore; keyring: typeof ring } | null = null;
   if (crmPool && web) {
     const subsPool = crmPool;
     const ready = await subsPool.query("SELECT 1 FROM subscriptions LIMIT 0").then(() => true, () => false);
@@ -437,6 +439,10 @@ async function main() {
     // Licencias de los acuerdos: aplicación automática ENCENDIDA; solo se apaga con CP_CUSTOM_TERMS_AUTO_LICENCES=0
     if (subscriptions && termsReady) subscriptions.termsLicences = { auto: process.env.CP_CUSTOM_TERMS_AUTO_LICENCES !== "0" };
     termsStartup = { enabled: termsReady, billingRegistry: termsBillingRegistry };
+    // Enlace de aceptación recuperable (cifrado con el llavero del registro) e historial de envíos: migración 0051 del CRM
+    const linksReady = termsReady && (await subsPool.query("SELECT 1 FROM commercial_terms_acceptance_links, commercial_terms_acceptance_sends LIMIT 0").then(() => true, () => false));
+    if (linksReady) termsAcceptanceLinks = { store: new MysqlAcceptanceLinkStore(subsPool), keyring: ring };
+    if (termsReady) console.log(JSON.stringify({ ctx: "CommercialTermsAcceptance", recoverableLinks: linksReady, ...(linksReady ? {} : { reason: "crm_migration_0051_missing" }) }));
   }
 
   // Prueba gratuita de Essential: misma BD del CRM; solo si la migración 0007 está aplicada. Las rutas
@@ -1096,6 +1102,7 @@ async function main() {
     ordersRecovery,
     stripe,
     external,
+    termsAcceptance: { links: termsAcceptanceLinks, logo: () => fetchBrandLogo() },
     invoicing,
     commercialEvents,
     leadNotices,
