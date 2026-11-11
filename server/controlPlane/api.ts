@@ -103,6 +103,7 @@ import { createPublicSiteRouter } from "../web/publicSite";
 import { createSubscriptionsRouter } from "../subscriptions/api";
 import { createCommercialTermsRouter } from "../commercialTerms/api";
 import { saleGuard } from "../licensing/heldCapabilities";
+import { paidNetOpener, withPaidNet, type PaidNetOpener } from "../implementation/paidNet";
 import { TermsAcceptanceService, createTermsAcceptanceRouter, createTermsPublicAcceptanceRouter } from "../commercialTerms/acceptance";
 import type { AcceptanceLinkStore } from "../commercialTerms/acceptanceLinks";
 import type { Keyring } from "../_core/tenantRegistry/crypto";
@@ -689,6 +690,8 @@ export function createControlPlaneApp(d: ControlPlaneDeps): Express {
   };
   // Implantación asistida: la solicitud de una solución asistida abre su expediente (lo monta el bloque de suscripciones)
   const intakeImplementation: { run?: (r: LeadRequest) => Promise<unknown> } = {};
+  // Producto Net de sector pagado → expediente de implantación (lo monta el bloque de implantación; sin él, nada)
+  const paidNet: { run?: PaidNetOpener } = {};
   const webRequests = d.crm
     ? new WebRequestService({
         store: d.crm.store,
@@ -2046,6 +2049,13 @@ export function createControlPlaneApp(d: ControlPlaneDeps): Express {
             mail: d.mail?.platform?.termsAcceptanceMail() ?? null,
             links: d.termsAcceptance?.links ?? null,
             logo: d.termsAcceptance?.logo,
+            // Condiciones aceptadas con un producto Net de sector: expediente de implantación (idempotente)
+            onActivated: async ({ terms, subscriptionId, contractId }) => {
+              if (!paidNet.run) return;
+              const at = d.subscriptions!.now?.() ?? Date.now();
+              const live = (await d.subscriptions!.store.items(subscriptionId)).filter((i) => i.effectiveTo === null || i.effectiveTo > at).map((i) => i.productKey);
+              await paidNet.run.fromTerms({ companyId: terms.companyId, contractId, subscriptionId, productKeys: Array.from(new Set([...live, ...terms.lines.map((l) => l.productKey).filter((k): k is string => !!k)])), reference: `condiciones #${terms.id}` });
+            },
           })
         : null;
     if (termsAcceptance) {
@@ -2293,6 +2303,8 @@ export function createControlPlaneApp(d: ControlPlaneDeps): Express {
         now: d.subscriptions.now,
       });
       intakeImplementation.run = (r) => implementation.fromIntake(r);
+      const ordersForPaidNet = d.orders?.store;
+      paidNet.run = paidNetOpener({ implementation, catalog: catalogFromWebStore(d.web.store), previousOrder: ordersForPaidNet ? (id) => ordersForPaidNet.get(id) : undefined });
       router.use("/implementations", createImplementationRouter(implementation));
     }
     // Cobro de cargos (server/invoicing/chargePayments): lo crea el bloque de facturación; el procesador de Stripe lo consulta
@@ -2341,7 +2353,7 @@ export function createControlPlaneApp(d: ControlPlaneDeps): Express {
         licensing,
         capabilities: d.capabilities,
         platform: d.provisioning && d.platformDomain ? createContractActivation({ provisioning: d.provisioning, platformDomain: d.platformDomain, actor: { type: "crm", id: "orchestrator" }, notifyWelcome: d.mail?.platform?.assistedWelcome() }) : undefined,
-        notify: d.mail?.platform ? d.mail.platform.orderNotifier({ crmStore: d.crm.store, orders: d.orders.store, reader: d.reader, mode: ordersMode }) : undefined,
+        notify: withPaidNet(d.mail?.platform ? d.mail.platform.orderNotifier({ crmStore: d.crm.store, orders: d.orders.store, reader: d.reader, mode: ordersMode }) : undefined, paidNet),
         trials: d.trials ? new TrialService({ store: d.trials.store, subscriptions: d.subscriptions.store, now: d.subscriptions.now, limits: d.trials.limits, blockedDomains: d.trials.blockedDomains }) : undefined,
         payments: d.orders.payments ?? null,
         mode: ordersMode,

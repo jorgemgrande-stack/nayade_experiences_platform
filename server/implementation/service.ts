@@ -35,6 +35,7 @@ import {
   type MilestoneKind,
   type StartMode,
 } from "./store";
+import { GENERIC_TEMPLATE, checklistEventDetail, checklistKeyOf, sectionOf, templateFor } from "./templates";
 
 export const ASSISTED_TRIAL_DAYS = 15;
 const DAY = 86_400_000;
@@ -47,6 +48,18 @@ export const DEFAULT_MILESTONES: ReadonlyArray<{ title: string; kind: MilestoneK
   { title: "Formación del equipo del cliente", kind: "milestone" },
   { title: "Validación del cliente", kind: "milestone" },
 ];
+/** Circuitos de pago que abren solos el expediente de un producto Net (nadie paga sin implantación). */
+export const PAID_CIRCUITS = ["panel_purchase", "trial_conversion", "public_checkout", "custom_terms", "order"] as const;
+export type PaidCircuit = (typeof PAID_CIRCUITS)[number];
+export const PAID_CIRCUIT_LABEL: Record<PaidCircuit, string> = {
+  panel_purchase: "compra desde el panel",
+  trial_conversion: "contratación desde la prueba",
+  public_checkout: "contratación en la web",
+  custom_terms: "condiciones personalizadas aceptadas",
+  order: "pedido",
+};
+/** ¿Expediente abierto por un pago? (su suscripción ya existe: iniciarlo no crea otra). */
+export const isPaidOrder = (o: Pick<ImplementationOrder, "requestSnapshot">) => (o.requestSnapshot as { source?: unknown } | null)?.source === "paid";
 /** Tipos de solicitud de la web que pueden pedir una solución asistida. */
 const INTAKE_TYPES = new Set(["module_info", "extension_info", "configuration", "onboarding"]);
 
@@ -369,21 +382,83 @@ export class ImplementationService {
       if (!c || (c.status !== "signed" && c.status !== "active")) return { order: o, accepted: false };
       const upd = await this.patch(o, { status: "accepted", acceptedAt: c.signedAt ?? this.now() });
       await this.event(o.id, "accepted", actor, `Contrato ${c.reference ?? `#${c.id}`} ${c.signatureMethod === "electronic" ? "aceptado electrónicamente" : "firmado"}${c.signatureRef ? ` (${c.signatureRef})` : ""}`);
-      if (!(await this.d.store.milestones(o.id)).length) {
-        let position = 0;
-        for (const m of DEFAULT_MILESTONES) await this.d.store.addMilestone({ orderId: o.id, kind: m.kind, title: m.title, required: true, assigneeId: o.assigneeId, assigneeName: o.assigneeName, dueAt: null, note: null, position: position++, createdBy: actor.slice(0, 100), createdAt: this.now() });
-      }
+      await this.seedChecklist(upd, actor);
       await this.moveOpportunity(upd, "won", actor);
       await this.crmNote(upd, "contrato aceptado: orden de implantación abierta", actor);
       return { order: upd, accepted: true };
     });
   }
 
+  /**
+   * Abre (idempotente) el expediente de un producto Net YA PAGADO: pedido activo (compra del panel, conversión de la
+   * prueba, contratación en la web) o condiciones personalizadas aceptadas. Nadie paga sin implantación: el expediente
+   * entra directamente «en implantación» (sin propuesta: ya está contratado) con la checklist de su solución, y al
+   * iniciarlo se usa la suscripción pagada (no se crea otra). Las licencias siguen como siempre: este paso no las toca.
+   * Si la empresa ya tiene un expediente de esa solución (abierto o iniciado), se devuelve ese.
+   */
+  async openPaid(
+    input: { companyId: number; solutionKey: string; contractId: number | null; subscriptionId: number | null; circuit: PaidCircuit; reference: string },
+    actor: string,
+  ): Promise<{ order: ImplementationOrder; created: boolean }> {
+    const key = clean(input.solutionKey, 64);
+    if (!key || !Number.isInteger(input.companyId) || input.companyId <= 0) throw new ImplementationError("invalid_input", "Empresa o solución no válida");
+    const same = async () => (await this.d.store.list({ companyId: input.companyId, limit: 500 })).find((o) => o.solutionKey === key && o.status !== "cancelled") ?? null;
+    const existing = await same();
+    if (existing) return { order: existing, created: false };
+    const sol = await this.solutionOf(key);
+    const reference = (clean(input.reference, 80) ?? "").replace(/\s+/g, " ");
+    let order: ImplementationOrder;
+    try {
+      order = await this.d.store.create({
+        companyId: input.companyId,
+        opportunityId: null,
+        leadRequestId: null,
+        solutionKey: sol.key,
+        solutionName: sol.name.slice(0, 200),
+        requestSnapshot: { source: "paid", circuit: input.circuit, reference, contractId: input.contractId, subscriptionId: input.subscriptionId },
+        assigneeId: null,
+        assigneeName: null,
+        queue: DEFAULT_QUEUE,
+        createdBy: actor.slice(0, 100),
+        createdAt: this.now(),
+      });
+    } catch (e) {
+      if (!(e instanceof ImplementationDuplicateError)) throw e;
+      const won = await same();
+      if (!won) throw new ImplementationError("conflict", "Ya existe un expediente de esa solución para la empresa");
+      return { order: won, created: false };
+    }
+    const what = `${PAID_CIRCUIT_LABEL[input.circuit]}${reference ? ` ${reference}` : ""}`;
+    await this.event(order.id, "created", actor, `${sol.name} · pagado (${what}): implantación obligatoria antes de ponerlo en marcha`);
+    await this.event(order.id, "assigned", actor, `Cola: ${order.queue}`);
+    if (input.contractId) {
+      const at = this.now();
+      order = await this.patch(order, { status: "accepted", contractId: input.contractId, acceptedAt: at, startMode: "subscription", subscriptionId: input.subscriptionId, conditions: `Contratado y pagado (${what}). Las condiciones son las del contrato.`, timeline: "A acordar con el cliente en la reunión de arranque", termsBy: actor.slice(0, 100), termsAt: at });
+      await this.event(order.id, "paid", actor, `Contrato #${input.contractId}${input.subscriptionId ? ` · suscripción #${input.subscriptionId}` : ""}: orden de implantación abierta sin propuesta (ya está contratado)`);
+      await this.seedChecklist(order, actor);
+    }
+    await this.crmNote(order, `expediente abierto por el pago de ${sol.name} (${what})`, actor);
+    return { order, created: true };
+  }
+
+  /** Checklist de su solución en un expediente SIN hitos (los que ya tienen hitos los conservan). */
+  private async seedChecklist(o: ImplementationOrder, actor: string) {
+    if ((await this.d.store.milestones(o.id)).length) return;
+    const t = templateFor(o.solutionKey);
+    let position = 0;
+    for (const m of t.items) await this.d.store.addMilestone({ orderId: o.id, kind: m.kind, title: m.title, required: m.required, assigneeId: o.assigneeId, assigneeName: o.assigneeName, dueAt: null, note: m.note ?? null, position: position++, createdBy: actor.slice(0, 100), createdAt: this.now() });
+    await this.event(o.id, "checklist", actor, checklistEventDetail(t));
+  }
+
   // ── 10-11 Hitos y pendientes ──────────────────────────────────────────────────
 
-  private async editable(id: number) {
+  /** Hitos editables hasta «preparada»; las INCIDENCIAS, en cualquier momento salvo cancelado. */
+  private assertEditable(o: ImplementationOrder, kind: MilestoneKind | undefined) {
+    if (kind === "incidencia" ? o.status === "cancelled" : !EDITABLE_MILESTONES.includes(o.status)) throw new ImplementationError("invalid_state", kind === "incidencia" ? "El expediente está cancelado" : "Con la implantación ya preparada, los hitos no se cambian");
+  }
+  private async editable(id: number, kind?: MilestoneKind) {
     const o = await this.must(id);
-    if (!EDITABLE_MILESTONES.includes(o.status)) throw new ImplementationError("invalid_state", "Con la implantación ya preparada, los hitos no se cambian");
+    this.assertEditable(o, kind);
     return o;
   }
   private async ownMilestone(o: ImplementationOrder, milestoneId: number) {
@@ -394,21 +469,22 @@ export class ImplementationService {
 
   async addMilestone(id: number, input: { title: string; kind?: MilestoneKind; required?: boolean; assigneeId?: string | null; dueAt?: number | null; note?: string | null }, actor: string) {
     return this.serial(id, async () => {
-      const o = await this.editable(id);
+      const o = await this.editable(id, input.kind);
       const title = clean(input.title, 200);
-      if (!title || title.length < 3) throw new ImplementationError("invalid_input", "Escribe el hito o pendiente");
+      if (!title || title.length < 3) throw new ImplementationError("invalid_input", input.kind === "incidencia" ? "Describe la incidencia" : "Escribe el hito o pendiente");
       const a = await this.resolveAssignee(input.assigneeId);
       const position = (await this.d.store.milestones(o.id)).reduce((m, x) => Math.max(m, x.position + 1), 0);
       const m = await this.d.store.addMilestone({ orderId: o.id, kind: input.kind ?? "milestone", title, required: input.required ?? true, assigneeId: a?.id ?? null, assigneeName: a?.name ?? null, dueAt: input.dueAt ?? null, note: clean(input.note, 1000), position, createdBy: actor.slice(0, 100), createdAt: this.now() });
-      await this.event(o.id, "milestone_added", actor, `${m.kind === "pending" ? "Pendiente" : "Hito"}: ${m.title}${m.required ? "" : " (opcional)"}`);
+      await this.event(o.id, "milestone_added", actor, `${KIND_TEXT[m.kind]}: ${m.title}${m.required ? "" : " (opcional)"}`);
       return m;
     });
   }
 
   async updateMilestone(id: number, milestoneId: number, input: { title?: string; required?: boolean; assigneeId?: string | null; dueAt?: number | null; note?: string | null }, actor: string) {
     return this.serial(id, async () => {
-      const o = await this.editable(id);
+      const o = await this.must(id);
       const m = await this.ownMilestone(o, milestoneId);
+      this.assertEditable(o, m.kind);
       const patch: Parameters<ImplementationStore["updateMilestone"]>[1] = {};
       if (input.title !== undefined) {
         const t = clean(input.title, 200);
@@ -432,8 +508,9 @@ export class ImplementationService {
 
   async setMilestoneDone(id: number, milestoneId: number, done: boolean, actor: string): Promise<Milestone> {
     return this.serial(id, async () => {
-      const o = await this.editable(id);
+      const o = await this.must(id);
       const m = await this.ownMilestone(o, milestoneId);
+      this.assertEditable(o, m.kind);
       if ((m.status === "done") === done) return m;
       const upd = (await this.d.store.updateMilestone(m.id, done ? { status: "done", doneAt: this.now(), doneBy: actor.slice(0, 100) } : { status: "open", doneAt: null, doneBy: null }, this.now()))!;
       await this.event(o.id, done ? "milestone_done" : "milestone_reopened", actor, upd.title);
@@ -552,17 +629,19 @@ export class ImplementationService {
       const o = await this.must(id);
       if (o.status === "started") return o;
       if (o.status !== "available") throw new ImplementationError("invalid_state", "Primero comunica al cliente que su entorno está disponible");
-      if (!this.d.starter) throw new ImplementationError("unavailable", "Las suscripciones no están configuradas");
+      // Expediente de un pago: la suscripción pagada ya existe (no se crea otra ni se tocan sus licencias)
+      const paid = isPaidOrder(o) && o.subscriptionId !== null;
+      if (!paid && !this.d.starter) throw new ImplementationError("unavailable", "Las suscripciones no están configuradas");
       const { contract } = await this.contractAndCompany(o);
       const trialDays = o.startMode === "trial" ? Math.max(1, Math.ceil(((o.trialEndsAt ?? this.now() + ASSISTED_TRIAL_DAYS * DAY) - this.now()) / DAY)) : 0;
       let r: { subscriptionId: number; trialEndsAt: number | null };
       try {
-        r = await this.d.starter.start({ companyId: o.companyId, contract, tenantId: o.tenantId!, solutionKey: o.solutionKey, trialDays, reason: `Implantación ${o.reference}` }, actor);
+        r = paid ? { subscriptionId: o.subscriptionId!, trialEndsAt: null } : await this.d.starter!.start({ companyId: o.companyId, contract, tenantId: o.tenantId!, solutionKey: o.solutionKey, trialDays, reason: `Implantación ${o.reference}` }, actor);
       } catch (e) {
         return this.failed(o, "iniciar", e, actor);
       }
       // El contrato pasa a activo con la plataforma ya creada (el alta es idempotente y no vuelve a invitar)
-      if (contract.status === "signed") {
+      if (!paid && contract.status === "signed") {
         await this.d.crm.setContractStatus(contract.id, "active", actor).catch((e) => this.event(o.id, "step_failed", actor, `activar el contrato: ${message(e)}`));
       }
       const upd = await this.patch(o, { status: "started", subscriptionId: r.subscriptionId, startedAt: this.now(), trialEndsAt: o.startMode === "trial" ? (o.trialEndsAt ?? r.trialEndsAt) : null, lastError: null });
@@ -605,10 +684,21 @@ export class ImplementationService {
     const contract = order.contractId ? await this.d.crmStore.get("contracts", order.contractId) : null;
     const company = await this.d.crmStore.get("companies", order.companyId);
     const opportunity = order.opportunityId ? await this.d.crmStore.get("opportunities", order.opportunityId) : null;
+    const milestones = await this.d.store.milestones(order.id);
+    const events = await this.d.store.events(order.id);
+    // Plantilla aplicada (la que consta en el historial); sin ella, hitos anteriores a las plantillas o aún sin hitos
+    const appliedKey = checklistKeyOf([...events].reverse().find((e) => e.type === "checklist")?.detail ?? null);
+    const applied = appliedKey ? (appliedKey === GENERIC_TEMPLATE.key ? GENERIC_TEMPLATE : templateFor(appliedKey)) : null;
+    const suggested = templateFor(order.solutionKey);
+    const snap = order.requestSnapshot as { source?: string; circuit?: string; reference?: string } | null;
     return {
       order,
-      milestones: await this.d.store.milestones(order.id),
-      events: await this.d.store.events(order.id),
+      milestones: milestones.map((m) => ({ ...m, section: sectionOf(m) })),
+      events,
+      checklist: applied
+        ? { key: applied.key, name: applied.name, generic: applied.generic, applied: true }
+        : { key: milestones.length ? null : suggested.key, name: milestones.length ? "Hitos propios del expediente (anteriores a las plantillas)" : `${suggested.name} (se aplica al aceptarse el contrato)`, generic: milestones.length ? true : suggested.generic, applied: false },
+      paid: snap?.source === "paid" ? { circuit: snap.circuit ?? null, reference: snap.reference ?? null } : null,
       company: company ? { id: company.id, name: company.name, tenantId: company.tenantId } : null,
       opportunity: opportunity ? { id: opportunity.id, title: opportunity.title, stage: opportunity.stage, owner: opportunity.owner } : null,
       contract: contract ? { id: contract.id, reference: contract.reference, status: contract.status, planId: contract.planId, signedAt: contract.signedAt, signatureMethod: contract.signatureMethod } : null,
@@ -637,3 +727,4 @@ export function nextStep(o: Pick<ImplementationOrder, "status">): string | null 
 }
 
 export const OPEN_STATUSES = OPEN_IMPLEMENTATION;
+const KIND_TEXT: Record<MilestoneKind, string> = { milestone: "Hito", pending: "Pendiente", check: "Comprobación", incidencia: "Incidencia" };

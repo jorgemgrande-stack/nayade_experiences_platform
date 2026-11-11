@@ -18,6 +18,18 @@ import type { CatalogPort } from "../subscriptions/ports";
 
 const HELD = new Set(["contracted", "pending_setup", "active"]);
 
+type ProductCaps = { capabilities?: string[]; bundleOf?: string[] };
+/** Capacidades de un producto con las de sus componentes (un paquete las concede a través de ellos, como en licencias). */
+async function capabilitiesOfProduct(catalog: Pick<CatalogPort, "product">, p: ProductCaps, out = new Set<string>(), depth = 0): Promise<Set<string>> {
+  if (depth > 10) return out;
+  for (const c of p.capabilities ?? []) out.add(c);
+  for (const comp of p.bundleOf ?? []) {
+    const cp = await catalog.product(comp).catch(() => null);
+    if (cp) await capabilitiesOfProduct(catalog, cp, out, depth + 1);
+  }
+  return out;
+}
+
 export interface HeldProduct {
   key: string;
   name: string;
@@ -57,7 +69,7 @@ export async function alreadyHeld(
   const out: HeldProduct[] = [];
   for (const key of Array.from(new Set(keys))) {
     const p = await d.catalog.product(key).catch(() => null);
-    const caps = p?.capabilities ?? [];
+    const caps = p ? Array.from(await capabilitiesOfProduct(d.catalog, p)) : [];
     if (!p || !caps.length || !caps.every((c) => byCap.has(c))) continue;
     out.push({ key, name: p.name, sources: Array.from(new Set(caps.flatMap((c) => byCap.get(c)!))) });
   }

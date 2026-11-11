@@ -29,7 +29,8 @@ export const START_MODES = ["trial", "subscription"] as const;
 export type StartMode = (typeof START_MODES)[number];
 export const IMPLEMENTATION_QUEUES = ["implantacion", "comercial", "tecnica"] as const;
 export type ImplementationQueue = (typeof IMPLEMENTATION_QUEUES)[number];
-export const MILESTONE_KINDS = ["milestone", "pending"] as const;
+/** «check»: comprobación funcional de la checklist sectorial; «incidencia»: incidencia de la implantación (11/11/2026). */
+export const MILESTONE_KINDS = ["milestone", "pending", "check", "incidencia"] as const;
 export type MilestoneKind = (typeof MILESTONE_KINDS)[number];
 export type MilestoneStatus = "open" | "done";
 export const IMPLEMENTATION_EVENT_TYPES = [
@@ -48,6 +49,10 @@ export const IMPLEMENTATION_EVENT_TYPES = [
   "cancelled",
   "note",
   "step_failed",
+  /** Plantilla de la checklist aplicada al expediente (detalle: `<clave> · <nombre>`). */
+  "checklist",
+  /** Expediente abierto por un pago (pedido o condiciones aceptadas) de un producto Net. */
+  "paid",
 ] as const;
 export type ImplementationEventType = (typeof IMPLEMENTATION_EVENT_TYPES)[number];
 

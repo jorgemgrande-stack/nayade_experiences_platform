@@ -9,6 +9,9 @@ const catalog = {
       "hotel-net-complete": { key, name: "Hotel Net", capabilities: ["hotel.pms", "hotel.booking"] },
       "connect-people": { key, name: "People", capabilities: ["people-hr"] },
       "sin-capacidades": { key, name: "Servicio", capabilities: [] },
+      "social-token-net-complete": { key, name: "Social Token Net", capabilities: [], bundleOf: ["social-token-net-communities", "social-token-net-tokens"] },
+      "social-token-net-communities": { key, name: "Comunidades", capabilities: ["social-token-net"] },
+      "social-token-net-tokens": { key, name: "Tokens", capabilities: ["social-token-net-tokens"] },
     })[key] as never ?? null,
 };
 const grant = async (store: MemoryCapabilityStore, caps: string[], o: { source: string; status?: "active" | "read_only" | "suspended" | "contracted" | "pending_setup" | "cancelled"; validUntil?: number | null; siteId?: string }) =>
@@ -59,6 +62,14 @@ describe("doble cobro: capacidades que la empresa ya tiene", () => {
     await grant(store, ["hotel.pms", "hotel.booking"], { source: "subscription:12" });
     expect((await guard("t1-demo", ["hotel-net-complete"])).map((h) => h.key)).toEqual(["hotel-net-complete"]);
     expect(await guard(null, ["hotel-net-complete"])).toEqual([]);
+  });
+
+  it("un paquete sin capacidades propias se comprueba con las de sus componentes (Social Token Net)", async () => {
+    const store = new MemoryCapabilityStore();
+    await grant(store, ["social-token-net"], { source: "operator" });
+    expect(await alreadyHeld({ capabilities: store, catalog }, "t1-demo", ["social-token-net-complete"], { now: NOW })).toEqual([]);
+    await grant(store, ["social-token-net-tokens"], { source: "subscription:40" });
+    expect(await alreadyHeld({ capabilities: store, catalog }, "t1-demo", ["social-token-net-complete"], { now: NOW })).toEqual([{ key: "social-token-net-complete", name: "Social Token Net", sources: ["operator", "subscription:40"] }]);
   });
 
   it("textos de cada origen", () => {
