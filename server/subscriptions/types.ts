@@ -103,7 +103,8 @@ export type EventKind =
   | "renewed"
   | "canceled"
   | "terms_applied"
-  | "terms_settled";
+  | "terms_settled"
+  | "tenant_linked";
 
 export interface SubscriptionEvent {
   id: number;

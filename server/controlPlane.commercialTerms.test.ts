@@ -229,7 +229,13 @@ describe("flujo completo por la API", () => {
     expect(done.json.terms.status).toBe("active");
     const history = await call("GET", `/subscriptions/${subscriptionId}/terms`, { token: TOK.admin });
     expect(history.json).toMatchObject({ current: termsId, timeZone: "Europe/Madrid" });
-    expect(history.json.events.map((e: { kind: string; actor: string }) => [e.kind, e.actor])).toEqual([["draft_created", "operator:ana"], ["activated", "operator:ana"]]);
+    // La suscripción tiene plataforma: al activar se aplican solas las licencias de sus productos
+    expect(history.json.events.map((e: { kind: string; actor: string }) => [e.kind, e.actor])).toEqual([["draft_created", "operator:ana"], ["activated", "operator:ana"], ["licences_applied", "operator:ana"]]);
+    const lic = await call("GET", `/subscriptions/${subscriptionId}/terms/licences`, { token: TOK.sales });
+    expect(lic.json).toMatchObject({ automatic: true, tenantId: "acme", linked: true, last: { kind: "licences_applied" }, plan: { pending: 0 } });
+    // Aplicarlas a mano exige el permiso de precios Y el de licencias
+    for (const token of [TOK.sales, TOK.service, TOK.tenant, TOK.licences]) expect((await call("POST", `/subscriptions/${subscriptionId}/terms/licences/apply`, { token, body: {} })).status).toBe(403);
+    expect((await call("POST", `/subscriptions/${subscriptionId}/terms/licences/apply`, { token: TOK.admin, body: {} })).json).toMatchObject({ status: "applied", changed: 0 });
     // La ficha de la suscripción sigue siendo la misma, en simulación de facturación
     const detail = (await call("GET", `/subscriptions/${subscriptionId}`, { token: TOK.admin })).json;
     expect(detail.billing).toEqual({ source: "shadow" });

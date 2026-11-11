@@ -139,6 +139,34 @@ Los seis importes que el encargo pide distinguir:
   ninguna ruta para modificar sus precios.
 - El enlace de aceptación lo entrega hoy el administrador (se devuelve al enviarlo); no se envía un correo automático.
 
+## Licencias: aplicación automática (`server/commercialTerms/licences.ts`)
+
+Los derechos salen de los **productos de catálogo** de las partidas vigentes de la suscripción, nunca del importe. Los
+calcula y aplica el servicio de licencias de siempre (`LicensingService`), con origen `subscription:<id>`.
+
+- **Cuándo se aplican solas:** al entrar en vigor un acuerdo (activación directa o aceptación del cliente), al
+  resolverse el fin de una condición temporal y cuando la empresa recibe su plataforma desde el CRM (alta en la
+  plataforma). Las pendientes o fallidas se reintentan antes de cada cálculo de la facturación.
+- **Empresa sin plataforma:** no hay dónde aplicar. Queda «pendiente de plataforma» en el historial del acuerdo
+  (`licences_pending`) y se aplican al darla de alta. La suscripción toma la plataforma de SU empresa (evento
+  `tenant_linked` en su historial); una suscripción nunca cambia de plataforma.
+- **Qué no se toca:** las licencias de otro origen (derechos adquiridos del TPV, operador, otras suscripciones) y las
+  de otras empresas. Una partida a medida no existe en el catálogo: no concede nada, se llame como se llame.
+- **Idempotente:** repetirlo no cambia nada si ya está aplicado. Si un acuerdo retira un producto, se retiran solo las
+  licencias de esa suscripción que ya no corresponden.
+- **Fallos:** si la propagación falla, el acuerdo queda activado igualmente, el fallo queda en el historial
+  (`licences_failed`) y se reintenta; también se puede aplicar a mano.
+- **Fechas:** los cambios que dependen solo de la fecha (un acuerdo programado que empieza, una partida con fin
+  propio) se aplican en la siguiente ocasión en que se calcula la facturación de la suscripción; no hay todavía una
+  tarea periódica que lo haga a la hora exacta.
+- **Interruptor:** la aplicación automática viene ENCENDIDA. Solo se apaga con `CP_CUSTOM_TERMS_AUTO_LICENCES=0` (no hay
+  que crear ninguna variable para que funcione). Apagada, el enlace de la plataforma y la aplicación siguen a mano.
+- **Riesgo asumido:** con la facturación en simulación, las licencias se conceden sin que haya un cobro detrás (igual
+  que hoy con «Aplicar licencias» de la ficha). La decisión de contratar la toma el administrador central al activar
+  el acuerdo o el cliente al aceptarlo.
+- **A mano:** `GET /subscriptions/:id/terms/licences` (plataforma, licencias que corresponden y último resultado) y
+  `POST /subscriptions/:id/terms/licences/apply` (permiso de precios personalizados y `entitlements:write`).
+
 ## Facturación y Stripe (fase 4): implementado con dobles y APAGADO
 
 `server/commercialTerms/billing.ts` conecta el acuerdo con el cobro. Hoy **no cobra nada**: las suscripciones con
@@ -235,6 +263,8 @@ Una sola función (`canManageCustomPricing` / `requireCustomPricing`):
 | `POST /commercial-terms/:id/acceptance` | Envía a aceptación: contrato del CRM y enlace personal del firmante |
 | `POST /commercial-terms/:id/acceptance/withdraw` | Retira unas condiciones enviadas (revoca el enlace; vuelven a borrador) |
 | `GET`/`POST /public/contract-acceptance/condiciones?token=` | Página pública del firmante (sin sesión; HTML sin scripts) |
+| `GET /subscriptions/:id/terms/licences` | Plataforma, licencias que corresponden y último resultado de su aplicación |
+| `POST /subscriptions/:id/terms/licences/apply` | Enlaza la plataforma de la empresa (si falta) y aplica las licencias |
 | `GET /subscriptions/:id/terms/billing` | Plan de cobro de hoy y conciliación con Stripe (sin interruptor: solo el plan) |
 | `POST /subscriptions/:id/terms/billing/sync` | Deja en Stripe lo que la suscripción tiene hoy (sin los tres cerrojos no hace nada) |
 
@@ -254,7 +284,8 @@ Se completa en cada fase. `C` = `server/subscriptionsTerms.compute.test.ts` (cá
 `server/subscriptionsTerms.service.test.ts` (servicio con la simulación de facturación real), `A` =
 `server/controlPlane.commercialTerms.test.ts` (API y licencias reales), `P` =
 `server/subscriptionsTerms.presentation.test.ts` (presentación y contrato), `B` =
-`server/subscriptionsTerms.billing.test.ts` (cobro con el doble de Stripe), `M` = `server/subscriptionsTerms.mysql.test.ts`
+`server/subscriptionsTerms.billing.test.ts` (cobro con el doble de Stripe), `L` =
+`server/subscriptionsTerms.licences.test.ts` (licencias reales por capacidad), `M` = `server/subscriptionsTerms.mysql.test.ts`
 (MySQL real).
 
 | Caso | Prueba |
@@ -285,8 +316,8 @@ Se completa en cada fase. `C` = `server/subscriptionsTerms.compute.test.ts` (cá
 | 24. Impuestos de partidas diferentes | C «Caso 24»; B «Caso 24 — cada concepto viaja con su tipo de impuesto» |
 | 25. Idempotencia de cobros | S «Caso 23 … Caso 25» (simulación); B «Caso 25 — idempotencia de cobros y recuperación ante fallos» (3 pruebas, con el doble de Stripe). Pendiente: repetirlo en Stripe Sandbox |
 | 26. Concurrencia de modificaciones | S «Caso 26» y «dos ediciones del mismo borrador»; M «dos administradores desde conexiones distintas» |
-| 27. Conservación de licencias | S «Caso 27»; A «Casos 27 y 28» |
-| 28. Conservación de derechos adquiridos | A «Casos 27 y 28» |
+| 27. Conservación de licencias | S «Caso 27»; A «Casos 27 y 28»; L «Caso 27 — el paquete de 129 € concede exactamente las licencias de sus tres productos» y «el precio no interviene» |
+| 28. Conservación de derechos adquiridos | A «Casos 27 y 28»; L «Caso 28 — los derechos adquiridos y las licencias de otro origen no se tocan» |
 | 29. Aislamiento entre tenants | S «Caso 29»; A «Caso 29» y «una empresa no puede leer ni modificar sus precios negociados» |
 | 30. Actualización posterior del catálogo sin pérdida del precio negociado | S «Caso 13 … Caso 30» |
 
