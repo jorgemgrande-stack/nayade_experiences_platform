@@ -106,6 +106,39 @@ Los seis importes que el encargo pide distinguir:
   las capacidades de la clave de producto de las partidas vigentes; los derechos adquiridos tienen otro origen y no se
   tocan.
 
+## Presentación al cliente, contrato y aceptación
+
+- **Una sola vista para todo** (`server/commercialTerms/presentation.ts`, `presentTerms`): la oferta, la propuesta, el
+  contrato, el resumen de contratación y el panel de la empresa salen de la misma vista, así que la presentación
+  elegida se respeta en todos.
+  - `global`: nombre del paquete, productos y servicios incluidos, cuota global, impuestos, total, periodicidad y
+    condiciones. Nunca precios por partida, ni la tarifa oficial, ni la asignación interna.
+  - `breakdown`: cada producto y servicio con su precio, sus descuentos o recargos, impuestos y total negociado.
+  - Los impuestos, los pagos únicos, la vigencia y los cambios de precio programados se muestran siempre. La tarifa
+    oficial de referencia es un dato interno del administrador: el cliente solo la ve cuando el acuerdo dice que al
+    vencer se vuelve a ella.
+  - Las facturas no usan esta vista: llevan siempre el detalle fiscal por concepto.
+- **Contrato** (`renderTermsDocument`): texto determinista (misma huella mientras el acuerdo no cambie) con empresa
+  contratante, productos y servicios, precio, periodicidad, impuestos, pagos iniciales, vigencia, condiciones
+  especiales, renovación, cambios de precio programados y aceptación. Recoge expresamente qué ocurre al vencer una
+  condición temporal: la tarifa oficial fijada en el acuerdo (con su importe) o la vigente en esa fecha.
+- **Se reutiliza lo existente** (`server/commercialTerms/acceptance.ts`):
+  - los contratos del CRM (`crm_contracts` y sus versiones): cada acuerdo que exige aceptación tiene SU contrato; el
+    que ya tuviera la suscripción queda como antecedente (`previous_contract_id`) y no se toca. Un contrato firmado
+    nunca se sobrescribe;
+  - el circuito de aceptación electrónica de los servicios externos (`crm_contract_acceptances`): enlace personal de
+    un solo uso del que solo se guarda la huella, huella SHA-256 del documento exacto, identidad declarada, fecha, IP
+    seudonimizada y navegador. La página pública cuelga de la misma ruta
+    (`/cp/v1/public/contract-acceptance/condiciones`).
+- **Nada se activa antes de aceptar.** Enviar a aceptación deja el acuerdo «pendiente de aceptación» (ya no se edita:
+  hay que retirarlo, lo que revoca el enlace). Si el documento cambia, el enlace antiguo deja de valer. Al aceptar se
+  firma el contrato, se activan las condiciones (o se crea la suscripción del paquete) y la suscripción queda enlazada
+  con el contrato firmado. Si la activación automática falla, la aceptación ya consta y el administrador la completa.
+- **Panel de la empresa** (`server/commercialTerms/tenantView.ts`, «Mi plan»): solo lectura, con la misma vista, la
+  cuota que rige hoy y las condiciones ya pactadas para más adelante. Una empresa nunca ve las de otra ni tiene
+  ninguna ruta para modificar sus precios.
+- El enlace de aceptación lo entrega hoy el administrador (se devuelve al enviarlo); no se envía un correo automático.
+
 ## Permisos (`server/commercialTerms/permission.ts`)
 
 Una sola función (`canManageCustomPricing` / `requireCustomPricing`):
@@ -134,6 +167,11 @@ Una sola función (`canManageCustomPricing` / `requireCustomPricing`):
 | `POST /commercial-terms/:id/activate` | Activa (`expectedRevision` y `expectedVersion` de la suscripción) |
 | `POST /commercial-terms/:id/cancel` | Anula un borrador |
 | `POST /commercial-terms/:id/prepare-contracting` | Crea la suscripción de un paquete y le aplica el acuerdo |
+| `GET /commercial-terms/:id/document` | Documento contractual (texto, huella y vista del cliente) |
+| `GET /commercial-terms/:id/acceptance` | Estado de la aceptación: contrato, firmante y evidencias (nunca el enlace) |
+| `POST /commercial-terms/:id/acceptance` | Envía a aceptación: contrato del CRM y enlace personal del firmante |
+| `POST /commercial-terms/:id/acceptance/withdraw` | Retira unas condiciones enviadas (revoca el enlace; vuelven a borrador) |
+| `GET`/`POST /public/contract-acceptance/condiciones?token=` | Página pública del firmante (sin sesión; HTML sin scripts) |
 
 ## Limitaciones conocidas
 
@@ -149,7 +187,8 @@ Una sola función (`canManageCustomPricing` / `requireCustomPricing`):
 
 Se completa en cada fase. `C` = `server/subscriptionsTerms.compute.test.ts` (cálculo puro), `S` =
 `server/subscriptionsTerms.service.test.ts` (servicio con la simulación de facturación real), `A` =
-`server/controlPlane.commercialTerms.test.ts` (API y licencias reales), `M` = `server/subscriptionsTerms.mysql.test.ts`
+`server/controlPlane.commercialTerms.test.ts` (API y licencias reales), `P` =
+`server/subscriptionsTerms.presentation.test.ts` (presentación y contrato), `M` = `server/subscriptionsTerms.mysql.test.ts`
 (MySQL real).
 
 | Caso | Prueba |
@@ -173,9 +212,9 @@ Se completa en cada fase. `C` = `server/subscriptionsTerms.compute.test.ts` (cá
 | 17. Adición de un producto | S «Casos 17, 18 y 19» |
 | 18. Retirada de un producto | S «Casos 17, 18 y 19» |
 | 19. Cambio de cuota global | C «Caso 19»; S «Casos 17, 18 y 19» |
-| 20. Presentación global al cliente | Fase 3 |
-| 21. Presentación desglosada | Fase 3 |
-| 22. Generación y aceptación contractual | Fase 3 (hoy: S «lo que exige aceptación del cliente no se activa por adelantado») |
+| 20. Presentación global al cliente | P «Caso 20» (vista y contrato); S «Caso 20 — con cuota global la empresa ve…» (panel); A «el documento respeta la presentación de cuota global» |
+| 21. Presentación desglosada | P «Caso 21»; S «Caso 21 — con desglose…» (panel) |
+| 22. Generación y aceptación contractual | A «Caso 22 — contrato y aceptación del cliente (paquete de 129 €/mes)» (8 pruebas); S «lo que exige aceptación del cliente no se activa por adelantado» |
 | 23. Renovación con precio negociado | S «Caso 23»; M «la activación materializa…» |
 | 24. Impuestos de partidas diferentes | C «Caso 24» |
 | 25. Idempotencia de cobros | S «Caso 23 … Caso 25» (simulación); cobros reales, fase 4 |
@@ -186,4 +225,5 @@ Se completa en cada fase. `C` = `server/subscriptionsTerms.compute.test.ts` (cá
 | 30. Actualización posterior del catálogo sin pérdida del precio negociado | S «Caso 13 … Caso 30» |
 
 **Caso final del propietario** (Essential + Hotel Net + WhatsApp Connect por 129 €/mes + IVA, desde el CRM, con
-licencias y facturación simulada coherentes): A «caso final — Essential + Hotel Net + WhatsApp Connect por 129 €/mes + IVA».
+licencias y facturación simulada coherentes): A «caso final — Essential + Hotel Net + WhatsApp Connect por 129 €/mes + IVA»
+y, con contrato y aceptación del cliente, A «Caso 22».

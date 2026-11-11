@@ -339,6 +339,7 @@ export class CommercialTermsService {
   async createPackage(companyId: number, input: TermsInput, actor: string): Promise<TermsRecord> {
     if (!(await this.d.crm.company(companyId))) bad("La empresa no existe");
     if (input.interval !== "month" && input.interval !== "year") bad("Indica la periodicidad del paquete");
+    if (input.effectiveFrom != null) bad("Un paquete entra en vigor al preparar su contratación (o cuando el cliente lo acepta): no lleva fecha efectiva");
     const currency = (input.currency ?? "EUR").toUpperCase();
     const ctx = { companyId, subscriptionId: null, interval: input.interval, currency, kept: new Set<string>() };
     const r = await this.resolve(input, ctx);
@@ -363,13 +364,54 @@ export class CommercialTermsService {
     const cur = await this.must(id);
     if (cur.status !== "draft") state("Solo se edita un borrador: unas condiciones activadas o enviadas a aceptación no se reescriben (crea unas nuevas)");
     await this.assertNotMaterialized(cur);
+    await this.assertNotChained(cur);
     let ctx: { companyId: number; subscriptionId: number | null; interval: TermsInterval; currency: string; kept: ReadonlySet<string>; self?: number };
     if (cur.subscriptionId !== null) ctx = (await this.subscriptionCtx(cur.subscriptionId, input, id)).ctx;
-    else ctx = { companyId: cur.companyId, subscriptionId: null, interval: input.interval ?? cur.interval, currency: (input.currency ?? cur.currency).toUpperCase(), kept: new Set<string>(), self: id };
+    else {
+      if (input.effectiveFrom != null) bad("Un paquete entra en vigor al preparar su contratación (o cuando el cliente lo acepta): no lleva fecha efectiva");
+      ctx = { companyId: cur.companyId, subscriptionId: null, interval: input.interval ?? cur.interval, currency: (input.currency ?? cur.currency).toUpperCase(), kept: new Set<string>(), self: id };
+    }
     const r = await this.resolve(input, ctx);
     return this.conflict(
       this.d.store.saveDraft(id, expectedRevision, r.head, r.lines, r.adjustments, this.event("draft_updated", actor, r.head.reason, { before: this.shape(cur), after: this.shape({ ...r.head, lines: r.lines, adjustments: r.adjustments }), effectiveAt: r.head.effectiveFrom, acceptanceStatus: r.head.requiresAcceptance ? "pending" : "not_required", economic: this.economic(summarize(r.probe)) }), this.now()),
     );
+  }
+
+  /**
+   * Una condición «siguiente» forma parte de lo que otro acuerdo ha enviado ya a aceptación (figura en su contrato):
+   * mientras siga pendiente, no se toca.
+   */
+  private async assertNotChained(t: Pick<TermsRecord, "id" | "companyId">) {
+    const waiting = (await this.d.store.list({ companyId: t.companyId, status: ["pending_acceptance"] })).find((x) => x.nextTermsId === t.id);
+    if (waiting) state("Estas condiciones forman parte de un acuerdo enviado a aceptación: retíralo antes de cambiarlas", { reason: "chained_pending_acceptance", termsId: waiting.id });
+  }
+
+  /**
+   * ¿Se podría activar ahora? Las mismas comprobaciones de la activación, sin cambiar nada. Se usa antes de enviar a
+   * aceptación y antes de registrar la aceptación del cliente: no se acepta lo que no se va a poder activar.
+   */
+  async preflight(id: number): Promise<void> {
+    const t = await this.must(id);
+    const now = this.now();
+    if (t.status !== "draft" && t.status !== "pending_acceptance") state("Estas condiciones ya no son un borrador");
+    if (t.effectiveTo !== null && t.effectiveTo <= Math.max(now, t.effectiveFrom ?? 0)) state("La vigencia de estas condiciones ya ha terminado: actualiza las fechas");
+    if (t.afterEnd === "next_terms" && t.nextTermsId !== null) await this.checkNext(t.nextTermsId, t, t.effectiveTo!);
+    if (t.subscriptionId === null) {
+      if (!t.lines.some((l) => l.kind === "catalog" && isRecurring(l) && l.catalog!.family === "core_plan")) state("Una suscripción necesita un plan Core: añádelo al paquete");
+      await this.checkComposition(t.lines);
+      return;
+    }
+    const sub = await this.d.subscriptionStore.get(t.subscriptionId);
+    if (!sub) throw new TermsError("not_found", "Suscripción no encontrada");
+    if (sub.status === "canceled") state("La suscripción está cancelada: reactívala antes de modificarla");
+    if (now >= sub.currentPeriodEnd) state("Hay renovaciones vencidas sin aplicar: aplícalas antes de modificar la suscripción");
+    if (this.d.stripeBilled && (await this.d.stripeBilled(sub.id))) state("Esta suscripción se cobra por Stripe: las condiciones personalizadas con cobro en Stripe aún no están habilitadas", { reason: "stripe_billed" });
+    const at = this.effectiveAt(t, sub);
+    if (t.interval !== sub.interval && at !== sub.currentPeriodEnd) state("Un cambio de periodicidad entra en vigor en la próxima renovación: indica esa fecha como fecha efectiva");
+    const live = this.liveAt(t, at);
+    const problems = validateTerms(live);
+    if (problems.length) state(`Las condiciones ya no son válidas con la fecha efectiva real: ${problems.join("; ")}`, { problems });
+    await this.checkComposition(recurringLinesOf(live, at));
   }
 
   /** Una activación que se cortó a medias ya dejó las partidas en la suscripción: solo cabe repetirla para completarla. */
@@ -385,6 +427,7 @@ export class CommercialTermsService {
     if (reason.length < REASON_MIN) bad(`Indica el motivo (al menos ${REASON_MIN} caracteres)`);
     if (cur.status !== "draft" && cur.status !== "pending_acceptance") state("Solo se anula un borrador o unas condiciones pendientes de aceptación");
     await this.assertNotMaterialized(cur);
+    await this.assertNotChained(cur);
     return this.conflict(this.d.store.patch(id, { status: "cancelled", closedAt: this.now() }, this.event("cancelled", actor, reason.slice(0, 500), { before: { status: cur.status }, after: { status: "cancelled" } }), this.now(), expectedRevision));
   }
 
@@ -795,7 +838,14 @@ export class CommercialTermsService {
 
   async ofCompany(companyId: number) {
     const now = this.now();
-    return { terms: (await this.d.store.list({ companyId })).map((t) => ({ ...t, effectiveStatus: effectiveStatus(t, now) })) };
+    const all = await this.d.store.list({ companyId });
+    const out = [];
+    for (const t of all) {
+      // Paquete cuya contratación se cortó tras crear la suscripción: sigue siendo un borrador y se puede reintentar
+      const interruptedPackage = (t.status === "draft" || t.status === "pending_acceptance") && t.subscriptionId !== null && (await this.d.store.events({ termsId: t.id })).some((e) => e.kind === "subscription_created");
+      out.push({ ...t, effectiveStatus: effectiveStatus(t, now), interruptedPackage });
+    }
+    return { terms: out };
   }
 }
 

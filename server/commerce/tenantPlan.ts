@@ -13,6 +13,7 @@ import { requireScope } from "../controlPlane/auth";
 import type { CommercialOrder } from "../orchestrator/types";
 import type { Subscription as SubscriptionRecord } from "../subscriptions/types";
 import type { Invoice } from "../invoicing/types";
+import type { TenantCustomTerms } from "../commercialTerms/tenantView";
 
 /** Estados de un pedido con contrato en curso (de más a menos preferente). */
 const LIVE_STATES = ["active", "past_due", "cancel_scheduled", "suspended", "licensed", "subscribed", "confirmed", "contracted"] as const;
@@ -21,6 +22,8 @@ export interface TenantPlanDeps {
   companyOfTenant(tenantId: string): Promise<{ id: number; name: string } | null>;
   orders(companyId: number): Promise<CommercialOrder[]>;
   subscription(id: number): Promise<SubscriptionRecord | null>;
+  /** Condiciones comerciales personalizadas vigentes de la empresa, con la presentación elegida (solo lectura). */
+  customTerms?(tenantId: string, companyId: number, subscriptionId?: number | null): Promise<TenantCustomTerms | null>;
   invoices?(companyId: number): Promise<Invoice[]>;
   invoiceHtml?(inv: Invoice): string;
   /** Estado del cobro en Stripe, si la empresa se cobra allí. */
@@ -45,6 +48,8 @@ export interface TenantPlanSummary {
   period: { start: number; end: number; renewsAt: number | null; cancelAt: number | null; trialEnd: number | null; status: SubscriptionRecord["status"] } | null;
   billing: { provider: "stripe" | "manual" | "none"; status: string | null; cancelAtPeriodEnd: boolean; portal: boolean };
   invoices: Array<{ id: number; number: string | null; issueDate: string | null; periodLabel: string | null; totalCents: number; currency: string; paymentStatus: Invoice["paymentStatus"]; kind: Invoice["kind"] }>;
+  /** Condiciones comerciales pactadas con la empresa (null si paga la tarifa oficial). Solo lectura. */
+  customTerms: TenantCustomTerms | null;
 }
 
 export class TenantPlanError extends Error {
@@ -84,7 +89,10 @@ export class TenantPlanService {
     const stripe = order && this.d.stripeStatus ? await this.d.stripeStatus(company.id).catch(() => null) : null;
     const invoices = this.d.invoices ? (await this.d.invoices(company.id)).filter((i) => i.status !== "draft") : [];
     const cancelAt = sub?.cancelAt ?? null;
+    // Nunca rompe «Mi plan»: si no se pueden leer, se muestra como si no las hubiera
+    const customTerms = this.d.customTerms ? await this.d.customTerms(tenantId, company.id, order?.subscriptionId ?? null).catch(() => null) : null;
     return {
+      customTerms,
       company: { name: company.name },
       contract: order
         ? {
@@ -94,7 +102,8 @@ export class TenantPlanService {
             plan: order.request.plan,
             interval: order.request.interval,
             items: order.request.items.map((i) => i.key),
-            recurringNetCents: order.quote?.contractAmountCents ?? null,
+            // Con condiciones pactadas rige su cuota: el importe cotizado del pedido (tarifa oficial) no viaja a la empresa
+            recurringNetCents: customTerms ? customTerms.today.netCents : (order.quote?.contractAmountCents ?? null),
             currency: order.quote?.currency ?? sub?.currency ?? "EUR",
             graceEndsAt: order.graceEndsAt,
           }
