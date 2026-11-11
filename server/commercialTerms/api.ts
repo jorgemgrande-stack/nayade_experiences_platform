@@ -11,7 +11,7 @@ import express, { type NextFunction, type Request, type Response, type Router } 
 import { z } from "zod";
 import { getAuth, requireScope } from "../controlPlane/auth";
 import { opsLog } from "../_core/ops/log";
-import { CONCEPTS } from "./model";
+import { CONCEPTS, TERMS_STATUSES } from "./model";
 import { CUSTOM_PRICING_SCOPE, canManageCustomPricing, customPricingScopeDefined, requireCustomPricing } from "./permission";
 import { TermsError, type CommercialTermsService, type TermsInput } from "./service";
 
@@ -120,9 +120,22 @@ export function createCommercialTermsRouter(svc: CommercialTermsService, hooks: 
     res.json(await svc.restoreOfficial(id.parse(req.params.id), b, who(req)));
   }));
 
+  // Por empresa (todas sus condiciones) o, sin empresa, por estado. P. ej. los paquetes que aún no tienen suscripción
+  // de todas las empresas (`?status=draft,pending_acceptance&subscription=none`) para Comercial → Suscripciones
   r.get("/commercial-terms", read, wrap(async (req, res) => {
-    const q = z.object({ companyId: z.coerce.number().int().positive() }).parse(req.query);
-    res.json(await svc.ofCompany(q.companyId));
+    const q = z
+      .object({
+        companyId: z.coerce.number().int().positive().optional(),
+        status: z
+          .string()
+          .transform((v) => v.split(",").map((x) => x.trim()).filter(Boolean))
+          .pipe(z.array(z.enum(TERMS_STATUSES)).min(1).max(TERMS_STATUSES.length))
+          .optional(),
+        subscription: z.enum(["none", "linked"]).optional(),
+      })
+      .refine((x) => x.companyId !== undefined || x.status !== undefined, { message: "indica la empresa (companyId) o los estados (status)", path: ["companyId"] })
+      .parse(req.query);
+    res.json(await svc.listTerms(q));
   }));
   // Paquete personalizado para una contratación nueva (todavía sin suscripción)
   r.post("/commercial-terms/packages", manage, wrap(async (req, res) => {
