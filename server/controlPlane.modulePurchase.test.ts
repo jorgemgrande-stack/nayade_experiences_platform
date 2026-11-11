@@ -50,6 +50,7 @@ import { ModulePurchaseService } from "./stripe/purchases";
 import { MemoryTenantLimitStore } from "./_core/limits/store";
 import { MemoryInvoiceLineStore } from "./stripe/invoiceLines";
 import { setLogSink } from "./_core/ops/log";
+import { MemoryImplementationStore } from "./implementation/store";
 
 const ADMIN = "purchase-admin-token-aaaaaaaaaaaaaaaaaaa";
 /** Token de servicio del Core: SOLO compra (el tenant lo pone el Core desde su sesión). */
@@ -75,6 +76,7 @@ const gw = new FakeStripeGateway();
 const changes = new MemorySubscriptionChangeStore();
 const limits = new MemoryTenantLimitStore();
 const invoiceLines = new MemoryInvoiceLineStore();
+const implementations = new MemoryImplementationStore();
 const FOR_SALE = ["connect-people", "addon-user-essential"];
 /** Producto interno de pruebas (solo en esta prueba): `connect-tax`, que además forma parte del paquete `connect-pack-finance`. */
 const INTERNAL = "connect-tax";
@@ -162,7 +164,8 @@ beforeAll(async () => {
     if (op.op === "create_product") gw.addProduct({ id: `prod_test_${op.productKey}`, name: op.params.name, metadata: op.params.metadata });
     else gw.addPrice({ id: `price_test_${op.params.metadata.es_web_price_id}`, productId: `prod_test_${op.productKey}`, lookupKey: op.params.lookup_key, unitAmount: op.params.unit_amount, interval: op.params.recurring.interval, metadata: op.params.metadata });
   }
-  expect((await syncCatalog(desired, gw, stripeStore, clock)).linked.filter((l) => l.sellable)).toHaveLength(4 + FOR_SALE.length + 1);
+  // + Social Token Net: en venta directa en la semilla, como en production (11/11/2026)
+  expect((await syncCatalog(desired, gw, stripeStore, clock)).linked.filter((l) => l.sellable)).toHaveLength(4 + FOR_SALE.length + 1 + 1);
   crm = new CrmService({ store: crmStore, activation: createContractActivation({ provisioning, platformDomain: "elephant.test", actor: { type: "operator", id: "test" } }), now: () => clock });
   const all = ["crm:read", "crm:write", "web:read", "provisioning:write", "subscriptions:read", "subscriptions:write", "entitlements:write", "tenants:read", "orders:read", "orders:write", "orders:approve", "billing:write", "ops:read"] as const;
   const app = createControlPlaneApp({
@@ -184,6 +187,8 @@ beforeAll(async () => {
     limits,
     trials: { store: trialStore, publicEnabled: true, autoProvision: true, notify },
     orders: { store: orders, payments: null },
+    // Implantación asistida montada: un producto Net de sector pagado abre su expediente
+    implementation: { store: implementations },
     publicIntake: { secret: INTAKE_SECRET, origins: [WEB] },
     stripe: {
       config,
@@ -432,6 +437,33 @@ describe("compra de módulos y ampliaciones desde la plataforma", () => {
     // Cancelada (o caducada), ya no cuenta: se puede comprar
     await caps.apply(a.tenantId, product.capabilities!.map((c) => ({ capabilityId: c, siteId: "", status: "cancelled" as const, validUntil: null, source: "subscription:999999" })), { actor: "operator:test", reason: "Fin", now: clock });
     expect((await call("POST", `/commerce/tenants/${a.tenantId}/purchases/preview`, { token: CORE, body: { add: ["connect-people"] } })).status).toBe(200);
+  });
+
+  it("Social Token Net comprado desde el panel: licencias como siempre, expediente de implantación abierto solo y una segunda compra rechazada", async () => {
+    const a = await activeCompany("Comunidad Pagada SL");
+    gw.now = Math.floor(clock / 1000);
+    const mark = gw.events.length;
+    const r = await ok(buy(a.tenantId, { add: ["social-token-net-complete"] }), 201);
+    expect(r.purchase.status).toBe("applied");
+    await deliverSince(mark);
+    await settled();
+    await until(async () => (await capsOf(a.tenantId)).includes("social-token-net"));
+    expect(await capsOf(a.tenantId)).toEqual(expect.arrayContaining(["social-token-net", "social-token-net-tokens"]));
+    await until(async () => implementations.rows.some((o) => o.companyId === a.companyId));
+    const files = implementations.rows.filter((o) => o.companyId === a.companyId);
+    expect(files.map((o) => [o.solutionKey, o.status])).toEqual([["social-token-net-complete", "accepted"]]);
+    const d = await ok(call("GET", `/implementations/${files[0].id}`));
+    expect(d.checklist).toMatchObject({ key: "social-token-net-complete", applied: true, generic: false });
+    expect(d.paid).toMatchObject({ circuit: "panel_purchase" });
+    expect(d.milestones.some((m: { kind: string }) => m.kind === "check")).toBe(true);
+    // Ya lo tiene (por su propio pedido): no se vuelve a vender
+    expect((await buy(a.tenantId, { add: ["social-token-net-complete"] })).status).toBe(400);
+    // Comprar otra cosa después no abre otro expediente
+    const m2 = gw.events.length;
+    await ok(buy(a.tenantId, { add: ["connect-people"] }), 201);
+    await deliverSince(m2);
+    await settled();
+    expect(implementations.rows.filter((o) => o.companyId === a.companyId)).toHaveLength(1);
   });
 
   it("interruptor apagado: 503 sin tocar nada", async () => {
