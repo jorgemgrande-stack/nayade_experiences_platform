@@ -221,8 +221,9 @@ describe("Caso 25 — idempotencia de cobros y recuperación ante fallos", () =>
     expect(gw.oneOffs.get(a.stripeId)).toEqual([expect.objectContaining({ amountCents: 50000 })]);
     expect(gw.items.get(a.stripeId)).toHaveLength(1);
     expect(writes()).toHaveLength(2);
-    // Errores y reintentos, en el historial
-    expect((await termsStore.events({ termsId: a.termsId })).filter((e) => e.kind === "sync").map((e) => e.syncResult)).toEqual(["failed", "failed", "synced"]);
+    // Errores y reintentos, en el historial: el MISMO error repetido deja un solo evento (los intentos sí se cuentan)
+    expect((await termsStore.events({ termsId: a.termsId })).filter((e) => e.kind === "sync").map((e) => e.syncResult)).toEqual(["failed", "synced"]);
+    expect(((await termsStore.get(a.termsId))!.syncDetail as { attempts: number }).attempts).toBe(3);
     expect(((await termsStore.get(a.termsId))!.syncDetail as { attempts: number }).attempts).toBe(3);
   });
 

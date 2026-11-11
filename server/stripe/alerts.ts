@@ -50,6 +50,7 @@ export const STRIPE_FAILURE_RULES: Record<string, FailureRule> = {
   "stripe.negotiated_first_payment_failed": once("Stripe: el primer pago de unas condiciones personalizadas falló sin cobrarse (la contratación vuelve a poder iniciarse; revisar la suscripción de Stripe)", "warning"),
   "stripe.negotiated_ended_in_stripe": once("Stripe: una suscripción con condiciones personalizadas terminó en Stripe sin que la contratación termine (ya no se cobra: volver a ponerla a cobrar o terminarla)"),
   "stripe.negotiated_unmounted": once("Stripe: llegan eventos de suscripciones con condiciones personalizadas y su módulo no está montado (su estado de pago no se aplica)"),
+  "stripe.negotiated_terms_ended": once("Stripe: unas condiciones personalizadas terminaron sin otras que las sustituyan: su suscripción de Stripe queda con el fin programado (revisar la contratación)", "warning"),
   "stripe.negotiated_tax_mismatch": once("Stripe: el impuesto de una factura de condiciones personalizadas no corresponde al tipo pactado"),
   // Activación sin pago de Stripe en el entorno real: cada una queda a la vista del equipo (auditoría)
   "orders.admin_approval_live": once("Pedido activado por aprobación administrativa (sin pago de Stripe) en el entorno real: revisar la justificación", "warning"),

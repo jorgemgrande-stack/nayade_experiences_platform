@@ -57,6 +57,15 @@ beforeAll(async () => {
   });
   app.post("/v1/subscription_items/:id", (req, res) => void res.json({ id: req.params.id, object: "subscription_item", livemode, metadata: req.body.metadata ?? {} }));
   app.post("/v1/subscriptions/:id", (req, res) => void res.json(subscription(req.params.id)));
+  const invLines = Array.from({ length: 13 }, (_, n) => ({ id: `il_${n + 1}`, object: "line_item", amount: 100 + n, quantity: 1 }));
+  const invoice = (id: string, n: number) => ({ id, object: "invoice", livemode, status: "paid", customer: "cus_x1", amount_paid: 0, currency: "eur", subtotal: 0, lines: { object: "list", has_more: n > 10, data: invLines.slice(0, Math.min(n, 10)) } });
+  app.get("/v1/invoices/in_many/lines", (req, res) => {
+    const after = String(req.query.starting_after ?? "");
+    const from = after ? invLines.findIndex((l) => l.id === after) + 1 : 0;
+    res.json({ object: "list", url: "/v1/invoices/in_many/lines", has_more: from + 5 < invLines.length, data: invLines.slice(from, from + 5).map((l) => ({ ...l, livemode })) });
+  });
+  app.get("/v1/invoices/in_many", (_req, res) => void res.json(invoice("in_many", 13)));
+  app.get("/v1/invoices/in_small", (_req, res) => void res.json(invoice("in_small", 2)));
   app.post("/v1/invoiceitems", (req, res) => void res.json({ id: "ii_1", object: "invoiceitem", livemode, amount: Number(req.body.amount), currency: req.body.currency, customer: req.body.customer, invoice: null, metadata: req.body.metadata ?? {}, parent: { type: "subscription_details", subscription_details: { subscription: req.body.subscription } } }));
   app.get("/v1/invoiceitems", (req, res) =>
     void res.json({
@@ -85,8 +94,8 @@ describe("Stripe: operaciones del cobro de condiciones personalizadas", () => {
     const s = (await gw().negotiatedSubscription!("sub_x1"))!;
     expect(s).toMatchObject({ id: "sub_x1", customerId: "cus_x1", status: "active", currency: "EUR", automaticTax: true, cancelAtPeriodEnd: false, currentPeriodEnd: 1_900_000_500, metadata: { es_negotiated: "1" } });
     expect(s.items).toEqual([
-      { id: "si_1", productId: "prod_essential", unitAmount: 1900, quantity: 1, currency: "EUR", interval: "month", intervalCount: 1, metadata: { es_line: "essential" }, taxRateBp: null },
-      { id: "si_2", productId: "prod_custom", unitAmount: 2500, quantity: 2, currency: "EUR", interval: "year", intervalCount: 1, metadata: {}, taxRateBp: 2100 },
+      { id: "si_1", productId: "prod_essential", unitAmount: 1900, quantity: 1, currency: "EUR", interval: "month", intervalCount: 1, metadata: { es_line: "essential" }, taxRateBp: null, taxBehavior: null },
+      { id: "si_2", productId: "prod_custom", unitAmount: 2500, quantity: 2, currency: "EUR", interval: "year", intervalCount: 1, metadata: {}, taxRateBp: 2100, taxBehavior: null },
     ]);
     expect(await gw().negotiatedSubscription!("sub_missing")).toBeNull();
     expect(seen.every((r) => r.method === "GET" && r.version === "2026-09-30.endive")).toBe(true);
@@ -154,7 +163,8 @@ describe("Stripe: operaciones del cobro de condiciones personalizadas", () => {
     expect(s.items.map((i) => i.id)).toEqual(Array.from({ length: 11 }, (_, n) => `si_m${n + 1}`));
     expect(seen.map((r) => `${r.method} ${r.path}`)).toEqual(["GET /v1/subscriptions/sub_many", "GET /v1/subscription_items", "GET /v1/subscription_items"]);
     // Y lo hecho fuera de Elephant que cambia lo que se cobra queda a la vista
-    expect(s.anomalies).toEqual(["cupón", "cobro_en_pausa", "cobro_no_automático"]);
+    expect(s.anomalies).toEqual(["cupón", "cobro_no_automático"]);
+    expect(s.paused).toBe(true);
     expect(s.trialEnd).toBe(1_900_000_999);
   });
 
@@ -172,6 +182,22 @@ describe("Stripe: operaciones del cobro de condiciones personalizadas", () => {
     expect(seen[0].body.subscription_data).toEqual({ metadata: { es_negotiated: "1" } });
     expect(seen[1].body.subscription_data).toEqual({ metadata: { es_negotiated: "1" }, trial_end: "1900500000" });
     expect(JSON.stringify(seen[1].body)).not.toMatch(/billing_cycle_anchor|proration|backdate/);
+  });
+
+  it("cobro en pausa (cuota pactada de 0) y su vuelta: una llamada a la suscripción, con su clave", async () => {
+    await gw().setPauseCollection!("sub_x1", true, "es-local-pause-on");
+    await gw().setPauseCollection!("sub_x1", false, "es-local-pause-off");
+    expect(seen.map((r) => [r.method, r.path, r.idempotencyKey])).toEqual([["POST", "/v1/subscriptions/sub_x1", "es-local-pause-on"], ["POST", "/v1/subscriptions/sub_x1", "es-local-pause-off"]]);
+    expect(seen[0].body).toEqual({ pause_collection: { behavior: "void" } });
+    expect(seen[1].body).toEqual({ pause_collection: "" });
+  });
+
+  it("factura con más de 10 líneas: se marca como truncada y sus importes se leen todos (paginado)", async () => {
+    const inv = (await gw().invoice("in_many"))!;
+    expect(inv.lines).toHaveLength(10);
+    expect(inv.linesTruncated).toBe(true);
+    expect(await gw().invoiceLineAmounts!("in_many")).toEqual(Array.from({ length: 13 }, (_, n) => 100 + n));
+    expect((await gw().invoice("in_small"))!.linesTruncated).toBe(false);
   });
 
   it("un objeto del otro modo se rechaza (lectura, escritura, importes y Checkout)", async () => {

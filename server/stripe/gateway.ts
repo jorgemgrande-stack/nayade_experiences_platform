@@ -141,6 +141,8 @@ export interface GwInvoice {
   hostedInvoiceUrl?: string | null;
   /** Líneas de la factura (las primeras que devuelve Stripe con la factura). */
   lines?: GwInvoiceLine[];
+  /** ¿Tiene la factura más líneas que las que vienen con ella? (Stripe embebe las 10 primeras). */
+  linesTruncated?: boolean;
   /** Cobro: pendiente (céntimos), intentos y próximo reintento automático de Stripe (segundos; null = ninguno). */
   amountRemaining?: number | null;
   attemptCount?: number | null;
@@ -296,6 +298,10 @@ export interface StripeGateway {
    * ni modifica un Price público. Sin prorrateo (`proration_behavior=none`) y con Idempotency-Key.
    */
   replaceNegotiatedItems?(change: NegotiatedItemsChange, idempotencyKey: string): Promise<GwNegotiatedSubscription>;
+  /** Importes (sin impuestos) de TODAS las líneas de una factura, paginado. Solo lectura. */
+  invoiceLineAmounts?(invoiceId: string): Promise<number[]>;
+  /** Pone (`behavior=void`: Stripe no cobra nada mientras dura) o quita el cobro en pausa. Con Idempotency-Key. */
+  setPauseCollection?(subscriptionId: string, paused: boolean, idempotencyKey: string): Promise<void>;
   /** Cambia SOLO los metadatos de una partida (su clave): ni precio, ni cantidad, ni prorrateo, ni factura. Con Idempotency-Key. */
   tagSubscriptionItem?(itemId: string, metadata: Record<string, string>, idempotencyKey: string): Promise<void>;
   /** Importe único (con signo) para la próxima factura de la suscripción, sin impuestos incluidos. Con Idempotency-Key. */
@@ -326,6 +332,8 @@ export interface GwNegotiatedItem {
   metadata: Record<string, string>;
   /** Suma de los tipos FIJOS de la partida (o de los de la suscripción), en puntos básicos; null si no lleva ninguno. */
   taxRateBp: number | null;
+  /** ¿El importe del precio lleva o no el impuesto dentro? (`exclusive` en todo lo que crea Elephant). */
+  taxBehavior?: string | null;
 }
 export interface GwNegotiatedSubscription {
   id: string;
@@ -342,8 +350,10 @@ export interface GwNegotiatedSubscription {
   items: GwNegotiatedItem[];
   /** Fin del periodo sin cargo (segundos), si lo tiene. */
   trialEnd?: number | null;
-  /** Cosas hechas fuera de Elephant (Dashboard) que cambian lo que se cobra: cupón, cobro en pausa, cobro por factura enviada. */
+  /** Cosas hechas fuera de Elephant (Dashboard) que cambian lo que se cobra: cupón, cobro por factura enviada. */
   anomalies?: string[];
+  /** ¿Está el cobro en pausa (`pause_collection`)? */
+  paused?: boolean;
 }
 export interface NegotiatedItemsChange {
   subscriptionId: string;
@@ -561,6 +571,7 @@ export function toInvoice(i: Stripe.Invoice, mode: StripeMode = "test"): GwInvoi
     total: typeof i.total === "number" ? i.total : null,
     hostedInvoiceUrl: i.hosted_invoice_url ?? null,
     lines: (i.lines?.data ?? []).map(toInvoiceLine),
+    linesTruncated: !!(i.lines as { has_more?: boolean } | undefined)?.has_more,
     amountRemaining: typeof i.amount_remaining === "number" ? i.amount_remaining : null,
     attemptCount: typeof i.attempt_count === "number" ? i.attempt_count : null,
     nextPaymentAttempt: typeof i.next_payment_attempt === "number" ? i.next_payment_attempt : null,
@@ -575,10 +586,11 @@ export function toNegotiatedSubscription(s: Stripe.Subscription, mode: StripeMod
   const items = allItems ?? s.items?.data ?? [];
   const ends = items.map((i) => (i as unknown as { current_period_end?: number }).current_period_end).filter((x): x is number => typeof x === "number");
   const x = s as unknown as { discounts?: unknown[] | null; discount?: unknown; pause_collection?: unknown; collection_method?: string | null; trial_end?: number | null };
-  const anomalies = [...((x.discounts && x.discounts.length) || x.discount ? ["cupón"] : []), ...(x.pause_collection ? ["cobro_en_pausa"] : []), ...(x.collection_method && x.collection_method !== "charge_automatically" ? ["cobro_no_automático"] : [])];
+  const anomalies = [...((x.discounts && x.discounts.length) || x.discount ? ["cupón"] : []), ...(x.collection_method && x.collection_method !== "charge_automatically" ? ["cobro_no_automático"] : [])];
   return {
     trialEnd: typeof x.trial_end === "number" ? x.trial_end : null,
     anomalies,
+    paused: !!x.pause_collection,
     id: s.id,
     customerId: idOf(s.customer) ?? "",
     status: s.status as GwSubscription["status"],
@@ -599,6 +611,7 @@ export function toNegotiatedSubscription(s: Stripe.Subscription, mode: StripeMod
       intervalCount: i.price?.recurring?.interval_count ?? null,
       metadata: meta(i.metadata),
       taxRateBp: bp(i.tax_rates as Array<{ percentage?: number }> | null | undefined) ?? defaults,
+      taxBehavior: (i.price?.tax_behavior as string | null | undefined) ?? null,
     })),
   };
 }
@@ -950,6 +963,23 @@ export function stripeGateway(
           metadata: c.metadata,
         };
         return toNegotiatedSubscription(await client.subscriptions.update(c.subscriptionId, params as Stripe.SubscriptionUpdateParams, { idempotencyKey }), mode);
+      } catch (e) {
+        wrapError(e);
+      }
+    },
+    async invoiceLineAmounts(invoiceId) {
+      try {
+        const out: number[] = [];
+        for await (const l of client.invoices.listLineItems(invoiceId, { limit: 100 })) out.push((l as { amount?: number }).amount ?? 0);
+        return out;
+      } catch (e) {
+        wrapError(e);
+      }
+    },
+    async setPauseCollection(subscriptionId, paused, idempotencyKey) {
+      try {
+        const s = await client.subscriptions.update(subscriptionId, { pause_collection: paused ? { behavior: "void" } : "" } as Stripe.SubscriptionUpdateParams, { idempotencyKey });
+        assertModeObject(s, mode);
       } catch (e) {
         wrapError(e);
       }

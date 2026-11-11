@@ -39,7 +39,7 @@ export class NegotiatedGatewayError extends Error {
 }
 
 export interface NegotiatedGatewayDeps {
-  gateway: Pick<StripeGateway, "product"> & Partial<Pick<StripeGateway, "negotiatedSubscription" | "replaceNegotiatedItems" | "tagSubscriptionItem" | "createInvoiceItem" | "invoiceItemsOfCustomer" | "ensureServiceProduct" | "setCancelAtPeriodEnd">>;
+  gateway: Pick<StripeGateway, "product"> & Partial<Pick<StripeGateway, "negotiatedSubscription" | "replaceNegotiatedItems" | "tagSubscriptionItem" | "setPauseCollection" | "createInvoiceItem" | "invoiceItemsOfCustomer" | "ensureServiceProduct" | "setCancelAtPeriodEnd">>;
   namespace: string;
   mode: StripeMode;
   /** Política fiscal del entorno: decide el modo de impuesto que se espera en la suscripción. */
@@ -127,6 +127,7 @@ export class StripeNegotiatedGateway implements NegotiatedBillingGateway {
       cancelAtPeriodEnd: s.cancelAtPeriodEnd || s.cancelAt !== null,
       trialEnd: s.trialEnd ? s.trialEnd * 1000 : null,
       anomalies: s.anomalies ?? [],
+      ...(s.paused !== undefined && this.d.gateway.setPauseCollection ? { paused: s.paused } : {}),
       tax: { mode: s.automaticTax ? "automatic" : fixed ? "fixed" : "none", expected: expectedTaxMode(this.d.taxPolicy) },
     };
   }
@@ -177,7 +178,9 @@ export class StripeNegotiatedGateway implements NegotiatedBillingGateway {
     if (s.items.some((i) => i.interval !== interval || (i.intervalCount ?? 1) !== 1)) throw new NegotiatedGatewayError("interval_change", "Cambio de periodicidad: todavía no se aplica en Stripe de forma automática (reiniciaría el ciclo de cobro)");
     const products = await this.productsFor(input.items);
     // Se conserva lo que ya coincide (misma clave, importe, Product y sin tipos fijos sobrantes) y se sustituye el resto
-    const same = (item: GwNegotiatedSubscription["items"][number], want: NegotiatedItem) => item.quantity === 1 && item.unitAmount === want.amountCents && item.interval === want.interval && item.productId === products.get(want.key);
+    // Además de Product, importe, periodicidad y cantidad: sin tipos fijos y con el importe sin impuestos (lo único que
+    // crea Elephant); una partida tocada a mano en Stripe con otro tratamiento fiscal no cuenta como la pactada
+    const same = (item: GwNegotiatedSubscription["items"][number], want: NegotiatedItem) => item.taxRateBp === null && (item.taxBehavior ?? "exclusive") === "exclusive" && item.quantity === 1 && item.unitAmount === want.amountCents && item.interval === want.interval && item.productId === products.get(want.key);
     const keep = new Set<string>();
     const remove: string[] = [];
     const untagged: GwNegotiatedSubscription["items"] = [];
@@ -197,7 +200,7 @@ export class StripeNegotiatedGateway implements NegotiatedBillingGateway {
         remove.push(item.id);
         continue;
       }
-      await this.d.gateway.tagSubscriptionItem!(item.id, { es_line: want.key, es_env: this.d.namespace }, idem(this.d.namespace, `tag:${item.id}:${hash(want.key)}`));
+      await this.d.gateway.tagSubscriptionItem!(item.id, { es_line: want.key, es_env: this.d.namespace }, idem(this.d.namespace, `tag:${item.id}:${hash([item.metadata.es_line ?? "", want.key, Date.now()])}`));
       keep.add(want.key);
     }
     const add = input.items.filter((i) => !keep.has(i.key)).map((i) => ({ productId: products.get(i.key)!, unitAmount: i.amountCents, currency: input.currency, interval: i.interval, metadata: { es_line: i.key, es_env: this.d.namespace } }));
@@ -222,10 +225,17 @@ export class StripeNegotiatedGateway implements NegotiatedBillingGateway {
   async findOneOff(subscriptionId: string, key: string) {
     if (!this.d.gateway.invoiceItemsOfCustomer) throw new NegotiatedGatewayError("unsupported", "El acceso a Stripe no admite condiciones personalizadas");
     const s = await this.owned(subscriptionId);
-    const hits = (await this.d.gateway.invoiceItemsOfCustomer(s.customerId)).filter((i) => i.metadata.es_key === key && i.metadata.es_env === this.d.namespace && i.metadata.es_stripe_subscription === s.id);
+    const hits = (await this.d.gateway.invoiceItemsOfCustomer(s.customerId)).filter((i) => i.metadata.es_key === key && i.metadata.es_env === this.d.namespace && (i.metadata.es_stripe_subscription === s.id || (!!s.metadata.es_terms_subscription && i.metadata.es_subscription === s.metadata.es_terms_subscription)));
     if (!hits.length) return null;
     // Si hubiera más de uno (no debería), se devuelve la suma: la conciliación lo verá como un importe distinto
     return { ref: hits[0].id, amountCents: hits.reduce((a, i) => a + i.amount, 0) };
+  }
+
+  /** Cobro en pausa (cuota pactada de 0) o su vuelta. Mientras dura, Stripe no cobra nada. */
+  async setPaused(subscriptionId: string, paused: boolean, idempotencyKey: string) {
+    if (!this.d.gateway.setPauseCollection) throw new NegotiatedGatewayError("unsupported", "El acceso a Stripe no admite poner el cobro en pausa");
+    const s = await this.owned(subscriptionId);
+    await this.d.gateway.setPauseCollection(s.id, paused, idem(this.d.namespace, idempotencyKey));
   }
 
   /** Fin al final del periodo ya pagado (o deshacerlo). No cobra ni abona nada. */

@@ -291,8 +291,11 @@ La línea de arranque `{"ctx":"CommercialTerms", …}` dice el estado: `stripeBi
   sustituye**; lo mismo cuando un acuerdo nuevo da claves nuevas a partidas que no cambian. Solo se sustituye la partida
   cuyo importe, Product o periodicidad cambia de verdad. Se leen TODAS las partidas (la suscripción solo trae embebidas
   las 10 primeras; con más, se listan paginadas).
-- Una cuota recurrente total de 0 no se pone ni se deja en cobro (una suscripción gratuita que pasa a ser de pago
-  reinicia el ciclo en Stripe y cobra en el momento).
+- Una cuota recurrente total de 0 no se pone a cobrar. En una suscripción YA enlazada cuyo acuerdo pasa a 0 (un
+  descuento temporal del 100 %), el cobro se pone **en pausa** (`pause_collection`, `behavior=void`): Stripe no cobra
+  nada mientras dura y sus partidas no se tocan (así no hay paso de gratis a de pago, que reiniciaría el ciclo). Al
+  volver a ser de pago se quita la pausa y se dejan las partidas vigentes. El cliente nunca sigue pagando el importe
+  anterior. Un cobro en pausa sin cuota 0, o una cuota 0 sin pausa, son diferencias de conciliación.
 - La sesión de pago admite **solo tarjeta**: el primer pago se resuelve en la página, sin cobros asíncronos que fallen
   días después. (Si aun así el primer cobro fallara sin cobrarse nada, la contratación vuelve a poder iniciarse y se avisa.)
 - **Impuestos, como el resto del cobro live**: importes sin IVA (`tax_behavior=exclusive`) y `automatic_tax` en la
@@ -353,7 +356,9 @@ repetido o fuera de orden no cambia nada.
 | Cobro recuperado | `active` | Se devuelven SOLO las que suspendió el impago (no las que bloqueó un operador) |
 | `cancel_at_period_end` | `cancel_scheduled` | Sin cambios hasta el fin |
 | `canceled`, con fin querido (contratación terminada dentro, o fin ordenado por un operador) | `canceled`; la suscripción interna termina en el acto | Solo lectura 30 días (`READ_ONLY_DAYS`) |
-| `canceled` SOLO en Stripe (nadie lo pidió dentro) | `canceled` + alerta `stripe.negotiated_ended_in_stripe`; la contratación interna NO se toca | Sin cambios; una persona decide (volver a ponerla a cobrar o terminarla) |
+| `canceled` por IMPAGO (venía de impago o suspensión, o su última factura quedó sin cobrar) | `canceled`; la suscripción interna termina | Solo lectura 30 días: nunca licencias activas sin cobro |
+| `canceled` porque las condiciones terminaron sin sucesor (fin programado por la sincronización) | `canceled`; la contratación interna sigue su curso | Sin cambios |
+| `canceled` SOLO en Stripe, al corriente (nadie lo pidió dentro) | `canceled` + alerta `stripe.negotiated_ended_in_stripe`; la contratación interna NO se toca | Sin cambios; una persona decide (volver a ponerla a cobrar o terminarla) |
 | Reembolso total o disputa perdida del último periodo | `suspended` hasta un pago nuevo | Suspendidas |
 
 Las licencias siguen saliendo del **contrato** (productos del acuerdo); el pago solo las suspende, las deja en solo
@@ -370,7 +375,23 @@ llega a Stripe.
 operador): es una diferencia de conciliación (`fin_solo_en_stripe`) que se avisa. No se deshace solo (volvería a cobrar
 sin que nadie lo decida) y, si Stripe llega a terminar, **no se da por terminada la contratación ni se tocan sus
 licencias**: Stripe deja de cobrar, salta la alerta y un operador decide; puede volver a ponerla a cobrar (suscripción
-de Stripe nueva). Es la opción que no puede ni cobrar ni cancelar por error.
+de Stripe nueva). Es la opción que no puede ni cobrar ni cancelar por error. Mientras nadie lo resuelve, la contratación
+sigue apareciendo en cada pasada de la conciliación (`terminada_solo_en_stripe`). Esto vale solo con todo al corriente:
+si Stripe cancela por impago, se aplican las reglas del impago (tabla).
+
+**Importes únicos, por contratación.** Lo ya cobrado o abonado consta por contratación, no por suscripción de Stripe:
+al volver a poner a cobrar con una suscripción de Stripe nueva, ni el Checkout repite los cargos únicos ni se emite
+otra vez un abono.
+
+**Condiciones que terminan sin sucesor.** Si el acuerdo vence y la suscripción se queda sin condiciones
+personalizadas vigentes, Stripe no sigue cobrando sus partidas: la conciliación programa el fin de la suscripción de
+Stripe al final del periodo ya pagado y avisa (`stripe.negotiated_terms_ended`). El periodo ya cobrado no se abona. La
+contratación interna y sus licencias siguen su curso (ya no dependen de ese cobro). Para seguir cobrando hace falta un
+acuerdo sucesor antes de la fecha.
+
+**Envíos que fallan.** Un envío que falla se reintenta solo cada vez más espaciado (15 min, 1 h, 4 h, 16 h y después
+una vez al día), deja UN evento en el historial por error distinto y cuenta como diferencia (`sincronización_fallida`)
+en cada pasada hasta que se resuelva.
 
 **Reloj.** Una vez enlazada, manda el reloj de Stripe: el periodo de la suscripción interna pasa a ser el que Stripe
 está cobrando y lo sigue en cada evento (no hay deriva; un fin programado dentro termina con el periodo de Stripe).
@@ -534,7 +555,8 @@ reloj de pruebas), hay que recorrer esta lista, tomada de las dos revisiones ind
    sin cargo ni abono.
 9. Qué permite el portal de cliente de Stripe sobre esta suscripción (comparte Customer con el circuito ordinario).
 
-Además, propio de esta ronda: el primer cargo aplazado (`trial_end` en la fecha de inicio, con más de 48 h): factura de
+Además: el cobro en pausa (`pause_collection` con `behavior=void`: que no cobre nada mientras dura, que la suscripción
+siga `active` y que al quitarla no reinicie el ciclo ni cobre lo pausado), y el primer cargo aplazado (`trial_end` en la fecha de inicio, con más de 48 h): factura de
 0 al autorizar, primer cargo completo ese día con los importes únicos, y periodo anclado a esa fecha.
 
 ### Verificado y pendiente de validar con Stripe real
