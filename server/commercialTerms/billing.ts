@@ -540,7 +540,8 @@ export class TermsBillingService {
     const own = new Set(all.flatMap((x) => x.periods ?? []));
     const others = every.filter((x) => x.stripeSubscriptionId !== stripeSubscriptionId);
     const priorPeriods = Array.from(new Set([...others.flatMap((x) => x.periods ?? []), ...every.flatMap((x) => x.prior?.periods ?? [])])).filter((id) => !own.has(id));
-    const starts = [...every.map((x) => ({ billingFrom: x.billingFrom ?? null, contractFrom: x.contractFrom ?? null })), ...every.flatMap((x) => (x.prior ? [x.prior] : []))].filter((x) => x.billingFrom != null);
+    // Solo inicios de suscripciones de Stripe ANTERIORES (y lo que ya arrastraban): el de esta no es un inicio «anterior»
+    const starts = [...others.map((x) => ({ billingFrom: x.billingFrom ?? null, contractFrom: x.contractFrom ?? null })), ...every.flatMap((x) => (x.prior ? [x.prior] : []))].filter((x) => x.billingFrom != null);
     const origin = priorPeriods.length ? starts.sort((a, b) => a.billingFrom! - b.billingFrom!)[0] : undefined;
     const prior = priorPeriods.length ? { periods: priorPeriods, billingFrom: origin?.billingFrom ?? null, contractFrom: origin?.contractFrom ?? null } : undefined;
     if (!all.length) return every.length ? { stripeSubscriptionId, itemsHash: null, generation: 0, oneOffs: sent, attempts: 0, lastError: null, lastAttemptAt: null, pendingOneOffs: [], revoked, ...(prior ? { prior } : {}) } : null;
@@ -776,13 +777,15 @@ export class TermsBillingService {
   private stopNow(t: BillingTarget, remote: RemoteState, detail: SyncDetail | null): boolean {
     // La cuenta es de la CONTRATACIÓN: desde el primer inicio de cobro (también el de una suscripción de Stripe anterior)
     // y descontando lo ya facturado en las anteriores. Nunca negativa
-    const fromPrior = detail?.prior?.billingFrom != null && detail.prior.contractFrom != null;
-    const from = fromPrior ? detail!.prior! : detail;
-    const total = t.endAt !== null && from?.billingFrom != null && from.contractFrom != null ? owedPeriods(from.contractFrom, from.billingFrom, t.endAt, t.interval) : null;
-    // Lo facturado antes solo se descuenta si la cuenta empieza en el inicio de cobro anterior; si empieza en el de esta
-    // suscripción (la anterior no llegó a anotarlo), los periodos ya transcurridos ya quedan fuera y descontarlos otra vez
-    // dejaría cuotas sin cobrar
-    const owed = total === null ? null : Math.max(0, total - (fromPrior ? (detail?.prior?.periods.length ?? 0) : 0));
+    if (t.endAt === null || detail?.billingFrom == null || detail.contractFrom == null) return stopsAtRenewal(t.endAt, remote.currentPeriodEnd, detail?.periods?.length ?? 0, null, t.interval, remote.billingCycleAnchor);
+    // Lo que aún cabe desde el inicio de cobro de ESTA suscripción de Stripe (lo transcurrido antes queda fuera)…
+    const fromHere = owedPeriods(detail.contractFrom, detail.billingFrom, t.endAt, t.interval);
+    // …y lo que la contratación debe en total menos lo ya facturado en las anteriores: desde el primer inicio de cobro si
+    // consta; si no (la anterior no llegó a anotarlo), todos los periodos del contrato. Manda el menor: nunca se cobra más
+    // de lo que debe la contratación ni un periodo que ya pasó, y lo ya facturado nunca se descuenta dos veces
+    const prior = detail.prior;
+    const contract = prior?.billingFrom != null && prior.contractFrom != null ? owedPeriods(prior.contractFrom, prior.billingFrom, t.endAt, t.interval) : owedPeriods(detail.contractFrom, detail.contractFrom, t.endAt, t.interval);
+    const owed = prior?.periods.length ? Math.max(0, Math.min(fromHere, contract - prior.periods.length)) : fromHere;
     return stopsAtRenewal(t.endAt, remote.currentPeriodEnd, detail?.periods?.length ?? 0, owed, t.interval, remote.billingCycleAnchor);
   }
 

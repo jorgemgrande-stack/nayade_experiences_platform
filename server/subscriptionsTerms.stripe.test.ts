@@ -2477,15 +2477,24 @@ describe("séptima revisión independiente: la cuenta es de la contratación y n
 
   it("si la suscripción anterior no anotó su inicio de cobro, lo ya facturado no se descuenta dos veces", async () => {
     // Revisión de #796: la cuenta empieza en el inicio de cobro de ESTA suscripción, que ya deja fuera lo transcurrido
+    // Por el camino real (`lastDetail` sobre el historial de sincronización de los acuerdos): la suscripción de Stripe
+    // anterior facturó 3 periodos sin anotar su inicio de cobro; la nueva empezó el 12 de marzo
     const { w } = await contract(month(S, 6));
     const restart = month(S, 2) + 11 * DAY;
-    const detail = { periods: [], billingFrom: restart, contractFrom: S, prior: { periods: ["in_a", "in_b", "in_c"], billingFrom: null, contractFrom: null } };
+    const t = (await termsStore.list({}))[0];
+    const old = { stripeSubscriptionId: "sub_antigua", itemsHash: null, generation: 1, oneOffs: {}, attempts: 1, lastError: null, lastAttemptAt: S, pendingOneOffs: [], periods: ["in_a", "in_b", "in_c"] };
+    const now = { stripeSubscriptionId: "sub_nueva", itemsHash: null, generation: 1, oneOffs: {}, attempts: 1, lastError: null, lastAttemptAt: restart, pendingOneOffs: [], periods: [] as string[], billingFrom: restart, contractFrom: S };
+    const billing = w.billing as unknown as { lastDetail(s: number, id: string): Promise<unknown>; stopNow(t: unknown, r: unknown, d: unknown): boolean };
     const target = { endAt: month(S, 6), interval: "month" as const };
-    const stop = (renewal: number, invoiced: number) =>
-      (w.billing as unknown as { stopNow(t: unknown, r: unknown, d: unknown): boolean }).stopNow(target, { currentPeriodEnd: renewal, billingCycleAnchor: restart }, { ...detail, periods: Array.from({ length: invoiced }, (_, i) => `in_${i}`) });
+    const stopAfter = async (invoiced: number) => {
+      const store = { ...termsStore, list: async () => [{ ...t, syncDetail: old }, { ...t, syncDetail: { ...now, periods: Array.from({ length: invoiced }, (_, i) => `in_n${i}`) } }] };
+      const detail = await (Object.assign(Object.create(Object.getPrototypeOf(billing)), billing, { d: { ...(billing as unknown as { d: object }).d, termsStore: store } }) as typeof billing).lastDetail(t.subscriptionId!, "sub_nueva");
+      return billing.stopNow(target, { currentPeriodEnd: month(restart, invoiced), billingCycleAnchor: restart }, detail);
+    };
     // Tras el reinicio del 12 de marzo quedan tres periodos completos (12-mar, 12-abr, 12-may): no para antes del tercero
-    expect(stop(month(restart, 1), 1)).toBe(false);
-    expect(stop(month(restart, 2), 2)).toBe(false);
+    expect(await stopAfter(1)).toBe(false);
+    expect(await stopAfter(2)).toBe(false);
+    expect(await stopAfter(3)).toBe(true);
   });
 
   it("dos reinicios: 6 cobros", async () => {
