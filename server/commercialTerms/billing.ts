@@ -59,7 +59,27 @@ export interface NegotiatedBillingGateway {
   /** Busca un importe único ya enviado por su clave (metadato). Null si Stripe no lo tiene. */
   findOneOff(subscriptionId: string, key: string): Promise<{ ref: string; amountCents: number } | null>;
   /** Lo que la suscripción tiene ahora en Stripe (para comparar antes de enviar y para conciliar). */
-  current(subscriptionId: string): Promise<{ currency: string | null; items: Array<{ key: string | null; amountCents: number; interval: "month" | "year"; taxRateBp: number | null }> } | null>;
+  current(subscriptionId: string): Promise<RemoteState | null>;
+  /** Programa (o deshace) el fin de la suscripción de Stripe al final del periodo ya pagado. Opcional. */
+  setCancelAtPeriodEnd?(subscriptionId: string, cancel: boolean, idempotencyKey: string): Promise<void>;
+}
+
+/** Estado de la suscripción en Stripe tal como lo ve el cobro de condiciones personalizadas. */
+export interface RemoteState {
+  currency: string | null;
+  /**
+   * `taxRateBp` es el tipo FIJO que lleva la partida en Stripe. `null` = Stripe no tiene un tipo fijo para ella: con
+   * la política fiscal live (`stripe_tax_exclusive`) el impuesto lo calcula Stripe Tax en cada factura según el
+   * cliente, así que no hay nada que comparar por partida (se compara el modo de impuesto, `tax`, y el impuesto real
+   * de cada factura al registrarla).
+   */
+  items: Array<{ key: string | null; amountCents: number; interval: "month" | "year"; taxRateBp: number | null }>;
+  /** Estado de la suscripción en Stripe (active, past_due, canceled…), si la pasarela lo informa. */
+  status?: string;
+  /** ¿Tiene programado su fin en Stripe? */
+  cancelAtPeriodEnd?: boolean;
+  /** Cómo calcula Stripe el impuesto de la suscripción y cómo debería según la política fiscal del entorno. */
+  tax?: { mode: "automatic" | "fixed" | "none"; expected: "automatic" | "fixed" | "none" };
 }
 
 export interface BillingLink {
@@ -93,14 +113,16 @@ interface SyncDetail {
 }
 
 export type SyncOutcome =
-  | { status: "disabled" | "unsupported" | "not_linked" | "nothing_to_bill"; message: string }
+  | { status: "disabled" | "unsupported" | "not_linked" | "nothing_to_bill" | "cancel_scheduled"; message: string }
   | { status: "synced"; applied: number; skipped: number; pendingOneOffs: string[] }
   | { status: "failed"; error: string; completed: number; remaining: number };
 
 const live = (i: SubscriptionItem, at: number) => i.effectiveFrom <= at && (i.effectiveTo === null || i.effectiveTo > at);
 const voided = (i: SubscriptionItem) => i.effectiveTo !== null && i.effectiveTo <= i.effectiveFrom;
 const sameItems = (a: NegotiatedItem[], b: Array<{ key: string | null; amountCents: number; interval: string; taxRateBp: number | null }>) =>
-  a.length === b.length && a.every((i) => b.some((r) => r.key === i.key && r.amountCents === i.amountCents && r.interval === i.interval && r.taxRateBp === i.taxRateBp));
+  a.length === b.length && a.every((i) => b.some((r) => r.key === i.key && r.amountCents === i.amountCents && r.interval === i.interval && sameTax(r.taxRateBp, i.taxRateBp)));
+/** El tipo solo se compara si Stripe tiene uno FIJO en la partida; con Stripe Tax (`null`) lo decide Stripe por factura. */
+const sameTax = (stripe: number | null, agreed: number) => stripe === null || stripe === agreed;
 
 export class TermsBillingService {
   private now: () => number;
@@ -127,6 +149,33 @@ export class TermsBillingService {
     return this.d.enabled && !!this.d.gateway;
   }
 
+  /** ¿Está encendido el interruptor? (no dice nada de la pasarela ni del enlace). */
+  get enabled(): boolean {
+    return this.d.enabled;
+  }
+
+  /**
+   * Conecta la pasarela validada y el enlace con Stripe (el plano de control monta Stripe después de las condiciones).
+   * No abre nada por sí solo: el interruptor sigue mandando y el enlace solo existe para lo que un operador puso a cobrar.
+   */
+  attach(x: { gateway: NegotiatedBillingGateway; link: (subscriptionId: number) => Promise<BillingLink | null> }) {
+    this.d.gateway = x.gateway;
+    this.d.link = x.link;
+  }
+
+  /**
+   * Anota importes únicos que YA están cobrados en Stripe por otra vía (el primer pago del Checkout con el que empezó
+   * el cobro): la sincronización no los vuelve a enviar. No llama a Stripe.
+   */
+  async recordSent(subscriptionId: number, stripeSubscriptionId: string, oneOffs: Record<string, string>, actor: string): Promise<void> {
+    if (!Object.keys(oneOffs).length) return;
+    const plan = await this.plan(subscriptionId);
+    if (plan.termsId === null) return;
+    const prev = await this.lastDetail(subscriptionId, stripeSubscriptionId);
+    const detail: SyncDetail = { stripeSubscriptionId, itemsHash: prev?.itemsHash ?? null, generation: prev?.generation ?? 0, oneOffs: { ...(prev?.oneOffs ?? {}), ...oneOffs }, attempts: prev?.attempts ?? 0, lastError: prev?.lastError ?? null, lastAttemptAt: prev?.lastAttemptAt ?? this.now(), pendingOneOffs: prev?.pendingOneOffs ?? [] };
+    await this.record(plan.termsId, "synced", detail, actor, "Importes únicos cobrados en el primer pago de Stripe");
+  }
+
   /**
    * Qué se cobraría HOY: las partidas recurrentes vigentes de la suscripción (tal como las factura la simulación) y
    * los importes únicos de sus acuerdos. No llama a Stripe.
@@ -151,6 +200,14 @@ export class TermsBillingService {
       .filter((i) => i.priceKind === "one_time" && i.termsId != null)
       .map((i) => ({ key: `${i.termsLineId != null ? "charge" : "credit"}:${i.id}`, name: i.productName, amountCents: i.lineAmountCents ?? i.unitAmountCents * i.quantity, taxRateBp: i.taxRateBp, at: i.effectiveFrom, due: i.effectiveFrom <= now }));
     return { subscriptionId, termsId: owner, currency: sub.currency, items, oneOffs, recurringNetCents: items.reduce((a, i) => a + i.amountCents, 0) };
+  }
+
+  /** ¿Termina la contratación? (cancelada ya, o con su fin programado). */
+  private async ending(subscriptionId: number): Promise<{ canceled: boolean; at: number } | null> {
+    const sub = await this.d.subscriptionStore.get(subscriptionId);
+    if (!sub) return null;
+    if (sub.status === "canceled") return { canceled: true, at: sub.canceledAt ?? 0 };
+    return sub.cancelAt != null ? { canceled: false, at: sub.cancelAt } : null;
   }
 
   /** Estado de sincronización más reciente de la suscripción (vive en sus acuerdos; se hereda de uno a otro). */
@@ -195,6 +252,17 @@ export class TermsBillingService {
     const link = this.d.link ? await this.d.link(subscriptionId) : null;
     if (!link) return { status: "not_linked", message: "Esta suscripción no se cobra en Stripe: sigue en simulación de facturación" };
     const plan = await this.plan(subscriptionId, { settle: true });
+    // Fin de la contratación (cancelada o con cancelación programada): Stripe termina al final del periodo ya pagado.
+    // Nunca se cancela de inmediato ni se abona nada desde aquí, y nunca se deshace solo un fin ya programado
+    const ending = await this.ending(subscriptionId);
+    if (ending && gw.setCancelAtPeriodEnd) {
+      const remote = await gw.current(link.subscriptionId);
+      if (remote && remote.status !== "canceled" && remote.cancelAtPeriodEnd === false) {
+        await gw.setCancelAtPeriodEnd(link.subscriptionId, true, `ct:s${subscriptionId}:${link.subscriptionId}:cancel:${ending.at}`);
+        opsLog("info", "CommercialTerms", "billing_cancel_scheduled", { subscriptionId });
+      }
+      if (ending.canceled) return { status: "cancel_scheduled", message: "La contratación está cancelada: la suscripción de Stripe termina al final del periodo ya pagado" };
+    }
     // Nunca se vacía una suscripción de Stripe desde aquí: sin condiciones personalizadas vivas no hay nada que enviar
     if (plan.termsId === null || !plan.items.length) return { status: "nothing_to_bill", message: "La suscripción no tiene condiciones personalizadas vigentes con cuotas recurrentes" };
     const prev = await this.lastDetail(subscriptionId, link.subscriptionId);
@@ -261,11 +329,21 @@ export class TermsBillingService {
     const gw = this.d.gateway;
     if (!link || !gw) return { available: false as const, plan, syncStatus: current?.syncStatus ?? "none", differences: [] };
     const remote = await gw.current(link.subscriptionId);
-    const differences: Array<{ key: string; kind: "item" | "one_off" | "currency"; expectedCents: number | null; stripeCents: number | null }> = [];
+    const differences: Array<{ key: string; kind: "item" | "one_off" | "currency" | "tax" | "status"; expectedCents: number | null; stripeCents: number | null }> = [];
+    // Sin suscripción en Stripe no hay nada con lo que comparar: es una diferencia en sí
+    if (!remote) differences.push({ key: "suscripción", kind: "status", expectedCents: null, stripeCents: null });
+    // Impuestos: la suscripción debe calcularlos como dice la política fiscal del entorno (Stripe Tax en live)
+    if (remote?.tax && remote.tax.mode !== remote.tax.expected) differences.push({ key: `impuestos:${remote.tax.mode}`, kind: "tax", expectedCents: null, stripeCents: null });
+    // Estado: una contratación que termina debe tener su fin programado en Stripe, y una viva no debe estar cancelada allí
+    const ending = await this.ending(subscriptionId);
+    if (remote?.status !== undefined) {
+      if (ending && remote.status !== "canceled" && remote.cancelAtPeriodEnd === false) differences.push({ key: "fin_sin_programar", kind: "status", expectedCents: null, stripeCents: null });
+      if (!ending && remote.status === "canceled") differences.push({ key: "cancelada_en_stripe", kind: "status", expectedCents: null, stripeCents: null });
+    }
     if (remote?.currency && remote.currency.toUpperCase() !== plan.currency.toUpperCase()) differences.push({ key: "moneda", kind: "currency", expectedCents: null, stripeCents: null });
     for (const i of plan.items) {
       const r = remote?.items.find((x) => x.key === i.key);
-      if (!r || r.amountCents !== i.amountCents || r.interval !== i.interval || r.taxRateBp !== i.taxRateBp) differences.push({ key: i.key, kind: "item", expectedCents: i.amountCents, stripeCents: r?.amountCents ?? null });
+      if (!r || r.amountCents !== i.amountCents || r.interval !== i.interval || !sameTax(r.taxRateBp, i.taxRateBp)) differences.push({ key: i.key, kind: "item", expectedCents: i.amountCents, stripeCents: r?.amountCents ?? null });
     }
     for (const r of remote?.items ?? []) if (!plan.items.some((i) => i.key === r.key)) differences.push({ key: r.key ?? "(sin clave)", kind: "item", expectedCents: null, stripeCents: r.amountCents });
     // Importes únicos vencidos: deben estar en Stripe y por su importe
@@ -273,8 +351,29 @@ export class TermsBillingService {
       const f = await gw.findOneOff(link.subscriptionId, o.key);
       if (!f || f.amountCents !== o.amountCents) differences.push({ key: o.key, kind: "one_off", expectedCents: o.amountCents, stripeCents: f?.amountCents ?? null });
     }
-    return { available: true as const, plan, syncStatus: current?.syncStatus ?? "none", consistent: differences.length === 0, differences };
+    return { available: true as const, plan, syncStatus: current?.syncStatus ?? "none", consistent: differences.length === 0, differences, stripe: remote ? { status: remote.status ?? null, cancelAtPeriodEnd: remote.cancelAtPeriodEnd ?? null, tax: remote.tax ?? null } : null };
   }
+}
+
+/**
+ * Estado del cobro en Stripe de las condiciones personalizadas para la línea de arranque (`CommercialTerms`), sin
+ * datos sensibles. `stripeBilling`: `off` (interruptor apagado: ninguna llamada a Stripe), `on` (encendido y con todo
+ * lo necesario) o `switch_on_blocked` (encendido pero falta algo: `stripeBillingReasons`). Encendido, solo se cobra lo
+ * que un operador pone a cobrar de forma expresa (`stripeBillingScope`).
+ */
+export function describeTermsBilling(x: { switchOn: boolean; registry: boolean; stripe: { mode: "test" | "live"; taxPolicy: string | null; urls: boolean } | null }) {
+  const reasons = [
+    ...(x.registry ? [] : ["crm_migration_0049_missing"]),
+    ...(x.stripe ? [] : ["stripe_not_mounted"]),
+    ...(x.stripe && !x.stripe.urls ? ["checkout_urls_missing"] : []),
+    ...(x.stripe && x.stripe.mode === "live" && !x.stripe.taxPolicy ? ["tax_policy_pending"] : []),
+  ];
+  return {
+    stripeBilling: !x.switchOn ? ("off" as const) : reasons.length ? ("switch_on_blocked" as const) : ("on" as const),
+    stripeBillingScope: "explicit_start_only" as const,
+    ...(x.stripe ? { stripeBillingMode: x.stripe.mode } : {}),
+    ...(reasons.length ? { stripeBillingReasons: reasons } : {}),
+  };
 }
 
 /** `/cp/v1/subscriptions/:id/terms/billing…`: plan de cobro y conciliación (lectura) y sincronización (gestión de precios). */
@@ -285,6 +384,8 @@ export function createTermsBillingRouter(svc: TermsBillingService): Router {
     fn(req, res).catch((e) => {
       if (e instanceof TermsError) return void res.status(e.code === "not_found" ? 404 : e.code === "invalid_input" ? 400 : 409).json({ error: e.code, message: e.message });
       if (e instanceof z.ZodError) return void res.status(400).json({ error: "invalid_request", message: "Petición no válida" });
+      // Stripe no responde, o la pasarela se niega a tocar una suscripción que no es de condiciones personalizadas
+      if (e instanceof Error && (e.name === "StripeGatewayError" || e.name === "NegotiatedGatewayError")) return void res.status(502).json({ error: "stripe_error", message: e.message.slice(0, 300) });
       opsLog("error", "CommercialTerms", "billing_error", { error: e instanceof Error ? e.name : "error" });
       res.status(500).json({ error: "internal_error", message: "Error interno" });
     });
