@@ -775,6 +775,12 @@ export class FakeStripeGateway implements StripeGateway {
       .slice(0, max)
       .map((i) => ({ ...i, metadata: { ...i.metadata } }));
   }
+  /** Facturas de una suscripción, de cualquier estado, las más recientes primero. */
+  async invoicesOfSubscription(subscriptionId: string, max = 100) {
+    this.guard();
+    this.calls.push({ op: "invoices.list", input: subscriptionId });
+    return Array.from(this.invoices.values()).filter((i) => i.subscriptionId === subscriptionId).reverse().slice(0, max).map((i) => ({ ...i }));
+  }
   /** Como Stripe pasado un día: las claves de idempotencia dejan de reconocerse. */
   forgetIdempotencyKeys() {
     this.idem.clear();

@@ -2404,5 +2404,98 @@ describe("sexta revisión independiente: los cobros se CUENTAN (debidos frente a
         }
     }
     expect(failures).toEqual([]);
+  }, 120_000);
+});
+
+describe("séptima revisión independiente: la cuenta es de la contratación y no depende solo de los webhooks", () => {
+  const renewalAt = (stripeId: string) => gw.subscriptions.get(stripeId)!.currentPeriodEnd! * 1000;
+  const tick = async (w: World) => (await w.reconciler.tick()).negotiated!;
+  const S = Date.UTC(2027, 0, 1, 10);
+  const cancelInStripe = async (w: World, stripeId: string) => {
+    gw.updateSubscription(stripeId, { status: "canceled" });
+    gw.emit("customer.subscription.deleted", "subscription", stripeId);
+    await deliver(w);
+  };
+  /** Paquete solo económico mensual desde S hasta `E`, pagado en S. */
+  async function contract(E: number) {
+    clock = S;
+    gw.addProduct({ id: CUSTOM_SERVICE_PRODUCT_ID, name: "Servicio a medida" });
+    subs.checkComposition = async () => undefined;
+    const w = world();
+    const p = await terms.createPackage(1, { pricingMode: "per_item", presentation: "breakdown", interval: "month", reason: "Paquete", lines: [custom("Servicio gestionado", 4463, { concept: "professional_service", endsAt: E })] } as never, A);
+    const prepared = await terms.prepareContracting(p.id, { expectedRevision: p.revision }, A);
+    const subId = prepared.terms.subscriptionId!;
+    return { w, subId, stripeId: await pay(w, subId) };
+  }
+  async function pay(w: World, subId: number) {
+    const s = (await w.neg.start(subId, A)) as { sessionId: string };
+    const stripeId = gw.completeNegotiatedSession(s.sessionId);
+    await deliver(w);
+    return stripeId;
+  }
+  /** Renueva `n` veces (o hasta que Stripe termine), con la conciliación dos días antes de cada renovación. */
+  async function renewals(w: World, stripeId: string, n = 40, o: { lose?: number } = {}) {
+    for (let k = 1; k <= n && gw.subscriptions.get(stripeId)!.status !== "canceled"; k++) {
+      if (k !== (o.lose ?? 0) + 1) {
+        clock = renewalAt(stripeId) - 2 * DAY;
+        await tick(w);
+      }
+      clock = renewalAt(stripeId) + 60_000;
+      const events = gw.events.length;
+      if (gw.chargeNegotiatedPeriod(stripeId) === "") break;
+      // Webhooks perdidos de esa renovación (y ninguna pasada antes de la siguiente)
+      if (k === o.lose) gw.events.splice(0, gw.events.length - events);
+      else await deliver(w);
+    }
+  }
+  const paid = () => Array.from(gw.invoices.values()).filter((i) => i.status === "paid" && (i.subtotal ?? 0) > 0);
+
+  it("reinicio tras un fin solo en Stripe a mitad de periodo: lo ya facturado en la suscripción anterior cuenta (6 cobros, no 7)", async () => {
+    const E = month(S, 6);
+    const { w, subId, stripeId } = await contract(E);
+    await renewals(w, stripeId, 2);
+    expect(paid()).toHaveLength(3);
+    clock = month(S, 2) + 9 * DAY;
+    await cancelInStripe(w, stripeId);
+    clock += 2 * DAY;
+    const second = await pay(w, subId);
+    await renewals(w, second);
+    expect(paid()).toHaveLength(6);
+    expect(paid().every((i) => (i.lines?.[0]?.periodStart ?? 0) * 1000 < E)).toBe(true);
+  });
+
+  it("reinicio tras un fin solo en Stripe al final del periodo: 6 cobros", async () => {
+    const { w, subId, stripeId } = await contract(month(S, 6));
+    await renewals(w, stripeId, 2);
+    clock = renewalAt(stripeId) + 60_000;
+    await cancelInStripe(w, stripeId);
+    clock += DAY;
+    const second = await pay(w, subId);
+    await renewals(w, second);
+    expect(paid()).toHaveLength(6);
+  });
+
+  it("dos reinicios: 6 cobros", async () => {
+    const { w, subId, stripeId } = await contract(month(S, 6));
+    await renewals(w, stripeId, 1);
+    clock = month(S, 1) + 9 * DAY;
+    await cancelInStripe(w, stripeId);
+    clock += 2 * DAY;
+    const second = await pay(w, subId);
+    await renewals(w, second, 1);
+    clock += 8 * DAY;
+    await cancelInStripe(w, second);
+    clock += 2 * DAY;
+    const third = await pay(w, subId);
+    await renewals(w, third);
+    expect(paid()).toHaveLength(6);
+  });
+
+  it("un evento de factura perdido no da un cobro de más: cerca del fin se releen las facturas de la suscripción en Stripe", async () => {
+    // 4 meses y medio: se deben 4 cobros; el 5.º empezaría antes del fin (tramo final que no se cobra)
+    const { w, stripeId } = await contract(month(S, 4) + 15 * DAY);
+    await renewals(w, stripeId, 40, { lose: 2 });
+    expect(paid()).toHaveLength(4);
+    expect(gw.calls.some((c) => c.op === "invoices.list")).toBe(true);
   });
 });
