@@ -82,6 +82,7 @@ import { toast } from "sonner";
 import { CONNECT_STATE_LABELS, CONNECT_STATE_SHORT, type ConnectState } from "@shared/connectMarketplace";
 import { formatMoney, headlinePrice, periodLabel, sortPrices, taxLabel, type ConnectImage, type ConnectPrice } from "@shared/connectCard";
 import { ACTIVATION_LABELS, activationActions, activationLabel, activationOf, primaryAction, type ConnectActivation } from "@shared/connectShowcase";
+import { ASSISTED_CONTRACT_COPY } from "@shared/netOffer";
 import { STATE_TONE, toneOf } from "@shared/marketplaceVisual";
 import { trackConnect, useViewTracking } from "./useConnectTracking";
 import type { PurchaseStatus } from "@shared/connectPurchase";
@@ -423,6 +424,7 @@ export function ProductCard({
     // La compra se confirma siempre en la ficha (vista previa del importe y aceptación expresa)
     else if (action.kind === "purchase") navigate(`${href}?contratar=1`);
     else if (action.kind === "request") onAction ? onAction(item, "info") : navigate(href);
+    else if (action.kind === "assisted") onAction ? onAction(item, "implementation") : navigate(href);
     else if (action.kind === "interest") onAction ? onAction(item, "waitlist") : navigate(href);
     else if (action.kind === "contact") onAction ? onAction(item, "contact") : navigate(href);
   };
@@ -489,8 +491,50 @@ export function ProductCard({
 
 // ── Solicitudes ────────────────────────────────────────────────────────────────
 
-/** `info`: solicitar información; `waitlist`: me interesa; `contact`: consulta sobre algo ya contratado (soporte). */
-export type RequestKind = "info" | "waitlist" | "contact";
+/**
+ * `info`: solicitar información; `waitlist`: me interesa; `contact`: consulta sobre algo ya contratado (soporte);
+ * `implementation`: «Contratar e iniciar implantación» de un producto Net de clase B (expediente, sin cobro).
+ */
+export type RequestKind = "info" | "waitlist" | "contact" | "implementation";
+
+/** Lo que se contrata en la contratación asistida: precio publicado, plan y funcionalidades (disponibles y en implantación). */
+function AssistedSummary({ item, planName }: { item: ConnectCatalogItem; planName: string | null }) {
+  const a = item.assisted;
+  if (!a) return null;
+  return (
+    <div className="space-y-3 text-sm">
+      <p className="text-foreground">
+        <strong>{ASSISTED_CONTRACT_COPY.priceLine(formatMoney(a.monthly.amountCents, a.monthly.currency))}</strong> {ASSISTED_CONTRACT_COPY.planLine(planName)}
+      </p>
+      {a.available.length > 0 && (
+        <div>
+          <p className="font-semibold text-foreground">{ASSISTED_CONTRACT_COPY.availableTitle}</p>
+          <ul className="mt-1 list-disc space-y-0.5 pl-5 text-muted-foreground">
+            {a.available.map((f) => (
+              <li key={f}>{f}</li>
+            ))}
+          </ul>
+        </div>
+      )}
+      {a.inImplementation.length > 0 && (
+        <div>
+          <p className="font-semibold text-foreground">{ASSISTED_CONTRACT_COPY.inImplementationTitle}</p>
+          <ul className="mt-1 list-disc space-y-0.5 pl-5 text-muted-foreground">
+            {a.inImplementation.map((f) => (
+              <li key={f}>{f}</li>
+            ))}
+          </ul>
+        </div>
+      )}
+      <ol className="list-decimal space-y-0.5 pl-5 text-muted-foreground">
+        {ASSISTED_CONTRACT_COPY.steps.map((s) => (
+          <li key={s}>{s}</li>
+        ))}
+      </ol>
+      <p className="font-medium text-foreground">{ASSISTED_CONTRACT_COPY.noPayment}</p>
+    </div>
+  );
+}
 
 /**
  * «Solicitar información» o «Me interesa». El servidor decide el canal (oportunidad en el CRM o, si aún no existe,
@@ -502,6 +546,7 @@ export function RequestDialog({
   supportEmail,
   upgradeUrl,
   requestsEnabled,
+  planName = null,
   onClose,
 }: {
   item: ConnectCatalogItem;
@@ -509,29 +554,36 @@ export function RequestDialog({
   supportEmail: string | null;
   upgradeUrl: string | null;
   requestsEnabled: boolean;
+  /** Plan de Elephant Core que ya tiene la empresa (contratación asistida). */
+  planName?: string | null;
   onClose: () => void;
 }) {
   const [message, setMessage] = useState("");
   const send = trpc.connect.request.useMutation({ onError: (e) => toast.error(e.message) });
   const waitlist = kind === "waitlist";
-  const body = `Me interesa «${item.name}» para mi empresa.${message.trim() ? `\n\n${message.trim()}` : ""}`;
+  const assisted = kind === "implementation";
+  const body = `${assisted ? `Quiero contratar «${item.name}» e iniciar la implantación` : `Me interesa «${item.name}»`} para mi empresa.${message.trim() ? `\n\n${message.trim()}` : ""}`;
   const mailto = supportEmail ? `mailto:${supportEmail}?subject=${encodeURIComponent(`Información: ${item.name}`)}&body=${encodeURIComponent(body)}` : null;
   const done = send.data;
   return (
     <Dialog open onOpenChange={(o) => !o && onClose()}>
       <DialogContent className="cx-stage cx-market">
         <DialogHeader>
-          <DialogTitle>{waitlist ? `Me interesa ${item.name}` : kind === "contact" ? `Contactar sobre ${item.name}` : `Solicitar información de ${item.name}`}</DialogTitle>
+          <DialogTitle>{assisted ? ASSISTED_CONTRACT_COPY.title(item.name) : waitlist ? `Me interesa ${item.name}` : kind === "contact" ? `Contactar sobre ${item.name}` : `Solicitar información de ${item.name}`}</DialogTitle>
           <DialogDescription>
-            {waitlist
+            {assisted
+              ? ASSISTED_CONTRACT_COPY.intro
+              : waitlist
               ? "Registramos tu interés para que nuestro equipo pueda contactarte cuando haya novedades. No supone ningún compromiso ni cargo."
               : kind === "contact"
                 ? "Cuéntanos qué ocurre y nuestro equipo lo revisa contigo."
                 : "Nuestro equipo revisa tu solicitud y te contacta. Enviarla no supone ningún compromiso ni cargo."}
           </DialogDescription>
         </DialogHeader>
+        {assisted && !done && <AssistedSummary item={item} planName={planName} />}
         {done ? (
           <div role="status" className="rounded-xl border border-success/40 bg-success/10 p-4 text-sm text-foreground">
+            {assisted && <p className="mb-1 font-semibold">{ASSISTED_CONTRACT_COPY.done}</p>}
             {done.via === "lead" ? (
               <p>
                 {done.outcome === "duplicate"
@@ -559,7 +611,7 @@ export function RequestDialog({
           </Button>
           {requestsEnabled && !done && (
             <Button type="button" disabled={send.isPending} onClick={() => send.mutate({ key: item.key, type: kind, ...(message.trim() ? { message: message.trim() } : {}) })}>
-              {send.isPending ? "Enviando…" : waitlist ? "Confirmar mi interés" : "Enviar solicitud"}
+              {send.isPending ? "Enviando…" : assisted ? ASSISTED_CONTRACT_COPY.confirm : waitlist ? "Confirmar mi interés" : "Enviar solicitud"}
             </Button>
           )}
           {done?.via === "ticket" && (

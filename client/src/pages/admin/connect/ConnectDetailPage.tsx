@@ -20,6 +20,7 @@ import { cn } from "@/lib/utils";
 import { brandHeaders, brandOf, conversionPlanText, conversionSupportText, PURCHASE_BLOCK_TEXT } from "@shared/connectMarketplace";
 import { periodLabel, sortPrices, taxLabel, formatMoney } from "@shared/connectCard";
 import { ACTIVATION_LABELS, activationActions, activationLabel, activationOf, primaryAction, type ConnectActivation, type PrimaryAction } from "@shared/connectShowcase";
+import { ASSISTED_CONTRACT_COPY } from "@shared/netOffer";
 import { ActivationActionsBar, BigPrice, goTo, ImageKindNote, ProductIcon, ProductMedia, PurchaseDialog, RequestDialog, StateBadge, type ConnectView, type RequestKind } from "@/components/connect/ConnectParts";
 import { SHEET_ANCHORS, SheetBlocks, sheetAnchorTargets } from "@/components/connect/SheetBlocks";
 import { AMPLIAR_PATH } from "@/components/connect/LockedFeature";
@@ -77,6 +78,7 @@ export default function ConnectDetailPage() {
     if (a.href) goTo(a.href, navigate);
     else if (a.kind === "purchase") setDialog("purchase");
     else if (a.kind === "request") setDialog("info");
+    else if (a.kind === "assisted") setDialog("implementation");
     else if (a.kind === "interest") setDialog("waitlist");
     else if (a.kind === "contact") setDialog("contact");
   };
@@ -103,7 +105,7 @@ export default function ConnectDetailPage() {
                   {item.net && <NetFeatureAreas areas={item.net.areas} />}
                   <SheetBlocks item={item} items={catalog.items} view={view} onAction={(it, kind) => setRelated({ item: it, kind })} />
                 </div>
-                <ContractPanel item={item} action={action} currentPlan={data.plan?.key ?? null} canRetryActivation={!!view.canRetryActivation} attemptOrdered={attemptOrdered} showBlock={showBlock} onRun={run} onOpenOrder={() => setDialog("purchase")} />
+                <ContractPanel item={item} action={action} currentPlan={data.plan?.key ?? null} currentPlanName={data.plan?.name ?? null} canRetryActivation={!!view.canRetryActivation} attemptOrdered={attemptOrdered} showBlock={showBlock} onRun={run} onOpenOrder={() => setDialog("purchase")} />
               </div>
             </article>
           )}
@@ -111,11 +113,11 @@ export default function ConnectDetailPage() {
       </div>
       {item && action && action.kind !== "none" && !dialog && !related && <MobileBar item={item} action={action} onRun={run} />}
       {dialog === "purchase" && item && <PurchaseDialog item={item} onClose={() => setDialog(null)} />}
-      {(dialog === "info" || dialog === "waitlist" || dialog === "contact") && item && data && (
-        <RequestDialog item={item} kind={dialog} supportEmail={data.supportEmail} upgradeUrl={data.upgradeUrl} requestsEnabled={data.requestsEnabled} onClose={() => setDialog(null)} />
+      {(dialog === "info" || dialog === "waitlist" || dialog === "contact" || dialog === "implementation") && item && data && (
+        <RequestDialog item={item} kind={dialog} supportEmail={data.supportEmail} upgradeUrl={data.upgradeUrl} requestsEnabled={data.requestsEnabled} planName={data.plan?.name ?? null} onClose={() => setDialog(null)} />
       )}
       {related && data && (
-        <RequestDialog item={related.item} kind={related.kind} supportEmail={data.supportEmail} upgradeUrl={data.upgradeUrl} requestsEnabled={data.requestsEnabled} onClose={() => setRelated(null)} />
+        <RequestDialog item={related.item} kind={related.kind} supportEmail={data.supportEmail} upgradeUrl={data.upgradeUrl} requestsEnabled={data.requestsEnabled} planName={data.plan?.name ?? null} onClose={() => setRelated(null)} />
       )}
     </AdminLayout>
   );
@@ -285,6 +287,7 @@ function ContractPanel({
   item,
   action,
   currentPlan,
+  currentPlanName = null,
   canRetryActivation,
   attemptOrdered,
   showBlock,
@@ -295,6 +298,8 @@ function ContractPanel({
   action: PrimaryAction;
   /** Plan de la empresa (para explicar si el alta pide otro). */
   currentPlan: string | null;
+  /** Nombre del plan de la empresa (contratación asistida). */
+  currentPlanName?: string | null;
   canRetryActivation: boolean;
   attemptOrdered: boolean;
   showBlock: string | null;
@@ -348,6 +353,7 @@ function ContractPanel({
         )}
         {action.kind === "purchase" && <p className="text-xs text-muted-foreground">Te mostramos el importe exacto antes de confirmar. Se activa cuando el cobro queda verificado.</p>}
         {action.kind === "convert" && <p className="text-xs text-muted-foreground">{conversionSupportText(item.name)}</p>}
+        {action.kind === "assisted" && <p className="text-xs text-muted-foreground">{ASSISTED_CONTRACT_COPY.noPayment} {ASSISTED_CONTRACT_COPY.planLine(currentPlanName)}</p>}
         {action.kind === "convert" && item.conversionPlan && item.conversionPlan !== currentPlan && <p className="text-xs text-muted-foreground">{conversionPlanText(item.name, item.conversionPlan)}</p>}
         {item.state === "activating" && attemptOrdered && (
           <Button type="button" variant="outline" className="w-full" onClick={onOpenOrder}>

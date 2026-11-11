@@ -312,7 +312,7 @@ export default function ConnectPage() {
         </div>
       </div>
       {dialog && data && (
-        <RequestDialog item={dialog.item} kind={dialog.kind} supportEmail={data.supportEmail} upgradeUrl={data.upgradeUrl} requestsEnabled={data.requestsEnabled} onClose={() => setDialog(null)} />
+        <RequestDialog item={dialog.item} kind={dialog.kind} supportEmail={data.supportEmail} upgradeUrl={data.upgradeUrl} requestsEnabled={data.requestsEnabled} planName={data.plan?.name ?? null} onClose={() => setDialog(null)} />
       )}
     </AdminLayout>
   );

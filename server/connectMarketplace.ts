@@ -16,9 +16,18 @@ import { categoryOf, deriveConnectState, shownInShowcase, type CheckoutVia, type
 import type { ConnectGalleryItem, ConnectImage, ConnectPrice, ConnectSheet } from "../shared/connectCard";
 import type { ConnectActivation } from "../shared/connectShowcase";
 import { isNetLegacyExtension, netProductOf, netProductOfLegacy, type NetArea, type NetSegment } from "../shared/netProducts";
+import { netAvailabilitySplit, netSaleKind } from "../shared/netOffer";
+
 
 /** Producto tal como llega del canal: lo de siempre y, opcionalmente, la ficha y los precios aprobados. */
-export type ChannelCatalogItem = PanelCatalogItemView & { card?: unknown; prices?: unknown; offer?: unknown; activation?: unknown; legacy?: unknown };
+export type ChannelCatalogItem = PanelCatalogItemView & { card?: unknown; prices?: unknown; offer?: unknown; activation?: unknown; legacy?: unknown; technicalStatus?: unknown };
+
+/** Contratación asistida (clase B, shared/netOffer.ts): precio mensual publicado y qué está disponible o en implantación. */
+export interface ConnectAssistedSale {
+  monthly: ConnectPrice;
+  available: string[];
+  inImplementation: string[];
+}
 
 export interface ConnectItem {
   key: string;
@@ -75,6 +84,11 @@ export interface ConnectItem {
    * módulos»; nunca se compra. `replacedBy`: la solución completa que lo incluye. null si se vende con normalidad.
    */
   legacy: { replacedBy: { key: string; name: string } | null } | null;
+  /**
+   * Producto Net de empresa de clase B (11/11/2026): «Contratar e iniciar implantación» en lugar de «Solicitar
+   * información» (abre el expediente y el equipo prepara el contrato; sin cobro en el panel). null si no aplica.
+   */
+  assisted: ConnectAssistedSale | null;
 }
 
 /** Datos de un producto Elephant Net en el escaparate (shared/netProducts.ts). */
@@ -227,9 +241,15 @@ export function buildConnectCatalog(
       ? [{ kind: "monthly", amountCents: item.monthly.amountCents, currency: item.monthly.currency, unit: item.monthly.unit, taxRateBp: null, taxIncluded: item.monthly.taxIncluded }]
       : [];
     const offer = card?.offer ?? parseConnectOffer(item.offer);
+    // Clase B: Net de empresa bajo solicitud, operativo y con precio mensual publicado (misma regla que la web)
+    const monthlyPrice = (prices.length > 0 ? prices : fallbackPrices).find((p) => p.kind === "monthly") ?? null;
+    const technical = typeof item.technicalStatus === "string" ? item.technicalStatus : (d?.technicalStatus ?? null);
+    const saleKind = netSaleKind({ key: item.key, commercialStatus: item.commercialStatus, technicalStatus: technical, hasMonthlyPrice: !!monthlyPrice });
     const related = Array.from(new Set([...(c?.related ?? []), ...(c?.compatibleExtensions ?? [])])).filter((k) => k !== item.key && byKey.has(k) && !isLegacy(byKey.get(k)!) && shownInShowcase(k, plan));
     // Funcionalidades incluidas: las que publica el catálogo; si aún no las publica, las del registro de Net
     const areas: NetArea[] = np ? (c?.includedFeatures ?? np.areas) : [];
+    const split = netAvailabilitySplit({ areas });
+    const assisted: ConnectAssistedSale | null = saleKind === "assisted_contract" && state === "on_request" && monthlyPrice && !isLegacy(item) ? { monthly: monthlyPrice, available: split.available, inImplementation: split.inImplementation } : null;
     const sheet: ConnectSheet = {
       headline: c?.headline ?? null,
       valueProposition: c?.valueProposition ?? null,
@@ -298,6 +318,7 @@ export function buildConnectCatalog(
         ? { licence: np.licence, segment: np.segment, summary: np.summary, benefits: np.benefits, areas, note: np.note ?? null, homePath: np.homePath, legacyContracted: replaces }
         : null,
       legacy: legacyDecl ? { replacedBy: successor } : null,
+      assisted,
     };
   });
 }

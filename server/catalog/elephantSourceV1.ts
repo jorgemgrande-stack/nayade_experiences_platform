@@ -37,11 +37,12 @@ import { HOUSEHOLD_MEMBERS_METRIC, LIFE_CAPABILITIES, LIFE_HOUSEHOLD_MEMBERS_INC
 import type { ProductDraft } from "../web/schemas";
 
 type Fam = "core_plan" | "net_module" | "net_bundle" | "connect" | "connect_bundle" | "extra" | "addon" | "service";
-type Commercial = "coming_soon" | "in_preparation" | "on_request";
+/** «available» solo donde production ya lo vende así (Social Token Net, 11/11/2026). */
+type Commercial = "coming_soon" | "in_preparation" | "on_request" | "available";
 /** Evidencia del estado comercial (revisión del 25/10/2026). */
 const evidenceOf = (key: string): string | null =>
   STATUS_REVIEW_2026_11_07.find((c) => c.key === key)?.evidence ?? STATUS_REVIEW_2026_10_25.find((c) => c.key === key)?.evidence ?? EVIDENCE_2026_10_25[key] ?? null;
-type Tech = "partial" | "planned";
+type Tech = "partial" | "planned" | "available";
 
 export interface SeedPrice {
   kind: "monthly" | "yearly";
