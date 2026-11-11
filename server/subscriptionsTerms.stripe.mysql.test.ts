@@ -172,7 +172,7 @@ describe.skipIf(!URL_)("cobro en Stripe de condiciones personalizadas con MySQL 
   it("canceladas sin su fin aplicado: se leen todas por páginas (por id), sin la ventana de las más recientes", async () => {
     const ids: number[] = [];
     for (let n = 0; n < 5; n++) {
-      const r = (await billingStore.create({ subscriptionId: 90_000 + n, companyId: 1, stripeCustomerId: "cus_test_p", startedBy: A, now: clock })).row;
+      const r = (await billingStore.create({ subscriptionId: await agreed(1), companyId: 1, stripeCustomerId: "cus_test_p", startedBy: A, now: clock })).row;
       // Las pares quedan resueltas (con su solo lectura); las impares, sin resolver
       await billingStore.patch(r.id, { status: "canceled", readOnlyUntil: n % 2 ? null : clock + 1 }, r.version, clock + n);
       if (n % 2) ids.push(r.id);
