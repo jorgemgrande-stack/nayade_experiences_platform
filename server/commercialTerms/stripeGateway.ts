@@ -226,7 +226,7 @@ export class StripeNegotiatedGateway implements NegotiatedBillingGateway {
     return { ref: out.id };
   }
 
-  async findOneOff(subscriptionId: string, key: string) {
+  async findOneOff(subscriptionId: string, key: string): Promise<{ ref: string; amountCents: number; voided?: boolean; voidedInvoiceId?: string } | null> {
     if (!this.d.gateway.invoiceItemsOfCustomer) throw new NegotiatedGatewayError("unsupported", "El acceso a Stripe no admite condiciones personalizadas");
     const s = await this.owned(subscriptionId);
     const hits = (await this.d.gateway.invoiceItemsOfCustomer(s.customerId)).filter((i) => i.metadata.es_key === key && i.metadata.es_env === this.d.namespace && (i.metadata.es_stripe_subscription === s.id || (!!s.metadata.es_terms_subscription && i.metadata.es_subscription === s.metadata.es_terms_subscription)));

@@ -205,12 +205,14 @@ export class NegotiatedBillingService {
     if (row.status === "past_due" || row.status === "suspended") return "unpaid";
     const latest = sub.latestInvoiceId && sub.latestInvoiceId !== lastPaid ? await this.d.store.invoice(sub.latestInvoiceId) : null;
     if (latest && (latest.status === "open" || latest.status === "uncollectible")) return "unpaid";
-    if (!plan || (plan.termsId !== null && plan.items.length)) return "stripe_only";
-    // Sin condiciones hoy: es su fin SOLO si es el que programó la sincronización (en esa fecha de Stripe) o si no queda
-    // ningún acuerdo posterior. Un hueco hasta un acuerdo ya activado que alguien cancela en Stripe es «solo en Stripe»
+    // El fin que programó la sincronización (en esa fecha de Stripe) es el de las condiciones, aunque el acuerdo siga vivo
+    // hasta su fecha (Stripe dejó de renovar antes porque el último periodo no cabía entero)
     const ours = await this.d.billing.scheduledEnd(row.subscriptionId, sub.id);
     const at = (sub.cancelAt ?? sub.currentPeriodEnd ?? null) === null ? null : (sub.cancelAt ?? sub.currentPeriodEnd)! * 1000;
     if (ours && ours.periodEnd !== null && at === ours.periodEnd) return "terms_ended";
+    // Sin condiciones hoy y sin ese fin: solo si no queda ningún acuerdo posterior. Un hueco hasta un acuerdo ya activado
+    // que alguien cancela en Stripe es «solo en Stripe»
+    if (!plan || (plan.termsId !== null && plan.items.length)) return "stripe_only";
     return (await this.d.billing.nextStart(row.subscriptionId)) === null ? "terms_ended" : "stripe_only";
   }
 
