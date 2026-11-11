@@ -25,7 +25,8 @@ export function tenantTermsReader(terms: CommercialTermsService, store: TermsSto
    * Suscripción solo económica (`isEconomicOnly`: partidas a medida y servicios puros, nada que conceda algo en la
    * plataforma): no es el plan de ninguna plataforma. No se muestra en «Mi plan» ni estorba a la suscripción que sí lo es.
    */
-  const economicOnly = async (s: { id: number }) => !!subscriptions.items && isEconomicOnly(await subscriptions.items(s.id), now());
+  // Una enlazada a una plataforma es del SaaS aunque un acuerdo la haya dejado sin plan
+  const economicOnly = async (s: { id: number; tenantId: string | null }) => !s.tenantId && !!subscriptions.items && isEconomicOnly(await subscriptions.items(s.id), now());
   return async (tenantId: string, companyId: number, subscriptionId?: number | null): Promise<TenantCustomTerms | null> => {
     // La suscripción viva de ESA empresa y ESA plataforma: la del pedido vigente si la hay; si no, la única que tenga
     // (si no es única, no se muestra nada). Nunca la de otra empresa

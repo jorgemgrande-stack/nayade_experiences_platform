@@ -22,7 +22,7 @@ import { BUILTIN_MODULES } from "./_core/modules/builtin";
 import { CrmService } from "./crm/service";
 import { MemoryCrmStore } from "./crm/store";
 import { MemorySubscriptionStore } from "./subscriptions/store";
-import { SubscriptionService, isEconomicOnly } from "./subscriptions/service";
+import { SubscriptionService, isEconomicOnly, saasSubscriptions } from "./subscriptions/service";
 import { ShadowBillingService } from "./subscriptions/shadow";
 import { catalogFromWebStore, crmFromStore } from "./subscriptions/ports";
 import { CommercialOrchestrator } from "./orchestrator/service";
@@ -243,6 +243,17 @@ describe.each(SHAPES)("empresa que solo paga infraestructura (%s) y después con
     // Y su ampliación funciona
     const ext = await onboarding.approveExtension(t.trial.id, { expectedVersion: t.trial.version, days: 5, actor: "op" });
     expect((await subs.must(t.subscriptionId)).trialEnd).toBe(ext.endsAt);
+  });
+});
+
+describe("una suscripción enlazada a una plataforma nunca es «solo económica»", () => {
+  it("aunque un acuerdo la deje solo con partidas a medida, sigue siendo la del SaaS (no se abre otro pedido)", async () => {
+    const custom = { productKey: "custom:infra", family: "service", activationKind: null, effectiveFrom: T0 - DAY, effectiveTo: null };
+    const sub = (id: number, tenantId: string | null) => ({ id, companyId: 7, tenantId, status: "active" }) as unknown as Awaited<ReturnType<typeof subs.list>>[number];
+    const src = { list: async () => [sub(2, null), sub(1, "t-cliente")], items: async () => [custom] as never };
+    expect(isEconomicOnly([custom], T0)).toBe(true);
+    // La de la plataforma cuenta; la que nunca tuvo plataforma, no
+    expect((await saasSubscriptions(src, 7, T0)).map((s) => s.id)).toEqual([1]);
   });
 });
 

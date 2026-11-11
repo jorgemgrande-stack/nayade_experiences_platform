@@ -622,19 +622,26 @@ describe("casos menores", () => {
 });
 
 describe("límites de la organización (sedes, entidades, usuarios)", () => {
-  it("una suscripción solo económica enlazada a la plataforma no tapa a la suscripción del plan", async () => {
-    const org = new OrganizationService({ store: new MemoryOrganizationStore(), subscriptions: store, catalog: quoteSite, now: () => clock });
+  it("una suscripción enlazada a la plataforma que un acuerdo deja solo con partidas a medida sigue siendo del SaaS", async () => {
+    // Revisión independiente (segunda ronda), (b)3: si dejara de contar, la empresa admitiría otro pedido o otra prueba
+    // y los límites caerían al mínimo de Essential. Se comporta como antes de admitir acuerdos sin plan
     tenants.set(1, "acme");
-    const business = await subs.create({ companyId: 1, tenantId: "acme", interval: "month", plan: { productKey: "business", priceId: P.business } }, A);
-    const expected = await org.limits("acme");
-    expect(expected.sites).toBeGreaterThan(1);
-    // Una segunda suscripción de la misma plataforma, más reciente, que se queda solo con una partida a medida
-    const other = await subs.create({ companyId: 1, tenantId: "acme", interval: "month", plan: { productKey: "essential", priceId: P.essential } }, A);
-    const only = await terms.createForSubscription(other.id, input([INFRA()]), A);
-    await terms.activate(only.id, { expectedRevision: only.revision, expectedVersion: other.version }, A);
-    expect(isEconomicOnly(await store.items(other.id), clock)).toBe(true);
-    expect((await store.get(other.id))!.tenantId).toBe("acme");
-    expect(await org.limits("acme")).toEqual(expected);
-    expect((await subs.liveSaas(1)).map((s) => s.id)).toEqual([business.id]);
+    const sub = await subs.create({ companyId: 1, tenantId: "acme", interval: "month", plan: { productKey: "essential", priceId: P.essential } }, A);
+    const only = await terms.createForSubscription(sub.id, input([INFRA()]), A);
+    await terms.activate(only.id, { expectedRevision: only.revision, expectedVersion: sub.version }, A);
+    expect(isEconomicOnly(await store.items(sub.id), clock)).toBe(true);
+    expect((await store.get(sub.id))!.tenantId).toBe("acme");
+    expect((await subs.liveSaas(1)).map((s) => s.id)).toEqual([sub.id]);
+    // La organización usa esa suscripción, como siempre
+    const org = new OrganizationService({ store: new MemoryOrganizationStore(), subscriptions: store, catalog: quoteSite, now: () => clock });
+    expect((await org.limits("acme")).source).not.toMatch(/sin suscripción/);
+  });
+});
+
+describe("cuotas con fecha de inicio propia sobre una suscripción que ya existe", () => {
+  it("se rechazan: esa fecha solo vale para un paquete nuevo (la suscripción nace en ella)", async () => {
+    const out = await contract(1, input([INFRA()]));
+    const later = await terms.createForSubscription(out.subscription.id, input([INFRA({ startsAt: clock + 20 * 86_400_000 })]), A).catch((e) => e);
+    expect(later).toMatchObject({ code: "invalid_input", message: expect.stringMatching(/solo vale para un paquete nuevo/) });
   });
 });

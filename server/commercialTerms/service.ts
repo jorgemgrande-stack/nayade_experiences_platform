@@ -109,7 +109,8 @@ const NEEDS_RECURRING = "El acuerdo necesita al menos una cuota recurrente (un p
 export const NO_LICENCES_NOTE = "Este acuerdo es puramente económico: solo tiene partidas a medida o servicios que no dependen de Elephant Core. No concede licencias, capacidades ni límites y no da de alta ni necesita ninguna plataforma.";
 const PLAN_FROM_START = "Una suscripción necesita su plan Core desde la entrada en vigor del acuerdo: el plan no puede empezar después ni haber terminado ya";
 const TRIAL_NEEDS_PLAN = "La suscripción está en prueba gratuita: un acuerdo sin plan Core le quitaría el plan de la prueba. Incluye el plan en el acuerdo o espera a que la prueba termine";
-const ONCE_WITH_SERVICE_START = "Con fecha de inicio propia en todas las cuotas, un ajuste de un solo uso sobre las cuotas no tiene un primer periodo en el que aplicarse: usa un ajuste recurrente con fecha de fin o aplícalo a un cargo único";
+const SERVICE_START_ONLY_NEW = "En una suscripción que ya existe, las cuotas del acuerdo empiezan en su fecha de entrada en vigor: quita la fecha de inicio propia de las cuotas y usa la entrada en vigor del acuerdo (la fecha de inicio propia en todas las cuotas solo vale para un paquete nuevo)";
+const ONCE_WITH_SERVICE_START ="Con fecha de inicio propia en todas las cuotas, un ajuste de un solo uso sobre las cuotas no tiene un primer periodo en el que aplicarse: usa un ajuste recurrente con fecha de fin o aplícalo a un cargo único";
 const text = (v: string | null | undefined, max: number) => v?.trim().slice(0, max) || null;
 
 /** Estado efectivo en un instante: un acuerdo activado con fecha futura está «programado»; pasado su fin, «vencido». */
@@ -277,6 +278,9 @@ export class CommercialTermsService {
     // …y en cada tramo de fechas: el plan tiene que cubrir la vigencia de todo producto que dependa de él
     await this.checkWindows({ lines, effectiveTo: head.effectiveTo }, head.effectiveFrom ?? now);
     if (ctx.trialing && !lines.some(isPlanLine)) state(TRIAL_NEEDS_PLAN, { reason: "trial_needs_plan" });
+    // Cuotas que empiezan todas en una fecha futura: solo en un paquete nuevo (la suscripción nace en esa fecha). En una
+    // suscripción existente las cuotas cambian con el acuerdo, en su fecha de entrada en vigor
+    if (ctx.subscriptionId !== null && declaredServiceStart(probe) !== null) bad(SERVICE_START_ONLY_NEW);
     if (ctx.subscriptionId === null && declaredServiceStart(probe) !== null && adjustments.some((a) => a.recurrence === "once" && (a.lineRef === null || lines.some((l) => l.ref === a.lineRef && isRecurring(l))))) bad(ONCE_WITH_SERVICE_START);
     return { head, lines, adjustments, probe };
   }

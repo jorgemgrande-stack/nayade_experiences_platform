@@ -83,7 +83,8 @@ export { grantsOnPlatform, isEconomicOnly };
  */
 export async function saasSubscriptions(src: { list(f: { companyId: number }): Promise<Subscription[]>; items(id: number): Promise<SubscriptionItem[]> }, companyId: number, now: number): Promise<Subscription[]> {
   const out: Subscription[] = [];
-  for (const s of (await src.list({ companyId })).filter((x) => x.status !== "canceled")) if (!isEconomicOnly(await src.items(s.id), now)) out.push(s);
+  // Una suscripción enlazada a una plataforma es del SaaS aunque un acuerdo le haya dejado solo partidas económicas
+  for (const s of (await src.list({ companyId })).filter((x) => x.status !== "canceled")) if (s.tenantId || !isEconomicOnly(await src.items(s.id), now)) out.push(s);
   return out;
 }
 

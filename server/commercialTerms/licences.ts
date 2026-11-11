@@ -158,11 +158,9 @@ export class TermsLicences {
     // Otra suscripción viva (también en prueba) de la empresa en la MISMA plataforma: aunque no haya escrito su fila
     // (sin fila, la empresa aplica lo incluido en su plan), una métrica sin dueño no se da por propia
     const sub = contracted.length ? await this.d.subscriptionStore.get(subscriptionId) : null;
-    let sibling = false;
-    for (const s of sub ? (await this.d.subscriptionStore.list({ companyId: sub.companyId })).filter((x) => x.id !== subscriptionId && x.status !== "canceled" && x.tenantId === tenantId) : []) {
-      // Una suscripción solo económica no define límites: no cuenta como «otra suscripción viva»
-      if (!isEconomicOnly(await this.d.subscriptionStore.items(s.id), this.now())) sibling = true;
-    }
+    // Otra suscripción viva enlazada a ESTA plataforma. Una solo económica nunca se enlaza, y una enlazada es del SaaS
+    // aunque un acuerdo la haya dejado sin plan (shared/economicSubscription.ts)
+    const sibling = !!sub && (await this.d.subscriptionStore.list({ companyId: sub.companyId })).some((x) => x.id !== subscriptionId && x.status !== "canceled" && x.tenantId === tenantId);
     for (const want of contracted) {
       const cur = rows.find((r) => r.metric === want.metric);
       if (cur && cur.source !== own) {
