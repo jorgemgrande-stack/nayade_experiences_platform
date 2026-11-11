@@ -207,7 +207,9 @@ describe.skipIf(!URL_)("cobro en Stripe de condiciones personalizadas con MySQL 
     for (const ev of gw.events) await processor.process({ eventId: ev.id, type: ev.type, objectId: ev.objectId });
     const row = (await billingStore.bySubscription(subId))!;
     expect(row).toMatchObject({ status: "active", stripeSubscriptionId: stripeId, stripeCustomerId: String(customers[0].stripe_customer_id), sessionStatus: "complete" });
-    expect(await neg.link(subId)).toEqual({ customerId: row.stripeCustomerId, subscriptionId: stripeId });
+    expect(await neg.link(subId)).toMatchObject({ customerId: row.stripeCustomerId, subscriptionId: stripeId });
+    // El enlace lleva además el fin del periodo que cobra Stripe (para preparar la renovación siguiente)
+    expect((await neg.link(subId))!.periodEnd).toEqual(expect.any(Number));
     expect(await billingStore.invoices(row.id)).toHaveLength(1);
     expect(await neg.start(subId, A)).toMatchObject({ status: "linked", stripeSubscriptionId: stripeId });
     expect(gw.subscriptions.size).toBe(1);
