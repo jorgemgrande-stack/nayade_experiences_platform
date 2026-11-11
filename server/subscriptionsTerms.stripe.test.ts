@@ -448,7 +448,7 @@ describe("enlace por los webhooks existentes", () => {
     const a = await agreed(1);
     const { stripeId } = await started(w, a.subId);
     expect(await row(a.subId)).toMatchObject({ status: "active", stripeSubscriptionId: stripeId, sessionStatus: "complete" });
-    expect(await w.neg.link(a.subId)).toEqual({ customerId: (await row(a.subId)).stripeCustomerId, subscriptionId: stripeId });
+    expect(await w.neg.link(a.subId)).toEqual({ customerId: (await row(a.subId)).stripeCustomerId, subscriptionId: stripeId, periodEnd: gw.subscriptions.get(stripeId)!.currentPeriodEnd! * 1000 });
     expect(ordinary).toEqual([]);
     expect(Array.from(stripeStore.events.values()).every((e) => e.status === "processed")).toBe(true);
     expect(alerts.count("stripe.event_mismatch")).toBe(0);
@@ -1491,7 +1491,7 @@ describe("segunda revisión independiente: correcciones", () => {
     await deliver(w);
   };
 
-  it("B1 — volver a poner a cobrar tras un fin solo en Stripe no cobra otra vez la implantación ni repite el abono", async () => {
+  it("B1 — volver a poner a cobrar tras un fin solo en Stripe no cobra otra vez la implantación; el abono que no llegó a facturarse va, una vez, a la nueva", async () => {
     const w = world();
     const a = await agreed(1, WITH_ONE_OFFS());
     const first = await started(w, a.subId);
@@ -1500,9 +1500,12 @@ describe("segunda revisión independiente: correcciones", () => {
     // Alguien cancela en Stripe; el operador vuelve a ponerla a cobrar, como indica la alerta
     await cancelInStripe(w, first.stripeId);
     expect(alerts.count("stripe.negotiated_ended_in_stripe")).toBe(1);
+    // El abono seguía PENDIENTE en la suscripción cancelada: no se aplicó. Se retira del Customer (lo comparte el
+    // circuito ordinario) y deja de constar como enviado
+    expect(gw.invoiceItems).toEqual([]);
     const again = await w.neg.start(a.subId, A);
-    // Segundo Checkout: solo la cuota. Ni los 500 € de implantación ni un segundo abono
-    expect(again).toMatchObject({ status: "pending", recurringCents: 12900, firstChargeCents: 12900, deferredCredits: [] });
+    // Segundo Checkout: solo la cuota (los 500 € de implantación ya se cobraron); el abono va, una vez, a la factura siguiente
+    expect(again).toMatchObject({ status: "pending", recurringCents: 12900, firstChargeCents: 12900, deferredCredits: [{ amountCents: -2900 }] });
     const input = sessionCreates()[1].input as NegotiatedCheckoutInput;
     expect(input.lines.every((l) => l.interval === "month")).toBe(true);
     expect(input.lines.reduce((x, l) => x + l.unitAmount, 0)).toBe(12900);
@@ -1510,14 +1513,15 @@ describe("segunda revisión independiente: correcciones", () => {
     await deliver(w);
     expect(await row(a.subId)).toMatchObject({ status: "active", stripeSubscriptionId: second });
     expect(gw.invoices.get((await row(a.subId)).lastPaidInvoiceId!)!.subtotal).toBe(12900);
-    expect(gw.invoiceItems.map((i) => i.amount)).toEqual([-2900]);
-    expect(oneOffWrites()).toHaveLength(1);
+    expect(gw.invoiceItems.map((i) => [i.amount, i.subscriptionId])).toEqual([[-2900, second]]);
+    expect(oneOffWrites()).toHaveLength(2);
     expect(alerts.count("stripe.negotiated_invoice_mismatch")).toBe(0);
     // Sincronizar y conciliar sobre la suscripción nueva: lo ya enviado en la anterior consta, no se repite ni cuenta como diferencia
     expect(await w.billing.sync(a.subId, A)).toMatchObject({ status: "synced", applied: 0 });
     expect(await w.billing.reconcile(a.subId)).toMatchObject({ consistent: true });
-    expect(gw.invoices.get(gw.chargeNegotiatedPeriod(second))!.subtotal).toBe(12900);
+    expect(gw.invoices.get(gw.chargeNegotiatedPeriod(second))!.subtotal).toBe(12900 - 2900);
     expect(gw.invoiceItems.map((i) => i.amount)).toEqual([-2900]);
+    expect(oneOffWrites()).toHaveLength(2);
   });
 
   it("B2 — una cancelación de Stripe por impago sigue las reglas del impago (solo lectura y fin), no el camino de «alguien la canceló en Stripe»", async () => {
@@ -1602,7 +1606,7 @@ describe("segunda revisión independiente: correcciones", () => {
     expect(gw.negotiated.get(stripeId)!.items.reduce((x, i) => x + i.unitAmount, 0)).toBe(9900);
   });
 
-  it("B4 — las condiciones terminan sin sucesor: Stripe no sigue cobrándolas; se programa su fin al final del periodo pagado y se avisa", async () => {
+  it("B4 — las condiciones terminan sin sucesor: Stripe no sigue cobrándolas; se programa su fin al final del periodo pagado, se avisa y, al terminar, termina la contratación", async () => {
     const w = world();
     const a = await agreed(1);
     await subs.linkTenant(a.subId, { tenantId: "t-acme" }, A);
@@ -1628,12 +1632,14 @@ describe("segunda revisión independiente: correcciones", () => {
     expect((await w.reconciler.tick()).negotiated!.drifted).toEqual([]);
     expect(gw.calls.filter((c) => c.op === "subscriptions.update(cancel_at_period_end)").length).toBe(cancels);
     expect(itemWrites()).toEqual([]);
-    // Stripe termina al final del periodo: la contratación interna y sus licencias no dependen ya de este cobro
+    // Stripe termina al final del periodo: como el fin de una contratación (solo lectura y fin interno). Nunca queda una
+    // contratación activa con licencias que ya nadie cobra
     await cancelInStripe(w, stripeId);
-    expect(await row(a.subId)).toMatchObject({ status: "canceled", readOnlyUntil: null });
-    expect((await subs.must(a.subId)).status).toBe("active");
-    expect((await statusOf("t-acme"))["plan.essential"]).toBe("active");
+    expect(await row(a.subId)).toMatchObject({ status: "canceled", readOnlyUntil: clock + 30 * DAY });
+    expect((await subs.must(a.subId)).status).toBe("canceled");
+    expect((await statusOf("t-acme"))["plan.essential"]).toBe("read_only");
     expect(alerts.count("stripe.negotiated_ended_in_stripe")).toBe(0);
+    expect(alerts.count("stripe.negotiated_terms_ended")).toBe(2);
     clock += 20 * 60_000;
     expect((await w.reconciler.tick()).negotiated!.drifted).toEqual([]);
   });
@@ -1673,5 +1679,294 @@ describe("segunda revisión independiente: correcciones", () => {
     item.unitAmount += 1;
     expect(await w.billing.sync(a.subId, A)).toMatchObject({ status: "synced", applied: 1 });
     expect(gw.negotiated.get(stripeId)!.items.find((i) => i.productId === "prod_essential")).toMatchObject({ taxRateBp: null, unitAmount: 2900 });
+  });
+});
+
+describe("tercera revisión independiente: lo que rige en una renovación llega a Stripe ANTES de ella", () => {
+  const cancelInStripe = async (w: World, stripeId: string) => {
+    gw.updateSubscription(stripeId, { status: "canceled" });
+    gw.emit("customer.subscription.deleted", "subscription", stripeId);
+    await deliver(w);
+  };
+  /** Próxima renovación de Stripe (ms). */
+  const renewalAt = (stripeId: string) => gw.subscriptions.get(stripeId)!.currentPeriodEnd! * 1000;
+  /** Llega la renovación: Stripe factura en `current_period_end` con lo que tiene en ese instante y llegan los webhooks. */
+  const renew = async (w: World, stripeId: string, outcome: "paid" | "open" = "paid") => {
+    clock = renewalAt(stripeId) + 60_000;
+    const id = gw.chargeNegotiatedPeriod(stripeId, outcome);
+    await deliver(w);
+    return id;
+  };
+  const tick = async (w: World) => (await w.reconciler.tick()).negotiated!;
+  const total = (stripeId: string) => gw.negotiated.get(stripeId)!.items.reduce((x, i) => x + i.unitAmount, 0);
+  const pauses = () => gw.calls.filter((c) => c.op === "subscriptions.update(pause_collection)");
+  const FREE = (from: number, to: number, over: Partial<TermsInput> = {}) => PACKAGE({ effectiveFrom: from, adjustments: [{ line: null, type: "discount", mode: "percent", value: 10_000, recurrence: "recurring", endsAt: to, note: "periodo gratuito" }], ...over } as never);
+  const ENDING = (at: number) => PACKAGE({ pricingMode: "per_item", globalAmountCents: undefined, lines: [cat("essential", { endsAt: at }), custom("Soporte", 5000, { endsAt: at })] } as never);
+
+  it("1 — un cambio de importe que rige en la renovación está en Stripe antes de ella: la renovación cobra lo nuevo (no un periodo más de lo anterior)", async () => {
+    const w = world();
+    const a = await agreed(1);
+    const { stripeId } = await started(w, a.subId);
+    const R1 = renewalAt(stripeId);
+    await applyNew(a.subId, PACKAGE({ globalAmountCents: 9900, effectiveFrom: R1 }));
+    // Lejos de la renovación no cambia nada (lo de hoy sigue siendo lo de hoy)
+    clock += 20 * 60_000;
+    await tick(w);
+    expect(total(stripeId)).toBe(12900);
+    // A tres días de la renovación, la conciliación deja ya en Stripe lo que regirá en ella (sin factura ni prorrateo)
+    const invoices = gw.invoices.size;
+    clock = R1 - 2 * DAY;
+    expect(await tick(w)).toMatchObject({ drifted: [] });
+    expect(total(stripeId)).toBe(9900);
+    expect(gw.invoices.size).toBe(invoices);
+    expect(await w.billing.reconcile(a.subId)).toMatchObject({ consistent: true });
+    // Y la renovación cobra 99 €, conciliada con lo pactado
+    expect(gw.invoices.get(await renew(w, stripeId))).toMatchObject({ status: "paid", subtotal: 9900 });
+    expect(alerts.count("stripe.negotiated_invoice_mismatch")).toBe(0);
+  });
+
+  it("1 y 6 — unas condiciones que terminan sin sucesor programan en Stripe su fin EN SU FECHA en cuanto se sabe: esa renovación no se cobra y la contratación termina", async () => {
+    const w = world();
+    const a = await agreed(1);
+    await subs.linkTenant(a.subId, { tenantId: "t-acme" }, A);
+    const { stripeId } = await started(w, a.subId);
+    await grant("t-acme", "plan.essential", `subscription:${a.subId}`);
+    const R1 = renewalAt(stripeId);
+    // Acuerdo nuevo cuyas partidas terminan todas en la renovación (p. ej. un acuerdo anual que vence) y nada detrás
+    await applyNew(a.subId, ENDING(R1));
+    expect(gw.subscriptions.get(stripeId)).toMatchObject({ status: "active", cancelAt: R1 / 1000, cancelAtPeriodEnd: false });
+    expect(gw.calls.filter((c) => c.op === "subscriptions.update(cancel_at)")).toHaveLength(1);
+    expect(alerts.count("stripe.negotiated_terms_ended")).toBe(1);
+    // Es lo esperado (no un «fin solo en Stripe»); y como ya no habrá más renovaciones, se avisa en CADA pasada
+    expect((await w.billing.reconcile(a.subId)).differences.map((d) => d.key)).toEqual(["fin_por_condiciones"]);
+    for (let n = 0; n < 3; n++) {
+      clock += 20 * 60_000;
+      expect((await tick(w)).drifted).toEqual([{ subscriptionId: a.subId, differences: [{ key: "fin_por_condiciones", kind: "status" }] }]);
+    }
+    expect(alerts.count("stripe.negotiated_terms_ended")).toBe(4);
+    expect(gw.calls.filter((c) => c.op === "subscriptions.update(cancel_at)")).toHaveLength(1);
+    // Llega la fecha: Stripe termina en lugar de renovar (ningún periodo más) y la contratación termina como cualquier fin
+    const invoices = gw.invoices.size;
+    expect(await renew(w, stripeId)).toBe("");
+    expect(gw.invoices.size).toBe(invoices);
+    expect(await row(a.subId)).toMatchObject({ status: "canceled", readOnlyUntil: clock + 30 * DAY });
+    expect((await subs.must(a.subId)).status).toBe("canceled");
+    expect((await statusOf("t-acme"))["plan.essential"]).toBe("read_only");
+    expect(alerts.count("stripe.negotiated_ended_in_stripe")).toBe(0);
+    clock += 20 * 60_000;
+    expect((await tick(w)).drifted).toEqual([]);
+  });
+
+  it("1 — cuota 0 que empieza en la renovación: la pausa (con su reanudación) se pone antes; el periodo gratuito no se cobra y el primero de pago sí", async () => {
+    const w = world();
+    const a = await agreed(1);
+    const { stripeId } = await started(w, a.subId);
+    const R1 = renewalAt(stripeId);
+    const R2 = R1 + 30 * DAY;
+    await applyNew(a.subId, FREE(R1, R2));
+    expect(gw.pausedSubs.has(stripeId)).toBe(false);
+    // A tres días de la renovación gratuita: en pausa, con la reanudación un minuto antes del primer instante de pago
+    clock = R1 - 2 * DAY;
+    expect(await tick(w)).toMatchObject({ drifted: [] });
+    expect(gw.pausedSubs.has(stripeId)).toBe(true);
+    expect(gw.pauseResumes.get(stripeId)).toBe((R2 - 60_000) / 1000);
+    expect(itemWrites()).toEqual([]);
+    // Renovación gratuita: Stripe la anula, no cobra nada y no es una diferencia
+    const voided = await renew(w, stripeId);
+    expect(gw.invoices.get(voided)).toMatchObject({ status: "void", amountPaid: 0 });
+    expect((await row(a.subId)).status).toBe("active");
+    clock += 20 * 60_000;
+    expect(await tick(w)).toMatchObject({ drifted: [] });
+    expect(gw.pausedSubs.has(stripeId)).toBe(true);
+    // A tres días del primer periodo de pago se quita la pausa: esa renovación se cobra (no se anula)
+    clock = R2 - 2 * DAY;
+    expect(await tick(w)).toMatchObject({ drifted: [] });
+    expect(gw.pausedSubs.has(stripeId)).toBe(false);
+    expect(gw.invoices.get(await renew(w, stripeId))).toMatchObject({ status: "paid", subtotal: 12900 });
+    expect(alerts.count("stripe.negotiated_invoice_mismatch")).toBe(0);
+    expect(pauses()).toHaveLength(2);
+  });
+
+  it("1 — aunque la conciliación no llegue a pasar, Stripe reanuda solo el cobro antes del primer periodo de pago", async () => {
+    const w = world();
+    const a = await agreed(1);
+    const { stripeId } = await started(w, a.subId);
+    const R1 = renewalAt(stripeId);
+    await applyNew(a.subId, FREE(R1, R1 + 30 * DAY));
+    clock = R1 - 2 * DAY;
+    await tick(w);
+    expect(gw.invoices.get(await renew(w, stripeId))!.status).toBe("void");
+    // Sin ninguna pasada más: la renovación siguiente ya se cobra
+    expect(gw.invoices.get(await renew(w, stripeId))).toMatchObject({ status: "paid", subtotal: 12900 });
+    expect(gw.pausedSubs.has(stripeId)).toBe(false);
+  });
+
+  it("2 — un importe único ya enviado que la pausa arrastra a una factura anulada no se pierde: se vuelve a enviar UNA vez y se cobra en el primer periodo de pago", async () => {
+    const w = world();
+    const a = await agreed(1);
+    const { stripeId } = await started(w, a.subId);
+    const R1 = renewalAt(stripeId);
+    const R2 = R1 + 30 * DAY;
+    const D = clock + 5 * DAY;
+    // Vence un cargo de implantación a mitad de periodo y, desde la renovación, un mes gratis
+    await applyNew(a.subId, PACKAGE({ lines: [cat("essential"), cat("hotel-net"), cat("whatsapp"), custom("Implantación", 50000, { concept: "implementation", chargeClass: "initial", startsAt: D })] }));
+    await applyNew(a.subId, FREE(R1, R2));
+    clock = D + 60_000;
+    await tick(w);
+    expect(gw.invoiceItems.map((i) => [i.amount, i.invoiceId])).toEqual([[50000, null]]);
+    clock = R1 - 2 * DAY;
+    await tick(w);
+    expect(gw.pausedSubs.has(stripeId)).toBe(true);
+    // Como Stripe: la renovación en pausa se lleva el importe pendiente a la factura que anula
+    const voided = await renew(w, stripeId);
+    expect(gw.invoices.get(voided)).toMatchObject({ status: "void", subtotal: 12900 + 50000, amountPaid: 0 });
+    expect(gw.invoiceItems[0].invoiceId).toBe(voided);
+    // Al quitar la pausa, la sincronización ve que no se cobró y lo envía de nuevo (una vez)
+    clock = R2 - 2 * DAY;
+    expect(await tick(w)).toMatchObject({ drifted: [] });
+    expect(oneOffWrites()).toHaveLength(2);
+    expect(gw.invoiceItems.filter((i) => i.invoiceId === null).map((i) => i.amount)).toEqual([50000]);
+    clock += 20 * 60_000;
+    await tick(w);
+    expect(await w.billing.sync(a.subId, A)).toMatchObject({ status: "synced", applied: 0 });
+    expect(oneOffWrites()).toHaveLength(2);
+    // El primer periodo de pago lleva la cuota y la implantación, conciliado con lo pactado
+    expect(gw.invoices.get(await renew(w, stripeId))).toMatchObject({ status: "paid", subtotal: 12900 + 50000 });
+    expect(alerts.count("stripe.negotiated_invoice_mismatch")).toBe(0);
+    expect(await w.billing.reconcile(a.subId)).toMatchObject({ consistent: true });
+  });
+
+  it("3 — la pausa solo se quita con las partidas de pago ya en Stripe: si no se pueden poner, Stripe no cobra lo de antes del periodo gratuito", async () => {
+    const w = world();
+    const a = await agreed(1);
+    const { stripeId } = await started(w, a.subId);
+    const R1 = renewalAt(stripeId);
+    const R2 = R1 + 30 * DAY;
+    // Un mes gratis y, después, 99 € (no los 129 € de antes)
+    await applyNew(a.subId, FREE(R1, R2, { globalAmountCents: 9900 }));
+    // El Product de un producto deja de estar enlazado: las partidas de 99 € no se pueden enviar
+    const link = (status: string) => stripeStore.prices.forEach((p) => p.lookupKey.startsWith("es:whatsapp:") && ((p as { status: string }).status = status));
+    link("archived");
+    clock = R1 - 2 * DAY;
+    await tick(w);
+    // Se pone en pausa igual (el periodo gratuito no se cobra), pero SIN reanudación automática: Stripe no la quitaría con lo de antes
+    expect(gw.pausedSubs.has(stripeId)).toBe(true);
+    expect(gw.pauseResumes.has(stripeId)).toBe(false);
+    expect((await termsStore.get((await w.billing.plan(a.subId)).termsId!))!.syncStatus).toBe("failed");
+    expect(gw.invoices.get(await renew(w, stripeId))!.status).toBe("void");
+    // Antes del primer periodo de pago sigue fallando: la pausa NO se quita (nunca cobra 129 €) y se avisa
+    clock = R2 - 2 * DAY;
+    expect((await tick(w)).drifted[0].differences.map((d) => d.key)).toContain("sincronización_fallida");
+    expect(gw.pausedSubs.has(stripeId)).toBe(true);
+    expect(total(stripeId)).toBe(12900);
+    // Arreglado el enlace: primero las partidas de 99 € y después se quita la pausa; la renovación cobra 99 €
+    link("active");
+    clock += DAY;
+    expect(await tick(w)).toMatchObject({ drifted: [] });
+    expect(total(stripeId)).toBe(9900);
+    expect(gw.pausedSubs.has(stripeId)).toBe(false);
+    const order = gw.calls.filter((c) => c.op === "subscriptions.update(negotiated)" || c.op === "subscriptions.update(pause_collection)").map((c) => c.op);
+    expect(order.slice(-2)).toEqual(["subscriptions.update(negotiated)", "subscriptions.update(pause_collection)"]);
+    expect(gw.invoices.get(await renew(w, stripeId))).toMatchObject({ status: "paid", subtotal: 9900 });
+  });
+
+  it("4 — un importe único enviado a una suscripción de Stripe cancelada y sin facturar NO cuenta como cobrado: se retira del Customer y el reinicio lo cobra una vez", async () => {
+    const w = world();
+    const a = await agreed(1);
+    const first = await started(w, a.subId);
+    const R1 = renewalAt(first.stripeId);
+    const D = R1 + 5 * DAY;
+    await applyNew(a.subId, PACKAGE({ lines: [cat("essential"), cat("hotel-net"), cat("whatsapp"), custom("Implantación", 50000, { concept: "implementation", chargeClass: "initial", startsAt: D }), custom("Formación", 20000, { concept: "implementation", chargeClass: "initial", startsAt: clock })] }));
+    // La formación entra en la renovación (cobrada); la implantación vence después y queda pendiente
+    expect(gw.invoices.get(await renew(w, first.stripeId))).toMatchObject({ status: "paid", subtotal: 12900 + 20000 });
+    clock = D + 60_000;
+    await tick(w);
+    expect(gw.invoiceItems.filter((i) => i.invoiceId === null).map((i) => i.amount)).toEqual([50000]);
+    // Alguien cancela en Stripe con la implantación sin facturar: se borra del Customer (que comparte el circuito ordinario)
+    await cancelInStripe(w, first.stripeId);
+    expect(gw.invoiceItems.map((i) => i.amount)).toEqual([20000]);
+    expect(gw.calls.filter((c) => c.op === "invoiceitems.delete")).toHaveLength(1);
+    // El reinicio cobra la cuota y la implantación (no la formación, que ya se cobró), una vez
+    const again = await w.neg.start(a.subId, A);
+    expect(again).toMatchObject({ status: "pending", recurringCents: 12900, firstChargeCents: 12900 + 50000 });
+    const second = gw.completeNegotiatedSession((again as { sessionId: string }).sessionId);
+    await deliver(w);
+    expect(gw.invoices.get((await row(a.subId)).lastPaidInvoiceId!)!.subtotal).toBe(12900 + 50000);
+    expect(alerts.count("stripe.negotiated_invoice_mismatch")).toBe(0);
+    expect(await w.billing.sync(a.subId, A)).toMatchObject({ status: "synced", applied: 0 });
+    expect(await w.billing.reconcile(a.subId)).toMatchObject({ consistent: true });
+    expect(gw.invoices.get(await renew(w, second))!.subtotal).toBe(12900);
+  });
+
+  it("5 — el fin que programó la sincronización se deshace solo si llega un acuerdo posterior antes de esa fecha (y solo ese fin)", async () => {
+    const w = world();
+    const a = await agreed(1);
+    const { stripeId } = await started(w, a.subId);
+    const R1 = renewalAt(stripeId);
+    await applyNew(a.subId, ENDING(R1));
+    expect(gw.subscriptions.get(stripeId)!.cancelAt).toBe(R1 / 1000);
+    // Llega el sucesor antes del fin: Stripe deja de tener el fin y sigue cobrando lo nuevo
+    clock += 2 * DAY;
+    await applyNew(a.subId, PACKAGE({ globalAmountCents: 9900 }));
+    expect(gw.subscriptions.get(stripeId)).toMatchObject({ cancelAt: null, cancelAtPeriodEnd: false });
+    expect(total(stripeId)).toBe(9900);
+    expect(await w.billing.reconcile(a.subId)).toMatchObject({ consistent: true });
+    const ends = gw.calls.filter((c) => c.op === "subscriptions.update(cancel_at)");
+    expect(ends.map((c) => (c.input as { at: number | null }).at)).toEqual([R1 / 1000, null]);
+    expect(new Set(ends.map((c) => c.key)).size).toBe(2);
+    clock += 20 * 60_000;
+    expect(await tick(w)).toMatchObject({ drifted: [] });
+    expect(gw.calls.filter((c) => c.op === "subscriptions.update(cancel_at)")).toHaveLength(2);
+    expect(gw.invoices.get(await renew(w, stripeId))).toMatchObject({ status: "paid", subtotal: 9900 });
+    // Un fin que NO programó la sincronización (puesto a mano en Stripe) nunca se deshace solo: se avisa
+    gw.updateSubscription(stripeId, { cancelAt: renewalAt(stripeId) / 1000, cancelAtPeriodEnd: true });
+    await applyNew(a.subId, PACKAGE({ globalAmountCents: 9800 }));
+    expect(gw.subscriptions.get(stripeId)!.cancelAtPeriodEnd).toBe(true);
+    expect((await w.billing.reconcile(a.subId)).differences.map((d) => d.key)).toContain("fin_solo_en_stripe");
+  });
+
+  it("5 — un sucesor que empieza días después (hueco): no se termina; el hueco no se cobra y la renovación siguiente cobra el acuerdo nuevo", async () => {
+    const w = world();
+    const a = await agreed(1);
+    const { stripeId } = await started(w, a.subId);
+    const R1 = renewalAt(stripeId);
+    const R2 = R1 + 30 * DAY;
+    await applyNew(a.subId, ENDING(R1));
+    expect(gw.subscriptions.get(stripeId)!.cancelAt).toBe(R1 / 1000);
+    await applyNew(a.subId, PACKAGE({ globalAmountCents: 9900, effectiveFrom: R1 + 5 * DAY }));
+    expect(gw.subscriptions.get(stripeId)!.cancelAt).toBeNull();
+    clock = R1 - 2 * DAY;
+    expect(await tick(w)).toMatchObject({ drifted: [] });
+    // Hueco hasta el acuerdo siguiente: en pausa, con las partidas del acuerdo siguiente ya puestas y su reanudación
+    expect(gw.pausedSubs.has(stripeId)).toBe(true);
+    expect(gw.pauseResumes.get(stripeId)).toBe((R1 + 5 * DAY - 60_000) / 1000);
+    expect(total(stripeId)).toBe(9900);
+    expect(gw.invoices.get(await renew(w, stripeId))!.status).toBe("void");
+    clock = R2 - 2 * DAY;
+    expect(await tick(w)).toMatchObject({ drifted: [] });
+    expect(gw.invoices.get(await renew(w, stripeId))).toMatchObject({ status: "paid", subtotal: 9900 });
+  });
+
+  it("menores: el escalado de reintentos no vuelve a cero al anotar lo cobrado; las canceladas se revisan las más recientes primero", async () => {
+    const w = world();
+    const a = await agreed(1);
+    const { stripeId } = await started(w, a.subId);
+    stripeStore.prices.forEach((p) => p.lookupKey.startsWith("es:whatsapp:") && ((p as { status: string }).status = "archived"));
+    await applyNew(a.subId, PACKAGE({ globalAmountCents: 9900 }));
+    clock += 20 * 60_000;
+    await tick(w);
+    const termsId = (await w.billing.plan(a.subId)).termsId!;
+    const failures = ((await termsStore.get(termsId))!.syncDetail as { failures: number }).failures;
+    expect(failures).toBeGreaterThan(0);
+    await w.billing.recordSent(a.subId, stripeId, { "charge:999": "checkout:cs_x" }, A);
+    expect(((await termsStore.get(termsId))!.syncDetail as { failures: number }).failures).toBe(failures);
+    // Orden de las canceladas
+    const mem = new MemoryTermsBillingStore();
+    for (const sid of [11, 12, 13]) {
+      const r = (await mem.create({ subscriptionId: sid, companyId: 1, stripeCustomerId: "cus_x", startedBy: A, now: sid })).row;
+      await mem.patch(r.id, { status: "canceled" }, r.version, 100 - sid);
+    }
+    expect((await mem.list({ status: ["canceled"], newestFirst: true })).map((r) => r.subscriptionId)).toEqual([11, 12, 13]);
+    expect((await mem.list({ status: ["canceled"], newestFirst: true, limit: 1 })).map((r) => r.subscriptionId)).toEqual([11]);
   });
 });

@@ -46,7 +46,7 @@ beforeAll(async () => {
     seen.push({ method: req.method, path: req.path, body: req.body ?? {}, idempotencyKey: req.header("idempotency-key") ?? undefined, version: req.header("stripe-version") ?? undefined });
     next();
   });
-  app.get("/v1/subscriptions/sub_many", (_req, res) => void res.json(subscription("sub_many", { items: { object: "list", has_more: true, data: many.slice(0, 10) }, discounts: ["di_1"], pause_collection: { behavior: "void" }, collection_method: "send_invoice", trial_end: 1_900_000_999 })));
+  app.get("/v1/subscriptions/sub_many", (_req, res) => void res.json(subscription("sub_many", { items: { object: "list", has_more: true, data: many.slice(0, 10) }, discounts: ["di_1"], pause_collection: { behavior: "void", resumes_at: 1_900_100_000 }, collection_method: "send_invoice", trial_end: 1_900_000_999 })));
   app.get("/v1/subscriptions/:id", (req, res) => (req.params.id === "sub_missing" ? void res.status(404).json({ error: { type: "invalid_request_error", code: "resource_missing" } }) : void res.json(subscription(req.params.id))));
   const many = Array.from({ length: 11 }, (_, n) => ({ id: `si_m${n + 1}`, object: "subscription_item", quantity: 1, metadata: {}, tax_rates: [], price: { id: `price_m${n + 1}`, product: "prod_custom", unit_amount: 1000 + n, currency: "eur", recurring: { interval: "month", interval_count: 1 } } }));
   app.get("/v1/subscription_items", (req, res) => {
@@ -66,6 +66,7 @@ beforeAll(async () => {
   });
   app.get("/v1/invoices/in_many", (_req, res) => void res.json(invoice("in_many", 13)));
   app.get("/v1/invoices/in_small", (_req, res) => void res.json(invoice("in_small", 2)));
+  app.delete("/v1/invoiceitems/:id", (req, res) => void res.json({ id: req.params.id, object: "invoiceitem", deleted: req.params.id !== "ii_keep" }));
   app.post("/v1/invoiceitems", (req, res) => void res.json({ id: "ii_1", object: "invoiceitem", livemode, amount: Number(req.body.amount), currency: req.body.currency, customer: req.body.customer, invoice: null, metadata: req.body.metadata ?? {}, parent: { type: "subscription_details", subscription_details: { subscription: req.body.subscription } } }));
   app.get("/v1/invoiceitems", (req, res) =>
     void res.json({
@@ -165,6 +166,7 @@ describe("Stripe: operaciones del cobro de condiciones personalizadas", () => {
     // Y lo hecho fuera de Elephant que cambia lo que se cobra queda a la vista
     expect(s.anomalies).toEqual(["cupón", "cobro_no_automático"]);
     expect(s.paused).toBe(true);
+    expect(s.pauseResumesAt).toBe(1_900_100_000);
     expect(s.trialEnd).toBe(1_900_000_999);
   });
 
@@ -190,6 +192,25 @@ describe("Stripe: operaciones del cobro de condiciones personalizadas", () => {
     expect(seen.map((r) => [r.method, r.path, r.idempotencyKey])).toEqual([["POST", "/v1/subscriptions/sub_x1", "es-local-pause-on"], ["POST", "/v1/subscriptions/sub_x1", "es-local-pause-off"]]);
     expect(seen[0].body).toEqual({ pause_collection: { behavior: "void" } });
     expect(seen[1].body).toEqual({ pause_collection: "" });
+    // Con fecha de reanudación: Stripe la quita solo en esa fecha (segundos)
+    await gw().setPauseCollection!("sub_x1", true, "es-local-pause-on-2", 1_900_100_000);
+    expect(seen[2].body).toEqual({ pause_collection: { behavior: "void", resumes_at: "1900100000" } });
+  });
+
+  it("fin en una fecha concreta (cancel_at) sin prorrateo, y deshacerlo; con su clave", async () => {
+    await gw().setCancelAt!("sub_x1", 1_900_000_500, "es-local-end-1");
+    await gw().setCancelAt!("sub_x1", null, "es-local-end-2");
+    expect(seen.map((r) => [r.method, r.path, r.idempotencyKey])).toEqual([["POST", "/v1/subscriptions/sub_x1", "es-local-end-1"], ["POST", "/v1/subscriptions/sub_x1", "es-local-end-2"]]);
+    expect(seen[0].body).toEqual({ cancel_at: "1900000500", proration_behavior: "none" });
+    expect(seen[1].body).toEqual({ cancel_at: "" });
+    livemode = true;
+    await expect(gw().setCancelAt!("sub_x1", null, "k")).rejects.toThrow(StripeConfigError);
+  });
+
+  it("borra un importe único pendiente (DELETE, sin cuerpo); si Stripe no lo borra, es un error", async () => {
+    await gw().deleteInvoiceItem!("ii_1");
+    expect(seen.map((r) => [r.method, r.path])).toEqual([["DELETE", "/v1/invoiceitems/ii_1"]]);
+    await expect(gw().deleteInvoiceItem!("ii_keep")).rejects.toThrow(/no borró/);
   });
 
   it("factura con más de 10 líneas: se marca como truncada y sus importes se leen todos (paginado)", async () => {

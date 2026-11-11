@@ -176,6 +176,19 @@ describe("importes únicos", () => {
     await expect(a.addOneOff({ subscriptionId: id, customerId: "cus_de_otro", currency: "EUR", item: { key: "charge:9", name: "x", amountCents: 100, taxRateBp: 0 }, metadata: {} }, "k")).rejects.toMatchObject({ code: "not_negotiated" });
     await expect(a.addOneOff({ subscriptionId: id, customerId, currency: "EUR", item: { key: "charge:9", name: "x", amountCents: 0, taxRateBp: 0 }, metadata: {} }, "k")).rejects.toMatchObject({ code: "invalid_items" });
   });
+
+  it("uno que acabó en una factura ANULADA (renovación con el cobro en pausa) consta como no cobrado; su copia nueva, viva", async () => {
+    const id = await negotiatedSub([{ productId: "prod_essential", unitAmount: 2900 }]);
+    const a = adapter();
+    const out = await a.addOneOff({ subscriptionId: id, customerId, currency: "EUR", item: { key: "charge:5", name: "Implantación", amountCents: 50000, taxRateBp: 2100 }, metadata: {} }, "ct:s1:charge:5");
+    await a.setPaused(id, true, "ct:s1:pause");
+    const voided = gw.chargeNegotiatedPeriod(id);
+    expect(gw.invoices.get(voided)!.status).toBe("void");
+    expect(await a.findOneOff(id, "charge:5")).toEqual({ ref: out.ref, amountCents: 0, voided: true });
+    await a.setPaused(id, false, "ct:s1:resume");
+    const again = await a.addOneOff({ subscriptionId: id, customerId, currency: "EUR", item: { key: "charge:5", name: "Implantación", amountCents: 50000, taxRateBp: 2100 }, metadata: {} }, `ct:s1:charge:5:r${out.ref}`);
+    expect(await a.findOneOff(id, "charge:5")).toEqual({ ref: again.ref, amountCents: 50000 });
+  });
 });
 
 describe("cerrojo: solo suscripciones de condiciones personalizadas puestas a cobrar", () => {
@@ -216,6 +229,26 @@ describe("cerrojo: solo suscripciones de condiciones personalizadas puestas a co
     expect((await adapter().current(id))!.cancelAtPeriodEnd).toBe(true);
     expect(gw.calls.find((c) => c.op === "subscriptions.update(cancel_at_period_end)")!.key).toBe("es-local-ct:s1:cancel:1");
     expect(gw.invoices.size).toBe(invoices);
+  });
+
+  it("fin en una fecha (cancel_at, en segundos) y deshacerlo; la pausa con su reanudación; `current` informa de ambas y de la renovación", async () => {
+    const id = await negotiatedSub([{ productId: "prod_essential", unitAmount: 2900 }]);
+    const a = adapter();
+    const end = gw.subscriptions.get(id)!.currentPeriodEnd! * 1000;
+    await a.setCancelAt(id, end + 999, "ct:s1:end");
+    expect(gw.subscriptions.get(id)).toMatchObject({ cancelAt: end / 1000, cancelAtPeriodEnd: false, status: "active" });
+    expect(await a.current(id)).toMatchObject({ cancelAt: end, cancelAtPeriodEnd: true, currentPeriodEnd: end });
+    await a.setCancelAt(id, null, "ct:s1:end:none");
+    expect(await a.current(id)).toMatchObject({ cancelAt: null, cancelAtPeriodEnd: false });
+    // Con cancel_at_period_end, Stripe fija el fin en el fin del periodo
+    await a.setCancelAtPeriodEnd(id, true, "ct:s1:cancel");
+    expect((await a.current(id))!.cancelAt).toBe(end);
+    await a.setPaused(id, true, "ct:s1:pause", end - 60_000);
+    expect(gw.pauseResumes.get(id)).toBe((end - 60_000) / 1000);
+    expect(await a.current(id)).toMatchObject({ paused: true, pauseResumesAt: end - 60_000 });
+    expect(gw.calls.filter((c) => c.op === "subscriptions.update(cancel_at)").map((c) => c.key)).toEqual(["es-local-ct:s1:end", "es-local-ct:s1:end:none"]);
+    allowed.clear();
+    await expect(a.setCancelAt(id, null, "k")).rejects.toMatchObject({ code: "not_negotiated" });
   });
 
   it("sin las operaciones necesarias en el acceso a Stripe, la pasarela no se considera disponible", () => {

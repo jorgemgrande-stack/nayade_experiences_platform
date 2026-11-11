@@ -102,7 +102,7 @@ export interface TermsBillingStore {
   create(r: { subscriptionId: number; companyId: number; stripeCustomerId: string; startedBy: string; now: number }): Promise<{ row: TermsBillingRow; created: boolean }>;
   /** Cambia la fila solo si nadie la tocó desde `expectedVersion` (lanza `BillingStoreConflict`). */
   patch(id: number, patch: TermsBillingPatch, expectedVersion: number, now: number): Promise<TermsBillingRow>;
-  list(f: { status?: readonly BillingState[]; syncedBefore?: number; sessionExpiredBefore?: number; limit?: number }): Promise<TermsBillingRow[]>;
+  list(f: { status?: readonly BillingState[]; syncedBefore?: number; sessionExpiredBefore?: number; limit?: number; /** Las cambiadas más recientemente primero (por defecto, las que llevan más tiempo sin releer). */ newestFirst?: boolean }): Promise<TermsBillingRow[]>;
   /** Guarda la factura (una fila por factura de Stripe). Devuelve la anterior, si la había. */
   upsertInvoice(i: Omit<TermsBillingInvoice, "createdAt" | "updatedAt">, now: number): Promise<{ previous: TermsBillingInvoice | null; current: TermsBillingInvoice }>;
   invoice(stripeInvoiceId: string): Promise<TermsBillingInvoice | null>;
@@ -173,10 +173,10 @@ export class MemoryTermsBillingStore implements TermsBillingStore {
     this.rows.set(id, next);
     return clone(next);
   }
-  async list(f: { status?: readonly BillingState[]; syncedBefore?: number; sessionExpiredBefore?: number; limit?: number }) {
+  async list(f: { status?: readonly BillingState[]; syncedBefore?: number; sessionExpiredBefore?: number; limit?: number; /** Las cambiadas más recientemente primero (por defecto, las que llevan más tiempo sin releer). */ newestFirst?: boolean }) {
     return Array.from(this.rows.values())
       .filter((r) => (!f.status || f.status.includes(r.status)) && (f.syncedBefore === undefined || (r.syncedAt ?? 0) < f.syncedBefore) && (f.sessionExpiredBefore === undefined || (r.sessionStatus === "open" && (r.sessionExpiresAt ?? 0) < f.sessionExpiredBefore)))
-      .sort((a, b) => (a.syncedAt ?? 0) - (b.syncedAt ?? 0) || a.id - b.id)
+      .sort((a, b) => (f.newestFirst ? b.updatedAt - a.updatedAt || b.id - a.id : (a.syncedAt ?? 0) - (b.syncedAt ?? 0) || a.id - b.id))
       .slice(0, f.limit ?? 200)
       .map((r) => clone(r));
   }
@@ -340,7 +340,7 @@ export class MysqlTermsBillingStore implements TermsBillingStore {
     const [rows] = await this.pool.query<Row[]>("SELECT * FROM commercial_terms_billing WHERE id = ?", [id]);
     return this.row(rows[0]);
   }
-  async list(f: { status?: readonly BillingState[]; syncedBefore?: number; sessionExpiredBefore?: number; limit?: number }) {
+  async list(f: { status?: readonly BillingState[]; syncedBefore?: number; sessionExpiredBefore?: number; limit?: number; /** Las cambiadas más recientemente primero (por defecto, las que llevan más tiempo sin releer). */ newestFirst?: boolean }) {
     const where = ["livemode = ?"];
     const params: unknown[] = [this.lm];
     if (f.status?.length) {
@@ -355,7 +355,7 @@ export class MysqlTermsBillingStore implements TermsBillingStore {
       where.push("session_status = 'open' AND COALESCE(session_expires_at, 0) < ?");
       params.push(f.sessionExpiredBefore);
     }
-    const [rows] = await this.pool.query<Row[]>(`SELECT * FROM commercial_terms_billing WHERE ${where.join(" AND ")} ORDER BY COALESCE(synced_at, 0), id LIMIT ?`, [...params, f.limit ?? 200]);
+    const [rows] = await this.pool.query<Row[]>(`SELECT * FROM commercial_terms_billing WHERE ${where.join(" AND ")} ORDER BY ${f.newestFirst ? "updated_at DESC, id DESC" : "COALESCE(synced_at, 0), id"} LIMIT ?`, [...params, f.limit ?? 200]);
     return rows.map(this.row);
   }
   async upsertInvoice(i: Omit<TermsBillingInvoice, "createdAt" | "updatedAt">, now: number) {
