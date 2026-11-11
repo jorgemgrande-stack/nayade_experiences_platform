@@ -409,6 +409,31 @@ describe("compra de módulos y ampliaciones desde la plataforma", () => {
     expect(rb.purchase.orderId).not.toBe(ra.purchase.orderId);
   });
 
+  it("doble cobro: lo que la empresa ya tiene activo por otro origen (equipo o condiciones personalizadas) no se compra; sin cobro", async () => {
+    const a = await activeCompany("Ya Lo Tengo SL");
+    gw.now = Math.floor(clock / 1000);
+    const product = (await catalogFromWebStore(webStore).product("connect-people"))!;
+    expect(product.capabilities?.length).toBeGreaterThan(0);
+    // Activación del equipo (origen «operator»), sin pasar por el pedido
+    await caps.apply(a.tenantId, product.capabilities!.map((c) => ({ capabilityId: c, siteId: "", status: "active" as const, validUntil: null, source: "operator" })), { actor: "operator:test", reason: "Cortesía", now: clock });
+    const calls = gw.calls.length;
+    const pre = await call("POST", `/commerce/tenants/${a.tenantId}/purchases/preview`, { token: CORE, body: { add: ["connect-people"] } });
+    expect(pre.status).toBe(409);
+    expect(pre.json.message).toContain("ya está activo en tu empresa");
+    expect(pre.json.message).toContain("activación del equipo");
+    const r = await buy(a.tenantId, { add: ["connect-people"] });
+    expect(r.status).toBe(409);
+    expect(gw.calls.length).toBe(calls);
+    // Otra suscripción de la empresa (p. ej. condiciones personalizadas): tampoco
+    await caps.apply(a.tenantId, product.capabilities!.map((c) => ({ capabilityId: c, siteId: "", status: "active" as const, validUntil: null, source: "subscription:999999" })), { actor: "operator:test", reason: "Condiciones", now: clock });
+    const r2 = await buy(a.tenantId, { add: ["connect-people"] });
+    expect(r2.status).toBe(409);
+    expect(r2.json.message).toContain("condiciones personalizadas");
+    // Cancelada (o caducada), ya no cuenta: se puede comprar
+    await caps.apply(a.tenantId, product.capabilities!.map((c) => ({ capabilityId: c, siteId: "", status: "cancelled" as const, validUntil: null, source: "subscription:999999" })), { actor: "operator:test", reason: "Fin", now: clock });
+    expect((await call("POST", `/commerce/tenants/${a.tenantId}/purchases/preview`, { token: CORE, body: { add: ["connect-people"] } })).status).toBe(200);
+  });
+
   it("interruptor apagado: 503 sin tocar nada", async () => {
     const off = new ModulePurchaseService({
       enabled: false,

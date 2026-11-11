@@ -321,6 +321,28 @@ describe("Checkout de un pedido", () => {
     expect(ok.sessionId).toBeTruthy();
   });
 
+  it("doble cobro: un producto del pedido que la empresa ya tiene activo por otro origen no abre el pago ni toca Stripe", async () => {
+    const asked: Array<[string, string[]]> = [];
+    const guarded = new StripeCheckoutService({
+      store,
+      gateway: gw,
+      orders: { get: async (id: number) => orders.get(id) ?? null },
+      crmStore: { get: async () => ({ id: 7, name: "Empresa Demo Stripe", tenantId: "t9-demo" }), list: async () => [] } as never,
+      catalog: catalogOf(),
+      urls: URLS,
+      now: () => clock,
+      held: async (tenantId, keys) => (asked.push([tenantId, keys]), keys.includes("hotel-net-complete") ? [{ key: "hotel-net-complete", name: "Hotel Net", sources: ["operator"] }] : []),
+    });
+    orders.set(102, order({ id: 102, request: { plan: "essential", interval: "month", items: [{ key: "hotel-net-complete" }] } }));
+    const before = gw.calls.length;
+    await expect(guarded.start(102, "panel:t9-demo/user:1")).rejects.toMatchObject({ code: "conflict", message: expect.stringContaining("«Hotel Net» ya está activo en tu empresa (por una activación del equipo")});
+    expect(asked).toEqual([["t9-demo", ["hotel-net-complete"]]]);
+    expect(gw.calls.length).toBe(before);
+    // Solo el plan (sin productos): no se consulta y se abre como siempre
+    expect((await guarded.start(100, "a")).sessionId).toBeTruthy();
+    expect(asked).toHaveLength(1);
+  });
+
   it("un Customer por empresa: dos pedidos de la misma empresa comparten cliente", async () => {
     await svc.start(100, "a");
     orders.set(100, { ...orders.get(100)!, state: "cancelled" });

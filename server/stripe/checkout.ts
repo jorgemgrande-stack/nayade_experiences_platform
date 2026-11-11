@@ -38,6 +38,7 @@ import type { BuyerProfile, FiscalScenario, TaxTreatment } from "./buyerProfile"
 import { checkEligibility, type EligibilityConfig } from "./eligibility";
 import { needsVies, type VatCheck, type VatVerifier } from "./vies";
 import { checkTaxId } from "./taxIds";
+import { heldMessage } from "../licensing/heldCapabilities";
 
 /** Etiqueta de Stripe para seguir este flujo en el Dashboard (sufijo de 8 letras, recomendación de Stripe). */
 export const INTEGRATION_IDENTIFIER = "elephant-source-checkout-rqzmvtak";
@@ -130,6 +131,12 @@ export interface CheckoutDeps {
    * combinación no se cobra por Checkout (se cobraría el primer mes sin que Stripe lo renovase).
    */
   deferredItems?: boolean;
+  /**
+   * Doble cobro (11/11/2026): productos del pedido cuyas capacidades la empresa YA tiene vigentes por otro origen
+   * (condiciones personalizadas, activación del equipo, derechos adquiridos; nunca su propia prueba). Con alguno, no
+   * se abre el pago. Sin él, no se comprueba (una empresa nueva del autoservicio aún no tiene plataforma).
+   */
+  held?: (tenantId: string, keys: string[]) => Promise<Array<{ key: string; name: string; sources: string[] }>>;
 }
 
 /** Mensaje del bloqueo por elegibilidad: el primer motivo en claro y la lista completa de códigos. */
@@ -227,6 +234,16 @@ export class StripeCheckoutService {
     if (o.request.interval !== "month" && o.request.interval !== "year") throw new StripeCheckoutError("unsupported", "Periodicidad no admitida");
     // Presupuesto y Stripe nunca muestran importes distintos: el neto del presupuesto es el de los Prices de Stripe
     if (!o.quote) throw new StripeCheckoutError("invalid_state", "El pedido no tiene presupuesto");
+    // Doble cobro: un producto que la empresa (con plataforma) ya tiene activo por otro origen no se cobra
+    if (this.d.held && (o.request.items ?? []).length) {
+      const c0 = (await this.d.crmStore.get("companies", o.companyId)) as { tenantId?: string | null } | null;
+      const t0 = c0?.tenantId ?? o.tenantId ?? null;
+      const held = t0 ? await this.d.held(t0, o.request.items.map((i) => i.key)) : [];
+      if (held.length) {
+        opsLog("warn", "StripeCheckout", "already_held", { orderId, products: held.map((h) => h.key), actor });
+        throw new StripeCheckoutError("conflict", heldMessage(held[0]));
+      }
+    }
     const lines = this.d.quote ? await this.modularLines(o, policy) : await this.planOnlyLines(o, plan, policy);
     const priceIds = lines.recurring.map((l) => l.stripePriceId);
     // Solo el plan: la sesión de siempre (mismos parámetros que antes de la fase 2)

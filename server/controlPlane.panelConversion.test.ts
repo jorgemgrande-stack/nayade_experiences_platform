@@ -237,6 +237,26 @@ describe("contratación desde el panel de una empresa en prueba (doble de Stripe
     expect(await orders.list({ trialId: t.id, limit: 10 })).toEqual([]);
   });
 
+  it("doble cobro: un módulo que la empresa ya tiene por otro origen no entra en la conversión (las licencias de su prueba no cuentan)", async () => {
+    const t = await trial("panel@doble-cobro.example", "Panel Doble Cobro SL");
+    const product = (await catalogFromWebStore(webStore).product("connect-people"))!;
+    // Las licencias de la PROPIA prueba (si la prueba lo incluyera) no bloquean: solo otro origen
+    const trialSub = (await subsStore.list({})).find((s) => s.tenantId === t.tenantId && s.status === "trialing")!;
+    await caps.apply(t.tenantId!, product.capabilities!.map((c) => ({ capabilityId: c, siteId: "", status: "active" as const, validUntil: clock + 86_400_000, source: `subscription:${trialSub.id}` })), { actor: "operator:test", reason: "Prueba", now: clock });
+    expect((await call("POST", `/commerce/tenants/${t.tenantId}/conversion/preview`, { token: CORE, body: { plan: "essential", interval: "month", add: ["connect-people"] } })).status).toBe(200);
+    // Activado por el equipo: no se vuelve a cobrar
+    await caps.apply(t.tenantId!, product.capabilities!.map((c) => ({ capabilityId: c, siteId: "", status: "active" as const, validUntil: null, source: "operator" })), { actor: "operator:test", reason: "Cortesía", now: clock });
+    const p = await call("POST", `/commerce/tenants/${t.tenantId}/conversion/preview`, { token: CORE, body: { plan: "essential", interval: "month", add: ["connect-people"] } });
+    expect(p.status).toBe(409);
+    expect(p.json).toMatchObject({ error: "already_active" });
+    expect(p.json.message).toContain("no se cobra dos veces");
+    const r = await start(t.tenantId!, { add: ["connect-people"] });
+    expect(r.status).toBe(409);
+    expect(await orders.list({ trialId: t.id, limit: 10 })).toEqual([]);
+    // Solo el plan: sigue pudiendo contratarse
+    expect((await call("POST", `/commerce/tenants/${t.tenantId}/conversion/preview`, { token: CORE, body: { plan: "essential", interval: "month" } })).status).toBe(200);
+  });
+
   it("otra selección con un pago abierto: no; caducado el enlace, la anterior se sustituye (sin dos pedidos abiertos)", async () => {
     const t = await trial("panel-cambio@empresa.example", "Panel Cambio SL");
     const first = await ok(start(t.tenantId!, {}));

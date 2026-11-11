@@ -36,6 +36,7 @@ import { StripeGatewayError } from "./gateway";
 import type { StripeStore } from "./store";
 import { legacyExtensionText } from "../../shared/netProducts";
 import { isPersonalPlan } from "../../shared/personalPlans";
+import { heldMessage, type HeldProduct } from "../licensing/heldCapabilities";
 
 const moduleKey = z.string().regex(/^[a-z0-9][a-z0-9-]{1,63}$/);
 export const conversionQuoteBody = z
@@ -88,6 +89,11 @@ export interface PanelConversionDeps {
   /** Elegibilidad del comprador (la del autoservicio público); en live es obligatoria. */
   eligibility?: (b: ConversionBody["buyer"]) => Promise<EligibilityResult>;
   mode: StripeMode;
+  /**
+   * Doble cobro: productos elegidos cuyas capacidades la empresa YA tiene vigentes por otro origen (condiciones
+   * personalizadas, activación del equipo, derechos adquiridos; nunca la propia prueba). Sin él, no se comprueba.
+   */
+  held?: (tenantId: string, keys: string[]) => Promise<HeldProduct[]>;
   now?: () => number;
 }
 
@@ -133,6 +139,7 @@ export class PanelConversionService {
     this.assertEnabled();
     await this.trialOf(tenantId);
     await this.assertPlan(b.plan);
+    await this.assertNotHeld(tenantId, b.add ?? []);
     const q = await this.d.quote(this.requestOf(b));
     return {
       plan: b.plan,
@@ -153,6 +160,7 @@ export class PanelConversionService {
     // Una prueba del plan personal Life no se convierte en un plan de empresa (08/11/2026)
     if (isPersonalPlan(trial.configuration?.plan)) throw new PanelConversionError(409, "plan_not_self_service", "Tu plan personal se contrata desde la oferta personal, no como plan de empresa");
     await this.assertPlan(b.plan);
+    await this.assertNotHeld(tenantId, b.add ?? []);
     const actor = `panel:${tenantId}/${b.user}`.slice(0, 100);
     const key = conversionKeyOf(b.idempotencyKey);
     // Repetición de la MISMA petición: el mismo pedido y la misma sesión de pago
@@ -223,6 +231,13 @@ export class PanelConversionService {
   private pay(orderId: number, actor: string) {
     this.assertEnabled();
     return this.d.checkout!.start(orderId, actor);
+  }
+
+  /** Lo que la empresa ya tiene activo por otro origen no se vuelve a cobrar (409 con el motivo). */
+  private async assertNotHeld(tenantId: string, keys: string[]) {
+    if (!this.d.held || !keys.length) return;
+    const held = await this.d.held(tenantId, Array.from(new Set(keys)));
+    if (held.length) throw new PanelConversionError(409, "already_active", heldMessage(held[0]));
   }
 
   private async assertPlan(plan: string) {
