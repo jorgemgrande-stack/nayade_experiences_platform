@@ -394,6 +394,8 @@ export class ChargePaymentService {
     const inv = await this.d.invoices.get(c.invoiceId);
     if (!inv) throw new InvoicingError("invalid_state", "No se encuentra la factura del cargo");
     if (inv.paymentStatus === "paid") throw new InvoicingError("invalid_state", "El cargo ya está cobrado");
+    // Nunca se cobra contra una factura rectificada: primero se prepara la nueva (anular la transferencia lo completa)
+    if (inv.status === "rectified") throw new InvoicingError("invalid_state", "La factura del cargo está rectificada: completa la anulación de la transferencia para preparar la factura nueva");
     if (!OK_INVOICE.has(inv.paymentStatus)) throw new InvoicingError("invalid_state", `La factura del cargo está «${inv.paymentStatus}»`);
     return { c, inv };
   }
@@ -622,18 +624,29 @@ export class ChargePaymentService {
     const reason = String(input.reason ?? "").trim();
     if (reason.length < 5 || reason.length > 300) throw new InvoicingError("invalid_input", "Indica el motivo de la anulación (5 a 300 caracteres)");
     return this.serial(chargeId, async () => {
+      // Reintento de una anulación que liberó el pago pero no llegó a preparar la factura nueva: se completa (reinvoice es
+      // idempotente) en vez de responder «ya está anulado» y dejar el cargo apuntando a la factura rectificada
+      const prev = await this.d.payments.byId(paymentId);
+      if (prev && prev.chargeId === chargeId && prev.method === "bank_transfer" && prev.status === "voided") {
+        const c = await this.d.charges.must(chargeId);
+        const cur = c.invoiceId ? await this.d.invoices.get(c.invoiceId) : null;
+        if (cur?.status === "rectified" && this.d.charges.reinvoice) {
+          const invoice = (await this.d.charges.reinvoice(chargeId, actor)).invoice;
+          return { payment: prev, invoice, reason, reinvoiced: true, previousInvoiceId: cur.id };
+        }
+      }
       const { pay, inv } = await this.liveTransfer(chargeId, paymentId);
       if (inv.paymentRef !== transferPaymentRef(pay.id)) throw new InvoicingError("invalid_state", "La factura ya no consta cobrada por esta transferencia");
       const block = await this.voidBlock(chargeId, inv);
       if (block) throw new InvoicingError("invalid_state", block);
+      if (inv.status === "rectified" && !this.d.charges.reinvoice) throw new InvoicingError("unavailable", "No se puede preparar la factura nueva del cargo en este entorno");
       const now = this.now();
       const payment = await this.d.payments.release(pay.id, { voidedAt: now, voidedBy: actor, voidReason: reason }, now);
       let invoice = await this.d.invoices.setPayment(inv.id, { paymentStatus: "pending", paymentRef: null, paidAt: null }, now);
       // Factura ya rectificada por completo: la nota se vuelve a cobrar con una factura nueva en borrador (circuito normal)
       let reinvoiced = false;
       if (inv.status === "rectified") {
-        if (!this.d.charges.reinvoice) throw new InvoicingError("unavailable", "No se puede preparar la factura nueva del cargo en este entorno");
-        invoice = (await this.d.charges.reinvoice(chargeId, actor)).invoice;
+        invoice = (await this.d.charges.reinvoice!(chargeId, actor)).invoice;
         reinvoiced = true;
       }
       return { payment, invoice, reason, reinvoiced, previousInvoiceId: inv.id };

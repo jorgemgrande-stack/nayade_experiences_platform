@@ -243,6 +243,30 @@ describe("salida de una transferencia registrada por error", () => {
     expect((await t.invoices.list({ limit: 100 })).filter((i: Invoice) => i.kind === "invoice")).toHaveLength(2);
   });
 
+  it("si falla la factura nueva al anular tras la rectificativa: nadie cobra contra la rectificada y el reintento la completa", async () => {
+    const t = setup();
+    const x = await issuedWithLink(t);
+    await t.svc.transferPayment(x.opId, x.pid, transfer(), "operator:jorge");
+    await t.automation.issueDue();
+    const credit = await t.svcInv.rectify(x.invoiceId, { reason: "Pago registrado por error" }, "operator:jorge");
+    await t.svcInv.issue(credit.id, "operator:jorge");
+    const pay = t.store.rows.find((r) => r.method === "bank_transfer")!;
+    const charges = (t.payments as unknown as { d: { charges: { reinvoice: (id: number, a: string) => Promise<unknown> } } }).d.charges;
+    const real = charges.reinvoice.bind(charges);
+    charges.reinvoice = async () => {
+      throw new Error("caída");
+    };
+    await expect(t.svc.voidTransfer(x.opId, x.pid, pay.id, { reason: "La transferencia nunca llegó" }, "operator:jorge")).rejects.toThrow();
+    // El pago quedó liberado, pero el cargo sigue en la rectificada: no se admite otro cobro contra ella
+    await expect(t.svc.transferPayment(x.opId, x.pid, transfer("again-f-0002"), "operator:jorge")).rejects.toMatchObject({ code: "invalid_state" });
+    // Reintento: completa la factura nueva en vez de «ya está anulado»
+    charges.reinvoice = real;
+    await t.svc.voidTransfer(x.opId, x.pid, pay.id, { reason: "La transferencia nunca llegó" }, "operator:jorge");
+    const newInv = (await t.chargeStore.get(x.chargeId))!.invoiceId!;
+    expect(newInv).not.toBe(x.invoiceId);
+    expect(await t.invoices.get(newInv)).toMatchObject({ status: "draft", paymentStatus: "pending", totalCents: 180_000 });
+  });
+
   it("nunca se anula con el abono ya conciliado con el banco, ni con una rectificativa parcial", async () => {
     const t = setup({ bankReconciled: true });
     const x = await issuedWithLink(t);
