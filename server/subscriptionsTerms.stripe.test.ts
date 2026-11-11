@@ -17,7 +17,7 @@ import { SubscriptionService } from "./subscriptions/service";
 import { MemorySubscriptionStore } from "./subscriptions/store";
 import { CommercialTermsService, type LineInput, type TermsInput } from "./commercialTerms/service";
 import { MemoryTermsStore } from "./commercialTerms/store";
-import { TermsBillingService, describeTermsBilling } from "./commercialTerms/billing";
+import { TermsBillingService, describeTermsBilling, owedPeriods, stopsAtRenewal } from "./commercialTerms/billing";
 import { MemoryTermsBillingStore } from "./commercialTerms/billingStore";
 import { NegotiatedBillingError, NegotiatedBillingService, invoiceTaxCheck, mapStripeStatus } from "./commercialTerms/stripeBilling";
 import { CUSTOM_SERVICE_PRODUCT_ID, NegotiatedGatewayError, StripeNegotiatedGateway, catalogProductsOf } from "./commercialTerms/stripeGateway";
@@ -2297,5 +2297,112 @@ describe("quinta revisión independiente: tantos cobros como periodos cubre el c
     await tick(w);
     expect((await subs.must(r.subId)).status).toBe("canceled");
     expect((await row(r.subId)).readOnlyUntil).toBe(clock + 30 * DAY);
+  });
+});
+
+describe("sexta revisión independiente: los cobros se CUENTAN (debidos frente a facturados), no se casan por fechas", () => {
+  const renewalAt = (stripeId: string) => gw.subscriptions.get(stripeId)!.currentPeriodEnd! * 1000;
+  const tick = async (w: World) => (await w.reconciler.tick()).negotiated!;
+  /** Recorre las renovaciones hasta que Stripe termina; devuelve los inicios de los periodos cobrados. */
+  async function toTheEnd(w: World, stripeId: string) {
+    const starts: number[] = [gw.subscriptions.get(stripeId)!.currentPeriodStart! * 1000];
+    for (let n = 0; n < 40 && gw.subscriptions.get(stripeId)!.status !== "canceled"; n++) {
+      clock = renewalAt(stripeId) - 2 * DAY;
+      await tick(w);
+      const at = renewalAt(stripeId);
+      clock = at + 60_000;
+      if (gw.chargeNegotiatedPeriod(stripeId) === "") break;
+      starts.push(at);
+      await deliver(w);
+    }
+    await deliver(w);
+    const paid = Array.from(gw.invoices.values()).filter((i) => i.subscriptionId === stripeId && i.status === "paid" && (i.subtotal ?? 0) > 0);
+    return { paid: paid.length, starts };
+  }
+  async function pkg(start: number, interval: "month" | "year", periods: number, late: number) {
+    clock = start;
+    gw.addProduct({ id: CUSTOM_SERVICE_PRODUCT_ID, name: "Servicio a medida" });
+    subs.checkComposition = async () => undefined;
+    const w = world();
+    const E = addMonthsUTC(start, periods * (interval === "year" ? 12 : 1), madridAnchor(start));
+    const p = await terms.createPackage(1, { pricingMode: "per_item", presentation: "breakdown", interval, reason: "Paquete", lines: [custom("Servicio gestionado", 4463, { concept: "professional_service", endsAt: E })] } as never, A);
+    const prepared = await terms.prepareContracting(p.id, { expectedRevision: p.revision }, A);
+    clock += late * DAY;
+    const s = (await w.neg.start(prepared.terms.subscriptionId!, A)) as { sessionId: string };
+    const stripeId = gw.completeNegotiatedSession(s.sessionId);
+    await deliver(w);
+    return { ...(await toTheEnd(w, stripeId)), E };
+  }
+
+  it("acuerdo A desde el día 1, sustituido por B (día 15 del 4.º mes al día 15 del 10.º) en la misma suscripción de Stripe: 9 cobros, nunca el periodo que empieza el día 1 del 10.º mes", async () => {
+    const w = world();
+    const a = await agreed(1);
+    const { stripeId } = await started(w, a.subId);
+    const S = clock;
+    const E = month(S, 9) + 14 * DAY;
+    await applyNew(a.subId, PACKAGE({ pricingMode: "per_item", globalAmountCents: undefined, effectiveFrom: month(S, 3) + 14 * DAY, lines: [cat("essential", { endsAt: E }), custom("Soporte", 5000, { endsAt: E })] } as never));
+    const r = await toTheEnd(w, stripeId);
+    expect(r.paid).toBe(9);
+    expect(r.starts.every((x) => x < E)).toBe(true);
+    expect(r.starts.at(-1)).toBe(month(S, 8));
+  });
+
+  it("acuerdo del día 1 al 25 del 12.º mes con un descuento hasta el día 20 del 3.º (la partida se parte): 11 cobros", async () => {
+    const w = world();
+    const S = clock;
+    const E = month(S, 12) - 7 * DAY;
+    const a = await agreed(1, PACKAGE({ pricingMode: "per_item", globalAmountCents: undefined, lines: [cat("essential", { endsAt: E }), custom("Soporte", 5000, { endsAt: E })], adjustments: [{ line: null, type: "discount", mode: "percent", value: 1000, recurrence: "recurring", endsAt: month(S, 2) + 19 * DAY, note: "bienvenida" }] } as never));
+    const { stripeId } = await started(w, a.subId);
+    const r = await toTheEnd(w, stripeId);
+    expect(r.paid).toBe(11);
+    expect(r.starts.every((x) => x < E)).toBe(true);
+  });
+
+  it("inicio el 15 de febrero, pagado el 13 de marzo (26 días tarde): 6 cobros de 6", async () => {
+    const r = await pkg(Date.UTC(2027, 1, 15, 10), "month", 6, 26);
+    expect(r.paid).toBe(6);
+    expect(r.starts.every((x) => x < r.E)).toBe(true);
+  });
+
+  it("inicio el 31 de agosto, pagado el 26 de septiembre: 6 cobros de 6", async () => {
+    const r = await pkg(Date.UTC(2027, 7, 31, 10), "month", 6, 26);
+    expect(r.paid).toBe(6);
+    expect(r.starts.every((x) => x < r.E)).toBe(true);
+  });
+
+  it("barrido: mensual de 6 y anual de 2, inicio cada día del año y pago de 0 a 40 días tarde → cobros exactos, ninguno que empiece en el fin o después", () => {
+    const failures: string[] = [];
+    for (const [interval, N] of [["month", 6], ["year", 2]] as const) {
+      const m = interval === "year" ? 12 : 1;
+      for (let mo = 0; mo < 12; mo++)
+        for (let d = 1; d <= 31; d++) {
+          const S = Date.UTC(2027, mo, d, 10);
+          if (new Date(S).getUTCDate() !== d) continue;
+          const anchor = madridAnchor(S);
+          const E = addMonthsUTC(S, N * m, anchor);
+          const firstBoundary = addMonthsUTC(S, m, anchor);
+          for (let late = 0; late <= 40; late++) {
+            const B = S + late * DAY;
+            const owed = owedPeriods(S, B, E, interval);
+            // Stripe: primer cobro al pagar y renovaciones cada periodo de calendario UTC con el día del ancla
+            const starts = [B];
+            for (let k = 1; k < 30; k++) {
+              const R = addMonthsUTC(B, k * m, new Date(B).getUTCDate());
+              if (stopsAtRenewal(E, R, starts.length, owed, interval, B)) break;
+              starts.push(R);
+            }
+            // Esperado: N si se pagó dentro del primer periodo del contrato; si no, N menos los periodos ya pasados. Y nunca
+            // un periodo que empiece en el fin o después (en los bordes, un cambio de hora o un fin de mes recortado)
+            let elapsed = 0;
+            while (addMonthsUTC(S, (elapsed + 1) * m, anchor) <= B) elapsed++;
+            let before = 0;
+            while (before < 30 && addMonthsUTC(B, before * m, new Date(B).getUTCDate()) < E) before++;
+            const expected = Math.min(B < firstBoundary ? N : N - elapsed, before);
+            const bad = starts.length !== expected || starts.some((x) => x >= E) || (late <= 25 && starts.length !== N);
+            if (bad) failures.push(`${interval} ${new Date(S).toISOString().slice(0, 10)} +${late}d: ${starts.length} (esperado ${expected})`);
+          }
+        }
+    }
+    expect(failures).toEqual([]);
   });
 });
