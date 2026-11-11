@@ -394,11 +394,15 @@ La línea de arranque `{"ctx":"CommercialTerms", …}` dice el estado: `stripeBi
   descuento temporal del 100 %) o que queda en un **hueco** hasta un acuerdo posterior ya activado, el cobro se pone
   **en pausa** (`pause_collection`, `behavior=void`): Stripe no cobra nada mientras dura (anula sus facturas) y no hay
   paso de gratis a de pago, que reiniciaría el ciclo. Se pone **antes** de la renovación que empieza el periodo
-  gratuito, con `resumes_at` **un minuto antes del primer instante de pago** (`RESUME_MARGIN_MS`): esa renovación ya
-  se cobra, no se anula. Mientras dura la pausa, Stripe tiene ya las partidas del primer periodo de pago (no se cobran
-  hasta entonces). Si no se pueden poner (Product sin enlazar, cambio de periodicidad), la pausa se pone igual pero
-  **sin** `resumes_at`, y **nunca se quita sin ellas**: primero las partidas, después la reanudación. Así un fallo
-  nunca deja a Stripe cobrando lo de antes del periodo gratuito (en el peor caso no cobra, y se avisa en cada pasada).
+  gratuito, con `resumes_at` **6 horas antes del primer instante de pago** (`RESUME_MARGIN_MS`): esa renovación se
+  cobra aunque Stripe procese la reanudación con retraso (entre la reanudación y la renovación no se genera ninguna
+  factura). Mientras dura la pausa, Stripe tiene ya las partidas del primer periodo de pago (no se cobran hasta
+  entonces). **Al entrar en la pausa, primero la pausa y después las partidas**: la renovación gratuita nunca se cobra,
+  ni con las de antes ni con las de después; la reanudación automática solo se pone cuando esas partidas ya están en
+  Stripe. Si no se pueden poner (Product sin enlazar, cambio de periodicidad), la pausa queda **sin** `resumes_at` (una
+  fecha anterior se borra, enviándola vacía), y **al salir nunca se quita sin ellas**: primero las partidas, después la
+  reanudación. Así un fallo nunca deja a Stripe cobrando lo de antes del periodo gratuito (en el peor caso no cobra, y
+  se avisa en cada pasada).
   Un cobro en pausa sin cuota 0 ni hueco, o una cuota 0 sin pausa, son diferencias de conciliación.
 - **Una factura `open` creada antes de la pausa** (una renovación anterior impagada) **sigue reintentándose** durante la
   pausa y puede acabar en impago: es correcto (se debe), y sigue las reglas de impago de siempre.
@@ -463,7 +467,7 @@ repetido o fuera de orden no cambia nada.
 | `cancel_at_period_end` | `cancel_scheduled` | Sin cambios hasta el fin |
 | `canceled`, con fin querido (contratación terminada dentro, o fin ordenado por un operador) | `canceled`; la suscripción interna termina en el acto | Solo lectura 30 días (`READ_ONLY_DAYS`) |
 | `canceled` por IMPAGO (venía de impago o suspensión, o su última factura quedó sin cobrar) | `canceled`; la suscripción interna termina | Solo lectura 30 días: nunca licencias activas sin cobro |
-| `canceled` porque las condiciones terminaron sin sucesor (fin programado por la sincronización) | `canceled` + alerta `stripe.negotiated_terms_ended`; la suscripción interna termina (como un fin de contratación) | Solo lectura 30 días: nunca licencias activas sin cobro |
+| `canceled` porque las condiciones terminaron sin sucesor (el fin que programó la sincronización, o sin ningún acuerdo posterior) | `canceled` + alerta `stripe.negotiated_terms_ended`; la suscripción interna termina en la fecha de fin del acuerdo (o ya, si ha pasado) | Sin cambios hasta esa fecha; después, solo lectura 30 días: nunca licencias activas sin cobro más allá del contrato |
 | `canceled` SOLO en Stripe, al corriente (nadie lo pidió dentro) | `canceled` + alerta `stripe.negotiated_ended_in_stripe`; la contratación interna NO se toca | Sin cambios; una persona decide (volver a ponerla a cobrar o terminarla) |
 | Reembolso total o disputa perdida del último periodo | `suspended` hasta un pago nuevo | Suspendidas |
 
@@ -497,27 +501,55 @@ otra vez un abono. Solo cuenta como cobrado lo que **llegó a facturarse** (fact
   (`billing_one_off_released`).
 - Un importe único ya enviado que la **pausa** arrastra a la renovación que Stripe anula no se cobró: al reanudar, la
   sincronización lo encuentra en una factura anulada y lo **vuelve a enviar, una vez** (una copia por cada factura
-  anulada), para el primer periodo de pago.
+  anulada), para el primer periodo de pago. Solo vale para las renovaciones anuladas **por la pausa**: al registrar una
+  renovación anulada con el cobro en pausa se anota (`tax_check = paused_void`). Una factura que un operador anuló a
+  propósito (para perdonar el cargo) no se vuelve a cobrar: queda como diferencia `one_off` hasta que se anule también
+  en el acuerdo.
+- Con el interruptor **apagado** y suscripciones ya enlazadas, el borrado de los pendientes al terminar también se
+  hace (llega por el webhook): es una escritura en Stripe con el interruptor apagado, limitada a los importes marcados
+  como negociados (`es_negotiated`, `es_env` y `es_stripe_subscription` de la suscripción terminada); nunca toca un
+  importe del circuito ordinario ni de otra suscripción negociada del mismo Customer. Los pendientes se leen todos
+  (filtro `pending`, paginado), no solo los 500 importes más recientes.
 
 **Condiciones que terminan sin sucesor.** Si todas las partidas recurrentes de las condiciones (las de hoy y las ya
-programadas) tienen fecha de fin y nada las sigue, **en cuanto se sabe** (al activar el acuerdo, o cuando la última
-partida temporal queda sin sucesora) la sincronización programa en Stripe el fin **en esa fecha** (`cancel_at`, sin
-prorrateo) y avisa (`stripe.negotiated_terms_ended`). Si la fecha coincide con la renovación (lo habitual: un acuerdo
-anual que vence), Stripe termina en lugar de renovar y **no cobra un periodo más**. Desde que no queda ninguna
-renovación antes del fin, la conciliación lo cuenta como diferencia (`fin_por_condiciones`) y repite la alerta **en cada
-pasada** hasta que llegue un acuerdo posterior o termine. Si llega un **acuerdo posterior antes de la fecha**, el fin se
-deshace solo, pero únicamente el que programó la propia sincronización (anotado en `sync_detail.endedBySync`): un fin
-puesto a mano o pedido por un operador nunca se deshace solo. Con un hueco entre ambos acuerdos no se termina: el
-hueco va en pausa (ver «Cómo viajan las partidas a Stripe»). Si las condiciones terminaron sin que se programara antes
-(p. ej. partidas cerradas a mano), la conciliación programa el fin al final del periodo ya pagado, como hasta ahora, y
-también se deshace si llega un acuerdo posterior antes.
+programadas) tienen fecha de fin y nada las sigue, Stripe deja de renovar con `cancel_at_period_end=true` (con
+`proration_behavior=none`), puesto durante el **último periodo que el contrato cubre entero**: el que termina en la
+renovación tras la cual el periodo siguiente pasaría del fin del acuerdo. **Nunca con `cancel_at`**: las suscripciones
+de Checkout negociado nacen en modo `flexible` (versión de API `2026-09-30.endive`), y ahí un `cancel_at` acorta el
+último periodo y lo cobra prorrateado sin que se pueda desactivar, y quitarlo dentro del periodo prorratea. Avisa
+(`stripe.negotiated_terms_ended`) al programarlo y, mientras sigue programado, la conciliación lo da como
+`fin_por_condiciones` **como mucho una vez al día** (`TERMS_END_ALERT_EVERY_MS`).
 
-**Cuando Stripe termina por esto, termina la contratación** (decisión de la tercera revisión): las mismas reglas que el
-fin de una contratación (solo lectura `READ_ONLY_DAYS` y fin de la suscripción interna). Una contratación interna
-activa con licencias que ya nadie cobra no es un estado aceptable; para que siga, hace falta un acuerdo posterior antes
-de la fecha, y hasta entonces se avisa en cada pasada. Una terminada en Stripe con la contratación viva dentro por
-cualquier otro motivo sigue a la vista en cada pasada (`terminada_solo_en_stripe` o `terminada_sin_condiciones`), las
-más recientes primero.
+- **Fin en una renovación** (lo habitual: un acuerdo anual que vence en su fecha): Stripe termina en lugar de renovar y
+  no cobra un periodo más. El ciclo de Stripe está anclado al instante del pago (UTC) y el acuerdo termina a medianoche
+  de Madrid: un periodo que acaba hasta 2 días después del fin del acuerdo (`END_TOLERANCE_MS`) es su último periodo,
+  no uno de más (un contrato de 12 meses son 12 cobros).
+- **Fin a mitad de periodo — decisión: nunca se cobra más que el contrato.** Stripe no renueva hacia un periodo que el
+  contrato no cubre entero: termina en la última renovación anterior al fin y **los días entre esa renovación y el fin
+  del acuerdo no se cobran** (ni prorrateados). El servicio sigue hasta la fecha de fin del acuerdo: la suscripción
+  interna queda con su fin programado en esa fecha y las licencias siguen activas; llegada la fecha, la conciliación
+  aplica el fin (solo lectura y fin interno). Si el contrato quisiera cobrar esos días, habría que enviarlos como un
+  cargo único (no se hace solo).
+- **Factura del último periodo**: es una renovación normal y entera (no hay prorrateo), y se contrasta como cualquier
+  otra. Una línea de prorrateo en una factura de condiciones personalizadas nunca la crea Elephant: si aparece, la base
+  no cuadra y salta `stripe.negotiated_invoice_mismatch`.
+- **Llega un acuerdo posterior antes de la fecha**: el fin se deshace solo, con `cancel_at_period_end=false` y
+  `proration_behavior=none` (no se cobran otra vez días ya pagados), y **antes** de cambiar las partidas (nada del
+  periodo en curso se calcula con las partidas del sucesor). Solo se deshace el fin que programó la propia
+  sincronización (`sync_detail.endedBySync`): uno puesto a mano o pedido por un operador nunca. Con un hueco entre
+  ambos acuerdos no se termina: el hueco va en pausa (ver «Cómo viajan las partidas a Stripe»).
+- Si las condiciones terminaron sin que se programara antes (p. ej. partidas cerradas a mano), la conciliación programa
+  el fin al final del periodo ya pagado y también se deshace si llega un acuerdo posterior antes.
+- Las sincronizaciones de una suscripción van de una en una (el mismo arrendamiento que los webhooks): una pasada de la
+  conciliación y la activación de un sucesor no se pisan el estado de este fin.
+
+**Cuando Stripe termina por esto, termina la contratación** (en la fecha de fin del acuerdo o, si ya pasó, en el acto):
+solo lectura `READ_ONLY_DAYS` y fin de la suscripción interna, como cualquier fin. Una contratación activa con licencias
+que ya nadie cobra más allá del contrato no es un estado aceptable. Solo cuenta como este fin si Stripe termina en la
+fecha que programó la sincronización, o si no queda ningún acuerdo posterior (`nextStart`): si alguien cancela en el
+Dashboard durante un hueco con un acuerdo posterior ya activado, es un fin **solo en Stripe** (aviso; la contratación y
+sus licencias no se tocan). Una terminada en Stripe con la contratación viva dentro por cualquier otro motivo sigue a
+la vista en cada pasada (`terminada_solo_en_stripe` o `terminada_sin_condiciones`), las más recientes primero.
 
 **Envíos que fallan.** Un envío que falla se reintenta solo cada vez más espaciado (15 min, 1 h, 4 h, 16 h y después
 una vez al día), deja UN evento en el historial por error distinto y cuenta como diferencia (`sincronización_fallida`)
@@ -525,12 +557,17 @@ en cada pasada hasta que se resuelva.
 
 **Reloj.** Una vez enlazada, manda el reloj de Stripe: el periodo de la suscripción interna pasa a ser el que Stripe
 está cobrando y lo sigue en cada evento (no hay deriva; un fin programado dentro termina con el periodo de Stripe).
-Qué se cobra según cuándo se ponga a cobrar:
+**Con cobro en Stripe, el ciclo se ancla al instante del pago o del fin del periodo sin cargo (`trial_end`), en UTC:**
+los «meses de calendario de Madrid» de un paquete solo económico valen para la simulación y el documento, no para las
+fechas de cobro de Stripe (p. ej. un servicio desde el 1 de diciembre a medianoche de Madrid se cobra el 30 de noviembre
+a las 23:00 UTC y después cada mes en ese día y hora UTC). El ancla interna de meses de Madrid (negativa) no se
+sustituye por un día UTC al seguir el periodo de Stripe: se conserva para la simulación si la suscripción deja de
+cobrarse en Stripe. Qué se cobra según cuándo se ponga a cobrar:
 
 | Cuándo se pone a cobrar | Qué pasa |
 |---|---|
 | Con el acuerdo ya en vigor | El cliente paga al completar la página: primer periodo COMPLETO desde ese momento. **Si paga unos días después del inicio del acuerdo, esos días no se cobran** y el ciclo (interno y de Stripe) queda anclado al día del pago. |
-| Antes del inicio, con más de 48 h | El cliente autoriza ya su método de pago (factura de 0) y **el primer cargo es el día del inicio**, por el periodo completo, con los cargos y abonos únicos de esa fecha. Ciclo anclado al inicio del acuerdo (`subscription_data.trial_end`). |
+| Antes del inicio, con más de 48 h | El cliente autoriza ya su método de pago y **la primera cuota se cobra el día del inicio**, por el periodo completo, con los cargos y abonos únicos de esa fecha. Los **cargos únicos ya debidos** (los que el documento dice que se facturan «en el momento de la aceptación») se cobran **al pagar la sesión**, en la factura inicial: Stripe factura los importes únicos de una sesión con `trial_end` al crear la suscripción. Sin ellos, la factura inicial es de 0. Ciclo anclado al inicio del acuerdo (`subscription_data.trial_end`). |
 | Antes del inicio, con menos de 48 h | Se rechaza con la fecha (Stripe no admite aplazar con tan poco margen): se pone a cobrar al llegar el inicio. |
 
 Un acuerdo activado con inicio futuro consta guardado como «programado»; lo que cuenta es su estado efectivo en la fecha.
@@ -541,10 +578,13 @@ ella: desde **3 días antes** (`LOOKAHEAD_MS`), la sincronización prepara lo qu
 retirada, e importes únicos que vencen hasta esa fecha); fuera de ese margen, lo de hoy. La conciliación periódica
 (cada 15 minutos con el worker de Stripe) lo hace sola cuando cambia por una FECHA o se acerca la renovación (solo
 suscripciones enlazadas y con el interruptor encendido, y solo lo que rige DENTRO); con reintentos de hasta un día, hay
-varios intentos antes de la renovación. El fin de unas condiciones sin sucesor no espera: se programa en cuanto se sabe.
+varios intentos antes de la renovación. El fin de unas condiciones sin sucesor se programa en cuanto empieza su último
+periodo (no espera a los 3 días). Con `official_current` (tarifa oficial vigente al terminar una condición temporal) el
+importe oficial se resuelve DESPUÉS del fin; con la antelación, la renovación que coincide con ese fin se cobra con el
+importe provisional fijado al pactar, y el oficial rige desde la siguiente.
 Lo que alguien cambie en Stripe a mano nunca se corrige solo: se avisa. Se eligió preparar cada renovación con
 antelación y no un calendario de Stripe (Subscription Schedules): con las operaciones que ya existen (partidas,
-`pause_collection` con `resumes_at`, `cancel_at`) basta, y un calendario añadiría otro objeto que conciliar y
+`pause_collection` con `resumes_at`, `cancel_at_period_end`) basta, y un calendario añadiría otro objeto que conciliar y
 bloquearía los cambios directos de la suscripción.
 
 Qué pasa cuando la fecha **no coincide** con una renovación (sin prorrateo, a propósito):
@@ -553,8 +593,8 @@ Qué pasa cuando la fecha **no coincide** con una renovación (sin prorrateo, a 
 |---|---|
 | Cambio de importe | El periodo en curso ya se cobró con el importe anterior. El nuevo rige desde la primera renovación posterior a la fecha (la diferencia de los días restantes no se cobra ni se abona). |
 | Empieza una cuota 0 | El periodo en curso ya se cobró entero. La pausa se pone en cuanto rige y anula la primera renovación posterior. |
-| Termina una cuota 0 | La renovación anterior a la fecha cae aún en el periodo gratuito y se anula; los días de pago entre la fecha y la renovación siguiente no se cobran. Stripe reanuda el cobro un minuto antes de la fecha. |
-| Terminan las condiciones sin sucesor | La última renovación antes de la fecha se cobra entera y Stripe termina en la fecha (`cancel_at`): los días entre la fecha y el fin de ese periodo no se abonan. |
+| Termina una cuota 0 | La renovación anterior a la fecha cae aún en el periodo gratuito y se anula; los días de pago entre la fecha y la renovación siguiente no se cobran. Stripe reanuda el cobro 6 horas antes de la fecha. |
+| Terminan las condiciones sin sucesor | Stripe no renueva en la última renovación anterior a la fecha (el periodo que empezaría pasaría del fin): los días entre esa renovación y la fecha no se cobran, y el servicio sigue hasta la fecha. Nunca un periodo prorrateado ni un cobro de más. |
 | Cargo o abono único | Va en la primera renovación posterior a su fecha (o en la de su fecha si coincide). |
 
 **Cambios ordinarios.** Una suscripción con acuerdo no admite los cambios de la ficha (plan, añadir o retirar
@@ -564,7 +604,9 @@ suscripción (interna y de Stripe), con el mismo Customer; nunca modifica la neg
 **Interruptor apagado con suscripciones ya enlazadas** (`stripeBilling: "off_with_linked"` en el arranque): no se
 inicia ningún cobro ni se envía ningún cambio de condiciones, pero Stripe SIGUE cobrando lo enlazado. Siguen
 funcionando: los webhooks (estado de pago y licencias), la conciliación (sigue comparando y avisando) y el FIN (una
-cancelación interna o la orden de un operador siguen llegando a Stripe; deshacer un fin exige el interruptor). **Para
+cancelación interna o la orden de un operador siguen llegando a Stripe; deshacer un fin exige el interruptor). Al
+terminar una suscripción de Stripe, sus importes únicos negociados aún pendientes se borran del Customer también con el
+interruptor apagado (ver «Importes únicos, por contratación»). **Para
 dejar de cobrar a un cliente hay que programar el fin de SU suscripción**, no apagar el interruptor.
 
 Mientras la contratación está `pending` (sesión abierta, sin cobro) no se toca ninguna licencia: siguen como las dejó
@@ -650,7 +692,7 @@ llamada a Stripe).
 | `GET /v1/products/:id` | Product genérico de partidas a medida | `product_read` | Sí |
 | `GET /v1/subscriptions/:id` | Leer partidas y estado | `subscription_read` | Sí |
 | `GET /v1/subscription_items?subscription=`, `POST /v1/subscription_items/:id` (solo metadatos) | Leer todas las partidas (más de 10) y ponerles su clave | `subscription_read` / `subscription_write` | Lectura sí; escritura **no** |
-| `POST /v1/subscriptions/:id` | Sustituir partidas (`price_data`), programar el fin (`cancel_at_period_end`, `cancel_at`), pausa (`pause_collection` con `resumes_at`) | `subscription_write` | **No** (§5 lo excluye expresamente). El código de compras y de cancelación de autoservicio ya usa esta llamada: puede que la clave real ya lo tenga |
+| `POST /v1/subscriptions/:id` | Sustituir partidas (`price_data`), programar y deshacer el fin (`cancel_at_period_end` con `proration_behavior=none`), pausa (`pause_collection` con `resumes_at`) | `subscription_write` | **No** (§5 lo excluye expresamente). El código de compras y de cancelación de autoservicio ya usa esta llamada: puede que la clave real ya lo tenga |
 | `POST /v1/invoiceitems`, `DELETE /v1/invoiceitems/:id` | Importes únicos y abonos; retirar los pendientes de una suscripción terminada | Escritura de Invoices (`invoice_write`) | **No** (§5 solo da lectura) |
 | `GET /v1/invoiceitems?customer=` | Buscar un importe único por su clave | Lectura de Invoices | Sí (`invoice_read`), por comprobar que cubre los invoice items |
 | `GET /v1/invoices/:id`, `GET /v1/charges/:id`, `GET /v1/events` | Webhooks y conciliación | Lecturas ya usadas | Sí |
@@ -706,13 +748,33 @@ Además: el cobro en pausa (`pause_collection` con `behavior=void`: que no cobre
 siga `active` y que al quitarla no reinicie el ciclo ni cobre lo pausado), y el primer cargo aplazado (`trial_end` en la fecha de inicio, con más de 48 h): factura de
 0 al autorizar, primer cargo completo ese día con los importes únicos, y periodo anclado a esa fecha.
 
+Comprobaciones de la cuarta revisión, **con reloj de pruebas y en modo `flexible`** (el de las suscripciones de Checkout
+negociado; el doble lo imita, pero solo Stripe real lo confirma):
+
+A. `cancel_at` a más de un periodo vista: importe de la última renovación (prorrateado o entero) y `current_period_end`
+   resultante (Elephant ya no lo usa; confirma por qué).
+B. `cancel_at` dentro del periodo en curso con `proration_behavior=none`: sin abono y sin factura.
+C. Deshacer con `cancel_at: ""`, con y sin `proration_behavior=none`: prorrateos y `billing_cycle_anchor` resultantes.
+D. `cancel_at` exactamente en `current_period_end`: sin factura (punto 12).
+E. `cancel_at_period_end=true` (con `proration_behavior=none`) sobre un `cancel_at` posterior, y `false` para deshacerlo
+   dentro del último periodo: sin factura, sin prorrateo y sin mover el ciclo.
+F. `pause_collection` con `void` e invoice items pendientes, y la factura anulada que se los lleva (punto 10).
+G. `resumes_at`: puntualidad (margen de 6 h) y que una pausa nueva con `resumes_at: ""` borra la fecha anterior (sin
+   enviarla, ¿la conserva?).
+H. Sustitución de partidas con `proration_behavior=none` dentro de los 3 días previos y durante la hora en que la factura
+   de renovación está en borrador: que no toque ese borrador.
+I. Invoice items pendientes al cancelar: que sigan en el Customer, que no entren en la factura final ni en las de otra
+   suscripción, que `pending=true` los liste y que se borren con el permiso de escritura de Invoices (punto 14).
+J. Checkout en modo suscripción con `subscription_data.trial_end` e importes únicos: que se cobren al pagar la sesión
+   (factura inicial) y no en la del fin del periodo sin cargo.
+
 Comprobaciones de la tercera revisión (todas con reloj de pruebas; el doble de este repositorio las imita, pero solo
 Stripe real las confirma):
 
 10. `pause_collection` con `behavior=void` y **invoice items pendientes**: que la renovación en pausa los incluya en la
     factura que anula (el doble lo hace así) y que, al reanudar, la copia nueva enviada entre en la primera factura de pago.
 11. **Pausa y su retirada exactamente en la renovación**: pausa puesta 2 días antes de la renovación (que la anule);
-    `resumes_at` un minuto antes de la renovación siguiente (que esa SÍ se cobre y no se anule); y la retirada manual 2
+    `resumes_at` 6 horas antes de la renovación siguiente (que esa SÍ se cobre y no se anule); y la retirada manual 2
     días antes (lo mismo). Que `resumes_at` reanude solo sin tocar el ciclo.
 12. **`cancel_at` exactamente en `current_period_end`**: que Stripe termine sin generar la factura de ese periodo, y que
     `cancel_at: ""` lo deshaga. Además, `cancel_at` posterior al periodo (que cobre las renovaciones intermedias) y
