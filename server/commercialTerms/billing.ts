@@ -776,9 +776,13 @@ export class TermsBillingService {
   private stopNow(t: BillingTarget, remote: RemoteState, detail: SyncDetail | null): boolean {
     // La cuenta es de la CONTRATACIÓN: desde el primer inicio de cobro (también el de una suscripción de Stripe anterior)
     // y descontando lo ya facturado en las anteriores. Nunca negativa
-    const from = detail?.prior?.billingFrom != null && detail.prior.contractFrom != null ? detail.prior : detail;
+    const fromPrior = detail?.prior?.billingFrom != null && detail.prior.contractFrom != null;
+    const from = fromPrior ? detail!.prior! : detail;
     const total = t.endAt !== null && from?.billingFrom != null && from.contractFrom != null ? owedPeriods(from.contractFrom, from.billingFrom, t.endAt, t.interval) : null;
-    const owed = total === null ? null : Math.max(0, total - (detail?.prior?.periods.length ?? 0));
+    // Lo facturado antes solo se descuenta si la cuenta empieza en el inicio de cobro anterior; si empieza en el de esta
+    // suscripción (la anterior no llegó a anotarlo), los periodos ya transcurridos ya quedan fuera y descontarlos otra vez
+    // dejaría cuotas sin cobrar
+    const owed = total === null ? null : Math.max(0, total - (fromPrior ? (detail?.prior?.periods.length ?? 0) : 0));
     return stopsAtRenewal(t.endAt, remote.currentPeriodEnd, detail?.periods?.length ?? 0, owed, t.interval, remote.billingCycleAnchor);
   }
 

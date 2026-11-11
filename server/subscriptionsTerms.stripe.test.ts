@@ -2475,6 +2475,19 @@ describe("séptima revisión independiente: la cuenta es de la contratación y n
     expect(paid()).toHaveLength(6);
   });
 
+  it("si la suscripción anterior no anotó su inicio de cobro, lo ya facturado no se descuenta dos veces", async () => {
+    // Revisión de #796: la cuenta empieza en el inicio de cobro de ESTA suscripción, que ya deja fuera lo transcurrido
+    const { w } = await contract(month(S, 6));
+    const restart = month(S, 2) + 11 * DAY;
+    const detail = { periods: [], billingFrom: restart, contractFrom: S, prior: { periods: ["in_a", "in_b", "in_c"], billingFrom: null, contractFrom: null } };
+    const target = { endAt: month(S, 6), interval: "month" as const };
+    const stop = (renewal: number, invoiced: number) =>
+      (w.billing as unknown as { stopNow(t: unknown, r: unknown, d: unknown): boolean }).stopNow(target, { currentPeriodEnd: renewal, billingCycleAnchor: restart }, { ...detail, periods: Array.from({ length: invoiced }, (_, i) => `in_${i}`) });
+    // Tras el reinicio del 12 de marzo quedan tres periodos completos (12-mar, 12-abr, 12-may): no para antes del tercero
+    expect(stop(month(restart, 1), 1)).toBe(false);
+    expect(stop(month(restart, 2), 2)).toBe(false);
+  });
+
   it("dos reinicios: 6 cobros", async () => {
     const { w, subId, stripeId } = await contract(month(S, 6));
     await renewals(w, stripeId, 1);
