@@ -545,6 +545,15 @@ de Checkout negociado nacen en modo `flexible` (versión de API `2026-09-30.endi
       periodo entero.
   - **Holgura**: `PERIOD_SLACK_MS` (12 h), solo para la hora del día y el cambio de hora entre las fechas del acuerdo y
     las de Stripe. Nunca convierte un tramo corto en un periodo entero.
+  - **La cuenta es de la contratación, no de cada suscripción de Stripe.** Al volver a poner a cobrar tras un fin solo
+    en Stripe, lo facturado en las suscripciones de Stripe anteriores (`sync_detail.prior`, que se arrastra de un estado
+    a otro) se descuenta, y se cuenta desde el primer inicio de cobro. Ejemplo: contrato del 1-ene al 1-jul, cobrados
+    enero, febrero y marzo, cancelado en Stripe el 10-mar y reiniciado el 12-mar: la suscripción nueva cobra 3, y en
+    total son 6. La cuenta nunca es negativa, y la regla de no cobrar un periodo que empiece en el fin sigue valiendo.
+  - **La cuenta no depende solo de los webhooks.** Cerca del fin (a menos de 40 días; 400 en los anuales), la
+    conciliación relee las facturas de la suscripción en Stripe (`GET /v1/invoices?subscription=`, de cualquier estado,
+    también anuladas) y suma a la cuenta las que falten (`billing_periods_recounted`). Así un `invoice.paid` o un
+    `invoice.voided` perdido nunca da un cobro de más. Se lee con el permiso `invoice_read`.
 - **Fin en una renovación** (lo habitual: un acuerdo anual que vence en su fecha): Stripe termina en lugar de renovar y
   no cobra un periodo más.
 - **Fin a mitad de periodo — decisión: nunca se cobra más que el contrato y nunca queda sin cobrar un periodo entero
