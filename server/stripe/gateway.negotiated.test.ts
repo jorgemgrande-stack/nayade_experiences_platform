@@ -124,6 +124,20 @@ describe("Stripe: operaciones del cobro de condiciones personalizadas", () => {
     expect(seen[1].body.automatic_tax).toEqual({ enabled: "true" });
   });
 
+  it("acuerdo sin plan: UNA partida a medida de 44,63 € (sin IVA, mensual, cantidad 1) con Stripe Tax; sin prueba, sin ancla de ciclo y sin prorrateo", async () => {
+    await gw().createNegotiatedCheckoutSession!({ customerId: "cus_x1", lines: [{ productId: "es_terms_custom_service", unitAmount: 4463, currency: "EUR", interval: "month" }], clientReferenceId: "es-terms-9", metadata: { es_negotiated: "1", es_terms_subscription: "9", es_company_id: "3", es_env: "local" }, successUrl: "https://web.example/ok", cancelUrl: "https://web.example/ko", expiresAt: 1_900_000_000, integrationIdentifier: "elephant-source-checkout-rqzmvtak", notice: "Aviso", automaticTax: true }, "es-local-terms-checkout-9-1");
+    const b = seen[0].body;
+    expect(b.line_items).toEqual([{ price_data: { currency: "eur", product: "es_terms_custom_service", unit_amount: "4463", tax_behavior: "exclusive", recurring: { interval: "month" } }, quantity: "1" }]);
+    expect(b.automatic_tax).toEqual({ enabled: "true" });
+    // El impuesto (9,37 €) y el total (54,00 €) los calcula Stripe Tax: aquí solo viaja el neto, sin tipos fijos
+    expect(JSON.stringify(b)).not.toMatch(/tax_rates|5400|937/);
+    // La suscripción empieza al pagar, con un primer periodo completo: nada que lo retrase, lo ancle o lo prorratee
+    expect(b.subscription_data).toEqual({ metadata: { es_negotiated: "1", es_terms_subscription: "9", es_company_id: "3", es_env: "local" } });
+    expect(JSON.stringify(b)).not.toMatch(/trial|billing_cycle_anchor|proration|backdate/);
+    // Nada de plataforma: la sesión cuelga del cliente (empresa) y de la suscripción interna
+    expect(JSON.stringify(b)).not.toMatch(/tenant/);
+  });
+
   it("un objeto del otro modo se rechaza (lectura, escritura, importes y Checkout)", async () => {
     livemode = true;
     await expect(gw().negotiatedSubscription!("sub_x1")).rejects.toThrow(StripeConfigError);

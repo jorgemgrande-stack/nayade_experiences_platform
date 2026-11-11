@@ -189,8 +189,11 @@ describe.skipIf(!URL_)("cobro en Stripe de condiciones personalizadas con MySQL 
     const started = out.find((r) => r.status === "fulfilled") as PromiseFulfilledResult<{ status: string; sessionId: string }>;
     expect(started.value.status).toBe("pending");
     // El Customer es el de la empresa (`stripe_customers`), uno solo
-    const [customers] = await pool.query<mysql.RowDataPacket[]>("SELECT stripe_customer_id FROM stripe_customers WHERE company_id = 4");
+    const [customers] = await pool.query<mysql.RowDataPacket[]>("SELECT stripe_customer_id, tenant_id FROM stripe_customers WHERE company_id = 4");
     expect(customers).toHaveLength(1);
+    // Empresa sin plataforma: el cobro cuelga de la empresa y de la suscripción interna, nunca de un tenant
+    expect(customers[0].tenant_id).toBeNull();
+    expect((await subs.must(subId)).tenantId).toBeNull();
     expect(await neg.link(subId)).toBeNull();
     // El cliente paga: llegan los webhooks (y se repiten)
     const stripeId = gw.completeNegotiatedSession(started.value.sessionId);

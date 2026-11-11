@@ -124,17 +124,28 @@ export const mapStripeStatus = (s: GwSubscription["status"]): "active" | "past_d
   s === "active" || s === "trialing" ? "active" : s === "past_due" ? "past_due" : s === "unpaid" || s === "paused" ? "unpaid" : s === "canceled" || s === "incomplete_expired" ? "canceled" : null;
 
 /**
- * Impuesto de una factura de Stripe frente al tipo pactado. Con Stripe Tax el tipo lo decide Stripe según el cliente:
- * aquí se comprueba que el resultado es el que dice el acuerdo (un mismo tipo: base × tipo, con un céntimo de holgura
- * por línea; tipos distintos: entre el menor y el mayor). null: no hay nada que comprobar (pruebas, sin impuestos).
+ * Una factura de Stripe frente a lo pactado: la base (sin impuestos) y el impuesto.
+ *  - Base: si se sabe cuál debía ser (`expectedSubtotal`: el primer pago ofrecido, o la cuota vigente más los importes
+ *    únicos de esa factura), tiene que ser EXACTAMENTE esa → si no, `amount_mismatch`.
+ *  - Impuesto (solo con la política live): con Stripe Tax el tipo lo decide Stripe según el cliente; aquí se comprueba
+ *    que el resultado es el del acuerdo. Con un único tipo pactado, el impuesto y el total tienen que ser exactamente
+ *    los que calcula el acuerdo (base × tipo, redondeado una vez: 44,63 € al 21 % son 9,37 € y 54,00 € en total); un
+ *    céntimo de diferencia ya es `tax_mismatch`. Con tipos distintos en la misma factura no se puede repartir la base:
+ *    el impuesto debe quedar entre el del tipo menor y el del mayor.
+ * null: no hay nada que comprobar (pruebas sin impuestos y sin base esperada).
  */
-export function invoiceTaxCheck(policy: StripeTaxPolicy | null, ratesBp: number[], inv: Pick<GwInvoice, "subtotal" | "taxCents" | "lines">): "ok" | "tax_unknown" | "tax_mismatch" | null {
-  if (policy !== LIVE_TAX_TREATMENT || !ratesBp.length) return null;
+export function invoiceTaxCheck(policy: StripeTaxPolicy | null, ratesBp: number[], inv: Pick<GwInvoice, "subtotal" | "taxCents" | "lines" | "total">, expectedSubtotal: number | null = null): "ok" | "amount_mismatch" | "tax_unknown" | "tax_mismatch" | null {
+  if (expectedSubtotal !== null && inv.subtotal !== expectedSubtotal) return "amount_mismatch";
+  if (policy !== LIVE_TAX_TREATMENT || !ratesBp.length) return expectedSubtotal !== null ? "ok" : null;
   if (inv.taxCents === null || inv.taxCents === undefined || inv.subtotal === null) return "tax_unknown";
+  const taxOf = (bp: number) => Math.round((inv.subtotal! * bp) / 10_000);
+  if (new Set(ratesBp).size === 1) {
+    const tax = taxOf(ratesBp[0]);
+    return inv.taxCents === tax && (inv.total === null || inv.total === undefined || inv.total === inv.subtotal + tax) ? "ok" : "tax_mismatch";
+  }
   const slack = Math.max(1, inv.lines?.length ?? 1);
-  const lo = Math.round((inv.subtotal * Math.min(...ratesBp)) / 10_000);
-  const hi = Math.round((inv.subtotal * Math.max(...ratesBp)) / 10_000);
-  return inv.taxCents >= Math.min(lo, hi) - slack && inv.taxCents <= Math.max(lo, hi) + slack ? "ok" : "tax_mismatch";
+  const bounds = ratesBp.map(taxOf);
+  return inv.taxCents >= Math.min(...bounds) - slack && inv.taxCents <= Math.max(...bounds) + slack ? "ok" : "tax_mismatch";
 }
 
 export class NegotiatedBillingService {
@@ -531,24 +542,26 @@ export class NegotiatedBillingService {
     for (const inv of invoices) {
       if (inv.subscriptionId !== sub.id || inv.customerId !== sub.customerId) throw new StripeMismatchError("La factura no es de la suscripción negociada");
       const isPaid = inv.status === "paid";
+      const known = await this.d.store.invoice(inv.id);
+      // Solo la primera vez que consta pagada se contrasta con lo pactado (y se avisa): repetir el evento no repite nada
+      const created = isPaid && known?.status !== "paid";
       const rates = plan ? Array.from(new Set([...plan.items.map((i) => i.taxRateBp), ...plan.oneOffs.filter((o) => o.due).map((o) => o.taxRateBp)])) : [];
-      const taxCheck = isPaid ? invoiceTaxCheck(this.policy, rates, inv) : null;
-      const { previous } = await this.d.store.upsertInvoice(
-        { billingId: row.id, subscriptionId: row.subscriptionId, stripeInvoiceId: inv.id, status: inv.status ?? "unknown", billingReason: inv.billingReason, number: inv.number ?? null, currency: inv.currency, subtotalCents: inv.subtotal, taxCents: inv.taxCents ?? null, totalCents: inv.total ?? null, amountPaidCents: inv.amountPaid, periodStart: inv.periodStart === null ? null : inv.periodStart * 1000, taxCheck, coverageLost: (await this.d.store.invoice(inv.id))?.coverageLost ?? false, paidAt: isPaid ? this.now() : null },
+      const expected = created ? await this.expectedSubtotal(row, sub, plan, inv) : null;
+      const taxCheck = created ? invoiceTaxCheck(this.policy, rates, inv, expected) : null;
+      await this.d.store.upsertInvoice(
+        { billingId: row.id, subscriptionId: row.subscriptionId, stripeInvoiceId: inv.id, status: inv.status ?? "unknown", billingReason: inv.billingReason, number: inv.number ?? null, currency: inv.currency, subtotalCents: inv.subtotal, taxCents: inv.taxCents ?? null, totalCents: inv.total ?? null, amountPaidCents: inv.amountPaid, periodStart: inv.periodStart === null ? null : inv.periodStart * 1000, taxCheck, coverageLost: known?.coverageLost ?? false, paidAt: isPaid ? this.now() : null },
         this.now(),
       );
       if (!isPaid) continue;
-      const created = previous?.status !== "paid";
       if (created) {
         opsLog("info", "CommercialTerms", "billing_payment_verified", { subscriptionId: row.subscriptionId, invoiceId: inv.id, reason: inv.billingReason, ...(inv.taxCents != null ? { taxCents: inv.taxCents } : {}) });
         if (plan && inv.currency !== plan.currency.toUpperCase()) throw new StripeMismatchError("La moneda de la factura no es la de la contratación");
-        // Primer pago: exactamente lo ofrecido en la sesión (neto, antes de impuestos)
-        if (inv.billingReason === "subscription_create" && row.checkout && inv.subtotal !== row.checkout.firstChargeCents) {
-          opsLog("error", "CommercialTerms", "billing_first_invoice_mismatch", { subscriptionId: row.subscriptionId, invoiceId: inv.id, expected: row.checkout.firstChargeCents, invoiced: inv.subtotal });
+        if (taxCheck === "amount_mismatch") {
+          // La base facturada no es la pactada (primer pago ofrecido, o cuota vigente más importes únicos)
+          opsLog("error", "CommercialTerms", "billing_invoice_amount_mismatch", { subscriptionId: row.subscriptionId, invoiceId: inv.id, reason: inv.billingReason, expected, invoiced: inv.subtotal });
           recordFailure("stripe.negotiated_invoice_mismatch");
-        }
-        if (taxCheck && taxCheck !== "ok") {
-          opsLog("warn", "CommercialTerms", "billing_invoice_tax_mismatch", { subscriptionId: row.subscriptionId, invoiceId: inv.id, problem: taxCheck, taxCents: inv.taxCents ?? null, subtotal: inv.subtotal, ratesBp: rates });
+        } else if (taxCheck && taxCheck !== "ok") {
+          opsLog("warn", "CommercialTerms", "billing_invoice_tax_mismatch", { subscriptionId: row.subscriptionId, invoiceId: inv.id, problem: taxCheck, taxCents: inv.taxCents ?? null, subtotal: inv.subtotal, total: inv.total ?? null, ratesBp: rates });
           recordFailure("stripe.negotiated_tax_mismatch");
         }
         await this.history(plan?.termsId ?? row.checkout?.termsId ?? null, "billing_payment", `Factura de Stripe cobrada (${inv.billingReason ?? "sin motivo"})`, { subscriptionId: row.subscriptionId, invoiceId: inv.id, number: inv.number ?? null, subtotalCents: inv.subtotal, taxCents: inv.taxCents ?? null, totalCents: inv.total ?? null, taxCheck }, this.actor);
@@ -557,6 +570,17 @@ export class NegotiatedBillingService {
       if (!out || inv.id === sub.latestInvoiceId) out = { created, invoiceId: inv.id, reason: inv.billingReason };
     }
     return out;
+  }
+
+  /**
+   * Base (sin impuestos) que debía tener la factura: el primer pago ofrecido en la sesión o, en una renovación, la
+   * cuota vigente más los importes únicos nuestros que Stripe metió en ESA factura. null: no se puede saber.
+   */
+  private async expectedSubtotal(row: TermsBillingRow, sub: GwSubscription, plan: BillingPlan | null, inv: GwInvoice): Promise<number | null> {
+    if (inv.billingReason === "subscription_create") return row.checkout?.firstChargeCents ?? null;
+    if (inv.billingReason !== "subscription_cycle" || !plan || plan.termsId === null || !this.d.gateway.invoiceItemsOfCustomer) return null;
+    const oneOffs = (await this.d.gateway.invoiceItemsOfCustomer(sub.customerId)).filter((i) => i.invoiceId === inv.id && i.metadata.es_stripe_subscription === sub.id);
+    return plan.recurringNetCents + oneOffs.reduce((a, i) => a + i.amount, 0);
   }
 
   /** Reembolso o disputa de un cargo de la suscripción (cargo, factura y suscripción ya releídos en Stripe). */
@@ -626,7 +650,12 @@ export class NegotiatedBillingService {
           if (!r.available) continue;
         }
         out.checked++;
-        if (!r.consistent) out.drifted.push({ subscriptionId: row.subscriptionId, differences: r.differences.map((x) => ({ key: x.key, kind: x.kind })) });
+        const differences: Array<{ key: string; kind: string }> = r.differences.map((x) => ({ key: x.key, kind: x.kind }));
+        // La última factura cobrada: si su base o su impuesto no son los pactados, cuenta como diferencia hasta que
+        // otra factura posterior salga bien
+        const last = row.lastPaidInvoiceId ? await this.d.store.invoice(row.lastPaidInvoiceId) : null;
+        if (last?.taxCheck && last.taxCheck !== "ok") differences.push({ key: `factura:${last.stripeInvoiceId}:${last.taxCheck}`, kind: "invoice" });
+        if (differences.length) out.drifted.push({ subscriptionId: row.subscriptionId, differences });
       } catch (e) {
         out.errors++;
         opsLog("warn", "CommercialTerms", "billing_reconcile_failed", { subscriptionId: row.subscriptionId, error: e instanceof Error ? e.name : "error" });
@@ -715,8 +744,10 @@ export class NegotiatedBillingService {
 
   /** Devuelve SOLO las licencias que suspendió el impago (no las que bloqueó un operador) y las alinea con lo contratado. */
   private async restoreLicences(row: TermsBillingRow, reason: string) {
+    // Nada se suspendió (p. ej. un acuerdo sin plan ni plataforma: no hay licencias): nada que devolver ni que alinear
+    if (!row.suspendedCapabilities?.length) return;
     const tenantId = await this.tenantOf(row.subscriptionId);
-    if (this.d.capabilities && tenantId && row.suspendedCapabilities?.length) {
+    if (this.d.capabilities && tenantId) {
       const source = `subscription:${row.subscriptionId}`;
       const mine = new Set(row.suspendedCapabilities.map((c) => `${c.capabilityId}\u0000${c.siteId ?? ""}`));
       const back = (await this.d.capabilities.list(tenantId)).filter((g) => g.source === source && g.status === "suspended" && mine.has(`${g.capabilityId}\u0000${g.siteId ?? ""}`));

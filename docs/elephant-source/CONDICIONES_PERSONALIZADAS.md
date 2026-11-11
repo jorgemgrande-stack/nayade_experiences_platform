@@ -235,8 +235,10 @@ La línea de arranque `{"ctx":"CommercialTerms", …}` dice el estado: `stripeBi
   `taxRateBp = null` («lo decide Stripe en cada factura») y la comparación de partidas **no compara el tipo cuando es
   null**. A cambio: (a) la conciliación comprueba que la suscripción calcula el impuesto como dice la política
   (`tax.mode` frente a `tax.expected`; si no, diferencia `impuestos:…`), y (b) el impuesto REAL de cada factura
-  cobrada se contrasta con el tipo pactado (base × tipo, con un céntimo de holgura por línea) y se guarda en
-  `commercial_terms_billing_invoices.tax_check`; si no cuadra, alerta `stripe.negotiated_tax_mismatch`. Con tipos fijos
+  cobrada se contrasta con lo pactado (la base esperada y, con un único tipo, el impuesto y el total exactos del
+  acuerdo) y se guarda en `commercial_terms_billing_invoices.tax_check`; si no cuadra, alerta
+  `stripe.negotiated_invoice_mismatch` (base) o `stripe.negotiated_tax_mismatch` (impuesto), y cuenta como diferencia
+  en la conciliación. Con tipos fijos
   en la partida (si alguna vez se usan) la comparación sigue siendo exacta.
 - En live, antes de abrir el pago se pasa el **mismo control de elegibilidad fiscal** que el Checkout ordinario, con
   los datos fiscales de la empresa del CRM (empresa, país, código postal, NIF, domicilio; VIES si el escenario es de
@@ -299,6 +301,61 @@ suscripción interna (la sincronización, o la conciliación en su siguiente pas
 Mientras la contratación está `pending` (sesión abierta, sin cobro) no se toca ninguna licencia: siguen como las dejó
 el contrato. Es el mismo riesgo asumido que con la facturación en simulación.
 
+### Acuerdos sin plan Core (solo partidas a medida, sin plataforma ni licencias)
+
+Requisito del propietario (11/11/2026): un acuerdo formado solo por partidas económicas a medida, sin plan de Elephant
+Core, sin plataforma (tenant) y sin licencias, se cobra entero por Stripe: al empezar y en cada renovación. Caso de
+referencia: una partida recurrente de **44,63 € netos + 21 % = 54,00 € al mes**, y nada más.
+
+El cobro no depende de que exista un plan: **todo cuelga de la EMPRESA y de la suscripción interna (su acuerdo)**.
+
+- **Sin catálogo.** La partida viaja como precio en línea sobre el Product genérico de servicios a medida; no hace
+  falta ningún Product ni Price de catálogo enlazado, y en ningún punto se supone una partida de plan (sesión de pago,
+  `current()`, conciliación, estado).
+- **Sin plataforma.** El Customer de Stripe es el de la empresa (`stripe_customers.tenant_id` queda NULL); los metadatos
+  de la sesión y de la suscripción llevan la empresa, la suscripción interna y el acuerdo, nunca un tenant. Los
+  webhooks de estas suscripciones no pasan por el circuito de pedidos (que es el que busca plataforma): no hay avisos
+  de «empresa desconocida» ni eventos descartados.
+- **Sin licencias ni altas.** El cobro no concede nada: no llama al registro de licencias, ni a la aplicación de
+  licencias de los acuerdos, ni al aprovisionamiento, ni escribe límites. Sin plataforma, las reglas de «las licencias
+  siguen al pago» no tienen nada que tocar y no fallan: el impago solo cambia el estado contractual de la contratación
+  (`past_due` → `suspended` → `active`, o `canceled`), que queda en el historial del acuerdo.
+- **Importe.** A Stripe se envía **4463 céntimos, sin impuestos incluidos (`tax_behavior=exclusive`), mensual, cantidad
+  1**, con `automatic_tax`. El impuesto (9,37 €) y el total (54,00 €) **los calcula Stripe Tax**, no se envían. Cada
+  factura cobrada se contrasta con lo pactado: la base tiene que ser exactamente la esperada (el primer pago ofrecido,
+  o la cuota vigente más los importes únicos de esa factura) y, con un único tipo pactado, el impuesto y el total
+  exactamente los del acuerdo (base × tipo, redondeado una vez). Un céntimo de diferencia se guarda como
+  `amount_mismatch` o `tax_mismatch` en `commercial_terms_billing_invoices.tax_check`, abre su alerta y aparece en la
+  conciliación como diferencia de tipo `invoice` hasta que una factura posterior salga bien.
+- **Primer periodo.** La sesión no lleva periodo de prueba, ni ancla de ciclo, ni prorrateo: la suscripción de Stripe
+  empieza cuando el cliente completa el pago, con un primer periodo COMPLETO y sin línea de prorrateo. La puesta en
+  cobro solo se admite con el acuerdo ya en vigor, así que el ciclo de Stripe empieza en el inicio del acuerdo o
+  después (el día en que el cliente paga), nunca antes. Los días entre el inicio del acuerdo y el pago no se cobran.
+
+**Secuencia exacta** (los pasos 1–3 ya existían; el cobro empieza en el 4):
+
+1. El administrador prepara el acuerdo (solo partidas a medida) y lo envía a aceptación
+   (`POST /commercial-terms/:id/acceptance`).
+2. El cliente lo acepta en la página pública: se firma el contrato y se activan las condiciones (se crea la
+   suscripción interna, sin plataforma). Aquí todavía no se cobra nada.
+3. Con el interruptor encendido, `GET /subscriptions/:id/terms/billing/stripe` dice `canStart: true`.
+4. El administrador pulsa «poner a cobrar» (`POST …/terms/billing/start`): se resuelve o crea el Customer de la
+   empresa y se abre la sesión de Checkout. La respuesta trae la `url`.
+5. El administrador entrega la `url` al cliente (hoy a mano; no se envía sola). El cliente pone y autoriza su método de
+   pago en la página alojada por Stripe y paga el primer periodo (44,63 € + el impuesto que calcule Stripe).
+6. Stripe emite `checkout.session.completed`, `customer.subscription.created` e `invoice.paid`: el webhook de siempre
+   enlaza la suscripción de Stripe con la interna, registra la factura y deja la contratación `active`.
+7. Cada mes Stripe renueva y cobra solo; cada `invoice.paid` registra la factura y avanza el periodo interno. Un cobro
+   fallido sigue los reintentos de Stripe y las reglas de estado de arriba.
+
+Pruebas: `T` «acuerdos sin plan Core…» (4 pruebas) y `G` «acuerdo sin plan: UNA partida a medida de 44,63 €…». La regla
+que hoy impide activar un acuerdo sin plan Core la retira otra rama (`feat/condiciones-sin-core`); el cobro no depende
+de ella y las pruebas simulan su resultado.
+
+Solo se puede confirmar con Stripe real: que Stripe Tax da 9,37 € para ese cliente (depende de su dirección, de su
+NIF y del código fiscal del Product genérico) y cómo redondea con varias líneas en una factura (por línea o por
+factura: con una sola línea no hay diferencia).
+
 ### Conciliación
 
 - `GET /subscriptions/:id/terms/billing`: compara lo que rige hoy con lo que Stripe tiene: partidas, importes,
@@ -309,7 +366,7 @@ el contrato. Es el mismo riesgo asumido que con la facturación en simulación.
   (`terms_billing_reconcile`). Una diferencia abre la alerta `stripe.negotiated_drift`; **nunca se corrige sola**
   (salvo programar el fin): la corrige un operador al sincronizar.
 - Alertas nuevas (`server/stripe/alerts.ts`): `stripe.negotiated_drift`, `stripe.negotiated_duplicate`,
-  `stripe.negotiated_invoice_mismatch` (el primer pago no es el ofrecido) y `stripe.negotiated_tax_mismatch`.
+  `stripe.negotiated_invoice_mismatch` (la base de una factura no es la pactada) y `stripe.negotiated_tax_mismatch`.
 
 ### Permisos de la clave restringida
 
@@ -457,7 +514,7 @@ Se completa en cada fase. `C` = `server/subscriptionsTerms.compute.test.ts` (cá
 (MySQL real).
 
 Cobro en Stripe con la pasarela real (fase 4), siempre sin red ni claves: `T` = `server/subscriptionsTerms.stripe.test.ts`
-(cerrojos, puesta en cobro sin duplicados, enlace por webhook, estado de pago, licencias, conciliación e idempotencia, con
+(cerrojos, puesta en cobro sin duplicados, enlace por webhook, estado de pago, licencias, acuerdos sin plan Core, conciliación e idempotencia, con
 el procesador de webhooks y la conciliación reales), `G` = `server/stripe/gateway.negotiated.test.ts` (qué se envía a
 Stripe, con el SDK contra un servidor local), `H` = `server/controlPlane.termsStripeBilling.test.ts` (por HTTP con la
 aplicación real: interruptor, permisos, webhook firmado) y `N` = `server/subscriptionsTerms.stripe.mysql.test.ts`

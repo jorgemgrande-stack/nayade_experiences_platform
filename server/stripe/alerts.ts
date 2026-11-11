@@ -46,7 +46,7 @@ export const STRIPE_FAILURE_RULES: Record<string, FailureRule> = {
   // Condiciones comerciales personalizadas cobradas en Stripe (nunca se corrige solo: lo revisa el equipo)
   "stripe.negotiated_drift": once("Stripe: una suscripción con condiciones personalizadas no coincide con lo pactado (partidas, importes, impuestos o estado)"),
   "stripe.negotiated_duplicate": once("Stripe: segunda suscripción para una contratación con condiciones personalizadas ya enlazada (no se enlaza: revisar y cancelar la sobrante)"),
-  "stripe.negotiated_invoice_mismatch": once("Stripe: el primer pago de unas condiciones personalizadas no es el importe ofrecido al cliente"),
+  "stripe.negotiated_invoice_mismatch": once("Stripe: una factura de condiciones personalizadas no es por el importe pactado (primer pago ofrecido o cuota vigente)"),
   "stripe.negotiated_tax_mismatch": once("Stripe: el impuesto de una factura de condiciones personalizadas no corresponde al tipo pactado"),
   // Activación sin pago de Stripe en el entorno real: cada una queda a la vista del equipo (auditoría)
   "orders.admin_approval_live": once("Pedido activado por aprobación administrativa (sin pago de Stripe) en el entorno real: revisar la justificación", "warning"),

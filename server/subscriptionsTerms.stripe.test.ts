@@ -52,6 +52,9 @@ let catalogPort: ReturnType<typeof catalogFromWebStore>;
 const P: Record<string, number> = {};
 /** Llamadas al circuito ORDINARIO (pedidos y orquestador): deben quedarse a cero con las contrataciones negociadas. */
 let ordinary: string[];
+/** Llamadas al registro de licencias y a la aplicación de licencias de los acuerdos hechas por el cobro. */
+let capabilityCalls: string[];
+let licenceCalls: number[];
 
 beforeEach(async () => {
   clock = T0;
@@ -83,6 +86,8 @@ beforeEach(async () => {
   companies = new Map();
   for (const id of [1, 2, 3]) companies.set(id, { id, name: `Empresa ${id}`, legalName: `Empresa ${id} SL`, taxId: "B12345674", address: "Calle Mayor 1", city: "Madrid", postalCode: "28001", country: "ES", billingEmail: `facturas${id}@example.test`, tenantId: null });
   ordinary = [];
+  capabilityCalls = [];
+  licenceCalls = [];
   alerts = new FailureAlerts({ rules: STRIPE_FAILURE_RULES });
   configureFailureAlerts(alerts);
 });
@@ -121,7 +126,8 @@ function world(o: { enabled?: boolean; mode?: StripeMode; taxPolicy?: StripeTaxP
     subscriptionStore: store,
     subscriptions: subs,
     crmStore: { get: async (_t: string, id: number) => companies.get(id) ?? null, list: async () => [] } as never,
-    capabilities: caps,
+    capabilities: { list: (t: string) => (capabilityCalls.push(`list:${t}`), caps.list(t)), apply: (t: string, c: never, m: never) => (capabilityCalls.push(`apply:${t}`), caps.apply(t, c, m)) },
+    licences: { ensure: async (id: number) => void licenceCalls.push(id) },
     orderBilled: o.orderBilled,
     urls: URLS,
     namespace: NS,
@@ -425,7 +431,7 @@ describe("live: impuestos como el resto del cobro (importes sin IVA + Stripe Tax
 
   it("comprobación del impuesto de una factura frente al tipo pactado", () => {
     expect(invoiceTaxCheck("stripe_tax_exclusive", [2100], { subtotal: 12900, taxCents: 2709, lines: [] })).toBe("ok");
-    expect(invoiceTaxCheck("stripe_tax_exclusive", [2100], { subtotal: 12900, taxCents: 2710, lines: [] })).toBe("ok");
+    expect(invoiceTaxCheck("stripe_tax_exclusive", [2100], { subtotal: 12900, taxCents: 2710, lines: [] })).toBe("tax_mismatch");
     expect(invoiceTaxCheck("stripe_tax_exclusive", [2100], { subtotal: 12900, taxCents: 0, lines: [] })).toBe("tax_mismatch");
     expect(invoiceTaxCheck("stripe_tax_exclusive", [2100, 1000], { subtotal: 10000, taxCents: 1500, lines: [] })).toBe("ok");
     expect(invoiceTaxCheck("stripe_tax_exclusive", [2100], { subtotal: 12900, taxCents: null, lines: [] })).toBe("tax_unknown");
@@ -842,5 +848,158 @@ describe("errores de la API de puesta en cobro", () => {
     const a = await agreed(1);
     await expect(w.neg.setCancel(a.subId, true, A)).rejects.toMatchObject({ code: "invalid_state" });
     expect(await w.neg.status(a.subId)).toMatchObject({ enabled: true, canStart: true, blockers: [], billing: null, invoices: [] });
+  });
+});
+
+describe("acuerdos sin plan Core: solo partidas a medida, sin plataforma ni licencias", () => {
+  const fiscal = { scenarios: new Set(["business:es_mainland"]), taxExpectations: new Map([["business:es_mainland", "taxed"]]), countries: new Map(), consumerRates: new Map() } as unknown as EligibilityConfig;
+  /** 44,63 € netos al mes + 21 % = 54,00 € exactos. */
+  const SERVICE = (): TermsInput => ({ pricingMode: "per_item", presentation: "breakdown", reason: "Servicio a medida sin plataforma", lines: [custom("Servicio gestionado", 4463, { concept: "professional_service" })] });
+
+  /**
+   * Suscripción puramente económica: UNA partida a medida recurrente, sin plan, sin plataforma (tenant) y sin
+   * licencias. La regla «necesita un plan Core» la retira otra rama; aquí se simula su resultado (la composición sin
+   * plan se admite) para probar el cobro, que no depende de ella.
+   */
+  async function planless(w: World, companyId = 1) {
+    void w;
+    subs.checkComposition = async () => undefined;
+    const a = await agreed(companyId, SERVICE());
+    const sub = await subs.must(a.subId);
+    const live = (await store.items(a.subId)).filter((i) => i.effectiveFrom <= clock && (i.effectiveTo === null || i.effectiveTo > clock));
+    // Sin plan, sin plataforma: solo la partida a medida
+    expect(sub.tenantId).toBeNull();
+    expect(live.map((i) => [i.family, i.productKey.startsWith("custom:"), i.activationKind, i.lineAmountCents ?? i.unitAmountCents])).toEqual([["service", true, "none", 4463]]);
+    return a;
+  }
+
+  it("la sesión de pago lleva solo la partida a medida: 4463 céntimos sin IVA, mensual, sobre el Product genérico, con Stripe Tax; no hace falta catálogo ni plataforma", async () => {
+    gw.addProduct({ id: CUSTOM_SERVICE_PRODUCT_ID, name: "Servicio a medida" });
+    // Ni un solo Price o Product de catálogo enlazado: no se necesita ninguno
+    stripeStore.prices.clear();
+    const w = world({ mode: "live", fiscal });
+    const a = await planless(w);
+    const s = await w.neg.start(a.subId, A);
+    expect(s).toMatchObject({ status: "pending", currency: "EUR", recurringCents: 4463, firstChargeCents: 4463, taxTreatment: "stripe_tax_exclusive", deferredCredits: [] });
+    const input = sessionCreates()[0].input as NegotiatedCheckoutInput;
+    expect(input.lines).toEqual([{ productId: CUSTOM_SERVICE_PRODUCT_ID, unitAmount: 4463, currency: "EUR", interval: "month" }]);
+    expect(input.automaticTax).toBe(true);
+    // Todo cuelga de la EMPRESA y de la suscripción interna: ningún dato de plataforma en Stripe
+    expect(input.metadata).toEqual({ es_negotiated: "1", es_terms_subscription: String(a.subId), es_terms: String(a.termsId), es_company_id: "1", es_env: NS, es_tax_treatment: "stripe_tax_exclusive" });
+    expect(input.clientReferenceId).toBe(`es-terms-${a.subId}`);
+    expect((gw.calls.find((c) => c.op === "customers.create")!.input as { metadata: Record<string, string> }).metadata).toEqual({ es_company_id: "1", es_env: NS, es_buyer_type: "business" });
+    expect(await stripeStore.customerByCompany(1)).toMatchObject({ companyId: 1, tenantId: null });
+    // Ni periodo de prueba, ni ancla de ciclo, ni prorrateo: la sesión no tiene ningún parámetro para ello
+    expect(Object.keys(input).sort()).toEqual(["automaticTax", "cancelUrl", "clientReferenceId", "customerId", "expiresAt", "integrationIdentifier", "lines", "metadata", "notice", "successUrl"]);
+  });
+
+  it("primer cobro y renovaciones: 44,63 + 9,37 = 54,00 € exactos, conciliados con el acuerdo y la empresa; cero licencias, cero plataformas, cero avisos", async () => {
+    gw.addProduct({ id: CUSTOM_SERVICE_PRODUCT_ID, name: "Servicio a medida" });
+    gw.invoiceTaxBp = 2100;
+    const w = world({ mode: "live", fiscal });
+    const a = await planless(w);
+    const { stripeId } = await started(w, a.subId);
+    const r = await row(a.subId);
+    expect(r).toMatchObject({ status: "active", companyId: 1, stripeSubscriptionId: stripeId });
+    // Primera factura: periodo completo, sin línea de prorrateo, 54,00 €
+    const first = gw.invoices.get(r.lastPaidInvoiceId!)!;
+    expect(first).toMatchObject({ billingReason: "subscription_create", subtotal: 4463, taxCents: 937, total: 5400, amountPaid: 5400 });
+    expect(first.lines!.every((l) => !l.proration)).toBe(true);
+    expect((await billingStore.invoices(r.id))[0]).toMatchObject({ subtotalCents: 4463, taxCents: 937, totalCents: 5400, taxCheck: "ok" });
+    // La partida a medida recibe su clave (una sustitución sin prorrateo) y lo pactado coincide con Stripe
+    expect(itemWrites()).toHaveLength(1);
+    expect(gw.negotiated.get(stripeId)!.items.map((i) => [i.productId, i.unitAmount, i.quantity, i.interval, !!i.metadata.es_line])).toEqual([[CUSTOM_SERVICE_PRODUCT_ID, 4463, 1, "month", true]]);
+    expect(await w.billing.reconcile(a.subId)).toMatchObject({ available: true, consistent: true, plan: { recurringNetCents: 4463 } });
+    // Tres renovaciones mensuales: siempre 54,00 €, registradas en el acuerdo
+    for (let n = 0; n < 3; n++) {
+      clock = (await subs.must(a.subId)).currentPeriodEnd + 60_000;
+      const inv = gw.chargeNegotiatedPeriod(stripeId);
+      await deliver(w);
+      expect(gw.invoices.get(inv)).toMatchObject({ billingReason: "subscription_cycle", subtotal: 4463, taxCents: 937, total: 5400 });
+      expect((await billingStore.invoice(inv))!).toMatchObject({ status: "paid", totalCents: 5400, taxCheck: "ok", subscriptionId: a.subId });
+    }
+    expect((await termsStore.events({ subscriptionId: a.subId })).filter((e) => e.kind === "billing_payment")).toHaveLength(4);
+    clock += 20 * 60_000;
+    expect((await w.reconciler.tick()).negotiated).toMatchObject({ checked: 1, drifted: [], errors: 0 });
+    // Ningún evento perdido ni ignorado, ninguna alerta, y nada del circuito de pedidos, plataformas o licencias
+    expect(Array.from(stripeStore.events.values()).map((e) => e.status).filter((x) => x !== "processed")).toEqual([]);
+    for (const kind of ["stripe.event_mismatch", "stripe.negotiated_tax_mismatch", "stripe.negotiated_invoice_mismatch", "stripe.negotiated_drift", "stripe.namespace_mismatch"]) expect(alerts.count(kind)).toBe(0);
+    expect(ordinary).toEqual([]);
+    expect(licenceCalls).toEqual([]);
+    expect(capabilityCalls).toEqual([]);
+    expect((await subs.must(a.subId)).tenantId).toBeNull();
+    expect(await stripeStore.customerByCompany(1)).toMatchObject({ tenantId: null });
+    expect((await w.neg.publicStatus((await row(a.subId)).sessionId!, "plataforma.example"))).toEqual({ state: "ready", message: "Tu empresa está lista." });
+  });
+
+  it("impago, gracia, suspensión y recuperación: solo cambia el estado contractual; sin licencias que tocar no falla ni escribe nada", async () => {
+    gw.addProduct({ id: CUSTOM_SERVICE_PRODUCT_ID, name: "Servicio a medida" });
+    gw.invoiceTaxBp = 2100;
+    const w = world({ mode: "live", fiscal });
+    const a = await planless(w);
+    const { stripeId } = await started(w, a.subId);
+    const failed = gw.chargeNegotiatedPeriod(stripeId, "open");
+    await deliver(w);
+    expect(await row(a.subId)).toMatchObject({ status: "past_due", graceEndsAt: clock + 7 * DAY });
+    clock += 7 * DAY + 60_000;
+    await w.reconciler.tick();
+    expect(await row(a.subId)).toMatchObject({ status: "suspended", suspendedCapabilities: [] });
+    // Stripe reintenta y cobra la misma factura
+    gw.invoices.set(failed, { ...gw.invoices.get(failed)!, status: "paid", amountPaid: 5400 });
+    gw.updateSubscription(stripeId, { status: "active" });
+    gw.emit("invoice.paid", "invoice", failed);
+    await deliver(w);
+    expect(await row(a.subId)).toMatchObject({ status: "active", graceEndsAt: null, lastPaidInvoiceId: failed });
+    // Fin en Stripe: la contratación termina; tampoco hay nada que dejar en solo lectura
+    gw.updateSubscription(stripeId, { status: "canceled" });
+    gw.emit("customer.subscription.deleted", "subscription", stripeId);
+    await deliver(w);
+    expect((await row(a.subId)).status).toBe("canceled");
+    expect((await subs.must(a.subId)).cancelAt).not.toBeNull();
+    expect(capabilityCalls).toEqual([]);
+    expect(licenceCalls).toEqual([]);
+    expect(ordinary).toEqual([]);
+    expect(Array.from(stripeStore.events.values()).map((e) => e.status).filter((x) => x !== "processed")).toEqual([]);
+    expect((await termsStore.events({ subscriptionId: a.subId })).filter((e) => e.kind === "billing_state").map((e) => e.reason)).toEqual(["Cobro en Stripe: pending → active", "Cobro en Stripe: active → past_due", "Cobro en Stripe: past_due → suspended", "Cobro en Stripe: suspended → active", "Cobro en Stripe: active → canceled"]);
+  });
+
+  it("una factura cuyo total no es el esperado (54,00 €) se avisa y aparece en la conciliación, por un céntimo o por la base", async () => {
+    gw.addProduct({ id: CUSTOM_SERVICE_PRODUCT_ID, name: "Servicio a medida" });
+    gw.invoiceTaxBp = 2100;
+    const w = world({ mode: "live", fiscal });
+    const a = await planless(w);
+    const { stripeId } = await started(w, a.subId);
+    // Stripe Tax aplica otro tipo: 44,63 + 9,82 = 54,45 €
+    gw.invoiceTaxBp = 2200;
+    const wrongTax = gw.chargeNegotiatedPeriod(stripeId);
+    await deliver(w);
+    expect(gw.invoices.get(wrongTax)!.total).toBe(5445);
+    expect((await billingStore.invoice(wrongTax))!.taxCheck).toBe("tax_mismatch");
+    expect(alerts.count("stripe.negotiated_tax_mismatch")).toBe(1);
+    clock += 20 * 60_000;
+    const r = await w.reconciler.tick();
+    expect(r.negotiated!.drifted).toEqual([{ subscriptionId: a.subId, differences: [{ key: `factura:${wrongTax}:tax_mismatch`, kind: "invoice" }] }]);
+    expect(alerts.count("stripe.negotiated_drift")).toBe(1);
+    // La siguiente sale bien: deja de contar
+    gw.invoiceTaxBp = 2100;
+    gw.chargeNegotiatedPeriod(stripeId);
+    await deliver(w);
+    clock += 20 * 60_000;
+    expect((await w.reconciler.tick()).negotiated!.drifted).toEqual([]);
+    // Alguien cambia el importe en Stripe: la factura sale por otra base (45,00 €)
+    gw.negotiated.get(stripeId)!.items[0].unitAmount = 4500;
+    const wrongBase = gw.chargeNegotiatedPeriod(stripeId);
+    await deliver(w);
+    expect((await billingStore.invoice(wrongBase))!).toMatchObject({ subtotalCents: 4500, taxCheck: "amount_mismatch" });
+    expect(alerts.count("stripe.negotiated_invoice_mismatch")).toBe(1);
+    clock += 20 * 60_000;
+    const kinds = (await w.reconciler.tick()).negotiated!.drifted[0].differences.map((d) => d.kind).sort();
+    expect(kinds).toEqual(["invoice", "item"]);
+    // Un céntimo de más en el impuesto ya no es lo pactado
+    expect(invoiceTaxCheck("stripe_tax_exclusive", [2100], { subtotal: 4463, taxCents: 937, total: 5400, lines: [] }, 4463)).toBe("ok");
+    expect(invoiceTaxCheck("stripe_tax_exclusive", [2100], { subtotal: 4463, taxCents: 938, total: 5401, lines: [] }, 4463)).toBe("tax_mismatch");
+    expect(invoiceTaxCheck("stripe_tax_exclusive", [2100], { subtotal: 4463, taxCents: 937, total: 5401, lines: [] }, 4463)).toBe("tax_mismatch");
+    expect(invoiceTaxCheck("stripe_tax_exclusive", [2100], { subtotal: 4464, taxCents: 937, total: 5401, lines: [] }, 4463)).toBe("amount_mismatch");
+    expect(invoiceTaxCheck("test_net_no_tax", [2100], { subtotal: 4463, taxCents: null, total: 4463, lines: [] }, 4463)).toBe("ok");
   });
 });
