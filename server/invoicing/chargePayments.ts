@@ -359,7 +359,7 @@ export const paidAtOfDay = (ymd: string) => Date.parse(`${ymd}T12:00:00Z`);
 export const dayOfPaidAt = (ms: number) => new Date(ms).toISOString().slice(0, 10);
 /** Referencia de cobro que queda en la factura de un cargo pagado por transferencia. */
 export const transferPaymentRef = (paymentId: number) => `transfer:${paymentId}`;
-const eurText = (cents: number) => `${(cents / 100).toLocaleString("es-ES", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} €`;
+const eurText = (cents: number) => new Intl.NumberFormat("es-ES", { style: "currency", currency: "EUR", useGrouping: "always" } as unknown as Intl.NumberFormatOptions).format(cents / 100);
 
 export class ChargePaymentService {
   private serialLock: KeyedLock;

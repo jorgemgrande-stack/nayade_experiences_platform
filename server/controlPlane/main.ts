@@ -75,6 +75,7 @@ import { MysqlExternalStore } from "../external/store";
 import { MysqlInvoicingStore } from "../invoicing/store";
 import { MysqlChargeStore } from "../invoicing/charges";
 import { MysqlChargePaymentStore } from "../invoicing/chargePayments";
+import { receiptsOnFinanceDocuments, type ReceiptStore } from "../invoicing/transferReceipts";
 import { MysqlOperationStore } from "../external/operationsStore";
 import { crmPublicOrigin } from "../external/urls";
 import type { ExternalUrls } from "../external/service";
@@ -700,7 +701,7 @@ async function main() {
 
   // Facturación propia (CRM 0027): borradores por devengo; expedir solo con CP_INVOICING_ISSUE_ENABLED=1. Mismo entorno
   // (livemode) que los servicios externos cuyos cobros lee
-  let invoicing: { store: MysqlInvoicingStore; issueEnabled: boolean; seriesCode: string; charges?: MysqlChargeStore; chargePayments?: MysqlChargePaymentStore; operations?: MysqlOperationStore; automation?: InvoicingAutomation; stripeSales?: StripeSalesInvoicing } | undefined;
+  let invoicing: { store: MysqlInvoicingStore; issueEnabled: boolean; seriesCode: string; charges?: MysqlChargeStore; chargePayments?: MysqlChargePaymentStore; operations?: MysqlOperationStore; receipts?: ReceiptStore; chargeLock?: ReturnType<typeof mysqlKeyedLock>; automation?: InvoicingAutomation; stripeSales?: StripeSalesInvoicing } | undefined;
   if (crmPool && crm) {
     const pool = crmPool;
     const has = (t: string) => pool.query(`SELECT 1 FROM ${t} LIMIT 0`).then(() => true, () => false);
@@ -712,7 +713,13 @@ async function main() {
     if (invoicing && chargesReady) invoicing.charges = new MysqlChargeStore(pool, external?.store.mode ?? "test");
     // Cobro de los cargos (CRM 0029): solo con su tabla; sin ella los cargos se aprueban y facturan, pero no se cobran aquí
     const paymentsReady = chargesReady && (await has("billing_charge_payments"));
-    if (invoicing && paymentsReady) invoicing.chargePayments = new MysqlChargePaymentStore(pool, external?.store.mode ?? "test");
+    // Transferencias con justificante (CRM 0050): columnas nuevas de los cobros y el almacén privado de documentos (0035)
+    const transfersReady = paymentsReady && (await pool.query("SELECT settles_charge_id, receipt_document_id FROM billing_charge_payments LIMIT 0").then(() => true, () => false));
+    const receiptsReady = transfersReady && (await has("fin_documents"));
+    if (invoicing && paymentsReady) invoicing.chargePayments = new MysqlChargePaymentStore(pool, external?.store.mode ?? "test", { transfers: transfersReady });
+    if (invoicing && paymentsReady) invoicing.chargeLock = mysqlKeyedLock(pool);
+    if (invoicing && receiptsReady) invoicing.receipts = receiptsOnFinanceDocuments(new MysqlFinanceOpsStore(pool, { fiscal: false, supplierInvoiceRef: false }));
+    if (invoicing && paymentsReady) console.log(JSON.stringify({ ctx: "Invoicing", transfers: transfersReady && receiptsReady, ...(transfersReady ? (receiptsReady ? {} : { reason: "migration_0035_missing" }) : { reason: "migration_0050_missing" }) }));
     // Cobros únicos e infraestructura de clientes externos (CRM 0041): emiten cargos, así que van con ellos
     const operationsReady = chargesReady && (await has("external_operations")) && (await has("external_operation_periods")) && (await has("external_operation_events"));
     if (invoicing && operationsReady) invoicing.operations = new MysqlOperationStore(pool, external?.store.mode ?? "test");

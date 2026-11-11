@@ -17,7 +17,7 @@
  */
 import type { ChargeService } from "../invoicing/charges";
 import { variableAmount } from "../invoicing/charges";
-import type { ChargePaymentService } from "../invoicing/chargePayments";
+import { dayOfPaidAt, type ChargePayment, type ChargePaymentService, type TransferInput } from "../invoicing/chargePayments";
 import type { Invoice } from "../invoicing/types";
 import { taxOf } from "../invoicing/rules";
 import { adjustmentCents, adjustmentProblem, adjustmentText, cleanAdjustment, type Adjustment } from "./cadence";
@@ -349,7 +349,7 @@ export interface OperationsDeps {
   company(id: number): Promise<{ id: number; name: string; legalName?: string | null; tenantId?: string | null; billingEmail?: string | null; email?: string | null } | null>;
   charges: Pick<ChargeService, "create" | "approve" | "must">;
   invoices: { get(id: number): Promise<Invoice | null> };
-  payments?: Pick<ChargePaymentService, "paymentLink" | "recordOffline">;
+  payments?: Pick<ChargePaymentService, "paymentLink" | "recordOffline" | "recordTransfer" | "rectifyTransfer" | "voidTransfer" | "receipt" | "list" | "transfersAvailable">;
   mail?: OperationsMail;
   namespace: string;
   now?: () => number;
@@ -661,14 +661,60 @@ export class ExternalOperationsService {
     return { period: await this.periodView(o, cur), mail: { status: mail.status, reason: mail.reason } };
   }
 
-  /** Pago recibido fuera de Stripe (transferencia u otro medio), con su referencia. */
+  /**
+   * Pago recibido fuera de Stripe con solo su referencia (sin justificante). Con el registro de transferencias
+   * disponible (CRM 0050) ya no se usa: una transferencia exige su justificante en PDF (`transferPayment`).
+   */
   async offlinePayment(id: number, pid: number, input: { reference: string; paidAt?: number | null }, actor: string) {
     const o = await this.must(id);
     const p = await this.mustPeriod(o, pid);
     const { chargeId, payments } = this.issued(p);
+    if (payments.transfersAvailable()) throw new ExternalError("invalid_state", "Un pago por transferencia se registra con su justificante en PDF (Registrar pago externo)");
     await payments.recordOffline(chargeId, input, actor).catch(rethrow);
     await this.event(o, "paid_offline", p.period, { reference: String(input.reference).trim().slice(0, 120) }, actor);
     return this.periodView(o, p);
+  }
+
+  /**
+   * Pago por transferencia confirmado por un administrador desde la ficha: total pendiente, fecha de recepción y
+   * justificante PDF obligatorio (prueba aportada por él, no verificada con el banco). Cierra el enlace de Stripe
+   * abierto. Idempotente por la clave del formulario: repetirlo no crea otro pago ni otro evento.
+   */
+  async transferPayment(id: number, pid: number, input: TransferInput, actor: string) {
+    const o = await this.must(id);
+    const p = await this.mustPeriod(o, pid);
+    const { chargeId, payments } = this.issued(p);
+    const r = await payments.recordTransfer(chargeId, input, actor).catch(rethrow);
+    await this.event(o, "paid_transfer", `pay:${r.payment.id}`, { period: p.period, paymentId: r.payment.id, method: "bank_transfer", totalCents: r.payment.totalCents, receivedOn: r.payment.paidAt ? dayOfPaidAt(r.payment.paidAt) : null, reference: r.payment.reference, receiptDocumentId: r.payment.receiptDocumentId ?? null, receipt: r.receipt ? { filename: r.receipt.filename, sizeBytes: r.receipt.sizeBytes, sha256: r.receipt.sha256 } : null, invoiceNumber: r.invoice.number, stripeLinks: r.stripe, evidence: "justificante aportado por el administrador (no verificado con el banco)" }, actor);
+    return { period: await this.periodView(o, p), replay: r.replay, stripe: r.stripe };
+  }
+
+  private async transferPeriod(id: number, pid: number) {
+    const o = await this.must(id);
+    const p = await this.mustPeriod(o, pid);
+    return { o, p, ...this.issued(p) };
+  }
+
+  /** Rectificación administrativa (fecha, referencia o justificante) con motivo; el antes y el después, al historial. */
+  async rectifyTransfer(id: number, pid: number, paymentId: number, input: { reason: string; receivedOn?: string | null; reference?: string | null; receipt?: { filename?: string | null; contentBase64?: string | null } | null }, actor: string) {
+    const { o, p, chargeId, payments } = await this.transferPeriod(id, pid);
+    const r = await payments.rectifyTransfer(chargeId, paymentId, input, actor).catch(rethrow);
+    await this.event(o, "transfer_rectified", null, { period: p.period, paymentId, reason: r.reason, before: r.before, after: r.after }, actor);
+    return { period: await this.periodView(o, p) };
+  }
+
+  /** Anulación administrativa (con motivo): el pago se conserva anulado y la nota vuelve a estar pendiente. */
+  async voidTransfer(id: number, pid: number, paymentId: number, input: { reason: string }, actor: string) {
+    const { o, p, chargeId, payments } = await this.transferPeriod(id, pid);
+    const r = await payments.voidTransfer(chargeId, paymentId, input, actor).catch(rethrow);
+    await this.event(o, "transfer_voided", `pay:${paymentId}`, { period: p.period, paymentId, reason: r.reason, totalCents: r.payment.totalCents }, actor);
+    return { period: await this.periodView(o, p) };
+  }
+
+  /** Justificante de un pago de la nota de cobro (privado: lo sirve la ruta con orders:approve). */
+  async transferReceipt(id: number, pid: number, documentId: number) {
+    const { chargeId, payments } = await this.transferPeriod(id, pid);
+    return payments.receipt(chargeId, documentId).catch(rethrow);
   }
 
   // ── Lectura ────────────────────────────────────────────────────────────────
@@ -680,7 +726,24 @@ export class ExternalOperationsService {
     const ev = events ?? (await this.d.store.events(o.id));
     const lastLink = ev.filter((e) => e.kind === "payment_link" && e.detail?.period === p.period).at(-1);
     const link = state === "pending" || state === "overdue" ? (lastLink && Number(lastLink.detail?.expiresAt) > this.now() ? { url: String(lastLink.detail!.url), expiresAt: Number(lastLink.detail!.expiresAt) } : null) : null;
-    return { ...p, payment: { state, invoiceNumber: inv?.number ?? null, paidAt: state === "paid" ? (inv?.paidAt ?? null) : null, link, sentAt: p.sentAt, sentTo: p.sentTo } };
+    const pays = p.chargeId && this.d.payments ? await this.d.payments.list(p.chargeId) : [];
+    return {
+      ...p,
+      payment: {
+        state,
+        invoiceNumber: inv?.number ?? null,
+        paidAt: state === "paid" ? (inv?.paidAt ?? null) : null,
+        link,
+        sentAt: p.sentAt,
+        sentTo: p.sentTo,
+        // Pendiente de cobro (IVA incluido), con qué medio consta cobrada y los movimientos de cobro (con duplicados y
+        // anulados: nada se borra). Los enlaces de Stripe sin pagar no son movimientos.
+        pendingCents: p.status === "issued" && state !== "paid" ? (inv?.totalCents ?? p.totalCents) : 0,
+        method: paidMethod(inv?.paymentRef ?? null, state),
+        transfers: !!this.d.payments?.transfersAvailable(),
+        movements: pays.filter((x) => x.kind !== "stripe_link" || x.status === "paid" || x.status === "duplicate").map(movementView),
+      },
+    };
   }
 
   private async view(o: ExternalOperation) {
@@ -704,6 +767,34 @@ export class ExternalOperationsService {
   async detail(id: number) {
     return this.view(await this.must(id));
   }
+}
+
+/** Medio con el que consta cobrada la nota (de la referencia de cobro de su factura). */
+export function paidMethod(paymentRef: string | null, state: PaymentState): "stripe" | "bank_transfer" | "other" | null {
+  if (state !== "paid" || !paymentRef) return null;
+  if (paymentRef.startsWith("stripe:")) return "stripe";
+  if (paymentRef.startsWith("transfer:")) return "bank_transfer";
+  return "other";
+}
+
+/** Movimiento de cobro tal y como lo ve la ficha (sin identificadores de Stripe). */
+function movementView(x: ChargePayment) {
+  return {
+    id: x.id,
+    method: x.kind === "stripe_link" ? ("stripe" as const) : x.method === "bank_transfer" ? ("bank_transfer" as const) : ("other" as const),
+    status: x.status,
+    totalCents: x.totalCents,
+    currency: x.currency,
+    paidAt: x.paidAt,
+    receivedOn: x.method === "bank_transfer" && x.paidAt ? dayOfPaidAt(x.paidAt) : null,
+    reference: x.reference,
+    receiptDocumentId: x.receiptDocumentId ?? null,
+    createdBy: x.createdBy,
+    createdAt: x.createdAt,
+    voidedAt: x.voidedAt ?? null,
+    voidedBy: x.voidedBy ?? null,
+    voidReason: x.voidReason ?? null,
+  };
 }
 
 /** Errores de facturación y cobro, con el mismo código para el CRM. */
