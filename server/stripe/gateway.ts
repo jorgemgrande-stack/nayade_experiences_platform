@@ -300,8 +300,18 @@ export interface StripeGateway {
   replaceNegotiatedItems?(change: NegotiatedItemsChange, idempotencyKey: string): Promise<GwNegotiatedSubscription>;
   /** Importes (sin impuestos) de TODAS las líneas de una factura, paginado. Solo lectura. */
   invoiceLineAmounts?(invoiceId: string): Promise<number[]>;
-  /** Pone (`behavior=void`: Stripe no cobra nada mientras dura) o quita el cobro en pausa. Con Idempotency-Key. */
-  setPauseCollection?(subscriptionId: string, paused: boolean, idempotencyKey: string): Promise<void>;
+  /**
+   * Pone (`behavior=void`: Stripe no cobra nada mientras dura; sus facturas se anulan) o quita el cobro en pausa. Con
+   * `resumesAt` (segundos), Stripe lo reanuda solo en esa fecha. Con Idempotency-Key.
+   */
+  setPauseCollection?(subscriptionId: string, paused: boolean, idempotencyKey: string, resumesAt?: number | null): Promise<void>;
+  /**
+   * Programa (`at`, segundos) o deshace (null) el fin de la suscripción en una fecha concreta (`cancel_at`), sin
+   * prorrateo: no cobra ni abona nada. Con Idempotency-Key.
+   */
+  setCancelAt?(subscriptionId: string, at: number | null, idempotencyKey: string): Promise<void>;
+  /** Borra un importe único aún PENDIENTE (sin factura): ya no entra en ninguna factura del cliente. */
+  deleteInvoiceItem?(id: string): Promise<void>;
   /** Cambia SOLO los metadatos de una partida (su clave): ni precio, ni cantidad, ni prorrateo, ni factura. Con Idempotency-Key. */
   tagSubscriptionItem?(itemId: string, metadata: Record<string, string>, idempotencyKey: string): Promise<void>;
   /** Importe único (con signo) para la próxima factura de la suscripción, sin impuestos incluidos. Con Idempotency-Key. */
@@ -354,6 +364,8 @@ export interface GwNegotiatedSubscription {
   anomalies?: string[];
   /** ¿Está el cobro en pausa (`pause_collection`)? */
   paused?: boolean;
+  /** Fecha (segundos) en la que Stripe reanuda solo el cobro en pausa (`pause_collection.resumes_at`), si la tiene. */
+  pauseResumesAt?: number | null;
 }
 export interface NegotiatedItemsChange {
   subscriptionId: string;
@@ -585,12 +597,13 @@ export function toNegotiatedSubscription(s: Stripe.Subscription, mode: StripeMod
   const defaults = bp(s.default_tax_rates as Array<{ percentage?: number }> | null | undefined);
   const items = allItems ?? s.items?.data ?? [];
   const ends = items.map((i) => (i as unknown as { current_period_end?: number }).current_period_end).filter((x): x is number => typeof x === "number");
-  const x = s as unknown as { discounts?: unknown[] | null; discount?: unknown; pause_collection?: unknown; collection_method?: string | null; trial_end?: number | null };
+  const x = s as unknown as { discounts?: unknown[] | null; discount?: unknown; pause_collection?: { resumes_at?: number | null } | null; collection_method?: string | null; trial_end?: number | null };
   const anomalies = [...((x.discounts && x.discounts.length) || x.discount ? ["cupón"] : []), ...(x.collection_method && x.collection_method !== "charge_automatically" ? ["cobro_no_automático"] : [])];
   return {
     trialEnd: typeof x.trial_end === "number" ? x.trial_end : null,
     anomalies,
     paused: !!x.pause_collection,
+    pauseResumesAt: typeof x.pause_collection?.resumes_at === "number" ? x.pause_collection.resumes_at : null,
     id: s.id,
     customerId: idOf(s.customer) ?? "",
     status: s.status as GwSubscription["status"],
@@ -976,11 +989,30 @@ export function stripeGateway(
         wrapError(e);
       }
     },
-    async setPauseCollection(subscriptionId, paused, idempotencyKey) {
+    async setPauseCollection(subscriptionId, paused, idempotencyKey, resumesAt) {
       try {
-        const s = await client.subscriptions.update(subscriptionId, { pause_collection: paused ? { behavior: "void" } : "" } as Stripe.SubscriptionUpdateParams, { idempotencyKey });
+        const s = await client.subscriptions.update(subscriptionId, { pause_collection: paused ? { behavior: "void", ...(resumesAt ? { resumes_at: resumesAt } : {}) } : "" } as Stripe.SubscriptionUpdateParams, { idempotencyKey });
         assertModeObject(s, mode);
       } catch (e) {
+        wrapError(e);
+      }
+    },
+    async setCancelAt(subscriptionId, at, idempotencyKey) {
+      try {
+        // Sin prorrateo: el periodo ya cobrado no se abona y no se genera ninguna factura
+        const params = at === null ? { cancel_at: "" } : { cancel_at: at, proration_behavior: "none" };
+        const s = await client.subscriptions.update(subscriptionId, params as Stripe.SubscriptionUpdateParams, { idempotencyKey });
+        assertModeObject(s, mode);
+      } catch (e) {
+        wrapError(e);
+      }
+    },
+    async deleteInvoiceItem(id) {
+      try {
+        const r = await client.invoiceItems.del(id);
+        if (!r.deleted) throw new StripeGatewayError("invalid_response", "Stripe no borró el importe único", false);
+      } catch (e) {
+        if (e instanceof StripeGatewayError) throw e;
         wrapError(e);
       }
     },

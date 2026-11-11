@@ -448,7 +448,7 @@ describe("enlace por los webhooks existentes", () => {
     const a = await agreed(1);
     const { stripeId } = await started(w, a.subId);
     expect(await row(a.subId)).toMatchObject({ status: "active", stripeSubscriptionId: stripeId, sessionStatus: "complete" });
-    expect(await w.neg.link(a.subId)).toEqual({ customerId: (await row(a.subId)).stripeCustomerId, subscriptionId: stripeId });
+    expect(await w.neg.link(a.subId)).toEqual({ customerId: (await row(a.subId)).stripeCustomerId, subscriptionId: stripeId, periodEnd: gw.subscriptions.get(stripeId)!.currentPeriodEnd! * 1000 });
     expect(ordinary).toEqual([]);
     expect(Array.from(stripeStore.events.values()).every((e) => e.status === "processed")).toBe(true);
     expect(alerts.count("stripe.event_mismatch")).toBe(0);
@@ -1491,7 +1491,7 @@ describe("segunda revisión independiente: correcciones", () => {
     await deliver(w);
   };
 
-  it("B1 — volver a poner a cobrar tras un fin solo en Stripe no cobra otra vez la implantación ni repite el abono", async () => {
+  it("B1 — volver a poner a cobrar tras un fin solo en Stripe no cobra otra vez la implantación; el abono que no llegó a facturarse va, una vez, a la nueva", async () => {
     const w = world();
     const a = await agreed(1, WITH_ONE_OFFS());
     const first = await started(w, a.subId);
@@ -1500,9 +1500,12 @@ describe("segunda revisión independiente: correcciones", () => {
     // Alguien cancela en Stripe; el operador vuelve a ponerla a cobrar, como indica la alerta
     await cancelInStripe(w, first.stripeId);
     expect(alerts.count("stripe.negotiated_ended_in_stripe")).toBe(1);
+    // El abono seguía PENDIENTE en la suscripción cancelada: no se aplicó. Se retira del Customer (lo comparte el
+    // circuito ordinario) y deja de constar como enviado
+    expect(gw.invoiceItems).toEqual([]);
     const again = await w.neg.start(a.subId, A);
-    // Segundo Checkout: solo la cuota. Ni los 500 € de implantación ni un segundo abono
-    expect(again).toMatchObject({ status: "pending", recurringCents: 12900, firstChargeCents: 12900, deferredCredits: [] });
+    // Segundo Checkout: solo la cuota (los 500 € de implantación ya se cobraron); el abono va, una vez, a la factura siguiente
+    expect(again).toMatchObject({ status: "pending", recurringCents: 12900, firstChargeCents: 12900, deferredCredits: [{ amountCents: -2900 }] });
     const input = sessionCreates()[1].input as NegotiatedCheckoutInput;
     expect(input.lines.every((l) => l.interval === "month")).toBe(true);
     expect(input.lines.reduce((x, l) => x + l.unitAmount, 0)).toBe(12900);
@@ -1510,14 +1513,15 @@ describe("segunda revisión independiente: correcciones", () => {
     await deliver(w);
     expect(await row(a.subId)).toMatchObject({ status: "active", stripeSubscriptionId: second });
     expect(gw.invoices.get((await row(a.subId)).lastPaidInvoiceId!)!.subtotal).toBe(12900);
-    expect(gw.invoiceItems.map((i) => i.amount)).toEqual([-2900]);
-    expect(oneOffWrites()).toHaveLength(1);
+    expect(gw.invoiceItems.map((i) => [i.amount, i.subscriptionId])).toEqual([[-2900, second]]);
+    expect(oneOffWrites()).toHaveLength(2);
     expect(alerts.count("stripe.negotiated_invoice_mismatch")).toBe(0);
     // Sincronizar y conciliar sobre la suscripción nueva: lo ya enviado en la anterior consta, no se repite ni cuenta como diferencia
     expect(await w.billing.sync(a.subId, A)).toMatchObject({ status: "synced", applied: 0 });
     expect(await w.billing.reconcile(a.subId)).toMatchObject({ consistent: true });
-    expect(gw.invoices.get(gw.chargeNegotiatedPeriod(second))!.subtotal).toBe(12900);
+    expect(gw.invoices.get(gw.chargeNegotiatedPeriod(second))!.subtotal).toBe(12900 - 2900);
     expect(gw.invoiceItems.map((i) => i.amount)).toEqual([-2900]);
+    expect(oneOffWrites()).toHaveLength(2);
   });
 
   it("B2 — una cancelación de Stripe por impago sigue las reglas del impago (solo lectura y fin), no el camino de «alguien la canceló en Stripe»", async () => {
@@ -1602,7 +1606,7 @@ describe("segunda revisión independiente: correcciones", () => {
     expect(gw.negotiated.get(stripeId)!.items.reduce((x, i) => x + i.unitAmount, 0)).toBe(9900);
   });
 
-  it("B4 — las condiciones terminan sin sucesor: Stripe no sigue cobrándolas; se programa su fin al final del periodo pagado y se avisa", async () => {
+  it("B4 — las condiciones terminan sin sucesor: Stripe no sigue cobrándolas; se programa su fin al final del periodo pagado, se avisa y, al terminar, termina la contratación", async () => {
     const w = world();
     const a = await agreed(1);
     await subs.linkTenant(a.subId, { tenantId: "t-acme" }, A);
@@ -1628,12 +1632,14 @@ describe("segunda revisión independiente: correcciones", () => {
     expect((await w.reconciler.tick()).negotiated!.drifted).toEqual([]);
     expect(gw.calls.filter((c) => c.op === "subscriptions.update(cancel_at_period_end)").length).toBe(cancels);
     expect(itemWrites()).toEqual([]);
-    // Stripe termina al final del periodo: la contratación interna y sus licencias no dependen ya de este cobro
+    // Stripe termina al final del periodo: como el fin de una contratación (solo lectura y fin interno). Nunca queda una
+    // contratación activa con licencias que ya nadie cobra
     await cancelInStripe(w, stripeId);
-    expect(await row(a.subId)).toMatchObject({ status: "canceled", readOnlyUntil: null });
-    expect((await subs.must(a.subId)).status).toBe("active");
-    expect((await statusOf("t-acme"))["plan.essential"]).toBe("active");
+    expect(await row(a.subId)).toMatchObject({ status: "canceled", readOnlyUntil: clock + 30 * DAY });
+    expect((await subs.must(a.subId)).status).toBe("canceled");
+    expect((await statusOf("t-acme"))["plan.essential"]).toBe("read_only");
     expect(alerts.count("stripe.negotiated_ended_in_stripe")).toBe(0);
+    expect(alerts.count("stripe.negotiated_terms_ended")).toBe(2);
     clock += 20 * 60_000;
     expect((await w.reconciler.tick()).negotiated!.drifted).toEqual([]);
   });

@@ -538,17 +538,50 @@ export class FakeStripeGateway implements StripeGateway {
   anomaliesOf = new Map<string, string[]>();
   /** Suscripciones con el cobro en pausa (`pause_collection`, behavior void): Stripe no cobra nada mientras dura. */
   pausedSubs = new Set<string>();
-  async setPauseCollection(subscriptionId: string, paused: boolean, key: string) {
+  /** Fecha (segundos) en la que Stripe reanuda solo el cobro en pausa (`pause_collection.resumes_at`). */
+  pauseResumes = new Map<string, number>();
+  async setPauseCollection(subscriptionId: string, paused: boolean, key: string, resumesAt?: number | null) {
     this.guard();
-    this.calls.push({ op: "subscriptions.update(pause_collection)", key, input: { subscriptionId, paused } });
+    this.calls.push({ op: "subscriptions.update(pause_collection)", key, input: { subscriptionId, paused, resumesAt: resumesAt ?? null } });
     if (!this.subscriptions.has(subscriptionId)) throw new StripeGatewayError("resource_missing", "Stripe respondió 404 (resource_missing)", false);
+    // Como Stripe: `resumes_at` tiene que ser futuro
+    if (paused && resumesAt && this.now !== null && resumesAt <= this.now) throw new StripeGatewayError("invalid_request_error", "Stripe respondió 400 (resumes_at debe ser futuro)", false);
     if (paused) this.pausedSubs.add(subscriptionId);
     else this.pausedSubs.delete(subscriptionId);
+    if (paused && resumesAt) this.pauseResumes.set(subscriptionId, resumesAt);
+    else this.pauseResumes.delete(subscriptionId);
     this.emit("customer.subscription.updated", "subscription", subscriptionId);
+  }
+  /** Fin en una fecha concreta (`cancel_at`, sin prorrateo) o deshacerlo (null). */
+  async setCancelAt(subscriptionId: string, at: number | null, key: string) {
+    this.guard();
+    this.calls.push({ op: "subscriptions.update(cancel_at)", key, input: { subscriptionId, at } });
+    const params = JSON.stringify({ subscriptionId, at });
+    if (this.idem.has(`sub-cancel-at:${key}`)) {
+      if (this.idemParams.get(key) !== params) throw new StripeGatewayError("idempotency_error", "Stripe respondió 400 (idempotency_error)", false);
+      return;
+    }
+    const s = this.subscriptions.get(subscriptionId);
+    if (!s) throw new StripeGatewayError("resource_missing", "Stripe respondió 404 (resource_missing)", false);
+    if (s.status === "canceled") throw new StripeGatewayError("invalid_request_error", "Stripe respondió 400 (suscripción cancelada)", false);
+    if (at !== null && this.now !== null && at <= this.now) throw new StripeGatewayError("invalid_request_error", "Stripe respondió 400 (cancel_at debe ser futuro)", false);
+    this.idemParams.set(key, params);
+    this.idem.set(`sub-cancel-at:${key}`, subscriptionId);
+    this.subscriptions.set(subscriptionId, { ...s, cancelAt: at, cancelAtPeriodEnd: false });
+    this.emit("customer.subscription.updated", "subscription", subscriptionId);
+  }
+  /** Como Stripe: solo se borra un importe único PENDIENTE (uno ya facturado no). */
+  async deleteInvoiceItem(id: string) {
+    this.guard();
+    this.calls.push({ op: "invoiceitems.delete", input: id });
+    const i = this.invoiceItems.findIndex((x) => x.id === id);
+    if (i < 0) throw new StripeGatewayError("resource_missing", "Stripe respondió 404 (resource_missing)", false);
+    if (this.invoiceItems[i].invoiceId !== null) throw new StripeGatewayError("invalid_request_error", "Stripe respondió 400 (el importe ya está en una factura)", false);
+    this.invoiceItems.splice(i, 1);
   }
   invoiceItems: GwInvoiceItem[] = [];
   /** Llamadas que ESCRIBEN en una suscripción o crean importes (para comprobar que algo no se tocó). */
-  negotiatedWrites = () => this.calls.filter((c) => ["subscriptions.update(negotiated)", "invoiceitems.create", "checkout.sessions.create(negotiated)", "subscriptions.update(cancel_at_period_end)"].includes(c.op));
+  negotiatedWrites = () => this.calls.filter((c) => ["subscriptions.update(negotiated)", "invoiceitems.create", "invoiceitems.delete", "checkout.sessions.create(negotiated)", "subscriptions.update(cancel_at_period_end)", "subscriptions.update(cancel_at)", "subscriptions.update(pause_collection)"].includes(c.op));
   async createNegotiatedCheckoutSession(input: NegotiatedCheckoutInput, key: string) {
     this.guard();
     this.calls.push({ op: "checkout.sessions.create(negotiated)", key, input });
@@ -593,17 +626,37 @@ export class FakeStripeGateway implements StripeGateway {
     const lines: GwInvoiceLine[] = Array.from({ length: lineCount }, () => ({ id: this.next("il"), subscriptionItemId: null, priceId: null, quantity: 1, amount: 0, taxCents: null, proration: false, periodStart: s.currentPeriodStart ?? null, periodEnd: s.currentPeriodEnd ?? null }));
     return this.addInvoice(subId, s.customerId, reason, status, amount, lines.length ? [{ ...lines[0], amount, taxCents: this.invoiceTaxBp === null ? null : Math.round((amount * this.invoiceTaxBp) / 10_000) }, ...lines.slice(1).map((l) => ({ ...l, taxCents: this.invoiceTaxBp === null ? null : 0 }))] : undefined);
   }
-  /** Llega el día de cobro: factura del periodo con las partidas vigentes y los importes únicos pendientes. */
+  /**
+   * Llega el día de cobro (`current_period_end`): factura del periodo con las partidas vigentes y los importes únicos
+   * pendientes. Como Stripe:
+   *  - con `cancel_at` en esa fecha o antes, la suscripción TERMINA en lugar de renovarse (sin factura; los importes
+   *    únicos pendientes siguen pendientes en el Customer). Devuelve "" (no hay factura);
+   *  - con el cobro en pausa y su `resumes_at` ya pasado, Stripe lo reanuda antes de facturar;
+   *  - con el cobro en pausa, la factura se genera con TODO (partidas e importes únicos pendientes) y se ANULA: lo que
+   *    llevaba queda en una factura anulada y no se cobra.
+   */
   chargeNegotiatedPeriod(subId: string, outcome: "paid" | "open" = "paid") {
     const s = this.subscriptions.get(subId)!;
     const n = this.negotiated.get(subId)!;
     const pending = this.invoiceItems.filter((i) => i.subscriptionId === subId && i.invoiceId === null);
     const amount = n.items.reduce((a, i) => a + i.unitAmount * i.quantity, 0) + pending.reduce((a, i) => a + i.amount, 0);
     const start = s.currentPeriodEnd ?? this.nowSec();
+    if (s.cancelAt !== null && s.cancelAt <= start) {
+      this.subscriptions.set(subId, { ...s, status: "canceled" });
+      this.pausedSubs.delete(subId);
+      this.emit("customer.subscription.deleted", "subscription", subId);
+      return "";
+    }
+    const resumes = this.pauseResumes.get(subId);
+    if (this.pausedSubs.has(subId) && resumes !== undefined && resumes <= start) {
+      this.pausedSubs.delete(subId);
+      this.pauseResumes.delete(subId);
+    }
     this.subscriptions.set(subId, { ...s, currentPeriodStart: start, currentPeriodEnd: start + 30 * 86_400 });
-    // Con el cobro en pausa Stripe genera la factura y la ANULA: no se cobra nada (los importes únicos siguen pendientes)
+    // Con el cobro en pausa Stripe genera la factura y la ANULA: no se cobra nada, tampoco los importes únicos que llevaba
     if (this.pausedSubs.has(subId)) {
-      const voided = this.addNegotiatedInvoice(subId, "subscription_cycle", "void", n.items.reduce((a, i) => a + i.unitAmount * i.quantity, 0), n.items.length);
+      const voided = this.addNegotiatedInvoice(subId, "subscription_cycle", "void", amount, n.items.length + pending.length);
+      for (const i of pending) i.invoiceId = voided;
       this.emit("invoice.voided", "invoice", voided);
       this.emit("customer.subscription.updated", "subscription", subId);
       return voided;
@@ -621,7 +674,7 @@ export class FakeStripeGateway implements StripeGateway {
     const s = this.subscriptions.get(id);
     if (!s) return null;
     const n = this.negotiated.get(id);
-    return { id: s.id, customerId: s.customerId, status: s.status, currency: n?.currency ?? "EUR", metadata: { ...s.metadata }, automaticTax: n?.automaticTax ?? false, cancelAt: s.cancelAt, cancelAtPeriodEnd: s.cancelAtPeriodEnd, currentPeriodEnd: s.currentPeriodEnd, scheduleId: s.scheduleId ?? null, trialEnd: s.status === "trialing" ? s.currentPeriodEnd : null, anomalies: this.anomaliesOf.get(id) ?? [], paused: this.pausedSubs.has(id), items: (n?.items ?? (s.items ?? []).map((i) => ({ id: i.id, productId: this.prices.find((p) => p.id === i.priceId)?.productId ?? "", unitAmount: this.prices.find((p) => p.id === i.priceId)?.unitAmount ?? 0, quantity: i.quantity, currency: "EUR", interval: "month" as const, intervalCount: 1, metadata: {}, taxRateBp: null }))).map((i) => ({ ...i, metadata: { ...i.metadata } })) };
+    return { id: s.id, customerId: s.customerId, status: s.status, currency: n?.currency ?? "EUR", metadata: { ...s.metadata }, automaticTax: n?.automaticTax ?? false, cancelAt: s.cancelAt, cancelAtPeriodEnd: s.cancelAtPeriodEnd, currentPeriodEnd: s.currentPeriodEnd, scheduleId: s.scheduleId ?? null, trialEnd: s.status === "trialing" ? s.currentPeriodEnd : null, anomalies: this.anomaliesOf.get(id) ?? [], paused: this.pausedSubs.has(id), pauseResumesAt: this.pauseResumes.get(id) ?? null, items: (n?.items ?? (s.items ?? []).map((i) => ({ id: i.id, productId: this.prices.find((p) => p.id === i.priceId)?.productId ?? "", unitAmount: this.prices.find((p) => p.id === i.priceId)?.unitAmount ?? 0, quantity: i.quantity, currency: "EUR", interval: "month" as const, intervalCount: 1, metadata: {}, taxRateBp: null }))).map((i) => ({ ...i, metadata: { ...i.metadata } })) };
   }
   async replaceNegotiatedItems(c: NegotiatedItemsChange, key: string) {
     this.guard();
