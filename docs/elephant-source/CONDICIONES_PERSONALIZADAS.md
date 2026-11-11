@@ -227,10 +227,11 @@ Los seis importes que el encargo pide distinguir:
   - los contratos del CRM (`crm_contracts` y sus versiones): cada acuerdo que exige aceptación tiene SU contrato; el
     que ya tuviera la suscripción queda como antecedente (`previous_contract_id`) y no se toca. Un contrato firmado
     nunca se sobrescribe;
-  - el circuito de aceptación electrónica de los servicios externos (`crm_contract_acceptances`): enlace personal de
-    un solo uso del que solo se guarda la huella, huella SHA-256 del documento exacto, identidad declarada, fecha, IP
+  - el circuito de aceptación electrónica de los servicios externos (`crm_contract_acceptances`): enlace personal que
+    la página pública busca por su huella, huella SHA-256 del documento exacto, identidad declarada, fecha, IP
     seudonimizada y navegador. La página pública cuelga de la misma ruta
-    (`/cp/v1/public/contract-acceptance/condiciones`).
+    (`/cp/v1/public/contract-acceptance/condiciones`). Abrir el enlace no lo consume: se puede abrir cuantas veces
+    haga falta; solo la aceptación lo cierra (y también la caducidad a los 30 días, la retirada o un enlace nuevo).
 - **Nada se activa antes de aceptar.** Enviar a aceptación deja el acuerdo «pendiente de aceptación» (ya no se edita:
   hay que retirarlo, lo que revoca el enlace). Si el documento cambia, el enlace antiguo deja de valer. Al aceptar se
   firma el contrato, se activan las condiciones (o se crea la suscripción del paquete) y la suscripción queda enlazada
@@ -238,7 +239,24 @@ Los seis importes que el encargo pide distinguir:
 - **Panel de la empresa** (`server/commercialTerms/tenantView.ts`, «Mi plan»): solo lectura, con la misma vista, la
   cuota que rige hoy y las condiciones ya pactadas para más adelante. Una empresa nunca ve las de otra ni tiene
   ninguna ruta para modificar sus precios.
-- El enlace de aceptación lo entrega hoy el administrador (se devuelve al enviarlo); no se envía un correo automático.
+- **Envío por correo y enlace recuperable** (`acceptance.ts` + `acceptanceLinks.ts`, migración CRM 0051):
+  - «Enviar a aceptación» manda el contrato al representante autorizado que elige el operador (de los contactos de la
+    empresa o escrito a mano; nunca una dirección inventada) por el correo de plataforma: categoría
+    `contract_invitation`, plantilla `contract.terms_invitation`. Lleva el cliente, los servicios incluidos y las
+    mismas cifras del documento (con cuota global, ningún importe por partida recurrente) y el botón «Revisar y aceptar
+    contrato». Queda registrado el destinatario, la fecha, el contrato y su versión, y el resultado del envío.
+  - El enlace se guarda además CIFRADO en reposo (AES-256-GCM con el llavero del registro `REGISTRY_KEYS`; el id de la
+    aceptación va como datos autenticados). Solo quien tiene el permiso de precios personalizados lo vuelve a
+    consultar (`GET …/acceptance/link`, sin consumirlo), lo reenvía (`POST …/acceptance/resend`: mismo enlace, ningún
+    contrato nuevo) o lo regenera si caducó, se revocó o se filtró (`POST …/acceptance/regenerate`: mismo contrato y
+    misma versión, mismas condiciones; el anterior deja de valer). El estado (`GET …/acceptance`, lectura) nunca lleva
+    el enlace, pero sí el historial de envíos con el estado actual de cada correo.
+  - Si el correo no sale (modo de pruebas sin autorizar el destinatario, sin proveedor, rebote…), la respuesta y el
+    historial dicen el motivo real y el enlace sigue valiendo para reenviarlo.
+  - El contrato aceptado se descarga en PDF (`GET …/acceptance/contract.pdf`): el texto exacto registrado, comprobado
+    con su huella, y las evidencias de la aceptación.
+  - Nada de esto cobra: enviar, abrir, reenviar o regenerar el enlace no llama a Stripe ni a la facturación.
+  - Sin la migración 0051 todo sigue como antes: el enlace se entrega una sola vez en la respuesta del envío.
 
 ## Licencias: aplicación automática (`server/commercialTerms/licences.ts`)
 
@@ -902,9 +920,13 @@ Una sola función (`canManageCustomPricing` / `requireCustomPricing`):
 | `POST /commercial-terms/:id/cancel` | Anula un borrador |
 | `POST /commercial-terms/:id/prepare-contracting` | Crea la suscripción de un paquete y le aplica el acuerdo |
 | `GET /commercial-terms/:id/document` | Documento contractual (texto, huella y vista del cliente) |
-| `GET /commercial-terms/:id/acceptance` | Estado de la aceptación: contrato, firmante y evidencias (nunca el enlace) |
-| `POST /commercial-terms/:id/acceptance` | Envía a aceptación: contrato del CRM y enlace personal del firmante |
+| `GET /commercial-terms/:id/acceptance` | Estado de la aceptación: contrato, firmante, evidencias e historial de envíos (nunca el enlace) |
+| `POST /commercial-terms/:id/acceptance` | Envía a aceptación: contrato del CRM, enlace personal del firmante y correo con el contrato |
 | `POST /commercial-terms/:id/acceptance/withdraw` | Retira unas condiciones enviadas (revoca el enlace; vuelven a borrador) |
+| `GET /commercial-terms/:id/acceptance/link` | Enlace en curso (precios personalizados; consultarlo no lo consume; solo mientras sirve) |
+| `POST /commercial-terms/:id/acceptance/resend` | Reenvía por correo el mismo enlace (precios personalizados; ningún contrato nuevo) |
+| `POST /commercial-terms/:id/acceptance/regenerate` | Enlace nuevo para el mismo contrato y versión; el anterior deja de valer (precios personalizados) |
+| `GET /commercial-terms/:id/acceptance/contract.pdf` | PDF del contrato aceptado con sus evidencias (lectura) |
 | `GET`/`POST /public/contract-acceptance/condiciones?token=` | Página pública del firmante (sin sesión; HTML sin scripts) |
 | `GET /subscriptions/:id/terms/licences` | Plataforma, licencias y límites que corresponden, lo pendiente de aplicar y último resultado |
 | `POST /subscriptions/:id/terms/licences/apply` | Enlaza la plataforma de la empresa (si falta) y aplica las licencias y los límites (lo mismo que hace sola) |

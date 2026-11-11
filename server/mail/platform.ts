@@ -28,6 +28,7 @@ import type { IncidentNotifier } from "../_core/ops/incidents";
 import type { TicketNotifier } from "../_core/support/tickets";
 import type { ExternalMail } from "../external/service";
 import type { OperationsMail } from "../external/operations";
+import type { TermsAcceptanceMail } from "../commercialTerms/acceptance";
 import { extraTemplates } from "./extraTemplates";
 import type { AlertFacts } from "../adminAlerts/catalog";
 import { incidentAlert } from "../adminAlerts/sources";
@@ -110,6 +111,20 @@ export class PlatformMailer {
         const r = await this.send(PLATFORM_TENANT, key, "contract_invitation", to, extraTemplates.externalChanged(i));
         return { status: r.status, reason: r.reason, duplicate: r.duplicate, id: r.id };
       },
+    };
+  }
+
+  /**
+   * Contrato de condiciones comerciales personalizadas para aceptar (server/commercialTerms/acceptance.ts): mismo
+   * recorrido del contrato (categoría contract_invitation), sin abrir otras categorías de correo.
+   */
+  termsAcceptanceMail(): TermsAcceptanceMail {
+    return {
+      invite: async (to, key, i) => {
+        const r = await this.send(PLATFORM_TENANT, key, "contract_invitation", to, extraTemplates.termsInvitation(i));
+        return { status: r.status, reason: r.reason, duplicate: r.duplicate, id: r.id };
+      },
+      status: (id) => this.service.status(id),
     };
   }
 

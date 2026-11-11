@@ -66,6 +66,57 @@ export const extraTemplates = {
       ],
       cta: { label: "Pagar de forma segura", url: i.url },
     }),
+  /**
+   * Contrato de unas condiciones comerciales personalizadas listo para aceptar (envío desde el CRM). Las cifras son las
+   * del documento contractual: con cuota global, ningún importe por partida recurrente (`lines` = null).
+   */
+  termsInvitation: (i: {
+    companyName: string;
+    signerName: string;
+    reference: string;
+    version: number;
+    packageName: string | null;
+    services: string[];
+    /** Solo con presentación desglosada: importe de cada partida recurrente. */
+    lines: Array<{ label: string; cents: number }> | null;
+    netCents: number;
+    taxes: Array<{ label: string; cents: number }>;
+    totalCents: number;
+    period: "mensual" | "anual";
+    oneTime: Array<{ label: string; totalCents: number }>;
+    currency: string;
+    url: string;
+    expiresAt: number;
+  }) =>
+    e({
+      family: "transactional",
+      eyebrow: "Contrato disponible",
+      hero: "contrato",
+      title: "Tu contrato está listo para revisar",
+      subject: `Contrato ${i.reference} de ${i.companyName}: revísalo y acéptalo`,
+      greeting: `Hola, ${i.signerName}:`,
+      intro: [`Te enviamos el contrato ${i.reference} (versión ${i.version}) con las condiciones comerciales pactadas para ${i.companyName}, para que lo revises y, si estás de acuerdo, lo aceptes en línea.`],
+      blocks: [
+        {
+          card: {
+            status: { label: "Pendiente de aceptación", tone: "info" },
+            rows: [
+              { label: "Cliente", value: i.companyName },
+              ...(i.packageName ? [{ label: "Paquete", value: i.packageName }] : []),
+              { label: "Servicios contratados", value: i.services.join(" · ") },
+              ...(i.lines ? i.lines.map((l) => ({ label: l.label, value: `${fmt.money(l.cents, i.currency)} (${i.period})` })) : []),
+              { label: i.lines ? `Total negociado (${i.period})` : `Cuota global pactada (${i.period})`, value: `${fmt.money(i.netCents, i.currency)} más impuestos` },
+              ...i.taxes.map((t) => ({ label: t.label, value: fmt.money(t.cents, i.currency) })),
+              ...i.oneTime.map((c) => ({ label: `${c.label} (pago único)`, value: `${fmt.money(c.totalCents, i.currency)} con impuestos` })),
+            ],
+            total: { label: `Total ${i.period} con impuestos`, value: fmt.money(i.totalCents, i.currency) },
+            foot: { label: "Enlace válido hasta", value: fmt.date(i.expiresAt) },
+          },
+        },
+        { notice: { tone: "info", text: "Aceptar el contrato no realiza ningún cobro. El enlace es personal: puedes abrirlo tantas veces como necesites hasta aceptarlo." } },
+      ],
+      cta: { label: "Revisar y aceptar contrato", url: i.url },
+    }),
   productUpdate: (i: { title: string; points: string[]; url: string }) =>
     e({ family: "experiential", eyebrow: "Actualización importante", hero: "novedades", title: i.title, subject: `Big Elephant: ${i.title}`, intro: ["Hemos mejorado Big Elephant. Esto es lo que cambia para ti:"], blocks: [{ steps: i.points.map((p) => ({ title: p, text: "Ya disponible en tu plataforma" })) }], cta: { label: "Ver las novedades", url: i.url } }),
   maintenance: (i: { start: number; minutes: number }) =>

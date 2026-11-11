@@ -103,6 +103,8 @@ import { createPublicSiteRouter } from "../web/publicSite";
 import { createSubscriptionsRouter } from "../subscriptions/api";
 import { createCommercialTermsRouter } from "../commercialTerms/api";
 import { TermsAcceptanceService, createTermsAcceptanceRouter, createTermsPublicAcceptanceRouter } from "../commercialTerms/acceptance";
+import type { AcceptanceLinkStore } from "../commercialTerms/acceptanceLinks";
+import type { Keyring } from "../_core/tenantRegistry/crypto";
 import { tenantTermsReader } from "../commercialTerms/tenantView";
 import { TermsBillingService, createTermsBillingRouter, type BillingLink, type NegotiatedBillingGateway } from "../commercialTerms/billing";
 import type { TermsBillingStore } from "../commercialTerms/billingStore";
@@ -314,6 +316,11 @@ export interface ControlPlaneDeps {
    * aprobados del catálogo). Nunca cobra, emite facturas fiscales ni toca licencias.
    */
   subscriptions?: { store: SubscriptionStore; now?: () => number; /** Condiciones comerciales personalizadas (CRM 0048). Sin almacén no hay rutas. */ terms?: TermsStore; /** Cobro en Stripe de condiciones personalizadas: apagado salvo interruptor, pasarela validada y enlace con Stripe. */ termsBilling?: { enabled: boolean; gateway?: NegotiatedBillingGateway | null; link?: (subscriptionId: number) => Promise<BillingLink | null>; /** Registro de lo que un operador puso a cobrar (CRM 0049): con él y Stripe montado se usa la pasarela real. */ store?: TermsBillingStore; /** Id del Product genérico de las partidas a medida, si no es el de por defecto. */ customProductId?: string }; /** Aplicación automática de licencias de los acuerdos (encendida salvo que se apague). */ termsLicences?: { auto: boolean } };
+  /**
+   * Aceptación de condiciones personalizadas: enlaces recuperables (cifrados con el llavero del registro) e historial de
+   * envíos (CRM 0051), y logotipo del PDF del contrato aceptado. Sin enlaces, el enlace se entrega una sola vez.
+   */
+  termsAcceptance?: { links?: { store: AcceptanceLinkStore; keyring: Keyring } | null; logo?: () => Promise<Uint8Array | null> };
   /** Licencias por capacidad (registro, migración 0008). Sin ellas no se aplican licencias desde suscripciones. */
   capabilities?: CapabilityStore;
   /** Límites contratados y uso declarado por cada empresa (registro 0013). */
@@ -2034,6 +2041,10 @@ export function createControlPlaneApp(d: ControlPlaneDeps): Express {
             url: `${d.external.urls.acceptance}/condiciones`,
             ipSalt: d.external.ipSalt,
             now: d.subscriptions.now,
+            // El contrato sale por el correo de plataforma; el enlace se guarda cifrado si está la migración 0051
+            mail: d.mail?.platform?.termsAcceptanceMail() ?? null,
+            links: d.termsAcceptance?.links ?? null,
+            logo: d.termsAcceptance?.logo,
           })
         : null;
     if (termsAcceptance) {

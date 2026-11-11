@@ -76,6 +76,7 @@ export const CIRCUIT: Readonly<Record<string, TemplateCircuit>> = {
   // Envíos de una persona del equipo desde el CRM
   "contract.invitation": "manual",
   "contract.payment_setup": "manual",
+  "contract.terms_invitation": "manual",
   "external.payment_request": "manual",
   "implementation.available": "manual",
   // Centro de envíos del CRM (server/communications): servicio, encuesta de soporte y comerciales con consentimiento
@@ -131,7 +132,8 @@ export const TEMPLATES: readonly TemplateEntry[] = [
   e("signup.received", "Alta recibida (preparando el espacio)", "onboarding", "experiential", "controlplane", "Alta registrada", "conectada", () => t.signupConfirmation({ companyName: "Empresa Demo, S.L." })),
   // ── C. Contratación y suscripciones ──
   e("contract.invitation", "Contrato disponible para revisión", "contratacion", "transactional", "controlplane", "Envío del contrato desde el CRM", "conectada", () => t.contractInvitation({ ...ext, url: "https://admin.bigelephant.example/cp/v1/public/contract-acceptance?token=MUESTRA", expiresAt: PREVIEW_NOW + 14 * DAY })),
-  e("contract.payment_setup", "Acceso a la autorización del método de pago", "contratacion", "transactional", "controlplane", "Reenvío manual desde el CRM", "conectada", () => t.contractPaymentSetup({ ...ext, contractReference: "CT-2026-000099", url: "https://admin.bigelephant.example/cp/v1/public/contract-acceptance/autorizar?t=MUESTRA", expiresAt: PREVIEW_NOW + 30 * DAY })),
+  e("contract.terms_invitation", "Contrato de condiciones personalizadas para aceptar", "contratacion", "transactional", "controlplane", "«Enviar a aceptación», reenvío o enlace regenerado desde la suscripción en el CRM", "conectada", () => x.termsInvitation({ companyName: ext.companyName, signerName: ext.signerName, reference: "CT-2026-000123", version: 2, packageName: "Paquete Hotel Completo", services: ["Essential", "Hotel Net Complete", "Mantenimiento"], lines: null, netCents: 12_900, taxes: [{ label: "IVA (21 %)", cents: 2_709 }], totalCents: 15_609, period: "mensual", oneTime: [{ label: "Puesta en marcha", totalCents: 36_300 }], currency: "EUR", url: "https://admin.bigelephant.example/cp/v1/public/contract-acceptance/condiciones?token=MUESTRA", expiresAt: PREVIEW_NOW + 30 * DAY })),
+  e("contract.payment_setup","Acceso a la autorización del método de pago", "contratacion", "transactional", "controlplane", "Reenvío manual desde el CRM", "conectada", () => t.contractPaymentSetup({ ...ext, contractReference: "CT-2026-000099", url: "https://admin.bigelephant.example/cp/v1/public/contract-acceptance/autorizar?t=MUESTRA", expiresAt: PREVIEW_NOW + 30 * DAY })),
   e("contract.scheduled", "Servicio contratado: suscripción creada y programada", "contratacion", "transactional", "controlplane", "Stripe confirma la autorización y se programa la suscripción", "conectada", () => t.externalScheduled({ ...ext, acceptedAt: PREVIEW_NOW, authorizedAt: PREVIEW_NOW })),
   e("subscription.contract_confirmed", "Contratación confirmada y activa", "contratacion", "transactional", "controlplane", "Pedido activado", "conectada", P("subscription.contract_confirmed")),
   e("subscription.plan_changed", "Cambio de plan", "contratacion", "transactional", "controlplane", "subscription.plan_changed", "conectada", P("subscription.plan_changed")),

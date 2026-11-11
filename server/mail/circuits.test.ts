@@ -3,8 +3,8 @@ import { allTestEmails, CIRCUIT, TEMPLATES } from "./testCatalog";
 
 describe("circuito de cada plantilla", () => {
   const all = allTestEmails();
-  it("las 119 plantillas (113 + verificación del correo nuevo + recordatorio de la gracia + entorno disponible de la implantación asistida + vencimiento fiscal de las finanzas + nota de cobro de servicios externos + traza de las altas de pago) tienen circuito y los ids son únicos", () => {
-    expect(all.length).toBe(119);
+  it("las 120 plantillas (113 + verificación del correo nuevo + recordatorio de la gracia + entorno disponible de la implantación asistida + vencimiento fiscal de las finanzas + nota de cobro de servicios externos + traza de las altas de pago + contrato de condiciones personalizadas) tienen circuito y los ids son únicos", () => {
+    expect(all.length).toBe(120);
     expect(new Set(all.map((t) => t.id)).size).toBe(all.length);
     for (const t of all) expect(["automatica", "manual", "programada", "externa", "pendiente"]).toContain(t.circuit);
   });
