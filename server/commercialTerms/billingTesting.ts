@@ -2,12 +2,15 @@
  * Doble de Stripe para el cobro de condiciones personalizadas: sin red ni claves. Imita lo que importa del
  * comportamiento real: la misma Idempotency-Key devuelve el mismo resultado sin repetir el efecto, otra petición con
  * la misma clave y otros parámetros falla, y se puede simular una caída ANTES o DESPUÉS de aplicar el efecto (la
- * respuesta se pierde pero Stripe sí lo aplicó). Registra cada llamada. No existe ninguna operación sobre Prices.
+ * respuesta se pierde pero Stripe sí lo aplicó). Las claves de idempotencia CADUCAN, como en Stripe (`forgetKeys`):
+ * un reintento tardío solo es seguro si antes se busca el importe por su metadato. Registra cada llamada. No existe
+ * ninguna operación sobre Prices.
  */
 import type { NegotiatedBillingGateway, NegotiatedItem, NegotiatedOneOff } from "./billing";
 
 export class FakeNegotiatedGateway implements NegotiatedBillingGateway {
-  calls: Array<{ op: "applyItems" | "addOneOff" | "current"; key?: string; input?: unknown }> = [];
+  calls: Array<{ op: "applyItems" | "addOneOff" | "current" | "findOneOff"; key?: string; input?: unknown }> = [];
+  currency = new Map<string, string>();
   /** Partidas recurrentes de cada suscripción de Stripe. */
   items = new Map<string, NegotiatedItem[]>();
   /** Importes únicos pendientes de la próxima factura de cada suscripción. */
@@ -35,16 +38,32 @@ export class FakeNegotiatedGateway implements NegotiatedBillingGateway {
 
   async applyItems(input: { subscriptionId: string; currency: string; items: NegotiatedItem[]; metadata: Record<string, string> }, key: string) {
     this.calls.push({ op: "applyItems", key, input });
-    return this.run(key, input, () => this.items.set(input.subscriptionId, input.items.map((i) => ({ ...i }))));
+    return this.run(key, input, () => {
+      this.items.set(input.subscriptionId, input.items.map((i) => ({ ...i })));
+      this.currency.set(input.subscriptionId, input.currency);
+    });
   }
   async addOneOff(input: { subscriptionId: string; customerId: string; currency: string; item: NegotiatedOneOff; metadata: Record<string, string> }, key: string) {
     this.calls.push({ op: "addOneOff", key, input });
     return this.run(key, input, () => this.oneOffs.set(input.subscriptionId, [...(this.oneOffs.get(input.subscriptionId) ?? []), { ...input.item }]));
   }
+  async findOneOff(subscriptionId: string, key: string) {
+    this.calls.push({ op: "findOneOff", input: { subscriptionId, key } });
+    if (this.failures[0] === "before") {
+      this.failures.shift();
+      throw new Error("Stripe no responde (error de red)");
+    }
+    const hit = (this.oneOffs.get(subscriptionId) ?? []).find((o) => o.key === key);
+    return hit ? { ref: `ii_${key}`, amountCents: hit.amountCents } : null;
+  }
   async current(subscriptionId: string) {
     this.calls.push({ op: "current", input: subscriptionId });
     const items = this.items.get(subscriptionId);
-    return items ? { items: items.map((i) => ({ key: i.key, amountCents: i.amountCents, interval: i.interval, taxRateBp: i.taxRateBp })) } : null;
+    return items ? { currency: this.currency.get(subscriptionId) ?? null, items: items.map((i) => ({ key: i.key, amountCents: i.amountCents, interval: i.interval, taxRateBp: i.taxRateBp })) } : null;
+  }
+  /** Como Stripe pasado un día: las claves de idempotencia dejan de reconocerse. */
+  forgetKeys() {
+    this.idem.clear();
   }
   /** Importe que Stripe cobraría en la próxima factura: recurrentes más importes únicos pendientes, por tipo de impuesto. */
   nextInvoice(subscriptionId: string) {

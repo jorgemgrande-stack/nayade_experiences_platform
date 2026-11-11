@@ -1979,6 +1979,7 @@ export function createControlPlaneApp(d: ControlPlaneDeps): Express {
     // Condiciones comerciales personalizadas: antes del router de suscripciones (que responde 404 a lo que no conoce)
     const orderStoreForTerms = d.orders?.store;
     const termsBillingOpen = d.subscriptions.termsBilling?.enabled === true && !!d.subscriptions.termsBilling.gateway;
+    let termsBilling: TermsBillingService | null = null;
     const commercialTerms = d.subscriptions.terms
       ? new CommercialTermsService({
           store: d.subscriptions.terms,
@@ -1990,6 +1991,8 @@ export function createControlPlaneApp(d: ControlPlaneDeps): Express {
           // Una suscripción cobrada en Stripe no admite condiciones personalizadas mientras no se habilite su cobro
           // (interruptor encendido Y pasarela validada)
           stripeBilled: orderStoreForTerms && !termsBillingOpen ? async (sid) => (await subscriptionBilling(orderStoreForTerms, sid)).source === "stripe" : undefined,
+          // Con el cobro abierto, cada cambio de lo contratado se lleva a Stripe (sin él, no hace nada)
+          afterChange: async (sid) => termsBilling?.syncIfOpen(sid),
         })
       : null;
     // Contrato y aceptación del cliente: mismo circuito y misma tabla de aceptaciones que los servicios externos
@@ -2022,7 +2025,8 @@ export function createControlPlaneApp(d: ControlPlaneDeps): Express {
     // Cobro en Stripe de condiciones personalizadas: las rutas existen siempre; sin interruptor no llaman a Stripe
     if (commercialTerms && d.subscriptions.terms) {
       const tb = d.subscriptions.termsBilling;
-      router.use(createTermsBillingRouter(new TermsBillingService({ enabled: tb?.enabled === true, gateway: tb?.gateway ?? null, link: tb?.link, termsStore: d.subscriptions.terms, subscriptionStore: d.subscriptions.store, now: d.subscriptions.now })));
+      termsBilling = new TermsBillingService({ enabled: tb?.enabled === true, gateway: tb?.gateway ?? null, link: tb?.link, settle: (sid) => commercialTerms.settleDue(sid), termsStore: d.subscriptions.terms, subscriptionStore: d.subscriptions.store, now: d.subscriptions.now });
+      router.use(createTermsBillingRouter(termsBilling));
     }
     // Lo que la empresa ve de sus condiciones (solo lectura, con la presentación elegida): lo usa «Mi plan»
     customTermsOfTenant = commercialTerms && d.subscriptions.terms ? tenantTermsReader(commercialTerms, d.subscriptions.terms, d.subscriptions.store, d.subscriptions.now ?? Date.now) : null;

@@ -129,6 +129,8 @@ export class CommercialTermsService {
       crm: CrmPort;
       now?: () => number;
       stripeBilled?: (subscriptionId: number) => Promise<boolean>;
+      /** Tras cambiar lo que una suscripción tiene contratado (activación, fin de una condición temporal). Nunca bloquea. */
+      afterChange?: (subscriptionId: number) => Promise<unknown>;
     },
   ) {
     this.now = d.now ?? Date.now;
@@ -551,6 +553,12 @@ export class CommercialTermsService {
     if (this.d.stripeBilled && (await this.d.stripeBilled(subscriptionId))) state("Esta suscripción se cobra por Stripe: las condiciones personalizadas con cobro en Stripe aún no están habilitadas", { reason: "stripe_billed" });
     const next = t.afterEnd === "next_terms" && t.nextTermsId !== null ? await this.checkNext(t.nextTermsId, t, t.effectiveTo!) : null;
     const reason = text(input.reason, 500) ?? t.reason;
+    // Paquete cuya contratación se cortó tras crear su suscripción y se completa con «activar»: como al preparar la
+    // contratación, rige desde el primer instante de esa suscripción (la partida del alta no llega a facturarse)
+    if (internal.at === undefined && (await this.d.store.events({ termsId: t.id })).some((e) => e.kind === "subscription_created" && (e.after as { subscriptionId?: number } | null)?.subscriptionId === subscriptionId)) {
+      const created = await this.d.subscriptionStore.get(subscriptionId);
+      if (created && created.version === 1) internal = { at: created.currentPeriodStart };
+    }
     const now = this.now();
     const existing = await this.d.subscriptionStore.items(subscriptionId);
     let from: number;
@@ -629,6 +637,7 @@ export class CommercialTermsService {
       this.event("activated", actor, reason, { before: beforePicture ? { recurringNetCents: beforePicture.netCents, lines: beforePicture.lines } : null, after: this.shape(live), effectiveAt: from, acceptanceStatus: t.acceptanceStatus, syncResult: "not_applicable", economic }),
       now,
     );
+    await this.d.afterChange?.(subscriptionId).catch(() => undefined);
     return { terms: done, subscription: (await this.d.subscriptionStore.get(subscriptionId))!, effectiveFrom: from, summary };
   }
 
@@ -788,6 +797,7 @@ export class CommercialTermsService {
       await this.d.store.patch(t.id, { status: "expired", closedAt: end }, this.event("expired", actor, "Fin de la vigencia de la condición temporal", { before: { status: t.status }, after: { status: "expired", afterEnd: t.afterEnd, applied }, effectiveAt: end }), now);
       settled++;
     }
+    if (settled) await this.d.afterChange?.(subscriptionId).catch(() => undefined);
     return { settled };
   }
 

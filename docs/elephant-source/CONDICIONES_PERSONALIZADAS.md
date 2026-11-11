@@ -151,13 +151,20 @@ condiciones personalizadas siguen en simulación de facturación.
   públicos por negociación y los Prices oficiales no se modifican (la pasarela `NegotiatedBillingGateway` ni siquiera
   tiene una operación para ello).
 - **Cargos únicos y abonos de un solo uso:** importes únicos de la próxima factura, una sola vez y cuando vencen.
-- **Idempotencia:** cada paso lleva una clave estable (`ct:<acuerdo>:items:<huella>`, `ct:<acuerdo>:charge:<partida>`,
-  `ct:<acuerdo>:credit:<partida>`). Repetir la sincronización, o reintentarla tras un fallo de red aunque Stripe sí
-  hubiera aplicado el paso, no duplica nada.
+- **Idempotencia:** las partidas recurrentes se comparan siempre con lo que Stripe tiene (si coinciden no se envía
+  nada); cada importe único se busca en Stripe por su clave antes de enviarlo, así que un reintento tardío, con la
+  clave de idempotencia de Stripe ya caducada, tampoco lo duplica. Además, cada llamada lleva su clave estable.
 - **Fallos parciales, errores y reintentos:** `commercial_terms.sync_status` (`none`, `synced`, `failed`) y
   `sync_detail` (pasos completados, intentos, último error); cada intento deja un evento `sync` en el historial. El
   reintento continúa por donde se quedó.
-- **Conciliación:** `GET /commercial-terms/:id/billing` compara lo pactado con lo que Stripe tiene, partida a partida.
+- **Conciliación:** `GET /subscriptions/:id/terms/billing` compara lo que rige hoy con lo que Stripe tiene: partidas,
+  moneda e importes únicos vencidos.
+- **Se planifica por suscripción, no por acuerdo:** se envía lo que la suscripción tiene HOY. Un acuerdo programado no
+  cambia lo que se cobra hoy; al terminar un tramo o vencer una condición temporal se envía lo que rige después; un
+  cargo vencido de un acuerdo ya sustituido se sigue enviando. Nunca se envía una lista vacía.
+- **Cuándo se sincroniza:** al activar unas condiciones y al resolverse el fin de una condición temporal (si el cobro
+  está abierto), y a mano desde el CRM. Los cambios que dependen solo de la fecha (fin de un descuento temporal, un
+  cargo que vence) necesitan una tarea periódica que aún no existe: es un requisito para encender el cobro.
 - **Tres cerrojos**, todos necesarios para que salga una sola llamada:
   1. el interruptor `CP_CUSTOM_TERMS_BILLING_ENABLED=1` (no existe en ningún entorno: apagado);
   2. una pasarela validada: hoy solo existe el doble de pruebas (`billingTesting.ts`). El plano de control arranca SIN
@@ -176,7 +183,8 @@ condiciones personalizadas siguen en simulación de facturación.
      anteriores, con `proration_behavior=none` e `Idempotency-Key`;
    - `addOneOff`: `POST /v1/invoiceitems` (`customer`, `subscription`, `amount` con signo, `currency`, `tax_rates[]`,
      `description`) con `Idempotency-Key`;
-   - `current`: `GET /v1/subscriptions/:id` con las partidas y su `metadata[es_line]`.
+   - `current`: `GET /v1/subscriptions/:id` con las partidas y su `metadata[es_line]`;
+   - `findOneOff`: búsqueda del importe único por su metadato (`es_key`) entre los de la suscripción.
    - Tipos de impuesto con `ensureTaxRate` (ya existe para los servicios externos) y Product genérico de servicios a
      medida con `ensureServiceProduct` (ídem). Un único Product genérico: lo crea el adaptador en Sandbox; en Live
      debe autorizarlo el propietario.
@@ -189,7 +197,10 @@ condiciones personalizadas siguen en simulación de facturación.
 5. **Recorrido de validación en Sandbox** (con relojes de prueba de Stripe): alta del paquete de 129 €, primera factura
    con implantación, renovación, cambio de cuota a mitad de periodo, descuento de un solo uso, fin de un descuento
    temporal, reintento tras fallo, conciliación y un impago. Sin cargos reales.
-6. **Autorización del propietario** para encender `CP_CUSTOM_TERMS_BILLING_ENABLED` en cada entorno (operación protegida).
+6. **Tarea periódica de sincronización** en las fechas de corte (fin de tramos, cargos que vencen), con bloqueo para
+   que dos réplicas no la ejecuten a la vez. Sin ella, esos cambios solo llegan a Stripe al sincronizar a mano.
+7. **Periodicidades mezcladas:** comprobar en Sandbox qué admite Stripe; hoy un acuerdo usa una sola periodicidad.
+8. **Autorización del propietario** para encender `CP_CUSTOM_TERMS_BILLING_ENABLED` en cada entorno (operación protegida).
 
 ## Permisos (`server/commercialTerms/permission.ts`)
 
@@ -224,8 +235,8 @@ Una sola función (`canManageCustomPricing` / `requireCustomPricing`):
 | `POST /commercial-terms/:id/acceptance` | Envía a aceptación: contrato del CRM y enlace personal del firmante |
 | `POST /commercial-terms/:id/acceptance/withdraw` | Retira unas condiciones enviadas (revoca el enlace; vuelven a borrador) |
 | `GET`/`POST /public/contract-acceptance/condiciones?token=` | Página pública del firmante (sin sesión; HTML sin scripts) |
-| `GET /commercial-terms/:id/billing` | Plan de cobro y conciliación con Stripe (sin interruptor: solo el plan) |
-| `POST /commercial-terms/:id/billing/sync` | Sincroniza con Stripe (sin los tres cerrojos no hace nada) |
+| `GET /subscriptions/:id/terms/billing` | Plan de cobro de hoy y conciliación con Stripe (sin interruptor: solo el plan) |
+| `POST /subscriptions/:id/terms/billing/sync` | Deja en Stripe lo que la suscripción tiene hoy (sin los tres cerrojos no hace nada) |
 
 ## Limitaciones conocidas
 
