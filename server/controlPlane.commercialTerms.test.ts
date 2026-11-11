@@ -690,3 +690,22 @@ describe("aceptación: integridad de lo aceptado (hallazgos de la revisión inde
     expect(r.json.message).toMatch(/no lleva fecha efectiva/);
   });
 });
+
+describe("cobro en Stripe de condiciones personalizadas: apagado por defecto", () => {
+  it("las rutas existen, pero sin interruptor no se llama a Stripe ni cambia nada; sincronizar exige el permiso de precios", async () => {
+    const list = (await call("GET", `/subscriptions/${subscriptionId}/terms`, { token: TOK.admin })).json;
+    const active = list.terms.find((t: { effectiveStatus: string }) => t.effectiveStatus === "active");
+    expect(active).toBeTruthy();
+    for (const token of [TOK.sales, TOK.service, TOK.tenant]) expect((await call("POST", `/commercial-terms/${active.id}/billing/sync`, { token, body: {} })).status).toBe(403);
+    const sync = await call("POST", `/commercial-terms/${active.id}/billing/sync`, { token: TOK.admin, body: {} });
+    expect(sync.status).toBe(200);
+    expect(sync.json.status).toBe("disabled");
+    const view = (await call("GET", `/commercial-terms/${active.id}/billing`, { token: TOK.sales })).json;
+    expect(view).toMatchObject({ available: false, syncStatus: "none", differences: [] });
+    expect(view.plan.items.length).toBeGreaterThan(0);
+    const after = (await call("GET", `/commercial-terms/${active.id}`, { token: TOK.admin })).json;
+    expect(after.terms.syncStatus).toBe("none");
+    expect(after.events.some((e: { kind: string }) => e.kind === "sync")).toBe(false);
+    expect((await call("GET", `/subscriptions/${subscriptionId}`, { token: TOK.admin })).json.billing).toEqual({ source: "shadow" });
+  });
+});
