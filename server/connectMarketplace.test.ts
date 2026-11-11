@@ -226,6 +226,26 @@ describe("catálogo de Connect con el catálogo oficial", () => {
     const [p] = buildConnectCatalog({ items: [item("connect-people", { capabilities: ["people-hr"] })] }, [grant("people-hr", { status: "suspended" })], NOW, "essential");
     expect([p.state, p.purchasable]).toEqual(["incident", false]);
   });
+  it("un componente tenido por licencia y sin pedido (acuerdo negociado) no deja el paquete «con incidencia»", () => {
+    const comms = (grants: CapabilityGrant[], pack: Partial<PanelCatalogItemView> = {}) => {
+      const out = buildConnectCatalog(
+        { items: [item("connect-pack-communications", { family: "connect_bundle", commercialStatus: "on_request", purchasable: false, ...pack }), item("connect-whatsapp-ai"), item("connect-voice"), item("connect-reception-ai")] },
+        grants,
+        NOW,
+        "essential",
+      );
+      return Object.fromEntries(out.map((i) => [i.key, i.state]));
+    };
+    // Solo WhatsApp AI, concedida por el acuerdo: el paquete conserva su estado comercial y el módulo figura activo
+    const loose = comms([grant("whatsapp-ai", { source: "subscription:7" })]);
+    expect([loose["connect-pack-communications"], loose["connect-whatsapp-ai"]]).toEqual(["on_request", "active"]);
+    // Lo que falta está suspendido: sigue siendo una incidencia
+    expect(comms([grant("whatsapp-ai"), grant("voice-ai", { status: "suspended" })])["connect-pack-communications"]).toBe("incident");
+    // El paquete tiene activación propia (pedido en curso o con error): activación a medias, como siempre
+    expect(comms([grant("whatsapp-ai")], { activation: { state: "error" } })["connect-pack-communications"]).toBe("incident");
+    // Todos los componentes activos: el paquete figura activo, como siempre
+    expect(comms([grant("whatsapp-ai"), grant("voice-ai"), grant("reception-ai")])["connect-pack-communications"]).toBe("active");
+  });
   it("un paquete toma las capacidades de sus componentes; los requisitos y planes salen del catálogo", () => {
     const out = buildConnectCatalog(
       {

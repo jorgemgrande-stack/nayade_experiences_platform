@@ -190,13 +190,26 @@ export function buildConnectCatalog(
     const includer = item.kind === "module" ? bundles.find((b) => b.key !== item.key && contracted(b.key) && seedBundleOf(b.key).includes(item.key)) : undefined;
     const includedIn = includer ? { key: includer.key, name: includer.name } : null;
     const replaces = item.kind === "module" && !contracted(item.key) ? seedBundleOf(item.key).filter(contracted).map((k) => ({ key: k, name: productName(k) })) : [];
+    // Componentes que la empresa tiene por licencia y sin pedido (un acuerdo negociado o una activación del equipo)
+    // cuando el paquete no tiene activación propia y solo una PARTE está cubierta: esas capacidades son de los módulos
+    // sueltos, no una activación a medias del paquete (11/11/2026). Un paquete con activación propia, o con todos sus
+    // componentes activos, conserva la regla de siempre
+    const bundleKeys = item.kind === "module" && !kept(item) ? seedBundleOf(item.key) : [];
+    const held = (k: string) => contracted(k) || productActive(k);
+    const unlicensed = (c: string) => { const s = capabilityStatus(c); return s === null || s === "cancelled"; };
+    const heldCaps = new Set(bundleKeys.filter(held).flatMap(capsOf));
+    // Solo si lo que no se tiene no tiene licencia alguna: una suspendida, vencida o a medias sigue siendo incidencia
+    const heldLoose =
+      bundleKeys.some((k) => !contracted(k) && productActive(k)) &&
+      bundleKeys.some((k) => !held(k)) &&
+      bundleKeys.filter((k) => !held(k)).flatMap(capsOf).every((c) => heldCaps.has(c) || unlicensed(c));
     // Contratación anterior por extensiones que ya da TODAS las funciones del producto: equivale al producto (sin
     // nueva compra ni cargo); si solo cubre una parte, se ofrece el producto en sustitución (prorrateo de siempre)
     const equivalent = !!np && replaces.length > 0 && capabilities.length > 0 && capabilities.every((c) => capabilityStatus(c) === "active");
     // Paquete sin contratar cuyos componentes sí están contratados: sus capacidades activas son las de los módulos, no
     // las suyas; su estado es el comercial (se puede contratar en sustitución de los módulos)
     const derived = deriveConnectState(
-      { kind: item.kind, commercialStatus: item.commercialStatus, capabilities: replaces.length > 0 && !equivalent ? [] : capabilities, dependencies, plans },
+      { kind: item.kind, commercialStatus: item.commercialStatus, capabilities: (replaces.length > 0 && !equivalent) || heldLoose ? [] : capabilities, dependencies, plans },
       { capabilityStatus, plan, productActive, productName, consultation: consultationFor(capabilities) },
     );
     const state = derived.state;
