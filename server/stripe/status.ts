@@ -42,6 +42,9 @@ const MESSAGES: Record<CheckoutStatus, string> = {
   expired: "La sesión de pago caducó sin completarse. No se ha cobrado nada.",
 };
 
+/** Vista pública de un estado (mismo contrato para cualquier sesión de Checkout creada por Elephant Source). */
+export const checkoutStatusView = (state: CheckoutStatus, accessUrl?: string): CheckoutStatusView => ({ state, message: MESSAGES[state], ...(accessUrl ? { accessUrl } : {}), ...(RETRY[state] ? { retryAfterSeconds: RETRY[state] } : {}) });
+
 /** Id de una Checkout Session de pruebas (compatibilidad: el modo por defecto). */
 export const SESSION_ID_RE = /^cs_test_[A-Za-z0-9]{8,240}$/;
 const LIVE_SESSION_ID_RE = /^cs_live_[A-Za-z0-9]{8,240}$/;

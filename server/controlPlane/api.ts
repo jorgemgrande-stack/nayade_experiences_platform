@@ -105,6 +105,9 @@ import { createCommercialTermsRouter } from "../commercialTerms/api";
 import { TermsAcceptanceService, createTermsAcceptanceRouter, createTermsPublicAcceptanceRouter } from "../commercialTerms/acceptance";
 import { tenantTermsReader } from "../commercialTerms/tenantView";
 import { TermsBillingService, createTermsBillingRouter, type BillingLink, type NegotiatedBillingGateway } from "../commercialTerms/billing";
+import type { TermsBillingStore } from "../commercialTerms/billingStore";
+import { StripeNegotiatedGateway, catalogProductsOf } from "../commercialTerms/stripeGateway";
+import { NegotiatedBillingService, createNegotiatedBillingRouter } from "../commercialTerms/stripeBilling";
 import { TermsLicences, createTermsLicencesRouter } from "../commercialTerms/licences";
 import { CommercialTermsService } from "../commercialTerms/service";
 import type { TermsStore } from "../commercialTerms/store";
@@ -308,7 +311,7 @@ export interface ControlPlaneDeps {
    * Suscripciones v1 en MODO SOMBRA (BD del CRM, migración 0006). Requiere `crm` y `web` (precios
    * aprobados del catálogo). Nunca cobra, emite facturas fiscales ni toca licencias.
    */
-  subscriptions?: { store: SubscriptionStore; now?: () => number; /** Condiciones comerciales personalizadas (CRM 0048). Sin almacén no hay rutas. */ terms?: TermsStore; /** Cobro en Stripe de condiciones personalizadas: apagado salvo interruptor, pasarela validada y enlace con Stripe. */ termsBilling?: { enabled: boolean; gateway?: NegotiatedBillingGateway | null; link?: (subscriptionId: number) => Promise<BillingLink | null> }; /** Aplicación automática de licencias de los acuerdos (encendida salvo que se apague). */ termsLicences?: { auto: boolean } };
+  subscriptions?: { store: SubscriptionStore; now?: () => number; /** Condiciones comerciales personalizadas (CRM 0048). Sin almacén no hay rutas. */ terms?: TermsStore; /** Cobro en Stripe de condiciones personalizadas: apagado salvo interruptor, pasarela validada y enlace con Stripe. */ termsBilling?: { enabled: boolean; gateway?: NegotiatedBillingGateway | null; link?: (subscriptionId: number) => Promise<BillingLink | null>; /** Registro de lo que un operador puso a cobrar (CRM 0049): con él y Stripe montado se usa la pasarela real. */ store?: TermsBillingStore; /** Id del Product genérico de las partidas a medida, si no es el de por defecto. */ customProductId?: string }; /** Aplicación automática de licencias de los acuerdos (encendida salvo que se apague). */ termsLicences?: { auto: boolean } };
   /** Licencias por capacidad (registro, migración 0008). Sin ellas no se aplican licencias desde suscripciones. */
   capabilities?: CapabilityStore;
   /** Límites contratados y uso declarado por cada empresa (registro 0013). */
@@ -1990,7 +1993,6 @@ export function createControlPlaneApp(d: ControlPlaneDeps): Express {
     let customTermsOfTenant: ReturnType<typeof tenantTermsReader> | null = null;
     // Condiciones comerciales personalizadas: antes del router de suscripciones (que responde 404 a lo que no conoce)
     const orderStoreForTerms = d.orders?.store;
-    const termsBillingOpen = d.subscriptions.termsBilling?.enabled === true && !!d.subscriptions.termsBilling.gateway;
     let termsBilling: TermsBillingService | null = null;
     let termsLicences: TermsLicences | null = null;
     const commercialTerms = d.subscriptions.terms
@@ -2001,9 +2003,10 @@ export function createControlPlaneApp(d: ControlPlaneDeps): Express {
           catalog: catalogFromWebStore(d.web.store),
           crm: crmPort,
           now: d.subscriptions.now,
-          // Una suscripción cobrada en Stripe no admite condiciones personalizadas mientras no se habilite su cobro
-          // (interruptor encendido Y pasarela validada)
-          stripeBilled: orderStoreForTerms && !termsBillingOpen ? async (sid) => (await subscriptionBilling(orderStoreForTerms, sid)).source === "stripe" : undefined,
+          // Una suscripción que YA cobra Stripe por el circuito ordinario (un pedido con pagos verificados) nunca admite
+          // condiciones personalizadas, tampoco con su cobro encendido: ese cobro solo alcanza a las suscripciones que un
+          // operador pone a cobrar de forma expresa (`stripeBilling.ts`), nunca a las de los clientes ordinarios
+          stripeBilled: orderStoreForTerms ? async (sid) => (await subscriptionBilling(orderStoreForTerms, sid)).source === "stripe" : undefined,
           // Con el cobro abierto, cada cambio de lo contratado se lleva a Stripe (sin él, no hace nada)
           // y se aplican las licencias de los productos del acuerdo (si la suscripción o su empresa tienen plataforma)
           afterChange: async (sid, actor) => {
@@ -2465,12 +2468,55 @@ export function createControlPlaneApp(d: ControlPlaneDeps): Express {
           ? new ExternalService({ store: d.external.store, crm: d.crm.service, crmStore: d.crm.store, stripeStore: st.store, gateway: st.gateway, mode: st.config.mode, namespace: st.config.namespace, urls: d.external.urls, ipSalt: d.external.ipSalt, liveEnabled: d.external.liveEnabled, mail: d.mail?.platform?.externalMail(), now: d.subscriptions.now })
           : null;
         const externalStore = d.external?.store;
-        const processor = new StripeEventProcessor({ store: st.store, gateway: st.gateway, orders: d.orders.store, orchestrator, now: d.subscriptions.now, namespace: st.config.namespace, mode: st.config.mode, taxExpectations: st.fiscal?.taxExpectations, vat, catalog: stripeCatalog, changes: st.purchases?.changes, invoiceLines: st.invoiceLines, contractedItems, deferredItems: deferredItems ? (o, s) => deferredItems.attach(o, s) : undefined, external: externalSvc && externalStore ? { handleSetupSession: async (id) => ((await externalStore.bySetupSession(id)) ? externalSvc.handleSetupSession(id) : null), handleSubscription: (sub, hint) => externalSvc.handleSubscription(sub, hint), handleCharge: (c, inv, sub) => externalSvc.handleCharge(c, inv, sub) } : undefined, charges: { handleSession: (id) => (chargePaymentsRef.svc ? chargePaymentsRef.svc.handleSession(id) : Promise.resolve(null)) } });
+        // Cobro de condiciones comerciales personalizadas sobre ESTA integración de Stripe (misma clave, mismos webhooks y
+        // misma conciliación). Se monta con su registro (CRM 0049); con el interruptor apagado no llama a Stripe, y
+        // encendido solo alcanza a lo que un operador pone a cobrar de forma expresa
+        let negotiatedBilling: NegotiatedBillingService | null = null;
+        const tb = d.subscriptions.termsBilling;
+        const termsBillingSvc = termsBilling;
+        const ordersForTerms = d.orders.store;
+        if (termsBillingSvc && tb?.store && !tb.gateway && d.subscriptions.terms && st.urls && StripeNegotiatedGateway.supported(st.gateway)) {
+          const adapter = new StripeNegotiatedGateway({
+            gateway: st.gateway,
+            namespace: st.config.namespace,
+            mode: st.config.mode,
+            taxPolicy: st.config.taxPolicy,
+            customProductId: tb.customProductId,
+            // Product de Stripe de cada producto del catálogo, según los precios ya enlazados (`es:<producto>:…`)
+            catalogProducts: async () => catalogProductsOf(await st.store.listPrices()),
+            allowed: (id) => (negotiatedBilling ? negotiatedBilling.allowed(id) : Promise.resolve(false)),
+          });
+          const licences = termsLicences;
+          negotiatedBilling = new NegotiatedBillingService({
+            enabled: tb.enabled === true,
+            store: tb.store,
+            stripeStore: st.store,
+            gateway: st.gateway,
+            adapter,
+            billing: termsBillingSvc,
+            termsStore: d.subscriptions.terms,
+            subscriptionStore: d.subscriptions.store,
+            crmStore: d.crm.store,
+            capabilities: d.capabilities,
+            licences: licences ? { ensure: (id, actor, o) => licences.ensure(id, actor, o) } : undefined,
+            orderBilled: async (sid) => (await subscriptionBilling(ordersForTerms, sid)).source === "stripe",
+            urls: { success: st.urls.success, cancel: st.urls.cancel },
+            namespace: st.config.namespace,
+            mode: st.config.mode,
+            taxPolicy: st.config.taxPolicy,
+            fiscal: st.fiscal ? { config: { scenarios: st.fiscal.scenarios, taxExpectations: st.fiscal.taxExpectations ?? new Map(), countries: st.fiscal.countries ?? new Map(), consumerRates: st.fiscal.consumerRates ?? new Map(), consent: st.fiscal.consent }, vat } : undefined,
+            now: d.subscriptions.now,
+          });
+          termsBillingSvc.attach({ gateway: negotiatedBilling.gatewayFor(), link: negotiatedBilling.link, billFrom: negotiatedBilling.billFrom, invalidate: negotiatedBilling.invalidate, cancelRequested: negotiatedBilling.cancelRequested });
+          router.use(createNegotiatedBillingRouter(negotiatedBilling));
+        }
+        const negotiated = negotiatedBilling;
+        const processor = new StripeEventProcessor({ store: st.store, gateway: st.gateway, orders: d.orders.store, orchestrator, now: d.subscriptions.now, namespace: st.config.namespace, mode: st.config.mode, taxExpectations: st.fiscal?.taxExpectations, vat, catalog: stripeCatalog, changes: st.purchases?.changes, invoiceLines: st.invoiceLines, contractedItems, deferredItems: deferredItems ? (o, s) => deferredItems.attach(o, s) : undefined, negotiated: negotiated ? { handleSession: (id) => negotiated.handleSession(id), handleSubscription: (sub, hint) => negotiated.handleSubscription(sub, hint), handleCharge: (c, inv, sub) => negotiated.handleCharge(c, inv, sub) } : undefined, external: externalSvc && externalStore ? { handleSetupSession: async (id) => ((await externalStore.bySetupSession(id)) ? externalSvc.handleSetupSession(id) : null), handleSubscription: (sub, hint) => externalSvc.handleSubscription(sub, hint), handleCharge: (c, inv, sub) => externalSvc.handleCharge(c, inv, sub) } : undefined, charges: { handleSession: (id) => (chargePaymentsRef.svc ? chargePaymentsRef.svc.handleSession(id) : Promise.resolve(null)) } });
         if (externalSvc) {
           router.use("/external", createExternalRouter(externalSvc));
           publicAcceptance = createContractAcceptanceRouter(externalSvc);
         }
-        const reconciler = new StripeReconciler({ store: st.store, gateway: st.gateway, processor, now: d.subscriptions.now, retentionDays: st.config.eventsRetentionDays, mode: st.config.mode });
+        const reconciler = new StripeReconciler({ store: st.store, gateway: st.gateway, processor, now: d.subscriptions.now, retentionDays: st.config.eventsRetentionDays, mode: st.config.mode, negotiated: negotiated ? { toRefresh: (before, limit) => negotiated.toRefresh(before, limit), closeExpiredSessions: (limit) => negotiated.closeExpiredSessions(limit), reconcileAll: (limit) => negotiated.reconcileAll(limit) } : undefined });
         const rechecks = new Map<string, number>();
         const stripeNow = d.subscriptions.now;
         // Tras guardar un evento del webhook se procesa enseguida (los fallos quedan para el reintento)
@@ -2515,7 +2561,8 @@ export function createControlPlaneApp(d: ControlPlaneDeps): Express {
               const sessionId = String(req.query.session_id ?? "");
               res.setHeader("Cache-Control", "no-store");
               if (!sessionIdRe(st.config.mode).test(sessionId)) return void res.status(400).json({ error: "invalid_session_id" });
-              const view = await checkoutStatus({ store: st.store, orders: d.orders!.store, processor, platformDomain: d.platformDomain ?? null, rechecks, now: stripeNow, mode: st.config.mode }, sessionId);
+              // Una sesión de condiciones personalizadas no es de ningún pedido: mismo contrato, desde su registro
+              const view = (await checkoutStatus({ store: st.store, orders: d.orders!.store, processor, platformDomain: d.platformDomain ?? null, rechecks, now: stripeNow, mode: st.config.mode }, sessionId)) ?? (negotiated ? await negotiated.publicStatus(sessionId, d.platformDomain ?? null) : null);
               if (!view) return void res.status(404).json({ error: "not_found" });
               res.json(view);
             }),

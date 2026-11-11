@@ -4,7 +4,7 @@
  * sesiones se pueden caducar. Registra cada llamada para poder comprobar qué se envió.
  */
 import type { GwPortalConfig } from "./portal";
-import { StripeGatewayError, type CheckoutSessionInput, type CustomerInput, type GwCharge, type GwCheckoutSession, type GwEvent, type GwInvoice, type GwInvoiceLine, type GwInvoicePreview, type GwPrice, type GwProduct, type GwSubscription, type GwSubscriptionItem, type GwSetupSession, type GwPaymentSession, type PaymentSessionInput, type ServiceSubscriptionInput, type SetupSessionInput, type StripeGateway, type SubscriptionItemsChange } from "./gateway";
+import { StripeGatewayError, type CheckoutSessionInput, type CustomerInput, type GwCharge, type GwCheckoutSession, type GwEvent, type GwInvoice, type GwInvoiceLine, type GwInvoicePreview, type GwPrice, type GwProduct, type GwSubscription, type GwSubscriptionItem, type GwSetupSession, type GwPaymentSession, type GwNegotiatedItem, type GwNegotiatedSubscription, type GwInvoiceItem, type InvoiceItemInput, type NegotiatedCheckoutInput, type NegotiatedItemsChange, type PaymentSessionInput, type ServiceSubscriptionInput, type SetupSessionInput, type StripeGateway, type SubscriptionItemsChange } from "./gateway";
 import { prorationCents, supportsPendingUpdate } from "./multipart";
 
 export class FakeStripeGateway implements StripeGateway {
@@ -528,6 +528,149 @@ export class FakeStripeGateway implements StripeGateway {
   }
   async testClock(id: string) {
     return this.testClocks.get(id) ?? null;
+  }
+
+  // --- Condiciones comerciales personalizadas (precios en línea, importes únicos, Checkout con partidas negociadas) ---
+  /** Detalle de las suscripciones con precios en línea: partidas, moneda y si Stripe Tax calcula el impuesto. */
+  negotiated = new Map<string, { items: GwNegotiatedItem[]; currency: string; automaticTax: boolean }>();
+  negotiatedSessions = new Map<string, NegotiatedCheckoutInput>();
+  /** Cosas hechas «en el Dashboard» sobre una suscripción (cupón, cobro en pausa…). */
+  anomaliesOf = new Map<string, string[]>();
+  invoiceItems: GwInvoiceItem[] = [];
+  /** Llamadas que ESCRIBEN en una suscripción o crean importes (para comprobar que algo no se tocó). */
+  negotiatedWrites = () => this.calls.filter((c) => ["subscriptions.update(negotiated)", "invoiceitems.create", "checkout.sessions.create(negotiated)", "subscriptions.update(cancel_at_period_end)"].includes(c.op));
+  async createNegotiatedCheckoutSession(input: NegotiatedCheckoutInput, key: string) {
+    this.guard();
+    this.calls.push({ op: "checkout.sessions.create(negotiated)", key, input });
+    const prev = this.idem.get(`ncs:${key}`);
+    if (prev) {
+      if (this.idemParams.get(key) !== JSON.stringify(input)) throw new StripeGatewayError("idempotency_error", "Stripe respondió 400 (idempotency_error)", false);
+      return this.view(prev);
+    }
+    for (const l of input.lines) {
+      if (!this.products.has(l.productId)) throw new StripeGatewayError("resource_missing", `Stripe respondió 400 (resource_missing: ${l.productId})`, false);
+      if (!Number.isInteger(l.unitAmount) || l.unitAmount < 0) throw new StripeGatewayError("invalid_request_error", "Stripe respondió 400 (importe no válido)", false);
+    }
+    if (new Set(input.lines.filter((l) => l.interval).map((l) => l.interval)).size !== 1) throw new StripeGatewayError("invalid_request_error", "Stripe respondió 400 (una sesión necesita partidas recurrentes de una sola periodicidad)", false);
+    this.idemParams.set(key, JSON.stringify(input));
+    const id = this.next("cs");
+    this.sessions.set(id, { id, status: "open", paymentStatus: "unpaid", url: `https://checkout.stripe.test/c/pay/${id}`, customerId: input.customerId, subscriptionId: null, clientReferenceId: input.clientReferenceId, metadata: { ...input.metadata }, expiresAt: input.expiresAt, input: input as never });
+    this.negotiatedSessions.set(id, input);
+    this.idem.set(`ncs:${key}`, id);
+    return this.view(id);
+  }
+  /** El cliente paga en la página de Stripe: nace la suscripción con sus partidas en línea (sin metadatos por partida) y su primera factura. */
+  completeNegotiatedSession(id: string, outcome: "paid" | "incomplete" = "paid") {
+    const s = this.sessions.get(id)!;
+    const input = this.negotiatedSessions.get(id)!;
+    const subId = this.next("sub");
+    const items: GwNegotiatedItem[] = input.lines.filter((l) => l.interval).map((l) => ({ id: this.next("si"), productId: l.productId, unitAmount: l.unitAmount, quantity: 1, currency: l.currency.toUpperCase(), interval: l.interval, intervalCount: 1, metadata: {}, taxRateBp: null }));
+    // Con primer cargo aplazado (trial_end): hoy no se cobra nada y el primer periodo de pago empieza ese día
+    const amount = input.trialEnd ? 0 : input.lines.reduce((a, l) => a + l.unitAmount, 0);
+    // El periodo empieza cuando se creó la sesión (caduca 2 h después): al pagar, no en el futuro
+    const end = input.trialEnd ?? s.expiresAt - 7200 + 30 * 86_400;
+    this.subscriptions.set(subId, { id: subId, customerId: s.customerId!, status: outcome === "paid" ? (input.trialEnd ? "trialing" : "active") : "incomplete", cancelAt: null, cancelAtPeriodEnd: false, currentPeriodEnd: end, currentPeriodStart: input.trialEnd ? s.expiresAt - 7200 : end - 30 * 86_400, latestInvoiceId: null, priceIds: items.map((i) => `price_inline_${i.id}`), metadata: { ...input.metadata }, items: items.map((i) => ({ id: i.id, priceId: `price_inline_${i.id}`, quantity: 1 })), pendingUpdate: null, billingMode: "classic" });
+    this.negotiated.set(subId, { items, currency: input.lines[0].currency.toUpperCase(), automaticTax: !!input.automaticTax });
+    this.addNegotiatedInvoice(subId, "subscription_create", outcome === "paid" ? "paid" : "open", amount, input.lines.length);
+    this.sessions.set(id, { ...s, status: "complete", paymentStatus: outcome === "paid" ? "paid" : "unpaid", subscriptionId: subId, url: null });
+    this.emit("checkout.session.completed", "checkout.session", id);
+    this.emit("customer.subscription.created", "subscription", subId);
+    if (outcome === "paid") this.emit("invoice.paid", "invoice", this.subscriptions.get(subId)!.latestInvoiceId!);
+    return subId;
+  }
+  private addNegotiatedInvoice(subId: string, reason: string, status: GwInvoice["status"], amount: number, lineCount: number) {
+    const s = this.subscriptions.get(subId)!;
+    const lines: GwInvoiceLine[] = Array.from({ length: lineCount }, () => ({ id: this.next("il"), subscriptionItemId: null, priceId: null, quantity: 1, amount: 0, taxCents: null, proration: false, periodStart: s.currentPeriodStart ?? null, periodEnd: s.currentPeriodEnd ?? null }));
+    return this.addInvoice(subId, s.customerId, reason, status, amount, lines.length ? [{ ...lines[0], amount, taxCents: this.invoiceTaxBp === null ? null : Math.round((amount * this.invoiceTaxBp) / 10_000) }, ...lines.slice(1).map((l) => ({ ...l, taxCents: this.invoiceTaxBp === null ? null : 0 }))] : undefined);
+  }
+  /** Llega el día de cobro: factura del periodo con las partidas vigentes y los importes únicos pendientes. */
+  chargeNegotiatedPeriod(subId: string, outcome: "paid" | "open" = "paid") {
+    const s = this.subscriptions.get(subId)!;
+    const n = this.negotiated.get(subId)!;
+    const pending = this.invoiceItems.filter((i) => i.subscriptionId === subId && i.invoiceId === null);
+    const amount = n.items.reduce((a, i) => a + i.unitAmount * i.quantity, 0) + pending.reduce((a, i) => a + i.amount, 0);
+    const start = s.currentPeriodEnd ?? this.nowSec();
+    this.subscriptions.set(subId, { ...s, currentPeriodStart: start, currentPeriodEnd: start + 30 * 86_400 });
+    const id = this.addNegotiatedInvoice(subId, "subscription_cycle", outcome, amount, n.items.length + pending.length);
+    for (const i of pending) i.invoiceId = id;
+    this.subscriptions.set(subId, { ...this.subscriptions.get(subId)!, status: outcome === "paid" ? "active" : "past_due" });
+    this.emit(outcome === "paid" ? "invoice.paid" : "invoice.payment_failed", "invoice", id);
+    this.emit("customer.subscription.updated", "subscription", subId);
+    return id;
+  }
+  async negotiatedSubscription(id: string): Promise<GwNegotiatedSubscription | null> {
+    this.guard();
+    this.calls.push({ op: "subscriptions.retrieve(negotiated)", input: id });
+    const s = this.subscriptions.get(id);
+    if (!s) return null;
+    const n = this.negotiated.get(id);
+    return { id: s.id, customerId: s.customerId, status: s.status, currency: n?.currency ?? "EUR", metadata: { ...s.metadata }, automaticTax: n?.automaticTax ?? false, cancelAt: s.cancelAt, cancelAtPeriodEnd: s.cancelAtPeriodEnd, currentPeriodEnd: s.currentPeriodEnd, scheduleId: s.scheduleId ?? null, trialEnd: s.status === "trialing" ? s.currentPeriodEnd : null, anomalies: this.anomaliesOf.get(id) ?? [], items: (n?.items ?? (s.items ?? []).map((i) => ({ id: i.id, productId: this.prices.find((p) => p.id === i.priceId)?.productId ?? "", unitAmount: this.prices.find((p) => p.id === i.priceId)?.unitAmount ?? 0, quantity: i.quantity, currency: "EUR", interval: "month" as const, intervalCount: 1, metadata: {}, taxRateBp: null }))).map((i) => ({ ...i, metadata: { ...i.metadata } })) };
+  }
+  async replaceNegotiatedItems(c: NegotiatedItemsChange, key: string) {
+    this.guard();
+    this.calls.push({ op: "subscriptions.update(negotiated)", key, input: c });
+    const params = JSON.stringify(c);
+    if (this.idem.has(`neg:${key}`)) {
+      if (this.idemParams.get(key) !== params) throw new StripeGatewayError("idempotency_error", "Stripe respondió 400 (idempotency_error)", false);
+      return (await this.negotiatedSubscription(c.subscriptionId))!;
+    }
+    const s = this.subscriptions.get(c.subscriptionId);
+    const n = this.negotiated.get(c.subscriptionId);
+    if (!s || !n) throw new StripeGatewayError("resource_missing", "Stripe respondió 404 (resource_missing)", false);
+    for (const id of c.remove) if (!n.items.some((i) => i.id === id)) throw new StripeGatewayError("resource_missing", `Stripe respondió 400 (resource_missing: ${id})`, false);
+    for (const a of c.add) if (!this.products.has(a.productId)) throw new StripeGatewayError("resource_missing", `Stripe respondió 400 (resource_missing: ${a.productId})`, false);
+    // MÁS ESTRICTO que Stripe, a propósito: retirar una partida para volver a ponerla idéntica (mismo Product, importe y
+    // periodicidad) nunca es legítimo aquí; contra Stripe real podría facturar o mover el ciclo de lo recién pagado
+    for (const id of c.remove) {
+      const old = n.items.find((i) => i.id === id)!;
+      if (c.add.some((a) => a.productId === old.productId && a.unitAmount === old.unitAmount * old.quantity && a.interval === old.interval)) throw new StripeGatewayError("invalid_request_error", "Doble de Stripe: sustitución de una partida por otra idéntica (lo ya cobrado no se sustituye)", false);
+    }
+    const items = [...n.items.filter((i) => !c.remove.includes(i.id)), ...c.add.map((a) => ({ id: this.next("si"), productId: a.productId, unitAmount: a.unitAmount, quantity: 1, currency: a.currency.toUpperCase(), interval: a.interval, intervalCount: 1, metadata: { ...a.metadata }, taxRateBp: null }))];
+    if (!items.length) throw new StripeGatewayError("invalid_request_error", "Stripe respondió 400 (una suscripción necesita al menos una partida)", false);
+    if (new Set(items.map((i) => i.interval)).size > 1) throw new StripeGatewayError("invalid_request_error", "Stripe respondió 400 (periodicidades distintas)", false);
+    this.idemParams.set(key, params);
+    this.idem.set(`neg:${key}`, c.subscriptionId);
+    this.negotiated.set(c.subscriptionId, { ...n, items });
+    // Sin prorrateo: ni factura ni cargo; solo cambian las partidas
+    this.subscriptions.set(c.subscriptionId, { ...s, metadata: { ...s.metadata, ...c.metadata }, priceIds: items.map((i) => `price_inline_${i.id}`), items: items.map((i) => ({ id: i.id, priceId: `price_inline_${i.id}`, quantity: 1 })) });
+    this.emit("customer.subscription.updated", "subscription", c.subscriptionId);
+    return (await this.negotiatedSubscription(c.subscriptionId))!;
+  }
+  /** Solo metadatos de una partida: ni factura, ni evento de cambio de precio. */
+  async tagSubscriptionItem(itemId: string, metadata: Record<string, string>, key: string) {
+    this.guard();
+    this.calls.push({ op: "subscription_items.update(metadata)", key, input: { itemId, metadata } });
+    for (const n of Array.from(this.negotiated.values())) {
+      const item = n.items.find((i) => i.id === itemId);
+      if (item) return void (item.metadata = { ...item.metadata, ...metadata });
+    }
+    throw new StripeGatewayError("resource_missing", "Stripe respondió 404 (resource_missing)", false);
+  }
+  async createInvoiceItem(i: InvoiceItemInput, key: string) {
+    this.guard();
+    this.calls.push({ op: "invoiceitems.create", key, input: i });
+    const params = JSON.stringify(i);
+    const prev = this.idem.get(`ii:${key}`);
+    if (prev) {
+      if (this.idemParams.get(key) !== params) throw new StripeGatewayError("idempotency_error", "Stripe respondió 400 (idempotency_error)", false);
+      return { ...this.invoiceItems.find((x) => x.id === prev)! };
+    }
+    if (!this.subscriptions.has(i.subscriptionId)) throw new StripeGatewayError("resource_missing", "Stripe respondió 404 (resource_missing)", false);
+    const item: GwInvoiceItem = { id: this.next("ii"), amount: i.amount, currency: i.currency.toUpperCase(), subscriptionId: i.subscriptionId, invoiceId: null, metadata: { ...i.metadata } };
+    this.invoiceItems.unshift(item);
+    this.idemParams.set(key, params);
+    this.idem.set(`ii:${key}`, item.id);
+    return { ...item };
+  }
+  async invoiceItemsOfCustomer(customerId: string) {
+    this.guard();
+    this.calls.push({ op: "invoiceitems.list", input: customerId });
+    return this.invoiceItems.filter((i) => this.subscriptions.get(i.subscriptionId ?? "")?.customerId === customerId).map((i) => ({ ...i, metadata: { ...i.metadata } }));
+  }
+  /** Como Stripe pasado un día: las claves de idempotencia dejan de reconocerse. */
+  forgetIdempotencyKeys() {
+    this.idem.clear();
+    this.idemParams.clear();
   }
 
   private guard() {

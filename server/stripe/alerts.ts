@@ -43,6 +43,14 @@ export const STRIPE_FAILURE_RULES: Record<string, FailureRule> = {
   "purchases.swap_cleanup_pending": once("Compra de módulos: no se pudo retirar de Stripe la partida a 0 que dejó una sustitución por paquete (sin importe; la conciliación lo reintenta)", "warning"),
   "purchases.failed": repeated(3, 30, "Compra de módulos: errores repetidos", "critical"),
   "stripe.fiscal_document_failed": once("Facturación: el sistema de facturación legal rechazó un documento (queda en la cola para revisión)"),
+  // Condiciones comerciales personalizadas cobradas en Stripe (nunca se corrige solo: lo revisa el equipo)
+  "stripe.negotiated_drift": once("Stripe: una suscripción con condiciones personalizadas no coincide con lo pactado (partidas, importes, impuestos o estado)"),
+  "stripe.negotiated_duplicate": once("Stripe: segunda suscripción para una contratación con condiciones personalizadas ya enlazada (no se enlaza: revisar y cancelar la sobrante)"),
+  "stripe.negotiated_invoice_mismatch": once("Stripe: una factura de condiciones personalizadas no es por el importe pactado (primer pago ofrecido o cuota vigente)"),
+  "stripe.negotiated_first_payment_failed": once("Stripe: el primer pago de unas condiciones personalizadas falló sin cobrarse (la contratación vuelve a poder iniciarse; revisar la suscripción de Stripe)", "warning"),
+  "stripe.negotiated_ended_in_stripe": once("Stripe: una suscripción con condiciones personalizadas terminó en Stripe sin que la contratación termine (ya no se cobra: volver a ponerla a cobrar o terminarla)"),
+  "stripe.negotiated_unmounted": once("Stripe: llegan eventos de suscripciones con condiciones personalizadas y su módulo no está montado (su estado de pago no se aplica)"),
+  "stripe.negotiated_tax_mismatch": once("Stripe: el impuesto de una factura de condiciones personalizadas no corresponde al tipo pactado"),
   // Activación sin pago de Stripe en el entorno real: cada una queda a la vista del equipo (auditoría)
   "orders.admin_approval_live": once("Pedido activado por aprobación administrativa (sin pago de Stripe) en el entorno real: revisar la justificación", "warning"),
   // Fallos técnicos repetidos

@@ -140,7 +140,20 @@ export interface ProcessorDeps {
    * de ningún pedido. null: la sesión no es de un cargo.
    */
   charges?: { handleSession(sessionId: string): Promise<string | null> };
+  /**
+   * Condiciones comerciales personalizadas (server/commercialTerms/stripeBilling.ts): su suscripción lleva
+   * `metadata.es_negotiated` y precios en línea que no son del catálogo enlazado; no es de ningún pedido. Su estado de
+   * cobro lo aplica su módulo con las mismas reglas. null en `handleSession`: la sesión no es suya.
+   */
+  negotiated?: {
+    handleSession(sessionId: string): Promise<string | null>;
+    handleSubscription(sub: GwSubscription, hint?: GwInvoice): Promise<string>;
+    handleCharge(c: GwCharge, inv: GwInvoice, sub: GwSubscription): Promise<string>;
+  };
 }
+
+/** ¿Es la suscripción de unas condiciones personalizadas? (marca de `commercialTerms/stripeGateway.ts`; nunca la de un pedido). */
+export const isNegotiated = (sub: Pick<GwSubscription, "metadata">) => sub.metadata.es_negotiated === "1" && !sub.metadata.es_order_id && !sub.metadata.es_external_id;
 
 /** Estado de un cargo que deja sin cobertura el periodo que pagó. */
 export const coverageLostOf = (c: { amount: number; amountRefunded: number; refunded: boolean; disputeStatus: string | null }) =>
@@ -236,6 +249,11 @@ export class StripeEventProcessor {
       if (!this.d.external?.handleCharge || first.sub.metadata.es_env !== this.namespace) return { outcome: "ignored", detail: "Servicio externo de otro entorno o sin módulo" };
       return { outcome: "processed", detail: await this.d.external.handleCharge(first.c, first.inv, first.sub) };
     }
+    // Cargo de unas condiciones personalizadas: tampoco es de un pedido; lo aplica su módulo
+    if (isNegotiated(first.sub)) {
+      if (!this.d.negotiated || first.sub.metadata.es_env !== this.namespace) return this.negotiatedIgnored(first.sub);
+      return { outcome: "processed", detail: await this.d.negotiated.handleCharge(first.c, first.inv, first.sub) };
+    }
     const v = await this.verified(first.sub);
     if ("ignored" in v) return v.ignored;
     return this.withOrder(v.order.id, async () => {
@@ -271,6 +289,18 @@ export class StripeEventProcessor {
       const r = await this.applySubscription(v.order, sub, v.link.tenantId);
       return { outcome: r.outcome, detail: `Cargo ${lost ? "sin cobertura" : current.amountRefundedCents ? "reembolsado en parte" : "al corriente"}; ${r.detail ?? ""}`.slice(0, 300) };
     });
+  }
+
+  /**
+   * Suscripción de condiciones personalizadas que no se atiende: de otro entorno (normal) o de ESTE entorno sin su
+   * módulo montado (falta la migración o la configuración): entonces su estado de pago dejaría de aplicarse y se avisa.
+   */
+  private negotiatedIgnored(sub: GwSubscription): Outcome {
+    if (sub.metadata.es_env === this.namespace) {
+      opsLog("error", "StripeEvents", "negotiated_unmounted", { subscriptionId: sub.id });
+      recordFailure("stripe.negotiated_unmounted");
+    }
+    return { outcome: "ignored", detail: "Condiciones personalizadas de otro entorno o sin módulo" };
   }
 
   /** Cargo → factura → suscripción, releídos en Stripe. */
@@ -415,6 +445,8 @@ export class StripeEventProcessor {
       if (ext !== null) return { outcome: "processed", detail: ext };
       const charge = this.d.charges ? await this.d.charges.handleSession(id) : null;
       if (charge !== null) return { outcome: "processed", detail: charge };
+      const negotiated = this.d.negotiated ? await this.d.negotiated.handleSession(id) : null;
+      if (negotiated !== null) return { outcome: "processed", detail: negotiated };
       return { outcome: "ignored", detail: "Sesión no creada por Elephant Source" };
     }
     const s = await this.d.gateway.checkoutSession(id);
@@ -441,6 +473,12 @@ export class StripeEventProcessor {
     if (sub.metadata.es_external_id) {
       if (!this.d.external || sub.metadata.es_env !== this.namespace) return { outcome: "ignored", detail: "Servicio externo de otro entorno o sin módulo" };
       return { outcome: "processed", detail: await this.d.external.handleSubscription(sub, hint) };
+    }
+    // Condiciones personalizadas: precios en línea (no del catálogo enlazado) y sin pedido. Nunca pasan por la
+    // comprobación de precios del circuito ordinario (sería una discordancia) ni este toca sus partidas
+    if (isNegotiated(sub)) {
+      if (!this.d.negotiated || sub.metadata.es_env !== this.namespace) return this.negotiatedIgnored(sub);
+      return { outcome: "processed", detail: await this.d.negotiated.handleSubscription(sub, hint) };
     }
     const v = await this.verified(sub);
     if ("ignored" in v) return v.ignored;

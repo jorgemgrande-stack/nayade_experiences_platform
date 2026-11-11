@@ -288,10 +288,107 @@ export interface StripeGateway {
   /** Checkout en modo `payment`: UN cobro por el importe sin IVA del cargo, con el tipo de IVA fijo indicado. */
   createPaymentSession?(input: PaymentSessionInput, idempotencyKey: string): Promise<GwPaymentSession>;
   paymentSession?(id: string): Promise<GwPaymentSession | null>;
+  // ── Condiciones comerciales personalizadas (server/commercialTerms/stripeGateway.ts) ──
+  /** Suscripción con el detalle de sus partidas (importe, periodicidad, Product, metadatos e impuestos). Solo lectura. */
+  negotiatedSubscription?(id: string): Promise<GwNegotiatedSubscription | null>;
+  /**
+   * Sustituye partidas por precios EN LÍNEA de esa suscripción (`price_data` sobre un Product existente): nunca crea
+   * ni modifica un Price público. Sin prorrateo (`proration_behavior=none`) y con Idempotency-Key.
+   */
+  replaceNegotiatedItems?(change: NegotiatedItemsChange, idempotencyKey: string): Promise<GwNegotiatedSubscription>;
+  /** Cambia SOLO los metadatos de una partida (su clave): ni precio, ni cantidad, ni prorrateo, ni factura. Con Idempotency-Key. */
+  tagSubscriptionItem?(itemId: string, metadata: Record<string, string>, idempotencyKey: string): Promise<void>;
+  /** Importe único (con signo) para la próxima factura de la suscripción, sin impuestos incluidos. Con Idempotency-Key. */
+  createInvoiceItem?(input: InvoiceItemInput, idempotencyKey: string): Promise<GwInvoiceItem>;
+  /** Importes únicos de un cliente (pendientes y ya facturados), los más recientes primero, hasta `max`. Solo lectura. */
+  invoiceItemsOfCustomer?(customerId: string, max?: number): Promise<GwInvoiceItem[]>;
+  /**
+   * Checkout en modo suscripción con partidas negociadas: precios en línea sobre Products existentes (recurrentes y
+   * de importe único para la primera factura). El cliente pone su método de pago en la página de Stripe.
+   */
+  createNegotiatedCheckoutSession?(input: NegotiatedCheckoutInput, idempotencyKey: string): Promise<GwCheckoutSession>;
   /** SOLO PRUEBAS: relojes de prueba de Stripe para simular el paso del tiempo (renovaciones, impagos). */
   createTestClock?(frozenTime: number, name: string): Promise<{ id: string }>;
   advanceTestClock?(id: string, frozenTime: number): Promise<{ id: string; status: string }>;
   testClock?(id: string): Promise<{ id: string; status: string; frozenTime: number } | null>;
+}
+
+/** Partida de una suscripción con lo necesario para comparar condiciones negociadas. */
+export interface GwNegotiatedItem {
+  id: string;
+  productId: string;
+  /** Importe unitario sin impuestos (céntimos) y cantidad. */
+  unitAmount: number;
+  quantity: number;
+  currency: string;
+  interval: "day" | "week" | "month" | "year" | null;
+  intervalCount: number | null;
+  metadata: Record<string, string>;
+  /** Suma de los tipos FIJOS de la partida (o de los de la suscripción), en puntos básicos; null si no lleva ninguno. */
+  taxRateBp: number | null;
+}
+export interface GwNegotiatedSubscription {
+  id: string;
+  customerId: string;
+  status: GwSubscription["status"];
+  currency: string | null;
+  metadata: Record<string, string>;
+  /** ¿Calcula Stripe Tax el impuesto de sus facturas (`automatic_tax`)? */
+  automaticTax: boolean;
+  cancelAt: number | null;
+  cancelAtPeriodEnd: boolean;
+  currentPeriodEnd: number | null;
+  scheduleId: string | null;
+  items: GwNegotiatedItem[];
+  /** Fin del periodo sin cargo (segundos), si lo tiene. */
+  trialEnd?: number | null;
+  /** Cosas hechas fuera de Elephant (Dashboard) que cambian lo que se cobra: cupón, cobro en pausa, cobro por factura enviada. */
+  anomalies?: string[];
+}
+export interface NegotiatedItemsChange {
+  subscriptionId: string;
+  /** Partidas (ids de Stripe) que se retiran. */
+  remove: string[];
+  /** Partidas nuevas: precio en línea sobre un Product existente, cantidad 1, importe sin impuestos. */
+  add: Array<{ productId: string; unitAmount: number; currency: string; interval: "month" | "year"; metadata: Record<string, string> }>;
+  metadata: Record<string, string>;
+}
+export interface InvoiceItemInput {
+  customerId: string;
+  subscriptionId: string;
+  /** Céntimos sin impuestos; negativo = abono. */
+  amount: number;
+  currency: string;
+  description: string;
+  metadata: Record<string, string>;
+}
+export interface GwInvoiceItem {
+  id: string;
+  amount: number;
+  currency: string;
+  subscriptionId: string | null;
+  /** Factura en la que ya se incluyó; null si sigue pendiente de la próxima. */
+  invoiceId: string | null;
+  metadata: Record<string, string>;
+}
+export interface NegotiatedCheckoutInput {
+  customerId: string;
+  /** `interval` null = importe único de la primera factura. Importes sin impuestos. */
+  lines: Array<{ productId: string; unitAmount: number; currency: string; interval: "month" | "year" | null }>;
+  clientReferenceId: string;
+  metadata: Record<string, string>;
+  successUrl: string;
+  cancelUrl: string;
+  expiresAt: number;
+  integrationIdentifier: string;
+  notice: string;
+  /** Stripe Tax (`automatic_tax`) sobre importes sin IVA: solo con la política fiscal live. */
+  automaticTax?: boolean;
+  /**
+   * Primer cargo en esta fecha (segundos): hasta entonces el cliente solo autoriza su método de pago y no se cobra nada
+   * (`subscription_data.trial_end`); ese día empieza el primer periodo, completo. Stripe exige al menos 48 h de margen.
+   */
+  trialEnd?: number;
 }
 
 export interface PaymentSessionInput {
@@ -468,6 +565,48 @@ export function toInvoice(i: Stripe.Invoice, mode: StripeMode = "test"): GwInvoi
     attemptCount: typeof i.attempt_count === "number" ? i.attempt_count : null,
     nextPaymentAttempt: typeof i.next_payment_attempt === "number" ? i.next_payment_attempt : null,
   };
+}
+
+/** Suscripción con el detalle de sus partidas (condiciones negociadas). */
+export function toNegotiatedSubscription(s: Stripe.Subscription, mode: StripeMode = "test", allItems?: Stripe.SubscriptionItem[]): GwNegotiatedSubscription {
+  assertModeObject(s, mode);
+  const bp = (rates: Array<{ percentage?: number }> | null | undefined) => (rates && rates.length ? Math.round(rates.reduce((a, r) => a + (r.percentage ?? 0), 0) * 100) : null);
+  const defaults = bp(s.default_tax_rates as Array<{ percentage?: number }> | null | undefined);
+  const items = allItems ?? s.items?.data ?? [];
+  const ends = items.map((i) => (i as unknown as { current_period_end?: number }).current_period_end).filter((x): x is number => typeof x === "number");
+  const x = s as unknown as { discounts?: unknown[] | null; discount?: unknown; pause_collection?: unknown; collection_method?: string | null; trial_end?: number | null };
+  const anomalies = [...((x.discounts && x.discounts.length) || x.discount ? ["cupón"] : []), ...(x.pause_collection ? ["cobro_en_pausa"] : []), ...(x.collection_method && x.collection_method !== "charge_automatically" ? ["cobro_no_automático"] : [])];
+  return {
+    trialEnd: typeof x.trial_end === "number" ? x.trial_end : null,
+    anomalies,
+    id: s.id,
+    customerId: idOf(s.customer) ?? "",
+    status: s.status as GwSubscription["status"],
+    currency: s.currency ? s.currency.toUpperCase() : null,
+    metadata: meta(s.metadata),
+    automaticTax: !!s.automatic_tax?.enabled,
+    cancelAt: s.cancel_at ?? null,
+    cancelAtPeriodEnd: !!s.cancel_at_period_end,
+    currentPeriodEnd: ends.length ? Math.max(...ends) : null,
+    scheduleId: idOf((s as unknown as { schedule?: unknown }).schedule),
+    items: items.map((i) => ({
+      id: i.id,
+      productId: idOf(i.price?.product) ?? "",
+      unitAmount: i.price?.unit_amount ?? 0,
+      quantity: i.quantity ?? 1,
+      currency: (i.price?.currency ?? "").toUpperCase(),
+      interval: (i.price?.recurring?.interval ?? null) as GwNegotiatedItem["interval"],
+      intervalCount: i.price?.recurring?.interval_count ?? null,
+      metadata: meta(i.metadata),
+      taxRateBp: bp(i.tax_rates as Array<{ percentage?: number }> | null | undefined) ?? defaults,
+    })),
+  };
+}
+
+export function toInvoiceItem(i: Stripe.InvoiceItem, mode: StripeMode = "test"): GwInvoiceItem {
+  assertModeObject(i, mode);
+  const x = i as unknown as { parent?: { subscription_details?: { subscription?: unknown } | null } | null; subscription?: unknown };
+  return { id: i.id, amount: i.amount, currency: i.currency.toUpperCase(), subscriptionId: idOf(x.parent?.subscription_details?.subscription) ?? idOf(x.subscription), invoiceId: idOf(i.invoice), metadata: meta(i.metadata) };
 }
 
 /** Línea de factura (API 2025-03-31+: partida y prorrateo en `parent`, precio en `pricing`). */
@@ -782,6 +921,99 @@ export function stripeGateway(
           { idempotencyKey },
         );
         return toSubscription(s, mode);
+      } catch (e) {
+        wrapError(e);
+      }
+    },
+    async negotiatedSubscription(id) {
+      try {
+        const s = await client.subscriptions.retrieve(id);
+        // La suscripción solo trae embebidas las 10 primeras partidas: si hay más, se listan TODAS (paginado)
+        if (!(s.items as { has_more?: boolean } | undefined)?.has_more) return toNegotiatedSubscription(s, mode);
+        const all: Stripe.SubscriptionItem[] = [];
+        for await (const i of client.subscriptionItems.list({ subscription: id, limit: 100 })) all.push(i);
+        return toNegotiatedSubscription(s, mode, all);
+      } catch (e) {
+        if (notFound(e)) return null;
+        wrapError(e);
+      }
+    },
+    async replaceNegotiatedItems(c, idempotencyKey) {
+      try {
+        const params = {
+          items: [
+            ...c.remove.map((id) => ({ id, deleted: true })),
+            ...c.add.map((a) => ({ price_data: { currency: a.currency.toLowerCase(), product: a.productId, unit_amount: a.unitAmount, recurring: { interval: a.interval }, tax_behavior: "exclusive" as const }, quantity: 1, metadata: a.metadata })),
+          ],
+          // Sin efectos retroactivos: el cambio rige desde la próxima factura, sin cargos ni abonos por lo ya facturado
+          proration_behavior: "none" as const,
+          metadata: c.metadata,
+        };
+        return toNegotiatedSubscription(await client.subscriptions.update(c.subscriptionId, params as Stripe.SubscriptionUpdateParams, { idempotencyKey }), mode);
+      } catch (e) {
+        wrapError(e);
+      }
+    },
+    async tagSubscriptionItem(itemId, metadata, idempotencyKey) {
+      try {
+        // Solo metadatos: el precio y la cantidad no viajan, así que no hay nada que prorratear ni facturar
+        const i = await client.subscriptionItems.update(itemId, { metadata, proration_behavior: "none" }, { idempotencyKey });
+        if (i.object !== "subscription_item") throw new StripeGatewayError("invalid_response", "Stripe no devolvió la partida", false);
+      } catch (e) {
+        if (e instanceof StripeGatewayError) throw e;
+        wrapError(e);
+      }
+    },
+    async createInvoiceItem(i, idempotencyKey) {
+      try {
+        const item = await client.invoiceItems.create(
+          { customer: i.customerId, subscription: i.subscriptionId, amount: i.amount, currency: i.currency.toLowerCase(), description: i.description.slice(0, 500), metadata: i.metadata, tax_behavior: "exclusive" },
+          { idempotencyKey },
+        );
+        return toInvoiceItem(item, mode);
+      } catch (e) {
+        wrapError(e);
+      }
+    },
+    async invoiceItemsOfCustomer(customerId, max = 500) {
+      try {
+        const out: GwInvoiceItem[] = [];
+        for await (const i of client.invoiceItems.list({ customer: customerId, limit: 100 })) {
+          out.push(toInvoiceItem(i, mode));
+          if (out.length >= max) break;
+        }
+        return out;
+      } catch (e) {
+        wrapError(e);
+      }
+    },
+    async createNegotiatedCheckoutSession(i, idempotencyKey) {
+      const params: Stripe.Checkout.SessionCreateParams & { integration_identifier?: string } = {
+        mode: "subscription",
+        customer: i.customerId,
+        line_items: i.lines.map((l) => ({
+          price_data: { currency: l.currency.toLowerCase(), product: l.productId, unit_amount: l.unitAmount, tax_behavior: "exclusive" as const, ...(l.interval ? { recurring: { interval: l.interval } } : {}) },
+          quantity: 1,
+        })),
+        client_reference_id: i.clientReferenceId,
+        metadata: i.metadata,
+        subscription_data: { metadata: i.metadata, ...(i.trialEnd ? { trial_end: i.trialEnd } : {}) },
+        // Solo tarjeta: el primer pago se resuelve en la página (no hay cobros asíncronos que fallen días después)
+        allowed_payment_method_types: ["card"],
+        success_url: i.successUrl,
+        cancel_url: i.cancelUrl,
+        expires_at: i.expiresAt,
+        // Igual que el Checkout de un cliente ya existente: dirección de facturación y NIF se piden y se guardan
+        billing_address_collection: "required",
+        tax_id_collection: { enabled: true, required: "if_supported" },
+        customer_update: { address: "auto", name: "auto" },
+        locale: "es",
+        custom_text: { submit: { message: i.notice.slice(0, 1200) } },
+        ...(i.automaticTax ? { automatic_tax: { enabled: true } } : {}),
+        integration_identifier: i.integrationIdentifier,
+      };
+      try {
+        return toSession(await client.checkout.sessions.create(params as Stripe.Checkout.SessionCreateParams, { idempotencyKey }), mode);
       } catch (e) {
         wrapError(e);
       }
