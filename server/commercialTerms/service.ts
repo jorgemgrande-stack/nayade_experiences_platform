@@ -103,6 +103,9 @@ export interface TermsInput {
 
 const CONCEPT_OF: Record<string, Concept> = { core_plan: "core_plan", net_module: "net", net_bundle: "net", industry_module: "net", connect: "connect", connect_bundle: "connect", extension: "connect", addon: "connect", extra: "connect", service: "professional_service" };
 const REASON_MIN = 5;
+const NEEDS_RECURRING = "El acuerdo necesita al menos una cuota recurrente (un producto del catálogo o una partida a medida)";
+/** Lo que se dice de las licencias cuando el acuerdo no incluye ningún producto del catálogo. */
+export const NO_LICENCES_NOTE = "Este acuerdo solo tiene partidas a medida: es puramente económico. No incluye ningún producto de Big Elephant, no concede licencias, capacidades ni límites y no da de alta ni necesita ninguna plataforma.";
 const text = (v: string | null | undefined, max: number) => v?.trim().slice(0, max) || null;
 
 /** Estado efectivo en un instante: un acuerdo activado con fecha futura está «programado»; pasado su fin, «vencido». */
@@ -264,6 +267,8 @@ export class CommercialTermsService {
     if (problems.length) bad(problems.join("; "), { problems });
     if (head.presentation !== "global" && head.presentation !== "breakdown") bad("Presentación no válida");
     if (head.nextTermsId !== null) await this.checkNext(head.nextTermsId, ctx, head.effectiveTo!);
+    // Una suscripción es, como mínimo, una cuota recurrente (antes lo garantizaba el plan Core obligatorio)
+    if (!lines.some(isRecurring)) bad(NEEDS_RECURRING);
     await this.checkComposition(lines);
     return { head, lines, adjustments, probe };
   }
@@ -287,11 +292,15 @@ export class CommercialTermsService {
     return next;
   }
 
-  /** Composición del catálogo (un plan Core, dependencias, compatibilidad) de las cuotas recurrentes de catálogo. */
+  /**
+   * Composición del catálogo (como mucho un plan Core, dependencias, compatibilidad) de las cuotas recurrentes de
+   * catálogo. El plan Core es obligatorio solo si alguna de ellas depende de él según el catálogo: un acuerdo con solo
+   * partidas a medida (o con productos que el catálogo no ata a Core) no lo necesita.
+   */
   private async checkComposition(lines: Array<Pick<TermsLine, "kind" | "chargeClass" | "productKey" | "catalog">>) {
-    const items = lines.filter((l) => l.kind === "catalog" && l.chargeClass === "recurring").map((l) => ({ productKey: l.productKey!, family: l.catalog!.family }));
+    const items = lines.filter((l) => l.kind === "catalog" && l.chargeClass === "recurring").map((l) => ({ productKey: l.productKey!, family: l.catalog!.family, activationKind: l.catalog!.activationKind }));
     try {
-      await this.d.subscriptions.checkComposition(items);
+      await this.d.subscriptions.checkComposition(items, { planOptional: true });
     } catch (e) {
       if (e instanceof SubscriptionError) throw new TermsError(e.code === "invalid_input" ? "invalid_input" : "invalid_state", e.message, e.details);
       throw e;
@@ -399,7 +408,7 @@ export class CommercialTermsService {
     if (t.effectiveTo !== null && t.effectiveTo <= Math.max(now, t.effectiveFrom ?? 0)) state("La vigencia de estas condiciones ya ha terminado: actualiza las fechas");
     if (t.afterEnd === "next_terms" && t.nextTermsId !== null) await this.checkNext(t.nextTermsId, t, t.effectiveTo!);
     if (t.subscriptionId === null) {
-      if (!t.lines.some((l) => l.kind === "catalog" && isRecurring(l) && l.catalog!.family === "core_plan")) state("Una suscripción necesita un plan Core: añádelo al paquete");
+      if (!t.lines.some(isRecurring)) state(NEEDS_RECURRING);
       await this.checkComposition(t.lines);
       return;
     }
@@ -459,7 +468,8 @@ export class CommercialTermsService {
     const now = this.now();
     const sub = t.subscriptionId !== null ? await this.d.subscriptionStore.get(t.subscriptionId) : null;
     const items = sub ? await this.d.subscriptionStore.items(sub.id) : [];
-    const from = t.status === "draft" || t.status === "pending_acceptance" ? this.effectiveAt(t, sub) : (t.effectiveFrom ?? now);
+    // Un paquete aún sin suscripción: su primer periodo empezará en el inicio de sus cuotas (`packageStart`)
+    const from = t.status === "draft" || t.status === "pending_acceptance" ? (sub || t.subscriptionId !== null ? this.effectiveAt(t, sub) : this.packageStart(t)) : (t.effectiveFrom ?? now);
     const at: Terms = { ...t, effectiveFrom: from };
     const summary = summarize(at);
     const before = sub ? this.current(sub, items, Math.max(now, Math.min(from, sub.currentPeriodEnd - 1))) : null;
@@ -490,6 +500,8 @@ export class CommercialTermsService {
     const planLineAfter = after.find((l) => l.catalog!.family === "core_plan") ?? null;
     const planKeyBefore = Array.from(productsBefore).find(([, p]) => p.plan) ?? null;
     const planAfter = after.find((l) => l.catalog!.family === "core_plan" && l.catalog!.activationKind === "plan")?.catalog!.activationRef ?? null;
+    // Sin ningún producto de catálogo (ni ahora ni programado): el acuerdo es solo económico y no concede nada
+    const grantsNothing = !t.lines.some((l) => l.kind === "catalog");
     return {
       terms: { ...t, effectiveStatus: effectiveStatus(t, now) },
       effectiveFrom: from,
@@ -503,7 +515,9 @@ export class CommercialTermsService {
       nextCharge: { at: nextAt, netCents: nextNet, taxCents: nextTax, totalCents: nextNet + nextTax },
       nextRenewalAt: sub ? sub.currentPeriodEnd : null,
       licences: {
-        note: "Los derechos dependen de los productos incluidos, no del importe. Una partida a medida no concede licencias.",
+        note: grantsNothing ? NO_LICENCES_NOTE : "Los derechos dependen de los productos incluidos, no del importe. Una partida a medida no concede licencias.",
+        /** El acuerdo no concede licencias, límites ni plataforma (solo partidas a medida). */
+        grantsNothing,
         planBefore: planBefore?.plan ?? null,
         // El plan Core como PRODUCTO (el catálogo actual concede sus derechos por capacidades, no por una referencia de plan)
         planProductBefore: planKeyBefore ? { key: planKeyBefore[0], name: planKeyBefore[1].name } : null,
@@ -812,8 +826,22 @@ export class CommercialTermsService {
   // ── Paquetes: contratación nueva ───────────────────────────────────────────────
 
   /**
-   * Prepara la contratación de un paquete: crea la suscripción de la empresa con el plan Core del paquete y le aplica
-   * el acuerdo desde su primer instante. Sin cobros (la suscripción nace en modo simulación de facturación).
+   * Inicio del primer periodo de la suscripción de un paquete: el inicio efectivo de sus cuotas. Si todas las cuotas
+   * recurrentes llevan un inicio propio futuro (y ningún cargo único tiene una fecha anterior), el periodo se ancla en
+   * la primera de esas fechas: la primera cuota es un periodo completo desde entonces, sin parte proporcional. En
+   * cualquier otro caso, ahora (como siempre).
+   */
+  private packageStart(t: Pick<Terms, "lines">): number {
+    const now = this.now();
+    const starts = [...t.lines.filter(isRecurring).map((l) => l.startsAt ?? now), ...t.lines.filter((l) => !isRecurring(l) && l.startsAt !== null).map((l) => l.startsAt!)];
+    return starts.length ? Math.max(now, Math.min(...starts)) : now;
+  }
+
+  /**
+   * Prepara la contratación de un paquete: crea la suscripción de la empresa (con el plan Core del paquete o, si el
+   * paquete no lleva ninguno, sin plan ni plataforma) y le aplica el acuerdo desde su primer instante. El primer
+   * periodo empieza en el inicio efectivo del paquete (`packageStart`): la primera cuota es un periodo completo, sin
+   * parte proporcional. Sin cobros (la suscripción nace en modo simulación de facturación).
    */
   async prepareContracting(id: number, input: { expectedRevision: number; trialDays?: number; reason?: string | null }, actor: string) {
     const t = await this.must(id);
@@ -828,10 +856,18 @@ export class CommercialTermsService {
     }
     if (t.revision !== input.expectedRevision) throw new TermsError("version_conflict", `Otra persona modificó este paquete antes (revisión actual ${t.revision}). Recarga para no perder cambios.`, { current: t.revision });
     if (t.requiresAcceptance && t.acceptanceStatus !== "accepted") state("Este paquete exige la aceptación del cliente: envíalo a aceptación; la contratación se prepara al aceptarse", { reason: "acceptance_required" });
-    const plan = t.lines.find((l) => l.kind === "catalog" && isRecurring(l) && l.catalog!.family === "core_plan");
-    if (!plan) state("Una suscripción necesita un plan Core: añádelo al paquete");
+    if (!t.lines.some(isRecurring)) state(NEEDS_RECURRING);
+    // El plan Core solo es obligatorio si algún producto del paquete depende de él (lo decide la composición)
     await this.checkComposition(t.lines);
-    const sub = await this.conflict(this.d.subscriptions.create({ companyId: t.companyId, interval: t.interval, currency: t.currency, trialDays: input.trialDays ?? 0, plan: { productKey: plan.productKey!, priceId: plan.priceId! }, reason: text(input.reason, 500) ?? t.reason, newSale: true }, actor));
+    const plan = t.lines.find((l) => l.kind === "catalog" && isRecurring(l) && l.catalog!.family === "core_plan");
+    const startAt = this.packageStart(t);
+    const reason = text(input.reason, 500) ?? t.reason;
+    if (!plan && (input.trialDays ?? 0) > 0) bad("Un paquete sin plan Core no tiene periodo de prueba: no hay plataforma que probar");
+    const sub = await this.conflict(
+      plan
+        ? this.d.subscriptions.create({ companyId: t.companyId, interval: t.interval, currency: t.currency, startAt, trialDays: input.trialDays ?? 0, plan: { productKey: plan.productKey!, priceId: plan.priceId! }, reason, newSale: true }, actor)
+        : this.d.subscriptions.createWithoutPlan({ companyId: t.companyId, interval: t.interval, currency: t.currency, startAt, reason }, actor),
+    );
     const linked = await this.d.store.patch(t.id, { subscriptionId: sub.id }, this.event("subscription_created", actor, text(input.reason, 500) ?? t.reason, { after: { subscriptionId: sub.id, reference: sub.reference } }), this.now());
     // Desde el primer instante de la suscripción: la partida del alta queda sin ventana y nunca se factura
     return this.activate(t.id, { expectedRevision: linked.revision, expectedVersion: sub.version, reason: input.reason }, actor, { at: sub.currentPeriodStart });

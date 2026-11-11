@@ -43,6 +43,7 @@ let otherSubscriptionId = 0;
 let hotelCompanyId = 0;
 let referenceCompanyId = 0;
 let contractCompanyId = 0;
+let infraCompanyId = 0;
 const acceptanceStore = new MemoryExternalStore("test");
 const crmStore = new MemoryCrmStore();
 const PUBLIC = "https://admin.example.test/cp/v1/public/contract-acceptance";
@@ -91,6 +92,7 @@ beforeAll(async () => {
   hotelCompanyId = (await crm.createCompany({ name: "Hotel Ejemplo" }, "t")).id;
   referenceCompanyId = (await crm.createCompany({ name: "Hotel a tarifa oficial" }, "t")).id;
   contractCompanyId = (await crm.createCompany({ name: "Hotel con contrato", legalName: "Hotel con Contrato, S.L.", taxId: "B12345674" }, "t")).id;
+  infraCompanyId = (await crm.createCompany({ name: "Cliente de infraestructura", legalName: "Cliente de Infraestructura, S.L." }, "t")).id;
   const webStore = new MemoryWebStore();
   const web = new WebAdminService({ store: webStore, refs: { moduleIds: BUILTIN_MODULES.map((m) => m.id), planIds: () => null }, now: () => clock });
   await seedElephantSource(web, webStore);
@@ -732,5 +734,116 @@ describe("cobro en Stripe de condiciones personalizadas: apagado por defecto", (
     expect(after.terms.syncStatus).toBe("none");
     expect(after.events.some((e: { kind: string }) => e.kind === "sync")).toBe(false);
     expect((await call("GET", `/subscriptions/${subscriptionId}`, { token: TOK.admin })).json.billing).toEqual({ source: "shadow" });
+  });
+});
+
+/**
+ * Acuerdo SIN plan de Elephant Core: solo una partida a medida (costes de infraestructura, 44,63 € + 21 % = 54,00 € al
+ * mes). Circuito completo por la API: paquete → vista previa → contrato y aceptación → suscripción sin plan ni
+ * plataforma → sin licencias → facturación simulada → plan de cobro → renovación.
+ */
+describe("paquete solo con partidas a medida (sin plan Core): 44,63 € + IVA = 54,00 € al mes", () => {
+  let termsId = 0;
+  let revision = 0;
+  let url = "";
+  let sid = 0;
+  let acceptedAt = 0;
+  const infra = { kind: "custom", concept: "other", name: "Costes de infraestructura", chargeClass: "recurring", unitCents: 4463, taxRateBp: 2100 };
+  const pkg = (over: Record<string, unknown> = {}) => ({ companyId: infraCompanyId, interval: "month", pricingMode: "per_item", presentation: "breakdown", requiresAcceptance: true, reason: "Solo costes de infraestructura", lines: [infra], ...over });
+
+  it("un borrador guardado con plan lo conserva hasta que el operador lo quita; quitarlo se admite si nada depende de él", async () => {
+    const withPlan = await call("POST", "/commercial-terms/packages", { token: TOK.admin, body: pkg({ lines: [{ kind: "catalog", productKey: "essential", priceId: P.essential }, infra] }) });
+    expect(withPlan.status).toBe(201);
+    termsId = withPlan.json.terms.id;
+    expect(withPlan.json.terms.lines.map((l: { kind: string }) => l.kind)).toEqual(["catalog", "custom"]);
+    // Con un producto que depende de Core, el plan no se puede quitar
+    const bad = await call("PUT", `/commercial-terms/${termsId}`, { token: TOK.admin, body: { ...pkg({ lines: [{ kind: "catalog", productKey: "connect-voice", priceId: P["connect-voice"] }, infra] }), companyId: undefined, expectedRevision: withPlan.json.terms.revision } });
+    expect(bad.status).toBe(409);
+    expect(bad.json.message).toMatch(/necesita un plan Core/);
+    const saved = await call("PUT", `/commercial-terms/${termsId}`, { token: TOK.admin, body: { ...pkg(), companyId: undefined, expectedRevision: withPlan.json.terms.revision } });
+    expect(saved.status).toBe(200);
+    revision = saved.json.terms.revision;
+    expect(saved.json.terms.lines.map((l: { kind: string; name: string }) => [l.kind, l.name])).toEqual([["custom", "Costes de infraestructura"]]);
+  });
+
+  it("vista previa: 44,63 + 9,37 = 54,00 al mes, sin línea de plan y sin efectos sobre licencias", async () => {
+    const preview = (await call("GET", `/commercial-terms/${termsId}/preview`, { token: TOK.admin })).json;
+    expect(preview.summary.recurring).toMatchObject({ netCents: 4463, taxCents: 937, totalCents: 5400 });
+    expect(preview.summary.recurring.lines).toHaveLength(1);
+    expect(preview.nextCharge).toMatchObject({ netCents: 4463, taxCents: 937, totalCents: 5400 });
+    expect(preview.licences).toMatchObject({ grantsNothing: true, planProductAfter: null, planAfter: null, products: { added: [], removed: [], kept: [] } });
+    expect(preview.licences.note).toMatch(/no concede licencias/);
+  });
+
+  it("contrato y aceptación: el documento no habla de planes; nada se crea antes de aceptar", async () => {
+    const early = await call("POST", `/commercial-terms/${termsId}/prepare-contracting`, { token: TOK.admin, body: { expectedRevision: revision } });
+    expect(early.status).toBe(409);
+    const sent = await call("POST", `/commercial-terms/${termsId}/acceptance`, { token: TOK.admin, body: { signer: { name: "Luis Pérez", email: "luis@cliente-infra.test" }, expectedRevision: revision } });
+    expect(sent.status).toBe(201);
+    url = sent.json.url;
+    const contract = (await crmStore.get("contracts", sent.json.contract.id))!;
+    expect(contract).toMatchObject({ status: "sent", companyId: infraCompanyId, amountCents: 4463, billingInterval: "month" });
+    expect(contract.conditions).toMatch(/Total con impuestos: 54,00\s€ al mes/);
+    expect(contract.conditions).toContain("exclusivamente económicas");
+    expect(contract.conditions).not.toMatch(/\bplan\b|Essential|Elephant Core/i);
+    const page = await raw("GET", publicPath(url));
+    expect(page.status).toBe(200);
+    expect(page.body).toMatch(/54,00\s€ al mes/);
+    expect((await call("GET", `/subscriptions?companyId=${infraCompanyId}`, { token: TOK.admin })).json.subscriptions).toEqual([]);
+  });
+
+  it("al aceptar: suscripción de la empresa sin plan ni plataforma, enlazada con el contrato firmado", async () => {
+    clock += 3 * 3_600_000;
+    acceptedAt = clock;
+    const done = await raw("POST", publicPath(url), { token: url.split("token=")[1], name: "Luis Pérez", accept: "1" });
+    expect(done.status).toBe(200);
+    expect(done.body).toContain("quedan activadas");
+    const terms = (await call("GET", `/commercial-terms/${termsId}`, { token: TOK.admin })).json;
+    expect(terms.terms).toMatchObject({ status: "active", acceptanceStatus: "accepted", effectiveFrom: acceptedAt });
+    expect(terms.events.map((e: { kind: string }) => e.kind)).toEqual(expect.arrayContaining(["accepted", "subscription_created", "activated"]));
+    expect(terms.events.some((e: { kind: string }) => e.kind.startsWith("licences_"))).toBe(false);
+    sid = terms.terms.subscriptionId;
+    const list = (await call("GET", `/subscriptions?companyId=${infraCompanyId}`, { token: TOK.admin })).json.subscriptions;
+    expect(list).toHaveLength(1);
+    expect(list[0]).toMatchObject({ id: sid, tenantId: null, status: "active", interval: "month", currency: "EUR", currentPeriodStart: acceptedAt, effective: { status: "active" }, billing: { source: "shadow" } });
+    const detail = (await call("GET", `/subscriptions/${sid}`, { token: TOK.admin })).json;
+    expect(detail.subscription.contractId).toBe(terms.terms.contractId);
+    expect(detail.items).toHaveLength(1);
+    expect(detail.items[0]).toMatchObject({ family: "service", activationKind: "none", lineAmountCents: 4463, taxRateBp: 2100, effectiveFrom: acceptedAt, effectiveTo: null });
+    expect(detail.items[0].productKey).toMatch(/^custom:/);
+    expect(detail.licencePlan).toMatchObject({ plan: null, modules: [] });
+  });
+
+  it("licencias: no aplica (ni automáticas ni a mano) y no pide dar de alta ninguna plataforma", async () => {
+    const status = (await call("GET", `/subscriptions/${sid}/terms/licences`, { token: TOK.admin })).json;
+    expect(status).toMatchObject({ applicable: false, tenantId: null, linked: false, last: null, plan: null });
+    const apply = await call("POST", `/subscriptions/${sid}/terms/licences/apply`, { token: TOK.admin, body: {} });
+    expect(apply.status).toBe(200);
+    expect(apply.json.status).toBe("not_applicable");
+    const history = (await call("GET", `/subscriptions/${sid}/terms`, { token: TOK.admin })).json;
+    expect(history.events.some((e: { kind: string }) => e.kind.startsWith("licences_"))).toBe(false);
+    expect(history.currentRecurring).toMatchObject({ netCents: 4463, taxCents: 937, totalCents: 5400 });
+  });
+
+  it("facturación simulada, plan de cobro y renovación mensual: siempre 54,00, con el primer periodo completo desde la aceptación", async () => {
+    const first = (await call("POST", `/subscriptions/${sid}/shadow`, { token: TOK.admin, body: {} })).json;
+    expect(first.results).toHaveLength(1);
+    expect(first.results[0].invoice).toMatchObject({ kind: "renewal", periodStart: acceptedAt, subtotalCents: 4463, taxCents: 937, totalCents: 5400 });
+    expect(first.results[0].invoice.lines[0].fraction).toBe(1);
+    const view = (await call("GET", `/subscriptions/${sid}/terms/billing`, { token: TOK.admin })).json;
+    expect(view.plan.items).toEqual([expect.objectContaining({ product: { kind: "custom" }, amountCents: 4463, interval: "month", taxRateBp: 2100 })]);
+    expect(view.plan.recurringNetCents).toBe(4463);
+    const periodEnd = first.results[0].invoice.periodEnd as number;
+    const before = clock;
+    clock = periodEnd + 1000;
+    try {
+      const renewed = await call("POST", `/subscriptions/${sid}/renewals`, { token: TOK.admin, body: {} });
+      expect(renewed.status).toBe(200);
+      expect(renewed.json.subscription).toMatchObject({ status: "active", currentPeriodStart: periodEnd, tenantId: null });
+      const second = (await call("POST", `/subscriptions/${sid}/shadow`, { token: TOK.admin, body: {} })).json;
+      expect(second.results.map((r: { invoice: { kind: string; periodStart: number; totalCents: number } }) => [r.invoice.kind, r.invoice.periodStart, r.invoice.totalCents])).toEqual([["renewal", periodEnd, 5400]]);
+    } finally {
+      clock = before;
+    }
   });
 });

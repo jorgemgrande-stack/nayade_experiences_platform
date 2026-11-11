@@ -166,7 +166,8 @@ export function renderTermsDocument(i: TermsDocumentInput): string {
     const kind = l.recurring ? "" : " (pago único)";
     out.push(`- ${l.name}${l.quantity > 1 ? ` × ${l.quantity}` : ""}${kind}${l.description ? `. ${l.description}` : ""}${l.conditions ? ` Condiciones particulares: ${l.conditions}` : ""}`);
   }
-  out.push("Las funcionalidades y licencias del cliente son las de los productos incluidos, con independencia del precio pactado.");
+  // Solo servicios a medida: el documento no habla de licencias ni de productos que no hay
+  out.push(v.included.some((l) => l.kind === "product") ? "Las funcionalidades y licencias del cliente son las de los productos incluidos, con independencia del precio pactado." : "Estas condiciones son exclusivamente económicas: no incluyen licencias de uso ni el alta de ninguna plataforma de Big Elephant.");
   out.push("");
   out.push("PRECIO Y PERIODICIDAD");
   if (v.breakdown) {

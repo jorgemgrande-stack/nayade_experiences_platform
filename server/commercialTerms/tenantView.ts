@@ -19,11 +19,22 @@ export interface TenantCustomTerms {
   timeZone: "Europe/Madrid";
 }
 
-export function tenantTermsReader(terms: CommercialTermsService, store: TermsStore, subscriptions: Pick<SubscriptionStore, "list">, now: () => number) {
+export function tenantTermsReader(terms: CommercialTermsService, store: TermsStore, subscriptions: Pick<SubscriptionStore, "list"> & Partial<Pick<SubscriptionStore, "items">>, now: () => number) {
+  /**
+   * Suscripción solo económica (sin plataforma y sin ningún producto del catálogo: solo partidas a medida): no es el
+   * plan de ninguna plataforma. No se muestra en «Mi plan» ni estorba a la suscripción que sí lo es.
+   */
+  const economicOnly = async (s: { id: number; tenantId: string | null }) => {
+    if (s.tenantId !== null || !subscriptions.items) return false;
+    const at = now();
+    const items = (await subscriptions.items(s.id)).filter((i) => i.effectiveTo === null || (i.effectiveTo > at && i.effectiveTo > i.effectiveFrom));
+    return items.length > 0 && items.every((i) => i.productKey.includes(":"));
+  };
   return async (tenantId: string, companyId: number, subscriptionId?: number | null): Promise<TenantCustomTerms | null> => {
     // La suscripción viva de ESA empresa y ESA plataforma: la del pedido vigente si la hay; si no, la única que tenga
     // (si no es única, no se muestra nada). Nunca la de otra empresa
-    const live = (await subscriptions.list({ companyId })).filter((s) => s.status !== "canceled" && s.companyId === companyId && (s.tenantId === tenantId || s.tenantId === null));
+    const live = [];
+    for (const s of (await subscriptions.list({ companyId })).filter((s) => s.status !== "canceled" && s.companyId === companyId && (s.tenantId === tenantId || s.tenantId === null))) if (!(await economicOnly(s))) live.push(s);
     const sub = subscriptionId != null ? live.find((s) => s.id === subscriptionId) : live.length === 1 ? live[0] : undefined;
     if (!sub) return null;
     const cur = await terms.currentTerms(sub.id);

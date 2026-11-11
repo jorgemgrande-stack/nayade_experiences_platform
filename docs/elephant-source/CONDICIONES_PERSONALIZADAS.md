@@ -18,6 +18,72 @@ Encargo del propietario del 10/11/2026 (16 secciones, 30 casos de aceptación).
 - **La presentación elegida** (cuota global o desglose) se respeta en oferta, propuesta, contrato, resumen y panel del
   tenant. Las facturas llevan siempre el detalle fiscal.
 
+## Suscripciones económicas independientes del SaaS
+
+Requisito del propietario (11/11/2026): un acuerdo (o paquete) puede estar formado **solo por partidas a medida**, sin
+plan de Elephant Core. Caso de referencia: una empresa que solo paga costes de infraestructura, una partida recurrente
+de **44,63 € netos + 21 % (9,37 €) = 54,00 € al mes**; ningún producto de Big Elephant, ninguna plataforma, ninguna
+licencia.
+
+**Cuándo es obligatorio el plan Core.** Lo decide el catálogo, no una lista de productos
+(`needsCorePlan`, `server/subscriptions/service.ts`): un producto de catálogo necesita un plan en el mismo acuerdo si
+declara planes compatibles (`compatibleWith`), si amplía un cupo del plan (`addonFor`) o si su activación concede algo
+dentro de la plataforma (`plan`, `module`, `feature`, `usage`). Hoy eso son todas las soluciones Net, las extensiones
+Connect y las ampliaciones. Un producto cuya activación es `service` o `none` (un servicio puro, como el alojamiento
+web) puede ir sin plan. Las dependencias entre productos se siguen comprobando igual. Como mucho hay un plan, y todo
+acuerdo necesita al menos una cuota recurrente. Las operaciones ordinarias de una suscripción (alta, cambio de plan,
+añadir o quitar partidas) siguen exigiendo exactamente un plan: la excepción es solo de los acuerdos.
+
+**Qué es la suscripción resultante.** «Preparar contratación» (o la aceptación del cliente) crea una suscripción de la
+EMPRESA con `tenant_id` nulo, sin partida de plan (tampoco la partida «fantasma» del alta) y con las partidas del
+acuerdo: clave `custom:…`, familia `service`, `activation_kind = 'none'`, importe neto del periodo en
+`line_amount_cents` y su tipo de impuesto. No admite periodo de prueba. Garantías:
+
+- **No concede nada.** `TermsLicences` devuelve `not_applicable` (también a mano) si la suscripción no tiene plataforma
+  ni ningún producto de catálogo entre sus partidas vivas o programadas: no anota «pendiente de plataforma», no
+  reintenta, no enlaza la suscripción con la plataforma que la empresa pueda tener por otro motivo y no escribe
+  capacidades ni límites (`limitsFor` es vacío sin plan). El estado para el CRM lleva `applicable: false`. Si la
+  suscripción sí tuvo plataforma y un acuerdo posterior le quita todos los productos, sigue el circuito normal y se
+  retiran sus licencias.
+- **No aparece como plan de ninguna plataforma.** «Mi plan» (`tenantView.ts`) ignora las suscripciones solo económicas:
+  ni se muestran ni impiden mostrar la suscripción que sí es el plan de la plataforma.
+- **Mismo circuito económico.** Vista previa (`licences.grantsNothing: true`), documento contractual (no menciona
+  planes ni licencias: «Estas condiciones son exclusivamente económicas…»), aceptación, historial, facturación
+  simulada, renovación mensual automática y plan de cobro (`TermsBillingService.plan`: una partida `custom`, 4463
+  céntimos, mensual, 2100 pb). El bruto es exactamente 5400 céntimos (4463 + 937) en la vista previa, el documento, la
+  simulación y el historial: el impuesto se calcula una vez por tipo sobre la base sumada.
+- **Primer periodo completo, sin parte proporcional.** El periodo de la suscripción se ancla en el inicio efectivo del
+  paquete (`packageStart`): al contratar (o al aceptar el cliente) o, si TODAS las cuotas recurrentes llevan un inicio
+  propio futuro y ningún cargo único tiene fecha anterior, en la primera de esas fechas. La primera factura es un
+  periodo entero desde ese instante y no se genera ninguna cuota parcial. Hasta esa fecha el acuerdo consta
+  «programado» y la suscripción no tiene partidas vigentes. Esto vale para todos los paquetes nuevos; las suscripciones
+  ya existentes no cambian su prorrateo.
+- **Estados sin plan ni plataforma.** Baja programada, cancelación al fin del periodo, reactivación (vuelve con las
+  cuotas de su acuerdo) y renovaciones funcionan igual y nunca tocan licencias, límites, plataformas ni
+  aprovisionamiento.
+- **Compatibilidad.** Sin migración ni cambios de datos: suscripciones, acuerdos y borradores existentes quedan como
+  estaban. Un borrador guardado con plan lo conserva hasta que un operador lo quita, y solo puede quitarlo si ninguna
+  partida restante depende de él.
+
+**Lo que debe respetar el cobro en Stripe** (rama `feat/condiciones-stripe-cobro`):
+
+- Todo cuelga de la empresa y de la suscripción interna y su acuerdo: nunca de un tenant ni de una partida de plan
+  (`tenant_id` es nulo y no hay ninguna partida `core_plan`).
+- Lo que se cobra es lo que devuelve `TermsBillingService.plan`: importe NETO por partida y su tipo; el bruto esperado
+  del caso de referencia es 5400 céntimos.
+- El ciclo empieza en el inicio efectivo (`currentPeriodStart` de la suscripción) con un periodo completo; ni prueba
+  ni prorrateo. Antes de esa fecha (acuerdo «programado») el plan de cobro no tiene partidas.
+- Los cambios de estado por eventos de pago usan los puntos de entrada de siempre (`scheduleCancel`, `applyRenewals`,
+  `reactivate`), válidos sin plan ni plataforma. El impago no tiene estado propio en la suscripción interna (sigue
+  `active` hasta su cancelación): vive en el registro de cobro.
+- Un impago o una cancelación no deben llamar a licencias, límites ni aprovisionamiento; si lo hicieran, la respuesta
+  es `not_applicable`, sin error ni reintento.
+
+Pruebas: `server/subscriptionsTerms.sinCore.test.ts` (caso real, anclaje del primer periodo, dependencias del catálogo,
+acuerdos posteriores y cambios de estado), «paquete solo con partidas a medida» en
+`server/controlPlane.commercialTerms.test.ts` (circuito completo por la API, con contrato y aceptación) y el caso con
+MySQL real en `server/subscriptionsTerms.mysql.test.ts`.
+
 ## Dónde vive
 
 Todo en el plano de control (BD del CRM, carril `db/crm/migrations`): módulo `server/commercialTerms/`. El CRM
@@ -76,7 +142,7 @@ Los seis importes que el encargo pide distinguir:
 - **Partidas de catálogo:** solo productos contratables por esa empresa. No entran los que están en hoja de ruta,
   «próximamente», sin publicar, internos o heredados, salvo que la suscripción ya los tenga; «bajo solicitud» sí (venta
   asistida). Un producto por empresa y sin unidad de cobro se contrata una sola vez. Se comprueba la composición del
-  catálogo (un plan Core, dependencias y compatibilidad).
+  catálogo (como mucho un plan Core, obligatorio solo si algún producto depende de él; dependencias y compatibilidad).
 - **Vigencia del cambio:** inmediata (`effectiveFrom` nulo), en la próxima renovación o en una fecha futura. La fecha
   efectiva real nunca es anterior al momento de activar ni al inicio del periodo en curso (sin efectos retroactivos).
   Los instantes se guardan en UTC y se presentan en `Europe/Madrid`.
