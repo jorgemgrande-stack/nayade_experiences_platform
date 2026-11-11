@@ -1,7 +1,8 @@
 import { trpc } from "@/lib/trpc";
 import { UNAUTHED_ERR_MSG } from '@shared/const';
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { httpBatchLink, httpLink, TRPCClientError } from "@trpc/client";
+import { httpBatchLink, httpLink, splitLink, TRPCClientError } from "@trpc/client";
+import { unbatchedTrpcPath } from "@shared/employeePortal";
 import { isTenantSite } from "@/lib/tenantSite";
 import { notifyIfReadOnlyBlocked } from "@/lib/readOnlyBlock";
 import { createRoot } from "react-dom/client";
@@ -60,7 +61,12 @@ const linkOptions = {
 // Web de una empresa (multiempresa): consultas sueltas. Las licencias y los módulos se comprueban por petición HTTP, y
 // en una petición agrupada bastaba una consulta no contratada para tumbar también las públicas (tema, menú, página)
 const trpcClient = trpc.createClient({
-  links: [isTenantSite() ? httpLink(linkOptions) : httpBatchLink(linkOptions)],
+  links: isTenantSite()
+    ? [httpLink(linkOptions)]
+    : [
+        // Portal del empleado: también sueltas (sin Elephant People, «Mis clases» de Ski Net no cae con el 403 de Personal)
+        splitLink({ condition: () => unbatchedTrpcPath(window.location.pathname), true: httpLink(linkOptions), false: httpBatchLink(linkOptions) }),
+      ],
 });
 
 createRoot(document.getElementById("root")!).render(

@@ -13,6 +13,7 @@ import {
   type RestaurantShift, type InsertRestaurantShift,
   type RestaurantBooking, type InsertRestaurantBooking,
 } from "../drizzle/schema";
+import { OCCUPYING_BOOKING_STATUSES, publicBookingProblem, shiftRunsOn } from "./restaurantBookingRules";
 
 // ─── HELPERS ─────────────────────────────────────────────────────────────────
 
@@ -174,6 +175,8 @@ export async function getAvailability(restaurantId: number, date: string) {
   const result = [];
   for (const shift of shifts) {
     if (closedShiftIds.has(shift.id)) continue;
+    // El turno no se ofrece ese día de la semana (el servidor también lo rechaza al reservar)
+    if (!shiftRunsOn(shift, date)) continue;
 
     // Contar reservas confirmadas/pendientes para ese turno y fecha
     const bookingsRows = await db.select({ count: sql<number>`COUNT(*)` })
@@ -234,6 +237,52 @@ export async function createBooking(data: Omit<InsertRestaurantBooking, "locator
   }
   const result = await db.insert(restaurantBookings).values({ ...data, locator });
   return { locator, insertId: (result as any).insertId };
+}
+
+/** Rechazo de una reserva pública (turno, cierre o aforo): el router lo devuelve como BAD_REQUEST. */
+export class PublicBookingRejected extends Error {}
+
+/**
+ * Reserva pública con las reglas aplicadas en servidor (restaurantBookingRules): en una transacción que bloquea la fila
+ * del turno, lee cierres y personas ya reservadas y solo inserta si cabe. Dos reservas simultáneas del mismo turno se
+ * serializan en el bloqueo, así que el aforo no se supera.
+ */
+export async function createPublicBooking(
+  data: Omit<InsertRestaurantBooking, "locator">,
+  restaurant: { id: number; maxGroupSize: number | null },
+  today: string,
+) {
+  const db = await getDb();
+  return db.transaction(async (tx) => {
+    const [shiftRows] = (await tx.execute(sql`
+      SELECT id, restaurantId, startTime, endTime, maxCapacity, daysOfWeek, isActive FROM restaurant_shifts
+      WHERE id = ${data.shiftId} FOR UPDATE`)) as unknown as [any[]];
+    const s = shiftRows[0];
+    const shift = s ? { ...s, id: Number(s.id), restaurantId: Number(s.restaurantId), maxCapacity: Number(s.maxCapacity), isActive: Boolean(Number(s.isActive)) } : null;
+    const closures = await tx.select({ shiftId: restaurantClosures.shiftId }).from(restaurantClosures)
+      .where(and(eq(restaurantClosures.restaurantId, restaurant.id), eq(restaurantClosures.date, data.date)));
+    const [occ] = await tx.select({ total: sql<number>`COALESCE(SUM(${restaurantBookings.guests}), 0)` }).from(restaurantBookings)
+      .where(and(
+        eq(restaurantBookings.restaurantId, restaurant.id),
+        eq(restaurantBookings.shiftId, data.shiftId),
+        eq(restaurantBookings.date, data.date),
+        or(...OCCUPYING_BOOKING_STATUSES.map((st) => eq(restaurantBookings.status, st))),
+      ));
+    const problem = publicBookingProblem({
+      restaurantId: restaurant.id, maxGroupSize: restaurant.maxGroupSize, shift, closures,
+      date: data.date, time: data.time, guests: data.guests, occupiedGuests: Number(occ?.total ?? 0), today,
+    });
+    if (problem) throw new PublicBookingRejected(problem);
+    let locator = generateLocator();
+    for (let attempts = 0; attempts < 10; attempts++) {
+      const existing = await tx.select({ id: restaurantBookings.id }).from(restaurantBookings).where(eq(restaurantBookings.locator, locator)).limit(1);
+      if (!existing.length) break;
+      locator = generateLocator();
+    }
+    const result = await tx.insert(restaurantBookings).values({ ...data, locator });
+    const insertId = Array.isArray(result) ? (result[0] as any)?.insertId : (result as any).insertId;
+    return { locator, insertId: Number(insertId) };
+  });
 }
 
 export async function getBookingByLocator(locator: string) {

@@ -341,9 +341,9 @@ describe("«Enviar recordatorio ahora» (dobles)", () => {
 });
 
 describe("ficha de Care Net", () => {
-  it("«Recordatorios y comunicaciones» ya está disponible dentro del producto", () => {
+  it("«Recordatorios de cita por correo» ya está disponible dentro del producto", () => {
     const care = NET_PRODUCTS.find((p) => p.key === "care-net-complete")!;
-    const f = care.areas.flatMap((a) => a.features).find((x) => x.label === "Recordatorios y comunicaciones");
+    const f = care.areas.flatMap((a) => a.features).find((x) => x.label === "Recordatorios de cita por correo");
     expect(f?.status).toBe("available");
   });
 });

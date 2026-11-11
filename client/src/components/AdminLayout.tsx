@@ -20,6 +20,7 @@ import { useTheme } from "@/contexts/ThemeContext";
 import MaintenanceModeControl, { maintenanceControlMode } from "./admin/MaintenanceModeControl";
 
 import { usePanelSubscription } from "@/hooks/usePanelSubscription";
+import { panelChromeQueries } from "@shared/panelChrome";
 import { SubscriptionRecoveryBanner } from "./admin/SubscriptionRecoveryBanner";
 import { isPanelReadOnlyState } from "@shared/subscriptionRecovery";
 import {
@@ -194,8 +195,12 @@ export default function AdminLayout({ children, title }: AdminLayoutProps) {
 
   // Feature flags — used to hide nav items for disabled modules.
   // Defaults to showing all items when flags are not yet loaded (safe fallback).
+  // Menú: el de siempre (single / sin licencias por capacidad) o por tareas filtrado por licencias.
+  const subscription = usePanelSubscription();
+  // Interruptores y avisos solo con la capacidad admin-panel (el plan Life no la tiene: shared/panelChrome.ts)
+  const chrome = panelChromeQueries({ isAuthenticated, role: userRole, can: subscription.can });
   const { data: flagsList } = trpc.config.listFeatureFlags.useQuery(undefined, {
-    enabled: isAuthenticated && userRole === "admin",
+    enabled: chrome.featureFlags,
     staleTime: 120_000,
     refetchIntervalInBackground: false,
   });
@@ -217,8 +222,6 @@ export default function AdminLayout({ children, title }: AdminLayoutProps) {
     return modulesData.modules.includes(moduleKey);
   };
 
-  // Menú: el de siempre (single / sin licencias por capacidad) o por tareas filtrado por licencias.
-  const subscription = usePanelSubscription();
   // Mantenimiento de la web: el control técnico solo en single; en multiempresa, «Web en mantenimiento» si gestiona web
   const maintenanceMode = maintenanceControlMode({ role: userRole, install: subscription.install, canWeb: subscription.can("cms-editor") });
   const navSections: ResolvedSection[] =
@@ -256,7 +259,7 @@ export default function AdminLayout({ children, title }: AdminLayoutProps) {
   // excluyendo los items que este usuario ya ha silenciado.
   const utils = trpc.useUtils();
   const { data: feed } = trpc.notifications.feed.useQuery(undefined, {
-    enabled: isAuthenticated && ["admin", "agente"].includes(userRole),
+    enabled: chrome.notifications,
     refetchInterval: 60_000,
     refetchIntervalInBackground: false,
   });

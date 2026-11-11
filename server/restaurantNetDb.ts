@@ -806,8 +806,18 @@ export interface TpvSaleRequest {
   customerName?: string;
   customerEmail?: string;
   notes?: string;
+  /** Destinatario de la factura completa (el cliente la pide o la cuenta supera el límite del ticket); lo valida el TPV. */
+  invoiceRecipient?: CheckoutInvoiceRecipient;
   items: TpvSaleLine[];
   payments: Array<{ method: PaymentMethod; amount: number; amountTendered?: number }>;
+}
+
+export interface CheckoutInvoiceRecipient {
+  name: string;
+  nif: string;
+  address: string;
+  postalCode: string;
+  city: string;
 }
 
 /** Alta de la venta en el TPV del Core (el router pasa tpv.createSale con la sesión de quien cobra). */
@@ -844,7 +854,7 @@ export interface CheckoutResult {
  */
 export async function checkout(
   guard: Guard,
-  input: { orderId: number; sessionId: number; payments: Array<{ method: PaymentMethod; amount: number; amountTendered?: number }>; customerName?: string; customerEmail?: string },
+  input: { orderId: number; sessionId: number; payments: Array<{ method: PaymentMethod; amount: number; amountTendered?: number }>; customerName?: string; customerEmail?: string; invoiceRecipient?: CheckoutInvoiceRecipient },
   createSale: CreateTpvSale,
 ): Promise<CheckoutResult> {
   // 1. Reserva de la comanda para el cobro (o la venta ya hecha si se repite)
@@ -875,6 +885,7 @@ export async function checkout(
       customerName: input.customerName?.trim() || order.customerName || undefined,
       customerEmail: input.customerEmail?.trim() || undefined,
       notes: `Comanda ${order.id}`,
+      ...(input.invoiceRecipient ? { invoiceRecipient: input.invoiceRecipient } : {}),
       items: saleLinesOf(items),
       payments: input.payments,
     });

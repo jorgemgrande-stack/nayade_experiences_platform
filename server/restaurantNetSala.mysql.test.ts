@@ -171,6 +171,27 @@ describe.skipIf(!URL_)("Restaurant Net · sala y comandas (aplicación real, dos
     expect((await ess.sql("a", "SELECT status FROM hospo_orders WHERE id = ?", [o]))[0].status).toBe("paid");
   });
 
+  it("cuenta de más de 400 €: sin destinatario se rechaza y la comanda sigue cobrable; con sus datos, factura completa a su nombre", async () => {
+    const o = await orderOf(t["2"]);
+    await ok(m("addItem", { orderId: o, menuItemId: menu.croquetas, quantity: 50 })); // 475 €
+    const pay = { orderId: o, sessionId, payments: [{ method: "card", amount: 475 }] };
+    const rejected = await m("checkout", pay);
+    expect(errCode(rejected)).toBe("BAD_REQUEST");
+    expect(rejected.text).toContain("400");
+    expect((await ess.sql("a", "SELECT status FROM hospo_orders WHERE id = ?", [o]))[0].status).toBe("bill_requested");
+    // Datos incompletos: el TPV también los rechaza
+    expect(errCode(await m("checkout", { ...pay, invoiceRecipient: { name: "Empresa Comensal SL", nif: "", address: "", postalCode: "", city: "" } }))).toBe("BAD_REQUEST");
+    const recipient = { name: "Empresa Comensal SL", nif: "12345678z", address: "Calle Mayor 1", postalCode: "28001", city: "Madrid" };
+    const r = await ok(m("checkout", { ...pay, invoiceRecipient: recipient }));
+    const [sale] = await ess.sql("a", "SELECT total, invoiceId FROM tpv_sales WHERE id = ?", [r.saleId]);
+    expect(Number(sale.total)).toBe(475);
+    expect(sale.invoiceId).not.toBeNull();
+    const [inv] = await ess.sql("a", "SELECT clientName, clientNif, total FROM invoices WHERE id = ?", [sale.invoiceId]);
+    expect(inv).toMatchObject({ clientName: "Empresa Comensal SL", clientNif: "12345678Z" });
+    expect(Number(inv.total)).toBe(475);
+    expect((await ess.sql("a", "SELECT status FROM hospo_orders WHERE id = ?", [o]))[0].status).toBe("paid");
+  });
+
   it("liberar mesa sin cobrar: con platos exige motivo; queda cerrada sin venta y la mesa libre", async () => {
     const o = await orderOf(t["3"]);
     await ok(m("addItem", { orderId: o, menuItemId: menu.croquetas, quantity: 1 }));

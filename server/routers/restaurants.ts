@@ -10,11 +10,12 @@ import {
   getShiftsByRestaurant, getAllShiftsByRestaurant, createShift, updateShift, deleteShift,
   getClosuresByRestaurant, createClosure, deleteClosure,
   getAvailability,
-  createBooking, getBookingByLocator, publicBookingView, getBookingById, updateBooking, getBookings, getBookingsByDate,
+  createBooking, createPublicBooking, PublicBookingRejected, getBookingByLocator, publicBookingView, getBookingById, updateBooking, getBookings, getBookingsByDate,
   addBookingLog, getBookingLogs,
   getDashboardStats,
   getRestaurantsByUser, assignStaff, removeStaff, getStaffByRestaurant,
 } from "../restaurantsDb";
+import { todayInTimeZone } from "../hotelPms";
 import { notifyOwner } from "../_core/notification";
 import { buildRedsysForm, generateMerchantOrder, getRedsysUrl } from "../redsys";
 
@@ -182,12 +183,13 @@ export const restaurantsRouter = router({
     }))
     .mutation(async ({ input }) => {
       const restaurant = await getRestaurantById(input.restaurantId);
-      if (!restaurant) throw new TRPCError({ code: "NOT_FOUND", message: "Restaurante no encontrado" });
+      if (!restaurant || !restaurant.isActive) throw new TRPCError({ code: "NOT_FOUND", message: "Restaurante no encontrado" });
       if (!restaurant.acceptsOnlineBooking) {
         throw new TRPCError({ code: "BAD_REQUEST", message: "Este restaurante no acepta reservas online" });
       }
       const depositAmount = (Number(restaurant.depositPerGuest) * input.guests).toFixed(2);
-      const result = await createBooking({
+      // Turno, cierres y aforo se comprueban en servidor con el turno bloqueado (el formulario solo los sugiere)
+      const result = await createPublicBooking({
         ...input,
         depositAmount,
         channel: "web",
@@ -195,6 +197,9 @@ export const restaurantsRouter = router({
         highchair: input.highchair ?? false,
         birthday: input.birthday ?? false,
         accessibility: input.accessibility ?? false,
+      }, { id: restaurant.id, maxGroupSize: restaurant.maxGroupSize }, todayInTimeZone()).catch((e: unknown) => {
+        if (e instanceof PublicBookingRejected) throw new TRPCError({ code: "BAD_REQUEST", message: e.message });
+        throw e;
       });
       // Email de confirmación al cliente
       const requiresPayment = Number(depositAmount) > 0;

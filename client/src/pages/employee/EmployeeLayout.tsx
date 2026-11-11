@@ -18,6 +18,7 @@ import {
   LayoutDashboard, User, FileText, LogOut, Loader2, Phone, Clock, Banknote, CalendarOff, GraduationCap,
 } from "lucide-react";
 import { usePortalLook } from "./usePortalLook";
+import { employeePortalMode, TEACHER_PORTAL_PATH } from "@shared/employeePortal";
 
 export default function EmployeeLayout({ children }: { children: React.ReactNode }) {
   const { user, loading, logout } = useAuth();
@@ -51,10 +52,17 @@ function EmployeeLayoutInner({ user, location, navigate, logout, children }: {
   const { data: me, error: meError } = trpc.hr.portal.me.useQuery(undefined, { retry: false });
   // Ski Net · Profesores: la pestaña «Mis clases» solo aparece si el usuario está vinculado a un profesor de la escuela
   const teacher = trpc.skiSchool.myClasses.useQuery(undefined, { retry: false, staleTime: 60_000 });
-  // Sin la extensión Personal activa (o con el usuario sin ficha): aviso claro en lugar de pantallas con errores
+  // Sin la extensión Personal activa (o con el usuario sin ficha): aviso claro en lugar de pantallas con errores.
+  // Un profesor de Ski Net vinculado no depende de Personal: ve solo «Mis clases».
   const meErrorData = meError?.data as { code?: string; capability?: string } | undefined;
-  const portalUnavailable = meErrorData?.capability === "people-hr";
-  const notLinked = !portalUnavailable && meErrorData?.code === "FORBIDDEN";
+  const mode = employeePortalMode(meErrorData, !!teacher.data);
+  const portalUnavailable = mode === "unavailable";
+  const notLinked = mode === "not_linked";
+  const teacherOnly = mode === "teacher_only";
+  const onClasses = location.startsWith(TEACHER_PORTAL_PATH);
+  useEffect(() => {
+    if (teacherOnly && !onClasses) navigate(TEACHER_PORTAL_PATH);
+  }, [teacherOnly, onClasses, navigate]);
 
   const employeeName = me?.fullName ?? (user as any).name ?? (user as any).email ?? "Empleado";
 
@@ -113,6 +121,7 @@ function EmployeeLayoutInner({ user, location, navigate, logout, children }: {
 
           {/* Barra de nav */}
           <nav className="flex items-center gap-1 pb-0 -mb-px overflow-x-auto">
+            {!teacherOnly && <>
             <NavTab href="/empleado" active={location === "/empleado"} icon={<LayoutDashboard className="w-3.5 h-3.5" />}>
               Inicio
             </NavTab>
@@ -128,20 +137,25 @@ function EmployeeLayoutInner({ user, location, navigate, logout, children }: {
             <NavTab href="/empleado/vacaciones" active={location.startsWith("/empleado/vacaciones")} icon={<CalendarOff className="w-3.5 h-3.5" />}>
               Vacaciones
             </NavTab>
+            </>}
             {teacher.data && (
               <NavTab href="/empleado/clases" active={location.startsWith("/empleado/clases")} icon={<GraduationCap className="w-3.5 h-3.5" />}>
                 Mis clases
               </NavTab>
             )}
-            <NavTab href="/empleado/documentos" active={location.startsWith("/empleado/documentos")} icon={<FileText className="w-3.5 h-3.5" />}>
-              Mis documentos
-            </NavTab>
+            {!teacherOnly && (
+              <NavTab href="/empleado/documentos" active={location.startsWith("/empleado/documentos")} icon={<FileText className="w-3.5 h-3.5" />}>
+                Mis documentos
+              </NavTab>
+            )}
           </nav>
         </div>
       </header>
 
       <main className="max-w-5xl mx-auto px-4 py-8">
-        {portalUnavailable ? (
+        {teacherOnly ? (
+          onClasses ? children : null
+        ) : portalUnavailable ? (
           <PortalNotice title="El portal del empleado no está disponible">
             Tu empresa no tiene activo el portal en este momento. Tus datos se conservan; si lo necesitas, consúltalo con la persona responsable de personal.
           </PortalNotice>
