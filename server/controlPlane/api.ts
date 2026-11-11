@@ -104,6 +104,7 @@ import { createSubscriptionsRouter } from "../subscriptions/api";
 import { createCommercialTermsRouter } from "../commercialTerms/api";
 import { TermsAcceptanceService, createTermsAcceptanceRouter, createTermsPublicAcceptanceRouter } from "../commercialTerms/acceptance";
 import { tenantTermsReader } from "../commercialTerms/tenantView";
+import { TermsBillingService, createTermsBillingRouter, type BillingLink, type NegotiatedBillingGateway } from "../commercialTerms/billing";
 import { CommercialTermsService } from "../commercialTerms/service";
 import type { TermsStore } from "../commercialTerms/store";
 import { catalogFromWebStore, crmFromStore } from "../subscriptions/ports";
@@ -306,7 +307,7 @@ export interface ControlPlaneDeps {
    * Suscripciones v1 en MODO SOMBRA (BD del CRM, migración 0006). Requiere `crm` y `web` (precios
    * aprobados del catálogo). Nunca cobra, emite facturas fiscales ni toca licencias.
    */
-  subscriptions?: { store: SubscriptionStore; now?: () => number; /** Condiciones comerciales personalizadas (CRM 0048). Sin almacén no hay rutas. */ terms?: TermsStore };
+  subscriptions?: { store: SubscriptionStore; now?: () => number; /** Condiciones comerciales personalizadas (CRM 0048). Sin almacén no hay rutas. */ terms?: TermsStore; /** Cobro en Stripe de condiciones personalizadas: apagado salvo interruptor, pasarela validada y enlace con Stripe. */ termsBilling?: { enabled: boolean; gateway?: NegotiatedBillingGateway | null; link?: (subscriptionId: number) => Promise<BillingLink | null> } };
   /** Licencias por capacidad (registro, migración 0008). Sin ellas no se aplican licencias desde suscripciones. */
   capabilities?: CapabilityStore;
   /** Límites contratados y uso declarado por cada empresa (registro 0013). */
@@ -1977,6 +1978,8 @@ export function createControlPlaneApp(d: ControlPlaneDeps): Express {
     let customTermsOfTenant: ReturnType<typeof tenantTermsReader> | null = null;
     // Condiciones comerciales personalizadas: antes del router de suscripciones (que responde 404 a lo que no conoce)
     const orderStoreForTerms = d.orders?.store;
+    const termsBillingOpen = d.subscriptions.termsBilling?.enabled === true && !!d.subscriptions.termsBilling.gateway;
+    let termsBilling: TermsBillingService | null = null;
     const commercialTerms = d.subscriptions.terms
       ? new CommercialTermsService({
           store: d.subscriptions.terms,
@@ -1986,7 +1989,10 @@ export function createControlPlaneApp(d: ControlPlaneDeps): Express {
           crm: crmPort,
           now: d.subscriptions.now,
           // Una suscripción cobrada en Stripe no admite condiciones personalizadas mientras no se habilite su cobro
-          stripeBilled: orderStoreForTerms ? async (sid) => (await subscriptionBilling(orderStoreForTerms, sid)).source === "stripe" : undefined,
+          // (interruptor encendido Y pasarela validada)
+          stripeBilled: orderStoreForTerms && !termsBillingOpen ? async (sid) => (await subscriptionBilling(orderStoreForTerms, sid)).source === "stripe" : undefined,
+          // Con el cobro abierto, cada cambio de lo contratado se lleva a Stripe (sin él, no hace nada)
+          afterChange: async (sid) => termsBilling?.syncIfOpen(sid),
         })
       : null;
     // Contrato y aceptación del cliente: mismo circuito y misma tabla de aceptaciones que los servicios externos
@@ -2015,6 +2021,12 @@ export function createControlPlaneApp(d: ControlPlaneDeps): Express {
           release: termsAcceptance ? (id, input, actor) => termsAcceptance.releaseForCancel(id, input, actor) : undefined,
         }),
       );
+    }
+    // Cobro en Stripe de condiciones personalizadas: las rutas existen siempre; sin interruptor no llaman a Stripe
+    if (commercialTerms && d.subscriptions.terms) {
+      const tb = d.subscriptions.termsBilling;
+      termsBilling = new TermsBillingService({ enabled: tb?.enabled === true, gateway: tb?.gateway ?? null, link: tb?.link, settle: (sid) => commercialTerms.settleDue(sid), termsStore: d.subscriptions.terms, subscriptionStore: d.subscriptions.store, now: d.subscriptions.now });
+      router.use(createTermsBillingRouter(termsBilling));
     }
     // Lo que la empresa ve de sus condiciones (solo lectura, con la presentación elegida): lo usa «Mi plan»
     customTermsOfTenant = commercialTerms && d.subscriptions.terms ? tenantTermsReader(commercialTerms, d.subscriptions.terms, d.subscriptions.store, d.subscriptions.now ?? Date.now) : null;

@@ -732,7 +732,10 @@ describe("secuencias de operaciones (hallazgos de la revisión independiente)", 
     const left = await terms.must(draft.id);
     expect(left).toMatchObject({ status: "draft" });
     expect(left.subscriptionId).not.toBeNull();
-    const out = await terms.prepareContracting(draft.id, { expectedRevision: left.revision }, A);
+    clock += 5 * DAY;
+    // Se complete con «preparar contratación» o con «activar» desde la ficha, rige desde el primer instante de la suscripción
+    const out = await terms.activate(draft.id, { expectedRevision: left.revision, expectedVersion: 1 }, A);
+    expect(out.effectiveFrom).toBe((await subs.must(left.subscriptionId!)).currentPeriodStart);
     expect(out.terms.status).toBe("active");
     expect((await store.list({ companyId: 2 })).length).toBe(1);
     expect((await shadow.preview(out.subscription.id)).drafts.map((x) => [x.kind, x.subtotalCents])).toEqual([["renewal", 7900]]);
