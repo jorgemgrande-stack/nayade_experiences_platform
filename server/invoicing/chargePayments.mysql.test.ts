@@ -10,6 +10,8 @@ import { loadMigrations, splitStatements } from "../../scripts/db/migrationLib";
 import { MysqlChargePaymentStore } from "./chargePayments";
 import { receiptsOnFinanceDocuments } from "./transferReceipts";
 import { MysqlFinanceOpsStore } from "../finance/opsStore";
+import { MysqlOwnInvoiceDirectory } from "../finance/ownInvoices";
+import { MysqlInvoicingStore } from "./store";
 
 const URL_ = process.env.REGISTRY_TEST_DATABASE_URL;
 const DB = "charge_payments_test";
@@ -90,6 +92,22 @@ describe.skipIf(!URL_)("cobro de cargos con MySQL real (CRM 0029)", () => {
     expect((await docs.content(d.id))!.equals(pdf)).toBe(true);
     const [[row]] = await pool.query<mysql.RowDataPacket[]>("SELECT owner_type, owner_id FROM fin_documents WHERE id = ?", [d.id]);
     expect(row).toMatchObject({ owner_type: "charge_receipt", owner_id: 40 });
+  });
+
+  it("conciliación: una factura cobrada por transferencia declarada sigue siendo candidata al abono del banco", async () => {
+    const inv = new MysqlInvoicingStore(pool, "test");
+    const party = { legalName: "CLIENTE SINTÉTICO SL", taxId: "B12345674", address: "Calle Ejemplo 1", postalCode: "18006", city: "Granada", country: "ES" };
+    const draft = async (key: string) =>
+      (await inv.insertDraft({ sourceKey: key, kind: "invoice", paymentStatus: "pending", companyId: 7, billingRef: key, paymentRef: null, originalInvoiceId: null, operationDate: "2026-11-11", periodStart: null, periodEnd: null, periodLabel: null, currency: "EUR", baseCents: 148_760, taxCents: 31_240, totalCents: 180_000, customer: party, notes: null, createdBy: "t", createdAt: T, lines: [{ position: 1, concept: "Asesoría", quantity: 1, unitCents: 148_760, baseCents: 148_760, taxRateBp: 2100, taxCents: 31_240, totalCents: 180_000 }] } as never)).invoice;
+    const issue = (id: number) => inv.issue({ id, seriesCode: "EB", issueDate: "2026-11-11", issuer: party, customer: party, issuedBy: "t", issuedAt: T });
+    const a = await issue((await draft("charge:900")).id);
+    const b = await issue((await draft("charge:901")).id);
+    await inv.setPayment(a.id, { paymentStatus: "paid", paymentRef: "transfer:77", paidAt: T }, T);
+    await inv.setPayment(b.id, { paymentStatus: "paid", paymentRef: "stripe:pi:pi_1", paidAt: T }, T);
+    const dir = new MysqlOwnInvoiceDirectory(pool, "test");
+    expect((await dir.declaredTransferCandidates({ minTotalCents: 180_000, from: "2026-01-01", limit: 10 })).map((o) => o.id)).toEqual([a.id]);
+    expect((await dir.openCandidates({ minTotalCents: 180_000, from: "2026-01-01", limit: 10 })).map((o) => o.id)).not.toContain(a.id);
+    expect(await new MysqlOwnInvoiceDirectory(pool, "live").declaredTransferCandidates({ minTotalCents: 1, from: "2026-01-01", limit: 10 })).toEqual([]);
   });
 
   it("la migración 0050 es aditiva y deja igual las filas anteriores", async () => {

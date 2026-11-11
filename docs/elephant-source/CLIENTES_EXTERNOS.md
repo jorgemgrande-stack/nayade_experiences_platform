@@ -149,14 +149,19 @@ operación, «Registrar pago externo» abre el formulario de transferencia.
   ingreso. Historial: `paid_transfer` (operador, fecha, importe, medio, operación, documento con su sha256 y qué se
   hizo con cada enlace de Stripe).
 - **Justificante:** en el almacén privado ya existente del plano de control (`fin_documents`, contenido en la BD) con el
-  tipo de propietario `charge_receipt`; las rutas de documentos de las finanzas no lo listan. Se sirve por
+  tipo de propietario `charge_receipt`; las rutas de documentos de las finanzas no lo listan, no lo sirven ni lo
+  archivan (solo tratan sus propios tipos). Se sirve por
   `GET /external-ops/:id/periods/:pid/receipts/:docId` (sin caché, `nosniff`, como adjunto). Nunca se borra.
 - **Coexistencia con Stripe Live** (con el cerrojo del cargo tomado, `GET_LOCK` en MySQL):
   1. Se relee cada sesión de Checkout abierta del cargo. Si Stripe ya cobró, se registra ese cobro y la transferencia se
      rechaza («Stripe ya ha cobrado…»). Si ya consta cobrada por Stripe, también se rechaza.
   2. Si sigue abierta, se caduca en Stripe (`checkout.sessions.expire`, por la pasarela existente; idempotente: una ya
      caducada no se toca) y se vuelve a leer. No se usan Payment Links de Stripe: el enlace es una sesión de Checkout.
-  3. Si Stripe no responde, la transferencia se consolida igual (`expire_failed` en el historial y aviso en la ficha).
+  3. Si Stripe no responde al LEER la sesión, la transferencia no se registra (error, sin cambios: se reintenta). Si
+     responde a la lectura pero falla al caducarla, se consolida (`expire_failed` en el historial y aviso en la ficha)
+     y un cobro posterior de ese enlace queda como duplicado.
+  3 bis. Una sesión completada con el pago aún en proceso (método diferido, p. ej. adeudo SEPA) bloquea la
+     transferencia hasta que Stripe lo confirme o lo rechace.
   4. Un cobro de Stripe que llegue después (o a la vez) no se contabiliza: como mucho un pago liquida cada cargo (clave
      única por entorno). Queda `duplicate`, sale la alerta `admin.billing_error` («Revisar y reembolsar») y se ve en
      los movimientos de la ficha. El reembolso en Stripe es manual.
@@ -164,9 +169,32 @@ operación, «Registrar pago externo» abre el formulario de transferencia.
 - **Rectificación y anulación** (con motivo, auditadas): la rectificación cambia la fecha, la referencia o el
   justificante (el anterior se conserva) y deja el antes y el después en `transfer_rectified`; el importe no se
   rectifica. La anulación deja el pago `voided` (no se borra), libera el cargo y la nota vuelve a pendiente
-  (`transfer_voided`); los enlaces caducados no se reabren. El historial nunca se borra.
+  (`transfer_voided`); los enlaces caducados no se reabren. Solo se anula con la factura aún en borrador y sin un cobro
+  de Stripe duplicado: expedida (enviada como cobrada y conciliable con el banco), la corrección va por la rectificativa
+  de Facturación (`POST /invoicing/invoices/:id/rectify`). Reenviar la clave de un pago anulado es un error. El
+  historial nunca se borra.
+- **Ruta de cargos:** `POST /invoicing/charges/:id/offline-payment` rechaza una nota de una operación externa (se
+  registra en la ficha, con justificante); para los cargos de empresa sigue igual y no llama a Stripe.
+- **Sin transacción entre almacenes:** el justificante se guarda antes que el pago; si el pago no se registra, el
+  justificante se archiva (nunca se borra). Si falla al marcar la factura, reenviar con la misma clave lo completa.
 - **Panel e informes:** `/revenue/metrics` añade `charges` (cobros únicos de la ventana por medio: Stripe,
   transferencia bancaria u otro; sin duplicados ni anulados), visible en el Dashboard y en Finanzas → Revenue &
-  Margin (métricas comerciales). El libro contable no cambia: el asiento de la transferencia nace, como hasta ahora, al
-  conciliar el movimiento del extracto bancario con la factura (`invoice_payment`), así que no se contabiliza dos veces.
+  Margin (métricas comerciales).
+
+### Factura y contabilidad: el mismo circuito que con Stripe
+
+| Paso | Cobro por Stripe | Cobro por transferencia |
+|---|---|---|
+| Factura | Nace en borrador al emitir la nota (`ChargeService.approve`, `charge:<id>`) | La misma; el cobro nunca crea otra |
+| Cobro | Webhook firmado y sesión releída → `paid`, `stripe:pi:<id>` | Confirmación con PDF → `paid`, `transfer:<pago>` |
+| Expedición | `InvoicingAutomation.issueOne` al registrarse el cobro (y, si falla, la pasada `issueDue`): número correlativo, datos fiscales congelados, PDF y envío | **El mismo `issueOne`**. Una factura ya expedida antes del cobro solo se marca cobrada |
+| Asiento de la factura | `invoice:<id>` (venta: 430 / 70x + 477) en la pasada contable | El mismo |
+| Asiento del cobro | Al importarse la transacción de saldo de Stripe (`stripe-txn:<id>`: 572-Stripe y 626 / 430) | Al conciliar el abono del extracto con la factura (`bankmov:<id>`: 572 banco / 430). La factura cobrada por transferencia declarada sigue entre las sugerencias de conciliación |
+| Texto del PDF | «Cobrada mediante Stripe.» | «Cobrada mediante transferencia bancaria.» |
+
+En los dos casos el cobro llega al libro con la prueba del dinero (el saldo de Stripe o el extracto del banco), nunca
+con la confirmación (webhook o administrador): por eso no se contabiliza dos veces. Diferencias propias de cada medio:
+la comisión de Stripe (626) y su payout solo existen en Stripe; la transferencia lleva el justificante del administrador
+y su conciliación es con el extracto. Un fallo al expedir nunca deshace el cobro: lo reintenta otra confirmación (misma
+clave), el webhook repetido o la pasada.
 - Sin la migración 0050 o sin `fin_documents`, el formulario anterior (solo referencia) sigue funcionando.

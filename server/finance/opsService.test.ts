@@ -306,7 +306,7 @@ describe("caja, documentos, recurrentes, resumen y auditoría", () => {
   });
 
   it("documentos: firma del contenido, 10 MB, dueño existente, archivar sin borrar", async () => {
-    const { ops, newExpense } = await setup();
+    const { ops, newExpense, store } = await setup();
     const e = await newExpense();
     const doc = await ops.uploadDocument({ ownerType: "expense", ownerId: e.id, filename: "factura.pdf", contentBase64: b64("%PDF-1.4 contenido") }, ACTOR);
     expect(doc).toMatchObject({ mime: "application/pdf", sizeBytes: 18, archived: false, uploadedBy: "operator:luis" });
@@ -319,6 +319,11 @@ describe("caja, documentos, recurrentes, resumen y auditoría", () => {
     expect(content.toString()).toBe("%PDF-1.4 contenido");
     expect((await ops.archiveDocument(doc.id, ACTOR)).archived).toBe(true);
     expect(await ops.documents("expense", e.id)).toHaveLength(1);
+    // Un justificante de cobro (otro propietario del mismo almacén) no se lee ni se archiva desde las finanzas
+    const receipt = await store.insertDocument({ ownerType: "charge_receipt" as never, ownerId: 5, filename: "transferencia.pdf", mime: "application/pdf", sizeBytes: 6, sha256: "a".repeat(64), uploadedBy: "operator:jorge", createdAt: T0 }, Buffer.from("%PDF-1"));
+    await expect(ops.documentContent(receipt.id)).rejects.toMatchObject({ code: "not_found" });
+    await expect(ops.archiveDocument(receipt.id, ACTOR)).rejects.toMatchObject({ code: "not_found" });
+    expect((await store.getDocument(receipt.id))!.archived).toBe(false);
   });
 
   it("recurrentes: vista previa, borradores idempotentes por periodo y próxima fecha", async () => {

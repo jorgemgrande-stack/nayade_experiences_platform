@@ -40,6 +40,8 @@ export interface ReceiptStore {
   /** Solo justificantes de cargos (otro tipo de documento: null). */
   get(id: number): Promise<ReceiptDoc | null>;
   content(id: number): Promise<Buffer | null>;
+  /** Archiva un justificante que no llegó a quedar ligado a un pago (nunca se borra). */
+  discard?(id: number, by: string, at: number): Promise<void>;
 }
 
 const bad = (m: string) => new InvoicingError("invalid_input", m);
@@ -66,7 +68,11 @@ export function parseReceipt(i: { filename?: string | null; contentBase64?: stri
 }
 
 export class MemoryReceiptStore implements ReceiptStore {
-  rows: Array<ReceiptDoc & { content: Buffer }> = [];
+  rows: Array<ReceiptDoc & { content: Buffer; archived?: boolean }> = [];
+  async discard(id: number) {
+    const r = this.rows.find((x) => x.id === id);
+    if (r) r.archived = true;
+  }
   async put(chargeId: number, f: ReceiptFile, by: string, at: number) {
     const row = { id: this.rows.length + 1, chargeId, filename: f.filename, mime: "application/pdf", sizeBytes: f.content.length, sha256: f.sha256, uploadedBy: by, createdAt: at, content: Buffer.from(f.content) };
     this.rows.push(row);
@@ -76,7 +82,7 @@ export class MemoryReceiptStore implements ReceiptStore {
   async get(id: number) {
     const r = this.rows.find((x) => x.id === id);
     if (!r) return null;
-    const { content: _c, ...doc } = r;
+    const { content: _c, archived: _a, ...doc } = r;
     return { ...doc };
   }
   async content(id: number) {
@@ -101,6 +107,7 @@ export interface FinanceDocumentsPort {
   insertDocument(d: { ownerType: never; ownerId: number; filename: string; mime: string; sizeBytes: number; sha256: string; uploadedBy: string; createdAt: number }, content: Buffer): Promise<FinDocumentLike>;
   getDocument(id: number): Promise<FinDocumentLike | null>;
   getDocumentContent(id: number): Promise<Buffer | null>;
+  archiveDocument?(id: number, by: string, at: number): Promise<unknown>;
 }
 
 /** Justificantes sobre el almacén privado de las finanzas (`fin_documents`). */
@@ -115,6 +122,9 @@ export function receiptsOnFinanceDocuments(docs: FinanceDocumentsPort): ReceiptS
     async get(id) {
       const d = await docs.getDocument(id);
       return d && d.ownerType === RECEIPT_OWNER ? of(d) : null;
+    },
+    async discard(id, by, at) {
+      await docs.archiveDocument?.(id, by.slice(0, 100), at);
     },
     async content(id) {
       const d = await docs.getDocument(id);

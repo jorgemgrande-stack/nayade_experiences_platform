@@ -30,6 +30,7 @@ import { memoryKeyedLock, type KeyedLock } from "../finance/ownInvoices";
 import type { Charge, ChargeService } from "./charges";
 import type { InvoicingStore } from "./store";
 import { parseReceipt, type ReceiptDoc, type ReceiptStore } from "./transferReceipts";
+import type { IssueOutcome } from "./delivery";
 import { InvoicingError, type Invoice } from "./types";
 
 export type ChargePaymentKind = "stripe_link" | "offline";
@@ -314,6 +315,20 @@ export interface ChargePaymentDeps {
   lock?: KeyedLock;
   /** Cobro de Stripe de un cargo ya liquidado por otro pago: no se contabiliza; se avisa para revisarlo y reembolsarlo. */
   onDuplicate?: (i: DuplicateCharge) => Promise<void>;
+  /**
+   * Expedición de la factura del cargo al quedar cobrado, la MISMA para Stripe y para la transferencia
+   * (`InvoicingAutomation.issueOne`: el circuito de la pasada automática, con número, PDF y envío). Sin ella, la pasada
+   * periódica la expide igual. Un fallo nunca deshace el cobro: se reintenta (otra confirmación, el webhook o la pasada).
+   */
+  issuing?: { issueOne(invoiceId: number): Promise<IssueOutcome> };
+}
+
+/** Qué pasó con la factura del cargo al cobrarse. */
+export interface InvoiceIssue {
+  status: IssueOutcome["status"] | "error";
+  invoiceId: number;
+  number: string | null;
+  reason: string | null;
 }
 
 export interface DuplicateCharge {
@@ -451,12 +466,11 @@ export class ChargePaymentService {
       const paidAt = input.paidAt ?? now;
       if (paidAt > now + 60_000) throw new InvoicingError("invalid_input", "La fecha del pago no puede ser futura");
       if (await this.d.payments.settledOf(c.id)) throw new InvoicingError("invalid_state", "El cargo ya está cobrado");
-      // Un enlace de Stripe abierto deja de valer: el cargo ya está pagado por otra vía (se cierra también en Stripe)
-      const links = await this.closeLinks(c, now);
-      if (links.paid) {
-        await this.settleStripe(links.paid.pay.id, links.paid.session);
-        throw new InvoicingError("invalid_state", "Stripe ya ha cobrado este cargo con el enlace de pago: no se registra el pago externo");
-      }
+      // La nota de cobro de una operación externa por transferencia exige su justificante: se registra desde la ficha
+      if (this.transfersAvailable() && (c.billingRef ?? "").startsWith("external-op:")) throw new InvoicingError("invalid_state", "Este cargo es una nota de cobro de una operación externa: registra la transferencia desde su ficha, con el justificante en PDF");
+      // Un enlace de Stripe abierto deja de valer: el cargo ya está pagado por otra vía (como siempre, sin llamar a
+      // Stripe; un cobro tardío de ese enlace queda como duplicado y no se cuenta dos veces)
+      for (const p of await this.d.payments.byCharge(c.id)) if (p.status === "open") await this.d.payments.update(p.id, { status: "cancelled" }, now);
       let pay: ChargePayment;
       if (this.d.payments.transfers) {
         const r = await this.d.payments.insertSettled({ chargeId: c.id, amountCents: c.amountCents, totalCents: inv.totalCents, currency: c.currency, reference: ref, method: null, receiptDocumentId: null, idempotencyKey: null, createdBy: actor, createdAt: now, paidAt });
@@ -484,6 +498,8 @@ export class ChargePaymentService {
       }
       let s = await g.paymentSession(p.stripeSessionId!);
       if (s?.paymentStatus === "paid") return { closures: [], paid: { pay: p, session: s } };
+      // Completada sin cobrar aún (un método diferido, p. ej. adeudo SEPA, en proceso): podría cobrarse días después
+      if (s?.status === "complete") throw new InvoicingError("invalid_state", "El cliente ya ha iniciado el pago en Stripe y está en proceso (método diferido): espera a que Stripe lo confirme o lo rechace antes de registrar una transferencia");
       let outcome: LinkClosure["outcome"] = "already_closed";
       if (s?.status === "open") {
         try {
@@ -508,7 +524,29 @@ export class ChargePaymentService {
    * pendiente: el modelo de cargos no admite pagos parciales. Repetir el envío con la misma clave devuelve el mismo
    * pago (`replay`). Rechazado si el cargo ya está cobrado, también si Stripe acaba de cobrarlo.
    */
-  async recordTransfer(chargeId: number, input: TransferInput, actor: string): Promise<{ payment: ChargePayment; invoice: Invoice; receipt: ReceiptDoc | null; replay: boolean; stripe: LinkClosure[] }> {
+  async recordTransfer(chargeId: number, input: TransferInput, actor: string): Promise<{ payment: ChargePayment; invoice: Invoice; receipt: ReceiptDoc | null; replay: boolean; stripe: LinkClosure[]; invoiceIssue: InvoiceIssue | null }> {
+    const r = await this.recordTransferPayment(chargeId, input, actor);
+    // La factura, por el mismo circuito que un cobro de Stripe; repetir la confirmación reintenta una expedición fallida
+    const invoiceIssue = r.payment.status === "paid" ? await this.ensureInvoice(r.invoice.id) : null;
+    const invoice = invoiceIssue ? ((await this.d.invoices.get(r.invoice.id)) ?? r.invoice) : r.invoice;
+    return { ...r, invoice, invoiceIssue };
+  }
+
+  /**
+   * Expide la factura del cargo cobrado si sigue en borrador (o la devuelve si ya estaba expedida: nunca otra). Mismo
+   * circuito para Stripe y transferencia; un fallo queda en el resultado y lo reintenta la pasada periódica.
+   */
+  async ensureInvoice(invoiceId: number): Promise<InvoiceIssue | null> {
+    if (!this.d.issuing) return null;
+    try {
+      const o = await this.d.issuing.issueOne(invoiceId);
+      return "invoice" in o ? { status: o.status, invoiceId, number: o.invoice.number, reason: null } : { status: o.status, invoiceId, number: null, reason: o.reason };
+    } catch (e) {
+      return { status: "error", invoiceId, number: null, reason: (e instanceof Error ? e.message : String(e)).slice(0, 200) };
+    }
+  }
+
+  private async recordTransferPayment(chargeId: number, input: TransferInput, actor: string): Promise<{ payment: ChargePayment; invoice: Invoice; receipt: ReceiptDoc | null; replay: boolean; stripe: LinkClosure[] }> {
     if (!this.transfersAvailable()) throw new InvoicingError("unavailable", "El registro de transferencias con justificante no está disponible en este entorno (migración 0050 o almacén de documentos)");
     if (input?.confirmed !== true) throw new InvoicingError("invalid_input", "Confirma expresamente que has recibido la transferencia");
     const key = String(input.idempotencyKey ?? "");
@@ -517,8 +555,11 @@ export class ChargePaymentService {
       const same = await this.d.payments.byIdempotencyKey(key);
       if (!same) return null;
       if (same.chargeId !== chargeId) throw new InvoicingError("conflict", "Esa clave ya se usó para otro cobro");
+      if (same.status !== "paid") throw new InvoicingError("invalid_state", "Ese registro de transferencia se anuló: vuelve a abrir el formulario para registrar el pago");
       const c = await this.d.charges.must(chargeId);
-      const invoice = (await this.d.invoices.get(c.invoiceId!))!;
+      let invoice = (await this.d.invoices.get(c.invoiceId!))!;
+      // Reintento tras un fallo al marcar la factura: se completa (el pago ya liquida el cargo)
+      if (same.settlesChargeId === chargeId && invoice.paymentStatus !== "paid") invoice = await this.d.invoices.setPayment(invoice.id, { paymentStatus: "paid", paymentRef: transferPaymentRef(same.id), paidAt: same.paidAt }, this.now());
       return { payment: same, invoice, receipt: same.receiptDocumentId ? await this.d.receipts!.get(same.receiptDocumentId) : null, replay: true, stripe: [] as LinkClosure[] };
     };
     const first = await replay();
@@ -544,11 +585,20 @@ export class ChargePaymentService {
       const links = await this.closeLinks(c, now);
       if (links.paid) {
         // Stripe cobró antes de que se confirmara la transferencia: ese cobro es el bueno
-        await this.settleStripe(links.paid.pay.id, links.paid.session);
+        if ((await this.settleStripe(links.paid.pay.id, links.paid.session)) === "Cargo cobrado") await this.ensureInvoice(inv.id);
         throw new InvoicingError("invalid_state", "Stripe ya ha cobrado esta nota de cobro con el enlace de pago: no se registra la transferencia. Si el cliente también transfirió, hay que devolverle ese importe");
       }
       const receipt = await this.d.receipts!.put(c.id, file, actor, now);
-      const r = await this.d.payments.insertSettled({ chargeId: c.id, amountCents: c.amountCents, totalCents: inv.totalCents, currency: c.currency, reference: ref || null, method: "bank_transfer", receiptDocumentId: receipt.id, idempotencyKey: key, createdBy: actor, createdAt: now, paidAt: paidAtOfDay(day) });
+      // Sin transacción entre almacenes: si el pago no se registra, el justificante se archiva (no queda huérfano vigente);
+      // si falla al marcar la factura, el reintento con la misma clave lo completa
+      let r: Awaited<ReturnType<ChargePaymentStore["insertSettled"]>>;
+      try {
+        r = await this.d.payments.insertSettled({ chargeId: c.id, amountCents: c.amountCents, totalCents: inv.totalCents, currency: c.currency, reference: ref || null, method: "bank_transfer", receiptDocumentId: receipt.id, idempotencyKey: key, createdBy: actor, createdAt: now, paidAt: paidAtOfDay(day) });
+      } catch (e) {
+        await this.d.receipts!.discard?.(receipt.id, actor, now).catch(() => undefined);
+        throw e;
+      }
+      if ("conflict" in r || !r.created) await this.d.receipts!.discard?.(receipt.id, actor, now).catch(() => undefined);
       if ("conflict" in r) throw new InvoicingError("invalid_state", "La nota de cobro ya está pagada");
       if (!r.created) return { payment: r.payment, invoice: (await this.d.invoices.get(inv.id))!, receipt: r.payment.receiptDocumentId ? await this.d.receipts!.get(r.payment.receiptDocumentId) : null, replay: true, stripe: [] };
       const invoice = await this.d.invoices.setPayment(inv.id, { paymentStatus: "paid", paymentRef: transferPaymentRef(r.payment.id), paidAt: paidAtOfDay(day) }, now);
@@ -609,11 +659,24 @@ export class ChargePaymentService {
     return this.serial(chargeId, async () => {
       const { pay, inv } = await this.liveTransfer(chargeId, paymentId);
       if (inv.paymentRef !== transferPaymentRef(pay.id)) throw new InvoicingError("invalid_state", "La factura ya no consta cobrada por esta transferencia");
+      const block = await this.voidBlock(chargeId, inv);
+      if (block) throw new InvoicingError("invalid_state", block);
       const now = this.now();
       const payment = await this.d.payments.release(pay.id, { voidedAt: now, voidedBy: actor, voidReason: reason }, now);
       const invoice = await this.d.invoices.setPayment(inv.id, { paymentStatus: "pending", paymentRef: null, paidAt: null }, now);
       return { payment, invoice, reason };
     });
+  }
+
+  /**
+   * Por qué no se puede anular una transferencia (null: se puede). Con la factura ya expedida (y enviada como cobrada;
+   * solo una expedida se concilia con el banco) o con un cobro de Stripe duplicado sin resolver, anularla dejaría la nota
+   * pendiente y cobrable otra vez: la corrección va por la rectificativa de Facturación.
+   */
+  async voidBlock(chargeId: number, inv: Pick<Invoice, "status"> | null): Promise<string | null> {
+    if (inv && inv.status !== "draft") return "La factura ya está expedida como cobrada: corrígela con una rectificativa en Facturación";
+    if ((await this.d.payments.byCharge(chargeId)).some((p) => p.status === "duplicate")) return "Hay un cobro de Stripe duplicado sin resolver: resuélvelo (reembolso) antes de tocar la transferencia";
+    return null;
   }
 
   /** Justificante de un pago del cargo (solo los de este cargo). */
@@ -648,9 +711,14 @@ export class ChargePaymentService {
       return "Enlace caducado sin pagar";
     }
     if (s.paymentStatus !== "paid") return `Sin cobro (${s.paymentStatus ?? "desconocido"})`;
-    if (pay.status === "paid") return "Ya registrado";
     if (pay.status === "duplicate") return "Cobro duplicado ya señalado para revisión";
-    return this.serial(pay.chargeId, () => this.settleStripe(pay.id, s));
+    const out = pay.status === "paid" ? "Ya registrado" : await this.serial(pay.chargeId, () => this.settleStripe(pay.id, s));
+    // Cobrado (o reintento de un webhook ya registrado): su factura, por el mismo circuito que la transferencia
+    if (out === "Cargo cobrado" || out === "Ya registrado") {
+      const c = await this.d.charges.must(pay.chargeId);
+      if (c.invoiceId) await this.ensureInvoice(c.invoiceId);
+    }
+    return out;
   }
 
   /** Registra el cobro de una sesión pagada (con el cerrojo del cargo tomado). */

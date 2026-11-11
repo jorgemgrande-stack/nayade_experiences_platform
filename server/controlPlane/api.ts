@@ -158,6 +158,7 @@ import { ChargePaymentService, type ChargePaymentStore } from "../invoicing/char
 import { ExternalOperationsService, type OperationStore } from "../external/operations";
 import { EXTERNAL_UPLOAD_PATHS, createExternalOperationsRouter } from "../external/operationsApi";
 import type { ReceiptStore } from "../invoicing/transferReceipts";
+import type { IssueOutcome } from "../invoicing/delivery";
 import type { KeyedLock } from "../finance/ownInvoices";
 import type { CompanyFiscal } from "../invoicing/rules";
 import { ISSUER } from "../stripe/issuer";
@@ -349,7 +350,7 @@ export interface ControlPlaneDeps {
    * Facturación propia (server/invoicing, CRM 0027): facturas por devengo de los servicios externos con el estado de
    * cobro leído de su historial. Sin `issueEnabled` solo prepara borradores (nunca expide).
    */
-  invoicing?: { store: InvoicingStore; issueEnabled: boolean; seriesCode: string; charges?: ChargeStore; chargePayments?: ChargePaymentStore; operations?: OperationStore; receipts?: ReceiptStore; chargeLock?: KeyedLock; automation?: { sendIssued(inv: Invoice): Promise<string> }; stripeSales?: StripeSalesPort };
+  invoicing?: { store: InvoicingStore; issueEnabled: boolean; seriesCode: string; charges?: ChargeStore; chargePayments?: ChargePaymentStore; operations?: OperationStore; receipts?: ReceiptStore; chargeLock?: KeyedLock; automation?: { sendIssued(inv: Invoice): Promise<string>; issueOne?(invoiceId: number): Promise<IssueOutcome> }; stripeSales?: StripeSalesPort };
   /**
    * Motor de transiciones temporales (server/lifecycle). Requiere `orders`. El plan (solo lectura) siempre
    * se puede consultar; la tarea periódica solo con `policy.enabled` y aplica solo en modo «apply».
@@ -2763,6 +2764,8 @@ export function createControlPlaneApp(d: ControlPlaneDeps): Express {
           // Transferencias con justificante (CRM 0050): almacén privado de documentos y cerrojo por cargo entre procesos
           receipts: d.invoicing.receipts,
           lock: d.invoicing.chargeLock,
+          // Factura del cargo al cobrarse (Stripe o transferencia): el mismo circuito que la pasada automática
+          issuing: d.invoicing.automation?.issueOne ? { issueOne: (id) => d.invoicing!.automation!.issueOne!(id) } : undefined,
           // Cobro de Stripe de una nota ya pagada por otra vía: no se contabiliza; error de cobro para revisar y reembolsar
           onDuplicate: async (x) => {
             const name = ((await crmStore.get("companies", x.charge.companyId)) as { name?: string } | null)?.name ?? null;

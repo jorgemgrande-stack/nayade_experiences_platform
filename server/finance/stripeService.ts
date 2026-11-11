@@ -1089,7 +1089,10 @@ export class FinanceStripeService implements BankReconciliationExtension {
 
   async suggestions(m: BankMovement): Promise<StripeMatchSuggestion[]> {
     if (m.amountCents <= 0) return [];
-    const [payouts, open] = await Promise.all([this.s.openPayoutsForBank(500), this.d.invoices ? this.d.invoices.openCandidates({ minTotalCents: m.amountCents, from: addDays(m.bookingDate, -365), limit: INVOICE_CANDIDATES }) : Promise.resolve([] as OwnInvoice[])]);
+    const [payouts, unpaid] = await Promise.all([this.s.openPayoutsForBank(500), this.d.invoices ? this.d.invoices.openCandidates({ minTotalCents: m.amountCents, from: addDays(m.bookingDate, -365), limit: INVOICE_CANDIDATES }) : Promise.resolve([] as OwnInvoice[])]);
+    // Cobradas por una transferencia declarada en la ficha: su abono del banco es el que lleva el cobro al libro
+    const declared = this.d.invoices?.declaredTransferCandidates ? await this.d.invoices.declaredTransferCandidates({ minTotalCents: m.amountCents, from: addDays(m.bookingDate, -365), limit: INVOICE_CANDIDATES }) : [];
+    const open = [...unpaid, ...declared.filter((o) => !unpaid.some((u) => u.id === o.id))];
     const settings = await this.s.getSettings();
     const candidates = payouts.filter((p) => p.currency === "EUR" && (settings.stripePayoutBankAccountId === null || settings.stripePayoutBankAccountId === m.bankAccountId) && p.arrivalOn >= addDays(m.bookingDate, -30) && p.arrivalOn <= addDays(m.bookingDate, 30));
     const pending = await this.pendingByInvoice(open);

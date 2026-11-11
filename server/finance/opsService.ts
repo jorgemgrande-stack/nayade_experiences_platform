@@ -73,7 +73,7 @@ import type {
   BankFeeNature,
   VatTreatment,
 } from "./opsTypes";
-import { BANK_FEE_NATURE_LABELS, REVERSE_CHARGE_TREATMENTS, TAX_DOCUMENT_OWNERS } from "./opsTypes";
+import { BANK_FEE_NATURE_LABELS, DOCUMENT_OWNERS, REVERSE_CHARGE_TREATMENTS, TAX_DOCUMENT_OWNERS } from "./opsTypes";
 import { balancesOf, isValidDate, netMovement, yearOf } from "./rules";
 import { invoiceTransferEntry, type StripeMatchSuggestion } from "./stripeRules";
 import type { FinanceService } from "./service";
@@ -773,15 +773,21 @@ export class FinanceOpsService {
     return this.s.listDocuments(ownerType, ownerId);
   }
 
-  async documentContent(id: number) {
+  /** Solo los documentos de las finanzas: otros propietarios del mismo almacén (justificantes de cobros) no se sirven aquí. */
+  private async financeDocument(id: number) {
     const doc = await this.s.getDocument(id);
+    return doc && (DOCUMENT_OWNERS as readonly string[]).includes(doc.ownerType) ? doc : null;
+  }
+
+  async documentContent(id: number) {
+    const doc = await this.financeDocument(id);
     const content = doc ? await this.s.getDocumentContent(id) : null;
     if (!doc || !content) throw notFound("Documento");
     return { doc, content };
   }
 
   async archiveDocument(id: number, actor: FinanceActor) {
-    const before = await this.s.getDocument(id);
+    const before = await this.financeDocument(id);
     if (!before) throw notFound("Documento");
     const doc = (await this.s.archiveDocument(id, actor.by, this.now()))!;
     if (!before.archived) await this.audit(actor, "document.archive", "document", id, { ownerType: doc.ownerType, ownerId: doc.ownerId });

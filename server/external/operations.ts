@@ -349,7 +349,7 @@ export interface OperationsDeps {
   company(id: number): Promise<{ id: number; name: string; legalName?: string | null; tenantId?: string | null; billingEmail?: string | null; email?: string | null } | null>;
   charges: Pick<ChargeService, "create" | "approve" | "must">;
   invoices: { get(id: number): Promise<Invoice | null> };
-  payments?: Pick<ChargePaymentService, "paymentLink" | "recordOffline" | "recordTransfer" | "rectifyTransfer" | "voidTransfer" | "receipt" | "list" | "transfersAvailable">;
+  payments?: Pick<ChargePaymentService, "paymentLink" | "recordOffline" | "recordTransfer" | "rectifyTransfer" | "voidTransfer" | "receipt" | "list" | "transfersAvailable" | "voidBlock">;
   mail?: OperationsMail;
   namespace: string;
   now?: () => number;
@@ -686,7 +686,9 @@ export class ExternalOperationsService {
     const { chargeId, payments } = this.issued(p);
     const r = await payments.recordTransfer(chargeId, input, actor).catch(rethrow);
     await this.event(o, "paid_transfer", `pay:${r.payment.id}`, { period: p.period, paymentId: r.payment.id, method: "bank_transfer", totalCents: r.payment.totalCents, receivedOn: r.payment.paidAt ? dayOfPaidAt(r.payment.paidAt) : null, reference: r.payment.reference, receiptDocumentId: r.payment.receiptDocumentId ?? null, receipt: r.receipt ? { filename: r.receipt.filename, sizeBytes: r.receipt.sizeBytes, sha256: r.receipt.sha256 } : null, invoiceNumber: r.invoice.number, stripeLinks: r.stripe, evidence: "justificante aportado por el administrador (no verificado con el banco)" }, actor);
-    return { period: await this.periodView(o, p), replay: r.replay, stripe: r.stripe };
+    // Factura expedida por el mismo circuito que con Stripe (una vez por factura en el historial)
+    if (r.invoiceIssue && r.invoice.number && (r.invoiceIssue.status === "issued" || r.invoiceIssue.status === "already")) await this.event(o, "invoice_issued", `inv:${r.invoice.id}`, { period: p.period, invoiceId: r.invoice.id, invoiceNumber: r.invoice.number, totalCents: r.invoice.totalCents, paymentRef: r.invoice.paymentRef }, "system:invoicing");
+    return { period: await this.periodView(o, p), replay: r.replay, stripe: r.stripe, invoice: r.invoiceIssue };
   }
 
   private async transferPeriod(id: number, pid: number) {
@@ -727,6 +729,8 @@ export class ExternalOperationsService {
     const lastLink = ev.filter((e) => e.kind === "payment_link" && e.detail?.period === p.period).at(-1);
     const link = state === "pending" || state === "overdue" ? (lastLink && Number(lastLink.detail?.expiresAt) > this.now() ? { url: String(lastLink.detail!.url), expiresAt: Number(lastLink.detail!.expiresAt) } : null) : null;
     const pays = p.chargeId && this.d.payments ? await this.d.payments.list(p.chargeId) : [];
+    // Anular una transferencia vigente solo antes de expedir la factura y sin duplicados de Stripe (si no, rectificativa)
+    const voidBlock = p.chargeId && pays.some((x) => x.method === "bank_transfer" && x.status === "paid") && this.d.payments ? await this.d.payments.voidBlock(p.chargeId, inv) : null;
     return {
       ...p,
       payment: {
@@ -741,7 +745,9 @@ export class ExternalOperationsService {
         pendingCents: p.status === "issued" && state !== "paid" ? (inv?.totalCents ?? p.totalCents) : 0,
         method: paidMethod(inv?.paymentRef ?? null, state),
         transfers: !!this.d.payments?.transfersAvailable(),
-        movements: pays.filter((x) => x.kind !== "stripe_link" || x.status === "paid" || x.status === "duplicate").map(movementView),
+        movements: pays.filter((x) => x.kind !== "stripe_link" || x.status === "paid" || x.status === "duplicate").map((x) => ({ ...movementView(x), voidBlockedReason: x.method === "bank_transfer" && x.status === "paid" ? voidBlock : null })),
+        // Factura de la nota (documento distinto del justificante): número, estado de expedición y medio de cobro
+        invoice: inv ? { id: inv.id, number: inv.number, status: inv.status, paymentStatus: inv.paymentStatus, issueDate: inv.issueDate } : null,
       },
     };
   }
