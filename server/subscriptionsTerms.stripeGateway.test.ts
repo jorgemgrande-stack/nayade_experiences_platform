@@ -159,7 +159,9 @@ describe("importes únicos", () => {
     const out = await a.addOneOff({ subscriptionId: id, customerId, currency: "EUR", item: { key: "charge:5", name: "Migración de datos", amountCents: 30000, taxRateBp: 2100 }, metadata: { es_terms: "7" } }, "ct:s1:charge:5");
     await a.addOneOff({ subscriptionId: id, customerId, currency: "EUR", item: { key: "credit:6", name: "Descuento de bienvenida", amountCents: -2900, taxRateBp: 2100 }, metadata: {} }, "ct:s1:credit:6");
     expect(writes().map((c) => c.key)).toEqual(["es-local-ct:s1:charge:5", "es-local-ct:s1:credit:6"]);
-    expect(writes()[0].input).toMatchObject({ customerId, subscriptionId: id, amount: 30000, currency: "EUR", description: "Migración de datos", metadata: { es_key: "charge:5", es_env: NS, es_terms: "7", es_stripe_subscription: id } });
+    expect(writes()[0].input).toMatchObject({ customerId, subscriptionId: id, amount: 30000, currency: "EUR", description: "Migración de datos", metadata: { es_key: "charge:5", es_env: NS, es_stripe_subscription: id } });
+    // El acuerdo vigente no viaja en el importe único: si cambia entre un intento y su reintento, la petición es la misma
+    expect((writes()[0].input as { metadata: Record<string, string> }).metadata.es_terms).toBeUndefined();
     expect(await a.findOneOff(id, "charge:5")).toEqual({ ref: out.ref, amountCents: 30000 });
     expect(await a.findOneOff(id, "credit:6")).toMatchObject({ amountCents: -2900 });
     // La misma clave no duplica; tras facturarse y caducar las claves de Stripe, se sigue encontrando

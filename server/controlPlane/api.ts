@@ -2496,7 +2496,6 @@ export function createControlPlaneApp(d: ControlPlaneDeps): Express {
             billing: termsBillingSvc,
             termsStore: d.subscriptions.terms,
             subscriptionStore: d.subscriptions.store,
-            subscriptions: svc,
             crmStore: d.crm.store,
             capabilities: d.capabilities,
             licences: licences ? { ensure: (id, actor, o) => licences.ensure(id, actor, o) } : undefined,
@@ -2508,7 +2507,7 @@ export function createControlPlaneApp(d: ControlPlaneDeps): Express {
             fiscal: st.fiscal ? { config: { scenarios: st.fiscal.scenarios, taxExpectations: st.fiscal.taxExpectations ?? new Map(), countries: st.fiscal.countries ?? new Map(), consumerRates: st.fiscal.consumerRates ?? new Map(), consent: st.fiscal.consent }, vat } : undefined,
             now: d.subscriptions.now,
           });
-          termsBillingSvc.attach({ gateway: negotiatedBilling.gatewayFor(), link: negotiatedBilling.link });
+          termsBillingSvc.attach({ gateway: negotiatedBilling.gatewayFor(), link: negotiatedBilling.link, billFrom: negotiatedBilling.billFrom, invalidate: negotiatedBilling.invalidate, cancelRequested: negotiatedBilling.cancelRequested });
           router.use(createNegotiatedBillingRouter(negotiatedBilling));
         }
         const negotiated = negotiatedBilling;

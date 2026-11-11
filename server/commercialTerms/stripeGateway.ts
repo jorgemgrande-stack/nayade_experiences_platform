@@ -39,7 +39,7 @@ export class NegotiatedGatewayError extends Error {
 }
 
 export interface NegotiatedGatewayDeps {
-  gateway: Pick<StripeGateway, "product"> & Partial<Pick<StripeGateway, "negotiatedSubscription" | "replaceNegotiatedItems" | "createInvoiceItem" | "invoiceItemsOfCustomer" | "ensureServiceProduct" | "setCancelAtPeriodEnd">>;
+  gateway: Pick<StripeGateway, "product"> & Partial<Pick<StripeGateway, "negotiatedSubscription" | "replaceNegotiatedItems" | "tagSubscriptionItem" | "createInvoiceItem" | "invoiceItemsOfCustomer" | "ensureServiceProduct" | "setCancelAtPeriodEnd">>;
   namespace: string;
   mode: StripeMode;
   /** Política fiscal del entorno: decide el modo de impuesto que se espera en la suscripción. */
@@ -84,7 +84,7 @@ export class StripeNegotiatedGateway implements NegotiatedBillingGateway {
 
   /** ¿Tiene el acceso a Stripe las operaciones que necesita el cobro negociado? */
   static supported(gw: Partial<StripeGateway>): boolean {
-    return !!gw.negotiatedSubscription && !!gw.replaceNegotiatedItems && !!gw.createInvoiceItem && !!gw.invoiceItemsOfCustomer;
+    return !!gw.negotiatedSubscription && !!gw.replaceNegotiatedItems && !!gw.tagSubscriptionItem && !!gw.createInvoiceItem && !!gw.invoiceItemsOfCustomer;
   }
 
   /** Relee la suscripción y aplica el segundo cerrojo. Nada se lee ni se escribe en una suscripción que no lo pase. */
@@ -125,6 +125,8 @@ export class StripeNegotiatedGateway implements NegotiatedBillingGateway {
       })),
       status: s.status,
       cancelAtPeriodEnd: s.cancelAtPeriodEnd || s.cancelAt !== null,
+      trialEnd: s.trialEnd ? s.trialEnd * 1000 : null,
+      anomalies: s.anomalies ?? [],
       tax: { mode: s.automaticTax ? "automatic" : fixed ? "fixed" : "none", expected: expectedTaxMode(this.d.taxPolicy) },
     };
   }
@@ -161,6 +163,8 @@ export class StripeNegotiatedGateway implements NegotiatedBillingGateway {
     if (new Set(items.map((i) => i.key)).size !== items.length) throw new NegotiatedGatewayError("invalid_items", "Hay partidas con la misma clave");
     if (items.some((i) => !Number.isInteger(i.amountCents) || i.amountCents < 0)) throw new NegotiatedGatewayError("invalid_items", "Hay partidas recurrentes con un importe no válido");
     if (new Set(items.map((i) => i.interval)).size !== 1) throw new NegotiatedGatewayError("invalid_items", "Las partidas no comparten periodicidad: Stripe no las admite en una misma suscripción");
+    // Una suscripción de 0 no requiere pago: al pasar después a ser de pago Stripe reinicia el ciclo y cobra en el momento
+    if (items.reduce((a, i) => a + i.amountCents, 0) <= 0) throw new NegotiatedGatewayError("invalid_items", "La cuota recurrente total es 0: una suscripción gratuita no se pone ni se deja en cobro en Stripe");
   }
 
   async applyItems(input: { subscriptionId: string; currency: string; items: NegotiatedItem[]; metadata: Record<string, string> }, idempotencyKey: string) {
@@ -173,13 +177,28 @@ export class StripeNegotiatedGateway implements NegotiatedBillingGateway {
     if (s.items.some((i) => i.interval !== interval || (i.intervalCount ?? 1) !== 1)) throw new NegotiatedGatewayError("interval_change", "Cambio de periodicidad: todavía no se aplica en Stripe de forma automática (reiniciaría el ciclo de cobro)");
     const products = await this.productsFor(input.items);
     // Se conserva lo que ya coincide (misma clave, importe, Product y sin tipos fijos sobrantes) y se sustituye el resto
-    const now = await this.keyed(s);
+    const same = (item: GwNegotiatedSubscription["items"][number], want: NegotiatedItem) => item.quantity === 1 && item.unitAmount === want.amountCents && item.interval === want.interval && item.productId === products.get(want.key);
     const keep = new Set<string>();
     const remove: string[] = [];
-    for (const { item, key } of now) {
-      const want = key && item.metadata.es_line === key ? input.items.find((i) => i.key === key) : undefined;
-      if (want && !keep.has(key!) && item.unitAmount * item.quantity === want.amountCents && item.quantity === 1 && item.productId === products.get(key!)) keep.add(key!);
-      else remove.push(item.id);
+    const untagged: GwNegotiatedSubscription["items"] = [];
+    for (const item of s.items) {
+      const key = item.metadata.es_line;
+      const want = key ? input.items.find((i) => i.key === key) : undefined;
+      if (want && !keep.has(key) && same(item, want)) keep.add(key);
+      // Sin clave, o con una clave que ya no se pacta (un acuerdo nuevo da claves nuevas a sus partidas a medida)
+      else untagged.push(item);
+    }
+    // Partidas sin clave vigente (las que crea Checkout, o las de un acuerdo anterior): si una es EXACTAMENTE una de las
+    // pactadas (Product, importe, periodicidad y cantidad) solo se le pone su clave, con un cambio de metadatos. Lo que el
+    // cliente ya está pagando nunca se sustituye por algo idéntico
+    for (const item of untagged) {
+      const want = this.d.gateway.tagSubscriptionItem ? input.items.find((i) => !keep.has(i.key) && same(item, i)) : undefined;
+      if (!want) {
+        remove.push(item.id);
+        continue;
+      }
+      await this.d.gateway.tagSubscriptionItem!(item.id, { es_line: want.key, es_env: this.d.namespace }, idem(this.d.namespace, `tag:${item.id}:${hash(want.key)}`));
+      keep.add(want.key);
     }
     const add = input.items.filter((i) => !keep.has(i.key)).map((i) => ({ productId: products.get(i.key)!, unitAmount: i.amountCents, currency: input.currency, interval: i.interval, metadata: { es_line: i.key, es_env: this.d.namespace } }));
     if (!remove.length && !add.length) return { ref: s.id };
@@ -194,7 +213,7 @@ export class StripeNegotiatedGateway implements NegotiatedBillingGateway {
     const s = await this.owned(input.subscriptionId);
     if (s.customerId !== input.customerId) throw new NegotiatedGatewayError("not_negotiated", "El cliente de Stripe no es el de la suscripción: no se añade el importe");
     const out = await this.d.gateway.createInvoiceItem(
-      { customerId: s.customerId, subscriptionId: s.id, amount: input.item.amountCents, currency: input.currency, description: input.item.name, metadata: { ...input.metadata, es_key: input.item.key, es_stripe_subscription: s.id, es_env: this.d.namespace, [NEGOTIATED_MARK]: "1" } },
+      { customerId: s.customerId, subscriptionId: s.id, amount: input.item.amountCents, currency: input.currency, description: input.item.name, metadata: { ...(input.metadata.es_subscription ? { es_subscription: input.metadata.es_subscription } : {}), es_key: input.item.key, es_stripe_subscription: s.id, es_env: this.d.namespace, [NEGOTIATED_MARK]: "1" } },
       idem(this.d.namespace, idempotencyKey),
     );
     return { ref: out.id };

@@ -80,6 +80,10 @@ export interface RemoteState {
   cancelAtPeriodEnd?: boolean;
   /** Cómo calcula Stripe el impuesto de la suscripción y cómo debería según la política fiscal del entorno. */
   tax?: { mode: "automatic" | "fixed" | "none"; expected: "automatic" | "fixed" | "none" };
+  /** Fin del periodo sin cargo en Stripe (ms), si lo tiene. */
+  trialEnd?: number | null;
+  /** Cosas hechas fuera de Elephant que cambian lo que se cobra (cupón, cobro en pausa, cobro no automático). */
+  anomalies?: string[];
 }
 
 export interface BillingLink {
@@ -134,6 +138,16 @@ export class TermsBillingService {
       gateway?: NegotiatedBillingGateway | null;
       /** Suscripción de Stripe con la que se cobra ESA suscripción (null = simulación). */
       link?: (subscriptionId: number) => Promise<BillingLink | null>;
+      /**
+       * Instante desde el que se cobra una suscripción ya puesta a cobrar por adelantado (método de pago autorizado
+       * antes del inicio del acuerdo; primer cargo en esa fecha). Hasta entonces, lo que se envía y se concilia es lo que
+       * regirá ese día. null: se cobra desde ya.
+       */
+      billFrom?: (subscriptionId: number) => Promise<number | null>;
+      /** Las condiciones han cambiado: si hay una sesión de pago abierta que ofrece otra cosa, se cierra. */
+      invalidate?: (subscriptionId: number) => Promise<unknown>;
+      /** ¿Pidió un operador de forma expresa el fin de la suscripción de Stripe? (entonces un fin solo en Stripe no es una diferencia). */
+      cancelRequested?: (subscriptionId: number) => Promise<boolean>;
       /** Antes de planificar: resuelve lo que dependa de la fecha (fin de condiciones temporales), como la simulación. */
       settle?: (subscriptionId: number) => Promise<unknown>;
       termsStore: TermsStore;
@@ -158,9 +172,60 @@ export class TermsBillingService {
    * Conecta la pasarela validada y el enlace con Stripe (el plano de control monta Stripe después de las condiciones).
    * No abre nada por sí solo: el interruptor sigue mandando y el enlace solo existe para lo que un operador puso a cobrar.
    */
-  attach(x: { gateway: NegotiatedBillingGateway; link: (subscriptionId: number) => Promise<BillingLink | null> }) {
+  attach(x: { gateway: NegotiatedBillingGateway; link: (subscriptionId: number) => Promise<BillingLink | null>; billFrom?: (subscriptionId: number) => Promise<number | null>; invalidate?: (subscriptionId: number) => Promise<unknown>; cancelRequested?: (subscriptionId: number) => Promise<boolean> }) {
     this.d.gateway = x.gateway;
     this.d.link = x.link;
+    this.d.billFrom = x.billFrom;
+    this.d.invalidate = x.invalidate;
+    this.d.cancelRequested = x.cancelRequested;
+  }
+
+  /**
+   * ¿Ha cambiado lo que hay que cobrar desde la última vez que se dejó en Stripe? Ocurre sin que nadie toque nada
+   * cuando llega una FECHA (termina una condición temporal, empieza un acuerdo programado, vence un cargo único), o
+   * cuando el último envío falló. No dice nada de lo que alguien haya cambiado en Stripe a mano (eso solo se avisa).
+   * Solo lectura; sin enlace o sin un envío anterior con el que comparar, false.
+   */
+  async changedSinceSync(subscriptionId: number): Promise<boolean> {
+    if (!this.open || !this.d.link) return false;
+    const link = await this.d.link(subscriptionId);
+    if (!link) return false;
+    const plan = await this.plan(subscriptionId);
+    if (plan.termsId === null || !plan.items.length) return false;
+    const prev = await this.lastDetail(subscriptionId, link.subscriptionId);
+    if (!prev || prev.itemsHash === null) return false;
+    return !!prev.lastError || prev.itemsHash !== stableHash(plan.items).slice(0, 24) || plan.oneOffs.some((o) => o.due && !prev.oneOffs[o.key]);
+  }
+
+  /**
+   * Fin de la contratación (cancelada o con su fin programado): la suscripción de Stripe termina al final del periodo
+   * ya pagado. Nunca cancela de inmediato ni abona, y nunca deshace un fin. Es lo ÚNICO que sigue llegando a Stripe con
+   * el interruptor apagado (para no dejar a Stripe facturando algo que se canceló dentro). Sin enlace no llama a Stripe.
+   */
+  private async endInStripe(subscriptionId: number, known?: BillingLink | null): Promise<{ canceled: boolean } | null> {
+    const gw = this.d.gateway;
+    if (!gw?.setCancelAtPeriodEnd) return null;
+    const ending = await this.ending(subscriptionId);
+    if (!ending) return null;
+    const link = known ?? (this.d.link ? await this.d.link(subscriptionId) : null);
+    if (!link) return null;
+    const remote = await gw.current(link.subscriptionId);
+    if (remote && remote.status !== "canceled" && remote.cancelAtPeriodEnd === false) {
+      // La clave lleva la versión de la suscripción interna: reprogramar una baja deshecha es OTRA petición para Stripe
+      await gw.setCancelAtPeriodEnd(link.subscriptionId, true, `ct:s${subscriptionId}:${link.subscriptionId}:cancel:v${ending.version}`);
+      opsLog("info", "CommercialTerms", "billing_cancel_scheduled", { subscriptionId });
+    }
+    return ending;
+  }
+
+  /**
+   * Primer instante FUTURO en el que empieza a regir alguna cuota recurrente de un acuerdo de la suscripción (un
+   * acuerdo activado con fecha de inicio futura). null si no hay ninguna pendiente de empezar.
+   */
+  async nextStart(subscriptionId: number): Promise<number | null> {
+    const now = this.now();
+    const starts = (await this.d.subscriptionStore.items(subscriptionId)).filter((i) => !voided(i) && i.termsId != null && recurringPrice(i.priceKind) && i.effectiveFrom > now).map((i) => i.effectiveFrom);
+    return starts.length ? Math.min(...starts) : null;
   }
 
   /**
@@ -180,12 +245,14 @@ export class TermsBillingService {
    * Qué se cobraría HOY: las partidas recurrentes vigentes de la suscripción (tal como las factura la simulación) y
    * los importes únicos de sus acuerdos. No llama a Stripe.
    */
-  async plan(subscriptionId: number, o: { settle?: boolean } = {}): Promise<BillingPlan> {
+  async plan(subscriptionId: number, o: { settle?: boolean; at?: number } = {}): Promise<BillingPlan> {
     // Solo al sincronizar (una escritura): una consulta nunca cambia nada
     if (o.settle) await this.d.settle?.(subscriptionId).catch(() => undefined);
     const sub = await this.d.subscriptionStore.get(subscriptionId);
     if (!sub) throw new TermsError("not_found", "Suscripción no encontrada");
-    const now = this.now();
+    // «Hoy», salvo que se pida otra fecha o la suscripción esté puesta a cobrar por adelantado (entonces, su inicio)
+    const from = o.at === undefined && this.d.billFrom ? await this.d.billFrom(subscriptionId) : null;
+    const now = o.at ?? Math.max(this.now(), from ?? 0);
     const all = (await this.d.subscriptionStore.items(subscriptionId)).filter((i) => !voided(i));
     const recurring = sub.status === "canceled" ? [] : all.filter((i) => recurringPrice(i.priceKind) && live(i, now));
     // Solo una suscripción con condiciones personalizadas vivas; las demás las gobierna el circuito ordinario
@@ -203,11 +270,11 @@ export class TermsBillingService {
   }
 
   /** ¿Termina la contratación? (cancelada ya, o con su fin programado). */
-  private async ending(subscriptionId: number): Promise<{ canceled: boolean; at: number } | null> {
+  private async ending(subscriptionId: number): Promise<{ canceled: boolean; at: number; version: number } | null> {
     const sub = await this.d.subscriptionStore.get(subscriptionId);
     if (!sub) return null;
-    if (sub.status === "canceled") return { canceled: true, at: sub.canceledAt ?? 0 };
-    return sub.cancelAt != null ? { canceled: false, at: sub.cancelAt } : null;
+    if (sub.status === "canceled") return { canceled: true, at: sub.canceledAt ?? 0, version: sub.version };
+    return sub.cancelAt != null ? { canceled: false, at: sub.cancelAt, version: sub.version } : null;
   }
 
   /** Estado de sincronización más reciente de la suscripción (vive en sus acuerdos; se hereda de uno a otro). */
@@ -246,23 +313,22 @@ export class TermsBillingService {
    * Stripe no hace NINGUNA llamada ni cambia nada. Repetirla es seguro.
    */
   async sync(subscriptionId: number, actor: string): Promise<SyncOutcome> {
-    if (!this.d.enabled) return { status: "disabled", message: "El cobro en Stripe de condiciones personalizadas está apagado: la suscripción sigue en simulación de facturación" };
+    // Interruptor apagado: no se envía ningún cambio de condiciones. Solo el FIN de una contratación ya enlazada
+    if (!this.d.enabled) {
+      await this.endInStripe(subscriptionId).catch(() => opsLog("warn", "CommercialTerms", "billing_cancel_failed", { subscriptionId }));
+      return { status: "disabled", message: "El cobro en Stripe de condiciones personalizadas está apagado: la suscripción sigue en simulación de facturación" };
+    }
     const gw = this.d.gateway;
     if (!gw) return { status: "unsupported", message: "No hay una pasarela de Stripe validada para condiciones personalizadas (pendiente de la validación en Stripe Sandbox)" };
+    // Condiciones cambiadas con una sesión de pago abierta: la sesión ya no ofrece lo pactado y se cierra
+    await this.d.invalidate?.(subscriptionId).catch(() => undefined);
     const link = this.d.link ? await this.d.link(subscriptionId) : null;
     if (!link) return { status: "not_linked", message: "Esta suscripción no se cobra en Stripe: sigue en simulación de facturación" };
     const plan = await this.plan(subscriptionId, { settle: true });
     // Fin de la contratación (cancelada o con cancelación programada): Stripe termina al final del periodo ya pagado.
     // Nunca se cancela de inmediato ni se abona nada desde aquí, y nunca se deshace solo un fin ya programado
-    const ending = await this.ending(subscriptionId);
-    if (ending && gw.setCancelAtPeriodEnd) {
-      const remote = await gw.current(link.subscriptionId);
-      if (remote && remote.status !== "canceled" && remote.cancelAtPeriodEnd === false) {
-        await gw.setCancelAtPeriodEnd(link.subscriptionId, true, `ct:s${subscriptionId}:${link.subscriptionId}:cancel:${ending.at}`);
-        opsLog("info", "CommercialTerms", "billing_cancel_scheduled", { subscriptionId });
-      }
-      if (ending.canceled) return { status: "cancel_scheduled", message: "La contratación está cancelada: la suscripción de Stripe termina al final del periodo ya pagado" };
-    }
+    const ending = await this.endInStripe(subscriptionId, link);
+    if (ending?.canceled) return { status: "cancel_scheduled", message: "La contratación está cancelada: la suscripción de Stripe termina al final del periodo ya pagado" };
     // Nunca se vacía una suscripción de Stripe desde aquí: sin condiciones personalizadas vivas no hay nada que enviar
     if (plan.termsId === null || !plan.items.length) return { status: "nothing_to_bill", message: "La suscripción no tiene condiciones personalizadas vigentes con cuotas recurrentes" };
     const prev = await this.lastDetail(subscriptionId, link.subscriptionId);
@@ -275,12 +341,15 @@ export class TermsBillingService {
     try {
       // 1.º Partidas recurrentes: se compara con lo que Stripe tiene de verdad (no con lo que creemos haber enviado)
       const remote = await gw.current(link.subscriptionId);
-      if (remote && sameItems(plan.items, remote.items)) skipped++;
-      else {
-        const hash = stableHash(plan.items).slice(0, 24);
-        // Mismo contenido que el último intento fallido → misma clave (si Stripe llegó a aplicarlo, responde igual);
-        // contenido distinto, o vuelta a una composición anterior ya sustituida → clave nueva
-        const generation = detail.itemsHash === hash && prev?.lastError ? detail.generation : detail.generation + 1;
+      const hash = stableHash(plan.items).slice(0, 24);
+      if (remote && sameItems(plan.items, remote.items)) {
+        skipped++;
+        // Queda anotado qué composición tiene Stripe: así se sabe después si lo pactado cambió por una fecha
+        detail.itemsHash = hash;
+      } else {
+        // Cada intento, clave nueva: Stripe guarda también los errores por clave, y repetirla devolvería el mismo fallo.
+        // No duplica nada: antes de enviar se compara siempre con lo que Stripe tiene de verdad
+        const generation = detail.generation + 1;
         detail.itemsHash = hash;
         detail.generation = generation;
         await gw.applyItems({ subscriptionId: link.subscriptionId, currency: plan.currency, items: plan.items, metadata }, `ct:s${subscriptionId}:${link.subscriptionId}:items:${hash}:g${generation}`);
@@ -314,18 +383,21 @@ export class TermsBillingService {
    * abierto y la suscripción se cobra en Stripe; si no, no hace nada. Nunca lanza: un fallo queda registrado.
    */
   async syncIfOpen(subscriptionId: number, actor = "system:terms-billing"): Promise<SyncOutcome | null> {
-    if (!this.open) return null;
-    return this.sync(subscriptionId, actor).catch((e) => {
+    if (!this.d.gateway) return null;
+    // Con el interruptor apagado `sync` solo propaga el fin de una contratación ya enlazada; aquí no hay resultado
+    const out = await this.sync(subscriptionId, actor).catch((e) => {
       opsLog("warn", "CommercialTerms", "billing_sync_error", { subscriptionId, error: e instanceof Error ? e.name : "error" });
       return null;
     });
+    return this.d.enabled ? out : null;
   }
 
   /** Consistencia entre lo que rige hoy y lo que Stripe tiene: partidas, moneda e importes únicos. Solo lectura. */
-  async reconcile(subscriptionId: number) {
+  async reconcile(subscriptionId: number, o: { whenOff?: boolean } = {}) {
     const plan = await this.plan(subscriptionId);
     const current = plan.termsId !== null ? await this.d.termsStore.get(plan.termsId) : null;
-    const link = this.open && this.d.link ? await this.d.link(subscriptionId) : null;
+    // `whenOff` (la conciliación periódica): lo ya enlazado se sigue comparando aunque el interruptor esté apagado
+    const link = (this.open || (o.whenOff && !!this.d.gateway)) && this.d.link ? await this.d.link(subscriptionId) : null;
     const gw = this.d.gateway;
     if (!link || !gw) return { available: false as const, plan, syncStatus: current?.syncStatus ?? "none", differences: [] };
     const remote = await gw.current(link.subscriptionId);
@@ -336,6 +408,12 @@ export class TermsBillingService {
     if (remote?.tax && remote.tax.mode !== remote.tax.expected) differences.push({ key: `impuestos:${remote.tax.mode}`, kind: "tax", expectedCents: null, stripeCents: null });
     // Estado: una contratación que termina debe tener su fin programado en Stripe, y una viva no debe estar cancelada allí
     const ending = await this.ending(subscriptionId);
+    // Hecho fuera de Elephant y que cambia lo que se cobra: cupón, cobro en pausa, cobro no automático, periodo sin cargo
+    for (const a of remote?.anomalies ?? []) differences.push({ key: a, kind: "status", expectedCents: null, stripeCents: null });
+    if (remote?.trialEnd && remote.trialEnd > this.now() && !(this.d.billFrom && (await this.d.billFrom(subscriptionId)))) differences.push({ key: "periodo_sin_cargo", kind: "status", expectedCents: null, stripeCents: null });
+    // Fin programado SOLO en Stripe (ni la contratación termina dentro ni lo pidió un operador): Stripe dejaría de cobrar
+    // a un cliente que sigue contratado. Se avisa; nunca se deshace ni se da por terminada la contratación sola
+    if (remote && !ending && remote.cancelAtPeriodEnd === true && remote.status !== "canceled" && !(this.d.cancelRequested && (await this.d.cancelRequested(subscriptionId)))) differences.push({ key: "fin_solo_en_stripe", kind: "status", expectedCents: null, stripeCents: null });
     if (remote?.status !== undefined) {
       if (ending && remote.status !== "canceled" && remote.cancelAtPeriodEnd === false) differences.push({ key: "fin_sin_programar", kind: "status", expectedCents: null, stripeCents: null });
       if (!ending && remote.status === "canceled") differences.push({ key: "cancelada_en_stripe", kind: "status", expectedCents: null, stripeCents: null });
@@ -361,7 +439,7 @@ export class TermsBillingService {
  * lo necesario) o `switch_on_blocked` (encendido pero falta algo: `stripeBillingReasons`). Encendido, solo se cobra lo
  * que un operador pone a cobrar de forma expresa (`stripeBillingScope`).
  */
-export function describeTermsBilling(x: { switchOn: boolean; registry: boolean; stripe: { mode: "test" | "live"; taxPolicy: string | null; urls: boolean } | null }) {
+export function describeTermsBilling(x: { switchOn: boolean; registry: boolean; stripe: { mode: "test" | "live"; taxPolicy: string | null; urls: boolean } | null; /** Suscripciones ya enlazadas y vivas en Stripe. */ linked?: number }) {
   const reasons = [
     ...(x.registry ? [] : ["crm_migration_0049_missing"]),
     ...(x.stripe ? [] : ["stripe_not_mounted"]),
@@ -369,7 +447,10 @@ export function describeTermsBilling(x: { switchOn: boolean; registry: boolean; 
     ...(x.stripe && x.stripe.mode === "live" && !x.stripe.taxPolicy ? ["tax_policy_pending"] : []),
   ];
   return {
-    stripeBilling: !x.switchOn ? ("off" as const) : reasons.length ? ("switch_on_blocked" as const) : ("on" as const),
+    // Apagado con suscripciones ya enlazadas: Stripe las sigue cobrando; no se inicia ni se cambia nada, pero su estado de
+    // pago, su conciliación y su FIN siguen funcionando. Para dejar de cobrar a un cliente hay que programar su fin
+    stripeBilling: !x.switchOn ? (x.linked ? ("off_with_linked" as const) : ("off" as const)) : reasons.length ? ("switch_on_blocked" as const) : ("on" as const),
+    ...(x.linked !== undefined ? { stripeBillingLinked: x.linked } : {}),
     stripeBillingScope: "explicit_start_only" as const,
     ...(x.stripe ? { stripeBillingMode: x.stripe.mode } : {}),
     ...(reasons.length ? { stripeBillingReasons: reasons } : {}),

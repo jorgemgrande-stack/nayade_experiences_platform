@@ -534,6 +534,8 @@ export class FakeStripeGateway implements StripeGateway {
   /** Detalle de las suscripciones con precios en línea: partidas, moneda y si Stripe Tax calcula el impuesto. */
   negotiated = new Map<string, { items: GwNegotiatedItem[]; currency: string; automaticTax: boolean }>();
   negotiatedSessions = new Map<string, NegotiatedCheckoutInput>();
+  /** Cosas hechas «en el Dashboard» sobre una suscripción (cupón, cobro en pausa…). */
+  anomaliesOf = new Map<string, string[]>();
   invoiceItems: GwInvoiceItem[] = [];
   /** Llamadas que ESCRIBEN en una suscripción o crean importes (para comprobar que algo no se tocó). */
   negotiatedWrites = () => this.calls.filter((c) => ["subscriptions.update(negotiated)", "invoiceitems.create", "checkout.sessions.create(negotiated)", "subscriptions.update(cancel_at_period_end)"].includes(c.op));
@@ -563,9 +565,11 @@ export class FakeStripeGateway implements StripeGateway {
     const input = this.negotiatedSessions.get(id)!;
     const subId = this.next("sub");
     const items: GwNegotiatedItem[] = input.lines.filter((l) => l.interval).map((l) => ({ id: this.next("si"), productId: l.productId, unitAmount: l.unitAmount, quantity: 1, currency: l.currency.toUpperCase(), interval: l.interval, intervalCount: 1, metadata: {}, taxRateBp: null }));
-    const amount = input.lines.reduce((a, l) => a + l.unitAmount, 0);
-    const end = s.expiresAt + 30 * 86_400;
-    this.subscriptions.set(subId, { id: subId, customerId: s.customerId!, status: outcome === "paid" ? "active" : "incomplete", cancelAt: null, cancelAtPeriodEnd: false, currentPeriodEnd: end, currentPeriodStart: end - 30 * 86_400, latestInvoiceId: null, priceIds: items.map((i) => `price_inline_${i.id}`), metadata: { ...input.metadata }, items: items.map((i) => ({ id: i.id, priceId: `price_inline_${i.id}`, quantity: 1 })), pendingUpdate: null, billingMode: "classic" });
+    // Con primer cargo aplazado (trial_end): hoy no se cobra nada y el primer periodo de pago empieza ese día
+    const amount = input.trialEnd ? 0 : input.lines.reduce((a, l) => a + l.unitAmount, 0);
+    // El periodo empieza cuando se creó la sesión (caduca 2 h después): al pagar, no en el futuro
+    const end = input.trialEnd ?? s.expiresAt - 7200 + 30 * 86_400;
+    this.subscriptions.set(subId, { id: subId, customerId: s.customerId!, status: outcome === "paid" ? (input.trialEnd ? "trialing" : "active") : "incomplete", cancelAt: null, cancelAtPeriodEnd: false, currentPeriodEnd: end, currentPeriodStart: input.trialEnd ? s.expiresAt - 7200 : end - 30 * 86_400, latestInvoiceId: null, priceIds: items.map((i) => `price_inline_${i.id}`), metadata: { ...input.metadata }, items: items.map((i) => ({ id: i.id, priceId: `price_inline_${i.id}`, quantity: 1 })), pendingUpdate: null, billingMode: "classic" });
     this.negotiated.set(subId, { items, currency: input.lines[0].currency.toUpperCase(), automaticTax: !!input.automaticTax });
     this.addNegotiatedInvoice(subId, "subscription_create", outcome === "paid" ? "paid" : "open", amount, input.lines.length);
     this.sessions.set(id, { ...s, status: "complete", paymentStatus: outcome === "paid" ? "paid" : "unpaid", subscriptionId: subId, url: null });
@@ -600,7 +604,7 @@ export class FakeStripeGateway implements StripeGateway {
     const s = this.subscriptions.get(id);
     if (!s) return null;
     const n = this.negotiated.get(id);
-    return { id: s.id, customerId: s.customerId, status: s.status, currency: n?.currency ?? "EUR", metadata: { ...s.metadata }, automaticTax: n?.automaticTax ?? false, cancelAt: s.cancelAt, cancelAtPeriodEnd: s.cancelAtPeriodEnd, currentPeriodEnd: s.currentPeriodEnd, scheduleId: s.scheduleId ?? null, items: (n?.items ?? (s.items ?? []).map((i) => ({ id: i.id, productId: this.prices.find((p) => p.id === i.priceId)?.productId ?? "", unitAmount: this.prices.find((p) => p.id === i.priceId)?.unitAmount ?? 0, quantity: i.quantity, currency: "EUR", interval: "month" as const, intervalCount: 1, metadata: {}, taxRateBp: null }))).map((i) => ({ ...i, metadata: { ...i.metadata } })) };
+    return { id: s.id, customerId: s.customerId, status: s.status, currency: n?.currency ?? "EUR", metadata: { ...s.metadata }, automaticTax: n?.automaticTax ?? false, cancelAt: s.cancelAt, cancelAtPeriodEnd: s.cancelAtPeriodEnd, currentPeriodEnd: s.currentPeriodEnd, scheduleId: s.scheduleId ?? null, trialEnd: s.status === "trialing" ? s.currentPeriodEnd : null, anomalies: this.anomaliesOf.get(id) ?? [], items: (n?.items ?? (s.items ?? []).map((i) => ({ id: i.id, productId: this.prices.find((p) => p.id === i.priceId)?.productId ?? "", unitAmount: this.prices.find((p) => p.id === i.priceId)?.unitAmount ?? 0, quantity: i.quantity, currency: "EUR", interval: "month" as const, intervalCount: 1, metadata: {}, taxRateBp: null }))).map((i) => ({ ...i, metadata: { ...i.metadata } })) };
   }
   async replaceNegotiatedItems(c: NegotiatedItemsChange, key: string) {
     this.guard();
@@ -615,6 +619,12 @@ export class FakeStripeGateway implements StripeGateway {
     if (!s || !n) throw new StripeGatewayError("resource_missing", "Stripe respondió 404 (resource_missing)", false);
     for (const id of c.remove) if (!n.items.some((i) => i.id === id)) throw new StripeGatewayError("resource_missing", `Stripe respondió 400 (resource_missing: ${id})`, false);
     for (const a of c.add) if (!this.products.has(a.productId)) throw new StripeGatewayError("resource_missing", `Stripe respondió 400 (resource_missing: ${a.productId})`, false);
+    // MÁS ESTRICTO que Stripe, a propósito: retirar una partida para volver a ponerla idéntica (mismo Product, importe y
+    // periodicidad) nunca es legítimo aquí; contra Stripe real podría facturar o mover el ciclo de lo recién pagado
+    for (const id of c.remove) {
+      const old = n.items.find((i) => i.id === id)!;
+      if (c.add.some((a) => a.productId === old.productId && a.unitAmount === old.unitAmount * old.quantity && a.interval === old.interval)) throw new StripeGatewayError("invalid_request_error", "Doble de Stripe: sustitución de una partida por otra idéntica (lo ya cobrado no se sustituye)", false);
+    }
     const items = [...n.items.filter((i) => !c.remove.includes(i.id)), ...c.add.map((a) => ({ id: this.next("si"), productId: a.productId, unitAmount: a.unitAmount, quantity: 1, currency: a.currency.toUpperCase(), interval: a.interval, intervalCount: 1, metadata: { ...a.metadata }, taxRateBp: null }))];
     if (!items.length) throw new StripeGatewayError("invalid_request_error", "Stripe respondió 400 (una suscripción necesita al menos una partida)", false);
     if (new Set(items.map((i) => i.interval)).size > 1) throw new StripeGatewayError("invalid_request_error", "Stripe respondió 400 (periodicidades distintas)", false);
@@ -625,6 +635,16 @@ export class FakeStripeGateway implements StripeGateway {
     this.subscriptions.set(c.subscriptionId, { ...s, metadata: { ...s.metadata, ...c.metadata }, priceIds: items.map((i) => `price_inline_${i.id}`), items: items.map((i) => ({ id: i.id, priceId: `price_inline_${i.id}`, quantity: 1 })) });
     this.emit("customer.subscription.updated", "subscription", c.subscriptionId);
     return (await this.negotiatedSubscription(c.subscriptionId))!;
+  }
+  /** Solo metadatos de una partida: ni factura, ni evento de cambio de precio. */
+  async tagSubscriptionItem(itemId: string, metadata: Record<string, string>, key: string) {
+    this.guard();
+    this.calls.push({ op: "subscription_items.update(metadata)", key, input: { itemId, metadata } });
+    for (const n of Array.from(this.negotiated.values())) {
+      const item = n.items.find((i) => i.id === itemId);
+      if (item) return void (item.metadata = { ...item.metadata, ...metadata });
+    }
+    throw new StripeGatewayError("resource_missing", "Stripe respondió 404 (resource_missing)", false);
   }
   async createInvoiceItem(i: InvoiceItemInput, key: string) {
     this.guard();

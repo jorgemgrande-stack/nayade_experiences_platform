@@ -685,11 +685,13 @@ async function main() {
   // de la 0049. Sin interruptor no se llama a Stripe; con él, solo se cobra lo que un operador ponga a cobrar
   if (termsStartup) {
     if (subscriptions?.termsBilling && termsStartup.billingRegistry && stripe && crmPool) subscriptions.termsBilling.store = new MysqlTermsBillingStore(crmPool, stripe.config.mode);
+    // Suscripciones ya enlazadas y vivas en Stripe: con el interruptor apagado se siguen cobrando (se dice en el arranque)
+    const termsLinked = termsStartup.billingRegistry && stripe && crmPool ? await crmPool.query("SELECT COUNT(*) AS n FROM commercial_terms_billing WHERE livemode = ? AND stripe_subscription_id IS NOT NULL AND status IN ('active','past_due','suspended','cancel_scheduled')", [stripe.config.mode === "live" ? 1 : 0]).then(([rows]) => Number((rows as Array<{ n: number }>)[0]?.n ?? 0), () => undefined) : undefined;
     console.log(
       JSON.stringify({
         ctx: "CommercialTerms",
         enabled: termsStartup.enabled,
-        ...describeTermsBilling({ switchOn: subscriptions?.termsBilling?.enabled === true, registry: termsStartup.billingRegistry, stripe: stripe ? { mode: stripe.config.mode, taxPolicy: stripe.config.taxPolicy, urls: !!stripe.urls } : null }),
+        ...describeTermsBilling({ switchOn: subscriptions?.termsBilling?.enabled === true, registry: termsStartup.billingRegistry, stripe: stripe ? { mode: stripe.config.mode, taxPolicy: stripe.config.taxPolicy, urls: !!stripe.urls } : null, linked: termsLinked }),
         autoLicences: subscriptions?.termsLicences?.auto !== false,
         ...(termsStartup.enabled ? {} : { reason: "crm_migration_0048_missing" }),
       }),

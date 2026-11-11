@@ -6,7 +6,9 @@
 --   Guarda el Customer de la empresa (el mismo de `stripe_customers`), la sesión de Checkout pendiente (como mucho una
 --   viva) con la huella de lo que ofrece, la suscripción de Stripe ya enlazada y su estado de cobro (al corriente,
 --   impago con gracia, suspendida, cancelación programada, cancelada). `suspended_capabilities` recuerda qué licencias
---   suspendió el impago, para devolver solo esas al recuperarse el cobro.
+--   suspendió el impago, para devolver solo esas al recuperarse el cobro. `cancel_requested_at`: un operador pidió el fin
+--   de la suscripción de Stripe (un fin solo en Stripe sin esa orden es una diferencia que se avisa). Una fila por
+--   suscripción y modo (pruebas/live): las de un modo nunca se ven desde el otro.
 -- `commercial_terms_billing_invoices`: facturas de Stripe de esas suscripciones (una fila por factura, releída siempre
 --   en Stripe): estado, importes sin impuestos, impuesto, motivo y si el cobro quedó revertido.
 -- Nunca se ejecuta al arrancar.
@@ -27,6 +29,7 @@ CREATE TABLE commercial_terms_billing (
   stripe_status VARCHAR(32) NULL,
   current_period_end BIGINT NULL,
   cancel_at BIGINT NULL,
+  cancel_requested_at BIGINT NULL,
   grace_ends_at BIGINT NULL,
   read_only_until BIGINT NULL,
   last_paid_invoice_id VARCHAR(80) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NULL,
@@ -38,7 +41,7 @@ CREATE TABLE commercial_terms_billing (
   synced_at BIGINT NULL,
   updated_at BIGINT NOT NULL,
   version INT NOT NULL DEFAULT 1,
-  UNIQUE KEY uq_terms_billing_subscription (subscription_id),
+  UNIQUE KEY uq_terms_billing_subscription (subscription_id, livemode),
   UNIQUE KEY uq_terms_billing_stripe_subscription (stripe_subscription_id),
   UNIQUE KEY uq_terms_billing_session (session_id),
   KEY idx_terms_billing_company (company_id),

@@ -251,7 +251,7 @@ export class StripeEventProcessor {
     }
     // Cargo de unas condiciones personalizadas: tampoco es de un pedido; lo aplica su módulo
     if (isNegotiated(first.sub)) {
-      if (!this.d.negotiated || first.sub.metadata.es_env !== this.namespace) return { outcome: "ignored", detail: "Condiciones personalizadas de otro entorno o sin módulo" };
+      if (!this.d.negotiated || first.sub.metadata.es_env !== this.namespace) return this.negotiatedIgnored(first.sub);
       return { outcome: "processed", detail: await this.d.negotiated.handleCharge(first.c, first.inv, first.sub) };
     }
     const v = await this.verified(first.sub);
@@ -289,6 +289,18 @@ export class StripeEventProcessor {
       const r = await this.applySubscription(v.order, sub, v.link.tenantId);
       return { outcome: r.outcome, detail: `Cargo ${lost ? "sin cobertura" : current.amountRefundedCents ? "reembolsado en parte" : "al corriente"}; ${r.detail ?? ""}`.slice(0, 300) };
     });
+  }
+
+  /**
+   * Suscripción de condiciones personalizadas que no se atiende: de otro entorno (normal) o de ESTE entorno sin su
+   * módulo montado (falta la migración o la configuración): entonces su estado de pago dejaría de aplicarse y se avisa.
+   */
+  private negotiatedIgnored(sub: GwSubscription): Outcome {
+    if (sub.metadata.es_env === this.namespace) {
+      opsLog("error", "StripeEvents", "negotiated_unmounted", { subscriptionId: sub.id });
+      recordFailure("stripe.negotiated_unmounted");
+    }
+    return { outcome: "ignored", detail: "Condiciones personalizadas de otro entorno o sin módulo" };
   }
 
   /** Cargo → factura → suscripción, releídos en Stripe. */
@@ -465,7 +477,7 @@ export class StripeEventProcessor {
     // Condiciones personalizadas: precios en línea (no del catálogo enlazado) y sin pedido. Nunca pasan por la
     // comprobación de precios del circuito ordinario (sería una discordancia) ni este toca sus partidas
     if (isNegotiated(sub)) {
-      if (!this.d.negotiated || sub.metadata.es_env !== this.namespace) return { outcome: "ignored", detail: "Condiciones personalizadas de otro entorno o sin módulo" };
+      if (!this.d.negotiated || sub.metadata.es_env !== this.namespace) return this.negotiatedIgnored(sub);
       return { outcome: "processed", detail: await this.d.negotiated.handleSubscription(sub, hint) };
     }
     const v = await this.verified(sub);

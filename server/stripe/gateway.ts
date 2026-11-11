@@ -296,6 +296,8 @@ export interface StripeGateway {
    * ni modifica un Price público. Sin prorrateo (`proration_behavior=none`) y con Idempotency-Key.
    */
   replaceNegotiatedItems?(change: NegotiatedItemsChange, idempotencyKey: string): Promise<GwNegotiatedSubscription>;
+  /** Cambia SOLO los metadatos de una partida (su clave): ni precio, ni cantidad, ni prorrateo, ni factura. Con Idempotency-Key. */
+  tagSubscriptionItem?(itemId: string, metadata: Record<string, string>, idempotencyKey: string): Promise<void>;
   /** Importe único (con signo) para la próxima factura de la suscripción, sin impuestos incluidos. Con Idempotency-Key. */
   createInvoiceItem?(input: InvoiceItemInput, idempotencyKey: string): Promise<GwInvoiceItem>;
   /** Importes únicos de un cliente (pendientes y ya facturados), los más recientes primero, hasta `max`. Solo lectura. */
@@ -338,6 +340,10 @@ export interface GwNegotiatedSubscription {
   currentPeriodEnd: number | null;
   scheduleId: string | null;
   items: GwNegotiatedItem[];
+  /** Fin del periodo sin cargo (segundos), si lo tiene. */
+  trialEnd?: number | null;
+  /** Cosas hechas fuera de Elephant (Dashboard) que cambian lo que se cobra: cupón, cobro en pausa, cobro por factura enviada. */
+  anomalies?: string[];
 }
 export interface NegotiatedItemsChange {
   subscriptionId: string;
@@ -378,6 +384,11 @@ export interface NegotiatedCheckoutInput {
   notice: string;
   /** Stripe Tax (`automatic_tax`) sobre importes sin IVA: solo con la política fiscal live. */
   automaticTax?: boolean;
+  /**
+   * Primer cargo en esta fecha (segundos): hasta entonces el cliente solo autoriza su método de pago y no se cobra nada
+   * (`subscription_data.trial_end`); ese día empieza el primer periodo, completo. Stripe exige al menos 48 h de margen.
+   */
+  trialEnd?: number;
 }
 
 export interface PaymentSessionInput {
@@ -557,13 +568,17 @@ export function toInvoice(i: Stripe.Invoice, mode: StripeMode = "test"): GwInvoi
 }
 
 /** Suscripción con el detalle de sus partidas (condiciones negociadas). */
-export function toNegotiatedSubscription(s: Stripe.Subscription, mode: StripeMode = "test"): GwNegotiatedSubscription {
+export function toNegotiatedSubscription(s: Stripe.Subscription, mode: StripeMode = "test", allItems?: Stripe.SubscriptionItem[]): GwNegotiatedSubscription {
   assertModeObject(s, mode);
   const bp = (rates: Array<{ percentage?: number }> | null | undefined) => (rates && rates.length ? Math.round(rates.reduce((a, r) => a + (r.percentage ?? 0), 0) * 100) : null);
   const defaults = bp(s.default_tax_rates as Array<{ percentage?: number }> | null | undefined);
-  const items = s.items?.data ?? [];
+  const items = allItems ?? s.items?.data ?? [];
   const ends = items.map((i) => (i as unknown as { current_period_end?: number }).current_period_end).filter((x): x is number => typeof x === "number");
+  const x = s as unknown as { discounts?: unknown[] | null; discount?: unknown; pause_collection?: unknown; collection_method?: string | null; trial_end?: number | null };
+  const anomalies = [...((x.discounts && x.discounts.length) || x.discount ? ["cupón"] : []), ...(x.pause_collection ? ["cobro_en_pausa"] : []), ...(x.collection_method && x.collection_method !== "charge_automatically" ? ["cobro_no_automático"] : [])];
   return {
+    trialEnd: typeof x.trial_end === "number" ? x.trial_end : null,
+    anomalies,
     id: s.id,
     customerId: idOf(s.customer) ?? "",
     status: s.status as GwSubscription["status"],
@@ -912,7 +927,12 @@ export function stripeGateway(
     },
     async negotiatedSubscription(id) {
       try {
-        return toNegotiatedSubscription(await client.subscriptions.retrieve(id), mode);
+        const s = await client.subscriptions.retrieve(id);
+        // La suscripción solo trae embebidas las 10 primeras partidas: si hay más, se listan TODAS (paginado)
+        if (!(s.items as { has_more?: boolean } | undefined)?.has_more) return toNegotiatedSubscription(s, mode);
+        const all: Stripe.SubscriptionItem[] = [];
+        for await (const i of client.subscriptionItems.list({ subscription: id, limit: 100 })) all.push(i);
+        return toNegotiatedSubscription(s, mode, all);
       } catch (e) {
         if (notFound(e)) return null;
         wrapError(e);
@@ -931,6 +951,16 @@ export function stripeGateway(
         };
         return toNegotiatedSubscription(await client.subscriptions.update(c.subscriptionId, params as Stripe.SubscriptionUpdateParams, { idempotencyKey }), mode);
       } catch (e) {
+        wrapError(e);
+      }
+    },
+    async tagSubscriptionItem(itemId, metadata, idempotencyKey) {
+      try {
+        // Solo metadatos: el precio y la cantidad no viajan, así que no hay nada que prorratear ni facturar
+        const i = await client.subscriptionItems.update(itemId, { metadata, proration_behavior: "none" }, { idempotencyKey });
+        if (i.object !== "subscription_item") throw new StripeGatewayError("invalid_response", "Stripe no devolvió la partida", false);
+      } catch (e) {
+        if (e instanceof StripeGatewayError) throw e;
         wrapError(e);
       }
     },
@@ -967,7 +997,9 @@ export function stripeGateway(
         })),
         client_reference_id: i.clientReferenceId,
         metadata: i.metadata,
-        subscription_data: { metadata: i.metadata },
+        subscription_data: { metadata: i.metadata, ...(i.trialEnd ? { trial_end: i.trialEnd } : {}) },
+        // Solo tarjeta: el primer pago se resuelve en la página (no hay cobros asíncronos que fallen días después)
+        allowed_payment_method_types: ["card"],
         success_url: i.successUrl,
         cancel_url: i.cancelUrl,
         expires_at: i.expiresAt,

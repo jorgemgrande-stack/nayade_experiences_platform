@@ -112,8 +112,8 @@ describe.skipIf(!URL_)("cobro en Stripe de condiciones personalizadas con MySQL 
     billing = new TermsBillingService({ enabled: true, termsStore, subscriptionStore: store, now: () => clock });
     terms = new CommercialTermsService({ store: termsStore, subscriptions: subs, subscriptionStore: store, catalog, crm, now: () => clock, afterChange: async (sid) => void (await billing.syncIfOpen(sid)) });
     const adapter = new StripeNegotiatedGateway({ gateway: gw, namespace: NS, mode: "test", taxPolicy: "test_net_no_tax", catalogProducts: async () => catalogProductsOf(await stripeStore.listPrices()), allowed: (id) => neg.allowed(id) });
-    neg = new NegotiatedBillingService({ enabled: true, store: billingStore, stripeStore, gateway: gw, adapter, billing, termsStore, subscriptionStore: store, subscriptions: subs, crmStore, urls: { success: "https://web.example/ok", cancel: "https://web.example/ko" }, namespace: NS, mode: "test", taxPolicy: "test_net_no_tax", now: () => clock });
-    billing.attach({ gateway: neg.gatewayFor(), link: neg.link });
+    neg = new NegotiatedBillingService({ enabled: true, store: billingStore, stripeStore, gateway: gw, adapter, billing, termsStore, subscriptionStore: store, crmStore, urls: { success: "https://web.example/ok", cancel: "https://web.example/ko" }, namespace: NS, mode: "test", taxPolicy: "test_net_no_tax", now: () => clock });
+    billing.attach({ gateway: neg.gatewayFor(), link: neg.link, billFrom: neg.billFrom, invalidate: neg.invalidate, cancelRequested: neg.cancelRequested });
     const trap = new Proxy({}, { get: (_t, op) => (op === "then" ? undefined : () => Promise.reject(new Error(`circuito ordinario no permitido: ${String(op)}`))) });
     processor = new StripeEventProcessor({ store: stripeStore, gateway: gw, orders: trap as never, orchestrator: trap as never, now: () => clock, namespace: NS, mode: "test", negotiated: { handleSession: (id) => neg.handleSession(id), handleSubscription: (s, h) => neg.handleSubscription(s, h), handleCharge: (c, i, s) => neg.handleCharge(c, i, s) } });
   }, 120_000);
@@ -147,8 +147,8 @@ describe.skipIf(!URL_)("cobro en Stripe de condiciones personalizadas con MySQL 
     expect(cur.version).toBe(row.version + 1);
     // JSON de ida y vuelta, y vuelta a null
     if (cur.checkout) expect(cur.checkout).toEqual(offer);
-    const cleared = await billingStore.patch(cur.id, { checkout: null, suspendedCapabilities: [{ capabilityId: "plan.essential", siteId: "" }], stripeSubscriptionId: "sub_test_a", sessionId: "cs_test_a", sessionStatus: "open", sessionExpiresAt: clock - 1 }, cur.version, clock);
-    expect(cleared).toMatchObject({ checkout: null, suspendedCapabilities: [{ capabilityId: "plan.essential", siteId: "" }], stripeSubscriptionId: "sub_test_a" });
+    const cleared = await billingStore.patch(cur.id, { checkout: null, suspendedCapabilities: [{ capabilityId: "plan.essential", siteId: "" }], stripeSubscriptionId: "sub_test_a", sessionId: "cs_test_a", sessionStatus: "open", sessionExpiresAt: clock - 1, cancelRequestedAt: clock }, cur.version, clock);
+    expect(cleared).toMatchObject({ checkout: null, suspendedCapabilities: [{ capabilityId: "plan.essential", siteId: "" }], stripeSubscriptionId: "sub_test_a", cancelRequestedAt: clock });
     expect((await billingStore.byStripeSubscription("sub_test_a"))!.id).toBe(row.id);
     expect((await billingStore.bySession("cs_test_a"))!.id).toBe(row.id);
     expect((await billingStore.list({ status: ["pending"], sessionExpiredBefore: clock })).map((r) => r.id)).toContain(row.id);
@@ -156,7 +156,12 @@ describe.skipIf(!URL_)("cobro en Stripe de condiciones personalizadas con MySQL 
     const live = new MysqlTermsBillingStore(pool, "live");
     expect(await live.bySubscription(subId)).toBeNull();
     expect(await live.byStripeSubscription("sub_test_a")).toBeNull();
-    await expect(live.create({ subscriptionId: subId, companyId: 1, stripeCustomerId: "cus_live_a", startedBy: A, now: clock })).rejects.toBeInstanceOf(BillingStoreConflict);
+    // Una fila por suscripción Y modo: la del otro modo es otra fila, aislada (nunca un error ni una reutilización)
+    const liveRow = await live.create({ subscriptionId: subId, companyId: 1, stripeCustomerId: "cus_live_a", startedBy: A, now: clock });
+    expect(liveRow.created).toBe(true);
+    expect(liveRow.row.id).not.toBe(row.id);
+    expect((await billingStore.bySubscription(subId))!.stripeCustomerId).toBe("cus_test_a");
+    await pool.query("UPDATE commercial_terms_billing SET stripe_subscription_id = NULL WHERE id = ?", [liveRow.row.id]);
     // Una suscripción de Stripe solo puede estar enlazada a una contratación
     const other = await agreed(2);
     const o = (await billingStore.create({ subscriptionId: other, companyId: 2, stripeCustomerId: "cus_test_b", startedBy: A, now: clock })).row;

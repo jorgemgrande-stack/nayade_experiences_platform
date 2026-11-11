@@ -46,7 +46,16 @@ beforeAll(async () => {
     seen.push({ method: req.method, path: req.path, body: req.body ?? {}, idempotencyKey: req.header("idempotency-key") ?? undefined, version: req.header("stripe-version") ?? undefined });
     next();
   });
+  app.get("/v1/subscriptions/sub_many", (_req, res) => void res.json(subscription("sub_many", { items: { object: "list", has_more: true, data: many.slice(0, 10) }, discounts: ["di_1"], pause_collection: { behavior: "void" }, collection_method: "send_invoice", trial_end: 1_900_000_999 })));
   app.get("/v1/subscriptions/:id", (req, res) => (req.params.id === "sub_missing" ? void res.status(404).json({ error: { type: "invalid_request_error", code: "resource_missing" } }) : void res.json(subscription(req.params.id))));
+  const many = Array.from({ length: 11 }, (_, n) => ({ id: `si_m${n + 1}`, object: "subscription_item", quantity: 1, metadata: {}, tax_rates: [], price: { id: `price_m${n + 1}`, product: "prod_custom", unit_amount: 1000 + n, currency: "eur", recurring: { interval: "month", interval_count: 1 } } }));
+  app.get("/v1/subscription_items", (req, res) => {
+    const after = String(req.query.starting_after ?? "");
+    const from = after ? many.findIndex((i) => i.id === after) + 1 : 0;
+    const page = many.slice(from, from + 6);
+    res.json({ object: "list", url: "/v1/subscription_items", has_more: from + 6 < many.length, data: page.map((i) => ({ ...i, livemode })) });
+  });
+  app.post("/v1/subscription_items/:id", (req, res) => void res.json({ id: req.params.id, object: "subscription_item", livemode, metadata: req.body.metadata ?? {} }));
   app.post("/v1/subscriptions/:id", (req, res) => void res.json(subscription(req.params.id)));
   app.post("/v1/invoiceitems", (req, res) => void res.json({ id: "ii_1", object: "invoiceitem", livemode, amount: Number(req.body.amount), currency: req.body.currency, customer: req.body.customer, invoice: null, metadata: req.body.metadata ?? {}, parent: { type: "subscription_details", subscription_details: { subscription: req.body.subscription } } }));
   app.get("/v1/invoiceitems", (req, res) =>
@@ -134,8 +143,35 @@ describe("Stripe: operaciones del cobro de condiciones personalizadas", () => {
     // La suscripción empieza al pagar, con un primer periodo completo: nada que lo retrase, lo ancle o lo prorratee
     expect(b.subscription_data).toEqual({ metadata: { es_negotiated: "1", es_terms_subscription: "9", es_company_id: "3", es_env: "local" } });
     expect(JSON.stringify(b)).not.toMatch(/trial|billing_cycle_anchor|proration|backdate/);
+    expect(b.allowed_payment_method_types).toEqual(["card"]);
     // Nada de plataforma: la sesión cuelga del cliente (empresa) y de la suscripción interna
     expect(JSON.stringify(b)).not.toMatch(/tenant/);
+  });
+
+  it("más de 10 partidas: la suscripción solo trae 10 embebidas; se listan TODAS (paginado) y se ven las 11", async () => {
+    const s = (await gw().negotiatedSubscription!("sub_many"))!;
+    expect(s.items).toHaveLength(11);
+    expect(s.items.map((i) => i.id)).toEqual(Array.from({ length: 11 }, (_, n) => `si_m${n + 1}`));
+    expect(seen.map((r) => `${r.method} ${r.path}`)).toEqual(["GET /v1/subscriptions/sub_many", "GET /v1/subscription_items", "GET /v1/subscription_items"]);
+    // Y lo hecho fuera de Elephant que cambia lo que se cobra queda a la vista
+    expect(s.anomalies).toEqual(["cupón", "cobro_en_pausa", "cobro_no_automático"]);
+    expect(s.trialEnd).toBe(1_900_000_999);
+  });
+
+  it("poner la clave a una partida es un cambio de SOLO metadatos (ni precio, ni cantidad, sin prorrateo)", async () => {
+    await gw().tagSubscriptionItem!("si_1", { es_line: "custom:abc", es_env: "local" }, "es-local-tag-si_1");
+    expect(seen[0]).toMatchObject({ method: "POST", path: "/v1/subscription_items/si_1", idempotencyKey: "es-local-tag-si_1" });
+    expect(seen[0].body).toEqual({ metadata: { es_line: "custom:abc", es_env: "local" }, proration_behavior: "none" });
+  });
+
+  it("la sesión es solo con tarjeta y, si el primer cargo se aplaza al inicio del acuerdo, lleva esa fecha y nada más", async () => {
+    const input = { customerId: "cus_x1", lines: [{ productId: "prod_essential", unitAmount: 7900, currency: "EUR", interval: "month" as const }], clientReferenceId: "es-terms-4", metadata: { es_negotiated: "1" }, successUrl: "https://web.example/ok", cancelUrl: "https://web.example/ko", expiresAt: 1_900_000_000, integrationIdentifier: "x", notice: "Aviso" };
+    await gw().createNegotiatedCheckoutSession!(input, "k-a");
+    await gw().createNegotiatedCheckoutSession!({ ...input, trialEnd: 1_900_500_000 }, "k-b");
+    expect(seen[0].body.allowed_payment_method_types).toEqual(["card"]);
+    expect(seen[0].body.subscription_data).toEqual({ metadata: { es_negotiated: "1" } });
+    expect(seen[1].body.subscription_data).toEqual({ metadata: { es_negotiated: "1" }, trial_end: "1900500000" });
+    expect(JSON.stringify(seen[1].body)).not.toMatch(/billing_cycle_anchor|proration|backdate/);
   });
 
   it("un objeto del otro modo se rechaza (lectura, escritura, importes y Checkout)", async () => {

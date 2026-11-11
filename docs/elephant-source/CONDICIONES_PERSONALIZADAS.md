@@ -285,9 +285,16 @@ La línea de arranque `{"ctx":"CommercialTerms", …}` dice el estado: `stripeBi
   modifica ningún Price público ni ningún Product del catálogo: el adaptador no tiene operación para ello. En pruebas
   el Product genérico se crea solo; **en live nunca**: lo crea el propietario (sin él, una partida a medida no se pone
   a cobrar y el error lo dice).
-- Cada partida lleva `metadata.es_line` (su clave). Las que crea Checkout no la llevan: se reconocen por su Product de
-  catálogo y, si hay partidas a medida, la primera sincronización tras enlazar las sustituye por otras idénticas con
-  su clave (sin prorrateo: ni factura ni cargo).
+- Cada partida lleva `metadata.es_line` (su clave). Las que crea Checkout no la llevan: la primera sincronización tras
+  enlazar reconoce cada una por su Product, su importe, su periodicidad y su cantidad y **solo le pone la clave** (un
+  cambio de metadatos de la partida, sin tocar precio ni cantidad). **Lo que el cliente acaba de pagar nunca se
+  sustituye**; lo mismo cuando un acuerdo nuevo da claves nuevas a partidas que no cambian. Solo se sustituye la partida
+  cuyo importe, Product o periodicidad cambia de verdad. Se leen TODAS las partidas (la suscripción solo trae embebidas
+  las 10 primeras; con más, se listan paginadas).
+- Una cuota recurrente total de 0 no se pone ni se deja en cobro (una suscripción gratuita que pasa a ser de pago
+  reinicia el ciclo en Stripe y cobra en el momento).
+- La sesión de pago admite **solo tarjeta**: el primer pago se resuelve en la página, sin cobros asíncronos que fallen
+  días después. (Si aun así el primer cobro fallara sin cobrarse nada, la contratación vuelve a poder iniciarse y se avisa.)
 - **Impuestos, como el resto del cobro live**: importes sin IVA (`tax_behavior=exclusive`) y `automatic_tax` en la
   suscripción; no se envían tipos fijos. Por eso Stripe no tiene un tipo por partida: `current()` devuelve
   `taxRateBp = null` («lo decide Stripe en cada factura») y la comparación de partidas **no compara el tipo cuando es
@@ -345,16 +352,52 @@ repetido o fuera de orden no cambia nada.
 | Gracia vencida, o `unpaid` | `suspended` | Suspendidas (solo las propias activas) |
 | Cobro recuperado | `active` | Se devuelven SOLO las que suspendió el impago (no las que bloqueó un operador) |
 | `cancel_at_period_end` | `cancel_scheduled` | Sin cambios hasta el fin |
-| `canceled` | `canceled`; la suscripción interna termina | Solo lectura 30 días (`READ_ONLY_DAYS`) |
+| `canceled`, con fin querido (contratación terminada dentro, o fin ordenado por un operador) | `canceled`; la suscripción interna termina en el acto | Solo lectura 30 días (`READ_ONLY_DAYS`) |
+| `canceled` SOLO en Stripe (nadie lo pidió dentro) | `canceled` + alerta `stripe.negotiated_ended_in_stripe`; la contratación interna NO se toca | Sin cambios; una persona decide (volver a ponerla a cobrar o terminarla) |
 | Reembolso total o disputa perdida del último periodo | `suspended` hasta un pago nuevo | Suspendidas |
 
 Las licencias siguen saliendo del **contrato** (productos del acuerdo); el pago solo las suspende, las deja en solo
 lectura o las devuelve. Las de otro origen (derechos adquiridos, operador, otra suscripción) no se tocan.
 
 **Fin de la contratación:** siempre al final del periodo ya pagado; nunca hay cancelación inmediata ni abono desde
-aquí. Vías: el operador (`…/terms/billing/cancel` y `…/resume`), el cliente desde el portal de Stripe, o cancelar la
-suscripción interna (la sincronización, o la conciliación en su siguiente pasada, programa el fin en Stripe: es la
-única corrección automática, y en el sentido prudente).
+aquí. Vías: el operador (`…/terms/billing/cancel` y `…/resume`; la orden queda registrada) o cancelar la suscripción
+interna (la sincronización, o la conciliación en su siguiente pasada, programa el fin en Stripe). El portal de cliente
+tiene desactivadas la cancelación y el cambio de suscripción. Cada orden de fin lleva una clave de idempotencia
+distinta (versión de la suscripción interna u orden del operador): una baja deshecha y vuelta a pedir el mismo día
+llega a Stripe.
+
+**Fin programado solo en Stripe** (alguien lo puso en el Dashboard; ni la contratación termina dentro ni lo ordenó un
+operador): es una diferencia de conciliación (`fin_solo_en_stripe`) que se avisa. No se deshace solo (volvería a cobrar
+sin que nadie lo decida) y, si Stripe llega a terminar, **no se da por terminada la contratación ni se tocan sus
+licencias**: Stripe deja de cobrar, salta la alerta y un operador decide; puede volver a ponerla a cobrar (suscripción
+de Stripe nueva). Es la opción que no puede ni cobrar ni cancelar por error.
+
+**Reloj.** Una vez enlazada, manda el reloj de Stripe: el periodo de la suscripción interna pasa a ser el que Stripe
+está cobrando y lo sigue en cada evento (no hay deriva; un fin programado dentro termina con el periodo de Stripe).
+Qué se cobra según cuándo se ponga a cobrar:
+
+| Cuándo se pone a cobrar | Qué pasa |
+|---|---|
+| Con el acuerdo ya en vigor | El cliente paga al completar la página: primer periodo COMPLETO desde ese momento. **Si paga unos días después del inicio del acuerdo, esos días no se cobran** y el ciclo (interno y de Stripe) queda anclado al día del pago. |
+| Antes del inicio, con más de 48 h | El cliente autoriza ya su método de pago (factura de 0) y **el primer cargo es el día del inicio**, por el periodo completo, con los cargos y abonos únicos de esa fecha. Ciclo anclado al inicio del acuerdo (`subscription_data.trial_end`). |
+| Antes del inicio, con menos de 48 h | Se rechaza con la fecha (Stripe no admite aplazar con tan poco margen): se pone a cobrar al llegar el inicio. |
+
+Un acuerdo activado con inicio futuro consta guardado como «programado»; lo que cuenta es su estado efectivo en la fecha.
+
+**Fechas de corte.** Cuando lo pactado cambia por una FECHA (termina una condición temporal, empieza un acuerdo
+programado, vence un cargo único) o el último envío falló, la conciliación periódica (cada 15 minutos con el worker de
+Stripe) lo deja en Stripe sola: solo para suscripciones enlazadas y con el interruptor encendido, y solo envía lo que
+rige DENTRO. Lo que alguien cambie en Stripe a mano nunca se corrige solo: se avisa.
+
+**Cambios ordinarios.** Una suscripción con acuerdo no admite los cambios de la ficha (plan, añadir o retirar
+partidas): se cambia desde el acuerdo, y Stripe no se toca por esa vía. Un pedido ordinario de esa empresa sería OTRA
+suscripción (interna y de Stripe), con el mismo Customer; nunca modifica la negociada.
+
+**Interruptor apagado con suscripciones ya enlazadas** (`stripeBilling: "off_with_linked"` en el arranque): no se
+inicia ningún cobro ni se envía ningún cambio de condiciones, pero Stripe SIGUE cobrando lo enlazado. Siguen
+funcionando: los webhooks (estado de pago y licencias), la conciliación (sigue comparando y avisando) y el FIN (una
+cancelación interna o la orden de un operador siguen llegando a Stripe; deshacer un fin exige el interruptor). **Para
+dejar de cobrar a un cliente hay que programar el fin de SU suscripción**, no apagar el interruptor.
 
 Mientras la contratación está `pending` (sesión abierta, sin cobro) no se toca ninguna licencia: siguen como las dejó
 el contrato. Es el mismo riesgo asumido que con la facturación en simulación.
@@ -386,9 +429,9 @@ El cobro no depende de que exista un plan: **todo cuelga de la EMPRESA y de la s
   `amount_mismatch` o `tax_mismatch` en `commercial_terms_billing_invoices.tax_check`, abre su alerta y aparece en la
   conciliación como diferencia de tipo `invoice` hasta que una factura posterior salga bien.
 - **Primer periodo.** La sesión no lleva periodo de prueba, ni ancla de ciclo, ni prorrateo: la suscripción de Stripe
-  empieza cuando el cliente completa el pago, con un primer periodo COMPLETO y sin línea de prorrateo. La puesta en
-  cobro solo se admite con el acuerdo ya en vigor, así que el ciclo de Stripe empieza en el inicio del acuerdo o
-  después (el día en que el cliente paga), nunca antes. Los días entre el inicio del acuerdo y el pago no se cobran.
+  empieza cuando el cliente completa el pago, con un primer periodo COMPLETO y sin línea de prorrateo. Si se pone a
+  cobrar antes del inicio del acuerdo (con más de 48 h), el primer cargo es el día del inicio; si se pone después, el
+  ciclo empieza el día en que el cliente paga y los días entre el inicio y el pago no se cobran (ver «Reloj»).
 
 **Secuencia exacta** (los pasos 1–3 ya existían; el cobro empieza en el 4):
 
@@ -438,6 +481,7 @@ llamada a Stripe).
 | `POST /v1/checkout/sessions` (con `price_data`), `GET`, `expire`, listado por cliente | Sesión de pago | `checkout_session_write` | Sí. **Por comprobar:** si crear precios en línea (`price_data`) exige además escritura de Prices (`plan_write`) |
 | `GET /v1/products/:id` | Product genérico de partidas a medida | `product_read` | Sí |
 | `GET /v1/subscriptions/:id` | Leer partidas y estado | `subscription_read` | Sí |
+| `GET /v1/subscription_items?subscription=`, `POST /v1/subscription_items/:id` (solo metadatos) | Leer todas las partidas (más de 10) y ponerles su clave | `subscription_read` / `subscription_write` | Lectura sí; escritura **no** |
 | `POST /v1/subscriptions/:id` | Sustituir partidas (`price_data`), programar el fin | `subscription_write` | **No** (§5 lo excluye expresamente). El código de compras y de cancelación de autoservicio ya usa esta llamada: puede que la clave real ya lo tenga |
 | `POST /v1/invoiceitems` | Importes únicos y abonos | Escritura de Invoices (`invoice_write`) | **No** (§5 solo da lectura) |
 | `GET /v1/invoiceitems?customer=` | Buscar un importe único por su clave | Lectura de Invoices | Sí (`invoice_read`), por comprobar que cubre los invoice items |
@@ -460,8 +504,38 @@ Si falta un permiso, Stripe responde 403: la puesta en cobro o la sincronizació
 6. Primera contratación real, acompañada: poner a cobrar UNA suscripción, revisar la sesión antes de entregarla,
    comprobar tras el pago el enlace, la primera factura (`tax_check`), `GET …/terms/billing` (`consistent: true`) y,
    en la primera renovación, el importe y el impuesto.
-7. Para parar: apagar el interruptor (no se inicia ni se sincroniza nada más). Las suscripciones ya enlazadas siguen
-   cobrándose en Stripe y su estado sigue llegando por los webhooks; para dejar de cobrar una, programar su fin.
+7. Para parar: apagar el interruptor impide iniciar cobros y enviar cambios, pero **no deja de cobrar** lo ya enlazado
+   (ver «Interruptor apagado con suscripciones ya enlazadas»). Para dejar de cobrar a un cliente: programar el fin de su
+   suscripción (`…/terms/billing/cancel`, permitido también con el interruptor apagado).
+
+### Validación supervisada antes de encender
+
+Ninguna prueba de este repositorio llama a Stripe. Antes del primer cobro real, y antes en modo pruebas de Stripe (con
+reloj de pruebas), hay que recorrer esta lista, tomada de las dos revisiones independientes:
+
+1. Checkout acepta `price_data` con `product` existente + `recurring` + `tax_behavior=exclusive` + `automatic_tax` con
+   un cliente existente y solo tarjeta, y **la clave restringida tiene los permisos** (tabla de arriba): hoy constan
+   `customer_write`, `checkout_session_write`, `subscription_read`, `invoice_read`, `plan_read`, `product_read`,
+   `event_read`, `charge_read`, `dispute_read`; faltan por documentación `subscription_write` (sustituir partidas,
+   poner claves, programar el fin) y escritura de Invoices (importes únicos), y quizá `plan_write` (precios en línea).
+2. `subscription_data.metadata` llega a la suscripción (`es_negotiated`, `es_terms_subscription`, `es_company_id`,
+   `es_env`): sin ello ningún webhook la enlaza.
+3. Tras el primer pago, poner la clave a las partidas (cambio de solo metadatos) no genera factura ni cargo ni mueve
+   `current_period_end`; y una sustitución real de una partida con `proration_behavior=none` tampoco, también con el
+   modo de facturación por defecto de la versión de API en uso.
+4. Stripe Tax da 9,37 € (total 54,00 €) para ese cliente con la dirección y el NIF que él mismo introduce en Checkout
+   (puede cambiarlos) y con el código fiscal del Product genérico.
+5. Primera renovación: base 4463, impuesto 937, `tax_check = ok`, periodo interno igual al de Stripe, sin alertas.
+6. Un abono enviado como importe único negativo con `tax_behavior=exclusive` entra en la segunda factura de ESA
+   suscripción y reduce base e impuesto.
+7. Impago real: `past_due` → gracia de 7 días → suspensión en la pasada de conciliación; recuperación; `unpaid` o
+   `canceled` según la configuración de reintentos de la cuenta.
+8. Reembolso total de la última factura desde el Dashboard → suspensión; y baja programada → `cancel_at_period_end`
+   sin cargo ni abono.
+9. Qué permite el portal de cliente de Stripe sobre esta suscripción (comparte Customer con el circuito ordinario).
+
+Además, propio de esta ronda: el primer cargo aplazado (`trial_end` en la fecha de inicio, con más de 48 h): factura de
+0 al autorizar, primer cargo completo ese día con los importes únicos, y periodo anclado a esa fecha.
 
 ### Verificado y pendiente de validar con Stripe real
 
@@ -490,15 +564,25 @@ Si falta un permiso, Stripe responde 403: la puesta en cobro o la sincronizació
 - **Cambio de periodicidad** de una suscripción ya enlazada: no se aplica solo (reiniciaría el ciclo de cobro en
   Stripe); la sincronización queda en `failed` con el motivo.
 - **Abono de un solo uso al empezar a cobrar:** va a la segunda factura, no a la primera.
-- **Fechas de corte** (fin de un descuento temporal, un cargo que vence): siguen necesitando una sincronización; no
-  hay tarea periódica que la lance sola. La conciliación sí avisa de la diferencia (cada 15 minutos).
+- **Fechas de corte**: las aplica la conciliación periódica (hasta 15 minutos después de la fecha, con el worker de
+  Stripe encendido). Si una renovación cayera en ese margen, se cobraría lo anterior y saltaría `amount_mismatch`.
+- **Huecos de la conciliación.** Se detectan: partidas, importes, periodicidad, moneda, importes únicos, modo de
+  impuesto, fin sin programar, fin solo en Stripe, cancelada en Stripe, cupón, cobro en pausa, cobro no automático,
+  periodo sin cargo inesperado y, por factura, base, impuesto, total y cobrado distinto del total (saldo a favor o cobro
+  fuera de Stripe). NO se detectan: un Product distinto con el mismo importe (cambiaría el código fiscal; se vería en el
+  impuesto de la factura), un calendario (`schedule`) puesto a mano, y los cargos únicos del primer pago, que se dan por
+  cobrados por la oferta de la sesión (contrastada con la base de la primera factura), no por una lectura propia.
+- Una segunda suscripción de Stripe para la misma contratación solo se avisa; cancelarla es manual.
+- Un abono pendiente se pierde si la suscripción termina antes de la siguiente factura.
+- Solo se miran las 100 últimas sesiones de Checkout del cliente al buscar sesiones huérfanas.
 - **Documento fiscal propio:** las facturas de estas suscripciones se registran en `commercial_terms_billing_invoices`
   pero no entran en la cola de documentos fiscales del circuito ordinario (va ligada a pedidos).
 - **Reembolsos parciales y disputas abiertas:** solo avisan (como en el circuito ordinario).
 - **Licencias nuevas durante una suspensión:** si se activa un acuerdo que añade un producto mientras la contratación
   está suspendida por impago, la capacidad nueva nace activa (la aplicación de licencias no conoce el estado de pago).
-- Con el interruptor apagado después de haber cobrado, los webhooks de las suscripciones ya enlazadas se siguen
-  atendiendo (lecturas y estado interno).
+- El Checkout usa el Customer de la empresa con actualización de dirección: si esa empresa tiene además una suscripción
+  ordinaria, un cambio de dirección en la página afecta al impuesto de sus facturas ordinarias siguientes (igual que en
+  el Checkout ordinario de un cliente existente).
 
 ## Permisos (`server/commercialTerms/permission.ts`)
 

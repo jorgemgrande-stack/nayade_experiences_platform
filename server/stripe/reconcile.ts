@@ -131,7 +131,13 @@ export class StripeReconciler {
       // 3b. Condiciones personalizadas: misma relectura (pagos no aplicados, impagos con la gracia vencida)
       let negotiatedRefreshed = 0;
       if (this.d.negotiated) {
-        for (const id of await this.d.negotiated.toRefresh(this.now() - (this.d.refreshAfterMs ?? 15 * 60_000), 200)) {
+        // Un fallo al leer su registro nunca aborta la conciliación ordinaria
+        const ids = await this.d.negotiated.toRefresh(this.now() - (this.d.refreshAfterMs ?? 15 * 60_000), 200).catch((e) => {
+          refreshErrors++;
+          opsLog("warn", "StripeReconcile", "negotiated_failed", { error: e instanceof Error ? e.name : "error" });
+          return [] as string[];
+        });
+        for (const id of ids) {
           try {
             await this.d.processor.handleSubscription(id);
             negotiatedRefreshed++;

@@ -19,6 +19,8 @@ export const LINKED_STATES: readonly BillingState[] = ["active", "past_due", "su
 export interface CheckoutOffer {
   /** Huella de las partidas e importes ofrecidos. */
   hash: string;
+  /** Fecha del primer cargo si se aplazó al inicio del acuerdo (el cliente solo autoriza el método de pago); null: al pagar. */
+  firstChargeAt?: number | null;
   termsId: number;
   currency: string;
   recurringCents: number;
@@ -45,6 +47,8 @@ export interface TermsBillingRow {
   stripeStatus: string | null;
   currentPeriodEnd: number | null;
   cancelAt: number | null;
+  /** Un operador pidió de forma expresa el fin de la suscripción de Stripe (ms); null: no. */
+  cancelRequestedAt: number | null;
   graceEndsAt: number | null;
   readOnlyUntil: number | null;
   lastPaidInvoiceId: string | null;
@@ -145,6 +149,7 @@ export class MemoryTermsBillingStore implements TermsBillingStore {
       stripeStatus: null,
       currentPeriodEnd: null,
       cancelAt: null,
+      cancelRequestedAt: null,
       graceEndsAt: null,
       readOnlyUntil: null,
       lastPaidInvoiceId: null,
@@ -215,6 +220,7 @@ const COLUMNS: Record<keyof TermsBillingPatch, string> = {
   stripeStatus: "stripe_status",
   currentPeriodEnd: "current_period_end",
   cancelAt: "cancel_at",
+  cancelRequestedAt: "cancel_requested_at",
   graceEndsAt: "grace_ends_at",
   readOnlyUntil: "read_only_until",
   lastPaidInvoiceId: "last_paid_invoice_id",
@@ -249,6 +255,7 @@ export class MysqlTermsBillingStore implements TermsBillingStore {
     stripeStatus: str(r.stripe_status),
     currentPeriodEnd: num(r.current_period_end),
     cancelAt: num(r.cancel_at),
+    cancelRequestedAt: num(r.cancel_requested_at),
     graceEndsAt: num(r.grace_ends_at),
     readOnlyUntil: num(r.read_only_until),
     lastPaidInvoiceId: str(r.last_paid_invoice_id),
