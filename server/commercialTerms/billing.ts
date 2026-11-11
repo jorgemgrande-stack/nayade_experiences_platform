@@ -212,6 +212,8 @@ const sentOf = (every: SyncDetail[]) => {
   for (const x of every) for (const [key, ref] of Object.entries(x.oneOffs)) if (!revoked.includes(ref)) sent[key] = ref;
   return { sent, revoked };
 };
+/** El estado de sincronización más reciente primero (a igual hora, el de más intentos: cada envío suma uno). */
+const newest = (a: SyncDetail, b: SyncDetail) => (b.lastAttemptAt ?? 0) - (a.lastAttemptAt ?? 0) || b.attempts - a.attempts;
 /** Huella de lo que debe tener Stripe (partidas, pausa y fin): si cambia, hay que sincronizar. */
 const targetHash = (t: Pick<BillingTarget, "items" | "paused" | "resumesAt" | "endAt">) => stableHash({ i: t.items, p: t.paused, r: t.resumesAt, e: t.endAt }).slice(0, 24);
 
@@ -400,7 +402,7 @@ export class TermsBillingService {
   /** Acuerdo que guarda el estado de sincronización más reciente de una suscripción de Stripe. */
   private async holder(subscriptionId: number, stripeSubscriptionId: string): Promise<TermsRecord | null> {
     const all = (await this.d.termsStore.list({ subscriptionId })).filter((t) => (t.syncDetail as SyncDetail | null)?.stripeSubscriptionId === stripeSubscriptionId);
-    return all.sort((a, b) => ((b.syncDetail as SyncDetail).lastAttemptAt ?? 0) - ((a.syncDetail as SyncDetail).lastAttemptAt ?? 0))[0] ?? null;
+    return all.sort((a, b) => newest(a.syncDetail as SyncDetail, b.syncDetail as SyncDetail))[0] ?? null;
   }
 
   /**
@@ -448,7 +450,7 @@ export class TermsBillingService {
     const { sent, revoked } = sentOf(every);
     if (!all.length) return every.length ? { stripeSubscriptionId, itemsHash: null, generation: 0, oneOffs: sent, attempts: 0, lastError: null, lastAttemptAt: null, pendingOneOffs: [], revoked } : null;
     // Unión de lo ya enviado (nunca se «olvida» un importe único) y el estado de partidas más reciente
-    const latest = all.slice().sort((a, b) => (b.lastAttemptAt ?? 0) - (a.lastAttemptAt ?? 0))[0];
+    const latest = all.slice().sort(newest)[0];
     return { ...latest, oneOffs: sent, revoked, generation: Math.max(...all.map((x) => x.generation)), attempts: Math.max(...all.map((x) => x.attempts)) };
   }
 
