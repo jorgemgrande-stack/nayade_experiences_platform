@@ -486,7 +486,9 @@ export class CommercialTermsService {
     const after = t.lines.filter((l) => l.kind === "catalog" && isRecurring(l) && (l.startsAt ?? from) <= from && (l.endsAt === null || l.endsAt > from));
     const modulesAfter = after.filter((l) => l.catalog!.activationKind === "module" && l.catalog!.activationRef).map((l) => l.catalog!.activationRef!);
     const modulesBefore = planBefore?.modules.map((m) => m.moduleId) ?? [];
-    const productsBefore = new Map((sub && sub.status !== "canceled" ? activeAt(items, Math.max(now, Math.min(from, sub.currentPeriodEnd - 1))) : []).filter((i) => recurringPrice(i.priceKind) && !i.productKey.includes(":")).map((i) => [i.productKey, i.productName] as const));
+    const productsBefore = new Map((sub && sub.status !== "canceled" ? activeAt(items, Math.max(now, Math.min(from, sub.currentPeriodEnd - 1))) : []).filter((i) => recurringPrice(i.priceKind) && !i.productKey.includes(":")).map((i) => [i.productKey, { name: i.productName, plan: i.family === "core_plan" }] as const));
+    const planLineAfter = after.find((l) => l.catalog!.family === "core_plan") ?? null;
+    const planKeyBefore = Array.from(productsBefore).find(([, p]) => p.plan) ?? null;
     const planAfter = after.find((l) => l.catalog!.family === "core_plan" && l.catalog!.activationKind === "plan")?.catalog!.activationRef ?? null;
     return {
       terms: { ...t, effectiveStatus: effectiveStatus(t, now) },
@@ -503,15 +505,18 @@ export class CommercialTermsService {
       licences: {
         note: "Los derechos dependen de los productos incluidos, no del importe. Una partida a medida no concede licencias.",
         planBefore: planBefore?.plan ?? null,
+        // El plan Core como PRODUCTO (el catálogo actual concede sus derechos por capacidades, no por una referencia de plan)
+        planProductBefore: planKeyBefore ? { key: planKeyBefore[0], name: planKeyBefore[1].name } : null,
+        planProductAfter: planLineAfter ? { key: planLineAfter.productKey!, name: planLineAfter.name } : null,
         planAfter,
         added: modulesAfter.filter((m) => !modulesBefore.includes(m)),
         removed: modulesBefore.filter((m) => !modulesAfter.includes(m)),
         kept: modulesAfter.filter((m) => modulesBefore.includes(m)),
         // Productos de catálogo (los que conceden derechos) que entran, salen o se conservan
         products: {
-          added: after.filter((l) => !productsBefore.has(l.productKey!)).map((l) => ({ key: l.productKey!, name: l.name })),
-          removed: Array.from(productsBefore).filter(([k]) => !after.some((l) => l.productKey === k)).map(([key, name]) => ({ key, name })),
-          kept: after.filter((l) => productsBefore.has(l.productKey!)).map((l) => ({ key: l.productKey!, name: l.name })),
+          added: after.filter((l) => !productsBefore.has(l.productKey!)).map((l) => ({ key: l.productKey!, name: l.name, plan: l.catalog!.family === "core_plan" })),
+          removed: Array.from(productsBefore).filter(([k]) => !after.some((l) => l.productKey === k)).map(([key, p]) => ({ key, name: p.name, plan: p.plan })),
+          kept: after.filter((l) => productsBefore.has(l.productKey!)).map((l) => ({ key: l.productKey!, name: l.name, plan: l.catalog!.family === "core_plan" })),
         },
       },
     };
@@ -561,6 +566,8 @@ export class CommercialTermsService {
     }
     const now = this.now();
     const existing = await this.d.subscriptionStore.items(subscriptionId);
+    // Contratación nueva: el acuerdo rige desde el primer instante de una suscripción recién creada para él
+    const newContract = internal.at !== undefined;
     let from: number;
     let beforePicture: ReturnType<CommercialTermsService["current"]> | null = null;
     if (existing.some((i) => i.termsId === t.id)) {
@@ -606,11 +613,12 @@ export class CommercialTermsService {
             patch: { pendingInterval: t.interval !== sub.interval ? t.interval : null },
             event: {
               kind: "terms_applied" as const,
-              before: { termsId: before.lines.find((l) => l.termsId !== null)?.termsId ?? null, recurringNetCents: before.netCents, items: closed },
+              // En una contratación nueva la partida del alta queda sin ventana (nunca rige ni se factura): no es un «antes»
+              before: newContract ? { newContract: true } : { termsId: before.lines.find((l) => l.termsId !== null)?.termsId ?? null, recurringNetCents: before.netCents, items: closed },
               after: { termsId: t.id, revision: t.revision, pricingMode: t.pricingMode, effectiveFrom: at, effectiveTo: t.effectiveTo, recurringNetCents: s.recurring.netCents, items: created.map((c) => ({ item: c.productKey, lineAmountCents: c.lineAmountCents ?? null, effectiveFrom: c.effectiveFrom, effectiveTo: c.effectiveTo })) },
               reason,
             },
-            result: { at, before },
+            result: { at, before: newContract ? null : before },
           };
         }),
       );
@@ -619,7 +627,7 @@ export class CommercialTermsService {
     }
     const live: Terms = this.liveAt(t, from);
     const summary = summarize(live);
-    const economic = { ...this.economic(summary), before: beforePicture ? { recurringNetCents: beforePicture.netCents } : null, difference: beforePicture ? difference(beforePicture, summary.recurring) : null };
+    const economic = { ...this.economic(summary), newContract, before: beforePicture ? { recurringNetCents: beforePicture.netCents } : null, difference: beforePicture ? difference(beforePicture, summary.recurring) : null };
     // Los acuerdos anteriores de la suscripción quedan sustituidos desde la fecha efectiva
     for (const old of await this.d.store.list({ subscriptionId, status: ["active", "scheduled"] })) {
       if (old.id === t.id || old.id === next?.id || (old.closedAt !== null && old.closedAt <= from)) continue;
