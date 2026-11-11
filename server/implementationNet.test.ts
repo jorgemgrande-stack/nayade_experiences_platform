@@ -186,7 +186,7 @@ describe("expediente al pagar un producto Net y checklist", () => {
     expect(store.rows.map((o) => [o.solutionKey, o.status])).toEqual([["social-token-net-complete", "accepted"]]);
     expect((await svc.detail(ids[0])).paid).toEqual({ circuit: "panel_purchase", reference: "PED-7" });
     // Alta nueva (sin pedido anterior): todos sus productos Net de sector
-    await opener.fromOrder(order({ id: 8, kind: "trial_conversion", idempotencyKey: "pc-0123456789abcdef", previousOrderId: null }));
+    await opener.fromOrder(order({ id: 8, kind: "trial_conversion", idempotencyKey: "pc-conversion-de-prueba", previousOrderId: null }));
     expect(store.rows.map((o) => o.solutionKey).sort()).toEqual(["restaurant-net-complete", "social-token-net-complete"]);
     // Sin empresa, nada; un fallo se registra y no se propaga
     expect(await opener.fromOrder(order({ companyId: null as never }))).toEqual([]);
