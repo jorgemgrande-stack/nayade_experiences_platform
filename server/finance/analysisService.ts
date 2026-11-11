@@ -71,6 +71,8 @@ export interface CommercialMetrics {
   payingCompanies: number;
   collected: { netCents: number; taxCents: number; grossCents: number; invoices: number };
   churn: { canceledCount: number; lostMrrCents: number; rate: number | null };
+  /** Cobros únicos (notas de cobro y cargos) de la ventana por medio: Stripe, transferencia bancaria u otro. */
+  charges?: { count: number; grossCents: number; netCents: number; taxCents: number; byMethod: Record<"stripe" | "bank_transfer" | "other", { count: number; grossCents: number }> } | null;
 }
 export interface ProfitabilityReport {
   days: number;
@@ -511,7 +513,7 @@ export class FinanceAnalysisService {
     let topCompanies: { days: number; complete: boolean; items: Array<{ key: string; kind: string; displayName: string; billedCents: number; totalCostCents: number | null; marginCents: number | null; marginComplete: boolean }> } | null = null;
     if (c?.metrics) {
       const m = await c.metrics().catch(() => null);
-      if (m) metrics = { available: true, windowDays: m.windowDays, currency: m.currency, mrrCents: m.mrrCents, arrCents: m.arrCents, payingCompanies: m.payingCompanies, collected: m.collected, churn: m.churn };
+      if (m) metrics = { available: true, windowDays: m.windowDays, currency: m.currency, mrrCents: m.mrrCents, arrCents: m.arrCents, payingCompanies: m.payingCompanies, collected: m.collected, churn: m.churn, ...(m.charges !== undefined ? { charges: m.charges } : {}) };
     }
     if (c?.profitability) {
       const p = await c.profitability(365).catch(() => null);

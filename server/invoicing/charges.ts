@@ -307,10 +307,33 @@ export class ChargeService {
     if (c.status === "cancelled") throw new InvoicingError("invalid_state", "El cargo está anulado");
     if (c.status === "approved" && c.invoiceId) return { charge: c, invoice: (await this.d.invoices.get(c.invoiceId))! };
     const now = this.now();
+    const invoice = await this.draftInvoice(c, `charge:${c.id}`, actor, now);
+    const charge = await this.d.charges.update(c.id, c.version, { status: "approved", invoiceId: invoice.id, decidedBy: actor, decidedAt: now }, now);
+    return { charge, invoice };
+  }
+
+  /**
+   * Factura NUEVA en borrador de un cargo aprobado cuya factura quedó rectificada por completo (p. ej. un pago por
+   * transferencia registrado por error, ya facturado y anulado con su rectificativa): los mismos conceptos, base, IVA y
+   * cliente que al aprobarlo, por el circuito normal (borrador → cobro → expedición de la pasada). Idempotente por la
+   * factura rectificada (`charge:<id>:tras:<factura>`).
+   */
+  async reinvoice(id: number, actor: string): Promise<{ charge: Charge; invoice: Invoice }> {
+    const c = await this.must(id);
+    if (c.status !== "approved" || !c.invoiceId) throw new InvoicingError("invalid_state", "El cargo no está aprobado con factura");
+    const current = await this.d.invoices.get(c.invoiceId);
+    if (current?.status !== "rectified") return { charge: c, invoice: current! };
+    const now = this.now();
+    const invoice = await this.draftInvoice(c, `charge:${c.id}:tras:${current.id}`, actor, now);
+    const charge = await this.d.charges.update(c.id, c.version, { invoiceId: invoice.id }, now);
+    return { charge, invoice };
+  }
+
+  private async draftInvoice(c: Charge, sourceKey: string, actor: string, now: number): Promise<Invoice> {
     const company = await this.d.company(c.companyId);
     const lines = c.detail?.lines?.length ? breakdownLines(c) : [lineOf(1, invoiceConcept(c), 1, c.amountCents, c.taxRateBp)];
     const { invoice } = await this.d.invoices.insertDraft({
-      sourceKey: `charge:${c.id}`,
+      sourceKey,
       kind: "invoice",
       paymentStatus: "pending",
       companyId: c.companyId,
@@ -329,8 +352,7 @@ export class ChargeService {
       createdAt: now,
       lines,
     });
-    const charge = await this.d.charges.update(c.id, c.version, { status: "approved", invoiceId: invoice.id, decidedBy: actor, decidedAt: now }, now);
-    return { charge, invoice };
+    return invoice;
   }
 
   /** Anula un cargo en borrador (lo aprobado ya tiene factura: se corrige con una rectificativa). */

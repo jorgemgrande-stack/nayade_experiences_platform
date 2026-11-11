@@ -156,7 +156,9 @@ import { invoiceHtml } from "../invoicing/document";
 import { TenantPlanService, createTenantPlanRouter } from "../commerce/tenantPlan";
 import { ChargePaymentService, type ChargePaymentStore } from "../invoicing/chargePayments";
 import { ExternalOperationsService, type OperationStore } from "../external/operations";
-import { createExternalOperationsRouter } from "../external/operationsApi";
+import { EXTERNAL_UPLOAD_PATHS, createExternalOperationsRouter } from "../external/operationsApi";
+import type { ReceiptStore } from "../invoicing/transferReceipts";
+import type { KeyedLock } from "../finance/ownInvoices";
 import type { CompanyFiscal } from "../invoicing/rules";
 import { ISSUER } from "../stripe/issuer";
 import { createBillingPortalRouter, createPurchasesRouter } from "../stripe/purchasesApi";
@@ -347,7 +349,7 @@ export interface ControlPlaneDeps {
    * Facturación propia (server/invoicing, CRM 0027): facturas por devengo de los servicios externos con el estado de
    * cobro leído de su historial. Sin `issueEnabled` solo prepara borradores (nunca expide).
    */
-  invoicing?: { store: InvoicingStore; issueEnabled: boolean; seriesCode: string; charges?: ChargeStore; chargePayments?: ChargePaymentStore; operations?: OperationStore; automation?: { sendIssued(inv: Invoice): Promise<string> }; stripeSales?: StripeSalesPort };
+  invoicing?: { store: InvoicingStore; issueEnabled: boolean; seriesCode: string; charges?: ChargeStore; chargePayments?: ChargePaymentStore; operations?: OperationStore; receipts?: ReceiptStore; chargeLock?: KeyedLock; bankReconciled?: (invoiceId: number) => Promise<boolean>; automation?: { sendIssued(inv: Invoice): Promise<string> }; stripeSales?: StripeSalesPort };
   /**
    * Motor de transiciones temporales (server/lifecycle). Requiere `orders`. El plan (solo lectura) siempre
    * se puede consultar; la tarea periódica solo con `policy.enabled` y aplica solo en modo «apply».
@@ -571,7 +573,7 @@ export function createControlPlaneApp(d: ControlPlaneDeps): Express {
     );
   }
   // Adjuntos y extractos de las finanzas (hasta 10 MB en base64): los lee su propia ruta, tras comprobar el permiso
-  app.use(express.json({ limit: "256kb", type: (req) => !FINANCE_UPLOAD_PATHS.test(req.url ?? "") && String(req.headers["content-type"] ?? "").toLowerCase().startsWith("application/json"), verify: (req, _res, buf) => void ((req as any).rawBody = buf.toString("utf8")) }));
+  app.use(express.json({ limit: "256kb", type: (req) => !FINANCE_UPLOAD_PATHS.test(req.url ?? "") && !EXTERNAL_UPLOAD_PATHS.test(req.url ?? "") && String(req.headers["content-type"] ?? "").toLowerCase().startsWith("application/json"), verify: (req, _res, buf) => void ((req as any).rawBody = buf.toString("utf8")) }));
   app.use(rebindRequestContext);
 
   // Webhook del proveedor de pagos: autenticado por firma, no por token
@@ -1556,7 +1558,10 @@ export function createControlPlaneApp(d: ControlPlaneDeps): Express {
       const subscriptions = await d.subscriptions.store.list({ status: "active", limit: 1000 });
       shadow = { subscriptions, items: new Map(await Promise.all(subscriptions.map(async (s) => [s.id, await d.subscriptions!.store.items(s.id)] as const))) };
     }
-    return revenueMetrics({ external, events, shadow, now: Date.now(), windowDays: days });
+    // Cobros únicos (notas de cobro y cargos) de la ventana, por medio: Stripe, transferencia u otro
+    const now = Date.now();
+    const charges = d.invoicing?.chargePayments ? await d.invoicing.chargePayments.paidBetween(now - days * 86_400_000, now) : null;
+    return revenueMetrics({ external, events, shadow, now, windowDays: days, charges });
   }
   // Tarifas de coste: vigentes, de dónde salen e historial de cambios. Editar exige billing:write, motivo y la versión
   // sobre la que se cambia (dos personas no se pisan). Sin tarifas guardadas, sigue la estimación declarada.
@@ -2755,6 +2760,25 @@ export function createControlPlaneApp(d: ControlPlaneDeps): Express {
           liveEnabled: d.external?.liveEnabled,
           urls: { success: pub ? `${pub}/pago-recibido` : "", cancel: pub ? `${pub}/pago-cancelado` : "" },
           now: d.subscriptions.now,
+          // Transferencias con justificante (CRM 0050): almacén privado de documentos y cerrojo por cargo entre procesos
+          receipts: d.invoicing.receipts,
+          lock: d.invoicing.chargeLock,
+          bankReconciled: d.invoicing.bankReconciled,
+          // Cobro de Stripe de una nota ya pagada por otra vía: no se contabiliza; error de cobro para revisar y reembolsar
+          onDuplicate: async (x) => {
+            const name = ((await crmStore.get("companies", x.charge.companyId)) as { name?: string } | null)?.name ?? null;
+            await adminAlerts?.raise("admin.billing_error", {
+              key: `charge-duplicate:${x.sessionId}`,
+              occurredAt: Date.now(),
+              companyId: x.charge.companyId,
+              company: name,
+              summary: `Cobro duplicado en Stripe de «${x.charge.concept}»: la nota de cobro ya estaba pagada${x.settledBy?.method === "bank_transfer" ? " por transferencia" : " por otra vía"}. No se ha contabilizado otra vez: revisa el caso y reembolsa el importe en Stripe.`,
+              status: { label: "Revisar y reembolsar", tone: "error" },
+              reference: x.invoice?.number ?? `cargo ${x.charge.id}`,
+              ...(x.amountTotalCents !== null ? { amount: { cents: x.amountTotalCents, currency: x.charge.currency } } : {}),
+              link: "#/comercial/servicios-externos",
+            });
+          },
         });
       }
       router.use("/invoicing", createInvoicingRouter(invoicing, issuer, charges, chargePaymentsRef.svc));

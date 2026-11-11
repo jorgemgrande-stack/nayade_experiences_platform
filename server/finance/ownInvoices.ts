@@ -46,7 +46,16 @@ export interface OwnInvoiceDirectory {
   list(q: OwnInvoiceQuery): Promise<{ items: OwnInvoice[]; total: number }>;
   /** Candidatas a un cobro: expedidas, no cobradas, total ≥ `minTotalCents` y fecha desde `from`. */
   openCandidates(q: { minTotalCents: number; from: string; limit: number }): Promise<OwnInvoice[]>;
+  /**
+   * Expedidas y marcadas cobradas por una transferencia DECLARADA en la ficha de una operación externa
+   * (`paymentRef = transfer:<id>`) y aún sin ningún abono conciliado (MySQL: sin movimiento `invoice_payment`; el límite
+   * no se llena de ya conciliadas): siguen siendo candidatas a conciliar con el abono del banco, que es lo que lleva el
+   * cobro al libro (lo pendiente lo calcula la conciliación con los movimientos, nunca con el estado de cobro).
+   */
+  declaredTransferCandidates?(q: { minTotalCents: number; from: string; limit: number }): Promise<OwnInvoice[]>;
 }
+
+export const DECLARED_TRANSFER_REF = "transfer:";
 
 export const STRIPE_PAYMENT_REF = (stripeInvoiceId: string) => `stripe:in:${stripeInvoiceId}`;
 const dateOf = (o: Pick<OwnInvoice, "issueDate" | "operationDate">) => o.issueDate ?? o.operationDate;
@@ -86,6 +95,9 @@ export function ownInvoicesFromStore(store: Pick<InvoicingStore, "list">): OwnIn
     },
     async openCandidates(q) {
       return sorted((await all()).filter((o) => o.status === "issued" && o.kind !== "rectification" && o.paymentStatus !== "paid" && o.totalCents >= q.minTotalCents && dateOf(o) >= q.from)).slice(0, q.limit);
+    },
+    async declaredTransferCandidates(q) {
+      return sorted((await all()).filter((o) => o.status === "issued" && o.kind !== "rectification" && o.paymentStatus === "paid" && (o.paymentRef ?? "").startsWith(DECLARED_TRANSFER_REF) && o.totalCents >= q.minTotalCents && dateOf(o) >= q.from)).slice(0, q.limit);
     },
   };
 }
@@ -153,6 +165,12 @@ export class MysqlOwnInvoiceDirectory implements OwnInvoiceDirectory {
     return this.rows(
       `SELECT ${COLS} FROM invoices WHERE livemode = ? AND status = 'issued' AND kind <> 'rectification' AND payment_status <> 'paid' AND total_cents >= ? AND COALESCE(issue_date, operation_date) >= ? ORDER BY COALESCE(issue_date, operation_date) DESC, id DESC LIMIT ?`,
       [this.lm, q.minTotalCents, q.from, q.limit],
+    );
+  }
+  declaredTransferCandidates(q: { minTotalCents: number; from: string; limit: number }) {
+    return this.rows(
+      `SELECT ${COLS} FROM invoices WHERE livemode = ? AND status = 'issued' AND kind <> 'rectification' AND payment_status = 'paid' AND payment_ref LIKE ? AND NOT EXISTS (SELECT 1 FROM fin_bank_movements m WHERE m.match_type = 'invoice_payment' AND m.match_id = invoices.id) AND total_cents >= ? AND COALESCE(issue_date, operation_date) >= ? ORDER BY COALESCE(issue_date, operation_date) DESC, id DESC LIMIT ?`,
+      [this.lm, `${DECLARED_TRANSFER_REF}%`, q.minTotalCents, q.from, q.limit],
     );
   }
 }

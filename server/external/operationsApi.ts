@@ -13,8 +13,15 @@
  *   POST  /external-ops/:id/periods/:pid/issue           orders:approve  emite: cargo con desglose y factura
  *   POST  /external-ops/:id/periods/:pid/payment-link    billing:write   enlace de pago de Stripe
  *   POST  /external-ops/:id/periods/:pid/send            orders:write    nota de cobro al cliente con el enlace
- *   POST  /external-ops/:id/periods/:pid/offline-payment orders:approve  pago externo con su referencia
+ *   POST  /external-ops/:id/periods/:pid/offline-payment orders:approve  pago externo con su referencia (sin 0050)
+ *   POST  /external-ops/:id/periods/:pid/transfer        orders:approve + billing:write  transferencia con justificante PDF
+ *   POST  /external-ops/:id/periods/:pid/transfers/:payId/rectify  orders:approve + billing:write  rectificación auditada
+ *   POST  /external-ops/:id/periods/:pid/transfers/:payId/void     orders:approve + billing:write  anulación con motivo
+ *   GET   /external-ops/:id/periods/:pid/receipts/:docId orders:approve  justificante (PDF privado, sin caché)
  *   (un descuento o recargo comercial exige además orders:approve)
+ *
+ * La transferencia y su rectificación llevan el PDF en base64 dentro del JSON (hasta 10 MB): esas rutas leen su propio
+ * cuerpo (`EXTERNAL_UPLOAD_PATHS`, fuera del lector general de 256 KB del plano de control).
  */
 import express, { type NextFunction, type Request, type Response, type Router } from "express";
 import { z } from "zod";
@@ -79,9 +86,45 @@ const id = (req: Request, k = "id") => z.coerce.number().int().positive().parse(
 const actor = (req: Request) => `${getAuth(req)!.actor.type}:${getAuth(req)!.actor.id}`.slice(0, 100);
 const canAuthorize = (req: Request) => !!getAuth(req)?.scopes.has("orders:approve");
 
+/** Rutas con justificante en el cuerpo: el lector general del plano de control no las lee (lo hacen ellas). */
+export const EXTERNAL_UPLOAD_PATHS = /^\/cp\/v1\/external-ops\/\d+\/periods\/\d+\/(transfer|transfers\/\d+\/rectify)\/?(\?|$)/;
+const uploadJson = express.json({ limit: "15mb" });
+const receiptBody = z.object({ filename: z.string().max(200), contentBase64: z.string().max(15_000_000) }).strict();
+const transferBody = z
+  .object({ amountCents: cents, receivedOn: z.string().max(10), reference: z.string().max(120).nullable().optional(), receipt: receiptBody, idempotencyKey: z.string().max(80), confirmed: z.literal(true) })
+  .strict();
+const rectifyBody = z.object({ reason: z.string().max(300), receivedOn: z.string().max(10).nullable().optional(), reference: z.string().max(120).nullable().optional(), receipt: receiptBody.nullable().optional() }).strict();
+
 export function createExternalOperationsRouter(svc: ExternalOperationsService): Router {
   const r = express.Router();
+  // Pagos por transferencia: antes del lector de 64 KB (llevan el PDF). Registrarlos es financiero: orders:approve y
+  // billing:write; ver el justificante, orders:approve
+  r.post("/:id/periods/:pid/transfer", requireScope("orders:approve"), requireScope("billing:write"), uploadJson, wrap(async (req, res) => {
+    const b = transferBody.parse(req.body ?? {});
+    const out = await svc.transferPayment(id(req), id(req, "pid"), b, actor(req));
+    opsLog("info", "ExternalOps", "transfer_recorded", { operationId: out.period.operationId, period: out.period.period, replay: out.replay, links: out.stripe.map((x) => x.outcome) });
+    res.json(out);
+  }));
+  r.post("/:id/periods/:pid/transfers/:payId/rectify", requireScope("orders:approve"), requireScope("billing:write"), uploadJson, wrap(async (req, res) => {
+    const out = await svc.rectifyTransfer(id(req), id(req, "pid"), id(req, "payId"), rectifyBody.parse(req.body ?? {}), actor(req));
+    opsLog("info", "ExternalOps", "transfer_rectified", { operationId: out.period.operationId, period: out.period.period });
+    res.json(out);
+  }));
   r.use(express.json({ limit: "64kb" }));
+  r.post("/:id/periods/:pid/transfers/:payId/void", requireScope("orders:approve"), requireScope("billing:write"), wrap(async (req, res) => {
+    const b = z.object({ reason: z.string().max(300) }).strict().parse(req.body ?? {});
+    const out = await svc.voidTransfer(id(req), id(req, "pid"), id(req, "payId"), b, actor(req));
+    opsLog("info", "ExternalOps", "transfer_voided", { operationId: out.period.operationId, period: out.period.period });
+    res.json(out);
+  }));
+  r.get("/:id/periods/:pid/receipts/:docId", requireScope("orders:approve"), wrap(async (req, res) => {
+    const { doc, content } = await svc.transferReceipt(id(req), id(req, "pid"), id(req, "docId"));
+    res.setHeader("Cache-Control", "no-store");
+    res.setHeader("X-Content-Type-Options", "nosniff");
+    res.setHeader("Content-Type", "application/pdf");
+    res.setHeader("Content-Disposition", `attachment; filename="${doc.filename.replace(/[^\w.\- ()]/g, "_")}"`);
+    res.send(content);
+  }));
   r.get("/", requireScope("crm:read"), wrap(async (req, res) => {
     const companyId = req.query.companyId === undefined ? undefined : z.coerce.number().int().positive().parse(req.query.companyId);
     res.json({ operations: await svc.list({ companyId }) });

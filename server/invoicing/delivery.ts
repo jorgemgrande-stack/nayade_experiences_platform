@@ -106,7 +106,7 @@ export function invoicePdfBlocks(inv: Invoice, issuerDraft: FiscalParty, o: { pr
   if (!proforma && inv.fiscal?.invoiceType === "simplified") blocks.push({ kind: "paragraph", text: "Factura simplificada (arts. 4 y 7 del Real Decreto 1619/2012)." });
   if (inv.fiscal?.legalMention) blocks.push({ kind: "paragraph", text: inv.fiscal.legalMention });
   const paid = inv.paymentStatus === "paid";
-  blocks.push({ kind: "paragraph", muted: true, text: [proforma ? (inv.sourceKey.startsWith("charge:") ? "Pago mediante el enlace de pago seguro de Stripe." : "Cobro previsto mediante el método de pago autorizado en Stripe.") : paid ? `Cobrada${inv.paymentRef?.startsWith("stripe:") ? " mediante Stripe" : ""}.` : "Pendiente de cobro.", inv.notes ?? ""].filter(Boolean).join(" ") });
+  blocks.push({ kind: "paragraph", muted: true, text: [proforma ? (inv.sourceKey.startsWith("charge:") ? "Pago mediante el enlace de pago seguro de Stripe." : "Cobro previsto mediante el método de pago autorizado en Stripe.") : paid ? `Cobrada${inv.paymentRef?.startsWith("stripe:") ? " mediante Stripe" : inv.paymentRef?.startsWith("transfer:") ? " mediante transferencia bancaria" : ""}.` : "Pendiente de cobro.", inv.notes ?? ""].filter(Boolean).join(" ") });
   return blocks;
 }
 
@@ -274,12 +274,21 @@ export class InvoicingAutomation {
           continue;
         }
       }
+      // Expedida mientras tanto (a mano en Facturación, otra réplica): se salta sin incidencia y sin cortar la pasada
+      const stillDraft = async () => (this.d.store.get ? (await this.d.store.get(inv.id))?.status === "draft" : true);
       const { problems } = await this.d.svc.readiness(inv.id);
       if (problems.length) {
+        if (!(await stillDraft())) continue;
         rep.blocked.push({ id: inv.id, reason: problems.join("; ") });
         continue;
       }
-      const issued = await this.d.svc.issue(inv.id, INVOICING_ACTOR);
+      let issued: Invoice;
+      try {
+        issued = await this.d.svc.issue(inv.id, INVOICING_ACTOR);
+      } catch (e) {
+        if (!(await stillDraft())) continue;
+        throw e;
+      }
       const delivery = await this.deliver(issued, false).catch((e) => `error: ${e instanceof Error ? e.message.slice(0, 120) : "envío"}`);
       rep.issued.push({ id: issued.id, number: issued.number, totalCents: issued.totalCents, delivery });
     }

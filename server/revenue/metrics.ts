@@ -7,6 +7,10 @@
  *  - Modo sombra: las suscripciones de `subscriptions` (CRM 0006) NO cobran; su MRR se informa aparte y nunca se suma.
  *  - Cobrado: facturas pagadas (`invoice_paid`) en la ventana, neto e IVA; riesgo: facturas impagadas y su margen.
  *  - Churn de la ventana: MRR de los servicios cancelados en ella sobre el MRR vigente al empezarla.
+ *  - Cobros únicos (`charges`): notas de cobro y cargos extraordinarios cobrados en la ventana, por medio (Stripe,
+ *    transferencia bancaria u otro), de los pagos que liquidan cada cargo (`billing_charge_payments`). Un cobro de
+ *    Stripe duplicado o un pago anulado no cuentan. Aparte de `collected` (facturas de las suscripciones externas): no
+ *    se solapan, cada cargo tiene su propia factura.
  * Importes en céntimos y sin IVA salvo que el nombre diga lo contrario.
  */
 import type { ExternalEvent, ExternalSubscription } from "../external/types";
@@ -35,6 +39,33 @@ export interface RevenueMetrics {
   churn: { canceledCount: number; lostMrrCents: number; rate: number | null };
   byStatus: Record<string, number>;
   shadow: { activeSubscriptions: number; mrrCents: number } | null;
+  /** Cobros únicos de la ventana por medio (null: los cobros de cargos no están montados). */
+  charges?: ChargeCollected | null;
+}
+
+export type CollectedMethod = "stripe" | "bank_transfer" | "other";
+export interface ChargeCollected {
+  count: number;
+  grossCents: number;
+  netCents: number;
+  taxCents: number;
+  byMethod: Record<CollectedMethod, { count: number; grossCents: number }>;
+}
+
+/** Cobros únicos cobrados (pagos que liquidan un cargo) agregados por medio. */
+export function chargeCollected(payments: Array<{ kind: string; method?: string | null; status: string; amountCents: number; totalCents: number }>): ChargeCollected {
+  const out: ChargeCollected = { count: 0, grossCents: 0, netCents: 0, taxCents: 0, byMethod: { stripe: { count: 0, grossCents: 0 }, bank_transfer: { count: 0, grossCents: 0 }, other: { count: 0, grossCents: 0 } } };
+  for (const p of payments) {
+    if (p.status !== "paid") continue;
+    const m: CollectedMethod = p.kind === "stripe_link" ? "stripe" : p.method === "bank_transfer" ? "bank_transfer" : "other";
+    out.count += 1;
+    out.grossCents += p.totalCents;
+    out.netCents += p.amountCents;
+    out.taxCents += p.totalCents - p.amountCents;
+    out.byMethod[m].count += 1;
+    out.byMethod[m].grossCents += p.totalCents;
+  }
+  return out;
 }
 
 /** Cuota mensual neta de un servicio externo (hoy solo hay periodicidad mensual). */
@@ -54,6 +85,8 @@ export function revenueMetrics(i: {
   now: number;
   windowDays?: number;
   upcomingDays?: number;
+  /** Pagos de cargos con fecha de pago en la ventana (null: no montados). */
+  charges?: Parameters<typeof chargeCollected>[0] | null;
 }): RevenueMetrics {
   const { now } = i;
   const windowDays = i.windowDays ?? 30;
@@ -120,6 +153,7 @@ export function revenueMetrics(i: {
     churn: { canceledCount: canceled.length, lostMrrCents: lost, rate: startMrr > 0 ? lost / startMrr : null },
     byStatus,
     shadow,
+    ...(i.charges !== undefined ? { charges: i.charges ? chargeCollected(i.charges) : null } : {}),
   };
 }
 
