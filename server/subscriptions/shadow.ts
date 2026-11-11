@@ -73,7 +73,7 @@ function regroupTax(lines: ShadowLine[]): ShadowLine[] {
 
 export class ShadowBillingService {
   private now: () => number;
-  constructor(private d: { store: SubscriptionStore; crm: CrmPort; now?: () => number; /** Antes de calcular: resuelve lo que dependa de la fecha (fin de condiciones temporales de un acuerdo). Nunca bloquea el cálculo. */ settle?: (subscriptionId: number) => Promise<unknown> }) {
+  constructor(private d: { store: SubscriptionStore; crm: CrmPort; now?: () => number; /** Antes de calcular: resuelve lo que dependa de la fecha (fin de condiciones temporales de un acuerdo). Nunca bloquea el cálculo. */ settle?: (subscriptionId: number) => Promise<unknown>; /** Solo al REGISTRAR una simulación (una escritura): tareas pendientes de la suscripción. Nunca bloquea. */ onSimulate?: (subscriptionId: number) => Promise<unknown> }) {
     this.now = d.now ?? Date.now;
   }
 
@@ -224,6 +224,7 @@ export class ShadowBillingService {
   /** Calcula y REGISTRA el periodo vigente. Idempotente. */
   async simulateCurrent(subscriptionId: number, actor: string) {
     await this.d.settle?.(subscriptionId).catch(() => undefined);
+    await this.d.onSimulate?.(subscriptionId).catch(() => undefined);
     const sub = await this.d.store.get(subscriptionId);
     if (!sub) throw new SubscriptionError("not_found", "Suscripción no encontrada");
     const { drafts, pending } = await this.compute(sub, actor);

@@ -413,7 +413,7 @@ async function main() {
   console.log(JSON.stringify({ ctx: "Organization", enabled: organizationReady, ...(organizationReady ? {} : { reason: "registry_migration_0009_missing" }) }));
 
   // Suscripciones en modo sombra: misma BD del CRM; solo si la migración 0006 está aplicada
-  let subscriptions: { store: MysqlSubscriptionStore; terms?: MysqlTermsStore; termsBilling?: { enabled: boolean } } | undefined;
+  let subscriptions: { store: MysqlSubscriptionStore; terms?: MysqlTermsStore; termsBilling?: { enabled: boolean }; termsLicences?: { auto: boolean } } | undefined;
   if (crmPool && web) {
     const subsPool = crmPool;
     const ready = await subsPool.query("SELECT 1 FROM subscriptions LIMIT 0").then(() => true, () => false);
@@ -425,7 +425,9 @@ async function main() {
     // Cobro en Stripe de condiciones personalizadas: APAGADO salvo CP_CUSTOM_TERMS_BILLING_ENABLED=1. Aun encendido no
     // llama a Stripe: falta el adaptador validado en Stripe Sandbox (docs/elephant-source/CONDICIONES_PERSONALIZADAS.md)
     if (subscriptions && termsReady) subscriptions.termsBilling = { enabled: process.env.CP_CUSTOM_TERMS_BILLING_ENABLED === "1" };
-    console.log(JSON.stringify({ ctx: "CommercialTerms", enabled: termsReady, stripeBilling: subscriptions?.termsBilling?.enabled === true ? "switch_on_without_gateway" : "off", ...(termsReady ? {} : { reason: "crm_migration_0048_missing" }) }));
+    // Licencias de los acuerdos: aplicación automática ENCENDIDA; solo se apaga con CP_CUSTOM_TERMS_AUTO_LICENCES=0
+    if (subscriptions && termsReady) subscriptions.termsLicences = { auto: process.env.CP_CUSTOM_TERMS_AUTO_LICENCES !== "0" };
+    console.log(JSON.stringify({ ctx: "CommercialTerms", enabled: termsReady, stripeBilling: subscriptions?.termsBilling?.enabled === true ? "switch_on_without_gateway" : "off", autoLicences: subscriptions?.termsLicences?.auto !== false, ...(termsReady ? {} : { reason: "crm_migration_0048_missing" }) }));
   }
 
   // Prueba gratuita de Essential: misma BD del CRM; solo si la migración 0007 está aplicada. Las rutas

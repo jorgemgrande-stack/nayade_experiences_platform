@@ -576,6 +576,21 @@ export class SubscriptionService {
     });
   }
 
+  /**
+   * Enlaza la suscripción con la plataforma (tenant) de su empresa cuando nació sin ella (p. ej. un paquete contratado
+   * antes del alta de la plataforma). Solo si no tenía ninguna: una suscripción nunca cambia de plataforma. Quien llama
+   * garantiza que es la de SU empresa. No toca periodos, partidas ni cobros.
+   */
+  async linkTenant(id: number, input: { tenantId: string; reason?: string | null }, actor: string) {
+    if (!/^[a-z0-9][a-z0-9-]{1,62}$/.test(input.tenantId ?? "")) bad("Plataforma no válida");
+    return this.d.store.mutate(id, null, actor, this.now(), async (_tx, sub) => {
+      if (sub.status === "canceled") state("La suscripción está cancelada");
+      if (sub.tenantId && sub.tenantId !== input.tenantId) state("La suscripción ya pertenece a otra plataforma");
+      if (sub.tenantId === input.tenantId) state("La suscripción ya está enlazada a esa plataforma");
+      return { patch: { tenantId: input.tenantId }, event: { kind: "tenant_linked", before: { tenantId: null }, after: { tenantId: input.tenantId }, reason: input.reason ?? null }, result: { linked: true } };
+    });
+  }
+
   async reactivate(id: number, input: { reason?: string | null }, expectedVersion: number, actor: string) {
     return this.d.store.mutate(id, expectedVersion, actor, this.now(), async (tx, sub) => {
       if (sub.status !== "canceled") {

@@ -130,7 +130,7 @@ export class CommercialTermsService {
       now?: () => number;
       stripeBilled?: (subscriptionId: number) => Promise<boolean>;
       /** Tras cambiar lo que una suscripción tiene contratado (activación, fin de una condición temporal). Nunca bloquea. */
-      afterChange?: (subscriptionId: number) => Promise<unknown>;
+      afterChange?: (subscriptionId: number, actor: string) => Promise<unknown>;
     },
   ) {
     this.now = d.now ?? Date.now;
@@ -645,7 +645,7 @@ export class CommercialTermsService {
       this.event("activated", actor, reason, { before: beforePicture ? { recurringNetCents: beforePicture.netCents, lines: beforePicture.lines } : null, after: this.shape(live), effectiveAt: from, acceptanceStatus: t.acceptanceStatus, syncResult: "not_applicable", economic }),
       now,
     );
-    await this.d.afterChange?.(subscriptionId).catch(() => undefined);
+    await this.d.afterChange?.(subscriptionId, actor).catch(() => undefined);
     return { terms: done, subscription: (await this.d.subscriptionStore.get(subscriptionId))!, effectiveFrom: from, summary };
   }
 
@@ -805,7 +805,7 @@ export class CommercialTermsService {
       await this.d.store.patch(t.id, { status: "expired", closedAt: end }, this.event("expired", actor, "Fin de la vigencia de la condición temporal", { before: { status: t.status }, after: { status: "expired", afterEnd: t.afterEnd, applied }, effectiveAt: end }), now);
       settled++;
     }
-    if (settled) await this.d.afterChange?.(subscriptionId).catch(() => undefined);
+    if (settled) await this.d.afterChange?.(subscriptionId, actor).catch(() => undefined);
     return { settled };
   }
 

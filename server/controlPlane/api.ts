@@ -105,6 +105,7 @@ import { createCommercialTermsRouter } from "../commercialTerms/api";
 import { TermsAcceptanceService, createTermsAcceptanceRouter, createTermsPublicAcceptanceRouter } from "../commercialTerms/acceptance";
 import { tenantTermsReader } from "../commercialTerms/tenantView";
 import { TermsBillingService, createTermsBillingRouter, type BillingLink, type NegotiatedBillingGateway } from "../commercialTerms/billing";
+import { TermsLicences, createTermsLicencesRouter } from "../commercialTerms/licences";
 import { CommercialTermsService } from "../commercialTerms/service";
 import type { TermsStore } from "../commercialTerms/store";
 import { catalogFromWebStore, crmFromStore } from "../subscriptions/ports";
@@ -307,7 +308,7 @@ export interface ControlPlaneDeps {
    * Suscripciones v1 en MODO SOMBRA (BD del CRM, migración 0006). Requiere `crm` y `web` (precios
    * aprobados del catálogo). Nunca cobra, emite facturas fiscales ni toca licencias.
    */
-  subscriptions?: { store: SubscriptionStore; now?: () => number; /** Condiciones comerciales personalizadas (CRM 0048). Sin almacén no hay rutas. */ terms?: TermsStore; /** Cobro en Stripe de condiciones personalizadas: apagado salvo interruptor, pasarela validada y enlace con Stripe. */ termsBilling?: { enabled: boolean; gateway?: NegotiatedBillingGateway | null; link?: (subscriptionId: number) => Promise<BillingLink | null> } };
+  subscriptions?: { store: SubscriptionStore; now?: () => number; /** Condiciones comerciales personalizadas (CRM 0048). Sin almacén no hay rutas. */ terms?: TermsStore; /** Cobro en Stripe de condiciones personalizadas: apagado salvo interruptor, pasarela validada y enlace con Stripe. */ termsBilling?: { enabled: boolean; gateway?: NegotiatedBillingGateway | null; link?: (subscriptionId: number) => Promise<BillingLink | null> }; /** Aplicación automática de licencias de los acuerdos (encendida salvo que se apague). */ termsLicences?: { auto: boolean } };
   /** Licencias por capacidad (registro, migración 0008). Sin ellas no se aplican licencias desde suscripciones. */
   capabilities?: CapabilityStore;
   /** Límites contratados y uso declarado por cada empresa (registro 0013). */
@@ -720,6 +721,17 @@ export function createControlPlaneApp(d: ControlPlaneDeps): Express {
   // Aceptación pública de condiciones comerciales personalizadas (solo con el token del enlace): reservada ANTES de la
   // de servicios externos, de la que cuelga; se asigna con las suscripciones
   let publicTermsAcceptance: express.Router | null = null;
+  // Alta de la plataforma de una empresa desde el CRM: si sale bien, sus suscripciones con condiciones personalizadas se
+  // enlazan a la plataforma y reciben sus licencias (se asigna con las suscripciones; aquí solo se observa la respuesta)
+  let onCompanyOnboarded: ((companyId: number, actor: string) => Promise<unknown>) | null = null;
+  router.post("/crm/companies/:id/onboard", (req, res, next) => {
+    res.on("finish", () => {
+      const companyId = Number(req.params.id);
+      const a = getAuth(req)?.actor;
+      if (res.statusCode >= 200 && res.statusCode < 300 && onCompanyOnboarded && a && Number.isInteger(companyId)) void onCompanyOnboarded(companyId, `${a.type}:${a.id}`).catch(() => undefined);
+    });
+    next();
+  });
   router.use("/public/contract-acceptance/condiciones", (req, res, next) => (publicTermsAcceptance ? publicTermsAcceptance(req, res, next) : void res.status(404).json({ error: "not_found" })));
   router.use("/public/contract-acceptance", (req, res, next) => (publicAcceptance ? publicAcceptance(req, res, next) : void res.status(404).json({ error: "not_found" })));
   router.use("/public/checkout", (req, res, next) => (publicCheckout ? publicCheckout(req, res, next) : void res.status(404).json({ error: "not_found" })));
@@ -1980,6 +1992,7 @@ export function createControlPlaneApp(d: ControlPlaneDeps): Express {
     const orderStoreForTerms = d.orders?.store;
     const termsBillingOpen = d.subscriptions.termsBilling?.enabled === true && !!d.subscriptions.termsBilling.gateway;
     let termsBilling: TermsBillingService | null = null;
+    let termsLicences: TermsLicences | null = null;
     const commercialTerms = d.subscriptions.terms
       ? new CommercialTermsService({
           store: d.subscriptions.terms,
@@ -1992,7 +2005,11 @@ export function createControlPlaneApp(d: ControlPlaneDeps): Express {
           // (interruptor encendido Y pasarela validada)
           stripeBilled: orderStoreForTerms && !termsBillingOpen ? async (sid) => (await subscriptionBilling(orderStoreForTerms, sid)).source === "stripe" : undefined,
           // Con el cobro abierto, cada cambio de lo contratado se lleva a Stripe (sin él, no hace nada)
-          afterChange: async (sid) => termsBilling?.syncIfOpen(sid),
+          // y se aplican las licencias de los productos del acuerdo (si la suscripción o su empresa tienen plataforma)
+          afterChange: async (sid, actor) => {
+            await termsLicences?.afterChange(sid, actor);
+            await termsBilling?.syncIfOpen(sid);
+          },
         })
       : null;
     // Contrato y aceptación del cliente: mismo circuito y misma tabla de aceptaciones que los servicios externos
@@ -2031,7 +2048,14 @@ export function createControlPlaneApp(d: ControlPlaneDeps): Express {
     // Lo que la empresa ve de sus condiciones (solo lectura, con la presentación elegida): lo usa «Mi plan»
     customTermsOfTenant = commercialTerms && d.subscriptions.terms ? tenantTermsReader(commercialTerms, d.subscriptions.terms, d.subscriptions.store, d.subscriptions.now ?? Date.now) : null;
     // Antes de calcular un periodo se resuelve el fin de las condiciones temporales (tarifa oficial vigente ese día)
-    const shadowBilling = new ShadowBillingService({ store: d.subscriptions.store, crm: crmPort, now: d.subscriptions.now, settle: commercialTerms ? (sid) => commercialTerms.settleDue(sid) : undefined });
+    const shadowBilling = new ShadowBillingService({
+      store: d.subscriptions.store,
+      crm: crmPort,
+      now: d.subscriptions.now,
+      settle: commercialTerms ? (sid) => commercialTerms.settleDue(sid) : undefined,
+      // Licencias pendientes de plataforma o fallidas: se reintentan al REGISTRAR una simulación, nunca al consultar
+      onSimulate: async (sid) => termsLicences?.retryIfPending(sid),
+    });
     if (d.capabilities) {
       // Licencias por capacidad: Elephant Control es la autoridad técnica. Antes del router de
       // suscripciones (que responde 404 a lo que no conoce).
@@ -2044,6 +2068,24 @@ export function createControlPlaneApp(d: ControlPlaneDeps): Express {
         limits: d.limits,
         events: d.commercialEvents?.append ? (d.commercialEvents as CommercialEventSink) : undefined,
       });
+      // Licencias de las suscripciones con condiciones personalizadas: automáticas al entrar en vigor el acuerdo y al
+      // recibir la empresa su plataforma; a mano, desde el CRM
+      if (commercialTerms && d.subscriptions.terms) {
+        const crmCompanies = d.crm.store;
+        termsLicences = new TermsLicences({
+          auto: d.subscriptions.termsLicences?.auto !== false,
+          licensing,
+          capabilities: d.capabilities,
+          subscriptions: svc,
+          subscriptionStore: d.subscriptions.store,
+          termsStore: d.subscriptions.terms,
+          companyTenant: async (companyId) => ((await crmCompanies.get("companies", companyId)) as { tenantId?: string | null } | null)?.tenantId ?? null,
+          now: d.subscriptions.now,
+        });
+        router.use(createTermsLicencesRouter(termsLicences));
+        const licences = termsLicences;
+        onCompanyOnboarded = (companyId, actor) => licences.companyOnboarded(companyId, actor);
+      }
       const licErr = (res: express.Response, e: unknown) => {
         if (e instanceof LicensingError) return void res.status(e.code === "not_found" ? 404 : e.code === "invalid_state" ? 409 : 400).json({ error: e.code, message: e.message });
         throw e;
