@@ -23,6 +23,8 @@ export interface CatalogProduct {
   activationRef: string | null;
   dependencies: string[];
   compatibleWith: string[];
+  /** Capacidades de plataforma que concede el producto (catálogo de Elephant Source); vacío o ausente = ninguna. */
+  capabilities?: string[];
   /** Paquetes: componentes que sustituye (catálogo `bundleOf`). */
   bundleOf: string[];
   /** Ampliación por cantidad: métrica que amplía y unidades por cada partida (p. ej. 10 GB). */
@@ -99,7 +101,7 @@ export function catalogFromWebStore(store: WebStore): CatalogPort {
       activation: { kind: string; ref: string | null };
       dependencies?: string[];
       compatibleWith?: string[];
-      catalog?: { scope?: "company" | "site"; chargeUnit?: string | null; commercialStatus?: CatalogProduct["commercialStatus"]; internalOnly?: boolean; stripePrepared?: boolean; bundleOf?: string[]; addonFor?: { metric: string; step: number } | null; quotas?: Array<{ metric: string; included: number | null }>; legacy?: { replacedBy: string } };
+      catalog?: { capabilities?: string[]; scope?: "company" | "site"; chargeUnit?: string | null; commercialStatus?: CatalogProduct["commercialStatus"]; internalOnly?: boolean; stripePrepared?: boolean; bundleOf?: string[]; addonFor?: { metric: string; step: number } | null; quotas?: Array<{ metric: string; included: number | null }>; legacy?: { replacedBy: string } };
       billingModel?: string;
     };
     // Un «servicio» con cuota recurrente (alojamiento web) se contrata como complemento recurrente;
@@ -119,6 +121,7 @@ export function catalogFromWebStore(store: WebStore): CatalogPort {
       activationRef: p.activation?.ref ?? null,
       dependencies: p.dependencies ?? [],
       compatibleWith: p.compatibleWith ?? [],
+      capabilities: p.catalog?.capabilities ?? [],
       bundleOf: p.catalog?.bundleOf ?? [],
       addonFor: p.catalog?.addonFor ? { metric: p.catalog.addonFor.metric, step: p.catalog.addonFor.step } : null,
       quotas: (p.catalog?.quotas ?? []).map((q) => ({ metric: q.metric, included: q.included })),

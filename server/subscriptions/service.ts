@@ -19,8 +19,9 @@
  *    licencias corresponderían (adaptador de lectura), no las aplica.
  */
 import { bundleReplaces, legacyProductText } from "../catalog/quote";
+import { grantsOnPlatform, independentActivation, isEconomicOnly } from "../../shared/economicSubscription";
 import type { CatalogPort, CatalogProduct, CrmPort } from "./ports";
-import { intervalMonths, isRecurring, itemInterval, itemPeriodAt, monthlyEquivalent, periodEnd, recurringKind } from "./pricing";
+import { intervalMonths, isRecurring, itemInterval, itemPeriodAt, madridAnchor, monthlyEquivalent, periodEnd, recurringKind } from "./pricing";
 import type { NewItem, SubscriptionStore, SubscriptionTx } from "./store";
 import { SubscriptionError, type Discount, type Family, type Interval, type LineKind, type Subscription, type SubscriptionItem } from "./types";
 
@@ -48,6 +49,43 @@ export function lineKindOf(p: Pick<CatalogProduct, "family" | "addonFor">): { li
   if (p.addonFor) return { lineKind: "quantity", metric: p.addonFor.metric };
   if (p.family === "service") return { lineKind: "service", metric: null };
   return { lineKind: "module", metric: null };
+}
+
+/** Activación que no concede nada dentro de la plataforma: un servicio o nada. */
+
+/**
+ * ¿Depende el producto de un plan de Elephant Core? Se decide con los datos del CATÁLOGO, sin listas de productos.
+ * Lo necesita todo producto que:
+ *  - declara planes compatibles (`compatibleWith`);
+ *  - amplía un cupo del plan (`addonFor`);
+ *  - concede capacidades de plataforma (`capabilities`);
+ *  - tiene una activación que concede algo DENTRO de la plataforma (plan, módulo, funcionalidad, consumo): todo salvo
+ *    un servicio (`service`) o nada (`none`);
+ *  - o no es de la familia de servicios del catálogo (una solución Net, una extensión Connect o un extra necesitan
+ *    plan aunque su activación aún sea `none`, p. ej. mientras están en hoja de ruta).
+ * Es decir: solo un SERVICIO puro (familia `service`, sin capacidades, sin compatibilidad declarada) puede ir sin plan.
+ * Sus dependencias de otros productos se comprueban aparte (y cada una pasa por esta misma regla). De un producto ya
+ * retirado del catálogo solo queda la instantánea de la partida: decide su activación o, sin ella, su familia.
+ */
+export function needsCorePlan(p: Pick<CatalogProduct, "family" | "catalogFamily" | "activationKind" | "compatibleWith" | "addonFor" | "capabilities"> | null | undefined, item?: { family: Family; activationKind?: string | null }): boolean {
+  if (!p) return !item || (item.activationKind != null ? !independentActivation(item.activationKind) : item.family !== "service");
+  if (p.family === "core_plan") return false;
+  if (p.compatibleWith.length > 0 || !!p.addonFor || (p.capabilities?.length ?? 0) > 0 || !independentActivation(p.activationKind)) return true;
+  return (p.catalogFamily ?? p.family) !== "service";
+}
+
+// `grantsOnPlatform` e `isEconomicOnly` viven en shared/economicSubscription.ts (las usa también el binario de Náyade)
+export { grantsOnPlatform, isEconomicOnly };
+
+/**
+ * Suscripciones VIVAS del circuito del SaaS de una empresa (las no canceladas que no son solo económicas), de la más
+ * reciente a la más antigua. Es lo que debe usar todo «la suscripción viva de la empresa».
+ */
+export async function saasSubscriptions(src: { list(f: { companyId: number }): Promise<Subscription[]>; items(id: number): Promise<SubscriptionItem[]> }, companyId: number, now: number): Promise<Subscription[]> {
+  const out: Subscription[] = [];
+  // Una suscripción enlazada a una plataforma es del SaaS aunque un acuerdo le haya dejado solo partidas económicas
+  for (const s of (await src.list({ companyId })).filter((x) => x.status !== "canceled")) if (s.tenantId || !isEconomicOnly(await src.items(s.id), now)) out.push(s);
+  return out;
 }
 
 /** Uso real de una métrica en la empresa (usuarios, sedes, almacenamiento); null = desconocido. */
@@ -157,10 +195,15 @@ export class SubscriptionService {
     state(legacyProductText(product.name, successor?.name ?? product.legacy.replacedBy));
   }
 
-  async checkComposition(items: Array<Pick<SubscriptionItem, "productKey" | "family">>) {
+  /**
+   * `planOptional` (solo los acuerdos de condiciones personalizadas): la composición puede no llevar plan Core si
+   * ninguno de sus productos depende de él según el catálogo (`needsCorePlan`). Las operaciones ordinarias de una
+   * suscripción siguen exigiendo exactamente un plan.
+   */
+  async checkComposition(items: Array<Pick<SubscriptionItem, "productKey" | "family"> & { activationKind?: string | null }>, o: { planOptional?: boolean } = {}) {
     const keys = new Set(items.map((i) => i.productKey));
     const plan = items.find((i) => i.family === "core_plan");
-    if (!plan) state("Una suscripción necesita exactamente un plan Core");
+    if (!plan && !o.planOptional) state("Una suscripción necesita exactamente un plan Core");
     if (items.filter((i) => i.family === "core_plan").length > 1) state("Solo puede haber un plan Core a la vez");
     const problems: string[] = [];
     // Lo incluido en un paquete cuenta como presente (igual que en el cotizador)
@@ -169,13 +212,15 @@ export class SubscriptionService {
     for (let n = 0; n < items.length; n++) {
       const i = items[n];
       const p = products[n];
+      // Sin plan: solo cabe lo que el catálogo no ata a Elephant Core (p. ej. un servicio puro)
+      if (!plan && needsCorePlan(p, i)) problems.push(`«${p?.name ?? i.productKey}» necesita un plan Core: añádelo al acuerdo`);
       if (!p) continue; // producto retirado del catálogo: la partida contratada sigue valiendo
       for (const dep of p.dependencies) if (!keys.has(dep)) problems.push(`«${p.name}» requiere «${dep}»`);
-      if (i.family !== "core_plan" && p.compatibleWith.length && !p.compatibleWith.includes(plan.productKey)) {
+      if (plan && i.family !== "core_plan" && p.compatibleWith.length && !p.compatibleWith.includes(plan.productKey)) {
         problems.push(`«${p.name}» no es compatible con el plan «${plan.productKey}»`);
       }
     }
-    if (problems.length) state(problems.join("; "), { problems });
+    if (problems.length) state(problems.join("; "), { problems, ...(plan ? {} : { reason: "core_plan_required" }) });
   }
 
   /** Contrato firmado o activo de la empresa cuya configuración (si la tiene) coincide con lo que se suscribe. */
@@ -262,6 +307,60 @@ export class SubscriptionService {
       },
       all,
       { kind: "created", before: null, after: { plan: plan.item.productKey, addons: addons.map((a) => a.item.productKey), interval: input.interval, currency }, reason: input.reason ?? null },
+    );
+  }
+
+  /**
+   * Alta de una suscripción SIN plan Core y sin partidas: solo para un paquete de condiciones personalizadas que no
+   * incluye ningún producto ligado a Elephant Core (p. ej. solo partidas a medida). Sus partidas las pone el acuerdo
+   * al activarse, desde el primer instante. No lleva plataforma (tenant), contrato ni prueba: es una suscripción
+   * puramente económica, ligada a la EMPRESA. No cobra nada (modo sombra).
+   */
+  async createWithoutPlan(
+    input: {
+      companyId: number;
+      interval: Interval;
+      currency?: string;
+      /**
+       * Fecha FUTURA en la que empieza el servicio (la de sus cuotas): hasta entonces la suscripción está en un periodo
+       * previo [ahora, fecha) sin cuotas (ahí caben los cargos únicos debidos al contratar) y desde ella sus periodos
+       * son meses (o años) de calendario de Europe/Madrid. Sin ella, empieza ahora, como cualquier suscripción.
+       */
+      serviceStartAt?: number;
+      reason?: string | null;
+    },
+    actor: string,
+  ): Promise<Subscription> {
+    const company = await this.d.crm.company(input.companyId);
+    if (!company) bad("La empresa no existe");
+    if (input.interval !== "month" && input.interval !== "year") bad("Periodicidad no válida");
+    const currency = (input.currency ?? "EUR").toUpperCase();
+    if (!/^[A-Z]{3}$/.test(currency)) bad("Moneda no válida");
+    const start = this.now();
+    const later = input.serviceStartAt !== undefined && input.serviceStartAt > start ? input.serviceStartAt : null;
+    const anchorDay = later !== null ? madridAnchor(later) : new Date(start).getUTCDate();
+    return this.d.store.create(
+      {
+        companyId: input.companyId,
+        contractId: null,
+        tenantId: null,
+        status: "active",
+        mode: "shadow",
+        currency,
+        interval: input.interval,
+        pendingInterval: null,
+        startedAt: later ?? start,
+        anchorDay,
+        currentPeriodStart: start,
+        currentPeriodEnd: later ?? periodEnd(start, input.interval, anchorDay),
+        trialEnd: null,
+        cancelAt: null,
+        canceledAt: null,
+        createdAt: this.now(),
+        createdBy: actor,
+      },
+      [],
+      { kind: "created", before: null, after: { plan: null, addons: [], interval: input.interval, currency, withoutPlan: true, ...(later !== null ? { serviceStartAt: later } : {}) }, reason: input.reason ?? null },
     );
   }
 
@@ -601,7 +700,15 @@ export class SubscriptionService {
       // Condiciones vigentes justo antes de cancelar (no las programadas que nunca llegaron a aplicarse)
       // Los servicios de pago único no vuelven; las cuotas recurrentes de un acuerdo (también las de partidas a medida), sí
       const lastActive = activeAt(items, (sub.canceledAt ?? 0) - 1).filter((i) => i.family !== "service" || isRecurring(i.priceKind));
-      if (!lastActive.some((i) => i.family === "core_plan")) state("No se encuentran las condiciones vigentes al cancelar");
+      // Una suscripción sin plan Core (acuerdo solo con partidas económicas) vuelve con las cuotas de su acuerdo
+      if (!lastActive.some((i) => i.family === "core_plan")) {
+        if (!lastActive.some((i) => i.termsId != null && isRecurring(i.priceKind))) state("No se encuentran las condiciones vigentes al cancelar");
+        // …pero no si el acuerdo tenía cuotas PROGRAMADAS de otras partidas que la cancelación dejó sin efecto: no se
+        // reactiva a medias (volverían unas y otras no)
+        const keys = new Set(lastActive.map((i) => i.productKey));
+        const dropped = items.filter((x) => x.termsId != null && isRecurring(x.priceKind) && x.effectiveFrom >= (sub.canceledAt ?? 0) && x.effectiveTo === x.effectiveFrom && !keys.has(x.productKey));
+        if (dropped.length) state("No se encuentran las condiciones vigentes al cancelar: el acuerdo tenía cuotas programadas que la cancelación dejó sin efecto. Prepara unas condiciones nuevas", { scheduled: dropped.map((x) => x.productKey) });
+      }
       const start = Math.max(this.now(), sub.canceledAt ?? 0);
       const anchorDay = new Date(start).getUTCDate();
       for (const i of lastActive) {
@@ -751,6 +858,11 @@ export class SubscriptionService {
     return this.d.store.list(f);
   }
 
+  /** Suscripciones vivas del circuito del SaaS de la empresa: sin las canceladas ni las solo económicas (`isEconomicOnly`). */
+  liveSaas(companyId: number): Promise<Subscription[]> {
+    return saasSubscriptions(this.d.store, companyId, this.now());
+  }
+
   offer() {
     return this.d.catalog.offer();
   }
@@ -806,9 +918,12 @@ export type { SubscriptionTx };
  *    contrate); después, el fin del periodo; null si no renueva (cancelada o con la baja programada);
  *  - `trialEndsAt`: el fin de la prueba (el mismo que la caducidad de sus licencias, que es lo que ve el tenant).
  */
-export function subscriptionEffective(sub: Pick<Subscription, "status" | "trialEnd" | "currentPeriodEnd" | "cancelAt">, now: number) {
+export function subscriptionEffective(sub: Pick<Subscription, "status" | "trialEnd" | "currentPeriodEnd" | "cancelAt"> & Partial<Pick<Subscription, "startedAt">>, now: number) {
   const trial = sub.status === "trialing";
   const status: Subscription["status"] | "trial_expired" = trial && sub.trialEnd !== null && sub.trialEnd <= now ? "trial_expired" : sub.status;
   const nextRenewalAt = sub.status === "canceled" || sub.cancelAt ? null : trial ? sub.trialEnd : sub.currentPeriodEnd;
-  return { status, nextRenewalAt, trialEndsAt: trial ? sub.trialEnd : null, timeZone: "Europe/Madrid" as const };
+  // Suscripción económica con fecha de inicio futura: contratada, pero su servicio (y su primera cuota) empieza en
+  // `startsAt`. El estado guardado no cambia; quien la pinta la muestra como «programada, empieza el…»
+  const startsAt = sub.status === "active" && sub.startedAt !== undefined && sub.startedAt > now ? sub.startedAt : null;
+  return { status, nextRenewalAt, trialEndsAt: trial ? sub.trialEnd : null, startsAt, timeZone: "Europe/Madrid" as const };
 }

@@ -35,7 +35,7 @@ export interface Subscription {
   interval: Interval;
   pendingInterval: Interval | null;
   startedAt: number;
-  /** Día del mes (UTC) de anclaje de las renovaciones. */
+  /** Día del mes (UTC) de anclaje de las renovaciones. Negativo = ese día en calendario de Europe/Madrid (`madridAnchor`). */
   anchorDay: number;
   currentPeriodStart: number;
   currentPeriodEnd: number;

@@ -31,6 +31,9 @@
  *   aplican en la siguiente ocasión en que se calcula la facturación de la suscripción; no hay todavía una tarea
  *   periódica que lo haga a la hora exacta.
  * - No toca Stripe ni cobra nada.
+ * - Una suscripción SOLO ECONÓMICA (sin plataforma y sin ninguna partida viva o programada que conceda algo en la
+ *   plataforma: solo partidas a medida y servicios puros del catálogo) no tiene licencias: resultado `not_applicable`, sin anotaciones «pendiente de
+ *   plataforma», sin enlazarla a la plataforma que la empresa pueda tener por otro motivo y sin reintentos.
  *
  * Interruptor: la aplicación AUTOMÁTICA viene encendida y se apaga con `CP_CUSTOM_TERMS_AUTO_LICENCES=0`. Apagada, el
  * enlace de la plataforma y la aplicación siguen disponibles a mano.
@@ -42,7 +45,7 @@ import { opsLog } from "../_core/ops/log";
 import type { CapabilityChange, CapabilityStore } from "../_core/capabilities/store";
 import type { LimitChange, LimitMetric, TenantLimitReader } from "../_core/limits/store";
 import type { LicencePlan, LicensingService } from "../licensing/service";
-import type { SubscriptionService } from "../subscriptions/service";
+import { isEconomicOnly, type SubscriptionService } from "../subscriptions/service";
 import type { SubscriptionStore } from "../subscriptions/store";
 import { requireCustomPricing } from "./permission";
 import { TermsError } from "./service";
@@ -61,6 +64,8 @@ type ContractedLimit = { metric: LimitMetric; limit: number | null };
 const METRIC_LABEL: Record<LimitMetric, string> = { users: "usuarios", sites: "sedes", storage_gb: "almacenamiento (GB)" };
 /** El resultado ya registra los límites (los acuerdos aplicados antes de que la automática los fijara, no). */
 const recordsLimits = (after: unknown) => !!after && typeof after === "object" && "limits" in after;
+
+const NO_LICENCES_MESSAGE = "El acuerdo es solo económico (partidas a medida o servicios que no dependen de Elephant Core): no concede licencias ni límites y no necesita plataforma";
 
 const LICENCE_EVENTS = ["licences_applied", "licences_pending", "licences_failed"];
 
@@ -92,6 +97,16 @@ export class TermsLicences {
     const live = (await this.d.subscriptionStore.items(subscriptionId)).filter((i) => i.termsId != null && (i.effectiveTo === null || (i.effectiveTo > now && i.effectiveTo > i.effectiveFrom)));
     const current = live.filter((i) => i.effectiveFrom <= now);
     return (current.length ? current : live).map((i) => i.termsId!).sort((a, b) => b - a)[0] ?? null;
+  }
+
+  /**
+   * Suscripción solo económica (`isEconomicOnly`: ninguna partida viva o programada concede nada en la plataforma;
+   * solo partidas a medida y servicios puros del catálogo) y nunca enlazada a una plataforma. No hay nada que conceder
+   * ni que retirar. Si llegó a tener plataforma, sigue el circuito normal (retira lo suyo).
+   */
+  private async economicOnly(sub: { id: number; tenantId: string | null }): Promise<boolean> {
+    if (sub.tenantId) return false;
+    return isEconomicOnly(await this.d.subscriptionStore.items(sub.id), this.now());
   }
 
   private event(kind: string, actor: string, reason: string, after: unknown, result: string): TermsEventDraft {
@@ -143,7 +158,9 @@ export class TermsLicences {
     // Otra suscripción viva (también en prueba) de la empresa en la MISMA plataforma: aunque no haya escrito su fila
     // (sin fila, la empresa aplica lo incluido en su plan), una métrica sin dueño no se da por propia
     const sub = contracted.length ? await this.d.subscriptionStore.get(subscriptionId) : null;
-    const sibling = sub ? (await this.d.subscriptionStore.list({ companyId: sub.companyId })).some((s) => s.id !== subscriptionId && s.status !== "canceled" && s.tenantId === tenantId) : false;
+    // Otra suscripción viva enlazada a ESTA plataforma. Una solo económica nunca se enlaza, y una enlazada es del SaaS
+    // aunque un acuerdo la haya dejado sin plan (shared/economicSubscription.ts)
+    const sibling = !!sub && (await this.d.subscriptionStore.list({ companyId: sub.companyId })).some((x) => x.id !== subscriptionId && x.status !== "canceled" && x.tenantId === tenantId);
     for (const want of contracted) {
       const cur = rows.find((r) => r.metric === want.metric);
       if (cur && cur.source !== own) {
@@ -181,6 +198,8 @@ export class TermsLicences {
     if (!sub) throw new TermsError("not_found", "Suscripción no encontrada");
     const termsId = await this.owner(subscriptionId);
     if (termsId === null) return { status: "not_applicable", message: "La suscripción no tiene condiciones comerciales personalizadas vigentes" };
+    // Solo partidas a medida: ni licencias ni plataforma (tampoco a mano: no hay nada que aplicar)
+    if (await this.economicOnly(sub)) return { status: "not_applicable", message: NO_LICENCES_MESSAGE };
     if (!this.d.auto && !o.force) return { status: "manual", message: "La aplicación automática de licencias está apagada: aplícalas desde el CRM" };
     // Las licencias de una prueba gratuita las gobierna su propio circuito (caducidad, solo lectura al vencer)
     if (sub.status === "trialing") return { status: "manual", message: "La suscripción está en periodo de prueba: sus licencias las gobierna la prueba gratuita; se aplicarán las del acuerdo cuando termine la prueba" };
@@ -252,6 +271,8 @@ export class TermsLicences {
     try {
       const termsId = await this.owner(subscriptionId);
       if (termsId === null) return;
+      const sub = await this.d.subscriptionStore.get(subscriptionId);
+      if (!sub || (await this.economicOnly(sub))) return;
       const last = await this.last(subscriptionId);
       if (last && last.kind === "licences_applied") {
         // Aplicadas: solo se repite si desde entonces ha entrado o salido alguna partida por FECHA (un acuerdo
@@ -290,7 +311,9 @@ export class TermsLicences {
     const sub = await this.d.subscriptionStore.get(subscriptionId);
     if (!sub) throw new TermsError("not_found", "Suscripción no encontrada");
     const termsId = await this.owner(subscriptionId);
-    const tenantId = sub.tenantId ?? (await this.d.companyTenant(sub.companyId).catch(() => null));
+    // Solo económica: no se le busca plataforma (la que la empresa tenga por otro motivo no es la suya)
+    const applicable = termsId === null || !(await this.economicOnly(sub));
+    const tenantId = sub.tenantId ?? (applicable ? await this.d.companyTenant(sub.companyId).catch(() => null) : null);
     const last = termsId !== null ? await this.last(subscriptionId) : null;
     let plan: { capabilities: string[]; pending: number; skipped: SkippedCapability[]; limits: { contracted: ContractedLimit[]; pending: ContractedLimit[]; skipped: SkippedLimit[] } | null } | null = null;
     if (tenantId && sub.tenantId) {
@@ -308,12 +331,14 @@ export class TermsLicences {
     }
     return {
       automatic: this.d.auto,
+      /** false = suscripción solo económica: no hay licencias que aplicar ni plataforma que dar de alta. */
+      applicable,
       termsId,
       tenantId,
       linked: !!sub.tenantId,
       last: last ? { kind: last.kind, at: last.createdAt, actor: last.actor, message: last.reason, detail: last.after } : null,
       plan,
-      note: "Las licencias y los límites (usuarios, sedes, almacenamiento) salen de los productos del catálogo incluidos en el acuerdo y de sus unidades, no del importe. Una partida a medida no concede nada.",
+      note: applicable ? "Las licencias y los límites (usuarios, sedes, almacenamiento) salen de los productos del catálogo incluidos en el acuerdo y de sus unidades, no del importe. Una partida a medida no concede nada." : `${NO_LICENCES_MESSAGE}.`,
     };
   }
 }

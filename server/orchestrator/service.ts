@@ -304,7 +304,8 @@ export class CommercialOrchestrator {
       if (!["active", "expired", "suspended"].includes(t.state) || !t.tenantId) throw new OrderError("invalid_state", `La prueba está en «${t.state}»: no se puede convertir`);
       const company = (await this.d.crmStore.list("companies", { tenantId: t.tenantId }, { limit: 1 }))[0];
       if (!company) throw new OrderError("invalid_state", "No se encuentra la empresa de la prueba");
-      const sub = (await this.d.subscriptions.list({ companyId: company.id })).find((s) => s.status !== "canceled");
+      // La del circuito del SaaS: una suscripción solo económica de la empresa (sin plan) no es la de la prueba
+      const sub = (await this.d.subscriptions.liveSaas(company.id))[0];
       if (!sub) throw new OrderError("invalid_state", "La prueba no tiene suscripción");
       const request = input.request ?? { plan: t.configuration.plan ?? "essential", interval: input.interval ?? "month", items: t.configuration.addons.map((key) => ({ key })) };
       return { kind: "trial_conversion", companyId: company.id, request, subscriptionId: sub.id, tenantId: t.tenantId, kept: t.configuration.addons };
@@ -327,7 +328,8 @@ export class CommercialOrchestrator {
       if (!(await this.d.crmStore.get("companies", companyId))) throw new OrderError("not_found", "Empresa no encontrada");
       if (request === undefined) throw new OrderError("invalid_input", "Indica la configuración a contratar");
     }
-    const live = (await this.d.subscriptions.list({ companyId })).find((s) => s.status !== "canceled");
+    // Una suscripción solo económica (acuerdo de partidas a medida, sin plan) no impide contratar el SaaS
+    const live = (await this.d.subscriptions.liveSaas(companyId))[0];
     if (live) throw new OrderError("conflict", "La empresa ya tiene una suscripción viva: usa un cambio de plan o la conversión de su prueba");
     return { kind: "new", companyId, request, subscriptionId: null, tenantId: null };
   }

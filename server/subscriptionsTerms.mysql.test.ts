@@ -168,6 +168,44 @@ describe.skipIf(!URL_)("condiciones personalizadas con MySQL real", () => {
     expect(all.events.find((e) => e.kind === "activated")!.economic).toMatchObject({ before: { recurringNetCents: 2900 } });
   });
 
+  it("paquete solo con una partida a medida: suscripción sin plan ni plataforma, 44,63 € + 21 % = 54,00 € y renovación", async () => {
+    const before = clock;
+    const draft = await terms.createPackage(2, { pricingMode: "per_item", presentation: "breakdown", interval: "month", reason: "Solo costes de infraestructura", lines: [{ kind: "custom", concept: "other", name: "Costes de infraestructura", chargeClass: "recurring", unitCents: 4463, taxRateBp: 2100 }] }, A);
+    const out = await terms.prepareContracting(draft.id, { expectedRevision: draft.revision }, A);
+    expect(out.terms).toMatchObject({ status: "active", effectiveFrom: clock });
+    const [subRows] = await pool.query<mysql.RowDataPacket[]>("SELECT * FROM subscriptions WHERE id = ?", [out.subscription.id]);
+    expect(subRows).toHaveLength(1);
+    expect(out.subscription).toMatchObject({ companyId: 2, tenantId: null, contractId: null, status: "active", interval: "month", currency: "EUR", currentPeriodStart: clock });
+    const [rows] = await pool.query<mysql.RowDataPacket[]>("SELECT product_key, family, activation_kind, price_id, price_kind, line_amount_cents, tax_rate_bp, terms_id FROM subscription_items WHERE subscription_id = ?", [out.subscription.id]);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({ family: "service", activation_kind: "none", price_id: null, price_kind: "monthly" });
+    expect(String(rows[0].product_key)).toMatch(/^custom:/);
+    expect([Number(rows[0].line_amount_cents), Number(rows[0].tax_rate_bp), Number(rows[0].terms_id)]).toEqual([4463, 2100, out.terms.id]);
+    const first = (await shadow.simulateCurrent(out.subscription.id, "system:test")).results.map((r) => r.invoice);
+    expect(first.map((i) => [i.kind, i.periodStart, i.subtotalCents, i.taxCents, i.totalCents])).toEqual([["renewal", clock, 4463, 937, 5400]]);
+    clock = out.subscription.currentPeriodEnd + 1000;
+    await subs.applyRenewals(out.subscription.id, "system:test");
+    expect((await shadow.simulateCurrent(out.subscription.id, "system:test")).results.map((r) => [r.invoice.kind, r.invoice.periodStart, r.invoice.totalCents])).toEqual([["renewal", out.subscription.currentPeriodEnd, 5400]]);
+    clock = before;
+  });
+
+  it("paquete económico con fecha de inicio (1 de diciembre, 00:00 de Madrid): el anclaje de calendario de Madrid se guarda y renueva por meses naturales", async () => {
+    const before = clock;
+    const DEC1 = Date.UTC(2026, 10, 30, 23);
+    const JAN1 = Date.UTC(2026, 11, 31, 23);
+    const draft = await terms.createPackage(2, { pricingMode: "per_item", presentation: "breakdown", interval: "month", reason: "Solo costes de infraestructura", lines: [{ kind: "custom", concept: "other", name: "Costes de infraestructura", chargeClass: "recurring", unitCents: 4463, taxRateBp: 2100, startsAt: DEC1 }] }, A);
+    const out = await terms.prepareContracting(draft.id, { expectedRevision: draft.revision }, A);
+    const sid = out.subscription.id;
+    const [rows] = await pool.query<mysql.RowDataPacket[]>("SELECT anchor_day, started_at, current_period_start, current_period_end, tenant_id FROM subscriptions WHERE id = ?", [sid]);
+    expect([Number(rows[0].anchor_day), Number(rows[0].started_at), Number(rows[0].current_period_start), Number(rows[0].current_period_end), rows[0].tenant_id]).toEqual([-1, DEC1, clock, DEC1, null]);
+    expect((await store.get(sid))!.anchorDay).toBe(-1);
+    expect((await shadow.simulateCurrent(sid, "system:test")).results).toEqual([]);
+    clock = DEC1 + 1000;
+    await subs.applyRenewals(sid, "system:test");
+    expect((await shadow.simulateCurrent(sid, "system:test")).results.map((r) => [r.invoice.kind, r.invoice.periodStart, r.invoice.periodEnd, r.invoice.totalCents])).toEqual([["renewal", DEC1, JAN1, 5400]]);
+    clock = before;
+  });
+
   it("el esquema rechaza una partida a medida con producto y una cuota global incoherente", async () => {
     const [t] = await pool.query<mysql.RowDataPacket[]>("SELECT id FROM commercial_terms ORDER BY id LIMIT 1");
     await expect(
