@@ -1,10 +1,13 @@
 /**
  * Cobro en Stripe de una suscripción con condiciones comerciales personalizadas (fase 4). APAGADO por defecto.
  *
- * El importe negociado es la fuente económica efectiva. Lo que se envía a Stripe es lo que la suscripción tiene HOY:
- * sus partidas recurrentes vigentes (las mismas que factura la simulación, con su importe neto del periodo y su tipo
- * de impuesto) y los importes únicos ya vencidos. Se planifica por SUSCRIPCIÓN, no por acuerdo: un acuerdo programado
- * no cambia lo que se cobra hoy, y al vencer una condición temporal se envía lo que rige después.
+ * El importe negociado es la fuente económica efectiva. Lo que se envía a Stripe es lo que la suscripción tiene HOY
+ * (sus partidas recurrentes vigentes, las mismas que factura la simulación, con su importe neto del periodo y su tipo
+ * de impuesto, y los importes únicos ya vencidos) o, a menos de `LOOKAHEAD_MS` de la renovación de Stripe, lo que
+ * regirá en ella: Stripe factura por adelantado en `current_period_end` con lo que tiene en ese instante (`target`).
+ * Se planifica por SUSCRIPCIÓN, no por acuerdo: un acuerdo programado no cambia lo que se cobra hoy, y al vencer una
+ * condición temporal se envía lo que rige después. Cuota 0 → cobro en pausa con su reanudación; condiciones que
+ * terminan sin sucesor → fin en Stripe en su fecha.
  *  - No se tocan los Products ni los Prices oficiales de Stripe que usan otros clientes, ni se crean productos públicos
  *    por cada negociación: las partidas viajan como precio en línea de ESA suscripción (`NegotiatedBillingGateway`).
  *  - Las partidas recurrentes se comparan siempre con lo que Stripe tiene: si coinciden no se envía nada; si no (cambio
