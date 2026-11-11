@@ -12,6 +12,7 @@ import { seedElephantSource } from "./catalog/seed";
 import { quoteCatalogFromSite } from "./catalog/snapshot";
 import { MemoryCapabilityStore } from "./_core/capabilities/store";
 import { MemoryTenantLimitStore } from "./_core/limits/store";
+import { MemoryCommercialEventLog } from "./commercialEvents/log";
 import { LicensingService } from "./licensing/service";
 import { TPV_ACQUIRED_RIGHTS_CAPABILITY, TPV_ACQUIRED_RIGHTS_SOURCE } from "./licensing/tpvAcquiredRights";
 import { catalogFromWebStore, type CrmPort } from "./subscriptions/ports";
@@ -33,6 +34,8 @@ let subs: SubscriptionService;
 let caps: MemoryCapabilityStore;
 let licensing: LicensingService;
 let limits: MemoryTenantLimitStore;
+let ledger: MemoryCommercialEventLog;
+let licensingCatalog: () => Promise<ReturnType<typeof quoteCatalogFromSite>>;
 let tenants: Map<number, string>;
 let P: Record<string, number>;
 
@@ -55,7 +58,9 @@ beforeEach(async () => {
   subs = new SubscriptionService({ store, catalog: catalogFromWebStore(webStore), crm, now: () => clock });
   caps = new MemoryCapabilityStore();
   limits = new MemoryTenantLimitStore();
-  licensing = new LicensingService({ capabilities: caps, subscriptions: store, crm, catalog: async () => quoteCatalogFromSite(await web.site("published")), now: () => clock, limits });
+  ledger = new MemoryCommercialEventLog();
+  licensingCatalog = async () => quoteCatalogFromSite(await web.site("published"));
+  licensing = new LicensingService({ capabilities: caps, subscriptions: store, crm, catalog: licensingCatalog, now: () => clock, limits, events: ledger });
   tenants = new Map();
 });
 
@@ -328,6 +333,12 @@ describe("límites y cupos: se fijan solos con el acuerdo (plan + ampliaciones)"
       { metric: "sites", to: 1 },
       { metric: "storage_gb", to: 15 },
     ]);
+    // Un evento comercial por límite cambiado, igual que con «Aplicar licencias»
+    expect((await ledger.list({ subscriptionId: a.subId, types: ["entitlement.limit_changed"] })).map((e) => [e.tenantId, e.actor, e.data])).toEqual([
+      ["acme", A, { metric: "users", from: null, to: 5 }],
+      ["acme", A, { metric: "sites", from: null, to: 1 }],
+      ["acme", A, { metric: "storage_gb", from: null, to: 15 }],
+    ]);
     // Nada pendiente para el CRM
     expect(await a.licences.status(a.subId)).toMatchObject({ plan: { pending: 0, skipped: [], limits: { contracted: [{ metric: "users", limit: 5 }, { metric: "sites", limit: 1 }, { metric: "storage_gb", limit: 15 }], pending: [], skipped: [] } } });
     // Idempotente: ni a mano ni en la siguiente ocasión cambia nada ni añade ruido
@@ -408,6 +419,46 @@ describe("límites y cupos: se fijan solos con el acuerdo (plan + ampliaciones)"
     expect(out).toMatchObject({ status: "applied", limits: [{ metric: "users", from: 4, to: 5 }], limitsSkipped: [{ metric: "storage_gb", why: "other_source" }] });
     const own = `subscription:${a.subId}`;
     expect(await limitsOf("acme")).toEqual({ users: [5, own], sites: [1, own], storage_gb: [50, "operator"] });
+  });
+
+  it("sin filas pero con otra suscripción viva en la misma plataforma: no se escribe ningún límite y queda anotado", async () => {
+    // Suscripción A (Essential + 4 usuarios = 7) cuyas licencias se aplicaron SIN registro de límites: 0 filas
+    const noLimits = new LicensingService({ capabilities: caps, subscriptions: store, crm, catalog: licensingCatalog, now: () => clock });
+    const other = await subs.create({ companyId: 1, tenantId: "acme", interval: "month", plan: { productKey: "essential", priceId: P.essential }, addons: [{ productKey: "addon-user-essential", priceId: P["addon-user-essential"], quantity: 4 }] }, A);
+    await noLimits.apply(other.id, { activate: true, actor: A });
+    expect(await limits.limits("acme")).toEqual([]);
+    // Acuerdo en otra suscripción B de la misma empresa y plataforma (solo Essential): B no debe dejar el tope en 3
+    const b = await contracted(1, "acme", PACKAGE({ globalAmountCents: 2900, lines: [cat("essential")] }));
+    expect(await limits.limits("acme")).toEqual([]);
+    const all = [{ metric: "users", why: "other_subscription" }, { metric: "sites", why: "other_subscription" }, { metric: "storage_gb", why: "other_subscription" }];
+    const ev = (await termsStore.events({ termsId: b.termsId })).find((e) => e.kind === "licences_applied")!;
+    expect(ev.after).toMatchObject({ limits: [], limitsSkipped: all });
+    expect(await b.licences.status(b.subId)).toMatchObject({ plan: { pending: 0, limits: { pending: [], skipped: all } } });
+    // Ni a mano desde las condiciones, ni en la siguiente ocasión
+    expect(await b.licences.ensure(b.subId, A, { force: true })).toMatchObject({ status: "applied", limits: [], limitsSkipped: all });
+    await b.licences.retryIfPending(b.subId);
+    expect(await limits.limits("acme")).toEqual([]);
+    expect(await ledger.list({ subscriptionId: b.subId, types: ["entitlement.limit_changed"] })).toEqual([]);
+    // Una suscripción de la empresa en OTRA plataforma no cuenta
+    const c = await contracted(1, "acme-dos", EXTENDED());
+    expect(values(await limitsOf("acme-dos"))).toEqual({ users: 5, sites: 1, storage_gb: 15 });
+    expect(c.subId).not.toBe(b.subId);
+  });
+
+  it("una prueba gratuita viva en la misma plataforma, sin filas: otra suscripción con acuerdo no le escribe límites", async () => {
+    const trial = await subs.create({ companyId: 1, tenantId: "acme", interval: "month", trialDays: 15, plan: { productKey: "essential", priceId: P.essential } }, A);
+    expect((await subs.must(trial.id)).status).toBe("trialing");
+    const b = await contracted(1, "acme", EXTENDED());
+    expect(await limits.limits("acme")).toEqual([]);
+    expect(await b.licences.status(b.subId)).toMatchObject({ plan: { pending: 0, limits: { pending: [], skipped: [{ metric: "users", why: "other_subscription" }, { metric: "sites", why: "other_subscription" }, { metric: "storage_gb", why: "other_subscription" }] } } });
+    // Terminada (cancelada) la prueba, la del acuerdo ya puede fijarlos
+    await subs.scheduleCancel(trial.id, { reason: "Fin de la prueba sin conversión" }, (await subs.must(trial.id)).version, A);
+    clock = Math.max((await subs.must(trial.id)).currentPeriodEnd, (await subs.must(trial.id)).trialEnd ?? 0) + 1000;
+    await subs.applyRenewals(trial.id, "system:test");
+    expect((await subs.must(trial.id)).status).toBe("canceled");
+    await subs.applyRenewals(b.subId, "system:test");
+    expect(await b.licences.ensure(b.subId, A, { force: true })).toMatchObject({ status: "applied", limitsSkipped: [] });
+    expect(values(await limitsOf("acme"))).toEqual({ users: 5, sites: 1, storage_gb: 15 });
   });
 
   it("con la automática apagada no se fijan solos; a mano, sí. Sin registro de límites, solo capacidades", async () => {

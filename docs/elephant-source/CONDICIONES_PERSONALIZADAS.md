@@ -154,7 +154,7 @@ calcula el servicio de licencias de siempre (`LicensingService.preview`), con or
   «Aplicar licencias». Ver el apartado siguiente.
 - **Una suscripción en prueba no se toca:** sus licencias las gobierna la prueba gratuita.
 - **Nunca retroactivo:** un acuerdo activado antes de existir esta función no recibe nada solo; sí al dar de alta la
-  plataforma de su empresa o a mano.
+  plataforma de su empresa o a mano. Única excepción: la puesta al día de los límites (ver más abajo).
 
 - **Cuándo se aplican solas:** al entrar en vigor un acuerdo (activación directa o aceptación del cliente), al
   resolverse el fin de una condición temporal y cuando la empresa recibe su plataforma desde el CRM (alta en la
@@ -197,8 +197,10 @@ calcula el servicio de licencias de siempre (`LicensingService.preview`), con or
   una partida a medida («10 usuarios adicionales» de texto libre) lo amplía.
 - **Cuándo:** en las mismas ocasiones que las capacidades (activación o aceptación del acuerdo, fin de una condición
   temporal, alta de la plataforma de la empresa, reintento al registrar la simulación de un periodo) y justo después de
-  ellas. Si un acuerdo nuevo retira o reduce una ampliación, el límite baja con él; si la añade, sube. Un acuerdo
-  programado no adelanta sus ampliaciones.
+  ellas. Si **otro acuerdo sustituye** al vigente retirando o reduciendo una ampliación, el límite baja con él; si la
+  añade, sube. Un acuerdo programado no adelanta sus ampliaciones. Si el acuerdo simplemente **termina sin partidas
+  posteriores** (la suscripción deja de tener condiciones personalizadas vigentes), no hay nada que aplicar: las
+  capacidades y los límites se quedan como estaban hasta que alguien aplique las licencias de la suscripción.
 - **Cómo se escriben:** con origen `subscription:<id>`, solo lo que cambia (idempotente), y un evento comercial
   `entitlement.limit_changed` por cada límite que cambia, igual que «Aplicar licencias». Los cambios quedan además en
   el historial del acuerdo (`licences_applied`, campo `limits`).
@@ -206,8 +208,13 @@ calcula el servicio de licencias de siempre (`LicensingService.preview`), con or
   - Las **excepciones de cupo** que concede un operador (registro 0016) viven aparte del límite contratado y siguen
     aplicándose por encima de él: aquí no se leen ni se escriben.
   - Un límite que hoy pertenece a **otra suscripción viva** de la misma empresa, o a **otro origen**, no se toca: queda
-    anotado (`limitsSkipped`) para un operador. Si esa otra suscripción está cancelada (o ya no existe), la del
-    acuerdo releva el límite. Esta es la única diferencia con «Aplicar licencias» de la ficha
+    anotado (`limitsSkipped`, motivo `other_source`) para un operador. Si esa otra suscripción está cancelada (o ya no
+    existe), la del acuerdo releva el límite.
+  - Una métrica **sin fila** (o con la de una suscripción ya cancelada) tampoco se escribe si la empresa tiene **otra
+    suscripción viva, también en prueba, enlazada a la misma plataforma**: sin fila, la empresa aplica lo incluido en
+    su plan, y esa otra suscripción puede tener más contratado sin haberlo escrito. Queda anotado (`limitsSkipped`,
+    motivo `other_subscription`) y lo resuelve un operador con «Aplicar licencias» de la suscripción que corresponda.
+  - Estas dos cautelas son la única diferencia con «Aplicar licencias» de la ficha
     (`POST /subscriptions/:id/licences/apply`), que escribe siempre los límites de la suscripción que se le indica.
   - **Una suscripción en prueba** o **cancelada** no cambia límites por esta vía.
 - **Sin registro de límites** (migración 0013 del registro sin aplicar): se aplican las capacidades y los límites no
@@ -217,6 +224,12 @@ calcula el servicio de licencias de siempre (`LicensingService.preview`), con or
   acuerdo anterior a la aplicación automática sigue sin recibir nada solo.
 - **Fallos:** si la escritura de los límites falla, queda `licences_failed` y se reintenta (las capacidades, ya
   aplicadas, no se repiten).
+- **Complemento fuera del catálogo publicado:** si el plan sigue publicado pero un complemento contratado deja de
+  estarlo (retirado o con la clave cambiada), su ampliación suma 0 y el límite baja a lo incluido en el plan. Ya ocurría
+  con «Aplicar licencias»; ahora ocurre sin una persona delante. Riesgo conocido.
+- **Dos aplicaciones simultáneas** (p. ej. aceptación y registro de una simulación a la vez) sobre una empresa sin
+  filas pueden interbloquearse en MySQL: la que pierde anota `licences_failed` y el siguiente reintento lo corrige.
+  No deja valores erróneos.
 - **No se comprueba el uso:** si un acuerdo reduce las ampliaciones por debajo de lo que la empresa usa, el límite
   baja igualmente (como con «Aplicar licencias»). La comprobación de uso de la ficha solo existe al reducir una
   ampliación de una suscripción ordinaria; en un acuerdo la decide quien lo activa.

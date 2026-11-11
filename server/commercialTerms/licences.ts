@@ -13,13 +13,16 @@
  * - LÍMITES Y CUPOS (usuarios, sedes, almacenamiento): se fijan a la vez que las capacidades, con el mismo cálculo que
  *   las licencias de cualquier suscripción (`LicensingService.limitsFor`): lo incluido en el PLAN vigente del acuerdo
  *   (con su herencia) más las AMPLIACIONES vigentes (unidades × paso de cada complemento). Tampoco aquí interviene el
- *   importe. Se escriben con origen `subscription:<id>` y un evento `entitlement.limit_changed` por cambio. Si un
- *   acuerdo retira una ampliación, el límite baja con ella. Un límite que hoy pertenece a OTRA suscripción viva de la
- *   empresa (o a otro origen) no se toca: queda anotado. Las excepciones de cupo de un operador viven aparte y siguen
- *   por encima del límite contratado: no se pisan.
+ *   importe. Se escriben con origen `subscription:<id>` y un evento `entitlement.limit_changed` por cambio. Si OTRO
+ *   acuerdo sustituye al vigente sin una ampliación, el límite baja con ella; si el acuerdo simplemente termina sin
+ *   partidas posteriores, no hay nada que aplicar y los límites se quedan como estaban. Un límite que hoy pertenece a
+ *   OTRA suscripción viva de la empresa (o a otro origen) no se toca, y tampoco se escribe uno sin dueño si hay otra
+ *   suscripción viva (también en prueba) en la misma plataforma: queda anotado. Las excepciones de cupo de un operador
+ *   viven aparte y siguen por encima del límite contratado: no se pisan.
  * - Una suscripción EN PRUEBA no se toca: sus licencias las gobierna el circuito de la prueba gratuita.
  * - Nunca retroactivo: un acuerdo activado antes de existir esta función no recibe nada solo (sí al dar de alta la
- *   plataforma de su empresa o a mano).
+ *   plataforma de su empresa o a mano). Única excepción, la PUESTA AL DÍA de los límites: una suscripción cuyas
+ *   licencias ya aplicó esta función antes de que fijara los límites los recibe una sola vez en la siguiente ocasión.
  * - Idempotente: repetirlo no cambia nada si ya está aplicado.
  * - Sin plataforma no hay dónde aplicar: queda «pendiente de plataforma» en el historial y se aplica al enlazarla. La
  *   suscripción toma la plataforma de SU empresa (enlace auditable en su historial).
@@ -52,7 +55,8 @@ export type LicenceOutcome =
   | { status: "failed"; tenantId: string | null; error: string };
 
 type SkippedCapability = { capabilityId: string; why: "other_source" | "suspended" | "read_only" };
-type SkippedLimit = { metric: LimitMetric; why: "other_source" };
+/** `other_source`: la fila es de otra suscripción viva o de otro origen. `other_subscription`: sin fila propia y hay otra suscripción viva en la plataforma. */
+type SkippedLimit = { metric: LimitMetric; why: "other_source" | "other_subscription" };
 type ContractedLimit = { metric: LimitMetric; limit: number | null };
 const METRIC_LABEL: Record<LimitMetric, string> = { users: "usuarios", sites: "sedes", storage_gb: "almacenamiento (GB)" };
 /** El resultado ya registra los límites (los acuerdos aplicados antes de que la automática los fijara, no). */
@@ -122,9 +126,11 @@ export class TermsLicences {
 
   /**
    * Límites que corresponden a la suscripción (plan + ampliaciones vigentes) frente a los que tiene hoy la empresa.
-   * `mine`: métricas que esta suscripción puede fijar (sin fila, propias, o de una suscripción ya cancelada o
-   * inexistente); `pending`: las de `mine` cuyo valor cambiaría; `skipped`: las que pertenecen a otra suscripción
-   * viva o a otro origen y tienen otro valor. null sin registro de límites. Solo lectura.
+   * `mine`: métricas que esta suscripción puede fijar (propias; o sin fila o de una suscripción ya cancelada o
+   * inexistente, siempre que no haya OTRA suscripción viva de la empresa en la misma plataforma); `pending`: las de
+   * `mine` cuyo valor cambiaría; `skipped`: las que pertenecen a otra suscripción viva o a otro origen y tienen otro
+   * valor (`other_source`) y las que no tienen dueño habiendo otra suscripción viva en la plataforma
+   * (`other_subscription`). null sin registro de límites. Solo lectura.
    */
   private async limitPlan(subscriptionId: number, tenantId: string): Promise<{ contracted: ContractedLimit[]; mine: LimitMetric[]; pending: ContractedLimit[]; skipped: SkippedLimit[] } | null> {
     if (!this.d.limits) return null;
@@ -134,6 +140,10 @@ export class TermsLicences {
     const mine: LimitMetric[] = [];
     const pending: ContractedLimit[] = [];
     const skipped: SkippedLimit[] = [];
+    // Otra suscripción viva (también en prueba) de la empresa en la MISMA plataforma: aunque no haya escrito su fila
+    // (sin fila, la empresa aplica lo incluido en su plan), una métrica sin dueño no se da por propia
+    const sub = contracted.length ? await this.d.subscriptionStore.get(subscriptionId) : null;
+    const sibling = sub ? (await this.d.subscriptionStore.list({ companyId: sub.companyId })).some((s) => s.id !== subscriptionId && s.status !== "canceled" && s.tenantId === tenantId) : false;
     for (const want of contracted) {
       const cur = rows.find((r) => r.metric === want.metric);
       if (cur && cur.source !== own) {
@@ -144,6 +154,11 @@ export class TermsLicences {
           if (cur.limit !== want.limit) skipped.push({ metric: want.metric, why: "other_source" });
           continue;
         }
+      }
+      if ((!cur || cur.source !== own) && sibling) {
+        // Sin fila (o con la de una suscripción ya cancelada) y con otra suscripción viva en la plataforma: no se escribe
+        if (!cur || cur.limit !== want.limit) skipped.push({ metric: want.metric, why: "other_subscription" });
+        continue;
       }
       mine.push(want.metric);
       if (!cur || cur.limit !== want.limit) pending.push(want);
