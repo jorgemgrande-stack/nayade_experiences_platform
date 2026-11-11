@@ -28,12 +28,15 @@ import type { NegotiatedCheckoutInput, NegotiatedItemsChange, StripeGateway } fr
 import { StripeReconciler } from "./stripe/reconcile";
 import { MemoryStripeStore } from "./stripe/store";
 import { FakeStripeGateway } from "./stripe/testing";
+import { addMonthsUTC, madridAnchor } from "./subscriptions/pricing";
 import type { EligibilityConfig } from "./stripe/eligibility";
 
 const A = "operator:ana";
 const NS = "local";
 const T0 = Date.UTC(2026, 10, 1, 10);
 const DAY = 86_400_000;
+/** Como Stripe: periodos de meses de calendario UTC con el día del ancla. */
+const month = (ts: number, n = 1) => addMonthsUTC(ts, n);
 const crm: CrmPort = { company: async (id) => ({ id, name: `Empresa ${id}` }), contract: async () => null };
 const URLS = { success: "https://web.example/contratacion/estado", cancel: "https://web.example/contratacion/cancelada" };
 
@@ -136,7 +139,7 @@ function world(o: { enabled?: boolean; mode?: StripeMode; taxPolicy?: StripeTaxP
     fiscal: o.fiscal ? { config: o.fiscal } : undefined,
     now: () => clock,
   });
-  billing.attach({ gateway: neg.gatewayFor(), link: neg.link, billFrom: neg.billFrom, invalidate: neg.invalidate, cancelRequested: neg.cancelRequested });
+  billing.attach({ gateway: neg.gatewayFor(), link: neg.link, billFrom: neg.billFrom, invalidate: neg.invalidate, cancelRequested: neg.cancelRequested, serialize: neg.serialize });
   // Como en el plano de control: cada cambio de condiciones se lleva a Stripe si el cobro está abierto
   terms = new CommercialTermsService({ store: termsStore, subscriptions: subs, subscriptionStore: store, catalog: catalogPort, crm, now: () => clock, afterChange: async (sid) => void (await billing.syncIfOpen(sid)) });
   const n = neg;
@@ -1067,10 +1070,10 @@ describe("inicio del acuerdo y reloj de una contratación cobrada en Stripe", ()
     await deliver(w);
     expect(gw.invoices.get(first)).toMatchObject({ billingReason: "subscription_cycle", subtotal: 12900 + 50000 - 2900 });
     expect((await billingStore.invoice(first))!.taxCheck).toBe("ok");
-    expect(await subs.must(a.subId)).toMatchObject({ currentPeriodStart: D, currentPeriodEnd: D + 30 * DAY });
-    expect(stripePeriod(stripeId)).toEqual({ start: D, end: D + 30 * DAY });
+    expect(await subs.must(a.subId)).toMatchObject({ currentPeriodStart: D, currentPeriodEnd: month(D) });
+    expect(stripePeriod(stripeId)).toEqual({ start: D, end: month(D) });
     // La segunda cuota ya es solo la recurrente
-    clock = D + 30 * DAY + 60_000;
+    clock = month(D) + 60_000;
     expect(gw.invoices.get(gw.chargeNegotiatedPeriod(stripeId))!.subtotal).toBe(12900);
     await deliver(w);
     expect(alerts.count("stripe.negotiated_invoice_mismatch")).toBe(0);
@@ -1096,25 +1099,25 @@ describe("inicio del acuerdo y reloj de una contratación cobrada en Stripe", ()
     const { stripeId } = await started(w, a.subId);
     // Stripe empezó a cobrar al pagar (5 días después): el periodo interno es ese, no el del inicio del acuerdo
     expect(stripePeriod(stripeId).start).toBe(clock);
-    expect(await subs.must(a.subId)).toMatchObject({ currentPeriodStart: clock, currentPeriodEnd: clock + 30 * DAY });
+    expect(await subs.must(a.subId)).toMatchObject({ currentPeriodStart: clock, currentPeriodEnd: month(clock) });
     expect((await subs.must(a.subId)).currentPeriodEnd).not.toBe(original.currentPeriodEnd);
     expect((await store.events(a.subId)).filter((e) => e.kind === "renewed").map((e) => e.reason)).toEqual(["El periodo sigue al de la suscripción de Stripe"]);
     // Renovación de Stripe ANTES de que venciera el periodo interno original+desfase: la interna la sigue igual
     const paidAt = clock;
-    clock = paidAt + 30 * DAY + 60_000;
+    clock = month(paidAt) + 60_000;
     gw.chargeNegotiatedPeriod(stripeId);
     await deliver(w);
-    expect(await subs.must(a.subId)).toMatchObject({ currentPeriodStart: paidAt + 30 * DAY, currentPeriodEnd: paidAt + 60 * DAY });
+    expect(await subs.must(a.subId)).toMatchObject({ currentPeriodStart: month(paidAt), currentPeriodEnd: month(paidAt, 2) });
     // Repetir el evento no vuelve a mover nada
     const events = (await store.events(a.subId)).length;
     for (const ev of gw.events) await w.processor.process({ eventId: ev.id, type: ev.type, objectId: ev.objectId });
     expect((await store.events(a.subId)).length).toBe(events);
     // Un fin programado en la suscripción interna termina con el periodo de Stripe
     await subs.scheduleCancel(a.subId, { reason: "Baja pedida" }, (await subs.must(a.subId)).version, A);
-    clock = paidAt + 60 * DAY + 60_000;
+    clock = month(paidAt, 2) + 60_000;
     gw.chargeNegotiatedPeriod(stripeId);
     await deliver(w);
-    expect((await subs.must(a.subId)).cancelAt).toBe(paidAt + 90 * DAY);
+    expect((await subs.must(a.subId)).cancelAt).toBe(month(paidAt, 3));
   });
 
   it("fin en Stripe con renovaciones internas sin aplicar: la suscripción interna termina en el acto", async () => {
@@ -1725,7 +1728,7 @@ describe("tercera revisión independiente: lo que rige en una renovación llega 
     expect(alerts.count("stripe.negotiated_invoice_mismatch")).toBe(0);
   });
 
-  it("1 y 6 — unas condiciones que terminan sin sucesor programan en Stripe su fin EN SU FECHA en cuanto se sabe: esa renovación no se cobra y la contratación termina", async () => {
+  it("1 y 6 — unas condiciones que terminan sin sucesor en la renovación: Stripe no renueva (cancel_at_period_end, sin prorrateo); esa renovación no se cobra y la contratación termina", async () => {
     const w = world();
     const a = await agreed(1);
     await subs.linkTenant(a.subId, { tenantId: "t-acme" }, A);
@@ -1734,17 +1737,21 @@ describe("tercera revisión independiente: lo que rige en una renovación llega 
     const R1 = renewalAt(stripeId);
     // Acuerdo nuevo cuyas partidas terminan todas en la renovación (p. ej. un acuerdo anual que vence) y nada detrás
     await applyNew(a.subId, ENDING(R1));
-    expect(gw.subscriptions.get(stripeId)).toMatchObject({ status: "active", cancelAt: R1 / 1000, cancelAtPeriodEnd: false });
-    expect(gw.calls.filter((c) => c.op === "subscriptions.update(cancel_at)")).toHaveLength(1);
+    expect(gw.subscriptions.get(stripeId)).toMatchObject({ status: "active", cancelAt: R1 / 1000, cancelAtPeriodEnd: true });
+    const ends = () => gw.calls.filter((c) => c.op === "subscriptions.update(cancel_at_period_end)");
+    expect(ends().map((c) => c.input)).toEqual([{ subscriptionId: stripeId, cancel: true, prorationBehavior: "none" }]);
+    // Nunca un cancel_at (en modo flexible acortaría el periodo y lo prorratearía)
+    expect(gw.calls.filter((c) => c.op === "subscriptions.update(cancel_at)")).toEqual([]);
     expect(alerts.count("stripe.negotiated_terms_ended")).toBe(1);
-    // Es lo esperado (no un «fin solo en Stripe»); y como ya no habrá más renovaciones, se avisa en CADA pasada
+    // Es lo esperado (no un «fin solo en Stripe»); como ya no habrá más renovaciones, se avisa, como mucho una vez al día
     expect((await w.billing.reconcile(a.subId)).differences.map((d) => d.key)).toEqual(["fin_por_condiciones"]);
-    for (let n = 0; n < 3; n++) {
-      clock += 20 * 60_000;
-      expect((await tick(w)).drifted).toEqual([{ subscriptionId: a.subId, differences: [{ key: "fin_por_condiciones", kind: "status" }] }]);
+    const drift = [{ subscriptionId: a.subId, differences: [{ key: "fin_por_condiciones", kind: "status" }] }];
+    for (const expected of [drift, [], [], drift]) {
+      clock += expected === drift ? DAY : 20 * 60_000;
+      expect((await tick(w)).drifted).toEqual(expected);
     }
-    expect(alerts.count("stripe.negotiated_terms_ended")).toBe(4);
-    expect(gw.calls.filter((c) => c.op === "subscriptions.update(cancel_at)")).toHaveLength(1);
+    expect(alerts.count("stripe.negotiated_terms_ended")).toBe(3);
+    expect(ends()).toHaveLength(1);
     // Llega la fecha: Stripe termina en lugar de renovar (ningún periodo más) y la contratación termina como cualquier fin
     const invoices = gw.invoices.size;
     expect(await renew(w, stripeId)).toBe("");
@@ -1762,14 +1769,14 @@ describe("tercera revisión independiente: lo que rige en una renovación llega 
     const a = await agreed(1);
     const { stripeId } = await started(w, a.subId);
     const R1 = renewalAt(stripeId);
-    const R2 = R1 + 30 * DAY;
+    const R2 = month(R1);
     await applyNew(a.subId, FREE(R1, R2));
     expect(gw.pausedSubs.has(stripeId)).toBe(false);
     // A tres días de la renovación gratuita: en pausa, con la reanudación un minuto antes del primer instante de pago
     clock = R1 - 2 * DAY;
     expect(await tick(w)).toMatchObject({ drifted: [] });
     expect(gw.pausedSubs.has(stripeId)).toBe(true);
-    expect(gw.pauseResumes.get(stripeId)).toBe((R2 - 60_000) / 1000);
+    expect(gw.pauseResumes.get(stripeId)).toBe((R2 - 6 * 3600_000) / 1000);
     expect(itemWrites()).toEqual([]);
     // Renovación gratuita: Stripe la anula, no cobra nada y no es una diferencia
     const voided = await renew(w, stripeId);
@@ -1792,7 +1799,7 @@ describe("tercera revisión independiente: lo que rige en una renovación llega 
     const a = await agreed(1);
     const { stripeId } = await started(w, a.subId);
     const R1 = renewalAt(stripeId);
-    await applyNew(a.subId, FREE(R1, R1 + 30 * DAY));
+    await applyNew(a.subId, FREE(R1, month(R1)));
     clock = R1 - 2 * DAY;
     await tick(w);
     expect(gw.invoices.get(await renew(w, stripeId))!.status).toBe("void");
@@ -1806,7 +1813,7 @@ describe("tercera revisión independiente: lo que rige en una renovación llega 
     const a = await agreed(1);
     const { stripeId } = await started(w, a.subId);
     const R1 = renewalAt(stripeId);
-    const R2 = R1 + 30 * DAY;
+    const R2 = month(R1);
     const D = clock + 5 * DAY;
     // Vence un cargo de implantación a mitad de periodo y, desde la renovación, un mes gratis
     await applyNew(a.subId, PACKAGE({ lines: [cat("essential"), cat("hotel-net"), cat("whatsapp"), custom("Implantación", 50000, { concept: "implementation", chargeClass: "initial", startsAt: D })] }));
@@ -1841,7 +1848,7 @@ describe("tercera revisión independiente: lo que rige en una renovación llega 
     const a = await agreed(1);
     const { stripeId } = await started(w, a.subId);
     const R1 = renewalAt(stripeId);
-    const R2 = R1 + 30 * DAY;
+    const R2 = month(R1);
     // Un mes gratis y, después, 99 € (no los 129 € de antes)
     await applyNew(a.subId, FREE(R1, R2, { globalAmountCents: 9900 }));
     // El Product de un producto deja de estar enlazado: las partidas de 99 € no se pueden enviar
@@ -1911,12 +1918,13 @@ describe("tercera revisión independiente: lo que rige en una renovación llega 
     expect(gw.subscriptions.get(stripeId)).toMatchObject({ cancelAt: null, cancelAtPeriodEnd: false });
     expect(total(stripeId)).toBe(9900);
     expect(await w.billing.reconcile(a.subId)).toMatchObject({ consistent: true });
-    const ends = gw.calls.filter((c) => c.op === "subscriptions.update(cancel_at)");
-    expect(ends.map((c) => (c.input as { at: number | null }).at)).toEqual([R1 / 1000, null]);
+    // Deshacerlo también va sin prorrateo: no se cobran otra vez días ya pagados
+    const ends = gw.calls.filter((c) => c.op === "subscriptions.update(cancel_at_period_end)");
+    expect(ends.map((c) => c.input)).toEqual([{ subscriptionId: stripeId, cancel: true, prorationBehavior: "none" }, { subscriptionId: stripeId, cancel: false, prorationBehavior: "none" }]);
     expect(new Set(ends.map((c) => c.key)).size).toBe(2);
     clock += 20 * 60_000;
     expect(await tick(w)).toMatchObject({ drifted: [] });
-    expect(gw.calls.filter((c) => c.op === "subscriptions.update(cancel_at)")).toHaveLength(2);
+    expect(gw.calls.filter((c) => c.op === "subscriptions.update(cancel_at_period_end)")).toHaveLength(2);
     expect(gw.invoices.get(await renew(w, stripeId))).toMatchObject({ status: "paid", subtotal: 9900 });
     // Un fin que NO programó la sincronización (puesto a mano en Stripe) nunca se deshace solo: se avisa
     gw.updateSubscription(stripeId, { cancelAt: renewalAt(stripeId) / 1000, cancelAtPeriodEnd: true });
@@ -1930,7 +1938,7 @@ describe("tercera revisión independiente: lo que rige en una renovación llega 
     const a = await agreed(1);
     const { stripeId } = await started(w, a.subId);
     const R1 = renewalAt(stripeId);
-    const R2 = R1 + 30 * DAY;
+    const R2 = month(R1);
     await applyNew(a.subId, ENDING(R1));
     expect(gw.subscriptions.get(stripeId)!.cancelAt).toBe(R1 / 1000);
     await applyNew(a.subId, PACKAGE({ globalAmountCents: 9900, effectiveFrom: R1 + 5 * DAY }));
@@ -1939,7 +1947,7 @@ describe("tercera revisión independiente: lo que rige en una renovación llega 
     expect(await tick(w)).toMatchObject({ drifted: [] });
     // Hueco hasta el acuerdo siguiente: en pausa, con las partidas del acuerdo siguiente ya puestas y su reanudación
     expect(gw.pausedSubs.has(stripeId)).toBe(true);
-    expect(gw.pauseResumes.get(stripeId)).toBe((R1 + 5 * DAY - 60_000) / 1000);
+    expect(gw.pauseResumes.get(stripeId)).toBe((R1 + 5 * DAY - 6 * 3600_000) / 1000);
     expect(total(stripeId)).toBe(9900);
     expect(gw.invoices.get(await renew(w, stripeId))!.status).toBe("void");
     clock = R2 - 2 * DAY;
@@ -1968,5 +1976,326 @@ describe("tercera revisión independiente: lo que rige en una renovación llega 
     }
     expect((await mem.list({ status: ["canceled"], newestFirst: true })).map((r) => r.subscriptionId)).toEqual([11, 12, 13]);
     expect((await mem.list({ status: ["canceled"], newestFirst: true, limit: 1 })).map((r) => r.subscriptionId)).toEqual([11]);
+  });
+});
+
+describe("cuarta revisión independiente: modo flexible, fin sin prorrateo, huecos, ancla y cargos al aceptar", () => {
+  const renewalAt = (stripeId: string) => gw.subscriptions.get(stripeId)!.currentPeriodEnd! * 1000;
+  const renew = async (w: World, stripeId: string, outcome: "paid" | "open" = "paid") => {
+    clock = renewalAt(stripeId) + 60_000;
+    const id = gw.chargeNegotiatedPeriod(stripeId, outcome);
+    await deliver(w);
+    return id;
+  };
+  const tick = async (w: World) => (await w.reconciler.tick()).negotiated!;
+  const ENDING = (at: number) => PACKAGE({ pricingMode: "per_item", globalAmountCents: undefined, lines: [cat("essential", { endsAt: at }), custom("Soporte", 5000, { endsAt: at })] } as never);
+  const FREE = (from: number, to: number, over: Partial<TermsInput> = {}) => PACKAGE({ effectiveFrom: from, adjustments: [{ line: null, type: "discount", mode: "percent", value: 10_000, recurrence: "recurring", endsAt: to, note: "periodo gratuito" }], ...over } as never);
+  const cancelAts = () => gw.calls.filter((c) => c.op === "subscriptions.update(cancel_at)");
+  const periodEnds = () => gw.calls.filter((c) => c.op === "subscriptions.update(cancel_at_period_end)");
+
+  it("B-1 — el doble modela el modo flexible: un cancel_at a más de un periodo vista ACORTA y prorratea el último periodo (por eso nunca se usa)", async () => {
+    const w = world();
+    const a = await agreed(1);
+    const { stripeId } = await started(w, a.subId);
+    expect(gw.subscriptions.get(stripeId)!.billingMode).toBe("flexible");
+    const R1 = renewalAt(stripeId);
+    // Directamente contra el doble (lo que haría Stripe): fin a mitad del periodo siguiente
+    await gw.setCancelAt(stripeId, (R1 + 10 * DAY) / 1000, "k-demo");
+    const inv = gw.invoices.get(await renew(w, stripeId))!;
+    expect(inv.subtotal).toBeLessThan(12900);
+    expect(inv.lines?.[0].proration).toBe(true);
+    expect(gw.subscriptions.get(stripeId)!.currentPeriodEnd).toBe((R1 + 10 * DAY) / 1000);
+  });
+
+  it("B-1 — fin a mitad de periodo: Stripe no renueva hacia un periodo que el contrato no cubre entero; esos días no se cobran y el servicio sigue hasta la fecha", async () => {
+    const w = world();
+    const a = await agreed(1);
+    await subs.linkTenant(a.subId, { tenantId: "t-acme" }, A);
+    const { stripeId } = await started(w, a.subId);
+    await grant("t-acme", "plan.essential", `subscription:${a.subId}`);
+    const R1 = renewalAt(stripeId);
+    const E = R1 + 10 * DAY;
+    await applyNew(a.subId, ENDING(E));
+    // El periodo que empezaría en R1 pasaría del fin: Stripe termina en R1, sin prorrateo y sin cancel_at
+    expect(gw.subscriptions.get(stripeId)).toMatchObject({ cancelAtPeriodEnd: true, cancelAt: R1 / 1000 });
+    expect(cancelAts()).toEqual([]);
+    const invoices = gw.invoices.size;
+    expect(await renew(w, stripeId)).toBe("");
+    expect(gw.invoices.size).toBe(invoices);
+    // Nada se cobra de más; el contrato sigue hasta su fecha (sin cobro) y solo entonces termina
+    expect(await row(a.subId)).toMatchObject({ status: "canceled", readOnlyUntil: null });
+    expect(await subs.must(a.subId)).toMatchObject({ status: "active", cancelAt: E });
+    expect((await statusOf("t-acme"))["plan.essential"]).toBe("active");
+    clock = E - DAY;
+    expect((await tick(w)).drifted).toEqual([]);
+    expect((await subs.must(a.subId)).status).toBe("active");
+    clock = E + 60_000;
+    await tick(w);
+    expect((await subs.must(a.subId)).status).toBe("canceled");
+    expect((await statusOf("t-acme"))["plan.essential"]).toBe("read_only");
+    expect((await row(a.subId)).readOnlyUntil).toBe(clock + 30 * DAY);
+  });
+
+  it("B-1 — fin a más de un periodo vista: la renovación intermedia se cobra ENTERA (sin prorrateo) y el fin se programa en el último periodo", async () => {
+    const w = world();
+    const a = await agreed(1);
+    const { stripeId } = await started(w, a.subId);
+    const R1 = renewalAt(stripeId);
+    const E = month(R1) + 10 * DAY;
+    await applyNew(a.subId, ENDING(E));
+    expect(gw.subscriptions.get(stripeId)).toMatchObject({ cancelAtPeriodEnd: false, cancelAt: null });
+    const inv = gw.invoices.get(await renew(w, stripeId))!;
+    expect(inv).toMatchObject({ status: "paid", subtotal: 2900 + 5000 });
+    expect(inv.lines?.some((l) => l.proration)).toBe(false);
+    expect(alerts.count("stripe.negotiated_invoice_mismatch")).toBe(0);
+    // Ya en el último periodo: la conciliación lo programa (sin prorrateo)
+    clock += 20 * 60_000;
+    await tick(w);
+    expect(gw.subscriptions.get(stripeId)).toMatchObject({ cancelAtPeriodEnd: true, cancelAt: month(R1) / 1000 });
+    expect(periodEnds().map((c) => (c.input as { prorationBehavior?: string }).prorationBehavior)).toEqual(["none"]);
+    expect(cancelAts()).toEqual([]);
+    expect(await renew(w, stripeId)).toBe("");
+  });
+
+  it("B-1 — el ciclo de Stripe va anclado a la hora del pago: un periodo que acaba horas después del fin del acuerdo es su último periodo, no uno de más", async () => {
+    const w = world();
+    const a = await agreed(1);
+    const { stripeId } = await started(w, a.subId);
+    const R1 = renewalAt(stripeId);
+    // El acuerdo termina 11 h antes de la renovación siguiente (medianoche de Madrid frente a la hora del pago)
+    await applyNew(a.subId, ENDING(month(R1) - 11 * 3600_000));
+    expect(gw.subscriptions.get(stripeId)!.cancelAtPeriodEnd).toBe(false);
+    expect(gw.invoices.get(await renew(w, stripeId))).toMatchObject({ status: "paid", subtotal: 7900 });
+    clock += 20 * 60_000;
+    await tick(w);
+    expect(gw.subscriptions.get(stripeId)!.cancelAtPeriodEnd).toBe(true);
+  });
+
+  it("B-1 — deshacer el fin con un sucesor va ANTES que las partidas y sin prorrateo: nada del periodo en curso se cobra con las partidas nuevas", async () => {
+    const w = world();
+    const a = await agreed(1);
+    const { stripeId } = await started(w, a.subId);
+    const R1 = renewalAt(stripeId);
+    await applyNew(a.subId, ENDING(R1));
+    const invoices = gw.invoices.size;
+    const items = gw.invoiceItems.length;
+    await applyNew(a.subId, PACKAGE({ globalAmountCents: 9900 }));
+    const order = gw.calls.filter((c) => c.op === "subscriptions.update(cancel_at_period_end)" || c.op === "subscriptions.update(negotiated)").map((c) => c.op);
+    expect(order.slice(-2)).toEqual(["subscriptions.update(cancel_at_period_end)", "subscriptions.update(negotiated)"]);
+    expect(periodEnds().map((c) => c.input)).toEqual([{ subscriptionId: stripeId, cancel: true, prorationBehavior: "none" }, { subscriptionId: stripeId, cancel: false, prorationBehavior: "none" }]);
+    expect(gw.invoices.size).toBe(invoices);
+    expect(gw.invoiceItems.length).toBe(items);
+    expect(gw.subscriptions.get(stripeId)).toMatchObject({ cancelAtPeriodEnd: false, cancelAt: null, currentPeriodEnd: R1 / 1000 });
+  });
+
+  it("B-2 — un hueco hasta un acuerdo ya activado que alguien cancela en el Dashboard es «solo en Stripe»: aviso, y la contratación y sus licencias no se tocan", async () => {
+    const w = world();
+    const a = await agreed(1);
+    await subs.linkTenant(a.subId, { tenantId: "t-acme" }, A);
+    const { stripeId } = await started(w, a.subId);
+    await grant("t-acme", "plan.essential", `subscription:${a.subId}`);
+    const R1 = renewalAt(stripeId);
+    await applyNew(a.subId, ENDING(R1));
+    await applyNew(a.subId, PACKAGE({ globalAmountCents: 9900, effectiveFrom: R1 + 5 * DAY }));
+    clock = R1 - 2 * DAY;
+    await tick(w);
+    expect(gw.subscriptions.get(stripeId)!.cancelAtPeriodEnd).toBe(false);
+    expect(gw.pausedSubs.has(stripeId)).toBe(true);
+    await renew(w, stripeId);
+    // En el hueco (hoy sin condiciones, B programado), alguien la cancela en Stripe
+    clock += DAY;
+    gw.updateSubscription(stripeId, { status: "canceled" });
+    gw.emit("customer.subscription.deleted", "subscription", stripeId);
+    await deliver(w);
+    expect(await row(a.subId)).toMatchObject({ status: "canceled", readOnlyUntil: null });
+    expect(alerts.count("stripe.negotiated_ended_in_stripe")).toBe(1);
+    expect(await subs.must(a.subId)).toMatchObject({ status: "active", cancelAt: null });
+    expect((await statusOf("t-acme"))["plan.essential"]).toBe("active");
+  });
+
+  it("ancla de Madrid y cargos al aceptar: con el primer cargo aplazado, el cargo sin fecha se cobra al pagar la sesión; el ancla de meses de Madrid no se pierde", async () => {
+    gw.addProduct({ id: CUSTOM_SERVICE_PRODUCT_ID, name: "Servicio a medida" });
+    const w = world();
+    subs.checkComposition = async () => undefined;
+    // Servicio desde el 1 de diciembre (medianoche de Madrid): suscripción solo económica, meses de calendario de Madrid
+    const D = Date.UTC(2026, 10, 30, 23);
+    // Paquete nuevo solo económico (el camino de la contratación de paquetes): cuota desde D, alta sin fecha (al aceptar)
+    const pkg = await terms.createPackage(1, { pricingMode: "per_item", presentation: "breakdown", interval: "month", reason: "Paquete", lines: [custom("Servicio gestionado", 4463, { concept: "professional_service", startsAt: D }), custom("Alta", 10000, { concept: "implementation", chargeClass: "initial" })] } as never, A);
+    const prepared = await terms.prepareContracting(pkg.id, { expectedRevision: pkg.revision }, A);
+    const sub = await subs.must(prepared.terms.subscriptionId!);
+    expect(sub.anchorDay).toBeLessThan(0);
+    const s = await w.neg.start(sub.id, A);
+    expect(s).toMatchObject({ status: "pending", firstChargeAt: D, recurringCents: 4463, firstChargeCents: 4463 });
+    const input = sessionCreates()[0].input as NegotiatedCheckoutInput;
+    expect(input.trialEnd).toBe(D / 1000);
+    expect(input.lines.filter((l) => l.interval === null).map((l) => l.unitAmount)).toEqual([10000]);
+    const stripeId = gw.completeNegotiatedSession((s as { sessionId: string }).sessionId);
+    await deliver(w);
+    // Lo debido al aceptar se cobra ya, no en la factura del 1 de diciembre
+    expect(gw.invoices.get((await row(sub.id)).lastPaidInvoiceId!)).toMatchObject({ billingReason: "subscription_create", subtotal: 10000 });
+    expect(alerts.count("stripe.negotiated_invoice_mismatch")).toBe(0);
+    expect(gw.invoiceItems).toEqual([]);
+    // Primer cargo de cuota el día del inicio, solo la cuota; el ancla interna sigue siendo la de Madrid
+    gw.updateSubscription(stripeId, { status: "active" });
+    expect(gw.invoices.get(await renew(w, stripeId))).toMatchObject({ status: "paid", subtotal: 4463 });
+    expect(alerts.count("stripe.negotiated_invoice_mismatch")).toBe(0);
+    const after = await subs.must(sub.id);
+    expect(after.anchorDay).toBe(sub.anchorDay);
+    expect(after.currentPeriodStart).toBe(D);
+  });
+
+  it("menores: al ENTRAR en la pausa, pausa antes que partidas; una pausa sin fecha borra la anterior", async () => {
+    const w = world();
+    const a = await agreed(1);
+    const { stripeId } = await started(w, a.subId);
+    const R1 = renewalAt(stripeId);
+    const R2 = month(R1);
+    await applyNew(a.subId, FREE(R1, R2, { globalAmountCents: 9900 }));
+    clock = R1 - 2 * DAY;
+    await tick(w);
+    const ops = gw.calls.filter((c) => c.op === "subscriptions.update(pause_collection)" || c.op === "subscriptions.update(negotiated)").map((c) => [c.op, (c.input as { resumesAt?: number | null }).resumesAt ?? null]);
+    expect(ops).toEqual([["subscriptions.update(pause_collection)", null], ["subscriptions.update(negotiated)", null], ["subscriptions.update(pause_collection)", (R2 - 6 * 3600_000) / 1000]]);
+    expect(gw.pauseResumes.get(stripeId)).toBe((R2 - 6 * 3600_000) / 1000);
+    // Cambia lo que regirá después y no se puede enviar: la pausa sigue, pero SIN la reanudación anterior (se borra)
+    stripeStore.prices.forEach((p) => p.lookupKey.startsWith("es:whatsapp:") && ((p as { status: string }).status = "archived"));
+    await applyNew(a.subId, FREE(clock, R2, { globalAmountCents: 9800 }));
+    expect(gw.pausedSubs.has(stripeId)).toBe(true);
+    expect(gw.pauseResumes.has(stripeId)).toBe(false);
+    const last = gw.calls.filter((c) => c.op === "subscriptions.update(pause_collection)").at(-1)!;
+    expect(last.input).toMatchObject({ paused: true, resumesAt: null });
+  });
+
+  it("menores: un importe único en una factura que un OPERADOR anuló (no la pausa) no se vuelve a cobrar: queda como diferencia", async () => {
+    const w = world();
+    const a = await agreed(1);
+    const { stripeId } = await started(w, a.subId);
+    const R1 = renewalAt(stripeId);
+    const R2 = month(R1);
+    // Hubo una pausa (mes gratis) y después un cargo único
+    await applyNew(a.subId, FREE(R1, R2));
+    clock = R1 - 2 * DAY;
+    await tick(w);
+    const voided = await renew(w, stripeId);
+    expect((await billingStore.invoice(voided))!.taxCheck).toBe("paused_void");
+    clock = R2 - 2 * DAY;
+    await tick(w);
+    const D = clock + 60_000;
+    await applyNew(a.subId, PACKAGE({ lines: [cat("essential"), cat("hotel-net"), cat("whatsapp"), custom("Migración", 30000, { concept: "implementation", chargeClass: "initial", startsAt: D })] }));
+    clock = D + 60_000;
+    await tick(w);
+    expect(oneOffWrites()).toHaveLength(1);
+    // La renovación queda impagada y un operador la anula para perdonar el cargo
+    const open = await renew(w, stripeId, "open");
+    await gw.voidInvoice(open);
+    await deliver(w);
+    clock += 20 * 60_000;
+    await tick(w);
+    expect(await w.billing.sync(a.subId, A)).toMatchObject({ status: "synced" });
+    expect(oneOffWrites()).toHaveLength(1);
+    expect((await w.billing.reconcile(a.subId)).differences.map((d) => d.kind)).toContain("one_off");
+  });
+
+  it("menores: una sincronización a la vez por suscripción (el arrendamiento de los webhooks)", async () => {
+    const w = world();
+    const a = await agreed(1);
+    await started(w, a.subId);
+    expect(await stripeStore.acquireLease(`terms-billing:${a.subId}`, clock + 60_000, clock)).toBe(true);
+    const calls = gw.calls.length;
+    expect(await w.billing.sync(a.subId, A)).toMatchObject({ status: "busy" });
+    expect(gw.calls.length).toBe(calls);
+    await stripeStore.releaseLease(`terms-billing:${a.subId}`, clock + 60_000);
+    expect(await w.billing.sync(a.subId, A)).toMatchObject({ status: "synced" });
+  });
+
+  it("menores: al terminar se retiran TODOS los importes pendientes, aunque el cliente tenga más de 500 importes", async () => {
+    const w = world();
+    const a = await agreed(1);
+    const first = await started(w, a.subId);
+    const D = clock + 5 * DAY;
+    await applyNew(a.subId, PACKAGE({ lines: [cat("essential"), cat("hotel-net"), cat("whatsapp"), custom("Implantación", 50000, { concept: "implementation", chargeClass: "initial", startsAt: D })] }));
+    clock = D + 60_000;
+    await tick(w);
+    // 600 importes ya facturados más recientes (de otra cosa del mismo cliente) por delante del pendiente
+    for (let n = 0; n < 600; n++) gw.invoiceItems.unshift({ id: `ii_old_${n}`, amount: 100, currency: "EUR", subscriptionId: first.stripeId, invoiceId: "in_otra", metadata: {} });
+    gw.updateSubscription(first.stripeId, { status: "canceled" });
+    gw.emit("customer.subscription.deleted", "subscription", first.stripeId);
+    await deliver(w);
+    expect(gw.invoiceItems.filter((i) => i.invoiceId === null)).toEqual([]);
+    expect(gw.calls.filter((c) => c.op === "invoiceitems.delete")).toHaveLength(1);
+  });
+});
+
+describe("quinta revisión independiente: tantos cobros como periodos cubre el contrato", () => {
+  const renewalAt = (stripeId: string) => gw.subscriptions.get(stripeId)!.currentPeriodEnd! * 1000;
+  const tick = async (w: World) => (await w.reconciler.tick()).negotiated!;
+  /**
+   * Paquete solo económico de N periodos desde hoy (fechas de Madrid, como las del acuerdo); el cliente paga `late` días
+   * después del inicio. Se recorren todas las renovaciones hasta que Stripe termina y se cuentan los cobros.
+   */
+  async function charges(interval: "month" | "year", periods: number, late: number, extra = 0) {
+    gw.addProduct({ id: CUSTOM_SERVICE_PRODUCT_ID, name: "Servicio a medida" });
+    subs.checkComposition = async () => undefined;
+    const w = world();
+    const S = clock;
+    const E = addMonthsUTC(S, periods * (interval === "year" ? 12 : 1), madridAnchor(S)) + extra;
+    const amount = interval === "year" ? 120000 : 4463;
+    const pkg = await terms.createPackage(1, { pricingMode: "per_item", presentation: "breakdown", interval, reason: "Paquete", lines: [custom("Servicio gestionado", amount, { concept: "professional_service", endsAt: E })] } as never, A);
+    const prepared = await terms.prepareContracting(pkg.id, { expectedRevision: pkg.revision }, A);
+    const subId = prepared.terms.subscriptionId!;
+    clock += late * DAY;
+    const s = (await w.neg.start(subId, A)) as { sessionId: string };
+    const stripeId = gw.completeNegotiatedSession(s.sessionId);
+    await deliver(w);
+    for (let n = 0; n < 40 && gw.subscriptions.get(stripeId)!.status !== "canceled"; n++) {
+      clock = renewalAt(stripeId) - 2 * DAY;
+      await tick(w);
+      clock = renewalAt(stripeId) + 60_000;
+      if (gw.chargeNegotiatedPeriod(stripeId) === "") break;
+      await deliver(w);
+    }
+    await deliver(w);
+    const paid = Array.from(gw.invoices.values()).filter((i) => i.subscriptionId === stripeId && i.status === "paid");
+    // Nunca un periodo prorrateado ni otro importe
+    expect(paid.every((i) => i.subtotal === amount)).toBe(true);
+    expect(cancelAts()).toEqual([]);
+    return { count: paid.length, subId, E };
+  }
+  const cancelAts = () => gw.calls.filter((c) => c.op === "subscriptions.update(cancel_at)");
+
+  for (const late of [0, 1, 4, 20]) {
+    it(`mensual de 6 meses pagado ${late} días después del inicio: 6 cobros`, async () => {
+      expect((await charges("month", 6, late)).count).toBe(6);
+      expect(alerts.count("stripe.negotiated_invoice_mismatch")).toBe(0);
+    });
+    it(`anual de 2 años pagado ${late} días después del inicio: 2 cobros`, async () => {
+      expect((await charges("year", 2, late)).count).toBe(2);
+    });
+  }
+
+  it("un contrato de 12 meses son 12 cobros", async () => {
+    expect((await charges("month", 12, 4)).count).toBe(12);
+  });
+
+  it("un tramo final que no llega a un periodo entero (6 meses y medio) no se cobra: 6 cobros, nunca un séptimo", async () => {
+    const r = await charges("month", 6, 4, 15 * DAY);
+    expect(r.count).toBe(6);
+    // El servicio sigue sin cobro hasta la fecha de fin del acuerdo
+    const sub = await subs.must(r.subId);
+    expect(sub.status === "canceled" || sub.cancelAt === r.E).toBe(true);
+  });
+
+  it("menor: los fines internos aplazados se aplican aunque haya más de 200 canceladas más recientes", async () => {
+    const w = world();
+    const r = await charges("month", 6, 0, 15 * DAY);
+    expect(await subs.must(r.subId)).toMatchObject({ status: "active", cancelAt: r.E });
+    // 250 contrataciones canceladas posteriores (ya resueltas)
+    for (let n = 0; n < 250; n++) {
+      const x = (await billingStore.create({ subscriptionId: 10_000 + n, companyId: 2, stripeCustomerId: "cus_x", startedBy: A, now: clock })).row;
+      await billingStore.patch(x.id, { status: "canceled", readOnlyUntil: clock + 30 * DAY }, x.version, clock + n);
+    }
+    clock = r.E + 60_000;
+    await tick(w);
+    expect((await subs.must(r.subId)).status).toBe("canceled");
+    expect((await row(r.subId)).readOnlyUntil).toBe(clock + 30 * DAY);
   });
 });

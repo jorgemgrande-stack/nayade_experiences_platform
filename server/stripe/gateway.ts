@@ -266,7 +266,7 @@ export interface StripeGateway {
    * Programa (true) o deshace (false) el fin de la suscripción al final del periodo pagado (`cancel_at_period_end`),
    * con Idempotency-Key. No cobra ni abona nada. Devuelve la suscripción resultante.
    */
-  setCancelAtPeriodEnd?(subscriptionId: string, cancel: boolean, idempotencyKey: string): Promise<GwSubscription>;
+  setCancelAtPeriodEnd?(subscriptionId: string, cancel: boolean, idempotencyKey: string, opts?: { /** Envía `proration_behavior=none` (condiciones personalizadas). */ noProration?: boolean }): Promise<GwSubscription>;
   /**
    * Programa las partidas para el FIN del periodo actual con un Subscription Schedule: la fase actual hasta su fin y
    * una fase nueva de un periodo, `end_behavior=release` y sin prorrateo. No cobra ni abona nada ahora; al cambiar de
@@ -302,7 +302,8 @@ export interface StripeGateway {
   invoiceLineAmounts?(invoiceId: string): Promise<number[]>;
   /**
    * Pone (`behavior=void`: Stripe no cobra nada mientras dura; sus facturas se anulan) o quita el cobro en pausa. Con
-   * `resumesAt` (segundos), Stripe lo reanuda solo en esa fecha. Con Idempotency-Key.
+   * `resumesAt` (segundos), Stripe lo reanuda solo en esa fecha; `null` BORRA una fecha anterior (se envía vacía);
+   * sin indicarlo, no se envía. Con Idempotency-Key.
    */
   setPauseCollection?(subscriptionId: string, paused: boolean, idempotencyKey: string, resumesAt?: number | null): Promise<void>;
   /**
@@ -317,7 +318,7 @@ export interface StripeGateway {
   /** Importe único (con signo) para la próxima factura de la suscripción, sin impuestos incluidos. Con Idempotency-Key. */
   createInvoiceItem?(input: InvoiceItemInput, idempotencyKey: string): Promise<GwInvoiceItem>;
   /** Importes únicos de un cliente (pendientes y ya facturados), los más recientes primero, hasta `max`. Solo lectura. */
-  invoiceItemsOfCustomer?(customerId: string, max?: number): Promise<GwInvoiceItem[]>;
+  invoiceItemsOfCustomer?(customerId: string, max?: number, opts?: { /** Solo los pendientes (sin factura): `pending=true`. */ pending?: boolean }): Promise<GwInvoiceItem[]>;
   /**
    * Checkout en modo suscripción con partidas negociadas: precios en línea sobre Products existentes (recurrentes y
    * de importe único para la primera factura). El cliente pone su método de pago en la página de Stripe.
@@ -366,6 +367,10 @@ export interface GwNegotiatedSubscription {
   paused?: boolean;
   /** Fecha (segundos) en la que Stripe reanuda solo el cobro en pausa (`pause_collection.resumes_at`), si la tiene. */
   pauseResumesAt?: number | null;
+  /** Ancla del ciclo (`billing_cycle_anchor`, segundos): con ella se sabe cuándo termina el periodo SIGUIENTE. */
+  billingCycleAnchor?: number | null;
+  /** Modo de facturación (`billing_mode.type`: `flexible` en las creadas por Checkout con esta versión de API). */
+  billingMode?: string | null;
 }
 export interface NegotiatedItemsChange {
   subscriptionId: string;
@@ -597,13 +602,15 @@ export function toNegotiatedSubscription(s: Stripe.Subscription, mode: StripeMod
   const defaults = bp(s.default_tax_rates as Array<{ percentage?: number }> | null | undefined);
   const items = allItems ?? s.items?.data ?? [];
   const ends = items.map((i) => (i as unknown as { current_period_end?: number }).current_period_end).filter((x): x is number => typeof x === "number");
-  const x = s as unknown as { discounts?: unknown[] | null; discount?: unknown; pause_collection?: { resumes_at?: number | null } | null; collection_method?: string | null; trial_end?: number | null };
+  const x = s as unknown as { discounts?: unknown[] | null; discount?: unknown; pause_collection?: { resumes_at?: number | null } | null; collection_method?: string | null; trial_end?: number | null; billing_cycle_anchor?: number | null; billing_mode?: { type?: string } | null };
   const anomalies = [...((x.discounts && x.discounts.length) || x.discount ? ["cupón"] : []), ...(x.collection_method && x.collection_method !== "charge_automatically" ? ["cobro_no_automático"] : [])];
   return {
     trialEnd: typeof x.trial_end === "number" ? x.trial_end : null,
     anomalies,
     paused: !!x.pause_collection,
     pauseResumesAt: typeof x.pause_collection?.resumes_at === "number" ? x.pause_collection.resumes_at : null,
+    billingCycleAnchor: typeof x.billing_cycle_anchor === "number" ? x.billing_cycle_anchor : null,
+    billingMode: x.billing_mode?.type ?? null,
     id: s.id,
     customerId: idOf(s.customer) ?? "",
     status: s.status as GwSubscription["status"],
@@ -991,7 +998,7 @@ export function stripeGateway(
     },
     async setPauseCollection(subscriptionId, paused, idempotencyKey, resumesAt) {
       try {
-        const s = await client.subscriptions.update(subscriptionId, { pause_collection: paused ? { behavior: "void", ...(resumesAt ? { resumes_at: resumesAt } : {}) } : "" } as Stripe.SubscriptionUpdateParams, { idempotencyKey });
+        const s = await client.subscriptions.update(subscriptionId, { pause_collection: paused ? { behavior: "void", ...(resumesAt ? { resumes_at: resumesAt } : resumesAt === null ? { resumes_at: "" } : {}) } : "" } as Stripe.SubscriptionUpdateParams, { idempotencyKey });
         assertModeObject(s, mode);
       } catch (e) {
         wrapError(e);
@@ -999,8 +1006,8 @@ export function stripeGateway(
     },
     async setCancelAt(subscriptionId, at, idempotencyKey) {
       try {
-        // Sin prorrateo: el periodo ya cobrado no se abona y no se genera ninguna factura
-        const params = at === null ? { cancel_at: "" } : { cancel_at: at, proration_behavior: "none" };
+        // Sin prorrateo, también al deshacerlo: el periodo ya cobrado no se abona ni se vuelve a cobrar
+        const params = at === null ? { cancel_at: "", proration_behavior: "none" } : { cancel_at: at, proration_behavior: "none" };
         const s = await client.subscriptions.update(subscriptionId, params as Stripe.SubscriptionUpdateParams, { idempotencyKey });
         assertModeObject(s, mode);
       } catch (e) {
@@ -1037,10 +1044,10 @@ export function stripeGateway(
         wrapError(e);
       }
     },
-    async invoiceItemsOfCustomer(customerId, max = 500) {
+    async invoiceItemsOfCustomer(customerId, max = 500, opts) {
       try {
         const out: GwInvoiceItem[] = [];
-        for await (const i of client.invoiceItems.list({ customer: customerId, limit: 100 })) {
+        for await (const i of client.invoiceItems.list({ customer: customerId, limit: 100, ...(opts?.pending ? { pending: true } : {}) })) {
           out.push(toInvoiceItem(i, mode));
           if (out.length >= max) break;
         }
@@ -1230,9 +1237,9 @@ export function stripeGateway(
         wrapError(e);
       }
     },
-    async setCancelAtPeriodEnd(id, cancel, idempotencyKey) {
+    async setCancelAtPeriodEnd(id, cancel, idempotencyKey, opts) {
       try {
-        return toSubscription(await client.subscriptions.update(id, { cancel_at_period_end: cancel }, { idempotencyKey }), mode);
+        return toSubscription(await client.subscriptions.update(id, { cancel_at_period_end: cancel, ...(opts?.noProration ? { proration_behavior: "none" as const } : {}) }, { idempotencyKey }), mode);
       } catch (e) {
         wrapError(e);
       }

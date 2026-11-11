@@ -202,7 +202,7 @@ describe("Stripe: operaciones del cobro de condiciones personalizadas", () => {
     await gw().setCancelAt!("sub_x1", null, "es-local-end-2");
     expect(seen.map((r) => [r.method, r.path, r.idempotencyKey])).toEqual([["POST", "/v1/subscriptions/sub_x1", "es-local-end-1"], ["POST", "/v1/subscriptions/sub_x1", "es-local-end-2"]]);
     expect(seen[0].body).toEqual({ cancel_at: "1900000500", proration_behavior: "none" });
-    expect(seen[1].body).toEqual({ cancel_at: "" });
+    expect(seen[1].body).toEqual({ cancel_at: "", proration_behavior: "none" });
     livemode = true;
     await expect(gw().setCancelAt!("sub_x1", null, "k")).rejects.toThrow(StripeConfigError);
   });

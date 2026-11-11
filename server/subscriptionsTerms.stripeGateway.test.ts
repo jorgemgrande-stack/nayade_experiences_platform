@@ -184,7 +184,7 @@ describe("importes únicos", () => {
     await a.setPaused(id, true, "ct:s1:pause");
     const voided = gw.chargeNegotiatedPeriod(id);
     expect(gw.invoices.get(voided)!.status).toBe("void");
-    expect(await a.findOneOff(id, "charge:5")).toEqual({ ref: out.ref, amountCents: 0, voided: true });
+    expect(await a.findOneOff(id, "charge:5")).toEqual({ ref: out.ref, amountCents: 0, voided: true, voidedInvoiceId: voided });
     await a.setPaused(id, false, "ct:s1:resume");
     const again = await a.addOneOff({ subscriptionId: id, customerId, currency: "EUR", item: { key: "charge:5", name: "Implantación", amountCents: 50000, taxRateBp: 2100 }, metadata: {} }, `ct:s1:charge:5:r${out.ref}`);
     expect(await a.findOneOff(id, "charge:5")).toEqual({ ref: again.ref, amountCents: 50000 });

@@ -113,7 +113,7 @@ describe.skipIf(!URL_)("cobro en Stripe de condiciones personalizadas con MySQL 
     terms = new CommercialTermsService({ store: termsStore, subscriptions: subs, subscriptionStore: store, catalog, crm, now: () => clock, afterChange: async (sid) => void (await billing.syncIfOpen(sid)) });
     const adapter = new StripeNegotiatedGateway({ gateway: gw, namespace: NS, mode: "test", taxPolicy: "test_net_no_tax", catalogProducts: async () => catalogProductsOf(await stripeStore.listPrices()), allowed: (id) => neg.allowed(id) });
     neg = new NegotiatedBillingService({ enabled: true, store: billingStore, stripeStore, gateway: gw, adapter, billing, termsStore, subscriptionStore: store, crmStore, urls: { success: "https://web.example/ok", cancel: "https://web.example/ko" }, namespace: NS, mode: "test", taxPolicy: "test_net_no_tax", now: () => clock });
-    billing.attach({ gateway: neg.gatewayFor(), link: neg.link, billFrom: neg.billFrom, invalidate: neg.invalidate, cancelRequested: neg.cancelRequested });
+    billing.attach({ gateway: neg.gatewayFor(), link: neg.link, billFrom: neg.billFrom, invalidate: neg.invalidate, cancelRequested: neg.cancelRequested, serialize: neg.serialize });
     const trap = new Proxy({}, { get: (_t, op) => (op === "then" ? undefined : () => Promise.reject(new Error(`circuito ordinario no permitido: ${String(op)}`))) });
     processor = new StripeEventProcessor({ store: stripeStore, gateway: gw, orders: trap as never, orchestrator: trap as never, now: () => clock, namespace: NS, mode: "test", negotiated: { handleSession: (id) => neg.handleSession(id), handleSubscription: (s, h) => neg.handleSubscription(s, h), handleCharge: (c, i, s) => neg.handleCharge(c, i, s) } });
   }, 120_000);
@@ -167,6 +167,25 @@ describe.skipIf(!URL_)("cobro en Stripe de condiciones personalizadas con MySQL 
     const o = (await billingStore.create({ subscriptionId: other, companyId: 2, stripeCustomerId: "cus_test_b", startedBy: A, now: clock })).row;
     await expect(billingStore.patch(o.id, { stripeSubscriptionId: "sub_test_a" }, o.version, clock)).rejects.toBeInstanceOf(BillingStoreConflict);
     await pool.query("UPDATE commercial_terms_billing SET stripe_subscription_id = NULL, session_id = NULL WHERE id IN (?, ?)", [row.id, o.id]);
+  });
+
+  it("canceladas sin su fin aplicado: se leen todas por páginas (por id), sin la ventana de las más recientes", async () => {
+    const ids: number[] = [];
+    for (let n = 0; n < 5; n++) {
+      const r = (await billingStore.create({ subscriptionId: await agreed(1), companyId: 1, stripeCustomerId: "cus_test_p", startedBy: A, now: clock })).row;
+      // Las pares quedan resueltas (con su solo lectura); las impares, sin resolver
+      await billingStore.patch(r.id, { status: "canceled", readOnlyUntil: n % 2 ? null : clock + 1 }, r.version, clock + n);
+      if (n % 2) ids.push(r.id);
+    }
+    const seen: number[] = [];
+    for (let after = 0; ; ) {
+      const page = await billingStore.list({ status: ["canceled"], unresolved: true, afterId: after, limit: 1 });
+      if (!page.length) break;
+      seen.push(...page.map((r) => r.id));
+      after = page[page.length - 1].id;
+    }
+    expect(seen.filter((id) => ids.includes(id))).toEqual(ids);
+    expect(seen.every((id, i) => i === 0 || id > seen[i - 1])).toBe(true);
   });
 
   it("facturas: una fila por factura de Stripe; releerla no la duplica ni pierde lo ya sabido", async () => {
