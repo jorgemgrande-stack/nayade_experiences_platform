@@ -302,7 +302,10 @@ describe("caso final — Essential + Hotel Net + WhatsApp Connect por 129 €/me
     expect(preview.summary.recurring.lines.map((l: { name: string }) => l.name)).toHaveLength(3);
     expect(preview.summary.recurring.lines.reduce((a: number, l: { netCents: number }) => a + l.netCents, 0)).toBe(12900);
     expect(preview.differenceVsOfficialCents).toBe(12900 - preview.summary.recurring.officialCents);
-    expect(preview.licences.products.added.map((p: { key: string }) => p.key)).toEqual(["essential", "hotel-net-complete", "connect-whatsapp-ai"]);
+    // Efectos sobre las licencias de un paquete nuevo: entran el plan y los dos productos (aunque el catálogo los
+    // active por capacidades y no por una referencia de plan o de módulo)
+    expect(preview.licences.products).toEqual({ added: [{ key: "essential", name: expect.any(String), plan: true }, { key: "hotel-net-complete", name: expect.any(String), plan: false }, { key: "connect-whatsapp-ai", name: expect.any(String), plan: false }], removed: [], kept: [] });
+    expect(preview.licences).toMatchObject({ planProductBefore: null, planProductAfter: { key: "essential" } });
   });
 
   it("2. prepara la contratación: una suscripción con los tres productos identificados y la cuota pactada", async () => {
@@ -316,6 +319,16 @@ describe("caso final — Essential + Hotel Net + WhatsApp Connect por 129 €/me
     expect(live.reduce((a: number, i: { lineAmountCents: number }) => a + i.lineAmountCents, 0)).toBe(12900);
     expect(live.every((i: { priceSource: string; discount: unknown }) => i.priceSource === "contract" && i.discount === null)).toBe(true);
     expect(detail.billing).toEqual({ source: "shadow" });
+    // Contratación nueva: el historial no inventa unas «condiciones anteriores» ni una diferencia
+    const history = (await call("GET", `/subscriptions/${sid}/terms`, { token: TOK.admin })).json;
+    const activated = history.events.find((e: { kind: string }) => e.kind === "activated");
+    expect(activated.before).toBeNull();
+    expect(activated.economic).toMatchObject({ newContract: true, before: null, difference: null, recurringNetCents: 12900 });
+    const applied = detail.events.find((e: { kind: string }) => e.kind === "terms_applied");
+    expect(applied.before).toEqual({ newContract: true });
+    // La partida del alta queda sin ventana: ni rige ni se factura
+    const ghost = detail.items.filter((i: { termsId?: number | null }) => i.termsId == null);
+    expect(ghost.every((i: { effectiveFrom: number; effectiveTo: number | null }) => i.effectiveTo === i.effectiveFrom)).toBe(true);
   });
 
   it("3. licencias: exactamente las de los tres productos a tarifa oficial; el precio no interviene", async () => {
