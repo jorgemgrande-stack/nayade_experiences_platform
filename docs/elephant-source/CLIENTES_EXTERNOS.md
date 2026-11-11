@@ -169,10 +169,12 @@ operación, «Registrar pago externo» abre el formulario de transferencia.
 - **Rectificación y anulación** (con motivo, auditadas): la rectificación cambia la fecha, la referencia o el
   justificante (el anterior se conserva) y deja el antes y el después en `transfer_rectified`; el importe no se
   rectifica. La anulación deja el pago `voided` (no se borra), libera el cargo y la nota vuelve a pendiente
-  (`transfer_voided`); los enlaces caducados no se reabren. Solo se anula con la factura aún en borrador y sin un cobro
-  de Stripe duplicado: expedida (enviada como cobrada y conciliable con el banco), la corrección va por la rectificativa
-  de Facturación (`POST /invoicing/invoices/:id/rectify`). Reenviar la clave de un pago anulado es un error. El
-  historial nunca se borra.
+  (`transfer_voided`); los enlaces caducados no se reabren. Se anula con la factura aún en borrador. Ya expedida, primero
+  la rectificativa TOTAL en Facturación (`POST /invoicing/invoices/:id/rectify` y expedirla: la original queda
+  «rectificada») y después la anulación, que libera el cargo y prepara una factura NUEVA en borrador
+  (`charge:<id>:tras:<rectificada>`, mismos conceptos e importes), enlazada a la nota, para volver a cobrarla por el
+  circuito normal. Nunca con el abono ya conciliado con el banco ni con un cobro de Stripe duplicado sin resolver.
+  Reenviar la clave de un pago anulado es un error. El justificante y el historial se conservan.
 - **Ruta de cargos:** `POST /invoicing/charges/:id/offline-payment` rechaza una nota de una operación externa (se
   registra en la ficha, con justificante); para los cargos de empresa sigue igual y no llama a Stripe.
 - **Sin transacción entre almacenes:** el justificante se guarda antes que el pago; si el pago no se registra, el
@@ -187,7 +189,7 @@ operación, «Registrar pago externo» abre el formulario de transferencia.
 |---|---|---|
 | Factura | Nace en borrador al emitir la nota (`ChargeService.approve`, `charge:<id>`) | La misma; el cobro nunca crea otra |
 | Cobro | Webhook firmado y sesión releída → `paid`, `stripe:pi:<id>` | Confirmación con PDF → `paid`, `transfer:<pago>` |
-| Expedición | `InvoicingAutomation.issueOne` al registrarse el cobro (y, si falla, la pasada `issueDue`): número correlativo, datos fiscales congelados, PDF y envío | **El mismo `issueOne`**. Una factura ya expedida antes del cobro solo se marca cobrada |
+| Expedición | La pasada periódica de `FinanceAutomation` (`InvoicingAutomation.issueDue`, cada 15 min): número correlativo, datos fiscales congelados, PDF y envío. **Sin cambios** | **La misma pasada**: hasta entonces, borrador cobrado. Una factura ya expedida antes del cobro solo se marca cobrada |
 | Asiento de la factura | `invoice:<id>` (venta: 430 / 70x + 477) en la pasada contable | El mismo |
 | Asiento del cobro | Al importarse la transacción de saldo de Stripe (`stripe-txn:<id>`: 572-Stripe y 626 / 430) | Al conciliar el abono del extracto con la factura (`bankmov:<id>`: 572 banco / 430). La factura cobrada por transferencia declarada sigue entre las sugerencias de conciliación |
 | Texto del PDF | «Cobrada mediante Stripe.» | «Cobrada mediante transferencia bancaria.» |
@@ -195,6 +197,7 @@ operación, «Registrar pago externo» abre el formulario de transferencia.
 En los dos casos el cobro llega al libro con la prueba del dinero (el saldo de Stripe o el extracto del banco), nunca
 con la confirmación (webhook o administrador): por eso no se contabiliza dos veces. Diferencias propias de cada medio:
 la comisión de Stripe (626) y su payout solo existen en Stripe; la transferencia lleva el justificante del administrador
-y su conciliación es con el extracto. Un fallo al expedir nunca deshace el cobro: lo reintenta otra confirmación (misma
-clave), el webhook repetido o la pasada.
+y su conciliación es con el extracto. Un fallo al expedir nunca deshace el cobro: lo reintenta la pasada siguiente, que
+además salta sin incidencia una factura expedida mientras tanto (a mano o en otra réplica). Ninguno de los dos medios
+deja un evento de expedición en la operación: la expedición es de Facturación.
 - Sin la migración 0050 o sin `fin_documents`, el formulario anterior (solo referencia) sigue funcionando.

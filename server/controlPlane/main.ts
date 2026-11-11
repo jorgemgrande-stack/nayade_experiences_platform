@@ -701,7 +701,7 @@ async function main() {
 
   // Facturación propia (CRM 0027): borradores por devengo; expedir solo con CP_INVOICING_ISSUE_ENABLED=1. Mismo entorno
   // (livemode) que los servicios externos cuyos cobros lee
-  let invoicing: { store: MysqlInvoicingStore; issueEnabled: boolean; seriesCode: string; charges?: MysqlChargeStore; chargePayments?: MysqlChargePaymentStore; operations?: MysqlOperationStore; receipts?: ReceiptStore; chargeLock?: ReturnType<typeof mysqlKeyedLock>; automation?: InvoicingAutomation; stripeSales?: StripeSalesInvoicing } | undefined;
+  let invoicing: { store: MysqlInvoicingStore; issueEnabled: boolean; seriesCode: string; charges?: MysqlChargeStore; chargePayments?: MysqlChargePaymentStore; operations?: MysqlOperationStore; receipts?: ReceiptStore; chargeLock?: ReturnType<typeof mysqlKeyedLock>; bankReconciled?: (invoiceId: number) => Promise<boolean>; automation?: InvoicingAutomation; stripeSales?: StripeSalesInvoicing } | undefined;
   if (crmPool && crm) {
     const pool = crmPool;
     const has = (t: string) => pool.query(`SELECT 1 FROM ${t} LIMIT 0`).then(() => true, () => false);
@@ -719,6 +719,11 @@ async function main() {
     if (invoicing && paymentsReady) invoicing.chargePayments = new MysqlChargePaymentStore(pool, external?.store.mode ?? "test", { transfers: transfersReady });
     if (invoicing && paymentsReady) invoicing.chargeLock = mysqlKeyedLock(pool);
     if (invoicing && receiptsReady) invoicing.receipts = receiptsOnFinanceDocuments(new MysqlFinanceOpsStore(pool, { fiscal: false, supplierInvoiceRef: false }));
+    // Abono de la transferencia ya conciliado con el banco (finanzas, CRM 0035): entonces no se anula
+    if (invoicing && receiptsReady) {
+      const finOps = new MysqlFinanceOpsStore(pool, { fiscal: false, supplierInvoiceRef: false });
+      invoicing.bankReconciled = async (invoiceId) => (await finOps.movementsByMatch("invoice_payment", [invoiceId])).length > 0;
+    }
     if (invoicing && paymentsReady) console.log(JSON.stringify({ ctx: "Invoicing", transfers: transfersReady && receiptsReady, ...(transfersReady ? (receiptsReady ? {} : { reason: "migration_0035_missing" }) : { reason: "migration_0050_missing" }) }));
     // Cobros únicos e infraestructura de clientes externos (CRM 0041): emiten cargos, así que van con ellos
     const operationsReady = chargesReady && (await has("external_operations")) && (await has("external_operation_periods")) && (await has("external_operation_events"));

@@ -686,9 +686,7 @@ export class ExternalOperationsService {
     const { chargeId, payments } = this.issued(p);
     const r = await payments.recordTransfer(chargeId, input, actor).catch(rethrow);
     await this.event(o, "paid_transfer", `pay:${r.payment.id}`, { period: p.period, paymentId: r.payment.id, method: "bank_transfer", totalCents: r.payment.totalCents, receivedOn: r.payment.paidAt ? dayOfPaidAt(r.payment.paidAt) : null, reference: r.payment.reference, receiptDocumentId: r.payment.receiptDocumentId ?? null, receipt: r.receipt ? { filename: r.receipt.filename, sizeBytes: r.receipt.sizeBytes, sha256: r.receipt.sha256 } : null, invoiceNumber: r.invoice.number, stripeLinks: r.stripe, evidence: "justificante aportado por el administrador (no verificado con el banco)" }, actor);
-    // Factura expedida por el mismo circuito que con Stripe (una vez por factura en el historial)
-    if (r.invoiceIssue && r.invoice.number && (r.invoiceIssue.status === "issued" || r.invoiceIssue.status === "already")) await this.event(o, "invoice_issued", `inv:${r.invoice.id}`, { period: p.period, invoiceId: r.invoice.id, invoiceNumber: r.invoice.number, totalCents: r.invoice.totalCents, paymentRef: r.invoice.paymentRef }, "system:invoicing");
-    return { period: await this.periodView(o, p), replay: r.replay, stripe: r.stripe, invoice: r.invoiceIssue };
+    return { period: await this.periodView(o, p), replay: r.replay, stripe: r.stripe };
   }
 
   private async transferPeriod(id: number, pid: number) {
@@ -709,8 +707,10 @@ export class ExternalOperationsService {
   async voidTransfer(id: number, pid: number, paymentId: number, input: { reason: string }, actor: string) {
     const { o, p, chargeId, payments } = await this.transferPeriod(id, pid);
     const r = await payments.voidTransfer(chargeId, paymentId, input, actor).catch(rethrow);
-    await this.event(o, "transfer_voided", `pay:${paymentId}`, { period: p.period, paymentId, reason: r.reason, totalCents: r.payment.totalCents }, actor);
-    return { period: await this.periodView(o, p) };
+    // Tras una rectificativa total: la nota se vuelve a cobrar con la factura nueva del cargo (borrador)
+    const cur = r.reinvoiced ? await this.d.store.updatePeriod(p.id, p.version, { invoiceId: r.invoice.id }, this.now()) : p;
+    await this.event(o, "transfer_voided", `pay:${paymentId}`, { period: p.period, paymentId, reason: r.reason, totalCents: r.payment.totalCents, ...(r.reinvoiced ? { rectifiedInvoiceId: r.previousInvoiceId, newInvoiceId: r.invoice.id } : {}) }, actor);
+    return { period: await this.periodView(o, cur) };
   }
 
   /** Justificante de un pago de la nota de cobro (privado: lo sirve la ruta con orders:approve). */

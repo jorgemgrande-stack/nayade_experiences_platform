@@ -194,12 +194,6 @@ export interface IssueReport {
   blocked: Array<{ id: number; reason: string }>;
 }
 
-/** Resultado de expedir una factura concreta (`issueOne`). */
-export type IssueOutcome =
-  | { status: "issued"; invoice: Invoice; delivery: string }
-  | { status: "already"; invoice: Invoice }
-  | { status: "waiting" | "blocked" | "disabled"; reason: string };
-
 export class InvoicingAutomation {
   private readonly now: () => number;
   /** Claves ya encoladas en este proceso (evita rehacer el PDF en cada pasada; la bandeja deduplica igualmente). */
@@ -258,65 +252,47 @@ export class InvoicingAutomation {
     if (!this.d.issueEnabled) return rep;
     for (const inv of await this.d.store.list({ status: "draft", limit: 500 })) {
       if (inv.kind !== "invoice" || inv.operationDate > today) continue;
-      const r = await this.tryIssue(inv, today);
-      if (r.kind === "waiting") rep.waiting++;
-      else if (r.kind === "blocked") rep.blocked.push({ id: inv.id, reason: r.reason });
-      else rep.issued.push({ id: r.invoice.id, number: r.invoice.number, totalCents: r.invoice.totalCents, delivery: r.delivery });
+      const paid = inv.paymentStatus === "paid";
+      // A crédito solo con un intento de cobro fallido (impago de un servicio prestado); sin ningún intento, puede ser
+      // una baja posterior a la proforma: lo decide una persona
+      if (!paid && (inv.paymentStatus !== "failed" || today < creditIssueDate(inv.operationDate))) {
+        if (inv.paymentStatus === "pending" && today >= creditIssueDate(inv.operationDate)) rep.blocked.push({ id: inv.id, reason: "sin cobro ni intento de cobro: revisar si el servicio se prestó antes de expedir" });
+        else rep.waiting++;
+        continue;
+      }
+      if (paid && inv.paymentRef?.startsWith("stripe:in:")) {
+        const id = inv.paymentRef.slice("stripe:in:".length);
+        const s = this.d.stripeInvoice ? await this.d.stripeInvoice(id).catch(() => null) : null;
+        if (!s) {
+          rep.blocked.push({ id: inv.id, reason: `no se pudo contrastar el cobro ${id} con Stripe` });
+          continue;
+        }
+        // Lo cobrado es el total menos el saldo a favor aplicado, solo cuando una persona decidió su origen fiscal
+        const credit = inv.fiscal?.credit && !creditProblem(inv.fiscal.balanceAppliedCents, inv.fiscal.credit) ? inv.fiscal.balanceAppliedCents : 0;
+        if (s.status !== "paid" || s.amountPaid !== inv.totalCents - credit || s.currency.toUpperCase() !== inv.currency.toUpperCase()) {
+          rep.blocked.push({ id: inv.id, reason: `el cobro de Stripe ${id} no casa con la factura (${s.status}, ${s.amountPaid} ${s.currency.toUpperCase()} frente a ${inv.totalCents - credit} ${inv.currency}${credit ? ` = ${inv.totalCents} − ${credit} de saldo a favor` : ""})` });
+          continue;
+        }
+      }
+      // Expedida mientras tanto (a mano en Facturación, otra réplica): se salta sin incidencia y sin cortar la pasada
+      const stillDraft = async () => (this.d.store.get ? (await this.d.store.get(inv.id))?.status === "draft" : true);
+      const { problems } = await this.d.svc.readiness(inv.id);
+      if (problems.length) {
+        if (!(await stillDraft())) continue;
+        rep.blocked.push({ id: inv.id, reason: problems.join("; ") });
+        continue;
+      }
+      let issued: Invoice;
+      try {
+        issued = await this.d.svc.issue(inv.id, INVOICING_ACTOR);
+      } catch (e) {
+        if (!(await stillDraft())) continue;
+        throw e;
+      }
+      const delivery = await this.deliver(issued, false).catch((e) => `error: ${e instanceof Error ? e.message.slice(0, 120) : "envío"}`);
+      rep.issued.push({ id: issued.id, number: issued.number, totalCents: issued.totalCents, delivery });
     }
     return rep;
-  }
-
-  /**
-   * Una factura en borrador por el MISMO circuito que la pasada (`issueDue`): cobro contrastado, datos listos, número
-   * correlativo (`InvoicingService.issue`), PDF y envío. La usan los cobros de cargos al confirmarse (Stripe o
-   * transferencia) para no esperar a la pasada. Idempotente: una ya expedida se devuelve tal cual (`already`), y dos
-   * llamadas a la vez expiden una sola vez (la expedición exige el borrador con la fila bloqueada).
-   */
-  async issueOne(id: number): Promise<IssueOutcome> {
-    const get = this.d.store.get?.bind(this.d.store);
-    if (!get) return { status: "disabled", reason: "almacén de facturas sin lectura por id" };
-    const inv = await get(id);
-    if (!inv) return { status: "blocked", reason: "factura no encontrada" };
-    if (inv.status !== "draft") return { status: "already", invoice: inv };
-    if (!this.d.issueEnabled) return { status: "disabled", reason: "la expedición está desactivada en este entorno: queda el borrador cobrado" };
-    if (inv.kind !== "invoice") return { status: "blocked", reason: "solo se expide aquí una factura ordinaria" };
-    const today = this.today();
-    if (inv.operationDate > today) return { status: "waiting", reason: "operación aún no devengada" };
-    try {
-      const r = await this.tryIssue(inv, today);
-      if (r.kind === "issued") return { status: "issued", invoice: r.invoice, delivery: r.delivery };
-      return { status: r.kind, reason: r.kind === "blocked" ? r.reason : "a la espera del cobro" };
-    } catch (e) {
-      // Otra llamada la expidió a la vez: es la misma factura
-      const again = await get(id);
-      if (again && again.status !== "draft") return { status: "already", invoice: again };
-      throw e;
-    }
-  }
-
-  private async tryIssue(inv: Invoice, today: string): Promise<{ kind: "waiting" } | { kind: "blocked"; reason: string } | { kind: "issued"; invoice: Invoice; delivery: string }> {
-    const paid = inv.paymentStatus === "paid";
-    // A crédito solo con un intento de cobro fallido (impago de un servicio prestado); sin ningún intento, puede ser
-    // una baja posterior a la proforma: lo decide una persona
-    if (!paid && (inv.paymentStatus !== "failed" || today < creditIssueDate(inv.operationDate))) {
-      if (inv.paymentStatus === "pending" && today >= creditIssueDate(inv.operationDate)) return { kind: "blocked", reason: "sin cobro ni intento de cobro: revisar si el servicio se prestó antes de expedir" };
-      return { kind: "waiting" };
-    }
-    if (paid && inv.paymentRef?.startsWith("stripe:in:")) {
-      const id = inv.paymentRef.slice("stripe:in:".length);
-      const s = this.d.stripeInvoice ? await this.d.stripeInvoice(id).catch(() => null) : null;
-      if (!s) return { kind: "blocked", reason: `no se pudo contrastar el cobro ${id} con Stripe` };
-      // Lo cobrado es el total menos el saldo a favor aplicado, solo cuando una persona decidió su origen fiscal
-      const credit = inv.fiscal?.credit && !creditProblem(inv.fiscal.balanceAppliedCents, inv.fiscal.credit) ? inv.fiscal.balanceAppliedCents : 0;
-      if (s.status !== "paid" || s.amountPaid !== inv.totalCents - credit || s.currency.toUpperCase() !== inv.currency.toUpperCase()) {
-        return { kind: "blocked", reason: `el cobro de Stripe ${id} no casa con la factura (${s.status}, ${s.amountPaid} ${s.currency.toUpperCase()} frente a ${inv.totalCents - credit} ${inv.currency}${credit ? ` = ${inv.totalCents} − ${credit} de saldo a favor` : ""})` };
-      }
-    }
-    const { problems } = await this.d.svc.readiness(inv.id);
-    if (problems.length) return { kind: "blocked", reason: problems.join("; ") };
-    const issued = await this.d.svc.issue(inv.id, INVOICING_ACTOR);
-    const delivery = await this.deliver(issued, false).catch((e) => `error: ${e instanceof Error ? e.message.slice(0, 120) : "envío"}`);
-    return { kind: "issued", invoice: issued, delivery };
   }
 
   /** Reintenta encolar el envío de las facturas expedidas recientes (si un encolado falló); idempotente. */
