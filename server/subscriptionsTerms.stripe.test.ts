@@ -28,7 +28,7 @@ import type { NegotiatedCheckoutInput, NegotiatedItemsChange, StripeGateway } fr
 import { StripeReconciler } from "./stripe/reconcile";
 import { MemoryStripeStore } from "./stripe/store";
 import { FakeStripeGateway } from "./stripe/testing";
-import { addMonthsUTC } from "./subscriptions/pricing";
+import { addMonthsUTC, madridAnchor } from "./subscriptions/pricing";
 import type { EligibilityConfig } from "./stripe/eligibility";
 
 const A = "operator:ana";
@@ -2222,5 +2222,80 @@ describe("cuarta revisión independiente: modo flexible, fin sin prorrateo, huec
     await deliver(w);
     expect(gw.invoiceItems.filter((i) => i.invoiceId === null)).toEqual([]);
     expect(gw.calls.filter((c) => c.op === "invoiceitems.delete")).toHaveLength(1);
+  });
+});
+
+describe("quinta revisión independiente: tantos cobros como periodos cubre el contrato", () => {
+  const renewalAt = (stripeId: string) => gw.subscriptions.get(stripeId)!.currentPeriodEnd! * 1000;
+  const tick = async (w: World) => (await w.reconciler.tick()).negotiated!;
+  /**
+   * Paquete solo económico de N periodos desde hoy (fechas de Madrid, como las del acuerdo); el cliente paga `late` días
+   * después del inicio. Se recorren todas las renovaciones hasta que Stripe termina y se cuentan los cobros.
+   */
+  async function charges(interval: "month" | "year", periods: number, late: number, extra = 0) {
+    gw.addProduct({ id: CUSTOM_SERVICE_PRODUCT_ID, name: "Servicio a medida" });
+    subs.checkComposition = async () => undefined;
+    const w = world();
+    const S = clock;
+    const E = addMonthsUTC(S, periods * (interval === "year" ? 12 : 1), madridAnchor(S)) + extra;
+    const amount = interval === "year" ? 120000 : 4463;
+    const pkg = await terms.createPackage(1, { pricingMode: "per_item", presentation: "breakdown", interval, reason: "Paquete", lines: [custom("Servicio gestionado", amount, { concept: "professional_service", endsAt: E })] } as never, A);
+    const prepared = await terms.prepareContracting(pkg.id, { expectedRevision: pkg.revision }, A);
+    const subId = prepared.terms.subscriptionId!;
+    clock += late * DAY;
+    const s = (await w.neg.start(subId, A)) as { sessionId: string };
+    const stripeId = gw.completeNegotiatedSession(s.sessionId);
+    await deliver(w);
+    for (let n = 0; n < 40 && gw.subscriptions.get(stripeId)!.status !== "canceled"; n++) {
+      clock = renewalAt(stripeId) - 2 * DAY;
+      await tick(w);
+      clock = renewalAt(stripeId) + 60_000;
+      if (gw.chargeNegotiatedPeriod(stripeId) === "") break;
+      await deliver(w);
+    }
+    await deliver(w);
+    const paid = Array.from(gw.invoices.values()).filter((i) => i.subscriptionId === stripeId && i.status === "paid");
+    // Nunca un periodo prorrateado ni otro importe
+    expect(paid.every((i) => i.subtotal === amount)).toBe(true);
+    expect(cancelAts()).toEqual([]);
+    return { count: paid.length, subId, E };
+  }
+  const cancelAts = () => gw.calls.filter((c) => c.op === "subscriptions.update(cancel_at)");
+
+  for (const late of [0, 1, 4, 20]) {
+    it(`mensual de 6 meses pagado ${late} días después del inicio: 6 cobros`, async () => {
+      expect((await charges("month", 6, late)).count).toBe(6);
+      expect(alerts.count("stripe.negotiated_invoice_mismatch")).toBe(0);
+    });
+    it(`anual de 2 años pagado ${late} días después del inicio: 2 cobros`, async () => {
+      expect((await charges("year", 2, late)).count).toBe(2);
+    });
+  }
+
+  it("un contrato de 12 meses son 12 cobros", async () => {
+    expect((await charges("month", 12, 4)).count).toBe(12);
+  });
+
+  it("un tramo final que no llega a un periodo entero (6 meses y medio) no se cobra: 6 cobros, nunca un séptimo", async () => {
+    const r = await charges("month", 6, 4, 15 * DAY);
+    expect(r.count).toBe(6);
+    // El servicio sigue sin cobro hasta la fecha de fin del acuerdo
+    const sub = await subs.must(r.subId);
+    expect(sub.status === "canceled" || sub.cancelAt === r.E).toBe(true);
+  });
+
+  it("menor: los fines internos aplazados se aplican aunque haya más de 200 canceladas más recientes", async () => {
+    const w = world();
+    const r = await charges("month", 6, 0, 15 * DAY);
+    expect(await subs.must(r.subId)).toMatchObject({ status: "active", cancelAt: r.E });
+    // 250 contrataciones canceladas posteriores (ya resueltas)
+    for (let n = 0; n < 250; n++) {
+      const x = (await billingStore.create({ subscriptionId: 10_000 + n, companyId: 2, stripeCustomerId: "cus_x", startedBy: A, now: clock })).row;
+      await billingStore.patch(x.id, { status: "canceled", readOnlyUntil: clock + 30 * DAY }, x.version, clock + n);
+    }
+    clock = r.E + 60_000;
+    await tick(w);
+    expect((await subs.must(r.subId)).status).toBe("canceled");
+    expect((await row(r.subId)).readOnlyUntil).toBe(clock + 30 * DAY);
   });
 });

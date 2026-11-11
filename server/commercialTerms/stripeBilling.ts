@@ -922,10 +922,17 @@ export class NegotiatedBillingService {
         opsLog("warn", "CommercialTerms", "billing_reconcile_failed", { subscriptionId: row.subscriptionId, error: e instanceof Error ? e.name : "error" });
       }
     }
-    // Terminadas en Stripe con la contratación viva dentro: ya no se cobran y nadie lo ha resuelto (alguien la canceló en
-    // Stripe con todo al corriente, o el fin interno no llegó a aplicarse). Siguen contando en cada pasada hasta que se
-    // vuelvan a poner a cobrar o se terminen. Las más recientes primero: con muchas, las nuevas nunca se quedan fuera
-    for (const row of await this.d.store.list({ status: ["canceled"], limit, newestFirst: true })) {
+    // Terminadas en Stripe sin su fin aplicado dentro (`read_only_until` nulo): alguien la canceló en Stripe con todo al
+    // corriente, el fin interno no llegó a aplicarse, o está aplazado al fin del acuerdo. Se recorren TODAS (por páginas,
+    // no una ventana de las más recientes): ninguna se queda fuera, por antigua que sea
+    const unresolved: TermsBillingRow[] = [];
+    for (let after = 0; ; ) {
+      const page = await this.d.store.list({ status: ["canceled"], unresolved: true, afterId: after, limit });
+      unresolved.push(...page);
+      if (page.length < limit) break;
+      after = page[page.length - 1].id;
+    }
+    for (const row of unresolved) {
       try {
         const sub = await this.d.subscriptionStore.get(row.subscriptionId);
         if (!sub || sub.status !== "active") continue;

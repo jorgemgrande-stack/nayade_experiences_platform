@@ -169,6 +169,25 @@ describe.skipIf(!URL_)("cobro en Stripe de condiciones personalizadas con MySQL 
     await pool.query("UPDATE commercial_terms_billing SET stripe_subscription_id = NULL, session_id = NULL WHERE id IN (?, ?)", [row.id, o.id]);
   });
 
+  it("canceladas sin su fin aplicado: se leen todas por páginas (por id), sin la ventana de las más recientes", async () => {
+    const ids: number[] = [];
+    for (let n = 0; n < 5; n++) {
+      const r = (await billingStore.create({ subscriptionId: await agreed(1), companyId: 1, stripeCustomerId: "cus_test_p", startedBy: A, now: clock })).row;
+      // Las pares quedan resueltas (con su solo lectura); las impares, sin resolver
+      await billingStore.patch(r.id, { status: "canceled", readOnlyUntil: n % 2 ? null : clock + 1 }, r.version, clock + n);
+      if (n % 2) ids.push(r.id);
+    }
+    const seen: number[] = [];
+    for (let after = 0; ; ) {
+      const page = await billingStore.list({ status: ["canceled"], unresolved: true, afterId: after, limit: 1 });
+      if (!page.length) break;
+      seen.push(...page.map((r) => r.id));
+      after = page[page.length - 1].id;
+    }
+    expect(seen.filter((id) => ids.includes(id))).toEqual(ids);
+    expect(seen.every((id, i) => i === 0 || id > seen[i - 1])).toBe(true);
+  });
+
   it("facturas: una fila por factura de Stripe; releerla no la duplica ni pierde lo ya sabido", async () => {
     const subId = await agreed(3);
     const row = (await billingStore.create({ subscriptionId: subId, companyId: 3, stripeCustomerId: "cus_test_c", startedBy: A, now: clock })).row;
