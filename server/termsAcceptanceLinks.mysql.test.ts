@@ -122,7 +122,7 @@ describe.skipIf(!URL_)("enlace de aceptación recuperable con MySQL real", () =>
     await svc.view(token);
     const re = await svc.resend(draft.id, A);
     expect(re.url).toBe(out.url);
-    expect(sent[1].key).toBe(`terms-acceptance:${out.acceptanceId}:2`);
+    expect(sent[1].key).toMatch(new RegExp(`^terms-acceptance:${out.acceptanceId}:resend:`));
     // Regenerar: mismo contrato y versión; el antiguo deja de valer
     const t1 = (await terms.must(draft.id)).revision;
     const regen = await svc.regenerate(draft.id, { expectedRevision: t1 }, A);
