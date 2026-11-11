@@ -100,7 +100,7 @@ export interface NegotiatedBillingDeps {
   stripeStore: Pick<StripeStore, "customerByCompany" | "linkCustomer" | "acquireLease" | "releaseLease">;
   gateway: StripeGateway;
   adapter: StripeNegotiatedGateway;
-  billing: Pick<TermsBillingService, "plan" | "syncIfOpen" | "recordSent" | "reconcile" | "nextStart" | "changedSinceSync" | "sentOneOffs" | "revokeOneOffs" | "scheduledEnd">;
+  billing: Pick<TermsBillingService, "plan" | "syncIfOpen" | "recordSent" | "reconcile" | "nextStart" | "changedSinceSync" | "sentOneOffs" | "revokeOneOffs" | "scheduledEnd" | "notePeriod">;
   termsStore: Pick<TermsStore, "get" | "log">;
   /** Suscripción interna: una vez enlazada, el reloj es el de Stripe (sus periodos y su fin siguen a los de Stripe). */
   subscriptionStore: Pick<SubscriptionStore, "get" | "mutate">;
@@ -797,6 +797,10 @@ export class NegotiatedBillingService {
         { billingId: row.id, subscriptionId: row.subscriptionId, stripeInvoiceId: inv.id, status: inv.status ?? "unknown", billingReason: inv.billingReason, number: inv.number ?? null, currency: inv.currency, subtotalCents: inv.subtotal, taxCents: inv.taxCents ?? null, totalCents: inv.total ?? null, amountPaidCents: inv.amountPaid, periodStart: inv.periodStart === null ? null : inv.periodStart * 1000, taxCheck, coverageLost: known?.coverageLost ?? false, paidAt: isPaid ? this.now() : null },
         this.now(),
       );
+      // Cuenta de periodos de cuota de esta suscripción de Stripe (alta con cuota y renovaciones; no el alta de 0 de un
+      // primer cargo aplazado): decide cuántas renovaciones quedan hasta el fin de las condiciones (`owedPeriods`)
+      const opensPeriod = inv.billingReason === "subscription_cycle" || (inv.billingReason === "subscription_create" && !row.checkout?.firstChargeAt);
+      if (opensPeriod && inv.status && inv.status !== "draft") await this.d.billing.notePeriod(row.subscriptionId, sub.id, inv.id, this.actor).catch((e) => opsLog("warn", "CommercialTerms", "billing_note_period_failed", { subscriptionId: row.subscriptionId, error: e instanceof Error ? e.name : "error" }));
       if (!isPaid) continue;
       if (created) await this.history(plan?.termsId ?? row.checkout?.termsId ?? null, "billing_payment", `Factura de Stripe cobrada (${inv.billingReason ?? "sin motivo"})`, { subscriptionId: row.subscriptionId, invoiceId: inv.id, number: inv.number ?? null, subtotalCents: inv.subtotal, taxCents: inv.taxCents ?? null, totalCents: inv.total ?? null, taxCheck }, this.actor);
       // La última factura de la suscripción manda (la del evento puede ser anterior)

@@ -520,14 +520,31 @@ de Checkout negociado nacen en modo `flexible` (versión de API `2026-09-30.endi
 (`stripe.negotiated_terms_ended`) al programarlo y, mientras sigue programado, la conciliación lo da como
 `fin_por_condiciones` **como mucho una vez al día** (`TERMS_END_ALERT_EVERY_MS`).
 
-- **Tantos cobros como periodos cubre el contrato.** Los periodos del contrato se cuentan desde el inicio del acuerdo
-  que termina (meses de calendario de Madrid, como sus fechas). El ciclo de Stripe puede ir desfasado: el ancla es el
-  instante del pago (UTC) y, si el cliente pagó unos días después del inicio, va esos días por detrás (y esos días no
-  se cobraron). Cada renovación de Stripe corresponde al periodo del contrato que empieza en el último límite del
-  contrato anterior o igual a ella (con una holgura de 2 días, `END_TOLERANCE_MS`, para la hora del pago, el cambio de
-  hora y la longitud de los meses); Stripe renueva si ese periodo del contrato cabe entero antes del fin. Así **un
-  contrato de 12 meses son 12 cobros** también con el ancla 1, 4 o 20 días por detrás (el último periodo de Stripe
-  acaba esos días después del fin: es el periodo pagado, no uno de más), y uno anual de 2 años son 2 cobros.
+- **Los cobros se CUENTAN, no se casan por fechas.** Para cada suscripción de Stripe enlazada, `sync_detail` guarda:
+  - cuándo empezó a cobrarse (`billingFrom`, su ancla);
+  - desde cuándo cuenta el contrato (`contractFrom`): el inicio de las cuotas del acuerdo que regía entonces, su primera
+    partida recurrente. Nunca es una fecha en la que una partida se partió por un cambio de importe o un ajuste
+    temporal;
+  - las facturas que abrieron un periodo de cuota (`periods`): el alta con cuota y cada renovación, cobrada, impagada o
+    anulada por la pausa. El alta de 0 de un primer cargo aplazado no cuenta.
+
+  Cobros debidos (`owedPeriods`) = periodos completos del contrato entre `contractFrom` y el fin, menos los periodos
+  completos que ya habían pasado cuando empezó a cobrarse. Stripe renueva mientras los facturados sean menos que los
+  debidos; durante el último periodo debido se pone `cancel_at_period_end`. Y **nunca se cobra un periodo que empieza
+  en el fin o después**: esto prevalece sobre la cuenta.
+  - **Un contrato de N meses son N cobros** si el cliente paga en cualquier momento del primer periodo (probado para
+    todos los días de inicio del año y retrasos de hasta 25 días: siempre N). Prevalece el número de periodos del
+    contrato: el último periodo de Stripe acaba ese mismo retraso después del fin.
+  - **Pago tan tardío que ya pasó algún periodo entero**: esos periodos no se cobran ni se recuperan (N menos los
+    pasados). En los bordes, con un retraso de casi un periodo, el cambio de hora o un fin de mes recortado pueden hacer
+    que el N-ésimo periodo de Stripe empiece en el fin o después; entonces no se cobra.
+  - **Un acuerdo que sustituye a otro a mitad de vigencia** en la misma suscripción de Stripe no reinicia la cuenta:
+    sigue contando desde `contractFrom` (el del acuerdo con el que empezó a cobrarse) y solo cambia el fin.
+    - Ejemplo: A desde el día 1, sustituido por B del 15 del 4.º mes al 15 del 10.º. Salen 9 cobros (los días 1 del 1.º
+      al 9.º mes); el periodo que empezaría el día 1 del 10.º mes no se cobra, porque los 15 días hasta el fin no son un
+      periodo entero.
+  - **Holgura**: `PERIOD_SLACK_MS` (12 h), solo para la hora del día y el cambio de hora entre las fechas del acuerdo y
+    las de Stripe. Nunca convierte un tramo corto en un periodo entero.
 - **Fin en una renovación** (lo habitual: un acuerdo anual que vence en su fecha): Stripe termina en lugar de renovar y
   no cobra un periodo más.
 - **Fin a mitad de periodo — decisión: nunca se cobra más que el contrato y nunca queda sin cobrar un periodo entero
@@ -602,7 +619,7 @@ Qué pasa cuando la fecha **no coincide** con una renovación (sin prorrateo, a 
 | Cambio de importe | El periodo en curso ya se cobró con el importe anterior. El nuevo rige desde la primera renovación posterior a la fecha (la diferencia de los días restantes no se cobra ni se abona). |
 | Empieza una cuota 0 | El periodo en curso ya se cobró entero. La pausa se pone en cuanto rige y anula la primera renovación posterior. |
 | Termina una cuota 0 | La renovación anterior a la fecha cae aún en el periodo gratuito y se anula; los días de pago entre la fecha y la renovación siguiente no se cobran. Stripe reanuda el cobro 6 horas antes de la fecha. |
-| Terminan las condiciones sin sucesor | Se cobran todos los periodos completos del contrato (contados desde su inicio, aunque el ciclo de Stripe vaya desfasado). Un tramo final de menos de un periodo no se cobra: Stripe no renueva hacia él y el servicio sigue sin cobro hasta la fecha. Nunca un periodo prorrateado ni un cobro de más. |
+| Terminan las condiciones sin sucesor | Se cobran los periodos completos que debe el contrato, contados por número (`owedPeriods`, aunque el ciclo de Stripe vaya desfasado o el acuerdo se haya sustituido o partido). Un tramo final de menos de un periodo no se cobra: Stripe no renueva hacia él y el servicio sigue sin cobro hasta la fecha. Nunca un periodo que empiece en el fin o después, ni uno prorrateado. |
 | Cargo o abono único | Va en la primera renovación posterior a su fecha (o en la de su fecha si coincide). |
 
 **Cambios ordinarios.** Una suscripción con acuerdo no admite los cambios de la ficha (plan, añadir o retirar
