@@ -70,7 +70,7 @@ describe("estados comerciales normalizados", () => {
     for (const p of PRODUCTS) {
       if (p.draft.catalog.commercialStatus === "on_request") expect(p.draft.internal.evidence, p.key).toBeTruthy();
       if (p.draft.catalog.commercialStatus === "on_request") expect(p.draft.technicalStatus, p.key).not.toBe("planned");
-      expect(p.draft.catalog.commercialStatus, p.key).not.toBe("available");
+      if (p.key !== "social-token-net-complete") expect(p.draft.catalog.commercialStatus, p.key).not.toBe("available");
     }
     expect(PRODUCTS.find((p) => p.key === "hotel-net-pms")!.draft.internal.notes).toMatch(/^Componente interno del producto Elephant Net/);
   });
@@ -206,7 +206,9 @@ describe("revisión del 07/11/2026: Elephant Net en implantación acompañada", 
       expect(p.offer, key).toMatchObject({ modality: "assisted", checkout: false, trial: false, cta: "proposal" });
       expect(quote(cat, { plan: "essential", interval: "month", extensions: [key] } as never).contractable, key).toBe("request");
     }
-    for (const key of ["social-token-net-complete", "life-net"]) expect(cat.products.find((x) => x.key === key)!.commercialStatus, key).toBe("coming_soon");
+    // Social Token Net: en venta directa (como en production desde el 10/11/2026); Life Net sigue «Próximamente»
+    expect(cat.products.find((x) => x.key === "social-token-net-complete")!.commercialStatus).toBe("available");
+    expect(cat.products.find((x) => x.key === "life-net")!.commercialStatus).toBe("coming_soon");
     const again = await applyStatusReview(k.svc, k.store, STATUS_REVIEW_2026_11_07, { apply: true, author: AUTHOR_1107 });
     expect(again.changed).toEqual([]);
     expect(again.already).toEqual(FIVE);

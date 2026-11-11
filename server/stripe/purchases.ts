@@ -49,6 +49,8 @@ import { SubscriptionChangeError, sameItems, type ExpectedItem, type Subscriptio
 import { bundleReplaces, legacyProductText } from "../catalog/quote";
 import { legacyExtensionText } from "../../shared/netProducts";
 import { SWAP_SUFFIX, cleanupSwapZeros } from "./swapCleanup";
+import type { CapabilityReader } from "../_core/capabilities/store";
+import { alreadyHeld, heldMessage } from "../licensing/heldCapabilities";
 
 type ItemChange = { id?: string; priceId?: string; quantity?: number; deleted?: true };
 
@@ -186,6 +188,11 @@ export interface PurchaseDeps {
    * pago de Stripe (plantilla module.purchase_requested). Solo al enviarla; un fallo del aviso no afecta a la compra.
    */
   onPaymentPending?: (i: { orderId: number; paymentUrl: string | null; amountDueCents: number | null }) => Promise<void>;
+  /**
+   * Licencias vigentes de la empresa (registro): con ellas, un producto cuyas capacidades la empresa YA tiene por otro
+   * origen (otra suscripción o condiciones personalizadas, activación del equipo, derechos adquiridos) no se vende.
+   */
+  capabilities?: CapabilityReader | null;
   now?: () => number;
 }
 
@@ -281,6 +288,9 @@ export class ModulePurchaseService {
       if (p?.legacy && !this.d.legacyNetSales) throw new PurchaseError("unavailable", legacyProductText(p.name, (await this.d.catalog.product(p.legacy.replacedBy))?.name ?? p.legacy.replacedBy));
       if (!p || p.commercialStatus !== "available" || !PURCHASABLE_FAMILIES.has(p.family) || p.addonFor || (p.internalOnly && !this.internalAllowed(current.tenantId))) throw new PurchaseError("unavailable", `«${key}» no está disponible para compra en línea`);
     }
+    // Doble cobro: lo que la empresa ya tiene activo por OTRO origen (no la suscripción de este pedido) no se vende
+    const held = await alreadyHeld({ capabilities: this.d.capabilities, catalog: this.d.catalog }, current.tenantId, add, { now: this.now(), ignoreSource: (s) => current.subscriptionId !== null && s === `subscription:${current.subscriptionId}` });
+    if (held.length) throw new PurchaseError("conflict", heldMessage(held[0]));
     // Paquetes y componentes: nunca los dos a la vez. Un paquete que sustituye componentes ya contratados los quita
     // de la configuración (y de Stripe, en la misma operación)
     const replacedBy = new Map<string, string>();

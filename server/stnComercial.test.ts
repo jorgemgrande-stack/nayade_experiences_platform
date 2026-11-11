@@ -46,7 +46,8 @@ describe("catálogo: los productos siguen como estaban", () => {
   it("precios 39 €, 29 € y 59 € al mes, «Próximamente» y Complete = los dos módulos", () => {
     const byKey = new Map(catalog.products.map((p) => [p.key, p]));
     expect([COM, TOK, CPL].map((k) => byKey.get(k)!.prices.find((p) => p.kind === "monthly")!.amountCents)).toEqual([3900, 2900, 5900]);
-    expect([COM, TOK, CPL].map((k) => byKey.get(k)!.commercialStatus)).toEqual(["coming_soon", "coming_soon", "coming_soon"]);
+    // Complete, en venta directa como en production (11/11/2026); sus componentes heredados, no
+    expect([COM, TOK, CPL].map((k) => byKey.get(k)!.commercialStatus)).toEqual(["coming_soon", "coming_soon", "available"]);
     expect(byKey.get(CPL)!.bundleOf).toEqual([COM, TOK]);
     expect(byKey.get(CPL)!.family).toBe("net_bundle");
   });

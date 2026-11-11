@@ -3,6 +3,9 @@
  * por el servidor del Core con la empresa y la persona de la sesión:
  *  - `info`: «Solicitar información» de un producto bajo solicitud (o disponible sin compra en línea).
  *  - `waitlist`: «Me interesa» de un producto próximamente o en preparación.
+ *  - `implementation`: «Contratar e iniciar implantación» de un producto Net de clase B (shared/netOffer.ts): la
+ *    solicitud abre el expediente de implantación (captación de soluciones asistidas, idempotente) y el equipo prepara
+ *    el contrato. Sin cobro.
  *
  * Reutiliza las solicitudes web del CRM (WebRequestService): la solicitud cuelga de un lead, con su idempotencia,
  * sus duplicados en 24 h y el aviso interno al equipo (leadNotices). Sin tipos nuevos en la base: Connect y extras
@@ -26,6 +29,7 @@ import type { WebRequestService } from "../crm/webRequests";
 import type { CrmStore } from "../crm/store";
 import { CrmError, type LeadRequestType } from "../crm/types";
 import { panelCatalog } from "./panelCatalog";
+import { ASSISTED_CONTRACT_COPY, netSaleKind } from "../../shared/netOffer";
 
 export const PANEL_REQUEST_SOURCE = "panel:/admin/ampliar";
 /** Versión de privacidad de las solicitudes del panel: la persona ya es cliente y actúa desde su cuenta. */
@@ -34,7 +38,7 @@ export const PANEL_PRIVACY_VERSION = "panel-cliente";
 const tenant = z.string().regex(/^[a-z0-9][a-z0-9-]{1,62}$/);
 export const panelRequestBody = z
   .object({
-    type: z.enum(["info", "waitlist"]),
+    type: z.enum(["info", "waitlist", "implementation"]),
     interest: z.string().regex(/^[a-z0-9][a-z0-9-]{0,62}$/),
     message: z.string().trim().max(2000).optional(),
     requester: z.object({ name: z.string().trim().min(1).max(160), email: z.string().trim().toLowerCase().email().max(200) }).strict(),
@@ -73,10 +77,21 @@ export async function receivePanelRequest(
   const upcoming = item.commercialStatus === "coming_soon" || item.commercialStatus === "in_preparation";
   if (b.type === "waitlist" && !upcoming) throw new PanelRequestError(409, "invalid_state", "Ese producto ya se puede solicitar: pide información");
   if (b.type === "info" && upcoming) throw new PanelRequestError(409, "invalid_state", "Ese producto todavía no está disponible: usa «Me interesa»");
+  // «Contratar e iniciar implantación» (clase B): solo un producto Net de empresa bajo solicitud, operativo y con precio
+  // publicado. Abre la solicitud de implantación (el expediente lo abre la captación, idempotente); nunca cobra nada
+  const assisted = b.type === "implementation";
+  if (assisted && netSaleKind({ key: item.key, commercialStatus: item.commercialStatus, technicalStatus: item.technicalStatus ?? null, hasMonthlyPrice: !!item.monthly }) !== "assisted_contract") {
+    throw new PanelRequestError(409, "invalid_state", "Ese producto no se contrata con implantación asistida desde el panel: pide información");
+  }
 
   const company = (await d.crm.list("companies", {}, { desc: true, limit: 5000 })).find((c) => c.tenantId === tenantId) ?? null;
   const type: LeadRequestType = /^net_|^industry_module$/.test(item.family) ? "module_info" : "extension_info";
-  const lead = b.type === "waitlist" ? `Me interesa ${item.name} (próximamente). Avisadnos cuando esté disponible.` : `Solicita información sobre ${item.name}.`;
+  const price = item.monthly ? `${(item.monthly.amountCents / 100).toFixed(2).replace(".", ",")} € al mes${item.monthly.taxIncluded ? "" : " (IVA aparte)"}` : null;
+  const lead = assisted
+    ? `Quiere contratar ${item.name} e iniciar la implantación (precio publicado: ${price}). Preparar el contrato (condiciones personalizadas con los compromisos de implantación); sin cobro en el panel.`
+    : b.type === "waitlist"
+      ? `Me interesa ${item.name} (próximamente). Avisadnos cuando esté disponible.`
+      : `Solicita información sobre ${item.name}.`;
   const message = [lead, `Empresa cliente: ${company?.name ?? tenantId} (${tenantId}).`, b.message ? `Mensaje: ${b.message}` : ""].filter(Boolean).join("\n");
   try {
     const { outcome, request } = await d.requests.receive(
@@ -87,7 +102,7 @@ export async function receivePanelRequest(
         company: company?.name ?? tenantId,
         message,
         interest: item.key,
-        sourcePage: `${PANEL_REQUEST_SOURCE}/${item.key}${b.type === "waitlist" ? "#me-interesa" : ""}`,
+        sourcePage: `${PANEL_REQUEST_SOURCE}/${item.key}${b.type === "waitlist" ? "#me-interesa" : assisted ? ASSISTED_CONTRACT_COPY.sourceFragment : ""}`,
         marketingConsent: false,
         privacyVersion: PANEL_PRIVACY_VERSION,
       },
