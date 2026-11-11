@@ -12,7 +12,7 @@
  */
 import crypto from "node:crypto";
 import { materialize, summarize, type TaxGroup } from "./compute";
-import { isRecurring, type Adjustment, type Terms } from "./model";
+import { declaredServiceStart, isRecurring, type Adjustment, type Terms } from "./model";
 
 export const TERMS_TIME_ZONE = "Europe/Madrid" as const;
 
@@ -30,7 +30,7 @@ export interface ClientView {
   /** Cuota recurrente por periodo al empezar. */
   recurring: { netCents: number; taxes: TaxGroup[]; taxCents: number; totalCents: number };
   /** Pagos iniciales y trabajos extraordinarios (importes únicos, con su fecha). */
-  oneTime: Array<{ name: string; description: string | null; at: number; netCents: number; taxRateBp: number; taxCents: number; totalCents: number }>;
+  oneTime: Array<{ name: string; description: string | null; at: number; netCents: number; taxRateBp: number; taxCents: number; totalCents: number; /** Solo con `serviceStartAt`: cargo sin fecha propia, debido al aceptar (no en el inicio del servicio). */ onAcceptance?: true }>;
   /** Descuentos o recargos de un solo uso sobre la primera cuota (con signo). */
   onceAdjustments: Array<{ label: string; cents: number }>;
   /** Primera contratación: primera cuota, cargos con fecha de inicio y ajustes de un solo uso. */
@@ -47,6 +47,11 @@ export interface ClientView {
   scheduledChanges: Array<{ at: number; netCents: number; taxCents: number; totalCents: number }>;
   conditions: string | null;
   timeZone: typeof TERMS_TIME_ZONE;
+  /**
+   * Solo en un acuerdo económico cuyas cuotas llevan todas una fecha de inicio propia (`declaredServiceStart`): la
+   * fecha desde la que rigen las cuotas. La vista (cuota, impuestos, totales) es la de ESA fecha, no un «0,00».
+   */
+  serviceStartAt?: number;
 }
 
 export const money = (cents: number, currency: string) => new Intl.NumberFormat("es-ES", { style: "currency", currency, useGrouping: "always" } as unknown as Intl.NumberFormatOptions).format(cents / 100);
@@ -67,6 +72,18 @@ function adjustmentLabel(a: Pick<Adjustment, "type" | "mode" | "value" | "note" 
  * Con presentación `global` no sale ningún importe por partida recurrente.
  */
 export function presentTerms(t: Terms, next?: Terms | null): ClientView {
+  // Acuerdo económico con fecha de inicio declarada: se presenta con la cuota que rige desde esa fecha
+  const declared = declaredServiceStart(t);
+  if (declared !== null) {
+    const undated = new Set(t.lines.filter((l) => !isRecurring(l) && l.startsAt === null).map((l) => l.id));
+    const v = presentDated({ ...t, effectiveFrom: declared }, next);
+    const lines = t.lines.filter((l) => !isRecurring(l)).sort((a, b) => a.sort - b.sort || a.id - b.id);
+    return { ...v, oneTime: v.oneTime.map((c, n) => (undated.has(lines[n].id) ? { ...c, at: t.effectiveFrom ?? c.at, onAcceptance: true as const } : c)), serviceStartAt: declared };
+  }
+  return presentDated(t, next);
+}
+
+function presentDated(t: Terms, next?: Terms | null): ClientView {
   const s = summarize(t);
   const start = t.effectiveFrom ?? 0;
   const lineOf = (id: number) => t.lines.find((l) => l.id === id)!;
@@ -166,7 +183,8 @@ export function renderTermsDocument(i: TermsDocumentInput): string {
     const kind = l.recurring ? "" : " (pago único)";
     out.push(`- ${l.name}${l.quantity > 1 ? ` × ${l.quantity}` : ""}${kind}${l.description ? `. ${l.description}` : ""}${l.conditions ? ` Condiciones particulares: ${l.conditions}` : ""}`);
   }
-  out.push("Las funcionalidades y licencias del cliente son las de los productos incluidos, con independencia del precio pactado.");
+  // Solo servicios a medida: el documento no habla de licencias ni de productos que no hay
+  out.push(v.included.some((l) => l.kind === "product") ? "Las funcionalidades y licencias del cliente son las de los productos incluidos, con independencia del precio pactado." : "Estas condiciones son exclusivamente económicas: no incluyen licencias de uso ni el alta de ninguna plataforma de Big Elephant.");
   out.push("");
   out.push("PRECIO Y PERIODICIDAD");
   if (v.breakdown) {
@@ -180,16 +198,19 @@ export function renderTermsDocument(i: TermsDocumentInput): string {
   for (const g of v.recurring.taxes) out.push(`- Impuesto ${percent(g.rateBp)} sobre ${m(g.baseCents)}: ${m(g.taxCents)}.`);
   out.push(`Total con impuestos: ${m(v.recurring.totalCents)} ${per(v.interval)}.`);
   out.push(`Periodicidad de facturación: ${v.interval === "year" ? "anual" : "mensual"}, por periodos anticipados.`);
+  // Cuotas con fecha de inicio propia (acuerdo económico): se dice desde cuándo rigen y que no hay parte proporcional
+  const serviceStart = v.serviceStartAt ?? null;
+  if (serviceStart !== null) out.push(`Las cuotas rigen desde el ${madridDateTime(serviceStart)} o, si la aceptación es posterior, desde la aceptación. La primera cuota corresponde a un periodo completo desde ese inicio: no se factura ninguna parte proporcional anterior.`);
   out.push("");
   out.push("PAGOS INICIALES Y CARGOS ÚNICOS");
   if (!v.oneTime.length && !v.onceAdjustments.length) out.push("No hay pagos iniciales ni cargos únicos.");
-  for (const c of v.oneTime) out.push(`- ${c.name}: ${m(c.netCents)} más impuestos (${percent(c.taxRateBp)}: ${m(c.taxCents)}); total ${m(c.totalCents)}. Se factura una sola vez${i.startsOnAcceptance && v.validity.from === null ? "" : `, el ${madridDate(c.at)}`}.`);
+  for (const c of v.oneTime) out.push(`- ${c.name}: ${m(c.netCents)} más impuestos (${percent(c.taxRateBp)}: ${m(c.taxCents)}); total ${m(c.totalCents)}. Se factura una sola vez${c.onAcceptance ? ", en el momento de la aceptación de estas condiciones" : i.startsOnAcceptance && v.validity.from === null ? "" : `, el ${madridDate(c.at)}`}.`);
   for (const a of v.onceAdjustments) out.push(`- ${a.label}: ${m(a.cents)} sobre la primera cuota. Se aplica una sola vez.`);
-  if (v.oneTime.length || v.onceAdjustments.length) out.push(`Primera contratación (primera cuota, cargos iniciales y ajustes de un solo uso): ${m(v.first.netCents)} más impuestos; total ${m(v.first.totalCents)}.`);
+  if (serviceStart === null && (v.oneTime.length || v.onceAdjustments.length)) out.push(`Primera contratación (primera cuota, cargos iniciales y ajustes de un solo uso): ${m(v.first.netCents)} más impuestos; total ${m(v.first.totalCents)}.`);
   out.push("Las renovaciones posteriores incluyen únicamente las cuotas recurrentes vigentes.");
   out.push("");
   out.push("VIGENCIA Y CAMBIOS DE PRECIO PROGRAMADOS");
-  out.push(`Entrada en vigor: ${v.validity.from === null || i.startsOnAcceptance ? "en el momento de la aceptación de estas condiciones" : `${madridDateTime(v.validity.from)} o, si la aceptación es posterior, en el momento de la aceptación`}.`);
+  out.push(`Entrada en vigor: ${serviceStart !== null ? `${madridDateTime(serviceStart)} o, si la aceptación es posterior, en el momento de la aceptación` : v.validity.from === null || i.startsOnAcceptance ? "en el momento de la aceptación de estas condiciones" : `${madridDateTime(v.validity.from)} o, si la aceptación es posterior, en el momento de la aceptación`}.`);
   out.push(v.validity.to === null ? "Vigencia: indefinida, hasta que se modifique mediante un nuevo acuerdo." : `Vigencia: hasta el ${madridDateTime(v.validity.to)}.`);
   for (const c of v.scheduledChanges) out.push(`- Desde el ${madridDate(c.at)}: ${m(c.netCents)} ${per(v.interval)} más impuestos (total ${m(c.totalCents)}).`);
   if (v.validity.afterEndText) out.push(v.validity.afterEndText);

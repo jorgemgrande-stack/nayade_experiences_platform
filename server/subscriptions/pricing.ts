@@ -11,11 +11,48 @@ function daysInMonthUTC(year: number, month: number): number {
   return new Date(Date.UTC(year, month + 1, 0)).getUTCDate();
 }
 
+const MADRID = new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/Madrid", hourCycle: "h23", year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", second: "2-digit" });
+/** Fecha y hora de pared en Europe/Madrid de un instante. */
+function madridWall(ts: number) {
+  const p: Record<string, number> = {};
+  for (const x of MADRID.formatToParts(new Date(ts))) if (x.type !== "literal") p[x.type] = Number(x.value);
+  return { year: p.year, month: p.month - 1, day: p.day, hour: p.hour, minute: p.minute, second: p.second, ms: ((ts % 1000) + 1000) % 1000 };
+}
+/** Instante de una fecha y hora de pared de Europe/Madrid (con el cambio de hora resuelto). */
+function madridInstant(year: number, month: number, day: number, hour: number, minute: number, second: number, ms: number): number {
+  const wall = Date.UTC(year, month, day, hour, minute, second, ms);
+  const offset = (ts: number) => {
+    const w = madridWall(ts);
+    return Date.UTC(w.year, w.month, w.day, w.hour, w.minute, w.second, w.ms) - ts;
+  };
+  const first = wall - offset(wall);
+  return wall - offset(first);
+}
+/** Día del mes (1–31) de un instante en Europe/Madrid. */
+export const madridDayOfMonth = (ts: number): number => madridWall(ts).day;
+/**
+ * Anclaje en calendario de Europe/Madrid: un día de anclaje NEGATIVO (−1…−31) significa «ese día del mes en hora
+ * peninsular». Solo lo usan las suscripciones económicas con fecha de inicio elegida por el operador (día 1 a las
+ * 00:00 de Madrid → día 1 a las 00:00 de Madrid de cada mes, con el cambio de hora). Las demás suscripciones llevan
+ * un día positivo y su cálculo en UTC no cambia.
+ */
+export const madridAnchor = (ts: number): number => -madridDayOfMonth(ts);
+function addMonthsMadrid(ts: number, months: number, anchorDay: number): number {
+  const w = madridWall(ts);
+  const total = w.month + months;
+  const year = w.year + Math.floor(total / 12);
+  const month = ((total % 12) + 12) % 12;
+  const day = Math.min(anchorDay, daysInMonthUTC(year, month));
+  return madridInstant(year, month, day, w.hour, w.minute, w.second, w.ms);
+}
+
 /**
  * Suma `months` meses de calendario (UTC) conservando el día de anclaje: un alta el 31 renueva el
- * 30 de abril, el 28/29 de febrero y vuelve al 31 en marzo (sin deriva acumulada).
+ * 30 de abril, el 28/29 de febrero y vuelve al 31 en marzo (sin deriva acumulada). Con un día de anclaje negativo, el
+ * calendario es el de Europe/Madrid (`madridAnchor`).
  */
 export function addMonthsUTC(ts: number, months: number, anchorDay = new Date(ts).getUTCDate()): number {
+  if (anchorDay < 0) return addMonthsMadrid(ts, months, -anchorDay);
   const d = new Date(ts);
   const total = d.getUTCMonth() + months;
   const year = d.getUTCFullYear() + Math.floor(total / 12);
