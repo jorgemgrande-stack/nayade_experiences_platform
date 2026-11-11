@@ -128,6 +128,7 @@ export class StripeNegotiatedGateway implements NegotiatedBillingGateway {
       // Fecha exacta del fin (con `cancel_at_period_end`, Stripe la fija en el fin del periodo)
       cancelAt: s.cancelAt !== null ? s.cancelAt * 1000 : s.cancelAtPeriodEnd && s.currentPeriodEnd !== null ? s.currentPeriodEnd * 1000 : null,
       currentPeriodEnd: s.currentPeriodEnd !== null ? s.currentPeriodEnd * 1000 : null,
+      billingCycleAnchor: s.billingCycleAnchor ? s.billingCycleAnchor * 1000 : null,
       trialEnd: s.trialEnd ? s.trialEnd * 1000 : null,
       anomalies: s.anomalies ?? [],
       ...(s.paused !== undefined && this.d.gateway.setPauseCollection ? { paused: s.paused, pauseResumesAt: s.pauseResumesAt ? s.pauseResumesAt * 1000 : null } : {}),
@@ -234,19 +235,20 @@ export class StripeNegotiatedGateway implements NegotiatedBillingGateway {
     const status = new Map<string, string | null>();
     for (const id of Array.from(new Set(hits.map((i) => i.invoiceId).filter((x): x is string => !!x)))) status.set(id, this.d.gateway.invoice ? ((await this.d.gateway.invoice(id))?.status ?? null) : null);
     const alive = hits.filter((i) => !i.invoiceId || status.get(i.invoiceId) !== "void");
-    if (!alive.length) return { ref: hits[0].id, amountCents: 0, voided: true };
+    if (!alive.length) return { ref: hits[0].id, amountCents: 0, voided: true, ...(hits[0].invoiceId ? { voidedInvoiceId: hits[0].invoiceId } : {}) };
     // Si hubiera más de uno (no debería), se devuelve la suma: la conciliación lo verá como un importe distinto
     return { ref: alive[0].id, amountCents: alive.reduce((a, i) => a + i.amount, 0) };
   }
 
   /**
    * Cobro en pausa (cuota pactada de 0, o hueco hasta el acuerdo siguiente) o su vuelta. Mientras dura, Stripe no
-   * cobra nada (anula sus facturas). Con `resumesAt` (ms), Stripe lo reanuda solo en esa fecha.
+   * cobra nada (anula sus facturas). Con `resumesAt` (ms), Stripe lo reanuda solo en esa fecha; `null` borra una fecha
+   * anterior; sin indicarlo no se envía.
    */
   async setPaused(subscriptionId: string, paused: boolean, idempotencyKey: string, resumesAt?: number | null) {
     if (!this.d.gateway.setPauseCollection) throw new NegotiatedGatewayError("unsupported", "El acceso a Stripe no admite poner el cobro en pausa");
     const s = await this.owned(subscriptionId);
-    await this.d.gateway.setPauseCollection(s.id, paused, idem(this.d.namespace, idempotencyKey), paused && resumesAt ? Math.floor(resumesAt / 1000) : null);
+    await this.d.gateway.setPauseCollection(s.id, paused, idem(this.d.namespace, idempotencyKey), !paused || resumesAt === undefined ? undefined : resumesAt === null ? null : Math.floor(resumesAt / 1000));
   }
 
   /** Fin de la suscripción de Stripe en una fecha (ms) o deshacerlo (null). Sin prorrateo: no cobra ni abona nada. */
@@ -260,6 +262,7 @@ export class StripeNegotiatedGateway implements NegotiatedBillingGateway {
   async setCancelAtPeriodEnd(subscriptionId: string, cancel: boolean, idempotencyKey: string) {
     if (!this.d.gateway.setCancelAtPeriodEnd) throw new NegotiatedGatewayError("unsupported", "El acceso a Stripe no admite programar el fin de la suscripción");
     const s = await this.owned(subscriptionId);
-    await this.d.gateway.setCancelAtPeriodEnd(s.id, cancel, idem(this.d.namespace, idempotencyKey));
+    // Sin prorrateo también al deshacerlo: nunca se cobra ni se abona nada por esta vía
+    await this.d.gateway.setCancelAtPeriodEnd(s.id, cancel, idem(this.d.namespace, idempotencyKey), { noProration: true });
   }
 }

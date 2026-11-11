@@ -139,7 +139,7 @@ function world(o: { enabled?: boolean; mode?: StripeMode; taxPolicy?: StripeTaxP
     fiscal: o.fiscal ? { config: o.fiscal } : undefined,
     now: () => clock,
   });
-  billing.attach({ gateway: neg.gatewayFor(), link: neg.link, billFrom: neg.billFrom, invalidate: neg.invalidate, cancelRequested: neg.cancelRequested });
+  billing.attach({ gateway: neg.gatewayFor(), link: neg.link, billFrom: neg.billFrom, invalidate: neg.invalidate, cancelRequested: neg.cancelRequested, serialize: neg.serialize });
   // Como en el plano de control: cada cambio de condiciones se lleva a Stripe si el cobro está abierto
   terms = new CommercialTermsService({ store: termsStore, subscriptions: subs, subscriptionStore: store, catalog: catalogPort, crm, now: () => clock, afterChange: async (sid) => void (await billing.syncIfOpen(sid)) });
   const n = neg;
@@ -1728,7 +1728,7 @@ describe("tercera revisión independiente: lo que rige en una renovación llega 
     expect(alerts.count("stripe.negotiated_invoice_mismatch")).toBe(0);
   });
 
-  it("1 y 6 — unas condiciones que terminan sin sucesor programan en Stripe su fin EN SU FECHA en cuanto se sabe: esa renovación no se cobra y la contratación termina", async () => {
+  it("1 y 6 — unas condiciones que terminan sin sucesor en la renovación: Stripe no renueva (cancel_at_period_end, sin prorrateo); esa renovación no se cobra y la contratación termina", async () => {
     const w = world();
     const a = await agreed(1);
     await subs.linkTenant(a.subId, { tenantId: "t-acme" }, A);
@@ -1737,17 +1737,21 @@ describe("tercera revisión independiente: lo que rige en una renovación llega 
     const R1 = renewalAt(stripeId);
     // Acuerdo nuevo cuyas partidas terminan todas en la renovación (p. ej. un acuerdo anual que vence) y nada detrás
     await applyNew(a.subId, ENDING(R1));
-    expect(gw.subscriptions.get(stripeId)).toMatchObject({ status: "active", cancelAt: R1 / 1000, cancelAtPeriodEnd: false });
-    expect(gw.calls.filter((c) => c.op === "subscriptions.update(cancel_at)")).toHaveLength(1);
+    expect(gw.subscriptions.get(stripeId)).toMatchObject({ status: "active", cancelAt: R1 / 1000, cancelAtPeriodEnd: true });
+    const ends = () => gw.calls.filter((c) => c.op === "subscriptions.update(cancel_at_period_end)");
+    expect(ends().map((c) => c.input)).toEqual([{ subscriptionId: stripeId, cancel: true, prorationBehavior: "none" }]);
+    // Nunca un cancel_at (en modo flexible acortaría el periodo y lo prorratearía)
+    expect(gw.calls.filter((c) => c.op === "subscriptions.update(cancel_at)")).toEqual([]);
     expect(alerts.count("stripe.negotiated_terms_ended")).toBe(1);
-    // Es lo esperado (no un «fin solo en Stripe»); y como ya no habrá más renovaciones, se avisa en CADA pasada
+    // Es lo esperado (no un «fin solo en Stripe»); como ya no habrá más renovaciones, se avisa, como mucho una vez al día
     expect((await w.billing.reconcile(a.subId)).differences.map((d) => d.key)).toEqual(["fin_por_condiciones"]);
-    for (let n = 0; n < 3; n++) {
-      clock += 20 * 60_000;
-      expect((await tick(w)).drifted).toEqual([{ subscriptionId: a.subId, differences: [{ key: "fin_por_condiciones", kind: "status" }] }]);
+    const drift = [{ subscriptionId: a.subId, differences: [{ key: "fin_por_condiciones", kind: "status" }] }];
+    for (const expected of [drift, [], [], drift]) {
+      clock += expected === drift ? DAY : 20 * 60_000;
+      expect((await tick(w)).drifted).toEqual(expected);
     }
-    expect(alerts.count("stripe.negotiated_terms_ended")).toBe(4);
-    expect(gw.calls.filter((c) => c.op === "subscriptions.update(cancel_at)")).toHaveLength(1);
+    expect(alerts.count("stripe.negotiated_terms_ended")).toBe(3);
+    expect(ends()).toHaveLength(1);
     // Llega la fecha: Stripe termina en lugar de renovar (ningún periodo más) y la contratación termina como cualquier fin
     const invoices = gw.invoices.size;
     expect(await renew(w, stripeId)).toBe("");
@@ -1772,7 +1776,7 @@ describe("tercera revisión independiente: lo que rige en una renovación llega 
     clock = R1 - 2 * DAY;
     expect(await tick(w)).toMatchObject({ drifted: [] });
     expect(gw.pausedSubs.has(stripeId)).toBe(true);
-    expect(gw.pauseResumes.get(stripeId)).toBe((R2 - 60_000) / 1000);
+    expect(gw.pauseResumes.get(stripeId)).toBe((R2 - 6 * 3600_000) / 1000);
     expect(itemWrites()).toEqual([]);
     // Renovación gratuita: Stripe la anula, no cobra nada y no es una diferencia
     const voided = await renew(w, stripeId);
@@ -1914,12 +1918,13 @@ describe("tercera revisión independiente: lo que rige en una renovación llega 
     expect(gw.subscriptions.get(stripeId)).toMatchObject({ cancelAt: null, cancelAtPeriodEnd: false });
     expect(total(stripeId)).toBe(9900);
     expect(await w.billing.reconcile(a.subId)).toMatchObject({ consistent: true });
-    const ends = gw.calls.filter((c) => c.op === "subscriptions.update(cancel_at)");
-    expect(ends.map((c) => (c.input as { at: number | null }).at)).toEqual([R1 / 1000, null]);
+    // Deshacerlo también va sin prorrateo: no se cobran otra vez días ya pagados
+    const ends = gw.calls.filter((c) => c.op === "subscriptions.update(cancel_at_period_end)");
+    expect(ends.map((c) => c.input)).toEqual([{ subscriptionId: stripeId, cancel: true, prorationBehavior: "none" }, { subscriptionId: stripeId, cancel: false, prorationBehavior: "none" }]);
     expect(new Set(ends.map((c) => c.key)).size).toBe(2);
     clock += 20 * 60_000;
     expect(await tick(w)).toMatchObject({ drifted: [] });
-    expect(gw.calls.filter((c) => c.op === "subscriptions.update(cancel_at)")).toHaveLength(2);
+    expect(gw.calls.filter((c) => c.op === "subscriptions.update(cancel_at_period_end)")).toHaveLength(2);
     expect(gw.invoices.get(await renew(w, stripeId))).toMatchObject({ status: "paid", subtotal: 9900 });
     // Un fin que NO programó la sincronización (puesto a mano en Stripe) nunca se deshace solo: se avisa
     gw.updateSubscription(stripeId, { cancelAt: renewalAt(stripeId) / 1000, cancelAtPeriodEnd: true });
@@ -1942,7 +1947,7 @@ describe("tercera revisión independiente: lo que rige en una renovación llega 
     expect(await tick(w)).toMatchObject({ drifted: [] });
     // Hueco hasta el acuerdo siguiente: en pausa, con las partidas del acuerdo siguiente ya puestas y su reanudación
     expect(gw.pausedSubs.has(stripeId)).toBe(true);
-    expect(gw.pauseResumes.get(stripeId)).toBe((R1 + 5 * DAY - 60_000) / 1000);
+    expect(gw.pauseResumes.get(stripeId)).toBe((R1 + 5 * DAY - 6 * 3600_000) / 1000);
     expect(total(stripeId)).toBe(9900);
     expect(gw.invoices.get(await renew(w, stripeId))!.status).toBe("void");
     clock = R2 - 2 * DAY;

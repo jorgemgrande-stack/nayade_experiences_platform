@@ -113,7 +113,7 @@ describe.skipIf(!URL_)("cobro en Stripe de condiciones personalizadas con MySQL 
     terms = new CommercialTermsService({ store: termsStore, subscriptions: subs, subscriptionStore: store, catalog, crm, now: () => clock, afterChange: async (sid) => void (await billing.syncIfOpen(sid)) });
     const adapter = new StripeNegotiatedGateway({ gateway: gw, namespace: NS, mode: "test", taxPolicy: "test_net_no_tax", catalogProducts: async () => catalogProductsOf(await stripeStore.listPrices()), allowed: (id) => neg.allowed(id) });
     neg = new NegotiatedBillingService({ enabled: true, store: billingStore, stripeStore, gateway: gw, adapter, billing, termsStore, subscriptionStore: store, crmStore, urls: { success: "https://web.example/ok", cancel: "https://web.example/ko" }, namespace: NS, mode: "test", taxPolicy: "test_net_no_tax", now: () => clock });
-    billing.attach({ gateway: neg.gatewayFor(), link: neg.link, billFrom: neg.billFrom, invalidate: neg.invalidate, cancelRequested: neg.cancelRequested });
+    billing.attach({ gateway: neg.gatewayFor(), link: neg.link, billFrom: neg.billFrom, invalidate: neg.invalidate, cancelRequested: neg.cancelRequested, serialize: neg.serialize });
     const trap = new Proxy({}, { get: (_t, op) => (op === "then" ? undefined : () => Promise.reject(new Error(`circuito ordinario no permitido: ${String(op)}`))) });
     processor = new StripeEventProcessor({ store: stripeStore, gateway: gw, orders: trap as never, orchestrator: trap as never, now: () => clock, namespace: NS, mode: "test", negotiated: { handleSession: (id) => neg.handleSession(id), handleSubscription: (s, h) => neg.handleSubscription(s, h), handleCharge: (c, i, s) => neg.handleCharge(c, i, s) } });
   }, 120_000);

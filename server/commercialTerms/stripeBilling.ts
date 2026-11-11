@@ -43,7 +43,7 @@ import { checkoutStatusView, type CheckoutStatusView } from "../stripe/status";
 import type { StripeStore } from "../stripe/store";
 import { needsVies, type VatVerifier } from "../stripe/vies";
 import type { SubscriptionStore } from "../subscriptions/store";
-import type { BillingLink, BillingPlan, NegotiatedBillingGateway, TermsBillingService } from "./billing";
+import { SyncBusy, type BillingLink, type BillingPlan, type NegotiatedBillingGateway, type TermsBillingService } from "./billing";
 import { BillingStoreConflict, LINKED_STATES, type BillingState, type CheckoutOffer, type TermsBillingPatch, type TermsBillingRow, type TermsBillingStore } from "./billingStore";
 import { requireCustomPricing } from "./permission";
 import { NEGOTIATED_MARK, NegotiatedGatewayError, StripeNegotiatedGateway } from "./stripeGateway";
@@ -54,6 +54,10 @@ const DAY = 86_400_000;
 /** Por debajo de este margen, una sesión abierta se sustituye en lugar de reutilizarse. */
 const REUSE_MARGIN_MS = 10 * 60_000;
 const MAX_KEY_ATTEMPTS = 3;
+/** Marca de una renovación que Stripe anuló porque el cobro estaba en pausa (`commercial_terms_billing_invoices.tax_check`). */
+export const PAUSED_VOID = "paused_void";
+/** Aviso de unas condiciones que terminan sin sucesor: como mucho uno al día por suscripción. */
+const TERMS_END_ALERT_EVERY_MS = DAY;
 /** Margen mínimo para aplazar el primer cargo (Stripe exige 48 h para `trial_end` en Checkout; se deja holgura). */
 const AHEAD_MIN_MS = 49 * 3600_000;
 
@@ -96,7 +100,7 @@ export interface NegotiatedBillingDeps {
   stripeStore: Pick<StripeStore, "customerByCompany" | "linkCustomer" | "acquireLease" | "releaseLease">;
   gateway: StripeGateway;
   adapter: StripeNegotiatedGateway;
-  billing: Pick<TermsBillingService, "plan" | "syncIfOpen" | "recordSent" | "reconcile" | "nextStart" | "changedSinceSync" | "sentOneOffs" | "revokeOneOffs">;
+  billing: Pick<TermsBillingService, "plan" | "syncIfOpen" | "recordSent" | "reconcile" | "nextStart" | "changedSinceSync" | "sentOneOffs" | "revokeOneOffs" | "scheduledEnd">;
   termsStore: Pick<TermsStore, "get" | "log">;
   /** Suscripción interna: una vez enlazada, el reloj es el de Stripe (sus periodos y su fin siguen a los de Stripe). */
   subscriptionStore: Pick<SubscriptionStore, "get" | "mutate">;
@@ -168,6 +172,8 @@ export class NegotiatedBillingService {
   private grace: number;
   private readOnly: number;
   private actor = "system:stripe";
+  /** Último aviso de condiciones que terminan sin sucesor, por suscripción (como mucho uno al día). */
+  private termsEndAlerted = new Map<number, number>();
   /** Tratamiento fiscal efectivo; null en live sin política decidida (no se cobra). */
   private policy: StripeTaxPolicy | null;
   constructor(private d: NegotiatedBillingDeps) {
@@ -199,7 +205,13 @@ export class NegotiatedBillingService {
     if (row.status === "past_due" || row.status === "suspended") return "unpaid";
     const latest = sub.latestInvoiceId && sub.latestInvoiceId !== lastPaid ? await this.d.store.invoice(sub.latestInvoiceId) : null;
     if (latest && (latest.status === "open" || latest.status === "uncollectible")) return "unpaid";
-    return plan && (plan.termsId === null || !plan.items.length) ? "terms_ended" : "stripe_only";
+    if (!plan || (plan.termsId !== null && plan.items.length)) return "stripe_only";
+    // Sin condiciones hoy: es su fin SOLO si es el que programó la sincronización (en esa fecha de Stripe) o si no queda
+    // ningún acuerdo posterior. Un hueco hasta un acuerdo ya activado que alguien cancela en Stripe es «solo en Stripe»
+    const ours = await this.d.billing.scheduledEnd(row.subscriptionId, sub.id);
+    const at = (sub.cancelAt ?? sub.currentPeriodEnd ?? null) === null ? null : (sub.cancelAt ?? sub.currentPeriodEnd)! * 1000;
+    if (ours && ours.periodEnd !== null && at === ours.periodEnd) return "terms_ended";
+    return (await this.d.billing.nextStart(row.subscriptionId)) === null ? "terms_ended" : "stripe_only";
   }
 
   /** ¿Termina la contratación por voluntad propia? (dentro: cancelada o con fin programado; o por orden de un operador). */
@@ -227,7 +239,7 @@ export class NegotiatedBillingService {
 
   /** Huella de lo que ofrece una sesión de pago para un plan y una fecha de primer cargo. */
   private offerHashOf(plan: BillingPlan, at: number | null, sent: Set<string>): string {
-    const charges = at === null ? plan.oneOffs.filter((o) => o.due && o.amountCents > 0 && !sent.has(o.key)) : [];
+    const charges = plan.oneOffs.filter((o) => o.due && o.amountCents > 0 && !sent.has(o.key) && (at === null || o.at <= this.now()));
     return `${offerHash(plan, Object.fromEntries(charges.map((o) => [o.key, o.amountCents])))}${at === null ? "" : `@${at}`}`.slice(0, 48);
   }
 
@@ -269,7 +281,13 @@ export class NegotiatedBillingService {
   private async releaseUnbilled(row: TermsBillingRow, stripeSubscriptionId: string): Promise<number> {
     const gw = this.d.gateway;
     if (!gw.invoiceItemsOfCustomer) return 0;
-    const ours = (await gw.invoiceItemsOfCustomer(row.stripeCustomerId)).filter((i) => i.metadata[NEGOTIATED_MARK] === "1" && i.metadata.es_env === this.d.namespace && i.metadata.es_stripe_subscription === stripeSubscriptionId);
+    const mine = (i: { metadata: Record<string, string> }) => i.metadata[NEGOTIATED_MARK] === "1" && i.metadata.es_env === this.d.namespace && i.metadata.es_stripe_subscription === stripeSubscriptionId;
+    // Los PENDIENTES se leen todos (filtro `pending` del servidor, paginado): ninguno se queda sin retirar por antiguo. Los
+    // facturados, de la ventana habitual (los 500 más recientes): uno más antiguo en una factura anulada sigue contando
+    // como cobrado (lo prudente: nunca se cobra dos veces)
+    const pending = (await gw.invoiceItemsOfCustomer(row.stripeCustomerId, 100_000, { pending: true })).filter(mine);
+    const invoiced = (await gw.invoiceItemsOfCustomer(row.stripeCustomerId)).filter((i) => mine(i) && i.invoiceId !== null);
+    const ours = [...pending, ...invoiced.filter((i) => !pending.some((x) => x.id === i.id))];
     const revoked: string[] = [];
     for (const i of ours) {
       if (i.invoiceId === null) {
@@ -299,6 +317,9 @@ export class NegotiatedBillingService {
       setCancelAt: (id, at, k) => a.setCancelAt(id, at, k),
       findOneOff: async (id, key) => {
         const hit = await a.findOneOff(id, key);
+        // Solo se vuelve a enviar lo que anuló la PAUSA (renovación anulada mientras el cobro estaba en pausa, anotada al
+        // registrarla); una factura anulada por un operador perdona el cargo y no se repite
+        if (hit?.voided) return hit.voidedInvoiceId && (await this.d.store.invoice(hit.voidedInvoiceId))?.taxCheck === PAUSED_VOID ? hit : { ref: hit.ref, amountCents: 0, forgiven: true };
         if (hit) return hit;
         const row = await this.d.store.byStripeSubscription(id);
         const cents = row?.checkout?.oneOffs[key];
@@ -306,6 +327,9 @@ export class NegotiatedBillingService {
       },
     };
   }
+
+  /** Una sincronización a la vez por suscripción, con el mismo arrendamiento que los webhooks (`TermsBillingService`). */
+  serialize = <T>(subscriptionId: number, fn: () => Promise<T>): Promise<T> => this.withLease(subscriptionId, fn, () => new SyncBusy());
 
   private async withLease<T>(subscriptionId: number, fn: () => Promise<T>, busy: () => Error): Promise<T> {
     const lease = `terms-billing:${subscriptionId}`;
@@ -409,15 +433,18 @@ export class NegotiatedBillingService {
       throw e;
     }
     // Cargos únicos ya vencidos: van en el primer pago. Los abonos (importe negativo) no caben en Checkout: a la factura siguiente
-    // Con el primer cargo aplazado al inicio del acuerdo, hoy no se cobra nada: cargos y abonos únicos de esa fecha se
-    // envían al enlazar como importes únicos y van, con la primera cuota, en la factura de ese día
+    // Con el primer cargo aplazado al inicio del acuerdo, las CUOTAS no se cobran hasta ese día, pero los cargos únicos
+    // debidos ya (los que el documento dice que se facturan al aceptar) se cobran al pagar la sesión: Stripe los factura
+    // al crear la suscripción aunque tenga `trial_end`. Los de fechas posteriores y los abonos se envían al enlazar como
+    // importes únicos y van, con la primera cuota, en la factura de ese día
     const due = plan.oneOffs.filter((o) => o.due && !sent.has(o.key));
-    const charges = at === null ? due.filter((o) => o.amountCents > 0) : [];
+    const charges = due.filter((o) => o.amountCents > 0 && (at === null || o.at <= this.now()));
     const credits = at === null ? due.filter((o) => o.amountCents < 0) : [];
     // Los cargos únicos van sobre el Product genérico (no se crea un Product por cargo)
     const chargeProduct = charges.length ? await this.d.adapter.customServiceProduct().catch((e) => Promise.reject(e instanceof NegotiatedGatewayError ? new NegotiatedBillingError("unavailable", e.message) : e)) : null;
     const oneOffs = Object.fromEntries(charges.map((o) => [o.key, o.amountCents]));
-    const firstChargeCents = plan.recurringNetCents + (at === null ? charges : due).reduce((a, o) => a + o.amountCents, 0);
+    // Primer cargo de cuota: al pagar (con los cargos únicos) o, aplazado, el día del inicio (sin los ya cobrados al pagar)
+    const firstChargeCents = plan.recurringNetCents + (at === null ? charges : due.filter((o) => !charges.includes(o))).reduce((a, o) => a + o.amountCents, 0);
     const offer: CheckoutOffer = { hash: this.offerHashOf(plan, at, sent), termsId: plan.termsId!, currency: plan.currency.toUpperCase(), recurringCents: plan.recurringNetCents, firstChargeCents, firstChargeAt: at, oneOffs, deferredCredits: credits.map((o) => o.key), taxTreatment: policy };
     const view = (s: GwCheckoutSession, reused: boolean): StartResult => ({ status: "pending", subscriptionId, sessionId: s.id, url: s.url, expiresAt: s.expiresAt * 1000, reused, currency: offer.currency, recurringCents: offer.recurringCents, firstChargeCents: offer.firstChargeCents, firstChargeAt: at, taxTreatment: policy, deferredCredits: credits.map((o) => ({ key: o.key, name: o.name, amountCents: o.amountCents })) });
 
@@ -688,9 +715,16 @@ export class NegotiatedBillingService {
         opsLog("warn", "CommercialTerms", "billing_ended_with_terms", { subscriptionId: row.subscriptionId });
         recordFailure("stripe.negotiated_terms_ended");
       }
+      // Si Stripe dejó de renovar ANTES del fin del acuerdo (el último periodo no cabía entero), el servicio sigue hasta
+      // esa fecha sin cobrarse; la contratación termina entonces (la conciliación lo aplica al llegar)
+      const until = kind === "terms_ended" ? ((await this.d.billing.scheduledEnd(row.subscriptionId, sub.id))?.at ?? null) : null;
+      if (until !== null && until > now + 60_000 && (await this.scheduleInternalEnd(row.subscriptionId, until))) {
+        // sin solo lectura todavía
+      } else {
       changes.readOnlyUntil = now + this.readOnly;
       await this.markLicences(row.subscriptionId, "read_only", `${kind === "terms_ended" ? "Fin de las condiciones personalizadas sin otras que las sustituyan" : "Fin de la suscripción en Stripe"} (${reference}): solo lectura hasta ${new Date(now + this.readOnly).toISOString().slice(0, 10)}, los datos se conservan`, now + this.readOnly);
       await this.endInternal(row.subscriptionId, kind === "terms_ended" ? "Fin de las condiciones personalizadas sin sucesor: la suscripción de Stripe terminó en su fecha" : undefined);
+      }
     } else if ((next === "active" || next === "cancel_scheduled") && prev === "suspended") {
       await this.restoreLicences(row, `Pago recibido en Stripe: ${reference} al corriente`);
       changes.suspendedCapabilities = null;
@@ -714,7 +748,7 @@ export class NegotiatedBillingService {
       }
       const sent = Object.fromEntries(Object.keys(row.checkout?.oneOffs ?? {}).map((k) => [k, `checkout:${row.sessionId ?? sub.id}`]));
       await this.d.billing.recordSent(row.subscriptionId, sub.id, sent, this.actor).catch((e) => opsLog("warn", "CommercialTerms", "billing_record_sent_failed", { subscriptionId: row.subscriptionId, error: e instanceof Error ? e.name : "error" }));
-      await this.d.billing.syncIfOpen(row.subscriptionId, this.actor);
+      await this.d.billing.syncIfOpen(row.subscriptionId, this.actor, { locked: true });
     }
     return next !== prev ? `Contratación negociada: ${prev} → ${next}` : `Contratación negociada ${next}: sin cambios`;
   }
@@ -740,6 +774,8 @@ export class NegotiatedBillingService {
       const known = await this.d.store.invoice(inv.id);
       const created = isPaid && known?.status !== "paid";
       let taxCheck: string | null = null;
+      // Renovación anulada con el cobro en pausa: se anota (solo sus importes únicos se vuelven a enviar al reanudar)
+      if (inv.status === "void" && inv.billingReason === "subscription_cycle" && !known?.taxCheck && (await this.d.adapter.current(sub.id).catch(() => null))?.paused) taxCheck = PAUSED_VOID;
       if (created) {
         const expected = await this.expectedOf(row, sub, plan, inv);
         // Stripe embebe solo las 10 primeras líneas: con más, se leen todas para el redondeo línea a línea
@@ -775,7 +811,8 @@ export class NegotiatedBillingService {
    */
   private async expectedOf(row: TermsBillingRow, sub: GwSubscription, plan: BillingPlan | null, inv: GwInvoice): Promise<{ subtotal: number | null; ratesBp: number[] }> {
     const rates = (keys: string[]) => Array.from(new Set([...(plan?.items ?? []).map((i) => i.taxRateBp), ...(plan?.oneOffs ?? []).filter((o) => keys.includes(o.key)).map((o) => o.taxRateBp)]));
-    if (inv.billingReason === "subscription_create") return { subtotal: row.checkout ? (row.checkout.firstChargeAt ? 0 : row.checkout.firstChargeCents) : null, ratesBp: rates(Object.keys(row.checkout?.oneOffs ?? {})) };
+    // Alta: lo cobrado al pagar la sesión (con el primer cargo aplazado, solo los cargos únicos debidos ya)
+    if (inv.billingReason === "subscription_create") return { subtotal: row.checkout ? (row.checkout.firstChargeAt ? Object.values(row.checkout.oneOffs).reduce((a, c) => a + c, 0) : row.checkout.firstChargeCents) : null, ratesBp: rates(Object.keys(row.checkout?.oneOffs ?? {})) };
     if (inv.billingReason !== "subscription_cycle" || !plan || plan.termsId === null || !this.d.gateway.invoiceItemsOfCustomer) return { subtotal: null, ratesBp: rates([]) };
     const oneOffs = (await this.d.gateway.invoiceItemsOfCustomer(sub.customerId)).filter((i) => i.invoiceId === inv.id && i.metadata.es_stripe_subscription === sub.id);
     return { subtotal: plan.recurringNetCents + oneOffs.reduce((a, i) => a + i.amount, 0), ratesBp: rates(oneOffs.map((i) => i.metadata.es_key ?? "")) };
@@ -847,7 +884,7 @@ export class NegotiatedBillingService {
         }
         let r = await this.d.billing.reconcile(row.subscriptionId, { whenOff: true });
         // Condiciones terminadas sin sucesor: la sincronización programa el fin en Stripe (y avisa); no sigue cobrándolas
-        if (this.d.enabled && r.available && !r.plan.items.length && r.stripe && r.stripe.status !== "canceled" && r.stripe.cancelAtPeriodEnd === false) {
+        if (this.d.enabled && r.available && !r.plan.items.length && !("target" in r && r.target?.paused) && r.stripe && r.stripe.status !== "canceled" && r.stripe.cancelAtPeriodEnd === false) {
           await this.d.billing.syncIfOpen(row.subscriptionId, this.actor);
           r = await this.d.billing.reconcile(row.subscriptionId, { whenOff: true });
         }
@@ -860,10 +897,16 @@ export class NegotiatedBillingService {
           if (!r.available) continue;
         }
         out.checked++;
-        const differences: Array<{ key: string; kind: string }> = r.differences.map((x) => ({ key: x.key, kind: x.kind }));
-        // Condiciones que terminan sin sucesor en el periodo en curso: Stripe ya no renovará; se avisa en CADA pasada
-        // hasta que llegue un acuerdo posterior (se deshace el fin) o termine (fin de la contratación)
-        if (differences.some((x) => x.key === "fin_por_condiciones")) recordFailure("stripe.negotiated_terms_ended");
+        let differences: Array<{ key: string; kind: string }> = r.differences.map((x) => ({ key: x.key, kind: x.kind }));
+        // Condiciones que terminan sin sucesor en su último periodo: Stripe ya no renovará. Se avisa UNA vez al día (no en
+        // cada pasada: con periodicidad anual serían meses de avisos) hasta que llegue un acuerdo posterior o termine
+        if (differences.some((x) => x.key === "fin_por_condiciones")) {
+          const last = this.termsEndAlerted.get(row.subscriptionId) ?? -Infinity;
+          if (this.now() - last >= TERMS_END_ALERT_EVERY_MS) {
+            this.termsEndAlerted.set(row.subscriptionId, this.now());
+            recordFailure("stripe.negotiated_terms_ended");
+          } else differences = differences.filter((x) => x.key !== "fin_por_condiciones");
+        } else this.termsEndAlerted.delete(row.subscriptionId);
         // La última factura cobrada: si su base o su impuesto no son los pactados, cuenta como diferencia hasta que
         // otra factura posterior salga bien
         const last = row.lastPaidInvoiceId ? await this.d.store.invoice(row.lastPaidInvoiceId) : null;
@@ -883,7 +926,12 @@ export class NegotiatedBillingService {
     for (const row of await this.d.store.list({ status: ["canceled"], limit, newestFirst: true })) {
       try {
         const sub = await this.d.subscriptionStore.get(row.subscriptionId);
-        if (!sub || sub.status !== "active" || sub.cancelAt !== null) continue;
+        if (!sub || sub.status !== "active") continue;
+        // Fin interno aplazado al fin del acuerdo (Stripe dejó de renovar antes): llegada la fecha, se aplica como cualquier fin
+        if (sub.cancelAt !== null) {
+          if (this.now() >= sub.cancelAt && row.readOnlyUntil === null) await this.finishEnd(row, "Fin de las condiciones personalizadas sin sucesor");
+          continue;
+        }
         const plan = await this.d.billing.plan(row.subscriptionId);
         out.drifted.push({ subscriptionId: row.subscriptionId, differences: [{ key: plan.termsId !== null && plan.items.length ? "terminada_solo_en_stripe" : "terminada_sin_condiciones", kind: "status" }] });
       } catch {
@@ -1007,13 +1055,42 @@ export class NegotiatedBillingService {
       const cur = await this.d.subscriptionStore.get(subscriptionId);
       if (!cur || cur.status === "canceled" || end <= start || (cur.currentPeriodStart === start && cur.currentPeriodEnd === end)) return;
       await this.d.subscriptionStore.mutate(subscriptionId, null, this.actor, this.now(), async (_tx, s) => ({
-        patch: { currentPeriodStart: start, currentPeriodEnd: end, anchorDay: new Date(start).getUTCDate(), ...(s.cancelAt !== null ? { cancelAt: end } : {}) },
+        // El periodo es el de Stripe (anclado al instante del pago o del fin del periodo sin cargo, en UTC). Un ancla de meses
+        // de calendario de Madrid (negativa: suscripciones solo económicas de un paquete) NO se sustituye por un día UTC:
+        // la sigue usando la simulación y el documento si la suscripción deja de cobrarse en Stripe
+        patch: { currentPeriodStart: start, currentPeriodEnd: end, anchorDay: s.anchorDay < 0 ? s.anchorDay : new Date(start).getUTCDate(), ...(s.cancelAt !== null ? { cancelAt: end } : {}) },
         event: { kind: "renewed" as const, before: { periodStart: s.currentPeriodStart, periodEnd: s.currentPeriodEnd }, after: { periodStart: start, periodEnd: end, source: "stripe" }, reason: "El periodo sigue al de la suscripción de Stripe" },
         result: null,
       }));
     } catch (e) {
       opsLog("warn", "CommercialTerms", "billing_period_follow_failed", { subscriptionId, error: e instanceof Error ? e.name : "error" });
     }
+  }
+
+  /** Programa el fin de la suscripción interna en una fecha (el fin del acuerdo). Devuelve si quedó programado. */
+  private async scheduleInternalEnd(subscriptionId: number, at: number): Promise<boolean> {
+    try {
+      const sub = await this.d.subscriptionStore.get(subscriptionId);
+      if (!sub || sub.status === "canceled") return false;
+      if (sub.cancelAt === at) return true;
+      await this.d.subscriptionStore.mutate(subscriptionId, null, this.actor, this.now(), async (_tx, s) => ({
+        patch: { cancelAt: at },
+        event: { kind: "cancel_scheduled" as const, before: { cancelAt: s.cancelAt }, after: { cancelAt: at, source: "stripe" }, reason: "Fin de las condiciones personalizadas sin sucesor: el servicio sigue sin cobro hasta su fecha" },
+        result: null,
+      }));
+      return true;
+    } catch (e) {
+      opsLog("warn", "CommercialTerms", "billing_schedule_internal_end_failed", { subscriptionId, error: e instanceof Error ? e.name : "error" });
+      return false;
+    }
+  }
+
+  /** Aplica un fin aplazado: solo lectura de las licencias propias y fin de la suscripción interna. */
+  private async finishEnd(row: TermsBillingRow, reason: string) {
+    const now = this.now();
+    await this.markLicences(row.subscriptionId, "read_only", `${reason} (suscripción #${row.subscriptionId}): solo lectura hasta ${new Date(now + this.readOnly).toISOString().slice(0, 10)}, los datos se conservan`, now + this.readOnly);
+    await this.endInternal(row.subscriptionId, reason);
+    await this.patch(row, { readOnlyUntil: now + this.readOnly });
   }
 
   /**
