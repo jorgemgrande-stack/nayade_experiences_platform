@@ -22,6 +22,7 @@ import express, { type Request, type Response, type Router } from "express";
 import { z } from "zod";
 import { getAuth, requireScope } from "../controlPlane/auth";
 import { opsLog } from "../_core/ops/log";
+import { recordFailure } from "../_core/ops/failureAlerts";
 import { isRecurring as recurringPrice, stableHash } from "../subscriptions/pricing";
 import type { SubscriptionStore } from "../subscriptions/store";
 import type { SubscriptionItem } from "../subscriptions/types";
@@ -62,6 +63,8 @@ export interface NegotiatedBillingGateway {
   current(subscriptionId: string): Promise<RemoteState | null>;
   /** Programa (o deshace) el fin de la suscripción de Stripe al final del periodo ya pagado. Opcional. */
   setCancelAtPeriodEnd?(subscriptionId: string, cancel: boolean, idempotencyKey: string): Promise<void>;
+  /** Pone (o quita) el cobro en pausa: mientras dura, Stripe no cobra nada (sus facturas se anulan). Opcional. */
+  setPaused?(subscriptionId: string, paused: boolean, idempotencyKey: string): Promise<void>;
 }
 
 /** Estado de la suscripción en Stripe tal como lo ve el cobro de condiciones personalizadas. */
@@ -80,6 +83,8 @@ export interface RemoteState {
   cancelAtPeriodEnd?: boolean;
   /** Cómo calcula Stripe el impuesto de la suscripción y cómo debería según la política fiscal del entorno. */
   tax?: { mode: "automatic" | "fixed" | "none"; expected: "automatic" | "fixed" | "none" };
+  /** ¿Está el cobro en pausa en Stripe? (solo debe estarlo cuando lo pactado es una cuota total de 0). */
+  paused?: boolean;
   /** Fin del periodo sin cargo en Stripe (ms), si lo tiene. */
   trialEnd?: number | null;
   /** Cosas hechas fuera de Elephant que cambian lo que se cobra (cupón, cobro en pausa, cobro no automático). */
@@ -114,7 +119,14 @@ interface SyncDetail {
   lastError: string | null;
   lastAttemptAt: number | null;
   pendingOneOffs: string[];
+  /** Envíos fallidos seguidos (0 tras uno correcto): espacia los reintentos automáticos. */
+  failures?: number;
 }
+
+/** Espera antes de volver a intentar solo un envío que falla: 15 min, 1 h, 4 h, 16 h y, desde ahí, una vez al día. */
+export const syncRetryDelayMs = (failures: number) => Math.min(15 * 60_000 * 4 ** Math.max(0, failures - 1), 24 * 3600_000);
+/** Un importe único con más de este tiempo puede haber salido ya de la ventana de importes que se leen de Stripe. */
+const ONE_OFF_WINDOW_MS = 60 * 86_400_000;
 
 export type SyncOutcome =
   | { status: "disabled" | "unsupported" | "not_linked" | "nothing_to_bill" | "cancel_scheduled"; message: string }
@@ -194,7 +206,9 @@ export class TermsBillingService {
     if (plan.termsId === null || !plan.items.length) return false;
     const prev = await this.lastDetail(subscriptionId, link.subscriptionId);
     if (!prev || prev.itemsHash === null) return false;
-    return !!prev.lastError || prev.itemsHash !== stableHash(plan.items).slice(0, 24) || plan.oneOffs.some((o) => o.due && !prev.oneOffs[o.key]);
+    // Un envío que falla se reintenta solo, pero cada vez más espaciado (un fallo permanente no se repite cada pasada)
+    if (prev.lastError) return this.now() - (prev.lastAttemptAt ?? 0) >= syncRetryDelayMs(prev.failures ?? 1);
+    return prev.itemsHash !== stableHash(plan.items).slice(0, 24) || plan.oneOffs.some((o) => o.due && !prev.oneOffs[o.key]);
   }
 
   /**
@@ -212,7 +226,7 @@ export class TermsBillingService {
     const remote = await gw.current(link.subscriptionId);
     if (remote && remote.status !== "canceled" && remote.cancelAtPeriodEnd === false) {
       // La clave lleva la versión de la suscripción interna: reprogramar una baja deshecha es OTRA petición para Stripe
-      await gw.setCancelAtPeriodEnd(link.subscriptionId, true, `ct:s${subscriptionId}:${link.subscriptionId}:cancel:v${ending.version}`);
+      await gw.setCancelAtPeriodEnd(link.subscriptionId, true, `ct:s${subscriptionId}:${link.subscriptionId}:cancel:v${ending.version}:${this.now()}`);
       opsLog("info", "CommercialTerms", "billing_cancel_scheduled", { subscriptionId });
     }
     return ending;
@@ -279,11 +293,21 @@ export class TermsBillingService {
 
   /** Estado de sincronización más reciente de la suscripción (vive en sus acuerdos; se hereda de uno a otro). */
   private async lastDetail(subscriptionId: number, stripeSubscriptionId: string): Promise<SyncDetail | null> {
-    const all = (await this.d.termsStore.list({ subscriptionId })).map((t) => t.syncDetail as SyncDetail | null).filter((x): x is SyncDetail => !!x && x.stripeSubscriptionId === stripeSubscriptionId);
-    if (!all.length) return null;
+    const every = (await this.d.termsStore.list({ subscriptionId })).map((t) => t.syncDetail as SyncDetail | null).filter((x): x is SyncDetail => !!x);
+    const all = every.filter((x) => x.stripeSubscriptionId === stripeSubscriptionId);
+    // Los importes únicos ya enviados son de la CONTRATACIÓN, no de una suscripción de Stripe: si se vuelve a poner a
+    // cobrar con otra, lo cobrado o abonado en la anterior no se repite
+    const sent: Record<string, string> = Object.assign({}, ...every.map((x) => x.oneOffs));
+    if (!all.length) return every.length ? { stripeSubscriptionId, itemsHash: null, generation: 0, oneOffs: sent, attempts: 0, lastError: null, lastAttemptAt: null, pendingOneOffs: [] } : null;
     // Unión de lo ya enviado (nunca se «olvida» un importe único) y el estado de partidas más reciente
     const latest = all.slice().sort((a, b) => (b.lastAttemptAt ?? 0) - (a.lastAttemptAt ?? 0))[0];
-    return { ...latest, oneOffs: Object.assign({}, ...all.map((x) => x.oneOffs)), generation: Math.max(...all.map((x) => x.generation)), attempts: Math.max(...all.map((x) => x.attempts)) };
+    return { ...latest, oneOffs: sent, generation: Math.max(...all.map((x) => x.generation)), attempts: Math.max(...all.map((x) => x.attempts)) };
+  }
+
+  /** Importes únicos de la contratación que ya constan enviados a Stripe (en cualquiera de sus suscripciones de Stripe). */
+  async sentOneOffs(subscriptionId: number): Promise<Set<string>> {
+    const every = (await this.d.termsStore.list({ subscriptionId })).map((t) => t.syncDetail as SyncDetail | null).filter((x): x is SyncDetail => !!x);
+    return new Set(every.flatMap((x) => Object.keys(x.oneOffs)));
   }
 
   private async record(termsId: number, status: "synced" | "failed", detail: SyncDetail, actor: string, message: string) {
@@ -296,7 +320,8 @@ export class TermsBillingService {
         await this.d.termsStore.patch(
           termsId,
           { syncStatus: status, syncDetail: merged },
-          { kind: "sync", actor, reason: message.slice(0, 500), before: { syncStatus: t.syncStatus }, after: { syncStatus: status, attempts: merged.attempts, generation: merged.generation, oneOffs: Object.keys(merged.oneOffs).length, pendingOneOffs: merged.pendingOneOffs }, effectiveAt: t.effectiveFrom, acceptanceStatus: t.acceptanceStatus, syncResult: status, economic: null },
+          // El MISMO fallo repetido no llena el historial: un evento por error distinto (el contador de intentos sí avanza)
+          status === "failed" && t.syncStatus === "failed" && prev?.lastError === detail.lastError ? null : { kind: "sync", actor, reason: message.slice(0, 500), before: { syncStatus: t.syncStatus }, after: { syncStatus: status, attempts: merged.attempts, generation: merged.generation, oneOffs: Object.keys(merged.oneOffs).length, pendingOneOffs: merged.pendingOneOffs }, effectiveAt: t.effectiveFrom, acceptanceStatus: t.acceptanceStatus, syncResult: status, economic: null },
           this.now(),
           t.revision,
         );
@@ -330,7 +355,21 @@ export class TermsBillingService {
     const ending = await this.endInStripe(subscriptionId, link);
     if (ending?.canceled) return { status: "cancel_scheduled", message: "La contratación está cancelada: la suscripción de Stripe termina al final del periodo ya pagado" };
     // Nunca se vacía una suscripción de Stripe desde aquí: sin condiciones personalizadas vivas no hay nada que enviar
-    if (plan.termsId === null || !plan.items.length) return { status: "nothing_to_bill", message: "La suscripción no tiene condiciones personalizadas vigentes con cuotas recurrentes" };
+    if (plan.termsId === null || !plan.items.length) {
+      // Las condiciones terminaron y ninguna las sustituye: Stripe no puede seguir cobrando sus partidas. Si esta
+      // suscripción de Stripe llegó a llevar condiciones, se programa su fin al final del periodo ya pagado y se avisa
+      const sent = await this.lastDetail(subscriptionId, link.subscriptionId);
+      if (!ending && gw.setCancelAtPeriodEnd && sent && sent.lastAttemptAt !== null) {
+        const remote = await gw.current(link.subscriptionId);
+        if (remote && remote.status !== "canceled" && remote.cancelAtPeriodEnd === false) {
+          await gw.setCancelAtPeriodEnd(link.subscriptionId, true, `ct:s${subscriptionId}:${link.subscriptionId}:ended:${this.now()}`);
+          opsLog("warn", "CommercialTerms", "billing_terms_ended", { subscriptionId });
+          recordFailure("stripe.negotiated_terms_ended");
+        }
+        return { status: "cancel_scheduled", message: "Las condiciones personalizadas terminaron sin otras que las sustituyan: la suscripción de Stripe termina al final del periodo ya pagado" };
+      }
+      return { status: "nothing_to_bill", message: "La suscripción no tiene condiciones personalizadas vigentes con cuotas recurrentes" };
+    }
     const prev = await this.lastDetail(subscriptionId, link.subscriptionId);
     const detail: SyncDetail = { stripeSubscriptionId: link.subscriptionId, itemsHash: prev?.itemsHash ?? null, generation: prev?.generation ?? 0, oneOffs: { ...(prev?.oneOffs ?? {}) }, attempts: (prev?.attempts ?? 0) + 1, lastError: null, lastAttemptAt: this.now(), pendingOneOffs: plan.oneOffs.filter((o) => !o.due).map((o) => o.key) };
     const metadata = { es_terms: String(plan.termsId), es_subscription: String(subscriptionId) };
@@ -342,7 +381,17 @@ export class TermsBillingService {
       // 1.º Partidas recurrentes: se compara con lo que Stripe tiene de verdad (no con lo que creemos haber enviado)
       const remote = await gw.current(link.subscriptionId);
       const hash = stableHash(plan.items).slice(0, 24);
-      if (remote && sameItems(plan.items, remote.items)) {
+      // Cuota total 0 (p. ej. un descuento temporal del 100 %): el cliente no puede seguir pagando lo anterior. El cobro se
+      // pone EN PAUSA (Stripe no cobra nada mientras dura) y las partidas no se tocan; al volver a ser de pago se quita
+      // la pausa y se dejan las partidas vigentes, sin reiniciar el ciclo
+      const free = plan.recurringNetCents <= 0 && !!gw.setPaused && remote?.paused !== undefined;
+      if (gw.setPaused && remote && remote.paused !== undefined && remote.paused !== free) {
+        await gw.setPaused(link.subscriptionId, free, `ct:s${subscriptionId}:${link.subscriptionId}:pause:${free ? "on" : "off"}:${this.now()}`);
+        opsLog("info", "CommercialTerms", free ? "billing_paused" : "billing_unpaused", { subscriptionId });
+        applied++;
+      }
+      if (free) detail.itemsHash = hash;
+      else if (remote && sameItems(plan.items, remote.items)) {
         skipped++;
         // Queda anotado qué composición tiene Stripe: así se sabe después si lo pactado cambió por una fecha
         detail.itemsHash = hash;
@@ -356,24 +405,27 @@ export class TermsBillingService {
         applied++;
       }
       // 2.º Importes únicos vencidos: cada uno, una vez. Antes de enviarlo se busca en Stripe por su clave
-      for (const o of due) {
+      // (con el cobro en pausa no se envían: Stripe anularía la factura; quedan para cuando vuelva a ser de pago)
+      for (const o of free ? [] : due) {
         const found = await gw.findOneOff(link.subscriptionId, o.key);
         if (found) {
           detail.oneOffs[o.key] = found.ref;
           skipped++;
           continue;
         }
-        const out = await gw.addOneOff({ subscriptionId: link.subscriptionId, customerId: link.customerId, currency: plan.currency, item: { key: o.key, name: o.name, amountCents: o.amountCents, taxRateBp: o.taxRateBp }, metadata }, `ct:s${subscriptionId}:${link.subscriptionId}:${o.key}`);
+        const out = await gw.addOneOff({ subscriptionId: link.subscriptionId, customerId: link.customerId, currency: plan.currency, item: { key: o.key, name: o.name, amountCents: o.amountCents, taxRateBp: o.taxRateBp }, metadata }, `ct:s${subscriptionId}:${o.key}`);
         detail.oneOffs[o.key] = out.ref;
         applied++;
       }
     } catch (e) {
       const error = (e instanceof Error ? e.message : "error").slice(0, 300);
       detail.lastError = error;
+      detail.failures = (prev?.failures ?? 0) + 1;
       opsLog("warn", "CommercialTerms", "billing_sync_failed", { subscriptionId });
       await this.record(plan.termsId, "failed", detail, actor, `Sincronización con Stripe fallida: ${error}`);
       return { status: "failed", error, completed: applied + skipped, remaining: total - applied - skipped };
     }
+    detail.failures = 0;
     await this.record(plan.termsId, "synced", detail, actor, applied ? "Condiciones sincronizadas con Stripe" : "Sincronización con Stripe sin cambios");
     return { status: "synced", applied, skipped, pendingOneOffs: detail.pendingOneOffs };
   }
@@ -413,20 +465,32 @@ export class TermsBillingService {
     if (remote?.trialEnd && remote.trialEnd > this.now() && !(this.d.billFrom && (await this.d.billFrom(subscriptionId)))) differences.push({ key: "periodo_sin_cargo", kind: "status", expectedCents: null, stripeCents: null });
     // Fin programado SOLO en Stripe (ni la contratación termina dentro ni lo pidió un operador): Stripe dejaría de cobrar
     // a un cliente que sigue contratado. Se avisa; nunca se deshace ni se da por terminada la contratación sola
-    if (remote && !ending && remote.cancelAtPeriodEnd === true && remote.status !== "canceled" && !(this.d.cancelRequested && (await this.d.cancelRequested(subscriptionId)))) differences.push({ key: "fin_solo_en_stripe", kind: "status", expectedCents: null, stripeCents: null });
+    const noTerms = plan.termsId === null || !plan.items.length;
+    const free = !noTerms && plan.recurringNetCents <= 0;
+    // Cobro en pausa: solo debe estarlo cuando lo pactado es una cuota total de 0 (y entonces debe estarlo)
+    if (remote?.paused === true && !free) differences.push({ key: "cobro_en_pausa", kind: "status", expectedCents: null, stripeCents: null });
+    if (remote?.paused === false && free) differences.push({ key: "cobro_sin_pausar", kind: "status", expectedCents: null, stripeCents: null });
+    if (remote && !ending && !noTerms && remote.cancelAtPeriodEnd === true && remote.status !== "canceled" && !(this.d.cancelRequested && (await this.d.cancelRequested(subscriptionId)))) differences.push({ key: "fin_solo_en_stripe", kind: "status", expectedCents: null, stripeCents: null });
     if (remote?.status !== undefined) {
       if (ending && remote.status !== "canceled" && remote.cancelAtPeriodEnd === false) differences.push({ key: "fin_sin_programar", kind: "status", expectedCents: null, stripeCents: null });
       if (!ending && remote.status === "canceled") differences.push({ key: "cancelada_en_stripe", kind: "status", expectedCents: null, stripeCents: null });
     }
     if (remote?.currency && remote.currency.toUpperCase() !== plan.currency.toUpperCase()) differences.push({ key: "moneda", kind: "currency", expectedCents: null, stripeCents: null });
-    for (const i of plan.items) {
+    // Sin partidas que comparar en dos casos: condiciones terminadas con el fin ya programado en Stripe (está terminando)
+    // y cuota 0 con el cobro en pausa (las partidas no se tocan mientras no se cobra)
+    const skipItems = (noTerms && remote?.cancelAtPeriodEnd === true) || (free && remote?.paused === true);
+    for (const i of skipItems ? [] : plan.items) {
       const r = remote?.items.find((x) => x.key === i.key);
       if (!r || r.amountCents !== i.amountCents || r.interval !== i.interval || !sameTax(r.taxRateBp, i.taxRateBp)) differences.push({ key: i.key, kind: "item", expectedCents: i.amountCents, stripeCents: r?.amountCents ?? null });
     }
-    for (const r of remote?.items ?? []) if (!plan.items.some((i) => i.key === r.key)) differences.push({ key: r.key ?? "(sin clave)", kind: "item", expectedCents: null, stripeCents: r.amountCents });
+    for (const r of skipItems ? [] : (remote?.items ?? [])) if (!plan.items.some((i) => i.key === r.key)) differences.push({ key: r.key ?? "(sin clave)", kind: "item", expectedCents: null, stripeCents: r.amountCents });
     // Importes únicos vencidos: deben estar en Stripe y por su importe
-    for (const o of plan.oneOffs.filter((x) => x.due)) {
+    const sent = (await this.lastDetail(subscriptionId, link.subscriptionId))?.oneOffs ?? {};
+    for (const o of free && remote?.paused === true ? [] : plan.oneOffs.filter((x) => x.due)) {
       const f = await gw.findOneOff(link.subscriptionId, o.key);
+      // No se encuentra en Stripe pero consta enviado: cobrado en el primer pago de un Checkout (allí no lleva clave
+      // propia) o tan antiguo que ya no entra en los importes que se leen del cliente. No es una diferencia
+      if (!f && sent[o.key] && (sent[o.key].startsWith("checkout:") || o.at < this.now() - ONE_OFF_WINDOW_MS)) continue;
       if (!f || f.amountCents !== o.amountCents) differences.push({ key: o.key, kind: "one_off", expectedCents: o.amountCents, stripeCents: f?.amountCents ?? null });
     }
     return { available: true as const, plan, syncStatus: current?.syncStatus ?? "none", consistent: differences.length === 0, differences, stripe: remote ? { status: remote.status ?? null, cancelAtPeriodEnd: remote.cancelAtPeriodEnd ?? null, tax: remote.tax ?? null } : null };

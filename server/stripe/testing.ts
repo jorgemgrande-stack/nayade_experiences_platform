@@ -536,6 +536,16 @@ export class FakeStripeGateway implements StripeGateway {
   negotiatedSessions = new Map<string, NegotiatedCheckoutInput>();
   /** Cosas hechas «en el Dashboard» sobre una suscripción (cupón, cobro en pausa…). */
   anomaliesOf = new Map<string, string[]>();
+  /** Suscripciones con el cobro en pausa (`pause_collection`, behavior void): Stripe no cobra nada mientras dura. */
+  pausedSubs = new Set<string>();
+  async setPauseCollection(subscriptionId: string, paused: boolean, key: string) {
+    this.guard();
+    this.calls.push({ op: "subscriptions.update(pause_collection)", key, input: { subscriptionId, paused } });
+    if (!this.subscriptions.has(subscriptionId)) throw new StripeGatewayError("resource_missing", "Stripe respondió 404 (resource_missing)", false);
+    if (paused) this.pausedSubs.add(subscriptionId);
+    else this.pausedSubs.delete(subscriptionId);
+    this.emit("customer.subscription.updated", "subscription", subscriptionId);
+  }
   invoiceItems: GwInvoiceItem[] = [];
   /** Llamadas que ESCRIBEN en una suscripción o crean importes (para comprobar que algo no se tocó). */
   negotiatedWrites = () => this.calls.filter((c) => ["subscriptions.update(negotiated)", "invoiceitems.create", "checkout.sessions.create(negotiated)", "subscriptions.update(cancel_at_period_end)"].includes(c.op));
@@ -591,6 +601,13 @@ export class FakeStripeGateway implements StripeGateway {
     const amount = n.items.reduce((a, i) => a + i.unitAmount * i.quantity, 0) + pending.reduce((a, i) => a + i.amount, 0);
     const start = s.currentPeriodEnd ?? this.nowSec();
     this.subscriptions.set(subId, { ...s, currentPeriodStart: start, currentPeriodEnd: start + 30 * 86_400 });
+    // Con el cobro en pausa Stripe genera la factura y la ANULA: no se cobra nada (los importes únicos siguen pendientes)
+    if (this.pausedSubs.has(subId)) {
+      const voided = this.addNegotiatedInvoice(subId, "subscription_cycle", "void", n.items.reduce((a, i) => a + i.unitAmount * i.quantity, 0), n.items.length);
+      this.emit("invoice.voided", "invoice", voided);
+      this.emit("customer.subscription.updated", "subscription", subId);
+      return voided;
+    }
     const id = this.addNegotiatedInvoice(subId, "subscription_cycle", outcome, amount, n.items.length + pending.length);
     for (const i of pending) i.invoiceId = id;
     this.subscriptions.set(subId, { ...this.subscriptions.get(subId)!, status: outcome === "paid" ? "active" : "past_due" });
@@ -604,7 +621,7 @@ export class FakeStripeGateway implements StripeGateway {
     const s = this.subscriptions.get(id);
     if (!s) return null;
     const n = this.negotiated.get(id);
-    return { id: s.id, customerId: s.customerId, status: s.status, currency: n?.currency ?? "EUR", metadata: { ...s.metadata }, automaticTax: n?.automaticTax ?? false, cancelAt: s.cancelAt, cancelAtPeriodEnd: s.cancelAtPeriodEnd, currentPeriodEnd: s.currentPeriodEnd, scheduleId: s.scheduleId ?? null, trialEnd: s.status === "trialing" ? s.currentPeriodEnd : null, anomalies: this.anomaliesOf.get(id) ?? [], items: (n?.items ?? (s.items ?? []).map((i) => ({ id: i.id, productId: this.prices.find((p) => p.id === i.priceId)?.productId ?? "", unitAmount: this.prices.find((p) => p.id === i.priceId)?.unitAmount ?? 0, quantity: i.quantity, currency: "EUR", interval: "month" as const, intervalCount: 1, metadata: {}, taxRateBp: null }))).map((i) => ({ ...i, metadata: { ...i.metadata } })) };
+    return { id: s.id, customerId: s.customerId, status: s.status, currency: n?.currency ?? "EUR", metadata: { ...s.metadata }, automaticTax: n?.automaticTax ?? false, cancelAt: s.cancelAt, cancelAtPeriodEnd: s.cancelAtPeriodEnd, currentPeriodEnd: s.currentPeriodEnd, scheduleId: s.scheduleId ?? null, trialEnd: s.status === "trialing" ? s.currentPeriodEnd : null, anomalies: this.anomaliesOf.get(id) ?? [], paused: this.pausedSubs.has(id), items: (n?.items ?? (s.items ?? []).map((i) => ({ id: i.id, productId: this.prices.find((p) => p.id === i.priceId)?.productId ?? "", unitAmount: this.prices.find((p) => p.id === i.priceId)?.unitAmount ?? 0, quantity: i.quantity, currency: "EUR", interval: "month" as const, intervalCount: 1, metadata: {}, taxRateBp: null }))).map((i) => ({ ...i, metadata: { ...i.metadata } })) };
   }
   async replaceNegotiatedItems(c: NegotiatedItemsChange, key: string) {
     this.guard();
