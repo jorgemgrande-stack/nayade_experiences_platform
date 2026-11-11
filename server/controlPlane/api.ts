@@ -2507,7 +2507,7 @@ export function createControlPlaneApp(d: ControlPlaneDeps): Express {
             fiscal: st.fiscal ? { config: { scenarios: st.fiscal.scenarios, taxExpectations: st.fiscal.taxExpectations ?? new Map(), countries: st.fiscal.countries ?? new Map(), consumerRates: st.fiscal.consumerRates ?? new Map(), consent: st.fiscal.consent }, vat } : undefined,
             now: d.subscriptions.now,
           });
-          termsBillingSvc.attach({ gateway: negotiatedBilling.gatewayFor(), link: negotiatedBilling.link, billFrom: negotiatedBilling.billFrom, invalidate: negotiatedBilling.invalidate, cancelRequested: negotiatedBilling.cancelRequested });
+          termsBillingSvc.attach({ gateway: negotiatedBilling.gatewayFor(), link: negotiatedBilling.link, billFrom: negotiatedBilling.billFrom, invalidate: negotiatedBilling.invalidate, cancelRequested: negotiatedBilling.cancelRequested, serialize: negotiatedBilling.serialize });
           router.use(createNegotiatedBillingRouter(negotiatedBilling));
         }
         const negotiated = negotiatedBilling;
