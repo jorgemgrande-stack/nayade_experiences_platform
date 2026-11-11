@@ -60,13 +60,14 @@ export const NET_PRODUCTS: readonly NetProduct[] = [
     segment: "business",
     homePath: "/admin/net/care",
     summary: "Solución integral para centros de bienestar, masajes, terapias y clínicas: agenda, citas online, tratamientos, bonos, historial de cada cliente y recordatorios de cita por correo en un solo producto. Fichas clínicas: en implantación, incluidas sin coste adicional.",
-    benefits: ["Tus citas, profesionales y cabinas en una sola agenda, sin solapamientos.", "Reservas y cobros online desde tu propia web.", "Tratamientos, bonos y sesiones controlados en el mismo sitio."],
+    benefits: ["Tus citas y franjas en una sola agenda, con plazas por franja y sin sobreventa.", "Reservas y cobros online desde tu propia web.", "Tratamientos, bonos y sesiones controlados en el mismo sitio."],
     legacyKeys: ["care-net-agenda", "care-net-clinical", "care-net-treatments"],
     areas: [
-      { title: "Agenda y citas", features: [A("Agenda y calendario"), A("Reservas y citas online"), A("Gestión de profesionales"), A("Horarios y disponibilidad"), A("Capacidad y prevención de solapamientos")] },
+      // Profesionales y cabinas: sin pantalla de gestión ni control de solapes por recurso todavía (en implantación)
+      { title: "Agenda y citas", features: [A("Agenda y calendario"), A("Reservas y citas online"), A("Horarios y disponibilidad"), A("Plazas por franja sin sobreventa"), S("Gestión de profesionales y cabinas sin solapamientos")] },
       { title: "Clientes y seguimiento", features: [A("Clientes e historiales"), S("Fichas clínicas y seguimiento especializado")] },
       { title: "Tratamientos y bonos", features: [A("Tratamientos y servicios"), A("Bonos y paquetes de sesiones"), A("Control de sesiones consumidas y pendientes")] },
-      { title: "Cobros y gestión", features: [A("Pagos online y TPV"), A("Recordatorios y comunicaciones"), A("Estadísticas y gestión del centro")] },
+      { title: "Cobros y gestión", features: [A("Pagos online y TPV"), A("Recordatorios de cita por correo"), A("Estadísticas y gestión del centro")] },
     ],
   },
   {
@@ -77,13 +78,13 @@ export const NET_PRODUCTS: readonly NetProduct[] = [
     segment: "business",
     homePath: "/admin/net/hotel",
     summary: "Solución integral para hoteles y alojamientos: PMS, motor de reservas para tu web, check-in y check-out y housekeeping en un solo producto. Channel Manager: en implantación, incluido sin coste adicional.",
-    benefits: ["Habitaciones, tarifas y ocupación siempre al día.", "Reservas directas en tu web, con pago online y sin comisiones.", "Recepción, check-in, check-out y limpieza coordinados."],
+    benefits: ["Habitaciones, tarifas y ocupación siempre al día.", "Reservas directas en tu web, con pago online y sin comisiones.", "Check-in, check-out y tareas de limpieza por habitación en el mismo panel."],
     legacyKeys: ["hotel-net-pms", "hotel-net-channel-manager", "hotel-net-booking-engine", "hotel-net-housekeeping"],
     areas: [
       { title: "PMS", features: [A("PMS"), A("Habitaciones y tipologías"), A("Tarifas, ocupación y disponibilidad"), A("Calendario de reservas"), A("Gestión de huéspedes"), A("Check-in y check-out")] },
       { title: "Motor de reservas", features: [A("Motor de reservas para web propia"), A("Reservas y pagos directos")] },
       { title: "Channel Manager", features: [S("Channel Manager"), S("Sincronización de inventario y tarifas")] },
-      { title: "Housekeeping", features: [A("Housekeeping"), A("Limpieza y estados de habitaciones"), A("Coordinación de recepción y personal")] },
+      { title: "Housekeeping", features: [A("Housekeeping"), A("Tareas de limpieza por habitación y estados"), A("Asignación de tareas al personal, inspección e incidencias")] },
       { title: "Informes", features: [A("Informes de ocupación e ingresos")] },
     ],
     note: "Las comisiones de los canales de venta (OTAs) se pagan aparte a cada canal.",

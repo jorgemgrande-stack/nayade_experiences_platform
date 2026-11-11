@@ -37,6 +37,8 @@ describe("consultas públicas de la web de cada empresa", () => {
 
   it("en la web de cada empresa el cliente no agrupa consultas; con una sola empresa, sí", () => {
     const main = fs.readFileSync(new URL("../client/src/main.tsx", import.meta.url), "utf8");
-    expect(main).toContain("links: [isTenantSite() ? httpLink(linkOptions) : httpBatchLink(linkOptions)]");
+    // Web de una empresa: siempre sueltas. Panel: agrupadas, salvo el portal del empleado (Ski Net sin Elephant People)
+    expect(main.replace(/\s+/g, " ")).toContain("links: isTenantSite() ? [httpLink(linkOptions)] :");
+    expect(main).toMatch(/splitLink\(\{ condition: \(\) => unbatchedTrpcPath\(window\.location\.pathname\), true: httpLink\(linkOptions\), false: httpBatchLink\(linkOptions\) \}\)/);
   });
 });

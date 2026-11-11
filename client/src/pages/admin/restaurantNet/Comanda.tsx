@@ -36,6 +36,7 @@ import {
   type PaymentMethod,
 } from "@shared/restaurantNet";
 import { KITCHEN_STATUS_LABELS } from "@shared/restaurantKds";
+import { cashSaleDocument, exceedsSimplifiedInvoiceLimit, SIMPLIFIED_INVOICE_LIMIT_EUR, type TicketInvoiceRecipient } from "@shared/ticketInvoice";
 import { CARTA_PATH, SALA_PATH, useRestaurantNetWrite } from "./RestaurantNetParts";
 
 const ALL = "__todas";
@@ -409,6 +410,14 @@ function CheckoutDialog({ orderId, total, customerName, onClose, onPaid }: { ord
   const [sessionId, setSessionId] = useState<string>("");
   const [payments, setPayments] = useState<Array<{ method: PaymentMethod; amount: string; tendered: string }>>([{ method: "card", amount: total.toFixed(2), tendered: "" }]);
   const [email, setEmail] = useState("");
+  // Factura completa con destinatario identificado: la misma regla que la caja (cashSaleDocument); obligatoria por encima
+  // del límite de la factura simplificada, que el TPV no admite cobrar solo con ticket.
+  const [wantsInvoice, setWantsInvoice] = useState(false);
+  const [recipient, setRecipient] = useState<TicketInvoiceRecipient>({ name: "", nif: "", address: "", postalCode: "", city: "" });
+  const overLimit = exceedsSimplifiedInvoiceLimit(total);
+  const showRecipientForm = wantsInvoice || overLimit;
+  const saleDocument = cashSaleDocument({ total, requested: showRecipientForm ? recipient : null });
+  const documentProblem = saleDocument.kind === "rechazo" ? saleDocument.message : null;
   const chosen = sessionId || (open.length === 1 ? String(open[0].openSession!.id) : "");
   const parsed = payments.map((p) => ({ method: p.method, amount: round2(Number(p.amount.replace(",", "."))), tendered: Number(p.tendered.replace(",", ".")) }));
   const problem = paymentsProblem(total, parsed.map((p) => ({ amount: p.amount })));
@@ -476,13 +485,37 @@ function CheckoutDialog({ orderId, total, customerName, onClose, onPaid }: { ord
               <Label htmlFor="rnet-pay-email">Correo para el ticket (opcional)</Label>
               <Input id="rnet-pay-email" type="email" maxLength={320} value={email} onChange={(e) => setEmail(e.target.value)} />
             </div>
+            <div className="space-y-1.5" aria-live="polite">
+              {overLimit ? (
+                <p role="alert" className="text-sm text-warning">Más de {SIMPLIFIED_INVOICE_LIMIT_EUR} € (IVA incluido): no basta con el ticket, hace falta factura completa. Indica los datos del destinatario.</p>
+              ) : (
+                <label className="flex min-h-11 cursor-pointer items-center gap-2 text-sm">
+                  <input type="checkbox" checked={wantsInvoice} onChange={(e) => setWantsInvoice(e.target.checked)} className="h-4 w-4 accent-primary" />
+                  El cliente quiere factura completa (con NIF)
+                </label>
+              )}
+              {showRecipientForm ? (
+                <div className="space-y-1.5" role="group" aria-label="Datos para la factura completa">
+                  <Input placeholder="Nombre o razón social" aria-label="Nombre o razón social para la factura" maxLength={256} value={recipient.name} onChange={(e) => setRecipient({ ...recipient, name: e.target.value })} />
+                  <div className="grid grid-cols-2 gap-1.5">
+                    <Input placeholder="NIF" aria-label="NIF para la factura" maxLength={32} value={recipient.nif} onChange={(e) => setRecipient({ ...recipient, nif: e.target.value })} />
+                    <Input placeholder="Código postal" aria-label="Código postal para la factura" maxLength={16} value={recipient.postalCode} onChange={(e) => setRecipient({ ...recipient, postalCode: e.target.value })} />
+                  </div>
+                  <Input placeholder="Dirección" aria-label="Dirección para la factura" maxLength={512} value={recipient.address} onChange={(e) => setRecipient({ ...recipient, address: e.target.value })} />
+                  <Input placeholder="Población" aria-label="Población para la factura" maxLength={128} value={recipient.city} onChange={(e) => setRecipient({ ...recipient, city: e.target.value })} />
+                </div>
+              ) : (
+                <p className="text-xs text-muted-foreground">Se entregará ticket (factura simplificada). Si después pide factura completa, se canjea el ticket.</p>
+              )}
+            </div>
             {problem && <p className="text-sm text-danger" role="alert">{problem}</p>}
+            {!problem && documentProblem && showRecipientForm && <p className="text-sm text-danger" role="alert">{documentProblem}</p>}
           </div>
         )}
         <DialogFooter>
           <Button variant="outline" onClick={onClose}>Cancelar</Button>
           <Button
-            disabled={!chosen || !!problem || checkout.isPending}
+            disabled={!chosen || !!problem || !!documentProblem || checkout.isPending}
             onClick={() =>
               checkout.mutate({
                 orderId,
@@ -490,6 +523,7 @@ function CheckoutDialog({ orderId, total, customerName, onClose, onPaid }: { ord
                 payments: parsed.map((p) => ({ method: p.method, amount: p.amount, ...(p.method === "cash" && p.tendered > 0 ? { amountTendered: p.tendered } : {}) })),
                 ...(customerName ? { customerName } : {}),
                 ...(email.trim() ? { customerEmail: email.trim() } : {}),
+                ...(saleDocument.kind === "factura" ? { invoiceRecipient: saleDocument.recipient } : {}),
               })
             }
           >

@@ -156,7 +156,11 @@ export const restaurantNetRouter = router({
    * ticket se muestra con tpv.getSale.
    */
   checkout: adminrestProcedure
-    .input(z.object({ orderId: id, sessionId: id, payments: z.array(payment).min(1).max(10), customerName: z.string().max(200).optional(), customerEmail: z.string().email().max(320).optional() }))
+    .input(z.object({
+      orderId: id, sessionId: id, payments: z.array(payment).min(1).max(10), customerName: z.string().max(200).optional(), customerEmail: z.string().email().max(320).optional(),
+      // Destinatario de la factura completa, igual que en la caja: el TPV lo valida (y lo exige por encima del límite del ticket)
+      invoiceRecipient: z.object({ name: z.string().max(256), nif: z.string().max(32), address: z.string().max(512), postalCode: z.string().max(16), city: z.string().max(128) }).optional(),
+    }))
     .mutation(async ({ ctx, input }) => {
       // Llamar al TPV desde aquí no pasa por el guardián HTTP de su namespace: se comprueba su licencia (caja)
       const cash = await getCapabilityAccess().check("bill-cash", { write: true }).catch(() => ({ allowed: false }));

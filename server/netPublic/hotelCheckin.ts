@@ -16,7 +16,7 @@ import { sql } from "drizzle-orm";
 import { z } from "zod";
 import { getCapabilityAccess } from "../_core/capabilities/access";
 import { getModuleAccess } from "../_core/modules/runtime";
-import { getFeatureFlag } from "../config";
+import { moduleFlagEnabled } from "../_core/flagGuard";
 import { HOTEL_CAPABILITY } from "../hotelFolioCharges";
 import { DOC_TYPES, SEXES, guestDisplayName, guestRegistryErrors, type GuestInput } from "../hotelGuests";
 import { listStayGuests, saveStayGuest } from "../hotelGuestsDb";
@@ -86,7 +86,8 @@ export async function onlineCheckinAvailable(): Promise<boolean> {
   try {
     if (!(await getCapabilityAccess().check(HOTEL_CAPABILITY, { write: true })).allowed) return false;
     if (!(await getModuleAccess().isModuleAvailable("hotel"))) return false;
-    return await getFeatureFlag("hotel_module_enabled", false);
+    // Mismo valor por defecto que el resto del módulo (sin fila: encendido, decide la licencia)
+    return await moduleFlagEnabled("hotel_module_enabled");
   } catch {
     return false;
   }

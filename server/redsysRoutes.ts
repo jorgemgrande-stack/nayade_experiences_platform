@@ -37,6 +37,7 @@ import { applyOnlineOrderPoints } from "./loyaltyDb";
 import { isMultiTenant } from "./_core/tenant";
 import { finalizePaidShopOrder, isGenericShopOrder, sendShopOrderConfirmation, sendShopOrderFailed } from "./shopOrdersDb";
 import { issuerSnapshotForNewInvoice } from "./issuerSnapshot";
+import { inventoryKindsOf, onlineReservationKind, onlineReservationTaxRate } from "./onlineReservationFiscal";
 
 // Pool de BD compartido para todo el módulo — evita crear/destruir conexiones por cada IPN
 const _sharedPool = legacyPool();
@@ -515,8 +516,11 @@ redsysRouter.post("/api/redsys/notification", express.urlencoded({ extended: tru
     if (result.isAuthorized) {
       const allReservations = await getAllReservationsByMerchantOrder(result.merchantOrder);
       const { getExperienceById: getExpById } = await import("./db");
+      // Hotel y SPA guardan en productId la habitación o el tratamiento: no se buscan en el catálogo de experiencias
+      const inventoryKinds = await inventoryKindsOf(allReservations.map((r) => r.id)).catch(() => new Map<number, string | null>());
 
       for (const resv of allReservations) {
+        const ownKind = onlineReservationKind({ inventoryKind: inventoryKinds.get(resv.id), extrasJson: resv.extrasJson });
         // Booking operativo + transacción contable
         try {
           const amountEuros = (resv.amountPaid ?? resv.amountTotal) / 100;
@@ -544,7 +548,7 @@ redsysRouter.post("/api/redsys/notification", express.urlencoded({ extended: tru
         }
 
         // REAV — solo para reservas directas (no de presupuesto) con régimen REAV
-        if (!resv.quoteId) {
+        if (!resv.quoteId && !ownKind) {
           try {
             const product = await getExpById(resv.productId);
             if (product && (product as any).fiscalRegime === "reav") {
@@ -602,10 +606,12 @@ redsysRouter.post("/api/redsys/notification", express.urlencoded({ extended: tru
         // (en la tienda de una pyme, la factura es del pedido entero: se emite abajo)
         if (!resv.quoteId && !shopOrder) {
           try {
-            const productForInv = await getExpById(resv.productId);
+            const productForInv = ownKind ? null : await getExpById(resv.productId);
             const totalEur = (resv.amountPaid ?? resv.amountTotal) / 100;
-            const productTaxRate = productForInv ? parseFloat(String((productForInv as any).taxRate ?? "21")) : 21;
-            const isReavProduct = productForInv && (productForInv as any).fiscalRegime === "reav";
+            const productTaxRate = ownKind
+              ? await onlineReservationTaxRate(ownKind, resv.id)
+              : productForInv ? parseFloat(String((productForInv as any).taxRate ?? "21")) : 21;
+            const isReavProduct = !ownKind && !!productForInv && (productForInv as any).fiscalRegime === "reav";
             const effectiveTaxRate = isReavProduct ? 0 : productTaxRate;
             const subtotal = effectiveTaxRate > 0 ? totalEur / (1 + effectiveTaxRate / 100) : totalEur;
             const taxAmount = totalEur - subtotal;

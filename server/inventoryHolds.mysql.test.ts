@@ -395,4 +395,43 @@ describe.skipIf(!URL_)("sobreventa de spa y hotel (routers reales)", () => {
     expect(report.hotelOverbooked).toContainEqual({ roomTypeId: room, date: "2027-07-02", occupied: 2, capacity: 1 });
     expect((await hold(a.merchantOrder)).hold_status).toBe("retenida");
   });
+
+  it("factura web de hotel y SPA: IVA propio (alojamiento / tratamiento), nunca el de una experiencia con el mismo id ni expediente REAV", async () => {
+    const room = await roomFixture(2);
+    const f = await spaFixture(4, "2027-08-05");
+    await tenantDb.query("UPDATE spa_treatments SET taxRate = '21.00', fiscalRegime = 'general' WHERE id = ?", [f.treatmentId]);
+    // Experiencias AJENAS que comparten id con la habitación y el tratamiento: REAV y 4 % (lo que se aplicaba antes)
+    for (const id of new Set([room, f.treatmentId])) {
+      await tenantDb.query(
+        `INSERT INTO experiences (id, slug, title, categoryId, locationId, basePrice, fiscalRegime, taxRate, providerPercent, agencyMarginPercent)
+         VALUES (?, ?, 'Experiencia ajena', 1, 1, '10.00', 'reav', '4.00', '60.00', '40.00')
+         ON DUPLICATE KEY UPDATE fiscalRegime = 'reav', taxRate = '4.00', providerPercent = '60.00', agencyMarginPercent = '40.00'`,
+        [id, `ajena-${run}-${id}`]);
+    }
+    const reavBefore = Number((await q<{ n: number }>("SELECT COUNT(*) AS n FROM reav_expedients"))[0].n);
+
+    const h = ok(await bookHotel(room, "2027-08-10", "2027-08-12", 900));
+    const s = ok(await bookSpa(f, 1, 901));
+    await ipn(h.merchantOrder, "0000");
+    await ipn(s.merchantOrder, "0000");
+    const invoiceOf = async (merchantOrder: string) => {
+      for (let i = 0; i < 100; i++) {
+        const [inv] = await q<{ taxRate: string; itemsJson: string }>(
+          "SELECT i.taxRate, i.itemsJson FROM invoices i JOIN reservations r ON r.id = i.reservationId WHERE r.merchant_order = ?", [merchantOrder]);
+        if (inv) return inv;
+        await new Promise((r) => setTimeout(r, 100));
+      }
+      throw new Error(`sin factura para ${merchantOrder}`);
+    };
+    const hi = await invoiceOf(h.merchantOrder);
+    const si = await invoiceOf(s.merchantOrder);
+    // Hotel: IVA de alojamiento de la empresa (10 % por defecto); SPA: el 21 % del tratamiento
+    expect(Number(hi.taxRate)).toBe(10);
+    expect(Number(si.taxRate)).toBe(21);
+    const items = (v: unknown) => (typeof v === "string" ? JSON.parse(v) : v) as { fiscalRegime: string }[];
+    expect(items(hi.itemsJson)[0].fiscalRegime).toBe("general");
+    expect(items(si.itemsJson)[0].fiscalRegime).toBe("general");
+    await new Promise((r) => setTimeout(r, 300));
+    expect(Number((await q<{ n: number }>("SELECT COUNT(*) AS n FROM reav_expedients"))[0].n)).toBe(reavBefore);
+  });
 });
