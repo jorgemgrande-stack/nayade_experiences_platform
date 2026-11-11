@@ -26,7 +26,7 @@ import { z } from "zod";
 import { getAuth, requireScope } from "../controlPlane/auth";
 import { opsLog } from "../_core/ops/log";
 import { recordFailure } from "../_core/ops/failureAlerts";
-import { addMonthsUTC, isRecurring as recurringPrice, stableHash } from "../subscriptions/pricing";
+import { addMonthsUTC, isRecurring as recurringPrice, madridAnchor, stableHash } from "../subscriptions/pricing";
 import type { SubscriptionStore } from "../subscriptions/store";
 import type { SubscriptionItem } from "../subscriptions/types";
 import { requireCustomPricing } from "./permission";
@@ -140,6 +140,8 @@ export interface BillingTarget {
   resumesAt: number | null;
   /** Fin (ms) de las condiciones sin otras detrás: la suscripción de Stripe termina ese día. null: no terminan. */
   endAt: number | null;
+  /** Inicio (ms) del acuerdo que termina en `endAt`: desde él se cuentan los periodos que cubre el contrato. */
+  endFrom: number | null;
   /** Importes únicos: `due` = vencidos en `at` (los de la renovación se envían antes de ella). */
   oneOffs: BillingPlan["oneOffs"];
   /** Periodicidad de las cuotas (la de la suscripción de Stripe). */
@@ -200,24 +202,39 @@ export const LOOKAHEAD_MS = 3 * 86_400_000;
  */
 export const RESUME_MARGIN_MS = 6 * 3600_000;
 /**
- * Holgura del último periodo: el ciclo de Stripe se ancla al instante del pago (UTC) y el acuerdo termina a medianoche
- * de Madrid, así que un periodo que acaba hasta este margen DESPUÉS del fin del acuerdo es el último periodo del
- * contrato (no un periodo de más).
+ * Holgura al comparar fechas del contrato con las de Stripe: la hora del pago frente a la medianoche de Madrid, el
+ * cambio de hora y los meses de distinta longitud. Nunca decide por sí sola si un periodo entero se cobra o no.
  */
 export const END_TOLERANCE_MS = 2 * 86_400_000;
 
 /**
  * ¿Debe Stripe NO renovar en su próxima renovación (`current_period_end`) porque las condiciones terminan sin sucesor?
- * Sí cuando el periodo que empezaría en ella pasaría del fin del acuerdo (más allá de `END_TOLERANCE_MS`): así Stripe
- * nunca cobra un periodo que el contrato no cubre entero, ni prorrateado. Los días entre esa renovación y el fin del
- * acuerdo no se cobran (nunca se cobra más que el contrato).
+ *
+ * El contrato cubre periodos completos desde su inicio (`endFrom`) hasta su fin (`endAt`). El ciclo de Stripe puede ir
+ * desfasado (el cliente pagó unos días después del inicio: el ancla va por detrás, y esos días no se cobraron). Cada
+ * renovación de Stripe corresponde al periodo del contrato que empieza en el último límite del contrato anterior o igual a
+ * ella (con la holgura). Se renueva si ESE periodo del contrato cabe entero antes del fin; si no, Stripe termina ahí:
+ *  - el número de cobros es el de periodos que el contrato cubre (12 meses son 12 cobros, aunque el ancla vaya días por
+ *    detrás: el último periodo de Stripe acaba esos mismos días después del fin);
+ *  - un tramo final que no llega a un periodo entero (un acuerdo que termina a mitad de periodo) no se cobra: nunca se
+ *    cobra más que el contrato y nunca queda sin cobrar un periodo entero del contrato.
+ * Sin `endFrom` (no se sabe dónde empieza el contrato), se toma el ciclo de Stripe como el del contrato.
  */
-export function stopsAtRenewal(endAt: number | null, remote: Pick<RemoteState, "currentPeriodEnd" | "billingCycleAnchor">, interval: "month" | "year"): boolean {
+export function stopsAtRenewal(endAt: number | null, endFrom: number | null, remote: Pick<RemoteState, "currentPeriodEnd" | "billingCycleAnchor">, interval: "month" | "year"): boolean {
   if (endAt === null || remote.currentPeriodEnd == null) return false;
   const renewal = remote.currentPeriodEnd;
   if (endAt <= renewal) return true;
-  const following = addMonthsUTC(renewal, interval === "year" ? 12 : 1, new Date(remote.billingCycleAnchor ?? renewal).getUTCDate());
-  return endAt < following - END_TOLERANCE_MS;
+  const months = interval === "year" ? 12 : 1;
+  if (endFrom !== null && endFrom <= renewal + END_TOLERANCE_MS) {
+    // Límites del contrato: su inicio más periodos completos (meses de calendario de Madrid, como las fechas del acuerdo)
+    const anchor = madridAnchor(endFrom);
+    const step = (k: number) => addMonthsUTC(endFrom, k * months, anchor);
+    let k = 0;
+    while (k < 2400 && step(k + 1) <= renewal + END_TOLERANCE_MS) k++;
+    return addMonthsUTC(endFrom, (k + 1) * months, anchor) > endAt + END_TOLERANCE_MS;
+  }
+  const following = addMonthsUTC(renewal, months, new Date(remote.billingCycleAnchor ?? renewal).getUTCDate());
+  return following > endAt + END_TOLERANCE_MS;
 }
 
 /** Otra operación tiene el arrendamiento de la suscripción (un webhook, otra sincronización). */
@@ -366,6 +383,9 @@ export class TermsBillingService {
     // Fin de las condiciones sin nada detrás: todas sus partidas recurrentes (las de hoy y las ya programadas) terminan
     const terms = all.filter((i) => i.termsId != null && (i.effectiveTo === null || i.effectiveTo > base));
     const endAt = terms.length && terms.every((i) => i.effectiveTo !== null) ? toSecond(Math.max(...terms.map((i) => i.effectiveTo!))) : null;
+    // El contrato que termina: sus partidas que acaban en esa fecha (la más antigua marca el inicio de sus periodos)
+    const ending = endAt === null ? [] : terms.filter((i) => toSecond(i.effectiveTo!) === endAt);
+    const endFrom = ending.length ? Math.min(...ending.map((i) => i.effectiveFrom)) : null;
     const paused = withTerms(ahead) ? ahead.recurringNetCents <= 0 : next !== null;
     const resumesAt = !paid(ahead) && next && next.at - RESUME_MARGIN_MS > this.now() ? toSecond(next.at - RESUME_MARGIN_MS) : null;
     return {
@@ -376,6 +396,7 @@ export class TermsBillingService {
       paused,
       resumesAt,
       endAt,
+      endFrom,
       oneOffs: ahead.oneOffs,
       interval: (today.items[0] ?? ahead.items[0] ?? next?.plan.items[0])?.interval ?? (sub?.interval === "year" ? "year" : "month"),
       today,
@@ -596,7 +617,7 @@ export class TermsBillingService {
         const ours = prev?.endedBySync ?? null;
         const cur = remote.cancelAt ?? null;
         const mine = ours !== null && cur !== null && cur === (ours.periodEnd ?? ours.at);
-        if (stopsAtRenewal(t.endAt, remote, t.interval)) {
+        if (stopsAtRenewal(t.endAt, t.endFrom, remote, t.interval)) {
           if (remote.cancelAtPeriodEnd !== true && gw.setCancelAtPeriodEnd) {
             await gw.setCancelAtPeriodEnd(link.subscriptionId, true, at(`end:${t.endAt}`));
             opsLog("warn", "CommercialTerms", "billing_terms_end_scheduled", { subscriptionId, endAt: t.endAt, stripeEnd: remote.currentPeriodEnd ?? null });
@@ -762,7 +783,7 @@ export class TermsBillingService {
     const requested = !!(this.d.cancelRequested && (await this.d.cancelRequested(subscriptionId)));
     // Fin de las condiciones sin sucesor: en su último periodo, Stripe debe tener el fin programado (`cancel_at_period_end`);
     // entonces es lo esperado, no un fin «solo en Stripe»
-    const stop = !!remote && stopsAtRenewal(t.endAt, remote, t.interval);
+    const stop = !!remote && stopsAtRenewal(t.endAt, t.endFrom, remote, t.interval);
     const endExpected = stop && remote?.cancelAtPeriodEnd === true;
     // Cobro en pausa: solo debe estarlo con una cuota total de 0 o un hueco hasta el acuerdo siguiente (y entonces debe estarlo)
     if (remote?.paused === true && !free) differences.push({ key: "cobro_en_pausa", kind: "status", expectedCents: null, stripeCents: null });
