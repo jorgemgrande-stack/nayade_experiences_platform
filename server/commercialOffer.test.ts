@@ -136,9 +136,13 @@ describe("modalidad comercial en la salida pública y en el cotizador", () => {
     const web = await setup();
     const site = await web.publicSite("published");
     expect(site.catalog.products.length).toBeGreaterThan(0);
-    for (const p of site.catalog.products as PubProduct[]) expect(p.offer).toMatchObject({ modality: "assisted", trial: false, checkout: false, cta: "proposal" });
+    // Única oferta configurada en la semilla: Social Token Net, en venta directa como en production (11/11/2026)
+    for (const p of site.catalog.products as PubProduct[]) {
+      if (p.key === "social-token-net-complete") expect(p.offer).toMatchObject({ modality: "immediate", trial: false, checkout: true, cta: "checkout" });
+      else expect(p.offer).toMatchObject({ modality: "assisted", trial: false, checkout: false, cta: "proposal" });
+    }
     const quote = quoteCatalogFromSite(site);
-    for (const p of quote.products) expect(p.offer?.modality).toBe("assisted");
+    for (const p of quote.products) expect(p.offer?.modality, p.key).toBe(p.key === "social-token-net-complete" ? "immediate" : "assisted");
     // Determinista: la versión no cambia entre dos lecturas
     expect((await web.publicSite("published")).version).toBe(site.version);
   });

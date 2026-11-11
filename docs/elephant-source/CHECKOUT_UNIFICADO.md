@@ -128,3 +128,46 @@ español válido o está verificado en VIES). La estimación de `/quote` es orie
 4. Comprobar `GET /offer` y `POST /quote` (88 €) desde el origen de la web.
 5. Web: `PUBLIC_CHECKOUT_*` para mostrar el carrito y el pago.
 6. Apagado inmediato: quitar `CP_PUBLIC_SELF_SERVICE_ENABLED` (404 otra vez) o vaciar la lista blanca (solo plan).
+
+## Social Token Net en la web: preparado, no encendido (11/11/2026)
+
+Estrategia A/B/C aprobada el 11/11/2026: Social Token Net es la **clase A** (venta directa). Se vende ya desde el panel
+(compra de módulos) y queda **preparado** para la web; **no** se enciende en este cambio. Las demás soluciones Net de
+empresa (Hotel, Restaurant, Care, Ski y Travel) son de **clase B** («Contratar e iniciar implantación»: solicitud de
+implantación y contrato de condiciones personalizadas, sin cobro en la web ni en el panel; `shared/netOffer.ts`).
+Life Net es personal: no se ofrece a empresas.
+
+Valores exactos para encenderlo (servicio `controlplane`, con la aprobación de Jorge; hoy sin definir):
+
+| Variable | Valor |
+|---|---|
+| `CP_PUBLIC_CHECKOUT_PRODUCTS` | `social-token-net-complete` |
+| `CP_PUBLIC_SELF_SERVICE_ENABLED` | `1` |
+
+Se mantienen como están: `CP_PUBLIC_CHECKOUT_ENABLED=1`, `CP_STRIPE_CHECKOUT_ENABLED=1` (Stripe live) y la política
+fiscal `CP_STRIPE_TAX_POLICY=stripe_tax_exclusive`. Apagado inmediato: quitar `CP_PUBLIC_SELF_SERVICE_ENABLED` (o
+vaciar la lista blanca: solo plan).
+
+Lo que ya protege la venta (código de este cambio):
+- **Doble cobro**: el pago de Checkout no se abre si la empresa ya tiene vigentes las capacidades del producto por
+  otro origen (condiciones personalizadas, activación del equipo, derechos adquiridos; `server/licensing/heldCapabilities.ts`).
+  Un alta nueva de la web es una empresa nueva (sin plataforma), así que no aplica; sí en la conversión de una prueba.
+- **Implantación**: al quedar activo el pedido con Social Token Net (o cualquier Net de sector), se abre solo su
+  expediente de implantación con la checklist «primera implantación sectorial» (`server/implementation/paidNet.ts`),
+  si la implantación asistida está montada (`CP_ASSISTED_IMPLEMENTATION_ENABLED=1` y CRM 0034).
+
+### Primer cobro supervisado (Core + Social Token Net)
+
+1. Comprobar en production que el catálogo publicado sigue con Social Token Net «available», técnico «available» y
+   oferta efectiva `immediate` + `checkout: true`, precio mensual 59 € aprobado y enlazado a un Price activo (la semilla
+   ya lo refleja; `server/stnPublicSale.test.ts`).
+2. Poner los dos valores de la tabla.
+3. `POST /cp/v1/public/checkout/quote` con `{ "plan": "essential", "interval": "month", "products": ["social-token-net-complete"] }`
+   desde el origen de la web: líneas Essential 2900 + Social Token Net 5900, **total mostrado 88,00 € al mes (IVA
+   aparte)**, `firstChargeNetCents: 8800`. El anual con Social Token Net se rechaza (`incompatible`: solo tiene mensual).
+4. Una persona del equipo hace la primera compra real con una empresa propia (empresa de la Península con NIF y
+   domicilio completos: escenario `business:es_mainland` aprobado), comprueba en la página de Stripe el total con IVA
+   calculado por Stripe Tax y paga.
+5. Verificar: `/status` → `ready`; pedido `active`; licencias `social-token-net` y `social-token-net-tokens` en la
+   empresa; expediente de implantación abierto «en implantación» con la plantilla de Social Token Net; factura en Stripe.
+6. Si algo no cuadra: apagar (paso de apagado) y revisar el pedido desde el CRM antes de volver a encender.

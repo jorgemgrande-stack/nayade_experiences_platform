@@ -102,6 +102,8 @@ import { createMediaAdminRouter, createPublicMediaRouter, MediaService, type Med
 import { createPublicSiteRouter } from "../web/publicSite";
 import { createSubscriptionsRouter } from "../subscriptions/api";
 import { createCommercialTermsRouter } from "../commercialTerms/api";
+import { saleGuard } from "../licensing/heldCapabilities";
+import { addedByTerms, paidNetOpener, withPaidNet, type PaidNetOpener } from "../implementation/paidNet";
 import { TermsAcceptanceService, createTermsAcceptanceRouter, createTermsPublicAcceptanceRouter } from "../commercialTerms/acceptance";
 import type { AcceptanceLinkStore } from "../commercialTerms/acceptanceLinks";
 import type { Keyring } from "../_core/tenantRegistry/crypto";
@@ -688,6 +690,8 @@ export function createControlPlaneApp(d: ControlPlaneDeps): Express {
   };
   // Implantación asistida: la solicitud de una solución asistida abre su expediente (lo monta el bloque de suscripciones)
   const intakeImplementation: { run?: (r: LeadRequest) => Promise<unknown> } = {};
+  // Producto Net de sector pagado → expediente de implantación (lo monta el bloque de implantación; sin él, nada)
+  const paidNet: { run?: PaidNetOpener } = {};
   const webRequests = d.crm
     ? new WebRequestService({
         store: d.crm.store,
@@ -2045,6 +2049,13 @@ export function createControlPlaneApp(d: ControlPlaneDeps): Express {
             mail: d.mail?.platform?.termsAcceptanceMail() ?? null,
             links: d.termsAcceptance?.links ?? null,
             logo: d.termsAcceptance?.logo,
+            // Condiciones aceptadas con un producto Net de sector: expediente de implantación (idempotente)
+            // Solo lo NUEVO de este acuerdo: lo que ya estaba en un acuerdo anterior de la empresa no abre otro expediente
+            onActivated: async ({ terms, subscriptionId, contractId }) => {
+              if (!paidNet.run || !d.subscriptions?.terms) return;
+              const added = addedByTerms(terms, await d.subscriptions.terms.list({ companyId: terms.companyId, status: ["active", "scheduled", "superseded", "expired"] }));
+              await paidNet.run.fromTerms({ companyId: terms.companyId, contractId, subscriptionId, productKeys: added, reference: `condiciones #${terms.id}` });
+            },
           })
         : null;
     if (termsAcceptance) {
@@ -2289,9 +2300,30 @@ export function createControlPlaneApp(d: ControlPlaneDeps): Express {
         platformDomain: d.platformDomain ?? null,
         assignees: d.implementation.assignees ?? null,
         markAttended: webRequests ? (leadRequestId, actor) => webRequests.setStatus(leadRequestId, "attended", actor) : null,
+        // Paquete personalizado de la contratación asistida (clase B): borrador de condiciones personalizadas, sin cobro
+        packages: commercialTerms
+          ? {
+              offer: ((c) => () => c.offer())(catalogFromWebStore(d.web.store)),
+              companyPlan: async (companyId) => {
+                const at = d.subscriptions!.now?.() ?? Date.now();
+                // Solo una suscripción de pago: la de una prueba gratuita («trialing») no da plan Core al paquete
+                for (const s of await d.subscriptions!.store.list({ companyId })) {
+                  if (s.status !== "active") continue;
+                  const plan = (await d.subscriptions!.store.items(s.id)).find((i) => i.family === "core_plan" && i.effectiveFrom <= at && (i.effectiveTo === null || i.effectiveTo > at));
+                  if (plan) return plan.productKey;
+                }
+                return null;
+              },
+              create: (companyId, input, actor) => commercialTerms.createPackage(companyId, input, actor),
+              get: async (termsId) => commercialTerms.must(termsId).catch(() => null),
+              ofCompany: async (companyId) => (await d.subscriptions!.terms!.list({ companyId })).map((t) => ({ id: t.id, status: t.status, companyId: t.companyId, acceptanceStatus: t.acceptanceStatus, productKeys: t.lines.map((l) => l.productKey).filter((k): k is string => !!k) })),
+            }
+          : null,
         now: d.subscriptions.now,
       });
       intakeImplementation.run = (r) => implementation.fromIntake(r);
+      const ordersForPaidNet = d.orders?.store;
+      paidNet.run = paidNetOpener({ implementation, catalog: catalogFromWebStore(d.web.store), previousOrder: ordersForPaidNet ? (id) => ordersForPaidNet.get(id) : undefined });
       router.use("/implementations", createImplementationRouter(implementation));
     }
     // Cobro de cargos (server/invoicing/chargePayments): lo crea el bloque de facturación; el procesador de Stripe lo consulta
@@ -2340,7 +2372,7 @@ export function createControlPlaneApp(d: ControlPlaneDeps): Express {
         licensing,
         capabilities: d.capabilities,
         platform: d.provisioning && d.platformDomain ? createContractActivation({ provisioning: d.provisioning, platformDomain: d.platformDomain, actor: { type: "crm", id: "orchestrator" }, notifyWelcome: d.mail?.platform?.assistedWelcome() }) : undefined,
-        notify: d.mail?.platform ? d.mail.platform.orderNotifier({ crmStore: d.crm.store, orders: d.orders.store, reader: d.reader, mode: ordersMode }) : undefined,
+        notify: withPaidNet(d.mail?.platform ? d.mail.platform.orderNotifier({ crmStore: d.crm.store, orders: d.orders.store, reader: d.reader, mode: ordersMode }) : undefined, paidNet),
         trials: d.trials ? new TrialService({ store: d.trials.store, subscriptions: d.subscriptions.store, now: d.subscriptions.now, limits: d.trials.limits, blockedDomains: d.trials.blockedDomains }) : undefined,
         payments: d.orders.payments ?? null,
         mode: ordersMode,
@@ -2456,6 +2488,15 @@ export function createControlPlaneApp(d: ControlPlaneDeps): Express {
       if (d.stripe) {
         const st = d.stripe;
         const stripeCatalog = catalogFromWebStore(d.web.store);
+        // Doble cobro (11/11/2026): lo que la empresa ya tiene activo por otro origen no se vende en el alta ni en la conversión
+        const crmForHeld = d.crm.store;
+        const heldForSale = saleGuard({
+          capabilities: d.capabilities,
+          catalog: stripeCatalog,
+          companyOfTenant: async (t) => ((await crmForHeld.list("companies", { tenantId: t }, { limit: 2 })) as Array<{ id: number }>)[0]?.id ?? null,
+          subscriptions: d.subscriptions.store,
+          now: d.subscriptions.now ?? Date.now,
+        });
         // VIES con registro (CRM 0021) y reutilización de comprobaciones recientes
         const vat = st.vies ? new VatVerifier({ vies: st.vies.client, store: st.store, now: d.subscriptions.now, maxAgeDays: st.vies.maxAgeDays }) : undefined;
         // Cotizador del servidor (catálogo publicado): plan, módulos y ampliaciones del Checkout y de las compras
@@ -2465,7 +2506,7 @@ export function createControlPlaneApp(d: ControlPlaneDeps): Express {
         const deferredItems = serverQuote && st.purchases?.changes ? new DeferredItemsService({ namespace: st.config.namespace, catalog: stripeCatalog, store: st.store, gateway: st.gateway, changes: st.purchases.changes, quote: serverQuote, now: d.subscriptions.now }) : null;
         // En live sin política fiscal, Checkout no se monta aunque se pida (y el servicio también lo rechazaría)
         const checkout = st.checkoutEnabled && st.urls && !checkoutBlockedReason(st.config)
-          ? new StripeCheckoutService({ store: st.store, gateway: st.gateway, orders: d.orders.store, crmStore: d.crm.store, catalog: stripeCatalog, urls: st.urls, now: d.subscriptions.now, namespace: st.config.namespace, mode: st.config.mode, taxPolicy: st.config.taxPolicy, fiscalScenarios: st.fiscal?.scenarios, taxExpectations: st.fiscal?.taxExpectations, vat, eligibility: { countries: st.fiscal?.countries, consumerRates: st.fiscal?.consumerRates, consent: st.fiscal?.consent }, quote: serverQuote, deferredItems: !!deferredItems })
+          ? new StripeCheckoutService({ store: st.store, gateway: st.gateway, orders: d.orders.store, crmStore: d.crm.store, catalog: stripeCatalog, urls: st.urls, now: d.subscriptions.now, namespace: st.config.namespace, mode: st.config.mode, taxPolicy: st.config.taxPolicy, fiscalScenarios: st.fiscal?.scenarios, taxExpectations: st.fiscal?.taxExpectations, vat, eligibility: { countries: st.fiscal?.countries, consumerRates: st.fiscal?.consumerRates, consent: st.fiscal?.consent }, quote: serverQuote, deferredItems: !!deferredItems, held: heldForSale })
           : null;
         // Partidas contratadas para el PRÓXIMO periodo (las que Stripe debe cobrar en la renovación): conciliación
         const subItems = d.subscriptions.store;
@@ -2555,6 +2596,7 @@ export function createControlPlaneApp(d: ControlPlaneDeps): Express {
             buyers: st.store,
             eligibility: (b) => buyerEligibility(eligibilityDeps, b),
             mode: st.config.mode,
+            held: heldForSale,
             now: d.subscriptions.now,
           });
           router.use("/commerce", createPanelConversionRouter(conversion));
@@ -2606,6 +2648,7 @@ export function createControlPlaneApp(d: ControlPlaneDeps): Express {
             subscriptions: svc,
             subscriptionItems: d.subscriptions.store,
             settle: (subId, inv) => processor.handleSubscription(subId, inv),
+            capabilities: d.capabilities,
             onPaymentPending: customerNotices
               ? async (i) => {
                   const order = await d.orders!.store.get(i.orderId);

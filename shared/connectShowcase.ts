@@ -9,6 +9,7 @@
  *  - La acción de la ficha nunca promete contratar si no se puede.
  */
 import { CONNECT_CATEGORIES, connectAction, conversionHref, type CheckoutVia, type ConnectCategoryId, type ConnectState } from "./connectMarketplace";
+import { NET_SALE_LABEL } from "./netOffer";
 import type { ConnectImage } from "./connectCard";
 
 // ── Carrusel ───────────────────────────────────────────────────────────────────
@@ -228,7 +229,7 @@ export type ActivationRetryOutcome = "active" | "resumed" | "in_progress";
 
 // ── Acción principal ───────────────────────────────────────────────────────────
 
-export type PrimaryActionKind = "purchase" | "convert" | "expand" | "request" | "interest" | "open" | "manage" | "contact" | "none";
+export type PrimaryActionKind = "purchase" | "convert" | "expand" | "request" | "assisted" | "interest" | "open" | "manage" | "contact" | "none";
 
 export interface PrimaryAction {
   kind: PrimaryActionKind;
@@ -254,7 +255,7 @@ export const CONTRACT_NOW_LABEL = "Contratar ahora";
  *    «Abrir módulo» lleva a «Mis módulos».
  */
 export function primaryAction(
-  item: { key?: string; state: ConnectState; kind: "module" | "quantity"; purchasable: boolean; openPath?: string | null; activation?: ConnectActivation | null; checkoutVia?: CheckoutVia; conversionPlan?: string | null },
+  item: { key?: string; state: ConnectState; kind: "module" | "quantity"; purchasable: boolean; openPath?: string | null; activation?: ConnectActivation | null; checkoutVia?: CheckoutVia; conversionPlan?: string | null; assisted?: unknown | null },
   view: { canPurchase: boolean; interestEnabled: boolean },
 ): PrimaryAction {
   const open = item.openPath ?? null;
@@ -277,7 +278,9 @@ export function primaryAction(
     case "expand":
       return { kind: "expand", label: "Ampliar", href: MODULES_PATH };
     case "request":
-      return { kind: "request", label: "Solicitar información", href: null };
+      // Elephant Net de clase B (operativo, con precio publicado): contratación asistida, sin cobro en el panel
+      if (item.state === "on_request" && item.assisted) return { kind: "assisted", label: NET_SALE_LABEL.assisted_contract, href: null };
+      return { kind: "request", label: NET_SALE_LABEL.request_info, href: null };
     case "interest":
       return { kind: "interest", label: "Me interesa", href: null };
     case "contact":

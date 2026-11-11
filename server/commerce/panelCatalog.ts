@@ -33,6 +33,8 @@ export interface PanelCatalogItem {
   metric: string | null;
   step: number | null;
   commercialStatus: "coming_soon" | "in_preparation" | "on_request" | "available";
+  /** Estado técnico publicado (`available`, `partial`, `planned`). */
+  technicalStatus?: string;
   capabilities: string[];
   /** Precio mensual publicado (sin calcular prorrateos ni impuestos de la empresa). */
   monthly: { amountCents: number; currency: string; taxIncluded: boolean; unit: string | null } | null;
@@ -313,6 +315,8 @@ export function panelCatalog(products: QuoteCatalogProduct[], o: { version: stri
       card: null,
       activation: o.activation === null ? null : (o.activation?.get(p.key) ?? NO_ACTIVATION),
       legacy: p.legacy ? { replacedBy: p.legacy.replacedBy } : null,
+      // Estado técnico publicado: decide la contratación asistida de Elephant Net (shared/netOffer.ts)
+      technicalStatus: p.technicalStatus,
     });
   }
   // Las fichas, cuando ya se sabe qué ve la empresa (relacionados solo entre productos visibles)

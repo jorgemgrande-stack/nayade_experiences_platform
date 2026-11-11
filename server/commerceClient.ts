@@ -34,7 +34,8 @@ export interface ConversionSelection {
 
 /** Solicitud desde el panel: quien la hace es SIEMPRE el usuario de la sesión (nunca un dato libre del navegador). */
 export interface ModuleRequestInput {
-  type: "info" | "waitlist";
+  /** `implementation`: «Contratar e iniciar implantación» de un producto Net de clase B (shared/netOffer.ts). */
+  type: "info" | "waitlist" | "implementation";
   interest: string;
   message?: string;
   requester: { name: string; email: string };
