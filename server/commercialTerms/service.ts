@@ -22,7 +22,7 @@ import type { NewItem, SubscriptionStore } from "../subscriptions/store";
 import { SubscriptionError, type Subscription, type SubscriptionItem } from "../subscriptions/types";
 import { difference, groupTax, materialize, recurringAt, summarize, type PlannedItem, type TermsSummary } from "./compute";
 import { madridDateTime } from "./presentation";
-import { declaredServiceStart, isRecurring, termsEconomicOnly, validateTerms, type Adjustment, type AfterEnd, type ChargeClass, type Concept, type Presentation, type PricingMode, type Terms, type TermsInterval, type TermsLine } from "./model";
+import { declaredServiceStart, isRecurring, termsEconomicOnly, validateTerms, type Adjustment, type AfterEnd, type ChargeClass, type Concept, type Presentation, type PricingMode, type Terms, type TermsInterval, type TermsLine, type TermsStatus } from "./model";
 import { TermsConflict, type AdjustmentDraft, type LineDraft, type TermsEventDraft, type TermsHead, type TermsRecord, type TermsStore } from "./store";
 
 export class TermsError extends Error {
@@ -963,8 +963,16 @@ export class CommercialTermsService {
   }
 
   async ofCompany(companyId: number) {
+    return this.listTerms({ companyId });
+  }
+
+  /**
+   * Condiciones por empresa y/o por estado, y por vínculo con una suscripción (`none`: paquetes que todavía no la
+   * tienen; `linked`: las de una suscripción). Cada fila lleva su estado efectivo y si es un paquete a medias.
+   */
+  async listTerms(f: { companyId?: number; status?: TermsStatus[]; subscription?: "none" | "linked" }) {
     const now = this.now();
-    const all = await this.d.store.list({ companyId });
+    const all = (await this.d.store.list({ companyId: f.companyId, status: f.status })).filter((t) => (f.subscription === "none" ? t.subscriptionId === null : f.subscription === "linked" ? t.subscriptionId !== null : true));
     const out = [];
     for (const t of all) {
       // Paquete cuya contratación se cortó tras crear la suscripción: sigue siendo un borrador y se puede reintentar

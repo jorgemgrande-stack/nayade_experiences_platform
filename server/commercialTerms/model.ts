@@ -13,7 +13,8 @@
  *    modifica el acuerdo;
  *  - todo importe es un entero de céntimos, NETO (sin impuestos); el impuesto se calcula por tipo.
  */
-export type TermsStatus = "draft" | "pending_acceptance" | "scheduled" | "active" | "superseded" | "cancelled" | "expired";
+export const TERMS_STATUSES = ["draft", "pending_acceptance", "scheduled", "active", "superseded", "cancelled", "expired"] as const;
+export type TermsStatus = (typeof TERMS_STATUSES)[number];
 export type PricingMode = "per_item" | "global";
 export type Presentation = "global" | "breakdown";
 export type TermsInterval = "month" | "year";

@@ -322,11 +322,29 @@ describe("caso final — Essential + Hotel Net + WhatsApp Connect por 129 €/me
     expect(preview.licences).toMatchObject({ planProductBefore: null, planProductAfter: { key: "essential" } });
   });
 
+  it("1b. el listado sin empresa, por estado, ve el paquete antes de que tenga suscripción (Comercial → Suscripciones)", async () => {
+    const open = await call("GET", "/commercial-terms?status=draft,pending_acceptance&subscription=none", { token: TOK.sales });
+    expect(open.status).toBe(200);
+    expect(open.json.terms.find((t: { id: number }) => t.id === termsId)).toMatchObject({ companyId: hotelCompanyId, subscriptionId: null, status: "draft", effectiveStatus: "draft", interruptedPackage: false });
+    expect(open.json.terms.every((t: { status: string; subscriptionId: number | null }) => ["draft", "pending_acceptance"].includes(t.status) && t.subscriptionId === null)).toBe(true);
+    const linked = (await call("GET", "/commercial-terms?status=draft&subscription=linked", { token: TOK.sales })).json.terms;
+    expect(linked.some((t: { id: number }) => t.id === termsId)).toBe(false);
+    // La consulta por empresa de siempre sigue igual; sin empresa ni estados, o con un estado desconocido, se rechaza
+    expect((await call("GET", `/commercial-terms?companyId=${hotelCompanyId}`, { token: TOK.sales })).json.terms.some((t: { id: number }) => t.id === termsId)).toBe(true);
+    expect((await call("GET", `/commercial-terms?companyId=${hotelCompanyId}&status=active`, { token: TOK.sales })).json.terms.some((t: { id: number }) => t.id === termsId)).toBe(false);
+    expect((await call("GET", "/commercial-terms", { token: TOK.sales })).status).toBe(400);
+    expect((await call("GET", "/commercial-terms?status=borrador", { token: TOK.sales })).status).toBe(400);
+    expect((await call("GET", "/commercial-terms?status=draft", { token: TOK.tenant })).status).toBe(403);
+  });
+
   it("2. prepara la contratación: una suscripción con los tres productos identificados y la cuota pactada", async () => {
     const done = await call("POST", `/commercial-terms/${termsId}/prepare-contracting`, { token: TOK.admin, body: { expectedRevision: revision } });
     expect(done.status).toBe(200);
     sid = done.json.subscription.id;
     expect(done.json.terms).toMatchObject({ status: "active", subscriptionId: sid });
+    // Las mismas condiciones (mismo id) pasan a ser las de la suscripción: ya no figuran como paquete sin suscripción
+    expect((await call("GET", "/commercial-terms?status=draft,pending_acceptance&subscription=none", { token: TOK.admin })).json.terms.some((t: { id: number }) => t.id === termsId)).toBe(false);
+    expect((await call("GET", "/commercial-terms?status=active&subscription=linked", { token: TOK.admin })).json.terms.find((t: { id: number }) => t.id === termsId)).toMatchObject({ subscriptionId: sid });
     const detail = (await call("GET", `/subscriptions/${sid}`, { token: TOK.admin })).json;
     const live = detail.items.filter((i: { effectiveTo: number | null }) => i.effectiveTo === null);
     expect(live.map((i: { productKey: string }) => i.productKey).sort()).toEqual(["connect-whatsapp-ai", "essential", "hotel-net-complete"]);
