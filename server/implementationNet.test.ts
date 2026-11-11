@@ -9,7 +9,7 @@ import { CrmService } from "./crm/service";
 import { ImplementationService, type SolutionInfo } from "./implementation/service";
 import { MemoryImplementationStore } from "./implementation/store";
 import { GENERIC_TEMPLATE, SECTOR_TEMPLATE_KEYS, netCommitmentsText, sectionOf, templateFor } from "./implementation/templates";
-import { circuitOf, paidNetOpener, sectorNetKeys, withPaidNet } from "./implementation/paidNet";
+import { addedByTerms, circuitOf, paidNetOpener, sectorNetKeys, withPaidNet } from "./implementation/paidNet";
 import { NET_PRODUCTS, netProductOf } from "../shared/netProducts";
 import { PRODUCT_SPECS } from "./catalog/commercial/specs";
 import type { CommercialOrder } from "./orchestrator/types";
@@ -122,7 +122,8 @@ describe("expediente al pagar un producto Net y checklist", () => {
     expect(ms.map((m) => m.title)).toEqual(templateFor("hotel-net-complete").items.map((i) => i.title));
     const d = await svc.detail(r.order.id);
     expect(d.checklist).toEqual({ key: "hotel-net-complete", name: "Primera implantación sectorial — Hotel Net", generic: false, applied: true });
-    expect(d.paid).toEqual({ circuit: "panel_purchase", reference: "PED-2026-000042" });
+    expect(d.paid).toEqual({ circuit: "panel_purchase", reference: "PED-2026-000042", billed: true });
+    expect(d.events[0].detail).toContain("Hotel Net · pagado (compra desde el panel PED-2026-000042): implantación obligatoria");
     expect(d.milestones.filter((m) => m.section === "comprobaciones").length).toBeGreaterThan(5);
     expect(d.events.map((e) => e.type)).toEqual(["created", "assigned", "paid", "checklist"]);
     // Idempotente: otro pago (o el mismo repetido) de la misma solución devuelve el mismo expediente
@@ -184,7 +185,9 @@ describe("expediente al pagar un producto Net y checklist", () => {
     const ids = await opener.fromOrder(order({}));
     expect(ids).toHaveLength(1);
     expect(store.rows.map((o) => [o.solutionKey, o.status])).toEqual([["social-token-net-complete", "accepted"]]);
-    expect((await svc.detail(ids[0])).paid).toEqual({ circuit: "panel_purchase", reference: "PED-7" });
+    expect((await svc.detail(ids[0])).paid).toEqual({ circuit: "panel_purchase", reference: "PED-7", billed: true });
+    // Social Token Net (activación inmediata): las licencias ya están activas, la implantación acompaña sin bloquear
+    expect((await svc.detail(ids[0])).events[0].detail).toContain("licencias ya activas; puesta en marcha acompañada (no bloquea el uso)");
     // Alta nueva (sin pedido anterior): todos sus productos Net de sector
     await opener.fromOrder(order({ id: 8, kind: "trial_conversion", idempotencyKey: "pc-conversion-de-prueba", previousOrderId: null }));
     expect(store.rows.map((o) => o.solutionKey).sort()).toEqual(["restaurant-net-complete", "social-token-net-complete"]);
@@ -202,7 +205,13 @@ describe("expediente al pagar un producto Net y checklist", () => {
     const ids = await opener.fromTerms({ companyId, contractId, subscriptionId: 55, productKeys: ["essential", "care-net-complete"], reference: "condiciones #3" });
     expect(ids).toHaveLength(1);
     expect((await store.get(ids[0]))).toMatchObject({ solutionKey: "care-net-complete", status: "accepted", subscriptionId: 55 });
-    expect((await svc.detail(ids[0])).paid).toEqual({ circuit: "custom_terms", reference: "condiciones #3" });
+    const det = await svc.detail(ids[0]);
+    // Condiciones personalizadas: «contratado», nunca «pagado» (su cobro tiene su propio interruptor)
+    expect(det.paid).toEqual({ circuit: "custom_terms", reference: "condiciones #3", billed: false });
+    expect(det.events[0].detail).toContain("Care Net · contratado (condiciones personalizadas aceptadas condiciones #3)");
+    expect(det.order.conditions).toMatch(/^Contratado \(/);
+    // Solo lo NUEVO de un acuerdo: lo que ya estaba en un acuerdo anterior no abre otro expediente
+    expect(addedByTerms({ id: 5, lines: [{ productKey: "essential" }, { productKey: "hotel-net-complete" }, { productKey: "care-net-complete" }, { productKey: null }] }, [{ id: 4, lines: [{ productKey: "hotel-net-complete" }] }, { id: 5, lines: [{ productKey: "care-net-complete" }] }])).toEqual(["essential", "care-net-complete"]);
   });
 
   it("clase B: el paquete personalizado lleva plan Core si falta, el Net a su precio publicado y los compromisos; aceptado, el expediente pasa a implantación", async () => {
@@ -247,18 +256,33 @@ describe("expediente al pagar un producto Net y checklist", () => {
     plan = "business";
     expect(await svc2.preparePackage(order.id, "operator:laura")).toEqual({ termsId: 302, created: true });
     expect((created[1].input as { lines: Array<{ productKey: string }> }).lines.map((l) => l.productKey)).toEqual(["restaurant-net-complete"]);
+    // Enviado a aceptación (o en vigor): se devuelve el mismo, nunca una segunda oferta
+    terms.get(302)!.status = "pending_acceptance";
+    expect(await svc2.preparePackage(order.id, "operator:laura")).toEqual({ termsId: 302, created: false });
+    // Otra oferta viva del mismo producto para la empresa (p. ej. preparada desde «Paquetes»): esa
+    const svc3 = new ImplementationService({ store, crm, crmStore, solution: async (k) => SOL[k] ?? null, packages: { ...packages, ofCompany: async () => [{ id: 290, status: "pending_acceptance", companyId: c.id, acceptanceStatus: "pending", productKeys: ["essential", "restaurant-net-complete"] }] } as never, now: () => clock });
+    const again = await svc3.open({ opportunityId: opp.id, solutionKey: "travel-net-complete" }, "operator:laura");
+    expect(await svc3.preparePackage(order.id, "operator:laura")).toEqual({ termsId: 302, created: false });
+    expect(again.created).toBe(true);
+    terms.get(302)!.status = "cancelled";
+    expect(await svc3.preparePackage(order.id, "operator:laura")).toEqual({ termsId: 290, created: false });
+    expect(created).toHaveLength(2);
     // Sin precio publicado o fuera de Net, no
     const ski = await svc2.open({ opportunityId: opp.id, solutionKey: "ski-net-complete" }, "operator:laura");
     await expect(svc2.preparePackage(ski.order.id, "operator:laura")).rejects.toThrow(/no tiene precio mensual publicado/);
     const people = await svc2.open({ opportunityId: opp.id, solutionKey: "connect-people" }, "operator:laura");
     await expect(svc2.preparePackage(people.order.id, "operator:laura")).rejects.toThrow(/solo para los productos Net de empresa/);
+    // Un expediente abierto por un pago (aunque quedara sin contrato) no prepara otro contrato
+    const paidFile = await svc2.openPaid({ companyId: c.id, solutionKey: "care-net-complete", contractId: null, subscriptionId: null, circuit: "order", reference: "PED-9" }, "system:paid-net");
+    expect(paidFile.order.status).toBe("requested");
+    await expect(svc2.preparePackage(paidFile.order.id, "operator:laura")).rejects.toThrow(/lo abrió una contratación ya hecha/);
     // Aceptadas las condiciones (contrato firmado y suscripción): el MISMO expediente pasa a implantación con su checklist
     const contract = await crm.createContract({ companyId: c.id, planId: "business", modules: [], conditions: "Condiciones personalizadas aceptadas por el cliente", billingInterval: "month" }, "test");
     const opened = await paidNetOpener({ implementation: svc2, catalog }).fromTerms({ companyId: c.id, contractId: contract.id, subscriptionId: 77, productKeys: ["restaurant-net-complete"], reference: "condiciones #302" });
     expect(opened).toEqual([order.id]);
     const after = (await store.get(order.id))!;
     expect(after).toMatchObject({ status: "accepted", contractId: contract.id, subscriptionId: 77, startMode: "subscription" });
-    expect((await svc2.detail(order.id)).paid).toEqual({ circuit: "custom_terms", reference: "condiciones #302" });
+    expect((await svc2.detail(order.id)).paid).toEqual({ circuit: "custom_terms", reference: "condiciones #302", billed: false });
     expect((await store.milestones(order.id)).map((m) => m.title)).toEqual(templateFor("restaurant-net-complete").items.map((i) => i.title));
     // Ya contratado: el paquete no se prepara otra vez desde el expediente
     await expect(svc2.preparePackage(order.id, "operator:laura")).rejects.toThrow(/ya tiene el contrato aceptado/);

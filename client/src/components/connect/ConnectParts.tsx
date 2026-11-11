@@ -504,7 +504,7 @@ function AssistedSummary({ item, planName }: { item: ConnectCatalogItem; planNam
   return (
     <div className="space-y-3 text-sm">
       <p className="text-foreground">
-        <strong>{ASSISTED_CONTRACT_COPY.priceLine(formatMoney(a.monthly.amountCents, a.monthly.currency))}</strong> {ASSISTED_CONTRACT_COPY.planLine(planName)}
+        <strong>{ASSISTED_CONTRACT_COPY.priceLine(formatMoney(a.monthly.amountCents, a.monthly.currency), a.monthly.taxIncluded)}</strong> {ASSISTED_CONTRACT_COPY.planLine(planName)}
       </p>
       {a.available.length > 0 && (
         <div>
@@ -563,7 +563,7 @@ export function RequestDialog({
   const waitlist = kind === "waitlist";
   const assisted = kind === "implementation";
   const body = `${assisted ? `Quiero contratar «${item.name}» e iniciar la implantación` : `Me interesa «${item.name}»`} para mi empresa.${message.trim() ? `\n\n${message.trim()}` : ""}`;
-  const mailto = supportEmail ? `mailto:${supportEmail}?subject=${encodeURIComponent(`Información: ${item.name}`)}&body=${encodeURIComponent(body)}` : null;
+  const mailto = supportEmail ? `mailto:${supportEmail}?subject=${encodeURIComponent(assisted ? `Contratar e iniciar implantación: ${item.name}` : `Información: ${item.name}`)}&body=${encodeURIComponent(body)}` : null;
   const done = send.data;
   return (
     <Dialog open onOpenChange={(o) => !o && onClose()}>

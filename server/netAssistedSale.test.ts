@@ -52,6 +52,12 @@ describe("clase de venta de Elephant Net (mismo mapa en el panel y en la web)", 
     expect(k({ commercialStatus: "coming_soon" })).toBe("interest");
     expect(k({ commercialStatus: "in_preparation" })).toBe("interest");
     expect(k({ key: "social-token-net-complete", commercialStatus: "available", technicalStatus: "available", offer: { modality: "immediate", checkout: true } })).toBe("checkout");
+    // Disponible sin oferta conocida (el panel no la pasa): venta directa; con oferta asistida publicada, clase B
+    expect(k({ key: "social-token-net-complete", commercialStatus: "available", technicalStatus: "available" })).toBe("checkout");
+    expect(k({ commercialStatus: "available", offer: { modality: "assisted", checkout: false } })).toBe("assisted_contract");
+    expect(k({ commercialStatus: "available", hasMonthlyPrice: false })).toBe("request_info");
+    expect(ASSISTED_CONTRACT_COPY.priceLine("119,00 €")).toBe("119,00 € al mes (IVA aparte), según el precio publicado.");
+    expect(ASSISTED_CONTRACT_COPY.priceLine("119,00 €", true)).toBe("119,00 € al mes (IVA incluido), según el precio publicado.");
     expect(k({ key: "life-net" })).toBeNull();
     expect(k({ key: "connect-people" })).toBeNull();
     expect(NET_SALE_LABEL).toEqual({ checkout: "Contratar ahora", assisted_contract: "Contratar e iniciar implantación", request_info: "Solicitar información", interest: "Me interesa" });

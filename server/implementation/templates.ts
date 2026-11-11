@@ -102,7 +102,8 @@ export function netCommitmentsText(key: string): string | null {
   lines.push(`Compromisos de implantación de ${p.name}.`);
   const req = requirementsOf(key);
   lines.push(`Alcance de la implantación: Big Elephant prepara el entorno con el cliente (reunión de arranque, ${req.length ? `${req.map((r) => r.replace(/\.$/, "")).join("; ")}; ` : ""}carga de los datos iniciales, formación del equipo y validación del recorrido completo) antes de ponerlo en marcha.`);
-  lines.push(`Disponible desde la puesta en marcha: ${features(p, "available").map((f) => f.label).join(", ")}.`);
+  const ready = features(p, "available");
+  if (ready.length) lines.push(`Disponible desde la puesta en marcha: ${ready.map((f) => f.label).join(", ")}.`);
   const soon = features(p, "coming_soon");
   if (soon.length) lines.push(`En implantación (incluido en el precio, sin coste adicional, sin fecha comprometida en este documento; no forma parte de lo entregado hasta que se comunique como disponible): ${soon.map((f) => f.label).join(", ")}.`);
   if (p.note) lines.push(p.note);

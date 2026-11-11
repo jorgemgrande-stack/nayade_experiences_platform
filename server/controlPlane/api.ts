@@ -103,7 +103,7 @@ import { createPublicSiteRouter } from "../web/publicSite";
 import { createSubscriptionsRouter } from "../subscriptions/api";
 import { createCommercialTermsRouter } from "../commercialTerms/api";
 import { saleGuard } from "../licensing/heldCapabilities";
-import { paidNetOpener, withPaidNet, type PaidNetOpener } from "../implementation/paidNet";
+import { addedByTerms, paidNetOpener, withPaidNet, type PaidNetOpener } from "../implementation/paidNet";
 import { TermsAcceptanceService, createTermsAcceptanceRouter, createTermsPublicAcceptanceRouter } from "../commercialTerms/acceptance";
 import type { AcceptanceLinkStore } from "../commercialTerms/acceptanceLinks";
 import type { Keyring } from "../_core/tenantRegistry/crypto";
@@ -2050,11 +2050,11 @@ export function createControlPlaneApp(d: ControlPlaneDeps): Express {
             links: d.termsAcceptance?.links ?? null,
             logo: d.termsAcceptance?.logo,
             // Condiciones aceptadas con un producto Net de sector: expediente de implantación (idempotente)
+            // Solo lo NUEVO de este acuerdo: lo que ya estaba en un acuerdo anterior de la empresa no abre otro expediente
             onActivated: async ({ terms, subscriptionId, contractId }) => {
-              if (!paidNet.run) return;
-              const at = d.subscriptions!.now?.() ?? Date.now();
-              const live = (await d.subscriptions!.store.items(subscriptionId)).filter((i) => i.effectiveTo === null || i.effectiveTo > at).map((i) => i.productKey);
-              await paidNet.run.fromTerms({ companyId: terms.companyId, contractId, subscriptionId, productKeys: Array.from(new Set([...live, ...terms.lines.map((l) => l.productKey).filter((k): k is string => !!k)])), reference: `condiciones #${terms.id}` });
+              if (!paidNet.run || !d.subscriptions?.terms) return;
+              const added = addedByTerms(terms, await d.subscriptions.terms.list({ companyId: terms.companyId, status: ["active", "scheduled", "superseded", "expired"] }));
+              await paidNet.run.fromTerms({ companyId: terms.companyId, contractId, subscriptionId, productKeys: added, reference: `condiciones #${terms.id}` });
             },
           })
         : null;
@@ -2306,8 +2306,9 @@ export function createControlPlaneApp(d: ControlPlaneDeps): Express {
               offer: ((c) => () => c.offer())(catalogFromWebStore(d.web.store)),
               companyPlan: async (companyId) => {
                 const at = d.subscriptions!.now?.() ?? Date.now();
+                // Solo una suscripción de pago: la de una prueba gratuita («trialing») no da plan Core al paquete
                 for (const s of await d.subscriptions!.store.list({ companyId })) {
-                  if (s.status === "canceled") continue;
+                  if (s.status !== "active") continue;
                   const plan = (await d.subscriptions!.store.items(s.id)).find((i) => i.family === "core_plan" && i.effectiveFrom <= at && (i.effectiveTo === null || i.effectiveTo > at));
                   if (plan) return plan.productKey;
                 }
@@ -2315,6 +2316,7 @@ export function createControlPlaneApp(d: ControlPlaneDeps): Express {
               },
               create: (companyId, input, actor) => commercialTerms.createPackage(companyId, input, actor),
               get: async (termsId) => commercialTerms.must(termsId).catch(() => null),
+              ofCompany: async (companyId) => (await d.subscriptions!.terms!.list({ companyId })).map((t) => ({ id: t.id, status: t.status, companyId: t.companyId, acceptanceStatus: t.acceptanceStatus, productKeys: t.lines.map((l) => l.productKey).filter((k): k is string => !!k) })),
             }
           : null,
         now: d.subscriptions.now,

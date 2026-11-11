@@ -95,3 +95,13 @@ export function withPaidNet(notify: OrderNotifier | undefined, ref: { run?: Paid
     if (failed) throw failed.reason;
   };
 }
+
+/**
+ * Productos que un acuerdo de condiciones personalizadas AÑADE respecto a los acuerdos anteriores de la empresa (en
+ * vigor, programados, sustituidos o vencidos): solo eso abre expediente al aceptarse (una revisión no reabre lo que ya
+ * estaba contratado). Pura.
+ */
+export function addedByTerms(terms: { id: number; lines: Array<{ productKey: string | null }> }, before: Array<{ id: number; lines: Array<{ productKey: string | null }> }>): string[] {
+  const had = new Set(before.filter((t) => t.id !== terms.id).flatMap((t) => t.lines.map((l) => l.productKey)).filter((k): k is string => !!k));
+  return Array.from(new Set(terms.lines.map((l) => l.productKey).filter((k): k is string => !!k && !had.has(k))));
+}

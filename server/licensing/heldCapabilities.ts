@@ -11,6 +11,9 @@
  *  - El llamante excluye los orígenes que son legítimamente el mismo contrato (la suscripción del pedido vigente en
  *    una ampliación, la propia prueba en su conversión): esos los gobierna su circuito.
  *  - Un producto sin capacidades no se puede comprobar así (y no se bloquea).
+ *  - Riesgo aceptado: solo bloquea si la empresa tiene TODAS las capacidades del producto. Un paquete que se solapa solo
+ *    en parte con lo que ya tiene (p. ej. un paquete Connect con una extensión de unas condiciones personalizadas) se
+ *    cobra entero: el ajuste lo hace el equipo comercial.
  *  - Solo lee: nunca cambia una licencia.
  */
 import type { CapabilityReader } from "../_core/capabilities/store";

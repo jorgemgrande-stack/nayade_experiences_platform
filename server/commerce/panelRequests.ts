@@ -80,7 +80,7 @@ export async function receivePanelRequest(
   // «Contratar e iniciar implantación» (clase B): solo un producto Net de empresa bajo solicitud, operativo y con precio
   // publicado. Abre la solicitud de implantación (el expediente lo abre la captación, idempotente); nunca cobra nada
   const assisted = b.type === "implementation";
-  if (assisted && netSaleKind({ key: item.key, commercialStatus: item.commercialStatus, technicalStatus: item.technicalStatus ?? null, hasMonthlyPrice: !!item.monthly }) !== "assisted_contract") {
+  if (assisted && (item.legacy || netSaleKind({ key: item.key, commercialStatus: item.commercialStatus, technicalStatus: item.technicalStatus ?? null, hasMonthlyPrice: !!item.monthly }) !== "assisted_contract")) {
     throw new PanelRequestError(409, "invalid_state", "Ese producto no se contrata con implantación asistida desde el panel: pide información");
   }
 

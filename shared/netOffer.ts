@@ -3,7 +3,8 @@
  * marketplace del panel, el plano de control y la web pública (`bigelephant-web` debe reflejar este mapa: mismas
  * etiquetas y mismos estados, desde la oferta publicada del catálogo).
  *
- *  - Clase A · `checkout`: disponible y con oferta inmediata con Checkout (hoy, Social Token Net): «Contratar ahora».
+ *  - Clase A · `checkout`: disponible con oferta inmediata con Checkout, o sin oferta conocida (hoy, Social Token Net):
+ *    «Contratar ahora». Disponible con oferta asistida publicada: clase B si es operativo y tiene precio.
  *  - Clase B · `assisted_contract`: producto Net de empresa «bajo solicitud» (`on_request`), operativo
  *    (técnico `partial` o `available`) y con precio mensual publicado: «Contratar e iniciar implantación». Abre una
  *    solicitud de implantación (expediente) y el equipo prepara el contrato (condiciones personalizadas con los
@@ -45,7 +46,7 @@ export const ASSISTED_CONTRACT_COPY = {
   availableTitle: "Disponible desde la puesta en marcha",
   inImplementationTitle: "En implantación (incluido, sin coste adicional)",
   planLine: (plan: string | null) => (plan ? `Se añade a tu plan actual: ${plan}.` : "Se contrata junto con un plan de Elephant Core."),
-  priceLine: (monthly: string) => `${monthly} al mes (IVA aparte), según el precio publicado.`,
+  priceLine: (monthly: string, taxIncluded = false) => `${monthly} al mes (${taxIncluded ? "IVA incluido" : "IVA aparte"}), según el precio publicado.`,
   confirm: "Solicitar contratación",
   done: "Solicitud registrada: nuestro equipo te contactará para preparar el contrato.",
   /** Origen de la solicitud en el CRM (sufijo de la página de origen). */
@@ -71,8 +72,14 @@ export function netSaleKind(p: NetSaleInput): NetSaleKind | null {
   if (!net || net.segment !== "business") return null;
   const cs = p.commercialStatus ?? "on_request";
   if (cs === "coming_soon" || cs === "in_preparation" || cs === "unpublished") return "interest";
-  if (cs === "available" && p.offer?.modality === "immediate" && p.offer.checkout === true && p.hasMonthlyPrice) return "checkout";
   const operative = p.technicalStatus === "partial" || p.technicalStatus === "available";
+  // Disponible: venta directa salvo que la oferta publicada diga expresamente otra cosa (sin oferta conocida, como el
+  // panel, cuenta como inmediata); con oferta asistida, contratación asistida si es operativo y tiene precio
+  if (cs === "available") {
+    const assistedOffer = !!p.offer && !(p.offer.modality === "immediate" && p.offer.checkout === true);
+    if (!assistedOffer) return p.hasMonthlyPrice ? "checkout" : "request_info";
+    return operative && p.hasMonthlyPrice ? "assisted_contract" : "request_info";
+  }
   if (cs === "on_request" && operative && p.hasMonthlyPrice) return "assisted_contract";
   return "request_info";
 }

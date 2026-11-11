@@ -136,7 +136,11 @@ export interface PackagePort {
   companyPlan(companyId: number): Promise<string | null>;
   create(companyId: number, input: PackageDraftInput, actor: string): Promise<{ id: number; status: string }>;
   get(id: number): Promise<{ id: number; status: string; companyId: number } | null>;
+  /** Acuerdos de la empresa (para no preparar una segunda oferta del mismo producto). */
+  ofCompany?(companyId: number): Promise<Array<{ id: number; status: string; companyId: number; acceptanceStatus: string; productKeys: string[] }>>;
 }
+/** Estados de un acuerdo que siguen siendo una oferta viva o un contrato en vigor (no se prepara otro). */
+const LIVE_TERMS = new Set(["draft", "pending_acceptance", "scheduled", "active"]);
 export interface PackageDraftInput {
   pricingMode: "per_item";
   presentation: "breakdown";
@@ -470,15 +474,18 @@ export class ImplementationService {
       if (!won) throw new ImplementationError("conflict", "Ya existe un expediente de esa solución para la empresa");
       return { order: won, created: false };
     }
-    await this.event(order.id, "created", actor, `${sol.name} · pagado (${what}): implantación obligatoria antes de ponerlo en marcha`);
+    // Condiciones personalizadas: contratado (su cobro tiene interruptor propio; no se dice «pagado»). Activación
+    // inmediata (clase A): las licencias ya están activas y la implantación acompaña, sin bloquear el uso
+    const word = input.circuit === "custom_terms" ? "contratado" : "pagado";
+    await this.event(order.id, "created", actor, `${sol.name} · ${word} (${what}): ${sol.mode === "immediate" ? "licencias ya activas; puesta en marcha acompañada (no bloquea el uso)" : "implantación obligatoria antes de ponerlo en marcha"}`);
     await this.event(order.id, "assigned", actor, `Cola: ${order.queue}`);
     if (input.contractId) {
       const at = this.now();
-      order = await this.patch(order, { status: "accepted", contractId: input.contractId, acceptedAt: at, startMode: "subscription", subscriptionId: input.subscriptionId, conditions: `Contratado y pagado (${what}). Las condiciones son las del contrato.`, timeline: "A acordar con el cliente en la reunión de arranque", termsBy: actor.slice(0, 100), termsAt: at });
+      order = await this.patch(order, { status: "accepted", contractId: input.contractId, acceptedAt: at, startMode: "subscription", subscriptionId: input.subscriptionId, conditions: `${input.circuit === "custom_terms" ? "Contratado" : "Contratado y pagado"} (${what}). Las condiciones son las del contrato.`, timeline: "A acordar con el cliente en la reunión de arranque", termsBy: actor.slice(0, 100), termsAt: at });
       await this.event(order.id, "paid", actor, `Contrato #${input.contractId}${input.subscriptionId ? ` · suscripción #${input.subscriptionId}` : ""}: orden de implantación abierta sin propuesta (ya está contratado)`);
       await this.seedChecklist(order, actor);
     }
-    await this.crmNote(order, `expediente abierto por el pago de ${sol.name} (${what})`, actor);
+    await this.crmNote(order, `expediente abierto por la contratación de ${sol.name} (${what})`, actor);
     return { order, created: true };
   }
 
@@ -503,14 +510,18 @@ export class ImplementationService {
       const o = await this.must(id);
       if (!this.d.packages) throw new ImplementationError("unavailable", "Las condiciones personalizadas no están disponibles en este entorno");
       if (o.status !== "requested" && o.status !== "proposal") throw new ImplementationError("invalid_state", "El expediente ya tiene el contrato aceptado: el paquete ya no se prepara desde aquí");
+      if (isPaidOrder(o)) throw new ImplementationError("invalid_state", "Este expediente lo abrió una contratación ya hecha: no se prepara otro contrato");
       const commitments = netCommitmentsText(o.solutionKey);
       if (!commitments) throw new ImplementationError("invalid_input", "El paquete con compromisos de implantación es solo para los productos Net de empresa");
       const prev = [...(await this.d.store.events(o.id))].reverse().find((e) => e.type === "package");
       const prevId = Number(/#(\d+)/.exec(prev?.detail ?? "")?.[1] ?? 0);
       if (prevId) {
         const t = await this.d.packages.get(prevId).catch(() => null);
-        if (t && t.companyId === o.companyId && t.status === "draft") return { termsId: t.id, created: false };
+        if (t && t.companyId === o.companyId && LIVE_TERMS.has(t.status)) return { termsId: t.id, created: false };
       }
+      // Otra oferta viva (borrador, enviada, pendiente de aceptación o en vigor) del mismo producto para la empresa: esa
+      const other = this.d.packages.ofCompany ? (await this.d.packages.ofCompany(o.companyId)).filter((t) => t.companyId === o.companyId && LIVE_TERMS.has(t.status) && t.acceptanceStatus !== "rejected" && t.acceptanceStatus !== "expired" && t.productKeys.includes(o.solutionKey)).sort((a, b) => b.id - a.id)[0] : undefined;
+      if (other) return { termsId: other.id, created: false };
       const offer = await this.d.packages.offer();
       const monthly = (key: string) => offer.find((p) => p.key === key)?.prices.find((x) => x.kind === "monthly" && x.status === "approved") ?? null;
       const product = offer.find((p) => p.key === o.solutionKey);
@@ -784,7 +795,8 @@ export class ImplementationService {
       checklist: applied
         ? { key: applied.key, name: applied.name, generic: applied.generic, applied: true }
         : { key: milestones.length ? null : suggested.key, name: milestones.length ? "Hitos propios del expediente (anteriores a las plantillas)" : `${suggested.name} (se aplica al aceptarse el contrato)`, generic: milestones.length ? true : suggested.generic, applied: false },
-      paid: snap?.source === "paid" ? { circuit: snap.circuit ?? null, reference: snap.reference ?? null } : null,
+      // `billed`: hubo cobro (no en condiciones personalizadas, cuyo cobro tiene su propio interruptor)
+      paid: snap?.source === "paid" ? { circuit: snap.circuit ?? null, reference: snap.reference ?? null, billed: snap.circuit !== "custom_terms" } : null,
       company: company ? { id: company.id, name: company.name, tenantId: company.tenantId } : null,
       opportunity: opportunity ? { id: opportunity.id, title: opportunity.title, stage: opportunity.stage, owner: opportunity.owner } : null,
       contract: contract ? { id: contract.id, reference: contract.reference, status: contract.status, planId: contract.planId, signedAt: contract.signedAt, signatureMethod: contract.signatureMethod } : null,
