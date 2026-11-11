@@ -128,6 +128,9 @@ export const includedInText = (bundle: string) => `Incluido en ${bundle}, que ya
 export const replacesText = (names: string[]) =>
   `Sustituye a ${names.join(" y ")}, que ya tienes contratado: al contratarlo dejas de pagarlo aparte y solo se cobra la diferencia prorrateada del periodo en curso. Tus datos se conservan.`;
 
+/** Texto de la ficha de un paquete cuando la empresa ya tiene alguno de sus componentes por licencia, sin pedido. */
+export const heldByLicenceText = (names: string[]) => `Ya tienes ${names.join(" y ")}. Para ampliar a este paquete, escribe a tu contacto comercial y lo ajustamos sin cobrarte dos veces.`;
+
 /** El dato de la ficha si viene (aunque sea una lista vacía a propósito); si no, el de la semilla. */
 function pick<T>(card: T | null | undefined, seed: T): T {
   return card === null || card === undefined ? seed : card;
@@ -190,13 +193,26 @@ export function buildConnectCatalog(
     const includer = item.kind === "module" ? bundles.find((b) => b.key !== item.key && contracted(b.key) && seedBundleOf(b.key).includes(item.key)) : undefined;
     const includedIn = includer ? { key: includer.key, name: includer.name } : null;
     const replaces = item.kind === "module" && !contracted(item.key) ? seedBundleOf(item.key).filter(contracted).map((k) => ({ key: k, name: productName(k) })) : [];
+    // Componentes que la empresa tiene por licencia y sin pedido (un acuerdo negociado o una activación del equipo)
+    // cuando el paquete no tiene activación propia y solo una PARTE está cubierta: esas capacidades son de los módulos
+    // sueltos, no una activación a medias del paquete (11/11/2026). Un paquete con activación propia, o con todos sus
+    // componentes activos, conserva la regla de siempre
+    // Solo con el dato de activación presente y en «none» (si la lectura del canal falla llega null: no se sabe si hay
+    // un pedido, y manda la regla prudente). Los productos de Net quedan fuera: su contratación anterior se trata aparte
+    const noOrder = (k: string) => parseActivation(byKey.get(k)?.activation)?.state === "none";
+    const bundleKeys = item.kind === "module" && !np && noOrder(item.key) ? seedBundleOf(item.key) : [];
+    const unlicensed = (c: string) => { const s = capabilityStatus(c); return s === null || s === "cancelled"; };
+    const looseKeys = bundleKeys.filter((k) => noOrder(k) && productActive(k));
+    const missingKeys = bundleKeys.filter((k) => !contracted(k) && !productActive(k));
+    // Solo si lo que falta no tiene pedido ni licencia alguna: algo suspendido, vencido o a medias sigue siendo incidencia
+    const heldLoose = looseKeys.length > 0 && missingKeys.length > 0 && missingKeys.every((k) => noOrder(k) && capsOf(k).length > 0 && capsOf(k).every(unlicensed));
     // Contratación anterior por extensiones que ya da TODAS las funciones del producto: equivale al producto (sin
     // nueva compra ni cargo); si solo cubre una parte, se ofrece el producto en sustitución (prorrateo de siempre)
     const equivalent = !!np && replaces.length > 0 && capabilities.length > 0 && capabilities.every((c) => capabilityStatus(c) === "active");
     // Paquete sin contratar cuyos componentes sí están contratados: sus capacidades activas son las de los módulos, no
     // las suyas; su estado es el comercial (se puede contratar en sustitución de los módulos)
     const derived = deriveConnectState(
-      { kind: item.kind, commercialStatus: item.commercialStatus, capabilities: replaces.length > 0 && !equivalent ? [] : capabilities, dependencies, plans },
+      { kind: item.kind, commercialStatus: item.commercialStatus, capabilities: (replaces.length > 0 && !equivalent) || heldLoose ? [] : capabilities, dependencies, plans },
       { capabilityStatus, plan, productActive, productName, consultation: consultationFor(capabilities) },
     );
     const state = derived.state;
@@ -205,6 +221,7 @@ export function buildConnectCatalog(
     if (includedIn && state === "active") reasons.push(includedInText(includedIn.name));
     if (equivalent && np) reasons.push(legacyEquivalentText(np.name, replaces.map((r) => r.name)));
     else if (replaces.length > 0) reasons.push(replacesText(replaces.map((r) => r.name)));
+    if (heldLoose) reasons.push(heldByLicenceText(looseKeys.map(productName)));
     const prices = card?.prices ?? parseConnectPrices(item.prices) ?? [];
     const fallbackPrices: ConnectPrice[] = item.monthly
       ? [{ kind: "monthly", amountCents: item.monthly.amountCents, currency: item.monthly.currency, unit: item.monthly.unit, taxRateBp: null, taxIncluded: item.monthly.taxIncluded }]
@@ -250,7 +267,9 @@ export function buildConnectCatalog(
       capabilities,
       monthly: item.monthly,
       // Solo se compra lo que está disponible para esta empresa (nunca algo contratado, en curso o sin requisitos)
-      purchasable: item.purchasable && state === "available" && !isLegacy(item),
+      // Con un componente tenido por licencia y sin pedido, el paquete no se compra en línea: la compra no vería esa
+      // licencia y cobraría el paquete entero (lo gestiona el equipo comercial)
+      purchasable: item.purchasable && state === "available" && !isLegacy(item) && !heldLoose,
       tagline: card?.tagline ?? (d?.tagline || null),
       // Net: la descripción y lo incluido son los del producto unificado (no los de los antiguos submódulos)
       description: np ? np.summary : (card?.description ?? (d?.description || null)),
