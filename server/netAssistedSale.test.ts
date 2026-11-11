@@ -150,7 +150,7 @@ describe("paquete personalizado desde el expediente (catálogo y condiciones per
       crm,
       crmStore: store,
       solution: solutionFromWebStore(webStore),
-      packages: { offer: () => catalog.offer(), companyPlan: async () => null, create: (companyId, input, actor) => terms.createPackage(companyId, input, actor), get: (id) => terms.must(id).catch(() => null) },
+      packages: { offer: () => catalog.offer(), liveSubscription: async () => null, create: (companyId, input, actor) => terms.createPackage(companyId, input, actor), get: (id) => terms.must(id).catch(() => null) },
       now: () => NOW,
     });
     const { order } = await svc.open({ opportunityId: opp.id, solutionKey: "hotel-net-complete" }, "operator:laura");
@@ -163,5 +163,81 @@ describe("paquete personalizado desde el expediente (catálogo y condiciones per
     expect(t.conditions).toContain("En implantación (incluido en el precio");
     // Nada se cobra ni se activa: solo un borrador
     expect(await subStore.list({ companyId: c.id })).toEqual([]);
+  });
+
+  /** Empresa con suscripción y, si se pide, condiciones personalizadas con cuota global en vigor (como SUB-2026-000007). */
+  async function kit(o: { trial?: boolean; global?: boolean } = {}) {
+    const store = new MemoryCrmStore();
+    const crm = new CrmService({ store, now: () => NOW });
+    const c = await crm.createCompany({ name: `Empresa ${Math.random().toString(36).slice(2, 8)}`, legalName: "Empresa SL" }, "operator:test");
+    const opp = await crm.createOpportunity({ companyId: c.id, title: "Restaurant Net — implantación asistida" }, "operator:test");
+    const catalog = catalogFromWebStore(webStore);
+    const subStore = new MemorySubscriptionStore();
+    const crmPort: CrmPort = { company: async (id) => (id === c.id ? { id, name: "Empresa" } : null), contract: async () => null };
+    const subs = new SubscriptionService({ store: subStore, catalog, crm: crmPort, now: () => NOW });
+    const termsStore = new MemoryTermsStore();
+    const terms = new CommercialTermsService({ store: termsStore, subscriptions: subs, subscriptionStore: subStore, catalog, crm: crmPort, now: () => NOW, stripeBilled: async () => false });
+    const offer = await catalog.offer();
+    const monthly = (k: string) => offer.find((p) => p.key === k)!.prices.find((x) => x.kind === "monthly" && x.status === "approved")!.id;
+    const sub = await subs.create({ companyId: c.id, tenantId: "t-empresa", interval: "month", plan: { productKey: "essential", priceId: monthly("essential") }, addons: [{ productKey: "hotel-net-complete", priceId: monthly("hotel-net-complete") }], ...(o.trial ? { trialDays: 15 } : {}) }, "operator:test");
+    if (o.global) {
+      const draft = await terms.createForSubscription(sub.id, { pricingMode: "global", globalAmountCents: 9900, presentation: "global", conditions: "Cuota global pactada para Essential y Hotel Net.", lines: [{ kind: "catalog", productKey: "essential", priceId: monthly("essential") }, { kind: "catalog", productKey: "hotel-net-complete", priceId: monthly("hotel-net-complete") }], reason: "Acuerdo comercial negociado" }, "operator:test");
+      await terms.activate(draft.id, { expectedRevision: draft.revision, expectedVersion: (await subs.must(sub.id)).version }, "operator:test");
+    }
+    // Lo mismo que monta el plano de control (server/controlPlane/api.ts)
+    const svc = new ImplementationService({
+      store: new MemoryImplementationStore(),
+      crm,
+      crmStore: store,
+      solution: solutionFromWebStore(webStore),
+      packages: {
+        offer: () => catalog.offer(),
+        liveSubscription: async (companyId) => {
+          for (const s of await subStore.list({ companyId })) {
+            if (s.status !== "active") continue;
+            if ((await subStore.items(s.id)).some((i) => i.family === "core_plan" && i.effectiveFrom <= NOW && (i.effectiveTo === null || i.effectiveTo > NOW))) return s.id;
+          }
+          return null;
+        },
+        subscriptionBase: async (id) => (await terms.base(id)) as never,
+        createForSubscription: (id, input, actor) => terms.createForSubscription(id, input as never, actor),
+        create: (companyId, input, actor) => terms.createPackage(companyId, input, actor),
+        get: (id) => terms.must(id).catch(() => null),
+        ofCompany: async (companyId) => (await termsStore.list({ companyId })).map((t) => ({ id: t.id, status: t.status, companyId: t.companyId, acceptanceStatus: t.acceptanceStatus, productKeys: t.lines.map((l) => l.productKey).filter((k): k is string => !!k) })),
+      },
+      now: () => NOW,
+    });
+    const { order } = await svc.open({ opportunityId: opp.id, solutionKey: "restaurant-net-complete" }, "operator:laura");
+    return { svc, terms, subStore, sub, order, companyId: c.id };
+  }
+
+  it("con condiciones de cuota global en vigor: acuerdo NUEVO sobre esa suscripción; la cuota pactada se conserva y se le suma el Net", async () => {
+    const k = await kit({ global: true });
+    const r = await k.svc.preparePackage(k.order.id, "operator:laura");
+    expect(r.created).toBe(true);
+    const t = await k.terms.must(r.termsId);
+    expect(t).toMatchObject({ subscriptionId: k.sub.id, status: "draft", requiresAcceptance: true, pricingMode: "global", globalAmountCents: 9900 + 5900 });
+    expect(t.lines.map((l) => l.productKey)).toEqual(["essential", "hotel-net-complete", "restaurant-net-complete"]);
+    expect(t.conditions).toContain("Cuota global pactada para Essential y Hotel Net.");
+    expect(t.conditions).toContain("Precio: la cuota global pactada (99,00 € al mes) se mantiene sin cambios y se le suma el precio publicado de Restaurant Net (59,00 € al mes): cuota global de 158,00 € al mes, IVA aparte.");
+    expect(t.conditions).toContain(netCommitmentsText("restaurant-net-complete")!);
+    // Ninguna suscripción nueva; repetir devuelve el mismo acuerdo
+    expect((await k.subStore.list({ companyId: k.companyId })).map((s) => s.id)).toEqual([k.sub.id]);
+    expect(await k.svc.preparePackage(k.order.id, "operator:laura")).toEqual({ termsId: r.termsId, created: false });
+  });
+
+  it("sin acuerdo previo: las partidas contratadas + el Net a su precio publicado, por partidas", async () => {
+    const k = await kit();
+    const t = await k.terms.must((await k.svc.preparePackage(k.order.id, "operator:laura")).termsId);
+    expect(t).toMatchObject({ subscriptionId: k.sub.id, pricingMode: "per_item", requiresAcceptance: true });
+    expect(t.lines.map((l) => [l.productKey, l.officialUnitCents])).toEqual([["essential", 2900], ["hotel-net-complete", 11900], ["restaurant-net-complete", 5900]]);
+    expect(t.conditions).toContain("Precio: Restaurant Net se añade a su precio publicado (59,00 € al mes, IVA aparte); las demás partidas y sus precios pactados no cambian.");
+  });
+
+  it("empresa en prueba gratuita: no tiene plan Core de pago → paquete nuevo con Essential", async () => {
+    const k = await kit({ trial: true });
+    const t = await k.terms.must((await k.svc.preparePackage(k.order.id, "operator:laura")).termsId);
+    expect(t.subscriptionId).toBeNull();
+    expect(t.lines.map((l) => l.productKey)).toEqual(["essential", "restaurant-net-complete"]);
   });
 });

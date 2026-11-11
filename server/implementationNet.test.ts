@@ -222,11 +222,19 @@ describe("expediente al pagar un producto Net y checklist", () => {
     const terms = new Map<number, { id: number; status: string; companyId: number }>();
     const packages = {
       offer: async () => [
-        { key: "essential", name: "Essential", family: "core_plan", prices: [{ id: 11, kind: "monthly", status: "approved" }] },
-        { key: "restaurant-net-complete", name: "Restaurant Net", family: "industry_module", prices: [{ id: 41, kind: "monthly", status: "approved" }, { id: 42, kind: "yearly", status: "draft" }] },
+        { key: "essential", name: "Essential", family: "core_plan", prices: [{ id: 11, kind: "monthly", status: "approved", amountCents: 2900 }] },
+        { key: "restaurant-net-complete", name: "Restaurant Net", family: "industry_module", prices: [{ id: 41, kind: "monthly", status: "approved", amountCents: 5900 }, { id: 42, kind: "yearly", status: "draft", amountCents: 59000 }] },
         { key: "ski-net-complete", name: "Ski Net", family: "industry_module", prices: [] },
       ],
-      companyPlan: async () => plan,
+      // Con plan de pago: suscripción SaaS viva #70 (acuerdo nuevo sobre ella); sin él (o en prueba): ninguna
+      liveSubscription: async () => (plan ? 70 : null),
+      subscriptionBase: async () => ({ interval: "month" as const, input: { pricingMode: "per_item", presentation: "breakdown", conditions: "Condiciones pactadas con el cliente.", lines: [{ kind: "catalog", productKey: "business", priceId: 13, quantity: 1 }] } }),
+      createForSubscription: async (subscriptionId: number, input: Record<string, unknown>) => {
+        created.push({ companyId: c.id, input: { ...input, subscriptionId } });
+        const t = { id: 300 + created.length, status: "draft", companyId: c.id };
+        terms.set(t.id, t);
+        return t;
+      },
       create: async (companyId: number, input: Record<string, unknown>) => {
         created.push({ companyId, input });
         const t = { id: 300 + created.length, status: "draft", companyId };
@@ -255,7 +263,13 @@ describe("expediente al pagar un producto Net y checklist", () => {
     terms.get(301)!.status = "cancelled";
     plan = "business";
     expect(await svc2.preparePackage(order.id, "operator:laura")).toEqual({ termsId: 302, created: true });
-    expect((created[1].input as { lines: Array<{ productKey: string }> }).lines.map((l) => l.productKey)).toEqual(["restaurant-net-complete"]);
+    // Con suscripción SaaS viva: acuerdo NUEVO sobre ella (lo que ya tiene + el Net), nunca otra suscripción
+    const amend = created[1].input as { subscriptionId: number; lines: Array<{ productKey: string }>; conditions: string; requiresAcceptance: boolean; pricingMode: string };
+    expect(amend.subscriptionId).toBe(70);
+    expect(amend.lines.map((l) => l.productKey)).toEqual(["business", "restaurant-net-complete"]);
+    expect(amend).toMatchObject({ requiresAcceptance: true, pricingMode: "per_item" });
+    expect(amend.conditions).toMatch(/^Condiciones pactadas con el cliente\.\n\nAmpliación: Restaurant Net, contratado sobre la suscripción en vigor\.\n\nPrecio: Restaurant Net se añade a su precio publicado \(59,00 € al mes, IVA aparte\); las demás partidas y sus precios pactados no cambian\./);
+    expect(amend.conditions).toContain(netCommitmentsText("restaurant-net-complete")!);
     // Enviado a aceptación (o en vigor): se devuelve el mismo, nunca una segunda oferta
     terms.get(302)!.status = "pending_acceptance";
     expect(await svc2.preparePackage(order.id, "operator:laura")).toEqual({ termsId: 302, created: false });

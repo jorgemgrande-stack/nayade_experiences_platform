@@ -131,14 +131,26 @@ export interface ImplementationDeps {
 /** Lo que la implantación usa de las condiciones personalizadas y del catálogo publicado (sin duplicarlos). */
 export interface PackagePort {
   /** Productos publicados con sus precios aprobados. */
-  offer(): Promise<Array<{ key: string; name: string; family: string; prices: Array<{ id: number; kind: string; status: string }> }>>;
-  /** Plan Core vigente de la empresa (clave) o null si no tiene ninguno. */
-  companyPlan(companyId: number): Promise<string | null>;
+  offer(): Promise<Array<{ key: string; name: string; family: string; prices: Array<{ id: number; kind: string; status: string; amountCents?: number }> }>>;
+  /**
+   * Suscripción SaaS viva de la empresa (de pago, no en prueba, con plan Core vigente) o null. Con ella, la contratación
+   * es un ACUERDO NUEVO sobre esa suscripción (nunca una segunda suscripción); sin ella (o en prueba), un paquete nuevo.
+   */
+  liveSubscription(companyId: number): Promise<number | null>;
+  /** Punto de partida de un acuerdo nuevo sobre la suscripción: el acuerdo en vigor o sus partidas contratadas. */
+  subscriptionBase?(subscriptionId: number): Promise<SubscriptionBase>;
+  createForSubscription?(subscriptionId: number, input: Record<string, unknown>, actor: string): Promise<{ id: number; status: string }>;
   create(companyId: number, input: PackageDraftInput, actor: string): Promise<{ id: number; status: string }>;
   get(id: number): Promise<{ id: number; status: string; companyId: number } | null>;
   /** Acuerdos de la empresa (para no preparar una segunda oferta del mismo producto). */
   ofCompany?(companyId: number): Promise<Array<{ id: number; status: string; companyId: number; acceptanceStatus: string; productKeys: string[] }>>;
 }
+/** Lo que se usa de `CommercialTermsService.base` (sin depender de sus tipos). */
+export interface SubscriptionBase {
+  interval: "month" | "year";
+  input: { pricingMode: string; globalAmountCents?: number | null; conditions?: string | null; lines: Array<{ productKey?: string | null } & Record<string, unknown>> } & Record<string, unknown>;
+}
+const eur = (cents: number) => `${(cents / 100).toFixed(2).replace(".", ",")} €`;
 /** Estados de un acuerdo que siguen siendo una oferta viva o un contrato en vigor (no se prepara otro). */
 const LIVE_TERMS = new Set(["draft", "pending_acceptance", "scheduled", "active"]);
 export interface PackageDraftInput {
@@ -514,7 +526,7 @@ export class ImplementationService {
       const commitments = netCommitmentsText(o.solutionKey);
       if (!commitments) throw new ImplementationError("invalid_input", "El paquete con compromisos de implantación es solo para los productos Net de empresa");
       const prev = [...(await this.d.store.events(o.id))].reverse().find((e) => e.type === "package");
-      const prevId = Number(/#(\d+)/.exec(prev?.detail ?? "")?.[1] ?? 0);
+      const prevId = Number(/condiciones #(\d+)/.exec(prev?.detail ?? "")?.[1] ?? 0);
       if (prevId) {
         const t = await this.d.packages.get(prevId).catch(() => null);
         if (t && t.companyId === o.companyId && LIVE_TERMS.has(t.status)) return { termsId: t.id, created: false };
@@ -527,20 +539,43 @@ export class ImplementationService {
       const product = offer.find((p) => p.key === o.solutionKey);
       const productPrice = monthly(o.solutionKey);
       if (!product || !productPrice) throw new ImplementationError("invalid_state", `«${o.solutionName}» no tiene precio mensual publicado: no se puede preparar el paquete`);
+      const provision = `Prestación: el servicio se presta en la plataforma Big Elephant de la empresa, con las condiciones generales de contratación vigentes. Se pone en marcha cuando la implantación está completada (expediente ${o.reference}).`;
+      const reason = `Contratación de ${product.name} con implantación asistida (expediente ${o.reference})`.slice(0, 500);
+      // Con una suscripción SaaS viva: acuerdo nuevo sobre ELLA (lo que ya tiene + el Net), nunca una segunda suscripción
+      const subscriptionId = await this.d.packages.liveSubscription(o.companyId);
+      if (subscriptionId !== null) {
+        if (!this.d.packages.subscriptionBase || !this.d.packages.createForSubscription) throw new ImplementationError("unavailable", "Las condiciones personalizadas sobre una suscripción no están disponibles en este entorno");
+        const base = await this.d.packages.subscriptionBase(subscriptionId);
+        if (base.input.lines.some((l) => l.productKey === o.solutionKey)) throw new ImplementationError("invalid_state", `La suscripción #${subscriptionId} ya incluye ${product.name}`);
+        const kind = base.interval === "year" ? "yearly" : "monthly";
+        const price = product.prices.find((x) => x.kind === kind && x.status === "approved");
+        if (!price) throw new ImplementationError("invalid_state", `«${product.name}» no tiene precio ${base.interval === "year" ? "anual" : "mensual"} publicado, y la suscripción #${subscriptionId} es ${base.interval === "year" ? "anual" : "mensual"}`);
+        const amount = price.amountCents ?? 0;
+        const period = base.interval === "year" ? "al año" : "al mes";
+        // Cuota global pactada: se conserva tal cual y se le SUMA el precio publicado del Net (nunca se reparte ni se
+        // rebaja en silencio); por partidas: el Net entra a su precio publicado y las demás no cambian
+        const global = base.input.pricingMode === "global";
+        const prevGlobal = base.input.globalAmountCents ?? 0;
+        const pricing = global
+          ? `Precio: la cuota global pactada (${eur(prevGlobal)} ${period}) se mantiene sin cambios y se le suma el precio publicado de ${product.name} (${eur(amount)} ${period}): cuota global de ${eur(prevGlobal + amount)} ${period}, IVA aparte.`
+          : `Precio: ${product.name} se añade a su precio publicado (${eur(amount)} ${period}, IVA aparte); las demás partidas y sus precios pactados no cambian.`;
+        const conditions = [base.input.conditions?.trim() || null, `Ampliación: ${product.name}, contratado sobre la suscripción en vigor.`, pricing, provision, commitments].filter(Boolean).join("\n\n");
+        const t = await this.d.packages.createForSubscription(subscriptionId, { ...base.input, ...(global ? { globalAmountCents: prevGlobal + amount } : {}), conditions: conditions.slice(0, 5000), requiresAcceptance: true, lines: [...base.input.lines, { kind: "catalog", productKey: o.solutionKey, priceId: price.id, quantity: 1 }], reason }, actor);
+        await this.event(o.id, "package", actor, `Acuerdo nuevo sobre la suscripción #${subscriptionId}: condiciones #${t.id} (borrador para revisar y enviar a aceptación)`);
+        await this.crmNote(o, `ampliación preparada sobre la suscripción #${subscriptionId} (condiciones #${t.id})`, actor);
+        return { termsId: t.id, created: true };
+      }
+      // Sin suscripción SaaS viva (o en prueba): paquete nuevo con el plan Core
       const lines: PackageDraftInput["lines"] = [];
-      if (!(await this.d.packages.companyPlan(o.companyId))) {
+      {
         const opp = o.opportunityId ? await this.d.crmStore.get("opportunities", o.opportunityId) : null;
         const planKey = [opp?.planId, "essential"].find((k) => !!k && offer.some((p) => p.key === k && p.family === "core_plan" && !!monthly(k))) ?? null;
         if (!planKey) throw new ImplementationError("invalid_state", "No hay un plan Core con precio mensual publicado para incluirlo en el paquete");
         lines.push({ kind: "catalog", productKey: planKey, priceId: monthly(planKey)!.id, quantity: 1 });
       }
       lines.push({ kind: "catalog", productKey: o.solutionKey, priceId: productPrice.id, quantity: 1 });
-      const conditions = [
-        `Servicio contratado: ${product.name}, al precio publicado en el catálogo de Big Elephant (partidas de este acuerdo, IVA aparte).`,
-        `Prestación: el servicio se presta en la plataforma Big Elephant de la empresa, con las condiciones generales de contratación vigentes. Se pone en marcha cuando la implantación está completada (expediente ${o.reference}).`,
-        commitments,
-      ].join("\n\n");
-      const t = await this.d.packages.create(o.companyId, { pricingMode: "per_item", presentation: "breakdown", packageName: `${product.name} con implantación`.slice(0, 160), conditions: conditions.slice(0, 5000), interval: "month", requiresAcceptance: true, lines, reason: `Contratación de ${product.name} con implantación asistida (expediente ${o.reference})`.slice(0, 500) }, actor);
+      const conditions = [`Servicio contratado: ${product.name}, al precio publicado en el catálogo de Big Elephant (partidas de este acuerdo, IVA aparte).`, provision, commitments].join("\n\n");
+      const t = await this.d.packages.create(o.companyId, { pricingMode: "per_item", presentation: "breakdown", packageName: `${product.name} con implantación`.slice(0, 160), conditions: conditions.slice(0, 5000), interval: "month", requiresAcceptance: true, lines, reason }, actor);
       await this.event(o.id, "package", actor, `Paquete personalizado: condiciones #${t.id} (borrador para revisar y enviar a aceptación)`);
       await this.crmNote(o, `paquete personalizado preparado (condiciones #${t.id})`, actor);
       return { termsId: t.id, created: true };
