@@ -6,6 +6,7 @@
 import type { GwPortalConfig } from "./portal";
 import { StripeGatewayError, type CheckoutSessionInput, type CustomerInput, type GwCharge, type GwCheckoutSession, type GwEvent, type GwInvoice, type GwInvoiceLine, type GwInvoicePreview, type GwPrice, type GwProduct, type GwSubscription, type GwSubscriptionItem, type GwSetupSession, type GwPaymentSession, type GwNegotiatedItem, type GwNegotiatedSubscription, type GwInvoiceItem, type InvoiceItemInput, type NegotiatedCheckoutInput, type NegotiatedItemsChange, type PaymentSessionInput, type ServiceSubscriptionInput, type SetupSessionInput, type StripeGateway, type SubscriptionItemsChange } from "./gateway";
 import { prorationCents, supportsPendingUpdate } from "./multipart";
+import { addMonthsUTC } from "../subscriptions/pricing";
 
 export class FakeStripeGateway implements StripeGateway {
   prices: GwPrice[] = [];
@@ -246,9 +247,9 @@ export class FakeStripeGateway implements StripeGateway {
     return s ? (this.pmTypeOf.get(s.customerId) ?? "card") : null;
   }
   /** Fin al final del periodo (como Stripe desde 2025: `cancel_at` pasa a ser el fin del periodo) o deshacerlo. */
-  async setCancelAtPeriodEnd(subscriptionId: string, cancel: boolean, key: string) {
+  async setCancelAtPeriodEnd(subscriptionId: string, cancel: boolean, key: string, opts?: { noProration?: boolean }) {
     this.guard();
-    this.calls.push({ op: "subscriptions.update(cancel_at_period_end)", key, input: { subscriptionId, cancel } });
+    this.calls.push({ op: "subscriptions.update(cancel_at_period_end)", key, input: { subscriptionId, cancel, ...(opts?.noProration ? { prorationBehavior: "none" } : {}) } });
     const params = JSON.stringify({ subscriptionId, cancel });
     if (this.idem.has(`sub-cancel:${key}`)) {
       if (this.idemParams.get(key) !== params) throw new StripeGatewayError("idempotency_error", "Stripe respondió 400 (idempotency_error)", false);
@@ -548,8 +549,10 @@ export class FakeStripeGateway implements StripeGateway {
     if (paused && resumesAt && this.now !== null && resumesAt <= this.now) throw new StripeGatewayError("invalid_request_error", "Stripe respondió 400 (resumes_at debe ser futuro)", false);
     if (paused) this.pausedSubs.add(subscriptionId);
     else this.pausedSubs.delete(subscriptionId);
-    if (paused && resumesAt) this.pauseResumes.set(subscriptionId, resumesAt);
-    else this.pauseResumes.delete(subscriptionId);
+    // Sin `resumes_at` en la petición, el doble CONSERVA la fecha anterior (lo prudente: no se sabe si Stripe la borra);
+    // `null` la borra (se envía vacía), como hace la pasarela real
+    if (!paused || resumesAt === null) this.pauseResumes.delete(subscriptionId);
+    else if (resumesAt) this.pauseResumes.set(subscriptionId, resumesAt);
     this.emit("customer.subscription.updated", "subscription", subscriptionId);
   }
   /** Fin en una fecha concreta (`cancel_at`, sin prorrateo) o deshacerlo (null). */
@@ -567,9 +570,28 @@ export class FakeStripeGateway implements StripeGateway {
     if (at !== null && this.now !== null && at <= this.now) throw new StripeGatewayError("invalid_request_error", "Stripe respondió 400 (cancel_at debe ser futuro)", false);
     this.idemParams.set(key, params);
     this.idem.set(`sub-cancel-at:${key}`, subscriptionId);
-    this.subscriptions.set(subscriptionId, { ...s, cancelAt: at, cancelAtPeriodEnd: false });
+    // Modo flexible (las de Checkout negociado): un `cancel_at` dentro del periodo en curso lo ACORTA hasta esa fecha;
+    // quitarlo lo devuelve a su fin natural. La pasarela envía siempre `proration_behavior=none`: sin cargo ni abono
+    const natural = this.naturalEnd.get(subscriptionId) ?? s.currentPeriodEnd;
+    let end = s.currentPeriodEnd;
+    if (s.billingMode === "flexible" && natural !== null && s.currentPeriodStart !== null && s.currentPeriodStart !== undefined) {
+      if (at !== null && at < natural && at > s.currentPeriodStart) end = at;
+      else end = natural;
+      this.naturalEnd.set(subscriptionId, natural);
+    }
+    this.subscriptions.set(subscriptionId, { ...s, cancelAt: at, cancelAtPeriodEnd: false, currentPeriodEnd: end });
     this.emit("customer.subscription.updated", "subscription", subscriptionId);
   }
+  /** Fin natural del periodo en curso (sin acortar por `cancel_at`), por suscripción. */
+  naturalEnd = new Map<string, number | null>();
+  /** Fin del periodo que empieza en `start` (segundos): meses de calendario UTC con el día del ancla, como Stripe. */
+  nextPeriodEnd(subId: string, start: number) {
+    const anchor = this.anchors.get(subId) ?? start;
+    const months = this.negotiated.get(subId)?.items[0]?.interval === "year" ? 12 : 1;
+    return addMonthsUTC(start * 1000, months, new Date(anchor * 1000).getUTCDate()) / 1000;
+  }
+  /** Ancla del ciclo (`billing_cycle_anchor`, segundos) por suscripción. */
+  anchors = new Map<string, number>();
   /** Como Stripe: solo se borra un importe único PENDIENTE (uno ya facturado no). */
   async deleteInvoiceItem(id: string) {
     this.guard();
@@ -608,12 +630,17 @@ export class FakeStripeGateway implements StripeGateway {
     const input = this.negotiatedSessions.get(id)!;
     const subId = this.next("sub");
     const items: GwNegotiatedItem[] = input.lines.filter((l) => l.interval).map((l) => ({ id: this.next("si"), productId: l.productId, unitAmount: l.unitAmount, quantity: 1, currency: l.currency.toUpperCase(), interval: l.interval, intervalCount: 1, metadata: {}, taxRateBp: null }));
-    // Con primer cargo aplazado (trial_end): hoy no se cobra nada y el primer periodo de pago empieza ese día
-    const amount = input.trialEnd ? 0 : input.lines.reduce((a, l) => a + l.unitAmount, 0);
-    // El periodo empieza cuando se creó la sesión (caduca 2 h después): al pagar, no en el futuro
-    const end = input.trialEnd ?? s.expiresAt - 7200 + 30 * 86_400;
-    this.subscriptions.set(subId, { id: subId, customerId: s.customerId!, status: outcome === "paid" ? (input.trialEnd ? "trialing" : "active") : "incomplete", cancelAt: null, cancelAtPeriodEnd: false, currentPeriodEnd: end, currentPeriodStart: input.trialEnd ? s.expiresAt - 7200 : end - 30 * 86_400, latestInvoiceId: null, priceIds: items.map((i) => `price_inline_${i.id}`), metadata: { ...input.metadata }, items: items.map((i) => ({ id: i.id, priceId: `price_inline_${i.id}`, quantity: 1 })), pendingUpdate: null, billingMode: "classic" });
+    // Con primer cargo aplazado (trial_end): las cuotas no se cobran hasta ese día, pero los importes únicos de la sesión
+    // SÍ se cobran ya, en la factura inicial (Stripe: «you can still invoice one-time charges when the subscription starts»)
+    const amount = input.lines.filter((l) => !input.trialEnd || !l.interval).reduce((a, l) => a + l.unitAmount, 0);
     this.negotiated.set(subId, { items, currency: input.lines[0].currency.toUpperCase(), automaticTax: !!input.automaticTax });
+    // El periodo empieza cuando se creó la sesión (caduca 2 h después): al pagar, no en el futuro. Ancla del ciclo: ese
+    // instante (o el fin del periodo sin cargo); los periodos son meses de calendario UTC con el día del ancla
+    const start = s.expiresAt - 7200;
+    this.anchors.set(subId, input.trialEnd ?? start);
+    const end = input.trialEnd ?? this.nextPeriodEnd(subId, start);
+    // Checkout con esta versión de API crea la suscripción en modo FLEXIBLE (sin `billing_mode` en la sesión)
+    this.subscriptions.set(subId, { id: subId, customerId: s.customerId!, status: outcome === "paid" ? (input.trialEnd ? "trialing" : "active") : "incomplete", cancelAt: null, cancelAtPeriodEnd: false, currentPeriodEnd: end, currentPeriodStart: start, latestInvoiceId: null, priceIds: items.map((i) => `price_inline_${i.id}`), metadata: { ...input.metadata }, items: items.map((i) => ({ id: i.id, priceId: `price_inline_${i.id}`, quantity: 1 })), pendingUpdate: null, billingMode: "flexible" });
     this.addNegotiatedInvoice(subId, "subscription_create", outcome === "paid" ? "paid" : "open", amount, input.lines.length);
     this.sessions.set(id, { ...s, status: "complete", paymentStatus: outcome === "paid" ? "paid" : "unpaid", subscriptionId: subId, url: null });
     this.emit("checkout.session.completed", "checkout.session", id);
@@ -621,9 +648,9 @@ export class FakeStripeGateway implements StripeGateway {
     if (outcome === "paid") this.emit("invoice.paid", "invoice", this.subscriptions.get(subId)!.latestInvoiceId!);
     return subId;
   }
-  private addNegotiatedInvoice(subId: string, reason: string, status: GwInvoice["status"], amount: number, lineCount: number) {
+  private addNegotiatedInvoice(subId: string, reason: string, status: GwInvoice["status"], amount: number, lineCount: number, proration = false) {
     const s = this.subscriptions.get(subId)!;
-    const lines: GwInvoiceLine[] = Array.from({ length: lineCount }, () => ({ id: this.next("il"), subscriptionItemId: null, priceId: null, quantity: 1, amount: 0, taxCents: null, proration: false, periodStart: s.currentPeriodStart ?? null, periodEnd: s.currentPeriodEnd ?? null }));
+    const lines: GwInvoiceLine[] = Array.from({ length: lineCount }, () => ({ id: this.next("il"), subscriptionItemId: null, priceId: null, quantity: 1, amount: 0, taxCents: null, proration, periodStart: s.currentPeriodStart ?? null, periodEnd: s.currentPeriodEnd ?? null }));
     return this.addInvoice(subId, s.customerId, reason, status, amount, lines.length ? [{ ...lines[0], amount, taxCents: this.invoiceTaxBp === null ? null : Math.round((amount * this.invoiceTaxBp) / 10_000) }, ...lines.slice(1).map((l) => ({ ...l, taxCents: this.invoiceTaxBp === null ? null : 0 }))] : undefined);
   }
   /**
@@ -639,7 +666,6 @@ export class FakeStripeGateway implements StripeGateway {
     const s = this.subscriptions.get(subId)!;
     const n = this.negotiated.get(subId)!;
     const pending = this.invoiceItems.filter((i) => i.subscriptionId === subId && i.invoiceId === null);
-    const amount = n.items.reduce((a, i) => a + i.unitAmount * i.quantity, 0) + pending.reduce((a, i) => a + i.amount, 0);
     const start = s.currentPeriodEnd ?? this.nowSec();
     if (s.cancelAt !== null && s.cancelAt <= start) {
       this.subscriptions.set(subId, { ...s, status: "canceled" });
@@ -652,16 +678,24 @@ export class FakeStripeGateway implements StripeGateway {
       this.pausedSubs.delete(subId);
       this.pauseResumes.delete(subId);
     }
-    this.subscriptions.set(subId, { ...s, currentPeriodStart: start, currentPeriodEnd: start + 30 * 86_400 });
+    // Modo flexible: si un `cancel_at` cae DENTRO del periodo que empieza, Stripe lo acorta hasta esa fecha y cobra la
+    // parte proporcional, sin que se pueda desactivar (docs.stripe.com/billing/subscriptions/cancel, «custom cancel date»)
+    const natural = this.nextPeriodEnd(subId, start);
+    const full = n.items.reduce((a, i) => a + i.unitAmount * i.quantity, 0);
+    const shortened = s.billingMode === "flexible" && s.cancelAt !== null && s.cancelAt > start && s.cancelAt < natural;
+    const recurring = shortened ? Math.round((full * (s.cancelAt! - start)) / (natural - start)) : full;
+    const amount = recurring + pending.reduce((a, i) => a + i.amount, 0);
+    this.naturalEnd.set(subId, natural);
+    this.subscriptions.set(subId, { ...s, currentPeriodStart: start, currentPeriodEnd: shortened ? s.cancelAt! : natural });
     // Con el cobro en pausa Stripe genera la factura y la ANULA: no se cobra nada, tampoco los importes únicos que llevaba
     if (this.pausedSubs.has(subId)) {
-      const voided = this.addNegotiatedInvoice(subId, "subscription_cycle", "void", amount, n.items.length + pending.length);
+      const voided = this.addNegotiatedInvoice(subId, "subscription_cycle", "void", amount, n.items.length + pending.length, shortened);
       for (const i of pending) i.invoiceId = voided;
       this.emit("invoice.voided", "invoice", voided);
       this.emit("customer.subscription.updated", "subscription", subId);
       return voided;
     }
-    const id = this.addNegotiatedInvoice(subId, "subscription_cycle", outcome, amount, n.items.length + pending.length);
+    const id = this.addNegotiatedInvoice(subId, "subscription_cycle", outcome, amount, n.items.length + pending.length, shortened);
     for (const i of pending) i.invoiceId = id;
     this.subscriptions.set(subId, { ...this.subscriptions.get(subId)!, status: outcome === "paid" ? "active" : "past_due" });
     this.emit(outcome === "paid" ? "invoice.paid" : "invoice.payment_failed", "invoice", id);
@@ -674,7 +708,7 @@ export class FakeStripeGateway implements StripeGateway {
     const s = this.subscriptions.get(id);
     if (!s) return null;
     const n = this.negotiated.get(id);
-    return { id: s.id, customerId: s.customerId, status: s.status, currency: n?.currency ?? "EUR", metadata: { ...s.metadata }, automaticTax: n?.automaticTax ?? false, cancelAt: s.cancelAt, cancelAtPeriodEnd: s.cancelAtPeriodEnd, currentPeriodEnd: s.currentPeriodEnd, scheduleId: s.scheduleId ?? null, trialEnd: s.status === "trialing" ? s.currentPeriodEnd : null, anomalies: this.anomaliesOf.get(id) ?? [], paused: this.pausedSubs.has(id), pauseResumesAt: this.pauseResumes.get(id) ?? null, items: (n?.items ?? (s.items ?? []).map((i) => ({ id: i.id, productId: this.prices.find((p) => p.id === i.priceId)?.productId ?? "", unitAmount: this.prices.find((p) => p.id === i.priceId)?.unitAmount ?? 0, quantity: i.quantity, currency: "EUR", interval: "month" as const, intervalCount: 1, metadata: {}, taxRateBp: null }))).map((i) => ({ ...i, metadata: { ...i.metadata } })) };
+    return { id: s.id, customerId: s.customerId, status: s.status, currency: n?.currency ?? "EUR", metadata: { ...s.metadata }, automaticTax: n?.automaticTax ?? false, cancelAt: s.cancelAt, cancelAtPeriodEnd: s.cancelAtPeriodEnd, currentPeriodEnd: s.currentPeriodEnd, scheduleId: s.scheduleId ?? null, trialEnd: s.status === "trialing" ? s.currentPeriodEnd : null, anomalies: this.anomaliesOf.get(id) ?? [], paused: this.pausedSubs.has(id), pauseResumesAt: this.pauseResumes.get(id) ?? null, billingCycleAnchor: this.anchors.get(id) ?? null, billingMode: s.billingMode ?? null, items: (n?.items ?? (s.items ?? []).map((i) => ({ id: i.id, productId: this.prices.find((p) => p.id === i.priceId)?.productId ?? "", unitAmount: this.prices.find((p) => p.id === i.priceId)?.unitAmount ?? 0, quantity: i.quantity, currency: "EUR", interval: "month" as const, intervalCount: 1, metadata: {}, taxRateBp: null }))).map((i) => ({ ...i, metadata: { ...i.metadata } })) };
   }
   async replaceNegotiatedItems(c: NegotiatedItemsChange, key: string) {
     this.guard();
@@ -732,10 +766,14 @@ export class FakeStripeGateway implements StripeGateway {
     this.idem.set(`ii:${key}`, item.id);
     return { ...item };
   }
-  async invoiceItemsOfCustomer(customerId: string) {
+  /** Como Stripe: `max` corta la lectura (por defecto 500); `pending` filtra en el servidor, sin límite práctico. */
+  async invoiceItemsOfCustomer(customerId: string, max = 500, opts?: { pending?: boolean }) {
     this.guard();
-    this.calls.push({ op: "invoiceitems.list", input: customerId });
-    return this.invoiceItems.filter((i) => this.subscriptions.get(i.subscriptionId ?? "")?.customerId === customerId).map((i) => ({ ...i, metadata: { ...i.metadata } }));
+    this.calls.push({ op: "invoiceitems.list", input: opts?.pending ? { customerId, pending: true } : customerId });
+    return this.invoiceItems
+      .filter((i) => this.subscriptions.get(i.subscriptionId ?? "")?.customerId === customerId && (!opts?.pending || i.invoiceId === null))
+      .slice(0, max)
+      .map((i) => ({ ...i, metadata: { ...i.metadata } }));
   }
   /** Como Stripe pasado un día: las claves de idempotencia dejan de reconocerse. */
   forgetIdempotencyKeys() {

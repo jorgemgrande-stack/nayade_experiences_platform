@@ -28,12 +28,15 @@ import type { NegotiatedCheckoutInput, NegotiatedItemsChange, StripeGateway } fr
 import { StripeReconciler } from "./stripe/reconcile";
 import { MemoryStripeStore } from "./stripe/store";
 import { FakeStripeGateway } from "./stripe/testing";
+import { addMonthsUTC } from "./subscriptions/pricing";
 import type { EligibilityConfig } from "./stripe/eligibility";
 
 const A = "operator:ana";
 const NS = "local";
 const T0 = Date.UTC(2026, 10, 1, 10);
 const DAY = 86_400_000;
+/** Como Stripe: periodos de meses de calendario UTC con el día del ancla. */
+const month = (ts: number, n = 1) => addMonthsUTC(ts, n);
 const crm: CrmPort = { company: async (id) => ({ id, name: `Empresa ${id}` }), contract: async () => null };
 const URLS = { success: "https://web.example/contratacion/estado", cancel: "https://web.example/contratacion/cancelada" };
 
@@ -1067,10 +1070,10 @@ describe("inicio del acuerdo y reloj de una contratación cobrada en Stripe", ()
     await deliver(w);
     expect(gw.invoices.get(first)).toMatchObject({ billingReason: "subscription_cycle", subtotal: 12900 + 50000 - 2900 });
     expect((await billingStore.invoice(first))!.taxCheck).toBe("ok");
-    expect(await subs.must(a.subId)).toMatchObject({ currentPeriodStart: D, currentPeriodEnd: D + 30 * DAY });
-    expect(stripePeriod(stripeId)).toEqual({ start: D, end: D + 30 * DAY });
+    expect(await subs.must(a.subId)).toMatchObject({ currentPeriodStart: D, currentPeriodEnd: month(D) });
+    expect(stripePeriod(stripeId)).toEqual({ start: D, end: month(D) });
     // La segunda cuota ya es solo la recurrente
-    clock = D + 30 * DAY + 60_000;
+    clock = month(D) + 60_000;
     expect(gw.invoices.get(gw.chargeNegotiatedPeriod(stripeId))!.subtotal).toBe(12900);
     await deliver(w);
     expect(alerts.count("stripe.negotiated_invoice_mismatch")).toBe(0);
@@ -1096,25 +1099,25 @@ describe("inicio del acuerdo y reloj de una contratación cobrada en Stripe", ()
     const { stripeId } = await started(w, a.subId);
     // Stripe empezó a cobrar al pagar (5 días después): el periodo interno es ese, no el del inicio del acuerdo
     expect(stripePeriod(stripeId).start).toBe(clock);
-    expect(await subs.must(a.subId)).toMatchObject({ currentPeriodStart: clock, currentPeriodEnd: clock + 30 * DAY });
+    expect(await subs.must(a.subId)).toMatchObject({ currentPeriodStart: clock, currentPeriodEnd: month(clock) });
     expect((await subs.must(a.subId)).currentPeriodEnd).not.toBe(original.currentPeriodEnd);
     expect((await store.events(a.subId)).filter((e) => e.kind === "renewed").map((e) => e.reason)).toEqual(["El periodo sigue al de la suscripción de Stripe"]);
     // Renovación de Stripe ANTES de que venciera el periodo interno original+desfase: la interna la sigue igual
     const paidAt = clock;
-    clock = paidAt + 30 * DAY + 60_000;
+    clock = month(paidAt) + 60_000;
     gw.chargeNegotiatedPeriod(stripeId);
     await deliver(w);
-    expect(await subs.must(a.subId)).toMatchObject({ currentPeriodStart: paidAt + 30 * DAY, currentPeriodEnd: paidAt + 60 * DAY });
+    expect(await subs.must(a.subId)).toMatchObject({ currentPeriodStart: month(paidAt), currentPeriodEnd: month(paidAt, 2) });
     // Repetir el evento no vuelve a mover nada
     const events = (await store.events(a.subId)).length;
     for (const ev of gw.events) await w.processor.process({ eventId: ev.id, type: ev.type, objectId: ev.objectId });
     expect((await store.events(a.subId)).length).toBe(events);
     // Un fin programado en la suscripción interna termina con el periodo de Stripe
     await subs.scheduleCancel(a.subId, { reason: "Baja pedida" }, (await subs.must(a.subId)).version, A);
-    clock = paidAt + 60 * DAY + 60_000;
+    clock = month(paidAt, 2) + 60_000;
     gw.chargeNegotiatedPeriod(stripeId);
     await deliver(w);
-    expect((await subs.must(a.subId)).cancelAt).toBe(paidAt + 90 * DAY);
+    expect((await subs.must(a.subId)).cancelAt).toBe(month(paidAt, 3));
   });
 
   it("fin en Stripe con renovaciones internas sin aplicar: la suscripción interna termina en el acto", async () => {
@@ -1762,7 +1765,7 @@ describe("tercera revisión independiente: lo que rige en una renovación llega 
     const a = await agreed(1);
     const { stripeId } = await started(w, a.subId);
     const R1 = renewalAt(stripeId);
-    const R2 = R1 + 30 * DAY;
+    const R2 = month(R1);
     await applyNew(a.subId, FREE(R1, R2));
     expect(gw.pausedSubs.has(stripeId)).toBe(false);
     // A tres días de la renovación gratuita: en pausa, con la reanudación un minuto antes del primer instante de pago
@@ -1792,7 +1795,7 @@ describe("tercera revisión independiente: lo que rige en una renovación llega 
     const a = await agreed(1);
     const { stripeId } = await started(w, a.subId);
     const R1 = renewalAt(stripeId);
-    await applyNew(a.subId, FREE(R1, R1 + 30 * DAY));
+    await applyNew(a.subId, FREE(R1, month(R1)));
     clock = R1 - 2 * DAY;
     await tick(w);
     expect(gw.invoices.get(await renew(w, stripeId))!.status).toBe("void");
@@ -1806,7 +1809,7 @@ describe("tercera revisión independiente: lo que rige en una renovación llega 
     const a = await agreed(1);
     const { stripeId } = await started(w, a.subId);
     const R1 = renewalAt(stripeId);
-    const R2 = R1 + 30 * DAY;
+    const R2 = month(R1);
     const D = clock + 5 * DAY;
     // Vence un cargo de implantación a mitad de periodo y, desde la renovación, un mes gratis
     await applyNew(a.subId, PACKAGE({ lines: [cat("essential"), cat("hotel-net"), cat("whatsapp"), custom("Implantación", 50000, { concept: "implementation", chargeClass: "initial", startsAt: D })] }));
@@ -1841,7 +1844,7 @@ describe("tercera revisión independiente: lo que rige en una renovación llega 
     const a = await agreed(1);
     const { stripeId } = await started(w, a.subId);
     const R1 = renewalAt(stripeId);
-    const R2 = R1 + 30 * DAY;
+    const R2 = month(R1);
     // Un mes gratis y, después, 99 € (no los 129 € de antes)
     await applyNew(a.subId, FREE(R1, R2, { globalAmountCents: 9900 }));
     // El Product de un producto deja de estar enlazado: las partidas de 99 € no se pueden enviar
@@ -1930,7 +1933,7 @@ describe("tercera revisión independiente: lo que rige en una renovación llega 
     const a = await agreed(1);
     const { stripeId } = await started(w, a.subId);
     const R1 = renewalAt(stripeId);
-    const R2 = R1 + 30 * DAY;
+    const R2 = month(R1);
     await applyNew(a.subId, ENDING(R1));
     expect(gw.subscriptions.get(stripeId)!.cancelAt).toBe(R1 / 1000);
     await applyNew(a.subId, PACKAGE({ globalAmountCents: 9900, effectiveFrom: R1 + 5 * DAY }));
