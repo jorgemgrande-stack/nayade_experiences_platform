@@ -223,7 +223,7 @@ export const connectRouter = router({
    * por soporte) de un producto del catálogo. Sin cargos.
    */
   request: protectedProcedure
-    .input(z.object({ key: z.string().regex(/^[a-z0-9][a-z0-9-]{0,62}$/), type: z.enum(["info", "waitlist", "contact"]), message: z.string().trim().max(2000).optional() }).strict())
+    .input(z.object({ key: z.string().regex(/^[a-z0-9][a-z0-9-]{0,62}$/), type: z.enum(["info", "waitlist", "contact", "implementation"]), message: z.string().trim().max(2000).optional() }).strict())
     .mutation(async ({ ctx, input }): Promise<ConnectRequestResult> => {
       if (!(PANEL_ROLES as readonly string[]).includes(String(ctx.user.role))) throw new TRPCError({ code: "FORBIDDEN" });
       const client = commerceClientFromEnv();
@@ -263,8 +263,10 @@ export const connectRouter = router({
         const description =
           input.type === "contact"
             ? `Necesito ayuda con «${product.name}» en mi empresa.${message ? `\n\n${message}` : ""}`
-            : `Me interesa «${product.name}» para mi empresa. Quiero recibir información.${message ? `\n\n${message}` : ""}`;
-        const title = input.type === "contact" ? `Consulta sobre ${product.name}` : `Solicitud de información: ${product.name}`;
+            : input.type === "implementation"
+              ? `Quiero contratar «${product.name}» e iniciar la implantación. Preparad el contrato, por favor.${message ? `\n\n${message}` : ""}`
+              : `Me interesa «${product.name}» para mi empresa. Quiero recibir información.${message ? `\n\n${message}` : ""}`;
+        const title = input.type === "contact" ? `Consulta sobre ${product.name}` : input.type === "implementation" ? `Contratar e iniciar implantación: ${product.name}` : `Solicitud de información: ${product.name}`;
         await client.openTicket(tenantId, { title: title.slice(0, 200), description, category: input.type === "contact" ? "account" : "billing", requestedBy: email });
         return { via: "ticket", email };
       } catch (e) {

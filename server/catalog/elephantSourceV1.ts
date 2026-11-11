@@ -37,11 +37,12 @@ import { HOUSEHOLD_MEMBERS_METRIC, LIFE_CAPABILITIES, LIFE_HOUSEHOLD_MEMBERS_INC
 import type { ProductDraft } from "../web/schemas";
 
 type Fam = "core_plan" | "net_module" | "net_bundle" | "connect" | "connect_bundle" | "extra" | "addon" | "service";
-type Commercial = "coming_soon" | "in_preparation" | "on_request";
+/** «available» solo donde production ya lo vende así (Social Token Net, 11/11/2026). */
+type Commercial = "coming_soon" | "in_preparation" | "on_request" | "available";
 /** Evidencia del estado comercial (revisión del 25/10/2026). */
 const evidenceOf = (key: string): string | null =>
   STATUS_REVIEW_2026_11_07.find((c) => c.key === key)?.evidence ?? STATUS_REVIEW_2026_10_25.find((c) => c.key === key)?.evidence ?? EVIDENCE_2026_10_25[key] ?? null;
-type Tech = "partial" | "planned";
+type Tech = "partial" | "planned" | "available";
 
 export interface SeedPrice {
   kind: "monthly" | "yearly";
@@ -93,6 +94,8 @@ interface P {
   notes?: string;
   /** Producto heredado (retirado de la venta): la solución que lo incluye. */
   legacy?: { since: string; replacedBy: string };
+  /** Modalidad comercial declarada (`catalog.offer`), solo donde ya está publicada así en production. */
+  offer?: { modality: "immediate" | "assisted"; trial: boolean; checkout: boolean; cta: "trial" | "checkout" | "proposal" | "specialist" | "configure" | "implementation" | "advised" };
 }
 
 const billingModelOf = (f: Fam): ProductDraft["billingModel"] => (f === "core_plan" ? "subscription" : "recurring_addon");
@@ -138,6 +141,7 @@ function product(p: P): SeedProduct {
       addonFor: p.addonFor ? { metric: p.addonFor.metric, step: p.addonFor.step, plans: p.addonFor.plans ?? [] } : null,
       chargeUnit: p.chargeUnit ?? null,
       ...(p.legacy ? { legacy: p.legacy } : {}),
+      ...(p.offer ? { offer: p.offer } : {}),
     },
     internal: { notes: p.notes ?? null, costCents: null, marginNote: null, evidence: evidenceOf(p.key) },
   };
@@ -296,8 +300,10 @@ const LIFE: SeedProduct[] = [net({ key: "life-net", name: "Life Net", group: "li
 const SOCIAL: SeedProduct[] = [
   net({ key: "social-token-net-communities", name: "Social Token Net · Comunidades", group: "social-token", scope: "company", tagline: "Comunidades de clientes y socios.", tech: "planned", commercial: "coming_soon", monthly: 39, capabilities: ["social-token-net"], icon: "users" }),
   net({ key: "social-token-net-tokens", name: "Social Token Net · Tokens internos", group: "social-token", scope: "company", tagline: "Puntos y tokens internos de fidelización.", tech: "planned", commercial: "coming_soon", monthly: 29, capabilities: ["social-token-net-tokens"], icon: "coins", requirements: [TOKENS_R1, TOKENS_R2] }),
-  // Por empresa (10/11/2026, review20261110stn.ts): sus datos y licencias son de la empresa, sin sede
-  netBundle({ key: "social-token-net-complete", name: "Social Token Net", group: "social-token", scope: "company", tagline: "Solución integral de comunidades y fidelización.", description: "Comunidades y tokens internos de fidelización en un solo producto, sin extensiones adicionales.", tech: "planned", commercial: "coming_soon", monthly: 59, bundleOf: ["social-token-net-communities", "social-token-net-tokens"], forWho: "Marcas, clubes y asociaciones.", icon: "sparkles" }),
+  // Por empresa (10/11/2026, review20261110stn.ts): sus datos y licencias son de la empresa, sin sede.
+  // En venta directa como en production (11/11/2026): disponible, contratación inmediata con Checkout. Así una nueva
+  // ejecución de la semilla en una base vacía no lo devuelve a «Próximamente» (en una base con vida no escribe nada)
+  netBundle({ key: "social-token-net-complete", name: "Social Token Net", group: "social-token", scope: "company", tagline: "Solución integral de comunidades y fidelización.", description: "Comunidades y tokens internos de fidelización en un solo producto, sin extensiones adicionales.", tech: "available", commercial: "available", offer: { modality: "immediate", trial: false, checkout: true, cta: "checkout" }, monthly: 59, bundleOf: ["social-token-net-communities", "social-token-net-tokens"], forWho: "Marcas, clubes y asociaciones.", icon: "sparkles" }),
 ];
 
 // ── Elephant Connect ───────────────────────────────────────────────────────────

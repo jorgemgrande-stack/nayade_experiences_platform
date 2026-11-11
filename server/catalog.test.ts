@@ -81,7 +81,8 @@ describe("tarifas oficiales v1 (sin IVA)", () => {
     expect(PRODUCTS.filter((p) => p.family === "connect_bundle")).toHaveLength(4);
   });
   it("honestidad: nada es «Disponible» y nada en hoja de ruta se presenta como «Solicitar activación» salvo los planes", () => {
-    expect(PRODUCTS.every((p) => p.draft.catalog.commercialStatus !== ("available" as string))).toBe(true);
+    // Única excepción (11/11/2026): Social Token Net, en venta directa en production; la semilla lo refleja
+    expect(PRODUCTS.filter((p) => p.draft.catalog.commercialStatus === ("available" as string)).map((p) => p.key)).toEqual(["social-token-net-complete"]);
   });
 });
 

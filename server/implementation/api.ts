@@ -16,11 +16,15 @@
  *   POST /implementations/:id/start                     crm:write   reintenta el inicio tras un fallo
  *   POST /implementations/:id/cancel                    crm:write   cancela (con motivo)
  *   POST /implementations/:id/notes                     crm:write   nota en el historial
+ *   POST /implementations/:id/package                   precios personalizados   borrador del paquete personalizado
+ *        de un producto Net (plan Core si falta, producto a su precio publicado y compromisos de implantación)
  */
 import express, { type NextFunction, type Request, type Response, type Router } from "express";
 import { z } from "zod";
 import { getAuth, requireScope } from "../controlPlane/auth";
 import { CrmError } from "../crm/types";
+import { requireCustomPricing } from "../commercialTerms/permission";
+import { TermsError } from "../commercialTerms/service";
 import { ImplementationError, type ImplementationService } from "./service";
 import { IMPLEMENTATION_QUEUES, IMPLEMENTATION_STATUSES, MILESTONE_KINDS, START_MODES } from "./store";
 
@@ -30,6 +34,7 @@ const wrap =
   (req: Request, res: Response, _next: NextFunction) => {
     fn(req, res).catch((e) => {
       if (e instanceof ImplementationError || e instanceof CrmError) return void res.status(STATUS[e.code] ?? 409).json({ error: e.code, message: e.message });
+      if (e instanceof TermsError) return void res.status(e.code === "not_found" ? 404 : e.code === "invalid_input" ? 400 : 409).json({ error: e.code, message: e.message });
       if (e instanceof z.ZodError) return void res.status(400).json({ error: "invalid_request", message: "Parámetros no válidos" });
       console.error("[Implementation] error interno:", e instanceof Error ? e.name : "error");
       res.status(500).json({ error: "internal_error", message: "Error interno" });
@@ -122,6 +127,11 @@ export function createImplementationRouter(svc: ImplementationService): Router {
   r.post("/:id/cancel", requireScope("crm:write"), wrap(async (req, res) => {
     const b = z.object({ reason: z.string().max(500) }).strict().parse(req.body);
     res.json({ implementation: await svc.cancel(id.parse(req.params.id), b, who(req)) });
+  }));
+  // Paquete personalizado (condiciones personalizadas): el mismo permiso que crear un paquete desde «Paquetes»
+  r.post("/:id/package", requireCustomPricing(), wrap(async (req, res) => {
+    const out = await svc.preparePackage(id.parse(req.params.id), who(req));
+    res.status(out.created ? 201 : 200).json(out);
   }));
   r.post("/:id/notes", requireScope("crm:write"), wrap(async (req, res) => {
     const b = z.object({ text: z.string().trim().min(1).max(2000) }).strict().parse(req.body);

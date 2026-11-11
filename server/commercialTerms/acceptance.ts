@@ -107,6 +107,11 @@ export class TermsAcceptanceService {
       links?: { store: AcceptanceLinkStore; keyring: Keyring } | null;
       /** Logotipo del PDF del contrato aceptado (sin él, la marca en texto). */
       logo?: () => Promise<Uint8Array | null>;
+      /**
+       * Tras activar unas condiciones aceptadas (11/11/2026): p. ej. abrir el expediente de implantación de un producto
+       * Net de sus partidas. Un fallo nunca deshace la aceptación ni la activación: solo se registra.
+       */
+      onActivated?: (i: { terms: TermsRecord; subscriptionId: number; contractId: number }) => Promise<unknown>;
     },
   ) {
     this.now = d.now ?? Date.now;
@@ -593,8 +598,9 @@ export class TermsAcceptanceService {
     // Lo que dependía de la aceptación se activa ahora. Si falla, la aceptación ya consta y se completa desde el CRM
     let activated = false;
     try {
-      await this.activateAccepted(accepted, a.contractId);
+      const subscriptionId = await this.activateAccepted(accepted, a.contractId);
       activated = true;
+      if (this.d.onActivated) await this.d.onActivated({ terms: accepted, subscriptionId, contractId: a.contractId }).catch((e) => opsLog("warn", "CommercialTerms", "after_activation_failed", { termsId: t.id, error: e instanceof Error ? e.name : "error" }));
     } catch (e) {
       opsLog("warn", "CommercialTerms", "activation_after_acceptance_failed", { termsId: t.id, error: e instanceof Error ? e.name : "error" });
       await this.d.termsStore.log(t.id, { kind: "activation_failed", actor: ACTOR, reason: (e instanceof Error ? e.message : "Error").slice(0, 500), before: null, after: null, effectiveAt: null, acceptanceStatus: "accepted", syncResult: "failed", economic: null }, this.now()).catch(() => undefined);
@@ -619,6 +625,7 @@ export class TermsAcceptanceService {
     if (cur && cur.contractId !== contractId) {
       await this.d.subscriptions.linkContract(subscriptionId, { contractId, reason: "Contrato de las condiciones comerciales aceptadas" }, cur.version, ACTOR).catch((e) => opsLog("warn", "CommercialTerms", "contract_link_failed", { subscriptionId, error: e instanceof Error ? e.name : "error" }));
     }
+    return subscriptionId;
   }
 
   /**

@@ -87,7 +87,10 @@ describe("licencias: Social Token Net Complete concede las dos capacidades", () 
   it("el paquete se compone de Comunidades y Tokens internos y sigue «Próximamente» (no contratable aún)", () => {
     const p = PRODUCTS.find((x) => x.key === "social-token-net-complete")!;
     expect(p.draft.catalog.bundleOf).toEqual(["social-token-net-communities", "social-token-net-tokens"]);
-    expect(JSON.stringify(p)).toContain("coming_soon");
+    // En venta directa como en production (11/11/2026): disponible, contratación inmediata con Checkout
+    expect(p.draft.technicalStatus).toBe("available");
+    expect(p.draft.catalog.commercialStatus).toBe("available");
+    expect(p.draft.catalog.offer).toEqual({ modality: "immediate", trial: false, checkout: true, cta: "checkout" });
   });
 
   it("el motor de licencias de siempre suma las capacidades de sus componentes: comunidades y tokens, una vez cada una", () => {
