@@ -340,6 +340,8 @@ describe("licencias: dependen de los productos, no del importe", () => {
     const draft = await terms.createForSubscription(sub.id, input([cat("business", "busM"), cat("restaurant-net", "resM"), custom("Soporte", 1000)]), A);
     const p = await terms.preview(draft.id);
     expect(p.licences).toMatchObject({ planBefore: "essential", planAfter: "business", added: ["restaurant"], removed: ["hotel"], kept: [] });
+    expect(p.licences).toMatchObject({ planProductBefore: { key: "essential", name: "Essential" }, planProductAfter: { key: "business", name: "Business" } });
+    expect(p.licences.products).toEqual({ added: [{ key: "business", name: "Business", plan: true }, { key: "restaurant-net", name: "Restaurant Net", plan: false }], removed: [{ key: "essential", name: "Essential", plan: true }, { key: "hotel-net", name: "Hotel Net", plan: false }], kept: [] });
     expect(p.before).toMatchObject({ netCents: 14800 });
     expect(p.summary.recurring.netCents).toBe(14800);
     expect(p.difference.netCents).toBe(0);
