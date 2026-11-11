@@ -9,7 +9,7 @@
  */
 import type mysql from "mysql2/promise";
 import type { QuoteCatalog } from "../catalog/quote";
-import { isEconomicOnly } from "../subscriptions/service";
+import { isEconomicOnly } from "../../shared/economicSubscription";
 import type { SubscriptionStore } from "../subscriptions/store";
 import { includedUsers } from "../planSeats";
 import { activeException } from "../_core/erm/policy";

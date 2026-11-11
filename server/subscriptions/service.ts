@@ -19,6 +19,7 @@
  *    licencias corresponderían (adaptador de lectura), no las aplica.
  */
 import { bundleReplaces, legacyProductText } from "../catalog/quote";
+import { grantsOnPlatform, independentActivation, isEconomicOnly } from "../../shared/economicSubscription";
 import type { CatalogPort, CatalogProduct, CrmPort } from "./ports";
 import { intervalMonths, isRecurring, itemInterval, itemPeriodAt, madridAnchor, monthlyEquivalent, periodEnd, recurringKind } from "./pricing";
 import type { NewItem, SubscriptionStore, SubscriptionTx } from "./store";
@@ -51,7 +52,6 @@ export function lineKindOf(p: Pick<CatalogProduct, "family" | "addonFor">): { li
 }
 
 /** Activación que no concede nada dentro de la plataforma: un servicio o nada. */
-const independentActivation = (kind: string | null | undefined) => kind === "none" || kind === "service";
 
 /**
  * ¿Depende el producto de un plan de Elephant Core? Se decide con los datos del CATÁLOGO, sin listas de productos.
@@ -74,20 +74,8 @@ export function needsCorePlan(p: Pick<CatalogProduct, "family" | "catalogFamily"
   return (p.catalogFamily ?? p.family) !== "service";
 }
 
-/**
- * ¿Concede la partida algo en la plataforma? El plan y todo producto con activación dentro de ella. Una partida a
- * medida o un ajuste de un acuerdo (clave con «:», imposible en el catálogo) y un servicio puro, no.
- */
-export const grantsOnPlatform = (i: Pick<SubscriptionItem, "productKey" | "family" | "activationKind">): boolean => !i.productKey.includes(":") && (i.family === "core_plan" || !independentActivation(i.activationKind));
-
-/**
- * Suscripción SOLO ECONÓMICA: ninguna de sus partidas vivas o programadas concede nada en la plataforma (solo partidas
- * a medida y servicios puros del catálogo). No es «la suscripción» de la empresa para el circuito del SaaS (pruebas,
- * pedidos, licencias, límites, «Mi plan»): es invisible para él. Una suscripción ordinaria viva siempre tiene su plan.
- */
-export function isEconomicOnly(items: Array<Pick<SubscriptionItem, "productKey" | "family" | "activationKind" | "effectiveFrom" | "effectiveTo">>, now: number): boolean {
-  return !items.some((i) => (i.effectiveTo === null || (i.effectiveTo > now && i.effectiveTo > i.effectiveFrom)) && grantsOnPlatform(i));
-}
+// `grantsOnPlatform` e `isEconomicOnly` viven en shared/economicSubscription.ts (las usa también el binario de Náyade)
+export { grantsOnPlatform, isEconomicOnly };
 
 /**
  * Suscripciones VIVAS del circuito del SaaS de una empresa (las no canceladas que no son solo económicas), de la más
