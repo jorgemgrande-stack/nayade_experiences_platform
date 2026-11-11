@@ -39,7 +39,7 @@ export class NegotiatedGatewayError extends Error {
 }
 
 export interface NegotiatedGatewayDeps {
-  gateway: Pick<StripeGateway, "product"> & Partial<Pick<StripeGateway, "negotiatedSubscription" | "replaceNegotiatedItems" | "tagSubscriptionItem" | "setPauseCollection" | "createInvoiceItem" | "invoiceItemsOfCustomer" | "ensureServiceProduct" | "setCancelAtPeriodEnd" | "setCancelAt" | "invoice">>;
+  gateway: Pick<StripeGateway, "product"> & Partial<Pick<StripeGateway, "negotiatedSubscription" | "replaceNegotiatedItems" | "tagSubscriptionItem" | "setPauseCollection" | "createInvoiceItem" | "invoiceItemsOfCustomer" | "ensureServiceProduct" | "setCancelAtPeriodEnd" | "setCancelAt" | "invoice" | "invoicesOfSubscription">>;
   namespace: string;
   mode: StripeMode;
   /** Política fiscal del entorno: decide el modo de impuesto que se espera en la suscripción. */
@@ -256,6 +256,13 @@ export class StripeNegotiatedGateway implements NegotiatedBillingGateway {
     if (!this.d.gateway.setCancelAt) throw new NegotiatedGatewayError("unsupported", "El acceso a Stripe no admite programar el fin en una fecha");
     const s = await this.owned(subscriptionId);
     await this.d.gateway.setCancelAt(s.id, at === null ? null : Math.floor(at / 1000), idem(this.d.namespace, idempotencyKey));
+  }
+
+  /** Facturas de la suscripción (cualquier estado, también anuladas): para contar sus periodos de cuota sin depender de los webhooks. */
+  async invoicesOf(subscriptionId: string) {
+    if (!this.d.gateway.invoicesOfSubscription) return null;
+    const s = await this.owned(subscriptionId);
+    return this.d.gateway.invoicesOfSubscription(s.id);
   }
 
   /** Fin al final del periodo ya pagado (o deshacerlo). No cobra ni abona nada. */

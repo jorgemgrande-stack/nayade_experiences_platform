@@ -187,6 +187,11 @@ interface SyncDetail {
   contractFrom?: number | null;
   /** Facturas de Stripe de esta suscripción que abrieron un periodo de cuota (alta con cuota y renovaciones): su número. */
   periods?: string[];
+  /**
+   * Lo facturado en suscripciones de Stripe ANTERIORES de la misma contratación (un reinicio tras un fin solo en Stripe):
+   * sus periodos de cuota y cuándo empezó a cobrarse la primera. Se arrastra de un estado a otro: nunca se pierde.
+   */
+  prior?: { periods: string[]; billingFrom: number | null; contractFrom: number | null };
 }
 
 /** Espera antes de volver a intentar solo un envío que falla: 15 min, 1 h, 4 h, 16 h y, desde ahí, una vez al día. */
@@ -530,13 +535,21 @@ export class TermsBillingService {
     // Los importes únicos ya enviados son de la CONTRATACIÓN, no de una suscripción de Stripe: si se vuelve a poner a
     // cobrar con otra, lo cobrado o abonado en la anterior no se repite. Lo que consta como NO cobrado no cuenta
     const { sent, revoked } = sentOf(every);
-    if (!all.length) return every.length ? { stripeSubscriptionId, itemsHash: null, generation: 0, oneOffs: sent, attempts: 0, lastError: null, lastAttemptAt: null, pendingOneOffs: [], revoked } : null;
+    // Periodos de cuota facturados en OTRAS suscripciones de Stripe de esta contratación (y lo que ya arrastraban), y el
+    // primer inicio de cobro: la cuenta de cobros debidos es de la contratación, no de cada suscripción de Stripe
+    const own = new Set(all.flatMap((x) => x.periods ?? []));
+    const others = every.filter((x) => x.stripeSubscriptionId !== stripeSubscriptionId);
+    const priorPeriods = Array.from(new Set([...others.flatMap((x) => x.periods ?? []), ...every.flatMap((x) => x.prior?.periods ?? [])])).filter((id) => !own.has(id));
+    const starts = [...every.map((x) => ({ billingFrom: x.billingFrom ?? null, contractFrom: x.contractFrom ?? null })), ...every.flatMap((x) => (x.prior ? [x.prior] : []))].filter((x) => x.billingFrom != null);
+    const origin = priorPeriods.length ? starts.sort((a, b) => a.billingFrom! - b.billingFrom!)[0] : undefined;
+    const prior = priorPeriods.length ? { periods: priorPeriods, billingFrom: origin?.billingFrom ?? null, contractFrom: origin?.contractFrom ?? null } : undefined;
+    if (!all.length) return every.length ? { stripeSubscriptionId, itemsHash: null, generation: 0, oneOffs: sent, attempts: 0, lastError: null, lastAttemptAt: null, pendingOneOffs: [], revoked, ...(prior ? { prior } : {}) } : null;
     // Unión de lo ya enviado (nunca se «olvida» un importe único) y el estado de partidas más reciente
     const latest = all.slice().sort(newest)[0];
     // Lo que se cuenta de esta suscripción de Stripe se une entre todos sus estados (nunca se pierde un periodo facturado)
     const periods = Array.from(new Set(all.flatMap((x) => x.periods ?? [])));
     const started = all.find((x) => x.billingFrom != null);
-    return { ...latest, oneOffs: sent, revoked, periods, billingFrom: started?.billingFrom ?? null, contractFrom: started?.contractFrom ?? null, generation: Math.max(...all.map((x) => x.generation)), attempts: Math.max(...all.map((x) => x.attempts)) };
+    return { ...latest, oneOffs: sent, revoked, periods, ...(prior ? { prior } : {}), billingFrom: started?.billingFrom ?? null, contractFrom: started?.contractFrom ?? null, generation: Math.max(...all.map((x) => x.generation)), attempts: Math.max(...all.map((x) => x.attempts)) };
   }
 
   /** Importes únicos de la contratación que ya constan enviados a Stripe (en cualquiera de sus suscripciones de Stripe). */
@@ -550,7 +563,7 @@ export class TermsBillingService {
       const t = (await this.d.termsStore.get(termsId)) as TermsRecord;
       // Otra sincronización simultánea pudo registrar pasos: se unen, nunca se pisan
       const prev = t.syncDetail as SyncDetail | null;
-      const merged: SyncDetail = prev && prev.stripeSubscriptionId === detail.stripeSubscriptionId ? { ...detail, oneOffs: { ...prev.oneOffs, ...detail.oneOffs }, revoked: Array.from(new Set([...(prev.revoked ?? []), ...(detail.revoked ?? [])])), periods: Array.from(new Set([...(prev.periods ?? []), ...(detail.periods ?? [])])), billingFrom: detail.billingFrom ?? prev.billingFrom ?? null, contractFrom: detail.contractFrom ?? prev.contractFrom ?? null, generation: Math.max(prev.generation, detail.generation), attempts: Math.max(prev.attempts + 1, detail.attempts) } : detail;
+      const merged: SyncDetail = prev && prev.stripeSubscriptionId === detail.stripeSubscriptionId ? { ...detail, oneOffs: { ...prev.oneOffs, ...detail.oneOffs }, revoked: Array.from(new Set([...(prev.revoked ?? []), ...(detail.revoked ?? [])])), periods: Array.from(new Set([...(prev.periods ?? []), ...(detail.periods ?? [])])), ...(prev.prior || detail.prior ? { prior: { periods: Array.from(new Set([...(prev.prior?.periods ?? []), ...(detail.prior?.periods ?? [])])), billingFrom: detail.prior?.billingFrom ?? prev.prior?.billingFrom ?? null, contractFrom: detail.prior?.contractFrom ?? prev.prior?.contractFrom ?? null } } : {}), billingFrom: detail.billingFrom ?? prev.billingFrom ?? null, contractFrom: detail.contractFrom ?? prev.contractFrom ?? null, generation: Math.max(prev.generation, detail.generation), attempts: Math.max(prev.attempts + 1, detail.attempts) } : detail;
       try {
         await this.d.termsStore.patch(
           termsId,
@@ -761,7 +774,11 @@ export class TermsBillingService {
 
   /** ¿Debe Stripe dejar de renovar ya? Cuenta de cobros debidos frente a periodos facturados (`owedPeriods`). */
   private stopNow(t: BillingTarget, remote: RemoteState, detail: SyncDetail | null): boolean {
-    const owed = t.endAt !== null && detail?.billingFrom != null && detail.contractFrom != null ? owedPeriods(detail.contractFrom, detail.billingFrom, t.endAt, t.interval) : null;
+    // La cuenta es de la CONTRATACIÓN: desde el primer inicio de cobro (también el de una suscripción de Stripe anterior)
+    // y descontando lo ya facturado en las anteriores. Nunca negativa
+    const from = detail?.prior?.billingFrom != null && detail.prior.contractFrom != null ? detail.prior : detail;
+    const total = t.endAt !== null && from?.billingFrom != null && from.contractFrom != null ? owedPeriods(from.contractFrom, from.billingFrom, t.endAt, t.interval) : null;
+    const owed = total === null ? null : Math.max(0, total - (detail?.prior?.periods.length ?? 0));
     return stopsAtRenewal(t.endAt, remote.currentPeriodEnd, detail?.periods?.length ?? 0, owed, t.interval, remote.billingCycleAnchor);
   }
 
@@ -783,15 +800,21 @@ export class TermsBillingService {
    * Una factura de Stripe abrió un periodo de cuota de esta suscripción (alta con cuota o renovación, cobrada, impagada
    * o anulada por la pausa): cuenta para `owedPeriods`. Idempotente por factura. No llama a Stripe.
    */
-  async notePeriod(subscriptionId: number, stripeSubscriptionId: string, invoiceId: string, actor: string): Promise<void> {
+  async notePeriod(subscriptionId: number, stripeSubscriptionId: string, invoiceId: string | string[], actor: string): Promise<void> {
     const prev = await this.lastDetail(subscriptionId, stripeSubscriptionId);
-    if (prev?.periods?.includes(invoiceId)) return;
+    const fresh = (Array.isArray(invoiceId) ? invoiceId : [invoiceId]).filter((id) => !prev?.periods?.includes(id));
+    if (!fresh.length) return;
     const holder = await this.holder(subscriptionId, stripeSubscriptionId);
     const termsId = holder?.id ?? (await this.plan(subscriptionId)).termsId ?? (await this.d.termsStore.list({ subscriptionId })).map((x) => x.id).sort((x, y) => y - x)[0] ?? null;
     if (termsId === null) return;
     const base: SyncDetail = prev ?? { stripeSubscriptionId, itemsHash: null, generation: 0, oneOffs: {}, attempts: 0, lastError: null, lastAttemptAt: null, pendingOneOffs: [] };
-    const detail: SyncDetail = { ...base, stripeSubscriptionId, periods: [...(base.periods ?? []), invoiceId] };
+    const detail: SyncDetail = { ...base, stripeSubscriptionId, periods: [...(base.periods ?? []), ...fresh] };
     await this.record(termsId, holder?.syncStatus === "failed" ? "failed" : "synced", detail, actor, "Periodo de cuota facturado en Stripe");
+  }
+
+  /** Facturas que constan como periodos de cuota de esa suscripción de Stripe. */
+  async periodsOf(subscriptionId: number, stripeSubscriptionId: string): Promise<string[]> {
+    return (await this.lastDetail(subscriptionId, stripeSubscriptionId))?.periods ?? [];
   }
 
   /** Fin que programó la sincronización en esa suscripción de Stripe (fecha de fin de las condiciones y de Stripe). */
@@ -878,7 +901,7 @@ export class TermsBillingService {
       if (!f && sent[o.key] && (sent[o.key].startsWith("checkout:") || o.at < this.now() - ONE_OFF_WINDOW_MS)) continue;
       if (!f || f.voided || f.forgiven || f.amountCents !== o.amountCents) differences.push({ key: o.key, kind: "one_off", expectedCents: o.amountCents, stripeCents: f && !f.voided && !f.forgiven ? f.amountCents : null });
     }
-    return { available: true as const, plan, syncStatus: current?.syncStatus ?? "none", consistent: differences.length === 0, differences, stripe: remote ? { status: remote.status ?? null, cancelAtPeriodEnd: remote.cancelAtPeriodEnd ?? null, cancelAt: remote.cancelAt ?? null, tax: remote.tax ?? null } : null, target: { at: t.at, paused: t.paused, resumesAt: t.resumesAt, endAt: t.endAt } };
+    return { available: true as const, plan, syncStatus: current?.syncStatus ?? "none", consistent: differences.length === 0, differences, stripe: remote ? { status: remote.status ?? null, cancelAtPeriodEnd: remote.cancelAtPeriodEnd ?? null, cancelAt: remote.cancelAt ?? null, tax: remote.tax ?? null } : null, target: { at: t.at, paused: t.paused, resumesAt: t.resumesAt, endAt: t.endAt, interval: t.interval } };
   }
 }
 

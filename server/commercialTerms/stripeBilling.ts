@@ -100,7 +100,7 @@ export interface NegotiatedBillingDeps {
   stripeStore: Pick<StripeStore, "customerByCompany" | "linkCustomer" | "acquireLease" | "releaseLease">;
   gateway: StripeGateway;
   adapter: StripeNegotiatedGateway;
-  billing: Pick<TermsBillingService, "plan" | "syncIfOpen" | "recordSent" | "reconcile" | "nextStart" | "changedSinceSync" | "sentOneOffs" | "revokeOneOffs" | "scheduledEnd" | "notePeriod">;
+  billing: Pick<TermsBillingService, "plan" | "syncIfOpen" | "recordSent" | "reconcile" | "nextStart" | "changedSinceSync" | "sentOneOffs" | "revokeOneOffs" | "scheduledEnd" | "notePeriod" | "periodsOf">;
   termsStore: Pick<TermsStore, "get" | "log">;
   /** Suscripción interna: una vez enlazada, el reloj es el de Stripe (sus periodos y su fin siguen a los de Stripe). */
   subscriptionStore: Pick<SubscriptionStore, "get" | "mutate">;
@@ -889,6 +889,16 @@ export class NegotiatedBillingService {
           await this.d.billing.syncIfOpen(row.subscriptionId, this.actor);
         }
         let r = await this.d.billing.reconcile(row.subscriptionId, { whenOff: true });
+        // Cerca del fin de unas condiciones, la cuenta de periodos de cuota no depende solo de los webhooks: se releen las
+        // facturas de la suscripción en Stripe (también las anuladas) y se suman las que falten. Si faltaba alguna, se
+        // vuelve a decidir con la cuenta completa (un evento perdido nunca da un cobro de más)
+        if (r.available && "target" in r && r.target?.endAt != null && r.target.endAt - this.now() <= (r.target.interval === "year" ? 400 : 40) * DAY && row.stripeSubscriptionId) {
+          const added = await this.recountPeriods(row, row.stripeSubscriptionId);
+          if (added && this.d.enabled) {
+            await this.d.billing.syncIfOpen(row.subscriptionId, this.actor);
+            r = await this.d.billing.reconcile(row.subscriptionId, { whenOff: true });
+          }
+        }
         // Condiciones terminadas sin sucesor: la sincronización programa el fin en Stripe (y avisa); no sigue cobrándolas
         if (this.d.enabled && r.available && !r.plan.items.length && !("target" in r && r.target?.paused) && r.stripe && r.stripe.status !== "canceled" && r.stripe.cancelAtPeriodEnd === false) {
           await this.d.billing.syncIfOpen(row.subscriptionId, this.actor);
@@ -1078,6 +1088,23 @@ export class NegotiatedBillingService {
     } catch (e) {
       opsLog("warn", "CommercialTerms", "billing_period_follow_failed", { subscriptionId, error: e instanceof Error ? e.name : "error" });
     }
+  }
+
+  /**
+   * Suma a la cuenta de periodos de cuota las facturas de la suscripción de Stripe que abrieron periodo (alta con cuota y
+   * renovaciones, de cualquier estado salvo borrador) y no constaban. Idempotente. Devuelve cuántas faltaban.
+   */
+  private async recountPeriods(row: TermsBillingRow, stripeSubscriptionId: string): Promise<number> {
+    const invoices = await this.d.adapter.invoicesOf(stripeSubscriptionId).catch(() => null);
+    if (!invoices) return 0;
+    const ids = invoices.filter((i) => i.status && i.status !== "draft" && (i.billingReason === "subscription_cycle" || (i.billingReason === "subscription_create" && !row.checkout?.firstChargeAt))).map((i) => i.id);
+    const before = await this.d.billing.periodsOf(row.subscriptionId, stripeSubscriptionId);
+    const missing = ids.filter((id) => !before.includes(id));
+    if (missing.length) {
+      opsLog("warn", "CommercialTerms", "billing_periods_recounted", { subscriptionId: row.subscriptionId, missing: missing.length });
+      await this.d.billing.notePeriod(row.subscriptionId, stripeSubscriptionId, missing, this.actor);
+    }
+    return missing.length;
   }
 
   /** Programa el fin de la suscripción interna en una fecha (el fin del acuerdo). Devuelve si quedó programado. */

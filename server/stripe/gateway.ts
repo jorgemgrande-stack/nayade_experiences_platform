@@ -298,6 +298,8 @@ export interface StripeGateway {
    * ni modifica un Price público. Sin prorrateo (`proration_behavior=none`) y con Idempotency-Key.
    */
   replaceNegotiatedItems?(change: NegotiatedItemsChange, idempotencyKey: string): Promise<GwNegotiatedSubscription>;
+  /** Facturas de una suscripción, de cualquier estado (también anuladas), las más recientes primero, hasta `max`. Solo lectura. */
+  invoicesOfSubscription?(subscriptionId: string, max?: number): Promise<GwInvoice[]>;
   /** Importes (sin impuestos) de TODAS las líneas de una factura, paginado. Solo lectura. */
   invoiceLineAmounts?(invoiceId: string): Promise<number[]>;
   /**
@@ -983,6 +985,18 @@ export function stripeGateway(
           metadata: c.metadata,
         };
         return toNegotiatedSubscription(await client.subscriptions.update(c.subscriptionId, params as Stripe.SubscriptionUpdateParams, { idempotencyKey }), mode);
+      } catch (e) {
+        wrapError(e);
+      }
+    },
+    async invoicesOfSubscription(subscriptionId, max = 100) {
+      try {
+        const out: GwInvoice[] = [];
+        for await (const i of client.invoices.list({ subscription: subscriptionId, limit: 100 })) {
+          out.push(toInvoice(i, mode));
+          if (out.length >= max) break;
+        }
+        return out;
       } catch (e) {
         wrapError(e);
       }
