@@ -227,15 +227,34 @@ describe("catálogo de Connect con el catálogo oficial", () => {
     expect([p.state, p.purchasable]).toEqual(["incident", false]);
   });
   it("un componente tenido por licencia y sin pedido (acuerdo negociado) no deja el paquete «con incidencia»", () => {
-    const comms = (grants: CapabilityGrant[], pack: Partial<PanelCatalogItemView> = {}) => {
-      const out = buildConnectCatalog(
-        { items: [item("connect-pack-communications", { family: "connect_bundle", commercialStatus: "on_request", purchasable: false, ...pack }), item("connect-whatsapp-ai"), item("connect-voice"), item("connect-reception-ai")] },
+    const none = { activation: { state: "none" } };
+    const build = (grants: CapabilityGrant[], pack: Partial<PanelCatalogItemView> = {}, part: Partial<PanelCatalogItemView> = none) =>
+      buildConnectCatalog(
+        { items: [item("connect-pack-communications", { family: "connect_bundle", commercialStatus: "on_request", purchasable: false, ...none, ...pack }), item("connect-whatsapp-ai", none), item("connect-voice", part), item("connect-reception-ai", none)] },
         grants,
         NOW,
         "essential",
       );
-      return Object.fromEntries(out.map((i) => [i.key, i.state]));
-    };
+    const comms = (...a: Parameters<typeof build>) => Object.fromEntries(build(...a).map((i) => [i.key, i.state]));
+    // A la venta: se ve disponible, pero no se compra en línea (la compra cobraría el paquete entero) y lo explica
+    const onSale = build([grant("whatsapp-ai")], { commercialStatus: "available", purchasable: true })[0];
+    expect([onSale.state, onSale.purchasable]).toEqual(["available", false]);
+    expect(onSale.reasons.join(" ")).toMatch(/Ya tienes connect-whatsapp-ai\. Para ampliar a este paquete, escribe a tu contacto comercial/);
+    // Sin el dato de activación (la lectura del canal falló): no se sabe si hay pedido, manda la regla prudente
+    expect(comms([grant("whatsapp-ai")], { activation: null })["connect-pack-communications"]).toBe("incident");
+    // Un componente que falta tiene un pedido propio en curso: tampoco se aplica
+    expect(comms([grant("whatsapp-ai")], {}, { activation: { state: "processing" } })["connect-pack-communications"]).toBe("incident");
+    // Lo que falta, en solo lectura o contratado sin activar: el estado de siempre
+    expect(comms([grant("whatsapp-ai"), grant("voice-ai", { status: "read_only" })])["connect-pack-communications"]).toBe("incident");
+    expect(comms([grant("whatsapp-ai"), grant("voice-ai", { status: "contracted" })])["connect-pack-communications"]).toBe("activating");
+    // Net queda fuera de la regla: una parte de Ski Net por licencia sigue viéndose como incidencia
+    const ski = buildConnectCatalog(
+      { items: [item("ski-net-complete", { family: "net_bundle", commercialStatus: "on_request", purchasable: false, ...none }), item("ski-net-school", { family: "net_module", ...none }), item("ski-net-rental", { family: "net_module", ...none })] },
+      [grant("ski-school")],
+      NOW,
+      "essential",
+    ).find((i) => i.key === "ski-net-complete")!;
+    expect(ski.state).toBe("incident");
     // Solo WhatsApp AI, concedida por el acuerdo: el paquete conserva su estado comercial y el módulo figura activo
     const loose = comms([grant("whatsapp-ai", { source: "subscription:7" })]);
     expect([loose["connect-pack-communications"], loose["connect-whatsapp-ai"]]).toEqual(["on_request", "active"]);
