@@ -9,6 +9,7 @@
  */
 import type mysql from "mysql2/promise";
 import type { QuoteCatalog } from "../catalog/quote";
+import { isEconomicOnly } from "../subscriptions/service";
 import type { SubscriptionStore } from "../subscriptions/store";
 import { includedUsers } from "../planSeats";
 import { activeException } from "../_core/erm/policy";
@@ -259,9 +260,15 @@ export class OrganizationService {
   }
 
   private async contractLimits(tenantId: string): Promise<{ sites: number | null; fiscal_entities: number | null; users: number | null; source: string }> {
-    const sub = (await this.d.subscriptions.list({})).find((s) => s.tenantId === tenantId && s.status !== "canceled");
-    if (!sub) return { ...FALLBACK, source: "sin suscripción (mínimo de Essential)" };
     const now = this.now();
+    // La suscripción del SaaS de la plataforma: una solo económica (sin plan ni productos de plataforma) no define límites
+    let sub: Awaited<ReturnType<typeof this.d.subscriptions.list>>[number] | undefined;
+    for (const s of (await this.d.subscriptions.list({})).filter((x) => x.tenantId === tenantId && x.status !== "canceled")) {
+      if (isEconomicOnly(await this.d.subscriptions.items(s.id), now)) continue;
+      sub = s;
+      break;
+    }
+    if (!sub) return { ...FALLBACK, source: "sin suscripción (mínimo de Essential)" };
     const items = (await this.d.subscriptions.items(sub.id)).filter((i) => i.effectiveFrom <= now && (i.effectiveTo === null || i.effectiveTo > now));
     const catalog = await this.d.catalog();
     const byKey = new Map(catalog.products.map((p) => [p.key, p]));

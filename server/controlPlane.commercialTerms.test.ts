@@ -772,7 +772,8 @@ describe("paquete solo con partidas a medida (sin plan Core): 44,63 € + IVA = 
     expect(preview.summary.recurring.lines).toHaveLength(1);
     expect(preview.nextCharge).toMatchObject({ netCents: 4463, taxCents: 937, totalCents: 5400 });
     expect(preview.licences).toMatchObject({ grantsNothing: true, planProductAfter: null, planAfter: null, products: { added: [], removed: [], kept: [] } });
-    expect(preview.licences.note).toMatch(/no concede licencias/);
+    expect(preview.licences.note).toMatch(/No concede licencias/);
+    expect(preview.serviceStart).toBeNull();
   });
 
   it("contrato y aceptación: el documento no habla de planes; nada se crea antes de aceptar", async () => {
@@ -805,7 +806,7 @@ describe("paquete solo con partidas a medida (sin plan Core): 44,63 € + IVA = 
     sid = terms.terms.subscriptionId;
     const list = (await call("GET", `/subscriptions?companyId=${infraCompanyId}`, { token: TOK.admin })).json.subscriptions;
     expect(list).toHaveLength(1);
-    expect(list[0]).toMatchObject({ id: sid, tenantId: null, status: "active", interval: "month", currency: "EUR", currentPeriodStart: acceptedAt, effective: { status: "active" }, billing: { source: "shadow" } });
+    expect(list[0]).toMatchObject({ id: sid, tenantId: null, status: "active", interval: "month", currency: "EUR", currentPeriodStart: acceptedAt, effective: { status: "active", startsAt: null }, billing: { source: "shadow" } });
     const detail = (await call("GET", `/subscriptions/${sid}`, { token: TOK.admin })).json;
     expect(detail.subscription.contractId).toBe(terms.terms.contractId);
     expect(detail.items).toHaveLength(1);

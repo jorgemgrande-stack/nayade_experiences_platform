@@ -207,3 +207,26 @@ export function validateTerms(t: Pick<Terms, "pricingMode" | "globalAmountCents"
   }
   return Array.from(new Set(out));
 }
+
+/** Partida de catálogo que concede algo en la plataforma: el plan o un producto con activación dentro de ella. */
+const lineGrants = (l: Pick<TermsLine, "kind" | "catalog">) => l.kind === "catalog" && !!l.catalog && (l.catalog.family === "core_plan" || !(l.catalog.activationKind === "none" || l.catalog.activationKind === "service"));
+
+/**
+ * Acuerdo SOLO ECONÓMICO: ninguna de sus partidas concede nada en la plataforma (solo partidas a medida y servicios
+ * puros del catálogo, que no dependen de Elephant Core). No lleva plan, no concede licencias y no necesita plataforma.
+ */
+export const termsEconomicOnly = (lines: Array<Pick<TermsLine, "kind" | "catalog">>) => !lines.some(lineGrants);
+
+/**
+ * Fecha de inicio DECLARADA del servicio de un acuerdo solo económico: cuando TODAS sus cuotas recurrentes llevan un
+ * inicio propio posterior al del acuerdo, la primera de esas fechas. Desde ella rigen las cuotas (por periodos
+ * completos, sin parte proporcional anterior); lo anterior (p. ej. un cargo único sin fecha) se debe al contratar.
+ * Null si el acuerdo concede algo en la plataforma, si alguna cuota empieza con el acuerdo o si no hay cuotas.
+ * Depende solo de los datos del acuerdo (nunca de «ahora»): el mismo acuerdo da siempre el mismo documento.
+ */
+export function declaredServiceStart(t: Pick<Terms, "effectiveFrom" | "lines">): number | null {
+  const recurring = t.lines.filter(isRecurring);
+  if (!recurring.length || !termsEconomicOnly(t.lines) || recurring.some((l) => l.startsAt === null)) return null;
+  const first = Math.min(...recurring.map((l) => l.startsAt!));
+  return t.effectiveFrom === null || first > t.effectiveFrom ? first : null;
+}

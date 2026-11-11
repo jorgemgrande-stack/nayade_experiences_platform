@@ -91,7 +91,7 @@ export interface TrialOnboardingDeps {
   provision: (req: ProvisionRequest) => Promise<ProvisionResult>;
   platformDomain: string;
   companies: CompanyPort;
-  subscriptions: Pick<SubscriptionService, "create" | "list" | "detail" | "endTrial" | "changePlan"> & Partial<Pick<SubscriptionService, "setTrialEnd">>;
+  subscriptions: Pick<SubscriptionService, "create" | "list" | "detail" | "endTrial" | "changePlan"> & Partial<Pick<SubscriptionService, "setTrialEnd" | "liveSaas">>;
   licensing: Pick<LicensingService, "apply"> & Partial<Pick<LicensingService, "list" | "setStatus" | "syncValidUntil" | "restoreTrialAccess" | "preview">>;
   /** Id del precio aprobado vigente de un producto (catálogo publicado). */
   priceOf: (productKey: string, kind: "monthly" | "yearly") => Promise<number | null>;
@@ -292,8 +292,9 @@ export class TrialOnboardingService {
     // 2. Empresa en el CRM (enlazada a la plataforma)
     const company = (await this.d.companies.byTenant(tenantId)) ?? (await this.d.companies.create({ name: t.companyName, email: t.email, tenantId, profile: t.configuration?.profile ?? null, attribution: t.configuration?.attribution ?? null }, actor));
 
-    // 3. Suscripción del plan en prueba (sin tarjeta ni cobro)
-    const live = (await this.d.subscriptions.list({ companyId: company.id })).find((s) => s.status !== "canceled");
+    // 3. Suscripción del plan en prueba (sin tarjeta ni cobro). Una suscripción solo económica de la empresa (un acuerdo
+    // de partidas a medida, sin plan) no es la de la prueba: no cuenta
+    const live = await this.saasSubscription(company.id);
     let subscription = live;
     if (!subscription) {
       const priceId = await this.d.priceOf(plan, "monthly");
@@ -484,10 +485,19 @@ export class TrialOnboardingService {
     }
   }
 
+  /**
+   * La suscripción viva de la empresa en el circuito del SaaS (la más reciente): nunca una solo económica (un acuerdo de
+   * partidas a medida, sin plan), que no es la de la prueba. El servicio de suscripciones real siempre trae `liveSaas`.
+   */
+  private async saasSubscription(companyId: number) {
+    const s = this.d.subscriptions;
+    return s.liveSaas ? (await s.liveSaas(companyId))[0] : (await s.list({ companyId })).find((x) => x.status !== "canceled");
+  }
+
   /** Suscripción en prueba viva de la empresa del tenant (y de ese mismo tenant), o null. */
   private async trialSubscription(tenantId: string) {
     const company = await this.d.companies.byTenant(tenantId);
-    const sub = company ? (await this.d.subscriptions.list({ companyId: company.id })).find((s) => s.status !== "canceled") : undefined;
+    const sub = company ? await this.saasSubscription(company.id) : undefined;
     return sub && sub.status === "trialing" && sub.tenantId === tenantId ? sub : null;
   }
 
@@ -549,7 +559,7 @@ export class TrialOnboardingService {
     let licencesChanged = 0;
     if (t.tenantId) {
       const company = await this.d.companies.byTenant(t.tenantId);
-      const sub = company ? (await this.d.subscriptions.list({ companyId: company.id })).find((s) => s.status !== "canceled") : undefined;
+      const sub = company ? await this.saasSubscription(company.id) : undefined;
       if (!sub) throw new TrialError("invalid_state", "La prueba no tiene suscripción: no se pueden reactivar sus licencias");
       // Las licencias reaplicadas llevan el fin de la suscripción: antes, el de la prueba (p. ej. tras una ampliación)
       if (sub.status === "trialing" && sub.tenantId === t.tenantId) await this.alignSubscription(t, sub, o.actor);

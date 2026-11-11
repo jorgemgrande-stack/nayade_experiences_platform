@@ -3,6 +3,7 @@
  * administrador (con cuota global no sale ningún precio por partida). La empresa nunca puede modificar sus precios
  * negociados: no hay ninguna ruta de escritura para su token.
  */
+import { isEconomicOnly } from "../subscriptions/service";
 import type { SubscriptionStore } from "../subscriptions/store";
 import { presentTerms, type ClientView } from "./presentation";
 import type { CommercialTermsService } from "./service";
@@ -21,15 +22,10 @@ export interface TenantCustomTerms {
 
 export function tenantTermsReader(terms: CommercialTermsService, store: TermsStore, subscriptions: Pick<SubscriptionStore, "list"> & Partial<Pick<SubscriptionStore, "items">>, now: () => number) {
   /**
-   * Suscripción solo económica (sin plataforma y sin ningún producto del catálogo: solo partidas a medida): no es el
-   * plan de ninguna plataforma. No se muestra en «Mi plan» ni estorba a la suscripción que sí lo es.
+   * Suscripción solo económica (`isEconomicOnly`: partidas a medida y servicios puros, nada que conceda algo en la
+   * plataforma): no es el plan de ninguna plataforma. No se muestra en «Mi plan» ni estorba a la suscripción que sí lo es.
    */
-  const economicOnly = async (s: { id: number; tenantId: string | null }) => {
-    if (s.tenantId !== null || !subscriptions.items) return false;
-    const at = now();
-    const items = (await subscriptions.items(s.id)).filter((i) => i.effectiveTo === null || (i.effectiveTo > at && i.effectiveTo > i.effectiveFrom));
-    return items.length > 0 && items.every((i) => i.productKey.includes(":"));
-  };
+  const economicOnly = async (s: { id: number }) => !!subscriptions.items && isEconomicOnly(await subscriptions.items(s.id), now());
   return async (tenantId: string, companyId: number, subscriptionId?: number | null): Promise<TenantCustomTerms | null> => {
     // La suscripción viva de ESA empresa y ESA plataforma: la del pedido vigente si la hay; si no, la única que tenga
     // (si no es única, no se muestra nada). Nunca la de otra empresa

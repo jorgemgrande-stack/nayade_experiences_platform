@@ -189,6 +189,23 @@ describe.skipIf(!URL_)("condiciones personalizadas con MySQL real", () => {
     clock = before;
   });
 
+  it("paquete económico con fecha de inicio (1 de diciembre, 00:00 de Madrid): el anclaje de calendario de Madrid se guarda y renueva por meses naturales", async () => {
+    const before = clock;
+    const DEC1 = Date.UTC(2026, 10, 30, 23);
+    const JAN1 = Date.UTC(2026, 11, 31, 23);
+    const draft = await terms.createPackage(2, { pricingMode: "per_item", presentation: "breakdown", interval: "month", reason: "Solo costes de infraestructura", lines: [{ kind: "custom", concept: "other", name: "Costes de infraestructura", chargeClass: "recurring", unitCents: 4463, taxRateBp: 2100, startsAt: DEC1 }] }, A);
+    const out = await terms.prepareContracting(draft.id, { expectedRevision: draft.revision }, A);
+    const sid = out.subscription.id;
+    const [rows] = await pool.query<mysql.RowDataPacket[]>("SELECT anchor_day, started_at, current_period_start, current_period_end, tenant_id FROM subscriptions WHERE id = ?", [sid]);
+    expect([Number(rows[0].anchor_day), Number(rows[0].started_at), Number(rows[0].current_period_start), Number(rows[0].current_period_end), rows[0].tenant_id]).toEqual([-1, DEC1, clock, DEC1, null]);
+    expect((await store.get(sid))!.anchorDay).toBe(-1);
+    expect((await shadow.simulateCurrent(sid, "system:test")).results).toEqual([]);
+    clock = DEC1 + 1000;
+    await subs.applyRenewals(sid, "system:test");
+    expect((await shadow.simulateCurrent(sid, "system:test")).results.map((r) => [r.invoice.kind, r.invoice.periodStart, r.invoice.periodEnd, r.invoice.totalCents])).toEqual([["renewal", DEC1, JAN1, 5400]]);
+    clock = before;
+  });
+
   it("el esquema rechaza una partida a medida con producto y una cuota global incoherente", async () => {
     const [t] = await pool.query<mysql.RowDataPacket[]>("SELECT id FROM commercial_terms ORDER BY id LIMIT 1");
     await expect(
