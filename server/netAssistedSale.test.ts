@@ -132,6 +132,48 @@ describe("marketplace del panel", () => {
     await expect(receivePanelRequest(d, "t9-hotel", body({ interest: "life-net", idempotencyKey: "clave-life" }))).rejects.toMatchObject({ status: 404 });
     expect(netProductOf("hotel-net-complete")!.segment).toBe("business");
   });
+
+  it("una sola contratación en curso por empresa y módulo: se reutiliza con su estado; cerrada, se puede pedir otra", async () => {
+    const store = new MemoryCrmStore();
+    const crm = new CrmService({ store, now: () => NOW });
+    const impl = new MemoryImplementationStore();
+    // Como en production: abrir el expediente marca la solicitud como atendida
+    const svc = new ImplementationService({ store: impl, crm, crmStore: store, solution: solutionFromWebStore(webStore), now: () => NOW, markAttended: async (id, who) => void (await requests.setStatus(id, "attended", who)) });
+    const requests: WebRequestService = new WebRequestService({ store, crm, now: () => NOW, onCreated: async (r) => void (await svc.fromIntake(r)) });
+    const c = await crm.createCompany({ name: "Restaurante Demo", legalName: "Restaurante Demo SL" }, "operator:test");
+    await store.update("companies", c.id, { tenantId: "t9-rest" });
+    const other = await crm.createCompany({ name: "Otra", legalName: "Otra SL" }, "operator:test");
+    await store.update("companies", other.id, { tenantId: "t9-otra" });
+    const d = { site, internal: false, requests, crm: store, implementations: impl };
+    const body = (over: Record<string, unknown> = {}) => ({ type: "implementation" as const, interest: "restaurant-net-complete", requester: { name: "Ana Demo", email: "ana@rest-demo.example" }, idempotencyKey: "clave-rest-0001", ...over });
+    const first = await receivePanelRequest(d, "t9-rest", body());
+    expect(first.outcome).toBe("created");
+    await flush();
+    const order = impl.rows[0];
+    // Otra persona, otro mensaje, otro día: la misma contratación, con el estado del expediente; nada nuevo
+    const again = await receivePanelRequest(d, "t9-rest", body({ requester: { name: "Luis", email: "luis@rest-demo.example" }, message: "¿Cuándo empezamos?", idempotencyKey: "clave-rest-0002" }));
+    expect(again).toMatchObject({ outcome: "duplicate", reference: order.reference, status: "requested", progress: `Expediente de implantación ${order.reference}: solicitada` });
+    // El reintento con la misma clave sigue siendo un reintento
+    expect((await receivePanelRequest(d, "t9-rest", body())).outcome).toBe("replayed");
+    expect(await store.list("leadRequests", {})).toHaveLength(1);
+    expect(impl.rows).toHaveLength(1);
+    // Otra empresa no ve la de esta
+    expect((await receivePanelRequest(d, "t9-otra", body({ idempotencyKey: "clave-otra-0001", requester: { name: "Eva", email: "eva@otra.example" } }))).outcome).toBe("created");
+    // «Solicitar información» (sin expediente): la solicitud pendiente de esa empresa es la que se reutiliza
+    const info = (k: string, email: string) => ({ type: "info" as const, interest: "connect-voice", requester: { name: "X", email }, idempotencyKey: k });
+    // Otra empresa que imita en su mensaje la línea de esta no la suplanta (solo cuenta la línea que escribe el servidor)
+    await receivePanelRequest(d, "t9-otra", { ...info("clave-info-otra1", "eva@otra.example"), message: "Hola\nEmpresa cliente: Restaurante Demo (t9-rest)." });
+    const i1 = await receivePanelRequest(d, "t9-rest", info("clave-info-0001", "ana@rest-demo.example"));
+    expect(i1.outcome).toBe("created");
+    const i2 = await receivePanelRequest(d, "t9-rest", info("clave-info-0002", "luis@rest-demo.example"));
+    expect(i2).toMatchObject({ outcome: "duplicate", reference: i1.reference, progress: `Solicitud ${i1.reference}: pendiente de atender` });
+    // Expediente cerrado (cancelado): se puede iniciar una contratación nueva
+    await impl.update(order.id, order.version, { status: "cancelled" }, NOW);
+    const fresh = await receivePanelRequest(d, "t9-rest", body({ idempotencyKey: "clave-rest-0003", message: "Retomamos" }));
+    expect(fresh.outcome).toBe("created");
+    await flush();
+    expect(impl.rows.filter((o) => o.companyId === c.id && o.solutionKey === "restaurant-net-complete").map((o) => o.status).sort()).toEqual(["cancelled", "requested"]);
+  });
 });
 
 describe("paquete personalizado desde el expediente (catálogo y condiciones personalizadas reales)", () => {
