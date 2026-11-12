@@ -293,7 +293,12 @@ export class ImplementationService {
       opportunityId = opp.id;
     }
     const open = await this.d.store.openFor(companyId, solutionKey!);
-    if (open) return { order: open, created: false };
+    if (open) {
+      // La solicitud que llega con un expediente ya abierto queda atendida por él: si se quedara pendiente, al cerrar
+      // ese expediente bloquearía una contratación nueva de la empresa (server/commerce/panelRequests.ts)
+      if (leadRequest && this.d.markAttended) await this.d.markAttended(leadRequest.id, actor).catch(() => undefined);
+      return { order: open, created: false };
+    }
     const sol = await this.solutionOf(solutionKey!);
     let order: ImplementationOrder;
     try {

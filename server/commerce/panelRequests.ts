@@ -66,7 +66,11 @@ export class PanelRequestError extends Error {
 
 /** Línea de la empresa en el mensaje de la solicitud: también identifica de qué empresa es (openRequestFor). */
 const companyLine = (name: string, tenantId: string) => `Empresa cliente: ${name} (${tenantId}).`;
-const fromTenant = (message: string | null, tenantId: string) => (message ?? "").split("\n").some((l) => l.startsWith("Empresa cliente: ") && l.endsWith(` (${tenantId}).`));
+/** Solo la 2.ª línea, la que escribe el servidor: el mensaje libre va después y podría imitarla (otra empresa). */
+const fromTenant = (message: string | null, tenantId: string) => {
+  const l = (message ?? "").split("\n")[1] ?? "";
+  return l.startsWith("Empresa cliente: ") && l.endsWith(` (${tenantId}).`);
+};
 /** Origen de cada tipo de solicitud del panel para un producto (la contratación asistida y el interés se distinguen así). */
 const sourceFor = (key: string, type: PanelRequestBody["type"]) => `${PANEL_REQUEST_SOURCE}/${key}${type === "waitlist" ? "#me-interesa" : type === "implementation" ? ASSISTED_CONTRACT_COPY.sourceFragment : ""}`;
 const REQUEST_STATUS_LABEL: Record<string, string> = { pending: "Pendiente de atender", attended: "Atendida", discarded: "Descartada" };

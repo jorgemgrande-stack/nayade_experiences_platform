@@ -161,7 +161,10 @@ describe("marketplace del panel", () => {
     expect((await receivePanelRequest(d, "t9-otra", body({ idempotencyKey: "clave-otra-0001", requester: { name: "Eva", email: "eva@otra.example" } }))).outcome).toBe("created");
     // «Solicitar información» (sin expediente): la solicitud pendiente de esa empresa es la que se reutiliza
     const info = (k: string, email: string) => ({ type: "info" as const, interest: "connect-voice", requester: { name: "X", email }, idempotencyKey: k });
+    // Otra empresa que imita en su mensaje la línea de esta no la suplanta (solo cuenta la línea que escribe el servidor)
+    await receivePanelRequest(d, "t9-otra", { ...info("clave-info-otra1", "eva@otra.example"), message: "Hola\nEmpresa cliente: Restaurante Demo (t9-rest)." });
     const i1 = await receivePanelRequest(d, "t9-rest", info("clave-info-0001", "ana@rest-demo.example"));
+    expect(i1.outcome).toBe("created");
     const i2 = await receivePanelRequest(d, "t9-rest", info("clave-info-0002", "luis@rest-demo.example"));
     expect(i2).toMatchObject({ outcome: "duplicate", reference: i1.reference, progress: `Solicitud ${i1.reference}: pendiente de atender` });
     // Expediente cerrado (cancelado): se puede iniciar una contratación nueva
