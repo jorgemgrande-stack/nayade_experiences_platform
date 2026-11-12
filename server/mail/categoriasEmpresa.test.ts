@@ -113,4 +113,16 @@ describe("alcance transaccional de las empresas", () => {
     for (const c of TENANT_TRANSACTIONAL_SCOPE) expect(scopeAllows(p, "empresa", c)).toBe(true);
     for (const c of ["legacy", "marketing", "survey", "service_notice", undefined]) expect(scopeAllows(p, "empresa", c)).toBe(false);
   });
+
+  it("plantillas del gestor: lo comercial es «marketing»; lo de la reserva, operativo", async () => {
+    const { categoryForTemplate } = await import("./types");
+    for (const k of ["commercial_reminder_1", "commercial_reminder_3", "marketing_x", "newsletter", "promo_verano", "campaign_a"]) expect(categoryForTemplate(k), k).toBe("marketing");
+    for (const k of ["cancellation_accepted", "installment_reminder", "pending_payment_reminder", "reservation_confirmation"]) expect(categoryForTemplate(k), k).toBe("operational");
+    expect(categoryForTemplate("quote_sent")).toBe("quote_sent");
+  });
+
+  it("automatizaciones: operativo solo para reservas y facturas; leads y presupuestos sin respuesta, «marketing»", () => {
+    const src = fs.readFileSync(path.join(__dirname, "../automations/actions.ts"), "utf8");
+    expect(src).toContain('action.purpose !== "commercial" && (e.type === "reservation" || e.type === "invoice") ? "operational" : "marketing"');
+  });
 });

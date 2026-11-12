@@ -87,6 +87,8 @@ export function categoryForTemplate(templateKey: string | null | undefined): Mai
   if (k === "quote" || k.startsWith("quote_")) return "quote_sent";
   if (k === "invite") return "user_invite";
   if (k === "password_reset") return "password_reset";
+  // Recordatorios comerciales, promociones y boletines: «marketing» (no salen por el correo operativo de las empresas)
+  if (/^(commercial|marketing|promo|newsletter|campaign)/.test(k)) return "marketing";
   return "operational";
 }
 
