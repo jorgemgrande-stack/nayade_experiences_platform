@@ -35,6 +35,7 @@ import {
   type MilestoneKind,
   type StartMode,
 } from "./store";
+import { connectOverlap } from "../../shared/connectAssisted";
 import { GENERIC_TEMPLATE, checklistEventDetail, checklistKeyOf, netCommitmentsText, sectionOf, templateFor } from "./templates";
 
 export const ASSISTED_TRIAL_DAYS = 15;
@@ -529,7 +530,7 @@ export class ImplementationService {
       if (o.status !== "requested" && o.status !== "proposal") throw new ImplementationError("invalid_state", "El expediente ya tiene el contrato aceptado: el paquete ya no se prepara desde aquí");
       if (isPaidOrder(o)) throw new ImplementationError("invalid_state", "Este expediente lo abrió una contratación ya hecha: no se prepara otro contrato");
       const commitments = netCommitmentsText(o.solutionKey);
-      if (!commitments) throw new ImplementationError("invalid_input", "El paquete con compromisos de implantación es solo para los productos Net de empresa");
+      if (!commitments) throw new ImplementationError("invalid_input", "El paquete con compromisos de implantación es solo para los productos Net de empresa y los Connect de contratación asistida");
       const prev = [...(await this.d.store.events(o.id))].reverse().find((e) => e.type === "package");
       const prevId = Number(/condiciones #(\d+)/.exec(prev?.detail ?? "")?.[1] ?? 0);
       if (prevId) {
@@ -552,6 +553,9 @@ export class ImplementationService {
         if (!this.d.packages.subscriptionBase || !this.d.packages.createForSubscription) throw new ImplementationError("unavailable", "Las condiciones personalizadas sobre una suscripción no están disponibles en este entorno");
         const base = await this.d.packages.subscriptionBase(subscriptionId);
         if (base.input.lines.some((l) => l.productKey === o.solutionKey)) throw new ImplementationError("invalid_state", `La suscripción #${subscriptionId} ya incluye ${product.name}`);
+        // Paquete Connect sobre un componente que ya se paga (o al revés): sería cobrar dos veces lo mismo
+        const overlap = base.input.lines.find((l) => !!l.productKey && connectOverlap(l.productKey, o.solutionKey));
+        if (overlap) throw new ImplementationError("invalid_state", `La suscripción #${subscriptionId} ya incluye «${overlap.productKey}», que forma parte de ${product.name} (o al revés): se resuelve como sustitución, no con un segundo contrato`);
         const kind = base.interval === "year" ? "yearly" : "monthly";
         const price = product.prices.find((x) => x.kind === kind && x.status === "approved");
         if (!price) throw new ImplementationError("invalid_state", `«${product.name}» no tiene precio ${base.interval === "year" ? "anual" : "mensual"} publicado, y la suscripción #${subscriptionId} es ${base.interval === "year" ? "anual" : "mensual"}`);

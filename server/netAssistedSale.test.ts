@@ -92,10 +92,9 @@ describe("marketplace del panel", () => {
     const stn = out.find((i) => i.key === "social-token-net-complete")!;
     expect(stn.assisted).toBeNull();
     expect(primaryAction(stn, view).kind).toBe("purchase");
-    // Lo que no es Net bajo solicitud sigue con «Solicitar información»
-    const voice = out.find((i) => i.key === "connect-voice")!;
-    expect(voice.assisted).toBeNull();
-    expect(primaryAction(voice, view)).toMatchObject({ kind: "request", label: "Solicitar información" });
+    // Connect de contratación directa: «Contratar ahora» como siempre (los asistidos: server/connectAssistedSale.test.ts)
+    const people = out.find((i) => i.key === "connect-people")!;
+    expect(people.assisted).toBeNull();
     // Contratado: ya no se ofrece
     const grants = [{ tenantId: "t", capabilityId: "hotel-net", siteId: "", status: "active" as const, validUntil: null, source: "subscription:1", updatedAt: NOW, updatedBy: "x" }];
     const owned = buildConnectCatalog({ items: items() }, grants, NOW, "essential").find((i) => i.key === "hotel-net-complete")!;
@@ -125,8 +124,8 @@ describe("marketplace del panel", () => {
     await receivePanelRequest(d, "t9-hotel", body({ idempotencyKey: "clave-impl-0002" })).catch(() => undefined);
     await flush();
     expect(impl.rows).toHaveLength(1);
-    // Solo productos de clase B: Social Token Net (A), Life Net, Connect o algo en preparación, no
-    for (const interest of ["social-token-net-complete", "connect-voice", "ski-net-school"]) {
+    // Solo contratación asistida: Social Token Net (A), Life Net, un Connect de venta directa o algo en preparación, no
+    for (const interest of ["social-token-net-complete", "connect-people", "ski-net-school"]) {
       await expect(receivePanelRequest(d, "t9-hotel", body({ interest, idempotencyKey: `clave-${interest}` }))).rejects.toMatchObject({ status: 409 });
     }
     await expect(receivePanelRequest(d, "t9-hotel", body({ interest: "life-net", idempotencyKey: "clave-life" }))).rejects.toMatchObject({ status: 404 });
