@@ -287,7 +287,7 @@ export default function ConnectPage() {
                         <div key={seg.id} className="space-y-3">
                           {seg.title && <h3 className="text-base font-semibold text-foreground sm:text-lg">{seg.title}</h3>}
                           {asGrid ? (
-                            <ul className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4">
+                            <ul className="grid grid-cols-[repeat(auto-fill,minmax(min(100%,19rem),1fr))] gap-5">
                               {seg.items.map((i) => (
                                 <li key={i.key}>
                                   <ProductCard item={i} view={view} onAction={openDialog} />
