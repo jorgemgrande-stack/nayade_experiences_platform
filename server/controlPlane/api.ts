@@ -77,7 +77,7 @@ import { createLeadNoticesRouter } from "../crm/leadNoticesApi";
 import type { AdminAlertService } from "../adminAlerts/service";
 import { createAdminAlertsRouter } from "../adminAlerts/api";
 import type { DataRequestService } from "../dataRequests/service";
-import { ImplementationService, type Assignee as ImplementationAssignee } from "../implementation/service";
+import { ImplementationService, type Assignee as ImplementationAssignee, type SubscriptionBase } from "../implementation/service";
 import type { ImplementationStore } from "../implementation/store";
 import { createImplementationRouter } from "../implementation/api";
 import { solutionFromWebStore, subscriptionStarter } from "../implementation/ports";
@@ -113,7 +113,7 @@ import type { TermsBillingStore } from "../commercialTerms/billingStore";
 import { StripeNegotiatedGateway, catalogProductsOf } from "../commercialTerms/stripeGateway";
 import { NegotiatedBillingService, createNegotiatedBillingRouter } from "../commercialTerms/stripeBilling";
 import { TermsLicences, createTermsLicencesRouter } from "../commercialTerms/licences";
-import { CommercialTermsService } from "../commercialTerms/service";
+import { CommercialTermsService, type TermsInput } from "../commercialTerms/service";
 import type { TermsStore } from "../commercialTerms/store";
 import { catalogFromWebStore, crmFromStore } from "../subscriptions/ports";
 import { SubscriptionService as ContractSubscriptionService } from "../subscriptions/service";
@@ -2304,16 +2304,18 @@ export function createControlPlaneApp(d: ControlPlaneDeps): Express {
         packages: commercialTerms
           ? {
               offer: ((c) => () => c.offer())(catalogFromWebStore(d.web.store)),
-              companyPlan: async (companyId) => {
+              liveSubscription: async (companyId) => {
                 const at = d.subscriptions!.now?.() ?? Date.now();
                 // Solo una suscripción de pago: la de una prueba gratuita («trialing») no da plan Core al paquete
                 for (const s of await d.subscriptions!.store.list({ companyId })) {
                   if (s.status !== "active") continue;
                   const plan = (await d.subscriptions!.store.items(s.id)).find((i) => i.family === "core_plan" && i.effectiveFrom <= at && (i.effectiveTo === null || i.effectiveTo > at));
-                  if (plan) return plan.productKey;
+                  if (plan) return s.id;
                 }
                 return null;
               },
+              subscriptionBase: async (subscriptionId) => (await commercialTerms.base(subscriptionId)) as unknown as SubscriptionBase,
+              createForSubscription: (subscriptionId, input, actor) => commercialTerms.createForSubscription(subscriptionId, input as unknown as TermsInput, actor),
               create: (companyId, input, actor) => commercialTerms.createPackage(companyId, input, actor),
               get: async (termsId) => commercialTerms.must(termsId).catch(() => null),
               ofCompany: async (companyId) => (await d.subscriptions!.terms!.list({ companyId })).map((t) => ({ id: t.id, status: t.status, companyId: t.companyId, acceptanceStatus: t.acceptanceStatus, productKeys: t.lines.map((l) => l.productKey).filter((k): k is string => !!k) })),

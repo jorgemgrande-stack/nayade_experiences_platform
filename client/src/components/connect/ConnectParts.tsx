@@ -509,7 +509,7 @@ function AssistedSummary({ item, planName }: { item: ConnectCatalogItem; planNam
       {a.available.length > 0 && (
         <div>
           <p className="font-semibold text-foreground">{ASSISTED_CONTRACT_COPY.availableTitle}</p>
-          <ul className="mt-1 list-disc space-y-0.5 pl-5 text-muted-foreground">
+          <ul className="mt-1 list-disc space-y-0.5 pl-5 text-muted-foreground sm:columns-2 sm:gap-6">
             {a.available.map((f) => (
               <li key={f}>{f}</li>
             ))}
@@ -540,6 +540,40 @@ function AssistedSummary({ item, planName }: { item: ConnectCatalogItem; planNam
  * «Solicitar información» o «Me interesa». El servidor decide el canal (oportunidad en el CRM o, si aún no existe,
  * incidencia de soporte) y la confirmación dice lo que ha pasado de verdad.
  */
+/**
+ * Caja del diálogo de solicitud: con altura máxima y desplazamiento propio. La contratación asistida lista todas las
+ * funcionalidades (Restaurant Net, 15): sin esto el pie con «Solicitar contratación» quedaba fuera de la pantalla, el
+ * fondo bloqueado no dejaba bajar y un clic en esa zona caía en la capa de fondo, que cierra el diálogo sin enviar nada.
+ */
+export const REQUEST_DIALOG_CLASS = "cx-stage cx-market max-h-[90dvh] overflow-y-auto";
+
+/** Lo que envía «Enviar solicitud» / «Solicitar contratación» (el servidor decide el canal). Puro. */
+export function requestInput(item: Pick<ConnectCatalogItem, "key">, kind: RequestKind, message: string): { key: string; type: RequestKind; message?: string } {
+  return { key: item.key, type: kind, ...(message.trim() ? { message: message.trim() } : {}) };
+}
+/** Texto del botón de envío del diálogo. Puro. */
+export function requestSubmitLabel(kind: RequestKind, pending: boolean): string {
+  return pending ? "Enviando…" : kind === "implementation" ? ASSISTED_CONTRACT_COPY.confirm : kind === "waitlist" ? "Confirmar mi interés" : "Enviar solicitud";
+}
+
+/** Confirmación tras enviar (lo que ha pasado de verdad: solicitud del CRM o incidencia de soporte). */
+export function RequestDone({ kind, done }: { kind: RequestKind; done: { via: "lead" | "ticket"; outcome?: string; reference?: string | null; email: string } }) {
+  return (
+    <div role="status" className="rounded-xl border border-success/40 bg-success/10 p-4 text-sm text-foreground">
+      {kind === "implementation" && <p className="mb-1 font-semibold">{ASSISTED_CONTRACT_COPY.done}</p>}
+      {done.via === "lead" ? (
+        <p>
+          {done.outcome === "duplicate" ? `Ya tenías una solicitud abierta${done.reference ? ` (${done.reference})` : ""}.` : `Solicitud enviada${done.reference ? `, referencia ${done.reference}` : ""}.`} Te responderemos en <strong>{done.email}</strong>.
+        </p>
+      ) : (
+        <p>
+          Hemos abierto una solicitud en Soporte con tu petición. Puedes seguirla allí; te responderemos en <strong>{done.email}</strong>.
+        </p>
+      )}
+    </div>
+  );
+}
+
 export function RequestDialog({
   item,
   kind,
@@ -567,7 +601,7 @@ export function RequestDialog({
   const done = send.data;
   return (
     <Dialog open onOpenChange={(o) => !o && onClose()}>
-      <DialogContent className="cx-stage cx-market">
+      <DialogContent className={REQUEST_DIALOG_CLASS}>
         <DialogHeader>
           <DialogTitle>{assisted ? ASSISTED_CONTRACT_COPY.title(item.name) : waitlist ? `Me interesa ${item.name}` : kind === "contact" ? `Contactar sobre ${item.name}` : `Solicitar información de ${item.name}`}</DialogTitle>
           <DialogDescription>
@@ -582,21 +616,7 @@ export function RequestDialog({
         </DialogHeader>
         {assisted && !done && <AssistedSummary item={item} planName={planName} />}
         {done ? (
-          <div role="status" className="rounded-xl border border-success/40 bg-success/10 p-4 text-sm text-foreground">
-            {assisted && <p className="mb-1 font-semibold">{ASSISTED_CONTRACT_COPY.done}</p>}
-            {done.via === "lead" ? (
-              <p>
-                {done.outcome === "duplicate"
-                  ? `Ya tenías una solicitud abierta${done.reference ? ` (${done.reference})` : ""}.`
-                  : `Solicitud enviada${done.reference ? `, referencia ${done.reference}` : ""}.`}{" "}
-                Te responderemos en <strong>{done.email}</strong>.
-              </p>
-            ) : (
-              <p>
-                Hemos abierto una solicitud en Soporte con tu petición. Puedes seguirla allí; te responderemos en <strong>{done.email}</strong>.
-              </p>
-            )}
-          </div>
+          <RequestDone kind={kind} done={done} />
         ) : requestsEnabled ? (
           <label className="block space-y-1 text-sm">
             <span className="text-foreground">¿Algo que debamos saber? (opcional)</span>
@@ -610,8 +630,8 @@ export function RequestDialog({
             Cerrar
           </Button>
           {requestsEnabled && !done && (
-            <Button type="button" disabled={send.isPending} onClick={() => send.mutate({ key: item.key, type: kind, ...(message.trim() ? { message: message.trim() } : {}) })}>
-              {send.isPending ? "Enviando…" : assisted ? ASSISTED_CONTRACT_COPY.confirm : waitlist ? "Confirmar mi interés" : "Enviar solicitud"}
+            <Button type="button" disabled={send.isPending} onClick={() => send.mutate(requestInput(item, kind, message))}>
+              {requestSubmitLabel(kind, send.isPending)}
             </Button>
           )}
           {done?.via === "ticket" && (
