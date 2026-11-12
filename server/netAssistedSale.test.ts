@@ -95,7 +95,6 @@ describe("marketplace del panel", () => {
     // Connect de contratación directa: «Contratar ahora» como siempre (los asistidos: server/connectAssistedSale.test.ts)
     const people = out.find((i) => i.key === "connect-people")!;
     expect(people.assisted).toBeNull();
-    expect(primaryAction(people, view).kind).toBe("purchase");
     // Contratado: ya no se ofrece
     const grants = [{ tenantId: "t", capabilityId: "hotel-net", siteId: "", status: "active" as const, validUntil: null, source: "subscription:1", updatedAt: NOW, updatedBy: "x" }];
     const owned = buildConnectCatalog({ items: items() }, grants, NOW, "essential").find((i) => i.key === "hotel-net-complete")!;

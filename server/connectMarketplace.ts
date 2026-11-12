@@ -196,8 +196,8 @@ export function buildConnectCatalog(
   return shownItems.map((item): ConnectItem => {
     const np = netProductOf(item.key);
     // Connect de contratación asistida (12/11/2026): se contrata aunque el catálogo diga «próximamente» o «en
-    // preparación» (lo pendiente va como «en implantación»); retirado o sin publicar, regla de siempre
-    const assistedConnect = item.commercialStatus === "unpublished" || item.commercialStatus === "retired" ? null : connectAssistedOf(item.key);
+    // preparación» (lo pendiente va como «en implantación»); los retirados no llegan aquí como producto vigente
+    const assistedConnect = connectAssistedOf(item.key);
     const legacyDecl = isLegacy(item) ? (legacyOf(item.legacy) ?? (netProductOfLegacy(item.key) ? { replacedBy: netProductOfLegacy(item.key)!.key } : null)) : null;
     const successor = legacyDecl ? { key: legacyDecl.replacedBy, name: netProductOf(legacyDecl.replacedBy)?.name ?? productName(legacyDecl.replacedBy) } : null;
     const seed = seedOf(item.key);

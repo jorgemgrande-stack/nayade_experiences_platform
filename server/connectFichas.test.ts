@@ -187,7 +187,8 @@ describe("ficha resuelta: catálogo central, reserva de la semilla y nada invent
     expect(states).toMatchObject({
       "connect-campaigns": "available",
       "connect-people": "on_request",
-      "connect-voice": "coming_soon",
+      // Connect de contratación asistida (12/11/2026): «próximamente» en el catálogo se contrata igual, bajo solicitud
+      "connect-voice": "on_request",
       "connect-deals": "active",
     });
     // Elephant Net: las antiguas extensiones sectoriales no aparecen como producto
