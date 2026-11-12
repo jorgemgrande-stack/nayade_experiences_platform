@@ -350,7 +350,7 @@ export function SheetBlocks({
                 <h2 id="cx-relacionados-t" className="text-xl font-bold text-foreground">
                   Productos relacionados
                 </h2>
-                <ul className="grid gap-5 md:grid-cols-2">
+                <ul className="grid grid-cols-[repeat(auto-fill,minmax(min(100%,19rem),1fr))] gap-5">
                   {related.map((r) => (
                     <li key={r.key}>
                       <ProductCard item={r} view={view} onAction={onAction} headingLevel={3} />

@@ -456,7 +456,7 @@ export function ProductCard({
         {item.sheet.media.card?.kind === "illustration" && <ImageKindNote kind="illustration" className="absolute right-3 top-11" />}
       </div>
       <div className="flex min-w-0 flex-1 flex-col gap-3 p-4 sm:p-5">
-        {lead && <p className="line-clamp-2 text-sm text-muted-foreground">{lead}</p>}
+        {lead && <p className="line-clamp-4 break-words text-sm text-muted-foreground">{lead}</p>}
         <ActivationLine activation={plainActive(activation) ? { ...activation, state: "none" } : activation} />
         <ActivationActionsBar productKey={item.key} activation={activation} canRetry={!!view.canRetryActivation} className="relative z-10" />
         <div className="mt-auto flex flex-wrap items-end justify-between gap-x-3 gap-y-2 pt-1">
@@ -469,14 +469,19 @@ export function ProductCard({
             <BigPrice prices={item.prices} />
           )}
         </div>
-        <div className="relative z-10 flex gap-2">
+        {/*
+          Acciones (solo CSS, sin medir): en fila mientras caben (la principal se lleva casi todo el espacio libre) y, si
+          no, cada una en su línea a todo el ancho. Un texto largo («Contratar e iniciar implantación») parte en dos líneas
+          dentro del botón en vez de desbordar la tarjeta; ninguna acción se recorta.
+        */}
+        <div data-card-actions className="relative z-10 flex min-w-0 flex-wrap gap-2">
           {hasAction && (
-            <Button type="button" size="sm" className="h-10 flex-1 rounded-xl font-semibold" onClick={run}>
+            <Button type="button" size="sm" className="h-auto min-h-10 min-w-0 max-w-full shrink grow-[999] basis-44 whitespace-normal break-words rounded-xl py-2 text-center font-semibold leading-tight" onClick={run}>
               {action.label}
               <span className="sr-only"> · {item.name}</span>
             </Button>
           )}
-          <Button asChild variant="outline" size="sm" className={cn("h-10 rounded-xl bg-transparent", hasAction ? "shrink-0 px-3" : "flex-1")}>
+          <Button asChild variant="outline" size="sm" className="h-auto min-h-10 max-w-full shrink-0 grow basis-auto rounded-xl bg-transparent px-3 py-2">
             <Link href={href}>
               Ver ficha <ChevronRight className="h-4 w-4" aria-hidden="true" />
               <span className="sr-only"> de {item.name}</span>

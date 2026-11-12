@@ -52,17 +52,24 @@ export function Rail({ label, children, itemClassName }: { label: string; childr
     e.preventDefault();
   };
 
+  // `@container`: el ancho de cada tarjeta depende del espacio REAL del carril, no del viewport (con el menú lateral del
+  // panel, a 1024 px quedaban tres tarjetas de ~220 px y las acciones no cabían). 2 por fila desde 42rem de carril, 3
+  // desde 64rem y 4 desde 80rem: cada tarjeta mide siempre ≥ ~19rem. Cada elemento es flex para que todas las tarjetas
+  // de la fila tengan la misma altura (acciones alineadas abajo).
   return (
-    <div className="relative">
+    <div className="relative @container">
       <ul
         ref={ref}
         tabIndex={0}
         aria-label={label}
         onKeyDown={onKey}
-        className="cx-rail -mx-1 -my-4 flex scroll-px-1 snap-x snap-mandatory gap-4 overflow-x-auto px-1 py-4 sm:gap-5"
+        className="cx-rail -mx-1 -my-4 flex scroll-px-1 snap-x snap-mandatory gap-4 overflow-x-auto px-1 py-4 @2xl:gap-5"
       >
         {items.map((child, i) => (
-          <li key={isValidElement(child) && child.key != null ? child.key : i} className={cn("w-[84%] shrink-0 snap-start sm:w-[calc((100%-1.25rem)/2)] lg:w-[calc((100%-2.5rem)/3)] 2xl:w-[calc((100%-3.75rem)/4)]", itemClassName)}>
+          <li
+            key={isValidElement(child) && child.key != null ? child.key : i}
+            className={cn("flex w-[84%] min-w-0 max-w-[26rem] shrink-0 snap-start [&>*]:w-full @2xl:w-[calc((100%-1.25rem)/2)] @2xl:max-w-none @5xl:w-[calc((100%-2.5rem)/3)] @7xl:w-[calc((100%-3.75rem)/4)]", itemClassName)}
+          >
             {child}
           </li>
         ))}
