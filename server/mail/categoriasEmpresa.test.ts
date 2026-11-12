@@ -83,9 +83,9 @@ describe("correo operativo de las empresas: categorías explícitas", () => {
     expect(tk).toMatch(/async function sendEmail\(opts: \{[^}]*category: MailCategory/);
   });
 
-  it("las automatizaciones de correo salen como «marketing» (fuera del alcance)", () => {
+  it("los recordatorios automáticos sin consentimiento comprobado no salen («legacy», fuera del ámbito)", () => {
     const job = fs.readFileSync(path.join(SERVER, "emailAutomationJob.ts"), "utf8");
-    expect(job).toMatch(/sendEmail\(\{[^)]*category: "marketing"/);
+    expect(job).toMatch(/sendEmail\(\{[^)]*category: "legacy"/);
   });
 });
 
@@ -123,6 +123,9 @@ describe("alcance transaccional de las empresas", () => {
 
   it("automatizaciones: operativo solo para reservas y facturas; leads y presupuestos sin respuesta, «marketing»", () => {
     const src = fs.readFileSync(path.join(__dirname, "../automations/actions.ts"), "utf8");
-    expect(src).toContain('action.purpose !== "commercial" && (e.type === "reservation" || e.type === "invoice") ? "operational" : "marketing"');
+    // Lo comercial (también leads y presupuestos con una regla «operativa») exige consentimiento y enlace de baja
+    expect(src).toContain('const commercial = action.purpose === "commercial" || !(e.type === "reservation" || e.type === "invoice");');
+    expect(src).toContain("if (commercial) {");
+    expect(src).toContain('const category = commercial ? "marketing" : "operational";');
   });
 });

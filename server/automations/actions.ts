@@ -85,7 +85,10 @@ export async function runAction(action: AutomationAction, ctx: ActionContext, d:
       if (!to) return skip("sin_correo");
       if (await d.paused(to)) return skip("cliente_en_pausa");
       let unsubscribeUrl: string | null = null;
-      if (action.purpose === "commercial") {
+      // Comercial: la regla lo dice o no trata de una reserva o factura del cliente (leads, presupuestos sin respuesta).
+      // Lo comercial exige consentimiento y enlace de baja SIEMPRE, también si la regla dice «operativo»
+      const commercial = action.purpose === "commercial" || !(e.type === "reservation" || e.type === "invoice");
+      if (commercial) {
         const clientId = await d.commercialRecipient(to);
         if (clientId == null) return skip("sin_consentimiento");
         unsubscribeUrl = await d.unsubscribeLink(clientId);
@@ -97,9 +100,7 @@ export async function runAction(action: AutomationAction, ctx: ActionContext, d:
       const subject = renderText(action.subject, e.vars, true).slice(0, 200);
       if (ctx.dry) return ok(would(`correo «${subject}» a ${maskEmail(to)}`));
       const c = d.renderEmail(subject, renderText(action.body, e.vars), e.name, unsubscribeUrl);
-      // Operativo solo si trata de una reserva o factura del cliente; lo demás (leads, presupuestos sin respuesta) es
-      // comercial aunque la regla diga otra cosa: «marketing» no sale por el correo operativo de las empresas
-      const category = action.purpose !== "commercial" && (e.type === "reservation" || e.type === "invoice") ? "operational" : "marketing";
+      const category = commercial ? "marketing" : "operational";
       const sent = await d.sendEmail({ to, subject, html: c.html, text: c.text, idempotencyKey: runKeyText(ctx.key), category }).catch(() => false);
       return sent ? ok(`Correo «${subject}» a ${maskEmail(to)}`) : fail("envio_fallido");
     }
