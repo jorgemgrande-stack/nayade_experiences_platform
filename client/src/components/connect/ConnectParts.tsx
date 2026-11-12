@@ -502,6 +502,34 @@ export function ProductCard({
  */
 export type RequestKind = "info" | "waitlist" | "contact" | "implementation";
 
+/** Lo disponible desde la puesta en marcha y lo que está en implantación (diálogo y ficha de Connect). */
+export function AssistedFeatures({ assisted: a }: { assisted: NonNullable<ConnectCatalogItem["assisted"]> }) {
+  return (
+    <>
+        {a.available.length > 0 && (
+          <div>
+            <p className="font-semibold text-foreground">{ASSISTED_CONTRACT_COPY.availableTitle}</p>
+            <ul className="mt-1 list-disc space-y-0.5 pl-5 text-muted-foreground sm:columns-2 sm:gap-6">
+              {a.available.map((f) => (
+                <li key={f}>{f}</li>
+              ))}
+            </ul>
+          </div>
+        )}
+        {a.inImplementation.length > 0 && (
+          <div>
+            <p className="font-semibold text-foreground">{ASSISTED_CONTRACT_COPY.inImplementationTitle}</p>
+            <ul className="mt-1 list-disc space-y-0.5 pl-5 text-muted-foreground">
+              {a.inImplementation.map((f) => (
+                <li key={f}>{f}</li>
+              ))}
+            </ul>
+          </div>
+        )}
+    </>
+  );
+}
+
 /** Lo que se contrata en la contratación asistida: precio publicado, plan y funcionalidades (disponibles y en implantación). */
 function AssistedSummary({ item, planName }: { item: ConnectCatalogItem; planName: string | null }) {
   const a = item.assisted;
@@ -511,26 +539,7 @@ function AssistedSummary({ item, planName }: { item: ConnectCatalogItem; planNam
       <p className="text-foreground">
         <strong>{ASSISTED_CONTRACT_COPY.priceLine(formatMoney(a.monthly.amountCents, a.monthly.currency), a.monthly.taxIncluded)}</strong> {ASSISTED_CONTRACT_COPY.planLine(planName)}
       </p>
-      {a.available.length > 0 && (
-        <div>
-          <p className="font-semibold text-foreground">{ASSISTED_CONTRACT_COPY.availableTitle}</p>
-          <ul className="mt-1 list-disc space-y-0.5 pl-5 text-muted-foreground sm:columns-2 sm:gap-6">
-            {a.available.map((f) => (
-              <li key={f}>{f}</li>
-            ))}
-          </ul>
-        </div>
-      )}
-      {a.inImplementation.length > 0 && (
-        <div>
-          <p className="font-semibold text-foreground">{ASSISTED_CONTRACT_COPY.inImplementationTitle}</p>
-          <ul className="mt-1 list-disc space-y-0.5 pl-5 text-muted-foreground">
-            {a.inImplementation.map((f) => (
-              <li key={f}>{f}</li>
-            ))}
-          </ul>
-        </div>
-      )}
+      <AssistedFeatures assisted={a} />
       <ol className="list-decimal space-y-0.5 pl-5 text-muted-foreground">
         {ASSISTED_CONTRACT_COPY.steps.map((s) => (
           <li key={s}>{s}</li>

@@ -138,4 +138,14 @@ describe("Elephant Connect: contratación directa o asistida", () => {
     expect(k("retired")).toBeNull();
     expect(k("unpublished")).toBeNull();
   });
+
+  it("la ficha de un Connect asistido muestra lo disponible y lo que está en implantación (no solo el diálogo)", async () => {
+    const fs = await import("node:fs");
+    const page = fs.readFileSync(new URL("../client/src/pages/admin/connect/ConnectDetailPage.tsx", import.meta.url), "utf8");
+    expect(page).toMatch(/action\.kind === "assisted" && item\.assisted && !item\.net && \(/);
+    expect(page).toContain("<AssistedFeatures assisted={item.assisted} />");
+    const parts = fs.readFileSync(new URL("../client/src/components/connect/ConnectParts.tsx", import.meta.url), "utf8");
+    expect(parts).toContain("export function AssistedFeatures(");
+    expect(parts).toContain("ASSISTED_CONTRACT_COPY.inImplementationTitle");
+  });
 });

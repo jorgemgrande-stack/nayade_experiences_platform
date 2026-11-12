@@ -21,7 +21,7 @@ import { brandHeaders, brandOf, conversionPlanText, conversionSupportText, PURCH
 import { periodLabel, sortPrices, taxLabel, formatMoney } from "@shared/connectCard";
 import { ACTIVATION_LABELS, activationActions, activationLabel, activationOf, primaryAction, type ConnectActivation, type PrimaryAction } from "@shared/connectShowcase";
 import { ASSISTED_CONTRACT_COPY } from "@shared/netOffer";
-import { ActivationActionsBar, BigPrice, goTo, ImageKindNote, ProductIcon, ProductMedia, PurchaseDialog, RequestDialog, StateBadge, type ConnectView, type RequestKind } from "@/components/connect/ConnectParts";
+import { ActivationActionsBar, AssistedFeatures, BigPrice, goTo, ImageKindNote, ProductIcon, ProductMedia, PurchaseDialog, RequestDialog, StateBadge, type ConnectView, type RequestKind } from "@/components/connect/ConnectParts";
 import { SHEET_ANCHORS, SheetBlocks, sheetAnchorTargets } from "@/components/connect/SheetBlocks";
 import { AMPLIAR_PATH } from "@/components/connect/LockedFeature";
 import { useConnectAttempt, useConnectCatalog, useOrderTracking, type ConnectCatalogItem } from "@/components/connect/useConnect";
@@ -354,6 +354,12 @@ function ContractPanel({
         {action.kind === "purchase" && <p className="text-xs text-muted-foreground">Te mostramos el importe exacto antes de confirmar. Se activa cuando el cobro queda verificado.</p>}
         {action.kind === "convert" && <p className="text-xs text-muted-foreground">{conversionSupportText(item.name)}</p>}
         {action.kind === "assisted" && <p className="text-xs text-muted-foreground">{ASSISTED_CONTRACT_COPY.noPayment} {ASSISTED_CONTRACT_COPY.planLine(currentPlanName)}</p>}
+        {/* Connect asistido: lo disponible y lo pendiente (en Elephant Net lo dicen sus áreas en la ficha) */}
+        {action.kind === "assisted" && item.assisted && !item.net && (
+          <div className="space-y-3 border-t border-border pt-3 text-sm" data-assisted-features>
+            <AssistedFeatures assisted={item.assisted} />
+          </div>
+        )}
         {action.kind === "convert" && item.conversionPlan && item.conversionPlan !== currentPlan && <p className="text-xs text-muted-foreground">{conversionPlanText(item.name, item.conversionPlan)}</p>}
         {item.state === "activating" && attemptOrdered && (
           <Button type="button" variant="outline" className="w-full" onClick={onOpenOrder}>
