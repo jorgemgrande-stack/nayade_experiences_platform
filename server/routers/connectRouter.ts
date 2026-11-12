@@ -77,7 +77,7 @@ function moduleOpenPath(role: string): (capabilities: string[]) => string | null
  * sobre algo ya contratado).
  */
 export type ConnectRequestResult =
-  | { via: "lead"; outcome: "created" | "replayed" | "duplicate"; reference: string | null; email: string }
+  | { via: "lead"; outcome: "created" | "replayed" | "duplicate"; reference: string | null; email: string; progress?: string }
   | { via: "ticket"; email: string };
 
 /** Errores del canal de solicitudes en palabras de la persona (nunca el texto técnico del servicio). */
@@ -90,10 +90,12 @@ const REQUEST_ERRORS: Record<number, { code: TRPCError["code"]; message: string 
 
 const OUTCOMES = ["created", "replayed", "duplicate"] as const;
 function leadResult(raw: unknown, email: string): ConnectRequestResult {
-  const r = (raw && typeof raw === "object" ? raw : {}) as { outcome?: unknown; reference?: unknown };
+  const r = (raw && typeof raw === "object" ? raw : {}) as { outcome?: unknown; reference?: unknown; progress?: unknown };
   const outcome = (OUTCOMES as readonly unknown[]).includes(r.outcome) ? (r.outcome as (typeof OUTCOMES)[number]) : "created";
   const reference = typeof r.reference === "string" && /^[A-Za-z0-9-]{1,40}$/.test(r.reference) ? r.reference : null;
-  return { via: "lead", outcome, reference, email };
+  // Estado de la contratación que ya estaba en curso (expediente o solicitud), en texto del plano de control
+  const progress = typeof r.progress === "string" && r.progress.trim() ? r.progress.trim().slice(0, 160) : null;
+  return { via: "lead", outcome, reference, email, ...(progress ? { progress } : {}) };
 }
 
 /**

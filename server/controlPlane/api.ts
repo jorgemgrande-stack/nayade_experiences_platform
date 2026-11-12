@@ -2477,7 +2477,7 @@ export function createControlPlaneApp(d: ControlPlaneDeps): Express {
         // Solicitudes del marketplace del panel («Solicitar información» y «Me interesa») como solicitudes del CRM
         // Medición del marketplace (agregada, sin datos personales): sin la migración 0042, 202 y se descarta
         router.use("/commerce", createPanelEventsRouter({ store: d.web?.events ?? null }));
-        if (webRequests) router.use("/commerce", createPanelRequestsRouter({ site: () => wa.site("published"), requests: webRequests, crm: d.crm.store, internalTenants: d.stripe?.purchases?.internalTenants }));
+        if (webRequests) router.use("/commerce", createPanelRequestsRouter({ site: () => wa.site("published"), requests: webRequests, crm: d.crm.store, internalTenants: d.stripe?.purchases?.internalTenants, implementations: d.implementation?.store ?? null }));
         // Solicitudes de plan desde Suscripción: oportunidad del CRM de la empresa (o solicitud web si aún no tiene ficha)
         if (webRequests && d.crm) router.use("/commerce", createPlanRequestsRouter({ site: () => wa.site("published"), crm: d.crm.service, store: d.crm.store, requests: webRequests }));
       }

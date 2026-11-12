@@ -557,13 +557,17 @@ export function requestSubmitLabel(kind: RequestKind, pending: boolean): string 
 }
 
 /** Confirmación tras enviar (lo que ha pasado de verdad: solicitud del CRM o incidencia de soporte). */
-export function RequestDone({ kind, done }: { kind: RequestKind; done: { via: "lead" | "ticket"; outcome?: string; reference?: string | null; email: string } }) {
+export function RequestDone({ kind, done }: { kind: RequestKind; done: { via: "lead" | "ticket"; outcome?: string; reference?: string | null; email: string; progress?: string | null } }) {
+  const ongoing = done.via === "lead" && done.outcome === "duplicate";
   return (
     <div role="status" className="rounded-xl border border-success/40 bg-success/10 p-4 text-sm text-foreground">
-      {kind === "implementation" && <p className="mb-1 font-semibold">{ASSISTED_CONTRACT_COPY.done}</p>}
+      {kind === "implementation" && <p className="mb-1 font-semibold">{ongoing ? "Esta contratación ya está en curso" : ASSISTED_CONTRACT_COPY.done}</p>}
       {done.via === "lead" ? (
         <p>
-          {done.outcome === "duplicate" ? `Ya tenías una solicitud abierta${done.reference ? ` (${done.reference})` : ""}.` : `Solicitud enviada${done.reference ? `, referencia ${done.reference}` : ""}.`} Te responderemos en <strong>{done.email}</strong>.
+          {ongoing
+            ? `${kind === "implementation" ? "No hemos creado otra solicitud" : `Ya tenías una solicitud abierta${done.reference ? ` (${done.reference})` : ""}`}.${done.progress ? ` ${done.progress}.` : ""}`
+            : `Solicitud enviada${done.reference ? `, referencia ${done.reference}` : ""}.`}{" "}
+          Te responderemos en <strong>{done.email}</strong>.
         </p>
       ) : (
         <p>

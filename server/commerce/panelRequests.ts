@@ -30,6 +30,7 @@ import type { CrmStore } from "../crm/store";
 import { CrmError, type LeadRequestType } from "../crm/types";
 import { panelCatalog } from "./panelCatalog";
 import { ASSISTED_CONTRACT_COPY, netSaleKind } from "../../shared/netOffer";
+import { STATUS_LABEL, type ImplementationStore } from "../implementation/store";
 
 export const PANEL_REQUEST_SOURCE = "panel:/admin/ampliar";
 /** Versión de privacidad de las solicitudes del panel: la persona ya es cliente y actúa desde su cuenta. */
@@ -63,14 +64,48 @@ export class PanelRequestError extends Error {
   }
 }
 
+/** Línea de la empresa en el mensaje de la solicitud: también identifica de qué empresa es (openRequestFor). */
+const companyLine = (name: string, tenantId: string) => `Empresa cliente: ${name} (${tenantId}).`;
+/** Solo la 2.ª línea, la que escribe el servidor: el mensaje libre va después y podría imitarla (otra empresa). */
+const fromTenant = (message: string | null, tenantId: string) => {
+  const l = (message ?? "").split("\n")[1] ?? "";
+  return l.startsWith("Empresa cliente: ") && l.endsWith(` (${tenantId}).`);
+};
+/** Origen de cada tipo de solicitud del panel para un producto (la contratación asistida y el interés se distinguen así). */
+const sourceFor = (key: string, type: PanelRequestBody["type"]) => `${PANEL_REQUEST_SOURCE}/${key}${type === "waitlist" ? "#me-interesa" : type === "implementation" ? ASSISTED_CONTRACT_COPY.sourceFragment : ""}`;
+const REQUEST_STATUS_LABEL: Record<string, string> = { pending: "Pendiente de atender", attended: "Atendida", discarded: "Descartada" };
+
+export type PanelRequestResult = { outcome: string; reference: string; status: string; progress?: string };
+
+/**
+ * Contratación ya en curso de esa empresa para ese producto: el expediente de implantación abierto (cualquier estado
+ * antes de «Iniciada» o «Cancelada») o, si aún no lo hay, su solicitud pendiente del mismo tipo hecha desde el panel.
+ * Cerrado el expediente o atendida/descartada la solicitud sin expediente, se puede pedir de nuevo.
+ */
+async function openRequestFor(
+  d: { requests: WebRequestService; crm: CrmStore; implementations?: Pick<ImplementationStore, "openFor"> | null },
+  tenantId: string,
+  companyId: number | null,
+  key: string,
+  type: PanelRequestBody["type"],
+): Promise<PanelRequestResult | null> {
+  if (type === "implementation" && companyId !== null && d.implementations) {
+    const order = await d.implementations.openFor(companyId, key);
+    if (order) return { outcome: "duplicate", reference: order.reference, status: order.status, progress: `Expediente de implantación ${order.reference}: ${STATUS_LABEL[order.status].toLowerCase()}` };
+  }
+  const source = sourceFor(key, type);
+  const pending = (await d.crm.list("leadRequests", { interest: key, status: "pending" }, { desc: true, limit: 200 })).find((r) => r.sourcePage === source && fromTenant(r.message, tenantId));
+  return pending ? { outcome: "duplicate", reference: pending.reference, status: pending.status, progress: `Solicitud ${pending.reference}: ${REQUEST_STATUS_LABEL[pending.status].toLowerCase()}` } : null;
+}
+
 /**
  * Registra la solicitud. `site`: el sitio publicado; `internal`: la empresa puede ver productos internos de prueba.
  */
 export async function receivePanelRequest(
-  d: { site: SiteDocument; internal: boolean; requests: WebRequestService; crm: CrmStore },
+  d: { site: SiteDocument; internal: boolean; requests: WebRequestService; crm: CrmStore; implementations?: Pick<ImplementationStore, "openFor"> | null },
   tenantId: string,
   b: PanelRequestBody,
-): Promise<{ outcome: string; reference: string; status: string }> {
+): Promise<PanelRequestResult> {
   const visible = d.internal ? d.site : withoutInternal(d.site);
   const item = panelCatalog(quoteCatalogFromSite(visible).products, { version: "", purchasesEnabled: false }).items.find((i) => i.key === b.interest);
   if (!item) throw new PanelRequestError(404, "not_found", "Ese producto no está en tu catálogo");
@@ -85,6 +120,12 @@ export async function receivePanelRequest(
   }
 
   const company = (await d.crm.list("companies", {}, { desc: true, limit: 5000 })).find((c) => c.tenantId === tenantId) ?? null;
+  // Una sola contratación en curso por empresa y producto: si ya hay expediente abierto o solicitud pendiente, se
+  // devuelve esa (con su estado) y no se crea otra, la pulse quien la pulse y con el mensaje que sea
+  // (el reintento con la misma clave sigue siendo un reintento: lo resuelve la idempotencia de las solicitudes)
+  const retry = (await d.crm.list("leadRequests", { idempotencyKey: panelIdempotencyKey(tenantId, b.idempotencyKey) }, { limit: 1 })).length > 0;
+  const current = retry ? null : await openRequestFor(d, tenantId, company?.id ?? null, item.key, b.type);
+  if (current) return current;
   const type: LeadRequestType = /^net_|^industry_module$/.test(item.family) ? "module_info" : "extension_info";
   const price = item.monthly ? `${(item.monthly.amountCents / 100).toFixed(2).replace(".", ",")} € al mes${item.monthly.taxIncluded ? "" : " (IVA aparte)"}` : null;
   const lead = assisted
@@ -92,7 +133,7 @@ export async function receivePanelRequest(
     : b.type === "waitlist"
       ? `Me interesa ${item.name} (próximamente). Avisadnos cuando esté disponible.`
       : `Solicita información sobre ${item.name}.`;
-  const message = [lead, `Empresa cliente: ${company?.name ?? tenantId} (${tenantId}).`, b.message ? `Mensaje: ${b.message}` : ""].filter(Boolean).join("\n");
+  const message = [lead, companyLine(company?.name ?? tenantId, tenantId), b.message ? `Mensaje: ${b.message}` : ""].filter(Boolean).join("\n");
   try {
     const { outcome, request } = await d.requests.receive(
       {
@@ -102,7 +143,7 @@ export async function receivePanelRequest(
         company: company?.name ?? tenantId,
         message,
         interest: item.key,
-        sourcePage: `${PANEL_REQUEST_SOURCE}/${item.key}${b.type === "waitlist" ? "#me-interesa" : assisted ? ASSISTED_CONTRACT_COPY.sourceFragment : ""}`,
+        sourcePage: sourceFor(item.key, b.type),
         marketingConsent: false,
         privacyVersion: PANEL_PRIVACY_VERSION,
       },
@@ -124,7 +165,7 @@ function requireCore(req: Request, res: Response, next: NextFunction) {
 }
 
 /** Rutas del Core (montar bajo /commerce). */
-export function createPanelRequestsRouter(d: { site: () => Promise<SiteDocument>; requests: WebRequestService; crm: CrmStore; internalTenants?: ReadonlySet<string> }): Router {
+export function createPanelRequestsRouter(d: { site: () => Promise<SiteDocument>; requests: WebRequestService; crm: CrmStore; internalTenants?: ReadonlySet<string>; implementations?: Pick<ImplementationStore, "openFor"> | null }): Router {
   const r = express.Router();
   r.post("/tenants/:tenantId/requests", requireCore, (req: Request, res: Response) => {
     res.setHeader("Cache-Control", "no-store");
@@ -132,7 +173,7 @@ export function createPanelRequestsRouter(d: { site: () => Promise<SiteDocument>
     const b = panelRequestBody.safeParse(req.body);
     if (!t.success || !b.success) return void res.status(400).json({ error: "invalid_request", message: b.success ? "tenantId" : b.error.issues.map((i) => i.path.join(".") || i.message).join(", ") });
     d.site()
-      .then((site) => receivePanelRequest({ site, internal: !!d.internalTenants?.has(t.data), requests: d.requests, crm: d.crm }, t.data, b.data))
+      .then((site) => receivePanelRequest({ site, internal: !!d.internalTenants?.has(t.data), requests: d.requests, crm: d.crm, implementations: d.implementations ?? null }, t.data, b.data))
       .then((x) => void res.status(x.outcome === "created" ? 201 : 200).json({ request: x }))
       .catch((e) => {
         if (e instanceof PanelRequestError) return void res.status(e.status).json({ error: e.code, message: e.message });
