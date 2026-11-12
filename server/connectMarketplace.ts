@@ -16,7 +16,8 @@ import { categoryOf, deriveConnectState, shownInShowcase, type CheckoutVia, type
 import type { ConnectGalleryItem, ConnectImage, ConnectPrice, ConnectSheet } from "../shared/connectCard";
 import type { ConnectActivation } from "../shared/connectShowcase";
 import { isNetLegacyExtension, netProductOf, netProductOfLegacy, type NetArea, type NetSegment } from "../shared/netProducts";
-import { netAvailabilitySplit, netSaleKind } from "../shared/netOffer";
+import { netAvailabilitySplit, offerSaleKind } from "../shared/netOffer";
+import { connectAssistedOf } from "../shared/connectAssisted";
 
 
 /** Producto tal como llega del canal: lo de siempre y, opcionalmente, la ficha y los precios aprobados. */
@@ -194,6 +195,9 @@ export function buildConnectCatalog(
   const shownItems = catalog.items.filter((i) => (!isLegacy(i) || kept(i)) && shownInShowcase(i.key, plan));
   return shownItems.map((item): ConnectItem => {
     const np = netProductOf(item.key);
+    // Connect de contratación asistida (12/11/2026): se contrata aunque el catálogo diga «próximamente» o «en
+    // preparación» (lo pendiente va como «en implantación»); retirado o sin publicar, regla de siempre
+    const assistedConnect = item.commercialStatus === "unpublished" || item.commercialStatus === "retired" ? null : connectAssistedOf(item.key);
     const legacyDecl = isLegacy(item) ? (legacyOf(item.legacy) ?? (netProductOfLegacy(item.key) ? { replacedBy: netProductOfLegacy(item.key)!.key } : null)) : null;
     const successor = legacyDecl ? { key: legacyDecl.replacedBy, name: netProductOf(legacyDecl.replacedBy)?.name ?? productName(legacyDecl.replacedBy) } : null;
     const seed = seedOf(item.key);
@@ -226,7 +230,7 @@ export function buildConnectCatalog(
     // Paquete sin contratar cuyos componentes sí están contratados: sus capacidades activas son las de los módulos, no
     // las suyas; su estado es el comercial (se puede contratar en sustitución de los módulos)
     const derived = deriveConnectState(
-      { kind: item.kind, commercialStatus: item.commercialStatus, capabilities: (replaces.length > 0 && !equivalent) || heldLoose ? [] : capabilities, dependencies, plans },
+      { kind: item.kind, commercialStatus: assistedConnect && item.commercialStatus !== "available" ? "on_request" : item.commercialStatus, capabilities: (replaces.length > 0 && !equivalent) || heldLoose ? [] : capabilities, dependencies, plans },
       { capabilityStatus, plan, productActive, productName, consultation: consultationFor(capabilities) },
     );
     const state = derived.state;
@@ -244,10 +248,10 @@ export function buildConnectCatalog(
     // Clase B: Net de empresa bajo solicitud, operativo y con precio mensual publicado (misma regla que la web)
     const monthlyPrice = (prices.length > 0 ? prices : fallbackPrices).find((p) => p.kind === "monthly") ?? null;
     const technical = typeof item.technicalStatus === "string" ? item.technicalStatus : (d?.technicalStatus ?? null);
-    const saleKind = netSaleKind({ key: item.key, commercialStatus: item.commercialStatus, technicalStatus: technical, hasMonthlyPrice: !!monthlyPrice });
+    const saleKind = offerSaleKind({ key: item.key, commercialStatus: item.commercialStatus, technicalStatus: technical, hasMonthlyPrice: !!monthlyPrice });
     const related = Array.from(new Set([...(c?.related ?? []), ...(c?.compatibleExtensions ?? [])])).filter((k) => k !== item.key && byKey.has(k) && !isLegacy(byKey.get(k)!) && shownInShowcase(k, plan));
     // Funcionalidades incluidas: las que publica el catálogo; si aún no las publica, las del registro de Net
-    const areas: NetArea[] = np ? (c?.includedFeatures ?? np.areas) : [];
+    const areas: NetArea[] = np ? (c?.includedFeatures ?? np.areas) : (assistedConnect?.areas ?? []);
     const split = netAvailabilitySplit({ areas });
     const assisted: ConnectAssistedSale | null = saleKind === "assisted_contract" && state === "on_request" && monthlyPrice && !isLegacy(item) ? { monthly: monthlyPrice, available: split.available, inImplementation: split.inImplementation } : null;
     const sheet: ConnectSheet = {

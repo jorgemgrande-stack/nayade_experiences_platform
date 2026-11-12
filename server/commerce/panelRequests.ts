@@ -29,7 +29,7 @@ import type { WebRequestService } from "../crm/webRequests";
 import type { CrmStore } from "../crm/store";
 import { CrmError, type LeadRequestType } from "../crm/types";
 import { panelCatalog } from "./panelCatalog";
-import { ASSISTED_CONTRACT_COPY, netSaleKind } from "../../shared/netOffer";
+import { ASSISTED_CONTRACT_COPY, offerSaleKind } from "../../shared/netOffer";
 
 export const PANEL_REQUEST_SOURCE = "panel:/admin/ampliar";
 /** Versión de privacidad de las solicitudes del panel: la persona ya es cliente y actúa desde su cuenta. */
@@ -80,7 +80,7 @@ export async function receivePanelRequest(
   // «Contratar e iniciar implantación» (clase B): solo un producto Net de empresa bajo solicitud, operativo y con precio
   // publicado. Abre la solicitud de implantación (el expediente lo abre la captación, idempotente); nunca cobra nada
   const assisted = b.type === "implementation";
-  if (assisted && (item.legacy || netSaleKind({ key: item.key, commercialStatus: item.commercialStatus, technicalStatus: item.technicalStatus ?? null, hasMonthlyPrice: !!item.monthly }) !== "assisted_contract")) {
+  if (assisted && (item.legacy || offerSaleKind({ key: item.key, commercialStatus: item.commercialStatus, technicalStatus: item.technicalStatus ?? null, hasMonthlyPrice: !!item.monthly }) !== "assisted_contract")) {
     throw new PanelRequestError(409, "invalid_state", "Ese producto no se contrata con implantación asistida desde el panel: pide información");
   }
 

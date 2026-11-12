@@ -524,7 +524,7 @@ export class ImplementationService {
       if (o.status !== "requested" && o.status !== "proposal") throw new ImplementationError("invalid_state", "El expediente ya tiene el contrato aceptado: el paquete ya no se prepara desde aquí");
       if (isPaidOrder(o)) throw new ImplementationError("invalid_state", "Este expediente lo abrió una contratación ya hecha: no se prepara otro contrato");
       const commitments = netCommitmentsText(o.solutionKey);
-      if (!commitments) throw new ImplementationError("invalid_input", "El paquete con compromisos de implantación es solo para los productos Net de empresa");
+      if (!commitments) throw new ImplementationError("invalid_input", "El paquete con compromisos de implantación es solo para los productos Net de empresa y los Connect de contratación asistida");
       const prev = [...(await this.d.store.events(o.id))].reverse().find((e) => e.type === "package");
       const prevId = Number(/condiciones #(\d+)/.exec(prev?.detail ?? "")?.[1] ?? 0);
       if (prevId) {

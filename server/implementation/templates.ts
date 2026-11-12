@@ -18,7 +18,12 @@
  * implantación) para las «condiciones especiales» de un paquete personalizado: mismo origen, mismas palabras.
  */
 import { PRODUCT_SPECS } from "../catalog/commercial/specs";
-import { netProductOf, type NetProduct } from "../../shared/netProducts";
+import { netProductOf, type NetArea } from "../../shared/netProducts";
+import { connectAssistedOf } from "../../shared/connectAssisted";
+
+/** Producto con plantilla propia: Net de empresa o Elephant Connect de contratación asistida (12/11/2026). */
+type TemplateProduct = { key: string; name: string; areas: NetArea[]; note?: string };
+const connectTemplate = (key: string): TemplateProduct | null => connectAssistedOf(key);
 import type { MilestoneKind } from "./store";
 
 export interface ChecklistItem {
@@ -58,12 +63,13 @@ const GENERIC: ChecklistItem[] = [
 export const GENERIC_TEMPLATE: ChecklistTemplate = { key: "generic", name: "Hitos genéricos de implantación", generic: true, items: GENERIC };
 
 const t200 = (s: string) => (s.length > 200 ? `${s.slice(0, 197)}…` : s);
-const features = (p: NetProduct, status: "available" | "coming_soon") => p.areas.flatMap((a) => a.features.filter((f) => f.status === status).map((f) => ({ area: a.title, label: f.label })));
+const features = (p: TemplateProduct, status: "available" | "coming_soon") => p.areas.flatMap((a) => a.features.filter((f) => f.status === status).map((f) => ({ area: a.title, label: f.label })));
 const requirementsOf = (key: string) => PRODUCT_SPECS.find((s) => s.key === key)?.implementation.requirements ?? [];
 
 /** Plantilla de una solución: la sectorial si la tiene; si no, la genérica. Pura. */
 export function templateFor(solutionKey: string): ChecklistTemplate {
-  const p = (SECTOR_TEMPLATE_KEYS as readonly string[]).includes(solutionKey) ? netProductOf(solutionKey) : null;
+  const net = (SECTOR_TEMPLATE_KEYS as readonly string[]).includes(solutionKey) ? netProductOf(solutionKey) : null;
+  const p: TemplateProduct | null = net ?? connectTemplate(solutionKey);
   if (!p) return GENERIC_TEMPLATE;
   const items: ChecklistItem[] = [
     { title: `Reunión de arranque de ${p.name} con el cliente`, kind: "milestone", required: true, section: "configuracion" },
@@ -75,7 +81,7 @@ export function templateFor(solutionKey: string): ChecklistTemplate {
   ];
   const soon = features(p, "coming_soon");
   if (soon.length) items.push({ title: t200(`En implantación, incluido sin coste: ${soon.map((f) => f.label).join(", ")}`), kind: "pending", required: false, section: "en_implantacion", note: `${soon.map((f) => f.label).join(", ")}. Se comunica al cliente como «en implantación»; no bloquea la puesta en marcha de lo disponible.`.slice(0, 1000) });
-  return { key: p.key, name: `Primera implantación sectorial — ${p.name}`, generic: false, items };
+  return { key: p.key, name: net ? `Primera implantación sectorial — ${p.name}` : `Implantación de ${p.name}`, generic: false, items };
 }
 
 /** Sección de un hito ya guardado (para pintar la checklist; los genéricos son de configuración). Pura. */
@@ -96,8 +102,9 @@ export const checklistKeyOf = (detail: string | null) => (detail ?? "").split(" 
  * condiciones propias del producto. null si la clave no es un producto Net de empresa. Pura.
  */
 export function netCommitmentsText(key: string): string | null {
-  const p = netProductOf(key);
-  if (!p || p.segment !== "business") return null;
+  const net = netProductOf(key);
+  const p: TemplateProduct | null = net ? (net.segment === "business" ? net : null) : connectTemplate(key);
+  if (!p) return null;
   const lines: string[] = [];
   lines.push(`Compromisos de implantación de ${p.name}.`);
   const req = requirementsOf(key);
