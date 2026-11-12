@@ -647,6 +647,7 @@ export const gestoriaRouter = router({
             to: input.email,
             subject: `Acceso al Portal de Gestoría — ${companyName()}`,
             html: buildNoticeHtml({ badge: "Acceso", title: "Portal de Gestoría", greetingName: input.name, paragraphs: [`${companyName()} le da acceso a su Portal de Gestoría, donde podrá consultar las obligaciones fiscales, descargar los expedientes del ejercicio y marcar los modelos como presentados.`], cta: { label: "Activar mi cuenta", url: inviteUrl }, note: "El enlace caduca en 7 días." }),
+            category: "user_invite",
           });
         } catch (e) {
           console.warn("[gestoria.createPortalAccess] Email no enviado:", e);

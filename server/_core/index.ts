@@ -1778,6 +1778,7 @@ function startInstallmentOverdueJob() {
             to: inst.clientEmail,
             subject: `Recordatorio: cuota ${inst.installmentNumber}/${allInstallments.length} vence el ${inst.dueDate}`,
             html,
+            category: "operational",
           });
           await db
             .update(paymentInstallments)

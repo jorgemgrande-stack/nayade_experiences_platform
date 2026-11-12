@@ -22,6 +22,7 @@ import {
 } from "../../drizzle/schema";
 import { eq, desc, and, like, or, sql, count, inArray, sum } from "drizzle-orm";
 import { sendEmail as sharedSendEmail } from "../mailer";
+import type { MailCategory } from "../mail/types";
 import { sendManagedEmail } from "../emailManager";
 import { storagePut } from "../storage";
 import { isAcceptableFileUrl } from "../_core/files/service";
@@ -57,10 +58,11 @@ type StatusOperational = "recibido" | "pendiente" | "reserva_generada";
 type StatusFinancial = "pendiente_canjear" | "canjeado" | "incidencia";
 
 // --- EMAIL HELPER -------------------------------------------------------------
-async function sendEmail(opts: { to: string; subject: string; html: string }) {
+// La categoría es obligatoria: sin ella el correo sería «legacy» y el servicio de correo no lo enviaría.
+async function sendEmail(opts: { to: string; subject: string; html: string; category: MailCategory }) {
   const sent = await sharedSendEmail(opts);
   if (!sent) console.warn("[Ticketing] SMTP not configured, skipping email");
-  else await sharedSendEmail({ to: getCopyEmail(), subject: `[COPIA] ${opts.subject}`, html: opts.html });
+  else await sharedSendEmail({ to: getCopyEmail(), subject: `[COPIA] ${opts.subject}`, html: opts.html, category: opts.category });
 }
 
 // --- ADMIN PROCEDURE (RBAC-aware) --------------------------------------------
@@ -893,6 +895,7 @@ export const ticketingRouter = router({
         to: item.email,
         subject: `? Reserva confirmada — ${resolvedProductName} | ${companyName()}`,
         html: confirmHtml,
+        category: "operational",
       })
         // Trazabilidad: evita un segundo envío si más tarde se toca esta
         // reserva desde el editor genérico de CRM.
@@ -1251,6 +1254,7 @@ export const ticketingRouter = router({
           to: item.email,
           subject: `? Reserva confirmada — ${resolvedProductName} | ${companyName()}`,
           html: confirmHtml,
+          category: "operational",
         })
           // Trazabilidad: evita un segundo envío si más tarde se toca esta
           // reserva desde el editor genérico de CRM.
@@ -1356,6 +1360,7 @@ export const ticketingRouter = router({
             to: r.customerEmail,
             subject: `? Reserva confirmada — ${r.productName} | ${companyName()}`,
             html: confirmHtml,
+            category: "operational",
           });
           emailSent = true;
         } catch (e) {
@@ -1965,6 +1970,7 @@ export const ticketingRouter = router({
           to: input.email,
           subject: `Hemos recibido tu solicitud de canje — ${input.provider}`,
           html: buildRedemptionConfirmationHtml({ customerName: input.customerName, email: input.email, phone: input.phone, coupons: [{ couponCode: input.couponCode, provider: input.provider }], submissionId, requestedDate: input.requestedDate }),
+          category: "operational",
         });
       } catch { /* silent */ }
       return { success: true, redemptionId, softDuplicate: dupCheck.softDuplicate, message: "Solicitud registrada correctamente. Recibirás un email de confirmación." };

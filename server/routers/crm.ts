@@ -51,6 +51,7 @@ import { getDefaultCashAccountId, createCashMovementIfNotExists } from "./cashRe
 import { eq, desc, and, gte, lte, like, or, sql, count, sum, isNull, max, ne, notInArray, inArray, isNotNull, getTableColumns } from "drizzle-orm";
 import type { SQL } from "drizzle-orm";
 import { sendEmail as sharedSendEmail } from "../mailer";
+import type { MailCategory } from "../mail/types";
 import { sendManagedEmail, logDirectEmail } from "../emailManager";
 import { generateDocumentNumber } from "../documentNumbers";
 import { nextCreditNoteNumber, withCreditNoteNumberRetry } from "../creditNoteNumber";
@@ -92,11 +93,12 @@ const _pool = legacyPool();
 const db = legacyDb();
 
 // Email helper — delega en el helper compartido mailer.ts
-async function sendEmail({ to, subject, html }: { to: string; subject: string; html: string }) {
-  const sent = await sharedSendEmail({ to, subject, html });
+// La categoría es obligatoria: sin ella el correo sería «legacy» y el servicio de correo no lo enviaría.
+async function sendEmail({ to, subject, html, category }: { to: string; subject: string; html: string; category: MailCategory }) {
+  const sent = await sharedSendEmail({ to, subject, html, category });
   if (!sent) { console.warn("SMTP not configured, skipping email"); return; }
   const copyEmail = getSystemSettingSync("email_copy_recipient", "");
-  if (copyEmail) await sharedSendEmail({ to: copyEmail, subject: `[COPIA] ${subject}`, html });
+  if (copyEmail) await sharedSendEmail({ to: copyEmail, subject: `[COPIA] ${subject}`, html, category });
 }
 // --- HELPERS -----------------------------------------------------------------
 
@@ -218,7 +220,7 @@ async function sendQuoteEmail(quote: {
     quoteId: (quote as any).id,
   });
   const _cq = getSystemSettingSync("email_copy_recipient", "");
-  if (_cq) sharedSendEmail({ to: _cq, subject: `[COPIA] ${quoteSubject}`, html }).catch(() => {});
+  if (_cq) sharedSendEmail({ to: _cq, subject: `[COPIA] ${quoteSubject}`, html, category: "quote_sent" }).catch(() => {});
   return quoteMailOutcome(result.sent);
 }
 
@@ -277,7 +279,7 @@ async function sendConfirmationEmail(data: {
     html,
   });
   const _cc = getSystemSettingSync("email_copy_recipient", "");
-  if (_cc) sharedSendEmail({ to: _cc, subject: `[COPIA] ${confSubject}`, html }).catch(() => {});
+  if (_cc) sharedSendEmail({ to: _cc, subject: `[COPIA] ${confSubject}`, html, category: "operational" }).catch(() => {});
 }
 
 
@@ -319,7 +321,7 @@ async function sendInternalNotification(data: {
 
   const internalRecipient = await getBusinessEmail('reservations');
   const internalSubject = `?? Compra efectuada "${data.clientName}" — ${data.reservationRef}`;
-  await sharedSendEmail({ to: internalRecipient, subject: internalSubject, html });
+  await sharedSendEmail({ to: internalRecipient, subject: internalSubject, html, category: "operational" });
   logDirectEmail({ templateKey: "confirmation", triggerEvent: "reservation_confirmed_admin", recipientEmail: internalRecipient, subject: internalSubject, sent: true }).catch(() => {});
 }
 
@@ -360,6 +362,7 @@ async function sendTransferConfirmationEmail(data: {
     to: data.clientEmail,
     subject: `?? Pago por transferencia confirmado — ${data.invoiceNumber} — ${companyName()}`,
     html,
+    category: "payment_confirmed",
   });
 }
 
@@ -3981,7 +3984,7 @@ export const crmRouter = router({
                 quoteId: inst.quoteId,
               });
               const _ci = getSystemSettingSync("email_copy_recipient", "");
-              if (_ci) sharedSendEmail({ to: _ci, subject: `[COPIA] ${instSubject}`, html }).catch(() => {});
+              if (_ci) sharedSendEmail({ to: _ci, subject: `[COPIA] ${instSubject}`, html, category: "payment_confirmed" }).catch(() => {});
             }
           }
         } catch (emailErr) {
@@ -4114,7 +4117,7 @@ export const crmRouter = router({
               quoteId: input.quoteId,
             });
             const _cl = getSystemSettingSync("email_copy_recipient", "");
-            if (_cl) sharedSendEmail({ to: _cl, subject: `[COPIA] ${linkSubject}`, html }).catch(() => {});
+            if (_cl) sharedSendEmail({ to: _cl, subject: `[COPIA] ${linkSubject}`, html, category: "operational" }).catch(() => {});
           } catch (emailErr) {
             console.error("[generateInstallmentLink] Error enviando email:", emailErr);
           }
@@ -4929,7 +4932,7 @@ export const crmRouter = router({
           });
           subject = `? Confirmación de reserva — ${res.productName} — ${companyName()}`;
         }
-        await sendEmail({ to: res.customerEmail ?? "", subject, html });
+        await sendEmail({ to: res.customerEmail ?? "", subject, html, category: "operational" });
         await db.insert(crmActivityLog).values({
           entityType: "reservation",
           entityId: input.id,
@@ -5516,6 +5519,7 @@ export const crmRouter = router({
               to: input.customerEmail,
               subject: `? Confirmación de reserva — ${input.productName} — ${companyName()}`,
               html,
+              category: "operational",
             });
           } catch (e) {
             console.error("[createManual] Email send error:", e);
@@ -6300,8 +6304,8 @@ export const crmRouter = router({
             ? [{ name: `${invoice.invoiceNumber}.pdf`, url: invoice.pdfUrl }]
             : undefined;
 
-          await sharedSendEmail({ to: recipient, subject, html: htmlBody, attachments: pdfAttachment });
-          if (COPY_EMAIL) await sharedSendEmail({ to: COPY_EMAIL, subject: `[COPIA] ${subject}`, html: htmlBody, attachments: pdfAttachment });
+          await sharedSendEmail({ to: recipient, subject, html: htmlBody, attachments: pdfAttachment, category: "invoice_available" });
+          if (COPY_EMAIL) await sharedSendEmail({ to: COPY_EMAIL, subject: `[COPIA] ${subject}`, html: htmlBody, attachments: pdfAttachment, category: "invoice_available" });
 
           await db.update(invoices).set({
             status: invoice.status === "generada" ? "enviada" : invoice.status,

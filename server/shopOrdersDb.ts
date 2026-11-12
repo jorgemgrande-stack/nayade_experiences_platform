@@ -210,7 +210,7 @@ export async function sendShopOrderConfirmation(merchantOrder: string): Promise<
     if (copy) {
       const { sendEmail } = await import("./mailer");
       const copySubject = `[Copia] Pedido ${first.merchantOrder} · ${first.customerName}`;
-      const ok = await sendEmail({ to: copy, subject: copySubject, html }).catch(() => false);
+      const ok = await sendEmail({ to: copy, subject: copySubject, html, category: "operational" }).catch(() => false);
       logDirectEmail({ templateKey: "reservation_confirm", triggerEvent: "shop_order_paid_copy", recipientEmail: copy, subject: copySubject, sent: !!ok, isAutomatic: true }).catch(() => {});
     }
   } catch {

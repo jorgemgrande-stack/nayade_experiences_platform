@@ -446,6 +446,7 @@ export const partnersRouter = router({
         to: input.email,
         subject: `Invitación al portal de colaboradores — ${partner.name}`,
         html: buildNoticeHtml({ badge: "Invitación", title: "Bienvenido al portal de colaboradores", greetingName: input.name, paragraphs: [`Te han invitado al portal de colaboradores de ${companyName()} como miembro de ${partner.name}.`], cta: { label: "Activar mi cuenta", url: inviteUrl }, note: "Este enlace caduca en 7 días." }),
+        category: "user_invite",
       }).catch(() => {});
 
       return { ok: true };
@@ -671,6 +672,7 @@ export const partnersRouter = router({
             to: input.customerEmail,
             subject: `✅ Reserva confirmada — ${input.productName} · ${companyName()}`,
             html,
+            category: "operational",
           })
             // Trazabilidad: evita un segundo envío si más tarde se toca esta
             // reserva desde el editor genérico de CRM.
@@ -947,7 +949,7 @@ export const partnersRouter = router({
           const subject = isMulti
             ? `✅ Reserva confirmada — ${created.length} actividades · ${companyName()}`
             : `✅ Reserva confirmada — ${created[0].line.productName} · ${companyName()}`;
-          sendEmail({ to: input.customerEmail, subject, html })
+          sendEmail({ to: input.customerEmail, subject, html, category: "operational" })
             // Trazabilidad: evita un segundo envío si más tarde se toca alguna
             // de estas reservas desde el editor genérico de CRM.
             .then(() => Promise.all(created.map(c => db.update(reservations)

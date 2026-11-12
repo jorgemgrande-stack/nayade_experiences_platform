@@ -67,3 +67,34 @@ restablecimiento» cuando la empresa está en el ámbito (`accessMail` en `GET /
    - Una invitación aceptada no se reabre.
 8. **[Equipo técnico] Seguimiento:** aceptación y entrega en Postmark, auditoría, y el primer acceso en Accesos.
 
+
+## Correo operativo de las empresas (12/11/2026)
+
+Autorizado por el titular de la plataforma: se abren los correos **transaccionales** que cada empresa envía a sus
+propios clientes. Las campañas y cualquier envío comercial o masivo siguen cerrados.
+
+**Categorías que se añaden** a `MAIL_SCOPE_CATEGORIES` del servicio `core` (junto a las de acceso que ya estaban):
+`operational,quote_sent,payment_confirmed,invoice_available,refund_recorded,cancellation`
+(constante `TENANT_TRANSACTIONAL_SCOPE` en `server/mail/tenantTransactionalScope.ts`).
+
+| Categoría | Qué cubre |
+|---|---|
+| `operational` | Confirmaciones y cambios de reservas, pedidos, entradas y TPV; recordatorios de algo ya contratado (cuotas, citas); copias internas y avisos al equipo; liquidaciones a proveedores |
+| `quote_sent` | Presupuestos y propuestas (y su copia interna) |
+| `payment_confirmed` | Pago por transferencia confirmado, cuota pagada |
+| `invoice_available` | Envío de facturas y rectificativas |
+| `refund_recorded` | Devolución realizada |
+| `cancellation` | Acuse, aceptación, rechazo y bono de una anulación; aviso interno de anulaciones sin atender |
+
+**Siguen bloqueados:**
+- `marketing`: automatizaciones de correo (`emailAutomationJob`, recordatorios comerciales) y las automatizaciones con propósito comercial.
+- `survey` y `service_notice`: envíos masivos del centro de comunicaciones.
+- `legacy`: todo envío sin categoría. El alcance falla cerrado; hoy solo quedan sin categoría los envíos de **prueba
+  y vista previa** de plantillas (anulaciones, centro de comunicaciones, editor de plantillas y vista previa general).
+- `security_notice`: los avisos de seguridad (dispositivo nuevo, correo cambiado) llevan su categoría pero no se abren en este cambio.
+
+Las invitaciones a los portales de gestoría, colaboradores y proveedores van como `user_invite` (ya abierta, y sin
+copia global por llevar un enlace de un solo uso).
+
+La prueba `server/mail/categoriasEmpresa.test.ts` falla si aparece una llamada a `sendEmail(` sin `category:` fuera
+de las excepciones documentadas, o si la lista que se abre incluye algo comercial o sin clasificar.

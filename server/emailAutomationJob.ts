@@ -468,7 +468,8 @@ export async function runEmailAutomationJob(forceRun = false): Promise<Automatio
       const html = resolvedHtml;
 
       // Enviar (mergeGlobalCc en mailer.ts añade reservas@ automáticamente)
-      const ok = await sendEmail({ to: job.recipientEmail, subject: finalSubject, html });
+      // Automatizaciones (recordatorios comerciales y reglas libres): «marketing», fuera del alcance transaccional
+      const ok = await sendEmail({ to: job.recipientEmail, subject: finalSubject, html, category: "marketing" });
       status = ok ? "sent" : "failed";
       provider = process.env.BREVO_API_KEY ? "brevo" : "smtp";
 

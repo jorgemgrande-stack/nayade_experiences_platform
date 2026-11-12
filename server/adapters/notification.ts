@@ -35,6 +35,8 @@ export async function notifyOwner(payload: NotificationPayload): Promise<boolean
       subject: `[${companyName()}] ${title}`,
       html: `<h2>${title}</h2><pre style="font-family:sans-serif;white-space:pre-wrap">${content}</pre>`,
       text: content,
+      // Aviso interno al equipo de la empresa (reservas, pagos, mesas): operativo, nunca comercial
+      category: "operational",
     });
     return true;
   } catch (err) {

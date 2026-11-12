@@ -27,10 +27,11 @@ const db = legacyDb();
 
 async function sendEmail(args: { to: string; subject: string; html: string }): Promise<boolean> {
   if (!args.to) { console.warn("[proposals] Lead sin email, no se puede enviar"); return false; }
-  const sent = await sharedSendEmail(args);
+  // Propuesta al cliente (y su copia interna): categoría «quote_sent»
+  const sent = await sharedSendEmail({ ...args, category: "quote_sent" });
   if (!sent) { console.warn("[proposals] SMTP/Brevo no configurado, email omitido"); return false; }
   const copyEmail = getSystemSettingSync("email_copy_recipient", "");
-  if (copyEmail) await sharedSendEmail({ to: copyEmail, subject: `[COPIA] ${args.subject}`, html: args.html });
+  if (copyEmail) await sharedSendEmail({ to: copyEmail, subject: `[COPIA] ${args.subject}`, html: args.html, category: "quote_sent" });
   return true;
 }
 
@@ -556,6 +557,7 @@ export const proposalsRouter = router({
           to: businessEmail,
           subject: `✅ Propuesta aceptada "${lead.name}" — ${proposal.proposalNumber}`,
           html: `<p>El cliente <strong>${lead.name}</strong> (${lead.email}) ha aceptado la propuesta <strong>${proposal.proposalNumber}</strong>${optionInfo}.</p>${input.message ? `<p>Mensaje: ${input.message}</p>` : ""}`,
+          category: "operational",
         });
       }
 
