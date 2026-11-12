@@ -143,7 +143,7 @@ describe("Elephant Connect: contratación directa o asistida", () => {
     const fs = await import("node:fs");
     const page = fs.readFileSync(new URL("../client/src/pages/admin/connect/ConnectDetailPage.tsx", import.meta.url), "utf8");
     expect(page).toMatch(/action\.kind === "assisted" && item\.assisted && !item\.net && \(/);
-    expect(page).toContain("<AssistedFeatures assisted={item.assisted} />");
+    expect(page).toContain("<AssistedFeatures assisted={item.assisted} columns={false} />");
     const parts = fs.readFileSync(new URL("../client/src/components/connect/ConnectParts.tsx", import.meta.url), "utf8");
     expect(parts).toContain("export function AssistedFeatures(");
     expect(parts).toContain("ASSISTED_CONTRACT_COPY.inImplementationTitle");

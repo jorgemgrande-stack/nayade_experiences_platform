@@ -503,13 +503,13 @@ export function ProductCard({
 export type RequestKind = "info" | "waitlist" | "contact" | "implementation";
 
 /** Lo disponible desde la puesta en marcha y lo que está en implantación (diálogo y ficha de Connect). */
-export function AssistedFeatures({ assisted: a }: { assisted: NonNullable<ConnectCatalogItem["assisted"]> }) {
+export function AssistedFeatures({ assisted: a, columns = true }: { assisted: NonNullable<ConnectCatalogItem["assisted"]>; columns?: boolean }) {
   return (
     <>
         {a.available.length > 0 && (
           <div>
             <p className="font-semibold text-foreground">{ASSISTED_CONTRACT_COPY.availableTitle}</p>
-            <ul className="mt-1 list-disc space-y-0.5 pl-5 text-muted-foreground sm:columns-2 sm:gap-6">
+            <ul className={`mt-1 list-disc space-y-0.5 pl-5 text-muted-foreground${columns ? " sm:columns-2 sm:gap-6" : ""}`}>
               {a.available.map((f) => (
                 <li key={f}>{f}</li>
               ))}

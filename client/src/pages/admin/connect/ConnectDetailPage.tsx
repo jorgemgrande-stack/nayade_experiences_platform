@@ -356,8 +356,8 @@ function ContractPanel({
         {action.kind === "assisted" && <p className="text-xs text-muted-foreground">{ASSISTED_CONTRACT_COPY.noPayment} {ASSISTED_CONTRACT_COPY.planLine(currentPlanName)}</p>}
         {/* Connect asistido: lo disponible y lo pendiente (en Elephant Net lo dicen sus áreas en la ficha) */}
         {action.kind === "assisted" && item.assisted && !item.net && (
-          <div className="space-y-3 border-t border-border pt-3 text-sm" data-assisted-features>
-            <AssistedFeatures assisted={item.assisted} />
+          <div className="space-y-3 border-t border-border pt-3 text-sm lg:max-h-[45vh] lg:overflow-y-auto" data-assisted-features>
+            <AssistedFeatures assisted={item.assisted} columns={false} />
           </div>
         )}
         {action.kind === "convert" && item.conversionPlan && item.conversionPlan !== currentPlan && <p className="text-xs text-muted-foreground">{conversionPlanText(item.name, item.conversionPlan)}</p>}
