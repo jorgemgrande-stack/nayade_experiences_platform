@@ -31,6 +31,7 @@ import { CrmError, type LeadRequestType } from "../crm/types";
 import { panelCatalog } from "./panelCatalog";
 import { ASSISTED_CONTRACT_COPY, offerSaleKind } from "../../shared/netOffer";
 import { STATUS_LABEL, type ImplementationStore } from "../implementation/store";
+import { connectAssistedOf } from "../../shared/connectAssisted";
 
 export const PANEL_REQUEST_SOURCE = "panel:/admin/ampliar";
 /** Versión de privacidad de las solicitudes del panel: la persona ya es cliente y actúa desde su cuenta. */
@@ -109,7 +110,8 @@ export async function receivePanelRequest(
   const visible = d.internal ? d.site : withoutInternal(d.site);
   const item = panelCatalog(quoteCatalogFromSite(visible).products, { version: "", purchasesEnabled: false }).items.find((i) => i.key === b.interest);
   if (!item) throw new PanelRequestError(404, "not_found", "Ese producto no está en tu catálogo");
-  const upcoming = item.commercialStatus === "coming_soon" || item.commercialStatus === "in_preparation";
+  // Un Connect asistido «próximamente» o «en preparación» se contrata igual (shared/netOffer.ts → offerSaleKind)
+  const upcoming = (item.commercialStatus === "coming_soon" || item.commercialStatus === "in_preparation") && !connectAssistedOf(item.key);
   if (b.type === "waitlist" && !upcoming) throw new PanelRequestError(409, "invalid_state", "Ese producto ya se puede solicitar: pide información");
   if (b.type === "info" && upcoming) throw new PanelRequestError(409, "invalid_state", "Ese producto todavía no está disponible: usa «Me interesa»");
   // «Contratar e iniciar implantación» (clase B): solo un producto Net de empresa bajo solicitud, operativo y con precio

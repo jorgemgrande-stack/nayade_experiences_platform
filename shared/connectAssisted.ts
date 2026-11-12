@@ -19,6 +19,8 @@ export interface ConnectAssistedProduct {
   name: string;
   segment: "business";
   areas: NetArea[];
+  /** Componentes de un paquete (los mismos que el catálogo, `catalog.bundleOf`). */
+  bundleOf?: string[];
   /** Condición propia (costes de terceros, cuentas del cliente…). */
   note?: string;
 }
@@ -156,14 +158,25 @@ export const CONNECT_ASSISTED: readonly ConnectAssistedProduct[] = [
   { key: "connect-campaigns", name: "Elephant Campaigns", segment: "business", areas: CAMPAIGNS, note: "Los envíos salen por la cuenta de Brevo de la empresa, con su remitente verificado." },
   { key: "connect-seo-control", name: "Elephant SEO Control", segment: "business", areas: SEO },
   { key: "connect-automations", name: "Automatizaciones avanzadas", segment: "business", areas: AUTOMATIONS },
-  { key: "connect-pack-communications", name: "Paquete Communications", segment: "business", areas: [...WHATSAPP, ...VOICE, ...RECEPTION], note: "Incluye Elephant WhatsApp AI, Elephant Voice y Elephant Reception AI. Los costes de Meta, telefonía e IA de voz se pagan aparte." },
-  { key: "connect-pack-marketing", name: "Paquete Marketing", segment: "business", areas: [...ADS, ...CAMPAIGNS, ...SEO, ...GEO], note: "Incluye Ads Manager, Campaigns, SEO Control y GEO Control." },
-  { key: "connect-pack-finance", name: "Paquete Finance", segment: "business", areas: FINANCE, note: "Incluye Elephant Tax, Finance Sync y Elephant Partners. La presentación oficial de los modelos la hace la gestoría." },
-  { key: "connect-pack-ai", name: "Paquete AI Suite", segment: "business", areas: [...COPILOT, ...AUTOMATIONS], note: "Incluye Copilot avanzado y Automatizaciones avanzadas." },
+  { key: "connect-pack-communications", name: "Paquete Communications", segment: "business", bundleOf: ["connect-whatsapp-ai", "connect-voice", "connect-reception-ai"], areas: [...WHATSAPP, ...VOICE, ...RECEPTION], note: "Incluye Elephant WhatsApp AI, Elephant Voice y Elephant Reception AI. Los costes de Meta, telefonía e IA de voz se pagan aparte." },
+  { key: "connect-pack-marketing", name: "Paquete Marketing", segment: "business", bundleOf: ["connect-ads-manager", "connect-campaigns", "connect-seo-control", "connect-geo-control"], areas: [...ADS, ...CAMPAIGNS, ...SEO, ...GEO], note: "Incluye Ads Manager, Campaigns, SEO Control y GEO Control." },
+  { key: "connect-pack-finance", name: "Paquete Finance", segment: "business", bundleOf: ["connect-tax", "connect-finance-sync", "connect-partners"], areas: FINANCE, note: "Incluye Elephant Tax, Finance Sync y Elephant Partners. La presentación oficial de los modelos la hace la gestoría." },
+  { key: "connect-pack-ai", name: "Paquete AI Suite", segment: "business", bundleOf: ["connect-copilot", "connect-automations"], areas: [...COPILOT, ...AUTOMATIONS], note: "Incluye Copilot avanzado y Automatizaciones avanzadas." },
 ];
 
 const BY_KEY = new Map(CONNECT_ASSISTED.map((p) => [p.key, p]));
 /** Producto Connect de contratación asistida; null si no lo es (los de contratación directa, Net, extras…). */
 export function connectAssistedOf(key: string): ConnectAssistedProduct | null {
   return BY_KEY.get(key) ?? null;
+}
+
+/**
+ * ¿Se solapan dos productos Connect (uno es un paquete que incluye al otro, o comparten componentes)? Para no contratar
+ * dos veces lo mismo: un paquete sobre un componente que ya se paga, o un componente sobre su paquete. Pura.
+ */
+export function connectOverlap(a: string, b: string): boolean {
+  if (a === b) return true;
+  const ca = BY_KEY.get(a)?.bundleOf ?? [];
+  const cb = BY_KEY.get(b)?.bundleOf ?? [];
+  return ca.includes(b) || cb.includes(a) || ca.some((k) => cb.includes(k));
 }

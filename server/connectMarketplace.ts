@@ -196,8 +196,8 @@ export function buildConnectCatalog(
   return shownItems.map((item): ConnectItem => {
     const np = netProductOf(item.key);
     // Connect de contratación asistida (12/11/2026): se contrata aunque el catálogo diga «próximamente» o «en
-    // preparación» (lo pendiente va como «en implantación»); los retirados no llegan aquí como producto vigente
-    const assistedConnect = connectAssistedOf(item.key);
+    // preparación» (lo pendiente va como «en implantación»). Disponible, retirado o sin publicar: regla de siempre
+    const assistedConnect = item.commercialStatus === "available" || ["unpublished", "retired"].includes(String(item.commercialStatus)) ? null : connectAssistedOf(item.key);
     const legacyDecl = isLegacy(item) ? (legacyOf(item.legacy) ?? (netProductOfLegacy(item.key) ? { replacedBy: netProductOfLegacy(item.key)!.key } : null)) : null;
     const successor = legacyDecl ? { key: legacyDecl.replacedBy, name: netProductOf(legacyDecl.replacedBy)?.name ?? productName(legacyDecl.replacedBy) } : null;
     const seed = seedOf(item.key);
@@ -230,7 +230,7 @@ export function buildConnectCatalog(
     // Paquete sin contratar cuyos componentes sí están contratados: sus capacidades activas son las de los módulos, no
     // las suyas; su estado es el comercial (se puede contratar en sustitución de los módulos)
     const derived = deriveConnectState(
-      { kind: item.kind, commercialStatus: assistedConnect && item.commercialStatus !== "available" ? "on_request" : item.commercialStatus, capabilities: (replaces.length > 0 && !equivalent) || heldLoose ? [] : capabilities, dependencies, plans },
+      { kind: item.kind, commercialStatus: assistedConnect ? "on_request" : item.commercialStatus, capabilities: (replaces.length > 0 && !equivalent) || heldLoose ? [] : capabilities, dependencies, plans },
       { capabilityStatus, plan, productActive, productName, consultation: consultationFor(capabilities) },
     );
     const state = derived.state;
@@ -253,7 +253,9 @@ export function buildConnectCatalog(
     // Funcionalidades incluidas: las que publica el catálogo; si aún no las publica, las del registro de Net
     const areas: NetArea[] = np ? (c?.includedFeatures ?? np.areas) : (assistedConnect?.areas ?? []);
     const split = netAvailabilitySplit({ areas });
-    const assisted: ConnectAssistedSale | null = saleKind === "assisted_contract" && state === "on_request" && monthlyPrice && !isLegacy(item) ? { monthly: monthlyPrice, available: split.available, inImplementation: split.inImplementation } : null;
+    // Nunca sobre lo que ya se tiene en parte: un paquete con componentes contratados (o por licencia), o un módulo
+    // incluido en un paquete contratado, se resuelve con el equipo (sustitución), no con un segundo contrato
+    const assisted: ConnectAssistedSale | null = saleKind === "assisted_contract" && state === "on_request" && monthlyPrice && !isLegacy(item) && replaces.length === 0 && !heldLoose && !includedIn ? { monthly: monthlyPrice, available: split.available, inImplementation: split.inImplementation } : null;
     const sheet: ConnectSheet = {
       headline: c?.headline ?? null,
       valueProposition: c?.valueProposition ?? null,

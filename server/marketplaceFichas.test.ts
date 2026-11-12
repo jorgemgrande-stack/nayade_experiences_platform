@@ -135,7 +135,8 @@ describe("solicitudes del marketplace del panel", () => {
   it("«Me interesa» solo para lo que aún no existe; Elephant Net va como módulo sectorial", async () => {
     const t = await setup();
     await expect(receivePanelRequest(t.d, "t9-demo", body({ type: "waitlist" }))).rejects.toMatchObject({ status: 409 });
-    await expect(receivePanelRequest(t.d, "t9-demo", body({ interest: "connect-reception-ai" }))).rejects.toMatchObject({ status: 409 });
+    // Lo que aún no existe pide «Me interesa» (un Connect asistido «próximamente» se contrata igual: connectAssistedSale.test.ts)
+    await expect(receivePanelRequest(t.d, "t9-demo", body({ interest: "ski-net-school", idempotencyKey: "clave-panel-0009" }))).rejects.toMatchObject({ status: 409 });
     const w = await receivePanelRequest(t.d, "t9-demo", body({ type: "waitlist", interest: "ski-net-school", idempotencyKey: "clave-panel-0002" }));
     expect(w.outcome).toBe("created");
     await flush();

@@ -35,6 +35,7 @@ import {
   type MilestoneKind,
   type StartMode,
 } from "./store";
+import { connectOverlap } from "../../shared/connectAssisted";
 import { GENERIC_TEMPLATE, checklistEventDetail, checklistKeyOf, netCommitmentsText, sectionOf, templateFor } from "./templates";
 
 export const ASSISTED_TRIAL_DAYS = 15;
@@ -552,6 +553,9 @@ export class ImplementationService {
         if (!this.d.packages.subscriptionBase || !this.d.packages.createForSubscription) throw new ImplementationError("unavailable", "Las condiciones personalizadas sobre una suscripción no están disponibles en este entorno");
         const base = await this.d.packages.subscriptionBase(subscriptionId);
         if (base.input.lines.some((l) => l.productKey === o.solutionKey)) throw new ImplementationError("invalid_state", `La suscripción #${subscriptionId} ya incluye ${product.name}`);
+        // Paquete Connect sobre un componente que ya se paga (o al revés): sería cobrar dos veces lo mismo
+        const overlap = base.input.lines.find((l) => !!l.productKey && connectOverlap(l.productKey, o.solutionKey));
+        if (overlap) throw new ImplementationError("invalid_state", `La suscripción #${subscriptionId} ya incluye «${overlap.productKey}», que forma parte de ${product.name} (o al revés): se resuelve como sustitución, no con un segundo contrato`);
         const kind = base.interval === "year" ? "yearly" : "monthly";
         const price = product.prices.find((x) => x.kind === kind && x.status === "approved");
         if (!price) throw new ImplementationError("invalid_state", `«${product.name}» no tiene precio ${base.interval === "year" ? "anual" : "mensual"} publicado, y la suscripción #${subscriptionId} es ${base.interval === "year" ? "anual" : "mensual"}`);

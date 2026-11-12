@@ -94,7 +94,8 @@ export function netSaleKind(p: NetSaleInput): NetSaleKind | null {
  */
 export function offerSaleKind(p: NetSaleInput): NetSaleKind | null {
   if (connectAssistedOf(p.key)) {
-    if (p.commercialStatus === "unpublished" || p.commercialStatus === "retired") return null;
+    // Disponible (venta directa con su Checkout), retirado o sin publicar: la regla de siempre, no la asistida
+    if (p.commercialStatus === "available" || p.commercialStatus === "unpublished" || p.commercialStatus === "retired") return null;
     return p.hasMonthlyPrice ? "assisted_contract" : "request_info";
   }
   return netSaleKind(p);

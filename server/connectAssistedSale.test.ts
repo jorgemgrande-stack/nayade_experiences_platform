@@ -21,7 +21,7 @@ import { solutionFromWebStore } from "./implementation/ports";
 import { netCommitmentsText, templateFor } from "./implementation/templates";
 import { buildConnectCatalog } from "./connectMarketplace";
 import { primaryAction } from "../shared/connectShowcase";
-import { CONNECT_ASSISTED } from "../shared/connectAssisted";
+import { CONNECT_ASSISTED, connectOverlap } from "../shared/connectAssisted";
 import { netAvailabilitySplit, offerSaleKind } from "../shared/netOffer";
 
 const NOW = Date.UTC(2026, 10, 12, 12);
@@ -112,5 +112,30 @@ describe("Elephant Connect: contratación directa o asistida", () => {
     expect(text).toMatch(/En implantación \(incluido en el precio[\s\S]*Netelip/);
     expect(netCommitmentsText("connect-people")).toBeNull();
     expect(templateFor("connect-people").generic).toBe(true);
+  });
+
+  it("nunca dos veces lo mismo: un paquete con un componente ya contratado no ofrece contratación asistida", () => {
+    const items = panelCatalog(quoteCatalogFromSite(site).products, { version: "v", purchasesEnabled: true, site }).items;
+    // Elephant Tax por licencia (pedido): el Paquete Finance no lleva «Contratar e iniciar implantación»
+    const grants = [{ tenantId: "t", capabilityId: "tax-filings", siteId: "", status: "active" as const, validUntil: null, source: "subscription:1", updatedAt: NOW, updatedBy: "x" }];
+    const pack = buildConnectCatalog({ items }, grants, NOW, "essential").find((i) => i.key === "connect-pack-finance");
+    if (pack) expect(pack.assisted).toBeNull();
+    expect(connectOverlap("connect-pack-finance", "connect-tax")).toBe(true);
+    expect(connectOverlap("connect-voice", "connect-pack-communications")).toBe(true);
+    expect(connectOverlap("connect-pack-ai", "connect-pack-communications")).toBe(false);
+    expect(connectOverlap("connect-voice", "connect-seo-control")).toBe(false);
+    // Paquetes del registro = paquetes del catálogo (mismos componentes)
+    const products = quoteCatalogFromSite(site).products;
+    for (const p of CONNECT_ASSISTED.filter((x) => x.bundleOf)) {
+      const cat = products.find((x) => x.key === p.key) as unknown as { catalog?: { bundleOf?: string[] } } | undefined;
+      if (cat?.catalog?.bundleOf?.length) expect([...p.bundleOf!].sort(), p.key).toEqual([...cat.catalog.bundleOf].sort());
+    }
+  });
+
+  it("disponible, retirado o sin publicar: la regla de siempre (nunca la asistida)", () => {
+    const k = (commercialStatus: string) => offerSaleKind({ key: "connect-voice", commercialStatus, technicalStatus: "partial", hasMonthlyPrice: true });
+    expect(k("available")).toBeNull();
+    expect(k("retired")).toBeNull();
+    expect(k("unpublished")).toBeNull();
   });
 });
