@@ -96,7 +96,7 @@ async function runCancellationStaleJob() {
 
     const copyEmail = await getBusinessEmail('cancellations');
     const staleSubject = `? ${trulyStale.length} anulación${trulyStale.length > 1 ? "es" : ""} sin atender (>48h)`;
-    await sendEmail({ to: copyEmail, subject: staleSubject, html }).catch(() => {});
+    await sendEmail({ to: copyEmail, subject: staleSubject, html, category: "cancellation" }).catch(() => {});
     logDirectEmail({ templateKey: "cancellation_stale_alert", triggerEvent: "stale_cancellations_alert", recipientEmail: copyEmail, subject: staleSubject, sent: true, isAutomatic: true }).catch(() => {});
 
     console.log(`[CancellationStale] Alerta enviada: ${trulyStale.length} expedientes sin atender`);

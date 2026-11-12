@@ -482,7 +482,7 @@ redsysRouter.post("/api/redsys/notification", express.urlencoded({ extended: tru
                   extraCc: COPY_EMAIL,
                 });
                 const copySubject = `[COPIA] Reserva confirmada — ${quote.quoteNumber} — ${clientName}`;
-                await sendEmail({ to: COPY_EMAIL, subject: copySubject, html });
+                await sendEmail({ to: COPY_EMAIL, subject: copySubject, html, category: "operational" });
                 logDirectEmail({ templateKey: "confirmation", triggerEvent: "redsys_payment_confirmed_admin_copy", recipientEmail: COPY_EMAIL, subject: copySubject, sent: true, isAutomatic: true }).catch(() => {});
                 console.log(`[Redsys IPN] Email de confirmación enviado a ${clientEmail}`);
               } catch (emailErr) {

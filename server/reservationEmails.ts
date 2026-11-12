@@ -138,7 +138,7 @@ export async function sendReservationPaidNotifications(
     // BCC manual al equipo (copias separadas para el equipo interno)
     for (const bcc of bccList) {
       const bccSubject = `[COPIA] Reserva confirmada — ${reservation.merchantOrder} — ${reservation.customerName}`;
-      const bccSent = await sendEmail({ to: bcc, subject: bccSubject, html: confirmHtml }).catch(() => false);
+      const bccSent = await sendEmail({ to: bcc, subject: bccSubject, html: confirmHtml, category: "operational" }).catch(() => false);
       logDirectEmail({ templateKey: "reservation_confirm", triggerEvent: "reservation_paid_admin_copy", recipientEmail: bcc, subject: bccSubject, sent: !!bccSent, isAutomatic: true }).catch(() => {});
     }
     console.log(`[ReservationEmails] Email de confirmacion enviado a ${reservation.customerEmail}`);

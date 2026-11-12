@@ -526,6 +526,7 @@ export const cancellationsRouter = router({
                <p><strong>Cliente:</strong> ${input.fullName} (${input.email ?? "sin email"})</p>
                <p><strong>Motivo:</strong> ${input.reason}</p>
                <p><strong>Fecha actividad:</strong> ${input.activityDate}</p>`,
+        category: "cancellation",
       }).catch(() => {});
       logDirectEmail({ templateKey: "cancellation_received", triggerEvent: "cancellation_admin_notification", recipientEmail: cancAdminEmail, subject: cancAdminSubject, sent: true, isAutomatic: true }).catch(() => {});
 
@@ -1795,6 +1796,7 @@ export const cancellationsRouter = router({
             cc: await getCopyEmail(),
             subject: `Aceptación de tu solicitud de anulación #${requestId}`,
             html: emailAceptacionDevolucion(res.customerName, requestId, String(input.refundAmount), false),
+            category: "cancellation",
           }).catch(() => {});
         } else {
           // Sin compensación o bono sin datos de voucher: notificamos la aceptación sin importe
@@ -1803,6 +1805,7 @@ export const cancellationsRouter = router({
             cc: await getCopyEmail(),
             subject: `Aceptación de tu solicitud de anulación #${requestId}`,
             html: emailAceptacionDevolucion(res.customerName, requestId, "0.00", false),
+            category: "cancellation",
           }).catch(() => {});
         }
         await addLog(requestId, "email_sent", { type: "aceptacion", to: res.customerEmail }, ctx.user.id, ctx.user.name ?? "Admin");
@@ -1987,6 +1990,7 @@ export const cancellationsRouter = router({
           locator: req.locator ?? undefined,
           reason: req.reason ?? undefined,
         }),
+        category: "cancellation",
       });
       sent.push({ label: "Acuse de recibo", ok: ackOk });
 
@@ -1996,6 +2000,7 @@ export const cancellationsRouter = router({
           to: input.to,
           subject: `Resolución de tu solicitud de anulación #${req.id}`,
           html: emailRechazo(req.fullName, req.id, undefined),
+          category: "cancellation",
         });
         sent.push({ label: "Rechazo", ok });
 
@@ -2008,6 +2013,7 @@ export const cancellationsRouter = router({
             to: input.to,
             subject: `Aceptación de tu solicitud de anulación #${req.id}`,
             html: emailAceptacionDevolucion(req.fullName, req.id, amount, isPartial),
+            category: "cancellation",
           });
           sent.push({ label: "Aceptación devolución", ok });
 
@@ -2035,6 +2041,7 @@ export const cancellationsRouter = router({
                 expiresStr,
                 isPartial
               ),
+              category: "cancellation",
             });
             sent.push({ label: `Bono ${voucher.code}`, ok });
           } else {
@@ -2056,6 +2063,7 @@ export const cancellationsRouter = router({
             amount,
             executedAt: dateStr,
           }),
+          category: "refund_recorded",
         });
         sent.push({ label: "Devolución ejecutada", ok });
       }
@@ -2091,6 +2099,7 @@ export const cancellationsRouter = router({
           expiresAt: expiresStr,
           isPartial: false,
         }),
+        category: "cancellation",
       });
 
       await addLog(voucher.requestId, "voucher_sent", { voucherId: voucher.id, resentBy: ctx.user.id }, ctx.user.id, ctx.user.name ?? "Admin");

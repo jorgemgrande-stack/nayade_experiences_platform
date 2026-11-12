@@ -99,7 +99,7 @@ export async function runTaxReminderJob(): Promise<{ checked: number; sent: numb
     const subject = `⏰ Vencimiento fiscal — ${MODEL_NAME[o.model] ?? o.model} · ${o.periodLabel}`;
     for (const to of recipients) {
       try {
-        await sendEmail({ to, subject, html });
+        await sendEmail({ to, subject, html, category: "operational" });
       } catch (e) {
         console.warn(`[TaxReminderJob] Email no enviado a ${to}:`, (e as Error).message);
       }

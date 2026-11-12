@@ -369,7 +369,7 @@ export async function sendCashCloseEmailForSession(
 
   const to = opts.toOverride || (await getBusinessEmail("admin_alerts"));
   const subject = `${opts.subjectPrefix ?? ""}?? Cierre de caja — ${register?.name ?? "Caja"} — ${sessionDate} — ${companyName()}`;
-  await sendEmail({ to, subject, html });
+  await sendEmail({ to, subject, html, category: "operational" });
   return { to, subject };
 }
 
@@ -612,6 +612,7 @@ export const tpvRouter = router({
             to: toEmail,
             subject: `?? Apertura de caja — ${register?.name ?? "Caja"} — ${companyName()}`,
             html,
+            category: "operational",
           });
         }
       } catch (e) {
@@ -1977,9 +1978,9 @@ export const tpvRouter = router({
         });
         const subject = `[TPV] Compra confirmada ${ticketNumber} — ${companyName()}`;
         const saleNotifyEmail = await getBusinessEmail('reservations');
-        await sendEmail({ to: saleNotifyEmail, subject, html: emailHtml });
+        await sendEmail({ to: saleNotifyEmail, subject, html: emailHtml, category: "operational" });
         if (input.customerEmail) {
-          await sendEmail({ to: input.customerEmail, cc: saleNotifyEmail, subject, html: emailHtml });
+          await sendEmail({ to: input.customerEmail, cc: saleNotifyEmail, subject, html: emailHtml, category: "operational" });
           // Trazabilidad: marca confirmationEmailSentAt para que sea una señal
           // fiable en todos los canales y evitar un segundo envío si más tarde
           // se toca esta reserva desde el editor genérico de CRM.

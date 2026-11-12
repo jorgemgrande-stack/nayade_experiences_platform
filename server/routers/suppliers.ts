@@ -617,6 +617,7 @@ export const suppliersRouter = router({
         to: email,
         subject: `Invitación al portal de proveedores — ${companyName()}`,
         html: buildNoticeHtml({ badge: "Invitación", title: "Portal de proveedores", greetingName: name, paragraphs: [`Te han invitado al portal de proveedores de ${companyName()}, donde podrás ver las ventas de tus productos por todos los canales y tus liquidaciones.`], cta: { label: "Activar mi cuenta", url: inviteUrl }, note: "Este enlace caduca en 7 días." }),
+        category: "user_invite",
       }).catch(() => {});
       return { ok: true, email };
     }),
@@ -1762,6 +1763,8 @@ export const settlementsRouter = router({
           ],
           cta: settlement.pdfUrl ? { label: "Descargar la liquidación (PDF)", url: externalFileUrl(settlement.pdfUrl) } : null,
         }),
+        // Documento B2B de la liquidación al proveedor: operativo
+        category: "operational",
       });
 
       await db.update(supplierSettlements).set({ sentAt: new Date() }).where(eq(supplierSettlements.id, input.id));
