@@ -468,8 +468,9 @@ export async function runEmailAutomationJob(forceRun = false): Promise<Automatio
       const html = resolvedHtml;
 
       // Enviar (mergeGlobalCc en mailer.ts añade reservas@ automáticamente)
-      // Automatizaciones (recordatorios comerciales y reglas libres): «marketing», fuera del alcance transaccional
-      const ok = await sendEmail({ to: job.recipientEmail, subject: finalSubject, html, category: "marketing" });
+      // Automatizaciones (recordatorios comerciales y reglas libres): sin comprobación de consentimiento ni enlace de baja,
+      // así que NO salen («legacy» está fuera del ámbito de production), como antes de clasificar el correo (12/11/2026)
+      const ok = await sendEmail({ to: job.recipientEmail, subject: finalSubject, html, category: "legacy" });
       status = ok ? "sent" : "failed";
       provider = process.env.BREVO_API_KEY ? "brevo" : "smtp";
 
