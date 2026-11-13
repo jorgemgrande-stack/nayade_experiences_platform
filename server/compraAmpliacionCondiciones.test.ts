@@ -27,6 +27,6 @@ describe("compra en línea con condiciones personalizadas", () => {
     const src = fs.readFileSync(new URL("./stripe/purchases.ts", import.meta.url), "utf8");
     const ctx = src.slice(src.indexOf("private async context("), src.indexOf("private async plan("));
     expect(ctx).toContain("await this.d.subscriptions.hasCustomTerms?.(current.subscriptionId)");
-    expect(ctx).toContain("las ampliaciones se contratan con tu gestor");
+    expect(ctx).toContain("los cambios se gestionan con tu gestor");
   });
 });

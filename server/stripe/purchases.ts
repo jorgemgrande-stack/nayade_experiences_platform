@@ -264,7 +264,7 @@ export class ModulePurchaseService {
       if (internal.currentPeriodEnd <= this.now()) throw new PurchaseError("conflict", "Estamos aplicando la renovación de tu suscripción: inténtalo de nuevo en unos minutos");
       // Con condiciones personalizadas, la suscripción se cambia desde su acuerdo: se cobraría en Stripe y el alta
       // interna se rechazaría (assertNoTerms). La ampliación va por «Contratar e iniciar implantación»
-      if (await this.d.subscriptions.hasCustomTerms?.(current.subscriptionId)) throw new PurchaseError("unavailable", "Tu suscripción tiene condiciones personalizadas: las ampliaciones se contratan con tu gestor");
+      if (await this.d.subscriptions.hasCustomTerms?.(current.subscriptionId)) throw new PurchaseError("unavailable", "Tu suscripción tiene condiciones personalizadas: los cambios se gestionan con tu gestor");
     }
     return { company, current, sub };
   }
