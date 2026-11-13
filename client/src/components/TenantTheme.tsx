@@ -7,6 +7,7 @@
  * - En un solo tenant (producción actual) `neutralSite` es falso y nada cambia.
  */
 import { useEffect } from "react";
+import { useSiteLocale } from "@/hooks/useSiteLocale";
 import type { ComponentType, ReactNode } from "react";
 import { Link, Redirect, useLocation } from "wouter";
 import { trpc } from "@/lib/trpc";
@@ -158,7 +159,8 @@ export function TenantFooter({ theme }: { theme: Theme }) {
   const st = FOOTER_STYLE[f.style] ?? FOOTER_STYLE.dark;
   const showContact = f.showContact && !!(c.phone || c.email);
   // El servidor ya quita los enlaces a páginas en borrador
-  const menu = trpc.public.getMenuItems.useQuery({ zone: "footer" }, { staleTime: 5 * 60_000, retry: false });
+  const footerLocale = useSiteLocale().prefix;
+  const menu = trpc.public.getMenuItems.useQuery({ zone: "footer", ...(footerLocale ? { locale: footerLocale } : {}) }, { staleTime: 5 * 60_000, retry: false });
   const footerLinks = (menu.data ?? [])
     .filter((m) => m.isActive && !m.parentId && m.url)
     .sort((a, b) => a.sortOrder - b.sortOrder) as Array<{ id: number; label: string; url: string; target?: string | null }>;
@@ -237,10 +239,21 @@ export function useMetaDescription(text: string | null | undefined) {
   }, [text]);
 }
 
-export function TenantPage({ slug }: { slug: string }) {
-  const q = trpc.public.getTenantPage.useQuery({ slug }, { retry: false });
-  usePageTitle(slug === HOME_PAGE_SLUG ? null : q.data?.metaTitle || q.data?.title);
-  useMetaDescription(q.data?.metaDescription);
+export function TenantPage({ slug, locale }: { slug: string; locale?: string }) {
+  const q = trpc.public.getTenantPage.useQuery({ slug, ...(locale ? { locale } : {}) }, { retry: false });
+  const data = q.data && !("redirectTo" in q.data) ? q.data : null;
+  const i18n = data && "i18n" in data ? data.i18n : null;
+  usePageTitle(slug === HOME_PAGE_SLUG ? null : data?.metaTitle || data?.title);
+  useMetaDescription(data?.metaDescription);
+  // Idioma del documento (accesibilidad y buscadores); sin multidioma no se toca
+  useEffect(() => {
+    if (!i18n) return;
+    const prev = document.documentElement.lang;
+    document.documentElement.lang = i18n.htmlLang;
+    return () => {
+      document.documentElement.lang = prev;
+    };
+  }, [i18n]);
   if (q.isLoading) {
     return (
       <PublicLayout>
@@ -248,21 +261,27 @@ export function TenantPage({ slug }: { slug: string }) {
       </PublicLayout>
     );
   }
-  if (!q.data) return <NotFound />;
+  if (q.data && "redirectTo" in q.data) return <Redirect to={q.data.redirectTo} replace />;
+  if (!data) return <NotFound />;
   // Página hecha con el constructor: sus bloques (el mismo componente que la vista previa del panel)
-  if (q.data.blocks) {
+  if (data.blocks) {
     return (
       <PublicLayout>
-        <PageBlocksView blocks={q.data.blocks} pageTitle={q.data.title} />
+        {i18n?.fallback && (
+          <p role="note" lang="es" className="container py-2 text-sm text-muted-foreground">
+            Esta página todavía no está traducida a este idioma. Se muestra la versión original.
+          </p>
+        )}
+        <PageBlocksView blocks={data.blocks} pageTitle={data.title} />
       </PublicLayout>
     );
   }
   return (
     <PublicLayout>
       <article className={`container py-10 md:py-14 max-w-3xl ${RICH_TEXT_CLASS}`}>
-        {!startsWithHeading(q.data.html) && <h1>{q.data.title}</h1>}
+        {!startsWithHeading(data.html) && <h1>{data.title}</h1>}
         {/* HTML saneado en servidor con lista blanca (server/_core/htmlSanitize.ts) */}
-        <div dangerouslySetInnerHTML={{ __html: q.data.html }} />
+        <div dangerouslySetInnerHTML={{ __html: data.html }} />
       </article>
     </PublicLayout>
   );
@@ -313,8 +332,20 @@ export function PageOrDefault({ slug, Default }: { slug: string; Default: Compon
 /** "/:slug" tras todas las rutas conocidas: páginas del tenant; en single, 404 como siempre. */
 export function SlugGate({ slug }: { slug: string }) {
   const { theme, isLoading } = useTenantTheme();
-  if (isLoading) return <Spinner />;
+  const site = useSiteLocale();
+  if (isLoading || (theme?.neutralSite && site.isLoading)) return <Spinner />;
+  // «/de»: portada del idioma (solo un idioma adicional validado de la empresa; si no, es una página más, como siempre)
+  if (theme?.neutralSite && site.multilingual && slug !== site.defaultLocale && site.locales.includes(slug)) return <TenantPage slug={HOME_PAGE_SLUG} locale={slug} />;
   if (theme?.neutralSite) return <TenantPage slug={slug} />;
+  return <NotFound />;
+}
+
+/** "/:locale/:slug": página de un idioma adicional (E-1). Sin ese idioma validado, «no encontrada» como siempre. */
+export function LocaleSlugGate({ locale, slug }: { locale: string; slug: string }) {
+  const { theme, isLoading } = useTenantTheme();
+  const site = useSiteLocale();
+  if (isLoading || site.isLoading) return <Spinner />;
+  if (theme?.neutralSite && site.multilingual && locale !== site.defaultLocale && site.locales.includes(locale)) return <TenantPage slug={slug} locale={locale} />;
   return <NotFound />;
 }
 

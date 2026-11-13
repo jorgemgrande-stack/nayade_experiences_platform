@@ -31,6 +31,7 @@ import { getModuleAccess } from "./_core/modules/runtime";
 import { getStorefront } from "./storefront";
 import { productPath, SECTOR_LIST_PATH, SHOP_PATH } from "../shared/storefront";
 import { EMPTY_SITEMAP, robotsTxt, searchIndexingOff } from "./searchIndexing";
+import { xhtmlLinks } from "./sitemapI18n";
 
 /** Módulo sectorial contratado y activo (en una sola empresa, lo instalado). */
 async function moduleOn(id: string): Promise<boolean> {
@@ -91,13 +92,23 @@ function formatDate(d: Date | null | undefined): string {
   return d instanceof Date ? d.toISOString().slice(0, 10) : new Date().toISOString().slice(0, 10);
 }
 
-function urlEntry(base: string, loc: string, lastmod?: string, changefreq = "monthly", priority = "0.6"): string {
+function urlEntry(base: string, loc: string, lastmod?: string, changefreq = "monthly", priority = "0.6", alternates = ""): string {
   const lastmodTag = lastmod ? `\n    <lastmod>${lastmod}</lastmod>` : "";
   return `  <url>
     <loc>${escapeXml(base + loc)}</loc>${lastmodTag}
     <changefreq>${changefreq}</changefreq>
-    <priority>${priority}</priority>
+    <priority>${priority}</priority>${alternates ? "\n" + alternates : ""}
   </url>`;
+}
+
+/** Plan multidioma del sitemap; ante cualquier fallo, sin multidioma (nunca rompe el sitemap). */
+async function sitemapI18nPlan(base: string) {
+  try {
+    const [{ sqlI18nRepo }, { i18nSitemapPlan }] = await Promise.all([import("./i18nSqlRepo"), import("./sitemapI18n")]);
+    return await i18nSitemapPlan(sqlI18nRepo(), base);
+  } catch {
+    return null;
+  }
 }
 
 export const sitemapRouter = Router();
@@ -181,12 +192,15 @@ sitemapRouter.get("/sitemap.xml", async (_req, res) => {
         .where(eq(locations.isActive, true)),
     ]);
 
+    // Multidioma (E-1): solo con traducciones validadas; si no, `null` y el sitemap es el de siempre
+    const i18nPlan = multi ? await sitemapI18nPlan(BASE_URL) : null;
     const entries: string[] = [];
     const seen = new Set<string>();
     const add = (loc: string, lastmod?: string, changefreq?: string, priority?: string) => {
       if (seen.has(loc)) return;
       seen.add(loc);
-      entries.push(url(loc, lastmod, changefreq, priority));
+      const alts = i18nPlan?.alternatesFor.get(loc);
+      entries.push(alts ? urlEntry(BASE_URL, loc, lastmod, changefreq, priority, xhtmlLinks(alts)) : url(loc, lastmod, changefreq, priority));
     };
 
     // Rutas estáticas; en multiempresa, las sectoriales solo con su módulo y lo que la empresa ha publicado
@@ -255,8 +269,15 @@ sitemapRouter.get("/sitemap.xml", async (_req, res) => {
 
     // /pagina/* excluido — contenido duplicado de rutas canónicas
 
+    // Páginas de los idiomas adicionales validados, con sus alternativas
+    for (const x of i18nPlan?.extra ?? []) {
+      if (seen.has(x.loc)) continue;
+      seen.add(x.loc);
+      entries.push(urlEntry(BASE_URL, x.loc, x.lastmod, "monthly", "0.6", xhtmlLinks(x.alternates)));
+    }
+
     const xml = `<?xml version="1.0" encoding="UTF-8"?>
-<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"${i18nPlan ? ' xmlns:xhtml="http://www.w3.org/1999/xhtml"' : ""}>
 ${entries.join("\n")}
 </urlset>`;
 

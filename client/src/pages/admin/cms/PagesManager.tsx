@@ -76,6 +76,11 @@ export default function PagesManager() {
               </Link>
             </Button>
             <Button variant="outline" asChild>
+              <Link href="/admin/cms/idiomas">
+                <Globe className="mr-1.5 h-4 w-4" /> Idiomas
+              </Link>
+            </Button>
+            <Button variant="outline" asChild>
               <Link href="/admin/studio">
                 <Sparkles className="mr-1.5 h-4 w-4" /> Abrir Elephant Studio
               </Link>

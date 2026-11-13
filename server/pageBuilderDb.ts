@@ -13,7 +13,7 @@
  *     una fila por publicación con la lista completa; se conservan las últimas `MAX_VERSIONS`.
  *   - `system_settings.site_home_page`: la página elegida como portada (vacío = «inicio»).
  */
-import { and, desc, eq, inArray, like, or } from "drizzle-orm";
+import { and, desc, eq, inArray, like, or, sql } from "drizzle-orm";
 import { menuItems, pageBlocks, staticPages, systemSettings } from "../drizzle/schema";
 import { getDb, savePageBlocks } from "./db";
 import { findBlock } from "../shared/studio/tree";
@@ -385,7 +385,7 @@ export async function duplicateSitePage(slug: string) {
  * confirmación expresa (`confirmLegal`), porque la web lo enlaza en su pie.
  */
 export async function deleteSitePage(slug: string, opts: { confirmLegal?: boolean } = {}) {
-  await requirePage(slug);
+  const pageToDelete = await requirePage(slug);
   const home = await getHomeSlug();
   if (slug === home) throw new PageBlocksError("Es la portada de tu web. Elige otra portada antes de eliminarla.");
   if (isLegalPageSlug(slug) && !opts.confirmLegal) throw new PageBlocksError("Es un texto legal que tu web enlaza en el pie. Confirma que quieres eliminarlo.");
@@ -397,6 +397,8 @@ export async function deleteSitePage(slug: string, opts: { confirmLegal?: boolea
     await d.delete(menuItems).where(inArray(menuItems.parentId, ids));
     await d.delete(menuItems).where(inArray(menuItems.id, ids));
   }
+  // Multidioma (E-1): sus traducciones se van con ella (si la migración aún no está aplicada, no hay nada que borrar)
+  await d.execute(sql`DELETE FROM page_translations WHERE page_id = ${pageToDelete.id}`).catch(() => undefined);
   await d.delete(staticPages).where(eq(staticPages.slug, slug));
   return { success: true };
 }
