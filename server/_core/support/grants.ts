@@ -116,6 +116,20 @@ export class SupportAdmin extends MysqlSupportReader {
     }
   }
 
+  /** Concesiones vigentes (sin revocar ni caducar) de un tenant, las más recientes primero. */
+  async listActive(tenantId: string): Promise<SupportGrant[]> {
+    const [rows] = await this.admin.query<mysql.RowDataPacket[]>(
+      "SELECT * FROM support_grants WHERE tenant_id = ? AND revoked_at IS NULL AND expires_at > NOW(3) ORDER BY created_at DESC LIMIT 50",
+      [tenantId],
+    );
+    return rows.map(map);
+  }
+
+  /** Evento de auditoría de una sesión de soporte (lo envía el Core firmado; ver controlPlane/supportAudit.ts). */
+  async record(tenantId: string, operator: string, action: string, details: Record<string, unknown>): Promise<void> {
+    await this.admin.query("INSERT INTO tenant_events (tenant_id, actor_type, actor_id, action, details) VALUES (?,?,?,?,?)", [tenantId, "operator", operator.slice(0, 100), action.slice(0, 60), JSON.stringify(details)]);
+  }
+
   async revoke(id: string, operator: string): Promise<void> {
     const g = await this.getGrant(id);
     if (!g) throw new Error("Concesión no encontrada");

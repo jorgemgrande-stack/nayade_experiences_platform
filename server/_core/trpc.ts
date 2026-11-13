@@ -7,6 +7,8 @@ import { applyCustomRoleAny, checkPermission } from "../customRolesAccess";
 import { ModuleError } from "./modules/contract";
 import type { ModuleAccess } from "./modules/entitlements";
 import { QuotaExceededError } from "./erm/types";
+import { maskForSupport, supportProcedureKind } from "./support/policy";
+import { auditSupportEvent } from "./support/session";
 
 const t = initTRPC.context<TrpcContext>().create({
   transformer: superjson,
@@ -69,7 +71,35 @@ export const quotaErrors = t.middleware(async ({ next }) => {
   return r;
 });
 
-const baseProcedure = t.procedure.use(quotaErrors).use(readOnlyGuard);
+/**
+ * Sesión de soporte delegado (usuario sintético `loginMethod: "support"`): procedimientos vetados (usuarios y permisos,
+ * secretos, operaciones críticas), exportaciones solo con modificación y auditadas antes, y respuestas con IBAN, secretos
+ * y tokens enmascarados. Por procedimiento: un vetado no tumba el resto del lote. Ver ./support/policy.ts.
+ */
+const supportGate = t.middleware(async ({ ctx, path, type, next }) => {
+  const u = ctx.user as { loginMethod?: string; supportGrantId?: string; supportReadOnly?: boolean } | null | undefined;
+  if (!u || u.loginMethod !== "support" || !u.supportGrantId) return next();
+  const kind = supportProcedureKind(path);
+  const method = type === "query" ? "GET" : "POST";
+  if (kind === "forbidden") {
+    void auditSupportEvent(u.supportGrantId, "blocked", { method, resource: path, reason: "forbidden" });
+    throw new TRPCError({ code: "FORBIDDEN", message: "No disponible en modo soporte" });
+  }
+  if (kind === "export") {
+    if (u.supportReadOnly !== false) {
+      void auditSupportEvent(u.supportGrantId, "blocked", { method, resource: path, reason: "export_read_only" });
+      throw new TRPCError({ code: "FORBIDDEN", message: "Las exportaciones requieren un acceso de soporte con modificación" });
+    }
+    if (!(await auditSupportEvent(u.supportGrantId, "export", { method, resource: path }))) {
+      throw new TRPCError({ code: "PRECONDITION_FAILED", message: "No se ha podido registrar la operación de soporte" });
+    }
+  }
+  const r = await next();
+  if (r.ok) (r as { data: unknown }).data = maskForSupport((r as { data: unknown }).data);
+  return r;
+});
+
+const baseProcedure = t.procedure.use(quotaErrors).use(readOnlyGuard).use(supportGate);
 export const publicProcedure = baseProcedure;
 
 const requireUser = t.middleware(async opts => {

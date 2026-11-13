@@ -6,7 +6,11 @@
  *  - Cada petición con la cookie revalida: firma, caducidad, tenant resuelto == `tid`,
  *    concesión vigente y no revocada (lectura del registro).
  *  - Solo lectura por defecto: métodos que modifican se rechazan en el borde.
- *  - Los tokens jamás se registran; se registran concesión, operador, ruta y método.
+ *  - Rutas vetadas SIEMPRE al soporte (gestión de usuarios y permisos, secretos de integraciones, datos completos de
+ *    pago…; ver ./policy.ts); exportaciones y descargas sensibles solo con modificación y auditadas.
+ *  - Auditoría persistente en el historial de la empresa (./audit.ts): entrada, salida, cada modificación con su
+ *    resultado, intentos bloqueados y exportaciones. Sin registro no hay entrada ni modificación (falla cerrado).
+ *  - Los tokens jamás se registran; se registran concesión, operador, recurso, método y resultado.
  */
 import crypto from "node:crypto";
 import type { NextFunction, Request, RequestHandler, Response, Router } from "express";
@@ -14,6 +18,8 @@ import express from "express";
 import { SignJWT, jwtVerify } from "jose";
 import { peekTenantContext } from "../tenant";
 import { MAX_SUPPORT_MINUTES, grantActive, type SupportGrant, type SupportGrantReader } from "./grants";
+import { supportAuditSender, type SupportAuditSender } from "./audit";
+import { classifySupportRequest } from "./policy";
 
 export const SUPPORT_COOKIE = "es_support";
 /**
@@ -26,12 +32,34 @@ const supportToken = (req: Request) => cookieOf(req, SUPPORT_COOKIE_HOST) ?? (re
 
 let reader: SupportGrantReader | null = null;
 let secretRaw: string | undefined;
+let audit: SupportAuditSender = async () => false;
+/** Adónde vuelve el operador al salir del modo soporte (el CRM central). */
+let returnUrl = "https://admin.bigelephant.es/";
 const SAFE = new Set(["GET", "HEAD", "OPTIONS"]);
 
-export function configureSupport(r: SupportGrantReader | null, secret: string | undefined = process.env.SUPPORT_JWT_SECRET): void {
+export function configureSupport(
+  r: SupportGrantReader | null,
+  secret: string | undefined = process.env.SUPPORT_JWT_SECRET,
+  o: { audit?: SupportAuditSender; auditUrl?: string; returnUrl?: string } = {},
+): void {
   reader = r;
   secretRaw = secret && secret.length >= 32 ? secret : undefined;
+  audit = o.audit ?? (secretRaw ? supportAuditSender({ secret: secretRaw, url: o.auditUrl || process.env.SUPPORT_AUDIT_URL }) : async () => false);
+  returnUrl = o.returnUrl || process.env.SUPPORT_RETURN_URL || "https://admin.bigelephant.es/";
 }
+
+/**
+ * Evento de auditoría desde un procedimiento tRPC (exportación o intento vetado) de la sesión de soporte en curso.
+ * `false` si no consta registrado (quien lo pide decide si falla cerrado).
+ */
+export async function auditSupportEvent(grantId: string, ev: Parameters<SupportAuditSender>[0]["ev"], d: { method?: string; resource?: string; reason?: string } = {}): Promise<boolean> {
+  const tid = peekTenantContext()?.tenantId;
+  if (!tid || !supportEnabled()) return false;
+  return audit({ gid: grantId, tid, ev, d });
+}
+
+/** Operador sin el prefijo técnico («operator:jorge» → «jorge»), para mostrarlo. */
+const operatorLabel = (op: string) => op.replace(/^(operator|crm):/, "");
 
 const key = () => new TextEncoder().encode(secretRaw ?? "");
 export const supportEnabled = () => !!reader && !!secretRaw;
@@ -97,7 +125,7 @@ export async function getSupportUser(req: Request) {
   return {
     id: -1,
     openId: `support:${id.grant.id}`,
-    name: `Soporte Big Elephant (${id.grant.operator})`,
+    name: `Soporte Big Elephant (${operatorLabel(id.grant.operator)})`,
     email: null,
     loginMethod: "support",
     role: "admin" as const,
@@ -114,20 +142,58 @@ export async function getSupportUser(req: Request) {
     updatedAt: now,
     lastSignedIn: now,
     supportGrantId: id.grant.id,
+    // Para la banda «Modo soporte» del panel (nunca el token)
+    supportOperator: operatorLabel(id.grant.operator),
+    supportReadOnly: id.readOnly,
+    supportExpiresAt: id.grant.expiresAt,
   };
 }
 
-/** Rechaza escrituras de una sesión de soporte de solo lectura y deja traza de cada intento. */
+/**
+ * Borde de la sesión de soporte: rutas vetadas, solo lectura, exportaciones y auditoría de cada modificación.
+ * Sin sesión de soporte no hace nada.
+ */
 export function supportReadOnlyGuard(log: (l: string) => void = (l) => console.warn(l)): RequestHandler {
   return async (req: Request, res: Response, next: NextFunction) => {
     if (!supportEnabled() || !supportToken(req)) return next();
     const id = await getSupportIdentity(req);
     if (!id) return next(); // cookie no válida: la sesión de soporte simplemente no existe
-    if (id.readOnly && !SAFE.has(req.method) && !req.path.startsWith("/_support/")) {
-      log(JSON.stringify({ ctx: "Support", event: "write_blocked", grant: id.grant.id, op: id.grant.operator, method: req.method, path: req.path.slice(0, 120) }));
-      res.status(403).json({ error: "support_read_only" });
-      return;
+    if (req.path.startsWith("/_support/")) return next();
+    const g = id.grant;
+    const { kind, resource } = classifySupportRequest(req.method, req.originalUrl ?? req.url);
+    const safe = SAFE.has(req.method);
+    const trace = (event: string) => log(JSON.stringify({ ctx: "Support", event, grant: g.id, op: g.operator, method: req.method, path: resource.slice(0, 120) }));
+    const send = (ev: Parameters<SupportAuditSender>[0]["ev"], d: { status?: number; reason?: string } = {}) =>
+      audit({ gid: g.id, tid: g.tenantId, ev, d: { method: req.method, resource, ...d } });
+
+    // 1. Vetado al soporte siempre (también con modificación): usuarios y permisos, secretos, pagos completos…
+    if (kind === "forbidden") {
+      trace("forbidden");
+      void send("blocked", { reason: "forbidden" });
+      return void res.status(403).json({ error: "support_forbidden", message: "No disponible en modo soporte" });
     }
+    // 2. Exportaciones y descargas sensibles: solo con modificación y con el registro hecho ANTES
+    if (kind === "export") {
+      if (id.readOnly) {
+        trace("export_blocked");
+        void send("blocked", { reason: "export_read_only" });
+        return void res.status(403).json({ error: "support_read_only", message: "Las exportaciones requieren un acceso de soporte con modificación" });
+      }
+      if (!(await send("export"))) return void res.status(503).json({ error: "support_audit_unavailable", message: "No se ha podido registrar la operación de soporte" });
+      return next();
+    }
+    if (safe) return next(); // consultas ordinarias: sin registro (ruido)
+    // 3. Modificaciones
+    if (id.readOnly) {
+      trace("write_blocked");
+      void send("write_blocked");
+      return void res.status(403).json({ error: "support_read_only" });
+    }
+    if (!(await send("write"))) {
+      trace("audit_unavailable");
+      return void res.status(503).json({ error: "support_audit_unavailable", message: "No se ha podido registrar la operación de soporte" });
+    }
+    res.on("finish", () => void send("write_result", { status: res.statusCode }));
     next();
   };
 }
@@ -144,6 +210,11 @@ export function createSupportRouter(): Router {
     if (!claims || !grant || grant.tenantId !== tenant || !grantActive(grant)) {
       return void res.status(403).type("text/plain").send("Acceso no válido o caducado");
     }
+    // La entrada queda en el historial de la empresa antes de abrir el panel; sin registro no se entra
+    if (!(await audit({ gid: grant.id, tid: grant.tenantId, ev: "entered", d: {} }))) {
+      console.warn(JSON.stringify({ ctx: "Support", event: "enter_audit_unavailable", grant: grant.id, tenant }));
+      return void res.status(503).type("text/plain").send("No se ha podido registrar el acceso de soporte. Inténtalo de nuevo en unos minutos.");
+    }
     console.warn(JSON.stringify({ ctx: "Support", event: "enter", grant: grant.id, op: grant.operator, tenant }));
     const opts = { httpOnly: true, sameSite: "strict" as const, path: "/", maxAge: Math.max(1000, grant.expiresAt - Date.now()) };
     if (req.secure) res.cookie(SUPPORT_COOKIE_HOST, token, { ...opts, secure: true });
@@ -151,10 +222,18 @@ export function createSupportRouter(): Router {
     res.redirect(302, "/admin");
   });
 
-  r.post("/_support/exit", (req, res) => {
+  // Salir del modo soporte: termina la concesión (el plano de control la revoca al recibir la salida), borra SOLO la
+  // cookie de soporte y devuelve adónde volver (el CRM). La sesión central del operador no se toca.
+  r.post("/_support/exit", async (req, res) => {
+    const id = await getSupportIdentity(req).catch(() => null);
+    if (id) {
+      const ok = await audit({ gid: id.grant.id, tid: id.grant.tenantId, ev: "exited", d: {} });
+      console.warn(JSON.stringify({ ctx: "Support", event: "exit", grant: id.grant.id, op: id.grant.operator, recorded: ok }));
+    }
     res.clearCookie(SUPPORT_COOKIE_HOST, { path: "/", secure: true, httpOnly: true, sameSite: "strict" });
     res.clearCookie(SUPPORT_COOKIE, { path: "/" });
-    res.status(204).end();
+    res.setHeader("Cache-Control", "no-store");
+    res.json({ returnUrl });
   });
 
   return r;
