@@ -184,7 +184,26 @@ export async function getSupportUser(req: Request) {
 }
 
 /**
- * Borde de la sesión de soporte: rutas vetadas, solo lectura, exportaciones y auditoría de cada modificación.
+ * Error en el formato de tRPC (superjson) para las rutas /api/trpc: el panel muestra el mensaje en lugar de
+ * «Unable to transform response from server». Un lote recibe un error por procedimiento.
+ */
+function supportError(req: Request, res: Response, status: number, error: string, message: string) {
+  const url = req.originalUrl ?? req.url;
+  if (!url.startsWith("/api/trpc")) return void res.status(status).json({ error, message });
+  const code = status === 503 ? "PRECONDITION_FAILED" : "FORBIDDEN";
+  const rpc = status === 503 ? -32012 : -32003;
+  const paths = decodeURIComponent(url.slice("/api/trpc/".length).split("?")[0] ?? "").split(",");
+  const one = (path: string) => ({ error: { json: { message, code: rpc, data: { code, httpStatus: status, path, supportError: error } } } });
+  const batch = /[?&]batch=1(&|$)/.test(url);
+  res.status(status).json(batch ? paths.map(one) : one(paths[0] ?? ""));
+}
+
+/**
+ * Borde de la sesión de soporte. Dos niveles (13/11/2026, decisión del propietario):
+ *  - Solo lectura (cualquier rol autorizado): sin modificaciones, sin rutas sensibles, exportaciones vetadas.
+ *  - Con modificación (solo administración: admin y superadmin, lo impone el plano de control al conceder):
+ *    derechos PLENOS de administrador del cliente, sin vetos ni enmascarado. Cada modificación y exportación se
+ *    registra ANTES (si el registro falla, no se hace) y con su resultado.
  * Sin sesión de soporte no hace nada.
  */
 export function supportReadOnlyGuard(log: (l: string) => void = (l) => console.warn(l)): RequestHandler {
@@ -200,20 +219,22 @@ export function supportReadOnlyGuard(log: (l: string) => void = (l) => console.w
     const send = (ev: Parameters<SupportAuditSender>[0]["ev"], d: { status?: number; reason?: string } = {}) =>
       audit({ gid: g.id, tid: g.tenantId, ev, d: { method: req.method, resource, ...d } });
 
-    // 1. Vetado al soporte siempre (también con modificación): usuarios y permisos, secretos, pagos completos…
-    if (kind === "forbidden") {
+    const AUDIT_DOWN = "No se ha podido registrar la operación de soporte. Inténtalo de nuevo en unos segundos.";
+    // 1. Rutas sensibles (usuarios y permisos, secretos, pagos completos…): vetadas en solo lectura; con
+    //    modificación (administración) se permiten como cualquier otra, registradas si modifican
+    if (kind === "forbidden" && id.readOnly) {
       trace("forbidden");
       void send("blocked", { reason: "forbidden" });
-      return void res.status(403).json({ error: "support_forbidden", message: "No disponible en modo soporte" });
+      return supportError(req, res, 403, "support_forbidden", "No disponible en una sesión de soporte de solo lectura");
     }
     // 2. Exportaciones y descargas sensibles: solo con modificación y con el registro hecho ANTES
     if (kind === "export") {
       if (id.readOnly) {
         trace("export_blocked");
         void send("blocked", { reason: "export_read_only" });
-        return void res.status(403).json({ error: "support_read_only", message: "Las exportaciones requieren un acceso de soporte con modificación" });
+        return supportError(req, res, 403, "support_read_only", "Las exportaciones requieren un acceso de soporte con modificación");
       }
-      if (!(await send("export"))) return void res.status(503).json({ error: "support_audit_unavailable", message: "No se ha podido registrar la operación de soporte" });
+      if (!(await send("export"))) return supportError(req, res, 503, "support_audit_unavailable", AUDIT_DOWN);
       return next();
     }
     if (safe) return next(); // consultas ordinarias: sin registro (ruido)
@@ -221,11 +242,11 @@ export function supportReadOnlyGuard(log: (l: string) => void = (l) => console.w
     if (id.readOnly) {
       trace("write_blocked");
       void send("write_blocked");
-      return void res.status(403).json({ error: "support_read_only" });
+      return supportError(req, res, 403, "support_read_only", "Sesión de soporte de solo lectura: los cambios no se guardan. Para modificar, abre desde el CRM un acceso con modificación.");
     }
     if (!(await send("write"))) {
       trace("audit_unavailable");
-      return void res.status(503).json({ error: "support_audit_unavailable", message: "No se ha podido registrar la operación de soporte" });
+      return supportError(req, res, 503, "support_audit_unavailable", AUDIT_DOWN);
     }
     res.on("finish", () => void send("write_result", { status: res.statusCode }));
     next();

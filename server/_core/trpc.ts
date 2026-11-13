@@ -81,18 +81,22 @@ const supportGate = t.middleware(async ({ ctx, path, type, next, getRawInput }) 
   if (!u || u.loginMethod !== "support" || !u.supportGrantId) return next();
   const kind = supportProcedureKind(path);
   const method = type === "query" ? "GET" : "POST";
+  // Con modificación (solo administración): derechos plenos de administrador del cliente, sin vetos ni enmascarado.
+  // Las exportaciones se siguen registrando antes; las modificaciones, en el borde (supportReadOnlyGuard).
+  if (u.supportReadOnly === false) {
+    if (kind === "export" && !(await auditSupportEvent(u.supportGrantId, "export", { method, resource: path }))) {
+      throw new TRPCError({ code: "PRECONDITION_FAILED", message: "No se ha podido registrar la operación de soporte" });
+    }
+    return next();
+  }
   if (kind === "forbidden") {
     void auditSupportEvent(u.supportGrantId, "blocked", { method, resource: path, reason: "forbidden" });
     throw new TRPCError({ code: "FORBIDDEN", message: "No disponible en modo soporte" });
   }
+  // Solo lectura desde aquí: exportaciones vetadas
   if (kind === "export") {
-    if (u.supportReadOnly !== false) {
-      void auditSupportEvent(u.supportGrantId, "blocked", { method, resource: path, reason: "export_read_only" });
-      throw new TRPCError({ code: "FORBIDDEN", message: "Las exportaciones requieren un acceso de soporte con modificación" });
-    }
-    if (!(await auditSupportEvent(u.supportGrantId, "export", { method, resource: path }))) {
-      throw new TRPCError({ code: "PRECONDITION_FAILED", message: "No se ha podido registrar la operación de soporte" });
-    }
+    void auditSupportEvent(u.supportGrantId, "blocked", { method, resource: path, reason: "export_read_only" });
+    throw new TRPCError({ code: "FORBIDDEN", message: "Las exportaciones requieren un acceso de soporte con modificación" });
   }
   // Datos bancarios y secretos: ni se escriben (el formulario los tiene enmascarados) ni se cambian por otra vía
   if (type === "mutation" && inputTouchesSecrets(await getRawInput().catch(() => null))) {
