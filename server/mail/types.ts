@@ -87,8 +87,10 @@ export function categoryForTemplate(templateKey: string | null | undefined): Mai
   if (k === "quote" || k.startsWith("quote_")) return "quote_sent";
   if (k === "invite") return "user_invite";
   if (k === "password_reset") return "password_reset";
-  // Recordatorios comerciales, promociones y boletines: «marketing» (no salen por el correo operativo de las empresas)
-  if (/^(commercial|marketing|promo|newsletter|campaign)/.test(k)) return "marketing";
+  // Recordatorios comerciales, promociones y boletines: el gestor no comprueba consentimiento ni pone enlace de baja,
+  // así que NO salen («legacy», fuera del ámbito). Lo comercial con consentimiento sale por las automatizaciones
+  // (server/automations/actions.ts) como «marketing» (13/11/2026)
+  if (/^(commercial|marketing|promo|newsletter|campaign)/.test(k)) return "legacy";
   return "operational";
 }
 
