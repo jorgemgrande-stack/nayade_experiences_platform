@@ -1,8 +1,9 @@
 /**
  * Sesión de soporte en el Core.
  *
- *  - `/_support/enter?t=<token>` canjea el token (de un solo uso práctico: TTL corto) por una
- *    cookie HttpOnly/SameSite=Strict ligada al tenant del host.
+ *  - `/_support/enter?t=<token>` canjea el token de ENTRADA (tipo propio, 120 s, un solo uso por réplica) por una
+ *    cookie de SESIÓN distinta (otro tipo, hasta el fin de la concesión), HttpOnly/SameSite=Strict, ligada al tenant del host.
+ *    Un enlace filtrado (historial, registros de un proxy) ya no abre nada pasados 2 minutos o tras usarse.
  *  - Cada petición con la cookie revalida: firma, caducidad, tenant resuelto == `tid`,
  *    concesión vigente y no revocada (lectura del registro).
  *  - Solo lectura por defecto: métodos que modifican se rechazan en el borde.
@@ -64,24 +65,47 @@ const operatorLabel = (op: string) => op.replace(/^(operator|crm):/, "");
 const key = () => new TextEncoder().encode(secretRaw ?? "");
 export const supportEnabled = () => !!reader && !!secretRaw;
 
-export async function signSupportToken(g: SupportGrant, secret: string, ttlSeconds?: number): Promise<string> {
-  const ttl = Math.min(ttlSeconds ?? Math.floor((g.expiresAt - Date.now()) / 1000), MAX_SUPPORT_MINUTES * 60);
-  return new SignJWT({ gid: g.id, tid: g.tenantId, op: g.operator, ro: g.readOnly })
+/** Validez del enlace de entrada que entrega el CRM: se abre al momento. */
+export const SUPPORT_ENTRY_TTL_SECONDS = 120;
+const TYP_ENTRY = "es_support_entry";
+const TYP_SESSION = "es_support_session";
+type SupportTokenKind = "entry" | "session";
+
+/**
+ * Token de soporte. `entry` (por defecto): el enlace de entrada, 120 s y de un solo uso. `session`: la cookie, hasta el
+ * fin de la concesión. Tipos propios: ni se confunden entre sí ni con los eventos de auditoría (mismo secreto).
+ */
+export async function signSupportToken(g: SupportGrant, secret: string, ttlSeconds?: number, kind: SupportTokenKind = "entry"): Promise<string> {
+  const untilGrant = Math.floor((g.expiresAt - Date.now()) / 1000);
+  const ttl = Math.min(ttlSeconds ?? (kind === "entry" ? SUPPORT_ENTRY_TTL_SECONDS : untilGrant), untilGrant, MAX_SUPPORT_MINUTES * 60);
+  return new SignJWT({ typ: kind === "entry" ? TYP_ENTRY : TYP_SESSION, gid: g.id, tid: g.tenantId, op: g.operator, ro: g.readOnly })
     .setProtectedHeader({ alg: "HS256" })
+    .setJti(crypto.randomBytes(12).toString("hex"))
     .setIssuedAt()
     .setExpirationTime(`${Math.max(1, ttl)}s`)
     .sign(new TextEncoder().encode(secret));
 }
 
-async function verify(token: string): Promise<{ gid: string; tid: string; op: string; ro: boolean } | null> {
+async function verify(token: string, kind: SupportTokenKind): Promise<{ gid: string; tid: string; op: string; ro: boolean; jti: string; exp: number } | null> {
   if (!secretRaw) return null;
   try {
     const { payload } = await jwtVerify(token, key(), { algorithms: ["HS256"] });
-    if (typeof payload.gid !== "string" || typeof payload.tid !== "string") return null;
-    return { gid: payload.gid, tid: payload.tid, op: String(payload.op ?? ""), ro: payload.ro !== false };
+    if (payload.typ !== (kind === "entry" ? TYP_ENTRY : TYP_SESSION)) return null;
+    if (typeof payload.gid !== "string" || typeof payload.tid !== "string" || typeof payload.jti !== "string" || typeof payload.exp !== "number") return null;
+    return { gid: payload.gid, tid: payload.tid, op: String(payload.op ?? ""), ro: payload.ro !== false, jti: payload.jti, exp: payload.exp };
   } catch {
     return null;
   }
+}
+
+/** Enlaces de entrada ya canjeados en esta réplica (jti → caducidad, s). */
+const usedEntries = new Map<string, number>();
+function consumeEntry(jti: string, exp: number): boolean {
+  const now = Math.floor(Date.now() / 1000);
+  usedEntries.forEach((e, k) => e < now && usedEntries.delete(k));
+  if (usedEntries.has(jti)) return false;
+  usedEntries.set(jti, exp);
+  return true;
 }
 
 function cookieOf(req: Request, name: string): string | undefined {
@@ -103,12 +127,22 @@ export interface SupportIdentity {
   readOnly: boolean;
 }
 
-/** Valida la sesión de soporte de la petición contra el tenant resuelto. */
-export async function getSupportIdentity(req: Request): Promise<SupportIdentity | null> {
+const identityCache = new WeakMap<Request, Promise<SupportIdentity | null>>();
+
+/** Valida la sesión de soporte de la petición contra el tenant resuelto (una vez por petición). */
+export function getSupportIdentity(req: Request): Promise<SupportIdentity | null> {
+  const hit = identityCache.get(req);
+  if (hit) return hit;
+  const p = resolveIdentity(req);
+  identityCache.set(req, p);
+  return p;
+}
+
+async function resolveIdentity(req: Request): Promise<SupportIdentity | null> {
   if (!supportEnabled()) return null;
   const token = supportToken(req);
   if (!token) return null;
-  const claims = await verify(token);
+  const claims = await verify(token, "session");
   if (!claims) return null;
   const tenant = peekTenantContext()?.tenantId;
   if (!tenant || claims.tid !== tenant) return null; // nunca fuera del tenant concedido
@@ -204,12 +238,14 @@ export function createSupportRouter(): Router {
   r.get("/_support/enter", async (req, res) => {
     if (!supportEnabled()) return void res.status(404).end();
     const token = String(req.query.t ?? "");
-    const claims = await verify(token);
+    const claims = await verify(token, "entry");
     const tenant = peekTenantContext()?.tenantId;
     const grant = claims && claims.tid === tenant ? await reader!.getGrant(claims.gid) : null;
     if (!claims || !grant || grant.tenantId !== tenant || !grantActive(grant)) {
       return void res.status(403).type("text/plain").send("Acceso no válido o caducado");
     }
+    // Un solo uso: el mismo enlace no abre una segunda sesión (otra pestaña, otro navegador)
+    if (!consumeEntry(claims.jti, claims.exp)) return void res.status(403).type("text/plain").send("Este enlace de acceso ya se ha usado. Pide uno nuevo desde el CRM.");
     // La entrada queda en el historial de la empresa antes de abrir el panel; sin registro no se entra
     if (!(await audit({ gid: grant.id, tid: grant.tenantId, ev: "entered", d: {} }))) {
       console.warn(JSON.stringify({ ctx: "Support", event: "enter_audit_unavailable", grant: grant.id, tenant }));
@@ -217,17 +253,24 @@ export function createSupportRouter(): Router {
     }
     console.warn(JSON.stringify({ ctx: "Support", event: "enter", grant: grant.id, op: grant.operator, tenant }));
     const opts = { httpOnly: true, sameSite: "strict" as const, path: "/", maxAge: Math.max(1000, grant.expiresAt - Date.now()) };
-    if (req.secure) res.cookie(SUPPORT_COOKIE_HOST, token, { ...opts, secure: true });
-    else res.cookie(SUPPORT_COOKIE, token, { ...opts, secure: process.env.NODE_ENV === "production" });
+    // La cookie es una credencial distinta del enlace (tipo «sesión»): el enlace no sirve como cookie ni al revés
+    const sessionToken = await signSupportToken(grant, secretRaw!, undefined, "session");
+    if (req.secure) res.cookie(SUPPORT_COOKIE_HOST, sessionToken, { ...opts, secure: true });
+    else res.cookie(SUPPORT_COOKIE, sessionToken, { ...opts, secure: process.env.NODE_ENV === "production" });
     res.redirect(302, "/admin");
   });
 
   // Salir del modo soporte: termina la concesión (el plano de control la revoca al recibir la salida), borra SOLO la
   // cookie de soporte y devuelve adónde volver (el CRM). La sesión central del operador no se toca.
   r.post("/_support/exit", async (req, res) => {
+    // Solo desde el propio panel: otra empresa del mismo dominio padre (mismo «sitio») no puede cerrar la sesión
+    const origin = req.headers.origin;
+    if (typeof origin === "string" && origin !== `${req.protocol}://${req.headers.host}`) return void res.status(403).json({ error: "forbidden_origin" });
     const id = await getSupportIdentity(req).catch(() => null);
     if (id) {
-      const ok = await audit({ gid: id.grant.id, tid: id.grant.tenantId, ev: "exited", d: {} });
+      // La salida revoca la concesión en el plano de control: se reintenta para no dejarla viva por un fallo puntual
+      let ok = false;
+      for (let i = 0; i < 3 && !ok; i++) ok = await audit({ gid: id.grant.id, tid: id.grant.tenantId, ev: "exited", d: {} });
       console.warn(JSON.stringify({ ctx: "Support", event: "exit", grant: id.grant.id, op: id.grant.operator, recorded: ok }));
     }
     res.clearCookie(SUPPORT_COOKIE_HOST, { path: "/", secure: true, httpOnly: true, sameSite: "strict" });

@@ -26,7 +26,7 @@ const events: Array<{ ev: string; d: Record<string, unknown> }> = [];
 let auditUp = true;
 const auditStub = async (c: { ev: string; d: Record<string, unknown> }) => (auditUp ? (events.push({ ev: c.ev, d: c.d }), true) : false);
 
-function call(method: string, path: string, opts: { tenant?: string; cookie?: string; https?: boolean } = {}) {
+function call(method: string, path: string, opts: { tenant?: string; cookie?: string; https?: boolean; origin?: string } = {}) {
   return new Promise<{ status: number; body: string; setCookie?: string }>((resolve, reject) => {
     const req = http.request(
       {
@@ -38,6 +38,7 @@ function call(method: string, path: string, opts: { tenant?: string; cookie?: st
           ...(opts.tenant ? { "x-test-tenant": opts.tenant } : {}),
           ...(opts.cookie ? { cookie: opts.cookie } : {}),
           ...(opts.https ? { "x-forwarded-proto": "https" } : {}),
+          ...(opts.origin ? { origin: opts.origin } : {}),
         },
       },
       (res) => {
@@ -236,5 +237,38 @@ describe("auditoría y límites del modo soporte", () => {
     expect(JSON.parse(out.body)).toEqual({ returnUrl: "https://crm.example/" });
     expect(out.setCookie).toMatch(/es_support=;/);
     expect(events.map((e) => e.ev)).toEqual(["exited"]);
+  });
+});
+
+describe("enlace de entrada y tipos de token (revisión de seguridad)", () => {
+  it("el enlace es de un solo uso y no vale como cookie; la cookie no vale como enlace", async () => {
+    const { token, r } = await enter("acme");
+    expect(r.status).toBe(302);
+    const cookie = cookieFrom(r.setCookie);
+    expect(cookie.split("=")[1]).not.toBe(token); // credencial distinta
+    expect((await call("GET", `/_support/enter?t=${token}`, { tenant: "acme" })).status).toBe(403);
+    expect(JSON.parse((await call("GET", "/data", { tenant: "acme", cookie: `${SUPPORT_COOKIE}=${token}` })).body)).toEqual({ support: false });
+    expect((await call("GET", `/_support/enter?t=${cookie.split("=")[1]}`, { tenant: "acme" })).status).toBe(403);
+  });
+
+  it("un evento de auditoría firmado no abre sesión ni como enlace ni como cookie", async () => {
+    const { signSupportAudit } = await import("./_core/support/audit");
+    const g = store.create({ tenantId: "acme", operator: "jorge", reason: "Incidencia #125", minutes: 30 });
+    const ev = await signSupportAudit(SECRET, { gid: g.id, tid: "acme", ev: "entered", d: {} });
+    expect((await call("GET", `/_support/enter?t=${ev}`, { tenant: "acme" })).status).toBe(403);
+    expect(JSON.parse((await call("GET", "/data", { tenant: "acme", cookie: `${SUPPORT_COOKIE}=${ev}` })).body)).toEqual({ support: false });
+  });
+
+  it("salir desde otro origen (otra empresa del mismo dominio) se rechaza", async () => {
+    const c = cookieFrom((await enter("acme")).r.setCookie);
+    events.length = 0;
+    expect((await call("POST", "/_support/exit", { tenant: "acme", cookie: c, origin: "https://otra.app.example" })).status).toBe(403);
+    expect(events).toHaveLength(0);
+  });
+
+  it("diagnóstico y recuperación de pagos vetados, también con mayúsculas", async () => {
+    const { classifySupportRequest } = await import("./_core/support/policy");
+    expect(classifySupportRequest("GET", "/api/admin/diagnose-order/X1").kind).toBe("forbidden");
+    expect(classifySupportRequest("POST", "/API/AUTH/handoff").kind).toBe("forbidden");
   });
 });

@@ -19,7 +19,8 @@ const FORBIDDEN_PROCEDURES = new Set<string>([
   "sites.setUserSites", "tpv.setRegisterOperators",
   "hr.employees.createPortalAccess", "hr.employees.revokePortalAccess",
   "partners.inviteUser", "partners.removeUser", "suppliers.inviteSupplierUser", "gestoria.access.createPortalAccess",
-  "communities.members.add", "communities.members.invite", "communities.members.resendInvite", "communities.members.setRole",
+  "communities.admin.members.add", "communities.admin.members.invite", "communities.admin.members.resendInvite", "communities.admin.members.setRole",
+  "communities.admin.members.setStatus", "skiSchool.linkUser",
   "restaurants.adminAssignStaff", "restaurants.adminRemoveStaff",
   // Secretos y credenciales de integraciones (lectura y escritura)
   "integrations.save", "integrations.clear",
@@ -33,8 +34,8 @@ const FORBIDDEN_PROCEDURES = new Set<string>([
   "whatsappCloud.verify", "whatsappCloud.saveSettings", "brevoMarketing.disconnect",
   "receptionAi.regenerateChatLink", "travel.veturisSaveSettings",
   "hotel.adminIcalIssueExport", "hotel.adminIcalRevokeExport", "hotel.adminSetPmsSettings",
-  // Ajustes del sitio: guardan la clave de GHL y el IBAN de la empresa
-  "cms.updateSiteSettings",
+  // Ajustes del sitio y del sistema: mezclan claves sensibles (clave de GHL, IBAN de la empresa, entorno de pagos…)
+  "cms.updateSiteSettings", "config.updateSystemSetting", "config.updateFeatureFlag",
   // Operaciones críticas no necesarias para el soporte
   "subscription.purchase", "subscription.reduce", "subscription.withdraw", "subscription.billingPortal", "subscription.conversionStart",
   "subscription.cancel", "subscription.undoCancel", "subscription.changePlan", "subscription.planRequest",
@@ -58,6 +59,9 @@ const EXPORT_PROCEDURES = new Set<string>([
   "reav.exportZip", "crm.reservations.downloadPdf", "crm.quotes.generatePdf",
   "gestoria.dossiers.generate", "partners.generateBatchPdf", "settlements.generatePdf",
 ]);
+
+/** Para el test que comprueba que cada nombre existe en el router (un nombre mal escrito no veta nada). */
+export const SUPPORT_POLICY_NAMES = { forbidden: Array.from(FORBIDDEN_PROCEDURES), export: Array.from(EXPORT_PROCEDURES), forbiddenPrefixes: FORBIDDEN_PREFIXES };
 
 export type SupportKind = "forbidden" | "export" | "normal";
 
@@ -90,17 +94,28 @@ export function classifySupportRequest(method: string, url: string): { kind: Sup
   const procs = trpcProcedures(url);
   if (procs) return { kind: "normal", resource: procs.join(",").slice(0, 200) };
   const resource = path.slice(0, 200);
-  if (path.startsWith("/api/auth/") && method !== "GET" && method !== "HEAD") return { kind: "forbidden", resource };
+  // Express no distingue mayúsculas en las rutas: la comparación tampoco
+  const lower = path.toLowerCase();
+  if (lower.startsWith("/api/auth/") && method !== "GET" && method !== "HEAD") return { kind: "forbidden", resource };
+  // Diagnóstico y recuperación de pagos (filas completas de pedidos, rehacer cobros): no son de soporte delegado
+  if (lower.startsWith("/api/admin/")) return { kind: "forbidden", resource };
   if (/\/(export|exports)(\b|-|\/)|export-excel|\.(csv|xlsx|zip)$/i.test(path)) return { kind: "export", resource };
   return { kind: "normal", resource };
 }
 
-const SECRET_KEY = /(iban|secret|password|passwd|token|apikey|api_key|privatekey|private_key|clientsecret|credential|accountnumber|account_number)/i;
-/** Campos que solo describen el secreto (si existe, su caducidad, sus 4 últimas cifras…), no lo contienen. */
-const KEEP_KEY = /(expiresat|expiry|expires|at|count|type|kind|status|required|enabled|configured|present|last4|masked|display|holder|hint|label)$/i;
+const SECRET_KEY = /(iban|secret|password|passwd|^pass$|token|apikey|api_key|privatekey|private_key|clientsecret|credential|accountnumber|account_number|merchantkey|merchant_key|serviceaccount|service_account|signingkey|webhookkey)/i;
+/**
+ * Campos que solo describen el secreto (si existe, su caducidad, sus 4 últimas cifras…), no lo contienen. Sufijos en
+ * camelCase (sensible a mayúsculas): «tokenFormat» NO se libra por acabar en «at»; «tokenExpiresAt» sí.
+ */
+const KEEP_KEY = /(ExpiresAt|Expiry|Expires|At|Count|Type|Kind|Status|Required|Enabled|Configured|Present|Last4|Masked|Display|Holder|Hint|Label)$/;
+/** Clave de una fila de ajustes ({ key, value }) cuyo valor es sensible (p. ej. `site_legal_iban`, `redsys_merchant_key`). */
+const SENSITIVE_SETTING = /(iban|secret|password|pass$|token|api_?key|private|merchant|credential|account|webhook)/i;
+const isSecretKey = (k: string) => SECRET_KEY.test(k) && !KEEP_KEY.test(k);
 
-function maskValue(key: string, v: string): string {
-  if (!v) return v;
+function maskValue(key: string, v: string | number): string | number {
+  if (v === "" || v === null) return v;
+  v = String(v);
   if (/iban|account/i.test(key)) return v.length > 4 ? `•••• ${v.replace(/\s+/g, "").slice(-4)}` : "••••";
   return "••••••";
 }
@@ -112,10 +127,30 @@ export function maskForSupport<T>(data: T, depth = 0): T {
   // Solo objetos planos: fechas, Buffer, Decimal, Map… se devuelven tal cual
   const proto = Object.getPrototypeOf(data);
   if (proto !== Object.prototype && proto !== null) return data;
+  const src = data as Record<string, unknown>;
+  // Filas de ajustes { key, value }: se decide por la clave del ajuste, no por el nombre del campo
+  const settingSensitive = typeof src.key === "string" && "value" in src && SENSITIVE_SETTING.test(src.key);
   const out: Record<string, unknown> = {};
-  for (const [k, v] of Object.entries(data as Record<string, unknown>)) {
-    if (typeof v === "string" && SECRET_KEY.test(k) && !KEEP_KEY.test(k)) out[k] = maskValue(k, v);
+  for (const [k, v] of Object.entries(src)) {
+    if ((typeof v === "string" || typeof v === "number") && (isSecretKey(k) || (settingSensitive && k === "value"))) out[k] = maskValue(settingSensitive && k === "value" ? String(src.key) : k, v);
+    else if (v !== null && typeof v === "object" && isSecretKey(k)) out[k] = "••••••"; // JSON de credenciales completo
     else out[k] = maskForSupport(v, depth + 1);
   }
   return out as T;
+}
+
+/**
+ * ¿La entrada de una modificación lleva datos bancarios o secretos? En modo soporte no se escriben: además de ser datos
+ * de pago o credenciales, el formulario los recibe enmascarados y guardarlos los estropearía.
+ */
+export function inputTouchesSecrets(input: unknown, depth = 0): boolean {
+  if (depth > 8 || input === null || typeof input !== "object") return false;
+  if (Array.isArray(input)) return input.some((x) => inputTouchesSecrets(x, depth + 1));
+  const o = input as Record<string, unknown>;
+  if (typeof o.key === "string" && "value" in o && SENSITIVE_SETTING.test(o.key)) return true;
+  for (const [k, v] of Object.entries(o)) {
+    if (v !== undefined && v !== null && isSecretKey(k)) return true;
+    if (inputTouchesSecrets(v, depth + 1)) return true;
+  }
+  return false;
 }

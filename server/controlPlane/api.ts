@@ -3343,6 +3343,7 @@ export function createControlPlaneApp(d: ControlPlaneDeps): Express {
           return void res.status(403).json({ error: "forbidden", message: "Solo administración puede abrir un acceso de soporte con modificación" });
         }
         const g = await d.support!.create({ tenantId: id, ...b, operator: `${a.type}:${a.id}` });
+        // Enlace de entrada de 120 s y un solo uso (la cookie de la sesión la emite el Core al canjearlo)
         const token = await signSupportToken(g, d.supportSecret!);
         const primary = (await d.reader.listDomains(id)).find((x) => x.isPrimary && x.status === "active");
         res.status(201).json({

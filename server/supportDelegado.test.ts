@@ -208,3 +208,51 @@ describe("procedimientos tRPC en modo soporte", () => {
     configureSupport(null);
   });
 });
+
+describe("revisión de seguridad: nombres, ajustes sensibles y entradas con secretos", () => {
+  it("cada procedimiento vetado o de exportación existe en el router (un nombre mal escrito no veta nada)", async () => {
+    const { appRouter } = await import("./routers");
+    const { SUPPORT_POLICY_NAMES } = await import("./_core/support/policy");
+    const all = new Set(Object.keys((appRouter as unknown as { _def: { procedures: Record<string, unknown> } })._def.procedures));
+    const missing = [...SUPPORT_POLICY_NAMES.forbidden, ...SUPPORT_POLICY_NAMES.export].filter((n) => !all.has(n));
+    expect(missing).toEqual([]);
+    for (const p of SUPPORT_POLICY_NAMES.forbiddenPrefixes) expect([...all].some((n) => n.startsWith(p))).toBe(true);
+    for (const p of ["communities.admin.members.invite", "communities.admin.members.setStatus", "config.updateSystemSetting", "config.updateFeatureFlag"]) expect(supportProcedureKind(p)).toBe("forbidden");
+  }, 120_000);
+
+  it("filas de ajustes {key, value}: se enmascara por la clave; credenciales con otros nombres y JSON completo", async () => {
+    const out = maskForSupport([
+      { key: "site_legal_iban", value: "ES7620770024003102575766" },
+      { key: "redsys_merchant_key", value: "sq7HjrUOBfKmC576ILgskD5srU870gJ7" },
+      { key: "site_name", value: "Acme" },
+      { merchantKey: "abc", pass: "x", serviceAccountJson: { private_key: "k" }, tokenFormat: "jwt", accountNumber: 12345678 },
+    ]);
+    expect(out[0].value).toBe("•••• 5766");
+    expect(out[1].value).toBe("••••••");
+    expect(out[2].value).toBe("Acme");
+    expect(out[3]).toMatchObject({ merchantKey: "••••••", pass: "••••••", serviceAccountJson: "••••••", tokenFormat: "••••••", accountNumber: "•••• 5678" });
+  });
+
+  it("una modificación con IBAN, secretos o ajustes sensibles se rechaza en modo soporte", async () => {
+    const { inputTouchesSecrets } = await import("./_core/support/policy");
+    expect(inputTouchesSecrets({ id: 3, name: "Ana", iban: "•••• 1332" })).toBe(true);
+    expect(inputTouchesSecrets({ key: "site_legal_iban", value: "ES00" })).toBe(true);
+    expect(inputTouchesSecrets({ id: 3, name: "Ana", notes: "ok", iban: undefined })).toBe(false);
+    expect(inputTouchesSecrets({ id: 3, items: [{ qty: 1 }] })).toBe(false);
+    const { router, publicProcedure } = await import("./_core/trpc");
+    const { configureSupport } = await import("./_core/support/session");
+    const { MemorySupportStore } = await import("./_core/support/grants");
+    const { runWithTenant } = await import("./_core/tenant");
+    const { z } = await import("zod");
+    const evs: string[] = [];
+    configureSupport(new MemorySupportStore(), SECRET, { audit: async (c) => (evs.push(`${c.ev}:${c.d.reason ?? ""}`), true) });
+    const app = router({ hr: router({ employees: router({ update: publicProcedure.input(z.object({ id: z.number(), name: z.string(), iban: z.string().optional() })).mutation(() => "ok") }) }) });
+    const caller = app.createCaller({ user: { id: -1, role: "admin", loginMethod: "support", supportGrantId: "g".repeat(32), supportReadOnly: false } } as never);
+    await runWithTenant("acme", async () => {
+      await expect(caller.hr.employees.update({ id: 1, name: "Ana", iban: "•••• 1332" })).rejects.toThrow(/bancarios/);
+      expect(await caller.hr.employees.update({ id: 1, name: "Ana" })).toBe("ok");
+    });
+    expect(evs).toEqual(["blocked:secret_input"]);
+    configureSupport(null);
+  });
+});

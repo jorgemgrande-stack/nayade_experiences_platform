@@ -7,7 +7,7 @@ import { applyCustomRoleAny, checkPermission } from "../customRolesAccess";
 import { ModuleError } from "./modules/contract";
 import type { ModuleAccess } from "./modules/entitlements";
 import { QuotaExceededError } from "./erm/types";
-import { maskForSupport, supportProcedureKind } from "./support/policy";
+import { inputTouchesSecrets, maskForSupport, supportProcedureKind } from "./support/policy";
 import { auditSupportEvent } from "./support/session";
 
 const t = initTRPC.context<TrpcContext>().create({
@@ -76,7 +76,7 @@ export const quotaErrors = t.middleware(async ({ next }) => {
  * secretos, operaciones críticas), exportaciones solo con modificación y auditadas antes, y respuestas con IBAN, secretos
  * y tokens enmascarados. Por procedimiento: un vetado no tumba el resto del lote. Ver ./support/policy.ts.
  */
-const supportGate = t.middleware(async ({ ctx, path, type, next }) => {
+const supportGate = t.middleware(async ({ ctx, path, type, next, getRawInput }) => {
   const u = ctx.user as { loginMethod?: string; supportGrantId?: string; supportReadOnly?: boolean } | null | undefined;
   if (!u || u.loginMethod !== "support" || !u.supportGrantId) return next();
   const kind = supportProcedureKind(path);
@@ -93,6 +93,11 @@ const supportGate = t.middleware(async ({ ctx, path, type, next }) => {
     if (!(await auditSupportEvent(u.supportGrantId, "export", { method, resource: path }))) {
       throw new TRPCError({ code: "PRECONDITION_FAILED", message: "No se ha podido registrar la operación de soporte" });
     }
+  }
+  // Datos bancarios y secretos: ni se escriben (el formulario los tiene enmascarados) ni se cambian por otra vía
+  if (type === "mutation" && inputTouchesSecrets(await getRawInput().catch(() => null))) {
+    void auditSupportEvent(u.supportGrantId, "blocked", { method, resource: path, reason: "secret_input" });
+    throw new TRPCError({ code: "FORBIDDEN", message: "Los datos bancarios y las credenciales no se modifican en modo soporte" });
   }
   const r = await next();
   if (r.ok) (r as { data: unknown }).data = maskForSupport((r as { data: unknown }).data);
