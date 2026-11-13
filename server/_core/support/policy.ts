@@ -1,7 +1,8 @@
 /**
  * Qué puede hacer una sesión de soporte delegado (decisión 13/11/2026).
  *
- *  - VETADO siempre (también con modificación): gestión de usuarios, roles y permisos, accesos de portales, seguridad
+ *  - Lista sensible, VETADA en solo lectura; con modificación (solo administración: admin y superadmin) derechos
+ *    plenos sin vetos ni enmascarado (decisión del propietario, 13/11/2026). Incluye: gestión de usuarios, roles y permisos, accesos de portales, seguridad
  *    de cuenta, secretos y credenciales de integraciones, y operaciones críticas no necesarias para dar soporte
  *    (plan y facturación de la suscripción, dominios, contadores fiscales, borrados masivos).
  *  - EXPORTACIONES y descargas sensibles: solo con modificación, y auditadas antes de servirlas.

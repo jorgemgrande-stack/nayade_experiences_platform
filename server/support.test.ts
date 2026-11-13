@@ -238,6 +238,9 @@ describe("auditoría y límites del modo soporte", () => {
     const body = JSON.parse(batch.body);
     expect(body).toHaveLength(2);
     expect(body[1]).toMatchObject({ error: { json: { data: { path: "cms.publishPage" } } } });
+    // Ruta mal codificada o en mayúsculas: rechazo controlado, nunca una excepción
+    expect((await call("POST", "/api/trpc/%E0", { tenant: "acme", cookie: ro })).status).toBe(403);
+    expect((await call("POST", "/API/TRPC/cms.savePageDraft", { tenant: "acme", cookie: ro })).status).toBe(403);
   });
 
   it("salir registra la salida, borra solo la cookie de soporte y devuelve adónde volver", async () => {

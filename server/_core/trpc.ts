@@ -72,7 +72,8 @@ export const quotaErrors = t.middleware(async ({ next }) => {
 });
 
 /**
- * Sesión de soporte delegado (usuario sintético `loginMethod: "support"`): procedimientos vetados (usuarios y permisos,
+ * Sesión de soporte delegado (usuario sintético `loginMethod: "support"`). Con modificación (administración): derechos
+ * plenos; solo se registran antes las exportaciones. En solo lectura: procedimientos vetados (usuarios y permisos,
  * secretos, operaciones críticas), exportaciones solo con modificación y auditadas antes, y respuestas con IBAN, secretos
  * y tokens enmascarados. Por procedimiento: un vetado no tumba el resto del lote. Ver ./support/policy.ts.
  */

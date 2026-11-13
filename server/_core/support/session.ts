@@ -7,8 +7,9 @@
  *  - Cada petición con la cookie revalida: firma, caducidad, tenant resuelto == `tid`,
  *    concesión vigente y no revocada (lectura del registro).
  *  - Solo lectura por defecto: métodos que modifican se rechazan en el borde.
- *  - Rutas vetadas SIEMPRE al soporte (gestión de usuarios y permisos, secretos de integraciones, datos completos de
- *    pago…; ver ./policy.ts); exportaciones y descargas sensibles solo con modificación y auditadas.
+ *  - Rutas sensibles (gestión de usuarios y permisos, secretos de integraciones, datos completos de pago…; ver
+ *    ./policy.ts) vetadas en solo lectura; con modificación (solo administración) derechos plenos (13/11/2026).
+ *    Exportaciones y descargas sensibles solo con modificación y auditadas.
  *  - Auditoría persistente en el historial de la empresa (./audit.ts): entrada, salida, cada modificación con su
  *    resultado, intentos bloqueados y exportaciones. Sin registro no hay entrada ni modificación (falla cerrado).
  *  - Los tokens jamás se registran; se registran concesión, operador, recurso, método y resultado.
@@ -189,10 +190,17 @@ export async function getSupportUser(req: Request) {
  */
 function supportError(req: Request, res: Response, status: number, error: string, message: string) {
   const url = req.originalUrl ?? req.url;
-  if (!url.startsWith("/api/trpc")) return void res.status(status).json({ error, message });
-  const code = status === 503 ? "PRECONDITION_FAILED" : "FORBIDDEN";
-  const rpc = status === 503 ? -32012 : -32003;
-  const paths = decodeURIComponent(url.slice("/api/trpc/".length).split("?")[0] ?? "").split(",");
+  if (!url.toLowerCase().startsWith("/api/trpc")) return void res.status(status).json({ error, message });
+  const code = status === 503 ? "SERVICE_UNAVAILABLE" : "FORBIDDEN";
+  const rpc = status === 503 ? -32603 : -32003;
+  const raw = url.slice("/api/trpc/".length).split("?")[0] ?? "";
+  let decoded = raw;
+  try {
+    decoded = decodeURIComponent(raw);
+  } catch {
+    // Ruta mal codificada: se responde igual, sin descodificar (nunca una excepción sin capturar)
+  }
+  const paths = decoded.split(",");
   const one = (path: string) => ({ error: { json: { message, code: rpc, data: { code, httpStatus: status, path, supportError: error } } } });
   const batch = /[?&]batch=1(&|$)/.test(url);
   res.status(status).json(batch ? paths.map(one) : one(paths[0] ?? ""));
