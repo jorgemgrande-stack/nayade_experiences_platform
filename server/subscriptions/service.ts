@@ -443,6 +443,12 @@ export class SubscriptionService {
     });
   }
 
+  /** ¿Tiene la suscripción condiciones comerciales personalizadas vigentes o programadas? (se modifica desde su acuerdo) */
+  async hasCustomTerms(id: number): Promise<boolean> {
+    const now = this.now();
+    return (await this.d.store.items(id)).some((i) => i.termsId != null && isRecurring(i.priceKind) && (i.effectiveTo === null ? true : i.effectiveTo > now && i.effectiveTo > i.effectiveFrom));
+  }
+
   /**
    * Una suscripción con condiciones comerciales personalizadas (partidas de un acuerdo vigentes o programadas) se
    * modifica desde su acuerdo: una operación ordinaria dejaría el acuerdo y lo contratado diciendo cosas distintas
