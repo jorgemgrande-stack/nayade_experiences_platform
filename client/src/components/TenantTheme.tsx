@@ -241,7 +241,8 @@ export function useMetaDescription(text: string | null | undefined) {
 
 export function TenantPage({ slug, locale }: { slug: string; locale?: string }) {
   const q = trpc.public.getTenantPage.useQuery({ slug, ...(locale ? { locale } : {}) }, { retry: false });
-  const data = q.data && !("redirectTo" in q.data) ? q.data : null;
+  const redirectTo = q.data && "redirectTo" in q.data ? q.data.redirectTo : undefined;
+  const data = q.data && !redirectTo ? q.data : null;
   const i18n = data && "i18n" in data ? data.i18n : null;
   usePageTitle(slug === HOME_PAGE_SLUG ? null : data?.metaTitle || data?.title);
   useMetaDescription(data?.metaDescription);
@@ -261,7 +262,7 @@ export function TenantPage({ slug, locale }: { slug: string; locale?: string }) 
       </PublicLayout>
     );
   }
-  if (q.data && "redirectTo" in q.data) return <Redirect to={q.data.redirectTo} replace />;
+  if (redirectTo) return <Redirect href={redirectTo} replace />;
   if (!data) return <NotFound />;
   // Página hecha con el constructor: sus bloques (el mismo componente que la vista previa del panel)
   if (data.blocks) {

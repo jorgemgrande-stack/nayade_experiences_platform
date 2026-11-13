@@ -246,7 +246,7 @@ export function untranslatedFields(principal: PageBlock[], translated: PageBlock
   const base = new Map<string, PageBlock>();
   walk(principal, ({ block }) => base.set(block.id, block));
   const out: UntranslatedField[] = [];
-  const isText = (key: string, v: string) => !NON_TEXT_KEY.test(key) && !/^(https?:|\/|#|mailto:|tel:)/i.test(v) && /\p{L}/u.test(v);
+  const isText = (key: string, v: string) => !NON_TEXT_KEY.test(key) && !/^(https?:|\/|#|mailto:|tel:)/i.test(v) && /[A-Za-z\u00C0-\uFFFF]/.test(v);
   const visit = (key: string, a: unknown, b: unknown, block: PageBlock, path: string) => {
     if (typeof b === "string" || typeof a === "string") {
       const av = typeof a === "string" ? a.trim() : "";
@@ -320,7 +320,7 @@ export interface TextField {
 
 function textLeaves(value: unknown, path: string, key: string, out: Array<{ path: string; key: string; value: string }>): void {
   if (typeof value === "string") {
-    if (value.trim() && !NON_TEXT_KEY.test(key) && !/^(https?:|\/|#|mailto:|tel:)/i.test(value.trim()) && /\p{L}/u.test(value)) out.push({ path, key, value });
+    if (value.trim() && !NON_TEXT_KEY.test(key) && !/^(https?:|\/|#|mailto:|tel:)/i.test(value.trim()) && /[A-Za-z\u00C0-\uFFFF]/.test(value)) out.push({ path, key, value });
     return;
   }
   if (Array.isArray(value)) {

@@ -596,7 +596,7 @@ export async function sitemapAlternates(repo: I18nRepo): Promise<{ cfg: I18nConf
   const byPage = new Map<number, PageTranslationRow[]>();
   for (const r of rows) byPage.set(r.pageId, [...(byPage.get(r.pageId) ?? []), r]);
   const entries: SitemapPageEntry[] = [];
-  for (const [pageId, list] of byPage) {
+  for (const [pageId, list] of Array.from(byPage.entries())) {
     const page = await repo.principalPageById(pageId);
     if (!page?.isPublished) continue;
     entries.push({ rest: page.slug === home ? "/" : `/${page.slug}`, versions: await versionsOf(repo, cfg, page, home), lastmod: list[0]?.updatedAt?.toISOString().slice(0, 10) });

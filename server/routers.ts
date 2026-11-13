@@ -460,7 +460,7 @@ export const appRouter = router({
         const { resolveTenantPageLocale } = await import("./i18nPublic");
         const i18n = input.locale ? await resolveTenantPageLocale(input.slug, input.locale) : null;
         if (i18n?.kind === "notFound") return null;
-        if (i18n?.kind === "redirect") return { redirectTo: i18n.to };
+        if (i18n?.kind === "redirect") return { slug: "", title: "", html: "", metaTitle: null, metaDescription: null, blocks: null, redirectTo: i18n.to };
         // «inicio» es la portada: la página que la empresa haya elegido como tal (Web › Páginas)
         const { resolvePublicSlug, getPublishedBlocks } = await import("./pageBuilderDb");
         const slug = await resolvePublicSlug(i18n?.principalSlug ?? input.slug);

@@ -142,7 +142,7 @@ E-7 deja las cadenas del formulario en campos separados del bloque (título, int
 Solo el mecanismo (`locale` resoluble por destinatario y plantilla); el texto del producto no se traduce en esta épica.
 
 ## 7. Selector de idioma
-Bloque `language_switcher` (y ajuste de cabecera): lista solo idiomas validados **que tienen versión de la página actual**, con enlaces reales (`<a href>` a la URL localizada de esa página, no JS), `lang` y `hreflang` en cada enlace, `aria-label` traducible, etiqueta del idioma en su propio idioma (autónimo, p. ej. «Deutsch»). Accesible por teclado, sin banderas como único identificador. Con un único idioma no se muestra.
+Componente de la cabecera (`LanguageSwitcher`; no es un bloque, para no tocar `BLOCK_TYPES`): lista solo idiomas validados **que tienen versión de la página actual**, con enlaces reales (`<a href>` a la URL localizada de esa página, no JS), `lang` y `hreflang` en cada enlace, `aria-label` traducible, etiqueta del idioma en su propio idioma (autónimo, p. ej. «Deutsch»). Accesible por teclado, sin banderas como único identificador. Con un único idioma no se muestra.
 
 ## 8. Plan por fases / PR
 
@@ -157,7 +157,7 @@ Bloque `language_switcher` (y ajuste de cabecera): lista solo idiomas validados 
 | 7 | Panel y correos: solo el mecanismo; documentado. | seguimiento |
 
 ## 9. Migraciones y numeración
-Una migración aditiva (`site_locales`, `page_translations`, `content_translations`) con su `.down.sql`. Reserva original: 0068 (orden E-7 → E-3 → E-1). Mientras E-7 y E-3 no hayan fusionado sus migraciones, la rama lleva el siguiente número libre (para no dejar huecos en CI) y se **renumera al rebasar** sobre `integration/elephant-source`. No se aplica nunca al arrancar.
+Migración aditiva `0068_multidioma_nativo` (`site_locales`, `page_translations`, `content_translations`) con su `.down.sql`. Orden: E-7 = 0066, E-3 = 0067, E-1 = 0068; si cambia el orden de fusión, se renumera al rebasar. No se aplica nunca al arrancar.
 
 ## 10. Impacto en empresas existentes
 - Sin filas en `site_locales`: principal implícito `es`; `getTenantPage`, sitemap, SEO y menús devuelven exactamente lo de hoy (hay pruebas de regresión que lo comprueban).
@@ -178,9 +178,24 @@ Una migración aditiva (`site_locales`, `page_translations`, `content_translatio
 | Duplicación de contenido indexable | `canonical` autorreferente por idioma, `hreflang` recíproco, `noindex` en no validado y en fallback. |
 | Traducción obsoleta cuando el principal cambia | `base_hash` + aviso; no se actualiza sola. |
 | Fuga entre empresas | Tablas en la BD de cada empresa, sin caché compartida; pruebas de aislamiento. |
-| Colisión con E-2 y E-7 en `shared/pageBlocks.ts` | Solo se añade (aditivo) el tipo `language_switcher` al final; sin reordenar `BLOCK_TYPES`. |
+| Colisión con E-2 y E-7 en `shared/pageBlocks.ts` | No se toca `shared/pageBlocks.ts`: el selector es un componente de cabecera, no un bloque. |
 | Inyección vía textos traducidos | Mismo saneado de bloques que el principal; metadatos escapados con `escapeHtml`; URLs con `safeUrl`. |
 | Rendimiento: consulta extra por petición | Solo si la empresa tiene idiomas adicionales; sin idiomas, no hay consulta (lectura de `site_locales` omitida si la configuración está vacía en una sola consulta ligera). |
 
 ## 13. Pruebas previstas
 Resolvedor de locale/URL (prefijos, principal con y sin prefijo, slug reservado), `hreflang`/`canonical`/`x-default`, fallback (`hide` y `default`), estados y dos candados, validación de entrada, aislamiento entre empresas, regresión de rutas actuales (`classifyPublicPath` sin cambios), sitemap sin idiomas idéntico al actual.
+
+## 14. Estado de implementación (PR de la rama `feat/e1-multidioma-nativo`)
+
+| Fase | Estado |
+|---|---|
+| 1 Modelo, migración 0068, servicio (idiomas, traducciones, estados, validación, copiar, sin traducir) | Implementada y probada |
+| 2 Render público: `getTenantPage` con `locale`, ruta cliente `/:locale/:slug`, `lang`/canonical/hreflang/og:locale/noindex en el HTML, sitemap con alternates, selector | Implementada (cliente sin verificación visual) |
+| 3 Edición: pantalla Web › Idiomas (alta, validar, fallback, matriz de páginas) y tabla de traducción por página (original / traducción, copiar, indicador, validar) | Implementada con tabla de textos; **no** integrada en el lienzo de Elephant Studio (conmutador dentro del lienzo pendiente) |
+| 4 Menús: lectura localizada con fallback y API de edición | Implementadas; pantalla de edición de menús por idioma y ajustes globales (cabecera/pie/cookies): pendiente |
+| 5 Formularios | Cubiertos al traducir el bloque; el servidor de envíos debe usar la definición del principal (pendiente de coordinar con E-7) |
+| 6 Contenido comercial | Tabla y API de escritura (`entity_type = product`); lectura pública, rutas `/tienda` localizadas y sitemap de productos: **pendientes** |
+| 7 Panel y correos | Solo documentado |
+| Prefijo para el principal (`i18n_default_prefix = 1`) | El resolvedor lo soporta; no se expone en la API/UI hasta localizar las rutas de aplicación |
+| Historial de versiones de traducciones, `Accept-Language` (`i18n_negotiate`) | Pendientes (el ajuste se guarda; no actúa) |
+| Contrato con E-3 | `savePageTranslationDraft(repo, pageId, locale, input)` y su envoltorio `savePageTranslationDraftForTenant(pageId, locale, input)` en `server/i18nPublic.ts` |
