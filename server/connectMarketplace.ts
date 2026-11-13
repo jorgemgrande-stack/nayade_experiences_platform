@@ -17,7 +17,7 @@ import type { ConnectGalleryItem, ConnectImage, ConnectPrice, ConnectSheet } fro
 import type { ConnectActivation } from "../shared/connectShowcase";
 import { isNetLegacyExtension, netProductOf, netProductOfLegacy, type NetArea, type NetSegment } from "../shared/netProducts";
 import { netAvailabilitySplit, offerSaleKind } from "../shared/netOffer";
-import { assistedRegistryOf } from "../shared/addonAssisted";
+import { addonAssistedOf, assistedRegistryOf } from "../shared/addonAssisted";
 
 
 /** Producto tal como llega del canal: lo de siempre y, opcionalmente, la ficha y los precios aprobados. */
@@ -208,7 +208,8 @@ export function buildConnectCatalog(
     const capabilities = item.kind === "module" ? capsOf(item.key) : [];
     const dependencies = pick(card?.dependencies, d?.dependencies ?? []);
     // Ampliaciones: los planes a los que amplían; módulos: los planes con los que se pueden contratar
-    const plans = d?.catalog.addonFor?.plans ?? (item.kind === "module" ? pick(card?.compatibleWith, d?.compatibleWith ?? []) : []);
+    // Ampliaciones del registro: sus planes (el de almacenamiento no se ofrece a Enterprise, sin cuota a la que sumar)
+    const plans = addonAssistedOf(item.key)?.plans?.slice() ?? d?.catalog.addonFor?.plans ?? (item.kind === "module" ? pick(card?.compatibleWith, d?.compatibleWith ?? []) : []);
     const includer = item.kind === "module" ? bundles.find((b) => b.key !== item.key && contracted(b.key) && seedBundleOf(b.key).includes(item.key)) : undefined;
     const includedIn = includer ? { key: includer.key, name: includer.name } : null;
     const replaces = item.kind === "module" && !contracted(item.key) ? seedBundleOf(item.key).filter(contracted).map((k) => ({ key: k, name: productName(k) })) : [];

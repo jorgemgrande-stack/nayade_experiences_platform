@@ -48,7 +48,10 @@ describe("ampliaciones de capacidad: contratación asistida", () => {
     expect(addons.map((p) => p.key).sort()).toEqual(ADDON_ASSISTED.map((p) => p.key).sort());
     for (const a of ADDON_ASSISTED) {
       const p = addons.find((x) => x.key === a.key)!;
-      expect([...(a.plans ?? [])].sort(), a.key).toEqual([...(p.addonFor?.plans ?? [])].sort());
+      // Mismos planes que el catálogo; el almacenamiento (catálogo: todos) se limita a Essential y Business: Enterprise lo
+      // tiene «por contrato», sin cuota a la que sumar (revisión de #811)
+      const expected = a.key === "addon-storage-10gb" && !(p.addonFor?.plans ?? []).length ? ["business", "essential"] : [...(p.addonFor?.plans ?? [])].sort();
+      expect([...(a.plans ?? [])].sort(), a.key).toEqual(expected);
       const split = netAvailabilitySplit(a.key);
       expect(split.available.length, a.key).toBeGreaterThan(0);
       expect(split.inImplementation, a.key).toEqual([]);
@@ -204,5 +207,11 @@ describe("paquete personalizado de una ampliación desde el expediente", () => {
   it("un producto que no es ampliación sigue sin contratarse dos veces", () => {
     expect(addonAssistedOf("hotel-net-complete")).toBeNull();
     expect(addonAssistedOf("connect-voice")).toBeNull();
+  });
+
+  it("Enterprise no ve el almacenamiento adicional (su almacenamiento es por contrato)", () => {
+    const items = panelCatalog(quoteCatalogFromSite(site).products, { version: "v", purchasesEnabled: true, site }).items;
+    const storage = buildConnectCatalog({ items }, [], NOW, "enterprise").find((i) => i.key === "addon-storage-10gb");
+    if (storage) expect(storage.assisted).toBeNull();
   });
 });

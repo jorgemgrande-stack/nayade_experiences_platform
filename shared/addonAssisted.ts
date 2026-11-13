@@ -37,7 +37,8 @@ const SITE: NetArea[] = [
 export const ADDON_ASSISTED: readonly AddonAssistedProduct[] = [
   { key: "addon-user-essential", name: "Usuario adicional Essential", segment: "business", plans: ["essential"], areas: USER("Essential"), note: NOTE },
   { key: "addon-user-business", name: "Usuario adicional Business", segment: "business", plans: ["business"], areas: USER("Business"), note: NOTE },
-  { key: "addon-storage-10gb", name: "Almacenamiento adicional 10 GB", segment: "business", areas: STORAGE, note: NOTE },
+  // Enterprise tiene el almacenamiento «por contrato» (sin cuota a la que sumar): no se le ofrece
+  { key: "addon-storage-10gb", name: "Almacenamiento adicional 10 GB", segment: "business", plans: ["essential", "business"], areas: STORAGE, note: NOTE },
   { key: "addon-site-business", name: "Sede adicional Business", segment: "business", plans: ["business"], areas: SITE, note: NOTE },
 ];
 

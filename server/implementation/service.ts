@@ -545,6 +545,12 @@ export class ImplementationService {
       // De una ampliación, el acuerdo en vigor con sus unidades no cuenta (es el punto de partida); sí una oferta pendiente
       const other = this.d.packages.ofCompany ? (await this.d.packages.ofCompany(o.companyId)).filter((t) => t.companyId === o.companyId && LIVE_TERMS.has(t.status) && !(addon && (t.status === "active" || t.status === "scheduled")) && t.acceptanceStatus !== "rejected" && t.acceptanceStatus !== "expired" && t.productKeys.includes(o.solutionKey)).sort((a, b) => b.id - a.id)[0] : undefined;
       if (other) return { termsId: other.id, created: false };
+      // Ampliación con OTRO acuerdo pendiente o programado en la empresa: los dos partirían de la misma base y el que se
+      // aceptara después borraría la unidad del otro. Primero se resuelve ese (aceptarlo, retirarlo o ampliarlo en él)
+      if (addon && this.d.packages.ofCompany) {
+        const pending = (await this.d.packages.ofCompany(o.companyId)).find((t) => t.companyId === o.companyId && (t.status === "draft" || t.status === "pending_acceptance" || t.status === "scheduled") && t.acceptanceStatus !== "rejected" && t.acceptanceStatus !== "expired");
+        if (pending) throw new ImplementationError("invalid_state", `La empresa tiene otro acuerdo sin cerrar (condiciones #${pending.id}): acéptalo, retíralo o añade ahí ${o.solutionName} antes de preparar otro`);
+      }
       const offer = await this.d.packages.offer();
       const monthly = (key: string) => offer.find((p) => p.key === key)?.prices.find((x) => x.kind === "monthly" && x.status === "approved") ?? null;
       const product = offer.find((p) => p.key === o.solutionKey);
@@ -559,6 +565,11 @@ export class ImplementationService {
         const base = await this.d.packages.subscriptionBase(subscriptionId);
         // Una ampliación ya contratada no bloquea: el acuerdo nuevo lleva esa partida con una unidad más (el operador puede
         // cambiar las unidades en el CRM antes de enviarlo); cualquier otro producto no se contrata dos veces
+        // Ampliación de otro plan (p. ej. usuarios Essential sobre una suscripción Business): no
+        if (addonOf?.plans?.length) {
+          const corePlan = base.input.lines.map((l) => l.productKey).find((k) => !!k && offer.some((p) => p.key === k && p.family === "core_plan"));
+          if (corePlan && !addonOf.plans.includes(corePlan)) throw new ImplementationError("invalid_state", `${product.name} no es para el plan de la suscripción #${subscriptionId} (${corePlan})`);
+        }
         const existing = addon ? base.input.lines.findIndex((l) => l.productKey === o.solutionKey) : -1;
         if (!addon && base.input.lines.some((l) => l.productKey === o.solutionKey)) throw new ImplementationError("invalid_state", `La suscripción #${subscriptionId} ya incluye ${product.name}`);
         // Paquete Connect sobre un componente que ya se paga (o al revés): sería cobrar dos veces lo mismo
