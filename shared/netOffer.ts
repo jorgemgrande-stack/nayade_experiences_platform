@@ -14,7 +14,7 @@
  *  - Life Net es personal: no se ofrece a empresas (fuera de este mapa).
  */
 import { netProductOf, type NetArea, type NetProduct } from "./netProducts";
-import { connectAssistedOf } from "./connectAssisted";
+import { assistedRegistryOf } from "./addonAssisted";
 
 export type NetSaleKind = "checkout" | "assisted_contract" | "request_info" | "interest";
 
@@ -91,9 +91,11 @@ export function netSaleKind(p: NetSaleInput): NetSaleKind | null {
  * contrata con implantación asistida aunque tenga funcionalidades pendientes o el catálogo diga «próximamente» o «en
  * preparación»: lo pendiente se muestra como «en implantación». Retirado o sin publicar: fuera. null si no aplica
  * (Connect de contratación directa, extras, Life Net…: siguen con su regla de siempre).
+ * Ampliaciones de capacidad del Core (shared/addonAssisted.ts, 13/11/2026): la misma regla que Connect asistido; una
+ * ampliación disponible sigue con la compra en línea de siempre («Ampliar»).
  */
 export function offerSaleKind(p: NetSaleInput): NetSaleKind | null {
-  if (connectAssistedOf(p.key)) {
+  if (assistedRegistryOf(p.key)) {
     // Disponible (venta directa con su Checkout), retirado o sin publicar: la regla de siempre, no la asistida
     if (p.commercialStatus === "available" || p.commercialStatus === "unpublished" || p.commercialStatus === "retired") return null;
     return p.hasMonthlyPrice ? "assisted_contract" : "request_info";
@@ -105,12 +107,12 @@ export function offerSaleKind(p: NetSaleInput): NetSaleKind | null {
 export function assistedProductOf(key: string): { key: string; name: string; areas: NetArea[]; note?: string } | null {
   const net = netProductOf(key);
   if (net) return net.segment === "business" ? net : null;
-  return connectAssistedOf(key);
+  return assistedRegistryOf(key);
 }
 
 /** Funcionalidades disponibles hoy y en implantación de un producto Net (shared/netProducts.ts) o Connect asistido. */
 export function netAvailabilitySplit(p: Pick<NetProduct, "areas"> | string): { available: string[]; inImplementation: string[] } {
-  const net = typeof p === "string" ? (netProductOf(p) ?? connectAssistedOf(p)) : p;
+  const net = typeof p === "string" ? (netProductOf(p) ?? assistedRegistryOf(p)) : p;
   if (!net) return { available: [], inImplementation: [] };
   const all = net.areas.flatMap((a) => a.features);
   return { available: all.filter((f) => f.status === "available").map((f) => f.label), inImplementation: all.filter((f) => f.status === "coming_soon").map((f) => f.label) };

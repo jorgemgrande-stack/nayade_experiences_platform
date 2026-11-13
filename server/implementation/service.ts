@@ -36,6 +36,7 @@ import {
   type StartMode,
 } from "./store";
 import { connectOverlap } from "../../shared/connectAssisted";
+import { addonAssistedOf } from "../../shared/addonAssisted";
 import { GENERIC_TEMPLATE, checklistEventDetail, checklistKeyOf, netCommitmentsText, sectionOf, templateFor } from "./templates";
 
 export const ASSISTED_TRIAL_DAYS = 15;
@@ -530,16 +531,26 @@ export class ImplementationService {
       if (o.status !== "requested" && o.status !== "proposal") throw new ImplementationError("invalid_state", "El expediente ya tiene el contrato aceptado: el paquete ya no se prepara desde aquí");
       if (isPaidOrder(o)) throw new ImplementationError("invalid_state", "Este expediente lo abrió una contratación ya hecha: no se prepara otro contrato");
       const commitments = netCommitmentsText(o.solutionKey);
-      if (!commitments) throw new ImplementationError("invalid_input", "El paquete con compromisos de implantación es solo para los productos Net de empresa y los Connect de contratación asistida");
+      if (!commitments) throw new ImplementationError("invalid_input", "El paquete con compromisos de implantación es solo para los productos Net de empresa, los Connect de contratación asistida y las ampliaciones de capacidad");
       const prev = [...(await this.d.store.events(o.id))].reverse().find((e) => e.type === "package");
       const prevId = Number(/condiciones #(\d+)/.exec(prev?.detail ?? "")?.[1] ?? 0);
       if (prevId) {
         const t = await this.d.packages.get(prevId).catch(() => null);
         if (t && t.companyId === o.companyId && LIVE_TERMS.has(t.status)) return { termsId: t.id, created: false };
       }
-      // Otra oferta viva (borrador, enviada, pendiente de aceptación o en vigor) del mismo producto para la empresa: esa
-      const other = this.d.packages.ofCompany ? (await this.d.packages.ofCompany(o.companyId)).filter((t) => t.companyId === o.companyId && LIVE_TERMS.has(t.status) && t.acceptanceStatus !== "rejected" && t.acceptanceStatus !== "expired" && t.productKeys.includes(o.solutionKey)).sort((a, b) => b.id - a.id)[0] : undefined;
+      // Ampliación de capacidad (13/11/2026): se contrata por unidades, una más sobre las que ya tenga la empresa
+      const addonOf = addonAssistedOf(o.solutionKey);
+      const addon = !!addonOf;
+      // Otra oferta viva (borrador, enviada, pendiente de aceptación o en vigor) del mismo producto para la empresa: esa.
+      // De una ampliación, el acuerdo en vigor con sus unidades no cuenta (es el punto de partida); sí una oferta pendiente
+      const other = this.d.packages.ofCompany ? (await this.d.packages.ofCompany(o.companyId)).filter((t) => t.companyId === o.companyId && LIVE_TERMS.has(t.status) && !(addon && (t.status === "active" || t.status === "scheduled")) && t.acceptanceStatus !== "rejected" && t.acceptanceStatus !== "expired" && t.productKeys.includes(o.solutionKey)).sort((a, b) => b.id - a.id)[0] : undefined;
       if (other) return { termsId: other.id, created: false };
+      // Ampliación con OTRO acuerdo pendiente o programado en la empresa: los dos partirían de la misma base y el que se
+      // aceptara después borraría la unidad del otro. Primero se resuelve ese (aceptarlo, retirarlo o ampliarlo en él)
+      if (addon && this.d.packages.ofCompany) {
+        const pending = (await this.d.packages.ofCompany(o.companyId)).find((t) => t.companyId === o.companyId && (t.status === "draft" || t.status === "pending_acceptance" || t.status === "scheduled") && t.acceptanceStatus !== "rejected" && t.acceptanceStatus !== "expired");
+        if (pending) throw new ImplementationError("invalid_state", `La empresa tiene otro acuerdo sin cerrar (condiciones #${pending.id}): acéptalo, retíralo o añade ahí ${o.solutionName} antes de preparar otro`);
+      }
       const offer = await this.d.packages.offer();
       const monthly = (key: string) => offer.find((p) => p.key === key)?.prices.find((x) => x.kind === "monthly" && x.status === "approved") ?? null;
       const product = offer.find((p) => p.key === o.solutionKey);
@@ -552,9 +563,18 @@ export class ImplementationService {
       if (subscriptionId !== null) {
         if (!this.d.packages.subscriptionBase || !this.d.packages.createForSubscription) throw new ImplementationError("unavailable", "Las condiciones personalizadas sobre una suscripción no están disponibles en este entorno");
         const base = await this.d.packages.subscriptionBase(subscriptionId);
-        if (base.input.lines.some((l) => l.productKey === o.solutionKey)) throw new ImplementationError("invalid_state", `La suscripción #${subscriptionId} ya incluye ${product.name}`);
+        // Una ampliación ya contratada no bloquea: el acuerdo nuevo lleva esa partida con una unidad más (el operador puede
+        // cambiar las unidades en el CRM antes de enviarlo); cualquier otro producto no se contrata dos veces
+        // Ampliación de otro plan (p. ej. usuarios Essential sobre una suscripción Business): no
+        if (addonOf?.plans?.length) {
+          const corePlan = base.input.lines.map((l) => l.productKey).find((k) => !!k && offer.some((p) => p.key === k && p.family === "core_plan"));
+          if (corePlan && !addonOf.plans.includes(corePlan)) throw new ImplementationError("invalid_state", `${product.name} no es para el plan de la suscripción #${subscriptionId} (${corePlan})`);
+        }
+        const existing = addon ? base.input.lines.findIndex((l) => l.productKey === o.solutionKey) : -1;
+        if (!addon && base.input.lines.some((l) => l.productKey === o.solutionKey)) throw new ImplementationError("invalid_state", `La suscripción #${subscriptionId} ya incluye ${product.name}`);
         // Paquete Connect sobre un componente que ya se paga (o al revés): sería cobrar dos veces lo mismo
-        const overlap = base.input.lines.find((l) => !!l.productKey && connectOverlap(l.productKey, o.solutionKey));
+        // (una ampliación no forma paquetes: su propia partida es la que se amplía, arriba)
+        const overlap = addon ? undefined : base.input.lines.find((l) => !!l.productKey && connectOverlap(l.productKey, o.solutionKey));
         if (overlap) throw new ImplementationError("invalid_state", `La suscripción #${subscriptionId} ya incluye «${overlap.productKey}», que forma parte de ${product.name} (o al revés): se resuelve como sustitución, no con un segundo contrato`);
         const kind = base.interval === "year" ? "yearly" : "monthly";
         const price = product.prices.find((x) => x.kind === kind && x.status === "approved");
@@ -565,11 +585,19 @@ export class ImplementationService {
         // rebaja en silencio); por partidas: el Net entra a su precio publicado y las demás no cambian
         const global = base.input.pricingMode === "global";
         const prevGlobal = base.input.globalAmountCents ?? 0;
-        const pricing = global
-          ? `Precio: la cuota global pactada (${eur(prevGlobal)} ${period}) se mantiene sin cambios y se le suma el precio publicado de ${product.name} (${eur(amount)} ${period}): cuota global de ${eur(prevGlobal + amount)} ${period}, IVA aparte.`
-          : `Precio: ${product.name} se añade a su precio publicado (${eur(amount)} ${period}, IVA aparte); las demás partidas y sus precios pactados no cambian.`;
-        const conditions = [base.input.conditions?.trim() || null, `Ampliación: ${product.name}, contratado sobre la suscripción en vigor.`, pricing, provision, commitments].filter(Boolean).join("\n\n");
-        const t = await this.d.packages.createForSubscription(subscriptionId, { ...base.input, ...(global ? { globalAmountCents: prevGlobal + amount } : {}), conditions: conditions.slice(0, 5000), requiresAcceptance: true, lines: [...base.input.lines, { kind: "catalog", productKey: o.solutionKey, priceId: price.id, quantity: 1 }], reason }, actor);
+        const prevUnits = existing >= 0 ? Math.max(1, Number(base.input.lines[existing].quantity ?? 1) || 1) : 0;
+        const units = prevUnits + 1;
+        const unitsText = (n: number) => `${n} ${n === 1 ? "unidad" : "unidades"}`;
+        const pricing = existing >= 0
+          ? global
+            ? `Precio: la cuota global pactada (${eur(prevGlobal)} ${period}) se mantiene sin cambios y se le suma el precio publicado de una unidad más de ${product.name} (${eur(amount)} ${period}): cuota global de ${eur(prevGlobal + amount)} ${period}, IVA aparte. ${product.name}: ${unitsText(units)} (antes ${unitsText(prevUnits)}).`
+            : `Precio: ${product.name} pasa de ${unitsText(prevUnits)} a ${unitsText(units)}, a su precio por unidad (${eur(amount)} ${period} cada una, IVA aparte); las demás partidas y sus precios pactados no cambian.`
+          : global
+            ? `Precio: la cuota global pactada (${eur(prevGlobal)} ${period}) se mantiene sin cambios y se le suma el precio publicado de ${product.name} (${eur(amount)} ${period}): cuota global de ${eur(prevGlobal + amount)} ${period}, IVA aparte.`
+            : `Precio: ${product.name} se añade a su precio publicado (${eur(amount)} ${period}, IVA aparte); las demás partidas y sus precios pactados no cambian.`;
+        const conditions = [base.input.conditions?.trim() || null, `Ampliación: ${product.name}${addon ? ` (${unitsText(units)})` : ""}, contratado sobre la suscripción en vigor.`, pricing, provision, commitments].filter(Boolean).join("\n\n");
+        const lines = existing >= 0 ? base.input.lines.map((l, i) => (i === existing ? { ...l, quantity: units } : l)) : [...base.input.lines, { kind: "catalog", productKey: o.solutionKey, priceId: price.id, quantity: 1 }];
+        const t = await this.d.packages.createForSubscription(subscriptionId, { ...base.input, ...(global ? { globalAmountCents: prevGlobal + amount } : {}), conditions: conditions.slice(0, 5000), requiresAcceptance: true, lines, reason }, actor);
         await this.event(o.id, "package", actor, `Acuerdo nuevo sobre la suscripción #${subscriptionId}: condiciones #${t.id} (borrador para revisar y enviar a aceptación)`);
         await this.crmNote(o, `ampliación preparada sobre la suscripción #${subscriptionId} (condiciones #${t.id})`, actor);
         return { termsId: t.id, created: true };
@@ -578,7 +606,9 @@ export class ImplementationService {
       const lines: PackageDraftInput["lines"] = [];
       {
         const opp = o.opportunityId ? await this.d.crmStore.get("opportunities", o.opportunityId) : null;
-        const planKey = [opp?.planId, "essential"].find((k) => !!k && offer.some((p) => p.key === k && p.family === "core_plan" && !!monthly(k))) ?? null;
+        // Una ampliación va con un plan al que amplía (Usuario adicional Business → Business)
+        const compatible = (k: string) => !addonOf?.plans?.length || addonOf.plans.includes(k);
+        const planKey = [opp?.planId, "essential", ...(addonOf?.plans ?? [])].find((k) => !!k && compatible(k) && offer.some((p) => p.key === k && p.family === "core_plan" && !!monthly(k))) ?? null;
         if (!planKey) throw new ImplementationError("invalid_state", "No hay un plan Core con precio mensual publicado para incluirlo en el paquete");
         lines.push({ kind: "catalog", productKey: planKey, priceId: monthly(planKey)!.id, quantity: 1 });
       }

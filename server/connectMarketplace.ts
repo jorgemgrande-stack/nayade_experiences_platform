@@ -17,7 +17,7 @@ import type { ConnectGalleryItem, ConnectImage, ConnectPrice, ConnectSheet } fro
 import type { ConnectActivation } from "../shared/connectShowcase";
 import { isNetLegacyExtension, netProductOf, netProductOfLegacy, type NetArea, type NetSegment } from "../shared/netProducts";
 import { netAvailabilitySplit, offerSaleKind } from "../shared/netOffer";
-import { connectAssistedOf } from "../shared/connectAssisted";
+import { addonAssistedOf, assistedRegistryOf } from "../shared/addonAssisted";
 
 
 /** Producto tal como llega del canal: lo de siempre y, opcionalmente, la ficha y los precios aprobados. */
@@ -196,8 +196,9 @@ export function buildConnectCatalog(
   return shownItems.map((item): ConnectItem => {
     const np = netProductOf(item.key);
     // Connect de contratación asistida (12/11/2026): se contrata aunque el catálogo diga «próximamente» o «en
-    // preparación» (lo pendiente va como «en implantación»). Disponible, retirado o sin publicar: regla de siempre
-    const assistedConnect = item.commercialStatus === "available" || ["unpublished", "retired"].includes(String(item.commercialStatus)) ? null : connectAssistedOf(item.key);
+    // preparación» (lo pendiente va como «en implantación»). Disponible, retirado o sin publicar: regla de siempre.
+    // Las ampliaciones de capacidad del Core, igual (13/11/2026, shared/addonAssisted.ts)
+    const assistedConnect = item.commercialStatus === "available" || ["unpublished", "retired"].includes(String(item.commercialStatus)) ? null : assistedRegistryOf(item.key);
     const legacyDecl = isLegacy(item) ? (legacyOf(item.legacy) ?? (netProductOfLegacy(item.key) ? { replacedBy: netProductOfLegacy(item.key)!.key } : null)) : null;
     const successor = legacyDecl ? { key: legacyDecl.replacedBy, name: netProductOf(legacyDecl.replacedBy)?.name ?? productName(legacyDecl.replacedBy) } : null;
     const seed = seedOf(item.key);
@@ -207,7 +208,8 @@ export function buildConnectCatalog(
     const capabilities = item.kind === "module" ? capsOf(item.key) : [];
     const dependencies = pick(card?.dependencies, d?.dependencies ?? []);
     // Ampliaciones: los planes a los que amplían; módulos: los planes con los que se pueden contratar
-    const plans = d?.catalog.addonFor?.plans ?? (item.kind === "module" ? pick(card?.compatibleWith, d?.compatibleWith ?? []) : []);
+    // Ampliaciones del registro: sus planes (el de almacenamiento no se ofrece a Enterprise, sin cuota a la que sumar)
+    const plans = addonAssistedOf(item.key)?.plans?.slice() ?? d?.catalog.addonFor?.plans ?? (item.kind === "module" ? pick(card?.compatibleWith, d?.compatibleWith ?? []) : []);
     const includer = item.kind === "module" ? bundles.find((b) => b.key !== item.key && contracted(b.key) && seedBundleOf(b.key).includes(item.key)) : undefined;
     const includedIn = includer ? { key: includer.key, name: includer.name } : null;
     const replaces = item.kind === "module" && !contracted(item.key) ? seedBundleOf(item.key).filter(contracted).map((k) => ({ key: k, name: productName(k) })) : [];
