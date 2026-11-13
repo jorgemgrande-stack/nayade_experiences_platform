@@ -221,7 +221,7 @@ export class WebRequestService {
     }
     if (r.interest) parts.push(`Sobre: ${r.interest}`);
     if (r.type === "onboarding") parts.push(r.preferredTime ? "Preferencia horaria indicada; el equipo propone la fecha" : "El equipo propone la fecha");
-    if (r.type === "trial") parts.push("Pendiente de activación manual desde el CRM");
+    if (r.type === "trial") parts.push("Alta automática: al verificar el correo se aprovisionan la empresa y su plataforma, y el lead pasa a «Convertido». Estados en «Pruebas»: pendiente de verificación, verificada, en aprovisionamiento, activa; si el aprovisionamiento falla, vuelve a verificada y se reintenta");
     return parts.join(". ").slice(0, 1000);
   }
 

@@ -103,6 +103,11 @@ export interface TrialOnboardingDeps {
    */
   onRegistered?: ((trial: TrialRequest) => Promise<void>) | null;
   /**
+   * Prueba aprovisionada (empresa del CRM ya enlazada a su plataforma): el lead de su solicitud pasa a «Convertido» en esa
+   * empresa y la solicitud queda atendida. Idempotente; un fallo aquí nunca deshace ni bloquea la activación.
+   */
+  onProvisioned?: ((trial: TrialRequest, target: { companyId: number; tenantId: string }, actor: string) => Promise<unknown>) | null;
+  /**
    * Invitación nueva para el propietario si la original se perdió (alta reanudada) y aún no definió
    * su contraseña; `null` si ya entró. Opcional: sin él no se puede reenviar el acceso.
    */
@@ -185,6 +190,16 @@ export class TrialOnboardingService {
     } catch (e) {
       opsLog("error", "Trials", "crm_request_failed", { trialId: trial.id, error: e instanceof Error ? e.name : "error" });
       return false;
+    }
+  }
+
+  /** Lead de la solicitud → «Convertido» en la empresa de la prueba. Nunca lanza (la activación sigue). */
+  private async linkLeadSafely(trial: TrialRequest, target: { companyId: number; tenantId: string }, actor: string) {
+    if (!this.d.onProvisioned || trial.configuration.plan === LIFE_PLAN) return;
+    try {
+      await this.d.onProvisioned(trial, target, actor);
+    } catch (e) {
+      opsLog("error", "Trials", "crm_lead_link_failed", { trialId: trial.id, companyId: target.companyId, error: e instanceof Error ? e.name : "error" });
     }
   }
 
@@ -312,6 +327,7 @@ export class TrialOnboardingService {
 
     // 2. Empresa en el CRM (enlazada a la plataforma)
     const company = (await this.d.companies.byTenant(tenantId)) ?? (await this.d.companies.create({ name: t.companyName, email: t.email, tenantId, profile: t.configuration?.profile ?? null, attribution: t.configuration?.attribution ?? null }, actor));
+    await this.linkLeadSafely(t, { companyId: company.id, tenantId }, actor);
 
     // 3. Suscripción del plan en prueba (sin tarjeta ni cobro). Una suscripción solo económica de la empresa (un acuerdo
     // de partidas a medida, sin plan) no es la de la prueba: no cuenta

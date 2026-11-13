@@ -10,6 +10,8 @@
  */
 import crypto from "node:crypto";
 import type { WebRequestService } from "../crm/webRequests";
+import type { CrmService } from "../crm/service";
+import type { CrmStore } from "../crm/store";
 import type { TrialRequest } from "./store";
 
 /** Clave de idempotencia de la solicitud de una prueba (CHAR(36) en el CRM). */
@@ -49,4 +51,37 @@ export async function recordTrialRequest(requests: Pick<WebRequestService, "rece
     { idempotencyKey: trialRequestKey(t.id), ipHash: null },
   );
   return { reference: request.reference, outcome };
+}
+
+export type TrialLeadLink = "converted" | "already_linked" | "no_request" | "converted_elsewhere" | "disqualified";
+
+/**
+ * Prueba aprovisionada (correo verificado, empresa y plataforma creadas): el lead de su solicitud «Prueba de 15 días» pasa
+ * a «Convertido» enlazado a ESA empresa (reutiliza su contacto por correo) y la solicitud queda atendida, con constancia
+ * en el historial. Idempotente: si ya está convertido en esa empresa no hace nada; nunca toca un lead convertido en otra
+ * empresa ni uno descartado (decisión del equipo). La solicitud y su referencia se conservan.
+ */
+export async function linkTrialLead(
+  d: { store: Pick<CrmStore, "list" | "get">; crm: Pick<CrmService, "convertLead" | "log">; requests: Pick<WebRequestService, "setStatus"> },
+  t: Pick<TrialRequest, "id">,
+  target: { companyId: number; tenantId: string },
+  actor: string,
+): Promise<TrialLeadLink> {
+  const request = (await d.store.list("leadRequests", { idempotencyKey: trialRequestKey(t.id) }, { limit: 1 }))[0];
+  if (!request) return "no_request";
+  const lead = await d.store.get("leads", request.leadId);
+  if (!lead) return "no_request";
+  let outcome: TrialLeadLink;
+  if (lead.status === "converted") {
+    if (lead.convertedCompanyId !== target.companyId) return "converted_elsewhere";
+    outcome = "already_linked";
+  } else if (lead.status === "disqualified") {
+    return "disqualified";
+  } else {
+    await d.crm.convertLead(lead.id, { companyId: target.companyId }, actor);
+    await d.crm.log("lead", lead.id, "note", `Prueba gratuita n.º ${t.id} verificada y aprovisionada automáticamente: empresa #${target.companyId}, plataforma ${target.tenantId} (solicitud ${request.reference})`, actor);
+    outcome = "converted";
+  }
+  if (request.status === "pending") await d.requests.setStatus(request.id, "attended", actor);
+  return outcome;
 }
