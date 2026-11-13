@@ -13,7 +13,7 @@
 import { normalizeBlocks as normalizeBlocksRaw, PageBlocksError } from "./_core/pageBlocks";
 import type { PageBlock } from "../shared/pageBlocks";
 import {
-  DEFAULT_LOCALE, MAX_LOCALES, buildConfig, contentHash, decideServing, isConfiguredLocale, isMultilingual, isReservedSlug,
+  DEFAULT_LOCALE, MAX_LOCALES, isSafeRedirectTarget, publicLocales, buildConfig, contentHash, decideServing, isConfiguredLocale, isMultilingual, isReservedSlug,
   localeSeo, localizedPath, normalizeLocale, normalizeLocalizedSlug, parseLocalizedPath, untranslatedFields,
   type I18nConfig, type LocaleEntry, type LocaleSeo, type PageVersion, type ServeDecision, type TranslationStatus, type UntranslatedField,
 } from "../shared/i18n";
@@ -505,7 +505,7 @@ export async function resolveRequest(repo: I18nRepo, pathname: string, origin: s
   const cfg = await getI18nConfig(repo);
   if (!isMultilingual(cfg)) return { kind: "passthrough" };
   const parsed = parseLocalizedPath(pathname, cfg);
-  if (parsed.redirectTo !== undefined) return { kind: "redirect", to: parsed.redirectTo, status: 301 };
+  if (parsed.redirectTo !== undefined) return safeRedirect(parsed.redirectTo);
   const home = await repo.principalHomeSlug();
   const asPage = async (rest: string) => {
     if (rest === "/") return repo.principalPageBySlug(home);
@@ -547,11 +547,11 @@ export async function resolveRequest(repo: I18nRepo, pathname: string, origin: s
     const slug = decodeURIComponentSafe(m[1]);
     row = await repo.publishedTranslationBySlug(locale, slug);
     page = row ? await repo.principalPageById(row.pageId) : await repo.principalPageBySlug(slug);
-    if (row && page && page.slug === home) return { kind: "redirect", to: localizedPath("/", locale, cfg), status: 301 };
+    if (row && page && page.slug === home) return safeRedirect(localizedPath("/", locale, cfg));
     if (!row && page) {
       // El slug del principal en una URL de otro idioma: si ya hay traducción validada, a su dirección; si no, fallback
       const t = await repo.pageTranslation(page.id, locale);
-      if (t?.status === "validated" && t.publishedSlug) return { kind: "redirect", to: localizedPath(`/${t.publishedSlug}`, locale, cfg), status: 301 };
+      if (t?.status === "validated" && t.publishedSlug) return safeRedirect(localizedPath(`/${t.publishedSlug}`, locale, cfg));
     }
   }
   if (page && !page.isPublished) page = null;
@@ -566,6 +566,28 @@ export async function resolveRequest(repo: I18nRepo, pathname: string, origin: s
     return { kind: "page", prefixed: true, decision, locale, principalSlug: page.slug, page: { ...meta, blocks: row.publishedBlocks }, seo };
   }
   return { kind: "page", prefixed: true, decision, locale, principalSlug: page.slug, page: null, seo };
+}
+
+/**
+ * Dirección de la página PRINCIPAL a la que corresponde una dirección que llega del cliente en una página traducida
+ * (el slug localizado, o el código del idioma en la portada). null si es ya una página del principal o no se reconoce.
+ * Solo traducciones validadas de idiomas validados.
+ */
+export async function principalSlugForLocalized(repo: I18nRepo, slug: string): Promise<string | null> {
+  if (await repo.principalPageBySlug(slug)) return null;
+  const cfg = await getI18nConfig(repo);
+  if (!isMultilingual(cfg)) return null;
+  const pub = new Set(publicLocales(cfg));
+  if (pub.has(slug) && slug !== cfg.defaultLocale) return repo.principalHomeSlug();
+  for (const t of await repo.listPageTranslations({ onlyValidated: true })) {
+    if (t.publishedSlug === slug && pub.has(t.locale)) return (await repo.principalPageById(t.pageId))?.slug ?? null;
+  }
+  return null;
+}
+
+/** Única vía de redirección: un destino que no sea una ruta interna segura se convierte en «no encontrada». */
+function safeRedirect(to: string): ResolvedRequest {
+  return isSafeRedirectTarget(to) ? { kind: "redirect", to, status: 301 } : { kind: "notFound" };
 }
 
 function decodeURIComponentSafe(s: string): string {

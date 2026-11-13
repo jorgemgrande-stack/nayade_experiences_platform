@@ -224,7 +224,12 @@ export async function publishPage(slug: string, raw?: unknown, author?: string |
 
 /** Formulario a medida de una página PUBLICADA (para validar sus envíos), o null. */
 export async function getPublishedFormBlock(slug: string, blockId: string) {
-  const target = await resolvePublicSlug(slug);
+  // Multidioma (E-1): en una página traducida el cliente manda su dirección localizada (o el código del idioma en la
+  // portada). La definición del formulario (campos, reglas, destino) es SIEMPRE la del principal.
+  const { sqlI18nRepo } = await import("./i18nSqlRepo");
+  const { principalSlugForLocalized } = await import("./i18nService");
+  const principal = await principalSlugForLocalized(sqlI18nRepo(), slug).catch(() => null);
+  const target = await resolvePublicSlug(principal ?? slug);
   const page = await getPage(target);
   if (!page?.isPublished) return null;
   // El formulario puede estar dentro de una sección con columnas
@@ -315,6 +320,10 @@ async function assertFreeSlug(slug: string) {
   const problem = pageSlugProblem(slug);
   if (problem) throw new PageBlocksError(problem);
   if (await getPage(slug)) throw new PageBlocksError("Ya tienes una página con esa dirección. Elige otra.");
+  // Multidioma (E-1): una dirección igual al código de un idioma de la web quedaría tapada por su prefijo
+  const { sqlI18nRepo } = await import("./i18nSqlRepo");
+  const locales = await sqlI18nRepo().listLocales().catch(() => []);
+  if (locales.some((l) => l.locale === slug)) throw new PageBlocksError(`«${slug}» es el código de uno de los idiomas de tu web y se usa como prefijo de dirección (/${slug}/…). Elige otra dirección.`);
 }
 
 async function nextMenuOrder(zone: "header" | "footer") {

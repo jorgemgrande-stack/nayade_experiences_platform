@@ -92,7 +92,32 @@ export function isLocalizablePath(path: string): boolean {
 
 /** Ruta sin parámetros, sin barra final y siempre con `/` inicial. */
 export function cleanPath(raw: string): string {
-  return ("/" + (raw.split(/[?#]/)[0] || "").replace(/^\/+/, "")).replace(/\/+$/, "") || "/";
+  // Barras repetidas colapsadas: `//evil.example` nunca puede salir de aquí como destino de una redirección
+  return ("/" + (raw.split(/[?#]/)[0] || "").replace(/^\/+/, "")).replace(/\/{2,}/g, "/").replace(/\/+$/, "") || "/";
+}
+
+/**
+ * Destino de redirección interno y seguro: una sola `/` inicial, sin `\`, sin caracteres de control y sin que, ya
+ * decodificado (`%2F%2F`, `%5C`), pueda leerse como `//host` o `/\host`. Cualquier redirección construida con datos
+ * de la URL debe pasar por aquí.
+ */
+export function isSafeRedirectTarget(to: unknown): to is string {
+  if (typeof to !== "string" || !to.startsWith("/") || to.startsWith("//")) return false;
+  const path = to.split(/[?#]/)[0];
+  const bad = (s: string) => s.startsWith("//") || s.includes("\\") || /[\u0000-\u001F\u007F]/.test(s) || /(^|\/)\.\.(\/|$)/.test(s);
+  if (bad(path)) return false;
+  let decoded = path;
+  for (let i = 0; i < 3; i++) {
+    try {
+      const next = decodeURIComponent(decoded);
+      if (next === decoded) break;
+      decoded = next;
+    } catch {
+      return false;
+    }
+    if (bad(decoded) || decoded.includes("//")) return false;
+  }
+  return !decoded.includes("//");
 }
 
 export interface ParsedPath {
@@ -118,10 +143,13 @@ export function parseLocalizedPath(pathname: string, cfg: I18nConfig): ParsedPat
   const seg = m ? normalizeLocale(m[1]) : null;
   if (m && seg && m[1] === seg && isConfiguredLocale(cfg, seg)) {
     const rest = m[2] || "/";
-    if (seg === cfg.defaultLocale && !cfg.defaultPrefix) return { locale: seg, rest, prefixed: true, redirectTo: rest };
+    if (seg === cfg.defaultLocale && !cfg.defaultPrefix) return { locale: seg, rest, prefixed: true, ...(isSafeRedirectTarget(rest) ? { redirectTo: rest } : {}) };
     return { locale: seg, rest, prefixed: true };
   }
-  if (cfg.defaultPrefix) return { ...plain, redirectTo: localizedPath(path, cfg.defaultLocale, cfg) };
+  if (cfg.defaultPrefix) {
+    const to = localizedPath(path, cfg.defaultLocale, cfg);
+    return isSafeRedirectTarget(to) ? { ...plain, redirectTo: to } : plain;
+  }
   return plain;
 }
 

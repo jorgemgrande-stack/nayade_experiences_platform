@@ -8,12 +8,23 @@
  */
 import { sql } from "drizzle-orm";
 import { getDb } from "./db";
+import { peekTenantContext } from "./_core/tenant";
+import { createTenantCache } from "./i18nCache";
 import type { PageBlock } from "../shared/pageBlocks";
 import { readStoredBlocks } from "./_core/pageBlocks";
 import type { LocaleEntry, TranslationStatus } from "../shared/i18n";
 import type { ContentEntityType, ContentTranslationRow, I18nRepo, I18nSettings, PageTranslationRow, PrincipalPage, PublishedMeta } from "./i18nService";
 
 type Row = Record<string, unknown>;
+
+// Idiomas y ajustes se leen en cada petición HTML: caché corta por empresa (nunca compartida) y se invalida al escribir
+const localesCache = createTenantCache<LocaleEntry[]>(30_000);
+const settingsCache = createTenantCache<I18nSettings>(30_000);
+const tenantKey = () => peekTenantContext()?.tenantId ?? "single";
+export function invalidateI18nCache() {
+  localesCache.invalidate(tenantKey());
+  settingsCache.invalidate(tenantKey());
+}
 
 async function exec() {
   const d = await getDb();
@@ -75,35 +86,43 @@ const principal = (r: Row): PrincipalPage => ({ id: Number(r.id), slug: String(r
 export function sqlI18nRepo(): I18nRepo {
   return {
     async listLocales() {
-      try {
-        const r = await rows(sql`SELECT locale, is_default, status, sort_order FROM site_locales ORDER BY sort_order, locale`);
-        return r.map((x): LocaleEntry => ({ locale: String(x.locale), isDefault: !!x.is_default, status: status(x.status), sortOrder: Number(x.sort_order) }));
-      } catch {
-        // Tablas aún sin migrar: un solo idioma, como siempre
-        return [];
-      }
+      return localesCache.get(tenantKey(), async () => {
+        try {
+          const r = await rows(sql`SELECT locale, is_default, status, sort_order FROM site_locales ORDER BY sort_order, locale`);
+          return r.map((x): LocaleEntry => ({ locale: String(x.locale), isDefault: !!x.is_default, status: status(x.status), sortOrder: Number(x.sort_order) }));
+        } catch {
+          // Tablas aún sin migrar: un solo idioma, como siempre
+          return [];
+        }
+      });
     },
     async insertLocale(e) {
       await run(sql`INSERT INTO site_locales (locale, is_default, status, sort_order, validated_at, validated_by)
         VALUES (${e.locale}, ${e.isDefault ? 1 : 0}, ${e.status}, ${e.sortOrder}, ${e.status === "validated" ? new Date() : null}, ${e.validatedBy ?? null})`);
+      invalidateI18nCache();
     },
     async setLocaleStatus(locale, st, by) {
       await run(sql`UPDATE site_locales SET status = ${st}, validated_at = ${st === "validated" ? new Date() : null}, validated_by = ${st === "validated" ? by : null} WHERE locale = ${locale}`);
+      invalidateI18nCache();
     },
     async deleteLocale(locale) {
       await run(sql`DELETE FROM site_locales WHERE locale = ${locale}`);
+      invalidateI18nCache();
     },
     async readSettings(): Promise<I18nSettings> {
-      try {
-        const r = await rows(sql`SELECT \`key\`, value FROM system_settings WHERE \`key\` IN ('i18n_default_prefix','i18n_fallback','i18n_negotiate')`);
-        const m = new Map(r.map((x) => [String(x.key), x.value == null ? null : String(x.value)]));
-        return { defaultPrefix: m.get("i18n_default_prefix"), fallback: m.get("i18n_fallback"), negotiate: m.get("i18n_negotiate") };
-      } catch {
-        return {};
-      }
+      return settingsCache.get(tenantKey(), async () => {
+        try {
+          const r = await rows(sql`SELECT \`key\`, value FROM system_settings WHERE \`key\` IN ('i18n_default_prefix','i18n_fallback','i18n_negotiate')`);
+          const m = new Map(r.map((x) => [String(x.key), x.value == null ? null : String(x.value)]));
+          return { defaultPrefix: m.get("i18n_default_prefix"), fallback: m.get("i18n_fallback"), negotiate: m.get("i18n_negotiate") };
+        } catch {
+          return {};
+        }
+      });
     },
     async writeSetting(key, value) {
       await run(sql`INSERT INTO system_settings (\`key\`, value, category, label) VALUES (${key}, ${value}, 'web', ${`Multidioma: ${key}`}) ON DUPLICATE KEY UPDATE value = ${value}`);
+      invalidateI18nCache();
     },
 
     async principalPageBySlug(slug) {

@@ -306,3 +306,75 @@ describe("aislamiento entre empresas", () => {
     expect((await getI18nConfig(c)).locales).toEqual([]);
   });
 });
+
+import { isSafeRedirectTarget, parseLocalizedPath } from "../shared/i18n";
+import { createTenantCache } from "./i18nCache";
+import { principalSlugForLocalized } from "./i18nService";
+
+describe("open redirect", () => {
+  it("destinos con host o barras nunca son seguros", () => {
+    for (const bad of ["//evil.example", "/\\evil.example", "/%2F%2Fevil.example", "/%5Cevil.example", "https://evil.example", "evil", "/a/../b", "/\u0000x"]) {
+      expect(isSafeRedirectTarget(bad), bad).toBe(false);
+    }
+    for (const ok of ["/", "/de", "/de/ueber-uns", "/x?a=//b"]) expect(isSafeRedirectTarget(ok), ok).toBe(true);
+  });
+  it("las rutas hostiles no producen redirecciones externas", async () => {
+    const repo = await withGerman();
+    for (const path of ["/es//evil.example", "/es/\\evil.example", "/es/%5Cevil.example", "/es/%2F%2Fevil.example", "//evil.example", "/es///evil.example", "/de//evil.example"]) {
+      const r = await resolveRequest(repo, path, ORIGIN);
+      if (r.kind === "redirect") {
+        expect(r.to.startsWith("/") && !r.to.startsWith("//") && !r.to.includes("\\"), `${path} -> ${r.to}`).toBe(true);
+      }
+    }
+    // el caso del informe: se colapsa a una ruta interna, nunca a //evil.example
+    expect(await resolveRequest(repo, "/es//evil.example", ORIGIN)).toEqual({ kind: "redirect", to: "/evil.example", status: 301 });
+    expect((await resolveRequest(repo, "/es/\\evil.example", ORIGIN)).kind).not.toBe("redirect");
+    expect((await resolveRequest(repo, "/es/%2F%2Fevil.example", ORIGIN)).kind).not.toBe("redirect");
+  });
+  it("parseLocalizedPath: con prefijo del principal activo tampoco redirige fuera", async () => {
+    const repo = await withGerman();
+    await repo.writeSetting("i18n_default_prefix", "1");
+    const cfg = await getI18nConfig(repo);
+    for (const p of ["//evil.example", "/\\evil.example", "/%2F%2Fevil.example"]) {
+      const to = parseLocalizedPath(p, cfg).redirectTo;
+      expect(to === undefined || (to.startsWith("/") && !to.startsWith("//") && !to.includes("\\"))).toBe(true);
+    }
+  });
+});
+
+describe("formularios en páginas traducidas", () => {
+  it("el slug localizado o el código del idioma resuelven a la página PRINCIPAL", async () => {
+    const repo = await withGerman();
+    expect(await principalSlugForLocalized(repo, "ueber-uns")).toBe("nosotros");
+    expect(await principalSlugForLocalized(repo, "de")).toBe("inicio");
+    expect(await principalSlugForLocalized(repo, "nosotros")).toBeNull(); // ya es del principal
+    expect(await principalSlugForLocalized(repo, "otra")).toBeNull();
+    // idioma retirado: ya no se resuelve
+    await unvalidateLocale(repo, "de");
+    expect(await principalSlugForLocalized(repo, "ueber-uns")).toBeNull();
+    expect(await principalSlugForLocalized(newRepo(), "ueber-uns")).toBeNull();
+  });
+});
+
+describe("caché por empresa", () => {
+  it("TTL, invalidación y aislamiento entre empresas", async () => {
+    let t = 0;
+    const c = createTenantCache<string>(100, () => t);
+    let loads = 0;
+    const load = (v: string) => async () => (loads++, v);
+    expect(await c.get("a", load("A1"))).toBe("A1");
+    expect(await c.get("a", load("A2"))).toBe("A1");
+    expect(await c.get("b", load("B1"))).toBe("B1"); // otra empresa: su propia entrada
+    c.invalidate("a");
+    expect(await c.get("a", load("A3"))).toBe("A3");
+    expect(await c.get("b", load("B2"))).toBe("B1");
+    t = 101;
+    expect(await c.get("b", load("B2"))).toBe("B2");
+    expect(loads).toBe(4);
+  });
+  it("un fallo no se cachea", async () => {
+    const c = createTenantCache<string>(100);
+    await expect(c.get("a", async () => { throw new Error("x"); })).rejects.toThrow();
+    expect(await c.get("a", async () => "ok")).toBe("ok");
+  });
+});

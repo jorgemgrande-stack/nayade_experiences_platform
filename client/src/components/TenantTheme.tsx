@@ -334,7 +334,10 @@ export function PageOrDefault({ slug, Default }: { slug: string; Default: Compon
 export function SlugGate({ slug }: { slug: string }) {
   const { theme, isLoading } = useTenantTheme();
   const site = useSiteLocale();
-  if (isLoading || (theme?.neutralSite && site.isLoading)) return <Spinner />;
+  // Solo se espera a conocer los idiomas si la dirección podría ser un código de idioma (de, en, pt-br…): el resto
+  // de las empresas y páginas no pagan ningún spinner extra
+  const maybeLocale = /^[a-z]{2,3}(-[a-z0-9]{2,8}){0,2}$/.test(slug);
+  if (isLoading || (maybeLocale && theme?.neutralSite && site.isLoading)) return <Spinner />;
   // «/de»: portada del idioma (solo un idioma adicional validado de la empresa; si no, es una página más, como siempre)
   if (theme?.neutralSite && site.multilingual && slug !== site.defaultLocale && site.locales.includes(slug)) return <TenantPage slug={HOME_PAGE_SLUG} locale={slug} />;
   if (theme?.neutralSite) return <TenantPage slug={slug} />;

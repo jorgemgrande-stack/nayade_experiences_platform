@@ -142,7 +142,9 @@ async function resolveLocalizedRequest(pathname: string, host: unknown, original
     if (r.kind === "passthrough") return null;
     if (r.kind === "redirect") {
       const q = originalUrl.includes("?") ? originalUrl.slice(originalUrl.indexOf("?")) : "";
-      return { ...r, to: r.to + q };
+      // Defensa en profundidad: solo rutas internas (una `/` inicial, nunca `//host` ni `\`)
+      const { isSafeRedirectTarget } = await import("../../shared/i18n");
+      return isSafeRedirectTarget(r.to) ? { ...r, to: r.to + q } : { kind: "notFound" as const };
     }
     return r;
   } catch {
