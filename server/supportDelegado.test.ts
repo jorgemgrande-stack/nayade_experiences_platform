@@ -182,7 +182,7 @@ describe("política del modo soporte", () => {
 });
 
 describe("procedimientos tRPC en modo soporte", () => {
-  it("solo lectura: vetados y enmascarado; con modificación (administración): derechos plenos y exportaciones registradas", async () => {
+  it("vetados siempre (también con modificación), exportaciones solo con modificación (registradas) y respuestas enmascaradas", async () => {
     const { router, publicProcedure } = await import("./_core/trpc");
     const { configureSupport } = await import("./_core/support/session");
     const { MemorySupportStore } = await import("./_core/support/grants");
@@ -196,12 +196,11 @@ describe("procedimientos tRPC en modo soporte", () => {
     });
     const caller = (readOnly: boolean, loginMethod = "support") => app.createCaller({ user: { id: -1, role: "admin", loginMethod, supportGrantId: "g".repeat(32), supportReadOnly: readOnly } } as never);
     await runWithTenant("acme", async () => {
-      await expect(caller(true).admin.createUser()).rejects.toThrow(/modo soporte/);
-      expect(await caller(false).admin.createUser()).toBe(1);
+      await expect(caller(false).admin.createUser()).rejects.toThrow(/modo soporte/);
       await expect(caller(true).crm.clients.exportCsv()).rejects.toThrow(/modificación/);
       expect(await caller(false).crm.clients.exportCsv()).toBe("csv");
       expect(await caller(true).hr.employees.list()).toEqual([{ name: "Ana", iban: "•••• 1332" }]);
-      expect(await caller(false).hr.employees.list()).toEqual([{ name: "Ana", iban: "ES9121000418450200051332" }]);
+      expect(await caller(false).hr.employees.list()).toEqual([{ name: "Ana", iban: "•••• 1332" }]);
       // Un usuario normal no se ve afectado
       expect(await caller(true, "local").hr.employees.list()).toEqual([{ name: "Ana", iban: "ES9121000418450200051332" }]);
       expect(await caller(true, "local").admin.createUser()).toBe(1);
@@ -235,7 +234,7 @@ describe("revisión de seguridad: nombres, ajustes sensibles y entradas con secr
     expect(out[3]).toMatchObject({ merchantKey: "••••••", pass: "••••••", serviceAccountJson: "••••••", tokenFormat: "••••••", accountNumber: "•••• 5678" });
   });
 
-  it("con modificación (administración) se pueden cambiar IBAN, secretos y ajustes sensibles (derechos plenos)", async () => {
+  it("una modificación con IBAN, secretos o ajustes sensibles se rechaza en modo soporte", async () => {
     const { inputTouchesSecrets } = await import("./_core/support/policy");
     expect(inputTouchesSecrets({ id: 3, name: "Ana", iban: "•••• 1332" })).toBe(true);
     expect(inputTouchesSecrets({ key: "site_legal_iban", value: "ES00" })).toBe(true);
@@ -251,10 +250,10 @@ describe("revisión de seguridad: nombres, ajustes sensibles y entradas con secr
     const app = router({ hr: router({ employees: router({ update: publicProcedure.input(z.object({ id: z.number(), name: z.string(), iban: z.string().optional() })).mutation(() => "ok") }) }) });
     const caller = app.createCaller({ user: { id: -1, role: "admin", loginMethod: "support", supportGrantId: "g".repeat(32), supportReadOnly: false } } as never);
     await runWithTenant("acme", async () => {
-      expect(await caller.hr.employees.update({ id: 1, name: "Ana", iban: "ES9121000418450200051332" })).toBe("ok");
+      await expect(caller.hr.employees.update({ id: 1, name: "Ana", iban: "•••• 1332" })).rejects.toThrow(/bancarios/);
       expect(await caller.hr.employees.update({ id: 1, name: "Ana" })).toBe("ok");
     });
-    expect(evs).toEqual([]);
+    expect(evs).toEqual(["blocked:secret_input"]);
     configureSupport(null);
   });
 });

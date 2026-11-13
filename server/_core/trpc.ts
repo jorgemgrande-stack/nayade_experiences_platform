@@ -72,8 +72,7 @@ export const quotaErrors = t.middleware(async ({ next }) => {
 });
 
 /**
- * Sesión de soporte delegado (usuario sintético `loginMethod: "support"`). Con modificación (administración): derechos
- * plenos; solo se registran antes las exportaciones. En solo lectura: procedimientos vetados (usuarios y permisos,
+ * Sesión de soporte delegado (usuario sintético `loginMethod: "support"`): procedimientos vetados (usuarios y permisos,
  * secretos, operaciones críticas), exportaciones solo con modificación y auditadas antes, y respuestas con IBAN, secretos
  * y tokens enmascarados. Por procedimiento: un vetado no tumba el resto del lote. Ver ./support/policy.ts.
  */
@@ -82,22 +81,19 @@ const supportGate = t.middleware(async ({ ctx, path, type, next, getRawInput }) 
   if (!u || u.loginMethod !== "support" || !u.supportGrantId) return next();
   const kind = supportProcedureKind(path);
   const method = type === "query" ? "GET" : "POST";
-  // Con modificación (solo administración): derechos plenos de administrador del cliente, sin vetos ni enmascarado.
-  // Las exportaciones se siguen registrando antes; las modificaciones, en el borde (supportReadOnlyGuard).
-  if (u.supportReadOnly === false) {
-    if (kind === "export" && !(await auditSupportEvent(u.supportGrantId, "export", { method, resource: path }))) {
-      throw new TRPCError({ code: "PRECONDITION_FAILED", message: "No se ha podido registrar la operación de soporte" });
-    }
-    return next();
-  }
+  // Vetado siempre, también con modificación: credenciales, secretos, datos bancarios, autenticación y permisos
   if (kind === "forbidden") {
     void auditSupportEvent(u.supportGrantId, "blocked", { method, resource: path, reason: "forbidden" });
-    throw new TRPCError({ code: "FORBIDDEN", message: "No disponible en modo soporte" });
+    throw new TRPCError({ code: "FORBIDDEN", message: "No disponible en modo soporte: credenciales, secretos, datos bancarios, autenticación y permisos se gestionan con la propia empresa" });
   }
-  // Solo lectura desde aquí: exportaciones vetadas
   if (kind === "export") {
-    void auditSupportEvent(u.supportGrantId, "blocked", { method, resource: path, reason: "export_read_only" });
-    throw new TRPCError({ code: "FORBIDDEN", message: "Las exportaciones requieren un acceso de soporte con modificación" });
+    if (u.supportReadOnly !== false) {
+      void auditSupportEvent(u.supportGrantId, "blocked", { method, resource: path, reason: "export_read_only" });
+      throw new TRPCError({ code: "FORBIDDEN", message: "Las exportaciones requieren un acceso de soporte con modificación" });
+    }
+    if (!(await auditSupportEvent(u.supportGrantId, "export", { method, resource: path }))) {
+      throw new TRPCError({ code: "PRECONDITION_FAILED", message: "No se ha podido registrar la operación de soporte" });
+    }
   }
   // Datos bancarios y secretos: ni se escriben (el formulario los tiene enmascarados) ni se cambian por otra vía
   if (type === "mutation" && inputTouchesSecrets(await getRawInput().catch(() => null))) {

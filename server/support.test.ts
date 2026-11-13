@@ -216,17 +216,26 @@ describe("auditoría y límites del modo soporte", () => {
     expect(events.map((e) => e.ev)).toEqual(["write_blocked"]);
   });
 
-  it("rutas sensibles: vetadas en solo lectura; con modificación (administración) permitidas y registradas; exportaciones solo con modificación", async () => {
+  it("autenticación propia vetada también con modificación; exportaciones solo con modificación y registradas", async () => {
     const ro = cookieFrom((await enter("acme", true)).r.setCookie);
     const rw = cookieFrom((await enter("acme", false)).r.setCookie);
     events.length = 0;
-    const f = await call("POST", "/api/auth/change-password", { tenant: "acme", cookie: ro });
+    const f = await call("POST", "/api/auth/change-password", { tenant: "acme", cookie: rw });
     expect(f.status).toBe(403);
     expect(JSON.parse(f.body).error).toBe("support_forbidden");
-    expect((await call("POST", "/api/auth/change-password", { tenant: "acme", cookie: rw })).status).toBe(200);
     expect((await call("GET", "/api/settlements/7/export-excel", { tenant: "acme", cookie: ro })).status).toBe(403);
     expect((await call("GET", "/api/settlements/7/export-excel", { tenant: "acme", cookie: rw })).status).toBe(200);
-    expect(events.map((e) => e.ev)).toEqual(["blocked", "write", "write_result", "blocked", "export"]);
+    expect(events.map((e) => e.ev)).toEqual(["blocked", "blocked", "export"]);
+  });
+
+  it("con modificación: el trabajo ordinario de Elephant Studio se guarda (registrado); los vetados, con error tRPC legible", async () => {
+    const rw = cookieFrom((await enter("acme", false)).r.setCookie);
+    events.length = 0;
+    // El borde la deja pasar (la app de prueba no monta tRPC: 404, no 403/503)
+    expect((await call("POST", "/api/trpc/cms.savePageDraft,cms.publishPage?batch=1", { tenant: "acme", cookie: rw })).status).toBe(404);
+    expect(events.map((e) => e.ev)).toEqual(["write", "write_result"]);
+    const v = await call("POST", "/api/admin/diagnose-order", { tenant: "acme", cookie: rw });
+    expect(v.status).toBe(403);
   });
 
   it("solo lectura en /api/trpc: el error va en el formato de tRPC (el panel muestra el mensaje), también en lotes", async () => {

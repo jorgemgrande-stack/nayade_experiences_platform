@@ -7,9 +7,9 @@
  *  - Cada petición con la cookie revalida: firma, caducidad, tenant resuelto == `tid`,
  *    concesión vigente y no revocada (lectura del registro).
  *  - Solo lectura por defecto: métodos que modifican se rechazan en el borde.
- *  - Rutas sensibles (gestión de usuarios y permisos, secretos de integraciones, datos completos de pago…; ver
- *    ./policy.ts) vetadas en solo lectura; con modificación (solo administración) derechos plenos (13/11/2026).
- *    Exportaciones y descargas sensibles solo con modificación y auditadas.
+ *  - Rutas vetadas SIEMPRE al soporte, también con modificación (gestión de usuarios y permisos, autenticación,
+ *    credenciales y secretos, datos bancarios y de pago…; ver ./policy.ts); exportaciones y descargas sensibles solo
+ *    con modificación y auditadas.
  *  - Auditoría persistente en el historial de la empresa (./audit.ts): entrada, salida, cada modificación con su
  *    resultado, intentos bloqueados y exportaciones. Sin registro no hay entrada ni modificación (falla cerrado).
  *  - Los tokens jamás se registran; se registran concesión, operador, recurso, método y resultado.
@@ -207,11 +207,12 @@ function supportError(req: Request, res: Response, status: number, error: string
 }
 
 /**
- * Borde de la sesión de soporte. Dos niveles (13/11/2026, decisión del propietario):
- *  - Solo lectura (cualquier rol autorizado): sin modificaciones, sin rutas sensibles, exportaciones vetadas.
- *  - Con modificación (solo administración: admin y superadmin, lo impone el plano de control al conceder):
- *    derechos PLENOS de administrador del cliente, sin vetos ni enmascarado. Cada modificación y exportación se
+ * Borde de la sesión de soporte (decisión del propietario, 13/11/2026):
+ *  - Solo lectura (rol soporte, o elegida): sin modificaciones ni exportaciones.
+ *  - Con modificación (solo administración: admin y superadmin, lo impone el plano de control al conceder): trabajo
+ *    ordinario completo (Elephant Studio, contenidos, productos, reservas, CRM…). Cada modificación y exportación se
  *    registra ANTES (si el registro falla, no se hace) y con su resultado.
+ *  - En ambos: credenciales, secretos, datos bancarios, autenticación y gestión de usuarios y permisos, vetados.
  * Sin sesión de soporte no hace nada.
  */
 export function supportReadOnlyGuard(log: (l: string) => void = (l) => console.warn(l)): RequestHandler {
@@ -228,12 +229,11 @@ export function supportReadOnlyGuard(log: (l: string) => void = (l) => console.w
       audit({ gid: g.id, tid: g.tenantId, ev, d: { method: req.method, resource, ...d } });
 
     const AUDIT_DOWN = "No se ha podido registrar la operación de soporte. Inténtalo de nuevo en unos segundos.";
-    // 1. Rutas sensibles (usuarios y permisos, secretos, pagos completos…): vetadas en solo lectura; con
-    //    modificación (administración) se permiten como cualquier otra, registradas si modifican
-    if (kind === "forbidden" && id.readOnly) {
+    // 1. Vetado al soporte siempre (también con modificación): usuarios y permisos, autenticación, secretos, pagos…
+    if (kind === "forbidden") {
       trace("forbidden");
       void send("blocked", { reason: "forbidden" });
-      return supportError(req, res, 403, "support_forbidden", "No disponible en una sesión de soporte de solo lectura");
+      return supportError(req, res, 403, "support_forbidden", "No disponible en modo soporte: credenciales, secretos, datos bancarios, autenticación y permisos se gestionan con la propia empresa");
     }
     // 2. Exportaciones y descargas sensibles: solo con modificación y con el registro hecho ANTES
     if (kind === "export") {
