@@ -8,7 +8,10 @@
  */
 import fs from "node:fs";
 import path from "node:path";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+
+// Recorren el código del servidor: con la máquina cargada pasan de los 5 s por defecto
+vi.setConfig({ testTimeout: 60_000 });
 import { TENANT_TRANSACTIONAL_SCOPE, TENANT_TRANSACTIONAL_SCOPE_ENV } from "./tenantTransactionalScope";
 import { TRANSACTIONAL_CATEGORIES } from "./tenantPostmark";
 import { mailPolicyFromEnv, scopeAllows } from "./policy";
@@ -114,9 +117,9 @@ describe("alcance transaccional de las empresas", () => {
     for (const c of ["legacy", "marketing", "survey", "service_notice", undefined]) expect(scopeAllows(p, "empresa", c)).toBe(false);
   });
 
-  it("plantillas del gestor: lo comercial es «marketing»; lo de la reserva, operativo", async () => {
+  it("plantillas del gestor: lo comercial no sale («legacy»: sin consentimiento ni baja); lo de la reserva, operativo", async () => {
     const { categoryForTemplate } = await import("./types");
-    for (const k of ["commercial_reminder_1", "commercial_reminder_3", "marketing_x", "newsletter", "promo_verano", "campaign_a"]) expect(categoryForTemplate(k), k).toBe("marketing");
+    for (const k of ["commercial_reminder_1", "commercial_reminder_3", "marketing_x", "newsletter", "promo_verano", "campaign_a"]) expect(categoryForTemplate(k), k).toBe("legacy");
     for (const k of ["cancellation_accepted", "installment_reminder", "pending_payment_reminder", "reservation_confirmation"]) expect(categoryForTemplate(k), k).toBe("operational");
     expect(categoryForTemplate("quote_sent")).toBe("quote_sent");
   });
@@ -127,5 +130,24 @@ describe("alcance transaccional de las empresas", () => {
     expect(src).toContain('const commercial = action.purpose === "commercial" || !(e.type === "reservation" || e.type === "invoice");');
     expect(src).toContain("if (commercial) {");
     expect(src).toContain('const category = commercial ? "marketing" : "operational";');
+  });
+
+  it("en el Core, «marketing» solo lo envían las automatizaciones, con consentimiento concedido y enlace de baja", () => {
+    // Todo envío del carril de la empresa con categoría «marketing» debe pasar por la comprobación de consentimiento
+    const offenders: string[] = [];
+    const walk = (dir: string) => {
+      for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
+        const p = path.join(dir, e.name);
+        if (e.isDirectory()) { if (!["node_modules", "communications", "controlPlane"].includes(e.name)) walk(p); continue; }
+        if (!/\.ts$/.test(e.name) || /\.test\.ts$/.test(e.name)) continue;
+        const src = fs.readFileSync(p, "utf8");
+        if (/category:\s*"marketing"/.test(src) || /return "marketing"/.test(src)) offenders.push(path.relative(SERVER, p).split(path.sep).join("/"));
+      }
+    };
+    walk(SERVER);
+    expect(offenders).toEqual([]);
+    const actions = fs.readFileSync(path.join(SERVER, "automations/actions.ts"), "utf8");
+    expect(actions).toContain('const category = commercial ? "marketing" : "operational";');
+    expect(actions).toMatch(/if \(commercial\) \{\s*const clientId = await d\.commercialRecipient\(to\);\s*if \(clientId == null\) return skip\("sin_consentimiento"\);\s*unsubscribeUrl = await d\.unsubscribeLink\(clientId\);\s*if \(!unsubscribeUrl\) return skip\("sin_enlace_de_baja"\);/);
   });
 });
