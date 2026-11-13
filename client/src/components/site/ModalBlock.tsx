@@ -14,7 +14,10 @@ import { useCallback, useEffect, useId, useRef, useState, type ReactNode } from 
 import * as DialogPrimitive from "@radix-ui/react-dialog";
 import { X } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { hasCookieDecision } from "@/components/CookieBanner";
+import { hasCookieDecision, showsCookieBanner } from "@/components/CookieBanner";
+import { trpc } from "@/lib/trpc";
+import { cookieGate, createAutoOpener, type AutoOpener } from "@/lib/autoOpenGate";
+import type { CookieThemeInput } from "@shared/cookieCategories";
 import type { BlockOf } from "@shared/pageBlocks";
 import {
   MODAL_DAY_MS, modalClosing, modalDismissalActive, modalHref, modalSessionKey, modalSlugFromHref, modalStorageKey,
@@ -78,29 +81,35 @@ export function usePublicModal(b: BlockOf<"modal">, enabled: boolean, autoEnable
     };
   }, [enabled, href, d.slug]);
 
-  // Apertura automática (desactivada por defecto)
+  // Apertura automática (desactivada por defecto). Espera al tema (¿usa aviso de cookies?) y a la decisión de la persona
+  const wantsAuto = enabled && autoEnabled && d.autoOpen !== "off";
+  const theme = trpc.public.getTheme.useQuery(undefined, { staleTime: 5 * 60_000, retry: false, refetchOnWindowFocus: false, enabled: wantsAuto });
+  const gateIn = useRef({ themeLoaded: false, theme: undefined as CookieThemeInput | null | undefined });
+  gateIn.current = { themeLoaded: theme.isSuccess || theme.isError, theme: theme.data as CookieThemeInput | undefined };
+  const opener = useRef<AutoOpener | null>(null);
   useEffect(() => {
-    if (!enabled || !autoEnabled || d.autoOpen === "off" || window.location.hash === href || autoOpenBlocked(d.slug)) return;
+    if (!wantsAuto || window.location.hash === href || autoOpenBlocked(d.slug)) return;
     const cleanups: Array<() => void> = [];
-    const attempt = () => {
-      if (autoOpenBlocked(d.slug) || document.querySelector("[data-es-modal-open]")) return;
-      // Antes de nada, la decisión sobre las cookies: el aviso no se tapa ni se apila con la ventana
-      if (!hasCookieDecision() && document.querySelector("[data-cookie-banner]")) {
-        const later = () => {
-          window.removeEventListener("cookieConsentChanged", later);
-          window.setTimeout(attempt, 1200);
-        };
-        window.addEventListener("cookieConsentChanged", later);
-        cleanups.push(() => window.removeEventListener("cookieConsentChanged", later));
-        return;
-      }
-      writeStore("session", modalSessionKey(d.slug), "1");
-      trigger.current = (document.activeElement as HTMLElement | null) ?? null;
-      setOpen(true);
-    };
+    const o = createAutoOpener({
+      gate: () => (document.querySelector("[data-es-modal-open]") || autoOpenBlocked(d.slug) ? "wait-decision" : cookieGate({ ...gateIn.current, decided: hasCookieDecision(), bannerRoute: showsCookieBanner(window.location.pathname) })),
+      open: () => {
+        writeStore("session", modalSessionKey(d.slug), "1");
+        trigger.current = (document.activeElement as HTMLElement | null) ?? null;
+        setOpen(true);
+      },
+      graceMs: 1200,
+      later: (fn, ms) => {
+        const t = window.setTimeout(fn, ms);
+        return () => window.clearTimeout(t);
+      },
+    });
+    opener.current = o;
+    const onConsent = () => o.recheck();
+    window.addEventListener("cookieConsentChanged", onConsent);
+    cleanups.push(() => window.removeEventListener("cookieConsentChanged", onConsent), () => o.dispose(), () => (opener.current = null));
     const wait = Number(d.autoDelay) * 1000;
     if (d.autoOpen === "load") {
-      const t = window.setTimeout(attempt, wait);
+      const t = window.setTimeout(() => o.trigger(), wait);
       cleanups.push(() => window.clearTimeout(t));
     } else if (window.matchMedia?.("(pointer: fine)").matches) {
       // Intención de salida: solo con ratón (en móvil no existe), pasados unos segundos y una sola vez
@@ -109,13 +118,18 @@ export function usePublicModal(b: BlockOf<"modal">, enabled: boolean, autoEnable
       const onOut = (e: MouseEvent) => {
         if (!armed || e.relatedTarget || e.clientY > 0) return;
         document.removeEventListener("mouseout", onOut);
-        attempt();
+        o.trigger();
       };
       document.addEventListener("mouseout", onOut);
       cleanups.push(() => window.clearTimeout(t), () => document.removeEventListener("mouseout", onOut));
     }
     return () => cleanups.forEach((c) => c());
-  }, [enabled, autoEnabled, d.autoOpen, d.autoDelay, d.slug, href]);
+  }, [wantsAuto, d.autoOpen, d.autoDelay, d.slug, href]);
+  // El tema termina de cargar: si el disparo ya se cumplió, reevaluar
+  const themeLoaded = theme.isSuccess || theme.isError;
+  useEffect(() => {
+    if (themeLoaded) opener.current?.recheck(false);
+  }, [themeLoaded]);
 
   const close = useCallback(() => {
     if (window.location.hash === href) {
