@@ -69,7 +69,11 @@ import type { CrmStore } from "../crm/store";
 import type { TicketService } from "../_core/support/tickets";
 import { createTicketsRouter } from "./tickets";
 import { createCustomerTicketsRouter } from "../support/customerTickets";
-import type { SupportAdmin } from "../_core/support/grants";
+import { grantActive, type SupportAdmin } from "../_core/support/grants";
+import { SUPPORT_AUDIT_PATH, verifySupportAudit } from "../_core/support/audit";
+
+/** Roles que pueden abrir un acceso de soporte CON modificación (decisión 13/11/2026); soporte, solo lectura. */
+const SUPPORT_WRITE_ROLES: ReadonlySet<string> = new Set(["admin", "superadmin"]);
 import { createPublicIntakeRouter, type PublicIntakeConfig } from "../crm/publicApi";
 import { WebRequestService } from "../crm/webRequests";
 import { linkTrialLead, recordTrialRequest } from "../trials/crmRequest";
@@ -268,7 +272,7 @@ export interface ControlPlaneDeps {
   /** Tope de peticiones por minuto y IP para todo el plano de control (por defecto 600). */
   perIpMinute?: number;
   /** Acceso delegado de soporte (requiere SUPPORT_JWT_SECRET). */
-  support?: Pick<SupportAdmin, "create" | "revoke">;
+  support?: Pick<SupportAdmin, "create" | "revoke"> & Partial<Pick<SupportAdmin, "listActive" | "getGrant" | "record">>;
   /** Inventario de copias de seguridad (registro, migración 0010). Sin él no hay rutas `/backups`. */
   backups?: {
     inventory: Pick<BackupInventory, "list" | "latestAttempts" | "lastSuccess">;
@@ -585,6 +589,36 @@ export function createControlPlaneApp(d: ControlPlaneDeps): Express {
   // Adjuntos y extractos de las finanzas (hasta 10 MB en base64): los lee su propia ruta, tras comprobar el permiso
   app.use(express.json({ limit: "256kb", type: (req) => !FINANCE_UPLOAD_PATHS.test(req.url ?? "") && !EXTERNAL_UPLOAD_PATHS.test(req.url ?? "") && String(req.headers["content-type"] ?? "").toLowerCase().startsWith("application/json"), verify: (req, _res, buf) => void ((req as any).rawBody = buf.toString("utf8")) }));
   app.use(rebindRequestContext);
+
+  // Auditoría de las sesiones de soporte delegado: la envía el Core firmada con el secreto compartido (no es un token de
+  // servicio). Se valida contra la concesión: solo eventos de una concesión real de ESE tenant. Ver _core/support/audit.ts
+  if (d.support?.getGrant && d.support.record && d.supportSecret) {
+    const support = d.support as Required<NonNullable<ControlPlaneDeps["support"]>>;
+    const secret = d.supportSecret;
+    const seenAudit = new Map<string, number>();
+    app.post(
+      SUPPORT_AUDIT_PATH,
+      rateLimit({ windowMs: 60_000, limit: 1200, standardHeaders: true, legacyHeaders: false, keyGenerator: (req) => `ip:${ipKeyGenerator(req.ip ?? "")}` }),
+      wrap(async (req, res) => {
+        res.setHeader("Cache-Control", "no-store");
+        const c = await verifySupportAudit(String((req.body as { token?: unknown } | undefined)?.token ?? ""), secret);
+        if (!c) return void res.status(401).json({ error: "unauthorized" });
+        const nowS = Math.floor(Date.now() / 1000);
+        seenAudit.forEach((exp, k) => exp < nowS && seenAudit.delete(k));
+        if (seenAudit.has(c.jti)) return void res.status(409).json({ error: "replay" });
+        seenAudit.set(c.jti, c.exp);
+        const g = await support.getGrant(c.gid);
+        if (!g || g.tenantId !== c.tid) return void res.status(404).json({ error: "grant_not_found" });
+        // Entrada, modificaciones y exportaciones solo con la concesión vigente; salida y bloqueos se anotan siempre
+        const live = grantActive(g);
+        if (!live && (c.ev === "entered" || c.ev === "write" || c.ev === "export")) return void res.status(409).json({ error: "grant_inactive" });
+        await support.record(g.tenantId, g.operator, `support.${c.ev}`, { grantId: g.id, readOnly: g.readOnly, ...(c.ev === "entered" ? { reason: g.reason, expiresAt: new Date(g.expiresAt).toISOString() } : {}), ...c.d });
+        // Salir del modo soporte termina la concesión (no se puede volver a entrar con el mismo enlace)
+        if (c.ev === "exited" && live) await support.revoke(g.id, g.operator);
+        res.status(201).json({ ok: true });
+      }),
+    );
+  }
 
   // Webhook del proveedor de pagos: autenticado por firma, no por token
   if (d.billing) {
@@ -3301,8 +3335,15 @@ export function createControlPlaneApp(d: ControlPlaneDeps): Express {
         const t = await d.reader.getTenant(id);
         if (!t) throw new RegistryError("not_found", "Tenant no encontrado");
         if (t.status === "deleted" || t.status === "deleting") throw new RegistryError("conflict", "El tenant no admite acceso");
-        const a = getAuth(req)!.actor;
+        const auth = getAuth(req)!;
+        const a = auth.actor;
+        // Modificación: solo administración (admin o superadmin) con sesión de operador humano; soporte, solo lectura.
+        // Nunca por defecto: hay que pedirla expresamente (readOnly:false) en cada sesión.
+        if (!b.readOnly && !SUPPORT_WRITE_ROLES.has(auth.operator?.operator.role ?? "")) {
+          return void res.status(403).json({ error: "forbidden", message: "Solo administración puede abrir un acceso de soporte con modificación" });
+        }
         const g = await d.support!.create({ tenantId: id, ...b, operator: `${a.type}:${a.id}` });
+        // Enlace de entrada de 120 s y un solo uso (la cookie de la sesión la emite el Core al canjearlo)
         const token = await signSupportToken(g, d.supportSecret!);
         const primary = (await d.reader.listDomains(id)).find((x) => x.isPrimary && x.status === "active");
         res.status(201).json({
@@ -3312,6 +3353,16 @@ export function createControlPlaneApp(d: ControlPlaneDeps): Express {
           enterUrl: primary ? `https://${primary.domain}/_support/enter?t=${token}` : null,
           token: primary ? undefined : token,
         });
+      }),
+    );
+    // Sesiones de soporte vigentes de una empresa (para verlas y revocarlas desde el CRM)
+    router.get(
+      "/tenants/:id/support-access",
+      requireScope("support:write"),
+      wrap(async (req, res) => {
+        const id = idSchema.parse(req.params.id);
+        const rows = d.support!.listActive ? await d.support!.listActive(id) : [];
+        res.json({ grants: rows.map((g) => ({ grantId: g.id, operator: g.operator, reason: g.reason, readOnly: g.readOnly, createdAt: new Date(g.createdAt).toISOString(), expiresAt: new Date(g.expiresAt).toISOString() })) });
       }),
     );
     router.delete(

@@ -11,6 +11,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { useAuth } from "@/_core/hooks/useAuth";
+import { SupportModeBar, exitSupportMode, isSupportUser } from "@/components/SupportModeBar";
 import { WhatsAppNotification } from "./WhatsAppNotification";
 import { cn } from "@/lib/utils";
 import { useLocation as useWouterLocation } from "wouter";
@@ -621,10 +622,10 @@ export default function AdminLayout({ children, title }: AdminLayoutProps) {
             )}
             <button
               type="button"
-              onClick={logout}
+              onClick={isSupportUser(user) ? () => void exitSupportMode() : logout}
               className="w-8 h-8 rounded-lg hover:bg-sidebar-accent flex items-center justify-center text-sidebar-foreground/70 hover:text-red-400 transition-colors shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sidebar-ring"
-              title="Cerrar sesión"
-              aria-label="Cerrar sesión"
+              title={isSupportUser(user) ? "Salir del modo soporte" : "Cerrar sesión"}
+              aria-label={isSupportUser(user) ? "Salir del modo soporte" : "Cerrar sesión"}
             >
               <LogOut className="w-3.5 h-3.5" aria-hidden="true" />
             </button>
@@ -852,6 +853,8 @@ export default function AdminLayout({ children, title }: AdminLayoutProps) {
           {isTaskNav && <SubscriptionRecoveryBanner role={userRole} />}
           {children}
         </main>
+        {/* Modo soporte de Big Elephant: banda permanente con operador, modo, caducidad y salida */}
+        {isSupportUser(user) && <SupportModeBar user={user} />}
       </div>
       {/* Solo con WhatsApp contratado: si no, consultaría cada 15 s una ruta que el servidor deniega */}
       {subscription.mode !== "loading" && subscription.can("whatsapp-ai") && <WhatsAppNotification />}

@@ -22,8 +22,11 @@ let store: MemorySupportStore;
 let server: http.Server;
 let port: number;
 const logs: string[] = [];
+const events: Array<{ ev: string; d: Record<string, unknown> }> = [];
+let auditUp = true;
+const auditStub = async (c: { ev: string; d: Record<string, unknown> }) => (auditUp ? (events.push({ ev: c.ev, d: c.d }), true) : false);
 
-function call(method: string, path: string, opts: { tenant?: string; cookie?: string; https?: boolean } = {}) {
+function call(method: string, path: string, opts: { tenant?: string; cookie?: string; https?: boolean; origin?: string } = {}) {
   return new Promise<{ status: number; body: string; setCookie?: string }>((resolve, reject) => {
     const req = http.request(
       {
@@ -35,6 +38,7 @@ function call(method: string, path: string, opts: { tenant?: string; cookie?: st
           ...(opts.tenant ? { "x-test-tenant": opts.tenant } : {}),
           ...(opts.cookie ? { cookie: opts.cookie } : {}),
           ...(opts.https ? { "x-forwarded-proto": "https" } : {}),
+          ...(opts.origin ? { origin: opts.origin } : {}),
         },
       },
       (res) => {
@@ -63,6 +67,8 @@ beforeAll(async () => {
     res.json({ support: !!id });
   });
   app.post("/data", (_req, res) => res.json({ wrote: true }));
+  app.post("/api/auth/change-password", (_req, res) => res.json({ changed: true }));
+  app.get("/api/settlements/7/export-excel", (_req, res) => res.json({ excel: true }));
   server = http.createServer(app);
   await new Promise<void>((r) => server.listen(0, "127.0.0.1", r));
   port = (server.address() as AddressInfo).port;
@@ -74,8 +80,10 @@ afterAll(async () => {
 });
 beforeEach(() => {
   store = new MemorySupportStore();
-  configureSupport(store, SECRET);
+  configureSupport(store, SECRET, { audit: auditStub as never, returnUrl: "https://crm.example/" });
   logs.length = 0;
+  events.length = 0;
+  auditUp = true;
 });
 
 const cookieFrom = (setCookie?: string) => (setCookie ?? "").split(";")[0];
@@ -169,7 +177,98 @@ describe("sesión de soporte", () => {
     const { g } = await enter("acme");
     const forged = await signSupportToken(g, "x".repeat(40));
     expect((await call("GET", `/_support/enter?t=${forged}`, { tenant: "acme" })).status).toBe(403);
-    configureSupport(store, undefined);
+    configureSupport(store, undefined, { audit: auditStub as never });
     expect((await call("GET", `/_support/enter?t=${forged}`, { tenant: "acme" })).status).toBe(404);
+  });
+});
+
+describe("auditoría y límites del modo soporte", () => {
+  it("la entrada queda registrada antes de abrir el panel; sin registro no se entra", async () => {
+    const { r } = await enter("acme");
+    expect(r.status).toBe(302);
+    expect(events.map((e) => e.ev)).toEqual(["entered"]);
+    auditUp = false;
+    const again = await enter("acme");
+    expect(again.r.status).toBe(503);
+    expect(again.r.setCookie).toBeUndefined();
+  });
+
+  it("consultas ordinarias sin registro; cada modificación se registra antes y con su resultado", async () => {
+    const { r } = await enter("acme", false);
+    const c = cookieFrom(r.setCookie);
+    events.length = 0;
+    await call("GET", "/data", { tenant: "acme", cookie: c });
+    expect(events).toHaveLength(0);
+    expect((await call("POST", "/data", { tenant: "acme", cookie: c })).status).toBe(200);
+    await new Promise((x) => setTimeout(x, 20));
+    expect(events.map((e) => e.ev)).toEqual(["write", "write_result"]);
+    expect(events[0].d).toMatchObject({ method: "POST", resource: "/data" });
+    expect(events[1].d).toMatchObject({ status: 200 });
+    // Sin registro, la modificación no se ejecuta
+    auditUp = false;
+    expect((await call("POST", "/data", { tenant: "acme", cookie: c })).status).toBe(503);
+  });
+
+  it("solo lectura: el intento de modificación queda en el historial", async () => {
+    const { r } = await enter("acme", true);
+    events.length = 0;
+    expect((await call("POST", "/data", { tenant: "acme", cookie: cookieFrom(r.setCookie) })).status).toBe(403);
+    expect(events.map((e) => e.ev)).toEqual(["write_blocked"]);
+  });
+
+  it("autenticación propia vetada también con modificación; exportaciones solo con modificación y registradas", async () => {
+    const ro = cookieFrom((await enter("acme", true)).r.setCookie);
+    const rw = cookieFrom((await enter("acme", false)).r.setCookie);
+    events.length = 0;
+    const f = await call("POST", "/api/auth/change-password", { tenant: "acme", cookie: rw });
+    expect(f.status).toBe(403);
+    expect(JSON.parse(f.body).error).toBe("support_forbidden");
+    expect((await call("GET", "/api/settlements/7/export-excel", { tenant: "acme", cookie: ro })).status).toBe(403);
+    expect((await call("GET", "/api/settlements/7/export-excel", { tenant: "acme", cookie: rw })).status).toBe(200);
+    expect(events.map((e) => e.ev)).toEqual(["blocked", "blocked", "export"]);
+  });
+
+  it("salir registra la salida, borra solo la cookie de soporte y devuelve adónde volver", async () => {
+    const { r } = await enter("acme");
+    const c = cookieFrom(r.setCookie);
+    events.length = 0;
+    const out = await call("POST", "/_support/exit", { tenant: "acme", cookie: c });
+    expect(out.status).toBe(200);
+    expect(JSON.parse(out.body)).toEqual({ returnUrl: "https://crm.example/" });
+    expect(out.setCookie).toMatch(/es_support=;/);
+    expect(events.map((e) => e.ev)).toEqual(["exited"]);
+  });
+});
+
+describe("enlace de entrada y tipos de token (revisión de seguridad)", () => {
+  it("el enlace es de un solo uso y no vale como cookie; la cookie no vale como enlace", async () => {
+    const { token, r } = await enter("acme");
+    expect(r.status).toBe(302);
+    const cookie = cookieFrom(r.setCookie);
+    expect(cookie.split("=")[1]).not.toBe(token); // credencial distinta
+    expect((await call("GET", `/_support/enter?t=${token}`, { tenant: "acme" })).status).toBe(403);
+    expect(JSON.parse((await call("GET", "/data", { tenant: "acme", cookie: `${SUPPORT_COOKIE}=${token}` })).body)).toEqual({ support: false });
+    expect((await call("GET", `/_support/enter?t=${cookie.split("=")[1]}`, { tenant: "acme" })).status).toBe(403);
+  });
+
+  it("un evento de auditoría firmado no abre sesión ni como enlace ni como cookie", async () => {
+    const { signSupportAudit } = await import("./_core/support/audit");
+    const g = store.create({ tenantId: "acme", operator: "jorge", reason: "Incidencia #125", minutes: 30 });
+    const ev = await signSupportAudit(SECRET, { gid: g.id, tid: "acme", ev: "entered", d: {} });
+    expect((await call("GET", `/_support/enter?t=${ev}`, { tenant: "acme" })).status).toBe(403);
+    expect(JSON.parse((await call("GET", "/data", { tenant: "acme", cookie: `${SUPPORT_COOKIE}=${ev}` })).body)).toEqual({ support: false });
+  });
+
+  it("salir desde otro origen (otra empresa del mismo dominio) se rechaza", async () => {
+    const c = cookieFrom((await enter("acme")).r.setCookie);
+    events.length = 0;
+    expect((await call("POST", "/_support/exit", { tenant: "acme", cookie: c, origin: "https://otra.app.example" })).status).toBe(403);
+    expect(events).toHaveLength(0);
+  });
+
+  it("diagnóstico y recuperación de pagos vetados, también con mayúsculas", async () => {
+    const { classifySupportRequest } = await import("./_core/support/policy");
+    expect(classifySupportRequest("GET", "/api/admin/diagnose-order/X1").kind).toBe("forbidden");
+    expect(classifySupportRequest("POST", "/API/AUTH/handoff").kind).toBe("forbidden");
   });
 });
