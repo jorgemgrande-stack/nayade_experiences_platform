@@ -84,7 +84,8 @@ describe.skipIf(!URL_)("prueba autónoma con MySQL real", () => {
     const [ev] = await pool.query<mysql.RowDataPacket[]>("SELECT action, version FROM trial_events WHERE trial_id = ? ORDER BY id", [act.id]);
     expect(ev.map((e) => `${e.action}@${e.version}`)).toEqual(["registered@1", "verify@2", "request_provisioning@3", "provisioned@4"]);
     const [tok] = await pool.query<mysql.RowDataPacket[]>("SELECT verification_token_hash FROM trial_requests WHERE id = ?", [act.id]);
-    expect(tok[0].verification_token_hash).toBeNull();
+    // Se conserva el hash (nunca el token) del enlace usado: reabrirlo dice «ya confirmado»
+    expect(tok[0].verification_token_hash).toMatch(/^[0-9a-f]{64}$/);
   });
 
   it("la migración 0007 se revierte y se vuelve a aplicar", async () => {
