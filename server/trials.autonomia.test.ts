@@ -88,15 +88,18 @@ describe("reenvío del enlace de verificación", () => {
     expect(sent.filter((m) => m.kind === "verification")).toHaveLength(1);
   });
 
-  it("enlace caducado: se renueva mientras la solicitud no supere su vida máxima; después se anula y libera el correo", async () => {
+  it("enlace caducado: se renueva mientras la solicitud no supere su vida máxima (90 días); después se anula y libera el correo", async () => {
     const r = await reg("eva@acme.es");
     clock += 2 * DAY; // enlace caducado (24 h)
     await expect(svc.verify(r.trial.id, r.verificationToken!)).rejects.toThrow(/caducado/);
     expect((await onboarding.resendVerification({ email: "eva@acme.es" }, "web")).outcome).toBe("resent");
     expect((await svc.verify(r.trial.id, sent.at(-1)!.data.token as string)).state).toBe("verified");
 
+    // La solicitud no caduca porque se tarde: a los 30 días el enlace se sigue renovando
     const old = await reg("old@acme.es");
-    clock += 8 * DAY;
+    clock += 30 * DAY;
+    expect((await onboarding.resendVerification({ email: "old@acme.es" }, "web")).outcome).toBe("resent");
+    clock += 61 * DAY;
     expect((await onboarding.resendVerification({ email: "old@acme.es" }, "web")).outcome).toBe("expired");
     expect((await svc.must(old.trial.id)).state).toBe("cancelled");
     expect((await reg("old@acme.es")).created).toBe(true);
@@ -113,10 +116,14 @@ describe("reenvío del enlace de verificación", () => {
 });
 
 describe("el correo no queda bloqueado y protección contra abusos", () => {
-  it("registrarse otra vez con una solicitud sin verificar y caducada: la anterior se anula y se crea otra", async () => {
+  it("registrarse otra vez con el enlace caducado: misma solicitud (sin duplicado, la ruta pública le reenvía el enlace); pasada su vida máxima, se anula y se crea otra", async () => {
     const a = await reg("rep@acme.es");
     await expect(reg("rep@acme.es")).rejects.toMatchObject({ code: "conflict" });
     clock += DAY + 1;
+    const again = await reg("rep@acme.es");
+    expect(again).toMatchObject({ created: false, trial: { id: a.trial.id, state: "pending_verification" } });
+    expect(again.verificationToken).toBeTruthy();
+    clock += 90 * DAY;
     const b = await reg("rep@acme.es");
     expect(b.created).toBe(true);
     expect(b.trial.id).not.toBe(a.trial.id);
@@ -226,13 +233,15 @@ describe("tarea programada", () => {
     expect(sent.filter((m) => m.kind === "expiry")).toHaveLength(1);
   });
 
-  it("solicitudes sin verificar: se anulan solo con el enlace caducado y pasada su vida máxima", async () => {
+  it("solicitudes sin verificar: se anulan solo con el enlace caducado y pasada su vida máxima (90 días)", async () => {
     const a = await reg("pend@acme.es");
     const s = scheduler();
     clock += 2 * DAY;
     expect(await s.tick()).toMatchObject({ verificationsExpired: 0 });
+    clock = T0 + 30 * DAY;
+    expect(await s.tick()).toMatchObject({ verificationsExpired: 0 });
     expect((await svc.must(a.trial.id)).state).toBe("pending_verification");
-    clock = T0 + 7 * DAY + 1;
+    clock = T0 + 90 * DAY + 1;
     expect(await s.tick()).toMatchObject({ verificationsExpired: 1 });
     expect((await svc.must(a.trial.id)).state).toBe("cancelled");
     expect((await reg("pend@acme.es")).created).toBe(true);
