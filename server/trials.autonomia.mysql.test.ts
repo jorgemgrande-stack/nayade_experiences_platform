@@ -150,9 +150,11 @@ describe.skipIf(!URL_)("prueba autónoma (reenvío y tarea programada) con MySQL
   });
 
   it("tick en dos réplicas a la vez: un vencimiento, un aviso; una solicitud sin verificar de 30 días sigue viva (vida máxima 90)", async () => {
+    // Reloj relativo: las pruebas comparten el reloj y alguna lo adelanta (vida máxima de 90 días)
+    const base = clock;
     const t = await active("tick@acme.example", "acme-tick");
     const stale = await reg("stale@acme.example");
-    clock = T0 + 30 * DAY;
+    clock = base + 30 * DAY;
     const mk = (p: mysql.Pool) => new TrialScheduler({ store: new MysqlTrialStore(p), notify, lock: mysqlAdvisoryLock(p), now: () => clock, log: () => undefined });
     const outs = await Promise.all([mk(pool).tick(), mk(other).tick()]);
     const ran = outs.filter((o) => o.skipped === null);
