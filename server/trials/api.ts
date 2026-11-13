@@ -102,7 +102,7 @@ const wrap = (fn: (req: Request, res: Response) => Promise<void>) => (req: Reque
   });
 const who = (req: Request) => `${getAuth(req)!.actor.type}:${getAuth(req)!.actor.id}`;
 
-export function createPublicTrialRouter(o: { onboarding: TrialOnboardingService; autoProvision: boolean; perIpHour?: number; resendPerIpHour?: number; funnel?: TrialFunnelCounter | null; funnelPerIpHour?: number; now?: () => number; reminders?: TrialRemindersOptOut | null }): Router {
+export function createPublicTrialRouter(o: { onboarding: TrialOnboardingService; autoProvision: boolean; perIpHour?: number; resendPerIpHour?: number; verifyWaitMs?: number; funnel?: TrialFunnelCounter | null; funnelPerIpHour?: number; now?: () => number; reminders?: TrialRemindersOptOut | null }): Router {
   const r = express.Router();
   // Baja de los recordatorios (enlace firmado del correo): GET muestra la confirmación, POST la registra
   if (o.reminders) r.use("/recordatorios", remindersOptOutRouter(o.reminders));
@@ -207,7 +207,8 @@ export function createPublicTrialRouter(o: { onboarding: TrialOnboardingService;
       res.setHeader("Cache-Control", "no-store");
       const b = z.object({ id: z.number().int().positive(), token: z.string().min(20).max(100) }).strict().parse(req.body);
       try {
-        const out = await o.onboarding.verify(b.id, b.token, { autoProvision: o.autoProvision });
+        // No más de 8 s de espera: si el aprovisionamiento tarda, sigue en segundo plano (la bienvenida llega por correo)
+        const out = await o.onboarding.verify(b.id, b.token, { autoProvision: o.autoProvision, waitMs: o.verifyWaitMs ?? 8_000 });
         // Si la activación falló, el correo sigue verificado: se informa sin detalles internos
         res.status(out.activationError ? 202 : 200).json({
           state: out.activation ? out.activation.trial.state : out.trial.state,
@@ -222,8 +223,15 @@ export function createPublicTrialRouter(o: { onboarding: TrialOnboardingService;
           const state = await o.onboarding.stateOf(b.id);
           return void res.status(202).json({ state, activationPending: true, domain: null, endsAt: null });
         }
-        // Mismo mensaje para «no existe», «token incorrecto» y «caducado»
-        if (e instanceof TrialError && (e.code === "not_found" || e.code === "forbidden" || e.code === "invalid_state")) return void res.status(403).json({ error: "invalid_link", message: "El enlace no es válido o ha caducado" });
+        if (e instanceof TrialError && (e.code === "not_found" || e.code === "forbidden" || e.code === "invalid_state")) {
+          // El mismo enlace, ya usado: el correo YA está confirmado. Se dice así (no «no válido») y no se repite nada.
+          const used = e.code === "invalid_state" ? await o.onboarding.usedLinkStatus(b.id, b.token) : null;
+          if (used) return void res.status(200).json({ state: used.state, activationPending: used.state !== "active", domain: used.domain, endsAt: used.endsAt, alreadyVerified: true });
+          // Mismo mensaje para «no existe», «token incorrecto» y «caducado». Al dueño de un enlace caducado (lo prueba el
+          // propio enlace) se le ofrece pedir otro con un clic; a nadie más se le revela nada.
+          const renewable = e.code === "forbidden" && (await o.onboarding.isRenewableLink(b.id, b.token));
+          return void res.status(403).json({ error: "invalid_link", message: "El enlace no es válido o ha caducado", ...(renewable ? { renewable: true } : {}) });
+        }
         throw e;
       }
     }),
@@ -248,6 +256,25 @@ export function createPublicTrialRouter(o: { onboarding: TrialOnboardingService;
       if (!b.website) {
         void o.onboarding.resendVerification({ email: b.email }, "web").catch((e) => opsLog("error", "Trials", "resend_failed", { error: e instanceof Error ? e.name : "error" }));
       }
+      res.status(202).json(RESEND_ACCEPTED);
+    }),
+  );
+  // Enlace nuevo desde el enlace anterior (caducado o roto): sin repetir el alta ni escribir el correo. Respuesta
+  // SIEMPRE igual; el envío va solo al correo registrado, con la espera mínima y el máximo diario de siempre.
+  r.post(
+    "/renew",
+    rateLimit({
+      windowMs: 60 * 60_000,
+      limit: o.resendPerIpHour ?? 5,
+      standardHeaders: true,
+      legacyHeaders: false,
+      keyGenerator: (req) => `trial-renew:${ipKeyGenerator(req.ip ?? "")}`,
+      handler: (_req, res) => void res.status(429).json({ error: "rate_limited" }),
+    }),
+    wrap(async (req, res) => {
+      res.setHeader("Cache-Control", "no-store");
+      const b = z.object({ id: z.number().int().positive(), token: z.string().min(20).max(100) }).strict().parse(req.body);
+      void o.onboarding.renewFromLink(b.id, b.token, "web:link").catch((e) => opsLog("error", "Trials", "renew_failed", { error: e instanceof Error ? e.name : "error" }));
       res.status(202).json(RESEND_ACCEPTED);
     }),
   );
