@@ -83,3 +83,8 @@ Código de salida: 0 correcto, 1 con errores en el informe, 2 uso incorrecto. Co
 
 ## 6. Reversión
 `0067_studio_importacion.down.sql` elimina las tres tablas (no toca páginas ni ficheros ya importados). Las páginas importadas son borradores normales del Studio: se descartan o eliminan desde el panel. Los ficheros quedan en el almacén con propietario `studio-import/<runId>`.
+
+## 7. Alcance pendiente (decisión del 14/11/2026)
+- **Vídeo y tipografías no se importan todavía.** El almacén público del Core solo admite imágenes y PDF (categoría `import-asset`); el informe da un error claro por elemento. Ampliarlo exige tipos MIME, límites de tamaño y servido seguro nuevos en `FileService`, y para las fuentes además aviso de licencia y autoalojado: se aborda como épica propia (E-9 «Tipografías personalizadas» y «Vídeo en el almacén público»), no como parte de E-3, para no retrasar su despliegue.
+- La deduplicación es solo contra medios importados, no contra subidas manuales.
+- Las traducciones (`locale` + `translationOf`) se omiten con aviso hasta que el adaptador de E-1 (`savePageTranslationDraft`) esté fusionado.
