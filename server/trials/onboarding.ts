@@ -97,6 +97,12 @@ export interface TrialOnboardingDeps {
   priceOf: (productKey: string, kind: "monthly" | "yearly") => Promise<number | null>;
   notify: TrialNotifier;
   /**
+   * Solicitud recibida (13/11/2026, incidencia Quantum Soulrise): la prueba queda en el CRM comercial como solicitud web
+   * «Prueba de 15 días» (con su aviso al equipo) DESDE QUE SE RECIBE, aunque el correo no se verifique nunca. Idempotente
+   * por prueba; un fallo aquí nunca rompe el alta (se registra y se reintenta desde «Pruebas»).
+   */
+  onRegistered?: ((trial: TrialRequest) => Promise<void>) | null;
+  /**
    * Invitación nueva para el propietario si la original se perdió (alta reanudada) y aún no definió
    * su contraseña; `null` si ya entró. Opcional: sin él no se puede reenviar el acceso.
    */
@@ -164,7 +170,22 @@ export class TrialOnboardingService {
   async register(input: { email: string; companyName: string; profile?: TrialProfileInput | null; attribution?: TrialAttributionInput | null; terms?: { accepted: unknown; version: unknown; privacyVersion?: unknown } | null; idempotencyKey: string; ip?: string | null }) {
     const r = await this.d.trials.register({ email: input.email, companyName: input.companyName, configuration: { plan: ESSENTIAL_PLAN, addons: [] }, profile: input.profile ?? null, attribution: input.attribution ?? null, terms: input.terms ?? null, idempotencyKey: input.idempotencyKey, ip: input.ip ?? null });
     if (r.created && r.verificationToken) await this.d.notify.verification(r.trial.email, { trialId: r.trial.id, token: r.verificationToken });
+    // También al repetir el alta (misma clave): si el CRM falló la primera vez, se completa ahora (idempotente)
+    await this.recordInCrm(r.trial);
     return { trialId: r.trial.id, created: r.created, state: r.trial.state };
+  }
+
+  /** Solicitud de la prueba en el CRM comercial (idempotente). Nunca lanza: el alta de la prueba ya está hecha. */
+  async recordInCrm(trial: TrialRequest): Promise<boolean> {
+    // El plan personal Life no es una solicitud comercial de empresa
+    if (!this.d.onRegistered || trial.configuration.plan === LIFE_PLAN) return false;
+    try {
+      await this.d.onRegistered(trial);
+      return true;
+    } catch (e) {
+      opsLog("error", "Trials", "crm_request_failed", { trialId: trial.id, error: e instanceof Error ? e.name : "error" });
+      return false;
+    }
   }
 
   /**

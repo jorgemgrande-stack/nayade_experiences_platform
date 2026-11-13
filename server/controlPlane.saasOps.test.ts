@@ -262,7 +262,8 @@ describe("Operación SaaS: endpoints del plano de control", () => {
   it("solicitudes web de una empresa (crm:read): solo las de sus leads", async () => {
     const company = (await crmStore.list("companies", { tenantId }))[0];
     const other = await crm.createCompany({ name: "Otra Empresa SL", email: null }, "prueba");
-    const mine = await crm.createLead({ name: "Ana", email: "ana@hotelsol.example", companyId: company.id }, "prueba");
+    // Otro correo: el de la prueba gratuita ya tiene su lead desde el alta (solicitud «trial», 13/11/2026)
+    const mine = await crm.createLead({ name: "Ana", email: "reservas@hotelsol.example", companyId: company.id }, "prueba");
     const theirs = await crm.createLead({ name: "Luis", email: "luis@otra.example", companyId: other.id }, "prueba");
     const req = (leadId: number, reference: string): Omit<LeadRequest, "id"> => ({
       leadId, reference, type: "contact", status: "pending", sector: null, message: null, configuration: null, interest: null, preferredTime: null,
@@ -275,7 +276,10 @@ describe("Operación SaaS: endpoints del plano de control", () => {
     expect(r.status).toBe(200);
     expect(r.json.requests.map((x: any) => x.request.reference)).toEqual(["SOL-1"]);
     expect(r.json.total).toBe(1);
-    expect((await call("GET", "/crm/requests", { token: OPS })).json.total).toBe(2);
+    // Todas: estas dos y las solicitudes «Prueba de 15 días» de las pruebas dadas de alta en este archivo
+    const all = (await call("GET", "/crm/requests?limit=100", { token: OPS })).json;
+    expect(all.requests.map((x: any) => x.request.reference)).toEqual(expect.arrayContaining(["SOL-1", "SOL-2"]));
+    expect(all.requests.filter((x: any) => x.request.type !== "trial")).toHaveLength(2);
     expect((await call("GET", "/crm/requests?companyId=99999", { token: OPS })).status).toBe(404);
     expect((await call("GET", "/crm/requests?companyId=abc", { token: OPS })).status).toBe(400);
     expect((await call("GET", `/crm/requests?companyId=${company.id}`, { token: READER })).status).toBe(403);

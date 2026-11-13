@@ -72,6 +72,7 @@ import { createCustomerTicketsRouter } from "../support/customerTickets";
 import type { SupportAdmin } from "../_core/support/grants";
 import { createPublicIntakeRouter, type PublicIntakeConfig } from "../crm/publicApi";
 import { WebRequestService } from "../crm/webRequests";
+import { recordTrialRequest } from "../trials/crmRequest";
 import type { LeadNoticeService } from "../crm/leadNotices";
 import { createLeadNoticesRouter } from "../crm/leadNoticesApi";
 import type { AdminAlertService } from "../adminAlerts/service";
@@ -2269,6 +2270,8 @@ export function createControlPlaneApp(d: ControlPlaneDeps): Express {
         licensing: licensingForTrials,
         priceOf: async (key, kind) => (await catalogPort.offer()).find((p) => p.key === key)?.prices.find((x) => x.kind === kind && x.status === "approved")?.id ?? null,
         notify: d.trials.notify ?? logOnlyTrialNotifier,
+        // Solicitud web «Prueba de 15 días» en el CRM desde la recepción (con su aviso al equipo), no solo al verificar
+        onRegistered: webRequests ? async (t) => void (await recordTrialRequest(webRequests, t)) : null,
         reissueInvite: (tenantId) => provisioning.reissueAdminInvite(tenantId),
         // Prueba del plan personal Life: apagada salvo CP_LIFE_TRIAL_ENABLED=1 (main.ts)
         lifeTrials: !!d.trials.lifeTrials,
