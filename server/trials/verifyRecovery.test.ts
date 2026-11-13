@@ -147,6 +147,21 @@ describe("enlace de verificación de la prueba gratuita", () => {
     expect((await h.store.list({})).length).toBe(1);
   });
 
+  it("alta repetida sin verificar (enlace caducado o alias del mismo buzón): misma solicitud, datos del alta nueva y enlace nuevo al correo registrado", async () => {
+    const h = harness();
+    await h.ob.register({ ...form("ana.ruiz@gmail.com"), companyName: "Datos Antiguos", profile: { fullName: "Otra Persona", country: "ES", termsAccepted: true, termsVersion: "2026-10-21", marketingConsent: true } });
+    const first = h.links[0];
+    h.tick(2 * DAY);
+    const again = await h.ob.register({ ...form("anaruiz@gmail.com"), companyName: "Bienestar Ana", profile: { fullName: "Ana Ruiz", country: "ES", termsAccepted: true, termsVersion: "2026-10-21", marketingConsent: false } });
+    expect(again).toMatchObject({ trialId: first.trialId, created: false });
+    expect(h.links).toHaveLength(2);
+    expect(h.links[1]).toMatchObject({ to: "ana.ruiz@gmail.com", trialId: first.trialId, resend: true });
+    const t = await h.trials.must(first.trialId);
+    expect(t.companyName).toBe("Bienestar Ana");
+    expect(t.configuration.profile).toMatchObject({ fullName: "Ana Ruiz", marketingConsent: false });
+    expect((await h.store.list({})).length).toBe(1);
+  });
+
   it("enlace falso o de otra solicitud: 403 sin pistas (ni «renovable» ni «ya confirmado») y no envía nada", async () => {
     const h = harness();
     await h.ob.register(form("uno@bienestar.example"));

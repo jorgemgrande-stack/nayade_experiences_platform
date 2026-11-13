@@ -212,16 +212,25 @@ export class TrialService {
     const ofKey = (t: TrialRequest | null) => {
       if (!t) return null;
       if (t.email !== email) throw new TrialError("conflict", "Ya hay una solicitud de prueba en curso para este correo");
-      return { trial: t, created: false as const, verificationToken: null };
+      return { trial: t, created: false as const, verificationToken: null as string | null };
     };
     const again = ofKey(await this.d.store.byIdempotencyKey(input.idempotencyKey));
     if (again) return again;
     // Mismo envío repetido a la vez (doble clic): si otra petición con la MISMA clave acaba de crearla, se devuelve esa
     const sameKey = async () => ofKey(await this.d.store.byIdempotencyKey(input.idempotencyKey));
+    const configuration = { plan: input.configuration.plan, addons, ...(holder ? { holder } : {}), ...(profile ? { profile } : {}), ...(attribution ? { attribution } : {}), ...(terms ? { terms } : {}), ...(privacy ? { privacy } : {}) };
     // Un buzón, una prueba abierta: no se revela el estado de la existente
-    if (await this.openFor(email, "system:trial")) {
+    const open = await this.openFor(email, "system:trial");
+    if (open) {
       const same = await sameKey();
       if (same) return same;
+      // Sin verificar (también con el enlace caducado o desde un alias del mismo buzón): la MISMA solicitud toma los
+      // datos y la aceptación de este alta y recibe un enlace nuevo en su correo registrado. Sin duplicados, y lo que se
+      // confirme es siempre lo último que se envió (no los datos de un alta anterior, quizá de otra persona).
+      if (open.state === "pending_verification") {
+        const r = await this.resendVerification({ trialId: open.id }, "web", { companyName: company, configuration });
+        if (r.outcome === "resent" && r.trial && r.verificationToken) return { trial: r.trial, created: false as const, verificationToken: r.verificationToken as string | null };
+      }
       throw new TrialError("conflict", "Ya hay una solicitud de prueba en curso para este correo");
     }
 
@@ -240,7 +249,7 @@ export class TrialService {
           email,
           emailDomain: domain,
           companyName: company,
-          configuration: { plan: input.configuration.plan, addons, ...(holder ? { holder } : {}), ...(profile ? { profile } : {}), ...(attribution ? { attribution } : {}), ...(terms ? { terms } : {}), ...(privacy ? { privacy } : {}) },
+          configuration,
           state: "pending_verification",
           verificationTokenHash: sha256(token),
           verificationExpiresAt: now + this.limits.verificationTtlMs,
@@ -322,7 +331,7 @@ export class TrialService {
    * `resendPer24h` reenvíos por solicitud en 24 h. El resultado es para el llamante interno; la ruta
    * pública responde siempre lo mismo y no revela si el correo existe.
    */
-  async resendVerification(by: { email: string } | { trialId: number }, actor: string): Promise<{ trial: TrialRequest | null; verificationToken: string | null; outcome: "resent" | "not_found" | "not_pending" | "cooldown" | "limit" | "expired" }> {
+  async resendVerification(by: { email: string } | { trialId: number }, actor: string, refresh?: Pick<TrialPatch, "companyName" | "configuration">): Promise<{ trial: TrialRequest | null; verificationToken: string | null; outcome: "resent" | "not_found" | "not_pending" | "cooldown" | "limit" | "expired" }> {
     let t: TrialRequest | null;
     if ("trialId" in by) t = await this.d.store.get(by.trialId);
     else {
@@ -346,7 +355,7 @@ export class TrialService {
     if (resends.filter((e) => e.createdAt > now - DAY).length >= this.limits.resendPer24h) return { trial: t, verificationToken: null, outcome: "limit" };
     const token = crypto.randomBytes(32).toString("base64url");
     try {
-      const trial = await this.move(t.id, t.version, "resend_verification", actor, () => ({ verificationTokenHash: sha256(token), verificationExpiresAt: now + this.limits.verificationTtlMs }), "enlace nuevo");
+      const trial = await this.move(t.id, t.version, "resend_verification", actor, () => ({ ...(refresh ?? {}), verificationTokenHash: sha256(token), verificationExpiresAt: now + this.limits.verificationTtlMs }), refresh ? "enlace nuevo (alta repetida: datos actualizados)" : "enlace nuevo");
       return { trial, verificationToken: token, outcome: "resent" };
     } catch (e) {
       // Otra petición simultánea ya renovó el enlace: se trata como un clic repetido

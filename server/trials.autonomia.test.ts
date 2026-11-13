@@ -120,8 +120,9 @@ describe("el correo no queda bloqueado y protección contra abusos", () => {
     const a = await reg("rep@acme.es");
     await expect(reg("rep@acme.es")).rejects.toMatchObject({ code: "conflict" });
     clock += DAY + 1;
-    await expect(reg("rep@acme.es")).rejects.toMatchObject({ code: "conflict" });
-    expect((await svc.must(a.trial.id)).state).toBe("pending_verification");
+    const again = await reg("rep@acme.es");
+    expect(again).toMatchObject({ created: false, trial: { id: a.trial.id, state: "pending_verification" } });
+    expect(again.verificationToken).toBeTruthy();
     clock += 90 * DAY;
     const b = await reg("rep@acme.es");
     expect(b.created).toBe(true);
