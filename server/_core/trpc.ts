@@ -81,9 +81,10 @@ const supportGate = t.middleware(async ({ ctx, path, type, next, getRawInput }) 
   if (!u || u.loginMethod !== "support" || !u.supportGrantId) return next();
   const kind = supportProcedureKind(path);
   const method = type === "query" ? "GET" : "POST";
+  // Vetado siempre, también con modificación: credenciales, secretos, datos bancarios, autenticación y permisos
   if (kind === "forbidden") {
     void auditSupportEvent(u.supportGrantId, "blocked", { method, resource: path, reason: "forbidden" });
-    throw new TRPCError({ code: "FORBIDDEN", message: "No disponible en modo soporte" });
+    throw new TRPCError({ code: "FORBIDDEN", message: "No disponible en modo soporte: credenciales, secretos, datos bancarios, autenticación y permisos se gestionan con la propia empresa" });
   }
   if (kind === "export") {
     if (u.supportReadOnly !== false) {
