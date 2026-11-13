@@ -340,6 +340,16 @@ export function createTrialAdminRouter(o: { onboarding: TrialOnboardingService; 
       res.json({ trial: TrialService.view(trial), events: await o.store.events(trial.id) });
     }),
   );
+  // Recuperación (13/11/2026): deja en el CRM comercial la solicitud de una prueba que no la tenga (idempotente: si ya
+  // existe, devuelve la misma). No reenvía la verificación ni crea empresa ni plataforma
+  r.post(
+    "/:id/crm-request",
+    requireScope("subscriptions:write"),
+    wrap(async (req, res) => {
+      const trial = await o.trials.must(id.parse(req.params.id));
+      res.json({ recorded: await o.onboarding.recordInCrm(trial) });
+    }),
+  );
   r.get(
     "/:id/events",
     requireScope("subscriptions:read"),
