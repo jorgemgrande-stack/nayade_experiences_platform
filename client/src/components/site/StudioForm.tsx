@@ -4,7 +4,7 @@
  * `public.submitLead` con `studioForm`: cada envío entra en el CRM como oportunidad. Antispam: campo trampa
  * invisible y tiempo mínimo de relleno. En el editor y en la vista previa no se envía nada.
  */
-import { useId, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { useLocation } from "wouter";
 import { toast } from "sonner";
 import { trpc } from "@/lib/trpc";
@@ -14,12 +14,69 @@ import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { cn } from "@/lib/utils";
-import { formFieldVisibility, type BlockDataMap, type FormFieldItem } from "@shared/pageBlocks";
+import { DEFAULT_FORM_CONSENT_TEXT, DEFAULT_FORM_ERROR_MESSAGE, formFieldVisibility, type BlockDataMap, type FormFieldItem } from "@shared/pageBlocks";
+import { useMarketingConsent } from "@/hooks/useMarketingConsent";
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
 const options = (f: FormFieldItem) => Array.from(new Set(f.options.split(/\r?\n/).map((o) => o.trim()).filter(Boolean)));
 const INPUT_TYPE: Partial<Record<FormFieldItem["kind"], string>> = { email: "email", phone: "tel", number: "number", date: "date", time: "time" };
-const AUTOCOMPLETE: Record<string, string> = { name: "name", email: "email", phone: "tel" };
+const AUTOCOMPLETE: Record<string, string> = { name: "name", first_name: "given-name", last_name: "family-name", company: "organization", email: "email", phone: "tel" };
+const UTM_KEYS = ["source", "medium", "campaign", "term", "content"] as const;
+
+/** UTM de la dirección actual (si las hay); el servidor las vuelve a sanear. */
+function currentUtm(): Partial<Record<(typeof UTM_KEYS)[number], string>> {
+  const out: Partial<Record<(typeof UTM_KEYS)[number], string>> = {};
+  try {
+    const q = new URLSearchParams(window.location.search);
+    for (const k of UTM_KEYS) {
+      const v = q.get(`utm_${k}`);
+      if (v) out[k] = v.slice(0, 100);
+    }
+  } catch {
+    /* sin UTM */
+  }
+  return out;
+}
+
+declare global {
+  interface Window {
+    turnstile?: { render: (el: HTMLElement, o: Record<string, unknown>) => string; remove: (id: string) => void; reset: (id?: string) => void };
+  }
+}
+const TURNSTILE_SRC = "https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit";
+
+/**
+ * Widget de Turnstile (solo si la empresa lo activó en este formulario Y tiene sus claves). Es un script de un tercero:
+ * no se carga hasta que la persona acepta las cookies de terceros en el aviso de cookies.
+ */
+function TurnstileWidget({ siteKey, onToken }: { siteKey: string; onToken: (t: string) => void }) {
+  const box = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    let widget: string | undefined;
+    let cancelled = false;
+    const mount = () => {
+      if (cancelled || !box.current || !window.turnstile) return;
+      widget = window.turnstile.render(box.current, { sitekey: siteKey, callback: (t: string) => onToken(t), "expired-callback": () => onToken(""), "error-callback": () => onToken("") });
+    };
+    if (window.turnstile) mount();
+    else {
+      let s = document.querySelector<HTMLScriptElement>("script[data-studio-turnstile]");
+      if (!s) {
+        s = document.createElement("script");
+        s.src = TURNSTILE_SRC;
+        s.async = true;
+        s.dataset.studioTurnstile = "1";
+        document.head.appendChild(s);
+      }
+      s.addEventListener("load", mount);
+    }
+    return () => {
+      cancelled = true;
+      if (widget && window.turnstile) window.turnstile.remove(widget);
+    };
+  }, [siteKey, onToken]);
+  return <div ref={box} />;
+}
 
 /** Dirección de la página en la que está el formulario («/» es la portada). */
 function currentSlug(): string {
@@ -40,6 +97,11 @@ export function StudioFormFields({ blockId, form, preview, pageTitle, editing }:
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [sent, setSent] = useState<string | null>(null);
   const submit = trpc.public.submitLead.useMutation();
+  const thirdParty = useMarketingConsent();
+  const useCaptcha = form.captcha === "on" && !preview && !editing;
+  const captchaKey = trpc.public.studioFormCaptcha.useQuery(undefined, { enabled: useCaptcha, staleTime: 5 * 60_000 });
+  const siteKey = useCaptcha ? captchaKey.data?.siteKey ?? null : null;
+  const [captchaToken, setCaptchaToken] = useState("");
   const set = (k: string, v: string | string[] | boolean) => {
     setValues((s) => ({ ...s, [k]: v }));
     setErrors((e) => (e[k] ? { ...e, [k]: "" } : e));
@@ -59,6 +121,7 @@ export function StudioFormFields({ blockId, form, preview, pageTitle, editing }:
       if (f.required === "on" && empty) out[k] = f.kind === "checkbox" ? "Marca esta casilla para continuar." : "Este campo es obligatorio.";
       else if (f.kind === "email" && typeof v === "string" && v && !EMAIL_RE.test(v.trim())) out[k] = "Escribe un correo electrónico válido.";
     });
+    if (siteKey && !captchaToken) out.captcha = thirdParty ? "Completa la verificación para continuar." : "Acepta las cookies para poder verificar que no eres un robot.";
     if (form.consent === "on" && !consent) out.consent = "Para enviarlo, acepta la política de privacidad.";
     return out;
   };
@@ -78,7 +141,8 @@ export function StudioFormFields({ blockId, form, preview, pageTitle, editing }:
     const emailIdx = form.fields.findIndex((f) => f.role === "email");
     const nameIdx = form.fields.findIndex((f) => f.role === "name");
     const email = emailIdx >= 0 ? String(values[`f${emailIdx}`] ?? "").trim() : "";
-    const name = nameIdx >= 0 ? String(values[`f${nameIdx}`] ?? "").trim() : "";
+    const part = (role: string) => { const j = form.fields.findIndex((f) => f.role === role); return j >= 0 ? String(values[`f${j}`] ?? "").trim() : ""; };
+    const name = nameIdx >= 0 ? String(values[`f${nameIdx}`] ?? "").trim() : [part("first_name"), part("last_name")].filter(Boolean).join(" ");
     try {
       const r = await submit.mutateAsync({
         // El servidor toma el nombre, el correo y el mensaje de las respuestas validadas del formulario publicado
@@ -86,7 +150,7 @@ export function StudioFormFields({ blockId, form, preview, pageTitle, editing }:
         email: EMAIL_RE.test(email) ? email : "sin-correo@formulario.invalid",
         message: pageTitle ? `Página: ${pageTitle}` : undefined,
         source: "web_formulario",
-        studioForm: { slug: currentSlug(), blockId, values: Object.fromEntries(Object.entries(values).filter(([k]) => visible[Number(k.slice(1))] !== false)), consent, website: trap, elapsedMs: Date.now() - shownAt.current },
+        studioForm: { slug: currentSlug(), blockId, values: Object.fromEntries(Object.entries(values).filter(([k]) => visible[Number(k.slice(1))] !== false)), consent, website: trap, elapsedMs: Date.now() - shownAt.current, meta: { page: window.location.pathname, utm: currentUtm() }, ...(captchaToken ? { captchaToken } : {}) },
       });
       const studio = (r as { studio?: { ok: boolean; errors?: Record<string, string>; message?: string; redirectUrl?: string } }).studio;
       if (studio && !studio.ok) {
@@ -96,7 +160,9 @@ export function StudioFormFields({ blockId, form, preview, pageTitle, editing }:
       if (studio?.redirectUrl) navigate(studio.redirectUrl);
       else setSent(studio?.message || form.successMessage || "¡Gracias! Hemos recibido tu mensaje.");
     } catch (err) {
-      toast.error((err as Error).message || "No hemos podido enviar el formulario. Inténtalo de nuevo en unos minutos.");
+      toast.error(form.errorMessage?.trim() || (err as Error).message || DEFAULT_FORM_ERROR_MESSAGE);
+      if (window.turnstile) window.turnstile.reset();
+      setCaptchaToken("");
     }
   };
 
@@ -227,16 +293,38 @@ export function StudioFormFields({ blockId, form, preview, pageTitle, editing }:
           );
         })}
       </div>
+      {siteKey && (
+        <div>
+          {thirdParty ? <TurnstileWidget siteKey={siteKey} onToken={setCaptchaToken} /> : <p className="text-sm text-muted-foreground">Para verificar que no eres un robot necesitamos que aceptes las cookies de terceros en el aviso de cookies.</p>}
+          {errors.captcha && (
+            <p role="alert" className="mt-1 text-sm text-destructive">
+              {errors.captcha}
+            </p>
+          )}
+        </div>
+      )}
       {form.consent === "on" && (
         <div>
           <div className="flex items-start gap-2">
             <Checkbox id={`${id}-consent`} checked={consent} onCheckedChange={(v) => setConsent(v === true)} aria-invalid={!!errors.consent || undefined} className="mt-0.5" />
             <Label htmlFor={`${id}-consent`} className="block text-sm font-normal leading-snug">
-              He leído y acepto la{" "}
-              <a href="/privacidad" className="underline decoration-primary underline-offset-4" onClick={(e) => preview && e.preventDefault()}>
-                política de privacidad
-              </a>
-              .
+              {(form.consentText ?? "").trim() && (form.consentText ?? "").trim() !== DEFAULT_FORM_CONSENT_TEXT ? (
+                <>
+                  {form.consentText.trim()}{" "}
+                  <a href="/privacidad" className="underline decoration-primary underline-offset-4" onClick={(e) => preview && e.preventDefault()}>
+                    Política de privacidad
+                  </a>
+                  .
+                </>
+              ) : (
+                <>
+                  He leído y acepto la{" "}
+                  <a href="/privacidad" className="underline decoration-primary underline-offset-4" onClick={(e) => preview && e.preventDefault()}>
+                    política de privacidad
+                  </a>
+                  .
+                </>
+              )}
             </Label>
           </div>
           {errors.consent && (
