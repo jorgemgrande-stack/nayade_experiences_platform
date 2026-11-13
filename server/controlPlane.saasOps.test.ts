@@ -274,8 +274,11 @@ describe("Operación SaaS: endpoints del plano de control", () => {
     await crmStore.insert("leadRequests", req(theirs.id, "SOL-2"));
     const r = await call("GET", `/crm/requests?companyId=${company.id}`, { token: OPS });
     expect(r.status).toBe(200);
-    expect(r.json.requests.map((x: any) => x.request.reference)).toEqual(["SOL-1"]);
-    expect(r.json.total).toBe(1);
+    // Más la «Prueba de 15 días» de su propia prueba: su lead quedó convertido en esta empresa al aprovisionarla
+    const mineRefs = r.json.requests.filter((x: any) => x.request.type !== "trial").map((x: any) => x.request.reference);
+    expect(mineRefs).toEqual(["SOL-1"]);
+    expect(r.json.requests.filter((x: any) => x.request.type === "trial")).toHaveLength(1);
+    expect(r.json.total).toBe(2);
     // Todas: estas dos y las solicitudes «Prueba de 15 días» de las pruebas dadas de alta en este archivo
     const all = (await call("GET", "/crm/requests?limit=100", { token: OPS })).json;
     expect(all.requests.map((x: any) => x.request.reference)).toEqual(expect.arrayContaining(["SOL-1", "SOL-2"]));

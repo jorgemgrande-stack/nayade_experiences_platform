@@ -103,6 +103,11 @@ export interface TrialOnboardingDeps {
    */
   onRegistered?: ((trial: TrialRequest) => Promise<void>) | null;
   /**
+   * Prueba aprovisionada (empresa del CRM ya enlazada a su plataforma): el lead de su solicitud pasa a «Convertido» en esa
+   * empresa y la solicitud queda atendida. Idempotente; un fallo aquí nunca deshace ni bloquea la activación.
+   */
+  onProvisioned?: ((trial: TrialRequest, target: { companyId: number; tenantId: string }, actor: string) => Promise<unknown>) | null;
+  /**
    * Invitación nueva para el propietario si la original se perdió (alta reanudada) y aún no definió
    * su contraseña; `null` si ya entró. Opcional: sin él no se puede reenviar el acceso.
    */
@@ -185,6 +190,17 @@ export class TrialOnboardingService {
     } catch (e) {
       opsLog("error", "Trials", "crm_request_failed", { trialId: trial.id, error: e instanceof Error ? e.name : "error" });
       return false;
+    }
+  }
+
+  /** Lead de la solicitud → «Convertido» en la empresa de la prueba. Nunca lanza (la activación sigue). */
+  private async linkLeadSafely(trial: TrialRequest, target: { companyId: number; tenantId: string }, actor: string) {
+    if (!this.d.onProvisioned || trial.configuration.plan === LIFE_PLAN) return;
+    try {
+      const outcome = await this.d.onProvisioned(trial, target, actor);
+      if (outcome !== "converted" && outcome !== "already_linked") opsLog("warn", "Trials", "crm_lead_not_converted", { trialId: trial.id, companyId: target.companyId, outcome: typeof outcome === "string" ? outcome : null });
+    } catch (e) {
+      opsLog("error", "Trials", "crm_lead_link_failed", { trialId: trial.id, companyId: target.companyId, error: e instanceof Error ? e.name : "error", code: (e as { code?: unknown })?.code ?? null });
     }
   }
 
@@ -328,6 +344,8 @@ export class TrialOnboardingService {
 
     // 4. Licencias del plan con caducidad al final de la prueba
     const licences = await this.d.licensing.apply(subscription.id, { activate: true, actor, reason: `Prueba gratuita #${t.id}` });
+    // 5. CRM comercial: el lead de su solicitud pasa a «Convertido» en esta empresa (con la prueba ya completa)
+    await this.linkLeadSafely(t, { companyId: company.id, tenantId }, actor);
     return { trial: t, tenantId, domain, companyId: company.id, subscriptionId: subscription.id, licencesChanged: licences.applied.length, capabilities: licences.desired.length };
   }
 
