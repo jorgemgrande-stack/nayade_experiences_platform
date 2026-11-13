@@ -197,9 +197,10 @@ export class TrialOnboardingService {
   private async linkLeadSafely(trial: TrialRequest, target: { companyId: number; tenantId: string }, actor: string) {
     if (!this.d.onProvisioned || trial.configuration.plan === LIFE_PLAN) return;
     try {
-      await this.d.onProvisioned(trial, target, actor);
+      const outcome = await this.d.onProvisioned(trial, target, actor);
+      if (outcome !== "converted" && outcome !== "already_linked") opsLog("warn", "Trials", "crm_lead_not_converted", { trialId: trial.id, companyId: target.companyId, outcome: typeof outcome === "string" ? outcome : null });
     } catch (e) {
-      opsLog("error", "Trials", "crm_lead_link_failed", { trialId: trial.id, companyId: target.companyId, error: e instanceof Error ? e.name : "error" });
+      opsLog("error", "Trials", "crm_lead_link_failed", { trialId: trial.id, companyId: target.companyId, error: e instanceof Error ? e.name : "error", code: (e as { code?: unknown })?.code ?? null });
     }
   }
 
@@ -327,7 +328,6 @@ export class TrialOnboardingService {
 
     // 2. Empresa en el CRM (enlazada a la plataforma)
     const company = (await this.d.companies.byTenant(tenantId)) ?? (await this.d.companies.create({ name: t.companyName, email: t.email, tenantId, profile: t.configuration?.profile ?? null, attribution: t.configuration?.attribution ?? null }, actor));
-    await this.linkLeadSafely(t, { companyId: company.id, tenantId }, actor);
 
     // 3. Suscripción del plan en prueba (sin tarjeta ni cobro). Una suscripción solo económica de la empresa (un acuerdo
     // de partidas a medida, sin plan) no es la de la prueba: no cuenta
@@ -344,6 +344,8 @@ export class TrialOnboardingService {
 
     // 4. Licencias del plan con caducidad al final de la prueba
     const licences = await this.d.licensing.apply(subscription.id, { activate: true, actor, reason: `Prueba gratuita #${t.id}` });
+    // 5. CRM comercial: el lead de su solicitud pasa a «Convertido» en esta empresa (con la prueba ya completa)
+    await this.linkLeadSafely(t, { companyId: company.id, tenantId }, actor);
     return { trial: t, tenantId, domain, companyId: company.id, subscriptionId: subscription.id, licencesChanged: licences.applied.length, capabilities: licences.desired.length };
   }
 

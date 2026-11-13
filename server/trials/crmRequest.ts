@@ -73,9 +73,13 @@ export async function linkTrialLead(
   if (!lead) return "no_request";
   let outcome: TrialLeadLink;
   if (lead.status === "converted") {
-    if (lead.convertedCompanyId !== target.companyId) return "converted_elsewhere";
+    if (lead.convertedCompanyId !== target.companyId) {
+      await d.crm.log("lead", lead.id, "note", `Prueba gratuita n.º ${t.id} aprovisionada automáticamente en la empresa #${target.companyId} (plataforma ${target.tenantId}); este lead ya estaba convertido en la empresa #${lead.convertedCompanyId}, no se cambia`, actor);
+      return "converted_elsewhere";
+    }
     outcome = "already_linked";
   } else if (lead.status === "disqualified") {
+    await d.crm.log("lead", lead.id, "note", `Prueba gratuita n.º ${t.id} aprovisionada automáticamente en la empresa #${target.companyId} (plataforma ${target.tenantId}); el lead está descartado y no se convierte`, actor);
     return "disqualified";
   } else {
     await d.crm.convertLead(lead.id, { companyId: target.companyId }, actor);
