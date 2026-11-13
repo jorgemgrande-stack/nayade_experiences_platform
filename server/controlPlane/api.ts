@@ -2477,7 +2477,24 @@ export function createControlPlaneApp(d: ControlPlaneDeps): Express {
         // Solicitudes del marketplace del panel («Solicitar información» y «Me interesa») como solicitudes del CRM
         // Medición del marketplace (agregada, sin datos personales): sin la migración 0042, 202 y se descarta
         router.use("/commerce", createPanelEventsRouter({ store: d.web?.events ?? null }));
-        if (webRequests) router.use("/commerce", createPanelRequestsRouter({ site: () => wa.site("published"), requests: webRequests, crm: d.crm.store, internalTenants: d.stripe?.purchases?.internalTenants, implementations: d.implementation?.store ?? null, planOf: d.orders ? orderPlan({ crm: d.crm.store, orders: d.orders.store }) : null }));
+        // Plan Core de la empresa: el de sus pedidos o, si no tiene (condiciones personalizadas, prueba), el de su suscripción
+        const fromOrders = d.orders ? orderPlan({ crm: d.crm.store, orders: d.orders.store }) : null;
+        const crmStoreForPlan = d.crm.store;
+        const subsForPlan = d.subscriptions;
+        const panelPlanOf = async (tenantId: string): Promise<string | null> => {
+          const byOrder = fromOrders ? await fromOrders(tenantId).catch(() => null) : null;
+          if (byOrder) return byOrder;
+          const company = (await crmStoreForPlan.list("companies", { tenantId }, { limit: 2 }))[0] as { id: number } | undefined;
+          if (!company) return null;
+          const at = subsForPlan.now?.() ?? Date.now();
+          for (const s of await subsForPlan.store.list({ companyId: company.id })) {
+            if (s.status !== "active" && s.status !== "trialing") continue;
+            const plan = (await subsForPlan.store.items(s.id)).find((i) => i.family === "core_plan" && i.effectiveFrom <= at && (i.effectiveTo === null || i.effectiveTo > at));
+            if (plan) return plan.productKey;
+          }
+          return null;
+        };
+        if (webRequests) router.use("/commerce", createPanelRequestsRouter({ site: () => wa.site("published"), requests: webRequests, crm: d.crm.store, internalTenants: d.stripe?.purchases?.internalTenants, implementations: d.implementation?.store ?? null, planOf: panelPlanOf }));
         // Solicitudes de plan desde Suscripción: oportunidad del CRM de la empresa (o solicitud web si aún no tiene ficha)
         if (webRequests && d.crm) router.use("/commerce", createPlanRequestsRouter({ site: () => wa.site("published"), crm: d.crm.service, store: d.crm.store, requests: webRequests }));
       }
