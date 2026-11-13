@@ -109,7 +109,7 @@ function cleanUtm(u: FormMeta["utm"]): Record<string, string> {
   for (const k of ["source", "medium", "campaign", "term", "content"] as const) {
     const v = u?.[k];
     if (typeof v === "string") {
-      const t = v.replace(/[^\p{L}\p{N} _.:|/+-]/gu, "").trim().slice(0, 100);
+      const t = v.replace(/[^A-Za-z0-9À-ɏ _.:|/+-]/g, "").trim().slice(0, 100);
       if (t) out[k] = t;
     }
   }
