@@ -6,7 +6,7 @@ import { describe, it, expect, vi } from "vitest";
 import { createBlock, newFormField, DEFAULT_FORM_CONSENT_TEXT, type BlockDataMap } from "../shared/pageBlocks";
 import { normalizeBlocks } from "./_core/pageBlocks";
 import { evaluateFormSubmission, formConsentText, allowFormSubmit } from "./_core/studioForms";
-import { FORM_DEDUPE_WINDOW_MS, StudioSubmitError, ipFingerprint, processStudioSubmission, sameSiteOrigin, type SubmissionRecord, type SubmitDeps } from "./_core/studioFormsSubmit";
+import { FORM_DEDUPE_WINDOW_MS, StudioSubmitError, ipFingerprint, keyedLock, processStudioSubmission, sameSiteRequest, type SubmissionRecord, type SubmitDeps } from "./_core/studioFormsSubmit";
 import { readCaptchaConfig, verifyTurnstile } from "./_core/studioFormsCaptcha";
 import { IntegrationVault, MemoryCredentialStore, type Keyring } from "./_core/credentials/vault";
 import { PROVIDERS } from "./_core/credentials/catalog";
@@ -192,9 +192,22 @@ describe("E-7 · Turnstile por empresa", () => {
     expect(verify).toHaveBeenLastCalledWith("bueno", "secreto-a", "1.1.1.1");
   });
 
-  it("activado en el formulario pero la empresa no tiene claves: el formulario sigue funcionando (sin tercero)", async () => {
-    const t = tenant("a", { published: form(undefined, { captcha: "on" }) });
-    expect(await processStudioSubmission(input(), "1.1.1.1", t.deps)).toMatchObject({ ok: true });
+  it("FALLA CERRADO: activado pero sin claves, o con la bóveda caída, no se acepta el envío y se registra la alerta; desactivado no pide nada", async () => {
+    const alerts: string[] = [];
+    const none = tenant("a", { published: form(undefined, { captcha: "on" }), onCaptchaUnavailable: (r) => void alerts.push(r) });
+    expect(await processStudioSubmission(input({ captchaToken: "x" }), "1.1.1.1", none.deps)).toMatchObject({ ok: false, errors: { captcha: expect.stringContaining("Inténtalo de nuevo") } });
+    const down = tenant("a", {
+      published: form(undefined, { captcha: "on" }),
+      captchaConfig: async () => {
+        throw new Error("bóveda caída");
+      },
+      onCaptchaUnavailable: (r) => void alerts.push(r),
+    });
+    expect(await processStudioSubmission(input({ captchaToken: "x" }), "1.1.1.1", down.deps)).toMatchObject({ ok: false });
+    expect(none.leads.length + down.leads.length).toBe(0);
+    expect(alerts).toEqual(["not_configured", "vault_error"]);
+    const off = tenant("a");
+    expect(await processStudioSubmission(input(), "1.1.1.1", off.deps)).toMatchObject({ ok: true });
   });
 
   it("verifyTurnstile: éxito, rechazo, error de red y respuesta rara = no verificado; nunca lanza", async () => {
@@ -218,13 +231,53 @@ describe("E-7 · Turnstile por empresa", () => {
 });
 
 describe("E-7 · origen (CSRF)", () => {
-  it("el origen debe ser el mismo sitio; sin cabecera (no navegador) se admite y queda el límite por visitante", () => {
-    expect(sameSiteOrigin("https://web.ejemplo.es", "web.ejemplo.es")).toBe(true);
-    expect(sameSiteOrigin("https://otra.es", "web.ejemplo.es")).toBe(false);
-    expect(sameSiteOrigin("https://web.ejemplo.es.atacante.com", "web.ejemplo.es")).toBe(false);
-    expect(sameSiteOrigin("null", "web.ejemplo.es")).toBe(false);
-    expect(sameSiteOrigin("no-es-una-url", "web.ejemplo.es")).toBe(false);
-    expect(sameSiteOrigin(undefined, "web.ejemplo.es")).toBe(true);
+  const H = "web.ejemplo.es";
+  it("Origin debe ser el mismo sitio; sin cabeceras (no navegador) se admite y queda el límite por visitante", () => {
+    expect(sameSiteRequest({ origin: `https://${H}`, hosts: [undefined, H] })).toBe(true);
+    expect(sameSiteRequest({ origin: "https://otra.es", hosts: [undefined, H] })).toBe(false);
+    expect(sameSiteRequest({ origin: `https://${H}.atacante.com`, hosts: [H] })).toBe(false);
+    expect(sameSiteRequest({ origin: "no-es-una-url", hosts: [H] })).toBe(false);
+    expect(sameSiteRequest({ hosts: [H] })).toBe(true);
+  });
+  it("detrás del proxy manda X-Forwarded-Host (lista) y también vale Host; dominio propio y subdominio de la plataforma", () => {
+    expect(sameSiteRequest({ origin: "https://web.cliente.com", hosts: ["web.cliente.com, interno", "railway.internal"] })).toBe(true);
+    expect(sameSiteRequest({ origin: "https://t1.plataforma.es", hosts: [undefined, "t1.plataforma.es"] })).toBe(true);
+    expect(sameSiteRequest({ origin: "https://t1.plataforma.es", hosts: ["web.cliente.com", "railway.internal"] })).toBe(false);
+  });
+  it("sin Origin o con «null» se usa el Referer; «null» sin Referer se rechaza", () => {
+    expect(sameSiteRequest({ referer: `https://${H}/contacto?x=1`, hosts: [H] })).toBe(true);
+    expect(sameSiteRequest({ referer: "https://otra.es/p", hosts: [H] })).toBe(false);
+    expect(sameSiteRequest({ origin: "null", referer: `https://${H}/c`, hosts: [H] })).toBe(true);
+    expect(sameSiteRequest({ origin: "null", hosts: [H] })).toBe(false);
+  });
+});
+
+describe("E-7 · nombres y concurrencia", () => {
+  it("el saneado de nombres conserva las letras «s» (Rosa Ross) y colapsa espacios", () => {
+    const fields = [newFormField("text", "Nombre", { role: "name" }), newFormField("email", "Correo", { role: "email", required: "on" }), newFormField("text", "Empresa", { role: "company" })];
+    const r = evaluateFormSubmission(form(fields), { ...ok, values: { f0: "Rosa   Ross", f1: "a@b.es", f2: "Sastres  y Sosa" } }, { slug: "x" });
+    expect(r.kind === "ok" && r.lead).toMatchObject({ name: "Rosa Ross", company: "Sastres y Sosa" });
+  });
+
+  it("ráfaga de 20 envíos distintos a la vez: ninguno se pierde ni se bloquea; el mismo correo repetido en la ráfaga crea un solo lead", async () => {
+    const t = tenant("a", { lock: keyedLock, allow: () => true, createLead: async (l) => { await new Promise((r) => setTimeout(r, 5)); t.leads.push({ id: t.leads.length + 1, ...l }); return t.leads.length; } });
+    const mk = (i: number) => processStudioSubmission(input({ values: { f0: `Persona ${i}`, f1: `p${i}@ejemplo.es` } }), "1.1.1.1", t.deps);
+    const dup = () => processStudioSubmission(input({ values: { f0: "Repetida", f1: "rep@ejemplo.es" } }), "1.1.1.2", t.deps);
+    const res = await Promise.all([...Array.from({ length: 20 }, (_, i) => mk(i)), dup(), dup(), dup()]);
+    expect(res.every((r) => r.ok)).toBe(true);
+    expect(t.leads).toHaveLength(21);
+    expect(t.notes).toHaveLength(2);
+  });
+
+  it("keyedLock: misma clave en serie, claves distintas en paralelo, y un fallo no bloquea la cola", async () => {
+    const order: string[] = [];
+    const a1 = keyedLock("k", async () => { await new Promise((r) => setTimeout(r, 20)); order.push("a1"); });
+    const a2 = keyedLock("k", async () => void order.push("a2"));
+    const b = keyedLock("otra", async () => void order.push("b"));
+    await Promise.all([a1, a2, b]);
+    expect(order).toEqual(["b", "a1", "a2"]);
+    await expect(keyedLock("k", async () => { throw new Error("x"); })).rejects.toThrow();
+    await expect(keyedLock("k", async () => 7)).resolves.toBe(7);
   });
 });
 
@@ -291,7 +344,7 @@ describe("E-7 · aislamiento entre empresas", () => {
     await processStudioSubmission(input({ captchaToken: "t" }), "1.1.1.1", a.deps);
     await processStudioSubmission(input({ captchaToken: "t" }), "1.1.1.1", b.deps);
     expect(seen).toEqual(["secreto-a"]);
-    expect(b.leads).toHaveLength(1);
+    expect(b.leads).toHaveLength(0); // B no tiene claves: falla cerrado, nunca usa las de A
   });
 
   it("el catálogo de credenciales declara Turnstile con ambas claves cifradas y comprobación solo local", () => {

@@ -9,7 +9,7 @@
  * credenciales y correo del tenant); en las pruebas, dobles en memoria por empresa. Ningún estado se comparte entre
  * empresas: las claves del límite incluyen la empresa y las credenciales se leen de la bóveda de la empresa.
  */
-import { createHmac } from "node:crypto";
+import { createHash, createHmac } from "node:crypto";
 import { type BlockDataMap } from "../../shared/pageBlocks";
 import type { CaptchaConfig } from "./studioFormsCaptcha";
 import { evaluateFormSubmission, FormSubmitError, formRedirect, type FormConsent, type FormSubmission } from "./studioForms";
@@ -52,7 +52,10 @@ export interface SubmitDeps {
   allow: (key: string) => boolean;
   getForm: (slug: string, blockId: string) => Promise<{ slug: string; data: BlockDataMap["form"] } | null>;
   /** Claves de Turnstile de LA EMPRESA (null = sin configurar) */
+  /** null = sin claves; si la bóveda falla, lanza */
   captchaConfig: () => Promise<CaptchaConfig | null>;
+  /** Turnstile activado en el formulario pero no utilizable: se registra para que se vea (nunca incluye datos de la persona) */
+  onCaptchaUnavailable?: (reason: "not_configured" | "vault_error") => void;
   verifyCaptcha: (token: string, secretKey: string, ip: string) => Promise<boolean>;
   findRecent: (email: string, slug: string, blockId: string, since: number) => Promise<{ leadId: number } | null>;
   createLead: (lead: { name: string; email: string; phone?: string; company?: string; message: string }) => Promise<number>;
@@ -86,14 +89,44 @@ export class StudioSubmitError extends Error {
   }
 }
 
-/** La petición viene de la propia web: el origen (si el navegador lo manda) debe ser el mismo sitio que la atiende. */
-export function sameSiteOrigin(origin: string | undefined, host: string | undefined): boolean {
-  if (!origin || origin === "null") return !origin; // sin cabecera: llamada que no es de un navegador (sigue el límite por visitante)
-  if (!host) return false;
+const hostOf = (u: string): string | null => {
   try {
-    return new URL(origin).host.toLowerCase() === host.toLowerCase();
+    return new URL(u).host.toLowerCase();
   } catch {
-    return false;
+    return null;
+  }
+};
+
+/**
+ * La petición viene de la propia web (CSRF). Orden: `Origin`; si falta o es «null» (algunos navegadores lo mandan así
+ * tras redirecciones), `Referer`. El sitio que la atiende son las cabeceras del proxy (`X-Forwarded-Host`) y `Host`: en
+ * el dominio propio de la empresa o en su subdominio de la plataforma/vista previa, ambos son el que visita la persona.
+ * Sin `Origin` ni `Referer` (llamadas que no son de un navegador, o navegadores con la referencia desactivada) se
+ * ADMITE para no romper formularios legítimos: quedan el límite por IP, el campo trampa, el tiempo mínimo y Turnstile.
+ * Con cabecera presente que no coincide con el sitio, se rechaza.
+ */
+export function sameSiteRequest(h: { origin?: string; referer?: string; hosts: Array<string | undefined> }): boolean {
+  const hosts = h.hosts.map((x) => (x ?? "").split(",")[0].trim().toLowerCase()).filter(Boolean);
+  const matches = (url: string) => {
+    const got = hostOf(url);
+    return !!got && hosts.includes(got);
+  };
+  if (h.origin && h.origin !== "null") return matches(h.origin);
+  if (h.referer) return matches(h.referer);
+  return !h.origin; // «null» sin Referer: contexto aislado, se rechaza; sin cabeceras: se admite
+}
+
+/** Exclusión mutua en memoria por clave (sin capacidad global: envíos distintos nunca se esperan entre sí). */
+const chains = new Map<string, Promise<unknown>>();
+export async function keyedLock<T>(key: string, fn: () => Promise<T>): Promise<T> {
+  const prev = chains.get(key) ?? Promise.resolve();
+  const run = prev.catch(() => {}).then(fn);
+  const tail = run.catch(() => {});
+  chains.set(key, tail);
+  try {
+    return await run;
+  } finally {
+    if (chains.get(key) === tail) chains.delete(key);
   }
 }
 
@@ -138,11 +171,20 @@ export async function processStudioSubmission(input: StudioSubmitInput, ip: stri
 
   // Antirrobots de la empresa: solo si activó Turnstile en este formulario Y tiene sus claves (las de otra empresa nunca valen)
   if (form.captcha === "on") {
-    const cfg = await deps.captchaConfig();
-    if (cfg) {
-      const ok = input.captchaToken ? await deps.verifyCaptcha(input.captchaToken, cfg.secretKey, ip) : false;
-      if (!ok) return { ok: false, errors: { captcha: "No hemos podido comprobar que no eres un robot. Acepta las cookies, recarga la página e inténtalo de nuevo." } };
+    let cfg: CaptchaConfig | null = null;
+    let reason: "not_configured" | "vault_error" = "not_configured";
+    try {
+      cfg = await deps.captchaConfig();
+    } catch {
+      reason = "vault_error";
     }
+    // FALLA CERRADO: activado en el formulario pero sin claves utilizables (o con la bóveda caída) no se acepta el envío
+    if (!cfg) {
+      deps.onCaptchaUnavailable?.(reason);
+      return { ok: false, errors: { captcha: "La verificación antirrobots no está disponible ahora mismo. Inténtalo de nuevo en unos minutos." } };
+    }
+    const ok = input.captchaToken ? await deps.verifyCaptcha(input.captchaToken, cfg.secretKey, ip) : false;
+    if (!ok) return { ok: false, errors: { captcha: "No hemos podido comprobar que no eres un robot. Acepta las cookies, recarga la página e inténtalo de nuevo." } };
   }
 
   const now = deps.now();
@@ -171,7 +213,7 @@ export async function processStudioSubmission(input: StudioSubmitInput, ip: stri
     if (form.notifyOwner === "on") void deps.notifyOwner({ leadId, duplicate, formTitle: title, page, name: lead.name, email: lead.email, phone: lead.phone, message }).catch(() => {});
   };
 
-  const id = await deps.lock(`${found.slug}:${input.blockId}:${lead.email}`, async () => {
+  const id = await deps.lock(`${deps.tenantId}:${found.slug}:${input.blockId}:${createHash("sha256").update(lead.email).digest("hex").slice(0, 32)}`, async () => {
     const prev = await deps.findRecent(lead.email, found.slug, input.blockId, now - FORM_DEDUPE_WINDOW_MS);
     if (prev) {
       // Mismo correo y formulario hace un momento: no se crea otra oportunidad, se anota en la que ya existe

@@ -3,12 +3,12 @@
 Qué añade a los formularios a medida (bloque `form`) de la web de cada empresa. Todo es reutilizable por cualquier empresa y viene **apagado o equivalente al comportamiento anterior**: un formulario ya publicado funciona exactamente igual sin tocarlo.
 
 ## Flujo de un envío (`server/_core/studioFormsSubmit.ts`)
-1. Origen: si el navegador manda `Origin`, debe ser el mismo sitio que atiende la petición (CSRF). Sin cabecera (llamada que no es de un navegador) se admite y manda el límite por visitante.
+1. Origen (CSRF): `Origin`; si falta o es «null», `Referer`; se compara con `X-Forwarded-Host` y `Host` (dominio propio, subdominio de la plataforma o vista previa). Con cabecera que no coincide: rechazo. Sin `Origin` ni `Referer` se admite (no romper formularios legítimos): quedan límite por IP, trampa, tiempo mínimo y Turnstile.
 2. Tamaño: el cuerpo se limita (zod en el router y 20.000 caracteres en total; campos y longitudes ya acotados).
 3. Formulario **publicado** (nunca lo que diga el navegador) y límite por visitante: 5 envíos / 10 min por empresa + página + IP.
 4. Validación y saneado (`evaluateFormSubmission`): campo trampa, tiempo mínimo, tipos, opciones, obligatorios, condiciones. Nombres y empresa se guardan sin etiquetas.
 5. Turnstile (opcional, ver abajo).
-6. Duplicados: mismo correo + mismo formulario en 10 minutos no crea otra oportunidad; se **anota** en la existente (nota interna del lead + constancia con `is_duplicate = 1`). Con un bloqueo por correo y formulario para que dos envíos simultáneos no creen dos.
+6. Duplicados: mismo correo + mismo formulario en 10 minutos no crea otra oportunidad; se **anota** en la existente (nota interna del lead + constancia con `is_duplicate = 1`). Con un bloqueo en memoria por empresa+formulario+hash del correo (sin cola global; entre réplicas, dos envíos simultáneos podrían crear dos leads) para que dos envíos simultáneos no creen dos.
 7. Oportunidad en el CRM (`createLead`, origen `web_formulario`) con **todas las respuestas** en el mensaje, más líneas de origen, UTM y consentimiento.
 8. Constancia en `studio_form_submissions` (migración 0066).
 9. Aviso al propietario por correo (si el formulario lo activa).

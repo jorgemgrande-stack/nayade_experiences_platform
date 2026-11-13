@@ -293,9 +293,9 @@ export function StudioFormFields({ blockId, form, preview, pageTitle, editing }:
           );
         })}
       </div>
-      {siteKey && (
+      {(siteKey || errors.captcha) && (
         <div>
-          {thirdParty ? <TurnstileWidget siteKey={siteKey} onToken={setCaptchaToken} /> : <p className="text-sm text-muted-foreground">Para verificar que no eres un robot necesitamos que aceptes las cookies de terceros en el aviso de cookies.</p>}
+          {!siteKey ? null : thirdParty ? <TurnstileWidget siteKey={siteKey} onToken={setCaptchaToken} /> : <p className="text-sm text-muted-foreground">Para verificar que no eres un robot necesitamos que aceptes las cookies de terceros en el aviso de cookies.</p>}
           {errors.captcha && (
             <p role="alert" className="mt-1 text-sm text-destructive">
               {errors.captcha}

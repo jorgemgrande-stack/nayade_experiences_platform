@@ -467,7 +467,7 @@ export const appRouter = router({
     studioFormCaptcha: publicProcedure.query(async () => {
       const { readCaptchaConfig } = await import("./_core/studioFormsCaptcha");
       const { getVault } = await import("./_core/credentials/runtime");
-      const cfg = await readCaptchaConfig(getVault());
+      const cfg = await readCaptchaConfig(getVault()).catch(() => null);
       return { siteKey: cfg?.siteKey ?? null };
     }),
 
@@ -527,12 +527,11 @@ export const appRouter = router({
       .mutation(async ({ input, ctx }) => {
         if (input.studioForm) {
           const sf = input.studioForm;
-          const { processStudioSubmission, StudioSubmitError, sameSiteOrigin } = await import("./_core/studioFormsSubmit");
+          const { processStudioSubmission, StudioSubmitError, sameSiteRequest } = await import("./_core/studioFormsSubmit");
           const { defaultSubmitDeps } = await import("./_core/studioFormsRuntime");
           // CSRF: el envío tiene que salir de esta misma web (el navegador manda siempre Origin en un POST entre sitios)
           const hdr = (n: string) => { const v = ctx.req.headers[n]; return Array.isArray(v) ? v[0] : v; };
-          const origin = hdr("origin");
-          if (!sameSiteOrigin(origin, hdr("x-forwarded-host")?.split(",")[0].trim()) && !sameSiteOrigin(origin, hdr("host"))) {
+          if (!sameSiteRequest({ origin: hdr("origin"), referer: hdr("referer"), hosts: [hdr("x-forwarded-host"), hdr("host")] })) {
             throw new TRPCError({ code: "FORBIDDEN", message: "No se ha podido enviar el formulario desde esta dirección." });
           }
           const ip = ctx.req.ip || ctx.req.socket.remoteAddress || "desconocida";

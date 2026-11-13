@@ -12,12 +12,9 @@ const SITEVERIFY = "https://challenges.cloudflare.com/turnstile/v0/siteverify";
 
 /** Claves de Turnstile de la empresa en curso (bóveda cifrada de SU base de datos); null si no están completas. */
 export async function readCaptchaConfig(vault: { resolve: (provider: string) => Promise<Record<string, string>> }): Promise<CaptchaConfig | null> {
-  try {
-    const v = await vault.resolve(TURNSTILE_PROVIDER);
-    return v.siteKey && v.secretKey ? { siteKey: v.siteKey, secretKey: v.secretKey } : null;
-  } catch {
-    return null;
-  }
+  // Si la bóveda falla, LANZA (quien llama decide: el envío falla cerrado); null solo significa «sin claves completas»
+  const v = await vault.resolve(TURNSTILE_PROVIDER);
+  return v.siteKey && v.secretKey ? { siteKey: v.siteKey, secretKey: v.secretKey } : null;
 }
 
 /** Verifica el resultado del widget con el secreto de la empresa. Cualquier fallo del servicio = no verificado. */

@@ -10,7 +10,7 @@ import { getVault } from "./credentials/runtime";
 import { readCaptchaConfig, verifyTurnstile } from "./studioFormsCaptcha";
 import { ENV } from "./env";
 import { allowFormSubmit } from "./studioForms";
-import { type SubmitDeps, type SubmissionRecord, type OwnerNotice } from "./studioFormsSubmit";
+import { keyedLock, type SubmitDeps, type SubmissionRecord, type OwnerNotice } from "./studioFormsSubmit";
 
 type Row = Record<string, unknown>;
 async function rows(q: ReturnType<typeof sql>): Promise<Row[]> {
@@ -83,7 +83,6 @@ async function notifyOwner(n: OwnerNotice) {
 /** Dependencias reales del recorrido para la empresa en curso. */
 export async function defaultSubmitDeps(): Promise<SubmitDeps> {
   const { getPublishedFormBlock } = await import("../pageBuilderDb");
-  const { withTenantLock } = await import("../tpvSaleIdempotency");
   const { peekTenantContext } = await import("./tenant");
   return {
     tenantId: peekTenantContext()?.tenantId ?? "single",
@@ -97,7 +96,8 @@ export async function defaultSubmitDeps(): Promise<SubmitDeps> {
     addLeadNote,
     recordSubmission,
     notifyOwner,
-    lock: (key, fn) => withTenantLock("forms_submit", key, 8, "Estamos procesando tu envío. Espera unos segundos.", fn),
+    lock: keyedLock,
+    onCaptchaUnavailable: (reason) => console.error(`[studioForms] ALERTA: Turnstile activado pero no utilizable (${reason}) en la empresa ${peekTenantContext()?.tenantId ?? "single"}`),
     ipSecret: ENV.cookieSecret,
   };
 }
