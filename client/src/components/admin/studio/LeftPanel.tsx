@@ -412,7 +412,7 @@ function Structure({ blocks, selectedId, device, onSelect, onMove, onDuplicate, 
                 </button>
               </span>
             </div>
-            {b.type === "section" && <SectionRows section={b} selectedId={selectedId} device={device} onSelect={onSelect} onDuplicate={onDuplicate} onDelete={onDelete} />}
+            {(b.type === "section" || b.type === "modal") && <SectionRows section={b} selectedId={selectedId} device={device} onSelect={onSelect} onDuplicate={onDuplicate} onDelete={onDelete} />}
           </li>
         );
       })}
@@ -421,12 +421,12 @@ function Structure({ blocks, selectedId, device, onSelect, onMove, onDuplicate, 
 }
 
 /** Contenido de una sección en la estructura: cada columna con sus módulos (se mueven arrastrándolos en el lienzo). */
-function SectionRows({ section, selectedId, device, onSelect, onDuplicate, onDelete }: { section: Extract<PageBlock, { type: "section" }>; selectedId: string | null; device: Device; onSelect: (id: string) => void; onDuplicate: (id: string) => void; onDelete: (id: string) => void }) {
+function SectionRows({ section, selectedId, device, onSelect, onDuplicate, onDelete }: { section: Extract<PageBlock, { type: "section" | "modal" }>; selectedId: string | null; device: Device; onSelect: (id: string) => void; onDuplicate: (id: string) => void; onDelete: (id: string) => void }) {
   return (
     <div className="ml-4 border-l border-border pl-2">
       {section.data.columns.map((col, ci) => (
         <div key={ci} className="py-0.5">
-          <span className="block px-1.5 pt-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/80">Columna {ci + 1}</span>
+          <span className="block px-1.5 pt-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/80">{section.type === "modal" ? "Contenido de la ventana" : `Columna ${ci + 1}`}</span>
           {!col.blocks.length && <span className="block px-1.5 py-1 text-[11px] italic text-muted-foreground">Vacía</span>}
           <ol aria-label={`Columna ${ci + 1}`}>
             {col.blocks.map((b) => {
@@ -452,7 +452,7 @@ function SectionRows({ section, selectedId, device, onSelect, onDuplicate, onDel
                       </button>
                     </span>
                   </div>
-                  {b.type === "section" && <SectionRows section={b} selectedId={selectedId} device={device} onSelect={onSelect} onDuplicate={onDuplicate} onDelete={onDelete} />}
+                  {(b.type === "section" || b.type === "modal") && <SectionRows section={b} selectedId={selectedId} device={device} onSelect={onSelect} onDuplicate={onDuplicate} onDelete={onDelete} />}
                 </li>
               );
             })}

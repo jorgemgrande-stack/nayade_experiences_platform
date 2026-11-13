@@ -27,6 +27,11 @@ function loadConsent(): ConsentState | null {
   }
 }
 
+/** Si la persona ya decidió sobre las cookies (los módulos que se abren solos, como las ventanas emergentes, esperan a que lo haga). */
+export function hasCookieDecision(): boolean {
+  return !!loadConsent()?.accepted;
+}
+
 function saveConsent(state: ConsentState) {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
   window.dispatchEvent(new Event('cookieConsentChanged'));
@@ -127,7 +132,7 @@ export default function CookieBanner() {
   };
 
   return (
-    <div className={cn("fixed bottom-0 left-0 right-0 p-4 md:p-6 pointer-events-none", cookieBannerLayer(cartOpen))}>
+    <div data-cookie-banner="" className={cn("fixed bottom-0 left-0 right-0 p-4 md:p-6 pointer-events-none", cookieBannerLayer(cartOpen))}>
       <div
         className="pointer-events-auto mx-auto max-w-4xl rounded-2xl shadow-2xl overflow-hidden"
         style={{

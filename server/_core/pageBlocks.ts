@@ -15,6 +15,7 @@ import {
   sectionColumnCount, type BlockDataMap, type BlockStyle, type BlockType, type GalleryImage, type PageBlock,
 } from "../../shared/pageBlocks";
 import { FEATURE_ICON_KEYS, moduleDef, type FieldDef } from "../../shared/studio/modules";
+import { modalSlugFrom, uniqueModalSlug } from "../../shared/studio/modal";
 import { siteRelativeFileUrl } from "../../shared/imageUpload";
 
 export class PageBlocksError extends Error {}
@@ -204,13 +205,13 @@ export function normalizeStyle(v: unknown): BlockStyle | undefined {
 export function normalizeBlocks(raw: unknown): PageBlock[] {
   if (!Array.isArray(raw)) throw new PageBlocksError("El contenido de la página no es válido.");
   if (raw.length > PAGE_LIMITS.blocks) throw new PageBlocksError(`Una página admite hasta ${PAGE_LIMITS.blocks} bloques.`);
-  return normalizeList(raw, { seen: new Set(), total: 0, tolerant: false }, 0);
+  return normalizeList(raw, { seen: new Set(), total: 0, tolerant: false, modalSlugs: new Set() }, 0);
 }
 
 /** Lectura tolerante (lo guardado): lo que no se reconoce se omite en lugar de romper la página. */
 export function readStoredBlocks(raw: unknown): PageBlock[] {
   if (!Array.isArray(raw)) return [];
-  return normalizeList(raw, { seen: new Set(), total: 0, tolerant: true }, 0);
+  return normalizeList(raw, { seen: new Set(), total: 0, tolerant: true, modalSlugs: new Set() }, 0);
 }
 
 /**
@@ -221,6 +222,8 @@ interface NormalizeCtx {
   seen: Set<string>;
   total: number;
   tolerant: boolean;
+  /** Identificadores de las ventanas emergentes ya usados en la página */
+  modalSlugs: Set<string>;
 }
 
 function normalizeList(raw: unknown[], ctx: NormalizeCtx, depth: number): PageBlock[] {
@@ -244,6 +247,7 @@ function normalizeOne(b: unknown, ctx: NormalizeCtx, depth: number): PageBlock {
     throw new PageBlocksError("La página tiene un bloque que no se reconoce.");
   }
   const type = b.type as BlockType;
+  if (depth > 0 && type === "modal") throw new PageBlocksError("Una ventana emergente solo puede ir a nivel de página: no dentro de columnas ni de otra ventana.");
   if (depth > 0 && NOT_NESTABLE.includes(type)) throw new PageBlocksError(`«${blockLabel(type)}» ocupa todo el ancho: no puede ir dentro de una columna.`);
   if (type === "section" && depth >= SECTION_MAX_DEPTH) throw new PageBlocksError("Solo se puede poner una sección con columnas dentro de otra (un nivel).");
   if (++ctx.total > PAGE_LIMITS.blocks) throw new PageBlocksError(`Una página admite hasta ${PAGE_LIMITS.blocks} bloques.`);
@@ -252,7 +256,7 @@ function normalizeOne(b: unknown, ctx: NormalizeCtx, depth: number): PageBlock {
   ctx.seen.add(id);
   const style = normalizeStyle(b.style);
   const d = isObj(b.data) ? b.data : {};
-  const data = type === "section" ? normalizeSection(d, ctx, depth) : normalizeData(type, d);
+  const data = type === "section" ? normalizeSection(d, ctx, depth) : type === "modal" ? normalizeModal(d, ctx, depth) : normalizeData(type, d);
   return { id, type, data, ...(style ? { style } : {}) } as PageBlock;
 }
 
@@ -263,6 +267,19 @@ function normalizeSection(d: Record<string, unknown>, ctx: NormalizeCtx, depth: 
   const n = sectionColumnCount(base.layout);
   const columns = Array.from({ length: n }, (_, i) => ({ blocks: normalizeList(i < n - 1 ? (lists[i] ?? []) : lists.slice(n - 1).flat(), ctx, depth + 1) }));
   return { ...base, columns };
+}
+
+/**
+ * Ventana emergente: datos del esquema, identificador del enlace válido y único en la página, y una sola columna con los
+ * módulos de dentro (si llegan varias, se juntan: no se pierde contenido). Sin ventanas ni módulos de ancho completo dentro.
+ */
+function normalizeModal(d: Record<string, unknown>, ctx: NormalizeCtx, depth: number): BlockDataMap["modal"] {
+  const base = normalizeBySchema("modal", d) as Omit<BlockDataMap["modal"], "columns">;
+  const wanted = ANCHOR_RE.test(base.slug) ? base.slug : modalSlugFrom(base.title);
+  const slug = uniqueModalSlug(wanted, ctx.modalSlugs);
+  ctx.modalSlugs.add(slug);
+  const lists = (Array.isArray(d.columns) ? d.columns : []).map((c) => (isObj(c) && Array.isArray(c.blocks) ? (c.blocks as unknown[]) : []));
+  return { ...base, slug, columns: [{ blocks: normalizeList(lists.flat(), ctx, depth + 1) }] };
 }
 
 // ─── Resumen en HTML ──────────────────────────────────────────────────────────
@@ -359,6 +376,10 @@ export function blocksToHtml(blocks: PageBlock[]): string {
         break;
       case "section":
         parts.push(blocksToHtml(b.data.columns.flatMap((c) => c.blocks)));
+        break;
+      case "modal":
+        // El contenido de la ventana (cerrada) también va en el resumen para buscadores y búsqueda del panel
+        parts.push(h(2, b.data.title), img(b.data.imageUrl, b.data.imageAlt), blocksToHtml(b.data.columns.flatMap((c) => c.blocks)));
         break;
     }
   });
@@ -533,6 +554,8 @@ export function renderBlockTokens(blocks: PageBlock[], data: SiteTokenData): Pag
       if (typeof v !== "string") continue;
       d[k] = k === "html" ? renderSiteTokens(v, data) : plainTokens(v, data);
     }
+    // Los módulos de dentro de una ventana emergente llevan también los datos de la empresa
+    if (b.type === "modal") d.columns = b.data.columns.map((c) => ({ blocks: renderBlockTokens(c.blocks, data) }));
     if (b.type === "gallery") d.images = b.data.images.map((g) => ({ ...g, alt: plainTokens(g.alt, data) }));
     // Listas de los módulos (ventajas, opiniones, preguntas): texto simple en cada elemento
     // Listas de los módulos (ventajas, opiniones, preguntas, diapositivas, tarjetas…): texto simple en cada elemento

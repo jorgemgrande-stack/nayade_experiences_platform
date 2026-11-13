@@ -48,7 +48,7 @@ export function BlockInspector({
   onAddToColumn?: (col: number, type: string) => void;
   onSelectBlock?: (id: string) => void;
   /** Si el bloque está dentro de una sección: cuál y en qué columna */
-  inside?: { id: string; col: number } | null;
+  inside?: { id: string; col: number; modal?: boolean } | null;
 }) {
   const def = moduleDef(block.type);
   const data = block.data as unknown as Record<string, unknown>;
@@ -73,7 +73,7 @@ export function BlockInspector({
   const behaviorFields = inTab("behavior");
   const advancedFields = inTab("advanced");
   // Solo las pestañas con opciones (Diseño y Comportamiento siempre: fondo, espacios y animación son de todos los bloques)
-  const tabs: InspectorTab[] = [...(fields.length || block.type === "section" ? (["content"] as const) : []), "design", "behavior", ...(pro ? (["advanced"] as const) : [])];
+  const tabs: InspectorTab[] = [...(fields.length || block.type === "section" || block.type === "modal" ? (["content"] as const) : []), "design", "behavior", ...(pro ? (["advanced"] as const) : [])];
   const current: InspectorTab = tabs.includes(tab) ? tab : tabs[0];
   const control = (f: FieldDef) => <FieldControl key={f.key} field={f} value={data[f.key]} set={set} targets={targets} blockId={block.id} pro={pro} />;
   const style = { ...DEFAULT_BLOCK_STYLE, ...block.style };
@@ -81,10 +81,10 @@ export function BlockInspector({
     <div className="space-y-4">
       {inside && (
         <div className="flex items-center justify-between gap-2 rounded-md border border-border bg-muted/40 px-3 py-2 text-xs">
-          <span className="text-muted-foreground">Dentro de una sección · columna {inside.col + 1}</span>
+          <span className="text-muted-foreground">{inside.modal ? "Dentro de una ventana emergente" : `Dentro de una sección · columna ${inside.col + 1}`}</span>
           {onSelectBlock && (
             <button type="button" className="font-medium text-[#5b5bf6] hover:underline" onClick={() => onSelectBlock(inside.id)}>
-              Seleccionar la sección
+              {inside.modal ? "Seleccionar la ventana" : "Seleccionar la sección"}
             </button>
           )}
         </div>
@@ -131,7 +131,7 @@ export function BlockInspector({
               )}
             </div>
           ))}
-          {block.type === "section" && (
+          {(block.type === "section" || block.type === "modal") && (
             <SectionColumns block={block} modules={columnModules} onAdd={onAddToColumn} onSelect={onSelectBlock} />
           )}
           {def.note && <p className="rounded-md bg-muted px-3 py-2 text-xs leading-relaxed text-muted-foreground">{def.note}</p>}
@@ -147,14 +147,14 @@ export function BlockInspector({
 }
 
 /** Lo que lleva cada columna de una sección: sus módulos (se seleccionan con un clic) y un selector para añadir otro. */
-function SectionColumns({ block, modules, onAdd, onSelect }: { block: Extract<PageBlock, { type: "section" }>; modules: ModuleDef[]; onAdd?: (col: number, type: string) => void; onSelect?: (id: string) => void }) {
+function SectionColumns({ block, modules, onAdd, onSelect }: { block: Extract<PageBlock, { type: "section" | "modal" }>; modules: ModuleDef[]; onAdd?: (col: number, type: string) => void; onSelect?: (id: string) => void }) {
   return (
     <div className="space-y-3">
-      <span className="text-sm font-medium">Contenido de las columnas</span>
+      <span className="text-sm font-medium">{block.type === "modal" ? "Contenido de la ventana" : "Contenido de las columnas"}</span>
       {block.data.columns.map((c, i) => (
         <div key={i} className="space-y-1.5 rounded-lg border border-border p-2.5">
           <span className="block text-xs font-semibold text-muted-foreground">
-            Columna {i + 1} · {c.blocks.length === 1 ? "1 módulo" : `${c.blocks.length} módulos`}
+            {block.type === "modal" ? "Módulos" : `Columna ${i + 1}`} · {c.blocks.length === 1 ? "1 módulo" : `${c.blocks.length} módulos`}
           </span>
           {c.blocks.map((child) => (
             <button
@@ -170,8 +170,8 @@ function SectionColumns({ block, modules, onAdd, onSelect }: { block: Extract<Pa
           ))}
           {onAdd && (
             <Select value="" onValueChange={(v) => v && onAdd(i, v)}>
-              <SelectTrigger className="h-8 text-xs" aria-label={`Añadir a la columna ${i + 1}`}>
-                <SelectValue placeholder="Añadir a la columna…" />
+              <SelectTrigger className="h-8 text-xs" aria-label={block.type === "modal" ? "Añadir a la ventana" : `Añadir a la columna ${i + 1}`}>
+                <SelectValue placeholder={block.type === "modal" ? "Añadir a la ventana…" : "Añadir a la columna…"} />
               </SelectTrigger>
               <SelectContent>
                 {modules.map((m) => (
