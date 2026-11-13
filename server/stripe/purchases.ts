@@ -179,7 +179,7 @@ export interface PurchaseDeps {
   stripeStore: Pick<StripeStore, "priceForWebPrice" | "customerByCompany" | "subscriptionsOfCompany">;
   changes: SubscriptionChangeStore;
   /** Comprobación previa de uso real (reducciones) y partidas internas (bajas programadas). */
-  subscriptions?: Pick<SubscriptionService, "checkReduction" | "must">;
+  subscriptions?: Pick<SubscriptionService, "checkReduction" | "must"> & Partial<Pick<SubscriptionService, "hasCustomTerms">>;
   subscriptionItems?: Pick<SubscriptionStore, "items">;
   /** Procesa ya la suscripción releída (el procesador de eventos): el webhook lo repetiría igual. */
   settle?: (subscriptionId: string, invoice?: GwInvoice) => Promise<unknown>;
@@ -262,6 +262,9 @@ export class ModulePurchaseService {
     if (current.subscriptionId && this.d.subscriptions) {
       const internal = await this.d.subscriptions.must(current.subscriptionId);
       if (internal.currentPeriodEnd <= this.now()) throw new PurchaseError("conflict", "Estamos aplicando la renovación de tu suscripción: inténtalo de nuevo en unos minutos");
+      // Con condiciones personalizadas, la suscripción se cambia desde su acuerdo: se cobraría en Stripe y el alta
+      // interna se rechazaría (assertNoTerms). La ampliación va por «Contratar e iniciar implantación»
+      if (await this.d.subscriptions.hasCustomTerms?.(current.subscriptionId)) throw new PurchaseError("unavailable", "Tu suscripción tiene condiciones personalizadas: las ampliaciones se contratan con tu gestor");
     }
     return { company, current, sub };
   }
