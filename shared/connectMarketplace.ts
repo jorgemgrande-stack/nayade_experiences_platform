@@ -123,8 +123,9 @@ export function deriveConnectState(item: ConnectStateInput, ctx: ConnectStateCon
   // 3. No contratado: estado comercial del catálogo
   if (item.commercialStatus === "coming_soon") return { state: "coming_soon", reasons: [] };
   if (item.commercialStatus === "in_preparation") return { state: "coming_soon", reasons: ["Está en preparación."] };
-  // Un módulo que solo existe para ciertos planes no se ofrece a otro plan, ni siquiera bajo solicitud
-  if (item.kind === "module" && item.plans.length > 0 && ctx.plan && !item.plans.includes(ctx.plan)) {
+  // Un módulo o una ampliación que solo existe para ciertos planes no se ofrece a otro plan, ni siquiera bajo solicitud
+  // (ampliaciones incluidas desde el 13/11/2026: con la contratación asistida, una de otro plan no debe ofrecerse)
+  if (item.plans.length > 0 && ctx.plan && !item.plans.includes(ctx.plan)) {
     return { state: "not_eligible", reasons: [`Disponible para el plan ${item.plans.map((p) => PLAN_NAMES[p] ?? p).join(" o ")}.`] };
   }
   if (item.commercialStatus === "on_request") return { state: "on_request", reasons: ["Lo activa nuestro equipo contigo (implantación acompañada)."] };

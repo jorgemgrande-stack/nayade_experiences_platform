@@ -31,7 +31,7 @@ import { CrmError, type LeadRequestType } from "../crm/types";
 import { panelCatalog } from "./panelCatalog";
 import { ASSISTED_CONTRACT_COPY, offerSaleKind } from "../../shared/netOffer";
 import { STATUS_LABEL, type ImplementationStore } from "../implementation/store";
-import { connectAssistedOf } from "../../shared/connectAssisted";
+import { addonAssistedOf, assistedRegistryOf } from "../../shared/addonAssisted";
 
 export const PANEL_REQUEST_SOURCE = "panel:/admin/ampliar";
 /** Versión de privacidad de las solicitudes del panel: la persona ya es cliente y actúa desde su cuenta. */
@@ -103,15 +103,15 @@ async function openRequestFor(
  * Registra la solicitud. `site`: el sitio publicado; `internal`: la empresa puede ver productos internos de prueba.
  */
 export async function receivePanelRequest(
-  d: { site: SiteDocument; internal: boolean; requests: WebRequestService; crm: CrmStore; implementations?: Pick<ImplementationStore, "openFor"> | null },
+  d: { site: SiteDocument; internal: boolean; requests: WebRequestService; crm: CrmStore; implementations?: Pick<ImplementationStore, "openFor"> | null; planOf?: ((tenantId: string) => Promise<string | null>) | null },
   tenantId: string,
   b: PanelRequestBody,
 ): Promise<PanelRequestResult> {
   const visible = d.internal ? d.site : withoutInternal(d.site);
   const item = panelCatalog(quoteCatalogFromSite(visible).products, { version: "", purchasesEnabled: false }).items.find((i) => i.key === b.interest);
   if (!item) throw new PanelRequestError(404, "not_found", "Ese producto no está en tu catálogo");
-  // Un Connect asistido «próximamente» o «en preparación» se contrata igual (shared/netOffer.ts → offerSaleKind)
-  const upcoming = (item.commercialStatus === "coming_soon" || item.commercialStatus === "in_preparation") && !connectAssistedOf(item.key);
+  // Un Connect asistido o una ampliación (13/11/2026) «próximamente» o «en preparación» se contrata igual (shared/netOffer.ts → offerSaleKind)
+  const upcoming = (item.commercialStatus === "coming_soon" || item.commercialStatus === "in_preparation") && !assistedRegistryOf(item.key);
   if (b.type === "waitlist" && !upcoming) throw new PanelRequestError(409, "invalid_state", "Ese producto ya se puede solicitar: pide información");
   if (b.type === "info" && upcoming) throw new PanelRequestError(409, "invalid_state", "Ese producto todavía no está disponible: usa «Me interesa»");
   // «Contratar e iniciar implantación» (clase B): solo un producto Net de empresa bajo solicitud, operativo y con precio
@@ -119,6 +119,13 @@ export async function receivePanelRequest(
   const assisted = b.type === "implementation";
   if (assisted && (item.legacy || offerSaleKind({ key: item.key, commercialStatus: item.commercialStatus, technicalStatus: item.technicalStatus ?? null, hasMonthlyPrice: !!item.monthly }) !== "assisted_contract")) {
     throw new PanelRequestError(409, "invalid_state", "Ese producto no se contrata con implantación asistida desde el panel: pide información");
+  }
+  // Ampliación de otro plan (13/11/2026): el marketplace no la ofrece; aquí se comprueba con el plan vigente si se
+  // conoce (sin lector de plan o si falla, manda lo que ofrece el marketplace)
+  const addonPlans = assisted ? (addonAssistedOf(item.key)?.plans ?? []) : [];
+  if (addonPlans.length > 0 && d.planOf) {
+    const plan = await d.planOf(tenantId).catch(() => null);
+    if (plan && !addonPlans.includes(plan)) throw new PanelRequestError(409, "invalid_state", "Esa ampliación no es para tu plan actual");
   }
 
   const company = (await d.crm.list("companies", {}, { desc: true, limit: 5000 })).find((c) => c.tenantId === tenantId) ?? null;
@@ -167,7 +174,7 @@ function requireCore(req: Request, res: Response, next: NextFunction) {
 }
 
 /** Rutas del Core (montar bajo /commerce). */
-export function createPanelRequestsRouter(d: { site: () => Promise<SiteDocument>; requests: WebRequestService; crm: CrmStore; internalTenants?: ReadonlySet<string>; implementations?: Pick<ImplementationStore, "openFor"> | null }): Router {
+export function createPanelRequestsRouter(d: { site: () => Promise<SiteDocument>; requests: WebRequestService; crm: CrmStore; internalTenants?: ReadonlySet<string>; implementations?: Pick<ImplementationStore, "openFor"> | null; planOf?: ((tenantId: string) => Promise<string | null>) | null }): Router {
   const r = express.Router();
   r.post("/tenants/:tenantId/requests", requireCore, (req: Request, res: Response) => {
     res.setHeader("Cache-Control", "no-store");
@@ -175,7 +182,7 @@ export function createPanelRequestsRouter(d: { site: () => Promise<SiteDocument>
     const b = panelRequestBody.safeParse(req.body);
     if (!t.success || !b.success) return void res.status(400).json({ error: "invalid_request", message: b.success ? "tenantId" : b.error.issues.map((i) => i.path.join(".") || i.message).join(", ") });
     d.site()
-      .then((site) => receivePanelRequest({ site, internal: !!d.internalTenants?.has(t.data), requests: d.requests, crm: d.crm, implementations: d.implementations ?? null }, t.data, b.data))
+      .then((site) => receivePanelRequest({ site, internal: !!d.internalTenants?.has(t.data), requests: d.requests, crm: d.crm, implementations: d.implementations ?? null, planOf: d.planOf ?? null }, t.data, b.data))
       .then((x) => void res.status(x.outcome === "created" ? 201 : 200).json({ request: x }))
       .catch((e) => {
         if (e instanceof PanelRequestError) return void res.status(e.status).json({ error: e.code, message: e.message });

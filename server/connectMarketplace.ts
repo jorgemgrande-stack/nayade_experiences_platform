@@ -17,7 +17,7 @@ import type { ConnectGalleryItem, ConnectImage, ConnectPrice, ConnectSheet } fro
 import type { ConnectActivation } from "../shared/connectShowcase";
 import { isNetLegacyExtension, netProductOf, netProductOfLegacy, type NetArea, type NetSegment } from "../shared/netProducts";
 import { netAvailabilitySplit, offerSaleKind } from "../shared/netOffer";
-import { connectAssistedOf } from "../shared/connectAssisted";
+import { assistedRegistryOf } from "../shared/addonAssisted";
 
 
 /** Producto tal como llega del canal: lo de siempre y, opcionalmente, la ficha y los precios aprobados. */
@@ -196,8 +196,9 @@ export function buildConnectCatalog(
   return shownItems.map((item): ConnectItem => {
     const np = netProductOf(item.key);
     // Connect de contratación asistida (12/11/2026): se contrata aunque el catálogo diga «próximamente» o «en
-    // preparación» (lo pendiente va como «en implantación»). Disponible, retirado o sin publicar: regla de siempre
-    const assistedConnect = item.commercialStatus === "available" || ["unpublished", "retired"].includes(String(item.commercialStatus)) ? null : connectAssistedOf(item.key);
+    // preparación» (lo pendiente va como «en implantación»). Disponible, retirado o sin publicar: regla de siempre.
+    // Las ampliaciones de capacidad del Core, igual (13/11/2026, shared/addonAssisted.ts)
+    const assistedConnect = item.commercialStatus === "available" || ["unpublished", "retired"].includes(String(item.commercialStatus)) ? null : assistedRegistryOf(item.key);
     const legacyDecl = isLegacy(item) ? (legacyOf(item.legacy) ?? (netProductOfLegacy(item.key) ? { replacedBy: netProductOfLegacy(item.key)!.key } : null)) : null;
     const successor = legacyDecl ? { key: legacyDecl.replacedBy, name: netProductOf(legacyDecl.replacedBy)?.name ?? productName(legacyDecl.replacedBy) } : null;
     const seed = seedOf(item.key);

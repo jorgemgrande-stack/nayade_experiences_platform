@@ -19,11 +19,14 @@
  */
 import { PRODUCT_SPECS } from "../catalog/commercial/specs";
 import { netProductOf, type NetArea } from "../../shared/netProducts";
-import { connectAssistedOf } from "../../shared/connectAssisted";
+import { addonAssistedOf, assistedRegistryOf } from "../../shared/addonAssisted";
 
-/** Producto con plantilla propia: Net de empresa o Elephant Connect de contratación asistida (12/11/2026). */
+/**
+ * Producto con plantilla propia: Net de empresa, Elephant Connect de contratación asistida (12/11/2026) o ampliación de
+ * capacidad del Core (13/11/2026).
+ */
 type TemplateProduct = { key: string; name: string; areas: NetArea[]; note?: string };
-const connectTemplate = (key: string): TemplateProduct | null => connectAssistedOf(key);
+const connectTemplate = (key: string): TemplateProduct | null => assistedRegistryOf(key);
 import type { MilestoneKind } from "./store";
 
 export interface ChecklistItem {
@@ -71,6 +74,16 @@ export function templateFor(solutionKey: string): ChecklistTemplate {
   const net = (SECTOR_TEMPLATE_KEYS as readonly string[]).includes(solutionKey) ? netProductOf(solutionKey) : null;
   const p: TemplateProduct | null = net ?? connectTemplate(solutionKey);
   if (!p) return GENERIC_TEMPLATE;
+  // Ampliación de capacidad (13/11/2026): no hay entorno que preparar; se confirman las unidades y se comprueba que el
+  // límite ampliado llega al panel tras la aceptación del contrato
+  if (addonAssistedOf(solutionKey)) {
+    const addonItems: ChecklistItem[] = [
+      { title: t200(`Confirmar con el cliente las unidades de ${p.name}`), kind: "milestone", required: true, section: "configuracion" },
+      ...features(p, "available").map((f): ChecklistItem => ({ title: t200(`Comprobar: ${f.label}`), kind: "check", required: true, section: "comprobaciones", note: f.area })),
+      { title: "Comprobar en el panel del cliente el límite ampliado tras la aceptación del contrato", kind: "check", required: true, section: "comprobaciones" },
+    ];
+    return { key: p.key, name: `Implantación de ${p.name}`, generic: false, items: addonItems };
+  }
   const items: ChecklistItem[] = [
     { title: `Reunión de arranque de ${p.name} con el cliente`, kind: "milestone", required: true, section: "configuracion" },
     ...requirementsOf(p.key).map((r): ChecklistItem => ({ title: t200(r), kind: "milestone", required: true, section: "configuracion" })),
@@ -108,7 +121,8 @@ export function netCommitmentsText(key: string): string | null {
   const lines: string[] = [];
   lines.push(`Compromisos de implantación de ${p.name}.`);
   const req = requirementsOf(key);
-  lines.push(`Alcance de la implantación: Big Elephant prepara el entorno con el cliente (reunión de arranque, ${req.length ? `${req.map((r) => r.replace(/\.$/, "")).join("; ")}; ` : ""}carga de los datos iniciales, formación del equipo y validación del recorrido completo) antes de ponerlo en marcha.`);
+  if (addonAssistedOf(key)) lines.push("Alcance: al aceptar el contrato, Big Elephant aplica las unidades contratadas a los límites de la empresa; no requiere migración de datos.");
+  else lines.push(`Alcance de la implantación: Big Elephant prepara el entorno con el cliente (reunión de arranque, ${req.length ? `${req.map((r) => r.replace(/\.$/, "")).join("; ")}; ` : ""}carga de los datos iniciales, formación del equipo y validación del recorrido completo) antes de ponerlo en marcha.`);
   const ready = features(p, "available");
   if (ready.length) lines.push(`Disponible desde la puesta en marcha: ${ready.map((f) => f.label).join(", ")}.`);
   const soon = features(p, "coming_soon");
