@@ -654,3 +654,14 @@ html:not(.dark) select {
     transform-origin: var(--mx, 50%) var(--my, 50%);
   }
 }
+
+/* Móvil con «foto entera, arriba»: la foto se ve completa a todo el ancho y se desvanece hacia el contenido */
+@media (max-width: 767px) {
+  .qs-fitw {
+    bottom: auto;
+    height: auto;
+    transform: none;
+    -webkit-mask-image: linear-gradient(to bottom, #000 70%, transparent);
+    mask-image: linear-gradient(to bottom, #000 70%, transparent);
+  }
+}

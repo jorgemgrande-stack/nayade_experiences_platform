@@ -10,7 +10,7 @@ import { sanitizeRichHtml } from "./htmlSanitize";
 import { renderSiteTokens, type SiteTokenData } from "./templates/starterSite";
 import {
   ANCHOR_RE, BLOCK_ALIGNS, BLOCK_ANIMATIONS, BLOCK_BACKGROUNDS, BLOCK_BORDERS, BLOCK_FONTS, BLOCK_GRADIENTS, BLOCK_HEADING_COLORS, BLOCK_HEADING_SIZES,
-  BLOCK_BG_MOBILES, BLOCK_CONTENT_WIDTHS, BLOCK_CONTENT_YS, BLOCK_MARGINS, BLOCK_MIN_HEIGHTS, BLOCK_OVERLAY_DIRS, BLOCK_MOBILE_ALIGNS, BLOCK_MOBILE_SPACINGS, BLOCK_OVERLAYS, BLOCK_RADII, BLOCK_SHADOWS, BLOCK_SPACINGS, BLOCK_TEXT_SIZES, BLOCK_TYPES,
+  BLOCK_BG_FITS, BLOCK_BG_MOBILES, BLOCK_CONTENT_WIDTHS, BLOCK_CONTENT_YS, BLOCK_MARGINS, BLOCK_MIN_HEIGHTS, BLOCK_OVERLAY_DIRS, BLOCK_MOBILE_ALIGNS, BLOCK_MOBILE_SPACINGS, BLOCK_OVERLAYS, BLOCK_RADII, BLOCK_SHADOWS, BLOCK_SPACINGS, BLOCK_TEXT_SIZES, BLOCK_TYPES,
   blockLabel, DEFAULT_BLOCK_STYLE, defaultBlockData, DEVICES, isDefaultStyle, newBlockId, NOT_NESTABLE, PAGE_LIMITS, SECTION_MAX_DEPTH,
   sectionColumnCount, type BlockDataMap, type BlockStyle, type BlockType, type GalleryImage, type PageBlock,
 } from "../../shared/pageBlocks";
@@ -210,6 +210,7 @@ export function normalizeStyle(v: unknown): BlockStyle | undefined {
     bgXM: clampInt(v.bgXM, 0, 100, 50),
     bgYM: clampInt(v.bgYM, 0, 100, 50),
     bgZoomM: clampInt(v.bgZoomM, 100, 250, 100),
+    bgFitM: oneOf(v.bgFitM, BLOCK_BG_FITS, "cover"),
   };
   // Degradado, imagen y capa solo se guardan con su fondo
   if (style.background !== "gradient") style.gradient = DEFAULT_BLOCK_STYLE.gradient;
@@ -227,6 +228,7 @@ export function normalizeStyle(v: unknown): BlockStyle | undefined {
     style.bgXM = DEFAULT_BLOCK_STYLE.bgXM;
     style.bgYM = DEFAULT_BLOCK_STYLE.bgYM;
     style.bgZoomM = DEFAULT_BLOCK_STYLE.bgZoomM;
+    style.bgFitM = DEFAULT_BLOCK_STYLE.bgFitM;
   }
   if (style.minHeight !== "custom") style.minHeightPx = DEFAULT_BLOCK_STYLE.minHeightPx;
   return isDefaultStyle(style) ? undefined : style;

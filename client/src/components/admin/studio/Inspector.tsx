@@ -653,6 +653,16 @@ function StyleEditor({ style, setStyle, pro, part }: { style: BlockStyle; setSty
                   <RangeField label="Móvil · posición horizontal" value={style.bgXM} min={0} max={100} step={1} unit="%" onChange={(n) => setStyle({ bgXM: n })} />
                   <RangeField label="Móvil · posición vertical" value={style.bgYM} min={0} max={100} step={1} unit="%" onChange={(n) => setStyle({ bgYM: n })} />
                   <RangeField label="Móvil · ampliación" value={style.bgZoomM} min={100} max={250} step={5} unit="%" onChange={(n) => setStyle({ bgZoomM: n })} />
+                  <Segmented
+                    label="Móvil · ajuste de la foto"
+                    value={style.bgFitM}
+                    options={[
+                      { value: "cover", label: "Cubrir todo el bloque" },
+                      { value: "width", label: "Entera, arriba" },
+                    ]}
+                    onChange={(v) => setStyle({ bgFitM: v as BlockStyle["bgFitM"] })}
+                  />
+                  {style.bgFitM === "width" && <p className="text-xs text-muted-foreground">La foto se ve entera a todo el ancho, en la parte alta, y se desvanece hacia abajo. Con una altura mínima en el móvil, el texto queda debajo sin taparla.</p>}
                 </>
               )}
             </div>
