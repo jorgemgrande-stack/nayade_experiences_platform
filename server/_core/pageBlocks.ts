@@ -139,6 +139,8 @@ function normalizeField(f: FieldDef, v: unknown, initial: unknown): unknown {
       return oneOf(v, FEATURE_ICON_KEYS, "check");
     case "category":
       return typeof v === "string" && /^[a-z0-9-]{1,64}$/.test(v) ? v : "";
+    case "product":
+      return typeof v === "string" && /^[a-z0-9-]{1,128}$/.test(v) ? v : "";
     case "fieldRef":
     case "fieldValue":
       return str(v, 200);
@@ -345,6 +347,9 @@ export function blocksToHtml(blocks: PageBlock[]): string {
         break;
       case "blog_posts":
         parts.push(h(2, b.data.title), b.data.intro ? `<p>${esc(b.data.intro)}</p>` : "", link("/blog", b.data.buttonLabel));
+        break;
+      case "upcoming_dates":
+        parts.push(h(2, b.data.title), b.data.intro ? `<p>${esc(b.data.intro)}</p>` : "");
         break;
       case "slideshow":
         b.data.slides.forEach((s, n) =>

@@ -145,6 +145,8 @@ export interface ProductFormInput {
   unitCapacity: string;
   minPersons: string;
   maxPersons: string;
+  /** E-6: sin precio fijo (bajo petición, próximamente) el precio no es obligatorio */
+  offerMode?: string;
   discountPercent: string;
 }
 
@@ -155,8 +157,11 @@ export function validateProductForm(f: ProductFormInput, labels: { location: str
   if (!f.title.trim()) out.title = "Indica el nombre.";
   else if (f.title.trim().length < 3) out.title = "El nombre debe tener al menos 3 caracteres.";
   const price = num(f.basePrice);
-  if (price === null) out.basePrice = "Indica el precio.";
-  else if (!Number.isFinite(price) || price < 0) out.basePrice = "El precio debe ser un número igual o mayor que 0.";
+  const priced = !f.offerMode || f.offerMode === "fixed";
+  if (priced) {
+    if (price === null) out.basePrice = "Indica el precio.";
+    else if (!Number.isFinite(price) || price < 0) out.basePrice = "El precio debe ser un número igual o mayor que 0.";
+  }
   if (!f.categoryId) out.categoryId = "Elige una categoría.";
   if (!f.locationId) out.locationId = `Elige ${labels.location}.`;
   const min = num(f.minPersons);

@@ -210,6 +210,8 @@ d("ejecutor de migraciones contra MySQL real", () => {
     await t.pool.query("CREATE TABLE invoices (id INT PRIMARY KEY)");
     await t.pool.query("CREATE TABLE system_settings (id INT PRIMARY KEY, `key` VARCHAR(128) NOT NULL, value TEXT NULL)");
     await t.pool.query("CREATE TABLE site_settings (id INT PRIMARY KEY, `key` VARCHAR(128) NOT NULL, value TEXT NULL)");
+    // 0069 añade offer_mode a `experiences`: basta con que exista (0070 solo crea tablas nuevas, sin claves foráneas)
+    await t.pool.query("CREATE TABLE experiences (id INT PRIMARY KEY)");
     const args = (cmd: string) => [cmd, "--dir", "db/migrations", "--apply", "--confirm-database", t.db];
     const up = await cli(t.url, args("up"));
     expect(up.status, up.stderr).toBe(0);

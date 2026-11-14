@@ -4,7 +4,7 @@ import { usePanelSubscription } from "@/hooks/usePanelSubscription";
 import { useVocabulary } from "@/lib/vocabulary";
 import { PanelError, errorMessage } from "@/components/admin/PanelStates";
 import { validateProductForm } from "@shared/formValidation";
-import { Plus, Pencil, Trash2, Star, Eye, EyeOff, Search, ImageIcon, X, MoreVertical, Copy, PowerOff, Power, ChevronUp, ChevronDown } from "lucide-react";
+import { Plus, Pencil, Trash2, Star, Eye, EyeOff, Search, ImageIcon, X, MoreVertical, Copy, PowerOff, Power, ChevronUp, ChevronDown, CalendarDays } from "lucide-react";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -23,8 +23,10 @@ import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import TimeSlotsPanel from "@/components/TimeSlotsPanel";
+import { EditionsPanel, UpcomingEditionsView } from "./EditionsPanel";
 import { TONE_BADGE, TONE_SURFACE } from "@/lib/panelTones";
 import { newProductDefaults, presentialSaleAllowed } from "@shared/catalogDefaults";
+import { DEFAULT_REQUEST_CTA, MAX_REQUEST_CTA_LENGTH, OFFER_MODES, OFFER_MODE_HELP, OFFER_MODE_LABELS, offerModeOf, type OfferMode } from "@shared/offerMode";
 
 const difficultyColors: Record<string, string> = {
   facil: TONE_BADGE.success,
@@ -45,6 +47,7 @@ type ExpForm = {
   categoryId: string; locationId: string;
   image1: string; image2: string; image3: string; image4: string;
   basePrice: string; duration: string; minPersons: string; maxPersons: string;
+  offerMode: OfferMode; requestCtaLabel: string;
   pricingType: string; unitCapacity: string; maxUnits: string;
   difficulty: string; isFeatured: boolean; isActive: boolean; isPublished: boolean; isPresentialSale: boolean;
   includes: string[]; excludes: string[];
@@ -64,6 +67,7 @@ const emptyForm: ExpForm = {
   categoryId: "", locationId: "",
   image1: "", image2: "", image3: "", image4: "",
   basePrice: "", duration: "", minPersons: "1", maxPersons: "",
+  offerMode: "fixed", requestCtaLabel: "",
   pricingType: "per_person", unitCapacity: "", maxUnits: "",
   difficulty: "facil", isFeatured: false, isActive: true, isPublished: true, isPresentialSale: false,
   includes: [], excludes: [],
@@ -160,6 +164,9 @@ export default function ExperiencesManager() {
   const [cloneName, setCloneName] = useState("");
   const [deleteTarget, setDeleteTarget] = useState<{ id: number; title: string } | null>(null);
   const [localOrder, setLocalOrder] = useState<number[]>([]);
+  // E-4: convocatorias de un producto y vista de las próximas de toda la tienda
+  const [editionsFor, setEditionsFor] = useState<{ id: number; title: string } | null>(null);
+  const [view, setView] = useState<"productos" | "convocatorias">("productos");
 
   const { data: experiences, refetch, isLoading: listLoading, isError: listIsError, error: listError } = trpc.products.getAll.useQuery();
 
@@ -261,6 +268,8 @@ export default function ExperiencesManager() {
       image3: String(exp.image3 ?? ""),
       image4: String(exp.image4 ?? ""),
       basePrice: String(exp.basePrice ?? ""),
+      offerMode: offerModeOf(exp),
+      requestCtaLabel: String((exp as Record<string, unknown>).requestCtaLabel ?? ""),
       duration: String(exp.duration ?? ""),
       minPersons: String(exp.minPersons ?? "1"),
       maxPersons: String(exp.maxPersons ?? ""),
@@ -322,7 +331,10 @@ export default function ExperiencesManager() {
       image2: form.image2 || undefined,
       image3: form.image3 || undefined,
       image4: form.image4 || undefined,
-      basePrice: form.basePrice,
+      // E-6: sin precio fijo no se manda precio (el servidor guarda 0)
+      basePrice: form.offerMode === "fixed" ? form.basePrice : "",
+      offerMode: form.offerMode,
+      requestCtaLabel: form.offerMode === "fixed" ? "" : form.requestCtaLabel.trim(),
       duration: form.duration || undefined,
       minPersons: form.minPersons ? parseInt(form.minPersons) : undefined,
       maxPersons: form.maxPersons ? parseInt(form.maxPersons) : undefined,
@@ -384,7 +396,15 @@ export default function ExperiencesManager() {
 
   return (
     <AdminLayout title={isNewCompany ? "Productos y servicios" : "Gestión de Experiencias"}>
-      <div className="flex flex-wrap items-center justify-between gap-3 mb-6">
+      <div role="tablist" aria-label="Vista" className="mb-4 inline-flex rounded-lg bg-muted p-1 text-sm">
+        {([["productos", isNewCompany ? "Productos" : "Experiencias"], ["convocatorias", "Próximas convocatorias"]] as const).map(([k, label]) => (
+          <button key={k} type="button" role="tab" aria-selected={view === k} onClick={() => setView(k)} className={cn("rounded-md px-3 py-1.5 font-medium transition-colors", view === k ? "bg-background text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground")}>
+            {label}
+          </button>
+        ))}
+      </div>
+      {view === "convocatorias" && <UpcomingEditionsView onManage={(id, title) => setEditionsFor({ id, title })} />}
+      <div className={cn("flex flex-wrap items-center justify-between gap-3 mb-6", view === "convocatorias" && "hidden")}>
         <div className="flex items-center gap-3 min-w-0 flex-1 sm:flex-none">
           <div className="relative w-full sm:w-64">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" aria-hidden="true" />
@@ -404,7 +424,7 @@ export default function ExperiencesManager() {
       </div>
 
       {/* Table */}
-      <div className="bg-card rounded-2xl border border-border/50 overflow-hidden">
+      <div className={cn("bg-card rounded-2xl border border-border/50 overflow-hidden", view === "convocatorias" && "hidden")}>
         <div className="overflow-x-auto">
           <table className="w-full min-w-[640px]">
             <caption className="sr-only">{isNewCompany ? "Listado de productos y servicios" : "Listado de experiencias"}</caption>
@@ -498,7 +518,9 @@ export default function ExperiencesManager() {
                       </div>
                     </td>
                     <td className="px-4 py-4">
-                      <span className="font-semibold text-foreground">{parseFloat(exp.basePrice).toFixed(0)}€</span>
+                      {offerModeOf(exp) === "fixed"
+                        ? <span className="font-semibold text-foreground">{parseFloat(exp.basePrice).toFixed(0)}€</span>
+                        : <Badge variant="outline" className={TONE_BADGE.info}>{OFFER_MODE_LABELS[offerModeOf(exp)]}</Badge>}
                     </td>
                     {showDifficulty && (
                       <td className="px-4 py-4">
@@ -539,6 +561,9 @@ export default function ExperiencesManager() {
                             <DropdownMenuItem onClick={() => { setCloneModal({ id: exp.id, originalName: exp.title }); setCloneName(""); }}>
                               <Copy className="w-3.5 h-3.5 mr-2" /> Clonar
                             </DropdownMenuItem>
+                            <DropdownMenuItem onClick={() => setEditionsFor({ id: exp.id, title: exp.title })}>
+                              <CalendarDays className="w-3.5 h-3.5 mr-2" /> Convocatorias
+                            </DropdownMenuItem>
                             <DropdownMenuSeparator />
                             <DropdownMenuItem
                               className="text-danger focus:text-danger"
@@ -558,12 +583,22 @@ export default function ExperiencesManager() {
         </div>
       </div>
 
+      <EditionsPanel experienceId={editionsFor?.id ?? null} title={editionsFor?.title ?? ""} open={!!editionsFor} onOpenChange={(o) => !o && setEditionsFor(null)} />
+
       {/* Modal */}
       <Dialog open={showModal} onOpenChange={setShowModal}>
         <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="font-display">{editingId ? `Editar ${noun}` : isNewCompany ? "Nuevo producto o servicio" : "Nueva Experiencia"}</DialogTitle>
           </DialogHeader>
+          {editingId && (
+            <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg bg-muted/40 px-3 py-2 text-sm">
+              <span className="text-muted-foreground">¿Tiene fechas y plazas, como una formación o un retiro?</span>
+              <Button type="button" size="sm" variant="outline" onClick={() => setEditionsFor({ id: editingId, title: form.title })}>
+                <CalendarDays className="w-3.5 h-3.5 mr-1.5" aria-hidden="true" /> Convocatorias
+              </Button>
+            </div>
+          )}
           <form onSubmit={handleSubmit} noValidate className="space-y-5 mt-2">
             <p className="text-xs text-muted-foreground">Los campos marcados con * son obligatorios.</p>
             {serverError && (
@@ -595,11 +630,29 @@ export default function ExperiencesManager() {
                 <Input id="slug" value={form.slug} onChange={(e) => setForm({ ...form, slug: e.target.value })} className="mt-1" placeholder="Se genera a partir del nombre" aria-describedby="slug-hint" />
                 <p id="slug-hint" className="text-xs text-muted-foreground mt-1">Opcional. Solo letras minúsculas, números y guiones.</p>
               </div>
-              <div>
-                <Label htmlFor="basePrice">{isNewCompany ? "Precio (€, impuestos incluidos)" : "Precio Base (€)"} *</Label>
-                <Input id="basePrice" type="number" inputMode="decimal" min="0" step="0.01" value={form.basePrice} onChange={(e) => setForm({ ...form, basePrice: e.target.value })} aria-required="true" className="mt-1" {...errProps("basePrice", "basePrice")} />
-                <ErrorText k="basePrice" id="basePrice" />
+              <div className="sm:col-span-2">
+                <Label htmlFor="offerMode">Cómo se ofrece</Label>
+                <Select value={form.offerMode} onValueChange={(v) => setForm({ ...form, offerMode: v as OfferMode })}>
+                  <SelectTrigger id="offerMode" className="mt-1" aria-describedby="offerMode-hint"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    {OFFER_MODES.map((m) => <SelectItem key={m} value={m}>{OFFER_MODE_LABELS[m]}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+                <p id="offerMode-hint" className="text-xs text-muted-foreground mt-1">{OFFER_MODE_HELP[form.offerMode]}</p>
               </div>
+              {form.offerMode === "fixed" ? (
+                <div>
+                  <Label htmlFor="basePrice">{isNewCompany ? "Precio (€, impuestos incluidos)" : "Precio Base (€)"} *</Label>
+                  <Input id="basePrice" type="number" inputMode="decimal" min="0" step="0.01" value={form.basePrice} onChange={(e) => setForm({ ...form, basePrice: e.target.value })} aria-required="true" className="mt-1" {...errProps("basePrice", "basePrice")} />
+                  <ErrorText k="basePrice" id="basePrice" />
+                </div>
+              ) : (
+                <div>
+                  <Label htmlFor="requestCtaLabel">Texto del botón de la web</Label>
+                  <Input id="requestCtaLabel" value={form.requestCtaLabel} maxLength={MAX_REQUEST_CTA_LENGTH} onChange={(e) => setForm({ ...form, requestCtaLabel: e.target.value })} className="mt-1" placeholder={DEFAULT_REQUEST_CTA} aria-describedby="requestCta-hint" />
+                  <p id="requestCta-hint" className="text-xs text-muted-foreground mt-1">Opcional. Sin precio ni compra: quien pulse el botón te deja sus datos y te llega a tu CRM.</p>
+                </div>
+              )}
               <div>
                 <Label htmlFor="categoryId">Categoría *</Label>
                 <Select value={form.categoryId} onValueChange={(v) => setForm({ ...form, categoryId: v })}>

@@ -22,6 +22,8 @@ export type FieldDef =
   | { key: string; label: string; kind: "select"; options: ReadonlyArray<{ value: string; label: string }>; advanced?: boolean }
   | { key: string; label: string; kind: "icon"; advanced?: boolean }
   | { key: string; label: string; kind: "category"; advanced?: boolean }
+  /** Un producto de la tienda (se guarda su dirección, «slug»; vacío = todos) */
+  | { key: string; label: string; kind: "product"; advanced?: boolean }
   | { key: string; label: string; kind: "images"; max: number; advanced?: boolean }
   | { key: string; label: string; kind: "list"; max: number; itemLabel: string; fields: FieldDef[]; newItem: Record<string, string>; advanced?: boolean }
   /** Dentro de una lista: otro elemento anterior de la misma lista (por su pregunta), del que depende este */
@@ -380,6 +382,14 @@ export const MODULES: readonly ModuleDef[] = [
     { key: "buttonLabel", label: "Botón a la tienda (opcional)", kind: "text", max: 80, inline: true },
     { key: "layout", label: "Presentación", kind: "select", options: LAYOUT_GRID_CAROUSEL },
   ], { capability: "shop-catalog", note: "Muestra los productos publicados en tu tienda, con su foto y su precio reales. Cuando cambias un producto en el catálogo, la web lo refleja sola." }),
+  mod("upcoming_dates", "comercio", "calendar", "fechas convocatorias ediciones calendario plazas inscripcion cursos formacion retiros talleres proximas", [
+    { key: "title", label: "Título", kind: "text", max: 200, inline: true },
+    { key: "intro", label: "Introducción (opcional)", kind: "text", max: 500, multiline: true, inline: true },
+    { key: "productSlug", label: "De qué producto", kind: "product" },
+    { key: "categorySlug", label: "O de qué categoría", kind: "category", advanced: true },
+    { key: "limit", label: "Cuántas fechas", kind: "select", options: [{ value: "3", label: "3" }, { value: "6", label: "6" }, { value: "9", label: "9" }, { value: "12", label: "12" }] },
+    { key: "emptyText", label: "Texto si no hay fechas (opcional)", kind: "text", max: 300, multiline: true, hint: "Si lo dejas vacío, el bloque no se muestra mientras no haya fechas próximas." },
+  ], { capability: "shop-catalog", note: "Muestra las próximas convocatorias reales de tus productos (las que creas en Productos › Convocatorias). Cada fecha lleva su botón para solicitar plaza; la solicitud llega a tu CRM y tú la confirmas." }),
   mod("blog_posts", "contenido", "blog", "blog entradas noticias articulos novedades", [
     { key: "title", label: "Título", kind: "text", max: 200, inline: true },
     { key: "intro", label: "Introducción (opcional)", kind: "text", max: 500, multiline: true, inline: true },
@@ -501,7 +511,7 @@ export const LIBRARY_SECTIONS: readonly LibraryCategory[] = [
   { key: "servicios", label: "Servicios", types: ["features", "cards", "columns"], presets: ["servicios"] },
   { key: "galerias", label: "Galerías", types: ["gallery", "carousel"], presets: [] },
   { key: "opiniones", label: "Opiniones y confianza", types: ["testimonials", "logos", "stats"], presets: ["opiniones-carrusel", "confianza"] },
-  { key: "precios", label: "Precios y tienda", types: ["pricing", "products"], presets: ["tienda"] },
+  { key: "precios", label: "Precios y tienda", types: ["pricing", "products", "upcoming_dates"], presets: ["tienda"] },
   { key: "contacto", label: "Contacto", types: ["cta"], presets: ["contacto"] },
   { key: "otras", label: "Otras secciones", types: ["faq", "blog_posts"], presets: [] },
 ];

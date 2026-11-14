@@ -24,8 +24,8 @@ const inner = (b: PageBlock) => (b.type === "modal" ? b.data.columns[0].blocks :
 
 describe("módulo modal: esquema y valores iniciales", () => {
   it("es un tipo de bloque más, añadido al final sin reordenar los anteriores", () => {
-    expect(BLOCK_TYPES[BLOCK_TYPES.length - 1]).toBe("modal");
-    expect(BLOCK_TYPES.indexOf("section")).toBe(BLOCK_TYPES.length - 2);
+    // «modal» sigue a «section»; tras él solo se añaden tipos nuevos (p. ej. upcoming_dates, E-4), sin reordenar
+    expect(BLOCK_TYPES.indexOf("modal")).toBe(BLOCK_TYPES.indexOf("section") + 1);
     expect(BLOCK_TYPES.slice(0, 8)).toEqual(["hero", "text", "image", "gallery", "button", "columns", "contact_form", "separator"]);
     expect(moduleDef("modal")).toBeTruthy();
   });
