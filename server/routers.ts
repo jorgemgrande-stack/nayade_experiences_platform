@@ -284,6 +284,23 @@ async function pageBuilderCall<T>(fn: () => Promise<T>): Promise<T> {
   }
 }
 
+/** Multidioma (E-1): ejecuta contra la base de datos de la empresa en curso; el error de validación es un BAD_REQUEST. */
+async function i18nCall<T>(fn: (repo: import("./i18nService").I18nRepo) => Promise<T>): Promise<T> {
+  const [{ I18nError }, { sqlI18nRepo }] = await Promise.all([import("./i18nService"), import("./i18nSqlRepo")]);
+  try {
+    return await fn(sqlI18nRepo());
+  } catch (e) {
+    if (e instanceof I18nError) throw new TRPCError({ code: "BAD_REQUEST", message: e.message });
+    throw e;
+  }
+}
+
+/** Bloques de referencia del principal: lo publicado o, si aún no hay, lo que abre su editor. */
+async function principalBlocksFor(slug: string) {
+  const { getPublishedBlocks, getPageEditor } = await import("./pageBuilderDb");
+  return (await getPublishedBlocks(slug)) ?? (await getPageEditor(slug))?.blocks ?? [];
+}
+
 /**
  * Extras de una reserva online.
  * No existe un catálogo de extras en servidor, así que el precio de un extra NO puede
@@ -430,7 +447,7 @@ export const appRouter = router({
 
     // Página estática del tenant, con HTML saneado (lista blanca)
     getTenantPage: publicProcedure
-      .input(z.object({ slug: z.string().regex(/^[a-z0-9-]{1,64}$/) }))
+      .input(z.object({ slug: z.string().regex(/^[a-z0-9-]{1,64}$/), locale: z.string().max(35).optional() }))
       .query(async ({ input }) => {
         // Portada y textos legales iniciales de la empresa (se crean una vez si faltan; solo multiempresa)
         const { ensureStarterPages, readSiteTokenData } = await import("./starterSiteDb");
@@ -439,9 +456,14 @@ export const appRouter = router({
         if (!db) return null;
         const { staticPages } = await import("../drizzle/schema");
         const { sanitizeRichHtml } = await import("./_core/htmlSanitize");
+        // Multidioma (E-1): solo con `locale`; sin él, todo lo de abajo es exactamente lo de siempre
+        const { resolveTenantPageLocale } = await import("./i18nPublic");
+        const i18n = input.locale ? await resolveTenantPageLocale(input.slug, input.locale) : null;
+        if (i18n?.kind === "notFound") return null;
+        if (i18n?.kind === "redirect") return { slug: "", title: "", html: "", metaTitle: null, metaDescription: null, blocks: null, redirectTo: i18n.to };
         // «inicio» es la portada: la página que la empresa haya elegido como tal (Web › Páginas)
         const { resolvePublicSlug, getPublishedBlocks } = await import("./pageBuilderDb");
-        const slug = await resolvePublicSlug(input.slug);
+        const slug = await resolvePublicSlug(i18n?.principalSlug ?? input.slug);
         const [row] = await db.select().from(staticPages).where(eq(staticPages.slug, slug)).limit(1);
         if (!row || !row.isPublished) return null;
         // Texto legal de relleno de la plantilla, sin completar: nunca se publica en nombre de la empresa
@@ -453,7 +475,21 @@ export const appRouter = router({
         // Página hecha con el constructor: sus bloques publicados (saneados), con los datos de la empresa
         const { renderBlockTokens } = await import("./_core/pageBlocks");
         const blocks = await getPublishedBlocks(row.slug);
+        // Página traducida y validada: su propio contenido, nunca mezclado con el del principal
+        if (i18n?.kind === "translated") {
+          const { renderBlockTokens: renderTranslated } = await import("./_core/pageBlocks");
+          return {
+            slug: row.slug,
+            title: renderSiteTokens(i18n.page.title, tokens),
+            html: "",
+            metaTitle: i18n.page.metaTitle ? renderSiteTokens(i18n.page.metaTitle, tokens) : null,
+            metaDescription: i18n.page.metaDescription ? renderSiteTokens(i18n.page.metaDescription, tokens) : null,
+            blocks: renderTranslated(i18n.page.blocks ?? [], tokens),
+            i18n: { locale: i18n.locale, htmlLang: i18n.htmlLang, fallback: false },
+          };
+        }
         return {
+          ...(i18n?.kind === "fallback" ? { i18n: { locale: i18n.locale, htmlLang: i18n.htmlLang, fallback: true } } : {}),
           slug: row.slug,
           title: renderSiteTokens(row.title, tokens),
           html: renderSiteTokens(sanitizeRichHtml(plainTextToHtml(row.content ?? "")), tokens),
@@ -480,14 +516,39 @@ export const appRouter = router({
     }),
 
     getMenuItems: publicProcedure
-      .input(z.object({ zone: z.enum(["header", "footer"]).default("header") }))
+      .input(z.object({ zone: z.enum(["header", "footer"]).default("header"), locale: z.string().max(35).optional() }))
       .query(async ({ input }) => {
         const items = await getAllMenuItems(input.zone);
         // Web de cada empresa: sin enlaces a sus páginas en borrador (p. ej. textos legales aún sin revisar)
         const { isMultiTenant } = await import("./_core/tenant");
         if (!isMultiTenant()) return items;
         const { hideUnpublishedPageLinks } = await import("../shared/tenantNav");
-        return hideUnpublishedPageLinks(items, new Set(await getUnpublishedPageSlugs()));
+        const visible = hideUnpublishedPageLinks(items, new Set(await getUnpublishedPageSlugs()));
+        // Multidioma (E-1): menú del idioma pedido; sin idioma o sin idiomas adicionales, el de siempre
+        if (!input.locale) return visible;
+        const [{ localizeMenu }, { sqlI18nRepo }] = await Promise.all([import("./i18nService"), import("./i18nSqlRepo")]);
+        return localizeMenu(sqlI18nRepo(), visible, input.locale);
+      }),
+
+    /** Idiomas públicos de la web (E-1). Sin idiomas adicionales: `multilingual = false` y nada que mostrar. */
+    getSiteLocales: publicProcedure.query(async () => {
+      const { isMultiTenant } = await import("./_core/tenant");
+      if (!isMultiTenant()) return { multilingual: false, defaultLocale: "es", locales: ["es"] };
+      const [{ getI18nConfig }, { sqlI18nRepo }, { isMultilingual, publicLocales }] = await Promise.all([import("./i18nService"), import("./i18nSqlRepo"), import("../shared/i18n")]);
+      const cfg = await getI18nConfig(sqlI18nRepo());
+      const locales = publicLocales(cfg);
+      return { multilingual: isMultilingual(cfg) && locales.length > 1, defaultLocale: cfg.defaultLocale, locales };
+    }),
+
+    /** Versiones de la página en la ruta dada, para el selector de idioma (enlaces reales, sin origen). */
+    getPageAlternates: publicProcedure
+      .input(z.object({ path: z.string().max(300) }))
+      .query(async ({ input }) => {
+        const { isMultiTenant } = await import("./_core/tenant");
+        if (!isMultiTenant()) return { htmlLang: "es", alternates: [] };
+        const [{ resolveRequest }, { sqlI18nRepo }] = await Promise.all([import("./i18nService"), import("./i18nSqlRepo")]);
+        const r = await resolveRequest(sqlI18nRepo(), input.path, "");
+        return r.kind === "page" ? { htmlLang: r.seo.htmlLang, alternates: r.seo.alternates.filter((a) => a.hreflang !== "x-default") } : { htmlLang: "es", alternates: [] };
       }),
 
     submitLead: publicProcedure
@@ -949,6 +1010,115 @@ export const appRouter = router({
       const { listSitePages } = await import("./pageBuilderDb");
       return listSitePages();
     }),
+
+    // ── Multidioma nativo (E-1, docs/architecture/studio-multidioma.md): idiomas, traducción de páginas y de contenido.
+    // Nada se traduce ni se publica solo: validar es una acción humana explícita.
+    i18nConfig: adminProcedure.query(async () => {
+      const { getI18nConfig } = await import("./i18nService");
+      const { sqlI18nRepo } = await import("./i18nSqlRepo");
+      return getI18nConfig(sqlI18nRepo());
+    }),
+
+    i18nAddLocale: adminProcedure.input(z.object({ locale: z.string().max(35) })).mutation(async ({ input, ctx }) => {
+      const { addLocale } = await import("./i18nService");
+      return i18nCall((repo) => addLocale(repo, input.locale, ctx.user?.name ?? ctx.user?.email ?? null));
+    }),
+
+    i18nSetLocaleValidated: adminProcedure.input(z.object({ locale: z.string().max(35), validated: z.boolean() })).mutation(async ({ input, ctx }) => {
+      const { validateLocale, unvalidateLocale } = await import("./i18nService");
+      return i18nCall((repo) => (input.validated ? validateLocale(repo, input.locale, ctx.user?.name ?? ctx.user?.email ?? null) : unvalidateLocale(repo, input.locale)));
+    }),
+
+    i18nRemoveLocale: adminProcedure.input(z.object({ locale: z.string().max(35) })).mutation(async ({ input }) => {
+      const { removeLocale } = await import("./i18nService");
+      return i18nCall((repo) => removeLocale(repo, input.locale));
+    }),
+
+    i18nSettings: adminProcedure.input(z.object({ fallback: z.enum(["hide", "default"]).optional(), negotiate: z.boolean().optional() }).strict()).mutation(async ({ input }) => {
+      const { updateI18nSettings } = await import("./i18nService");
+      return i18nCall((repo) => updateI18nSettings(repo, input));
+    }),
+
+    /** Estado de una página en cada idioma adicional (conmutador de idioma del editor). */
+    pageTranslations: adminProcedure.input(z.object({ slug: z.string().regex(/^[a-z0-9-]{1,64}$/) })).query(async ({ input }) => {
+      const { pageTranslationStatuses } = await import("./i18nService");
+      return i18nCall(async (repo) => {
+        const page = await repo.principalPageBySlug(input.slug);
+        if (!page) return [];
+        return pageTranslationStatuses(repo, page.id, await principalBlocksFor(input.slug));
+      });
+    }),
+
+    /** Lo que abre el editor de una traducción: su borrador, el principal de referencia y los campos sin traducir. */
+    pageTranslationEditor: adminProcedure.input(z.object({ slug: z.string().regex(/^[a-z0-9-]{1,64}$/), locale: z.string().max(35) })).query(async ({ input }) => {
+      const { untranslatedForPage } = await import("./i18nService");
+      return i18nCall(async (repo) => {
+        const page = await repo.principalPageBySlug(input.slug);
+        if (!page) throw new TRPCError({ code: "NOT_FOUND", message: "La página no existe." });
+        const principalBlocks = await principalBlocksFor(input.slug);
+        const row = await repo.pageTranslation(page.id, input.locale);
+        return {
+          principal: { slug: page.slug, title: page.title, blocks: principalBlocks },
+          translation: row ? { slug: row.slug, title: row.title, metaTitle: row.metaTitle, metaDescription: row.metaDescription, ogImageUrl: row.ogImageUrl, blocks: row.draftBlocks, status: row.status, validatedAt: row.validatedAt, validatedBy: row.validatedBy } : null,
+          untranslated: row?.draftBlocks ? await untranslatedForPage(repo, page.id, input.locale, principalBlocks) : [],
+        };
+      });
+    }),
+
+    savePageTranslation: adminProcedure
+      .input(z.object({
+        slug: z.string().regex(/^[a-z0-9-]{1,64}$/), locale: z.string().max(35),
+        translatedSlug: z.string().max(64).nullable().optional(), title: z.string().max(256),
+        metaTitle: z.string().max(256).nullable().optional(), metaDescription: z.string().max(1000).nullable().optional(), ogImageUrl: z.string().max(1000).nullable().optional(),
+        blocks: z.array(z.unknown()).max(200).optional(),
+      }).strict())
+      .mutation(async ({ input }) => {
+        const { savePageTranslationDraft } = await import("./i18nService");
+        return i18nCall(async (repo) => {
+          const page = await repo.principalPageBySlug(input.slug);
+          if (!page) throw new TRPCError({ code: "NOT_FOUND", message: "La página no existe." });
+          return savePageTranslationDraft(repo, page.id, input.locale, { slug: input.translatedSlug, title: input.title, metaTitle: input.metaTitle, metaDescription: input.metaDescription, ogImageUrl: input.ogImageUrl, blocks: input.blocks }, await principalBlocksFor(input.slug));
+        });
+      }),
+
+    /** Copia los bloques del principal como borrador del idioma (sin traducir ni validar nada). */
+    copyPageFromPrincipal: adminProcedure.input(z.object({ slug: z.string().regex(/^[a-z0-9-]{1,64}$/), locale: z.string().max(35) })).mutation(async ({ input }) => {
+      const { copyFromPrincipal } = await import("./i18nService");
+      return i18nCall(async (repo) => {
+        const page = await repo.principalPageBySlug(input.slug);
+        if (!page) throw new TRPCError({ code: "NOT_FOUND", message: "La página no existe." });
+        return copyFromPrincipal(repo, page.id, input.locale, await principalBlocksFor(input.slug));
+      });
+    }),
+
+    /** Validar = publicar esa traducción. Acción humana, con autor y fecha. */
+    validatePageTranslation: adminProcedure.input(z.object({ slug: z.string().regex(/^[a-z0-9-]{1,64}$/), locale: z.string().max(35), validated: z.boolean() })).mutation(async ({ input, ctx }) => {
+      const { validatePageTranslation, unpublishPageTranslation } = await import("./i18nService");
+      return i18nCall(async (repo) => {
+        const page = await repo.principalPageBySlug(input.slug);
+        if (!page) throw new TRPCError({ code: "NOT_FOUND", message: "La página no existe." });
+        return input.validated ? validatePageTranslation(repo, page.id, input.locale, ctx.user?.name ?? ctx.user?.email ?? null) : unpublishPageTranslation(repo, page.id, input.locale);
+      });
+    }),
+
+    /** Traducciones de menús, ajustes globales, formularios o productos de un idioma. */
+    contentTranslations: adminProcedure.input(z.object({ entityType: z.enum(["menu_item", "setting", "form", "product"]), locale: z.string().max(35) })).query(async ({ input }) => {
+      return i18nCall((repo) => repo.listContentTranslations(input.entityType, input.locale, false));
+    }),
+
+    saveContentTranslation: adminProcedure
+      .input(z.object({ entityType: z.enum(["menu_item", "setting", "form", "product"]), entityKey: z.string().max(190), locale: z.string().max(35), fields: z.record(z.string(), z.string().max(20000)), slug: z.string().max(64).nullable().optional() }).strict())
+      .mutation(async ({ input }) => {
+        const { saveContentTranslationDraft } = await import("./i18nService");
+        return i18nCall((repo) => saveContentTranslationDraft(repo, input));
+      }),
+
+    validateContentTranslation: adminProcedure
+      .input(z.object({ entityType: z.enum(["menu_item", "setting", "form", "product"]), entityKey: z.string().max(190), locale: z.string().max(35) }).strict())
+      .mutation(async ({ input, ctx }) => {
+        const { validateContentTranslation } = await import("./i18nService");
+        return i18nCall((repo) => validateContentTranslation(repo, input.entityType, input.entityKey, input.locale, ctx.user?.name ?? ctx.user?.email ?? null));
+      }),
 
     pageEditor: adminProcedure
       .input(z.object({ slug: z.string().regex(/^[a-z0-9-]{1,64}$/) }))

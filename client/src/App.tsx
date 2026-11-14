@@ -10,7 +10,7 @@ import MaintenanceGate from "./components/MaintenanceGate";
 import { MetaPixelLoader } from "./components/MetaPixelLoader";
 import { GA4Loader } from "./components/GA4Loader";
 import { ThemeProvider } from "./contexts/ThemeContext";
-import { HomeGate, PageOrDefault, SingleOnlyPage, SiteRouteGate, SlugGate, TenantThemeLoader } from "./components/TenantTheme";
+import { HomeGate, LocaleSlugGate, PageOrDefault, SingleOnlyPage, SiteRouteGate, SlugGate, TenantThemeLoader } from "./components/TenantTheme";
 import AdminRouteGate from "./components/admin/AdminRouteGate";
 
 // ── PUBLIC PAGES (carga inmediata — visibles sin autenticación) ──────────────
@@ -68,6 +68,8 @@ const SlideshowManager = lazy(() => import("./pages/admin/cms/SlideshowManager")
 const MenusManager = lazy(() => import("./pages/admin/cms/MenusManager"));
 const PagesManager = lazy(() => import("./pages/admin/cms/PagesManager"));
 const PagePreview = lazy(() => import("./pages/admin/cms/PagePreview"));
+const IdiomasPage = lazy(() => import("./pages/admin/cms/Idiomas"));
+const TraducirPagina = lazy(() => import("./pages/admin/cms/TraducirPagina"));
 const StudioPage = lazy(() => import("./pages/admin/studio/StudioPage"));
 const StudioCanvas = lazy(() => import("./pages/admin/studio/StudioCanvas"));
 const MultimediaManager = lazy(() => import("./pages/admin/cms/MultimediaManager"));
@@ -390,6 +392,8 @@ function Router() {
       <Route path="/admin/cms/slideshow">{() => <Suspense fallback={<AdminLoadingFallback />}><SlideshowManager /></Suspense>}</Route>
       <Route path="/admin/cms/menus">{() => <Suspense fallback={<AdminLoadingFallback />}><MenusManager /></Suspense>}</Route>
       <Route path="/admin/cms/paginas/vista-previa/:slug">{(p) => <Suspense fallback={<AdminLoadingFallback />}><PagePreview slug={p.slug} /></Suspense>}</Route>
+      <Route path="/admin/cms/idiomas/:slug/:locale">{(p) => <Suspense fallback={<AdminLoadingFallback />}><TraducirPagina slug={p.slug} locale={p.locale} /></Suspense>}</Route>
+      <Route path="/admin/cms/idiomas">{() => <Suspense fallback={<AdminLoadingFallback />}><IdiomasPage /></Suspense>}</Route>
       <Route path="/admin/cms/paginas">{() => <Suspense fallback={<AdminLoadingFallback />}><PagesManager /></Suspense>}</Route>
       {/* Elephant Studio y su lienzo (se carga dentro del marco del editor) */}
       <Route path="/admin/studio-lienzo">{() => <Suspense fallback={<AdminLoadingFallback />}><StudioCanvas /></Suspense>}</Route>
@@ -643,6 +647,8 @@ function Router() {
       <Route path="/404" component={NotFound} />
       {/* Multiempresa: páginas propias del tenant; en un solo tenant sigue siendo 404 */}
       <Route path="/:slug">{(p) => <SlugGate slug={p.slug} />}</Route>
+      {/* Multidioma (E-1): /de/ueber-uns. Va tras todas las rutas conocidas: solo lo que antes era «no encontrada» */}
+      <Route path="/:locale/:slug">{(p) => <LocaleSlugGate locale={p.locale} slug={p.slug} />}</Route>
       <Route component={NotFound} />
     </Switch>
     </AdminRouteGate>

@@ -13,7 +13,7 @@
  *     una fila por publicación con la lista completa; se conservan las últimas `MAX_VERSIONS`.
  *   - `system_settings.site_home_page`: la página elegida como portada (vacío = «inicio»).
  */
-import { and, desc, eq, inArray, like, or } from "drizzle-orm";
+import { and, desc, eq, inArray, like, or, sql } from "drizzle-orm";
 import { menuItems, pageBlocks, staticPages, systemSettings } from "../drizzle/schema";
 import { getDb, savePageBlocks } from "./db";
 import { findBlock } from "../shared/studio/tree";
@@ -224,7 +224,12 @@ export async function publishPage(slug: string, raw?: unknown, author?: string |
 
 /** Formulario a medida de una página PUBLICADA (para validar sus envíos), o null. */
 export async function getPublishedFormBlock(slug: string, blockId: string) {
-  const target = await resolvePublicSlug(slug);
+  // Multidioma (E-1): en una página traducida el cliente manda su dirección localizada (o el código del idioma en la
+  // portada). La definición del formulario (campos, reglas, destino) es SIEMPRE la del principal.
+  const { sqlI18nRepo } = await import("./i18nSqlRepo");
+  const { principalSlugForLocalized } = await import("./i18nService");
+  const principal = await principalSlugForLocalized(sqlI18nRepo(), slug).catch(() => null);
+  const target = await resolvePublicSlug(principal ?? slug);
   const page = await getPage(target);
   if (!page?.isPublished) return null;
   // El formulario puede estar dentro de una sección con columnas
@@ -315,6 +320,10 @@ async function assertFreeSlug(slug: string) {
   const problem = pageSlugProblem(slug);
   if (problem) throw new PageBlocksError(problem);
   if (await getPage(slug)) throw new PageBlocksError("Ya tienes una página con esa dirección. Elige otra.");
+  // Multidioma (E-1): una dirección igual al código de un idioma de la web quedaría tapada por su prefijo
+  const { sqlI18nRepo } = await import("./i18nSqlRepo");
+  const locales = await sqlI18nRepo().listLocales().catch(() => []);
+  if (locales.some((l) => l.locale === slug)) throw new PageBlocksError(`«${slug}» es el código de uno de los idiomas de tu web y se usa como prefijo de dirección (/${slug}/…). Elige otra dirección.`);
 }
 
 async function nextMenuOrder(zone: "header" | "footer") {
@@ -385,7 +394,7 @@ export async function duplicateSitePage(slug: string) {
  * confirmación expresa (`confirmLegal`), porque la web lo enlaza en su pie.
  */
 export async function deleteSitePage(slug: string, opts: { confirmLegal?: boolean } = {}) {
-  await requirePage(slug);
+  const pageToDelete = await requirePage(slug);
   const home = await getHomeSlug();
   if (slug === home) throw new PageBlocksError("Es la portada de tu web. Elige otra portada antes de eliminarla.");
   if (isLegalPageSlug(slug) && !opts.confirmLegal) throw new PageBlocksError("Es un texto legal que tu web enlaza en el pie. Confirma que quieres eliminarlo.");
@@ -397,6 +406,9 @@ export async function deleteSitePage(slug: string, opts: { confirmLegal?: boolea
     await d.delete(menuItems).where(inArray(menuItems.parentId, ids));
     await d.delete(menuItems).where(inArray(menuItems.id, ids));
   }
+  // Multidioma (E-1): sus traducciones se van con ella (si la migración aún no está aplicada, no hay nada que borrar)
+  // Las traducciones de la página borrada se archivan (no se borran): nunca se sirven y se conservan por si se restaura
+  await d.execute(sql`UPDATE page_translations SET status = 'archived' WHERE page_id = ${pageToDelete.id}`).catch(() => undefined);
   await d.delete(staticPages).where(eq(staticPages.slug, slug));
   return { success: true };
 }
