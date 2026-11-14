@@ -43,6 +43,8 @@ const PUBLIC_TRPC_ROUTES = new Set([
   "public.getMenuItems",
   "public.submitLead",
   "public.submitBudget",
+  // E-6: solicitud de información de un producto «bajo petición» o «próximamente» (entra en el CRM)
+  "public.requestProductInfo",
   "public.getPublicPage",
   "public.getPublicPageBlocks",
   "public.getTheme",

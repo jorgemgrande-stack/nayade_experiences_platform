@@ -13,6 +13,7 @@
  */
 
 import { isValidSpanishTaxId, normalizeTaxId, validateEmail, validatePhone } from "./formValidation";
+import { isFixedOffer } from "./offerMode";
 
 export type OrderStage = "pending_payment" | "paid" | "prepared" | "delivered" | "cancelled" | "failed";
 
@@ -229,6 +230,7 @@ export function soldOutMessage(title: string): string {
  * ¿Se puede comprar? Un producto publicado y desactivado se muestra como «Agotado» en la tienda de una pyme. El
  * modelo no lleva recuento de existencias: la disponibilidad la marca la empresa con «A la venta».
  */
-export function isPurchasable(p: { isActive?: boolean | null; isPublished?: boolean | null }): boolean {
-  return p.isActive !== false && p.isPublished !== false;
+export function isPurchasable(p: { isActive?: boolean | null; isPublished?: boolean | null; offerMode?: unknown }): boolean {
+  // E-6: «bajo petición» y «próximamente» no se compran (no son «agotados»: la web ofrece pedir información)
+  return p.isActive !== false && p.isPublished !== false && isFixedOffer(p);
 }

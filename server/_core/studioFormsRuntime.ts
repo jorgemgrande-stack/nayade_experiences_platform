@@ -53,7 +53,7 @@ async function addLeadNote(leadId: number, text: string) {
   await db.update(leads).set({ internalNotes: [...notes, { text: text.slice(0, 8000), authorId: 0, authorName: "Formulario web", createdAt: new Date().toISOString() }] }).where(eq(leads.id, leadId));
 }
 
-async function notifyOwner(n: OwnerNotice) {
+export async function notifyOwner(n: OwnerNotice) {
   try {
     const { internalNoticeEmail } = await import("../config");
     const to = (await internalNoticeEmail()).trim();
