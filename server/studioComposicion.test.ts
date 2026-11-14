@@ -61,3 +61,12 @@ describe("Studio · altura mínima propia del móvil", () => {
     expect(styleOf({ minHeightM: "abc", minHeight: "full" })).toMatchObject({ minHeightM: 0 });
   });
 });
+
+describe("Studio · ajuste de la foto en el móvil", () => {
+  const base = { background: "image", bgImage: "/files/a/b.jpg", bgMobile: "own" };
+  it("«cover» es el de serie y «width» se guarda solo con encuadre propio en el móvil", () => {
+    expect(styleOf({ ...base, bgFitM: "width" })).toMatchObject({ bgFitM: "width" });
+    expect(styleOf({ ...base, bgMobile: "same", bgFitM: "width" })).toMatchObject({ bgFitM: "cover" });
+    expect(styleOf({ ...base, bgFitM: "raro" })).toMatchObject({ bgFitM: "cover" });
+  });
+});

@@ -259,6 +259,8 @@ export const BLOCK_CONTENT_WIDTHS = ["auto", "narrow", "medium", "wide"] as cons
 /** Dirección de la capa sobre la foto de fondo: plana, degradada desde un lado o viñeta radial */
 export const BLOCK_OVERLAY_DIRS = ["flat", "top", "bottom", "left", "right", "radial"] as const;
 export const BLOCK_BG_MOBILES = ["same", "own"] as const;
+/** Ajuste de la foto en el móvil con encuadre propio: cubrir toda la altura o verla entera, a todo el ancho, arriba */
+export const BLOCK_BG_FITS = ["cover", "width"] as const;
 export interface BlockStyle {
   background: (typeof BLOCK_BACKGROUNDS)[number];
   gradient: (typeof BLOCK_GRADIENTS)[number];
@@ -301,17 +303,18 @@ export interface BlockStyle {
   bgXM: number;
   bgYM: number;
   bgZoomM: number;
+  bgFitM: (typeof BLOCK_BG_FITS)[number];
 }
 export const DEFAULT_BLOCK_STYLE: BlockStyle = {
   background: "none", gradient: "brand", bgImage: "", overlay: "dark", padTop: "0", padBottom: "0", marginTop: "0", marginBottom: "0",
   headingFont: "auto", textFont: "auto", headingSize: "auto", textSize: "auto", align: "auto", headingColor: "auto",
   border: "none", radius: "0", shadow: "none", hideOn: [], mobileAlign: "auto", mobileSpacing: "same", anchor: "", animation: "none",
   minHeight: "auto", minHeightPx: 600, minHeightM: 0, contentY: "center", contentWidth: "auto", overlayDir: "flat", overlayOpacity: 0,
-  bgX: 50, bgY: 50, bgZoom: 100, bgMobile: "same", bgXM: 50, bgYM: 50, bgZoomM: 100,
+  bgX: 50, bgY: 50, bgZoom: 100, bgMobile: "same", bgXM: 50, bgYM: 50, bgZoomM: 100, bgFitM: "cover",
 };
 /** Campos de composición que solo cuentan con su opción activa (el resto se guarda como el de serie) */
 const STYLE_ONLY_WITH_IMAGE: ReadonlyArray<keyof BlockStyle> = ["bgImage", "overlay", "overlayDir", "overlayOpacity", "bgX", "bgY", "bgZoom", "bgMobile"];
-const STYLE_ONLY_WITH_OWN_MOBILE: ReadonlyArray<keyof BlockStyle> = ["bgXM", "bgYM", "bgZoomM"];
+const STYLE_ONLY_WITH_OWN_MOBILE: ReadonlyArray<keyof BlockStyle> = ["bgXM", "bgYM", "bgZoomM", "bgFitM"];
 export const ANCHOR_RE = /^[a-z0-9]([a-z0-9-]{0,38}[a-z0-9])?$/;
 
 /** Si el diseño del bloque es el de serie (entonces no se guarda). */

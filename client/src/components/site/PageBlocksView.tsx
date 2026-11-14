@@ -1479,7 +1479,7 @@ function ImageLayers({ s }: { s: BlockStyle }) {
   } as CSSProperties;
   return (
     <>
-      <img src={s.bgImage} alt="" loading="lazy" decoding="async" aria-hidden className={cn("qs-focus pointer-events-none absolute inset-0 h-full w-full object-cover", s.bgMobile === "own" && "qs-focus-own")} style={focus} />
+      <img src={s.bgImage} alt="" loading="lazy" decoding="async" aria-hidden className={cn("qs-focus pointer-events-none absolute inset-0 h-full w-full object-cover", s.bgMobile === "own" && "qs-focus-own", s.bgMobile === "own" && s.bgFitM === "width" && "qs-fitw")} style={focus} />
       {/* Una capa lateral no sirve en pantalla estrecha (el texto ocupa todo el ancho): en el móvil pasa a degradarse desde abajo */}
       {s.overlayDir === "left" || s.overlayDir === "right" ? (
         <>
