@@ -630,6 +630,9 @@ function StyleEditor({ style, setStyle, pro, part }: { style: BlockStyle; setSty
               ]}
               onChange={(v) => setStyle({ overlayDir: v as BlockStyle["overlayDir"] })}
             />
+            {(style.overlayDir === "left" || style.overlayDir === "right") && (
+              <p className="text-xs text-muted-foreground">En el móvil la capa se degrada desde abajo y el contenido baja, para dejar libre la parte alta de la foto.</p>
+            )}
             <RangeField label="Fuerza de la capa" value={style.overlayOpacity} min={0} max={95} step={5} unit="%" zeroLabel="La de serie" onChange={(n) => setStyle({ overlayOpacity: n })} />
             <div className="space-y-3 rounded-lg border border-border p-3">
               <p className="text-sm font-medium">Encuadre de la foto</p>

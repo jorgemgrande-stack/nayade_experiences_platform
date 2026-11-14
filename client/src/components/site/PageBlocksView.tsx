@@ -1480,7 +1480,15 @@ function ImageLayers({ s }: { s: BlockStyle }) {
   return (
     <>
       <img src={s.bgImage} alt="" loading="lazy" decoding="async" aria-hidden className={cn("qs-focus pointer-events-none absolute inset-0 h-full w-full object-cover", s.bgMobile === "own" && "qs-focus-own")} style={focus} />
-      <div aria-hidden className="pointer-events-none absolute inset-0" style={{ backgroundImage: overlayCss(s) }} />
+      {/* Una capa lateral no sirve en pantalla estrecha (el texto ocupa todo el ancho): en el móvil pasa a degradarse desde abajo */}
+      {s.overlayDir === "left" || s.overlayDir === "right" ? (
+        <>
+          <div aria-hidden className="pointer-events-none absolute inset-0 max-md:hidden" style={{ backgroundImage: overlayCss(s) }} />
+          <div aria-hidden className="pointer-events-none absolute inset-0 md:hidden" style={{ backgroundImage: overlayCss({ ...s, overlayDir: "bottom" }) }} />
+        </>
+      ) : (
+        <div aria-hidden className="pointer-events-none absolute inset-0" style={{ backgroundImage: overlayCss(s) }} />
+      )}
     </>
   );
 }
@@ -1495,7 +1503,8 @@ function compositionOf(s: BlockStyle): { outerStyle?: CSSProperties; outerCls?: 
   const side = s.align === "left" ? "mr-auto" : s.align === "right" ? "ml-auto" : "mx-auto";
   return {
     outerStyle: minHeight ? { minHeight } : undefined,
-    outerCls: tall ? cn("flex flex-col", CONTENT_Y[s.contentY]) : undefined,
+    // Con capa lateral, en el móvil el contenido baja y la foto (el rostro) queda libre arriba
+    outerCls: tall ? cn("flex flex-col", CONTENT_Y[s.contentY], (s.overlayDir === "left" || s.overlayDir === "right") && s.background === "image" && "max-md:justify-end") : undefined,
     wrapCls: cn("relative w-full", s.contentWidth !== "auto" && cn(CONTENT_WIDTH[s.contentWidth], side)),
   };
 }
