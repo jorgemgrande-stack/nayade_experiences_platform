@@ -7,9 +7,12 @@
  * Seguridad:
  *  - Verificación de correo con token aleatorio (256 bits) del que solo se guarda el hash; caduca.
  *  - Reenvío del enlace: token nuevo (el anterior deja de valer), con espera mínima y máximo diario.
+ *  - Tras verificar se conserva el hash del enlace usado: volver a abrirlo informa de que el correo ya está
+ *    confirmado (no «enlace no válido») y no repite nada.
  *  - Una prueba abierta por correo (también impuesto por la BD), también entre alias +etiqueta del
- *    mismo buzón, y alta idempotente por clave. Una solicitud sin verificar con el enlace caducado no
- *    bloquea el correo: se anula al volver a registrarse o la anula la tarea programada.
+ *    mismo buzón, y alta idempotente por clave. La SOLICITUD no caduca porque se tarde en verificar: con el
+ *    enlace caducado, volver a registrarse le reenvía uno nuevo (sin duplicados); solo se anula pasada su vida
+ *    máxima (`pendingMaxAgeMs`, 90 días), al volver a registrarse o por la tarea programada.
  *  - Límites contra el abuso: por dominio de correo, por IP (hash), de aprovisionamientos en curso y
  *    dominios de correo desechable conocidos (lista corta ampliable por configuración).
  *  - Cada cambio exige la versión leída y queda auditado.
@@ -60,7 +63,8 @@ export interface TrialLimits {
   resendPer24h: number;
   /**
    * Vida máxima de una solicitud sin verificar: pasado este plazo ya no se renueva el enlace y la
-   * solicitud se anula (libera el correo para registrarse de nuevo).
+   * solicitud se anula (libera el correo para registrarse de nuevo). Larga a propósito (13/11/2026): la
+   * solicitud no caduca porque se tarde en verificar; solo caduca el enlace, que se renueva fácilmente.
    */
   pendingMaxAgeMs: number;
 }
@@ -74,7 +78,7 @@ export const DEFAULT_LIMITS: TrialLimits = {
   maxExtensionDays: 15,
   resendCooldownMs: 2 * 60_000,
   resendPer24h: 3,
-  pendingMaxAgeMs: 7 * 24 * 60 * 60 * 1000,
+  pendingMaxAgeMs: 90 * 24 * 60 * 60 * 1000,
 };
 /** Dominios de correo personal: el límite por dominio no se les aplica (sí el de IP y el de correo). */
 const PERSONAL_DOMAINS = new Set(["gmail.com", "hotmail.com", "outlook.com", "yahoo.com", "icloud.com", "live.com", "protonmail.com", "yahoo.es", "hotmail.es"]);
@@ -135,15 +139,21 @@ export class TrialService {
     return t.state === "pending_verification" && (t.verificationExpiresAt ?? 0) <= now;
   }
 
+  /** Solicitud sin verificar que superó su vida máxima (con el enlace caducado): ya no se renueva, se anula. */
+  private isAbandonedPending(t: TrialRequest, now = this.now()) {
+    return this.isStalePending(t, now) && t.createdAt + this.limits.pendingMaxAgeMs <= now;
+  }
+
   /**
-   * Prueba abierta de ese buzón (mismo correo, alias +etiqueta o variante de Gmail con puntos). Las solicitudes
-   * sin verificar con el enlace caducado se anulan aquí mismo (`expire_verification`) y no cuentan.
+   * Prueba abierta de ese buzón (mismo correo, alias +etiqueta o variante de Gmail con puntos). Una solicitud sin
+   * verificar SIGUE abierta aunque su enlace haya caducado (volver a registrarse le reenvía uno nuevo, sin crear
+   * otra); solo las que superan su vida máxima se anulan aquí mismo (`expire_verification`) y no cuentan.
    */
   private async openFor(email: string, actor: string) {
     const { base, domain } = mailboxOf(email);
     for (let i = 0; i < 5; i++) {
       const open = (await this.d.store.openByEmail(email)) ?? (await this.d.store.openByMailbox(canonicalMailbox(email), { base, domain }));
-      if (!open || !this.isStalePending(open)) return open;
+      if (!open || !this.isAbandonedPending(open)) return open;
       try {
         await this.move(open.id, open.version, "expire_verification", actor, () => ({ verificationTokenHash: null, verificationExpiresAt: null }), "enlace caducado sin verificar");
       } catch (e) {
@@ -202,16 +212,25 @@ export class TrialService {
     const ofKey = (t: TrialRequest | null) => {
       if (!t) return null;
       if (t.email !== email) throw new TrialError("conflict", "Ya hay una solicitud de prueba en curso para este correo");
-      return { trial: t, created: false as const, verificationToken: null };
+      return { trial: t, created: false as const, verificationToken: null as string | null };
     };
     const again = ofKey(await this.d.store.byIdempotencyKey(input.idempotencyKey));
     if (again) return again;
     // Mismo envío repetido a la vez (doble clic): si otra petición con la MISMA clave acaba de crearla, se devuelve esa
     const sameKey = async () => ofKey(await this.d.store.byIdempotencyKey(input.idempotencyKey));
+    const configuration = { plan: input.configuration.plan, addons, ...(holder ? { holder } : {}), ...(profile ? { profile } : {}), ...(attribution ? { attribution } : {}), ...(terms ? { terms } : {}), ...(privacy ? { privacy } : {}) };
     // Un buzón, una prueba abierta: no se revela el estado de la existente
-    if (await this.openFor(email, "system:trial")) {
+    const open = await this.openFor(email, "system:trial");
+    if (open) {
       const same = await sameKey();
       if (same) return same;
+      // Sin verificar (también con el enlace caducado o desde un alias del mismo buzón): la MISMA solicitud toma los
+      // datos y la aceptación de este alta y recibe un enlace nuevo en su correo registrado. Sin duplicados, y lo que se
+      // confirme es siempre lo último que se envió (no los datos de un alta anterior, quizá de otra persona).
+      if (open.state === "pending_verification") {
+        const r = await this.resendVerification({ trialId: open.id }, "web", { companyName: company, configuration });
+        if (r.outcome === "resent" && r.trial && r.verificationToken) return { trial: r.trial, created: false as const, verificationToken: r.verificationToken as string | null };
+      }
       throw new TrialError("conflict", "Ya hay una solicitud de prueba en curso para este correo");
     }
 
@@ -230,7 +249,7 @@ export class TrialService {
           email,
           emailDomain: domain,
           companyName: company,
-          configuration: { plan: input.configuration.plan, addons, ...(holder ? { holder } : {}), ...(profile ? { profile } : {}), ...(attribution ? { attribution } : {}), ...(terms ? { terms } : {}), ...(privacy ? { privacy } : {}) },
+          configuration,
           state: "pending_verification",
           verificationTokenHash: sha256(token),
           verificationExpiresAt: now + this.limits.verificationTtlMs,
@@ -283,7 +302,22 @@ export class TrialService {
     const b = Buffer.from(t.verificationTokenHash, "hex");
     if (a.length !== b.length || !crypto.timingSafeEqual(a, b)) throw new TrialError("forbidden", "Enlace de verificación no válido");
     if ((t.verificationExpiresAt ?? 0) < this.now()) throw new TrialError("forbidden", "El enlace de verificación ha caducado");
-    return this.move(id, t.version, "verify", "web", () => ({ verifiedAt: this.now(), verificationTokenHash: null, verificationExpiresAt: null }));
+    // El hash del enlace usado se conserva: si la persona lo vuelve a abrir (otra pestaña, un reintento tras un corte
+    // de red) se le dice que ya está confirmado en lugar de «no válido». Solo sirve para eso: no verifica nada más.
+    return this.move(id, t.version, "verify", "web", () => ({ verifiedAt: this.now(), verificationExpiresAt: null }));
+  }
+
+  /**
+   * ¿Es este el enlace de verificación de la solicitud (vigente, caducado o ya usado)? Comparación en tiempo
+   * constante. Devuelve la solicitud solo si coincide: quien tiene el enlace ya sabe que existe (no enumera).
+   */
+  async linkOwner(id: number, token: string): Promise<TrialRequest | null> {
+    if (typeof token !== "string" || token.length < 20 || token.length > 100) return null;
+    const t = await this.d.store.get(id);
+    if (!t?.verificationTokenHash) return null;
+    const a = Buffer.from(sha256(token), "hex");
+    const b = Buffer.from(t.verificationTokenHash, "hex");
+    return a.length === b.length && crypto.timingSafeEqual(a, b) ? t : null;
   }
 
   /**
@@ -297,7 +331,7 @@ export class TrialService {
    * `resendPer24h` reenvíos por solicitud en 24 h. El resultado es para el llamante interno; la ruta
    * pública responde siempre lo mismo y no revela si el correo existe.
    */
-  async resendVerification(by: { email: string } | { trialId: number }, actor: string): Promise<{ trial: TrialRequest | null; verificationToken: string | null; outcome: "resent" | "not_found" | "not_pending" | "cooldown" | "limit" | "expired" }> {
+  async resendVerification(by: { email: string } | { trialId: number }, actor: string, refresh?: Pick<TrialPatch, "companyName" | "configuration">): Promise<{ trial: TrialRequest | null; verificationToken: string | null; outcome: "resent" | "not_found" | "not_pending" | "cooldown" | "limit" | "expired" }> {
     let t: TrialRequest | null;
     if ("trialId" in by) t = await this.d.store.get(by.trialId);
     else {
@@ -321,7 +355,7 @@ export class TrialService {
     if (resends.filter((e) => e.createdAt > now - DAY).length >= this.limits.resendPer24h) return { trial: t, verificationToken: null, outcome: "limit" };
     const token = crypto.randomBytes(32).toString("base64url");
     try {
-      const trial = await this.move(t.id, t.version, "resend_verification", actor, () => ({ verificationTokenHash: sha256(token), verificationExpiresAt: now + this.limits.verificationTtlMs }), "enlace nuevo");
+      const trial = await this.move(t.id, t.version, "resend_verification", actor, () => ({ ...(refresh ?? {}), verificationTokenHash: sha256(token), verificationExpiresAt: now + this.limits.verificationTtlMs }), refresh ? "enlace nuevo (alta repetida: datos actualizados)" : "enlace nuevo");
       return { trial, verificationToken: token, outcome: "resent" };
     } catch (e) {
       // Otra petición simultánea ya renovó el enlace: se trata como un clic repetido

@@ -46,7 +46,9 @@ describe("registro y verificación", () => {
     expect(r.verificationToken).toMatch(/^[A-Za-z0-9_-]{43}$/);
     expect(r.trial.verificationTokenHash).not.toContain(r.verificationToken!);
     const v = await svc.verify(r.trial.id, r.verificationToken!);
-    expect(v).toMatchObject({ state: "verified", verificationTokenHash: null });
+    // Se conserva el hash del enlace usado (para reconocer el mismo enlace abierto otra vez), nunca el token
+    expect(v).toMatchObject({ state: "verified", verificationExpiresAt: null });
+    expect(v.verificationTokenHash).not.toContain(r.verificationToken!);
     const p = await svc.requestProvisioning(v.id, v.version, "operator:ana");
     const a = await svc.markProvisioned(p.id, p.version, "acme", "provisioning");
     expect(a).toMatchObject({ state: "active", tenantId: "acme", startsAt: T0, endsAt: T0 + TRIAL_DAYS * DAY });

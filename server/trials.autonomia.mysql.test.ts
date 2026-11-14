@@ -105,11 +105,15 @@ describe.skipIf(!URL_)("prueba autónoma (reenvío y tarea programada) con MySQL
     expect(Number(r[0].n)).toBe(1);
   });
 
-  it("solicitud caducada sin verificar: al registrarse otra vez se anula y se crea otra (índice de correo abierto liberado)", async () => {
+  it("solicitud caducada sin verificar: al registrarse otra vez se renueva la MISMA (enlace nuevo, sin duplicado); pasada su vida máxima se anula y se crea otra", async () => {
     const a = await reg("rep@acme.example");
     clock += DAY + 1;
     const b = await reg("rep@acme.example");
-    expect(b.created).toBe(true);
+    expect(b).toMatchObject({ created: false, trial: { id: a.trial.id, state: "pending_verification" } });
+    expect(b.verificationToken).toBeTruthy();
+    clock += 90 * DAY;
+    const c = await reg("rep@acme.example");
+    expect(c.created).toBe(true);
     expect((await store.get(a.trial.id))!.state).toBe("cancelled");
   });
 
@@ -145,17 +149,19 @@ describe.skipIf(!URL_)("prueba autónoma (reenvío y tarea programada) con MySQL
     await again!();
   });
 
-  it("tick en dos réplicas a la vez: un vencimiento, un aviso; solicitudes viejas sin verificar anuladas", async () => {
+  it("tick en dos réplicas a la vez: un vencimiento, un aviso; una solicitud sin verificar de 30 días sigue viva (vida máxima 90)", async () => {
+    // Reloj relativo: las pruebas comparten el reloj y alguna lo adelanta (vida máxima de 90 días)
+    const base = clock;
     const t = await active("tick@acme.example", "acme-tick");
     const stale = await reg("stale@acme.example");
-    clock = T0 + 30 * DAY;
+    clock = base + 30 * DAY;
     const mk = (p: mysql.Pool) => new TrialScheduler({ store: new MysqlTrialStore(p), notify, lock: mysqlAdvisoryLock(p), now: () => clock, log: () => undefined });
     const outs = await Promise.all([mk(pool).tick(), mk(other).tick()]);
     const ran = outs.filter((o) => o.skipped === null);
     expect(ran.length).toBeGreaterThanOrEqual(1);
     expect((await store.get(t.id))!.state).toBe("expired");
     expect(notices.filter((x) => x.trialId === t.id)).toEqual([{ trialId: t.id, daysLeft: 0 }]);
-    expect((await store.get(stale.trial.id))!.state).toBe("cancelled");
+    expect((await store.get(stale.trial.id))!.state).toBe("pending_verification");
     // Otra pasada no repite nada
     expect(await mk(pool).tick()).toMatchObject({ expired: 0, noticesQueued: 0, verificationsExpired: 0 });
     expect(notices.filter((x) => x.trialId === t.id)).toHaveLength(1);
