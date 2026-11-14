@@ -641,3 +641,16 @@ html:not(.dark) select {
     }
   }
 }
+/* Encuadre de la foto de fondo de un bloque (Studio): posición y ampliación, con ajuste propio para el móvil */
+.qs-focus {
+  object-position: var(--fx, 50%) var(--fy, 50%);
+  transform: scale(var(--fz, 1));
+  transform-origin: var(--fx, 50%) var(--fy, 50%);
+}
+@media (max-width: 767px) {
+  .qs-focus-own {
+    object-position: var(--mx, 50%) var(--my, 50%);
+    transform: scale(var(--mz, 1));
+    transform-origin: var(--mx, 50%) var(--my, 50%);
+  }
+}

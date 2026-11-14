@@ -10,7 +10,7 @@ import { sanitizeRichHtml } from "./htmlSanitize";
 import { renderSiteTokens, type SiteTokenData } from "./templates/starterSite";
 import {
   ANCHOR_RE, BLOCK_ALIGNS, BLOCK_ANIMATIONS, BLOCK_BACKGROUNDS, BLOCK_BORDERS, BLOCK_FONTS, BLOCK_GRADIENTS, BLOCK_HEADING_COLORS, BLOCK_HEADING_SIZES,
-  BLOCK_MARGINS, BLOCK_MOBILE_ALIGNS, BLOCK_MOBILE_SPACINGS, BLOCK_OVERLAYS, BLOCK_RADII, BLOCK_SHADOWS, BLOCK_SPACINGS, BLOCK_TEXT_SIZES, BLOCK_TYPES,
+  BLOCK_BG_MOBILES, BLOCK_CONTENT_WIDTHS, BLOCK_CONTENT_YS, BLOCK_MARGINS, BLOCK_MIN_HEIGHTS, BLOCK_OVERLAY_DIRS, BLOCK_MOBILE_ALIGNS, BLOCK_MOBILE_SPACINGS, BLOCK_OVERLAYS, BLOCK_RADII, BLOCK_SHADOWS, BLOCK_SPACINGS, BLOCK_TEXT_SIZES, BLOCK_TYPES,
   blockLabel, DEFAULT_BLOCK_STYLE, defaultBlockData, DEVICES, isDefaultStyle, newBlockId, NOT_NESTABLE, PAGE_LIMITS, SECTION_MAX_DEPTH,
   sectionColumnCount, type BlockDataMap, type BlockStyle, type BlockType, type GalleryImage, type PageBlock,
 } from "../../shared/pageBlocks";
@@ -163,6 +163,12 @@ function normalizeField(f: FieldDef, v: unknown, initial: unknown): unknown {
   }
 }
 
+/** Entero acotado (lo que no sea un número toma el valor de serie). */
+function clampInt(v: unknown, min: number, max: number, fallback: number): number {
+  const n = typeof v === "number" ? v : typeof v === "string" && v.trim() !== "" ? Number(v) : NaN;
+  return Number.isFinite(n) ? Math.min(max, Math.max(min, Math.round(n))) : fallback;
+}
+
 /** Diseño del bloque (lista cerrada de valores), o nada si es el de serie. */
 export function normalizeStyle(v: unknown): BlockStyle | undefined {
   if (!isObj(v)) return undefined;
@@ -190,13 +196,38 @@ export function normalizeStyle(v: unknown): BlockStyle | undefined {
     mobileSpacing: oneOf(v.mobileSpacing, BLOCK_MOBILE_SPACINGS, "same"),
     anchor: typeof v.anchor === "string" && ANCHOR_RE.test(v.anchor) ? v.anchor : "",
     animation: oneOf(v.animation, BLOCK_ANIMATIONS, "none"),
+    minHeight: oneOf(v.minHeight, BLOCK_MIN_HEIGHTS, "auto"),
+    minHeightPx: clampInt(v.minHeightPx, 120, 1600, 600),
+    contentY: oneOf(v.contentY, BLOCK_CONTENT_YS, "center"),
+    contentWidth: oneOf(v.contentWidth, BLOCK_CONTENT_WIDTHS, "auto"),
+    overlayDir: oneOf(v.overlayDir, BLOCK_OVERLAY_DIRS, "flat"),
+    overlayOpacity: clampInt(v.overlayOpacity, 0, 95, 0),
+    bgX: clampInt(v.bgX, 0, 100, 50),
+    bgY: clampInt(v.bgY, 0, 100, 50),
+    bgZoom: clampInt(v.bgZoom, 100, 250, 100),
+    bgMobile: oneOf(v.bgMobile, BLOCK_BG_MOBILES, "same"),
+    bgXM: clampInt(v.bgXM, 0, 100, 50),
+    bgYM: clampInt(v.bgYM, 0, 100, 50),
+    bgZoomM: clampInt(v.bgZoomM, 100, 250, 100),
   };
   // Degradado, imagen y capa solo se guardan con su fondo
   if (style.background !== "gradient") style.gradient = DEFAULT_BLOCK_STYLE.gradient;
   if (style.background !== "image") {
     style.bgImage = "";
     style.overlay = DEFAULT_BLOCK_STYLE.overlay;
+    style.overlayDir = DEFAULT_BLOCK_STYLE.overlayDir;
+    style.overlayOpacity = DEFAULT_BLOCK_STYLE.overlayOpacity;
+    style.bgX = DEFAULT_BLOCK_STYLE.bgX;
+    style.bgY = DEFAULT_BLOCK_STYLE.bgY;
+    style.bgZoom = DEFAULT_BLOCK_STYLE.bgZoom;
+    style.bgMobile = DEFAULT_BLOCK_STYLE.bgMobile;
   }
+  if (style.background !== "image" || style.bgMobile !== "own") {
+    style.bgXM = DEFAULT_BLOCK_STYLE.bgXM;
+    style.bgYM = DEFAULT_BLOCK_STYLE.bgYM;
+    style.bgZoomM = DEFAULT_BLOCK_STYLE.bgZoomM;
+  }
+  if (style.minHeight !== "custom") style.minHeightPx = DEFAULT_BLOCK_STYLE.minHeightPx;
   return isDefaultStyle(style) ? undefined : style;
 }
 

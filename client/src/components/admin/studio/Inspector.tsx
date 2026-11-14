@@ -199,6 +199,20 @@ function FieldShell({ label, hint, children }: { label: string; hint?: string; c
   );
 }
 
+/** Deslizador numérico del diseño (posición, ampliación, fuerza…) con su valor a la vista. */
+function RangeField({ label, value, min, max, step, unit, zeroLabel, onChange }: { label: string; value: number; min: number; max: number; step: number; unit: string; zeroLabel?: string; onChange: (n: number) => void }) {
+  const id = useId();
+  return (
+    <div className="space-y-1.5">
+      <div className="flex items-baseline justify-between">
+        <label htmlFor={id} className="text-sm font-medium">{label}</label>
+        <span className="text-xs tabular-nums text-muted-foreground">{value === 0 && zeroLabel ? zeroLabel : `${value}${unit}`}</span>
+      </div>
+      <input id={id} type="range" min={min} max={max} step={step} value={value} onChange={(e) => onChange(Number(e.target.value))} className="w-full accent-[#5b5bf6]" />
+    </div>
+  );
+}
+
 export function Segmented({ label, value, options, onChange }: { label: string; value: string; options: ReadonlyArray<{ value: string; label: string }>; onChange: (v: string) => void }) {
   return (
     <div className="space-y-1.5">
@@ -603,9 +617,86 @@ function StyleEditor({ style, setStyle, pro, part }: { style: BlockStyle; setSty
               ]}
               onChange={(v) => setStyle({ overlay: v as BlockStyle["overlay"] })}
             />
+            <SelectField
+              label="Dirección de la capa"
+              value={style.overlayDir}
+              options={[
+                { value: "flat", label: "Pareja en toda la foto" },
+                { value: "bottom", label: "Más intensa abajo" },
+                { value: "top", label: "Más intensa arriba" },
+                { value: "left", label: "Más intensa a la izquierda" },
+                { value: "right", label: "Más intensa a la derecha" },
+                { value: "radial", label: "Viñeta (más intensa en los bordes)" },
+              ]}
+              onChange={(v) => setStyle({ overlayDir: v as BlockStyle["overlayDir"] })}
+            />
+            <RangeField label="Fuerza de la capa" value={style.overlayOpacity} min={0} max={95} step={5} unit="%" zeroLabel="La de serie" onChange={(n) => setStyle({ overlayOpacity: n })} />
+            <div className="space-y-3 rounded-lg border border-border p-3">
+              <p className="text-sm font-medium">Encuadre de la foto</p>
+              <RangeField label="Posición horizontal" value={style.bgX} min={0} max={100} step={1} unit="%" onChange={(n) => setStyle({ bgX: n })} />
+              <RangeField label="Posición vertical" value={style.bgY} min={0} max={100} step={1} unit="%" onChange={(n) => setStyle({ bgY: n })} />
+              <RangeField label="Ampliación" value={style.bgZoom} min={100} max={250} step={5} unit="%" onChange={(n) => setStyle({ bgZoom: n })} />
+              <Segmented
+                label="En el móvil"
+                value={style.bgMobile}
+                options={[
+                  { value: "same", label: "El mismo encuadre" },
+                  { value: "own", label: "Encuadre propio" },
+                ]}
+                onChange={(v) => setStyle({ bgMobile: v as BlockStyle["bgMobile"] })}
+              />
+              {style.bgMobile === "own" && (
+                <>
+                  <RangeField label="Móvil · posición horizontal" value={style.bgXM} min={0} max={100} step={1} unit="%" onChange={(n) => setStyle({ bgXM: n })} />
+                  <RangeField label="Móvil · posición vertical" value={style.bgYM} min={0} max={100} step={1} unit="%" onChange={(n) => setStyle({ bgYM: n })} />
+                  <RangeField label="Móvil · ampliación" value={style.bgZoomM} min={100} max={250} step={5} unit="%" onChange={(n) => setStyle({ bgZoomM: n })} />
+                </>
+              )}
+            </div>
           </div>
         )}
         <p className="text-xs text-muted-foreground">Los colores salen de la marca de tu web, así que siempre combinan; sobre fondos oscuros el texto pasa a claro.</p>
+      </StyleGroup>
+
+      <StyleGroup title="Composición">
+        <SelectField
+          label="Altura mínima"
+          value={style.minHeight}
+          options={[
+            { value: "auto", label: "Automática (la del contenido)" },
+            { value: "40", label: "40 % de la pantalla" },
+            { value: "60", label: "60 % de la pantalla" },
+            { value: "80", label: "80 % de la pantalla" },
+            { value: "full", label: "Pantalla completa" },
+            { value: "custom", label: "Valor personalizado (píxeles)" },
+          ]}
+          onChange={(v) => setStyle({ minHeight: v as BlockStyle["minHeight"] })}
+        />
+        {style.minHeight === "custom" && <RangeField label="Altura" value={style.minHeightPx} min={120} max={1600} step={20} unit=" px" onChange={(n) => setStyle({ minHeightPx: n })} />}
+        {style.minHeight !== "auto" && (
+          <Segmented
+            label="Posición vertical del contenido"
+            value={style.contentY}
+            options={[
+              { value: "top", label: "Arriba" },
+              { value: "center", label: "Centro" },
+              { value: "bottom", label: "Abajo" },
+            ]}
+            onChange={(v) => setStyle({ contentY: v as BlockStyle["contentY"] })}
+          />
+        )}
+        <Segmented
+          label="Ancho del contenido"
+          value={style.contentWidth}
+          options={[
+            { value: "auto", label: "Todo" },
+            { value: "wide", label: "Amplio" },
+            { value: "medium", label: "Medio" },
+            { value: "narrow", label: "Estrecho" },
+          ]}
+          onChange={(v) => setStyle({ contentWidth: v as BlockStyle["contentWidth"] })}
+        />
+        {style.contentWidth !== "auto" && <p className="text-xs text-muted-foreground">El contenido se coloca según la alineación del texto: a la izquierda, centrado o a la derecha.</p>}
       </StyleGroup>
 
       <StyleGroup title="Texto">

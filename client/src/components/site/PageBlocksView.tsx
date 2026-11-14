@@ -25,7 +25,7 @@ import { Slideshow } from "@/components/site/Slideshow";
 import { Lightbox } from "@/components/site/Lightbox";
 import { ModalDialog, usePublicModal } from "@/components/site/ModalBlock";
 import { StudioFormFields } from "@/components/site/StudioForm";
-import { blockLabel, cssUrl, DEFAULT_BLOCK_STYLE, readBlockText, type BlockOf, type BlockStyle, type Device, type GalleryImage, type PageBlock } from "@shared/pageBlocks";
+import { blockLabel, DEFAULT_BLOCK_STYLE, readBlockText, type BlockOf, type BlockStyle, type Device, type GalleryImage, type PageBlock } from "@shared/pageBlocks";
 import { modalHref } from "@shared/studio/modal";
 import { formatEuros, productPath } from "@shared/storefront";
 import { isPurchasable } from "@shared/shopOrders";
@@ -1450,8 +1450,58 @@ const DARK_INNER = {
   "--border": "rgba(255,255,255,0.14)", "--muted": "rgba(255,255,255,0.08)", "--input": "rgba(255,255,255,0.25)", color: "#f8fafc",
 } as CSSProperties;
 
+const OVERLAY_COLOR: Record<BlockStyle["overlay"], { color: string; base: number }> = {
+  dark: { color: "rgb(15 23 42)", base: 0.62 },
+  light: { color: "var(--background)", base: 0.82 },
+  brand: { color: "var(--studio-brand)", base: 0.78 },
+};
+
+/** Capa sobre la foto: plana (como siempre), degradada desde un lado o en viñeta, con la fuerza que se elija. */
+function overlayCss(s: BlockStyle): string {
+  const { color, base } = OVERLAY_COLOR[s.overlay] ?? OVERLAY_COLOR.dark;
+  const a = s.overlayOpacity > 0 ? s.overlayOpacity / 100 : base;
+  const tone = (x: number) => `color-mix(in srgb, ${color} ${Math.round(x * 100)}%, transparent)`;
+  switch (s.overlayDir) {
+    case "top": return `linear-gradient(to bottom, ${tone(a)}, ${tone(0)})`;
+    case "bottom": return `linear-gradient(to top, ${tone(a)}, ${tone(0)})`;
+    case "left": return `linear-gradient(to right, ${tone(a)}, ${tone(0)})`;
+    case "right": return `linear-gradient(to left, ${tone(a)}, ${tone(0)})`;
+    case "radial": return `radial-gradient(ellipse at center, ${tone(0)} 25%, ${tone(a)} 100%)`;
+    default: return `linear-gradient(${tone(a)}, ${tone(a)})`;
+  }
+}
+
+/** Capas de la foto de fondo: la imagen (con su encuadre en ordenador y en móvil) y la capa que da legibilidad. */
+function ImageLayers({ s }: { s: BlockStyle }) {
+  const focus = {
+    "--fx": `${s.bgX}%`, "--fy": `${s.bgY}%`, "--fz": s.bgZoom / 100,
+    "--mx": `${s.bgXM}%`, "--my": `${s.bgYM}%`, "--mz": s.bgZoomM / 100,
+  } as CSSProperties;
+  return (
+    <>
+      <img src={s.bgImage} alt="" loading="lazy" decoding="async" aria-hidden className={cn("qs-focus pointer-events-none absolute inset-0 h-full w-full object-cover", s.bgMobile === "own" && "qs-focus-own")} style={focus} />
+      <div aria-hidden className="pointer-events-none absolute inset-0" style={{ backgroundImage: overlayCss(s) }} />
+    </>
+  );
+}
+
+const CONTENT_WIDTH: Record<BlockStyle["contentWidth"], string> = { auto: "", narrow: "max-w-xl", medium: "max-w-3xl", wide: "max-w-5xl" };
+const CONTENT_Y: Record<BlockStyle["contentY"], string> = { top: "justify-start", center: "justify-center", bottom: "justify-end" };
+
+/** Composición del bloque: altura mínima, colocación vertical y ancho del contenido. */
+function compositionOf(s: BlockStyle): { outerStyle?: CSSProperties; outerCls?: string; wrapCls: string } {
+  const tall = s.minHeight !== "auto";
+  const minHeight = s.minHeight === "full" ? "100svh" : s.minHeight === "custom" ? `${s.minHeightPx}px` : tall ? `${s.minHeight}svh` : undefined;
+  const side = s.align === "left" ? "mr-auto" : s.align === "right" ? "ml-auto" : "mx-auto";
+  return {
+    outerStyle: minHeight ? { minHeight } : undefined,
+    outerCls: tall ? cn("flex flex-col", CONTENT_Y[s.contentY]) : undefined,
+    wrapCls: cn("relative w-full", s.contentWidth !== "auto" && cn(CONTENT_WIDTH[s.contentWidth], side)),
+  };
+}
+
 /** Fondo del bloque: estilos del contenedor exterior, colores del interior para que el texto se lea y clase. */
-function backgroundOf(s: BlockStyle): { outer?: CSSProperties; inner?: CSSProperties; cls?: string } {
+function backgroundOf(s: BlockStyle): { outer?: CSSProperties; inner?: CSSProperties; cls?: string; layers?: ReactNode } {
   const withBrand = (bg: CSSProperties) => ({ "--studio-brand": "var(--primary)", ...bg }) as CSSProperties;
   const innerFor = (t: "brand" | "dark" | null) => (t === "brand" ? BRAND_INNER : t === "dark" ? DARK_INNER : undefined);
   switch (s.background) {
@@ -1469,7 +1519,9 @@ function backgroundOf(s: BlockStyle): { outer?: CSSProperties; inner?: CSSProper
       if (!s.bgImage) return {};
       const o = OVERLAYS[s.overlay] ?? OVERLAYS.dark;
       return {
-        outer: withBrand({ backgroundImage: `${o.layer}, url("${cssUrl(s.bgImage)}")`, backgroundSize: "cover", backgroundPosition: "center" }),
+        outer: withBrand({}),
+        cls: "relative isolate overflow-hidden",
+        layers: <ImageLayers s={s} />,
         inner: innerFor(o.text),
       };
     }
@@ -1495,19 +1547,23 @@ function StyleFrame({ style, edit, children }: { style?: BlockStyle; edit: boole
   const content = <AnimateIn kind={edit ? "none" : s.animation}>{bg.inner ? <div style={bg.inner}>{children}</div> : children}</AnimateIn>;
   const boxed = s.border !== "none" || s.radius !== "0" || s.shadow !== "none";
   const outerCls = cn("scroll-mt-24", MARGIN_TOP[s.marginTop], MARGIN_BOTTOM[s.marginBottom], !edit && hiddenClasses(s));
-  const boxCls = cn(bg.cls, pads, typographyClasses(s));
+  const comp = compositionOf(s);
+  const boxCls = cn(bg.cls, comp.outerCls, pads, typographyClasses(s));
+  const boxStyle = comp.outerStyle ? { ...bg.outer, ...comp.outerStyle } : bg.outer;
+  // El contenido va en su propia capa sobre la foto, y se acota cuando hay ancho máximo o altura mínima
+  const body = bg.layers || comp.outerStyle || s.contentWidth !== "auto" ? <>{bg.layers}<div className={comp.wrapCls}>{content}</div></> : content;
   if (!boxed) {
     return (
-      <div id={s.anchor || undefined} className={cn(outerCls, boxCls)} style={bg.outer}>
-        {content}
+      <div id={s.anchor || undefined} className={cn(outerCls, boxCls)} style={boxStyle}>
+        {body}
       </div>
     );
   }
   // Caja: dentro del ancho de la página, con su borde, esquinas y sombra (el fondo va dentro de la caja)
   return (
     <div id={s.anchor || undefined} className={cn(outerCls, "container")}>
-      <div className={cn("overflow-hidden", BORDER[s.border], RADIUS[s.radius], SHADOW[s.shadow], boxCls)} style={bg.outer}>
-        {content}
+      <div className={cn("overflow-hidden", BORDER[s.border], RADIUS[s.radius], SHADOW[s.shadow], boxCls)} style={boxStyle}>
+        {body}
       </div>
     </div>
   );

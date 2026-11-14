@@ -250,6 +250,15 @@ export const DEVICES = ["desktop", "tablet", "mobile"] as const;
 export type Device = (typeof DEVICES)[number];
 /** Animación al aparecer en pantalla (se desactiva si la persona prefiere menos movimiento) */
 export const BLOCK_ANIMATIONS = ["none", "fade", "up", "zoom"] as const;
+/** Altura mínima del bloque: automática, porcentaje de la pantalla, pantalla completa o un valor en píxeles */
+export const BLOCK_MIN_HEIGHTS = ["auto", "40", "60", "80", "full", "custom"] as const;
+/** Dónde se coloca el contenido dentro de la altura mínima */
+export const BLOCK_CONTENT_YS = ["top", "center", "bottom"] as const;
+/** Ancho máximo del contenido (texto y módulos) dentro del bloque */
+export const BLOCK_CONTENT_WIDTHS = ["auto", "narrow", "medium", "wide"] as const;
+/** Dirección de la capa sobre la foto de fondo: plana, degradada desde un lado o viñeta radial */
+export const BLOCK_OVERLAY_DIRS = ["flat", "top", "bottom", "left", "right", "radial"] as const;
+export const BLOCK_BG_MOBILES = ["same", "own"] as const;
 export interface BlockStyle {
   background: (typeof BLOCK_BACKGROUNDS)[number];
   gradient: (typeof BLOCK_GRADIENTS)[number];
@@ -274,12 +283,33 @@ export interface BlockStyle {
   mobileSpacing: (typeof BLOCK_MOBILE_SPACINGS)[number];
   anchor: string;
   animation: (typeof BLOCK_ANIMATIONS)[number];
+  /** Composición: altura mínima (con «custom», `minHeightPx`) y colocación del contenido */
+  minHeight: (typeof BLOCK_MIN_HEIGHTS)[number];
+  minHeightPx: number;
+  contentY: (typeof BLOCK_CONTENT_YS)[number];
+  contentWidth: (typeof BLOCK_CONTENT_WIDTHS)[number];
+  /** Capa sobre la foto: dirección y fuerza (0 = la de la capa elegida) */
+  overlayDir: (typeof BLOCK_OVERLAY_DIRS)[number];
+  overlayOpacity: number;
+  /** Encuadre de la foto de fondo (posición 0-100 y ampliación 100-250), con ajuste propio para el móvil */
+  bgX: number;
+  bgY: number;
+  bgZoom: number;
+  bgMobile: (typeof BLOCK_BG_MOBILES)[number];
+  bgXM: number;
+  bgYM: number;
+  bgZoomM: number;
 }
 export const DEFAULT_BLOCK_STYLE: BlockStyle = {
   background: "none", gradient: "brand", bgImage: "", overlay: "dark", padTop: "0", padBottom: "0", marginTop: "0", marginBottom: "0",
   headingFont: "auto", textFont: "auto", headingSize: "auto", textSize: "auto", align: "auto", headingColor: "auto",
   border: "none", radius: "0", shadow: "none", hideOn: [], mobileAlign: "auto", mobileSpacing: "same", anchor: "", animation: "none",
+  minHeight: "auto", minHeightPx: 600, contentY: "center", contentWidth: "auto", overlayDir: "flat", overlayOpacity: 0,
+  bgX: 50, bgY: 50, bgZoom: 100, bgMobile: "same", bgXM: 50, bgYM: 50, bgZoomM: 100,
 };
+/** Campos de composición que solo cuentan con su opción activa (el resto se guarda como el de serie) */
+const STYLE_ONLY_WITH_IMAGE: ReadonlyArray<keyof BlockStyle> = ["bgImage", "overlay", "overlayDir", "overlayOpacity", "bgX", "bgY", "bgZoom", "bgMobile"];
+const STYLE_ONLY_WITH_OWN_MOBILE: ReadonlyArray<keyof BlockStyle> = ["bgXM", "bgYM", "bgZoomM"];
 export const ANCHOR_RE = /^[a-z0-9]([a-z0-9-]{0,38}[a-z0-9])?$/;
 
 /** Si el diseño del bloque es el de serie (entonces no se guarda). */
@@ -287,7 +317,10 @@ export function isDefaultStyle(s: Partial<BlockStyle> | undefined): boolean {
   if (!s) return true;
   // Degradado, imagen y capa solo cuentan con su fondo elegido
   const relevant = (k: keyof BlockStyle) =>
-    (k !== "gradient" || s.background === "gradient") && ((k !== "bgImage" && k !== "overlay") || s.background === "image");
+    (k !== "gradient" || s.background === "gradient") &&
+    (!STYLE_ONLY_WITH_IMAGE.includes(k) || s.background === "image") &&
+    (!STYLE_ONLY_WITH_OWN_MOBILE.includes(k) || (s.background === "image" && s.bgMobile === "own")) &&
+    (k !== "minHeightPx" || s.minHeight === "custom");
   return (Object.keys(DEFAULT_BLOCK_STYLE) as Array<keyof BlockStyle>).every((k) => {
     if (k === "hideOn") return !(s.hideOn ?? []).length;
     return !relevant(k) || (s[k] ?? DEFAULT_BLOCK_STYLE[k]) === DEFAULT_BLOCK_STYLE[k];
