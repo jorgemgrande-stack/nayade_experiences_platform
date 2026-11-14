@@ -17,6 +17,7 @@ import {
 import { getSessionCookieOptions } from "./_core/cookies";
 import { systemRouter } from "./_core/systemRouter";
 import { shopOrderProcedures } from "./routers/shopOrders";
+import { OFFER_MODES, MAX_REQUEST_CTA_LENGTH, offerModeOf, notForSaleMessage } from "../shared/offerMode";
 import { publicProcedure, protectedProcedure, staffProcedure, router, permissionProcedure } from "./_core/trpc";
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
@@ -400,8 +401,13 @@ export const appRouter = router({
     getVariantsByExperience: publicProcedure
       .input(z.object({ experienceId: z.number() }))
       .query(async ({ input }) => {
+        // E-6: sin precio fijo no se enseñan opciones de precio
+        const { getExperienceById: byId } = await import("./db");
+        const prod = await byId(input.experienceId);
+        if (prod && offerModeOf(prod) !== "fixed") return [];
         return getVariantsByExperience(input.experienceId);
       }),
+
 
     setPassword: publicProcedure.input(z.object({
       token: z.string().min(16).max(256),
@@ -570,6 +576,17 @@ export const appRouter = router({
          * Formulario a medida de Elephant Studio (server/_core/studioForms.ts): se valida contra el formulario
          * PUBLICADO y la oportunidad sale de sus respuestas (nombre, correo y mensaje de arriba se ignoran).
          */
+        /**
+         * E-6: solicitud de información de un producto (server/productRequests.ts). Los datos de la persona van en los
+         * campos de arriba; esto añade el producto y el consentimiento.
+         */
+        productRequest: z.object({
+          experienceId: z.number().int().positive(),
+          consent: z.boolean(),
+          website: z.string().max(500).optional(),
+          elapsedMs: z.number().int().min(0).optional(),
+          page: z.string().max(200).optional(),
+        }).optional(),
         studioForm: z.object({
           slug: z.string().regex(/^[a-z0-9-]{1,64}$/),
           blockId: z.string().regex(/^[a-z0-9-]{1,40}$/i),
@@ -586,6 +603,22 @@ export const appRouter = router({
         }).optional(),
       }))
       .mutation(async ({ input, ctx }) => {
+        if (input.productRequest) {
+          const { sameSiteRequest } = await import("./_core/studioFormsSubmit");
+          const { processProductRequest, defaultRequestContext, ProductRequestError } = await import("./productRequests");
+          const hdr = (n: string) => { const v = ctx.req.headers[n]; return Array.isArray(v) ? v[0] : v; };
+          if (!sameSiteRequest({ origin: hdr("origin"), referer: hdr("referer"), hosts: [hdr("x-forwarded-host"), hdr("host")] })) {
+            throw new TRPCError({ code: "FORBIDDEN", message: "No se ha podido enviar la solicitud desde esta dirección." });
+          }
+          const ip = ctx.req.ip || ctx.req.socket.remoteAddress || "desconocida";
+          try {
+            const pr = input.productRequest;
+            return { ...(await processProductRequest({ ...pr, name: input.name, email: input.email, phone: input.phone, message: input.message }, await defaultRequestContext(ip))), success: true as const };
+          } catch (e) {
+            if (e instanceof ProductRequestError) throw new TRPCError({ code: e.code, message: e.message });
+            throw e;
+          }
+        }
         if (input.studioForm) {
           const sf = input.studioForm;
           const { processStudioSubmission, StudioSubmitError, sameSiteRequest } = await import("./_core/studioFormsSubmit");
@@ -1427,7 +1460,10 @@ export const appRouter = router({
         image2: z.string().optional(),
         image3: z.string().optional(),
         image4: z.string().optional(),
-        basePrice: z.string(),
+        /** En «bajo petición» y «próximamente» no hace falta precio (se guarda 0) */
+        basePrice: z.string().default(""),
+        offerMode: z.enum(OFFER_MODES).default("fixed"),
+        requestCtaLabel: z.string().max(MAX_REQUEST_CTA_LENGTH).optional(),
         duration: z.string().optional(),
         minPersons: z.number().optional(),
         maxPersons: z.number().optional(),
@@ -1467,6 +1503,15 @@ export const appRouter = router({
           processedData.discountExpiresAt = new Date(processedData.discountExpiresAt as string);
         }
         if (processedData.discountPercent === "") processedData.discountPercent = null;
+        // E-6: sin precio fijo no hay precio ni descuento; con precio fijo, el precio sigue siendo obligatorio
+        if (input.offerMode === "fixed") {
+          if (!input.basePrice.trim() || !Number.isFinite(Number(input.basePrice.replace(",", ".")))) throw new TRPCError({ code: "BAD_REQUEST", message: "Indica el precio." });
+        } else {
+          processedData.basePrice = "0";
+          processedData.discountPercent = null;
+          processedData.discountExpiresAt = null;
+        }
+        processedData.requestCtaLabel = input.requestCtaLabel?.replace(/\s+/g, " ").trim() || null;
         if (processedData.providerPercent && processedData.providerPercent !== "") {
           processedData.providerPercent = parseFloat(processedData.providerPercent as string);
         }
@@ -1484,6 +1529,8 @@ export const appRouter = router({
         shortDescription: z.string().optional(),
         description: z.string().optional(),
         basePrice: z.string().optional(),
+        offerMode: z.enum(OFFER_MODES).optional(),
+        requestCtaLabel: z.string().max(MAX_REQUEST_CTA_LENGTH).optional(),
         isFeatured: z.boolean().optional(),
         isActive: z.boolean().optional(),
         image1: z.string().optional(),
@@ -1548,6 +1595,23 @@ export const appRouter = router({
           processedData.agencyMarginPercent = parseFloat(processedData.agencyMarginPercent as string);
         } else if (processedData.agencyMarginPercent === "") {
           processedData.agencyMarginPercent = null;
+        }
+        // E-6: el modo efectivo es el pedido o, si no se toca, el que ya tiene. Sin precio fijo se guarda 0 y sin descuento;
+        // volver a precio fijo exige un precio válido (un producto no puede quedar a la venta con 0 €)
+        if (input.offerMode !== undefined || processedData.basePrice !== undefined || processedData.requestCtaLabel !== undefined) {
+          const { getExperienceById: currentById } = await import("./db");
+          const cur = await currentById(id);
+          if (!cur) throw new TRPCError({ code: "NOT_FOUND", message: "Producto no encontrado" });
+          const mode = input.offerMode ?? offerModeOf(cur);
+          if (mode !== "fixed") {
+            processedData.basePrice = "0";
+            processedData.discountPercent = null;
+            processedData.discountExpiresAt = null;
+          } else if (input.offerMode === "fixed" && offerModeOf(cur) !== "fixed") {
+            const typed = Number(String(processedData.basePrice ?? "").replace(",", "."));
+            if (!(typed > 0)) throw new TRPCError({ code: "BAD_REQUEST", message: "Para volver a venderlo con precio fijo, indica el precio." });
+          }
+          if (processedData.requestCtaLabel !== undefined) processedData.requestCtaLabel = String(processedData.requestCtaLabel).replace(/\s+/g, " ").trim() || null;
         }
         return updateExperience(id, processedData);
       }),
@@ -2261,6 +2325,8 @@ export const appRouter = router({
         const { getExperienceById, getVariantsByExperience } = await import("./db");
         const product = await getExperienceById(input.productId);
         if (!product) throw new TRPCError({ code: "NOT_FOUND", message: "Producto no encontrado" });
+        // E-6: «bajo petición» y «próximamente» no se compran online, llegue la petición como llegue
+        if (offerModeOf(product) !== "fixed") throw new TRPCError({ code: "BAD_REQUEST", message: notForSaleMessage(product.title, offerModeOf(product)) });
         if (!product.basePrice) throw new TRPCError({ code: "BAD_REQUEST", message: "Este producto no tiene precio fijo" });
 
         // 1b. Validar time slot si el producto lo requiere
@@ -2517,6 +2583,8 @@ export const appRouter = router({
             productNames.push(packRow.title);
             continue;
           }
+          // E-6: sin precio fijo no se compra (se pide información), aunque siga en un carrito guardado
+          if (offerModeOf(product) !== "fixed") throw new TRPCError({ code: "BAD_REQUEST", message: notForSaleMessage(product.title, offerModeOf(product)) });
           // Agotado, retirado o sin publicar: no se vende aunque siga en un carrito guardado
           if (!isPurchasable(product)) throw new TRPCError({ code: "BAD_REQUEST", message: soldOutMessage(product.title) });
           if (!product.basePrice) throw new TRPCError({ code: "BAD_REQUEST", message: `El producto ${product.title} no tiene precio fijo` });

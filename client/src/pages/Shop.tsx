@@ -15,8 +15,9 @@ import { trpc } from "@/lib/trpc";
 import { cn } from "@/lib/utils";
 import { formatEuros, productPath } from "@shared/storefront";
 import { isPurchasable } from "@shared/shopOrders";
+import { publicOfferBadge } from "@shared/offerMode";
 
-type Item = { id: number; slug: string; title: string; categoryId?: number | null; shortDescription?: string | null; image1?: string | null; coverImageUrl?: string | null; basePrice?: string | null; isActive?: boolean | null; isPublished?: boolean | null };
+type Item = { id: number; slug: string; title: string; categoryId?: number | null; shortDescription?: string | null; image1?: string | null; coverImageUrl?: string | null; basePrice?: string | null; isActive?: boolean | null; isPublished?: boolean | null; offerMode?: string | null };
 
 /** Productos por página (el máximo que sirve la consulta pública). */
 const PAGE = 50;
@@ -92,17 +93,20 @@ export default function Shop() {
               {shown.map((p) => {
                 const img = p.image1 || p.coverImageUrl;
                 const price = Number(p.basePrice) > 0 ? formatEuros(p.basePrice) : null;
-                const soldOut = !isPurchasable(p);
+                // E-6: «Bajo petición» / «Próximamente» (nunca «Agotado»), sin precio
+                const offerBadge = publicOfferBadge(p);
+                const soldOut = !offerBadge && !isPurchasable(p);
                 return (
                   <Link key={p.id} href={productPath(p.slug)} className="group block rounded-2xl border border-border/50 overflow-hidden bg-card shadow-sm hover:shadow-md transition-shadow">
                     <div className="relative">
                       {img ? <img src={img} alt={p.title} className={cn("w-full h-44 object-cover", soldOut && "opacity-60")} loading="lazy" /> : <div className="w-full h-44 bg-muted" aria-hidden="true" />}
                       {soldOut && <span className="absolute left-3 top-3 rounded-full bg-foreground/80 px-2.5 py-1 text-xs font-semibold text-background">Agotado</span>}
+                      {offerBadge && <span data-testid="insignia-oferta" className="absolute left-3 top-3 rounded-full bg-primary px-2.5 py-1 text-xs font-semibold text-primary-foreground">{offerBadge}</span>}
                     </div>
                     <div className="p-4 space-y-1">
                       <h2 className="font-heading font-semibold group-hover:text-primary break-words">{p.title}</h2>
                       {p.shortDescription && <p className="text-sm text-muted-foreground line-clamp-2">{p.shortDescription}</p>}
-                      {price && <p className={cn("text-sm font-semibold", soldOut && "text-muted-foreground")}>{price}</p>}
+                      {price && !offerBadge && <p className={cn("text-sm font-semibold", soldOut && "text-muted-foreground")}>{price}</p>}
                     </div>
                   </Link>
                 );

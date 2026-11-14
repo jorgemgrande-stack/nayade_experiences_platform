@@ -25,6 +25,7 @@ import { cn } from "@/lib/utils";
 import TimeSlotsPanel from "@/components/TimeSlotsPanel";
 import { TONE_BADGE, TONE_SURFACE } from "@/lib/panelTones";
 import { newProductDefaults, presentialSaleAllowed } from "@shared/catalogDefaults";
+import { DEFAULT_REQUEST_CTA, MAX_REQUEST_CTA_LENGTH, OFFER_MODES, OFFER_MODE_HELP, OFFER_MODE_LABELS, offerModeOf, type OfferMode } from "@shared/offerMode";
 
 const difficultyColors: Record<string, string> = {
   facil: TONE_BADGE.success,
@@ -45,6 +46,7 @@ type ExpForm = {
   categoryId: string; locationId: string;
   image1: string; image2: string; image3: string; image4: string;
   basePrice: string; duration: string; minPersons: string; maxPersons: string;
+  offerMode: OfferMode; requestCtaLabel: string;
   pricingType: string; unitCapacity: string; maxUnits: string;
   difficulty: string; isFeatured: boolean; isActive: boolean; isPublished: boolean; isPresentialSale: boolean;
   includes: string[]; excludes: string[];
@@ -64,6 +66,7 @@ const emptyForm: ExpForm = {
   categoryId: "", locationId: "",
   image1: "", image2: "", image3: "", image4: "",
   basePrice: "", duration: "", minPersons: "1", maxPersons: "",
+  offerMode: "fixed", requestCtaLabel: "",
   pricingType: "per_person", unitCapacity: "", maxUnits: "",
   difficulty: "facil", isFeatured: false, isActive: true, isPublished: true, isPresentialSale: false,
   includes: [], excludes: [],
@@ -261,6 +264,8 @@ export default function ExperiencesManager() {
       image3: String(exp.image3 ?? ""),
       image4: String(exp.image4 ?? ""),
       basePrice: String(exp.basePrice ?? ""),
+      offerMode: offerModeOf(exp),
+      requestCtaLabel: String((exp as Record<string, unknown>).requestCtaLabel ?? ""),
       duration: String(exp.duration ?? ""),
       minPersons: String(exp.minPersons ?? "1"),
       maxPersons: String(exp.maxPersons ?? ""),
@@ -322,7 +327,10 @@ export default function ExperiencesManager() {
       image2: form.image2 || undefined,
       image3: form.image3 || undefined,
       image4: form.image4 || undefined,
-      basePrice: form.basePrice,
+      // E-6: sin precio fijo no se manda precio (el servidor guarda 0)
+      basePrice: form.offerMode === "fixed" ? form.basePrice : "",
+      offerMode: form.offerMode,
+      requestCtaLabel: form.offerMode === "fixed" ? "" : form.requestCtaLabel.trim(),
       duration: form.duration || undefined,
       minPersons: form.minPersons ? parseInt(form.minPersons) : undefined,
       maxPersons: form.maxPersons ? parseInt(form.maxPersons) : undefined,
@@ -498,7 +506,9 @@ export default function ExperiencesManager() {
                       </div>
                     </td>
                     <td className="px-4 py-4">
-                      <span className="font-semibold text-foreground">{parseFloat(exp.basePrice).toFixed(0)}€</span>
+                      {offerModeOf(exp) === "fixed"
+                        ? <span className="font-semibold text-foreground">{parseFloat(exp.basePrice).toFixed(0)}€</span>
+                        : <Badge variant="outline" className={TONE_BADGE.info}>{OFFER_MODE_LABELS[offerModeOf(exp)]}</Badge>}
                     </td>
                     {showDifficulty && (
                       <td className="px-4 py-4">
@@ -595,11 +605,29 @@ export default function ExperiencesManager() {
                 <Input id="slug" value={form.slug} onChange={(e) => setForm({ ...form, slug: e.target.value })} className="mt-1" placeholder="Se genera a partir del nombre" aria-describedby="slug-hint" />
                 <p id="slug-hint" className="text-xs text-muted-foreground mt-1">Opcional. Solo letras minúsculas, números y guiones.</p>
               </div>
-              <div>
-                <Label htmlFor="basePrice">{isNewCompany ? "Precio (€, impuestos incluidos)" : "Precio Base (€)"} *</Label>
-                <Input id="basePrice" type="number" inputMode="decimal" min="0" step="0.01" value={form.basePrice} onChange={(e) => setForm({ ...form, basePrice: e.target.value })} aria-required="true" className="mt-1" {...errProps("basePrice", "basePrice")} />
-                <ErrorText k="basePrice" id="basePrice" />
+              <div className="sm:col-span-2">
+                <Label htmlFor="offerMode">Cómo se ofrece</Label>
+                <Select value={form.offerMode} onValueChange={(v) => setForm({ ...form, offerMode: v as OfferMode })}>
+                  <SelectTrigger id="offerMode" className="mt-1" aria-describedby="offerMode-hint"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    {OFFER_MODES.map((m) => <SelectItem key={m} value={m}>{OFFER_MODE_LABELS[m]}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+                <p id="offerMode-hint" className="text-xs text-muted-foreground mt-1">{OFFER_MODE_HELP[form.offerMode]}</p>
               </div>
+              {form.offerMode === "fixed" ? (
+                <div>
+                  <Label htmlFor="basePrice">{isNewCompany ? "Precio (€, impuestos incluidos)" : "Precio Base (€)"} *</Label>
+                  <Input id="basePrice" type="number" inputMode="decimal" min="0" step="0.01" value={form.basePrice} onChange={(e) => setForm({ ...form, basePrice: e.target.value })} aria-required="true" className="mt-1" {...errProps("basePrice", "basePrice")} />
+                  <ErrorText k="basePrice" id="basePrice" />
+                </div>
+              ) : (
+                <div>
+                  <Label htmlFor="requestCtaLabel">Texto del botón de la web</Label>
+                  <Input id="requestCtaLabel" value={form.requestCtaLabel} maxLength={MAX_REQUEST_CTA_LENGTH} onChange={(e) => setForm({ ...form, requestCtaLabel: e.target.value })} className="mt-1" placeholder={DEFAULT_REQUEST_CTA} aria-describedby="requestCta-hint" />
+                  <p id="requestCta-hint" className="text-xs text-muted-foreground mt-1">Opcional. Sin precio ni compra: quien pulse el botón te deja sus datos y te llega a tu CRM.</p>
+                </div>
+              )}
               <div>
                 <Label htmlFor="categoryId">Categoría *</Label>
                 <Select value={form.categoryId} onValueChange={(v) => setForm({ ...form, categoryId: v })}>

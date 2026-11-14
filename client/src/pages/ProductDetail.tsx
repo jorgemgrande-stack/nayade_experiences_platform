@@ -17,6 +17,8 @@ import { usePublicContact } from "@/hooks/usePublicPhone";
 import { trpc } from "@/lib/trpc";
 import { cn } from "@/lib/utils";
 import { isPurchasable } from "@shared/shopOrders";
+import { ProductRequestDialog } from "@/components/site/ProductRequestForm";
+import { OFFER_MODE_PUBLIC_LABELS, offerModeOf, requestCtaLabel } from "@shared/offerMode";
 import {
   buildGenericCartLine,
   clampQuantity,
@@ -49,6 +51,7 @@ export default function ProductDetail() {
   const [quantity, setQuantity] = useState(1);
   const [variantId, setVariantId] = useState<number | undefined>(undefined);
   const [date, setDate] = useState("");
+  const [requestOpen, setRequestOpen] = useState(false);
 
   const { data: product, isLoading } = trpc.public.getExperienceBySlug.useQuery({ slug: slug ?? "" }, { enabled: !!slug, retry: false });
   const { data: variants = [] } = trpc.public.getVariantsByExperience.useQuery({ experienceId: product?.id ?? 0 }, { enabled: !!product?.id });
@@ -86,7 +89,10 @@ export default function ProductDetail() {
   const current = gallery[Math.min(imageIndex, gallery.length - 1)];
 
   const basePrice = Number(product.basePrice ?? 0);
-  const hasPrice = Number.isFinite(basePrice) && basePrice > 0;
+  // E-6: «bajo petición» y «próximamente» no enseñan precio ni se compran: solo se pide información
+  const offer = offerModeOf(product);
+  const onRequest = offer !== "fixed";
+  const hasPrice = !onRequest && Number.isFinite(basePrice) && basePrice > 0;
   const variant = variants.find((v) => v.id === variantId);
   const unit = variantUnitPrice(basePrice, variant);
   const shownPrice = variant || !variants.length ? unit : fromPrice(basePrice, variants);
@@ -99,7 +105,7 @@ export default function ProductDetail() {
   const requirements = str(product.requirements);
 
   // Publicado pero no a la venta: se enseña como agotado y no se puede añadir (el pago también lo rechaza)
-  const soldOut = !isPurchasable(product);
+  const soldOut = !onRequest && !isPurchasable(product);
 
   const add = () => {
     if (soldOut) return;
@@ -159,6 +165,11 @@ export default function ProductDetail() {
           {/* Compra (en móvil, el botón flotante de WhatsApp se aparta para no taparla) */}
           <div className="lg:col-span-2 min-w-0" data-whatsapp-avoid="">
             <div className="lg:sticky lg:top-28 space-y-5">
+              {onRequest && (
+                <span data-testid="insignia-oferta" className="inline-block rounded-full bg-primary/10 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-primary">
+                  {OFFER_MODE_PUBLIC_LABELS[offer]}
+                </span>
+              )}
               <h1 className="text-3xl md:text-4xl font-heading font-bold text-foreground break-words">{product.title}</h1>
               {str(product.shortDescription) && str(product.description) && <p className="text-muted-foreground">{product.shortDescription}</p>}
 
@@ -255,6 +266,10 @@ export default function ProductDetail() {
                     </Button>
                   )}
                 </>
+              ) : onRequest ? (
+                <Button onClick={() => setRequestOpen(true)} className="w-full h-12 text-base font-semibold" data-testid="solicitar-informacion">
+                  {requestCtaLabel(p)}
+                </Button>
               ) : (
                 <Button asChild variant="outline" className="w-full h-12">
                   <Link href={`/presupuesto?exp=${encodeURIComponent(product.slug)}`}>Solicitar presupuesto</Link>
@@ -308,6 +323,8 @@ export default function ProductDetail() {
           </div>
         )}
       </div>
+
+      {onRequest && <ProductRequestDialog target={{ productId: product.id, productTitle: product.title }} open={requestOpen} onOpenChange={setRequestOpen} />}
 
       {/* Opiniones reales del producto (sin cifras fijas) */}
       <section className="py-12 bg-muted border-t border-border">

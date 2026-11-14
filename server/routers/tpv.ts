@@ -42,7 +42,8 @@ import {
   leads,
   users,
 } from "../../drizzle/schema";
-import { eq, and, or, like, desc, sql, gte, lte, inArray } from "drizzle-orm";
+import { eq, and, or, like, desc, sql, gte, lte, inArray, ne } from "drizzle-orm";
+import { notForSaleMessage } from "../../shared/offerMode";
 import { TRPCError } from "@trpc/server";
 import { generateDocumentNumber } from "../documentNumbers";
 import { currentTpvScope } from "../tpvCatalogScope";
@@ -1183,7 +1184,7 @@ export const tpvRouter = router({
         categoryId: experiences.categoryId,
         isActive: experiences.isActive,
         hasTimeSlots: experiences.hasTimeSlots,
-      }).from(experiences).where(and(eq(experiences.isActive, true), eq(experiences.isPresentialSale, true))),
+      }).from(experiences).where(and(eq(experiences.isActive, true), eq(experiences.isPresentialSale, true), eq(experiences.offerMode, "fixed"))),
 
       db.select({
         id: packs.id,
@@ -1388,6 +1389,12 @@ export const tpvRouter = router({
       const allowedType: Record<string, boolean> = { pack: scope.packs, legoPack: scope.legoPacks, spa: scope.spa, hotel: scope.hotel };
       if (input.items.some(i => !i.isManual && allowedType[i.productType] === false)) {
         throw new TRPCError({ code: "FORBIDDEN", message: "Ese producto no está disponible en tu plan" });
+      }
+      // E-6: lo que se ofrece «bajo petición» o «próximamente» no se cobra en caja (no tiene precio; se pide información)
+      const catalogIds = input.items.filter(i => !i.isManual && i.productType === "experience" && i.productId > 0).map(i => i.productId);
+      if (catalogIds.length) {
+        const notForSale = await db.select({ title: experiences.title }).from(experiences).where(and(inArray(experiences.id, catalogIds), ne(experiences.offerMode, "fixed")));
+        if (notForSale.length) throw new TRPCError({ code: "BAD_REQUEST", message: notForSaleMessage(notForSale[0].title, "on_request") });
       }
       const manualFiscal: FiscalData | null = hasManual
         ? (scope.reav

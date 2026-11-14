@@ -1366,6 +1366,8 @@ export async function cloneExperience(id: number, newName?: string) {
     requirements: orig.requirements,
     isFeatured: false,
     isActive: false,
+    offerMode: orig.offerMode,
+    requestCtaLabel: orig.requestCtaLabel,
     sortOrder: orig.sortOrder,
     metaTitle: orig.metaTitle,
     metaDescription: orig.metaDescription,

@@ -29,6 +29,7 @@ import { blockLabel, cssUrl, DEFAULT_BLOCK_STYLE, readBlockText, type BlockOf, t
 import { modalHref } from "@shared/studio/modal";
 import { formatEuros, productPath } from "@shared/storefront";
 import { isPurchasable } from "@shared/shopOrders";
+import { publicOfferBadge } from "@shared/offerMode";
 
 // ─── Contexto de edición (lienzo de Elephant Studio) ──────────────────────────
 
@@ -1205,7 +1206,7 @@ function VideoBlock({ b, first }: { b: BlockOf<"video">; first: boolean }) {
   );
 }
 
-type ShopItem = { id: number; slug: string; title: string; categoryId?: number | null; shortDescription?: string | null; image1?: string | null; coverImageUrl?: string | null; basePrice?: string | null; isActive?: boolean | null; isPublished?: boolean | null };
+type ShopItem = { id: number; slug: string; title: string; categoryId?: number | null; shortDescription?: string | null; image1?: string | null; coverImageUrl?: string | null; basePrice?: string | null; isActive?: boolean | null; isPublished?: boolean | null; offerMode?: string | null };
 
 /** Productos reales de la tienda de la empresa (public.getExperiences): nada se copia en la página. */
 function ProductsBlock({ b, first, preview }: { b: BlockOf<"products">; first: boolean; preview?: boolean }) {
@@ -1246,17 +1247,20 @@ function ProductsBlock({ b, first, preview }: { b: BlockOf<"products">; first: b
           const tiles = items.map((p) => {
             const img = p.image1 || p.coverImageUrl;
             const price = Number(p.basePrice) > 0 ? formatEuros(p.basePrice) : null;
-            const soldOut = !isPurchasable(p);
+            // E-6: «Bajo petición» / «Próximamente» (nunca «Agotado»), sin precio
+            const offerBadge = publicOfferBadge(p);
+            const soldOut = !offerBadge && !isPurchasable(p);
             return (
               <SmartLink key={p.id} href={productPath(p.slug)} preview={preview} className="group block h-full overflow-hidden rounded-2xl border border-border/50 bg-card text-card-foreground shadow-sm transition-shadow hover:shadow-md">
                 <div className="relative">
                   {img ? <img src={img} alt={p.title} className={cn("h-44 w-full object-cover", soldOut && "opacity-60")} loading="lazy" /> : <div className="h-44 w-full bg-muted" aria-hidden="true" />}
                   {soldOut && <span className="absolute left-3 top-3 rounded-full bg-foreground/80 px-2.5 py-1 text-xs font-semibold text-background">Agotado</span>}
+                  {offerBadge && <span className="absolute left-3 top-3 rounded-full bg-primary px-2.5 py-1 text-xs font-semibold text-primary-foreground">{offerBadge}</span>}
                 </div>
                 <div className="space-y-1 p-4">
                   <h3 className="break-words font-heading font-semibold group-hover:text-primary">{p.title}</h3>
                   {p.shortDescription && <p className="line-clamp-2 text-sm text-muted-foreground">{p.shortDescription}</p>}
-                  {price && <p className={cn("text-sm font-semibold", soldOut && "text-muted-foreground")}>{price}</p>}
+                  {price && !offerBadge && <p className={cn("text-sm font-semibold", soldOut && "text-muted-foreground")}>{price}</p>}
                 </div>
               </SmartLink>
             );
