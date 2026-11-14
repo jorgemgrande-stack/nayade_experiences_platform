@@ -48,3 +48,16 @@ describe("Studio · composición inmersiva (altura, encuadre, capas)", () => {
     expect(styleOf({ ...base, bgX: "abc", bgZoom: 120 })).toMatchObject({ bgX: 50 });
   });
 });
+
+describe("Studio · altura mínima propia del móvil", () => {
+  it("0 es «la misma que en ordenador» y no se guarda", () => {
+    expect(isDefaultStyle({ ...DEFAULT_BLOCK_STYLE, minHeightM: 0 })).toBe(true);
+    expect(styleOf({ minHeightM: 0 })).toBeUndefined();
+  });
+  it("guarda una altura propia acotada entre 240 y 2000 píxeles", () => {
+    expect(styleOf({ minHeightM: 1000 })).toMatchObject({ minHeightM: 1000 });
+    expect(styleOf({ minHeightM: 50 })).toMatchObject({ minHeightM: 240 });
+    expect(styleOf({ minHeightM: 99999 })).toMatchObject({ minHeightM: 2000 });
+    expect(styleOf({ minHeightM: "abc", minHeight: "full" })).toMatchObject({ minHeightM: 0 });
+  });
+});
