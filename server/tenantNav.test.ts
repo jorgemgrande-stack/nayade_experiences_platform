@@ -81,7 +81,7 @@ describe("web de una empresa sin contenido ajeno", () => {
   it("el pie usa el menú de pie de la propia empresa, sin enlaces legales fijos", () => {
     const t = read("../client/src/components/TenantTheme.tsx");
     const footer = t.slice(t.indexOf("export function TenantFooter"), t.indexOf("function Spinner"));
-    expect(footer).toContain('getMenuItems.useQuery({ zone: "footer" }');
+    expect(footer).toMatch(/getMenuItems\.useQuery\(\{ zone: "footer"[,\s}]/);
     expect(footer).not.toContain('href="/aviso-legal"');
     expect(footer).not.toContain('href="/politica-de-privacidad"');
   });

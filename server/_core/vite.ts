@@ -6,8 +6,9 @@ import path from "path";
 import { createServer as createViteServer } from "vite";
 import viteConfig from "../../vite.config";
 import { isMultiTenant } from "./tenant";
-import { buildTenantMeta, escapeHtml, pageMetaOverride } from "./tenantSeo";
-import { defaultPublicRouteDeps, resolvePublicRoute, type PublicRouteDeps } from "./publicRoutes";
+import { buildTenantMeta, escapeHtml, pageMetaOverride, safeUrl } from "./tenantSeo";
+import { applyLocaleSeo } from "./i18nHtml";
+import { defaultPublicRouteDeps, resolvePublicRoute, type PublicRouteDeps, type PublicRouteResult } from "./publicRoutes";
 import { getSystemSetting } from "../config";
 
 export async function setupVite(app: Express, server: Server) {
@@ -130,6 +131,27 @@ function injectSeoMeta(
     );
 }
 
+/** Idioma de la petición (E-1). Nunca rompe la web: ante cualquier fallo se sirve como siempre. */
+async function resolveLocalizedRequest(pathname: string, host: unknown, originalUrl: string) {
+  try {
+    const { normalizeHost } = await import("./tenantRegistry/host");
+    const h = normalizeHost(host);
+    if (!h) return null;
+    const [{ sqlI18nRepo }, { resolveRequest }] = await Promise.all([import("../i18nSqlRepo"), import("../i18nService")]);
+    const r = await resolveRequest(sqlI18nRepo(), pathname, `https://${h}`);
+    if (r.kind === "passthrough") return null;
+    if (r.kind === "redirect") {
+      const q = originalUrl.includes("?") ? originalUrl.slice(originalUrl.indexOf("?")) : "";
+      // Defensa en profundidad: solo rutas internas (una `/` inicial, nunca `//host` ni `\`)
+      const { isSafeRedirectTarget } = await import("../../shared/i18n");
+      return isSafeRedirectTarget(r.to) ? { ...r, to: r.to + q } : { kind: "notFound" as const };
+    }
+    return r;
+  } catch {
+    return null;
+  }
+}
+
 export function serveStatic(app: Express, opts: { distPath?: string; routeDeps?: (multi: boolean) => PublicRouteDeps } = {}) {
   const distPath =
     opts.distPath ??
@@ -163,7 +185,10 @@ export function serveStatic(app: Express, opts: { distPath?: string; routeDeps?:
       const multi = isMultiTenant();
       // 404 real para lo que no existe en la web de la empresa (el cliente muestra su «no encontrada»)
       const deps = (opts.routeDeps ?? defaultPublicRouteDeps)(multi);
-      const route = await resolvePublicRoute(pathname, deps);
+      // Multidioma (E-1): solo si la empresa tiene idiomas adicionales; si no, `null` y todo sigue exactamente igual
+      const i18n = multi ? await resolveLocalizedRequest(pathname, req.headers.host, req.originalUrl) : null;
+      if (i18n?.kind === "redirect") return res.redirect(i18n.status, i18n.to);
+      const route: PublicRouteResult = i18n?.kind === "notFound" ? { status: 404 } : i18n?.kind === "page" && i18n.prefixed ? { status: 200 } : await resolvePublicRoute(pathname, deps);
       const isHome = pathname.replace(/\/+$/, "") === "";
       const [brandName, description, logoUrl, ogImageUrl] = await Promise.all([
         getSystemSetting("brand_name", ""),
@@ -183,6 +208,14 @@ export function serveStatic(app: Express, opts: { distPath?: string; routeDeps?:
       // Página propia de la empresa (portada «inicio» incluida): su título y descripción
       const page = route.page ?? (multi && isHome ? await deps.tenantPage("inicio").catch(() => null) : null);
       if (page) seo.meta = { ...seo.meta, ...pageMetaOverride(page, brandName, isHome, { keepDescription: isHome && !!description.trim() }) };
+      // Página traducida: su título, descripción e imagen (nunca los del principal mezclados)
+      if (i18n?.kind === "page" && i18n.page) {
+        const own = i18n.page;
+        const isLocalHome = pathname.replace(/\/+$/, "") === `/${i18n.locale}`;
+        seo.meta = { ...seo.meta, ...pageMetaOverride({ title: own.title, metaTitle: own.metaTitle, metaDescription: own.metaDescription }, brandName, isLocalHome) };
+        const img = safeUrl(own.ogImageUrl ?? undefined);
+        if (img) seo.meta.image = escapeHtml(img);
+      }
       // Blog: título, descripción e imagen de la entrada publicada (nunca de un borrador)
       if (pathname === "/blog" || pathname.startsWith("/blog/")) {
         try {
@@ -194,6 +227,7 @@ export function serveStatic(app: Express, opts: { distPath?: string; routeDeps?:
         }
       }
       let html = injectSeoMeta(_htmlCache, seo);
+      if (i18n?.kind === "page") html = applyLocaleSeo(html, i18n.seo);
       if (isMultiTenant()) html = tenantSiteHtml(html, escapeHtml(brandName));
       if (route.status === 404) html = html.replace(/<meta charset="UTF-8" \/>/, '<meta charset="UTF-8" />\n    <meta name="robots" content="noindex" />');
       // Web oculta a los buscadores (empresa de demostración o web en preparación)

@@ -11,6 +11,8 @@ import CartDrawer from "@/components/CartDrawer";
 import { trackPhoneClick } from "@/lib/ga4";
 import { TenantBrand, useTenantTheme } from "@/components/TenantTheme";
 import { usePublicSite } from "@/hooks/usePublicSite";
+import { useSiteLocale } from "@/hooks/useSiteLocale";
+import LanguageSwitcher from "@/components/LanguageSwitcher";
 
 // Fallback estático por si la BD no responde aún
 const FALLBACK_NAV = [
@@ -175,8 +177,9 @@ export default function PublicNav() {
   const showCart = !!site?.store;
 
   // Cargar menú desde la BD
+  const site18n = useSiteLocale();
   const { data: menuData } = trpc.public.getMenuItems.useQuery(
-    { zone: "header" },
+    { zone: "header", ...(site18n.prefix ? { locale: site18n.prefix } : {}) },
     { staleTime: 5 * 60 * 1000 } // 5 min cache
   );
 
@@ -250,7 +253,7 @@ export default function PublicNav() {
         <div className="flex items-center justify-between h-20">
 
           {/* Logo */}
-          <Link href="/" className="flex items-center gap-2.5 cursor-pointer">
+          <Link href={site18n.home} className="flex items-center gap-2.5 cursor-pointer">
             {tenantTheme?.neutralSite ? (
               <TenantBrand theme={tenantTheme} />
             ) : (
@@ -310,6 +313,7 @@ export default function PublicNav() {
 
           {/* CTAs desktop */}
           <div className="hidden lg:flex items-center gap-2">
+            <LanguageSwitcher />
             {showShopLink && (
               <Link href={siteText.shopHref}>
                 <Button variant="ghost" size="sm" className="font-display font-medium rounded-full text-foreground hover:text-primary">
