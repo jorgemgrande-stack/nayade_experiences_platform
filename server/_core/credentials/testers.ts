@@ -218,6 +218,10 @@ async function testProviderRaw(provider: string, v: Record<string, string>, fetc
       if (!["test", "production"].includes(v.environment ?? "test")) return { ok: false, message: "Elige «Modo pruebas» o «Modo real»" };
       return { ok: true, message: `Datos correctos (${(v.environment ?? "test") === "production" ? "modo real" : "modo pruebas"}). El banco confirma la conexión con el primer pago; haz uno de prueba para asegurarte.` };
     }
+    case "turnstile":
+      // Sin red: la verificación real ocurre en cada envío. Aquí solo se comprueba que haya las dos claves
+      if (!v.siteKey || !v.secretKey) return { ok: false, message: "Faltan la clave del sitio o la clave secreta" };
+      return { ok: true, message: "Claves guardadas. Activa «Verificación antirrobots» en un formulario y haz un envío de prueba para confirmarlo." };
     default:
       return { ok: false, message: "Proveedor sin prueba disponible", outcome: "unsupported" };
   }

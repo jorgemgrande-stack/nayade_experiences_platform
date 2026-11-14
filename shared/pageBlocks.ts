@@ -76,7 +76,13 @@ export interface BlockDataMap {
   /** Tarjetas con imagen, título, texto y botón, en rejilla o en carrusel */
   cards: { title: string; intro: string; layout: "grid" | "carousel"; columns: "2" | "3" | "4"; items: CardItem[] };
   /** Formulario a medida: cada envío entra en el CRM de la empresa como oportunidad, con todas las respuestas */
-  form: { title: string; intro: string; fields: FormFieldItem[]; submitLabel: string; successMessage: string; redirectUrl: string; consent: OnOff };
+  form: { title: string; intro: string; fields: FormFieldItem[]; submitLabel: string; successMessage: string; redirectUrl: string; consent: OnOff;
+    /** E-7: textos propios (cadenas separadas, traducibles); vacío = el texto de siempre */
+    errorMessage: string; consentText: string;
+    /** E-7: aviso por correo al propietario con cada envío (apagado por defecto) */
+    notifyOwner: OnOff;
+    /** E-7: verificación Turnstile de la empresa (apagada por defecto; exige configurarla en Integraciones) */
+    captcha: OnOff };
   /** Tabla de precios: planes o tarifas con sus características y botón; uno puede destacarse */
   pricing: { title: string; intro: string; plans: PricingPlan[] };
   /** Cifras destacadas, con recuento animado al aparecer */
@@ -161,7 +167,7 @@ export interface FormFieldItem {
   options: string;
   required: OnOff;
   /** Qué dato del contacto es (para el CRM): nombre, correo o teléfono */
-  role: "none" | "name" | "email" | "phone";
+  role: "none" | "name" | "first_name" | "last_name" | "email" | "phone" | "company";
   width: "full" | "half";
   /** Valor fijo de un campo oculto (por ejemplo, la campaña) */
   value: string;
@@ -404,6 +410,10 @@ export function defaultBlockData<K extends BlockType>(type: K): BlockDataMap[K] 
       successMessage: "¡Gracias! Hemos recibido tu mensaje y te responderemos lo antes posible.",
       redirectUrl: "",
       consent: "on",
+      errorMessage: "",
+      consentText: "",
+      notifyOwner: "off",
+      captcha: "off",
     },
     pricing: {
       title: "Tarifas",
@@ -703,3 +713,8 @@ export function templateBlocks(key: PageTemplateKey, title: string): PageBlock[]
       return [createBlock("text", { title: t, html: "<p>Escribe aquí el contenido de tu página.</p>" })];
   }
 }
+
+/** Texto de la casilla de privacidad de los formularios si la empresa no escribe uno propio (E-7). */
+export const DEFAULT_FORM_CONSENT_TEXT = "He leído y acepto la política de privacidad.";
+/** Mensajes por defecto de los formularios (la empresa puede sustituirlos; cadenas separadas para traducirlas). */
+export const DEFAULT_FORM_ERROR_MESSAGE = "No hemos podido enviar el formulario. Inténtalo de nuevo en unos minutos.";
