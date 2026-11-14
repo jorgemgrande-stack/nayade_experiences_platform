@@ -394,6 +394,36 @@ describe.skipIf(!URL_)("Convocatorias: fechas, plazas e inscripciones (aplicaci�
     expect(data(await ess.q("b", "products.editions.searchPeople", { q: "berta" }, admB))).toEqual([]);
   });
 
+  it("alta manual sin elegir persona: se enlaza al CRM (cliente y oportunidad), sin duplicar contactos", async () => {
+    const ed = await mkEdition({ capacity: 5 });
+    const count = async (email: string) => ({
+      clients: (await ess.sql("a", "SELECT COUNT(*) AS n FROM clients WHERE email = ?", [email]))[0].n,
+      leads: (await ess.sql("a", "SELECT COUNT(*) AS n FROM leads WHERE email = ?", [email]))[0].n,
+    });
+    // Persona nueva (llamó por teléfono): se crea su oportunidad y su cliente, y la inscripción queda enlazada a ambos
+    const a = await ess.m("a", "products.editions.addEnrollment", { editionId: ed, name: "Nuria Nueva", email: "Nuria@Ejemplo.example", phone: "611000111", seats: 2, status: "solicitada", notes: "Llamó" }, admA);
+    expect(a.status, JSON.stringify(a.json)).toBe(200);
+    const na = data(a);
+    expect(na.leadId).toBeGreaterThan(0);
+    expect(na.clientId).toBeGreaterThan(0);
+    expect(await count("nuria@ejemplo.example")).toEqual({ clients: 1, leads: 1 });
+    const lead = (await ess.sql("a", "SELECT source, experienceId, numberOfPersons FROM leads WHERE id = ?", [na.leadId]))[0];
+    expect(lead).toMatchObject({ source: "panel_inscripcion", experienceId: prod.a, numberOfPersons: 2 });
+    expect((await edRow(ed)).reserved).toBe(0); // sigue sin ocupar plaza
+    // La misma persona en otra convocatoria: se reutiliza el cliente y su oportunidad, no se crea otra
+    const ed2 = await mkEdition({ capacity: 5, label: "Otra edición" });
+    const b = await ess.m("a", "products.editions.addEnrollment", { editionId: ed2, name: "Nuria Nueva", email: "nuria@ejemplo.example", seats: 1, status: "solicitada" }, admA);
+    expect(data(b)).toMatchObject({ clientId: na.clientId, leadId: na.leadId });
+    expect(await count("nuria@ejemplo.example")).toEqual({ clients: 1, leads: 1 });
+    // Quien ya llegó por la web (cliente existente): se reutiliza
+    const web = await request({ experienceId: prod.a, name: "Willy Web", email: "willy@ejemplo.example" });
+    const c = await ess.m("a", "products.editions.addEnrollment", { editionId: ed, name: "Willy Web", email: "willy@ejemplo.example", seats: 1, status: "solicitada" }, admA);
+    expect(data(c).leadId).toBe(data(web).leadId);
+    expect(await count("willy@ejemplo.example")).toEqual({ clients: 1, leads: 1 });
+    // Aislamiento: nada de esto aparece en la otra empresa
+    expect((await ess.sql("b", "SELECT COUNT(*) AS n FROM leads WHERE email = 'nuria@ejemplo.example'"))[0].n).toBe(0);
+  });
+
   it("aviso por correo al confirmar o cancelar: apagado por defecto, texto editable, correo operativo, sin romper nada si falla", async () => {
     const ed = await mkEdition({ capacity: 5, label: "Edición con aviso", startsLocal: "2037-05-04T10:00", endsLocal: null });
     const first = await enroll(ed, 2);

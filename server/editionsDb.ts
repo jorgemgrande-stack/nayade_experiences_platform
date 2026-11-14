@@ -378,6 +378,37 @@ export async function addEnrollment(input: ManualEnrollmentInput, now = Date.now
     if (!l) throw new EditionError("NOT_FOUND", "Esa oportunidad ya no existe.");
     leadId = Number(l.id);
   }
+  if (!input.source) {
+    // Sin persona elegida en el panel: se resuelve en el CRM igual que una solicitud de la web. Si ya hay un cliente con
+    // ese correo se reutiliza (y su oportunidad de origen, si la tiene); si es una persona nueva se crea su oportunidad,
+    // y `createLead` crea o reutiliza el cliente por correo. Así nunca queda una inscripción suelta ni un contacto duplicado.
+    const [c] = await rows(d, sql`SELECT id, leadId FROM clients WHERE email = ${email} LIMIT 1`);
+    if (c) {
+      clientId = Number(c.id);
+      leadId = c.leadId != null ? Number(c.leadId) : null;
+    } else {
+      const [prod] = await rows(d, sql`SELECT title FROM experiences WHERE id = ${ed.experienceId}`);
+      const { createLead } = await import("./db");
+      const title = String(prod?.title ?? "");
+      const lead = await createLead({
+        name,
+        email,
+        phone: phone || undefined,
+        message: `Inscripción dada de alta a mano desde el panel en «${title}» · ${ed.label}.${notes ? `\nNotas: ${notes}` : ""}`.slice(0, 8000),
+        experienceId: ed.experienceId,
+        selectedProduct: title.slice(0, 256) || undefined,
+        numberOfPersons: input.seats,
+        preferredDate: new Date(ed.startsAt).toISOString(),
+        source: "panel_inscripcion",
+      });
+      leadId = lead.id;
+      const [nc] = await rows(d, sql`SELECT id FROM clients WHERE email = ${email} LIMIT 1`);
+      clientId = nc ? Number(nc.id) : null;
+    }
+  } else if (leadId != null && clientId == null) {
+    const [c] = await rows(d, sql`SELECT id FROM clients WHERE email = ${email} LIMIT 1`);
+    clientId = c ? Number(c.id) : null;
+  }
   const r = await run(
     d,
     sql`INSERT INTO edition_enrollments (edition_id, client_id, lead_id, name, email, phone, seats, status, notes, consent_given, page, created_at, updated_at)
