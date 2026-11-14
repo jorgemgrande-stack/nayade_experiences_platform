@@ -256,7 +256,7 @@ export const MODULES: readonly ModuleDef[] = [
         { key: "placeholder", label: "Texto de ayuda dentro del campo (opcional)", kind: "text", max: 150, advanced: true },
         {
           key: "role", label: "Dato del contacto para el CRM", kind: "select",
-          options: [{ value: "none", label: "Ninguno" }, { value: "name", label: "Nombre" }, { value: "email", label: "Correo" }, { value: "phone", label: "Teléfono" }],
+          options: [{ value: "none", label: "Ninguno" }, { value: "name", label: "Nombre completo" }, { value: "first_name", label: "Nombre (solo el nombre)" }, { value: "last_name", label: "Apellidos" }, { value: "email", label: "Correo" }, { value: "phone", label: "Teléfono" }, { value: "company", label: "Empresa" }],
         },
         { key: "width", label: "Ancho", kind: "select", options: [{ value: "full", label: "Completo" }, { value: "half", label: "Mitad" }], advanced: true },
         { key: "value", label: "Valor fijo (solo campos ocultos)", kind: "text", max: 200, advanced: true },
@@ -268,6 +268,10 @@ export const MODULES: readonly ModuleDef[] = [
     { key: "successMessage", label: "Mensaje tras enviar", kind: "text", max: 500, multiline: true },
     { key: "redirectUrl", label: "Después de enviar, llevar a (opcional)", kind: "link", advanced: true },
     { key: "consent", label: "Pedir aceptar la política de privacidad", kind: "select", options: ON_OFF },
+    { key: "consentText", label: "Texto de la casilla de privacidad (opcional)", kind: "text", max: 300, multiline: true, advanced: true, hint: "Vacío: «He leído y acepto la política de privacidad». Se guarda con cada envío tal como lo vio la persona." },
+    { key: "errorMessage", label: "Mensaje si el envío falla (opcional)", kind: "text", max: 300, multiline: true, advanced: true, hint: "Texto sin formato. Vacío: el mensaje habitual." },
+    { key: "notifyOwner", label: "Avisarme por correo de cada envío (al correo de reservas de la empresa)", kind: "select", options: ON_OFF, advanced: true },
+    { key: "captcha", label: "Verificación antirrobots Turnstile (necesita sus claves en Integraciones; solo con cookies aceptadas)", kind: "select", options: ON_OFF, advanced: true },
   ], {
     note: "Cada envío entra en tu CRM como oportunidad nueva, con su cliente y todas las respuestas. Necesita un campo marcado como «Correo» para poder responder. Está protegido contra envíos automáticos. Los adjuntos de archivos aún no están disponibles.",
   }),

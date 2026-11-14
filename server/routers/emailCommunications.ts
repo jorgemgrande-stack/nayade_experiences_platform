@@ -31,6 +31,7 @@ const admin = adminProcedure;
 const CATALOG_DEFAULTS: Record<string, { category: string; friendlyName: string; sendToCustomer: boolean; sendToAdmin: boolean }> = {
   budget_request_user:          { category: "Leads",                 friendlyName: "Solicitud de presupuesto (cliente)",      sendToCustomer: true,  sendToAdmin: false },
   budget_request_admin:         { category: "Leads",                 friendlyName: "Solicitud de presupuesto (admin)",         sendToCustomer: false, sendToAdmin: true  },
+  studio_form_admin:            { category: "Leads",                 friendlyName: "Envío de formulario de la web (aviso al propietario)", sendToCustomer: false, sendToAdmin: true  },
   quote:                        { category: "Presupuestos",          friendlyName: "Email de presupuesto",                    sendToCustomer: true,  sendToAdmin: false },
   proposal:                     { category: "Presupuestos",          friendlyName: "Propuesta comercial",                     sendToCustomer: true,  sendToAdmin: false },
   commercial_reminder_1:        { category: "Presupuestos",          friendlyName: "Recordatorio comercial #1",               sendToCustomer: true,  sendToAdmin: false },
