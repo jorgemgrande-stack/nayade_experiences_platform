@@ -1,5 +1,5 @@
 /**
- * Migraciones de «bajo petición» (0068) y convocatorias (si existen) arriba / abajo / arriba con el ejecutor real
+ * Migraciones de «bajo petición» (0069) y convocatorias (si existen) arriba / abajo / arriba con el ejecutor real
  * (scripts/db/migrate.ts) sobre una BD nueva creada desde la baseline (opt-in, REGISTRY_TEST_DATABASE_URL; la BD se
  * crea y se borra aquí). Los productos que ya existían quedan «precio fijo» sin tocar nada más.
  */
@@ -26,7 +26,7 @@ const cli = (dbUrl: string, args: string[]): Promise<Run> =>
     p.on("close", (status) => resolve({ status, stdout, stderr }));
   });
 
-d("migraciones 0068/0068 arriba, abajo, arriba (BD nueva desde la baseline)", () => {
+d("migraciones 0069/0069 arriba, abajo, arriba (BD nueva desde la baseline)", () => {
   const DB = "mig_oferta_conv";
   let admin: mysql.Pool;
   let pool: mysql.Pool;

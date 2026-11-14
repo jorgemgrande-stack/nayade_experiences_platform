@@ -1,5 +1,5 @@
 /**
- * Oferta «bajo petición» / «próximamente» (E-6, migración 0068) con la aplicación real sobre MySQL (opt-in,
+ * Oferta «bajo petición» / «próximamente» (E-6, migración 0069) con la aplicación real sobre MySQL (opt-in,
  * REGISTRY_TEST_DATABASE_URL). Dos empresas sintéticas nuevas; ningún cobro real (cuenta de comercio ficticia).
  *  - Los productos de siempre quedan «precio fijo» y todo funciona igual.
  *  - Sin precio fijo el precio no es obligatorio (se guarda 0), no se enseñan opciones de precio y la web lo identifica.

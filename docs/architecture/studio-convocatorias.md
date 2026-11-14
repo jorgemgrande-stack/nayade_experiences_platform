@@ -2,7 +2,7 @@
 
 Todo es reutilizable por cualquier empresa y **no cambia nada para las que ya existen**: los productos actuales siguen siendo de precio fijo y se compran igual. Se edita desde el panel de la empresa, sin código.
 
-## E-6. Oferta «bajo petición» / «próximamente» (migración 0068)
+## E-6. Oferta «bajo petición» / «próximamente» (migración 0069)
 
 ### Qué hace
 Cada producto (`experiences`) tiene ahora «**Cómo se ofrece**» (`offer_mode`):
@@ -29,7 +29,7 @@ Los presupuestos y pedidos manuales del CRM siguen siendo acción del administra
 ### Solicitud de información → CRM
 `public.requestProductInfo` (`server/productRequests.ts`) es la única vía: crea una **oportunidad** (`createLead`, origen `web_solicitud_producto`, con `experienceId` y el producto en el mensaje). Protecciones, las mismas ideas que E-7: misma web de origen (CSRF), límite por visitante (5 / 10 min por empresa + IP), campo trampa y tiempo mínimo, consentimiento RGPD **obligatorio** y guardado en el mensaje del lead (texto y versión), textos sin etiquetas, un envío repetido (mismo correo y producto en 10 min) se anota en la oportunidad existente en vez de duplicarla. Aviso por correo al propietario con el mecanismo de E-7 (`internalNoticeEmail`; sin correo no se envía). Nada se comparte entre empresas.
 
-### Migración 0068
+### Migración 0069
 `ALTER TABLE experiences ADD COLUMN offer_mode ENUM(...) NOT NULL DEFAULT 'fixed', ADD COLUMN request_cta_label VARCHAR(80) NULL`. Reversión: `DROP COLUMN` de ambas. Como el esquema de Drizzle (`experiences`) ya incluye las columnas, **la migración debe aplicarse antes (o a la vez) que el código** (mismo criterio que 0063–0065 del TPV).
 
 ## Límites conocidos
