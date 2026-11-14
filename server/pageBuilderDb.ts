@@ -407,7 +407,8 @@ export async function deleteSitePage(slug: string, opts: { confirmLegal?: boolea
     await d.delete(menuItems).where(inArray(menuItems.id, ids));
   }
   // Multidioma (E-1): sus traducciones se van con ella (si la migración aún no está aplicada, no hay nada que borrar)
-  await d.execute(sql`DELETE FROM page_translations WHERE page_id = ${pageToDelete.id}`).catch(() => undefined);
+  // Las traducciones de la página borrada se archivan (no se borran): nunca se sirven y se conservan por si se restaura
+  await d.execute(sql`UPDATE page_translations SET status = 'archived' WHERE page_id = ${pageToDelete.id}`).catch(() => undefined);
   await d.delete(staticPages).where(eq(staticPages.slug, slug));
   return { success: true };
 }

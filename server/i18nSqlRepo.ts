@@ -88,7 +88,7 @@ export function sqlI18nRepo(): I18nRepo {
     async listLocales() {
       return localesCache.get(tenantKey(), async () => {
         try {
-          const r = await rows(sql`SELECT locale, is_default, status, sort_order FROM site_locales ORDER BY sort_order, locale`);
+          const r = await rows(sql`SELECT locale, is_default, status, sort_order FROM site_locales WHERE status <> 'archived' ORDER BY sort_order, locale`);
           return r.map((x): LocaleEntry => ({ locale: String(x.locale), isDefault: !!x.is_default, status: status(x.status), sortOrder: Number(x.sort_order) }));
         } catch {
           // Tablas aún sin migrar: un solo idioma, como siempre
@@ -98,7 +98,8 @@ export function sqlI18nRepo(): I18nRepo {
     },
     async insertLocale(e) {
       await run(sql`INSERT INTO site_locales (locale, is_default, status, sort_order, validated_at, validated_by)
-        VALUES (${e.locale}, ${e.isDefault ? 1 : 0}, ${e.status}, ${e.sortOrder}, ${e.status === "validated" ? new Date() : null}, ${e.validatedBy ?? null})`);
+        VALUES (${e.locale}, ${e.isDefault ? 1 : 0}, ${e.status}, ${e.sortOrder}, ${e.status === "validated" ? new Date() : null}, ${e.validatedBy ?? null})
+        ON DUPLICATE KEY UPDATE is_default = VALUES(is_default), status = VALUES(status), sort_order = VALUES(sort_order), validated_at = VALUES(validated_at), validated_by = VALUES(validated_by)`);
       invalidateI18nCache();
     },
     async setLocaleStatus(locale, st, by) {
@@ -106,7 +107,8 @@ export function sqlI18nRepo(): I18nRepo {
       invalidateI18nCache();
     },
     async deleteLocale(locale) {
-      await run(sql`DELETE FROM site_locales WHERE locale = ${locale}`);
+      // Archivado reversible (no se borra: volver a añadir el idioma lo restaura con sus traducciones)
+      await run(sql`UPDATE site_locales SET status = 'archived', is_default = 0 WHERE locale = ${locale}`);
       invalidateI18nCache();
     },
     async readSettings(): Promise<I18nSettings> {
