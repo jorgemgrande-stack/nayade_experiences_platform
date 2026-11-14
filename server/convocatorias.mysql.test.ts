@@ -435,6 +435,41 @@ describe.skipIf(!URL_)("Convocatorias: fechas, plazas e inscripciones (aplicaci�
     expect(data(await ess.q("b", "products.editions.notifySettings", undefined, admB)).enabled).toBe(false);
   });
 
+  it("SIN SESIÓN: submitLead con productRequest y getExperiences con editions funcionan, sin recuento interno ni datos de inscritos", async () => {
+    const ed = await mkEdition({ capacity: 4, showAvailability: false, label: "Pública sin sesión" });
+    const anon = await ess.m("a", "public.submitLead", { name: "Anónima Prueba", email: "anonima@ejemplo.example", productRequest: { experienceId: prod.a, editionId: ed, seats: 1, consent: true } });
+    expect(anon.status, JSON.stringify(anon.json)).toBe(200); // sin cookie
+    expect(data(anon)).toMatchObject({ ok: true, enrollmentStatus: "solicitada" });
+    await setStatus((await ess.sql("a", "SELECT id FROM edition_enrollments WHERE email = 'anonima@ejemplo.example'"))[0].id, "confirmada");
+    const raw = await ess.q("a", "public.getExperiences", { limit: 50, offset: 0, editions: { experienceId: prod.a } }); // sin cookie
+    expect(raw.status).toBe(200);
+    const body = JSON.stringify(data(raw));
+    const mine = (data(raw) as any[]).find((e) => e.id === ed);
+    expect(mine).toBeTruthy();
+    expect(mine.seatsLeft).toBeNull(); // con «mostrar plazas» apagado no se dice cuántas quedan
+    for (const k of ["capacity", "reserved", "status", "counts", "showAvailability", "priceOverride"]) expect(mine).not.toHaveProperty(k);
+    for (const leak of ["anonima@ejemplo.example", "Anónima", "edition_enrollments", "enrollments", "leadId", "ip_hash"]) expect(body).not.toContain(leak);
+    // Las rutas de administración siguen cerradas sin sesión
+    for (const proc of ["products.editions.list", "products.editions.enrollments", "products.editions.upcoming"]) expect(errCode(await ess.q("a", proc, { experienceId: prod.a, editionId: ed }))).toBe("UNAUTHORIZED");
+  });
+
+  it("cancelar una convocatoria con inscripciones confirmadas: se conservan todas, el contador no cambia y no se puede confirmar más", async () => {
+    const ed = await mkEdition({ capacity: 3, label: "A cancelar con confirmadas" });
+    const [a, b, c] = [await enroll(ed, 1), await enroll(ed, 1), await enroll(ed, 1)];
+    await setStatus(a, "confirmada");
+    await setStatus(b, "confirmada");
+    const r = await ess.m("a", "products.editions.cancel", { id: ed }, admA);
+    expect(data(r)).toMatchObject({ toNotify: 3 });
+    const rows = await ess.sql("a", "SELECT id, status FROM edition_enrollments WHERE edition_id = ? ORDER BY id", [ed]);
+    expect(rows.map((x) => x.status)).toEqual(["confirmada", "confirmada", "solicitada"]);
+    expect((await edRow(ed)).reserved).toBe(2); // las confirmadas siguen contando hasta que se cancelen una a una
+    expect((await edRow(ed)).status).toBe("cancelled");
+    expect(errCode(await setStatus(c, "confirmada"))).toBe("BAD_REQUEST");
+    // Cancelar una inscripción confirmada sí libera su plaza aunque la convocatoria esté cancelada
+    expect((await setStatus(a, "cancelada")).status).toBe(200);
+    expect((await edRow(ed)).reserved).toBe(1);
+  });
+
   it("regresión: la tienda de precio fijo sigue cobrando igual en un producto con convocatorias (las convocatorias no activan cobros)", async () => {
     const r = await ess.m("a", "reservations.cartCheckout", { customerName: "Lucía Prueba", customerEmail: "lucia@comprador-a.example", origin: `https://${ess.host("a")}`, items: [{ productId: prod.a, bookingDate: "", people: 1 }] });
     // Sin pasarela configurada en esta empresa: se rechaza como siempre, sin dejar nada (no es cosa de las convocatorias)
