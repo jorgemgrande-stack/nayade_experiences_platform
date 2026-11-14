@@ -30,6 +30,7 @@ import { modalHref } from "@shared/studio/modal";
 import { formatEuros, productPath } from "@shared/storefront";
 import { isPurchasable } from "@shared/shopOrders";
 import { publicOfferBadge } from "@shared/offerMode";
+import { EditionsList } from "@/components/site/Editions";
 
 // ─── Contexto de edición (lienzo de Elephant Studio) ──────────────────────────
 
@@ -1287,6 +1288,23 @@ function ProductsBlock({ b, first, preview }: { b: BlockOf<"products">; first: b
   );
 }
 
+/** Próximas fechas (convocatorias) reales de la tienda (E-4): nada se copia en la página. */
+function UpcomingDatesBlock({ b, first, preview }: { b: BlockOf<"upcoming_dates">; first: boolean; preview?: boolean }) {
+  const d = b.data;
+  const ed = useContext(StudioEditContext);
+  return (
+    <section className="container py-10 md:py-14">
+      {(d.title || d.intro || ed) && (
+        <div className="mb-8 max-w-2xl">
+          <Txt k="title" value={d.title} as={first ? "h1" : "h2"} className={headingClass(first)} placeholder="Título" />
+          <Txt k="intro" value={d.intro} as="p" multiline className="mt-3 text-muted-foreground" placeholder="Introducción (opcional)" />
+        </div>
+      )}
+      <EditionsList productSlug={d.productSlug} categorySlug={d.categorySlug} limit={Number(d.limit) || 6} showProduct={!d.productSlug} emptyText={d.emptyText} editing={!!ed} preview={preview} />
+    </section>
+  );
+}
+
 const postDate = (ms: number | null | undefined) => (ms ? new Intl.DateTimeFormat("es-ES", { day: "numeric", month: "long", year: "numeric" }).format(new Date(ms)) : "");
 
 /** Últimas entradas publicadas del blog (las mismas que /blog). Sin blog en el plan, la consulta se rechaza y no se pinta nada. */
@@ -1845,6 +1863,8 @@ function renderBlock(b: PageBlock, first: boolean, preview?: boolean, pageTitle?
       return <BlogPostsBlock b={b} first={first} preview={preview} />;
     case "products":
       return <ProductsBlock b={b} first={first} preview={preview} />;
+    case "upcoming_dates":
+      return <UpcomingDatesBlock b={b} first={first} preview={preview} />;
     case "slideshow":
       return <SlideshowBlock b={b} first={first} preview={preview} />;
     case "carousel":

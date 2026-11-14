@@ -22,6 +22,7 @@ import { trpc } from "@/lib/trpc";
 import { usePublicContact } from "@/hooks/usePublicPhone";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
+import { offerModeOf, publicOfferBadge } from "@shared/offerMode";
 
 const difficultyColors: Record<string, string> = {
   facil: "bg-emerald-100 text-emerald-700",
@@ -349,7 +350,15 @@ export default function ExperienceDetail() {
                   variant="card"
                 />
 
+                {/* E-6: «bajo petición» / «próximamente»: sin precio ni reserva, solo pedir presupuesto */}
+                {offerModeOf(exp) !== "fixed" && (
+                  <div className="mb-4">
+                    <span data-testid="insignia-oferta" className="inline-block rounded-full bg-primary/10 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-primary">{publicOfferBadge(exp)}</span>
+                    <p className="mt-2 text-sm text-muted-foreground">Sin precio publicado. Pídenos información o un presupuesto y te respondemos.</p>
+                  </div>
+                )}
                 {/* Precio desde */}
+                {offerModeOf(exp) === "fixed" && (<>
                 <div className="mb-4">
                   <span className="text-sm text-muted-foreground">
                     Precio por {priceUnitLabel} desde
@@ -368,6 +377,8 @@ export default function ExperienceDetail() {
                     </div>
                   )}
                 </div>
+                </>)}
+                {offerModeOf(exp) === "fixed" && (<>
                 {/* Badge de oferta */}
                 {discountedFromPrice && (
                   <div className="mb-4">
@@ -550,6 +561,7 @@ export default function ExperienceDetail() {
                     className="w-full border border-border rounded-lg px-3 py-2 text-sm bg-background focus:outline-none focus:ring-2 focus:ring-primary"
                   />
                 </div>
+                </>)}
                 {/* CTA principal: Añadir al carrito (único botón de compra) */}
                 {exp.basePrice && parseFloat(String(exp?.basePrice ?? "0")) > 0 ? (
                   <Button

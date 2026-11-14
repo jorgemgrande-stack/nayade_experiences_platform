@@ -89,6 +89,8 @@ export function blockSummary(b: PageBlock): string {
       return b.data.title || "Productos de tu tienda";
     case "blog_posts":
       return b.data.title || "Entradas del blog";
+    case "upcoming_dates":
+      return b.data.title || "Próximas fechas";
     case "slideshow":
       return `${b.data.slides.length} diapositivas${b.data.slides[0]?.title ? ` · ${b.data.slides[0].title}` : ""}`;
     case "carousel":

@@ -17,6 +17,7 @@ import {
 import { getSessionCookieOptions } from "./_core/cookies";
 import { systemRouter } from "./_core/systemRouter";
 import { shopOrderProcedures } from "./routers/shopOrders";
+import { editionsRouter } from "./routers/editions";
 import { OFFER_MODES, MAX_REQUEST_CTA_LENGTH, offerModeOf, notForSaleMessage } from "../shared/offerMode";
 import { publicProcedure, protectedProcedure, staffProcedure, router, permissionProcedure } from "./_core/trpc";
 import { TRPCError } from "@trpc/server";
@@ -383,8 +384,21 @@ export const appRouter = router({
         offset: z.number().min(0).default(0),
         /** Tienda de una pyme: también los publicados que no están a la venta, para mostrarlos como agotados. */
         includeSoldOut: z.boolean().optional(),
+        /**
+         * E-4: con esto devuelve las próximas convocatorias visibles (de un producto, de una categoría o de toda la
+         * tienda) en lugar de los productos. Va por esta consulta, ya pública, para no ampliar la lista de rutas sin sesión.
+         */
+        editions: z.object({
+          experienceId: z.number().int().positive().optional(),
+          productSlug: z.string().regex(/^[a-z0-9-]{1,128}$/).optional(),
+          categorySlug: z.string().regex(/^[a-z0-9-]{1,128}$/).optional(),
+        }).optional(),
       }))
       .query(async ({ input }) => {
+        if (input.editions) {
+          const { listPublicEditions } = await import("./editionsDb");
+          return listPublicEditions({ ...input.editions, limit: input.limit }) as unknown as ReturnType<typeof getPublicExperiences>;
+        }
         return getPublicExperiences(input);
       }),
 
@@ -577,11 +591,13 @@ export const appRouter = router({
          * PUBLICADO y la oportunidad sale de sus respuestas (nombre, correo y mensaje de arriba se ignoran).
          */
         /**
-         * E-6: solicitud de información de un producto (server/productRequests.ts). Los datos de la persona van en los
-         * campos de arriba; esto añade el producto y el consentimiento.
+         * E-6 / E-4: solicitud de información o de plaza de un producto (server/productRequests.ts). Los datos de la
+         * persona van en los campos de arriba; esto añade el producto, la edición, las plazas y el consentimiento.
          */
         productRequest: z.object({
           experienceId: z.number().int().positive(),
+          editionId: z.number().int().positive().optional(),
+          seats: z.number().int().min(1).max(50).optional(),
           consent: z.boolean(),
           website: z.string().max(500).optional(),
           elapsedMs: z.number().int().min(0).optional(),
@@ -616,6 +632,8 @@ export const appRouter = router({
             return { ...(await processProductRequest({ ...pr, name: input.name, email: input.email, phone: input.phone, message: input.message }, await defaultRequestContext(ip))), success: true as const };
           } catch (e) {
             if (e instanceof ProductRequestError) throw new TRPCError({ code: e.code, message: e.message });
+            const { isMissingEditionsSchema } = await import("./editionsDb");
+            if (isMissingEditionsSchema(e)) throw new TRPCError({ code: "PRECONDITION_FAILED", message: "Las solicitudes de plaza todavía no están activadas." });
             throw e;
           }
         }
@@ -1627,6 +1645,9 @@ export const appRouter = router({
       .mutation(async ({ input }) => {
         return hardDeleteExperience(input.id);
       }),
+
+    /** E-4: convocatorias del producto (fechas, plazas e inscripciones) */
+    editions: editionsRouter,
 
     toggleActive: adminProcedure
       .input(z.object({ id: z.number(), isActive: z.boolean() }))
