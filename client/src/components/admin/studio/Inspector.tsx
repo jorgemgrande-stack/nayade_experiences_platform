@@ -676,7 +676,8 @@ function StyleEditor({ style, setStyle, pro, part }: { style: BlockStyle; setSty
           onChange={(v) => setStyle({ minHeight: v as BlockStyle["minHeight"] })}
         />
         {style.minHeight === "custom" && <RangeField label="Altura" value={style.minHeightPx} min={120} max={1600} step={20} unit=" px" onChange={(n) => setStyle({ minHeightPx: n })} />}
-        {style.minHeight !== "auto" && (
+        <RangeField label="Altura mínima en el móvil" value={style.minHeightM} min={0} max={2000} step={50} unit=" px" zeroLabel="La misma que en ordenador" onChange={(n) => setStyle({ minHeightM: n === 0 ? 0 : Math.max(240, n) })} />
+        {(style.minHeight !== "auto" || style.minHeightM > 0) && (
           <Segmented
             label="Posición vertical del contenido"
             value={style.contentY}

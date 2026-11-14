@@ -198,6 +198,7 @@ export function normalizeStyle(v: unknown): BlockStyle | undefined {
     animation: oneOf(v.animation, BLOCK_ANIMATIONS, "none"),
     minHeight: oneOf(v.minHeight, BLOCK_MIN_HEIGHTS, "auto"),
     minHeightPx: clampInt(v.minHeightPx, 120, 1600, 600),
+    minHeightM: v.minHeightM === 0 || v.minHeightM === "0" ? 0 : clampInt(v.minHeightM, 240, 2000, 0),
     contentY: oneOf(v.contentY, BLOCK_CONTENT_YS, "center"),
     contentWidth: oneOf(v.contentWidth, BLOCK_CONTENT_WIDTHS, "auto"),
     overlayDir: oneOf(v.overlayDir, BLOCK_OVERLAY_DIRS, "flat"),

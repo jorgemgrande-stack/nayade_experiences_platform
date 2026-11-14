@@ -286,6 +286,8 @@ export interface BlockStyle {
   /** Composición: altura mínima (con «custom», `minHeightPx`) y colocación del contenido */
   minHeight: (typeof BLOCK_MIN_HEIGHTS)[number];
   minHeightPx: number;
+  /** Altura mínima propia del móvil en píxeles (0 = la misma que en ordenador) */
+  minHeightM: number;
   contentY: (typeof BLOCK_CONTENT_YS)[number];
   contentWidth: (typeof BLOCK_CONTENT_WIDTHS)[number];
   /** Capa sobre la foto: dirección y fuerza (0 = la de la capa elegida) */
@@ -304,7 +306,7 @@ export const DEFAULT_BLOCK_STYLE: BlockStyle = {
   background: "none", gradient: "brand", bgImage: "", overlay: "dark", padTop: "0", padBottom: "0", marginTop: "0", marginBottom: "0",
   headingFont: "auto", textFont: "auto", headingSize: "auto", textSize: "auto", align: "auto", headingColor: "auto",
   border: "none", radius: "0", shadow: "none", hideOn: [], mobileAlign: "auto", mobileSpacing: "same", anchor: "", animation: "none",
-  minHeight: "auto", minHeightPx: 600, contentY: "center", contentWidth: "auto", overlayDir: "flat", overlayOpacity: 0,
+  minHeight: "auto", minHeightPx: 600, minHeightM: 0, contentY: "center", contentWidth: "auto", overlayDir: "flat", overlayOpacity: 0,
   bgX: 50, bgY: 50, bgZoom: 100, bgMobile: "same", bgXM: 50, bgYM: 50, bgZoomM: 100,
 };
 /** Campos de composición que solo cuentan con su opción activa (el resto se guarda como el de serie) */

@@ -1498,13 +1498,13 @@ const CONTENT_Y: Record<BlockStyle["contentY"], string> = { top: "justify-start"
 
 /** Composición del bloque: altura mínima, colocación vertical y ancho del contenido. */
 function compositionOf(s: BlockStyle): { outerStyle?: CSSProperties; outerCls?: string; wrapCls: string } {
-  const tall = s.minHeight !== "auto";
+  const tall = s.minHeight !== "auto" || s.minHeightM > 0;
   const minHeight = s.minHeight === "full" ? "100svh" : s.minHeight === "custom" ? `${s.minHeightPx}px` : tall ? `${s.minHeight}svh` : undefined;
   const side = s.align === "left" ? "mr-auto" : s.align === "right" ? "ml-auto" : "mx-auto";
   return {
-    outerStyle: minHeight ? { minHeight } : undefined,
+    outerStyle: minHeight || s.minHeightM > 0 ? ({ ...(minHeight ? { minHeight } : {}), ...(s.minHeightM > 0 ? { "--mhm": `${s.minHeightM}px` } : {}) } as CSSProperties) : undefined,
     // Con capa lateral, en el móvil el contenido baja y la foto (el rostro) queda libre arriba
-    outerCls: tall ? cn("flex flex-col", CONTENT_Y[s.contentY], (s.overlayDir === "left" || s.overlayDir === "right") && s.background === "image" && "max-md:justify-end") : undefined,
+    outerCls: tall ? cn("flex flex-col", s.minHeightM > 0 && "max-md:min-h-[var(--mhm)]", CONTENT_Y[s.contentY], (s.overlayDir === "left" || s.overlayDir === "right") && s.background === "image" && "max-md:justify-end") : undefined,
     wrapCls: cn("relative w-full", s.contentWidth !== "auto" && cn(CONTENT_WIDTH[s.contentWidth], side)),
   };
 }
