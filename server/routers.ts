@@ -408,34 +408,6 @@ export const appRouter = router({
         return getVariantsByExperience(input.experienceId);
       }),
 
-    /** E-6: solicitud de información sobre un producto (entra en el CRM; no hay compra ni cobro). */
-    requestProductInfo: publicProcedure
-      .input(z.object({
-        experienceId: z.number().int().positive(),
-        name: z.string().max(200),
-        email: z.string().max(320),
-        phone: z.string().max(40).optional(),
-        message: z.string().max(2000).optional(),
-        consent: z.boolean(),
-        website: z.string().max(500).optional(),
-        elapsedMs: z.number().int().min(0).optional(),
-        page: z.string().max(200).optional(),
-      }))
-      .mutation(async ({ input, ctx }) => {
-        const { sameSiteRequest } = await import("./_core/studioFormsSubmit");
-        const { processProductRequest, defaultRequestContext, ProductRequestError } = await import("./productRequests");
-        const hdr = (n: string) => { const v = ctx.req.headers[n]; return Array.isArray(v) ? v[0] : v; };
-        if (!sameSiteRequest({ origin: hdr("origin"), referer: hdr("referer"), hosts: [hdr("x-forwarded-host"), hdr("host")] })) {
-          throw new TRPCError({ code: "FORBIDDEN", message: "No se ha podido enviar la solicitud desde esta dirección." });
-        }
-        const ip = ctx.req.ip || ctx.req.socket.remoteAddress || "desconocida";
-        try {
-          return await processProductRequest(input, await defaultRequestContext(ip));
-        } catch (e) {
-          if (e instanceof ProductRequestError) throw new TRPCError({ code: e.code, message: e.message });
-          throw e;
-        }
-      }),
 
     setPassword: publicProcedure.input(z.object({
       token: z.string().min(16).max(256),
@@ -604,6 +576,17 @@ export const appRouter = router({
          * Formulario a medida de Elephant Studio (server/_core/studioForms.ts): se valida contra el formulario
          * PUBLICADO y la oportunidad sale de sus respuestas (nombre, correo y mensaje de arriba se ignoran).
          */
+        /**
+         * E-6: solicitud de información de un producto (server/productRequests.ts). Los datos de la persona van en los
+         * campos de arriba; esto añade el producto y el consentimiento.
+         */
+        productRequest: z.object({
+          experienceId: z.number().int().positive(),
+          consent: z.boolean(),
+          website: z.string().max(500).optional(),
+          elapsedMs: z.number().int().min(0).optional(),
+          page: z.string().max(200).optional(),
+        }).optional(),
         studioForm: z.object({
           slug: z.string().regex(/^[a-z0-9-]{1,64}$/),
           blockId: z.string().regex(/^[a-z0-9-]{1,40}$/i),
@@ -620,6 +603,22 @@ export const appRouter = router({
         }).optional(),
       }))
       .mutation(async ({ input, ctx }) => {
+        if (input.productRequest) {
+          const { sameSiteRequest } = await import("./_core/studioFormsSubmit");
+          const { processProductRequest, defaultRequestContext, ProductRequestError } = await import("./productRequests");
+          const hdr = (n: string) => { const v = ctx.req.headers[n]; return Array.isArray(v) ? v[0] : v; };
+          if (!sameSiteRequest({ origin: hdr("origin"), referer: hdr("referer"), hosts: [hdr("x-forwarded-host"), hdr("host")] })) {
+            throw new TRPCError({ code: "FORBIDDEN", message: "No se ha podido enviar la solicitud desde esta dirección." });
+          }
+          const ip = ctx.req.ip || ctx.req.socket.remoteAddress || "desconocida";
+          try {
+            const pr = input.productRequest;
+            return { ...(await processProductRequest({ ...pr, name: input.name, email: input.email, phone: input.phone, message: input.message }, await defaultRequestContext(ip))), success: true as const };
+          } catch (e) {
+            if (e instanceof ProductRequestError) throw new TRPCError({ code: e.code, message: e.message });
+            throw e;
+          }
+        }
         if (input.studioForm) {
           const sf = input.studioForm;
           const { processStudioSubmission, StudioSubmitError, sameSiteRequest } = await import("./_core/studioFormsSubmit");

@@ -30,7 +30,7 @@ export function ProductRequestDialog({ target, open, onOpenChange, preview }: { 
   const [trap, setTrap] = useState("");
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [sent, setSent] = useState<string | null>(null);
-  const submit = trpc.public.requestProductInfo.useMutation();
+  const submit = trpc.public.submitLead.useMutation();
 
   const close = (o: boolean) => {
     onOpenChange(o);
@@ -62,15 +62,11 @@ export function ProductRequestDialog({ target, open, onOpenChange, preview }: { 
     }
     try {
       const r = await submit.mutateAsync({
-        experienceId: target.productId,
         name: name.trim(),
         email: email.trim(),
         phone: phone.trim() || undefined,
         message: message.trim() || undefined,
-        consent,
-        website: trap,
-        elapsedMs: Date.now() - shownAt.current,
-        page: window.location.pathname,
+        productRequest: { experienceId: target.productId, consent, website: trap, elapsedMs: Date.now() - shownAt.current, page: window.location.pathname },
       });
       setSent((r as { message?: string }).message || "Hemos recibido tu solicitud. Te responderemos lo antes posible.");
     } catch (err) {

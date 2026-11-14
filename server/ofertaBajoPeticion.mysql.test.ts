@@ -15,6 +15,12 @@ const URL_ = process.env.REGISTRY_TEST_DATABASE_URL;
 const KEY = crypto.randomBytes(24).toString("base64");
 const msg = (r: { json: any }) => String(r.json?.error?.json?.message ?? "");
 
+/** Solicitud de información / plaza: va por `public.submitLead` (consulta ya pública) con `productRequest`. */
+const toLead = (p: Record<string, any>) => {
+  const { name, email, phone, message, ...rest } = p;
+  return { name, email, phone, message, productRequest: rest };
+};
+
 describe.skipIf(!URL_)("Oferta bajo petición y próximamente (aplicación real)", () => {
   let ess: EssentialApp;
   let admA = "";
@@ -22,6 +28,7 @@ describe.skipIf(!URL_)("Oferta bajo petición y próximamente (aplicación real)
   const ids = { fijo: 0, petición: 0, pronto: 0 };
   let cat = 0;
   let loc = 0;
+  const rpi = (co: "a" | "b", p: Record<string, any>) => ess.m(co, "public.submitLead", toLead(p));
   const origin = () => `https://${ess.host("a")}`;
   const mk = (co: "a" | "b", slug: string, title: string, extra: Record<string, unknown> = {}) =>
     ess.m(co, "products.create", { slug, title, categoryId: cat, locationId: loc, productType: "own", ...extra }, co === "a" ? admA : admB);
@@ -131,7 +138,7 @@ describe.skipIf(!URL_)("Oferta bajo petición y próximamente (aplicación real)
   it("solicitar información: entra en el CRM con el producto, el consentimiento y sin duplicarse", async () => {
     const reservationsBefore = (await ess.sql("a", "SELECT COUNT(*) AS n FROM reservations"))[0].n;
     const base = { experienceId: ids.petición, name: "Marta Interesada", email: "Marta@Interesada.example", phone: "600 123 456", message: "Somos un grupo de 12 personas.", consent: true, page: "/tienda/retiro-medida" };
-    const r = await ess.m("a", "public.requestProductInfo", base);
+    const r = await rpi("a", base);
     expect(r.status).toBe(200);
     const leadId = data(r).leadId;
     expect(data(r)).toMatchObject({ ok: true, duplicate: false });
@@ -142,7 +149,7 @@ describe.skipIf(!URL_)("Oferta bajo petición y próximamente (aplicación real)
     expect(lead.message).toContain("Consentimiento RGPD: aceptado");
     expect(lead.message).toContain("Origen: /tienda/retiro-medida");
     // La misma persona y producto otra vez: se anota, no se crea otra oportunidad
-    const again = await ess.m("a", "public.requestProductInfo", { ...base, message: "Otra pregunta" });
+    const again = await rpi("a", { ...base, message: "Otra pregunta" });
     expect(data(again)).toMatchObject({ duplicate: true, leadId });
     expect((await ess.sql("a", "SELECT COUNT(*) AS n FROM leads WHERE experienceId = ?", [ids.petición]))[0].n).toBe(1);
     const [notes] = await ess.sql("a", "SELECT internalNotes FROM leads WHERE id = ?", [leadId]);
@@ -153,30 +160,30 @@ describe.skipIf(!URL_)("Oferta bajo petición y próximamente (aplicación real)
 
   it("validación y antirrobots: sin consentimiento, con datos inválidos, con campo trampa, sin etiquetas HTML", async () => {
     const ok = { experienceId: ids.pronto, name: "Pablo Prueba", email: "pablo@prueba.example", consent: true };
-    expect(msg(await ess.m("a", "public.requestProductInfo", { ...ok, consent: false }))).toContain("privacidad");
-    expect(msg(await ess.m("a", "public.requestProductInfo", { ...ok, email: "no-es-correo" }))).toContain("correo");
-    expect(msg(await ess.m("a", "public.requestProductInfo", { ...ok, name: "x" }))).toContain("nombre");
-    expect(msg(await ess.m("a", "public.requestProductInfo", { ...ok, phone: "abc" }))).toContain("teléfono");
+    expect(msg(await rpi("a", { ...ok, consent: false }))).toContain("privacidad");
+    expect(errCode(await rpi("a", { ...ok, email: "no-es-correo" }))).toBe("BAD_REQUEST");
+    expect(errCode(await rpi("a", { ...ok, name: "x" }))).toBe("BAD_REQUEST");
+    expect(msg(await rpi("a", { ...ok, phone: "abc" }))).toContain("teléfono");
     expect((await ess.sql("a", "SELECT COUNT(*) AS n FROM leads WHERE experienceId = ?", [ids.pronto]))[0].n).toBe(0);
     // Campo trampa o relleno instantáneo: respuesta de éxito sin guardar nada
-    const trap = await ess.m("a", "public.requestProductInfo", { ...ok, website: "http://spam.example" });
+    const trap = await rpi("a", { ...ok, website: "http://spam.example" });
     expect(trap.status).toBe(200);
-    expect((await ess.m("a", "public.requestProductInfo", { ...ok, elapsedMs: 200 })).status).toBe(200);
+    expect((await rpi("a", { ...ok, elapsedMs: 200 })).status).toBe(200);
     expect((await ess.sql("a", "SELECT COUNT(*) AS n FROM leads WHERE experienceId = ?", [ids.pronto]))[0].n).toBe(0);
     // HTML en los textos: se guarda como texto
-    const html = await ess.m("a", "public.requestProductInfo", { ...ok, name: "Pablo <script>alert(1)</script> Prueba", message: "<b>Hola</b> <img src=x onerror=alert(1)>" });
+    const html = await rpi("a", { ...ok, name: "Pablo <script>alert(1)</script> Prueba", message: "<b>Hola</b> <img src=x onerror=alert(1)>" });
     expect(html.status).toBe(200);
     const [l] = await ess.sql("a", "SELECT name, message FROM leads WHERE experienceId = ?", [ids.pronto]);
     expect(l.name).not.toMatch(/[<>]/);
     expect(l.message).not.toMatch(/<\s*(script|img|b)\b/i);
     // Una web ajena no puede enviar la solicitud (misma web de origen)
-    const cross = await ess.call("a", "POST", "/api/trpc/public.requestProductInfo", { body: { json: { ...ok, email: "otra@prueba.example" } }, headers: { origin: "https://sitio-ajeno.example" } });
+    const cross = await ess.call("a", "POST", "/api/trpc/public.submitLead", { body: { json: toLead({ ...ok, email: "otra@prueba.example" }) }, headers: { origin: "https://sitio-ajeno.example" } });
     expect(cross.status).toBe(403);
   });
 
   it("aislamiento: la solicitud solo existe en la empresa del producto y la otra no ve nada", async () => {
     // La empresa B no tiene ese producto: la solicitud se rechaza y no crea nada
-    const r = await ess.m("b", "public.requestProductInfo", { experienceId: ids.petición, name: "Marta Interesada", email: "marta2@interesada.example", consent: true });
+    const r = await rpi("b", { experienceId: ids.petición, name: "Marta Interesada", email: "marta2@interesada.example", consent: true });
     expect(errCode(r)).toBe("NOT_FOUND");
     expect((await ess.sql("b", "SELECT COUNT(*) AS n FROM leads"))[0].n).toBe(0);
     expect(data(await ess.q("b", "public.getExperiences", { limit: 50, offset: 0 }))).toEqual([]);
