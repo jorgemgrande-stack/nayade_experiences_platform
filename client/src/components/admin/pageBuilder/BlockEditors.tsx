@@ -107,5 +107,9 @@ export function blockSummary(b: PageBlock): string {
       const n = b.data.columns.reduce((acc, c) => acc + c.blocks.length, 0);
       return `${b.data.columns.length} columnas · ${n === 1 ? "1 módulo" : `${n} módulos`}`;
     }
+    case "modal": {
+      const n = b.data.columns.reduce((acc, c) => acc + c.blocks.length, 0);
+      return `${b.data.title || b.data.slug} · #modal-${b.data.slug} · ${n === 1 ? "1 módulo" : `${n} módulos`}`;
+    }
   }
 }

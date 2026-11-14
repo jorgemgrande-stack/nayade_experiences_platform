@@ -25,7 +25,8 @@ export interface Found {
   depth: number;
 }
 
-const columnsOf = (b: PageBlock): SectionColumn[] | null => (b.type === "section" ? b.data.columns : null);
+/** Columnas de un bloque con módulos dentro: una sección, o la ventana emergente (que tiene una sola). */
+const columnsOf = (b: PageBlock): SectionColumn[] | null => (b.type === "section" || b.type === "modal" ? b.data.columns : null);
 
 function withColumns(b: PageBlock, columns: SectionColumn[]): PageBlock {
   return { ...b, data: { ...b.data, columns } } as PageBlock;
@@ -108,8 +109,9 @@ export function removeBlock(blocks: PageBlock[], id: string): PageBlock[] {
 export function placeProblem(blocks: PageBlock[], place: Place, added: PageBlock[]): string | null {
   if (place.parent === null) return null;
   const host = findBlock(blocks, place.parent);
-  if (!host || host.block.type !== "section" || !columnsOf(host.block)?.[place.col]) return "Esa columna ya no existe.";
+  if (!host || !columnsOf(host.block)?.[place.col]) return "Esa columna ya no existe.";
   for (const b of added) {
+    if (b.type === "modal") return "Una ventana emergente va a nivel de página: no dentro de columnas ni de otra ventana.";
     if (NOT_NESTABLE.includes(b.type)) return "Este módulo ocupa todo el ancho: ponlo fuera de las columnas.";
     // La sección de destino está a profundidad host.depth + 1; lo que se mete, por debajo
     if (host.depth + 1 + sectionDepth(b) > SECTION_MAX_DEPTH) return "Solo se puede poner una sección con columnas dentro de otra (un nivel).";

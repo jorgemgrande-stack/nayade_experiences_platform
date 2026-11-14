@@ -254,6 +254,14 @@ function Content({ b, light }: { b: PageBlock; light: boolean }) {
         </span>
       );
     }
+    case "modal":
+      return (
+        <span className="mx-auto flex w-[70%] flex-col gap-[3px] rounded-[3px] border px-[4px] py-[4px] shadow-sm" style={{ borderColor: light ? "rgba(255,255,255,.6)" : C.line }}>
+          <Bar w="50%" h={4} color={title} />
+          <Bar w="90%" h={2} />
+          <Bar w="70%" h={2} />
+        </span>
+      );
     default:
       return <Bar w="60%" />;
   }

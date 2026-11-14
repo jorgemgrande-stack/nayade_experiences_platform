@@ -34,6 +34,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { cn } from "@/lib/utils";
 import { NOT_NESTABLE, PAGE_LIMITS, PAGE_TEMPLATES, blockLabel, createBlock, duplicateBlock, readBlockText, templateBlocks, writeBlockText, type BlockType, type Device, type PageBlock, type PageTemplateKey } from "@shared/pageBlocks";
 import { SECTION_PRESETS, availableModules, moduleDef } from "@shared/studio/modules";
+import { modalHref, modalTargetLabel, pageModals, withUniqueModalSlugs } from "@shared/studio/modal";
 import { countBlocks, createSection, findBlock, insertBlocks, moveBlock, nestable, placeProblem, removeBlock, walk, type Place } from "@shared/studio/tree";
 import { QuickInsert } from "@/components/admin/studio/QuickInsert";
 import { MediaLibraryDialog } from "@/components/ImageUploader";
@@ -166,8 +167,10 @@ function Studio({ routeSlug }: { routeSlug: string | null }) {
     const list = pages.map((p) => ({ label: p.isHome ? `${p.title} (portada)` : p.title, url: p.isHome ? "/" : `/${p.slug}` }));
     if (!pages.some((p) => p.slug === "contacto")) list.push({ label: "Formulario de contacto", url: "/contacto" });
     if (modules.some((m) => m.type === "products")) list.push({ label: "Tienda", url: "/tienda" });
+    // Las ventanas emergentes de esta página, para abrirlas desde cualquier botón, tarjeta o enlace eligiéndolas por su nombre
+    for (const m of pageModals(blocks)) list.push({ label: modalTargetLabel(m.title, m.slug), url: modalHref(m.slug) });
     return list;
-  }, [pages, modules]);
+  }, [pages, modules, blocks]);
 
   // ── Operaciones sobre el documento ──
   // Modo concentrado (los dos paneles ocultos): seleccionar no vuelve a abrir el inspector; se recupera con «Opciones»
@@ -243,6 +246,7 @@ function Studio({ routeSlug }: { routeSlug: string | null }) {
       if (Array.from(types).some((t) => !modules.some((m) => m.type === t))) return toast.error("Ese bloque usa un módulo que no está disponible en tu plan.");
       added = [duplicateBlock(s.block)];
     } else return;
+    added = withUniqueModalSlugs(added, blocks);
     if (tooMany(countBlocks(added))) return;
     const place = placeFor(added, at);
     if (!place) return;
@@ -267,7 +271,7 @@ function Studio({ routeSlug }: { routeSlug: string | null }) {
   /** Añade un módulo al final de una columna (desde el inspector de la sección). */
   const addToColumn = (sectionId: string, col: number, type: string) => {
     const host = findBlock(blocks, sectionId);
-    if (!host || host.block.type !== "section") return;
+    if (!host || (host.block.type !== "section" && host.block.type !== "modal")) return;
     insert(`module:${type}`, { parent: sectionId, col, index: host.block.data.columns[col]?.blocks.length ?? 0 });
   };
 
@@ -283,7 +287,7 @@ function Studio({ routeSlug }: { routeSlug: string | null }) {
   const duplicate = (id: string) => {
     const f = findBlock(blocks, id);
     if (!f) return;
-    const copy = duplicateBlock(f.block);
+    const [copy] = withUniqueModalSlugs([duplicateBlock(f.block)], blocks);
     if (tooMany(countBlocks([copy]))) return;
     doc.change(insertBlocks(blocks, { parent: f.parent, col: f.col, index: f.index + 1 }, [copy]));
     select(copy.id);
@@ -293,7 +297,7 @@ function Studio({ routeSlug }: { routeSlug: string | null }) {
     const f = findBlock(blocks, id);
     if (!f) return;
     const host = f.parent ? findBlock(blocks, f.parent) : null;
-    const siblings = host?.block.type === "section" ? host.block.data.columns[f.col].blocks : blocks;
+    const siblings = host?.block.type === "section" || host?.block.type === "modal" ? host.block.data.columns[f.col].blocks : blocks;
     doc.change(removeBlock(blocks, id));
     if (selectedId === id) setSelectedId(siblings[f.index + 1]?.id ?? siblings[f.index - 1]?.id ?? f.parent ?? null);
     toast(`«${blockLabel(f.block.type)}» eliminado`, { action: { label: "Deshacer", onClick: () => doc.undo() } });
@@ -310,7 +314,7 @@ function Studio({ routeSlug }: { routeSlug: string | null }) {
     }
     if (!copied || typeof copied !== "object" || !moduleDef(copied.type)) return toast.info("No hay ningún bloque copiado. Selecciona uno y pulsa Ctrl+C.");
     if (!modules.some((m) => m.type === copied!.type)) return toast.error("Ese módulo no está disponible en tu plan.");
-    const copy = duplicateBlock(copied);
+    const [copy] = withUniqueModalSlugs([duplicateBlock(copied)], blocks);
     if (tooMany(countBlocks([copy]))) return;
     const place = placeFor([copy]);
     if (!place) return;
@@ -938,7 +942,7 @@ function Studio({ routeSlug }: { routeSlug: string | null }) {
                     <BookmarkPlus className="h-4 w-4" />
                   </button>
                   <span className="shrink-0 text-[11px] text-muted-foreground">
-                    {found ? found.index + 1 : 0} de {parentSection?.block.type === "section" ? (parentSection.block.data.columns[found!.col]?.blocks.length ?? 0) : blocks.length}
+                    {found ? found.index + 1 : 0} de {parentSection?.block.type === "section" || parentSection?.block.type === "modal" ? (parentSection.block.data.columns[found!.col]?.blocks.length ?? 0) : blocks.length}
                   </span>
                 </>
               ) : (
@@ -960,7 +964,7 @@ function Studio({ routeSlug }: { routeSlug: string | null }) {
                   columnModules={modules.filter((m) => nestable(m.type) && (m.type !== "section" || (found?.depth ?? 0) === 0))}
                   onAddToColumn={(col, type) => addToColumn(selected.id, col, type)}
                   onSelectBlock={select}
-                  inside={parentSection && found ? { id: parentSection.block.id, col: found.col } : null}
+                  inside={parentSection && found ? { id: parentSection.block.id, col: found.col, modal: parentSection.block.type === "modal" } : null}
                 />
               ) : page ? (
                 <div className="space-y-5">

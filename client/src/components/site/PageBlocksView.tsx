@@ -23,8 +23,10 @@ import { FEATURE_ICON_COMPONENTS } from "@/components/site/featureIcons";
 import { Carousel, prefersReducedMotion } from "@/components/site/Carousel";
 import { Slideshow } from "@/components/site/Slideshow";
 import { Lightbox } from "@/components/site/Lightbox";
+import { ModalDialog, usePublicModal } from "@/components/site/ModalBlock";
 import { StudioFormFields } from "@/components/site/StudioForm";
 import { blockLabel, cssUrl, DEFAULT_BLOCK_STYLE, readBlockText, type BlockOf, type BlockStyle, type Device, type GalleryImage, type PageBlock } from "@shared/pageBlocks";
+import { modalHref } from "@shared/studio/modal";
 import { formatEuros, productPath } from "@shared/storefront";
 import { isPurchasable } from "@shared/shopOrders";
 
@@ -1529,7 +1531,7 @@ function EditFrame({ ed, b, index, count, parent, col, children }: { ed: StudioE
   const hover = hoverCtx?.id === b.id;
   const [drop, setDrop] = useState<"before" | "after" | null>(null);
   const selected = ed.selectedId === b.id;
-  const where = parent !== null ? `columna ${col + 1}` : null;
+  const where = parent !== null ? (ed.raw.get(parent)?.type === "modal" ? "ventana emergente" : `columna ${col + 1}`) : null;
   // Ancho del bloque seleccionado: con sitio, los botones de la barra llevan su nombre además del icono
   const frameRef = useRef<HTMLDivElement>(null);
   const [roomy, setRoomy] = useState(false);
@@ -1545,7 +1547,7 @@ function EditFrame({ ed, b, index, count, parent, col, children }: { ed: StudioE
     return () => ro.disconnect();
   }, [selected]);
   // Una sección con contenido se confirma antes de eliminarla (se lleva todo lo que tiene dentro)
-  const nestedCount = b.type === "section" ? b.data.columns.reduce((n, c) => n + c.blocks.length, 0) : 0;
+  const nestedCount = b.type === "section" || b.type === "modal" ? b.data.columns.reduce((n, c) => n + c.blocks.length, 0) : 0;
   const hiddenHere = !!b.style?.hideOn.includes(ed.device);
   const act = (a: StudioBlockAction) => (e: React.MouseEvent) => {
     e.preventDefault();
@@ -1855,6 +1857,8 @@ function renderBlock(b: PageBlock, first: boolean, preview?: boolean, pageTitle?
       return <LogosBlock b={b} first={first} />;
     case "section":
       return <SectionBlock b={b} preview={preview} pageTitle={pageTitle} />;
+    case "modal":
+      return <ModalBlockView b={b} preview={preview} pageTitle={pageTitle} />;
     default:
       return null;
   }
@@ -1908,6 +1912,70 @@ function SectionBlock({ b, preview, pageTitle }: { b: BlockOf<"section">; previe
   );
 }
 
+// ─── Ventana emergente ────────────────────────────────────────────────────────
+
+/**
+ * En la web: no ocupa sitio en la página; se abre con un enlace `#modal-…`, con la dirección o sola (ModalBlock.tsx).
+ * En el lienzo del editor: un recuadro con su contenido editable como el de una columna y un botón para ver cómo se abre.
+ */
+function ModalBlockView({ b, preview, pageTitle }: { b: BlockOf<"modal">; preview?: boolean; pageTitle?: string }) {
+  const ed = useContext(StudioEditContext);
+  const live = usePublicModal(b, !ed, !ed && !preview);
+  const [demo, setDemo] = useState(false);
+  const demoTrigger = useRef<HTMLButtonElement | null>(null);
+  const body = (
+    <div className={COLUMN_CLASS}>
+      <BlockList blocks={b.data.columns[0]?.blocks ?? []} parent={b.id} col={0} preview={preview} pageTitle={pageTitle} firstTitled={-1} />
+    </div>
+  );
+  if (!ed) {
+    return (
+      <ModalDialog b={b} open={live.open} onClose={live.close} triggerRef={live.trigger} rememberable={!preview}>
+        {live.open ? body : null}
+      </ModalDialog>
+    );
+  }
+  return (
+    <section className="container py-3" data-studio-modal={b.data.slug}>
+      <div className="rounded-lg border-2 border-dashed p-3" style={{ borderColor: `${STUDIO_ACCENT}80`, background: `${STUDIO_ACCENT}0d` }}>
+        <div className="mb-2 flex flex-wrap items-center justify-between gap-2 font-sans">
+          <span className="text-xs font-semibold" style={{ color: STUDIO_ACCENT }}>
+            Ventana emergente · enlace {modalHref(b.data.slug)}
+            {b.data.autoOpen !== "off" && " · se abre sola"}
+          </span>
+          <button
+            type="button"
+            ref={demoTrigger}
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              setDemo(true);
+            }}
+            className="rounded-full px-3 py-1 text-xs font-semibold text-white shadow-sm"
+            style={{ background: STUDIO_ACCENT }}
+          >
+            Ver cómo se abre
+          </button>
+        </div>
+        <div className={cn("rounded-md bg-background p-4 shadow-sm", b.data.align === "center" && "text-center")}>
+          {b.data.imageUrl && <img src={b.data.imageUrl} alt={b.data.imageAlt} className="mb-3 max-h-40 w-full rounded object-cover" />}
+          <Txt k="title" value={b.data.title} as="h2" className="mb-3 font-heading text-xl font-bold" placeholder="Título de la ventana" />
+          {body}
+        </div>
+      </div>
+      <StudioEditContext.Provider value={null}>
+        <ModalDialog b={b} open={demo} onClose={() => setDemo(false)} triggerRef={demoTrigger} rememberable={false}>
+          {demo ? (
+            <div className={COLUMN_CLASS}>
+              <BlockList blocks={b.data.columns[0]?.blocks ?? []} parent={b.id} col={0} preview pageTitle={pageTitle} firstTitled={-1} />
+            </div>
+          ) : null}
+        </ModalDialog>
+      </StudioEditContext.Provider>
+    </section>
+  );
+}
+
 /** Una lista de bloques: la página o una columna de una sección. */
 function BlockList({ blocks, parent, col, preview, pageTitle, firstTitled }: { blocks: PageBlock[]; parent: string | null; col: number; preview?: boolean; pageTitle?: string; firstTitled: number }) {
   const ed = useContext(StudioEditContext);
@@ -1916,9 +1984,14 @@ function BlockList({ blocks, parent, col, preview, pageTitle, firstTitled }: { b
       {blocks.map((b, i) => {
         const content = (
           <BlockCtx.Provider value={b}>
-            <StyleFrame style={b.style} edit={!!ed}>
-              {renderBlock(b, i === firstTitled, preview || !!ed, pageTitle)}
-            </StyleFrame>
+            {/* Una ventana emergente no tiene diseño de bloque: ni fondo ni espacios en la página */}
+            {b.type === "modal" ? (
+              renderBlock(b, false, preview || !!ed, pageTitle)
+            ) : (
+              <StyleFrame style={b.style} edit={!!ed}>
+                {renderBlock(b, i === firstTitled, preview || !!ed, pageTitle)}
+              </StyleFrame>
+            )}
           </BlockCtx.Provider>
         );
         return ed ? (

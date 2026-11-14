@@ -115,6 +115,28 @@ export const MODULES: readonly ModuleDef[] = [
     { key: "tablet", label: "En la tableta", kind: "select", options: [{ value: "auto", label: "Automático" }, { value: "stack", label: "Una debajo de otra" }, { value: "columns", label: "Todas en fila" }], advanced: true },
     { key: "width", label: "Ancho", kind: "select", options: [{ value: "normal", label: "Normal" }, { value: "wide", label: "Amplio" }, { value: "full", label: "Toda la pantalla" }], advanced: true },
   ], { note: "Arrastra módulos de la biblioteca a cualquier columna, o usa «Añadir a la columna». Si quitas columnas, su contenido pasa a la última que queda. Dentro de una sección cabe otra sección (un nivel)." }),
+  mod("modal", "estructura", "modal", "ventana emergente modal popup pop-up dialogo aviso ficha detalle", [
+    { key: "title", label: "Título de la ventana", kind: "text", max: 200, inline: true },
+    { key: "imageUrl", label: "Imagen (opcional)", kind: "image", altKey: "imageAlt" },
+    { key: "imageAlt", label: ALT, kind: "text", max: 300 },
+    { key: "size", label: "Tamaño", kind: "select", options: [{ value: "s", label: "Pequeño" }, { value: "m", label: "Medio" }, { value: "l", label: "Grande" }] },
+    { key: "align", label: "Alineación del contenido", kind: "select", options: ALIGN },
+    { key: "closeLabel", label: "Texto del botón de cerrar", kind: "text", max: 40, hint: "Lo leen los lectores de pantalla aunque el botón sea solo una cruz." },
+    { key: "showClose", label: "Botón de cerrar", kind: "select", options: ON_OFF },
+    { key: "closeOnOverlay", label: "Cerrar al pulsar fuera", kind: "select", options: ON_OFF },
+    { key: "closeOnEsc", label: "Cerrar con la tecla Esc", kind: "select", options: ON_OFF },
+    {
+      key: "autoOpen", label: "Abrir sola", kind: "select",
+      options: [{ value: "off", label: "No (solo desde un botón o enlace)" }, { value: "load", label: "Al cargar la página" }, { value: "exit", label: "Al intentar salir (solo con ratón)" }],
+    },
+    { key: "autoDelay", label: "Segundos hasta abrirse", kind: "select", options: [{ value: "3", label: "3" }, { value: "5", label: "5" }, { value: "10", label: "10" }, { value: "20", label: "20" }, { value: "30", label: "30" }] },
+    { key: "rememberOption", label: "Ofrecer «no volver a mostrar»", kind: "select", options: ON_OFF },
+    { key: "rememberLabel", label: "Texto de «no volver a mostrar»", kind: "text", max: 80 },
+    { key: "rememberDays", label: "Días sin volver a mostrarla", kind: "select", options: [{ value: "7", label: "7" }, { value: "30", label: "30" }, { value: "90", label: "90" }, { value: "365", label: "365" }] },
+    { key: "slug", label: "Identificador del enlace", kind: "text", max: 40, advanced: true, hint: "Se usa en la dirección #modal-identificador. Solo minúsculas, números y guiones; no lo cambies si ya la enlazaste." },
+  ], {
+    note: "Añade a cualquier botón, tarjeta o enlace la acción «Abrir la ventana…» eligiéndola por su nombre en «A dónde lleva». También se abre con la dirección de la página seguida de #modal-identificador. La apertura automática está desactivada por defecto: se muestra una sola vez por visita, solo cuando la persona ya ha decidido sobre las cookies, y no vuelve si marca «no volver a mostrar». Una ventana solo puede ir a nivel de página, no dentro de columnas ni de otra ventana.",
+  }),
   mod("heading", "basicos", "heading", "titulo titular encabezado h1 h2", [
     { key: "eyebrow", label: "Antetítulo (opcional)", kind: "text", max: 80, inline: true },
     { key: "title", label: "Titular", kind: "text", max: 200, inline: true },
@@ -463,7 +485,7 @@ export const SECTION_PRESETS: readonly SectionPreset[] = [
  * Elementos sueltos (grupo «Elementos» de la biblioteca), en el orden en que se ofrecen. Todo lo demás es una sección
  * y aparece en una de las categorías de LIBRARY_SECTIONS: cada módulo y cada sección prediseñada, en un solo sitio.
  */
-export const LIBRARY_ELEMENTS: readonly BlockType[] = ["heading", "text", "image", "button", "video", "form", "contact_form", "separator", "section"];
+export const LIBRARY_ELEMENTS: readonly BlockType[] = ["heading", "text", "image", "button", "video", "form", "contact_form", "separator", "section", "modal"];
 
 export interface LibraryCategory {
   key: string;
@@ -499,7 +521,7 @@ export type InspectorTab = "content" | "design" | "behavior" | "advanced";
 /** Opciones de aspecto y distribución (pestaña Diseño). */
 const DESIGN_KEYS = new Set(["align", "size", "variant", "kind", "height", "overlay", "imagePosition", "layout", "columns", "perView", "grayscale", "gap", "valign", "width"]);
 /** Lo que pasa al usarlo: avance, intervalos, interacciones y opciones funcionales (pestaña Comportamiento). */
-const BEHAVIOR_KEYS = new Set(["autoplay", "interval", "transition", "arrows", "dots", "animate", "lightbox", "redirectUrl", "consent"]);
+const BEHAVIOR_KEYS = new Set(["autoplay", "interval", "transition", "arrows", "dots", "animate", "lightbox", "redirectUrl", "consent", "showClose", "closeOnOverlay", "closeOnEsc", "autoOpen", "autoDelay", "rememberOption", "rememberDays"]);
 /** Ajustes técnicos, solo en el modo profesional (pestaña Avanzado). */
 const ADVANCED_KEYS = new Set(["mobile", "tablet", "level"]);
 

@@ -22,6 +22,8 @@ export const BLOCK_TYPES = [
   "pricing", "stats", "logos",
   // Estructura: contenedor con columnas y módulos dentro
   "section",
+  // Ventana emergente (modal) con módulos dentro (shared/studio/modal.ts)
+  "modal",
 ] as const;
 export type BlockType = (typeof BLOCK_TYPES)[number];
 
@@ -98,6 +100,32 @@ export interface BlockDataMap {
     width: "normal" | "wide" | "full";
     columns: SectionColumn[];
   };
+  /**
+   * Ventana emergente: contenido con módulos anidados (una sola «columna», para reutilizar el árbol de la página), que se
+   * abre desde un botón o enlace `#modal-<slug>`, por enlace directo o, si se activa, sola. Reglas en shared/studio/modal.ts.
+   */
+  modal: {
+    /** Identificador estable del enlace: `#modal-<slug>` (minúsculas, números y guiones) */
+    slug: string;
+    title: string;
+    imageUrl: string;
+    imageAlt: string;
+    size: "s" | "m" | "l";
+    align: "left" | "center";
+    closeLabel: string;
+    showClose: OnOff;
+    closeOnOverlay: OnOff;
+    closeOnEsc: OnOff;
+    /** Apertura automática: nunca (por defecto), al cargar con retardo o al intentar salir (solo con ratón) */
+    autoOpen: "off" | "load" | "exit";
+    autoDelay: "3" | "5" | "10" | "20" | "30";
+    /** Casilla «no volver a mostrar» en la ventana (se recuerda en el navegador solo si la persona la marca) */
+    rememberOption: OnOff;
+    rememberLabel: string;
+    rememberDays: "7" | "30" | "90" | "365";
+    /** Siempre una columna */
+    columns: SectionColumn[];
+  };
 }
 
 /** Reparto de las columnas de una sección: proporción de cada una (1-2 = un tercio y dos tercios). */
@@ -110,7 +138,7 @@ export interface SectionColumn {
 /** Una sección puede llevar otra dentro (un nivel): más profundidad no se admite. */
 export const SECTION_MAX_DEPTH = 2;
 /** Módulos que no caben dentro de una columna (ocupan todo el ancho de la página). */
-export const NOT_NESTABLE: readonly BlockType[] = ["hero", "slideshow"];
+export const NOT_NESTABLE: readonly BlockType[] = ["hero", "slideshow", "modal"];
 
 export interface PricingPlan {
   name: string;
@@ -299,6 +327,7 @@ export const BLOCK_CATALOG: ReadonlyArray<{ type: BlockType; label: string; desc
   { type: "stats", label: "Cifras", description: "Números destacados que se cuentan al aparecer" },
   { type: "logos", label: "Logos de clientes", description: "Las marcas que confían en ti" },
   { type: "section", label: "Sección con columnas", description: "De una a cuatro columnas con módulos dentro" },
+  { type: "modal", label: "Ventana emergente", description: "Una ventana con módulos dentro que se abre desde un botón, un enlace o sola" },
 ];
 
 export const blockLabel = (t: string): string => BLOCK_CATALOG.find((b) => b.type === t)?.label ?? "Bloque";
@@ -407,6 +436,12 @@ export function defaultBlockData<K extends BlockType>(type: K): BlockDataMap[K] 
     logos: { title: "Confían en nosotros", logos: [], grayscale: "on" },
     // Las columnas nacen vacías aquí; createSection (shared/studio/tree.ts) las llena al insertarla
     section: { layout: "1-1", gap: "m", valign: "top", mobile: "stack", tablet: "auto", width: "normal", columns: [{ blocks: [] }, { blocks: [] }] },
+    modal: {
+      slug: "ventana", title: "Título de la ventana", imageUrl: "", imageAlt: "", size: "m", align: "left",
+      closeLabel: "Cerrar", showClose: "on", closeOnOverlay: "on", closeOnEsc: "on",
+      autoOpen: "off", autoDelay: "5", rememberOption: "on", rememberLabel: "No volver a mostrar", rememberDays: "30",
+      columns: [{ blocks: [{ id: newBlockId(), type: "text", data: { title: "", html: "<p>Escribe aquí el contenido de la ventana. Puedes añadir texto, imágenes, botones o un formulario.</p>", align: "left" } }] }],
+    },
   };
   return structuredCloneSafe(d[type]) as BlockDataMap[K];
 }
@@ -465,6 +500,12 @@ export function duplicateBlock(b: PageBlock): PageBlock {
   const data = structuredCloneSafe(b.data) as PageBlock["data"];
   // Los módulos de dentro de una sección también reciben identificadores nuevos
   if (b.type === "section") (data as BlockDataMap["section"]).columns = (data as BlockDataMap["section"]).columns.map((c) => ({ blocks: c.blocks.map(duplicateBlock) }));
+  if (b.type === "modal") {
+    const m = data as BlockDataMap["modal"];
+    m.columns = m.columns.map((c) => ({ blocks: c.blocks.map(duplicateBlock) }));
+    // El identificador del enlace es único en la página: la copia lleva otro
+    m.slug = `${m.slug}-copia`.slice(0, 40).replace(/-+$/, "");
+  }
   return { ...b, id: newBlockId(), data, ...(b.style ? { style: structuredCloneSafe(b.style) } : {}) } as PageBlock;
 }
 
@@ -559,6 +600,7 @@ export const PAGE_TEMPLATES = [
   { key: "landing", label: "Página de campaña", description: "Titular con fondo degradado, ventajas, tarifas, opiniones y llamada a la acción" },
   { key: "pricing", label: "Tarifas", description: "Tus planes o precios, preguntas frecuentes y un botón de contacto" },
   { key: "faq", label: "Preguntas frecuentes", description: "Respuestas a las dudas habituales y formulario para lo demás" },
+  { key: "modal-cards", label: "Fichas en ventana", description: "Tarjetas cuyo botón abre la ficha completa en una ventana emergente" },
 ] as const;
 export type PageTemplateKey = (typeof PAGE_TEMPLATES)[number]["key"];
 
@@ -616,6 +658,24 @@ export function templateBlocks(key: PageTemplateKey, title: string): PageBlock[]
         createBlock("faq", { title: "Dudas sobre las tarifas" }),
         styled(createBlock("cta", { title: "¿Necesitas algo a medida?", text: "Escríbenos y te preparamos una propuesta." }), { background: "brand" }),
       ];
+    case "modal-cards": {
+      // Cada tarjeta abre su ficha: el botón apunta a «#modal-<identificador>» de la ventana de esa ficha
+      const fichas = [1, 2, 3].map((n) => ({
+        slug: `ficha-${n}`,
+        card: { ...newCard(`Ficha ${n}`), text: "Un resumen de una o dos frases. El detalle va en la ventana.", buttonLabel: "Ver ficha", buttonUrl: `#modal-ficha-${n}` },
+      }));
+      return [
+        createBlock("heading", { title: t, subtitle: "Pulsa una tarjeta para ver su ficha completa", level: "h1" }),
+        createBlock("cards", { title: "", columns: "3", items: fichas.map((f) => f.card) }),
+        ...fichas.map((f, i) => ({
+          ...createBlock("modal", {
+            slug: f.slug,
+            title: `Ficha ${i + 1}`,
+            columns: [{ blocks: [createBlock("text", { html: "<p>Cuenta aquí el detalle: qué incluye, a quién va dirigido y cómo se pide.</p>" }), createBlock("button", { label: "Pide información", url: "/contacto" })] }],
+          }),
+        })),
+      ];
+    }
     case "faq":
       return [
         createBlock("heading", { title: t, subtitle: "Las respuestas a las preguntas que más nos hacen", level: "h1" }),
