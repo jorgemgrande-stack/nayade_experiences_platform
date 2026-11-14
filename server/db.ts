@@ -1366,6 +1366,7 @@ export async function cloneExperience(id: number, newName?: string) {
     requirements: orig.requirements,
     isFeatured: false,
     isActive: false,
+    isPublished: false, // la copia nace oculta: no se publica hasta que la empresa lo decida
     sortOrder: orig.sortOrder,
     metaTitle: orig.metaTitle,
     metaDescription: orig.metaDescription,
