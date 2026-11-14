@@ -52,6 +52,8 @@ export const CATEGORIES = {
   media: { visibility: "public", ...ADMIN, maxBytes: 10 * MB, types: PUBLIC_IMAGES },
   "restaurant-menu": { visibility: "public", ...ADMIN, maxBytes: 15 * MB, types: [...IMAGES, "application/pdf"] },
   generated: { visibility: "public", ...ADMIN, maxBytes: 10 * MB, types: IMAGES },
+  // Medios traídos por la importación de Studio (originales sin transformar: imágenes y PDF)
+  "import-asset": { visibility: "public", ...ADMIN, maxBytes: 25 * MB, types: [...PUBLIC_IMAGES, "application/pdf"] },
   // Privados: documentos comerciales del equipo
   invoice: { visibility: "private", ...STAFF, maxBytes: 20 * MB, types: GENERATED_DOCS },
   quote: { visibility: "private", ...STAFF, maxBytes: 20 * MB, types: GENERATED_DOCS },

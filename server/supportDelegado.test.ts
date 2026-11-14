@@ -182,7 +182,7 @@ describe("política del modo soporte", () => {
 });
 
 describe("procedimientos tRPC en modo soporte", () => {
-  it("vetados siempre, exportaciones solo con modificación (registradas) y respuestas enmascaradas", async () => {
+  it("vetados siempre (también con modificación), exportaciones solo con modificación (registradas) y respuestas enmascaradas", async () => {
     const { router, publicProcedure } = await import("./_core/trpc");
     const { configureSupport } = await import("./_core/support/session");
     const { MemorySupportStore } = await import("./_core/support/grants");
@@ -200,6 +200,7 @@ describe("procedimientos tRPC en modo soporte", () => {
       await expect(caller(true).crm.clients.exportCsv()).rejects.toThrow(/modificación/);
       expect(await caller(false).crm.clients.exportCsv()).toBe("csv");
       expect(await caller(true).hr.employees.list()).toEqual([{ name: "Ana", iban: "•••• 1332" }]);
+      expect(await caller(false).hr.employees.list()).toEqual([{ name: "Ana", iban: "•••• 1332" }]);
       // Un usuario normal no se ve afectado
       expect(await caller(true, "local").hr.employees.list()).toEqual([{ name: "Ana", iban: "ES9121000418450200051332" }]);
       expect(await caller(true, "local").admin.createUser()).toBe(1);

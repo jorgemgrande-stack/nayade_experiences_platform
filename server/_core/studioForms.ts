@@ -11,7 +11,8 @@
  *  - Sin adjuntos de archivos (aún no disponibles) ni nada ejecutable: solo texto, con límites de tamaño.
  */
 import { safeLink } from "./pageBlocks";
-import { formFieldVisibility, type BlockDataMap, type FormFieldItem } from "../../shared/pageBlocks";
+import { createHash } from "node:crypto";
+import { DEFAULT_FORM_CONSENT_TEXT, formFieldVisibility, type BlockDataMap, type FormFieldItem } from "../../shared/pageBlocks";
 
 export class FormSubmitError extends Error {}
 
@@ -32,9 +33,24 @@ export interface FormSubmission {
 }
 
 export type FormEvaluation =
-  | { kind: "ok"; lead: { name: string; email: string; phone?: string; message: string } }
+  | { kind: "ok"; lead: { name: string; email: string; phone?: string; company?: string; message: string }; consent: FormConsent | null }
   | { kind: "spam" }
   | { kind: "invalid"; errors: Record<string, string> };
+
+/** Consentimiento RGPD tal como lo vio la persona: el texto de la casilla de ese formulario y su versión (huella del texto). */
+export interface FormConsent {
+  text: string;
+  version: string;
+}
+
+/** Texto de la casilla de privacidad de un formulario y su versión (cambia si la empresa cambia el texto). */
+export function formConsentText(form: Pick<BlockDataMap["form"], "consentText">): FormConsent {
+  const t = (form.consentText ?? "").replace(/[\u0000-\u001f]/g, " ").trim().slice(0, 300) || DEFAULT_FORM_CONSENT_TEXT;
+  return { text: t, version: createHash("sha256").update(t).digest("hex").slice(0, 12) };
+}
+
+/** Texto de un nombre o empresa: sin etiquetas (se guarda y se enseña como texto, nunca como HTML). */
+const plain = (v: string) => v.replace(/<[^>]*>/g, "").replace(/[<>]/g, "").replace(/\s+/g, " ").trim();
 
 /** Clave de cada campo en el envío: su posición («f0», «f1»…). */
 export const fieldKey = (i: number) => `f${i}`;
@@ -56,6 +72,9 @@ export function evaluateFormSubmission(form: BlockDataMap["form"], input: FormSu
   const errors: Record<string, string> = {};
   const answers: Array<[string, string]> = [];
   let name = "";
+  let firstName = "";
+  let lastName = "";
+  let company = "";
   let email = "";
   let phone = "";
   // Un campo que no se muestra por su condición no se valida ni se guarda (aunque el navegador lo mande)
@@ -116,7 +135,10 @@ export function evaluateFormSubmission(form: BlockDataMap["form"], input: FormSu
     }
     if (f.required === "on" && f.kind !== "checkbox" && f.kind !== "hidden" && !value && !errors[key]) errors[key] = "Este campo es obligatorio.";
     if (errors[key]) return;
-    if (f.role === "name" && value) name = value;
+    if (f.role === "name" && value) name = plain(value);
+    if (f.role === "first_name" && value) firstName = plain(value);
+    if (f.role === "last_name" && value) lastName = plain(value);
+    if (f.role === "company" && value) company = plain(value);
     if (f.role === "email" && value) email = value;
     if (f.role === "phone" && value) phone = value;
     if (value) answers.push([label, value]);
@@ -130,8 +152,11 @@ export function evaluateFormSubmission(form: BlockDataMap["form"], input: FormSu
     const i = form.fields.findIndex((f) => f.role === "email");
     return { kind: "invalid", errors: { [fieldKey(i)]: "Escribe tu correo electrónico para que podamos responderte." } };
   }
+  // Nombre y apellidos por separado (opcional): se unen para el CRM; si hay un campo de nombre completo, manda ese
+  if (!name) name = [firstName, lastName].filter(Boolean).join(" ");
+  const consent = form.consent === "on" ? formConsentText(form) : null;
   const message = [`Formulario: ${form.title || "Formulario de la web"}`, `Página: /${ctx.slug}`, "", ...answers.map(([l, v]) => `${l}: ${v}`)].join("\n").slice(0, 8000);
-  return { kind: "ok", lead: { name: name || email.split("@")[0], email, ...(phone ? { phone } : {}), message } };
+  return { kind: "ok", lead: { name: name || email.split("@")[0], email, ...(phone ? { phone } : {}), ...(company ? { company } : {}), message }, consent };
 }
 
 /** Destino tras enviar: solo una página de la propia web (nunca otra web). */

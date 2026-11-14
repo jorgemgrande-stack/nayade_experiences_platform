@@ -499,6 +499,14 @@ export const appRouter = router({
         };
       }),
 
+    /** E-7: clave pública de Turnstile de ESTA empresa (null si no la ha configurado: el formulario funciona sin ella). */
+    studioFormCaptcha: publicProcedure.query(async () => {
+      const { readCaptchaConfig } = await import("./_core/studioFormsCaptcha");
+      const { getVault } = await import("./_core/credentials/runtime");
+      const cfg = await readCaptchaConfig(getVault()).catch(() => null);
+      return { siteKey: cfg?.siteKey ?? null };
+    }),
+
     getLocations: publicProcedure.query(async () => {
       return getPublicLocations();
     }),
@@ -569,31 +577,33 @@ export const appRouter = router({
           consent: z.boolean().optional(),
           website: z.string().max(500).optional(),
           elapsedMs: z.number().int().min(0).optional(),
+          /** E-7: página de origen y UTM (el servidor los sanea); respuesta del widget Turnstile si la empresa lo activó */
+          meta: z.object({
+            page: z.string().max(200).optional(),
+            utm: z.object({ source: z.string().max(100), medium: z.string().max(100), campaign: z.string().max(100), term: z.string().max(100), content: z.string().max(100) }).partial().optional(),
+          }).optional(),
+          captchaToken: z.string().max(2048).optional(),
         }).optional(),
       }))
       .mutation(async ({ input, ctx }) => {
         if (input.studioForm) {
           const sf = input.studioForm;
-          const { getPublishedFormBlock } = await import("./pageBuilderDb");
-          const { evaluateFormSubmission, allowFormSubmit, formRedirect, FormSubmitError } = await import("./_core/studioForms");
-          const form = await getPublishedFormBlock(sf.slug, sf.blockId);
-          if (!form) throw new TRPCError({ code: "NOT_FOUND", message: "Este formulario ya no está disponible." });
-          const ip = ctx.req.ip || ctx.req.socket.remoteAddress || "desconocida";
-          const { peekTenantContext } = await import("./_core/tenant");
-          if (!allowFormSubmit(`${peekTenantContext()?.tenantId ?? "single"}:${form.slug}:${ip}`)) {
-            throw new TRPCError({ code: "TOO_MANY_REQUESTS", message: "Has enviado varios formularios seguidos. Espera unos minutos e inténtalo de nuevo." });
+          const { processStudioSubmission, StudioSubmitError, sameSiteRequest } = await import("./_core/studioFormsSubmit");
+          const { defaultSubmitDeps } = await import("./_core/studioFormsRuntime");
+          // CSRF: el envío tiene que salir de esta misma web (el navegador manda siempre Origin en un POST entre sitios)
+          const hdr = (n: string) => { const v = ctx.req.headers[n]; return Array.isArray(v) ? v[0] : v; };
+          if (!sameSiteRequest({ origin: hdr("origin"), referer: hdr("referer"), hosts: [hdr("x-forwarded-host"), hdr("host")] })) {
+            throw new TRPCError({ code: "FORBIDDEN", message: "No se ha podido enviar el formulario desde esta dirección." });
           }
-          let result;
+          const ip = ctx.req.ip || ctx.req.socket.remoteAddress || "desconocida";
           try {
-            result = evaluateFormSubmission(form.data, sf, { slug: form.slug });
+            const r = await processStudioSubmission({ slug: sf.slug, blockId: sf.blockId, values: sf.values, consent: sf.consent, website: sf.website, elapsedMs: sf.elapsedMs, meta: sf.meta, captchaToken: sf.captchaToken }, ip, await defaultSubmitDeps());
+            if (!r.ok) return { success: false, studio: { ok: false as const, errors: r.errors } };
+            return { id: r.id, success: true, studio: { ok: true as const, message: r.message, redirectUrl: r.redirectUrl } };
           } catch (e) {
-            if (e instanceof FormSubmitError) throw new TRPCError({ code: "BAD_REQUEST", message: e.message });
+            if (e instanceof StudioSubmitError) throw new TRPCError({ code: e.code, message: e.message });
             throw e;
           }
-          if (result.kind === "invalid") return { success: false, studio: { ok: false as const, errors: result.errors } };
-          // A un envío automático se le responde igual que a uno bueno, sin guardarlo
-          const lead = result.kind === "ok" ? await createLead({ ...result.lead, source: "web_formulario", leadSourceCode: "HOME_FORM" }) : null;
-          return { id: lead?.id ?? 0, success: true, studio: { ok: true as const, message: form.data.successMessage, redirectUrl: formRedirect(form.data.redirectUrl) } };
         }
         return createLead({
           ...input,

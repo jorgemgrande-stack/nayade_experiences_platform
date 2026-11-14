@@ -146,7 +146,7 @@ describe("sesión de soporte", () => {
     expect((await call("GET", "/data", { tenant: "acme", cookie: c })).status).toBe(200);
     const w = await call("POST", "/data", { tenant: "acme", cookie: c });
     expect(w.status).toBe(403);
-    expect(JSON.parse(w.body)).toEqual({ error: "support_read_only" });
+    expect(JSON.parse(w.body)).toMatchObject({ error: "support_read_only", message: expect.stringContaining("solo lectura") });
     expect(logs.some((l) => l.includes("write_blocked") && l.includes("jorge"))).toBe(true);
     expect(logs.join("")).not.toContain(c.split("=")[1]); // el token no se registra
   });
@@ -226,6 +226,30 @@ describe("auditoría y límites del modo soporte", () => {
     expect((await call("GET", "/api/settlements/7/export-excel", { tenant: "acme", cookie: ro })).status).toBe(403);
     expect((await call("GET", "/api/settlements/7/export-excel", { tenant: "acme", cookie: rw })).status).toBe(200);
     expect(events.map((e) => e.ev)).toEqual(["blocked", "blocked", "export"]);
+  });
+
+  it("con modificación: el trabajo ordinario de Elephant Studio se guarda (registrado); los vetados, con error tRPC legible", async () => {
+    const rw = cookieFrom((await enter("acme", false)).r.setCookie);
+    events.length = 0;
+    // El borde la deja pasar (la app de prueba no monta tRPC: 404, no 403/503)
+    expect((await call("POST", "/api/trpc/cms.savePageDraft,cms.publishPage?batch=1", { tenant: "acme", cookie: rw })).status).toBe(404);
+    expect(events.map((e) => e.ev)).toEqual(["write", "write_result"]);
+    const v = await call("POST", "/api/admin/diagnose-order", { tenant: "acme", cookie: rw });
+    expect(v.status).toBe(403);
+  });
+
+  it("solo lectura en /api/trpc: el error va en el formato de tRPC (el panel muestra el mensaje), también en lotes", async () => {
+    const ro = cookieFrom((await enter("acme", true)).r.setCookie);
+    const one = await call("POST", "/api/trpc/cms.savePageDraft", { tenant: "acme", cookie: ro });
+    expect(one.status).toBe(403);
+    expect(JSON.parse(one.body)).toMatchObject({ error: { json: { code: -32003, message: expect.stringContaining("solo lectura"), data: { code: "FORBIDDEN", httpStatus: 403, path: "cms.savePageDraft" } } } });
+    const batch = await call("POST", "/api/trpc/cms.savePageDraft,cms.publishPage?batch=1", { tenant: "acme", cookie: ro });
+    const body = JSON.parse(batch.body);
+    expect(body).toHaveLength(2);
+    expect(body[1]).toMatchObject({ error: { json: { data: { path: "cms.publishPage" } } } });
+    // Ruta mal codificada o en mayúsculas: rechazo controlado, nunca una excepción
+    expect((await call("POST", "/api/trpc/%E0", { tenant: "acme", cookie: ro })).status).toBe(403);
+    expect((await call("POST", "/API/TRPC/cms.savePageDraft", { tenant: "acme", cookie: ro })).status).toBe(403);
   });
 
   it("salir registra la salida, borra solo la cookie de soporte y devuelve adónde volver", async () => {

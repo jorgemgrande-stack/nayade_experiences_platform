@@ -75,7 +75,7 @@ export function trialEmails(o: { verifyUrl: string; pricingUrl?: string | null; 
       const url = `${o.verifyUrl}${o.verifyUrl.includes("?") ? "&" : "?"}id=${l.trialId}&token=${encodeURIComponent(l.token)}`;
       const body = render(`Confirma tu correo para empezar la prueba de ${product}`, [
         "Hemos recibido una solicitud de prueba gratuita con esta dirección.",
-        "Para activarla, confirma que el correo es tuyo. El enlace caduca y solo sirve una vez.",
+        "Para activarla, confirma que el correo es tuyo. El enlace es válido 24 horas: si caduca, ábrelo igualmente y podrás pedir uno nuevo con un clic, sin repetir el alta.",
         "Si no la has solicitado tú, ignora este mensaje: no se creará nada.",
       ], { label: "Confirmar correo", url });
       return { to, subject: `Confirma tu correo · prueba de ${product}`, tag: "trial_verification", ...body };

@@ -174,7 +174,8 @@ export class TrialOnboardingService {
   /** Registro público: crea la solicitud y envía el enlace de verificación (solo si es nueva). */
   async register(input: { email: string; companyName: string; profile?: TrialProfileInput | null; attribution?: TrialAttributionInput | null; terms?: { accepted: unknown; version: unknown; privacyVersion?: unknown } | null; idempotencyKey: string; ip?: string | null }) {
     const r = await this.d.trials.register({ email: input.email, companyName: input.companyName, configuration: { plan: ESSENTIAL_PLAN, addons: [] }, profile: input.profile ?? null, attribution: input.attribution ?? null, terms: input.terms ?? null, idempotencyKey: input.idempotencyKey, ip: input.ip ?? null });
-    if (r.created && r.verificationToken) await this.d.notify.verification(r.trial.email, { trialId: r.trial.id, token: r.verificationToken });
+    // También al repetir el alta de una solicitud sin verificar: enlace nuevo a su correo registrado
+    if (r.verificationToken) await this.d.notify.verification(r.trial.email, { trialId: r.trial.id, token: r.verificationToken, ...(r.created ? {} : { resend: true }) });
     // También al repetir el alta (misma clave): si el CRM falló la primera vez, se completa ahora (idempotente)
     await this.recordInCrm(r.trial);
     return { trialId: r.trial.id, created: r.created, state: r.trial.state };
@@ -211,7 +212,8 @@ export class TrialOnboardingService {
   async registerLife(input: { email: string; holder: TrialHolder; householdName?: string | null; terms?: { accepted: unknown; version: unknown; privacyVersion?: unknown } | null; idempotencyKey: string; ip?: string | null }) {
     if (!this.d.lifeTrials) throw new TrialError("unavailable", "La prueba del plan Life todavía no está disponible");
     const r = await this.d.trials.register({ email: input.email, companyName: householdNameOf(input.holder, input.householdName), configuration: { plan: LIFE_PLAN, addons: [], holder: input.holder }, terms: input.terms ?? null, idempotencyKey: input.idempotencyKey, ip: input.ip ?? null });
-    if (r.created && r.verificationToken) await this.d.notify.verification(r.trial.email, { trialId: r.trial.id, token: r.verificationToken });
+    // También al repetir el alta de una solicitud sin verificar: enlace nuevo a su correo registrado
+    if (r.verificationToken) await this.d.notify.verification(r.trial.email, { trialId: r.trial.id, token: r.verificationToken, ...(r.created ? {} : { resend: true }) });
     return { trialId: r.trial.id, created: r.created, state: r.trial.state };
   }
 
@@ -223,7 +225,7 @@ export class TrialOnboardingService {
    */
   async registerByOperator(input: { email: string; companyName: string; idempotencyKey: string }, actor: string) {
     const r = await this.d.trials.register({ email: input.email, companyName: input.companyName, configuration: { plan: ESSENTIAL_PLAN, addons: [] }, idempotencyKey: input.idempotencyKey, ip: null });
-    if (r.created && r.verificationToken) await this.d.trials.verify(r.trial.id, r.verificationToken);
+    if (r.verificationToken) await this.d.trials.verify(r.trial.id, r.verificationToken);
     const t = await this.d.trials.must(r.trial.id);
     if (t.state === "pending_verification") throw new TrialError("conflict", "Esa solicitud ya existe y está pendiente de que el interesado verifique su correo");
     let inviteToken: string | null = null;
@@ -232,12 +234,26 @@ export class TrialOnboardingService {
     return { ...out, accessUrl };
   }
 
-  /** Verificación; con `autoProvision` activa la prueba en el acto. */
-  async verify(trialId: number, token: string, o: { autoProvision: boolean }) {
+  /**
+   * Verificación; con `autoProvision` activa la prueba en el acto. Con `waitMs` (la ruta pública) no se hace esperar
+   * a la persona más de ese tiempo: si la activación tarda más sigue en segundo plano y se responde «en preparación»
+   * (13/11/2026: un aprovisionamiento de 23 s cortaba la petición del navegador y el reintento decía «no válido»).
+   */
+  async verify(trialId: number, token: string, o: { autoProvision: boolean; waitMs?: number }) {
     const t = await this.d.trials.verify(trialId, token);
     if (!o.autoProvision) return { trial: t, activation: null, activationError: null };
+    const run = this.activate(trialId, "system:trial");
     try {
-      return { trial: t, activation: await this.activate(trialId, "system:trial"), activationError: null };
+      if (o.waitMs !== undefined) {
+        // Si se sigue en segundo plano, un fallo queda registrado y la tarea programada reintenta (alta incompleta)
+        run.catch((e) => opsLog("warn", "Trials", "trial_activation_background_failed", { trialId, error: e instanceof Error ? e.name : "error" }));
+        let timer: ReturnType<typeof setTimeout> | undefined;
+        const slow = new Promise<null>((r) => void (timer = setTimeout(() => r(null), o.waitMs)));
+        const activation = await Promise.race([run, slow]).finally(() => clearTimeout(timer));
+        if (!activation) return { trial: await this.d.trials.must(trialId), activation: null, activationError: null };
+        return { trial: t, activation, activationError: null };
+      }
+      return { trial: t, activation: await run, activationError: null };
     } catch (e) {
       // El correo YA está verificado: la activación queda pendiente y se reintenta (es recuperable)
       return { trial: await this.d.trials.must(trialId), activation: null, activationError: e instanceof Error ? e.message : "error" };
@@ -274,6 +290,31 @@ export class TrialOnboardingService {
     if (!token) return { sent: false as const, reason: "already_accepted" as const };
     await this.d.notify.welcome(t.email, { tenantId: t.tenantId, domain: `${t.tenantId}.${this.d.platformDomain}`, inviteToken: token, endsAt: t.state === "active" ? t.endsAt : null });
     return { sent: true as const };
+  }
+
+  /**
+   * Enlace de verificación YA USADO por su dueño (otra pestaña, reintento tras un corte): estado de la prueba para
+   * decirle que su correo ya está confirmado. `null` si el enlace no es de esa prueba o la prueba no siguió adelante.
+   */
+  async usedLinkStatus(trialId: number, token: string) {
+    const t = await this.d.trials.linkOwner(trialId, token);
+    if (!t || !["verified", "provisioning", "active"].includes(t.state)) return null;
+    return { state: t.state, domain: t.state === "active" && t.tenantId ? `${t.tenantId}.${this.d.platformDomain}` : null, endsAt: t.state === "active" ? t.endsAt : null };
+  }
+
+  /**
+   * Enlace nuevo pedido desde el enlace anterior (caducado o roto por el camino): solo si el enlace es de esa
+   * solicitud y sigue pendiente; se envía al correo REGISTRADO con los límites de siempre. No revela nada.
+   */
+  async renewFromLink(trialId: number, token: string, actor: string) {
+    const t = await this.d.trials.linkOwner(trialId, token);
+    if (!t || t.state !== "pending_verification") return { outcome: "not_found" as const };
+    return { outcome: (await this.resendVerification({ trialId: t.id }, actor)).outcome };
+  }
+
+  /** El enlace es de esa solicitud y sigue pendiente de verificar (caducado): se puede pedir otro con un clic. */
+  async isRenewableLink(trialId: number, token: string) {
+    return (await this.d.trials.linkOwner(trialId, token))?.state === "pending_verification";
   }
 
   /** Estado actual de una prueba (sin datos personales), para respuestas públicas. */

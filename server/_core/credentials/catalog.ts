@@ -353,6 +353,20 @@ export const PROVIDERS: ProviderDef[] = [
     ],
   },
   {
+    // E-7: Cloudflare Turnstile PROPIO de cada empresa para sus formularios de Studio (desactivado por defecto: no hay
+    // tercero salvo que la empresa lo configure y lo active en el formulario). Ambas claves van cifradas
+    id: "turnstile",
+    name: "Cloudflare Turnstile",
+    description: "Verificación antirrobots opcional de los formularios de tu web. Sin configurar, los formularios se protegen solo con el campo trampa, el tiempo mínimo y el límite por visitante.",
+    capabilities: ["Mostrar el widget de Turnstile en los formularios que lo activen (solo si la persona acepta las cookies)", "Comprobar en el servidor cada envío con tu clave secreta"],
+    check: "Validación local del formato de las claves (no se contacta con Cloudflare ni se verifica nada)",
+    panel: { group: "marketing", title: "Antirrobots de formularios (Turnstile)", summary: "Opcional. Añade la verificación de Cloudflare a los formularios de tu web. Se activa después en cada formulario, en «Opciones avanzadas».", requires: ["cms-pages-forms", "cms-editor"] },
+    fields: [
+      { key: "siteKey", label: "Clave del sitio (site key)", secret: true, pattern: /^[A-Za-z0-9_-]{8,100}$/, panel: { label: "Clave del sitio", help: "En el panel de Cloudflare › Turnstile, en tu widget. Es la clave pública.", formatMessage: "Solo letras, números, guiones y guiones bajos." } },
+      { key: "secretKey", label: "Clave secreta (secret key)", secret: true, pattern: /^[A-Za-z0-9_-]{8,100}$/, panel: { label: "Clave secreta", help: "En el mismo widget de Turnstile. Nunca se muestra después de guardarla.", formatMessage: "Solo letras, números, guiones y guiones bajos." } },
+    ],
+  },
+  {
     // Venta multicanal: credenciales PREPARADAS para el conector de Fourvenues (su API de integraciones exige una clave
     // que emite Fourvenues a cada organizador). Hoy las ventas entran por el informe CSV o el enlace de entrada del canal.
     id: "fourvenues",
