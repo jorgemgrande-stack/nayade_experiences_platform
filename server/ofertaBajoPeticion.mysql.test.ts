@@ -10,6 +10,7 @@
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import crypto from "node:crypto";
 import { startEssentialApp, data, errCode, type EssentialApp } from "./essentialApp.testkit";
+import { resetProductRequestLimits } from "./productRequests";
 
 const URL_ = process.env.REGISTRY_TEST_DATABASE_URL;
 const KEY = crypto.randomBytes(24).toString("base64");
@@ -179,6 +180,17 @@ describe.skipIf(!URL_)("Oferta bajo petición y próximamente (aplicación real)
     // Una web ajena no puede enviar la solicitud (misma web de origen)
     const cross = await ess.call("a", "POST", "/api/trpc/public.submitLead", { body: { json: toLead({ ...ok, email: "otra@prueba.example" }) }, headers: { origin: "https://sitio-ajeno.example" } });
     expect(cross.status).toBe(403);
+  });
+
+  it("límite por visitante: a la sexta solicitud seguida se le pide esperar, sin guardar nada", async () => {
+    resetProductRequestLimits();
+    const send = (i: number) => rpi("a", { experienceId: ids.pronto, name: "Persona Límite", email: `limite${i}@ejemplo.example`, consent: true });
+    for (let i = 0; i < 5; i++) expect((await send(i)).status).toBe(200);
+    const sixth = await send(5);
+    expect(errCode(sixth)).toBe("TOO_MANY_REQUESTS");
+    expect(msg(sixth)).toContain("Espera unos minutos");
+    expect((await ess.sql("a", "SELECT COUNT(*) AS n FROM leads WHERE email LIKE 'limite%'"))[0].n).toBe(5);
+    resetProductRequestLimits();
   });
 
   it("aislamiento: la solicitud solo existe en la empresa del producto y la otra no ve nada", async () => {

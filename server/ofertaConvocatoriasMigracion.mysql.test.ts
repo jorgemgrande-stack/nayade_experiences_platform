@@ -26,7 +26,7 @@ const cli = (dbUrl: string, args: string[]): Promise<Run> =>
     p.on("close", (status) => resolve({ status, stdout, stderr }));
   });
 
-d("migraciones 0069/0069 arriba, abajo, arriba (BD nueva desde la baseline)", () => {
+d("migraciones 0069/0070 arriba, abajo, arriba (BD nueva desde la baseline)", () => {
   const DB = "mig_oferta_conv";
   let admin: mysql.Pool;
   let pool: mysql.Pool;

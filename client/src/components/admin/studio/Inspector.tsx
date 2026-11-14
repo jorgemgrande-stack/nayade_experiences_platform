@@ -285,6 +285,8 @@ function FieldControl({ field: f, value, set, targets, blockId, pro = false, ctx
       return <IconPicker label={f.label} value={str} onChange={(v) => set(f.key, v, false)} />;
     case "category":
       return <CategoryPicker label={f.label} value={str} onChange={(v) => set(f.key, v, false)} />;
+    case "product":
+      return <ProductPicker label={f.label} value={str} onChange={(v) => set(f.key, v, false)} />;
     case "images":
       return <ImagesEditor field={f} value={Array.isArray(value) ? (value as Array<{ url: string; alt: string }>) : []} set={set} />;
     case "list":
@@ -358,6 +360,31 @@ function CategoryPicker({ label, value, onChange }: { label: string; value: stri
           {list.map((c) => (
             <SelectItem key={c.id} value={c.slug}>
               Categoría: {c.name}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+    </div>
+  );
+}
+
+/** Un producto de la tienda (E-4: «Próximas fechas»); vacío = de todos. */
+function ProductPicker({ label, value, onChange }: { label: string; value: string; onChange: (v: string) => void }) {
+  const id = useId();
+  const products = trpc.public.getExperiences.useQuery({ limit: 50, offset: 0 }, { staleTime: 60_000 });
+  const list = (products.data ?? []) as Array<{ id: number; title: string; slug: string }>;
+  return (
+    <div className="space-y-1.5">
+      <Label htmlFor={id}>{label}</Label>
+      <Select value={value || ALL} onValueChange={(v) => onChange(v === ALL ? "" : v)}>
+        <SelectTrigger id={id} className="w-full">
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value={ALL}>Todos los productos</SelectItem>
+          {list.map((p) => (
+            <SelectItem key={p.id} value={p.slug}>
+              {p.title}
             </SelectItem>
           ))}
         </SelectContent>

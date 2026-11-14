@@ -4,7 +4,7 @@ import { usePanelSubscription } from "@/hooks/usePanelSubscription";
 import { useVocabulary } from "@/lib/vocabulary";
 import { PanelError, errorMessage } from "@/components/admin/PanelStates";
 import { validateProductForm } from "@shared/formValidation";
-import { Plus, Pencil, Trash2, Star, Eye, EyeOff, Search, ImageIcon, X, MoreVertical, Copy, PowerOff, Power, ChevronUp, ChevronDown } from "lucide-react";
+import { Plus, Pencil, Trash2, Star, Eye, EyeOff, Search, ImageIcon, X, MoreVertical, Copy, PowerOff, Power, ChevronUp, ChevronDown, CalendarDays } from "lucide-react";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -23,6 +23,7 @@ import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import TimeSlotsPanel from "@/components/TimeSlotsPanel";
+import { EditionsPanel, UpcomingEditionsView } from "./EditionsPanel";
 import { TONE_BADGE, TONE_SURFACE } from "@/lib/panelTones";
 import { newProductDefaults, presentialSaleAllowed } from "@shared/catalogDefaults";
 import { DEFAULT_REQUEST_CTA, MAX_REQUEST_CTA_LENGTH, OFFER_MODES, OFFER_MODE_HELP, OFFER_MODE_LABELS, offerModeOf, type OfferMode } from "@shared/offerMode";
@@ -163,6 +164,9 @@ export default function ExperiencesManager() {
   const [cloneName, setCloneName] = useState("");
   const [deleteTarget, setDeleteTarget] = useState<{ id: number; title: string } | null>(null);
   const [localOrder, setLocalOrder] = useState<number[]>([]);
+  // E-4: convocatorias de un producto y vista de las próximas de toda la tienda
+  const [editionsFor, setEditionsFor] = useState<{ id: number; title: string } | null>(null);
+  const [view, setView] = useState<"productos" | "convocatorias">("productos");
 
   const { data: experiences, refetch, isLoading: listLoading, isError: listIsError, error: listError } = trpc.products.getAll.useQuery();
 
@@ -392,7 +396,15 @@ export default function ExperiencesManager() {
 
   return (
     <AdminLayout title={isNewCompany ? "Productos y servicios" : "Gestión de Experiencias"}>
-      <div className="flex flex-wrap items-center justify-between gap-3 mb-6">
+      <div role="tablist" aria-label="Vista" className="mb-4 inline-flex rounded-lg bg-muted p-1 text-sm">
+        {([["productos", isNewCompany ? "Productos" : "Experiencias"], ["convocatorias", "Próximas convocatorias"]] as const).map(([k, label]) => (
+          <button key={k} type="button" role="tab" aria-selected={view === k} onClick={() => setView(k)} className={cn("rounded-md px-3 py-1.5 font-medium transition-colors", view === k ? "bg-background text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground")}>
+            {label}
+          </button>
+        ))}
+      </div>
+      {view === "convocatorias" && <UpcomingEditionsView onManage={(id, title) => setEditionsFor({ id, title })} />}
+      <div className={cn("flex flex-wrap items-center justify-between gap-3 mb-6", view === "convocatorias" && "hidden")}>
         <div className="flex items-center gap-3 min-w-0 flex-1 sm:flex-none">
           <div className="relative w-full sm:w-64">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" aria-hidden="true" />
@@ -412,7 +424,7 @@ export default function ExperiencesManager() {
       </div>
 
       {/* Table */}
-      <div className="bg-card rounded-2xl border border-border/50 overflow-hidden">
+      <div className={cn("bg-card rounded-2xl border border-border/50 overflow-hidden", view === "convocatorias" && "hidden")}>
         <div className="overflow-x-auto">
           <table className="w-full min-w-[640px]">
             <caption className="sr-only">{isNewCompany ? "Listado de productos y servicios" : "Listado de experiencias"}</caption>
@@ -549,6 +561,9 @@ export default function ExperiencesManager() {
                             <DropdownMenuItem onClick={() => { setCloneModal({ id: exp.id, originalName: exp.title }); setCloneName(""); }}>
                               <Copy className="w-3.5 h-3.5 mr-2" /> Clonar
                             </DropdownMenuItem>
+                            <DropdownMenuItem onClick={() => setEditionsFor({ id: exp.id, title: exp.title })}>
+                              <CalendarDays className="w-3.5 h-3.5 mr-2" /> Convocatorias
+                            </DropdownMenuItem>
                             <DropdownMenuSeparator />
                             <DropdownMenuItem
                               className="text-danger focus:text-danger"
@@ -568,12 +583,22 @@ export default function ExperiencesManager() {
         </div>
       </div>
 
+      <EditionsPanel experienceId={editionsFor?.id ?? null} title={editionsFor?.title ?? ""} open={!!editionsFor} onOpenChange={(o) => !o && setEditionsFor(null)} />
+
       {/* Modal */}
       <Dialog open={showModal} onOpenChange={setShowModal}>
         <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="font-display">{editingId ? `Editar ${noun}` : isNewCompany ? "Nuevo producto o servicio" : "Nueva Experiencia"}</DialogTitle>
           </DialogHeader>
+          {editingId && (
+            <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg bg-muted/40 px-3 py-2 text-sm">
+              <span className="text-muted-foreground">¿Tiene fechas y plazas, como una formación o un retiro?</span>
+              <Button type="button" size="sm" variant="outline" onClick={() => setEditionsFor({ id: editingId, title: form.title })}>
+                <CalendarDays className="w-3.5 h-3.5 mr-1.5" aria-hidden="true" /> Convocatorias
+              </Button>
+            </div>
+          )}
           <form onSubmit={handleSubmit} noValidate className="space-y-5 mt-2">
             <p className="text-xs text-muted-foreground">Los campos marcados con * son obligatorios.</p>
             {serverError && (

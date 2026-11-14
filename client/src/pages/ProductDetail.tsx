@@ -18,6 +18,7 @@ import { trpc } from "@/lib/trpc";
 import { cn } from "@/lib/utils";
 import { isPurchasable } from "@shared/shopOrders";
 import { ProductRequestDialog } from "@/components/site/ProductRequestForm";
+import { ProductEditionsSection } from "@/components/site/Editions";
 import { OFFER_MODE_PUBLIC_LABELS, offerModeOf, requestCtaLabel } from "@shared/offerMode";
 import {
   buildGenericCartLine,
@@ -289,6 +290,9 @@ export default function ProductDetail() {
             </div>
           </div>
         </div>
+
+        {/* E-4: próximas fechas (convocatorias) de este producto; sin ellas, no se pinta nada */}
+        <ProductEditionsSection productId={product.id} />
 
         {(description || includes.length > 0 || excludes.length > 0 || requirements) && (
           <div className="mt-10 max-w-3xl space-y-8">
