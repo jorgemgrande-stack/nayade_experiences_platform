@@ -31,6 +31,8 @@ describe("cabecera y pie: ajustes", () => {
     const bad: Array<Record<string, string>> = [
       { site_header_cta: "popup" },
       { site_footer_style: "neon" },
+      { site_header_style: "flotante" },
+      { site_header_tone: "rojo" },
       { site_footer_contact: "si" },
       { site_header_cta_label: "<b>Hola</b>" },
       { site_header_cta_label: "x".repeat(41) },
@@ -54,15 +56,17 @@ describe("cabecera y pie: ajustes", () => {
 describe("cabecera y pie: tema público", () => {
   it("sin ajustes: botón de serie, pie oscuro con contacto (como hasta ahora)", () => {
     const t = theme({});
-    expect(t.header).toEqual({ cta: "auto", ctaLabel: null, ctaUrl: null });
+    expect(t.header).toEqual({ cta: "auto", ctaLabel: null, ctaUrl: null, style: "classic", tone: "dark" });
     expect(t.footer).toEqual({ style: "dark", text: null, showContact: true });
   });
 
   it("botón propio completo; sin texto o sin enlace válido se comporta como el de serie", () => {
-    expect(theme({ site_header_cta: "custom", site_header_cta_label: "Reserva", site_header_cta_url: "/reservas" }).header).toEqual({ cta: "custom", ctaLabel: "Reserva", ctaUrl: "/reservas" });
+    expect(theme({ site_header_cta: "custom", site_header_cta_label: "Reserva", site_header_cta_url: "/reservas" }).header).toEqual({ cta: "custom", ctaLabel: "Reserva", ctaUrl: "/reservas", style: "classic", tone: "dark" });
     expect(theme({ site_header_cta: "custom", site_header_cta_label: "Reserva" }).header.cta).toBe("auto");
     expect(theme({ site_header_cta: "custom", site_header_cta_label: "Reserva", site_header_cta_url: "javascript:x" }).header.cta).toBe("auto");
-    expect(theme({ site_header_cta: "none", site_header_cta_label: "Reserva", site_header_cta_url: "/r" }).header).toEqual({ cta: "none", ctaLabel: null, ctaUrl: null });
+    expect(theme({ site_header_cta: "none", site_header_cta_label: "Reserva", site_header_cta_url: "/r" }).header).toEqual({ cta: "none", ctaLabel: null, ctaUrl: null, style: "classic", tone: "dark" });
+    expect(theme({ site_header_style: "centered", site_header_tone: "light" }).header).toMatchObject({ style: "centered", tone: "light" });
+    expect(theme({ site_header_style: "raro", site_header_tone: "x" }).header).toMatchObject({ style: "classic", tone: "dark" });
   });
 
   it("pie: estilo de la lista, texto y contacto oculto; un valor guardado no válido vuelve al de serie", () => {

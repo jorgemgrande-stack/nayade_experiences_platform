@@ -22,9 +22,13 @@ import { normalizeWhatsapp } from "../../shared/whatsappButton";
  */
 export const HEADER_CTA_MODES = ["auto", "custom", "none"] as const;
 export const FOOTER_STYLES = ["dark", "light", "brand"] as const;
+/** Estilo de la cabecera: la de serie (barra sólida) o la centrada (logo al centro, sobre la portada y compacta al desplazarse). */
+export const HEADER_STYLES = ["classic", "centered"] as const;
+/** Color del texto de la cabecera centrada sobre la portada: oscuro (portada clara) o claro (portada oscura). */
+export const HEADER_TONES = ["dark", "light"] as const;
 export const HEADER_CTA_LABEL_MAX = 40;
 export const FOOTER_TEXT_MAX = 240;
-export const SITE_CHROME_KEYS = ["site_header_cta", "site_header_cta_label", "site_header_cta_url", "site_footer_style", "site_footer_text", "site_footer_contact"] as const;
+export const SITE_CHROME_KEYS = ["site_header_cta", "site_header_cta_label", "site_header_cta_url", "site_header_style", "site_header_tone", "site_footer_style", "site_footer_text", "site_footer_contact"] as const;
 
 /** Enlace del botón de la cabecera: página de la web (/contacto), ancla, http(s), correo o teléfono. */
 export function siteLink(v: string | undefined | null): string | null {
@@ -73,7 +77,7 @@ export interface PublicTheme {
   /** Analítica propia de la empresa (multiempresa). Sin identificador, desactivada: nunca la de otra cuenta. */
   analytics: { ga4Id: string | null; metaPixelId: string | null };
   /** Botón destacado de la cabecera: «auto» es el de serie (presupuesto, si está contratado) */
-  header: { cta: (typeof HEADER_CTA_MODES)[number]; ctaLabel: string | null; ctaUrl: string | null };
+  header: { cta: (typeof HEADER_CTA_MODES)[number]; ctaLabel: string | null; ctaUrl: string | null; style: (typeof HEADER_STYLES)[number]; tone: (typeof HEADER_TONES)[number] };
   footer: { style: (typeof FOOTER_STYLES)[number]; text: string | null; showContact: boolean };
 }
 
@@ -202,6 +206,8 @@ export function cleanThemeValues(values: Record<string, string>): Record<string,
     }
     if (k === "analytics_meta_pixel_id" && !META_PIXEL_ID.test(val)) throw new ThemeValueError(k, "Identificador no válido: usa el número de tu pixel de Meta");
     if (k === "site_header_cta" && !(HEADER_CTA_MODES as readonly string[]).includes(val)) throw new ThemeValueError(k, "Opción no válida");
+    if (k === "site_header_style" && !(HEADER_STYLES as readonly string[]).includes(val)) throw new ThemeValueError(k, "Estilo no válido");
+    if (k === "site_header_tone" && !(HEADER_TONES as readonly string[]).includes(val)) throw new ThemeValueError(k, "Opción no válida");
     if (k === "site_footer_style" && !(FOOTER_STYLES as readonly string[]).includes(val)) throw new ThemeValueError(k, "Estilo no válido");
     if (k === "site_footer_contact" && val !== "true" && val !== "false") throw new ThemeValueError(k, "Opción no válida");
     if (k === "site_header_cta_url") {
@@ -270,7 +276,7 @@ function siteChrome(get: (key: string) => string | undefined): Pick<PublicTheme,
   let cta = pick(get("site_header_cta"), HEADER_CTA_MODES, "auto");
   if (cta === "custom" && (!label || !url)) cta = "auto";
   return {
-    header: { cta, ctaLabel: cta === "custom" ? label : null, ctaUrl: cta === "custom" ? url : null },
+    header: { cta, ctaLabel: cta === "custom" ? label : null, ctaUrl: cta === "custom" ? url : null, style: pick(get("site_header_style"), HEADER_STYLES, "classic"), tone: pick(get("site_header_tone"), HEADER_TONES, "dark") },
     footer: { style: pick(get("site_footer_style"), FOOTER_STYLES, "dark"), text: text(get("site_footer_text"), FOOTER_TEXT_MAX), showContact: get("site_footer_contact") !== "false" },
   };
 }
