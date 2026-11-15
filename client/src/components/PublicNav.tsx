@@ -281,7 +281,7 @@ export default function PublicNav({ overlay }: { overlay?: HeaderOverlayState })
             </nav>
             <Link href={site18n.home} aria-label={tenantTheme.brandName ?? "Inicio"} className="justify-self-center lg:col-start-2">
               {tenantTheme.logoUrl && (
-                <img src={tenantTheme.logoUrl} alt={tenantTheme.brandName ?? ""} className={cn("w-auto object-contain transition-[height] duration-300 ease-out", solid ? "h-11 lg:h-12" : "h-16 lg:h-28")} />
+                <img src={!solid && tone === "light" && tenantTheme.header?.logoLight ? tenantTheme.header.logoLight : tenantTheme.logoUrl} alt={tenantTheme.brandName ?? ""} className={cn("w-auto object-contain transition-[height] duration-300 ease-out", solid ? "h-11 lg:h-12" : "h-16 lg:h-28")} />
               )}
             </Link>
             <div className="hidden lg:flex items-center justify-start gap-7 pl-12">
