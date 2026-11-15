@@ -159,7 +159,9 @@ function NavDropdown({ label, href, target, children, isActive }: NavDropdownPro
   );
 }
 
-export default function PublicNav() {
+export interface HeaderOverlayState { centered: boolean; overHero: boolean; scrolled: boolean }
+
+export default function PublicNav({ overlay }: { overlay?: HeaderOverlayState }) {
   const [isOpen, setIsOpen] = useState(false);
   const { publicTheme, togglePublicTheme } = useTheme();
   const [expandedMobile, setExpandedMobile] = useState<string | null>(null);
@@ -175,6 +177,11 @@ export default function PublicNav() {
   const customCta = headerCta?.cta === "custom" && headerCta.ctaLabel && headerCta.ctaUrl ? { label: headerCta.ctaLabel, href: headerCta.ctaUrl } : null;
   const showQuote = !!site?.quotes && headerCta?.cta !== "none" && !customCta;
   const showCart = !!site?.store;
+  // Cabecera centrada (Studio › Cabecera y pie): logo al centro, sobre la portada y compacta al desplazarse
+  const centered = !!overlay?.centered;
+  const tone = tenantTheme?.header?.tone ?? "dark";
+  const solid = !centered || !overlay?.overHero || overlay.scrolled || isOpen;
+  const txt = solid || tone === "dark" ? "text-foreground" : "text-white [text-shadow:0_1px_8px_rgba(0,0,0,0.45)]";
 
   // Cargar menú desde la BD
   const site18n = useSiteLocale();
@@ -220,6 +227,16 @@ export default function PublicNav() {
   // Contacto siempre a mano, salvo que la empresa ya lo tenga en su menú (sin repetirlo)
   const showContactLink = !navLinks.some((l) => l.href === "/contacto");
 
+  const centeredLinkCls = cn("font-display text-sm lg:text-[15px] font-medium tracking-wide whitespace-nowrap transition-colors duration-200 hover:text-primary", txt);
+  const renderCentered = (link: NavItem) =>
+    link.children ? (
+      <NavDropdown key={link.href} label={link.label} href={link.href} target={link.target} children={link.children} isActive={location.startsWith(link.href)} />
+    ) : isExternalUrl(link.href) ? (
+      <a key={link.href} href={link.href} target={link.target ?? "_self"} rel={link.target === "_blank" ? "noreferrer" : undefined} className={centeredLinkCls}>{link.label}</a>
+    ) : (
+      <Link key={link.href} href={link.href} className={cn(centeredLinkCls, location === link.href && "text-primary")}>{link.label}</Link>
+    );
+
   const mobileNavigate = (to: string) => {
     setIsOpen(false);
     setExpandedMobile(null);
@@ -228,7 +245,15 @@ export default function PublicNav() {
 
   return (
     <>
-    <header className="fixed top-0 left-0 right-0 z-50 bg-white shadow-md border-b border-border/50">
+    <header
+      className={cn(
+        "fixed top-0 left-0 right-0 z-50",
+        !centered && "bg-white shadow-md border-b border-border/50",
+        centered && "transition-[background,box-shadow] duration-300",
+        centered && solid && "bg-muted shadow-[0_1px_14px_rgba(60,40,10,0.07)] border-b border-border/40",
+        centered && !solid && (tone === "dark" ? "bg-gradient-to-b from-white/55 to-transparent" : "bg-gradient-to-b from-black/35 to-transparent"),
+      )}
+    >
       {/* ── Barra superior de información (solo la instalación propia: en la web neutra de cada empresa, nada ajeno) ── */}
       {!tenantTheme?.neutralSite && (
       <div className="hidden lg:block border-b border-border/40 bg-primary/5">
@@ -248,7 +273,40 @@ export default function PublicNav() {
       </div>
       )}
 
+      {centered && tenantTheme && (
+        <div className="container">
+          <div className={cn("relative grid grid-cols-1 lg:grid-cols-[1fr_auto_1fr] items-center transition-[height] duration-300 ease-out", solid ? "h-16 lg:h-[76px]" : "h-24 lg:h-36")}>
+            <nav className="hidden lg:flex items-center justify-end gap-7 pr-12" aria-label="Menú principal">
+              {navLinks.slice(0, Math.ceil(navLinks.length / 2)).map(renderCentered)}
+            </nav>
+            <Link href={site18n.home} aria-label={tenantTheme.brandName ?? "Inicio"} className="justify-self-center lg:col-start-2">
+              {tenantTheme.logoUrl && (
+                <img src={tenantTheme.logoUrl} alt={tenantTheme.brandName ?? ""} className={cn("w-auto object-contain transition-[height] duration-300 ease-out", (solid || tone === "dark") && "mix-blend-multiply", solid ? "h-11 lg:h-12" : "h-16 lg:h-28")} />
+              )}
+            </Link>
+            <div className="hidden lg:flex items-center justify-start gap-7 pl-12">
+              <nav className="flex items-center gap-7" aria-label="Menú principal (continuación)">
+                {navLinks.slice(Math.ceil(navLinks.length / 2)).map(renderCentered)}
+              </nav>
+              <div className={cn("flex items-center gap-1", txt)}>
+                <LanguageSwitcher />
+                {showCart && <CartIcon />}
+              </div>
+            </div>
+            <button
+              onClick={() => setIsOpen(!isOpen)}
+              aria-label={isOpen ? "Cerrar el menú" : "Abrir el menú"}
+              aria-expanded={isOpen}
+              className={cn("lg:hidden absolute right-0 top-1/2 -translate-y-1/2 p-2 rounded-lg transition-colors", txt)}
+            >
+              {isOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* ── Barra de navegación principal ─────────────────────────── */}
+      {!centered && (
       <div className="container">
         <div className="flex items-center justify-between h-20">
 
@@ -381,6 +439,7 @@ export default function PublicNav() {
           </button>
         </div>
       </div>
+      )}
 
       {/* ── Menú mobile ───────────────────────────────────────────── */}
       <div className={cn(

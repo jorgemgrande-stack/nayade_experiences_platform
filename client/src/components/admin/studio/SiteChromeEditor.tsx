@@ -17,7 +17,7 @@ import { cn } from "@/lib/utils";
 import { LinkPicker, type LinkTarget } from "@/components/admin/pageBuilder/BlockEditors";
 import { Segmented } from "@/components/admin/studio/Inspector";
 
-const CHROME_KEYS = ["site_header_cta", "site_header_cta_label", "site_header_cta_url", "site_footer_style", "site_footer_text", "site_footer_contact"] as const;
+const CHROME_KEYS = ["site_header_cta", "site_header_cta_label", "site_header_cta_url", "site_header_style", "site_header_tone", "site_footer_style", "site_footer_text", "site_footer_contact"] as const;
 type ChromeValues = Record<(typeof CHROME_KEYS)[number], string>;
 const CTA_LABEL_MAX = 40;
 const FOOTER_TEXT_MAX = 240;
@@ -35,6 +35,8 @@ export function SiteChromeEditor({ targets, onChanged }: { targets: LinkTarget[]
       site_header_cta: d.site_header_cta || "auto",
       site_header_cta_label: d.site_header_cta_label ?? "",
       site_header_cta_url: d.site_header_cta_url ?? "",
+      site_header_style: d.site_header_style || "classic",
+      site_header_tone: d.site_header_tone || "dark",
       site_footer_style: d.site_footer_style || "dark",
       site_footer_text: d.site_footer_text ?? "",
       site_footer_contact: d.site_footer_contact || "true",
@@ -67,6 +69,31 @@ export function SiteChromeEditor({ targets, onChanged }: { targets: LinkTarget[]
     <div className="space-y-8">
       <section className="space-y-4">
         <h3 className="text-sm font-semibold">Cabecera</h3>
+        <Segmented
+          label="Estilo de la cabecera"
+          value={v.site_header_style}
+          options={[
+            { value: "classic", label: "Barra de serie" },
+            { value: "centered", label: "Logo centrado" },
+          ]}
+          onChange={(x) => set({ site_header_style: x })}
+        />
+        <p className="text-xs text-muted-foreground">
+          {v.site_header_style === "centered"
+            ? "El logotipo va al centro y el menú se reparte a ambos lados. Sobre una portada a todo el ancho la cabecera es transparente; al desplazarte se convierte en una barra compacta. Con este estilo no se muestran el botón destacado ni el enlace a la tienda."
+            : "Una barra fija con el logotipo a la izquierda, el menú y el botón destacado."}
+        </p>
+        {v.site_header_style === "centered" && (
+          <Segmented
+            label="Texto sobre la portada"
+            value={v.site_header_tone}
+            options={[
+              { value: "dark", label: "Oscuro (portada clara)" },
+              { value: "light", label: "Claro (portada oscura)" },
+            ]}
+            onChange={(x) => set({ site_header_tone: x })}
+          />
+        )}
         <Segmented
           label="Botón destacado"
           value={v.site_header_cta}

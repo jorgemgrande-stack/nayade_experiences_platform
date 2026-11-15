@@ -1,4 +1,5 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
+import { useLocation } from "wouter";
 import PublicNav from "./PublicNav";
 import PublicFooter from "./PublicFooter";
 import WhatsAppFloatingButton from "./WhatsAppFloatingButton";
@@ -15,6 +16,55 @@ interface PublicLayoutProps {
   forcePublicLight?: boolean;
 }
 
+/**
+ * Cabecera centrada: ¿la primera pieza de la página es una portada a todo el ancho (foto o vídeo pegados arriba)? Si lo es,
+ * la cabecera se superpone y es transparente; si no, es una barra compacta fija. Y si ya se ha desplazado, pasa a barra.
+ */
+function useHeaderOverlay(enabled: boolean) {
+  const [overHero, setOverHero] = useState(false);
+  const [scrolled, setScrolled] = useState(false);
+  const [location] = useLocation();
+  useEffect(() => {
+    if (!enabled) {
+      setOverHero(false);
+      setScrolled(false);
+      return;
+    }
+    const onScroll = () => setScrolled(window.scrollY > 48);
+    onScroll();
+    window.addEventListener("scroll", onScroll, { passive: true });
+    let raf = 0;
+    const check = () => {
+      cancelAnimationFrame(raf);
+      raf = requestAnimationFrame(() => {
+        const first = document.querySelector("main")?.firstElementChild as HTMLElement | null;
+        let hero = false;
+        if (first) {
+          const nodes = [first, ...Array.from(first.querySelectorAll<HTMLElement>("img,video,div")).slice(0, 80)];
+          hero = nodes.some((el) => {
+            const r = el.getBoundingClientRect();
+            if (r.width < window.innerWidth * 0.9 || r.height < 200 || r.top + window.scrollY > 160) return false;
+            return el.tagName === "IMG" || el.tagName === "VIDEO" || getComputedStyle(el).backgroundImage.includes("url(");
+          });
+        }
+        setOverHero(hero);
+      });
+    };
+    check();
+    const main = document.querySelector("main");
+    const mo = main ? new MutationObserver(check) : null;
+    if (main) mo!.observe(main, { childList: true, subtree: true });
+    window.addEventListener("resize", check);
+    return () => {
+      cancelAnimationFrame(raf);
+      mo?.disconnect();
+      window.removeEventListener("scroll", onScroll);
+      window.removeEventListener("resize", check);
+    };
+  }, [enabled, location]);
+  return { overHero, scrolled };
+}
+
 export default function PublicLayout({
   children,
   fullWidthHero = false,
@@ -27,6 +77,8 @@ export default function PublicLayout({
   const neutral = !!theme?.neutralSite;
   // Marca de la empresa también dentro del modo claro forzado (force-light redefine los colores de la instalación propia)
   const brand = neutral ? brandTokens(theme) : null;
+  const centered = neutral && theme?.header?.style === "centered" && !!theme.logoUrl;
+  const hdr = useHeaderOverlay(centered);
 
   // Cuando forcePublicLight=true: retirar dark de <html> mientras la página esté montada.
   // Al desmontar, restablecer si el admin estaba en oscuro.
@@ -56,8 +108,8 @@ export default function PublicLayout({
         )}
         style={brand ?? undefined}
       >
-        <PublicNav />
-        <main className={cn("flex-1", !fullWidthHero && (neutral ? "pt-20" : "pt-20 lg:pt-[112px]"))}>
+        <PublicNav overlay={{ centered, ...hdr }} />
+        <main className={cn("flex-1", !fullWidthHero && !(centered && hdr.overHero) && (centered ? "pt-16 lg:pt-[76px]" : neutral ? "pt-20" : "pt-20 lg:pt-[112px]"))}>
           {children}
         </main>
         <PublicFooter />
