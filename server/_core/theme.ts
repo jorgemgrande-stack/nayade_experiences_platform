@@ -28,7 +28,7 @@ export const HEADER_STYLES = ["classic", "centered"] as const;
 export const HEADER_TONES = ["dark", "light"] as const;
 export const HEADER_CTA_LABEL_MAX = 40;
 export const FOOTER_TEXT_MAX = 240;
-export const SITE_CHROME_KEYS = ["site_header_cta", "site_header_cta_label", "site_header_cta_url", "site_header_style", "site_header_tone", "site_footer_style", "site_footer_text", "site_footer_contact"] as const;
+export const SITE_CHROME_KEYS = ["site_header_cta", "site_header_cta_label", "site_header_cta_url", "site_header_style", "site_header_tone", "site_header_logo_light", "site_footer_style", "site_footer_text", "site_footer_contact"] as const;
 
 /** Enlace del botón de la cabecera: página de la web (/contacto), ancla, http(s), correo o teléfono. */
 export function siteLink(v: string | undefined | null): string | null {
@@ -77,7 +77,7 @@ export interface PublicTheme {
   /** Analítica propia de la empresa (multiempresa). Sin identificador, desactivada: nunca la de otra cuenta. */
   analytics: { ga4Id: string | null; metaPixelId: string | null };
   /** Botón destacado de la cabecera: «auto» es el de serie (presupuesto, si está contratado) */
-  header: { cta: (typeof HEADER_CTA_MODES)[number]; ctaLabel: string | null; ctaUrl: string | null; style: (typeof HEADER_STYLES)[number]; tone: (typeof HEADER_TONES)[number] };
+  header: { cta: (typeof HEADER_CTA_MODES)[number]; ctaLabel: string | null; ctaUrl: string | null; style: (typeof HEADER_STYLES)[number]; tone: (typeof HEADER_TONES)[number]; logoLight: string | null };
   footer: { style: (typeof FOOTER_STYLES)[number]; text: string | null; showContact: boolean };
 }
 
@@ -178,7 +178,7 @@ export class ThemeValueError extends Error {
   }
 }
 
-const IMAGE_KEYS = new Set(["brand_logo_url", "brand_favicon_url", "brand_hero_image_url"]);
+const IMAGE_KEYS = new Set(["site_header_logo_light", "brand_logo_url", "brand_favicon_url", "brand_hero_image_url"]);
 
 /**
  * Valida y limpia lo que envía el administrador: claves fuera de la lista se ignoran; un valor no válido
@@ -276,7 +276,7 @@ function siteChrome(get: (key: string) => string | undefined): Pick<PublicTheme,
   let cta = pick(get("site_header_cta"), HEADER_CTA_MODES, "auto");
   if (cta === "custom" && (!label || !url)) cta = "auto";
   return {
-    header: { cta, ctaLabel: cta === "custom" ? label : null, ctaUrl: cta === "custom" ? url : null, style: pick(get("site_header_style"), HEADER_STYLES, "classic"), tone: pick(get("site_header_tone"), HEADER_TONES, "dark") },
+    header: { cta, ctaLabel: cta === "custom" ? label : null, ctaUrl: cta === "custom" ? url : null, style: pick(get("site_header_style"), HEADER_STYLES, "classic"), tone: pick(get("site_header_tone"), HEADER_TONES, "dark"), logoLight: safeHttpUrl(get("site_header_logo_light")) },
     footer: { style: pick(get("site_footer_style"), FOOTER_STYLES, "dark"), text: text(get("site_footer_text"), FOOTER_TEXT_MAX), showContact: get("site_footer_contact") !== "false" },
   };
 }
