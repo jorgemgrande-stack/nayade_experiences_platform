@@ -1502,9 +1502,10 @@ function compositionOf(s: BlockStyle): { outerStyle?: CSSProperties; outerCls?: 
   const minHeight = s.minHeight === "full" ? "100svh" : s.minHeight === "custom" ? `${s.minHeightPx}px` : tall ? `${s.minHeight}svh` : undefined;
   const side = s.align === "left" ? "mr-auto" : s.align === "right" ? "ml-auto" : "mx-auto";
   return {
-    outerStyle: minHeight || s.minHeightM > 0 ? ({ ...(minHeight ? { minHeight } : {}), ...(s.minHeightM > 0 ? { "--mhm": `${s.minHeightM}px` } : {}) } as CSSProperties) : undefined,
+    // La altura va en variables y clases (no en línea) para que la del móvil pueda sustituir a la de ordenador
+    outerStyle: minHeight || s.minHeightM > 0 ? ({ ...(minHeight ? { "--mh": minHeight } : {}), ...(s.minHeightM > 0 ? { "--mhm": `${s.minHeightM}px` } : {}) } as CSSProperties) : undefined,
     // Con capa lateral, en el móvil el contenido baja y la foto (el rostro) queda libre arriba
-    outerCls: tall ? cn("flex flex-col", s.minHeightM > 0 && "max-md:min-h-[var(--mhm)]", CONTENT_Y[s.contentY], (s.overlayDir === "left" || s.overlayDir === "right") && s.background === "image" && "max-md:justify-end") : undefined,
+    outerCls: tall ? cn("flex flex-col", minHeight && "min-h-[var(--mh)]", s.minHeightM > 0 && "max-md:min-h-[var(--mhm)]", CONTENT_Y[s.contentY], (s.overlayDir === "left" || s.overlayDir === "right") && s.background === "image" && "max-md:justify-end") : undefined,
     wrapCls: cn("relative w-full", s.contentWidth !== "auto" && cn(CONTENT_WIDTH[s.contentWidth], side)),
   };
 }
