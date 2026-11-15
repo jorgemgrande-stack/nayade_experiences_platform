@@ -48,6 +48,10 @@ export function Slideshow({ slides, height, transition, autoplay, intervalMs, ar
   const [paused, setPaused] = useState(false);
   const touch = useRef<{ x: number; y: number } | null>(null);
   const n = slides.length;
+  // Zoom por diapositiva: la activa arranca el suyo (alternando dos animaciones para reiniciarlo) y la que sale lo termina durante el fundido
+  const zoomState = useRef({ index, prev: -1, tick: 0 });
+  if (zoomState.current.index !== index) zoomState.current = { index, prev: zoomState.current.index, tick: zoomState.current.tick + 1 };
+  const zs = zoomState.current;
   const go = useCallback((i: number) => setIndex(((i % n) + n) % n), [n]);
 
   useEffect(() => {
@@ -115,7 +119,7 @@ export function Slideshow({ slides, height, transition, autoplay, intervalMs, ar
                   <img
                     src={s.imageUrl}
                     alt={s.imageAlt}
-                    className={cn("absolute inset-0 h-full w-full object-cover", zoom && "slide-zoom", zoom && active && "slide-zoom-active")}
+                    className={cn("absolute inset-0 h-full w-full object-cover", zoom && "slide-zoom", zoom && active && `slide-zoom-active slide-zoom-t${zs.tick % 2}`, zoom && !active && i === zs.prev && `slide-zoom-active slide-zoom-t${(zs.tick + 1) % 2}`)}
                     style={{
                       objectPosition: FOCUS[s.focus ?? "center"],
                       ...(zoom ? ({ transformOrigin: FOCUS[s.focus ?? "center"], animationDuration: `${zoomSeconds}s`, "--zoom-to": 1 + zoomAmount / 100 } as CSSProperties) : null),

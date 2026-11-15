@@ -235,13 +235,19 @@
     to { transform: scale(var(--zoom-to, 1.07)); }
   }
   .slide-zoom { transform: scale(var(--zoom-to, 1.07)); will-change: transform; }
-  .slide-zoom-active { animation: slide-zoom-in 16s linear forwards; }
+  @keyframes slide-zoom-in-b {
+    from { transform: scale(1); }
+    to { transform: scale(var(--zoom-to, 1.07)); }
+  }
+  .slide-zoom-active { animation-timing-function: linear; animation-fill-mode: forwards; animation-duration: 16s; }
+  .slide-zoom-t0 { animation-name: slide-zoom-in; }
+  .slide-zoom-t1 { animation-name: slide-zoom-in-b; }
   /* Foto de fondo de un bloque con acercamiento lento: intensidad y duración desde Studio, origen en el punto focal */
   @keyframes qs-motion-in {
     from { transform: scale(1); }
     to { transform: scale(var(--mo-to, 1.09)); }
   }
-  .qs-motion { transform-origin: var(--fx, 50%) var(--fy, 50%); animation: qs-motion-in var(--mo-s, 20s) linear forwards; will-change: transform; }
+  .qs-motion { transform-origin: var(--fx, 50%) var(--fy, 50%); animation: qs-motion-in var(--mo-s, 20s) ease-in-out infinite alternate; will-change: transform; }
   .qs-motion-paused { animation-play-state: paused; }
   @media (max-width: 767px) { .qs-motion { transform-origin: var(--mx, 50%) var(--my, 50%); } }
   @media (prefers-reduced-motion: reduce) {
