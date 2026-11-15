@@ -635,6 +635,25 @@ function StyleEditor({ style, setStyle, pro, part }: { style: BlockStyle; setSty
             )}
             <RangeField label="Fuerza de la capa" value={style.overlayOpacity} min={0} max={95} step={5} unit="%" zeroLabel="La de serie" onChange={(n) => setStyle({ overlayOpacity: n })} />
             <div className="space-y-3 rounded-lg border border-border p-3">
+              <p className="text-sm font-medium">Movimiento de la foto</p>
+              <Segmented
+                label="Acercamiento lento"
+                value={style.bgMotion}
+                options={[
+                  { value: "off", label: "Sin movimiento" },
+                  { value: "on", label: "Con acercamiento" },
+                ]}
+                onChange={(v) => setStyle({ bgMotion: v as BlockStyle["bgMotion"] })}
+              />
+              {style.bgMotion === "on" && (
+                <>
+                  <RangeField label="Intensidad" value={style.bgMotionAmount} min={2} max={25} step={1} unit="%" onChange={(n) => setStyle({ bgMotionAmount: n })} />
+                  <RangeField label="Duración" value={style.bgMotionSeconds} min={6} max={60} step={1} unit=" s" onChange={(n) => setStyle({ bgMotionSeconds: n })} />
+                  <p className="text-xs text-muted-foreground">La foto se acerca despacio desde el punto focal. Solo se mueve la foto, no el texto. Se detiene si la persona prefiere menos movimiento.</p>
+                </>
+              )}
+            </div>
+            <div className="space-y-3 rounded-lg border border-border p-3">
               <p className="text-sm font-medium">Encuadre de la foto</p>
               <RangeField label="Posición horizontal" value={style.bgX} min={0} max={100} step={1} unit="%" onChange={(n) => setStyle({ bgX: n })} />
               <RangeField label="Posición vertical" value={style.bgY} min={0} max={100} step={1} unit="%" onChange={(n) => setStyle({ bgY: n })} />
@@ -672,6 +691,16 @@ function StyleEditor({ style, setStyle, pro, part }: { style: BlockStyle; setSty
       </StyleGroup>
 
       <StyleGroup title="Composición">
+        {style.background === "image" && (
+          <button
+            type="button"
+            onClick={() => setStyle({ minHeight: "full", contentY: "center", overlayDir: "bottom", bgMotion: "on", bgMotionAmount: 9, bgMotionSeconds: 20 })}
+            className="w-full rounded-lg border border-dashed border-[#5b5bf6]/60 px-3 py-2 text-left text-xs font-medium hover:bg-[#5b5bf6]/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#5b5bf6]"
+          >
+            Hero cinematográfico de pantalla completa
+            <span className="mt-0.5 block font-normal text-muted-foreground">Ocupa toda la primera pantalla, con degradado inferior y acercamiento lento de la foto. Se ajusta después en los controles de abajo.</span>
+          </button>
+        )}
         <SelectField
           label="Altura mínima"
           value={style.minHeight}

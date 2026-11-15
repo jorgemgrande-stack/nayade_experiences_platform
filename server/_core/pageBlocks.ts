@@ -10,7 +10,7 @@ import { sanitizeRichHtml } from "./htmlSanitize";
 import { renderSiteTokens, type SiteTokenData } from "./templates/starterSite";
 import {
   ANCHOR_RE, BLOCK_ALIGNS, BLOCK_ANIMATIONS, BLOCK_BACKGROUNDS, BLOCK_BORDERS, BLOCK_FONTS, BLOCK_GRADIENTS, BLOCK_HEADING_COLORS, BLOCK_HEADING_SIZES,
-  BLOCK_BG_FITS, BLOCK_BG_MOBILES, BLOCK_CONTENT_WIDTHS, BLOCK_CONTENT_YS, BLOCK_MARGINS, BLOCK_MIN_HEIGHTS, BLOCK_OVERLAY_DIRS, BLOCK_MOBILE_ALIGNS, BLOCK_MOBILE_SPACINGS, BLOCK_OVERLAYS, BLOCK_RADII, BLOCK_SHADOWS, BLOCK_SPACINGS, BLOCK_TEXT_SIZES, BLOCK_TYPES,
+  BLOCK_BG_FITS, BLOCK_BG_MOBILES, BLOCK_BG_MOTIONS, BLOCK_CONTENT_WIDTHS, BLOCK_CONTENT_YS, BLOCK_MARGINS, BLOCK_MIN_HEIGHTS, BLOCK_OVERLAY_DIRS, BLOCK_MOBILE_ALIGNS, BLOCK_MOBILE_SPACINGS, BLOCK_OVERLAYS, BLOCK_RADII, BLOCK_SHADOWS, BLOCK_SPACINGS, BLOCK_TEXT_SIZES, BLOCK_TYPES,
   blockLabel, DEFAULT_BLOCK_STYLE, defaultBlockData, DEVICES, isDefaultStyle, newBlockId, NOT_NESTABLE, PAGE_LIMITS, SECTION_MAX_DEPTH,
   sectionColumnCount, type BlockDataMap, type BlockStyle, type BlockType, type GalleryImage, type PageBlock,
 } from "../../shared/pageBlocks";
@@ -211,6 +211,9 @@ export function normalizeStyle(v: unknown): BlockStyle | undefined {
     bgYM: clampInt(v.bgYM, 0, 100, 50),
     bgZoomM: clampInt(v.bgZoomM, 100, 250, 100),
     bgFitM: oneOf(v.bgFitM, BLOCK_BG_FITS, "cover"),
+    bgMotion: oneOf(v.bgMotion, BLOCK_BG_MOTIONS, "off"),
+    bgMotionAmount: clampInt(v.bgMotionAmount, 2, 25, 9),
+    bgMotionSeconds: clampInt(v.bgMotionSeconds, 6, 60, 20),
   };
   // Degradado, imagen y capa solo se guardan con su fondo
   if (style.background !== "gradient") style.gradient = DEFAULT_BLOCK_STYLE.gradient;
@@ -223,6 +226,13 @@ export function normalizeStyle(v: unknown): BlockStyle | undefined {
     style.bgY = DEFAULT_BLOCK_STYLE.bgY;
     style.bgZoom = DEFAULT_BLOCK_STYLE.bgZoom;
     style.bgMobile = DEFAULT_BLOCK_STYLE.bgMobile;
+    style.bgMotion = DEFAULT_BLOCK_STYLE.bgMotion;
+    style.bgMotionAmount = DEFAULT_BLOCK_STYLE.bgMotionAmount;
+    style.bgMotionSeconds = DEFAULT_BLOCK_STYLE.bgMotionSeconds;
+  }
+  if (style.bgMotion === "off") {
+    style.bgMotionAmount = DEFAULT_BLOCK_STYLE.bgMotionAmount;
+    style.bgMotionSeconds = DEFAULT_BLOCK_STYLE.bgMotionSeconds;
   }
   if (style.background !== "image" || style.bgMobile !== "own") {
     style.bgXM = DEFAULT_BLOCK_STYLE.bgXM;

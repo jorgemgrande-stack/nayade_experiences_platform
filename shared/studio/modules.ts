@@ -199,7 +199,7 @@ export const MODULES: readonly ModuleDef[] = [
     { key: "arrows", label: "Flechas", kind: "select", options: ON_OFF, advanced: true },
     { key: "dots", label: "Indicadores", kind: "select", options: ON_OFF, advanced: true },
     { key: "zoom", label: "Acercamiento lento de la imagen", kind: "select", options: ON_OFF, advanced: true },
-    { key: "zoomAmount", label: "Intensidad del acercamiento", kind: "select", options: [{ value: "4", label: "Muy suave (4 %)" }, { value: "7", label: "Suave (7 %)" }, { value: "10", label: "Marcado (10 %)" }, { value: "15", label: "Intenso (15 %)" }], advanced: true },
+    { key: "zoomAmount", label: "Intensidad del acercamiento", kind: "select", options: [{ value: "5", label: "Muy suave (5 %)" }, { value: "7", label: "Suave (7 %)" }, { value: "9", label: "Cinematográfico (9 %)" }, { value: "12", label: "Marcado (12 %)" }], advanced: true },
     { key: "zoomSeconds", label: "Duración del acercamiento", kind: "select", options: [{ value: "12", label: "12 segundos" }, { value: "16", label: "16 segundos" }, { value: "20", label: "20 segundos" }, { value: "28", label: "28 segundos" }], advanced: true },
   ], { note: "Se pasa de diapositiva con las flechas, los indicadores, el dedo o el teclado. El avance automático se detiene al pasar el ratón o al tocar, y no se activa si la persona prefiere menos movimiento. Mientras editas, la presentación no avanza sola." }),
   mod("hero", "secciones", "hero", "cabecera portada banner imagen grande", [

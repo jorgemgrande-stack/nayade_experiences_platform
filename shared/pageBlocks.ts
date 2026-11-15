@@ -75,7 +75,7 @@ export interface BlockDataMap {
     /** Acercamiento lento de la imagen (opcional; ausente = no) */
     zoom?: OnOff;
     /** Intensidad del acercamiento en % y duración en segundos (ausentes = 7 % y 16 s) */
-    zoomAmount?: "4" | "7" | "10" | "15";
+    zoomAmount?: "5" | "7" | "9" | "12";
     zoomSeconds?: "12" | "16" | "20" | "28";
   };
   /** Carrusel de imágenes: varias a la vista, con visor a pantalla completa opcional */
@@ -268,6 +268,8 @@ export const BLOCK_OVERLAY_DIRS = ["flat", "top", "bottom", "left", "right", "ra
 export const BLOCK_BG_MOBILES = ["same", "own"] as const;
 /** Ajuste de la foto en el móvil con encuadre propio: cubrir toda la altura o verla entera, a todo el ancho, arriba */
 export const BLOCK_BG_FITS = ["cover", "width"] as const;
+/** Movimiento de la foto de fondo: acercamiento lento y continuo (desactivado por defecto) */
+export const BLOCK_BG_MOTIONS = ["off", "on"] as const;
 export interface BlockStyle {
   background: (typeof BLOCK_BACKGROUNDS)[number];
   gradient: (typeof BLOCK_GRADIENTS)[number];
@@ -311,6 +313,10 @@ export interface BlockStyle {
   bgYM: number;
   bgZoomM: number;
   bgFitM: (typeof BLOCK_BG_FITS)[number];
+  /** Acercamiento lento de la foto de fondo: activado, intensidad (% de ampliación final) y duración (s) */
+  bgMotion: (typeof BLOCK_BG_MOTIONS)[number];
+  bgMotionAmount: number;
+  bgMotionSeconds: number;
 }
 export const DEFAULT_BLOCK_STYLE: BlockStyle = {
   background: "none", gradient: "brand", bgImage: "", overlay: "dark", padTop: "0", padBottom: "0", marginTop: "0", marginBottom: "0",
@@ -318,9 +324,10 @@ export const DEFAULT_BLOCK_STYLE: BlockStyle = {
   border: "none", radius: "0", shadow: "none", hideOn: [], mobileAlign: "auto", mobileSpacing: "same", anchor: "", animation: "none",
   minHeight: "auto", minHeightPx: 600, minHeightM: 0, contentY: "center", contentWidth: "auto", overlayDir: "flat", overlayOpacity: 0,
   bgX: 50, bgY: 50, bgZoom: 100, bgMobile: "same", bgXM: 50, bgYM: 50, bgZoomM: 100, bgFitM: "cover",
+  bgMotion: "off", bgMotionAmount: 9, bgMotionSeconds: 20,
 };
 /** Campos de composición que solo cuentan con su opción activa (el resto se guarda como el de serie) */
-const STYLE_ONLY_WITH_IMAGE: ReadonlyArray<keyof BlockStyle> = ["bgImage", "overlay", "overlayDir", "overlayOpacity", "bgX", "bgY", "bgZoom", "bgMobile"];
+const STYLE_ONLY_WITH_IMAGE: ReadonlyArray<keyof BlockStyle> = ["bgImage", "overlay", "overlayDir", "overlayOpacity", "bgX", "bgY", "bgZoom", "bgMobile", "bgMotion", "bgMotionAmount", "bgMotionSeconds"];
 const STYLE_ONLY_WITH_OWN_MOBILE: ReadonlyArray<keyof BlockStyle> = ["bgXM", "bgYM", "bgZoomM", "bgFitM"];
 export const ANCHOR_RE = /^[a-z0-9]([a-z0-9-]{0,38}[a-z0-9])?$/;
 
@@ -439,8 +446,8 @@ export function defaultBlockData<K extends BlockType>(type: K): BlockDataMap[K] 
       dots: "on",
       overlay: "medium",
       zoom: "off",
-      zoomAmount: "7",
-      zoomSeconds: "16",
+      zoomAmount: "9",
+      zoomSeconds: "20",
     },
     carousel: { title: "", images: [], perView: "3", autoplay: "off", lightbox: "on" },
     cards: {

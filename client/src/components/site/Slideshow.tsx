@@ -43,7 +43,7 @@ export interface SlideshowProps {
   renderContent: (slide: SlideItem, index: number) => ReactNode;
 }
 
-export function Slideshow({ slides, height, transition, autoplay, intervalMs, arrows, dots, overlay, zoom, zoomAmount = 7, zoomSeconds = 16, editing, renderContent }: SlideshowProps) {
+export function Slideshow({ slides, height, transition, autoplay, intervalMs, arrows, dots, overlay, zoom, zoomAmount = 9, zoomSeconds = 20, editing, renderContent }: SlideshowProps) {
   const [index, setIndex] = useState(0);
   const [paused, setPaused] = useState(false);
   const touch = useRef<{ x: number; y: number } | null>(null);

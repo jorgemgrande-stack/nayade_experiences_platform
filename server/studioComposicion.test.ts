@@ -70,3 +70,13 @@ describe("Studio · ajuste de la foto en el móvil", () => {
     expect(styleOf({ ...base, bgFitM: "raro" })).toMatchObject({ bgFitM: "cover" });
   });
 });
+
+describe("Studio · movimiento de la foto de fondo", () => {
+  const base = { background: "image", bgImage: "/files/a/b.jpg" };
+  it("se guarda con foto de fondo, con límites, y vuelve al de serie sin foto o desactivado", () => {
+    expect(styleOf({ ...base, bgMotion: "on", bgMotionAmount: 9, bgMotionSeconds: 20 })).toMatchObject({ bgMotion: "on", bgMotionAmount: 9, bgMotionSeconds: 20 });
+    expect(styleOf({ ...base, bgMotion: "on", bgMotionAmount: 999, bgMotionSeconds: 1 })).toMatchObject({ bgMotionAmount: 25, bgMotionSeconds: 6 });
+    expect(styleOf({ ...base, bgMotion: "raro", bgMotionAmount: 15 })).toMatchObject({ bgMotion: "off", bgMotionAmount: 9 });
+    expect(styleOf({ background: "soft", bgMotion: "on" })).toMatchObject({ bgMotion: "off" });
+  });
+});
