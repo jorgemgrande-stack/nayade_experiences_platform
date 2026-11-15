@@ -6,7 +6,7 @@
  *     menos movimiento; en el editor tampoco avanza solo (`editing`);
  *   - imagen específica para móvil opcional; la primera imagen se carga al momento y el resto, sin bloquear.
  */
-import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { SlideItem } from "@shared/pageBlocks";
@@ -20,6 +20,8 @@ const HEIGHT: Record<string, string> = {
 };
 const OVERLAY: Record<string, string> = { none: "", light: "bg-black/25", medium: "bg-black/45", strong: "bg-black/65" };
 const H_ALIGN: Record<string, string> = { left: "items-start text-left", center: "items-center text-center mx-auto", right: "items-end text-right ml-auto" };
+/** Punto focal de la imagen: encuadre (object-position) y origen del acercamiento */
+const FOCUS: Record<string, string> = { center: "50% 50%", top: "50% 15%", bottom: "50% 85%", left: "15% 50%", right: "85% 50%" };
 const V_ALIGN: Record<string, string> = { top: "justify-start", center: "justify-center", bottom: "justify-end" };
 
 export interface SlideshowProps {
@@ -33,12 +35,15 @@ export interface SlideshowProps {
   overlay: string;
   /** Acercamiento lento y continuo de la imagen de la diapositiva activa */
   zoom?: boolean;
+  /** Intensidad (%) y duración (s) del acercamiento */
+  zoomAmount?: number;
+  zoomSeconds?: number;
   editing?: boolean;
   /** Contenido de cada diapositiva (títulos y botones), lo pinta quien la usa */
   renderContent: (slide: SlideItem, index: number) => ReactNode;
 }
 
-export function Slideshow({ slides, height, transition, autoplay, intervalMs, arrows, dots, overlay, zoom, editing, renderContent }: SlideshowProps) {
+export function Slideshow({ slides, height, transition, autoplay, intervalMs, arrows, dots, overlay, zoom, zoomAmount = 7, zoomSeconds = 16, editing, renderContent }: SlideshowProps) {
   const [index, setIndex] = useState(0);
   const [paused, setPaused] = useState(false);
   const touch = useRef<{ x: number; y: number } | null>(null);
@@ -111,7 +116,10 @@ export function Slideshow({ slides, height, transition, autoplay, intervalMs, ar
                     src={s.imageUrl}
                     alt={s.imageAlt}
                     className={cn("absolute inset-0 h-full w-full object-cover", zoom && "slide-zoom", zoom && active && "slide-zoom-active")}
-                    style={zoom ? { animationDuration: `${Math.max(intervalMs + 3000, 12000)}ms` } : undefined}
+                    style={{
+                      objectPosition: FOCUS[s.focus ?? "center"],
+                      ...(zoom ? ({ transformOrigin: FOCUS[s.focus ?? "center"], animationDuration: `${zoomSeconds}s`, "--zoom-to": 1 + zoomAmount / 100 } as CSSProperties) : null),
+                    }}
                     loading={i === 0 ? "eager" : "lazy"} decoding="async" />
                 </picture>
               ) : (

@@ -74,6 +74,9 @@ export interface BlockDataMap {
     overlay: "none" | "light" | "medium" | "strong";
     /** Acercamiento lento de la imagen (opcional; ausente = no) */
     zoom?: OnOff;
+    /** Intensidad del acercamiento en % y duración en segundos (ausentes = 7 % y 16 s) */
+    zoomAmount?: "4" | "7" | "10" | "15";
+    zoomSeconds?: "12" | "16" | "20" | "28";
   };
   /** Carrusel de imágenes: varias a la vista, con visor a pantalla completa opcional */
   carousel: { title: string; images: GalleryImage[]; perView: "2" | "3" | "4"; autoplay: OnOff; lightbox: OnOff };
@@ -197,6 +200,8 @@ export interface SlideItem {
   button2Url: string;
   align: "left" | "center" | "right";
   valign: "top" | "center" | "bottom";
+  /** Punto focal de la imagen (encuadre y origen del zoom); ausente = centro */
+  focus?: "center" | "top" | "bottom" | "left" | "right";
 }
 export interface CardItem {
   imageUrl: string;
@@ -434,6 +439,8 @@ export function defaultBlockData<K extends BlockType>(type: K): BlockDataMap[K] 
       dots: "on",
       overlay: "medium",
       zoom: "off",
+      zoomAmount: "7",
+      zoomSeconds: "16",
     },
     carousel: { title: "", images: [], perView: "3", autoplay: "off", lightbox: "on" },
     cards: {
@@ -495,7 +502,7 @@ export function defaultBlockData<K extends BlockType>(type: K): BlockDataMap[K] 
 
 /** Diapositiva nueva con textos genéricos para adaptar. */
 export function newSlide(title = "Nueva diapositiva", text = "Escribe aquí el texto de la diapositiva"): SlideItem {
-  return { imageUrl: "", mobileImageUrl: "", imageAlt: "", eyebrow: "", title, text, buttonLabel: "Más información", buttonUrl: "/contacto", button2Label: "", button2Url: "", align: "left", valign: "center" };
+  return { imageUrl: "", mobileImageUrl: "", imageAlt: "", eyebrow: "", title, text, buttonLabel: "Más información", buttonUrl: "/contacto", button2Label: "", button2Url: "", align: "left", valign: "center", focus: "center" };
 }
 
 /** Campo de formulario nuevo. */

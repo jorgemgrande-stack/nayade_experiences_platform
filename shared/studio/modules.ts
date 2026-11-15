@@ -174,7 +174,7 @@ export const MODULES: readonly ModuleDef[] = [
   mod("slideshow", "secciones", "slideshow", "slideshow slider diapositivas presentacion portada hero carrusel", [
     {
       key: "slides", label: "Diapositivas", kind: "list", max: 10, itemLabel: "Diapositiva",
-      newItem: { imageUrl: "", mobileImageUrl: "", imageAlt: "", eyebrow: "", title: "Nueva diapositiva", text: "Escribe aquí el texto de la diapositiva", buttonLabel: "Más información", buttonUrl: "/contacto", button2Label: "", button2Url: "", align: "left", valign: "center" },
+      newItem: { imageUrl: "", mobileImageUrl: "", imageAlt: "", eyebrow: "", title: "Nueva diapositiva", text: "Escribe aquí el texto de la diapositiva", buttonLabel: "Más información", buttonUrl: "/contacto", button2Label: "", button2Url: "", align: "left", valign: "center", focus: "center" },
       fields: [
         { key: "imageUrl", label: "Imagen de fondo", kind: "image" },
         { key: "imageAlt", label: ALT, kind: "text", max: 300 },
@@ -188,6 +188,7 @@ export const MODULES: readonly ModuleDef[] = [
         { key: "button2Url", label: "A dónde lleva el segundo botón", kind: "link" },
         { key: "align", label: "Texto a la", kind: "select", options: [{ value: "left", label: "Izquierda" }, { value: "center", label: "Centro" }, { value: "right", label: "Derecha" }] },
         { key: "valign", label: "Altura del texto", kind: "select", options: [{ value: "top", label: "Arriba" }, { value: "center", label: "Centro" }, { value: "bottom", label: "Abajo" }], advanced: true },
+        { key: "focus", label: "Punto focal de la imagen", kind: "select", options: [{ value: "center", label: "Centro" }, { value: "top", label: "Arriba" }, { value: "bottom", label: "Abajo" }, { value: "left", label: "Izquierda" }, { value: "right", label: "Derecha" }], advanced: true },
       ],
     },
     { key: "height", label: "Altura", kind: "select", options: [{ value: "s", label: "Baja" }, { value: "m", label: "Media" }, { value: "l", label: "Alta" }, { value: "full", label: "Pantalla" }] },
@@ -198,6 +199,8 @@ export const MODULES: readonly ModuleDef[] = [
     { key: "arrows", label: "Flechas", kind: "select", options: ON_OFF, advanced: true },
     { key: "dots", label: "Indicadores", kind: "select", options: ON_OFF, advanced: true },
     { key: "zoom", label: "Acercamiento lento de la imagen", kind: "select", options: ON_OFF, advanced: true },
+    { key: "zoomAmount", label: "Intensidad del acercamiento", kind: "select", options: [{ value: "4", label: "Muy suave (4 %)" }, { value: "7", label: "Suave (7 %)" }, { value: "10", label: "Marcado (10 %)" }, { value: "15", label: "Intenso (15 %)" }], advanced: true },
+    { key: "zoomSeconds", label: "Duración del acercamiento", kind: "select", options: [{ value: "12", label: "12 segundos" }, { value: "16", label: "16 segundos" }, { value: "20", label: "20 segundos" }, { value: "28", label: "28 segundos" }], advanced: true },
   ], { note: "Se pasa de diapositiva con las flechas, los indicadores, el dedo o el teclado. El avance automático se detiene al pasar el ratón o al tocar, y no se activa si la persona prefiere menos movimiento. Mientras editas, la presentación no avanza sola." }),
   mod("hero", "secciones", "hero", "cabecera portada banner imagen grande", [
     { key: "title", label: "Titular", kind: "text", max: 200, inline: true },
@@ -532,7 +535,7 @@ export type InspectorTab = "content" | "design" | "behavior" | "advanced";
 /** Opciones de aspecto y distribución (pestaña Diseño). */
 const DESIGN_KEYS = new Set(["align", "size", "variant", "kind", "height", "overlay", "imagePosition", "layout", "columns", "perView", "grayscale", "gap", "valign", "width"]);
 /** Lo que pasa al usarlo: avance, intervalos, interacciones y opciones funcionales (pestaña Comportamiento). */
-const BEHAVIOR_KEYS = new Set(["autoplay", "interval", "transition", "arrows", "dots", "zoom", "animate", "lightbox", "redirectUrl", "consent", "showClose", "closeOnOverlay", "closeOnEsc", "autoOpen", "autoDelay", "rememberOption", "rememberDays"]);
+const BEHAVIOR_KEYS = new Set(["autoplay", "interval", "transition", "arrows", "dots", "zoom", "zoomAmount", "zoomSeconds", "animate", "lightbox", "redirectUrl", "consent", "showClose", "closeOnOverlay", "closeOnEsc", "autoOpen", "autoDelay", "rememberOption", "rememberDays"]);
 /** Ajustes técnicos, solo en el modo profesional (pestaña Avanzado). */
 const ADVANCED_KEYS = new Set(["mobile", "tablet", "level"]);
 

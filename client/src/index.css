@@ -232,10 +232,10 @@
   /* Presentación: acercamiento lento (la activa) y portada a pantalla completa bajo una cabecera superpuesta */
   @keyframes slide-zoom-in {
     from { transform: scale(1); }
-    to { transform: scale(1.09); }
+    to { transform: scale(var(--zoom-to, 1.07)); }
   }
-  .slide-zoom { transform: scale(1.09); will-change: transform; }
-  .slide-zoom-active { animation: slide-zoom-in 14s ease-out forwards; }
+  .slide-zoom { transform: scale(var(--zoom-to, 1.07)); will-change: transform; }
+  .slide-zoom-active { animation: slide-zoom-in 16s linear forwards; }
   @media (prefers-reduced-motion: reduce) {
     .slide-zoom, .slide-zoom-active { animation: none; transform: none; }
   }
