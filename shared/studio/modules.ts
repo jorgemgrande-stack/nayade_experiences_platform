@@ -197,6 +197,7 @@ export const MODULES: readonly ModuleDef[] = [
     { key: "transition", label: "Transición", kind: "select", options: [{ value: "slide", label: "Deslizar" }, { value: "fade", label: "Fundido" }], advanced: true },
     { key: "arrows", label: "Flechas", kind: "select", options: ON_OFF, advanced: true },
     { key: "dots", label: "Indicadores", kind: "select", options: ON_OFF, advanced: true },
+    { key: "zoom", label: "Acercamiento lento de la imagen", kind: "select", options: ON_OFF, advanced: true },
   ], { note: "Se pasa de diapositiva con las flechas, los indicadores, el dedo o el teclado. El avance automático se detiene al pasar el ratón o al tocar, y no se activa si la persona prefiere menos movimiento. Mientras editas, la presentación no avanza sola." }),
   mod("hero", "secciones", "hero", "cabecera portada banner imagen grande", [
     { key: "title", label: "Titular", kind: "text", max: 200, inline: true },
@@ -531,7 +532,7 @@ export type InspectorTab = "content" | "design" | "behavior" | "advanced";
 /** Opciones de aspecto y distribución (pestaña Diseño). */
 const DESIGN_KEYS = new Set(["align", "size", "variant", "kind", "height", "overlay", "imagePosition", "layout", "columns", "perView", "grayscale", "gap", "valign", "width"]);
 /** Lo que pasa al usarlo: avance, intervalos, interacciones y opciones funcionales (pestaña Comportamiento). */
-const BEHAVIOR_KEYS = new Set(["autoplay", "interval", "transition", "arrows", "dots", "animate", "lightbox", "redirectUrl", "consent", "showClose", "closeOnOverlay", "closeOnEsc", "autoOpen", "autoDelay", "rememberOption", "rememberDays"]);
+const BEHAVIOR_KEYS = new Set(["autoplay", "interval", "transition", "arrows", "dots", "zoom", "animate", "lightbox", "redirectUrl", "consent", "showClose", "closeOnOverlay", "closeOnEsc", "autoOpen", "autoDelay", "rememberOption", "rememberDays"]);
 /** Ajustes técnicos, solo en el modo profesional (pestaña Avanzado). */
 const ADVANCED_KEYS = new Set(["mobile", "tablet", "level"]);
 

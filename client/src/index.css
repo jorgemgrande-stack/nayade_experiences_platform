@@ -229,6 +229,17 @@
     background: linear-gradient(to top, oklch(0.12 0.06 235 / 0.92) 0%, oklch(0.12 0.06 235 / 0.45) 55%, transparent 100%);
   }
   /* Animaciones */
+  /* Presentación: acercamiento lento (la activa) y portada a pantalla completa bajo una cabecera superpuesta */
+  @keyframes slide-zoom-in {
+    from { transform: scale(1); }
+    to { transform: scale(1.09); }
+  }
+  .slide-zoom { transform: scale(1.09); will-change: transform; }
+  .slide-zoom-active { animation: slide-zoom-in 14s ease-out forwards; }
+  @media (prefers-reduced-motion: reduce) {
+    .slide-zoom, .slide-zoom-active { animation: none; transform: none; }
+  }
+  main[data-hero-overlay] .hero-full { min-height: 100vh; min-height: 100svh; }
   @keyframes fadeUp {
     from { opacity: 0; transform: translateY(24px); }
     to { opacity: 1; transform: translateY(0); }

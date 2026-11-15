@@ -31,12 +31,14 @@ export interface SlideshowProps {
   arrows: boolean;
   dots: boolean;
   overlay: string;
+  /** Acercamiento lento y continuo de la imagen de la diapositiva activa */
+  zoom?: boolean;
   editing?: boolean;
   /** Contenido de cada diapositiva (títulos y botones), lo pinta quien la usa */
   renderContent: (slide: SlideItem, index: number) => ReactNode;
 }
 
-export function Slideshow({ slides, height, transition, autoplay, intervalMs, arrows, dots, overlay, editing, renderContent }: SlideshowProps) {
+export function Slideshow({ slides, height, transition, autoplay, intervalMs, arrows, dots, overlay, zoom, editing, renderContent }: SlideshowProps) {
   const [index, setIndex] = useState(0);
   const [paused, setPaused] = useState(false);
   const touch = useRef<{ x: number; y: number } | null>(null);
@@ -57,7 +59,7 @@ export function Slideshow({ slides, height, transition, autoplay, intervalMs, ar
   const fade = transition === "fade";
   return (
     <section
-      className={cn("relative overflow-hidden bg-slate-900 text-white", HEIGHT[height] ?? HEIGHT.l)}
+      className={cn("relative overflow-hidden bg-slate-900 text-white", HEIGHT[height] ?? HEIGHT.l, height === "full" && "hero-full")}
       role="region"
       aria-roledescription="presentación"
       aria-label="Presentación de diapositivas"
@@ -105,7 +107,12 @@ export function Slideshow({ slides, height, transition, autoplay, intervalMs, ar
               {s.imageUrl ? (
                 <picture>
                   {s.mobileImageUrl && <source media="(max-width: 767px)" srcSet={s.mobileImageUrl} />}
-                  <img src={s.imageUrl} alt={s.imageAlt} className="absolute inset-0 h-full w-full object-cover" loading={i === 0 ? "eager" : "lazy"} decoding="async" />
+                  <img
+                    src={s.imageUrl}
+                    alt={s.imageAlt}
+                    className={cn("absolute inset-0 h-full w-full object-cover", zoom && "slide-zoom", zoom && active && "slide-zoom-active")}
+                    style={zoom ? { animationDuration: `${Math.max(intervalMs + 3000, 12000)}ms` } : undefined}
+                    loading={i === 0 ? "eager" : "lazy"} decoding="async" />
                 </picture>
               ) : (
                 <div className="absolute inset-0 bg-gradient-to-br from-primary via-primary/80 to-slate-900" aria-hidden />

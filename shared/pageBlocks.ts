@@ -72,6 +72,8 @@ export interface BlockDataMap {
     arrows: OnOff;
     dots: OnOff;
     overlay: "none" | "light" | "medium" | "strong";
+    /** Acercamiento lento de la imagen (opcional; ausente = no) */
+    zoom?: OnOff;
   };
   /** Carrusel de imágenes: varias a la vista, con visor a pantalla completa opcional */
   carousel: { title: string; images: GalleryImage[]; perView: "2" | "3" | "4"; autoplay: OnOff; lightbox: OnOff };
@@ -431,6 +433,7 @@ export function defaultBlockData<K extends BlockType>(type: K): BlockDataMap[K] 
       arrows: "on",
       dots: "on",
       overlay: "medium",
+      zoom: "off",
     },
     carousel: { title: "", images: [], perView: "3", autoplay: "off", lightbox: "on" },
     cards: {
