@@ -632,6 +632,9 @@ function SlideshowBlock({ b, first, preview }: { b: BlockOf<"slideshow">; first:
       arrows={d.arrows === "on"}
       dots={d.dots === "on"}
       overlay={d.overlay}
+      zoom={d.zoom === "on"}
+      zoomAmount={Number(d.zoomAmount) || 7}
+      zoomSeconds={Number(d.zoomSeconds) || 16}
       editing={!!ed}
       renderContent={(s, i) => {
         const Title = first && i === 0 ? "h1" : "h2";

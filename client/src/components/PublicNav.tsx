@@ -275,15 +275,13 @@ export default function PublicNav({ overlay }: { overlay?: HeaderOverlayState })
 
       {centered && tenantTheme && (
         <div className="container">
-          {/* Logotipo con fondo claro: el filtro convierte el fondo en transparencia (texto oscuro); un PNG ya transparente no cambia */}
-          <svg width="0" height="0" className="absolute" aria-hidden focusable="false"><filter id="qs-logo-key" colorInterpolationFilters="sRGB"><feColorMatrix type="matrix" values="1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  -1.5 -2.95 -0.55 0 5" /></filter></svg>
           <div className={cn("relative grid grid-cols-1 lg:grid-cols-[1fr_auto_1fr] items-center transition-[height] duration-300 ease-out", solid ? "h-16 lg:h-[76px]" : "h-24 lg:h-36")}>
             <nav className="hidden lg:flex items-center justify-end gap-7 pr-12" aria-label="Menú principal">
               {navLinks.slice(0, Math.ceil(navLinks.length / 2)).map(renderCentered)}
             </nav>
             <Link href={site18n.home} aria-label={tenantTheme.brandName ?? "Inicio"} className="justify-self-center lg:col-start-2">
               {tenantTheme.logoUrl && (
-                <img src={tenantTheme.logoUrl} alt={tenantTheme.brandName ?? ""} className={cn("w-auto object-contain transition-[height] duration-300 ease-out", solid ? "h-11 lg:h-12" : "h-16 lg:h-28")} style={tone === "dark" ? { filter: "url(#qs-logo-key)" } : undefined} />
+                <img src={tenantTheme.logoUrl} alt={tenantTheme.brandName ?? ""} className={cn("w-auto object-contain transition-[height] duration-300 ease-out", solid ? "h-11 lg:h-12" : "h-16 lg:h-28")} />
               )}
             </Link>
             <div className="hidden lg:flex items-center justify-start gap-7 pl-12">

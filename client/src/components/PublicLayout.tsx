@@ -109,7 +109,7 @@ export default function PublicLayout({
         style={brand ?? undefined}
       >
         <PublicNav overlay={{ centered, ...hdr }} />
-        <main className={cn("flex-1", !fullWidthHero && !(centered && hdr.overHero) && (centered ? "pt-16 lg:pt-[76px]" : neutral ? "pt-20" : "pt-20 lg:pt-[112px]"))}>
+        <main data-hero-overlay={centered && hdr.overHero ? "" : undefined} className={cn("flex-1", !fullWidthHero && !(centered && hdr.overHero) && (centered ? "pt-16 lg:pt-[76px]" : neutral ? "pt-20" : "pt-20 lg:pt-[112px]"))}>
           {children}
         </main>
         <PublicFooter />
