@@ -633,8 +633,8 @@ function SlideshowBlock({ b, first, preview }: { b: BlockOf<"slideshow">; first:
       dots={d.dots === "on"}
       overlay={d.overlay}
       zoom={d.zoom === "on"}
-      zoomAmount={Number(d.zoomAmount) || 7}
-      zoomSeconds={Number(d.zoomSeconds) || 16}
+      zoomAmount={Number(d.zoomAmount) || 9}
+      zoomSeconds={Number(d.zoomSeconds) || 20}
       editing={!!ed}
       renderContent={(s, i) => {
         const Title = first && i === 0 ? "h1" : "h2";
@@ -1474,15 +1474,40 @@ function overlayCss(s: BlockStyle): string {
   }
 }
 
+/** Acercamiento lento de la foto de fondo (solo transform); se pausa mientras la sección no está a la vista. */
+function MotionLayer({ s, children }: { s: BlockStyle; children: ReactNode }) {
+  const ref = useRef<HTMLDivElement>(null);
+  const [visible, setVisible] = useState(true);
+  useEffect(() => {
+    const el = ref.current;
+    if (!el || typeof IntersectionObserver === "undefined") return;
+    const io = new IntersectionObserver(([e]) => setVisible(e.isIntersecting), { rootMargin: "80px" });
+    io.observe(el);
+    return () => io.disconnect();
+  }, []);
+  const style = {
+    "--fx": `${s.bgX}%`, "--fy": `${s.bgY}%`, "--mx": `${s.bgMobile === "own" ? s.bgXM : s.bgX}%`, "--my": `${s.bgMobile === "own" ? s.bgYM : s.bgY}%`,
+    "--mo-to": 1 + s.bgMotionAmount / 100, "--mo-s": `${s.bgMotionSeconds}s`,
+  } as CSSProperties;
+  return (
+    <div ref={ref} aria-hidden className={cn("qs-motion pointer-events-none absolute inset-0 overflow-hidden", !visible && "qs-motion-paused")} style={style}>
+      {children}
+    </div>
+  );
+}
+
 /** Capas de la foto de fondo: la imagen (con su encuadre en ordenador y en móvil) y la capa que da legibilidad. */
 function ImageLayers({ s }: { s: BlockStyle }) {
   const focus = {
     "--fx": `${s.bgX}%`, "--fy": `${s.bgY}%`, "--fz": s.bgZoom / 100,
     "--mx": `${s.bgXM}%`, "--my": `${s.bgYM}%`, "--mz": s.bgZoomM / 100,
   } as CSSProperties;
+  const img = (
+    <img src={s.bgImage} alt="" loading="lazy" decoding="async" aria-hidden className={cn("qs-focus pointer-events-none absolute inset-0 h-full w-full object-cover", s.bgMobile === "own" && "qs-focus-own", s.bgMobile === "own" && s.bgFitM === "width" && "qs-fitw")} style={focus} />
+  );
   return (
     <>
-      <img src={s.bgImage} alt="" loading="lazy" decoding="async" aria-hidden className={cn("qs-focus pointer-events-none absolute inset-0 h-full w-full object-cover", s.bgMobile === "own" && "qs-focus-own", s.bgMobile === "own" && s.bgFitM === "width" && "qs-fitw")} style={focus} />
+      {s.bgMotion === "on" ? <MotionLayer s={s}>{img}</MotionLayer> : img}
       {/* Una capa lateral no sirve en pantalla estrecha (el texto ocupa todo el ancho): en el móvil pasa a degradarse desde abajo */}
       {s.overlayDir === "left" || s.overlayDir === "right" ? (
         <>
