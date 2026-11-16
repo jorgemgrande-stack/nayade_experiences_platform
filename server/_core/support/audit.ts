@@ -15,7 +15,7 @@ export const SUPPORT_AUDIT_PATH = "/cp/v1/internal/support-audit";
 export const DEFAULT_SUPPORT_AUDIT_URL = `http://controlplane.railway.internal:4100${SUPPORT_AUDIT_PATH}`;
 const TYP = "es_support_audit";
 
-export const SUPPORT_AUDIT_EVENTS = ["entered", "exited", "write", "write_result", "write_blocked", "blocked", "export"] as const;
+export const SUPPORT_AUDIT_EVENTS = ["entered", "exited", "write", "write_result", "write_blocked", "blocked", "export", "activity"] as const;
 export type SupportAuditEvent = (typeof SUPPORT_AUDIT_EVENTS)[number];
 
 export interface SupportAuditDetails {
@@ -24,6 +24,8 @@ export interface SupportAuditDetails {
   resource?: string;
   status?: number;
   reason?: string;
+  /** Sesión del operador dentro de la concesión (24 hex): entrada, actividad y cierre de ESA sesión. */
+  session?: string;
 }
 
 export interface SupportAuditClaims {
@@ -42,6 +44,7 @@ export function cleanAuditDetails(d: SupportAuditDetails): SupportAuditDetails {
   if (d.resource) out.resource = String(d.resource).split("?")[0].slice(0, 200);
   if (typeof d.status === "number" && Number.isInteger(d.status)) out.status = d.status;
   if (d.reason) out.reason = String(d.reason).slice(0, 60);
+  if (typeof d.session === "string" && /^[a-f0-9]{24}$/.test(d.session)) out.session = d.session;
   return out;
 }
 
