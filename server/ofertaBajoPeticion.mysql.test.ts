@@ -210,6 +210,7 @@ describe.skipIf(!URL_)("Oferta bajo petición y próximamente (aplicación real)
     expect((data(await ess.q("a", "public.getVariantsByExperience", { experienceId: ids.precio })) as any[]).map((v) => v.name).sort()).toEqual(["INTENSIV", "ONLINE"]);
     expect((data(await ess.q("a", "products.getVariants", { experienceId: ids.precio }, admA)) as any[]).length).toBe(3);
     // Compra directa: rechazada por el MODO del producto (hay pasarela Redsys de prueba configurada en esta empresa)
+    const reservationsBefore = (await ess.sql("a", "SELECT COUNT(*) AS n FROM reservations"))[0].n;
     const buyer = { customerName: "Lucía Prueba", customerEmail: "lucia@comprador-a.example", origin: origin() };
     const cart = await ess.m("a", "reservations.cartCheckout", { ...buyer, items: [{ productId: ids.precio, bookingDate: "", people: 1 }] });
     expect(errCode(cart)).toBe("BAD_REQUEST");
@@ -218,7 +219,7 @@ describe.skipIf(!URL_)("Oferta bajo petición y próximamente (aplicación real)
     const direct = await ess.m("a", "reservations.createAndPay", { ...buyer, productId: ids.precio, bookingDate: "", people: 1 });
     expect(errCode(direct)).toBe("BAD_REQUEST");
     expect(msg(direct)).toContain("solo por solicitud");
-    expect((await ess.sql("a", "SELECT COUNT(*) AS n FROM reservations"))[0].n).toBe(0);
+    expect((await ess.sql("a", "SELECT COUNT(*) AS n FROM reservations"))[0].n).toBe(reservationsBefore);
     // La solicitud sí entra en el CRM, con el precio mostrado, la modalidad elegida y el idioma
     const varId = ((await ess.sql("a", "SELECT id FROM experience_variants WHERE experienceId = ? AND name = 'INTENSIV'", [ids.precio]))[0] as any).id;
     const caducada = ((await ess.sql("a", "SELECT id FROM experience_variants WHERE experienceId = ? AND name = 'ONLINE · promo'", [ids.precio]))[0] as any).id;
