@@ -6,7 +6,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, useLocation } from "wouter";
 import { toast } from "sonner";
-import { Copy, FileText, Globe, Home, ListTree, MoreHorizontal, Pencil, Plus, Scale, Sparkles, Trash2 } from "lucide-react";
+import { CornerDownRight, Copy, FileText, Globe, Home, ListTree, MoreHorizontal, Pencil, Plus, Scale, Sparkles, Trash2 } from "lucide-react";
 import AdminLayout from "@/components/AdminLayout";
 import { trpc } from "@/lib/trpc";
 import { Button } from "@/components/ui/button";
@@ -78,6 +78,11 @@ export default function PagesManager() {
             <Button variant="outline" asChild>
               <Link href="/admin/cms/idiomas">
                 <Globe className="mr-1.5 h-4 w-4" /> Idiomas
+              </Link>
+            </Button>
+            <Button variant="outline" asChild>
+              <Link href="/admin/cms/redirecciones">
+                <CornerDownRight className="mr-1.5 h-4 w-4" /> Redirecciones
               </Link>
             </Button>
             <Button variant="outline" asChild>

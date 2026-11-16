@@ -189,6 +189,22 @@ export function serveStatic(app: Express, opts: { distPath?: string; routeDeps?:
       const i18n = multi ? await resolveLocalizedRequest(pathname, req.headers.host, req.originalUrl) : null;
       if (i18n?.kind === "redirect") return res.redirect(i18n.status, i18n.to);
       const route: PublicRouteResult = i18n?.kind === "notFound" ? { status: 404 } : i18n?.kind === "page" && i18n.prefixed ? { status: 200 } : await resolvePublicRoute(pathname, deps);
+      // Redirecciones permanentes de la empresa (panel → Redirecciones): SOLO cuando la ruta no existe (404), así nunca tapan una
+      // página, un producto ni las pantallas de acceso o de pago. Solo GET/HEAD. Nunca rompen la web: ante cualquier fallo, sigue el 404.
+      if (route.status === 404 && (req.method === "GET" || req.method === "HEAD")) {
+        try {
+          const search = req.originalUrl.includes("?") ? req.originalUrl.slice(req.originalUrl.indexOf("?")) : "";
+          const { resolveTenantRedirect } = await import("../redirectsDb");
+          const rd = await resolveTenantRedirect(pathname, search);
+          if (rd) {
+            // Un 301 lo guardan navegadores y CDN: caducidad corta para que borrar o corregir una regla surta efecto pronto
+            res.set("Cache-Control", rd.status === 301 ? "public, max-age=300" : "no-store");
+            return res.redirect(rd.status, rd.to);
+          }
+        } catch {
+          /* la web sigue sin redirigir */
+        }
+      }
       const isHome = pathname.replace(/\/+$/, "") === "";
       const [brandName, description, logoUrl, ogImageUrl] = await Promise.all([
         getSystemSetting("brand_name", ""),

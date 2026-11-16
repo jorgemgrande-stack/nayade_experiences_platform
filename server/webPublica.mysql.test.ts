@@ -105,4 +105,83 @@ describe.skipIf(!URL_)("Web pública por empresa (aplicación real, dos empresas
     expect(a2).not.toContain("/experiencias");
     expect((await ess.call("b", "GET", "/sitemap.xml")).text).not.toMatch(/\/experiencias|\/tienda/);
   });
+
+  it("redirecciones 301: administrables por empresa, auditadas, sin bucles ni destinos externos y aisladas entre empresas", async () => {
+    const dbA = (p: string, input: any) => ess.m("a", p, input, admA);
+    // Alta correcta (la ruta antigua no existe en la web)
+    const ok = await dbA("redirects.create", { fromPath: "/Programa-Antiguo/", toPath: "/servicios" });
+    expect(ok.status).toBe(200);
+    const id = ok.json.result.data.json.id;
+    // 301 con la ruta nueva; se conserva la consulta; HEAD también; mayúsculas y barra final no importan
+    const r = await ess.call("a", "GET", "/programa-antiguo?utm=x");
+    expect([r.status, r.location]).toEqual([301, "/servicios?utm=x"]);
+    expect(r.headers?.["cache-control"]).toBe("public, max-age=300");
+    expect((await ess.call("a", "GET", "/PROGRAMA-ANTIGUO/")).status).toBe(301);
+    // Aislamiento: la empresa B no ve la regla de A (su 404 de siempre)
+    expect((await ess.call("b", "GET", "/programa-antiguo")).status).toBe(404);
+    // Rechazos: externo, protegido, ruta que ya existe, duplicado, bucle y cadena
+    for (const bad of [
+      { fromPath: "/otro", toPath: "https://otra.web/x" },
+      { fromPath: "/otro", toPath: "//otra.web/x" },
+      { fromPath: "/admin/cms", toPath: "/servicios" },
+      { fromPath: "/", toPath: "/servicios" },
+      { fromPath: "/servicios", toPath: "/otra" },
+      { fromPath: "/programa-antiguo", toPath: "/otra" },
+      { fromPath: "/servicios", toPath: "/programa-antiguo" },
+      { fromPath: "/nuevo-origen", toPath: "/programa-antiguo" },
+    ]) {
+      const x = await dbA("redirects.create", bad);
+      expect(x.status, JSON.stringify(bad)).toBe(400);
+    }
+    // Apagada: no redirige
+    expect((await dbA("redirects.update", { id, fromPath: "/programa-antiguo", toPath: "/servicios", statusCode: 301, isActive: false })).status).toBe(200);
+    (await import("./redirectsDb")).clearRedirectCache();
+    expect((await ess.call("a", "GET", "/programa-antiguo")).status).toBe(404);
+    // Baja y auditoría: quedan alta, cambio y baja con autor
+    expect((await dbA("redirects.delete", { id })).status).toBe(200);
+    const log = (await ess.q("a", "redirects.log", { limit: 10 }, admA)).json.result.data.json as any[];
+    expect(log.map((l) => l.action).sort()).toEqual(["create", "delete", "update"]);
+    expect(log.every((l) => l.actorName)).toBe(true);
+    // Sin sesión de administrador no se administra
+    expect((await ess.m("a", "redirects.create", { fromPath: "/x", toPath: "/servicios" })).status).not.toBe(200);
+  });
+
+  it("cambiar la dirección de una página conserva el enlace antiguo con un 301 y no deja cadenas", async () => {
+    expect((await ess.m("a", "cms.upsertPage", { slug: "programa-a", title: "Programa A", isPublished: true }, admA)).status).toBe(200);
+    expect((await ess.m("a", "cms.updatePageSettings", { slug: "programa-a", newSlug: "programa-b", title: "Programa A" }, admA)).status).toBe(200);
+    const old = await ess.call("a", "GET", "/programa-a");
+    expect([old.status, old.location]).toEqual([301, "/programa-b"]);
+    expect((await ess.call("a", "GET", "/programa-b")).status).toBe(200);
+    // Segundo cambio: la regla antigua se reapunta al destino final (sin cadena)
+    expect((await ess.m("a", "cms.updatePageSettings", { slug: "programa-b", newSlug: "programa-c", title: "Programa A" }, admA)).status).toBe(200);
+    (await import("./redirectsDb")).clearRedirectCache();
+    expect((await ess.call("a", "GET", "/programa-a")).location).toBe("/programa-c");
+    expect((await ess.call("a", "GET", "/programa-b")).location).toBe("/programa-c");
+    expect((await ess.call("a", "GET", "/programa-c")).status).toBe(200);
+    // Volver a una dirección antigua: la página manda sobre la regla (se retira para no taparla)
+    expect((await ess.m("a", "cms.updatePageSettings", { slug: "programa-c", newSlug: "programa-a", title: "Programa A" }, admA)).status).toBe(200);
+    (await import("./redirectsDb")).clearRedirectCache();
+    expect((await ess.call("a", "GET", "/programa-a")).status).toBe(200);
+    expect((await ess.call("a", "GET", "/programa-c")).location).toBe("/programa-a");
+  });
+
+  it("una redirección nunca tapa una página: la que se publica después gana; las pantallas de acceso no se pueden redirigir; las tildes funcionan", async () => {
+    const dbA = (p: string, input: any) => ess.m("a", p, input, admA);
+    // Acceso y pago protegidos
+    for (const from of ["/login", "/checkout", "/reserva/ok", "/recuperar-contrasena"]) expect((await dbA("redirects.create", { fromPath: from, toPath: "/servicios" })).status, from).toBe(400);
+    expect((await ess.call("a", "GET", "/login")).status).toBe(200);
+    // Tilde: regla guardada decodificada, petición codificada
+    expect((await dbA("redirects.create", { fromPath: "/programación", toPath: "/servicios" })).status).toBe(200);
+    const t = await ess.call("a", "GET", "/programaci%C3%B3n");
+    expect([t.status, t.location]).toEqual([301, "/servicios"]);
+    // Regla sobre una ruta libre y página creada y publicada DESPUÉS en esa ruta: la página se ve (la regla no actúa)
+    expect((await dbA("redirects.create", { fromPath: "/verano", toPath: "/servicios" })).status).toBe(200);
+    expect((await ess.call("a", "GET", "/verano")).status).toBe(301);
+    expect((await ess.m("a", "cms.upsertPage", { slug: "verano", title: "Verano", isPublished: true }, admA)).status).toBe(200);
+    (await import("./redirectsDb")).clearRedirectCache();
+    expect((await ess.call("a", "GET", "/verano")).status).toBe(200);
+    // Duplicado: mensaje claro (400), no un 500
+    expect((await dbA("redirects.create", { fromPath: "/programación", toPath: "/otra-ruta" })).status).toBe(400);
+  });
 });
+
