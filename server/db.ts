@@ -1248,11 +1248,19 @@ export async function getExperienceById(id: number) {
 
 // --- EXPERIENCE VARIANTS ------------------------------------------------------
 
-export async function getVariantsByExperience(experienceId: number) {
+/** Hoy en Madrid (YYYY-MM-DD): la vigencia de las variantes se mide en ese huso. */
+export function todayMadridISO(now: Date = new Date()): string {
+  return new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/Madrid", year: "numeric", month: "2-digit", day: "2-digit" }).format(now);
+}
+
+/** Por defecto solo las variantes vigentes (web y pedidos); el administrador pasa includeExpired para verlas todas. */
+export async function getVariantsByExperience(experienceId: number, opts: { includeExpired?: boolean } = {}) {
   const db = await getDb();
   if (!db) return [];
   return db.select().from(experienceVariants)
-    .where(eq(experienceVariants.experienceId, experienceId))
+    .where(opts.includeExpired
+      ? eq(experienceVariants.experienceId, experienceId)
+      : and(eq(experienceVariants.experienceId, experienceId), or(isNull(experienceVariants.validUntil), sql`${experienceVariants.validUntil} >= ${todayMadridISO()}`)))
     .orderBy(experienceVariants.sortOrder, experienceVariants.id);
 }
 
@@ -1271,10 +1279,12 @@ export async function createVariant(data: {
   priceType: "fixed" | "percentage" | "per_person";
   isRequired?: boolean;
   sortOrder?: number;
+  validUntil?: string | null;
 }) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
   const result = await db.insert(experienceVariants).values({
+    validUntil: data.validUntil ?? null,
     experienceId: data.experienceId,
     name: data.name,
     description: data.description ?? null,
@@ -1296,6 +1306,7 @@ export async function updateVariant(
     priceType: "fixed" | "percentage" | "per_person";
     isRequired: boolean;
     sortOrder: number;
+    validUntil: string | null;
   }>
 ) {
   const db = await getDb();

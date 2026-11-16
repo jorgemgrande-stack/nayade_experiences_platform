@@ -418,7 +418,7 @@ export const appRouter = router({
         // E-6: sin precio fijo no se enseñan opciones de precio
         const { getExperienceById: byId } = await import("./db");
         const prod = await byId(input.experienceId);
-        if (prod && offerModeOf(prod) !== "fixed") return [];
+        if (prod && !showsPrice(prod)) return [];
         return getVariantsByExperience(input.experienceId);
       }),
 
@@ -1800,7 +1800,7 @@ export const appRouter = router({
       .input(z.object({ experienceId: z.number().optional() }))
       .query(async ({ input }) => {
         if (input.experienceId) {
-          return getVariantsByExperience(input.experienceId);
+          return getVariantsByExperience(input.experienceId, { includeExpired: true });
         }
         return getAllVariantsGrouped();
       }),
@@ -1814,6 +1814,7 @@ export const appRouter = router({
         priceType: z.enum(["fixed", "percentage", "per_person"]),
         isRequired: z.boolean().default(false),
         sortOrder: z.number().default(0),
+        validUntil: z.string().regex(/^d{4}-d{2}-d{2}$/).nullable().optional(),
       }))
       .mutation(async ({ input }) => {
         return createVariant(input);
@@ -1828,6 +1829,7 @@ export const appRouter = router({
         priceType: z.enum(["fixed", "percentage", "per_person"]).optional(),
         isRequired: z.boolean().optional(),
         sortOrder: z.number().optional(),
+        validUntil: z.string().regex(/^d{4}-d{2}-d{2}$/).nullable().optional(),
       }))
       .mutation(async ({ input }) => {
         const { id, ...data } = input;
