@@ -813,6 +813,43 @@ export const crmRouter = router({
   // --- LEADS -----------------------------------------------------------------
 
   leads: router({
+    /**
+     * Modo de pruebas: solicitud de producto o de plaza creada por un administrador, SIN avisos, correos ni integraciones
+     * externas. Solo para correos de dominio reservado (.invalid, .example, .test…). El camino público no lee ningún
+     * indicador de prueba. El lead queda marcado (is_test) y la actividad registra que no se avisó a nadie.
+     */
+    submitTestRequest: adminProcedure
+      .input(z.object({
+        experienceId: z.number().int().positive(),
+        editionId: z.number().int().positive().optional(),
+        variantId: z.number().int().positive().optional(),
+        seats: z.number().int().min(1).max(50).optional(),
+        lang: z.string().max(5).optional(),
+        name: z.string().min(2).max(200),
+        email: z.string().max(320),
+        message: z.string().max(2000).optional(),
+      }).strict())
+      .mutation(async ({ input }) => {
+        const { isReservedTestEmail } = await import("../../shared/testMode");
+        if (!isReservedTestEmail(input.email)) {
+          throw new TRPCError({ code: "BAD_REQUEST", message: "En modo de pruebas el correo debe ser de un dominio reservado (por ejemplo prueba@ejemplo.invalid): así nunca se escribe a una persona real." });
+        }
+        const { processProductRequest, defaultRequestContext, ProductRequestError } = await import("../productRequests");
+        const { logActivity } = await import("../db");
+        try {
+          const base = await defaultRequestContext("modo-pruebas");
+          const r = await processProductRequest(
+            { experienceId: input.experienceId, editionId: input.editionId, variantId: input.variantId, seats: input.seats, lang: input.lang, name: input.name, email: input.email, message: input.message, consent: true, elapsedMs: 60_000, page: "/modo-pruebas" },
+            { ...base, testMode: true, notifyOwner: undefined },
+          );
+          if (r.leadId) await logActivity("lead", r.leadId, "test_mode_no_notices", null, null, { note: "Solicitud de prueba: no se avisó a nadie ni se sincronizó con integraciones externas" });
+          return { ...r, testMode: true as const };
+        } catch (e) {
+          if (e instanceof ProductRequestError) throw new TRPCError({ code: e.code === "NOT_FOUND" ? "NOT_FOUND" : e.code === "TOO_MANY_REQUESTS" ? "TOO_MANY_REQUESTS" : "BAD_REQUEST", message: e.message });
+          throw e;
+        }
+      }),
+
     list: staff
       .input(
         z.object({

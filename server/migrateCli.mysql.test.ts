@@ -214,6 +214,8 @@ d("ejecutor de migraciones contra MySQL real", () => {
     await t.pool.query("CREATE TABLE experiences (id INT PRIMARY KEY)");
     // 0072 añade validUntil a `experience_variants`: basta con que exista
     await t.pool.query("CREATE TABLE experience_variants (id INT PRIMARY KEY)");
+    // 0073 añade columnas de solicitud a `leads`: basta con que exista
+    await t.pool.query("CREATE TABLE leads (id INT PRIMARY KEY)");
     const args = (cmd: string) => [cmd, "--dir", "db/migrations", "--apply", "--confirm-database", t.db];
     const up = await cli(t.url, args("up"));
     expect(up.status, up.stderr).toBe(0);
