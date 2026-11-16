@@ -51,6 +51,10 @@ describe.skipIf(!URL_)("soporte hasta revocación con MySQL real", () => {
     const sid = "c3".repeat(12);
     const openedAt = Date.now();
     await store.record("t-a", g.operator, "support.entered", { grantId: g.id, session: sid });
+    // Un enlace = una sesión: el plano de control ve que ya se abrió (en cualquier réplica)
+    expect(await store.sessionEntered("t-a", g.id, sid)).toBe(true);
+    expect(await store.sessionEntered("t-a", g.id, "f6".repeat(12))).toBe(false);
+    expect(await store.sessionEntered("t-b", g.id, sid)).toBe(false);
     const all = await store.listAllActive();
     expect(all.map((x) => x.id).sort()).toEqual([g.id, l.id].sort());
     const row = all.find((x) => x.id === g.id)!;

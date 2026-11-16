@@ -52,6 +52,7 @@ describe("Core: sesiones de soporte hasta revocación", () => {
     return true;
   };
 
+  const beat = (cookie: string) => call("POST", "/_support/heartbeat", { tenant: "acme", cookie });
   function call(method: string, path: string, o: { tenant?: string; cookie?: string } = {}) {
     return new Promise<{ status: number; body: string; setCookie?: string }>((resolve, reject) => {
       const req = http.request(
@@ -140,7 +141,7 @@ describe("Core: sesiones de soporte hasta revocación", () => {
     expect((await call("POST", "/data", { tenant: "acme", cookie })).status).toBe(503);
   });
 
-  it("sesión: 2 h sin actividad la cierran; con actividad se renueva sola, pero nunca más allá de 12 h", async () => {
+  it("sesión: 2 h sin actividad la cierran; con actividad real se renueva, pero nunca más allá de 12 h", async () => {
     vi.useFakeTimers({ toFake: ["Date"], now: Date.now() });
     const idle = await enter();
     vi.setSystemTime(Date.now() + SUPPORT_SESSION_IDLE_MS + MIN);
@@ -150,14 +151,14 @@ describe("Core: sesiones de soporte hasta revocación", () => {
     const again = await enter({ grant: idle.g });
     expect((await who(again.cookie)).support).toBe(true);
 
-    // Con actividad cada hora: la cookie se renueva (y queda `activity`), hasta el tope de 12 h
+    // Con actividad real cada hora (aviso del panel o una modificación): la cookie se renueva, hasta el tope de 12 h
     let cookie = again.cookie;
     events.length = 0;
     let renewed = 0;
     for (let h = 1; h <= 11; h++) {
       vi.setSystemTime(Date.now() + 60 * MIN);
-      const r = await call("GET", "/me", { tenant: "acme", cookie });
-      expect(JSON.parse(r.body).support, `hora ${h}`).toBe(true);
+      const r = h % 2 ? await beat(cookie) : await call("POST", "/data", { tenant: "acme", cookie });
+      expect(r.status, `hora ${h}`).toBe(200);
       if (r.setCookie) {
         cookie = cookieFrom(r.setCookie);
         renewed++;
@@ -169,14 +170,56 @@ describe("Core: sesiones de soporte hasta revocación", () => {
     expect((await who(cookie)).support).toBe(false);
   });
 
-  it("no se renueva en cada petición: solo cada 15 minutos", async () => {
+  it("las consultas periódicas del panel no mantienen viva la sesión: una pestaña abandonada se cierra a las 2 h", async () => {
     vi.useFakeTimers({ toFake: ["Date"], now: Date.now() });
     const { cookie } = await enter();
     events.length = 0;
-    expect((await call("GET", "/me", { tenant: "acme", cookie })).setCookie).toBeUndefined();
+    for (let m = 0; m < 5; m++) {
+      vi.setSystemTime(Date.now() + 20 * MIN);
+      const r = await call("GET", "/me", { tenant: "acme", cookie });
+      expect(JSON.parse(r.body).support).toBe(true);
+      expect(r.setCookie).toBeUndefined();
+    }
+    expect(events).toEqual([]);
+    vi.setSystemTime(Date.now() + 21 * MIN); // 2 h y 1 min sin actividad real
+    expect((await who(cookie)).support).toBe(false);
+  });
+
+  it("el aviso de actividad renueva como mucho cada 15 minutos y solo si queda registrado", async () => {
+    vi.useFakeTimers({ toFake: ["Date"], now: Date.now() });
+    const { cookie } = await enter();
+    events.length = 0;
+    const early = await beat(cookie);
+    expect(JSON.parse(early.body)).toEqual({ ok: true, renewed: false });
+    expect(early.setCookie).toBeUndefined();
     vi.setSystemTime(Date.now() + SUPPORT_SESSION_REFRESH_MS + 1000);
-    expect((await call("GET", "/me", { tenant: "acme", cookie })).setCookie).toMatch(new RegExp(`^${SUPPORT_COOKIE}=`));
+    auditUp = false;
+    const unrecorded = await beat(cookie);
+    expect(JSON.parse(unrecorded.body)).toEqual({ ok: true, renewed: false });
+    expect(unrecorded.setCookie).toBeUndefined();
+    auditUp = true;
+    const ok = await beat(cookie);
+    expect(JSON.parse(ok.body)).toEqual({ ok: true, renewed: true });
+    expect(ok.setCookie).toMatch(new RegExp(`^${SUPPORT_COOKIE}=`));
     expect(events.map((e) => e.ev)).toEqual(["activity"]);
+    // Sin sesión de soporte, o desde otro origen, nada
+    expect((await call("POST", "/_support/heartbeat", { tenant: "acme" })).status).toBe(401);
+  });
+
+  it("si el cierre no queda registrado, no se aparenta: 503, la cookie se queda y se puede reintentar", async () => {
+    const { g, cookie } = await enter();
+    auditUp = false;
+    const fail = await call("POST", "/_support/exit", { tenant: "acme", cookie });
+    expect(fail.status).toBe(503);
+    expect(fail.setCookie).toBeUndefined();
+    expect(JSON.parse(fail.body)).toMatchObject({ error: "exit_unrecorded", message: expect.stringContaining("revoca") });
+    expect((await who(cookie)).support).toBe(true);
+    auditUp = true;
+    const ok = await call("POST", "/_support/exit", { tenant: "acme", cookie });
+    expect(ok.status).toBe(200);
+    expect(ok.setCookie).toMatch(/es_support=;/);
+    expect((await who(cookie)).support).toBe(false);
+    expect(g.revokedAt).toBeNull();
   });
 
   it("«Finalizar sesión» cierra esa sesión en el servidor sin revocar la autorización; las demás sesiones siguen", async () => {
@@ -258,12 +301,15 @@ describe("plano de control: accesos hasta revocación", () => {
   const TOK = "sup-admin-token-bbbbbbbbbbbbbbbbbbbbbb";
   let server: http.Server | null = null;
 
-  async function start(o: { role?: string; username?: string } = {}) {
+  async function start(o: { role?: string; username?: string; noDomain?: string } = {}) {
     const reg = new MemoryTenantRegistryStore();
     const ring = keyringFromEnv({ REGISTRY_KEYS: `k1:${crypto.randomBytes(32).toString("base64")}`, REGISTRY_ACTIVE_KEY_ID: "k1" } as NodeJS.ProcessEnv);
     const registry = new TenantRegistryService(reg, () => ring);
     await registry.createTenant({ id: "acme", displayName: "Acme" }, { type: "operator", id: "test" });
     await registry.createTenant({ id: "otra", displayName: "Otra" }, { type: "operator", id: "test" });
+    // Dominio principal activo (el panel de la empresa), salvo en la empresa indicada
+    const realList = reg.listDomains.bind(reg);
+    (reg as any).listDomains = async (t: string) => (t === o.noDomain ? [] : [...(await realList(t)), { domain: `${t}.app.example`, isPrimary: true, status: "active" }]);
     const grants = new Map<string, SupportGrant>();
     const events: Array<{ tenantId: string; operator: string; action: string; details: Record<string, unknown> }> = [];
     const listed = (g: SupportGrant) => ({ ...g, tenantName: g.tenantId === "acme" ? "Acme" : "Otra", lastActivityAt: Math.max(0, ...events.filter((e) => e.details.grantId === g.id).map(() => Date.now())) || null });
@@ -284,6 +330,8 @@ describe("plano de control: accesos hasta revocación", () => {
       listActive: async (t: string) => live().filter((g) => g.tenantId === t).map(listed),
       listAllActive: async () => live().map(listed),
       record: async (tenantId: string, operator: string, action: string, details: Record<string, unknown>) => void events.push({ tenantId, operator, action, details }),
+      sessionEnded: async (_t: string, gid: string, sid: string) => events.some((e) => e.action === "support.exited" && e.details.grantId === gid && e.details.session === sid),
+      sessionEntered: async (_t: string, gid: string, sid: string) => events.some((e) => e.action === "support.entered" && e.details.grantId === gid && e.details.session === sid),
     };
     let role = o.role;
     const app = createControlPlaneApp({
@@ -361,6 +409,21 @@ describe("plano de control: accesos hasta revocación", () => {
     expect((await h.call("GET", "/tenants/acme/support-access", { session: true })).json.grants.map((g: any) => g.grantId)).toEqual([a.json.grantId]);
   });
 
+  it("sin dominio principal activo no se crea una autorización indefinida (no quedaría vigente sin poder usarse)", async () => {
+    const h = await start({ role: "admin", noDomain: "acme" });
+    const r = await h.call("POST", "/tenants/acme/support-access", { session: true, body });
+    expect(r.status).toBe(409);
+    expect(h.grants.size).toBe(0);
+  });
+
+  it("renovar con una autorización hasta revocación de solo lectura también exige seguir siendo administración", async () => {
+    const h = await start({ role: "admin" });
+    const a = await h.call("POST", "/tenants/acme/support-access", { session: true, body: { ...body, readOnly: true } });
+    expect((await h.call("POST", `/support-access/${a.json.grantId}/session`, { session: true })).status).toBe(201);
+    h.setRole("support");
+    expect((await h.call("POST", `/support-access/${a.json.grantId}/session`, { session: true })).status).toBe(403);
+  });
+
   it("renovar la sesión: solo el operador autorizado, autenticado; queda registrado; con modificación solo si sigue siendo administración", async () => {
     const h = await start({ role: "admin" });
     const a = await h.call("POST", "/tenants/acme/support-access", { session: true, body });
@@ -398,11 +461,17 @@ describe("plano de control: accesos hasta revocación", () => {
     expect(await h.audit({ gid: a.json.grantId, tid: "acme", ev: "activity", d: { session: sid } })).toBe(true);
     expect(await h.audit({ gid: a.json.grantId, tid: "acme", ev: "exited", d: { session: sid } })).toBe(true);
     expect(h.grants.get(a.json.grantId)!.revokedAt).toBeNull();
-    expect(h.events.map((e) => e.action)).toEqual(["support.entered", "support.activity", "support.exited"]);
+    expect(h.events.map((e) => e.action).slice(0, 3)).toEqual(["support.entered", "support.activity", "support.exited"]);
     expect(h.events[0].details).toMatchObject({ untilRevoked: true, expiresAt: null, session: sid, reason: body.reason });
     expect(h.events[2].details).toMatchObject({ grantId: a.json.grantId, session: sid });
-    await h.call("DELETE", `/support-access/${a.json.grantId}`, { session: true });
+    // Actividad de una sesión ya cerrada: no se anota (el Core no la renueva)
     expect(await h.audit({ gid: a.json.grantId, tid: "acme", ev: "activity", d: { session: sid } })).toBe(false);
+    // Un enlace (= una sesión) no abre dos veces, aunque lo canjeen dos réplicas distintas
+    const sid2 = "e5".repeat(12);
+    expect(await h.audit({ gid: a.json.grantId, tid: "acme", ev: "entered", d: { session: sid2 } })).toBe(true);
+    expect(await h.audit({ gid: a.json.grantId, tid: "acme", ev: "entered", d: { session: sid2 } })).toBe(false);
+    await h.call("DELETE", `/support-access/${a.json.grantId}`, { session: true });
+    expect(await h.audit({ gid: a.json.grantId, tid: "acme", ev: "activity", d: { session: sid2 } })).toBe(false);
     expect(await h.audit({ gid: a.json.grantId, tid: "acme", ev: "entered", d: { session: "b2".repeat(12) } })).toBe(false);
   });
 });

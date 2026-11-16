@@ -272,7 +272,7 @@ export interface ControlPlaneDeps {
   /** Tope de peticiones por minuto y IP para todo el plano de control (por defecto 600). */
   perIpMinute?: number;
   /** Acceso delegado de soporte (requiere SUPPORT_JWT_SECRET). */
-  support?: Pick<SupportAdmin, "create" | "revoke"> & Partial<Pick<SupportAdmin, "listActive" | "listAllActive" | "getGrant" | "record">>;
+  support?: Pick<SupportAdmin, "create" | "revoke"> & Partial<Pick<SupportAdmin, "listActive" | "listAllActive" | "getGrant" | "record" | "sessionEnded" | "sessionEntered">>;
   /** Inventario de copias de seguridad (registro, migración 0010). Sin él no hay rutas `/backups`. */
   backups?: {
     inventory: Pick<BackupInventory, "list" | "latestAttempts" | "lastSuccess">;
@@ -612,8 +612,15 @@ export function createControlPlaneApp(d: ControlPlaneDeps): Express {
         // Entrada, modificaciones y exportaciones solo con la concesión vigente; salida y bloqueos se anotan siempre
         const live = grantActive(g);
         if (!live && (c.ev === "entered" || c.ev === "write" || c.ev === "export")) return void res.status(409).json({ error: "grant_inactive" });
-        // La actividad de una sesión cerrada o de una autorización revocada no se anota
+        // La actividad de una autorización revocada o de una sesión ya cerrada no se anota (el Core no renueva la sesión)
         if (c.ev === "activity" && !live) return void res.status(409).json({ error: "grant_inactive" });
+        if (c.ev === "activity" && c.d.session && support.sessionEnded && (await support.sessionEnded(g.tenantId, g.id, c.d.session, Math.max(g.createdAt, Date.now() - 13 * 3600_000)))) {
+          return void res.status(409).json({ error: "session_ended" });
+        }
+        // Un enlace de entrada abre UNA sesión, también con varias réplicas o tras un reinicio del Core
+        if (c.ev === "entered" && c.d.session && support.sessionEntered && (await support.sessionEntered(g.tenantId, g.id, c.d.session))) {
+          return void res.status(409).json({ error: "entry_used" });
+        }
         await support.record(g.tenantId, g.operator, `support.${c.ev}`, {
           grantId: g.id,
           readOnly: g.readOnly,
@@ -3359,10 +3366,14 @@ export function createControlPlaneApp(d: ControlPlaneDeps): Express {
         if (b.untilRevoked && !isAdmin) {
           return void res.status(403).json({ error: "forbidden", message: "Solo administración puede conceder un acceso de soporte hasta revocación" });
         }
+        const primary = (await d.reader.listDomains(id)).find((x) => x.isPrimary && x.status === "active");
+        // Una autorización indefinida que no se puede usar no se crea (quedaría vigente sin que nadie la vea abrirse)
+        if (b.untilRevoked && !primary) {
+          return void res.status(409).json({ error: "no_primary_domain", message: "La empresa no tiene dominio principal activo: no se puede abrir su panel" });
+        }
         const g = await d.support!.create({ tenantId: id, reason: b.reason, readOnly: b.readOnly, untilRevoked: b.untilRevoked, minutes: b.untilRevoked ? undefined : b.minutes, operator: `${a.type}:${a.id}` });
         // Enlace de entrada de 120 s y un solo uso (la cookie de la sesión la emite el Core al canjearlo)
         const token = await signSupportToken(g, d.supportSecret!);
-        const primary = (await d.reader.listDomains(id)).find((x) => x.isPrimary && x.status === "active");
         res.status(201).json({
           grantId: g.id,
           expiresAt: g.untilRevoked ? null : new Date(g.expiresAt).toISOString(),
@@ -3420,8 +3431,9 @@ export function createControlPlaneApp(d: ControlPlaneDeps): Express {
         const g = d.support!.getGrant ? await d.support!.getGrant(grantId) : null;
         if (!g || !grantActive(g)) return void res.status(404).json({ error: "not_found", message: "El acceso de soporte no existe o ya no está vigente" });
         if (g.operator !== me) return void res.status(403).json({ error: "forbidden", message: "Solo el operador autorizado puede abrir una sesión con este acceso" });
-        if (!g.readOnly && !SUPPORT_WRITE_ROLES.has(auth.operator?.operator.role ?? "")) {
-          return void res.status(403).json({ error: "forbidden", message: "Solo administración puede abrir una sesión de soporte con modificación" });
+        // Con modificación o «hasta revocación» (que solo concede administración): solo si sigue siendo administración
+        if ((!g.readOnly || g.untilRevoked) && !SUPPORT_WRITE_ROLES.has(auth.operator?.operator.role ?? "")) {
+          return void res.status(403).json({ error: "forbidden", message: "Tu rol ya no permite abrir sesiones con este acceso de soporte" });
         }
         const t = await d.reader.getTenant(g.tenantId);
         if (!t || t.status === "deleted" || t.status === "deleting") throw new RegistryError("conflict", "El tenant no admite acceso");

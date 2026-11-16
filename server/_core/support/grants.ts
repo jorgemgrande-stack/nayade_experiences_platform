@@ -19,6 +19,13 @@ import type mysql from "mysql2/promise";
 export const MAX_SUPPORT_MINUTES = 240;
 /** Centinela de «hasta revocación» (31/12/2037 UTC): no es una caducidad, solo marca la modalidad. */
 export const UNTIL_REVOKED_EXPIRES_AT = Date.UTC(2037, 11, 31);
+/**
+ * Umbral de detección (1/1/2037): una concesión limitada dura como mucho 4 h, así que cualquier fin posterior es «hasta
+ * revocación». Con margen de sobra para un desfase de zona horaria entre quien escribe y quien lee la fecha.
+ */
+const UNTIL_REVOKED_THRESHOLD = Date.UTC(2037, 0, 1);
+/** Última actividad que se busca en el historial (acota la consulta en accesos de meses). */
+const LAST_ACTIVITY_WINDOW_DAYS = 30;
 
 export interface SupportGrant {
   id: string;
@@ -40,6 +47,9 @@ export interface SupportGrantReader {
   sessionEnded?(tenantId: string, grantId: string, sessionId: string, sinceMs: number): Promise<boolean>;
 }
 
+/** Fecha en milisegundos como expresión SQL que no depende de la zona horaria del proceso Node. */
+const SINCE_SQL = "FROM_UNIXTIME(? / 1000)";
+
 export interface GrantInput {
   tenantId: string;
   operator: string;
@@ -50,7 +60,7 @@ export interface GrantInput {
   readOnly?: boolean;
 }
 
-export const isUntilRevoked = (expiresAt: number) => expiresAt >= UNTIL_REVOKED_EXPIRES_AT;
+export const isUntilRevoked = (expiresAt: number) => expiresAt >= UNTIL_REVOKED_THRESHOLD;
 
 export function grantActive(g: SupportGrant, now = Date.now()): boolean {
   return g.revokedAt === null && (g.untilRevoked || g.expiresAt > now);
@@ -126,21 +136,30 @@ export class MysqlSupportReader implements SupportGrantReader {
     const [rows] = await this.pool.query<mysql.RowDataPacket[]>("SELECT * FROM support_grants WHERE id = ?", [id]);
     return rows[0] ? map(rows[0]) : null;
   }
-  /** Por el índice (tenant_id, at): solo los eventos desde que se abrió la sesión. */
+  /** Por el índice (tenant_id, at): solo los eventos desde que se abrió la sesión (con 1 min de margen de reloj). */
   async sessionEnded(tenantId: string, grantId: string, sessionId: string, sinceMs: number) {
+    return this.sessionEvent(tenantId, grantId, sessionId, "support.exited", sinceMs - 60_000);
+  }
+
+  /** ¿Hay ya un evento `action` de esa sesión (desde `sinceMs`)? */
+  protected async sessionEvent(tenantId: string, grantId: string, sessionId: string, action: string, sinceMs: number) {
     const [rows] = await this.pool.query<mysql.RowDataPacket[]>(
-      "SELECT 1 FROM tenant_events WHERE tenant_id = ? AND at >= ? AND action = 'support.exited' AND JSON_UNQUOTE(JSON_EXTRACT(details, '$.grantId')) = ? AND JSON_UNQUOTE(JSON_EXTRACT(details, '$.session')) = ? LIMIT 1",
-      [tenantId, new Date(sinceMs - 60_000), grantId, sessionId],
+      `SELECT 1 FROM tenant_events WHERE tenant_id = ? AND at >= ${SINCE_SQL} AND action = ? AND JSON_UNQUOTE(JSON_EXTRACT(details, '$.grantId')) = ? AND JSON_UNQUOTE(JSON_EXTRACT(details, '$.session')) = ? LIMIT 1`,
+      [tenantId, Math.floor(sinceMs), action, grantId, sessionId],
     );
     return rows.length > 0;
   }
 }
 
+// Última actividad: solo los últimos 30 días del historial de la empresa (por el índice tenant_id, at)
 const LISTED_SQL = `SELECT g.*, t.display_name AS tenant_name,
-  (SELECT MAX(e.at) FROM tenant_events e WHERE e.tenant_id = g.tenant_id AND e.at >= g.created_at AND e.action LIKE 'support.%'
+  (SELECT MAX(e.at) FROM tenant_events e WHERE e.tenant_id = g.tenant_id
+     AND e.at >= GREATEST(g.created_at, NOW(3) - INTERVAL ${LAST_ACTIVITY_WINDOW_DAYS} DAY) AND e.action LIKE 'support.%'
      AND JSON_UNQUOTE(JSON_EXTRACT(e.details, '$.grantId')) = g.id) AS last_activity_at
   FROM support_grants g JOIN tenants t ON t.id = g.tenant_id
   WHERE g.revoked_at IS NULL AND g.expires_at > NOW(3)`;
+// Las «hasta revocación» primero (no se pierden en el listado por antiguas), luego las más recientes
+const LISTED_ORDER = "ORDER BY (g.expires_at >= '2037-01-01') DESC, g.created_at DESC";
 
 /** Escrituras del plano de control, con evento de auditoría en la misma transacción. */
 export class SupportAdmin extends MysqlSupportReader {
@@ -181,14 +200,19 @@ export class SupportAdmin extends MysqlSupportReader {
 
   /** Concesiones vigentes (sin revocar ni caducar) de un tenant, las más recientes primero. */
   async listActive(tenantId: string): Promise<SupportGrantListed[]> {
-    const [rows] = await this.admin.query<mysql.RowDataPacket[]>(`${LISTED_SQL} AND g.tenant_id = ? ORDER BY g.created_at DESC LIMIT 50`, [tenantId]);
+    const [rows] = await this.admin.query<mysql.RowDataPacket[]>(`${LISTED_SQL} AND g.tenant_id = ? ${LISTED_ORDER} LIMIT 50`, [tenantId]);
     return rows.map(listed);
   }
 
   /** Concesiones vigentes de todas las empresas (gestión de accesos delegados del CRM). */
   async listAllActive(): Promise<SupportGrantListed[]> {
-    const [rows] = await this.admin.query<mysql.RowDataPacket[]>(`${LISTED_SQL} ORDER BY g.created_at DESC LIMIT 200`);
+    const [rows] = await this.admin.query<mysql.RowDataPacket[]>(`${LISTED_SQL} ${LISTED_ORDER} LIMIT 500`);
     return rows.map(listed);
+  }
+
+  /** ¿Ya se abrió una sesión con este enlace de entrada (mismo identificador)? Un enlace = una sesión, en todas las réplicas. */
+  async sessionEntered(tenantId: string, grantId: string, sessionId: string): Promise<boolean> {
+    return this.sessionEvent(tenantId, grantId, sessionId, "support.entered", Date.now() - 10 * 60_000);
   }
 
   /** Evento de auditoría de una sesión de soporte (lo envía el Core firmado; ver controlPlane/supportAudit.ts). */

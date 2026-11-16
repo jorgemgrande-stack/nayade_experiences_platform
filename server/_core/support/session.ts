@@ -7,7 +7,8 @@
  *  - AUTORIZACIÓN y SESIÓN son cosas distintas. Con duración limitada la sesión dura lo que la concesión (≤ 4 h). Con
  *    «hasta revocación» la autorización no caduca, pero cada sesión sí, con los controles de las sesiones de operador
  *    del CRM: 2 h sin actividad y 12 h como máximo (la cookie se renueva sola con la actividad, nunca más allá de las
- *    12 h). Pasado eso se abre otra desde el CRM, con el operador autenticado allí y la autorización vigente
+ *    12 h). Solo cuenta la actividad real: modificaciones y el aviso del panel al pulsar o escribir (/_support/heartbeat);
+ *    las consultas periódicas no. Pasado eso se abre otra desde el CRM, con el operador autenticado allí y la autorización vigente
  *    (`support.session_renewed`). Cada sesión lleva su identificador (`sid`): «Finalizar sesión» la cierra en el
  *    servidor (`support.exited`) sin revocar la autorización; revocar la autorización invalida todas sus sesiones.
  *  - Cada petición con la cookie revalida: firma, caducidad, tenant resuelto == `tid`,
@@ -48,7 +49,7 @@ const SAFE = new Set(["GET", "HEAD", "OPTIONS"]);
 /** Sesiones de una autorización «hasta revocación»: como las de operador del CRM (operatorAuth: 2 h / 12 h). */
 export const SUPPORT_SESSION_IDLE_MS = 2 * 3600_000;
 export const SUPPORT_SESSION_MAX_MS = 12 * 3600_000;
-/** Cada cuánto, con actividad, se renueva la cookie y se anota la actividad (`support.activity`). */
+/** Cada cuánto, con actividad real, se renueva la cookie y se anota la actividad (`support.activity`). */
 export const SUPPORT_SESSION_REFRESH_MS = 15 * 60_000;
 /** Cuánto se fía cada réplica de «la sesión no consta cerrada» antes de volver a leerlo. */
 const ENDED_CACHE_MS = 15_000;
@@ -302,13 +303,6 @@ export function supportReadOnlyGuard(log: (l: string) => void = (l) => console.w
     if (!id) return next(); // cookie no válida: la sesión de soporte simplemente no existe
     if (req.path.startsWith("/_support/")) return next();
     const g = id.grant;
-    // «Hasta revocación»: con actividad, la cookie se renueva (2 h más, nunca más allá del tope de la sesión)
-    if (g.untilRevoked && id.session && Date.now() - id.session.iat * 1000 >= SUPPORT_SESSION_REFRESH_MS) {
-      const { sid, sopen, smax } = id.session;
-      const token = await signSupportToken(g, secretRaw!, undefined, "session", { sid, sopen, smax });
-      setSessionCookie(req, res, token, smax - Date.now());
-      void audit({ gid: g.id, tid: g.tenantId, ev: "activity", d: { session: sid } });
-    }
     const { kind, resource } = classifySupportRequest(req.method, req.originalUrl ?? req.url);
     const safe = SAFE.has(req.method);
     const trace = (event: string) => log(JSON.stringify({ ctx: "Support", event, grant: g.id, op: g.operator, method: req.method, path: resource.slice(0, 120) }));
@@ -344,6 +338,8 @@ export function supportReadOnlyGuard(log: (l: string) => void = (l) => console.w
       return supportError(req, res, 503, "support_audit_unavailable", AUDIT_DOWN);
     }
     res.on("finish", () => void send("write_result", { status: res.statusCode }));
+    // Una modificación es actividad real: renueva la sesión «hasta revocación» (las consultas periódicas, no)
+    await refreshSession(req, res, id);
     next();
   };
 }
@@ -377,6 +373,19 @@ export function createSupportRouter(): Router {
     res.redirect(302, "/admin");
   });
 
+  // Actividad real del operador (el panel lo envía al pulsar o escribir, como mucho cada pocos minutos): renueva la
+  // sesión «hasta revocación». Las consultas periódicas del panel (avisos, cuadros que se refrescan solos) NO cuentan:
+  // una pestaña abandonada cierra su sesión a las 2 h.
+  r.post("/_support/heartbeat", async (req, res) => {
+    res.setHeader("Cache-Control", "no-store");
+    const origin = req.headers.origin;
+    if (typeof origin === "string" && origin !== `${req.protocol}://${req.headers.host}`) return void res.status(403).json({ error: "forbidden_origin" });
+    const id = await getSupportIdentity(req).catch(() => null);
+    if (!id) return void res.status(401).json({ error: "no_support_session" });
+    const renewed = await refreshSession(req, res, id);
+    res.json({ ok: true, renewed });
+  });
+
   // Salir del modo soporte. Duración limitada: termina la concesión (el plano de control la revoca al recibir la salida).
   // «Hasta revocación»: cierra SOLO esta sesión (en el servidor: `support.exited` con su identificador); la
   // autorización sigue vigente hasta que se revoque en el CRM. Borra solo la cookie de soporte y devuelve adónde volver.
@@ -386,22 +395,42 @@ export function createSupportRouter(): Router {
     const origin = req.headers.origin;
     if (typeof origin === "string" && origin !== `${req.protocol}://${req.headers.host}`) return void res.status(403).json({ error: "forbidden_origin" });
     const id = await getSupportIdentity(req).catch(() => null);
+    let recorded = true;
     if (id) {
       // La salida revoca la concesión en el plano de control: se reintenta para no dejarla viva por un fallo puntual
       let ok = false;
       const d = id.session ? { session: id.session.sid } : {};
       for (let i = 0; i < 3 && !ok; i++) ok = await audit({ gid: id.grant.id, tid: id.grant.tenantId, ev: "exited", d });
-      // En esta réplica deja de valer al momento; en las demás, en cuanto lean el cierre (≤ 15 s)
-      if (id.session) markSessionEnded(id.grant.id, id.session.sid, id.session.smax);
       console.warn(JSON.stringify({ ctx: "Support", event: "exit", grant: id.grant.id, op: id.grant.operator, recorded: ok, untilRevoked: id.grant.untilRevoked }));
+      recorded = ok;
+      // En esta réplica deja de valer al momento; en las demás, en cuanto lean el cierre (≤ 15 s)
+      if (ok && id.session) markSessionEnded(id.grant.id, id.session.sid, id.session.smax);
+    }
+    res.setHeader("Cache-Control", "no-store");
+    // Sin el cierre registrado no se aparenta haber salido: la cookie se queda para poder reintentarlo
+    if (id && !recorded) {
+      return void res.status(503).json({ error: "exit_unrecorded", returnUrl, message: "No se ha podido registrar el cierre en el servidor. Vuelve a intentarlo o revoca el acceso desde el CRM." });
     }
     res.clearCookie(SUPPORT_COOKIE_HOST, { path: "/", secure: true, httpOnly: true, sameSite: "strict" });
     res.clearCookie(SUPPORT_COOKIE, { path: "/" });
-    res.setHeader("Cache-Control", "no-store");
     res.json(id?.grant.untilRevoked ? { returnUrl, authorizationKept: true } : { returnUrl });
   });
 
   return r;
+}
+
+/**
+ * Renueva la sesión «hasta revocación» (2 h más, nunca más allá de su tope) si toca (cada 15 min como mucho). Solo si la
+ * actividad queda registrada: sin rastro no hay renovación. `true` si se ha renovado.
+ */
+async function refreshSession(req: Request, res: Response, id: SupportIdentity): Promise<boolean> {
+  const g = id.grant;
+  if (!g.untilRevoked || !id.session || Date.now() - id.session.iat * 1000 < SUPPORT_SESSION_REFRESH_MS) return false;
+  const { sid, sopen, smax } = id.session;
+  if (!(await audit({ gid: g.id, tid: g.tenantId, ev: "activity", d: { session: sid } }))) return false;
+  const token = await signSupportToken(g, secretRaw!, undefined, "session", { sid, sopen, smax });
+  setSessionCookie(req, res, token, smax - Date.now());
+  return true;
 }
 
 /** Cookie de la sesión de soporte (HttpOnly, Strict; por HTTPS con prefijo __Host-). */
