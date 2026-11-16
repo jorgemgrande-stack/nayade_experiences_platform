@@ -8,7 +8,7 @@
 import { sql } from "drizzle-orm";
 import { getDb } from "./db";
 import { peekTenantContext } from "./_core/tenant";
-import { REDIRECT_LIMITS, normalizeFromPath, resolveRedirect, validateRedirect, type RedirectRule } from "../shared/redirects";
+import { REDIRECT_LIMITS, normalizeFromPath, planRenameRedirects, resolveRedirect, validateRedirect, type RedirectRule } from "../shared/redirects";
 
 export interface StoredRedirect extends RedirectRule {
   id: number;
@@ -108,6 +108,38 @@ export async function deleteRedirect(id: number, actor: { id?: number | null; na
   await run(sql`DELETE FROM site_redirects WHERE id = ${id}`);
   await log("delete", id, { fromPath: String(cur.from_path), toPath: cur.to_path, statusCode: Number(cur.status_code) }, actor);
   invalidateRedirectCache();
+}
+
+/**
+ * Una página cambia de dirección: se conserva el enlace antiguo con un 301 (y se aplanan cadenas y se retiran reglas que
+ * taparían la página). Best-effort: si algo falla (p. ej. empresa aún sin migrar) no se interrumpe el cambio de dirección.
+ */
+export async function redirectOnRename(oldPath: string, newPath: string, actor: { id?: number | null; name?: string | null }): Promise<void> {
+  try {
+    const all = await listRedirects();
+    const plan = planRenameRedirects(all, oldPath, newPath);
+    if (!plan) return;
+    for (const id of plan.remove) {
+      const cur = all.find((r) => r.id === id);
+      await run(sql`DELETE FROM site_redirects WHERE id = ${id}`);
+      if (cur) await log("delete", id, { fromPath: cur.fromPath, toPath: cur.toPath, statusCode: cur.statusCode }, actor);
+    }
+    for (const t of plan.retarget) {
+      const cur = all.find((r) => r.id === t.id);
+      await run(sql`UPDATE site_redirects SET to_path = ${t.toPath} WHERE id = ${t.id}`);
+      if (cur) await log("update", t.id, { fromPath: cur.fromPath, toPath: t.toPath, statusCode: cur.statusCode }, actor);
+    }
+    if (plan.upsert.id) {
+      await run(sql`UPDATE site_redirects SET to_path = ${plan.upsert.toPath}, status_code = 301, is_active = 1 WHERE id = ${plan.upsert.id}`);
+      await log("update", plan.upsert.id, { fromPath: plan.upsert.fromPath, toPath: plan.upsert.toPath, statusCode: 301 }, actor);
+    } else {
+      const { insertId } = await run(sql`INSERT INTO site_redirects (from_path, to_path, status_code, is_active, note, created_by) VALUES (${plan.upsert.fromPath}, ${plan.upsert.toPath}, 301, 1, ${"Cambio de dirección de la página"}, ${(actor.name ?? "").slice(0, 128) || null})`);
+      await log("create", insertId, { fromPath: plan.upsert.fromPath, toPath: plan.upsert.toPath, statusCode: 301 }, actor);
+    }
+    invalidateRedirectCache();
+  } catch (e) {
+    console.warn("[redirects] no se pudo registrar la redirección del cambio de dirección:", (e as Error).message);
+  }
 }
 
 async function activeRules(): Promise<RedirectRule[]> {

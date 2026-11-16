@@ -80,3 +80,24 @@ export function resolveRedirect(
   const to = !hasQuery && search && search !== "?" ? `${rule.toPath}${search.startsWith("?") ? search : `?${search}`}` : rule.toPath;
   return { to, status: rule.statusCode === 302 ? 302 : 301, ruleId: rule.id };
 }
+
+/**
+ * Qué hay que hacer con las reglas cuando una página cambia de dirección (`oldPath` → `newPath`):
+ *  - las reglas que ya apuntaban a `oldPath` pasan a apuntar a `newPath` (nunca cadenas);
+ *  - una regla cuyo origen es `newPath` se elimina (ahora ahí hay una página y la regla la taparía);
+ *  - se crea `oldPath` → `newPath`, salvo que ya exista una regla con ese origen (entonces se actualiza su destino).
+ */
+export function planRenameRedirects(rules: readonly RedirectRule[], oldPath: string, newPath: string): {
+  retarget: { id: number; toPath: string }[];
+  remove: number[];
+  upsert: { id?: number; fromPath: string; toPath: string };
+} | null {
+  const from = normalizeFromPath(oldPath);
+  const to = normalizeFromPath(newPath);
+  if (from === to || isProtectedPath(from)) return null;
+  const retarget = rules.filter((r) => r.id !== undefined && normalizeFromPath(r.toPath) === from && normalizeFromPath(r.fromPath) !== to).map((r) => ({ id: r.id as number, toPath: to }));
+  const remove = rules.filter((r) => r.id !== undefined && normalizeFromPath(r.fromPath) === to).map((r) => r.id as number);
+  // Reglas que apuntaban al origen y cuyo origen es justo el destino nuevo: ya van en `remove`
+  const existing = rules.find((r) => normalizeFromPath(r.fromPath) === from);
+  return { retarget, remove, upsert: { id: existing?.id, fromPath: from, toPath: to } };
+}

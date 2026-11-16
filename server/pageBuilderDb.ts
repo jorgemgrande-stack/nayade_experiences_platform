@@ -352,7 +352,7 @@ export async function createSitePage(input: { title: string; slug: string; templ
 }
 
 /** Título, dirección y textos para buscadores. Al cambiar la dirección se actualizan su contenido y su menú. */
-export async function updatePageSettings(input: { slug: string; newSlug?: string; title: string; metaTitle?: string | null; metaDescription?: string | null }) {
+export async function updatePageSettings(input: { slug: string; newSlug?: string; title: string; metaTitle?: string | null; metaDescription?: string | null }, actor: { id?: number | null; name?: string | null } = {}) {
   const page = await requirePage(input.slug);
   const title = input.title.trim();
   if (!title) throw new PageBlocksError("Indica el título de la página.");
@@ -371,6 +371,9 @@ export async function updatePageSettings(input: { slug: string; newSlug?: string
     if ((await getHomeSlug()) === input.slug) {
       await d.update(systemSettings).set({ value: target }).where(eq(systemSettings.key, HOME_PAGE_SETTING_KEY));
     }
+    // El enlace antiguo sigue funcionando (301); nunca interrumpe el cambio
+    const { redirectOnRename } = await import("./redirectsDb");
+    await redirectOnRename(`/${input.slug}`, `/${target}`, actor);
   }
   return { success: true, slug: target };
 }

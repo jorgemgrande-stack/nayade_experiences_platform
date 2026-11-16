@@ -1287,9 +1287,10 @@ export const appRouter = router({
         metaTitle: z.string().trim().max(200).optional(),
         metaDescription: z.string().trim().max(300).optional(),
       }))
-      .mutation(async ({ input }) => {
+      .mutation(async ({ input, ctx }) => {
         const { updatePageSettings } = await import("./pageBuilderDb");
-        return pageBuilderCall(() => updatePageSettings(input));
+        const u = (ctx.user ?? {}) as { id?: number; name?: string | null; email?: string | null };
+        return pageBuilderCall(() => updatePageSettings(input, { id: u.id ?? null, name: u.name ?? u.email ?? "Admin" }));
       }),
 
     duplicateSitePage: adminProcedure

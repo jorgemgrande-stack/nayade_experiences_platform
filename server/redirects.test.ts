@@ -71,3 +71,28 @@ describe("redirecciones: resolución", () => {
     expect(normalizeFromPath("Foo//Bar/")).toBe("/foo/bar");
   });
 });
+
+import { planRenameRedirects } from "../shared/redirects";
+
+describe("redirecciones al renombrar una página", () => {
+  it("crea la regla de la dirección antigua a la nueva", () => {
+    const p = planRenameRedirects([], "/quantum-healing-activation", "/reconnect");
+    expect(p).toEqual({ retarget: [], remove: [], upsert: { id: undefined, fromPath: "/quantum-healing-activation", toPath: "/reconnect" } });
+  });
+  it("aplana cadenas: lo que apuntaba a la dirección antigua apunta ya a la nueva", () => {
+    const p = planRenameRedirects([rule("/muy-antigua", "/vieja", { id: 5 })], "/vieja", "/nueva");
+    expect(p?.retarget).toEqual([{ id: 5, toPath: "/nueva" }]);
+    expect(p?.upsert.toPath).toBe("/nueva");
+  });
+  it("retira la regla que taparía la página con su nueva dirección", () => {
+    const p = planRenameRedirects([rule("/nueva", "/otra", { id: 9 })], "/vieja", "/nueva");
+    expect(p?.remove).toEqual([9]);
+  });
+  it("si ya había regla desde la dirección antigua, la actualiza en lugar de duplicarla", () => {
+    expect(planRenameRedirects([rule("/vieja", "/x", { id: 3 })], "/vieja", "/nueva")?.upsert.id).toBe(3);
+  });
+  it("no hace nada si la dirección no cambia o es una ruta protegida", () => {
+    expect(planRenameRedirects([], "/a", "/a/")).toBeNull();
+    expect(planRenameRedirects([], "/admin/x", "/y")).toBeNull();
+  });
+});

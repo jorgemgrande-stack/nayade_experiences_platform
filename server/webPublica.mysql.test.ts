@@ -144,5 +144,24 @@ describe.skipIf(!URL_)("Web pública por empresa (aplicación real, dos empresas
     // Sin sesión de administrador no se administra
     expect((await ess.m("a", "redirects.create", { fromPath: "/x", toPath: "/servicios" })).status).not.toBe(200);
   });
+
+  it("cambiar la dirección de una página conserva el enlace antiguo con un 301 y no deja cadenas", async () => {
+    expect((await ess.m("a", "cms.upsertPage", { slug: "programa-a", title: "Programa A", isPublished: true }, admA)).status).toBe(200);
+    expect((await ess.m("a", "cms.updatePageSettings", { slug: "programa-a", newSlug: "programa-b", title: "Programa A" }, admA)).status).toBe(200);
+    const old = await ess.call("a", "GET", "/programa-a");
+    expect([old.status, old.location]).toEqual([301, "/programa-b"]);
+    expect((await ess.call("a", "GET", "/programa-b")).status).toBe(200);
+    // Segundo cambio: la regla antigua se reapunta al destino final (sin cadena)
+    expect((await ess.m("a", "cms.updatePageSettings", { slug: "programa-b", newSlug: "programa-c", title: "Programa A" }, admA)).status).toBe(200);
+    (await import("./redirectsDb")).clearRedirectCache();
+    expect((await ess.call("a", "GET", "/programa-a")).location).toBe("/programa-c");
+    expect((await ess.call("a", "GET", "/programa-b")).location).toBe("/programa-c");
+    expect((await ess.call("a", "GET", "/programa-c")).status).toBe(200);
+    // Volver a una dirección antigua: la página manda sobre la regla (se retira para no taparla)
+    expect((await ess.m("a", "cms.updatePageSettings", { slug: "programa-c", newSlug: "programa-a", title: "Programa A" }, admA)).status).toBe(200);
+    (await import("./redirectsDb")).clearRedirectCache();
+    expect((await ess.call("a", "GET", "/programa-a")).status).toBe(200);
+    expect((await ess.call("a", "GET", "/programa-c")).location).toBe("/programa-a");
+  });
 });
 
