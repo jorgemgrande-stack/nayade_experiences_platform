@@ -4,7 +4,7 @@
  * cualquier compra de un producto que no sea de precio fijo, aunque llegue una petición manipulada).
  */
 
-export const OFFER_MODES = ["fixed", "on_request", "coming_soon"] as const;
+export const OFFER_MODES = ["fixed", "on_request", "coming_soon", "priced_request"] as const;
 export type OfferMode = (typeof OFFER_MODES)[number];
 
 /** Nombre de cada modo en el panel (lenguaje llano). */
@@ -12,6 +12,7 @@ export const OFFER_MODE_LABELS: Record<OfferMode, string> = {
   fixed: "Precio fijo",
   on_request: "Bajo petición",
   coming_soon: "Próximamente",
+  priced_request: "Precio visible, solo por solicitud",
 };
 
 /** Ayuda breve de cada modo bajo el selector del formulario de producto. */
@@ -19,12 +20,14 @@ export const OFFER_MODE_HELP: Record<OfferMode, string> = {
   fixed: "Se vende en tu web con su precio, como hasta ahora.",
   on_request: "En tu web no se muestra el precio ni se puede comprar: la persona te pide información y la solicitud llega a tu CRM.",
   coming_soon: "Se anuncia en tu web como «Próximamente», sin precio ni compra. Quien se interese te deja sus datos y llega a tu CRM.",
+  priced_request: "La web muestra el precio y las opciones, pero no se puede comprar online: la persona solicita plaza o información y la solicitud llega a tu CRM. Ideal para concretar antes de cobrar.",
 };
 
 /** Etiqueta pública (insignia) de los modos que no son de precio fijo. */
 export const OFFER_MODE_PUBLIC_LABELS: Record<Exclude<OfferMode, "fixed">, string> = {
   on_request: "Bajo petición",
   coming_soon: "Próximamente",
+  priced_request: "Por solicitud",
 };
 
 export const DEFAULT_REQUEST_CTA = "Solicitar información";
@@ -33,10 +36,16 @@ export const MAX_REQUEST_CTA_LENGTH = 80;
 /** Valor desconocido o ausente (producto anterior a E-6) = precio fijo. */
 export function offerModeOf(p: { offerMode?: unknown } | null | undefined): OfferMode {
   const v = p?.offerMode;
-  return v === "on_request" || v === "coming_soon" ? v : "fixed";
+  return v === "on_request" || v === "coming_soon" || v === "priced_request" ? v : "fixed";
 }
 
 export const isFixedOffer = (p: { offerMode?: unknown } | null | undefined): boolean => offerModeOf(p) === "fixed";
+
+/** ¿La web muestra el precio? Con precio fijo y con «precio visible, solo por solicitud». */
+export const showsPrice = (p: { offerMode?: unknown } | null | undefined): boolean => {
+  const m = offerModeOf(p);
+  return m === "fixed" || m === "priced_request";
+};
 
 /** Insignia pública («Bajo petición», «Próximamente») o null si es de precio fijo. Nunca «Agotado». */
 export function publicOfferBadge(p: { offerMode?: unknown } | null | undefined): string | null {

@@ -157,7 +157,7 @@ export function validateProductForm(f: ProductFormInput, labels: { location: str
   if (!f.title.trim()) out.title = "Indica el nombre.";
   else if (f.title.trim().length < 3) out.title = "El nombre debe tener al menos 3 caracteres.";
   const price = num(f.basePrice);
-  const priced = !f.offerMode || f.offerMode === "fixed";
+  const priced = !f.offerMode || f.offerMode === "fixed" || f.offerMode === "priced_request";
   if (priced) {
     if (price === null) out.basePrice = "Indica el precio.";
     else if (!Number.isFinite(price) || price < 0) out.basePrice = "El precio debe ser un número igual o mayor que 0.";

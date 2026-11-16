@@ -332,7 +332,7 @@ export default function ExperiencesManager() {
       image3: form.image3 || undefined,
       image4: form.image4 || undefined,
       // E-6: sin precio fijo no se manda precio (el servidor guarda 0)
-      basePrice: form.offerMode === "fixed" ? form.basePrice : "",
+      basePrice: form.offerMode === "fixed" || form.offerMode === "priced_request" ? form.basePrice : "",
       offerMode: form.offerMode,
       requestCtaLabel: form.offerMode === "fixed" ? "" : form.requestCtaLabel.trim(),
       duration: form.duration || undefined,
@@ -640,11 +640,17 @@ export default function ExperiencesManager() {
                 </Select>
                 <p id="offerMode-hint" className="text-xs text-muted-foreground mt-1">{OFFER_MODE_HELP[form.offerMode]}</p>
               </div>
-              {form.offerMode === "fixed" ? (
+              {form.offerMode === "fixed" || form.offerMode === "priced_request" ? (
                 <div>
                   <Label htmlFor="basePrice">{isNewCompany ? "Precio (€, impuestos incluidos)" : "Precio Base (€)"} *</Label>
                   <Input id="basePrice" type="number" inputMode="decimal" min="0" step="0.01" value={form.basePrice} onChange={(e) => setForm({ ...form, basePrice: e.target.value })} aria-required="true" className="mt-1" {...errProps("basePrice", "basePrice")} />
                   <ErrorText k="basePrice" id="basePrice" />
+                  {form.offerMode === "priced_request" && (
+                    <div className="mt-3">
+                      <Label htmlFor="requestCtaLabel">Texto del botón de la web</Label>
+                      <Input id="requestCtaLabel" value={form.requestCtaLabel} maxLength={MAX_REQUEST_CTA_LENGTH} onChange={(e) => setForm({ ...form, requestCtaLabel: e.target.value })} className="mt-1" placeholder={DEFAULT_REQUEST_CTA} />
+                    </div>
+                  )}
                 </div>
               ) : (
                 <div>

@@ -19,7 +19,7 @@ import { cn } from "@/lib/utils";
 import { isPurchasable } from "@shared/shopOrders";
 import { ProductRequestDialog } from "@/components/site/ProductRequestForm";
 import { ProductEditionsSection } from "@/components/site/Editions";
-import { OFFER_MODE_PUBLIC_LABELS, offerModeOf, requestCtaLabel } from "@shared/offerMode";
+import { OFFER_MODE_PUBLIC_LABELS, offerModeOf, requestCtaLabel, showsPrice } from "@shared/offerMode";
 import {
   buildGenericCartLine,
   clampQuantity,
@@ -93,7 +93,9 @@ export default function ProductDetail() {
   // E-6: «bajo petición» y «próximamente» no enseñan precio ni se compran: solo se pide información
   const offer = offerModeOf(product);
   const onRequest = offer !== "fixed";
-  const hasPrice = !onRequest && Number.isFinite(basePrice) && basePrice > 0;
+  const hasPrice = showsPrice(product) && Number.isFinite(basePrice) && basePrice > 0;
+  // Con «precio visible, solo por solicitud» se enseña el precio y las opciones, pero no hay compra
+  const buyable = hasPrice && !onRequest;
   const variant = variants.find((v) => v.id === variantId);
   const unit = variantUnitPrice(basePrice, variant);
   const shownPrice = variant || !variants.length ? unit : fromPrice(basePrice, variants);
@@ -106,7 +108,7 @@ export default function ProductDetail() {
   const requirements = str(product.requirements);
 
   // Publicado pero no a la venta: se enseña como agotado y no se puede añadir (el pago también lo rechaza)
-  const soldOut = !onRequest && !isPurchasable(product);
+  const soldOut = buyable && !isPurchasable(product);
 
   const add = () => {
     if (soldOut) return;
@@ -180,7 +182,7 @@ export default function ProductDetail() {
                     {variants.length > 0 && !variant && <span className="text-base font-medium text-muted-foreground mr-1">Desde</span>}{variants.length > 0 && !variant && " "}
                     {formatEuros(shownPrice)}
                   </p>
-                  <p className="text-xs text-muted-foreground mt-1">IVA incluido</p>
+                  {buyable && <p className="text-xs text-muted-foreground mt-1">IVA incluido</p>}
                 </div>
               ) : null}
 
@@ -213,11 +215,11 @@ export default function ProductDetail() {
                       );
                     })}
                   </div>
-                  {variants.some((v) => v.isRequired) && !variant && <p className="text-xs text-muted-foreground mt-1.5">Elige una opción para continuar</p>}
+                  {buyable && variants.some((v) => v.isRequired) && !variant && <p className="text-xs text-muted-foreground mt-1.5">Elige una opción para continuar</p>}
                 </fieldset>
               )}
 
-              {hasPrice && (
+              {buyable && (
                 <div>
                   <label htmlFor="cantidad" className="text-sm font-medium text-foreground mb-2 block">Cantidad</label>
                   <div className="flex items-center gap-3">
@@ -241,14 +243,14 @@ export default function ProductDetail() {
                 </div>
               )}
 
-              {hasPrice && dated && (
+              {buyable && dated && (
                 <div>
                   <label htmlFor="fecha" className="text-sm font-medium text-foreground mb-2 block">Fecha del servicio</label>
                   <input id="fecha" type="date" value={date} min={todayIso()} onChange={(e) => setDate(e.target.value)} className="w-full border border-border rounded-lg px-3 py-2 text-sm bg-background" />
                 </div>
               )}
 
-              {hasPrice ? (
+              {buyable ? (
                 <>
                   {(variant || !variants.some((v) => v.isRequired)) && (
                     <div className="flex items-center justify-between rounded-xl bg-muted/50 px-4 py-3 font-semibold">

@@ -18,7 +18,7 @@ import { getSessionCookieOptions } from "./_core/cookies";
 import { systemRouter } from "./_core/systemRouter";
 import { shopOrderProcedures } from "./routers/shopOrders";
 import { editionsRouter } from "./routers/editions";
-import { OFFER_MODES, MAX_REQUEST_CTA_LENGTH, offerModeOf, notForSaleMessage } from "../shared/offerMode";
+import { OFFER_MODES, MAX_REQUEST_CTA_LENGTH, offerModeOf, showsPrice, notForSaleMessage } from "../shared/offerMode";
 import { publicProcedure, protectedProcedure, staffProcedure, router, permissionProcedure } from "./_core/trpc";
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
@@ -1522,7 +1522,7 @@ export const appRouter = router({
         }
         if (processedData.discountPercent === "") processedData.discountPercent = null;
         // E-6: sin precio fijo no hay precio ni descuento; con precio fijo, el precio sigue siendo obligatorio
-        if (input.offerMode === "fixed") {
+        if (input.offerMode === "fixed" || input.offerMode === "priced_request") {
           if (!input.basePrice.trim() || !Number.isFinite(Number(input.basePrice.replace(",", ".")))) throw new TRPCError({ code: "BAD_REQUEST", message: "Indica el precio." });
         } else {
           processedData.basePrice = "0";
@@ -1621,7 +1621,14 @@ export const appRouter = router({
           const cur = await currentById(id);
           if (!cur) throw new TRPCError({ code: "NOT_FOUND", message: "Producto no encontrado" });
           const mode = input.offerMode ?? offerModeOf(cur);
-          if (mode !== "fixed") {
+          if (mode === "priced_request") {
+            processedData.discountPercent = null;
+            processedData.discountExpiresAt = null;
+            if (input.offerMode === "priced_request" && !showsPrice(cur)) {
+              const typed = Number(String(processedData.basePrice ?? "").replace(",", "."));
+              if (!(typed > 0)) throw new TRPCError({ code: "BAD_REQUEST", message: "Indica el precio que se mostrará." });
+            }
+          } else if (mode !== "fixed") {
             processedData.basePrice = "0";
             processedData.discountPercent = null;
             processedData.discountExpiresAt = null;
