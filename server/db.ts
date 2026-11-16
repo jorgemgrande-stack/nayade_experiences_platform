@@ -237,6 +237,12 @@ type CreateLeadInput = {
   selectedCategory?: string;
   selectedProduct?: string;
   ghlContactId?: string;
+  /** Solicitud de producto: idioma, modalidad y precio mostrado; isTest solo lo pone el modo de pruebas de un administrador */
+  requestLang?: string;
+  variantId?: number;
+  variantLabel?: string;
+  shownPrice?: string;
+  isTest?: boolean;
   activitiesJson?: {
     experienceId: number;
     experienceTitle: string;
@@ -286,6 +292,11 @@ export async function createLead(data: CreateLeadInput): Promise<number | { id: 
     selectedProduct: data.selectedProduct ?? null,
     ghlContactId: data.ghlContactId ?? null,
     activitiesJson: data.activitiesJson ?? null,
+    requestLang: data.requestLang ?? null,
+    variantId: data.variantId ?? null,
+    variantLabel: data.variantLabel ?? null,
+    shownPrice: data.shownPrice ?? null,
+    isTest: data.isTest === true,
   });
   const leadId = Number(result[0].insertId);
 
@@ -337,6 +348,8 @@ export async function createLead(data: CreateLeadInput): Promise<number | { id: 
   const ghlSource = data.source ?? "web";
   // Excluir orígenes que ya sincronizan con GHL por su cuenta para evitar duplicados
   if (ghlSource === "ghl_webhook" || ghlSource === "vapi_llamada") return leadId;
+  // Modo de pruebas: ninguna salida externa (GoHighLevel incluido)
+  if (data.isTest === true) return { id: leadId, success: true };
   (async () => {
     const db = await getDb();
     let ghlApiKey = integrationEnv("GHL_API_KEY");

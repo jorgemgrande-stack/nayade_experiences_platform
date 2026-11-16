@@ -270,6 +270,12 @@ export const leads = mysqlTable("leads", {
   }[]>(),
   numberOfAdults: int("numberOfAdults"),
   numberOfChildren: int("numberOfChildren"),
+  // Solicitud de producto (0073): lo que la persona vio y eligió, y marca de prueba
+  requestLang: varchar("request_lang", { length: 5 }),
+  variantId: int("variant_id"),
+  variantLabel: varchar("variant_label", { length: 128 }),
+  shownPrice: decimal("shown_price", { precision: 10, scale: 2 }),
+  isTest: boolean("is_test").default(false).notNull(),
   cartMetadata: json("cart_metadata").$type<{
     merchantOrder: string;
     items: { productId: number; productName: string; people: number; amountCents: number; bookingDate: string }[];

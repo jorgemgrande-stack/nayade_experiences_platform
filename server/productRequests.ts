@@ -17,6 +17,7 @@ import { clients, experiences, leads } from "../drizzle/schema";
 import { getDb, createLead, getVariantsByExperience } from "./db";
 import { canRequestSeat, EDITION_LIMITS, formatEditionDates, type EnrollmentStatus } from "../shared/editions";
 import { cleanText, offerModeOf, showsPrice } from "../shared/offerMode";
+import { sendsExternalNotices } from "../shared/testMode";
 import { formConsentText, FORM_MIN_FILL_MS, FORM_RATE } from "./_core/studioForms";
 import { ipFingerprint, keyedLock } from "./_core/studioFormsSubmit";
 import { getRequestableEdition } from "./editionsDb";
@@ -77,6 +78,8 @@ export interface ProductRequestContext {
   tenantId: string;
   ipSecret: string;
   now?: () => number;
+  /** Modo de pruebas (solo lo fija un procedimiento de administrador, nunca el cuerpo público): sin avisos ni integraciones externas */
+  testMode?: boolean;
   /** Aviso al propietario (nunca lanza ni retrasa la respuesta) */
   notifyOwner?: (n: { leadId: number; duplicate: boolean; formTitle: string; page: string; name: string; email: string; phone?: string; message: string }) => Promise<void>;
 }
@@ -173,6 +176,11 @@ export async function processProductRequest(input: ProductRequestInput, ctx: Pro
       preferredDate: edition ? new Date(edition.edition.startsAt).toISOString() : undefined,
       source: edition ? "web_solicitud_plaza" : "web_solicitud_producto",
       leadSourceCode: "HOME_FORM",
+      requestLang: lang || undefined,
+      variantId: chosen?.id,
+      variantLabel: chosen?.name.slice(0, 128),
+      shownPrice: chosen ? chosenPrice.toFixed(2) : showsPrice(product) && baseNum > 0 ? baseNum.toFixed(2) : undefined,
+      isTest: ctx.testMode === true,
     });
     let status: EnrollmentStatus | null = null;
     if (edition) {
@@ -183,7 +191,7 @@ export async function processProductRequest(input: ProductRequestInput, ctx: Pro
         VALUES (${edition.edition.id}, ${client?.id ?? null}, ${lead.id}, ${name}, ${email}, ${phone || null}, ${seats}, ${status}, ${message ? message.slice(0, 2000) : null}, 1, ${consent.text}, ${consent.version}, ${now},
           ${ipFingerprint(ctx.ip, ctx.tenantId, ctx.ipSecret)}, ${page || null}, ${now}, ${now})`);
     }
-    if (ctx.notifyOwner) {
+    if (ctx.notifyOwner && sendsExternalNotices(ctx)) {
       void ctx.notifyOwner({ leadId: lead.id, duplicate: false, formTitle: edition ? `Solicitud de plaza: ${product.title}` : `Solicitud de información: ${product.title}`, page: page || `/tienda`, name, email, phone: phone || undefined, message: body }).catch(() => {});
     }
     return {
