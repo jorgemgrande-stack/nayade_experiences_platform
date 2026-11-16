@@ -26,7 +26,7 @@ describe.skipIf(!URL_)("Oferta bajo petición y próximamente (aplicación real)
   let ess: EssentialApp;
   let admA = "";
   let admB = "";
-  const ids = { fijo: 0, petición: 0, pronto: 0 };
+  const ids = { fijo: 0, petición: 0, pronto: 0, precio: 0 };
   let cat = 0;
   let loc = 0;
   const rpi = (co: "a" | "b", p: Record<string, any>) => ess.m(co, "public.submitLead", toLead(p));
@@ -191,6 +191,48 @@ describe.skipIf(!URL_)("Oferta bajo petición y próximamente (aplicación real)
     expect(msg(sixth)).toContain("Espera unos minutos");
     expect((await ess.sql("a", "SELECT COUNT(*) AS n FROM leads WHERE email LIKE 'limite%'"))[0].n).toBe(5);
     resetProductRequestLimits();
+  });
+
+
+  it("precio visible, solo por solicitud: se enseña el precio y las opciones, el servidor rechaza comprar POR SU MODO (con Redsys configurado) y la solicitud recoge precio, modalidad e idioma", async () => {
+    expect((await mk("a", "curso-precio", "Curso con precio", { offerMode: "priced_request", basePrice: "555", requestCtaLabel: "Platz anfragen" })).status).toBe(200);
+    const [row] = await ess.sql("a", "SELECT id, offer_mode AS mode, basePrice, request_cta_label AS cta FROM experiences WHERE slug = 'curso-precio'");
+    ids.precio = row.id;
+    expect([row.mode, Number(row.basePrice), row.cta]).toEqual(["priced_request", 555, "Platz anfragen"]);
+    // Dos modalidades: una vigente y otra caducada ayer (hora de Madrid)
+    const yesterday = new Date(Date.now() - 36 * 3600_000).toISOString().slice(0, 10);
+    const future = new Date(Date.now() + 10 * 24 * 3600_000).toISOString().slice(0, 10);
+    expect((await ess.m("a", "products.createVariant", { experienceId: ids.precio, name: "ONLINE", priceModifier: "555.00", priceType: "fixed" }, admA)).status).toBe(200);
+    expect((await ess.m("a", "products.createVariant", { experienceId: ids.precio, name: "ONLINE · promo", priceModifier: "333.00", priceType: "fixed", validUntil: yesterday }, admA)).status).toBe(200);
+    expect((await ess.m("a", "products.createVariant", { experienceId: ids.precio, name: "INTENSIV", priceModifier: "777.00", priceType: "fixed", validUntil: future }, admA)).status).toBe(200);
+    // La web enseña el precio y las opciones vigentes (no la caducada); el administrador las ve todas
+    expect(data(await ess.q("a", "public.getExperienceBySlug", { slug: "curso-precio" }))).toMatchObject({ offerMode: "priced_request", requestCtaLabel: "Platz anfragen" });
+    expect((data(await ess.q("a", "public.getVariantsByExperience", { experienceId: ids.precio })) as any[]).map((v) => v.name).sort()).toEqual(["INTENSIV", "ONLINE"]);
+    expect((data(await ess.q("a", "products.getVariants", { experienceId: ids.precio }, admA)) as any[]).length).toBe(3);
+    // Compra directa: rechazada por el MODO del producto (hay pasarela Redsys de prueba configurada en esta empresa)
+    const buyer = { customerName: "Lucía Prueba", customerEmail: "lucia@comprador-a.example", origin: origin() };
+    const cart = await ess.m("a", "reservations.cartCheckout", { ...buyer, items: [{ productId: ids.precio, bookingDate: "", people: 1 }] });
+    expect(errCode(cart)).toBe("BAD_REQUEST");
+    expect(msg(cart)).toContain("solo por solicitud");
+    expect(msg(cart)).not.toMatch(/no está configurado/);
+    const direct = await ess.m("a", "reservations.createAndPay", { ...buyer, productId: ids.precio, bookingDate: "", people: 1 });
+    expect(errCode(direct)).toBe("BAD_REQUEST");
+    expect(msg(direct)).toContain("solo por solicitud");
+    expect((await ess.sql("a", "SELECT COUNT(*) AS n FROM reservations"))[0].n).toBe(0);
+    // La solicitud sí entra en el CRM, con el precio mostrado, la modalidad elegida y el idioma
+    const varId = ((await ess.sql("a", "SELECT id FROM experience_variants WHERE experienceId = ? AND name = 'INTENSIV'", [ids.precio]))[0] as any).id;
+    const caducada = ((await ess.sql("a", "SELECT id FROM experience_variants WHERE experienceId = ? AND name = 'ONLINE · promo'", [ids.precio]))[0] as any).id;
+    const r = await rpi("a", { experienceId: ids.precio, name: "Persona Precio", email: "precio@interesada.example", consent: true, variantId: varId, lang: "de" });
+    expect(r.status).toBe(200);
+    const [lead] = await ess.sql("a", "SELECT message FROM leads WHERE id = ?", [data(r).leadId]);
+    expect(lead.message).toContain("precio visible, solo por solicitud");
+    expect(lead.message).toContain("Modalidad elegida: INTENSIV · precio publicado: 777,00 €");
+    expect(lead.message).toContain("Idioma de la web: de");
+    // Una modalidad caducada no se puede citar en una solicitud: se ignora y consta el precio del producto
+    const r2 = await rpi("a", { experienceId: ids.precio, name: "Otra Persona", email: "otra@interesada.example", consent: true, variantId: caducada, lang: "es" });
+    const [lead2] = await ess.sql("a", "SELECT message FROM leads WHERE id = ?", [data(r2).leadId]);
+    expect(lead2.message).not.toContain("333");
+    expect(lead2.message).toContain("Precio publicado (producto): 555,00 €");
   });
 
   it("aislamiento: la solicitud solo existe en la empresa del producto y la otra no ve nada", async () => {
