@@ -61,6 +61,7 @@ export function requestCtaLabel(p: { requestCtaLabel?: unknown } | null | undefi
 
 /** Aviso del servidor cuando alguien intenta comprar un producto que no se vende online. */
 export function notForSaleMessage(title: string, mode: OfferMode): string {
+  if (mode === "priced_request") return `«${title}» se ofrece solo por solicitud (el precio es informativo) y no se puede comprar online. Quítalo del carrito y solicítalo.`;
   return mode === "coming_soon"
     ? `«${title}» todavía no está a la venta (próximamente). Quítalo del carrito y solicita información.`
     : `«${title}» se ofrece bajo petición y no se puede comprar online. Quítalo del carrito y solicita información.`;
