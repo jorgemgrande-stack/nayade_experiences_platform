@@ -76,3 +76,13 @@ describe("cabecera y pie: tema público", () => {
     expect(theme({ site_footer_style: "neon" }).footer.style).toBe("dark");
   });
 });
+
+describe("acabado de la web", () => {
+  it("por defecto es el de serie; solo acepta valores de la lista", () => {
+    expect(theme({}).finish).toBe("standard");
+    expect(theme({ site_finish: "editorial" }).finish).toBe("editorial");
+    expect(theme({ site_finish: "raro" }).finish).toBe("standard");
+    expect(cleanThemeValues({ site_finish: "editorial" })).toEqual({ site_finish: "editorial" });
+    expect(() => cleanThemeValues({ site_finish: "raro" })).toThrow(ThemeValueError);
+  });
+});
