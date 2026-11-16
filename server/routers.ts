@@ -602,6 +602,8 @@ export const appRouter = router({
           website: z.string().max(500).optional(),
           elapsedMs: z.number().int().min(0).optional(),
           page: z.string().max(200).optional(),
+          variantId: z.number().int().positive().optional(),
+          lang: z.string().max(5).optional(),
         }).optional(),
         studioForm: z.object({
           slug: z.string().regex(/^[a-z0-9-]{1,64}$/),
@@ -1814,7 +1816,7 @@ export const appRouter = router({
         priceType: z.enum(["fixed", "percentage", "per_person"]),
         isRequired: z.boolean().default(false),
         sortOrder: z.number().default(0),
-        validUntil: z.string().regex(/^d{4}-d{2}-d{2}$/).nullable().optional(),
+        validUntil: z.string().regex(/^[0-9]{4}-[0-9]{2}-[0-9]{2}$/).nullable().optional(),
       }))
       .mutation(async ({ input }) => {
         return createVariant(input);
@@ -1829,7 +1831,7 @@ export const appRouter = router({
         priceType: z.enum(["fixed", "percentage", "per_person"]).optional(),
         isRequired: z.boolean().optional(),
         sortOrder: z.number().optional(),
-        validUntil: z.string().regex(/^d{4}-d{2}-d{2}$/).nullable().optional(),
+        validUntil: z.string().regex(/^[0-9]{4}-[0-9]{2}-[0-9]{2}$/).nullable().optional(),
       }))
       .mutation(async ({ input }) => {
         const { id, ...data } = input;
