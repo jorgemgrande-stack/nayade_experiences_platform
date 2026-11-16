@@ -1073,6 +1073,12 @@ export const appRouter = router({
       return getI18nConfig(sqlI18nRepo());
     }),
 
+    /** Plan (solo lectura) del cambio de idioma principal: qué se intercambiaría y qué lo impide. No cambia nada. */
+    i18nPlanDefaultLocale: adminProcedure.input(z.object({ locale: z.string().max(35) })).query(async ({ input }) => {
+      const { planDefaultLocale } = await import("./i18nDefaultPlanServer");
+      return i18nCall((repo) => planDefaultLocale(repo, input.locale));
+    }),
+
     i18nAddLocale: adminProcedure.input(z.object({ locale: z.string().max(35) })).mutation(async ({ input, ctx }) => {
       const { addLocale } = await import("./i18nService");
       return i18nCall((repo) => addLocale(repo, input.locale, ctx.user?.name ?? ctx.user?.email ?? null));
