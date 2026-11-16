@@ -183,6 +183,13 @@ export function serveStatic(app: Express, opts: { distPath?: string; routeDeps?:
     // Metadatos de la empresa (sus ajustes) en cualquier modo
     {
       const multi = isMultiTenant();
+      // Redirecciones permanentes de la empresa (admin → Redirecciones): antes de resolver la ruta, solo GET/HEAD. Nunca rompe la web.
+      if (req.method === "GET" || req.method === "HEAD") {
+        const search = req.originalUrl.includes("?") ? req.originalUrl.slice(req.originalUrl.indexOf("?")) : "";
+        const { resolveTenantRedirect } = await import("../redirectsDb");
+        const rd = await resolveTenantRedirect(pathname, search);
+        if (rd) return res.redirect(rd.status, rd.to);
+      }
       // 404 real para lo que no existe en la web de la empresa (el cliente muestra su «no encontrada»)
       const deps = (opts.routeDeps ?? defaultPublicRouteDeps)(multi);
       // Multidioma (E-1): solo si la empresa tiene idiomas adicionales; si no, `null` y todo sigue exactamente igual

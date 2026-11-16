@@ -105,4 +105,44 @@ describe.skipIf(!URL_)("Web pública por empresa (aplicación real, dos empresas
     expect(a2).not.toContain("/experiencias");
     expect((await ess.call("b", "GET", "/sitemap.xml")).text).not.toMatch(/\/experiencias|\/tienda/);
   });
+
+  it("redirecciones 301: administrables por empresa, auditadas, sin bucles ni destinos externos y aisladas entre empresas", async () => {
+    const dbA = (p: string, input: any) => ess.m("a", p, input, admA);
+    // Alta correcta (la ruta antigua no existe en la web)
+    const ok = await dbA("redirects.create", { fromPath: "/Programa-Antiguo/", toPath: "/servicios" });
+    expect(ok.status).toBe(200);
+    const id = ok.json.result.data.json.id;
+    // 301 con la ruta nueva; se conserva la consulta; HEAD también; mayúsculas y barra final no importan
+    const r = await ess.call("a", "GET", "/programa-antiguo?utm=x");
+    expect([r.status, r.location]).toEqual([301, "/servicios?utm=x"]);
+    expect((await ess.call("a", "GET", "/PROGRAMA-ANTIGUO/")).status).toBe(301);
+    // Aislamiento: la empresa B no ve la regla de A (su 404 de siempre)
+    expect((await ess.call("b", "GET", "/programa-antiguo")).status).toBe(404);
+    // Rechazos: externo, protegido, ruta que ya existe, duplicado, bucle y cadena
+    for (const bad of [
+      { fromPath: "/otro", toPath: "https://otra.web/x" },
+      { fromPath: "/otro", toPath: "//otra.web/x" },
+      { fromPath: "/admin/cms", toPath: "/servicios" },
+      { fromPath: "/", toPath: "/servicios" },
+      { fromPath: "/servicios", toPath: "/otra" },
+      { fromPath: "/programa-antiguo", toPath: "/otra" },
+      { fromPath: "/servicios", toPath: "/programa-antiguo" },
+      { fromPath: "/nuevo-origen", toPath: "/programa-antiguo" },
+    ]) {
+      const x = await dbA("redirects.create", bad);
+      expect(x.status, JSON.stringify(bad)).toBe(400);
+    }
+    // Apagada: no redirige
+    expect((await dbA("redirects.update", { id, fromPath: "/programa-antiguo", toPath: "/servicios", statusCode: 301, isActive: false })).status).toBe(200);
+    (await import("./redirectsDb")).clearRedirectCache();
+    expect((await ess.call("a", "GET", "/programa-antiguo")).status).toBe(404);
+    // Baja y auditoría: quedan alta, cambio y baja con autor
+    expect((await dbA("redirects.delete", { id })).status).toBe(200);
+    const log = (await ess.q("a", "redirects.log", { limit: 10 }, admA)).json.result.data.json as any[];
+    expect(log.map((l) => l.action).sort()).toEqual(["create", "delete", "update"]);
+    expect(log.every((l) => l.actorName)).toBe(true);
+    // Sin sesión de administrador no se administra
+    expect((await ess.m("a", "redirects.create", { fromPath: "/x", toPath: "/servicios" })).status).not.toBe(200);
+  });
 });
+

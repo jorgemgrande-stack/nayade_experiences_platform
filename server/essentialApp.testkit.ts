@@ -28,6 +28,8 @@ export interface Res {
   json: any;
   text: string;
   cookie?: string;
+  /** Cabecera Location de una redirección */
+  location?: string;
 }
 
 /** Correo capturado por el proveedor falso (cuerpo de la API de envío). */
@@ -245,7 +247,7 @@ export async function startEssentialApp(url: string, label: string, opts: { webD
             } catch {
               /* texto */
             }
-            resolve({ status: res.statusCode ?? 0, json, text: b, cookie: res.headers["set-cookie"]?.[0]?.split(";")[0] });
+            resolve({ status: res.statusCode ?? 0, json, text: b, cookie: res.headers["set-cookie"]?.[0]?.split(";")[0], location: res.headers.location });
           });
         },
       );

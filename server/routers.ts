@@ -260,6 +260,7 @@ import { voiceSetupRouter } from "./routers/voiceSetup";
 import { emailAccountsRouter } from "./routers/emailAccounts";
 import { emailInboxRouter } from "./routers/emailInbox";
 import { emailCommunicationsRouter } from "./routers/emailCommunications";
+import { redirectsRouter } from "./routers/redirects";
 import { partnersRouter } from "./routers/partners";
 import { publicExpensesRouter } from "./routers/publicExpenses";
 import { fiscalAuditRouter } from "./routers/fiscalAuditRouter";
@@ -2981,6 +2982,7 @@ export const appRouter = router({
   emailAccounts: emailAccountsRouter,
   emailInbox: emailInboxRouter,
   emailCommunications: emailCommunicationsRouter,
+  redirects: redirectsRouter,
   suppliers: suppliersRouter,
   supplierPortal: supplierPortalRouter,
   timeSlots: timeSlotsRouter,

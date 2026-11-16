@@ -69,6 +69,7 @@ const MenusManager = lazy(() => import("./pages/admin/cms/MenusManager"));
 const PagesManager = lazy(() => import("./pages/admin/cms/PagesManager"));
 const PagePreview = lazy(() => import("./pages/admin/cms/PagePreview"));
 const IdiomasPage = lazy(() => import("./pages/admin/cms/Idiomas"));
+const RedireccionesPage = lazy(() => import("./pages/admin/cms/Redirecciones"));
 const TraducirPagina = lazy(() => import("./pages/admin/cms/TraducirPagina"));
 const StudioPage = lazy(() => import("./pages/admin/studio/StudioPage"));
 const StudioCanvas = lazy(() => import("./pages/admin/studio/StudioCanvas"));
@@ -393,6 +394,7 @@ function Router() {
       <Route path="/admin/cms/menus">{() => <Suspense fallback={<AdminLoadingFallback />}><MenusManager /></Suspense>}</Route>
       <Route path="/admin/cms/paginas/vista-previa/:slug">{(p) => <Suspense fallback={<AdminLoadingFallback />}><PagePreview slug={p.slug} /></Suspense>}</Route>
       <Route path="/admin/cms/idiomas/:slug/:locale">{(p) => <Suspense fallback={<AdminLoadingFallback />}><TraducirPagina slug={p.slug} locale={p.locale} /></Suspense>}</Route>
+      <Route path="/admin/cms/redirecciones">{() => <Suspense fallback={<AdminLoadingFallback />}><RedireccionesPage /></Suspense>}</Route>
       <Route path="/admin/cms/idiomas">{() => <Suspense fallback={<AdminLoadingFallback />}><IdiomasPage /></Suspense>}</Route>
       <Route path="/admin/cms/paginas">{() => <Suspense fallback={<AdminLoadingFallback />}><PagesManager /></Suspense>}</Route>
       {/* Elephant Studio y su lienzo (se carga dentro del marco del editor) */}
