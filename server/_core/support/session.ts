@@ -2,8 +2,15 @@
  * Sesión de soporte en el Core.
  *
  *  - `/_support/enter?t=<token>` canjea el token de ENTRADA (tipo propio, 120 s, un solo uso por réplica) por una
- *    cookie de SESIÓN distinta (otro tipo, hasta el fin de la concesión), HttpOnly/SameSite=Strict, ligada al tenant del host.
+ *    cookie de SESIÓN distinta (otro tipo), HttpOnly/SameSite=Strict, ligada al tenant del host.
  *    Un enlace filtrado (historial, registros de un proxy) ya no abre nada pasados 2 minutos o tras usarse.
+ *  - AUTORIZACIÓN y SESIÓN son cosas distintas. Con duración limitada la sesión dura lo que la concesión (≤ 4 h). Con
+ *    «hasta revocación» la autorización no caduca, pero cada sesión sí, con los controles de las sesiones de operador
+ *    del CRM: 2 h sin actividad y 12 h como máximo (la cookie se renueva sola con la actividad, nunca más allá de las
+ *    12 h). Solo cuenta la actividad real: modificaciones y el aviso del panel al pulsar o escribir (/_support/heartbeat);
+ *    las consultas periódicas no. Pasado eso se abre otra desde el CRM, con el operador autenticado allí y la autorización vigente
+ *    (`support.session_renewed`). Cada sesión lleva su identificador (`sid`): «Finalizar sesión» la cierra en el
+ *    servidor (`support.exited`) sin revocar la autorización; revocar la autorización invalida todas sus sesiones.
  *  - Cada petición con la cookie revalida: firma, caducidad, tenant resuelto == `tid`,
  *    concesión vigente y no revocada (lectura del registro).
  *  - Solo lectura por defecto: métodos que modifican se rechazan en el borde.
@@ -39,6 +46,14 @@ let audit: SupportAuditSender = async () => false;
 let returnUrl = "https://admin.bigelephant.es/";
 const SAFE = new Set(["GET", "HEAD", "OPTIONS"]);
 
+/** Sesiones de una autorización «hasta revocación»: como las de operador del CRM (operatorAuth: 2 h / 12 h). */
+export const SUPPORT_SESSION_IDLE_MS = 2 * 3600_000;
+export const SUPPORT_SESSION_MAX_MS = 12 * 3600_000;
+/** Cada cuánto, con actividad real, se renueva la cookie y se anota la actividad (`support.activity`). */
+export const SUPPORT_SESSION_REFRESH_MS = 15 * 60_000;
+/** Cuánto se fía cada réplica de «la sesión no consta cerrada» antes de volver a leerlo. */
+const ENDED_CACHE_MS = 15_000;
+
 export function configureSupport(
   r: SupportGrantReader | null,
   secret: string | undefined = process.env.SUPPORT_JWT_SECRET,
@@ -72,14 +87,32 @@ const TYP_ENTRY = "es_support_entry";
 const TYP_SESSION = "es_support_session";
 type SupportTokenKind = "entry" | "session";
 
+/** Sesión concreta dentro de la concesión: identificador, apertura y tope absoluto (ms). */
+export interface SupportSessionClaims {
+  sid: string;
+  sopen: number;
+  smax: number;
+}
+
 /**
- * Token de soporte. `entry` (por defecto): el enlace de entrada, 120 s y de un solo uso. `session`: la cookie, hasta el
- * fin de la concesión. Tipos propios: ni se confunden entre sí ni con los eventos de auditoría (mismo secreto).
+ * Token de soporte. `entry` (por defecto): el enlace de entrada, 120 s y de un solo uso. `session`: la cookie; con
+ * duración limitada, hasta el fin de la concesión; con «hasta revocación», 2 h renovables hasta el tope de la sesión.
+ * Tipos propios: ni se confunden entre sí ni con los eventos de auditoría (mismo secreto).
  */
-export async function signSupportToken(g: SupportGrant, secret: string, ttlSeconds?: number, kind: SupportTokenKind = "entry"): Promise<string> {
-  const untilGrant = Math.floor((g.expiresAt - Date.now()) / 1000);
-  const ttl = Math.min(ttlSeconds ?? (kind === "entry" ? SUPPORT_ENTRY_TTL_SECONDS : untilGrant), untilGrant, MAX_SUPPORT_MINUTES * 60);
-  return new SignJWT({ typ: kind === "entry" ? TYP_ENTRY : TYP_SESSION, gid: g.id, tid: g.tenantId, op: g.operator, ro: g.readOnly })
+export async function signSupportToken(g: SupportGrant, secret: string, ttlSeconds?: number, kind: SupportTokenKind = "entry", session?: SupportSessionClaims): Promise<string> {
+  const now = Date.now();
+  let ttl: number;
+  if (kind === "entry") {
+    const untilGrant = g.untilRevoked ? SUPPORT_ENTRY_TTL_SECONDS : Math.floor((g.expiresAt - now) / 1000);
+    ttl = Math.min(ttlSeconds ?? SUPPORT_ENTRY_TTL_SECONDS, untilGrant);
+  } else if (g.untilRevoked) {
+    const cap = Math.floor(((session?.smax ?? now + SUPPORT_SESSION_MAX_MS) - now) / 1000);
+    ttl = Math.min(ttlSeconds ?? SUPPORT_SESSION_IDLE_MS / 1000, SUPPORT_SESSION_IDLE_MS / 1000, cap);
+  } else {
+    const untilGrant = Math.floor((g.expiresAt - now) / 1000);
+    ttl = Math.min(ttlSeconds ?? untilGrant, untilGrant, MAX_SUPPORT_MINUTES * 60);
+  }
+  return new SignJWT({ typ: kind === "entry" ? TYP_ENTRY : TYP_SESSION, gid: g.id, tid: g.tenantId, op: g.operator, ro: g.readOnly, ...(session ? { sid: session.sid, sopen: session.sopen, smax: session.smax } : {}) })
     .setProtectedHeader({ alg: "HS256" })
     .setJti(crypto.randomBytes(12).toString("hex"))
     .setIssuedAt()
@@ -87,13 +120,29 @@ export async function signSupportToken(g: SupportGrant, secret: string, ttlSecon
     .sign(new TextEncoder().encode(secret));
 }
 
-async function verify(token: string, kind: SupportTokenKind): Promise<{ gid: string; tid: string; op: string; ro: boolean; jti: string; exp: number } | null> {
+interface VerifiedToken {
+  gid: string;
+  tid: string;
+  op: string;
+  ro: boolean;
+  jti: string;
+  exp: number;
+  iat: number;
+  /** Solo en las cookies emitidas desde el 16/11/2026; las anteriores (sin sesión) valen hasta su caducidad. */
+  session: SupportSessionClaims | null;
+}
+
+async function verify(token: string, kind: SupportTokenKind): Promise<VerifiedToken | null> {
   if (!secretRaw) return null;
   try {
     const { payload } = await jwtVerify(token, key(), { algorithms: ["HS256"] });
     if (payload.typ !== (kind === "entry" ? TYP_ENTRY : TYP_SESSION)) return null;
     if (typeof payload.gid !== "string" || typeof payload.tid !== "string" || typeof payload.jti !== "string" || typeof payload.exp !== "number") return null;
-    return { gid: payload.gid, tid: payload.tid, op: String(payload.op ?? ""), ro: payload.ro !== false, jti: payload.jti, exp: payload.exp };
+    const session =
+      typeof payload.sid === "string" && /^[a-f0-9]{24}$/.test(payload.sid) && typeof payload.sopen === "number" && typeof payload.smax === "number"
+        ? { sid: payload.sid, sopen: payload.sopen, smax: payload.smax }
+        : null;
+    return { gid: payload.gid, tid: payload.tid, op: String(payload.op ?? ""), ro: payload.ro !== false, jti: payload.jti, exp: payload.exp, iat: typeof payload.iat === "number" ? payload.iat : 0, session };
   } catch {
     return null;
   }
@@ -126,6 +175,29 @@ function cookieOf(req: Request, name: string): string | undefined {
 export interface SupportIdentity {
   grant: SupportGrant;
   readOnly: boolean;
+  /** Sesión concreta (null: cookie anterior a las sesiones identificadas, solo con duración limitada). */
+  session: (SupportSessionClaims & { iat: number }) | null;
+}
+
+/** Sesiones cerradas o comprobadas como abiertas, por réplica (clave concesión:sesión). */
+const endedCache = new Map<string, { ended: boolean; until: number }>();
+function markSessionEnded(grantId: string, sid: string, until: number) {
+  endedCache.set(`${grantId}:${sid}`, { ended: true, until });
+}
+async function sessionEnded(g: SupportGrant, s: SupportSessionClaims): Promise<boolean> {
+  const k = `${g.id}:${s.sid}`;
+  const now = Date.now();
+  const hit = endedCache.get(k);
+  if (hit && (hit.ended || hit.until > now)) return hit.ended;
+  if (endedCache.size > 5000) endedCache.forEach((v, key) => v.until < now && endedCache.delete(key));
+  if (!reader?.sessionEnded) return false;
+  try {
+    const ended = await reader.sessionEnded(g.tenantId, g.id, s.sid, s.sopen);
+    endedCache.set(k, { ended, until: ended ? s.smax : now + ENDED_CACHE_MS });
+    return ended;
+  } catch {
+    return true; // sin poder comprobarlo, la sesión no vale (falla cerrado)
+  }
 }
 
 const identityCache = new WeakMap<Request, Promise<SupportIdentity | null>>();
@@ -149,7 +221,14 @@ async function resolveIdentity(req: Request): Promise<SupportIdentity | null> {
   if (!tenant || claims.tid !== tenant) return null; // nunca fuera del tenant concedido
   const grant = await reader!.getGrant(claims.gid);
   if (!grant || grant.tenantId !== tenant || !grantActive(grant)) return null;
-  return { grant, readOnly: grant.readOnly };
+  const s = claims.session;
+  // «Hasta revocación» solo con sesión identificada (no hay cookies antiguas de esa modalidad)
+  if (grant.untilRevoked && !s) return null;
+  if (s) {
+    if (Date.now() >= s.smax) return null;
+    if (await sessionEnded(grant, s)) return null;
+  }
+  return { grant, readOnly: grant.readOnly, session: s ? { ...s, iat: claims.iat } : null };
 }
 
 /** Usuario sintético para el contexto tRPC/autorización (rol admin; lectura impuesta en el borde). */
@@ -180,7 +259,9 @@ export async function getSupportUser(req: Request) {
     // Para la banda «Modo soporte» del panel (nunca el token)
     supportOperator: operatorLabel(id.grant.operator),
     supportReadOnly: id.readOnly,
-    supportExpiresAt: id.grant.expiresAt,
+    supportUntilRevoked: id.grant.untilRevoked,
+    // Con «hasta revocación» no hay caducidad de la autorización que mostrar
+    supportExpiresAt: id.grant.untilRevoked ? null : id.grant.expiresAt,
   };
 }
 
@@ -257,6 +338,8 @@ export function supportReadOnlyGuard(log: (l: string) => void = (l) => console.w
       return supportError(req, res, 503, "support_audit_unavailable", AUDIT_DOWN);
     }
     res.on("finish", () => void send("write_result", { status: res.statusCode }));
+    // Una modificación es actividad real: renueva la sesión «hasta revocación» (las consultas periódicas, no)
+    await refreshSession(req, res, id);
     next();
   };
 }
@@ -275,40 +358,92 @@ export function createSupportRouter(): Router {
     }
     // Un solo uso: el mismo enlace no abre una segunda sesión (otra pestaña, otro navegador)
     if (!consumeEntry(claims.jti, claims.exp)) return void res.status(403).type("text/plain").send("Este enlace de acceso ya se ha usado. Pide uno nuevo desde el CRM.");
+    // Sesión nueva, identificada por el enlace canjeado (un enlace = una sesión)
+    const now = Date.now();
+    const session: SupportSessionClaims = { sid: claims.jti, sopen: now, smax: grant.untilRevoked ? now + SUPPORT_SESSION_MAX_MS : grant.expiresAt };
     // La entrada queda en el historial de la empresa antes de abrir el panel; sin registro no se entra
-    if (!(await audit({ gid: grant.id, tid: grant.tenantId, ev: "entered", d: {} }))) {
+    if (!(await audit({ gid: grant.id, tid: grant.tenantId, ev: "entered", d: { session: session.sid } }))) {
       console.warn(JSON.stringify({ ctx: "Support", event: "enter_audit_unavailable", grant: grant.id, tenant }));
       return void res.status(503).type("text/plain").send("No se ha podido registrar el acceso de soporte. Inténtalo de nuevo en unos minutos.");
     }
-    console.warn(JSON.stringify({ ctx: "Support", event: "enter", grant: grant.id, op: grant.operator, tenant }));
-    const opts = { httpOnly: true, sameSite: "strict" as const, path: "/", maxAge: Math.max(1000, grant.expiresAt - Date.now()) };
+    console.warn(JSON.stringify({ ctx: "Support", event: "enter", grant: grant.id, op: grant.operator, tenant, untilRevoked: grant.untilRevoked }));
     // La cookie es una credencial distinta del enlace (tipo «sesión»): el enlace no sirve como cookie ni al revés
-    const sessionToken = await signSupportToken(grant, secretRaw!, undefined, "session");
-    if (req.secure) res.cookie(SUPPORT_COOKIE_HOST, sessionToken, { ...opts, secure: true });
-    else res.cookie(SUPPORT_COOKIE, sessionToken, { ...opts, secure: process.env.NODE_ENV === "production" });
+    const sessionToken = await signSupportToken(grant, secretRaw!, undefined, "session", session);
+    setSessionCookie(req, res, sessionToken, grant.untilRevoked ? session.smax - now : grant.expiresAt - now);
     res.redirect(302, "/admin");
   });
 
-  // Salir del modo soporte: termina la concesión (el plano de control la revoca al recibir la salida), borra SOLO la
-  // cookie de soporte y devuelve adónde volver (el CRM). La sesión central del operador no se toca.
+  // Actividad real del operador (el panel lo envía al pulsar o escribir, como mucho cada pocos minutos): renueva la
+  // sesión «hasta revocación». Las consultas periódicas del panel (avisos, cuadros que se refrescan solos) NO cuentan:
+  // una pestaña abandonada cierra su sesión a las 2 h.
+  r.post("/_support/heartbeat", async (req, res) => {
+    res.setHeader("Cache-Control", "no-store");
+    const origin = req.headers.origin;
+    if (typeof origin === "string" && origin !== `${req.protocol}://${req.headers.host}`) return void res.status(403).json({ error: "forbidden_origin" });
+    const id = await getSupportIdentity(req).catch(() => null);
+    if (!id) return void res.status(401).json({ error: "no_support_session" });
+    const renewed = await refreshSession(req, res, id);
+    res.json({ ok: true, renewed });
+  });
+
+  // Salir del modo soporte. Duración limitada: termina la concesión (el plano de control la revoca al recibir la salida).
+  // «Hasta revocación»: cierra SOLO esta sesión (en el servidor: `support.exited` con su identificador); la
+  // autorización sigue vigente hasta que se revoque en el CRM. Borra solo la cookie de soporte y devuelve adónde volver.
+  // La sesión central del operador no se toca.
   r.post("/_support/exit", async (req, res) => {
     // Solo desde el propio panel: otra empresa del mismo dominio padre (mismo «sitio») no puede cerrar la sesión
     const origin = req.headers.origin;
     if (typeof origin === "string" && origin !== `${req.protocol}://${req.headers.host}`) return void res.status(403).json({ error: "forbidden_origin" });
     const id = await getSupportIdentity(req).catch(() => null);
+    let recorded = true;
     if (id) {
       // La salida revoca la concesión en el plano de control: se reintenta para no dejarla viva por un fallo puntual
       let ok = false;
-      for (let i = 0; i < 3 && !ok; i++) ok = await audit({ gid: id.grant.id, tid: id.grant.tenantId, ev: "exited", d: {} });
-      console.warn(JSON.stringify({ ctx: "Support", event: "exit", grant: id.grant.id, op: id.grant.operator, recorded: ok }));
+      const d = id.session ? { session: id.session.sid } : {};
+      for (let i = 0; i < 3 && !ok; i++) ok = await audit({ gid: id.grant.id, tid: id.grant.tenantId, ev: "exited", d });
+      console.warn(JSON.stringify({ ctx: "Support", event: "exit", grant: id.grant.id, op: id.grant.operator, recorded: ok, untilRevoked: id.grant.untilRevoked }));
+      recorded = ok;
+      // En esta réplica deja de valer al momento; en las demás, en cuanto lean el cierre (≤ 15 s)
+      if (ok && id.session) markSessionEnded(id.grant.id, id.session.sid, id.session.smax);
+    }
+    res.setHeader("Cache-Control", "no-store");
+    // Sin el cierre registrado no se aparenta haber salido: la cookie se queda para poder reintentarlo
+    if (id && !recorded) {
+      return void res.status(503).json({ error: "exit_unrecorded", returnUrl, message: "No se ha podido registrar el cierre en el servidor. Vuelve a intentarlo o revoca el acceso desde el CRM." });
     }
     res.clearCookie(SUPPORT_COOKIE_HOST, { path: "/", secure: true, httpOnly: true, sameSite: "strict" });
     res.clearCookie(SUPPORT_COOKIE, { path: "/" });
-    res.setHeader("Cache-Control", "no-store");
-    res.json({ returnUrl });
+    res.json(id?.grant.untilRevoked ? { returnUrl, authorizationKept: true } : { returnUrl });
   });
 
   return r;
+}
+
+/**
+ * Renueva la sesión «hasta revocación» (2 h más, nunca más allá de su tope) si toca (cada 15 min como mucho). Solo si la
+ * actividad queda registrada: sin rastro no hay renovación. `true` si se ha renovado.
+ */
+async function refreshSession(req: Request, res: Response, id: SupportIdentity): Promise<boolean> {
+  const g = id.grant;
+  if (!g.untilRevoked || !id.session || Date.now() - id.session.iat * 1000 < SUPPORT_SESSION_REFRESH_MS) return false;
+  const { sid, sopen, smax } = id.session;
+  if (!(await audit({ gid: g.id, tid: g.tenantId, ev: "activity", d: { session: sid } }))) return false;
+  const token = await signSupportToken(g, secretRaw!, undefined, "session", { sid, sopen, smax });
+  setSessionCookie(req, res, token, smax - Date.now());
+  return true;
+}
+
+/** Cookie de la sesión de soporte (HttpOnly, Strict; por HTTPS con prefijo __Host-). */
+function setSessionCookie(req: Request, res: Response, token: string, maxAgeMs: number) {
+  const opts = { httpOnly: true, sameSite: "strict" as const, path: "/", maxAge: Math.max(1000, maxAgeMs) };
+  if (req.secure) res.cookie(SUPPORT_COOKIE_HOST, token, { ...opts, secure: true });
+  else res.cookie(SUPPORT_COOKIE, token, { ...opts, secure: process.env.NODE_ENV === "production" });
+}
+
+/** Utilidad para pruebas: memoria de la réplica vacía, como tras un reinicio. */
+export function _resetSupportReplicaState() {
+  endedCache.clear();
+  usedEntries.clear();
 }
 
 /** Utilidad para pruebas: token aleatorio no válido. */
