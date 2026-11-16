@@ -254,6 +254,40 @@
     .slide-zoom, .slide-zoom-active, .qs-motion { animation: none; transform: none; }
   }
   main[data-hero-overlay] .hero-full { min-height: 100vh; min-height: 100svh; }
+
+  /* ── Acabado editorial (opción del sitio, apagada por defecto) ─────────────────────────────────────────────
+     Solo afecta al contenido de <main data-finish="editorial">. No toca estructura, textos ni portadas. */
+  main[data-finish="editorial"] { --ed-ease: cubic-bezier(.22, .61, .36, 1); }
+  /* Titulares: más ligeros, interlineado cerrado y reparto equilibrado de las líneas */
+  main[data-finish="editorial"] :is(h1, h2, h3) { font-weight: 500; letter-spacing: -0.012em; line-height: 1.14; text-wrap: balance; }
+  main[data-finish="editorial"] h3 { letter-spacing: 0; line-height: 1.25; }
+  main[data-finish="editorial"] p { line-height: 1.8; text-wrap: pretty; }
+  main[data-finish="editorial"] a:not([data-slot="button"]) { transition: color .35s var(--ed-ease), text-decoration-color .35s var(--ed-ease), opacity .35s var(--ed-ease); text-underline-offset: 0.22em; }
+  /* Botones: rectos, letra espaciada, alturas coherentes y foco visible */
+  main[data-finish="editorial"] [data-slot="button"]:not([class*="size-"]):not([class*="rounded-full"]) {
+    border-radius: 2px; height: 2.9rem; padding-inline: 1.9rem; font-size: .74rem; font-weight: 500; letter-spacing: .16em; text-transform: uppercase;
+    box-shadow: none; transition: background-color .45s var(--ed-ease), color .45s var(--ed-ease), border-color .45s var(--ed-ease), transform .45s var(--ed-ease);
+  }
+  main[data-finish="editorial"] [data-slot="button"]:not([class*="size-"]):not([class*="rounded-full"]):is(.h-8) { height: 2.4rem; padding-inline: 1.4rem; font-size: .7rem; }
+  main[data-finish="editorial"] [data-slot="button"].border { border-color: color-mix(in oklab, currentColor 45%, transparent); }
+  main[data-finish="editorial"] [data-slot="button"].border:hover { background-color: color-mix(in oklab, currentColor 9%, transparent); border-color: currentColor; }
+  main[data-finish="editorial"] [data-slot="button"]:not(.border):hover { transform: translateY(-1px); }
+  main[data-finish="editorial"] [data-slot="button"]:focus-visible { outline: 2px solid var(--ring, currentColor); outline-offset: 3px; box-shadow: none; }
+  /* Tarjetas: borde fino, sin sombra de serie, elevación suave y foto que respira al pasar el cursor */
+  main[data-finish="editorial"] article { border-radius: 4px; box-shadow: none; border-color: color-mix(in oklab, var(--border, currentColor) 75%, transparent); transition: transform .6s var(--ed-ease), box-shadow .6s var(--ed-ease), border-color .6s var(--ed-ease); }
+  main[data-finish="editorial"] article:hover { transform: translateY(-3px); box-shadow: 0 22px 44px -28px color-mix(in oklab, #3a2a1a 45%, transparent); border-color: color-mix(in oklab, var(--border, currentColor) 100%, transparent); }
+  main[data-finish="editorial"] article img { transition: transform 1.1s var(--ed-ease), opacity .6s var(--ed-ease); }
+  main[data-finish="editorial"] article:hover img { transform: scale(1.035); }
+  main[data-finish="editorial"] article h3 { font-weight: 500; letter-spacing: .005em; }
+  main[data-finish="editorial"] article > div:last-child { padding: 1.6rem 1.6rem 1.7rem; gap: .6rem; }
+  /* Entrada gradual (la activa useEditorialReveal; sin JavaScript no se oculta nada) */
+  main[data-finish="editorial"] [data-rv] { transition: opacity .9s var(--ed-ease) var(--rv-d, 0s), transform .9s var(--ed-ease) var(--rv-d, 0s); will-change: opacity, transform; }
+  main[data-finish="editorial"] [data-rv="0"] { opacity: 0; transform: translateY(14px); }
+  main[data-finish="editorial"] [data-rv="1"] { opacity: 1; transform: none; }
+  @media (prefers-reduced-motion: reduce) {
+    main[data-finish="editorial"] *, main[data-finish="editorial"] *::before { transition-duration: .01ms !important; }
+    main[data-finish="editorial"] article:hover, main[data-finish="editorial"] article:hover img, main[data-finish="editorial"] [data-slot="button"]:hover { transform: none; }
+  }
   @keyframes fadeUp {
     from { opacity: 0; transform: translateY(24px); }
     to { opacity: 1; transform: translateY(0); }

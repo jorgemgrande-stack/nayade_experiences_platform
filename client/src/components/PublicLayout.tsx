@@ -1,3 +1,4 @@
+import { useEditorialReveal } from "@/lib/useEditorialReveal";
 import { useEffect, useState } from "react";
 import { useLocation } from "wouter";
 import PublicNav from "./PublicNav";
@@ -79,6 +80,8 @@ export default function PublicLayout({
   const brand = neutral ? brandTokens(theme) : null;
   const centered = neutral && theme?.header?.style === "centered" && !!theme.logoUrl;
   const hdr = useHeaderOverlay(centered);
+  const [location] = useLocation();
+  useEditorialReveal(neutral && theme?.finish === "editorial", location);
 
   // Cuando forcePublicLight=true: retirar dark de <html> mientras la página esté montada.
   // Al desmontar, restablecer si el admin estaba en oscuro.
@@ -109,7 +112,7 @@ export default function PublicLayout({
         style={brand ?? undefined}
       >
         <PublicNav overlay={{ centered, ...hdr }} />
-        <main data-hero-overlay={centered && hdr.overHero ? "" : undefined} className={cn("flex-1", !fullWidthHero && !(centered && hdr.overHero) && (centered ? "pt-16 lg:pt-[76px]" : neutral ? "pt-20" : "pt-20 lg:pt-[112px]"))}>
+        <main data-finish={neutral && theme?.finish === "editorial" ? "editorial" : undefined} data-hero-overlay={centered && hdr.overHero ? "" : undefined} className={cn("flex-1", !fullWidthHero && !(centered && hdr.overHero) && (centered ? "pt-16 lg:pt-[76px]" : neutral ? "pt-20" : "pt-20 lg:pt-[112px]"))}>
           {children}
         </main>
         <PublicFooter />

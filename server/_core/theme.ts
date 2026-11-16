@@ -26,9 +26,11 @@ export const FOOTER_STYLES = ["dark", "light", "brand"] as const;
 export const HEADER_STYLES = ["classic", "centered"] as const;
 /** Color del texto de la cabecera centrada sobre la portada: oscuro (portada clara) o claro (portada oscura). */
 export const HEADER_TONES = ["dark", "light"] as const;
+/** Acabado de la web: el de serie o el editorial (botones, tarjetas, tipografía y entradas suaves más cuidados). */
+export const SITE_FINISHES = ["standard", "editorial"] as const;
 export const HEADER_CTA_LABEL_MAX = 40;
 export const FOOTER_TEXT_MAX = 240;
-export const SITE_CHROME_KEYS = ["site_header_cta", "site_header_cta_label", "site_header_cta_url", "site_header_style", "site_header_tone", "site_header_logo_light", "site_footer_style", "site_footer_text", "site_footer_contact"] as const;
+export const SITE_CHROME_KEYS = ["site_header_cta", "site_header_cta_label", "site_header_cta_url", "site_header_style", "site_header_tone", "site_header_logo_light", "site_footer_style", "site_footer_text", "site_footer_contact", "site_finish"] as const;
 
 /** Enlace del botón de la cabecera: página de la web (/contacto), ancla, http(s), correo o teléfono. */
 export function siteLink(v: string | undefined | null): string | null {
@@ -79,6 +81,7 @@ export interface PublicTheme {
   /** Botón destacado de la cabecera: «auto» es el de serie (presupuesto, si está contratado) */
   header: { cta: (typeof HEADER_CTA_MODES)[number]; ctaLabel: string | null; ctaUrl: string | null; style: (typeof HEADER_STYLES)[number]; tone: (typeof HEADER_TONES)[number]; logoLight: string | null };
   footer: { style: (typeof FOOTER_STYLES)[number]; text: string | null; showContact: boolean };
+  finish: (typeof SITE_FINISHES)[number];
 }
 
 const HEX = /^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/;
@@ -209,6 +212,7 @@ export function cleanThemeValues(values: Record<string, string>): Record<string,
     if (k === "site_header_style" && !(HEADER_STYLES as readonly string[]).includes(val)) throw new ThemeValueError(k, "Estilo no válido");
     if (k === "site_header_tone" && !(HEADER_TONES as readonly string[]).includes(val)) throw new ThemeValueError(k, "Opción no válida");
     if (k === "site_footer_style" && !(FOOTER_STYLES as readonly string[]).includes(val)) throw new ThemeValueError(k, "Estilo no válido");
+    if (k === "site_finish" && !(SITE_FINISHES as readonly string[]).includes(val)) throw new ThemeValueError(k, "Acabado no válido");
     if (k === "site_footer_contact" && val !== "true" && val !== "false") throw new ThemeValueError(k, "Opción no válida");
     if (k === "site_header_cta_url") {
       const link = siteLink(val);
@@ -269,7 +273,7 @@ export function buildTheme(
 }
 
 /** Cabecera y pie: un botón propio sin texto o sin enlace válidos se comporta como el de serie. */
-function siteChrome(get: (key: string) => string | undefined): Pick<PublicTheme, "header" | "footer"> {
+function siteChrome(get: (key: string) => string | undefined): Pick<PublicTheme, "header" | "footer" | "finish"> {
   const pick = <T extends string>(v: string | undefined, allowed: readonly T[], fallback: T): T => ((allowed as readonly string[]).includes(v ?? "") ? (v as T) : fallback);
   const label = text(get("site_header_cta_label"), HEADER_CTA_LABEL_MAX);
   const url = siteLink(get("site_header_cta_url"));
@@ -278,6 +282,7 @@ function siteChrome(get: (key: string) => string | undefined): Pick<PublicTheme,
   return {
     header: { cta, ctaLabel: cta === "custom" ? label : null, ctaUrl: cta === "custom" ? url : null, style: pick(get("site_header_style"), HEADER_STYLES, "classic"), tone: pick(get("site_header_tone"), HEADER_TONES, "dark"), logoLight: safeHttpUrl(get("site_header_logo_light")) },
     footer: { style: pick(get("site_footer_style"), FOOTER_STYLES, "dark"), text: text(get("site_footer_text"), FOOTER_TEXT_MAX), showContact: get("site_footer_contact") !== "false" },
+    finish: pick(get("site_finish"), SITE_FINISHES, "standard"),
   };
 }
 
