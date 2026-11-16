@@ -39,6 +39,7 @@ type FormState = {
   priceType: "fixed" | "percentage" | "per_person";
   isRequired: boolean;
   sortOrder: string;
+  validUntil: string;
 };
 
 const emptyForm = (): FormState => ({
@@ -49,6 +50,7 @@ const emptyForm = (): FormState => ({
   priceType: "per_person",
   isRequired: false,
   sortOrder: "0",
+  validUntil: "",
 });
 
 export default function VariantsManager() {
@@ -123,6 +125,7 @@ export default function VariantsManager() {
       priceType: v.priceType as "fixed" | "percentage" | "per_person",
       isRequired: v.isRequired ?? false,
       sortOrder: String(v.sortOrder ?? 0),
+      validUntil: (v as { validUntil?: string | null }).validUntil ?? "",
     });
     setOpen(true);
   };
@@ -139,6 +142,7 @@ export default function VariantsManager() {
       priceType: form.priceType,
       isRequired: form.isRequired,
       sortOrder: parseInt(form.sortOrder) || 0,
+      validUntil: form.validUntil || null,
     };
 
     if (editId) {
@@ -381,6 +385,11 @@ export default function VariantsManager() {
                   />
                   <Label htmlFor="isRequired" className="cursor-pointer">Selección obligatoria</Label>
                 </div>
+              </div>
+              <div className="col-span-2">
+                <Label htmlFor="validUntil">Se ofrece hasta (opcional)</Label>
+                <Input id="validUntil" type="date" value={form.validUntil} onChange={(e) => setForm(f => ({ ...f, validUntil: e.target.value }))} />
+                <p className="text-xs text-muted-foreground mt-1">Último día, inclusive (hora de Madrid). Después deja de mostrarse y de poder pedirse, sin tareas manuales. Vacío = sin caducidad.</p>
               </div>
             </div>
           </div>

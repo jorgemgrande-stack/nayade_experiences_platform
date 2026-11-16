@@ -208,6 +208,8 @@ export const experienceVariants = mysqlTable("experience_variants", {
   options: json("options").$type<{ label: string; value: string; priceAdjustment: number }[]>().default([]),
   isRequired: boolean("isRequired").default(false).notNull(),
   sortOrder: int("sortOrder").default(0).notNull(),
+  /** Último día (inclusive, Europe/Madrid) en que se ofrece la variante; NULL = sin caducidad. */
+  validUntil: date("validUntil", { mode: "string" }),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
 });
 
