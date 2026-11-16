@@ -251,7 +251,7 @@ export default function PublicNav({ overlay }: { overlay?: HeaderOverlayState })
         !centered && "bg-white shadow-md border-b border-border/50",
         centered && "transition-[background,box-shadow] duration-300",
         centered && solid && "bg-muted shadow-[0_1px_14px_rgba(60,40,10,0.07)] border-b border-border/40",
-        centered && !solid && (tone === "dark" ? "bg-gradient-to-b from-white/55 to-transparent" : "bg-gradient-to-b from-black/35 to-transparent"),
+        centered && !solid && (tone === "dark" ? "bg-gradient-to-b from-white/70 via-white/35 to-transparent" : "bg-gradient-to-b from-black/55 via-black/25 to-transparent"),
       )}
     >
       {/* ── Barra superior de información (solo la instalación propia: en la web neutra de cada empresa, nada ajeno) ── */}
