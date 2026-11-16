@@ -18,7 +18,7 @@ import { LinkPicker, type LinkTarget } from "@/components/admin/pageBuilder/Bloc
 import { Segmented } from "@/components/admin/studio/Inspector";
 import ImageUploader from "@/components/ImageUploader";
 
-const CHROME_KEYS = ["site_header_cta", "site_header_cta_label", "site_header_cta_url", "site_header_style", "site_header_tone", "site_header_logo_light", "site_footer_style", "site_footer_text", "site_footer_contact"] as const;
+const CHROME_KEYS = ["site_header_cta", "site_header_cta_label", "site_header_cta_url", "site_header_style", "site_header_tone", "site_header_logo_light", "site_footer_style", "site_footer_text", "site_footer_contact", "site_finish"] as const;
 type ChromeValues = Record<(typeof CHROME_KEYS)[number], string>;
 const CTA_LABEL_MAX = 40;
 const FOOTER_TEXT_MAX = 240;
@@ -40,6 +40,7 @@ export function SiteChromeEditor({ targets, onChanged }: { targets: LinkTarget[]
       site_header_tone: d.site_header_tone || "dark",
       site_header_logo_light: d.site_header_logo_light || "",
       site_footer_style: d.site_footer_style || "dark",
+      site_finish: d.site_finish || "standard",
       site_footer_text: d.site_footer_text ?? "",
       site_footer_contact: d.site_footer_contact || "true",
     });
@@ -102,6 +103,20 @@ export function SiteChromeEditor({ targets, onChanged }: { targets: LinkTarget[]
             <p className="text-xs text-muted-foreground">Se usa solo sobre la portada, con la cabecera transparente. Debe ser el mismo logotipo con los tonos oscuros aclarados.</p>
           </div>
         )}
+        <Segmented
+          label="Acabado de la web"
+          value={v.site_finish}
+          options={[
+            { value: "standard", label: "De serie" },
+            { value: "editorial", label: "Editorial" },
+          ]}
+          onChange={(x) => set({ site_finish: x })}
+        />
+        <p className="text-xs text-muted-foreground">
+          {v.site_finish === "editorial"
+            ? "Botones rectos con letra espaciada, tarjetas con borde fino y elevación suave al pasar el cursor, titulares más ligeros y entrada gradual del contenido al desplazarte. No cambia ni el orden ni los textos."
+            : "Los botones, tarjetas y titulares de serie."}
+        </p>
         <Segmented
           label="Botón destacado"
           value={v.site_header_cta}
