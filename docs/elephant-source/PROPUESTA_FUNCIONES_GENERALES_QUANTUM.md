@@ -52,3 +52,19 @@ Publicada en #843 (migración 0072): `experience_variants.validUntil`, comparaci
 
 ## Coordinación
 Ninguna de estas funciones se fusiona mientras haya otra publicación en curso. Cada una va en su PR, con migración aditiva y prueba, sin interruptores bloqueados ni cambios de cobro o autorización.
+
+## Orden de implementación y coordinación de migraciones
+
+Un PR por función, en serie, nunca dos publicaciones a la vez y sin fusionar mientras otra sesión publica (se pregunta antes). El número de cada migración se asigna al fusionar (siguiente libre en `db/migrations`; el registro de plataforma, `db/registry`, es de otra ventana y no se toca desde aquí).
+
+| Orden | PR | Contenido | Migración de empresa | Dependencias |
+|---|---|---|---|---|
+| 1 | Campos estructurados del CRM + modo de pruebas | `leads`/`edition_enrollments`: idioma, modalidad, precio mostrado; `leads.is_test`; procedimiento autenticado de prueba | una aditiva con todas las columnas nuevas | ninguna |
+| 2 | Gestor de redirecciones 301 | tabla `site_redirects`, administración, resolución en la capa pública | una aditiva (tabla nueva) | ninguna |
+| 3 | Idioma principal configurable | cambio de idioma principal con comprobación de traducciones y reversión | ninguna prevista (ajuste de configuración) | 2 (redirecciones al cambiar de URL) |
+| 4 | Formación digital con matrícula y acceso individual | producto digital, matrícula, contenido privado con vídeo, área del alumno, caducidad y revocación | varias aditivas | derechos de Articulate (no técnico) |
+
+### Quantum Soulrise
+- Idioma principal: alemán; español e inglés secundarios (francés, apagado). Se aplica cuando exista la función 3 y estén validadas las traducciones; no antes.
+- RECONNECT ONLINE: una única formación de tres módulos con tres meses de acceso (función 4). No se migra ningún material de Articulate hasta resolver los derechos y la disponibilidad de los originales.
+- Los diseños actuales de la web se conservan y las compras públicas siguen desactivadas.
