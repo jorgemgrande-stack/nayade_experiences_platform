@@ -69,7 +69,7 @@ import type { CrmStore } from "../crm/store";
 import type { TicketService } from "../_core/support/tickets";
 import { createTicketsRouter } from "./tickets";
 import { createCustomerTicketsRouter } from "../support/customerTickets";
-import { grantActive, type SupportAdmin } from "../_core/support/grants";
+import { grantActive, type SupportAdmin, type SupportGrantListed } from "../_core/support/grants";
 import { SUPPORT_AUDIT_PATH, verifySupportAudit } from "../_core/support/audit";
 
 /** Roles que pueden abrir un acceso de soporte CON modificación (decisión 13/11/2026); soporte, solo lectura. */
@@ -272,7 +272,7 @@ export interface ControlPlaneDeps {
   /** Tope de peticiones por minuto y IP para todo el plano de control (por defecto 600). */
   perIpMinute?: number;
   /** Acceso delegado de soporte (requiere SUPPORT_JWT_SECRET). */
-  support?: Pick<SupportAdmin, "create" | "revoke"> & Partial<Pick<SupportAdmin, "listActive" | "getGrant" | "record">>;
+  support?: Pick<SupportAdmin, "create" | "revoke"> & Partial<Pick<SupportAdmin, "listActive" | "listAllActive" | "getGrant" | "record">>;
   /** Inventario de copias de seguridad (registro, migración 0010). Sin él no hay rutas `/backups`. */
   backups?: {
     inventory: Pick<BackupInventory, "list" | "latestAttempts" | "lastSuccess">;
@@ -612,9 +612,18 @@ export function createControlPlaneApp(d: ControlPlaneDeps): Express {
         // Entrada, modificaciones y exportaciones solo con la concesión vigente; salida y bloqueos se anotan siempre
         const live = grantActive(g);
         if (!live && (c.ev === "entered" || c.ev === "write" || c.ev === "export")) return void res.status(409).json({ error: "grant_inactive" });
-        await support.record(g.tenantId, g.operator, `support.${c.ev}`, { grantId: g.id, readOnly: g.readOnly, ...(c.ev === "entered" ? { reason: g.reason, expiresAt: new Date(g.expiresAt).toISOString() } : {}), ...c.d });
-        // Salir del modo soporte termina la concesión (no se puede volver a entrar con el mismo enlace)
-        if (c.ev === "exited" && live) await support.revoke(g.id, g.operator);
+        // La actividad de una sesión cerrada o de una autorización revocada no se anota
+        if (c.ev === "activity" && !live) return void res.status(409).json({ error: "grant_inactive" });
+        await support.record(g.tenantId, g.operator, `support.${c.ev}`, {
+          grantId: g.id,
+          readOnly: g.readOnly,
+          ...(g.untilRevoked ? { untilRevoked: true } : {}),
+          ...(c.ev === "entered" ? { reason: g.reason, expiresAt: g.untilRevoked ? null : new Date(g.expiresAt).toISOString() } : {}),
+          ...c.d,
+        });
+        // Duración limitada: salir termina la concesión. «Hasta revocación»: salir cierra solo esa sesión (queda el
+        // evento con su identificador, que el Core consulta); la autorización sigue hasta que alguien la revoque.
+        if (c.ev === "exited" && live && !g.untilRevoked) await support.revoke(g.id, g.operator);
         res.status(201).json({ ok: true });
       }),
     );
@@ -3328,50 +3337,120 @@ export function createControlPlaneApp(d: ControlPlaneDeps): Express {
             // Se ignora: el acceso queda a nombre de la identidad AUTENTICADA (auditoría no falsificable)
             operator: z.string().min(2).max(100).optional(),
             reason: z.string().min(5).max(300),
-            minutes: z.number().int().min(1).max(240),
+            // Duración limitada (minutos) o «hasta revocación» (sin caducidad fija de la autorización)
+            minutes: z.number().int().min(1).max(240).optional(),
+            untilRevoked: z.boolean().default(false),
             readOnly: z.boolean().default(true),
           })
+          .refine((x) => x.untilRevoked || x.minutes !== undefined, { message: "Indica la duración o «hasta revocación»", path: ["minutes"] })
           .parse(req.body);
         const t = await d.reader.getTenant(id);
         if (!t) throw new RegistryError("not_found", "Tenant no encontrado");
         if (t.status === "deleted" || t.status === "deleting") throw new RegistryError("conflict", "El tenant no admite acceso");
         const auth = getAuth(req)!;
         const a = auth.actor;
+        const isAdmin = SUPPORT_WRITE_ROLES.has(auth.operator?.operator.role ?? "");
         // Modificación: solo administración (admin o superadmin) con sesión de operador humano; soporte, solo lectura.
         // Nunca por defecto: hay que pedirla expresamente (readOnly:false) en cada sesión.
-        if (!b.readOnly && !SUPPORT_WRITE_ROLES.has(auth.operator?.operator.role ?? "")) {
+        if (!b.readOnly && !isAdmin) {
           return void res.status(403).json({ error: "forbidden", message: "Solo administración puede abrir un acceso de soporte con modificación" });
         }
-        const g = await d.support!.create({ tenantId: id, ...b, operator: `${a.type}:${a.id}` });
+        // «Hasta revocación»: también solo administración (no amplía permisos: mismos vetos y la misma auditoría)
+        if (b.untilRevoked && !isAdmin) {
+          return void res.status(403).json({ error: "forbidden", message: "Solo administración puede conceder un acceso de soporte hasta revocación" });
+        }
+        const g = await d.support!.create({ tenantId: id, reason: b.reason, readOnly: b.readOnly, untilRevoked: b.untilRevoked, minutes: b.untilRevoked ? undefined : b.minutes, operator: `${a.type}:${a.id}` });
         // Enlace de entrada de 120 s y un solo uso (la cookie de la sesión la emite el Core al canjearlo)
         const token = await signSupportToken(g, d.supportSecret!);
         const primary = (await d.reader.listDomains(id)).find((x) => x.isPrimary && x.status === "active");
         res.status(201).json({
           grantId: g.id,
-          expiresAt: new Date(g.expiresAt).toISOString(),
+          expiresAt: g.untilRevoked ? null : new Date(g.expiresAt).toISOString(),
+          untilRevoked: g.untilRevoked,
           readOnly: g.readOnly,
           enterUrl: primary ? `https://${primary.domain}/_support/enter?t=${token}` : null,
           token: primary ? undefined : token,
         });
       }),
     );
-    // Sesiones de soporte vigentes de una empresa (para verlas y revocarlas desde el CRM)
+    const grantView = (g: SupportGrantListed) => ({
+      grantId: g.id,
+      tenantId: g.tenantId,
+      tenantName: g.tenantName,
+      operator: g.operator,
+      reason: g.reason,
+      readOnly: g.readOnly,
+      untilRevoked: g.untilRevoked,
+      createdAt: new Date(g.createdAt).toISOString(),
+      expiresAt: g.untilRevoked ? null : new Date(g.expiresAt).toISOString(),
+      lastActivityAt: g.lastActivityAt ? new Date(g.lastActivityAt).toISOString() : null,
+      state: "active" as const,
+    });
+    // Accesos de soporte vigentes de una empresa (para verlos y revocarlos desde el CRM)
     router.get(
       "/tenants/:id/support-access",
       requireScope("support:write"),
       wrap(async (req, res) => {
         const id = idSchema.parse(req.params.id);
         const rows = d.support!.listActive ? await d.support!.listActive(id) : [];
-        res.json({ grants: rows.map((g) => ({ grantId: g.id, operator: g.operator, reason: g.reason, readOnly: g.readOnly, createdAt: new Date(g.createdAt).toISOString(), expiresAt: new Date(g.expiresAt).toISOString() })) });
+        res.setHeader("Cache-Control", "no-store");
+        res.json({ grants: rows.map(grantView) });
       }),
     );
+    // Accesos de soporte vigentes de TODAS las empresas (gestión de accesos delegados del CRM)
+    router.get(
+      "/support-access",
+      requireScope("support:write"),
+      wrap(async (_req, res) => {
+        const rows = d.support!.listAllActive ? await d.support!.listAllActive() : [];
+        res.setHeader("Cache-Control", "no-store");
+        res.json({ grants: rows.map(grantView) });
+      }),
+    );
+    // Nueva sesión de una autorización vigente (renovación): solo su beneficiario, autenticado ahora en el CRM, y con
+    // modificación solo si sigue siendo administración. La autorización no cambia; queda `support.session_renewed`.
+    router.post(
+      "/support-access/:grantId/session",
+      requireScope("support:write"),
+      wrap(async (req, res) => {
+        const grantId = z.string().regex(/^[a-f0-9]{32}$/).parse(req.params.grantId);
+        const auth = getAuth(req)!;
+        const a = auth.actor;
+        const me = `${a.type}:${a.id}`;
+        const g = d.support!.getGrant ? await d.support!.getGrant(grantId) : null;
+        if (!g || !grantActive(g)) return void res.status(404).json({ error: "not_found", message: "El acceso de soporte no existe o ya no está vigente" });
+        if (g.operator !== me) return void res.status(403).json({ error: "forbidden", message: "Solo el operador autorizado puede abrir una sesión con este acceso" });
+        if (!g.readOnly && !SUPPORT_WRITE_ROLES.has(auth.operator?.operator.role ?? "")) {
+          return void res.status(403).json({ error: "forbidden", message: "Solo administración puede abrir una sesión de soporte con modificación" });
+        }
+        const t = await d.reader.getTenant(g.tenantId);
+        if (!t || t.status === "deleted" || t.status === "deleting") throw new RegistryError("conflict", "El tenant no admite acceso");
+        if (!d.support!.record) throw new Error("Auditoría de soporte no disponible");
+        // Sin registro no hay sesión nueva
+        await d.support!.record(g.tenantId, me, "support.session_renewed", { grantId: g.id, readOnly: g.readOnly, untilRevoked: g.untilRevoked });
+        const token = await signSupportToken(g, d.supportSecret!);
+        const primary = (await d.reader.listDomains(g.tenantId)).find((x) => x.isPrimary && x.status === "active");
+        res.setHeader("Cache-Control", "no-store");
+        res.status(201).json({
+          grantId: g.id,
+          untilRevoked: g.untilRevoked,
+          readOnly: g.readOnly,
+          expiresAt: g.untilRevoked ? null : new Date(g.expiresAt).toISOString(),
+          enterUrl: primary ? `https://${primary.domain}/_support/enter?t=${token}` : null,
+          token: primary ? undefined : token,
+        });
+      }),
+    );
+    // Revocar la autorización: deja de valer en el servidor para todas sus sesiones (el Core la lee en cada petición)
     router.delete(
       "/support-access/:grantId",
       requireScope("support:write"),
       wrap(async (req, res) => {
         const a = getAuth(req)!.actor;
         const operator = `${a.type}:${a.id}`; // nunca el nombre que envíe quien llama
-        await d.support!.revoke(z.string().regex(/^[a-f0-9]{32}$/).parse(req.params.grantId), operator);
+        const grantId = z.string().regex(/^[a-f0-9]{32}$/).parse(req.params.grantId);
+        if (d.support!.getGrant && !(await d.support!.getGrant(grantId))) return void res.status(404).json({ error: "not_found", message: "Acceso de soporte no encontrado" });
+        await d.support!.revoke(grantId, operator);
         res.status(204).end();
       }),
     );
