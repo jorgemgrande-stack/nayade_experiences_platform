@@ -115,6 +115,7 @@ describe.skipIf(!URL_)("Web pública por empresa (aplicación real, dos empresas
     // 301 con la ruta nueva; se conserva la consulta; HEAD también; mayúsculas y barra final no importan
     const r = await ess.call("a", "GET", "/programa-antiguo?utm=x");
     expect([r.status, r.location]).toEqual([301, "/servicios?utm=x"]);
+    expect(r.headers?.["cache-control"]).toBe("public, max-age=300");
     expect((await ess.call("a", "GET", "/PROGRAMA-ANTIGUO/")).status).toBe(301);
     // Aislamiento: la empresa B no ve la regla de A (su 404 de siempre)
     expect((await ess.call("b", "GET", "/programa-antiguo")).status).toBe(404);
@@ -162,6 +163,25 @@ describe.skipIf(!URL_)("Web pública por empresa (aplicación real, dos empresas
     (await import("./redirectsDb")).clearRedirectCache();
     expect((await ess.call("a", "GET", "/programa-a")).status).toBe(200);
     expect((await ess.call("a", "GET", "/programa-c")).location).toBe("/programa-a");
+  });
+
+  it("una redirección nunca tapa una página: la que se publica después gana; las pantallas de acceso no se pueden redirigir; las tildes funcionan", async () => {
+    const dbA = (p: string, input: any) => ess.m("a", p, input, admA);
+    // Acceso y pago protegidos
+    for (const from of ["/login", "/checkout", "/reserva/ok", "/recuperar-contrasena"]) expect((await dbA("redirects.create", { fromPath: from, toPath: "/servicios" })).status, from).toBe(400);
+    expect((await ess.call("a", "GET", "/login")).status).toBe(200);
+    // Tilde: regla guardada decodificada, petición codificada
+    expect((await dbA("redirects.create", { fromPath: "/programación", toPath: "/servicios" })).status).toBe(200);
+    const t = await ess.call("a", "GET", "/programaci%C3%B3n");
+    expect([t.status, t.location]).toEqual([301, "/servicios"]);
+    // Regla sobre una ruta libre y página creada y publicada DESPUÉS en esa ruta: la página se ve (la regla no actúa)
+    expect((await dbA("redirects.create", { fromPath: "/verano", toPath: "/servicios" })).status).toBe(200);
+    expect((await ess.call("a", "GET", "/verano")).status).toBe(301);
+    expect((await ess.m("a", "cms.upsertPage", { slug: "verano", title: "Verano", isPublished: true }, admA)).status).toBe(200);
+    (await import("./redirectsDb")).clearRedirectCache();
+    expect((await ess.call("a", "GET", "/verano")).status).toBe(200);
+    // Duplicado: mensaje claro (400), no un 500
+    expect((await dbA("redirects.create", { fromPath: "/programación", toPath: "/otra-ruta" })).status).toBe(400);
   });
 });
 
