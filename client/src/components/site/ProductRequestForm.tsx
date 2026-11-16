@@ -19,6 +19,8 @@ export interface ProductRequestTarget {
   /** Convocatoria elegida (solicitud de plaza) */
   editionId?: number;
   editionLabel?: string;
+  /** Opción/modalidad elegida en la ficha */
+  variantId?: number;
   /** Pide también el número de plazas */
   withSeats?: boolean;
   /** Texto del botón de envío (por defecto «Enviar solicitud») */
@@ -81,6 +83,8 @@ export function ProductRequestDialog({ target, open, onOpenChange, preview }: { 
           website: trap,
           elapsedMs: Date.now() - shownAt.current,
           page: window.location.pathname,
+          variantId: target.variantId,
+          lang: (document.documentElement.lang || navigator.language || "").slice(0, 2).toLowerCase() || undefined,
         },
       });
       setSent((r as { message?: string }).message || "Hemos recibido tu solicitud. Te responderemos lo antes posible.");

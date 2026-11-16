@@ -14,9 +14,9 @@
 import { and, eq, gte } from "drizzle-orm";
 import { sql } from "drizzle-orm";
 import { clients, experiences, leads } from "../drizzle/schema";
-import { getDb, createLead } from "./db";
+import { getDb, createLead, getVariantsByExperience } from "./db";
 import { canRequestSeat, EDITION_LIMITS, formatEditionDates, type EnrollmentStatus } from "../shared/editions";
-import { cleanText, offerModeOf } from "../shared/offerMode";
+import { cleanText, offerModeOf, showsPrice } from "../shared/offerMode";
 import { formConsentText, FORM_MIN_FILL_MS, FORM_RATE } from "./_core/studioForms";
 import { ipFingerprint, keyedLock } from "./_core/studioFormsSubmit";
 import { getRequestableEdition } from "./editionsDb";
@@ -64,7 +64,13 @@ export interface ProductRequestInput {
   elapsedMs?: number;
   /** Página de origen (ruta, sin dominio) */
   page?: string;
+  /** Opción/modalidad elegida en la ficha (se valida contra las variantes vigentes del producto) */
+  variantId?: number;
+  /** Idioma de la web que veía la persona (código corto, p. ej. «de») */
+  lang?: string;
 }
+
+const eur = (n: number) => `${n.toLocaleString("es-ES", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} €`;
 
 export interface ProductRequestContext {
   ip: string;
@@ -112,7 +118,7 @@ export async function processProductRequest(input: ProductRequestInput, ctx: Pro
 
   const d = await getDb();
   if (!d) throw new Error("Base de datos no disponible");
-  const [product] = await d.select({ id: experiences.id, title: experiences.title, isPublished: experiences.isPublished, offerMode: experiences.offerMode }).from(experiences).where(eq(experiences.id, input.experienceId)).limit(1);
+  const [product] = await d.select({ id: experiences.id, title: experiences.title, isPublished: experiences.isPublished, offerMode: experiences.offerMode, basePrice: experiences.basePrice }).from(experiences).where(eq(experiences.id, input.experienceId)).limit(1);
   if (!product || !product.isPublished) throw new ProductRequestError("NOT_FOUND", "Este producto ya no está disponible.");
 
   let edition: Awaited<ReturnType<typeof getRequestableEdition>> = null;
@@ -128,7 +134,16 @@ export async function processProductRequest(input: ProductRequestInput, ctx: Pro
   const header = edition
     ? `Solicitud de plaza en «${product.title}» · ${edition.edition.label} (${dates})${edition.initialStatus === "lista_espera" ? " — para lista de espera" : ""}. Plazas: ${seats}.`
     : `Solicitud de información sobre «${product.title}» (${offerModeOf(product) === "coming_soon" ? "próximamente" : offerModeOf(product) === "on_request" ? "bajo petición" : offerModeOf(product) === "priced_request" ? "precio visible, solo por solicitud" : "precio fijo"}).`;
-  const body = [header, message && `Mensaje: ${message}`, page && `Origen: ${page}`, `Consentimiento RGPD: aceptado el ${new Date(now).toISOString()} · texto v${consent.version}: «${consent.text}»`].filter(Boolean).join("\n");
+  // Lo que la persona vio: precio publicado y modalidad elegida (los importes salen siempre de la BD, no del navegador)
+  const baseNum = Number(product.basePrice ?? 0);
+  const variantRows = showsPrice(product) && input.variantId ? await getVariantsByExperience(product.id) : [];
+  const chosen = variantRows.find((v) => v.id === input.variantId);
+  const chosenPrice = chosen ? (chosen.priceType === "percentage" ? baseNum * (1 + Number(chosen.priceModifier ?? 0) / 100) : Number(chosen.priceModifier ?? 0)) : 0;
+  const priceLine = chosen
+    ? `Modalidad elegida: ${chosen.name} · precio publicado: ${eur(chosenPrice)}`
+    : showsPrice(product) && baseNum > 0 ? `Precio publicado (producto): ${eur(baseNum)}` : "";
+  const lang = /^[a-z]{2}(-[A-Za-z]{2})?$/.test(input.lang ?? "") ? input.lang!.toLowerCase().slice(0, 2) : "";
+  const body = [header, priceLine, lang && `Idioma de la web: ${lang}`, message && `Mensaje: ${message}`, page && `Origen: ${page}`, `Consentimiento RGPD: aceptado el ${new Date(now).toISOString()} · texto v${consent.version}: «${consent.text}»`].filter(Boolean).join("\n");
 
   return keyedLock(`${ctx.tenantId}:solicitud:${email}:${product.id}:${edition?.edition.id ?? 0}`, async () => {
     // Repetido: la misma persona y la misma convocatoria (o el mismo producto hace un momento) → se anota, no se duplica

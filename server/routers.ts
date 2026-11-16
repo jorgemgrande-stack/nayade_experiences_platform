@@ -602,6 +602,8 @@ export const appRouter = router({
           website: z.string().max(500).optional(),
           elapsedMs: z.number().int().min(0).optional(),
           page: z.string().max(200).optional(),
+          variantId: z.number().int().positive().optional(),
+          lang: z.string().max(5).optional(),
         }).optional(),
         studioForm: z.object({
           slug: z.string().regex(/^[a-z0-9-]{1,64}$/),

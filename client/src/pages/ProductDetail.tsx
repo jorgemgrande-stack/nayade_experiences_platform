@@ -330,7 +330,7 @@ export default function ProductDetail() {
         )}
       </div>
 
-      {onRequest && <ProductRequestDialog target={{ productId: product.id, productTitle: product.title }} open={requestOpen} onOpenChange={setRequestOpen} />}
+      {onRequest && <ProductRequestDialog target={{ productId: product.id, productTitle: product.title, variantId: variant?.id }} open={requestOpen} onOpenChange={setRequestOpen} />}
 
       {/* Opiniones reales del producto (sin cifras fijas) */}
       <section className="py-12 bg-muted border-t border-border">
