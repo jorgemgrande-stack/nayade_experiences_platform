@@ -189,7 +189,7 @@ export const experiences = mysqlTable("experiences", {
   // Time slots module (optional, retrocompatible)
   hasTimeSlots: boolean("has_time_slots").default(false).notNull(),
   // Migración 0069 (E-6): cómo se ofrece (precio fijo, bajo petición, próximamente) y texto del botón de petición
-  offerMode: mysqlEnum("offer_mode", ["fixed", "on_request", "coming_soon"]).default("fixed").notNull(),
+  offerMode: mysqlEnum("offer_mode", ["fixed", "on_request", "coming_soon", "priced_request"]).default("fixed").notNull(),
   requestCtaLabel: varchar("request_cta_label", { length: 80 }),
   sortOrder: int("sortOrder").default(0).notNull(),
   metaTitle: varchar("metaTitle", { length: 256 }),

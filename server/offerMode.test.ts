@@ -1,6 +1,6 @@
 /** Oferta «bajo petición» / «próximamente» (E-6): reglas puras compartidas por el panel, la web y el servidor. */
 import { describe, it, expect } from "vitest";
-import { DEFAULT_REQUEST_CTA, OFFER_MODES, cleanText, isFixedOffer, notForSaleMessage, offerModeOf, publicOfferBadge, requestCtaLabel } from "../shared/offerMode";
+import { DEFAULT_REQUEST_CTA, OFFER_MODES, cleanText, isFixedOffer, notForSaleMessage, offerModeOf, publicOfferBadge, requestCtaLabel, showsPrice } from "../shared/offerMode";
 import { isPurchasable } from "../shared/shopOrders";
 import { validateProductForm } from "../shared/formValidation";
 
@@ -11,7 +11,8 @@ describe("offerMode", () => {
     expect(offerModeOf(undefined)).toBe("fixed");
     expect(offerModeOf({ offerMode: "on_request" })).toBe("on_request");
     expect(offerModeOf({ offerMode: "coming_soon" })).toBe("coming_soon");
-    expect(OFFER_MODES).toEqual(["fixed", "on_request", "coming_soon"]);
+    expect(offerModeOf({ offerMode: "priced_request" })).toBe("priced_request");
+    expect(OFFER_MODES).toEqual(["fixed", "on_request", "coming_soon", "priced_request"]);
   });
 
   it("la etiqueta pública nunca es «Agotado» y los de precio fijo no llevan etiqueta", () => {
@@ -61,5 +62,24 @@ describe("offerMode", () => {
     expect(cleanText("línea 1\nlínea 2", 50)).toBe("línea 1 línea 2");
     expect(cleanText(42, 10)).toBe("");
     expect(cleanText("abcdef", 3)).toBe("abc");
+  });
+});
+
+describe("precio visible, solo por solicitud", () => {
+  it("muestra el precio, lleva etiqueta y nunca se puede comprar", () => {
+    const p = { offerMode: "priced_request", isActive: true, isPublished: true };
+    expect(showsPrice(p)).toBe(true);
+    expect(showsPrice({ offerMode: "fixed" })).toBe(true);
+    expect(showsPrice({ offerMode: "on_request" })).toBe(false);
+    expect(showsPrice({ offerMode: "coming_soon" })).toBe(false);
+    expect(publicOfferBadge(p)).toBe("Por solicitud");
+    expect(isFixedOffer(p)).toBe(false);
+    expect(isPurchasable(p)).toBe(false);
+  });
+
+  it("el formulario de producto exige precio", () => {
+    const f = { title: "Retiro", basePrice: "", categoryId: "1", locationId: "1", pricingType: "per_person", unitCapacity: "", minPersons: "1", maxPersons: "", discountPercent: "" };
+    expect(validateProductForm({ ...f, offerMode: "priced_request" }).basePrice).toBe("Indica el precio.");
+    expect(validateProductForm({ ...f, basePrice: "555", offerMode: "priced_request" }).basePrice).toBeUndefined();
   });
 });

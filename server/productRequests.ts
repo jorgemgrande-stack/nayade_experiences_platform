@@ -127,7 +127,7 @@ export async function processProductRequest(input: ProductRequestInput, ctx: Pro
   const dates = edition ? formatEditionDates(edition.edition.startsAt, edition.edition.endsAt, edition.edition.timezone) : "";
   const header = edition
     ? `Solicitud de plaza en «${product.title}» · ${edition.edition.label} (${dates})${edition.initialStatus === "lista_espera" ? " — para lista de espera" : ""}. Plazas: ${seats}.`
-    : `Solicitud de información sobre «${product.title}» (${offerModeOf(product) === "coming_soon" ? "próximamente" : offerModeOf(product) === "on_request" ? "bajo petición" : "precio fijo"}).`;
+    : `Solicitud de información sobre «${product.title}» (${offerModeOf(product) === "coming_soon" ? "próximamente" : offerModeOf(product) === "on_request" ? "bajo petición" : offerModeOf(product) === "priced_request" ? "precio visible, solo por solicitud" : "precio fijo"}).`;
   const body = [header, message && `Mensaje: ${message}`, page && `Origen: ${page}`, `Consentimiento RGPD: aceptado el ${new Date(now).toISOString()} · texto v${consent.version}: «${consent.text}»`].filter(Boolean).join("\n");
 
   return keyedLock(`${ctx.tenantId}:solicitud:${email}:${product.id}:${edition?.edition.id ?? 0}`, async () => {

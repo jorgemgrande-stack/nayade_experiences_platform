@@ -29,7 +29,7 @@ import { blockLabel, DEFAULT_BLOCK_STYLE, readBlockText, type BlockOf, type Bloc
 import { modalHref } from "@shared/studio/modal";
 import { formatEuros, productPath } from "@shared/storefront";
 import { isPurchasable } from "@shared/shopOrders";
-import { publicOfferBadge } from "@shared/offerMode";
+import { publicOfferBadge, showsPrice } from "@shared/offerMode";
 import { EditionsList } from "@/components/site/Editions";
 
 // ─── Contexto de edición (lienzo de Elephant Studio) ──────────────────────────
@@ -1264,7 +1264,7 @@ function ProductsBlock({ b, first, preview }: { b: BlockOf<"products">; first: b
                 <div className="space-y-1 p-4">
                   <h3 className="break-words font-heading font-semibold group-hover:text-primary">{p.title}</h3>
                   {p.shortDescription && <p className="line-clamp-2 text-sm text-muted-foreground">{p.shortDescription}</p>}
-                  {price && !offerBadge && <p className={cn("text-sm font-semibold", soldOut && "text-muted-foreground")}>{price}</p>}
+                  {price && (!offerBadge || showsPrice(p)) && <p className={cn("text-sm font-semibold", soldOut && "text-muted-foreground")}>{price}</p>}
                 </div>
               </SmartLink>
             );

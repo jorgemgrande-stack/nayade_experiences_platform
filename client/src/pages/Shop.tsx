@@ -15,7 +15,7 @@ import { trpc } from "@/lib/trpc";
 import { cn } from "@/lib/utils";
 import { formatEuros, productPath } from "@shared/storefront";
 import { isPurchasable } from "@shared/shopOrders";
-import { publicOfferBadge } from "@shared/offerMode";
+import { publicOfferBadge, showsPrice } from "@shared/offerMode";
 
 type Item = { id: number; slug: string; title: string; categoryId?: number | null; shortDescription?: string | null; image1?: string | null; coverImageUrl?: string | null; basePrice?: string | null; isActive?: boolean | null; isPublished?: boolean | null; offerMode?: string | null };
 
@@ -106,7 +106,7 @@ export default function Shop() {
                     <div className="p-4 space-y-1">
                       <h2 className="font-heading font-semibold group-hover:text-primary break-words">{p.title}</h2>
                       {p.shortDescription && <p className="text-sm text-muted-foreground line-clamp-2">{p.shortDescription}</p>}
-                      {price && !offerBadge && <p className={cn("text-sm font-semibold", soldOut && "text-muted-foreground")}>{price}</p>}
+                      {price && (!offerBadge || showsPrice(p)) && <p className={cn("text-sm font-semibold", soldOut && "text-muted-foreground")}>{price}</p>}
                     </div>
                   </Link>
                 );
