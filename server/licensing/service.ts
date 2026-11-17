@@ -193,6 +193,30 @@ export class LicensingService {
   }
 
   /**
+   * Fin de la implantación de un producto (17/11/2026): las licencias de ESE producto (con su herencia y sus
+   * componentes) que esperaban la implantación (`pending_setup`) con origen `subscription:<id>` pasan a activas, con la
+   * misma caducidad. Nada más: no da altas, no toca las de otros productos, ni las de otro origen (operador, derechos
+   * adquiridos, otra suscripción), ni las suspendidas, en solo lectura o canceladas. Idempotente.
+   */
+  async activatePendingSetup(subscriptionId: number, productKey: string, o: { actor: string; reason?: string | null }) {
+    const sub = await this.d.subscriptions.get(subscriptionId);
+    if (!sub) throw new LicensingError("not_found", "Suscripción no encontrada");
+    let tenantId = sub.tenantId ?? null;
+    if (!tenantId && sub.contractId) tenantId = (await this.d.crm.contract(sub.contractId))?.tenantId ?? null;
+    if (!tenantId) throw new LicensingError("invalid_state", "La suscripción no tiene plataforma (tenant)");
+    if (sub.status === "canceled") return { tenantId, activated: [] as string[] };
+    const catalog = await this.d.catalog();
+    const byKey = new Map(catalog.products.map((p) => [p.key, p]));
+    const caps = capabilitiesOf(byKey.get(productKey), byKey);
+    const source = `subscription:${sub.id}`;
+    const changes: CapabilityChange[] = (await this.d.capabilities.list(tenantId))
+      .filter((g) => caps.has(g.capabilityId) && g.source === source && g.status === "pending_setup")
+      .map((g) => ({ capabilityId: g.capabilityId, siteId: g.siteId, status: "active" as const, validUntil: g.validUntil, source }));
+    if (changes.length) await this.d.capabilities.apply(tenantId, changes, { actor: o.actor, reason: o.reason ?? `Implantación de ${productKey} terminada (suscripción #${sub.id})`, now: this.now() });
+    return { tenantId, activated: Array.from(new Set(changes.map((c) => c.capabilityId))).sort() };
+  }
+
+  /**
    * Baja EFECTIVA de módulos: partidas cuya baja ya se cumplió (fin <= ahora) y cuyas licencias acaba de cancelar ESTA
    * sincronización. Un evento por partida (`subscription.module_removal_effective`) con el producto retirado. Nunca por
    * una baja solo programada, por el plan Core (cambio de plan), por una ampliación por cantidad, por un paquete que

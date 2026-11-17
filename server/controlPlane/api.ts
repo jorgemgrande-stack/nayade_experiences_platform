@@ -2106,7 +2106,15 @@ export function createControlPlaneApp(d: ControlPlaneDeps): Express {
               if (!paidNet.run || !d.subscriptions?.terms) return;
               const added = addedByTerms(terms, await d.subscriptions.terms.list({ companyId: terms.companyId, status: ["active", "scheduled", "superseded", "expired"] }));
               await paidNet.run.fromTerms({ companyId: terms.companyId, contractId, subscriptionId, productKeys: added, reference: `condiciones #${terms.id}` });
+              // Connect asistido: sus licencias esperan la implantación; el expediente (idempotente) las activa al iniciarse
+              await paidNet.run.assistedFromTerms({ companyId: terms.companyId, contractId, subscriptionId, productKeys: added, reference: `condiciones #${terms.id}` });
             },
+            // Condiciones aceptadas sobre una suscripción en prueba: termina la prueba, se convierte su registro y se
+            // aplican las licencias del acuerdo (sin cobro: modo sombra)
+            trials: d.trials
+              ? ((ts) => ({ byTenant: (tenantId: string) => ts.store.byTenant(tenantId), convert: (id: number, v: number, sid: number, actor: string) => new TrialService({ store: ts.store, subscriptions: d.subscriptions!.store, now: d.subscriptions!.now, limits: ts.limits, blockedDomains: ts.blockedDomains }).convert(id, v, sid, actor) }))(d.trials)
+              : null,
+            licences: { afterChange: async (sid, actor) => termsLicences?.afterChange(sid, actor) },
           })
         : null;
     if (termsAcceptance) {
@@ -2376,6 +2384,8 @@ export function createControlPlaneApp(d: ControlPlaneDeps): Express {
               ofCompany: async (companyId) => (await d.subscriptions!.terms!.list({ companyId })).map((t) => ({ id: t.id, status: t.status, companyId: t.companyId, acceptanceStatus: t.acceptanceStatus, productKeys: t.lines.map((l) => l.productKey).filter((k): k is string => !!k) })),
             }
           : null,
+        // Expediente pagado que se inicia: activa las licencias de su solución que esperaban la implantación
+        activateSolution: (subscriptionId, solutionKey, actor) => licensingForImplementation.activatePendingSetup(subscriptionId, solutionKey, { actor }),
         now: d.subscriptions.now,
       });
       intakeImplementation.run = (r) => implementation.fromIntake(r);

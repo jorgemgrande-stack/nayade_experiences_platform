@@ -11,6 +11,7 @@
  */
 import { opsLog } from "../_core/ops/log";
 import { netProductOf } from "../../shared/netProducts";
+import { connectAssistedOf } from "../../shared/connectAssisted";
 import type { CommercialOrder } from "../orchestrator/types";
 import type { CatalogPort } from "../subscriptions/ports";
 import type { OrderNotifier } from "../orchestrator/service";
@@ -30,6 +31,15 @@ export async function sectorNetKeys(catalog: Pick<CatalogPort, "product">, keys:
   return out;
 }
 
+/**
+ * Claves de `keys` que son un producto Connect de contratación asistida (shared/connectAssisted.ts): en unas condiciones
+ * personalizadas sus licencias quedan pendientes de implantación hasta que se inicia su expediente. Las ampliaciones
+ * asistidas (usuarios, almacenamiento, sedes) no conceden capacidades, solo límites: no abren expediente. Pura.
+ */
+export function assistedConnectKeys(keys: readonly string[]): string[] {
+  return Array.from(new Set(keys)).filter((k) => connectAssistedOf(k) !== null);
+}
+
 /** Circuito de un pedido activado, por su tipo y su clave. Puro. */
 export function circuitOf(o: Pick<CommercialOrder, "kind" | "idempotencyKey">): PaidCircuit {
   if (o.kind === "trial_conversion") return "trial_conversion";
@@ -46,9 +56,9 @@ export interface PaidNetDeps {
 }
 
 export function paidNetOpener(d: PaidNetDeps) {
-  const open = async (keys: string[], base: { companyId: number; contractId: number | null; subscriptionId: number | null; circuit: PaidCircuit; reference: string }) => {
+  const open = async (keys: string[], base: { companyId: number; contractId: number | null; subscriptionId: number | null; circuit: PaidCircuit; reference: string }, select: (keys: string[]) => Promise<string[]> | string[] = (k) => sectorNetKeys(d.catalog, k)) => {
     const opened: number[] = [];
-    for (const key of await sectorNetKeys(d.catalog, keys)) {
+    for (const key of await select(keys)) {
       try {
         const r = await d.implementation.openPaid({ ...base, solutionKey: key }, PAID_NET_ACTOR);
         opened.push(r.order.id);
@@ -76,6 +86,14 @@ export function paidNetOpener(d: PaidNetDeps) {
     async fromTerms(i: { companyId: number; contractId: number | null; subscriptionId: number | null; productKeys: string[]; reference: string }): Promise<number[]> {
       if (!i.productKeys.length) return [];
       return open(i.productKeys, { companyId: i.companyId, contractId: i.contractId, subscriptionId: i.subscriptionId, circuit: "custom_terms", reference: i.reference });
+    },
+    /**
+     * Condiciones personalizadas aceptadas y activadas: expediente (idempotente) de cada producto Connect de
+     * contratación asistida de sus partidas. Sus licencias esperan en `pending_setup` hasta que se inicia.
+     */
+    async assistedFromTerms(i: { companyId: number; contractId: number | null; subscriptionId: number | null; productKeys: string[]; reference: string }): Promise<number[]> {
+      if (!i.productKeys.length) return [];
+      return open(i.productKeys, { companyId: i.companyId, contractId: i.contractId, subscriptionId: i.subscriptionId, circuit: "custom_terms", reference: i.reference }, assistedConnectKeys);
     },
   };
 }

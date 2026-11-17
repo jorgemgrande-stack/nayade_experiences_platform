@@ -68,6 +68,12 @@ const cat = (key: string, over: Partial<Extract<LineInput, { kind: "catalog" }>>
 const custom = (name: string): LineInput => ({ kind: "custom", concept: "other", name, chargeClass: "recurring", unitCents: 5000, taxRateBp: 2100 });
 const PACKAGE = (over: Partial<TermsInput> = {}): TermsInput => ({ pricingMode: "global", globalAmountCents: 12900, presentation: "global", reason: "Acuerdo comercial negociado", lines: [cat("essential"), cat("hotel-net-complete"), cat("connect-whatsapp-ai")], ...over });
 const granted = async (tenantId: string, subId: number) => (await caps.list(tenantId)).filter((g) => g.source === `subscription:${subId}` && g.status === "active").map((g) => g.capabilityId).sort();
+/** Contratadas por la suscripción: activas o pendientes de implantación (Connect asistido). */
+const held = async (tenantId: string, subId: number) => (await caps.list(tenantId)).filter((g) => g.source === `subscription:${subId}` && (g.status === "active" || g.status === "pending_setup")).map((g) => g.capabilityId).sort();
+const pendingSetup = async (tenantId: string, subId: number) => (await caps.list(tenantId)).filter((g) => g.source === `subscription:${subId}` && g.status === "pending_setup").map((g) => g.capabilityId).sort();
+/** Elephant WhatsApp AI es de contratación asistida: su licencia espera la implantación (17/11/2026). */
+const WHATSAPP_CAP = "whatsapp-ai";
+const withoutWhatsapp = (caps: string[]) => caps.filter((c) => c !== WHATSAPP_CAP);
 /** Límites vigentes de la empresa: métrica → [valor, origen]. */
 const limitsOf = async (tenantId: string) => Object.fromEntries((await limits.limits(tenantId)).map((l) => [l.metric, [l.limit, l.source]]));
 const values = (o: Record<string, Array<number | string | null>>) => Object.fromEntries(Object.entries(o).map(([k, v]) => [k, v[0]]));
@@ -90,11 +96,15 @@ describe("aplicación automática al entrar en vigor el acuerdo", () => {
   it("Caso 27 — el paquete de 129 € concede exactamente las licencias de sus tres productos, sin intervención", async () => {
     const official = await officialCapabilities(9, "oficial", ["hotel-net-complete", "connect-whatsapp-ai"]);
     expect(official.length).toBeGreaterThan(0);
+    expect(official).toContain(WHATSAPP_CAP);
     const a = await contracted(1, "acme", PACKAGE());
-    expect(await granted("acme", a.subId)).toEqual(official);
+    // Las tres; la de WhatsApp AI, contratada y pendiente de implantación (no activa)
+    expect(await held("acme", a.subId)).toEqual(official);
+    expect(await granted("acme", a.subId)).toEqual(withoutWhatsapp(official));
+    expect(await pendingSetup("acme", a.subId)).toEqual([WHATSAPP_CAP]);
     expect(await licenceEvents(a.termsId)).toEqual(["licences_applied"]);
     const ev = (await termsStore.events({ termsId: a.termsId })).find((e) => e.kind === "licences_applied")!;
-    expect(ev).toMatchObject({ actor: A, syncResult: "applied", after: { tenantId: "acme", linked: false, capabilities: official } });
+    expect(ev).toMatchObject({ actor: A, syncResult: "applied", after: { tenantId: "acme", linked: false, capabilities: withoutWhatsapp(official), pendingSetup: [WHATSAPP_CAP] } });
     // Idempotente: repetirlo no cambia nada ni añade ruido al historial
     expect(await a.licences.ensure(a.subId, A)).toMatchObject({ status: "applied", changed: 0 });
     expect(await a.licences.ensure(a.subId, A, { force: true })).toMatchObject({ status: "applied", changed: 0 });
@@ -127,13 +137,13 @@ describe("aplicación automática al entrar en vigor el acuerdo", () => {
     // La capacidad del operador NO cambia de dueño: queda anotada como «sin tocar»
     const ev = (await termsStore.events({ termsId: a.termsId })).find((e) => e.kind === "licences_applied")!;
     expect((ev.after as { skipped: unknown[] }).skipped).toEqual([{ capabilityId: hotelCap, why: "other_source" }]);
-    const before = await granted("acme", a.subId);
+    const before = await held("acme", a.subId);
     expect(before).not.toContain(hotelCap);
     clock += 86_400_000;
     // Nuevo acuerdo sin Hotel Net ni WhatsApp: se retiran SOLO las licencias de esta suscripción que ya no corresponden
     const d = await a.terms.createForSubscription(a.subId, PACKAGE({ globalAmountCents: 2900, lines: [cat("essential")] }), A);
     await a.terms.activate(d.id, { expectedRevision: d.revision, expectedVersion: (await subs.must(a.subId)).version }, A);
-    const after = await granted("acme", a.subId);
+    const after = await held("acme", a.subId);
     expect(after.length).toBeLessThan(before.length);
     expect(after.every((c) => before.includes(c))).toBe(true);
     const others = (await caps.list("acme")).filter((g) => !g.source.startsWith("subscription:"));
@@ -162,10 +172,11 @@ describe("empresa sin plataforma: pendiente, y automático al darla de alta", ()
     expect(out).toEqual([expect.objectContaining({ status: "applied", tenantId: "prueba-condiciones-129", linked: true })]);
     expect((await subs.must(a.subId)).tenantId).toBe("prueba-condiciones-129");
     expect((await store.events(a.subId)).pop()).toMatchObject({ kind: "tenant_linked", actor: A, after: { tenantId: "prueba-condiciones-129" } });
-    expect(await granted("prueba-condiciones-129", a.subId)).toEqual(official);
+    expect(await granted("prueba-condiciones-129", a.subId)).toEqual(withoutWhatsapp(official));
+    expect(await pendingSetup("prueba-condiciones-129", a.subId)).toEqual([WHATSAPP_CAP]);
     expect(await licenceEvents(a.termsId)).toEqual(["licences_pending", "licences_applied"]);
     const st = await a.licences.status(a.subId);
-    expect(st).toMatchObject({ tenantId: "prueba-condiciones-129", linked: true, last: { kind: "licences_applied" }, plan: { capabilities: official, pending: 0 } });
+    expect(st).toMatchObject({ tenantId: "prueba-condiciones-129", linked: true, last: { kind: "licences_applied" }, plan: { capabilities: withoutWhatsapp(official), pending: 0, pendingSetup: [WHATSAPP_CAP] } });
   });
 
   it("si nadie avisa del alta, se aplican igualmente en la siguiente ocasión (antes de calcular la facturación)", async () => {

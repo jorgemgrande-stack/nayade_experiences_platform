@@ -127,6 +127,12 @@ export interface ImplementationDeps {
    * compromisos de implantación como condiciones especiales. El operador lo revisa y lo envía a aceptación.
    */
   packages?: PackagePort | null;
+  /**
+   * Expediente PAGADO que se inicia (17/11/2026): activa las licencias de ESA solución que esperaban la implantación
+   * (`pending_setup`, origen `subscription:<id>`; p. ej. un Connect asistido de unas condiciones personalizadas). Lo
+   * demás no cambia. Sin él, las licencias no se tocan (como antes).
+   */
+  activateSolution?: ((subscriptionId: number, solutionKey: string, actor: string) => Promise<{ activated: string[] }>) | null;
   now?: () => number;
 }
 
@@ -811,12 +817,23 @@ export class ImplementationService {
       } catch (e) {
         return this.failed(o, "iniciar", e, actor);
       }
+      // Expediente de un pago: las licencias de esta solución que esperaban la implantación pasan a activas (antes de
+      // darlo por iniciado: si falla, el expediente sigue «disponible» y se reintenta; repetirlo no cambia nada)
+      let activated: string[] = [];
+      if (paid && this.d.activateSolution) {
+        try {
+          activated = (await this.d.activateSolution(o.subscriptionId!, o.solutionKey, actor)).activated;
+        } catch (e) {
+          return this.failed(o, "activar las licencias", e, actor);
+        }
+      }
       // El contrato pasa a activo con la plataforma ya creada (el alta es idempotente y no vuelve a invitar)
       if (!paid && contract.status === "signed") {
         await this.d.crm.setContractStatus(contract.id, "active", actor).catch((e) => this.event(o.id, "step_failed", actor, `activar el contrato: ${message(e)}`));
       }
       const upd = await this.patch(o, { status: "started", subscriptionId: r.subscriptionId, startedAt: this.now(), trialEndsAt: o.startMode === "trial" ? (o.trialEndsAt ?? r.trialEndsAt) : null, lastError: null });
       await this.event(o.id, "started", actor, o.startMode === "trial" ? `Prueba de ${ASSISTED_TRIAL_DAYS} días hasta ${new Date(upd.trialEndsAt ?? 0).toISOString().slice(0, 10)} · suscripción #${r.subscriptionId}` : `Suscripción #${r.subscriptionId} iniciada`);
+      if (activated.length) await this.event(o.id, "note", actor, `Licencias activadas al terminar la implantación: ${activated.join(", ")}`);
       await this.crmNote(upd, o.startMode === "trial" ? "prueba iniciada" : "suscripción iniciada", actor);
       return upd;
     });
