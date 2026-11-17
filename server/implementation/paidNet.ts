@@ -11,6 +11,7 @@
  */
 import { opsLog } from "../_core/ops/log";
 import { netProductOf } from "../../shared/netProducts";
+import { connectAssistedOf } from "../../shared/connectAssisted";
 import type { CommercialOrder } from "../orchestrator/types";
 import type { CatalogPort } from "../subscriptions/ports";
 import type { OrderNotifier } from "../orchestrator/service";
@@ -30,6 +31,15 @@ export async function sectorNetKeys(catalog: Pick<CatalogPort, "product">, keys:
   return out;
 }
 
+/**
+ * Claves de `keys` que son un producto Connect de contratación asistida (shared/connectAssisted.ts): en unas condiciones
+ * personalizadas sus licencias quedan pendientes de implantación hasta que se inicia su expediente. Las ampliaciones
+ * asistidas (usuarios, almacenamiento, sedes) no conceden capacidades, solo límites: no abren expediente. Pura.
+ */
+export function assistedConnectKeys(keys: readonly string[]): string[] {
+  return Array.from(new Set(keys)).filter((k) => connectAssistedOf(k) !== null);
+}
+
 /** Circuito de un pedido activado, por su tipo y su clave. Puro. */
 export function circuitOf(o: Pick<CommercialOrder, "kind" | "idempotencyKey">): PaidCircuit {
   if (o.kind === "trial_conversion") return "trial_conversion";
@@ -43,12 +53,17 @@ export interface PaidNetDeps {
   catalog: Pick<CatalogPort, "product">;
   /** Pedido anterior de un cambio (para abrir solo lo nuevo). */
   previousOrder?: (id: number) => Promise<Pick<CommercialOrder, "request"> | null>;
+  /**
+   * Activa las licencias pendientes de implantación de un producto (`LicensingService.activatePendingSetup`): para un
+   * Connect asistido cuyo expediente ya estaba INICIADO (la implantación ya se hizo: no se espera a otra).
+   */
+  activateSolution?: ((subscriptionId: number, solutionKey: string, actor: string) => Promise<{ activated: string[] }>) | null;
 }
 
 export function paidNetOpener(d: PaidNetDeps) {
-  const open = async (keys: string[], base: { companyId: number; contractId: number | null; subscriptionId: number | null; circuit: PaidCircuit; reference: string }) => {
+  const open = async (keys: string[], base: { companyId: number; contractId: number | null; subscriptionId: number | null; circuit: PaidCircuit; reference: string }, select: (keys: string[]) => Promise<string[]> | string[] = (k) => sectorNetKeys(d.catalog, k)) => {
     const opened: number[] = [];
-    for (const key of await sectorNetKeys(d.catalog, keys)) {
+    for (const key of await select(keys)) {
       try {
         const r = await d.implementation.openPaid({ ...base, solutionKey: key }, PAID_NET_ACTOR);
         opened.push(r.order.id);
@@ -76,6 +91,25 @@ export function paidNetOpener(d: PaidNetDeps) {
     async fromTerms(i: { companyId: number; contractId: number | null; subscriptionId: number | null; productKeys: string[]; reference: string }): Promise<number[]> {
       if (!i.productKeys.length) return [];
       return open(i.productKeys, { companyId: i.companyId, contractId: i.contractId, subscriptionId: i.subscriptionId, circuit: "custom_terms", reference: i.reference });
+    },
+    /**
+     * Condiciones personalizadas aceptadas y activadas: expediente (idempotente) de cada producto Connect de
+     * contratación asistida de sus partidas. Sus licencias esperan en `pending_setup` hasta que se inicia.
+     */
+    async assistedFromTerms(i: { companyId: number; contractId: number | null; subscriptionId: number | null; productKeys: string[]; reference: string }): Promise<number[]> {
+      const opened: number[] = [];
+      for (const key of assistedConnectKeys(i.productKeys)) {
+        try {
+          const r = await d.implementation.openPaid({ companyId: i.companyId, contractId: i.contractId, subscriptionId: i.subscriptionId, circuit: "custom_terms", reference: i.reference, solutionKey: key }, PAID_NET_ACTOR);
+          opened.push(r.order.id);
+          if (r.created) opsLog("info", "Implementation", "assisted_connect_opened", { companyId: i.companyId, solutionKey: key, orderId: r.order.id });
+          // Expediente ya iniciado (implantación hecha antes): sus licencias no tienen que esperar a otro
+          if (r.order.status === "started" && i.subscriptionId !== null && d.activateSolution) await d.activateSolution(i.subscriptionId, key, PAID_NET_ACTOR);
+        } catch (e) {
+          opsLog("warn", "Implementation", "assisted_connect_open_failed", { companyId: i.companyId, solutionKey: key, error: e instanceof Error ? e.name : "error" });
+        }
+      }
+      return opened;
     },
   };
 }

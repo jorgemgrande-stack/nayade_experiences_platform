@@ -55,6 +55,11 @@ export interface TermsAcceptanceMail {
 const TOKEN_TTL_MS = 30 * 86_400_000;
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
 const ACTOR = "public:acceptance";
+const TRIAL_END_REASON = "Condiciones particulares aceptadas";
+/** Estados de una prueba gratuita que admiten la conversión (server/trials/machine.ts). */
+const OPEN_TRIAL = new Set(["active", "expired"]);
+/** Partida del plan Core (la misma regla que el servicio de condiciones). */
+const isPlanLine = (l: Pick<TermsRecord["lines"][number], "kind" | "chargeClass" | "catalog">) => l.kind === "catalog" && l.chargeClass === "recurring" && l.catalog?.family === "core_plan";
 /** Estados del correo que significan «en camino» (encolado, enviándose, aceptado por el proveedor o entregado). */
 const MAIL_OK = new Set(["pending", "sending", "accepted", "delivered"]);
 /** Motivo legible de un correo que no salió (los códigos son los de la bandeja de salida). */
@@ -112,6 +117,19 @@ export class TermsAcceptanceService {
        * Net de sus partidas. Un fallo nunca deshace la aceptación ni la activación: solo se registra.
        */
       onActivated?: (i: { terms: TermsRecord; subscriptionId: number; contractId: number }) => Promise<unknown>;
+      /**
+       * Prueba gratuita de la plataforma (17/11/2026): al aceptarse unas condiciones con plan Core sobre una suscripción
+       * EN PRUEBA, la prueba termina y su registro queda convertido. Sin él, la suscripción sale igualmente de la prueba
+       * y queda anotado que el registro de la prueba no se ha podido convertir.
+       */
+      trials?: {
+        /** Prueba de una plataforma (`TrialStore.byTenant`). */
+        byTenant(tenantId: string): Promise<{ id: number; version: number; state: string; tenantId: string | null; convertedSubscriptionId: number | null } | null>;
+        /** `TrialService.convert`. */
+        convert(id: number, expectedVersion: number, subscriptionId: number, actor: string): Promise<unknown>;
+      } | null;
+      /** Licencias del acuerdo (`TermsLicences.afterChange`): se vuelven a aplicar al terminar la prueba. */
+      licences?: { afterChange(subscriptionId: number, actor: string): Promise<unknown> } | null;
     },
   ) {
     this.now = d.now ?? Date.now;
@@ -600,6 +618,7 @@ export class TermsAcceptanceService {
     try {
       const subscriptionId = await this.activateAccepted(accepted, a.contractId);
       activated = true;
+      await this.concludeTrial(accepted, subscriptionId);
       if (this.d.onActivated) await this.d.onActivated({ terms: accepted, subscriptionId, contractId: a.contractId }).catch((e) => opsLog("warn", "CommercialTerms", "after_activation_failed", { termsId: t.id, error: e instanceof Error ? e.name : "error" }));
     } catch (e) {
       opsLog("warn", "CommercialTerms", "activation_after_acceptance_failed", { termsId: t.id, error: e instanceof Error ? e.name : "error" });
@@ -626,6 +645,60 @@ export class TermsAcceptanceService {
       await this.d.subscriptions.linkContract(subscriptionId, { contractId, reason: "Contrato de las condiciones comerciales aceptadas" }, cur.version, ACTOR).catch((e) => opsLog("warn", "CommercialTerms", "contract_link_failed", { subscriptionId, error: e instanceof Error ? e.name : "error" }));
     }
     return subscriptionId;
+  }
+
+  /**
+   * Condiciones con plan Core aceptadas sobre una suscripción EN PRUEBA (17/11/2026): la prueba termina
+   * (`SubscriptionService.endTrial`: primer periodo de pago desde hoy, sin cobro, modo sombra), su registro de prueba
+   * gratuita queda convertido (así su tarea programada ya no la vence ni la suspende) y se aplican las licencias del
+   * acuerdo, que mientras duraba la prueba no se tocaban. Solo si el acuerdo ya está en vigor (uno programado deja la
+   * prueba como está). Idempotente y NUNCA lanza: la aceptación ya consta; un fallo queda en el historial.
+   */
+  private async concludeTrial(t: TermsRecord, subscriptionId: number) {
+    try {
+      if (!t.lines.some(isPlanLine)) return;
+      const sub = await this.d.subscriptionStore.get(subscriptionId);
+      // Solo una suscripción en prueba: cualquier otra sigue exactamente como antes
+      if (!sub || sub.status !== "trialing") return;
+      const trial = sub.tenantId && this.d.trials ? await this.d.trials.byTenant(sub.tenantId).catch(() => null) : null;
+      const openTrial = trial && trial.tenantId === sub.tenantId && OPEN_TRIAL.has(trial.state) ? trial : null;
+      // Una prueba suspendida por el equipo no se da por convertida: su suspensión se resuelve antes desde el CRM
+      if (trial && trial.tenantId === sub.tenantId && trial.state === "suspended") {
+        await this.logTrial(t.id, "trial_kept", `La prueba gratuita #${trial.id} está suspendida: no se termina ni se convierte. Resuelve la suspensión y conviértela desde el CRM`, { subscriptionId, trialId: trial.id }, "skipped");
+        return;
+      }
+      const current = await this.d.termsStore.get(t.id);
+      if (current?.status !== "active") {
+        await this.logTrial(t.id, "trial_kept", "Las condiciones aceptadas entran en vigor más adelante: la prueba gratuita sigue hasta entonces y se convierte a mano", { subscriptionId }, "skipped");
+        return;
+      }
+      try {
+        await this.d.subscriptions.endTrial(sub.id, { reason: TRIAL_END_REASON }, sub.version, ACTOR);
+      } catch (e) {
+        opsLog("warn", "CommercialTerms", "trial_end_failed", { termsId: t.id, subscriptionId, error: e instanceof Error ? e.name : "error" });
+        await this.logTrial(t.id, "trial_end_failed", `No se pudo terminar la prueba gratuita: ${(e instanceof Error ? e.message : "error").slice(0, 300)}. Termínala desde el CRM`, { subscriptionId }, "failed");
+        return;
+      }
+      let converted: number | null = null;
+      if (openTrial) {
+        try {
+          await this.d.trials!.convert(openTrial.id, openTrial.version, subscriptionId, ACTOR);
+          converted = openTrial.id;
+        } catch (e) {
+          opsLog("warn", "CommercialTerms", "trial_convert_failed", { termsId: t.id, subscriptionId, trialId: openTrial.id, error: e instanceof Error ? e.name : "error" });
+        }
+      } else if (!this.d.trials) opsLog("warn", "CommercialTerms", "trial_conversion_unavailable", { termsId: t.id, subscriptionId });
+      const what = ["Prueba gratuita terminada: empieza el primer periodo con las condiciones aceptadas (sin cobro: modo sombra)", converted !== null ? `prueba #${converted} convertida` : openTrial ? `la prueba #${openTrial.id} no se ha podido marcar como convertida: hazlo desde el CRM` : "sin registro de prueba gratuita que convertir"].join("; ");
+      await this.logTrial(t.id, "trial_ended", what, { subscriptionId, trialEnded: true, trialId: converted ?? openTrial?.id ?? null, trialConverted: converted !== null }, converted !== null || !openTrial ? "applied" : "partial");
+      // Las licencias del acuerdo (las de la prueba se sustituyen por las contratadas)
+      if (this.d.licences) await this.d.licences.afterChange(subscriptionId, ACTOR).catch(() => undefined);
+    } catch (e) {
+      opsLog("warn", "CommercialTerms", "trial_conclusion_failed", { termsId: t.id, subscriptionId, error: e instanceof Error ? e.name : "error" });
+    }
+  }
+
+  private async logTrial(termsId: number, kind: string, reason: string, after: unknown, result: string) {
+    await this.d.termsStore.log(termsId, { kind, actor: ACTOR, reason: reason.slice(0, 500), before: null, after, effectiveAt: null, acceptanceStatus: "accepted", syncResult: result, economic: null }, this.now()).catch(() => undefined);
   }
 
   /**

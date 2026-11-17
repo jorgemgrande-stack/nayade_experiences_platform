@@ -31,6 +31,10 @@
  *   aplican en la siguiente ocasión en que se calcula la facturación de la suscripción; no hay todavía una tarea
  *   periódica que lo haga a la hora exacta.
  * - No toca Stripe ni cobra nada.
+ * - CONNECT ASISTIDO (17/11/2026): una capacidad que solo conceden productos de contratación asistida
+ *   (`assistedRegistryOf`, p. ej. Elephant WhatsApp AI o Campaigns) queda «contratada, pendiente de implantación»
+ *   (`pending_setup`: no permite usarla) hasta que se inicia su expediente de implantación
+ *   (`LicensingService.activatePendingSetup`). Nunca se rebaja una que ya está activa.
  * - Una suscripción SOLO ECONÓMICA (sin plataforma y sin ninguna partida viva o programada que conceda algo en la
  *   plataforma: solo partidas a medida y servicios puros del catálogo) no tiene licencias: resultado `not_applicable`, sin anotaciones «pendiente de
  *   plataforma», sin enlazarla a la plataforma que la empresa pueda tener por otro motivo y sin reintentos.
@@ -46,6 +50,7 @@ import type { CapabilityChange, CapabilityStore } from "../_core/capabilities/st
 import type { LimitChange, LimitMetric, TenantLimitReader } from "../_core/limits/store";
 import type { LicencePlan, LicensingService } from "../licensing/service";
 import { isEconomicOnly, type SubscriptionService } from "../subscriptions/service";
+import { assistedRegistryOf } from "../../shared/addonAssisted";
 import type { SubscriptionStore } from "../subscriptions/store";
 import { requireCustomPricing } from "./permission";
 import { TermsError } from "./service";
@@ -54,7 +59,7 @@ import type { TermsEventDraft, TermsStore } from "./store";
 export type LicenceOutcome =
   | { status: "not_applicable" | "manual"; message: string }
   | { status: "pending_tenant"; message: string }
-  | { status: "applied"; tenantId: string; linked: boolean; changed: number; capabilities: string[]; skipped: SkippedCapability[]; /** Límites que han cambiado en esta aplicación. */ limits: LimitChange[]; limitsSkipped: SkippedLimit[] }
+  | { status: "applied"; tenantId: string; linked: boolean; changed: number; capabilities: string[]; skipped: SkippedCapability[]; /** Límites que han cambiado en esta aplicación. */ limits: LimitChange[]; limitsSkipped: SkippedLimit[]; /** Capacidades contratadas que esperan su implantación (Connect asistido). */ pendingSetup?: string[] }
   | { status: "failed"; tenantId: string | null; error: string };
 
 type SkippedCapability = { capabilityId: string; why: "other_source" | "suspended" | "read_only" };
@@ -82,9 +87,15 @@ export class TermsLicences {
       capabilities: Pick<CapabilityStore, "apply">;
       subscriptions: Pick<SubscriptionService, "linkTenant">;
       subscriptionStore: Pick<SubscriptionStore, "get" | "items" | "list">;
-      termsStore: Pick<TermsStore, "events" | "log">;
+      termsStore: Pick<TermsStore, "events" | "log" | "get">;
       /** Plataforma de la empresa (la del CRM), si ya la tiene. */
       companyTenant: (companyId: number) => Promise<string | null>;
+      /**
+       * Licencias que acaban de quedar pendientes de implantación (17/11/2026): abre (idempotente) el expediente de
+       * cada producto que las concede, venga de una aceptación, de una activación desde el CRM o de un reintento. Un
+       * fallo nunca afecta a las licencias.
+       */
+      onPendingSetup?: ((i: { subscriptionId: number; companyId: number; contractId: number | null; productKeys: string[]; termsId: number }) => Promise<unknown>) | null;
       now?: () => number;
     },
   ) {
@@ -111,6 +122,44 @@ export class TermsLicences {
 
   private event(kind: string, actor: string, reason: string, after: unknown, result: string): TermsEventDraft {
     return { kind, actor, reason: reason.slice(0, 500), before: null, after, effectiveAt: null, acceptanceStatus: null, syncResult: result, economic: null };
+  }
+
+  /**
+   * Connect asistido: las capacidades que SOLO conceden productos de contratación asistida (nunca el plan Core) se dan
+   * de alta como `pending_setup` (contratadas, pendientes de implantación) en lugar de activas. Una que ya está activa
+   * no se rebaja. Quita los cambios que así ya no cambian nada (idempotente).
+   * Solo en acuerdos con ACEPTACIÓN contractual: su contrato firmado es el que lleva el expediente de implantación. Un
+   * acuerdo activado directamente por el equipo, sin aceptación, sigue como siempre (licencias activas).
+   */
+  private async withPendingSetup(plan: LicencePlan, termsId: number | null): Promise<LicencePlan> {
+    const terms = termsId !== null ? await this.d.termsStore.get(termsId) : null;
+    if (!terms?.requiresAcceptance) return plan;
+    const core = new Set((await this.d.subscriptionStore.items(plan.subscriptionId)).filter((i) => i.family === "core_plan").map((i) => i.productKey));
+    const assisted = (key: string) => !core.has(key) && assistedRegistryOf(key) !== null;
+    const setup = new Set(plan.desired.filter((d) => d.grantedBy.length > 0 && d.grantedBy.every(assisted)).map((d) => d.capabilityId));
+    if (!setup.size) return plan;
+    const changes: CapabilityChange[] = [];
+    for (const c of plan.changes) {
+      const cur = plan.current.find((g) => g.capabilityId === c.capabilityId && g.siteId === c.siteId);
+      if (c.status !== "active" || !setup.has(c.capabilityId) || cur?.status === "active") {
+        changes.push(c);
+        continue;
+      }
+      const next: CapabilityChange = { ...c, status: "pending_setup" };
+      if (cur && cur.status === next.status && cur.validUntil === next.validUntil && cur.source === next.source) continue;
+      changes.push(next);
+    }
+    return { ...plan, changes };
+  }
+
+  /** Capacidades propias que quedan pendientes de implantación tras aplicar `safe`. */
+  private pendingSetupOf(plan: LicencePlan, safe: CapabilityChange[]): string[] {
+    const out = new Set(plan.current.filter((g) => g.source === plan.source && g.status === "pending_setup").map((g) => g.capabilityId));
+    for (const c of safe) {
+      if (c.status === "pending_setup") out.add(c.capabilityId);
+      else out.delete(c.capabilityId);
+    }
+    return Array.from(out).sort();
   }
 
   /** Qué cambios de capacidades es seguro aplicar sin una persona delante, y cuáles se dejan sin tocar. */
@@ -225,11 +274,19 @@ export class TermsLicences {
           linked = true;
         } else if (fresh.tenantId !== tenantId) throw new Error("La suscripción ya pertenece a otra plataforma");
       }
-      const plan = await this.d.licensing.preview(subscriptionId, { activate: true });
+      const plan = await this.withPendingSetup(await this.d.licensing.preview(subscriptionId, { activate: true }), termsId);
       // Solo lo que es seguro aplicar sin una persona delante
       const { safe, skipped } = this.sift(plan);
       const applied = safe.length ? await this.d.capabilities.apply(plan.tenantId, safe, { actor, reason: `Licencias de las condiciones comerciales personalizadas #${termsId}`, now: this.now() }) : [];
       const capabilities = plan.changes.filter((c) => c.status === "active" && !skipped.some((s) => s.capabilityId === c.capabilityId)).map((c) => c.capabilityId).sort();
+      const pendingSetup = this.pendingSetupOf(plan, safe);
+      // Lo que acaba de quedar pendiente de implantación: su expediente (idempotente; nunca bloquea las licencias)
+      const newlyPending = new Set(safe.filter((c) => c.status === "pending_setup").map((c) => c.capabilityId));
+      if (newlyPending.size && this.d.onPendingSetup) {
+        const productKeys = Array.from(new Set(plan.desired.filter((x) => newlyPending.has(x.capabilityId)).flatMap((x) => x.grantedBy))).sort();
+        const contractId = (await this.d.termsStore.get(termsId).catch(() => null))?.contractId ?? sub.contractId ?? null;
+        await this.d.onPendingSetup({ subscriptionId, companyId: sub.companyId, contractId, productKeys, termsId }).catch(() => undefined);
+      }
       // Límites y cupos: lo incluido en el plan + las ampliaciones vigentes del acuerdo (después de las capacidades,
       // como en las licencias de cualquier suscripción). Idempotente: sin cambios no escribe nada
       const lim = await this.limitPlan(subscriptionId, plan.tenantId);
@@ -240,12 +297,13 @@ export class TermsLicences {
         const message = [
           linked ? "Plataforma enlazada y licencias aplicadas" : "Licencias aplicadas",
           skipped.length ? ` (${skipped.length} sin tocar: de otro origen, suspendidas o en solo lectura)` : "",
+          pendingSetup.length ? `; pendientes de implantación: ${pendingSetup.join(", ")}` : "",
           limits.length ? `; límites: ${limits.map((l) => `${METRIC_LABEL[l.metric]} ${l.to ?? "por contrato"}`).join(", ")}` : "",
           limitsSkipped.length ? `; límites sin tocar (de otra suscripción u otro origen): ${limitsSkipped.map((l) => METRIC_LABEL[l.metric]).join(", ")}` : "",
         ].join("");
-        await this.d.termsStore.log(termsId, this.event("licences_applied", actor, message, { subscriptionId, tenantId, linked, changed: applied.length, capabilities, skipped, ...(lim ? { limits, limitsSkipped } : {}) }, "applied"), this.now());
+        await this.d.termsStore.log(termsId, this.event("licences_applied", actor, message, { subscriptionId, tenantId, linked, changed: applied.length, capabilities, skipped, ...(lim ? { limits, limitsSkipped } : {}), ...(pendingSetup.length ? { pendingSetup } : {}) }, "applied"), this.now());
       }
-      return { status: "applied", tenantId, linked, changed: applied.length, capabilities, skipped, limits, limitsSkipped };
+      return { status: "applied", tenantId, linked, changed: applied.length, capabilities, skipped, limits, limitsSkipped, pendingSetup };
     } catch (e) {
       const error = (e instanceof Error ? e.message : "error").slice(0, 300);
       opsLog("warn", "CommercialTerms", "licences_failed", { subscriptionId });
@@ -315,15 +373,17 @@ export class TermsLicences {
     const applicable = termsId === null || !(await this.economicOnly(sub));
     const tenantId = sub.tenantId ?? (applicable ? await this.d.companyTenant(sub.companyId).catch(() => null) : null);
     const last = termsId !== null ? await this.last(subscriptionId) : null;
-    let plan: { capabilities: string[]; pending: number; skipped: SkippedCapability[]; limits: { contracted: ContractedLimit[]; pending: ContractedLimit[]; skipped: SkippedLimit[] } | null } | null = null;
+    let plan: { capabilities: string[]; pending: number; skipped: SkippedCapability[]; /** Contratadas, pendientes de implantación. */ pendingSetup: string[]; limits: { contracted: ContractedLimit[]; pending: ContractedLimit[]; skipped: SkippedLimit[] } | null } | null = null;
     if (tenantId && sub.tenantId) {
-      const p = await this.d.licensing.preview(subscriptionId, { activate: true }).catch(() => null);
+      const raw = await this.d.licensing.preview(subscriptionId, { activate: true }).catch(() => null);
+      const p = raw ? await this.withPendingSetup(raw, termsId).catch(() => raw) : null;
       if (p) {
         const { safe, skipped } = this.sift(p);
         const lim = await this.limitPlan(subscriptionId, p.tenantId).catch(() => null);
         plan = {
           capabilities: Array.from(new Set([...p.current.filter((g) => g.source === p.source && g.status === "active").map((g) => g.capabilityId), ...p.changes.filter((c) => c.status === "active").map((c) => c.capabilityId)])).sort(),
           pending: safe.length + (lim?.pending.length ?? 0),
+          pendingSetup: this.pendingSetupOf(p, safe),
           skipped,
           limits: lim ? { contracted: lim.contracted, pending: lim.pending, skipped: lim.skipped } : null,
         };
