@@ -1182,11 +1182,22 @@ export const appRouter = router({
       }),
 
     pagePreview: adminProcedure
-      .input(z.object({ slug: z.string().regex(/^[a-z0-9-]{1,64}$/) }))
+      .input(z.object({ slug: z.string().regex(/^[a-z0-9-]{1,64}$/), locale: z.string().max(35).optional() }))
       .query(async ({ input }) => {
         const { getPagePreview } = await import("./pageBuilderDb");
         const { readSiteTokenData } = await import("./starterSiteDb");
-        return getPagePreview(input.slug, await readSiteTokenData());
+        const tokens = await readSiteTokenData();
+        if (input.locale) {
+          // Vista previa del BORRADOR de una traducción (solo administradores; no se publica ni valida nada)
+          const { renderBlockTokens } = await import("./_core/pageBlocks");
+          return i18nCall(async (repo) => {
+            const page = await repo.principalPageBySlug(input.slug);
+            const row = page ? await repo.pageTranslation(page.id, input.locale!.trim().toLowerCase()) : null;
+            const blocks = row?.draftBlocks ?? row?.publishedBlocks ?? null;
+            return row && blocks ? { slug: input.slug, title: row.title, blocks: renderBlockTokens(blocks, tokens) } : null;
+          });
+        }
+        return getPagePreview(input.slug, tokens);
       }),
 
     savePageDraft: adminProcedure

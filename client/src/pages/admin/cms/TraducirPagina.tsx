@@ -49,6 +49,7 @@ export default function TraducirPagina({ slug, locale }: { slug: string; locale:
           <p className="mt-1 flex items-center gap-2 text-sm text-muted-foreground">
             Estado: <Badge variant={t?.status === "validated" ? "default" : "secondary"}>{t ? (t.status === "validated" ? "Validada" : "Borrador") : "Sin traducir"}</Badge>
             {t?.validatedBy && <span>por {t.validatedBy}</span>}
+            {t?.blocks && <a href={`/admin/cms/paginas/vista-previa/${slug}?locale=${encodeURIComponent(locale)}`} target="_blank" rel="noreferrer" className="underline">Vista previa del borrador</a>}
           </p>
         </div>
         {q.isLoading ? <p>Cargando…</p> : (
