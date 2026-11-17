@@ -48,6 +48,7 @@ import { RealPreview } from "@/components/admin/studio/RealPreview";
 import { PageSettings, type SitePage } from "@/components/admin/studio/PageSettings";
 import { VersionsPanel } from "@/components/admin/studio/VersionsPanel";
 import { SiteChromeEditor } from "@/components/admin/studio/SiteChromeEditor";
+import { WhatsAppButtonEditor } from "@/components/admin/studio/WhatsAppButtonEditor";
 import { BrandIdentityEditor } from "@/components/brand/BrandIdentityEditor";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { moduleIcon } from "@/components/admin/studio/icons";
@@ -1159,6 +1160,7 @@ function Studio({ routeSlug }: { routeSlug: string | null }) {
                 setCanvasKey((k) => k + 1);
               }}
             />
+            <WhatsAppButtonEditor />
           </div>
         </SheetContent>
       </Sheet>

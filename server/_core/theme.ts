@@ -13,7 +13,7 @@
  *   la web y el acceso: el fondo, por defecto, es la imagen principal de la web (`brand_hero_image_url`);
  *   `login_background_url` lo sustituye por otra imagen o, con «none», lo retira.
  */
-import { normalizeWhatsapp } from "../../shared/whatsappButton";
+import { normalizeWhatsapp, parseWhatsappButtonConfig, WHATSAPP_BUTTON_SETTING, type WhatsappButtonConfig } from "../../shared/whatsappButton";
 
 /** Ajustes que forman el tema público (lectura de `public.getTheme`). */
 /**
@@ -47,7 +47,7 @@ export const PUBLIC_THEME_KEYS = [
   "brand_primary_color", "brand_accent_color", "theme_font_family", "theme_radius", "brand_show_powered_by",
   "brand_phone", "brand_whatsapp", "email_reservations", "site_business_email", "brand_location",
   "brand_hero_image_url", "login_background_url", "login_welcome_title", "login_welcome_message",
-  "analytics_ga4_id", "analytics_meta_pixel_id", ...SITE_CHROME_KEYS,
+  "analytics_ga4_id", "analytics_meta_pixel_id", WHATSAPP_BUTTON_SETTING, ...SITE_CHROME_KEYS,
 ] as const;
 
 /** Valor de `login_background_url` que retira el fondo (sin imagen, ni siquiera la de la web). */
@@ -75,6 +75,8 @@ export interface PublicTheme {
   neutralSite: boolean;
   poweredBy: { label: string; url: string } | null;
   contact: { phone: string | null; email: string | null; address: string | null; whatsapp: string | null };
+  /** Botón flotante de WhatsApp de la web (activo, posición y mensaje por idioma); solo multiempresa. */
+  whatsappButton: WhatsappButtonConfig | null;
   login: PublicLoginTheme;
   /** Analítica propia de la empresa (multiempresa). Sin identificador, desactivada: nunca la de otra cuenta. */
   analytics: { ga4Id: string | null; metaPixelId: string | null };
@@ -262,6 +264,7 @@ export function buildTheme(
       // WhatsApp de la empresa: solo el que configuró expresamente (nunca su teléfono de contacto, que puede ser fijo)
       whatsapp: whatsappNumber(get("brand_whatsapp")),
     },
+    whatsappButton: opts.multi ? parseWhatsappButtonConfig(get(WHATSAPP_BUTTON_SETTING)) : null,
     login: buildLogin(get, opts.multi),
     // Solo en multiempresa y solo con el identificador de la propia empresa
     analytics: {

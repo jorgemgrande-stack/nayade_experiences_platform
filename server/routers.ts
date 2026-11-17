@@ -198,6 +198,7 @@ import { adsManagerRouter } from "./adsManager/router";
 import { accountingGeneralRouter } from "./accountingGeneral/router";
 import { receptionAiRouter } from "./receptionAi/router";
 import { whatsappCloudRouter } from "./whatsappCloud/router";
+import { whatsappButtonRouter } from "./routers/whatsappButton";
 import { copilotRouter } from "./copilot/router";
 import { automationsRouter } from "./automations/router";
 import { postmarkTenantRouter } from "./routers/postmarkTenant";
@@ -3009,6 +3010,7 @@ export const appRouter = router({
   marketingPack: marketingPackRouter,
   receptionAi: receptionAiRouter,
   whatsappCloud: whatsappCloudRouter,
+  whatsappButton: whatsappButtonRouter,
   copilot: copilotRouter,
   automations: automationsRouter,
   postmarkTenant: postmarkTenantRouter,
