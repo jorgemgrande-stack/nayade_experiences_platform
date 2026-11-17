@@ -1,8 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   SINGLE_LANGUAGE_CONFIG, listTextFields, setTextField, alternateLinksHtml, buildAlternates, buildConfig, contentHash, decideServing, isMultilingual, localeSeo,
-  localizedPath, normalizeLocale, normalizeLocalizedSlug, ogLocale, parseLocalizedPath, publicLocales, untranslatedFields,
-} from "../shared/i18n";
+  localizedPath, normalizeLocale, normalizeLocalizedSlug, ogLocale, parseLocalizedPath, publicLocales, untranslatedFields, internalLinkSegments, localizeBlockLinks } from "../shared/i18n";
 import { createBlock } from "../shared/pageBlocks";
 
 const multi = (extra: Array<[string, "draft" | "validated"]> = [["de", "validated"], ["en", "draft"]], settings = {}) =>
@@ -181,5 +180,36 @@ describe("campos de texto para la tabla de traducción", () => {
     expect(setTextField(blocks, blocks[1].id, "__proto__.x", "a")).toEqual(blocks);
     expect(setTextField(blocks, blocks[1].id, "items[5].question", "a")[1]).toEqual(blocks[1]);
     expect(setTextField(blocks, "no-existe", "title", "a")).toEqual(blocks);
+  });
+});
+
+describe("enlaces internos de una página traducida", () => {
+  const cfg = { defaultLocale: "de", defaultPrefix: false, locales: [{ locale: "de", status: "validated", isDefault: true, sortOrder: 0 }, { locale: "es", status: "validated", isDefault: false, sortOrder: 1 }], fallback: "hide", negotiate: false } as never;
+  const pages = new Set(["formacion", "reconnect"]);
+  const blocks = [
+    { id: "a", type: "button", data: { label: "Ir", url: "/formacion" } },
+    { id: "b", type: "text", data: { html: "<p><a href=\"/reconnect#precios\">x</a> <a href=\"https://x.test/formacion\">y</a></p>" } },
+    { id: "c", type: "button", data: { label: "Ancla", url: "#contacto" } },
+    { id: "d", type: "image", data: { url: "/files/abc/foto.jpg" } },
+    { id: "e", type: "button", data: { label: "Tienda", url: "/tienda/mentoria" } },
+    { id: "f", type: "button", data: { label: "Inicio", url: "/" } },
+    { id: "g", type: "button", data: { label: "Ya", url: "/de/formacion" } },
+  ];
+  it("lista los primeros tramos internos", () => {
+    expect(internalLinkSegments(blocks).sort()).toEqual(["de", "files", "formacion", "reconnect", "tienda"]);
+  });
+  it("con prefijo: solo páginas y portada; ficheros, tienda, anclas y externos intactos", () => {
+    const es = { ...(cfg as object), defaultLocale: "de" } as never;
+    const out = localizeBlockLinks(blocks, "es", es, (s) => pages.has(s)) as typeof blocks;
+    expect(out[0].data).toEqual({ label: "Ir", url: "/es/formacion" });
+    expect(out[1].data.html).toBe("<p><a href=\"/es/reconnect#precios\">x</a> <a href=\"https://x.test/formacion\">y</a></p>");
+    expect(out[2].data.url).toBe("#contacto");
+    expect(out[3].data.url).toBe("/files/abc/foto.jpg");
+    expect(out[4].data.url).toBe("/tienda/mentoria");
+    expect(out[5].data.url).toBe("/es");
+    expect(out[6].data.url).toBe("/de/formacion");
+  });
+  it("el idioma principal sin prefijo no cambia nada", () => {
+    expect(localizeBlockLinks(blocks, "de", cfg, (s) => pages.has(s))).toBe(blocks);
   });
 });

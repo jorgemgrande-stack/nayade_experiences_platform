@@ -160,6 +160,59 @@ export function localizedPath(rest: string, locale: string, cfg: I18nConfig): st
   return `/${locale}${r === "/" ? "" : r}`;
 }
 
+
+// ─── Enlaces internos dentro de los bloques de una página traducida ───────────
+
+const LINK_KEY = /(^|[a-z])(url|href)$/i;
+const HTML_HREF = /href="(\/[^"]*)"/g;
+
+/** Primer tramo de una ruta interna («/ausbildung#x» → «ausbildung»; «/» → «»), o null si no es un enlace interno de página. */
+function internalSegment(href: string): string | null {
+  if (!href.startsWith("/") || href.startsWith("//")) return null;
+  const path = href.split(/[?#]/)[0];
+  const seg = path.split("/")[1] ?? "";
+  return seg;
+}
+
+/** Recorre los textos de enlace (claves *url / *href y href="…" dentro de HTML) de unos bloques. */
+function mapLinks(node: unknown, fn: (href: string) => string, key = ""): unknown {
+  if (Array.isArray(node)) return node.map((x) => mapLinks(x, fn, key));
+  if (node && typeof node === "object") {
+    const out: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(node as Record<string, unknown>)) out[k] = k === "style" ? v : mapLinks(v, fn, k);
+    return out;
+  }
+  if (typeof node === "string") {
+    if (LINK_KEY.test(key)) return fn(node);
+    if (node.includes("href=\"/")) return node.replace(HTML_HREF, (_m, h: string) => `href="${fn(h)}"`);
+  }
+  return node;
+}
+
+/** Primeros tramos de todos los enlaces internos de unos bloques (para consultar cuáles son páginas). */
+export function internalLinkSegments(blocks: unknown): string[] {
+  const seen = new Set<string>();
+  mapLinks(blocks, (h) => { const s = internalSegment(h); if (s) seen.add(s); return h; });
+  return Array.from(seen);
+}
+
+/**
+ * Enlaces internos de una página servida en un idioma con prefijo: «/formacion» → «/es/formacion». Solo se tocan las
+ * rutas cuyo primer tramo es una página (`isPage`) o la portada; ficheros, tienda, API, anclas y enlaces externos quedan igual.
+ * Con el idioma principal sin prefijo no cambia nada.
+ */
+export function localizeBlockLinks<T>(blocks: T, locale: string, cfg: I18nConfig, isPage: (segment: string) => boolean): T {
+  if (locale === cfg.defaultLocale && !cfg.defaultPrefix) return blocks;
+  return mapLinks(blocks, (href) => {
+    const seg = internalSegment(href);
+    if (seg === null) return href;
+    if (seg !== "" && !isPage(seg)) return href;
+    if (cfg.locales.some((l) => l.locale === seg)) return href;
+    const m = /^([^?#]*)(.*)$/.exec(href)!;
+    return localizedPath(m[1] || "/", locale, cfg) + m[2];
+  }) as T;
+}
+
 // ─── Qué se sirve ─────────────────────────────────────────────────────────────
 
 export type ServeDecision =
