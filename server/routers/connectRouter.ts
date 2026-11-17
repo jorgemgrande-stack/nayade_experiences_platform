@@ -77,7 +77,7 @@ function moduleOpenPath(role: string): (capabilities: string[]) => string | null
  * sobre algo ya contratado).
  */
 export type ConnectRequestResult =
-  | { via: "lead"; outcome: "created" | "replayed" | "duplicate"; reference: string | null; email: string; progress?: string }
+  | { via: "lead"; outcome: "created" | "replayed" | "duplicate"; reference: string | null; email: string; progress?: string; assisted?: true }
   | { via: "ticket"; email: string };
 
 /** Errores del canal de solicitudes en palabras de la persona (nunca el texto técnico del servicio). */
@@ -88,14 +88,29 @@ const REQUEST_ERRORS: Record<number, { code: TRPCError["code"]; message: string 
   409: { code: "CONFLICT", message: "Esta solicitud no encaja con el estado actual del producto. Recarga la página e inténtalo de nuevo." },
 };
 
+/** Errores propios de la solicitud asistida: se muestra el texto del plano de control, que dice qué hacer. */
+const ASSISTED_ERRORS: Record<string, TRPCError["code"]> = { no_contact: "CONFLICT", assisted_forbidden: "FORBIDDEN", assisted_unavailable: "PRECONDITION_FAILED" };
+
 const OUTCOMES = ["created", "replayed", "duplicate"] as const;
-function leadResult(raw: unknown, email: string): ConnectRequestResult {
-  const r = (raw && typeof raw === "object" ? raw : {}) as { outcome?: unknown; reference?: unknown; progress?: unknown };
+function leadResult(raw: unknown, email: string, assisted = false): ConnectRequestResult {
+  const r = (raw && typeof raw === "object" ? raw : {}) as { outcome?: unknown; reference?: unknown; progress?: unknown; contactEmail?: unknown };
+  // Solicitud asistida: el contacto es el de la ficha de la empresa en el CRM (lo resuelve el plano de control)
+  if (assisted) email = typeof r.contactEmail === "string" && z.string().email().safeParse(r.contactEmail).success ? r.contactEmail : "";
   const outcome = (OUTCOMES as readonly unknown[]).includes(r.outcome) ? (r.outcome as (typeof OUTCOMES)[number]) : "created";
   const reference = typeof r.reference === "string" && /^[A-Za-z0-9-]{1,40}$/.test(r.reference) ? r.reference : null;
   // Estado de la contratación que ya estaba en curso (expediente o solicitud), en texto del plano de control
   const progress = typeof r.progress === "string" && r.progress.trim() ? r.progress.trim().slice(0, 160) : null;
-  return { via: "lead", outcome, reference, email, ...(progress ? { progress } : {}) };
+  return { via: "lead", outcome, reference, email, ...(progress ? { progress } : {}), ...(assisted ? { assisted: true as const } : {}) };
+}
+
+/**
+ * Sesión de soporte delegado (usuario sintético, sin correo propio): la solicitud comercial es ASISTIDA, en nombre de
+ * la empresa. El plano de control comprueba la concesión (vigente, de esta empresa y con modificación), toma el
+ * contacto de la ficha de la empresa y deja constancia del operador. No es aceptación contractual ni autoriza cargos.
+ */
+function supportAssist(u: unknown): { grantId: string; readOnly: boolean } | null {
+  const x = (u ?? {}) as { loginMethod?: unknown; supportGrantId?: unknown; supportReadOnly?: unknown };
+  return x.loginMethod === "support" && typeof x.supportGrantId === "string" ? { grantId: x.supportGrantId, readOnly: x.supportReadOnly !== false } : null;
 }
 
 /**
@@ -230,8 +245,13 @@ export const connectRouter = router({
       if (!(PANEL_ROLES as readonly string[]).includes(String(ctx.user.role))) throw new TRPCError({ code: "FORBIDDEN" });
       const client = commerceClientFromEnv();
       if (getTenantMode() !== "multi" || !client) throw new TRPCError({ code: "PRECONDITION_FAILED", message: "Las solicitudes desde el panel no están disponibles: escríbenos por correo." });
-      const email = typeof ctx.user.email === "string" ? ctx.user.email.trim() : "";
-      if (!z.string().email().safeParse(email).success) throw new TRPCError({ code: "PRECONDITION_FAILED", message: "Tu usuario no tiene un correo válido para que podamos responderte." });
+      const assist = supportAssist(ctx.user);
+      // Defensa en profundidad (el borde HTTP ya rechaza cualquier modificación de un acceso de solo lectura)
+      if (assist?.readOnly) throw new TRPCError({ code: "FORBIDDEN", message: "Un acceso de soporte de solo lectura no puede registrar solicitudes comerciales." });
+      // Una consulta sobre lo ya contratado abre una incidencia a nombre de una persona de la empresa: no la abre el soporte
+      if (assist && input.type === "contact") throw new TRPCError({ code: "PRECONDITION_FAILED", message: "En modo soporte las consultas sobre lo contratado se registran desde el CRM de Big Elephant." });
+      const email = assist ? "" : typeof ctx.user.email === "string" ? ctx.user.email.trim() : "";
+      if (!assist && !z.string().email().safeParse(email).success) throw new TRPCError({ code: "PRECONDITION_FAILED", message: "Tu usuario no tiene un correo válido para que podamos responderte." });
       const name = (typeof ctx.user.name === "string" && ctx.user.name.trim()) || email;
       const tenantId = getTenantId();
       const message = input.message || undefined;
@@ -244,14 +264,18 @@ export const connectRouter = router({
         if (input.type !== "contact" && !knownUnsupported()) {
           // La misma solicitud (persona, producto, tipo y mensaje) el mismo día no crea dos oportunidades
           const day = new Date().toISOString().slice(0, 10);
-          const idempotencyKey = "cx-" + crypto.createHash("sha256").update([tenantId, ctx.user.id, input.type, input.key, message ?? "", day].join("|")).digest("hex").slice(0, 40);
+          const idempotencyKey = "cx-" + crypto.createHash("sha256").update([tenantId, assist ? `support:${assist.grantId}` : ctx.user.id, input.type, input.key, message ?? "", day].join("|")).digest("hex").slice(0, 40);
           try {
-            const r = await client.request(tenantId, { type: input.type, interest: input.key, ...(message ? { message } : {}), requester: { name: name.slice(0, 160), email }, idempotencyKey });
+            const who = assist ? { assisted: { grantId: assist.grantId } } : { requester: { name: name.slice(0, 160), email } };
+            const r = await client.request(tenantId, { type: input.type, interest: input.key, ...(message ? { message } : {}), ...who, idempotencyKey });
             requestsProbe = { supported: true, at: Date.now() };
-            return leadResult(r, email);
+            return leadResult(r, email, !!assist);
           } catch (e) {
             if (!(e instanceof CommerceError)) throw e;
             if (e.code !== "route_missing") {
+              // Solicitud asistida: el motivo exacto del plano de control (completar la ficha de la empresa, acceso no válido)
+              const assistedError = ASSISTED_ERRORS[e.code];
+              if (assist && assistedError) throw new TRPCError({ code: assistedError, message: e.message });
               const known = REQUEST_ERRORS[e.status];
               if (known) throw new TRPCError(known);
               throw e;
@@ -260,6 +284,8 @@ export const connectRouter = router({
             opsLog("warn", "Connect", "requests_endpoint_missing", { tenantId });
           }
         }
+        // La incidencia de soporte va a nombre de una persona de la empresa: sin canal de solicitudes, el soporte no la abre
+        if (assist) throw new TRPCError({ code: "PRECONDITION_FAILED", message: "Ahora mismo no se pueden registrar solicitudes asistidas desde el panel. Regístrala desde el CRM de Big Elephant." });
         // Sin solicitudes en el plano de control: «Me interesa» no existe; la información, por soporte como hasta ahora
         if (input.type === "waitlist") throw new TRPCError({ code: "PRECONDITION_FAILED", message: "Ahora mismo no podemos registrar tu interés desde el panel. Escríbenos y te avisamos." });
         const description =

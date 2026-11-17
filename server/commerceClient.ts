@@ -38,7 +38,10 @@ export interface ModuleRequestInput {
   type: "info" | "waitlist" | "implementation";
   interest: string;
   message?: string;
-  requester: { name: string; email: string };
+  /** La persona de la sesión (propietario o administración de la empresa). */
+  requester?: { name: string; email: string };
+  /** Solicitud asistida desde una sesión de soporte delegado con modificación (en lugar de `requester`). */
+  assisted?: { grantId: string };
   idempotencyKey: string;
 }
 

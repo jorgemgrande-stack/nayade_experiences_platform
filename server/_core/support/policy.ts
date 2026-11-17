@@ -40,7 +40,10 @@ const FORBIDDEN_PROCEDURES = new Set<string>([
   // Operaciones críticas no necesarias para el soporte
   "subscription.purchase", "subscription.reduce", "subscription.withdraw", "subscription.billingPortal", "subscription.conversionStart",
   "subscription.cancel", "subscription.undoCancel", "subscription.changePlan", "subscription.planRequest",
-  "connect.request", "connect.retryActivation",
+  // `connect.request` NO está aquí (17/11/2026): solicitar información o contratación es una solicitud comercial sin
+  // cargos ni credenciales. Con modificación se registra como solicitud asistida (el plano de control comprueba la
+  // concesión y deja constancia del operador; no equivale a aceptación contractual). Reintentar la activación, sí.
+  "connect.retryActivation",
   "domains.add", "domains.check", "domains.setPrimary", "domains.disconnect",
   "documentNumbers.resetCounter",
   "crm.leads.bulkDelete", "crm.quotes.bulkDelete", "crm.reservations.bulkDelete", "proposals.bulkDelete",
