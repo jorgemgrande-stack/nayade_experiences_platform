@@ -5,7 +5,7 @@
 import fs from "node:fs";
 import { describe, expect, it } from "vitest";
 import { TEMPLATES } from "./_core/templates/catalog";
-import { LEGAL_PAGE_SLUGS, LEGAL_PLACEHOLDER_MARKERS, hideUnpublishedPageLinks, isLegalPageSlug, isLegalPlaceholder, pageSlugOfUrl } from "../shared/tenantNav";
+import { LEGAL_PAGE_SLUGS, LEGAL_PLACEHOLDER_MARKERS, hideUnpublishedPageLinks, isLegalPageSlug, isLegalPlaceholder, legalKindOfUrl, pageSlugOfUrl } from "../shared/tenantNav";
 
 describe("plantillas: textos legales en borrador", () => {
   it("toda página legal de toda plantilla se siembra sin publicar; el resto sí se publica", () => {
@@ -84,5 +84,21 @@ describe("web de una empresa sin contenido ajeno", () => {
     expect(footer).toMatch(/getMenuItems\.useQuery\(\{ zone: "footer"[,\s}]/);
     expect(footer).not.toContain('href="/aviso-legal"');
     expect(footer).not.toContain('href="/politica-de-privacidad"');
+  });
+});
+
+describe("tipo de texto legal de un enlace", () => {
+  it("reconoce los textos legales en varios idiomas y con prefijo de idioma", () => {
+    expect(legalKindOfUrl("/impressum")).toBe("aviso");
+    expect(legalKindOfUrl("/es/aviso-legal")).toBe("aviso");
+    expect(legalKindOfUrl("/datenschutz")).toBe("privacidad");
+    expect(legalKindOfUrl("/es/politica-de-privacidad#x")).toBe("privacidad");
+    expect(legalKindOfUrl("/cookie-richtlinie")).toBe("cookies");
+    expect(legalKindOfUrl("/cookies")).toBe("cookies");
+  });
+  it("otras rutas no son un texto legal", () => {
+    expect(legalKindOfUrl("/formacion")).toBeNull();
+    expect(legalKindOfUrl("https://x.test")).toBeNull();
+    expect(legalKindOfUrl(null)).toBeNull();
   });
 });
