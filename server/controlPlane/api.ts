@@ -2171,6 +2171,8 @@ export function createControlPlaneApp(d: ControlPlaneDeps): Express {
           subscriptionStore: d.subscriptions.store,
           termsStore: d.subscriptions.terms,
           companyTenant: async (companyId) => ((await crmCompanies.get("companies", companyId)) as { tenantId?: string | null } | null)?.tenantId ?? null,
+          // Connect asistido pendiente de implantación: su expediente (idempotente), venga de donde venga la activación
+          onPendingSetup: async ({ subscriptionId, companyId, contractId, productKeys, termsId }) => paidNet.run?.assistedFromTerms({ companyId, contractId, subscriptionId, productKeys, reference: `condiciones #${termsId}` }),
           now: d.subscriptions.now,
         });
         router.use(createTermsLicencesRouter(termsLicences));
@@ -2390,7 +2392,7 @@ export function createControlPlaneApp(d: ControlPlaneDeps): Express {
       });
       intakeImplementation.run = (r) => implementation.fromIntake(r);
       const ordersForPaidNet = d.orders?.store;
-      paidNet.run = paidNetOpener({ implementation, catalog: catalogFromWebStore(d.web.store), previousOrder: ordersForPaidNet ? (id) => ordersForPaidNet.get(id) : undefined });
+      paidNet.run = paidNetOpener({ implementation, catalog: catalogFromWebStore(d.web.store), previousOrder: ordersForPaidNet ? (id) => ordersForPaidNet.get(id) : undefined, activateSolution: (subscriptionId, solutionKey, actor) => licensingForImplementation.activatePendingSetup(subscriptionId, solutionKey, { actor }) });
       router.use("/implementations", createImplementationRouter(implementation));
     }
     // Cobro de cargos (server/invoicing/chargePayments): lo crea el bloque de facturación; el procesador de Stripe lo consulta

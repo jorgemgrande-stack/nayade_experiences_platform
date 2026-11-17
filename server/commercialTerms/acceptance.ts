@@ -57,7 +57,7 @@ const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
 const ACTOR = "public:acceptance";
 const TRIAL_END_REASON = "Condiciones particulares aceptadas";
 /** Estados de una prueba gratuita que admiten la conversión (server/trials/machine.ts). */
-const OPEN_TRIAL = new Set(["active", "expired", "suspended"]);
+const OPEN_TRIAL = new Set(["active", "expired"]);
 /** Partida del plan Core (la misma regla que el servicio de condiciones). */
 const isPlanLine = (l: Pick<TermsRecord["lines"][number], "kind" | "chargeClass" | "catalog">) => l.kind === "catalog" && l.chargeClass === "recurring" && l.catalog?.family === "core_plan";
 /** Estados del correo que significan «en camino» (encolado, enviándose, aceptado por el proveedor o entregado). */
@@ -662,6 +662,11 @@ export class TermsAcceptanceService {
       if (!sub || sub.status !== "trialing") return;
       const trial = sub.tenantId && this.d.trials ? await this.d.trials.byTenant(sub.tenantId).catch(() => null) : null;
       const openTrial = trial && trial.tenantId === sub.tenantId && OPEN_TRIAL.has(trial.state) ? trial : null;
+      // Una prueba suspendida por el equipo no se da por convertida: su suspensión se resuelve antes desde el CRM
+      if (trial && trial.tenantId === sub.tenantId && trial.state === "suspended") {
+        await this.logTrial(t.id, "trial_kept", `La prueba gratuita #${trial.id} está suspendida: no se termina ni se convierte. Resuelve la suspensión y conviértela desde el CRM`, { subscriptionId, trialId: trial.id }, "skipped");
+        return;
+      }
       const current = await this.d.termsStore.get(t.id);
       if (current?.status !== "active") {
         await this.logTrial(t.id, "trial_kept", "Las condiciones aceptadas entran en vigor más adelante: la prueba gratuita sigue hasta entonces y se convierte a mano", { subscriptionId }, "skipped");

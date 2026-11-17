@@ -203,7 +203,8 @@ export class LicensingService {
     if (!sub) throw new LicensingError("not_found", "Suscripción no encontrada");
     let tenantId = sub.tenantId ?? null;
     if (!tenantId && sub.contractId) tenantId = (await this.d.crm.contract(sub.contractId))?.tenantId ?? null;
-    if (!tenantId) throw new LicensingError("invalid_state", "La suscripción no tiene plataforma (tenant)");
+    // Sin plataforma no hay licencias que esperen: nada que activar (el inicio del expediente sigue como antes)
+    if (!tenantId) return { tenantId: null, activated: [] as string[] };
     if (sub.status === "canceled") return { tenantId, activated: [] as string[] };
     const catalog = await this.d.catalog();
     const byKey = new Map(catalog.products.map((p) => [p.key, p]));

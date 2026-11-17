@@ -287,6 +287,57 @@ describe("condiciones con Connect asistido aceptadas durante la prueba", () => {
     expect(await statusOf("whatsapp-ai")).toBe("pending_setup");
   });
 
+  it("activadas desde el CRM SIN aceptación contractual: sin contrato no hay expediente, así que las licencias quedan activas como siempre", async () => {
+    const sub = await subs.create({ companyId, tenantId: TENANT, interval: "month", plan: { productKey: "essential", priceId: P.essential } }, A);
+    const draft = await terms.createForSubscription(sub.id, { ...AGREEMENT(), requiresAcceptance: false }, A);
+    await terms.activate(draft.id, { expectedRevision: draft.revision, expectedVersion: (await subs.must(sub.id)).version, reason: "Activación desde el CRM" }, A);
+    expect(await statusOf("whatsapp-ai")).toBe("active");
+    expect(await statusOf("email-campaigns")).toBe("active");
+    expect(implStore.rows.filter((o) => o.companyId === companyId)).toHaveLength(0);
+  });
+
+  it("aceptadas: el expediente se abre también desde la aplicación de licencias (reintentos), con el contrato del acuerdo", async () => {
+    const opened: Array<{ contractId: number | null; productKeys: string[] }> = [];
+    licences = new TermsLicences({ auto: true, licensing, capabilities: caps, subscriptions: subs, subscriptionStore: subsStore, termsStore, companyTenant: async () => TENANT, now: () => clock, onPendingSetup: async (i) => void opened.push({ contractId: i.contractId, productKeys: i.productKeys }) });
+    // Suscripción ya contratada (sin prueba): la activación del acuerdo aplica las licencias por la vía general
+    const sub = await subs.create({ companyId, tenantId: TENANT, interval: "month", plan: { productKey: "essential", priceId: P.essential } }, A);
+    const { termsId } = await acceptOn(sub.id);
+    expect(opened).toHaveLength(1);
+    expect(opened[0]).toEqual({ contractId: (await termsStore.get(termsId))!.contractId, productKeys: ["connect-campaigns", "connect-whatsapp-ai"] });
+    // Nada nuevo pendiente: no se vuelve a llamar
+    await licences.ensure(sub.id, A, { force: true });
+    expect(opened).toHaveLength(1);
+  });
+
+  it("un expediente de implantación ya en curso sin suscripción pasa a ser el de esta contratación (al iniciarse activa sus licencias)", async () => {
+    const pre = await implStore.create({ companyId, opportunityId: null, leadRequestId: null, solutionKey: "connect-whatsapp-ai", solutionName: "Elephant WhatsApp AI", requestSnapshot: { source: "panel" }, assigneeId: null, assigneeName: null, queue: "implantacion", createdBy: A, createdAt: clock });
+    await implStore.update(pre.id, pre.version, { status: "ready" }, clock);
+    const { sub } = await trialing();
+    await acceptOn(sub.id);
+    const linked = (await implStore.get(pre.id))!;
+    expect(linked).toMatchObject({ status: "ready", subscriptionId: sub.id });
+    expect((linked.requestSnapshot as { source?: string }).source).toBe("paid");
+    expect(implStore.rows.filter((o) => o.solutionKey === "connect-whatsapp-ai")).toHaveLength(1);
+    await implementation.enable(pre.id, A);
+    expect(await implementation.communicate(pre.id, A)).toMatchObject({ status: "started", subscriptionId: sub.id });
+    expect(await statusOf("whatsapp-ai")).toBe("active");
+  });
+
+  it("prueba suspendida por el equipo: la aceptación consta, pero la prueba no se termina ni se convierte (queda anotado)", async () => {
+    const { sub, trial } = await trialing();
+    await trials.suspend(trial.id, trial.version, "Revisión del equipo", A);
+    const { termsId, out } = await acceptOn(sub.id);
+    expect(out).toMatchObject({ accepted: true });
+    expect((await subs.must(sub.id)).status).toBe("trialing");
+    expect((await trialStore.get(trial.id))!.state).toBe("suspended");
+    expect((await termsStore.events({ termsId })).find((e) => e.kind === "trial_kept")).toMatchObject({ syncResult: "skipped" });
+  });
+
+  it("activar licencias pendientes de una suscripción sin plataforma no falla: no hay nada que activar", async () => {
+    const sub = await subs.create({ companyId, interval: "month", plan: { productKey: "essential", priceId: P.essential } } as never, A);
+    expect(await licensing.activatePendingSetup(sub.id, "connect-whatsapp-ai", { actor: A })).toEqual({ tenantId: null, activated: [] });
+  });
+
   it("solo los productos Connect de contratación asistida abren expediente (ni el plan, ni los directos, ni las ampliaciones)", () => {
     expect(assistedConnectKeys(["essential", "connect-whatsapp-ai", "connect-people", "addon-user-essential", "connect-whatsapp-ai"])).toEqual(["connect-whatsapp-ai"]);
   });

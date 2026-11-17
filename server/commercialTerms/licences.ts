@@ -87,9 +87,15 @@ export class TermsLicences {
       capabilities: Pick<CapabilityStore, "apply">;
       subscriptions: Pick<SubscriptionService, "linkTenant">;
       subscriptionStore: Pick<SubscriptionStore, "get" | "items" | "list">;
-      termsStore: Pick<TermsStore, "events" | "log">;
+      termsStore: Pick<TermsStore, "events" | "log" | "get">;
       /** Plataforma de la empresa (la del CRM), si ya la tiene. */
       companyTenant: (companyId: number) => Promise<string | null>;
+      /**
+       * Licencias que acaban de quedar pendientes de implantación (17/11/2026): abre (idempotente) el expediente de
+       * cada producto que las concede, venga de una aceptación, de una activación desde el CRM o de un reintento. Un
+       * fallo nunca afecta a las licencias.
+       */
+      onPendingSetup?: ((i: { subscriptionId: number; companyId: number; contractId: number | null; productKeys: string[]; termsId: number }) => Promise<unknown>) | null;
       now?: () => number;
     },
   ) {
@@ -122,8 +128,12 @@ export class TermsLicences {
    * Connect asistido: las capacidades que SOLO conceden productos de contratación asistida (nunca el plan Core) se dan
    * de alta como `pending_setup` (contratadas, pendientes de implantación) en lugar de activas. Una que ya está activa
    * no se rebaja. Quita los cambios que así ya no cambian nada (idempotente).
+   * Solo en acuerdos con ACEPTACIÓN contractual: su contrato firmado es el que lleva el expediente de implantación. Un
+   * acuerdo activado directamente por el equipo, sin aceptación, sigue como siempre (licencias activas).
    */
-  private async withPendingSetup(plan: LicencePlan): Promise<LicencePlan> {
+  private async withPendingSetup(plan: LicencePlan, termsId: number | null): Promise<LicencePlan> {
+    const terms = termsId !== null ? await this.d.termsStore.get(termsId) : null;
+    if (!terms?.requiresAcceptance) return plan;
     const core = new Set((await this.d.subscriptionStore.items(plan.subscriptionId)).filter((i) => i.family === "core_plan").map((i) => i.productKey));
     const assisted = (key: string) => !core.has(key) && assistedRegistryOf(key) !== null;
     const setup = new Set(plan.desired.filter((d) => d.grantedBy.length > 0 && d.grantedBy.every(assisted)).map((d) => d.capabilityId));
@@ -264,12 +274,19 @@ export class TermsLicences {
           linked = true;
         } else if (fresh.tenantId !== tenantId) throw new Error("La suscripción ya pertenece a otra plataforma");
       }
-      const plan = await this.withPendingSetup(await this.d.licensing.preview(subscriptionId, { activate: true }));
+      const plan = await this.withPendingSetup(await this.d.licensing.preview(subscriptionId, { activate: true }), termsId);
       // Solo lo que es seguro aplicar sin una persona delante
       const { safe, skipped } = this.sift(plan);
       const applied = safe.length ? await this.d.capabilities.apply(plan.tenantId, safe, { actor, reason: `Licencias de las condiciones comerciales personalizadas #${termsId}`, now: this.now() }) : [];
       const capabilities = plan.changes.filter((c) => c.status === "active" && !skipped.some((s) => s.capabilityId === c.capabilityId)).map((c) => c.capabilityId).sort();
       const pendingSetup = this.pendingSetupOf(plan, safe);
+      // Lo que acaba de quedar pendiente de implantación: su expediente (idempotente; nunca bloquea las licencias)
+      const newlyPending = new Set(safe.filter((c) => c.status === "pending_setup").map((c) => c.capabilityId));
+      if (newlyPending.size && this.d.onPendingSetup) {
+        const productKeys = Array.from(new Set(plan.desired.filter((x) => newlyPending.has(x.capabilityId)).flatMap((x) => x.grantedBy))).sort();
+        const contractId = (await this.d.termsStore.get(termsId).catch(() => null))?.contractId ?? sub.contractId ?? null;
+        await this.d.onPendingSetup({ subscriptionId, companyId: sub.companyId, contractId, productKeys, termsId }).catch(() => undefined);
+      }
       // Límites y cupos: lo incluido en el plan + las ampliaciones vigentes del acuerdo (después de las capacidades,
       // como en las licencias de cualquier suscripción). Idempotente: sin cambios no escribe nada
       const lim = await this.limitPlan(subscriptionId, plan.tenantId);
@@ -359,7 +376,7 @@ export class TermsLicences {
     let plan: { capabilities: string[]; pending: number; skipped: SkippedCapability[]; /** Contratadas, pendientes de implantación. */ pendingSetup: string[]; limits: { contracted: ContractedLimit[]; pending: ContractedLimit[]; skipped: SkippedLimit[] } | null } | null = null;
     if (tenantId && sub.tenantId) {
       const raw = await this.d.licensing.preview(subscriptionId, { activate: true }).catch(() => null);
-      const p = raw ? await this.withPendingSetup(raw).catch(() => raw) : null;
+      const p = raw ? await this.withPendingSetup(raw, termsId).catch(() => raw) : null;
       if (p) {
         const { safe, skipped } = this.sift(p);
         const lim = await this.limitPlan(subscriptionId, p.tenantId).catch(() => null);

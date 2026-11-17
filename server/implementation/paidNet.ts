@@ -53,6 +53,11 @@ export interface PaidNetDeps {
   catalog: Pick<CatalogPort, "product">;
   /** Pedido anterior de un cambio (para abrir solo lo nuevo). */
   previousOrder?: (id: number) => Promise<Pick<CommercialOrder, "request"> | null>;
+  /**
+   * Activa las licencias pendientes de implantación de un producto (`LicensingService.activatePendingSetup`): para un
+   * Connect asistido cuyo expediente ya estaba INICIADO (la implantación ya se hizo: no se espera a otra).
+   */
+  activateSolution?: ((subscriptionId: number, solutionKey: string, actor: string) => Promise<{ activated: string[] }>) | null;
 }
 
 export function paidNetOpener(d: PaidNetDeps) {
@@ -92,8 +97,19 @@ export function paidNetOpener(d: PaidNetDeps) {
      * contratación asistida de sus partidas. Sus licencias esperan en `pending_setup` hasta que se inicia.
      */
     async assistedFromTerms(i: { companyId: number; contractId: number | null; subscriptionId: number | null; productKeys: string[]; reference: string }): Promise<number[]> {
-      if (!i.productKeys.length) return [];
-      return open(i.productKeys, { companyId: i.companyId, contractId: i.contractId, subscriptionId: i.subscriptionId, circuit: "custom_terms", reference: i.reference }, assistedConnectKeys);
+      const opened: number[] = [];
+      for (const key of assistedConnectKeys(i.productKeys)) {
+        try {
+          const r = await d.implementation.openPaid({ companyId: i.companyId, contractId: i.contractId, subscriptionId: i.subscriptionId, circuit: "custom_terms", reference: i.reference, solutionKey: key }, PAID_NET_ACTOR);
+          opened.push(r.order.id);
+          if (r.created) opsLog("info", "Implementation", "assisted_connect_opened", { companyId: i.companyId, solutionKey: key, orderId: r.order.id });
+          // Expediente ya iniciado (implantación hecha antes): sus licencias no tienen que esperar a otro
+          if (r.order.status === "started" && i.subscriptionId !== null && d.activateSolution) await d.activateSolution(i.subscriptionId, key, PAID_NET_ACTOR);
+        } catch (e) {
+          opsLog("warn", "Implementation", "assisted_connect_open_failed", { companyId: i.companyId, solutionKey: key, error: e instanceof Error ? e.name : "error" });
+        }
+      }
+      return opened;
     },
   };
 }

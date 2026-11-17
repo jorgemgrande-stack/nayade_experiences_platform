@@ -476,6 +476,18 @@ export class ImplementationService {
       });
       return { order, created: false };
     }
+    // Expediente en curso aún sin suscripción (implantación asistida no pagada): pasa a ser el de esta contratación, para
+    // que al iniciarse use la suscripción contratada y active sus licencias pendientes (17/11/2026)
+    if (existing && input.subscriptionId && existing.subscriptionId === null && existing.status !== "started") {
+      const order = await this.serial(existing.id, async () => {
+        const cur = await this.must(existing.id);
+        if (cur.subscriptionId !== null || cur.status === "started" || cur.status === "cancelled") return cur;
+        const upd = await this.patch(cur, { subscriptionId: input.subscriptionId, contractId: cur.contractId ?? input.contractId, startMode: "subscription", requestSnapshot: { ...(cur.requestSnapshot ?? {}), source: "paid", circuit: input.circuit, reference, contractId: input.contractId, subscriptionId: input.subscriptionId } });
+        await this.event(cur.id, "paid", actor, `Contratado (${what})${input.subscriptionId ? ` · suscripción #${input.subscriptionId}` : ""}: la implantación en curso sigue con esta contratación`);
+        return upd;
+      });
+      return { order, created: false };
+    }
     if (existing) return { order: existing, created: false };
     const sol = await this.solutionOf(key);
     let order: ImplementationOrder;
