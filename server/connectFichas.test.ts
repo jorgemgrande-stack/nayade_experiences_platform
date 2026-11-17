@@ -15,7 +15,7 @@ import { SIM_ACTIVE_CAPABILITIES, SIM_CATALOG } from "./connectFichas.testkit";
 const fake = vi.hoisted(() => ({
   requests: [] as Array<{ tenantId: string; input: unknown }>,
   tickets: [] as Array<{ tenantId: string; input: unknown }>,
-  mode: "ok" as "ok" | "duplicate" | "route_missing" | "not_visible" | "conflict" | "forbidden",
+  mode: "ok" as "ok" | "duplicate" | "route_missing" | "not_visible" | "conflict" | "forbidden" | "no_contact",
   catalog: null as unknown,
 }));
 
@@ -29,6 +29,7 @@ vi.mock("./commerceClient", async (orig) => {
       if (fake.mode === "not_visible") throw new real.CommerceError(404, "not_found", "Ese producto no está en tu catálogo");
       if (fake.mode === "conflict") throw new real.CommerceError(409, "invalid_state", "Ese producto todavía no está disponible: usa «Me interesa»");
       if (fake.mode === "forbidden") throw new real.CommerceError(403, "forbidden", "forbidden");
+      if (fake.mode === "no_contact") throw new real.CommerceError(409, "no_contact", "La ficha de la empresa en el CRM no tiene correo de contacto: complétalo y vuelve a enviar la solicitud");
       return { outcome: fake.mode === "duplicate" ? "duplicate" : "created", reference: "SOL-2026-0042", status: "pending", ...(input.assisted ? { contactEmail: "info@empresa.example" } : {}) };
     },
     openTicket: async (tenantId, input) => {
@@ -362,6 +363,11 @@ describe("connect.request desde una sesión de soporte delegado", () => {
     fake.mode = "route_missing";
     await expect(as(() => asSupport().connect.request({ key: "connect-people", type: "info" }))).rejects.toMatchObject({ code: "PRECONDITION_FAILED" });
     expect(fake.tickets).toHaveLength(0);
+  });
+
+  it("ficha de la empresa sin correo: se dice exactamente qué falta (no el texto genérico del 409)", async () => {
+    fake.mode = "no_contact";
+    await expect(as(() => asSupport().connect.request({ key: "connect-people", type: "implementation" }))).rejects.toMatchObject({ code: "CONFLICT", message: expect.stringMatching(/no tiene correo de contacto/) });
   });
 
   it("el error del canal se muestra igual que a la empresa (sin confirmación falsa)", async () => {

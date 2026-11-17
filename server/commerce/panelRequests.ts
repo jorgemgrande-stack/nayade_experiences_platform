@@ -152,8 +152,9 @@ export async function receivePanelRequest(
 
   const company = (await d.crm.list("companies", {}, { desc: true, limit: 5000 })).find((c) => c.tenantId === tenantId) ?? null;
   // Contacto de la solicitud: la persona de la sesión o, si es asistida, el correo de la ficha de la empresa
-  const contactEmail = b.assisted ? (company?.email ?? company?.billingEmail ?? "").trim().toLowerCase() : b.requester!.email;
-  if (b.assisted && !z.string().email().safeParse(contactEmail).success) {
+  const validEmail = (v: string | null | undefined) => { const e = (v ?? "").trim().toLowerCase(); return z.string().email().safeParse(e).success ? e : ""; };
+  const contactEmail = b.assisted ? validEmail(company?.email) || validEmail(company?.billingEmail) : b.requester!.email;
+  if (b.assisted && !contactEmail) {
     throw new PanelRequestError(409, "no_contact", "La ficha de la empresa en el CRM no tiene correo de contacto: complétalo y vuelve a enviar la solicitud");
   }
   const requester = b.assisted ? { name: (company?.name ?? tenantId).slice(0, 160), email: contactEmail } : b.requester!;
@@ -162,7 +163,8 @@ export async function receivePanelRequest(
   // (el reintento con la misma clave sigue siendo un reintento: lo resuelve la idempotencia de las solicitudes)
   const retry = (await d.crm.list("leadRequests", { idempotencyKey: panelIdempotencyKey(tenantId, b.idempotencyKey) }, { limit: 1 })).length > 0;
   const current = retry ? null : await openRequestFor(d, tenantId, company?.id ?? null, item.key, b.type);
-  if (current) return b.assisted ? { ...current, contactEmail } : current;
+  // Ya en curso: se responde a quien la abrió (quizá la propia empresa con su correo), no se promete otro contacto
+  if (current) return current;
   const type: LeadRequestType = /^net_|^industry_module$/.test(item.family) ? "module_info" : "extension_info";
   const price = item.monthly ? `${(item.monthly.amountCents / 100).toFixed(2).replace(".", ",")} € al mes${item.monthly.taxIncluded ? "" : " (IVA aparte)"}` : null;
   const lead = assisted

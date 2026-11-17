@@ -188,7 +188,7 @@ describe("solicitud asistida desde soporte delegado", () => {
     expect(impl.rows.map((o) => [o.companyId, o.solutionKey, o.status])).toEqual([[company.id, "connect-whatsapp-ai", "requested"]]);
     // Reintento con la misma clave: la misma solicitud; con otra clave: la contratación ya en curso (sin duplicar)
     expect((await receivePanelRequest(d, "t12-quantum", panelRequestBody.parse(body("asistida-0001", { message: "Indira quiere empezar en diciembre" })))).outcome).toBe("replayed");
-    expect(await receivePanelRequest(d, "t12-quantum", panelRequestBody.parse(body("asistida-0002")))).toMatchObject({ outcome: "duplicate", contactEmail: "info@quantum.example" });
+    expect(await receivePanelRequest(d, "t12-quantum", panelRequestBody.parse(body("asistida-0002")))).toMatchObject({ outcome: "duplicate" });
     expect(await store.list("leadRequests", {})).toHaveLength(1);
   });
 
@@ -207,6 +207,13 @@ describe("solicitud asistida desde soporte delegado", () => {
     const { d, store } = await setup(grant(), null);
     await expect(receivePanelRequest(d, "t12-quantum", panelRequestBody.parse(body("asistida-0005")))).rejects.toMatchObject({ status: 409, code: "no_contact" });
     expect(await store.list("leadRequests", {})).toHaveLength(0);
+  });
+
+  it("correo vacío en la ficha: se usa el de facturación si es válido", async () => {
+    const { d, store } = await setup(grant(), "");
+    const company = (await store.list("companies", {}))[0];
+    await store.update("companies", company.id, { billingEmail: "facturas@quantum.example" });
+    expect(await receivePanelRequest(d, "t12-quantum", panelRequestBody.parse(body("asistida-0009")))).toMatchObject({ outcome: "created", contactEmail: "facturas@quantum.example" });
   });
 
   it("el cuerpo lleva la persona o la concesión, nunca las dos ni ninguna", () => {

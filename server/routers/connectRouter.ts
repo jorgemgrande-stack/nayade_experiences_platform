@@ -88,6 +88,9 @@ const REQUEST_ERRORS: Record<number, { code: TRPCError["code"]; message: string 
   409: { code: "CONFLICT", message: "Esta solicitud no encaja con el estado actual del producto. Recarga la página e inténtalo de nuevo." },
 };
 
+/** Errores propios de la solicitud asistida: se muestra el texto del plano de control, que dice qué hacer. */
+const ASSISTED_ERRORS: Record<string, TRPCError["code"]> = { no_contact: "CONFLICT", assisted_forbidden: "FORBIDDEN", assisted_unavailable: "PRECONDITION_FAILED" };
+
 const OUTCOMES = ["created", "replayed", "duplicate"] as const;
 function leadResult(raw: unknown, email: string, assisted = false): ConnectRequestResult {
   const r = (raw && typeof raw === "object" ? raw : {}) as { outcome?: unknown; reference?: unknown; progress?: unknown; contactEmail?: unknown };
@@ -270,6 +273,9 @@ export const connectRouter = router({
           } catch (e) {
             if (!(e instanceof CommerceError)) throw e;
             if (e.code !== "route_missing") {
+              // Solicitud asistida: el motivo exacto del plano de control (completar la ficha de la empresa, acceso no válido)
+              const assistedError = ASSISTED_ERRORS[e.code];
+              if (assist && assistedError) throw new TRPCError({ code: assistedError, message: e.message });
               const known = REQUEST_ERRORS[e.status];
               if (known) throw new TRPCError(known);
               throw e;
