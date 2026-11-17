@@ -16,6 +16,11 @@
  * sesión que envía el Core (nunca un campo libre del navegador); la clave de idempotencia se aísla por empresa. Nada
  * se contrata ni se cobra.
  *
+ * Solicitud ASISTIDA (17/11/2026): desde una sesión de soporte delegado con modificación, el Core envía `assisted.grantId`
+ * en lugar de `requester`. Aquí se comprueba la concesión (existe, es de ESTA empresa, vigente y con modificación), el
+ * contacto es el de la ficha de la empresa en el CRM (nunca el del operador) y el mensaje deja constancia de quién la
+ * inició y de que no equivale a aceptación contractual ni autoriza cargos.
+ *
  * Ámbito: `commerce:support` o `commerce:purchase` (el token del Core).
  */
 import crypto from "node:crypto";
@@ -32,6 +37,12 @@ import { panelCatalog } from "./panelCatalog";
 import { ASSISTED_CONTRACT_COPY, offerSaleKind } from "../../shared/netOffer";
 import { STATUS_LABEL, type ImplementationStore } from "../implementation/store";
 import { addonAssistedOf, assistedRegistryOf } from "../../shared/addonAssisted";
+import { grantActive, type SupportGrant } from "../_core/support/grants";
+
+/** Lector de concesiones de soporte delegado (solicitudes asistidas). */
+export type SupportGrantLookup = (id: string) => Promise<SupportGrant | null>;
+/** Texto del operador sin prefijo técnico (`operator:jorge` → `jorge`). */
+const operatorName = (op: string) => op.replace(/^(operator|crm):/, "").slice(0, 80);
 
 export const PANEL_REQUEST_SOURCE = "panel:/admin/ampliar";
 /** Versión de privacidad de las solicitudes del panel: la persona ya es cliente y actúa desde su cuenta. */
@@ -43,10 +54,13 @@ export const panelRequestBody = z
     type: z.enum(["info", "waitlist", "implementation"]),
     interest: z.string().regex(/^[a-z0-9][a-z0-9-]{0,62}$/),
     message: z.string().trim().max(2000).optional(),
-    requester: z.object({ name: z.string().trim().min(1).max(160), email: z.string().trim().toLowerCase().email().max(200) }).strict(),
+    requester: z.object({ name: z.string().trim().min(1).max(160), email: z.string().trim().toLowerCase().email().max(200) }).strict().optional(),
+    /** Solicitud asistida desde soporte delegado: la concesión que la respalda (en lugar de `requester`). */
+    assisted: z.object({ grantId: z.string().regex(/^[a-f0-9]{16,64}$/) }).strict().optional(),
     idempotencyKey: z.string().regex(/^[A-Za-z0-9_-]{8,80}$/),
   })
-  .strict();
+  .strict()
+  .refine((b) => !!b.requester !== !!b.assisted, { message: "requester o assisted (uno de los dos)" });
 export type PanelRequestBody = z.infer<typeof panelRequestBody>;
 
 /**
@@ -76,7 +90,7 @@ const fromTenant = (message: string | null, tenantId: string) => {
 const sourceFor = (key: string, type: PanelRequestBody["type"]) => `${PANEL_REQUEST_SOURCE}/${key}${type === "waitlist" ? "#me-interesa" : type === "implementation" ? ASSISTED_CONTRACT_COPY.sourceFragment : ""}`;
 const REQUEST_STATUS_LABEL: Record<string, string> = { pending: "Pendiente de atender", attended: "Atendida", discarded: "Descartada" };
 
-export type PanelRequestResult = { outcome: string; reference: string; status: string; progress?: string };
+export type PanelRequestResult = { outcome: string; reference: string; status: string; progress?: string; contactEmail?: string };
 
 /**
  * Contratación ya en curso de esa empresa para ese producto: el expediente de implantación abierto (cualquier estado
@@ -103,10 +117,18 @@ async function openRequestFor(
  * Registra la solicitud. `site`: el sitio publicado; `internal`: la empresa puede ver productos internos de prueba.
  */
 export async function receivePanelRequest(
-  d: { site: SiteDocument; internal: boolean; requests: WebRequestService; crm: CrmStore; implementations?: Pick<ImplementationStore, "openFor"> | null; planOf?: ((tenantId: string) => Promise<string | null>) | null },
+  d: { site: SiteDocument; internal: boolean; requests: WebRequestService; crm: CrmStore; implementations?: Pick<ImplementationStore, "openFor"> | null; planOf?: ((tenantId: string) => Promise<string | null>) | null; supportGrant?: SupportGrantLookup | null },
   tenantId: string,
   b: PanelRequestBody,
 ): Promise<PanelRequestResult> {
+  // Asistida: la concesión manda (la de otra empresa, revocada, caducada o de solo lectura no registra nada)
+  let operator: string | null = null;
+  if (b.assisted) {
+    if (!d.supportGrant) throw new PanelRequestError(503, "assisted_unavailable", "Las solicitudes asistidas no están disponibles ahora mismo");
+    const g = await d.supportGrant(b.assisted.grantId);
+    if (!g || g.tenantId !== tenantId || !grantActive(g) || g.readOnly) throw new PanelRequestError(403, "assisted_forbidden", "El acceso de soporte no permite registrar solicitudes en nombre de esta empresa");
+    operator = operatorName(g.operator);
+  }
   const visible = d.internal ? d.site : withoutInternal(d.site);
   const item = panelCatalog(quoteCatalogFromSite(visible).products, { version: "", purchasesEnabled: false }).items.find((i) => i.key === b.interest);
   if (!item) throw new PanelRequestError(404, "not_found", "Ese producto no está en tu catálogo");
@@ -129,12 +151,18 @@ export async function receivePanelRequest(
   }
 
   const company = (await d.crm.list("companies", {}, { desc: true, limit: 5000 })).find((c) => c.tenantId === tenantId) ?? null;
+  // Contacto de la solicitud: la persona de la sesión o, si es asistida, el correo de la ficha de la empresa
+  const contactEmail = b.assisted ? (company?.email ?? company?.billingEmail ?? "").trim().toLowerCase() : b.requester!.email;
+  if (b.assisted && !z.string().email().safeParse(contactEmail).success) {
+    throw new PanelRequestError(409, "no_contact", "La ficha de la empresa en el CRM no tiene correo de contacto: complétalo y vuelve a enviar la solicitud");
+  }
+  const requester = b.assisted ? { name: (company?.name ?? tenantId).slice(0, 160), email: contactEmail } : b.requester!;
   // Una sola contratación en curso por empresa y producto: si ya hay expediente abierto o solicitud pendiente, se
   // devuelve esa (con su estado) y no se crea otra, la pulse quien la pulse y con el mensaje que sea
   // (el reintento con la misma clave sigue siendo un reintento: lo resuelve la idempotencia de las solicitudes)
   const retry = (await d.crm.list("leadRequests", { idempotencyKey: panelIdempotencyKey(tenantId, b.idempotencyKey) }, { limit: 1 })).length > 0;
   const current = retry ? null : await openRequestFor(d, tenantId, company?.id ?? null, item.key, b.type);
-  if (current) return current;
+  if (current) return b.assisted ? { ...current, contactEmail } : current;
   const type: LeadRequestType = /^net_|^industry_module$/.test(item.family) ? "module_info" : "extension_info";
   const price = item.monthly ? `${(item.monthly.amountCents / 100).toFixed(2).replace(".", ",")} € al mes${item.monthly.taxIncluded ? "" : " (IVA aparte)"}` : null;
   const lead = assisted
@@ -142,13 +170,16 @@ export async function receivePanelRequest(
     : b.type === "waitlist"
       ? `Me interesa ${item.name} (próximamente). Avisadnos cuando esté disponible.`
       : `Solicita información sobre ${item.name}.`;
-  const message = [lead, companyLine(company?.name ?? tenantId, tenantId), b.message ? `Mensaje: ${b.message}` : ""].filter(Boolean).join("\n");
+  const assistedLine = operator
+    ? `Solicitud asistida por Soporte Big Elephant (${operator}) desde el panel de la empresa, con su acceso de soporte con modificación. No equivale a la aceptación del contrato ni autoriza cargos: la aceptación la hace la empresa.`
+    : "";
+  const message = [lead, companyLine(company?.name ?? tenantId, tenantId), assistedLine, b.message ? `Mensaje: ${b.message}` : ""].filter(Boolean).join("\n");
   try {
     const { outcome, request } = await d.requests.receive(
       {
         type,
-        name: b.requester.name,
-        email: b.requester.email,
+        name: requester.name,
+        email: requester.email,
         company: company?.name ?? tenantId,
         message,
         interest: item.key,
@@ -159,7 +190,7 @@ export async function receivePanelRequest(
       // La clave del Core, aislada por empresa: la de otra empresa nunca devuelve esta solicitud
       { idempotencyKey: panelIdempotencyKey(tenantId, b.idempotencyKey), ipHash: null },
     );
-    return { outcome, reference: request.reference, status: request.status };
+    return { outcome, reference: request.reference, status: request.status, ...(b.assisted ? { contactEmail } : {}) };
   } catch (e) {
     if (e instanceof CrmError && e.code === "conflict") throw new PanelRequestError(409, "conflict", e.message);
     throw e;
@@ -174,7 +205,7 @@ function requireCore(req: Request, res: Response, next: NextFunction) {
 }
 
 /** Rutas del Core (montar bajo /commerce). */
-export function createPanelRequestsRouter(d: { site: () => Promise<SiteDocument>; requests: WebRequestService; crm: CrmStore; internalTenants?: ReadonlySet<string>; implementations?: Pick<ImplementationStore, "openFor"> | null; planOf?: ((tenantId: string) => Promise<string | null>) | null }): Router {
+export function createPanelRequestsRouter(d: { site: () => Promise<SiteDocument>; requests: WebRequestService; crm: CrmStore; internalTenants?: ReadonlySet<string>; implementations?: Pick<ImplementationStore, "openFor"> | null; planOf?: ((tenantId: string) => Promise<string | null>) | null; supportGrant?: SupportGrantLookup | null }): Router {
   const r = express.Router();
   r.post("/tenants/:tenantId/requests", requireCore, (req: Request, res: Response) => {
     res.setHeader("Cache-Control", "no-store");
@@ -182,7 +213,7 @@ export function createPanelRequestsRouter(d: { site: () => Promise<SiteDocument>
     const b = panelRequestBody.safeParse(req.body);
     if (!t.success || !b.success) return void res.status(400).json({ error: "invalid_request", message: b.success ? "tenantId" : b.error.issues.map((i) => i.path.join(".") || i.message).join(", ") });
     d.site()
-      .then((site) => receivePanelRequest({ site, internal: !!d.internalTenants?.has(t.data), requests: d.requests, crm: d.crm, implementations: d.implementations ?? null, planOf: d.planOf ?? null }, t.data, b.data))
+      .then((site) => receivePanelRequest({ site, internal: !!d.internalTenants?.has(t.data), requests: d.requests, crm: d.crm, implementations: d.implementations ?? null, planOf: d.planOf ?? null, supportGrant: d.supportGrant ?? null }, t.data, b.data))
       .then((x) => void res.status(x.outcome === "created" ? 201 : 200).json({ request: x }))
       .catch((e) => {
         if (e instanceof PanelRequestError) return void res.status(e.status).json({ error: e.code, message: e.message });

@@ -11,7 +11,8 @@ import { WebAdminService, type SiteDocument } from "./web/service";
 import { MemoryWebStore } from "./web/store";
 import { BUILTIN_MODULES } from "./_core/modules/builtin";
 import { panelCatalog } from "./commerce/panelCatalog";
-import { receivePanelRequest } from "./commerce/panelRequests";
+import { panelRequestBody, receivePanelRequest } from "./commerce/panelRequests";
+import type { SupportGrant } from "./_core/support/grants";
 import { CrmService } from "./crm/service";
 import { MemoryCrmStore } from "./crm/store";
 import { WebRequestService } from "./crm/webRequests";
@@ -147,5 +148,83 @@ describe("Elephant Connect: contratación directa o asistida", () => {
     const parts = fs.readFileSync(new URL("../client/src/components/connect/ConnectParts.tsx", import.meta.url), "utf8");
     expect(parts).toContain("export function AssistedFeatures(");
     expect(parts).toContain("ASSISTED_CONTRACT_COPY.inImplementationTitle");
+  });
+});
+
+/**
+ * Incidencia del 17/11/2026 (Quantum Soulrise, WhatsApp AI): la solicitud ASISTIDA desde soporte delegado con
+ * modificación. La concesión la comprueba el plano de control; el contacto es el de la ficha de la empresa; queda
+ * constancia del operador; nunca es aceptación contractual ni cobra nada.
+ */
+describe("solicitud asistida desde soporte delegado", () => {
+  const GRANT = "c12f1844fed71870a1b2c3d4e5f60718";
+  const grant = (over: Partial<SupportGrant> = {}): SupportGrant => ({ id: GRANT, tenantId: "t12-quantum", operator: "operator:jorge", reason: "r", readOnly: false, expiresAt: Date.UTC(2037, 11, 31), untilRevoked: true, createdAt: NOW - 1000, revokedAt: null, ...over });
+  async function setup(g: SupportGrant | null, email: string | null = "info@quantum.example") {
+    const store = new MemoryCrmStore();
+    const crm = new CrmService({ store, now: () => NOW });
+    const impl = new MemoryImplementationStore();
+    const svc: ImplementationService = new ImplementationService({ store: impl, crm, crmStore: store, solution: solutionFromWebStore(webStore), now: () => NOW, markAttended: async (id, who) => void (await requests.setStatus(id, "attended", who)) });
+    const requests: WebRequestService = new WebRequestService({ store, crm, now: () => NOW, onCreated: async (r) => void (await svc.fromIntake(r)) });
+    const c = await crm.createCompany({ name: "Quantum Soulrise", email }, "operator:test");
+    await store.update("companies", c.id, { tenantId: "t12-quantum" });
+    const d = { site, internal: false, requests, crm: store, implementations: impl, supportGrant: async (id: string) => (g && id === g.id ? g : null) };
+    return { d, store, impl, company: c };
+  }
+  const body = (k: string, over: Record<string, unknown> = {}) => ({ type: "implementation" as const, interest: "connect-whatsapp-ai", assisted: { grantId: GRANT }, idempotencyKey: k, ...over });
+
+  it("WhatsApp AI con modificación: registra la solicitud, abre el expediente una vez, con el contacto de la empresa y el operador", async () => {
+    const { d, store, impl, company } = await setup(grant());
+    const r = await receivePanelRequest(d, "t12-quantum", panelRequestBody.parse(body("asistida-0001", { message: "Indira quiere empezar en diciembre" })));
+    expect(r).toMatchObject({ outcome: "created", contactEmail: "info@quantum.example" });
+    await flush();
+    const [req] = await store.list("leadRequests", {});
+    expect(req.sourcePage).toBe("panel:/admin/ampliar/connect-whatsapp-ai#contratar-implantacion");
+    expect(req.message).toContain("Empresa cliente: Quantum Soulrise (t12-quantum).");
+    expect(req.message).toContain("Solicitud asistida por Soporte Big Elephant (jorge)");
+    expect(req.message).toMatch(/No equivale a la aceptación del contrato ni autoriza cargos/);
+    expect(req.message).toMatch(/Mensaje: Indira quiere empezar en diciembre/);
+    const [lead] = await store.list("leads", {});
+    expect(lead.email).toBe("info@quantum.example");
+    expect(impl.rows.map((o) => [o.companyId, o.solutionKey, o.status])).toEqual([[company.id, "connect-whatsapp-ai", "requested"]]);
+    // Reintento con la misma clave: la misma solicitud; con otra clave: la contratación ya en curso (sin duplicar)
+    expect((await receivePanelRequest(d, "t12-quantum", panelRequestBody.parse(body("asistida-0001", { message: "Indira quiere empezar en diciembre" })))).outcome).toBe("replayed");
+    expect(await receivePanelRequest(d, "t12-quantum", panelRequestBody.parse(body("asistida-0002")))).toMatchObject({ outcome: "duplicate", contactEmail: "info@quantum.example" });
+    expect(await store.list("leadRequests", {})).toHaveLength(1);
+  });
+
+  it("concesión de otra empresa, revocada, caducada, de solo lectura o inexistente: 403 y nada registrado", async () => {
+    for (const g of [grant({ tenantId: "otra-empresa" }), grant({ revokedAt: NOW - 1 }), grant({ untilRevoked: false, expiresAt: NOW - 1 }), grant({ readOnly: true }), null]) {
+      const { d, store } = await setup(g);
+      await expect(receivePanelRequest(d, "t12-quantum", panelRequestBody.parse(body("asistida-0003")))).rejects.toMatchObject({ status: 403, code: "assisted_forbidden" });
+      expect(await store.list("leadRequests", {})).toHaveLength(0);
+    }
+    // Sin lector de concesiones: no se registra a ciegas
+    const { d } = await setup(grant());
+    await expect(receivePanelRequest({ ...d, supportGrant: null }, "t12-quantum", panelRequestBody.parse(body("asistida-0004")))).rejects.toMatchObject({ status: 503 });
+  });
+
+  it("sin correo en la ficha de la empresa: error claro (409) para completarla y reintentar", async () => {
+    const { d, store } = await setup(grant(), null);
+    await expect(receivePanelRequest(d, "t12-quantum", panelRequestBody.parse(body("asistida-0005")))).rejects.toMatchObject({ status: 409, code: "no_contact" });
+    expect(await store.list("leadRequests", {})).toHaveLength(0);
+  });
+
+  it("el cuerpo lleva la persona o la concesión, nunca las dos ni ninguna", () => {
+    expect(panelRequestBody.safeParse(body("asistida-0006")).success).toBe(true);
+    expect(panelRequestBody.safeParse(body("asistida-0006", { requester: { name: "X", email: "x@y.example" } })).success).toBe(false);
+    expect(panelRequestBody.safeParse({ type: "info", interest: "connect-voice", idempotencyKey: "asistida-0007" }).success).toBe(false);
+    expect(panelRequestBody.safeParse(body("asistida-0008", { assisted: { grantId: "no-hex!" } })).success).toBe(false);
+  });
+
+  it("todos los Connect de contratación asistida con precio se pueden solicitar desde soporte (no solo WhatsApp AI)", async () => {
+    const items = panelCatalog(quoteCatalogFromSite(site).products, { version: "v", purchasesEnabled: true, site }).items;
+    const assisted = items.filter((i) => !i.legacy && offerSaleKind({ key: i.key, commercialStatus: i.commercialStatus, technicalStatus: i.technicalStatus ?? null, hasMonthlyPrice: !!i.monthly }) === "assisted_contract");
+    expect(assisted.map((i) => i.key)).toContain("connect-whatsapp-ai");
+    const { d, store } = await setup(grant());
+    for (const [n, i] of assisted.entries()) {
+      const r = await receivePanelRequest(d, "t12-quantum", panelRequestBody.parse(body(`asistida-todos-${n}`, { interest: i.key })));
+      expect(r.outcome, i.key).toBe("created");
+    }
+    expect(await store.list("leadRequests", {})).toHaveLength(assisted.length);
   });
 });

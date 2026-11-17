@@ -87,6 +87,7 @@ import { STATE_TONE, toneOf } from "@shared/marketplaceVisual";
 import { trackConnect, useViewTracking } from "./useConnectTracking";
 import type { PurchaseStatus } from "@shared/connectPurchase";
 import { fichaPath } from "./LockedFeature";
+import { isSupportUser } from "@/components/SupportModeBar";
 import { useConnectAttempt, useOrderTracking, useRefreshLicences, type ConnectCatalogItem } from "./useConnect";
 
 // ── Icono ──────────────────────────────────────────────────────────────────────
@@ -571,8 +572,13 @@ export function requestSubmitLabel(kind: RequestKind, pending: boolean): string 
 }
 
 /** Confirmación tras enviar (lo que ha pasado de verdad: solicitud del CRM o incidencia de soporte). */
-export function RequestDone({ kind, done }: { kind: RequestKind; done: { via: "lead" | "ticket"; outcome?: string; reference?: string | null; email: string; progress?: string | null } }) {
+/** Aviso de la solicitud asistida (modo soporte): en nombre de la empresa, sin aceptación contractual ni cargos. */
+export const ASSISTED_REQUEST_NOTICE =
+  "Modo soporte: registras una solicitud comercial asistida en nombre de la empresa. Queda constancia de quién la inicia; no equivale a la aceptación del contrato ni autoriza cargos.";
+
+export function RequestDone({ kind, done }: { kind: RequestKind; done: { via: "lead" | "ticket"; outcome?: string; reference?: string | null; email: string; progress?: string | null; assisted?: boolean } }) {
   const ongoing = done.via === "lead" && done.outcome === "duplicate";
+  const replyTo = done.assisted ? (done.email ? <> Responderemos a la empresa en <strong>{done.email}</strong>.</> : null) : <> Te responderemos en <strong>{done.email}</strong>.</>;
   return (
     <div role="status" className="rounded-xl border border-success/40 bg-success/10 p-4 text-sm text-foreground">
       {kind === "implementation" && <p className="mb-1 font-semibold">{ongoing ? "Esta contratación ya está en curso" : ASSISTED_CONTRACT_COPY.done}</p>}
@@ -580,8 +586,8 @@ export function RequestDone({ kind, done }: { kind: RequestKind; done: { via: "l
         <p>
           {ongoing
             ? `${kind === "implementation" ? "No hemos creado otra solicitud" : `Ya tenías una solicitud abierta${done.reference ? ` (${done.reference})` : ""}`}.${done.progress ? ` ${done.progress}.` : ""}`
-            : `Solicitud enviada${done.reference ? `, referencia ${done.reference}` : ""}.`}{" "}
-          Te responderemos en <strong>{done.email}</strong>.
+            : `${done.assisted ? "Solicitud asistida registrada" : "Solicitud enviada"}${done.reference ? `, referencia ${done.reference}` : ""}.`}
+          {replyTo}
         </p>
       ) : (
         <p>
@@ -612,6 +618,8 @@ export function RequestDialog({
 }) {
   const [message, setMessage] = useState("");
   const send = trpc.connect.request.useMutation({ onError: (e) => toast.error(e.message) });
+  const user = trpc.auth.me.useQuery(undefined, { retry: false, refetchOnWindowFocus: false }).data;
+  const supportWrite = isSupportUser(user) && user.supportReadOnly === false;
   const waitlist = kind === "waitlist";
   const assisted = kind === "implementation";
   const body = `${assisted ? `Quiero contratar «${item.name}» e iniciar la implantación` : `Me interesa «${item.name}»`} para mi empresa.${message.trim() ? `\n\n${message.trim()}` : ""}`;
@@ -633,6 +641,11 @@ export function RequestDialog({
           </DialogDescription>
         </DialogHeader>
         {assisted && !done && <AssistedSummary item={item} planName={planName} />}
+        {supportWrite && !done && requestsEnabled && kind !== "contact" && (
+          <p role="note" className="rounded-lg border border-warning/40 bg-warning/10 p-3 text-xs text-foreground">
+            {ASSISTED_REQUEST_NOTICE}
+          </p>
+        )}
         {done ? (
           <RequestDone kind={kind} done={done} />
         ) : requestsEnabled ? (
