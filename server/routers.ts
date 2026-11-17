@@ -1229,6 +1229,14 @@ export const appRouter = router({
         return getPagePreview(input.slug, tokens);
       }),
 
+    /** Solo el título y la descripción para buscadores de una página (no toca contenido, bloques ni publicación). */
+    setPageMeta: adminProcedure
+      .input(z.object({ slug: z.string().regex(/^[a-z0-9-]{1,64}$/), metaTitle: z.string().max(200).nullable().optional(), metaDescription: z.string().max(300).nullable().optional() }).strict())
+      .mutation(async ({ input }) => {
+        const { setPageMeta } = await import("./pageBuilderDb");
+        return pageBuilderCall(() => setPageMeta(input.slug, { metaTitle: input.metaTitle, metaDescription: input.metaDescription }));
+      }),
+
     savePageDraft: adminProcedure
       .input(z.object({ slug: z.string().regex(/^[a-z0-9-]{1,64}$/), blocks: z.array(z.unknown()).max(200) }))
       .mutation(async ({ input }) => {
