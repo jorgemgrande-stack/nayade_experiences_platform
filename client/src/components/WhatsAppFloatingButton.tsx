@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { useCart } from "@/contexts/CartContext";
 import { useLocation } from "wouter";
 import { useSiteLocale } from "@/hooks/useSiteLocale";
-import { WHATSAPP_AVOID_SELECTOR, whatsappHidden, whatsappLabel, whatsappTarget } from "@shared/whatsappButton";
+import { WHATSAPP_AVOID_SELECTOR, WHATSAPP_AVOID_SELECTOR_LEGACY, whatsappHidden, whatsappLabel, whatsappTarget } from "@shared/whatsappButton";
 
 export default function WhatsAppFloatingButton() {
   // Número de la empresa que sirve la web (en single, el de siempre); sin número, sin botón
@@ -31,7 +31,7 @@ export default function WhatsAppFloatingButton() {
       frame = requestAnimationFrame(() => {
         const el = ref.current;
         if (!el) return;
-        const avoid = Array.from(document.querySelectorAll(WHATSAPP_AVOID_SELECTOR)).map((n) => n.getBoundingClientRect());
+        const avoid = Array.from(document.querySelectorAll(pulse ? WHATSAPP_AVOID_SELECTOR_LEGACY : WHATSAPP_AVOID_SELECTOR)).map((n) => n.getBoundingClientRect());
         setHidden(whatsappHidden(el.getBoundingClientRect(), avoid, window.innerWidth, cartOpen));
       });
     };
@@ -46,7 +46,7 @@ export default function WhatsAppFloatingButton() {
       window.removeEventListener("resize", check);
       observer.disconnect();
     };
-  }, [target?.url, cartOpen]);
+  }, [target?.url, target?.position, cartOpen, pulse]);
   if (!target) return null;
   return (
     <a

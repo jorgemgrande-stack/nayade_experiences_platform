@@ -51,6 +51,14 @@ describe("botón de WhatsApp configurable", () => {
     expect(whatsappButtonInput.safeParse({ enabled: true, whatsapp: "+491742013503", position: "right", messages: { de: "x".repeat(301) } }).success).toBe(false);
   });
 
+  it("revisión: idiomas con dos subetiquetas y números de 6 cifras locales con prefijo de 3 cifras", () => {
+    expect(whatsappButtonInput.safeParse({ enabled: true, whatsapp: "+491742013503", position: "right", messages: { "zh-hant-tw": "你好" } }).success).toBe(true);
+    expect(parseWhatsappButtonConfig(JSON.stringify({ messages: { "sr-latn-rs": "Zdravo" } })).messages).toEqual({ "sr-latn-rs": "Zdravo" });
+    // +687 12 34 56 (Nueva Caledonia): el tema lo entrega como 687123456 y nunca debe abrir un móvil español
+    expect(whatsappTarget(themeOf({ brand_name: "Nouméa", brand_whatsapp: "+687 12 34 56" }))?.phone).toBe("687123456");
+    expect(whatsappTarget(themeOf({ brand_name: "Costa", brand_whatsapp: "622 000 111" }))?.phone).toBe("34622000111");
+  });
+
   it("etiqueta accesible en el idioma de la página", () => {
     expect([whatsappLabel("de"), whatsappLabel("es"), whatsappLabel("de-CH"), whatsappLabel("xx")]).toEqual(["Über WhatsApp kontaktieren", "Contactar por WhatsApp", "Über WhatsApp kontaktieren", "Contactar por WhatsApp"]);
   });

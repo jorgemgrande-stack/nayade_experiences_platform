@@ -42,7 +42,8 @@ export const WHATSAPP_BUTTON_SETTING = "whatsapp_button";
 export const WHATSAPP_POSITIONS = ["right", "left"] as const;
 export type WhatsappPosition = (typeof WHATSAPP_POSITIONS)[number];
 export const WHATSAPP_MESSAGE_MAX = 300;
-const LOCALE_RE = /^[a-z]{2,3}(-[a-z0-9]{2,8})?$/;
+/** El mismo formato de idioma que la web multidioma (shared/i18n.ts): hasta dos subetiquetas (`zh-hant-tw`). */
+export const WHATSAPP_LOCALE_RE = /^[a-z]{2,3}(-[a-z0-9]{2,8}){0,2}$/;
 export interface WhatsappButtonConfig {
   enabled: boolean;
   position: WhatsappPosition;
@@ -65,7 +66,7 @@ export function parseWhatsappButtonConfig(raw: string | null | undefined): Whats
   if (o.messages && typeof o.messages === "object") {
     for (const [k, m] of Object.entries(o.messages as Record<string, unknown>)) {
       const key = k.trim().toLowerCase();
-      if (LOCALE_RE.test(key) && typeof m === "string" && m.trim()) messages[key] = m.trim().slice(0, WHATSAPP_MESSAGE_MAX);
+      if (WHATSAPP_LOCALE_RE.test(key) && typeof m === "string" && m.trim()) messages[key] = m.trim().slice(0, WHATSAPP_MESSAGE_MAX);
     }
   }
   return {
@@ -81,7 +82,8 @@ export function parseWhatsappButtonConfig(raw: string | null | undefined): Whats
  */
 function themeWhatsapp(v: string | null | undefined): string | null {
   const s = (v ?? "").trim();
-  return normalizeWhatsapp(s) ?? (/^[1-9]\d{7,14}$/.test(s) ? normalizeWhatsapp(`+${s}`) : null);
+  // Con prefijo primero: «687123456» (Nueva Caledonia) no debe leerse como un móvil español sin prefijo
+  return (/^[1-9]\d{7,14}$/.test(s) ? normalizeWhatsapp(`+${s}`) : null) ?? normalizeWhatsapp(s);
 }
 
 export interface WhatsappThemeInput {
@@ -143,6 +145,8 @@ export function boxesOverlap(a: Box, b: Box, gap = 0): boolean {
  */
 export const WHATSAPP_AVOID_ATTR = "data-whatsapp-avoid";
 /** También se aparta, en móvil, de los botones de envío y campos de los formularios. */
+/** Webs de las empresas: también se aparta, en móvil, de los botones de envío y campos de los formularios (Náyade, como siempre). */
+export const WHATSAPP_AVOID_SELECTOR_LEGACY = `[${WHATSAPP_AVOID_ATTR}]`;
 export const WHATSAPP_AVOID_SELECTOR = `[${WHATSAPP_AVOID_ATTR}], form button[type="submit"], form input:not([type="hidden"]), form textarea, form select`;
 export const WHATSAPP_MOBILE_MAX = 767;
 export function whatsappHidden(button: Box, avoid: Box[], viewportWidth: number, cartOpen = false): boolean {

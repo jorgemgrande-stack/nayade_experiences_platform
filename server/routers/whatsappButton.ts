@@ -8,7 +8,7 @@ import { z } from "zod";
 import { TRPCError } from "@trpc/server";
 import { adminProcedure, router } from "../_core/trpc";
 import { readSettings, upsertSettings } from "../setupWizardDb";
-import { normalizeWhatsapp, parseWhatsappButtonConfig, WHATSAPP_BUTTON_SETTING, WHATSAPP_MESSAGE_MAX, WHATSAPP_POSITIONS } from "../../shared/whatsappButton";
+import { normalizeWhatsapp, parseWhatsappButtonConfig, WHATSAPP_BUTTON_SETTING, WHATSAPP_LOCALE_RE, WHATSAPP_MESSAGE_MAX, WHATSAPP_POSITIONS } from "../../shared/whatsappButton";
 
 const WHATSAPP_SETTING = "brand_whatsapp";
 
@@ -18,7 +18,7 @@ export const whatsappButtonInput = z
     /** Móvil con WhatsApp; con prefijo internacional si no es de España (como +49…). */
     whatsapp: z.string().trim().max(25),
     position: z.enum(WHATSAPP_POSITIONS),
-    messages: z.record(z.string().regex(/^[a-z]{2,3}(-[a-z0-9]{2,8})?$/), z.string().trim().max(WHATSAPP_MESSAGE_MAX)),
+    messages: z.record(z.string().regex(WHATSAPP_LOCALE_RE), z.string().trim().max(WHATSAPP_MESSAGE_MAX)),
   })
   .strict();
 
