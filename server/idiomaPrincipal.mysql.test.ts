@@ -142,6 +142,6 @@ describe.skipIf(!URL_)("Idioma principal configurable (aplicación real, dos emp
     expect((await m("cms.i18nRollbackDefaultLocale", { changeId: log[0].id, confirm: true })).status).toBe(400);
     expect(unwrap(await q("cms.i18nPlanDefaultLocale", { locale: "de" })).canApply).toBe(true);
     // El alemán sigue validado como traducción tras la vuelta atrás
-    expect(unwrap(await q("public.getTenantPage", { slug: "servicios", locale: "de" })).title).toBe("Dienstleistungen");
+    expect(unwrap(await q("public.getTenantPage", { slug: "dienstleistungen", locale: "de" })).title).toBe("Dienstleistungen");
   }, 300_000);
 });
