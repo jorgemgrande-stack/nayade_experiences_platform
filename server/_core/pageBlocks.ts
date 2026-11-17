@@ -6,6 +6,7 @@
  * El texto con formato pasa por la misma lista blanca que el resto de páginas (`sanitizeRichHtml`). Las direcciones de
  * enlaces e imágenes solo admiten rutas de la propia web, http(s), correo y teléfono.
  */
+import { madridDateKey } from "../utils/timezone";
 import { sanitizeRichHtml } from "./htmlSanitize";
 import { renderSiteTokens, type SiteTokenData } from "./templates/starterSite";
 import {
@@ -590,8 +591,19 @@ function splitLongText(b: Extract<PageBlock, { type: "text" }>): PageBlock[] {
 const TOKEN_RE = /\{\{\s*([a-z_]+)\s*\}\}/g;
 
 /** Texto simple con los datos de la empresa (sin escapar: lo pinta React). Un dato que falta queda vacío. */
+/**
+ * Texto con vigencia: `{{hasta:2026-11-23|Precio de introducción 333 €}}` se muestra hasta el 23/11/2026 inclusive (día de
+ * Europe/Madrid, como la caducidad de las variantes de producto) y después desaparece solo, sin tocar la página.
+ */
+const TIMED_RE = /\{\{\s*hasta:(\d{4}-\d{2}-\d{2})\|([^{}]*)\}\}/g;
+export function expireTimedText(s: string, now: Date = new Date()): string {
+  if (!s.includes("{{")) return s;
+  const today = madridDateKey(now);
+  return s.replace(TIMED_RE, (_all, until: string, text: string) => (today <= until ? text : ""));
+}
+
 function plainTokens(s: string, data: SiteTokenData): string {
-  return s.replace(TOKEN_RE, (all, k: string) => (k in data || ["nombre", "razon_social", "nif", "domicilio", "email", "telefono", "direccion"].includes(k) ? String(data[k as keyof SiteTokenData] ?? "").trim() : all));
+  return expireTimedText(s).replace(TOKEN_RE, (all, k: string) => (k in data || ["nombre", "razon_social", "nif", "domicilio", "email", "telefono", "direccion"].includes(k) ? String(data[k as keyof SiteTokenData] ?? "").trim() : all));
 }
 
 /** Bloques listos para la web: con los datos de la empresa en sus textos (en el HTML, ya escapados). */
@@ -601,7 +613,7 @@ export function renderBlockTokens(blocks: PageBlock[], data: SiteTokenData): Pag
     const d: Record<string, unknown> = { ...b.data };
     for (const [k, v] of Object.entries(d)) {
       if (typeof v !== "string") continue;
-      d[k] = k === "html" ? renderSiteTokens(v, data) : plainTokens(v, data);
+      d[k] = k === "html" ? renderSiteTokens(expireTimedText(v), data) : plainTokens(v, data);
     }
     // Los módulos de dentro de una ventana emergente llevan también los datos de la empresa
     if (b.type === "modal") d.columns = b.data.columns.map((c) => ({ blocks: renderBlockTokens(c.blocks, data) }));

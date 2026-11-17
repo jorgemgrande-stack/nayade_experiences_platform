@@ -5,7 +5,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { describe, it, expect } from "vitest";
-import { blocksToHtml, htmlText, htmlToBlocks, normalizeBlocks, PageBlocksError, readStoredBlocks, renderBlockTokens, safeLink } from "./_core/pageBlocks";
+import { blocksToHtml, htmlText, htmlToBlocks, normalizeBlocks, PageBlocksError, readStoredBlocks, renderBlockTokens, expireTimedText, safeLink } from "./_core/pageBlocks";
 import { STARTER_PAGES } from "./_core/templates/starterSite";
 import { sanitizeRichHtml } from "./_core/htmlSanitize";
 import { BLOCK_TYPES, PAGE_TEMPLATES, createBlock, duplicateBlock, pageSlugProblem, slugFromTitle, templateBlocks, readBlockText, writeBlockText, type PageBlock } from "../shared/pageBlocks";
@@ -203,5 +203,20 @@ describe("textos editables sobre la página", () => {
       expect(readBlockText(cards.data, k)).toBeUndefined();
       expect(writeBlockText(cards.data, k, "x")).toBe(cards.data);
     }
+  });
+});
+
+describe("texto con vigencia", () => {
+  const txt = "A {{hasta:2026-11-23|Precio 333 €}} B";
+  it("se muestra hasta el día indicado, inclusive, en hora de Madrid", () => {
+    expect(expireTimedText(txt, new Date("2026-11-23T22:30:00Z"))).toBe("A Precio 333 € B");
+    expect(expireTimedText(txt, new Date("2026-11-22T10:00:00Z"))).toBe("A Precio 333 € B");
+  });
+  it("desaparece al día siguiente (Madrid)", () => {
+    expect(expireTimedText(txt, new Date("2026-11-23T23:30:00Z"))).toBe("A  B");
+    expect(expireTimedText(txt, new Date("2026-12-01T10:00:00Z"))).toBe("A  B");
+  });
+  it("sin marcador no cambia nada", () => {
+    expect(expireTimedText("Hola {{nombre}}", new Date())).toBe("Hola {{nombre}}");
   });
 });
