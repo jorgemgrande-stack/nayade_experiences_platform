@@ -2549,7 +2549,7 @@ export function createControlPlaneApp(d: ControlPlaneDeps): Express {
           }
           return null;
         };
-        if (webRequests) router.use("/commerce", createPanelRequestsRouter({ site: () => wa.site("published"), requests: webRequests, crm: d.crm.store, internalTenants: d.stripe?.purchases?.internalTenants, implementations: d.implementation?.store ?? null, planOf: panelPlanOf }));
+        if (webRequests) router.use("/commerce", createPanelRequestsRouter({ site: () => wa.site("published"), requests: webRequests, crm: d.crm.store, internalTenants: d.stripe?.purchases?.internalTenants, implementations: d.implementation?.store ?? null, planOf: panelPlanOf, supportGrant: d.support?.getGrant ? (id) => d.support!.getGrant!(id) : null }));
         // Solicitudes de plan desde Suscripción: oportunidad del CRM de la empresa (o solicitud web si aún no tiene ficha)
         if (webRequests && d.crm) router.use("/commerce", createPlanRequestsRouter({ site: () => wa.site("published"), crm: d.crm.service, store: d.crm.store, requests: webRequests }));
       }

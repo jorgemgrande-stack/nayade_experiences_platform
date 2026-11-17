@@ -15,7 +15,7 @@ import { SIM_ACTIVE_CAPABILITIES, SIM_CATALOG } from "./connectFichas.testkit";
 const fake = vi.hoisted(() => ({
   requests: [] as Array<{ tenantId: string; input: unknown }>,
   tickets: [] as Array<{ tenantId: string; input: unknown }>,
-  mode: "ok" as "ok" | "duplicate" | "route_missing" | "not_visible" | "conflict" | "forbidden",
+  mode: "ok" as "ok" | "duplicate" | "route_missing" | "not_visible" | "conflict" | "forbidden" | "no_contact",
   catalog: null as unknown,
 }));
 
@@ -29,7 +29,8 @@ vi.mock("./commerceClient", async (orig) => {
       if (fake.mode === "not_visible") throw new real.CommerceError(404, "not_found", "Ese producto no está en tu catálogo");
       if (fake.mode === "conflict") throw new real.CommerceError(409, "invalid_state", "Ese producto todavía no está disponible: usa «Me interesa»");
       if (fake.mode === "forbidden") throw new real.CommerceError(403, "forbidden", "forbidden");
-      return { outcome: fake.mode === "duplicate" ? "duplicate" : "created", reference: "SOL-2026-0042", status: "pending" };
+      if (fake.mode === "no_contact") throw new real.CommerceError(409, "no_contact", "La ficha de la empresa en el CRM no tiene correo de contacto: complétalo y vuelve a enviar la solicitud");
+      return { outcome: fake.mode === "duplicate" ? "duplicate" : "created", reference: "SOL-2026-0042", status: "pending", ...(input.assisted ? { contactEmail: "info@empresa.example" } : {}) };
     },
     openTicket: async (tenantId, input) => {
       fake.tickets.push({ tenantId, input });
@@ -316,6 +317,62 @@ describe("connect.catalog y connect.request", () => {
     await expect(as(() => app.createCaller(ctxFor("user")).connect.request({ key: "connect-people", type: "info" }))).rejects.toMatchObject({ code: "FORBIDDEN" });
     await expect(as(() => app.createCaller(ctxFor("admin", "no-es-correo")).connect.request({ key: "connect-people", type: "info" }))).rejects.toMatchObject({ code: "PRECONDITION_FAILED" });
     expect(fake.requests).toHaveLength(0);
+  });
+});
+
+/**
+ * Incidencia del 17/11/2026: en modo soporte «Solicitar contratación» respondía «No disponible en modo soporte:
+ * credenciales, secretos…». Solicitar es una operación comercial sin cargos ni credenciales: con modificación se
+ * registra como solicitud ASISTIDA (la concesión la comprueba el plano de control); de solo lectura, no.
+ */
+describe("connect.request desde una sesión de soporte delegado", () => {
+  const GRANT = "c12f1844fed71870a1b2c3d4e5f60718";
+  const supportCtx = (readOnly: boolean): TrpcContext => ({
+    user: { id: -1, openId: `support:${GRANT}`, email: null, name: "Soporte Big Elephant (jorge)", loginMethod: "support", role: "admin", supportGrantId: GRANT, supportReadOnly: readOnly, createdAt: new Date(), updatedAt: new Date(), lastSignedIn: new Date() } as unknown as NonNullable<TrpcContext["user"]>,
+    req: { protocol: "https", headers: {} } as TrpcContext["req"],
+    res: {} as TrpcContext["res"],
+  });
+  const asSupport = (readOnly = false) => app.createCaller(supportCtx(readOnly));
+
+  it("política: solicitar no es una operación vetada; reintentar la activación, comprar o cambiar el plan sí", async () => {
+    const { supportProcedureKind } = await import("./_core/support/policy");
+    expect(supportProcedureKind("connect.request")).toBe("normal");
+    for (const p of ["connect.retryActivation", "subscription.purchase", "subscription.changePlan", "integrations.save", "whatsappCloud.saveSettings"]) expect(supportProcedureKind(p), p).toBe("forbidden");
+  });
+
+  it("con modificación: solicitud asistida (concesión, nunca la identidad del operador) y confirmación con el contacto de la empresa", async () => {
+    const r = await as(() => asSupport().connect.request({ key: "connect-people", type: "implementation", message: "Llamar por la tarde" }));
+    expect(r).toEqual({ via: "lead", outcome: "created", reference: "SOL-2026-0042", email: "info@empresa.example", assisted: true });
+    const sent = fake.requests[0].input as ModuleRequestInput;
+    expect(sent).toMatchObject({ type: "implementation", interest: "connect-people", message: "Llamar por la tarde", assisted: { grantId: GRANT } });
+    expect(sent.requester).toBeUndefined();
+    expect(sent.idempotencyKey).toMatch(/^[A-Za-z0-9_-]{8,80}$/);
+    // Reintento (doble clic): la misma clave
+    await as(() => asSupport().connect.request({ key: "connect-people", type: "implementation", message: "Llamar por la tarde" }));
+    expect((fake.requests[1].input as ModuleRequestInput).idempotencyKey).toBe(sent.idempotencyKey);
+    expect(fake.tickets).toHaveLength(0);
+  });
+
+  it("de solo lectura: no registra nada", async () => {
+    await expect(as(() => asSupport(true).connect.request({ key: "connect-people", type: "implementation" }))).rejects.toMatchObject({ code: "FORBIDDEN" });
+    expect(fake.requests).toHaveLength(0);
+  });
+
+  it("nunca abre incidencias a nombre de la empresa (consulta sobre lo contratado o canal sin solicitudes)", async () => {
+    await expect(as(() => asSupport().connect.request({ key: "care-net-agenda", type: "contact" }))).rejects.toMatchObject({ code: "PRECONDITION_FAILED" });
+    fake.mode = "route_missing";
+    await expect(as(() => asSupport().connect.request({ key: "connect-people", type: "info" }))).rejects.toMatchObject({ code: "PRECONDITION_FAILED" });
+    expect(fake.tickets).toHaveLength(0);
+  });
+
+  it("ficha de la empresa sin correo: se dice exactamente qué falta (no el texto genérico del 409)", async () => {
+    fake.mode = "no_contact";
+    await expect(as(() => asSupport().connect.request({ key: "connect-people", type: "implementation" }))).rejects.toMatchObject({ code: "CONFLICT", message: expect.stringMatching(/no tiene correo de contacto/) });
+  });
+
+  it("el error del canal se muestra igual que a la empresa (sin confirmación falsa)", async () => {
+    fake.mode = "forbidden";
+    await expect(as(() => asSupport().connect.request({ key: "connect-people", type: "implementation" }))).rejects.toMatchObject({ code: "FORBIDDEN" });
   });
 });
 
