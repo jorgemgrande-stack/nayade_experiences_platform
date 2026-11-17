@@ -1079,6 +1079,20 @@ export const appRouter = router({
       return i18nCall((repo) => planDefaultLocale(repo, input.locale));
     }),
 
+    /** Cambia el idioma principal de la empresa (intercambio transaccional con copia previa). Antes: `i18nPlanDefaultLocale`. */
+    i18nSetDefaultLocale: adminProcedure.input(z.object({ locale: z.string().max(35), confirm: z.literal(true) })).mutation(async ({ input, ctx }) => {
+      const { applyDefaultLocaleChange } = await import("./i18nSwapDb");
+      return i18nCall((repo) => applyDefaultLocaleChange(repo, input.locale, { id: ctx.user?.id ?? null, name: ctx.user?.name ?? ctx.user?.email ?? null }));
+    }),
+    i18nRollbackDefaultLocale: adminProcedure.input(z.object({ changeId: z.number().int().positive(), confirm: z.literal(true) })).mutation(async ({ input, ctx }) => {
+      const { rollbackDefaultLocaleChange } = await import("./i18nSwapDb");
+      return i18nCall(() => rollbackDefaultLocaleChange(input.changeId, { id: ctx.user?.id ?? null, name: ctx.user?.name ?? ctx.user?.email ?? null }));
+    }),
+    i18nDefaultChanges: adminProcedure.query(async () => {
+      const { listDefaultLocaleChanges } = await import("./i18nSwapDb");
+      return listDefaultLocaleChanges();
+    }),
+
     i18nAddLocale: adminProcedure.input(z.object({ locale: z.string().max(35) })).mutation(async ({ input, ctx }) => {
       const { addLocale } = await import("./i18nService");
       return i18nCall((repo) => addLocale(repo, input.locale, ctx.user?.name ?? ctx.user?.email ?? null));
