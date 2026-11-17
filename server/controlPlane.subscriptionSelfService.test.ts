@@ -62,6 +62,9 @@ const crmStore = new MemoryCrmStore();
 const webStore = new MemoryWebStore();
 const orders = new MemoryOrderStore();
 const gw = new FakeStripeGateway();
+// El simulador de Stripe con el MISMO reloj que el test: con el reloj real, el prorrateo dependía del día en que se
+// ejecutaba (desde el 17/11/2026 09:00 UTC el periodo del test ya había vencido y el prorrateo salía 0)
+gw.now = Math.floor(clock / 1000);
 const stripeStore = new MemoryStripeStore();
 /** Interruptores (los lee el servicio en cada petición). */
 const flags = { cancel: true, planChange: true };
