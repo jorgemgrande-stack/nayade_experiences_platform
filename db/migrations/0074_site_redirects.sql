@@ -1,12 +1,12 @@
 -- Redirecciones permanentes (301/302) de la web pública por empresa. Aditiva, BD de cada empresa.
 --
 -- `site_redirects`: ruta antigua (única) → ruta nueva INTERNA, con contador de usos y estado. Solo rutas de la propia web:
--- no hay redirecciones a otros dominios. `site_redirect_log`: auditoría de cada alta, cambio y baja (quién, cuándo, qué).
+-- no hay redirecciones a otros dominios. La ruta se guarda decodificada y en minúsculas, con colación binaria (sin confundir tildes). `site_redirect_log`: auditoría de cada alta, cambio y baja (quién, cuándo, qué).
 -- Solo crea tablas; los sitios sin reglas se comportan exactamente igual. Nunca se ejecuta al arrancar.
 
 CREATE TABLE IF NOT EXISTS site_redirects (
   id           INT UNSIGNED  NOT NULL AUTO_INCREMENT,
-  from_path    VARCHAR(255)  NOT NULL,
+  from_path    VARCHAR(255)  CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NOT NULL,
   to_path      VARCHAR(512)  NOT NULL,
   status_code  SMALLINT      NOT NULL DEFAULT 301,
   is_active    TINYINT(1)    NOT NULL DEFAULT 1,

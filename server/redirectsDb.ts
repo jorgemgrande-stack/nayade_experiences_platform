@@ -8,7 +8,7 @@
 import { sql } from "drizzle-orm";
 import { getDb } from "./db";
 import { peekTenantContext } from "./_core/tenant";
-import { REDIRECT_LIMITS, normalizeFromPath, planRenameRedirects, resolveRedirect, validateRedirect, type RedirectRule } from "../shared/redirects";
+import { REDIRECT_LIMITS, buildRedirectIndex, normalizeFromPath, planRenameRedirects, resolveRedirect, validateRedirect, type RedirectIndex, type RedirectRule } from "../shared/redirects";
 
 export interface StoredRedirect extends RedirectRule {
   id: number;
@@ -24,7 +24,9 @@ export class RedirectError extends Error {}
 
 type Row = Record<string, any>;
 const TTL_MS = 15_000;
-const cache = new Map<string, { at: number; rules: RedirectRule[] }>();
+// La caché es por proceso: con varias réplicas, un cambio tarda hasta TTL_MS en verse en las demás (aceptable para redirecciones).
+const cache = new Map<string, { at: number; index: RedirectIndex }>();
+const warned = new Set<string>();
 const tenantKey = () => peekTenantContext()?.tenantId ?? "single";
 export const invalidateRedirectCache = () => { cache.delete(tenantKey()); };
 /** Solo para pruebas */
@@ -71,6 +73,12 @@ async function log(action: string, redirectId: number | null, r: { fromPath: str
   await run(sql`INSERT INTO site_redirect_log (redirect_id, action, from_path, to_path, status_code, actor_id, actor_name) VALUES (${redirectId}, ${action}, ${r.fromPath}, ${r.toPath ?? null}, ${r.statusCode ?? null}, ${actor.id ?? null}, ${(actor.name ?? "").slice(0, 128) || null})`);
 }
 
+/** Dos altas a la vez con el mismo origen: el usuario ve el mensaje de siempre, no un error de SQL. */
+function dupToError(e: unknown): never {
+  if (/ER_DUP_ENTRY|Duplicate entry/i.test(String((e as { message?: string; cause?: { message?: string } })?.message ?? "") + String((e as { cause?: { message?: string } })?.cause?.message ?? ""))) throw new RedirectError("Ya hay una redirección desde esa ruta.");
+  throw e;
+}
+
 export interface RedirectInput { fromPath: string; toPath: string; statusCode?: number; isActive?: boolean; note?: string | null }
 
 export async function checkRedirect(input: RedirectInput, selfId?: number) {
@@ -83,7 +91,7 @@ export async function createRedirect(input: RedirectInput, actor: { id?: number 
   if (!v.ok) throw new RedirectError(v.error);
   const status = input.statusCode === 302 ? 302 : 301;
   const note = (input.note ?? "").trim().slice(0, REDIRECT_LIMITS.note) || null;
-  const { insertId } = await run(sql`INSERT INTO site_redirects (from_path, to_path, status_code, is_active, note, created_by) VALUES (${v.fromPath}, ${v.toPath}, ${status}, ${input.isActive === false ? 0 : 1}, ${note}, ${(actor.name ?? "").slice(0, 128) || null})`);
+  const { insertId } = await run(sql`INSERT INTO site_redirects (from_path, to_path, status_code, is_active, note, created_by) VALUES (${v.fromPath}, ${v.toPath}, ${status}, ${input.isActive === false ? 0 : 1}, ${note}, ${(actor.name ?? "").slice(0, 128) || null})`).catch(dupToError);
   await log("create", insertId, { fromPath: v.fromPath, toPath: v.toPath, statusCode: status }, actor);
   invalidateRedirectCache();
   return (await listRedirects()).find((r) => r.id === insertId)!;
@@ -96,7 +104,7 @@ export async function updateRedirect(id: number, input: RedirectInput, actor: { 
   if (!v.ok) throw new RedirectError(v.error);
   const status = input.statusCode === 302 ? 302 : 301;
   const note = (input.note ?? "").trim().slice(0, REDIRECT_LIMITS.note) || null;
-  await run(sql`UPDATE site_redirects SET from_path = ${v.fromPath}, to_path = ${v.toPath}, status_code = ${status}, is_active = ${input.isActive === false ? 0 : 1}, note = ${note} WHERE id = ${id}`);
+  await run(sql`UPDATE site_redirects SET from_path = ${v.fromPath}, to_path = ${v.toPath}, status_code = ${status}, is_active = ${input.isActive === false ? 0 : 1}, note = ${note} WHERE id = ${id}`).catch(dupToError);
   await log("update", id, { fromPath: v.fromPath, toPath: v.toPath, statusCode: status }, actor);
   invalidateRedirectCache();
   return (await listRedirects()).find((r) => r.id === id)!;
@@ -114,8 +122,10 @@ export async function deleteRedirect(id: number, actor: { id?: number | null; na
  * Una página cambia de dirección: se conserva el enlace antiguo con un 301 (y se aplanan cadenas y se retiran reglas que
  * taparían la página). Best-effort: si algo falla (p. ej. empresa aún sin migrar) no se interrumpe el cambio de dirección.
  */
-export async function redirectOnRename(oldPath: string, newPath: string, actor: { id?: number | null; name?: string | null }): Promise<void> {
+export async function redirectOnRename(oldPath: string, newPath: string, actor: { id?: number | null; name?: string | null }, opts: { published?: boolean } = {}): Promise<void> {
   try {
+    // Una página sin publicar no existe para el público: un 301 hacia ella sería un 301 hacia un 404
+    if (opts.published === false) return;
     const all = await listRedirects();
     const plan = planRenameRedirects(all, oldPath, newPath);
     if (!plan) return;
@@ -129,6 +139,7 @@ export async function redirectOnRename(oldPath: string, newPath: string, actor: 
       await run(sql`UPDATE site_redirects SET to_path = ${t.toPath} WHERE id = ${t.id}`);
       if (cur) await log("update", t.id, { fromPath: cur.fromPath, toPath: t.toPath, statusCode: cur.statusCode }, actor);
     }
+    if (!plan.upsert.id && all.length - plan.remove.length >= REDIRECT_LIMITS.rules) { invalidateRedirectCache(); return; }
     if (plan.upsert.id) {
       await run(sql`UPDATE site_redirects SET to_path = ${plan.upsert.toPath}, status_code = 301, is_active = 1 WHERE id = ${plan.upsert.id}`);
       await log("update", plan.upsert.id, { fromPath: plan.upsert.fromPath, toPath: plan.upsert.toPath, statusCode: 301 }, actor);
@@ -142,30 +153,47 @@ export async function redirectOnRename(oldPath: string, newPath: string, actor: 
   }
 }
 
-async function activeRules(): Promise<RedirectRule[]> {
+async function activeIndex(): Promise<RedirectIndex> {
   const key = tenantKey();
   const hit = cache.get(key);
-  if (hit && Date.now() - hit.at < TTL_MS) return hit.rules;
-  const rules = (await listRedirects()).filter((r) => r.isActive).map((r) => ({ id: r.id, fromPath: r.fromPath, toPath: r.toPath, statusCode: r.statusCode, isActive: true }));
-  cache.set(key, { at: Date.now(), rules });
-  return rules;
+  if (hit && Date.now() - hit.at < TTL_MS) return hit.index;
+  const index = buildRedirectIndex((await listRedirects()).filter((r) => r.isActive).map((r) => ({ id: r.id, fromPath: r.fromPath, toPath: r.toPath, statusCode: r.statusCode, isActive: true })));
+  cache.set(key, { at: Date.now(), index });
+  return index;
+}
+
+// Contadores de uso agrupados: como mucho una escritura cada 30 s por empresa (los rastreadores no saturan la BD)
+const pendingHits = new Map<string, Map<number, number>>();
+const lastFlush = new Map<string, number>();
+function countHit(id: number) {
+  const key = tenantKey();
+  const m = pendingHits.get(key) ?? new Map<number, number>();
+  m.set(id, (m.get(id) ?? 0) + 1);
+  pendingHits.set(key, m);
+  const now = Date.now();
+  if (now - (lastFlush.get(key) ?? 0) < 30_000) return;
+  lastFlush.set(key, now);
+  pendingHits.delete(key);
+  m.forEach((n, rid) => { void run(sql`UPDATE site_redirects SET hits = hits + ${n}, last_hit_at = NOW() WHERE id = ${rid}`).catch(() => {}); });
 }
 
 /**
- * Redirección aplicable a una petición pública de la empresa en curso, o `null`. Nunca lanza: ante cualquier fallo (tabla
- * aún sin migrar incluida) no redirige y la web se sirve como siempre.
+ * Redirección aplicable a una petición pública de la empresa en curso, o `null`. El servidor solo la consulta cuando la ruta
+ * NO existe (404). Nunca lanza: ante cualquier fallo (tabla aún sin migrar incluida) no redirige y la web se sirve como siempre.
  */
 export async function resolveTenantRedirect(pathname: string, search = ""): Promise<{ to: string; status: 301 | 302 } | null> {
   try {
-    const rules = await activeRules();
-    if (!rules.length) return null;
-    const hit = resolveRedirect(rules, pathname, search);
+    const index = await activeIndex();
+    if (!index.size) return null;
+    const hit = resolveRedirect(index, pathname, search);
     if (!hit) return null;
-    if (hit.ruleId) void run(sql`UPDATE site_redirects SET hits = hits + 1, last_hit_at = NOW() WHERE id = ${hit.ruleId}`).catch(() => {});
+    if (hit.ruleId) countHit(hit.ruleId);
     return { to: hit.to, status: hit.status };
-  } catch {
+  } catch (e) {
     // Sin tabla (empresa aún sin migrar) o BD no disponible: la web sigue como siempre. Se recuerda un rato para no consultar en cada visita.
-    cache.set(tenantKey(), { at: Date.now(), rules: [] });
+    const key = tenantKey();
+    cache.set(key, { at: Date.now(), index: new Map() });
+    if (!warned.has(key)) { warned.add(key); console.warn("[redirects] sin redirecciones para esta empresa (¿falta la migración 0074?):", (e as Error).message); }
     return null;
   }
 }

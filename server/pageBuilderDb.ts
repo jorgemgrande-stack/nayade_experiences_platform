@@ -373,7 +373,7 @@ export async function updatePageSettings(input: { slug: string; newSlug?: string
     }
     // El enlace antiguo sigue funcionando (301); nunca interrumpe el cambio
     const { redirectOnRename } = await import("./redirectsDb");
-    await redirectOnRename(`/${input.slug}`, `/${target}`, actor);
+    await redirectOnRename(`/${input.slug}`, `/${target}`, actor, { published: !!page.isPublished });
   }
   return { success: true, slug: target };
 }

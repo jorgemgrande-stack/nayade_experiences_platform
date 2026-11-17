@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { validateRedirect, resolveRedirect, normalizeFromPath, isProtectedPath, type RedirectRule } from "../shared/redirects";
+import { validateRedirect, resolveRedirect, normalizeFromPath, isProtectedPath, buildRedirectIndex, type RedirectRule } from "../shared/redirects";
 
 const rule = (fromPath: string, toPath: string, extra: Partial<RedirectRule> = {}): RedirectRule => ({ id: 1, fromPath, toPath, statusCode: 301, isActive: true, ...extra });
 
@@ -94,5 +94,43 @@ describe("redirecciones al renombrar una página", () => {
   it("no hace nada si la dirección no cambia o es una ruta protegida", () => {
     expect(planRenameRedirects([], "/a", "/a/")).toBeNull();
     expect(planRenameRedirects([], "/admin/x", "/y")).toBeNull();
+  });
+});
+
+describe("redirecciones: correcciones de la revisión independiente", () => {
+  it("B1: protege acceso, contraseñas, pago, enlaces de correo y rutas técnicas", () => {
+    for (const from of ["/login", "/recuperar-contrasena", "/nueva-contrasena", "/establecer-contrasena", "/checkout", "/reserva/ok", "/reserva/error", "/restaurantes/reserva-ok", "/restaurantes/reserva-ko", "/presupuesto/abc123", "/propuesta/abc123", "/canjear-cupon", "/verificar-bono", "/solicitar-anulacion", "/comunidad/activar", "/404", "/_support", "/LOGIN/", "/%6Cogin"]) {
+      expect(validateRedirect({ fromPath: from, toPath: "/contacto" }, []).ok, from).toBe(false);
+      expect(isProtectedPath(from), from).toBe(true);
+    }
+    // Lo que no es protegido sigue permitido
+    expect(validateRedirect({ fromPath: "/reservas-antiguas", toPath: "/contacto" }, []).ok).toBe(true);
+    // Una regla guardada antes de la protección nunca actúa sobre una ruta protegida
+    expect(resolveRedirect([rule("/login", "/contacto")], "/login")).toBeNull();
+    // Codificación del origen: %2F no esquiva la protección
+    expect(validateRedirect({ fromPath: "/%61dmin", toPath: "/contacto" }, []).ok).toBe(false);
+  });
+  it("I1: una regla con tilde o ñ coincide con la petición codificada y en cualquier forma Unicode", () => {
+    const r = validateRedirect({ fromPath: "/programación", toPath: "/reconnect" }, []);
+    expect(r).toEqual({ ok: true, fromPath: "/programación", toPath: "/reconnect" });
+    const rules = [rule("/programación", "/reconnect")];
+    expect(resolveRedirect(rules, "/programaci%C3%B3n")?.to).toBe("/reconnect");
+    expect(resolveRedirect(rules, "/PROGRAMACI%C3%93N/")?.to).toBe("/reconnect");
+    expect(resolveRedirect(rules, "/programación")?.to).toBe("/reconnect"); // o + acento combinante
+    expect(resolveRedirect(rules, "/programacion")).toBeNull(); // sin tilde es otra ruta
+    expect(normalizeFromPath("/a%ZZb")).toBe("/a%zzb"); // mal codificada: se deja como llega
+  });
+  it("M1: la consulta de la petición va antes del ancla del destino", () => {
+    expect(resolveRedirect([rule("/a", "/b#sec")], "/a", "?utm=1")?.to).toBe("/b?utm=1#sec");
+  });
+  it("M2: al aplanar se conserva la consulta del destino y la dirección nueva no se pasa a minúsculas", () => {
+    const p = planRenameRedirects([rule("/muy-antigua", "/vieja?utm=a#x", { id: 5 })], "/vieja", "/Nueva");
+    expect(p?.retarget).toEqual([{ id: 5, toPath: "/Nueva?utm=a#x" }]);
+  });
+  it("M5: la resolución usa un índice por ruta (no recorre las reglas)", () => {
+    const rules = Array.from({ length: 2000 }, (_, i) => rule(`/r${i}`, `/d${i}`, { id: i + 1 }));
+    const idx = buildRedirectIndex(rules);
+    expect(idx.size).toBe(2000);
+    expect(resolveRedirect(idx, "/r1999")?.to).toBe("/d1999");
   });
 });

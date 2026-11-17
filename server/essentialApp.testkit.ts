@@ -30,6 +30,8 @@ export interface Res {
   cookie?: string;
   /** Cabecera Location de una redirección */
   location?: string;
+  /** Cabeceras de la respuesta (minúsculas) */
+  headers?: Record<string, string | string[] | undefined>;
 }
 
 /** Correo capturado por el proveedor falso (cuerpo de la API de envío). */
@@ -247,7 +249,7 @@ export async function startEssentialApp(url: string, label: string, opts: { webD
             } catch {
               /* texto */
             }
-            resolve({ status: res.statusCode ?? 0, json, text: b, cookie: res.headers["set-cookie"]?.[0]?.split(";")[0], location: res.headers.location });
+            resolve({ status: res.statusCode ?? 0, json, text: b, cookie: res.headers["set-cookie"]?.[0]?.split(";")[0], location: res.headers.location, headers: res.headers });
           });
         },
       );
