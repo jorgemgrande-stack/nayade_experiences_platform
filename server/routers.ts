@@ -971,6 +971,15 @@ export const appRouter = router({
         return getAllMenuItems(input.zone);
       }),
 
+    /** Vista previa del equipo: menú de un idioma con sus textos en borrador (la web pública no cambia). */
+    menuPreview: adminProcedure
+      .input(z.object({ zone: z.enum(["header", "footer"]).default("header"), locale: z.string().max(35) }))
+      .query(async ({ input }) => {
+        const items = await getAllMenuItems(input.zone);
+        const [{ localizeMenu }, { sqlI18nRepo }] = await Promise.all([import("./i18nService"), import("./i18nSqlRepo")]);
+        return localizeMenu(sqlI18nRepo(), items, input.locale, { includeDrafts: true });
+      }),
+
     createMenuItem: adminProcedure
       .input(z.object({
         label: z.string().min(1),
