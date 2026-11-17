@@ -21,7 +21,7 @@ import { brandHeaders, brandOf, conversionPlanText, conversionSupportText, PURCH
 import { periodLabel, sortPrices, taxLabel, formatMoney } from "@shared/connectCard";
 import { ACTIVATION_LABELS, activationActions, activationLabel, activationOf, primaryAction, type ConnectActivation, type PrimaryAction } from "@shared/connectShowcase";
 import { ASSISTED_CONTRACT_COPY } from "@shared/netOffer";
-import { ActivationActionsBar, AssistedFeatures, BigPrice, goTo, ImageKindNote, ProductIcon, ProductMedia, PurchaseDialog, RequestDialog, StateBadge, type ConnectView, type RequestKind } from "@/components/connect/ConnectParts";
+import { ActivationActionsBar, AssistedFeatures, BigPrice, goTo, ImageKindNote, ProductIcon, ProductMedia, PurchaseDialog, RequestDialog, RequestStateNote, StateBadge, type ConnectView, type RequestKind } from "@/components/connect/ConnectParts";
 import { SHEET_ANCHORS, SheetBlocks, sheetAnchorTargets } from "@/components/connect/SheetBlocks";
 import { AMPLIAR_PATH } from "@/components/connect/LockedFeature";
 import { useConnectAttempt, useConnectCatalog, useOrderTracking, type ConnectCatalogItem } from "@/components/connect/useConnect";
@@ -319,6 +319,7 @@ function ContractPanel({
         <p className="min-w-0 break-words text-sm font-semibold uppercase tracking-[0.14em] text-muted-foreground">{item.name}</p>
         <StateBadge state={item.state} />
       </div>
+      <RequestStateNote request={item.request} long />
       {active ? (
         <p className="flex items-start gap-2 text-base text-foreground">
           <CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0 text-success" aria-hidden="true" /> Ya forma parte de tu plataforma.

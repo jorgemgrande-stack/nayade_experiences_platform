@@ -32,6 +32,7 @@ import { panelCatalog } from "./panelCatalog";
 import { ASSISTED_CONTRACT_COPY, offerSaleKind } from "../../shared/netOffer";
 import { STATUS_LABEL, type ImplementationStore } from "../implementation/store";
 import { addonAssistedOf, assistedRegistryOf } from "../../shared/addonAssisted";
+import { stageOfImplementation, type ConnectRequestState } from "../../shared/connectRequestState";
 
 export const PANEL_REQUEST_SOURCE = "panel:/admin/ampliar";
 /** Versión de privacidad de las solicitudes del panel: la persona ya es cliente y actúa desde su cuenta. */
@@ -97,6 +98,33 @@ async function openRequestFor(
   const source = sourceFor(key, type);
   const pending = (await d.crm.list("leadRequests", { interest: key, status: "pending" }, { desc: true, limit: 200 })).find((r) => r.sourcePage === source && fromTenant(r.message, tenantId));
   return pending ? { outcome: "duplicate", reference: pending.reference, status: pending.status, progress: `Solicitud ${pending.reference}: ${REQUEST_STATUS_LABEL[pending.status].toLowerCase()}` } : null;
+}
+
+/**
+ * Estado de las solicitudes comerciales de una empresa por producto (para el catálogo del panel): solicitudes del
+ * panel pendientes de atender (información o contratación; el «Me interesa» no cuenta) y expedientes de implantación
+ * abiertos, que mandan sobre la solicitud. Solo lectura.
+ */
+export async function panelRequestStates(
+  d: { crm: CrmStore; implementations?: Pick<ImplementationStore, "list"> | null },
+  tenantId: string,
+): Promise<Map<string, ConnectRequestState>> {
+  const out = new Map<string, ConnectRequestState>();
+  const pending = await d.crm.list("leadRequests", { status: "pending" }, { desc: true, limit: 500 });
+  for (const r of pending) {
+    const src = r.sourcePage ?? "";
+    if (!r.interest || !src.startsWith(`${PANEL_REQUEST_SOURCE}/`) || src.endsWith("#me-interesa") || !fromTenant(r.message, tenantId)) continue;
+    if (!out.has(r.interest)) out.set(r.interest, { stage: "requested", reference: r.reference });
+  }
+  const company = d.implementations ? ((await d.crm.list("companies", {}, { desc: true, limit: 5000 })).find((c) => c.tenantId === tenantId) ?? null) : null;
+  if (company && d.implementations) {
+    for (const o of await d.implementations.list({ companyId: company.id, open: true, limit: 200 })) {
+      const stage = stageOfImplementation(o.status);
+      if (stage) out.set(o.solutionKey, { stage, reference: o.reference });
+      else out.delete(o.solutionKey);
+    }
+  }
+  return out;
 }
 
 /**

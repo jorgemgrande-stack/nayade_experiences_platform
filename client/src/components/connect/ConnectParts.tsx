@@ -83,6 +83,7 @@ import { CONNECT_STATE_LABELS, CONNECT_STATE_SHORT, type ConnectState } from "@s
 import { formatMoney, headlinePrice, periodLabel, sortPrices, taxLabel, type ConnectImage, type ConnectPrice } from "@shared/connectCard";
 import { ACTIVATION_LABELS, activationActions, activationLabel, activationOf, primaryAction, type ConnectActivation } from "@shared/connectShowcase";
 import { ASSISTED_CONTRACT_COPY } from "@shared/netOffer";
+import { CONNECT_REQUEST_STAGE_LABEL, CONNECT_REQUEST_STAGE_TEXT, type ConnectRequestState } from "@shared/connectRequestState";
 import { STATE_TONE, toneOf } from "@shared/marketplaceVisual";
 import { trackConnect, useViewTracking } from "./useConnectTracking";
 import type { PurchaseStatus } from "@shared/connectPurchase";
@@ -254,6 +255,22 @@ export function StatePill({ state, className }: { state: ConnectState; className
       <Icon className={cn("h-3.5 w-3.5 shrink-0 opacity-90", state === "activating" && "motion-safe:animate-spin")} aria-hidden="true" />
       <span className="min-w-0 break-words">{CONNECT_STATE_SHORT[state]}</span>
     </span>
+  );
+}
+
+/**
+ * Solicitud o contratación en curso (17/11/2026): «Solicitud pendiente», «Pendiente de aceptación contractual» o
+ * «Pendiente de implantación», con su referencia. Con `long`, también qué significa (ficha).
+ */
+export function RequestStateNote({ request, long = false, className }: { request: ConnectRequestState | null | undefined; long?: boolean; className?: string }) {
+  if (!request) return null;
+  return (
+    <div role="status" className={cn("rounded-lg border border-warning/40 bg-warning/10 px-3 py-2 text-xs text-foreground", className)}>
+      <p className="font-semibold">
+        {CONNECT_REQUEST_STAGE_LABEL[request.stage]} <span className="font-normal text-muted-foreground">· {request.reference}</span>
+      </p>
+      {long && <p className="mt-0.5 text-muted-foreground">{CONNECT_REQUEST_STAGE_TEXT[request.stage]}</p>}
+    </div>
   );
 }
 
@@ -457,6 +474,7 @@ export function ProductCard({
       </div>
       <div className="flex min-w-0 flex-1 flex-col gap-3 p-4 sm:p-5">
         {lead && <p className="line-clamp-4 break-words text-sm text-muted-foreground">{lead}</p>}
+        <RequestStateNote request={item.request} />
         <ActivationLine activation={plainActive(activation) ? { ...activation, state: "none" } : activation} />
         <ActivationActionsBar productKey={item.key} activation={activation} canRetry={!!view.canRetryActivation} className="relative z-10" />
         <div className="mt-auto flex flex-wrap items-end justify-between gap-x-3 gap-y-2 pt-1">

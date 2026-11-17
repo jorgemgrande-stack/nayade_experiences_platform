@@ -18,10 +18,11 @@ import type { ConnectActivation } from "../shared/connectShowcase";
 import { isNetLegacyExtension, netProductOf, netProductOfLegacy, type NetArea, type NetSegment } from "../shared/netProducts";
 import { netAvailabilitySplit, offerSaleKind } from "../shared/netOffer";
 import { addonAssistedOf, assistedRegistryOf } from "../shared/addonAssisted";
+import { parseConnectRequestState, type ConnectRequestState } from "../shared/connectRequestState";
 
 
 /** Producto tal como llega del canal: lo de siempre y, opcionalmente, la ficha y los precios aprobados. */
-export type ChannelCatalogItem = PanelCatalogItemView & { card?: unknown; prices?: unknown; offer?: unknown; activation?: unknown; legacy?: unknown; technicalStatus?: unknown };
+export type ChannelCatalogItem = PanelCatalogItemView & { card?: unknown; prices?: unknown; offer?: unknown; activation?: unknown; legacy?: unknown; technicalStatus?: unknown; request?: unknown };
 
 /** Contratación asistida (clase B, shared/netOffer.ts): precio mensual publicado y qué está disponible o en implantación. */
 export interface ConnectAssistedSale {
@@ -90,6 +91,11 @@ export interface ConnectItem {
    * información» (abre el expediente y el equipo prepara el contrato; sin cobro en el panel). null si no aplica.
    */
   assisted: ConnectAssistedSale | null;
+  /**
+   * Solicitud comercial o expediente en curso de la empresa para este producto (shared/connectRequestState.ts), solo
+   * mientras no está contratado. null si no hay nada en curso o el plano de control no lo sabe.
+   */
+  request: ConnectRequestState | null;
 }
 
 /** Datos de un producto Elephant Net en el escaparate (shared/netProducts.ts). */
@@ -327,6 +333,8 @@ export function buildConnectCatalog(
         : null,
       legacy: legacyDecl ? { replacedBy: successor } : null,
       assisted,
+      // Lo contratado (o en activación tras el cobro) manda: la solicitud solo se muestra sobre lo que aún no se tiene
+      request: state === "available" || state === "not_eligible" || state === "on_request" || state === "coming_soon" ? parseConnectRequestState(item.request) : null,
     };
   });
 }
