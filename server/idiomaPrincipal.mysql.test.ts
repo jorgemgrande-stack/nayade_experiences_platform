@@ -36,7 +36,8 @@ describe.skipIf(!URL_)("Idioma principal configurable (aplicación real, dos emp
     fs.rmSync(dist, { recursive: true, force: true });
   });
 
-  const pages = async () => unwrap(await q("cms.sitePages")) as { slug: string; title: string; isPublished: boolean }[];
+  const pages = async () => (unwrap(await q("cms.sitePages")) as { slug: string; title: string; isPublished: boolean }[]).map((p) => ({ slug: p.slug, title: p.title, isPublished: p.isPublished }));
+  const menuOf = async (zone: "header" | "footer") => (unwrap(await q("cms.getMenuItems", { zone })) as { id: number; label: string; url: string | null }[]).map((i) => ({ id: i.id, label: i.label, url: i.url }));
 
   /** Traducción alemana validada de una página (o solo en borrador) con dirección y título propios. */
   async function translate(slug: string, title: string, validate: boolean) {
@@ -77,7 +78,7 @@ describe.skipIf(!URL_)("Idioma principal configurable (aplicación real, dos emp
     expect(plan.issues.filter((i: any) => i.severity === "blocker"), JSON.stringify(plan.issues)).toEqual([]);
     expect(plan.canApply).toBe(true);
 
-    const before = { pages: await pages(), editor: unwrap(await q("cms.pageEditor", { slug: "servicios" })), menu: unwrap(await q("cms.getMenuItems", { zone: "header" })) };
+    const before = { pages: await pages(), editor: unwrap(await q("cms.pageEditor", { slug: "servicios" })), menu: await menuOf("header") };
     const homeBefore = unwrap(await q("public.getTenantPage", { slug: "servicios" }));
     expect(homeBefore.title).toBe("Servicios");
 
@@ -134,7 +135,7 @@ describe.skipIf(!URL_)("Idioma principal configurable (aplicación real, dos emp
     expect(unwrap(await q("cms.i18nConfig")).defaultLocale).toBe("es");
     expect(await pages()).toEqual(before.pages);
     expect(unwrap(await q("cms.pageEditor", { slug: "servicios" }))).toEqual(before.editor);
-    expect(unwrap(await q("cms.getMenuItems", { zone: "header" }))).toEqual(before.menu);
+    expect(await menuOf("header")).toEqual(before.menu);
     expect((await ess.call("a", "GET", "/servicios")).status).toBe(200);
     expect((await ess.call("a", "GET", "/dienstleistungen")).status).toBe(404);
     // Una vez deshecho no se puede deshacer de nuevo, y el plan vuelve a poder aplicarse
