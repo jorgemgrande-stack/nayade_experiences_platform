@@ -18,6 +18,7 @@ import { withoutInternal, type SiteDocument } from "../web/service";
 import { videoEmbedUrl, type CommercialBlock } from "../web/schemas";
 import { mediaSrcset } from "../web/media";
 import { NO_ACTIVATION, type PanelActivation } from "./panelActivation";
+import type { ConnectRequestState } from "../../shared/connectRequestState";
 import { panelMarketplace, type PanelMarketplace } from "./panelMarketplace";
 import type { MarketplaceDocument } from "../web/service";
 import { isNetLegacyExtension } from "../../shared/netProducts";
@@ -332,7 +333,16 @@ export function panelCatalog(products: QuoteCatalogProduct[], o: { version: stri
 const tenant = z.string().regex(/^[a-z0-9][a-z0-9-]{1,62}$/);
 
 /** Rutas del Core (montar bajo /commerce), con el mismo token de servicio que la compra. */
-export function createPanelCatalogRouter(d: { site: () => Promise<SiteDocument>; purchasesEnabled: boolean; internalTenants?: ReadonlySet<string>; activation?: (tenantId: string) => Promise<ReadonlyMap<string, PanelActivation>>; marketplace?: () => Promise<MarketplaceDocument>; planOf?: (tenantId: string) => Promise<string | null> }): Router {
+export function createPanelCatalogRouter(d: {
+  site: () => Promise<SiteDocument>;
+  purchasesEnabled: boolean;
+  internalTenants?: ReadonlySet<string>;
+  activation?: (tenantId: string) => Promise<ReadonlyMap<string, PanelActivation>>;
+  marketplace?: () => Promise<MarketplaceDocument>;
+  planOf?: (tenantId: string) => Promise<string | null>;
+  /** Solicitudes y expedientes en curso de la empresa por producto (commerce/panelRequests.ts panelRequestStates). */
+  requestStates?: (tenantId: string) => Promise<ReadonlyMap<string, ConnectRequestState>>;
+}): Router {
   const r = express.Router();
   r.get("/tenants/:tenantId/catalog", requireScope("commerce:purchase"), (req: Request, res: Response, _next: NextFunction) => {
     const parsed = tenant.safeParse(req.params.tenantId);
@@ -352,12 +362,16 @@ export function createPanelCatalogRouter(d: { site: () => Promise<SiteDocument>;
       });
     const market = soft(d.marketplace?.(), "panel_marketplace_failed");
     const plan = soft(d.planOf?.(parsed.data), "panel_plan_failed");
-    Promise.all([d.site(), activation, market, plan])
-      .then(([site, act, doc, planKey]) => {
+    // Si falla, el catálogo llega sin estado de solicitud (el panel sigue ofreciendo solicitar; el plano de control
+    // nunca duplica: devuelve la contratación en curso)
+    const requests = soft(d.requestStates?.(parsed.data), "panel_request_states_failed");
+    Promise.all([d.site(), activation, market, plan, requests])
+      .then(([site, act, doc, planKey, reqs]) => {
         const visible = d.internalTenants?.has(parsed.data) ? site : withoutInternal(site);
         const c = quoteCatalogFromSite(visible);
         res.setHeader("Cache-Control", "no-store");
-        res.json({ catalog: panelCatalog(c.products, { version: c.version, purchasesEnabled: d.purchasesEnabled, site: visible, activation: act, marketplace: { doc, plan: planKey } }) });
+        const catalog = panelCatalog(c.products, { version: c.version, purchasesEnabled: d.purchasesEnabled, site: visible, activation: act, marketplace: { doc, plan: planKey } });
+        res.json({ catalog: reqs ? { ...catalog, items: catalog.items.map((i) => ({ ...i, request: reqs.get(i.key) ?? null })) } : catalog });
       })
       .catch((e) => {
         opsLog("error", "Commerce", "panel_catalog_failed", { error: e instanceof Error ? e.name : "error" });

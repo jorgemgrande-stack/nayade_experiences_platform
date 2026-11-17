@@ -175,7 +175,7 @@ import { createPanelCatalogRouter } from "../commerce/panelCatalog";
 import { createPanelRetryRouter, orderActivation, orderPlan } from "../commerce/panelActivation";
 import { activationRecovery, startOrderRecovery, type OrderRecoveryPolicy } from "../orchestrator/recovery";
 import { createPanelEventsRouter, createPanelStatsRouter, type PanelEventStore } from "../commerce/panelEvents";
-import { createPanelRequestsRouter } from "../commerce/panelRequests";
+import { createPanelRequestsRouter, panelRequestStates } from "../commerce/panelRequests";
 import { createPlanRequestsRouter } from "../commerce/planRequests";
 import { createPanelUsageRouter } from "../commerce/panelUsage";
 import { createPanelSitesRouter } from "../commerce/panelSites";
@@ -2526,7 +2526,7 @@ export function createControlPlaneApp(d: ControlPlaneDeps): Express {
               return null;
             }
           : undefined;
-        router.use("/commerce", createPanelCatalogRouter({ site: () => wa.site("published"), purchasesEnabled: !!d.stripe?.purchases?.enabled, internalTenants: d.stripe?.purchases?.internalTenants, activation: d.orders ? orderActivation({ crm: d.crm.store, orders: d.orders.store, now: d.subscriptions.now, subscriptions: d.subscriptions.store, billing: panelBilling, processing: (o, ev) => activationRecovery(o, ev) }) : undefined, marketplace: () => wa.marketplace("published"), planOf: d.orders ? orderPlan({ crm: d.crm.store, orders: d.orders.store }) : undefined }));
+        router.use("/commerce", createPanelCatalogRouter({ site: () => wa.site("published"), purchasesEnabled: !!d.stripe?.purchases?.enabled, internalTenants: d.stripe?.purchases?.internalTenants, activation: d.orders ? orderActivation({ crm: d.crm.store, orders: d.orders.store, now: d.subscriptions.now, subscriptions: d.subscriptions.store, billing: panelBilling, processing: (o, ev) => activationRecovery(o, ev) }) : undefined, marketplace: () => wa.marketplace("published"), planOf: d.orders ? orderPlan({ crm: d.crm.store, orders: d.orders.store }) : undefined, requestStates: (t) => panelRequestStates({ crm: d.crm!.store, implementations: d.implementation?.store ?? null }, t) }));
         // Botón «Reintentar» del panel: reanuda la activación tras el cobro (solo de esa empresa; nunca cobra)
         router.use("/commerce", createPanelRetryRouter({ retry: (t, b, who) => orchestrator.retryActivation(t, b, who), now: d.subscriptions.now }));
         // Solicitudes del marketplace del panel («Solicitar información» y «Me interesa») como solicitudes del CRM
