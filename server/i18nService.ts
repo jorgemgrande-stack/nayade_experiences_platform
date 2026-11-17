@@ -14,7 +14,7 @@ import { normalizeBlocks as normalizeBlocksRaw, PageBlocksError } from "./_core/
 import type { PageBlock } from "../shared/pageBlocks";
 import {
   DEFAULT_LOCALE, MAX_LOCALES, isSafeRedirectTarget, publicLocales, buildConfig, contentHash, decideServing, isConfiguredLocale, isMultilingual, isReservedSlug,
-  localeSeo, localizedPath, normalizeLocale, normalizeLocalizedSlug, parseLocalizedPath, untranslatedFields,
+  internalLinkSegments, localeSeo, localizeBlockLinks, localizedPath, normalizeLocale, normalizeLocalizedSlug, parseLocalizedPath, untranslatedFields,
   type I18nConfig, type LocaleEntry, type LocaleSeo, type PageVersion, type ServeDecision, type TranslationStatus, type UntranslatedField,
 } from "../shared/i18n";
 
@@ -405,6 +405,16 @@ export interface MenuItemLike {
   [k: string]: unknown;
 }
 
+/** Enlaces internos de los bloques de una página traducida, al idioma de la URL (solo los que apuntan a páginas). */
+async function localizeLinksFor(repo: I18nRepo, cfg: I18nConfig, locale: string, blocks: PageBlock[] | null): Promise<PageBlock[] | null> {
+  if (!blocks) return blocks;
+  const ok = new Set<string>();
+  for (const seg of internalLinkSegments(blocks)) {
+    if (seg !== "" && ((await repo.publishedTranslationBySlug(locale, seg)) || (await repo.principalPageBySlug(seg)))) ok.add(seg);
+  }
+  return localizeBlockLinks(blocks, locale, cfg, (seg) => ok.has(seg));
+}
+
 /**
  * Menú en un idioma. Etiqueta y enlace salen de la traducción VALIDADA del elemento; un enlace a una página propia se
  * deriva del slug localizado de esa página. Sin traducción: `hide` oculta el elemento (y sus hijos); `default` lo
@@ -568,7 +578,7 @@ export async function resolveRequest(repo: I18nRepo, pathname: string, origin: s
   const seo = localeSeo({ cfg, origin, decision, locale, rest: parsed.rest, principalRest, versions });
   if (decision.kind === "translated" && row) {
     const meta = row.publishedMeta ?? { title: row.title, metaTitle: null, metaDescription: null, ogImageUrl: null };
-    return { kind: "page", prefixed: true, decision, locale, principalSlug: page.slug, page: { ...meta, blocks: row.publishedBlocks }, seo };
+    return { kind: "page", prefixed: true, decision, locale, principalSlug: page.slug, page: { ...meta, blocks: await localizeLinksFor(repo, cfg, locale, row.publishedBlocks) }, seo };
   }
   return { kind: "page", prefixed: true, decision, locale, principalSlug: page.slug, page: null, seo };
 }
