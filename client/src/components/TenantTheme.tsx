@@ -17,7 +17,7 @@ import NotFound from "@/pages/NotFound";
 import { brandTokens } from "@shared/loginBrand";
 import { PANEL_PALETTE_KEYS, panelPalette, panelPaletteCss } from "@shared/panelTheme";
 import { composePageTitle, publicRouteAccess } from "@shared/publicSite";
-import { pageSlugOfUrl } from "@shared/tenantNav";
+import { legalKindOfUrl, pageSlugOfUrl } from "@shared/tenantNav";
 import { usePublicSite } from "@/hooks/usePublicSite";
 import { PageBlocksView } from "@/components/site/PageBlocksView";
 import { RICH_TEXT_CLASS } from "@/components/site/richText";
@@ -166,7 +166,8 @@ export function TenantFooter({ theme }: { theme: Theme }) {
     .sort((a, b) => a.sortOrder - b.sortOrder) as Array<{ id: number; label: string; url: string; target?: string | null }>;
   // Textos legales siempre en el pie (si la empresa ya los enlaza en su menú de pie, no se repiten)
   const own = new Set(footerLinks.map((l) => pageSlugOfUrl(l.url)).filter(Boolean));
-  const legalLinks = LEGAL_FOOTER_LINKS.filter((l) => !own.has(pageSlugOfUrl(l.url)));
+  const ownLegal = new Set(footerLinks.map((l) => legalKindOfUrl(l.url)).filter(Boolean));
+  const legalLinks = LEGAL_FOOTER_LINKS.filter((l) => !own.has(pageSlugOfUrl(l.url)) && !ownLegal.has(legalKindOfUrl(l.url)));
   return (
     <footer className={st.root}>
       <div className="container py-10 grid gap-6 md:grid-cols-3">

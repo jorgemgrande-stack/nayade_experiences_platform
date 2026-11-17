@@ -147,6 +147,30 @@ export async function listSitePages() {
  * Lo que abre el editor: el borrador si hay; si no, lo publicado; y una página antigua en HTML, convertida a bloques
  * (sin guardar nada: la web sigue mostrando la versión actual hasta que se publique).
  */
+/**
+ * Solo título y descripción para buscadores de una página: no toca el contenido, los bloques ni la publicación.
+ * `undefined` = no cambia; `null` o vacío = se borra.
+ */
+export function normalizeMetaPatch(input: { metaTitle?: string | null; metaDescription?: string | null }): { metaTitle?: string | null; metaDescription?: string | null } {
+  const clean = (v: string | null | undefined, max: number) => (v === undefined ? undefined : (v ?? "").replace(/[\u0000-\u001f\u007f]/g, " ").trim().slice(0, max) || null);
+  const out: { metaTitle?: string | null; metaDescription?: string | null } = {};
+  const t = clean(input.metaTitle, 200);
+  const d = clean(input.metaDescription, 300);
+  if (t !== undefined) out.metaTitle = t;
+  if (d !== undefined) out.metaDescription = d;
+  return out;
+}
+
+export async function setPageMeta(slug: string, input: { metaTitle?: string | null; metaDescription?: string | null }) {
+  const page = await getPage(slug);
+  if (!page) throw new PageBlocksError("La página no existe.");
+  const set = normalizeMetaPatch(input);
+  if (!Object.keys(set).length) return { success: true };
+  const d = await db();
+  await d.update(staticPages).set({ ...set, updatedAt: new Date() }).where(eq(staticPages.slug, slug));
+  return { success: true };
+}
+
 export async function getPageEditor(slug: string) {
   const page = await getPage(slug);
   if (!page) return null;

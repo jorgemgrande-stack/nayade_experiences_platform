@@ -41,6 +41,21 @@ export function pageSlugOfUrl(url: string | null | undefined): string | null {
   return ROUTE_ALIASES[seg] ?? seg;
 }
 
+/** Qué texto legal es una dirección, en los idiomas de las webs de empresa (para no repetirlo en el pie). */
+const LEGAL_KIND_BY_SLUG: Record<string, "aviso" | "privacidad" | "cookies"> = {
+  "aviso-legal": "aviso", impressum: "aviso", "legal-notice": "aviso", "mentions-legales": "aviso",
+  privacidad: "privacidad", "politica-de-privacidad": "privacidad", datenschutz: "privacidad", "privacy-policy": "privacidad", "politique-de-confidentialite": "privacidad",
+  cookies: "cookies", "politica-de-cookies": "cookies", "cookie-richtlinie": "cookies", "cookie-policy": "cookies", "politique-de-cookies": "cookies",
+};
+
+/** Tipo de texto legal al que lleva un enlace («/impressum», «/es/aviso-legal»…), o null. El último tramo manda; un prefijo de idioma no importa. */
+export function legalKindOfUrl(url: string | null | undefined): "aviso" | "privacidad" | "cookies" | null {
+  if (!url) return null;
+  const parts = url.split(/[?#]/)[0].split("/").filter(Boolean);
+  const last = (parts[parts.length - 1] ?? "").toLowerCase();
+  return LEGAL_KIND_BY_SLUG[last] ?? null;
+}
+
 interface MenuLink {
   id: number;
   parentId?: number | null;
