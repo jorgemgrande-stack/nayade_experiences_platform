@@ -31,6 +31,7 @@ import { formatEuros, productPath } from "@shared/storefront";
 import { isPurchasable } from "@shared/shopOrders";
 import { publicOfferBadge, showsPrice } from "@shared/offerMode";
 import { EditionsList } from "@/components/site/Editions";
+import { useSiteLocale } from "@/hooks/useSiteLocale";
 
 // ─── Contexto de edición (lienzo de Elephant Studio) ──────────────────────────
 
@@ -867,9 +868,15 @@ function ContactFormBlock({ b, first, preview, pageTitle }: { b: BlockOf<"contac
 const PRICE_COLS: Record<number, string> = { 1: "max-w-md mx-auto", 2: "md:grid-cols-2 max-w-4xl mx-auto", 3: "md:grid-cols-3", 4: "md:grid-cols-2 lg:grid-cols-4", 5: "md:grid-cols-3", 6: "md:grid-cols-3" };
 
 /** Tabla de precios: los importes son textos de la empresa (no se cobra desde aquí). */
+const RECOMMENDED_LABEL: Record<string, string> = { es: "Recomendado", de: "Empfohlen", en: "Recommended", fr: "Recommandé" };
+
 function PricingBlock({ b, first, preview }: { b: BlockOf<"pricing">; first: boolean; preview?: boolean }) {
   const d = b.data;
   const ed = useContext(StudioEditContext);
+  // La etiqueta «Recomendado» sigue el idioma de la página (en la vista previa de una traducción, el de `?locale=`)
+  const site = useSiteLocale();
+  const previewLocale = typeof window !== "undefined" && window.location.pathname.startsWith("/admin/cms/paginas/vista-previa/") ? new URLSearchParams(window.location.search).get("locale") : null;
+  const recommended = RECOMMENDED_LABEL[(previewLocale ?? site.locale).slice(0, 2).toLowerCase()] ?? RECOMMENDED_LABEL.es;
   return (
     <section className="container py-10 md:py-14">
       {(d.title || d.intro || ed) && (
@@ -884,7 +891,7 @@ function PricingBlock({ b, first, preview }: { b: BlockOf<"pricing">; first: boo
           const feats = p.features.split(/\n/).map((x) => x.trim()).filter(Boolean);
           return (
             <article key={i} className={cn("relative flex flex-col rounded-2xl border bg-card p-6 text-card-foreground shadow-sm", hl ? "border-primary shadow-lg ring-1 ring-primary md:-translate-y-2" : "border-border")}>
-              {hl && <span className="absolute -top-3 left-1/2 -translate-x-1/2 rounded-full bg-primary px-3 py-1 text-xs font-semibold text-primary-foreground">Recomendado</span>}
+              {hl && <span className="absolute -top-3 left-1/2 -translate-x-1/2 rounded-full bg-primary px-3 py-1 text-xs font-semibold text-primary-foreground">{recommended}</span>}
               <Txt k={`plans.${i}.name`} value={p.name} as="h3" className="font-heading text-lg font-semibold text-foreground" placeholder="Nombre del plan" />
               <Txt k={`plans.${i}.description`} value={p.description} as="p" className="mt-1 text-sm text-muted-foreground" placeholder="Descripción (opcional)" />
               <p className="mt-4 flex items-baseline gap-1.5">
