@@ -8,7 +8,9 @@ import { PageBlocksView } from "@/components/site/PageBlocksView";
 import { trpc } from "@/lib/trpc";
 
 export default function PagePreview({ slug }: { slug: string }) {
-  const q = trpc.cms.pagePreview.useQuery({ slug }, { retry: false, refetchOnWindowFocus: true });
+  // `?locale=de`: borrador de la traducción a ese idioma (solo equipo; no se sirve en la web hasta validarla)
+  const locale = typeof window === "undefined" ? null : new URLSearchParams(window.location.search).get("locale");
+  const q = trpc.cms.pagePreview.useQuery({ slug, ...(locale ? { locale } : {}) }, { retry: false, refetchOnWindowFocus: true });
   return (
     <PublicLayout>
       <div role="note" className="sticky top-20 z-40 px-4 py-2 text-center text-sm font-medium shadow-sm" style={{ background: "#fef3c7", color: "#78350f" }}>

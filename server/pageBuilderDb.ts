@@ -96,13 +96,13 @@ export async function getPublishedBlocks(slug: string): Promise<PageBlock[] | nu
   return blocks.length ? blocks : null;
 }
 
-function rowToBlock(r: Record<string, unknown>): unknown {
+export function rowToBlock(r: Record<string, unknown>): unknown {
   const { id, type, _style, ...data } = r;
   return { id, type, data, style: _style };
 }
 
 /** Fila publicada de un bloque: sus datos con el identificador y, si lo tiene, su diseño. */
-function blockToRowData(b: PageBlock): Record<string, unknown> {
+export function blockToRowData(b: PageBlock): Record<string, unknown> {
   return { id: b.id, ...b.data, ...(b.style ? { _style: b.style } : {}) };
 }
 
