@@ -410,19 +410,24 @@ export interface MenuItemLike {
  * deriva del slug localizado de esa página. Sin traducción: `hide` oculta el elemento (y sus hijos); `default` lo
  * muestra con la etiqueta del principal y un enlace al fallback de ese idioma.
  */
-export async function localizeMenu<T extends MenuItemLike>(repo: I18nRepo, items: T[], rawLocale: string): Promise<T[]> {
+/**
+ * `includeDrafts` (solo vista previa del equipo): usa también los textos y las direcciones en borrador y no exige que el
+ * idioma esté validado, para ver la navegación tal y como quedará. Nunca se usa en la web pública.
+ */
+export async function localizeMenu<T extends MenuItemLike>(repo: I18nRepo, items: T[], rawLocale: string, opts: { includeDrafts?: boolean } = {}): Promise<T[]> {
   const cfg = await getI18nConfig(repo);
   const locale = normalizeLocale(rawLocale);
-  if (!locale || locale === cfg.defaultLocale || !isMultilingual(cfg)) return items;
+  if (!locale || locale === cfg.defaultLocale || (!opts.includeDrafts && !isMultilingual(cfg))) return items;
   const entry = cfg.locales.find((l) => l.locale === locale);
-  if (!entry || entry.status !== "validated") return items;
+  if (!entry || (!opts.includeDrafts && entry.status !== "validated")) return items;
+  const onlyValidated = !opts.includeDrafts;
   const [tr, pageTr, home] = await Promise.all([
-    repo.listContentTranslations("menu_item", locale, true),
-    repo.listPageTranslations({ locale, onlyValidated: true }),
+    repo.listContentTranslations("menu_item", locale, onlyValidated),
+    repo.listPageTranslations({ locale, onlyValidated }),
     repo.principalHomeSlug(),
   ]);
   const byKey = new Map(tr.map((t) => [t.entityKey, t]));
-  const slugByPage = new Map(pageTr.map((p) => [p.pageId, p.publishedSlug as string]));
+  const slugByPage = new Map(pageTr.map((p) => [p.pageId, (opts.includeDrafts ? p.slug : p.publishedSlug) as string]));
   const dropped = new Set<number>();
   const out: T[] = [];
   for (const it of items) {

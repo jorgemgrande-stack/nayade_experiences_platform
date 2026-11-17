@@ -185,10 +185,20 @@ export default function PublicNav({ overlay }: { overlay?: HeaderOverlayState })
 
   // Cargar menú desde la BD
   const site18n = useSiteLocale();
-  const { data: menuData } = trpc.public.getMenuItems.useQuery(
+  // Vista previa del equipo de una traducción (`/admin/cms/paginas/vista-previa/<página>?locale=de`): menú de ese idioma,
+  // también en borrador. La web pública no usa este camino.
+  const previewLocale = typeof window !== "undefined" && window.location.pathname.startsWith("/admin/cms/paginas/vista-previa/")
+    ? new URLSearchParams(window.location.search).get("locale")
+    : null;
+  const { data: publicMenu } = trpc.public.getMenuItems.useQuery(
     { zone: "header", ...(site18n.prefix ? { locale: site18n.prefix } : {}) },
-    { staleTime: 5 * 60 * 1000 } // 5 min cache
+    { staleTime: 5 * 60 * 1000, enabled: !previewLocale } // 5 min cache
   );
+  const { data: previewMenu } = trpc.cms.menuPreview.useQuery(
+    { zone: "header", locale: previewLocale ?? "" },
+    { enabled: !!previewLocale, retry: false, refetchOnWindowFocus: false }
+  );
+  const menuData = previewLocale ? previewMenu : publicMenu;
 
   // Construir estructura de navegación a partir de los datos de BD
   const navLinks: NavItem[] = (() => {

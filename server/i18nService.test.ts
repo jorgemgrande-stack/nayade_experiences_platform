@@ -253,6 +253,16 @@ describe("menús", () => {
     const out = await localizeMenu(repo, items, "de");
     expect(out.map((i) => [i.label, i.url])).toEqual([["Über uns", "/de/ueber-uns"]]);
   });
+  it("vista previa del equipo: con borradores y sin validar el idioma; la web pública no cambia", async () => {
+    const repo = newRepo();
+    await addLocale(repo, "de", null);
+    await savePageTranslationDraft(repo, 2, "de", { title: "Über uns", slug: "ueber-uns", blocks: blocks() });
+    await saveContentTranslationDraft(repo, { entityType: "menu_item", entityKey: "2", locale: "de", fields: { label: "Über uns" } });
+    expect(await localizeMenu(repo, items, "de")).toEqual(items);
+    const prev = await localizeMenu(repo, items, "de", { includeDrafts: true });
+    expect(prev.map((i) => [i.label, i.url])).toEqual([["Über uns", "/de/ueber-uns"]]);
+    expect(await localizeMenu(repo, items, "es", { includeDrafts: true })).toEqual(items);
+  });
   it("fallback default: etiqueta del principal con enlace al idioma", async () => {
     const repo = newRepo({ fallback: "default" });
     await withGerman(repo);
