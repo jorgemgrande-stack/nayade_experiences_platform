@@ -2,13 +2,22 @@ import { trackWhatsAppClick } from '@/lib/ga4';
 import { trpc } from "@/lib/trpc";
 import { useEffect, useRef, useState } from "react";
 import { useCart } from "@/contexts/CartContext";
-import { WHATSAPP_AVOID_ATTR, whatsappHidden, whatsappTarget } from "@shared/whatsappButton";
+import { useLocation } from "wouter";
+import { useSiteLocale } from "@/hooks/useSiteLocale";
+import { WHATSAPP_AVOID_SELECTOR, whatsappHidden, whatsappLabel, whatsappTarget } from "@shared/whatsappButton";
 
 export default function WhatsAppFloatingButton() {
   // Número de la empresa que sirve la web (en single, el de siempre); sin número, sin botón
   // (misma consulta y caché que useTenantTheme; sin importarlo para no crear un ciclo con PublicLayout)
   const { data: theme } = trpc.public.getTheme.useQuery(undefined, { staleTime: 5 * 60_000, retry: false, refetchOnWindowFocus: false });
-  const target = whatsappTarget(theme);
+  // Mensaje inicial en el idioma de la página (configurable por empresa); nunca en el panel ni en sus vistas previas
+  const { locale } = useSiteLocale();
+  const [path] = useLocation();
+  const internal = path.startsWith("/admin");
+  const target = internal ? null : whatsappTarget(theme, locale);
+  const left = target?.position === "left";
+  // Náyade conserva su pulso; en las webs de las empresas, sin animaciones insistentes (solo al pasar el cursor)
+  const pulse = theme ? !theme.neutralSite : false;
   // Con el carrito abierto se oculta a cualquier anchura (no tapa su pie ni «Finalizar compra»)
   const { isOpen: cartOpen } = useCart();
   // En móvil no tapa el precio ni el botón de compra (zonas marcadas con data-whatsapp-avoid): se aparta mientras los pisa
@@ -22,7 +31,7 @@ export default function WhatsAppFloatingButton() {
       frame = requestAnimationFrame(() => {
         const el = ref.current;
         if (!el) return;
-        const avoid = Array.from(document.querySelectorAll(`[${WHATSAPP_AVOID_ATTR}]`)).map((n) => n.getBoundingClientRect());
+        const avoid = Array.from(document.querySelectorAll(WHATSAPP_AVOID_SELECTOR)).map((n) => n.getBoundingClientRect());
         setHidden(whatsappHidden(el.getBoundingClientRect(), avoid, window.innerWidth, cartOpen));
       });
     };
@@ -49,11 +58,13 @@ export default function WhatsAppFloatingButton() {
       onClick={() => trackWhatsAppClick(target.phone)}
       target="_blank"
       rel="noopener noreferrer"
-      aria-label="Contactar por WhatsApp"
-      title="Contactar por WhatsApp"
-      className="
-        fixed bottom-[18px] right-[18px]
-        sm:bottom-[24px] sm:right-[24px]
+      aria-label={whatsappLabel(locale)}
+      title={whatsappLabel(locale)}
+      data-position={target.position}
+      className={`
+        fixed
+        ${left ? "left-[max(18px,env(safe-area-inset-left))] sm:left-[max(24px,env(safe-area-inset-left))]" : "right-[max(18px,env(safe-area-inset-right))] sm:right-[max(24px,env(safe-area-inset-right))]"}
+        bottom-[calc(18px+env(safe-area-inset-bottom))] sm:bottom-[calc(24px+env(safe-area-inset-bottom))]
         w-[52px] h-[52px]
         sm:w-[56px] sm:h-[56px]
         flex items-center justify-center
@@ -62,9 +73,9 @@ export default function WhatsAppFloatingButton() {
         transition-transform duration-200
         hover:scale-110
         z-[9990]
-        animate-wa-pulse
+        ${pulse ? "animate-wa-pulse" : "motion-safe:hover:-translate-y-0.5"}
         data-[hidden=true]:opacity-0 data-[hidden=true]:pointer-events-none data-[hidden=true]:scale-75
-      "
+      `}
       style={{ backgroundColor: "#25D366" }}
     >
       {/* WhatsApp official icon */}

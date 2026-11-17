@@ -23,7 +23,7 @@ const themeOf = (s: Record<string, string>, multi: boolean) => buildTheme((k) =>
 describe("botón de WhatsApp de la web pública", () => {
   it("single (Náyade): el número y el texto de siempre, aunque haya teléfono de marca", () => {
     const t = whatsappTarget(themeOf({ brand_phone: "+34 911 000 000" }, false));
-    expect(t).toEqual({ phone: LEGACY_WHATSAPP_PHONE, url: LEGACY_WHATSAPP_URL });
+    expect(t).toEqual({ phone: LEGACY_WHATSAPP_PHONE, url: LEGACY_WHATSAPP_URL, position: "right" });
     expect(LEGACY_WHATSAPP_URL).toBe(
       `https://wa.me/34639576627?text=${encodeURIComponent("Hola Nayade Experiences, me gustaría recibir información")}`,
     );
