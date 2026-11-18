@@ -62,7 +62,7 @@ CREATE TABLE IF NOT EXISTS learning_resources (
   mime_type     VARCHAR(120) NULL,
   size_bytes    BIGINT NULL,
   sha256        CHAR(64) NULL,
-  stored_object_id INT NULL,
+  stored_object_id VARCHAR(26) NULL,
   status        ENUM('pending','verified','rejected') NOT NULL DEFAULT 'pending',
   provenance    VARCHAR(600) NULL,
   created_at    BIGINT NOT NULL,
