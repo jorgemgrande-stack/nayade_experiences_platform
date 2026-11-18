@@ -96,7 +96,8 @@ describe.skipIf(!URL_)("Sesiones de convocatoria (aplicación real)", () => {
     const after = data(await ess.q("a", "products.editions.sessions.list", { editionId: edition }, admA)) as any[];
     expect(after.find((s) => s.id === list[0].id)?.status).toBe("cancelled");
     expect(after.filter((s) => s.status !== "cancelled")).toHaveLength(list.filter((s) => s.status !== "cancelled").length - 1);
-    expect(after.map((s) => s.position)).toEqual([1, 2, 3, 4, 5]);
+    expect(after.map((s) => s.position)).toEqual(after.map((_, i) => i + 1));
+    expect(after).toHaveLength(list.length);
     expect(errCode(await ess.m("a", "products.editions.sessions.reorder", { editionId: edition, ids: [after[0].id] }, admA))).toBe("BAD_REQUEST");
     const rev = after.map((s) => s.id).reverse();
     expect(data(await ess.m("a", "products.editions.sessions.reorder", { editionId: edition, ids: rev }, admA)).map((s: any) => s.id)).toEqual(rev);
