@@ -148,4 +148,19 @@ describe.skipIf(!URL_)("LMS: pago confirmado → matrícula (aplicación real)",
     const out = ess.mails.filter((m) => m.to.some((t) => t.email === mail("despues")) && m.htmlContent.includes("/mi-formacion/activar?token="));
     expect(out).toHaveLength(1);
   });
+  it("demostración por correo: cuenta sin correo, 60 minutos, un solo disparador, y el panel lista cursos y recursos pendientes", async () => {
+    const email = mail("taller");
+    const before = ess.mails.length;
+    const a = ok(await ess.m("a", "learning.admin.grantDemoByEmail", { email, name: "Participante Taller", courseId: ids.course, moduleIds: [ids.m1], trigger: `taller-${TAG}` }, adm), "demo");
+    expect(a).toMatchObject({ created: true, accountCreated: true, invitePending: true });
+    expect(a.enrollment.source).toBe("demo");
+    expect(a.enrollment.endsAt - a.enrollment.startsAt).toBe(60 * 60_000);
+    expect(ess.mails.length).toBe(before); // no se envía nada
+    const b = ok(await ess.m("a", "learning.admin.grantDemoByEmail", { email, name: "Participante Taller", courseId: ids.course, moduleIds: [ids.m1], trigger: `taller-${TAG}` }, adm), "repetida");
+    expect(b.created).toBe(false);
+    expect(await learning(email)).toHaveLength(1);
+    const courses = ok(await ess.q("a", "learning.admin.courses", undefined, adm), "cursos");
+    expect(courses.find((c: any) => c.id === ids.course)).toMatchObject({ status: "published", modules: expect.any(Array), coverage: { files: { verified: 0, pending: 0 } } });
+    expect(errCode(await ess.q("a", "learning.admin.courses", undefined, await ess.login("a", "user")))).toBe("FORBIDDEN"); // un alumno no administra
+  });
 });

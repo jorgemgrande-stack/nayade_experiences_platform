@@ -210,6 +210,7 @@ const CommunityDetail = lazy(() => import("./pages/admin/communities/CommunityDe
 const MyCommunities = lazy(() => import("./pages/community/MyCommunities"));
 const CommunityHub = lazy(() => import("./pages/community/CommunityHub"));
 const ActivateMember = lazy(() => import("./pages/community/ActivateMember"));
+const LearningAdmin = lazy(() => import("./pages/admin/learning/LearningAdmin"));
 const AulaHome = lazy(() => import("./pages/learning/Aula").then((m) => ({ default: m.AulaHome })));
 const AulaCurso = lazy(() => import("./pages/learning/Aula").then((m) => ({ default: m.AulaCurso })));
 const AulaLeccion = lazy(() => import("./pages/learning/Aula").then((m) => ({ default: m.AulaLeccion })));
@@ -450,6 +451,7 @@ function Router() {
 
       {/* Portal del Empleado (Fase 3) */}
       {/* Social Token Net · Comunidades: área de miembros con la cuenta del Core */}
+      <Route path="/admin/formacion">{() => <Suspense fallback={<AdminLoadingFallback />}><LearningAdmin /></Suspense>}</Route>
       <Route path="/mi-formacion">{() => <Suspense fallback={<AdminLoadingFallback />}><AulaHome /></Suspense>}</Route>
       <Route path="/mi-formacion/activar">{() => <Suspense fallback={<AdminLoadingFallback />}><AulaActivar /></Suspense>}</Route>
       <Route path="/mi-formacion/curso/:courseId">{() => <Suspense fallback={<AdminLoadingFallback />}><AulaCurso /></Suspense>}</Route>

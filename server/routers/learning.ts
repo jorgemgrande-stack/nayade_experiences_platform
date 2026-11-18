@@ -149,6 +149,40 @@ const admin = router({
     return { sent: await sendLearningInvitation(acc.invite), reason: null };
   })),
 
+  /** Cursos con sus módulos, cobertura de ficheros y los recursos pendientes (para subirlos desde el panel). */
+  courses: adminProcedure.query(() => guard(async () => {
+    const courses = await rowsOf(sql`SELECT id, slug, title, language, status, source_note FROM learning_courses ORDER BY id`);
+    const modules = await rowsOf(sql`SELECT id, course_id, position, title FROM learning_modules ORDER BY course_id, position`);
+    const out = [];
+    for (const c of courses) {
+      const pending = await rowsOf(sql`SELECT r.id AS resource_id, r.kind, r.original_name, m.position AS module_position, l.position AS lesson_position, l.title AS lesson_title
+        FROM learning_resources r JOIN learning_blocks b ON b.resource_id = r.id JOIN learning_lessons l ON l.id = b.lesson_id JOIN learning_modules m ON m.id = l.module_id
+        WHERE m.course_id = ${Number(c.id)} AND r.status = 'pending' ORDER BY m.position, l.position, b.position LIMIT 300`);
+      out.push({
+        id: Number(c.id), slug: String(c.slug), title: String(c.title), language: String(c.language), status: String(c.status), sourceNote: c.source_note ?? null,
+        modules: modules.filter((m) => Number(m.course_id) === Number(c.id)).map((m) => ({ id: Number(m.id), position: Number(m.position), title: String(m.title) })),
+        coverage: await courseCoverage(Number(c.id)),
+        pending: pending.map((r) => ({ resourceId: Number(r.resource_id), kind: String(r.kind), originalName: r.original_name ?? null, module: Number(r.module_position), lesson: Number(r.lesson_position), lessonTitle: String(r.lesson_title) })),
+      });
+    }
+    return out;
+  })),
+  /** Publicar o archivar un curso: solo un curso publicado lo ve un alumno con matrícula. Un curso incompleto se deja en borrador. */
+  setCourseStatus: adminProcedure.input(z.object({ courseId: id, status: z.enum(["draft", "published", "archived"]) })).mutation(({ input }) => guard(async () => {
+    const d = await getDb();
+    if (!d) throw new Error("Base de datos no disponible");
+    await d.execute(sql`UPDATE learning_courses SET status = ${input.status}, updated_at = ${Date.now()} WHERE id = ${input.courseId}`);
+    return { ok: true };
+  })),
+  /** Demostración para una persona por correo (crea su cuenta sin enviar nada; la invitación es una acción aparte). */
+  grantDemoByEmail: adminProcedure
+    .input(z.object({ email: z.string().email().max(320), name: z.string().min(2).max(200), courseId: id, moduleIds: z.array(id).min(1).max(50), trigger: z.string().min(3).max(80), minutes: z.number().int().min(1).max(1440).optional() }))
+    .mutation(({ ctx, input }) => guard(async () => {
+      const acc = await ensureAccount(input.name, input.email);
+      const r = await grantDemo({ userId: acc.userId, courseId: input.courseId, moduleIds: input.moduleIds, trigger: input.trigger, minutes: input.minutes, actorUserId: ctx.user.id });
+      return { created: r.created, enrollment: r.enrollment, accountCreated: acc.created, invitePending: !!acc.invite };
+    })),
+
   /** Acceso de demostración (60 minutos por defecto): individual, de un disparador por persona, sobre los módulos indicados. */
   grantDemo: adminProcedure
     .input(z.object({ userId: id, courseId: id, moduleIds: z.array(id).min(1).max(50), trigger: z.string().min(3).max(80), minutes: z.number().int().min(1).max(1440).optional() }))
