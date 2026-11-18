@@ -75,13 +75,14 @@ const my = router({
       if (!loc) throw new LearningError("NOT_FOUND", "La lección no existe.");
       const dec = await canAccessModule(ctx.user.id, Number(loc.course_id), Number(loc.module_id));
       if (!dec.allowed) throw new LearningError("FORBIDDEN", "No tienes acceso a esta lección.");
-      const blocks = await rowsOf(sql`SELECT b.id, b.position, b.kind, b.title, b.body, b.external_url, b.duration_seconds, b.activity, b.attribution, r.status AS resource_status, r.kind AS resource_kind, r.size_bytes
+      const blocks = await rowsOf(sql`SELECT b.id, b.position, b.kind, b.title, b.body, b.resource_id, b.external_url, b.duration_seconds, b.activity, b.attribution, r.status AS resource_status, r.kind AS resource_kind, r.size_bytes
         FROM learning_blocks b LEFT JOIN learning_resources r ON r.id = b.resource_id WHERE b.lesson_id = ${input.lessonId} ORDER BY b.position`);
       return {
         lesson: { id: Number(loc.id), title: String(loc.title) },
         blocks: blocks.map((b) => ({
           id: Number(b.id), position: Number(b.position), kind: String(b.kind), title: String(b.title), body: b.body ?? null, externalUrl: b.external_url ?? null,
           durationSeconds: b.duration_seconds == null ? null : Number(b.duration_seconds), activity: b.activity ?? null, attribution: b.attribution ?? null,
+          resourceId: b.resource_id == null ? null : Number(b.resource_id),
           resource: b.resource_status ? { status: String(b.resource_status), kind: String(b.resource_kind), sizeBytes: b.size_bytes == null ? null : Number(b.size_bytes) } : null,
         })),
       };
