@@ -13,7 +13,7 @@ const url = process.env.REGISTRY_TEST_DATABASE_URL;
 const d = url ? describe : describe.skip;
 const ROOT = path.resolve(__dirname, "..");
 const TSX = path.join(ROOT, "node_modules/tsx/dist/cli.mjs");
-const MINE = fs.readdirSync(path.join(ROOT, "db/migrations")).filter((f) => /^\d{4}_(experiences_offer_mode(_priced)?|product_editions|experience_variants_valid_until|leads_request_fields_test_mode|site_redirects|i18n_default_changes|lead_edition_currency)\.sql$/.test(f)).sort();
+const MINE = fs.readdirSync(path.join(ROOT, "db/migrations")).filter((f) => /^\d{4}_(experiences_offer_mode(_priced)?|product_editions|experience_variants_valid_until|leads_request_fields_test_mode|site_redirects|i18n_default_changes|lead_edition_currency|edition_sessions)\.sql$/.test(f)).sort();
 
 type Run = { status: number | null; stdout: string; stderr: string };
 const cli = (dbUrl: string, args: string[]): Promise<Run> =>
@@ -71,6 +71,7 @@ d("migraciones 0069/0070 arriba, abajo, arriba (BD nueva desde la baseline)", ()
       expect(await hasTable("product_editions")).toBe(true);
       expect(await hasTable("edition_enrollments")).toBe(true);
     }
+    if (MINE.some((f) => f.includes("edition_sessions"))) expect(await hasTable("edition_sessions")).toBe(true);
     // El valor por defecto es «precio fijo» y el modo solo admite los tres valores
     await q("INSERT INTO experiences (slug, title, categoryId, locationId, basePrice) VALUES ('nuevo', 'Nuevo', 1, 1, 10.00)");
     expect((await q("SELECT offer_mode AS m FROM experiences WHERE slug = 'nuevo'"))[0].m).toBe("fixed");
@@ -84,6 +85,7 @@ d("migraciones 0069/0070 arriba, abajo, arriba (BD nueva desde la baseline)", ()
     expect(await cols("experiences")).not.toContain("request_cta_label");
     expect(await hasTable("product_editions")).toBe(false);
     expect(await hasTable("edition_enrollments")).toBe(false);
+    expect(await hasTable("edition_sessions")).toBe(false);
     expect((await q("SELECT COUNT(*) AS n FROM experiences WHERE slug IN ('antiguo','nuevo')"))[0].n).toBe(2);
   }, 180_000);
 

@@ -5,13 +5,14 @@
  * «Próximas fechas».
  */
 import { useState } from "react";
-import { CalendarDays, Clock, MapPin, Users } from "lucide-react";
+import { CalendarDays, Clock, Layers, MapPin, Users } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { trpc } from "@/lib/trpc";
 import { cn } from "@/lib/utils";
 import { ProductRequestDialog, type ProductRequestTarget } from "@/components/site/ProductRequestForm";
 import { canRequestSeat, formatEditionDates, type PublicEditionState } from "@shared/editions";
 import { formatEuros } from "@shared/storefront";
+import { formatSessionLine, type PublicEditionSession } from "@shared/editionSessions";
 import { editionModeText, editionStateText, fillUiText, siteUiText, type SiteUiText } from "@shared/siteUiText";
 import { useSiteLocale } from "@/hooks/useSiteLocale";
 
@@ -30,6 +31,8 @@ export interface PublicEditionItem {
   state: PublicEditionState;
   seatsLeft: number | null;
   price: number | null;
+  /** Sesiones del paquete (vacío = convocatoria sin sesiones). Nunca traen notas internas. */
+  sessions?: PublicEditionSession[];
 }
 
 const STATE_STYLE: Record<PublicEditionState, string> = {
@@ -44,6 +47,7 @@ function ctaLabel(t: SiteUiText, s: PublicEditionState): string {
 }
 
 function EditionCard({ e, showProduct, onRequest, t, locale }: { e: PublicEditionItem; showProduct: boolean; onRequest: (e: PublicEditionItem) => void; t: SiteUiText; locale: string }) {
+  const sessions = e.sessions ?? [];
   const seats = e.state === "open" && e.seatsLeft != null ? (e.seatsLeft === 1 ? t.oneSeatLeft : fillUiText(t.seatsLeft, { n: e.seatsLeft })) : null;
   return (
     <li className="flex h-full flex-col rounded-2xl border border-border bg-card p-5 text-card-foreground shadow-sm" data-testid="fecha-convocatoria">
@@ -55,7 +59,21 @@ function EditionCard({ e, showProduct, onRequest, t, locale }: { e: PublicEditio
         <span className={cn("shrink-0 rounded-full px-2.5 py-1 text-xs font-semibold", STATE_STYLE[e.state])} data-testid="estado-convocatoria">{editionStateText(t, e.state)}</span>
       </div>
       <ul className="mt-3 space-y-1.5 text-sm text-muted-foreground">
-        <li className="flex items-start gap-2"><CalendarDays className="mt-0.5 h-4 w-4 shrink-0 text-primary" aria-hidden="true" /><span>{formatEditionDates(e.startsAt, e.endsAt, e.timezone, true, locale)}</span></li>
+        {/* Con sesiones, la hora va en cada sesión (o «hora por confirmar»): el rango solo lleva los días */}
+        <li className="flex items-start gap-2"><CalendarDays className="mt-0.5 h-4 w-4 shrink-0 text-primary" aria-hidden="true" /><span>{formatEditionDates(e.startsAt, e.endsAt, e.timezone, !sessions.length, locale)}</span></li>
+        {sessions.length > 0 && (
+          <li className="flex items-start gap-2" data-testid="sesiones-convocatoria">
+            <Layers className="mt-0.5 h-4 w-4 shrink-0 text-primary" aria-hidden="true" />
+            <div className="min-w-0">
+              <p className="font-medium text-foreground">{t.sessionsHeading} · {fillUiText(t.sessionsCount, { n: sessions.length })}</p>
+              <ol className="mt-1 space-y-0.5">
+                {sessions.map((s, i) => (
+                  <li key={i} className={cn("break-words first-letter:uppercase", s.status === "done" && "opacity-60")}>{formatSessionLine(s, { locale, tbcText: t.timeToBeConfirmed, minutesText: t.sessionMinutes })}</li>
+                ))}
+              </ol>
+            </div>
+          </li>
+        )}
         {e.scheduleNote && <li className="flex items-start gap-2"><Clock className="mt-0.5 h-4 w-4 shrink-0 text-primary" aria-hidden="true" /><span className="whitespace-pre-line break-words">{e.scheduleNote}</span></li>}
         <li className="flex items-start gap-2"><MapPin className="mt-0.5 h-4 w-4 shrink-0 text-primary" aria-hidden="true" /><span>{editionModeText(t, e.mode)}{e.locationNote ? ` · ${e.locationNote}` : ""}</span></li>
         {seats && <li className="flex items-start gap-2"><Users className="mt-0.5 h-4 w-4 shrink-0 text-primary" aria-hidden="true" /><span>{seats}</span></li>}

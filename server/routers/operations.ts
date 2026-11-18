@@ -160,7 +160,7 @@ const calendarRouter = router({
       from: z.string(), // ISO date string YYYY-MM-DD or YYYY-MM-DDTHH:MM:SS
       to: z.string(),   // ISO date string YYYY-MM-DD or YYYY-MM-DDTHH:MM:SS
     }))
-    .query(async ({ input }) => {
+    .query(async ({ input, ctx }) => {
       // Always extract only the date portion (YYYY-MM-DD) to avoid mismatch with time-suffixed strings.
       // CRITICAL: Use DATE_FORMAT(booking_date, '%Y-%m-%d') in SELECT to return dates as plain strings.
       // Without DATE_FORMAT, MySQL DATE columns are returned as JS Date objects with UTC midnight
@@ -272,9 +272,20 @@ const calendarRouter = router({
         packExpansions: buildPackExpansions(row.productId, parseReservationExtras(row.extrasJson), packLinesByPackId, experienceIds, selectedPackLinesByReservation[row.id]),
       }));
 
+      // Capa aparte: sesiones de convocatorias (paquetes con varias fechas). Solo lectura y sin la nota interna;
+      // vacía si la empresa no tiene aún las convocatorias o sus sesiones.
+      const { listCalendarSessions } = await import("../editionSessionsDb");
+      // Un fallo de esta capa nunca deja sin calendario de reservas
+      // Convocatorias en borrador: solo para la administración (agentes y monitores ven lo publicado)
+      const editionSessions = await listCalendarSessions(fromDate, toDate, { includeDrafts: ctx.user?.role === "admin" }).catch((err) => {
+        console.error("[calendar] sesiones de convocatorias:", err);
+        return [];
+      });
+
       return {
         activities: activitiesWithDates,
         restaurants: restaurantRows || [],
+        editionSessions,
       };
     }),
 });

@@ -28,6 +28,7 @@ import {
   type PublicEditionState,
 } from "../shared/editions";
 import { isFixedOffer, offerModeOf, type OfferMode } from "../shared/offerMode";
+import type { PublicEditionSession } from "../shared/editionSessions";
 
 export class EditionError extends Error {
   constructor(readonly code: "NOT_FOUND" | "BAD_REQUEST" | "CONFLICT", message: string) {
@@ -144,7 +145,14 @@ async function countsFor(exec: Exec, editionIds: number[]): Promise<Map<number, 
   return out;
 }
 
-export type EditionWithCounts = Edition & { counts: EnrollmentCounts };
+/** `sessionCount`: sesiones no canceladas (0 = convocatoria sin sesiones, con sus fechas de siempre). */
+export type EditionWithCounts = Edition & { counts: EnrollmentCounts; sessionCount: number };
+
+/** Número de sesiones por convocatoria (vacío sin la migración 0077). */
+async function sessionCountsFor(exec: Exec, editionIds: number[]): Promise<Map<number, number>> {
+  const { sessionCounts } = await import("./editionSessionsDb");
+  return sessionCounts(exec, editionIds);
+}
 
 /** Convocatorias de un producto (todas, también borradores y canceladas), de la más próxima a la más lejana. */
 export async function listEditions(experienceId: number): Promise<EditionWithCounts[]> {
@@ -152,7 +160,8 @@ export async function listEditions(experienceId: number): Promise<EditionWithCou
   const r = await rows(d, sql`SELECT * FROM product_editions WHERE experience_id = ${experienceId} ORDER BY starts_at ASC, sort ASC, id ASC`);
   const editions = r.map(toEdition);
   const counts = await countsFor(d, editions.map((e) => e.id));
-  return editions.map((e) => ({ ...e, counts: counts.get(e.id)! }));
+  const sessions = await sessionCountsFor(d, editions.map((e) => e.id));
+  return editions.map((e) => ({ ...e, counts: counts.get(e.id)!, sessionCount: sessions.get(e.id) ?? 0 }));
 }
 
 export type UpcomingEdition = EditionWithCounts & { productTitle: string; productSlug: string; productOfferMode: OfferMode };
@@ -169,7 +178,8 @@ export async function listUpcomingEditions(now = Date.now(), limit = 200): Promi
   );
   const editions = r.map((x) => ({ ...toEdition(x), productTitle: String(x.product_title), productSlug: String(x.product_slug), productOfferMode: offerModeOf({ offerMode: x.product_offer_mode }) }));
   const counts = await countsFor(d, editions.map((e) => e.id));
-  return editions.map((e) => ({ ...e, counts: counts.get(e.id)! }));
+  const sessions = await sessionCountsFor(d, editions.map((e) => e.id));
+  return editions.map((e) => ({ ...e, counts: counts.get(e.id)!, sessionCount: sessions.get(e.id) ?? 0 }));
 }
 
 async function getEdition(exec: Exec, id: number): Promise<Edition> {
@@ -208,6 +218,9 @@ export async function updateEdition(id: number, form: EditionForm, now = Date.no
     throw new EditionError("CONFLICT", `Ya hay ${fresh.reserved} plazas confirmadas: no puedes dejar menos de ${fresh.reserved}. Cancela antes alguna inscripción.`);
   }
   void cur;
+  // Con sesiones, las fechas de la convocatoria salen de la primera y la última sesión (no de las del formulario)
+  const { syncEditionDatesIfAny } = await import("./editionSessionsDb");
+  await syncEditionDatesIfAny(id, now);
   return getEdition(d, id);
 }
 
@@ -452,6 +465,8 @@ export interface PublicEdition {
   seatsLeft: number | null;
   /** Solo en productos de precio fijo: el de la edición o, si no tiene, el del producto */
   price: number | null;
+  /** Sesiones del paquete (sin nota interna ni canceladas); vacío = convocatoria sin sesiones */
+  sessions: PublicEditionSession[];
 }
 
 /**
@@ -485,6 +500,8 @@ export async function listPublicEditions(opts: { experienceId?: number; productS
     throw err;
   }
   const out: PublicEdition[] = [];
+  const { listPublicSessions } = await import("./editionSessionsDb");
+  const sessionsBy = await listPublicSessions(d, r.map((x) => Number(x.id)));
   for (const x of r) {
     const e = toEdition(x);
     const state = publicEditionState(e, now);
@@ -508,6 +525,7 @@ export async function listPublicEditions(opts: { experienceId?: number; productS
       state,
       seatsLeft: e.showAvailability ? seatsLeft(e) : null,
       price: price != null && price > 0 ? price : null,
+      sessions: sessionsBy.get(e.id) ?? [],
     });
   }
   return out;

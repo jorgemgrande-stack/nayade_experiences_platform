@@ -6,12 +6,13 @@
 import { useState, useMemo } from "react";
 import { useLocation } from "wouter";
 import { trpc } from "@/lib/trpc";
+import { productEditionsHref } from "@shared/leadWebRequest";
 import AdminLayout from "@/components/AdminLayout";
 import {
   Calendar, CalendarDays, ChevronLeft, ChevronRight,
   Waves, Utensils, RefreshCw, AlertTriangle, Users,
   Phone, Mail, Clock, CheckCircle, XCircle, User,
-  ExternalLink,
+  ExternalLink, Layers,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -91,6 +92,89 @@ function ReservationPill({ ev, onClick }: { ev: any; onClick: () => void }) {
       <span className="truncate text-white/90">{ev.clientName}</span>
       <span className="shrink-0 text-slate-400 ml-auto">·{ev.numberOfPersons}</span>
     </button>
+  );
+}
+
+// ─── Sesiones de convocatorias (capa aparte, solo lectura) ────────────────────
+// Paquetes vendidos una vez con varias fechas: no son reservas. Las personas confirmadas de la convocatoria participan
+// en todas sus sesiones. Nunca se muestra aquí la nota interna (enlaces de acceso).
+interface SessionEvent {
+  sessionId: number;
+  editionId: number;
+  experienceId: number;
+  productTitle: string;
+  editionLabel: string;
+  editionStatus: string;
+  scheduledDate: string;
+  startTime: string | null;
+  durationMinutes: number | null;
+  title: string;
+  status: "scheduled" | "done" | "cancelled";
+  index: number;
+  total: number;
+  participants: number;
+  confirmedEnrollments: number;
+}
+
+function SessionPill({ s, onClick }: { s: SessionEvent; onClick: () => void }) {
+  return (
+    <button
+      onClick={(e) => { e.stopPropagation(); onClick(); }}
+      data-testid="sesion-convocatoria"
+      className="w-full flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] border border-dashed truncate
+        bg-violet-500/15 text-violet-200 border-violet-400/40 hover:bg-violet-500/25 transition-colors text-left"
+    >
+      <Layers className="w-2.5 h-2.5 shrink-0" />
+      <span className="shrink-0" title={s.startTime ? undefined : "Hora por confirmar"}>{s.startTime ?? "h. por conf."}</span>
+      <span className="truncate">{s.productTitle}</span>
+      <span className="shrink-0 opacity-70 ml-auto">·{s.participants}</span>
+    </button>
+  );
+}
+
+function SessionModal({ s, onClose }: { s: SessionEvent; onClose: () => void }) {
+  const [, navigate] = useLocation();
+  const day = new Date(s.scheduledDate + "T12:00:00").toLocaleDateString("es-ES", { weekday: "long", day: "numeric", month: "long", year: "numeric" });
+  return (
+    <Dialog open onOpenChange={onClose}>
+      <DialogContent className="bg-[#111827] border-slate-700 text-white max-w-md">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2 text-white">
+            <Layers className="w-5 h-5 text-violet-300" />
+            Sesión de convocatoria
+          </DialogTitle>
+        </DialogHeader>
+        <div className="space-y-3 mt-1 text-sm">
+          <div className="bg-slate-800/60 rounded-lg p-4 space-y-1">
+            <p className="font-semibold text-white">{s.productTitle}</p>
+            <p className="text-slate-300">{s.editionLabel}{s.title ? ` · ${s.title}` : ""}</p>
+            <p className="text-violet-300 text-xs">Sesión {s.index} de {s.total}{s.status === "done" ? " · realizada" : ""}{s.editionStatus === "draft" ? " · convocatoria en borrador" : ""}</p>
+          </div>
+          <div className="grid grid-cols-3 gap-2">
+            {[
+              { label: "Día", value: day },
+              { label: "Hora", value: s.startTime ? `${s.startTime} h` : "Por confirmar" },
+              { label: "Duración", value: s.durationMinutes ? `${s.durationMinutes} min` : "—" },
+            ].map((k) => (
+              <div key={k.label} className="bg-slate-800 rounded-lg p-3 text-center">
+                <div className="text-[10px] text-slate-400 mb-1">{k.label}</div>
+                <p className="text-white text-xs font-medium">{k.value}</p>
+              </div>
+            ))}
+          </div>
+          <p className="flex items-center gap-1.5 text-slate-300">
+            <Users className="w-4 h-4 text-violet-300" />
+            {s.participants} {s.participants === 1 ? "plaza confirmada" : "plazas confirmadas"} ({s.confirmedEnrollments} {s.confirmedEnrollments === 1 ? "inscripción" : "inscripciones"}) · participan en todas las sesiones
+          </p>
+          <div className="flex gap-2 pt-2 border-t border-slate-700">
+            <Button variant="outline" size="sm" onClick={onClose} className="border-slate-600 text-slate-300">Cerrar</Button>
+            <Button size="sm" onClick={() => navigate(productEditionsHref(s.experienceId))} className="bg-violet-600 hover:bg-violet-700 text-white ml-auto gap-1">
+              <ExternalLink className="w-3.5 h-3.5" /> Abrir convocatorias
+            </Button>
+          </div>
+        </div>
+      </DialogContent>
+    </Dialog>
   );
 }
 
@@ -444,6 +528,7 @@ export default function CalendarView() {
   const [currentDate, setCurrentDate] = useState(() => new Date());
   const [selectedDay, setSelectedDay] = useState<Date | null>(null);
   const [selectedReservation, setSelectedReservation] = useState<any>(null);
+  const [selectedSession, setSelectedSession] = useState<SessionEvent | null>(null);
 
   const monthStart = useMemo(() => getMonthStart(currentDate), [currentDate]);
   const monthEnd = useMemo(() => getMonthEnd(currentDate), [currentDate]);
@@ -466,6 +551,15 @@ export default function CalendarView() {
       if (!map[key]) map[key] = [];
       map[key].push(ev);
     });
+    return map;
+  }, [data]);
+
+  // Sesiones de convocatorias por día (capa aparte: no cuentan como reservas ni en los totales)
+  const sessionsByDay = useMemo(() => {
+    const map: Record<string, SessionEvent[]> = {};
+    for (const s of ((data as { editionSessions?: SessionEvent[] } | undefined)?.editionSessions ?? [])) {
+      (map[s.scheduledDate] ??= []).push(s);
+    }
     return map;
   }, [data]);
 
@@ -545,6 +639,7 @@ export default function CalendarView() {
             <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-amber-400 inline-block" />Sin hora llegada</span>
             <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-red-400 inline-block" />Sin monitor</span>
             <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-orange-400 inline-block" />Incidencia</span>
+            <span className="flex items-center gap-1"><Layers className="w-2.5 h-2.5 text-violet-300" />Sesión de convocatoria</span>
           </div>
         </div>
 
@@ -598,6 +693,12 @@ export default function CalendarView() {
                       {dayEvents.slice(0, 3).map((ev, i) => (
                         <ReservationPill key={i} ev={ev} onClick={() => setSelectedReservation(ev)} />
                       ))}
+                      {(sessionsByDay[key] || []).slice(0, 2).map((s) => (
+                        <SessionPill key={`s${s.sessionId}`} s={s} onClick={() => setSelectedSession(s)} />
+                      ))}
+                      {(sessionsByDay[key] || []).length > 2 && (
+                        <p className="text-[10px] text-violet-300/70 pl-1">+{(sessionsByDay[key] || []).length - 2} sesiones más</p>
+                      )}
                       {dayEvents.length > 3 && (
                         <button
                           onClick={(e) => { e.stopPropagation(); setSelectedDay(day); }}
@@ -625,6 +726,9 @@ export default function CalendarView() {
           onSelectReservation={(ev) => { setSelectedReservation(ev); setSelectedDay(null); }}
         />
       )}
+
+      {/* Sesión de convocatoria (solo lectura) */}
+      {selectedSession && <SessionModal s={selectedSession} onClose={() => setSelectedSession(null)} />}
 
       {/* Modal de reserva individual */}
       {selectedReservation && (
