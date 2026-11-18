@@ -131,13 +131,14 @@ export function protectedFingerprints(git: GitView, from: string, to: string): {
  * contenido que tendrá en el destino. Si el fichero se modificó otra vez, el contenido difiere y no cubre nada.
  */
 export function isApproved(fp: Fingerprint, approvals: Approval[], git: GitView, environment: string, service: Service): Approval | null {
-  if (!fp.file) return null;
+  // Sin fichero, o un fichero BORRADO (digest «ausente»), nunca se aprueba por igualdad: un borrado protegido exige su decisión.
+  if (!fp.file || fp.digest === "ausente") return null;
   for (const a of approvals) {
     if (a.environment !== environment) continue;
     // Una aprobación de código cubre el contenido para los servicios del Core (se construyen del mismo commit exportado):
     // que falte desplegarlo en otro servicio no es una decisión nueva. Se exige que su alcance incluya servicios del Core.
     if (!a.services.some((s) => (ORDINARY_SERVICES as readonly string[]).includes(s)) || !(ORDINARY_SERVICES as readonly string[]).includes(service)) continue;
-    if ((git.blobAt(a.sha, fp.file) ?? "ausente") === fp.digest) return a;
+    if (git.blobAt(a.sha, fp.file) === fp.digest) return a;
   }
   return null;
 }

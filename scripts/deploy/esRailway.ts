@@ -1311,7 +1311,14 @@ async function main() {
     } catch (e) {
       console.error(`AVISO: no se pudieron leer las aprobaciones (${(e as Error).message}); se trata como sin aprobaciones (bloqueo seguro)`);
     }
-    const plan = planRelease({ environment: env, target: to, active: activeBy, git: gitView(), approvals });
+    let plan: ReturnType<typeof planRelease>;
+    try {
+      plan = planRelease({ environment: env, target: to, active: activeBy, git: gitView(), approvals });
+    } catch (e) {
+      console.error(`Bloqueo: no se pudo evaluar el cambio (${(e as Error).message.slice(0, 160)})`);
+      console.log("decision=bloqueado-desconocido");
+      process.exit(5);
+    }
     console.log(`decision=${plan.decision}`);
     console.log(`migrations=${plan.migrations}`);
     for (const s of plan.services) console.log(`${s.service}: ${s.state} · sirve ${s.active?.slice(0, 12) ?? "desconocido"}${s.missing.length ? ` · falta aprobar: ${s.missing.join("; ")}` : ""}${s.covered.length ? ` · ya aprobado (run ${s.covered.map((c) => c.runId).join(",")})` : ""}`);

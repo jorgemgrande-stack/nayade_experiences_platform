@@ -231,3 +231,27 @@ describe("flujos: lo que garantiza el YAML", () => {
     expect(dep).toMatch(/cancel-in-progress: false/);
   });
 });
+
+describe("revisión independiente: huecos cerrados", () => {
+  it("borrar un fichero protegido nunca se aprueba por coincidir en «ausente»", () => {
+    const del = commit("borra el guardián", { "server/passwordReset.ts": AUTH(1) });
+    const del2 = (() => {
+      fs.rmSync(path.join(dir, "server/passwordReset.ts"));
+      g("add", "-A");
+      g("commit", "-q", "-m", "borra");
+      return g("rev-parse", "HEAD");
+    })();
+    // una aprobación anterior en cuyo commit el fichero no existía (base) no cubre el borrado
+    expect(plan(del2, at(del, del, del), [approval(base)]).decision).toBe("bloqueado-protegido");
+  });
+  it("los flujos pueden leer las ejecuciones anteriores (actions: read) donde se calcula la aprobación", () => {
+    const dep = fs.readFileSync(".github/workflows/deploy-elephant-source.yml", "utf8").replace(/\r\n/g, "\n");
+    const pub = fs.readFileSync(".github/workflows/publicacion.yml", "utf8").replace(/\r\n/g, "\n");
+    expect(dep).toMatch(/statuses: write\n  # [^\n]*\n  actions: read/);
+    expect(pub.match(/statuses: write\n      actions: read/g)?.length).toBe(2);
+  });
+  it("release-verify solo en production (en live el despliegue nativo puede adelantarse)", () => {
+    const dep = fs.readFileSync(".github/workflows/deploy-elephant-source.yml", "utf8").replace(/\r\n/g, "\n");
+    expect(dep).toMatch(/inputs\.environment == 'production' && env\.ES_PROD_SKIP != '1' && env\.ES_SERVICES == 'todos'\n        run: \|\n          pnpm exec tsx scripts\/deploy\/esRailway\.ts release-verify/);
+  });
+});
