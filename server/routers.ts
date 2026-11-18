@@ -253,6 +253,7 @@ import { customRolesRouter } from "./routers/customRoles";
 import { sitesRouter } from "./routers/sites";
 import { inventoryRouter } from "./routers/inventory";
 import { communitiesRouter } from "./routers/communities";
+import { learningRouter } from "./routers/learning";
 import { loyaltyRouter } from "./routers/loyalty";
 import { socialNetRouter } from "./routers/socialNet";
 import { ghlInboxRouter } from "./routers/ghlInbox";
@@ -3115,6 +3116,7 @@ export const appRouter = router({
   sites: sitesRouter,
   inventory: inventoryRouter,
   communities: communitiesRouter,
+  learning: learningRouter,
   loyalty: loyaltyRouter,
   socialNet: socialNetRouter,
   ghlInbox: ghlInboxRouter,

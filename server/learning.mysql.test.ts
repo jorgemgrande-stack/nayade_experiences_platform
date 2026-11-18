@@ -1,0 +1,195 @@
+/**
+ * Elephant LMS (entrega 1) con la aplicación real sobre MySQL (opt-in, REGISTRY_TEST_DATABASE_URL). Dos empresas sintéticas.
+ * Casos A–P y R–T del encargo que corresponden a matrículas, autorización, aislamiento y caducidad. Sin cobros reales:
+ * el pago «verificado» es una referencia de prueba; nunca hay pasarela.
+ */
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
+import { startEssentialApp, data, errCode, type EssentialApp } from "./essentialApp.testkit";
+
+const URL_ = process.env.REGISTRY_TEST_DATABASE_URL;
+vi.setConfig({ testTimeout: 90_000 });
+const DAY = 86_400_000;
+
+describe.skipIf(!URL_)("LMS: matrículas, autorización por módulo, pago confirmado, caducidad y aislamiento", () => {
+  let ess: EssentialApp;
+  let adm = "";
+  let stu = ""; // alumno 1 (rol user)
+  let stu2 = ""; // otra identidad (agente)
+  let admB = "";
+  let stuB = "";
+  const u = { s1: 0, s2: 0, sB: 0 };
+  const c = { course: 0, m1: 0, m2: 0, m3: 0, l1: 0, l2: 0, l3: 0, b1: 0, courseB: 0, exp: 0 };
+  const sql = (q: string, p: unknown[] = []) => ess.sql("a", q, p);
+  const ok = (r: { status: number; json: any }, what: string) => {
+    expect(r.status, `${what}: ${JSON.stringify(r.json)}`).toBe(200);
+    return data(r as any);
+  };
+  const grantPaid = (userId: number, variantId: number | null, opId: number, ref = "TRF-TEST-1") =>
+    ess.m("a", "learning.admin.grantFromPayment", { userId, experienceId: c.exp, variantId, operation: { kind: "enrollment", id: opId }, payment: { reference: ref, amountCents: 33300 } }, adm);
+  const myCourse = () => ess.q("a", "learning.my.course", { courseId: c.course }, stu);
+  const lesson = (id: number, cookie = stu) => ess.q("a", "learning.my.lesson", { lessonId: id }, cookie);
+
+  beforeAll(async () => {
+    ess = await startEssentialApp(URL_!, "lms");
+    adm = await ess.login("a", "admin");
+    stu = await ess.login("a", "user");
+    stu2 = await ess.login("a", "agente");
+    admB = await ess.login("b", "admin");
+    stuB = await ess.login("b", "user");
+    u.s1 = await ess.userId("a", "user");
+    u.s2 = await ess.userId("a", "agente");
+    u.sB = await ess.userId("b", "user");
+    const now = Date.now();
+    // El pool de la prueba no conserva LAST_INSERT_ID entre consultas: cada fila se relee por su clave natural
+    const ins = async (q: string, p: unknown[], find: [string, unknown[]]) => {
+      await ess.sql("a", q, p);
+      return Number((await ess.sql("a", find[0], find[1]))[0].id);
+    };
+    c.exp = 777;
+    c.course = await ins("INSERT INTO learning_courses (slug, title, language, status, created_at, updated_at) VALUES ('reconnect-test','RECONNECT','de','published',?,?)", [now, now], ["SELECT id FROM learning_courses WHERE slug = 'reconnect-test'", []]);
+    for (const k of [1, 2, 3] as const) {
+      const m = await ins("INSERT INTO learning_modules (course_id, position, title, source_key, created_at, updated_at) VALUES (?,?,?,?,?,?)", [c.course, k, `TEIL ${k}`, `m${k}`, now, now], ["SELECT id FROM learning_modules WHERE course_id = ? AND source_key = ?", [c.course, `m${k}`]]);
+      (c as any)[`m${k}`] = m;
+      const l = await ins("INSERT INTO learning_lessons (module_id, position, title, source_key, created_at, updated_at) VALUES (?,?,?,?,?,?)", [m, 1, `Lektion ${k}`, `l${k}`, now, now], ["SELECT id FROM learning_lessons WHERE module_id = ? AND source_key = ?", [m, `l${k}`]]);
+      (c as any)[`l${k}`] = l;
+    }
+    c.b1 = await ins("INSERT INTO learning_blocks (lesson_id, position, kind, title, body, source_key, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?)", [c.l1, 1, "text", "Einführung", "Texto de prueba", "b1", now, now], ["SELECT id FROM learning_blocks WHERE lesson_id = ? AND source_key = 'b1'", [c.l1]]);
+    // Reglas de catálogo: variante 13 = + MÓDULO 1; 9 y 11 = tres módulos; la 8 (LIVE) no tiene regla
+    const rule = async (variant: number, mods: number[]) => {
+      const r = ok(await ess.m("a", "learning.admin.saveRule", { experienceId: c.exp, variantId: variant, courseId: c.course, moduleIds: mods, durationDays: 90, startMode: "on_grant", fixedStart: null, active: true }, adm), `regla ${variant}`);
+      return r.id as number;
+    };
+    await rule(13, [c.m1]);
+    await rule(9, [c.m1, c.m2, c.m3]);
+    await rule(11, [c.m1, c.m2, c.m3]);
+    // Curso de la empresa B (para comprobar que nada se cruza)
+    await ess.sql("b", "INSERT INTO learning_courses (slug, title, language, status, created_at, updated_at) VALUES ('curso-b','Curso B','de','published',?,?)", [now, now]);
+    c.courseB = Number((await ess.sql("b", "SELECT id FROM learning_courses LIMIT 1"))[0].id);
+  }, 300_000);
+  afterAll(async () => {
+    await ess?.close();
+  });
+
+  it("A y D. sin sesión o sin matrícula: acceso denegado", async () => {
+    expect((await ess.q("a", "learning.my.course", { courseId: c.course })).status).toBe(401);
+    expect((await ess.q("a", "learning.my.courses")).status).toBe(401);
+    expect(errCode(await myCourse())).toBe("FORBIDDEN");
+    expect(errCode(await lesson(c.l1))).toBe("FORBIDDEN");
+    expect(ok(await ess.q("a", "learning.my.courses", undefined, stu), "mis cursos")).toEqual([]);
+  });
+
+  it("B y M. solicitud/presupuesto/pago sin confirmar no conceden: falta referencia, importe o verificador", async () => {
+    for (const payment of [{ reference: "", amountCents: 33300 }, { reference: "TRF", amountCents: 0 }]) {
+      const r = await ess.m("a", "learning.admin.grantFromPayment", { userId: u.s1, experienceId: c.exp, variantId: 9, operation: { kind: "quote", id: 1 }, payment }, adm);
+      expect(errCode(r)).toBe("PRECONDITION_FAILED");
+    }
+    expect(await sql("SELECT id FROM learning_enrollments WHERE user_id = ?", [u.s1])).toEqual([]);
+  });
+
+  it("variante sin regla (LIVE) no crea matrícula aunque el pago sea válido", async () => {
+    const r = ok(await grantPaid(u.s1, 8, 100), "LIVE");
+    expect(r.rules).toBe(0);
+    expect(r.granted).toEqual([]);
+    expect(await sql("SELECT id FROM learning_enrollments WHERE user_id = ?", [u.s1])).toEqual([]);
+  });
+
+  it("C, E y L. + MÓDULO 1: pago confirmado crea la matrícula; abre solo el módulo 1; repetir el pago no duplica (ni en paralelo)", async () => {
+    const results = await Promise.all([1, 2, 3, 4, 5].map(() => grantPaid(u.s1, 13, 200)));
+    for (const r of results) expect(r.status, JSON.stringify(r.json)).toBe(200);
+    expect(results.filter((r) => data(r).granted[0].created).length).toBe(1);
+    const rowsN = await sql("SELECT id, status, source, payment_ref, variant_id FROM learning_enrollments WHERE user_id = ?", [u.s1]);
+    expect(rowsN).toHaveLength(1);
+    expect(rowsN[0]).toMatchObject({ status: "active", source: "payment", payment_ref: "TRF-TEST-1", variant_id: 13 });
+    const outline = ok(await myCourse(), "índice");
+    expect(outline.modules.map((m: any) => m.unlocked)).toEqual([true, false, false]);
+    expect(ok(await lesson(c.l1), "lección 1").blocks[0]).toMatchObject({ kind: "text", body: "Texto de prueba" });
+    expect(errCode(await lesson(c.l2))).toBe("FORBIDDEN");
+    expect(errCode(await lesson(c.l3))).toBe("FORBIDDEN");
+    const ev = await sql("SELECT type FROM learning_access_events WHERE enrollment_id = ?", [rowsN[0].id]);
+    expect(ev.map((e) => e.type)).toEqual(["granted"]);
+  });
+
+  it("H. otra identidad no puede usar la matrícula de un alumno", async () => {
+    expect(errCode(await ess.q("a", "learning.my.course", { courseId: c.course }, stu2))).toBe("FORBIDDEN");
+    expect(errCode(await lesson(c.l1, stu2))).toBe("FORBIDDEN");
+  });
+
+  it("F y G. ONLINE e INTENSIV abren los tres módulos (mismas reglas, sin condiciones rígidas en el código)", async () => {
+    const r = ok(await grantPaid(u.s2, 9, 300, "TRF-TEST-2"), "ONLINE");
+    expect(r.granted[0].enrollment.moduleIds).toEqual([c.m1, c.m2, c.m3]);
+    for (const l of [c.l1, c.l2, c.l3]) ok(await lesson(l, stu2), `lección ${l}`);
+    const r2 = ok(await grantPaid(u.s2, 11, 301, "TRF-TEST-3"), "INTENSIV");
+    expect(r2.granted[0].enrollment.moduleIds).toEqual([c.m1, c.m2, c.m3]);
+  });
+
+  it("P. el progreso es individual y solo cuenta con acceso", async () => {
+    ok(await ess.m("a", "learning.my.progress", { lessonId: c.l1, completed: true }, stu), "completar");
+    expect(errCode(await ess.m("a", "learning.my.progress", { lessonId: c.l2, completed: true }, stu))).toBe("FORBIDDEN");
+    const mine = ok(await ess.q("a", "learning.my.courses", undefined, stu), "mis cursos");
+    expect(mine[0]).toMatchObject({ totalLessons: 1, completedLessons: 1, percent: 100, status: "active" });
+    expect(await sql("SELECT user_id FROM learning_progress WHERE lesson_id = ?", [c.l1])).toEqual([{ user_id: u.s1 }]);
+    ok(await ess.m("a", "learning.my.progress", { lessonId: c.l1 }, stu), "abrir de nuevo no descompleta");
+    expect((await sql("SELECT status FROM learning_progress WHERE user_id = ? AND lesson_id = ?", [u.s1, c.l1]))[0].status).toBe("completed");
+  });
+
+  it("J, K y T. caduca al llegar a su fin (se evalúa al leer); la prórroga auditada la restaura; el progreso se conserva", async () => {
+    const [e] = await sql("SELECT id FROM learning_enrollments WHERE user_id = ?", [u.s1]);
+    await sql("UPDATE learning_enrollments SET ends_at = ? WHERE id = ?", [Date.now() - 1000, e.id]);
+    expect(errCode(await lesson(c.l1))).toBe("FORBIDDEN"); // aunque la tarea aún no haya corrido
+    const mine = ok(await ess.q("a", "learning.my.courses", undefined, stu), "mis cursos caducado");
+    expect(mine[0]).toMatchObject({ status: "expired", completedLessons: 1, percent: 100 });
+    expect(errCode(await ess.m("a", "learning.admin.extend", { enrollmentId: e.id, newEndsAt: Date.now() + 30 * DAY, reason: "ok" }, adm))).toBe("BAD_REQUEST"); // motivo demasiado corto
+    ok(await ess.m("a", "learning.admin.extend", { enrollmentId: e.id, newEndsAt: Date.now() + 30 * DAY, reason: "Prórroga acordada con Indira" }, adm), "prórroga");
+    ok(await lesson(c.l1), "acceso restaurado");
+    const ev = await sql("SELECT type, detail FROM learning_access_events WHERE enrollment_id = ? ORDER BY id", [e.id]);
+    expect(ev.map((x) => x.type)).toEqual(["granted", "extended"]);
+  });
+
+  it("N. revocar (con motivo) corta el acceso y deja historial; reactivar exige motivo", async () => {
+    const [e] = await sql("SELECT id FROM learning_enrollments WHERE user_id = ?", [u.s1]);
+    expect(errCode(await ess.m("a", "learning.admin.revoke", { enrollmentId: e.id, reason: "x" }, adm))).toBe("BAD_REQUEST");
+    ok(await ess.m("a", "learning.admin.revoke", { enrollmentId: e.id, reason: "Devolución del importe" }, adm), "revocar");
+    expect(errCode(await lesson(c.l1))).toBe("FORBIDDEN");
+    expect(errCode(await ess.m("a", "learning.admin.extend", { enrollmentId: e.id, newEndsAt: Date.now() + DAY, reason: "Intento sobre revocada" }, adm))).toBe("CONFLICT");
+    ok(await ess.m("a", "learning.admin.reactivate", { enrollmentId: e.id, reason: "Reembolso anulado, vuelve el acceso" }, adm), "reactivar");
+    ok(await lesson(c.l1), "reactivada");
+    expect((await sql("SELECT type FROM learning_access_events WHERE enrollment_id = ? ORDER BY id", [e.id])).map((x) => x.type)).toEqual(["granted", "extended", "revoked", "reactivated"]);
+  });
+
+  it("ampliación: añadir módulos a la misma matrícula (misma cuenta, historial y progreso)", async () => {
+    expect(errCode(await lesson(c.l2))).toBe("FORBIDDEN");
+    const [e] = await sql("SELECT id FROM learning_enrollments WHERE user_id = ?", [u.s1]);
+    ok(await ess.m("a", "learning.admin.addModules", { enrollmentId: e.id, moduleIds: [c.m2, c.m3], reason: "Ampliación a ONLINE pagada (333 € − 199 €)", paymentRef: "TRF-TEST-AMP" }, adm), "ampliar");
+    ok(await lesson(c.l2), "módulo 2");
+    ok(await lesson(c.l3), "módulo 3");
+    expect(ok(await ess.q("a", "learning.my.courses", undefined, stu), "mis cursos")[0].completedLessons).toBe(1);
+  });
+
+  it("R. la demostración dura 60 minutos, es individual y un disparador da una sola", async () => {
+    const t = `taller-${Date.now().toString(36)}`;
+    const g = ok(await ess.m("a", "learning.admin.grantDemo", { userId: u.s2, courseId: c.course, moduleIds: [c.m1], trigger: t }, adm), "demo");
+    // s2 ya tiene ONLINE: la demostración es otra matrícula con fin a +60 min
+    const e = g.enrollment;
+    expect(e.source).toBe("demo");
+    expect(e.endsAt - e.startsAt).toBe(60 * 60_000);
+    const again = ok(await ess.m("a", "learning.admin.grantDemo", { userId: u.s2, courseId: c.course, moduleIds: [c.m1], trigger: t }, adm), "demo repetida");
+    expect(again.created).toBe(false);
+    expect(again.enrollment.id).toBe(e.id);
+  });
+
+  it("I y S. aislamiento entre empresas: la empresa B no ve ni usa nada de A", async () => {
+    const cross = await ess.q("b", "learning.my.course", { courseId: c.course }, stuB); // los ids pueden coincidir entre empresas: aun así, sin matrícula en B no hay nada
+    expect(["FORBIDDEN", "NOT_FOUND"]).toContain(errCode(cross));
+    expect(JSON.stringify(cross.json)).not.toContain("RECONNECT");
+    expect(ok(await ess.q("b", "learning.admin.enrollments", undefined, admB), "matrículas B")).toEqual([]);
+    expect(ok(await ess.q("b", "learning.admin.rules", undefined, admB), "reglas B")).toEqual([]);
+    expect(await ess.sql("b", "SELECT id FROM learning_enrollments")).toEqual([]);
+    // la cookie de un alumno de A no vale en B
+    expect([401, 403]).toContain((await ess.q("b", "learning.my.courses", undefined, stu)).status);
+  });
+
+  it("O. las respuestas del aula no incluyen URLs de recursos ni rutas de almacenamiento", async () => {
+    const body = JSON.stringify((await lesson(c.l1)).json);
+    expect(body).not.toMatch(/https?:\/\/|stored_object|storage|\/files\//i);
+  });
+});
