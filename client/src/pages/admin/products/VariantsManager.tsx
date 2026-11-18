@@ -10,11 +10,12 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { toast } from "sonner";
-import { Plus, Pencil, Trash2, Tag, Euro, Info, MoreVertical } from "lucide-react";
+import { Plus, Pencil, Trash2, Tag, Euro, Info, MoreVertical, ListChecks } from "lucide-react";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { PanelEmpty } from "@/components/admin/PanelStates";
 import { Link } from "wouter";
 import { useVocabulary } from "@/lib/vocabulary";
+import { VariantIncludedServicesDialog } from "./EnrollmentCommerce";
 
 const PRICE_TYPE_LABELS: Record<string, string> = {
   fixed: "Precio fijo (€)",
@@ -59,6 +60,7 @@ export default function VariantsManager() {
   const [editId, setEditId] = useState<number | null>(null);
   const [form, setForm] = useState<FormState>(emptyForm());
   const [deleteConfirm, setDeleteConfirm] = useState<number | null>(null);
+  const [servicesFor, setServicesFor] = useState<{ id: number; name: string } | null>(null);
   const voc = useVocabulary();
   // Pyme: «producto o servicio»; instalación propia: «experiencia»
   const item = voc.licensed ? "producto o servicio" : "experiencia";
@@ -257,9 +259,12 @@ export default function VariantsManager() {
                                 <MoreVertical className="w-3.5 h-3.5" />
                               </Button>
                             </DropdownMenuTrigger>
-                            <DropdownMenuContent align="end" className="w-40">
+                            <DropdownMenuContent align="end" className="w-48">
                               <DropdownMenuItem onClick={() => openEdit(v)}>
                                 <Pencil className="w-3.5 h-3.5 mr-2" /> Editar
+                              </DropdownMenuItem>
+                              <DropdownMenuItem onClick={() => setServicesFor({ id: v.id, name: v.name })}>
+                                <ListChecks className="w-3.5 h-3.5 mr-2" /> Servicios incluidos
                               </DropdownMenuItem>
                               <DropdownMenuSeparator />
                               <DropdownMenuItem
@@ -403,6 +408,8 @@ export default function VariantsManager() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <VariantIncludedServicesDialog variant={servicesFor} onClose={() => setServicesFor(null)} />
 
       {/* Delete confirmation */}
       <Dialog open={deleteConfirm !== null} onOpenChange={() => setDeleteConfirm(null)}>

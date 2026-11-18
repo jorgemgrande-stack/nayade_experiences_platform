@@ -39,6 +39,8 @@ import {
   type EnrollmentStatus,
 } from "@shared/editions";
 import { SESSION_LIMITS, SESSION_STATUS_LABELS, formatSessionLine, validateSessionInput, type SessionInput, type SessionStatus } from "@shared/editionSessions";
+import { confirmNeedsReason, type QuotePaymentView } from "@shared/enrollmentCommerce";
+import { ConfirmWithoutPaymentDialog, EnrollmentQuoteBlock, EnrollmentServicesSection, type EnrollmentQuoteInfo } from "./EnrollmentCommerce";
 
 const ZONES = [
   ["Europe/Madrid", "España peninsular y Baleares"],
@@ -379,7 +381,17 @@ interface EnrollmentItem {
   leadId: number | null;
   notes: string;
   createdAt: number;
+  /** 0078: presupuesto enlazado y su estado de pago (derivado del presupuesto, solo lectura) */
+  quote?: EnrollmentQuoteInfo | null;
+  payment?: QuotePaymentView;
+  variantName?: string | null;
+  services?: Record<"pending" | "scheduled" | "done" | "cancelled", number>;
+  statusChangedBy?: string | null;
+  statusChangedAt?: number | null;
+  statusReason?: string | null;
 }
+
+const NO_PAYMENT: QuotePaymentView = { label: "Sin presupuesto", tone: "neutral", paid: false };
 
 function EnrollmentsDialog({ edition, onClose, onChanged }: { edition: EditionItem; onClose: () => void; onChanged: () => void }) {
   const utils = trpc.useUtils();
@@ -392,7 +404,12 @@ function EnrollmentsDialog({ edition, onClose, onChanged }: { edition: EditionIt
   });
   const rows = (list.data ?? []) as unknown as EnrollmentItem[];
   const [adding, setAdding] = useState(false);
-  const act = (id: number, status: EnrollmentStatus, ok: string) => setStatus.mutate({ enrollmentId: id, status }, { onSuccess: () => toast.success(ok) });
+  const [servicesOpen, setServicesOpen] = useState<Record<number, boolean>>({});
+  const [confirmUnpaid, setConfirmUnpaid] = useState<{ id: number; name: string; payment: QuotePaymentView } | null>(null);
+  const act = (id: number, status: EnrollmentStatus, ok: string, reason?: string) => setStatus.mutate({ enrollmentId: id, status, reason }, { onSuccess: () => { toast.success(ok); setConfirmUnpaid(null); } });
+  // Confirmar es siempre un paso explícito; con un presupuesto sin pagar, además, con motivo
+  const confirm = (r: EnrollmentItem) => (confirmNeedsReason(r.quote?.status) ? setConfirmUnpaid({ id: r.id, name: r.name, payment: r.payment ?? NO_PAYMENT }) : act(r.id, "confirmada", "Plaza confirmada"));
+  const refreshEnrollments = () => { utils.products.editions.enrollments.invalidate(); onChanged(); };
 
   return (
     <Dialog open onOpenChange={(o) => !o && onClose()}>
@@ -425,16 +442,29 @@ function EnrollmentsDialog({ edition, onClose, onChanged }: { edition: EditionIt
                   </div>
                   <Badge variant="outline" className={ENROLLMENT_TONE[r.status]}>{ENROLLMENT_STATUS_LABELS[r.status]}</Badge>
                 </div>
+                {r.payment && <EnrollmentQuoteBlock enrollment={{ id: r.id, status: r.status, quote: r.quote ?? null, payment: r.payment, variantName: r.variantName ?? null }} onChanged={refreshEnrollments} />}
+                {r.statusChangedAt && (
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    Último cambio: {new Date(r.statusChangedAt).toLocaleString("es-ES", { dateStyle: "short", timeStyle: "short" })}{r.statusChangedBy ? ` · ${r.statusChangedBy}` : ""}{r.statusReason ? ` · «${r.statusReason}»` : ""}
+                  </p>
+                )}
                 <div className="mt-2 flex flex-wrap gap-2">
-                  {r.status !== "confirmada" && <Button size="sm" disabled={setStatus.isPending} onClick={() => act(r.id, "confirmada", "Plaza confirmada")}>Confirmar plaza</Button>}
+                  {r.status !== "confirmada" && <Button size="sm" disabled={setStatus.isPending} onClick={() => confirm(r)}>Confirmar plaza</Button>}
                   {r.status !== "lista_espera" && r.status !== "cancelada" && <Button size="sm" variant="outline" disabled={setStatus.isPending} onClick={() => act(r.id, "lista_espera", "Pasada a lista de espera")}>Lista de espera</Button>}
                   {r.status !== "cancelada" && <Button size="sm" variant="outline" disabled={setStatus.isPending} onClick={() => act(r.id, "cancelada", "Inscripción cancelada")}>Cancelar</Button>}
                   {r.leadId && <Button size="sm" variant="ghost" asChild><Link href="/admin/crm/leads">Oportunidad nº {r.leadId} en el CRM</Link></Button>}
+                  {(r.status === "confirmada" || (r.services && r.services.pending + r.services.scheduled + r.services.done + r.services.cancelled > 0)) && (
+                    <Button size="sm" variant="ghost" aria-expanded={!!servicesOpen[r.id]} onClick={() => setServicesOpen((o) => ({ ...o, [r.id]: !o[r.id] }))}>
+                      Servicios incluidos{r.services && r.services.pending ? ` (${r.services.pending} por programar)` : ""}
+                    </Button>
+                  )}
                 </div>
+                {servicesOpen[r.id] && <EnrollmentServicesSection enrollmentId={r.id} confirmed={r.status === "confirmada"} timezoneLabel={edition.timezone} />}
               </li>
             ))}
           </ul>
         )}
+        <ConfirmWithoutPaymentDialog target={confirmUnpaid} pending={setStatus.isPending} onClose={() => setConfirmUnpaid(null)} onConfirm={(reason) => confirmUnpaid && act(confirmUnpaid.id, "confirmada", "Plaza confirmada sin pago (motivo registrado)", reason)} />
       </DialogContent>
     </Dialog>
   );
