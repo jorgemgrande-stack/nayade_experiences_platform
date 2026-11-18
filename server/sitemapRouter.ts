@@ -102,10 +102,10 @@ function urlEntry(base: string, loc: string, lastmod?: string, changefreq = "mon
 }
 
 /** Plan multidioma del sitemap; ante cualquier fallo, sin multidioma (nunca rompe el sitemap). */
-async function sitemapI18nPlan(base: string) {
+async function sitemapI18nPlan(base: string, products: Array<{ id: number; slug: string; updatedAt: Date | null }> = []) {
   try {
     const [{ sqlI18nRepo }, { i18nSitemapPlan }] = await Promise.all([import("./i18nSqlRepo"), import("./sitemapI18n")]);
-    return await i18nSitemapPlan(sqlI18nRepo(), base);
+    return await i18nSitemapPlan(sqlI18nRepo(), base, products.map((p) => ({ ...p, isPublished: true })));
   } catch {
     return null;
   }
@@ -152,7 +152,7 @@ sitemapRouter.get("/sitemap.xml", async (_req, res) => {
       locationRows,
     ] = await Promise.all([
       db
-        .select({ slug: experiences.slug, updatedAt: experiences.updatedAt })
+        .select({ id: experiences.id, slug: experiences.slug, updatedAt: experiences.updatedAt })
         .from(experiences)
         .where(and(
           eq(experiences.isActive, true),
@@ -193,7 +193,8 @@ sitemapRouter.get("/sitemap.xml", async (_req, res) => {
     ]);
 
     // Multidioma (E-1): solo con traducciones validadas; si no, `null` y el sitemap es el de siempre
-    const i18nPlan = multi ? await sitemapI18nPlan(BASE_URL) : null;
+    // Las fichas de producto localizadas solo existen en la tienda de una pyme (`/<idioma>/tienda/<slug>`)
+    const i18nPlan = multi ? await sitemapI18nPlan(BASE_URL, catalogKind === "generic" ? expRows : []) : null;
     const entries: string[] = [];
     const seen = new Set<string>();
     const add = (loc: string, lastmod?: string, changefreq?: string, priority?: string) => {

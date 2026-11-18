@@ -1,10 +1,12 @@
 /**
- * Ficha de producto de la tienda online de una pyme (`/tienda/:slug`): nombre, imágenes, descripción, precio con
- * IVA incluido, variantes y cantidad. Reutiliza el carrito y el pago actuales. Solo muestra lo que el producto
- * configura: ni reseñas inventadas, ni seguro, cancelación o dificultad. Lógica en shared/storefront.ts.
+ * Ficha de producto de la tienda online de una pyme (`/tienda/:slug` y, en una web multidioma, `/:locale/tienda/:slug`):
+ * nombre, imágenes, descripción, precio con IVA incluido, variantes y cantidad. Reutiliza el carrito y el pago actuales.
+ * Solo muestra lo que el producto configura: ni reseñas inventadas, ni seguro, cancelación o dificultad. Lógica en
+ * shared/storefront.ts. Textos fijos en el idioma de la página (shared/siteUiText.ts); el contenido, en el de su
+ * traducción validada o, si falta, en el del principal con un aviso y su `lang` real.
  */
-import { useState } from "react";
-import { Link, useParams } from "wouter";
+import { useEffect, useState } from "react";
+import { Link, Redirect, useParams } from "wouter";
 import { ChevronLeft, ChevronRight, CheckCircle, Clock, Mail, Minus, Phone, Plus, ShoppingCart, XCircle } from "lucide-react";
 import { toast } from "sonner";
 import PublicLayout from "@/components/PublicLayout";
@@ -19,7 +21,9 @@ import { cn } from "@/lib/utils";
 import { isPurchasable } from "@shared/shopOrders";
 import { ProductRequestDialog } from "@/components/site/ProductRequestForm";
 import { ProductEditionsSection } from "@/components/site/Editions";
-import { OFFER_MODE_PUBLIC_LABELS, offerModeOf, requestCtaLabel, showsPrice } from "@shared/offerMode";
+import { offerModeOf, requestCtaLabel, showsPrice } from "@shared/offerMode";
+import { fillUiText, offerBadgeText, siteUiText, untranslatedNotice } from "@shared/siteUiText";
+import { useSiteLocale } from "@/hooks/useSiteLocale";
 import {
   buildGenericCartLine,
   clampQuantity,
@@ -49,7 +53,11 @@ export function initialOption(search: string): number | undefined {
 }
 
 export default function ProductDetail() {
-  const { slug } = useParams<{ slug: string }>();
+  // `locale` solo existe en la ruta localizada (la valida LocaleProductGate antes de llegar aquí)
+  const { slug, locale: routeLocale } = useParams<{ slug: string; locale?: string }>();
+  const site = useSiteLocale();
+  const t = siteUiText(site.locale);
+  const localeArg = routeLocale ? { locale: routeLocale } : {};
   const { phone, phoneTel, email } = usePublicContact();
   const { storefront } = useStorefront();
   const shop = storefront ?? FALLBACK_GENERIC_STOREFRONT;
@@ -62,11 +70,23 @@ export default function ProductDetail() {
   const [date, setDate] = useState("");
   const [requestOpen, setRequestOpen] = useState(false);
 
-  const { data: product, isLoading } = trpc.public.getExperienceBySlug.useQuery({ slug: slug ?? "" }, { enabled: !!slug, retry: false });
-  const { data: variants = [] } = trpc.public.getVariantsByExperience.useQuery({ experienceId: product?.id ?? 0 }, { enabled: !!product?.id });
+  const { data: product, isLoading } = trpc.public.getExperienceBySlug.useQuery({ slug: slug ?? "", ...localeArg }, { enabled: !!slug, retry: false });
+  const { data: variants = [] } = trpc.public.getVariantsByExperience.useQuery({ experienceId: product?.id ?? 0, ...localeArg }, { enabled: !!product?.id });
+  // Idioma de la ficha (solo en la ruta localizada): `contentLang` es el idioma real del contenido mostrado
+  const i18n = product && "i18n" in product ? product.i18n : undefined;
+  const contentLang = i18n ? (i18n.translated ? i18n.locale : i18n.contentLocale) : undefined;
 
   const p = (product ?? {}) as Row;
-  useDocumentMeta(product ? { title: product.title, description: str(p.metaDescription) ?? str(p.shortDescription), image: str(p.coverImageUrl) ?? str(p.image1) } : null);
+  useDocumentMeta(product && !i18n?.redirectTo ? { title: product.title, description: str(p.metaDescription) ?? str(p.shortDescription), image: str(p.coverImageUrl) ?? str(p.image1) } : null);
+  // Idioma del documento: el de la URL (la interfaz sale en él); sin multidioma no se toca
+  useEffect(() => {
+    if (!i18n || i18n.redirectTo) return;
+    const prev = document.documentElement.lang;
+    document.documentElement.lang = i18n.locale;
+    return () => {
+      document.documentElement.lang = prev;
+    };
+  }, [i18n]);
 
   if (isLoading) {
     return (
@@ -82,15 +102,18 @@ export default function ProductDetail() {
     return (
       <PublicLayout>
         <div className="container py-20 text-center max-w-md mx-auto">
-          <h1 className="text-2xl font-bold mb-2">Producto no encontrado</h1>
-          <p className="text-muted-foreground mb-6">Este producto no está disponible o se ha retirado de la tienda.</p>
+          <h1 className="text-2xl font-bold mb-2">{t.productNotFound}</h1>
+          <p className="text-muted-foreground mb-6">{t.productNotFoundHelp}</p>
           <Button asChild>
-            <Link href={SHOP_PATH}>Ver la tienda</Link>
+            <Link href={SHOP_PATH}>{t.viewShop}</Link>
           </Button>
         </div>
       </PublicLayout>
     );
   }
+
+  // Slug del principal en una URL con slug traducido (o al revés): a la dirección de este idioma, con la opción elegida
+  if (i18n?.redirectTo) return <Redirect to={i18n.redirectTo + (typeof window === "undefined" ? "" : window.location.search)} replace />;
 
   const images = [p.image1, p.image2, p.image3, p.image4].map(str).filter((x): x is string => !!x);
   const gallery = images.length ? images : list(p.gallery);
@@ -123,9 +146,9 @@ export default function ProductDetail() {
     if (soldOut) return;
     const r = buildGenericCartLine({ product: { ...product, coverImageUrl: str(p.coverImageUrl), image1: str(p.image1) }, variant, quantity, date, storefront: shop }, variants);
     if (!r.ok) {
-      if (r.reason === "variant_required") toast.info("Elige una opción antes de añadir al carrito");
-      else if (r.reason === "date_required") toast.info("Elige una fecha antes de añadir al carrito");
-      else toast.info("Este producto no tiene precio para comprarlo online");
+      if (r.reason === "variant_required") toast.info(t.chooseOptionBeforeCart);
+      else if (r.reason === "date_required") toast.info(t.chooseDateBeforeCart);
+      else toast.info(t.noOnlinePrice);
       return;
     }
     addItem(r.line);
@@ -134,13 +157,19 @@ export default function ProductDetail() {
 
   return (
     <PublicLayout>
-      <nav aria-label="Ruta de navegación" className="container py-4">
+      {/* Sin traducción a este idioma: se dice, en el idioma de la página, en qué idioma está el contenido */}
+      {i18n && !i18n.translated && (
+        <p role="note" className="container pt-4 text-sm text-muted-foreground" data-testid="aviso-sin-traducir">
+          {untranslatedNotice(i18n.locale, i18n.contentLocale)}
+        </p>
+      )}
+      <nav aria-label={t.breadcrumb} className="container py-4">
         <ol className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
-          <li><Link href="/" className="hover:text-primary">Inicio</Link></li>
+          <li><Link href={site.home} className="hover:text-primary">{t.home}</Link></li>
           <li aria-hidden="true"><ChevronRight className="w-3.5 h-3.5" /></li>
-          <li><Link href={SHOP_PATH} className="hover:text-primary">Tienda</Link></li>
+          <li><Link href={SHOP_PATH} className="hover:text-primary">{t.shop}</Link></li>
           <li aria-hidden="true"><ChevronRight className="w-3.5 h-3.5" /></li>
-          <li className="text-foreground min-w-0 break-words">{product.title}</li>
+          <li className="text-foreground min-w-0 break-words" lang={contentLang}>{product.title}</li>
         </ol>
       </nav>
 
@@ -153,10 +182,10 @@ export default function ProductDetail() {
                 <img src={current} alt={product.title} className="w-full h-full object-cover" />
                 {gallery.length > 1 && (
                   <>
-                    <button type="button" aria-label="Imagen anterior" onClick={() => setImageIndex((i) => (i - 1 + gallery.length) % gallery.length)} className="absolute left-3 top-1/2 -translate-y-1/2 w-10 h-10 rounded-full bg-black/40 hover:bg-black/60 flex items-center justify-center text-white">
+                    <button type="button" aria-label={t.previousImage} onClick={() => setImageIndex((i) => (i - 1 + gallery.length) % gallery.length)} className="absolute left-3 top-1/2 -translate-y-1/2 w-10 h-10 rounded-full bg-black/40 hover:bg-black/60 flex items-center justify-center text-white">
                       <ChevronLeft className="w-5 h-5" />
                     </button>
-                    <button type="button" aria-label="Imagen siguiente" onClick={() => setImageIndex((i) => (i + 1) % gallery.length)} className="absolute right-3 top-1/2 -translate-y-1/2 w-10 h-10 rounded-full bg-black/40 hover:bg-black/60 flex items-center justify-center text-white">
+                    <button type="button" aria-label={t.nextImage} onClick={() => setImageIndex((i) => (i + 1) % gallery.length)} className="absolute right-3 top-1/2 -translate-y-1/2 w-10 h-10 rounded-full bg-black/40 hover:bg-black/60 flex items-center justify-center text-white">
                       <ChevronRight className="w-5 h-5" />
                     </button>
                   </>
@@ -166,7 +195,7 @@ export default function ProductDetail() {
             {gallery.length > 1 && (
               <div className="flex flex-wrap gap-2 mt-3">
                 {gallery.map((img, i) => (
-                  <button key={img + i} type="button" aria-label={`Imagen ${i + 1}`} onClick={() => setImageIndex(i)} className={cn("w-20 h-16 rounded-lg overflow-hidden border-2", i === imageIndex ? "border-primary" : "border-transparent opacity-70 hover:opacity-100")}>
+                  <button key={img + i} type="button" aria-label={fillUiText(t.imageN, { n: i + 1 })} onClick={() => setImageIndex(i)} className={cn("w-20 h-16 rounded-lg overflow-hidden border-2", i === imageIndex ? "border-primary" : "border-transparent opacity-70 hover:opacity-100")}>
                     <img src={img} alt="" className="w-full h-full object-cover" />
                   </button>
                 ))}
@@ -179,31 +208,31 @@ export default function ProductDetail() {
             <div className="lg:sticky lg:top-28 space-y-5">
               {onRequest && (
                 <span data-testid="insignia-oferta" className="inline-block rounded-full bg-primary/10 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-primary">
-                  {OFFER_MODE_PUBLIC_LABELS[offer]}
+                  {offerBadgeText(t, offer)}
                 </span>
               )}
-              <h1 className="text-3xl md:text-4xl font-heading font-bold text-foreground break-words">{product.title}</h1>
-              {str(product.shortDescription) && str(product.description) && <p className="text-muted-foreground">{product.shortDescription}</p>}
+              <h1 className="text-3xl md:text-4xl font-heading font-bold text-foreground break-words" lang={contentLang}>{product.title}</h1>
+              {str(product.shortDescription) && str(product.description) && <p className="text-muted-foreground" lang={contentLang}>{product.shortDescription}</p>}
 
               {hasPrice ? (
                 <div>
                   <p className="text-3xl font-bold text-foreground" data-testid="precio">
-                    {variants.length > 0 && !variant && <span className="text-base font-medium text-muted-foreground mr-1">Desde</span>}{variants.length > 0 && !variant && " "}
+                    {variants.length > 0 && !variant && <span className="text-base font-medium text-muted-foreground mr-1">{t.from}</span>}{variants.length > 0 && !variant && " "}
                     {formatEuros(shownPrice)}
                   </p>
-                  {buyable && <p className="text-xs text-muted-foreground mt-1">IVA incluido</p>}
+                  {buyable && <p className="text-xs text-muted-foreground mt-1">{t.vatIncluded}</p>}
                 </div>
               ) : null}
 
               {duration && (
-                <p className="flex items-center gap-2 text-sm text-muted-foreground">
+                <p className="flex items-center gap-2 text-sm text-muted-foreground" lang={contentLang}>
                   <Clock className="w-4 h-4 text-primary" /> {duration}
                 </p>
               )}
 
               {hasPrice && variants.length > 0 && (
                 <fieldset>
-                  <legend className="text-sm font-medium text-foreground mb-2">Opciones</legend>
+                  <legend className="text-sm font-medium text-foreground mb-2">{t.options}</legend>
                   <div className="space-y-2">
                     {variants.map((v) => {
                       const price = variantUnitPrice(basePrice, v);
@@ -224,15 +253,15 @@ export default function ProductDetail() {
                       );
                     })}
                   </div>
-                  {buyable && variants.some((v) => v.isRequired) && !variant && <p className="text-xs text-muted-foreground mt-1.5">Elige una opción para continuar</p>}
+                  {buyable && variants.some((v) => v.isRequired) && !variant && <p className="text-xs text-muted-foreground mt-1.5">{t.chooseOptionToContinue}</p>}
                 </fieldset>
               )}
 
               {buyable && (
                 <div>
-                  <label htmlFor="cantidad" className="text-sm font-medium text-foreground mb-2 block">Cantidad</label>
+                  <label htmlFor="cantidad" className="text-sm font-medium text-foreground mb-2 block">{t.quantity}</label>
                   <div className="flex items-center gap-3">
-                    <button type="button" aria-label="Quitar una unidad" disabled={quantity <= 1} onClick={() => setQuantity((q) => clampQuantity(q - 1))} className="w-10 h-10 rounded-full border border-border flex items-center justify-center hover:bg-muted disabled:opacity-40">
+                    <button type="button" aria-label={t.removeUnit} disabled={quantity <= 1} onClick={() => setQuantity((q) => clampQuantity(q - 1))} className="w-10 h-10 rounded-full border border-border flex items-center justify-center hover:bg-muted disabled:opacity-40">
                       <Minus className="w-4 h-4" />
                     </button>
                     <input
@@ -245,7 +274,7 @@ export default function ProductDetail() {
                       onChange={(e) => setQuantity(clampQuantity(e.target.value))}
                       className="w-16 h-10 text-center border border-border rounded-lg bg-background text-lg font-semibold"
                     />
-                    <button type="button" aria-label="Añadir una unidad" disabled={quantity >= MAX_QUANTITY} onClick={() => setQuantity((q) => clampQuantity(q + 1))} className="w-10 h-10 rounded-full border border-border flex items-center justify-center hover:bg-muted disabled:opacity-40">
+                    <button type="button" aria-label={t.addUnit} disabled={quantity >= MAX_QUANTITY} onClick={() => setQuantity((q) => clampQuantity(q + 1))} className="w-10 h-10 rounded-full border border-border flex items-center justify-center hover:bg-muted disabled:opacity-40">
                       <Plus className="w-4 h-4" />
                     </button>
                   </div>
@@ -254,7 +283,7 @@ export default function ProductDetail() {
 
               {buyable && dated && (
                 <div>
-                  <label htmlFor="fecha" className="text-sm font-medium text-foreground mb-2 block">Fecha del servicio</label>
+                  <label htmlFor="fecha" className="text-sm font-medium text-foreground mb-2 block">{t.serviceDate}</label>
                   <input id="fecha" type="date" value={date} min={todayIso()} onChange={(e) => setDate(e.target.value)} className="w-full border border-border rounded-lg px-3 py-2 text-sm bg-background" />
                 </div>
               )}
@@ -263,28 +292,28 @@ export default function ProductDetail() {
                 <>
                   {(variant || !variants.some((v) => v.isRequired)) && (
                     <div className="flex items-center justify-between rounded-xl bg-muted/50 px-4 py-3 font-semibold">
-                      <span>Total</span>
+                      <span>{t.total}</span>
                       <span className="text-lg" data-testid="total">{formatEuros(total)}</span>
                     </div>
                   )}
                   {soldOut ? (
                     <>
-                      <Button disabled className="w-full h-12 text-base font-semibold" data-testid="agotado">Agotado</Button>
-                      <p className="text-sm text-muted-foreground">Ahora mismo no está a la venta. Escríbenos si quieres saber cuándo vuelve.</p>
+                      <Button disabled className="w-full h-12 text-base font-semibold" data-testid="agotado">{t.soldOut}</Button>
+                      <p className="text-sm text-muted-foreground">{t.soldOutHelp}</p>
                     </>
                   ) : (
                     <Button onClick={add} className="w-full h-12 text-base font-semibold">
-                      <ShoppingCart className="mr-2 w-4 h-4" /> Añadir al carrito
+                      <ShoppingCart className="mr-2 w-4 h-4" /> {t.addToCart}
                     </Button>
                   )}
                 </>
               ) : onRequest ? (
                 <Button onClick={() => setRequestOpen(true)} className="w-full h-12 text-base font-semibold" data-testid="solicitar-informacion">
-                  {requestCtaLabel(p)}
+                  {str(p.requestCtaLabel) ? requestCtaLabel(p) : t.requestInfo}
                 </Button>
               ) : (
                 <Button asChild variant="outline" className="w-full h-12">
-                  <Link href={`/presupuesto?exp=${encodeURIComponent(product.slug)}`}>Solicitar presupuesto</Link>
+                  <Link href={`/presupuesto?exp=${encodeURIComponent(product.slug)}`}>{t.requestQuote}</Link>
                 </Button>
               )}
 
@@ -306,10 +335,10 @@ export default function ProductDetail() {
         <ProductEditionsSection productId={product.id} />
 
         {(description || includes.length > 0 || excludes.length > 0 || requirements) && (
-          <div className="mt-10 max-w-3xl space-y-8">
+          <div className="mt-10 max-w-3xl space-y-8" lang={contentLang}>
             {description && (
               <section>
-                <h2 className="text-xl font-heading font-semibold text-foreground mb-3">Descripción</h2>
+                <h2 className="text-xl font-heading font-semibold text-foreground mb-3" lang={site.locale}>{t.description}</h2>
                 <div className="text-muted-foreground leading-relaxed whitespace-pre-line break-words">{description}</div>
               </section>
             )}
@@ -317,13 +346,13 @@ export default function ProductDetail() {
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 {includes.length > 0 && (
                   <section>
-                    <h2 className="font-heading font-semibold text-foreground mb-3 flex items-center gap-2"><CheckCircle className="w-5 h-5 text-emerald-600" /> Incluye</h2>
+                    <h2 className="font-heading font-semibold text-foreground mb-3 flex items-center gap-2"><CheckCircle className="w-5 h-5 text-emerald-600" /> <span lang={site.locale}>{t.includes}</span></h2>
                     <ul className="space-y-1.5 text-sm text-muted-foreground list-disc pl-5">{includes.map((x, i) => <li key={i}>{x}</li>)}</ul>
                   </section>
                 )}
                 {excludes.length > 0 && (
                   <section>
-                    <h2 className="font-heading font-semibold text-foreground mb-3 flex items-center gap-2"><XCircle className="w-5 h-5 text-red-500" /> No incluye</h2>
+                    <h2 className="font-heading font-semibold text-foreground mb-3 flex items-center gap-2"><XCircle className="w-5 h-5 text-red-500" /> <span lang={site.locale}>{t.excludes}</span></h2>
                     <ul className="space-y-1.5 text-sm text-muted-foreground list-disc pl-5">{excludes.map((x, i) => <li key={i}>{x}</li>)}</ul>
                   </section>
                 )}
@@ -331,7 +360,7 @@ export default function ProductDetail() {
             )}
             {requirements && (
               <section className="bg-muted/50 rounded-xl p-5">
-                <h2 className="font-heading font-semibold text-foreground mb-2">Requisitos</h2>
+                <h2 className="font-heading font-semibold text-foreground mb-2" lang={site.locale}>{t.requirements}</h2>
                 <p className="text-sm text-muted-foreground whitespace-pre-line">{requirements}</p>
               </section>
             )}

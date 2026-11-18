@@ -10,7 +10,7 @@ import MaintenanceGate from "./components/MaintenanceGate";
 import { MetaPixelLoader } from "./components/MetaPixelLoader";
 import { GA4Loader } from "./components/GA4Loader";
 import { ThemeProvider } from "./contexts/ThemeContext";
-import { HomeGate, LocaleSlugGate, PageOrDefault, SingleOnlyPage, SiteRouteGate, SlugGate, TenantThemeLoader } from "./components/TenantTheme";
+import { HomeGate, LocaleProductGate, LocaleSlugGate, PageOrDefault, SingleOnlyPage, SiteRouteGate, SlugGate, TenantThemeLoader } from "./components/TenantTheme";
 import AdminRouteGate from "./components/admin/AdminRouteGate";
 
 // ── PUBLIC PAGES (carga inmediata — visibles sin autenticación) ──────────────
@@ -649,6 +649,8 @@ function Router() {
       <Route path="/404" component={NotFound} />
       {/* Multiempresa: páginas propias del tenant; en un solo tenant sigue siendo 404 */}
       <Route path="/:slug">{(p) => <SlugGate slug={p.slug} />}</Route>
+      {/* Multidioma: ficha de producto de un idioma adicional (/de/tienda/kurs); con el idioma no validado, «no encontrada» */}
+      <Route path="/:locale/tienda/:slug">{(p) => <LocaleProductGate locale={p.locale} Product={ProductDetail} />}</Route>
       {/* Multidioma (E-1): /de/ueber-uns. Va tras todas las rutas conocidas: solo lo que antes era «no encontrada» */}
       <Route path="/:locale/:slug">{(p) => <LocaleSlugGate locale={p.locale} slug={p.slug} />}</Route>
       <Route component={NotFound} />

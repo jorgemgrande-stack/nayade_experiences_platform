@@ -13,7 +13,7 @@ import { createTenantCache } from "./i18nCache";
 import type { PageBlock } from "../shared/pageBlocks";
 import { readStoredBlocks } from "./_core/pageBlocks";
 import type { LocaleEntry, TranslationStatus } from "../shared/i18n";
-import type { ContentEntityType, ContentTranslationRow, I18nRepo, I18nSettings, PageTranslationRow, PrincipalPage, PublishedMeta } from "./i18nService";
+import type { ContentEntityType, ContentTranslationRow, I18nRepo, I18nSettings, PageTranslationRow, PrincipalPage, PrincipalProduct, PublishedMeta } from "./i18nService";
 
 type Row = Record<string, unknown>;
 
@@ -82,6 +82,7 @@ function contentRow(r: Row): ContentTranslationRow {
 }
 
 const principal = (r: Row): PrincipalPage => ({ id: Number(r.id), slug: String(r.slug), title: String(r.title), isPublished: !!r.isPublished });
+const product = (r: Row): PrincipalProduct => ({ id: Number(r.id), slug: String(r.slug), isPublished: !!Number(r.isPublished), updatedAt: date(r.updatedAt) });
 
 export function sqlI18nRepo(): I18nRepo {
   return {
@@ -186,6 +187,16 @@ export function sqlI18nRepo(): I18nRepo {
       await run(sql`INSERT INTO content_translations (entity_type, entity_key, locale, fields, slug, status, validated_at, validated_by)
         VALUES (${t.entityType}, ${t.entityKey}, ${t.locale}, ${JSON.stringify(t.fields)}, ${t.slug}, ${t.status}, ${t.validatedAt}, ${t.validatedBy})
         ON DUPLICATE KEY UPDATE fields = VALUES(fields), slug = VALUES(slug), status = VALUES(status), validated_at = VALUES(validated_at), validated_by = VALUES(validated_by)`);
+    },
+
+    // Fichas de producto: «publicado» es lo mismo que exige la ficha pública (`getExperienceBySlug`)
+    async productBySlug(slug) {
+      const r = await rows(sql`SELECT id, slug, isPublished, updatedAt FROM experiences WHERE slug = ${slug} LIMIT 1`);
+      return r[0] ? product(r[0]) : null;
+    },
+    async productById(id) {
+      const r = await rows(sql`SELECT id, slug, isPublished, updatedAt FROM experiences WHERE id = ${id} LIMIT 1`);
+      return r[0] ? product(r[0]) : null;
     },
   };
 }

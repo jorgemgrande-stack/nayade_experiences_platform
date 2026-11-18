@@ -19,6 +19,7 @@ import { canRequestSeat, EDITION_LIMITS, formatEditionDates, type EnrollmentStat
 import { cleanText, offerModeOf, showsPrice } from "../shared/offerMode";
 import { sendsExternalNotices } from "../shared/testMode";
 import { formConsentText, FORM_MIN_FILL_MS, FORM_RATE } from "./_core/studioForms";
+import { consentSentence, fillUiText, siteUiText } from "../shared/siteUiText";
 import { ipFingerprint, keyedLock } from "./_core/studioFormsSubmit";
 import { getRequestableEdition } from "./editionsDb";
 
@@ -102,36 +103,40 @@ export async function processProductRequest(input: ProductRequestInput, ctx: Pro
   const phone = cleanText(input.phone ?? "", EDITION_LIMITS.phone);
   const message = cleanText(input.message ?? "", 2000, true);
   const seats = Math.trunc(input.seats ?? 1);
+  // Idioma de la web que veía la persona: los mensajes que le llegan salen en ese idioma (lo del CRM, en español)
+  const lang = /^[a-z]{2}(-[A-Za-z]{2})?$/.test(input.lang ?? "") ? input.lang!.toLowerCase().slice(0, 2) : "";
+  const t = siteUiText(lang);
   const errors: Record<string, string> = {};
-  if (name.length < 2) errors.name = "Escribe tu nombre.";
-  if (!EMAIL_RE.test(email)) errors.email = "Escribe un correo electrónico válido.";
-  if (phone && !PHONE_RE.test(phone)) errors.phone = "Escribe un teléfono válido.";
-  if (!Number.isInteger(seats) || seats < 1 || seats > EDITION_LIMITS.seats) errors.seats = `Las plazas deben estar entre 1 y ${EDITION_LIMITS.seats}.`;
-  if (input.consent !== true) errors.consent = "Marca la casilla de privacidad para continuar.";
+  if (name.length < 2) errors.name = t.nameRequired;
+  if (!EMAIL_RE.test(email)) errors.email = t.invalidEmail;
+  if (phone && !PHONE_RE.test(phone)) errors.phone = t.invalidPhone;
+  if (!Number.isInteger(seats) || seats < 1 || seats > EDITION_LIMITS.seats) errors.seats = fillUiText(t.seatsRange, { n: EDITION_LIMITS.seats });
+  if (input.consent !== true) errors.consent = t.privacyBoxRequired;
   const firstError = Object.values(errors)[0];
   if (firstError) throw new ProductRequestError("BAD_REQUEST", firstError, errors);
 
   // Envío automático: se responde como si hubiera ido bien, sin guardar nada
   if ((input.website ?? "").trim() !== "" || (typeof input.elapsedMs === "number" && input.elapsedMs < FORM_MIN_FILL_MS)) {
-    return { ok: true, kind: input.editionId ? "enrollment" : "info", leadId: null, enrollmentStatus: null, duplicate: false, message: "Hemos recibido tu solicitud." };
+    return { ok: true, kind: input.editionId ? "enrollment" : "info", leadId: null, enrollmentStatus: null, duplicate: false, message: t.requestReceivedShort };
   }
   if (!allowRequest(`${ctx.tenantId}:solicitud:${ctx.ip || "desconocida"}`, now)) {
-    throw new ProductRequestError("TOO_MANY_REQUESTS", "Has enviado varias solicitudes seguidas. Espera unos minutos e inténtalo de nuevo.");
+    throw new ProductRequestError("TOO_MANY_REQUESTS", t.tooManyRequests);
   }
 
   const d = await getDb();
   if (!d) throw new Error("Base de datos no disponible");
   const [product] = await d.select({ id: experiences.id, title: experiences.title, isPublished: experiences.isPublished, offerMode: experiences.offerMode, basePrice: experiences.basePrice }).from(experiences).where(eq(experiences.id, input.experienceId)).limit(1);
-  if (!product || !product.isPublished) throw new ProductRequestError("NOT_FOUND", "Este producto ya no está disponible.");
+  if (!product || !product.isPublished) throw new ProductRequestError("NOT_FOUND", t.productGone);
 
   let edition: Awaited<ReturnType<typeof getRequestableEdition>> = null;
   if (input.editionId) {
     edition = await getRequestableEdition(input.editionId, product.id, now);
-    if (!edition || !edition.state) throw new ProductRequestError("NOT_FOUND", "Esta convocatoria ya no está disponible.");
-    if (!canRequestSeat(edition.state)) throw new ProductRequestError("BAD_REQUEST", "Esta convocatoria ya no admite solicitudes de plaza.");
+    if (!edition || !edition.state) throw new ProductRequestError("NOT_FOUND", t.editionGone);
+    if (!canRequestSeat(edition.state)) throw new ProductRequestError("BAD_REQUEST", t.editionNoRequests);
   }
 
-  const consent = formConsentText({ consentText: "" });
+  // El texto tal como lo vio la persona (en español es el de siempre, con la misma versión)
+  const consent = formConsentText({ consentText: consentSentence(t) });
   const page = cleanPath(input.page);
   const dates = edition ? formatEditionDates(edition.edition.startsAt, edition.edition.endsAt, edition.edition.timezone) : "";
   const header = edition
@@ -145,7 +150,6 @@ export async function processProductRequest(input: ProductRequestInput, ctx: Pro
   const priceLine = chosen
     ? `Modalidad elegida: ${chosen.name} · precio publicado: ${eur(chosenPrice)}`
     : showsPrice(product) && baseNum > 0 ? `Precio publicado (producto): ${eur(baseNum)}` : "";
-  const lang = /^[a-z]{2}(-[A-Za-z]{2})?$/.test(input.lang ?? "") ? input.lang!.toLowerCase().slice(0, 2) : "";
   const body = [header, priceLine, lang && `Idioma de la web: ${lang}`, message && `Mensaje: ${message}`, page && `Origen: ${page}`, `Consentimiento RGPD: aceptado el ${new Date(now).toISOString()} · texto v${consent.version}: «${consent.text}»`].filter(Boolean).join("\n");
 
   return keyedLock(`${ctx.tenantId}:solicitud:${email}:${product.id}:${edition?.edition.id ?? 0}`, async () => {
@@ -155,13 +159,13 @@ export async function processProductRequest(input: ProductRequestInput, ctx: Pro
       if (prev?.[0]) {
         const p = prev[0];
         if (p.lead_id) await addNote(Number(p.lead_id), `Nueva solicitud de la misma persona para esta convocatoria (${new Date(now).toISOString()}):\n${body}`);
-        return { ok: true as const, kind: "enrollment" as const, leadId: p.lead_id ? Number(p.lead_id) : null, enrollmentStatus: p.status, duplicate: true, message: "Ya teníamos tu solicitud para esta convocatoria. Te escribiremos pronto." };
+        return { ok: true as const, kind: "enrollment" as const, leadId: p.lead_id ? Number(p.lead_id) : null, enrollmentStatus: p.status, duplicate: true, message: t.duplicateEdition };
       }
     } else {
       const [prevLead] = await d.select({ id: leads.id }).from(leads).where(and(eq(leads.email, email), eq(leads.experienceId, product.id), gte(leads.createdAt, new Date(now - PRODUCT_REQUEST_DEDUPE_MS)))).limit(1);
       if (prevLead) {
         await addNote(prevLead.id, `Nueva solicitud de la misma persona (${new Date(now).toISOString()}):\n${body}`);
-        return { ok: true as const, kind: "info" as const, leadId: prevLead.id, enrollmentStatus: null, duplicate: true, message: "Ya teníamos tu solicitud. Te escribiremos pronto." };
+        return { ok: true as const, kind: "info" as const, leadId: prevLead.id, enrollmentStatus: null, duplicate: true, message: t.duplicateRequest };
       }
     }
 
@@ -201,10 +205,10 @@ export async function processProductRequest(input: ProductRequestInput, ctx: Pro
       enrollmentStatus: status,
       duplicate: false,
       message: status === "lista_espera"
-        ? "Te hemos apuntado en la lista de espera. Si se libera una plaza, te escribiremos."
+        ? t.waitlisted
         : edition
-        ? "Hemos recibido tu solicitud de plaza. Te escribiremos para confirmártela."
-        : "Hemos recibido tu solicitud. Te responderemos lo antes posible.",
+        ? t.seatRequestReceived
+        : t.requestReceived,
     };
   });
 }

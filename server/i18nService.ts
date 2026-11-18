@@ -14,8 +14,9 @@ import { normalizeBlocks as normalizeBlocksRaw, PageBlocksError } from "./_core/
 import type { PageBlock } from "../shared/pageBlocks";
 import {
   DEFAULT_LOCALE, MAX_LOCALES, isSafeRedirectTarget, publicLocales, buildConfig, contentHash, decideServing, isConfiguredLocale, isMultilingual, isReservedSlug,
-  internalLinkSegments, localeSeo, localizeBlockLinks, localizedPath, normalizeLocale, normalizeLocalizedSlug, parseLocalizedPath, untranslatedFields,
-  type I18nConfig, type LocaleEntry, type LocaleSeo, type PageVersion, type ServeDecision, type TranslationStatus, type UntranslatedField,
+  internalLinkSegments, internalProductSlugs, localeSeo, localizeBlockLinks, localizeProductLink, localizedPath, normalizeLocale, normalizeLocalizedSlug, parseLocalizedPath,
+  productRest, productSlugOfPath, untranslatedFields,
+  type Alternate, type I18nConfig, type LocaleEntry, type LocaleSeo, type PageVersion, type ServeDecision, type TranslationStatus, type UntranslatedField,
 } from "../shared/i18n";
 
 export class I18nError extends Error {
@@ -73,6 +74,14 @@ export interface PrincipalPage {
   isPublished: boolean;
 }
 
+/** Producto de la tienda (`experiences`) en el idioma principal. Sus traducciones: `content_translations` con clave = id. */
+export interface PrincipalProduct {
+  id: number;
+  slug: string;
+  isPublished: boolean;
+  updatedAt?: Date | null;
+}
+
 export interface I18nSettings {
   defaultPrefix?: string | null;
   fallback?: string | null;
@@ -103,6 +112,13 @@ export interface I18nRepo {
   listContentTranslations(type: ContentEntityType, locale: string, onlyValidated: boolean): Promise<ContentTranslationRow[]>;
   contentSlugTaken(type: ContentEntityType, locale: string, slug: string, exceptKey: string): Promise<boolean>;
   saveContentTranslation(row: ContentTranslationRow): Promise<void>;
+
+  /**
+   * Fichas de producto localizadas (`/<idioma>/tienda/<slug>`). Opcionales: un repositorio sin ellas se comporta como
+   * antes (la tienda no se localiza).
+   */
+  productBySlug?(slug: string): Promise<PrincipalProduct | null>;
+  productById?(id: number): Promise<PrincipalProduct | null>;
 }
 
 // ─── Configuración e idiomas ──────────────────────────────────────────────────
@@ -342,15 +358,27 @@ export async function untranslatedForPage(repo: I18nRepo, pageId: number, rawLoc
 
 // ─── Contenido genérico traducible (menús, ajustes, productos…) ───────────────
 
-export const CONTENT_ENTITY_TYPES = ["menu_item", "setting", "form", "product"] as const;
+/**
+ * Claves: `menu_item` = id del elemento, `setting` = clave del ajuste, `product` = `experiences.id`,
+ * `variant` = `experience_variants.id`, `edition` = `product_editions.id` (convocatoria).
+ */
+export const CONTENT_ENTITY_TYPES = ["menu_item", "setting", "form", "product", "variant", "edition"] as const;
 export type ContentEntityType = (typeof CONTENT_ENTITY_TYPES)[number];
 
-/** Campos traducibles por tipo y su longitud máxima. Todo lo demás se rechaza (precio, impuestos, reglas…). */
+/**
+ * Campos traducibles por tipo y su longitud máxima. Todo lo demás se rechaza (precio, impuestos, plazas, fechas…).
+ * En `product`, `includes` y `excludes` son texto con un elemento por línea.
+ */
 export const CONTENT_FIELDS: Record<ContentEntityType, Record<string, number>> = {
   menu_item: { label: 128, url: 512 },
   setting: { value: 4000 },
   form: { title: 200, intro: 1000, submitLabel: 120, successMessage: 500, errorMessage: 500 },
-  product: { title: 256, shortDescription: 2000, description: 20000, metaTitle: 256, metaDescription: 1000 },
+  product: {
+    title: 256, shortDescription: 2000, description: 20000, metaTitle: 256, metaDescription: 1000,
+    duration: 128, requirements: 4000, includes: 4000, excludes: 4000, requestCtaLabel: 80,
+  },
+  variant: { name: 128, description: 2000 },
+  edition: { label: 160, scheduleNote: 600, locationNote: 300 },
 };
 
 const KEY_RE = /^[A-Za-z0-9_.:-]{1,190}$/;
@@ -363,6 +391,8 @@ export async function saveContentTranslationDraft(
   const allowed = CONTENT_FIELDS[input.entityType];
   if (!allowed) throw new I18nError("Tipo de contenido no válido.");
   if (!KEY_RE.test(input.entityKey)) throw new I18nError("Identificador no válido.");
+  // Producto, opción y convocatoria se identifican por su id (nunca por el slug, que puede cambiar)
+  if ((input.entityType === "product" || input.entityType === "variant" || input.entityType === "edition") && !/^[1-9]\d{0,9}$/.test(input.entityKey)) throw new I18nError("Identificador no válido.");
   const fields: Record<string, string> = {};
   for (const [k, v] of Object.entries(input.fields ?? {})) {
     if (!(k in allowed)) throw new I18nError(`El campo «${k}» no se puede traducir.`);
@@ -405,14 +435,31 @@ export interface MenuItemLike {
   [k: string]: unknown;
 }
 
-/** Enlaces internos de los bloques de una página traducida, al idioma de la URL (solo los que apuntan a páginas). */
+/**
+ * Slug de cada producto público en un idioma (el traducido y validado o, si no lo hay, el del principal), para los
+ * slugs del principal dados. Los que no son un producto publicado no aparecen (su enlace no se toca).
+ */
+export async function productSlugsInLocale(repo: I18nRepo, locale: string, primarySlugs: string[]): Promise<Map<string, string>> {
+  const out = new Map<string, string>();
+  if (!repo.productBySlug || !primarySlugs.length) return out;
+  for (const s of primarySlugs) {
+    const p = await repo.productBySlug(s);
+    if (!p?.isPublished) continue;
+    const t = await repo.contentTranslation("product", String(p.id), locale);
+    out.set(s, (t?.status === "validated" && t.slug) || p.slug);
+  }
+  return out;
+}
+
+/** Enlaces internos de los bloques de una página traducida, al idioma de la URL (páginas y fichas de producto). */
 async function localizeLinksFor(repo: I18nRepo, cfg: I18nConfig, locale: string, blocks: PageBlock[] | null): Promise<PageBlock[] | null> {
   if (!blocks) return blocks;
   const ok = new Set<string>();
   for (const seg of internalLinkSegments(blocks)) {
     if (seg !== "" && ((await repo.publishedTranslationBySlug(locale, seg)) || (await repo.principalPageBySlug(seg)))) ok.add(seg);
   }
-  return localizeBlockLinks(blocks, locale, cfg, (seg) => ok.has(seg));
+  const products = await productSlugsInLocale(repo, locale, internalProductSlugs(blocks));
+  return localizeBlockLinks(blocks, locale, cfg, (seg) => ok.has(seg), repo.productBySlug ? (s) => products.get(s) ?? null : undefined);
 }
 
 /**
@@ -460,6 +507,11 @@ export async function localizeMenu<T extends MenuItemLike>(repo: I18nRepo, items
     } else if (t?.fields.url) {
       url = t.fields.url;
       translatedLink = true;
+    } else if (it.url && productSlugOfPath(it.url)) {
+      // Ficha de producto: a la del mismo producto en este idioma (con su slug traducido si lo tiene)
+      const primary = productSlugOfPath(it.url)!;
+      const slug = (await productSlugsInLocale(repo, locale, [primary])).get(primary);
+      if (slug) url = localizeProductLink(it.url, locale, cfg, () => slug);
     }
     const isInternalPage = !!it.url && /^\/[^/]*$/.test(it.url);
     const hasText = !!label;
@@ -500,7 +552,113 @@ export type ResolvedRequest =
       /** Contenido traducido; null si se sirve el del principal (principal o fallback). */
       page: ResolvedPage | null;
       seo: LocaleSeo;
+    }
+  /** Ficha de producto (`/tienda/<slug>` o `/<idioma>/tienda/<slug>`): siempre se sirve; sin traducción, con el contenido del principal. */
+  | {
+      kind: "product";
+      prefixed: boolean;
+      locale: string;
+      productId: number;
+      principalSlug: string;
+      translated: boolean;
+      /** Título y metadatos traducidos (null: los del principal). */
+      meta: { title: string; metaTitle: string | null; metaDescription: string | null } | null;
+      seo: LocaleSeo;
+      /** Misma ficha en cada idioma público (selector de idioma; incluye las aún sin traducir). */
+      switcher: Alternate[];
     };
+
+// ─── Fichas de producto ───────────────────────────────────────────────────────
+
+export interface ProductLocaleResolution {
+  product: PrincipalProduct;
+  /** Idioma de la URL. */
+  locale: string;
+  /** Idioma real del contenido: el principal cuando falta la traducción. */
+  contentLocale: string;
+  /** El contenido está en el idioma de la URL (principal, o traducción validada). */
+  translated: boolean;
+  /** Traducción validada que se superpone (null en el principal o sin traducción). */
+  translation: ContentTranslationRow | null;
+  /** Slug de la ficha en este idioma. */
+  slug: string;
+  /** La misma ficha en cada idioma público (para el selector), con su ruta real. */
+  alternates: Array<{ locale: string; path: string }>;
+  /** Solo las versiones con contenido en su idioma (principal + traducciones validadas), para `hreflang` y el sitemap. */
+  versions: PageVersion[];
+}
+
+export type ProductResolution = { kind: "notFound" } | { kind: "redirect"; to: string; product: PrincipalProduct } | ({ kind: "product" } & ProductLocaleResolution);
+
+const hasFields = (t: ContentTranslationRow | null | undefined): t is ContentTranslationRow => !!t && t.status === "validated" && Object.keys(t.fields).length > 0;
+
+/** Versiones de la ficha de un producto en los idiomas públicos (traducciones validadas de idiomas validados). */
+export async function productVersions(repo: I18nRepo, cfg: I18nConfig, product: PrincipalProduct) {
+  const byLocale = new Map<string, ContentTranslationRow>();
+  const alternates: ProductLocaleResolution["alternates"] = [];
+  const versions: PageVersion[] = [];
+  for (const l of publicLocales(cfg)) {
+    let slug = product.slug;
+    if (l !== cfg.defaultLocale) {
+      const t = await repo.contentTranslation("product", String(product.id), l);
+      if (hasFields(t)) {
+        byLocale.set(l, t);
+        slug = t.slug || product.slug;
+      }
+    }
+    alternates.push({ locale: l, path: localizedPath(productRest(slug), l, cfg) });
+    if (l === cfg.defaultLocale || byLocale.has(l)) versions.push({ locale: l, rest: productRest(slug) });
+  }
+  return { byLocale, alternates, versions };
+}
+
+/**
+ * Qué ficha de producto hay en `/<idioma>/tienda/<slug>` (o `/tienda/<slug>` con `rawLocale` vacío o el principal).
+ * Una sola identidad de producto: el slug puede ser el traducido (traducción validada) o el del principal. Con slug
+ * traducido, el del principal en esa URL redirige al traducido. El idioma debe ser público (validado). Sin traducción
+ * validada se sirve igualmente, con el contenido del principal y `translated = false` (la página lo avisa).
+ */
+export async function resolveProductLocale(repo: I18nRepo, rawLocale: string | null | undefined, slug: string): Promise<ProductResolution> {
+  if (!repo.productBySlug || !repo.productById) return { kind: "notFound" };
+  const cfg = await getI18nConfig(repo);
+  const locale = rawLocale ? normalizeLocale(rawLocale) : cfg.defaultLocale;
+  if (!locale) return { kind: "notFound" };
+  const isDefault = locale === cfg.defaultLocale;
+  if (!isDefault) {
+    const entry = cfg.locales.find((l) => l.locale === locale);
+    if (!isMultilingual(cfg) || !entry || entry.status !== "validated") return { kind: "notFound" };
+  }
+  let product: PrincipalProduct | null = null;
+  if (!isDefault) {
+    const byTranslatedSlug = (await repo.listContentTranslations("product", locale, true)).find((t) => t.slug === slug && hasFields(t));
+    if (byTranslatedSlug && /^\d+$/.test(byTranslatedSlug.entityKey)) product = await repo.productById(Number(byTranslatedSlug.entityKey));
+  }
+  if (!product) product = await repo.productBySlug(slug);
+  if (!product?.isPublished) return { kind: "notFound" };
+  const { byLocale, alternates, versions } = await productVersions(repo, cfg, product);
+  const translation = isDefault ? null : byLocale.get(locale) ?? null;
+  const slugHere = translation?.slug || product.slug;
+  if (slugHere !== slug) {
+    const to = localizedPath(productRest(slugHere), locale, cfg);
+    return isSafeRedirectTarget(to) ? { kind: "redirect", to, product } : { kind: "notFound" };
+  }
+  const translated = isDefault || !!translation;
+  return { kind: "product", product, locale, contentLocale: translated ? locale : cfg.defaultLocale, translated, translation, slug: slugHere, alternates, versions };
+}
+
+/** Respuesta de `resolveRequest` para una ficha: SEO del idioma (sin traducción: canónica al principal y `noindex`). */
+function productRequest(cfg: I18nConfig, origin: string, r: Extract<ProductResolution, { kind: "product" }>, prefixed: boolean): ResolvedRequest {
+  const decision: ServeDecision = r.locale === cfg.defaultLocale
+    ? { kind: "principal" }
+    : r.translated ? { kind: "translated", locale: r.locale } : { kind: "fallback", requested: r.locale, contentLocale: cfg.defaultLocale };
+  // `lang` del documento: el de la URL, porque la interfaz de la ficha (rutas, botones, aviso) sale en ese idioma; el
+  // contenido sin traducir lo marca la propia página con su `lang` real. Canónica y `noindex` como en el fallback.
+  const seo = { ...localeSeo({ cfg, origin, decision, locale: r.locale, rest: productRest(r.slug), principalRest: productRest(r.product.slug), versions: r.versions }), htmlLang: r.locale };
+  const f = r.translation?.fields;
+  const meta = f?.title ? { title: f.title, metaTitle: f.metaTitle ?? null, metaDescription: f.metaDescription ?? f.shortDescription ?? null } : null;
+  const switcher = r.alternates.length > 1 ? r.alternates.map((a) => ({ hreflang: a.locale, href: a.path })) : [];
+  return { kind: "product", prefixed, locale: r.locale, productId: r.product.id, principalSlug: r.product.slug, translated: r.translated, meta, seo, switcher };
+}
 
 /** Versiones públicas de una página (principal + traducciones validadas), para `hreflang`. */
 async function versionsOf(repo: I18nRepo, cfg: I18nConfig, page: PrincipalPage, home: string): Promise<PageVersion[]> {
@@ -527,9 +685,31 @@ export async function resolveRequest(repo: I18nRepo, pathname: string, origin: s
     const m = /^\/([^/]+)$/.exec(rest);
     return m ? repo.principalPageBySlug(decodeURIComponentSafe(m[1])) : null;
   };
+  // Ficha de producto en un idioma (null: no es una ficha o el repositorio no conoce productos)
+  const asProduct = async (locale: string, prefixed: boolean): Promise<ResolvedRequest | null> => {
+    const slug = productSlugOfPath(parsed.rest);
+    if (!slug || !repo.productBySlug) return null;
+    const r = await resolveProductLocale(repo, locale, slug);
+    if (r.kind === "redirect") return safeRedirect(r.to);
+    if (r.kind === "notFound") {
+      if (prefixed) return { kind: "notFound" };
+      // Sin prefijo: un slug que ya solo existe como traducción validada (p. ej. tras cambiar el idioma principal) lleva
+      // a su ficha en ese idioma; si no, se sirve como siempre (la aplicación muestra su «no encontrado»)
+      for (const l of publicLocales(cfg)) {
+        if (l === cfg.defaultLocale) continue;
+        const t = (await repo.listContentTranslations("product", l, true)).find((x) => x.slug === slug && hasFields(x));
+        const p = t && /^\d+$/.test(t.entityKey) && repo.productById ? await repo.productById(Number(t.entityKey)) : null;
+        if (p?.isPublished) return safeRedirect(localizedPath(productRest(slug), l, cfg));
+      }
+      return { kind: "passthrough" };
+    }
+    return productRequest(cfg, origin, r, prefixed);
+  };
 
   // Sin prefijo: el principal. Solo es «página» si lo es; si no (tienda, blog…) se sirve como siempre
   if (!parsed.prefixed) {
+    const product = await asProduct(cfg.defaultLocale, false);
+    if (product) return product;
     const page = await asPage(parsed.rest);
     if (!page || !page.isPublished) return { kind: "passthrough" };
     const decision: ServeDecision = { kind: "principal" };
@@ -544,11 +724,17 @@ export async function resolveRequest(repo: I18nRepo, pathname: string, origin: s
 
   // Prefijo del propio principal (`/es/x` con prefijo activo)
   if (locale === cfg.defaultLocale) {
+    const product = await asProduct(locale, true);
+    if (product) return product;
     const page = await asPage(parsed.rest);
     if (!page?.isPublished) return { kind: "notFound" };
     const decision: ServeDecision = { kind: "principal" };
     return { kind: "page", prefixed: true, decision, locale, principalSlug: page.slug, page: null, seo: localeSeo({ cfg, origin, decision, locale, rest: parsed.rest, principalRest: parsed.rest, versions: await versionsOf(repo, cfg, page, home) }) };
   }
+
+  // Ficha de producto del idioma adicional
+  const product = await asProduct(locale, true);
+  if (product) return product;
 
   // Idioma adicional: por slug publicado (la portada, en «/»)
   let row: PageTranslationRow | null = null;
@@ -625,8 +811,10 @@ export interface SitemapPageEntry {
 /**
  * Entradas localizadas del sitemap: por cada página con traducciones validadas, una URL por idioma público con sus
  * alternativas. Devuelve [] si no hay idiomas adicionales (el sitemap queda idéntico al de siempre).
+ * `products`: productos que el sitemap ya publica en `/tienda/<slug>` (publicados y a la vista); entra cada uno con
+ * alguna traducción validada. Las versiones sin traducir no entran (se sirven con `noindex`).
  */
-export async function sitemapAlternates(repo: I18nRepo): Promise<{ cfg: I18nConfig; entries: SitemapPageEntry[] }> {
+export async function sitemapAlternates(repo: I18nRepo, products: PrincipalProduct[] = []): Promise<{ cfg: I18nConfig; entries: SitemapPageEntry[] }> {
   const cfg = await getI18nConfig(repo);
   if (!isMultilingual(cfg)) return { cfg, entries: [] };
   const [rows, home] = await Promise.all([repo.listPageTranslations({ onlyValidated: true }), repo.principalHomeSlug()]);
@@ -637,6 +825,12 @@ export async function sitemapAlternates(repo: I18nRepo): Promise<{ cfg: I18nConf
     const page = await repo.principalPageById(pageId);
     if (!page?.isPublished) continue;
     entries.push({ rest: page.slug === home ? "/" : `/${page.slug}`, versions: await versionsOf(repo, cfg, page, home), lastmod: list[0]?.updatedAt?.toISOString().slice(0, 10) });
+  }
+  for (const p of products) {
+    if (!p.isPublished) continue;
+    const { versions } = await productVersions(repo, cfg, p);
+    if (versions.length < 2) continue;
+    entries.push({ rest: productRest(p.slug), versions, lastmod: p.updatedAt instanceof Date && !Number.isNaN(p.updatedAt.getTime()) ? p.updatedAt.toISOString().slice(0, 10) : undefined });
   }
   return { cfg, entries };
 }

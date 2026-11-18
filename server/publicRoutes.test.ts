@@ -22,11 +22,12 @@ const deps = (over: Partial<PublicRouteDeps> = {}): PublicRouteDeps => ({
 });
 
 describe("rutas del cliente", () => {
+  // Las rutas con idioma (/:locale/:slug y /:locale/tienda/:slug) las resuelve el multidioma (resolveRequest), no esta lista
   it("la lista del servidor coincide con las rutas de App.tsx (sin las privadas ni el comodín /:slug)", () => {
     const app = fs.readFileSync(path.join(__dirname, "..", "client", "src", "App.tsx"), "utf8");
     const paths = Array.from(app.matchAll(/<Route path="([^"]+)"/g), (m) => m[1]);
     const isPrivate = (p: string) => PRIVATE_PREFIXES.some((x) => p === x || p.startsWith(`${x}/`));
-    const publicPaths = paths.filter((p) => !isPrivate(p) && p !== "/:slug" && p !== "/:locale/:slug" && p !== "/404");
+    const publicPaths = paths.filter((p) => !isPrivate(p) && p !== "/:slug" && p !== "/:locale/:slug" && p !== "/:locale/tienda/:slug" && p !== "/404");
     expect([...publicPaths].sort()).toEqual([...CLIENT_ROUTES].sort());
   });
 });

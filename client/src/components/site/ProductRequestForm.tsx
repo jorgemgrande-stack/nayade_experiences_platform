@@ -11,7 +11,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { trpc } from "@/lib/trpc";
-import { DEFAULT_FORM_CONSENT_TEXT } from "@shared/pageBlocks";
+import { useSiteLocale } from "@/hooks/useSiteLocale";
+import { consentSentence, siteUiText } from "@shared/siteUiText";
 
 export interface ProductRequestTarget {
   productId: number;
@@ -40,6 +41,9 @@ export function ProductRequestDialog({ target, open, onOpenChange, preview }: { 
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [sent, setSent] = useState<string | null>(null);
   const submit = trpc.public.submitLead.useMutation();
+  // Textos en el idioma de la página; la solicitud declara ese mismo idioma (el de la URL, no el del navegador)
+  const site = useSiteLocale();
+  const t = siteUiText(site.locale);
 
   const close = (o: boolean) => {
     onOpenChange(o);
@@ -55,10 +59,10 @@ export function ProductRequestDialog({ target, open, onOpenChange, preview }: { 
     e.preventDefault();
     if (!target) return;
     const found: Record<string, string> = {};
-    if (name.trim().length < 2) found.name = "Escribe tu nombre.";
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email.trim())) found.email = "Escribe un correo electrónico válido.";
-    if (phone.trim() && !/^[+0-9 ().-]{6,25}$/.test(phone.trim())) found.phone = "Escribe un teléfono válido.";
-    if (!consent) found.consent = "Para enviarlo, acepta la política de privacidad.";
+    if (name.trim().length < 2) found.name = t.nameRequired;
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email.trim())) found.email = t.invalidEmail;
+    if (phone.trim() && !/^[+0-9 ().-]{6,25}$/.test(phone.trim())) found.phone = t.invalidPhone;
+    if (!consent) found.consent = t.consentRequired;
     setErrors(found);
     const first = Object.keys(found)[0];
     if (first) {
@@ -66,7 +70,7 @@ export function ProductRequestDialog({ target, open, onOpenChange, preview }: { 
       return;
     }
     if (preview) {
-      toast.info("Es la vista previa: la solicitud no se envía.");
+      toast.info(t.previewRequestNotSent);
       return;
     }
     try {
@@ -84,12 +88,12 @@ export function ProductRequestDialog({ target, open, onOpenChange, preview }: { 
           elapsedMs: Date.now() - shownAt.current,
           page: window.location.pathname,
           variantId: target.variantId,
-          lang: (document.documentElement.lang || navigator.language || "").slice(0, 2).toLowerCase() || undefined,
+          lang: site.locale.split("-")[0].slice(0, 5).toLowerCase() || undefined,
         },
       });
-      setSent((r as { message?: string }).message || "Hemos recibido tu solicitud. Te responderemos lo antes posible.");
+      setSent((r as { message?: string }).message || t.requestReceived);
     } catch (err) {
-      toast.error((err as Error).message || "No hemos podido enviar tu solicitud. Inténtalo de nuevo.");
+      toast.error((err as Error).message || t.requestFailed);
     }
   };
 
@@ -100,7 +104,7 @@ export function ProductRequestDialog({ target, open, onOpenChange, preview }: { 
     <Dialog open={open} onOpenChange={close}>
       <DialogContent className="max-h-[90vh] max-w-lg overflow-y-auto">
         <DialogHeader>
-          <DialogTitle className="font-heading">{target?.editionId ? "Solicitar plaza" : "Solicitar información"}</DialogTitle>
+          <DialogTitle className="font-heading">{target?.editionId ? t.requestSeat : t.requestInfo}</DialogTitle>
           <DialogDescription>
             {target?.productTitle}
             {target?.editionLabel ? ` · ${target.editionLabel}` : ""}
@@ -109,7 +113,7 @@ export function ProductRequestDialog({ target, open, onOpenChange, preview }: { 
         {sent ? (
           <div className="space-y-4">
             <p role="status" className="rounded-lg bg-primary/10 px-4 py-3 text-foreground">{sent}</p>
-            <Button className="w-full" onClick={() => close(false)}>Cerrar</Button>
+            <Button className="w-full" onClick={() => close(false)}>{t.close}</Button>
           </div>
         ) : (
           <form onSubmit={onSubmit} className="space-y-4" noValidate>
@@ -121,39 +125,39 @@ export function ProductRequestDialog({ target, open, onOpenChange, preview }: { 
               </label>
             </div>
             <div>
-              <Label htmlFor={`${id}-name`}>Nombre *</Label>
+              <Label htmlFor={`${id}-name`}>{t.nameLabel}</Label>
               <Input id={`${id}-name`} value={name} onChange={(e) => setName(e.target.value)} autoComplete="name" className="mt-1" {...props("name")} />
               {err("name")}
             </div>
             <div>
-              <Label htmlFor={`${id}-email`}>Correo electrónico *</Label>
+              <Label htmlFor={`${id}-email`}>{t.emailLabel}</Label>
               <Input id={`${id}-email`} type="email" value={email} onChange={(e) => setEmail(e.target.value)} autoComplete="email" className="mt-1" {...props("email")} />
               {err("email")}
             </div>
             <div>
-              <Label htmlFor={`${id}-phone`}>Teléfono (opcional)</Label>
+              <Label htmlFor={`${id}-phone`}>{t.phoneLabel}</Label>
               <Input id={`${id}-phone`} type="tel" value={phone} onChange={(e) => setPhone(e.target.value)} autoComplete="tel" className="mt-1" {...props("phone")} />
               {err("phone")}
             </div>
             {target?.withSeats && (
               <div>
-                <Label htmlFor={`${id}-seats`}>Plazas</Label>
+                <Label htmlFor={`${id}-seats`}>{t.seatsLabel}</Label>
                 <Input id={`${id}-seats`} type="number" inputMode="numeric" min={1} max={50} value={seats} onChange={(e) => setSeats(e.target.value)} className="mt-1 w-28" />
               </div>
             )}
             <div>
-              <Label htmlFor={`${id}-message`}>Mensaje (opcional)</Label>
+              <Label htmlFor={`${id}-message`}>{t.messageLabel}</Label>
               <Textarea id={`${id}-message`} value={message} onChange={(e) => setMessage(e.target.value)} rows={3} maxLength={2000} className="mt-1" />
             </div>
             <div>
               <label className="flex items-start gap-2 text-sm text-muted-foreground">
                 <input id={`${id}-consent`} type="checkbox" checked={consent} onChange={(e) => setConsent(e.target.checked)} className="mt-0.5 h-4 w-4" {...props("consent")} />
-                <span>{DEFAULT_FORM_CONSENT_TEXT}</span>
+                <span>{consentSentence(t)}</span>
               </label>
               {err("consent")}
             </div>
             <Button type="submit" className="w-full" disabled={submit.isPending}>
-              {submit.isPending ? "Enviando…" : target?.submitLabel || "Enviar solicitud"}
+              {submit.isPending ? t.sending : target?.submitLabel || t.sendRequest}
             </Button>
           </form>
         )}
