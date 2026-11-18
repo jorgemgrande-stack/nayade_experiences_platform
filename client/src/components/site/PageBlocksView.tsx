@@ -8,6 +8,9 @@
  */
 import { createContext, Fragment, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { Link } from "wouter";
+import { scrollToHash } from "@/lib/scrollToHash";
+import { useLegalHref } from "@/hooks/useLegalHref";
+import { siteUiText } from "@shared/siteUiText";
 import { toast } from "sonner";
 import { ArrowDown, ArrowUp, Bold, BookmarkPlus, CalendarDays, ChevronDown, Copy, CornerLeftUp, EyeOff, GripVertical, Image as ImageIcon, Italic, Link2, List, MoreHorizontal, Newspaper, Paintbrush, Pencil, Play, Plus, Quote, ShoppingBag, Star, Trash2, Unlink } from "lucide-react";
 import { trpc } from "@/lib/trpc";
@@ -80,6 +83,22 @@ function SmartLink({ href, preview, className, children }: { href: string; previ
     const web = /^https?:/i.test(href);
     return (
       <a href={href} className={className} target={web ? "_blank" : undefined} rel={web ? "noopener noreferrer" : undefined}>
+        {children}
+      </a>
+    );
+  }
+  // Ancla de la misma página (#contacto): enlace normal que desplaza hasta la sección (el enrutador no lo haría)
+  if (href.startsWith("#")) {
+    return (
+      <a
+        href={href}
+        className={className}
+        onClick={(e) => {
+          e.preventDefault();
+          if (window.location.hash !== href) history.pushState(null, "", href);
+          scrollToHash(href);
+        }}
+      >
         {children}
       </a>
     );
@@ -783,6 +802,9 @@ const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 function ContactFormBlock({ b, first, preview, pageTitle }: { b: BlockOf<"contact_form">; first: boolean; preview?: boolean; pageTitle?: string }) {
   const [form, setForm] = useState({ name: "", email: "", phone: "", message: "" });
   const [accepted, setAccepted] = useState(false);
+  // La política de privacidad real de la empresa en el idioma de la página (antes, /privacidad fijo)
+  const privacyHref = useLegalHref("privacidad");
+  const ui = siteUiText(useSiteLocale().locale);
   const [sent, setSent] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const submit = trpc.public.submitLead.useMutation({
@@ -842,11 +864,11 @@ function ContactFormBlock({ b, first, preview, pageTitle }: { b: BlockOf<"contac
               <Checkbox id={`${id}-ok`} checked={accepted} onCheckedChange={(v) => setAccepted(v === true)} className="mt-0.5" />
               <Label htmlFor={`${id}-ok`} className="block text-sm font-normal leading-snug">
                 <span>
-                  He leído y acepto la{" "}
-                  <SmartLink href="/privacidad" preview={preview} className="underline decoration-primary underline-offset-4">
-                    política de privacidad
+                  {ui.consentBefore}
+                  <SmartLink href={privacyHref} preview={preview} className="underline decoration-primary underline-offset-4">
+                    {ui.privacyLink}
                   </SmartLink>
-                  .
+                  {ui.consentAfter}
                 </span>
               </Label>
             </div>
@@ -1223,7 +1245,9 @@ type ShopItem = { id: number; slug: string; title: string; categoryId?: number |
 function ProductsBlock({ b, first, preview }: { b: BlockOf<"products">; first: boolean; preview?: boolean }) {
   const d = b.data;
   const ed = useContext(StudioEditContext);
-  const products = trpc.public.getExperiences.useQuery({ limit: 50, offset: 0 }, { staleTime: 60_000 });
+  // Publicados aunque no se vendan en línea (bajo petición, por solicitud, próximamente o agotados): el bloque ya los
+  // etiqueta; antes solo salían los «a la venta» y una tienda por solicitud aparecía vacía (18/11/2026)
+  const products = trpc.public.getExperiences.useQuery({ limit: 50, offset: 0, includeSoldOut: true }, { staleTime: 60_000 });
   const categories = trpc.public.getCategories.useQuery(undefined, { staleTime: 300_000, enabled: !!d.categorySlug });
   const limit = Number(d.limit) || 4;
   const items = useMemo(() => {

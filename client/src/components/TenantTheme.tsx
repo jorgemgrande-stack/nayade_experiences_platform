@@ -167,7 +167,8 @@ export function TenantFooter({ theme }: { theme: Theme }) {
   // Textos legales siempre en el pie (si la empresa ya los enlaza en su menú de pie, no se repiten)
   const own = new Set(footerLinks.map((l) => pageSlugOfUrl(l.url)).filter(Boolean));
   const ownLegal = new Set(footerLinks.map((l) => legalKindOfUrl(l.url)).filter(Boolean));
-  const legalLinks = LEGAL_FOOTER_LINKS.filter((l) => !own.has(pageSlugOfUrl(l.url)) && !ownLegal.has(legalKindOfUrl(l.url)));
+  // Solo con el menú ya cargado: mientras carga se veían los de serie (que en una web en otro idioma no existen)
+  const legalLinks = menu.isFetched ? LEGAL_FOOTER_LINKS.filter((l) => !own.has(pageSlugOfUrl(l.url)) && !ownLegal.has(legalKindOfUrl(l.url))) : [];
   return (
     <footer className={st.root}>
       <div className="container py-10 grid gap-6 md:grid-cols-3">

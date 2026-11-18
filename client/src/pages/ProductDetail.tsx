@@ -42,6 +42,12 @@ function todayIso(): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 }
 
+/** Opción indicada en la dirección (`?opcion=<id>`), o ninguna. Pura. */
+export function initialOption(search: string): number | undefined {
+  const v = Number(new URLSearchParams(search).get("opcion"));
+  return Number.isSafeInteger(v) && v > 0 ? v : undefined;
+}
+
 export default function ProductDetail() {
   const { slug } = useParams<{ slug: string }>();
   const { phone, phoneTel, email } = usePublicContact();
@@ -50,7 +56,9 @@ export default function ProductDetail() {
   const { addItem, openCart } = useCart();
   const [imageIndex, setImageIndex] = useState(0);
   const [quantity, setQuantity] = useState(1);
-  const [variantId, setVariantId] = useState<number | undefined>(undefined);
+  // Opción elegida desde otra página (`/tienda/<producto>?opcion=<id>`: «Solicitar LIVE», «Solicitar Premium»…); solo
+  // se usa si es una opción real de este producto (abajo)
+  const [variantId, setVariantId] = useState<number | undefined>(() => initialOption(typeof window === "undefined" ? "" : window.location.search));
   const [date, setDate] = useState("");
   const [requestOpen, setRequestOpen] = useState(false);
 
@@ -96,6 +104,7 @@ export default function ProductDetail() {
   const hasPrice = showsPrice(product) && Number.isFinite(basePrice) && basePrice > 0;
   // Con «precio visible, solo por solicitud» se enseña el precio y las opciones, pero no hay compra
   const buyable = hasPrice && !onRequest;
+  // Una opción de la dirección que no es de este producto (o ya no se ofrece) no se marca
   const variant = variants.find((v) => v.id === variantId);
   const unit = variantUnitPrice(basePrice, variant);
   const shownPrice = variant || !variants.length ? unit : fromPrice(basePrice, variants);
