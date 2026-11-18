@@ -91,6 +91,9 @@ const FORBIDDEN: Array<{ re: RegExp; why: string }> = [
 
 const DESTRUCTIVE = /\b(DROP\s+TABLE|DROP\s+COLUMN|DROP\s+DATABASE|TRUNCATE\b)|\bDELETE\s+FROM\b(?![^;]*\bWHERE\b)/i;
 
+/** Longitud máxima del id de una migración (`NNNN_nombre`): cabe en `tenant_events.to_state` del registro. */
+export const MAX_MIGRATION_ID = 40;
+
 export function validateMigrations(list: Migration[]): string[] {
   const errors: string[] = [];
   const seen = new Set<number>();
@@ -102,6 +105,9 @@ export function validateMigrations(list: Migration[]): string[] {
       errors.push(`${m.id}: hueco de numeración (anterior ${String(list[i - 1].number).padStart(4, "0")})`);
     }
     if (splitStatements(m.up).length === 0) errors.push(`${m.id}: no contiene sentencias`);
+    // El id se anota como versión de esquema en el historial del registro (`tenant_events.to_state`, VARCHAR(40)): más largo,
+    // el alta de una empresa nueva falla al registrar su versión (17/11/2026, 0076)
+    if (m.id.length > MAX_MIGRATION_ID) errors.push(`${m.id}: nombre demasiado largo (${m.id.length} caracteres; máximo ${MAX_MIGRATION_ID})`);
     if (!m.down && !m.irreversible) {
       errors.push(`${m.id}: falta ${m.id}.down.sql o la marca «-- irreversible: motivo» en la migración`);
     }

@@ -17,8 +17,8 @@ import { destructiveMigration, extraordinaryChanges } from "../scripts/deploy/es
 
 const ROOT = path.resolve(__dirname, "..");
 const read = (f: string) => fs.readFileSync(path.join(ROOT, f), "utf8");
-const UP = "db/migrations/0076_leads_edition_currency_enrollment_variant.sql";
-const DOWN = "db/migrations/0076_leads_edition_currency_enrollment_variant.down.sql";
+const UP = "db/migrations/0076_lead_edition_currency.sql";
+const DOWN = "db/migrations/0076_lead_edition_currency.down.sql";
 
 describe("bloque «Solicitud web» (lógica pura)", () => {
   it("moneda: ISO de tres letras en mayúsculas, si no EUR", () => {
@@ -226,5 +226,14 @@ describe("processProductRequest: convocatoria, moneda y modalidad", () => {
     } finally {
       fakeDb.execute = orig;
     }
+  });
+});
+
+describe("ids de migración", () => {
+  it("todos caben en la versión de esquema del registro (40 caracteres) y la validación lo exige", async () => {
+    const { loadMigrations, validateMigrations, MAX_MIGRATION_ID } = await import("../scripts/db/migrationLib");
+    const { migrations } = loadMigrations("db/migrations");
+    expect(migrations.every((m) => m.id.length <= MAX_MIGRATION_ID)).toBe(true);
+    expect(validateMigrations([{ ...migrations[0], id: "0001_" + "x".repeat(40) }]).some((e) => /demasiado largo/.test(e))).toBe(true);
   });
 });
