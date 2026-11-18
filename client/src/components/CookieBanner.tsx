@@ -4,7 +4,10 @@ import { Cookie, X, ChevronDown, ChevronUp, Shield, BarChart2, Megaphone, Settin
 import { trpc } from "@/lib/trpc";
 import { useCart } from "@/contexts/CartContext";
 import { cn } from "@/lib/utils";
-import { cookieBody, cookieCategories, hasOptionalCookies } from "@shared/cookieCategories";
+import { cookieCategories, hasOptionalCookies } from "@shared/cookieCategories";
+import { cookieBodyFor, cookieToggleLabel, cookieUiText } from "@shared/cookieTexts";
+import { useSiteLocale } from "@/hooks/useSiteLocale";
+import { useLegalHref } from "@/hooks/useLegalHref";
 
 const STORAGE_KEY = "nayade_cookie_consent";
 
@@ -81,6 +84,10 @@ export default function CookieBanner() {
   // Solo las categorías que la web usa de verdad (misma consulta y caché que el tema de la web)
   const { data: theme } = trpc.public.getTheme.useQuery(undefined, { staleTime: 5 * 60_000, retry: false, refetchOnWindowFocus: false });
   const cats = cookieCategories(theme);
+  // Textos y enlace a la política en el idioma de la página (el aviso solo informa si no hay cookies opcionales)
+  const { locale } = useSiteLocale();
+  const T = cookieUiText(locale);
+  const policyHref = useLegalHref("cookies");
   const { isOpen: cartOpen } = useCart();
 
   useEffect(() => {
@@ -149,23 +156,23 @@ export default function CookieBanner() {
               <Cookie className="h-5 w-5" style={{ color: "var(--brand-accent, oklch(0.70 0.20 42))" }} />
             </div>
             <div className="min-w-0">
-              <p className="text-white font-semibold text-sm mb-1">{COOKIE_TEXTS.title}</p>
+              <p className="text-white font-semibold text-sm mb-1">{T.title}</p>
               <p className="text-white/60 text-xs leading-relaxed">
-                {cookieBody(cats)}{" "}
+                {cookieBodyFor(cats, locale)}{" "}
                 {optional && (
                   <>
                     <button
                       onClick={() => setExpanded(v => !v)}
                       className="underline underline-offset-2 text-white/80 hover:text-white transition-colors"
                     >
-                      {COOKIE_TEXTS.configure}
+                      {T.configure}
                     </button>.
                   </>
                 )}
                 {" "}
-                Más información en nuestra{" "}
-                <Link href={COOKIE_POLICY_PATH} className="underline underline-offset-2 text-white/80 hover:text-white transition-colors">
-                  {COOKIE_TEXTS.policy}
+                {T.moreInfo}{" "}
+                <Link href={policyHref} className="underline underline-offset-2 text-white/80 hover:text-white transition-colors">
+                  {T.policy}
                 </Link>.
               </p>
             </div>
@@ -180,14 +187,14 @@ export default function CookieBanner() {
                   className="flex items-center gap-1.5 rounded-lg px-3 py-2 text-xs font-medium text-white/70 hover:text-white hover:bg-white/10 transition-colors border border-white/15"
                 >
                   <Settings className="h-3.5 w-3.5" />
-                  Configurar
+                  {T.configureButton}
                   {expanded ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
                 </button>
                 <button
                   onClick={handleNecessaryOnly}
                   className="rounded-lg px-5 py-2 text-xs font-semibold text-white hover:bg-white/10 transition-colors border border-white/40"
                 >
-                  {COOKIE_TEXTS.reject}
+                  {T.reject}
                 </button>
               </>
             )}
@@ -196,7 +203,7 @@ export default function CookieBanner() {
               className="rounded-lg px-5 py-2 text-xs font-semibold text-white transition-all hover:opacity-90 active:scale-95"
               style={{ background: "var(--brand-accent, oklch(0.70 0.20 42))", boxShadow: `0 2px 12px color-mix(in srgb, var(--brand-accent, oklch(0.70 0.20 42)) 35%, transparent)` }}
             >
-              {optional ? COOKIE_TEXTS.accept : COOKIE_TEXTS.understood}
+              {optional ? T.accept : T.understood}
             </button>
           </div>
         </div>
@@ -212,8 +219,8 @@ export default function CookieBanner() {
               <div className="flex items-start gap-3">
                 <Shield className="h-4 w-4 mt-0.5 shrink-0" style={{ color: "var(--brand-accent, oklch(0.70 0.20 42))" }} />
                 <div>
-                  <p className="text-white text-xs font-semibold">Necesarias <span className="ml-1 rounded-full bg-white/10 px-1.5 py-0.5 text-[10px] text-white/60">Siempre activas</span></p>
-                  <p className="text-white/50 text-xs mt-0.5">{COOKIE_TEXTS.necessary}</p>
+                  <p className="text-white text-xs font-semibold">{T.catNecessary} <span className="ml-1 rounded-full bg-white/10 px-1.5 py-0.5 text-[10px] text-white/60">{T.catAlwaysOn}</span></p>
+                  <p className="text-white/50 text-xs mt-0.5">{T.necessary}</p>
                 </div>
               </div>
               <div className="shrink-0">
@@ -230,15 +237,15 @@ export default function CookieBanner() {
               <div className="flex items-start gap-3">
                 <BarChart2 className="h-4 w-4 mt-0.5 shrink-0" style={{ color: "var(--brand-icon, oklch(0.65 0.15 200))" }} />
                 <div>
-                  <p className="text-white text-xs font-semibold">Analíticas</p>
-                  <p className="text-white/50 text-xs mt-0.5">{COOKIE_TEXTS.analytics}</p>
+                  <p className="text-white text-xs font-semibold">{T.catAnalytics}</p>
+                  <p className="text-white/50 text-xs mt-0.5">{T.analytics}</p>
                 </div>
               </div>
               <button
                 onClick={() => setAnalytics(v => !v)}
                 className="shrink-0 h-5 w-9 rounded-full flex items-center px-0.5 transition-all duration-200"
                 style={{ background: analytics ? "var(--brand-accent, oklch(0.70 0.20 42))" : "var(--brand-muted, oklch(0.35 0.05 230))", justifyContent: analytics ? "flex-end" : "flex-start" }}
-                aria-label={analytics ? "Desactivar cookies analíticas" : "Activar cookies analíticas"}
+                aria-label={cookieToggleLabel(T, analytics, T.catAnalytics.toLowerCase())}
               >
                 <div className="h-4 w-4 rounded-full bg-white shadow" />
               </button>
@@ -250,15 +257,15 @@ export default function CookieBanner() {
               <div className="flex items-start gap-3">
                 <Megaphone className="h-4 w-4 mt-0.5 shrink-0" style={{ color: "var(--brand-accent, oklch(0.70 0.20 42))" }} />
                 <div>
-                  <p className="text-white text-xs font-semibold">Marketing</p>
-                  <p className="text-white/50 text-xs mt-0.5">{COOKIE_TEXTS.marketing}</p>
+                  <p className="text-white text-xs font-semibold">{T.catMarketing}</p>
+                  <p className="text-white/50 text-xs mt-0.5">{T.marketing}</p>
                 </div>
               </div>
               <button
                 onClick={() => setMarketing(v => !v)}
                 className="shrink-0 h-5 w-9 rounded-full flex items-center px-0.5 transition-all duration-200"
                 style={{ background: marketing ? "var(--brand-accent, oklch(0.70 0.20 42))" : "var(--brand-muted, oklch(0.35 0.05 230))", justifyContent: marketing ? "flex-end" : "flex-start" }}
-                aria-label={marketing ? "Desactivar cookies de marketing" : "Activar cookies de marketing"}
+                aria-label={cookieToggleLabel(T, marketing, T.catMarketing.toLowerCase())}
               >
                 <div className="h-4 w-4 rounded-full bg-white shadow" />
               </button>
@@ -270,15 +277,15 @@ export default function CookieBanner() {
               <div className="flex items-start gap-3">
                 <Settings className="h-4 w-4 mt-0.5 shrink-0" style={{ color: "var(--brand-icon, oklch(0.75 0.12 280))" }} />
                 <div>
-                  <p className="text-white text-xs font-semibold">Preferencias</p>
-                  <p className="text-white/50 text-xs mt-0.5">{COOKIE_TEXTS.preferences}</p>
+                  <p className="text-white text-xs font-semibold">{T.catPreferences}</p>
+                  <p className="text-white/50 text-xs mt-0.5">{T.preferences}</p>
                 </div>
               </div>
               <button
                 onClick={() => setPreferences(v => !v)}
                 className="shrink-0 h-5 w-9 rounded-full flex items-center px-0.5 transition-all duration-200"
                 style={{ background: preferences ? "var(--brand-accent, oklch(0.70 0.20 42))" : "var(--brand-muted, oklch(0.35 0.05 230))", justifyContent: preferences ? "flex-end" : "flex-start" }}
-                aria-label={preferences ? "Desactivar cookies de preferencias" : "Activar cookies de preferencias"}
+                aria-label={cookieToggleLabel(T, preferences, T.catPreferences.toLowerCase())}
               >
                 <div className="h-4 w-4 rounded-full bg-white shadow" />
               </button>
@@ -291,7 +298,7 @@ export default function CookieBanner() {
                 className="rounded-lg px-5 py-2 text-xs font-semibold text-white transition-all hover:opacity-90 active:scale-95"
                 style={{ background: "var(--brand-accent, oklch(0.70 0.20 42))", boxShadow: `0 2px 12px color-mix(in srgb, var(--brand-accent, oklch(0.70 0.20 42)) 35%, transparent)` }}
               >
-                Guardar preferencias
+                {T.savePreferences}
               </button>
             </div>
           </div>
