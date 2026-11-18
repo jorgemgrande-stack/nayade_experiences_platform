@@ -17,6 +17,7 @@ import { cn } from "@/lib/utils";
 import { usePanelSubscription } from "@/hooks/usePanelSubscription";
 import { PanelLoading } from "@/components/admin/PanelStates";
 import EssentialHome from "./home/EssentialHome";
+import { OperationalPanelCard } from "./home/OperationalPanelCard";
 import LifeHome from "./lifeNet/LifeHome";
 import { prefersLifeHome } from "@shared/lifeNet";
 import { AuthRequired, PanelSpinner } from "@/components/auth/AuthRequired";
@@ -665,6 +666,9 @@ function LegacyDashboard() {
               </div>
             </div>
           )}
+
+          {/* Solicitudes web y convocatorias (solo administración; oculto si la empresa no tiene ninguna) */}
+          <OperationalPanelCard enabled={user?.role === "admin"} />
 
           {/* ── KPI STRIP ──────────────────────────────────────────────── */}
           <div>

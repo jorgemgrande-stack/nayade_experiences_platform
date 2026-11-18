@@ -22,6 +22,7 @@ import { PLANS_HREF, trialConversionHref } from "@shared/subscriptionRecovery";
 import { configurationSteps, shouldOpenSetupWizard } from "@shared/setupWizard";
 import { cn } from "@/lib/utils";
 import { TONE_BADGE, TONE_SURFACE, TONE_TEXT } from "@/lib/panelTones";
+import { OperationalPanelCard } from "./OperationalPanelCard";
 
 const FEED_LABELS: Record<string, string> = {
   lead: "Oportunidades sin atender",
@@ -290,6 +291,9 @@ export default function EssentialHome() {
             )}
           </Section>
         )}
+
+        {/* Solicitudes web y convocatorias (solo administración; oculto si la empresa no tiene ninguna) */}
+        <OperationalPanelCard enabled={isAdmin} />
 
         <div className="grid gap-6 lg:grid-cols-2">
           {/* Estado de configuración (asistente): se oculta cuando está terminado y todo hecho */}
