@@ -1170,6 +1170,12 @@ export const appRouter = router({
       return i18nCall((repo) => getProductTranslationEditor(repo, input.experienceId));
     }),
 
+    /** Nombres de las categorías de la tienda en cada idioma adicional (editor «Idiomas» de Categorías). */
+    categoryTranslationEditor: adminProcedure.query(async () => {
+      const { getCategoryTranslationEditor } = await import("./categoryTranslationsDb");
+      return i18nCall((repo) => getCategoryTranslationEditor(repo));
+    }),
+
     /** Retira de la web una traducción de contenido validada (vuelve a borrador). El tipo se comprueba en el servidor. */
     unvalidateContentTranslation: adminProcedure
       .input(z.object({ entityType: z.string().max(40), entityKey: z.string().max(190), locale: z.string().max(35) }).strict())

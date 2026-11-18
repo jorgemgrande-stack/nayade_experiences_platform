@@ -35,6 +35,7 @@ export const TRANSLATION_FIELD_SETS = {
     { key: "name", label: "Nombre de la opción", max: 128 },
     { key: "description", label: "Descripción de la opción", max: 2000, long: true },
   ],
+  category: [{ key: "name", label: "Nombre de la categoría", max: 128 }],
   edition: [
     { key: "label", label: "Nombre de la convocatoria", max: 160 },
     { key: "scheduleNote", label: "Horario", max: 600, long: true },
@@ -45,7 +46,7 @@ export const TRANSLATION_FIELD_SETS = {
 export type TranslatableEntity = keyof typeof TRANSLATION_FIELD_SETS;
 
 /** Tipos con dirección propia por idioma (el servidor solo la admite en productos). */
-export const ENTITY_HAS_SLUG: Record<TranslatableEntity, boolean> = { product: true, variant: false, edition: false };
+export const ENTITY_HAS_SLUG: Record<TranslatableEntity, boolean> = { product: true, variant: false, edition: false, category: false };
 
 export type TranslationState = "untranslated" | "draft" | "validated";
 export const TRANSLATION_STATE_LABELS: Record<TranslationState, string> = {

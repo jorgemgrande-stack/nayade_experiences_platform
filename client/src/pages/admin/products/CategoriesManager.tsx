@@ -13,6 +13,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSepara
 import { cn } from "@/lib/utils";
 import { PanelEmpty } from "@/components/admin/PanelStates";
 import { useVocabulary } from "@/lib/vocabulary";
+import { CategoryTranslationsPanel } from "./CategoryTranslationsPanel";
 
 interface CategoryForm {
   name: string;
@@ -72,6 +73,7 @@ function CatImageUpload({ value, onChange }: { value: string; onChange: (url: st
 export default function CategoriesManager() {
   const voc = useVocabulary();
   const [open, setOpen] = useState(false);
+  const [translationsOpen, setTranslationsOpen] = useState(false);
   const [editId, setEditId] = useState<number | null>(null);
   const [form, setForm] = useState<CategoryForm>(emptyForm);
   const [localOrder, setLocalOrder] = useState<number[]>([]);
@@ -149,9 +151,12 @@ export default function CategoriesManager() {
           <h2 className="text-xl font-semibold text-foreground">Categorías de productos y servicios</h2>
           <p className="text-sm text-muted-foreground mt-1">{categories?.length ?? 0} categorías registradas</p>
         </div>
-        <Button onClick={openCreate} className="bg-primary hover:bg-primary/90">
-          <Plus className="w-4 h-4 mr-2" /> Nueva categoría
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button variant="outline" onClick={() => setTranslationsOpen(true)}>Idiomas</Button>
+          <Button onClick={openCreate} className="bg-primary hover:bg-primary/90">
+            <Plus className="w-4 h-4 mr-2" /> Nueva categoría
+          </Button>
+        </div>
       </div>
 
       {isLoading ? (
@@ -267,6 +272,7 @@ export default function CategoriesManager() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+      <CategoryTranslationsPanel open={translationsOpen} onOpenChange={setTranslationsOpen} />
     </AdminLayout>
   );
 }
