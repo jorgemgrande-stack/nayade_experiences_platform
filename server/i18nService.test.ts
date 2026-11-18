@@ -294,11 +294,11 @@ describe("contenido genérico", () => {
   it("editar una traducción validada la devuelve a borrador", async () => {
     const repo = newRepo();
     await addLocale(repo, "de", null);
-    await saveContentTranslationDraft(repo, { entityType: "setting", entityKey: "brand_tagline", locale: "de", fields: { value: "Hallo" } });
-    await validateContentTranslation(repo, "setting", "brand_tagline", "de", "ana");
-    expect((await repo.contentTranslation("setting", "brand_tagline", "de"))?.status).toBe("validated");
-    await saveContentTranslationDraft(repo, { entityType: "setting", entityKey: "brand_tagline", locale: "de", fields: { value: "Hallo!" } });
-    expect((await repo.contentTranslation("setting", "brand_tagline", "de"))?.status).toBe("draft");
+    await saveContentTranslationDraft(repo, { entityType: "setting", entityKey: "site_footer_text", locale: "de", fields: { value: "Hallo" } });
+    await validateContentTranslation(repo, "setting", "site_footer_text", "de", "ana");
+    expect((await repo.contentTranslation("setting", "site_footer_text", "de"))?.status).toBe("validated");
+    await saveContentTranslationDraft(repo, { entityType: "setting", entityKey: "site_footer_text", locale: "de", fields: { value: "Hallo!" } });
+    expect((await repo.contentTranslation("setting", "site_footer_text", "de"))?.status).toBe("draft");
   });
 });
 

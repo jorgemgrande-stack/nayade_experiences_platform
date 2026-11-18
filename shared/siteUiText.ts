@@ -48,6 +48,14 @@ export const SITE_UI_TEXT = {
     productNotFound: "Producto no encontrado",
     productNotFoundHelp: "Este producto no está disponible o se ha retirado de la tienda.",
     viewShop: "Ver la tienda",
+    // Pie de la web
+    footerLinksLabel: "Enlaces del pie",
+    footerLegalLabel: "Información legal",
+    footerSocialLabel: "Redes sociales",
+    footerContactTitle: "Contacto",
+    footerWhatsapp: "WhatsApp",
+    footerNewTab: "se abre en una pestaña nueva",
+    poweredBy: "Plataforma Big Elephant",
     // Catálogo (/tienda)
     searchShop: "Buscar en el catálogo",
     searchPlaceholder: "Buscar…",
@@ -154,6 +162,14 @@ export const SITE_UI_TEXT = {
     productNotFound: "Produkt nicht gefunden",
     productNotFoundHelp: "Dieses Produkt ist nicht verfügbar oder wurde aus dem Shop entfernt.",
     viewShop: "Zum Shop",
+    // Pie de la web
+    footerLinksLabel: "Links im Fußbereich",
+    footerLegalLabel: "Rechtliche Hinweise",
+    footerSocialLabel: "Soziale Netzwerke",
+    footerContactTitle: "Kontakt",
+    footerWhatsapp: "WhatsApp",
+    footerNewTab: "öffnet in einem neuen Tab",
+    poweredBy: "Plattform Big Elephant",
     // Catálogo (/tienda)
     searchShop: "Im Angebot suchen",
     searchPlaceholder: "Suchen…",
@@ -257,6 +273,14 @@ export const SITE_UI_TEXT = {
     productNotFound: "Product not found",
     productNotFoundHelp: "This product is not available or has been removed from the shop.",
     viewShop: "View the shop",
+    // Website footer
+    footerLinksLabel: "Footer links",
+    footerLegalLabel: "Legal information",
+    footerSocialLabel: "Social media",
+    footerContactTitle: "Contact",
+    footerWhatsapp: "WhatsApp",
+    footerNewTab: "opens in a new tab",
+    poweredBy: "Big Elephant platform",
     // Catálogo (/tienda)
     searchShop: "Search the catalogue",
     searchPlaceholder: "Search…",

@@ -13,6 +13,7 @@
  *   la web y el acceso: el fondo, por defecto, es la imagen principal de la web (`brand_hero_image_url`);
  *   `login_background_url` lo sustituye por otra imagen o, con «none», lo retira.
  */
+import { parseFooterSocial, validateFooterSocial, type SocialLink } from "../../shared/footer";
 import { normalizeWhatsapp, parseWhatsappButtonConfig, WHATSAPP_BUTTON_SETTING, type WhatsappButtonConfig } from "../../shared/whatsappButton";
 
 /** Ajustes que forman el tema público (lectura de `public.getTheme`). */
@@ -30,7 +31,7 @@ export const HEADER_TONES = ["dark", "light"] as const;
 export const SITE_FINISHES = ["standard", "editorial"] as const;
 export const HEADER_CTA_LABEL_MAX = 40;
 export const FOOTER_TEXT_MAX = 240;
-export const SITE_CHROME_KEYS = ["site_header_cta", "site_header_cta_label", "site_header_cta_url", "site_header_style", "site_header_tone", "site_header_logo_light", "site_footer_style", "site_footer_text", "site_footer_contact", "site_finish", "site_header_cart"] as const;
+export const SITE_CHROME_KEYS = ["site_header_cta", "site_header_cta_label", "site_header_cta_url", "site_header_style", "site_header_tone", "site_header_logo_light", "site_footer_style", "site_footer_text", "site_footer_contact", "site_footer_social", "site_finish", "site_header_cart"] as const;
 
 /** Enlace del botón de la cabecera: página de la web (/contacto), ancla, http(s), correo o teléfono. */
 export function siteLink(v: string | undefined | null): string | null {
@@ -82,7 +83,7 @@ export interface PublicTheme {
   analytics: { ga4Id: string | null; metaPixelId: string | null };
   /** Botón destacado de la cabecera: «auto» es el de serie (presupuesto, si está contratado) */
   header: { cta: (typeof HEADER_CTA_MODES)[number]; ctaLabel: string | null; ctaUrl: string | null; style: (typeof HEADER_STYLES)[number]; tone: (typeof HEADER_TONES)[number]; logoLight: string | null; /** Icono del carrito (si la tienda está contratada); se oculta en una web sin compra en línea. */ showCart: boolean };
-  footer: { style: (typeof FOOTER_STYLES)[number]; text: string | null; showContact: boolean };
+  footer: { style: (typeof FOOTER_STYLES)[number]; text: string | null; showContact: boolean; /** Redes sociales del pie (enlaces https de cada red) */ social: SocialLink[] };
   finish: (typeof SITE_FINISHES)[number];
 }
 
@@ -216,6 +217,12 @@ export function cleanThemeValues(values: Record<string, string>): Record<string,
     if (k === "site_footer_style" && !(FOOTER_STYLES as readonly string[]).includes(val)) throw new ThemeValueError(k, "Estilo no válido");
     if (k === "site_finish" && !(SITE_FINISHES as readonly string[]).includes(val)) throw new ThemeValueError(k, "Acabado no válido");
     if ((k === "site_footer_contact" || k === "site_header_cart") && val !== "true" && val !== "false") throw new ThemeValueError(k, "Opción no válida");
+    if (k === "site_footer_social") {
+      const r = validateFooterSocial(val);
+      if (!r.ok) throw new ThemeValueError(k, r.error);
+      clean[k] = r.value;
+      continue;
+    }
     if (k === "site_header_cta_url") {
       const link = siteLink(val);
       if (!link) throw new ThemeValueError(k, "Enlace no válido: usa una página de tu web (/contacto), una dirección https, un correo o un teléfono");
@@ -284,7 +291,7 @@ function siteChrome(get: (key: string) => string | undefined): Pick<PublicTheme,
   if (cta === "custom" && (!label || !url)) cta = "auto";
   return {
     header: { cta, ctaLabel: cta === "custom" ? label : null, ctaUrl: cta === "custom" ? url : null, style: pick(get("site_header_style"), HEADER_STYLES, "classic"), tone: pick(get("site_header_tone"), HEADER_TONES, "dark"), logoLight: safeHttpUrl(get("site_header_logo_light")), showCart: get("site_header_cart") !== "false" },
-    footer: { style: pick(get("site_footer_style"), FOOTER_STYLES, "dark"), text: text(get("site_footer_text"), FOOTER_TEXT_MAX), showContact: get("site_footer_contact") !== "false" },
+    footer: { style: pick(get("site_footer_style"), FOOTER_STYLES, "dark"), text: text(get("site_footer_text"), FOOTER_TEXT_MAX), showContact: get("site_footer_contact") !== "false", social: parseFooterSocial(get("site_footer_social")) },
     finish: pick(get("site_finish"), SITE_FINISHES, "standard"),
   };
 }
