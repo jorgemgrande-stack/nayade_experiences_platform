@@ -2,6 +2,7 @@
  * LMS entrega 4: circuito comercial → matrícula con la aplicación real sobre MySQL (opt-in, REGISTRY_TEST_DATABASE_URL).
  * Sin cobros reales: el cobro es el manual del CRM (`crm.quotes.confirmPayment`); sin correos reales (proveedor falso).
  */
+import { randomBytes } from "node:crypto";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { startEssentialApp, data, errCode, type EssentialApp } from "./essentialApp.testkit";
 import { resetProductRequestLimits } from "./productRequests";
@@ -10,6 +11,9 @@ import { addDaysToDate } from "../shared/editionSessions";
 const URL_ = process.env.REGISTRY_TEST_DATABASE_URL;
 vi.setConfig({ testTimeout: 90_000 });
 const TAG = Date.now().toString(36);
+// Claves de prueba generadas en cada ejecución (nada con aspecto de secreto en el código)
+const NEW_PW = `Pw-${randomBytes(9).toString("hex")}`;
+const OTHER_PW = `Pw-${randomBytes(9).toString("hex")}`;
 const mail = (who: string) => `${who}.${TAG}@lms-flow.example`;
 const today = () => new Intl.DateTimeFormat("sv", { timeZone: "Europe/Madrid" }).format(new Date());
 
@@ -112,10 +116,10 @@ describe.skipIf(!URL_)("LMS: pago confirmado → matrícula (aplicación real)",
     // El token no se guarda en claro: la persona lo recibe por correo (acción expresa de la administración) y solo sirve una vez
     expect(ok(await ess.m("a", "learning.admin.sendInvite", { userId: u.id }, adm), "invitar")).toMatchObject({ sent: true });
     const token = /token=([A-Za-z0-9%_.-]+)/.exec(ess.mails.filter((m) => m.to.some((x) => x.email === email)).pop()!.htmlContent)![1];
-    const act = await ess.m("a", "public.setPassword", { token: decodeURIComponent(token), password: "Prueba-Segura-123" });
+    const act = await ess.m("a", "public.setPassword", { token: decodeURIComponent(token), password: NEW_PW });
     expect(act.status, JSON.stringify(act.json)).toBe(200);
-    expect((await ess.m("a", "public.setPassword", { token: decodeURIComponent(token), password: "Otra-Clave-456" })).status).not.toBe(200); // un solo uso
-    const login = await ess.call("a", "POST", "/api/auth/login", { body: { email, password: "Prueba-Segura-123" } });
+    expect((await ess.m("a", "public.setPassword", { token: decodeURIComponent(token), password: OTHER_PW })).status).not.toBe(200); // un solo uso
+    const login = await ess.call("a", "POST", "/api/auth/login", { body: { email, password: NEW_PW } });
     expect(login.status, login.text).toBe(200);
     const cookie = login.cookie!;
     const mine = ok(await ess.q("a", "learning.my.courses", undefined, cookie), "mis cursos");
