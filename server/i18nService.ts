@@ -395,6 +395,15 @@ export async function validateContentTranslation(repo: I18nRepo, entityType: Con
   return { success: true };
 }
 
+/** Retirar de la web una traducción validada: vuelve a borrador con sus textos (no se borra nada). */
+export async function unvalidateContentTranslation(repo: I18nRepo, entityType: ContentEntityType, entityKey: string, rawLocale: unknown) {
+  const { locale } = await requireExtraLocale(repo, rawLocale);
+  const row = await repo.contentTranslation(entityType, entityKey, locale);
+  if (!row) throw new I18nError("No hay traducción que retirar.");
+  await repo.saveContentTranslation({ ...row, status: "draft", validatedAt: null, validatedBy: null });
+  return { success: true };
+}
+
 // ─── Menús ────────────────────────────────────────────────────────────────────
 
 export interface MenuItemLike {

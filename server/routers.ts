@@ -1123,6 +1123,22 @@ export const appRouter = router({
       return i18nCall((repo) => updateI18nSettings(repo, input));
     }),
 
+    /** «Idiomas» de un producto: textos principales y traducción de cada idioma adicional (server/productTranslationsDb.ts). */
+    productTranslationEditor: adminProcedure.input(z.object({ experienceId: z.number().int().positive() })).query(async ({ input }) => {
+      const { getProductTranslationEditor } = await import("./productTranslationsDb");
+      return i18nCall((repo) => getProductTranslationEditor(repo, input.experienceId));
+    }),
+
+    /** Retira de la web una traducción de contenido validada (vuelve a borrador). El tipo se comprueba en el servidor. */
+    unvalidateContentTranslation: adminProcedure
+      .input(z.object({ entityType: z.string().max(40), entityKey: z.string().max(190), locale: z.string().max(35) }).strict())
+      .mutation(async ({ input }) => {
+        const { unvalidateContentTranslation, CONTENT_ENTITY_TYPES } = await import("./i18nService");
+        const type = CONTENT_ENTITY_TYPES.find((t) => t === input.entityType);
+        if (!type) throw new TRPCError({ code: "BAD_REQUEST", message: "Tipo de contenido no válido." });
+        return i18nCall((repo) => unvalidateContentTranslation(repo, type, input.entityKey, input.locale));
+      }),
+
     /** Estado de una página en cada idioma adicional (conmutador de idioma del editor). */
     pageTranslations: adminProcedure.input(z.object({ slug: z.string().regex(/^[a-z0-9-]{1,64}$/) })).query(async ({ input }) => {
       const { pageTranslationStatuses } = await import("./i18nService");
