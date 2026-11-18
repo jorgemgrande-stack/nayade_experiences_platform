@@ -15,8 +15,8 @@ export interface SitemapI18nPlan {
 }
 
 /** `products`: fichas que el sitemap ya publica en `/tienda/<slug>` (tienda de una pyme); entran sus idiomas traducidos. */
-export async function i18nSitemapPlan(repo: I18nRepo, origin: string, products: PrincipalProduct[] = []): Promise<SitemapI18nPlan | null> {
-  const { cfg, entries } = await sitemapAlternates(repo, products);
+export async function i18nSitemapPlan(repo: I18nRepo, origin: string, products: PrincipalProduct[] = [], opts: { catalog?: boolean } = {}): Promise<SitemapI18nPlan | null> {
+  const { cfg, entries } = await sitemapAlternates(repo, products, opts);
   if (!entries.length) return null;
   const base = origin.replace(/\/+$/, "");
   const alternatesFor = new Map<string, Alternate[]>();

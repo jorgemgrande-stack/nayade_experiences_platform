@@ -134,7 +134,9 @@ describe.skipIf(!URL_)("Idioma principal configurable (aplicación real, dos emp
     expect(rb.status, rb.text).toBe(200);
     expect(unwrap(await q("cms.i18nConfig")).defaultLocale).toBe("es");
     expect(await pages()).toEqual(before.pages);
-    expect(unwrap(await q("cms.pageEditor", { slug: "servicios" }))).toEqual(before.editor);
+    // `updatedAt` marca la hora de la última escritura (a segundos): la vuelta atrás puede cruzar un segundo; el resto debe ser idéntico
+    const sinHora = (e: any) => ({ ...e, page: e.page ? { ...e.page, updatedAt: undefined } : e.page });
+    expect(sinHora(unwrap(await q("cms.pageEditor", { slug: "servicios" })))).toEqual(sinHora(before.editor));
     expect(await menuOf("header")).toEqual(before.menu);
     expect((await ess.call("a", "GET", "/servicios")).status).toBe(200);
     expect((await ess.call("a", "GET", "/dienstleistungen")).status).toBe(404);

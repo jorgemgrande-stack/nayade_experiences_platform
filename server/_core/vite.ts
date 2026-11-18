@@ -235,6 +235,16 @@ export function serveStatic(app: Express, opts: { distPath?: string; routeDeps?:
       }
       // Ficha de producto traducida: su título y descripción en ese idioma
       if (i18n?.kind === "product" && i18n.meta) seo.meta = { ...seo.meta, ...pageMetaOverride(i18n.meta, brandName, false) };
+      // Ficha en el idioma principal (o sin traducir): su propio título y descripción, no los genéricos de la empresa
+      if (i18n?.kind === "product" && !i18n.meta) {
+        try {
+          const { getExperienceBySlug } = await import("../db");
+          const e = await getExperienceBySlug(i18n.principalSlug);
+          if (e) seo.meta = { ...seo.meta, ...pageMetaOverride({ title: e.title, metaTitle: e.metaTitle, metaDescription: e.metaDescription ?? e.shortDescription }, brandName, false) };
+        } catch {
+          /* SEO genérico de la empresa */
+        }
+      }
       // Catálogo: título en el idioma de la URL (el del menú que lleva a él)
       if (i18n?.kind === "catalog") seo.meta = { ...seo.meta, ...pageMetaOverride({ title: i18n.title, metaTitle: null, metaDescription: null }, brandName, false, { keepDescription: true }) };
       // Blog: título, descripción e imagen de la entrada publicada (nunca de un borrador)

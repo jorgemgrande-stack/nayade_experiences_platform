@@ -56,6 +56,12 @@ export function legalKindOfUrl(url: string | null | undefined): "aviso" | "priva
   return LEGAL_KIND_BY_SLUG[last] ?? null;
 }
 
+/** Páginas propias de contacto en los idiomas de las webs de empresa (la ruta genérica /contacto no debe duplicarlas). */
+const CONTACT_PAGE_SLUGS = new Set(["contacto", "kontakt", "contact", "contatto", "contato"]);
+export function isContactPageSlug(slug: string): boolean {
+  return CONTACT_PAGE_SLUGS.has(slug.toLowerCase());
+}
+
 interface MenuLink {
   id: number;
   parentId?: number | null;

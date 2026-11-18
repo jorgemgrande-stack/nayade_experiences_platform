@@ -11,7 +11,7 @@
  */
 
 import { Router } from "express";
-import { and, eq, notLike } from "drizzle-orm";
+import { and, eq, inArray, notLike, or } from "drizzle-orm";
 import {
   staticPages,
   experiences,
@@ -23,7 +23,7 @@ import {
 } from "../drizzle/schema";
 import { legacyDb, legacyPool } from "./_core/legacyDb";
 import { isMultiTenant } from "./_core/tenant";
-import { isLegalPlaceholder } from "../shared/tenantNav";
+import { isContactPageSlug, isLegalPlaceholder } from "../shared/tenantNav";
 import { publicBaseUrl } from "./_core/productIdentity";
 import { getCapabilityAccess } from "./_core/capabilities/access";
 import { listPublishedForSitemap } from "./blogDb";
@@ -102,10 +102,10 @@ function urlEntry(base: string, loc: string, lastmod?: string, changefreq = "mon
 }
 
 /** Plan multidioma del sitemap; ante cualquier fallo, sin multidioma (nunca rompe el sitemap). */
-async function sitemapI18nPlan(base: string, products: Array<{ id: number; slug: string; updatedAt: Date | null }> = []) {
+async function sitemapI18nPlan(base: string, products: Array<{ id: number; slug: string; updatedAt: Date | null }> = [], opts: { catalog?: boolean } = {}) {
   try {
     const [{ sqlI18nRepo }, { i18nSitemapPlan }] = await Promise.all([import("./i18nSqlRepo"), import("./sitemapI18n")]);
-    return await i18nSitemapPlan(sqlI18nRepo(), base, products.map((p) => ({ ...p, isPublished: true })));
+    return await i18nSitemapPlan(sqlI18nRepo(), base, products.map((p) => ({ ...p, isPublished: true })), opts);
   } catch {
     return null;
   }
@@ -155,7 +155,8 @@ sitemapRouter.get("/sitemap.xml", async (_req, res) => {
         .select({ id: experiences.id, slug: experiences.slug, updatedAt: experiences.updatedAt })
         .from(experiences)
         .where(and(
-          eq(experiences.isActive, true),
+          // Un producto por solicitud se ve en la web (y su sitemap) con solo estar publicado, como su ficha; uno de precio fijo, activo
+          multi ? or(eq(experiences.isActive, true), inArray(experiences.offerMode, ["on_request", "priced_request", "coming_soon"])) : eq(experiences.isActive, true),
           eq(experiences.isPublished, true),
           notLike(experiences.slug, "%-copia-%"),
           notLike(experiences.slug, "%-"),
@@ -194,7 +195,7 @@ sitemapRouter.get("/sitemap.xml", async (_req, res) => {
 
     // Multidioma (E-1): solo con traducciones validadas; si no, `null` y el sitemap es el de siempre
     // Las fichas de producto localizadas solo existen en la tienda de una pyme (`/<idioma>/tienda/<slug>`)
-    const i18nPlan = multi ? await sitemapI18nPlan(BASE_URL, catalogKind === "generic" ? expRows : []) : null;
+    const i18nPlan = multi ? await sitemapI18nPlan(BASE_URL, catalogKind === "generic" ? expRows : [], { catalog: catalogKind === "generic" && expRows.length > 0 }) : null;
     const entries: string[] = [];
     const seen = new Set<string>();
     const add = (loc: string, lastmod?: string, changefreq?: string, priority?: string) => {
@@ -205,7 +206,10 @@ sitemapRouter.get("/sitemap.xml", async (_req, res) => {
     };
 
     // Rutas estáticas; en multiempresa, las sectoriales solo con su módulo y lo que la empresa ha publicado
+    // Con una página propia de contacto (en el idioma principal: «kontakt», «contact»…), la ruta genérica /contacto no se lista
+    const ownContact = multi && pageRows.some((r) => isContactPageSlug(r.slug));
     for (const u of multi ? TENANT_STATIC_URLS : STATIC_URLS) {
+      if (u.path === "/contacto" && ownContact) continue;
       if (!multi && ((u.path === "/hotel" && !hotelOn) || (u.path === "/spa" && !spaOn) || (u.path === "/restaurantes" && !restaurantsOn))) continue;
       add(u.path, undefined, u.changefreq, u.priority);
     }
