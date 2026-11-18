@@ -51,7 +51,8 @@ const more = (shown: number, total: number) => (total > shown ? <li className="p
 const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
 
 export function OperationalPanelCard({ enabled }: { enabled: boolean }) {
-  const q = trpc.coreHome.operations.useQuery(undefined, { enabled, retry: 1, staleTime: 30_000, refetchInterval: 120_000, refetchIntervalInBackground: false });
+  const q = trpc.coreHome.operations.useQuery(undefined, { enabled, retry: 1, staleTime: 30_000, // Sin nada que mostrar (p. ej. una empresa sin convocatorias ni solicitudes web) no se vuelve a consultar
+    refetchInterval: (query) => (query.state.data?.visible ? 120_000 : false), refetchIntervalInBackground: false });
   const p = q.data;
   // Sin convocatorias ni solicitudes web (o sin poder leerlo): ninguna tarjeta decorativa
   if (!enabled || !p?.visible) return null;
