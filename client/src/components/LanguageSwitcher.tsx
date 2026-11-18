@@ -2,11 +2,21 @@ import { useLocation } from "wouter";
 import { trpc } from "@/lib/trpc";
 import { localeAutonym, useSiteLocale } from "@/hooks/useSiteLocale";
 
-/** Consulta que se conserva al cambiar de idioma: solo `?opcion=<id>` en una ficha de producto. Pura. */
+/**
+ * Consulta que se conserva al cambiar de idioma: `?opcion=<id>` en una ficha de producto y `?categoria=<slug>` en el
+ * catálogo (el slug de la categoría es el mismo en todos los idiomas). Pura.
+ */
 export function switcherQuery(path: string, search: string): string {
-  if (!/(^|\/)tienda\/[^/]+\/?$/.test(path.split(/[?#]/)[0])) return "";
-  const v = new URLSearchParams(search).get("opcion");
-  return v && /^[1-9]\d{0,9}$/.test(v) ? `?opcion=${v}` : "";
+  const p = path.split(/[?#]/)[0];
+  if (/(^|\/)tienda\/[^/]+\/?$/.test(p)) {
+    const v = new URLSearchParams(search).get("opcion");
+    return v && /^[1-9]\d{0,9}$/.test(v) ? `?opcion=${v}` : "";
+  }
+  if (/(^|\/)tienda\/?$/.test(p)) {
+    const c = new URLSearchParams(search).get("categoria");
+    return c && /^[a-z0-9-]{1,64}$/i.test(c) ? `?categoria=${c}` : "";
+  }
+  return "";
 }
 
 /**

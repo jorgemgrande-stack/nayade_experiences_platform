@@ -12,6 +12,7 @@
  */
 import { normalizeBlocks as normalizeBlocksRaw, PageBlocksError } from "./_core/pageBlocks";
 import type { PageBlock } from "../shared/pageBlocks";
+import { siteUiText } from "../shared/siteUiText";
 import {
   DEFAULT_LOCALE, MAX_LOCALES, isSafeRedirectTarget, publicLocales, buildConfig, contentHash, decideServing, isConfiguredLocale, isMultilingual, isReservedSlug,
   internalLinkSegments, internalProductSlugs, localeSeo, localizeBlockLinks, localizeProductLink, localizedPath, normalizeLocale, normalizeLocalizedSlug, parseLocalizedPath,
@@ -119,6 +120,8 @@ export interface I18nRepo {
    */
   productBySlug?(slug: string): Promise<PrincipalProduct | null>;
   productById?(id: number): Promise<PrincipalProduct | null>;
+  /** Elemento activo del menú que lleva al catálogo (`/tienda`), para el título de la pestaña del catálogo. */
+  shopMenuItem?(): Promise<{ id: number; label: string } | null>;
 }
 
 // ─── Configuración e idiomas ──────────────────────────────────────────────────
@@ -561,7 +564,17 @@ export type ResolvedRequest =
   | { kind: "redirect"; to: string; status: 301 }
   | { kind: "notFound" }
   /** Catálogo de la tienda en un idioma adicional (`/<idioma>/tienda`): las mismas reglas que `/tienda`. */
-  | { kind: "catalog"; locale: string }
+  | {
+      kind: "catalog";
+      locale: string;
+      /** La URL llevaba prefijo de idioma (el catálogo del idioma principal sin prefijo es `/tienda`). */
+      prefixed: boolean;
+      seo: LocaleSeo;
+      /** El mismo catálogo en cada idioma público (selector de idioma). */
+      switcher: Alternate[];
+      /** Título de la pestaña en ese idioma (el del menú que lleva al catálogo, o «Shop»/«Tienda»…). */
+      title: string;
+    }
   | {
       kind: "page";
       /** La URL llevaba prefijo de idioma. Sin prefijo es el principal: la ruta la valida el servidor de siempre. */
@@ -681,6 +694,25 @@ function productRequest(cfg: I18nConfig, origin: string, r: Extract<ProductResol
   return { kind: "product", prefixed, locale: r.locale, productId: r.product.id, principalSlug: r.product.slug, translated: r.translated, meta, seo, switcher };
 }
 
+/** Catálogo (`/tienda` o `/<idioma>/tienda`): selector, canónica, hreflang y título en el idioma de la URL. */
+async function catalogRequest(repo: I18nRepo, cfg: I18nConfig, origin: string, locale: string, prefixed: boolean): Promise<ResolvedRequest> {
+  const locales = publicLocales(cfg);
+  const decision: ServeDecision = locale === cfg.defaultLocale ? { kind: "principal" } : { kind: "translated", locale };
+  const seo = { ...localeSeo({ cfg, origin, decision, locale, rest: "/tienda", principalRest: "/tienda", versions: locales.map((l) => ({ locale: l, rest: "/tienda" })) }), htmlLang: locale };
+  const switcher = locales.length > 1 ? locales.map((l) => ({ hreflang: l, href: localizedPath("/tienda", l, cfg) })) : [];
+  let title = "";
+  try {
+    const item = repo.shopMenuItem ? await repo.shopMenuItem() : null;
+    if (item) {
+      const t = locale === cfg.defaultLocale ? null : (await repo.listContentTranslations("menu_item", locale, true)).find((x) => x.entityKey === String(item.id));
+      title = (t?.fields.label ?? (locale === cfg.defaultLocale ? item.label : "")).trim();
+    }
+  } catch {
+    /* sin título propio: el genérico del idioma */
+  }
+  return { kind: "catalog", locale, prefixed, seo, switcher, title: title || siteUiText(locale).shop };
+}
+
 /** Versiones públicas de una página (principal + traducciones validadas), para `hreflang`. */
 async function versionsOf(repo: I18nRepo, cfg: I18nConfig, page: PrincipalPage, home: string): Promise<PageVersion[]> {
   const isHome = page.slug === home;
@@ -732,6 +764,7 @@ export async function resolveRequest(repo: I18nRepo, pathname: string, origin: s
     const product = await asProduct(cfg.defaultLocale, false);
     if (product) return product;
     const page = await asPage(parsed.rest);
+    if ((!page || !page.isPublished) && parsed.rest === "/tienda" && repo.productBySlug) return catalogRequest(repo, cfg, origin, cfg.defaultLocale, false);
     if (!page || !page.isPublished) return { kind: "passthrough" };
     const decision: ServeDecision = { kind: "principal" };
     const seo = localeSeo({ cfg, origin, decision, locale: cfg.defaultLocale, rest: parsed.rest, principalRest: parsed.rest, versions: await versionsOf(repo, cfg, page, home) });
@@ -748,6 +781,7 @@ export async function resolveRequest(repo: I18nRepo, pathname: string, origin: s
     const product = await asProduct(locale, true);
     if (product) return product;
     const page = await asPage(parsed.rest);
+    if (!page?.isPublished && parsed.rest === "/tienda" && repo.productBySlug) return catalogRequest(repo, cfg, origin, locale, true);
     if (!page?.isPublished) return { kind: "notFound" };
     const decision: ServeDecision = { kind: "principal" };
     return { kind: "page", prefixed: true, decision, locale, principalSlug: page.slug, page: null, seo: localeSeo({ cfg, origin, decision, locale, rest: parsed.rest, principalRest: parsed.rest, versions: await versionsOf(repo, cfg, page, home) }) };
@@ -757,7 +791,7 @@ export async function resolveRequest(repo: I18nRepo, pathname: string, origin: s
   const product = await asProduct(locale, true);
   if (product) return product;
   // Catálogo del idioma adicional (solo si la tienda está localizada: el repositorio conoce los productos)
-  if (parsed.rest === "/tienda" && repo.productBySlug) return { kind: "catalog", locale };
+  if (parsed.rest === "/tienda" && repo.productBySlug) return catalogRequest(repo, cfg, origin, locale, true);
 
   // Idioma adicional: por slug publicado (la portada, en «/»)
   let row: PageTranslationRow | null = null;

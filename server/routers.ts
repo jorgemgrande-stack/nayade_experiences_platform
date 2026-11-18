@@ -606,6 +606,8 @@ export const appRouter = router({
         if (r.kind === "page") return { htmlLang: r.seo.htmlLang, alternates: r.seo.alternates.filter((a) => a.hreflang !== "x-default") };
         // Ficha de producto: la misma ficha en cada idioma público (también los aún sin traducir, que lo avisan)
         if (r.kind === "product") return { htmlLang: r.seo.htmlLang, alternates: r.switcher };
+        // Catálogo: el mismo catálogo en cada idioma público
+        if (r.kind === "catalog") return { htmlLang: r.seo.htmlLang, alternates: r.switcher };
         return { htmlLang: "es", alternates: [] };
       }),
 

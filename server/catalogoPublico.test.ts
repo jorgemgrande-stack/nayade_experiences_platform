@@ -95,7 +95,7 @@ describe("/<idioma>/tienda en el servidor", () => {
       listContentTranslations: async () => [],
     };
     const shop = { ...base, productBySlug: async () => null, productById: async () => null } as unknown as I18nRepo;
-    expect(await resolveRequest(shop, "/es/tienda", "https://x.test")).toEqual({ kind: "catalog", locale: "es" });
+    expect(await resolveRequest(shop, "/es/tienda", "https://x.test")).toMatchObject({ kind: "catalog", locale: "es", prefixed: true });
     expect(await resolveRequest(shop, "/fr/tienda", "https://x.test")).toEqual({ kind: "notFound" });
     expect((await resolveRequest(base as unknown as I18nRepo, "/es/tienda", "https://x.test")).kind).not.toBe("catalog");
   });

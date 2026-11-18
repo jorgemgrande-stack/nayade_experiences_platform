@@ -235,6 +235,8 @@ export function serveStatic(app: Express, opts: { distPath?: string; routeDeps?:
       }
       // Ficha de producto traducida: su título y descripción en ese idioma
       if (i18n?.kind === "product" && i18n.meta) seo.meta = { ...seo.meta, ...pageMetaOverride(i18n.meta, brandName, false) };
+      // Catálogo: título en el idioma de la URL (el del menú que lleva a él)
+      if (i18n?.kind === "catalog") seo.meta = { ...seo.meta, ...pageMetaOverride({ title: i18n.title, metaTitle: null, metaDescription: null }, brandName, false, { keepDescription: true }) };
       // Blog: título, descripción e imagen de la entrada publicada (nunca de un borrador)
       if (pathname === "/blog" || pathname.startsWith("/blog/")) {
         try {
@@ -246,7 +248,7 @@ export function serveStatic(app: Express, opts: { distPath?: string; routeDeps?:
         }
       }
       let html = injectSeoMeta(_htmlCache, seo);
-      if (i18n?.kind === "page" || i18n?.kind === "product") html = applyLocaleSeo(html, i18n.seo);
+      if (i18n?.kind === "page" || i18n?.kind === "product" || i18n?.kind === "catalog") html = applyLocaleSeo(html, i18n.seo);
       if (isMultiTenant()) html = tenantSiteHtml(html, escapeHtml(brandName));
       if (route.status === 404) html = html.replace(/<meta charset="UTF-8" \/>/, '<meta charset="UTF-8" />\n    <meta name="robots" content="noindex" />');
       // Web oculta a los buscadores (empresa de demostración o web en preparación)
