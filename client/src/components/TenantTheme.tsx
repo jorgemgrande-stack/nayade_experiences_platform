@@ -152,7 +152,7 @@ export function PoweredBy({ theme, className = "text-white/30 hover:text-white/6
 
 /** Estilos del pie (Studio › Cabecera y pie): oscuro (de serie), claro o con el color de la marca. */
 const FOOTER_STYLE = {
-  dark: { root: "bg-lago-dark text-white", soft: "text-white/70", softer: "text-white/60", faint: "text-white/40", hover: "hover:text-white", border: "border-white/10", powered: "text-white/30 hover:text-white/60" },
+  dark: { root: "bg-lago-dark text-white", soft: "text-white/70", softer: "text-white/60", faint: "text-white/60", hover: "hover:text-white", border: "border-white/10", powered: "text-white/55 hover:text-white" },
   light: { root: "bg-muted text-foreground", soft: "text-foreground/80", softer: "text-muted-foreground", faint: "text-muted-foreground", hover: "hover:text-foreground", border: "border-border", powered: "text-muted-foreground hover:text-foreground" },
   brand: { root: "bg-primary text-primary-foreground", soft: "text-primary-foreground/85", softer: "text-primary-foreground/75", faint: "text-primary-foreground/60", hover: "hover:text-primary-foreground", border: "border-primary-foreground/20", powered: "text-primary-foreground/50 hover:text-primary-foreground/80" },
 } as const;
@@ -247,7 +247,7 @@ export function TenantFooter({ theme }: { theme: Theme }) {
               <h2 id={`footer-col-${col.id}`} className={headingCls} style={headingStyle}>{col.title}</h2>
               <ul className={`space-y-2.5 text-sm ${st.soft}`}>
                 {col.links.map((l) => (
-                  <li key={l.id}>{linkEl(l as unknown as FooterLink)}</li>
+                  <li key={l.id} className="py-0.5">{linkEl(l as unknown as FooterLink)}</li>
                 ))}
               </ul>
             </nav>
