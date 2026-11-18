@@ -554,7 +554,9 @@ export async function listPublicEditions(opts: { experienceId?: number; productS
   if (!d) return [];
   const where: SQL[] = [
     sql`x.isPublished = 1`,
-    sql`x.isActive = 1`,
+    // «Activo» es «se vende en línea». Un producto por solicitud (bajo petición, precio visible o próximamente) no lo
+    // está nunca y su ficha se publica igual: sus convocatorias también. Uno de precio fijo desactivado no las muestra
+    sql`(x.isActive = 1 OR x.offer_mode IN ('on_request','priced_request','coming_soon'))`,
     sql`e.status IN ('open','waitlist','closed')`,
     sql`COALESCE(e.ends_at, e.starts_at + 86400000) >= ${now}`,
   ];
