@@ -232,6 +232,16 @@ describe("sin la migración 0077 nada se rompe", () => {
     expect(list[0].sessions).toEqual([]);
   });
 
+  it("las convocatorias de un producto por solicitud (no «activo»: no se vende en línea) también son públicas", async () => {
+    const { listPublicEditions } = await import("./editionsDb");
+    state.executed = [];
+    await listPublicEditions({ experienceId: 24, now: Date.UTC(2036, 0, 1) });
+    const q = state.executed.find((s) => /FROM product_editions e JOIN experiences x/.test(s))!;
+    expect(q).toContain("x.isPublished = 1");
+    expect(q).toContain("(x.isActive = 1 OR x.offer_mode IN ('on_request','priced_request','coming_soon'))");
+    expect(q).not.toMatch(/AND x.isActive = 1 AND/);
+  });
+
   it("crear una sesión sin la tabla da el error de esquema (el router lo traduce a un aviso claro)", async () => {
     const { createSession } = await import("./editionSessionsDb");
     const { isMissingEditionsSchema } = await import("./editionsDb");
