@@ -90,11 +90,13 @@ describe.skipIf(!URL_)("Sesiones de convocatoria (aplicación real)", () => {
     expect(ed.sessions.map((s: any) => [s.startsOn, s.startTime])).toEqual([["2036-11-30", null], ["2036-12-14", null], ["2036-12-21", null], ["2036-12-28", "18:00"]]);
   });
 
-  it("borrar una sesión renumera; orden manual solo con el conjunto exacto", async () => {
+  it("retirar una sesión la cancela (sin borrado físico): sigue en la lista, fuera de la web; orden manual solo con el conjunto exacto", async () => {
     const list = data(await ess.q("a", "products.editions.sessions.list", { editionId: edition }, admA)) as any[];
     expect((await ess.m("a", "products.editions.sessions.delete", { id: list[0].id }, admA)).status).toBe(200);
     const after = data(await ess.q("a", "products.editions.sessions.list", { editionId: edition }, admA)) as any[];
-    expect(after.map((s) => s.position)).toEqual([1, 2, 3, 4]);
+    expect(after.find((s) => s.id === list[0].id)?.status).toBe("cancelled");
+    expect(after.filter((s) => s.status !== "cancelled")).toHaveLength(4);
+    expect(after.map((s) => s.position)).toEqual([1, 2, 3, 4, 5]);
     expect(errCode(await ess.m("a", "products.editions.sessions.reorder", { editionId: edition, ids: [after[0].id] }, admA))).toBe("BAD_REQUEST");
     const rev = after.map((s) => s.id).reverse();
     expect(data(await ess.m("a", "products.editions.sessions.reorder", { editionId: edition, ids: rev }, admA)).map((s: any) => s.id)).toEqual(rev);
