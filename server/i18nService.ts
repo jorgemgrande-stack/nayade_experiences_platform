@@ -362,7 +362,7 @@ export async function untranslatedForPage(repo: I18nRepo, pageId: number, rawLoc
  * Claves: `menu_item` = id del elemento, `setting` = clave del ajuste, `product` = `experiences.id`,
  * `variant` = `experience_variants.id`, `edition` = `product_editions.id` (convocatoria).
  */
-export const CONTENT_ENTITY_TYPES = ["menu_item", "setting", "form", "product", "variant", "edition"] as const;
+export const CONTENT_ENTITY_TYPES = ["menu_item", "setting", "form", "product", "variant", "edition", "category"] as const;
 export type ContentEntityType = (typeof CONTENT_ENTITY_TYPES)[number];
 
 /**
@@ -379,6 +379,8 @@ export const CONTENT_FIELDS: Record<ContentEntityType, Record<string, number>> =
   },
   variant: { name: 128, description: 2000 },
   edition: { label: 160, scheduleNote: 600, locationNote: 300 },
+  /** Categoría de la tienda (`categories.id`): su nombre en el catálogo público */
+  category: { name: 128 },
 };
 
 const KEY_RE = /^[A-Za-z0-9_.:-]{1,190}$/;
@@ -392,7 +394,7 @@ export async function saveContentTranslationDraft(
   if (!allowed) throw new I18nError("Tipo de contenido no válido.");
   if (!KEY_RE.test(input.entityKey)) throw new I18nError("Identificador no válido.");
   // Producto, opción y convocatoria se identifican por su id (nunca por el slug, que puede cambiar)
-  if ((input.entityType === "product" || input.entityType === "variant" || input.entityType === "edition") && !/^[1-9]\d{0,9}$/.test(input.entityKey)) throw new I18nError("Identificador no válido.");
+  if ((input.entityType === "product" || input.entityType === "variant" || input.entityType === "edition" || input.entityType === "category") && !/^[1-9]\d{0,9}$/.test(input.entityKey)) throw new I18nError("Identificador no válido.");
   const fields: Record<string, string> = {};
   for (const [k, v] of Object.entries(input.fields ?? {})) {
     if (!(k in allowed)) throw new I18nError(`El campo «${k}» no se puede traducir.`);
@@ -553,6 +555,8 @@ export type ResolvedRequest =
   | { kind: "passthrough" }
   | { kind: "redirect"; to: string; status: 301 }
   | { kind: "notFound" }
+  /** Catálogo de la tienda en un idioma adicional (`/<idioma>/tienda`): las mismas reglas que `/tienda`. */
+  | { kind: "catalog"; locale: string }
   | {
       kind: "page";
       /** La URL llevaba prefijo de idioma. Sin prefijo es el principal: la ruta la valida el servidor de siempre. */
@@ -747,6 +751,8 @@ export async function resolveRequest(repo: I18nRepo, pathname: string, origin: s
   // Ficha de producto del idioma adicional
   const product = await asProduct(locale, true);
   if (product) return product;
+  // Catálogo del idioma adicional (solo si la tienda está localizada: el repositorio conoce los productos)
+  if (parsed.rest === "/tienda" && repo.productBySlug) return { kind: "catalog", locale };
 
   // Idioma adicional: por slug publicado (la portada, en «/»)
   let row: PageTranslationRow | null = null;

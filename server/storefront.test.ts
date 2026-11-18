@@ -189,7 +189,9 @@ describe("páginas y enlaces", () => {
 
   it("portada y listado enlazan a la ficha de la empresa; viaja con la identidad pública, sin rutas públicas nuevas", () => {
     expect(read("client/src/pages/TenantHome.tsx")).toContain("href={productPath(p.slug, kind)}");
-    expect(shop).toContain("href={productPath(p.slug)}");
+    // La tienda enlaza a la ficha de su idioma (con prefijo en un idioma adicional)
+    expect(shop).toContain("href={href(p.slug)}");
+    expect(shop).toContain("productPath(slug)");
     expect(read("server/authGuard.ts")).not.toContain("getStorefront");
     expect(read("client/src/components/StorefrontRoute.tsx")).toContain("trpc.public.getTheme.useQuery");
   });
