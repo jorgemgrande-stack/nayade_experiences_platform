@@ -47,6 +47,7 @@ const PUBLIC_TRPC_ROUTES = new Set([
   "public.getPublicPageBlocks",
   "public.getTheme",
   "public.getTenantPage",
+  "public.getFooterText",
 
   // ── Blog público (solo entradas publicadas) ───────────────────────────────
   "blog.publicList",

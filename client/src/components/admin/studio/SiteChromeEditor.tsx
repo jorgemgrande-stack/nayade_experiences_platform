@@ -17,8 +17,10 @@ import { cn } from "@/lib/utils";
 import { LinkPicker, type LinkTarget } from "@/components/admin/pageBuilder/BlockEditors";
 import { Segmented } from "@/components/admin/studio/Inspector";
 import ImageUploader from "@/components/ImageUploader";
+import { FooterSocialEditor } from "@/components/admin/studio/FooterSocialEditor";
+import { FooterTranslationsButton } from "@/components/admin/studio/FooterTranslationsPanel";
 
-const CHROME_KEYS = ["site_header_cta", "site_header_cta_label", "site_header_cta_url", "site_header_style", "site_header_tone", "site_header_logo_light", "site_footer_style", "site_footer_text", "site_footer_contact", "site_finish", "site_header_cart"] as const;
+const CHROME_KEYS = ["site_header_cta", "site_header_cta_label", "site_header_cta_url", "site_header_style", "site_header_tone", "site_header_logo_light", "site_footer_style", "site_footer_text", "site_footer_contact", "site_footer_social", "site_finish", "site_header_cart"] as const;
 type ChromeValues = Record<(typeof CHROME_KEYS)[number], string>;
 const CTA_LABEL_MAX = 40;
 const FOOTER_TEXT_MAX = 240;
@@ -43,6 +45,7 @@ export function SiteChromeEditor({ targets, onChanged }: { targets: LinkTarget[]
       site_finish: d.site_finish || "standard",
       site_footer_text: d.site_footer_text ?? "",
       site_footer_contact: d.site_footer_contact || "true",
+      site_footer_social: d.site_footer_social ?? "",
       site_header_cart: d.site_header_cart || "true",
     });
   }, [theme.data, v]);
@@ -189,7 +192,12 @@ export function SiteChromeEditor({ targets, onChanged }: { targets: LinkTarget[]
           <Switch id="chrome-footer-contact" checked={v.site_footer_contact !== "false"} onCheckedChange={(x) => set({ site_footer_contact: x ? "true" : "false" })} />
         </div>
         <p className="text-xs text-muted-foreground">Los datos de contacto y el logotipo se cambian en «Estilo global». Los textos legales se enlazan siempre.</p>
+        <FooterSocialEditor value={v.site_footer_social} onChange={(json) => set({ site_footer_social: json })} />
         <MenuEditor zone="footer" title="Enlaces del pie" targets={targets} onChanged={onChanged} />
+        <p className="text-xs text-muted-foreground">
+          Para organizar el pie en columnas, crea en «Menús» del CMS (zona Pie) un elemento sin enlace como título de columna y cuelga de él sus enlaces: hasta 4 columnas. Los elementos con enlace de primer nivel forman la franja legal inferior.
+        </p>
+        <FooterTranslationsButton />
       </section>
 
       <div className="sticky bottom-0 flex justify-end border-t border-border bg-background py-3">

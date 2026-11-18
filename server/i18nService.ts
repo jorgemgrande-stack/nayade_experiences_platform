@@ -388,6 +388,9 @@ export const CONTENT_FIELDS: Record<ContentEntityType, Record<string, number>> =
 
 const KEY_RE = /^[A-Za-z0-9_.:-]{1,190}$/;
 
+/** Ajustes cuyo texto se puede traducir (y su longitud máxima): lista cerrada, nunca un ajuste cualquiera. */
+export const TRANSLATABLE_SETTINGS: Record<string, number> = { site_footer_text: 240 };
+
 export async function saveContentTranslationDraft(
   repo: I18nRepo,
   input: { entityType: ContentEntityType; entityKey: string; locale: unknown; fields: Record<string, unknown>; slug?: string | null },
@@ -398,12 +401,14 @@ export async function saveContentTranslationDraft(
   if (!KEY_RE.test(input.entityKey)) throw new I18nError("Identificador no válido.");
   // Producto, opción y convocatoria se identifican por su id (nunca por el slug, que puede cambiar)
   if ((input.entityType === "product" || input.entityType === "variant" || input.entityType === "edition" || input.entityType === "category") && !/^[1-9]\d{0,9}$/.test(input.entityKey)) throw new I18nError("Identificador no válido.");
+  if (input.entityType === "setting" && !(input.entityKey in TRANSLATABLE_SETTINGS)) throw new I18nError("Ese ajuste no se puede traducir.");
   const fields: Record<string, string> = {};
   for (const [k, v] of Object.entries(input.fields ?? {})) {
     if (!(k in allowed)) throw new I18nError(`El campo «${k}» no se puede traducir.`);
     if (typeof v !== "string") throw new I18nError(`El campo «${k}» debe ser texto.`);
     const text = stripCtl(v).trim();
     if (text.length > allowed[k]) throw new I18nError(`El campo «${k}» admite hasta ${allowed[k]} caracteres.`);
+    if (input.entityType === "setting" && (text.length > TRANSLATABLE_SETTINGS[input.entityKey] || /[<>]/.test(text))) throw new I18nError("Texto no válido (sin < ni >, dentro del máximo).");
     if (text) fields[k] = text;
   }
   if (input.entityType === "menu_item" && fields.url && !/^(\/(?!\/)|https?:\/\/|mailto:|tel:)/i.test(fields.url)) throw new I18nError("El enlace debe empezar por /, http(s)://, mailto: o tel:.");

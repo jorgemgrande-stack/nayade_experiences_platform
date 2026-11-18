@@ -57,7 +57,7 @@ describe("cabecera y pie: tema público", () => {
   it("sin ajustes: botón de serie, pie oscuro con contacto (como hasta ahora)", () => {
     const t = theme({});
     expect(t.header).toEqual({ cta: "auto", ctaLabel: null, ctaUrl: null, style: "classic", tone: "dark", logoLight: null, showCart: true });
-    expect(t.footer).toEqual({ style: "dark", text: null, showContact: true });
+    expect(t.footer).toEqual({ style: "dark", text: null, showContact: true, social: [] });
   });
 
   it("botón propio completo; sin texto o sin enlace válido se comporta como el de serie", () => {
@@ -76,7 +76,7 @@ describe("cabecera y pie: tema público", () => {
   });
 
   it("pie: estilo de la lista, texto y contacto oculto; un valor guardado no válido vuelve al de serie", () => {
-    expect(theme({ site_footer_style: "light", site_footer_text: "Hola", site_footer_contact: "false" }).footer).toEqual({ style: "light", text: "Hola", showContact: false });
+    expect(theme({ site_footer_style: "light", site_footer_text: "Hola", site_footer_contact: "false" }).footer).toEqual({ style: "light", text: "Hola", showContact: false, social: [] });
     expect(theme({ site_footer_style: "neon" }).footer.style).toBe("dark");
   });
 });

@@ -585,6 +585,27 @@ export const appRouter = router({
         return localizeMenu(sqlI18nRepo(), visible, input.locale);
       }),
 
+    /**
+     * Texto del pie (ajuste «Texto del pie») en el idioma pedido: el del principal para el idioma principal; en otro
+     * idioma, solo su traducción VALIDADA (si no la hay, nada: nunca el texto de otro idioma bajo la página).
+     */
+    getFooterText: publicProcedure
+      .input(z.object({ locale: z.string().max(35).optional() }).optional())
+      .query(async ({ input }) => {
+        const { isMultiTenant } = await import("./_core/tenant");
+        const { getSystemSetting } = await import("./config");
+        const principal = ((await getSystemSetting("site_footer_text", "")) ?? "").trim().slice(0, 240);
+        if (!isMultiTenant() || !input?.locale) return { text: principal || null };
+        const [{ getI18nConfig }, { sqlI18nRepo }] = await Promise.all([import("./i18nService"), import("./i18nSqlRepo")]);
+        const repo = sqlI18nRepo();
+        const cfg = await getI18nConfig(repo);
+        const loc = input.locale.toLowerCase();
+        if (loc === cfg.defaultLocale || !cfg.locales.some((l) => l.locale === loc && l.status === "validated")) return { text: principal || null };
+        const row = (await repo.listContentTranslations("setting", loc, true)).find((t) => t.entityKey === "site_footer_text");
+        const v = (row?.fields.value ?? "").replace(/[<>]/g, "").trim().slice(0, 240);
+        return { text: v || null };
+      }),
+
     /** Idiomas públicos de la web (E-1). Sin idiomas adicionales: `multilingual = false` y nada que mostrar. */
     getSiteLocales: publicProcedure.query(async () => {
       const { isMultiTenant } = await import("./_core/tenant");
@@ -1168,6 +1189,12 @@ export const appRouter = router({
     productTranslationEditor: adminProcedure.input(z.object({ experienceId: z.number().int().positive() })).query(async ({ input }) => {
       const { getProductTranslationEditor } = await import("./productTranslationsDb");
       return i18nCall((repo) => getProductTranslationEditor(repo, input.experienceId));
+    }),
+
+    /** Texto y enlaces del pie en cada idioma adicional (editor «Idiomas» del pie). */
+    footerTranslationEditor: adminProcedure.query(async () => {
+      const { getFooterTranslationEditor } = await import("./footerTranslationsDb");
+      return i18nCall((repo) => getFooterTranslationEditor(repo));
     }),
 
     /** Nombres de las categorías de la tienda en cada idioma adicional (editor «Idiomas» de Categorías). */

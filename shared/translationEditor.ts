@@ -36,6 +36,9 @@ export const TRANSLATION_FIELD_SETS = {
     { key: "description", label: "Descripción de la opción", max: 2000, long: true },
   ],
   category: [{ key: "name", label: "Nombre de la categoría", max: 128 }],
+  /** Texto del pie (`site_footer_text`) y texto de los elementos del menú del pie (el enlace se localiza solo). */
+  setting: [{ key: "value", label: "Texto del pie", max: 240 }],
+  menu_item: [{ key: "label", label: "Texto", max: 128 }],
   edition: [
     { key: "label", label: "Nombre de la convocatoria", max: 160 },
     { key: "scheduleNote", label: "Horario", max: 600, long: true },
@@ -46,7 +49,7 @@ export const TRANSLATION_FIELD_SETS = {
 export type TranslatableEntity = keyof typeof TRANSLATION_FIELD_SETS;
 
 /** Tipos con dirección propia por idioma (el servidor solo la admite en productos). */
-export const ENTITY_HAS_SLUG: Record<TranslatableEntity, boolean> = { product: true, variant: false, edition: false, category: false };
+export const ENTITY_HAS_SLUG: Record<TranslatableEntity, boolean> = { product: true, variant: false, edition: false, category: false, setting: false, menu_item: false };
 
 export type TranslationState = "untranslated" | "draft" | "validated";
 export const TRANSLATION_STATE_LABELS: Record<TranslationState, string> = {

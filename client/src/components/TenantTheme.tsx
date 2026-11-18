@@ -19,6 +19,9 @@ import { brandTokens } from "@shared/loginBrand";
 import { PANEL_PALETTE_KEYS, panelPalette, panelPaletteCss } from "@shared/panelTheme";
 import { composePageTitle, publicRouteAccess } from "@shared/publicSite";
 import { legalKindOfUrl, pageSlugOfUrl } from "@shared/tenantNav";
+import { footerLayout, SOCIAL_LABELS, type FooterMenuItem } from "@shared/footer";
+import { siteUiText } from "@shared/siteUiText";
+import { SocialIcon } from "@/components/site/SocialIcon";
 import { usePublicSite } from "@/hooks/usePublicSite";
 import { PageBlocksView } from "@/components/site/PageBlocksView";
 import { RICH_TEXT_CLASS } from "@/components/site/richText";
@@ -133,7 +136,7 @@ export function TenantBrand({ theme }: { theme: Theme }) {
   );
 }
 
-export function PoweredBy({ theme, className = "text-white/30 hover:text-white/60" }: { theme: Theme; className?: string }) {
+export function PoweredBy({ theme, className = "text-white/30 hover:text-white/60", label }: { theme: Theme; className?: string; label?: string }) {
   if (!theme.poweredBy) return null;
   return (
     <a
@@ -142,7 +145,7 @@ export function PoweredBy({ theme, className = "text-white/30 hover:text-white/6
       rel="noopener noreferrer"
       className={`${className} text-[11px] transition-colors`}
     >
-      {theme.poweredBy.label}
+      {label ?? theme.poweredBy.label}
     </a>
   );
 }
@@ -156,57 +159,150 @@ const FOOTER_STYLE = {
 
 export function TenantFooter({ theme }: { theme: Theme }) {
   const c = theme.contact;
-  const f = theme.footer ?? { style: "dark" as const, text: null, showContact: true };
+  const f = theme.footer ?? { style: "dark" as const, text: null, showContact: true, social: [] };
   const st = FOOTER_STYLE[f.style] ?? FOOTER_STYLE.dark;
   const showContact = f.showContact && !!(c.phone || c.email);
   // El servidor ya quita los enlaces a páginas en borrador
-  const footerLocale = useSiteLocale().prefix;
+  const { prefix: footerLocale, locale } = useSiteLocale();
+  const ui = siteUiText(locale);
   const menu = trpc.public.getMenuItems.useQuery({ zone: "footer", ...(footerLocale ? { locale: footerLocale } : {}) }, { staleTime: 5 * 60_000, retry: false });
-  const footerLinks = (menu.data ?? [])
-    .filter((m) => m.isActive && !m.parentId && m.url)
-    .sort((a, b) => a.sortOrder - b.sortOrder) as Array<{ id: number; label: string; url: string; target?: string | null }>;
+  // Texto del pie en el idioma de la página: en otro idioma, solo su traducción validada (nunca el de otro idioma)
+  const footerText = trpc.public.getFooterText.useQuery({ ...(footerLocale ? { locale: footerLocale } : {}) }, { staleTime: 5 * 60_000, retry: false });
+  const tagline = footerText.data ? footerText.data.text : null;
+  const all = (menu.data ?? []) as unknown as FooterMenuItem[];
+  const { columns, bottom } = footerLayout(all);
+  type FooterLink = { id: number; label: string; url: string; target?: string | null };
+  const footerLinks = bottom as unknown as FooterLink[];
   // Textos legales siempre en el pie (si la empresa ya los enlaza en su menú de pie, no se repiten)
   const own = new Set(footerLinks.map((l) => pageSlugOfUrl(l.url)).filter(Boolean));
   const ownLegal = new Set(footerLinks.map((l) => legalKindOfUrl(l.url)).filter(Boolean));
   // Solo con el menú ya cargado: mientras carga se veían los de serie (que en una web en otro idioma no existen)
   const legalLinks = menu.isFetched ? LEGAL_FOOTER_LINKS.filter((l) => !own.has(pageSlugOfUrl(l.url)) && !ownLegal.has(legalKindOfUrl(l.url))) : [];
-  return (
-    <footer className={st.root}>
-      <div className="container py-10 grid gap-6 md:grid-cols-3">
-        <div>
-          <p className="font-heading font-bold text-lg">{theme.brandName}</p>
-          {f.showContact && c.address && <p className={`${st.softer} text-sm mt-2`}>{c.address}</p>}
-          {f.text && <p className={`${st.softer} text-sm mt-2 max-w-sm`}>{f.text}</p>}
-        </div>
-        <div className={`text-sm ${st.soft} space-y-1`}>
-          {showContact && c.phone && <p>{c.phone}</p>}
-          {showContact && c.email && <p>{c.email}</p>}
-        </div>
-        <nav aria-label="Enlaces del pie" className={`text-sm ${st.softer} flex flex-col items-start gap-1`}>
-          {footerLinks.map((l) =>
-            /^https?:\/\//.test(l.url) ? (
-              <a key={l.id} href={l.url} target={l.target ?? "_self"} rel="noopener noreferrer" className={st.hover}>
-                {l.label}
-              </a>
-            ) : (
-              <Link key={l.id} href={l.url}>
+  const social = f.social ?? [];
+  const structured = columns.length > 0 || social.length > 0;
+  const poweredLabel = theme.poweredBy ? ui.poweredBy : undefined;
+
+  const linkEl = (l: FooterLink) =>
+    /^(https?:|mailto:|tel:)/i.test(l.url) ? (
+      <a key={l.id} href={l.url} target={l.target ?? "_self"} rel="noopener noreferrer" className={st.hover}>
+        {l.label}
+      </a>
+    ) : (
+      <Link key={l.id} href={l.url}>
+        <span className={`cursor-pointer ${st.hover}`}>{l.label}</span>
+      </Link>
+    );
+
+  if (!structured) {
+    return (
+      <footer className={st.root}>
+        <div className="container py-10 grid gap-6 md:grid-cols-3">
+          <div>
+            <p className="font-heading font-bold text-lg">{theme.brandName}</p>
+            {f.showContact && c.address && <p className={`${st.softer} text-sm mt-2`}>{c.address}</p>}
+            {tagline && <p className={`${st.softer} text-sm mt-2 max-w-sm`}>{tagline}</p>}
+          </div>
+          <div className={`text-sm ${st.soft} space-y-1`}>
+            {showContact && c.phone && <p>{c.phone}</p>}
+            {showContact && c.email && <p>{c.email}</p>}
+          </div>
+          <nav aria-label={ui.footerLinksLabel} className={`text-sm ${st.softer} flex flex-col items-start gap-1`}>
+            {footerLinks.map((l) => linkEl(l))}
+            {legalLinks.map((l) => (
+              <Link key={l.url} href={l.url}>
                 <span className={`cursor-pointer ${st.hover}`}>{l.label}</span>
               </Link>
-            ),
-          )}
-          {legalLinks.map((l) => (
-            <Link key={l.url} href={l.url}>
-              <span className={`cursor-pointer ${st.hover}`}>{l.label}</span>
-            </Link>
+            ))}
+          </nav>
+        </div>
+        <div className={`border-t ${st.border}`}>
+          <div className="container py-4 flex flex-col md:flex-row items-center justify-between gap-2">
+            <p className={`${st.faint} text-xs`}>
+              © {new Date().getFullYear()} {theme.brandName}
+            </p>
+            <PoweredBy theme={theme} className={st.powered} label={poweredLabel} />
+          </div>
+        </div>
+      </footer>
+    );
+  }
+
+  // Pie con columnas y redes (se activa cuando la empresa define columnas en su menú de pie o redes sociales)
+  const accent = theme.accentColor && /^#[0-9a-fA-F]{6}$/.test(theme.accentColor) ? theme.accentColor : null;
+  const logo = (f.style === "dark" ? theme.header?.logoLight : null) ?? theme.logoUrl;
+  const headingStyle = accent ? { color: accent } : undefined;
+  const ring = "focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-current rounded-sm";
+  const wa = c.whatsapp ? `https://wa.me/${c.whatsapp}` : null;
+  const headingCls = "font-heading text-sm font-semibold uppercase tracking-[0.14em] mb-4";
+  return (
+    <footer className={`${st.root} border-t`} style={accent ? { borderTopColor: `${accent}55` } : undefined}>
+      <div className="container py-12">
+        <div className="grid gap-10" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(13.5rem, 1fr))" }}>
+          <div>
+            {logo ? <img src={logo} alt={theme.brandName ?? ""} className="h-16 w-auto object-contain" /> : <p className="font-heading font-bold text-xl">{theme.brandName}</p>}
+            {tagline && <p className={`${st.softer} text-sm mt-4 max-w-xs leading-relaxed`}>{tagline}</p>}
+          </div>
+          {columns.map((col) => (
+            <nav key={col.id} aria-labelledby={`footer-col-${col.id}`}>
+              <h2 id={`footer-col-${col.id}`} className={headingCls} style={headingStyle}>{col.title}</h2>
+              <ul className={`space-y-2.5 text-sm ${st.soft}`}>
+                {col.links.map((l) => (
+                  <li key={l.id}>{linkEl(l as unknown as FooterLink)}</li>
+                ))}
+              </ul>
+            </nav>
           ))}
-        </nav>
+          {(showContact || wa || (f.showContact && c.address)) && (
+            <div>
+              <h2 className={headingCls} style={headingStyle}>{ui.footerContactTitle}</h2>
+              <ul className={`space-y-2.5 text-sm ${st.soft}`}>
+                {showContact && c.email && <li><a href={`mailto:${c.email}`} className={`${st.hover} ${ring} break-all`}>{c.email}</a></li>}
+                {showContact && c.phone && <li><a href={`tel:${c.phone.replace(/[^+\d]/g, "")}`} className={`${st.hover} ${ring}`}>{c.phone}</a></li>}
+                {wa && (
+                  <li>
+                    <a href={wa} target="_blank" rel="noopener noreferrer" className={`${st.hover} ${ring}`}>
+                      {ui.footerWhatsapp} +{c.whatsapp}
+                      <span className="sr-only"> ({ui.footerNewTab})</span>
+                    </a>
+                  </li>
+                )}
+                {f.showContact && c.address && <li className={st.softer}>{c.address}</li>}
+              </ul>
+            </div>
+          )}
+        </div>
+        {social.length > 0 && (
+          <ul aria-label={ui.footerSocialLabel} className="mt-10 flex flex-wrap items-center gap-3">
+            {social.map((s) => (
+              <li key={s.network}>
+                <a
+                  href={s.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  aria-label={`${SOCIAL_LABELS[s.network]} (${ui.footerNewTab})`}
+                  className={`inline-flex h-11 w-11 items-center justify-center rounded-full border ${st.border} ${st.soft} ${st.hover} transition-colors hover:border-current ${ring}`}
+                >
+                  <SocialIcon network={s.network} />
+                </a>
+              </li>
+            ))}
+          </ul>
+        )}
       </div>
       <div className={`border-t ${st.border}`}>
-        <div className="container py-4 flex flex-col md:flex-row items-center justify-between gap-2">
-          <p className={`${st.faint} text-xs`}>
-            © {new Date().getFullYear()} {theme.brandName}
-          </p>
-          <PoweredBy theme={theme} className={st.powered} />
+        <div className="container py-4 flex flex-col md:flex-row items-center justify-between gap-3">
+          <p className={`${st.faint} text-xs`}>© {new Date().getFullYear()} {theme.brandName}</p>
+          {(footerLinks.length > 0 || legalLinks.length > 0) && (
+            <nav aria-label={ui.footerLegalLabel} className={`flex flex-wrap items-center justify-center gap-x-5 gap-y-1 text-xs ${st.softer}`}>
+              {footerLinks.map((l) => linkEl(l))}
+              {legalLinks.map((l) => (
+                <Link key={l.url} href={l.url}>
+                  <span className={`cursor-pointer ${st.hover}`}>{l.label}</span>
+                </Link>
+              ))}
+            </nav>
+          )}
+          <PoweredBy theme={theme} className={st.powered} label={poweredLabel} />
         </div>
       </div>
     </footer>
