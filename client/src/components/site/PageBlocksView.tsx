@@ -28,7 +28,7 @@ import { Slideshow } from "@/components/site/Slideshow";
 import { Lightbox } from "@/components/site/Lightbox";
 import { ModalDialog, usePublicModal } from "@/components/site/ModalBlock";
 import { StudioFormFields } from "@/components/site/StudioForm";
-import { blockLabel, DEFAULT_BLOCK_STYLE, readBlockText, type BlockOf, type BlockStyle, type Device, type GalleryImage, type PageBlock } from "@shared/pageBlocks";
+import { blockLabel, DEFAULT_BLOCK_STYLE, filterScheduledBlocks, readBlockText, type BlockOf, type BlockStyle, type Device, type GalleryImage, type PageBlock } from "@shared/pageBlocks";
 import { modalHref } from "@shared/studio/modal";
 import { formatEuros, productPath } from "@shared/storefront";
 import { isPurchasable } from "@shared/shopOrders";
@@ -2163,7 +2163,11 @@ function BlockList({ blocks, parent, col, preview, pageTitle, firstTitled }: { b
   );
 }
 
-export function PageBlocksView({ blocks, preview, pageTitle }: { blocks: PageBlock[]; preview?: boolean; pageTitle?: string }) {
+export function PageBlocksView({ blocks: allBlocks, preview, pageTitle }: { blocks: PageBlock[]; preview?: boolean; pageTitle?: string }) {
+  // Vigencia programada: en la web (no en el editor ni en la vista previa) los bloques fuera de fechas no se pintan, aunque la
+  // página venga de una caché del navegador anterior al cambio de día
+  const editing = useContext(StudioEditContext);
+  const blocks = useMemo(() => (preview || editing ? allBlocks : filterScheduledBlocks(allBlocks, Date.now())), [allBlocks, preview, editing]);
   // La página ya tiene su titular principal si un módulo «Título» lo declara como H1
   const ownH1 = blocks.some((b) => b.type === "heading" && b.data.level === "h1");
   const firstTitled = ownH1 ? -1 : blocks.findIndex(hasTitle);

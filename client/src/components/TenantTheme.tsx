@@ -72,6 +72,16 @@ export function TenantThemeLoader() {
     }
     if (!tokens && theme.accentColor) root.style.setProperty("--brand-accent", theme.accentColor);
     if (theme.radius) root.style.setProperty("--radius", theme.radius);
+    // Color del texto de la empresa (solo modo claro: en oscuro un tono oscuro no se leería)
+    let textStyle = document.getElementById("tenant-text-color");
+    if (theme.textColor && /^#[0-9a-fA-F]{6}$/.test(theme.textColor)) {
+      if (!textStyle) {
+        textStyle = document.createElement("style");
+        textStyle.id = "tenant-text-color";
+        document.head.appendChild(textStyle);
+      }
+      textStyle.textContent = `:root:not(.dark){--foreground:${theme.textColor};--card-foreground:${theme.textColor};--popover-foreground:${theme.textColor}}`;
+    } else if (textStyle) textStyle.remove();
     if (theme.fontFamily) document.body.style.fontFamily = theme.fontFamily;
     if (theme.faviconUrl) {
       let link = document.querySelector<HTMLLinkElement>('link[rel="icon"]');

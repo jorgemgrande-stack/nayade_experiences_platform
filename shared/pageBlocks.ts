@@ -290,6 +290,9 @@ export interface BlockStyle {
   radius: (typeof BLOCK_RADII)[number];
   shadow: (typeof BLOCK_SHADOWS)[number];
   hideOn: Device[];
+  /** Vigencia programada (YYYY-MM-DD, hora de Madrid, ambos días incluidos): fuera de ella el bloque no se publica. "" = sin límite */
+  showFrom: string;
+  showUntil: string;
   mobileAlign: (typeof BLOCK_MOBILE_ALIGNS)[number];
   mobileSpacing: (typeof BLOCK_MOBILE_SPACINGS)[number];
   anchor: string;
@@ -321,7 +324,7 @@ export interface BlockStyle {
 export const DEFAULT_BLOCK_STYLE: BlockStyle = {
   background: "none", gradient: "brand", bgImage: "", overlay: "dark", padTop: "0", padBottom: "0", marginTop: "0", marginBottom: "0",
   headingFont: "auto", textFont: "auto", headingSize: "auto", textSize: "auto", align: "auto", headingColor: "auto",
-  border: "none", radius: "0", shadow: "none", hideOn: [], mobileAlign: "auto", mobileSpacing: "same", anchor: "", animation: "none",
+  border: "none", radius: "0", shadow: "none", hideOn: [], showFrom: "", showUntil: "", mobileAlign: "auto", mobileSpacing: "same", anchor: "", animation: "none",
   minHeight: "auto", minHeightPx: 600, minHeightM: 0, contentY: "center", contentWidth: "auto", overlayDir: "flat", overlayOpacity: 0,
   bgX: 50, bgY: 50, bgZoom: 100, bgMobile: "same", bgXM: 50, bgYM: 50, bgZoomM: 100, bgFitM: "cover",
   bgMotion: "off", bgMotionAmount: 9, bgMotionSeconds: 20,
@@ -330,6 +333,29 @@ export const DEFAULT_BLOCK_STYLE: BlockStyle = {
 const STYLE_ONLY_WITH_IMAGE: ReadonlyArray<keyof BlockStyle> = ["bgImage", "overlay", "overlayDir", "overlayOpacity", "bgX", "bgY", "bgZoom", "bgMobile", "bgMotion", "bgMotionAmount", "bgMotionSeconds"];
 const STYLE_ONLY_WITH_OWN_MOBILE: ReadonlyArray<keyof BlockStyle> = ["bgXM", "bgYM", "bgZoomM", "bgFitM"];
 export const ANCHOR_RE = /^[a-z0-9]([a-z0-9-]{0,38}[a-z0-9])?$/;
+
+export const SCHEDULE_DAY_RE = /^[0-9]{4}-[0-9]{2}-[0-9]{2}$/;
+/** Día natural de Madrid (YYYY-MM-DD) de un instante. */
+export function madridDay(now: number): string {
+  return new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/Madrid", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date(now));
+}
+/** ¿Está el bloque fuera de su vigencia programada? (los dos días límite están dentro). */
+export function isScheduledOut(style: Partial<BlockStyle> | undefined, now: number): boolean {
+  if (!style) return false;
+  const today = madridDay(now);
+  return (!!style.showFrom && today < style.showFrom) || (!!style.showUntil && today > style.showUntil);
+}
+/** Quita los bloques fuera de vigencia, también dentro de las columnas de una sección. Pura. */
+export function filterScheduledBlocks<B extends { style?: Partial<BlockStyle>; data?: unknown }>(blocks: B[], now: number): B[] {
+  return blocks
+    .filter((b) => !isScheduledOut(b.style, now))
+    .map((b) => {
+      const cols = (b.data as { columns?: unknown } | undefined)?.columns;
+      if (!Array.isArray(cols) || !cols.some((c) => c && Array.isArray((c as { blocks?: unknown }).blocks))) return b;
+      const columns = cols.map((c) => (c && Array.isArray((c as { blocks?: unknown }).blocks) ? { ...(c as object), blocks: filterScheduledBlocks((c as { blocks: B[] }).blocks, now) } : c));
+      return { ...b, data: { ...(b.data as object), columns } } as B;
+    });
+}
 
 /** Si el diseño del bloque es el de serie (entonces no se guarda). */
 export function isDefaultStyle(s: Partial<BlockStyle> | undefined): boolean {

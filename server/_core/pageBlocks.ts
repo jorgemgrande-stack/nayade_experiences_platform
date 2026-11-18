@@ -10,7 +10,7 @@ import { madridDateKey } from "../utils/timezone";
 import { sanitizeRichHtml } from "./htmlSanitize";
 import { renderSiteTokens, type SiteTokenData } from "./templates/starterSite";
 import {
-  ANCHOR_RE, BLOCK_ALIGNS, BLOCK_ANIMATIONS, BLOCK_BACKGROUNDS, BLOCK_BORDERS, BLOCK_FONTS, BLOCK_GRADIENTS, BLOCK_HEADING_COLORS, BLOCK_HEADING_SIZES,
+  ANCHOR_RE, SCHEDULE_DAY_RE, BLOCK_ALIGNS, BLOCK_ANIMATIONS, BLOCK_BACKGROUNDS, BLOCK_BORDERS, BLOCK_FONTS, BLOCK_GRADIENTS, BLOCK_HEADING_COLORS, BLOCK_HEADING_SIZES,
   BLOCK_BG_FITS, BLOCK_BG_MOBILES, BLOCK_BG_MOTIONS, BLOCK_CONTENT_WIDTHS, BLOCK_CONTENT_YS, BLOCK_MARGINS, BLOCK_MIN_HEIGHTS, BLOCK_OVERLAY_DIRS, BLOCK_MOBILE_ALIGNS, BLOCK_MOBILE_SPACINGS, BLOCK_OVERLAYS, BLOCK_RADII, BLOCK_SHADOWS, BLOCK_SPACINGS, BLOCK_TEXT_SIZES, BLOCK_TYPES,
   blockLabel, DEFAULT_BLOCK_STYLE, defaultBlockData, DEVICES, isDefaultStyle, newBlockId, NOT_NESTABLE, PAGE_LIMITS, SECTION_MAX_DEPTH,
   sectionColumnCount, type BlockDataMap, type BlockStyle, type BlockType, type GalleryImage, type PageBlock,
@@ -193,6 +193,8 @@ export function normalizeStyle(v: unknown): BlockStyle | undefined {
     radius: oneOf(v.radius, BLOCK_RADII, "0"),
     shadow: oneOf(v.shadow, BLOCK_SHADOWS, "none"),
     hideOn: DEVICES.filter((d) => hide.includes(d)),
+    showFrom: typeof v.showFrom === "string" && SCHEDULE_DAY_RE.test(v.showFrom) ? v.showFrom : "",
+    showUntil: typeof v.showUntil === "string" && SCHEDULE_DAY_RE.test(v.showUntil) ? v.showUntil : "",
     mobileAlign: oneOf(v.mobileAlign, BLOCK_MOBILE_ALIGNS, "auto"),
     mobileSpacing: oneOf(v.mobileSpacing, BLOCK_MOBILE_SPACINGS, "same"),
     anchor: typeof v.anchor === "string" && ANCHOR_RE.test(v.anchor) ? v.anchor : "",

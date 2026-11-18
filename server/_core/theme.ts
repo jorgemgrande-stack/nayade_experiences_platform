@@ -44,7 +44,7 @@ export function siteLink(v: string | undefined | null): string | null {
 }
 
 export const PUBLIC_THEME_KEYS = [
-  "brand_name", "brand_logo_url", "brand_favicon_url", "theme_primary_color", "theme_accent_color",
+  "brand_name", "brand_logo_url", "brand_favicon_url", "theme_primary_color", "theme_accent_color", "theme_text_color",
   "brand_primary_color", "brand_accent_color", "theme_font_family", "theme_radius", "brand_show_powered_by",
   "brand_phone", "brand_whatsapp", "email_reservations", "site_business_email", "brand_location",
   "brand_hero_image_url", "login_background_url", "login_welcome_title", "login_welcome_message",
@@ -71,6 +71,8 @@ export interface PublicTheme {
   faviconUrl: string | null;
   primaryColor: string | null;
   accentColor: string | null;
+  /** Color del texto de la web (solo en modo claro); null = el de serie. Cada empresa fija el suyo, p. ej. un taupe oscuro en vez del casi negro. */
+  textColor: string | null;
   fontFamily: string | null;
   radius: string | null;
   neutralSite: boolean;
@@ -156,7 +158,7 @@ function buildLogin(get: (key: string) => string | undefined, multi: boolean): P
 
 /** Ajustes de identidad que el administrador de la empresa edita (Marca y tema, y Primeros pasos › Marca). */
 export const THEME_EDITABLE_KEYS = [
-  "brand_name", "brand_logo_url", "brand_favicon_url", "theme_primary_color", "theme_accent_color",
+  "brand_name", "brand_logo_url", "brand_favicon_url", "theme_primary_color", "theme_accent_color", "theme_text_color",
   "theme_font_family", "theme_radius", "seo_description", "brand_phone", "brand_location", "email_reservations",
   "brand_hero_image_url", "login_background_url", "login_welcome_title", "login_welcome_message",
   "analytics_ga4_id", "analytics_meta_pixel_id", ...SITE_CHROME_KEYS,
@@ -260,6 +262,7 @@ export function buildTheme(
     // instalaciones previas y no deben alterar su aspecto (p. ej. Náyade).
     primaryColor: safeColor(get("theme_primary_color") ?? (opts.multi ? get("brand_primary_color") : undefined)),
     accentColor: safeColor(get("theme_accent_color") ?? (opts.multi ? get("brand_accent_color") : undefined)),
+    textColor: safeColor(get("theme_text_color")),
     fontFamily: FONT.test(font) ? font : null,
     radius: RADIUS.test(radius) ? radius : null,
     neutralSite: opts.multi,
