@@ -8,7 +8,7 @@
  * - Los servicios incluidos (p. ej. sesiones individuales) se generan al confirmar, a partir de la configuración de la
  *   modalidad; aquí se programan, se marcan realizados o se cancelan.
  */
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Link } from "wouter";
 import { CalendarClock, Check, FileText, ListChecks, Plus, RotateCcw, XCircle } from "lucide-react";
 import { toast } from "sonner";
@@ -77,6 +77,8 @@ export function EnrollmentQuoteBlock({ enrollment, onChanged }: { enrollment: { 
 /** Confirmar la plaza con un presupuesto sin pagar: motivo obligatorio (queda registrado con tu nombre y la hora). */
 export function ConfirmWithoutPaymentDialog({ target, onClose, onConfirm, pending }: { target: { id: number; name: string; payment: QuotePaymentView } | null; onClose: () => void; onConfirm: (reason: string) => void; pending: boolean }) {
   const [reason, setReason] = useState("");
+  // Cada inscripción empieza con el motivo vacío (también tras un envío correcto)
+  useEffect(() => setReason(""), [target?.id]);
   const ok = cleanConfirmReason(reason);
   return (
     <Dialog open={!!target} onOpenChange={(o) => { if (!o) { setReason(""); onClose(); } }}>

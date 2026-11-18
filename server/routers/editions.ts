@@ -172,7 +172,16 @@ export const editionsRouter = router({
    */
   prepareQuote: adminProcedure
     .input(z.object({ enrollmentId: id }))
-    .mutation(({ input, ctx }) => commerceGuard(async () => prepareEnrollmentQuote(input.enrollmentId, { ...(await quoteServices(ctx)), actor: actorOf(ctx) }))),
+    .mutation(async ({ input, ctx }) => {
+      // El presupuesto y la oportunidad se crean con el CRM (llamada interna, sin el guardián HTTP de licencias): se exige
+      // aquí su licencia con escritura, como hace Care Net con la caja
+      const { getCapabilityAccess } = await import("../_core/capabilities/access");
+      for (const cap of ["crm-leads", "crm-quotes"]) {
+        const ok = await getCapabilityAccess().check(cap, { write: true }).catch(() => ({ allowed: false }));
+        if (!ok.allowed) throw new TRPCError({ code: "FORBIDDEN", message: "Tu plan no permite crear presupuestos ahora mismo (CRM sin licencia activa)." });
+      }
+      return commerceGuard(async () => prepareEnrollmentQuote(input.enrollmentId, { ...(await quoteServices(ctx)), actor: actorOf(ctx) }));
+    }),
 
   /** Servicios incluidos de una inscripción confirmada (pendientes de programar, programados, realizados). */
   services: router({

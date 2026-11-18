@@ -399,7 +399,8 @@ function EnrollmentsDialog({ edition, onClose, onChanged }: { edition: EditionIt
   const live = trpc.products.editions.list.useQuery({ experienceId: edition.experienceId });
   const current = ((live.data ?? []) as unknown as EditionItem[]).find((x) => x.id === edition.id) ?? edition;
   const setStatus = trpc.products.editions.setEnrollmentStatus.useMutation({
-    onSuccess: () => { utils.products.editions.enrollments.invalidate(); onChanged(); },
+    // También los servicios incluidos: confirmar los genera y cancelar los retira
+    onSuccess: () => { utils.products.editions.enrollments.invalidate(); utils.products.editions.services.list.invalidate(); onChanged(); },
     onError: (e) => toast.error(e.message),
   });
   const rows = (list.data ?? []) as unknown as EnrollmentItem[];
