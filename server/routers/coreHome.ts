@@ -3,12 +3,18 @@
  * Equipo (admin, agente y solo lectura). La licencia del namespace la aplica el guardián de rutas
  * (`coreHome` → admin-panel) y cada fuente comprueba además su propia capacidad (coreHomeDb.ts).
  */
-import { router, staffProcedure } from "../_core/trpc";
+import { adminProcedure, router, staffProcedure } from "../_core/trpc";
 import { homeIndicators, recentActivity } from "../coreHomeDb";
+import { operationalPanel } from "../operationalPanelDb";
 
 export const coreHomeRouter = router({
   /** Últimos movimientos reales de la empresa: clientes, oportunidades, presupuestos, pedidos, facturas y caja. */
   recentActivity: staffProcedure.query(async () => ({ items: await recentActivity(8) })),
   /** Cifras reales del Inicio (ventas de hoy y del mes, cobros, presupuestos, clientes y pedidos online). */
   indicators: staffProcedure.query(async () => homeIndicators()),
+  /**
+   * Panel operativo de solicitudes y convocatorias (solo lectura, server/operationalPanelDb.ts). Solo administración,
+   * como las convocatorias e inscripciones que resume; cada parte comprueba además su capacidad.
+   */
+  operations: adminProcedure.query(async () => operationalPanel()),
 });
