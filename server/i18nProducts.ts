@@ -83,6 +83,35 @@ export async function localizeVariants<T extends { id: number; name: string; des
   });
 }
 
+/**
+ * Productos de un listado (catálogo público) con su nombre, resumen y slug en ese idioma (traducciones validadas). El
+ * slug traducido es el de su ficha en ese idioma; sin traducción, el del principal (la ficha lo avisa). Sin idioma
+ * adicional, tal cual. Precio, imágenes, modo de contratación y categoría no cambian.
+ */
+export async function localizeProducts<T extends { id: number; slug: string; title: string; shortDescription?: string | null }>(repo: I18nRepo, rows: T[], rawLocale: string | null | undefined): Promise<T[]> {
+  if (!rows.length) return rows;
+  const locale = await publicExtraLocale(repo, rawLocale);
+  if (!locale) return rows;
+  const tr = byKey(await repo.listContentTranslations("product", locale, true));
+  return rows.map((p) => {
+    const t = tr.get(String(p.id));
+    if (!t) return p;
+    return { ...p, ...(t.fields.title ? { title: t.fields.title } : {}), ...(t.fields.shortDescription ? { shortDescription: t.fields.shortDescription } : {}), ...(t.slug ? { slug: t.slug } : {}) };
+  });
+}
+
+/** Categorías de la tienda con su nombre traducido y validado. Sin idioma adicional, tal cual. */
+export async function localizeCategories<T extends { id: number; name: string }>(repo: I18nRepo, rows: T[], rawLocale: string | null | undefined): Promise<T[]> {
+  if (!rows.length) return rows;
+  const locale = await publicExtraLocale(repo, rawLocale);
+  if (!locale) return rows;
+  const tr = byKey(await repo.listContentTranslations("category", locale, true));
+  return rows.map((c) => {
+    const name = tr.get(String(c.id))?.fields.name;
+    return name ? { ...c, name } : c;
+  });
+}
+
 export interface EditionLikeRow {
   id: number;
   experienceId: number;

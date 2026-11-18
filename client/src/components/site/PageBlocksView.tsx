@@ -1239,7 +1239,7 @@ function VideoBlock({ b, first }: { b: BlockOf<"video">; first: boolean }) {
   );
 }
 
-type ShopItem = { id: number; slug: string; title: string; categoryId?: number | null; shortDescription?: string | null; image1?: string | null; coverImageUrl?: string | null; basePrice?: string | null; isActive?: boolean | null; isPublished?: boolean | null; offerMode?: string | null };
+type ShopItem = { id: number; slug: string; title: string; categoryId?: number | null; shortDescription?: string | null; image1?: string | null; coverImageUrl?: string | null; basePrice?: string | null; isActive?: boolean | null; isPublished?: boolean | null; offerMode?: string | null; fromPrice?: number | null; hasOptions?: boolean };
 
 /** Productos reales de la tienda de la empresa (public.getExperiences): nada se copia en la página. */
 function ProductsBlock({ b, first, preview }: { b: BlockOf<"products">; first: boolean; preview?: boolean }) {
@@ -1247,13 +1247,15 @@ function ProductsBlock({ b, first, preview }: { b: BlockOf<"products">; first: b
   const ed = useContext(StudioEditContext);
   // Publicados aunque no se vendan en línea (bajo petición, por solicitud, próximamente o agotados): el bloque ya los
   // etiqueta; antes solo salían los «a la venta» y una tienda por solicitud aparecía vacía (18/11/2026)
-  const products = trpc.public.getExperiences.useQuery({ limit: 50, offset: 0, includeSoldOut: true }, { staleTime: 60_000 });
-  const categories = trpc.public.getCategories.useQuery(undefined, { staleTime: 300_000, enabled: !!d.categorySlug });
-  const limit = Number(d.limit) || 4;
-  // Multidioma: cada tarjeta lleva a la ficha del mismo producto en el idioma de la página (el servidor y la ficha pasan
-  // al slug traducido si lo hay) y las insignias salen en ese idioma
+  // Multidioma: cada tarjeta lleva a la ficha del mismo producto en el idioma de la página, con su nombre y resumen
+  // traducidos y validados; las insignias y el «Desde» salen en ese idioma
   const site = useSiteLocale();
   const ui = siteUiText(site.locale);
+  const products = trpc.public.getExperiences.useQuery({ limit: 50, offset: 0, includeSoldOut: true, withFromPrice: true, ...(site.prefix ? { locale: site.prefix } : {}) }, { staleTime: 60_000 });
+  const categories = trpc.public.getCategories.useQuery(undefined, { staleTime: 300_000, enabled: !!d.categorySlug });
+  const limit = Number(d.limit) || 4;
+  // Botón «ver todo»: el catálogo del mismo idioma, filtrado por la categoría del bloque si la tiene
+  const shopHref = `${site.prefix ? `/${site.prefix}` : ""}/tienda${d.categorySlug ? `?categoria=${encodeURIComponent(d.categorySlug)}` : ""}`;
   const items = useMemo(() => {
     const list = (products.data ?? []) as ShopItem[];
     if (!d.categorySlug) return list.slice(0, limit);
@@ -1285,7 +1287,8 @@ function ProductsBlock({ b, first, preview }: { b: BlockOf<"products">; first: b
         (() => {
           const tiles = items.map((p) => {
             const img = p.image1 || p.coverImageUrl;
-            const price = Number(p.basePrice) > 0 ? formatEuros(p.basePrice) : null;
+            const amount = p.fromPrice != null ? p.fromPrice : Number(p.basePrice) > 0 ? Number(p.basePrice) : null;
+            const price = amount != null && amount > 0 ? formatEuros(amount) : null;
             // E-6: «Bajo petición» / «Próximamente» (nunca «Agotado»), sin precio
             const offerBadge = publicOfferBadge(p) ? offerBadgeText(ui, offerModeOf(p)) : null;
             const soldOut = !offerBadge && !isPurchasable(p);
@@ -1299,7 +1302,7 @@ function ProductsBlock({ b, first, preview }: { b: BlockOf<"products">; first: b
                 <div className="space-y-1 p-4">
                   <h3 className="break-words font-heading font-semibold group-hover:text-primary">{p.title}</h3>
                   {p.shortDescription && <p className="line-clamp-2 text-sm text-muted-foreground">{p.shortDescription}</p>}
-                  {price && (!offerBadge || showsPrice(p)) && <p className={cn("text-sm font-semibold", soldOut && "text-muted-foreground")}>{price}</p>}
+                  {price && (!offerBadge || showsPrice(p)) && <p className={cn("text-sm font-semibold", soldOut && "text-muted-foreground")}>{p.hasOptions ? `${ui.from} ${price}` : price}</p>}
                 </div>
               </SmartLink>
             );
@@ -1316,7 +1319,7 @@ function ProductsBlock({ b, first, preview }: { b: BlockOf<"products">; first: b
       {showButton && (
         <div className="mt-8 text-center">
           <Button asChild variant="outline" size="lg">
-            <SmartLink href="/tienda" preview={preview}>
+            <SmartLink href={shopHref} preview={preview}>
               <Txt k="buttonLabel" value={d.buttonLabel} placeholder="Botón a la tienda (opcional)" />
             </SmartLink>
           </Button>

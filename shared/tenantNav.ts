@@ -79,3 +79,17 @@ export function isContactUrl(url: string | null | undefined): boolean {
   const parts = url.split(/[?#]/)[0].split("/").filter(Boolean);
   return CONTACT_SLUGS.has((parts[parts.length - 1] ?? "").toLowerCase());
 }
+
+/**
+ * Título del catálogo: la etiqueta del elemento activo del menú que lleva a él («Angebote», «Programas y servicios»…),
+ * con o sin parámetros (`/tienda?categoria=x`). Sin ninguno, null (la página usa «Tienda» en su idioma).
+ */
+export function shopTitleFromMenu(items: Array<{ label?: string | null; url?: string | null; isActive?: boolean | null }> | null | undefined, shopHref: string): string | null {
+  for (const it of items ?? []) {
+    if (it.isActive === false || !it.url) continue;
+    const path = it.url.split(/[?#]/)[0].replace(/\/+$/, "");
+    const label = (it.label ?? "").trim();
+    if (path === shopHref && label) return label;
+  }
+  return null;
+}
