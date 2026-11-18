@@ -8,7 +8,7 @@
  */
 import { useMemo, useState } from "react";
 import { Link } from "wouter";
-import { CalendarDays, Copy, Mail, Pencil, Plus, UserPlus, Users, XCircle } from "lucide-react";
+import { CalendarDays, Check, Copy, Layers, Lock, Mail, Pencil, Plus, RotateCcw, Trash2, UserPlus, Users, XCircle } from "lucide-react";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -38,6 +38,7 @@ import {
   type EditionStatus,
   type EnrollmentStatus,
 } from "@shared/editions";
+import { SESSION_LIMITS, SESSION_STATUS_LABELS, formatSessionLine, validateSessionInput, type SessionInput, type SessionStatus } from "@shared/editionSessions";
 
 const ZONES = [
   ["Europe/Madrid", "España peninsular y Baleares"],
@@ -83,6 +84,8 @@ interface EditionItem {
   status: EditionStatus;
   priceOverride: number | null;
   counts: Record<EnrollmentStatus, number>;
+  /** Sesiones no canceladas (0 = sin sesiones: las fechas son las de la convocatoria) */
+  sessionCount?: number;
 }
 
 const emptyForm = (): EditionForm => ({
@@ -124,7 +127,8 @@ function StatusBadge({ status }: { status: EditionStatus }) {
 export function EditionsPanel({ experienceId, title, open, onOpenChange }: { experienceId: number | null; title: string; open: boolean; onOpenChange: (o: boolean) => void }) {
   const utils = trpc.useUtils();
   const list = trpc.products.editions.list.useQuery({ experienceId: experienceId ?? 0 }, { enabled: open && !!experienceId });
-  const [editing, setEditing] = useState<{ id: number | null; form: EditionForm } | null>(null);
+  const [editing, setEditing] = useState<{ id: number | null; form: EditionForm; sessionCount?: number } | null>(null);
+  const [sessionsOpen, setSessionsOpen] = useState<Record<number, boolean>>({});
   const [enrollFor, setEnrollFor] = useState<EditionItem | null>(null);
   const [confirmCancel, setConfirmCancel] = useState<EditionItem | null>(null);
   const [notifyOpen, setNotifyOpen] = useState(false);
@@ -175,7 +179,7 @@ export function EditionsPanel({ experienceId, title, open, onOpenChange }: { exp
                   <div className="flex flex-wrap items-start justify-between gap-2">
                     <div className="min-w-0">
                       <p className="font-medium text-foreground">{e.label}</p>
-                      <p className="text-sm text-muted-foreground">{formatEditionDates(e.startsAt, e.endsAt, e.timezone, true)}</p>
+                      <p className="text-sm text-muted-foreground">{formatEditionDates(e.startsAt, e.endsAt, e.timezone, !e.sessionCount)}{e.sessionCount ? ` · ${e.sessionCount} ${e.sessionCount === 1 ? "sesión" : "sesiones"}` : ""}</p>
                     </div>
                     <div className="flex flex-wrap items-center gap-1.5">
                       <StatusBadge status={e.status} />
@@ -193,7 +197,10 @@ export function EditionsPanel({ experienceId, title, open, onOpenChange }: { exp
                     <Button type="button" size="sm" variant="outline" onClick={() => setEnrollFor(e)}>
                       <Users className="mr-1.5 h-3.5 w-3.5" aria-hidden="true" /> Inscripciones
                     </Button>
-                    <Button type="button" size="sm" variant="outline" onClick={() => setEditing({ id: e.id, form: fromEdition(e) })}>
+                    <Button type="button" size="sm" variant="outline" aria-expanded={!!sessionsOpen[e.id]} onClick={() => setSessionsOpen((o) => ({ ...o, [e.id]: !o[e.id] }))}>
+                      <Layers className="mr-1.5 h-3.5 w-3.5" aria-hidden="true" /> Sesiones{e.sessionCount ? ` (${e.sessionCount})` : ""}
+                    </Button>
+                    <Button type="button" size="sm" variant="outline" onClick={() => setEditing({ id: e.id, form: fromEdition(e), sessionCount: e.sessionCount })}>
                       <Pencil className="mr-1.5 h-3.5 w-3.5" aria-hidden="true" /> Editar
                     </Button>
                     <Button type="button" size="sm" variant="outline" disabled={duplicate.isPending} onClick={() => duplicate.mutate({ id: e.id })}>
@@ -205,6 +212,7 @@ export function EditionsPanel({ experienceId, title, open, onOpenChange }: { exp
                       </Button>
                     )}
                   </div>
+                  {sessionsOpen[e.id] && <EditionSessionsSection edition={e} onChanged={refresh} />}
                 </li>
               ))}
             </ul>
@@ -236,7 +244,8 @@ export function EditionsPanel({ experienceId, title, open, onOpenChange }: { exp
 
 // ─── Formulario de una edición ───────────────────────────────────────────────
 
-function EditionFormDialog({ experienceId, state, onClose, onSaved }: { experienceId: number; state: { id: number | null; form: EditionForm }; onClose: () => void; onSaved: () => void }) {
+function EditionFormDialog({ experienceId, state, onClose, onSaved }: { experienceId: number; state: { id: number | null; form: EditionForm; sessionCount?: number }; onClose: () => void; onSaved: () => void }) {
+  const fromSessions = !!state.sessionCount;
   const [form, setForm] = useState<EditionForm>(state.form);
   const [capacityText, setCapacityText] = useState(state.form.capacity == null ? "" : String(state.form.capacity));
   const [priceText, setPriceText] = useState(state.form.priceOverride == null ? "" : String(state.form.priceOverride));
@@ -282,15 +291,16 @@ function EditionFormDialog({ experienceId, state, onClose, onSaved }: { experien
           <div className="grid gap-4 sm:grid-cols-2">
             <div>
               <Label htmlFor="ed-start">Empieza *</Label>
-              <Input id="ed-start" type="datetime-local" value={form.startsLocal} onChange={(ev) => set("startsLocal", ev.target.value)} className="mt-1" aria-invalid={!!e("startsLocal")} />
+              <Input id="ed-start" type="datetime-local" value={form.startsLocal} disabled={fromSessions} onChange={(ev) => set("startsLocal", ev.target.value)} className="mt-1" aria-invalid={!!e("startsLocal")} />
               <Err k="startsLocal" />
             </div>
             <div>
               <Label htmlFor="ed-end">Termina (opcional)</Label>
-              <Input id="ed-end" type="datetime-local" value={form.endsLocal ?? ""} onChange={(ev) => set("endsLocal", ev.target.value || null)} className="mt-1" aria-invalid={!!e("endsLocal")} />
+              <Input id="ed-end" type="datetime-local" value={form.endsLocal ?? ""} disabled={fromSessions} onChange={(ev) => set("endsLocal", ev.target.value || null)} className="mt-1" aria-invalid={!!e("endsLocal")} />
               <Err k="endsLocal" />
             </div>
           </div>
+          {fromSessions && <p className="-mt-2 text-xs text-muted-foreground">Esta convocatoria tiene sesiones: sus fechas se calculan solas a partir de la primera y la última sesión. Cámbialas en «Sesiones».</p>}
           <div className="grid gap-4 sm:grid-cols-2">
             <div>
               <Label htmlFor="ed-zone">Zona horaria de las fechas</Label>
@@ -575,7 +585,7 @@ export function UpcomingEditionsView({ onManage }: { onManage: (experienceId: nu
               <li key={e.id} className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border bg-card p-3">
                 <div className="min-w-0">
                   <p className="font-medium text-foreground">{e.productTitle} <span className="font-normal text-muted-foreground">· {e.label}</span></p>
-                  <p className="text-sm text-muted-foreground">{formatEditionDates(e.startsAt, e.endsAt, e.timezone, true)} · {seatsText(e)}{e.counts.solicitada ? ` · ${e.counts.solicitada} por confirmar` : ""}</p>
+                  <p className="text-sm text-muted-foreground">{formatEditionDates(e.startsAt, e.endsAt, e.timezone, !e.sessionCount)}{e.sessionCount ? ` · ${e.sessionCount} ${e.sessionCount === 1 ? "sesión" : "sesiones"}` : ""} · {seatsText(e)}{e.counts.solicitada ? ` · ${e.counts.solicitada} por confirmar` : ""}</p>
                 </div>
                 <div className="flex items-center gap-2">
                   <StatusBadge status={e.status} />
@@ -587,5 +597,217 @@ export function UpcomingEditionsView({ onManage }: { onManage: (experienceId: nu
         </section>
       ))}
     </div>
+  );
+}
+
+// ─── Sesiones de una convocatoria (paquete con varias fechas) ────────────────
+
+interface SessionItem {
+  id: number;
+  editionId: number;
+  position: number;
+  startsOn: string;
+  startTime: string | null;
+  durationMinutes: number | null;
+  timezone: string;
+  title: string;
+  status: SessionStatus;
+  privateNote: string;
+}
+
+const SESSION_TONE: Record<SessionStatus, string> = { scheduled: TONE_BADGE.info, done: TONE_BADGE.success, cancelled: TONE_BADGE.neutral };
+const sessionLine = (s: Pick<SessionItem, "startsOn" | "startTime" | "durationMinutes">) => formatSessionLine(s, { locale: "es-ES", tbcText: "hora por confirmar" });
+
+/**
+ * Sesiones de una convocatoria: una sola inscripción para todas. Las personas confirmadas de la convocatoria participan
+ * en cada sesión (no hay reserva por sesión). La nota interna (p. ej. el enlace de la videollamada) nunca se publica.
+ */
+function EditionSessionsSection({ edition, onChanged }: { edition: EditionItem; onChanged: () => void }) {
+  const utils = trpc.useUtils();
+  const list = trpc.products.editions.sessions.list.useQuery({ editionId: edition.id }, { retry: false });
+  const [form, setForm] = useState<{ id: number | null; value: SessionInput } | null>(null);
+  const [series, setSeries] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState<number | null>(null);
+  const changed = () => { utils.products.editions.sessions.list.invalidate({ editionId: edition.id }); onChanged(); };
+  const setStatus = trpc.products.editions.sessions.setStatus.useMutation({ onSuccess: () => { toast.success("Sesión actualizada"); changed(); }, onError: (e) => toast.error(e.message) });
+  const del = trpc.products.editions.sessions.delete.useMutation({ onSuccess: () => { toast.success("Sesión eliminada"); setConfirmDelete(null); changed(); }, onError: (e) => toast.error(e.message) });
+  const rows = (list.data ?? []) as unknown as SessionItem[];
+  const live = rows.filter((r) => r.status !== "cancelled").length;
+  const blank = (): SessionInput => ({ startsOn: "", startTime: null, durationMinutes: null, timezone: edition.timezone, title: "", status: "scheduled", privateNote: "" });
+
+  return (
+    <section className="mt-3 rounded-lg border border-border bg-muted/30 p-3" aria-label={`Sesiones de ${edition.label}`} data-testid="sesiones">
+      <div className="flex flex-wrap items-start justify-between gap-2">
+        <div>
+          <p className="text-sm font-medium text-foreground">Sesiones</p>
+          <p className="text-xs text-muted-foreground">
+            Una sola inscripción para todas las sesiones. <Users className="inline h-3 w-3" aria-hidden="true" /> {edition.reserved} {edition.reserved === 1 ? "persona confirmada participa" : "personas confirmadas participan"} en cada sesión.
+          </p>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <Button type="button" size="sm" variant="outline" onClick={() => { setSeries(false); setForm({ id: null, value: blank() }); }}>
+            <Plus className="mr-1.5 h-3.5 w-3.5" aria-hidden="true" /> Añadir sesión
+          </Button>
+          <Button type="button" size="sm" variant="outline" onClick={() => { setForm(null); setSeries((v) => !v); }}>
+            <CalendarDays className="mr-1.5 h-3.5 w-3.5" aria-hidden="true" /> Serie semanal
+          </Button>
+        </div>
+      </div>
+
+      {series && <WeeklySeriesForm edition={edition} onDone={() => { setSeries(false); changed(); }} onCancel={() => setSeries(false)} />}
+      {form && <SessionFormInline editionId={edition.id} state={form} onDone={() => { setForm(null); changed(); }} onCancel={() => setForm(null)} />}
+
+      {list.isLoading ? (
+        <p className="py-3 text-center text-xs text-muted-foreground">Cargando…</p>
+      ) : list.isError ? (
+        <p role="alert" className="mt-2 rounded-lg border border-destructive/40 bg-destructive/5 px-3 py-2 text-xs">{list.error.message}</p>
+      ) : rows.length === 0 ? (
+        <p className="mt-2 text-xs text-muted-foreground">Sin sesiones: la convocatoria usa sus propias fechas. Añade sesiones si es un paquete con varias fechas (por ejemplo 4 sesiones de 90 minutos).</p>
+      ) : (
+        <ol className="mt-2 space-y-1.5">
+          {rows.map((r) => (
+            <li key={r.id} className="rounded-md border border-border bg-background p-2 text-sm" data-testid="sesion">
+              <div className="flex flex-wrap items-start justify-between gap-2">
+                <div className="min-w-0">
+                  <p className={r.status === "cancelled" ? "text-muted-foreground line-through" : "text-foreground"}>
+                    <span className="first-letter:uppercase">{sessionLine(r)}</span>
+                  </p>
+                  {r.title && <p className="text-xs text-muted-foreground">{r.title}</p>}
+                  {r.privateNote && (
+                    <p className="mt-1 flex items-start gap-1 break-all text-xs text-muted-foreground">
+                      <Lock className="mt-0.5 h-3 w-3 shrink-0" aria-hidden="true" /><span><span className="font-medium">Solo para el equipo:</span> {r.privateNote}</span>
+                    </p>
+                  )}
+                </div>
+                <Badge variant="outline" className={SESSION_TONE[r.status]}>{SESSION_STATUS_LABELS[r.status]}</Badge>
+              </div>
+              <div className="mt-1.5 flex flex-wrap gap-1.5">
+                <Button type="button" size="sm" variant="ghost" onClick={() => { setSeries(false); setForm({ id: r.id, value: { startsOn: r.startsOn, startTime: r.startTime, durationMinutes: r.durationMinutes, timezone: r.timezone, title: r.title, status: r.status, privateNote: r.privateNote } }); }}>
+                  <Pencil className="mr-1 h-3 w-3" aria-hidden="true" /> Editar
+                </Button>
+                {r.status === "scheduled" && (
+                  <Button type="button" size="sm" variant="ghost" disabled={setStatus.isPending} onClick={() => setStatus.mutate({ id: r.id, status: "done" })}>
+                    <Check className="mr-1 h-3 w-3" aria-hidden="true" /> Marcar realizada
+                  </Button>
+                )}
+                {r.status !== "scheduled" && (
+                  <Button type="button" size="sm" variant="ghost" disabled={setStatus.isPending} onClick={() => setStatus.mutate({ id: r.id, status: "scheduled" })}>
+                    <RotateCcw className="mr-1 h-3 w-3" aria-hidden="true" /> Volver a programada
+                  </Button>
+                )}
+                {r.status !== "cancelled" && (
+                  <Button type="button" size="sm" variant="ghost" disabled={setStatus.isPending} onClick={() => setStatus.mutate({ id: r.id, status: "cancelled" })}>
+                    <XCircle className="mr-1 h-3 w-3" aria-hidden="true" /> Cancelar sesión
+                  </Button>
+                )}
+                {confirmDelete === r.id ? (
+                  <Button type="button" size="sm" variant="destructive" disabled={del.isPending} onClick={() => del.mutate({ id: r.id })}>¿Eliminar? Sí, eliminar</Button>
+                ) : (
+                  <Button type="button" size="sm" variant="ghost" onClick={() => setConfirmDelete(r.id)}>
+                    <Trash2 className="mr-1 h-3 w-3" aria-hidden="true" /> Eliminar
+                  </Button>
+                )}
+              </div>
+            </li>
+          ))}
+        </ol>
+      )}
+      {live > 0 && <p className="mt-2 text-xs text-muted-foreground">Las fechas de la convocatoria (web, CRM y avisos) se calculan a partir de la primera y la última sesión.</p>}
+    </section>
+  );
+}
+
+function SessionFormInline({ editionId, state, onDone, onCancel }: { editionId: number; state: { id: number | null; value: SessionInput }; onDone: () => void; onCancel: () => void }) {
+  const [v, setV] = useState<SessionInput>(state.value);
+  const [durationText, setDurationText] = useState(state.value.durationMinutes == null ? "" : String(state.value.durationMinutes));
+  const [error, setError] = useState<string | null>(null);
+  const create = trpc.products.editions.sessions.create.useMutation({ onSuccess: () => { toast.success("Sesión añadida"); onDone(); }, onError: (e) => setError(e.message) });
+  const update = trpc.products.editions.sessions.update.useMutation({ onSuccess: () => { toast.success("Sesión guardada"); onDone(); }, onError: (e) => setError(e.message) });
+  const set = <K extends keyof SessionInput>(k: K, val: SessionInput[K]) => setV((x) => ({ ...x, [k]: val }));
+  const submit = (ev: React.FormEvent) => {
+    ev.preventDefault();
+    const parsed: SessionInput = { ...v, startTime: v.startTime || null, durationMinutes: durationText.trim() === "" ? null : Number(durationText) };
+    const first = Object.values(validateSessionInput(parsed))[0];
+    if (first) { setError(first); return; }
+    setError(null);
+    if (state.id) update.mutate({ id: state.id, form: parsed });
+    else create.mutate({ editionId, form: parsed });
+  };
+  const pid = `ses-${state.id ?? "new"}-${editionId}`;
+  return (
+    <form onSubmit={submit} noValidate className="mt-3 space-y-3 rounded-lg border border-border bg-background p-3" data-testid="form-sesion">
+      {error && <div role="alert" className="rounded-lg border border-destructive/40 bg-destructive/5 px-3 py-2 text-xs">{error}</div>}
+      <div className="grid gap-3 sm:grid-cols-3">
+        <div><Label htmlFor={`${pid}-day`}>Día *</Label><Input id={`${pid}-day`} type="date" value={v.startsOn} onChange={(e) => set("startsOn", e.target.value)} className="mt-1" /></div>
+        <div>
+          <Label htmlFor={`${pid}-time`}>Hora de inicio</Label>
+          <Input id={`${pid}-time`} type="time" value={v.startTime ?? ""} onChange={(e) => set("startTime", e.target.value || null)} className="mt-1" aria-describedby={`${pid}-time-hint`} />
+          <p id={`${pid}-time-hint`} className="mt-1 text-xs text-muted-foreground">Vacía = «hora por confirmar».</p>
+        </div>
+        <div><Label htmlFor={`${pid}-dur`}>Duración (min)</Label><Input id={`${pid}-dur`} type="number" inputMode="numeric" min={1} max={SESSION_LIMITS.durationMax} value={durationText} onChange={(e) => setDurationText(e.target.value)} className="mt-1" placeholder="Por ejemplo 90" /></div>
+      </div>
+      <div><Label htmlFor={`${pid}-title`}>Título (opcional, solo en el panel)</Label><Input id={`${pid}-title`} value={v.title} maxLength={SESSION_LIMITS.title} onChange={(e) => set("title", e.target.value)} className="mt-1" placeholder="Por ejemplo: Sesión de apertura" /></div>
+      <div>
+        <Label htmlFor={`${pid}-note`}>Nota interna</Label>
+        <Textarea id={`${pid}-note`} value={v.privateNote} maxLength={SESSION_LIMITS.privateNote} rows={2} onChange={(e) => set("privateNote", e.target.value)} className="mt-1" placeholder="Por ejemplo: enlace de acceso a la videollamada" aria-describedby={`${pid}-note-hint`} />
+        <p id={`${pid}-note-hint`} className="mt-1 flex items-center gap-1 text-xs font-medium text-amber-700 dark:text-amber-400"><Lock className="h-3 w-3" aria-hidden="true" /> Solo para el equipo; no se publica ni se envía a nadie.</p>
+      </div>
+      {state.id && (
+        <div>
+          <Label htmlFor={`${pid}-status`}>Estado</Label>
+          <Select value={v.status} onValueChange={(x) => set("status", x as SessionStatus)}>
+            <SelectTrigger id={`${pid}-status`} className="mt-1 sm:w-60"><SelectValue /></SelectTrigger>
+            <SelectContent>{(Object.keys(SESSION_STATUS_LABELS) as SessionStatus[]).map((k) => <SelectItem key={k} value={k}>{SESSION_STATUS_LABELS[k]}</SelectItem>)}</SelectContent>
+          </Select>
+        </div>
+      )}
+      <div className="flex justify-end gap-2">
+        <Button type="button" size="sm" variant="outline" onClick={onCancel}>Cancelar</Button>
+        <Button type="submit" size="sm" disabled={create.isPending || update.isPending}>{create.isPending || update.isPending ? "Guardando…" : "Guardar sesión"}</Button>
+      </div>
+    </form>
+  );
+}
+
+function WeeklySeriesForm({ edition, onDone, onCancel }: { edition: EditionItem; onDone: () => void; onCancel: () => void }) {
+  const [firstDate, setFirstDate] = useState("");
+  const [count, setCount] = useState("4");
+  const [everyWeeks, setEveryWeeks] = useState("1");
+  const [startTime, setStartTime] = useState("");
+  const [duration, setDuration] = useState("");
+  const [title, setTitle] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const weekly = trpc.products.editions.sessions.weekly.useMutation({ onSuccess: (r) => { toast.success(`Sesiones creadas (${(r as unknown[]).length} en total)`); onDone(); }, onError: (e) => setError(e.message) });
+  const submit = (ev: React.FormEvent) => {
+    ev.preventDefault();
+    const n = Math.trunc(Number(count));
+    const w = Math.trunc(Number(everyWeeks));
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(firstDate)) return setError("Indica la fecha de la primera sesión.");
+    if (!(n >= 1 && n <= SESSION_LIMITS.perEdition)) return setError(`El número de sesiones debe estar entre 1 y ${SESSION_LIMITS.perEdition}.`);
+    setError(null);
+    weekly.mutate({ editionId: edition.id, firstDate, count: n, everyWeeks: w >= 1 ? w : 1, startTime: startTime || null, durationMinutes: duration.trim() === "" ? null : Math.trunc(Number(duration)), title: title || undefined });
+  };
+  const pid = `serie-${edition.id}`;
+  return (
+    <form onSubmit={submit} noValidate className="mt-3 space-y-3 rounded-lg border border-border bg-background p-3" data-testid="serie-semanal">
+      <p className="text-xs text-muted-foreground">Crea varias sesiones de golpe, una cada semana (o cada pocas semanas) desde la fecha que elijas. Si alguna fecha choca con otra sesión, no se crea ninguna.</p>
+      {error && <div role="alert" className="rounded-lg border border-destructive/40 bg-destructive/5 px-3 py-2 text-xs">{error}</div>}
+      <div className="grid gap-3 sm:grid-cols-3">
+        <div><Label htmlFor={`${pid}-first`}>Primera sesión *</Label><Input id={`${pid}-first`} type="date" value={firstDate} onChange={(e) => setFirstDate(e.target.value)} className="mt-1" /></div>
+        <div><Label htmlFor={`${pid}-count`}>Número de sesiones *</Label><Input id={`${pid}-count`} type="number" min={1} max={SESSION_LIMITS.perEdition} value={count} onChange={(e) => setCount(e.target.value)} className="mt-1" /></div>
+        <div><Label htmlFor={`${pid}-every`}>Cada (semanas)</Label><Input id={`${pid}-every`} type="number" min={1} max={SESSION_LIMITS.maxIntervalWeeks} value={everyWeeks} onChange={(e) => setEveryWeeks(e.target.value)} className="mt-1" /></div>
+        <div>
+          <Label htmlFor={`${pid}-time`}>Hora de inicio</Label>
+          <Input id={`${pid}-time`} type="time" value={startTime} onChange={(e) => setStartTime(e.target.value)} className="mt-1" />
+          <p className="mt-1 text-xs text-muted-foreground">Vacía = «hora por confirmar».</p>
+        </div>
+        <div><Label htmlFor={`${pid}-dur`}>Duración (min)</Label><Input id={`${pid}-dur`} type="number" min={1} max={SESSION_LIMITS.durationMax} value={duration} onChange={(e) => setDuration(e.target.value)} className="mt-1" placeholder="Por ejemplo 30" /></div>
+        <div><Label htmlFor={`${pid}-title`}>Título (opcional)</Label><Input id={`${pid}-title`} value={title} maxLength={SESSION_LIMITS.title} onChange={(e) => setTitle(e.target.value)} className="mt-1" /></div>
+      </div>
+      <div className="flex justify-end gap-2">
+        <Button type="button" size="sm" variant="outline" onClick={onCancel}>Cancelar</Button>
+        <Button type="submit" size="sm" disabled={weekly.isPending}>{weekly.isPending ? "Creando…" : "Crear sesiones"}</Button>
+      </div>
+    </form>
   );
 }

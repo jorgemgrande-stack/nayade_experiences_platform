@@ -9,6 +9,8 @@ import { adminProcedure, router } from "../_core/trpc";
 import { EDITION_MODES, EDITION_STATUSES, ENROLLMENT_STATUSES, EDITION_LIMITS } from "../../shared/editions";
 import { notifyEnrollmentChange, getNotifySettings, saveNotifySettings } from "../editionsNotify";
 import { EditionError, addEnrollment, searchPeople, cancelEdition, createEdition, duplicateEdition, isMissingEditionsSchema, listEditions, listEnrollments, listUpcomingEditions, recountReserved, setEnrollmentStatus, updateEdition } from "../editionsDb";
+import { SESSION_LIMITS, SESSION_STATUSES } from "../../shared/editionSessions";
+import { createSession, createWeeklySeries, deleteSession, listSessions, reorderSessions, setSessionStatus, updateSession } from "../editionSessionsDb";
 
 const id = z.number().int().positive();
 const local = z.string().regex(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/, "Fecha y hora no válidas");
@@ -26,6 +28,31 @@ const form = z.object({
   status: z.enum(EDITION_STATUSES),
   priceOverride: z.number().finite().nullable(),
 });
+
+const day = z.string().regex(/^d{4}-d{2}-d{2}$/, "Fecha no válida");
+const time = z.string().regex(/^d{2}:d{2}$/, "Hora no válida").nullable();
+const sessionForm = z.object({
+  startsOn: day,
+  /** null = hora por confirmar */
+  startTime: time,
+  durationMinutes: z.number().int().nullable(),
+  timezone: z.string().max(64),
+  title: z.string().max(SESSION_LIMITS.title * 2),
+  status: z.enum(SESSION_STATUSES),
+  /** Solo para el equipo; no se publica */
+  privateNote: z.string().max(SESSION_LIMITS.privateNote * 2),
+});
+
+/** Como `guard`, con el aviso propio de las sesiones si la empresa aún no tiene la migración 0077. */
+async function sessionGuard<T>(fn: () => Promise<T>): Promise<T> {
+  try {
+    return await fn();
+  } catch (e) {
+    if (e instanceof EditionError) throw new TRPCError({ code: e.code, message: e.message });
+    if (isMissingEditionsSchema(e)) throw new TRPCError({ code: "PRECONDITION_FAILED", message: "Las sesiones de las convocatorias todavía no están activadas en tu empresa. Avisa a soporte." });
+    throw e;
+  }
+}
 
 /** Los errores de reglas salen como errores tRPC con su texto en español; la falta de migración, como aviso claro. */
 async function guard<T>(fn: () => Promise<T>): Promise<T> {
@@ -91,6 +118,20 @@ export const editionsRouter = router({
   saveNotifySettings: adminProcedure
     .input(z.object({ enabled: z.boolean(), confirmSubject: z.string().max(300), confirmBody: z.string().max(4000), cancelSubject: z.string().max(300), cancelBody: z.string().max(4000) }))
     .mutation(({ input }) => guard(() => saveNotifySettings(input))),
+
+  /** Sesiones de una convocatoria (paquete con varias fechas). Incluyen la nota interna: solo administración. */
+  sessions: router({
+    list: adminProcedure.input(z.object({ editionId: id })).query(({ input }) => sessionGuard(() => listSessions(input.editionId))),
+    create: adminProcedure.input(z.object({ editionId: id, form: sessionForm })).mutation(({ input }) => sessionGuard(() => createSession(input.editionId, input.form))),
+    update: adminProcedure.input(z.object({ id, form: sessionForm })).mutation(({ input }) => sessionGuard(() => updateSession(input.id, input.form))),
+    setStatus: adminProcedure.input(z.object({ id, status: z.enum(SESSION_STATUSES) })).mutation(({ input }) => sessionGuard(() => setSessionStatus(input.id, input.status))),
+    delete: adminProcedure.input(z.object({ id })).mutation(({ input }) => sessionGuard(() => deleteSession(input.id))),
+    reorder: adminProcedure.input(z.object({ editionId: id, ids: z.array(id).max(SESSION_LIMITS.perEdition) })).mutation(({ input }) => sessionGuard(() => reorderSessions(input.editionId, input.ids))),
+    /** «N sesiones semanales desde una fecha» (todo o nada). */
+    weekly: adminProcedure
+      .input(z.object({ editionId: id, firstDate: day, count: z.number().int().min(1).max(SESSION_LIMITS.perEdition), everyWeeks: z.number().int().min(1).max(SESSION_LIMITS.maxIntervalWeeks).optional(), startTime: time, durationMinutes: z.number().int().nullable(), title: z.string().max(SESSION_LIMITS.title * 2).optional() }))
+      .mutation(({ input }) => sessionGuard(() => createWeeklySeries(input.editionId, input))),
+  }),
 
   /** Repara el contador de plazas confirmadas a partir de las inscripciones. */
   recount: adminProcedure.input(z.object({ editionId: id })).mutation(({ input }) => guard(async () => ({ reserved: await recountReserved(input.editionId) }))),
