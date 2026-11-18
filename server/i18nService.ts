@@ -871,13 +871,15 @@ export interface SitemapPageEntry {
  * `products`: productos que el sitemap ya publica en `/tienda/<slug>` (publicados y a la vista); entra cada uno con
  * alguna traducción validada. Las versiones sin traducir no entran (se sirven con `noindex`).
  */
-export async function sitemapAlternates(repo: I18nRepo, products: PrincipalProduct[] = []): Promise<{ cfg: I18nConfig; entries: SitemapPageEntry[] }> {
+export async function sitemapAlternates(repo: I18nRepo, products: PrincipalProduct[] = [], opts: { catalog?: boolean } = {}): Promise<{ cfg: I18nConfig; entries: SitemapPageEntry[] }> {
   const cfg = await getI18nConfig(repo);
   if (!isMultilingual(cfg)) return { cfg, entries: [] };
   const [rows, home] = await Promise.all([repo.listPageTranslations({ onlyValidated: true }), repo.principalHomeSlug()]);
   const byPage = new Map<number, PageTranslationRow[]>();
   for (const r of rows) byPage.set(r.pageId, [...(byPage.get(r.pageId) ?? []), r]);
   const entries: SitemapPageEntry[] = [];
+  // Catálogo (`/tienda`): una URL por idioma público, cada una con las demás como alternativas
+  if (opts.catalog) entries.push({ rest: "/tienda", versions: publicLocales(cfg).map((l) => ({ locale: l, rest: "/tienda" })) });
   for (const [pageId, list] of Array.from(byPage.entries())) {
     const page = await repo.principalPageById(pageId);
     if (!page?.isPublished) continue;
