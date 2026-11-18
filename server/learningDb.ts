@@ -504,4 +504,62 @@ export async function recordProgress(userId: number, lessonId: number, p: { comp
   return { status: row.status };
 }
 
+// ─── Recursos privados (ficheros del curso) ───────────────────────────────────────────────────────────────────────
+
+export type ResourceAuthorization =
+  | { allowed: true; enrollmentId: number; resourceId: number; objectId: string; kind: "video" | "audio" | "pdf" | "document" | "image"; originalName: string | null }
+  | { allowed: false; reason: "no_enrollment" | "inactive" | "not_started" | "expired" | "module_not_granted" | "not_available" };
+
+/**
+ * ¿Puede este usuario abrir este recurso ahora? Hace falta que el recurso esté VERIFICADO (con fichero real), que lo use
+ * algún bloque de un curso publicado y que una matrícula del usuario, en ventana y activa, abra el módulo de ese bloque.
+ * Devuelve la matrícula que lo autoriza (para el registro de accesos). Nunca devuelve rutas de almacenamiento.
+ */
+export async function authorizeResource(userId: number | null, resourceId: number, now = Date.now()): Promise<ResourceAuthorization> {
+  if (!userId) return { allowed: false, reason: "no_enrollment" };
+  const d = await db();
+  const [res] = await rows(d, sql`SELECT id, kind, status, stored_object_id, original_name FROM learning_resources WHERE id = ${resourceId}`);
+  if (!res || res.status !== "verified" || !res.stored_object_id) return { allowed: false, reason: "not_available" };
+  const uses = await rows(d, sql`SELECT DISTINCT m.id AS module_id, m.course_id FROM learning_blocks b JOIN learning_lessons l ON l.id = b.lesson_id JOIN learning_modules m ON m.id = l.module_id JOIN learning_courses c ON c.id = m.course_id WHERE b.resource_id = ${resourceId} AND c.status = 'published'`);
+  if (!uses.length) return { allowed: false, reason: "not_available" };
+  let last: ResourceAuthorization = { allowed: false, reason: "no_enrollment" };
+  for (const u of uses) {
+    const list = await rows(d, sql`SELECT * FROM learning_enrollments WHERE user_id = ${userId} AND course_id = ${n(u.course_id)} ORDER BY id`);
+    const mods = await modulesOf(d, list.map((r) => n(r.id)));
+    for (const r of list) {
+      const view: EnrollmentView = { status: r.status, startsAt: n(r.starts_at), endsAt: r.ends_at == null ? null : n(r.ends_at), moduleIds: mods.get(n(r.id)) ?? [] };
+      const dec = evaluateAny([view], n(u.module_id), now);
+      if (dec.allowed) return { allowed: true, enrollmentId: n(r.id), resourceId, objectId: String(res.stored_object_id), kind: res.kind, originalName: res.original_name ?? null };
+      last = { allowed: false, reason: dec.reason };
+    }
+  }
+  return last;
+}
+
+/** Registro de un acceso relevante a un recurso (matrícula que lo autorizó). */
+export async function logResourceOpened(enrollmentId: number, resourceId: number, userId: number, via: "stream" | "redirect" | "download", now = Date.now()) {
+  const d = await db();
+  await event(d, enrollmentId, "resource_opened", userId, { resourceId, via }, now);
+}
+
+export interface AttachResult {
+  resourceId: number;
+  duplicateOf: Array<{ resourceId: number; originalName: string | null }>;
+}
+
+const KIND_MIME: Record<string, RegExp> = { video: /^video\//, audio: /^audio\//, pdf: /^application\/pdf$/, document: /^application\//, image: /^image\// };
+
+/** Asocia el fichero ya almacenado a un recurso pendiente: lo verifica (tipo coherente), guarda tamaño y huella y avisa de duplicados. */
+export async function attachResourceFile(resourceId: number, f: { objectId: string; sha256: string; sizeBytes: number; mimeType: string; originalName: string | null }, actorUserId: number, now = Date.now()): Promise<AttachResult> {
+  const d = await db();
+  return d.transaction(async (tx) => {
+    const [res] = await rows(tx, sql`SELECT id, kind FROM learning_resources WHERE id = ${resourceId} FOR UPDATE`);
+    if (!res) throw new LearningError("NOT_FOUND", "El recurso no existe.");
+    if (!(KIND_MIME[String(res.kind)] ?? /^$/).test(f.mimeType)) throw new LearningError("BAD_REQUEST", `El fichero (${f.mimeType}) no corresponde a un recurso de tipo ${res.kind}.`);
+    const dups = await rows(tx, sql`SELECT id, original_name FROM learning_resources WHERE sha256 = ${f.sha256} AND id <> ${resourceId}`);
+    await run(tx, sql`UPDATE learning_resources SET stored_object_id = ${f.objectId}, status = 'verified', mime_type = ${f.mimeType}, size_bytes = ${f.sizeBytes}, sha256 = ${f.sha256}, original_name = COALESCE(original_name, ${f.originalName}), updated_at = ${now} WHERE id = ${resourceId}`);
+    return { resourceId, duplicateOf: dups.map((r) => ({ resourceId: n(r.id), originalName: r.original_name ?? null })) };
+  });
+}
+
 export { LearningRuleError };

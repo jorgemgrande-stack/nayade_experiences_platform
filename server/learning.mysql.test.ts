@@ -226,4 +226,86 @@ describe.skipIf(!URL_)("LMS: matrículas, autorización por módulo, pago confir
     expect(errCode(bad)).toBe("BAD_REQUEST");
     expect(await sql("SELECT id FROM learning_courses WHERE slug = 'malo-test'")).toEqual([]);
   });
+
+  it("recursos: la administración sube, solo se sirven con matrícula del módulo, sin caché ni URL pública, y quedan en el historial", async () => {
+    const os = await import("node:os");
+    const fsm = await import("node:fs");
+    const pathm = await import("node:path");
+    const crypto = await import("node:crypto");
+    const dir = fsm.mkdtempSync(pathm.join(os.tmpdir(), "lms-store-"));
+    process.env.LOCAL_STORAGE_PATH = dir;
+    process.env.STORAGE_OBJECTS = "on";
+    for (const k of ["S3_ENDPOINT", "S3_ACCESS_KEY", "S3_SECRET_KEY", "S3_BUCKET", "STORAGE_PRIVATE_DELIVERY"]) delete process.env[k];
+    (await import("./_core/files/backend")).resetBackendCache();
+    (await import("./_core/files/service")).setFileServiceForTests(null);
+
+    const now = Date.now();
+    const ins = async (q: string, p: unknown[], find: [string, unknown[]]) => {
+      await ess.sql("a", q, p);
+      return Number((await ess.sql("a", find[0], find[1]))[0].id);
+    };
+    const course = await ins("INSERT INTO learning_courses (slug, title, language, status, created_at, updated_at) VALUES ('recursos-test','Recursos','de','published',?,?)", [now, now], ["SELECT id FROM learning_courses WHERE slug = 'recursos-test'", []]);
+    const mk = async (k: number) => {
+      const m = await ins("INSERT INTO learning_modules (course_id, position, title, source_key, created_at, updated_at) VALUES (?,?,?,?,?,?)", [course, k, `R${k}`, `m${k}`, now, now], ["SELECT id FROM learning_modules WHERE course_id = ? AND source_key = ?", [course, `m${k}`]]);
+      const l = await ins("INSERT INTO learning_lessons (module_id, position, title, source_key, created_at, updated_at) VALUES (?,?,?,?,?,?)", [m, 1, `L${k}`, `l${k}`, now, now], ["SELECT id FROM learning_lessons WHERE module_id = ? AND source_key = ?", [m, `l${k}`]]);
+      const mkRes = async (kind: string, name: string) => {
+        await ess.sql("a", "INSERT INTO learning_resources (kind, original_name, status, created_at, updated_at) VALUES (?, ?, 'pending', ?, ?)", [kind, name, now, now]);
+        const rid = Number((await ess.sql("a", "SELECT id FROM learning_resources WHERE original_name = ? ORDER BY id DESC LIMIT 1", [name]))[0].id);
+        await ess.sql("a", "INSERT INTO learning_blocks (lesson_id, position, kind, title, resource_id, source_key, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?)", [l, kind === "pdf" ? 1 : 2, kind, name, rid, `b-${kind}-${k}`, now, now]);
+        return rid;
+      };
+      return { m, pdf: await mkRes("pdf", `doc${k}-${now}.pdf`), video: await mkRes("video", `vid${k}-${now}.mp4`) };
+    };
+    const X1 = await mk(1);
+    const X2 = await mk(2);
+    const pdfBytes = Buffer.from("%PDF-1.4\n1 0 obj<<>>endobj\ntrailer<<>>\n%%EOF\n" + crypto.randomBytes(8).toString("hex"), "latin1");
+    const multipart = (name: string, type: string, body: Buffer) => {
+      const b = `----lms${crypto.randomBytes(6).toString("hex")}`;
+      const head = `--${b}\r\nContent-Disposition: form-data; name="file"; filename="${name}"\r\nContent-Type: ${type}\r\n\r\n`;
+      const tail = `\r\n--${b}--\r\n`;
+      const raw = Buffer.concat([Buffer.from(head), body, Buffer.from(tail)]).toString("latin1");
+      return { raw, headers: { "content-type": `multipart/form-data; boundary=${b}` } };
+    };
+    const up = (rid: number, cookie: string, name = "doc.pdf", type = "application/pdf", body = pdfBytes) => ess.call("a", "POST", `/api/learning/upload/${rid}`, { cookie, ...multipart(name, type, body) });
+
+    // Subida: solo admin; el tipo se comprueba por el contenido y debe corresponder al recurso
+    expect((await up(X1.pdf, stu)).status).toBe(403);
+    expect((await up(X1.pdf, "")).status).toBe(401);
+    expect((await up(X1.video, adm)).status).toBe(400); // un PDF no es un vídeo
+    const ok1 = await up(X1.pdf, adm);
+    expect(ok1.status, ok1.text).toBe(200);
+    expect(ok1.json).toMatchObject({ ok: true, contentType: "application/pdf", duplicateOf: [] });
+    const dup = await up(X2.pdf, adm); // mismo contenido en otro recurso: se avisa, no se bloquea
+    expect(dup.status, dup.text).toBe(200);
+    expect(dup.json.duplicateOf).toEqual([{ resourceId: X1.pdf, originalName: expect.stringContaining("doc1-") }]);
+    expect((await sql("SELECT status FROM learning_resources WHERE id = ?", [X1.pdf]))[0].status).toBe("verified");
+    expect((await sql("SELECT status FROM learning_resources WHERE id = ?", [X1.video]))[0].status).toBe("pending");
+
+    // Entrega: matrícula del módulo 1 solamente
+    ok(await ess.m("a", "learning.admin.grant", { userId: u.s1, courseId: course, moduleIds: [X1.m], durationDays: 30, reason: "Prueba de recursos con motivo", nonce: `n${now}abcd` }, adm), "matrícula");
+    const get = (rid: number, cookie: string, q = "") => ess.call("a", "GET", `/api/learning/resource/${rid}${q}`, { cookie });
+    expect((await get(X1.pdf, "")).status).toBe(401);
+    const r1 = await get(X1.pdf, stu);
+    expect(r1.status, r1.text).toBe(200);
+    expect(String(r1.headers?.["cache-control"])).toContain("no-store");
+    expect(String(r1.headers?.["content-type"])).toContain("application/pdf");
+    expect(String(r1.headers?.["x-robots-tag"])).toContain("noindex");
+    expect(String(r1.headers?.["content-disposition"])).toContain("inline");
+    expect(String((await get(X1.pdf, stu, "?download=1")).headers?.["content-disposition"])).toContain("attachment");
+    expect((await get(X2.pdf, stu)).status).toBe(403); // módulo 2 no concedido, aunque tenga fichero
+    expect((await get(X1.video, stu)).status).toBe(404); // sin fichero verificado: nada que servir
+    expect((await get(X1.pdf, stu2)).status).toBe(403); // otra identidad sin matrícula de este curso
+    expect((await get(999999, stu)).status).toBe(404);
+    // Registro de accesos y ausencia de rutas públicas
+    const opened = await sql("SELECT detail FROM learning_access_events WHERE type = 'resource_opened' AND JSON_EXTRACT(detail, '$.resourceId') = ?", [X1.pdf]);
+    expect(opened.length).toBeGreaterThanOrEqual(2);
+    const [obj] = await sql("SELECT stored_object_id FROM learning_resources WHERE id = ?", [X1.pdf]);
+    expect((await ess.call("a", "GET", `/files/${obj.stored_object_id}/x.pdf`)).status).toBe(404); // privado: no hay URL pública
+    expect((await ess.call("a", "GET", `/api/files/${obj.stored_object_id}`, { cookie: stu })).status).toBe(403); // ni por la ruta genérica de ficheros
+    expect((await ess.call("a", "GET", `/api/files/${obj.stored_object_id}`)).status).toBe(401);
+    // Caducidad: la matrícula vencida corta la entrega al instante
+    await sql("UPDATE learning_enrollments SET ends_at = ? WHERE user_id = ? AND course_id = ?", [Date.now() - 1000, u.s1, course]);
+    expect((await get(X1.pdf, stu)).status).toBe(403);
+    fsm.rmSync(dir, { recursive: true, force: true });
+  });
 });

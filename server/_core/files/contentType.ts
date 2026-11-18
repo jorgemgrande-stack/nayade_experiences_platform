@@ -18,6 +18,10 @@ export type DetectedType =
   | "image/avif"
   | "image/svg+xml"
   | "application/pdf"
+  | "video/mp4"
+  | "video/webm"
+  | "audio/mpeg"
+  | "audio/mp4"
   | "application/zip"
   | "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
   | "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
@@ -39,6 +43,10 @@ const EXT: Record<DetectedType, string> = {
   "image/avif": "avif",
   "image/svg+xml": "svg",
   "application/pdf": "pdf",
+  "video/mp4": "mp4",
+  "video/webm": "webm",
+  "audio/mpeg": "mp3",
+  "audio/mp4": "m4a",
   "application/zip": "zip",
   "application/vnd.openxmlformats-officedocument.wordprocessingml.document": "docx",
   "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": "xlsx",
@@ -101,8 +109,13 @@ export function detectContentType(data: Buffer, declared?: string | null): Detec
   if (startsWith(data, [0x66, 0x74, 0x79, 0x70], 4)) {
     const brand = data.subarray(8, 12).toString("latin1");
     if (brand === "avif" || brand === "avis") return "image/avif";
+    if (brand === "M4A " || brand === "M4B ") return "audio/mp4";
+    if (["isom", "iso2", "mp41", "mp42", "avc1", "M4V ", "dash", "MSNV", "qt  "].includes(brand)) return "video/mp4";
     return "application/octet-stream";
   }
+  // WebM (contenedor Matroska/EBML) y MP3 (etiqueta ID3 o cabecera de trama)
+  if (startsWith(data, [0x1a, 0x45, 0xdf, 0xa3])) return "video/webm";
+  if (startsWith(data, [0x49, 0x44, 0x33]) || (data.length > 2 && data[0] === 0xff && (data[1] & 0xe0) === 0xe0 && (data[1] & 0x06) !== 0)) return "audio/mpeg";
   if (startsWith(data, [0x25, 0x50, 0x44, 0x46, 0x2d])) return "application/pdf";
   if (startsWith(data, [0x50, 0x4b, 0x03, 0x04]) || startsWith(data, [0x50, 0x4b, 0x05, 0x06])) return zipKind(data);
   if (startsWith(data, [0xd0, 0xcf, 0x11, 0xe0, 0xa1, 0xb1, 0x1a, 0xe1])) {

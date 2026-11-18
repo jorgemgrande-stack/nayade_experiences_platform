@@ -73,6 +73,9 @@ export const CATEGORIES = {
   "hr-photo": { visibility: "private", ...HR, maxBytes: 5 * MB, types: IMAGES },
   // Privado por defecto (documentos internos)
   internal: { visibility: "private", ...ADMIN, maxBytes: 20 * MB, types: ATTACHMENTS },
+  // Formación digital (Elephant LMS): vídeo, audio y documentos del curso. Solo se sirven por /api/learning/resource tras
+  // comprobar la matrícula del alumno; la administración las gestiona con el permiso de ajustes.
+  "learning-content": { visibility: "private", ...ADMIN, maxBytes: 2048 * MB, types: ["application/pdf", "video/mp4", "video/webm", "audio/mpeg", "audio/mp4", ...IMAGES] },
 } as const satisfies Record<string, CategoryPolicy>;
 
 export type FileCategory = keyof typeof CATEGORIES;
