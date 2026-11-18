@@ -47,6 +47,10 @@ const PUBLIC_TRPC_ROUTES = new Set([
   "public.getPublicPageBlocks",
   "public.getTheme",
   "public.getTenantPage",
+  // Multidioma: idiomas públicos y versiones de la página actual (selector de idioma de la cabecera)
+  "public.getSiteLocales",
+  "public.getPageAlternates",
+  // Pie de la web: texto del pie en el idioma de la página
   "public.getFooterText",
 
   // ── Blog público (solo entradas publicadas) ───────────────────────────────
