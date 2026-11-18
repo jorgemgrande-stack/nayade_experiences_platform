@@ -276,6 +276,8 @@ export const leads = mysqlTable("leads", {
   variantLabel: varchar("variant_label", { length: 128 }),
   shownPrice: decimal("shown_price", { precision: 10, scale: 2 }),
   isTest: boolean("is_test").default(false).notNull(),
+  // 0076 añade `edition_id` (INT NULL) y `currency` (CHAR(3) NULL). No se declaran aquí a propósito: select()/insert()
+  // nombran todas las columnas y romperían en una empresa sin la migración. Se leen y escriben en server/leadWebRequestDb.ts.
   cartMetadata: json("cart_metadata").$type<{
     merchantOrder: string;
     items: { productId: number; productName: string; people: number; amountCents: number; bookingDate: string }[];

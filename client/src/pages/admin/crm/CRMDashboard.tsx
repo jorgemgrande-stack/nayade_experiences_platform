@@ -45,6 +45,7 @@ import {
 } from "@/components/ui/select";
 import { toast } from "sonner";
 import CancellationDetailModal from "./CancellationDetailModal";
+import { LeadWebRequestBlock } from "./LeadWebRequestBlock";
 import ReservationTicket from "./ReservationTicket";
 import NewInvoiceDialog from "./NewInvoiceDialog";
 import CreditNoteDialog from "./CreditNoteDialog";
@@ -545,6 +546,9 @@ function LeadDetailModal({
             <Mail className="w-3.5 h-3.5" /> {lead.email}
           </a>
         </div>
+
+        {/* Solicitud web estructurada (solo leads que vienen de la ficha de un producto) */}
+        <LeadWebRequestBlock request={data.webRequest} />
 
         {/* Request details */}
         <div className="bg-foreground/[0.05] rounded-xl p-4 space-y-2">
@@ -5506,7 +5510,7 @@ export default function CRMDashboard() {
   const [showNewReservationModal, setShowNewReservationModal] = useState(false);
   // ─── Estado dropdown acciones reservas ────────────────────────────────────────────────────
   const [resChannelFilter, setResChannelFilter] = useState<string>("all");
-  const [leadSourceFilter, setLeadSourceFilter] = useState<number | "all">("all");
+  const [leadSourceFilter, setLeadSourceFilter] = useState<number | "all" | "web">("all");
   const [resActionMenuId, setResActionMenuId] = useState<number | null>(null);
   const [viewResId, setViewResId] = useState<number | null>(() => {
     try {
@@ -5548,7 +5552,8 @@ export default function CRMDashboard() {
   const leadsFilter = useMemo(() => ({
     opportunityStatus: filterStatus !== "all" && tab === "leads" ? (filterStatus as OpportunityStatus) : undefined,
     search: search || undefined,
-    leadSourceId: leadSourceFilter !== "all" ? (leadSourceFilter as number) : undefined,
+    leadSourceId: typeof leadSourceFilter === "number" ? leadSourceFilter : undefined,
+    webRequestsOnly: leadSourceFilter === "web" ? true : undefined,
     limit: PAGE_SIZE,
     offset: leadsPage * PAGE_SIZE,
   }), [filterStatus, search, tab, leadsPage, leadSourceFilter]);
@@ -6836,14 +6841,16 @@ export default function CRMDashboard() {
             </Select>
           )}
           {/* Filtro por origen — visible solo en el tab de leads */}
-          {tab === "leads" && leadSourcesData && leadSourcesData.length > 0 && (
-            <Select value={String(leadSourceFilter)} onValueChange={v => setLeadSourceFilter(v === "all" ? "all" : Number(v))}>
+          {tab === "leads" && (
+            <Select value={String(leadSourceFilter)} onValueChange={v => setLeadSourceFilter(v === "all" || v === "web" ? v : Number(v))}>
               <SelectTrigger className="w-full sm:w-44 bg-foreground/[0.05] border-foreground/[0.12] text-white text-xs h-9">
                 <SelectValue placeholder="Origen" />
               </SelectTrigger>
               <SelectContent className="bg-[#0d1520] border-foreground/[0.12]">
                 <SelectItem value="all" className="text-foreground/70 text-xs">Todos los orígenes</SelectItem>
-                {leadSourcesData.map((src: any) => (
+                {/* Solicitudes de información o de plaza hechas desde la ficha de un producto */}
+                <SelectItem value="web" className="text-sky-300 text-xs">Solicitudes web</SelectItem>
+                {(leadSourcesData ?? []).map((src: any) => (
                   <SelectItem key={src.id} value={String(src.id)} className="text-xs">
                     <span style={{ color: src.color ?? undefined }}>{src.name}</span>
                   </SelectItem>
