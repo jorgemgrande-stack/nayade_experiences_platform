@@ -533,13 +533,14 @@ export const appRouter = router({
         // Página traducida y validada: su propio contenido, nunca mezclado con el del principal
         if (i18n?.kind === "translated") {
           const { renderBlockTokens: renderTranslated } = await import("./_core/pageBlocks");
+          const { filterScheduledBlocks } = await import("../shared/pageBlocks");
           return {
             slug: row.slug,
             title: renderSiteTokens(i18n.page.title, tokens),
             html: "",
             metaTitle: i18n.page.metaTitle ? renderSiteTokens(i18n.page.metaTitle, tokens) : null,
             metaDescription: i18n.page.metaDescription ? renderSiteTokens(i18n.page.metaDescription, tokens) : null,
-            blocks: renderTranslated(i18n.page.blocks ?? [], tokens),
+            blocks: filterScheduledBlocks(renderTranslated(i18n.page.blocks ?? [], tokens) as any[], Date.now()),
             i18n: { locale: i18n.locale, htmlLang: i18n.htmlLang, fallback: false },
           };
         }
@@ -550,7 +551,7 @@ export const appRouter = router({
           html: renderSiteTokens(sanitizeRichHtml(plainTextToHtml(row.content ?? "")), tokens),
           metaTitle: row.metaTitle ? renderSiteTokens(row.metaTitle, tokens) : null,
           metaDescription: row.metaDescription ? renderSiteTokens(row.metaDescription, tokens) : null,
-          blocks: blocks ? renderBlockTokens(blocks, tokens) : null,
+          blocks: blocks ? (await import("../shared/pageBlocks")).filterScheduledBlocks(renderBlockTokens(blocks, tokens) as any[], Date.now()) : null,
         };
       }),
 

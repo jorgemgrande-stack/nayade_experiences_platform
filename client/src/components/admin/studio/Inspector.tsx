@@ -890,6 +890,20 @@ function StyleEditor({ style, setStyle, pro, part }: { style: BlockStyle; setSty
                 </div>
               ))}
             </div>
+            <div className="space-y-2">
+              <span className="text-sm font-medium">Vigencia programada</span>
+              <p className="text-xs text-muted-foreground">El bloque se publica solo entre estas fechas (ambas incluidas, hora de Madrid) y deja de verse sin que nadie tenga que quitarlo. Vacío = sin límite.</p>
+              <div className="grid grid-cols-2 gap-2">
+                <div className="space-y-1">
+                  <Label htmlFor={`${anchorId}-show-from`} className="text-xs font-normal">Desde</Label>
+                  <PlainInput id={`${anchorId}-show-from`} type="date" value={style.showFrom} max={style.showUntil || undefined} onChange={(e) => setStyle({ showFrom: e.target.value })} />
+                </div>
+                <div className="space-y-1">
+                  <Label htmlFor={`${anchorId}-show-until`} className="text-xs font-normal">Hasta (incluido)</Label>
+                  <PlainInput id={`${anchorId}-show-until`} type="date" value={style.showUntil} min={style.showFrom || undefined} onChange={(e) => setStyle({ showUntil: e.target.value })} />
+                </div>
+              </div>
+            </div>
             <Segmented
               label="Alineación en el móvil"
               value={style.mobileAlign}

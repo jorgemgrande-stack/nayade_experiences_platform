@@ -27,7 +27,7 @@ import { cleanThemeValues, THEME_EDITABLE_KEYS, ThemeValueError } from "../_core
 const THEME_KEYS = THEME_EDITABLE_KEYS;
 const THEME_LABEL: Record<string, string> = {
   brand_name: "Nombre comercial", brand_logo_url: "Logotipo", brand_favicon_url: "Favicon",
-  theme_primary_color: "Color principal", theme_accent_color: "Color de acento", theme_font_family: "Tipografía",
+  theme_primary_color: "Color principal", theme_accent_color: "Color de acento", theme_text_color: "Color del texto", theme_font_family: "Tipografía",
   theme_radius: "Radio de bordes", seo_description: "Descripción (SEO)", brand_phone: "Teléfono",
   brand_location: "Dirección", email_reservations: "Correo de contacto", brand_hero_image_url: "Imagen principal de la web",
   login_background_url: "Fondo de la pantalla de acceso", login_welcome_title: "Titular de la pantalla de acceso",
