@@ -29,6 +29,8 @@ import {
 } from "../shared/editions";
 import { isFixedOffer, offerModeOf, type OfferMode } from "../shared/offerMode";
 import type { PublicEditionSession } from "../shared/editionSessions";
+import { QUOTE_PAID_STATUSES as QUOTE_PAID, cleanConfirmReason, confirmNeedsReason, CONFIRM_REASON_LIMITS } from "../shared/enrollmentCommerce";
+import type { EnrollmentCommerce } from "./enrollmentCommerceDb";
 
 export class EditionError extends Error {
   constructor(readonly code: "NOT_FOUND" | "BAD_REQUEST" | "CONFLICT", message: string) {
@@ -271,6 +273,14 @@ export interface Enrollment {
   consentGiven: boolean;
   createdAt: number;
   confirmedAt: number | null;
+  /** Modalidad elegida (0076; null sin la migración) */
+  variantId: number | null;
+  /** Presupuesto enlazado (0078; null sin la migración). El pago se lee del presupuesto, nunca de aquí. */
+  quoteId: number | null;
+  /** Último cambio de estado: quién, cuándo y con qué motivo (0078) */
+  statusChangedBy: string | null;
+  statusChangedAt: number | null;
+  statusReason: string | null;
 }
 
 function toEnrollment(r: Record<string, any>): Enrollment {
@@ -289,31 +299,67 @@ function toEnrollment(r: Record<string, any>): Enrollment {
     consentGiven: Number(r.consent_given) === 1,
     createdAt: Number(r.created_at),
     confirmedAt: num(r.confirmed_at),
+    variantId: num(r.variant_id),
+    quoteId: num(r.quote_id),
+    statusChangedBy: r.status_changed_by == null ? null : String(r.status_changed_by),
+    statusChangedAt: num(r.status_changed_at),
+    statusReason: r.status_reason == null ? null : String(r.status_reason),
   };
 }
 
-export async function listEnrollments(editionId: number): Promise<Enrollment[]> {
+export type EnrollmentWithCommerce = Enrollment & EnrollmentCommerce;
+
+const NO_COMMERCE: EnrollmentCommerce = { quote: null, payment: { label: "Sin presupuesto", tone: "neutral", paid: false }, variantName: null, services: { pending: 0, scheduled: 0, done: 0, cancelled: 0 } };
+
+/** Inscripciones de una convocatoria con su presupuesto (solo lectura), modalidad y resumen de servicios (0078). */
+export async function listEnrollments(editionId: number): Promise<EnrollmentWithCommerce[]> {
   const d = await db();
   const r = await rows(d, sql`SELECT * FROM edition_enrollments WHERE edition_id = ${editionId} ORDER BY FIELD(status,'solicitada','lista_espera','confirmada','cancelada'), created_at ASC, id ASC`);
-  return r.map(toEnrollment);
+  const { enrollmentCommerceFor } = await import("./enrollmentCommerceDb");
+  const extra = await enrollmentCommerceFor(d, r);
+  return r.map((x) => ({ ...toEnrollment(x), ...(extra.get(Number(x.id)) ?? NO_COMMERCE) }));
+}
+
+export interface StatusChangeOptions {
+  /** Quién hace el cambio (queda en la inscripción y en el registro de actividad del CRM) */
+  actor?: { id: number | null; name: string | null } | null;
+  /** Motivo: obligatorio al confirmar con un presupuesto enlazado que aún no está pagado */
+  reason?: string | null;
+}
+
+export interface StatusChangeResult {
+  enrollment: Enrollment;
+  changed: boolean;
+  /** Estado del presupuesto enlazado en el momento del cambio (null = sin presupuesto o sin 0078) */
+  quoteStatus?: string | null;
+  services?: { created: number; cancelled: number; revived: number };
 }
 
 /**
  * Cambia el estado de una inscripción. Confirmar ocupa plazas con un UPDATE condicionado (si no caben, no confirma);
  * salir de «confirmada» las libera. Idempotente: pedir el estado en el que ya está no hace nada.
+ *
+ * 0078: confirmar con un presupuesto enlazado sin pagar exige un motivo; el cambio guarda quién, cuándo y por qué, y en la
+ * misma transacción genera (al confirmar) o cancela (al salir de «confirmada») los servicios incluidos. Pagar el
+ * presupuesto nunca confirma solo: este es siempre un paso explícito.
  */
-export async function setEnrollmentStatus(enrollmentId: number, target: EnrollmentStatus, now = Date.now()): Promise<{ enrollment: Enrollment; changed: boolean }> {
+export async function setEnrollmentStatus(enrollmentId: number, target: EnrollmentStatus, now = Date.now(), opts: StatusChangeOptions = {}): Promise<StatusChangeResult> {
   const d = await db();
-  return d.transaction(async (tx) => {
+  const { readLinkedQuotes, syncEnrollmentServices } = await import("./enrollmentCommerceDb");
+  const result = await d.transaction(async (tx) => {
     const t = tx as unknown as Exec;
     const [cur] = await rows(t, sql`SELECT * FROM edition_enrollments WHERE id = ${enrollmentId} FOR UPDATE`);
     if (!cur) throw new EditionError("NOT_FOUND", "Esta inscripción ya no existe.");
     const e = toEnrollment(cur);
-    if (e.status === target) return { enrollment: e, changed: false };
+    if (e.status === target) return { enrollment: e, changed: false, from: e.status, quoteStatus: null as string | null, reason: null as string | null, services: undefined };
     const [ed] = await rows(t, sql`SELECT id, status FROM product_editions WHERE id = ${e.editionId} FOR UPDATE`);
     if (!ed) throw new EditionError("NOT_FOUND", "La convocatoria de esta inscripción ya no existe.");
+    // Estado del pago: solo se lee del presupuesto enlazado (sin 0078 no hay columna ni presupuesto)
+    const quoteStatus = e.quoteId ? (await readLinkedQuotes(t, [e.quoteId])).get(e.quoteId)?.status ?? null : null;
+    const reason = cleanConfirmReason(opts.reason);
     if (target === "confirmada") {
       if (ed.status === "cancelled") throw new EditionError("BAD_REQUEST", "La convocatoria está cancelada: no se pueden confirmar plazas.");
+      if (confirmNeedsReason(quoteStatus) && !reason) throw new EditionError("BAD_REQUEST", `El presupuesto de esta inscripción no está pagado. Para confirmar la plaza igualmente, escribe el motivo (mínimo ${CONFIRM_REASON_LIMITS.min} caracteres).`);
       const r = await run(t, sql`UPDATE product_editions SET reserved = reserved + ${e.seats}, updated_at = ${now} WHERE id = ${e.editionId} AND (capacity IS NULL OR reserved + ${e.seats} <= capacity)`);
       if (r.affectedRows === 0) throw new EditionError("CONFLICT", "No quedan plazas suficientes en esta convocatoria. Puedes ponerla en lista de espera o ampliar las plazas.");
       await run(t, sql`UPDATE edition_enrollments SET status = 'confirmada', confirmed_at = ${now}, updated_at = ${now} WHERE id = ${enrollmentId}`);
@@ -321,9 +367,37 @@ export async function setEnrollmentStatus(enrollmentId: number, target: Enrollme
       if (e.status === "confirmada") await run(t, sql`UPDATE product_editions SET reserved = GREATEST(reserved - ${e.seats}, 0), updated_at = ${now} WHERE id = ${e.editionId}`);
       await run(t, sql`UPDATE edition_enrollments SET status = ${target}, confirmed_at = NULL, updated_at = ${now} WHERE id = ${enrollmentId}`);
     }
+    // 0078: quién, cuándo y por qué (sentencia aparte: sin la migración el cambio de estado sigue funcionando)
+    const by = opts.actor?.name || (opts.actor?.id != null ? `Usuario ${opts.actor.id}` : null);
+    try {
+      await run(t, sql`UPDATE edition_enrollments SET status_changed_by = ${by ? by.slice(0, 160) : null}, status_changed_at = ${now}, status_reason = ${reason} WHERE id = ${enrollmentId}`);
+    } catch (err) {
+      if (!isMissingEditionsSchema(err)) throw err;
+    }
+    const services = await syncEnrollmentServices(t, { id: enrollmentId, variantId: e.variantId }, e.status, target, now);
     const [after] = await rows(t, sql`SELECT * FROM edition_enrollments WHERE id = ${enrollmentId}`);
-    return { enrollment: toEnrollment(after), changed: true };
+    return { enrollment: toEnrollment(after), changed: true, from: e.status, quoteStatus, reason, services };
   });
+  if (result.changed) {
+    // Registro de actividad del CRM: en la oportunidad de la inscripción o, si no tiene, en su presupuesto
+    const en = result.enrollment;
+    const entity = en.leadId ? (["lead", en.leadId] as const) : en.quoteId ? (["quote", en.quoteId] as const) : null;
+    if (entity) {
+      const { logActivity } = await import("./db");
+      await logActivity(entity[0], entity[1], "enrollment_status_changed", opts.actor?.id ?? null, opts.actor?.name ?? null, {
+        enrollmentId: en.id,
+        editionId: en.editionId,
+        from: result.from,
+        to: en.status,
+        reason: result.reason,
+        quoteId: en.quoteId,
+        quoteStatus: result.quoteStatus,
+        withoutPayment: en.status === "confirmada" && result.quoteStatus != null && !QUOTE_PAID.includes(result.quoteStatus),
+        services: result.services,
+      });
+    }
+  }
+  return { enrollment: result.enrollment, changed: result.changed, quoteStatus: result.quoteStatus, services: result.services };
 }
 
 export interface PersonHit {
