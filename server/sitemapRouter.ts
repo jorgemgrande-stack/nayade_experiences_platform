@@ -208,6 +208,8 @@ sitemapRouter.get("/sitemap.xml", async (_req, res) => {
     // Rutas estáticas; en multiempresa, las sectoriales solo con su módulo y lo que la empresa ha publicado
     // Con una página propia de contacto (en el idioma principal: «kontakt», «contact»…), la ruta genérica /contacto no se lista
     const ownContact = multi && pageRows.some((r) => isContactPageSlug(r.slug));
+    // Pantallas genéricas de la plataforma (presupuesto, ubicaciones): solo existen en español, no se listan en una web con otro idioma principal
+    const genericUi = !i18nPlan || i18nPlan.defaultLocale === "es";
     for (const u of multi ? TENANT_STATIC_URLS : STATIC_URLS) {
       if (u.path === "/contacto" && ownContact) continue;
       if (!multi && ((u.path === "/hotel" && !hotelOn) || (u.path === "/spa" && !spaOn) || (u.path === "/restaurantes" && !restaurantsOn))) continue;
@@ -218,21 +220,22 @@ sitemapRouter.get("/sitemap.xml", async (_req, res) => {
     if (multi) {
       if (expRows.length > 0) {
         add(catalogKind === "generic" ? SHOP_PATH : SECTOR_LIST_PATH, undefined, "weekly", "0.8");
-        if (site.quotes) add("/presupuesto", undefined, "weekly", "0.8");
+        if (site.quotes && genericUi) add("/presupuesto", undefined, "weekly", "0.8");
       }
       if (hotelOn && roomRows.length > 0) add("/hotel", undefined, "weekly", "0.8");
       if (spaOn && spaRows.length > 0) add("/spa", undefined, "weekly", "0.8");
       if (restaurantsOn && restaurantRows.length > 0) add("/restaurantes", undefined, "weekly", "0.8");
       if (legoRows.length > 0 && !site.licensed) add("/lego-packs", undefined, "weekly", "0.8");
-      if (locationRows.length > 0) add("/ubicaciones", undefined, "weekly", "0.8");
+      if (locationRows.length > 0 && genericUi) add("/ubicaciones", undefined, "weekly", "0.8");
     }
 
     // Páginas propias publicadas de la empresa (/:slug); «inicio» es la portada
     for (const r of pageRows) {
-      if (/^[a-z0-9-]{1,64}$/.test(r.slug) && r.slug !== "inicio" && !(blogRows && r.slug === "blog")) add(`/${r.slug}`, formatDate(r.updatedAt));
+      if (/^[a-z0-9-]{1,64}$/.test(r.slug) && r.slug !== "inicio" && !(blogRows && blogRows.length > 0 && r.slug === "blog")) add(`/${r.slug}`, formatDate(r.updatedAt));
     }
 
-    if (blogRows) {
+    // El blog solo se lista con entradas publicadas
+    if (blogRows && blogRows.length > 0) {
       add("/blog", blogRows[0] ? formatDate(blogRows[0].updatedAt) : undefined, "weekly", "0.7");
       for (const r of blogRows) add(`/blog/${r.slug}`, formatDate(r.updatedAt));
     }
@@ -268,7 +271,7 @@ sitemapRouter.get("/sitemap.xml", async (_req, res) => {
     }
 
     // /ubicaciones/:slug
-    for (const r of locationRows) {
+    for (const r of genericUi ? locationRows : []) {
       add(`/ubicaciones/${r.slug}`, formatDate(r.updatedAt));
     }
 
