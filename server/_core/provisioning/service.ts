@@ -187,7 +187,6 @@ export class ProvisioningService {
           step,
           attempts: rec.attempts,
           error: lastErr instanceof RegistryError ? `RegistryError:${lastErr.code}` : lastErr instanceof Error ? lastErr.name : "error",
-          ...(process.env.CI ? { debugMessage: lastErr instanceof Error ? lastErr.message.slice(0, 300) : String(lastErr) } : {}), // TEMPORAL: diagnóstico en CI
         });
         recordFailure("provisioning.failed", rec.tenantId);
         return { ...this.result(rec), failedStep: step, error: msg };
