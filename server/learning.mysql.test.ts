@@ -192,4 +192,38 @@ describe.skipIf(!URL_)("LMS: matrículas, autorización por módulo, pago confir
     const body = JSON.stringify((await lesson(c.l1)).json);
     expect(body).not.toMatch(/https?:\/\/|stored_object|storage|\/files\//i);
   });
+
+  it("Q. importar inventarios de Articulate crea el curso en borrador con recursos pendientes y reimportar no duplica", async () => {
+    const lessonInv = (o: number) => ({ orden: o, titulo: `LEKTION ${o}`, url: "https://share.articulate.com/x#/${o}", bloques: [
+      { orden: 1, tipo: "texto", titulo: "Einführung", descripcion: "Texto" },
+      { orden: 2, tipo: "video", titulo: "Video ${o}", duracion: "01:30" },
+      { orden: 3, tipo: "pdf", titulo: "Text ${o}", archivo: "t${o}.pdf", tamano: "10 KB" },
+    ] });
+    const inventories = [1, 2].map((m) => ({ modulo: m, titulo: `TEIL ${m}`, url: "https://share.articulate.com/x", secciones: [{ orden: 1, titulo: `TEIL ${m} – X`, lecciones: [lessonInv(1), lessonInv(2)] }], recuento: { lecciones: 2, videos: 2, pdf_descargables: 2 } }));
+    const input = { inventories, courseSlug: "importado-test", courseTitle: "Importado" };
+    const dry = ok(await ess.m("a", "learning.admin.importInventory", { ...input, dryRun: true }, adm), "dry run");
+    expect(dry.report.counts).toMatchObject({ modules: 2, lessons: 4, videos: 4, pdfs: 4 });
+    expect(await sql("SELECT id FROM learning_courses WHERE slug = 'importado-test'")).toEqual([]);
+    const first = ok(await ess.m("a", "learning.admin.importInventory", input, adm), "importar");
+    expect(first.result.created).toEqual({ course: 1, modules: 2, lessons: 4, blocks: 12, resources: 8 });
+    expect(first.result.courseStatus).toBe("draft");
+    const snapshot = async () => ({
+      modules: (await sql("SELECT COUNT(*) AS c FROM learning_modules m JOIN learning_courses c ON c.id = m.course_id WHERE c.slug = 'importado-test'"))[0].c,
+      blocks: (await sql("SELECT COUNT(*) AS c FROM learning_blocks b JOIN learning_lessons l ON l.id = b.lesson_id JOIN learning_modules m ON m.id = l.module_id JOIN learning_courses c ON c.id = m.course_id WHERE c.slug = 'importado-test'"))[0].c,
+      resources: (await sql("SELECT COUNT(*) AS c FROM learning_resources WHERE provenance LIKE 'Articulate https://share.articulate.com/x%'"))[0].c,
+    });
+    const before = await snapshot();
+    const again = ok(await ess.m("a", "learning.admin.importInventory", input, adm), "reimportar");
+    expect(again.result.created).toEqual({ course: 0, modules: 0, lessons: 0, blocks: 0, resources: 0 });
+    expect(await snapshot()).toEqual(before);
+    // sin ficheros: todo pendiente, nada verificado, y el borrador no lo ve ningún alumno
+    expect(again.coverage.files).toEqual({ verified: 0, pending: 8 });
+    expect(await sql("SELECT status FROM learning_resources WHERE status <> 'pending' AND provenance LIKE 'Articulate https://share.articulate.com/x%'")).toEqual([]);
+    const importedId = Number((await sql("SELECT id FROM learning_courses WHERE slug = 'importado-test'"))[0].id);
+    expect(errCode(await ess.q("a", "learning.my.course", { courseId: importedId }, stu))).toBe("NOT_FOUND");
+    // inventario no válido: rechazado sin tocar nada
+    const bad = await ess.m("a", "learning.admin.importInventory", { ...input, courseSlug: "malo-test", inventories: [{ modulo: 1 }] }, adm);
+    expect(errCode(bad)).toBe("BAD_REQUEST");
+    expect(await sql("SELECT id FROM learning_courses WHERE slug = 'malo-test'")).toEqual([]);
+  });
 });

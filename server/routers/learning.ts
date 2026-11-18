@@ -17,6 +17,8 @@ import {
   listEnrollments, listRules, myCourses, reactivateEnrollment, recordProgress, revokeEnrollment, saveRule, suspendEnrollment,
 } from "../learningDb";
 import { getDb } from "../db";
+import { InventoryError, planInventory } from "../../shared/learningImport";
+import { applyImportPlan, courseCoverage } from "../learningImport";
 import { sql } from "drizzle-orm";
 
 const id = z.number().int().positive();
@@ -109,6 +111,26 @@ const admin = router({
   grantFromPayment: adminProcedure
     .input(z.object({ userId: id, clientId: id.nullable().optional(), experienceId: id, variantId: id.nullable(), operation: z.object({ kind: z.enum(["enrollment", "order", "quote"]), id }), payment: z.object({ reference: z.string().max(190), amountCents: z.number().int().min(0).max(100_000_000) }) }))
     .mutation(({ ctx, input }) => guard(() => grantFromPayment({ ...input, clientId: input.clientId ?? null, payment: { ...input.payment, verifiedBy: ctx.user.name || ctx.user.email || `usuario ${ctx.user.id}` }, actorUserId: ctx.user.id }))),
+
+  /**
+   * Importa inventarios de Articulate (JSON por módulo): crea el curso (en borrador), sus módulos, lecciones y bloques, con
+   * recursos `pending` (sin fichero). Idempotente: reimportar no duplica. `dryRun` devuelve solo el informe de cobertura.
+   */
+  importInventory: adminProcedure
+    .input(z.object({ inventories: z.array(z.unknown()).min(1).max(12), courseSlug: z.string().regex(/^[a-z0-9]([a-z0-9-]{0,78}[a-z0-9])?$/), courseTitle: z.string().min(2).max(300), language: z.string().min(2).max(8).optional(), dryRun: z.boolean().default(false) }))
+    .mutation(({ input }) => guard(async () => {
+      let plan;
+      try {
+        plan = planInventory(input.inventories, { courseSlug: input.courseSlug, courseTitle: input.courseTitle, language: input.language });
+      } catch (e) {
+        if (e instanceof InventoryError) throw new TRPCError({ code: "BAD_REQUEST", message: e.message, cause: e });
+        throw e;
+      }
+      if (input.dryRun) return { dryRun: true as const, report: plan.report };
+      const result = await applyImportPlan(plan);
+      return { dryRun: false as const, report: plan.report, result, coverage: await courseCoverage(result.courseId) };
+    })),
+  coverage: adminProcedure.input(z.object({ courseId: id })).query(({ input }) => guard(() => courseCoverage(input.courseId))),
 
   /** Acceso de demostración (60 minutos por defecto): individual, de un disparador por persona, sobre los módulos indicados. */
   grantDemo: adminProcedure
