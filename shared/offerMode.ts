@@ -73,3 +73,14 @@ export function cleanText(v: unknown, max: number, multiline = false): string {
   const noCtl = v.replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f]/g, "").replace(/<[^>]*>/g, "").replace(/[<>]/g, "");
   return (multiline ? noCtl.replace(/[ \t]+/g, " ") : noCtl.replace(/\s+/g, " ")).trim().slice(0, max);
 }
+
+/**
+ * ¿La web pública presenta este producto (y por tanto admite solicitudes sobre él)? Un producto por solicitud
+ * («bajo petición», «precio visible, solo por solicitud», «próximamente») se ve con solo estar publicado; uno de
+ * precio fijo, además, tiene que estar activo para la venta. Es la misma regla de las fichas y del listado de
+ * convocatorias: el servidor la aplica a cada solicitud, aunque llegue con identificadores escritos a mano.
+ */
+export function isPubliclyRequestable(p: { isPublished?: unknown; isActive?: unknown; offerMode?: unknown } | null | undefined): boolean {
+  if (!p || !p.isPublished) return false;
+  return !isFixedOffer(p) || Boolean(p.isActive);
+}
