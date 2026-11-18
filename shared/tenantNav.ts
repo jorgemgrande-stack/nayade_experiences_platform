@@ -71,3 +71,11 @@ export function hideUnpublishedPageLinks<T extends MenuLink>(items: T[], unpubli
   }
   return items.filter((it) => !hidden.has(it.id) && !(it.parentId != null && hidden.has(it.parentId)));
 }
+
+/** Páginas de contacto de la web en cualquier idioma («/kontakt», «/es/contacto»…): el menú ya lleva a contacto. */
+const CONTACT_SLUGS = new Set(["contacto", "kontakt", "contact", "contatto", "contato", "contacte"]);
+export function isContactUrl(url: string | null | undefined): boolean {
+  if (!url) return false;
+  const parts = url.split(/[?#]/)[0].split("/").filter(Boolean);
+  return CONTACT_SLUGS.has((parts[parts.length - 1] ?? "").toLowerCase());
+}

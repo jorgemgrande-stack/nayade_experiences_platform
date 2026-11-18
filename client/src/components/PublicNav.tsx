@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { Link, useLocation } from "wouter";
+import { isContactUrl } from "@shared/tenantNav";
 import { Menu, X, ChevronDown, Phone, Sun, Moon } from "lucide-react";
 import { useTheme } from "@/contexts/ThemeContext";
 import { Button } from "@/components/ui/button";
@@ -234,9 +235,11 @@ export default function PublicNav({ overlay }: { overlay?: HeaderOverlayState })
   }, [location]);
 
   // Tienda de la pyme: accesible desde el menú aunque la empresa aún no la haya añadido a sus enlaces
-  const showShopLink = !!site?.licensed && site.store && !navLinks.some((l) => l.href === siteText.shopHref);
+  // (no si la web oculta el carrito: no vende en línea)
+  const showShopLink = !!site?.licensed && site.store && headerCta?.showCart !== false && !navLinks.some((l) => l.href === siteText.shopHref);
   // Contacto siempre a mano, salvo que la empresa ya lo tenga en su menú (sin repetirlo)
-  const showContactLink = !navLinks.some((l) => l.href === "/contacto");
+  // (su página de contacto en cualquier idioma: «/kontakt», «/es/contacto»…; también dentro de un submenú)
+  const showContactLink = !navLinks.some((l) => isContactUrl(l.href) || (l.children ?? []).some((c) => isContactUrl(c.href)));
 
   const centeredLinkCls = cn("font-display text-sm lg:text-[15px] font-medium tracking-wide whitespace-nowrap transition-colors duration-200 hover:text-primary", txt);
   const renderCentered = (link: NavItem) =>

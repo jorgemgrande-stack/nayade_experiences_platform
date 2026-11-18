@@ -59,3 +59,16 @@ describe("bloque de productos y carrito", () => {
     expect(read("../client/src/components/PublicNav.tsx")).toContain("headerCta?.showCart !== false");
   });
 });
+
+describe("menú móvil: sin botones genéricos que repiten o no aplican", () => {
+  it("página de contacto en cualquier idioma", async () => {
+    const { isContactUrl } = await import("../shared/tenantNav");
+    expect(["/kontakt", "/es/contacto", "/contact", "/contacto#form"].every(isContactUrl)).toBe(true);
+    expect(["/kontaktformular", "/reconnect", "", null].some(isContactUrl)).toBe(false);
+  });
+  it("«Tienda» se oculta con el carrito; «Contacto» no se repite", () => {
+    const nav = read("../client/src/components/PublicNav.tsx");
+    expect(nav).toContain("site.store && headerCta?.showCart !== false");
+    expect(nav).toContain("isContactUrl(l.href)");
+  });
+});
