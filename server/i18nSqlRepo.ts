@@ -198,5 +198,9 @@ export function sqlI18nRepo(): I18nRepo {
       const r = await rows(sql`SELECT id, slug, isPublished, updatedAt FROM experiences WHERE id = ${id} LIMIT 1`);
       return r[0] ? product(r[0]) : null;
     },
+    async shopMenuItem() {
+      const r = await rows(sql`SELECT id, label FROM menu_items WHERE isActive = 1 AND menuZone = 'header' AND (url = '/tienda' OR url LIKE '/tienda?%') ORDER BY sortOrder ASC, id ASC LIMIT 1`);
+      return r[0] ? { id: Number(r[0].id), label: String(r[0].label) } : null;
+    },
   };
 }

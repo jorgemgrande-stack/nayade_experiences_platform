@@ -198,6 +198,9 @@ export function internalLinkSegments(blocks: unknown): string[] {
 
 // ─── Fichas de producto de la tienda (`/tienda/<slug>`) ────────────────────────
 
+/** Enlace al catálogo (`/tienda`, con filtro `?categoria=…` o ancla): va al catálogo del idioma de la página. */
+const CATALOG_LINK = /^\/tienda\/?([?#].*)?$/;
+
 const PRODUCT_LINK = /^\/tienda\/([^/?#]+)\/?([?#].*)?$/;
 
 /** Ruta (sin prefijo de idioma) de la ficha de un producto. */
@@ -248,6 +251,8 @@ export function localizeBlockLinks<T>(blocks: T, locale: string, cfg: I18nConfig
       const p = localizeProductLink(href, locale, cfg, productSlug);
       if (p !== null) return p;
     }
+    const cat = CATALOG_LINK.exec(href);
+    if (cat) return localizedPath("/tienda", locale, cfg) + (cat[1] ?? "");
     const seg = internalSegment(href);
     if (seg === null) return href;
     if (seg !== "" && !isPage(seg)) return href;
