@@ -83,3 +83,24 @@ jobs:
       auto: true
       servicios: ${{ inputs.solo || 'todos' }}
     secrets: inherit
+
+  # Resumen por entorno, independiente del color del flujo: live y production tienen resultados separados y explícitos.
+  # «Publicación correcta» solo si lo está production; si solo se actualizó live, lo dice.
+  resumen:
+    name: Resultado por entorno
+    needs: [live, production]
+    if: always() && github.event_name != 'deployment_status' && github.ref == 'refs/heads/integration/elephant-source'
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Resumen
+        env:
+          LIVE: ${{ needs.live.result }}
+          PROD: ${{ needs.production.result }}
+        run: |
+          say() { echo "$1" | tee -a "${GITHUB_STEP_SUMMARY}"; }
+          case "${LIVE}" in success) L="live: PUBLICADO";; skipped) L="live: NO PUBLICADO (omitido)";; *) L="live: NO PUBLICADO (${LIVE})";; esac
+          case "${PROD}" in success) P="production: PUBLICADO y verificado";; skipped) P="production: NO PUBLICADO (omitido: live no terminó bien o no era la rama)";; failure) P="production: NO PUBLICADO — bloqueado por el procedimiento protegido, pendiente o fallido (ver el trabajo de production)";; *) P="production: NO PUBLICADO (${PROD})";; esac
+          say "## Resultado por entorno"
+          say "- **${L}**"
+          say "- **${P}**"
+          if [ "${LIVE}" = "success" ] && [ "${PROD}" != "success" ]; then say "> Live está publicado pero production NO. No es una publicación satisfactoria de production."; fi
