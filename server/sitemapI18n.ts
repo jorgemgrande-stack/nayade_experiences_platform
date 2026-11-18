@@ -8,6 +8,8 @@ import { alternateLinksHtml, buildAlternates, localizedPath, type Alternate } fr
 import { sitemapAlternates, type I18nRepo, type PrincipalProduct } from "./i18nService";
 
 export interface SitemapI18nPlan {
+  /** Idioma principal de la empresa (las pantallas genéricas de la plataforma solo existen en español). */
+  defaultLocale: string;
   /** Alternativas de las URL del principal que ya emite el sitemap (clave: ruta). */
   alternatesFor: Map<string, Alternate[]>;
   /** URL de los idiomas adicionales, con sus alternativas. */
@@ -30,7 +32,7 @@ export async function i18nSitemapPlan(repo: I18nRepo, origin: string, products: 
       extra.push({ loc: localizedPath(v.rest, v.locale, cfg), alternates: alts, lastmod: e.lastmod });
     }
   }
-  return alternatesFor.size ? { alternatesFor, extra } : null;
+  return alternatesFor.size ? { defaultLocale: cfg.defaultLocale, alternatesFor, extra } : null;
 }
 
 /** `<xhtml:link>` de una entrada (mismos valores que `hreflang` del HTML). */

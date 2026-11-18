@@ -76,3 +76,23 @@ describe("título de la ficha en el idioma principal", () => {
     expect(vite).toContain("pageMetaOverride({ title: e.title, metaTitle: e.metaTitle, metaDescription: e.metaDescription ?? e.shortDescription }, brandName, false)");
   });
 });
+
+describe("pantallas genéricas de la plataforma", () => {
+  const src = fs.readFileSync(path.join(__dirname, "sitemapRouter.ts"), "utf8");
+  it("el plan multidioma informa del idioma principal", async () => {
+    const repo = await twoLanguages();
+    expect((await i18nSitemapPlan(repo, ORIGIN, [], { catalog: true }))?.defaultLocale).toBe("es");
+    const de = memoryI18nRepo({ pages: [], home: "inicio" });
+    await de.insertLocale({ locale: "de", isDefault: true, status: "validated", sortOrder: 0 });
+    await addLocale(de, "es", "ana");
+    await validateLocale(de, "es", "ana");
+    expect((await i18nSitemapPlan(de, ORIGIN, [], { catalog: true }))?.defaultLocale).toBe("de");
+  });
+  it("/presupuesto y /ubicaciones solo se listan con el español como principal; /blog solo con entradas", () => {
+    expect(src).toContain('const genericUi = !i18nPlan || i18nPlan.defaultLocale === "es";');
+    expect(src).toContain('if (site.quotes && genericUi) add("/presupuesto"');
+    expect(src).toContain('if (locationRows.length > 0 && genericUi) add("/ubicaciones"');
+    expect(src).toContain("for (const r of genericUi ? locationRows : []) {");
+    expect(src).toContain("if (blogRows && blogRows.length > 0) {");
+  });
+});
