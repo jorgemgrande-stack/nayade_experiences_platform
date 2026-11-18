@@ -1,5 +1,6 @@
 import { useEffect, useRef } from "react";
 import { useLocation } from "wouter";
+import { scrollToHash } from "@/lib/scrollToHash";
 
 /**
  * ScrollToTop — Solución global para el bug de scroll en SPA con wouter.
@@ -34,24 +35,27 @@ export default function ScrollToTop() {
     const hash = window.location.hash;
 
     if (hash && hash.length > 1) {
-      // Hay ancla explícita: scroll suave al elemento si existe
-      const elementId = hash.slice(1); // quitar el #
-      // Pequeño delay para que el DOM se haya renderizado
-      const timer = setTimeout(() => {
-        const el = document.getElementById(elementId);
-        if (el) {
-          el.scrollIntoView({ behavior: "smooth", block: "start" });
-        } else {
-          // El elemento no existe: scroll al top como fallback
-          window.scrollTo({ top: 0, behavior: "instant" as ScrollBehavior });
-        }
-      }, 50);
-      return () => clearTimeout(timer);
+      // Hay ancla explícita: se espera a que la sección exista (la página se pinta tras cargar sus bloques) y se
+      // desplaza hasta ella; si no aparece, arriba
+      return scrollToHash(hash, { onMissing: () => window.scrollTo({ top: 0, behavior: "instant" as ScrollBehavior }) });
     } else {
       // Sin ancla: scroll instantáneo al top (no smooth para evitar sensación de salto)
       window.scrollTo({ top: 0, behavior: "instant" as ScrollBehavior });
     }
   }, [location]);
+
+  useEffect(() => {
+    let cancel: (() => void) | null = null;
+    const onHash = () => {
+      cancel?.();
+      cancel = scrollToHash(window.location.hash);
+    };
+    window.addEventListener("hashchange", onHash);
+    return () => {
+      cancel?.();
+      window.removeEventListener("hashchange", onHash);
+    };
+  }, []);
 
   return null;
 }

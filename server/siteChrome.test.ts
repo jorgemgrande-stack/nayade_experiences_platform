@@ -56,19 +56,23 @@ describe("cabecera y pie: ajustes", () => {
 describe("cabecera y pie: tema público", () => {
   it("sin ajustes: botón de serie, pie oscuro con contacto (como hasta ahora)", () => {
     const t = theme({});
-    expect(t.header).toEqual({ cta: "auto", ctaLabel: null, ctaUrl: null, style: "classic", tone: "dark", logoLight: null });
+    expect(t.header).toEqual({ cta: "auto", ctaLabel: null, ctaUrl: null, style: "classic", tone: "dark", logoLight: null, showCart: true });
     expect(t.footer).toEqual({ style: "dark", text: null, showContact: true });
   });
 
   it("botón propio completo; sin texto o sin enlace válido se comporta como el de serie", () => {
-    expect(theme({ site_header_cta: "custom", site_header_cta_label: "Reserva", site_header_cta_url: "/reservas" }).header).toEqual({ cta: "custom", ctaLabel: "Reserva", ctaUrl: "/reservas", style: "classic", tone: "dark", logoLight: null });
+    expect(theme({ site_header_cta: "custom", site_header_cta_label: "Reserva", site_header_cta_url: "/reservas" }).header).toEqual({ cta: "custom", ctaLabel: "Reserva", ctaUrl: "/reservas", style: "classic", tone: "dark", logoLight: null, showCart: true });
     expect(theme({ site_header_cta: "custom", site_header_cta_label: "Reserva" }).header.cta).toBe("auto");
     expect(theme({ site_header_cta: "custom", site_header_cta_label: "Reserva", site_header_cta_url: "javascript:x" }).header.cta).toBe("auto");
-    expect(theme({ site_header_cta: "none", site_header_cta_label: "Reserva", site_header_cta_url: "/r" }).header).toEqual({ cta: "none", ctaLabel: null, ctaUrl: null, style: "classic", tone: "dark", logoLight: null });
+    expect(theme({ site_header_cta: "none", site_header_cta_label: "Reserva", site_header_cta_url: "/r" }).header).toEqual({ cta: "none", ctaLabel: null, ctaUrl: null, style: "classic", tone: "dark", logoLight: null, showCart: true });
     expect(theme({ site_header_style: "centered", site_header_tone: "light" }).header).toMatchObject({ style: "centered", tone: "light" });
     expect(theme({ site_header_style: "raro", site_header_tone: "x" }).header).toMatchObject({ style: "classic", tone: "dark", logoLight: null });
     expect(theme({ site_header_logo_light: "https://x.test/l.png" }).header.logoLight).toBe("https://x.test/l.png");
     expect(theme({ site_header_logo_light: "javascript:alert(1)" }).header.logoLight).toBeNull();
+    // Carrito: visible salvo que la web lo oculte (una web solo por solicitud)
+    expect(theme({ site_header_cart: "false" }).header.showCart).toBe(false);
+    expect(() => cleanThemeValues({ site_header_cart: "quizá" })).toThrow(ThemeValueError);
+    expect(cleanThemeValues({ site_header_cart: "false" })).toEqual({ site_header_cart: "false" });
   });
 
   it("pie: estilo de la lista, texto y contacto oculto; un valor guardado no válido vuelve al de serie", () => {

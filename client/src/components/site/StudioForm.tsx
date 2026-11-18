@@ -8,6 +8,9 @@ import { useEffect, useId, useRef, useState } from "react";
 import { useLocation } from "wouter";
 import { toast } from "sonner";
 import { trpc } from "@/lib/trpc";
+import { useSiteLocale } from "@/hooks/useSiteLocale";
+import { useLegalHref } from "@/hooks/useLegalHref";
+import { siteUiText } from "@shared/siteUiText";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -89,6 +92,9 @@ type Values = Record<string, string | string[] | boolean>;
 
 export function StudioFormFields({ blockId, form, preview, pageTitle, editing }: { blockId: string; form: BlockDataMap["form"]; preview?: boolean; pageTitle?: string; editing?: boolean }) {
   const id = useId();
+  // Textos fijos en el idioma de la página y la política de privacidad real de la empresa en ese idioma
+  const ui = siteUiText(useSiteLocale().locale);
+  const privacyHref = useLegalHref("privacidad");
   const [, navigate] = useLocation();
   const shownAt = useRef(Date.now());
   const [values, setValues] = useState<Values>({});
@@ -118,11 +124,11 @@ export function StudioFormFields({ blockId, form, preview, pageTitle, editing }:
       const v = values[k];
       if (f.kind === "hidden") return;
       const empty = v === undefined || v === "" || v === false || (Array.isArray(v) && !v.length);
-      if (f.required === "on" && empty) out[k] = f.kind === "checkbox" ? "Marca esta casilla para continuar." : "Este campo es obligatorio.";
-      else if (f.kind === "email" && typeof v === "string" && v && !EMAIL_RE.test(v.trim())) out[k] = "Escribe un correo electrónico válido.";
+      if (f.required === "on" && empty) out[k] = f.kind === "checkbox" ? ui.checkboxRequired : ui.required;
+      else if (f.kind === "email" && typeof v === "string" && v && !EMAIL_RE.test(v.trim())) out[k] = ui.invalidEmail;
     });
-    if (siteKey && !captchaToken) out.captcha = thirdParty ? "Completa la verificación para continuar." : "Acepta las cookies para poder verificar que no eres un robot.";
-    if (form.consent === "on" && !consent) out.consent = "Para enviarlo, acepta la política de privacidad.";
+    if (siteKey && !captchaToken) out.captcha = thirdParty ? ui.captchaThirdParty : ui.captchaCookies;
+    if (form.consent === "on" && !consent) out.consent = ui.consentRequired;
     return out;
   };
 
@@ -135,7 +141,7 @@ export function StudioFormFields({ blockId, form, preview, pageTitle, editing }:
       return;
     }
     if (preview) {
-      toast.info("Es la vista previa: el formulario no se envía.");
+      toast.info(ui.previewNotSent);
       return;
     }
     const emailIdx = form.fields.findIndex((f) => f.role === "email");
@@ -158,7 +164,7 @@ export function StudioFormFields({ blockId, form, preview, pageTitle, editing }:
         return;
       }
       if (studio?.redirectUrl) navigate(studio.redirectUrl);
-      else setSent(studio?.message || form.successMessage || "¡Gracias! Hemos recibido tu mensaje.");
+      else setSent(studio?.message || form.successMessage || ui.sent);
     } catch (err) {
       toast.error(form.errorMessage?.trim() || (err as Error).message || DEFAULT_FORM_ERROR_MESSAGE);
       if (window.turnstile) window.turnstile.reset();
@@ -210,7 +216,7 @@ export function StudioFormFields({ blockId, form, preview, pageTitle, editing }:
           } else if (f.kind === "select") {
             control = (
               <select {...common} value={String(values[k] ?? "")} onChange={(e) => set(k, e.target.value)} className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
-                <option value="">{f.placeholder || "Elige una opción"}</option>
+                <option value="">{f.placeholder || ui.chooseOption}</option>
                 {options(f).map((o) => (
                   <option key={o} value={o}>
                     {o}
@@ -311,18 +317,18 @@ export function StudioFormFields({ blockId, form, preview, pageTitle, editing }:
               {(form.consentText ?? "").trim() && (form.consentText ?? "").trim() !== DEFAULT_FORM_CONSENT_TEXT ? (
                 <>
                   {form.consentText.trim()}{" "}
-                  <a href="/privacidad" className="underline decoration-primary underline-offset-4" onClick={(e) => preview && e.preventDefault()}>
-                    Política de privacidad
+                  <a href={privacyHref} className="underline decoration-primary underline-offset-4" onClick={(e) => preview && e.preventDefault()}>
+                    {ui.privacyLinkTitle}
                   </a>
                   .
                 </>
               ) : (
                 <>
-                  He leído y acepto la{" "}
-                  <a href="/privacidad" className="underline decoration-primary underline-offset-4" onClick={(e) => preview && e.preventDefault()}>
-                    política de privacidad
+                  {ui.consentBefore}
+                  <a href={privacyHref} className="underline decoration-primary underline-offset-4" onClick={(e) => preview && e.preventDefault()}>
+                    {ui.privacyLink}
                   </a>
-                  .
+                  {ui.consentAfter}
                 </>
               )}
             </Label>
@@ -335,7 +341,7 @@ export function StudioFormFields({ blockId, form, preview, pageTitle, editing }:
         </div>
       )}
       <Button type="submit" size="lg" disabled={submit.isPending}>
-        {submit.isPending ? "Enviando…" : form.submitLabel || "Enviar"}
+        {submit.isPending ? ui.sending : form.submitLabel || ui.send}
       </Button>
     </form>
   );

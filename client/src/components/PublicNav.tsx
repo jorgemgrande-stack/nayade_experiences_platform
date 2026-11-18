@@ -176,7 +176,8 @@ export default function PublicNav({ overlay }: { overlay?: HeaderOverlayState })
   const headerCta = tenantTheme?.neutralSite ? tenantTheme.header : null;
   const customCta = headerCta?.cta === "custom" && headerCta.ctaLabel && headerCta.ctaUrl ? { label: headerCta.ctaLabel, href: headerCta.ctaUrl } : null;
   const showQuote = !!site?.quotes && headerCta?.cta !== "none" && !customCta;
-  const showCart = !!site?.store;
+  // Carrito: con la tienda contratada, salvo que la web lo oculte (Studio › Cabecera y pie; p. ej. solo por solicitud)
+  const showCart = !!site?.store && headerCta?.showCart !== false;
   // Cabecera centrada (Studio › Cabecera y pie): logo al centro, sobre la portada y compacta al desplazarse
   const centered = !!overlay?.centered;
   const tone = tenantTheme?.header?.tone ?? "dark";

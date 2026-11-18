@@ -18,7 +18,7 @@ import { LinkPicker, type LinkTarget } from "@/components/admin/pageBuilder/Bloc
 import { Segmented } from "@/components/admin/studio/Inspector";
 import ImageUploader from "@/components/ImageUploader";
 
-const CHROME_KEYS = ["site_header_cta", "site_header_cta_label", "site_header_cta_url", "site_header_style", "site_header_tone", "site_header_logo_light", "site_footer_style", "site_footer_text", "site_footer_contact", "site_finish"] as const;
+const CHROME_KEYS = ["site_header_cta", "site_header_cta_label", "site_header_cta_url", "site_header_style", "site_header_tone", "site_header_logo_light", "site_footer_style", "site_footer_text", "site_footer_contact", "site_finish", "site_header_cart"] as const;
 type ChromeValues = Record<(typeof CHROME_KEYS)[number], string>;
 const CTA_LABEL_MAX = 40;
 const FOOTER_TEXT_MAX = 240;
@@ -43,6 +43,7 @@ export function SiteChromeEditor({ targets, onChanged }: { targets: LinkTarget[]
       site_finish: d.site_finish || "standard",
       site_footer_text: d.site_footer_text ?? "",
       site_footer_contact: d.site_footer_contact || "true",
+      site_header_cart: d.site_header_cart || "true",
     });
   }, [theme.data, v]);
 
@@ -103,6 +104,12 @@ export function SiteChromeEditor({ targets, onChanged }: { targets: LinkTarget[]
             <p className="text-xs text-muted-foreground">Se usa solo sobre la portada, con la cabecera transparente. Debe ser el mismo logotipo con los tonos oscuros aclarados.</p>
           </div>
         )}
+        <div className="flex items-center justify-between gap-3">
+          <Label htmlFor="chrome-header-cart" className="font-normal">
+            Mostrar el carrito (si tu web vende en línea)
+          </Label>
+          <Switch id="chrome-header-cart" checked={v.site_header_cart !== "false"} onCheckedChange={(x) => set({ site_header_cart: x ? "true" : "false" })} />
+        </div>
         <Segmented
           label="Acabado de la web"
           value={v.site_finish}
