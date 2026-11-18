@@ -627,10 +627,8 @@ function EditionSessionsSection({ edition, onChanged }: { edition: EditionItem; 
   const list = trpc.products.editions.sessions.list.useQuery({ editionId: edition.id }, { retry: false });
   const [form, setForm] = useState<{ id: number | null; value: SessionInput } | null>(null);
   const [series, setSeries] = useState(false);
-  const [confirmDelete, setConfirmDelete] = useState<number | null>(null);
   const changed = () => { utils.products.editions.sessions.list.invalidate({ editionId: edition.id }); onChanged(); };
   const setStatus = trpc.products.editions.sessions.setStatus.useMutation({ onSuccess: () => { toast.success("Sesión actualizada"); changed(); }, onError: (e) => toast.error(e.message) });
-  const del = trpc.products.editions.sessions.delete.useMutation({ onSuccess: () => { toast.success("Sesión eliminada"); setConfirmDelete(null); changed(); }, onError: (e) => toast.error(e.message) });
   const rows = (list.data ?? []) as unknown as SessionItem[];
   const live = rows.filter((r) => r.status !== "cancelled").length;
   const blank = (): SessionInput => ({ startsOn: "", startTime: null, durationMinutes: null, timezone: edition.timezone, title: "", status: "scheduled", privateNote: "" });
@@ -698,13 +696,6 @@ function EditionSessionsSection({ edition, onChanged }: { edition: EditionItem; 
                 {r.status !== "cancelled" && (
                   <Button type="button" size="sm" variant="ghost" disabled={setStatus.isPending} onClick={() => setStatus.mutate({ id: r.id, status: "cancelled" })}>
                     <XCircle className="mr-1 h-3 w-3" aria-hidden="true" /> Cancelar sesión
-                  </Button>
-                )}
-                {confirmDelete === r.id ? (
-                  <Button type="button" size="sm" variant="destructive" disabled={del.isPending} onClick={() => del.mutate({ id: r.id })}>¿Eliminar? Sí, eliminar</Button>
-                ) : (
-                  <Button type="button" size="sm" variant="ghost" onClick={() => setConfirmDelete(r.id)}>
-                    <Trash2 className="mr-1 h-3 w-3" aria-hidden="true" /> Eliminar
                   </Button>
                 )}
               </div>

@@ -29,8 +29,8 @@ const form = z.object({
   priceOverride: z.number().finite().nullable(),
 });
 
-const day = z.string().regex(/^d{4}-d{2}-d{2}$/, "Fecha no válida");
-const time = z.string().regex(/^d{2}:d{2}$/, "Hora no válida").nullable();
+const day = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Fecha no válida");
+const time = z.string().regex(/^\d{2}:\d{2}$/, "Hora no válida").nullable();
 const sessionForm = z.object({
   startsOn: day,
   /** null = hora por confirmar */

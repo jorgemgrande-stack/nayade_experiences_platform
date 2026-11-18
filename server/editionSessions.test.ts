@@ -271,3 +271,21 @@ describe("con la tabla: lo público no lee la nota interna", () => {
     expect(q).toMatch(/n\.status = 'confirmada'/);
   });
 });
+
+describe("revisión de #864", () => {
+  const read = (p: string) => require("node:fs").readFileSync(require("node:path").join(__dirname, "..", p), "utf8") as string;
+  it("fecha y hora del formulario: expresiones con dígitos reales", () => {
+    const src = read("server/routers/editions.ts");
+    expect(src).toContain(String.raw`/^\d{4}-\d{2}-\d{2}$/`);
+    expect(src).toContain(String.raw`/^\d{2}:\d{2}$/`);
+    expect(/^\d{4}-\d{2}-\d{2}$/.test("2026-11-29") && /^\d{2}:\d{2}$/.test("18:30")).toBe(true);
+  });
+  it("sin borrado físico (publicación ordinaria) y bloqueo de la sesión antes de leer", () => {
+    const src = read("server/editionSessionsDb.ts");
+    expect(src).not.toMatch(/DELETE\s+FROM/i);
+    expect(src.match(/FROM edition_sessions WHERE id = \$\{id\} FOR UPDATE/g)?.length).toBe(3);
+  });
+  it("el calendario no enseña convocatorias en borrador a agentes y monitores", () => {
+    expect(read("server/routers/operations.ts")).toContain('includeDrafts: ctx.user?.role === "admin"');
+  });
+});

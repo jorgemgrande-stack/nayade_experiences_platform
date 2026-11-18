@@ -238,7 +238,8 @@ export async function updateSession(id: number, input: SessionInput, now = Date.
   const d = await db();
   await d.transaction(async (tx) => {
     const t = tx as unknown as Exec;
-    const [cur] = await rows(t, sql`SELECT edition_id FROM edition_sessions WHERE id = ${id}`);
+    // Bloqueo ANTES de cualquier lectura sin bloqueo: así la transacción ve lo que otras ya confirmaron
+    const [cur] = await rows(t, sql`SELECT edition_id FROM edition_sessions WHERE id = ${id} FOR UPDATE`);
     if (!cur) throw new EditionError("NOT_FOUND", "Esta sesión ya no existe.");
     const editionId = Number(cur.edition_id);
     await lockEdition(t, editionId);
@@ -258,21 +259,30 @@ export async function updateSession(id: number, input: SessionInput, now = Date.
 /** Marca una sesión como realizada, cancelada o de nuevo programada (sin tocar el resto de sus datos). */
 export async function setSessionStatus(id: number, status: SessionStatus, now = Date.now()): Promise<EditionSession> {
   const d = await db();
+  await d.transaction(async (tx) => {
+    const t = tx as unknown as Exec;
+    const [cur] = await rows(t, sql`SELECT edition_id FROM edition_sessions WHERE id = ${id} FOR UPDATE`);
+    if (!cur) throw new EditionError("NOT_FOUND", "Esta sesión ya no existe.");
+    const editionId = Number(cur.edition_id);
+    await lockEdition(t, editionId);
+    await run(t, sql`UPDATE edition_sessions SET status = ${status}, updated_at = ${now} WHERE id = ${id}`);
+    await renumber(t, editionId, now);
+    await syncEditionDates(t, editionId, now);
+  });
   const [row] = await rows(d, sql`SELECT ${COLS} FROM edition_sessions WHERE id = ${id}`);
-  if (!row) throw new EditionError("NOT_FOUND", "Esta sesión ya no existe.");
-  const s = toSession(row);
-  return updateSession(id, { startsOn: s.startsOn, startTime: s.startTime, durationMinutes: s.durationMinutes, timezone: s.timezone, title: s.title, status, privateNote: s.privateNote }, now);
+  return toSession(row);
 }
 
 export async function deleteSession(id: number, now = Date.now()): Promise<{ editionId: number }> {
   const d = await db();
   return d.transaction(async (tx) => {
     const t = tx as unknown as Exec;
-    const [cur] = await rows(t, sql`SELECT edition_id FROM edition_sessions WHERE id = ${id}`);
+    const [cur] = await rows(t, sql`SELECT edition_id FROM edition_sessions WHERE id = ${id} FOR UPDATE`);
     if (!cur) throw new EditionError("NOT_FOUND", "Esta sesión ya no existe.");
     const editionId = Number(cur.edition_id);
     await lockEdition(t, editionId);
-    await run(t, sql`DELETE FROM edition_sessions WHERE id = ${id}`);
+    // Sin borrado físico: una sesión retirada queda cancelada (historial y asistencia futura); deja de verse en la web
+    await run(t, sql`UPDATE edition_sessions SET status = 'cancelled', updated_at = ${now} WHERE id = ${id}`);
     await renumber(t, editionId, now);
     await syncEditionDates(t, editionId, now);
     return { editionId };
@@ -348,7 +358,7 @@ export interface CalendarSessionEvent {
  * Sesiones (no canceladas, de convocatorias no canceladas) entre dos días, para el calendario operativo. Solo lectura y
  * sin la nota interna. Vacío si la empresa no tiene aún las tablas.
  */
-export async function listCalendarSessions(from: string, to: string): Promise<CalendarSessionEvent[]> {
+export async function listCalendarSessions(from: string, to: string, opts: { includeDrafts?: boolean } = {}): Promise<CalendarSessionEvent[]> {
   const d = await getDb();
   if (!d) return [];
   let r: Record<string, any>[];
@@ -364,7 +374,7 @@ export async function listCalendarSessions(from: string, to: string): Promise<Ca
           FROM edition_sessions s
           JOIN product_editions e ON e.id = s.edition_id
           LEFT JOIN experiences x ON x.id = e.experience_id
-          WHERE s.status <> 'cancelled' AND e.status <> 'cancelled' AND s.starts_on >= ${from} AND s.starts_on <= ${to}
+          WHERE s.status <> 'cancelled' AND e.status <> 'cancelled' AND (${opts.includeDrafts ? 1 : 0} = 1 OR e.status <> 'draft') AND s.starts_on >= ${from} AND s.starts_on <= ${to}
           ORDER BY s.starts_on ASC, s.start_time IS NULL, s.start_time ASC, s.id ASC
           LIMIT 1000`,
     );
