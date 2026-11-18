@@ -241,7 +241,10 @@ export default function PublicNav({ overlay }: { overlay?: HeaderOverlayState })
   // (su página de contacto en cualquier idioma: «/kontakt», «/es/contacto»…; también dentro de un submenú)
   const showContactLink = !navLinks.some((l) => isContactUrl(l.href) || (l.children ?? []).some((c) => isContactUrl(c.href)));
 
-  const centeredLinkCls = cn("font-display text-sm lg:text-[15px] font-medium tracking-wide whitespace-nowrap transition-colors duration-200 hover:text-primary", txt);
+  // Con muchas opciones (más de 5 en el menú) el escritorio de la cabecera centrada empieza en 1280 px: a 1024 el logo y el
+  // selector de idioma no caben junto al menú y se cortaban; hasta entonces se usa el menú desplegable.
+  const wide = navLinks.length + (showContactLink ? 1 : 0) > 5;
+  const centeredLinkCls =cn("font-display text-sm lg:text-[15px] font-medium tracking-wide whitespace-nowrap transition-colors duration-200 hover:text-primary", txt);
   const renderCentered = (link: NavItem) =>
     link.children ? (
       <NavDropdown key={link.href} label={link.label} href={link.href} target={link.target} children={link.children} isActive={location.startsWith(link.href)} />
@@ -289,21 +292,21 @@ export default function PublicNav({ overlay }: { overlay?: HeaderOverlayState })
 
       {centered && tenantTheme && (
         <div className="container">
-          <div className={cn("relative grid grid-cols-1 lg:grid-cols-[1fr_auto_1fr] items-center transition-[height] duration-300 ease-out", solid ? "h-16 lg:h-[76px]" : "h-24 lg:h-36")}>
-            <nav className="hidden lg:flex items-center justify-end gap-7 pr-12" aria-label="Menú principal">
+          <div className={cn("relative grid grid-cols-1 items-center transition-[height] duration-300 ease-out", wide ? "xl:grid-cols-[1fr_auto_1fr]" : "lg:grid-cols-[1fr_auto_1fr]", solid ? (wide ? "h-16 xl:h-[76px]" : "h-16 lg:h-[76px]") : (wide ? "h-24 xl:h-36" : "h-24 lg:h-36"))}>
+            <nav className={cn("hidden items-center justify-end gap-6 pr-10 xl:gap-7 xl:pr-12", wide ? "xl:flex" : "lg:flex")} aria-label="Menú principal">
               {navLinks.slice(0, Math.ceil(navLinks.length / 2)).map(renderCentered)}
             </nav>
-            <Link href={site18n.home} aria-label={tenantTheme.brandName ?? "Inicio"} className="justify-self-center lg:col-start-2">
+            <Link href={site18n.home} aria-label={tenantTheme.brandName ?? "Inicio"} className={cn("justify-self-center", wide ? "xl:col-start-2" : "lg:col-start-2")}>
               {tenantTheme.logoUrl && (
-                <img src={!solid && tone === "light" && tenantTheme.header?.logoLight ? tenantTheme.header.logoLight : tenantTheme.logoUrl} alt={tenantTheme.brandName ?? ""} className={cn("w-auto object-contain transition-[height] duration-300 ease-out", solid ? "h-11 lg:h-12" : "h-16 lg:h-28")} />
+                <img src={!solid && tone === "light" && tenantTheme.header?.logoLight ? tenantTheme.header.logoLight : tenantTheme.logoUrl} alt={tenantTheme.brandName ?? ""} className={cn("w-auto object-contain transition-[height] duration-300 ease-out", solid ? (wide ? "h-11 xl:h-12" : "h-11 lg:h-12") : (wide ? "h-16 xl:h-28" : "h-16 lg:h-28"))} />
               )}
             </Link>
-            <div className="hidden lg:flex items-center justify-start gap-7 pl-12">
-              <nav className="flex items-center gap-7" aria-label="Menú principal (continuación)">
+            <div className={cn("hidden items-center justify-start gap-6 pl-10 xl:gap-7 xl:pl-12", wide ? "xl:flex" : "lg:flex")}>
+              <nav className="flex items-center gap-6 xl:gap-7" aria-label="Menú principal (continuación)">
                 {navLinks.slice(Math.ceil(navLinks.length / 2)).map(renderCentered)}
               </nav>
               <div className={cn("flex items-center gap-1", txt)}>
-                <LanguageSwitcher />
+                <LanguageSwitcher inherit />
                 {showCart && <CartIcon />}
               </div>
             </div>
@@ -311,7 +314,7 @@ export default function PublicNav({ overlay }: { overlay?: HeaderOverlayState })
               onClick={() => setIsOpen(!isOpen)}
               aria-label={isOpen ? "Cerrar el menú" : "Abrir el menú"}
               aria-expanded={isOpen}
-              className={cn("lg:hidden absolute right-0 top-1/2 -translate-y-1/2 p-2 rounded-lg transition-colors", txt)}
+              className={cn("absolute right-0 top-1/2 -translate-y-1/2 p-2 rounded-lg transition-colors", wide ? "xl:hidden" : "lg:hidden", txt)}
             >
               {isOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
             </button>
@@ -457,7 +460,8 @@ export default function PublicNav({ overlay }: { overlay?: HeaderOverlayState })
 
       {/* ── Menú mobile ───────────────────────────────────────────── */}
       <div className={cn(
-        "lg:hidden bg-white border-t border-border shadow-xl overflow-hidden transition-all duration-300",
+        centered && wide ? "xl:hidden" : "lg:hidden",
+        "bg-white border-t border-border shadow-xl overflow-hidden transition-all duration-300",
         isOpen ? "max-h-[80vh] overflow-y-auto" : "max-h-0"
       )}>
         <div className="container py-4 space-y-1">
@@ -525,6 +529,8 @@ export default function PublicNav({ overlay }: { overlay?: HeaderOverlayState })
             </div>
           ))}
           <div className="pt-3 border-t border-border space-y-2">
+            {/* Selector de idioma también en el menú desplegable (antes solo existía en la cabecera de escritorio) */}
+            <LanguageSwitcher className="px-2 text-foreground" />
             {showShopLink && (
               <Button variant="outline" className="w-full font-display font-medium rounded-full" onClick={() => mobileNavigate(siteText.shopHref)}>
                 {siteText.shopLabel}
