@@ -167,6 +167,8 @@ export async function processProductRequest(input: ProductRequestInput, ctx: Pro
       }
     }
 
+    const shownPrice = chosen ? chosenPrice.toFixed(2) : showsPrice(product) && baseNum > 0 ? baseNum.toFixed(2) : undefined;
+
     const lead = await createLead({
       name,
       email,
@@ -181,11 +183,9 @@ export async function processProductRequest(input: ProductRequestInput, ctx: Pro
       requestLang: lang || undefined,
       variantId: chosen?.id,
       variantLabel: chosen?.name.slice(0, 128),
-      shownPrice: chosen ? chosenPrice.toFixed(2) : showsPrice(product) && baseNum > 0 ? baseNum.toFixed(2) : undefined,
+      shownPrice: shownPrice,
       isTest: ctx.testMode === true,
     });
-    // 0076: convocatoria y moneda del precio mostrado (la del producto; EUR si no consta). Sin la migración no se escribe nada.
-    await writeLeadRequestExtras(d, lead.id, { editionId: edition?.edition.id ?? null, currency: normalizeCurrency(product.currency) });
     let status: EnrollmentStatus | null = null;
     if (edition) {
       status = edition.initialStatus;
@@ -195,8 +195,11 @@ export async function processProductRequest(input: ProductRequestInput, ctx: Pro
         VALUES (${edition.edition.id}, ${client?.id ?? null}, ${lead.id}, ${name}, ${email}, ${phone || null}, ${seats}, ${status}, ${message ? message.slice(0, 2000) : null}, 1, ${consent.text}, ${consent.version}, ${now},
           ${ipFingerprint(ctx.ip, ctx.tenantId, ctx.ipSecret)}, ${page || null}, ${now}, ${now})`)) as unknown as [{ insertId?: number }];
       // 0076: la modalidad elegida también en la inscripción
-      await writeEnrollmentVariant(d, Number(ins?.insertId ?? 0), chosen?.id ?? null);
+      await writeEnrollmentVariant(d, Number(ins?.insertId ?? 0), chosen?.id ?? null).catch(() => false);
     }
+    // 0076: convocatoria y moneda del precio MOSTRADO (solo si se mostró un precio), después de la inscripción: un fallo
+    // aquí nunca deja una solicitud a medias (el dato consta también en el texto de la solicitud)
+    await writeLeadRequestExtras(d, lead.id, { editionId: edition?.edition.id ?? null, currency: shownPrice ? normalizeCurrency(product.currency) : null }).catch(() => false);
     if (ctx.notifyOwner && sendsExternalNotices(ctx)) {
       void ctx.notifyOwner({ leadId: lead.id, duplicate: false, formTitle: edition ? `Solicitud de plaza: ${product.title}` : `Solicitud de información: ${product.title}`, page: page || `/tienda`, name, email, phone: phone || undefined, message: body }).catch(() => {});
     }

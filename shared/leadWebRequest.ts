@@ -67,7 +67,7 @@ export interface LeadRequestFields {
 export interface LeadRequestExtras {
   currency?: string | null;
   product?: { id: number; title: string; slug: string | null } | null;
-  edition?: { id: number; label: string; startsAt: number; endsAt: number | null; timezone: string } | null;
+  edition?: { id: number; label: string; startsAt: number; endsAt: number | null; timezone: string; experienceId?: number | null } | null;
 }
 
 export interface LeadWebRequestView {
@@ -103,7 +103,7 @@ export function buildLeadWebRequestView(lead: LeadRequestFields, extras: LeadReq
     currency,
     lang: /^[a-z]{2}$/.test(code) ? { code, name: languageNameEs(code) } : null,
     edition: extras.edition
-      ? { id: extras.edition.id, label: extras.edition.label, dates: formatEditionDates(extras.edition.startsAt, extras.edition.endsAt, extras.edition.timezone), experienceId: extras.product?.id ?? lead.experienceId ?? null }
+      ? { id: extras.edition.id, label: extras.edition.label, dates: formatEditionDates(extras.edition.startsAt, extras.edition.endsAt, extras.edition.timezone), experienceId: extras.edition.experienceId ?? extras.product?.id ?? lead.experienceId ?? null }
       : null,
     participants: lead.numberOfPersons && lead.numberOfPersons > 0 ? lead.numberOfPersons : null,
     isTest: lead.isTest === true,

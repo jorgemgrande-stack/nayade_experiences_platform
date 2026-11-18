@@ -66,7 +66,7 @@ export async function getLeadWebRequest(lead: LeadRequestFields & { id: number }
   const extras: LeadRequestExtras = { currency: extra?.currency ?? null };
   if (editionId != null) {
     const [ed] = await tolerant(() => rows(d, sql`SELECT id, label, starts_at, ends_at, timezone, experience_id FROM product_editions WHERE id = ${editionId} LIMIT 1`), []);
-    if (ed) extras.edition = { id: Number(ed.id), label: String(ed.label), startsAt: Number(ed.starts_at), endsAt: ed.ends_at == null ? null : Number(ed.ends_at), timezone: String(ed.timezone || "Europe/Madrid") };
+    if (ed) extras.edition = { id: Number(ed.id), label: String(ed.label), startsAt: Number(ed.starts_at), endsAt: ed.ends_at == null ? null : Number(ed.ends_at), timezone: String(ed.timezone || "Europe/Madrid"), experienceId: ed.experience_id == null ? null : Number(ed.experience_id) };
   }
   if (lead.experienceId) {
     const [p] = await rows(d, sql`SELECT id, title, slug FROM experiences WHERE id = ${lead.experienceId} LIMIT 1`);
