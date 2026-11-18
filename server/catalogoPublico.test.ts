@@ -106,3 +106,13 @@ describe("título y ruta del catálogo", () => {
     expect(shop).toBeLessThan(app.indexOf('<Route path="/:locale/:slug">'));
   });
 });
+
+describe("bloque «Productos» de las páginas", () => {
+  const src = fs.readFileSync(path.join(__dirname, "..", "client/src/components/site/PageBlocksView.tsx"), "utf8");
+  it("pide los textos del idioma y el precio «desde»; el botón lleva al catálogo del idioma y la categoría", () => {
+    expect(src).toContain("includeSoldOut: true, withFromPrice: true, ...(site.prefix ? { locale: site.prefix } : {})");
+    expect(src).toContain("<SmartLink href={shopHref} preview={preview}>");
+    expect(src).not.toContain('<SmartLink href="/tienda" preview={preview}>');
+    expect(src).toContain("?categoria=${encodeURIComponent(d.categorySlug)}");
+  });
+});

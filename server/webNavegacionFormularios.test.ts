@@ -53,7 +53,7 @@ describe("formularios en el idioma de la página", () => {
 
 describe("bloque de productos y carrito", () => {
   it("el bloque lista también lo publicado por solicitud", () => {
-    expect(read("../client/src/components/site/PageBlocksView.tsx")).toContain("getExperiences.useQuery({ limit: 50, offset: 0, includeSoldOut: true }");
+    expect(read("../client/src/components/site/PageBlocksView.tsx")).toContain("getExperiences.useQuery({ limit: 50, offset: 0, includeSoldOut: true,");
   });
   it("el carrito se oculta con el ajuste de la cabecera", () => {
     expect(read("../client/src/components/PublicNav.tsx")).toContain("headerCta?.showCart !== false");
