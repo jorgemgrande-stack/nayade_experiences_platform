@@ -22,6 +22,8 @@ import { formConsentText, FORM_MIN_FILL_MS, FORM_RATE } from "./_core/studioForm
 import { consentSentence, fillUiText, siteUiText } from "../shared/siteUiText";
 import { ipFingerprint, keyedLock } from "./_core/studioFormsSubmit";
 import { getRequestableEdition } from "./editionsDb";
+import { writeEnrollmentVariant, writeLeadRequestExtras } from "./leadWebRequestDb";
+import { normalizeCurrency } from "../shared/leadWebRequest";
 
 export const PRODUCT_REQUEST_DEDUPE_MS = 10 * 60 * 1000;
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
@@ -125,7 +127,7 @@ export async function processProductRequest(input: ProductRequestInput, ctx: Pro
 
   const d = await getDb();
   if (!d) throw new Error("Base de datos no disponible");
-  const [product] = await d.select({ id: experiences.id, title: experiences.title, isPublished: experiences.isPublished, offerMode: experiences.offerMode, basePrice: experiences.basePrice }).from(experiences).where(eq(experiences.id, input.experienceId)).limit(1);
+  const [product] = await d.select({ id: experiences.id, title: experiences.title, isPublished: experiences.isPublished, offerMode: experiences.offerMode, basePrice: experiences.basePrice, currency: experiences.currency }).from(experiences).where(eq(experiences.id, input.experienceId)).limit(1);
   if (!product || !product.isPublished) throw new ProductRequestError("NOT_FOUND", t.productGone);
 
   let edition: Awaited<ReturnType<typeof getRequestableEdition>> = null;
@@ -169,6 +171,8 @@ export async function processProductRequest(input: ProductRequestInput, ctx: Pro
       }
     }
 
+    const shownPrice = chosen ? chosenPrice.toFixed(2) : showsPrice(product) && baseNum > 0 ? baseNum.toFixed(2) : undefined;
+
     const lead = await createLead({
       name,
       email,
@@ -183,18 +187,23 @@ export async function processProductRequest(input: ProductRequestInput, ctx: Pro
       requestLang: lang || undefined,
       variantId: chosen?.id,
       variantLabel: chosen?.name.slice(0, 128),
-      shownPrice: chosen ? chosenPrice.toFixed(2) : showsPrice(product) && baseNum > 0 ? baseNum.toFixed(2) : undefined,
+      shownPrice: shownPrice,
       isTest: ctx.testMode === true,
     });
     let status: EnrollmentStatus | null = null;
     if (edition) {
       status = edition.initialStatus;
       const [client] = await d.select({ id: clients.id }).from(clients).where(eq(clients.email, email)).limit(1);
-      await d.execute(sql`INSERT INTO edition_enrollments
+      const [ins] = (await d.execute(sql`INSERT INTO edition_enrollments
         (edition_id, client_id, lead_id, name, email, phone, seats, status, notes, consent_given, consent_text, consent_version, consent_at, ip_hash, page, created_at, updated_at)
         VALUES (${edition.edition.id}, ${client?.id ?? null}, ${lead.id}, ${name}, ${email}, ${phone || null}, ${seats}, ${status}, ${message ? message.slice(0, 2000) : null}, 1, ${consent.text}, ${consent.version}, ${now},
-          ${ipFingerprint(ctx.ip, ctx.tenantId, ctx.ipSecret)}, ${page || null}, ${now}, ${now})`);
+          ${ipFingerprint(ctx.ip, ctx.tenantId, ctx.ipSecret)}, ${page || null}, ${now}, ${now})`)) as unknown as [{ insertId?: number }];
+      // 0076: la modalidad elegida también en la inscripción
+      await writeEnrollmentVariant(d, Number(ins?.insertId ?? 0), chosen?.id ?? null).catch(() => false);
     }
+    // 0076: convocatoria y moneda del precio MOSTRADO (solo si se mostró un precio), después de la inscripción: un fallo
+    // aquí nunca deja una solicitud a medias (el dato consta también en el texto de la solicitud)
+    await writeLeadRequestExtras(d, lead.id, { editionId: edition?.edition.id ?? null, currency: shownPrice ? normalizeCurrency(product.currency) : null }).catch(() => false);
     if (ctx.notifyOwner && sendsExternalNotices(ctx)) {
       void ctx.notifyOwner({ leadId: lead.id, duplicate: false, formTitle: edition ? `Solicitud de plaza: ${product.title}` : `Solicitud de información: ${product.title}`, page: page || `/tienda`, name, email, phone: phone || undefined, message: body }).catch(() => {});
     }

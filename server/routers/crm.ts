@@ -861,12 +861,18 @@ export const crmRouter = router({
           to: z.string().optional(),
           leadSourceId: z.number().optional(),
           tagId: z.number().int().positive().optional(),
+          /** Solo solicitudes de producto o de plaza desde la web (server/productRequests.ts) */
+          webRequestsOnly: z.boolean().optional(),
           limit: z.number().default(50),
           offset: z.number().default(0),
         })
       )
       .query(async ({ input }) => {
         const conditions = [];
+        if (input.webRequestsOnly) {
+          const { WEB_REQUEST_SOURCES } = await import("../../shared/leadWebRequest");
+          conditions.push(inArray(leads.source, [...WEB_REQUEST_SOURCES]));
+        }
         if (input.opportunityStatus) conditions.push(eq(leads.opportunityStatus, input.opportunityStatus));
         if (input.assignedTo) conditions.push(eq(leads.assignedTo, input.assignedTo));
         if (input.priority) conditions.push(eq(leads.priority, input.priority));
@@ -987,7 +993,11 @@ export const crmRouter = router({
           .where(eq(quotes.leadId, input.id))
           .orderBy(desc(quotes.createdAt));
 
-        return { lead, activity, quotes: relatedQuotes };
+        // Solicitud web estructurada (producto, modalidad, precio y moneda, idioma, convocatoria); null en un lead normal
+        const { getLeadWebRequest } = await import("../leadWebRequestDb");
+        const webRequest = await getLeadWebRequest(lead);
+
+        return { lead, activity, quotes: relatedQuotes, webRequest };
       }),
 
     update: staff

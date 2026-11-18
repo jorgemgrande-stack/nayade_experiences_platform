@@ -229,6 +229,15 @@ describe.skipIf(!URL_)("Oferta bajo petición y próximamente (aplicación real)
     expect(lead.message).toContain("precio visible, solo por solicitud");
     expect(lead.message).toContain("Modalidad elegida: INTENSIV · precio publicado: 777,00 €");
     expect(lead.message).toContain("Idioma de la web: de");
+    // 0076: moneda del producto en el lead (sin convocatoria) y el bloque «Solicitud web» del CRM
+    const [cols] = await ess.sql("a", "SELECT currency, edition_id, variant_id, variant_label, shown_price, request_lang FROM leads WHERE id = ?", [data(r).leadId]);
+    expect([cols.currency, cols.edition_id, cols.variant_id, cols.variant_label, Number(cols.shown_price), cols.request_lang]).toEqual(["EUR", null, varId, "INTENSIV", 777, "de"]);
+    const detail = data(await ess.q("a", "crm.leads.get", { id: data(r).leadId }, admA)) as any;
+    expect(detail.webRequest).toMatchObject({ sourceLabel: "Solicitud de información", variant: { label: "INTENSIV" }, currency: "EUR", lang: { code: "de" }, edition: null });
+    expect(detail.webRequest.shownPrice).toMatch(/^777,00\s€$/);
+    const webOnly = data(await ess.q("a", "crm.leads.list", { webRequestsOnly: true }, admA)) as any;
+    expect(webOnly.rows.every((l: any) => /^web_solicitud_/.test(l.source))).toBe(true);
+    expect(webOnly.rows.some((l: any) => l.id === data(r).leadId)).toBe(true);
     // Una modalidad caducada no se puede citar en una solicitud: se ignora y consta el precio del producto
     const r2 = await rpi("a", { experienceId: ids.precio, name: "Otra Persona", email: "otra@interesada.example", consent: true, variantId: caducada, lang: "es" });
     const [lead2] = await ess.sql("a", "SELECT message FROM leads WHERE id = ?", [data(r2).leadId]);

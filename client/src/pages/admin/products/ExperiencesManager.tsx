@@ -4,7 +4,7 @@ import { usePanelSubscription } from "@/hooks/usePanelSubscription";
 import { useVocabulary } from "@/lib/vocabulary";
 import { PanelError, errorMessage } from "@/components/admin/PanelStates";
 import { validateProductForm } from "@shared/formValidation";
-import { Plus, Pencil, Trash2, Star, Eye, EyeOff, Search, ImageIcon, X, MoreVertical, Copy, PowerOff, Power, ChevronUp, ChevronDown, CalendarDays } from "lucide-react";
+import { Plus, Pencil, Trash2, Star, Eye, EyeOff, Search, ImageIcon, X, MoreVertical, Copy, PowerOff, Power, ChevronUp, ChevronDown, CalendarDays, Languages } from "lucide-react";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -24,6 +24,8 @@ import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import TimeSlotsPanel from "@/components/TimeSlotsPanel";
 import { EditionsPanel, UpcomingEditionsView } from "./EditionsPanel";
+import { ProductTranslationsPanel } from "./ProductTranslationsPanel";
+import { isMultilingual } from "@shared/i18n";
 import { TONE_BADGE, TONE_SURFACE } from "@/lib/panelTones";
 import { newProductDefaults, presentialSaleAllowed } from "@shared/catalogDefaults";
 import { DEFAULT_REQUEST_CTA, MAX_REQUEST_CTA_LENGTH, OFFER_MODES, OFFER_MODE_HELP, OFFER_MODE_LABELS, offerModeOf, type OfferMode } from "@shared/offerMode";
@@ -167,6 +169,10 @@ export default function ExperiencesManager() {
   // E-4: convocatorias de un producto y vista de las próximas de toda la tienda
   const [editionsFor, setEditionsFor] = useState<{ id: number; title: string } | null>(null);
   const [view, setView] = useState<"productos" | "convocatorias">("productos");
+  // E-1: traducciones de un producto («Idiomas»), solo si la web tiene idiomas adicionales
+  const [translationsFor, setTranslationsFor] = useState<{ id: number; title: string } | null>(null);
+  const i18nCfg = trpc.cms.i18nConfig.useQuery(undefined, { retry: false, staleTime: 60_000, refetchOnWindowFocus: false });
+  const multilingual = !!i18nCfg.data && isMultilingual(i18nCfg.data);
 
   const { data: experiences, refetch, isLoading: listLoading, isError: listIsError, error: listError } = trpc.products.getAll.useQuery();
 
@@ -204,6 +210,18 @@ export default function ExperiencesManager() {
     window.history.replaceState({}, "", url.toString());
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Enlace a las convocatorias de un producto (p. ej. desde la ficha de un lead del CRM): ?convocatorias=<id>
+  useEffect(() => {
+    if (!experiences) return;
+    const url = new URL(window.location.href);
+    const id = Number(url.searchParams.get("convocatorias"));
+    if (!Number.isInteger(id) || id <= 0) return;
+    const exp = experiences.find((e) => e.id === id);
+    if (exp) setEditionsFor({ id: exp.id, title: exp.title });
+    url.searchParams.delete("convocatorias");
+    window.history.replaceState({}, "", url.toString());
+  }, [experiences]);
 
   // Valores de un producto nuevo según el plan (las licencias pueden llegar después de abrir el formulario): solo se
   // ajustan si siguen siendo los de partida, nunca encima de lo que haya elegido el usuario
@@ -564,6 +582,11 @@ export default function ExperiencesManager() {
                             <DropdownMenuItem onClick={() => setEditionsFor({ id: exp.id, title: exp.title })}>
                               <CalendarDays className="w-3.5 h-3.5 mr-2" /> Convocatorias
                             </DropdownMenuItem>
+                            {multilingual && (
+                              <DropdownMenuItem onClick={() => setTranslationsFor({ id: exp.id, title: exp.title })}>
+                                <Languages className="w-3.5 h-3.5 mr-2" /> Idiomas
+                              </DropdownMenuItem>
+                            )}
                             <DropdownMenuSeparator />
                             <DropdownMenuItem
                               className="text-danger focus:text-danger"
@@ -584,6 +607,7 @@ export default function ExperiencesManager() {
       </div>
 
       <EditionsPanel experienceId={editionsFor?.id ?? null} title={editionsFor?.title ?? ""} open={!!editionsFor} onOpenChange={(o) => !o && setEditionsFor(null)} />
+      <ProductTranslationsPanel experienceId={translationsFor?.id ?? null} title={translationsFor?.title ?? ""} open={!!translationsFor} onOpenChange={(o) => !o && setTranslationsFor(null)} />
 
       {/* Modal */}
       <Dialog open={showModal} onOpenChange={setShowModal}>
@@ -596,6 +620,14 @@ export default function ExperiencesManager() {
               <span className="text-muted-foreground">¿Tiene fechas y plazas, como una formación o un retiro?</span>
               <Button type="button" size="sm" variant="outline" onClick={() => setEditionsFor({ id: editingId, title: form.title })}>
                 <CalendarDays className="w-3.5 h-3.5 mr-1.5" aria-hidden="true" /> Convocatorias
+              </Button>
+            </div>
+          )}
+          {editingId && multilingual && (
+            <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg bg-muted/40 px-3 py-2 text-sm">
+              <span className="text-muted-foreground">Tu web tiene varios idiomas: traduce el nombre, las descripciones y la dirección de {g("este", "esta")} {noun}.</span>
+              <Button type="button" size="sm" variant="outline" onClick={() => setTranslationsFor({ id: editingId, title: form.title })}>
+                <Languages className="w-3.5 h-3.5 mr-1.5" aria-hidden="true" /> Idiomas
               </Button>
             </div>
           )}

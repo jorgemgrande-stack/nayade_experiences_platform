@@ -174,11 +174,15 @@ describe.skipIf(!URL_)("Convocatorias: fechas, plazas e inscripciones (aplicaci�
     expect(data(r)).toMatchObject({ ok: true, kind: "enrollment", enrollmentStatus: "solicitada", duplicate: false });
     const [lead] = await ess.sql("a", "SELECT id, experienceId, source, message, numberOfPersons FROM leads WHERE id = ?", [data(r).leadId]);
     expect(lead).toMatchObject({ experienceId: prod.a, source: "web_solicitud_plaza", numberOfPersons: 2 });
+    // 0076: la convocatoria y la moneda constan en el lead; el CRM enseña el bloque «Solicitud web» con su enlace
+    expect((await ess.sql("a", "SELECT edition_id, currency FROM leads WHERE id = ?", [lead.id]))[0]).toMatchObject({ edition_id: ed, currency: "EUR" });
+    const detail = data(await ess.q("a", "crm.leads.get", { id: lead.id }, admA)) as any;
+    expect(detail.webRequest).toMatchObject({ sourceLabel: "Solicitud de plaza", participants: 2, edition: { id: ed, label: "Edición de primavera", experienceId: prod.a }, product: { title: "Curso anual" } });
     expect(lead.message).toContain("Solicitud de plaza en «Curso anual» · Edición de primavera");
     expect(lead.message).toContain("Plazas: 2");
     expect(lead.message).toContain("Consentimiento RGPD: aceptado");
     const [en] = await ess.sql("a", "SELECT * FROM edition_enrollments WHERE edition_id = ?", [ed]);
-    expect(en).toMatchObject({ lead_id: lead.id, name: "Ana Alumna", email: "ana@ejemplo.example", seats: 2, status: "solicitada", consent_given: 1, order_id: null });
+    expect(en).toMatchObject({ lead_id: lead.id, name: "Ana Alumna", email: "ana@ejemplo.example", seats: 2, status: "solicitada", consent_given: 1, order_id: null, variant_id: null });
     expect(en.consent_text).toContain("política de privacidad");
     expect(en.ip_hash === null || /^[0-9a-f]{64}$/.test(en.ip_hash)).toBe(true);
     // No ocupa plaza, no crea pedido ni factura
