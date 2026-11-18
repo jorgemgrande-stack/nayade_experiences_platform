@@ -16,7 +16,7 @@ import { sql } from "drizzle-orm";
 import { clients, experiences, leads } from "../drizzle/schema";
 import { getDb, createLead, getVariantsByExperience } from "./db";
 import { canRequestSeat, EDITION_LIMITS, formatEditionDates, type EnrollmentStatus } from "../shared/editions";
-import { cleanText, offerModeOf, showsPrice } from "../shared/offerMode";
+import { cleanText, isPubliclyRequestable, offerModeOf, showsPrice } from "../shared/offerMode";
 import { sendsExternalNotices } from "../shared/testMode";
 import { formConsentText, FORM_MIN_FILL_MS, FORM_RATE } from "./_core/studioForms";
 import { consentSentence, fillUiText, siteUiText } from "../shared/siteUiText";
@@ -127,8 +127,8 @@ export async function processProductRequest(input: ProductRequestInput, ctx: Pro
 
   const d = await getDb();
   if (!d) throw new Error("Base de datos no disponible");
-  const [product] = await d.select({ id: experiences.id, title: experiences.title, isPublished: experiences.isPublished, offerMode: experiences.offerMode, basePrice: experiences.basePrice, currency: experiences.currency }).from(experiences).where(eq(experiences.id, input.experienceId)).limit(1);
-  if (!product || !product.isPublished) throw new ProductRequestError("NOT_FOUND", t.productGone);
+  const [product] = await d.select({ id: experiences.id, title: experiences.title, isPublished: experiences.isPublished, isActive: experiences.isActive, offerMode: experiences.offerMode, basePrice: experiences.basePrice, currency: experiences.currency }).from(experiences).where(eq(experiences.id, input.experienceId)).limit(1);
+  if (!isPubliclyRequestable(product)) throw new ProductRequestError("NOT_FOUND", t.productGone);
 
   let edition: Awaited<ReturnType<typeof getRequestableEdition>> = null;
   if (input.editionId) {
