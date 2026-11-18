@@ -612,6 +612,8 @@ export const ORDINARY_PRODUCTION_ACTIONS = [
   "huerfanos",
   "correo-acceso-estado",
   "avisos-solicitudes-estado",
+  "connect-canal-estado",
+  "dominios-estado",
   "medicion-comprobar",
   "simular-purga-empresas-prueba",
   "catalogo-revision",

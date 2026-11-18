@@ -14,6 +14,11 @@
 #   «elephant-source-production» (con aprobación obligatoria).
 name: Despliegue Elephant Source
 
+# Nombre fijo «<acción> · <entorno> · <commit>»: lo lee scripts/deploy/esReleaseLib.ts (approvalsFromRuns) para reconocer qué
+# contenido protegido ya se aprobó y desplegó. Solo cuenta si la ejecución es manual, correcta, de la rama de integración
+# y de un administrador; el nombre por sí solo no autoriza nada.
+run-name: ${{ inputs.action }} · ${{ inputs.environment }} · ${{ inputs.commit || github.sha }}
+
 on:
   workflow_dispatch:
     inputs:
@@ -134,6 +139,8 @@ permissions:
   contents: read
   checks: read
   statuses: write
+  # Leer las ejecuciones manuales anteriores (aprobaciones protegidas verificables, esReleaseLib.approvalsFromRuns)
+  actions: read
 
 # Un solo despliegue a la vez por entorno, también entre la publicación automática y las acciones manuales
 concurrency:
@@ -196,7 +203,10 @@ jobs:
 
       - name: Estado (despliegue activo de cada servicio; anotarlo como punto de vuelta atrás)
         if: inputs.action == 'estado'
-        run: pnpm exec tsx scripts/deploy/esRailway.ts status --env "${ES_ENV}"
+        run: |
+          pnpm exec tsx scripts/deploy/esRailway.ts status --env "${ES_ENV}"
+          # Qué servicio falta por actualizar y qué exigiría la última versión de la rama (solo lectura)
+          if [ "${ES_ENV}" = "production" ]; then pnpm exec tsx scripts/deploy/esRailway.ts release-plan --env "${ES_ENV}" --to "$(git rev-parse HEAD)" || echo "(production no se publicaría tal cual: ver arriba)"; fi
 
       - name: Diagnóstico del almacenamiento (solo lectura; sin valores de claves)
         if: inputs.action == 'diagnostico-almacenamiento'
@@ -492,20 +502,23 @@ jobs:
         run: |
           # Solo CRM o web: el Core no cambia (ni migraciones, ni copias, ni despliegue de sus servicios)
           if [ "${ES_SERVICES}" != "todos" ]; then echo "Solo ${ES_SERVICES}: el Core no se toca"; echo "ES_PROD_SKIP=1" >> "${GITHUB_ENV}"; exit 0; fi
-          FROM=$(pnpm exec tsx scripts/deploy/esRailway.ts active-sha --env "${ES_ENV}")
           if [ "${ES_ENV}" = "production" ]; then
+            # Cada servicio contra SU commit real y las aprobaciones de contenido ya concedidas (esReleaseLib.planRelease).
+            # Ya no hay un único commit de referencia (el ancestro común de los tres), que reabría lo aprobado.
             set +e
-            pnpm exec tsx scripts/deploy/esRailway.ts changes ${FROM:+--from "${FROM}"} --to "${ES_DEPLOY_SHA}" --production > "${RUNNER_TEMP}/changes.txt"
+            pnpm exec tsx scripts/deploy/esRailway.ts release-plan --env "${ES_ENV}" --to "${ES_DEPLOY_SHA}" > "${RUNNER_TEMP}/changes.txt"
             RC=$?
             set -e
             cat "${RUNNER_TEMP}/changes.txt"
             # Migraciones aditivas: copia verificada y aplicación automáticas antes de publicar el código (paso siguiente)
             if [ "${RC}" = "0" ] && ! grep -qx "migrations=no" "${RUNNER_TEMP}/changes.txt"; then echo "ES_PROD_MIGRATE=1" >> "${GITHUB_ENV}"; fi
-            # Automático (encadenado por el CI): un cambio EXTRAORDINARIO no se publica y queda el aviso; manual: falla.
-            # Nunca se publica en ninguno de los dos casos.
+            # Automático (encadenado por el CI): lo bloqueado no se publica, el resultado queda como BLOQUEADO (no como
+            # éxito) y el último paso de este trabajo lo comunica y lo marca en rojo. Manual: falla aquí. Nunca se publica.
             if [ "${RC}" = "5" ] && [ "${ES_AUTO}" = "true" ]; then
-              echo "::warning title=Core no publicado en production::${ES_DEPLOY_SHA} exige el procedimiento protegido (con aprobación)"
+              REASON=$(sed -n 's/^decision=//p' "${RUNNER_TEMP}/changes.txt" | head -1)
+              echo "::error title=Production NO publicado::${ES_DEPLOY_SHA} (${REASON}): exige el procedimiento protegido o no se puede verificar"
               echo "ES_PROD_SKIP=1" >> "${GITHUB_ENV}"
+              echo "ES_PROD_BLOCKED=${REASON:-bloqueado}" >> "${GITHUB_ENV}"
             elif [ "${RC}" != "0" ]; then
               exit "${RC}"
             fi
@@ -546,6 +559,14 @@ jobs:
       - name: Publicar — controlplane, core y core-gateway (vuelta atrás automática si algo falla)
         if: inputs.action == 'publicar' && env.ES_PROD_SKIP != '1'
         run: pnpm exec tsx scripts/deploy/esRailway.ts publish --env "${ES_ENV}" --dir "${RUNNER_TEMP}/export" --sha "${ES_DEPLOY_SHA}" --record "${RUNNER_TEMP}/es-core-published.json"
+
+      # Verificación REAL: lo que Railway dice que sirve cada servicio, no el color del flujo. Sin dato fiable: desconocido
+      # (y el trabajo falla); solo con los tres servicios en el commit se marcará production como verificado.
+      - name: Publicar — verificar qué commit sirve cada servicio
+        if: inputs.action == 'publicar' && inputs.environment == 'production' && env.ES_PROD_SKIP != '1' && env.ES_SERVICES == 'todos'
+        run: |
+          pnpm exec tsx scripts/deploy/esRailway.ts release-verify --env "${ES_ENV}" --to "${ES_DEPLOY_SHA}"
+          echo "ES_CORE_VERIFIED=1" >> "${GITHUB_ENV}"
 
       # CRM (repositorio big-elephant-crm, clave de solo lectura CRM_DEPLOY_KEY del entorno). Live: el último de su rama de
       # integración; production: SOLO el commit del CRM que superó live con este mismo commit del Core (estado
@@ -666,6 +687,28 @@ jobs:
           pnpm exec tsx scripts/deploy/esRailway.ts publish-crm --service web --env "${ES_ENV}" --dir "${RUNNER_TEMP}/web-export" --sha "${WEB_SHA}"
           if [ "${ES_ENV}" = "live" ]; then
             gh api "repos/${GITHUB_REPOSITORY}/statuses/${ES_DEPLOY_SHA}" -f state=success -f context=elephant-source/web-live -f description="web ${WEB_SHA}" -f target_url="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}" > /dev/null
+          fi
+
+      # Resultado EXPLÍCITO por entorno (nunca «publicación correcta» si production se omitió) y estado del commit
+      # elephant-source/production: success solo con los tres servicios verificados; pending si está bloqueado; failure si falló.
+      - name: Resultado de la publicación (explícito por entorno)
+        if: always() && inputs.action == 'publicar' && env.ES_DEPLOY_SHA != '' && env.ES_SERVICES == 'todos'
+        env:
+          JOB_STATUS: ${{ job.status }}
+        run: |
+          RUN_URL="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+          if [ -n "${ES_PROD_BLOCKED}" ]; then STATE=pending; LINE="${ES_ENV}: NO PUBLICADO — bloqueado (${ES_PROD_BLOCKED}); requiere el procedimiento protegido o verificación"
+          elif [ "${JOB_STATUS}" != "success" ] && [ "${ES_ENV}" = "production" ] && [ "${ES_CORE_VERIFIED}" = "1" ]; then STATE=success; LINE="${ES_ENV}: Core PUBLICADO y verificado en ${ES_DEPLOY_SHA}; CRM o web NO (ver el trabajo)"
+          elif [ "${JOB_STATUS}" != "success" ]; then STATE=failure; LINE="${ES_ENV}: NO PUBLICADO o parcial — fallido; el estado real está en la verificación por servicio"
+          elif [ "${ES_ENV}" = "production" ] && [ "${ES_CORE_VERIFIED}" != "1" ]; then STATE=pending; LINE="${ES_ENV}: publicado SIN verificar"
+          else STATE=success; LINE="${ES_ENV}: PUBLICADO y verificado en ${ES_DEPLOY_SHA}"; fi
+          echo "## Resultado de ${ES_ENV}" >> "${GITHUB_STEP_SUMMARY}"
+          echo "**${LINE}** (commit ${ES_DEPLOY_SHA})" >> "${GITHUB_STEP_SUMMARY}"
+          if [ "${ES_ENV}" = "production" ]; then
+            gh api "repos/${GITHUB_REPOSITORY}/statuses/${ES_DEPLOY_SHA}" -f state="${STATE}" -f context=elephant-source/production -f description="${LINE:0:130}" -f target_url="${RUN_URL}" > /dev/null
+            # Un production pedido y no publicado NO termina en verde
+            if [ "${STATE}" = "pending" ]; then echo "::error title=Production no publicado::${LINE}"; exit 1; fi
+            if [ "${JOB_STATUS}" != "success" ]; then exit 1; fi
           fi
 
       - name: Publicar — marcar el commit como superado en live

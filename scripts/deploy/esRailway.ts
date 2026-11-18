@@ -51,6 +51,9 @@ import { ownDeployState, type OwnDeployTarget } from "./esRailwayLib";
 import { CORE_COMMERCE_SCOPES, CORE_COMMERCE_TOKEN_ID, commerceChannelPlan } from "./esRailwayLib";
 import { CRM_CHECKS, CRM_VERSION_FILE, CRM_VERSION_URL, externalLockedChanges, FUNCTIONAL_CHECKS, ORDINARY_SERVICES, WEB_CHECKS, crmProtectedChanges, hasMigrations, isExternalService, isNativeDeploy, protectedChanges, shaFromDeployMeta } from "./esRailwayLib";
 import { REPOSITORIES } from "../../shared/repositories";
+import { gitView } from "./esGitView";
+import { fetchApprovals } from "./esGithub";
+import { isBlocked, planRelease, renderSummary, verifyRelease, type Service } from "./esReleaseLib";
 
 const CONFIG_PATH = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../deploy/railway/elephant-source.deploy.json");
 const loadConfig = (): DeployConfig => JSON.parse(fs.readFileSync(CONFIG_PATH, "utf8"));
@@ -392,7 +395,7 @@ async function main() {
   const env = arg("env");
   const sc = await scope();
   const service = cmd === "deploy" || cmd === "revert" ? arg("service") : cmd === "drill" ? "restore-drill" : undefined;
-  if (!["verify", "status", "deploy", "drill", "active-sha", "publish", "revert", "active-crm", "publish-crm", "rollback-recorded", "storage", "storage-fix", "test-gateways", "mail-live", "backup-check", "platform-domain", "metering", "mail-access", "lead-notices-mail", "contract-mail", "mail-production", "connect-channel", "custom-domains"].includes(cmd)) throw new Error(`orden desconocida: ${cmd}`);
+  if (!["verify", "status", "deploy", "drill", "active-sha", "publish", "revert", "active-crm", "publish-crm", "rollback-recorded", "storage", "storage-fix", "test-gateways", "mail-live", "backup-check", "platform-domain", "metering", "mail-access", "lead-notices-mail", "contract-mail", "mail-production", "connect-channel", "custom-domains", "release-plan", "release-verify"].includes(cmd)) throw new Error(`orden desconocida: ${cmd}`);
   const problems = guard(cfg, sc, { env, service });
   if (problems.length) {
     console.error(`Detenido antes de tocar nada:\n - ${problems.join("\n - ")}`);
@@ -1271,6 +1274,58 @@ async function main() {
     }
     console.log(base);
     return;
+  }
+  if (cmd === "release-plan" || cmd === "release-verify") {
+    // Estado REAL por servicio (Railway) frente al commit de destino. release-plan decide qué exige production (cada
+    // servicio contra SU commit, con las aprobaciones de contenido verificables de GitHub); release-verify comprueba, tras
+    // publicar, que cada servicio sirve el destino. Sin dato fiable: «desconocido», nunca éxito.
+    const to = arg("to");
+    if (!/^[0-9a-f]{40}$/.test(to)) throw new Error("commit no válido");
+    const activeBy = {} as Record<Service, string | null>;
+    for (const name of ORDINARY_SERVICES) {
+      try {
+        activeBy[name] = (await active(await serviceId(name), sc.environmentId))?.sha ?? null;
+      } catch (e) {
+        console.error(`${name}: no se pudo leer el despliegue activo (${scrub((e as Error).message).slice(0, 120)})`);
+        activeBy[name] = null;
+      }
+      console.error(`${name}: ${activeBy[name] ?? "desconocido"}`);
+    }
+    const out = process.env.RUNNER_TEMP ? path.join(process.env.RUNNER_TEMP, "release.json") : null;
+    if (cmd === "release-verify") {
+      const v = verifyRelease(to, activeBy);
+      for (const n of ORDINARY_SERVICES) console.log(`${n}=${v[n]} (${activeBy[n]?.slice(0, 12) ?? "desconocido"})`);
+      if (out) fs.writeFileSync(out, JSON.stringify({ env, target: to, active: activeBy, verified: v }));
+      process.exit(ORDINARY_SERVICES.every((n) => v[n] === "verificado") ? 0 : 1);
+    }
+    let approvals: ReturnType<typeof fetchApprovals>["approvals"] = [];
+    try {
+      const repo = process.env.GITHUB_REPOSITORY;
+      if (!repo) throw new Error("sin GITHUB_REPOSITORY");
+      const r = fetchApprovals(repo, (sha) => {
+        const x = spawnSync("git", ["rev-parse", "--verify", "--quiet", `${sha}^{commit}`], { encoding: "utf8" });
+        return x.status === 0 && /^[0-9a-f]{40}$/.test(x.stdout.trim()) ? x.stdout.trim() : null;
+      });
+      approvals = r.approvals;
+      console.error(`aprobaciones protegidas verificables: ${approvals.length} (ejecuciones revisadas: ${r.scanned})`);
+    } catch (e) {
+      console.error(`AVISO: no se pudieron leer las aprobaciones (${(e as Error).message}); se trata como sin aprobaciones (bloqueo seguro)`);
+    }
+    let plan: ReturnType<typeof planRelease>;
+    try {
+      plan = planRelease({ environment: env, target: to, active: activeBy, git: gitView(), approvals });
+    } catch (e) {
+      console.error(`Bloqueo: no se pudo evaluar el cambio (${(e as Error).message.slice(0, 160)})`);
+      console.log("decision=bloqueado-desconocido");
+      process.exit(5);
+    }
+    console.log(`decision=${plan.decision}`);
+    console.log(`migrations=${plan.migrations}`);
+    for (const s of plan.services) console.log(`${s.service}: ${s.state} · sirve ${s.active?.slice(0, 12) ?? "desconocido"}${s.missing.length ? ` · falta aprobar: ${s.missing.join("; ")}` : ""}${s.covered.length ? ` · ya aprobado (run ${s.covered.map((c) => c.runId).join(",")})` : ""}`);
+    if (plan.reasons.length) console.error(`Bloqueo:\n - ${plan.reasons.join("\n - ")}`);
+    if (out) fs.writeFileSync(out, JSON.stringify({ plan }));
+    if (process.env.GITHUB_STEP_SUMMARY) fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY, `${renderSummary({ target: to, outcomes: [], plans: [plan] })}\n`);
+    process.exit(isBlocked(plan.decision) ? 5 : 0);
   }
   if (cmd === "publish") {
     // Despliegue ORDINARIO: solo sube el código de los servicios ordinarios (sin variables, migraciones ni

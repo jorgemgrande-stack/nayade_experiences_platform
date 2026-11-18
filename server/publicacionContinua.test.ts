@@ -73,7 +73,7 @@ describe("publicación continua", () => {
     expect(gate).toContain(`select(.context == "${LIVE_STATUS_CONTEXT}")`);
     expect(gate).toContain("Suites del Core multiempresa (bloqueante)");
     expect(gate).toContain("Secretos y ficheros sensibles (bloqueante)");
-    expect(step("Publicar — qué trae respecto a lo activo (en production, nada que exija el procedimiento protegido)")).toContain("--production");
+    expect(step("Publicar — qué trae respecto a lo activo (en production, nada que exija el procedimiento protegido)")).toContain("release-plan");
     // Las migraciones del despliegue ordinario solo existen en live
     expect(step("Publicar — live, copia y migraciones nuevas")).toContain("inputs.environment == 'live'");
   });

@@ -4,6 +4,8 @@
 
 **En una frase:** Claude Code integra en `integration/elephant-source` y la cadena automática publica en live y en production con pruebas, barreras, verificación del dominio real y vuelta atrás. Solo interviene el propietario para lo extraordinario.
 
+> **Cambios protegidos ya aprobados y despliegues parciales:** ver [AUTORIZACIONES_PROTEGIDAS.md](AUTORIZACIONES_PROTEGIDAS.md) (la aprobación queda ligada al contenido exacto; production se clasifica por servicio).
+
 ## Reglas para cada ventana
 
 1. **Nunca se despliega production a mano.** Se fusiona en `integration/elephant-source`; para un cambio que solo toca el CRM, se fusiona en el CRM y se relanza `gh workflow run ci.yml --ref integration/elephant-source`.
