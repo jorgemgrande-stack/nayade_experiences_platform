@@ -25,13 +25,27 @@ export const TRANSLATION_FIELD_SETS = {
     { key: "description", label: "Descripción", max: 20000, long: true },
     { key: "metaTitle", label: "Título para buscadores", max: 256, seo: true },
     { key: "metaDescription", label: "Descripción para buscadores", max: 1000, long: true, seo: true },
+    { key: "duration", label: "Duración", max: 128 },
+    { key: "requirements", label: "Requisitos", max: 4000, long: true },
+    { key: "includes", label: "Incluye (una línea por elemento)", max: 4000, long: true },
+    { key: "excludes", label: "No incluye (una línea por elemento)", max: 4000, long: true },
+    { key: "requestCtaLabel", label: "Texto del botón de solicitud", max: 80 },
+  ],
+  variant: [
+    { key: "name", label: "Nombre de la opción", max: 128 },
+    { key: "description", label: "Descripción de la opción", max: 2000, long: true },
+  ],
+  edition: [
+    { key: "label", label: "Nombre de la convocatoria", max: 160 },
+    { key: "scheduleNote", label: "Horario", max: 600, long: true },
+    { key: "locationNote", label: "Lugar", max: 300 },
   ],
 } as const satisfies Record<string, readonly TranslationFieldDef[]>;
 
 export type TranslatableEntity = keyof typeof TRANSLATION_FIELD_SETS;
 
 /** Tipos con dirección propia por idioma (el servidor solo la admite en productos). */
-export const ENTITY_HAS_SLUG: Record<TranslatableEntity, boolean> = { product: true };
+export const ENTITY_HAS_SLUG: Record<TranslatableEntity, boolean> = { product: true, variant: false, edition: false };
 
 export type TranslationState = "untranslated" | "draft" | "validated";
 export const TRANSLATION_STATE_LABELS: Record<TranslationState, string> = {

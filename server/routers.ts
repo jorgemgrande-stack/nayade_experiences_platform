@@ -394,34 +394,57 @@ export const appRouter = router({
           experienceId: z.number().int().positive().optional(),
           productSlug: z.string().regex(/^[a-z0-9-]{1,128}$/).optional(),
           categorySlug: z.string().regex(/^[a-z0-9-]{1,128}$/).optional(),
+          /** Multidioma: textos de las convocatorias en ese idioma (solo traducciones validadas) */
+          locale: z.string().max(35).optional(),
         }).optional(),
       }))
       .query(async ({ input }) => {
         if (input.editions) {
           const { listPublicEditions } = await import("./editionsDb");
-          return listPublicEditions({ ...input.editions, limit: input.limit }) as unknown as ReturnType<typeof getPublicExperiences>;
+          const { locale, ...filter } = input.editions;
+          const list = await listPublicEditions({ ...filter, limit: input.limit });
+          if (locale) {
+            const [{ localizeEditions }, { sqlI18nRepo }] = await Promise.all([import("./i18nProducts"), import("./i18nSqlRepo")]);
+            return (await localizeEditions(sqlI18nRepo(), list, locale)) as unknown as ReturnType<typeof getPublicExperiences>;
+          }
+          return list as unknown as ReturnType<typeof getPublicExperiences>;
         }
         return getPublicExperiences(input);
       }),
 
     getExperienceBySlug: publicProcedure
-      .input(z.object({ slug: z.string() }))
+      .input(z.object({ slug: z.string(), locale: z.string().max(35).optional() }))
       .query(async ({ input }) => {
-        const exp = await getExperienceBySlug(input.slug);
+        // Multidioma: ficha del idioma de la URL (`/<idioma>/tienda/<slug>`); sin `locale`, exactamente la de siempre
+        let exp: Awaited<ReturnType<typeof getExperienceBySlug>> = null;
+        let i18n: import("./i18nProducts").ProductI18nInfo | undefined;
+        if (input.locale) {
+          const [{ localizeProductBySlug }, { sqlI18nRepo }] = await Promise.all([import("./i18nProducts"), import("./i18nSqlRepo")]);
+          const r = await localizeProductBySlug(sqlI18nRepo(), input.slug, input.locale, getExperienceBySlug);
+          if (r.kind === "ok") {
+            exp = r.product;
+            i18n = r.i18n;
+          }
+        } else {
+          exp = await getExperienceBySlug(input.slug);
+        }
         if (!exp) throw new TRPCError({ code: "NOT_FOUND" });
         // Promociones de la tienda (reglas de precios Business, canal web) para enseñar el precio final y el ahorro;
         // el importe lo recalcula siempre el servidor al pagar. Sin reglas, lista vacía.
-        return { ...exp, pricingRules: await webRulesForProduct({ id: exp.id, categoryId: exp.categoryId ?? null }) };
+        return { ...exp, pricingRules: await webRulesForProduct({ id: exp.id, categoryId: exp.categoryId ?? null }), ...(i18n ? { i18n } : {}) };
       }),
 
     getVariantsByExperience: publicProcedure
-      .input(z.object({ experienceId: z.number() }))
+      .input(z.object({ experienceId: z.number(), locale: z.string().max(35).optional() }))
       .query(async ({ input }) => {
         // E-6: sin precio fijo no se enseñan opciones de precio
         const { getExperienceById: byId } = await import("./db");
         const prod = await byId(input.experienceId);
         if (prod && !showsPrice(prod)) return [];
-        return getVariantsByExperience(input.experienceId);
+        const rows = await getVariantsByExperience(input.experienceId);
+        if (!input.locale) return rows;
+        const [{ localizeVariants }, { sqlI18nRepo }] = await Promise.all([import("./i18nProducts"), import("./i18nSqlRepo")]);
+        return localizeVariants(sqlI18nRepo(), rows, input.locale);
       }),
 
 
@@ -570,7 +593,10 @@ export const appRouter = router({
         if (!isMultiTenant()) return { htmlLang: "es", alternates: [] };
         const [{ resolveRequest }, { sqlI18nRepo }] = await Promise.all([import("./i18nService"), import("./i18nSqlRepo")]);
         const r = await resolveRequest(sqlI18nRepo(), input.path, "");
-        return r.kind === "page" ? { htmlLang: r.seo.htmlLang, alternates: r.seo.alternates.filter((a) => a.hreflang !== "x-default") } : { htmlLang: "es", alternates: [] };
+        if (r.kind === "page") return { htmlLang: r.seo.htmlLang, alternates: r.seo.alternates.filter((a) => a.hreflang !== "x-default") };
+        // Ficha de producto: la misma ficha en cada idioma público (también los aún sin traducir, que lo avisan)
+        if (r.kind === "product") return { htmlLang: r.seo.htmlLang, alternates: r.switcher };
+        return { htmlLang: "es", alternates: [] };
       }),
 
     submitLead: publicProcedure
@@ -626,9 +652,12 @@ export const appRouter = router({
         if (input.productRequest) {
           const { sameSiteRequest } = await import("./_core/studioFormsSubmit");
           const { processProductRequest, defaultRequestContext, ProductRequestError } = await import("./productRequests");
+          // Mensajes a la persona en el idioma de la web que veía
+          const { siteUiText } = await import("../shared/siteUiText");
+          const ui = siteUiText(input.productRequest.lang);
           const hdr = (n: string) => { const v = ctx.req.headers[n]; return Array.isArray(v) ? v[0] : v; };
           if (!sameSiteRequest({ origin: hdr("origin"), referer: hdr("referer"), hosts: [hdr("x-forwarded-host"), hdr("host")] })) {
-            throw new TRPCError({ code: "FORBIDDEN", message: "No se ha podido enviar la solicitud desde esta dirección." });
+            throw new TRPCError({ code: "FORBIDDEN", message: ui.requestWrongOrigin });
           }
           const ip = ctx.req.ip || ctx.req.socket.remoteAddress || "desconocida";
           try {
@@ -637,7 +666,7 @@ export const appRouter = router({
           } catch (e) {
             if (e instanceof ProductRequestError) throw new TRPCError({ code: e.code, message: e.message });
             const { isMissingEditionsSchema } = await import("./editionsDb");
-            if (isMissingEditionsSchema(e)) throw new TRPCError({ code: "PRECONDITION_FAILED", message: "Las solicitudes de plaza todavía no están activadas." });
+            if (isMissingEditionsSchema(e)) throw new TRPCError({ code: "PRECONDITION_FAILED", message: ui.seatRequestsInactive });
             throw e;
           }
         }
@@ -1202,19 +1231,19 @@ export const appRouter = router({
     }),
 
     /** Traducciones de menús, ajustes globales, formularios o productos de un idioma. */
-    contentTranslations: adminProcedure.input(z.object({ entityType: z.enum(["menu_item", "setting", "form", "product"]), locale: z.string().max(35) })).query(async ({ input }) => {
+    contentTranslations: adminProcedure.input(z.object({ entityType: z.enum(["menu_item", "setting", "form", "product", "variant", "edition"]), locale: z.string().max(35) })).query(async ({ input }) => {
       return i18nCall((repo) => repo.listContentTranslations(input.entityType, input.locale, false));
     }),
 
     saveContentTranslation: adminProcedure
-      .input(z.object({ entityType: z.enum(["menu_item", "setting", "form", "product"]), entityKey: z.string().max(190), locale: z.string().max(35), fields: z.record(z.string(), z.string().max(20000)), slug: z.string().max(64).nullable().optional() }).strict())
+      .input(z.object({ entityType: z.enum(["menu_item", "setting", "form", "product", "variant", "edition"]), entityKey: z.string().max(190), locale: z.string().max(35), fields: z.record(z.string(), z.string().max(20000)), slug: z.string().max(64).nullable().optional() }).strict())
       .mutation(async ({ input }) => {
         const { saveContentTranslationDraft } = await import("./i18nService");
         return i18nCall((repo) => saveContentTranslationDraft(repo, input));
       }),
 
     validateContentTranslation: adminProcedure
-      .input(z.object({ entityType: z.enum(["menu_item", "setting", "form", "product"]), entityKey: z.string().max(190), locale: z.string().max(35) }).strict())
+      .input(z.object({ entityType: z.enum(["menu_item", "setting", "form", "product", "variant", "edition"]), entityKey: z.string().max(190), locale: z.string().max(35) }).strict())
       .mutation(async ({ input, ctx }) => {
         const { validateContentTranslation } = await import("./i18nService");
         return i18nCall((repo) => validateContentTranslation(repo, input.entityType, input.entityKey, input.locale, ctx.user?.name ?? ctx.user?.email ?? null));

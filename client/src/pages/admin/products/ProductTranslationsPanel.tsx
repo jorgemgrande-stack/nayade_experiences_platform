@@ -169,7 +169,7 @@ export function ProductTranslationsPanel({ experienceId, title, open, onOpenChan
   const principal = useMemo((): Record<string, string> => {
     const p = data?.principal;
     if (!p) return {};
-    return { title: p.title, shortDescription: p.shortDescription, description: p.description, metaTitle: p.metaTitle, metaDescription: p.metaDescription };
+    return { title: p.title, shortDescription: p.shortDescription, description: p.description, metaTitle: p.metaTitle, metaDescription: p.metaDescription, duration: p.duration, requirements: p.requirements, includes: p.includes, excludes: p.excludes, requestCtaLabel: p.requestCtaLabel };
   }, [data]);
   const refresh = () => { void utils.cms.productTranslationEditor.invalidate({ experienceId: experienceId ?? 0 }); };
 
@@ -232,6 +232,38 @@ export function ProductTranslationsPanel({ experienceId, title, open, onOpenChan
                   row={data.translations[locale] ?? null}
                   onChanged={refresh}
                 />
+                {/* Opciones y convocatorias del producto: sus nombres y notas en el mismo idioma */}
+                {[
+                  { type: "variant" as const, title: "Opciones", items: data.variants, label: (i: { principal: Record<string, string> }) => i.principal.name },
+                  { type: "edition" as const, title: "Convocatorias", items: data.editions, label: (i: { principal: Record<string, string> }) => i.principal.label },
+                ].map((g) =>
+                  g.items.length ? (
+                    <section key={g.type} className="space-y-3 border-t border-border pt-4">
+                      <h3 className="text-sm font-semibold">{g.title}</h3>
+                      {g.items.map((it) => (
+                        <details key={it.id} className="rounded-md border border-border p-3">
+                          <summary className="flex cursor-pointer items-center gap-2 text-sm">
+                            {g.label(it) || `#${it.id}`} <TranslationStateBadge state={translationState(it.translations[locale] ?? null)} />
+                          </summary>
+                          <div className="mt-3">
+                            <ContentTranslationForm
+                              key={`${g.type}-${it.id}-${locale}`}
+                              entityType={g.type}
+                              entityKey={String(it.id)}
+                              locale={locale}
+                              defaultLocale={data.defaultLocale}
+                              defs={TRANSLATION_FIELD_SETS[g.type]}
+                              principal={it.principal}
+
+                              row={it.translations[locale] ?? null}
+                              onChanged={refresh}
+                            />
+                          </div>
+                        </details>
+                      ))}
+                    </section>
+                  ) : null,
+                )}
               </>
             )}
           </div>

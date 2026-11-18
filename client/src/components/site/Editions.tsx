@@ -10,8 +10,10 @@ import { Button } from "@/components/ui/button";
 import { trpc } from "@/lib/trpc";
 import { cn } from "@/lib/utils";
 import { ProductRequestDialog, type ProductRequestTarget } from "@/components/site/ProductRequestForm";
-import { EDITION_MODE_LABELS, PUBLIC_EDITION_STATE_LABELS, canRequestSeat, formatEditionDates, type PublicEditionState } from "@shared/editions";
+import { canRequestSeat, formatEditionDates, type PublicEditionState } from "@shared/editions";
 import { formatEuros } from "@shared/storefront";
+import { editionModeText, editionStateText, fillUiText, siteUiText, type SiteUiText } from "@shared/siteUiText";
+import { useSiteLocale } from "@/hooks/useSiteLocale";
 
 export interface PublicEditionItem {
   id: number;
@@ -37,12 +39,12 @@ const STATE_STYLE: Record<PublicEditionState, string> = {
   closed: "bg-muted text-muted-foreground",
 };
 
-function ctaLabel(s: PublicEditionState): string {
-  return s === "open" ? "Solicitar plaza" : s === "closed" ? "Inscripción cerrada" : "Apuntarme a la lista de espera";
+function ctaLabel(t: SiteUiText, s: PublicEditionState): string {
+  return s === "open" ? t.requestSeat : s === "closed" ? t.editionClosed : t.joinWaitlist;
 }
 
-function EditionCard({ e, showProduct, onRequest }: { e: PublicEditionItem; showProduct: boolean; onRequest: (e: PublicEditionItem) => void }) {
-  const seats = e.state === "open" && e.seatsLeft != null ? `${e.seatsLeft === 1 ? "Queda 1 plaza" : `Quedan ${e.seatsLeft} plazas`}` : null;
+function EditionCard({ e, showProduct, onRequest, t, locale }: { e: PublicEditionItem; showProduct: boolean; onRequest: (e: PublicEditionItem) => void; t: SiteUiText; locale: string }) {
+  const seats = e.state === "open" && e.seatsLeft != null ? (e.seatsLeft === 1 ? t.oneSeatLeft : fillUiText(t.seatsLeft, { n: e.seatsLeft })) : null;
   return (
     <li className="flex h-full flex-col rounded-2xl border border-border bg-card p-5 text-card-foreground shadow-sm" data-testid="fecha-convocatoria">
       <div className="flex items-start justify-between gap-3">
@@ -50,18 +52,18 @@ function EditionCard({ e, showProduct, onRequest }: { e: PublicEditionItem; show
           {showProduct && <p className="text-xs font-semibold uppercase tracking-wide text-primary">{e.productTitle}</p>}
           <h3 className="break-words font-heading text-lg font-semibold">{e.label}</h3>
         </div>
-        <span className={cn("shrink-0 rounded-full px-2.5 py-1 text-xs font-semibold", STATE_STYLE[e.state])} data-testid="estado-convocatoria">{PUBLIC_EDITION_STATE_LABELS[e.state]}</span>
+        <span className={cn("shrink-0 rounded-full px-2.5 py-1 text-xs font-semibold", STATE_STYLE[e.state])} data-testid="estado-convocatoria">{editionStateText(t, e.state)}</span>
       </div>
       <ul className="mt-3 space-y-1.5 text-sm text-muted-foreground">
-        <li className="flex items-start gap-2"><CalendarDays className="mt-0.5 h-4 w-4 shrink-0 text-primary" aria-hidden="true" /><span>{formatEditionDates(e.startsAt, e.endsAt, e.timezone, true)}</span></li>
+        <li className="flex items-start gap-2"><CalendarDays className="mt-0.5 h-4 w-4 shrink-0 text-primary" aria-hidden="true" /><span>{formatEditionDates(e.startsAt, e.endsAt, e.timezone, true, locale)}</span></li>
         {e.scheduleNote && <li className="flex items-start gap-2"><Clock className="mt-0.5 h-4 w-4 shrink-0 text-primary" aria-hidden="true" /><span className="whitespace-pre-line break-words">{e.scheduleNote}</span></li>}
-        <li className="flex items-start gap-2"><MapPin className="mt-0.5 h-4 w-4 shrink-0 text-primary" aria-hidden="true" /><span>{EDITION_MODE_LABELS[e.mode].split(" (")[0]}{e.locationNote ? ` · ${e.locationNote}` : ""}</span></li>
+        <li className="flex items-start gap-2"><MapPin className="mt-0.5 h-4 w-4 shrink-0 text-primary" aria-hidden="true" /><span>{editionModeText(t, e.mode)}{e.locationNote ? ` · ${e.locationNote}` : ""}</span></li>
         {seats && <li className="flex items-start gap-2"><Users className="mt-0.5 h-4 w-4 shrink-0 text-primary" aria-hidden="true" /><span>{seats}</span></li>}
       </ul>
       <div className="mt-4 flex flex-1 items-end justify-between gap-3">
         <p className="text-base font-semibold">{e.price != null ? formatEuros(e.price) : ""}</p>
         <Button size="sm" disabled={!canRequestSeat(e.state)} variant={e.state === "open" ? "default" : "outline"} onClick={() => onRequest(e)} data-testid="solicitar-plaza">
-          {ctaLabel(e.state)}
+          {ctaLabel(t, e.state)}
         </Button>
       </div>
     </li>
@@ -90,7 +92,10 @@ export function EditionsList({
   preview?: boolean;
   columns?: 2 | 3;
 }) {
-  const q = trpc.public.getExperiences.useQuery({ limit, offset: 0, editions: { experienceId, productSlug: productSlug || undefined, categorySlug: categorySlug || undefined } }, { staleTime: 60_000, retry: false });
+  // Textos fijos y convocatorias en el idioma de la página (solo traducciones validadas; sin idioma adicional, como siempre)
+  const site = useSiteLocale();
+  const t = siteUiText(site.locale);
+  const q = trpc.public.getExperiences.useQuery({ limit, offset: 0, editions: { experienceId, productSlug: productSlug || undefined, categorySlug: categorySlug || undefined, ...(site.prefix ? { locale: site.prefix } : {}) } }, { staleTime: 60_000, retry: false });
   const [target, setTarget] = useState<{ t: ProductRequestTarget; open: boolean }>({ t: { productId: 0, productTitle: "" }, open: false });
   const items = (q.data ?? []) as unknown as PublicEditionItem[];
   if (q.isLoading) return <div className="h-40 animate-pulse rounded-2xl bg-muted" aria-hidden="true" />;
@@ -106,7 +111,9 @@ export function EditionsList({
             key={e.id}
             e={e}
             showProduct={showProduct}
-            onRequest={(x) => setTarget({ t: { productId: x.experienceId, productTitle: x.productTitle, editionId: x.id, editionLabel: x.label, withSeats: true, submitLabel: x.state === "open" ? "Solicitar plaza" : "Apuntarme a la lista de espera" }, open: true })}
+            t={t}
+            locale={site.locale}
+            onRequest={(x) => setTarget({ t: { productId: x.experienceId, productTitle: x.productTitle, editionId: x.id, editionLabel: x.label, withSeats: true, submitLabel: x.state === "open" ? t.requestSeat : t.joinWaitlist }, open: true })}
           />
         ))}
       </ul>
@@ -117,11 +124,12 @@ export function EditionsList({
 
 /** Sección «Próximas fechas» de la ficha de un producto (no pinta nada si el producto no tiene convocatorias visibles). */
 export function ProductEditionsSection({ productId }: { productId: number }) {
-  const q = trpc.public.getExperiences.useQuery({ limit: 12, offset: 0, editions: { experienceId: productId } }, { staleTime: 60_000, retry: false });
+  const site = useSiteLocale();
+  const q = trpc.public.getExperiences.useQuery({ limit: 12, offset: 0, editions: { experienceId: productId, ...(site.prefix ? { locale: site.prefix } : {}) } }, { staleTime: 60_000, retry: false });
   if (!q.data || (q.data as unknown[]).length === 0) return null;
   return (
     <section className="mt-12" aria-labelledby="proximas-fechas" data-testid="seccion-fechas">
-      <h2 id="proximas-fechas" className="mb-4 text-xl font-heading font-semibold text-foreground">Próximas fechas</h2>
+      <h2 id="proximas-fechas" className="mb-4 text-xl font-heading font-semibold text-foreground">{siteUiText(site.locale).upcomingDates}</h2>
       <EditionsList experienceId={productId} limit={12} showProduct={false} columns={2} />
     </section>
   );

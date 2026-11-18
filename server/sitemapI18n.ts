@@ -5,7 +5,7 @@
  * es `null` y el sitemap queda idéntico al de siempre.
  */
 import { alternateLinksHtml, buildAlternates, localizedPath, type Alternate } from "../shared/i18n";
-import { sitemapAlternates, type I18nRepo } from "./i18nService";
+import { sitemapAlternates, type I18nRepo, type PrincipalProduct } from "./i18nService";
 
 export interface SitemapI18nPlan {
   /** Alternativas de las URL del principal que ya emite el sitemap (clave: ruta). */
@@ -14,8 +14,9 @@ export interface SitemapI18nPlan {
   extra: Array<{ loc: string; alternates: Alternate[]; lastmod?: string }>;
 }
 
-export async function i18nSitemapPlan(repo: I18nRepo, origin: string): Promise<SitemapI18nPlan | null> {
-  const { cfg, entries } = await sitemapAlternates(repo);
+/** `products`: fichas que el sitemap ya publica en `/tienda/<slug>` (tienda de una pyme); entran sus idiomas traducidos. */
+export async function i18nSitemapPlan(repo: I18nRepo, origin: string, products: PrincipalProduct[] = []): Promise<SitemapI18nPlan | null> {
+  const { cfg, entries } = await sitemapAlternates(repo, products);
   if (!entries.length) return null;
   const base = origin.replace(/\/+$/, "");
   const alternatesFor = new Map<string, Alternate[]>();

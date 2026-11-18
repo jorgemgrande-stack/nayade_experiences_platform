@@ -87,3 +87,50 @@ export function swapMenuUrl(currentUrl: string | null, translatedUrl: string | n
   if (m && slugMap.has(m[1])) return `/${slugMap.get(m[1])}${m[2] ?? ""}`;
   return currentUrl;
 }
+
+// ─── Catálogo de la tienda: productos, opciones y convocatorias ───────────────
+
+/** Columna de la base de datos de cada campo traducible del catálogo (los de `CONTENT_FIELDS`). */
+export const CATALOG_SWAP_COLUMNS = {
+  product: { title: "title", shortDescription: "shortDescription", description: "description", metaTitle: "metaTitle", metaDescription: "metaDescription", duration: "duration", requirements: "requirements", includes: "includes", excludes: "excludes", requestCtaLabel: "request_cta_label" },
+  variant: { name: "name", description: "description" },
+  edition: { label: "label", scheduleNote: "schedule_note", locationNote: "location_note" },
+} as const;
+export type CatalogSwapType = keyof typeof CATALOG_SWAP_COLUMNS;
+
+/** Campos que en la base de datos son listas JSON y en la traducción, texto con un elemento por línea. */
+const LIST_FIELDS = new Set(["includes", "excludes"]);
+
+const asLines = (v: unknown): string => {
+  let list: unknown = v;
+  if (typeof v === "string") {
+    try {
+      list = JSON.parse(v);
+    } catch {
+      return v.trim();
+    }
+  }
+  return Array.isArray(list) ? list.filter((x) => typeof x === "string" && x.trim()).map((x) => String(x).trim()).join("\n") : "";
+};
+
+/**
+ * Intercambio de un elemento del catálogo: la traducción validada al idioma nuevo pasa al contenido base (solo los
+ * campos que trae) y lo que había en esos campos queda como traducción al idioma anterior. Los demás campos, el precio,
+ * las plazas y las fechas no se tocan. Las listas (`includes`, `excludes`) van como JSON en la base y por líneas en la
+ * traducción. Puro.
+ */
+export function swapCatalogFields(type: CatalogSwapType, baseRow: Record<string, unknown>, fields: Record<string, string>): { update: Record<string, string>; oldFields: Record<string, string> } {
+  const cols = CATALOG_SWAP_COLUMNS[type] as Record<string, string>;
+  const update: Record<string, string> = {};
+  const oldFields: Record<string, string> = {};
+  for (const [field, value] of Object.entries(fields)) {
+    const col = cols[field];
+    const v = typeof value === "string" ? value.trim() : "";
+    if (!col || !v) continue;
+    const isList = LIST_FIELDS.has(field);
+    update[col] = isList ? JSON.stringify(v.split(/\r?\n/).map((s) => s.trim()).filter(Boolean)) : v;
+    const prev = isList ? asLines(baseRow[col]) : baseRow[col] == null ? "" : String(baseRow[col]).trim();
+    if (prev) oldFields[field] = prev;
+  }
+  return { update, oldFields };
+}

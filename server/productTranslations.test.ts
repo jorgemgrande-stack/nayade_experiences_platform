@@ -28,7 +28,7 @@ describe("editor de traducciones (lógica pura)", () => {
   });
 
   it("borrador desde lo guardado: todos los campos presentes, vacíos si no hay", () => {
-    expect(draftFromRow(defs, null)).toEqual({ fields: { title: "", shortDescription: "", description: "", metaTitle: "", metaDescription: "" }, slug: "" });
+    expect(draftFromRow(defs, null)).toEqual({ fields: { title: "", shortDescription: "", description: "", metaTitle: "", metaDescription: "", duration: "", requirements: "", includes: "", excludes: "", requestCtaLabel: "" }, slug: "" });
     expect(draftFromRow(defs, row()).fields.title).toBe("Kajak-Tour");
     expect(draftFromRow(defs, row()).slug).toBe("kajak-tour");
   });
@@ -110,7 +110,7 @@ describe("retirar una traducción de producto validada", () => {
 const product = { id: 3, slug: "ruta-kayak", title: "Ruta en kayak", shortDescription: "Corta", description: null, metaTitle: "Kayak", metaDescription: null };
 let productRows: unknown[] = [product];
 vi.mock("./db", () => ({
-  getDb: async () => ({ select: () => ({ from: () => ({ where: () => ({ limit: async () => productRows }) }) }) }),
+  getDb: async () => ({ select: () => ({ from: () => ({ where: () => Object.assign(Promise.resolve([]), { limit: async () => productRows }) }) }), execute: async () => [[]] }),
 }));
 
 describe("productTranslationEditor", () => {

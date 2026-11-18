@@ -1,5 +1,6 @@
 /**
- * Textos fijos de la interfaz de la web pública (formularios de Studio) en el idioma de la página (18/11/2026). Antes
+ * Textos fijos de la interfaz de la web pública (formularios de Studio, ficha de producto de la tienda, solicitud de
+ * información o de plaza y convocatorias) en el idioma de la página (18/11/2026). Antes
  * salían siempre en español, también en una web alemana. Lo que escribe la empresa (etiquetas, botón, mensajes) manda
  * sobre estos textos. Idioma sin traducción: español.
  */
@@ -20,6 +21,80 @@ export const SITE_UI_TEXT = {
     privacyLinkTitle: "Política de privacidad",
     consentBefore: "He leído y acepto la ",
     consentAfter: ".",
+    // Ficha de producto de la tienda
+    home: "Inicio",
+    shop: "Tienda",
+    breadcrumb: "Ruta de navegación",
+    from: "Desde",
+    vatIncluded: "IVA incluido",
+    options: "Opciones",
+    chooseOptionToContinue: "Elige una opción para continuar",
+    quantity: "Cantidad",
+    removeUnit: "Quitar una unidad",
+    addUnit: "Añadir una unidad",
+    serviceDate: "Fecha del servicio",
+    total: "Total",
+    soldOut: "Agotado",
+    soldOutHelp: "Ahora mismo no está a la venta. Escríbenos si quieres saber cuándo vuelve.",
+    addToCart: "Añadir al carrito",
+    requestQuote: "Solicitar presupuesto",
+    description: "Descripción",
+    includes: "Incluye",
+    excludes: "No incluye",
+    requirements: "Requisitos",
+    previousImage: "Imagen anterior",
+    nextImage: "Imagen siguiente",
+    imageN: "Imagen {n}",
+    productNotFound: "Producto no encontrado",
+    productNotFoundHelp: "Este producto no está disponible o se ha retirado de la tienda.",
+    viewShop: "Ver la tienda",
+    notTranslated: "Esta ficha todavía no está traducida; se muestra en {lang}.",
+    chooseOptionBeforeCart: "Elige una opción antes de añadir al carrito",
+    chooseDateBeforeCart: "Elige una fecha antes de añadir al carrito",
+    noOnlinePrice: "Este producto no tiene precio para comprarlo online",
+    offerOnRequest: "Bajo petición",
+    offerComingSoon: "Próximamente",
+    offerPricedRequest: "Por solicitud",
+    requestInfo: "Solicitar información",
+    upcomingDates: "Próximas fechas",
+    // Solicitud de información o de plaza (formulario y convocatorias)
+    requestSeat: "Solicitar plaza",
+    nameLabel: "Nombre *",
+    emailLabel: "Correo electrónico *",
+    phoneLabel: "Teléfono (opcional)",
+    seatsLabel: "Plazas",
+    messageLabel: "Mensaje (opcional)",
+    nameRequired: "Escribe tu nombre.",
+    invalidPhone: "Escribe un teléfono válido.",
+    previewRequestNotSent: "Es la vista previa: la solicitud no se envía.",
+    requestReceived: "Hemos recibido tu solicitud. Te responderemos lo antes posible.",
+    requestFailed: "No hemos podido enviar tu solicitud. Inténtalo de nuevo.",
+    close: "Cerrar",
+    sendRequest: "Enviar solicitud",
+    joinWaitlist: "Apuntarme a la lista de espera",
+    editionOpen: "Plazas abiertas",
+    editionWaitlist: "Lista de espera",
+    editionFull: "Completa",
+    editionClosed: "Inscripción cerrada",
+    oneSeatLeft: "Queda 1 plaza",
+    seatsLeft: "Quedan {n} plazas",
+    modeOnline: "Online",
+    modeInPerson: "Presencial",
+    modeHybrid: "Mixta",
+    // Respuestas del servidor a la solicitud (server/productRequests.ts)
+    seatsRange: "Las plazas deben estar entre 1 y {n}.",
+    privacyBoxRequired: "Marca la casilla de privacidad para continuar.",
+    requestReceivedShort: "Hemos recibido tu solicitud.",
+    tooManyRequests: "Has enviado varias solicitudes seguidas. Espera unos minutos e inténtalo de nuevo.",
+    productGone: "Este producto ya no está disponible.",
+    editionGone: "Esta convocatoria ya no está disponible.",
+    editionNoRequests: "Esta convocatoria ya no admite solicitudes de plaza.",
+    duplicateEdition: "Ya teníamos tu solicitud para esta convocatoria. Te escribiremos pronto.",
+    duplicateRequest: "Ya teníamos tu solicitud. Te escribiremos pronto.",
+    waitlisted: "Te hemos apuntado en la lista de espera. Si se libera una plaza, te escribiremos.",
+    seatRequestReceived: "Hemos recibido tu solicitud de plaza. Te escribiremos para confirmártela.",
+    requestWrongOrigin: "No se ha podido enviar la solicitud desde esta dirección.",
+    seatRequestsInactive: "Las solicitudes de plaza todavía no están activadas.",
   },
   de: {
     chooseOption: "Bitte auswählen",
@@ -37,6 +112,77 @@ export const SITE_UI_TEXT = {
     privacyLinkTitle: "Datenschutzerklärung",
     consentBefore: "Ich habe die ",
     consentAfter: " gelesen und akzeptiere sie.",
+    home: "Startseite",
+    shop: "Shop",
+    breadcrumb: "Navigationspfad",
+    from: "ab",
+    vatIncluded: "inkl. MwSt.",
+    options: "Optionen",
+    chooseOptionToContinue: "Bitte wähle eine Option, um fortzufahren.",
+    quantity: "Menge",
+    removeUnit: "Eine Einheit weniger",
+    addUnit: "Eine Einheit mehr",
+    serviceDate: "Datum der Leistung",
+    total: "Gesamt",
+    soldOut: "Ausverkauft",
+    soldOutHelp: "Derzeit nicht erhältlich. Schreib uns, wenn du wissen möchtest, wann es wieder verfügbar ist.",
+    addToCart: "In den Warenkorb",
+    requestQuote: "Angebot anfragen",
+    description: "Beschreibung",
+    includes: "Inklusive",
+    excludes: "Nicht inklusive",
+    requirements: "Voraussetzungen",
+    previousImage: "Vorheriges Bild",
+    nextImage: "Nächstes Bild",
+    imageN: "Bild {n}",
+    productNotFound: "Produkt nicht gefunden",
+    productNotFoundHelp: "Dieses Produkt ist nicht verfügbar oder wurde aus dem Shop entfernt.",
+    viewShop: "Zum Shop",
+    notTranslated: "Diese Seite ist noch nicht übersetzt; sie wird auf {lang} angezeigt.",
+    chooseOptionBeforeCart: "Bitte wähle eine Option, bevor du es in den Warenkorb legst.",
+    chooseDateBeforeCart: "Bitte wähle ein Datum, bevor du es in den Warenkorb legst.",
+    noOnlinePrice: "Für dieses Produkt gibt es keinen Online-Preis.",
+    offerOnRequest: "Auf Anfrage",
+    offerComingSoon: "Demnächst",
+    offerPricedRequest: "Nur auf Anfrage",
+    requestInfo: "Informationen anfordern",
+    upcomingDates: "Nächste Termine",
+    requestSeat: "Platz anfragen",
+    nameLabel: "Name *",
+    emailLabel: "E-Mail *",
+    phoneLabel: "Telefon (optional)",
+    seatsLabel: "Plätze",
+    messageLabel: "Nachricht (optional)",
+    nameRequired: "Bitte gib deinen Namen ein.",
+    invalidPhone: "Bitte gib eine gültige Telefonnummer ein.",
+    previewRequestNotSent: "Vorschau: Die Anfrage wird nicht gesendet.",
+    requestReceived: "Wir haben deine Anfrage erhalten und antworten dir so bald wie möglich.",
+    requestFailed: "Deine Anfrage konnte nicht gesendet werden. Bitte versuche es erneut.",
+    close: "Schließen",
+    sendRequest: "Anfrage senden",
+    joinWaitlist: "Auf die Warteliste setzen",
+    editionOpen: "Plätze frei",
+    editionWaitlist: "Warteliste",
+    editionFull: "Ausgebucht",
+    editionClosed: "Anmeldung geschlossen",
+    oneSeatLeft: "Noch 1 Platz frei",
+    seatsLeft: "Noch {n} Plätze frei",
+    modeOnline: "Online",
+    modeInPerson: "Vor Ort",
+    modeHybrid: "Hybrid",
+    seatsRange: "Die Anzahl der Plätze muss zwischen 1 und {n} liegen.",
+    privacyBoxRequired: "Bitte bestätige das Kästchen zum Datenschutz, um fortzufahren.",
+    requestReceivedShort: "Wir haben deine Anfrage erhalten.",
+    tooManyRequests: "Du hast mehrere Anfragen hintereinander gesendet. Bitte warte ein paar Minuten und versuche es erneut.",
+    productGone: "Dieses Produkt ist nicht mehr verfügbar.",
+    editionGone: "Dieser Termin ist nicht mehr verfügbar.",
+    editionNoRequests: "Für diesen Termin sind keine Platzanfragen mehr möglich.",
+    duplicateEdition: "Deine Anfrage für diesen Termin liegt uns bereits vor. Wir melden uns bald.",
+    duplicateRequest: "Deine Anfrage liegt uns bereits vor. Wir melden uns bald.",
+    waitlisted: "Wir haben dich auf die Warteliste gesetzt. Wenn ein Platz frei wird, melden wir uns.",
+    seatRequestReceived: "Wir haben deine Platzanfrage erhalten. Wir melden uns, um sie zu bestätigen.",
+    requestWrongOrigin: "Die Anfrage konnte von dieser Adresse aus nicht gesendet werden.",
+    seatRequestsInactive: "Platzanfragen sind noch nicht aktiviert.",
   },
   en: {
     chooseOption: "Choose an option",
@@ -54,6 +200,77 @@ export const SITE_UI_TEXT = {
     privacyLinkTitle: "Privacy policy",
     consentBefore: "I have read and accept the ",
     consentAfter: ".",
+    home: "Home",
+    shop: "Shop",
+    breadcrumb: "Breadcrumb",
+    from: "From",
+    vatIncluded: "VAT included",
+    options: "Options",
+    chooseOptionToContinue: "Choose an option to continue",
+    quantity: "Quantity",
+    removeUnit: "Remove one",
+    addUnit: "Add one",
+    serviceDate: "Service date",
+    total: "Total",
+    soldOut: "Sold out",
+    soldOutHelp: "Not on sale right now. Write to us if you want to know when it is back.",
+    addToCart: "Add to cart",
+    requestQuote: "Request a quote",
+    description: "Description",
+    includes: "Includes",
+    excludes: "Not included",
+    requirements: "Requirements",
+    previousImage: "Previous image",
+    nextImage: "Next image",
+    imageN: "Image {n}",
+    productNotFound: "Product not found",
+    productNotFoundHelp: "This product is not available or has been removed from the shop.",
+    viewShop: "View the shop",
+    notTranslated: "This page has not been translated yet; it is shown in {lang}.",
+    chooseOptionBeforeCart: "Choose an option before adding it to the cart",
+    chooseDateBeforeCart: "Choose a date before adding it to the cart",
+    noOnlinePrice: "This product has no price for buying online",
+    offerOnRequest: "On request",
+    offerComingSoon: "Coming soon",
+    offerPricedRequest: "By request",
+    requestInfo: "Request information",
+    upcomingDates: "Upcoming dates",
+    requestSeat: "Request a place",
+    nameLabel: "Name *",
+    emailLabel: "Email *",
+    phoneLabel: "Phone (optional)",
+    seatsLabel: "Places",
+    messageLabel: "Message (optional)",
+    nameRequired: "Enter your name.",
+    invalidPhone: "Enter a valid phone number.",
+    previewRequestNotSent: "Preview: the request is not sent.",
+    requestReceived: "We have received your request. We will reply as soon as possible.",
+    requestFailed: "We could not send your request. Please try again.",
+    close: "Close",
+    sendRequest: "Send request",
+    joinWaitlist: "Join the waiting list",
+    editionOpen: "Places available",
+    editionWaitlist: "Waiting list",
+    editionFull: "Full",
+    editionClosed: "Registration closed",
+    oneSeatLeft: "1 place left",
+    seatsLeft: "{n} places left",
+    modeOnline: "Online",
+    modeInPerson: "In person",
+    modeHybrid: "Hybrid",
+    seatsRange: "Places must be between 1 and {n}.",
+    privacyBoxRequired: "Tick the privacy box to continue.",
+    requestReceivedShort: "We have received your request.",
+    tooManyRequests: "You have sent several requests in a row. Wait a few minutes and try again.",
+    productGone: "This product is no longer available.",
+    editionGone: "This date is no longer available.",
+    editionNoRequests: "This date no longer accepts place requests.",
+    duplicateEdition: "We already had your request for this date. We will write to you soon.",
+    duplicateRequest: "We already had your request. We will write to you soon.",
+    waitlisted: "We have added you to the waiting list. If a place becomes free, we will write to you.",
+    seatRequestReceived: "We have received your place request. We will write to you to confirm it.",
+    requestWrongOrigin: "The request could not be sent from this address.",
+    seatRequestsInactive: "Place requests are not active yet.",
   },
 } as const;
 
@@ -63,4 +280,43 @@ export function siteUiText(locale: string | null | undefined): SiteUiText {
   const l = (locale ?? "").toLowerCase();
   const base = l.split("-")[0] as keyof typeof SITE_UI_TEXT;
   return (SITE_UI_TEXT as Record<string, SiteUiText>)[l] ?? (SITE_UI_TEXT as Record<string, SiteUiText>)[base] ?? SITE_UI_TEXT.es;
+}
+
+/** Sustituye `{nombre}` en un texto del diccionario. */
+export function fillUiText(template: string, vars: Record<string, string | number>): string {
+  return template.replace(/\{(\w+)\}/g, (m, k: string) => (k in vars ? String(vars[k]) : m));
+}
+
+/** Nombre de un idioma escrito en el idioma de la página («es» en una página alemana → «Spanisch»). */
+export function languageNameIn(code: string, pageLocale: string): string {
+  try {
+    return new Intl.DisplayNames([pageLocale], { type: "language" }).of(code) ?? code;
+  } catch {
+    return code;
+  }
+}
+
+/** Aviso de ficha sin traducir: dice en el idioma de la página en qué idioma se muestra el contenido. */
+export function untranslatedNotice(pageLocale: string, contentLocale: string): string {
+  return fillUiText(siteUiText(pageLocale).notTranslated, { lang: languageNameIn(contentLocale, pageLocale) });
+}
+
+/** Frase de consentimiento completa (la misma que ve la persona y que se guarda con la solicitud). */
+export function consentSentence(t: SiteUiText): string {
+  return t.consentBefore + t.privacyLink + t.consentAfter;
+}
+
+/** Insignia pública de un modo de oferta en el idioma de la página («» con precio fijo, que no lleva insignia). */
+export function offerBadgeText(t: SiteUiText, mode: "fixed" | "on_request" | "coming_soon" | "priced_request"): string {
+  return mode === "on_request" ? t.offerOnRequest : mode === "coming_soon" ? t.offerComingSoon : mode === "priced_request" ? t.offerPricedRequest : "";
+}
+
+/** Estado público de una convocatoria, en el idioma de la página. */
+export function editionStateText(t: SiteUiText, state: "open" | "waitlist" | "full" | "closed"): string {
+  return state === "open" ? t.editionOpen : state === "waitlist" ? t.editionWaitlist : state === "full" ? t.editionFull : t.editionClosed;
+}
+
+/** Modalidad de una convocatoria, en el idioma de la página. */
+export function editionModeText(t: SiteUiText, mode: "online" | "presencial" | "hibrido"): string {
+  return mode === "online" ? t.modeOnline : mode === "presencial" ? t.modeInPerson : t.modeHybrid;
 }

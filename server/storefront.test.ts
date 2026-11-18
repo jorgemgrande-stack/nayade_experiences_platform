@@ -171,8 +171,11 @@ describe("páginas y enlaces", () => {
     }
     expect(detail).toContain("<ReviewSection");
     expect(detail).toContain("generic />");
-    expect(detail).toContain("Añadir al carrito");
-    expect(detail).toContain("IVA incluido");
+    // Los textos fijos salen del diccionario de la web (shared/siteUiText.ts), en el idioma de la página
+    expect(detail).toContain("{t.addToCart}");
+    expect(detail).toContain("{t.vatIncluded}");
+    expect(read("shared/siteUiText.ts")).toContain('addToCart: "Añadir al carrito"');
+    expect(read("shared/siteUiText.ts")).toContain('vatIncluded: "IVA incluido"');
     expect(detail).toContain("useState(1)");
     expect(detail).toContain("useCart()");
   });
