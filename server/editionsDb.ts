@@ -397,6 +397,11 @@ export async function setEnrollmentStatus(enrollmentId: number, target: Enrollme
       });
     }
   }
+  // Formación digital: una inscripción confirmada con cobro verificado y regla de catálogo abre la matrícula (nunca rompe la confirmación)
+  if (result.changed && result.enrollment.status === "confirmada") {
+    const { safeGrantAfterConfirm } = await import("./learningFlow");
+    await safeGrantAfterConfirm(enrollmentId, { id: opts.actor?.id ?? null, name: opts.actor?.name ?? null });
+  }
   return { enrollment: result.enrollment, changed: result.changed, quoteStatus: result.quoteStatus, services: result.services };
 }
 

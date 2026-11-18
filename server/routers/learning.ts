@@ -17,6 +17,8 @@ import {
   listEnrollments, listRules, myCourses, reactivateEnrollment, recordProgress, revokeEnrollment, saveRule, suspendEnrollment,
 } from "../learningDb";
 import { getDb } from "../db";
+import { grantLearningFromEnrollment, sendLearningInvitation } from "../learningFlow";
+import { ensureAccount } from "../communitiesDb";
 import { InventoryError, planInventory } from "../../shared/learningImport";
 import { applyImportPlan, courseCoverage } from "../learningImport";
 import { sql } from "drizzle-orm";
@@ -132,6 +134,20 @@ const admin = router({
       return { dryRun: false as const, report: plan.report, result, coverage: await courseCoverage(result.courseId) };
     })),
   coverage: adminProcedure.input(z.object({ courseId: id })).query(({ input }) => guard(() => courseCoverage(input.courseId))),
+
+  /**
+   * «Liberar acceso» de una inscripción confirmada: aplica las reglas de catálogo si su presupuesto está cobrado. Se usa cuando
+   * el cobro llegó después de confirmar la plaza; repetirlo no duplica. No envía correo.
+   */
+  grantForEnrollment: adminProcedure.input(z.object({ enrollmentId: id })).mutation(({ ctx, input }) => guard(() => grantLearningFromEnrollment(input.enrollmentId, { id: ctx.user.id, name: ctx.user.name ?? ctx.user.email ?? null }))),
+  /** Acción EXPRESA de la administración: renueva la invitación de la cuenta (enlace de un solo uso) y envía el correo. */
+  sendInvite: adminProcedure.input(z.object({ userId: id })).mutation(({ input }) => guard(async () => {
+    const [u] = await rowsOf(sql`SELECT id, name, email FROM users WHERE id = ${input.userId}`);
+    if (!u || !u.email) throw new LearningError("NOT_FOUND", "La persona no existe o no tiene correo.");
+    const acc = await ensureAccount(String(u.name ?? u.email), String(u.email));
+    if (!acc.invite) return { sent: false, reason: "already_active" as const };
+    return { sent: await sendLearningInvitation(acc.invite), reason: null };
+  })),
 
   /** Acceso de demostración (60 minutos por defecto): individual, de un disparador por persona, sobre los módulos indicados. */
   grantDemo: adminProcedure
