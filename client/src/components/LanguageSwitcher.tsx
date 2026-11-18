@@ -24,7 +24,7 @@ export function switcherQuery(path: string, search: string): string {
  * actual existe en él. Son enlaces reales (`<a href>`, `hreflang`, `lang`), accesibles por teclado, con el nombre del
  * idioma escrito en ese idioma (nada de banderas). Con un solo idioma, no pinta nada.
  */
-export default function LanguageSwitcher({ className = "" }: { className?: string }) {
+export default function LanguageSwitcher({ className = "", inherit = false }: { className?: string; /** Hereda el color del contenedor (cabecera sobre la portada): el idioma actual se marca con subrayado, no con el color de marca */ inherit?: boolean }) {
   const { multilingual, locale } = useSiteLocale();
   const [location] = useLocation();
   const q = trpc.public.getPageAlternates.useQuery({ path: location }, { enabled: multilingual, staleTime: 60_000, retry: false });
@@ -44,7 +44,7 @@ export default function LanguageSwitcher({ className = "" }: { className?: strin
                 lang={a.hreflang}
                 hrefLang={a.hreflang}
                 aria-current={current ? "true" : undefined}
-                className={`px-2 py-1 rounded-md hover:text-primary focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 ${current ? "font-semibold text-primary" : "text-foreground"}`}
+                className={`px-2 py-1 rounded-md hover:text-primary focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 ${inherit ? (current ? "font-semibold underline underline-offset-4 decoration-2" : "") : current ? "font-semibold text-primary" : "text-foreground"}`}
               >
                 {localeAutonym(a.hreflang)}
               </a>
