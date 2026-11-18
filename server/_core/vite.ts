@@ -188,7 +188,8 @@ export function serveStatic(app: Express, opts: { distPath?: string; routeDeps?:
       // Multidioma (E-1): solo si la empresa tiene idiomas adicionales; si no, `null` y todo sigue exactamente igual
       const i18n = multi ? await resolveLocalizedRequest(pathname, req.headers.host, req.originalUrl) : null;
       if (i18n?.kind === "redirect") return res.redirect(i18n.status, i18n.to);
-      const route: PublicRouteResult = i18n?.kind === "notFound" ? { status: 404 } : (i18n?.kind === "page" || i18n?.kind === "product") && i18n.prefixed ? { status: 200 } : await resolvePublicRoute(pathname, deps);
+      // Ficha con prefijo de idioma: las mismas reglas que su /tienda/<slug> (sección contratada, tienda de pyme…); si no, 404
+      const route: PublicRouteResult = i18n?.kind === "notFound" ? { status: 404 } : i18n?.kind === "page" && i18n.prefixed ? { status: 200 } : i18n?.kind === "product" && i18n.prefixed ? await resolvePublicRoute(`/tienda/${i18n.principalSlug}`, deps) : await resolvePublicRoute(pathname, deps);
       // Redirecciones permanentes de la empresa (panel → Redirecciones): SOLO cuando la ruta no existe (404), así nunca tapan una
       // página, un producto ni las pantallas de acceso o de pago. Solo GET/HEAD. Nunca rompen la web: ante cualquier fallo, sigue el 404.
       if (route.status === 404 && (req.method === "GET" || req.method === "HEAD")) {

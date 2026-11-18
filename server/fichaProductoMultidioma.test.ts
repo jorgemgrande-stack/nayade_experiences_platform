@@ -258,7 +258,7 @@ describe("textos de la interfaz en el idioma de la página", () => {
   });
 });
 
-describe("cambio de idioma principal: catálogo", () => {
+describe("cambio de idioma principal: catálogo (función pura preparada, aún sin usar)", () => {
   it("la traducción al idioma nuevo pasa a la base y lo anterior queda como traducción (solo los campos que trae)", () => {
     const r = swapCatalogFields("product", { id: 7, slug: "curso-yoga", title: "Curso de yoga", shortDescription: null, includes: '["Esterilla","Té"]', basePrice: "90" }, { title: "Yogakurs", shortDescription: "Für alle", includes: "Matte\nTee", price: "1" });
     expect(r.update).toEqual({ title: "Yogakurs", shortDescription: "Für alle", includes: JSON.stringify(["Matte", "Tee"]) });
@@ -266,12 +266,18 @@ describe("cambio de idioma principal: catálogo", () => {
     expect(swapCatalogFields("edition", { label: "Primavera", schedule_note: "L–V" }, { label: "Frühling", scheduleNote: "Mo–Fr" })).toEqual({ update: { label: "Frühling", schedule_note: "Mo–Fr" }, oldFields: { label: "Primavera", scheduleNote: "L–V" } });
     expect(Object.keys(CATALOG_SWAP_COLUMNS.variant)).toEqual(["name", "description"]);
   });
-  it("la copia previa y la vuelta atrás incluyen productos, opciones y convocatorias (sin borrar nada en copias antiguas)", () => {
+  it("el cambio de idioma principal NO toca todavía el catálogo (sin probar contra MySQL; las traducciones quedan guardadas por idioma)", () => {
     const src = read("server/i18nSwapDb.ts");
-    expect(src).toContain('const SNAPSHOT_CONTENT_TYPES = ["menu_item", "setting", "product", "variant", "edition"];');
-    expect(src).toContain("contentTypes: SNAPSHOT_CONTENT_TYPES,");
-    expect(src).toContain("snap.catalog![type].push({ ...baseRow });");
-    expect(src).toContain('const types = snap.contentTypes?.length ? snap.contentTypes : ["menu_item", "setting"];');
-    expect(src).not.toContain("entity_type IN ('menu_item','setting')");
+    expect(src).not.toContain("swapCatalogFields");
+  });
+
+});
+
+describe("revisión de #863", () => {
+  it("una ficha con prefijo pasa las mismas reglas que /tienda/<slug> (sin 200 donde el cliente dice «no encontrada»)", () => {
+    expect(read("server/_core/vite.ts")).toContain('i18n?.kind === "product" && i18n.prefixed ? await resolvePublicRoute(`/tienda/${i18n.principalSlug}`, deps)');
+  });
+  it("una dirección traducida no puede ser la dirección principal de otro producto", () => {
+    expect(read("server/i18nService.ts")).toContain('throw new I18nError("Otro producto ya usa esa dirección.")');
   });
 });

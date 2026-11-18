@@ -7,11 +7,8 @@
  *  - TODO ocurre en UNA transacción: copia previa (tabla `i18n_default_changes`), intercambio, redirecciones 301,
  *    comprobación posterior y registro. Si algo falla, la base de datos queda exactamente como estaba.
  *  - Vuelta atrás: `rollbackDefaultLocaleChange` restaura la copia previa (también en una transacción).
- *  - Alcance: páginas (borrador, publicado, historial), menús y ajustes traducibles, idiomas y redirecciones, y el catálogo
- *    de la tienda (productos, opciones y convocatorias) que tenga traducción VALIDADA al idioma nuevo: sus textos pasan al
- *    contenido base y los anteriores quedan como traducción al idioma anterior (también el slug del producto, si no choca;
- *    la dirección antigua `/tienda/<slug>` lleva entonces a `/<anterior>/tienda/<slug>`). Lo que no tiene traducción al
- *    idioma nuevo conserva su contenido base (en Quantum ya está escrito en alemán). Los formularios NO se intercambian.
+ *  - Alcance: páginas (borrador, publicado, historial), menús y ajustes traducibles, idiomas y redirecciones. Los productos y
+ *    los formularios NO se intercambian: su contenido base se conserva (en Quantum ya está escrito en alemán).
  */
 import { sql } from "drizzle-orm";
 import { getDb } from "./db";
@@ -22,7 +19,7 @@ import { invalidateRedirectCache } from "./redirectsDb";
 import { blocksToHtml, htmlToBlocks, readStoredBlocks } from "./_core/pageBlocks";
 import { plainTextToHtml } from "./_core/templates/starterSite";
 import { blockToRowData, rowToBlock } from "./pageBuilderDb";
-import { CATALOG_SWAP_COLUMNS, swapCatalogFields, swapMenuUrl, swapPageRoles, type CatalogSwapType } from "../shared/i18nSwap";
+import { swapMenuUrl, swapPageRoles } from "../shared/i18nSwap";
 import { localizedPath } from "../shared/i18n";
 import { normalizeFromPath } from "../shared/redirects";
 import type { PageBlock } from "../shared/pageBlocks";
@@ -47,8 +44,6 @@ export interface SwapSummary {
   pages: { swapped: number; skipped: string[]; slugChanges: { from: string; to: string }[] };
   menuItems: number; settings: number;
   redirects: { created: number; updated: number; deleted: number };
-  /** Catálogo de la tienda intercambiado (elementos con traducción validada al idioma nuevo). */
-  catalog?: { products: number; variants: number; editions: number; slugChanges: { from: string; to: string }[] };
 }
 
 interface Snapshot {
@@ -63,15 +58,7 @@ interface Snapshot {
   contentTranslations: Row[];
   locales: Row[];
   redirects: { created: number[]; updated: Row[]; deleted: Row[] };
-  /** Tipos de `content_translations` incluidos en la copia (sin el campo: copias anteriores, solo menús y ajustes). */
-  contentTypes?: string[];
-  /** Filas base del catálogo antes del intercambio (solo las que se intercambian). */
-  catalog?: Record<CatalogSwapType, Row[]>;
 }
-
-const SNAPSHOT_CONTENT_TYPES = ["menu_item", "setting", "product", "variant", "edition"];
-const CATALOG_TABLE: Record<CatalogSwapType, string> = { product: "experiences", variant: "experience_variants", edition: "product_editions" };
-const catalogCols = (type: CatalogSwapType) => Object.values(CATALOG_SWAP_COLUMNS[type] as Record<string, string>);
 
 function blocksFromRows(rows: Row[]): PageBlock[] | null {
   const vis = rows.filter((r) => Number(r.isVisible) === 1 || r.isVisible === true);
@@ -138,9 +125,7 @@ export async function applyDefaultLocaleChange(repo: I18nRepo, targetRaw: unknow
       menu: await qrows(tx, sql`SELECT id, label, url FROM menu_items`),
       settings: [],
       pageTranslations: await qrows(tx, sql`SELECT page_id, locale, slug, published_slug, published_meta, title, meta_title, meta_description, og_image_url, draft_blocks, published_blocks, status, base_hash, ${dt("validated_at")} AS validated_at, validated_by FROM page_translations WHERE page_id IN (${sql.join(pageIds.map((i) => sql`${i}`), sql`, `)}) AND locale IN (${target}, ${old})`),
-      contentTranslations: await qrows(tx, sql`SELECT entity_type, entity_key, locale, fields, slug, status, ${dt("validated_at")} AS validated_at, validated_by FROM content_translations WHERE entity_type IN (${inList(SNAPSHOT_CONTENT_TYPES)}) AND locale IN (${target}, ${old})`),
-      contentTypes: SNAPSHOT_CONTENT_TYPES,
-      catalog: { product: [], variant: [], edition: [] },
+      contentTranslations: await qrows(tx, sql`SELECT entity_type, entity_key, locale, fields, slug, status, ${dt("validated_at")} AS validated_at, validated_by FROM content_translations WHERE entity_type IN ('menu_item','setting') AND locale IN (${target}, ${old})`),
       locales: await qrows(tx, sql`SELECT locale, is_default, status, sort_order, ${dt("validated_at")} AS validated_at, validated_by FROM site_locales WHERE locale IN (${target}, ${old})`),
       redirects: { created: [], updated: [], deleted: [] },
     };
@@ -207,44 +192,6 @@ export async function applyDefaultLocaleChange(repo: I18nRepo, targetRaw: unknow
       settingCount++;
     }
 
-    // 4b) Catálogo de la tienda: solo lo que tiene traducción VALIDADA al idioma nuevo (lo demás conserva su base)
-    const catalogOut = { products: 0, variants: 0, editions: 0, slugChanges: [] as { from: string; to: string }[] };
-    const swappedCatalog: { type: CatalogSwapType; key: string }[] = [];
-    for (const type of ["product", "variant", "edition"] as CatalogSwapType[]) {
-      const trs = await qrows(tx, sql`SELECT entity_key, fields, slug FROM content_translations WHERE entity_type = ${type} AND locale = ${target} AND status = 'validated'`);
-      if (!trs.length) continue;
-      const table = sql.raw(CATALOG_TABLE[type]);
-      const cols = sql.raw(catalogCols(type).map((c) => `\`${c}\``).join(", "));
-      for (const t of trs) {
-        const key = String(t.entity_key);
-        if (!/^[1-9]\d{0,9}$/.test(key)) continue;
-        const fields = parseJson<Record<string, string>>(t.fields) ?? {};
-        const baseRow = (await qrows(tx, sql`SELECT id${type === "product" ? sql`, slug` : sql``}, ${cols} FROM ${table} WHERE id = ${Number(key)} LIMIT 1`))[0];
-        if (!baseRow) continue;
-        const { update, oldFields } = swapCatalogFields(type, baseRow, fields);
-        // Slug del producto: el traducido pasa a ser el de la tienda si ningún otro producto lo usa
-        let oldSlug: string | null = null;
-        let newSlug: string | null = null;
-        const trSlug = typeof t.slug === "string" && t.slug.trim() ? t.slug.trim() : null;
-        if (type === "product" && trSlug && trSlug !== String(baseRow.slug)) {
-          const taken = (await qrows(tx, sql`SELECT id FROM experiences WHERE slug = ${trSlug} AND id <> ${Number(key)} LIMIT 1`))[0];
-          if (!taken) { oldSlug = String(baseRow.slug); newSlug = trSlug; }
-        }
-        if (!Object.keys(update).length && !newSlug) continue;
-        snap.catalog![type].push({ ...baseRow });
-        const sets = Object.entries(update).map(([c, v]) => sql`${sql.raw(`\`${c}\``)} = ${v}`);
-        if (newSlug) sets.push(sql`slug = ${newSlug}`);
-        await qrun(tx, sql`UPDATE ${table} SET ${sql.join(sets, sql`, `)} WHERE id = ${Number(key)}`);
-        await qrun(tx, sql`DELETE FROM content_translations WHERE entity_type = ${type} AND entity_key = ${key} AND locale IN (${target}, ${old})`);
-        if (Object.keys(oldFields).length || oldSlug) {
-          await qrun(tx, sql`INSERT INTO content_translations (entity_type, entity_key, locale, fields, slug, status, validated_at, validated_by) VALUES (${type}, ${key}, ${old}, ${JSON.stringify(oldFields)}, ${oldSlug}, 'validated', NOW(), ${by})`);
-        }
-        if (oldSlug && newSlug) catalogOut.slugChanges.push({ from: `/tienda/${oldSlug}`, to: `/tienda/${newSlug}` });
-        swappedCatalog.push({ type, key });
-        catalogOut[type === "product" ? "products" : type === "variant" ? "variants" : "editions"]++;
-      }
-    }
-
     // 5) Idiomas
     await qrun(tx, sql`UPDATE site_locales SET is_default = 0, status = 'validated', validated_at = COALESCE(validated_at, NOW()), validated_by = COALESCE(validated_by, ${by}) WHERE locale = ${old}`);
     await qrun(tx, sql`UPDATE site_locales SET is_default = 1 WHERE locale = ${target}`);
@@ -294,17 +241,11 @@ export async function applyDefaultLocaleChange(repo: I18nRepo, targetRaw: unknow
     if (dup.length) throw new I18nError("Comprobación fallida: direcciones duplicadas.");
     if (Number((await qrows(tx, sql`SELECT COUNT(*) AS n FROM static_pages WHERE slug LIKE ${TMP + "%"}`))[0]?.n ?? 0) !== 0) throw new I18nError("Comprobación fallida: quedan direcciones temporales.");
     checks.push("sin direcciones duplicadas ni temporales");
-    for (const c of swappedCatalog) {
-      if (Number((await qrows(tx, sql`SELECT COUNT(*) AS n FROM content_translations WHERE entity_type = ${c.type} AND entity_key = ${c.key} AND locale = ${target}`))[0]?.n ?? 0) !== 0) throw new I18nError(`Comprobación fallida: un elemento del catálogo (${c.type} ${c.key}) conserva una traducción al idioma principal.`);
-    }
-    if (catalogOut.slugChanges.length && (await qrows(tx, sql`SELECT slug FROM experiences GROUP BY slug HAVING COUNT(*) > 1`)).length) throw new I18nError("Comprobación fallida: productos con la misma dirección.");
-    if (swappedCatalog.length) checks.push(`${swappedCatalog.length} elemento(s) del catálogo intercambiados`);
 
     const summary: SwapSummary = {
       from: old, to: target,
       pages: { swapped: work.length, skipped, slugChanges: Array.from(slugMap.entries()).map(([from, to]) => ({ from: `/${from}`, to: `/${to}` })) },
       menuItems: menuCount, settings: settingCount, redirects: red,
-      catalog: catalogOut,
     };
     const { insertId } = await qrun(tx, sql`INSERT INTO i18n_default_changes (from_locale, to_locale, status, actor_id, actor_name, summary, snapshot) VALUES (${old}, ${target}, 'applied', ${actor.id ?? null}, ${actorName}, ${JSON.stringify(summary)}, ${JSON.stringify(snap)})`);
     return { ...summary, changeId: insertId, checks };
@@ -358,19 +299,7 @@ export async function rollbackDefaultLocaleChange(changeId: number, actor: Actor
     // Menús, ajustes y su contenido traducible
     for (const m of snap.menu) await qrun(tx, sql`UPDATE menu_items SET label = ${m.label}, url = ${m.url} WHERE id = ${m.id}`);
     for (const s of snap.settings) await qrun(tx, sql`UPDATE system_settings SET value = ${s.value} WHERE \`key\` = ${s.key}`);
-    // Catálogo de la tienda: filas base tal como estaban (solo copias que lo incluyen). Primero se liberan las
-    // direcciones de los productos, por si dos intercambiaron slugs entre sí
-    for (const r of snap.catalog?.product ?? []) await qrun(tx, sql`UPDATE experiences SET slug = ${TMP + r.id} WHERE id = ${r.id}`);
-    for (const type of ["product", "variant", "edition"] as CatalogSwapType[]) {
-      for (const r of snap.catalog?.[type] ?? []) {
-        const cols = catalogCols(type).concat(type === "product" ? ["slug"] : []);
-        const sets = cols.map((c) => sql`${sql.raw(`\`${c}\``)} = ${jv(r[c])}`);
-        await qrun(tx, sql`UPDATE ${sql.raw(CATALOG_TABLE[type])} SET ${sql.join(sets, sql`, `)} WHERE id = ${r.id}`);
-      }
-    }
-    // Solo los tipos que la copia incluye: una copia anterior (menús y ajustes) nunca borra traducciones del catálogo
-    const types = snap.contentTypes?.length ? snap.contentTypes : ["menu_item", "setting"];
-    await qrun(tx, sql`DELETE FROM content_translations WHERE entity_type IN (${inList(types)}) AND locale IN (${target}, ${old})`);
+    await qrun(tx, sql`DELETE FROM content_translations WHERE entity_type IN ('menu_item','setting') AND locale IN (${target}, ${old})`);
     for (const c of snap.contentTranslations) {
       await qrun(tx, sql`INSERT INTO content_translations (entity_type, entity_key, locale, fields, slug, status, validated_at, validated_by) VALUES (${c.entity_type}, ${c.entity_key}, ${c.locale}, ${jv(c.fields)}, ${c.slug}, ${c.status}, ${c.validated_at}, ${c.validated_by})`);
     }

@@ -408,6 +408,9 @@ export async function saveContentTranslationDraft(
     slug = normalizeLocalizedSlug(input.slug);
     if (!slug) throw new I18nError("La dirección solo admite minúsculas sin acentos, números y guiones.");
     if (await repo.contentSlugTaken(input.entityType, locale, slug, input.entityKey)) throw new I18nError("Otro producto ya usa esa dirección en este idioma.");
+    // Tampoco la dirección principal de OTRO producto: la ficha traducida taparía la suya en este idioma
+    const owner = repo.productBySlug ? await repo.productBySlug(slug) : null;
+    if (owner && String(owner.id) !== String(input.entityKey)) throw new I18nError("Otro producto ya usa esa dirección.");
   }
   // Editar una traducción validada la devuelve a borrador: aquí no hay copia publicada aparte, así que no se sirve a medias
   await repo.saveContentTranslation({
