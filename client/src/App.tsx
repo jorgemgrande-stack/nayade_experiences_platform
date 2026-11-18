@@ -649,9 +649,9 @@ function Router() {
       <Route path="/404" component={NotFound} />
       {/* Multiempresa: páginas propias del tenant; en un solo tenant sigue siendo 404 */}
       <Route path="/:slug">{(p) => <SlugGate slug={p.slug} />}</Route>
-      {/* Multidioma: ficha de producto de un idioma adicional (/de/tienda/kurs); con el idioma no validado, «no encontrada» */}
       {/* Multidioma: catálogo de un idioma adicional (/es/tienda), con sus fichas en ese idioma */}
       <Route path="/:locale/tienda">{(p) => <LocaleProductGate locale={p.locale} Product={Shop} />}</Route>
+      {/* Multidioma: ficha de producto de un idioma adicional (/de/tienda/kurs); con el idioma no validado, «no encontrada» */}
       <Route path="/:locale/tienda/:slug">{(p) => <LocaleProductGate locale={p.locale} Product={ProductDetail} />}</Route>
       {/* Multidioma (E-1): /de/ueber-uns. Va tras todas las rutas conocidas: solo lo que antes era «no encontrada» */}
       <Route path="/:locale/:slug">{(p) => <LocaleSlugGate locale={p.locale} slug={p.slug} />}</Route>

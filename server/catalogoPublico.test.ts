@@ -11,22 +11,26 @@ import { shopTitleFromMenu } from "../shared/tenantNav";
 import { SITE_UI_TEXT } from "../shared/siteUiText";
 import type { ContentTranslationRow, I18nRepo } from "./i18nService";
 
-const variants: Record<number, Array<{ priceModifier: string; priceType: "fixed" }>> = {
-  1: [{ priceModifier: "144", priceType: "fixed" }, { priceModifier: "555", priceType: "fixed" }, { priceModifier: "777", priceType: "fixed" }],
-  24: [{ priceModifier: "49", priceType: "fixed" }],
+const variants: Record<number, Array<{ experienceId: number; priceModifier: string; priceType: "fixed" }>> = {
+  1: [{ experienceId: 1, priceModifier: "144", priceType: "fixed" }, { experienceId: 1, priceModifier: "555", priceType: "fixed" }, { experienceId: 1, priceModifier: "777", priceType: "fixed" }],
+  24: [{ experienceId: 24, priceModifier: "49", priceType: "fixed" }],
+  31: [{ experienceId: 31, priceModifier: "30", priceType: "fixed" }],
 };
-vi.mock("./db", () => ({ getVariantsByExperience: async (id: number) => variants[id] ?? [] }));
+const asked: number[][] = [];
+const load = async (ids: number[]) => { asked.push(ids); return new Map(ids.filter((i) => variants[i]).map((i) => [i, variants[i]])); };
 
 describe("precio «desde» del catálogo", () => {
-  it("la opción más barata, «Desde» solo con varias; nunca en «bajo petición»", async () => {
+  it("la opción más barata y «Desde» como en la ficha; nunca en «bajo petición» ni sin precio base; una sola lectura", async () => {
     const { catalogRows } = await import("./publicCatalog");
     const rows = await catalogRows([
       { id: 1, slug: "reconnect", title: "RECONNECT", basePrice: "555", offerMode: "priced_request" },
       { id: 24, slug: "morning-impulse", title: "MORNING IMPULSE", basePrice: "49", offerMode: "priced_request" },
       { id: 5, slug: "retiro", title: "Retiro", basePrice: "0", offerMode: "on_request" },
       { id: 30, slug: "fijo", title: "Fijo", basePrice: "20", offerMode: "fixed" },
-    ], { withFromPrice: true });
-    expect(rows.map((r) => [r.id, r.fromPrice, r.hasOptions])).toEqual([[1, 144, true], [24, 49, false], [5, null, false], [30, 20, false]]);
+      { id: 31, slug: "sin-base", title: "Sin base", basePrice: "0", offerMode: "priced_request" },
+    ], { withFromPrice: true }, load);
+    expect(rows.map((r) => [r.id, r.fromPrice, r.hasOptions])).toEqual([[1, 144, true], [24, 49, true], [5, null, false], [30, 20, false], [31, null, false]]);
+    expect(asked).toEqual([[1, 24, 30]]);
   });
 });
 
@@ -59,6 +63,22 @@ describe("textos del catálogo en el idioma de la página", () => {
     const { CONTENT_ENTITY_TYPES, CONTENT_FIELDS } = await import("./i18nService");
     expect(CONTENT_ENTITY_TYPES).toContain("category");
     expect(CONTENT_FIELDS.category).toEqual({ name: 128 });
+  });
+});
+
+describe("menú: enlace al catálogo en otro idioma", () => {
+  it("/tienda y /tienda?categoria=x llevan al catálogo del idioma, con el filtro, aunque no sean una página", async () => {
+    const { localizeMenu } = await import("./i18nService");
+    const r = {
+      listLocales: async () => [{ locale: "de", status: "validated", isDefault: true }, { locale: "es", status: "validated", isDefault: false }],
+      readSettings: async () => ({ defaultPrefix: false, fallback: "hide", negotiate: false }),
+      principalHomeSlug: async () => "home",
+      principalPageBySlug: async () => null,
+      listPageTranslations: async () => [],
+      listContentTranslations: async () => [tr("menu_item" as never, "1", { label: "Programas y servicios" }), tr("menu_item" as never, "2", { label: "Retiros" })],
+    } as unknown as I18nRepo;
+    const out = await localizeMenu(r, [{ id: 1, parentId: null, label: "Angebote", url: "/tienda" }, { id: 2, parentId: null, label: "Retreats", url: "/tienda?categoria=retreats" }] as never, "es");
+    expect(out.map((x: { label: string; url: string }) => [x.label, x.url])).toEqual([["Programas y servicios", "/es/tienda"], ["Retiros", "/es/tienda?categoria=retreats"]]);
   });
 });
 

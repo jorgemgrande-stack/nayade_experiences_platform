@@ -510,7 +510,12 @@ export async function localizeMenu<T extends MenuItemLike>(repo: I18nRepo, items
     const label = t?.fields.label;
     let url = it.url;
     let translatedLink = false;
-    if (it.url && /^\/[^/]*$/.test(it.url)) {
+    const catalog = it.url ? /^\/tienda(\?[^#]*)?$/.exec(it.url) : null;
+    if (catalog) {
+      // Catálogo de la tienda: el del idioma (con su filtro), salvo que la traducción del elemento traiga su propio enlace
+      url = t?.fields.url || localizedPath("/tienda", locale, cfg) + (catalog[1] ?? "");
+      translatedLink = true;
+    } else if (it.url && /^\/[^/]*$/.test(it.url)) {
       const principalSlug = it.url === "/" ? home : it.url.slice(1);
       const page = await repo.principalPageBySlug(principalSlug);
       const ps = page ? slugByPage.get(page.id) : undefined;
