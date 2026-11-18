@@ -188,7 +188,8 @@ export function serveStatic(app: Express, opts: { distPath?: string; routeDeps?:
       // Multidioma (E-1): solo si la empresa tiene idiomas adicionales; si no, `null` y todo sigue exactamente igual
       const i18n = multi ? await resolveLocalizedRequest(pathname, req.headers.host, req.originalUrl) : null;
       if (i18n?.kind === "redirect") return res.redirect(i18n.status, i18n.to);
-      const route: PublicRouteResult = i18n?.kind === "notFound" ? { status: 404 } : i18n?.kind === "page" && i18n.prefixed ? { status: 200 } : await resolvePublicRoute(pathname, deps);
+      // Ficha con prefijo de idioma: las mismas reglas que su /tienda/<slug> (sección contratada, tienda de pyme…); si no, 404
+      const route: PublicRouteResult = i18n?.kind === "notFound" ? { status: 404 } : i18n?.kind === "page" && i18n.prefixed ? { status: 200 } : i18n?.kind === "product" && i18n.prefixed ? await resolvePublicRoute(`/tienda/${i18n.principalSlug}`, deps) : await resolvePublicRoute(pathname, deps);
       // Redirecciones permanentes de la empresa (panel → Redirecciones): SOLO cuando la ruta no existe (404), así nunca tapan una
       // página, un producto ni las pantallas de acceso o de pago. Solo GET/HEAD. Nunca rompen la web: ante cualquier fallo, sigue el 404.
       if (route.status === 404 && (req.method === "GET" || req.method === "HEAD")) {
@@ -232,6 +233,8 @@ export function serveStatic(app: Express, opts: { distPath?: string; routeDeps?:
         const img = safeUrl(own.ogImageUrl ?? undefined);
         if (img) seo.meta.image = escapeHtml(img);
       }
+      // Ficha de producto traducida: su título y descripción en ese idioma
+      if (i18n?.kind === "product" && i18n.meta) seo.meta = { ...seo.meta, ...pageMetaOverride(i18n.meta, brandName, false) };
       // Blog: título, descripción e imagen de la entrada publicada (nunca de un borrador)
       if (pathname === "/blog" || pathname.startsWith("/blog/")) {
         try {
@@ -243,7 +246,7 @@ export function serveStatic(app: Express, opts: { distPath?: string; routeDeps?:
         }
       }
       let html = injectSeoMeta(_htmlCache, seo);
-      if (i18n?.kind === "page") html = applyLocaleSeo(html, i18n.seo);
+      if (i18n?.kind === "page" || i18n?.kind === "product") html = applyLocaleSeo(html, i18n.seo);
       if (isMultiTenant()) html = tenantSiteHtml(html, escapeHtml(brandName));
       if (route.status === 404) html = html.replace(/<meta charset="UTF-8" \/>/, '<meta charset="UTF-8" />\n    <meta name="robots" content="noindex" />');
       // Web oculta a los buscadores (empresa de demostración o web en preparación)

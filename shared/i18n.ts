@@ -196,14 +196,58 @@ export function internalLinkSegments(blocks: unknown): string[] {
   return Array.from(seen);
 }
 
+// ─── Fichas de producto de la tienda (`/tienda/<slug>`) ────────────────────────
+
+const PRODUCT_LINK = /^\/tienda\/([^/?#]+)\/?([?#].*)?$/;
+
+/** Ruta (sin prefijo de idioma) de la ficha de un producto. */
+export function productRest(slug: string): string {
+  return `/tienda/${encodeURIComponent(slug)}`;
+}
+
+/** Slug del producto de una ruta sin prefijo (`/tienda/<slug>`, con o sin `?…`/`#…`), o null si no es una ficha. */
+export function productSlugOfPath(path: string): string | null {
+  const m = PRODUCT_LINK.exec(path);
+  if (!m) return null;
+  try {
+    return decodeURIComponent(m[1]);
+  } catch {
+    return m[1];
+  }
+}
+
+/** Slugs de producto (del principal) enlazados como `/tienda/<slug>` en unos bloques. */
+export function internalProductSlugs(blocks: unknown): string[] {
+  const seen = new Set<string>();
+  mapLinks(blocks, (h) => { const s = productSlugOfPath(h); if (s) seen.add(s); return h; });
+  return Array.from(seen);
+}
+
+/**
+ * Enlace a una ficha de producto en un idioma: «/tienda/kurs?opcion=8» → «/en/tienda/course?opcion=8» (consulta y ancla
+ * se conservan). `productSlug` da el slug del producto en ese idioma (el traducido o el del principal) o null si no es un
+ * producto público: entonces el enlace queda igual. Si no es un enlace a una ficha, devuelve null.
+ */
+export function localizeProductLink(href: string, locale: string, cfg: I18nConfig, productSlug: (primarySlug: string) => string | null): string | null {
+  const m = PRODUCT_LINK.exec(href);
+  if (!m) return null;
+  const slug = productSlug(productSlugOfPath(href)!);
+  return slug ? localizedPath(productRest(slug), locale, cfg) + (m[2] ?? "") : href;
+}
+
 /**
  * Enlaces internos de una página servida en un idioma con prefijo: «/formacion» → «/es/formacion». Solo se tocan las
- * rutas cuyo primer tramo es una página (`isPage`) o la portada; ficheros, tienda, API, anclas y enlaces externos quedan igual.
- * Con el idioma principal sin prefijo no cambia nada.
+ * rutas cuyo primer tramo es una página (`isPage`) o la portada; ficheros, API, anclas y enlaces externos quedan igual.
+ * Las fichas de producto (`/tienda/<slug>`) se localizan solo con `productSlug` (slug del producto en ese idioma); sin
+ * él quedan igual, como antes. Con el idioma principal sin prefijo no cambia nada.
  */
-export function localizeBlockLinks<T>(blocks: T, locale: string, cfg: I18nConfig, isPage: (segment: string) => boolean): T {
+export function localizeBlockLinks<T>(blocks: T, locale: string, cfg: I18nConfig, isPage: (segment: string) => boolean, productSlug?: (primarySlug: string) => string | null): T {
   if (locale === cfg.defaultLocale && !cfg.defaultPrefix) return blocks;
   return mapLinks(blocks, (href) => {
+    if (productSlug) {
+      const p = localizeProductLink(href, locale, cfg, productSlug);
+      if (p !== null) return p;
+    }
     const seg = internalSegment(href);
     if (seg === null) return href;
     if (seg !== "" && !isPage(seg)) return href;

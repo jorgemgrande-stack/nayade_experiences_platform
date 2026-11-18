@@ -1,11 +1,12 @@
 /** Repositorio en memoria del multidioma, solo para pruebas (cada instancia = la base de datos de una empresa). */
 import type { LocaleEntry } from "../shared/i18n";
-import type { ContentTranslationRow, I18nRepo, I18nSettings, PageTranslationRow, PrincipalPage } from "./i18nService";
+import type { ContentTranslationRow, I18nRepo, I18nSettings, PageTranslationRow, PrincipalPage, PrincipalProduct } from "./i18nService";
 
-export function memoryI18nRepo(seed: { pages?: PrincipalPage[]; home?: string; settings?: I18nSettings } = {}) {
+export function memoryI18nRepo(seed: { pages?: PrincipalPage[]; home?: string; settings?: I18nSettings; products?: PrincipalProduct[] } = {}) {
   const locales: LocaleEntry[] = [];
   const settings: Record<string, string> = {};
   const pages = [...(seed.pages ?? [])];
+  const products = seed.products ? [...seed.products] : null;
   const pt: PageTranslationRow[] = [];
   const ct: ContentTranslationRow[] = [];
   if (seed.settings?.fallback) settings.i18n_fallback = seed.settings.fallback;
@@ -31,5 +32,10 @@ export function memoryI18nRepo(seed: { pages?: PrincipalPage[]; home?: string; s
     async contentSlugTaken(type, locale, slug, except) { return ct.some((t) => t.entityType === type && t.locale === locale && t.slug === slug && t.entityKey !== except); },
     async saveContentTranslation(row) { const i = ct.findIndex((t) => t.entityType === row.entityType && t.entityKey === row.entityKey && t.locale === row.locale); if (i >= 0) ct[i] = row; else ct.push(row); },
   };
+  // Fichas de producto solo si la prueba las siembra (sin ellas, el repositorio es el de siempre)
+  if (products) {
+    repo.productBySlug = async (slug) => products.find((p) => p.slug === slug) ?? null;
+    repo.productById = async (id) => products.find((p) => p.id === id) ?? null;
+  }
   return repo;
 }

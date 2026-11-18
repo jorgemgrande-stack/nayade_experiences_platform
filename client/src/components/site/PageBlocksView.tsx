@@ -10,7 +10,7 @@ import { createContext, Fragment, useContext, useEffect, useLayoutEffect, useMem
 import { Link } from "wouter";
 import { scrollToHash } from "@/lib/scrollToHash";
 import { useLegalHref } from "@/hooks/useLegalHref";
-import { siteUiText } from "@shared/siteUiText";
+import { offerBadgeText, siteUiText } from "@shared/siteUiText";
 import { toast } from "sonner";
 import { ArrowDown, ArrowUp, Bold, BookmarkPlus, CalendarDays, ChevronDown, Copy, CornerLeftUp, EyeOff, GripVertical, Image as ImageIcon, Italic, Link2, List, MoreHorizontal, Newspaper, Paintbrush, Pencil, Play, Plus, Quote, ShoppingBag, Star, Trash2, Unlink } from "lucide-react";
 import { trpc } from "@/lib/trpc";
@@ -32,7 +32,7 @@ import { blockLabel, DEFAULT_BLOCK_STYLE, readBlockText, type BlockOf, type Bloc
 import { modalHref } from "@shared/studio/modal";
 import { formatEuros, productPath } from "@shared/storefront";
 import { isPurchasable } from "@shared/shopOrders";
-import { publicOfferBadge, showsPrice } from "@shared/offerMode";
+import { offerModeOf, publicOfferBadge, showsPrice } from "@shared/offerMode";
 import { EditionsList } from "@/components/site/Editions";
 import { useSiteLocale } from "@/hooks/useSiteLocale";
 
@@ -1250,6 +1250,10 @@ function ProductsBlock({ b, first, preview }: { b: BlockOf<"products">; first: b
   const products = trpc.public.getExperiences.useQuery({ limit: 50, offset: 0, includeSoldOut: true }, { staleTime: 60_000 });
   const categories = trpc.public.getCategories.useQuery(undefined, { staleTime: 300_000, enabled: !!d.categorySlug });
   const limit = Number(d.limit) || 4;
+  // Multidioma: cada tarjeta lleva a la ficha del mismo producto en el idioma de la página (el servidor y la ficha pasan
+  // al slug traducido si lo hay) y las insignias salen en ese idioma
+  const site = useSiteLocale();
+  const ui = siteUiText(site.locale);
   const items = useMemo(() => {
     const list = (products.data ?? []) as ShopItem[];
     if (!d.categorySlug) return list.slice(0, limit);
@@ -1283,13 +1287,13 @@ function ProductsBlock({ b, first, preview }: { b: BlockOf<"products">; first: b
             const img = p.image1 || p.coverImageUrl;
             const price = Number(p.basePrice) > 0 ? formatEuros(p.basePrice) : null;
             // E-6: «Bajo petición» / «Próximamente» (nunca «Agotado»), sin precio
-            const offerBadge = publicOfferBadge(p);
+            const offerBadge = publicOfferBadge(p) ? offerBadgeText(ui, offerModeOf(p)) : null;
             const soldOut = !offerBadge && !isPurchasable(p);
             return (
-              <SmartLink key={p.id} href={productPath(p.slug)} preview={preview} className="group block h-full overflow-hidden rounded-2xl border border-border/50 bg-card text-card-foreground shadow-sm transition-shadow hover:shadow-md">
+              <SmartLink key={p.id} href={site.prefix ? `/${site.prefix}${productPath(p.slug)}` : productPath(p.slug)} preview={preview} className="group block h-full overflow-hidden rounded-2xl border border-border/50 bg-card text-card-foreground shadow-sm transition-shadow hover:shadow-md">
                 <div className="relative">
                   {img ? <img src={img} alt={p.title} className={cn("h-44 w-full object-cover", soldOut && "opacity-60")} loading="lazy" /> : <div className="h-44 w-full bg-muted" aria-hidden="true" />}
-                  {soldOut && <span className="absolute left-3 top-3 rounded-full bg-foreground/80 px-2.5 py-1 text-xs font-semibold text-background">Agotado</span>}
+                  {soldOut && <span className="absolute left-3 top-3 rounded-full bg-foreground/80 px-2.5 py-1 text-xs font-semibold text-background">{ui.soldOut}</span>}
                   {offerBadge && <span className="absolute left-3 top-3 rounded-full bg-primary px-2.5 py-1 text-xs font-semibold text-primary-foreground">{offerBadge}</span>}
                 </div>
                 <div className="space-y-1 p-4">

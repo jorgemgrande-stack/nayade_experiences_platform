@@ -2,6 +2,13 @@ import { useLocation } from "wouter";
 import { trpc } from "@/lib/trpc";
 import { localeAutonym, useSiteLocale } from "@/hooks/useSiteLocale";
 
+/** Consulta que se conserva al cambiar de idioma: solo `?opcion=<id>` en una ficha de producto. Pura. */
+export function switcherQuery(path: string, search: string): string {
+  if (!/(^|\/)tienda\/[^/]+\/?$/.test(path.split(/[?#]/)[0])) return "";
+  const v = new URLSearchParams(search).get("opcion");
+  return v && /^[1-9]\d{0,9}$/.test(v) ? `?opcion=${v}` : "";
+}
+
 /**
  * Selector de idioma de la cabecera (E-1). Solo se muestra si la empresa tiene al menos otro idioma validado Y la página
  * actual existe en él. Son enlaces reales (`<a href>`, `hreflang`, `lang`), accesibles por teclado, con el nombre del
@@ -13,6 +20,8 @@ export default function LanguageSwitcher({ className = "" }: { className?: strin
   const q = trpc.public.getPageAlternates.useQuery({ path: location }, { enabled: multilingual, staleTime: 60_000, retry: false });
   const alternates = q.data?.alternates ?? [];
   if (!multilingual || alternates.length < 2) return null;
+  // Ficha de producto: la opción elegida (`?opcion=`) se conserva al cambiar de idioma
+  const keep = switcherQuery(location, typeof window === "undefined" ? "" : window.location.search);
   return (
     <nav aria-label="Idioma / Language" className={className}>
       <ul className="flex items-center gap-1 text-sm font-display">
@@ -21,7 +30,7 @@ export default function LanguageSwitcher({ className = "" }: { className?: strin
           return (
             <li key={a.hreflang}>
               <a
-                href={a.href}
+                href={a.href + keep}
                 lang={a.hreflang}
                 hrefLang={a.hreflang}
                 aria-current={current ? "true" : undefined}

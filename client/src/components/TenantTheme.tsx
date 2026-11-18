@@ -8,6 +8,7 @@
  */
 import { useEffect } from "react";
 import { useSiteLocale } from "@/hooks/useSiteLocale";
+import { useStorefront } from "@/components/StorefrontRoute";
 import type { ComponentType, ReactNode } from "react";
 import { Link, Redirect, useLocation } from "wouter";
 import { trpc } from "@/lib/trpc";
@@ -352,6 +353,19 @@ export function LocaleSlugGate({ locale, slug }: { locale: string; slug: string 
   const site = useSiteLocale();
   if (isLoading || site.isLoading) return <Spinner />;
   if (theme?.neutralSite && site.multilingual && locale !== site.defaultLocale && site.locales.includes(locale)) return <TenantPage slug={slug} locale={locale} />;
+  return <NotFound />;
+}
+
+/**
+ * "/:locale/tienda/:slug": ficha de producto en un idioma adicional (una sola identidad de producto; el slug puede ser el
+ * traducido). Solo en la tienda de una pyme y con ese idioma validado; si no, «no encontrada» como siempre.
+ */
+export function LocaleProductGate({ locale, Product }: { locale: string; Product: ComponentType }) {
+  const { theme, isLoading } = useTenantTheme();
+  const site = useSiteLocale();
+  const { storefront, isLoading: shopLoading } = useStorefront();
+  if (isLoading || site.isLoading || shopLoading) return <Spinner />;
+  if (theme?.neutralSite && storefront?.kind === "generic" && site.multilingual && locale !== site.defaultLocale && site.locales.includes(locale)) return <Product />;
   return <NotFound />;
 }
 

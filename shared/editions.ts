@@ -128,10 +128,19 @@ export function utcMsToLocal(ms: number, tz: string): string {
   return `${z(p.y, 4)}-${z(p.mo)}-${z(p.d)}T${z(p.h)}:${z(p.mi)}`;
 }
 
-/** «20 de noviembre de 2026» o «20 – 22 de noviembre de 2026» o con meses distintos, en la zona de la edición. */
-export function formatEditionDates(startsAt: number, endsAt: number | null | undefined, tz: string, withTime = false): string {
+/**
+ * «20 de noviembre de 2026» o «20 – 22 de noviembre de 2026» o con meses distintos, en la zona de la edición.
+ * `locale`: idioma de la página (por defecto español), para los nombres de los meses.
+ */
+export function formatEditionDates(startsAt: number, endsAt: number | null | undefined, tz: string, withTime = false, locale = "es-ES"): string {
   const zone = isValidTimeZone(tz) ? tz : "Europe/Madrid";
-  const day = (ms: number, o: Intl.DateTimeFormatOptions) => new Intl.DateTimeFormat("es-ES", { timeZone: zone, ...o }).format(new Date(ms));
+  let intl = "es-ES";
+  try {
+    intl = Intl.DateTimeFormat.supportedLocalesOf([locale]).length ? locale : "es-ES";
+  } catch {
+    intl = "es-ES";
+  }
+  const day = (ms: number, o: Intl.DateTimeFormatOptions) => new Intl.DateTimeFormat(intl, { timeZone: zone, ...o }).format(new Date(ms));
   const full: Intl.DateTimeFormatOptions = { day: "numeric", month: "long", year: "numeric" };
   const time = (ms: number) => day(ms, { hour: "2-digit", minute: "2-digit", hourCycle: "h23" });
   const s = partsInZone(startsAt, zone);
