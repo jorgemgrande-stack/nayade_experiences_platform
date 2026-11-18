@@ -21,6 +21,7 @@ import {
   ENROLLMENT_SERVICE_LIMITS,
   INCLUDED_SERVICE_LIMITS,
   canMoveService,
+  effectiveQuoteStatus,
   enrollmentQuoteLine,
   isQuoteDead,
   planEnrollmentServices,
@@ -74,8 +75,12 @@ export async function readLinkedQuotes(exec: Exec, ids: number[]): Promise<Map<n
   const out = new Map<number, LinkedQuote>();
   const uniq = Array.from(new Set(ids.filter((x) => Number.isInteger(x) && x > 0)));
   if (!uniq.length) return out;
-  const r = await rows(exec, sql`SELECT id, quoteNumber, status, total FROM quotes WHERE id IN (${sql.join(uniq.map((i) => sql`${i}`), sql`, `)})`);
-  for (const q of r) out.set(Number(q.id), { id: Number(q.id), quoteNumber: String(q.quoteNumber ?? ""), status: String(q.status), total: Number(q.total ?? 0), payment: quotePaymentView(String(q.status)) });
+  const r = await rows(exec, sql`SELECT id, quoteNumber, status, total, paidAt FROM quotes WHERE id IN (${sql.join(uniq.map((i) => sql`${i}`), sql`, `)})`);
+  for (const q of r) {
+    // Cobrado = «aceptado» con fecha de pago (cobro manual y Redsys): cuenta como pagado
+    const status = effectiveQuoteStatus(String(q.status), q.paidAt) ?? String(q.status);
+    out.set(Number(q.id), { id: Number(q.id), quoteNumber: String(q.quoteNumber ?? ""), status, total: Number(q.total ?? 0), payment: quotePaymentView(status) });
+  }
   return out;
 }
 

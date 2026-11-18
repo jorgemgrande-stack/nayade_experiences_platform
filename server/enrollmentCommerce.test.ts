@@ -16,6 +16,7 @@ import {
   canMoveService,
   cleanConfirmReason,
   confirmNeedsReason,
+  effectiveQuoteStatus,
   enrollmentQuoteLine,
   enrollmentUnitPrice,
   isQuoteDead,
@@ -80,6 +81,15 @@ describe("estado del pago derivado del presupuesto", () => {
     expect(quotePaymentView("facturado").paid).toBe(true);
     expect(quotePaymentView("pago_fallido")).toMatchObject({ paid: false, tone: "danger" });
     expect(quotePaymentView("raro").label).toBe("Presupuesto: raro");
+  });
+  it("cobro manual o Redsys («aceptado» con fecha de pago) cuenta como pagado; sin fecha, tal cual", () => {
+    expect(effectiveQuoteStatus("aceptado", new Date())).toBe("pagado");
+    expect(effectiveQuoteStatus("aceptado", "2036-11-01 10:00:00")).toBe("pagado");
+    expect(effectiveQuoteStatus("aceptado", null)).toBe("aceptado");
+    expect(effectiveQuoteStatus("facturado", new Date())).toBe("facturado");
+    expect(effectiveQuoteStatus("perdido", new Date())).toBe("perdido");
+    expect(effectiveQuoteStatus(null, new Date())).toBeNull();
+    expect(confirmNeedsReason(effectiveQuoteStatus("aceptado", new Date()))).toBe(false);
   });
   it("solo un presupuesto perdido, caducado o rechazado se rehace", () => {
     expect(["perdido", "expirado", "rechazado"].every(isQuoteDead)).toBe(true);
@@ -193,7 +203,7 @@ async function exec(q: any): Promise<unknown> {
     return [r ? [visible(r)] : []];
   }
   if (/^SELECT \* FROM edition_enrollments WHERE edition_id = \?/.test(s)) return [[...db.enrollments.values()].filter((r) => r.edition_id === p[0]).map(visible)];
-  if (/^SELECT id, quoteNumber, status, total FROM quotes WHERE id IN/.test(s)) return [p.map((id) => db.quotes.get(Number(id))).filter(Boolean)];
+  if (/^SELECT id, quoteNumber, status, total, paidAt FROM quotes WHERE id IN/.test(s)) return [p.map((id) => db.quotes.get(Number(id))).filter(Boolean)];
   if (/^SELECT id, label, experience_id, price_override, starts_at, timezone FROM product_editions WHERE id = \?$/.test(s)) return [[db.editions.get(Number(p[0]))].filter(Boolean)];
   if (/^SELECT id, status FROM product_editions WHERE id = \? FOR UPDATE$/.test(s)) return [[db.editions.get(Number(p[0]))].filter(Boolean)];
   if (/^SELECT id, title, basePrice, fiscalRegime, taxRate FROM experiences WHERE id = \?$/.test(s)) return [[{ id: p[0], title: "Quantum Soulrise", basePrice: "300.00", fiscalRegime: "general", taxRate: "21.00" }]];
@@ -384,6 +394,15 @@ describe("confirmar la inscripción: paso explícito, motivo sin pago y quién l
     expect(db.logs.at(-1)!.details).toMatchObject({ withoutPayment: false, quoteStatus: "pagado" });
   });
 
+  it("cobrado a mano (aceptado con fecha de pago, como `crm.quotes.confirmPayment`): confirma sin motivo", async () => {
+    const { prepareEnrollmentQuote } = await import("./enrollmentCommerceDb");
+    const { setEnrollmentStatus } = await import("./editionsDb");
+    const q = await prepareEnrollmentQuote(1, deps());
+    Object.assign(db.quotes.get(q.quoteId)!, { status: "aceptado", paidAt: new Date() });
+    const r = await setEnrollmentStatus(1, "confirmada", 3000, { actor });
+    expect(r.changed).toBe(true);
+    expect(db.logs.at(-1)!.details).toMatchObject({ withoutPayment: false, quoteStatus: "pagado" });
+  });
   it("sin presupuesto se confirma como siempre (convocatorias gratuitas o gestionadas a mano)", async () => {
     const { setEnrollmentStatus } = await import("./editionsDb");
     expect((await setEnrollmentStatus(2, "confirmada", 4000, { actor })).changed).toBe(true);

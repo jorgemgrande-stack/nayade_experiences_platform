@@ -35,6 +35,17 @@ export const QUOTE_DEAD_STATUSES: readonly string[] = ["perdido", "expirado", "r
 export const isQuotePaid = (status: string | null | undefined): boolean => !!status && QUOTE_PAID_STATUSES.includes(status);
 export const isQuoteDead = (status: string | null | undefined): boolean => !!status && QUOTE_DEAD_STATUSES.includes(status);
 
+/**
+ * Estado del presupuesto a efectos de pago. El cobro manual (`crm.quotes.confirmPayment`, transferencia) y el de Redsys
+ * dejan el presupuesto en «aceptado» con `paidAt`: con fecha de pago (y sin estar perdido, caducado o rechazado) cuenta
+ * como «pagado». Sin `paidAt`, el estado tal cual.
+ */
+export function effectiveQuoteStatus(status: string | null | undefined, paidAt: unknown): string | null {
+  if (!status) return null;
+  const paid = paidAt != null && paidAt !== "" && paidAt !== 0;
+  return paid && !isQuoteDead(status) && !isQuotePaid(status) ? "pagado" : status;
+}
+
 export type PaymentTone = "neutral" | "info" | "warning" | "success" | "danger";
 
 /** Lo que el panel enseña de la inscripción sobre su presupuesto (solo lectura, derivado del presupuesto). */
