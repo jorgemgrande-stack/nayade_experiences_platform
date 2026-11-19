@@ -4,7 +4,7 @@
  * etapas visibles. Aplicación REAL del plano de control por HTTP; Stripe es el doble de siempre con la firma real del webhook.
  * La verificación contra Stripe TEST real está en scripts/stripe/contratacionSandboxE2E.ts (manual, con clave de pruebas).
  */
-import { describe, it, expect, beforeAll, afterAll } from "vitest";
+import { describe, it, expect, beforeAll, afterAll, vi } from "vitest";
 import crypto from "node:crypto";
 import http from "node:http";
 import type { AddressInfo } from "node:net";
@@ -24,6 +24,10 @@ import { MemoryCapabilityStore } from "./_core/capabilities/store";
 import { BUILTIN_MODULES } from "./_core/modules/builtin";
 import { seedElephantSource } from "./catalog/seed";
 import { MemoryTermsStore } from "./commercialTerms/store";
+import { TermsAcceptanceService } from "./commercialTerms/acceptance";
+import { FailureAlerts, configureFailureAlerts } from "./_core/ops/failureAlerts";
+import { STRIPE_FAILURE_RULES } from "./stripe/alerts";
+import { agreementDeferral, startAgreementConclusion, type TrialConclusionHook } from "./commercialTerms/trialDefer";
 import { MemoryTermsBillingStore } from "./commercialTerms/billingStore";
 import { CUSTOM_PRICING_SCOPE } from "./commercialTerms/permission";
 import { CUSTOM_SERVICE_PRODUCT_ID } from "./commercialTerms/stripeGateway";
@@ -49,6 +53,11 @@ interface Env {
   billingStore: MemoryTermsBillingStore;
   P: Record<string, number>;
   companyId: number;
+  /** Gancho que rellena la API real (mismo cableado que main.ts). */
+  hook: TrialConclusionHook;
+  subStore: MemorySubscriptionStore;
+  termsStore: MemoryTermsStore;
+  crmStore: MemoryCrmStore;
 }
 
 async function build(enabled: boolean): Promise<Env> {
@@ -71,7 +80,11 @@ async function build(enabled: boolean): Promise<Env> {
   }
   const admin = ROLE_SCOPES.admin.filter((s) => !s.startsWith("commerce:"));
   const billingStore = new MemoryTermsBillingStore();
+  const hook: TrialConclusionHook = { concludeDue: null };
+  const subStore = new MemorySubscriptionStore();
+  const termsStore = new MemoryTermsStore();
   const app = createControlPlaneApp({
+    trialConclusion: hook,
     tokens: [
       { id: "ana", sha256: hashToken(TOK.admin), scopes: [...admin], actorType: "operator" },
       { id: "comercial", sha256: hashToken(TOK.sales), scopes: [...ROLE_SCOPES.sales], actorType: "operator" },
@@ -85,7 +98,7 @@ async function build(enabled: boolean): Promise<Env> {
     platformTarget: "edge.example.com",
     crm: { service: crm, store: crmStore },
     web: { store: webStore },
-    subscriptions: { store: new MemorySubscriptionStore(), now: () => clock, terms: new MemoryTermsStore(), termsBilling: { enabled, store: billingStore } },
+    subscriptions: { store: subStore, now: () => clock, terms: termsStore, termsBilling: { enabled, store: billingStore } },
     external: { store: new MemoryExternalStore("test"), urls: { acceptance: PUBLIC, setupSuccess: `${PUBLIC}/autorizado`, setupCancel: `${PUBLIC}/cancelado`, portalReturn: `${PUBLIC}/portal` }, ipSalt: "sal-de-pruebas-para-seudonimizar-ips" },
     capabilities: new MemoryCapabilityStore(),
     orders: { store: new MemoryOrderStore(), payments: null },
@@ -104,7 +117,7 @@ async function build(enabled: boolean): Promise<Env> {
   } as never);
   const server = http.createServer(app);
   await new Promise<void>((r) => server.listen(0, "127.0.0.1", r));
-  return { server, port: (server.address() as AddressInfo).port, gw, stripeStore, billingStore, P, companyId: company.id };
+  return { server, port: (server.address() as AddressInfo).port, gw, stripeStore, billingStore, P, companyId: company.id, hook, subStore, termsStore, crmStore };
 }
 
 type Res = { status: number; json: any };
@@ -210,15 +223,19 @@ describe("contratación automática: aceptar → pagar → activar en la fecha p
   let on2: Env;
   let on3: Env;
   let on4: Env;
+  let on5: Env;
+  let off2: Env;
   beforeAll(async () => {
     on = await build(true);
     off = await build(false);
     on2 = await build(true);
     on3 = await build(true);
     on4 = await build(true);
+    on5 = await build(true);
+    off2 = await build(false);
   });
   afterAll(async () => {
-    for (const e of [on, off, on2, on3, on4]) {
+    for (const e of [on, off, on2, on3, on4, on5, off2]) {
       e.server.closeAllConnections();
       await new Promise<void>((r) => e.server.close(() => r()));
     }
@@ -480,6 +497,46 @@ describe("contratación automática: aceptar → pagar → activar en la fecha p
     expect((await stageOf(off, q.id)).chargeable).toBe(false);
   });
 
+  it("fin de prueba con el cobro deshabilitado (production hoy): activa SIN COBRO como incidencia explícita, una sola constancia, sin suspender y con la página diciendo la verdad", async () => {
+    const q = await quantum(off2);
+    const { token } = await accepted(off2, q);
+    // Durante la prueba: prueba vigente, contrato aceptado y pago pendiente de habilitar; ninguna incidencia
+    setClock(off2, q.trialEnd - 3 * DAY);
+    expect(await stageOf(off2, q.id)).toMatchObject({ stage: "payment_not_enabled", trialActive: true, trialEndsAt: q.trialEnd, incident: null, paymentMethodAuthorized: false, chargeable: false });
+    // Llega el instante: la prueba concluye (contrato aceptado) pero NO se presenta como cobrable ni se suspende nada
+    setClock(off2, q.trialEnd + 1000);
+    await call(off2, "POST", `/subscriptions/${q.id}/shadow`);
+    await call(off2, "POST", `/subscriptions/${q.id}/shadow`);
+    expect((await call(off2, "GET", `/subscriptions/${q.id}`)).json.subscription).toMatchObject({ status: "active", currentPeriodStart: q.trialEnd });
+    const st = await stageOf(off2, q.id);
+    expect(st).toMatchObject({ stage: "active_unbilled", trialActive: false, paymentMethodAuthorized: false, chargeable: false, paymentEnabled: false });
+    expect(st.label).toContain("sin cobro");
+    expect(st.incident).toContain("deshabilitado");
+    const events = (await call(off2, "GET", `/commercial-terms/${q.termsId}`)).json.events as Array<{ kind: string }>;
+    expect(events.filter((e) => e.kind === "trial_ended_unbilled")).toHaveLength(1);
+    expect(events.filter((e) => e.kind === "trial_ended")).toHaveLength(1);
+    const p = await page(off2, "GET", `/pago?token=${token}`);
+    expect(p.text).toContain("todavía no está habilitado");
+    expect(p.text).not.toContain("Método de pago confirmado");
+    expect(off2.gw.calls.length).toBe(0);
+  });
+
+  it("fin de prueba con el cobro habilitado pero sin método: activa sin cobro (incidencia), la página ofrece configurarlo y al hacerlo deja de ser incidencia", async () => {
+    const q = await quantum(on5);
+    const { token } = await accepted(on5, q);
+    setClock(on5, q.trialEnd + 1000);
+    await call(on5, "POST", `/subscriptions/${q.id}/shadow`);
+    const st = await stageOf(on5, q.id);
+    expect(st).toMatchObject({ stage: "active_unbilled", paymentMethodAuthorized: false, chargeable: false, paymentEnabled: true });
+    expect(st.incident).toContain("configurarlo");
+    const p = await page(on5, "GET", `/pago?token=${token}`);
+    expect(p.text).toContain("Tu prueba gratuita ha terminado");
+    const go = await page(on5, "POST", "/pago", { token });
+    expect([200, 303]).toContain(go.status);
+    // Nada se da por confirmado hasta el webhook verificado
+    expect((await stageOf(on5, q.id)).paymentMethodAuthorized).toBe(false);
+  });
+
   it("con menos de 48 h para el fin de la prueba Stripe no admite aplazar el primer cargo: mensaje claro y, terminada la prueba, el pago se configura con cobro inmediato", async () => {
     const q = await quantum(on3);
     const { token } = await accepted(on3, q);
@@ -612,5 +669,229 @@ describe("contratación automática: aceptar → pagar → activar en la fecha p
     await call(on4, "POST", `/subscriptions/${id}/shadow`);
     expect((await call(on4, "GET", `/subscriptions/${id}`)).json.subscription.currentPeriodStart).toBe(TRIAL_END);
     expect(await snap()).toBe(before);
+  });
+  // ── Fin de prueba con el cobro apagado, con el CABLEADO REAL (la API real rellena el gancho que usan las tareas) ──
+  const withEnv = async (enabled: boolean, fn: (env: Env) => Promise<void>) => {
+    const env = await build(enabled);
+    try {
+      await fn(env);
+    } finally {
+      env.server.closeAllConnections();
+      await new Promise<void>((r) => env.server.close(() => r()));
+    }
+  };
+  const unbilledEvents = async (env: Env, termsId: number) => ((await call(env, "GET", `/commercial-terms/${termsId}`)).json.events as Array<{ kind: string }>).filter((e) => e.kind === "trial_ended_unbilled");
+  const proposal = (env: Env, effectiveFrom: number) => ({
+    pricingMode: "global",
+    globalAmountCents: 5200,
+    presentation: "breakdown",
+    requiresAcceptance: true,
+    interval: "month",
+    effectiveFrom,
+    reason: "Propuesta de prueba",
+    lines: ["business", "connect-whatsapp-ai", "connect-voice"].map((k) => ({ kind: "catalog", productKey: k, priceId: env.P[k] })),
+  });
+
+  it("CABLEADO REAL · Stripe apagado: pasadas las 2 h la tarea concluye la prueba, mantiene el servicio activo y registra UNA incidencia; repetir no cambia nada, sin llamadas a Stripe ni cargos", async () => {
+    await withEnv(false, async (env) => {
+      const alerts = new FailureAlerts({ rules: STRIPE_FAILURE_RULES });
+      configureFailureAlerts(alerts);
+      const q = await quantum(env);
+      await accepted(env, q);
+      // La API real montó el gancho (no se inyecta a mano)
+      expect(typeof env.hook.concludeDue).toBe("function");
+      setClock(env, q.trialEnd + 3 * 3_600_000);
+      await env.hook.concludeDue!();
+      const first = (await call(env, "GET", `/subscriptions/${q.id}`)).json.subscription;
+      expect(first).toMatchObject({ status: "active", currentPeriodStart: q.trialEnd });
+      expect(await stageOf(env, q.id)).toMatchObject({ stage: "active_unbilled", paymentMethodAuthorized: false, chargeable: false });
+      expect(await unbilledEvents(env, q.termsId)).toHaveLength(1);
+      expect(alerts.count("stripe.negotiated_unbilled_access")).toBe(1);
+      // Idempotente: más ticks, mismo resultado
+      for (let i = 0; i < 3; i++) await env.hook.concludeDue!();
+      expect((await call(env, "GET", `/subscriptions/${q.id}`)).json.subscription).toEqual(first);
+      expect(await unbilledEvents(env, q.termsId)).toHaveLength(1);
+      expect(alerts.count("stripe.negotiated_unbilled_access")).toBe(1);
+      expect(env.gw.calls.length).toBe(0);
+      expect(await env.billingStore.bySubscription(q.id)).toBeNull();
+    });
+  });
+
+  it("MÚLTIPLES INSTANCIAS · dos barridos simultáneos concluyen una sola vez: una incidencia, una alerta, ningún «no se pudo terminar» y sin llamadas a Stripe", async () => {
+    await withEnv(false, async (env) => {
+      const alerts = new FailureAlerts({ rules: STRIPE_FAILURE_RULES });
+      configureFailureAlerts(alerts);
+      const q = await quantum(env);
+      await accepted(env, q);
+      setClock(env, q.trialEnd + 60_000);
+      await Promise.all([env.hook.concludeDue!(), env.hook.concludeDue!(), env.hook.concludeDue!()]);
+      expect((await call(env, "GET", `/subscriptions/${q.id}`)).json.subscription).toMatchObject({ status: "active", currentPeriodStart: q.trialEnd });
+      const events = (await call(env, "GET", `/commercial-terms/${q.termsId}`)).json.events as Array<{ kind: string }>;
+      expect(events.filter((e) => e.kind === "trial_ended_unbilled")).toHaveLength(1);
+      expect(events.filter((e) => e.kind === "trial_end_failed")).toHaveLength(0);
+      expect(alerts.count("stripe.negotiated_unbilled_access")).toBe(1);
+      expect(env.gw.calls.length).toBe(0);
+    });
+  });
+
+  it("CABLEADO REAL · estado EXACTO de Quantum (acuerdo aceptado antes de la regla, effectiveFrom < trialEnd): la tarea lo concluye en el fin exacto, una incidencia y el acuerdo intacto", async () => {
+    await withEnv(false, async (env) => {
+      const alerts = new FailureAlerts({ rules: STRIPE_FAILURE_RULES });
+      configureFailureAlerts(alerts);
+      const T0 = 1794603205769;
+      const TRIAL_END = 1795899205769;
+      const ACCEPTED = 1795083411768;
+      setClock(env, T0);
+      const s = await call(env, "POST", "/subscriptions", { body: { companyId: env.companyId, interval: "month", trialDays: 15, plan: { productKey: "essential", priceId: env.P.essential } } });
+      const id = s.json.subscription.id as number;
+      expect(s.json.subscription.trialEnd).toBe(TRIAL_END);
+      setClock(env, ACCEPTED - 5_000);
+      const draft = await call(env, "POST", `/subscriptions/${id}/terms`, { body: proposal(env, ACCEPTED + 99) });
+      expect(draft.status).toBe(201);
+      const termsId = draft.json.terms.id as number;
+      const req = await call(env, "POST", `/commercial-terms/${termsId}/acceptance`, { body: { signer: { name: "Indira Prueba", email: "indira@cliente.example" }, expectedRevision: draft.json.terms.revision } });
+      const token = String(req.json.url).split("token=")[1];
+      setClock(env, ACCEPTED);
+      expect((await page(env, "POST", "", { token, name: "Indira Prueba", accept: "1" })).status).toBe(200);
+      const snap = async () => {
+        const t = (await call(env, "GET", `/commercial-terms/${termsId}`)).json.terms;
+        return JSON.stringify({ a: t.acceptanceStatus, e: t.effectiveFrom, g: t.globalAmountCents, l: t.lines.map((l: any) => [l.productKey, l.negotiatedUnitCents]) });
+      };
+      const before = await snap();
+      // Antes del fin: prueba vigente sin incidencia
+      setClock(env, TRIAL_END - 1000);
+      await env.hook.concludeDue!();
+      expect((await call(env, "GET", `/subscriptions/${id}`)).json.subscription.status).toBe("trialing");
+      expect(await unbilledEvents(env, termsId)).toHaveLength(0);
+      // Pasadas más de 2 h del fin
+      setClock(env, TRIAL_END + 3 * 3_600_000);
+      await env.hook.concludeDue!();
+      await env.hook.concludeDue!();
+      expect((await call(env, "GET", `/subscriptions/${id}`)).json.subscription).toMatchObject({ status: "active", currentPeriodStart: TRIAL_END });
+      expect(await stageOf(env, id)).toMatchObject({ stage: "active_unbilled" });
+      expect(await unbilledEvents(env, termsId)).toHaveLength(1);
+      expect(alerts.count("stripe.negotiated_unbilled_access")).toBe(1);
+      expect(await snap()).toBe(before);
+      expect(env.gw.calls.length).toBe(0);
+    });
+  });
+
+  it("CABLEADO REAL · la tarea de pruebas difiere solo con acuerdo aceptado y gancho montado, y concluye ya esa suscripción (consulta acotada por empresa y tenant)", async () => {
+    await withEnv(false, async (env) => {
+      const tenant = "t-cableado";
+      await env.crmStore.update("companies", env.companyId, { tenantId: tenant, updatedAt: clock } as never);
+      const defer = agreementDeferral({
+        companyOfTenant: async (t) => ((await env.crmStore.list("companies", { tenantId: t } as never, { limit: 1 })) as Array<{ id: number }>)[0] ?? null,
+        subscriptions: env.subStore,
+        terms: env.termsStore,
+        conclusion: env.hook,
+      });
+      setClock(env, START);
+      const s = await call(env, "POST", "/subscriptions", { body: { companyId: env.companyId, interval: "month", trialDays: 27, plan: { productKey: "essential", priceId: env.P.essential } } });
+      const id = s.json.subscription.id as number;
+      // La suscripción de la prueba lleva el tenant de la empresa (así la crea el alta real)
+      (env.subStore as any).subs.get(id).tenantId = tenant;
+      const trialEnd = s.json.subscription.trialEnd as number;
+      // Sin acuerdo: no difiere
+      expect(await defer({ tenantId: tenant })).toBe(false);
+      const draft = await call(env, "POST", `/subscriptions/${id}/terms`, { body: proposal(env, trialEnd) });
+      const req = await call(env, "POST", `/commercial-terms/${draft.json.terms.id}/acceptance`, { body: { signer: { name: "Indira Prueba", email: "indira@cliente.example" }, expectedRevision: draft.json.terms.revision } });
+      // Propuesta enviada, aún sin aceptar: no difiere
+      expect(await defer({ tenantId: tenant })).toBe(false);
+      expect((await page(env, "POST", "", { token: String(req.json.url).split("token=")[1], name: "Indira Prueba", accept: "1" })).status).toBe(200);
+      // Aceptado, antes del fin: difiere y NO concluye antes de tiempo
+      expect(await defer({ tenantId: tenant })).toBe(true);
+      expect((await call(env, "GET", `/subscriptions/${id}`)).json.subscription.status).toBe("trialing");
+      // Otro tenant o sin tenant: no
+      expect(await defer({ tenantId: "t-otro" })).toBe(false);
+      expect(await defer({ tenantId: null })).toBe(false);
+      // Llegado el instante, el propio aplazamiento concluye la suscripción en el fin exacto
+      setClock(env, trialEnd + 1000);
+      expect(await defer({ tenantId: tenant })).toBe(true);
+      expect((await call(env, "GET", `/subscriptions/${id}`)).json.subscription).toMatchObject({ status: "active", currentPeriodStart: trialEnd });
+      // Sin gancho montado, nadie concluiría: no difiere (el vencimiento sigue como siempre)
+      const unmounted = agreementDeferral({ companyOfTenant: async () => ({ id: env.companyId }), subscriptions: env.subStore, terms: env.termsStore, conclusion: { concludeDue: null } });
+      expect(await unmounted({ tenantId: tenant })).toBe(false);
+    });
+  });
+
+  it("regresión: sin prueba terminada con ESTE acuerdo, la etapa no es «activa sin cobro» (suscripción sin prueba o acuerdo programado futuro)", async () => {
+    await withEnv(false, async (env) => {
+      setClock(env, START);
+      // Suscripción de pago (sin prueba) con un acuerdo aceptado que entra en vigor en el futuro
+      const s = await call(env, "POST", "/subscriptions", { body: { companyId: env.companyId, interval: "month", trialDays: 0, plan: { productKey: "essential", priceId: env.P.essential } } });
+      expect(s.status).toBe(201);
+      const id = s.json.subscription.id as number;
+      const draft = await call(env, "POST", `/subscriptions/${id}/terms`, { body: proposal(env, START + 10 * DAY) });
+      expect(draft.status).toBe(201);
+      await accepted(env, { id, trialEnd: START, termsId: draft.json.terms.id, revision: draft.json.terms.revision });
+      const st = await stageOf(env, id);
+      expect(["payment_not_enabled", "payment_pending"]).toContain(st.stage);
+      expect(st.incident).toBeNull();
+    });
+  });
+
+  it("el temporizador propio concluye por barrido, se puede apagar y nunca lanza (no depende del worker de Stripe)", async () => {
+    vi.useFakeTimers();
+    try {
+      let runs = 0;
+      const hook: TrialConclusionHook = { concludeDue: async () => void runs++ };
+      expect(startAgreementConclusion({ conclusion: hook, env: { CP_TERMS_AUTO_CONCLUDE: "0" } as NodeJS.ProcessEnv })).toBeNull();
+      const h = startAgreementConclusion({ conclusion: hook, env: {} as NodeJS.ProcessEnv })!;
+      await vi.advanceTimersByTimeAsync(5 * 60_000 + 10);
+      await vi.advanceTimersByTimeAsync(5 * 60_000);
+      expect(runs).toBe(2);
+      hook.concludeDue = async () => {
+        throw new Error("falla");
+      };
+      await vi.advanceTimersByTimeAsync(5 * 60_000);
+      hook.concludeDue = async () => void runs++;
+      await vi.advanceTimersByTimeAsync(5 * 60_000);
+      expect(runs).toBe(3);
+      h.stop();
+      await vi.advanceTimersByTimeAsync(10 * 60_000);
+      expect(runs).toBe(3);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("flagUnbilled robusto: sin estado del cobro o sin constancia guardada no hay incidencia (solo aviso técnico)", async () => {
+    const alerts = new FailureAlerts({ rules: STRIPE_FAILURE_RULES });
+    configureFailureAlerts(alerts);
+    const logged: string[] = [];
+    const mk = (logFails: boolean) =>
+      new TermsAcceptanceService({
+        termsStore: {
+          events: async () => [],
+          log: async (_id: number, e: { kind: string }) => {
+            if (logFails) throw new Error("bd");
+            logged.push(e.kind);
+          },
+        },
+        now: () => 1,
+      } as never);
+    const t = { id: 7 } as never;
+    const unbilled = { stage: "payment_pending", label: "x", paymentMethodAuthorized: false, nextChargeAt: null, activationAt: null, recurring: null };
+    // 1. el probe lanza → no se marca
+    const a = mk(false);
+    a.attachPayment({ enabled: () => true, isCheckoutUrl: () => true, start: async () => ({}) as never, stage: async () => { throw new Error("stripe caído"); } } as never);
+    await (a as any).flagUnbilled(t, 1);
+    expect(logged).toEqual([]);
+    expect(alerts.count("stripe.negotiated_unbilled_access")).toBe(0);
+    // 2. sin cobro montado → no se marca
+    await (mk(false) as any).flagUnbilled(t, 1);
+    expect(alerts.count("stripe.negotiated_unbilled_access")).toBe(0);
+    // 3. la constancia no se guarda → no hay alerta
+    const c = mk(true);
+    c.attachPayment({ enabled: () => true, isCheckoutUrl: () => true, start: async () => ({}) as never, stage: async () => unbilled } as never);
+    await (c as any).flagUnbilled(t, 1);
+    expect(alerts.count("stripe.negotiated_unbilled_access")).toBe(0);
+    // 4. camino feliz: constancia guardada + una alerta
+    const d = mk(false);
+    d.attachPayment({ enabled: () => true, isCheckoutUrl: () => true, start: async () => ({}) as never, stage: async () => unbilled } as never);
+    await (d as any).flagUnbilled(t, 1);
+    expect(logged).toEqual(["trial_ended_unbilled"]);
+    expect(alerts.count("stripe.negotiated_unbilled_access")).toBe(1);
   });
 });

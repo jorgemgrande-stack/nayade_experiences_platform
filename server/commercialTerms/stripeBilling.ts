@@ -61,7 +61,7 @@ const TERMS_END_ALERT_EVERY_MS = DAY;
 /** Margen mínimo para aplazar el primer cargo (Stripe exige 48 h para `trial_end` en Checkout; se deja holgura). */
 const AHEAD_MIN_MS = 49 * 3600_000;
 
-export type ContractingStageKey = "no_agreement" | "proposal_pending" | "payment_pending" | "payment_not_enabled" | "payment_processing" | "activation_scheduled" | "active" | "payment_failed" | "grace" | "suspended" | "canceled";
+export type ContractingStageKey = "no_agreement" | "proposal_pending" | "payment_pending" | "payment_not_enabled" | "payment_processing" | "activation_scheduled" | "active" | "active_unbilled" | "payment_failed" | "grace" | "suspended" | "canceled";
 const STAGE_LABELS: Record<ContractingStageKey, string> = {
   no_agreement: "Sin condiciones personalizadas",
   proposal_pending: "Propuesta pendiente de aceptación",
@@ -70,6 +70,7 @@ const STAGE_LABELS: Record<ContractingStageKey, string> = {
   payment_processing: "Método de pago en confirmación por Stripe",
   activation_scheduled: "Método autorizado · activación programada",
   active: "Suscripción activa",
+  active_unbilled: "Activa sin cobro · incidencia: falta método de pago o cobro habilitado",
   payment_failed: "Pago fallido",
   grace: "Pago fallido · periodo de gracia",
   suspended: "Suspendida por impago",
@@ -89,6 +90,13 @@ export interface ContractingStage {
   stripeStatus: string | null;
   billingStatus: string | null;
   paymentEnabled: boolean;
+  /** Prueba gratuita todavía vigente (el acuerdo aceptado la respeta hasta su fin exacto). */
+  trialActive: boolean;
+  trialEndsAt: number | null;
+  /** Próxima renovación de la suscripción (con cobro enlazado: la de Stripe). */
+  renewalAt: number | null;
+  /** Incidencia de cobro que requiere acción (null: ninguna). */
+  incident: string | null;
 }
 
 export class NegotiatedBillingError extends Error {
@@ -1093,6 +1101,9 @@ export class NegotiatedBillingService {
     else if (row && LINKED_STATES.includes(row.status)) {
       stage = row.status === "suspended" ? "suspended" : row.status === "past_due" ? (row.graceEndsAt !== null && row.graceEndsAt > now ? "grace" : "payment_failed") : row.stripeStatus === "trialing" || sub.status === "trialing" ? "activation_scheduled" : "active";
     } else if (row?.status === "canceled") stage = "canceled";
+    // Prueba ya terminada (acuerdo aceptado en vigor) y NINGÚN método autorizado: acceso sin cobro posible. Nunca se presenta como cobrable
+    // Solo cuando CONSTA que la prueba terminó con este acuerdo (suscripciones sin prueba o acuerdos futuros siguen como pendientes de pago)
+    else if (sub.status === "active" && !(row && row.status === "pending" && (row.sessionStatus === "complete" || row.stripeSubscriptionId)) && (await this.d.termsStore.events({ termsId: inForce.id })).some((e) => e.kind === "trial_ended" || e.kind === "trial_ended_unbilled")) stage = "active_unbilled";
     // «En confirmación» solo con el primer pago realmente en curso; un primer pago rechazado (fila abandonada) vuelve a poder reintentarse
     else if (row && row.status === "pending" && (row.sessionStatus === "complete" || row.stripeSubscriptionId)) stage = "payment_processing";
     else stage = this.d.enabled ? "payment_pending" : "payment_not_enabled";
@@ -1110,6 +1121,10 @@ export class NegotiatedBillingService {
       stripeStatus: row?.stripeStatus ?? null,
       billingStatus: row?.status ?? null,
       paymentEnabled: this.d.enabled,
+      trialActive: sub.status === "trialing",
+      trialEndsAt: sub.status === "trialing" ? sub.trialEnd : null,
+      renewalAt: authorized ? row!.currentPeriodEnd : sub.status === "active" ? sub.currentPeriodEnd : null,
+      incident: stage === "active_unbilled" ? (this.d.enabled ? "La prueba terminó y no hay método de pago autorizado: el cliente debe configurarlo (enlace de aceptación) o el equipo decidir" : "La prueba terminó y el cobro de condiciones personalizadas está deshabilitado: el acceso sigue sin cobro hasta habilitarlo") : stage === "payment_failed" || stage === "grace" || stage === "suspended" ? "Incidencia de cobro en Stripe: revisar el estado del pago" : null,
     };
   }
 
