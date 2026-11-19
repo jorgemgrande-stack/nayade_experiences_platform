@@ -43,6 +43,8 @@ describe.skipIf(!URL_)("LMS: borrador + matrícula técnica + vista previa de ad
     (await import("./_core/files/service")).setFileServiceForTests(null);
 
     ess = await startEssentialApp(URL_!, "lmsprev");
+    // El contenido de formación tiene su propia cuota (0 por defecto): el operador la concede de forma expresa
+    await ess.grantQuotaException("a", "learning_storage_gb", 25);
     adm = await ess.login("a", "admin");
     stu = await ess.login("a", "user");
     stu2 = await ess.login("a", "agente");

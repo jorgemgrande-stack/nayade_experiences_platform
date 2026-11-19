@@ -834,8 +834,10 @@ export async function createMediaFile(data: {
 export async function deleteMediaFile(id: number) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
+  const [row] = await db.select({ url: mediaFiles.url, fileKey: mediaFiles.fileKey }).from(mediaFiles).where(eq(mediaFiles.id, id)).limit(1);
   await db.delete(mediaFiles).where(eq(mediaFiles.id, id));
-  return { success: true };
+  // El llamador decide qué hacer con el objeto almacenado (ver cms.deleteMediaFile): la fila de biblioteca ya no existe
+  return { success: true, url: row?.url ?? null, fileKey: row?.fileKey ?? null };
 }
 
 // --- ADMIN: EXPERIENCES -------------------------------------------------------

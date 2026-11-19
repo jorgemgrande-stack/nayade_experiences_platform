@@ -187,6 +187,30 @@ describe("tarea programada", () => {
     expect((await store.events(t.id)).filter((e) => e.action === "mark_expired")).toEqual([expect.objectContaining({ actor: "system:trial-scheduler" })]);
   });
 
+  it("prueba con un acuerdo aceptado: no se marca vencida ni se avisa «tu prueba ha terminado» durante el margen de la conclusión; pasado el margen, vence como siempre (nunca queda abierta)", async () => {
+    const t = await activeTrial("acuerdo@hotel.es", "hotel-acuerdo");
+    const seen: string[] = [];
+    const s = new TrialScheduler({ store, notify, lock: memoryLock(), now: () => clock, log: () => undefined, deferExpiry: async (x) => (seen.push(x.tenantId ?? ""), true) });
+    const before = sent.filter((m) => m.kind === "expiry" && m.data.daysLeft === 0).length;
+    clock = t.endsAt! + 1000;
+    expect(await s.tick()).toMatchObject({ expired: 0, errors: 0 });
+    clock = t.endsAt! + 90 * 60_000;
+    expect(await s.tick()).toMatchObject({ expired: 0 });
+    expect((await svc.must(t.id)).state).toBe("active");
+    expect(sent.filter((m) => m.kind === "expiry" && m.data.daysLeft === 0)).toHaveLength(before);
+    expect(seen).toContain("hotel-acuerdo");
+    clock = t.endsAt! + 2 * 60 * 60_000 + 1000;
+    expect(await s.tick()).toMatchObject({ expired: 1 });
+    expect((await svc.must(t.id)).state).toBe("expired");
+  });
+
+  it("si la consulta del acuerdo falla, la prueba vence como siempre (un error nunca la deja abierta)", async () => {
+    const t = await activeTrial("error@hotel.es", "hotel-error");
+    const s = new TrialScheduler({ store, notify, lock: memoryLock(), now: () => clock, log: () => undefined, deferExpiry: async () => { throw new Error("sin conexión"); } });
+    clock = t.endsAt! + 1000;
+    expect(await s.tick()).toMatchObject({ expired: 1 });
+  });
+
   it("prueba de 15 días completa: avisos a 7, 3 y 1 días y el de vencimiento, uno de cada; nada antes de los 7 días", async () => {
     const t = await activeTrial("completa@hotel.es", "hotel-completa");
     const s = scheduler();

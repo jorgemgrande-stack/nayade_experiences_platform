@@ -23,6 +23,7 @@ import rateLimit, { ipKeyGenerator } from "express-rate-limit";
 import { z } from "zod";
 import { getAuth, requireScope } from "../controlPlane/auth";
 import { opsLog } from "../_core/ops/log";
+import { recordFailure } from "../_core/ops/failureAlerts";
 import type { CrmService } from "../crm/service";
 import type { CrmStore } from "../crm/store";
 import { CONTRACT_CSS, contractHeaderHtml } from "../external/presentation";
@@ -59,7 +60,7 @@ const TRIAL_END_REASON = "Condiciones particulares aceptadas";
 /** Estados de una prueba gratuita que admiten la conversión (server/trials/machine.ts). */
 const OPEN_TRIAL = new Set(["active", "expired"]);
 /** Partida del plan Core (la misma regla que el servicio de condiciones). */
-const isPlanLine = (l: Pick<TermsRecord["lines"][number], "kind" | "chargeClass" | "catalog">) => l.kind === "catalog" && l.chargeClass === "recurring" && l.catalog?.family === "core_plan";
+export const isPlanLine = (l: Pick<TermsRecord["lines"][number], "kind" | "chargeClass" | "catalog">) => l.kind === "catalog" && l.chargeClass === "recurring" && l.catalog?.family === "core_plan";
 /** Estados del correo que significan «en camino» (encolado, enviándose, aceptado por el proveedor o entregado). */
 const MAIL_OK = new Set(["pending", "sending", "accepted", "delivered"]);
 /** Motivo legible de un correo que no salió (los códigos son los de la bandeja de salida). */
@@ -709,6 +710,9 @@ export class TermsAcceptanceService {
       try {
         await this.d.subscriptions.endTrial(sub.id, { reason: TRIAL_END_REASON, ...(due ? { at: due.start } : {}) }, sub.version, ACTOR);
       } catch (e) {
+        // Otra instancia (o un operador) ya la terminó a la vez: no es un fallo, no se deja constancia ni se sigue (la ganadora concluye el resto)
+        const now = await this.d.subscriptionStore.get(sub.id).catch(() => null);
+        if (now && now.status !== "trialing") return;
         opsLog("warn", "CommercialTerms", "trial_end_failed", { termsId: t.id, subscriptionId, error: e instanceof Error ? e.name : "error" });
         await this.logTrial(t.id, "trial_end_failed", `No se pudo terminar la prueba gratuita: ${(e instanceof Error ? e.message : "error").slice(0, 300)}. Termínala desde el CRM`, { subscriptionId }, "failed");
         return;
@@ -726,8 +730,29 @@ export class TermsAcceptanceService {
       await this.logTrial(t.id, "trial_ended", what, { subscriptionId, trialEnded: true, trialId: converted ?? openTrial?.id ?? null, trialConverted: converted !== null }, converted !== null || !openTrial ? "applied" : "partial");
       // Las licencias del acuerdo (las de la prueba se sustituyen por las contratadas)
       if (this.d.licences) await this.d.licences.afterChange(subscriptionId, ACTOR).catch(() => undefined);
+      await this.flagUnbilled(t, subscriptionId);
     } catch (e) {
       opsLog("warn", "CommercialTerms", "trial_conclusion_failed", { termsId: t.id, subscriptionId, error: e instanceof Error ? e.name : "error" });
+    }
+  }
+
+  /**
+   * Fin de prueba con acuerdo aceptado y SIN método de pago autorizado (o con el cobro deshabilitado): la empresa no pasa
+   * en silencio a un plan de pago sin cobro posible. Se mantiene el acceso (no se suspende nada: el contrato está aceptado y
+   * las condiciones y los periodos de gracia son los pactados), la etapa pasa a «activa sin cobro» (incidencia) y se avisa
+   * UNA vez al equipo. Nunca lanza.
+   */
+  private async flagUnbilled(t: TermsRecord, subscriptionId: number) {
+    try {
+      // Sin el estado real del cobro no se afirma nada: solo un aviso en el registro técnico (nunca una incidencia por un fallo de lectura)
+      const st = this.payment ? await this.payment.stage(subscriptionId).catch(() => null) : null;
+      if (!st) return void opsLog("warn", "CommercialTerms", "unbilled_state_unknown", { termsId: t.id, subscriptionId, payment: !!this.payment });
+      if (st.paymentMethodAuthorized) return;
+      if (await this.hasEvent(t.id, "trial_ended_unbilled")) return;
+      const saved = await this.logTrial(t.id, "trial_ended_unbilled", "La prueba terminó con las condiciones aceptadas y sin método de pago autorizado ni cobro posible: el acceso se mantiene (modo sombra, sin cobro) y consta como incidencia de cobro. No se suspende nada.", { subscriptionId, paymentEnabled: this.payment ? this.payment.enabled() : false, stage: st.stage }, "partial");
+      if (saved) recordFailure("stripe.negotiated_unbilled_access");
+    } catch (e) {
+      opsLog("warn", "CommercialTerms", "unbilled_flag_failed", { termsId: t.id, subscriptionId, error: e instanceof Error ? e.name : "error" });
     }
   }
 
@@ -822,8 +847,9 @@ export class TermsAcceptanceService {
     return (await this.d.termsStore.events({ termsId }).catch(() => [])).some((e) => e.kind === kind);
   }
 
-  private async logTrial(termsId: number, kind: string, reason: string, after: unknown, result: string) {
-    await this.d.termsStore.log(termsId, { kind, actor: ACTOR, reason: reason.slice(0, 500), before: null, after, effectiveAt: null, acceptanceStatus: "accepted", syncResult: result, economic: null }, this.now()).catch(() => undefined);
+  /** Devuelve si la constancia se guardó (la incidencia de cobro solo se avisa si consta). */
+  private async logTrial(termsId: number, kind: string, reason: string, after: unknown, result: string): Promise<boolean> {
+    return this.d.termsStore.log(termsId, { kind, actor: ACTOR, reason: reason.slice(0, 500), before: null, after, effectiveAt: null, acceptanceStatus: "accepted", syncResult: result, economic: null }, this.now()).then(() => true, () => false);
   }
 
   /**
@@ -954,6 +980,8 @@ function paymentBody(token: string, v: PaymentViewData): string {
     return `${head}<p>El paso para configurar tu método de pago todavía no está habilitado. Tu contacto de Big Elephant te avisará cuando puedas completarlo. No tienes que enviar datos bancarios por correo.</p>`;
   }
   switch (st.stage) {
+    case "active_unbilled":
+      return `${head}<section class="accept"><h3>Tu prueba gratuita ha terminado</h3><p>Tu servicio sigue activo, pero todavía no tenemos un método de pago autorizado para tu suscripción (cuota: ${fee}). Configúralo en la página segura de Stripe para regularizarla: al hacerlo autorizas los cobros periódicos de esa cuota y el primer cobro se realiza al completar el pago. Big Elephant no almacena datos bancarios.</p><form method="post" action="pago"><input type="hidden" name="token" value="${esc(token)}"><div class="actions"><button class="btn" type="submit">Configurar método de pago</button></div></form></section><p class="muted">${help}</p>`;
     case "payment_pending":
       return `${head}<section class="accept"><h3>Configura tu método de pago</h3><p>Se te llevará a la página segura de Stripe para introducir tu tarjeta u otro medio de pago disponible. Big Elephant no almacena datos bancarios.</p><p>Al configurarlo autorizas los cobros periódicos de ${fee}, con el primer cobro ${when}. Puedes cancelar según las condiciones aceptadas.</p><form method="post" action="pago"><input type="hidden" name="token" value="${esc(token)}"><div class="actions"><button class="btn" type="submit">Configurar método de pago</button></div></form><p class="muted">Si cierras Stripe sin terminar, o el pago no se completa, tu contrato sigue aceptado y puedes retomar este paso desde este mismo enlace.</p></section>`;
     case "payment_processing":

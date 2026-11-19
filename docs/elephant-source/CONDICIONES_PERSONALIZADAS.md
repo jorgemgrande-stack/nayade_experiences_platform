@@ -1108,6 +1108,35 @@ Regla vigente para **cualquier suscripción en prueba con un acuerdo aceptado (e
 **Inventario previo al despliegue (solo lectura):** acuerdos aceptados sobre suscripciones en prueba (hoy solo la suscripción 8 de Quantum; la 6 no
 tiene acuerdos): `GET /cp/v1/commercial-terms?status=scheduled&companyId=<empresa>` y `GET /cp/v1/subscriptions/<id>` (`status = trialing`).
 
+### Fin de prueba sin método de pago o con el cobro deshabilitado (22/11/2026)
+
+Quedó explícito y seguro, sin suspender nada y sin tocar acuerdos históricos:
+
+| Situación | Qué ocurre |
+|---|---|
+| Prueba vigente con acuerdo aceptado | La prueba y sus licencias siguen hasta el instante exacto; etapa `payment_pending` / `payment_not_enabled` con `trialActive` y `trialEndsAt`. Sin incidencia. |
+| Llega el fin, método autorizado (Stripe) | Primer cobro en ese instante (webhook), prueba concluida, etapa `active`. |
+| Llega el fin, **sin método** o con el cobro **deshabilitado** | La prueba concluye por contrato (modo sombra, **sin cobro**) y la suscripción pasa a la etapa **`active_unbilled`** («Activa sin cobro · incidencia»), con `incident` explicando por qué. Se deja **una** constancia `trial_ended_unbilled` en el acuerdo y **un** aviso a administración (`stripe.negotiated_unbilled_access` → incidencia de cobro). **No se suspende nada**: el contrato está aceptado y las condiciones, periodos de gracia y política de acceso son los pactados. |
+| Cliente configura el método después | `/pago` abre el Checkout (cobro inmediato del periodo: la suscripción ya está activa); hasta el webhook verificado sigue sin constar como autorizado. |
+
+La tarea de pruebas gratuitas (`CP_TRIALS_SCHEDULER_ENABLED`) **no marca vencida ni avisa «tu prueba ha terminado»** a una prueba con acuerdo aceptado con plan durante 2 h tras su fin (margen para que la conclusión la haga su tarea); pasado ese margen vence como siempre, así que nunca queda abierta. Un error al consultar el acuerdo cuenta como «sin acuerdo».
+
+Etapas completas: `proposal_pending`, `payment_pending`, `payment_not_enabled`, `payment_processing`, `activation_scheduled`, `active`, `active_unbilled`, `payment_failed`, `grace`, `suspended`, `canceled`. Nuevos campos de `contracting`: `trialActive`, `trialEndsAt`, `renewalAt`, `incident`.
+
+### La conclusión no depende del worker de Stripe ni de la tarea de pruebas (22/11/2026)
+
+`concludeDue` ya no corre solo dentro de `CP_STRIPE_WORKER_ENABLED`. Tres disparadores, todos idempotentes y sin llamadas a Stripe:
+
+1. **Temporizador propio** (`startAgreementConclusion`, `server/commercialTerms/trialDefer.ts`): barrido cada 5 min desde el arranque del plano de control.
+   Se apaga con `CP_TERMS_AUTO_CONCLUDE=0` (intervalo: `CP_TERMS_AUTO_CONCLUDE_INTERVAL_MS`, 1 min – 1 h). No necesita ni el worker de Stripe ni la tarea de pruebas.
+2. **Tarea de pruebas** (`agreementDeferral`): si está encendida y la prueba tiene un acuerdo aceptado con plan, concluye ya esa suscripción (consulta acotada por
+   empresa y tenant de UNA prueba) y difiere el vencimiento; sin el gancho montado no difiere (vence como siempre).
+3. El worker de Stripe, el webhook del primer cobro y la simulación de la suscripción, como antes.
+
+`stage()` marca `active_unbilled` **solo** si consta que la prueba terminó con ese acuerdo (`trial_ended` / `trial_ended_unbilled`); una suscripción sin prueba o un
+acuerdo programado futuro siguen en `payment_pending` / `payment_not_enabled`. La constancia `trial_ended_unbilled` y la alerta solo se emiten si el estado del
+cobro se pudo leer y la constancia se guardó.
+
 ### Decisión de negocio pendiente (sin cambio de comportamiento)
 
 Si el cliente llega a `effectiveFrom` **sin método de pago autorizado**, el acuerdo aceptado igualmente concluye la prueba en su
@@ -1144,3 +1173,24 @@ y reintentos del primer cobro real. No requiere migración, pero toca el núcleo
 suscripciones, con interruptores de production), por lo que **no se ha hecho en este PR**; debe abrirse como PR propio con sus pruebas contra
 Stripe TEST y aprobación expresa. Mientras tanto, el cliente en prueba que quiera conservar sus días restantes debe contratar por una oferta
 particular (esta regla), no por la compra directa.
+
+### Marketplace sobre este mismo circuito: diseño propuesto (22/11/2026, sin implementar)
+
+Reutilizar el circuito de condiciones en lugar de reescribir el pago ordinario (un solo circuito de cobro, sin segundo):
+
+1. El panel (`panelConversion`) no abre el Checkout ordinario para una empresa **en prueba**: crea sobre su suscripción unas condiciones
+   **estándar** (partidas del catálogo a precio oficial, sin descuento, `effectiveFrom` = fin exacto de la prueba, `requiresAcceptance`).
+2. La aceptación es la del panel: el usuario autenticado (rol comprobado por el Core) marca las condiciones publicadas y el contrato; se
+   registra con el mismo expediente (firmante, fecha, huella). Hace falta una decisión legal de Dirección sobre aceptar con sesión de panel
+   en lugar de enlace por correo.
+3. El pago es el **Checkout de condiciones** ya construido (`/pago`, `trial_end` = fin de prueba, método sin cargo anticipado, webhook, conciliación,
+   etapas, `concludeDue`): prueba respetada, primer cargo automático en la fecha efectiva y estado consultable en `contracting`.
+4. Cambio de plan o conector: unas condiciones nuevas que sustituyen a las vigentes (mecanismo existente `supersede`); la suscripción de Stripe
+   es la misma (`applyItems`), sin duplicar.
+5. Sin cambios en `events.ts`, `checkout.ts` ni el orquestador: no se toca el cobro ordinario de pedidos. Las compras de un cliente **ya de pago**
+   siguen por el circuito ordinario.
+
+Impedimentos a resolver antes: la decisión legal del punto 2, el interruptor `CP_CUSTOM_TERMS_BILLING_ENABLED` (protegido) y que el cliente
+Marketplace en prueba pase por la página de pago de condiciones. Cambios previstos: `panelConversion.ts` (rama «en prueba»), un alta de condiciones
+estándar con aceptación de sesión en `acceptance.ts`, y pruebas con el doble de Stripe + Stripe TEST. Es código de cobros: se clasificará con
+`esRailway.ts changes --production` y, si resulta protegido, requerirá el procedimiento protegido.
