@@ -22,6 +22,17 @@ describe("formulario rellenado desde el enlace", () => {
     expect(formPrefill(fields, "experiencia=viaje%20del%20alma&modalidad=2 o mas personas")).toEqual({ f1: "Viaje del Alma", f2: "2 o más personas" });
     expect(formPrefill(fields, "experiencia=Retiro de Ano Nuevo")).toEqual({ f1: "Retiro de Año Nuevo" });
   });
+  it("el parámetro puede ser una palabra de la pregunta si identifica un solo campo", () => {
+    const f = [
+      { kind: "text", label: "Nombre", options: "" },
+      { kind: "select", label: "¿Qué experiencia te interesa?", options: "Viaje del Alma\nRetiro de Año Nuevo" },
+      { kind: "select", label: "¿Cuántas personas?", options: "1 persona\n2 personas" },
+    ];
+    expect(formPrefill(f, "experiencia=Viaje del Alma&personas=2 personas")).toEqual({ f1: "Viaje del Alma", f2: "2 personas" });
+    // «te» está en una sola pregunta; «que» también, pero dos campos con la misma palabra no se adivinan
+    const dup = [...f, { kind: "select", label: "Otra experiencia", options: "Viaje del Alma" }];
+    expect(formPrefill(dup, "experiencia=Viaje del Alma")).toEqual({});
+  });
   it("no escribe en campos de texto ni acepta valores que no son una opción", () => {
     expect(formPrefill(fields, "nombre=Ana&experiencia=Otra cosa&modalidad=")).toEqual({});
     expect(formPrefill(fields, "")).toEqual({});
