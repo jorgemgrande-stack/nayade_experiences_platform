@@ -111,6 +111,22 @@
 				header_up X-Forwarded-For {client_ip}
 			}
 		}
+		# Webhook de Stripe Connect (cobros con la cuenta de cada empresa): Stripe no puede enviar contraseña básica. Es la
+		# ÚNICA ruta abierta además de /api/central/*: solo POST, solo esta ruta exacta, cuerpo limitado; la autenticación es
+		# la firma del evento (secreto del destino, verificada por el Core antes de hacer nada; sin firma válida, 400).
+		handle /api/stripe/connect/webhook {
+			@not_post not method POST
+			respond @not_post "Method Not Allowed" 405
+			header Cache-Control "no-store"
+			request_body {
+				max_size 1MB
+			}
+			reverse_proxy {$UPSTREAM} {
+				header_up -Authorization
+				header_up -Cookie
+				header_up X-Forwarded-For {client_ip}
+			}
+		}
 		handle {
 			root * /srv/app-entry
 			try_files {path} /index.html
