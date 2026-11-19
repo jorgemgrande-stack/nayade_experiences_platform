@@ -18,7 +18,7 @@ import { effectiveStatus } from "@shared/learning";
 
 const fmt = (ms: number | null) => (ms ? new Intl.DateTimeFormat("es-ES", { dateStyle: "medium", timeStyle: "short", timeZone: "Europe/Madrid" }).format(new Date(ms)) : "Sin caducidad");
 const STATUS_LABEL: Record<string, string> = { active: "Activa", scheduled: "Programada", expired: "Caducada", suspended: "Suspendida", revoked: "Revocada" };
-type Tab = "matriculas" | "cursos" | "reglas" | "demo";
+type Tab = "matriculas" | "cursos" | "reglas" | "demo" | "tecnica";
 
 function ReasonDialog({ title, withDate, onClose, onSubmit }: { title: string; withDate?: boolean; onClose: () => void; onSubmit: (v: { reason: string; date: string }) => void }) {
   const [reason, setReason] = useState("");
@@ -138,6 +138,7 @@ function Courses() {
           <div className="flex flex-wrap items-center justify-between gap-2">
             <h2 className="text-lg font-semibold">{c.title} <Badge variant="secondary">{c.status === "draft" ? "Borrador (privado)" : c.status === "published" ? "Publicado" : "Archivado"}</Badge></h2>
             <div className="flex gap-2">
+              <Button size="sm" variant="secondary" asChild><a href={`/admin/formacion/vista-previa/curso/${c.id}`}>Vista previa como alumno</a></Button>
               {c.status !== "published" && <Button size="sm" disabled={c.coverage.files.pending > 0 && false} onClick={() => confirm(`Publicar «${c.title}»: los alumnos con matrícula podrán entrar. ${c.coverage.files.pending ? `Faltan ${c.coverage.files.pending} ficheros.` : ""} ¿Continuar?`) && setStatus.mutate({ courseId: c.id, status: "published" })}>Publicar</Button>}
               {c.status === "published" && <Button size="sm" variant="outline" onClick={() => setStatus.mutate({ courseId: c.id, status: "draft" })}>Volver a borrador</Button>}
             </div>
@@ -201,9 +202,42 @@ function Demo() {
   );
 }
 
+function Tecnica() {
+  const courses = trpc.learning.admin.courses.useQuery();
+  const audit = trpc.learning.admin.previewAccess.useQuery();
+  const [email, setEmail] = useState("");
+  const [name, setName] = useState("");
+  const [courseId, setCourseId] = useState(0);
+  const [note, setNote] = useState("");
+  const [moduleIds, setModuleIds] = useState<number[]>([]);
+  const grant = trpc.learning.admin.grantTechnical.useMutation({ onSuccess: (r) => toast.success(r.created ? "Matrícula técnica concedida (caduca en 24 h). No se ha enviado ningún correo." : "Ya existía esa matrícula técnica"), onError: (e) => toastError(e) });
+  const course = courses.data?.find((c) => c.id === courseId);
+  return (
+    <div className="max-w-xl space-y-4">
+      <p className="text-sm text-muted-foreground">Matrícula técnica de validación: es la única que abre un curso en borrador. Marcada «[PRUEBA TÉCNICA]», caduca en 24 horas, no envía correo ni invitación, no simula ningún pago y no toca las reglas comerciales. Revócala desde «Matrículas» al terminar. Usa una dirección de pruebas propia, nunca la de un cliente.</p>
+      <label className="block text-sm">Nombre<Input value={name} onChange={(e) => setName(e.target.value)} /></label>
+      <label className="block text-sm">Correo de pruebas<Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} /></label>
+      <label className="block text-sm">Curso
+        <select className="mt-1 w-full rounded-md border bg-background p-2" value={courseId} onChange={(e) => { setCourseId(Number(e.target.value)); setModuleIds([]); }}>
+          <option value={0}>Elige…</option>{(courses.data ?? []).map((c) => <option key={c.id} value={c.id}>{c.title}</option>)}
+        </select>
+      </label>
+      {course && <fieldset className="text-sm"><legend>Módulos</legend>{course.modules.map((m) => <label key={m.id} className="mr-3 inline-flex items-center gap-1"><input type="checkbox" checked={moduleIds.includes(m.id)} onChange={(e) => setModuleIds(e.target.checked ? [...moduleIds, m.id] : moduleIds.filter((x) => x !== m.id))} />{m.title}</label>)}</fieldset>}
+      <label className="block text-sm">Nota (opcional)<Input value={note} onChange={(e) => setNote(e.target.value)} /></label>
+      <Button disabled={!email || name.length < 2 || !courseId || !moduleIds.length || grant.isPending} onClick={() => grant.mutate({ email, name, courseId, moduleIds, note: note || null })}>Conceder matrícula técnica</Button>
+      <div>
+        <h3 className="mb-1 text-sm font-semibold">Accesos de vista previa (auditoría)</h3>
+        {audit.isLoading ? <PanelLoading /> : audit.isError ? <PanelError error={audit.error} onRetry={() => audit.refetch()} /> : !audit.data!.length ? <p className="text-sm text-muted-foreground">Sin accesos todavía.</p> : (
+          <ul className="max-h-60 space-y-1 overflow-auto text-xs text-muted-foreground">{audit.data!.map((e) => <li key={e.id}>{new Date(e.createdAt).toLocaleString("es-ES")} · {e.type.replace("admin_preview_", "")} · usuario {e.actorUserId ?? "—"} · {JSON.stringify(e.detail)}</li>)}</ul>
+        )}
+      </div>
+    </div>
+  );
+}
+
 export default function LearningAdmin() {
   const [tab, setTab] = useState<Tab>("matriculas");
-  const tabs: Array<[Tab, string]> = [["matriculas", "Matrículas"], ["cursos", "Cursos y materiales"], ["reglas", "Reglas por modalidad"], ["demo", "Demostración"]];
+  const tabs: Array<[Tab, string]> = [["matriculas", "Matrículas"], ["cursos", "Cursos y materiales"], ["reglas", "Reglas por modalidad"], ["demo", "Demostración"], ["tecnica", "Prueba técnica"]];
   return (
     <AdminLayout>
       <div className="space-y-5">
@@ -215,6 +249,7 @@ export default function LearningAdmin() {
         {tab === "cursos" && <Courses />}
         {tab === "reglas" && <Rules />}
         {tab === "demo" && <Demo />}
+        {tab === "tecnica" && <Tecnica />}
       </div>
     </AdminLayout>
   );

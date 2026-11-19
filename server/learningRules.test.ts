@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   DAY_MS, DEMO_MS, LearningRuleError, assertPaymentConfirmed, assertReason, computeWindow, effectiveStatus, evaluateAccess, evaluateAny, matchRules,
-  mergeModules, mimeMatchesKind, paymentKey, progressPercent, type AccessRule, type EnrollmentView,
+  mergeModules, mimeMatchesKind, paymentKey, progressPercent, courseOpensFor, isTechnicalGrant, technicalReason, TECHNICAL_MAX_DAYS, TECHNICAL_PREFIX, type AccessRule, type EnrollmentView,
 } from "../shared/learning";
 
 const rule = (p: Partial<AccessRule>): AccessRule => ({ id: 1, experienceId: 1, variantId: null, courseId: 1, moduleIds: [1], durationDays: 90, startMode: "on_grant", fixedStart: null, active: true, ...p });
@@ -128,5 +128,35 @@ describe("tipo MIME por tipo de recurso", () => {
     expect(mimeMatchesKind("video", "video/mp4")).toBe(true);
     expect(mimeMatchesKind("video", "audio/mpeg")).toBe(false);
     expect(mimeMatchesKind("desconocido", "video/mp4")).toBe(false);
+  });
+});
+
+describe("matrícula técnica y curso en borrador", () => {
+  it("solo una concesión administrativa con el prefijo es técnica", () => {
+    expect(isTechnicalGrant("admin", "[PRUEBA TÉCNICA] validación")).toBe(true);
+    expect(isTechnicalGrant("admin", "  [PRUEBA TÉCNICA] con espacios")).toBe(true);
+    expect(isTechnicalGrant("payment", "[PRUEBA TÉCNICA] pago")).toBe(false); // un pago nunca es técnico
+    expect(isTechnicalGrant("demo", "[PRUEBA TÉCNICA] demo")).toBe(false);
+    expect(isTechnicalGrant("admin", "Acuerdo con Indira")).toBe(false);
+    expect(isTechnicalGrant("admin", null)).toBe(false);
+  });
+  it("borrador: solo lo abre la técnica; publicado: todas; archivado: ninguna", () => {
+    expect(courseOpensFor("draft", true)).toBe(true);
+    expect(courseOpensFor("draft", false)).toBe(false);
+    expect(courseOpensFor("published", false)).toBe(true);
+    expect(courseOpensFor("published", true)).toBe(true);
+    expect(courseOpensFor("archived", true)).toBe(false);
+    expect(courseOpensFor("otro", true)).toBe(false);
+  });
+  it("el motivo siempre lleva el prefijo, una sola vez, y caduca como mucho en un día", () => {
+    expect(technicalReason(null).startsWith(TECHNICAL_PREFIX)).toBe(true);
+    expect(technicalReason("[PRUEBA TÉCNICA] mi nota").match(/PRUEBA TÉCNICA/g)).toHaveLength(1);
+    expect(isTechnicalGrant("admin", technicalReason("x"))).toBe(true);
+    expect(TECHNICAL_MAX_DAYS).toBe(1);
+  });
+  it("la autorización por módulo no cambia: la técnica de módulo 1 no abre el 2", () => {
+    const e = enr({ moduleIds: [1], technical: true });
+    expect(evaluateAccess(e, 1, T0 + 1).allowed).toBe(true);
+    expect(evaluateAccess(e, 2, T0 + 1)).toEqual({ allowed: false, reason: "module_not_granted" });
   });
 });

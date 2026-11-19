@@ -214,6 +214,8 @@ const LearningAdmin = lazy(() => import("./pages/admin/learning/LearningAdmin"))
 const AulaHome = lazy(() => import("./pages/learning/Aula").then((m) => ({ default: m.AulaHome })));
 const AulaCurso = lazy(() => import("./pages/learning/Aula").then((m) => ({ default: m.AulaCurso })));
 const AulaLeccion = lazy(() => import("./pages/learning/Aula").then((m) => ({ default: m.AulaLeccion })));
+const AulaCursoVistaPrevia = lazy(() => import("./pages/learning/Aula").then((m) => ({ default: m.AulaCursoVistaPrevia })));
+const AulaLeccionVistaPrevia = lazy(() => import("./pages/learning/Aula").then((m) => ({ default: m.AulaLeccionVistaPrevia })));
 const AulaActivar = lazy(() => import("./pages/learning/Aula").then((m) => ({ default: m.AulaActivar })));
 const LoyaltyManager = lazy(() => import("./pages/admin/loyalty/Loyalty"));
 const SocialTokenNetHome = lazy(() => import("./pages/admin/socialTokenNet/SocialTokenNetHome"));
@@ -452,6 +454,8 @@ function Router() {
       {/* Portal del Empleado (Fase 3) */}
       {/* Social Token Net · Comunidades: área de miembros con la cuenta del Core */}
       <Route path="/admin/formacion">{() => <Suspense fallback={<AdminLoadingFallback />}><LearningAdmin /></Suspense>}</Route>
+      <Route path="/admin/formacion/vista-previa/curso/:courseId">{() => <Suspense fallback={<AdminLoadingFallback />}><AulaCursoVistaPrevia /></Suspense>}</Route>
+      <Route path="/admin/formacion/vista-previa/curso/:courseId/leccion/:lessonId">{() => <Suspense fallback={<AdminLoadingFallback />}><AulaLeccionVistaPrevia /></Suspense>}</Route>
       <Route path="/mi-formacion">{() => <Suspense fallback={<AdminLoadingFallback />}><AulaHome /></Suspense>}</Route>
       <Route path="/mi-formacion/activar">{() => <Suspense fallback={<AdminLoadingFallback />}><AulaActivar /></Suspense>}</Route>
       <Route path="/mi-formacion/curso/:courseId">{() => <Suspense fallback={<AdminLoadingFallback />}><AulaCurso /></Suspense>}</Route>

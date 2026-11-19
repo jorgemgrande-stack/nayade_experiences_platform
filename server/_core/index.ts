@@ -17,7 +17,7 @@ import { closeStartupConnections, openStartupConnection } from "./startupConnect
 import { localStorageTenantGuard } from "./tenantStorage";
 import { registerBuiltinModules } from "./modules/builtin";
 import { getModuleAccess, getModuleRegistry } from "./modules/runtime";
-import { moduleRouteGuard } from "./modules/routeGuard";
+import { learningLicenseGuard, moduleRouteGuard } from "./modules/routeGuard";
 import { capabilityRouteGuard } from "./capabilities/routeGuard";
 import { getCapabilityAccess } from "./capabilities/access";
 import { loadModules, modulesFromEnv } from "./modules/loader";
@@ -254,6 +254,7 @@ async function startServer() {
   app.use(uploadRouter);
   // Entrega de ficheros del almacenamiento persistente: públicos (/files) y privados (/api/files)
   app.use(fileRouter);
+  app.use("/api/learning", learningLicenseGuard(getModuleAccess));
   app.use(learningRouter);
 
   // Redsys IPN notification endpoint

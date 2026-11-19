@@ -4,7 +4,7 @@ import http from "node:http";
 import type { AddressInfo } from "node:net";
 import { ModuleRegistry } from "./_core/modules/registry";
 import { MemoryEntitlementStore, ModuleAccess } from "./_core/modules/entitlements";
-import { LEARNING_ENFORCE_ENV, moduleRouteGuard } from "./_core/modules/routeGuard";
+import { LEARNING_ENFORCE_ENV, learningLicenseGuard, moduleRouteGuard } from "./_core/modules/routeGuard";
 import { BUILTIN_MODULES } from "./_core/modules/builtin";
 import { LEGACY_SECTIONS, TASK_NAV, resolveNav, type NavContext } from "../shared/adminNav";
 import { runWithTenant } from "./_core/tenant";
@@ -99,6 +99,57 @@ describe("guarda tRPC de learning: gradual", () => {
     expect(await s.call("/api/trpc/learning.my.courses", "quantum")).toBe(200);
     expect(await s.call("/api/trpc/learning.my.courses", "otra")).toBe(403);
     expect(await s.call("/api/trpc/auth.me", "otra")).toBe(200);
+    await s.close();
+  });
+});
+
+describe("guarda Express de learning (/api/learning/*, vista previa incluida)", () => {
+  async function setup(granted: boolean, broken = false) {
+    process.env.TENANT_MODE = "multi";
+    const reg = new ModuleRegistry("1.0.0");
+    BUILTIN_MODULES.forEach((m) => reg.register(m));
+    const store = new MemoryEntitlementStore();
+    if (granted) store.grant({ tenantId: "quantum", moduleId: "learning", validUntil: null, source: "operator" });
+    const access = new ModuleAccess(reg, store);
+    if (broken) (access as unknown as { isModuleAvailable: () => Promise<boolean> }).isModuleAvailable = async () => { throw new Error("sin registro"); };
+    const app = express();
+    app.use((req, _res, next) => runWithTenant(String(req.headers["x-test-tenant"] ?? "quantum"), () => next()));
+    app.use("/api/learning", learningLicenseGuard(() => access));
+    app.use("/api/learning", (_req, res) => res.json({ ok: true }));
+    app.use("/api/otro", (_req, res) => res.json({ ok: true }));
+    const server = http.createServer(app);
+    await new Promise<void>((r) => server.listen(0, "127.0.0.1", r));
+    const port = (server.address() as AddressInfo).port;
+    const call = (path: string, tenant: string) =>
+      new Promise<number>((resolve, reject) => {
+        const rq = http.request({ host: "127.0.0.1", port, path, headers: { "x-test-tenant": tenant } }, (res) => { res.resume(); res.on("end", () => resolve(res.statusCode ?? 0)); });
+        rq.on("error", reject);
+        rq.end();
+      });
+    return { call, close: async () => { server.closeAllConnections(); await new Promise<void>((r) => server.close(() => r())); } };
+  }
+
+  it("sin el interruptor no cambia nada (Quantum sigue funcionando)", async () => {
+    const s = await setup(false);
+    expect(await s.call("/api/learning/resource/1", "quantum")).toBe(200);
+    await s.close();
+  });
+
+  it("con LEARNING_LICENSE_ENFORCED=1: recursos, vista previa y subida exigen la licencia; el resto del Core no se toca", async () => {
+    process.env[LEARNING_ENFORCE_ENV] = "1";
+    const s = await setup(true);
+    for (const p of ["/api/learning/resource/1", "/api/learning/preview/resource/1", "/api/learning/upload/1"]) {
+      expect(await s.call(p, "quantum")).toBe(200);
+      expect(await s.call(p, "otra")).toBe(403);
+    }
+    expect(await s.call("/api/otro/x", "otra")).toBe(200);
+    await s.close();
+  });
+
+  it("si la licencia no se puede verificar, se cierra (503)", async () => {
+    process.env[LEARNING_ENFORCE_ENV] = "1";
+    const s = await setup(true, true);
+    expect(await s.call("/api/learning/resource/1", "quantum")).toBe(503);
     await s.close();
   });
 });
