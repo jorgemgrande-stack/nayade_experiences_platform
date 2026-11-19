@@ -595,10 +595,10 @@ export class SubscriptionService {
    * Fin anticipado de la prueba (conversión): la suscripción pasa a activa y empieza su primer periodo
    * de pago hoy, con las mismas condiciones contratadas. No cobra nada (modo sombra).
    */
-  async endTrial(id: number, input: { reason?: string | null }, expectedVersion: number, actor: string) {
+  async endTrial(id: number, input: { reason?: string | null; /** Instante en que empieza el primer periodo de pago (nunca en el futuro); por defecto, ahora. */ at?: number }, expectedVersion: number, actor: string) {
     return this.d.store.mutate(id, expectedVersion, actor, this.now(), async (_tx, sub) => {
       if (sub.status !== "trialing") state("La suscripción no está en periodo de prueba");
-      const start = this.now();
+      const start = input.at !== undefined && Number.isSafeInteger(input.at) && input.at > 0 && input.at <= this.now() ? input.at : this.now();
       const anchorDay = new Date(start).getUTCDate();
       return {
         patch: { status: "active", trialEnd: null, anchorDay, currentPeriodStart: start, currentPeriodEnd: periodEnd(start, sub.interval, anchorDay) },

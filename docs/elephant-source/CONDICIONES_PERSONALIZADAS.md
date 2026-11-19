@@ -1009,3 +1009,136 @@ aplicación real: interruptor, permisos, webhook firmado) y `N` = `server/subscr
 **Caso final del propietario** (Essential + Hotel Net + WhatsApp Connect por 129 €/mes + IVA, desde el CRM, con
 licencias y facturación simulada coherentes): A «caso final — Essential + Hotel Net + WhatsApp Connect por 129 €/mes + IVA»
 y, con contrato y aceptación del cliente, A «Caso 22».
+
+
+## Contratación automática: aceptar → configurar pago → activar en la fecha pactada (21/11/2026)
+
+Caso de referencia: Quantum Soulrise (CP-9: Business + WhatsApp AI + Campaigns, 52,00 € + IVA al mes, desde el fin de su prueba).
+Aceptar un contrato, autorizar un pago y empezar a cobrar son **tres cosas distintas**: aceptar no cobra, autorizar el método no
+cobra, y el primer cargo cae en la fecha pactada.
+
+### Regla de la prueba (A · B · C)
+
+La expresa `effectiveFrom` del acuerdo, sin campos nuevos ni migración:
+
+| Caso | `effectiveFrom` | Al aceptar |
+|---|---|---|
+| **A · inmediata** | sin fecha | la prueba termina y las licencias del acuerdo se aplican ya (como antes) |
+| **B · durante la prueba** | el fin de la prueba (`trialEnd`, instante exacto) | la prueba y sus licencias **siguen** hasta ese instante; el acuerdo queda *programado* |
+| **C · fecha futura** | posterior al fin de la prueba | igual que B hasta su instante |
+
+`TermsAcceptanceService.concludeDue()` concluye la prueba **en su instante**: el primer periodo de pago empieza en `effectiveFrom`
+(no cuando corre la tarea), se convierte el registro de la prueba y se aplican las licencias (Business y conectores; los Connect
+asistidos quedan *contratados, pendientes de implantación*). Es idempotente y se invoca desde: la simulación de la suscripción,
+el webhook del primer cobro y la tarea periódica del cobro (`CP_STRIPE_WORKER_ENABLED`). Quedan registrados firmante, fecha y hora,
+huella del documento y aceptación; nada se modifica retroactivamente.
+
+### Qué ve y hace el cliente
+
+1. Recibe el enlace, revisa y acepta (sin cambios): *«Aceptar no realiza ningún cobro»*.
+2. La confirmación ofrece **«Continuar: configurar el método de pago»** → `/public/contract-acceptance/condiciones/pago?token=…`.
+3. «Configurar método de pago» (`POST …/pago`) abre el **Checkout de Stripe** de condiciones personalizadas (el existente, sin
+   integración paralela): suscripción con `trial_end` = instante pactado (redondeado hacia arriba: nunca se cobra antes) y
+   partidas en línea. El cliente teclea la tarjeta en Stripe; Elephant solo guarda referencias.
+4. Al volver, la página **no da el pago por confirmado**: lo confirma la suscripción de Stripe enlazada por webhook firmado. Hasta
+   entonces dice «en confirmación». Confirmado: cuota, fecha del primer cobro (hora de Madrid) y que hasta entonces no se cobra.
+5. Si cierra Stripe, la sesión caduca o el pago falla: el contrato sigue aceptado y puede **reanudar** desde el mismo enlace
+   (ventana de 60 días tras aceptar). Repetir el paso devuelve la sesión viva o el estado; nunca otra suscripción ni otro cargo.
+
+Seguridad: el único dato que aporta el navegador es el enlace personal. Importes, impuestos, fecha y suscripción salen del contrato
+aceptado, en servidor (`startForAcceptance` exige que el acuerdo cobrado sea el aceptado). Un enlace sin aceptar, caducado o
+de otra empresa no abre nada.
+
+Con `CP_CUSTOM_TERMS_BILLING_ENABLED` apagado (production hoy) la aceptación funciona igual y la página dice **«pago pendiente de
+habilitar»**: no se llama a Stripe ni se crea ningún registro de cobro.
+
+### Etapas (administración)
+
+`GET /cp/v1/subscriptions/:id/terms/billing/stripe` devuelve `contracting` (sin estructuras nuevas; sale del contrato, la
+suscripción y lo que Stripe confirmó):
+
+`proposal_pending` → `payment_pending` / `payment_not_enabled` → `payment_processing` → `activation_scheduled` → `active`;
+y `payment_failed`, `grace`, `suspended`, `canceled`. Incluye fecha de aceptación, `paymentMethodAuthorized`, `chargeable`
+(un contrato firmado sin método confirmado **no es cobrable**), `nextChargeAt`, `activationAt`, cuota (neto, IVA de referencia,
+total), estado de Stripe y de cobro; las facturas siguen en `invoices`. «Poner a cobrar» pasa a ser una vía excepcional (incidencias,
+contratos especiales, históricos).
+
+### Prueba → pago en el primer cobro real
+
+Cuando Stripe sale de la prueba y cobra, el webhook (`afterFirstCharge`) concluye la prueba interna si su instante ya llegó. Si el
+cobro no está habilitado, el acuerdo aceptado igualmente concluye la prueba en su instante, **en modo sombra** (sin cobro) y con la
+etapa `payment_not_enabled`: es el comportamiento contractual de siempre; administración lo ve en `contracting`.
+
+### Validación
+
+- Automática (sin red): `server/contratacionAutomatica.test.ts` (HTTP con la aplicación real y el doble de Stripe: aceptar conserva la
+  prueba, regla A, pago con importe del contrato, abandono/caducidad/reanudación, rechazo, doble evento, aislamiento entre empresas,
+  interruptor apagado, prueba → pago al instante) y casos de servicio en `server/subscriptionsTerms.pruebaConectores.test.ts` (licencias).
+- **Stripe TEST real con relojes**: `ES_SANDBOX_STRIPE_KEY=sk_test_… pnpm exec tsx scripts/stripe/contratacionSandboxE2E.ts`
+  (se niega con claves que no sean de pruebas): sesión de Checkout real aceptada, suscripción con `trial_end`, un minuto antes sin
+  cobro, después factura de 52,00 € pagada con periodo desde el instante pactado, sin duplicados, tarjeta rechazada y sesión caducada.
+  La página de Checkout exige navegador: el script usa `pm_card_visa`, el mecanismo oficial de pruebas.
+
+### Límites conocidos
+
+- Entre el fin de la prueba y el siguiente tick la prueba gratuita consta vencida. La tarea del cobro (`CP_STRIPE_WORKER_ENABLED`) corre
+  cada pocos minutos pero **concluye junto a la conciliación, hasta ~15 min después**; sin ella, la simulación o el webhook del primer
+  cobro lo hacen antes. Si la tarea de pruebas (`CP_TRIALS_SCHEDULER_ENABLED`) está encendida puede enviar el aviso de fin de prueba
+  antes de concluirse; la conversión sigue siendo válida y el periodo de pago empieza igualmente en `effectiveFrom`.
+- Con Stripe Tax (live) el IVA definitivo lo calcula Stripe; la página muestra el 21 % solo como referencia.
+- La interfaz de administración (repo del CRM) todavía no pinta `contracting`: el dato está en la API.
+
+### Conclusión automática: solo lo aceptado con esta regla (nunca retroactiva)
+
+`concludeDue` solo concluye acuerdos cuya aceptación dejó en su historial un `trial_kept` con `autoConclude: true` (se registra
+**una sola vez** por acuerdo, al aceptar, si `effectiveFrom` ≥ fin de la prueba) **y** cuyo `effectiveFrom` sigue siendo ≥ el fin
+actual de la prueba (si la prueba se amplió después, no concluye). En cualquier otro caso no toca nada y deja **una** constancia
+`trial_due_skipped` («conviértela a mano desde el CRM»). No depende del interruptor de cobro. Lo aceptado antes de este cambio no lleva
+la marca, así que sigue convirtiéndose a mano como siempre.
+
+**Inventario previo al despliegue (solo lectura):** acuerdos aceptados y programados sobre suscripciones en prueba. Ninguno se concluirá
+solo (no llevan marca); sirve para saber a cuáles hay que dar seguimiento manual:
+
+```
+GET /cp/v1/commercial-terms?status=scheduled&companyId=<empresa>      # por empresa, acceptanceStatus = accepted
+GET /cp/v1/subscriptions/<id>                                          # status = trialing y trialEnd
+```
+
+Hoy (21/11/2026) el único caso conocido es Quantum Soulrise, cuya CP-9 está en borrador (sin aceptar).
+
+### Decisión de negocio pendiente (sin cambio de comportamiento)
+
+Si el cliente llega a `effectiveFrom` **sin método de pago autorizado**, el acuerdo aceptado igualmente concluye la prueba en su
+instante y las licencias contratadas se aplican (modo sombra, sin cobro; etapa `payment_pending` / `payment_not_enabled`). Es el
+comportamiento contractual de siempre. Alternativas, a decidir por Dirección: mantener el servicio hasta cobrar (hoy), conceder un
+periodo de cortesía, o dejar las licencias en solo lectura hasta que el método esté autorizado. No se ha cambiado.
+
+### Detalles del paso de pago
+
+- Errores internos al abrir el pago: el cliente ve un texto genérico («No se ha podido abrir el pago ahora mismo…»); el detalle va al
+  registro (`acceptance_payment_start_failed`). Se conserva el aviso específico de las 48 h.
+- Solo se redirige a `https://checkout.stripe.com/` (y, solo en modo pruebas, al doble local); otra URL se descarta y se muestra el estado.
+- La búsqueda del acuerdo por enlace se hace por la empresa del contrato, nunca recorriendo la plataforma; el barrido de `concludeDue`
+  parte de las suscripciones en prueba (hasta 5.000; si se alcanzara, queda un aviso en el registro).
+
+### Contratación directa del Marketplace durante la prueba: NO aplica esta regla todavía (límite documentado)
+
+Investigado el 21/11/2026. La compra directa (panel / autoservicio, pedido `trial_conversion` del orquestador) hoy:
+
+1. **Cobra por adelantado**: `createCheckoutSession` (`server/stripe/gateway.ts`) abre un Checkout de suscripción **sin `trial_end`**, así que
+   Stripe cobra la primera factura al pagar.
+2. **Termina la prueba al pagar**: con el pago verificado, `stepSubscribe` (`server/orchestrator/service.ts`) llama a
+   `SubscriptionService.convertTrial`, que cierra las partidas de la prueba, pone `trialEnd = null` y empieza el periodo **ahora**: los
+   días restantes de la prueba se pierden.
+3. **No puede simplemente recibir `trial_end`**: el procesador de Stripe (`server/stripe/events.ts`) solo da un cobro por válido si la factura está
+   `paid` con importe o subtotal > 0 y el importe inicial coincide con el presupuesto del pedido; una factura inicial de 0 € (primer cargo aplazado)
+   se descartaría y el pedido no pasaría a `confirmed`.
+
+Para aplicar la misma regla (prueba respetada, método sin cargo, primer cargo al fin de la prueba) hay que cambiar, **en el circuito de
+pagos y el orquestador**: (a) `createCheckoutSession` con `trial_end` = fin de la prueba (≥ 49 h); (b) la verificación de cobro de `events.ts`
+para aceptar «método autorizado, trialing, factura inicial de 0 €» como paso `confirmed` del pedido de conversión; (c) `stepSubscribe`/`convertTrial`
+con el inicio del periodo en `trialEnd` (parámetro `at`, como el nuevo de `endTrial`) y licencias del plan nuevo a esa fecha; (d) conciliación
+y reintentos del primer cobro real. No requiere migración, pero toca el núcleo de cobro de la compra ordinaria (zona de la sesión de Stripe y
+suscripciones, con interruptores de production), por lo que **no se ha hecho en este PR**; debe abrirse como PR propio con sus pruebas contra
+Stripe TEST y aprobación expresa. Mientras tanto, el cliente en prueba que quiera conservar sus días restantes debe contratar por una oferta
+particular (esta regla), no por la compra directa.

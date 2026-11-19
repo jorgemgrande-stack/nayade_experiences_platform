@@ -61,6 +61,36 @@ const TERMS_END_ALERT_EVERY_MS = DAY;
 /** Margen mínimo para aplazar el primer cargo (Stripe exige 48 h para `trial_end` en Checkout; se deja holgura). */
 const AHEAD_MIN_MS = 49 * 3600_000;
 
+export type ContractingStageKey = "no_agreement" | "proposal_pending" | "payment_pending" | "payment_not_enabled" | "payment_processing" | "activation_scheduled" | "active" | "payment_failed" | "grace" | "suspended" | "canceled";
+const STAGE_LABELS: Record<ContractingStageKey, string> = {
+  no_agreement: "Sin condiciones personalizadas",
+  proposal_pending: "Propuesta pendiente de aceptación",
+  payment_pending: "Contrato aceptado · método de pago pendiente",
+  payment_not_enabled: "Contrato aceptado · pago pendiente de habilitar",
+  payment_processing: "Método de pago en confirmación por Stripe",
+  activation_scheduled: "Método autorizado · activación programada",
+  active: "Suscripción activa",
+  payment_failed: "Pago fallido",
+  grace: "Pago fallido · periodo de gracia",
+  suspended: "Suspendida por impago",
+  canceled: "Cancelada",
+};
+export interface ContractingStage {
+  stage: ContractingStageKey;
+  label: string;
+  termsId: number | null;
+  acceptedAt: number | null;
+  /** Solo true con la suscripción de Stripe enlazada por webhook verificado: nunca por volver a una URL de éxito. */
+  paymentMethodAuthorized: boolean;
+  chargeable: boolean;
+  nextChargeAt: number | null;
+  activationAt: number | null;
+  recurring: { netCents: number; taxRateBp: number; taxCents: number; totalCents: number; currency: string } | null;
+  stripeStatus: string | null;
+  billingStatus: string | null;
+  paymentEnabled: boolean;
+}
+
 export class NegotiatedBillingError extends Error {
   constructor(
     public readonly code: "disabled" | "not_found" | "invalid_state" | "unavailable" | "conflict",
@@ -101,7 +131,7 @@ export interface NegotiatedBillingDeps {
   gateway: StripeGateway;
   adapter: StripeNegotiatedGateway;
   billing: Pick<TermsBillingService, "plan" | "syncIfOpen" | "recordSent" | "reconcile" | "nextStart" | "changedSinceSync" | "sentOneOffs" | "revokeOneOffs" | "scheduledEnd" | "notePeriod" | "periodsOf">;
-  termsStore: Pick<TermsStore, "get" | "log">;
+  termsStore: Pick<TermsStore, "get" | "log" | "list" | "events">;
   /** Suscripción interna: una vez enlazada, el reloj es el de Stripe (sus periodos y su fin siguen a los de Stripe). */
   subscriptionStore: Pick<SubscriptionStore, "get" | "mutate">;
   crmStore: Pick<CrmStore, "get" | "list">;
@@ -111,6 +141,11 @@ export interface NegotiatedBillingDeps {
   licences?: { ensure(subscriptionId: number, actor: string, o?: { changed?: boolean }): Promise<unknown> };
   /** ¿La cobra ya el circuito ordinario (pedido con pagos de Stripe)? Entonces nunca se toca desde aquí. */
   orderBilled?: (subscriptionId: number) => Promise<boolean>;
+  /**
+   * Tras el primer cobro real (Stripe ya fuera de la prueba): concluye la prueba interna al instante efectivo pactado
+   * (`TermsAcceptanceService.concludeDue`). Un fallo no revierte el cobro.
+   */
+  afterFirstCharge?: (subscriptionId: number) => Promise<unknown>;
   urls: { success: string; cancel: string };
   namespace: string;
   mode: StripeMode;
@@ -360,7 +395,10 @@ export class NegotiatedBillingService {
     const out: string[] = [];
     const sub = await this.d.subscriptionStore.get(subscriptionId);
     if (!sub) return ["Suscripción no encontrada"];
-    if (sub.status !== "active") out.push(sub.status === "trialing" ? "La suscripción está en periodo de prueba" : "La suscripción está cancelada");
+    // Una suscripción EN PRUEBA sí puede autorizar ya su método de pago cuando el acuerdo aceptado empieza justo al
+    // terminar la prueba (el primer cargo se aplaza a ese instante exacto: la prueba se respeta entera)
+    const startsAtTrialEnd = sub.status === "trialing" && at !== null && sub.trialEnd !== null && at >= sub.trialEnd;
+    if (sub.status !== "active" && !startsAtTrialEnd) out.push(sub.status === "trialing" ? "La suscripción está en periodo de prueba" : "La suscripción está cancelada");
     if (sub.cancelAt != null) out.push("La suscripción tiene su cancelación programada");
     if (plan.termsId === null || !plan.items.length) out.push("La suscripción no tiene condiciones personalizadas vigentes con cuotas recurrentes");
     else if (plan.recurringNetCents <= 0) out.push("La cuota recurrente total es 0: una contratación gratuita no se pone a cobrar en Stripe");
@@ -509,7 +547,7 @@ export class NegotiatedBillingService {
             notice: policy === LIVE_TAX_TREATMENT ? LIVE_TAX_NOTICE : TEST_TAX_NOTICE,
             ...(policy === LIVE_TAX_TREATMENT ? { automaticTax: true } : {}),
             // Antes del inicio del acuerdo: el cliente autoriza su método de pago y el primer cargo es ESE día (periodo completo)
-            ...(at !== null ? { trialEnd: Math.floor(at / 1000) } : {}),
+            ...(at !== null ? { trialEnd: Math.ceil(at / 1000) } : {}),
           },
           `es-${this.d.namespace}-terms-checkout-${subscriptionId}-${row.sessionSeq}`,
         );
@@ -735,6 +773,9 @@ export class NegotiatedBillingService {
 
     // Una vez enlazada, el reloj es el de Stripe: el periodo de la suscripción interna es el que Stripe está cobrando
     if (LINKED_STATES.includes(next)) await this.followStripePeriod(row.subscriptionId, sub);
+    // Prueba → pago: con el primer cobro real (la suscripción de Stripe ya no está en prueba y consta una factura pagada) se
+    // concluye la prueba interna en el instante efectivo pactado. Es idempotente y solo actúa si ese instante ya llegó
+    if (sub.status === "active" && lastPaid && this.d.afterFirstCharge) await this.d.afterFirstCharge(row.subscriptionId).catch((e) => opsLog("warn", "CommercialTerms", "after_first_charge_failed", { subscriptionId: row.subscriptionId, error: e instanceof Error ? e.name : "error" }));
     if (next !== prev) {
       opsLog("info", "CommercialTerms", "billing_state", { subscriptionId: row.subscriptionId, from: prev, to: next, stripeStatus: sub.status });
       await this.history(plan?.termsId ?? row.checkout?.termsId ?? null, "billing_state", `Cobro en Stripe: ${prev} → ${next}`, { subscriptionId: row.subscriptionId, from: prev, to: next, stripeStatus: sub.status, graceEndsAt: fresh.graceEndsAt, readOnlyUntil: fresh.readOnlyUntil, cancelAt: fresh.cancelAt }, this.actor);
@@ -1006,6 +1047,8 @@ export class NegotiatedBillingService {
       enabled: this.d.enabled,
       mode: this.d.mode,
       taxTreatment: this.policy,
+      /** Etapa de la contratación (aceptación → método de pago → activación → cobro). */
+      contracting: await this.stage(subscriptionId),
       /** ¿Se puede poner a cobrar ahora? (interruptor encendido y sin impedimentos). */
       canStart: this.d.enabled && !blockers.length && (!row || row.status === "pending" || row.status === "abandoned"),
       blockers: this.d.enabled ? blockers : ["El cobro en Stripe de condiciones personalizadas está apagado", ...blockers],
@@ -1014,6 +1057,63 @@ export class NegotiatedBillingService {
         : null,
       invoices: row ? await this.d.store.invoices(row.id, 24) : [],
     };
+  }
+
+  /**
+   * Etapa de la contratación (sin estructuras nuevas: sale del contrato, de la suscripción y de lo que Stripe confirmó
+   * por webhook verificado). Un contrato firmado SIN método de pago confirmado nunca consta como cobrable.
+   */
+  async stage(subscriptionId: number): Promise<ContractingStage> {
+    const sub = await this.d.subscriptionStore.get(subscriptionId);
+    if (!sub) throw new NegotiatedBillingError("not_found", "Suscripción no encontrada");
+    const now = this.now();
+    const all = await this.d.termsStore.list({ subscriptionId, status: ["draft", "pending_acceptance", "scheduled", "active"] });
+    const inForce = all.filter((t) => (t.status === "scheduled" || t.status === "active") && t.acceptanceStatus !== "pending").sort((a, b) => b.id - a.id)[0] ?? null;
+    const waiting = all.filter((t) => t.status === "pending_acceptance").sort((a, b) => b.id - a.id)[0] ?? null;
+    const row = await this.d.store.bySubscription(subscriptionId);
+    const acceptedAt = inForce ? ((await this.d.termsStore.events({ termsId: inForce.id })).find((e) => e.kind === "accepted")?.createdAt ?? null) : null;
+    const plan = inForce ? await this.d.billing.plan(subscriptionId, { at: Math.max(now, inForce.effectiveFrom ?? 0) }).catch(() => null) : null;
+    const net = plan?.recurringNetCents ?? null;
+    const rate = plan?.items[0]?.taxRateBp ?? 2100;
+    const tax = net === null ? 0 : Math.round((net * rate) / 10_000);
+    const recurring = net === null ? null : { netCents: net, taxRateBp: rate, taxCents: tax, totalCents: net + tax, currency: plan!.currency };
+    let stage: ContractingStageKey;
+    if (!inForce) stage = waiting ? "proposal_pending" : "no_agreement";
+    else if (row && LINKED_STATES.includes(row.status)) {
+      stage = row.status === "suspended" ? "suspended" : row.status === "past_due" ? (row.graceEndsAt !== null && row.graceEndsAt > now ? "grace" : "payment_failed") : row.stripeStatus === "trialing" || sub.status === "trialing" ? "activation_scheduled" : "active";
+    } else if (row?.status === "canceled") stage = "canceled";
+    // «En confirmación» solo con el primer pago realmente en curso; un primer pago rechazado (fila abandonada) vuelve a poder reintentarse
+    else if (row && row.status === "pending" && (row.sessionStatus === "complete" || row.stripeSubscriptionId)) stage = "payment_processing";
+    else stage = this.d.enabled ? "payment_pending" : "payment_not_enabled";
+    const authorized = !!row && !!row.stripeSubscriptionId && LINKED_STATES.includes(row.status);
+    return {
+      stage,
+      label: STAGE_LABELS[stage],
+      termsId: inForce?.id ?? waiting?.id ?? null,
+      acceptedAt,
+      paymentMethodAuthorized: authorized,
+      chargeable: authorized && (stage === "activation_scheduled" || stage === "active" || stage === "grace" || stage === "payment_failed"),
+      nextChargeAt: authorized ? (stage === "activation_scheduled" ? (row!.checkout?.firstChargeAt ?? inForce?.effectiveFrom ?? null) : row!.currentPeriodEnd) : null,
+      activationAt: inForce?.effectiveFrom ?? null,
+      recurring,
+      stripeStatus: row?.stripeStatus ?? null,
+      billingStatus: row?.status ?? null,
+      paymentEnabled: this.d.enabled,
+    };
+  }
+
+  /**
+   * Paso de pago de un CLIENTE tras aceptar (página pública ligada a su enlace). Reutiliza `start`: importes, impuestos y
+   * fecha del primer cargo salen SIEMPRE del contrato aceptado en servidor; el cliente no aporta ningún dato económico.
+   * Idempotente: repetirlo devuelve la sesión viva o el estado, nunca otra suscripción de Stripe.
+   */
+  async startForAcceptance(subscriptionId: number, termsId: number, acceptanceId: number): Promise<StartResult> {
+    const t = await this.d.termsStore.get(termsId);
+    if (!t || t.subscriptionId !== subscriptionId || t.acceptanceStatus !== "accepted" || (t.status !== "scheduled" && t.status !== "active")) throw new NegotiatedBillingError("invalid_state", "Las condiciones aceptadas ya no están en vigor: pide un enlace nuevo");
+    const { plan } = await this.billingStart(subscriptionId);
+    // El cobro es el de las condiciones que el cliente aceptó, no el de otras posteriores
+    if (plan.termsId !== termsId) throw new NegotiatedBillingError("invalid_state", "Hay unas condiciones posteriores a las que aceptaste: pide un enlace nuevo");
+    return this.start(subscriptionId, `customer:acceptance-${acceptanceId}`);
   }
 
   /**

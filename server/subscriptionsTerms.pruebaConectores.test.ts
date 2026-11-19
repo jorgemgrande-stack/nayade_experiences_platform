@@ -342,3 +342,84 @@ describe("condiciones con Connect asistido aceptadas durante la prueba", () => {
     expect(assistedConnectKeys(["essential", "connect-whatsapp-ai", "connect-people", "addon-user-essential", "connect-whatsapp-ai"])).toEqual(["connect-whatsapp-ai"]);
   });
 });
+
+describe("condiciones aceptadas durante la prueba con entrada en vigor al terminarla (21/11/2026)", () => {
+  const AT_END = (trialEnd: number): TermsInput => ({ ...AGREEMENT(), effectiveFrom: trialEnd });
+
+  it("aceptar NO adelanta nada; al llegar el instante pactado la prueba termina con el periodo de pago empezando ahí, se convierte y se aplican las licencias", async () => {
+    const { sub, trial } = await trialing();
+    const trialEnd = sub.trialEnd!;
+    const draft = await terms.createForSubscription(sub.id, AT_END(trialEnd), A);
+    const sent = await acceptance.request(draft.id, { signer: { name: "Marta Prueba", email: "marta@cliente-prueba.example" }, expectedRevision: draft.revision }, A);
+    const out = await acceptance.accept(sent.url.split("token=")[1], { name: "Marta Prueba", accept: true }, { ip: null, userAgent: "navegador-de-prueba" });
+    expect(out).toMatchObject({ accepted: true });
+
+    // Aceptada y programada: la suscripción SIGUE en prueba; sus licencias, las de la prueba hasta su fin exacto
+    expect(await subs.must(sub.id)).toMatchObject({ status: "trialing", trialEnd });
+    expect((await termsStore.get(draft.id))!).toMatchObject({ status: "scheduled", acceptanceStatus: "accepted" });
+    expect((await grant(ESSENTIAL_CAP))!.validUntil).toBe(trialEnd);
+    expect(await grant("whatsapp-ai")).toBeNull();
+    expect((await termsStore.events({ termsId: draft.id })).find((e) => e.kind === "trial_kept")).toBeTruthy();
+    expect((await trialStore.get(trial.id))!.state).toBe("active");
+    // Antes del instante, la tarea no hace nada
+    clock = trialEnd - 1;
+    expect(await acceptance.concludeDue()).toMatchObject({ concluded: 0 });
+    expect((await subs.must(sub.id)).status).toBe("trialing");
+
+    // Llega el instante (la tarea corre unos minutos tarde): el periodo de pago empieza EXACTAMENTE en el fin de la prueba
+    clock = trialEnd + 7 * 60_000;
+    expect(await acceptance.concludeDue()).toMatchObject({ concluded: 1 });
+    const after = await subs.must(sub.id);
+    expect(after).toMatchObject({ status: "active", trialEnd: null, currentPeriodStart: trialEnd });
+    expect(await trialStore.get(trial.id)).toMatchObject({ state: "converted", convertedSubscriptionId: sub.id });
+    expect(await grant(ESSENTIAL_CAP)).toMatchObject({ status: "active", validUntil: null, source: `subscription:${sub.id}` });
+    expect(await grant("whatsapp-ai")).toMatchObject({ status: "pending_setup" });
+    expect((await termsStore.events({ termsId: draft.id })).filter((e) => e.kind === "trial_ended")).toHaveLength(1);
+    // Idempotente
+    expect(await acceptance.concludeDue()).toMatchObject({ concluded: 0 });
+    expect((await subs.must(sub.id)).currentPeriodStart).toBe(trialEnd);
+  });
+
+  it("unas condiciones aceptadas pero NO vigentes aún (fecha posterior al fin de la prueba) no concluyen la prueba", async () => {
+    const { sub } = await trialing();
+    const later = sub.trialEnd! + 10 * DAY;
+    const draft = await terms.createForSubscription(sub.id, AT_END(later), A);
+    const sent = await acceptance.request(draft.id, { signer: { name: "Marta Prueba", email: "marta@cliente-prueba.example" }, expectedRevision: draft.revision }, A);
+    await acceptance.accept(sent.url.split("token=")[1], { name: "Marta Prueba", accept: true }, { ip: null, userAgent: "navegador-de-prueba" });
+    clock = sub.trialEnd! + 5 * DAY;
+    expect(await acceptance.concludeDue()).toMatchObject({ concluded: 0 });
+    expect((await subs.must(sub.id)).status).toBe("trialing");
+    clock = later + 1000;
+    expect(await acceptance.concludeDue()).toMatchObject({ concluded: 1 });
+    expect((await subs.must(sub.id))).toMatchObject({ status: "active", currentPeriodStart: later });
+  });
+
+  it("nunca retroactivo: un acuerdo con entrada en vigor ANTERIOR al fin de la prueba no se concluye solo (se anota una vez) y trial_kept consta una sola vez", async () => {
+    const { sub } = await trialing();
+    const early = sub.trialEnd! - 3 * DAY;
+    const draft = await terms.createForSubscription(sub.id, AT_END(early), A);
+    const sent = await acceptance.request(draft.id, { signer: { name: "Marta Prueba", email: "marta@cliente-prueba.example" }, expectedRevision: draft.revision }, A);
+    await acceptance.accept(sent.url.split("token=")[1], { name: "Marta Prueba", accept: true }, { ip: null, userAgent: "navegador-de-prueba" });
+    expect((await subs.must(sub.id)).status).toBe("trialing");
+    clock = early + DAY;
+    for (let i = 0; i < 3; i++) expect(await acceptance.concludeDue()).toMatchObject({ concluded: 0 });
+    expect((await subs.must(sub.id)).status).toBe("trialing");
+    const ev = await termsStore.events({ termsId: draft.id });
+    expect(ev.filter((e) => e.kind === "trial_kept")).toHaveLength(1);
+    expect(ev.find((e) => e.kind === "trial_kept")!.after).toMatchObject({ autoConclude: false });
+    expect(ev.filter((e) => e.kind === "trial_due_skipped")).toHaveLength(1);
+  });
+
+  it("si la prueba se amplía después de aceptar (fin posterior al instante del acuerdo), no se concluye sola", async () => {
+    const { sub } = await trialing();
+    const draft = await terms.createForSubscription(sub.id, AT_END(sub.trialEnd!), A);
+    const sent = await acceptance.request(draft.id, { signer: { name: "Marta Prueba", email: "marta@cliente-prueba.example" }, expectedRevision: draft.revision }, A);
+    await acceptance.accept(sent.url.split("token=")[1], { name: "Marta Prueba", accept: true }, { ip: null, userAgent: "navegador-de-prueba" });
+    expect((await termsStore.events({ termsId: draft.id })).filter((e) => e.kind === "trial_kept")).toHaveLength(1);
+    await subs.setTrialEnd(sub.id, { trialEnd: sub.trialEnd! + 7 * DAY, reason: "ampliación" }, (await subs.must(sub.id)).version, A);
+    clock = sub.trialEnd! + DAY;
+    expect(await acceptance.concludeDue()).toMatchObject({ concluded: 0 });
+    expect((await subs.must(sub.id)).status).toBe("trialing");
+    expect((await termsStore.events({ termsId: draft.id })).filter((e) => e.kind === "trial_due_skipped")).toHaveLength(1);
+  });
+});
