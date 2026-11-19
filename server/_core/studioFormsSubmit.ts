@@ -50,7 +50,7 @@ export interface SubmitDeps {
   now: () => number;
   /** Límite por visitante (true = puede enviar) */
   allow: (key: string) => boolean;
-  getForm: (slug: string, blockId: string) => Promise<{ slug: string; data: BlockDataMap["form"] } | null>;
+  getForm: (slug: string, blockId: string) => Promise<{ slug: string; data: BlockDataMap["form"]; localized?: BlockDataMap["form"] | null } | null>;
   /** Claves de Turnstile de LA EMPRESA (null = sin configurar) */
   /** null = sin claves; si la bóveda falla, lanza */
   captchaConfig: () => Promise<CaptchaConfig | null>;
@@ -159,7 +159,7 @@ export async function processStudioSubmission(input: StudioSubmitInput, ip: stri
   }
   let result;
   try {
-    result = evaluateFormSubmission(form, input, { slug: found.slug });
+    result = evaluateFormSubmission(form, input, { slug: found.slug, localized: found.localized ?? null });
   } catch (e) {
     if (e instanceof FormSubmitError) throw new StudioSubmitError("BAD_REQUEST", e.message);
     throw e;
