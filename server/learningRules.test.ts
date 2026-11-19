@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   DAY_MS, DEMO_MS, LearningRuleError, assertPaymentConfirmed, assertReason, computeWindow, effectiveStatus, evaluateAccess, evaluateAny, matchRules,
-  mergeModules, paymentKey, progressPercent, type AccessRule, type EnrollmentView,
+  mergeModules, mimeMatchesKind, paymentKey, progressPercent, type AccessRule, type EnrollmentView,
 } from "../shared/learning";
 
 const rule = (p: Partial<AccessRule>): AccessRule => ({ id: 1, experienceId: 1, variantId: null, courseId: 1, moduleIds: [1], durationDays: 90, startMode: "on_grant", fixedStart: null, active: true, ...p });
@@ -113,4 +113,20 @@ describe("idempotencia, progreso y ampliación", () => {
     expect(progressPercent(0, 0)).toBe(0);
   });
   it("ampliar añade módulos sin perder los anteriores", () => expect(mergeModules([1], [1, 2, 3])).toEqual([1, 2, 3]));
+});
+
+describe("tipo MIME por tipo de recurso", () => {
+  it("un recurso audio acepta audio/* y los contenedores video/mp4 y video/webm (así llegan los «Audio» de Articulate)", () => {
+    for (const m of ["audio/mpeg", "audio/mp4", "video/mp4", "video/webm"]) expect(mimeMatchesKind("audio", m)).toBe(true);
+    expect(mimeMatchesKind("audio", "video/quicktime")).toBe(false);
+    expect(mimeMatchesKind("audio", "application/pdf")).toBe(false);
+  });
+  it("el resto de tipos no cambia: un PDF no vale para vídeo ni audio, y un vídeo no vale para un PDF", () => {
+    expect(mimeMatchesKind("pdf", "video/mp4")).toBe(false);
+    expect(mimeMatchesKind("pdf", "application/pdf")).toBe(true);
+    expect(mimeMatchesKind("video", "application/pdf")).toBe(false);
+    expect(mimeMatchesKind("video", "video/mp4")).toBe(true);
+    expect(mimeMatchesKind("video", "audio/mpeg")).toBe(false);
+    expect(mimeMatchesKind("desconocido", "video/mp4")).toBe(false);
+  });
 });

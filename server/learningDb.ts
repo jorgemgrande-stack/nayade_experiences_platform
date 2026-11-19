@@ -14,7 +14,7 @@ import { sql, type SQL } from "drizzle-orm";
 import { getDb } from "./db";
 import {
   DAY_MS, DEMO_MS, LearningRuleError, adminKey, assertPaymentConfirmed, assertReason, computeWindow, demoKey, evaluateAny, matchRules,
-  mergeModules, paymentKey, progressPercent, type AccessRule, type EnrollmentView, type PaymentEvidence, type StartMode,
+  mergeModules, mimeMatchesKind, paymentKey, progressPercent, type AccessRule, type EnrollmentView, type PaymentEvidence, type StartMode,
 } from "../shared/learning";
 
 export class LearningError extends Error {
@@ -554,15 +554,13 @@ export interface AttachResult {
   duplicateOf: Array<{ resourceId: number; originalName: string | null }>;
 }
 
-const KIND_MIME: Record<string, RegExp> = { video: /^video\//, audio: /^audio\//, pdf: /^application\/pdf$/, document: /^application\//, image: /^image\// };
-
 /** Asocia el fichero ya almacenado a un recurso pendiente: lo verifica (tipo coherente), guarda tamaño y huella y avisa de duplicados. */
 export async function attachResourceFile(resourceId: number, f: { objectId: string; sha256: string; sizeBytes: number; mimeType: string; originalName: string | null }, actorUserId: number, now = Date.now()): Promise<AttachResult> {
   const d = await db();
   return d.transaction(async (tx) => {
     const [res] = await rows(tx, sql`SELECT id, kind FROM learning_resources WHERE id = ${resourceId} FOR UPDATE`);
     if (!res) throw new LearningError("NOT_FOUND", "El recurso no existe.");
-    if (!(KIND_MIME[String(res.kind)] ?? /^$/).test(f.mimeType)) throw new LearningError("BAD_REQUEST", `El fichero (${f.mimeType}) no corresponde a un recurso de tipo ${res.kind}.`);
+    if (!mimeMatchesKind(String(res.kind), f.mimeType)) throw new LearningError("BAD_REQUEST", `El fichero (${f.mimeType}) no corresponde a un recurso de tipo ${res.kind}.`);
     const dups = await rows(tx, sql`SELECT id, original_name FROM learning_resources WHERE sha256 = ${f.sha256} AND id <> ${resourceId}`);
     await run(tx, sql`UPDATE learning_resources SET stored_object_id = ${f.objectId}, status = 'verified', mime_type = ${f.mimeType}, size_bytes = ${f.sizeBytes}, sha256 = ${f.sha256}, original_name = COALESCE(original_name, ${f.originalName}), updated_at = ${now} WHERE id = ${resourceId}`);
     return { resourceId, duplicateOf: dups.map((r) => ({ resourceId: n(r.id), originalName: r.original_name ?? null })) };
