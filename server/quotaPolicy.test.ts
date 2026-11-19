@@ -152,7 +152,10 @@ describe("catálogo: planes y módulos", () => {
     expect(b.users).toMatchObject({ limit: null, source: "default" });
     expect(b.contacts.limit).toBeNull();
     expect(b.sites.limit).toBe(1);
-    expect(BUSINESS_POLICIES.every((x) => x.platformDefault === null || x.platformDefault >= 1)).toBe(true);
+    // El almacenamiento Learning arranca en 0 a propósito: sin concesión expresa no se sube contenido de formación
+    expect(BUSINESS_POLICIES.filter((x) => x.metric !== "learning_storage_gb").every((x) => x.platformDefault === null || x.platformDefault >= 1)).toBe(true);
+    expect(b.learning_storage_gb).toMatchObject({ limit: 0, source: "default" });
+    expect(b.media_file_mb).toMatchObject({ limit: 10, source: "default" });
   });
 });
 
@@ -300,7 +303,7 @@ describe("cuotas de negocio en el Core", () => {
   it("mensaje con la ampliación temporal y política declarada de cada cuota", () => {
     const eff = businessLimit(policyOf("contacts")!, { grants: grantsOf("t", capabilitiesOfTier("essential")), contracted: [], exceptions: [exc({ metric: "contacts", newLimit: 12_000 })], now: NOW }, "essential");
     expect(quotaExceededMessage(eff, 12_000)).toMatch(/de la ampliación temporal concedida \(12\.000 contactos; ahora tienes 12\.000\)/);
-    expect(BUSINESS_POLICIES.filter((p) => p.enforcement === "hard").map((p) => p.metric)).toEqual(["users", "sites", "fiscal_entities", "storage_gb", "contacts"]);
+    expect(BUSINESS_POLICIES.filter((p) => p.enforcement === "hard").map((p) => p.metric)).toEqual(["users", "sites", "fiscal_entities", "storage_gb", "learning_storage_gb", "media_file_mb", "contacts"]);
     for (const p of BUSINESS_POLICIES) expect(p.applied.length).toBeGreaterThan(10);
   });
 });

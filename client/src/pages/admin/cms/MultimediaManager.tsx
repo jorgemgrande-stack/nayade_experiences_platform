@@ -1,6 +1,7 @@
 import { useState, useRef, useCallback } from "react";
 import AdminLayout from "@/components/AdminLayout";
 import { trpc } from "@/lib/trpc";
+import { useImageUploadLimit } from "@/hooks/useImageUploadLimit";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -8,6 +9,7 @@ import { toast } from "sonner";
 import { Upload, Copy, Trash2, Image, Search, Grid3X3, List, X, FolderOpen } from "lucide-react";
 
 export default function MultimediaManager() {
+  const imageMax = useImageUploadLimit();
   const [view, setView] = useState<"grid" | "list">("grid");
   const [search, setSearch] = useState("");
   const [uploading, setUploading] = useState(false);
@@ -29,8 +31,8 @@ export default function MultimediaManager() {
       toast.error("Solo se aceptan imágenes (JPEG, PNG, WebP, GIF, SVG)");
       return;
     }
-    if (file.size > 10 * 1024 * 1024) {
-      toast.error("El archivo supera el límite de 10 MB");
+    if (file.size > imageMax.bytes) {
+      toast.error(`El archivo supera el límite de ${imageMax.mb} MB`);
       return;
     }
     setUploading(true);
@@ -164,7 +166,7 @@ export default function MultimediaManager() {
         <p className="text-sm font-medium">
           {dragOver ? "Suelta las imágenes aquí" : "Arrastra imágenes aquí o haz clic para seleccionar"}
         </p>
-        <p className="text-xs mt-1 opacity-70">JPEG, PNG, WebP, GIF, SVG — máx. 10 MB por archivo</p>
+        <p className="text-xs mt-1 opacity-70">JPEG, PNG, WebP, GIF, SVG — máx. {imageMax.mb} MB por archivo</p>
       </div>
 
       {/* Content */}

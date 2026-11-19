@@ -1,6 +1,7 @@
 import { useState, useRef, useCallback } from "react";
 import AdminLayout from "@/components/AdminLayout";
 import { trpc } from "@/lib/trpc";
+import { useImageUploadLimit } from "@/hooks/useImageUploadLimit";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -70,6 +71,7 @@ interface GalleryItem {
 
 // ── Componente principal ───────────────────────────────────────────────────────
 export default function GalleryManager() {
+  const imageMax = useImageUploadLimit();
   const utils = trpc.useUtils();
   const [filterCategory, setFilterCategory] = useState("Todas");
   const [editItem, setEditItem] = useState<GalleryItem | null>(null);
@@ -105,7 +107,7 @@ export default function GalleryManager() {
     if (!files || files.length === 0) return;
     const validFiles = Array.from(files).filter((f) => f.type.startsWith("image/"));
     if (validFiles.length === 0) { toast.error("Solo se aceptan imágenes"); return; }
-    if (validFiles.some((f) => f.size > 10 * 1024 * 1024)) { toast.error("Alguna imagen supera el límite de 10 MB"); return; }
+    if (validFiles.some((f) => f.size > imageMax.bytes)) { toast.error(`Alguna imagen supera el límite de ${imageMax.mb} MB`); return; }
 
     setUploading(true);
     setUploadProgress({ done: 0, total: validFiles.length });

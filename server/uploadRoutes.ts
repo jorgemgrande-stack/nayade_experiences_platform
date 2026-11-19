@@ -6,6 +6,7 @@ import { createMediaFile } from "./db";
 import { getUserFromRequest } from "./localAuth";
 import { isMultiTenant } from "./_core/tenant";
 import { requireCapability } from "./_core/capabilities/restGuard";
+import { MB, imageMaxBytes, storageCeilingBytes } from "./_core/files/limits";
 
 const USE_LOCAL_AUTH = process.env.LOCAL_AUTH === "true";
 
@@ -21,7 +22,9 @@ function uploadErrorStatus(err: unknown): number {
 const upload = multer({
   storage: multer.memoryStorage(),
   limits: {
-    fileSize: 10 * 1024 * 1024, // 10 MB máximo
+    // Techo técnico de la plataforma. El máximo de cada empresa (10 MB general; más si tiene una condición negociada)
+    // se comprueba justo después con `imageMaxBytes()`.
+    fileSize: storageCeilingBytes(),
   },
   fileFilter: (_req, file, cb) => {
     const allowed = [
@@ -64,13 +67,19 @@ async function requireAdmin(req: Request, res: Response, next: () => void) {
  * Los rechazos de multer (formato no admitido, más de 10 MB) se responden en JSON con su motivo: sin esto llegaban
  * como una página de error y el panel solo podía decir «error de conexión».
  */
-export function singleImage(field: string) {
-  const mw = upload.single(field);
+export function singleImage(field: string, mw: ReturnType<typeof upload.single> = upload.single(field)) {
+  const tooBigMessage = async () => `La imagen pesa más de ${Math.floor((await imageMaxBytes()) / MB)} MB. Redúcela e inténtalo de nuevo.`;
   return (req: Request, res: Response, next: (err?: unknown) => void) =>
     mw(req, res, (err?: unknown) => {
-      if (!err) return next();
-      const tooBig = err instanceof multer.MulterError && err.code === "LIMIT_FILE_SIZE";
-      res.status(tooBig ? 413 : 400).json({ error: tooBig ? "La imagen pesa más de 10 MB. Redúcela e inténtalo de nuevo." : err instanceof Error ? err.message : "Archivo no válido." });
+      void (async () => {
+        if (!err) {
+          // El máximo es de la empresa en curso: el servidor decide, no el navegador
+          if (req.file && req.file.size > (await imageMaxBytes())) return res.status(413).json({ error: await tooBigMessage() });
+          return next();
+        }
+        const tooBig = err instanceof multer.MulterError && err.code === "LIMIT_FILE_SIZE";
+        res.status(tooBig ? 413 : 400).json({ error: tooBig ? await tooBigMessage() : err instanceof Error ? err.message : "Archivo no válido." });
+      })().catch(next);
     });
 }
 
@@ -120,7 +129,7 @@ router.post(
 router.post(
   "/api/upload-media",
   (req, res, next) => requireAdmin(req, res, next),
-  upload.single("file"),
+  singleImage("file"),
   async (req: Request, res: Response) => {
     try {
       if (!req.file) {

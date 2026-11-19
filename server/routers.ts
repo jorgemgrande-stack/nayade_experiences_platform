@@ -254,6 +254,7 @@ import { sitesRouter } from "./routers/sites";
 import { inventoryRouter } from "./routers/inventory";
 import { communitiesRouter } from "./routers/communities";
 import { learningRouter } from "./routers/learning";
+import { storageUsageRouter } from "./routers/storageUsage";
 import { loyaltyRouter } from "./routers/loyalty";
 import { socialNetRouter } from "./routers/socialNet";
 import { ghlInboxRouter } from "./routers/ghlInbox";
@@ -3117,6 +3118,7 @@ export const appRouter = router({
   inventory: inventoryRouter,
   communities: communitiesRouter,
   learning: learningRouter,
+  storage: storageUsageRouter,
   loyalty: loyaltyRouter,
   socialNet: socialNetRouter,
   ghlInbox: ghlInboxRouter,
