@@ -6,6 +6,7 @@ import { TRPCError } from "@trpc/server";
 import { getTenantIdOrDefault, isMultiTenant } from "../_core/tenant";
 import { getTrustedBaseUrl } from "../_core/publicUrl";
 import { connectConfigState } from "./config";
+import { AccountIndexUnavailable } from "./accountIndex";
 import { ConnectGatewayError } from "./gateway";
 import { realPaymentsDeps } from "./runtime";
 import { onlineAvailable, PaymentsError, startQuoteCheckout } from "./service";
@@ -15,7 +16,8 @@ import { mysqlPaymentStore, PaymentsSchemaMissing } from "./store";
 export function translatePaymentsError(e: unknown): never {
   if (e instanceof TRPCError) throw e;
   if (e instanceof PaymentsSchemaMissing) throw new TRPCError({ code: "PRECONDITION_FAILED", message: "Los cobros por empresa necesitan una actualización de la base de datos que aún no se ha aplicado" });
-  if (e instanceof PaymentsError) throw new TRPCError({ code: e.code === "cannot_enable" || e.code === "quote_unavailable" || e.code === "unsupported_quote" ? "BAD_REQUEST" : "PRECONDITION_FAILED", message: e.message });
+  if (e instanceof PaymentsError) throw new TRPCError({ code: e.code === "cannot_enable" || e.code === "account_conflict" || e.code === "quote_unavailable" || e.code === "unsupported_quote" ? "BAD_REQUEST" : "PRECONDITION_FAILED", message: e.message });
+  if (e instanceof AccountIndexUnavailable) throw new TRPCError({ code: "SERVICE_UNAVAILABLE", message: e.message + ". Inténtalo de nuevo en unos minutos." });
   if (e instanceof ConnectGatewayError) throw new TRPCError({ code: "BAD_GATEWAY", message: "Stripe no ha podido completar la operación. Inténtalo de nuevo en unos minutos." });
   throw e;
 }

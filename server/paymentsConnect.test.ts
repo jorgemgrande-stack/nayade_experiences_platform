@@ -11,7 +11,7 @@ import {
   type ConnectEvent, type PaymentsDeps,
 } from "./paymentsConnect/service";
 import { createConnectWebhookRouter, CONNECT_WEBHOOK_PATH } from "./paymentsConnect/webhookRoute";
-import { FakeConnectGateway, FakeQuotes, MemoryPaymentStore } from "./paymentsConnect/testing";
+import { FakeConnectGateway, FakeQuotes, MemoryAccountIndex, MemoryPaymentStore } from "./paymentsConnect/testing";
 
 const SECRET = "whsec_" + "a".repeat(32);
 const CONFIG: ConnectConfig = { mode: "test", apiKey: "rk_test_" + "b".repeat(24), webhookSecret: SECRET };
@@ -25,8 +25,9 @@ function setup(over: { total?: string; plan?: boolean } = {}) {
   const store = new MemoryPaymentStore();
   const gateway = new FakeConnectGateway(ACCT);
   const quotes = new FakeQuotes({ id: 77, token: TOKEN, total: over.total ?? "250.00", status: "enviado", paidAt: null, validUntil: null, hasPaymentPlan: !!over.plan, title: "Quantum — Iniciación", email: "ana@example.com", currency: "EUR" });
-  const d: PaymentsDeps = { store, gateway, config: CONFIG, quotes, tenantId: "quantum", now: () => 1_700_000_000_000 };
-  return { store, gateway, quotes, d };
+  const index = new MemoryAccountIndex();
+  const d: PaymentsDeps = { store, gateway, config: CONFIG, quotes, index, tenantId: "quantum", now: () => 1_700_000_000_000 };
+  return { store, gateway, quotes, index, d };
 }
 
 async function verified(s: ReturnType<typeof setup>) {
@@ -223,6 +224,7 @@ describe("receptor HTTP del webhook (firma real del SDK de Stripe)", () => {
       createConnectWebhookRouter(
         {
           config: () => CONFIG,
+          tenantOfAccount: async (acct) => Object.entries(tenants).find(([, t]) => t.index.rows.has(acct))?.[0] ?? null,
           tenantAllowed: async (id) => id in tenants,
           runInTenant: (_id, fn) => fn(),
           paymentsFor: (id) => tenants[id].d,
@@ -284,10 +286,15 @@ describe("receptor HTTP del webhook (firma real del SDK de Stripe)", () => {
     const t = setup();
     await verified(t);
     const { post, signed } = await boot({ quantum: t });
-    const ghost = completed("evt_g", "cs_x");
-    ghost.data.object.metadata = { tenant_id: "fantasma", quote_id: "1" };
-    const a = signed(ghost);
+    // Cuenta que ninguna empresa tiene vinculada: 200 sin efecto, aunque el metadato nombre a una empresa real
+    const a = signed(completed("evt_g", "cs_x", "acct_1NadieLaTiene0009"));
     expect(await (await post(a.body, a.sig)).json()).toMatchObject({ ignored: "unknown_tenant" });
+    // Cuenta de quantum con un metadato que apunta a otra empresa: el índice manda y el evento se aísla
+    const ghost = completed("evt_g2", "cs_x");
+    ghost.data.object.metadata = { tenant_id: "fantasma", quote_id: "1" };
+    const g = signed(ghost);
+    expect(await (await post(g.body, g.sig)).json()).toMatchObject({ outcome: "isolated" });
+    expect(t.quotes.paid).toHaveLength(0);
     const live = signed({ ...completed("evt_lv", "cs_x"), livemode: true });
     expect(await (await post(live.body, live.sig)).json()).toMatchObject({ outcome: "mode_mismatch" });
   });

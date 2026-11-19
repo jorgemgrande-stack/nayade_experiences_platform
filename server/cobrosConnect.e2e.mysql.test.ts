@@ -16,6 +16,7 @@
  */
 import { describe, it, expect, beforeAll, afterAll, vi } from "vitest";
 import Stripe from "stripe";
+import mysql from "mysql2/promise";
 import { startEssentialApp, data, errCode, type EssentialApp } from "./essentialApp.testkit";
 import { addDaysToDate } from "../shared/editionSessions";
 
@@ -36,6 +37,7 @@ describe.skipIf(!URL_)("Cobros por empresa con Stripe Connect (aplicación real,
   let admB = "";
   let tenantA = "";
   let tenantB = "";
+  let reg: mysql.Pool;
   const q = { id: 0, token: `tok${TAG}`.padEnd(40, "x"), session: "cs_test_aaa111", leadId: 0, enrollment: 0 };
   const ok = (r: { status: number; json: any }, what: string) => {
     expect(r.status, `${what}: ${JSON.stringify(r.json)}`).toBe(200);
@@ -58,6 +60,26 @@ describe.skipIf(!URL_)("Cobros por empresa con Stripe Connect (aplicación real,
     return ess.call(host, "POST", PATH, { raw: body, headers });
   };
   const quoteRow = async () => (await ess.sql("a", "SELECT status, paidAt, invoiceNumber FROM quotes WHERE id = ?", [q.id]))[0];
+  /** Foto de lo que el pago puede cambiar: presupuesto, factura, reserva, contabilidad, cliente potencial e inscripción. */
+  const snap = async () => {
+    const [qr] = await ess.sql("a", "SELECT status, paidAt IS NOT NULL AS paid, invoiceNumber, payment_method AS paymentMethod FROM quotes WHERE id = ?", [q.id]);
+    const inv = await ess.sql("a", "SELECT status, paymentMethod, total FROM invoices WHERE quoteId = ?", [q.id]);
+    const [lead] = await ess.sql("a", "SELECT status, opportunityStatus FROM leads WHERE id = ?", [q.leadId]);
+    const [en] = await ess.sql("a", "SELECT status, quote_id FROM edition_enrollments WHERE id = ?", [q.enrollment]);
+    const [ed] = await ess.sql("a", "SELECT reserved FROM product_editions WHERE id = (SELECT edition_id FROM edition_enrollments WHERE id = ?)", [q.enrollment]);
+    const edId = (await ess.sql("a", "SELECT edition_id FROM edition_enrollments WHERE id = ?", [q.enrollment]))[0].edition_id;
+    const listed = (ok(await ess.q("a", "products.editions.enrollments", { editionId: edId }, admA), "inscripciones") as any[]).find((x) => x.id === q.enrollment);
+    const act = await ess.sql("a", "SELECT action FROM crm_activity_log WHERE entityType = 'quote' AND entityId = ? ORDER BY id", [q.id]);
+    return {
+      presupuesto: { estado: qr.status, pagado: !!qr.paid, factura: qr.invoiceNumber ? "sí" : "no", metodo: qr.paymentMethod },
+      facturas: inv.map((i: any) => ({ estado: i.status, metodo: i.paymentMethod, total: Number(i.total) })),
+      reservas: (await ess.sql("a", "SELECT COUNT(*) AS n FROM reservations"))[0].n,
+      transacciones: (await ess.sql("a", "SELECT COUNT(*) AS n FROM transactions"))[0].n,
+      lead: { estado: lead.status, oportunidad: lead.opportunityStatus },
+      inscripcion: { estado: en.status, presupuestoEnlazado: !!en.quote_id, plazasOcupadas: ed.reserved, pago: listed.payment?.label ?? null, pagada: listed.payment?.paid ?? null },
+      actividad: act.map((a: any) => a.action),
+    };
+  };
   const invoices = async () => ess.sql("a", "SELECT id, invoiceNumber, status FROM invoices WHERE quoteId = ?", [q.id]);
 
   beforeAll(async () => {
@@ -67,6 +89,9 @@ describe.skipIf(!URL_)("Cobros por empresa con Stripe Connect (aplicación real,
     ess = await startEssentialApp(URL_!, "cobros");
     tenantA = ess.ids.a;
     tenantB = ess.ids.b;
+    // Índice global de cuentas (registro 0018): lo escribiría el plano de control; el Core lo lee para resolver el webhook
+    reg = mysql.createPool({ uri: process.env.REGISTRY_DATABASE_URL!, connectionLimit: 3 });
+    for (const [acct, tid] of [[ACCT_A, tenantA], [ACCT_B, tenantB]] as const) await reg.query("INSERT INTO tenant_payment_accounts (account_id, tenant_id, provider, mode, claimed_at) VALUES (?, ?, 'stripe', 'test', ?)", [acct, tid, Date.now()]);
     admA = await ess.login("a", "admin");
     agA = await ess.login("a", "agente");
     admB = await ess.login("b", "admin");
@@ -95,6 +120,7 @@ describe.skipIf(!URL_)("Cobros por empresa con Stripe Connect (aplicación real,
     await ess.sql("a", "INSERT INTO payment_checkouts (session_id, mode, account_id, quote_id, amount_cents, currency, status, created_at) VALUES (?,'test',?,?,40000,'eur','pending',?)", [q.session, ACCT_A, q.id, now]);
   }, 300_000);
   afterAll(async () => {
+    await reg?.end();
     await ess?.close();
   });
 
@@ -120,7 +146,8 @@ describe.skipIf(!URL_)("Cobros por empresa con Stripe Connect (aplicación real,
   it("D. firma inválida o ausente: 400 sin efecto; empresa desconocida: 200 sin efecto", async () => {
     expect((await post("a", event("evt_sinfirma"), { sign: false })).status).toBe(400);
     expect((await post("a", event("evt_malafirma"), { badSig: true })).status).toBe(400);
-    expect((await post("a", event("evt_ghost", { tenant: "empresa-fantasma" }))).json).toMatchObject({ ignored: "unknown_tenant" });
+    // Cuenta que ninguna empresa tiene en el índice: 200 sin efecto (aunque el metadato nombre a una empresa real)
+    expect((await post("a", event("evt_ghost", { account: "acct_1NadieLaTiene0009" }))).json).toMatchObject({ ignored: "unknown_tenant" });
     expect((await quoteRow()).paidAt).toBeNull();
     expect(await ess.sql("a", "SELECT event_id FROM payment_events")).toHaveLength(0);
   });
@@ -138,7 +165,9 @@ describe.skipIf(!URL_)("Cobros por empresa con Stripe Connect (aplicación real,
   });
 
   it("A2. el evento firmado registra el pago, factura el presupuesto y la inscripción se confirma sin motivo", async () => {
+    const before = await snap();
     const r = await post("a", event("evt_paid_1"));
+    const afterEvent = await snap();
     expect(r.status).toBe(200);
     expect(r.json).toMatchObject({ outcome: "applied" });
     const row = await quoteRow();
@@ -146,6 +175,13 @@ describe.skipIf(!URL_)("Cobros por empresa con Stripe Connect (aplicación real,
     expect(row.paidAt).not.toBeNull();
     expect(row.invoiceNumber).toBeTruthy();
     expect(await invoices()).toHaveLength(1);
+    // El cobro de Stripe no figura como Redsys en la factura ni en el presupuesto
+    expect(afterEvent.facturas).toEqual([expect.objectContaining({ metodo: "otro", total: 400 })]);
+    expect(afterEvent.presupuesto.metodo).toBe("otro");
+    // Antes del evento no había nada; el evento no confirma la inscripción (solo la deja pagada) y la confirmación la ocupa
+    expect(before).toMatchObject({ facturas: [], reservas: 0, transacciones: 0, inscripcion: { estado: "solicitada", plazasOcupadas: 0, pagada: false } });
+    expect(afterEvent).toMatchObject({ reservas: 1, transacciones: 1, lead: { estado: "convertido", oportunidad: "ganada" }, inscripcion: { estado: "solicitada", plazasOcupadas: 0, pagada: true } });
+    expect(afterEvent.actividad).toContain("payment_confirmed");
     const [co] = await ess.sql("a", "SELECT status, payment_intent_id, paid_at FROM payment_checkouts WHERE session_id = ?", [q.session]);
     expect(co).toMatchObject({ status: "paid", payment_intent_id: "pi_test_aaa" });
     const [acct] = await ess.sql("a", "SELECT last_event_id, last_event_type FROM payment_accounts WHERE mode='test'");
@@ -157,6 +193,9 @@ describe.skipIf(!URL_)("Cobros por empresa con Stripe Connect (aplicación real,
     expect(listed.payment).toMatchObject({ paid: true });
     const conf = ok(await ess.m("a", "products.editions.setEnrollmentStatus", { enrollmentId: q.enrollment, status: "confirmada" }, admA), "confirmar");
     expect(conf).toMatchObject({ changed: true });
+    const afterConfirm = await snap();
+    expect(afterConfirm.inscripcion).toMatchObject({ estado: "confirmada", plazasOcupadas: 1, pagada: true });
+    console.log("INSTANTANEA_COBRO " + JSON.stringify({ before, afterEvent, afterConfirm }));
   });
 
   it("B. evento repetido (mismo id, o con otro id para la misma sesión): una sola factura", async () => {

@@ -118,7 +118,7 @@ export function installTenantResolution(app: Express, env: NodeJS.ProcessEnv = p
     }
     // Cobros de cada empresa con su cuenta Stripe: webhook central de cuentas conectadas (la empresa sale del evento y se
     // contrasta con su propia base). Inactivo (404) sin CONNECT_STRIPE_MODE.
-    app.use(createRealConnectWebhookRouter(rt.reader));
+    app.use(createRealConnectWebhookRouter(rt.reader, rt.paymentAccounts));
     // Dominios propios: consulta de la pasarela (¿se sirve sin su contraseña?) y comprobación HTTPS previa a activarlos
     app.use(createDomainCheckRouter({ resolver: rt.resolver, reader: rt.reader }));
     app.use(resolveTenantMiddleware(rt.resolver));

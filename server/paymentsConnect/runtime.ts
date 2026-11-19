@@ -14,16 +14,20 @@ import { stripeConnectGateway } from "./gateway";
 import { realQuotePort } from "./quotePort";
 import { createConnectWebhookRouter } from "./webhookRoute";
 import { mysqlPaymentStore } from "./store";
+import { httpAccountIndexClient, type AccountIndexReader } from "./accountIndex";
 import type { PaymentsDeps } from "./service";
 
 export function realPaymentsDeps(tenantId: string, config: ConnectConfig): PaymentsDeps {
-  return { store: mysqlPaymentStore(), gateway: stripeConnectGateway(config), config, quotes: realQuotePort(), tenantId };
+  // La reserva global de la cuenta la hace el plano de control (el Core lee el registro con un usuario de solo lectura)
+  const index = httpAccountIndexClient({ url: process.env.PAYMENT_ACCOUNT_CLAIM_URL || undefined, secret: process.env.SUPPORT_JWT_SECRET });
+  return { store: mysqlPaymentStore(), gateway: stripeConnectGateway(config), config, quotes: realQuotePort(), index, tenantId };
 }
 
 /** Webhook central de cuentas conectadas: empresa servible según el registro, ejecución en su contexto y con sus ajustes. */
-export function createRealConnectWebhookRouter(reader: Pick<TenantRegistryReader, "getTenant">) {
+export function createRealConnectWebhookRouter(reader: Pick<TenantRegistryReader, "getTenant">, index: AccountIndexReader) {
   return createConnectWebhookRouter({
     config: () => connectConfigState().config,
+    tenantOfAccount: (accountId) => index.tenantOf(accountId),
     tenantAllowed: async (id) => {
       const t = await reader.getTenant(id);
       if (!t) return false;

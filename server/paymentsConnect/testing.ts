@@ -3,6 +3,7 @@ import type { StripeAccountFacts } from "../../shared/paymentAccounts";
 import type { CheckoutParams, ConnectGateway } from "./gateway";
 import type { AccountUpdate, CheckoutRow, PaymentAccountRow, PaymentStore } from "./store";
 import type { QuoteInfo, QuotePort } from "./service";
+import type { AccountIndexReader, AccountIndexWriter, ClaimResult } from "./accountIndex";
 
 export class MemoryPaymentStore implements PaymentStore {
   accounts = new Map<string, PaymentAccountRow>();
@@ -119,5 +120,20 @@ export class FakeQuotes implements QuotePort {
       throw new Error("fallo al aplicar");
     }
     this.paid.push({ quoteId, reference });
+  }
+}
+
+/** Índice global en memoria con la misma semántica que la tabla (clave = cuenta; una cuenta por empresa y modo). */
+export class MemoryAccountIndex implements AccountIndexWriter, AccountIndexReader {
+  rows = new Map<string, { tenantId: string; mode: string }>();
+  async claim(tenantId: string, mode: "test" | "live", accountId: string): Promise<ClaimResult> {
+    const ex = this.rows.get(accountId);
+    if (ex) return ex.tenantId === tenantId && ex.mode === mode ? { ok: true, alreadyOwned: true } : { ok: false, reason: "taken" };
+    for (const r of Array.from(this.rows.values())) if (r.tenantId === tenantId && r.mode === mode) return { ok: false, reason: "tenant_has_other" };
+    this.rows.set(accountId, { tenantId, mode });
+    return { ok: true, alreadyOwned: false };
+  }
+  async tenantOf(accountId: string) {
+    return this.rows.get(accountId)?.tenantId ?? null;
   }
 }

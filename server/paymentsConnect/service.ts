@@ -11,11 +11,12 @@
  */
 import { deriveAccountStatus, eurosToCents, onlinePaymentsAvailable, type PaymentMode, type StripeAccountFacts } from "../../shared/paymentAccounts";
 import type { ConnectConfig } from "./config";
+import type { AccountIndexWriter } from "./accountIndex";
 import type { ConnectGateway } from "./gateway";
 import type { PaymentAccountRow, PaymentStore } from "./store";
 
 export class PaymentsError extends Error {
-  constructor(readonly code: "not_configured" | "not_connected" | "not_verified" | "online_disabled" | "quote_unavailable" | "unsupported_quote" | "bad_amount" | "cannot_enable", message: string) {
+  constructor(readonly code: "not_configured" | "not_connected" | "not_verified" | "online_disabled" | "quote_unavailable" | "unsupported_quote" | "bad_amount" | "cannot_enable" | "account_conflict", message: string) {
     super(message);
     this.name = "PaymentsError";
   }
@@ -44,6 +45,8 @@ export interface PaymentsDeps {
   gateway: ConnectGateway;
   config: ConnectConfig;
   quotes: QuotePort;
+  /** Reserva global de la cuenta (una cuenta, una empresa). */
+  index: AccountIndexWriter;
   tenantId: string;
   now?: () => number;
 }
@@ -53,6 +56,9 @@ export async function connectAccount(d: PaymentsDeps, p: { email?: string | null
   let account = await d.store.getAccount(d.config.mode);
   if (!account) {
     const created = await d.gateway.createAccount({ tenantId: d.tenantId, email: p.email, country: "ES", idempotencyKey: `connect-acct-${d.tenantId}-${d.config.mode}` });
+    // Antes de guardarla, la cuenta se reserva para ESTA empresa en el índice global: si ya es de otra, no se vincula
+    const claim = await d.index.claim(d.tenantId, d.config.mode, created.accountId);
+    if (!claim.ok) throw new PaymentsError("account_conflict", "Esa cuenta de Stripe ya está vinculada a otra empresa");
     account = await d.store.insertAccount(d.config.mode, created.accountId, now, p.by);
   }
   const link = await d.gateway.createAccountLink({ accountId: account.accountId, returnUrl: p.returnUrl, refreshUrl: p.refreshUrl });

@@ -5,9 +5,9 @@
  *
  *  - Firma verificada sobre los bytes originales con el secreto del destino Connect (`CONNECT_STRIPE_WEBHOOK_SECRET`,
  *    distinto del webhook del Stripe corporativo). Sin firma válida: 400, sin efecto.
- *  - La empresa sale del metadato `tenant_id` que pusimos nosotros al crear la cuenta o la sesión; NO se confía en él:
- *    la empresa solo aplica el evento si `event.account` es EXACTAMENTE la cuenta que ella tiene vinculada. Un evento de
- *    otra cuenta queda aislado (200, sin efecto, sin tocar nada).
+ *  - La empresa sale del ÍNDICE GLOBAL de cuentas (registro 0018) por `event.account`: una cuenta, una empresa. El
+ *    metadato `tenant_id` solo se contrasta. Además la empresa solo aplica el evento si `event.account` es EXACTAMENTE
+ *    la cuenta que ella tiene vinculada en su base. Un evento de otra cuenta queda aislado (200, sin efecto).
  *  - Cada evento se aplica una sola vez (clave `event.id` en la base de la empresa).
  *  - Responde 200 a lo ajeno/ignorado/repetido y 500 solo si falla aplicar un pago real (Stripe reintenta).
  *  - Nunca se registra el cuerpo, la firma ni el secreto.
@@ -24,6 +24,8 @@ export const CONNECT_WEBHOOK_PATH = "/api/stripe/connect/webhook";
 export interface ConnectWebhookDeps {
   config?: () => ConnectConfig | null;
   verify?: (cfg: ConnectConfig, raw: Buffer, signature: string) => ConnectEvent;
+  /** Empresa dueña de la cuenta (índice global del registro). La fuente de verdad: ningún metadato del evento decide. */
+  tenantOfAccount: (accountId: string) => Promise<string | null>;
   /** ¿La empresa existe y está servible? */
   tenantAllowed: (tenantId: string) => Promise<boolean>;
   /** Ejecuta la aplicación del evento EN la empresa (contexto y conexión propios). */
@@ -51,7 +53,14 @@ export function connectWebhookHandler(d: ConnectWebhookDeps) {
       opsLog("warn", "StripeConnectWebhook", "invalid_signature", {});
       return void res.status(400).json({ error: "invalid_signature" });
     }
-    const tenantId = claimedTenantId(ev);
+    // La empresa sale del índice global por `event.account`; el metadato `tenant_id` solo se contrasta (si dice otra
+    // empresa, el evento es sospechoso y no se aplica). Cuenta desconocida o empresa no servible: 200 sin efecto.
+    const tenantId = ev.account ? await d.tenantOfAccount(ev.account).catch(() => null) : null;
+    const claimed = claimedTenantId(ev);
+    if (tenantId && claimed && claimed !== tenantId) {
+      opsLog("warn", "StripeConnectWebhook", "tenant_metadata_mismatch", { eventId: ev.id, type: ev.type });
+      return void res.status(200).json({ received: true, outcome: "isolated" });
+    }
     if (!tenantId || !(await d.tenantAllowed(tenantId).catch(() => false))) {
       opsLog("warn", "StripeConnectWebhook", "unknown_tenant", { eventId: ev.id, type: ev.type });
       return void res.status(200).json({ received: true, ignored: "unknown_tenant" });

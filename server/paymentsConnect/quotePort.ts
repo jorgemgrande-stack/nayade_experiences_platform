@@ -3,8 +3,8 @@
  * lógica de cobro de siempre (`crm.quotes.confirmPayment`: factura, reserva, cliente, correo, operación), llamada como
  * «Sistema (Stripe)». Es idempotente por sí misma (si el presupuesto ya está pagado devuelve la factura existente).
  */
-import { eq } from "drizzle-orm";
-import { quotes, leads } from "../../drizzle/schema";
+import { and, eq, isNull } from "drizzle-orm";
+import { invoices, quotes, leads } from "../../drizzle/schema";
 import { getDb } from "../db";
 import type { QuoteInfo, QuotePort } from "./service";
 
@@ -44,6 +44,13 @@ export function realQuotePort(): QuotePort {
         paymentMethod: "otro",
         paymentNote: `Pago con tarjeta en Stripe (cuenta de la empresa). Referencia ${reference}`,
       });
+      // `confirmPayment` no pone método a la factura (queda el valor por defecto de la tabla, «redsys», también en los cobros
+      // manuales): un cobro de Stripe no puede figurar como Redsys. Se anota «otro» (la referencia queda en la reserva y en
+      // payment_checkouts); idempotente.
+      const db = await getDb();
+      if (!db) throw new Error("Base de datos no disponible");
+      await db.update(invoices).set({ paymentMethod: "otro" }).where(eq(invoices.quoteId, quoteId));
+      await db.update(quotes).set({ paymentMethod: "otro" }).where(and(eq(quotes.id, quoteId), isNull(quotes.paymentMethod)));
     },
   };
 }

@@ -71,6 +71,7 @@ import { createTicketsRouter } from "./tickets";
 import { createCustomerTicketsRouter } from "../support/customerTickets";
 import { grantActive, type SupportAdmin, type SupportGrantListed } from "../_core/support/grants";
 import { SUPPORT_AUDIT_PATH, verifySupportAudit } from "../_core/support/audit";
+import { PAYMENT_CLAIM_PATH, verifyPaymentClaim, type AccountIndexWriter } from "../paymentsConnect/accountIndex";
 
 /** Roles que pueden abrir un acceso de soporte CON modificación (decisión 13/11/2026); soporte, solo lectura. */
 const SUPPORT_WRITE_ROLES: ReadonlySet<string> = new Set(["admin", "superadmin"]);
@@ -296,6 +297,8 @@ export interface ControlPlaneDeps {
   /** Orígenes del navegador autorizados (CORS). Vacío = ninguno. Nunca comodín. */
   allowedOrigins?: string[];
   supportSecret?: string;
+  /** Índice global de cuentas de cobro por empresa (registro 0018). Sin él, la ruta de reserva responde 501. */
+  paymentAccounts?: AccountIndexWriter;
   /** Accesos de las empresas (Clientes SaaS → Accesos): el Core ejecuta cada acción en el contexto de la empresa. */
   tenantAccess?: { client: CoreAccessClient };
   /** Lectura de las integraciones de una empresa (solo proveedor, campo, fecha y autor); por defecto, con su DSN. */
@@ -632,6 +635,32 @@ export function createControlPlaneApp(d: ControlPlaneDeps): Express {
         // evento con su identificador, que el Core consulta); la autorización sigue hasta que alguien la revoque.
         if (c.ev === "exited" && live && !g.untilRevoked) await support.revoke(g.id, g.operator);
         res.status(201).json({ ok: true });
+      }),
+    );
+  }
+
+  // Reserva de la cuenta de cobro (Stripe Connect) de una empresa: la pide el Core, firmada con el secreto compartido. La
+  // cuenta pertenece a UNA sola empresa (clave primaria del índice); ver paymentsConnect/accountIndex.ts
+  if (d.supportSecret) {
+    const secret = d.supportSecret;
+    const seenClaims = new Map<string, number>();
+    app.post(
+      PAYMENT_CLAIM_PATH,
+      rateLimit({ windowMs: 60_000, limit: 300, standardHeaders: true, legacyHeaders: false, keyGenerator: (req) => `ip:${ipKeyGenerator(req.ip ?? "")}` }),
+      wrap(async (req, res) => {
+        res.setHeader("Cache-Control", "no-store");
+        if (!d.paymentAccounts) return void res.status(501).json({ error: "not_implemented" });
+        const c = await verifyPaymentClaim(String((req.body as { token?: unknown } | undefined)?.token ?? ""), secret);
+        if (!c) return void res.status(401).json({ error: "unauthorized" });
+        const nowS = Math.floor(Date.now() / 1000);
+        seenClaims.forEach((exp, k) => exp < nowS && seenClaims.delete(k));
+        if (seenClaims.has(c.jti)) return void res.status(409).json({ error: "replay" });
+        seenClaims.set(c.jti, c.exp);
+        const t = await d.reader.getTenant(c.tid);
+        if (!t || t.status === "deleted" || t.status === "deleting") return void res.status(404).json({ error: "tenant_not_found" });
+        const r = await d.paymentAccounts.claim(c.tid, c.mode, c.acct);
+        if (!r.ok) return void res.status(409).json({ error: "conflict", reason: r.reason });
+        res.status(r.alreadyOwned ? 200 : 201).json({ ok: true });
       }),
     );
   }
