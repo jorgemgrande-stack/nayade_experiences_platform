@@ -134,3 +134,10 @@ export function progressPercent(totalLessons: number, completedLessons: number):
 export function mergeModules(current: number[], added: number[]): number[] {
   return Array.from(new Set([...current, ...added])).sort((a, b) => a - b);
 }
+
+const KIND_MIME: Record<string, RegExp> = { video: /^video\//, audio: /^(audio\/|video\/(mp4|webm)$)/, pdf: /^application\/pdf$/, document: /^application\//, image: /^image\// };
+
+/** ¿Es este tipo MIME válido para un recurso de este tipo? Un «audio» de Articulate llega como contenedor video/mp4 o video/webm con pista de audio. */
+export function mimeMatchesKind(kind: string, mimeType: string): boolean {
+  return (KIND_MIME[kind] ?? /^$/).test(mimeType);
+}
