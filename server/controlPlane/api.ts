@@ -2141,7 +2141,14 @@ export function createControlPlaneApp(d: ControlPlaneDeps): Express {
       store: d.subscriptions.store,
       crm: crmPort,
       now: d.subscriptions.now,
-      settle: commercialTerms ? (sid) => commercialTerms.settleDue(sid) : undefined,
+      settle: commercialTerms
+        ? async (sid) => {
+            const out = await commercialTerms.settleDue(sid);
+            // Prueba → pago al instante efectivo pactado (idempotente; solo actúa si el acuerdo aceptado ya está en vigor)
+            await termsAcceptance?.concludeDue({ subscriptionId: sid }).catch(() => undefined);
+            return out;
+          }
+        : undefined,
       // Licencias pendientes de plataforma o fallidas: se reintentan al REGISTRAR una simulación, nunca al consultar
       onSimulate: async (sid) => termsLicences?.retryIfPending(sid),
     });
@@ -2643,6 +2650,7 @@ export function createControlPlaneApp(d: ControlPlaneDeps): Express {
             capabilities: d.capabilities,
             licences: licences ? { ensure: (id, actor, o) => licences.ensure(id, actor, o) } : undefined,
             orderBilled: async (sid) => (await subscriptionBilling(ordersForTerms, sid)).source === "stripe",
+            afterFirstCharge: termsAcceptance ? (sid) => termsAcceptance.concludeDue({ subscriptionId: sid }) : undefined,
             urls: { success: st.urls.success, cancel: st.urls.cancel },
             namespace: st.config.namespace,
             mode: st.config.mode,
@@ -2652,6 +2660,16 @@ export function createControlPlaneApp(d: ControlPlaneDeps): Express {
           });
           termsBillingSvc.attach({ gateway: negotiatedBilling.gatewayFor(), link: negotiatedBilling.link, billFrom: negotiatedBilling.billFrom, invalidate: negotiatedBilling.invalidate, cancelRequested: negotiatedBilling.cancelRequested, serialize: negotiatedBilling.serialize });
           router.use(createNegotiatedBillingRouter(negotiatedBilling));
+          // Tras aceptar, la página pública del contrato ofrece configurar el pago con este mismo cobro (sin integración paralela)
+          const nb = negotiatedBilling;
+          termsAcceptance?.attachPayment({
+            enabled: () => tb.enabled === true,
+            start: async (sid, termsId, acceptanceId) => {
+              const r = await nb.startForAcceptance(sid, termsId, acceptanceId);
+              return r.status === "pending" ? { status: "pending" as const, url: r.url, expiresAt: r.expiresAt, firstChargeAt: r.firstChargeAt, recurringCents: r.recurringCents } : { status: r.status, message: r.status === "processing" ? r.message : undefined };
+            },
+            stage: (sid) => nb.stage(sid),
+          });
         }
         const negotiated = negotiatedBilling;
         const processor = new StripeEventProcessor({ store: st.store, gateway: st.gateway, orders: d.orders.store, orchestrator, now: d.subscriptions.now, namespace: st.config.namespace, mode: st.config.mode, taxExpectations: st.fiscal?.taxExpectations, vat, catalog: stripeCatalog, changes: st.purchases?.changes, invoiceLines: st.invoiceLines, contractedItems, deferredItems: deferredItems ? (o, s) => deferredItems.attach(o, s) : undefined, negotiated: negotiated ? { handleSession: (id) => negotiated.handleSession(id), handleSubscription: (sub, hint) => negotiated.handleSubscription(sub, hint), handleCharge: (c, inv, sub) => negotiated.handleCharge(c, inv, sub) } : undefined, external: externalSvc && externalStore ? { handleSetupSession: async (id) => ((await externalStore.bySetupSession(id)) ? externalSvc.handleSetupSession(id) : null), handleSubscription: (sub, hint) => externalSvc.handleSubscription(sub, hint), handleCharge: (c, inv, sub) => externalSvc.handleCharge(c, inv, sub) } : undefined, charges: { handleSession: (id) => (chargePaymentsRef.svc ? chargePaymentsRef.svc.handleSession(id) : Promise.resolve(null)) } });
@@ -2664,7 +2682,7 @@ export function createControlPlaneApp(d: ControlPlaneDeps): Express {
         const stripeNow = d.subscriptions.now;
         // Tras guardar un evento del webhook se procesa enseguida (los fallos quedan para el reintento)
         stripeKick = () => void processor.processDue(10).catch(() => undefined);
-        if (st.workerEnabled) startStripeWorker({ processor, reconciler, ...(externalSvc ? { extra: () => externalSvc.evaluateOverdue() } : {}) });
+        if (st.workerEnabled) startStripeWorker({ processor, reconciler, extra: async () => { await externalSvc?.evaluateOverdue(); await termsAcceptance?.concludeDue().catch(() => undefined); } });
         // Contratación desde el panel (empresa en prueba → pago): el estado se informa siempre; contratar, solo con el interruptor
         if (d.trials) {
           const eligibilityDeps = { mode: st.config.mode, buyers: st.store, vat, consent: st.fiscal?.consent, eligibility: st.fiscal ? { scenarios: st.fiscal.scenarios, taxExpectations: st.fiscal.taxExpectations ?? new Map(), countries: st.fiscal.countries ?? new Map(), consumerRates: st.fiscal.consumerRates ?? new Map(), consent: st.fiscal.consent } : undefined };
