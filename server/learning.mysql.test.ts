@@ -308,4 +308,19 @@ describe.skipIf(!URL_)("LMS: matrículas, autorización por módulo, pago confir
     expect((await get(X1.pdf, stu)).status).toBe(403);
     fsm.rmSync(dir, { recursive: true, force: true });
   });
+  it("reglas: cambiar módulos crea una versión nueva y desactiva (sin borrar) la anterior; cambiar solo la duración edita en sitio", async () => {
+    const mk = (extra: Record<string, unknown> = {}) => ({ experienceId: c.exp, variantId: 13, courseId: c.course, moduleIds: [c.m1], durationDays: 90, startMode: "on_grant", fixedStart: null, active: true, ...extra });
+    const [{ id: oldId }] = await sql("SELECT id FROM learning_access_rules WHERE variant_id = 13 AND active = 1 ORDER BY id DESC LIMIT 1");
+    const sameId = ok(await ess.m("a", "learning.admin.saveRule", { id: oldId, ...mk({ durationDays: 120 }) }, adm), "solo duración").id;
+    expect(sameId).toBe(oldId);
+    expect((await sql("SELECT duration_days FROM learning_access_rules WHERE id = ?", [oldId]))[0].duration_days).toBe(120);
+    const newId = ok(await ess.m("a", "learning.admin.saveRule", { id: oldId, ...mk({ moduleIds: [c.m1, c.m2] }) }, adm), "otros módulos").id;
+    expect(newId).not.toBe(oldId);
+    expect((await sql("SELECT active FROM learning_access_rules WHERE id = ?", [oldId]))[0].active).toBe(0);
+    expect((await sql("SELECT module_id FROM learning_access_rule_modules WHERE rule_id = ? ORDER BY module_id", [oldId])).map((r) => r.module_id)).toEqual([c.m1]); // la versión anterior conserva sus módulos
+    expect((await sql("SELECT module_id FROM learning_access_rule_modules WHERE rule_id = ? ORDER BY module_id", [newId])).map((r) => r.module_id)).toEqual([c.m1, c.m2]);
+    const active = ok(await ess.q("a", "learning.admin.rules", undefined, adm), "reglas").filter((r: any) => r.variantId === 13 && r.active);
+    expect(active.map((r: any) => r.id)).toEqual([newId]);
+    expect(errCode(await ess.m("a", "learning.admin.saveRule", { id: 999999, ...mk() }, adm))).toBe("NOT_FOUND");
+  });
 });
