@@ -679,7 +679,7 @@ export class TermsAcceptanceService {
    * acuerdo, que mientras duraba la prueba no se tocaban. Solo si el acuerdo ya está en vigor (uno programado deja la
    * prueba como está). Idempotente y NUNCA lanza: la aceptación ya consta; un fallo queda en el historial.
    */
-  private async concludeTrial(t: TermsRecord, subscriptionId: number, due: { at: number } | null = null) {
+  private async concludeTrial(t: TermsRecord, subscriptionId: number, due: { at: number; start: number } | null = null) {
     try {
       if (!t.lines.some(isPlanLine)) return;
       const sub = await this.d.subscriptionStore.get(subscriptionId);
@@ -702,12 +702,12 @@ export class TermsAcceptanceService {
         // lo aceptado antes, o con una fecha anterior al fin de la prueba, se sigue convirtiendo a mano desde el CRM
         const autoConclude = !!current && current.effectiveFrom !== null && sub.trialEnd !== null && current.effectiveFrom >= sub.trialEnd;
         if (!(await this.hasEvent(t.id, "trial_kept"))) {
-          await this.logTrial(t.id, "trial_kept", autoConclude ? "Las condiciones aceptadas entran en vigor al terminar la prueba (o después): la prueba gratuita sigue hasta ese instante exacto y se concluye sola entonces (tarea programada, primer cobro confirmado o a mano desde el CRM)" : "Las condiciones aceptadas entran en vigor antes del fin de la prueba o sin coincidir con él: la prueba gratuita sigue y se convierte a mano desde el CRM", { subscriptionId, autoConclude, effectiveFrom: current?.effectiveFrom ?? null, trialEnd: sub.trialEnd }, "skipped");
+          await this.logTrial(t.id, "trial_kept", autoConclude ? "Las condiciones aceptadas entran en vigor al terminar la prueba (o después): la prueba gratuita sigue hasta ese instante exacto y se concluye sola entonces (tarea programada, primer cobro confirmado o a mano desde el CRM)" : "Las condiciones aceptadas ya rigen, pero la prueba gratuita se respeta hasta su fin exacto: se concluye sola entonces, con el periodo de pago desde ese instante (tarea programada, primer cobro confirmado o a mano desde el CRM)", { subscriptionId, autoConclude, effectiveFrom: current?.effectiveFrom ?? null, trialEnd: sub.trialEnd }, "skipped");
         }
         return;
       }
       try {
-        await this.d.subscriptions.endTrial(sub.id, { reason: TRIAL_END_REASON, ...(due ? { at: current!.effectiveFrom ?? due.at } : {}) }, sub.version, ACTOR);
+        await this.d.subscriptions.endTrial(sub.id, { reason: TRIAL_END_REASON, ...(due ? { at: due.start } : {}) }, sub.version, ACTOR);
       } catch (e) {
         opsLog("warn", "CommercialTerms", "trial_end_failed", { termsId: t.id, subscriptionId, error: e instanceof Error ? e.name : "error" });
         await this.logTrial(t.id, "trial_end_failed", `No se pudo terminar la prueba gratuita: ${(e instanceof Error ? e.message : "error").slice(0, 300)}. Termínala desde el CRM`, { subscriptionId }, "failed");
@@ -783,11 +783,13 @@ export class TermsAcceptanceService {
   }
 
   /**
-   * Prueba → pago al INSTANTE EFECTIVO pactado (21/11/2026). Unas condiciones aceptadas con plan Core que entran en vigor
-   * al terminar la prueba (o después) la dejan intacta al aceptarse; esta operación las concluye cuando llega su instante:
-   * termina la prueba con el primer periodo de pago empezando en `effectiveFrom` (no en el momento de la tarea), convierte
-   * el registro de la prueba y aplica las licencias del acuerdo. Idempotente (una suscripción que ya no está en prueba no
-   * se toca), sin migración, y nunca lanza: la aceptación consta y un fallo queda en el historial.
+   * Prueba → pago al INSTANTE pactado (21/11/2026; generalizada el 22/11/2026). Un acuerdo ACEPTADO con plan Core sobre una
+   * suscripción en prueba deja la prueba (y sus licencias) hasta `inicio = max(effectiveFrom, fin de la prueba)`; esta operación la
+   * concluye cuando llega ese instante: la prueba termina con el primer periodo de pago empezando EXACTAMENTE en `inicio` (no cuando
+   * corre la tarea), se convierte el registro de la prueba y se aplican las licencias del acuerdo. Sirve también para acuerdos
+   * aceptados antes de esta regla con `effectiveFrom` anterior al fin de la prueba (caso Quantum): su inicio es el fin de la prueba.
+   * Las condiciones y fechas del acuerdo NO se tocan: solo cambia cuándo se concluye la prueba. Idempotente (una suscripción que
+   * ya no está en prueba no se toca), sin migración, y nunca lanza: la aceptación consta y un fallo queda en el historial.
    * `subscriptionId`: solo esa suscripción (la usan el webhook de Stripe y la simulación); sin él, todas las vencidas.
    */
   async concludeDue(o: { subscriptionId?: number; limit?: number } = {}): Promise<{ concluded: number; checked: number }> {
@@ -799,24 +801,15 @@ export class TermsAcceptanceService {
     const trialing = o.subscriptionId !== undefined ? [await this.d.subscriptionStore.get(o.subscriptionId)] : await this.d.subscriptionStore.list({ status: "trialing", limit });
     if (o.subscriptionId === undefined && trialing.length >= limit) opsLog("warn", "CommercialTerms", "conclude_due_truncated", { limit });
     for (const sub of trialing) {
-      if (!sub || sub.status !== "trialing") continue;
+      if (!sub || sub.status !== "trialing" || sub.trialEnd === null) continue;
       try {
+        const start = (t: TermsRecord) => Math.max(t.effectiveFrom ?? 0, sub.trialEnd!);
         const due = (await this.d.termsStore.list({ subscriptionId: sub.id, status: ["scheduled", "active"] }))
-          .filter((t) => t.acceptanceStatus === "accepted" && t.effectiveFrom !== null && t.effectiveFrom <= now)
-          .sort((x, y) => x.effectiveFrom! - y.effectiveFrom!)[0];
+          .filter((t) => t.acceptanceStatus === "accepted" && t.effectiveFrom !== null && t.lines.some(isPlanLine) && start(t) <= now)
+          .sort((x, y) => start(x) - start(y))[0];
         if (!due) continue;
-        // Nunca de forma retroactiva: solo acuerdos aceptados CON esta regla (constan en su historial como «trial_kept» con
-        // conclusión automática) y cuyo instante coincide con el fin de la prueba o es posterior. Lo demás se convierte a mano
-        const events = await this.d.termsStore.events({ termsId: due.id });
-        const marked = events.some((e) => e.kind === "trial_kept" && (e.after as { autoConclude?: boolean } | null)?.autoConclude === true);
-        if (!marked || sub.trialEnd === null || due.effectiveFrom! < sub.trialEnd) {
-          if (!events.some((e) => e.kind === "trial_due_skipped")) {
-            await this.logTrial(due.id, "trial_due_skipped", marked ? "La prueba no se concluye sola: la entrada en vigor del acuerdo es anterior al fin actual de la prueba. Conviértela a mano desde el CRM" : "La prueba no se concluye sola: el acuerdo se aceptó antes de la conclusión automática. Conviértela a mano desde el CRM", { subscriptionId: sub.id, effectiveFrom: due.effectiveFrom, trialEnd: sub.trialEnd }, "skipped");
-          }
-          continue;
-        }
         checked++;
-        await this.concludeTrial(due, sub.id, { at: now });
+        await this.concludeTrial(due, sub.id, { at: now, start: start(due) });
         if ((await this.d.subscriptionStore.get(sub.id))?.status !== "trialing") concluded++;
       } catch (e) {
         opsLog("warn", "CommercialTerms", "conclude_due_failed", { subscriptionId: sub.id, error: e instanceof Error ? e.name : "error" });

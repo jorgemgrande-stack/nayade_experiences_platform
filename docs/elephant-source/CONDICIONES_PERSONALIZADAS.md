@@ -1088,23 +1088,25 @@ etapa `payment_not_enabled`: es el comportamiento contractual de siempre; admini
 - Con Stripe Tax (live) el IVA definitivo lo calcula Stripe; la página muestra el 21 % solo como referencia.
 - La interfaz de administración (repo del CRM) todavía no pinta `contracting`: el dato está en la API.
 
-### Conclusión automática: solo lo aceptado con esta regla (nunca retroactiva)
+### Conclusión automática (generalizada el 22/11/2026)
 
-`concludeDue` solo concluye acuerdos cuya aceptación dejó en su historial un `trial_kept` con `autoConclude: true` (se registra
-**una sola vez** por acuerdo, al aceptar, si `effectiveFrom` ≥ fin de la prueba) **y** cuyo `effectiveFrom` sigue siendo ≥ el fin
-actual de la prueba (si la prueba se amplió después, no concluye). En cualquier otro caso no toca nada y deja **una** constancia
-`trial_due_skipped` («conviértela a mano desde el CRM»). No depende del interruptor de cobro. Lo aceptado antes de este cambio no lleva
-la marca, así que sigue convirtiéndose a mano como siempre.
+Caso real que la motivó: la CP-9 de Quantum se aceptó con el código anterior; su acuerdo quedó **en vigor 99 ms después de aceptar**
+(`effectiveFrom` < fin de la prueba) con la suscripción aún en prueba hasta 2026-11-28T20:53:25.769Z. Sin cambios, la prueba no se
+habría concluido sola, las licencias de la prueba habrían caducado y el Checkout habría cobrado de inmediato.
 
-**Inventario previo al despliegue (solo lectura):** acuerdos aceptados y programados sobre suscripciones en prueba. Ninguno se concluirá
-solo (no llevan marca); sirve para saber a cuáles hay que dar seguimiento manual:
+Regla vigente para **cualquier suscripción en prueba con un acuerdo aceptado (en vigor o programado) que incluya plan Core**:
 
-```
-GET /cp/v1/commercial-terms?status=scheduled&companyId=<empresa>      # por empresa, acceptanceStatus = accepted
-GET /cp/v1/subscriptions/<id>                                          # status = trialing y trialEnd
-```
+- **Inicio** = `max(effectiveFrom, fin de la prueba)`. Nunca antes del fin de la prueba, aunque el acuerdo ya rija.
+- **Primer cargo** (Checkout / Stripe) = ese inicio: `trial_end = ceil(inicio / 1000)`, con margen mínimo de 49 h (con menos, aviso claro
+  y reintento al terminar la prueba). El cliente puede **configurar el pago durante la prueba** (sin cargo anticipado).
+- `concludeDue` concluye la prueba en el **instante exacto** (periodo de pago desde el inicio, conversión del registro de la prueba y
+  licencias). Vale también para acuerdos aceptados antes de esta regla.
+- **El acuerdo no se toca**: condiciones, fechas y aceptación quedan como se firmaron; solo cambia cuándo termina la prueba y cuándo se cobra.
+- La etapa (`contracting`) muestra como `activationAt` ese inicio, y la simulación/sincronización no presentan cobro antes de él.
+- Una prueba ampliada después de aceptar mueve el inicio al nuevo fin.
 
-Hoy (21/11/2026) el único caso conocido es Quantum Soulrise, cuya CP-9 está en borrador (sin aceptar).
+**Inventario previo al despliegue (solo lectura):** acuerdos aceptados sobre suscripciones en prueba (hoy solo la suscripción 8 de Quantum; la 6 no
+tiene acuerdos): `GET /cp/v1/commercial-terms?status=scheduled&companyId=<empresa>` y `GET /cp/v1/subscriptions/<id>` (`status = trialing`).
 
 ### Decisión de negocio pendiente (sin cambio de comportamiento)
 
