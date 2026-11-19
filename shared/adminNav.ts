@@ -228,6 +228,8 @@ export const LEGACY_NAV: NavItem[] = [
   },
   { label: "Hotel", href: "/admin/hotel", icon: "bed", roles: ["admin"], flagKey: "hotel_module_enabled", moduleKey: "hotel" },
   { label: "SPA", href: "/admin/spa", icon: "sparkles", roles: ["admin"], flagKey: "spa_module_enabled", moduleKey: "spa" },
+  // Elephant Learning: solo con la licencia de módulo `learning` (la concede el operador, sin cargo)
+  { label: "Formación", href: "/admin/formacion", icon: "briefcase", roles: ["admin"], moduleKey: "learning" },
   {
     label: "Restaurantes", href: "/admin/restaurantes", icon: "utensils", roles: ["admin", "adminrest"], flagKey: "restaurants_module_enabled", moduleKey: "restaurants",
     children: [
@@ -319,6 +321,8 @@ export const TASK_NAV: NavSection[] = [
       { label: "Reglas de precios", href: "/admin/productos/reglas-precios", key: "t-reglas-precios", icon: "tag", roles: ADMIN, capabilities: ["pricing-rules"] },
       // Business: existencias por sede y movimientos (la consulta del equipo va por la API; el menú de catálogo es de administración)
       { label: "Inventario", href: "/admin/productos/inventario", key: "t-inventario", icon: "package", roles: ADMIN, capabilities: ["inventory-basic"] },
+      // Elephant Learning: licencia de módulo `learning` (no es una capacidad comercial); sin ella la entrada no sale
+      { label: "Formación", href: "/admin/formacion", key: "t-formacion", icon: "briefcase", roles: ADMIN, capabilities: ["admin-panel"], moduleKey: "learning" },
     ],
   },
   {
