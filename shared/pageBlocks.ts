@@ -210,7 +210,23 @@ export interface CardItem {
   text: string;
   buttonLabel: string;
   buttonUrl: string;
+  /** Tarjeta comercial (todo opcional; vacío = la tarjeta de siempre) */
+  /** Encuadre vertical de la foto dentro de la tarjeta (para no cortar caras) */
+  imageFocus?: CardImageFocus;
+  /** Etiqueta sobre la foto (modalidad) */
+  badge?: string;
+  /** Datos clave bajo el título (duración, fechas, disponibilidad), una línea por dato */
+  meta?: string;
+  /** Precio: rótulo previo («Desde»), importe y aclaración («por persona, 2 o más participantes») */
+  priceLabel?: string;
+  price?: string;
+  priceNote?: string;
+  /** Segundo botón (por ejemplo, «Solicitar información»); el primero pasa a ser el principal */
+  button2Label?: string;
+  button2Url?: string;
 }
+export const CARD_IMAGE_FOCUS = ["top", "upper", "center", "lower", "bottom"] as const;
+export type CardImageFocus = (typeof CARD_IMAGE_FOCUS)[number];
 
 export interface FeatureItem {
   icon: string;
@@ -575,7 +591,7 @@ export function formFieldVisibility(fields: Pick<FormFieldItem, "kind" | "label"
 
 /** Tarjeta nueva con textos genéricos para adaptar. */
 export function newCard(title = "Nueva tarjeta"): CardItem {
-  return { imageUrl: "", imageAlt: "", title, text: "Describe en una o dos frases lo que quieres destacar.", buttonLabel: "", buttonUrl: "" };
+  return { imageUrl: "", imageAlt: "", title, text: "Describe en una o dos frases lo que quieres destacar.", buttonLabel: "", buttonUrl: "", imageFocus: "center", badge: "", meta: "", priceLabel: "", price: "", priceNote: "", button2Label: "", button2Url: "" };
 }
 
 export function createBlock<K extends BlockType>(type: K, data?: Partial<BlockDataMap[K]>): BlockOf<K> {
