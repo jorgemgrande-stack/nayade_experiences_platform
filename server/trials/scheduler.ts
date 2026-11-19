@@ -110,8 +110,17 @@ export interface TickResult {
   errors: number;
 }
 
+/** Tras el fin de una prueba con un acuerdo aceptado, margen para que la conclusión (prueba → pago) la haga su propia tarea antes de marcarla vencida. */
+export const AGREEMENT_DEFER_MS = 2 * 60 * 60_000;
+
 export interface TrialSchedulerDeps {
   store: TrialStore;
+  /**
+   * ¿Tiene esta prueba un acuerdo comercial ACEPTADO con plan (la conclusión prueba → pago la hace otra tarea)? Entonces no se
+   * marca vencida ni se avisa «tu prueba ha terminado» durante `AGREEMENT_DEFER_MS` tras su fin: pasado ese margen, el vencimiento
+   * de siempre (nunca queda una prueba abierta indefinidamente). Un error se trata como «no».
+   */
+  deferExpiry?: (t: TrialRequest) => Promise<boolean>;
   /** El aviso de vencimiento; con `verification` y `reminder`, también los recordatorios (./reminders.ts). */
   notify: Pick<TrialNotifier, "expiryNotice"> & Partial<Pick<TrialNotifier, "verification" | "reminder">>;
   /**
@@ -194,6 +203,7 @@ export class TrialScheduler {
   private async expireDue(trials: TrialService, now: number, out: TickResult) {
     for (const t of await this.d.store.list({ states: ["active"], endsBefore: now, limit: this.batch })) {
       if (t.endsAt === null || t.endsAt > now || this.isExempt(t)) continue;
+      if (this.d.deferExpiry && now - t.endsAt < AGREEMENT_DEFER_MS && (await this.d.deferExpiry(t).catch(() => false))) continue;
       try {
         const e = await trials.markExpired(t.id, t.version, SCHEDULER_ACTOR);
         out.expired++;

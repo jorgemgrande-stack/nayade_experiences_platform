@@ -210,15 +210,19 @@ describe("contratación automática: aceptar → pagar → activar en la fecha p
   let on2: Env;
   let on3: Env;
   let on4: Env;
+  let on5: Env;
+  let off2: Env;
   beforeAll(async () => {
     on = await build(true);
     off = await build(false);
     on2 = await build(true);
     on3 = await build(true);
     on4 = await build(true);
+    on5 = await build(true);
+    off2 = await build(false);
   });
   afterAll(async () => {
-    for (const e of [on, off, on2, on3, on4]) {
+    for (const e of [on, off, on2, on3, on4, on5, off2]) {
       e.server.closeAllConnections();
       await new Promise<void>((r) => e.server.close(() => r()));
     }
@@ -478,6 +482,46 @@ describe("contratación automática: aceptar → pagar → activar en la fecha p
     await call(off, "POST", `/subscriptions/${q.id}/shadow`);
     expect((await call(off, "GET", `/subscriptions/${q.id}`)).json.subscription).toMatchObject({ status: "active", currentPeriodStart: q.trialEnd });
     expect((await stageOf(off, q.id)).chargeable).toBe(false);
+  });
+
+  it("fin de prueba con el cobro deshabilitado (production hoy): activa SIN COBRO como incidencia explícita, una sola constancia, sin suspender y con la página diciendo la verdad", async () => {
+    const q = await quantum(off2);
+    const { token } = await accepted(off2, q);
+    // Durante la prueba: prueba vigente, contrato aceptado y pago pendiente de habilitar; ninguna incidencia
+    setClock(off2, q.trialEnd - 3 * DAY);
+    expect(await stageOf(off2, q.id)).toMatchObject({ stage: "payment_not_enabled", trialActive: true, trialEndsAt: q.trialEnd, incident: null, paymentMethodAuthorized: false, chargeable: false });
+    // Llega el instante: la prueba concluye (contrato aceptado) pero NO se presenta como cobrable ni se suspende nada
+    setClock(off2, q.trialEnd + 1000);
+    await call(off2, "POST", `/subscriptions/${q.id}/shadow`);
+    await call(off2, "POST", `/subscriptions/${q.id}/shadow`);
+    expect((await call(off2, "GET", `/subscriptions/${q.id}`)).json.subscription).toMatchObject({ status: "active", currentPeriodStart: q.trialEnd });
+    const st = await stageOf(off2, q.id);
+    expect(st).toMatchObject({ stage: "active_unbilled", trialActive: false, paymentMethodAuthorized: false, chargeable: false, paymentEnabled: false });
+    expect(st.label).toContain("sin cobro");
+    expect(st.incident).toContain("deshabilitado");
+    const events = (await call(off2, "GET", `/commercial-terms/${q.termsId}`)).json.events as Array<{ kind: string }>;
+    expect(events.filter((e) => e.kind === "trial_ended_unbilled")).toHaveLength(1);
+    expect(events.filter((e) => e.kind === "trial_ended")).toHaveLength(1);
+    const p = await page(off2, "GET", `/pago?token=${token}`);
+    expect(p.text).toContain("todavía no está habilitado");
+    expect(p.text).not.toContain("Método de pago confirmado");
+    expect(off2.gw.calls.length).toBe(0);
+  });
+
+  it("fin de prueba con el cobro habilitado pero sin método: activa sin cobro (incidencia), la página ofrece configurarlo y al hacerlo deja de ser incidencia", async () => {
+    const q = await quantum(on5);
+    const { token } = await accepted(on5, q);
+    setClock(on5, q.trialEnd + 1000);
+    await call(on5, "POST", `/subscriptions/${q.id}/shadow`);
+    const st = await stageOf(on5, q.id);
+    expect(st).toMatchObject({ stage: "active_unbilled", paymentMethodAuthorized: false, chargeable: false, paymentEnabled: true });
+    expect(st.incident).toContain("configurarlo");
+    const p = await page(on5, "GET", `/pago?token=${token}`);
+    expect(p.text).toContain("Configura tu método de pago");
+    const go = await page(on5, "POST", "/pago", { token });
+    expect([200, 303]).toContain(go.status);
+    // Nada se da por confirmado hasta el webhook verificado
+    expect((await stageOf(on5, q.id)).paymentMethodAuthorized).toBe(false);
   });
 
   it("con menos de 48 h para el fin de la prueba Stripe no admite aplazar el primer cargo: mensaje claro y, terminada la prueba, el pago se configura con cobro inmediato", async () => {

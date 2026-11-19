@@ -1108,6 +1108,21 @@ Regla vigente para **cualquier suscripción en prueba con un acuerdo aceptado (e
 **Inventario previo al despliegue (solo lectura):** acuerdos aceptados sobre suscripciones en prueba (hoy solo la suscripción 8 de Quantum; la 6 no
 tiene acuerdos): `GET /cp/v1/commercial-terms?status=scheduled&companyId=<empresa>` y `GET /cp/v1/subscriptions/<id>` (`status = trialing`).
 
+### Fin de prueba sin método de pago o con el cobro deshabilitado (22/11/2026)
+
+Quedó explícito y seguro, sin suspender nada y sin tocar acuerdos históricos:
+
+| Situación | Qué ocurre |
+|---|---|
+| Prueba vigente con acuerdo aceptado | La prueba y sus licencias siguen hasta el instante exacto; etapa `payment_pending` / `payment_not_enabled` con `trialActive` y `trialEndsAt`. Sin incidencia. |
+| Llega el fin, método autorizado (Stripe) | Primer cobro en ese instante (webhook), prueba concluida, etapa `active`. |
+| Llega el fin, **sin método** o con el cobro **deshabilitado** | La prueba concluye por contrato (modo sombra, **sin cobro**) y la suscripción pasa a la etapa **`active_unbilled`** («Activa sin cobro · incidencia»), con `incident` explicando por qué. Se deja **una** constancia `trial_ended_unbilled` en el acuerdo y **un** aviso a administración (`stripe.negotiated_unbilled_access` → incidencia de cobro). **No se suspende nada**: el contrato está aceptado y las condiciones, periodos de gracia y política de acceso son los pactados. |
+| Cliente configura el método después | `/pago` abre el Checkout (cobro inmediato del periodo: la suscripción ya está activa); hasta el webhook verificado sigue sin constar como autorizado. |
+
+La tarea de pruebas gratuitas (`CP_TRIALS_SCHEDULER_ENABLED`) **no marca vencida ni avisa «tu prueba ha terminado»** a una prueba con acuerdo aceptado con plan durante 2 h tras su fin (margen para que la conclusión la haga su tarea); pasado ese margen vence como siempre, así que nunca queda abierta. Un error al consultar el acuerdo cuenta como «sin acuerdo».
+
+Etapas completas: `proposal_pending`, `payment_pending`, `payment_not_enabled`, `payment_processing`, `activation_scheduled`, `active`, `active_unbilled`, `payment_failed`, `grace`, `suspended`, `canceled`. Nuevos campos de `contracting`: `trialActive`, `trialEndsAt`, `renewalAt`, `incident`.
+
 ### Decisión de negocio pendiente (sin cambio de comportamiento)
 
 Si el cliente llega a `effectiveFrom` **sin método de pago autorizado**, el acuerdo aceptado igualmente concluye la prueba en su

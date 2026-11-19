@@ -43,6 +43,7 @@ import { MysqlMediaStore } from "../web/media";
 import { MysqlPanelEventStore, purgePanelEventKeys } from "../commerce/panelEvents";
 import { MysqlSubscriptionStore } from "../subscriptions/store";
 import { MysqlTermsStore } from "../commercialTerms/store";
+import { isPlanLine } from "../commercialTerms/acceptance";
 import { MysqlTermsBillingStore } from "../commercialTerms/billingStore";
 import { MysqlAcceptanceLinkStore } from "../commercialTerms/acceptanceLinks";
 import { describeTermsBilling } from "../commercialTerms/billing";
@@ -507,7 +508,17 @@ async function main() {
             },
           }
         : undefined;
-      startTrialScheduler({ scheduler: new TrialScheduler({ store: trials.store, notify, lock: mysqlAdvisoryLock(trialPool), recovery, reminders }), env: process.env });
+      // Una prueba con un acuerdo aceptado (con plan) no se marca vencida ni se avisa de su fin mientras la tarea de condiciones la concluye
+      const subs = subscriptions;
+      const deferExpiry = subs?.terms
+        ? async (tr: { tenantId: string | null }) => {
+            if (!tr.tenantId) return false;
+            const sub = (await subs.store.list({ status: "trialing" })).find((x) => x.tenantId === tr.tenantId);
+            if (!sub) return false;
+            return (await subs.terms!.list({ subscriptionId: sub.id, status: ["scheduled", "active"] })).some((x) => x.acceptanceStatus === "accepted" && x.lines.some(isPlanLine));
+          }
+        : undefined;
+      startTrialScheduler({ scheduler: new TrialScheduler({ store: trials.store, notify, lock: mysqlAdvisoryLock(trialPool), recovery, reminders, deferExpiry }), env: process.env });
       // Fin de las licencias = fin de la prueba (ampliaciones): ENCENDIDA salvo CP_TRIAL_LICENCE_SYNC=off; solo alinea fechas
       startTrialLicenceSync({ reconciler: new TrialLicenceReconciler({ store: trials.store, sync: () => t.activation.syncLicences ?? null, lock: mysqlAdvisoryLock(trialPool) }), env: process.env });
     }

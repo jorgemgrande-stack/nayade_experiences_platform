@@ -23,6 +23,7 @@ import rateLimit, { ipKeyGenerator } from "express-rate-limit";
 import { z } from "zod";
 import { getAuth, requireScope } from "../controlPlane/auth";
 import { opsLog } from "../_core/ops/log";
+import { recordFailure } from "../_core/ops/failureAlerts";
 import type { CrmService } from "../crm/service";
 import type { CrmStore } from "../crm/store";
 import { CONTRACT_CSS, contractHeaderHtml } from "../external/presentation";
@@ -59,7 +60,7 @@ const TRIAL_END_REASON = "Condiciones particulares aceptadas";
 /** Estados de una prueba gratuita que admiten la conversión (server/trials/machine.ts). */
 const OPEN_TRIAL = new Set(["active", "expired"]);
 /** Partida del plan Core (la misma regla que el servicio de condiciones). */
-const isPlanLine = (l: Pick<TermsRecord["lines"][number], "kind" | "chargeClass" | "catalog">) => l.kind === "catalog" && l.chargeClass === "recurring" && l.catalog?.family === "core_plan";
+export const isPlanLine = (l: Pick<TermsRecord["lines"][number], "kind" | "chargeClass" | "catalog">) => l.kind === "catalog" && l.chargeClass === "recurring" && l.catalog?.family === "core_plan";
 /** Estados del correo que significan «en camino» (encolado, enviándose, aceptado por el proveedor o entregado). */
 const MAIL_OK = new Set(["pending", "sending", "accepted", "delivered"]);
 /** Motivo legible de un correo que no salió (los códigos son los de la bandeja de salida). */
@@ -726,8 +727,27 @@ export class TermsAcceptanceService {
       await this.logTrial(t.id, "trial_ended", what, { subscriptionId, trialEnded: true, trialId: converted ?? openTrial?.id ?? null, trialConverted: converted !== null }, converted !== null || !openTrial ? "applied" : "partial");
       // Las licencias del acuerdo (las de la prueba se sustituyen por las contratadas)
       if (this.d.licences) await this.d.licences.afterChange(subscriptionId, ACTOR).catch(() => undefined);
+      await this.flagUnbilled(t, subscriptionId);
     } catch (e) {
       opsLog("warn", "CommercialTerms", "trial_conclusion_failed", { termsId: t.id, subscriptionId, error: e instanceof Error ? e.name : "error" });
+    }
+  }
+
+  /**
+   * Fin de prueba con acuerdo aceptado y SIN método de pago autorizado (o con el cobro deshabilitado): la empresa no pasa
+   * en silencio a un plan de pago sin cobro posible. Se mantiene el acceso (no se suspende nada: el contrato está aceptado y
+   * las condiciones y los periodos de gracia son los pactados), la etapa pasa a «activa sin cobro» (incidencia) y se avisa
+   * UNA vez al equipo. Nunca lanza.
+   */
+  private async flagUnbilled(t: TermsRecord, subscriptionId: number) {
+    try {
+      const st = this.payment ? await this.payment.stage(subscriptionId).catch(() => null) : null;
+      if (st?.paymentMethodAuthorized) return;
+      if (await this.hasEvent(t.id, "trial_ended_unbilled")) return;
+      await this.logTrial(t.id, "trial_ended_unbilled", "La prueba terminó con las condiciones aceptadas y sin método de pago autorizado ni cobro posible: el acceso se mantiene (modo sombra, sin cobro) y consta como incidencia de cobro. No se suspende nada.", { subscriptionId, paymentEnabled: this.payment ? this.payment.enabled() : false, stage: st?.stage ?? null }, "partial");
+      recordFailure("stripe.negotiated_unbilled_access");
+    } catch (e) {
+      opsLog("warn", "CommercialTerms", "unbilled_flag_failed", { termsId: t.id, subscriptionId, error: e instanceof Error ? e.name : "error" });
     }
   }
 
@@ -954,6 +974,7 @@ function paymentBody(token: string, v: PaymentViewData): string {
     return `${head}<p>El paso para configurar tu método de pago todavía no está habilitado. Tu contacto de Big Elephant te avisará cuando puedas completarlo. No tienes que enviar datos bancarios por correo.</p>`;
   }
   switch (st.stage) {
+    case "active_unbilled":
     case "payment_pending":
       return `${head}<section class="accept"><h3>Configura tu método de pago</h3><p>Se te llevará a la página segura de Stripe para introducir tu tarjeta u otro medio de pago disponible. Big Elephant no almacena datos bancarios.</p><p>Al configurarlo autorizas los cobros periódicos de ${fee}, con el primer cobro ${when}. Puedes cancelar según las condiciones aceptadas.</p><form method="post" action="pago"><input type="hidden" name="token" value="${esc(token)}"><div class="actions"><button class="btn" type="submit">Configurar método de pago</button></div></form><p class="muted">Si cierras Stripe sin terminar, o el pago no se completa, tu contrato sigue aceptado y puedes retomar este paso desde este mismo enlace.</p></section>`;
     case "payment_processing":
