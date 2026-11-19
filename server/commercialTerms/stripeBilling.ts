@@ -420,6 +420,17 @@ export class NegotiatedBillingService {
    */
   private async billingStart(subscriptionId: number, settle = false): Promise<{ plan: BillingPlan; at: number | null }> {
     const now = this.now();
+    // Suscripción EN PRUEBA con un acuerdo aceptado (en vigor o programado) que incluye el plan Core: la prueba se respeta entera.
+    // El cliente autoriza ya su método de pago y el primer cargo es el FIN DE LA PRUEBA (jamás antes, aunque el acuerdo ya rija)
+    const trial = await this.d.subscriptionStore.get(subscriptionId);
+    if (trial?.status === "trialing" && trial.trialEnd !== null && trial.trialEnd > now) {
+      const atEnd = await this.d.billing.plan(subscriptionId, { settle, at: trial.trialEnd });
+      const t = atEnd.termsId !== null ? await this.d.termsStore.get(atEnd.termsId) : null;
+      if (t && atEnd.items.length && t.acceptanceStatus === "accepted" && t.lines.some((l) => l.kind === "catalog" && l.chargeClass === "recurring" && l.catalog?.family === "core_plan")) {
+        if (trial.trialEnd - now < AHEAD_MIN_MS) throw new NegotiatedBillingError("invalid_state", `La prueba termina el ${new Date(trial.trialEnd).toISOString().slice(0, 16).replace("T", " ")} UTC, en menos de 48 horas: Stripe no admite aplazar el primer cargo con tan poco margen. Ponla a cobrar a partir de esa fecha`);
+        return { plan: atEnd, at: trial.trialEnd };
+      }
+    }
     const today = await this.d.billing.plan(subscriptionId, { settle, at: now });
     if (today.termsId !== null && today.items.length) return { plan: today, at: null };
     const next = await this.d.billing.nextStart(subscriptionId);
@@ -1072,7 +1083,7 @@ export class NegotiatedBillingService {
     const waiting = all.filter((t) => t.status === "pending_acceptance").sort((a, b) => b.id - a.id)[0] ?? null;
     const row = await this.d.store.bySubscription(subscriptionId);
     const acceptedAt = inForce ? ((await this.d.termsStore.events({ termsId: inForce.id })).find((e) => e.kind === "accepted")?.createdAt ?? null) : null;
-    const plan = inForce ? await this.d.billing.plan(subscriptionId, { at: Math.max(now, inForce.effectiveFrom ?? 0) }).catch(() => null) : null;
+    const plan = inForce ? await this.d.billing.plan(subscriptionId, { at: Math.max(now, inForce.effectiveFrom ?? 0, sub.status === "trialing" ? (sub.trialEnd ?? 0) : 0) }).catch(() => null) : null;
     const net = plan?.recurringNetCents ?? null;
     const rate = plan?.items[0]?.taxRateBp ?? 2100;
     const tax = net === null ? 0 : Math.round((net * rate) / 10_000);
@@ -1094,7 +1105,7 @@ export class NegotiatedBillingService {
       paymentMethodAuthorized: authorized,
       chargeable: authorized && (stage === "activation_scheduled" || stage === "active" || stage === "grace" || stage === "payment_failed"),
       nextChargeAt: authorized ? (stage === "activation_scheduled" ? (row!.checkout?.firstChargeAt ?? inForce?.effectiveFrom ?? null) : row!.currentPeriodEnd) : null,
-      activationAt: inForce?.effectiveFrom ?? null,
+      activationAt: inForce ? (sub.status === "trialing" && sub.trialEnd !== null ? Math.max(inForce.effectiveFrom ?? 0, sub.trialEnd) : inForce.effectiveFrom) : null,
       recurring,
       stripeStatus: row?.stripeStatus ?? null,
       billingStatus: row?.status ?? null,

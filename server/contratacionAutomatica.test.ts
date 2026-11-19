@@ -209,14 +209,16 @@ describe("contratación automática: aceptar → pagar → activar en la fecha p
   let off: Env;
   let on2: Env;
   let on3: Env;
+  let on4: Env;
   beforeAll(async () => {
     on = await build(true);
     off = await build(false);
     on2 = await build(true);
     on3 = await build(true);
+    on4 = await build(true);
   });
   afterAll(async () => {
-    for (const e of [on, off, on2, on3]) {
+    for (const e of [on, off, on2, on3, on4]) {
       e.server.closeAllConnections();
       await new Promise<void>((r) => e.server.close(() => r()));
     }
@@ -534,5 +536,81 @@ describe("contratación automática: aceptar → pagar → activar en la fecha p
     };
     expect(strip(after)).toBe(strip(before));
     expect(JSON.parse(after).sub.items.map((i: any) => i[0]).sort()).toEqual(JSON.parse(before).sub.items.map((i: any) => i[0]).sort());
+  });
+
+  it("estado EXACTO de Quantum (aceptada con el código antiguo: acuerdo en vigor 99 ms después de aceptar, prueba hasta el 28/11/2026 20:53:25.769Z): sin cargo antes, Checkout con trial_end, conclusión exacta y acuerdo intacto", async () => {
+    const T0 = 1794603205769; // alta de la prueba de la suscripción 8
+    const TRIAL_END = 1795899205769; // 2026-11-28T20:53:25.769Z
+    const ACCEPTED = 1795083411768;
+    const EFFECTIVE = ACCEPTED + 99;
+    expect(new Date(TRIAL_END).toISOString()).toBe("2026-11-28T20:53:25.769Z");
+    setClock(on4, T0);
+    const s = await call(on4, "POST", "/subscriptions", { body: { companyId: on4.companyId, interval: "month", trialDays: 15, plan: { productKey: "essential", priceId: on4.P.essential } } });
+    const id = s.json.subscription.id as number;
+    expect(s.json.subscription.trialEnd).toBe(TRIAL_END);
+    setClock(on4, ACCEPTED - 5_000);
+    const draft = await call(on4, "POST", `/subscriptions/${id}/terms`, {
+      body: { pricingMode: "global", globalAmountCents: 5200, presentation: "breakdown", requiresAcceptance: true, interval: "month", effectiveFrom: EFFECTIVE, reason: "Propuesta CP-9 de Quantum", lines: ["business", "connect-whatsapp-ai", "connect-voice"].map((k) => ({ kind: "catalog", productKey: k, priceId: on4.P[k] })) },
+    });
+    if (draft.status !== 201) console.log("DRAFT", JSON.stringify(draft.json));
+    expect(draft.status).toBe(201);
+    const q = { id, trialEnd: TRIAL_END, termsId: draft.json.terms.id as number, revision: draft.json.terms.revision as number };
+    const req = await call(on4, "POST", `/commercial-terms/${q.termsId}/acceptance`, { body: { signer: { name: "Indira Prueba", email: "indira@cliente.example" }, expectedRevision: q.revision } });
+    const token = String(req.json.url).split("token=")[1];
+    setClock(on4, ACCEPTED);
+    expect((await page(on4, "POST", "", { token, name: "Indira Prueba", accept: "1" })).status).toBe(200);
+    setClock(on4, ACCEPTED + 10 * 60_000);
+
+    // Punto de partida de producción: aceptada, programada, prueba intacta
+    const subNow = (await call(on4, "GET", `/subscriptions/${id}`)).json;
+    expect(subNow.subscription).toMatchObject({ status: "trialing", trialEnd: TRIAL_END });
+    const snap = async () => {
+      const t = (await call(on4, "GET", `/commercial-terms/${q.termsId}`)).json.terms;
+      const acc = (await call(on4, "GET", `/commercial-terms/${q.termsId}/acceptance`)).json;
+      return JSON.stringify({ status: t.status, acceptanceStatus: t.acceptanceStatus, effectiveFrom: t.effectiveFrom, effectiveTo: t.effectiveTo, globalAmountCents: t.globalAmountCents, lines: t.lines.map((l: any) => [l.productKey, l.negotiatedUnitCents]), contractId: t.contractId, acceptance: acc.acceptances.map((a: any) => [a.status, a.acceptedName, a.documentSha256, a.acceptedAt]) });
+    };
+    const before = await snap();
+    expect(JSON.parse(before)).toMatchObject({ status: "scheduled", acceptanceStatus: "accepted", effectiveFrom: EFFECTIVE });
+
+    // (b) Se puede configurar el pago durante la prueba; la activación y el primer cargo son el FIN DE LA PRUEBA, no la fecha del acuerdo
+    const stage0 = await stageOf(on4, id);
+    expect(stage0).toMatchObject({ stage: "payment_pending", activationAt: TRIAL_END, chargeable: false });
+    const view = (await call(on4, "GET", `/subscriptions/${id}/terms/billing/stripe`)).json;
+    expect(view).toMatchObject({ canStart: true, blockers: [] });
+    const start = await page(on4, "POST", "/pago", { token });
+    expect(start.status).toBe(303);
+    // (a)(e) Checkout con trial_end = ceil(trialEnd/1000): ni un cobro antes, importe del contrato
+    const input = on4.gw.negotiatedSessions.get(sessionOf(start.location))!;
+    expect(input.trialEnd).toBe(Math.ceil(TRIAL_END / 1000));
+    expect(input.trialEnd).toBe(1795899206);
+    expect(input.lines.reduce((a, l) => a + l.unitAmount, 0)).toBe(5200);
+    const stripeId = on4.gw.completeNegotiatedSession(sessionOf(start.location));
+    expect((await deliver(on4)).failed).toBe(0);
+    expect(on4.gw.subscriptions.get(stripeId)).toMatchObject({ status: "trialing" });
+    expect(await stageOf(on4, id)).toMatchObject({ stage: "activation_scheduled", paymentMethodAuthorized: true, nextChargeAt: TRIAL_END, activationAt: TRIAL_END });
+    expect(Array.from(on4.gw.invoices.values()).every((i) => i.amountPaid === 0)).toBe(true);
+
+    // (d) Antes del fin de la prueba nada se cobra ni se concluye: ni la simulación ni la sincronización
+    setClock(on4, TRIAL_END - 1);
+    const shadow = await call(on4, "POST", `/subscriptions/${id}/shadow`);
+    expect(shadow.status).toBe(200);
+    expect((await call(on4, "GET", `/subscriptions/${id}`)).json.subscription).toMatchObject({ status: "trialing", trialEnd: TRIAL_END });
+    expect((await call(on4, "POST", `/subscriptions/${id}/terms/billing/sync`)).status).toBe(200);
+    expect(Array.from(on4.gw.invoices.values()).every((i) => i.amountPaid === 0)).toBe(true);
+    expect(on4.gw.subscriptions.get(stripeId)).toMatchObject({ status: "trialing" });
+
+    // (c) En el instante exacto se concluye la prueba: periodo de pago desde TRIAL_END
+    setClock(on4, TRIAL_END);
+    await call(on4, "POST", `/subscriptions/${id}/shadow`);
+    const after = (await call(on4, "GET", `/subscriptions/${id}`)).json;
+    expect(after.subscription).toMatchObject({ status: "active", trialEnd: null, currentPeriodStart: TRIAL_END });
+    expect(new Date(after.subscription.currentPeriodStart).toISOString()).toBe("2026-11-28T20:53:25.769Z");
+    expect(after.items.filter((i: any) => i.effectiveTo === null && i.termsId === q.termsId)).toHaveLength(3);
+    // El acuerdo histórico queda intacto: mismas condiciones, fechas y aceptación
+    expect(await snap()).toBe(before);
+    // Idempotente
+    await call(on4, "POST", `/subscriptions/${id}/shadow`);
+    expect((await call(on4, "GET", `/subscriptions/${id}`)).json.subscription.currentPeriodStart).toBe(TRIAL_END);
+    expect(await snap()).toBe(before);
   });
 });
