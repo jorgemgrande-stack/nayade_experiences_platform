@@ -82,6 +82,21 @@ export const BUILTIN_MODULES: ModuleManifest[] = [
     source: { location: "core" },
     ...CORE_EXTENSION_PANELS.restaurants,
   },
+  {
+    // Elephant Learning (19/11/2026): formación digital con acceso privado por alumno. Se licencia como MÓDULO del
+    // plano de control (tenant_entitlements, que concede el operador sin cargo) y NO es una capacidad del catálogo
+    // comercial: no tiene producto, precio ni plan, así que no aparece en la venta ni en el marketplace.
+    id: "learning",
+    name: "Elephant Learning",
+    version: "1.0.0",
+    kind: "addon",
+    coreRange: "^1.0.0",
+    dependsOn: [{ id: "commerce", range: "^1.0.0" }],
+    permissions: [{ key: "learning.manage", description: "Gestionar cursos, matrículas y recursos de formación" }],
+    description: "Cursos, matrículas por alumno, aula privada y recursos de formación",
+    resources: ["http.request", "email.sent", "storage.write.bytes"],
+    source: { location: "core" },
+  },
 ];
 
 /**

@@ -52,7 +52,7 @@ describe("catálogo", () => {
     expect(c.contractVersion).toBe("1.2.0");
     expect(c.modules.slice(0, 3).map((m) => m.kind)).toEqual(["core", "core", "core"]);
     const by = Object.fromEntries(c.modules.map((m) => [m.id, m]));
-    expect(by.commerce.dependents).toEqual(["hotel", "restaurants", "ski", "spa"]);
+    expect(by.commerce.dependents).toEqual(["hotel", "learning", "restaurants", "ski", "spa"]);
     expect(by.hotel).toMatchObject({ compatible: true, dependents: ["ski"], activeTenants: 3, availability: { includedInBase: false, plans: ["pro"], addon: null } });
     expect(by.cms).toMatchObject({ activeTenants: 5, availability: { includedInBase: true, plans: ["pro"] } });
     expect(by.spa.availability.addon).toEqual({ interval: "month", priceCents: null, currency: "EUR" });

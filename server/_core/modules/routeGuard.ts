@@ -21,6 +21,15 @@ export const TRPC_ROUTER_MODULES: Record<string, string> = {
   restaurants: "restaurants",
 };
 
+/**
+ * Elephant Learning: la licencia de módulo `learning` se exige en el servidor SOLO con LEARNING_LICENSE_ENFORCED=1.
+ * Gradual a propósito: el LMS ya funciona en Quantum sin licencia de módulo; se enciende después de que el operador
+ * conceda `learning` a Quantum (si no, Quantum recibiría 403 en `learning.*`). Las rutas Express /api/learning/* no
+ * pasan por este guardián.
+ */
+export const LEARNING_ENFORCE_ENV = "LEARNING_LICENSE_ENFORCED";
+export const learningEnforced = (): boolean => ["1", "true", "on"].includes((process.env[LEARNING_ENFORCE_ENV] ?? "").trim().toLowerCase());
+
 export function procedureNames(path: string): string[] {
   const p = path.split("?")[0].replace(/^\/api\/trpc\//, "").replace(/^\//, "");
   return p ? p.split(",").map((x) => x.trim()).filter(Boolean) : [];
@@ -31,9 +40,12 @@ export function moduleRouteGuard(getAccess: () => ModuleAccess, map?: Record<str
   let routes: Record<string, string> | null = map ?? null;
   return async (req: Request, res: Response, next: NextFunction) => {
     routes ??= { ...extensionModuleRoutes(), ...TRPC_ROUTER_MODULES };
+    // Con un mapa explícito (pruebas) manda ese mapa; si no, `learning` se añade solo si la licencia está exigida
+    const learning = !map && learningEnforced() ? { learning: "learning" } : null;
     const needed = new Set<string>();
     for (const proc of procedureNames(req.url ?? "")) {
-      const mod = routes[proc.split(".")[0]];
+      const ns = proc.split(".")[0];
+      const mod = routes[ns] ?? learning?.[ns as "learning"];
       if (mod) needed.add(mod);
     }
     if (needed.size === 0) return next();
