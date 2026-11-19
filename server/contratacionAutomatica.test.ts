@@ -2,7 +2,7 @@
  * Contratación automática de punta a punta (21/11/2026): aceptar el contrato durante la prueba SIN adelantarla, configurar el
  * método de pago en Stripe desde la página pública (ligada al enlace personal), prueba → pago al instante efectivo pactado y
  * etapas visibles. Aplicación REAL del plano de control por HTTP; Stripe es el doble de siempre con la firma real del webhook.
- * La verificación contra Stripe TEST real está en scripts/stripeTestContratacion.ts (manual, con clave de pruebas).
+ * La verificación contra Stripe TEST real está en scripts/stripe/contratacionSandboxE2E.ts (manual, con clave de pruebas).
  */
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import crypto from "node:crypto";
