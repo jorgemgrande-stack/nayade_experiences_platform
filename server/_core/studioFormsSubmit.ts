@@ -50,7 +50,7 @@ export interface SubmitDeps {
   now: () => number;
   /** Límite por visitante (true = puede enviar) */
   allow: (key: string) => boolean;
-  getForm: (slug: string, blockId: string) => Promise<{ slug: string; data: BlockDataMap["form"] } | null>;
+  getForm: (slug: string, blockId: string) => Promise<{ slug: string; data: BlockDataMap["form"]; localized?: BlockDataMap["form"] | null } | null>;
   /** Claves de Turnstile de LA EMPRESA (null = sin configurar) */
   /** null = sin claves; si la bóveda falla, lanza */
   captchaConfig: () => Promise<CaptchaConfig | null>;
@@ -159,12 +159,14 @@ export async function processStudioSubmission(input: StudioSubmitInput, ip: stri
   }
   let result;
   try {
-    result = evaluateFormSubmission(form, input, { slug: found.slug });
+    result = evaluateFormSubmission(form, input, { slug: found.slug, localized: found.localized ?? null });
   } catch (e) {
     if (e instanceof FormSubmitError) throw new StudioSubmitError("BAD_REQUEST", e.message);
     throw e;
   }
-  const success = (id: number): StudioSubmitResult => ({ ok: true, id, message: form.successMessage, redirectUrl: formRedirect(form.redirectUrl) });
+  // Mensaje de confirmación en el idioma de la página desde la que se envió (si el formulario está traducido)
+  const okMessage = found.localized?.successMessage?.trim() || form.successMessage;
+  const success = (id: number): StudioSubmitResult => ({ ok: true, id, message: okMessage, redirectUrl: formRedirect(form.redirectUrl) });
   if (result.kind === "invalid") return { ok: false, errors: result.errors };
   // A un envío automático se le responde igual que a uno bueno, sin guardarlo
   if (result.kind === "spam") return success(0);
