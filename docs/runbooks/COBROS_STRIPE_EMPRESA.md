@@ -203,6 +203,20 @@ pero el pedido queda a medias. Antes, un reenvío se descartaba al ver la reserv
   fuerza el reintento; se ve en los registros (`[upsertClientFromReservation]`, «Error emitiendo los puntos»).
 - Prueba: `server/tiendaStripe.recuperacion.mysql.test.ts` (provoca el fallo en MySQL con un disparador, reenvía y comprueba).
 
+### 9.2 Pago de prueba desde el carrito de Quantum (pendiente de ejecutar)
+
+Requisitos: los de §8 (cuenta verificada de Indira, `CONNECT_STRIPE_*`, #897 y migraciones 0018/0080/0081 aplicadas) y la
+tienda con Stripe ofrecido (`public.getTheme` → `storefront.payments.stripe = true`). Pasos y qué anotar:
+
+1. Añadir un artículo al carrito y pagar con «Tarjeta (Stripe)» (o solo Stripe si Redsys no está configurado). Tarjeta `4242 4242 4242 4242`.
+2. Al volver de Stripe, el pedido debe seguir **pendiente** hasta que llegue el evento (anotar el tiempo hasta «pagado»).
+3. Con el evento entregado (200 en el panel de Stripe): reservas pagadas, **una** factura (método «otro»), cliente, correo del pedido, stock
+   y puntos si la empresa los tiene contratados. «Reenviar» el evento desde Stripe debe quedar `duplicate`.
+4. **Acceso del comprador si el artículo es un curso:** hoy el cierre del pedido de la tienda NO crea matrícula en Elephant
+   LMS. El acceso a un curso solo lo libera `learningFlow` desde una inscripción CONFIRMADA con presupuesto cobrado
+   (`grantFromPayment`, sin llamada desde el pedido de la tienda). Una compra de curso desde el carrito deja factura y correo, pero
+   **ningún acceso al contenido**: queda como decisión de producto (y trabajo aparte) antes de vender cursos directamente en la web.
+
 ## 10. Límites conocidos
 
 - Pago único. Un presupuesto con **plan de cuotas** sigue por Redsys/manual (la sesión de Stripe se rechaza con aviso).
