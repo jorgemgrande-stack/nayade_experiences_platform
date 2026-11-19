@@ -2664,6 +2664,7 @@ export function createControlPlaneApp(d: ControlPlaneDeps): Express {
           const nb = negotiatedBilling;
           termsAcceptance?.attachPayment({
             enabled: () => tb.enabled === true,
+            isCheckoutUrl: (u) => u.startsWith("https://checkout.stripe.com/") || (st.config.mode === "test" && u.startsWith("https://checkout.stripe.test/")),
             start: async (sid, termsId, acceptanceId) => {
               const r = await nb.startForAcceptance(sid, termsId, acceptanceId);
               return r.status === "pending" ? { status: "pending" as const, url: r.url, expiresAt: r.expiresAt, firstChargeAt: r.firstChargeAt, recurringCents: r.recurringCents } : { status: r.status, message: r.status === "processing" ? r.message : undefined };

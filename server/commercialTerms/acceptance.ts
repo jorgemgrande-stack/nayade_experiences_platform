@@ -92,6 +92,8 @@ const PAY_WINDOW_MS = 60 * 86_400_000;
 export interface AcceptancePayment {
   /** Interruptor de cobro de condiciones personalizadas (apagado: la página no llama a Stripe). */
   enabled(): boolean;
+  /** ¿Es una URL de Checkout de Stripe a la que redirigir? (en live, solo checkout.stripe.com) */
+  isCheckoutUrl(url: string): boolean;
   start(subscriptionId: number, termsId: number, acceptanceId: number): Promise<{ status: "pending"; url: string | null; expiresAt: number; firstChargeAt: number | null; recurringCents: number } | { status: "linked" | "processing"; message?: string }>;
   stage(subscriptionId: number): Promise<{
     stage: string;
@@ -696,7 +698,12 @@ export class TermsAcceptanceService {
       // la tarea `concludeDue` lo concluye entonces, con el periodo de pago empezando en ese instante y no antes
       const inForce = !!current && (current.status === "active" || (due !== null && effectiveStatus(current, due.at) === "active"));
       if (!inForce) {
-        await this.logTrial(t.id, "trial_kept", "Las condiciones aceptadas entran en vigor más adelante: la prueba gratuita sigue hasta ese instante exacto y se concluye sola entonces (tarea programada, pago confirmado o a mano desde el CRM)", { subscriptionId }, "skipped");
+        // Solo los acuerdos aceptados con esta regla (entrada en vigor ≥ fin de la prueba) se concluyen solos en su instante;
+        // lo aceptado antes, o con una fecha anterior al fin de la prueba, se sigue convirtiendo a mano desde el CRM
+        const autoConclude = !!current && current.effectiveFrom !== null && sub.trialEnd !== null && current.effectiveFrom >= sub.trialEnd;
+        if (!(await this.hasEvent(t.id, "trial_kept"))) {
+          await this.logTrial(t.id, "trial_kept", autoConclude ? "Las condiciones aceptadas entran en vigor al terminar la prueba (o después): la prueba gratuita sigue hasta ese instante exacto y se concluye sola entonces (tarea programada, primer cobro confirmado o a mano desde el CRM)" : "Las condiciones aceptadas entran en vigor antes del fin de la prueba o sin coincidir con él: la prueba gratuita sigue y se convierte a mano desde el CRM", { subscriptionId, autoConclude, effectiveFrom: current?.effectiveFrom ?? null, trialEnd: sub.trialEnd }, "skipped");
+        }
         return;
       }
       try {
@@ -736,10 +743,12 @@ export class TermsAcceptanceService {
     if (!a) throw new TermsError("not_found", "Enlace no válido");
     if (a.status !== "accepted" || a.acceptedAt === null) throw new TermsError("invalid_state", "Estas condiciones todavía no están aceptadas");
     if (this.now() > a.acceptedAt + PAY_WINDOW_MS) throw new TermsError("invalid_state", "Este enlace ha caducado: solicita uno nuevo a tu contacto de Big Elephant");
-    const t = (await this.d.termsStore.list({ status: ["scheduled", "active"] })).find((x) => x.acceptanceId === a.id && x.contractId === a.contractId);
+    const contract = (await this.d.crmStore.get("contracts", a.contractId)) as { reference?: string; companyId?: number } | null;
+    if (!contract || typeof contract.companyId !== "number") throw new TermsError("invalid_state", "Estas condiciones ya no están en vigor");
+    // Solo los acuerdos de ESA empresa (nunca un recorrido por toda la plataforma)
+    const t = (await this.d.termsStore.list({ companyId: contract.companyId, status: ["scheduled", "active"] })).find((x) => x.acceptanceId === a.id && x.contractId === a.contractId);
     if (!t || t.subscriptionId === null) throw new TermsError("invalid_state", "Estas condiciones ya no están en vigor");
-    const contract = await this.d.crmStore.get("contracts", a.contractId);
-    return { a, t, reference: (contract as { reference?: string } | null)?.reference ?? `CP-${t.id}` };
+    return { a, t, reference: contract.reference ?? `CP-${t.id}` };
   }
 
   /** Estado público del paso de pago: lo que el cliente ve tras aceptar (y al volver de Stripe). Solo lectura. */
@@ -750,6 +759,11 @@ export class TermsAcceptanceService {
     return { reference, acceptedAt: a.acceptedAt!, company: (company as { legalName?: string | null; name?: string } | null)?.legalName ?? (company as { name?: string } | null)?.name ?? "", enabled: !!this.payment?.enabled(), stage };
   }
 
+  /** Solo se redirige a una página de Checkout de Stripe (la URL viene de Stripe, pero se valida igualmente). */
+  checkoutUrlOk(url: string): boolean {
+    return !!this.payment && this.payment.isCheckoutUrl(url);
+  }
+
   /** Abre (o reanuda) el pago en Stripe para ESTA aceptación. Idempotente; sin interruptor no se llama a Stripe. */
   async startPayment(token: string) {
     const { a, t } = await this.acceptedBy(token);
@@ -757,12 +771,14 @@ export class TermsAcceptanceService {
     try {
       return await this.payment.start(t.subscriptionId!, t.id, a.id);
     } catch (e) {
-      if (e instanceof Error && e.name === "NegotiatedBillingError") {
-        // Con menos de 48 h para el fin de la prueba Stripe no admite aplazar el primer cargo: se vuelve a intentar al llegar la fecha
-        if (e.message.includes("menos de 48 horas")) throw new TermsError("invalid_state", "Tu prueba termina en menos de 48 horas y Stripe no permite aplazar el primer cargo con tan poco margen. Vuelve a este enlace cuando termine la prueba para configurar el pago, o tu contacto de Big Elephant lo completará contigo. Tu contrato sigue aceptado.");
-        throw new TermsError("invalid_state", e.message);
-      }
-      throw e;
+      const msg = e instanceof Error ? e.message : "";
+      // Con menos de 48 h para el fin de la prueba Stripe no admite aplazar el primer cargo: se vuelve a intentar al llegar la fecha
+      if (msg.includes("menos de 48 horas")) throw new TermsError("invalid_state", "Tu prueba termina en menos de 48 horas y Stripe no permite aplazar el primer cargo con tan poco margen. Vuelve a este enlace cuando termine la prueba para configurar el pago, o tu contacto de Big Elephant lo completará contigo. Tu contrato sigue aceptado.");
+      // Mensajes pensados para el cliente: las condiciones cambiaron desde que aceptó
+      if (/^(Las condiciones aceptadas ya no están|Hay unas condiciones posteriores)/.test(msg)) throw new TermsError("invalid_state", msg);
+      // Cualquier otro error (Stripe, estado interno…): texto genérico al cliente y el detalle, al registro
+      opsLog("error", "CommercialTerms", "acceptance_payment_start_failed", { termsId: t.id, acceptanceId: a.id, error: e instanceof Error ? e.name : "error", detail: msg.slice(0, 200) });
+      throw new TermsError("invalid_state", "No se ha podido abrir el pago ahora mismo. Inténtalo de nuevo en unos minutos: tu contrato sigue aceptado.");
     }
   }
 
@@ -778,23 +794,39 @@ export class TermsAcceptanceService {
     const now = this.now();
     let concluded = 0;
     let checked = 0;
+    const limit = o.limit ?? 5000;
     // Se parte de las suscripciones EN PRUEBA (pocas), no de todos los acuerdos aceptados de la historia
-    const trialing = o.subscriptionId !== undefined ? [await this.d.subscriptionStore.get(o.subscriptionId)] : await this.d.subscriptionStore.list({ status: "trialing", limit: o.limit ?? 500 });
+    const trialing = o.subscriptionId !== undefined ? [await this.d.subscriptionStore.get(o.subscriptionId)] : await this.d.subscriptionStore.list({ status: "trialing", limit });
+    if (o.subscriptionId === undefined && trialing.length >= limit) opsLog("warn", "CommercialTerms", "conclude_due_truncated", { limit });
     for (const sub of trialing) {
       if (!sub || sub.status !== "trialing") continue;
-      const due = (await this.d.termsStore.list({ subscriptionId: sub.id, status: ["scheduled", "active"] }))
-        .filter((t) => t.acceptanceStatus === "accepted" && t.effectiveFrom !== null && t.effectiveFrom <= now)
-        .sort((a, b) => a.effectiveFrom! - b.effectiveFrom!)[0];
-      if (!due) continue;
-      checked++;
       try {
+        const due = (await this.d.termsStore.list({ subscriptionId: sub.id, status: ["scheduled", "active"] }))
+          .filter((t) => t.acceptanceStatus === "accepted" && t.effectiveFrom !== null && t.effectiveFrom <= now)
+          .sort((x, y) => x.effectiveFrom! - y.effectiveFrom!)[0];
+        if (!due) continue;
+        // Nunca de forma retroactiva: solo acuerdos aceptados CON esta regla (constan en su historial como «trial_kept» con
+        // conclusión automática) y cuyo instante coincide con el fin de la prueba o es posterior. Lo demás se convierte a mano
+        const events = await this.d.termsStore.events({ termsId: due.id });
+        const marked = events.some((e) => e.kind === "trial_kept" && (e.after as { autoConclude?: boolean } | null)?.autoConclude === true);
+        if (!marked || sub.trialEnd === null || due.effectiveFrom! < sub.trialEnd) {
+          if (!events.some((e) => e.kind === "trial_due_skipped")) {
+            await this.logTrial(due.id, "trial_due_skipped", marked ? "La prueba no se concluye sola: la entrada en vigor del acuerdo es anterior al fin actual de la prueba. Conviértela a mano desde el CRM" : "La prueba no se concluye sola: el acuerdo se aceptó antes de la conclusión automática. Conviértela a mano desde el CRM", { subscriptionId: sub.id, effectiveFrom: due.effectiveFrom, trialEnd: sub.trialEnd }, "skipped");
+          }
+          continue;
+        }
+        checked++;
         await this.concludeTrial(due, sub.id, { at: now });
         if ((await this.d.subscriptionStore.get(sub.id))?.status !== "trialing") concluded++;
       } catch (e) {
-        opsLog("warn", "CommercialTerms", "conclude_due_failed", { termsId: due.id, error: e instanceof Error ? e.name : "error" });
+        opsLog("warn", "CommercialTerms", "conclude_due_failed", { subscriptionId: sub.id, error: e instanceof Error ? e.name : "error" });
       }
     }
     return { concluded, checked };
+  }
+
+  private async hasEvent(termsId: number, kind: string): Promise<boolean> {
+    return (await this.d.termsStore.events({ termsId }).catch(() => [])).some((e) => e.kind === kind);
   }
 
   private async logTrial(termsId: number, kind: string, reason: string, after: unknown, result: string) {
@@ -916,27 +948,38 @@ export function documentHtml(text: string): string {
 }
 
 type PaymentViewData = Awaited<ReturnType<TermsAcceptanceService["paymentView"]>>;
-/** Página del paso de pago: contrato aceptado → método de pago → fecha del primer cobro. Nunca da el pago por hecho por volver de Stripe. */
+/** Página del paso de pago: un texto propio por etapa. Nunca da el pago por hecho por volver de Stripe ni promete «no se cobra» fuera de la prueba. */
 function paymentBody(token: string, v: PaymentViewData): string {
   const st = v.stage;
   const rec = st?.recurring ?? null;
   const fee = rec ? `${money(rec.netCents, rec.currency)} al mes + IVA (referencia ${(rec.taxRateBp / 100).toLocaleString("es-ES")} %: ${money(rec.totalCents, rec.currency)} con IVA; el impuesto definitivo lo calcula Stripe Tax según tu régimen fiscal)` : "la cuota pactada";
   const head = `<h1>Contratación de ${esc(v.reference)}</h1><p class="ok">Tu aceptación consta desde el ${esc(madridDateTime(v.acceptedAt))}. Aceptar el contrato no realiza ningún cobro.</p>`;
   const when = st?.activationAt ? `el ${madridDateTime(st.activationAt)} (hora de Madrid, al terminar tu prueba gratuita)` : "cuando empiece tu suscripción";
+  const next = st?.nextChargeAt ? madridDateTime(st.nextChargeAt) : null;
+  const help = "Si necesitas ayuda, escribe a tu contacto de Big Elephant.";
   if (!st || !v.enabled || st.stage === "payment_not_enabled") {
     return `${head}<p>El paso para configurar tu método de pago todavía no está habilitado. Tu contacto de Big Elephant te avisará cuando puedas completarlo. No tienes que enviar datos bancarios por correo.</p>`;
   }
-  if (st.paymentMethodAuthorized) {
-    const next = st.nextChargeAt ? madridDateTime(st.nextChargeAt) : null;
-    return `${head}<p class="ok"><strong>Método de pago confirmado por Stripe.</strong></p><p>Cuota: ${fee}.${next ? ` Primer cobro previsto: ${esc(next)} (hora de Madrid).` : ""} Hasta entonces no se te cobra nada.</p><p class="muted">Podrás gestionar tu método de pago desde tu cuenta de Big Elephant.</p>`;
+  switch (st.stage) {
+    case "payment_pending":
+      return `${head}<section class="accept"><h3>Configura tu método de pago</h3><p>Se te llevará a la página segura de Stripe para introducir tu tarjeta u otro medio de pago disponible. Big Elephant no almacena datos bancarios.</p><p>Al configurarlo autorizas los cobros periódicos de ${fee}, con el primer cobro ${when}. Puedes cancelar según las condiciones aceptadas.</p><form method="post" action="pago"><input type="hidden" name="token" value="${esc(token)}"><div class="actions"><button class="btn" type="submit">Configurar método de pago</button></div></form><p class="muted">Si cierras Stripe sin terminar, o el pago no se completa, tu contrato sigue aceptado y puedes retomar este paso desde este mismo enlace.</p></section>`;
+    case "payment_processing":
+      return `${head}<p>Estamos confirmando tu método de pago con Stripe. Esto puede tardar unos minutos: recarga esta página para ver el resultado. Volver desde Stripe no basta para darlo por confirmado.</p>`;
+    case "activation_scheduled":
+      return `${head}<p class="ok"><strong>Método de pago confirmado por Stripe.</strong></p><p>Cuota: ${fee}.${next ? ` Primer cobro previsto: ${esc(next)} (hora de Madrid).` : ""} Hasta entonces no se te cobra nada.</p><p class="muted">Podrás gestionar tu método de pago desde tu cuenta de Big Elephant.</p>`;
+    case "active":
+      return `${head}<p class="ok"><strong>Tu suscripción está activa.</strong> Método de pago confirmado por Stripe.</p><p>Cuota: ${fee}.${next ? ` Próxima renovación: ${esc(next)} (hora de Madrid).` : ""}</p>`;
+    case "grace":
+      return `${head}<p class="err"><strong>No hemos podido cobrar tu último pago.</strong> Tu suscripción está en periodo de gracia: actualiza tu método de pago para evitar la suspensión. ${help}</p>`;
+    case "payment_failed":
+      return `${head}<p class="err"><strong>El último cobro ha fallado.</strong> Actualiza tu método de pago para regularizarlo. ${help}</p>`;
+    case "suspended":
+      return `${head}<p class="err"><strong>Tu suscripción está suspendida por impago.</strong> Regulariza el pago para recuperarla; tus datos se conservan. ${help}</p>`;
+    case "canceled":
+      return `${head}<p>Esta suscripción está cancelada. ${help}</p>`;
+    default:
+      return `${head}<p>Estado actual: ${esc(st.label)}. ${help}</p>`;
   }
-  if (st.stage === "payment_processing") {
-    return `${head}<p>Estamos confirmando tu método de pago con Stripe. Esto puede tardar unos minutos: recarga esta página para ver el resultado. Volver desde Stripe no basta para darlo por confirmado.</p>`;
-  }
-  if (st.stage === "payment_pending") {
-    return `${head}<section class="accept"><h3>Configura tu método de pago</h3><p>Se te llevará a la página segura de Stripe para introducir tu tarjeta u otro medio de pago disponible. Big Elephant no almacena datos bancarios.</p><p>Al configurarlo autorizas los cobros periódicos de ${fee}, con el primer cobro ${when}. Puedes cancelar según las condiciones aceptadas.</p><form method="post" action="pago"><input type="hidden" name="token" value="${esc(token)}"><div class="actions"><button class="btn" type="submit">Configurar método de pago</button></div></form><p class="muted">Si cierras Stripe sin terminar, tu contrato sigue aceptado y puedes retomar este paso desde este mismo enlace.</p></section>`;
-  }
-  return `${head}<p>Estado actual: ${esc(st.label)}.</p>`;
 }
 
 export function createTermsPublicAcceptanceRouter(svc: TermsAcceptanceService): Router {
@@ -992,7 +1035,7 @@ export function createTermsPublicAcceptanceRouter(svc: TermsAcceptanceService): 
     svc
       .startPayment(token)
       .then(async (out) => {
-        if (out.status === "pending" && out.url && /^https:\/\/[a-z0-9.-]+\//.test(out.url)) {
+        if (out.status === "pending" && out.url && svc.checkoutUrlOk(out.url)) {
           res.setHeader("Cache-Control", "no-store");
           res.setHeader("Referrer-Policy", "no-referrer");
           return void res.redirect(303, out.url);

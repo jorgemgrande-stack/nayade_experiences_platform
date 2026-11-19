@@ -1082,7 +1082,8 @@ export class NegotiatedBillingService {
     else if (row && LINKED_STATES.includes(row.status)) {
       stage = row.status === "suspended" ? "suspended" : row.status === "past_due" ? (row.graceEndsAt !== null && row.graceEndsAt > now ? "grace" : "payment_failed") : row.stripeStatus === "trialing" || sub.status === "trialing" ? "activation_scheduled" : "active";
     } else if (row?.status === "canceled") stage = "canceled";
-    else if (row && (row.sessionStatus === "complete" || row.stripeSubscriptionId)) stage = "payment_processing";
+    // «En confirmación» solo con el primer pago realmente en curso; un primer pago rechazado (fila abandonada) vuelve a poder reintentarse
+    else if (row && row.status === "pending" && (row.sessionStatus === "complete" || row.stripeSubscriptionId)) stage = "payment_processing";
     else stage = this.d.enabled ? "payment_pending" : "payment_not_enabled";
     const authorized = !!row && !!row.stripeSubscriptionId && LINKED_STATES.includes(row.status);
     return {

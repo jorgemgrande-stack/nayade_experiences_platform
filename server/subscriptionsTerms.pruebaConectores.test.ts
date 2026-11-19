@@ -393,4 +393,33 @@ describe("condiciones aceptadas durante la prueba con entrada en vigor al termin
     expect(await acceptance.concludeDue()).toMatchObject({ concluded: 1 });
     expect((await subs.must(sub.id))).toMatchObject({ status: "active", currentPeriodStart: later });
   });
+
+  it("nunca retroactivo: un acuerdo con entrada en vigor ANTERIOR al fin de la prueba no se concluye solo (se anota una vez) y trial_kept consta una sola vez", async () => {
+    const { sub } = await trialing();
+    const early = sub.trialEnd! - 3 * DAY;
+    const draft = await terms.createForSubscription(sub.id, AT_END(early), A);
+    const sent = await acceptance.request(draft.id, { signer: { name: "Marta Prueba", email: "marta@cliente-prueba.example" }, expectedRevision: draft.revision }, A);
+    await acceptance.accept(sent.url.split("token=")[1], { name: "Marta Prueba", accept: true }, { ip: null, userAgent: "navegador-de-prueba" });
+    expect((await subs.must(sub.id)).status).toBe("trialing");
+    clock = early + DAY;
+    for (let i = 0; i < 3; i++) expect(await acceptance.concludeDue()).toMatchObject({ concluded: 0 });
+    expect((await subs.must(sub.id)).status).toBe("trialing");
+    const ev = await termsStore.events({ termsId: draft.id });
+    expect(ev.filter((e) => e.kind === "trial_kept")).toHaveLength(1);
+    expect(ev.find((e) => e.kind === "trial_kept")!.after).toMatchObject({ autoConclude: false });
+    expect(ev.filter((e) => e.kind === "trial_due_skipped")).toHaveLength(1);
+  });
+
+  it("si la prueba se amplía después de aceptar (fin posterior al instante del acuerdo), no se concluye sola", async () => {
+    const { sub } = await trialing();
+    const draft = await terms.createForSubscription(sub.id, AT_END(sub.trialEnd!), A);
+    const sent = await acceptance.request(draft.id, { signer: { name: "Marta Prueba", email: "marta@cliente-prueba.example" }, expectedRevision: draft.revision }, A);
+    await acceptance.accept(sent.url.split("token=")[1], { name: "Marta Prueba", accept: true }, { ip: null, userAgent: "navegador-de-prueba" });
+    expect((await termsStore.events({ termsId: draft.id })).filter((e) => e.kind === "trial_kept")).toHaveLength(1);
+    await subs.setTrialEnd(sub.id, { trialEnd: sub.trialEnd! + 7 * DAY, reason: "ampliación" }, (await subs.must(sub.id)).version, A);
+    clock = sub.trialEnd! + DAY;
+    expect(await acceptance.concludeDue()).toMatchObject({ concluded: 0 });
+    expect((await subs.must(sub.id)).status).toBe("trialing");
+    expect((await termsStore.events({ termsId: draft.id })).filter((e) => e.kind === "trial_due_skipped")).toHaveLength(1);
+  });
 });

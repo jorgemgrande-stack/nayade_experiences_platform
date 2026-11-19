@@ -207,12 +207,16 @@ const sessionOf = (location: string | null) => String(location).split("/").pop()
 describe("contratación automática: aceptar → pagar → activar en la fecha pactada", () => {
   let on: Env;
   let off: Env;
+  let on2: Env;
+  let on3: Env;
   beforeAll(async () => {
     on = await build(true);
     off = await build(false);
+    on2 = await build(true);
+    on3 = await build(true);
   });
   afterAll(async () => {
-    for (const e of [on, off]) {
+    for (const e of [on, off, on2, on3]) {
       e.server.closeAllConnections();
       await new Promise<void>((r) => e.server.close(() => r()));
     }
@@ -372,21 +376,81 @@ describe("contratación automática: aceptar → pagar → activar en la fecha p
     on.gw.completeNegotiatedSession(sessionOf(first.location), "incomplete");
     await deliver(on);
     expect(await stageOf(on, q.id)).toMatchObject({ paymentMethodAuthorized: false, chargeable: false });
+    // Stripe da por caducado el primer intento (fila abandonada): NO «en confirmación»; vuelve a ofrecer el botón de reintento
+    on.gw.updateSubscription(Array.from(on.gw.subscriptions.keys()).pop()!, { status: "incomplete_expired" });
+    on.gw.emit("customer.subscription.updated", "subscription", Array.from(on.gw.subscriptions.keys()).pop()!);
+    await deliver(on);
+    expect(await stageOf(on, q.id)).toMatchObject({ stage: "payment_pending", paymentMethodAuthorized: false, chargeable: false });
+    const view = await page(on, "GET", `/pago?token=${token}`);
+    expect(view.text).toContain("Configurar método de pago");
+    expect(view.text).toContain('action="pago"');
+    expect(view.text).not.toContain("Estamos confirmando");
     const retry = await page(on, "POST", "/pago", { token });
     expect([200, 303]).toContain(retry.status);
   });
 
+  it("un texto propio por etapa: «no se te cobra» solo antes del primer cobro; activa, gracia y suspendida dicen lo suyo", async () => {
+    const q = await quantum(on2);
+    const { token } = await accepted(on2, q);
+    const start = await page(on2, "POST", "/pago", { token });
+    const stripeId = on2.gw.completeNegotiatedSession(sessionOf(start.location));
+    await deliver(on2);
+    const sched = await page(on2, "GET", `/pago?token=${token}`);
+    expect(sched.text).toContain("Hasta entonces no se te cobra nada");
+    expect(sched.text).toContain("Primer cobro previsto");
+
+    setClock(on2, q.trialEnd + 60_000);
+    on2.gw.updateSubscription(stripeId, { status: "active", currentPeriodStart: Math.floor(q.trialEnd / 1000), currentPeriodEnd: Math.floor((q.trialEnd + 30 * DAY) / 1000) });
+    on2.gw.chargeNegotiatedPeriod(stripeId, "paid");
+    await deliver(on2);
+    const active = await page(on2, "GET", `/pago?token=${token}`);
+    expect(active.text).toContain("Tu suscripción está activa");
+    expect(active.text).toContain("Próxima renovación");
+    expect(active.text).not.toContain("Primer cobro");
+    expect(active.text).not.toContain("no se te cobra");
+
+    on2.gw.updateSubscription(stripeId, { status: "past_due" });
+    on2.gw.emit("customer.subscription.updated", "subscription", stripeId);
+    await deliver(on2);
+    expect(await stageOf(on2, q.id)).toMatchObject({ stage: "grace" });
+    const grace = await page(on2, "GET", `/pago?token=${token}`);
+    expect(grace.text).toContain("periodo de gracia");
+    expect(grace.text).not.toContain("no se te cobra");
+    expect(grace.text).not.toContain("Primer cobro");
+
+    on2.gw.updateSubscription(stripeId, { status: "unpaid" });
+    on2.gw.emit("customer.subscription.updated", "subscription", stripeId);
+    await deliver(on2);
+    expect(await stageOf(on2, q.id)).toMatchObject({ stage: "suspended" });
+    const susp = await page(on2, "GET", `/pago?token=${token}`);
+    expect(susp.text).toContain("suspendida por impago");
+    expect(susp.text).not.toContain("no se te cobra");
+  });
+
+  it("errores internos al abrir el pago: texto genérico al cliente (sin detalle de Stripe) y el contrato sigue aceptado", async () => {
+    const q = await quantum(on3);
+    const { token } = await accepted(on3, q);
+    on3.gw.down = true;
+    const r = await page(on3, "POST", "/pago", { token });
+    on3.gw.down = false;
+    expect(r.status).toBe(409);
+    expect(r.text).toContain("No se ha podido abrir el pago ahora mismo");
+    expect(r.text).not.toMatch(/stripe respondi|StripeGatewayError|timeout|ECONN/i);
+    expect((await call(on3, "GET", `/commercial-terms/${q.termsId}`)).json.terms.acceptanceStatus).toBe("accepted");
+    expect((await page(on3, "POST", "/pago", { token })).status).toBe(303);
+  });
+
   it("aislamiento: el enlace de una empresa solo abre el pago de SU suscripción", async () => {
-    const a = await quantum(on);
-    const b = await quantum(on);
-    const ta = await accepted(on, a);
-    await accepted(on, b);
-    const r = await page(on, "POST", "/pago", { token: ta.token });
+    const a = await quantum(on3);
+    const b = await quantum(on3);
+    const ta = await accepted(on3, a);
+    await accepted(on3, b);
+    const r = await page(on3, "POST", "/pago", { token: ta.token });
     expect(r.status).toBe(303);
-    const sess = on.gw.sessions.get(sessionOf(r.location))!;
+    const sess = on3.gw.sessions.get(sessionOf(r.location))!;
     expect(sess.metadata.es_terms_subscription).toBe(String(a.id));
-    expect(await stageOf(on, b.id)).toMatchObject({ stage: "payment_pending" });
-    expect(await on.billingStore.bySubscription(b.id)).toBeNull();
+    expect(await stageOf(on3, b.id)).toMatchObject({ stage: "payment_pending" });
+    expect(await on3.billingStore.bySubscription(b.id)).toBeNull();
   });
 
   it("interruptor apagado (production hoy): aceptar funciona, la página dice «pago pendiente de habilitar» y no se llama a Stripe", async () => {
@@ -415,21 +479,21 @@ describe("contratación automática: aceptar → pagar → activar en la fecha p
   });
 
   it("con menos de 48 h para el fin de la prueba Stripe no admite aplazar el primer cargo: mensaje claro y, terminada la prueba, el pago se configura con cobro inmediato", async () => {
-    const q = await quantum(on);
-    const { token } = await accepted(on, q);
-    expect((await stageOf(on, q.id)).acceptedAt).toBeGreaterThan(0);
-    setClock(on, q.trialEnd - 10 * 3600_000);
-    const tooSoon = await page(on, "POST", "/pago", { token });
+    const q = await quantum(on3);
+    const { token } = await accepted(on3, q);
+    expect((await stageOf(on3, q.id)).acceptedAt).toBeGreaterThan(0);
+    setClock(on3, q.trialEnd - 10 * 3600_000);
+    const tooSoon = await page(on3, "POST", "/pago", { token });
     expect(tooSoon.status).toBe(409);
     expect(tooSoon.text).toContain("menos de 48 horas");
     expect(tooSoon.text).toContain("Tu contrato sigue aceptado");
-    expect(on.gw.calls.filter((c) => c.op === "checkout.sessions.create(negotiated)" && (c.input as NegotiatedCheckoutInput).metadata.es_terms_subscription === String(q.id))).toHaveLength(0);
+    expect(on3.gw.calls.filter((c) => c.op === "checkout.sessions.create(negotiated)" && (c.input as NegotiatedCheckoutInput).metadata.es_terms_subscription === String(q.id))).toHaveLength(0);
     // Terminada la prueba (la tarea la concluye) el enlace sigue sirviendo: ya no hay nada que aplazar
-    setClock(on, q.trialEnd + 60_000);
-    await call(on, "POST", `/subscriptions/${q.id}/shadow`);
-    const ok = await page(on, "POST", "/pago", { token });
+    setClock(on3, q.trialEnd + 60_000);
+    await call(on3, "POST", `/subscriptions/${q.id}/shadow`);
+    const ok = await page(on3, "POST", "/pago", { token });
     expect(ok.status).toBe(303);
-    const input = on.gw.negotiatedSessions.get(sessionOf(ok.location))!;
+    const input = on3.gw.negotiatedSessions.get(sessionOf(ok.location))!;
     expect(input.trialEnd).toBeUndefined();
     expect(input.lines.reduce((a, l) => a + l.unitAmount, 0)).toBe(5200);
   });

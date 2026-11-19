@@ -1081,7 +1081,42 @@ etapa `payment_not_enabled`: es el comportamiento contractual de siempre; admini
 
 ### Límites conocidos
 
-- Entre el fin de la prueba y el siguiente tick (minutos) la prueba gratuita consta vencida: si la tarea de pruebas
-  (`CP_TRIALS_SCHEDULER_ENABLED`) está encendida puede enviar el aviso de fin de prueba antes de concluirse; la conversión sigue siendo válida.
+- Entre el fin de la prueba y el siguiente tick la prueba gratuita consta vencida. La tarea del cobro (`CP_STRIPE_WORKER_ENABLED`) corre
+  cada pocos minutos pero **concluye junto a la conciliación, hasta ~15 min después**; sin ella, la simulación o el webhook del primer
+  cobro lo hacen antes. Si la tarea de pruebas (`CP_TRIALS_SCHEDULER_ENABLED`) está encendida puede enviar el aviso de fin de prueba
+  antes de concluirse; la conversión sigue siendo válida y el periodo de pago empieza igualmente en `effectiveFrom`.
 - Con Stripe Tax (live) el IVA definitivo lo calcula Stripe; la página muestra el 21 % solo como referencia.
 - La interfaz de administración (repo del CRM) todavía no pinta `contracting`: el dato está en la API.
+
+### Conclusión automática: solo lo aceptado con esta regla (nunca retroactiva)
+
+`concludeDue` solo concluye acuerdos cuya aceptación dejó en su historial un `trial_kept` con `autoConclude: true` (se registra
+**una sola vez** por acuerdo, al aceptar, si `effectiveFrom` ≥ fin de la prueba) **y** cuyo `effectiveFrom` sigue siendo ≥ el fin
+actual de la prueba (si la prueba se amplió después, no concluye). En cualquier otro caso no toca nada y deja **una** constancia
+`trial_due_skipped` («conviértela a mano desde el CRM»). No depende del interruptor de cobro. Lo aceptado antes de este cambio no lleva
+la marca, así que sigue convirtiéndose a mano como siempre.
+
+**Inventario previo al despliegue (solo lectura):** acuerdos aceptados y programados sobre suscripciones en prueba. Ninguno se concluirá
+solo (no llevan marca); sirve para saber a cuáles hay que dar seguimiento manual:
+
+```
+GET /cp/v1/commercial-terms?status=scheduled&companyId=<empresa>      # por empresa, acceptanceStatus = accepted
+GET /cp/v1/subscriptions/<id>                                          # status = trialing y trialEnd
+```
+
+Hoy (21/11/2026) el único caso conocido es Quantum Soulrise, cuya CP-9 está en borrador (sin aceptar).
+
+### Decisión de negocio pendiente (sin cambio de comportamiento)
+
+Si el cliente llega a `effectiveFrom` **sin método de pago autorizado**, el acuerdo aceptado igualmente concluye la prueba en su
+instante y las licencias contratadas se aplican (modo sombra, sin cobro; etapa `payment_pending` / `payment_not_enabled`). Es el
+comportamiento contractual de siempre. Alternativas, a decidir por Dirección: mantener el servicio hasta cobrar (hoy), conceder un
+periodo de cortesía, o dejar las licencias en solo lectura hasta que el método esté autorizado. No se ha cambiado.
+
+### Detalles del paso de pago
+
+- Errores internos al abrir el pago: el cliente ve un texto genérico («No se ha podido abrir el pago ahora mismo…»); el detalle va al
+  registro (`acceptance_payment_start_failed`). Se conserva el aviso específico de las 48 h.
+- Solo se redirige a `https://checkout.stripe.com/` (y, solo en modo pruebas, al doble local); otra URL se descarta y se muestra el estado.
+- La búsqueda del acuerdo por enlace se hace por la empresa del contrato, nunca recorriendo la plataforma; el barrido de `concludeDue`
+  parte de las suscripciones en prueba (hasta 5.000; si se alcanzara, queda un aviso en el registro).
