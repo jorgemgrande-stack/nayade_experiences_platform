@@ -117,19 +117,26 @@ export async function saveRule(input: RuleInput, id?: number): Promise<number> {
   return d.transaction(async (tx) => {
     const mods = await rows(tx, sql`SELECT id FROM learning_modules WHERE course_id = ${input.courseId} AND id IN (${sql.join(input.moduleIds.map((m) => sql`${m}`), sql`, `)})`);
     if (mods.length !== new Set(input.moduleIds).size) throw new LearningError("BAD_REQUEST", "Algún módulo no pertenece al curso.");
-    let ruleId = id ?? 0;
-    if (id) {
-      const r = await run(tx, sql`UPDATE learning_access_rules SET experience_id = ${input.experienceId}, variant_id = ${input.variantId}, course_id = ${input.courseId}, duration_days = ${input.durationDays},
-        start_mode = ${input.startMode}, fixed_start = ${input.fixedStart}, active = ${input.active ? 1 : 0}, updated_at = ${now} WHERE id = ${id}`);
-      const [exists] = await rows(tx, sql`SELECT id FROM learning_access_rules WHERE id = ${id}`);
-      if (!exists && !r.affectedRows) throw new LearningError("NOT_FOUND", "La regla no existe.");
-    } else {
-      ruleId = (await run(tx, sql`INSERT INTO learning_access_rules (experience_id, variant_id, course_id, duration_days, start_mode, fixed_start, active, created_at, updated_at)
+    const wanted = Array.from(new Set(input.moduleIds)).sort((x, y) => x - y);
+    const insertRule = async () => {
+      const rid = (await run(tx, sql`INSERT INTO learning_access_rules (experience_id, variant_id, course_id, duration_days, start_mode, fixed_start, active, created_at, updated_at)
         VALUES (${input.experienceId}, ${input.variantId}, ${input.courseId}, ${input.durationDays}, ${input.startMode}, ${input.fixedStart}, ${input.active ? 1 : 0}, ${now}, ${now})`)).insertId;
+      for (const m of wanted) await run(tx, sql`INSERT INTO learning_access_rule_modules (rule_id, module_id) VALUES (${rid}, ${m})`);
+      return rid;
+    };
+    if (!id) return insertRule();
+    const [cur] = await rows(tx, sql`SELECT * FROM learning_access_rules WHERE id = ${id} FOR UPDATE`);
+    if (!cur) throw new LearningError("NOT_FOUND", "La regla no existe.");
+    const curMods = (await rows(tx, sql`SELECT module_id FROM learning_access_rule_modules WHERE rule_id = ${id} ORDER BY module_id`)).map((r) => n(r.module_id));
+    const sameShape = n(cur.experience_id) === input.experienceId && (cur.variant_id == null ? null : n(cur.variant_id)) === input.variantId && n(cur.course_id) === input.courseId && curMods.length === wanted.length && curMods.every((m, i) => m === wanted[i]);
+    if (sameShape) {
+      await run(tx, sql`UPDATE learning_access_rules SET duration_days = ${input.durationDays}, start_mode = ${input.startMode}, fixed_start = ${input.fixedStart}, active = ${input.active ? 1 : 0}, updated_at = ${now} WHERE id = ${id}`);
+      return id;
     }
-    await run(tx, sql`DELETE FROM learning_access_rule_modules WHERE rule_id = ${ruleId}`);
-    for (const m of Array.from(new Set(input.moduleIds))) await run(tx, sql`INSERT INTO learning_access_rule_modules (rule_id, module_id) VALUES (${ruleId}, ${m})`);
-    return ruleId;
+    // Cambiar producto, variante, curso o módulos crea una VERSIÓN nueva: la anterior se desactiva y se conserva (las
+    // matrículas ya concedidas guardan la regla con la que nacieron; nada se borra)
+    await run(tx, sql`UPDATE learning_access_rules SET active = 0, updated_at = ${now} WHERE id = ${id}`);
+    return insertRule();
   });
 }
 
