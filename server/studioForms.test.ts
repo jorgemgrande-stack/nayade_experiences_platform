@@ -134,3 +134,43 @@ describe("formularios a medida: campos con condición", () => {
     expect(Object.keys(r.errors).sort()).toEqual(["f3", "f6"]);
   });
 });
+
+describe("formulario en otro idioma: las opciones elegidas se entienden y se guardan en el idioma principal", () => {
+  const de = form([
+    newFormField("text", "Vorname", { required: "on", role: "name" }),
+    newFormField("email", "E-Mail", { required: "on", role: "email" }),
+    newFormField("select", "Welches Erlebnis interessiert dich?", { options: "Seelenreise\nNatur & Outdoor Retreat\nNeujahr Retreat" }),
+    newFormField("select", "Wie viele Personen?", { options: "1 Person\n2 Personen\nKleine Gruppe (3–5)" }),
+    newFormField("text", "Anmerkung", { showIf: "Wie viele Personen?", showValue: "2 Personen" }),
+  ]);
+  const es = form([
+    newFormField("text", "Nombre", { required: "on", role: "name" }),
+    newFormField("email", "Correo electrónico", { required: "on", role: "email" }),
+    newFormField("select", "¿Qué experiencia te interesa?", { options: "Viaje del Alma\nRetiro Naturaleza & Outdoor\nRetiro de Año Nuevo" }),
+    newFormField("select", "¿Cuántas personas?", { options: "1 persona\n2 personas\nGrupo pequeño (3–5)" }),
+    newFormField("text", "Nota", {}),
+  ]);
+  const values = { f0: "Ana", f1: "ana@ejemplo.es", f2: "Retiro Naturaleza & Outdoor", f3: "2 personas", f4: "Con mi hermana" };
+  const send = (v: Record<string, unknown>, localized: BlockDataMap["form"] | null) =>
+    evaluateFormSubmission(de, { values: v as any, consent: true, website: "", elapsedMs: 60_000 } as any, { slug: "retreat-andalusien", localized });
+
+  it("sin el formulario traducido, una opción del otro idioma sigue siendo un error", () => {
+    const r = send(values, null);
+    expect(r.kind).toBe("invalid");
+  });
+  it("con él, la opción elegida se guarda con el texto del principal y la condición «solo si» funciona", () => {
+    const r = send(values, es);
+    expect(r.kind).toBe("ok");
+    const msg = (r as any).lead.message as string;
+    expect(msg).toContain("Natur & Outdoor Retreat");
+    expect(msg).toContain("2 Personen");
+    expect(msg).not.toContain("Retiro Naturaleza");
+    expect(msg).toContain("Anmerkung");
+  });
+  it("una opción que no está en ninguna de las dos listas sigue rechazándose", () => {
+    expect(send({ ...values, f2: "Otra cosa" }, es).kind).toBe("invalid");
+  });
+  it("las opciones del principal siguen valiendo en un envío desde el formulario traducido", () => {
+    expect(send({ ...values, f2: "Seelenreise" }, es).kind).toBe("ok");
+  });
+});
