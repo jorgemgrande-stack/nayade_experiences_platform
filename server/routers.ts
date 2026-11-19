@@ -2596,6 +2596,7 @@ export const appRouter = router({
         });
         // Artículo inventariable (Business): la línea se descuenta al confirmarse el pago
         await markOrderStockLine(createdReservationId, input.productId, input.variantId);
+        await (await import("./orderVariant")).markOrderVariant(createdReservationId, input.variantId);
 
         // 5. Construir el formulario Redsys
         const pricingDesc = pricingType === "per_unit" && unitsBooked

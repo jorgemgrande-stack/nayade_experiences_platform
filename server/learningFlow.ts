@@ -93,3 +93,94 @@ export async function safeGrantAfterConfirm(enrollmentId: number, actor: { id: n
     console.error(JSON.stringify({ ctx: "Learning", event: "grant_after_confirm_failed", enrollmentId, error: e instanceof Error ? e.name : "error" }));
   }
 }
+
+// ─── Pedido de tienda pagado → matrícula ─────────────────────────────────────────────────────────────
+
+export type OrderFlowResult =
+  | { status: "skipped"; reason: "no_schema" | "no_paid_lines" | "no_rule" | "no_email" | "error" }
+  | { status: "granted"; created: number; existing: number; userId: number; notified: "invitation" | "access" | "pending" | "none" };
+
+const readOrderLines = async (merchantOrder: string) => {
+  const d = await getDb();
+  if (!d) return null;
+  const [rows] = (await d.execute(sql`SELECT id, product_id, variant_id, customer_name, customer_email, amount_paid, amount_total
+    FROM reservations WHERE merchant_order = ${merchantOrder} AND status = 'paid' ORDER BY id`)) as unknown as [Array<Record<string, any>>];
+  return rows;
+};
+
+/** Aviso a una persona que ya tiene cuenta activa: enlace a su aula. Idempotente por usuario y pedido. */
+export async function sendLearningAccessNotice(to: { userId: number; name: string; email: string }, merchantOrder: string): Promise<boolean> {
+  const base = publicBaseUrl();
+  const company = companyName();
+  return sendEmail({
+    to: to.email,
+    subject: "Ya tienes acceso a tu formación",
+    category: "user_invite",
+    idempotencyKey: `learning-access:${to.userId}:${merchantOrder}`,
+    html: buildNoticeHtml({
+      badge: "Formación",
+      title: "Ya puedes acceder a tu formación",
+      greetingName: to.name,
+      paragraphs: [`Hemos confirmado tu pago y ${company} ha activado el acceso a los contenidos que has contratado.`],
+      cta: { label: "Entrar en mi aula", url: `${base}/mi-formacion` },
+      note: "Entra con tu cuenta habitual. Si no reconoces esta compra, responde a este correo.",
+    }),
+  }).catch(() => false);
+}
+
+/**
+ * Pedido de tienda PAGADO → matrícula según las reglas de catálogo (producto + variante comprada).
+ *  - Solo líneas `paid` (un pago pendiente, fallido o cancelado no concede nada).
+ *  - Cada línea se identifica por su variante guardada al crear el pedido (`reservations.variant_id`); sin regla para esa
+ *    variante (p. ej. RECONNECT LIVE) no hay matrícula.
+ *  - Idempotente por línea (clave de pago `order:<línea>:<regla>:<usuario>`): reintentos del cobro, avisos repetidos o una
+ *    pasada de recuperación no duplican matrículas ni correos. Si todas las líneas con regla ya tienen matrícula, ni siquiera
+ *    toca la cuenta (evita rotar la invitación de un alumno que aún no la ha activado).
+ *  - NUNCA lanza: el cierre del pedido (factura, correo de pedido) no puede romperse por el LMS. El correo de acceso solo sale
+ *    con el ajuste `learning_invite_emails` = true (la empresa lo enciende al abrir la venta).
+ */
+export async function grantLearningFromOrder(merchantOrder: string, actor: { id: number | null; name: string | null } = { id: null, name: "sistema" }, now = Date.now()): Promise<OrderFlowResult> {
+  try {
+    const lines = await readOrderLines(merchantOrder);
+    if (!lines || !lines.length) return { status: "skipped", reason: "no_paid_lines" };
+    const rules = await listRules();
+    const matched = lines.filter((l) => matchRules(rules, Number(l.product_id), l.variant_id == null ? null : Number(l.variant_id)).length > 0);
+    if (!matched.length) return { status: "skipped", reason: "no_rule" };
+    const d = await getDb();
+    if (!d) return { status: "skipped", reason: "no_schema" };
+    const first = matched[0];
+    const email = String(first.customer_email ?? "").trim();
+    if (!email) return { status: "skipped", reason: "no_email" };
+    // ¿Ya está todo concedido? Entonces no se hace nada más.
+    const [done] = (await d.execute(sql`SELECT order_id FROM learning_enrollments WHERE source = 'payment' AND order_id IN (${sql.join(matched.map((l) => sql`${Number(l.id)}`), sql`, `)})`)) as unknown as [Array<Record<string, any>>];
+    const doneIds = new Set(done.map((r) => Number(r.order_id)));
+    const pending = matched.filter((l) => !doneIds.has(Number(l.id)));
+    if (!pending.length) {
+      const [u] = (await d.execute(sql`SELECT id FROM users WHERE LOWER(email) = ${email.toLowerCase()} LIMIT 1`)) as unknown as [Array<Record<string, any>>];
+      return { status: "granted", created: 0, existing: matched.length, userId: u?.[0] ? Number(u[0].id) : 0, notified: "none" };
+    }
+    const acc = await ensureAccount(String(first.customer_name || email), email);
+    let created = 0;
+    for (const l of pending) {
+      const cents = Number(l.amount_paid) > 0 ? Number(l.amount_paid) : Number(l.amount_total);
+      const res = await grantFromPayment({
+        userId: acc.userId, clientId: null, experienceId: Number(l.product_id), variantId: l.variant_id == null ? null : Number(l.variant_id),
+        operation: { kind: "order", id: Number(l.id) }, orderId: Number(l.id),
+        payment: { reference: `pedido:${merchantOrder}`, amountCents: cents, verifiedBy: actor.name || "sistema (pasarela)" }, actorUserId: actor.id, now,
+      });
+      created += res.granted.filter((g) => g.created).length;
+    }
+    let notified: "invitation" | "access" | "pending" | "none" = "none";
+    if (created > 0) {
+      const auto = String(await Promise.resolve(getSystemSetting("learning_invite_emails", "false"))).toLowerCase() === "true";
+      if (!auto) notified = "pending";
+      else if (acc.invite) notified = (await sendLearningInvitation(acc.invite)) ? "invitation" : "pending";
+      else notified = (await sendLearningAccessNotice({ userId: acc.userId, name: String(first.customer_name || email), email }, merchantOrder)) ? "access" : "pending";
+    }
+    return { status: "granted", created, existing: matched.length - pending.length, userId: acc.userId, notified };
+  } catch (e) {
+    if (isMissingLearningSchema(e)) return { status: "skipped", reason: "no_schema" };
+    console.error(JSON.stringify({ ctx: "Learning", event: "grant_from_order_failed", merchantOrder, error: e instanceof Error ? e.name : "error" }));
+    return { status: "skipped", reason: "error" };
+  }
+}
