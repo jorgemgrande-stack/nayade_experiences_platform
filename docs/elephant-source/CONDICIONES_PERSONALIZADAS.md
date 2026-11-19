@@ -1120,3 +1120,25 @@ periodo de cortesía, o dejar las licencias en solo lectura hasta que el método
 - Solo se redirige a `https://checkout.stripe.com/` (y, solo en modo pruebas, al doble local); otra URL se descarta y se muestra el estado.
 - La búsqueda del acuerdo por enlace se hace por la empresa del contrato, nunca recorriendo la plataforma; el barrido de `concludeDue`
   parte de las suscripciones en prueba (hasta 5.000; si se alcanzara, queda un aviso en el registro).
+
+### Contratación directa del Marketplace durante la prueba: NO aplica esta regla todavía (límite documentado)
+
+Investigado el 21/11/2026. La compra directa (panel / autoservicio, pedido `trial_conversion` del orquestador) hoy:
+
+1. **Cobra por adelantado**: `createCheckoutSession` (`server/stripe/gateway.ts`) abre un Checkout de suscripción **sin `trial_end`**, así que
+   Stripe cobra la primera factura al pagar.
+2. **Termina la prueba al pagar**: con el pago verificado, `stepSubscribe` (`server/orchestrator/service.ts`) llama a
+   `SubscriptionService.convertTrial`, que cierra las partidas de la prueba, pone `trialEnd = null` y empieza el periodo **ahora**: los
+   días restantes de la prueba se pierden.
+3. **No puede simplemente recibir `trial_end`**: el procesador de Stripe (`server/stripe/events.ts`) solo da un cobro por válido si la factura está
+   `paid` con importe o subtotal > 0 y el importe inicial coincide con el presupuesto del pedido; una factura inicial de 0 € (primer cargo aplazado)
+   se descartaría y el pedido no pasaría a `confirmed`.
+
+Para aplicar la misma regla (prueba respetada, método sin cargo, primer cargo al fin de la prueba) hay que cambiar, **en el circuito de
+pagos y el orquestador**: (a) `createCheckoutSession` con `trial_end` = fin de la prueba (≥ 49 h); (b) la verificación de cobro de `events.ts`
+para aceptar «método autorizado, trialing, factura inicial de 0 €» como paso `confirmed` del pedido de conversión; (c) `stepSubscribe`/`convertTrial`
+con el inicio del periodo en `trialEnd` (parámetro `at`, como el nuevo de `endTrial`) y licencias del plan nuevo a esa fecha; (d) conciliación
+y reintentos del primer cobro real. No requiere migración, pero toca el núcleo de cobro de la compra ordinaria (zona de la sesión de Stripe y
+suscripciones, con interruptores de production), por lo que **no se ha hecho en este PR**; debe abrirse como PR propio con sus pruebas contra
+Stripe TEST y aprobación expresa. Mientras tanto, el cliente en prueba que quiera conservar sus días restantes debe contratar por una oferta
+particular (esta regla), no por la compra directa.

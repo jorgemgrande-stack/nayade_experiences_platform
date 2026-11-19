@@ -497,4 +497,42 @@ describe("contratación automática: aceptar → pagar → activar en la fecha p
     expect(input.trialEnd).toBeUndefined();
     expect(input.lines.reduce((a, l) => a + l.unitAmount, 0)).toBe(5200);
   });
+
+  it("acuerdos históricos: un acuerdo aceptado e inmediato conserva sus condiciones, fechas y aceptación tras la conclusión automática, el paso de pago y la consulta de etapas", async () => {
+    setClock(off, START);
+    const s = await call(off, "POST", "/subscriptions", { body: { companyId: off.companyId, interval: "month", plan: { productKey: "essential", priceId: off.P.essential } } });
+    const id = s.json.subscription.id as number;
+    const draft = await call(off, "POST", `/subscriptions/${id}/terms`, {
+      body: { pricingMode: "global", globalAmountCents: 5200, presentation: "breakdown", requiresAcceptance: true, interval: "month", reason: "Acuerdo histórico", lines: ["business", "connect-whatsapp-ai", "connect-voice"].map((k) => ({ kind: "catalog", productKey: k, priceId: off.P[k] })) },
+    });
+    const q = { id, trialEnd: 0, termsId: draft.json.terms.id as number, revision: draft.json.terms.revision as number };
+    const { token } = await accepted(off, q);
+    const snapshot = async () => {
+      const t = (await call(off, "GET", `/commercial-terms/${q.termsId}`)).json;
+      const acc = (await call(off, "GET", `/commercial-terms/${q.termsId}/acceptance`)).json;
+      const sub = (await call(off, "GET", `/subscriptions/${id}`)).json;
+      return JSON.stringify({
+        terms: { status: t.terms.status, effectiveFrom: t.terms.effectiveFrom, effectiveTo: t.terms.effectiveTo, globalAmountCents: t.terms.globalAmountCents, lines: t.terms.lines.map((l: any) => [l.productKey, l.negotiatedUnitCents]), revision: t.terms.revision },
+        acceptance: acc.acceptances.map((a: any) => [a.status, a.acceptedName, a.documentSha256, a.acceptedAt]),
+        sub: { status: sub.subscription.status, start: sub.subscription.currentPeriodStart, end: sub.subscription.currentPeriodEnd, items: sub.items.map((i: any) => [i.productKey, i.effectiveFrom, i.effectiveTo, i.unitAmountCents]) },
+      });
+    };
+    expect((await call(off, "GET", `/subscriptions/${id}`)).json.subscription.status).toBe("active");
+    const before = await snapshot();
+    // Pasa el tiempo y se ejecuta todo lo nuevo: simulación (conclusión), etapas, página de pago y consulta de acuerdos
+    setClock(off, START + 40 * DAY);
+    await call(off, "POST", `/subscriptions/${id}/shadow`);
+    await stageOf(off, id);
+    expect((await page(off, "GET", `/pago?token=${token}`)).status).toBe(200);
+    await call(off, "GET", `/commercial-terms?companyId=${off.companyId}`);
+    const after = await snapshot();
+    const strip = (j: string) => {
+      const o = JSON.parse(j);
+      // La simulación puede abrir periodos nuevos de la suscripción; las condiciones y la aceptación no cambian
+      delete o.sub;
+      return JSON.stringify(o);
+    };
+    expect(strip(after)).toBe(strip(before));
+    expect(JSON.parse(after).sub.items.map((i: any) => i[0]).sort()).toEqual(JSON.parse(before).sub.items.map((i: any) => i[0]).sort());
+  });
 });
