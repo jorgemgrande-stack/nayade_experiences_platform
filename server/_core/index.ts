@@ -30,6 +30,7 @@ import { createPasswordResetRouter } from "../passwordReset";
 import { createAuthGuardMiddleware } from "../authGuard";
 import uploadRouter from "../uploadRoutes";
 import fileRouter from "../fileRoutes";
+import learningRouter from "../learningRoutes";
 import redsysRouter from "../redsysRoutes";
 import { createLoyaltyPortalRouter } from "../loyaltyPortal";
 import { createNetPublicRouter, netPublicBodyParser } from "../netPublic/router";
@@ -253,6 +254,7 @@ async function startServer() {
   app.use(uploadRouter);
   // Entrega de ficheros del almacenamiento persistente: públicos (/files) y privados (/api/files)
   app.use(fileRouter);
+  app.use(learningRouter);
 
   // Redsys IPN notification endpoint
   app.use(redsysRouter);

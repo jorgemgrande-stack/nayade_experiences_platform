@@ -341,18 +341,23 @@ export class FileService {
    * (no el límite general de subidas, pensado para ficheros de usuario) y, tras subirlo, el tamaño almacenado.
    * Solo categorías privadas de tipo ZIP.
    */
-  async putFile(input: Omit<PutInput, "data" | "replaces"> & { filePath: string; sizeBytes: number; sha256: string }): Promise<PutResult> {
+  async putFile(input: Omit<PutInput, "data" | "replaces"> & { filePath: string; sizeBytes: number; sha256: string; /** Detecta el tipo por la cabecera (formación digital: vídeo, audio, PDF) en vez de exigir ZIP */ detectType?: boolean }): Promise<PutResult> {
     const policy = policyOf(input.category);
-    if (policy.visibility !== "private" || !(policy.types as readonly string[]).includes("application/zip")) throw new FileValidationError("Categoría no admitida para ficheros grandes.");
+    if (policy.visibility !== "private" || !(policy.types as readonly string[]).includes(input.detectType ? "video/mp4" : "application/zip")) throw new FileValidationError("Categoría no admitida para ficheros grandes.");
     if (input.sizeBytes <= 0) throw new FileValidationError("El fichero está vacío.");
     if (input.sizeBytes > policy.maxBytes) throw new FileValidationError(`El fichero supera el tamaño máximo permitido (${Math.floor(policy.maxBytes / (1024 * 1024))} MB).`);
     const { open } = await import("node:fs/promises");
     const fh = await open(input.filePath, "r");
+    let detected = "application/zip";
     try {
-      const head = Buffer.alloc(4);
-      await fh.read(head, 0, 4, 0);
+      const head = Buffer.alloc(input.detectType ? 64 * 1024 : 4);
+      const { bytesRead } = await fh.read(head, 0, head.length, 0);
       const st = await fh.stat();
-      if (head.readUInt32LE(0) !== 0x04034b50) throw new FileValidationError("El contenido del fichero no corresponde a un tipo permitido.");
+      if (input.detectType) {
+        // Por el contenido, nunca por la extensión ni por el tipo declarado
+        detected = detectContentType(head.subarray(0, bytesRead), input.declaredType);
+        if (!(policy.types as readonly string[]).includes(detected)) throw new FileValidationError("El contenido del fichero no corresponde a un tipo permitido.");
+      } else if (head.readUInt32LE(0) !== 0x04034b50) throw new FileValidationError("El contenido del fichero no corresponde a un tipo permitido.");
       if (st.size !== input.sizeBytes) throw new FileValidationError("El tamaño del fichero no coincide.");
     } finally {
       await fh.close();
@@ -361,8 +366,8 @@ export class FileService {
     const at = this.now();
     const d = new Date(at);
     const objectId = newObjectId();
-    const contentType = "application/zip";
-    const key = `${objectRoot()}${input.category}/${d.getUTCFullYear()}/${String(d.getUTCMonth() + 1).padStart(2, "0")}/${objectId}.zip`;
+    const contentType = detected;
+    const key = `${objectRoot()}${input.category}/${d.getUTCFullYear()}/${String(d.getUTCMonth() + 1).padStart(2, "0")}/${objectId}.${extensionFor(contentType)}`;
     const row: StoredObjectRow = {
       objectId,
       storageKey: key,

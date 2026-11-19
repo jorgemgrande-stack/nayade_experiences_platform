@@ -192,6 +192,7 @@ export async function startEssentialApp(url: string, label: string, opts: { webD
   const redsysRouter = (await import("./redsysRoutes")).default;
   const uploadRouter = (await import("./uploadRoutes")).default;
   const fileRouter = (await import("./fileRoutes")).default;
+  const learningRouter = (await import("./learningRoutes")).default;
 
   const app = express();
   const rt = installTenantResolution(app, process.env)!;
@@ -212,6 +213,7 @@ export async function startEssentialApp(url: string, label: string, opts: { webD
   app.use((await import("./netPublic/router")).createNetPublicRouter({ perIpPerMinute: 100_000, postsPerIp: 100_000 }));
   app.use(uploadRouter);
   app.use(fileRouter);
+  app.use(learningRouter);
   app.use(invoicePreviewRouter);
   app.use(whatsappWebhook.createWhatsappWebhookRouter({ perIpMinute: 100_000 }));
   if (opts.vapiWebhook) app.use((await import("./vapiWebhookRouter")).default);
