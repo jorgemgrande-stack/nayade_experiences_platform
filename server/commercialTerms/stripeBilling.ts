@@ -131,7 +131,7 @@ export interface NegotiatedBillingDeps {
   gateway: StripeGateway;
   adapter: StripeNegotiatedGateway;
   billing: Pick<TermsBillingService, "plan" | "syncIfOpen" | "recordSent" | "reconcile" | "nextStart" | "changedSinceSync" | "sentOneOffs" | "revokeOneOffs" | "scheduledEnd" | "notePeriod" | "periodsOf">;
-  termsStore: Pick<TermsStore, "get" | "log" | "list">;
+  termsStore: Pick<TermsStore, "get" | "log" | "list" | "events">;
   /** Suscripción interna: una vez enlazada, el reloj es el de Stripe (sus periodos y su fin siguen a los de Stripe). */
   subscriptionStore: Pick<SubscriptionStore, "get" | "mutate">;
   crmStore: Pick<CrmStore, "get" | "list">;
@@ -1071,7 +1071,7 @@ export class NegotiatedBillingService {
     const inForce = all.filter((t) => (t.status === "scheduled" || t.status === "active") && t.acceptanceStatus !== "pending").sort((a, b) => b.id - a.id)[0] ?? null;
     const waiting = all.filter((t) => t.status === "pending_acceptance").sort((a, b) => b.id - a.id)[0] ?? null;
     const row = await this.d.store.bySubscription(subscriptionId);
-    const acceptedAt = inForce ? (((await this.d.termsStore.get(inForce.id)) as unknown as { updatedAt?: number } | null)?.updatedAt ?? null) : null;
+    const acceptedAt = inForce ? ((await this.d.termsStore.events({ termsId: inForce.id })).find((e) => e.kind === "accepted")?.createdAt ?? null) : null;
     const plan = inForce ? await this.d.billing.plan(subscriptionId, { at: Math.max(now, inForce.effectiveFrom ?? 0) }).catch(() => null) : null;
     const net = plan?.recurringNetCents ?? null;
     const rate = plan?.items[0]?.taxRateBp ?? 2100;

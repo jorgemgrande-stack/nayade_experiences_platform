@@ -757,7 +757,11 @@ export class TermsAcceptanceService {
     try {
       return await this.payment.start(t.subscriptionId!, t.id, a.id);
     } catch (e) {
-      if (e instanceof Error && e.name === "NegotiatedBillingError") throw new TermsError("invalid_state", e.message);
+      if (e instanceof Error && e.name === "NegotiatedBillingError") {
+        // Con menos de 48 h para el fin de la prueba Stripe no admite aplazar el primer cargo: se vuelve a intentar al llegar la fecha
+        if (e.message.includes("menos de 48 horas")) throw new TermsError("invalid_state", "Tu prueba termina en menos de 48 horas y Stripe no permite aplazar el primer cargo con tan poco margen. Vuelve a este enlace cuando termine la prueba para configurar el pago, o tu contacto de Big Elephant lo completará contigo. Tu contrato sigue aceptado.");
+        throw new TermsError("invalid_state", e.message);
+      }
       throw e;
     }
   }
@@ -774,18 +778,20 @@ export class TermsAcceptanceService {
     const now = this.now();
     let concluded = 0;
     let checked = 0;
-    const candidates = (await this.d.termsStore.list({ ...(o.subscriptionId !== undefined ? { subscriptionId: o.subscriptionId } : {}), status: ["scheduled", "active"] }))
-      .filter((t) => t.subscriptionId !== null && t.acceptanceStatus === "accepted" && t.effectiveFrom !== null && t.effectiveFrom <= now)
-      .slice(0, o.limit ?? 200);
-    for (const t of candidates) {
+    // Se parte de las suscripciones EN PRUEBA (pocas), no de todos los acuerdos aceptados de la historia
+    const trialing = o.subscriptionId !== undefined ? [await this.d.subscriptionStore.get(o.subscriptionId)] : await this.d.subscriptionStore.list({ status: "trialing", limit: o.limit ?? 500 });
+    for (const sub of trialing) {
+      if (!sub || sub.status !== "trialing") continue;
+      const due = (await this.d.termsStore.list({ subscriptionId: sub.id, status: ["scheduled", "active"] }))
+        .filter((t) => t.acceptanceStatus === "accepted" && t.effectiveFrom !== null && t.effectiveFrom <= now)
+        .sort((a, b) => a.effectiveFrom! - b.effectiveFrom!)[0];
+      if (!due) continue;
       checked++;
       try {
-        const sub = await this.d.subscriptionStore.get(t.subscriptionId!);
-        if (!sub || sub.status !== "trialing") continue;
-        await this.concludeTrial(t, t.subscriptionId!, { at: now });
-        if ((await this.d.subscriptionStore.get(t.subscriptionId!))?.status !== "trialing") concluded++;
+        await this.concludeTrial(due, sub.id, { at: now });
+        if ((await this.d.subscriptionStore.get(sub.id))?.status !== "trialing") concluded++;
       } catch (e) {
-        opsLog("warn", "CommercialTerms", "conclude_due_failed", { termsId: t.id, error: e instanceof Error ? e.name : "error" });
+        opsLog("warn", "CommercialTerms", "conclude_due_failed", { termsId: due.id, error: e instanceof Error ? e.name : "error" });
       }
     }
     return { concluded, checked };

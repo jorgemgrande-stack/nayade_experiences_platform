@@ -413,4 +413,24 @@ describe("contratación automática: aceptar → pagar → activar en la fecha p
     expect((await call(off, "GET", `/subscriptions/${q.id}`)).json.subscription).toMatchObject({ status: "active", currentPeriodStart: q.trialEnd });
     expect((await stageOf(off, q.id)).chargeable).toBe(false);
   });
+
+  it("con menos de 48 h para el fin de la prueba Stripe no admite aplazar el primer cargo: mensaje claro y, terminada la prueba, el pago se configura con cobro inmediato", async () => {
+    const q = await quantum(on);
+    const { token } = await accepted(on, q);
+    expect((await stageOf(on, q.id)).acceptedAt).toBeGreaterThan(0);
+    setClock(on, q.trialEnd - 10 * 3600_000);
+    const tooSoon = await page(on, "POST", "/pago", { token });
+    expect(tooSoon.status).toBe(409);
+    expect(tooSoon.text).toContain("menos de 48 horas");
+    expect(tooSoon.text).toContain("Tu contrato sigue aceptado");
+    expect(on.gw.calls.filter((c) => c.op === "checkout.sessions.create(negotiated)" && (c.input as NegotiatedCheckoutInput).metadata.es_terms_subscription === String(q.id))).toHaveLength(0);
+    // Terminada la prueba (la tarea la concluye) el enlace sigue sirviendo: ya no hay nada que aplazar
+    setClock(on, q.trialEnd + 60_000);
+    await call(on, "POST", `/subscriptions/${q.id}/shadow`);
+    const ok = await page(on, "POST", "/pago", { token });
+    expect(ok.status).toBe(303);
+    const input = on.gw.negotiatedSessions.get(sessionOf(ok.location))!;
+    expect(input.trialEnd).toBeUndefined();
+    expect(input.lines.reduce((a, l) => a + l.unitAmount, 0)).toBe(5200);
+  });
 });
