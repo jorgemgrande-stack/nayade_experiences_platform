@@ -10,6 +10,7 @@ import { toast } from "sonner";
 import { trpc } from "@/lib/trpc";
 import { useSiteLocale } from "@/hooks/useSiteLocale";
 import { useLegalHref } from "@/hooks/useLegalHref";
+import { formPrefill, hashQuery } from "@shared/studio/formPrefill";
 import { siteUiText } from "@shared/siteUiText";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -108,6 +109,23 @@ export function StudioFormFields({ blockId, form, preview, pageTitle, editing }:
   const captchaKey = trpc.public.studioFormCaptcha.useQuery(undefined, { enabled: useCaptcha, staleTime: 5 * 60_000 });
   const siteKey = useCaptcha ? captchaKey.data?.siteKey ?? null : null;
   const [captchaToken, setCaptchaToken] = useState("");
+  // Enlaces con la elección hecha («#solicitud?experiencia=Viaje del Alma»): el formulario llega ya rellenado
+  useEffect(() => {
+    if (editing || preview) return;
+    const apply = (query: string) => {
+      const p = formPrefill(form.fields, query);
+      if (Object.keys(p).length) setValues((s) => ({ ...s, ...p }));
+    };
+    apply(hashQuery(window.location.hash));
+    const onEvent = (e: Event) => apply(String((e as CustomEvent).detail ?? ""));
+    const onHash = () => apply(hashQuery(window.location.hash));
+    window.addEventListener("studio:prefill", onEvent);
+    window.addEventListener("hashchange", onHash);
+    return () => {
+      window.removeEventListener("studio:prefill", onEvent);
+      window.removeEventListener("hashchange", onHash);
+    };
+  }, [form.fields, editing, preview]);
   const set = (k: string, v: string | string[] | boolean) => {
     setValues((s) => ({ ...s, [k]: v }));
     setErrors((e) => (e[k] ? { ...e, [k]: "" } : e));

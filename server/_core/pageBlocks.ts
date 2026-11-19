@@ -408,7 +408,7 @@ export function blocksToHtml(blocks: PageBlock[]): string {
         break;
       case "cards":
         parts.push(h(2, b.data.title), b.data.intro ? `<p>${esc(b.data.intro)}</p>` : "");
-        b.data.items.forEach((c) => parts.push(h(3, c.title), c.text ? `<p>${esc(c.text)}</p>` : "", img(c.imageUrl, c.imageAlt), link(c.buttonUrl, c.buttonLabel)));
+        b.data.items.forEach((c) => parts.push(h(3, c.title), c.meta ? `<p>${esc(c.meta.replace(/\s*\n\s*/g, " · "))}</p>` : "", c.text ? `<p>${esc(c.text)}</p>` : "", c.price ? `<p>${esc([c.priceLabel, c.price, c.priceNote].filter(Boolean).join(" "))}</p>` : "", img(c.imageUrl, c.imageAlt), link(c.buttonUrl, c.buttonLabel)));
         break;
       case "form":
         parts.push(h(2, b.data.title), b.data.intro ? `<p>${esc(b.data.intro)}</p>` : "");
