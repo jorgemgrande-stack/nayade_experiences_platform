@@ -40,11 +40,18 @@ export interface QuotePort {
   markPaid(quoteId: number, reference: string): Promise<void>;
 }
 
+/** Pedidos de la tienda web: aplica el resultado de un pago con EL MISMO tratamiento que Redsys (reservas, factura, stock…). */
+export interface ShopPort {
+  applyPaid(merchantOrder: string, p: { amountCents: number; sessionId: string; paymentIntent: string | null }): Promise<void>;
+  applyFailed(merchantOrder: string, p: { sessionId: string }): Promise<void>;
+}
+
 export interface PaymentsDeps {
   store: PaymentStore;
   gateway: ConnectGateway;
   config: ConnectConfig;
   quotes: QuotePort;
+  shop: ShopPort;
   /** Reserva global de la cuenta (una cuenta, una empresa). */
   index: AccountIndexWriter;
   tenantId: string;
@@ -119,7 +126,45 @@ export async function startQuoteCheckout(
     metadata: { tenant_id: d.tenantId, quote_id: String(quote.id) },
   });
   if (!(await d.store.getCheckout(session.id))) {
-    await d.store.insertCheckout({ sessionId: session.id, mode: d.config.mode, accountId: account.accountId, quoteId: quote.id, amountCents, currency, createdAt: now });
+    await d.store.insertCheckout({ sessionId: session.id, mode: d.config.mode, accountId: account.accountId, kind: "quote", quoteId: quote.id, merchantOrder: null, amountCents, currency, createdAt: now });
+  }
+  return { url: session.url, sessionId: session.id };
+}
+
+/** Mínimo de Stripe para cobrar con tarjeta en euros. */
+export const STRIPE_MIN_AMOUNT_CENTS = 50;
+
+/**
+ * Sesión de pago de un pedido de la tienda (carrito). El importe lo calcula el servidor al crear el pedido (con sus
+ * descuentos); aquí solo se cobra ese importe en la cuenta de la empresa. El pedido sigue pendiente (reservas en
+ * `pending_payment`) hasta el evento firmado.
+ */
+export async function startShopCheckout(
+  d: PaymentsDeps,
+  p: { merchantOrder: string; amountCents: number; description: string; email?: string | null; successUrl: string; cancelUrl: string },
+): Promise<{ url: string; sessionId: string }> {
+  const account = await d.store.getAccount(d.config.mode);
+  if (!account) throw new PaymentsError("not_connected", "Esta empresa aún no tiene cobros en línea");
+  if (account.status !== "verificada") throw new PaymentsError("not_verified", "La cuenta de cobros de la empresa no está verificada");
+  if (!account.onlineEnabled) throw new PaymentsError("online_disabled", "Los cobros en línea no están activados");
+  if (!Number.isInteger(p.amountCents) || p.amountCents < STRIPE_MIN_AMOUNT_CENTS) throw new PaymentsError("bad_amount", "El importe del pedido no es válido para pagar con tarjeta");
+  if (!/^[A-Za-z0-9_-]{4,32}$/.test(p.merchantOrder)) throw new PaymentsError("bad_amount", "Pedido no válido");
+  const now = (d.now ?? Date.now)();
+  const session = await d.gateway.createCheckoutSession({
+    accountId: account.accountId,
+    idempotencyKey: `shop-${d.tenantId}-${p.merchantOrder}-${p.amountCents}`,
+    amountCents: p.amountCents,
+    currency: "eur",
+    description: p.description,
+    customerEmail: p.email ?? null,
+    successUrl: p.successUrl,
+    cancelUrl: p.cancelUrl,
+    // Mínimo de Stripe: 30 minutos. Pasado ese tiempo la sesión caduca y el pedido lo cancela la limpieza de siempre
+    expiresAtSeconds: Math.floor(now / 1000) + 31 * 60,
+    metadata: { tenant_id: d.tenantId, merchant_order: p.merchantOrder },
+  });
+  if (!(await d.store.getCheckout(session.id))) {
+    await d.store.insertCheckout({ sessionId: session.id, mode: d.config.mode, accountId: account.accountId, kind: "shop_order", quoteId: null, merchantOrder: p.merchantOrder, amountCents: p.amountCents, currency: "eur", createdAt: now });
   }
   return { url: session.url, sessionId: session.id };
 }
@@ -204,6 +249,7 @@ async function applyEvent(d: PaymentsDeps, ev: ConnectEvent, now: number): Promi
   }
   if (ev.type === "checkout.session.async_payment_failed") {
     await d.store.setCheckoutStatus(sessionId, "failed");
+    if (checkout.kind === "shop_order" && checkout.merchantOrder) await d.shop.applyFailed(checkout.merchantOrder, { sessionId });
     return "applied";
   }
   // checkout.session.completed / async_payment_succeeded: solo cuenta con el pago realmente cobrado
@@ -216,7 +262,12 @@ async function applyEvent(d: PaymentsDeps, ev: ConnectEvent, now: number): Promi
   const won = await d.store.markCheckoutPaid(sessionId, pi, now);
   if (!won) return "duplicate";
   try {
-    await d.quotes.markPaid(checkout.quoteId, `stripe:${pi ?? sessionId}`);
+    if (checkout.kind === "shop_order") {
+      if (!checkout.merchantOrder) throw new PaymentsError("quote_unavailable", "Sesión de pedido sin referencia");
+      await d.shop.applyPaid(checkout.merchantOrder, { amountCents: checkout.amountCents, sessionId, paymentIntent: pi });
+    } else {
+      await d.quotes.markPaid(checkout.quoteId!, `stripe:${pi ?? sessionId}`);
+    }
   } catch (e) {
     await d.store.revertCheckoutPaid(sessionId).catch(() => undefined);
     throw e;

@@ -20,6 +20,8 @@ export interface Storefront {
   datedServices: boolean;
   /** Los correos de pedido llegan al comprador (no en la prueba gratuita). Sin dato: no se promete. */
   buyerEmails?: boolean;
+  /** Métodos de pago con tarjeta que ofrece la empresa. Sin dato: solo la pasarela de siempre. */
+  payments?: { redsys: boolean; stripe: boolean };
 }
 
 export interface StorefrontInput {

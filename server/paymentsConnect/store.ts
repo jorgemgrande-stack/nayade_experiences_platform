@@ -35,7 +35,11 @@ export interface CheckoutRow {
   sessionId: string;
   mode: PaymentMode;
   accountId: string;
-  quoteId: number;
+  kind: "quote" | "shop_order";
+  /** Presupuesto (kind = quote); null en un pedido de la tienda. */
+  quoteId: number | null;
+  /** Pedido de la tienda (kind = shop_order); null en un presupuesto. */
+  merchantOrder: string | null;
   amountCents: number;
   currency: string;
   status: "pending" | "paid" | "expired" | "failed";
@@ -112,7 +116,9 @@ function toCheckout(r: Row): CheckoutRow {
     sessionId: String(r.session_id),
     mode: r.mode,
     accountId: String(r.account_id),
-    quoteId: Number(r.quote_id),
+    kind: r.kind === "shop_order" ? "shop_order" : "quote",
+    quoteId: r.quote_id == null ? null : Number(r.quote_id),
+    merchantOrder: r.merchant_order ?? null,
     amountCents: Number(r.amount_cents),
     currency: String(r.currency),
     status: r.status,
@@ -218,8 +224,8 @@ export function mysqlPaymentStore(): PaymentStore {
       return (await run(sql`UPDATE payment_events SET outcome='processing' WHERE event_id=${eventId} AND outcome='failed'`)) > 0;
     },
     async insertCheckout(c) {
-      await run(sql`INSERT INTO payment_checkouts (session_id, provider, mode, account_id, quote_id, amount_cents, currency, status, created_at)
-                    VALUES (${c.sessionId}, 'stripe', ${c.mode}, ${c.accountId}, ${c.quoteId}, ${c.amountCents}, ${c.currency}, 'pending', ${c.createdAt})`);
+      await run(sql`INSERT INTO payment_checkouts (session_id, provider, mode, account_id, kind, quote_id, merchant_order, amount_cents, currency, status, created_at)
+                    VALUES (${c.sessionId}, 'stripe', ${c.mode}, ${c.accountId}, ${c.kind}, ${c.quoteId}, ${c.merchantOrder}, ${c.amountCents}, ${c.currency}, 'pending', ${c.createdAt})`);
     },
     async getCheckout(sessionId) {
       try {
