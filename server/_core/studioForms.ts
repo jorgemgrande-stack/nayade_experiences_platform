@@ -60,13 +60,46 @@ export function fieldOptions(f: Pick<FormFieldItem, "options">): string[] {
   return Array.from(new Set(f.options.split(/\r?\n/).map((o) => o.trim()).filter(Boolean))).slice(0, 50);
 }
 
+/**
+ * Formulario en otro idioma: el servidor valida SIEMPRE contra el formulario del idioma principal, pero la persona elige entre
+ * las opciones traducidas que ve. Cada opción elegida se lleva a la del principal que ocupa su misma posición (así la
+ * oportunidad del CRM queda en un solo idioma y las condiciones «solo si…» siguen funcionando). Una opción que ya es del
+ * principal se deja como está; una que no está en ninguna lista sigue siendo un error de validación.
+ */
+export function valuesInPrincipalLanguage(
+  form: Pick<BlockDataMap["form"], "fields">,
+  localized: Pick<BlockDataMap["form"], "fields"> | null | undefined,
+  values: Record<string, unknown>,
+): Record<string, unknown> {
+  if (!localized) return values;
+  const out: Record<string, unknown> = { ...values };
+  form.fields.forEach((f, i) => {
+    if (f.kind !== "select" && f.kind !== "radio" && f.kind !== "multi") return;
+    const l = localized.fields[i];
+    if (!l || l.kind !== f.kind) return;
+    const own = fieldOptions(f);
+    const theirs = fieldOptions(l);
+    const map = (v: unknown): unknown => {
+      if (typeof v !== "string" || own.includes(v)) return v;
+      const at = theirs.indexOf(v);
+      return at >= 0 && own[at] !== undefined ? own[at] : v;
+    };
+    const key = fieldKey(i);
+    const raw = out[key];
+    if (Array.isArray(raw)) out[key] = raw.map(map);
+    else if (raw !== undefined) out[key] = map(raw);
+  });
+  return out;
+}
+
 const text = (v: unknown, max: number) => (typeof v === "string" ? v.replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f]/g, "").trim().slice(0, max) : "");
 
 /**
  * Comprueba un envío contra el formulario publicado. Devuelve la oportunidad que se creará, los errores por campo
  * (texto para la persona) o «spam».
  */
-export function evaluateFormSubmission(form: BlockDataMap["form"], input: FormSubmission, ctx: { slug: string }): FormEvaluation {
+export function evaluateFormSubmission(form: BlockDataMap["form"], rawInput: FormSubmission, ctx: { slug: string; localized?: BlockDataMap["form"] | null }): FormEvaluation {
+  const input: FormSubmission = ctx.localized ? { ...rawInput, values: valuesInPrincipalLanguage(form, ctx.localized, rawInput.values) as FormSubmission["values"] } : rawInput;
   if ((input.website ?? "").trim() !== "") return { kind: "spam" };
   if (typeof input.elapsedMs === "number" && input.elapsedMs < FORM_MIN_FILL_MS) return { kind: "spam" };
   const errors: Record<string, string> = {};
@@ -154,7 +187,8 @@ export function evaluateFormSubmission(form: BlockDataMap["form"], input: FormSu
   }
   // Nombre y apellidos por separado (opcional): se unen para el CRM; si hay un campo de nombre completo, manda ese
   if (!name) name = [firstName, lastName].filter(Boolean).join(" ");
-  const consent = form.consent === "on" ? formConsentText(form) : null;
+  // Consentimiento: el texto que la persona vio y aceptó (el del formulario traducido, si lo hay), no el del idioma principal
+  const consent = form.consent === "on" ? formConsentText(ctx.localized?.consentText?.trim() ? ctx.localized : form) : null;
   const message = [`Formulario: ${form.title || "Formulario de la web"}`, `Página: /${ctx.slug}`, "", ...answers.map(([l, v]) => `${l}: ${v}`)].join("\n").slice(0, 8000);
   return { kind: "ok", lead: { name: name || email.split("@")[0], email, ...(phone ? { phone } : {}), ...(company ? { company } : {}), message }, consent };
 }

@@ -259,7 +259,26 @@ export async function getPublishedFormBlock(slug: string, blockId: string) {
   // El formulario puede estar dentro de una sección con columnas
   const published = await getPublishedBlocks(target);
   const block = published ? findBlock(published, blockId)?.block : undefined;
-  return block?.type === "form" ? { slug: target, data: block.data } : null;
+  if (block?.type !== "form") return null;
+  // Formulario traducido: sus opciones (por posición) permiten entender lo que la persona eligió en su idioma
+  let localized: typeof block.data | null = null;
+  if (principal) {
+    try {
+      const repo = sqlI18nRepo();
+      for (const t of await repo.listPageTranslations({ onlyValidated: true })) {
+        const mine = t.publishedSlug === slug || t.locale === slug;
+        if (!mine || !t.publishedBlocks) continue;
+        const tb = findBlock(t.publishedBlocks, blockId)?.block;
+        if (tb?.type === "form") {
+          localized = tb.data;
+          break;
+        }
+      }
+    } catch {
+      localized = null;
+    }
+  }
+  return { slug: target, data: block.data, localized };
 }
 
 // ─── Historial de versiones ───────────────────────────────────────────────────
