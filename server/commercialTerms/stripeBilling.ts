@@ -1102,7 +1102,8 @@ export class NegotiatedBillingService {
       stage = row.status === "suspended" ? "suspended" : row.status === "past_due" ? (row.graceEndsAt !== null && row.graceEndsAt > now ? "grace" : "payment_failed") : row.stripeStatus === "trialing" || sub.status === "trialing" ? "activation_scheduled" : "active";
     } else if (row?.status === "canceled") stage = "canceled";
     // Prueba ya terminada (acuerdo aceptado en vigor) y NINGÚN método autorizado: acceso sin cobro posible. Nunca se presenta como cobrable
-    else if (sub.status === "active" && !(row && row.status === "pending" && (row.sessionStatus === "complete" || row.stripeSubscriptionId))) stage = "active_unbilled";
+    // Solo cuando CONSTA que la prueba terminó con este acuerdo (suscripciones sin prueba o acuerdos futuros siguen como pendientes de pago)
+    else if (sub.status === "active" && !(row && row.status === "pending" && (row.sessionStatus === "complete" || row.stripeSubscriptionId)) && (await this.d.termsStore.events({ termsId: inForce.id })).some((e) => e.kind === "trial_ended" || e.kind === "trial_ended_unbilled")) stage = "active_unbilled";
     // «En confirmación» solo con el primer pago realmente en curso; un primer pago rechazado (fila abandonada) vuelve a poder reintentarse
     else if (row && row.status === "pending" && (row.sessionStatus === "complete" || row.stripeSubscriptionId)) stage = "payment_processing";
     else stage = this.d.enabled ? "payment_pending" : "payment_not_enabled";

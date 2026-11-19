@@ -1123,6 +1123,20 @@ La tarea de pruebas gratuitas (`CP_TRIALS_SCHEDULER_ENABLED`) **no marca vencida
 
 Etapas completas: `proposal_pending`, `payment_pending`, `payment_not_enabled`, `payment_processing`, `activation_scheduled`, `active`, `active_unbilled`, `payment_failed`, `grace`, `suspended`, `canceled`. Nuevos campos de `contracting`: `trialActive`, `trialEndsAt`, `renewalAt`, `incident`.
 
+### La conclusión no depende del worker de Stripe ni de la tarea de pruebas (22/11/2026)
+
+`concludeDue` ya no corre solo dentro de `CP_STRIPE_WORKER_ENABLED`. Tres disparadores, todos idempotentes y sin llamadas a Stripe:
+
+1. **Temporizador propio** (`startAgreementConclusion`, `server/commercialTerms/trialDefer.ts`): barrido cada 5 min desde el arranque del plano de control.
+   Se apaga con `CP_TERMS_AUTO_CONCLUDE=0` (intervalo: `CP_TERMS_AUTO_CONCLUDE_INTERVAL_MS`, 1 min – 1 h). No necesita ni el worker de Stripe ni la tarea de pruebas.
+2. **Tarea de pruebas** (`agreementDeferral`): si está encendida y la prueba tiene un acuerdo aceptado con plan, concluye ya esa suscripción (consulta acotada por
+   empresa y tenant de UNA prueba) y difiere el vencimiento; sin el gancho montado no difiere (vence como siempre).
+3. El worker de Stripe, el webhook del primer cobro y la simulación de la suscripción, como antes.
+
+`stage()` marca `active_unbilled` **solo** si consta que la prueba terminó con ese acuerdo (`trial_ended` / `trial_ended_unbilled`); una suscripción sin prueba o un
+acuerdo programado futuro siguen en `payment_pending` / `payment_not_enabled`. La constancia `trial_ended_unbilled` y la alerta solo se emiten si el estado del
+cobro se pudo leer y la constancia se guardó.
+
 ### Decisión de negocio pendiente (sin cambio de comportamiento)
 
 Si el cliente llega a `effectiveFrom` **sin método de pago autorizado**, el acuerdo aceptado igualmente concluye la prueba en su

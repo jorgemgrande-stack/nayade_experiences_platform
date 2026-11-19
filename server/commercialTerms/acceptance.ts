@@ -741,11 +741,13 @@ export class TermsAcceptanceService {
    */
   private async flagUnbilled(t: TermsRecord, subscriptionId: number) {
     try {
+      // Sin el estado real del cobro no se afirma nada: solo un aviso en el registro técnico (nunca una incidencia por un fallo de lectura)
       const st = this.payment ? await this.payment.stage(subscriptionId).catch(() => null) : null;
-      if (st?.paymentMethodAuthorized) return;
+      if (!st) return void opsLog("warn", "CommercialTerms", "unbilled_state_unknown", { termsId: t.id, subscriptionId, payment: !!this.payment });
+      if (st.paymentMethodAuthorized) return;
       if (await this.hasEvent(t.id, "trial_ended_unbilled")) return;
-      await this.logTrial(t.id, "trial_ended_unbilled", "La prueba terminó con las condiciones aceptadas y sin método de pago autorizado ni cobro posible: el acceso se mantiene (modo sombra, sin cobro) y consta como incidencia de cobro. No se suspende nada.", { subscriptionId, paymentEnabled: this.payment ? this.payment.enabled() : false, stage: st?.stage ?? null }, "partial");
-      recordFailure("stripe.negotiated_unbilled_access");
+      const saved = await this.logTrial(t.id, "trial_ended_unbilled", "La prueba terminó con las condiciones aceptadas y sin método de pago autorizado ni cobro posible: el acceso se mantiene (modo sombra, sin cobro) y consta como incidencia de cobro. No se suspende nada.", { subscriptionId, paymentEnabled: this.payment ? this.payment.enabled() : false, stage: st.stage }, "partial");
+      if (saved) recordFailure("stripe.negotiated_unbilled_access");
     } catch (e) {
       opsLog("warn", "CommercialTerms", "unbilled_flag_failed", { termsId: t.id, subscriptionId, error: e instanceof Error ? e.name : "error" });
     }
@@ -842,8 +844,9 @@ export class TermsAcceptanceService {
     return (await this.d.termsStore.events({ termsId }).catch(() => [])).some((e) => e.kind === kind);
   }
 
-  private async logTrial(termsId: number, kind: string, reason: string, after: unknown, result: string) {
-    await this.d.termsStore.log(termsId, { kind, actor: ACTOR, reason: reason.slice(0, 500), before: null, after, effectiveAt: null, acceptanceStatus: "accepted", syncResult: result, economic: null }, this.now()).catch(() => undefined);
+  /** Devuelve si la constancia se guardó (la incidencia de cobro solo se avisa si consta). */
+  private async logTrial(termsId: number, kind: string, reason: string, after: unknown, result: string): Promise<boolean> {
+    return this.d.termsStore.log(termsId, { kind, actor: ACTOR, reason: reason.slice(0, 500), before: null, after, effectiveAt: null, acceptanceStatus: "accepted", syncResult: result, economic: null }, this.now()).then(() => true, () => false);
   }
 
   /**
@@ -975,6 +978,7 @@ function paymentBody(token: string, v: PaymentViewData): string {
   }
   switch (st.stage) {
     case "active_unbilled":
+      return `${head}<section class="accept"><h3>Tu prueba gratuita ha terminado</h3><p>Tu servicio sigue activo, pero todavía no tenemos un método de pago autorizado para tu suscripción (cuota: ${fee}). Configúralo en la página segura de Stripe para regularizarla: al hacerlo autorizas los cobros periódicos de esa cuota y el primer cobro se realiza al completar el pago. Big Elephant no almacena datos bancarios.</p><form method="post" action="pago"><input type="hidden" name="token" value="${esc(token)}"><div class="actions"><button class="btn" type="submit">Configurar método de pago</button></div></form></section><p class="muted">${help}</p>`;
     case "payment_pending":
       return `${head}<section class="accept"><h3>Configura tu método de pago</h3><p>Se te llevará a la página segura de Stripe para introducir tu tarjeta u otro medio de pago disponible. Big Elephant no almacena datos bancarios.</p><p>Al configurarlo autorizas los cobros periódicos de ${fee}, con el primer cobro ${when}. Puedes cancelar según las condiciones aceptadas.</p><form method="post" action="pago"><input type="hidden" name="token" value="${esc(token)}"><div class="actions"><button class="btn" type="submit">Configurar método de pago</button></div></form><p class="muted">Si cierras Stripe sin terminar, o el pago no se completa, tu contrato sigue aceptado y puedes retomar este paso desde este mismo enlace.</p></section>`;
     case "payment_processing":
