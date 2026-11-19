@@ -1159,3 +1159,24 @@ y reintentos del primer cobro real. No requiere migración, pero toca el núcleo
 suscripciones, con interruptores de production), por lo que **no se ha hecho en este PR**; debe abrirse como PR propio con sus pruebas contra
 Stripe TEST y aprobación expresa. Mientras tanto, el cliente en prueba que quiera conservar sus días restantes debe contratar por una oferta
 particular (esta regla), no por la compra directa.
+
+### Marketplace sobre este mismo circuito: diseño propuesto (22/11/2026, sin implementar)
+
+Reutilizar el circuito de condiciones en lugar de reescribir el pago ordinario (un solo circuito de cobro, sin segundo):
+
+1. El panel (`panelConversion`) no abre el Checkout ordinario para una empresa **en prueba**: crea sobre su suscripción unas condiciones
+   **estándar** (partidas del catálogo a precio oficial, sin descuento, `effectiveFrom` = fin exacto de la prueba, `requiresAcceptance`).
+2. La aceptación es la del panel: el usuario autenticado (rol comprobado por el Core) marca las condiciones publicadas y el contrato; se
+   registra con el mismo expediente (firmante, fecha, huella). Hace falta una decisión legal de Dirección sobre aceptar con sesión de panel
+   en lugar de enlace por correo.
+3. El pago es el **Checkout de condiciones** ya construido (`/pago`, `trial_end` = fin de prueba, método sin cargo anticipado, webhook, conciliación,
+   etapas, `concludeDue`): prueba respetada, primer cargo automático en la fecha efectiva y estado consultable en `contracting`.
+4. Cambio de plan o conector: unas condiciones nuevas que sustituyen a las vigentes (mecanismo existente `supersede`); la suscripción de Stripe
+   es la misma (`applyItems`), sin duplicar.
+5. Sin cambios en `events.ts`, `checkout.ts` ni el orquestador: no se toca el cobro ordinario de pedidos. Las compras de un cliente **ya de pago**
+   siguen por el circuito ordinario.
+
+Impedimentos a resolver antes: la decisión legal del punto 2, el interruptor `CP_CUSTOM_TERMS_BILLING_ENABLED` (protegido) y que el cliente
+Marketplace en prueba pase por la página de pago de condiciones. Cambios previstos: `panelConversion.ts` (rama «en prueba»), un alta de condiciones
+estándar con aceptación de sesión en `acceptance.ts`, y pruebas con el doble de Stripe + Stripe TEST. Es código de cobros: se clasificará con
+`esRailway.ts changes --production` y, si resulta protegido, requerirá el procedimiento protegido.
