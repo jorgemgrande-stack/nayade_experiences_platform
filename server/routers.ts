@@ -1,6 +1,7 @@
 import { COOKIE_NAME } from "@shared/const";
 import { clearSessionCookies } from "./_core/sessionCookie";
 import { readStoredFile } from "./storage";
+import { storageReconciler } from "./_core/files/reconcile";
 import { companyName } from "./tenantBrand";
 import { publicBaseUrl } from "./_core/productIdentity";
 
@@ -1026,8 +1027,17 @@ export const appRouter = router({
 
     deleteMediaFile: adminProcedure
       .input(z.object({ id: z.number() }))
-      .mutation(async ({ input }) => {
-        return deleteMediaFile(input.id);
+      .mutation(async ({ ctx, input }) => {
+        const removed = await deleteMediaFile(input.id);
+        // El objeto almacenado se libera solo si ninguna otra cosa lo usa; un fallo del almacén no impide borrar la fila
+        let storage: { released: boolean; reason: string } = { released: false, reason: "not_attempted" };
+        try {
+          storage = await storageReconciler().releaseIfUnreferenced({ url: removed.url, fileKey: removed.fileKey }, `admin:${ctx.user?.id ?? "?"}`);
+        } catch (err) {
+          console.warn(JSON.stringify({ ctx: "Storage", event: "media_release_failed", error: err instanceof Error ? err.name : "error" }));
+          storage = { released: false, reason: "error" };
+        }
+        return { success: true, storage };
       }),
 
     // ── Menu Items ────────────────────────────────────────────────────────────
