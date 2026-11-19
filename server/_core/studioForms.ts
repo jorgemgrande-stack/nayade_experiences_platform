@@ -187,7 +187,8 @@ export function evaluateFormSubmission(form: BlockDataMap["form"], rawInput: For
   }
   // Nombre y apellidos por separado (opcional): se unen para el CRM; si hay un campo de nombre completo, manda ese
   if (!name) name = [firstName, lastName].filter(Boolean).join(" ");
-  const consent = form.consent === "on" ? formConsentText(form) : null;
+  // Consentimiento: el texto que la persona vio y aceptó (el del formulario traducido, si lo hay), no el del idioma principal
+  const consent = form.consent === "on" ? formConsentText(ctx.localized?.consentText?.trim() ? ctx.localized : form) : null;
   const message = [`Formulario: ${form.title || "Formulario de la web"}`, `Página: /${ctx.slug}`, "", ...answers.map(([l, v]) => `${l}: ${v}`)].join("\n").slice(0, 8000);
   return { kind: "ok", lead: { name: name || email.split("@")[0], email, ...(phone ? { phone } : {}), ...(company ? { company } : {}), message }, consent };
 }

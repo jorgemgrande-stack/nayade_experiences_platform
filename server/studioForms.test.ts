@@ -167,6 +167,15 @@ describe("formulario en otro idioma: las opciones elegidas se entienden y se gua
     expect(msg).not.toContain("Retiro Naturaleza");
     expect(msg).toContain("Anmerkung");
   });
+  it("el consentimiento que se guarda es el texto que la persona vio, en su idioma", () => {
+    const esConsent = { ...es, consent: "on" as const, consentText: "He leído la política de privacidad y la acepto." };
+    const deConsent = { ...de, consent: "on" as const, consentText: "Ich habe die Datenschutzbestimmungen gelesen." };
+    const r = evaluateFormSubmission(deConsent, { values: values as any, consent: true, website: "", elapsedMs: 60_000 } as any, { slug: "retreat-andalusien", localized: esConsent });
+    expect(r.kind).toBe("ok");
+    expect((r as any).consent.text).toContain("He leído");
+    const p = evaluateFormSubmission(deConsent, { values: { ...values, f2: "Seelenreise", f3: "2 Personen" } as any, consent: true, website: "", elapsedMs: 60_000 } as any, { slug: "retreat-andalusien", localized: null });
+    expect((p as any).consent.text).toContain("Ich habe");
+  });
   it("una opción que no está en ninguna de las dos listas sigue rechazándose", () => {
     expect(send({ ...values, f2: "Otra cosa" }, es).kind).toBe("invalid");
   });
