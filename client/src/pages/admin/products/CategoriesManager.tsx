@@ -1,6 +1,7 @@
 import { useState, useRef } from "react";
 import AdminLayout from "@/components/AdminLayout";
 import { trpc } from "@/lib/trpc";
+import { useImageUploadLimit } from "@/hooks/useImageUploadLimit";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -27,10 +28,11 @@ const emptyForm: CategoryForm = { name: "", slug: "", description: "", iconName:
 
 // ── Zona de upload de imagen para categorías ────────────────────────────────
 function CatImageUpload({ value, onChange }: { value: string; onChange: (url: string) => void }) {
+  const imageMax = useImageUploadLimit();
   const [uploading, setUploading] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const handleFile = async (file: File) => {
-    if (file.size > 10 * 1024 * 1024) { toast.error("La imagen no puede superar 10 MB"); return; }
+    if (file.size > imageMax.bytes) { toast.error(`La imagen no puede superar ${imageMax.mb} MB`); return; }
     setUploading(true);
     try {
       const fd = new FormData();

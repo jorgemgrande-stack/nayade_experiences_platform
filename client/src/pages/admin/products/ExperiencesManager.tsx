@@ -20,6 +20,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import AdminLayout from "@/components/AdminLayout";
 import SupplierSelect from "@/components/SupplierSelect";
 import { trpc } from "@/lib/trpc";
+import { useImageUploadLimit } from "@/hooks/useImageUploadLimit";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import TimeSlotsPanel from "@/components/TimeSlotsPanel";
@@ -86,12 +87,13 @@ const emptyForm: ExpForm = {
 function ImageUploadZone({
   label, value, onChange, index,
 }: { label: string; value: string; onChange: (url: string) => void; index: number }) {
+  const imageMax = useImageUploadLimit();
   const [uploading, setUploading] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
   const handleFile = async (file: File) => {
     if (!file) return;
-    if (file.size > 10 * 1024 * 1024) { toast.error("La imagen no puede superar 10 MB"); return; }
+    if (file.size > imageMax.bytes) { toast.error(`La imagen no puede superar ${imageMax.mb} MB`); return; }
     setUploading(true);
     try {
       const fd = new FormData();

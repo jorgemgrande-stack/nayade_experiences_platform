@@ -41,10 +41,35 @@ export interface ObjectMetaStore {
   knownKeys(keys: string[]): Promise<Set<string>>;
   /** Restauración: inserta o sustituye la fila de un objeto. */
   upsert(row: StoredObjectRow): Promise<void>;
-  /** Bytes que ocupan los ficheros de la empresa (pendientes y activos): lo que cuenta para su almacenamiento contratado. */
-  usedBytes?(): Promise<number>;
+  /**
+   * Bytes que ocupan los ficheros de la empresa (pendientes y activos), por ámbito de consumo:
+   * «general» (todo menos Elephant Learning y las exportaciones), «learning» (contenido educativo) o «all» (todo menos
+   * exportaciones: el cómputo anterior a separar ambos). Se calcula siempre de las filas: no hay contadores que se desincronicen.
+   */
+  usedBytes?(scope?: UsageScope): Promise<number>;
+  /** Desglose del consumo por categoría, con objetos y huellas distintas, y los ficheros repetidos (misma huella SHA-256). */
+  usageBreakdown?(): Promise<UsageBreakdown>;
   /** Objetos de un propietario (p. ej. los ZIP de una exportación: reintentos sin duplicados). */
   listByOwner?(ownerType: string, ownerId: string): Promise<StoredObjectRow[]>;
+}
+
+export type UsageScope = "general" | "learning" | "all";
+export interface CategoryUsage { category: string; objects: number; bytes: number; distinctHashes: number }
+export interface UsageBreakdown {
+  categories: CategoryUsage[];
+  /** Huellas que aparecen en más de un objeto activo, objetos sobrantes y bytes que ocuparían de menos sin repetirse. */
+  duplicates: { groups: number; extraObjects: number; extraBytes: number };
+}
+
+/** Categorías que cuentan para el almacenamiento de Elephant Learning (no para el general). */
+export const LEARNING_STORAGE_CATEGORIES: readonly string[] = ["learning-content"];
+const NOT_COUNTED_CATEGORIES: readonly string[] = ["data-export"];
+
+/** ¿Cuenta esta categoría en el ámbito indicado? (misma regla para MySQL y memoria). */
+export function categoryInScope(category: string, scope: UsageScope): boolean {
+  if (NOT_COUNTED_CATEGORIES.includes(category)) return false;
+  const learning = LEARNING_STORAGE_CATEGORIES.includes(category);
+  return scope === "all" ? true : scope === "learning" ? learning : !learning;
 }
 
 const COLS: Array<[keyof StoredObjectRow, string]> = [
@@ -84,9 +109,28 @@ export class MysqlObjectMetaStore implements ObjectMetaStore {
   /** Por defecto, el pool de la empresa en curso (resuelto en cada acceso). */
   constructor(private pool: () => mysql.Pool = () => legacyPool()) {}
 
-  async usedBytes() {
-    const [rows] = await this.pool().query("SELECT COALESCE(SUM(size_bytes), 0) AS n FROM stored_objects WHERE status IN ('pending', 'active') AND category <> 'data-export'");
+  async usedBytes(scope: UsageScope = "all") {
+    const learning = LEARNING_STORAGE_CATEGORIES.map(() => "?").join(", ");
+    const filter = scope === "learning" ? `category IN (${learning})` : scope === "general" ? `category NOT IN (${learning})` : "1 = 1";
+    const [rows] = await this.pool().query(
+      `SELECT COALESCE(SUM(size_bytes), 0) AS n FROM stored_objects WHERE status IN ('pending', 'active') AND category <> 'data-export' AND ${filter}`,
+      scope === "all" ? [] : [...LEARNING_STORAGE_CATEGORIES],
+    );
     return Number((rows as Array<{ n: unknown }>)[0]?.n ?? 0);
+  }
+
+  async usageBreakdown(): Promise<UsageBreakdown> {
+    const [cats] = await this.pool().query(
+      "SELECT category, COUNT(*) AS objects, COALESCE(SUM(size_bytes), 0) AS bytes, COUNT(DISTINCT sha256) AS hashes FROM stored_objects WHERE status IN ('pending', 'active') GROUP BY category ORDER BY bytes DESC",
+    );
+    const [dups] = await this.pool().query(
+      "SELECT COUNT(*) AS grp, COALESCE(SUM(c - 1), 0) AS extra_objects, COALESCE(SUM((c - 1) * s), 0) AS extra_bytes FROM (SELECT COUNT(*) AS c, MAX(size_bytes) AS s FROM stored_objects WHERE status IN ('pending', 'active') AND category <> 'data-export' AND sha256 IS NOT NULL GROUP BY sha256 HAVING COUNT(*) > 1) d",
+    );
+    const d = (dups as Array<Record<string, unknown>>)[0] ?? {};
+    return {
+      categories: (cats as Array<Record<string, unknown>>).map((r) => ({ category: String(r.category), objects: Number(r.objects), bytes: Number(r.bytes), distinctHashes: Number(r.hashes) })),
+      duplicates: { groups: Number(d.grp ?? 0), extraObjects: Number(d.extra_objects ?? 0), extraBytes: Number(d.extra_bytes ?? 0) },
+    };
   }
 
   async insert(row: StoredObjectRow) {
@@ -174,9 +218,24 @@ export class MemoryObjectMetaStore implements ObjectMetaStore {
   async listByOwner(ownerType: string, ownerId: string) {
     return Array.from(this.rows.values()).filter((r) => r.ownerType === ownerType && r.ownerId === ownerId).map((r) => ({ ...r }));
   }
-  async usedBytes() {
+  async usedBytes(scope: UsageScope = "all") {
     return Array.from(this.rows.values())
-      .filter((r) => r.status === "pending" || r.status === "active")
+      .filter((r) => (r.status === "pending" || r.status === "active") && categoryInScope(r.category, scope))
       .reduce((a, r) => a + r.sizeBytes, 0);
+  }
+  async usageBreakdown(): Promise<UsageBreakdown> {
+    const live = Array.from(this.rows.values()).filter((r) => r.status === "pending" || r.status === "active");
+    const byCat = new Map<string, StoredObjectRow[]>();
+    for (const r of live) byCat.set(r.category, [...(byCat.get(r.category) ?? []), r]);
+    const categories = Array.from(byCat.entries())
+      .map(([category, list]) => ({ category, objects: list.length, bytes: list.reduce((a, r) => a + r.sizeBytes, 0), distinctHashes: new Set(list.map((r) => r.sha256)).size }))
+      .sort((a, b) => b.bytes - a.bytes);
+    const byHash = new Map<string, StoredObjectRow[]>();
+    for (const r of live) if (r.category !== "data-export" && r.sha256) byHash.set(r.sha256, [...(byHash.get(r.sha256) ?? []), r]);
+    const repeated = Array.from(byHash.values()).filter((l) => l.length > 1);
+    return {
+      categories,
+      duplicates: { groups: repeated.length, extraObjects: repeated.reduce((a, l) => a + l.length - 1, 0), extraBytes: repeated.reduce((a, l) => a + (l.length - 1) * l[0].sizeBytes, 0) },
+    };
   }
 }

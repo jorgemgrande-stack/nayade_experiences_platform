@@ -19,6 +19,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import AdminLayout from "@/components/AdminLayout";
 import { trpc } from "@/lib/trpc";
+import { useImageUploadLimit } from "@/hooks/useImageUploadLimit";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 
@@ -26,12 +27,13 @@ import { cn } from "@/lib/utils";
 function ImageUploadZone({ label, value, onChange, index }: {
   label: string; value: string; onChange: (url: string) => void; index: number;
 }) {
+  const imageMax = useImageUploadLimit();
   const [uploading, setUploading] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
   const handleFile = async (file: File) => {
     if (!file) return;
-    if (file.size > 10 * 1024 * 1024) { toast.error("La imagen no puede superar 10 MB"); return; }
+    if (file.size > imageMax.bytes) { toast.error(`La imagen no puede superar ${imageMax.mb} MB`); return; }
     setUploading(true);
     try {
       const fd = new FormData();
@@ -138,6 +140,7 @@ const emptyLineForm: LineForm = {
 
 // ─── Main Component ────────────────────────────────────────────────────────────
 export default function LegoPacksManager() {
+  const imageMax = useImageUploadLimit();
   const [search, setSearch] = useState("");
   const [categoryFilter, setCategoryFilter] = useState<"todos" | "dia" | "escolar" | "empresa" | "estancia">("todos");
   const [showForm, setShowForm] = useState(false);
@@ -597,7 +600,7 @@ export default function LegoPacksManager() {
 
             {/* ── Imágenes ── */}
             <TabsContent value="media" className="space-y-4 mt-4">
-              <p className="text-xs text-muted-foreground">Haz clic en cada zona para subir una imagen, o arrástrala directamente. Formatos: JPG, PNG, WEBP. Máx. 10 MB.</p>
+              <p className="text-xs text-muted-foreground">Haz clic en cada zona para subir una imagen, o arrástrala directamente. Formatos: JPG, PNG, WEBP. Máx. {imageMax.mb} MB.</p>
               <div>
                 <p className="text-sm font-medium mb-2">Imagen de portada</p>
                 <ImageUploadZone label="Portada" value={form.coverImageUrl} onChange={(url) => setForm(f => ({ ...f, coverImageUrl: url }))} index={0} />

@@ -45,7 +45,26 @@ export const BUSINESS_POLICIES: readonly MetricPolicy[] = [
   { metric: "users", label: "Usuarios", unit: "usuarios", period: "total", enforcement: "hard", platformDefault: null, applied: "Core: alta, invitación y reactivación de usuarios del panel" },
   { metric: "sites", label: "Sedes", unit: "sedes", period: "total", enforcement: "hard", platformDefault: 1, applied: "Plano de control: alta de sedes" },
   { metric: "fiscal_entities", label: "Entidades fiscales", unit: "entidades", period: "total", enforcement: "hard", platformDefault: 1, applied: "Plano de control: alta de entidades fiscales" },
-  { metric: "storage_gb", label: "Almacenamiento", unit: "GB", period: "total", enforcement: "hard", platformDefault: null, applied: "Core: subida de ficheros" },
+  { metric: "storage_gb", label: "Almacenamiento", unit: "GB", period: "total", enforcement: "hard", platformDefault: null, applied: "Core: subida de ficheros (almacenamiento general: imágenes, documentos y adjuntos; no incluye Elephant Learning)" },
+  {
+    metric: "learning_storage_gb",
+    label: "Almacenamiento Learning",
+    unit: "GB",
+    period: "total",
+    enforcement: "hard",
+    // Seguro por defecto: sin una concesión expresa (excepción del operador) una empresa no puede subir contenido de formación
+    platformDefault: 0,
+    applied: "Core: subida de recursos de Elephant Learning (vídeo, audio y PDF educativos). Se mide aparte del almacenamiento general",
+  },
+  {
+    metric: "media_file_mb",
+    label: "Tamaño máximo por imagen",
+    unit: "MB",
+    period: "total",
+    enforcement: "hard",
+    platformDefault: 10,
+    applied: "Core: subida de imágenes del CMS (Multimedia). Una condición negociada se concede con una excepción; el servidor nunca supera el techo técnico de la plataforma",
+  },
   {
     metric: "contacts",
     label: "Contactos",

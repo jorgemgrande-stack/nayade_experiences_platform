@@ -22,7 +22,9 @@ import { getQuotaExceptionAccess } from "../erm/exceptionAccess";
 import { backendFromEnv, StorageUnavailableError, type ObjectBackend } from "./backend";
 import { detectContentType, extensionFor, isSafeSvg, safeDisplayName } from "./contentType";
 import { policyOf, type FileCategory, type Visibility } from "./categories";
-import { MysqlObjectMetaStore, type ObjectMetaStore, type StoredObjectRow } from "../../storedObjectsDb";
+import { categoryInScope, MysqlObjectMetaStore, type ObjectMetaStore, type StoredObjectRow } from "../../storedObjectsDb";
+import { imageMaxBytes, learningStorageLimit, storageCeilingBytes } from "./limits";
+import { opsLog } from "../ops/log";
 import { getTenantId, getTenantMode, peekTenantContext } from "../tenant";
 import { tenantStoragePrefix } from "../tenantStorage";
 import { sessionSecret } from "../sessionSecret";
@@ -88,8 +90,31 @@ export function objectRoot(): string {
 }
 
 export function maxBytesFromEnv(): number {
-  const n = Number(process.env.STORAGE_MAX_BYTES);
-  return Number.isFinite(n) && n > 0 ? n : 25 * 1024 * 1024;
+  return storageCeilingBytes();
+}
+
+/** Ámbito de consumo de una categoría: «learning» (Elephant Learning), «general» o null si no cuenta (exportaciones). */
+export function storageScopeOf(category: string): "general" | "learning" | null {
+  if (!categoryInScope(category, "all")) return null;
+  return categoryInScope(category, "learning") ? "learning" : "general";
+}
+
+/** Límite del almacenamiento general de la empresa en curso, en GB: excepción vigente (registro 0016) o contratado (0013). */
+export async function generalStorageLimitGb(): Promise<{ limitGb: number | null | undefined; source: "exception" | "contract" | "none" }> {
+  const limits = getLimitAccess();
+  if (!limits) return { limitGb: undefined, source: "none" };
+  // Una excepción comercial vigente (registro 0016) manda sobre lo contratado hasta que caduca o se revoca
+  const exception = await getQuotaExceptionAccess()?.active("storage_gb");
+  if (exception) return { limitGb: exception.newLimit, source: "exception" };
+  return { limitGb: await limits.limit("storage_gb"), source: "contract" };
+}
+
+/** Aviso (80 %) y crítico (95 %) por ámbito: solo se registran, nunca bloquean. */
+function logUsageLevel(scope: "general" | "learning", used: number, adding: number, limitBytes: number) {
+  const after = used + adding;
+  const ratio = limitBytes > 0 ? after / limitBytes : 1;
+  if (ratio >= 0.95) opsLog("warn", "Storage", "critical", { scope, usedBytes: after, limitBytes });
+  else if (ratio >= 0.8) opsLog("warn", "Storage", "warning", { scope, usedBytes: after, limitBytes });
 }
 
 /** ¿Usa el Core el servicio de objetos? Por defecto sí en multiempresa y no en instalación única. */
@@ -196,10 +221,10 @@ export class FileService {
   }
 
   /** Valida el contenido para la categoría; devuelve el tipo detectado. */
-  validate(category: FileCategory, data: Buffer, declared?: string | null): string {
+  validate(category: FileCategory, data: Buffer, declared?: string | null, maxBytesOverride?: number): string {
     const policy = policyOf(category);
     if (!data.length) throw new FileValidationError("El fichero está vacío.");
-    const max = Math.min(policy.maxBytes, maxBytesFromEnv());
+    const max = maxBytesOverride ?? Math.min(policy.maxBytes, maxBytesFromEnv());
     if (data.length > max) throw new FileValidationError(`El fichero supera el tamaño máximo permitido (${Math.floor(max / (1024 * 1024))} MB).`);
     const type = detectContentType(data, declared);
     if (!(policy.types as readonly string[]).includes(type)) {
@@ -209,6 +234,40 @@ export class FileService {
       throw new FileValidationError("El SVG contiene elementos no permitidos (scripts, enlaces externos o eventos).");
     }
     return type;
+  }
+
+  /**
+   * Cuota de almacenamiento por ámbito. El consumo se calcula de los objetos guardados:
+   *  - general: todo salvo Elephant Learning y las exportaciones → `storage_gb` (plan + ampliaciones o excepción).
+   *  - learning: contenido educativo → `learning_storage_gb` (por defecto 0: se concede de forma expresa).
+   * Sin dato de límites (instalación única, registro sin responder) no se bloquea: como hasta ahora.
+   */
+  async assertStorageQuota(category: FileCategory | string, adding: number): Promise<void> {
+    const scope = storageScopeOf(category);
+    if (!scope || !this.meta.usedBytes) return;
+    if (scope === "learning") {
+      const q = await learningStorageLimit();
+      if (!q || q.limitGb === null || q.enforcement === "none") return;
+      const used = await this.meta.usedBytes("learning");
+      const limitBytes = q.limitGb * GB;
+      if (used + adding > limitBytes) {
+        if (q.enforcement === "hard") {
+          opsLog("info", "Storage", "learning_blocked", { usedBytes: used, limitGb: q.limitGb, adding });
+          throw new FileValidationError(`Has alcanzado el almacenamiento de formación asignado (${q.limitGb} GB). Pide a Big Elephant que lo amplíe para subir más contenido educativo.`);
+        }
+      }
+      logUsageLevel("learning", used, adding, limitBytes);
+      return;
+    }
+    const { limitGb } = await generalStorageLimitGb();
+    if (typeof limitGb !== "number") return;
+    const used = await this.meta.usedBytes("general");
+    // Lo que declara el plano de control es el almacenamiento general (el de Learning se mide aparte)
+    getLimitAccess()?.report("storage_bytes", used);
+    if (used + adding > limitGb * GB) {
+      throw new FileValidationError(`Has alcanzado el almacenamiento contratado (${limitGb} GB). Amplía el almacenamiento o libera espacio para subir más ficheros.`);
+    }
+    logUsageLevel("general", used, adding, limitGb * GB);
   }
 
   private async withRetry<T>(fn: () => Promise<T>): Promise<T> {
@@ -227,20 +286,9 @@ export class FileService {
 
   async put(input: PutInput): Promise<PutResult> {
     const data = typeof input.data === "string" ? Buffer.from(input.data) : Buffer.from(input.data);
-    const contentType = this.validate(input.category, data, input.declaredType);
-    // Almacenamiento contratado (plan + ampliaciones, registro 0013): nunca por encima. Sin dato, como hasta ahora
-    const limits = getLimitAccess();
-    // Una excepción comercial vigente (registro 0016) manda sobre lo contratado hasta que caduca o se revoca
-    const exception = limits ? await getQuotaExceptionAccess()?.active("storage_gb") : null;
-    const limitGb = exception ? exception.newLimit : limits ? await limits.limit("storage_gb") : undefined;
-    // La exportación de datos no ocupa el almacenamiento contratado (es una copia de lo que ya hay)
-    if (typeof limitGb === "number" && this.meta.usedBytes && input.category !== "data-export") {
-      const usedBefore = await this.meta.usedBytes();
-      limits!.report("storage_bytes", usedBefore);
-      if (usedBefore + data.length > limitGb * GB) {
-        throw new FileValidationError(`Has alcanzado el almacenamiento contratado (${limitGb} GB). Amplía el almacenamiento o libera espacio para subir más ficheros.`);
-      }
-    }
+    // Las imágenes del CMS usan el máximo efectivo de la empresa (10 MB general; una condición negociada lo sube)
+    const contentType = this.validate(input.category, data, input.declaredType, input.category === "media" ? await imageMaxBytes() : undefined);
+    await this.assertStorageQuota(input.category, data.length);
     const policy = policyOf(input.category);
     const backend = this.backend();
     const at = this.now();
@@ -346,6 +394,9 @@ export class FileService {
     if (policy.visibility !== "private" || !(policy.types as readonly string[]).includes(input.detectType ? "video/mp4" : "application/zip")) throw new FileValidationError("Categoría no admitida para ficheros grandes.");
     if (input.sizeBytes <= 0) throw new FileValidationError("El fichero está vacío.");
     if (input.sizeBytes > policy.maxBytes) throw new FileValidationError(`El fichero supera el tamaño máximo permitido (${Math.floor(policy.maxBytes / (1024 * 1024))} MB).`);
+    // Antes no se comprobaba ninguna cuota aquí: el contenido de formación entraba sin contar contra nadie.
+    // Las exportaciones grandes (gestoría, datos) mantienen su comportamiento: no se bloquean por cuota.
+    if (storageScopeOf(input.category) === "learning") await this.assertStorageQuota(input.category, input.sizeBytes);
     const { open } = await import("node:fs/promises");
     const fh = await open(input.filePath, "r");
     let detected = "application/zip";
