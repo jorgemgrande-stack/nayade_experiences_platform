@@ -210,6 +210,11 @@ const CommunityDetail = lazy(() => import("./pages/admin/communities/CommunityDe
 const MyCommunities = lazy(() => import("./pages/community/MyCommunities"));
 const CommunityHub = lazy(() => import("./pages/community/CommunityHub"));
 const ActivateMember = lazy(() => import("./pages/community/ActivateMember"));
+const LearningAdmin = lazy(() => import("./pages/admin/learning/LearningAdmin"));
+const AulaHome = lazy(() => import("./pages/learning/Aula").then((m) => ({ default: m.AulaHome })));
+const AulaCurso = lazy(() => import("./pages/learning/Aula").then((m) => ({ default: m.AulaCurso })));
+const AulaLeccion = lazy(() => import("./pages/learning/Aula").then((m) => ({ default: m.AulaLeccion })));
+const AulaActivar = lazy(() => import("./pages/learning/Aula").then((m) => ({ default: m.AulaActivar })));
 const LoyaltyManager = lazy(() => import("./pages/admin/loyalty/Loyalty"));
 const SocialTokenNetHome = lazy(() => import("./pages/admin/socialTokenNet/SocialTokenNetHome"));
 const NetProductHome = lazy(() => import("./pages/admin/net/NetProductHome"));
@@ -446,6 +451,11 @@ function Router() {
 
       {/* Portal del Empleado (Fase 3) */}
       {/* Social Token Net · Comunidades: área de miembros con la cuenta del Core */}
+      <Route path="/admin/formacion">{() => <Suspense fallback={<AdminLoadingFallback />}><LearningAdmin /></Suspense>}</Route>
+      <Route path="/mi-formacion">{() => <Suspense fallback={<AdminLoadingFallback />}><AulaHome /></Suspense>}</Route>
+      <Route path="/mi-formacion/activar">{() => <Suspense fallback={<AdminLoadingFallback />}><AulaActivar /></Suspense>}</Route>
+      <Route path="/mi-formacion/curso/:courseId">{() => <Suspense fallback={<AdminLoadingFallback />}><AulaCurso /></Suspense>}</Route>
+      <Route path="/mi-formacion/curso/:courseId/leccion/:lessonId">{() => <Suspense fallback={<AdminLoadingFallback />}><AulaLeccion /></Suspense>}</Route>
       <Route path="/comunidad">{() => <Suspense fallback={<AdminLoadingFallback />}><MyCommunities /></Suspense>}</Route>
       <Route path="/comunidad/activar">{() => <Suspense fallback={<AdminLoadingFallback />}><ActivateMember /></Suspense>}</Route>
       <Route path="/comunidad/:slug">{() => <Suspense fallback={<AdminLoadingFallback />}><CommunityHub /></Suspense>}</Route>

@@ -1,0 +1,301 @@
+/**
+ * Aula privada del alumno (Elephant LMS): /mi-formacion. Cuenta individual del Core (rol de cliente), nunca un enlace
+ * público. Mis cursos → índice del curso (módulos y lecciones, con lo no contratado bloqueado) → lección (texto, vídeo,
+ * audio, PDF y enlaces) con progreso. Los recursos se piden a /api/learning/resource/<id>, que comprueba la matrícula en
+ * cada apertura: aquí no hay ninguna URL permanente de contenido.
+ * Responsive, en alemán y español (selector ?lang= o idioma de la web), con la identidad de la empresa.
+ */
+import { useEffect, useMemo, useState } from "react";
+import { Link, useLocation, useRoute } from "wouter";
+import { CheckCircle2, ChevronLeft, ExternalLink, FileText, Loader2, Lock, PlayCircle } from "lucide-react";
+import { trpc } from "@/lib/trpc";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { useSiteLocale } from "@/hooks/useSiteLocale";
+import { usePortalLook } from "../employee/usePortalLook";
+import { aulaText, formatAccessDate, pickLocale, type AulaLocale, type AulaText } from "@shared/learningText";
+
+const BASE = "/mi-formacion";
+
+function useAulaLocale(): { locale: AulaLocale; t: AulaText; setLang: (l: AulaLocale) => void } {
+  const site = useSiteLocale();
+  const [, navigate] = useLocation();
+  const fromUrl = typeof window !== "undefined" ? new URLSearchParams(window.location.search).get("lang") : null;
+  const locale = pickLocale(fromUrl ?? site.locale);
+  return {
+    locale,
+    t: aulaText(locale),
+    setLang: (l) => {
+      const u = new URL(window.location.href);
+      u.searchParams.set("lang", l);
+      navigate(u.pathname + u.search);
+    },
+  };
+}
+
+function Shell({ children, wide }: { children: React.ReactNode; wide?: boolean }) {
+  const look = usePortalLook();
+  const { locale, setLang } = useAulaLocale();
+  return (
+    <div className="min-h-screen bg-stone-50 text-slate-800" style={look.style}>
+      <header className="border-b border-stone-200 bg-white">
+        <div className="mx-auto flex max-w-5xl items-center justify-between gap-3 px-4 py-3">
+          <Link href={BASE} className="flex items-center gap-3">
+            {look.logoUrl ? <img src={look.logoUrl} alt={look.name || ""} className="h-9 w-auto max-w-[160px] object-contain" /> : <span className="font-semibold">{look.name}</span>}
+          </Link>
+          <nav aria-label="Idioma / Sprache" className="flex gap-1 text-sm">
+            {(["de", "es"] as const).map((l) => (
+              <button key={l} type="button" lang={l} onClick={() => setLang(l)} aria-current={locale === l ? "true" : undefined} className={`rounded-md px-2 py-1 ${locale === l ? "font-semibold underline underline-offset-4" : "text-slate-600 hover:text-slate-900"}`}>
+                {l === "de" ? "Deutsch" : "Español"}
+              </button>
+            ))}
+          </nav>
+        </div>
+      </header>
+      <main className={`mx-auto px-4 py-6 ${wide ? "max-w-5xl" : "max-w-3xl"}`}>{children}</main>
+    </div>
+  );
+}
+
+function isUnauthorized(e: unknown) {
+  return (e as { data?: { code?: string } } | null)?.data?.code === "UNAUTHORIZED";
+}
+function isUnavailable(e: unknown) {
+  return (e as { data?: { code?: string } } | null)?.data?.code === "PRECONDITION_FAILED";
+}
+
+function Notice({ t, error, onRetry }: { t: AulaText; error: unknown; onRetry: () => void }) {
+  if (isUnauthorized(error)) {
+    return (
+      <div className="space-y-3 rounded-xl border border-stone-200 bg-white p-6 text-center">
+        <p>{t.signIn}</p>
+        <Button asChild><a href={`/login?returnTo=${encodeURIComponent(window.location.pathname)}`}>{t.signInCta}</a></Button>
+      </div>
+    );
+  }
+  return (
+    <div className="space-y-3 rounded-xl border border-stone-200 bg-white p-6 text-center">
+      <p>{isUnavailable(error) ? t.unavailable : (error as Error)?.message}</p>
+      {!isUnavailable(error) && <Button variant="outline" onClick={onRetry}>{t.retry}</Button>}
+    </div>
+  );
+}
+
+// ── Mis cursos ──────────────────────────────────────────────────────────────────────────────────────────────────────
+
+export function AulaHome() {
+  const { t, locale } = useAulaLocale();
+  const q = trpc.learning.my.courses.useQuery(undefined, { retry: false });
+  return (
+    <Shell>
+      <h1 className="mb-4 text-2xl font-bold">{t.title}</h1>
+      {q.isLoading ? <p className="text-sm text-slate-500">{t.loading}</p> : q.isError ? <Notice t={t} error={q.error} onRetry={() => q.refetch()} /> : q.data!.length === 0 ? <p className="text-slate-600">{t.empty}</p> : (
+        <ul className="space-y-4">
+          {q.data!.map((c) => {
+            const open = c.status === "active";
+            return (
+              <li key={c.courseId} className="rounded-xl border border-stone-200 bg-white p-4 shadow-sm">
+                <div className="flex flex-wrap items-start justify-between gap-2">
+                  <h2 className="text-lg font-semibold">{c.title}</h2>
+                  <span className={`rounded-full px-2.5 py-0.5 text-xs font-medium ${open ? "bg-emerald-100 text-emerald-800" : "bg-stone-200 text-stone-700"}`}>{t.status[c.status] ?? c.status}</span>
+                </div>
+                <p className="mt-1 text-sm text-slate-600">
+                  {c.status === "scheduled" ? `${t.from} ${formatAccessDate(c.startsAt, locale)}` : c.endsAt ? `${t.until} ${formatAccessDate(c.endsAt, locale)}` : t.noEnd}
+                </p>
+                <div className="mt-3" aria-label={t.progress}>
+                  <div className="h-2 w-full overflow-hidden rounded-full bg-stone-200"><div className="h-full bg-[var(--portal-accent,#92400e)]" style={{ width: `${c.percent}%` }} /></div>
+                  <p className="mt-1 text-xs text-slate-500">{t.progress}: {c.completedLessons}/{c.totalLessons} {t.lessons} · {c.percent}%</p>
+                </div>
+                {c.status === "expired" && <p className="mt-3 text-sm text-slate-600">{t.expiredNote}</p>}
+                {(c.status === "suspended" || c.status === "revoked") && <p className="mt-3 text-sm text-slate-600">{t.inactiveNote}</p>}
+                <div className="mt-3 flex gap-2">
+                  <Button asChild disabled={!open}>
+                    <Link href={c.lastLessonId ? `${BASE}/curso/${c.courseId}/leccion/${c.lastLessonId}` : `${BASE}/curso/${c.courseId}`}>{c.lastLessonId ? t.cont : t.start}</Link>
+                  </Button>
+                  
+                </div>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+    </Shell>
+  );
+}
+
+// ── Índice del curso ────────────────────────────────────────────────────────────────────────────────────────────────
+
+export function AulaCurso() {
+  const { t } = useAulaLocale();
+  const [, params] = useRoute(`${BASE}/curso/:courseId`);
+  const courseId = Number(params?.courseId);
+  const q = trpc.learning.my.course.useQuery({ courseId }, { enabled: Number.isInteger(courseId) && courseId > 0, retry: false });
+  return (
+    <Shell>
+      <Link href={BASE} className="mb-3 inline-flex items-center gap-1 text-sm text-slate-600"><ChevronLeft className="h-4 w-4" aria-hidden />{t.allCourses}</Link>
+      {q.isLoading ? <p className="text-sm text-slate-500">{t.loading}</p> : q.isError ? <Notice t={t} error={q.error} onRetry={() => q.refetch()} /> : (
+        <>
+          <h1 className="mb-1 text-2xl font-bold">{q.data!.course.title}</h1>
+          <p className="mb-5 text-sm text-slate-500">{t.resumeNote}</p>
+          <div className="space-y-5">
+            {q.data!.modules.map((m) => (
+              <section key={m.id} aria-labelledby={`m${m.id}`} className="rounded-xl border border-stone-200 bg-white">
+                <h2 id={`m${m.id}`} className="flex items-center justify-between gap-2 border-b border-stone-100 px-4 py-3 font-semibold">
+                  <span>{m.title}</span>
+                  {!m.unlocked && <span className="flex items-center gap-1 text-xs font-normal text-slate-500"><Lock className="h-3.5 w-3.5" aria-hidden />{t.locked}</span>}
+                </h2>
+                <ol className="divide-y divide-stone-100">
+                  {m.lessons.map((l) => (
+                    <li key={l.id}>
+                      {m.unlocked ? (
+                        <Link href={`${BASE}/curso/${courseId}/leccion/${l.id}`} className="flex items-center gap-3 px-4 py-3 hover:bg-stone-50">
+                          {l.completed ? <CheckCircle2 className="h-5 w-5 shrink-0 text-emerald-600" aria-label={t.done} /> : <PlayCircle className="h-5 w-5 shrink-0 text-slate-400" aria-hidden />}
+                          <span>{l.title}</span>
+                        </Link>
+                      ) : (
+                        <span className="flex items-center gap-3 px-4 py-3 text-slate-400"><Lock className="h-5 w-5 shrink-0" aria-hidden />{l.title}</span>
+                      )}
+                    </li>
+                  ))}
+                </ol>
+              </section>
+            ))}
+          </div>
+        </>
+      )}
+    </Shell>
+  );
+}
+
+// ── Lección ─────────────────────────────────────────────────────────────────────────────────────────────────────────
+
+type Block = { id: number; kind: string; title: string; body: string | null; externalUrl: string | null; activity: string | null; resourceId: number | null; resource: { status: string; kind: string } | null };
+
+function Media({ b, t, onPlayed }: { b: Block; t: AulaText; onPlayed: () => void }) {
+  const ready = b.resource?.status === "verified";
+  const url = b.resourceId ? `/api/learning/resource/${b.resourceId}` : null;
+  const label = b.activity === "ejercicio" ? t.exercise : b.activity?.startsWith("meditaci") ? t.meditation : null;
+  return (
+    <article className="rounded-xl border border-stone-200 bg-white p-4">
+      <h3 className="mb-2 flex flex-wrap items-center gap-2 font-medium">
+        {b.title}
+        {label && <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-normal text-amber-900">{label}</span>}
+      </h3>
+      {b.kind === "text" ? (
+        b.body ? <p className="whitespace-pre-line text-slate-700">{b.body}</p> : null
+      ) : b.kind === "external_link" ? (
+        b.externalUrl ? <a href={b.externalUrl} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-[var(--portal-accent,#92400e)] underline"><ExternalLink className="h-4 w-4" aria-hidden />{b.body || t.external}</a> : null
+      ) : !ready || !url ? (
+        <p className="text-sm text-slate-500">{t.pending}</p>
+      ) : b.kind === "video" ? (
+        <video controls controlsList="nodownload" playsInline preload="metadata" className="w-full rounded-lg bg-black" src={url} onEnded={onPlayed} />
+      ) : b.kind === "audio" ? (
+        <audio controls controlsList="nodownload" preload="metadata" className="w-full" src={url} onEnded={onPlayed} />
+      ) : (
+        <div className="flex flex-wrap gap-2">
+          <Button asChild variant="outline"><a href={url} target="_blank" rel="noopener noreferrer"><FileText className="mr-1 h-4 w-4" aria-hidden />{t.open}</a></Button>
+          <Button asChild variant="outline"><a href={`${url}?download=1`}>{t.download}</a></Button>
+        </div>
+      )}
+    </article>
+  );
+}
+
+export function AulaLeccion() {
+  const { t } = useAulaLocale();
+  const [, params] = useRoute(`${BASE}/curso/:courseId/leccion/:lessonId`);
+  const courseId = Number(params?.courseId);
+  const lessonId = Number(params?.lessonId);
+  const utils = trpc.useUtils();
+  const lesson = trpc.learning.my.lesson.useQuery({ lessonId }, { enabled: Number.isInteger(lessonId) && lessonId > 0, retry: false });
+  const outline = trpc.learning.my.course.useQuery({ courseId }, { enabled: Number.isInteger(courseId) && courseId > 0, retry: false });
+  const progress = trpc.learning.my.progress.useMutation({ onSuccess: () => { utils.learning.my.course.invalidate(); utils.learning.my.courses.invalidate(); } });
+  const [done, setDone] = useState(false);
+  const flat = useMemo(() => (outline.data?.modules ?? []).filter((m) => m.unlocked).flatMap((m) => m.lessons), [outline.data]);
+  const idx = flat.findIndex((l) => l.id === lessonId);
+  const next = idx >= 0 ? flat[idx + 1] : undefined;
+  const wasDone = idx >= 0 ? flat[idx].completed : false;
+  useEffect(() => {
+    setDone(false);
+    // Abrir la lección solo registra por dónde vas (reanudar); nunca la da por completada
+    if (lesson.data) progress.mutate({ lessonId, lastBlockId: lesson.data.blocks[0]?.id ?? null });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [lessonId, !!lesson.data]);
+  return (
+    <Shell>
+      <Link href={`${BASE}/curso/${courseId}`} className="mb-3 inline-flex items-center gap-1 text-sm text-slate-600"><ChevronLeft className="h-4 w-4" aria-hidden />{t.back}</Link>
+      {lesson.isLoading ? <p className="text-sm text-slate-500">{t.loading}</p> : lesson.isError ? <Notice t={t} error={lesson.error} onRetry={() => lesson.refetch()} /> : (
+        <>
+          <h1 className="mb-4 text-2xl font-bold">{lesson.data!.lesson.title}</h1>
+          <div className="space-y-4">
+            {lesson.data!.blocks.map((b) => (
+              <Media key={b.id} b={b as Block} t={t} onPlayed={() => undefined} />
+            ))}
+          </div>
+          <div className="mt-6 flex flex-wrap items-center gap-3">
+            {wasDone || done ? (
+              <span className="inline-flex items-center gap-1 text-emerald-700"><CheckCircle2 className="h-5 w-5" aria-hidden />{t.done}</span>
+            ) : (
+              <Button disabled={progress.isPending} onClick={() => progress.mutate({ lessonId, completed: true }, { onSuccess: () => setDone(true) })}>
+                {progress.isPending && <Loader2 className="mr-1 h-4 w-4 animate-spin" aria-hidden />}{t.markDone}
+              </Button>
+            )}
+            {next && <Button asChild variant="outline"><Link href={`${BASE}/curso/${courseId}/leccion/${next.id}`}>{next.title}</Link></Button>}
+          </div>
+        </>
+      )}
+    </Shell>
+  );
+}
+
+// ── Activación de la cuenta ─────────────────────────────────────────────────────────────────────────────────────────
+
+export function AulaActivar() {
+  const { t } = useAulaLocale();
+  const look = usePortalLook();
+  const [, navigate] = useLocation();
+  const utils = trpc.useUtils();
+  const [token, setToken] = useState<string | null>(null);
+  const [pw, setPw] = useState("");
+  const [pw2, setPw2] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const setPassword = trpc.public.setPassword.useMutation();
+  useEffect(() => setToken(new URLSearchParams(window.location.search).get("token")), []);
+  async function submit(e: React.FormEvent) {
+    e.preventDefault();
+    setError(null);
+    if (!token) return setError(t.badLink);
+    if (pw.length < 8) return setError(t.pwShort);
+    if (pw !== pw2) return setError(t.pwDiff);
+    setBusy(true);
+    try {
+      const r = await setPassword.mutateAsync({ token, password: pw });
+      let signedIn = false;
+      if (r.email) {
+        const res = await fetch("/api/auth/login", { method: "POST", headers: { "Content-Type": "application/json" }, credentials: "include", body: JSON.stringify({ email: r.email, password: pw }) }).catch(() => null);
+        signedIn = !!res?.ok;
+      }
+      await utils.auth.me.invalidate();
+      navigate(signedIn ? BASE : `/login?returnTo=${encodeURIComponent(BASE)}`);
+    } catch (err) {
+      setError(err instanceof Error && err.message ? err.message : t.activateFail);
+    } finally {
+      setBusy(false);
+    }
+  }
+  return (
+    <Shell>
+      <div className="mx-auto max-w-md rounded-2xl border border-stone-200 bg-white p-6 shadow-sm" style={look.style}>
+        <h1 className="text-xl font-semibold">{t.activateTitle}</h1>
+        <p className="mb-4 text-sm text-slate-600">{t.activateText}</p>
+        <form onSubmit={submit} className="space-y-3">
+          <label className="block text-sm">{t.pw}<Input type="password" autoComplete="new-password" value={pw} onChange={(e) => setPw(e.target.value)} /></label>
+          <label className="block text-sm">{t.pw2}<Input type="password" autoComplete="new-password" value={pw2} onChange={(e) => setPw2(e.target.value)} /></label>
+          {error && <p role="alert" className="text-sm text-red-700">{error}</p>}
+          <Button type="submit" disabled={busy} className="w-full">{busy && <Loader2 className="mr-1 h-4 w-4 animate-spin" aria-hidden />}{t.activate}</Button>
+        </form>
+      </div>
+    </Shell>
+  );
+}
