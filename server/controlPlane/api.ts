@@ -117,6 +117,7 @@ import { TermsBillingService, createTermsBillingRouter, type BillingLink, type N
 import type { TermsBillingStore } from "../commercialTerms/billingStore";
 import { StripeNegotiatedGateway, catalogProductsOf } from "../commercialTerms/stripeGateway";
 import { NegotiatedBillingService, createNegotiatedBillingRouter } from "../commercialTerms/stripeBilling";
+import type { TrialConclusionHook } from "../commercialTerms/trialDefer";
 import { TermsLicences, createTermsLicencesRouter } from "../commercialTerms/licences";
 import { CommercialTermsService, type TermsInput } from "../commercialTerms/service";
 import type { TermsStore } from "../commercialTerms/store";
@@ -239,6 +240,8 @@ import { createSaleTraceRouter } from "../commerce/saleTraceApi";
 import type { SaleTraceService } from "../commerce/saleTrace";
 
 export interface ControlPlaneDeps {
+  /** Gancho que la API rellena al montar las condiciones: la conclusión prueba → pago, usada por las tareas (no depende del worker de Stripe). */
+  trialConclusion?: TrialConclusionHook;
   tokens: ServiceToken[];
   registry: TenantRegistryService;
   reader: TenantRegistryReader;
@@ -2117,6 +2120,7 @@ export function createControlPlaneApp(d: ControlPlaneDeps): Express {
             licences: { afterChange: async (sid, actor) => termsLicences?.afterChange(sid, actor) },
           })
         : null;
+    if (termsAcceptance && d.trialConclusion) d.trialConclusion.concludeDue = (o) => termsAcceptance.concludeDue(o);
     if (termsAcceptance) {
       router.use(createTermsAcceptanceRouter(termsAcceptance));
       publicTermsAcceptance = createTermsPublicAcceptanceRouter(termsAcceptance);

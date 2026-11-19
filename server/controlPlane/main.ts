@@ -43,6 +43,7 @@ import { MysqlMediaStore } from "../web/media";
 import { MysqlPanelEventStore, purgePanelEventKeys } from "../commerce/panelEvents";
 import { MysqlSubscriptionStore } from "../subscriptions/store";
 import { MysqlTermsStore } from "../commercialTerms/store";
+import { agreementDeferral, startAgreementConclusion, type TrialConclusionHook } from "../commercialTerms/trialDefer";
 import { MysqlTermsBillingStore } from "../commercialTerms/billingStore";
 import { MysqlAcceptanceLinkStore } from "../commercialTerms/acceptanceLinks";
 import { describeTermsBilling } from "../commercialTerms/billing";
@@ -417,6 +418,7 @@ async function main() {
   console.log(JSON.stringify({ ctx: "Organization", enabled: organizationReady, ...(organizationReady ? {} : { reason: "registry_migration_0009_missing" }) }));
 
   // Suscripciones en modo sombra: misma BD del CRM; solo si la migración 0006 está aplicada
+  const trialConclusion: TrialConclusionHook = { concludeDue: null };
   let subscriptions: { store: MysqlSubscriptionStore; terms?: MysqlTermsStore; termsBilling?: { enabled: boolean; store?: MysqlTermsBillingStore; customProductId?: string }; termsLicences?: { auto: boolean } } | undefined;
   // Línea de arranque de las condiciones personalizadas: se escribe después de montar Stripe (su cobro depende de él)
   let termsStartup: { enabled: boolean; billingRegistry: boolean } | null = null;
@@ -507,7 +509,13 @@ async function main() {
             },
           }
         : undefined;
-      startTrialScheduler({ scheduler: new TrialScheduler({ store: trials.store, notify, lock: mysqlAdvisoryLock(trialPool), recovery, reminders }), env: process.env });
+      // Una prueba con un acuerdo aceptado (con plan) no se marca vencida ni se avisa de su fin mientras la tarea de condiciones la concluye
+      const subs = subscriptions;
+      const crmForDefer = crm;
+      const deferExpiry = subs?.terms && crmForDefer
+        ? agreementDeferral({ companyOfTenant: async (tenantId) => (await crmForDefer.store.list("companies", { tenantId }, { limit: 1 }))[0] ?? null, subscriptions: subs.store, terms: subs.terms, conclusion: trialConclusion })
+        : undefined;
+      startTrialScheduler({ scheduler: new TrialScheduler({ store: trials.store, notify, lock: mysqlAdvisoryLock(trialPool), recovery, reminders, deferExpiry }), env: process.env });
       // Fin de las licencias = fin de la prueba (ampliaciones): ENCENDIDA salvo CP_TRIAL_LICENCE_SYNC=off; solo alinea fechas
       startTrialLicenceSync({ reconciler: new TrialLicenceReconciler({ store: trials.store, sync: () => t.activation.syncLicences ?? null, lock: mysqlAdvisoryLock(trialPool) }), env: process.env });
     }
@@ -1054,6 +1062,7 @@ async function main() {
   console.log(JSON.stringify({ ctx: "Communications", mounted: !!communications, mail: !!platformMail.mailer, ...(communications ? {} : { reason: !crm || !crmPool ? "crm_not_configured" : !commTables ? "migration_0031_missing" : "crm_origin_missing" }) }));
 
   const app = createControlPlaneApp({
+    trialConclusion,
     tickets,
     billing,
     billingStore,
@@ -1152,6 +1161,8 @@ async function main() {
 
   const port = Number(process.env.CP_PORT ?? 4100);
   console.log(JSON.stringify({ ctx: "Notifications", dispatch: !!notificationsFromEnv(process.env), mail: !!platformMail.mailer, events: !!commercialEvents }));
+  // La conclusión prueba → pago de los acuerdos aceptados no depende del worker de Stripe ni de la tarea de pruebas (CP_TERMS_AUTO_CONCLUDE=0 la apaga)
+  startAgreementConclusion({ conclusion: trialConclusion });
   app.listen(port, () => console.log(JSON.stringify({ ctx: "ControlPlane", event: "listening", port })));
 }
 
