@@ -717,6 +717,23 @@ describe("contratación automática: aceptar → pagar → activar en la fecha p
     });
   });
 
+  it("MÚLTIPLES INSTANCIAS · dos barridos simultáneos concluyen una sola vez: una incidencia, una alerta, ningún «no se pudo terminar» y sin llamadas a Stripe", async () => {
+    await withEnv(false, async (env) => {
+      const alerts = new FailureAlerts({ rules: STRIPE_FAILURE_RULES });
+      configureFailureAlerts(alerts);
+      const q = await quantum(env);
+      await accepted(env, q);
+      setClock(env, q.trialEnd + 60_000);
+      await Promise.all([env.hook.concludeDue!(), env.hook.concludeDue!(), env.hook.concludeDue!()]);
+      expect((await call(env, "GET", `/subscriptions/${q.id}`)).json.subscription).toMatchObject({ status: "active", currentPeriodStart: q.trialEnd });
+      const events = (await call(env, "GET", `/commercial-terms/${q.termsId}`)).json.events as Array<{ kind: string }>;
+      expect(events.filter((e) => e.kind === "trial_ended_unbilled")).toHaveLength(1);
+      expect(events.filter((e) => e.kind === "trial_end_failed")).toHaveLength(0);
+      expect(alerts.count("stripe.negotiated_unbilled_access")).toBe(1);
+      expect(env.gw.calls.length).toBe(0);
+    });
+  });
+
   it("CABLEADO REAL · estado EXACTO de Quantum (acuerdo aceptado antes de la regla, effectiveFrom < trialEnd): la tarea lo concluye en el fin exacto, una incidencia y el acuerdo intacto", async () => {
     await withEnv(false, async (env) => {
       const alerts = new FailureAlerts({ rules: STRIPE_FAILURE_RULES });

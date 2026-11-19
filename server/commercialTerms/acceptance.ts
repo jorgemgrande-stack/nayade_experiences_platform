@@ -710,6 +710,9 @@ export class TermsAcceptanceService {
       try {
         await this.d.subscriptions.endTrial(sub.id, { reason: TRIAL_END_REASON, ...(due ? { at: due.start } : {}) }, sub.version, ACTOR);
       } catch (e) {
+        // Otra instancia (o un operador) ya la terminó a la vez: no es un fallo, no se deja constancia ni se sigue (la ganadora concluye el resto)
+        const now = await this.d.subscriptionStore.get(sub.id).catch(() => null);
+        if (now && now.status !== "trialing") return;
         opsLog("warn", "CommercialTerms", "trial_end_failed", { termsId: t.id, subscriptionId, error: e instanceof Error ? e.name : "error" });
         await this.logTrial(t.id, "trial_end_failed", `No se pudo terminar la prueba gratuita: ${(e instanceof Error ? e.message : "error").slice(0, 300)}. Termínala desde el CRM`, { subscriptionId }, "failed");
         return;
