@@ -9,6 +9,7 @@
 import { createContext, Fragment, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { Link } from "wouter";
 import { scrollToHash } from "@/lib/scrollToHash";
+import { hashQuery } from "@shared/studio/formPrefill";
 import { useLegalHref } from "@/hooks/useLegalHref";
 import { offerBadgeText, siteUiText } from "@shared/siteUiText";
 import { toast } from "sonner";
@@ -96,6 +97,9 @@ function SmartLink({ href, preview, className, children }: { href: string; previ
         onClick={(e) => {
           e.preventDefault();
           if (window.location.hash !== href) history.pushState(null, "", href);
+          // «#solicitud?experiencia=X»: los formularios de la página reciben la elección antes de llegar a ellos
+          const q = hashQuery(href);
+          if (q) window.dispatchEvent(new CustomEvent("studio:prefill", { detail: q }));
           scrollToHash(href);
         }}
       >
@@ -690,35 +694,70 @@ function SlideshowBlock({ b, first, preview }: { b: BlockOf<"slideshow">; first:
 
 const CARD_COLS: Record<string, string> = { "2": "sm:grid-cols-2", "3": "sm:grid-cols-2 lg:grid-cols-3", "4": "sm:grid-cols-2 lg:grid-cols-4" };
 
+const CARD_FOCUS_Y: Record<string, string> = { top: "0%", upper: "25%", center: "50%", lower: "75%", bottom: "100%" };
+
 function CardsBlock({ b, first, preview }: { b: BlockOf<"cards">; first: boolean; preview?: boolean }) {
   const ed = useContext(StudioEditContext);
   const d = b.data;
-  const cards = d.items.map((c, i) => (
-    <article key={i} className="flex h-full flex-col overflow-hidden rounded-2xl border border-border bg-card text-card-foreground shadow-sm transition hover:shadow-md">
-      <ImageSlot k={`items.${i}.imageUrl`} filled={!!c.imageUrl}>
-        {c.imageUrl ? (
-          <img src={c.imageUrl} alt={c.imageAlt} className="aspect-[4/3] w-full object-cover" loading="lazy" decoding="async" />
-        ) : (
-          <div className="flex aspect-[4/3] w-full items-center justify-center bg-gradient-to-br from-primary/15 to-primary/5 text-primary/60" aria-hidden>
-            {ed && !ed.readOnly && <ImageIcon className="h-7 w-7" />}
+  const cards = d.items.map((c, i) => {
+    const second = itemButton(ed, b.id, c.button2Label ?? "", c.button2Url ?? "");
+    const hasPrice = !!c.price?.trim();
+    return (
+      <article key={i} className="flex h-full flex-col overflow-hidden rounded-2xl border border-border bg-card text-card-foreground shadow-sm transition hover:shadow-md">
+        <ImageSlot k={`items.${i}.imageUrl`} filled={!!c.imageUrl}>
+          <div className="relative">
+            {c.imageUrl ? (
+              <img
+                src={c.imageUrl}
+                alt={c.imageAlt}
+                className="aspect-[4/3] w-full object-cover"
+                style={{ objectPosition: `50% ${CARD_FOCUS_Y[c.imageFocus ?? "center"] ?? "50%"}` }}
+                loading="lazy"
+                decoding="async"
+              />
+            ) : (
+              <div className="flex aspect-[4/3] w-full items-center justify-center bg-gradient-to-br from-primary/15 to-primary/5 text-primary/60" aria-hidden>
+                {ed && !ed.readOnly && <ImageIcon className="h-7 w-7" />}
+              </div>
+            )}
+            {(c.badge || (ed && ed.selectedId === b.id)) && (
+              <Txt k={`items.${i}.badge`} value={c.badge ?? ""} as="span" className="absolute left-3 top-3 rounded-full bg-background/90 px-3 py-1 text-xs font-semibold text-foreground shadow-sm" placeholder="Etiqueta" />
+            )}
           </div>
-        )}
-      </ImageSlot>
-      <div className="flex flex-1 flex-col gap-2 p-5">
-        <Txt k={`items.${i}.title`} value={c.title} as="h3" className="font-heading text-lg font-semibold text-foreground" placeholder="Título de la tarjeta" />
-        <Txt k={`items.${i}.text`} value={c.text} as="p" multiline className="flex-1 whitespace-pre-line text-sm leading-relaxed text-muted-foreground" placeholder="Texto (opcional)" />
-        {itemButton(ed, b.id, c.buttonLabel, c.buttonUrl) && (
-          <div className="pt-2">
-            <Button asChild variant="outline" size="sm">
-              <SmartLink href={c.buttonUrl || "#"} preview={preview}>
-                <Txt k={`items.${i}.buttonLabel`} value={c.buttonLabel} placeholder="Botón (opcional)" />
-              </SmartLink>
-            </Button>
-          </div>
-        )}
-      </div>
-    </article>
-  ));
+        </ImageSlot>
+        <div className="flex flex-1 flex-col gap-2 p-5">
+          <Txt k={`items.${i}.title`} value={c.title} as="h3" className="font-heading text-lg font-semibold text-foreground" placeholder="Título de la tarjeta" />
+          <Txt k={`items.${i}.meta`} value={c.meta ?? ""} as="p" multiline className="whitespace-pre-line text-sm font-medium text-foreground/80" placeholder="Datos clave (opcional)" />
+          <Txt k={`items.${i}.text`} value={c.text} as="p" multiline className="flex-1 whitespace-pre-line text-sm leading-relaxed text-muted-foreground" placeholder="Texto (opcional)" />
+          {(hasPrice || (ed && ed.selectedId === b.id)) && (
+            <div className="mt-1 border-t border-border pt-3">
+              <Txt k={`items.${i}.priceLabel`} value={c.priceLabel ?? ""} as="p" className="text-xs uppercase tracking-wide text-muted-foreground" placeholder="Antes del precio" />
+              <Txt k={`items.${i}.price`} value={c.price ?? ""} as="p" className="font-heading text-2xl font-semibold text-foreground" placeholder="Precio" />
+              <Txt k={`items.${i}.priceNote`} value={c.priceNote ?? ""} as="p" className="text-xs text-muted-foreground" placeholder="Aclaración del precio" />
+            </div>
+          )}
+          {(itemButton(ed, b.id, c.buttonLabel, c.buttonUrl) || second) && (
+            <div className="mt-auto flex flex-wrap gap-2 pt-3">
+              {itemButton(ed, b.id, c.buttonLabel, c.buttonUrl) && (
+                <Button asChild variant={second ? "default" : "outline"} size="sm">
+                  <SmartLink href={c.buttonUrl || "#"} preview={preview}>
+                    <Txt k={`items.${i}.buttonLabel`} value={c.buttonLabel} placeholder="Botón (opcional)" />
+                  </SmartLink>
+                </Button>
+              )}
+              {second && (
+                <Button asChild variant="outline" size="sm">
+                  <SmartLink href={c.button2Url || "#"} preview={preview}>
+                    <Txt k={`items.${i}.button2Label`} value={c.button2Label ?? ""} placeholder="Segundo botón (opcional)" />
+                  </SmartLink>
+                </Button>
+              )}
+            </div>
+          )}
+        </div>
+      </article>
+    );
+  });
   const per = Number(d.columns) || 3;
   return (
     <section className="container py-10 md:py-14">

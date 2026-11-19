@@ -18,10 +18,13 @@ function headerOffset(): number {
 /** Id del ancla (sin «#», decodificado) o null. */
 export function hashTarget(hash: string): string | null {
   if (!hash || hash.length < 2 || !hash.startsWith("#")) return null;
+  // «#solicitud?experiencia=X»: el ancla es lo anterior a «?» (lo demás rellena el formulario, ver shared/studio/formPrefill.ts)
+  const raw = hash.slice(1).split("?")[0];
+  if (!raw) return null;
   try {
-    return decodeURIComponent(hash.slice(1));
+    return decodeURIComponent(raw);
   } catch {
-    return hash.slice(1);
+    return raw;
   }
 }
 
