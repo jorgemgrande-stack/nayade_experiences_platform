@@ -19,6 +19,7 @@ Connect dedicada**, distinta de la que cobra las suscripciones.
 | Reserva de la cuenta, firmada Core → plano de control | `POST /cp/v1/internal/payment-accounts/claim` |
 | Pago desde el enlace público del presupuesto («Aceptar y pagar» con Stripe) | `crm.quotes.getByToken` / `payWithToken` (`provider: "stripe"`) |
 | Excepción de la pasarela Caddy (solo esa ruta, solo POST) | PR #897 (aparte, extraordinario) |
+| Compra directa en la tienda web | PR apilado sobre este (§9) |
 
 La empresa **no configura webhooks**: el destino es central y lo gestiona Big Elephant. En pantalla ve estado de verificación,
 cuenta vinculada (recortada), si puede cobrar y recibir pagos, requisitos pendientes y el **último aviso válido** de Stripe.
@@ -160,9 +161,29 @@ automatizar). Pasos y qué anotar al ejecutarlo:
 
 Resultado: _pendiente de ejecutar_ (se documentará aquí).
 
-## 9. Compra directa en la tienda web
+## 9. Compra directa en la tienda web (PR aparte, apilado sobre este)
 
-Va en un PR aparte (reutiliza esta conexión por empresa y conserva Redsys). Ver su descripción.
+Reutiliza la conexión por empresa de este PR y **conserva Redsys**. Qué cambia:
+
+- **Checkout** (`/checkout`): si la empresa tiene Stripe verificado y activado (`public.getTheme › storefront.payments`), el comprador
+  elige «Tarjeta (pasarela del banco)» o «Tarjeta (Stripe)»; con solo Stripe, Stripe; sin Stripe, exactamente lo de siempre.
+- **Pedido pendiente hasta Stripe:** `reservations.cartCheckout` (`provider: "stripe"`) crea las reservas en `pending_payment`
+  (igual que con Redsys), calcula el importe en el servidor (descuentos incluidos) y abre la sesión en la cuenta de la
+  empresa (caduca a los 31 min). `/reserva/ok?order=…` solo consulta el estado (no confirma nada).
+- **Efectos una sola vez:** el evento firmado llama a `applyPaymentResult`, el tratamiento posterior al pago que antes
+  estaba en línea en el aviso de Redsys y que ahora comparten los dos (movido sin cambios; solo el método de cobro, el
+  canal de origen y el actor del registro dependen del proveedor). La puerta es la actualización condicional de las
+  reservas `pending_payment → paid`, además de la idempotencia por evento y por sesión de este PR.
+- Migración **0081** (aditiva): `payment_checkouts.kind`, `merchant_order` y `quote_id` opcional.
+- Pago fallido (`async_payment_failed`): el pedido pasa a «fallido» y no se factura; sesión caducada: la limpieza de pedidos
+  abandonados de siempre.
+
+Comprobado (MySQL real, dos empresas): pedido pendiente tras el carrito (sin factura, sin cliente, sin correo), vuelta del
+navegador = pendiente, evento firmado = reservas pagadas + **una** factura (método «otro») + cliente + correo; repetido,
+otro id, otro tipo y 5 entregas simultáneas = una sola vez; otra cuenta, otro importe, otro modo y sin firma = sin efecto;
+Redsys sigue creando y cerrando pedidos (incluida su repetición) con Stripe activado. Defectos hallados y corregidos al
+probar: la factura única del pedido llevaba «tarjeta_redsys» fijo y el código de respuesta de fallo no cabía en la columna
+(10 caracteres).
 
 ## 10. Límites conocidos
 

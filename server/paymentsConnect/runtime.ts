@@ -10,17 +10,24 @@ import { warmEmailVocabulary } from "../emailVocabulary";
 import type { TenantRegistryReader } from "../_core/tenantRegistry/store";
 import { accessPolicy } from "../_core/tenantRegistry/lifecycle";
 import { connectConfigState, type ConnectConfig } from "./config";
-import { stripeConnectGateway } from "./gateway";
+import { stripeConnectGateway, type ConnectGateway } from "./gateway";
 import { realQuotePort } from "./quotePort";
+import { realShopPort } from "./shopPort";
 import { createConnectWebhookRouter } from "./webhookRoute";
 import { mysqlPaymentStore } from "./store";
 import { httpAccountIndexClient, type AccountIndexReader } from "./accountIndex";
 import type { PaymentsDeps } from "./service";
 
+/** Solo para pruebas: sustituye la pasarela real de Stripe (nunca se llama a Stripe desde las pruebas). */
+let gatewayFactory: (config: ConnectConfig) => ConnectGateway = stripeConnectGateway;
+export function setConnectGatewayFactoryForTests(f: ((config: ConnectConfig) => ConnectGateway) | null): void {
+  gatewayFactory = f ?? stripeConnectGateway;
+}
+
 export function realPaymentsDeps(tenantId: string, config: ConnectConfig): PaymentsDeps {
   // La reserva global de la cuenta la hace el plano de control (el Core lee el registro con un usuario de solo lectura)
   const index = httpAccountIndexClient({ url: process.env.PAYMENT_ACCOUNT_CLAIM_URL || undefined, secret: process.env.SUPPORT_JWT_SECRET });
-  return { store: mysqlPaymentStore(), gateway: stripeConnectGateway(config), config, quotes: realQuotePort(), index, tenantId };
+  return { store: mysqlPaymentStore(), gateway: gatewayFactory(config), config, quotes: realQuotePort(), shop: realShopPort(), index, tenantId };
 }
 
 /** Webhook central de cuentas conectadas: empresa servible según el registro, ejecución en su contexto y con sus ajustes. */

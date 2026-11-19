@@ -121,6 +121,38 @@ redsysRouter.post("/api/redsys/notification", express.urlencoded({ extended: tru
 
     // -- Procesamiento en background (res ya enviado) --------------------------
 
+    // El tratamiento del resultado del pago (reservas, factura, stock, correos…) vive en applyPaymentResult, que comparte el
+    // aviso de Stripe del pago directo en la tienda. Para Redsys se comporta exactamente igual que antes.
+    await applyPaymentResult({ ...result, provider: "redsys" });
+    // res.send("OK") ya fue enviado antes del downstream
+  } catch (error) {
+    console.error("[Redsys IPN] Error procesando notificación:", error);
+    // Solo enviar KO si aún no se ha respondido (affectedRows === 0 ya retornó OK)
+    if (!res.headersSent) return res.status(500).send("KO");
+  }
+});
+
+/**
+ * Resultado de un pago (Redsys o Stripe) ya VALIDADO: la autenticidad la comprueba quien llama (firma HMAC de Redsys o
+ * evento firmado de Stripe). Aplica todos sus efectos sobre las reservas del pedido: estado, inventario, puntos, cliente
+ * del CRM, factura, booking operativo y contabilidad, REAV, correos y avisos. La puerta de «una sola vez» es la
+ * actualización condicional de la reserva de `pending_payment` a `paid` (`updateReservationPayment`): una repetición no
+ * llega más allá. El cuerpo es el que tenía la ruta de Redsys; solo el método de cobro, el canal de origen y el actor
+ * del registro de actividad dependen del proveedor.
+ */
+export interface PaymentResult {
+  merchantOrder: string;
+  isAuthorized: boolean;
+  /** Céntimos cobrados. */
+  amount: number;
+  responseCode: string;
+  rawData: unknown;
+  provider?: "redsys" | "stripe";
+}
+
+export async function applyPaymentResult(result: PaymentResult): Promise<void> {
+    const isStripe = result.provider === "stripe";
+    const payMethod: "tarjeta_redsys" | "otro" = isStripe ? "otro" : "tarjeta_redsys";
     // Verificar que la reserva existe — fetch ALL para manejar carritos multi-artículo
     const allCartReservations = await getAllReservationsByMerchantOrder(result.merchantOrder);
     if (allCartReservations.length === 0) {
@@ -416,7 +448,7 @@ redsysRouter.post("/api/redsys/notification", express.urlencoded({ extended: tru
               taxBreakdown: bdRedsys.length > 0 ? bdRedsys : undefined,
               total: String(total),
               status: "cobrada",
-              paymentMethod: "tarjeta_redsys",
+              paymentMethod: payMethod,
               issuedAt: now,
               createdAt: now,
               updatedAt: now,
@@ -535,12 +567,12 @@ redsysRouter.post("/api/redsys/notification", express.urlencoded({ extended: tru
             customerEmail: resv.customerEmail ?? "",
             customerPhone: resv.customerPhone,
             totalAmount: amountEuros,
-            paymentMethod: "tarjeta_redsys",
+            paymentMethod: payMethod,
             saleChannel: "online",
             reservationRef: resv.merchantOrder,
             description: `Pago con tarjeta — ${resv.merchantOrder} — ${resv.productName}`,
             quoteId: resv.quoteId ?? null,
-            sourceChannel: "redsys",
+            sourceChannel: isStripe ? "otro" : "redsys",
           });
           console.log(`[Redsys IPN] Booking operativo + transacción creados para reserva ${resv.id} (${resv.productName})`);
         } catch (bookingErr) {
@@ -640,7 +672,7 @@ redsysRouter.post("/api/redsys/notification", express.urlencoded({ extended: tru
               taxAmount: taxAmount.toFixed(2),
               total: totalEur.toFixed(2),
               status: "cobrada",
-              paymentMethod: "tarjeta_redsys",
+              paymentMethod: payMethod,
               issuedAt: now,
               createdAt: now,
               updatedAt: now,
@@ -659,7 +691,7 @@ redsysRouter.post("/api/redsys/notification", express.urlencoded({ extended: tru
       }
       if (shopOrder) {
         try {
-          const fin = await finalizePaidShopOrder(result.merchantOrder);
+          const fin = await finalizePaidShopOrder(result.merchantOrder, payMethod);
           console.log(`[Redsys IPN] Pedido ${result.merchantOrder}: cliente ${fin.clientId ?? "-"}, factura ${fin.invoiceNumber ?? "-"}${fin.created ? " (nueva)" : ""}`);
         } catch (shopErr) {
           console.error(`[Redsys IPN] Error al cerrar el pedido ${result.merchantOrder}:`, shopErr);
@@ -783,9 +815,9 @@ redsysRouter.post("/api/redsys/notification", express.urlencoded({ extended: tru
       await logActivity(
         "reservation",
         updatedReservation.id,
-        result.isAuthorized ? "redsys_payment_confirmed" : "redsys_payment_failed",
+        result.isAuthorized ? (isStripe ? "stripe_payment_confirmed" : "redsys_payment_confirmed") : (isStripe ? "stripe_payment_failed" : "redsys_payment_failed"),
         null,
-        "Sistema (Redsys)",
+        isStripe ? "Sistema (Stripe)" : "Sistema (Redsys)",
         {
           merchantOrder: result.merchantOrder,
           amount: (updatedReservation.amountPaid ?? updatedReservation.amountTotal) / 100,
@@ -795,13 +827,7 @@ redsysRouter.post("/api/redsys/notification", express.urlencoded({ extended: tru
         }
       ).catch(() => {});
     }
-    // res.send("OK") ya fue enviado antes del downstream
-  } catch (error) {
-    console.error("[Redsys IPN] Error procesando notificación:", error);
-    // Solo enviar KO si aún no se ha respondido (affectedRows === 0 ya retornó OK)
-    if (!res.headersSent) return res.status(500).send("KO");
-  }
-});
+}
 
 /**
  * POST /api/redsys/restaurant-notification
