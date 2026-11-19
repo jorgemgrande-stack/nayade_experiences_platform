@@ -30,6 +30,7 @@ import { MysqlCostModelStore, activeCostModel } from "../_core/erm/costModelStor
 import { tenantResources } from "../_core/erm/overview";
 import { keyringFromEnv } from "../_core/tenantRegistry/crypto";
 import { MysqlTenantRegistryStore } from "../_core/tenantRegistry/mysqlStore";
+import { MysqlAccountIndex } from "../paymentsConnect/accountIndex";
 import { TenantRegistryService } from "../_core/tenantRegistry/service";
 import { platformDomainsFromEnv } from "../_core/tenantRegistry/platformDomains";
 import { ProvisioningService } from "../_core/provisioning/service";
@@ -408,6 +409,8 @@ async function main() {
   const costRatesReady = await pool.query("SELECT 1 FROM erm_cost_model LIMIT 0").then(() => true, () => false);
   const costModelStore = costRatesReady ? new MysqlCostModelStore(pool) : undefined;
   // Excepciones comerciales de cuota con caducidad (registro 0016): sin la migración, solo lo contractual
+  // Índice global de cuentas de cobro (registro 0018): sin la tabla, la reserva responde 501 y el Core falla cerrado
+  const paymentAccountsReady = await pool.query("SELECT 1 FROM tenant_payment_accounts LIMIT 0").then(() => true, () => false);
   const quotaExceptionsReady = await pool.query("SELECT 1 FROM tenant_quota_exceptions LIMIT 0").then(() => true, () => false);
   const quotaExceptions = quotaExceptionsReady ? new MysqlQuotaExceptionStore(pool) : undefined;
   console.log(JSON.stringify({ ctx: "QuotaExceptions", enabled: quotaExceptionsReady, ...(quotaExceptionsReady ? {} : { reason: "registry_migration_0016_missing" }) }));
@@ -1087,6 +1090,7 @@ async function main() {
     domainChecksEveryMs: (process.env.CP_DOMAIN_CHECKS_SECONDS === undefined ? 300 : Number(process.env.CP_DOMAIN_CHECKS_SECONDS) || 0) * 1000,
     platformDomain,
     support: new SupportAdmin(pool),
+    paymentAccounts: paymentAccountsReady ? new MysqlAccountIndex(pool) : undefined,
     allowedOrigins: (process.env.CP_ALLOWED_ORIGINS ?? "").split(",").map((x) => x.trim()).filter(Boolean),
     supportSecret: process.env.SUPPORT_JWT_SECRET && process.env.SUPPORT_JWT_SECRET.length >= 32 ? process.env.SUPPORT_JWT_SECRET : undefined,
     // Accesos de las empresas: el Core por la red privada (el mismo destino que su pasarela), con el secreto compartido

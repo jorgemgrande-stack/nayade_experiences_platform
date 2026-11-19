@@ -27,6 +27,26 @@ Estado: **diseño aprobado para implementar; ningún cobro activo.** Primer caso
 
 **Inscripción y planificación.** No cambian: la inscripción ya cuelga del presupuesto y lleva sus sesiones (#865). El cobro online solo sustituye al «cobro manual con motivo» como prueba de pago.
 
+## Implementación de la entrega 1 (cambios respecto al diseño)
+
+Procedimiento y estado: [docs/runbooks/COBROS_STRIPE_EMPRESA.md](../runbooks/COBROS_STRIPE_EMPRESA.md).
+
+- **Dónde vive el registro.** La vinculación (estado, interruptor, eventos y sesiones) en la **BD de cada empresa**
+  (migración 0080: `payment_accounts`, `payment_events`, `payment_checkouts`), porque es el Core quien aplica el cobro al
+  presupuesto. Una fila por modo (`test` = Prueba, `live` = Real). Además, un **índice global** en el registro (0018,
+  `tenant_payment_accounts`, clave primaria = `acct_…`) que impone «una cuenta, una empresa» aunque las bases estén
+  separadas; lo escribe solo el plano de control (el Core lee el registro con un usuario de solo lectura y pide la reserva
+  con una petición firmada) y lo lee el Core para resolver el webhook.
+- **Webhook.** Un único destino central en el Core (`POST /api/stripe/connect/webhook`), montado antes de resolver la
+  empresa. La empresa sale del índice global por `event.account` (el metadato `tenant_id` solo se contrasta); además la
+  empresa solo aplica el evento si `event.account` es exactamente la cuenta vinculada en su base. Idempotencia por
+  `event.id` y por sesión (`pending → paid` atómico). Un evento que falla al aplicarse queda `failed` y es reintentable.
+- **Cuenta.** Se crea con `controller` (panel completo de Stripe para la empresa, comisiones y pérdidas a su cargo), no
+  con una clave por empresa: la plataforma usa su clave Connect (`CONNECT_STRIPE_*`, separada de `CP_STRIPE_*`) y la
+  cabecera `Stripe-Account`. Los cobros reales (`live`) se rechazan al arrancar.
+- **Cobro.** Se reutiliza `crm.quotes.confirmPayment` para facturar y cerrar el presupuesto (misma lógica que el
+  cobro manual). Pago único; los planes de cuotas quedan fuera de esta entrega.
+
 ## Qué hace falta de Indira (y no se puede adelantar)
 
 - Su cuenta Stripe (alta en Stripe con sus datos fiscales y bancarios; no los vemos ni los pedimos).

@@ -21,6 +21,7 @@ import { MysqlSupportReader } from "../support/grants";
 import { MysqlOrganizationStore } from "../../organization/service";
 import { invalidateTenantIdentity, registryIdentitySource, type TenantIdentitySource } from "../tenantIdentity";
 import { MysqlTenantRegistryStore } from "./mysqlStore";
+import { MysqlAccountIndex } from "../../paymentsConnect/accountIndex";
 import { TenantResolver } from "./resolver";
 import { TenantRegistryService } from "./service";
 import type { TenantRegistryReader } from "./store";
@@ -44,6 +45,8 @@ export interface TenantRuntime {
   identity: TenantIdentitySource;
   /** Concesiones de soporte delegado (solo lectura). */
   support: MysqlSupportReader;
+  /** Índice global de cuentas de cobro por empresa (registro 0018, solo lectura): resuelve el webhook de cuentas conectadas. */
+  paymentAccounts: MysqlAccountIndex;
   /** Valor de `registry_meta` (solo lectura); null si no existe. */
   meta(key: string): Promise<string | null>;
   /** Comprueba que la BD del registro responde (salud); rechaza si no. */
@@ -116,6 +119,7 @@ export function createTenantRuntime(
     quotas: new MysqlQuotaReader(pool),
     quotaExceptions: new MysqlQuotaExceptionReader(pool),
     support: new MysqlSupportReader(pool),
+    paymentAccounts: new MysqlAccountIndex(pool),
     identity: registryIdentitySource(store, new MysqlOrganizationStore(pool)),
     async meta(key: string) {
       const [rows] = await pool.query("SELECT v FROM registry_meta WHERE k = ?", [key]);
