@@ -202,6 +202,7 @@ import { whatsappButtonRouter } from "./routers/whatsappButton";
 import { copilotRouter } from "./copilot/router";
 import { automationsRouter } from "./automations/router";
 import { postmarkTenantRouter } from "./routers/postmarkTenant";
+import { cobrosRouter } from "./routers/cobros";
 import { installSectorLoyalty } from "./loyaltySectors";
 import { getSdkRuntime } from "./sdk";
 import { crmRouter } from "./routers/crm";
@@ -3107,6 +3108,7 @@ export const appRouter = router({
   copilot: copilotRouter,
   automations: automationsRouter,
   postmarkTenant: postmarkTenantRouter,
+  cobros: cobrosRouter,
   crm: crmRouter,
   commercialFollowup: commercialFollowupRouter,
   crmTags: crmTagsRouter,

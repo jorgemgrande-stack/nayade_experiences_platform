@@ -137,10 +137,13 @@ export default function QuoteAcceptance() {
     form.submit();
   }, [redsysForm]);
 
+  const stripeReturn = typeof window !== "undefined" ? new URLSearchParams(window.location.search).get("stripe") : null;
+
   // -- Load quote --
   const { data: quote, isLoading, error } = trpc.crm.quotes.getByToken.useQuery(
     { token: token ?? "" },
-    { enabled: !!token, retry: false }
+    // Vuelta desde Stripe: el pago NO se da por hecho hasta que Stripe lo confirma al servidor; mientras tanto se relee
+    { enabled: !!token, retry: false, refetchInterval: (q) => (stripeReturn === "volver" && !q.state.data?.isPaid ? 4000 : false) }
   );
 
   // -- Mutations --
@@ -154,6 +157,11 @@ export default function QuoteAcceptance() {
 
   const payMutation = trpc.crm.quotes.payWithToken.useMutation({
     onSuccess: (data) => {
+      // Cuenta Stripe de la empresa: se sale a la página de pago de Stripe
+      if ("stripeUrl" in data && data.stripeUrl) {
+        window.location.href = data.stripeUrl;
+        return;
+      }
       // Datos del formulario de la pasarela: el efecto de arriba lo envía
       setRedsysForm(data.redsysForm as { url: string; Ds_MerchantParameters: string; Ds_Signature: string; Ds_SignatureVersion: string });
     },
@@ -493,6 +501,18 @@ export default function QuoteAcceptance() {
           </div>
         )}
 
+        {stripeReturn === "volver" && !quote.isPaid && (
+          <div role="status" className="border border-border rounded-2xl bg-card p-4 text-sm">
+            Hemos recibido tu vuelta de la página de pago. Tu pago queda <strong>pendiente de confirmación</strong> hasta que el banco lo
+            confirme; esta página se actualizará sola en cuanto llegue.
+          </div>
+        )}
+        {stripeReturn === "cancelado" && !quote.isPaid && (
+          <div role="status" className="border border-border rounded-2xl bg-card p-4 text-sm">
+            Has cancelado el pago. No se ha cobrado nada; puedes volver a intentarlo cuando quieras.
+          </div>
+        )}
+
         {/* Aceptar (pagar) o rechazar */}
         {canAct && (
           <div className="bg-card border border-border rounded-2xl shadow-sm p-4 sm:p-6 space-y-4">
@@ -503,7 +523,7 @@ export default function QuoteAcceptance() {
 
             <Button
               className="w-full h-auto min-h-12 whitespace-normal font-bold text-base py-3 rounded-xl"
-              onClick={() => payMutation.mutate({ token: token!, origin: window.location.origin })}
+              onClick={() => payMutation.mutate({ token: token!, origin: window.location.origin, provider: quote.stripeAvailable ? "stripe" : "redsys" })}
               disabled={payMutation.isPending}
             >
               {payMutation.isPending ? (

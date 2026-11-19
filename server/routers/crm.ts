@@ -104,6 +104,7 @@ async function sendEmail({ to, subject, html, category }: { to: string; subject:
 
 // logActivity ahora viene de db.ts (centralizado)
 import { logActivity } from "../db";
+import { stripeAvailableForPublic, stripeCheckoutForToken } from "../paymentsConnect/publicApi";
 import { legacyDb, legacyPool } from "../_core/legacyDb";
 import { integrationEnv } from "../_core/tenantConfig";
 import { hasTagCondition } from "../crmTagsDb";
@@ -3537,6 +3538,8 @@ export const crmRouter = router({
           invoicePdfUrl: quote.invoicePdfUrl,
           invoiceNumber: quote.invoiceNumber,
           installmentPlan,
+          // Cobro con la cuenta Stripe de la empresa: solo si está verificada y activada, y el presupuesto es de pago único
+          stripeAvailable: !isPaid && !installmentPlan && (await stripeAvailableForPublic()),
         };
       }),
 
@@ -3578,6 +3581,8 @@ export const crmRouter = router({
       .input(z.object({
         token: z.string().min(10),
         origin: z.string().url(),
+        // «stripe»: pago con la cuenta Stripe de la empresa (devuelve la dirección de pago); por defecto, la pasarela de siempre
+        provider: z.enum(["redsys", "stripe"]).default("redsys"),
         // El cliente puede ajustar datos de contacto antes de pagar
         customerName: z.string().min(2).optional(),
         customerEmail: z.string().email().optional(),
@@ -3599,6 +3604,13 @@ export const crmRouter = router({
 
         const [lead] = await db.select().from(leads).where(eq(leads.id, quote.leadId)).limit(1);
         if (!lead) throw new TRPCError({ code: "NOT_FOUND", message: "Cliente no encontrado" });
+
+        // Cuenta Stripe de la empresa: la sesión se crea con el importe del presupuesto; el pago solo se da por hecho
+        // cuando llega el evento firmado de Stripe (la vuelta del navegador no cuenta)
+        if (input.provider === "stripe") {
+          const s = await stripeCheckoutForToken(input.token);
+          return { stripeUrl: s.url, redsysForm: null as null };
+        }
 
         // Garantizar viewedAt: si el cliente llega a iniciar el pago, definitivamente vio el presupuesto
         if (!quote.viewedAt) {

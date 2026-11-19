@@ -27,6 +27,24 @@ Estado: **diseño aprobado para implementar; ningún cobro activo.** Primer caso
 
 **Inscripción y planificación.** No cambian: la inscripción ya cuelga del presupuesto y lleva sus sesiones (#865). El cobro online solo sustituye al «cobro manual con motivo» como prueba de pago.
 
+## Implementación de la entrega 1 (cambios respecto al diseño)
+
+Procedimiento y estado: [docs/runbooks/COBROS_STRIPE_EMPRESA.md](../runbooks/COBROS_STRIPE_EMPRESA.md).
+
+- **Dónde vive el registro.** En la **BD de cada empresa** (migración 0080: `payment_accounts`, `payment_events`,
+  `payment_checkouts`), no en el plano de control: el Core lee el registro con un usuario de SOLO LECTURA y no puede
+  escribirlo, y es el Core quien aplica el cobro al presupuesto. Una fila por modo (`test` = Prueba, `live` = Real).
+- **Webhook.** Un único destino central en el Core (`POST /api/stripe/connect/webhook`), montado antes de resolver la
+  empresa. La empresa sale del metadato `tenant_id` que pusimos nosotros (cuenta y sesión) **y solo se aplica si
+  `event.account` es exactamente la cuenta que esa empresa tiene vinculada**: el metadato no es una autoridad, solo
+  dónde buscar. Idempotencia por `event.id` y por sesión (`pending → paid` atómico). Un evento que falla al aplicarse
+  queda `failed` y es reintentable.
+- **Cuenta.** Se crea con `controller` (panel completo de Stripe para la empresa, comisiones y pérdidas a su cargo), no
+  con una clave por empresa: la plataforma usa su clave Connect (`CONNECT_STRIPE_*`, separada de `CP_STRIPE_*`) y la
+  cabecera `Stripe-Account`. Los cobros reales (`live`) se rechazan al arrancar.
+- **Cobro.** Se reutiliza `crm.quotes.confirmPayment` para facturar y cerrar el presupuesto (misma lógica que el
+  cobro manual). Pago único; los planes de cuotas quedan fuera de esta entrega.
+
 ## Qué hace falta de Indira (y no se puede adelantar)
 
 - Su cuenta Stripe (alta en Stripe con sus datos fiscales y bancarios; no los vemos ni los pedimos).
