@@ -31,14 +31,16 @@ Estado: **diseño aprobado para implementar; ningún cobro activo.** Primer caso
 
 Procedimiento y estado: [docs/runbooks/COBROS_STRIPE_EMPRESA.md](../runbooks/COBROS_STRIPE_EMPRESA.md).
 
-- **Dónde vive el registro.** En la **BD de cada empresa** (migración 0080: `payment_accounts`, `payment_events`,
-  `payment_checkouts`), no en el plano de control: el Core lee el registro con un usuario de SOLO LECTURA y no puede
-  escribirlo, y es el Core quien aplica el cobro al presupuesto. Una fila por modo (`test` = Prueba, `live` = Real).
+- **Dónde vive el registro.** La vinculación (estado, interruptor, eventos y sesiones) en la **BD de cada empresa**
+  (migración 0080: `payment_accounts`, `payment_events`, `payment_checkouts`), porque es el Core quien aplica el cobro al
+  presupuesto. Una fila por modo (`test` = Prueba, `live` = Real). Además, un **índice global** en el registro (0018,
+  `tenant_payment_accounts`, clave primaria = `acct_…`) que impone «una cuenta, una empresa» aunque las bases estén
+  separadas; lo escribe solo el plano de control (el Core lee el registro con un usuario de solo lectura y pide la reserva
+  con una petición firmada) y lo lee el Core para resolver el webhook.
 - **Webhook.** Un único destino central en el Core (`POST /api/stripe/connect/webhook`), montado antes de resolver la
-  empresa. La empresa sale del metadato `tenant_id` que pusimos nosotros (cuenta y sesión) **y solo se aplica si
-  `event.account` es exactamente la cuenta que esa empresa tiene vinculada**: el metadato no es una autoridad, solo
-  dónde buscar. Idempotencia por `event.id` y por sesión (`pending → paid` atómico). Un evento que falla al aplicarse
-  queda `failed` y es reintentable.
+  empresa. La empresa sale del índice global por `event.account` (el metadato `tenant_id` solo se contrasta); además la
+  empresa solo aplica el evento si `event.account` es exactamente la cuenta vinculada en su base. Idempotencia por
+  `event.id` y por sesión (`pending → paid` atómico). Un evento que falla al aplicarse queda `failed` y es reintentable.
 - **Cuenta.** Se crea con `controller` (panel completo de Stripe para la empresa, comisiones y pérdidas a su cargo), no
   con una clave por empresa: la plataforma usa su clave Connect (`CONNECT_STRIPE_*`, separada de `CP_STRIPE_*`) y la
   cabecera `Stripe-Account`. Los cobros reales (`live`) se rechazan al arrancar.
