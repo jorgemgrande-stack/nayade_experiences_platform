@@ -185,6 +185,24 @@ Redsys sigue creando y cerrando pedidos (incluida su repetición) con Stripe act
 probar: la factura única del pedido llevaba «tarjeta_redsys» fijo y el código de respuesta de fallo no cabía en la columna
 (10 caracteres).
 
+### 9.1 Recuperación de un pedido pagado que no llegó a cerrarse
+
+Si tras marcar las reservas como pagadas falla un paso posterior (reparto del importe, cliente, factura…), el pago consta
+pero el pedido queda a medias. Antes, un reenvío se descartaba al ver la reserva ya pagada. Ahora:
+
+- **Stripe:** el evento se da por **fallido** (500) si el pedido queda pagado y **sin factura**, aunque el error lo absorbiera el
+  cierre del pedido; Stripe reintenta. El reintento completa lo pendiente sin repetir lo ya aplicado. Se reabre de uno en
+  uno (la sesión vuelve a «pendiente» y el evento a «fallido»), así que no hay ejecuciones simultáneas.
+- **Redsys:** su aviso ya se respondió «OK»; un aviso repetido de un pedido pagado y sin factura lo completa pasado un margen
+  (`PAYMENT_RECOVERY_MIN_AGE_MS`, 60 s por defecto) para no pisar un aviso anterior en curso. Con el pedido cerrado, repetir
+  el aviso no hace nada, como siempre.
+- **Qué se rehace y qué no:** stock, puntos, plazas, cliente, contabilidad y booking son idempotentes; factura, expediente REAV
+  y correo llevan su guarda; el reparto del importe entre reservas se fija en absoluto. No se repiten CAPI, GHL ni el registro
+  de actividad. Pedidos con presupuesto conservan su propia guarda (`quotes.paidAt`).
+- **Límite:** un fallo absorbido que NO deja el pedido sin factura (p. ej. no se pudo crear el cliente o emitir los puntos) no
+  fuerza el reintento; se ve en los registros (`[upsertClientFromReservation]`, «Error emitiendo los puntos»).
+- Prueba: `server/tiendaStripe.recuperacion.mysql.test.ts` (provoca el fallo en MySQL con un disparador, reenvía y comprueba).
+
 ## 10. Límites conocidos
 
 - Pago único. Un presupuesto con **plan de cuotas** sigue por Redsys/manual (la sesión de Stripe se rechaza con aviso).

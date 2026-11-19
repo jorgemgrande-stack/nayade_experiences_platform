@@ -10,7 +10,7 @@ export function realShopPort(): ShopPort {
   return {
     async applyPaid(merchantOrder, p) {
       // Import tardío: redsysRoutes arrastra medio servidor
-      const { applyPaymentResult } = await import("../redsysRoutes");
+      const { applyPaymentResult, orderEffectsPending } = await import("../redsysRoutes");
       await applyPaymentResult({
         merchantOrder,
         isAuthorized: true,
@@ -18,7 +18,11 @@ export function realShopPort(): ShopPort {
         responseCode: "STRIPE",
         rawData: { provider: "stripe", session: p.sessionId, payment_intent: p.paymentIntent },
         provider: "stripe",
+        retry: true,
       });
+      // Pago registrado pero pedido sin cerrar (un paso posterior falló, incluso si el aviso lo absorbió): se falla el evento
+      // para que Stripe lo reenvíe y se completen los efectos pendientes sin repetir los aplicados.
+      if (await orderEffectsPending(merchantOrder)) throw new Error("Pedido pagado sin cerrar: se reintentará");
     },
     async applyFailed(merchantOrder, p) {
       const { applyPaymentResult } = await import("../redsysRoutes");

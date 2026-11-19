@@ -148,6 +148,12 @@ export interface PaymentResult {
   responseCode: string;
   rawData: unknown;
   provider?: "redsys" | "stripe";
+  /**
+   * Reintento controlado por quien llama (Stripe: un evento fallido se reabre y se aplica de uno en uno). Permite completar
+   * un pedido pagado y sin cerrar sin esperar. Sin esto (avisos de Redsys), solo se completa pasado un margen
+   * (PAYMENT_RECOVERY_MIN_AGE_MS, 60 s por defecto) para no pisar un aviso anterior que sigue en curso.
+   */
+  retry?: boolean;
 }
 
 export async function applyPaymentResult(result: PaymentResult): Promise<void> {
@@ -177,6 +183,8 @@ export async function applyPaymentResult(result: PaymentResult): Promise<void> {
     const newStatus = result.isAuthorized ? "paid" : "failed";
     const redsysResponseJson = JSON.stringify(result.rawData);
 
+    // Recuperación: el pago ya consta pero un aviso anterior se cortó antes de cerrar el pedido (ver paymentEffectsPending)
+    let recovering = false;
     let { affectedRows } = await updateReservationPayment(
       result.merchantOrder,
       newStatus,
@@ -204,6 +212,11 @@ export async function applyPaymentResult(result: PaymentResult): Promise<void> {
           } as any).where(eq(reservations.merchantOrder, result.merchantOrder));
           affectedRows = 1;
           console.log(`[Redsys IPN] Race condition resuelta: reserva ${result.merchantOrder} fue cancelada por cleanup job pero Redsys confirmó el pago — restaurada a paid`);
+        } else if (cancelledReservation?.status === "paid" && (result.retry || paidLongEnough(cancelledReservation.paidAt)) && (await paymentEffectsPending(allCartReservations))) {
+          // El pago ya estaba registrado, pero el pedido no llegó a cerrarse (fallo a medias): se completan los efectos
+          // pendientes. Todos son idempotentes o llevan su guarda (factura, REAV, correo), así que lo ya aplicado no se repite.
+          recovering = true;
+          console.log(`[Redsys IPN] Reenvío sobre pedido pagado con efectos pendientes (${result.merchantOrder}): se completan sin repetir lo aplicado`);
         } else {
           console.log(`[Redsys IPN] IPN duplicada o ya procesada para ${result.merchantOrder} (estado: ${cancelledReservation?.status ?? "no encontrada"}) — sin downstream`);
           return; // Ya respondimos OK — nada más que hacer
@@ -236,7 +249,8 @@ export async function applyPaymentResult(result: PaymentResult): Promise<void> {
 
     // Para carritos multi-artículo: distribuir amountPaid proporcionalmente por reserva.
     // updateReservationPayment graba el importe total en todas las reservas ? incorrecto.
-    if (result.isAuthorized && affectedRows > 0 && allCartReservations.length > 1) {
+    // (en una recuperación se rehace: los importes se fijan en absoluto, así que repetirlo no cambia lo ya bien repartido)
+    if (result.isAuthorized && (affectedRows > 0 || recovering) && allCartReservations.length > 1) {
       for (const resv of allCartReservations) {
         const proportionalPaid = totalExpectedCents > 0
           ? Math.round(result.amount * (resv.amountTotal ?? 0) / totalExpectedCents)
@@ -290,7 +304,7 @@ export async function applyPaymentResult(result: PaymentResult): Promise<void> {
     }
 
     // -- Meta CAPI — Purchase server-side (deduplicado con el cliente por event_id) --
-    if (result.isAuthorized && updatedReservation?.id) {
+    if (result.isAuthorized && !recovering && updatedReservation?.id) {
       try {
         const valueEur = (updatedReservation.amountTotal ?? 0) / 100;
         const resv = updatedReservation as any;
@@ -358,7 +372,7 @@ export async function applyPaymentResult(result: PaymentResult): Promise<void> {
     let linkedInstallmentQuoteId: number | null = null;
     let allRequiredInstallmentsPaid = false;
 
-    if (result.isAuthorized && updatedReservation?.id) {
+    if (result.isAuthorized && !recovering && updatedReservation?.id) {
       try {
         const [linkedInst] = await _db
           .select({ id: paymentInstallments.id, quoteId: paymentInstallments.quoteId, isRequiredForConfirmation: paymentInstallments.isRequiredForConfirmation })
@@ -580,7 +594,7 @@ export async function applyPaymentResult(result: PaymentResult): Promise<void> {
         }
 
         // REAV — solo para reservas directas (no de presupuesto) con régimen REAV
-        if (!resv.quoteId && !ownKind) {
+        if (!resv.quoteId && !ownKind && !resv.reavExpedientId) {
           try {
             const product = await getExpById(resv.productId);
             if (product && (product as any).fiscalRegime === "reav") {
@@ -636,7 +650,7 @@ export async function applyPaymentResult(result: PaymentResult): Promise<void> {
 
         // -- Factura automática para compras directas web (ONLINE_DIRECTO, sin quoteId) --
         // (en la tienda de una pyme, la factura es del pedido entero: se emite abajo)
-        if (!resv.quoteId && !shopOrder) {
+        if (!resv.quoteId && !shopOrder && !resv.invoiceId) {
           try {
             const productForInv = ownKind ? null : await getExpById(resv.productId);
             const totalEur = (resv.amountPaid ?? resv.amountTotal) / 100;
@@ -702,7 +716,7 @@ export async function applyPaymentResult(result: PaymentResult): Promise<void> {
     // -- GHL: crear/actualizar contacto para compras online directas ----------
     // Para reservas ONLINE_DIRECTO sin quoteId, el cliente puede no tener GHL todavía.
     // Creamos/actualizamos el contacto y disparamos el workflow configurado en GHL_RESERVATION_WEBHOOK_URL.
-    if (result.isAuthorized) {
+    if (result.isAuthorized && !recovering) {
       try {
         const ghlCreds = await getGHLCredentials();
         if (ghlCreds) {
@@ -768,7 +782,7 @@ export async function applyPaymentResult(result: PaymentResult): Promise<void> {
         // `else` de fallo — antes una reserva de presupuesto pagada caía ahí y
         // recibía por error el email de "Pago no completado".
         if (shopOrder) sendShopOrderConfirmation(result.merchantOrder).catch(err => console.error("[Redsys IPN] Error en el correo del pedido:", err));
-        else if (!isQuoteReservation) sendReservationPaidNotifications({
+        else if (!isQuoteReservation && !(recovering && updatedReservation.confirmationEmailSentAt)) sendReservationPaidNotifications({
           id: updatedReservation.id,
           merchantOrder: updatedReservation.merchantOrder,
           productName: updatedReservation.productName,
@@ -811,7 +825,7 @@ export async function applyPaymentResult(result: PaymentResult): Promise<void> {
     }
 
     // Registrar en el log de actividad del dashboard
-    if (updatedReservation) {
+    if (updatedReservation && !recovering) {
       await logActivity(
         "reservation",
         updatedReservation.id,
@@ -1413,3 +1427,28 @@ redsysRouter.post("/reserva/error", express.urlencoded({ extended: true }), (req
 export default redsysRouter;
 
 
+
+/** Margen antes de completar un pedido pagado y sin cerrar a partir de un aviso repetido que no es un reintento controlado. */
+function paidLongEnough(paidAt: number | null | undefined): boolean {
+  const minAge = Number(process.env.PAYMENT_RECOVERY_MIN_AGE_MS ?? 60_000);
+  return !paidAt || Date.now() - Number(paidAt) >= (Number.isFinite(minAge) ? minAge : 60_000);
+}
+
+/**
+ * ¿Quedó un pago ya registrado sin cerrar su pedido? Pasa si un aviso anterior se cortó después de marcar las reservas
+ * como pagadas y antes de emitir la factura. Solo para pedidos sin presupuesto (los de presupuesto conservan su propia
+ * guarda: `quotes.paidAt`). El pedido está cerrado cuando todas sus reservas pagadas (en la tienda, alguna) tienen factura.
+ * Un aviso repetido de un pedido cerrado sigue sin hacer nada. El correo no cuenta: va aparte y lleva su propia marca.
+ */
+export async function paymentEffectsPending(rows: Array<{ status?: string | null; quoteId?: number | null; invoiceId?: number | null; channel?: string | null }>): Promise<boolean> {
+  if (rows.some((r) => r.quoteId)) return false;
+  const paid = rows.filter((r) => r.status === "paid");
+  if (!paid.length) return false;
+  if (await isGenericShopOrder(rows).catch(() => false)) return !paid.some((r) => r.invoiceId);
+  return paid.some((r) => !r.invoiceId);
+}
+
+/** Lo mismo, sobre un pedido por su referencia (lo usa la capa de Stripe para forzar el reintento si el pedido quedó a medias). */
+export async function orderEffectsPending(merchantOrder: string): Promise<boolean> {
+  return paymentEffectsPending(await getAllReservationsByMerchantOrder(merchantOrder));
+}
