@@ -54,6 +54,8 @@ export interface EnrollmentView {
   startsAt: number;
   endsAt: number | null;
   moduleIds: number[];
+  /** Matrícula técnica de validación (ver `isTechnicalGrant`). */
+  technical?: boolean;
 }
 
 export type AccessDecision = { allowed: true } | { allowed: false; reason: "no_enrollment" | "inactive" | "not_started" | "expired" | "module_not_granted" };
@@ -140,4 +142,33 @@ const KIND_MIME: Record<string, RegExp> = { video: /^video\//, audio: /^(audio\/
 /** ¿Es este tipo MIME válido para un recurso de este tipo? Un «audio» de Articulate llega como contenedor video/mp4 o video/webm con pista de audio. */
 export function mimeMatchesKind(kind: string, mimeType: string): boolean {
   return (KIND_MIME[kind] ?? /^$/).test(mimeType);
+}
+
+// ─── Matrícula técnica y estado «interno» del curso ─────────────────────────────────────────────────────────────────
+//
+// Un curso en BORRADOR no lo ve nadie (ni siquiera con una matrícula de pago): es el estado privado. Para validar el curso
+// antes de abrirlo existe la MATRÍCULA TÉCNICA: una concesión administrativa cuyo motivo empieza por el prefijo de prueba.
+// Esa matrícula (y solo ella) abre un curso en borrador o publicado; no hace falta migración ni publicar el curso, de modo
+// que no hay catálogo, inscripción ni venta posibles. Las matrículas de pago y de demostración siguen necesitando «published».
+
+export const TECHNICAL_PREFIX = "[PRUEBA TÉCNICA]";
+/** Duración máxima de una matrícula técnica: caducidad forzosa en un día. */
+export const TECHNICAL_MAX_DAYS = 1;
+
+export const isTechnicalGrant = (source: string, reason: string | null | undefined): boolean =>
+  source === "admin" && typeof reason === "string" && reason.trimStart().startsWith(TECHNICAL_PREFIX);
+
+export type CourseStatus = "draft" | "published" | "archived";
+
+/** ¿Abre este curso una matrícula (técnica o no)? published: todas; draft: solo las técnicas; archived: ninguna. */
+export function courseOpensFor(status: string, technical: boolean): boolean {
+  if (status === "published") return true;
+  if (status === "draft") return technical;
+  return false;
+}
+
+/** Motivo de una matrícula técnica: siempre con el prefijo, sin duplicarlo. */
+export function technicalReason(note: string | null | undefined): string {
+  const body = (note ?? "").replace(TECHNICAL_PREFIX, "").replace(/\s+/g, " ").trim();
+  return `${TECHNICAL_PREFIX} ${body || "validación del curso antes de su apertura"}`.slice(0, 500);
 }

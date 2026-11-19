@@ -26,7 +26,7 @@ import { fileService, objectStorageEnabled, StorageUnavailableError } from "./_c
 import { FileValidationError } from "./_core/files/service";
 import { safeDisplayName } from "./_core/files/contentType";
 import { CATEGORIES } from "./_core/files/categories";
-import { LearningError, attachResourceFile, authorizeResource, isMissingLearningSchema, logResourceOpened } from "./learningDb";
+import { LearningError, attachResourceFile, authorizePreviewResource, authorizeResource, isMissingLearningSchema, logPreviewAccess, logResourceOpened } from "./learningDb";
 
 const router = Router();
 const ID_RE = /^[1-9]\d{0,9}$/;
@@ -49,6 +49,52 @@ const disposition = (name: string, inline: boolean) => {
   return `${inline ? "inline" : "attachment"}; filename="${safe.replace(/[^\x20-\x7e]/g, "_")}"; filename*=UTF-8''${encodeURIComponent(safe)}`;
 };
 
+/**
+ * Entrega de un recurso ya AUTORIZADO (la comprobación va siempre antes, en cada ruta). Con STORAGE_PRIVATE_DELIVERY=redirect
+ * responde con una URL prefirmada de ≤ 300 s; si no, el Core lo envía en streaming. Nunca cacheable ni con URL permanente.
+ */
+async function sendResource(
+  req: Request,
+  res: Response,
+  r: { objectId: string; kind: string; resourceId: number; originalName: string | null },
+  log: (via: "stream" | "redirect" | "download") => Promise<void>,
+) {
+  const row = await fileService().find(r.objectId);
+  if (!row) return deny(res, 404, "Recurso no encontrado.");
+  const downloadable = r.kind === "pdf" || r.kind === "document";
+  const wantsDownload = req.query.download === "1" && downloadable;
+  const name = r.originalName ?? `${r.kind}-${r.resourceId}`;
+  const backend = fileService().storage;
+  if (process.env.STORAGE_PRIVATE_DELIVERY === "redirect" && backend.presign) {
+    const ttl = Math.min(Math.max(Number(process.env.STORAGE_SIGNED_URL_TTL_SECONDS) || 60, 5), 300);
+    const url = await backend.presign(row.storageKey, ttl, { contentType: row.contentType, disposition: disposition(name, !wantsDownload) });
+    await log(wantsDownload ? "download" : "redirect");
+    return res.redirect(302, url);
+  }
+  const s = await fileService().openStream(row.objectId);
+  await log(wantsDownload ? "download" : "stream");
+  res.setHeader("Content-Type", row.contentType);
+  res.setHeader("Content-Disposition", disposition(name, !wantsDownload));
+  res.setHeader("Content-Length", String(row.sizeBytes));
+  if (s) {
+    s.stream.on("error", () => res.destroy());
+    return void s.stream.pipe(res.status(200));
+  }
+  const rd = await fileService().read(row.objectId);
+  if (!rd) return deny(res, 404, "Recurso no encontrado.");
+  res.status(200).end(rd.data);
+}
+
+function failure(res: Response, err: unknown) {
+  if (isMissingLearningSchema(err)) return deny(res, 404, "Recurso no encontrado.");
+  if (err instanceof StorageUnavailableError) {
+    res.setHeader("Retry-After", "30");
+    return deny(res, 503, "El almacenamiento no está disponible. Inténtalo más tarde.");
+  }
+  console.error(JSON.stringify({ ctx: "Learning", event: "resource_error", error: err instanceof Error ? err.name : "error" }));
+  if (!res.headersSent) deny(res, 500, "No se pudo servir el recurso.");
+}
+
 router.get("/api/learning/resource/:id", async (req: Request, res: Response, next) => {
   if (!objectStorageEnabled()) return next();
   privateHeaders(res);
@@ -62,38 +108,31 @@ router.get("/api/learning/resource/:id", async (req: Request, res: Response, nex
       if (auth.reason === "not_available") return deny(res, 404, "Recurso no encontrado.");
       return deny(res, 403, auth.reason === "expired" ? "Tu acceso a este curso ha caducado." : "No tienes acceso a este recurso.");
     }
-    const row = await fileService().find(auth.objectId);
-    if (!row) return deny(res, 404, "Recurso no encontrado.");
-    const downloadable = auth.kind === "pdf" || auth.kind === "document";
-    const wantsDownload = req.query.download === "1" && downloadable;
-    const name = auth.originalName ?? `${auth.kind}-${auth.resourceId}`;
-    const backend = fileService().storage;
-    if (process.env.STORAGE_PRIVATE_DELIVERY === "redirect" && backend.presign) {
-      const ttl = Math.min(Math.max(Number(process.env.STORAGE_SIGNED_URL_TTL_SECONDS) || 60, 5), 300);
-      const url = await backend.presign(row.storageKey, ttl, { contentType: row.contentType, disposition: disposition(name, !wantsDownload) });
-      await logResourceOpened(auth.enrollmentId, auth.resourceId, Number(user.id), wantsDownload ? "download" : "redirect");
-      return res.redirect(302, url);
-    }
-    const s = await fileService().openStream(row.objectId);
-    await logResourceOpened(auth.enrollmentId, auth.resourceId, Number(user.id), wantsDownload ? "download" : "stream");
-    res.setHeader("Content-Type", row.contentType);
-    res.setHeader("Content-Disposition", disposition(name, !wantsDownload));
-    res.setHeader("Content-Length", String(row.sizeBytes));
-    if (s) {
-      s.stream.on("error", () => res.destroy());
-      return void s.stream.pipe(res.status(200));
-    }
-    const r = await fileService().read(row.objectId);
-    if (!r) return deny(res, 404, "Recurso no encontrado.");
-    res.status(200).end(r.data);
+    await sendResource(req, res, auth, (via) => logResourceOpened(auth.enrollmentId, auth.resourceId, Number(user.id), via));
   } catch (err) {
-    if (isMissingLearningSchema(err)) return deny(res, 404, "Recurso no encontrado.");
-    if (err instanceof StorageUnavailableError) {
-      res.setHeader("Retry-After", "30");
-      return deny(res, 503, "El almacenamiento no está disponible. Inténtalo más tarde.");
-    }
-    console.error(JSON.stringify({ ctx: "Learning", event: "resource_error", error: err instanceof Error ? err.name : "error" }));
-    if (!res.headersSent) deny(res, 500, "No se pudo servir el recurso.");
+    failure(res, err);
+  }
+});
+
+/**
+ * Vista previa de administración: GET /api/learning/preview/resource/:id. SOLO administradores de la empresa en curso (sesión
+ * real; sin sesión → 401, otro rol → 403). Cada apertura queda en el registro de auditoría. No es una URL pública ni permanente:
+ * usa la misma entrega privada (prefirmada ≤ 300 s o streaming). No sirve ficheros sin bloque de curso ni sin verificar.
+ */
+router.get("/api/learning/preview/resource/:id", async (req: Request, res: Response, next) => {
+  if (!objectStorageEnabled()) return next();
+  privateHeaders(res);
+  const idText = String(req.params.id ?? "");
+  if (!ID_RE.test(idText) || !tenantReady()) return deny(res, 404, "Recurso no encontrado.");
+  try {
+    const user = await resolveSessionUser(req);
+    if (!user || user.isActive === false) return deny(res, 401, "No autenticado.");
+    if (String(user.role) !== "admin") return deny(res, 403, "Solo la administración puede usar la vista previa.");
+    const auth = await authorizePreviewResource(Number(idText));
+    if (!auth.allowed) return deny(res, 404, "Recurso no encontrado.");
+    await sendResource(req, res, auth, (via) => logPreviewAccess(Number(user.id), "resource", { resourceId: auth.resourceId, kind: auth.kind, via }));
+  } catch (err) {
+    failure(res, err);
   }
 });
 

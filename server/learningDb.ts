@@ -14,7 +14,7 @@ import { sql, type SQL } from "drizzle-orm";
 import { getDb } from "./db";
 import {
   DAY_MS, DEMO_MS, LearningRuleError, adminKey, assertPaymentConfirmed, assertReason, computeWindow, demoKey, evaluateAny, matchRules,
-  mergeModules, mimeMatchesKind, paymentKey, progressPercent, type AccessRule, type EnrollmentView, type PaymentEvidence, type StartMode,
+  courseOpensFor, isTechnicalGrant, mergeModules, mimeMatchesKind, paymentKey, progressPercent, technicalReason, TECHNICAL_MAX_DAYS, type AccessRule, type EnrollmentView, type PaymentEvidence, type StartMode,
 } from "../shared/learning";
 
 export class LearningError extends Error {
@@ -411,7 +411,7 @@ export async function enrollmentViews(userId: number, courseId: number, exec?: E
   const e = exec ?? (await db());
   const list = await rows(e, sql`SELECT * FROM learning_enrollments WHERE user_id = ${userId} AND course_id = ${courseId}`);
   const mods = await modulesOf(e, list.map((r) => n(r.id)));
-  return list.map((r) => ({ status: r.status, startsAt: n(r.starts_at), endsAt: r.ends_at == null ? null : n(r.ends_at), moduleIds: mods.get(n(r.id)) ?? [] }));
+  return list.map((r) => ({ status: r.status, startsAt: n(r.starts_at), endsAt: r.ends_at == null ? null : n(r.ends_at), moduleIds: mods.get(n(r.id)) ?? [], technical: isTechnicalGrant(String(r.source), r.grant_reason) }));
 }
 
 export interface BlockLocation {
@@ -434,8 +434,10 @@ export async function canAccessModule(userId: number | null, courseId: number, m
   if (!userId) return { allowed: false as const, reason: "no_enrollment" as const };
   const d = await db();
   const [course] = await rows(d, sql`SELECT status FROM learning_courses WHERE id = ${courseId}`);
-  if (!course || course.status !== "published") return { allowed: false as const, reason: "no_enrollment" as const };
-  return evaluateAny(await enrollmentViews(userId, courseId, d), moduleId, now);
+  if (!course || (course.status !== "published" && course.status !== "draft")) return { allowed: false as const, reason: "no_enrollment" as const };
+  // Borrador: solo lo abren las matrículas técnicas de validación; publicado: todas. Nunca archivado.
+  const views = (await enrollmentViews(userId, courseId, d)).filter((v) => courseOpensFor(String(course.status), !!v.technical));
+  return evaluateAny(views, moduleId, now);
 }
 
 export async function canAccessBlock(userId: number | null, blockId: number, now = Date.now()) {
@@ -465,7 +467,7 @@ export interface MyCourse {
 /** Cursos de un alumno con su estado, fechas y progreso (el progreso se conserva aunque venza la matrícula). */
 export async function myCourses(userId: number, now = Date.now()): Promise<MyCourse[]> {
   const d = await db();
-  const enrollments = await rows(d, sql`SELECT e.*, c.slug, c.title, c.status AS course_status FROM learning_enrollments e JOIN learning_courses c ON c.id = e.course_id WHERE e.user_id = ${userId} AND c.status = 'published' ORDER BY e.id DESC`);
+  const enrollments = (await rows(d, sql`SELECT e.*, c.slug, c.title, c.status AS course_status FROM learning_enrollments e JOIN learning_courses c ON c.id = e.course_id WHERE e.user_id = ${userId} AND c.status IN ('published', 'draft') ORDER BY e.id DESC`)).filter((r) => courseOpensFor(String(r.course_status), isTechnicalGrant(String(r.source), r.grant_reason)));
   const mods = await modulesOf(d, enrollments.map((r) => n(r.id)));
   const byCourse = new Map<number, MyCourse>();
   for (const r of enrollments) {
@@ -527,13 +529,14 @@ export async function authorizeResource(userId: number | null, resourceId: numbe
   const d = await db();
   const [res] = await rows(d, sql`SELECT id, kind, status, stored_object_id, original_name FROM learning_resources WHERE id = ${resourceId}`);
   if (!res || res.status !== "verified" || !res.stored_object_id) return { allowed: false, reason: "not_available" };
-  const uses = await rows(d, sql`SELECT DISTINCT m.id AS module_id, m.course_id FROM learning_blocks b JOIN learning_lessons l ON l.id = b.lesson_id JOIN learning_modules m ON m.id = l.module_id JOIN learning_courses c ON c.id = m.course_id WHERE b.resource_id = ${resourceId} AND c.status = 'published'`);
+  const uses = await rows(d, sql`SELECT DISTINCT m.id AS module_id, m.course_id, c.status AS course_status FROM learning_blocks b JOIN learning_lessons l ON l.id = b.lesson_id JOIN learning_modules m ON m.id = l.module_id JOIN learning_courses c ON c.id = m.course_id WHERE b.resource_id = ${resourceId} AND c.status IN ('published', 'draft')`);
   if (!uses.length) return { allowed: false, reason: "not_available" };
   let last: ResourceAuthorization = { allowed: false, reason: "no_enrollment" };
   for (const u of uses) {
     const list = await rows(d, sql`SELECT * FROM learning_enrollments WHERE user_id = ${userId} AND course_id = ${n(u.course_id)} ORDER BY id`);
     const mods = await modulesOf(d, list.map((r) => n(r.id)));
     for (const r of list) {
+      if (!courseOpensFor(String(u.course_status), isTechnicalGrant(String(r.source), r.grant_reason))) continue;
       const view: EnrollmentView = { status: r.status, startsAt: n(r.starts_at), endsAt: r.ends_at == null ? null : n(r.ends_at), moduleIds: mods.get(n(r.id)) ?? [] };
       const dec = evaluateAny([view], n(u.module_id), now);
       if (dec.allowed) return { allowed: true, enrollmentId: n(r.id), resourceId, objectId: String(res.stored_object_id), kind: res.kind, originalName: res.original_name ?? null };
@@ -565,6 +568,84 @@ export async function attachResourceFile(resourceId: number, f: { objectId: stri
     await run(tx, sql`UPDATE learning_resources SET stored_object_id = ${f.objectId}, status = 'verified', mime_type = ${f.mimeType}, size_bytes = ${f.sizeBytes}, sha256 = ${f.sha256}, original_name = COALESCE(original_name, ${f.originalName}), updated_at = ${now} WHERE id = ${resourceId}`);
     return { resourceId, duplicateOf: dups.map((r) => ({ resourceId: n(r.id), originalName: r.original_name ?? null })) };
   });
+}
+
+// ─── Matrícula técnica (validación del curso antes de abrirlo) ─────────────────────────────────────────────────────
+
+export interface TechnicalGrantInput { userId: number; courseId: number; moduleIds: number[]; note?: string | null; actorUserId: number; nonce: string; now?: number }
+
+/**
+ * Matrícula técnica: concesión administrativa marcada «[PRUEBA TÉCNICA]» con caducidad forzosa en TECHNICAL_MAX_DAYS. Es la ÚNICA
+ * que abre un curso en borrador. No crea cuenta, no envía invitación, no toca reglas comerciales ni simula un pago.
+ */
+export async function grantTechnical(input: TechnicalGrantInput): Promise<{ enrollment: EnrollmentRow; created: boolean }> {
+  return grantAdmin({ userId: input.userId, courseId: input.courseId, moduleIds: input.moduleIds, durationDays: TECHNICAL_MAX_DAYS, reason: technicalReason(input.note), actorUserId: input.actorUserId, nonce: input.nonce, now: input.now });
+}
+
+// ─── Vista previa de administración (sin matrícula, sin progreso, auditada) ────────────────────────────────────────
+
+/** Los accesos de vista previa se registran como eventos de la «matrícula 0» (no es una matrícula: es el registro de auditoría). */
+export const PREVIEW_AUDIT_ENROLLMENT = 0;
+
+export async function logPreviewAccess(actorUserId: number, what: "course" | "lesson" | "resource", detail: Record<string, unknown>, now = Date.now()) {
+  const d = await db();
+  await event(d, PREVIEW_AUDIT_ENROLLMENT, "admin_preview_" + what, actorUserId, detail, now);
+}
+
+export async function listPreviewAccess(limit = 100): Promise<Array<{ id: number; type: string; actorUserId: number | null; detail: unknown; createdAt: number }>> {
+  const d = await db();
+  const list = await rows(d, sql`SELECT * FROM learning_access_events WHERE enrollment_id = ${PREVIEW_AUDIT_ENROLLMENT} ORDER BY id DESC LIMIT ${Math.min(Math.max(limit, 1), 500)}`);
+  return list.map((r) => ({ id: n(r.id), type: String(r.type), actorUserId: r.actor_user_id == null ? null : n(r.actor_user_id), detail: typeof r.detail === "string" ? JSON.parse(r.detail) : r.detail, createdAt: n(r.created_at) }));
+}
+
+/** Índice del curso para la vista previa: todos los módulos abiertos, sin progreso real. */
+export async function previewCourseIndex(courseId: number) {
+  const d = await db();
+  const [course] = await rows(d, sql`SELECT id, slug, title, description, language, status FROM learning_courses WHERE id = ${courseId}`);
+  if (!course) throw new LearningError("NOT_FOUND", "El curso no existe.");
+  const modules = await rows(d, sql`SELECT id, position, title FROM learning_modules WHERE course_id = ${courseId} ORDER BY position`);
+  const lessons = await rows(d, sql`SELECT l.id, l.module_id, l.position, l.title FROM learning_lessons l JOIN learning_modules m ON m.id = l.module_id WHERE m.course_id = ${courseId} ORDER BY m.position, l.position`);
+  return {
+    course: { id: n(course.id), slug: String(course.slug), title: String(course.title), description: course.description ?? null, language: String(course.language), status: String(course.status) },
+    modules: modules.map((m) => ({
+      id: n(m.id), position: n(m.position), title: String(m.title), unlocked: true,
+      lessons: lessons.filter((l) => n(l.module_id) === n(m.id)).map((l) => ({ id: n(l.id), position: n(l.position), title: String(l.title), completed: false })),
+    })),
+  };
+}
+
+/** Bloques de una lección para la vista previa (mismo formato que el del alumno). */
+export async function previewLessonBlocks(lessonId: number) {
+  const d = await db();
+  const [loc] = await rows(d, sql`SELECT l.id, l.title, m.course_id FROM learning_lessons l JOIN learning_modules m ON m.id = l.module_id WHERE l.id = ${lessonId}`);
+  if (!loc) throw new LearningError("NOT_FOUND", "La lección no existe.");
+  const blocks = await rows(d, sql`SELECT b.id, b.position, b.kind, b.title, b.body, b.resource_id, b.external_url, b.duration_seconds, b.activity, b.attribution, r.status AS resource_status, r.kind AS resource_kind, r.size_bytes
+    FROM learning_blocks b LEFT JOIN learning_resources r ON r.id = b.resource_id WHERE b.lesson_id = ${lessonId} ORDER BY b.position`);
+  return {
+    courseId: n(loc.course_id),
+    lesson: { id: n(loc.id), title: String(loc.title) },
+    blocks: blocks.map((b) => ({
+      id: n(b.id), position: n(b.position), kind: String(b.kind), title: String(b.title), body: b.body ?? null, externalUrl: b.external_url ?? null,
+      durationSeconds: b.duration_seconds == null ? null : n(b.duration_seconds), activity: b.activity ?? null, attribution: b.attribution ?? null,
+      resourceId: b.resource_id == null ? null : n(b.resource_id),
+      resource: b.resource_status ? { status: String(b.resource_status), kind: String(b.resource_kind), sizeBytes: b.size_bytes == null ? null : n(b.size_bytes) } : null,
+    })),
+  };
+}
+
+export type PreviewResource = { allowed: true; resourceId: number; objectId: string; kind: "video" | "audio" | "pdf" | "document" | "image"; originalName: string | null } | { allowed: false; reason: "not_available" };
+
+/**
+ * Recurso para la vista previa: verificado y usado por algún bloque de un curso de ESTA empresa (la base de datos es de la
+ * empresa). No autoriza nada por sí solo: la ruta que lo usa exige antes sesión de administrador y deja el registro.
+ */
+export async function authorizePreviewResource(resourceId: number): Promise<PreviewResource> {
+  const d = await db();
+  const [res] = await rows(d, sql`SELECT id, kind, status, stored_object_id, original_name FROM learning_resources WHERE id = ${resourceId}`);
+  if (!res || res.status !== "verified" || !res.stored_object_id) return { allowed: false, reason: "not_available" };
+  const [use] = await rows(d, sql`SELECT b.id FROM learning_blocks b WHERE b.resource_id = ${resourceId} LIMIT 1`);
+  if (!use) return { allowed: false, reason: "not_available" };
+  return { allowed: true, resourceId, objectId: String(res.stored_object_id), kind: res.kind, originalName: res.original_name ?? null };
 }
 
 export { LearningRuleError };

@@ -16,6 +16,8 @@ import { usePortalLook } from "../employee/usePortalLook";
 import { aulaText, formatAccessDate, pickLocale, type AulaLocale, type AulaText } from "@shared/learningText";
 
 const BASE = "/mi-formacion";
+/** Vista previa de administración: mismas pantallas, sin matrícula ni progreso (ruta propia, solo administradores). */
+const PREVIEW_BASE = "/admin/formacion/vista-previa";
 
 function useAulaLocale(): { locale: AulaLocale; t: AulaText; setLang: (l: AulaLocale) => void } {
   const site = useSiteLocale();
@@ -33,14 +35,20 @@ function useAulaLocale(): { locale: AulaLocale; t: AulaText; setLang: (l: AulaLo
   };
 }
 
-function Shell({ children, wide }: { children: React.ReactNode; wide?: boolean }) {
+function Shell({ children, wide, preview }: { children: React.ReactNode; wide?: boolean; preview?: boolean }) {
   const look = usePortalLook();
-  const { locale, setLang } = useAulaLocale();
+  const { locale, setLang, t } = useAulaLocale();
   return (
     <div className="min-h-screen bg-stone-50 text-slate-800" style={look.style}>
+      {preview && (
+        <div role="status" className="sticky top-0 z-20 flex flex-wrap items-center justify-center gap-x-3 gap-y-1 bg-amber-400 px-4 py-2 text-center text-sm font-medium text-amber-950">
+          <span>{t.previewBanner}</span><span className="font-normal">{t.previewNote}</span>
+          <Link href="/admin/formacion" className="underline">{t.backToAdmin}</Link>
+        </div>
+      )}
       <header className="border-b border-stone-200 bg-white">
         <div className="mx-auto flex max-w-5xl items-center justify-between gap-3 px-4 py-3">
-          <Link href={BASE} className="flex items-center gap-3">
+          <Link href={preview ? PREVIEW_BASE : BASE} className="flex items-center gap-3">
             {look.logoUrl ? <img src={look.logoUrl} alt={look.name || ""} className="h-9 w-auto max-w-[160px] object-contain" /> : <span className="font-semibold">{look.name}</span>}
           </Link>
           <nav aria-label="Idioma / Sprache" className="flex gap-1 text-sm">
@@ -125,14 +133,18 @@ export function AulaHome() {
 
 // ── Índice del curso ────────────────────────────────────────────────────────────────────────────────────────────────
 
-export function AulaCurso() {
+export function AulaCurso({ preview = false }: { preview?: boolean }) {
   const { t } = useAulaLocale();
-  const [, params] = useRoute(`${BASE}/curso/:courseId`);
+  const base = preview ? PREVIEW_BASE : BASE;
+  const [, params] = useRoute(`${base}/curso/:courseId`);
   const courseId = Number(params?.courseId);
-  const q = trpc.learning.my.course.useQuery({ courseId }, { enabled: Number.isInteger(courseId) && courseId > 0, retry: false });
+  const valid = Number.isInteger(courseId) && courseId > 0;
+  const mine = trpc.learning.my.course.useQuery({ courseId }, { enabled: valid && !preview, retry: false });
+  const prev = trpc.learning.admin.previewCourse.useQuery({ courseId }, { enabled: valid && preview, retry: false });
+  const q = (preview ? prev : mine) as typeof mine;
   return (
-    <Shell>
-      <Link href={BASE} className="mb-3 inline-flex items-center gap-1 text-sm text-slate-600"><ChevronLeft className="h-4 w-4" aria-hidden />{t.allCourses}</Link>
+    <Shell preview={preview}>
+      <Link href={preview ? "/admin/formacion" : BASE} className="mb-3 inline-flex items-center gap-1 text-sm text-slate-600"><ChevronLeft className="h-4 w-4" aria-hidden />{t.allCourses}</Link>
       {q.isLoading ? <p className="text-sm text-slate-500">{t.loading}</p> : q.isError ? <Notice t={t} error={q.error} onRetry={() => q.refetch()} /> : (
         <>
           <h1 className="mb-1 text-2xl font-bold">{q.data!.course.title}</h1>
@@ -148,7 +160,7 @@ export function AulaCurso() {
                   {m.lessons.map((l) => (
                     <li key={l.id}>
                       {m.unlocked ? (
-                        <Link href={`${BASE}/curso/${courseId}/leccion/${l.id}`} className="flex items-center gap-3 px-4 py-3 hover:bg-stone-50">
+                        <Link href={`${base}/curso/${courseId}/leccion/${l.id}`} className="flex items-center gap-3 px-4 py-3 hover:bg-stone-50">
                           {l.completed ? <CheckCircle2 className="h-5 w-5 shrink-0 text-emerald-600" aria-label={t.done} /> : <PlayCircle className="h-5 w-5 shrink-0 text-slate-400" aria-hidden />}
                           <span>{l.title}</span>
                         </Link>
@@ -171,9 +183,9 @@ export function AulaCurso() {
 
 type Block = { id: number; kind: string; title: string; body: string | null; externalUrl: string | null; activity: string | null; resourceId: number | null; resource: { status: string; kind: string } | null };
 
-function Media({ b, t, onPlayed }: { b: Block; t: AulaText; onPlayed: () => void }) {
+function Media({ b, t, onPlayed, preview }: { b: Block; t: AulaText; onPlayed: () => void; preview?: boolean }) {
   const ready = b.resource?.status === "verified";
-  const url = b.resourceId ? `/api/learning/resource/${b.resourceId}` : null;
+  const url = b.resourceId ? `/api/learning/${preview ? "preview/" : ""}resource/${b.resourceId}` : null;
   const label = b.activity === "ejercicio" ? t.exercise : b.activity?.startsWith("meditaci") ? t.meditation : null;
   return (
     <article className="rounded-xl border border-stone-200 bg-white p-4">
@@ -201,14 +213,21 @@ function Media({ b, t, onPlayed }: { b: Block; t: AulaText; onPlayed: () => void
   );
 }
 
-export function AulaLeccion() {
+export function AulaLeccion({ preview = false }: { preview?: boolean }) {
   const { t } = useAulaLocale();
-  const [, params] = useRoute(`${BASE}/curso/:courseId/leccion/:lessonId`);
+  const base = preview ? PREVIEW_BASE : BASE;
+  const [, params] = useRoute(`${base}/curso/:courseId/leccion/:lessonId`);
   const courseId = Number(params?.courseId);
   const lessonId = Number(params?.lessonId);
   const utils = trpc.useUtils();
-  const lesson = trpc.learning.my.lesson.useQuery({ lessonId }, { enabled: Number.isInteger(lessonId) && lessonId > 0, retry: false });
-  const outline = trpc.learning.my.course.useQuery({ courseId }, { enabled: Number.isInteger(courseId) && courseId > 0, retry: false });
+  const lessonOk = Number.isInteger(lessonId) && lessonId > 0;
+  const courseOk = Number.isInteger(courseId) && courseId > 0;
+  const lessonMine = trpc.learning.my.lesson.useQuery({ lessonId }, { enabled: lessonOk && !preview, retry: false });
+  const lessonPrev = trpc.learning.admin.previewLesson.useQuery({ lessonId }, { enabled: lessonOk && preview, retry: false });
+  const lesson = (preview ? lessonPrev : lessonMine) as typeof lessonMine;
+  const outlineMine = trpc.learning.my.course.useQuery({ courseId }, { enabled: courseOk && !preview, retry: false });
+  const outlinePrev = trpc.learning.admin.previewCourse.useQuery({ courseId }, { enabled: courseOk && preview, retry: false });
+  const outline = (preview ? outlinePrev : outlineMine) as typeof outlineMine;
   const progress = trpc.learning.my.progress.useMutation({ onSuccess: () => { utils.learning.my.course.invalidate(); utils.learning.my.courses.invalidate(); } });
   const [done, setDone] = useState(false);
   const flat = useMemo(() => (outline.data?.modules ?? []).filter((m) => m.unlocked).flatMap((m) => m.lessons), [outline.data]);
@@ -217,36 +236,39 @@ export function AulaLeccion() {
   const wasDone = idx >= 0 ? flat[idx].completed : false;
   useEffect(() => {
     setDone(false);
-    // Abrir la lección solo registra por dónde vas (reanudar); nunca la da por completada
-    if (lesson.data) progress.mutate({ lessonId, lastBlockId: lesson.data.blocks[0]?.id ?? null });
+    // Abrir la lección solo registra por dónde vas (reanudar); nunca la da por completada. La vista previa NO guarda progreso.
+    if (!preview && lesson.data) progress.mutate({ lessonId, lastBlockId: lesson.data.blocks[0]?.id ?? null });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [lessonId, !!lesson.data]);
   return (
-    <Shell>
-      <Link href={`${BASE}/curso/${courseId}`} className="mb-3 inline-flex items-center gap-1 text-sm text-slate-600"><ChevronLeft className="h-4 w-4" aria-hidden />{t.back}</Link>
+    <Shell preview={preview}>
+      <Link href={`${base}/curso/${courseId}`} className="mb-3 inline-flex items-center gap-1 text-sm text-slate-600"><ChevronLeft className="h-4 w-4" aria-hidden />{t.back}</Link>
       {lesson.isLoading ? <p className="text-sm text-slate-500">{t.loading}</p> : lesson.isError ? <Notice t={t} error={lesson.error} onRetry={() => lesson.refetch()} /> : (
         <>
           <h1 className="mb-4 text-2xl font-bold">{lesson.data!.lesson.title}</h1>
           <div className="space-y-4">
             {lesson.data!.blocks.map((b) => (
-              <Media key={b.id} b={b as Block} t={t} onPlayed={() => undefined} />
+              <Media key={b.id} b={b as Block} t={t} onPlayed={() => undefined} preview={preview} />
             ))}
           </div>
           <div className="mt-6 flex flex-wrap items-center gap-3">
-            {wasDone || done ? (
+            {preview ? null : wasDone || done ? (
               <span className="inline-flex items-center gap-1 text-emerald-700"><CheckCircle2 className="h-5 w-5" aria-hidden />{t.done}</span>
             ) : (
               <Button disabled={progress.isPending} onClick={() => progress.mutate({ lessonId, completed: true }, { onSuccess: () => setDone(true) })}>
                 {progress.isPending && <Loader2 className="mr-1 h-4 w-4 animate-spin" aria-hidden />}{t.markDone}
               </Button>
             )}
-            {next && <Button asChild variant="outline"><Link href={`${BASE}/curso/${courseId}/leccion/${next.id}`}>{next.title}</Link></Button>}
+            {next && <Button asChild variant="outline"><Link href={`${base}/curso/${courseId}/leccion/${next.id}`}>{next.title}</Link></Button>}
           </div>
         </>
       )}
     </Shell>
   );
 }
+
+export const AulaCursoVistaPrevia = () => <AulaCurso preview />;
+export const AulaLeccionVistaPrevia = () => <AulaLeccion preview />;
 
 // ── Activación de la cuenta ─────────────────────────────────────────────────────────────────────────────────────────
 

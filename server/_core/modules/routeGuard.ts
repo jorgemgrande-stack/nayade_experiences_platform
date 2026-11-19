@@ -24,8 +24,8 @@ export const TRPC_ROUTER_MODULES: Record<string, string> = {
 /**
  * Elephant Learning: la licencia de módulo `learning` se exige en el servidor SOLO con LEARNING_LICENSE_ENFORCED=1.
  * Gradual a propósito: el LMS ya funciona en Quantum sin licencia de módulo; se enciende después de que el operador
- * conceda `learning` a Quantum (si no, Quantum recibiría 403 en `learning.*`). Las rutas Express /api/learning/* no
- * pasan por este guardián.
+ * conceda `learning` a Quantum (si no, Quantum recibiría 403 en `learning.*`). Las rutas Express /api/learning/* pasan por
+ * `learningLicenseGuard` (mismo interruptor).
  */
 export const LEARNING_ENFORCE_ENV = "LEARNING_LICENSE_ENFORCED";
 export const learningEnforced = (): boolean => ["1", "true", "on"].includes((process.env[LEARNING_ENFORCE_ENV] ?? "").trim().toLowerCase());
@@ -33,6 +33,28 @@ export const learningEnforced = (): boolean => ["1", "true", "on"].includes((pro
 export function procedureNames(path: string): string[] {
   const p = path.split("?")[0].replace(/^\/api\/trpc\//, "").replace(/^\//, "");
   return p ? p.split(",").map((x) => x.trim()).filter(Boolean) : [];
+}
+
+/**
+ * Licencia `learning` en las rutas Express /api/learning/* (recursos del alumno, vista previa y subida). Mismo criterio que el
+ * guardián tRPC: solo se exige con LEARNING_LICENSE_ENFORCED=1; si falta la licencia o no se puede verificar, se cierra.
+ * Sin sesión o sin licencia nadie recibe nada: 403 (sin licencia) / 503 (no verificable).
+ */
+export function learningLicenseGuard(getAccess: () => ModuleAccess): RequestHandler {
+  return async (_req: Request, res: Response, next: NextFunction) => {
+    if (!learningEnforced()) return next();
+    try {
+      if (await getAccess().isModuleAvailable("learning")) return next();
+      opsLog("warn", "Licensing", "module_denied", { module: "learning", via: "express" });
+      res.setHeader("Cache-Control", "no-store");
+      res.status(403).json({ error: "Módulo no disponible: learning" });
+    } catch {
+      opsLog("error", "Licensing", "module_check_failed", { via: "express" });
+      recordFailure("licensing.check_failed");
+      res.setHeader("Cache-Control", "no-store");
+      res.status(503).json({ error: "No se pudo verificar la licencia" });
+    }
+  };
 }
 
 export function moduleRouteGuard(getAccess: () => ModuleAccess, map?: Record<string, string>): RequestHandler {

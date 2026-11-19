@@ -11,10 +11,11 @@
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 import { adminProcedure, protectedProcedure, router } from "../_core/trpc";
-import { LearningRuleError, START_MODES, evaluateAny } from "../../shared/learning";
+import { LearningRuleError, START_MODES, courseOpensFor, evaluateAny } from "../../shared/learning";
+import { randomBytes } from "node:crypto";
 import {
   LearningError, addModules, grantDemo, canAccessModule, enrollmentEvents, enrollmentViews, extendEnrollment, getEnrollment, grantAdmin, grantFromPayment, isMissingLearningSchema,
-  listEnrollments, listRules, myCourses, reactivateEnrollment, recordProgress, revokeEnrollment, saveRule, suspendEnrollment,
+  grantTechnical, listEnrollments, listPreviewAccess, listRules, logPreviewAccess, myCourses, previewCourseIndex, previewLessonBlocks, reactivateEnrollment, recordProgress, revokeEnrollment, saveRule, suspendEnrollment,
 } from "../learningDb";
 import { getDb } from "../db";
 import { grantLearningFromEnrollment, sendLearningInvitation } from "../learningFlow";
@@ -51,9 +52,12 @@ const my = router({
   course: protectedProcedure.input(z.object({ courseId: id })).query(({ ctx, input }) =>
     guard(async () => {
       const now = Date.now();
-      const [course] = await rowsOf(sql`SELECT id, slug, title, description, language FROM learning_courses WHERE id = ${input.courseId} AND status = 'published'`);
+      const [course] = await rowsOf(sql`SELECT id, slug, title, description, language, status FROM learning_courses WHERE id = ${input.courseId} AND status IN ('published', 'draft')`);
       if (!course) throw new LearningError("NOT_FOUND", "El curso no existe.");
-      const views = await enrollmentViews(ctx.user.id, input.courseId);
+      // Borrador: solo lo abren las matrículas técnicas (validación); publicado: todas
+      const views = (await enrollmentViews(ctx.user.id, input.courseId)).filter((v) => courseOpensFor(String(course.status), !!v.technical));
+      // Un borrador no existe para quien no tiene matrícula técnica (no se revela ni su existencia)
+      if (!views.length && String(course.status) === "draft") throw new LearningError("NOT_FOUND", "El curso no existe.");
       if (!views.length) throw new LearningError("FORBIDDEN", "No tienes una matrícula de este curso.");
       const modules = await rowsOf(sql`SELECT id, position, title FROM learning_modules WHERE course_id = ${input.courseId} ORDER BY position`);
       const lessons = await rowsOf(sql`SELECT l.id, l.module_id, l.position, l.title FROM learning_lessons l JOIN learning_modules m ON m.id = l.module_id WHERE m.course_id = ${input.courseId} ORDER BY l.position`);
@@ -175,6 +179,34 @@ const admin = router({
     return { ok: true };
   })),
   /** Demostración para una persona por correo (crea su cuenta sin enviar nada; la invitación es una acción aparte). */
+  /**
+   * Matrícula técnica de validación: concesión administrativa «[PRUEBA TÉCNICA]» con caducidad forzosa en un día. Es la única que
+   * abre un curso en borrador. NO crea invitación, NO envía correo, NO simula pago y NO toca las reglas comerciales.
+   * La persona debe existir (cuenta propia del Core): se crea la cuenta sin enviar nada y se activa con el procedimiento normal.
+   */
+  grantTechnical: adminProcedure
+    .input(z.object({ email: z.string().email().max(320), name: z.string().min(2).max(200), courseId: id, moduleIds: z.array(id).min(1).max(50), note: z.string().max(300).nullable().optional() }))
+    .mutation(({ ctx, input }) => guard(async () => {
+      const acc = await ensureAccount(input.name, input.email);
+      const r = await grantTechnical({ userId: acc.userId, courseId: input.courseId, moduleIds: input.moduleIds, note: input.note, actorUserId: ctx.user.id, nonce: randomBytes(8).toString("hex") });
+      return { created: r.created, enrollment: r.enrollment, accountCreated: acc.created, invitePending: !!acc.invite, userId: acc.userId };
+    })),
+
+  /** Vista previa como alumno: estructura del curso con todo abierto, sin matrícula ni progreso. Cada acceso queda auditado. */
+  previewCourse: adminProcedure.input(z.object({ courseId: id })).query(({ ctx, input }) =>
+    guard(async () => {
+      const r = await previewCourseIndex(input.courseId);
+      await logPreviewAccess(ctx.user.id, "course", { courseId: input.courseId });
+      return r;
+    })),
+  previewLesson: adminProcedure.input(z.object({ lessonId: id })).query(({ ctx, input }) =>
+    guard(async () => {
+      const r = await previewLessonBlocks(input.lessonId);
+      await logPreviewAccess(ctx.user.id, "lesson", { courseId: r.courseId, lessonId: input.lessonId });
+      return r;
+    })),
+  previewAccess: adminProcedure.query(() => guard(() => listPreviewAccess(100))),
+
   grantDemoByEmail: adminProcedure
     .input(z.object({ email: z.string().email().max(320), name: z.string().min(2).max(200), courseId: id, moduleIds: z.array(id).min(1).max(50), trigger: z.string().min(3).max(80), minutes: z.number().int().min(1).max(1440).optional() }))
     .mutation(({ ctx, input }) => guard(async () => {

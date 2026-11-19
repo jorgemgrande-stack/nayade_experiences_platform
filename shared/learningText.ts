@@ -22,6 +22,7 @@ const T = {
     activateTitle: "Konto aktivieren", activateText: "Lege dein Passwort fest, um deinen Kurs zu öffnen.", pw: "Passwort", pw2: "Passwort wiederholen", activate: "Aktivieren",
     pwShort: "Das Passwort muss mindestens 8 Zeichen haben.", pwDiff: "Die Passwörter stimmen nicht überein.", badLink: "Der Link ist ungültig. Verwende den Link aus der Einladungs-E-Mail.",
     activateFail: "Das Passwort konnte nicht festgelegt werden. Der Link ist möglicherweise abgelaufen.",
+    previewBanner: "Vorschau als Teilnehmer", previewNote: "Nur für die Verwaltung: ohne Anmeldung, ohne Fortschritt, jeder Zugriff wird protokolliert.", backToAdmin: "Zurück zur Verwaltung",
   },
   es: {
     title: "Mis cursos", empty: "Todavía no tienes ningún curso.", loading: "Cargando…", retry: "Reintentar",
@@ -39,6 +40,7 @@ const T = {
     activateTitle: "Activar tu cuenta", activateText: "Crea tu contraseña para entrar en tu curso.", pw: "Contraseña", pw2: "Repite la contraseña", activate: "Activar",
     pwShort: "La contraseña debe tener al menos 8 caracteres.", pwDiff: "Las contraseñas no coinciden.", badLink: "El enlace no es válido. Usa el enlace del correo de invitación.",
     activateFail: "No se ha podido crear la contraseña. El enlace puede haber caducado.",
+    previewBanner: "Vista previa como alumno", previewNote: "Solo para la administración: sin matrícula, sin progreso y con cada acceso registrado en auditoría.", backToAdmin: "Volver a Formación",
   },
 } as const;
 
