@@ -46,9 +46,13 @@ export type AcceptanceStore = Pick<ExternalStore, "insertAcceptance" | "acceptan
 
 /** Datos de la plantilla `contract.terms_invitation`. */
 export type TermsInvitation = Parameters<typeof extraTemplates.termsInvitation>[0];
+/** Datos de la plantilla del enlace de pago. */
+export type PaymentLinkMail = Parameters<typeof extraTemplates.termsPaymentLink>[0];
 /** Envío del contrato por el correo de plataforma (lo da `PlatformMailer.termsAcceptanceMail`). */
 export interface TermsAcceptanceMail {
   invite(to: string, idempotencyKey: string, i: TermsInvitation): Promise<{ status: string; reason: string | null; duplicate: boolean; id?: number | null }>;
+  /** Enlace de pago de unas condiciones ya aceptadas (sin repetir la aceptación). */
+  paymentLink?(to: string, idempotencyKey: string, i: PaymentLinkMail): Promise<{ status: string; reason: string | null; duplicate: boolean; id?: number | null }>;
   /** Estado actual del mensaje en la bandeja de salida (aceptado por el proveedor, entregado, rebotado…). */
   status?(id: number): Promise<{ status: string; reason: string | null } | null>;
 }
@@ -84,6 +88,9 @@ export function mailReasonText(status: string, reason: string | null): string | 
 
 /** Ventana en la que el enlace personal sigue sirviendo para configurar o reanudar el pago tras aceptar. */
 const PAY_WINDOW_MS = 60 * 86_400_000;
+/** Espera mínima entre dos envíos del enlace de pago de unas mismas condiciones. */
+const PAYMENT_LINK_COOLDOWN_MS = 10 * 60_000;
+export type PaymentLinkState = "ready" | "payment_not_enabled" | "not_accepted" | "already_authorized" | "link_unavailable" | "expired";
 
 /**
  * Paso de pago tras la aceptación (21/11/2026). Lo implementa el cobro de condiciones personalizadas
@@ -761,6 +768,141 @@ export class TermsAcceptanceService {
     this.payment = p;
   }
 
+  /** URL pública (absoluta) del paso de pago de una aceptación: la misma página que ve el cliente. */
+  paymentUrl(token: string): string {
+    return `${this.d.url}/pago?token=${encodeURIComponent(token)}`;
+  }
+
+  /**
+   * Enlace de pago de unas condiciones YA ACEPTADAS (acción administrativa, 22/11/2026). No crea contrato, aceptación ni
+   * enlace de aceptación: recupera el enlace personal de la aceptación existente (cifrado en CRM 0051) y lo entrega por la
+   * página de pago, que ya calcula en servidor importe, impuestos y fecha. Nunca devuelve el enlace de otras condiciones.
+   */
+  private async resolvePaymentLink(termsId: number) {
+    const { t, a } = await this.current(termsId);
+    const now = this.now();
+    const enabled = !!this.payment?.enabled();
+    const sends = this.d.links ? (await this.d.links.store.sends(termsId)).filter((s) => s.kind === "payment_link") : [];
+    const lastSentAt = sends.find((s) => MAIL_OK.has(s.status))?.createdAt ?? null;
+    const lastAttemptAt = sends[0]?.createdAt ?? null;
+    const view = {
+      available: !!this.payment && !!this.d.links,
+      state: "not_accepted" as PaymentLinkState,
+      paymentEnabled: enabled,
+      paymentMethodAuthorized: false,
+      stage: null as string | null,
+      url: null as string | null,
+      signer: null as { name: string; email: string } | null,
+      trialEnd: null as number | null,
+      firstChargeAt: null as number | null,
+      recurring: null as { netCents: number; taxCents: number; totalCents: number; currency: string } | null,
+      lastSentAt,
+      blockers: [] as string[],
+    };
+    const accepted = !!a && a.status === "accepted" && a.acceptedAt !== null && t.acceptanceStatus === "accepted" && t.acceptanceId === a.id && (t.status === "scheduled" || t.status === "active") && t.subscriptionId !== null;
+    if (!accepted || !a) {
+      view.blockers.push("Estas condiciones no están aceptadas y en vigor: el enlace de pago solo existe tras la aceptación");
+      return { view, token: null as string | null, t, a: null as ContractAcceptance | null, lastAttemptAt };
+    }
+    view.signer = { name: a.signerName, email: a.signerEmail };
+    const sub = await this.d.subscriptionStore.get(t.subscriptionId!);
+    view.trialEnd = sub?.status === "trialing" ? (sub.trialEnd ?? null) : null;
+    const stage = this.payment ? await this.payment.stage(t.subscriptionId!).catch(() => null) : null;
+    if (stage) {
+      view.stage = stage.stage;
+      view.paymentMethodAuthorized = stage.paymentMethodAuthorized;
+      view.firstChargeAt = stage.nextChargeAt ?? stage.activationAt ?? null;
+      view.recurring = stage.recurring ? { netCents: stage.recurring.netCents, taxCents: stage.recurring.taxCents, totalCents: stage.recurring.totalCents, currency: stage.recurring.currency } : null;
+    }
+    if (view.paymentMethodAuthorized) {
+      view.state = "already_authorized";
+      view.blockers.push("El método de pago ya está autorizado");
+      return { view, token: null as string | null, t, a, lastAttemptAt };
+    }
+    if (now > a.acceptedAt! + PAY_WINDOW_MS) {
+      view.state = "expired";
+      view.blockers.push("El enlace del cliente caducó (60 días desde la aceptación)");
+      return { view, token: null as string | null, t, a, lastAttemptAt };
+    }
+    const token = await this.reveal(a);
+    if (!token) {
+      view.state = "link_unavailable";
+      view.blockers.push("El enlace personal de esta aceptación no se puede recuperar (se generó antes de poder guardarse)");
+      return { view, token: null as string | null, t, a, lastAttemptAt };
+    }
+    view.url = this.paymentUrl(token);
+    if (!enabled) {
+      view.state = "payment_not_enabled";
+      view.blockers.push("El cobro en Stripe de condiciones personalizadas está apagado: el enlace no se puede enviar todavía");
+    } else view.state = "ready";
+    return { view, token, t, a, lastAttemptAt };
+  }
+
+  /** Estado del enlace de pago para el operador (consultarlo no envía nada ni llama a Stripe). */
+  async paymentLink(termsId: number, actor: string) {
+    const r = await this.resolvePaymentLink(termsId);
+    if (r.view.url) opsLog("info", "CommercialTerms", "payment_link_viewed", { termsId, actor });
+    return r.view;
+  }
+
+  /**
+   * Envía por correo al firmante de la aceptación el enlace de pago. Nunca con el cobro apagado, con el método ya autorizado,
+   * sin aceptación o sin enlace recuperable; como mucho uno cada 10 minutos por acuerdo. El enlace no entra en ningún
+   * registro: el historial guarda solo el destinatario enmascarado y el resultado.
+   */
+  async sendPaymentLink(termsId: number, actor: string) {
+    const r = await this.resolvePaymentLink(termsId);
+    const { view, token, t, a } = r;
+    if (view.state !== "ready" || !token || !a) {
+      throw new TermsError("invalid_state", view.blockers[0] ?? "No se puede enviar el enlace de pago", { reason: view.state });
+    }
+    if (!this.d.mail?.paymentLink) throw new TermsError("invalid_state", "El correo de plataforma no está disponible para enviar el enlace de pago", { reason: "mail_unavailable" });
+    const now = this.now();
+    if (r.lastAttemptAt !== null && now - r.lastAttemptAt < PAYMENT_LINK_COOLDOWN_MS) {
+      throw new TermsError("invalid_state", "Ya se envió el enlace de pago hace menos de 10 minutos: espera para reenviarlo", { reason: "rate_limited", retryAfterMs: PAYMENT_LINK_COOLDOWN_MS - (now - r.lastAttemptAt) });
+    }
+    const doc = await this.document(t.id);
+    const v = doc.view;
+    const named = (name: string, quantity: number) => `${name}${quantity > 1 ? ` × ${quantity}` : ""}`;
+    const mailData: PaymentLinkMail = {
+      companyName: doc.company.legalName ?? doc.company.name,
+      signerName: a.signerName,
+      reference: doc.reference,
+      services: v.included.map((l) => named(l.name, l.quantity)),
+      netCents: v.recurring.netCents,
+      taxCents: v.recurring.taxes.reduce((x, g) => x + g.taxCents, 0),
+      totalCents: v.recurring.totalCents,
+      period: v.interval === "year" ? "anual" : "mensual",
+      currency: v.currency,
+      trialEndText: view.trialEnd !== null ? madridDateTime(view.trialEnd) : null,
+      firstChargeText: view.firstChargeAt !== null ? madridDateTime(view.firstChargeAt) : null,
+      url: view.url!,
+    };
+    // Una clave por acuerdo y tramo de 10 minutos: dos envíos simultáneos son el mismo mensaje (el segundo consta duplicado)
+    const key = `terms-payment-link:${a.id}:${Math.floor(now / PAYMENT_LINK_COOLDOWN_MS)}`;
+    let mail: { status: string; reason: string | null; outboxId: number | null; duplicate: boolean };
+    try {
+      const out = await this.d.mail.paymentLink(a.signerEmail, key, mailData);
+      mail = { status: out.status, reason: out.reason, outboxId: out.id ?? null, duplicate: out.duplicate };
+    } catch (e) {
+      mail = { status: "failed", reason: (e instanceof Error ? e.message : "error").slice(0, 200), outboxId: null, duplicate: false };
+    }
+    const ok = MAIL_OK.has(mail.status);
+    const masked = a.signerEmail.replace(/^(.).*(@.*)$/, "$1***$2");
+    if (!mail.duplicate) {
+      if (this.d.links) {
+        await this.d.links.store
+          .addSend({ termsId, acceptanceId: a.id, contractId: a.contractId, contractVersion: a.contractVersion, kind: "payment_link", recipientName: a.signerName, recipientEmail: a.signerEmail, outboxId: mail.outboxId, status: mail.status, reason: mail.reason, actor, createdAt: now })
+          .catch((e) => void opsLog("warn", "CommercialTerms", "payment_link_send_not_recorded", { termsId, acceptanceId: a.id, error: e instanceof Error ? e.name : "error" }));
+      }
+      await this.d.termsStore
+        .log(t.id, { kind: ok ? "payment_link_sent" : "payment_link_failed", actor, reason: (ok ? `Enlace de pago enviado a ${masked}` : `Enlace de pago NO enviado a ${masked}: ${mailReasonText(mail.status, mail.reason)}`).slice(0, 500), before: null, after: { acceptanceId: a.id, status: mail.status, outboxId: mail.outboxId }, effectiveAt: null, acceptanceStatus: null, syncResult: null, economic: null }, now)
+        .catch(() => undefined);
+      if (!ok) opsLog("warn", "CommercialTerms", "payment_link_not_sent", { termsId, acceptanceId: a.id, status: mail.status, reason: mail.reason });
+    }
+    return { to: masked, status: mail.status, reason: mail.reason, message: mailReasonText(mail.status, mail.reason), ok, duplicate: mail.duplicate, at: now };
+  }
+
   /** Aceptación ya registrada, localizada por su enlace personal: sirve para configurar y REANUDAR el pago. */
   private async acceptedBy(token: string) {
     if (!/^[A-Za-z0-9_-]{40,60}$/.test(token ?? "")) throw new TermsError("not_found", "Enlace no válido");
@@ -912,6 +1054,28 @@ export function createTermsAcceptanceRouter(svc: TermsAcceptanceService): Router
     res.setHeader("Cache-Control", "no-store");
     res.json(await svc.resend(id.parse(req.params.id), who(req)));
   }));
+  // Enlace de pago de unas condiciones ya aceptadas: estado y envío por correo al firmante (el contrato no se repite)
+  const PAY_REASONS = new Set(["payment_not_enabled", "not_accepted", "already_authorized", "link_unavailable", "expired", "rate_limited", "mail_unavailable"]);
+  const payFail = (res: Response, e: unknown) => {
+    const reason = e instanceof TermsError ? String(e.details?.reason ?? "") : "";
+    if (e instanceof TermsError && e.code === "invalid_state" && PAY_REASONS.has(reason)) return void res.status(409).json({ error: reason, message: e.message, ...(e.details ? { details: e.details } : {}) });
+    fail(res, e);
+  };
+  r.get("/commercial-terms/:id/payment-link", requireCustomPricing(), (req, res) => {
+    res.setHeader("Cache-Control", "no-store");
+    Promise.resolve()
+      .then(() => svc.paymentLink(id.parse(req.params.id), who(req)))
+      .then((v) => void res.json(v))
+      .catch((e) => payFail(res, e));
+  });
+  r.post("/commercial-terms/:id/payment-link/send", requireCustomPricing(), (req, res) => {
+    res.setHeader("Cache-Control", "no-store");
+    Promise.resolve()
+      .then(() => z.object({}).strict().parse(req.body ?? {}))
+      .then(() => svc.sendPaymentLink(id.parse(req.params.id), who(req)))
+      .then((v) => void res.json(v))
+      .catch((e) => payFail(res, e));
+  });
   r.post("/commercial-terms/:id/acceptance/regenerate", requireCustomPricing(), wrap(async (req, res) => {
     const b = z.object({ expectedRevision: z.number().int().min(1), send: z.boolean().optional() }).strict().parse(req.body);
     res.setHeader("Cache-Control", "no-store");
@@ -1077,7 +1241,7 @@ export function createTermsPublicAcceptanceRouter(svc: TermsAcceptanceService): 
           200,
           shell(
             "Condiciones aceptadas",
-            `<h1>Condiciones aceptadas</h1><p class="ok">Hemos registrado tu aceptación de ${esc(a.reference)} (versión ${a.version}, ${esc(madridDateTime(a.acceptedAt))}).</p><p>No se ha realizado ningún cobro. ${a.activated ? "Las condiciones quedan activadas conforme al documento aceptado." : "Tu contacto de Big Elephant completará la activación de las condiciones."}</p><p class="muted">Huella del documento aceptado: ${esc(a.documentSha256)}.</p><p><a class="btn" href="pago?token=${encodeURIComponent(String(b.token ?? req.query.token ?? ""))}">Continuar: configurar el método de pago</a></p>`,
+            `<h1>Condiciones aceptadas</h1><p class="ok">Hemos registrado tu aceptación de ${esc(a.reference)} (versión ${a.version}, ${esc(madridDateTime(a.acceptedAt))}).</p><p>No se ha realizado ningún cobro. ${a.activated ? "Las condiciones quedan activadas conforme al documento aceptado." : "Tu contacto de Big Elephant completará la activación de las condiciones."}</p><p class="muted">Huella del documento aceptado: ${esc(a.documentSha256)}.</p><p><a class="btn" href="${esc(svc.paymentUrl(String(b.token ?? req.query.token ?? "")))}">Continuar: configurar el método de pago</a></p>`,
           ),
         ),
       )

@@ -117,6 +117,55 @@ export const extraTemplates = {
       ],
       cta: { label: "Revisar y aceptar contrato", url: i.url },
     }),
+  /**
+   * Enlace de pago de unas condiciones YA ACEPTADAS (el contrato no se repite): el cliente registra su método de pago en
+   * Stripe y autoriza los cobros mensuales. No cobra nada al registrarlo; el primer cargo es el que se indica.
+   */
+  termsPaymentLink: (i: {
+    companyName: string;
+    signerName: string;
+    reference: string;
+    services: string[];
+    netCents: number;
+    taxCents: number;
+    totalCents: number;
+    period: "mensual" | "anual";
+    currency: string;
+    /** Fin de la prueba gratuita en hora de Madrid, ya formateado; null si no hay prueba en curso. */
+    trialEndText: string | null;
+    /** Fecha del primer cargo en hora de Madrid, ya formateada; null si no se conoce. */
+    firstChargeText: string | null;
+    url: string;
+  }) =>
+    e({
+      family: "transactional",
+      eyebrow: "Método de pago",
+      hero: "contrato",
+      title: "Registra tu método de pago",
+      subject: `Registra tu método de pago para ${i.companyName}`,
+      greeting: `Hola, ${i.signerName}:`,
+      intro: [
+        `Tu contrato ${i.reference} de ${i.companyName} ya está aceptado. Para completar la contratación solo falta que registres tu método de pago en la página segura de Stripe y autorices los cobros ${i.period === "anual" ? "anuales" : "mensuales"} de las condiciones que aceptaste.`,
+        ...(i.trialEndText ? [`Tu prueba gratuita continúa hasta el ${i.trialEndText} (hora de Madrid): hasta entonces no se te cobra nada.`] : []),
+      ],
+      blocks: [
+        {
+          card: {
+            status: { label: "Contrato aceptado · falta el método de pago", tone: "info" },
+            rows: [
+              { label: "Cliente", value: i.companyName },
+              { label: "Servicios contratados", value: i.services.join(" · ") },
+              { label: `Cuota ${i.period} (sin impuestos)`, value: fmt.money(i.netCents, i.currency) },
+              { label: "Impuestos", value: fmt.money(i.taxCents, i.currency) },
+            ],
+            total: { label: `Total ${i.period} con impuestos (referencia)`, value: fmt.money(i.totalCents, i.currency) },
+            ...(i.firstChargeText ? { foot: { label: "Primer cobro previsto", value: i.firstChargeText } } : {}),
+          },
+        },
+        { notice: { tone: "info", text: "Registrar el método de pago no realiza ningún cobro ahora. Big Elephant no guarda tus datos bancarios: los introduces directamente en Stripe. El importe de los impuestos definitivo lo calcula Stripe al facturar." } },
+      ],
+      cta: { label: "Registrar método de pago", url: i.url },
+    }),
   productUpdate: (i: { title: string; points: string[]; url: string }) =>
     e({ family: "experiential", eyebrow: "Actualización importante", hero: "novedades", title: i.title, subject: `Big Elephant: ${i.title}`, intro: ["Hemos mejorado Big Elephant. Esto es lo que cambia para ti:"], blocks: [{ steps: i.points.map((p) => ({ title: p, text: "Ya disponible en tu plataforma" })) }], cta: { label: "Ver las novedades", url: i.url } }),
   maintenance: (i: { start: number; minutes: number }) =>

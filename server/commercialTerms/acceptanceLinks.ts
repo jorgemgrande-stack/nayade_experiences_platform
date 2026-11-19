@@ -24,7 +24,7 @@ export interface StoredAcceptanceLink {
 }
 
 /** sent: primer envío · resent: reenvío del mismo enlace · regenerated: enlace nuevo (el anterior caducó o se revocó). */
-export type AcceptanceSendKind = "sent" | "resent" | "regenerated";
+export type AcceptanceSendKind = "sent" | "resent" | "regenerated" | "payment_link";
 
 export interface AcceptanceSend {
   id: number;

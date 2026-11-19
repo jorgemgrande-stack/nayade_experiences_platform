@@ -1194,3 +1194,38 @@ Impedimentos a resolver antes: la decisión legal del punto 2, el interruptor `C
 Marketplace en prueba pase por la página de pago de condiciones. Cambios previstos: `panelConversion.ts` (rama «en prueba»), un alta de condiciones
 estándar con aceptación de sesión en `acceptance.ts`, y pruebas con el doble de Stripe + Stripe TEST. Es código de cobros: se clasificará con
 `esRailway.ts changes --production` y, si resulta protegido, requerirá el procedimiento protegido.
+
+
+## Enlace de pago de unas condiciones ya aceptadas (acción administrativa, 22/11/2026)
+
+Problema: tras aceptar, el cliente solo conoce su enlace personal de aceptación, y esa página responde «ya aceptadas». Si no
+vio (o perdió) el botón «Continuar: configurar el método de pago», el administrador no tenía forma de obtener ni de enviar el
+enlace de pago (`link`, `resend` y `regenerate` solo valen mientras las condiciones están pendientes de aceptación).
+
+Solución sin repetir la aceptación ni tocar las condiciones (sin migración): el token de la aceptación ya se guarda cifrado
+(CRM 0051, `reveal`). La página pública `…/condiciones/pago?token=…` (la que ya calcula en servidor importe, impuestos y fecha
+del primer cargo) es el paso de pago; estas rutas solo recuperan ese enlace y lo envían.
+
+| Ruta | Permiso | Qué hace |
+|---|---|---|
+| `GET /cp/v1/commercial-terms/:id/payment-link` | precios personalizados (una persona) | Estado: `available`, `state`, `paymentEnabled`, `paymentMethodAuthorized`, `stage`, `url`, `signer`, `trialEnd`, `firstChargeAt`, `recurring`, `lastSentAt`, `blockers`. No envía ni llama a Stripe. |
+| `POST /cp/v1/commercial-terms/:id/payment-link/send` | precios personalizados (una persona) + CSRF | Envía el correo con el enlace al firmante de la aceptación (nunca a otro destinatario). |
+
+Estados (`state`): `ready` · `payment_not_enabled` (interruptor apagado: la URL se muestra solo al operador y no se envía) ·
+`not_accepted` · `already_authorized` · `link_unavailable` (aceptación anterior a poder guardar el enlace) · `expired` (60 días desde
+la aceptación). El envío responde 409 con `error` = ese motivo (`payment_not_enabled`, `not_accepted`, `already_authorized`,
+`link_unavailable`, `expired`), `rate_limited` (como mucho un envío cada 10 minutos por acuerdo) o `mail_unavailable`.
+
+Garantías: el envío exige cobro habilitado; nunca crea contrato, aceptación ni enlace de aceptación; el enlace no entra en el
+historial, en los registros ni en el registro de envíos (el historial guarda `payment_link_sent`/`payment_link_failed` con el
+destinatario enmascarado, y el envío consta como `kind = payment_link`); dos envíos simultáneos comparten clave de idempotencia
+(un solo correo); el correo (plantilla `termsPaymentLink`, categoría `contract_invitation`) dice que el contrato ya está aceptado,
+que la prueba continúa hasta el fin exacto en hora de Madrid, la cuota con IVA de referencia y que no se cobra nada al registrar el método.
+
+Corrección incluida: el botón «Continuar: configurar el método de pago» de la página de confirmación era un enlace RELATIVO
+(`pago?token=`); desde `…/condiciones?token=…` resolvía a `…/pago` (sin `/condiciones/`). Ahora es la URL absoluta de
+`paymentUrl()` (hay prueba que lo comprueba).
+
+Procedimiento para el administrador (cuando el interruptor `CP_CUSTOM_TERMS_BILLING_ENABLED` esté encendido): abrir la
+suscripción → condiciones aceptadas → «Enlace de pago» → comprobar estado, firmante, fin de prueba y primer cargo → «Enviar al
+cliente». Con el interruptor apagado el botón de envío no se habilita.
