@@ -63,7 +63,7 @@ import { estimateMonthly } from "../_core/ops/backupEstimate";
 import { rebuildPlatform } from "../_core/ops/disasterRecovery";
 import { DatabaseServers, MultiServerDatabaseProvisioner, parseDatabaseServers } from "../_core/provisioning/servers";
 import { MysqlSchemaApplier, databaseNameFor } from "../_core/provisioning/mysqlAdapters";
-import { applyPurge, planPurge, purgeDatabaseDroppers, purgeMediaDeleter, verifyPurge } from "../_core/ops/purgeTestCompanies";
+import { APPROVED_PURGE_PLAN_HASH, applyPurge, planPurge, purgeDatabaseDroppers, purgeMediaDeleter, verifyPurge } from "../_core/ops/purgeTestCompanies";
 import { migrateAllTenants } from "../_core/ops/tenantMigrations";
 import { dataExportSchemaStatus } from "../_core/ops/dataExportCheck";
 import { BUILTIN_MODULES } from "../_core/modules/builtin";
@@ -442,6 +442,8 @@ async function main() {
             yaNoEstan: plan.missing,
             yaNoEstanEmpresas: plan.missingCompanies,
             planHash: plan.planHash,
+            planHashAutorizado: APPROVED_PURGE_PLAN_HASH,
+            coincideConAutorizado: plan.planHash === APPROVED_PURGE_PLAN_HASH,
             aceptacionesPurgadas: plan.acceptanceEvidence,
             registros: plan.steps.map((s) => ({ base: s.db, tabla: s.table, filas: s.rows })),
             basesDeDatos: plan.databases,
@@ -454,11 +456,14 @@ async function main() {
           }));
           if (plan.problems.length) die("La simulación tiene problemas: no se purga nada");
           if (!apply) break;
+          // Bloqueo previo a cualquier borrado: la huella recalculada debe ser exactamente la autorizada
+          if (plan.planHash !== APPROVED_PURGE_PLAN_HASH) die(`El plan recalculado (${plan.planHash}) no coincide con el autorizado (${APPROVED_PURGE_PLAN_HASH}): no se borra nada`);
           if (!dbs && plan.databases.some((x) => x.action === "drop")) die("Falta PROVISIONING_DB_SERVERS o PROVISIONING_DB_ADMIN_URL para borrar las bases de los tenants");
           // Borrado de las bases (propias y restauradas) desde el módulo de la purga: solo se ejecuta con esta orden
           const done = await applyPurge(
             { crm: crmPool, registry: pool, ...purgeDatabaseDroppers(dbs, servers ? servers.aliases().map((a) => servers.admin(a)) : null), servers: resources.servers, deleteMedia: purgeMediaDeleter(process.env) },
             plan,
+            APPROVED_PURGE_PLAN_HASH,
           );
           const check = await verifyPurge({ crm: crmPool, registry: pool, resources });
           console.log(JSON.stringify({ aplicado: true, planHash: plan.planHash, borrados: done.deleted, basesBorradas: done.droppedDatabases, ficherosBorrados: done.deletedFiles, comprobacion: check }));
