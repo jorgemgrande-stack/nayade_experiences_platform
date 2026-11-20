@@ -255,6 +255,7 @@ export const LEGACY_NAV: NavItem[] = [
       { label: "Datos del negocio", href: "/admin/configuracion/sitio" },
       { label: "Marca y tema", href: "/admin/configuracion/marca" },
       { label: "Integraciones", href: "/admin/configuracion/integraciones" },
+      { label: "Cobros con Stripe", href: "/admin/configuracion/cobros" },
       { label: "Estado del sistema", href: "/admin/configuracion/estado" },
       { label: "Onboarding", href: "/admin/onboarding" },
       { label: "Plantillas de Email", href: "/admin/plantillas-email" },
@@ -468,6 +469,7 @@ export const TASK_NAV: NavSection[] = [
         children: [
           { label: "Ajustes generales", href: "/admin/configuracion", capabilities: ["admin-panel"] },
           { label: "Integraciones y pagos", href: "/admin/configuracion/integraciones", capabilities: ["admin-panel", "shop-checkout"] },
+          { label: "Cobros con Stripe", href: "/admin/configuracion/cobros", capabilities: ["admin-panel", "shop-checkout"] },
           { label: "Correo transaccional (Postmark)", href: "/admin/configuracion/postmark", capabilities: ["comms-email"] },
           { label: "Plantillas de email", href: "/admin/plantillas-email", capabilities: ["comms-email"] },
           { label: "Estado del sistema", href: "/admin/configuracion/estado", capabilities: ["admin-panel"] },

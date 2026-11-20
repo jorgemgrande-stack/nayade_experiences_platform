@@ -1,6 +1,7 @@
 import { COOKIE_NAME } from "@shared/const";
 import { clearSessionCookies } from "./_core/sessionCookie";
 import { readStoredFile } from "./storage";
+import { storageReconciler } from "./_core/files/reconcile";
 import { companyName } from "./tenantBrand";
 import { publicBaseUrl } from "./_core/productIdentity";
 
@@ -202,6 +203,8 @@ import { whatsappButtonRouter } from "./routers/whatsappButton";
 import { copilotRouter } from "./copilot/router";
 import { automationsRouter } from "./automations/router";
 import { postmarkTenantRouter } from "./routers/postmarkTenant";
+import { cobrosRouter } from "./routers/cobros";
+import { stripeAvailableForPublic, stripeCheckoutForShopOrder } from "./paymentsConnect/publicApi";
 import { installSectorLoyalty } from "./loyaltySectors";
 import { getSdkRuntime } from "./sdk";
 import { crmRouter } from "./routers/crm";
@@ -499,7 +502,7 @@ export const appRouter = router({
       const { readPublicSiteFeatures } = await import("./publicSite");
       // Con los correos a compradores bloqueados (prueba gratuita) la tienda no promete la confirmación por correo
       const { buyerEmailsEnabled } = await import("./shopOrdersDb");
-      return { ...theme, storefront: { ...(await getStorefront()), buyerEmails: await buyerEmailsEnabled() }, siteFeatures: theme.neutralSite ? await readPublicSiteFeatures() : null };
+      return { ...theme, storefront: { ...(await getStorefront()), buyerEmails: await buyerEmailsEnabled(), payments: { redsys: isRedsysConfigured(), stripe: await stripeAvailableForPublic() } }, siteFeatures: theme.neutralSite ? await readPublicSiteFeatures() : null };
     }),
 
     // Página estática del tenant, con HTML saneado (lista blanca)
@@ -1026,8 +1029,17 @@ export const appRouter = router({
 
     deleteMediaFile: adminProcedure
       .input(z.object({ id: z.number() }))
-      .mutation(async ({ input }) => {
-        return deleteMediaFile(input.id);
+      .mutation(async ({ ctx, input }) => {
+        const removed = await deleteMediaFile(input.id);
+        // El objeto almacenado se libera solo si ninguna otra cosa lo usa; un fallo del almacén no impide borrar la fila
+        let storage: { released: boolean; reason: string } = { released: false, reason: "not_attempted" };
+        try {
+          storage = await storageReconciler().releaseIfUnreferenced({ url: removed.url, fileKey: removed.fileKey }, `admin:${ctx.user?.id ?? "?"}`);
+        } catch (err) {
+          console.warn(JSON.stringify({ ctx: "Storage", event: "media_release_failed", error: err instanceof Error ? err.name : "error" }));
+          storage = { released: false, reason: "error" };
+        }
+        return { success: true, storage };
       }),
 
     // ── Menu Items ────────────────────────────────────────────────────────────
@@ -2584,6 +2596,7 @@ export const appRouter = router({
         });
         // Artículo inventariable (Business): la línea se descuenta al confirmarse el pago
         await markOrderStockLine(createdReservationId, input.productId, input.variantId);
+        await (await import("./orderVariant")).markOrderVariant(createdReservationId, input.variantId);
 
         // 5. Construir el formulario Redsys
         const pricingDesc = pricingType === "per_unit" && unitsBooked
@@ -2687,9 +2700,13 @@ export const appRouter = router({
         // Comentarios del comprador y datos fiscales para la factura (opcionales)
         comments: z.string().max(1000).optional(),
         billing: z.object({ nif: z.string().max(32), name: z.string().max(200).optional(), address: z.string().max(300).optional() }).optional(),
+        // «stripe»: pago con la cuenta Stripe de la empresa (devuelve la dirección de pago); por defecto, Redsys como siempre
+        provider: z.enum(["redsys", "stripe"]).default("redsys"),
       }))
       .mutation(async ({ input, ctx }) => {
-        if (!isRedsysConfigured()) throw new TRPCError({ code: "PRECONDITION_FAILED", message: "El pago online no está configurado en esta empresa." });
+        if (input.provider === "stripe") {
+          if (!(await stripeAvailableForPublic())) throw new TRPCError({ code: "PRECONDITION_FAILED", message: "El pago con Stripe no está disponible en esta empresa." });
+        } else if (!isRedsysConfigured()) throw new TRPCError({ code: "PRECONDITION_FAILED", message: "El pago online no está configurado en esta empresa." });
         const { validateBuyer, normalizeSpanishTaxId, soldOutMessage, isPurchasable, orderNotes } = await import("../shared/shopOrders");
         const buyerErrors = validateBuyer({ name: input.customerName, email: input.customerEmail, phone: input.customerPhone, wantsInvoice: !!input.billing, nif: input.billing?.nif, billingName: input.billing?.name, billingAddress: input.billing?.address });
         const firstBuyerError = Object.values(buyerErrors)[0];
@@ -2861,6 +2878,8 @@ export const appRouter = router({
             clientUserAgent: cartClientUa,
           });
           if (!legoPackSnapshot && !stockExcluded) await cartStock.markOrderStockLine(reservationId, item.productId, stockVariantId);
+          // Opción comprada de la línea (la usa el LMS para matricular solo en lo contratado)
+          if (!legoPackSnapshot) await (await import("./orderVariant")).markOrderVariant(reservationId, stockVariantId);
           // Guardar snapshot de líneas seleccionadas de Lego Pack: es lo que consume
           // el módulo de Operaciones (`buildPackExpansions`) para mostrar solo lo
           // realmente elegido, en vez de expandir el catálogo completo del pack.
@@ -2914,6 +2933,12 @@ export const appRouter = router({
           : storefront.kind === "generic"
             ? `Pedido de ${productNames.length} artículos — ${companyName()}`
             : `${productNames.length} experiencias — ${companyName()}`;
+        // Cuenta Stripe de la empresa: el pedido (reservas pendientes de pago) ya está creado; solo se abre la sesión de pago
+        // con el importe calculado aquí. Las reservas pasan a pagadas únicamente con el evento firmado de Stripe.
+        if (input.provider === "stripe") {
+          const s = await stripeCheckoutForShopOrder({ merchantOrder, amountCents: finalAmountCents, description: description.slice(0, 125), email: input.customerEmail });
+          return { merchantOrder, totalAmountCents, totalAmountEuros: totalAmountCents / 100, itemCount: input.items.length, redsysForm: null as null, stripeUrl: s.url };
+        }
         const redsysForm = await buildRedsysForm({
           amount: finalAmountCents,
           merchantOrder,
@@ -3107,6 +3132,7 @@ export const appRouter = router({
   copilot: copilotRouter,
   automations: automationsRouter,
   postmarkTenant: postmarkTenantRouter,
+  cobros: cobrosRouter,
   crm: crmRouter,
   commercialFollowup: commercialFollowupRouter,
   crmTags: crmTagsRouter,

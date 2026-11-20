@@ -71,6 +71,7 @@ import { createTicketsRouter } from "./tickets";
 import { createCustomerTicketsRouter } from "../support/customerTickets";
 import { grantActive, type SupportAdmin, type SupportGrantListed } from "../_core/support/grants";
 import { SUPPORT_AUDIT_PATH, verifySupportAudit } from "../_core/support/audit";
+import { PAYMENT_CLAIM_PATH, verifyPaymentClaim, type AccountIndexWriter } from "../paymentsConnect/accountIndex";
 
 /** Roles que pueden abrir un acceso de soporte CON modificación (decisión 13/11/2026); soporte, solo lectura. */
 const SUPPORT_WRITE_ROLES: ReadonlySet<string> = new Set(["admin", "superadmin"]);
@@ -110,6 +111,7 @@ import { createCommercialTermsRouter } from "../commercialTerms/api";
 import { saleGuard } from "../licensing/heldCapabilities";
 import { addedByTerms, paidNetOpener, withPaidNet, type PaidNetOpener } from "../implementation/paidNet";
 import { TermsAcceptanceService, createTermsAcceptanceRouter, createTermsPublicAcceptanceRouter } from "../commercialTerms/acceptance";
+import { activatePlatformAfterPayment, createPlatformActivationRouter, type PlatformActivationDeps } from "../commercialTerms/platformActivation";
 import type { AcceptanceLinkStore } from "../commercialTerms/acceptanceLinks";
 import type { Keyring } from "../_core/tenantRegistry/crypto";
 import { tenantTermsReader } from "../commercialTerms/tenantView";
@@ -299,6 +301,8 @@ export interface ControlPlaneDeps {
   /** Orígenes del navegador autorizados (CORS). Vacío = ninguno. Nunca comodín. */
   allowedOrigins?: string[];
   supportSecret?: string;
+  /** Índice global de cuentas de cobro por empresa (registro 0018). Sin él, la ruta de reserva responde 501. */
+  paymentAccounts?: AccountIndexWriter;
   /** Accesos de las empresas (Clientes SaaS → Accesos): el Core ejecuta cada acción en el contexto de la empresa. */
   tenantAccess?: { client: CoreAccessClient };
   /** Lectura de las integraciones de una empresa (solo proveedor, campo, fecha y autor); por defecto, con su DSN. */
@@ -635,6 +639,32 @@ export function createControlPlaneApp(d: ControlPlaneDeps): Express {
         // evento con su identificador, que el Core consulta); la autorización sigue hasta que alguien la revoque.
         if (c.ev === "exited" && live && !g.untilRevoked) await support.revoke(g.id, g.operator);
         res.status(201).json({ ok: true });
+      }),
+    );
+  }
+
+  // Reserva de la cuenta de cobro (Stripe Connect) de una empresa: la pide el Core, firmada con el secreto compartido. La
+  // cuenta pertenece a UNA sola empresa (clave primaria del índice); ver paymentsConnect/accountIndex.ts
+  if (d.supportSecret) {
+    const secret = d.supportSecret;
+    const seenClaims = new Map<string, number>();
+    app.post(
+      PAYMENT_CLAIM_PATH,
+      rateLimit({ windowMs: 60_000, limit: 300, standardHeaders: true, legacyHeaders: false, keyGenerator: (req) => `ip:${ipKeyGenerator(req.ip ?? "")}` }),
+      wrap(async (req, res) => {
+        res.setHeader("Cache-Control", "no-store");
+        if (!d.paymentAccounts) return void res.status(501).json({ error: "not_implemented" });
+        const c = await verifyPaymentClaim(String((req.body as { token?: unknown } | undefined)?.token ?? ""), secret);
+        if (!c) return void res.status(401).json({ error: "unauthorized" });
+        const nowS = Math.floor(Date.now() / 1000);
+        seenClaims.forEach((exp, k) => exp < nowS && seenClaims.delete(k));
+        if (seenClaims.has(c.jti)) return void res.status(409).json({ error: "replay" });
+        seenClaims.set(c.jti, c.exp);
+        const t = await d.reader.getTenant(c.tid);
+        if (!t || t.status === "deleted" || t.status === "deleting") return void res.status(404).json({ error: "tenant_not_found" });
+        const r = await d.paymentAccounts.claim(c.tid, c.mode, c.acct);
+        if (!r.ok) return void res.status(409).json({ error: "conflict", reason: r.reason });
+        res.status(r.alreadyOwned ? 200 : 201).json({ ok: true });
       }),
     );
   }
@@ -2065,6 +2095,7 @@ export function createControlPlaneApp(d: ControlPlaneDeps): Express {
     const orderStoreForTerms = d.orders?.store;
     let termsBilling: TermsBillingService | null = null;
     let termsLicences: TermsLicences | null = null;
+    let platformAfterPayment: PlatformActivationDeps | null = null;
     const commercialTerms = d.subscriptions.terms
       ? new CommercialTermsService({
           store: d.subscriptions.terms,
@@ -2124,6 +2155,23 @@ export function createControlPlaneApp(d: ControlPlaneDeps): Express {
     if (termsAcceptance) {
       router.use(createTermsAcceptanceRouter(termsAcceptance));
       publicTermsAcceptance = createTermsPublicAcceptanceRouter(termsAcceptance);
+    }
+    // Alta de la plataforma tras el pago de unas condiciones aceptadas (con el alta del orquestador, sin lógica nueva de cobro)
+    if (d.subscriptions.terms && d.provisioning && d.platformDomain) {
+      platformAfterPayment = {
+        subscriptions: { get: (id) => d.subscriptions!.store.get(id), linkTenant: (id, input, actor) => svc.linkTenant(id, input, actor) },
+        terms: d.subscriptions.terms,
+        crmStore: d.crm.store as unknown as PlatformActivationDeps["crmStore"],
+        platform: createContractActivation({ provisioning: d.provisioning, platformDomain: d.platformDomain, actor: { type: "crm", id: "terms-payment" }, notifyWelcome: d.mail?.platform?.assistedWelcome() }),
+        afterChange: async (sid, actor) => termsLicences?.afterChange(sid, actor),
+        // Primer cobro verificado: contratación vinculada en Stripe con una factura pagada (nunca por la sola aceptación)
+        paymentVerified: async (sid) => {
+          const row = await d.subscriptions?.termsBilling?.store?.bySubscription(sid);
+          return !!row && !!row.linkedAt && !!row.lastPaidInvoiceId && ["active", "past_due", "suspended", "cancel_scheduled"].includes(row.status);
+        },
+        now: d.subscriptions.now,
+      };
+      router.use(createPlatformActivationRouter(platformAfterPayment));
     }
     if (commercialTerms) {
       router.use(
@@ -2654,7 +2702,15 @@ export function createControlPlaneApp(d: ControlPlaneDeps): Express {
             capabilities: d.capabilities,
             licences: licences ? { ensure: (id, actor, o) => licences.ensure(id, actor, o) } : undefined,
             orderBilled: async (sid) => (await subscriptionBilling(ordersForTerms, sid)).source === "stripe",
-            afterFirstCharge: termsAcceptance ? (sid) => termsAcceptance.concludeDue({ subscriptionId: sid }) : undefined,
+            afterFirstCharge:
+              termsAcceptance || platformAfterPayment
+                ? async (sid) => {
+                    const platformDeps = platformAfterPayment;
+                    if (termsAcceptance) await termsAcceptance.concludeDue({ subscriptionId: sid });
+                    // Primer cobro verificado: plataforma de la empresa (idempotente; nunca lanza)
+                    if (platformDeps) await activatePlatformAfterPayment(platformDeps, sid);
+                  }
+                : undefined,
             urls: { success: st.urls.success, cancel: st.urls.cancel },
             namespace: st.config.namespace,
             mode: st.config.mode,

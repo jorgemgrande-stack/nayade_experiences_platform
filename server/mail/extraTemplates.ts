@@ -87,6 +87,8 @@ export const extraTemplates = {
     currency: string;
     url: string;
     expiresAt: number;
+    /** El cobro en Stripe está habilitado: el botón es «Aceptar y pagar» y, al aceptar, el cliente pasa directamente al pago. */
+    payable?: boolean;
   }) =>
     e({
       family: "transactional",
@@ -113,9 +115,9 @@ export const extraTemplates = {
             foot: { label: "Enlace válido hasta", value: fmt.date(i.expiresAt) },
           },
         },
-        { notice: { tone: "info", text: "Aceptar el contrato no realiza ningún cobro. El enlace es personal: puedes abrirlo tantas veces como necesites hasta aceptarlo." } },
+        { notice: { tone: "info", text: i.payable ? "Puedes leer el contrato completo antes de aceptar. Al aceptar pasarás a la página segura de Stripe para pagar; no se cobra nada antes. El enlace es personal y, si no terminas el pago, puedes retomarlo desde él." : "Aceptar el contrato no realiza ningún cobro. El enlace es personal: puedes abrirlo tantas veces como necesites hasta aceptarlo." } },
       ],
-      cta: { label: "Revisar y aceptar contrato", url: i.url },
+      cta: { label: i.payable ? "Aceptar y pagar" : "Revisar y aceptar contrato", url: i.url },
     }),
   /**
    * Enlace de pago de unas condiciones YA ACEPTADAS (el contrato no se repite): el cliente registra su método de pago en

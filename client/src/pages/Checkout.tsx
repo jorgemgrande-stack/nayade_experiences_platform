@@ -97,6 +97,14 @@ export default function Checkout() {
 
   const cartCheckout = trpc.reservations.cartCheckout.useMutation();
 
+  // Métodos de pago de la empresa: Redsys como siempre; Stripe solo si la empresa tiene su cuenta verificada y activada.
+  // Con los dos, elige quien compra (por defecto Redsys); con solo Stripe, Stripe.
+  const payments = storefront?.payments;
+  const stripeOffered = !!payments?.stripe;
+  const redsysOffered = payments ? payments.redsys : true;
+  const [chosen, setChosen] = useState<"redsys" | "stripe">("redsys");
+  const payWith: "redsys" | "stripe" = stripeOffered && (!redsysOffered || chosen === "stripe") ? "stripe" : "redsys";
+
   // Redirigir si el carrito está vacío
   useEffect(() => {
     // Se espera a saber qué web es (la tienda de una pyme o el catálogo de la instalación propia)
@@ -151,6 +159,7 @@ export default function Checkout() {
         fbc: hasConsent ? getFbc() : undefined,
         comments: comments.trim() || undefined,
         billing: wantsInvoice ? { nif: nif.trim(), name: billingName.trim() || undefined, address: billingAddress.trim() || undefined } : undefined,
+        provider: payWith,
       });
 
       // AddPaymentInfo — el backend confirmó la sesión Redsys, el usuario va
@@ -168,6 +177,14 @@ export default function Checkout() {
       // Vaciar carrito antes de redirigir. En la tienda de una pyme se conserva hasta que el pago se confirma
       // (página de pago correcto): si el banco lo rechaza, el comprador lo reintenta sin volver a llenarlo
       if (!site?.licensed) clearCart();
+
+      // Cuenta Stripe de la empresa: se sale a la página de pago de Stripe. El pedido queda PENDIENTE hasta que Stripe lo
+      // confirma al servidor (la página de vuelta solo consulta su estado). El carrito se vacía al confirmarse el pago.
+      if ("stripeUrl" in result && result.stripeUrl) {
+        window.location.href = result.stripeUrl;
+        return;
+      }
+      if (!result.redsysForm) return;
 
       // Enviar formulario Redsys
       const form = document.createElement("form");
@@ -555,6 +572,16 @@ export default function Checkout() {
                       </span>
                     </div>
 
+                    {stripeOffered && redsysOffered && (
+                      <fieldset className="mb-4 space-y-2" aria-label="Método de pago">
+                        {(["redsys", "stripe"] as const).map((m) => (
+                          <label key={m} className="flex items-center gap-2 text-sm text-slate-700 cursor-pointer">
+                            <input type="radio" name="payWith" checked={payWith === m} onChange={() => setChosen(m)} />
+                            {m === "redsys" ? "Tarjeta (pasarela del banco)" : "Tarjeta (Stripe)"}
+                          </label>
+                        ))}
+                      </fieldset>
+                    )}
                     <Button
                       size="lg"
                       className="w-full bg-primary hover:bg-primary/90 text-primary-foreground font-black text-base rounded-xl transition-all"
