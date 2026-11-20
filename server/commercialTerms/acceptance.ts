@@ -329,6 +329,7 @@ export class TermsAcceptanceService {
       currency: v.currency,
       url,
       expiresAt: a.expiresAt,
+      payable: !!this.payment?.enabled(),
     };
   }
 
@@ -611,7 +612,7 @@ export class TermsAcceptanceService {
   /** Lo que ve el firmante: el documento exacto, su huella y la declaración que debe confirmar. */
   async view(token: string) {
     const { a, doc } = await this.pending(token);
-    return { signerName: a.signerName, signerRole: a.signerRole, company: doc.company.legalName ?? doc.company.name, document: doc.text, documentSha256: doc.sha256, reference: doc.reference, version: doc.version, declaration: this.declaration(a, doc), expiresAt: a.expiresAt };
+    return { signerName: a.signerName, signerRole: a.signerRole, company: doc.company.legalName ?? doc.company.name, document: doc.text, documentSha256: doc.sha256, reference: doc.reference, version: doc.version, declaration: this.declaration(a, doc), expiresAt: a.expiresAt, payable: !!this.payment?.enabled() };
   }
 
   /** Aceptación: evidencias, contrato firmado y activación de las condiciones (o contratación del paquete). */
@@ -1032,8 +1033,8 @@ export function createTermsPublicAcceptanceRouter(svc: TermsAcceptanceService): 
 <label>Nombre completo<input type="text" name="name" required maxlength="160" autocomplete="name"></label>
 <label>NIF del firmante (opcional)<input type="text" name="taxId" maxlength="32"></label>
 <label class="check"><input type="checkbox" name="accept" value="1" required><span>${esc(v.declaration)}</span></label>
-<p class="muted">Aceptar estas condiciones no realiza ningún cobro. Huella del documento: ${esc(v.documentSha256)}. Enlace personal válido hasta el ${esc(madridDateTime(v.expiresAt))}.</p>
-<div class="actions"><button class="btn" type="submit">Aceptar las condiciones</button></div>
+<p class="muted">${v.payable ? "Al aceptar pasarás a la página segura de Stripe para pagar; no se cobra nada antes y Big Elephant no almacena datos bancarios." : "Aceptar estas condiciones no realiza ningún cobro."} Huella del documento: ${esc(v.documentSha256)}. Enlace personal válido hasta el ${esc(madridDateTime(v.expiresAt))}.</p>
+<div class="actions"><button class="btn" type="submit">${v.payable ? "Aceptar y pagar" : "Aceptar las condiciones"}</button></div>
 </form></section>`;
         send(res, 200, shell("Aceptación de condiciones", `${documentHtml(v.document)}${form}`));
       })
@@ -1071,16 +1072,27 @@ export function createTermsPublicAcceptanceRouter(svc: TermsAcceptanceService): 
     const b = (req.body ?? {}) as Record<string, string>;
     svc
       .accept(String(b.token ?? req.query.token ?? ""), { name: String(b.name ?? ""), taxId: b.taxId ? String(b.taxId) : null, accept: b.accept === "1" }, { ip: req.ip ?? null, userAgent: req.get("user-agent") ?? null })
-      .then((a) =>
-        send(
+      .then(async (a) => {
+        // Pago directo: tras aceptar, el mismo enlace abre (o reanuda) el Checkout de Stripe de este contrato. Si no se puede
+        // (cobro apagado, activación pendiente, error de Stripe), se muestra la confirmación con el botón para continuar
+        const token = String(b.token ?? req.query.token ?? "");
+        if (a.activated) {
+          const pay = await svc.startPayment(token).catch(() => null);
+          if (pay && pay.status === "pending" && pay.url && svc.checkoutUrlOk(pay.url)) {
+            res.setHeader("Cache-Control", "no-store");
+            res.setHeader("Referrer-Policy", "no-referrer");
+            return void res.redirect(303, pay.url);
+          }
+        }
+        return send(
           res,
           200,
           shell(
             "Condiciones aceptadas",
             `<h1>Condiciones aceptadas</h1><p class="ok">Hemos registrado tu aceptación de ${esc(a.reference)} (versión ${a.version}, ${esc(madridDateTime(a.acceptedAt))}).</p><p>No se ha realizado ningún cobro. ${a.activated ? "Las condiciones quedan activadas conforme al documento aceptado." : "Tu contacto de Big Elephant completará la activación de las condiciones."}</p><p class="muted">Huella del documento aceptado: ${esc(a.documentSha256)}.</p><p><a class="btn" href="pago?token=${encodeURIComponent(String(b.token ?? req.query.token ?? ""))}">Continuar: configurar el método de pago</a></p>`,
           ),
-        ),
-      )
+        );
+      })
       .catch((e) => failPage(res, e));
   });
   return r;
