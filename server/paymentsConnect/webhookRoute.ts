@@ -23,6 +23,8 @@ export const CONNECT_WEBHOOK_PATH = "/api/stripe/connect/webhook";
 
 export interface ConnectWebhookDeps {
   config?: () => ConnectConfig | null;
+  /** Prueba y Real: cada modo tiene su propio secreto de firma; el evento pertenece al modo cuyo secreto lo verifica. */
+  configs?: () => ConnectConfig[];
   verify?: (cfg: ConnectConfig, raw: Buffer, signature: string) => ConnectEvent;
   /** Empresa dueña de la cuenta (índice global del registro). La fuente de verdad: ningún metadato del evento decide. */
   tenantOfAccount: (accountId: string) => Promise<string | null>;
@@ -40,19 +42,29 @@ export const connectWebhookBodyParser: RequestHandler = (req, res, next) =>
 
 export function connectWebhookHandler(d: ConnectWebhookDeps) {
   return async (req: Request, res: Response) => {
-    const cfg = (d.config ?? (() => connectConfigState().config))();
-    if (!cfg) return void res.status(404).json({ error: "not_found" });
+    const candidates = d.configs ? d.configs() : [(d.config ?? (() => connectConfigState().config))()].filter((c): c is ConnectConfig => !!c);
+    if (candidates.length === 0) return void res.status(404).json({ error: "not_found" });
     const signature = req.headers["stripe-signature"];
     if (typeof signature !== "string" || !signature || !Buffer.isBuffer(req.body) || req.body.length === 0) {
       return void res.status(400).json({ error: "invalid_request" });
     }
-    let ev: ConnectEvent;
-    try {
-      ev = (d.verify ?? ((c, r, s) => verifyConnectEvent(c, r, s) as unknown as ConnectEvent))(cfg, req.body, signature);
-    } catch {
+    let verified: ConnectEvent | null = null;
+    let chosen: ConnectConfig | null = null;
+    for (const c of candidates) {
+      try {
+        verified = (d.verify ?? ((cc, r, s) => verifyConnectEvent(cc, r, s) as unknown as ConnectEvent))(c, req.body, signature);
+        chosen = c;
+        break;
+      } catch {
+        // Otro modo puede ser el dueño de esta firma
+      }
+    }
+    if (!verified || !chosen) {
       opsLog("warn", "StripeConnectWebhook", "invalid_signature", {});
       return void res.status(400).json({ error: "invalid_signature" });
     }
+    const ev: ConnectEvent = verified;
+    const cfg: ConnectConfig = chosen;
     // La empresa sale del índice global por `event.account`; el metadato `tenant_id` solo se contrasta (si dice otra
     // empresa, el evento es sospechoso y no se aplica). Cuenta desconocida o empresa no servible: 200 sin efecto.
     const tenantId = ev.account ? await d.tenantOfAccount(ev.account).catch(() => null) : null;
