@@ -9,7 +9,7 @@ import fs from "node:fs";
 import path from "node:path";
 import mysql from "mysql2/promise";
 import { loadMigrations, splitStatements } from "../scripts/db/migrationLib";
-import { ACCEPTANCE_EXEMPT_COMPANY_IDS, APPROVED_PURGE_PLAN_HASH, PURGE_COMPANIES_WITHOUT_TENANT, PURGE_TARGETS, applyPurge, planHashOf, planPurge, verifyPurge } from "./_core/ops/purgeTestCompanies";
+import { ACCEPTANCE_EXEMPT_COMPANY_IDS, PURGE_COMPANIES_WITHOUT_TENANT, PURGE_TARGETS, applyPurge, planHashOf, planPurge, verifyPurge } from "./_core/ops/purgeTestCompanies";
 
 const URL_ = process.env.REGISTRY_TEST_DATABASE_URL;
 const T = Date.UTC(2026, 9, 28, 9);
@@ -193,16 +193,11 @@ describe.skipIf(!URL_)("purga de las empresas de prueba (MySQL real)", () => {
     // Plan manipulado (una fila más a borrar) con la huella autorizada original: tampoco
     const tampered = { ...plan, steps: plan.steps.map((s, i) => (i === 0 ? { ...s, rows: s.rows + 1 } : s)) };
     await expect(applyPurge(deps, tampered, plan.planHash)).rejects.toThrow(/no coincide con su propia huella/);
-    // La huella autorizada en el código no es la de esta base de pruebas: la purga real de production no se lanzaría con estos datos
-    expect(plan.planHash).not.toBe(APPROVED_PURGE_PLAN_HASH);
-    await expect(applyPurge(deps, plan, APPROVED_PURGE_PLAN_HASH)).rejects.toThrow(/no coincide con el autorizado/);
+    // Una huella autorizada de OTRO plan (p. ej. la de una simulación anterior de production) tampoco sirve
+    await expect(applyPurge(deps, plan, "9d0c1fdd82f8db98658d13cff457abaf05958e43d9904e1ecfa4eddcefaf5650", "1:test")).rejects.toThrow(/no coincide con el autorizado/);
     expect(dropped).toEqual([]);
     expect(deletedFiles).toEqual([]);
     expect(await snapshot()).toBe(before);
-  });
-
-  it("la huella autorizada tiene el formato esperado", () => {
-    expect(APPROVED_PURGE_PLAN_HASH).toMatch(/^[0-9a-f]{64}$/);
   });
 
   it("sin poder mirar el bucket de medios no se purga nada (quedarían ficheros huérfanos)", async () => {
@@ -239,6 +234,7 @@ describe.skipIf(!URL_)("purga de las empresas de prueba (MySQL real)", () => {
       { crm, registry: reg, dropDatabase: async (t) => void dropped.push(t), dropRestoredDatabase: async (_t, db) => void restored.push(db), servers: resources().servers, deleteMedia: async (k) => void bucket.delete(k) },
       plan,
       plan.planHash,
+      "44830001:jorgemgrande-stack",
     );
     expect(done.deletedFiles).toBe(2);
     expect(Array.from(bucket)).toEqual(["t/t9-empresa-real/logo.png"]);
@@ -272,6 +268,9 @@ describe.skipIf(!URL_)("purga de las empresas de prueba (MySQL real)", () => {
     const [purged] = await reg.query<mysql.RowDataPacket[]>("SELECT details FROM tenant_events WHERE action = 'purged' LIMIT 1");
     const details = typeof purged[0].details === "string" ? JSON.parse(purged[0].details) : purged[0].details;
     expect(details.planHash).toBe(plan.planHash);
+    // Queda registrado el valor autorizado (parámetro obligatorio del workflow) y la ejecución que lo autorizó
+    expect(details.expectedPlanHash).toBe(plan.planHash);
+    expect(details.auditRef).toBe("44830001:jorgemgrande-stack");
     expect(details.companies.map((c: { id: number }) => c.id).sort((a: number, b: number) => a - b)).toEqual([8, 11, 12, 13]);
     expect(details.acceptances).toHaveLength(1);
     expect(ev.filter((r) => r.action === "created").length).toBe(PURGE_TARGETS.length + 1);
