@@ -24,12 +24,12 @@ import { diffTrees, normalizeTree, type EditorBlock, type EditorTree } from "@sh
 
 const fmt = (ms: number) => new Intl.DateTimeFormat("es-ES", { dateStyle: "medium", timeStyle: "short", timeZone: "Europe/Madrid" }).format(new Date(ms));
 const KIND: Record<string, { label: string; Icon: typeof Type; tone: string }> = {
-  text: { label: "Texto", Icon: Type, tone: "bg-slate-100 text-slate-700" },
-  video: { label: "Vídeo", Icon: PlayCircle, tone: "bg-sky-100 text-sky-700" },
-  audio: { label: "Audio", Icon: Headphones, tone: "bg-violet-100 text-violet-700" },
-  pdf: { label: "Documento PDF", Icon: File, tone: "bg-rose-100 text-rose-700" },
-  exercise: { label: "Ejercicio", Icon: Dumbbell, tone: "bg-amber-100 text-amber-800" },
-  external_link: { label: "Enlace externo", Icon: Link2, tone: "bg-emerald-100 text-emerald-700" },
+  text: { label: "Texto", Icon: Type, tone: "bg-slate-500/15 text-slate-700 dark:text-slate-300" },
+  video: { label: "Vídeo", Icon: PlayCircle, tone: "bg-sky-500/15 text-sky-700 dark:text-sky-300" },
+  audio: { label: "Audio", Icon: Headphones, tone: "bg-violet-500/15 text-violet-700 dark:text-violet-300" },
+  pdf: { label: "Documento PDF", Icon: File, tone: "bg-rose-500/15 text-rose-700 dark:text-rose-300" },
+  exercise: { label: "Ejercicio", Icon: Dumbbell, tone: "bg-amber-500/15 text-amber-800 dark:text-amber-300" },
+  external_link: { label: "Enlace externo", Icon: Link2, tone: "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300" },
 };
 const kindOf = (k: string | undefined) => KIND[k ?? "text"] ?? KIND.text;
 const STATUS: Record<string, string> = { draft: "Curso privado (borrador)", published: "Curso publicado", archived: "Curso archivado" };
@@ -118,7 +118,7 @@ export default function CourseEditor() {
   const setBlock = (b: number, f: (x: EditorBlock) => EditorBlock) => sel.k === "lesson" && setLes(sel.m, sel.l, (l) => ({ ...l, blocks: l.blocks.map((x, i) => (i === b ? f(x) : x)) }));
   const pick = (next: Sel) => { setSel(next); if (next.k !== "course") setOpen((o) => new Set(o).add(next.m)); };
 
-  const state = unsaved ? { label: "Cambios sin guardar", cls: "bg-red-100 text-red-800", Icon: CircleDot } : s.draft ? { label: `Borrador guardado · ${s.changes.length} cambio(s) sin publicar`, cls: "bg-amber-100 text-amber-900", Icon: Pencil } : { label: "Todo publicado", cls: "bg-emerald-100 text-emerald-800", Icon: CheckCircle2 };
+  const state = unsaved ? { label: "Cambios sin guardar", cls: "bg-red-500/15 text-red-700 dark:text-red-300", Icon: CircleDot } : s.draft ? { label: `Borrador guardado · ${s.changes.length} cambio(s) sin publicar`, cls: "bg-amber-500/15 text-amber-800 dark:text-amber-300", Icon: Pencil } : { label: "Todo publicado", cls: "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300", Icon: CheckCircle2 };
 
   return (
     <div className="space-y-4">
@@ -159,13 +159,13 @@ export default function CourseEditor() {
       </div>
 
       {s.usage.activeEnrollments > 0 && (
-        <div className="flex items-start gap-2 rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-900">
+        <div className="flex items-start gap-2 rounded-lg border border-emerald-500/30 bg-emerald-500/10 p-3 text-sm text-emerald-800 dark:text-emerald-200">
           <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />
           <p>Hay {s.usage.activeEnrollments} matrícula(s) activa(s) y {s.usage.learnersWithProgress} persona(s) con progreso. Editar no les afecta hasta que publiques, y al publicar se conservan su progreso, su acceso y su última posición.</p>
         </div>
       )}
       {s.draftInfo?.stale && (
-        <div className="flex items-start gap-2 rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">
+        <div className="flex items-start gap-2 rounded-lg border border-amber-500/40 bg-amber-500/10 p-3 text-sm text-amber-900 dark:text-amber-200">
           <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />
           <p>Lo publicado ha cambiado desde que empezaste este borrador (por ejemplo, por una importación). No se puede publicar para no pisar esos cambios: descarta el borrador y vuelve a empezar.</p>
         </div>
@@ -258,14 +258,14 @@ export default function CourseEditor() {
 
           {sel.k === "lesson" && mod && les && (preview ? (
             <article className="space-y-3">
-              <p className="rounded-md bg-sky-50 px-3 py-2 text-xs text-sky-900">Vista previa del borrador · así quedará la lección para el alumno. Los vídeos, audios y PDF no cambian.</p>
+              <p className="rounded-md bg-sky-500/10 px-3 py-2 text-xs text-sky-800 dark:text-sky-200">Vista previa del borrador · así quedará la lección para el alumno. Los vídeos, audios y PDF no cambian.</p>
               <h3 className="text-xl font-semibold">{les.title}</h3>
               {les.blocks.map((b) => {
                 const K = kindOf(s.blockMeta[b.id]?.kind);
                 return (
                   <div key={b.id} className="rounded-lg border p-3">
                     <h4 className="flex items-center gap-2 text-sm font-semibold"><span className={`rounded p-1 ${K.tone}`}><K.Icon className="h-3.5 w-3.5" aria-hidden /></span>{b.title}</h4>
-                    {b.body && <p className="mt-1 whitespace-pre-line text-sm text-slate-700">{b.body}</p>}
+                    {b.body && <p className="mt-1 whitespace-pre-line text-sm text-foreground/80">{b.body}</p>}
                     {b.attribution && <p className="mt-1 text-xs text-muted-foreground">{b.attribution}</p>}
                   </div>
                 );
@@ -286,7 +286,7 @@ export default function CourseEditor() {
                   <div key={b.id} className="overflow-hidden rounded-lg border">
                     <div className="flex items-center gap-2 border-b bg-muted/40 px-3 py-1.5">
                       <span className={`inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-xs font-medium ${K.tone}`}><K.Icon className="h-3.5 w-3.5" aria-hidden />{K.label}</span>
-                      {meta?.resourceKind && <span className={`text-xs ${meta.resourceStatus === "verified" ? "text-emerald-700" : "text-amber-700"}`}>{meta.resourceStatus === "verified" ? "Fichero verificado" : "Fichero pendiente"}</span>}
+                      {meta?.resourceKind && <span className={`text-xs ${meta.resourceStatus === "verified" ? "text-emerald-700 dark:text-emerald-400" : "text-amber-700 dark:text-amber-400"}`}>{meta.resourceStatus === "verified" ? "Fichero verificado" : "Fichero pendiente"}</span>}
                       <span className="ml-auto text-xs text-muted-foreground">{bi + 1} de {les.blocks.length}</span>
                       <Button size="icon" variant="ghost" className="h-7 w-7" aria-label="Subir bloque" disabled={bi === 0} onClick={() => setLes(sel.m, sel.l, (l) => ({ ...l, blocks: move(l.blocks, bi, -1) }))}><ArrowUp className="h-4 w-4" /></Button>
                       <Button size="icon" variant="ghost" className="h-7 w-7" aria-label="Bajar bloque" disabled={bi === les.blocks.length - 1} onClick={() => setLes(sel.m, sel.l, (l) => ({ ...l, blocks: move(l.blocks, bi, 1) }))}><ArrowDown className="h-4 w-4" /></Button>

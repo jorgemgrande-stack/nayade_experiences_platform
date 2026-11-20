@@ -173,8 +173,27 @@ function Rules() {
   if (q.isLoading) return <PanelLoading />;
   if (q.isError) return <PanelError error={q.error} onRetry={() => q.refetch()} />;
   return !q.data!.length ? <PanelEmpty title="Sin reglas" description="Una regla une una modalidad del catálogo con los módulos que abre y su duración. Sin regla no hay acceso." /> : (
-    <table className="w-full text-sm"><thead className="bg-muted/50 text-left"><tr><th className="p-2">Producto</th><th className="p-2">Variante</th><th className="p-2">Módulos</th><th className="p-2">Días</th><th className="p-2">Inicio</th><th className="p-2">Activa</th></tr></thead>
-      <tbody>{q.data!.map((r) => <tr key={r.id} className="border-t"><td className="p-2">{r.experienceId}</td><td className="p-2">{r.variantId ?? "cualquiera"}</td><td className="p-2">{r.moduleIds.length}</td><td className="p-2">{r.durationDays ?? "sin límite"}</td><td className="p-2">{r.startMode === "fixed_date" ? fmt(r.fixedStart) : "al conceder"}</td><td className="p-2">{r.active ? "Sí" : "No"}</td></tr>)}</tbody></table>
+    <div className="space-y-3">
+      <p className="text-sm text-muted-foreground">Cada regla dice qué módulos abre una modalidad de compra y durante cuánto tiempo. Solo se aplican cuando están activas; aquí se consultan, sin cambiar nada.</p>
+      <ul className="grid gap-3 md:grid-cols-2">
+        {q.data!.map((r) => (
+          <li key={r.id} className="rounded-xl border bg-card p-4">
+            <div className="flex items-start justify-between gap-2">
+              <div className="min-w-0">
+                <h3 className="flex items-center gap-1.5 font-semibold"><ShieldCheck className="h-4 w-4 shrink-0 text-primary" aria-hidden /><span className="truncate">{r.experienceName ?? `Producto n.º ${r.experienceId}`}</span></h3>
+                <p className="text-sm text-muted-foreground">{r.variantName ?? (r.variantId == null ? "Cualquier modalidad" : `Modalidad n.º ${r.variantId}`)}</p>
+              </div>
+              <Badge variant={r.active ? "default" : "secondary"}>{r.active ? "Activa" : "Inactiva"}</Badge>
+            </div>
+            <dl className="mt-3 space-y-1 text-sm">
+              <div className="flex gap-2"><dt className="w-20 shrink-0 text-muted-foreground">Abre</dt><dd>{r.moduleTitles.length ? r.moduleTitles.join(" · ") : "—"}</dd></div>
+              <div className="flex gap-2"><dt className="w-20 shrink-0 text-muted-foreground">Duración</dt><dd>{r.durationDays ? `${r.durationDays} días` : "Sin límite"}</dd></div>
+              <div className="flex gap-2"><dt className="w-20 shrink-0 text-muted-foreground">Inicio</dt><dd>{r.startMode === "fixed_date" ? fmt(r.fixedStart) : "Al conceder el acceso"}</dd></div>
+            </dl>
+          </li>
+        ))}
+      </ul>
+    </div>
   );
 }
 
