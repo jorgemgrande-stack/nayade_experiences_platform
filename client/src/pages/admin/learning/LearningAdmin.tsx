@@ -15,6 +15,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { PanelEmpty, PanelError, PanelLoading } from "@/components/admin/PanelStates";
 import { toastError } from "@/lib/errorMessage";
 import { effectiveStatus } from "@shared/learning";
+import { FolderOpen, GraduationCap, PenSquare, PlayCircle, ShieldCheck, Users, Wrench, type LucideIcon } from "lucide-react";
 import CourseEditor from "./CourseEditor";
 
 const fmt = (ms: number | null) => (ms ? new Intl.DateTimeFormat("es-ES", { dateStyle: "medium", timeStyle: "short", timeZone: "Europe/Madrid" }).format(new Date(ms)) : "Sin caducidad");
@@ -238,13 +239,19 @@ function Tecnica() {
 
 export default function LearningAdmin() {
   const [tab, setTab] = useState<Tab>("matriculas");
-  const tabs: Array<[Tab, string]> = [["matriculas", "Matrículas"], ["cursos", "Cursos y materiales"], ["editor", "Editor"], ["reglas", "Reglas por modalidad"], ["demo", "Demostración"], ["tecnica", "Prueba técnica"]];
+  // Uso diario a la izquierda; las herramientas técnicas (pruebas y auditoría) quedan aparte, a la derecha
+  const tabs: Array<[Tab, string, LucideIcon]> = [["matriculas", "Matrículas", Users], ["editor", "Editor de cursos", PenSquare], ["cursos", "Materiales", FolderOpen], ["reglas", "Reglas de acceso", ShieldCheck], ["demo", "Demostraciones", PlayCircle]];
+  const tech: [Tab, string, LucideIcon] = ["tecnica", "Herramientas técnicas", Wrench];
+  const tabButton = ([k, label, Icon]: [Tab, string, LucideIcon]) => (
+    <button key={k} role="tab" aria-selected={tab === k} onClick={() => setTab(k)} className={`inline-flex items-center gap-1.5 px-3 py-2 text-sm ${tab === k ? "border-b-2 border-primary font-semibold text-foreground" : "text-muted-foreground hover:text-foreground"}`}><Icon className="h-4 w-4" aria-hidden />{label}</button>
+  );
   return (
     <AdminLayout>
       <div className="space-y-5">
-        <div><h1 className="text-2xl font-bold">Formación digital</h1><p className="text-sm text-muted-foreground">Cursos privados con matrícula nominativa. El acceso solo se concede con pago confirmado, concesión con motivo o demostración.</p></div>
+        <div><h1 className="flex items-center gap-2 text-2xl font-bold"><GraduationCap className="h-6 w-6 text-primary" aria-hidden />Formación digital</h1><p className="text-sm text-muted-foreground">Cursos privados con matrícula nominativa. El acceso solo se concede con pago confirmado, concesión con motivo o demostración.</p></div>
         <div role="tablist" className="flex flex-wrap gap-1 border-b">
-          {tabs.map(([k, label]) => <button key={k} role="tab" aria-selected={tab === k} onClick={() => setTab(k)} className={`px-3 py-2 text-sm ${tab === k ? "border-b-2 border-primary font-semibold" : "text-muted-foreground"}`}>{label}</button>)}
+          {tabs.map(tabButton)}
+          <span className="ml-auto">{tabButton(tech)}</span>
         </div>
         {tab === "matriculas" && <Enrollments />}
         {tab === "cursos" && <Courses />}
