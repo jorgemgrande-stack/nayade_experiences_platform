@@ -235,7 +235,8 @@ async function accepted(env: Env, q: Awaited<ReturnType<typeof quantum>>) {
   expect(req.status).toBe(201);
   const token = String(req.json.url).split("token=")[1];
   const acc = await page(env, "POST", "", { token, name: "Indira Prueba", accept: "1" });
-  expect(acc.status).toBe(200);
+  // Con el cobro encendido, #909 redirige tras aceptar al pago (303); apagado, muestra la confirmación (200)
+  expect([200, 303]).toContain(acc.status);
   return { token, html: acc.text };
 }
 const stageOf = async (env: Env, id: number) => (await call(env, "GET", `/subscriptions/${id}/terms/billing/stripe`)).json.contracting;
@@ -248,7 +249,8 @@ async function acceptedLinked(env: Env, q: Awaited<ReturnType<typeof quantum>>) 
   const token = String(l.json.url).split("token=")[1];
   expect(token).toMatch(/^[A-Za-z0-9_-]{40,60}$/);
   const acc = await page(env, "POST", "", { token, name: "Indira Prueba", accept: "1" });
-  expect(acc.status).toBe(200);
+  // Con el cobro encendido, #909 redirige tras aceptar al pago (303); apagado, muestra la confirmación (200)
+  expect([200, 303]).toContain(acc.status);
   return { token, html: acc.text };
 }
 const payLink = (env: Env, id: number, token?: string | null) => call(env, "GET", `/commercial-terms/${id}/payment-link`, token === undefined ? {} : { token });
@@ -289,6 +291,7 @@ describe("enlace de pago de unas condiciones aceptadas (acción administrativa)"
   it("COBRO ENCENDIDO: se envía UNA vez al firmante (no a otro), con la fecha exacta del fin de prueba; reintento rápido = 409; pasados 10 min se permite", async () => {
     const q = await quantum(on);
     const { token } = await acceptedLinked(on, q);
+    const callsAfterAccept = on.gw.calls.length;
     const v = await payLink(on, q.termsId);
     expect(v.json).toMatchObject({ state: "ready", paymentEnabled: true, trialEnd: q.trialEnd, firstChargeAt: q.trialEnd, lastSentAt: null, recurring: { netCents: 5200, taxCents: 1092, totalCents: 6292, currency: "EUR" } });
     const spy = ["log", "info", "warn", "error"].map((m) => vi.spyOn(console, m as "log"));
@@ -321,8 +324,8 @@ describe("enlace de pago de unas condiciones aceptadas (acción administrativa)"
     const logged = spy.flatMap((x) => x.mock.calls.map((c) => c.map(String).join(" "))).join("\n");
     expect(logged).not.toContain(token);
     spy.forEach((x) => x.mockRestore());
-    // No se llamó a Stripe por enviar el enlace
-    expect(on.gw.calls.length).toBe(0);
+    // No se llamó a Stripe por enviar el enlace (la aceptación sí pudo abrir el Checkout, por #909)
+    expect(on.gw.calls.length).toBe(callsAfterAccept);
     // Pasados 10 minutos se puede reenviar (otro mensaje)
     setClock(on, clock + 11 * 60_000);
     expect((await paySend(on, q.termsId)).status).toBe(200);
@@ -385,10 +388,12 @@ describe("enlace de pago de unas condiciones aceptadas (acción administrativa)"
   });
 
   it("la URL enviada es la página pública real (absoluta) y abre el estado de pago; el enlace de la página de confirmación también es absoluto (no relativo)", async () => {
-    const q = await quantum(on);
-    const { token, html } = await acceptedLinked(on, q);
+    const qOff = await quantum(off);
+    const shown = await acceptedLinked(off, qOff);
     // Antes el enlace era relativo y, desde …/condiciones, apuntaba a …/pago (404)
-    expect(html).toContain(`href="${PUBLIC}/condiciones/pago?token=${token}"`);
+    expect(shown.html).toContain(`href="${PUBLIC}/condiciones/pago?token=${shown.token}"`);
+    const q = await quantum(on);
+    await acceptedLinked(on, q);
     const url = (await payLink(on, q.termsId)).json.url as string;
     const path = new URL(url).pathname.replace("/cp/v1/public/contract-acceptance/condiciones", "") + new URL(url).search;
     const view = await page(on, "GET", path);
