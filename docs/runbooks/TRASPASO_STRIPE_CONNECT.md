@@ -1,11 +1,13 @@
-# Traspaso — Stripe Connect por empresa (Sandbox) — sesión 52
+# Traspaso — Stripe Connect por empresa (Sandbox y Real solo para Quantum) — sesión 52
 
 Documento para continuar el trabajo desde una única ventana de Claude Code. Complementa
 [COBROS_STRIPE_EMPRESA.md](COBROS_STRIPE_EMPRESA.md) (runbook técnico) y
 [../architecture/COBROS_POR_EMPRESA_STRIPE.md](../architecture/COBROS_POR_EMPRESA_STRIPE.md) (diseño). **No contiene ningún secreto**: solo
 nombres de variables y su estado.
 
-> Estado a 20/11/2026. Solo Sandbox. Stripe Connect **Live** está desactivado y el código lo rechaza.
+> Estado a 20/11/2026 (tarde). **Prueba (Sandbox):** disponible para todas las empresas multiempresa. **Real:** solo para las empresas listadas en
+> `CONNECT_STRIPE_LIVE_TENANTS` (hoy únicamente `t12-quantum-soulrise`); sin esa variable el código sigue rechazando Live. La gestión de Big Elephant
+> pasa a una sola ventana (la principal); esta sesión ya no se mantiene abierta.
 
 ## 1. Qué hay (arquitectura)
 
@@ -40,6 +42,8 @@ nombres de variables y su estado.
 | #896 | Cobros por empresa (0018 registro, 0080 empresa), webhook central, runbook | Fusionado `62cf0670`; publicado «Publicado 62cf0670ca51 en production» |
 | #898 | Compra directa (0081) + recuperación | Se fusionó sobre la rama de #896 (`aae6b49d`); llevado a integración con **#904** (`ec146657`) y desplegado por la vía protegida (§9) |
 | #901–#903 | Studio (tarjetas comerciales, formularios traducidos) — no es Connect | Fusionados y publicados (`d079db50`) |
+| #910 | Alta de la cuenta conectada con **Accounts v2** (`/v2/core/accounts`): Stripe rechaza `/v1/accounts` en plataformas nuevas (400). Idempotencia `connect-acct-v2-<empresa>-<modo>` | Fusionado `b4011893`; publicado y verificado |
+| #911 | **Modo Real por OAuth** solo para empresas autorizadas: vincula la cuenta de Stripe que la empresa YA tiene (no crea ninguna), `state` firmado, evento `account.application.deauthorized`, webhook con dos secretos (Prueba y Real) | Fusionado `764e571a`; publicado en production (§9) |
 
 Trampa: **un PR apilado se fusiona en su rama base, no en `integration/elephant-source`.** Comprobar siempre `git log origin/integration/elephant-source`.
 
@@ -48,6 +52,7 @@ Trampa: **un PR apilado se fusiona en su rama base, no en `integration/elephant-
 - Registro `0018_payment_account_index`: aplicada en production (con copia verificada previa, por la cadena ordinaria).
 - Empresas `0080_payment_accounts`: aplicada en TODAS las empresas de production (canario primero, `error: null`). Tabla nueva, aditiva.
 - Empresas `0081_payment_checkouts_shop_orders`: aplicada en production por la vía protegida (§9), con copia verificada previa.
+- #910 y #911: **sin migraciones** (la cuenta Real usa las mismas tablas `payment_accounts`, con modo `live`).
 - Los `.down.sql` borran las vinculaciones: **no ejecutarlos sin exportar antes**. Reversión del despliegue sin perder vinculaciones: runbook §6.
 
 ## 4. Entornos y variables (solo nombres y estado)
@@ -61,6 +66,20 @@ Trampa: **un PR apilado se fusiona en su rama base, no en `integration/elephant-
 | `PAYMENT_ACCOUNT_CLAIM_URL` | `core` | Opcional (por defecto el plano de control interno) |
 | `PAYMENT_RECOVERY_MIN_AGE_MS` | `core` | Opcional (60000 por defecto) |
 | `APP_ENTRY_HOST` (`app.bigelephant.es`), `PUBLIC_HOSTS` | `core-gateway` | Verificado por comportamiento (sin credenciales responde 200); la lectura de variables en Railway está denegada a las sesiones de Claude |
+
+Modo Real (cargadas por Dirección directamente en Railway; el nombre es **plural**, un nombre singular distinto deja el modo Real inactivo):
+
+| Variable | Servicio / entorno | Estado |
+|---|---|---|
+| `CONNECT_STRIPE_LIVE_API_KEY` (clave restringida; el código solo acepta `rk_live_…`) | `core`, production | Cargada |
+| `CONNECT_STRIPE_LIVE_WEBHOOK_SECRET` (destino real de Connect, `whsec_…`) | `core`, production | Cargada |
+| `CONNECT_STRIPE_LIVE_CLIENT_ID` (`ca_…` de la plataforma Connect) | `core`, production | Cargada |
+| `CONNECT_STRIPE_LIVE_TENANTS` (= `t12-quantum-soulrise`, sin comodines) | `core`, production | Corregida el 20/11 (estaba como `…_TENANT`) |
+
+Plataforma Connect dedicada «Big Elephant Connect.» (`acct_1Udsj16GxaEBY9R4`), distinta del Stripe corporativo que cobra las suscripciones SaaS (no se toca).
+OAuth habilitado; URI de retorno `https://t12-quantum-soulrise.app.bigelephant.es/admin/configuracion/cobros`; destino de webhook real
+`https://app.bigelephant.es/api/stripe/connect/webhook` con 6 eventos (los 5 de cuentas conectadas y `account.application.deauthorized`).
+La pantalla de la empresa lo muestra en Ajustes → Cobros con Stripe → Real → «Vincular mi cuenta de Stripe».
 
 Stripe (hecho por Dirección): Sandbox de Iron Elephant Consulting con Connect (cobros directos), cuenta conectada de demostración, destino de
 webhook `big-elephant-connect-sandbox` con los 5 eventos de cuentas conectadas. La única cuenta visible para el MCP de Stripe es la corporativa en
@@ -113,13 +132,33 @@ existentes exigiría otro flujo (OAuth) que no está implementado y no se ha ped
 ## 8. Decisiones que no deben cambiarse
 
 - Separación total del cobro SaaS corporativo (nada de `CP_STRIPE_*`, CP-9 ni `CP_CUSTOM_TERMS_BILLING_ENABLED`).
-- Connect Live desactivado: el código rechaza `live` (`connectConfigFromEnv`).
+- Connect Real solo para las empresas de `CONNECT_STRIPE_LIVE_TENANTS` y **sin crear cuentas**: la empresa autoriza por OAuth la que ya tiene. Los cobros reales
+  (`Cobrar en línea (Real)`) se activan aparte, con autorización expresa y cuenta verificada. `cobros.connectLive/completeLive` vetados en soporte.
 - `cobros.connect/refresh/setOnline` vetados en soporte.
 - La inscripción no se confirma por el pago (regla #865).
 - Sin comisiones de plataforma, reembolsos, disputas ni plan de cuotas con Stripe (no definidos por Dirección).
 - Productos comerciales de Quantum sin condiciones de venta confirmadas NO se habilitan; el catálogo de Viaje Atlántico sigue en modo solicitud.
 
-## 9. Estado real de production (20/11/2026, 00:35)
+## 9. Estado real de production (20/11/2026, tarde; el cuadro de la mañana queda como histórico al final de la sección)
+
+| Servicio | Commit servido |
+|---|---|
+| `core` | `764e571ac65b8edbcf87e410bb44e484f59d3336` (#911) |
+| `controlplane` | `764e571ac65b8edbcf87e410bb44e484f59d3336` |
+| `core-gateway` | `764e571ac65b8edbcf87e410bb44e484f59d3336` |
+
+Verificado con la acción `estado`: los tres «al-dia». CRM `02597f17` (admin.bigelephant.es) y web `d8003596` publicados. Migraciones: ninguna pendiente
+(`verificar-migraciones` en verde).
+
+**Cómo se publicó #911 (lección).** La cadena ordinaria bloqueó production («bloqueado-protegido») porque `server/paymentsConnect/config.ts` contiene
+la validación de claves live de Stripe. Con la aprobación expresa de Dirección se usó `preparar-production` y `aplicar-production`, ambos con el commit
+exacto y `confirm=production`. **Incidente de alcance:** `aplicar-production` incluye `catalog-review --apply` (revisión de estados comerciales del
+catálogo de Big Elephant, que nunca toca precios, licencias ni cobros) y Dirección había excluido expresamente operaciones de catálogo. Se ejecutó sin
+que la sesión lo comprobara antes; el procedimiento correcto era la vía **por pasos** de abajo. Efecto: por diseño la revisión es idempotente y solo
+cambia estados que una revisión previa aún no hubiera aplicado; el alcance exacto se está comprobando en solo lectura (ver el informe de cierre). Regla: para
+cambios protegidos que no sean de catálogo, usar siempre la vía por pasos.
+
+Histórico a las 00:35 del mismo día:
 
 | Servicio | Commit servido |
 |---|---|
@@ -146,6 +185,9 @@ Verificado con la acción `estado` (`release-plan`): los tres «al-dia», decisi
 ## 10. Incidencias y pendientes
 
 - Falta una conexión Sandbox real (acción humana: sesión de administrador propia).
+- Real de Quantum: el vínculo de la cuenta de Indira está hecho provisionalmente y a la espera de su verificación de identidad en Stripe. «Cobrar en línea (Real)»
+  sigue desactivado hasta que haya cuenta verificada y autorización expresa; después comprobar webhook (`lastEventAt`) y que el Checkout usa su cuenta.
+- Mejora posterior (no iniciada): almacenamiento estructurado del idioma y del programa en los formularios de Studio.
 - Variantes 17–20 de los productos 27/28 de Quantum (copia del precio 1.290/1.190 de Viaje del Alma): decisión de Dirección (la sesión no pudo
   modificarlas por permisos).
 - Quedan en el CRM de Quantum 5 leads de prueba (ids 8–12, «PRUEBA TÉCNICA»).
@@ -154,7 +196,9 @@ Verificado con la acción `estado` (`release-plan`): los tres «al-dia», decisi
 ## 11. Coordinación
 
 - Sesión 7f: RECONNECT, Quantum y almacenamiento (limpieza de almacenamiento de Quantum del 20/11, sin despliegues). No interferir con sus datos.
-- Sesión 02: #899 (Core) y #176 (CRM), a la espera de Dirección.
+- #899 (Core) y #176 (CRM): enlace de pago de condiciones ya aceptadas; decisión del 20/11 en el informe de cierre de la ventana principal.
+- #779 (permiso de precios personalizados) y #856 (estado de solicitud en el catálogo Connect): se mantienen sin fusionar por decisión de Dirección.
+- Todo Big Elephant se gestiona desde la ventana principal; no queda sesión antigua que mantener abierta.
 - No hay worktrees ni sesiones cerradas por esta sesión. Worktrees de esta línea de trabajo: `wt-cobros-stripe`, `wt-caddy-connect`, `wt-tienda-stripe`,
   `wt-studio-tarjetas` (los tres primeros ya sin trabajo pendiente tras la fusión).
 
