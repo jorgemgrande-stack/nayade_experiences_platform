@@ -6,38 +6,58 @@
  * Responsive, en alemán y español (selector ?lang= o idioma de la web), con la identidad de la empresa.
  */
 import { useEffect, useMemo, useState } from "react";
-import { Link, useLocation, useRoute } from "wouter";
-import { CheckCircle2, ChevronLeft, ExternalLink, FileText, Loader2, Lock, PlayCircle } from "lucide-react";
+import { Link, useLocation, useRoute, useSearch } from "wouter";
+import { CheckCircle2, ChevronLeft, ExternalLink, FileText, Loader2, Lock, PlayCircle, Languages } from "lucide-react";
 import { trpc } from "@/lib/trpc";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useSiteLocale } from "@/hooks/useSiteLocale";
 import { usePortalLook } from "../employee/usePortalLook";
-import { aulaText, formatAccessDate, pickLocale, type AulaLocale, type AulaText } from "@shared/learningText";
+import { aulaText, contentNotice, formatAccessDate, resolveAulaLocale, withLang, type AulaLocale, type AulaText } from "@shared/learningText";
 
 const BASE = "/mi-formacion";
 /** Vista previa de administración: mismas pantallas, sin matrícula ni progreso (ruta propia, solo administradores). */
 const PREVIEW_BASE = "/admin/formacion/vista-previa";
 
-function useAulaLocale(): { locale: AulaLocale; t: AulaText; setLang: (l: AulaLocale) => void } {
+const LANG_KEY = "aula-lang";
+const readStored = () => { try { return window.sessionStorage.getItem(LANG_KEY); } catch { return null; } };
+
+/**
+ * Idioma de la INTERFAZ del aula. Se lee de la URL con `useSearch` (así el cambio de idioma vuelve a pintar la página aunque la ruta
+ * no cambie), se recuerda en la sesión y se arrastra en todos los enlaces internos (`href`): cambiar de idioma no hace perder la
+ * lección ni el curso. El idioma del CONTENIDO es el del curso y no se traduce (ver `contentNotice`).
+ */
+function useAulaLocale(): { locale: AulaLocale; t: AulaText; setLang: (l: AulaLocale) => void; href: (path: string) => string } {
   const site = useSiteLocale();
-  const [, navigate] = useLocation();
-  const fromUrl = typeof window !== "undefined" ? new URLSearchParams(window.location.search).get("lang") : null;
-  const locale = pickLocale(fromUrl ?? site.locale);
+  const [location, navigate] = useLocation();
+  const search = useSearch();
+  const { locale, explicit } = resolveAulaLocale({ fromUrl: new URLSearchParams(search).get("lang"), stored: typeof window === "undefined" ? null : readStored(), site: site.locale });
   return {
     locale,
     t: aulaText(locale),
+    href: (path) => withLang(path, explicit),
     setLang: (l) => {
-      const u = new URL(window.location.href);
-      u.searchParams.set("lang", l);
-      navigate(u.pathname + u.search);
+      try { window.sessionStorage.setItem(LANG_KEY, l); } catch { /* sin almacenamiento: queda en la URL */ }
+      navigate(withLang(location + (search ? `?${search}` : ""), l), { replace: true });
     },
   };
 }
 
+/** Aviso cuando el curso está en otro idioma que la interfaz: se muestra el contenido original, sin traducciones inventadas. */
+function ContentNotice({ courseLanguage, locale }: { courseLanguage: string | null | undefined; locale: AulaLocale }) {
+  const text = contentNotice(courseLanguage, locale);
+  if (!text) return null;
+  return (
+    <div role="note" data-testid="content-language-notice" className="mb-4 flex items-start gap-2 rounded-lg border border-sky-200 bg-sky-50 px-3 py-2 text-sm text-sky-900">
+      <Languages className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />
+      <p>{text}</p>
+    </div>
+  );
+}
+
 function Shell({ children, wide, preview }: { children: React.ReactNode; wide?: boolean; preview?: boolean }) {
   const look = usePortalLook();
-  const { locale, setLang, t } = useAulaLocale();
+  const { locale, setLang, t, href } = useAulaLocale();
   return (
     <div className="min-h-screen bg-stone-50 text-slate-800" style={look.style}>
       {preview && (
@@ -48,7 +68,7 @@ function Shell({ children, wide, preview }: { children: React.ReactNode; wide?: 
       )}
       <header className="border-b border-stone-200 bg-white">
         <div className="mx-auto flex max-w-5xl items-center justify-between gap-3 px-4 py-3">
-          <Link href={preview ? PREVIEW_BASE : BASE} className="flex items-center gap-3">
+          <Link href={href(preview ? PREVIEW_BASE : BASE)} className="flex items-center gap-3">
             {look.logoUrl ? <img src={look.logoUrl} alt={look.name || ""} className="h-9 w-auto max-w-[160px] object-contain" /> : <span className="font-semibold">{look.name}</span>}
           </Link>
           <nav aria-label="Idioma / Sprache" className="flex gap-1 text-sm">
@@ -92,7 +112,7 @@ function Notice({ t, error, onRetry }: { t: AulaText; error: unknown; onRetry: (
 // ── Mis cursos ──────────────────────────────────────────────────────────────────────────────────────────────────────
 
 export function AulaHome() {
-  const { t, locale } = useAulaLocale();
+  const { t, locale, href } = useAulaLocale();
   const q = trpc.learning.my.courses.useQuery(undefined, { retry: false });
   return (
     <Shell>
@@ -118,7 +138,7 @@ export function AulaHome() {
                 {(c.status === "suspended" || c.status === "revoked") && <p className="mt-3 text-sm text-slate-600">{t.inactiveNote}</p>}
                 <div className="mt-3 flex gap-2">
                   <Button asChild disabled={!open}>
-                    <Link href={c.lastLessonId ? `${BASE}/curso/${c.courseId}/leccion/${c.lastLessonId}` : `${BASE}/curso/${c.courseId}`}>{c.lastLessonId ? t.cont : t.start}</Link>
+                    <Link href={href(c.lastLessonId ? `${BASE}/curso/${c.courseId}/leccion/${c.lastLessonId}` : `${BASE}/curso/${c.courseId}`)}>{c.lastLessonId ? t.cont : t.start}</Link>
                   </Button>
                   
                 </div>
@@ -134,7 +154,7 @@ export function AulaHome() {
 // ── Índice del curso ────────────────────────────────────────────────────────────────────────────────────────────────
 
 export function AulaCurso({ preview = false }: { preview?: boolean }) {
-  const { t } = useAulaLocale();
+  const { t, locale, href } = useAulaLocale();
   const base = preview ? PREVIEW_BASE : BASE;
   const [, params] = useRoute(`${base}/curso/:courseId`);
   const courseId = Number(params?.courseId);
@@ -144,11 +164,12 @@ export function AulaCurso({ preview = false }: { preview?: boolean }) {
   const q = (preview ? prev : mine) as typeof mine;
   return (
     <Shell preview={preview}>
-      <Link href={preview ? "/admin/formacion" : BASE} className="mb-3 inline-flex items-center gap-1 text-sm text-slate-600"><ChevronLeft className="h-4 w-4" aria-hidden />{t.allCourses}</Link>
+      <Link href={href(preview ? "/admin/formacion" : BASE)} className="mb-3 inline-flex items-center gap-1 text-sm text-slate-600"><ChevronLeft className="h-4 w-4" aria-hidden />{t.allCourses}</Link>
       {q.isLoading ? <p className="text-sm text-slate-500">{t.loading}</p> : q.isError ? <Notice t={t} error={q.error} onRetry={() => q.refetch()} /> : (
         <>
           <h1 className="mb-1 text-2xl font-bold">{q.data!.course.title}</h1>
-          <p className="mb-5 text-sm text-slate-500">{t.resumeNote}</p>
+          <p className="mb-3 text-sm text-slate-500">{t.resumeNote}</p>
+          <ContentNotice courseLanguage={q.data!.course.language} locale={locale} />
           <div className="space-y-5">
             {q.data!.modules.map((m) => (
               <section key={m.id} aria-labelledby={`m${m.id}`} className="rounded-xl border border-stone-200 bg-white">
@@ -160,7 +181,7 @@ export function AulaCurso({ preview = false }: { preview?: boolean }) {
                   {m.lessons.map((l) => (
                     <li key={l.id}>
                       {m.unlocked ? (
-                        <Link href={`${base}/curso/${courseId}/leccion/${l.id}`} className="flex items-center gap-3 px-4 py-3 hover:bg-stone-50">
+                        <Link href={href(`${base}/curso/${courseId}/leccion/${l.id}`)} className="flex items-center gap-3 px-4 py-3 hover:bg-stone-50">
                           {l.completed ? <CheckCircle2 className="h-5 w-5 shrink-0 text-emerald-600" aria-label={t.done} /> : <PlayCircle className="h-5 w-5 shrink-0 text-slate-400" aria-hidden />}
                           <span>{l.title}</span>
                         </Link>
@@ -214,7 +235,7 @@ function Media({ b, t, onPlayed, preview }: { b: Block; t: AulaText; onPlayed: (
 }
 
 export function AulaLeccion({ preview = false }: { preview?: boolean }) {
-  const { t } = useAulaLocale();
+  const { t, locale, href } = useAulaLocale();
   const base = preview ? PREVIEW_BASE : BASE;
   const [, params] = useRoute(`${base}/curso/:courseId/leccion/:lessonId`);
   const courseId = Number(params?.courseId);
@@ -242,10 +263,11 @@ export function AulaLeccion({ preview = false }: { preview?: boolean }) {
   }, [lessonId, !!lesson.data]);
   return (
     <Shell preview={preview}>
-      <Link href={`${base}/curso/${courseId}`} className="mb-3 inline-flex items-center gap-1 text-sm text-slate-600"><ChevronLeft className="h-4 w-4" aria-hidden />{t.back}</Link>
+      <Link href={href(`${base}/curso/${courseId}`)} className="mb-3 inline-flex items-center gap-1 text-sm text-slate-600"><ChevronLeft className="h-4 w-4" aria-hidden />{t.back}</Link>
       {lesson.isLoading ? <p className="text-sm text-slate-500">{t.loading}</p> : lesson.isError ? <Notice t={t} error={lesson.error} onRetry={() => lesson.refetch()} /> : (
         <>
-          <h1 className="mb-4 text-2xl font-bold">{lesson.data!.lesson.title}</h1>
+          <h1 className="mb-3 text-2xl font-bold">{lesson.data!.lesson.title}</h1>
+          <ContentNotice courseLanguage={outline.data?.course.language} locale={locale} />
           <div className="space-y-4">
             {lesson.data!.blocks.map((b) => (
               <Media key={b.id} b={b as Block} t={t} onPlayed={() => undefined} preview={preview} />
@@ -259,7 +281,7 @@ export function AulaLeccion({ preview = false }: { preview?: boolean }) {
                 {progress.isPending && <Loader2 className="mr-1 h-4 w-4 animate-spin" aria-hidden />}{t.markDone}
               </Button>
             )}
-            {next && <Button asChild variant="outline"><Link href={`${base}/curso/${courseId}/leccion/${next.id}`}>{next.title}</Link></Button>}
+            {next && <Button asChild variant="outline"><Link href={href(`${base}/curso/${courseId}/leccion/${next.id}`)}>{next.title}</Link></Button>}
           </div>
         </>
       )}

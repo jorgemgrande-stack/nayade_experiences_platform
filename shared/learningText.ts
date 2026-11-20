@@ -23,6 +23,10 @@ const T = {
     pwShort: "Das Passwort muss mindestens 8 Zeichen haben.", pwDiff: "Die Passwörter stimmen nicht überein.", badLink: "Der Link ist ungültig. Verwende den Link aus der Einladungs-E-Mail.",
     activateFail: "Das Passwort konnte nicht festgelegt werden. Der Link ist möglicherweise abgelaufen.",
     previewBanner: "Vorschau als Teilnehmer", previewNote: "Nur für die Verwaltung: ohne Anmeldung, ohne Fortschritt, jeder Zugriff wird protokolliert.", backToAdmin: "Zurück zur Verwaltung",
+    contentOnly: {
+      de: "Dieser Kurs ist nur auf Deutsch verfügbar.",
+      es: "Dieser Kurs ist nur auf Spanisch verfügbar. Titel, Texte, Videos, Audios und Dokumente werden in der Originalsprache angezeigt; die Oberfläche ist auf Deutsch.",
+    },
   },
   es: {
     title: "Mis cursos", empty: "Todavía no tienes ningún curso.", loading: "Cargando…", retry: "Reintentar",
@@ -41,11 +45,46 @@ const T = {
     pwShort: "La contraseña debe tener al menos 8 caracteres.", pwDiff: "Las contraseñas no coinciden.", badLink: "El enlace no es válido. Usa el enlace del correo de invitación.",
     activateFail: "No se ha podido crear la contraseña. El enlace puede haber caducado.",
     previewBanner: "Vista previa como alumno", previewNote: "Solo para la administración: sin matrícula, sin progreso y con cada acceso registrado en auditoría.", backToAdmin: "Volver a Formación",
+    contentOnly: {
+      de: "Este curso solo está disponible en alemán. Los títulos, textos, vídeos, audios y documentos se muestran en su idioma original; la interfaz sí está en español.",
+      es: "Este curso solo está disponible en español.",
+    },
   },
 } as const;
 
 export type AulaText = (typeof T)[AulaLocale];
 export const aulaText = (l: AulaLocale): AulaText => T[l];
+
+/**
+ * Idioma de la INTERFAZ del aula (botones, avisos). Es independiente del idioma del contenido (títulos, textos, vídeos, audios y
+ * documentos), que es el del curso y no se traduce. Prioridad: la elección explícita en la URL (?lang=), la última elección de la
+ * persona en esta sesión y, por último, el idioma de la web de la empresa.
+ */
+export function resolveAulaLocale(p: { fromUrl: string | null | undefined; stored: string | null | undefined; site: string | null | undefined }): { locale: AulaLocale; explicit: AulaLocale | null } {
+  const valid = (v: string | null | undefined): AulaLocale | null => (v === "de" || v === "es" ? v : null);
+  const explicit = valid(p.fromUrl) ?? valid(p.stored);
+  return { locale: explicit ?? pickLocale(p.site), explicit };
+}
+
+/** Añade (o cambia) `?lang=` de un enlace interno conservando el resto de parámetros y el ancla. Sin elección explícita, no toca nada. */
+export function withLang(href: string, explicit: AulaLocale | null): string {
+  if (!explicit) return href;
+  const hash = href.includes("#") ? href.slice(href.indexOf("#")) : "";
+  const noHash = hash ? href.slice(0, href.indexOf("#")) : href;
+  const [path, query = ""] = noHash.split("?");
+  const params = new URLSearchParams(query);
+  params.set("lang", explicit);
+  return `${path}?${params.toString()}${hash}`;
+}
+
+/**
+ * Aviso de idioma del CONTENIDO: si el curso está en un idioma distinto al de la interfaz se muestra el contenido original (sin
+ * traducciones inventadas) y se avisa. `null` si coinciden.
+ */
+export function contentNotice(courseLanguage: string | null | undefined, ui: AulaLocale): string | null {
+  const content = pickLocale(courseLanguage);
+  return content === ui ? null : aulaText(ui).contentOnly[content];
+}
 
 /** Fecha corta del acceso, en el idioma del aula y en hora de Madrid. */
 export function formatAccessDate(ms: number, l: AulaLocale): string {
