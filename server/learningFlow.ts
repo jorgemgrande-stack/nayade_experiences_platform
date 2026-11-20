@@ -15,7 +15,7 @@
 import { sql } from "drizzle-orm";
 import { getDb } from "./db";
 import { getSystemSetting } from "./config";
-import { matchRules } from "../shared/learning";
+import { matchRules, LearningRuleError } from "../shared/learning";
 import { isQuotePaid } from "../shared/enrollmentCommerce";
 import { listRules, grantFromPayment, isMissingLearningSchema } from "./learningDb";
 import { readLinkedQuotes } from "./enrollmentCommerceDb";
@@ -180,7 +180,41 @@ export async function grantLearningFromOrder(merchantOrder: string, actor: { id:
     return { status: "granted", created, existing: matched.length - pending.length, userId: acc.userId, notified };
   } catch (e) {
     if (isMissingLearningSchema(e)) return { status: "skipped", reason: "no_schema" };
-    console.error(JSON.stringify({ ctx: "Learning", event: "grant_from_order_failed", merchantOrder, error: e instanceof Error ? e.name : "error" }));
+    const code = e instanceof LearningRuleError ? e.code : e instanceof Error ? e.name : "error";
+    console.error(JSON.stringify({ ctx: "Learning", event: "grant_from_order_failed", merchantOrder, error: code }));
+    await recordOrderGrantFailure(merchantOrder, code);
     return { status: "skipped", reason: "error" };
   }
+}
+
+/**
+ * Un fallo de matrícula NO queda oculto: además del registro de errores, deja constancia en el historial del pedido
+ * (`reservations.changes_log`, visible en su ficha) y el pedido aparece en `pendingLearningOrders` hasta que se repare.
+ * Reintento: cada nueva pasada del cierre del pedido, o `learning.admin.grantForOrder`.
+ */
+async function recordOrderGrantFailure(merchantOrder: string, code: string): Promise<void> {
+  try {
+    const d = await getDb();
+    if (!d) return;
+    await d.execute(sql`UPDATE reservations SET changes_log = JSON_ARRAY_APPEND(COALESCE(changes_log, JSON_ARRAY()), '$', JSON_OBJECT('ts', ${Date.now()}, 'actor', 'sistema', 'action', 'learning_grant_failed', 'reason', ${String(code).slice(0, 80)}))
+      WHERE merchant_order = ${merchantOrder} AND status = 'paid'`);
+  } catch {
+    /* el registro del fallo nunca debe provocar otro */
+  }
+}
+
+/** Pedidos pagados cuyas líneas tienen regla de acceso activa y aún NO tienen matrícula (por fallo, correo sin cuenta o reglas activadas después). */
+export async function pendingLearningOrders(limit = 200): Promise<Array<{ merchantOrder: string; reservationId: number; productId: number; variantId: number | null; email: string | null; paidAt: number | null }>> {
+  const d = await getDb();
+  if (!d) return [];
+  const rules = await listRules();
+  if (!rules.some((r) => r.active)) return [];
+  const [lines] = (await d.execute(sql`SELECT r.id, r.merchant_order, r.product_id, r.variant_id, r.customer_email, r.paid_at
+    FROM reservations r WHERE r.status = 'paid' AND r.merchant_order IS NOT NULL
+      AND NOT EXISTS (SELECT 1 FROM learning_enrollments le WHERE le.source = 'payment' AND le.order_id = r.id)
+    ORDER BY r.id DESC LIMIT 2000`)) as unknown as [Array<Record<string, any>>];
+  return lines
+    .filter((l) => matchRules(rules, Number(l.product_id), l.variant_id == null ? null : Number(l.variant_id)).length > 0)
+    .slice(0, limit)
+    .map((l) => ({ merchantOrder: String(l.merchant_order), reservationId: Number(l.id), productId: Number(l.product_id), variantId: l.variant_id == null ? null : Number(l.variant_id), email: l.customer_email ? String(l.customer_email) : null, paidAt: l.paid_at == null ? null : Number(l.paid_at) }));
 }

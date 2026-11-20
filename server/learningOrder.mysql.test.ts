@@ -171,6 +171,45 @@ describe.skipIf(!URL_)("LMS: pedido pagado → matrícula automática (aplicaci�
     expect(notice[0].htmlContent).not.toContain("/activar?token="); // ya tiene contraseña: no se reinicia su acceso
   });
 
+  it("fallo de matrícula tras el pago: el pedido se cierra igual, el fallo queda registrado y en la cola, y la recuperación lo repara sin duplicar", async () => {
+    const email = mail("fallo");
+    const now = Date.now();
+    // Regla mal configurada a propósito: el módulo pertenece a OTRO curso → la concesión falla
+    await sql("INSERT INTO learning_courses (slug, title, language, status, created_at, updated_at) VALUES (?,?,?,?,?,?)", [`otro-curso-${TAG}`, "OTRO", "de", "published", now, now]);
+    const otroCurso = Number((await sql("SELECT id FROM learning_courses WHERE slug = ?", [`otro-curso-${TAG}`]))[0].id);
+    await sql("INSERT INTO learning_modules (course_id, position, title, source_key, created_at, updated_at) VALUES (?,?,?,?,?,?)", [otroCurso, 1, "AJENO", "x1", now, now]);
+    const ajeno = Number((await sql("SELECT id FROM learning_modules WHERE course_id = ?", [otroCurso]))[0].id);
+    await sql("INSERT INTO learning_access_rules (experience_id, variant_id, course_id, duration_days, start_mode, fixed_start, active, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?)", [ids.other, ids.vOther, ids.course, 90, "on_grant", null, 1, now, now]);
+    const ruleId = Number((await sql("SELECT id FROM learning_access_rules WHERE experience_id = ? AND variant_id = ?", [ids.other, ids.vOther]))[0].id);
+    await sql("INSERT INTO learning_access_rule_modules (rule_id, module_id) VALUES (?, ?)", [ruleId, ajeno]);
+
+    const order = await buy(ids.other, ids.vOther, email, "Alumno Fallo");
+    await notify(order, 5000);
+    await paid(order);
+    const inv = await waitFor(() => sql("SELECT invoiceId AS invoice_id FROM reservations WHERE merchant_order = ?", [order]), (r) => r[0]?.invoice_id != null);
+    expect(inv[0].invoice_id).not.toBeNull(); // el cobro y la factura NO se ven afectados
+    expect(await enrollments(email)).toEqual([]);
+    const log = JSON.stringify((await sql("SELECT changes_log FROM reservations WHERE merchant_order = ?", [order]))[0].changes_log);
+    expect(log).toContain("learning_grant_failed"); // no queda oculto
+    const queue = ok(await ess.q("a", "learning.admin.pendingOrders", undefined, adm), "cola");
+    expect(queue.map((x: any) => x.merchantOrder)).toContain(order);
+    const failed = ok(await ess.m("a", "learning.admin.grantForOrder", { merchantOrder: order }, adm), "reintento fallido");
+    expect(failed).toMatchObject({ status: "skipped", reason: "error" }); // sigue fallando mientras la regla esté mal
+
+    // Se corrige la regla y se reintenta (como haría la administración): se matricula UNA vez
+    await sql("UPDATE learning_access_rule_modules SET module_id = ? WHERE rule_id = ?", [ids.m2, ruleId]);
+    const fixed = ok(await ess.m("a", "learning.admin.grantForOrder", { merchantOrder: order }, adm), "recuperación");
+    expect(fixed).toMatchObject({ status: "granted", created: 1, existing: 0 });
+    const again = ok(await ess.m("a", "learning.admin.grantForOrder", { merchantOrder: order }, adm), "repetida");
+    expect(again).toMatchObject({ status: "granted", created: 0, existing: 1 });
+    expect(await enrollments(email)).toHaveLength(1);
+    const queue2 = ok(await ess.q("a", "learning.admin.pendingOrders", undefined, adm), "cola 2");
+    expect(queue2.map((x: any) => x.merchantOrder)).not.toContain(order);
+    const sent = await waitFor(async () => accessMails(email), (m) => m.length > 0);
+    expect(sent).toHaveLength(1);
+    expect(await accessMails(email)).toHaveLength(1);
+  });
+
   it("compra posterior del mismo alumno: una matrícula por compra (idempotente por pedido); el acceso es la unión de lo contratado", async () => {
     const email = mail("m1");
     const o = await buy(ids.exp, ids.vOnline, email, "Alumna Uno");
