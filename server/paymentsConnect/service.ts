@@ -62,7 +62,7 @@ export async function connectAccount(d: PaymentsDeps, p: { email?: string | null
   const now = (d.now ?? Date.now)();
   let account = await d.store.getAccount(d.config.mode);
   if (!account) {
-    const created = await d.gateway.createAccount({ tenantId: d.tenantId, email: p.email, country: "ES", idempotencyKey: `connect-acct-${d.tenantId}-${d.config.mode}` });
+    const created = await d.gateway.createAccount({ tenantId: d.tenantId, email: p.email, country: "ES", idempotencyKey: `connect-acct-v2-${d.tenantId}-${d.config.mode}` });
     // Antes de guardarla, la cuenta se reserva para ESTA empresa en el índice global: si ya es de otra, no se vincula
     const claim = await d.index.claim(d.tenantId, d.config.mode, created.accountId);
     if (!claim.ok) throw new PaymentsError("account_conflict", "Esa cuenta de Stripe ya está vinculada a otra empresa");

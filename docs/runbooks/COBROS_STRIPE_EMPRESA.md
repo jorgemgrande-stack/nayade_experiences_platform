@@ -29,7 +29,7 @@ cuenta vinculada (recortada), si puede cobrar y recibir pagos, requisitos pendie
 La vinculación de cada empresa vive en **su** base, y una restricción de unicidad local no impide que dos empresas guarden
 la misma `acct_…`. Por eso hay un **índice global** en el registro, con la cuenta como clave primaria:
 
-1. Al conectar, el Core crea la cuenta en Stripe (clave de idempotencia `connect-acct-<empresa>-<modo>`) y **antes de
+1. Al conectar, el Core crea la cuenta en Stripe (clave de idempotencia `connect-acct-v2-<empresa>-<modo>` (Accounts v2: `POST /v2/core/accounts`; Stripe rechaza `/v1/accounts` en integraciones nuevas)) y **antes de
    guardarla** pide la reserva al plano de control (petición firmada, secreto compartido, token de tipo propio de 60 s y
    de un solo uso). El plano de control inserta `(acct, empresa, modo)`: **una cuenta, una empresa; una cuenta por
    empresa y modo**. Si ya es de otra, la reserva falla (409) y **no se guarda nada** en la empresa.
