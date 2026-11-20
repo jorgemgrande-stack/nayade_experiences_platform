@@ -120,6 +120,9 @@ export async function finalizePaidShopOrder(merchantOrder: string, paymentMethod
   if (!rows.length) return { clientId: null, invoiceId: null, invoiceNumber: null, created: false };
   const billing = rows.map((r) => billingFromLog(r.changesLog)).find(Boolean) ?? null;
   const clientId = await linkClient(rows, billing);
+  // LMS: con el pago confirmado, las reglas de catálogo matriculan en lo contratado. Idempotente y nunca lanza: se ejecuta
+  // también en las pasadas de recuperación (reintento del cobro, aviso repetido), así un fallo parcial se repara solo.
+  await (await import("./learningFlow")).grantLearningFromOrder(merchantOrder);
   const existing = rows.find((r) => r.invoiceId);
   if (existing) return { clientId, invoiceId: existing.invoiceId, invoiceNumber: existing.invoiceNumber, created: false };
 

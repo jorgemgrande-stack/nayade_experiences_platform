@@ -18,7 +18,7 @@ import {
   grantTechnical, listEnrollments, listPreviewAccess, listRules, logPreviewAccess, myCourses, previewCourseIndex, previewLessonBlocks, reactivateEnrollment, recordProgress, revokeEnrollment, saveRule, suspendEnrollment,
 } from "../learningDb";
 import { getDb } from "../db";
-import { grantLearningFromEnrollment, sendLearningInvitation } from "../learningFlow";
+import { grantLearningFromEnrollment, grantLearningFromOrder, pendingLearningOrders, sendLearningInvitation } from "../learningFlow";
 import { ensureAccount } from "../communitiesDb";
 import { InventoryError, planInventory } from "../../shared/learningImport";
 import { applyImportPlan, courseCoverage } from "../learningImport";
@@ -144,6 +144,13 @@ const admin = router({
    * el cobro llegó después de confirmar la plaza; repetirlo no duplica. No envía correo.
    */
   grantForEnrollment: adminProcedure.input(z.object({ enrollmentId: id })).mutation(({ ctx, input }) => guard(() => grantLearningFromEnrollment(input.enrollmentId, { id: ctx.user.id, name: ctx.user.name ?? ctx.user.email ?? null }))),
+  /** Pedidos pagados con regla activa y sin matrícula: la cola de recuperación (cada uno se repara con `grantForOrder`). */
+  pendingOrders: adminProcedure.query(() => guard(() => pendingLearningOrders())),
+  /**
+   * Recuperación manual de un PEDIDO de tienda pagado: vuelve a aplicar las reglas de catálogo a sus líneas pagadas (misma
+   * función que ejecuta el cierre automático del pedido). Repetirlo no duplica matrículas ni correos.
+   */
+  grantForOrder: adminProcedure.input(z.object({ merchantOrder: z.string().trim().min(3).max(30) })).mutation(({ ctx, input }) => guard(() => grantLearningFromOrder(input.merchantOrder, { id: ctx.user.id, name: ctx.user.name ?? ctx.user.email ?? null }))),
   /** Acción EXPRESA de la administración: renueva la invitación de la cuenta (enlace de un solo uso) y envía el correo. */
   sendInvite: adminProcedure.input(z.object({ userId: id })).mutation(({ input }) => guard(async () => {
     const [u] = await rowsOf(sql`SELECT id, name, email FROM users WHERE id = ${input.userId}`);
