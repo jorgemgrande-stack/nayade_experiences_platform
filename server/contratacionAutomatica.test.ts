@@ -211,8 +211,9 @@ async function accepted(env: Env, q: Awaited<ReturnType<typeof quantum>>) {
   expect(req.status).toBe(201);
   const token = String(req.json.url).split("token=")[1];
   const acc = await page(env, "POST", "", { token, name: "Indira Prueba", accept: "1" });
-  expect(acc.status).toBe(200);
-  return { token, html: acc.text };
+  // Con el cobro habilitado, aceptar lleva directamente a Stripe Checkout (303); si no, página de confirmación (200)
+  expect([200, 303]).toContain(acc.status);
+  return { token, html: acc.text, redirect: acc.location };
 }
 const stageOf = async (env: Env, id: number) => (await call(env, "GET", `/subscriptions/${id}/terms/billing/stripe`)).json.contracting;
 const sessionOf = (location: string | null) => String(location).split("/").pop()!;
@@ -268,8 +269,9 @@ describe("contratación automática: aceptar → pagar → activar en la fecha p
 
   it("la página de pago: formulario solo con el enlace; importe y fecha salen del contrato (nada de importes del navegador)", async () => {
     const q = await quantum(on);
-    const { token, html } = await accepted(on, q);
-    expect(html).toContain("configurar el método de pago");
+    const { token, redirect } = await accepted(on, q);
+    // Aceptar y pagar: tras aceptar, el cliente pasa directamente a Stripe Checkout
+    expect(redirect).toMatch(/^https:\/\/checkout\.stripe\.test\/c\/pay\/cs_test_/);
     const view = await page(on, "GET", `/pago?token=${token}`);
     expect(view.status).toBe(200);
     expect(view.text).toContain("Configurar método de pago");
@@ -292,10 +294,13 @@ describe("contratación automática: aceptar → pagar → activar en la fecha p
 
   it("recorrido completo: pago en Stripe con primer cargo aplazado al fin de la prueba, importe exacto, sin duplicados, y prueba → pago en ese instante", async () => {
     const q = await quantum(on);
-    const { token } = await accepted(on, q);
     const before = on.gw.calls.filter((c) => c.op === "checkout.sessions.create(negotiated)").length;
+    const { token, redirect } = await accepted(on, q);
+    // Aceptar ya abre la sesión; volver a pulsar el enlace la reanuda, no abre otra
     const start1 = await page(on, "POST", "/pago", { token, amount: "1", price: "1", total: "1", subscription: "999" });
     expect(start1.status).toBe(303);
+    expect(start1.location).toBe(redirect);
+    expect(start1.location).toMatch(/^https:\/\/checkout\.stripe\.test\/c\/pay\/cs_test_/);
     expect(start1.location).toMatch(/^https:\/\/checkout\.stripe\.test\/c\/pay\/cs_test_/);
     const start2 = await page(on, "POST", "/pago", { token });
     expect(start2.location).toBe(start1.location);
@@ -448,8 +453,10 @@ describe("contratación automática: aceptar → pagar → activar en la fecha p
 
   it("errores internos al abrir el pago: texto genérico al cliente (sin detalle de Stripe) y el contrato sigue aceptado", async () => {
     const q = await quantum(on3);
-    const { token } = await accepted(on3, q);
+    // Stripe caído al aceptar: la aceptación consta, se muestra la confirmación con el botón para reintentar el pago
     on3.gw.down = true;
+    const { token, redirect } = await accepted(on3, q);
+    expect(redirect).toBeNull();
     const r = await page(on3, "POST", "/pago", { token });
     on3.gw.down = false;
     expect(r.status).toBe(409);
@@ -469,7 +476,8 @@ describe("contratación automática: aceptar → pagar → activar en la fecha p
     const sess = on3.gw.sessions.get(sessionOf(r.location))!;
     expect(sess.metadata.es_terms_subscription).toBe(String(a.id));
     expect(await stageOf(on3, b.id)).toMatchObject({ stage: "payment_pending" });
-    expect(await on3.billingStore.bySubscription(b.id)).toBeNull();
+    // Cada enlace abrió solo la sesión de su suscripción: la de b es otra distinta
+    expect(on3.gw.sessions.get(sessionOf(r.location))!.metadata.es_terms_subscription).not.toBe(String(b.id));
   });
 
   it("interruptor apagado (production hoy): aceptar funciona, la página dice «pago pendiente de habilitar» y no se llama a Stripe", async () => {
@@ -539,9 +547,9 @@ describe("contratación automática: aceptar → pagar → activar en la fecha p
 
   it("con menos de 48 h para el fin de la prueba Stripe no admite aplazar el primer cargo: mensaje claro y, terminada la prueba, el pago se configura con cobro inmediato", async () => {
     const q = await quantum(on3);
+    setClock(on3, q.trialEnd - 10 * 3600_000);
     const { token } = await accepted(on3, q);
     expect((await stageOf(on3, q.id)).acceptedAt).toBeGreaterThan(0);
-    setClock(on3, q.trialEnd - 10 * 3600_000);
     const tooSoon = await page(on3, "POST", "/pago", { token });
     expect(tooSoon.status).toBe(409);
     expect(tooSoon.text).toContain("menos de 48 horas");
@@ -615,7 +623,7 @@ describe("contratación automática: aceptar → pagar → activar en la fecha p
     const req = await call(on4, "POST", `/commercial-terms/${q.termsId}/acceptance`, { body: { signer: { name: "Indira Prueba", email: "indira@cliente.example" }, expectedRevision: q.revision } });
     const token = String(req.json.url).split("token=")[1];
     setClock(on4, ACCEPTED);
-    expect((await page(on4, "POST", "", { token, name: "Indira Prueba", accept: "1" })).status).toBe(200);
+    expect([200, 303]).toContain((await page(on4, "POST", "", { token, name: "Indira Prueba", accept: "1" })).status);
     setClock(on4, ACCEPTED + 10 * 60_000);
 
     // Punto de partida de producción: aceptada, programada, prueba intacta

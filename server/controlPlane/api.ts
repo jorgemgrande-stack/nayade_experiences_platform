@@ -111,6 +111,7 @@ import { createCommercialTermsRouter } from "../commercialTerms/api";
 import { saleGuard } from "../licensing/heldCapabilities";
 import { addedByTerms, paidNetOpener, withPaidNet, type PaidNetOpener } from "../implementation/paidNet";
 import { TermsAcceptanceService, createTermsAcceptanceRouter, createTermsPublicAcceptanceRouter } from "../commercialTerms/acceptance";
+import { activatePlatformAfterPayment, createPlatformActivationRouter, type PlatformActivationDeps } from "../commercialTerms/platformActivation";
 import type { AcceptanceLinkStore } from "../commercialTerms/acceptanceLinks";
 import type { Keyring } from "../_core/tenantRegistry/crypto";
 import { tenantTermsReader } from "../commercialTerms/tenantView";
@@ -2094,6 +2095,7 @@ export function createControlPlaneApp(d: ControlPlaneDeps): Express {
     const orderStoreForTerms = d.orders?.store;
     let termsBilling: TermsBillingService | null = null;
     let termsLicences: TermsLicences | null = null;
+    let platformAfterPayment: PlatformActivationDeps | null = null;
     const commercialTerms = d.subscriptions.terms
       ? new CommercialTermsService({
           store: d.subscriptions.terms,
@@ -2153,6 +2155,23 @@ export function createControlPlaneApp(d: ControlPlaneDeps): Express {
     if (termsAcceptance) {
       router.use(createTermsAcceptanceRouter(termsAcceptance));
       publicTermsAcceptance = createTermsPublicAcceptanceRouter(termsAcceptance);
+    }
+    // Alta de la plataforma tras el pago de unas condiciones aceptadas (con el alta del orquestador, sin lógica nueva de cobro)
+    if (d.subscriptions.terms && d.provisioning && d.platformDomain) {
+      platformAfterPayment = {
+        subscriptions: { get: (id) => d.subscriptions!.store.get(id), linkTenant: (id, input, actor) => svc.linkTenant(id, input, actor) },
+        terms: d.subscriptions.terms,
+        crmStore: d.crm.store as unknown as PlatformActivationDeps["crmStore"],
+        platform: createContractActivation({ provisioning: d.provisioning, platformDomain: d.platformDomain, actor: { type: "crm", id: "terms-payment" }, notifyWelcome: d.mail?.platform?.assistedWelcome() }),
+        afterChange: async (sid, actor) => termsLicences?.afterChange(sid, actor),
+        // Primer cobro verificado: contratación vinculada en Stripe con una factura pagada (nunca por la sola aceptación)
+        paymentVerified: async (sid) => {
+          const row = await d.subscriptions?.termsBilling?.store?.bySubscription(sid);
+          return !!row && !!row.linkedAt && !!row.lastPaidInvoiceId && ["active", "past_due", "suspended", "cancel_scheduled"].includes(row.status);
+        },
+        now: d.subscriptions.now,
+      };
+      router.use(createPlatformActivationRouter(platformAfterPayment));
     }
     if (commercialTerms) {
       router.use(
@@ -2683,7 +2702,15 @@ export function createControlPlaneApp(d: ControlPlaneDeps): Express {
             capabilities: d.capabilities,
             licences: licences ? { ensure: (id, actor, o) => licences.ensure(id, actor, o) } : undefined,
             orderBilled: async (sid) => (await subscriptionBilling(ordersForTerms, sid)).source === "stripe",
-            afterFirstCharge: termsAcceptance ? (sid) => termsAcceptance.concludeDue({ subscriptionId: sid }) : undefined,
+            afterFirstCharge:
+              termsAcceptance || platformAfterPayment
+                ? async (sid) => {
+                    const platformDeps = platformAfterPayment;
+                    if (termsAcceptance) await termsAcceptance.concludeDue({ subscriptionId: sid });
+                    // Primer cobro verificado: plataforma de la empresa (idempotente; nunca lanza)
+                    if (platformDeps) await activatePlatformAfterPayment(platformDeps, sid);
+                  }
+                : undefined,
             urls: { success: st.urls.success, cancel: st.urls.cancel },
             namespace: st.config.namespace,
             mode: st.config.mode,

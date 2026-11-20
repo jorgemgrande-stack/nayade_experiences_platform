@@ -87,6 +87,8 @@ export const extraTemplates = {
     currency: string;
     url: string;
     expiresAt: number;
+    /** El cobro en Stripe está habilitado: el botón es «Aceptar y pagar» y, al aceptar, el cliente pasa directamente al pago. */
+    payable?: boolean;
   }) =>
     e({
       family: "transactional",
@@ -113,9 +115,9 @@ export const extraTemplates = {
             foot: { label: "Enlace válido hasta", value: fmt.date(i.expiresAt) },
           },
         },
-        { notice: { tone: "info", text: "Aceptar el contrato no realiza ningún cobro. El enlace es personal: puedes abrirlo tantas veces como necesites hasta aceptarlo." } },
+        { notice: { tone: "info", text: i.payable ? "Puedes leer el contrato completo antes de aceptar. Al aceptar pasarás a la página segura de Stripe para pagar; no se cobra nada antes. El enlace es personal y, si no terminas el pago, puedes retomarlo desde él." : "Aceptar el contrato no realiza ningún cobro. El enlace es personal: puedes abrirlo tantas veces como necesites hasta aceptarlo." } },
       ],
-      cta: { label: "Revisar y aceptar contrato", url: i.url },
+      cta: { label: i.payable ? "Aceptar y pagar" : "Revisar y aceptar contrato", url: i.url },
     }),
   productUpdate: (i: { title: string; points: string[]; url: string }) =>
     e({ family: "experiential", eyebrow: "Actualización importante", hero: "novedades", title: i.title, subject: `Big Elephant: ${i.title}`, intro: ["Hemos mejorado Big Elephant. Esto es lo que cambia para ti:"], blocks: [{ steps: i.points.map((p) => ({ title: p, text: "Ya disponible en tu plataforma" })) }], cta: { label: "Ver las novedades", url: i.url } }),
