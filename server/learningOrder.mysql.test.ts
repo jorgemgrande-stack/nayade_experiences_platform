@@ -210,6 +210,49 @@ describe.skipIf(!URL_)("LMS: pedido pagado → matrícula automática (aplicaci�
     expect(await accessMails(email)).toHaveLength(1);
   });
 
+  it("CARRITO con dos líneas: guarda la variante de cada línea; una falla y otra no; la recuperación completa solo lo pendiente y no duplica correos", async () => {
+    const email = mail("carrito");
+    const now = Date.now();
+    const cat = (await sql("SELECT id FROM categories LIMIT 1"))[0].id;
+    const loc = (await sql("SELECT id FROM locations LIMIT 1"))[0].id;
+    ok(await ess.m("a", "products.create", { productType: "own", categoryId: cat, locationId: loc, offerMode: "fixed", slug: `roto-${TAG}`, title: "Curso con regla rota", basePrice: "20.00" }, adm), "producto roto");
+    const roto = Number((await sql("SELECT id FROM experiences WHERE slug = ?", [`roto-${TAG}`]))[0].id);
+    ok(await ess.m("a", "products.createVariant", { experienceId: roto, name: "Roto", priceModifier: "20.00", priceType: "fixed" }, adm), "variante rota");
+    const vRoto = Number((await sql("SELECT id FROM experience_variants WHERE experienceId = ?", [roto]))[0].id);
+    await sql("INSERT INTO learning_courses (slug, title, language, status, created_at, updated_at) VALUES (?,?,?,?,?,?)", [`ajeno-${TAG}`, "AJENO", "de", "published", now, now]);
+    const ajenoCurso = Number((await sql("SELECT id FROM learning_courses WHERE slug = ?", [`ajeno-${TAG}`]))[0].id);
+    await sql("INSERT INTO learning_modules (course_id, position, title, source_key, created_at, updated_at) VALUES (?,?,?,?,?,?)", [ajenoCurso, 1, "AJENO", "y1", now, now]);
+    const ajeno = Number((await sql("SELECT id FROM learning_modules WHERE course_id = ?", [ajenoCurso]))[0].id);
+    await sql("INSERT INTO learning_access_rules (experience_id, variant_id, course_id, duration_days, start_mode, fixed_start, active, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?)", [roto, vRoto, ids.course, 90, "on_grant", null, 1, now, now]);
+    const ruleId = Number((await sql("SELECT id FROM learning_access_rules WHERE experience_id = ?", [roto]))[0].id);
+    await sql("INSERT INTO learning_access_rule_modules (rule_id, module_id) VALUES (?, ?)", [ruleId, ajeno]);
+
+    const cart = ok(await ess.m("a", "reservations.cartCheckout", { items: [
+      { productId: ids.exp, bookingDate: "2030-06-01", people: 1, variantId: ids.vM1, extras: [] },
+      { productId: roto, bookingDate: "2030-06-01", people: 1, variantId: vRoto, extras: [] },
+    ], customerName: "Alumna Carrito", customerEmail: email, origin: `https://${ess.host("a")}` }), "carrito");
+    const order = cart.merchantOrder as string;
+    const lines = await sql("SELECT product_id, variant_id FROM reservations WHERE merchant_order = ? ORDER BY id", [order]);
+    expect(lines.map((l) => [Number(l.product_id), Number(l.variant_id)])).toEqual([[ids.exp, ids.vM1], [roto, vRoto]]); // la variante de CADA línea queda guardada
+    await notify(order, cart.totalAmountCents);
+    await paid(order);
+    const first = await waitFor(() => enrollments(email), (r) => r.length > 0);
+    expect(first).toHaveLength(1); // solo la línea correcta
+    expect(first[0]).toMatchObject({ variant_id: ids.vM1 });
+    expect(await modulesOf(first[0].id)).toEqual([ids.m1]);
+    const queue = ok(await ess.q("a", "learning.admin.pendingOrders", undefined, adm), "cola");
+    expect(queue.filter((x: any) => x.merchantOrder === order).map((x: any) => x.productId)).toEqual([roto]); // solo la pendiente
+    const invites = await waitFor(async () => ess.mails.filter((m) => m.to.some((t) => t.email === email) && m.htmlContent.includes("/mi-formacion/activar?token=")), (m) => m.length > 0);
+    expect(invites).toHaveLength(1);
+
+    await sql("UPDATE learning_access_rule_modules SET module_id = ? WHERE rule_id = ?", [ids.m3, ruleId]);
+    const fixed = ok(await ess.m("a", "learning.admin.grantForOrder", { merchantOrder: order }, adm), "recuperación");
+    expect(fixed).toMatchObject({ status: "granted", created: 1, existing: 1, notified: "none" });
+    expect(await enrollments(email)).toHaveLength(2);
+    expect(ess.mails.filter((m) => m.to.some((t) => t.email === email) && /mi-formacion/.test(m.htmlContent))).toHaveLength(1); // sin segundo correo ni invitación rotada
+    expect(ok(await ess.q("a", "learning.admin.pendingOrders", undefined, adm), "cola 2").filter((x: any) => x.merchantOrder === order)).toEqual([]);
+  });
+
   it("compra posterior del mismo alumno: una matrícula por compra (idempotente por pedido); el acceso es la unión de lo contratado", async () => {
     const email = mail("m1");
     const o = await buy(ids.exp, ids.vOnline, email, "Alumna Uno");

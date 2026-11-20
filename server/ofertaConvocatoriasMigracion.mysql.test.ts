@@ -13,7 +13,7 @@ const url = process.env.REGISTRY_TEST_DATABASE_URL;
 const d = url ? describe : describe.skip;
 const ROOT = path.resolve(__dirname, "..");
 const TSX = path.join(ROOT, "node_modules/tsx/dist/cli.mjs");
-const MINE = fs.readdirSync(path.join(ROOT, "db/migrations")).filter((f) => /^\d{4}_(experiences_offer_mode(_priced)?|product_editions|experience_variants_valid_until|leads_request_fields_test_mode|site_redirects|i18n_default_changes|lead_edition_currency|edition_sessions|enrollment_quote_services|learning_core|payment_accounts|payment_checkouts_shop_orders)\.sql$/.test(f)).sort();
+const MINE = fs.readdirSync(path.join(ROOT, "db/migrations")).filter((f) => /^\d{4}_(experiences_offer_mode(_priced)?|product_editions|experience_variants_valid_until|leads_request_fields_test_mode|site_redirects|i18n_default_changes|lead_edition_currency|edition_sessions|enrollment_quote_services|learning_core|payment_accounts|payment_checkouts_shop_orders|reservations_variant_id)\.sql$/.test(f)).sort();
 
 type Run = { status: number | null; stdout: string; stderr: string };
 const cli = (dbUrl: string, args: string[]): Promise<Run> =>

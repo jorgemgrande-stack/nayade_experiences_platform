@@ -98,7 +98,7 @@ export async function safeGrantAfterConfirm(enrollmentId: number, actor: { id: n
 
 export type OrderFlowResult =
   | { status: "skipped"; reason: "no_schema" | "no_paid_lines" | "no_rule" | "no_email" | "error" }
-  | { status: "granted"; created: number; existing: number; userId: number; notified: "invitation" | "access" | "pending" | "none" };
+  | { status: "granted"; created: number; existing: number; userId: number; notified: "invitation" | "access" | "pending" | "none"; failed?: number };
 
 const readOrderLines = async (merchantOrder: string) => {
   const d = await getDb();
@@ -152,36 +152,53 @@ export async function grantLearningFromOrder(merchantOrder: string, actor: { id:
     const email = String(first.customer_email ?? "").trim();
     if (!email) return { status: "skipped", reason: "no_email" };
     // ¿Ya está todo concedido? Entonces no se hace nada más.
-    const [done] = (await d.execute(sql`SELECT order_id FROM learning_enrollments WHERE source = 'payment' AND order_id IN (${sql.join(matched.map((l) => sql`${Number(l.id)}`), sql`, `)})`)) as unknown as [Array<Record<string, any>>];
+    const [done] = (await d.execute(sql`SELECT order_id, user_id FROM learning_enrollments WHERE source = 'payment' AND order_id IN (${sql.join(matched.map((l) => sql`${Number(l.id)}`), sql`, `)})`)) as unknown as [Array<Record<string, any>>];
     const doneIds = new Set(done.map((r) => Number(r.order_id)));
     const pending = matched.filter((l) => !doneIds.has(Number(l.id)));
     if (!pending.length) {
       const [u] = (await d.execute(sql`SELECT id FROM users WHERE LOWER(email) = ${email.toLowerCase()} LIMIT 1`)) as unknown as [Array<Record<string, any>>];
       return { status: "granted", created: 0, existing: matched.length, userId: u?.[0] ? Number(u[0].id) : 0, notified: "none" };
     }
-    const acc = await ensureAccount(String(first.customer_name || email), email);
+    // Segunda pasada de un pedido con varias líneas (alguna ya concedida): se reutiliza la cuenta ya vinculada, sin rotar su
+    // invitación ni volver a avisar (el alumno ya recibió su correo en la primera pasada).
+    const earlier = done.length > 0 ? Number(done[0].user_id) : null;
+    const acc = earlier != null ? { userId: earlier, invite: null, created: false } : await ensureAccount(String(first.customer_name || email), email);
     let created = 0;
+    let failed = 0;
+    let lastError: unknown = null;
+    // Cada línea por separado: el fallo de una NO impide conceder (ni avisar de) las demás
     for (const l of pending) {
-      const cents = Number(l.amount_paid) > 0 ? Number(l.amount_paid) : Number(l.amount_total);
-      const res = await grantFromPayment({
-        userId: acc.userId, clientId: null, experienceId: Number(l.product_id), variantId: l.variant_id == null ? null : Number(l.variant_id),
-        operation: { kind: "order", id: Number(l.id) }, orderId: Number(l.id),
-        payment: { reference: `pedido:${merchantOrder}`, amountCents: cents, verifiedBy: actor.name || "sistema (pasarela)" }, actorUserId: actor.id, now,
-      });
-      created += res.granted.filter((g) => g.created).length;
+      try {
+        const cents = Number(l.amount_paid) > 0 ? Number(l.amount_paid) : Number(l.amount_total);
+        const res = await grantFromPayment({
+          userId: acc.userId, clientId: null, experienceId: Number(l.product_id), variantId: l.variant_id == null ? null : Number(l.variant_id),
+          operation: { kind: "order", id: Number(l.id) }, orderId: Number(l.id),
+          payment: { reference: `pedido:${merchantOrder}`, amountCents: cents, verifiedBy: actor.name || "sistema (pasarela)" }, actorUserId: actor.id, now,
+        });
+        created += res.granted.filter((g) => g.created).length;
+      } catch (e) {
+        failed++;
+        lastError = e;
+      }
+    }
+    if (failed > 0) {
+      const code = lastError instanceof LearningRuleError ? lastError.code : lastError instanceof Error ? lastError.name : "error";
+      console.error(JSON.stringify({ ctx: "Learning", event: "grant_from_order_failed", merchantOrder, error: code, lines: failed, detail: lastError instanceof Error ? lastError.message.slice(0, 160) : undefined }));
+      await recordOrderGrantFailure(merchantOrder, code);
+      if (created === 0) return { status: "skipped", reason: "error" };
     }
     let notified: "invitation" | "access" | "pending" | "none" = "none";
-    if (created > 0) {
+    if (created > 0 && earlier == null) {
       const auto = String(await Promise.resolve(getSystemSetting("learning_invite_emails", "false"))).toLowerCase() === "true";
       if (!auto) notified = "pending";
       else if (acc.invite) notified = (await sendLearningInvitation(acc.invite)) ? "invitation" : "pending";
       else notified = (await sendLearningAccessNotice({ userId: acc.userId, name: String(first.customer_name || email), email }, merchantOrder)) ? "access" : "pending";
     }
-    return { status: "granted", created, existing: matched.length - pending.length, userId: acc.userId, notified };
+    return { status: "granted", created, existing: matched.length - pending.length, userId: acc.userId, notified, failed };
   } catch (e) {
     if (isMissingLearningSchema(e)) return { status: "skipped", reason: "no_schema" };
     const code = e instanceof LearningRuleError ? e.code : e instanceof Error ? e.name : "error";
-    console.error(JSON.stringify({ ctx: "Learning", event: "grant_from_order_failed", merchantOrder, error: code }));
+    console.error(JSON.stringify({ ctx: "Learning", event: "grant_from_order_failed", merchantOrder, error: code, detail: e instanceof Error ? e.message.slice(0, 160) : undefined }));
     await recordOrderGrantFailure(merchantOrder, code);
     return { status: "skipped", reason: "error" };
   }

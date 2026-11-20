@@ -2878,6 +2878,8 @@ export const appRouter = router({
             clientUserAgent: cartClientUa,
           });
           if (!legoPackSnapshot && !stockExcluded) await cartStock.markOrderStockLine(reservationId, item.productId, stockVariantId);
+          // Opción comprada de la línea (la usa el LMS para matricular solo en lo contratado)
+          if (!legoPackSnapshot) await (await import("./orderVariant")).markOrderVariant(reservationId, stockVariantId);
           // Guardar snapshot de líneas seleccionadas de Lego Pack: es lo que consume
           // el módulo de Operaciones (`buildPackExpansions`) para mostrar solo lo
           // realmente elegido, en vez de expandir el catálogo completo del pack.
