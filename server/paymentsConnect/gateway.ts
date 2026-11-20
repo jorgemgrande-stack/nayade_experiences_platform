@@ -24,6 +24,8 @@ export interface CheckoutParams {
   customerEmail?: string | null;
   successUrl: string;
   cancelUrl: string;
+  /** Caducidad de la sesión (segundos desde 1970; Stripe admite de 30 min a 24 h). Sin valor, la de Stripe (24 h). */
+  expiresAtSeconds?: number;
   /** Metadatos NUESTROS (empresa y presupuesto); el webhook los contrasta con la base de la empresa. */
   metadata: Record<string, string>;
 }
@@ -100,7 +102,8 @@ export function stripeConnectGateway(config: ConnectConfig): ConnectGateway {
             customer_email: p.customerEmail || undefined,
             success_url: p.successUrl,
             cancel_url: p.cancelUrl,
-            client_reference_id: p.metadata.quote_id,
+            client_reference_id: p.metadata.quote_id ?? p.metadata.merchant_order,
+            ...(p.expiresAtSeconds ? { expires_at: p.expiresAtSeconds } : {}),
             metadata: p.metadata,
             payment_intent_data: { metadata: p.metadata },
           },

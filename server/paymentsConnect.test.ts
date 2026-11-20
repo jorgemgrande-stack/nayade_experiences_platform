@@ -7,11 +7,11 @@ import { canEnableOnline, deriveAccountStatus, eurosToCents, type StripeAccountF
 import { connectConfigFromEnv, type ConnectConfig } from "./paymentsConnect/config";
 import { verifyConnectEvent } from "./paymentsConnect/gateway";
 import {
-  claimedTenantId, connectAccount, handleConnectEvent, PaymentsError, refreshAccount, setOnlineEnabled, startQuoteCheckout,
+  claimedTenantId, connectAccount, handleConnectEvent, PaymentsError, refreshAccount, setOnlineEnabled, startQuoteCheckout, startShopCheckout,
   type ConnectEvent, type PaymentsDeps,
 } from "./paymentsConnect/service";
 import { createConnectWebhookRouter, CONNECT_WEBHOOK_PATH } from "./paymentsConnect/webhookRoute";
-import { FakeConnectGateway, FakeQuotes, MemoryAccountIndex, MemoryPaymentStore } from "./paymentsConnect/testing";
+import { FakeConnectGateway, FakeQuotes, FakeShop, MemoryAccountIndex, MemoryPaymentStore } from "./paymentsConnect/testing";
 
 const SECRET = "whsec_" + "a".repeat(32);
 const CONFIG: ConnectConfig = { mode: "test", apiKey: "rk_test_" + "b".repeat(24), webhookSecret: SECRET };
@@ -26,8 +26,9 @@ function setup(over: { total?: string; plan?: boolean } = {}) {
   const gateway = new FakeConnectGateway(ACCT);
   const quotes = new FakeQuotes({ id: 77, token: TOKEN, total: over.total ?? "250.00", status: "enviado", paidAt: null, validUntil: null, hasPaymentPlan: !!over.plan, title: "Quantum — Iniciación", email: "ana@example.com", currency: "EUR" });
   const index = new MemoryAccountIndex();
-  const d: PaymentsDeps = { store, gateway, config: CONFIG, quotes, index, tenantId: "quantum", now: () => 1_700_000_000_000 };
-  return { store, gateway, quotes, index, d };
+  const shop = new FakeShop();
+  const d: PaymentsDeps = { store, gateway, config: CONFIG, quotes, shop, index, tenantId: "quantum", now: () => 1_700_000_000_000 };
+  return { store, gateway, quotes, shop, index, d };
 }
 
 async function verified(s: ReturnType<typeof setup>) {
@@ -304,5 +305,69 @@ describe("receptor HTTP del webhook (firma real del SDK de Stripe)", () => {
     const sig = Stripe.webhooks.generateTestHeaderString({ payload: body, secret: SECRET });
     expect(verifyConnectEvent(CONFIG, Buffer.from(body), sig).id).toBe("evt_v");
     expect(() => verifyConnectEvent({ webhookSecret: "whsec_" + "z".repeat(32) }, Buffer.from(body), sig)).toThrow();
+  });
+});
+
+describe("pedido de la tienda con Stripe", () => {
+  const MO = "ABC123DEF456";
+  const shopSession = async (s: ReturnType<typeof setup>) => {
+    const r = await startShopCheckout(s.d, { merchantOrder: MO, amountCents: 10920, description: "2 artículos — Tienda", email: "lucia@example.com", successUrl: "https://x/ok", cancelUrl: "https://x/ko" });
+    return r.sessionId;
+  };
+  const shopEvent = (id: string, session: string, over: Record<string, unknown> = {}, account = ACCT): ConnectEvent => ({
+    id, type: "checkout.session.completed", livemode: false, account,
+    data: { object: { id: session, payment_status: "paid", amount_total: 10920, currency: "eur", payment_intent: "pi_test_shop", metadata: { tenant_id: "quantum", merchant_order: MO }, ...over } },
+  });
+
+  it("sin cuenta verificada y cobros activados no hay sesión; el importe mínimo y el pedido se validan", async () => {
+    const s = setup();
+    const go = (amountCents = 10920, merchantOrder = MO) => startShopCheckout(s.d, { merchantOrder, amountCents, description: "x", successUrl: "https://x/ok", cancelUrl: "https://x/ko" });
+    await expect(go()).rejects.toMatchObject({ code: "not_connected" });
+    await verified(s);
+    await expect(go(10)).rejects.toMatchObject({ code: "bad_amount" });
+    await expect(go(10920.5)).rejects.toMatchObject({ code: "bad_amount" });
+    await expect(go(10920, "no válido!")).rejects.toMatchObject({ code: "bad_amount" });
+    expect(s.gateway.sessions).toHaveLength(0);
+  });
+
+  it("la sesión va a la cuenta de la empresa con el importe del servidor, caducidad y metadatos del pedido; queda pendiente", async () => {
+    const s = setup();
+    await verified(s);
+    const id = await shopSession(s);
+    expect(s.gateway.sessions[0]).toMatchObject({ accountId: ACCT, amountCents: 10920, currency: "eur", metadata: { tenant_id: "quantum", merchant_order: MO } });
+    expect(s.gateway.sessions[0].expiresAtSeconds).toBe(Math.floor(1_700_000_000_000 / 1000) + 31 * 60);
+    expect(await s.store.getCheckout(id)).toMatchObject({ kind: "shop_order", merchantOrder: MO, quoteId: null, status: "pending" });
+    expect(s.shop.paid).toHaveLength(0);
+  });
+
+  it("el evento firmado aplica el pedido una sola vez; repetido, con otro id o de otra cuenta no", async () => {
+    const s = setup();
+    await verified(s);
+    const id = await shopSession(s);
+    expect(await handleConnectEvent(s.d, shopEvent("evt_s1", id, { amount_total: 5 }))).toBe("amount_mismatch");
+    expect(await handleConnectEvent(s.d, shopEvent("evt_s0", id, {}, OTHER))).toBe("isolated");
+    expect(s.shop.paid).toHaveLength(0);
+    expect(await handleConnectEvent(s.d, shopEvent("evt_s2", id))).toBe("applied");
+    expect(await handleConnectEvent(s.d, shopEvent("evt_s2", id))).toBe("duplicate");
+    expect(await handleConnectEvent(s.d, shopEvent("evt_s3", id))).toBe("duplicate");
+    expect(s.shop.paid).toEqual([{ merchantOrder: MO, amountCents: 10920, paymentIntent: "pi_test_shop" }]);
+    expect(s.quotes.paid).toHaveLength(0); // un pedido no toca presupuestos
+  });
+
+  it("si falla aplicar el pedido, el evento se reintenta y se aplica entonces una sola vez; el pago fallido lo marca", async () => {
+    const s = setup();
+    await verified(s);
+    const id = await shopSession(s);
+    s.shop.failNext = true;
+    await expect(handleConnectEvent(s.d, shopEvent("evt_r", id))).rejects.toThrow();
+    expect((await s.store.getCheckout(id))?.status).toBe("pending");
+    expect(await handleConnectEvent(s.d, shopEvent("evt_r", id))).toBe("applied");
+    expect(s.shop.paid).toHaveLength(1);
+    const s2 = setup();
+    await verified(s2);
+    const id2 = await shopSession(s2);
+    expect(await handleConnectEvent(s2.d, { ...shopEvent("evt_f", id2), type: "checkout.session.async_payment_failed" })).toBe("applied");
+    expect(s2.shop.failed).toEqual([MO]);
+    expect(s2.shop.paid).toHaveLength(0);
   });
 });

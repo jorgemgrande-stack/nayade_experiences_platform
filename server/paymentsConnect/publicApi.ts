@@ -9,7 +9,7 @@ import { connectConfigState } from "./config";
 import { AccountIndexUnavailable } from "./accountIndex";
 import { ConnectGatewayError } from "./gateway";
 import { realPaymentsDeps } from "./runtime";
-import { onlineAvailable, PaymentsError, startQuoteCheckout } from "./service";
+import { onlineAvailable, PaymentsError, startQuoteCheckout, startShopCheckout } from "./service";
 import { mysqlPaymentStore, PaymentsSchemaMissing } from "./store";
 
 /** Traduce los errores del dominio a respuestas claras; nunca devuelve el mensaje de Stripe ni claves. */
@@ -45,6 +45,24 @@ export async function stripeCheckoutForToken(token: string): Promise<{ url: stri
       token,
       successUrl: `${base}/presupuesto/${token}?stripe=volver`,
       cancelUrl: `${base}/presupuesto/${token}?stripe=cancelado`,
+    });
+    return { url: r.url };
+  } catch (e) {
+    return translatePaymentsError(e);
+  }
+}
+
+/** Crea la sesión de pago del pedido de la tienda (ya creado, con sus reservas pendientes) y devuelve la dirección de Stripe. */
+export async function stripeCheckoutForShopOrder(p: { merchantOrder: string; amountCents: number; description: string; email?: string | null }): Promise<{ url: string }> {
+  if (!isMultiTenant()) throw new TRPCError({ code: "PRECONDITION_FAILED", message: "Los cobros por empresa solo están disponibles en el modo multiempresa" });
+  const { config, problem } = connectConfigState();
+  if (!config) throw new TRPCError({ code: "PRECONDITION_FAILED", message: problem ?? "Los cobros con Stripe no están configurados" });
+  const base = getTrustedBaseUrl();
+  try {
+    const r = await startShopCheckout(realPaymentsDeps(getTenantIdOrDefault(), config), {
+      ...p,
+      successUrl: `${base}/reserva/ok?order=${p.merchantOrder}`,
+      cancelUrl: `${base}/reserva/error?order=${p.merchantOrder}`,
     });
     return { url: r.url };
   } catch (e) {
