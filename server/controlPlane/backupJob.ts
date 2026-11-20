@@ -440,6 +440,9 @@ async function main() {
             problemas: plan.problems,
             empresas: plan.companies,
             yaNoEstan: plan.missing,
+            yaNoEstanEmpresas: plan.missingCompanies,
+            planHash: plan.planHash,
+            aceptacionesPurgadas: plan.acceptanceEvidence,
             registros: plan.steps.map((s) => ({ base: s.db, tabla: s.table, filas: s.rows })),
             basesDeDatos: plan.databases,
             seRetiran: plan.retire,
@@ -458,7 +461,7 @@ async function main() {
             plan,
           );
           const check = await verifyPurge({ crm: crmPool, registry: pool, resources });
-          console.log(JSON.stringify({ aplicado: true, borrados: done.deleted, basesBorradas: done.droppedDatabases, ficherosBorrados: done.deletedFiles, comprobacion: check }));
+          console.log(JSON.stringify({ aplicado: true, planHash: plan.planHash, borrados: done.deleted, basesBorradas: done.droppedDatabases, ficherosBorrados: done.deletedFiles, comprobacion: check }));
           if (!check.ok) process.exitCode = 1;
         } finally {
           await crmPool.end();
