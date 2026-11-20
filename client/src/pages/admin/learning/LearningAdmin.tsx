@@ -15,10 +15,11 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { PanelEmpty, PanelError, PanelLoading } from "@/components/admin/PanelStates";
 import { toastError } from "@/lib/errorMessage";
 import { effectiveStatus } from "@shared/learning";
+import CourseEditor from "./CourseEditor";
 
 const fmt = (ms: number | null) => (ms ? new Intl.DateTimeFormat("es-ES", { dateStyle: "medium", timeStyle: "short", timeZone: "Europe/Madrid" }).format(new Date(ms)) : "Sin caducidad");
 const STATUS_LABEL: Record<string, string> = { active: "Activa", scheduled: "Programada", expired: "Caducada", suspended: "Suspendida", revoked: "Revocada" };
-type Tab = "matriculas" | "cursos" | "reglas" | "demo" | "tecnica";
+type Tab = "matriculas" | "cursos" | "editor" | "reglas" | "demo" | "tecnica";
 
 function ReasonDialog({ title, withDate, onClose, onSubmit }: { title: string; withDate?: boolean; onClose: () => void; onSubmit: (v: { reason: string; date: string }) => void }) {
   const [reason, setReason] = useState("");
@@ -237,7 +238,7 @@ function Tecnica() {
 
 export default function LearningAdmin() {
   const [tab, setTab] = useState<Tab>("matriculas");
-  const tabs: Array<[Tab, string]> = [["matriculas", "Matrículas"], ["cursos", "Cursos y materiales"], ["reglas", "Reglas por modalidad"], ["demo", "Demostración"], ["tecnica", "Prueba técnica"]];
+  const tabs: Array<[Tab, string]> = [["matriculas", "Matrículas"], ["cursos", "Cursos y materiales"], ["editor", "Editor"], ["reglas", "Reglas por modalidad"], ["demo", "Demostración"], ["tecnica", "Prueba técnica"]];
   return (
     <AdminLayout>
       <div className="space-y-5">
@@ -247,6 +248,7 @@ export default function LearningAdmin() {
         </div>
         {tab === "matriculas" && <Enrollments />}
         {tab === "cursos" && <Courses />}
+        {tab === "editor" && <CourseEditor />}
         {tab === "reglas" && <Rules />}
         {tab === "demo" && <Demo />}
         {tab === "tecnica" && <Tecnica />}
