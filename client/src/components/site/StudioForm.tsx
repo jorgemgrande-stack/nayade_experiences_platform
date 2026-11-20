@@ -230,7 +230,7 @@ export function StudioFormFields({ blockId, form, preview, pageTitle, editing }:
           const common = { id: fid, "aria-invalid": !!err || undefined, "aria-describedby": err ? `${fid}-err` : undefined, required };
           let control: React.ReactNode;
           if (f.kind === "textarea") {
-            control = <Textarea {...common} rows={5} maxLength={4000} placeholder={f.placeholder} value={String(values[k] ?? "")} onChange={(e) => set(k, e.target.value)} />;
+            control = <Textarea {...common} rows={5} maxLength={4000} className="min-h-32" placeholder={f.placeholder} value={String(values[k] ?? "")} onChange={(e) => set(k, e.target.value)} />;
           } else if (f.kind === "select") {
             control = (
               <select {...common} value={String(values[k] ?? "")} onChange={(e) => set(k, e.target.value)} className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
