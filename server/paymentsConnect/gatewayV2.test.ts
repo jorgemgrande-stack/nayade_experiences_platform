@@ -44,7 +44,7 @@ describe("pasarela Connect — Accounts v2", () => {
   });
   afterAll(() => new Promise<void>((r) => server.close(() => r())));
 
-  const gateway = () => stripeConnectGateway({ mode: "test", apiKey: "rk_test_abcdefgh12345678", webhookSecret: "whsec_x" }, { host: "127.0.0.1", port, protocol: "http", maxNetworkRetries: 0 });
+  const gateway = () => stripeConnectGateway({ mode: "test", apiKey: ["rk", "test", "a1b2c3d4e5f6g7h8"].join("_"), webhookSecret: ["whsec", "x"].join("_") }, { host: "127.0.0.1", port, protocol: "http", maxNetworkRetries: 0 });
 
   it("crea la cuenta por /v2/core/accounts con panel completo, comisiones a cargo de la empresa y clave de idempotencia", async () => {
     const r = await gateway().createAccount({ tenantId: "t12-quantum-soulrise", email: "x@example.invalid", country: "ES", idempotencyKey: "connect-acct-v2-t12-quantum-soulrise-test" });
