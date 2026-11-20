@@ -157,3 +157,43 @@ Verificado con la acción `estado` (`release-plan`): los tres «al-dia», decisi
 - Sesión 02: #899 (Core) y #176 (CRM), a la espera de Dirección.
 - No hay worktrees ni sesiones cerradas por esta sesión. Worktrees de esta línea de trabajo: `wt-cobros-stripe`, `wt-caddy-connect`, `wt-tienda-stripe`,
   `wt-studio-tarjetas` (los tres primeros ya sin trabajo pendiente tras la fusión).
+
+## 12. Guion para completar la conexión y las pruebas E2E (listo para ejecutar)
+
+**Condición previa (humana):** Indira concede a Jorge el rol Administrador en Quantum (Usuarios → Jorge Grande → «Administrador») y Jorge entra
+con su sesión propia (no la de soporte). Comprobación de solo lectura posterior: `admin.getUsers` desde cualquier sesión de la empresa debe mostrar
+a Jorge con rol `admin`.
+
+### A. Conexión (Jorge, sesión propia)
+1. `https://t12-quantum-soulrise.app.bigelephant.es/admin/configuracion/cobros` → bloque **Prueba** → «Conectar mi cuenta de Stripe».
+2. Alta alojada de Stripe en modo prueba: datos de prueba que ofrece la propia página; volver a Ajustes → Cobros.
+3. Debe pasar a **Verificada** (si queda «Pendiente», «Conectar» de nuevo continúa con la misma cuenta). Marcar «Cobrar en línea (Prueba)».
+4. Comprobación (cualquier sesión de la empresa, solo lectura): `GET /api/trpc/cobros.status` →
+   `modes[0]` (`test`) con `status: "verificada"`, `chargesEnabled: true`, `onlineEnabled: true`, `lastEventType` y `lastEventAt` rellenos
+   (prueba de que el destino central recibe y valida los eventos `account.updated`).
+
+### B. Presupuesto → pago → webhook (Claude, tras A)
+1. En el CRM de Quantum crear un lead «PRUEBA TÉCNICA Stripe» (correo `…@example.invalid`) y un presupuesto de **1 €** de una inscripción; copiar
+   el enlace público (`/presupuesto/<token>`) **sin enviarlo por correo** (los avisos de una empresa salen de verdad).
+2. `crm.quotes.getByToken` debe devolver `stripeAvailable: true`; el enlace muestra «Pagar con Stripe».
+3. Pagar con la tarjeta `4242 4242 4242 4242` (cualquier fecha futura y CVC). Al volver de Stripe el pago sigue **pendiente** (`?stripe=volver`)
+   hasta el evento firmado.
+4. Tras el evento: presupuesto «aceptado», 1 factura (método «otro»), inscripción «Presupuesto pagado» (se confirma a mano), `payment_checkouts`
+   en `paid`, `payment_events` en `applied`. Cotejar con la tabla del §3 del runbook COBROS_STRIPE_EMPRESA.md.
+5. **Idempotencia:** en el panel de Stripe (Workbench → destino `big-elephant-connect-sandbox` → evento → «Reenviar»): la respuesta del Core es
+   `duplicate` y no aparece una segunda factura.
+6. **Evento firmado real aceptado y registrado:** `cobros.status` muestra `lastEventType` = `checkout.session.completed` y la hora.
+
+### C. Carrito (Claude, tras A y con productos de tienda de la empresa)
+1. Solo con productos de la tienda con condiciones de venta confirmadas. **No habilitar productos comerciales de Quantum sin condiciones
+   confirmadas** (Viaje Atlántico sigue en modo solicitud). Si no hay producto vendible, usar una empresa técnica de prueba.
+2. `public.getTheme` → `storefront.payments.stripe: true`; pagar desde el carrito; el pedido queda `pending_payment` al volver; tras el evento:
+   reservas `paid`, 1 factura, 1 correo, stock y puntos una vez.
+
+### D. Aislamiento y recuperación (sin cuenta conectada ya cubiertos por suites; repetir en vivo si hay segunda empresa)
+- Evento de otra cuenta (`event.account` distinta) → `isolated`, sin cambios.
+- Recuperación: `server/tiendaStripe.recuperacion.mysql.test.ts` (fallo provocado tras registrar el pago y reenvío).
+
+### E. Qué anotar
+`acct_…` recortado, fecha del primer evento válido, importe, ids de factura/inscripción, resultados de B.5 y C, incidencias. Sin secretos ni
+capturas de claves. Actualizar §5 y §9 de este documento y `COBROS_STRIPE_EMPRESA.md` §8.
