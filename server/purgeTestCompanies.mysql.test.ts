@@ -152,6 +152,9 @@ describe.skipIf(!URL_)("purga de las empresas de prueba (MySQL real)", () => {
     expect(planHashOf(plan0)).toBe(plan0.planHash);
     const plan1 = await planPurge({ crm, registry: reg, tenantDbName: dbName, expectedDbName: (t) => `es_${t.replace(/-/g, "_")}`, resources: resources() });
     expect(plan1.planHash).toBe(plan0.planHash);
+    // La medición del Resource Manager crece cada hora: más filas de medición NO cambian la huella; más filas de datos, sí
+    expect(planHashOf({ ...plan0, measurement: plan0.measurement.map((m) => ({ ...m, rows: m.rows + 2 })) })).toBe(plan0.planHash);
+    expect(planHashOf({ ...plan0, steps: plan0.steps.map((x, i) => (i === 0 ? { ...x, rows: x.rows + 1 } : x)) })).not.toBe(plan0.planHash);
     const extra = await seed(crm, "crm_contract_acceptances", { contract_id: contractOf[13], contract_version: 1, status: "accepted", accepted_at: T, token_sha256: "b".repeat(64), document_sha256: "e".repeat(64), expires_at: T + 1000, created_by: "operator:test", created_at: T });
     const blocked = await planPurge({ crm, registry: reg, tenantDbName: dbName, expectedDbName: (t) => `es_${t.replace(/-/g, "_")}`, resources: resources() });
     expect(blocked.problems.join()).toMatch(/crm_contract_acceptances/);
