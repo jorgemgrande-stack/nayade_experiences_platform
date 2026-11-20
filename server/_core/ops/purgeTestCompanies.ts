@@ -1,6 +1,6 @@
 /**
- * Purga DEFINITIVA de las empresas de prueba de production (autorizada por el propietario el 28/10/2026; Skibox,
- * declarada empresa de prueba por el propietario el 30/10/2026, se añade a la lista).
+ * Purga DEFINITIVA de las empresas técnicas de la consolidación de production (autorizada por el propietario el 20/11/2026).
+ * La lista anterior (28/10 y 30/10/2026) ya está purgada o queda fuera: Skibox se CONSERVA por decisión del propietario.
  *
  *  - Lista CERRADA: solo las empresas de `PURGE_TARGETS`, identificadas a la vez por su tenant y por su nombre
  *    exacto en el CRM. No admite identificadores por parámetro.
@@ -16,6 +16,7 @@
  *  - Después comprueba que no queda ningún registro de las empresas ni referencias huérfanas.
  *  - El cliente de Stripe de PRUEBAS no se toca aquí (no hay clave de pruebas en production): solo su enlace local.
  */
+import { createHash } from "node:crypto";
 import mysql from "mysql2/promise";
 import { DeleteObjectCommand, S3Client } from "@aws-sdk/client-s3";
 import { ERM_DATABASE } from "../erm/setup";
@@ -23,13 +24,23 @@ import { databaseNameFor, userNameFor } from "../provisioning/mysqlAdapters";
 import { restoredUserFor } from "./backupRestore";
 
 export const PURGE_TARGETS = [
-  { tenantId: "t1-empresa-demo-elephant-a", companyName: "Empresa Demo Elephant A" },
-  { tenantId: "t2-empresa-demo-elephant-b", companyName: "Empresa Demo Elephant B" },
-  { tenantId: "t3-empresa-demo-elephant-01", companyName: "Empresa Demo Elephant 01" },
-  { tenantId: "t4-empresa-demo-elephant-02", companyName: "Empresa Demo Elephant 02" },
-  { tenantId: "prueba-e2e-stripe-sandbox-20261018", companyName: "PRUEBA E2E Stripe sandbox 20261018" },
-  { tenantId: "t5-skibox", companyName: "Skibox" },
+  { tenantId: "elephant-demo", companyName: "Elephant Demo" },
+  { tenantId: "prueba-condiciones-129", companyName: "PRUEBA TÉCNICA Condiciones 129" },
 ] as const;
+/**
+ * Empresas técnicas SIN plataforma (sin tenant), identificadas a la vez por su id y su nombre exactos en el CRM. Si el id o el
+ * nombre no coinciden, el plan se aborta sin tocar nada.
+ */
+export const PURGE_COMPANIES_WITHOUT_TENANT = [
+  { companyId: 8, companyName: "PRUEBA TÉCNICA Implantación 202610311012" },
+  { companyId: 13, companyName: "PRUEBA TÉCNICA Ampliaciones" },
+] as const;
+/**
+ * Excepción ESTRICTA a la protección de las aceptaciones contractuales: solo las de los contratos de estas empresas técnicas
+ * (id de empresa exacto, y que además estén en el plan). Cualquier aceptación de otra empresa sigue abortando la purga. Sus
+ * identificaciones, versiones, fechas y huellas quedan en el manifiesto del plan y, al aplicar, en la auditoría del registro.
+ */
+export const ACCEPTANCE_EXEMPT_COMPANY_IDS: readonly number[] = [12];
 /** Empresas reales que nunca pueden aparecer en el plan. */
 export const PROTECTED_TENANTS: readonly string[] = [];
 export const PROTECTED_COMPANY_NAMES = ["Nextair", "NEXTAIR SL"];
@@ -66,9 +77,30 @@ export interface PurgeStep {
   params: unknown[];
   rows: number;
 }
+/** Evidencia de una aceptación contractual que se purga por la excepción (sin tokens ni datos personales en claro). */
+export interface PurgeAcceptanceEvidence {
+  acceptanceId: number;
+  contractId: number;
+  contractReference: string | null;
+  contractVersion: number;
+  companyId: number;
+  status: string;
+  acceptedAt: number | null;
+  documentSha256: string;
+  consentTextSha256: string | null;
+  hasAcceptedIpHash: boolean;
+  createdBy: string;
+  createdAt: number;
+}
 export interface PurgePlan {
-  companies: Array<{ id: number; name: string; tenantId: string }>;
+  companies: Array<{ id: number; name: string; tenantId: string | null }>;
   missing: string[];
+  /** Empresas sin plataforma de la lista que ya no existen (ids). */
+  missingCompanies: number[];
+  /** Aceptaciones contractuales incluidas por la excepción estricta, con su evidencia. */
+  acceptanceEvidence: PurgeAcceptanceEvidence[];
+  /** Huella (sha256) del contenido del plan: si cambia algo, cambia la huella. */
+  planHash: string;
   steps: PurgeStep[];
   databases: Array<{ tenantId: string; database: string | null; action: "drop" | "none"; reason?: string; restored?: boolean }>;
   /** Tenants que quedan como lápida en `deleted` (la auditoría, `tenant_events`, los referencia y no se borra). */
@@ -145,15 +177,23 @@ export async function planPurge(d: { crm: Q; registry: Q; tenantDbName?: (tenant
   if (tenants.some((t) => PROTECTED_TENANTS.includes(t))) problems.push("la lista incluye una empresa protegida");
 
   // 1. Empresas del CRM: tenant y nombre exactos
-  const found = await rows(d.crm, "SELECT id, name, tenant_id FROM crm_companies WHERE tenant_id IN (?) OR name IN (?)", [tenants, PURGE_TARGETS.map((t) => t.companyName)]);
+  const withoutTenant = PURGE_COMPANIES_WITHOUT_TENANT;
+  const found = await rows(d.crm, "SELECT id, name, tenant_id FROM crm_companies WHERE tenant_id IN (?) OR name IN (?) OR id IN (?)", [
+    tenants,
+    [...PURGE_TARGETS.map((t) => t.companyName), ...withoutTenant.map((t) => t.companyName)],
+    withoutTenant.map((t) => t.companyId),
+  ]);
   const companies: PurgePlan["companies"] = [];
   for (const r of found) {
     const t = PURGE_TARGETS.find((x) => x.tenantId === r.tenant_id && x.companyName === r.name);
-    if (!t) problems.push(`la empresa ${r.id} («${r.name}», ${r.tenant_id ?? "sin plataforma"}) no coincide exactamente con la lista: no se toca nada`);
-    else companies.push({ id: Number(r.id), name: String(r.name), tenantId: t.tenantId });
+    const w = withoutTenant.find((x) => x.companyId === Number(r.id) && x.companyName === r.name && (r.tenant_id ?? null) === null);
+    if (t) companies.push({ id: Number(r.id), name: String(r.name), tenantId: t.tenantId });
+    else if (w) companies.push({ id: w.companyId, name: String(r.name), tenantId: null });
+    else problems.push(`la empresa ${r.id} («${r.name}», ${r.tenant_id ?? "sin plataforma"}) no coincide exactamente con la lista: no se toca nada`);
   }
   if (companies.some((c) => PROTECTED_COMPANY_NAMES.includes(c.name))) problems.push("aparece una empresa protegida");
   const missing = PURGE_TARGETS.filter((t) => !companies.some((c) => c.tenantId === t.tenantId)).map((t) => t.tenantId);
+  const missingCompanies = withoutTenant.filter((t) => !companies.some((c) => c.id === t.companyId)).map((t) => t.companyId);
 
   // 2. Claves derivadas
   const companyIds = companies.map((c) => c.id);
@@ -173,6 +213,7 @@ export async function planPurge(d: { crm: Q; registry: Q; tenantDbName?: (tenant
   // 3. Pasos del CRM
   const crmFks = await foreignKeys(d.crm);
   const crmSteps: PurgeStep[] = [];
+  const acceptanceEvidenceRows: PurgeAcceptanceEvidence[] = [];
   for (const [table, cols] of Array.from(crmCols.entries())) {
     const f = filterFor(cols, k);
     const root = rootIds[table]?.length ? { where: "`id` IN (?)", params: [rootIds[table]] } : null;
@@ -182,8 +223,14 @@ export async function planPurge(d: { crm: Q; registry: Q; tenantDbName?: (tenant
     const [{ n }] = await rows(d.crm, `SELECT COUNT(*) n FROM \`${table}\` WHERE ${where}`, params);
     if (!Number(n)) continue;
     if (CRM_PROTECTED.includes(table)) {
-      problems.push(`${table}: ${n} registro(s) de las empresas de prueba son fiscales o de cobro y se conservan: no se purga nada`);
-      continue;
+      // Única excepción: aceptaciones de contratos de las empresas técnicas expresamente exentas (y de ninguna otra)
+      const ev = table === "crm_contract_acceptances" ? await acceptanceEvidence(d.crm, where, params) : null;
+      const exempt = ev !== null && ev.length === Number(n) && ev.every((a) => ACCEPTANCE_EXEMPT_COMPANY_IDS.includes(a.companyId) && companyIds.includes(a.companyId));
+      if (!exempt) {
+        problems.push(`${table}: ${n} registro(s) de las empresas de prueba son fiscales o de cobro y se conservan: no se purga nada`);
+        continue;
+      }
+      acceptanceEvidenceRows.push(...ev!);
     }
     if (cols.has("livemode")) {
       const [{ n: live }] = await rows(d.crm, `SELECT COUNT(*) n FROM \`${table}\` WHERE livemode = 1 AND (${where})`, params);
@@ -296,9 +343,12 @@ export async function planPurge(d: { crm: Q; registry: Q; tenantDbName?: (tenant
     }
   }
 
-  return {
+  const plan: PurgePlan = {
     companies,
     missing,
+    missingCompanies,
+    acceptanceEvidence: acceptanceEvidenceRows,
+    planHash: "",
     steps: [...crmSteps, ...regSteps],
     databases,
     retire,
@@ -308,6 +358,48 @@ export async function planPurge(d: { crm: Q; registry: Q; tenantDbName?: (tenant
     kept: [...REGISTRY_KEPT.map((t) => `registro.${t} (${t === "tenant_events" ? "auditoría inmutable" : "copias de seguridad"})`), "registro.tenants (lápida en estado deleted)", "copias cifradas en los destinos de copia (hasta su retención)", ...CRM_PROTECTED.map((t) => `crm.${t}`), "cliente de Stripe de pruebas (se elimina en el Dashboard de Stripe en modo test)"],
     problems,
   };
+  plan.planHash = planHashOf(plan);
+  return plan;
+}
+
+/** Evidencia (sin tokens ni datos personales en claro) de las aceptaciones que coinciden con el filtro del plan. */
+async function acceptanceEvidence(crm: Q, where: string, params: unknown[]): Promise<PurgeAcceptanceEvidence[]> {
+  const rs = await rows(
+    crm,
+    `SELECT a.id, a.contract_id, c.reference, a.contract_version, c.company_id, a.status, a.accepted_at, a.document_sha256, a.consent_text, a.accepted_ip_hash, a.created_by, a.created_at
+     FROM crm_contract_acceptances a LEFT JOIN crm_contracts c ON c.id = a.contract_id WHERE a.id IN (SELECT id FROM crm_contract_acceptances WHERE ${where}) ORDER BY a.id`,
+    params,
+  );
+  return rs.map((r) => ({
+    acceptanceId: Number(r.id),
+    contractId: Number(r.contract_id),
+    contractReference: r.reference == null ? null : String(r.reference),
+    contractVersion: Number(r.contract_version),
+    companyId: Number(r.company_id),
+    status: String(r.status),
+    acceptedAt: r.accepted_at == null ? null : Number(r.accepted_at),
+    documentSha256: String(r.document_sha256),
+    consentTextSha256: r.consent_text == null ? null : createHash("sha256").update(String(r.consent_text)).digest("hex"),
+    hasAcceptedIpHash: r.accepted_ip_hash != null,
+    createdBy: String(r.created_by),
+    createdAt: Number(r.created_at),
+  }));
+}
+
+/** Huella del plan: cualquier cambio en lo que se borraría (o en las empresas, bases, ficheros o evidencias) la cambia. */
+export function planHashOf(plan: Omit<PurgePlan, "planHash"> | PurgePlan): string {
+  const canon = {
+    companies: [...plan.companies].sort((a, b) => a.id - b.id),
+    steps: plan.steps.map((x) => ({ db: x.db, table: x.table, rows: x.rows })).sort((a, b) => (a.db + a.table).localeCompare(b.db + b.table)),
+    databases: plan.databases,
+    retire: plan.retire,
+    extraDatabases: plan.extraDatabases,
+    measurement: plan.measurement,
+    files: plan.files.byTenant.map((f) => ({ tenantId: f.tenantId, keys: [...f.keys].sort() })),
+    acceptances: plan.acceptanceEvidence,
+    problems: plan.problems,
+  };
+  return createHash("sha256").update(JSON.stringify(canon)).digest("hex");
 }
 
 /**
@@ -392,7 +484,11 @@ export async function applyPurge(
         const ids = plan.retire.map((x) => x.tenantId);
         await c.query("UPDATE tenants SET status = 'deleted', status_reason = ?, registry_version = registry_version + 1 WHERE id IN (?)", [PURGE_REASON, ids]);
         for (const x of plan.retire)
-          await c.query("INSERT INTO tenant_events (tenant_id, actor_type, actor_id, action, from_state, to_state, details) VALUES (?, 'system', 'purge-test-companies', 'purged', ?, 'deleted', ?)", [x.tenantId, x.from, JSON.stringify({ reason: PURGE_REASON })]);
+          await c.query("INSERT INTO tenant_events (tenant_id, actor_type, actor_id, action, from_state, to_state, details) VALUES (?, 'system', 'purge-test-companies', 'purged', ?, 'deleted', ?)", [
+            x.tenantId,
+            x.from,
+            JSON.stringify({ reason: PURGE_REASON, planHash: plan.planHash, companies: plan.companies.map((k) => ({ id: k.id, name: k.name, tenantId: k.tenantId })), acceptances: plan.acceptanceEvidence }),
+          ]);
       }
       await c.commit();
     } catch (e) {

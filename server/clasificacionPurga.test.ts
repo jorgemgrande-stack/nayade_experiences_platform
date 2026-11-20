@@ -49,12 +49,12 @@ describe("borrado de la base restaurada de una empresa de prueba", () => {
     const { dropRestoredTestDatabase } = await import("./_core/ops/purgeTestCompanies");
     const calls: string[] = [];
     const admin = { query: async (sql: string) => void calls.push(sql) } as never;
-    await dropRestoredTestDatabase([admin, admin], "t3-empresa-demo-elephant-01", "es_t3_empresa_demo_elephant_01_r20261016221031");
+    await dropRestoredTestDatabase([admin, admin], "prueba-condiciones-129", "es_prueba_condiciones_129_r20261016221031");
     expect(calls.filter((c) => c.startsWith("DROP DATABASE"))).toHaveLength(2);
     expect(calls.filter((c) => c.startsWith("DROP USER"))).toHaveLength(2);
     await expect(dropRestoredTestDatabase([admin], "t9-empresa-real", "es_t9_empresa_real_r20261016221031")).rejects.toThrow(/lista cerrada/);
-    await expect(dropRestoredTestDatabase([admin], "t3-empresa-demo-elephant-01", "es_t5_skibox")).rejects.toThrow(/no es una base restaurada/);
-    await expect(dropRestoredTestDatabase([admin], "t3-empresa-demo-elephant-01", "es_t3_empresa_demo_elephant_01")).rejects.toThrow(/no es una base restaurada/);
+    await expect(dropRestoredTestDatabase([admin], "prueba-condiciones-129", "es_elephant_demo")).rejects.toThrow(/no es una base restaurada/);
+    await expect(dropRestoredTestDatabase([admin], "prueba-condiciones-129", "es_prueba_condiciones_129")).rejects.toThrow(/no es una base restaurada/);
     expect(calls).toHaveLength(4);
   });
 });

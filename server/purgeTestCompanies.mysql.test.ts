@@ -1,5 +1,5 @@
 /**
- * Purga definitiva de las empresas de prueba contra MySQL real (opt-in, REGISTRY_TEST_DATABASE_URL; bases aisladas
+ * Purga definitiva de las empresas técnicas (20/11/2026: ids 8, 11, 12 y 13) contra MySQL real (opt-in, REGISTRY_TEST_DATABASE_URL; bases aisladas
  * con todas las migraciones del CRM y del registro): borra solo lo de la lista cerrada, de hijos a padres; una empresa
  * real y Nextair intactas; las copias de seguridad se conservan; una factura o un dato live de una empresa de prueba
  * bloquea todo. Fuera del CRM y del registro: bases restauradas sobrantes, medición (es_erm) y ficheros del bucket.
@@ -9,7 +9,7 @@ import fs from "node:fs";
 import path from "node:path";
 import mysql from "mysql2/promise";
 import { loadMigrations, splitStatements } from "../scripts/db/migrationLib";
-import { PURGE_TARGETS, applyPurge, planPurge, verifyPurge } from "./_core/ops/purgeTestCompanies";
+import { ACCEPTANCE_EXEMPT_COMPANY_IDS, PURGE_COMPANIES_WITHOUT_TENANT, PURGE_TARGETS, applyPurge, planHashOf, planPurge, verifyPurge } from "./_core/ops/purgeTestCompanies";
 
 const URL_ = process.env.REGISTRY_TEST_DATABASE_URL;
 const T = Date.UTC(2026, 9, 28, 9);
@@ -45,9 +45,10 @@ describe.skipIf(!URL_)("purga de las empresas de prueba (MySQL real)", () => {
   let crm: mysql.Pool;
   let reg: mysql.Pool;
   const realIds: number[] = [];
-  const LEFTOVERS = ["es_t5_skibox_r20261020101010", "es_t9_empresa_real_r20261020101010"];
-  // Bucket de medios simulado: ficheros de Skibox y de la empresa real
-  const bucket = new Set(["t/t5-skibox/logo.png", "t/t5-skibox/docs/a.pdf", "t/t9-empresa-real/logo.png"]);
+  const contractOf: Record<number, number> = {};
+  const LEFTOVERS = ["es_elephant_demo_r20261020101010", "es_t9_empresa_real_r20261020101010"];
+  // Bucket de medios simulado: ficheros de Elephant Demo y de la empresa real
+  const bucket = new Set(["t/elephant-demo/logo.png", "t/elephant-demo/docs/a.pdf", "t/t9-empresa-real/logo.png"]);
   const media = { describe: () => "memoria", list: async (p: string) => Array.from(bucket).filter((k) => k.startsWith(p)).map((key) => ({ key, bytes: 10 })) };
   const resources = () => ({ servers: [{ alias: "mysql-1", admin }], media });
 
@@ -60,13 +61,26 @@ describe.skipIf(!URL_)("purga de las empresas de prueba (MySQL real)", () => {
     for (const f of fs.readdirSync(path.resolve(__dirname, "../db/registry")).filter((x) => /^\d{4}_.*\.sql$/.test(x) && !x.endsWith(".down.sql")).sort()) await runSql(reg, path.resolve(__dirname, "../db/registry", f));
     await crm.query("SET FOREIGN_KEY_CHECKS = 0");
     await reg.query("SET FOREIGN_KEY_CHECKS = 0");
-    const company = async (name: string, tenantId: string | null) => seed(crm, "crm_companies", { name, tenant_id: tenantId, created_at: T });
-    const all = [...PURGE_TARGETS.map((t) => ({ name: t.companyName, tenantId: t.tenantId, test: true })), { name: "Empresa Real", tenantId: "t9-empresa-real", test: false }, { name: "Nextair", tenantId: null, test: false }];
+    const company = async (id: number, name: string, tenantId: string | null) => seed(crm, "crm_companies", { id, name, tenant_id: tenantId, created_at: T });
+    const withTenantIds: Record<string, number> = { "elephant-demo": 11, "prueba-condiciones-129": 12 };
+    const all = [
+      ...PURGE_COMPANIES_WITHOUT_TENANT.map((t) => ({ id: t.companyId, name: t.companyName, tenantId: null as string | null, test: true })),
+      ...PURGE_TARGETS.map((t) => ({ id: withTenantIds[t.tenantId], name: t.companyName, tenantId: t.tenantId as string | null, test: true })),
+      { id: 30, name: "Empresa Real", tenantId: "t9-empresa-real" as string | null, test: false },
+      { id: 31, name: "Nextair", tenantId: null as string | null, test: false },
+      // Una empresa real con el nombre «parecido» a una técnica: nunca se toca
+      { id: 32, name: "PRUEBA TÉCNICA Otra", tenantId: null as string | null, test: false },
+    ];
     for (const c of all) {
-      const id = await company(c.name, c.tenantId);
+      const id = await company(c.id, c.name, c.tenantId);
       if (!c.test) realIds.push(id);
       await seed(crm, "crm_contacts", { company_id: id, first_name: "Persona" });
-      const contract = await seed(crm, "crm_contracts", { company_id: id, tenant_id: c.tenantId });
+      const contract = await seed(crm, "crm_contracts", { company_id: id, tenant_id: c.tenantId, reference: `CT-T-${id}` });
+      contractOf[id] = contract;
+      // Aceptación contractual de la empresa 12 (exenta) y de una empresa real (no entra en el plan)
+      if (id === 12 || id === 30) {
+        await seed(crm, "crm_contract_acceptances", { contract_id: contract, contract_version: 2, status: "accepted", accepted_at: T, token_sha256: `${"a".repeat(63)}${id % 10}`, document_sha256: "d".repeat(64), consent_text: "Acepto", expires_at: T + 1000, created_by: "operator:test", created_at: T });
+      }
       await seed(crm, "subscriptions", { company_id: id, tenant_id: c.tenantId, contract_id: contract });
       // Pedido con pago y evento del proveedor (el evento solo enlaza con el pago, no con la empresa)
       const order = await seed(crm, "commercial_orders", { company_id: id });
@@ -82,12 +96,12 @@ describe.skipIf(!URL_)("purga de las empresas de prueba (MySQL real)", () => {
     }
     await crm.query("SET FOREIGN_KEY_CHECKS = 1");
     await reg.query("SET FOREIGN_KEY_CHECKS = 1");
-    // Servidor de bases: una restauración sobrante de Skibox, otra de la empresa real y la medición de ambas
+    // Servidor de bases: una restauración sobrante de Elephant Demo, otra de la empresa real y la medición de ambas
     for (const db of LEFTOVERS) await admin.query(`CREATE DATABASE IF NOT EXISTS \`${db}\``);
     await admin.query("CREATE DATABASE IF NOT EXISTS es_erm");
     await admin.query("CREATE TABLE IF NOT EXISTS es_erm.usage_hourly (tenant_id VARCHAR(63) NOT NULL, metric VARCHAR(32) NOT NULL, n INT NOT NULL)");
-    await admin.query("INSERT INTO es_erm.usage_hourly VALUES ('t5-skibox','requests',3),('t5-skibox','storage',1),('t9-empresa-real','requests',7)");
-  });
+    await admin.query("INSERT INTO es_erm.usage_hourly VALUES ('elephant-demo','requests',3),('elephant-demo','storage',1),('t9-empresa-real','requests',7)");
+  }, 120_000);
 
   afterAll(async () => {
     await crm?.end();
@@ -99,11 +113,11 @@ describe.skipIf(!URL_)("purga de las empresas de prueba (MySQL real)", () => {
     await admin?.end();
   });
 
-  // t3 sirve desde una base restaurada (`_r<fecha>`), como en production
-  const dbName = async (t: string) => `es_${t.replace(/-/g, "_")}${t === "t3-empresa-demo-elephant-01" ? "_r20261016221031" : ""}`;
+  // prueba-condiciones-129 sirve desde una base restaurada (`_r<fecha>`), como en production
+  const dbName = async (t: string) => `es_${t.replace(/-/g, "_")}${t === "prueba-condiciones-129" ? "_r20261016221031" : ""}`;
 
   it("una base con un nombre ajeno (ni el propio ni el de una restauración) bloquea la purga", async () => {
-    const plan = await planPurge({ crm, registry: reg, tenantDbName: async (t) => (t === "t1-empresa-demo-elephant-a" ? "es_t9_empresa_real" : dbName(t)), expectedDbName: (t) => `es_${t.replace(/-/g, "_")}` });
+    const plan = await planPurge({ crm, registry: reg, tenantDbName: async (t) => (t === PURGE_TARGETS[0].tenantId ? "es_t9_empresa_real" : dbName(t)), expectedDbName: (t) => `es_${t.replace(/-/g, "_")}` });
     expect(plan.problems.join()).toMatch(/no tiene el nombre propio/);
   });
 
@@ -118,20 +132,62 @@ describe.skipIf(!URL_)("purga de las empresas de prueba (MySQL real)", () => {
     await crm.query("DELETE FROM invoices WHERE id = ?", [inv]);
   });
 
+  it("la lista cerrada son exactamente las empresas 8, 11, 12 y 13; Skibox y las demás quedan fuera", async () => {
+    expect(PURGE_COMPANIES_WITHOUT_TENANT.map((x) => x.companyId).sort((a, b) => a - b)).toEqual([8, 13]);
+    expect(PURGE_TARGETS.map((x) => x.tenantId).sort()).toEqual(["elephant-demo", "prueba-condiciones-129"]);
+    expect(ACCEPTANCE_EXEMPT_COMPANY_IDS).toEqual([12]);
+    const plan = await planPurge({ crm, registry: reg, tenantDbName: dbName, expectedDbName: (t) => `es_${t.replace(/-/g, "_")}`, resources: resources() });
+    expect(plan.companies.map((c) => c.id).sort((a, b) => a - b)).toEqual([8, 11, 12, 13]);
+    expect(plan.companies.some((c) => realIds.includes(c.id))).toBe(false);
+  });
+
+  it("una aceptación contractual de una empresa NO exenta (la 13) bloquea toda la purga; la de la 12 consta en la evidencia", async () => {
+    const plan0 = await planPurge({ crm, registry: reg, tenantDbName: dbName, expectedDbName: (t) => `es_${t.replace(/-/g, "_")}`, resources: resources() });
+    expect(plan0.problems).toEqual([]);
+    expect(plan0.acceptanceEvidence).toHaveLength(1);
+    expect(plan0.acceptanceEvidence[0]).toMatchObject({ companyId: 12, contractId: contractOf[12], contractReference: "CT-T-12", contractVersion: 2, status: "accepted", documentSha256: "d".repeat(64), hasAcceptedIpHash: false });
+    expect(plan0.acceptanceEvidence[0].consentTextSha256).toMatch(/^[0-9a-f]{64}$/);
+    expect(plan0.planHash).toMatch(/^[0-9a-f]{64}$/);
+    // La huella es determinista: el mismo plan, la misma huella; y no depende de ella misma
+    expect(planHashOf(plan0)).toBe(plan0.planHash);
+    const plan1 = await planPurge({ crm, registry: reg, tenantDbName: dbName, expectedDbName: (t) => `es_${t.replace(/-/g, "_")}`, resources: resources() });
+    expect(plan1.planHash).toBe(plan0.planHash);
+    const extra = await seed(crm, "crm_contract_acceptances", { contract_id: contractOf[13], contract_version: 1, status: "accepted", accepted_at: T, token_sha256: "b".repeat(64), document_sha256: "e".repeat(64), expires_at: T + 1000, created_by: "operator:test", created_at: T });
+    const blocked = await planPurge({ crm, registry: reg, tenantDbName: dbName, expectedDbName: (t) => `es_${t.replace(/-/g, "_")}`, resources: resources() });
+    expect(blocked.problems.join()).toMatch(/crm_contract_acceptances/);
+    expect(blocked.planHash).not.toBe(plan0.planHash);
+    await expect(applyPurge({ crm, registry: reg }, blocked)).rejects.toThrow(/No se purga nada/);
+    await crm.query("DELETE FROM crm_contract_acceptances WHERE id = ?", [extra]);
+  });
+
+  it("una empresa con el nombre de una técnica pero otro id, o una técnica sin plataforma que ahora tiene tenant, aborta el plan", async () => {
+    await crm.query("UPDATE crm_companies SET tenant_id = 't8-otro-tenant' WHERE id = 13");
+    const a = await planPurge({ crm, registry: reg, tenantDbName: dbName, expectedDbName: (t) => `es_${t.replace(/-/g, "_")}`, resources: resources() });
+    expect(a.problems.join()).toMatch(/no coincide exactamente/);
+    await crm.query("UPDATE crm_companies SET tenant_id = NULL WHERE id = 13");
+    await crm.query("UPDATE crm_companies SET name = 'PRUEBA TÉCNICA Ampliaciones' WHERE id = 32");
+    const b = await planPurge({ crm, registry: reg, tenantDbName: dbName, expectedDbName: (t) => `es_${t.replace(/-/g, "_")}`, resources: resources() });
+    expect(b.problems.join()).toMatch(/no coincide exactamente/);
+    await crm.query("UPDATE crm_companies SET name = 'PRUEBA TÉCNICA Otra' WHERE id = 32");
+  });
+
   it("sin poder mirar el bucket de medios no se purga nada (quedarían ficheros huérfanos)", async () => {
     const plan = await planPurge({ crm, registry: reg, tenantDbName: dbName, resources: { media: { unavailable: "BACKUP_MEDIA no activado" } } });
     expect(plan.problems.join()).toMatch(/ficheros/);
     expect(plan.files.checked).toBe(false);
   });
 
+  const tablesOf = (plan: Awaited<ReturnType<typeof planPurge>>) => plan.steps.map((s) => `${s.db}.${s.table}`);
+
   it("purga solo la lista cerrada, de hijos a padres, conserva las copias y deja la empresa real y Nextair intactas", async () => {
     const plan = await planPurge({ crm, registry: reg, tenantDbName: dbName, expectedDbName: (t) => `es_${t.replace(/-/g, "_")}`, resources: resources() });
     expect(plan.problems).toEqual([]);
-    expect(plan.companies.map((c) => c.name)).toContain("Skibox");
-    expect(plan.extraDatabases).toEqual([{ tenantId: "t5-skibox", server: "mysql-1", database: "es_t5_skibox_r20261020101010" }]);
+    expect(plan.companies.map((c) => c.name)).toContain("Elephant Demo");
+    expect(plan.extraDatabases).toEqual([{ tenantId: "elephant-demo", server: "mysql-1", database: "es_elephant_demo_r20261020101010" }]);
     expect(plan.measurement).toEqual([{ server: "mysql-1", table: "usage_hourly", rows: 2 }]);
-    expect(plan.files.byTenant).toEqual([{ tenantId: "t5-skibox", objects: 2, bytes: 20, keys: ["t/t5-skibox/logo.png", "t/t5-skibox/docs/a.pdf"] }]);
-    expect(plan.companies.map((c) => c.tenantId).sort()).toEqual(PURGE_TARGETS.map((t) => t.tenantId).sort());
+    expect(plan.files.byTenant).toEqual([{ tenantId: "elephant-demo", objects: 2, bytes: 20, keys: ["t/elephant-demo/logo.png", "t/elephant-demo/docs/a.pdf"] }]);
+    expect(plan.companies.map((c) => c.tenantId).sort()).toEqual([null, null, ...PURGE_TARGETS.map((t) => t.tenantId)].sort());
+    expect(tablesOf(plan)).toContain("crm.crm_contract_acceptances");
     const tables = plan.steps.map((s) => `${s.db}.${s.table}`);
     expect(tables).toEqual(expect.arrayContaining(["crm.crm_contacts", "crm.crm_contracts", "crm.subscriptions", "crm.crm_companies", "registry.tenant_domains"]));
     expect(tables.some((t) => t.includes("backup_"))).toBe(false);
@@ -142,7 +198,7 @@ describe.skipIf(!URL_)("purga de las empresas de prueba (MySQL real)", () => {
     expect(tables.indexOf("crm.crm_companies")).toBeGreaterThan(tables.indexOf("crm.crm_contacts"));
     expect(tables).toEqual(expect.arrayContaining(["crm.commercial_payment_events", "crm.commercial_payments", "crm.commercial_orders"]));
     expect(tables.indexOf("crm.commercial_payments")).toBeGreaterThan(tables.indexOf("crm.commercial_payment_events"));
-    expect(plan.databases.filter((x) => x.restored).map((x) => x.database)).toEqual(["es_t3_empresa_demo_elephant_01_r20261016221031"]);
+    expect(plan.databases.filter((x) => x.restored).map((x) => x.database)).toEqual(["es_prueba_condiciones_129_r20261016221031"]);
     const dropped: string[] = [];
     const restored: string[] = [];
     const done = await applyPurge(
@@ -156,16 +212,19 @@ describe.skipIf(!URL_)("purga de las empresas de prueba (MySQL real)", () => {
     const [usage] = await admin.query<mysql.RowDataPacket[]>("SELECT tenant_id FROM es_erm.usage_hourly");
     expect(usage.map((r) => r.tenant_id)).toEqual(["t9-empresa-real"]);
     expect(dropped.sort()).toEqual(PURGE_TARGETS.map((t) => t.tenantId).sort());
-    expect(restored).toEqual(["es_t3_empresa_demo_elephant_01_r20261016221031"]);
-    expect(done.deleted.find((d) => d.table === "commercial_payment_events")?.rows).toBe(PURGE_TARGETS.length);
+    expect(restored).toEqual(["es_prueba_condiciones_129_r20261016221031"]);
+    expect(done.deleted.find((d) => d.table === "commercial_payment_events")?.rows).toBe(4);
     const [[events]] = await crm.query<mysql.RowDataPacket[]>("SELECT COUNT(*) n FROM commercial_payment_events");
-    expect(Number(events.n)).toBe(2);
-    expect(done.deleted.find((d) => d.table === "crm_companies")?.rows).toBe(PURGE_TARGETS.length);
+    expect(Number(events.n)).toBe(3);
+    expect(done.deleted.find((d) => d.table === "crm_companies")?.rows).toBe(4);
+    expect(done.deleted.find((d) => d.table === "crm_contract_acceptances")?.rows).toBe(1);
     expect(await verifyPurge({ crm, registry: reg, resources: resources() })).toEqual({ ok: true, remaining: [] });
     const [left] = await crm.query<mysql.RowDataPacket[]>("SELECT name FROM crm_companies ORDER BY name");
-    expect(left.map((r) => r.name)).toEqual(["Empresa Real", "Nextair"]);
+    expect(left.map((r) => r.name)).toEqual(["Empresa Real", "Nextair", "PRUEBA TÉCNICA Otra"]);
+    const [[accLeft]] = await crm.query<mysql.RowDataPacket[]>("SELECT COUNT(*) n FROM crm_contract_acceptances");
+    expect(Number(accLeft.n)).toBe(1);
     const [[contacts]] = await crm.query<mysql.RowDataPacket[]>("SELECT COUNT(*) n FROM crm_contacts WHERE company_id IN (?)", [realIds]);
-    expect(Number(contacts.n)).toBe(2);
+    expect(Number(contacts.n)).toBe(3);
     const [[sk]] = await reg.query<mysql.RowDataPacket[]>("SELECT COUNT(*) n FROM tenants WHERE id = 't9-empresa-real' AND status <> 'deleted'");
     expect(Number(sk.n)).toBe(1);
     const [states] = await reg.query<mysql.RowDataPacket[]>("SELECT id, status FROM tenants WHERE id IN (?)", [PURGE_TARGETS.map((t) => t.tenantId)]);
@@ -174,6 +233,12 @@ describe.skipIf(!URL_)("purga de las empresas de prueba (MySQL real)", () => {
     expect(Number(dom.n)).toBe(0);
     const [ev] = await reg.query<mysql.RowDataPacket[]>("SELECT tenant_id, action FROM tenant_events ORDER BY id");
     expect(ev.filter((r) => r.action === "purged").map((r) => r.tenant_id).sort()).toEqual(PURGE_TARGETS.map((t) => t.tenantId).sort());
+    // El manifiesto queda en la auditoría inmutable: huella del plan, empresas y evidencias de las aceptaciones
+    const [purged] = await reg.query<mysql.RowDataPacket[]>("SELECT details FROM tenant_events WHERE action = 'purged' LIMIT 1");
+    const details = typeof purged[0].details === "string" ? JSON.parse(purged[0].details) : purged[0].details;
+    expect(details.planHash).toBe(plan.planHash);
+    expect(details.companies.map((c: { id: number }) => c.id).sort((a: number, b: number) => a - b)).toEqual([8, 11, 12, 13]);
+    expect(details.acceptances).toHaveLength(1);
     expect(ev.filter((r) => r.action === "created").length).toBe(PURGE_TARGETS.length + 1);
     const [[backups]] = await reg.query<mysql.RowDataPacket[]>("SELECT COUNT(*) n FROM backup_inventory");
     expect(Number(backups.n)).toBe(PURGE_TARGETS.length + 1);
@@ -182,5 +247,6 @@ describe.skipIf(!URL_)("purga de las empresas de prueba (MySQL real)", () => {
     expect(again.steps).toEqual([]);
     expect(again.retire).toEqual([]);
     expect(again.missing.length).toBe(PURGE_TARGETS.length);
+    expect(again.missingCompanies).toEqual([8, 13]);
   });
 });
