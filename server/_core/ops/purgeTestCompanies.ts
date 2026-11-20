@@ -400,7 +400,8 @@ export function planHashOf(plan: Omit<PurgePlan, "planHash"> | PurgePlan): strin
     databases: plan.databases,
     retire: plan.retire,
     extraDatabases: plan.extraDatabases,
-    measurement: plan.measurement,
+    // La medición del Resource Manager crece cada hora: cuenta por servidor y tabla, no por número de filas (se borran todas las de los tenants)
+    measurement: plan.measurement.map((m) => ({ server: m.server, table: m.table })),
     files: plan.files.byTenant.map((f) => ({ tenantId: f.tenantId, keys: [...f.keys].sort() })),
     acceptances: plan.acceptanceEvidence,
     problems: plan.problems,
