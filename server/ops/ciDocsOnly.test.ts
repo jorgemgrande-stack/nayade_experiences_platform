@@ -9,7 +9,7 @@ import fs from "node:fs";
 import { execFileSync, spawnSync } from "node:child_process";
 import { pathToFileURL } from "node:url";
 
-const SCRIPT = path.resolve(__dirname, "../scripts/ci/docsOnly.mjs");
+const SCRIPT = path.resolve(__dirname, "../../scripts/ci/docsOnly.mjs");
 const load = async () =>
   (await import(/* @vite-ignore */ pathToFileURL(SCRIPT).href)) as {
     classify: (pages: unknown) => { docsOnly: boolean; reason: string; files: number };
@@ -90,7 +90,7 @@ describe("detección de PR solo de documentación", () => {
   });
 
   it("el workflow solo omite pasos con la salida explícita docs_only=true, deja Secretos siempre activo y no cambia los checks obligatorios", () => {
-    const ci = fs.readFileSync(path.resolve(__dirname, "../.github/workflows/ci.yml"), "utf8").replace(/\r\n/g, "\n");
+    const ci = fs.readFileSync(path.resolve(__dirname, "../../.github/workflows/ci.yml"), "utf8").replace(/\r\n/g, "\n");
     const suites = ci.slice(ci.indexOf("  core-suites:\n"), ci.indexOf("  # Secretos y ficheros sensibles: BLOQUEANTE"));
     // Nombres de los checks obligatorios intactos
     expect(ci).toContain("name: Suites del Core multiempresa (bloqueante)");
@@ -112,7 +112,7 @@ describe("detección de PR solo de documentación", () => {
   });
 
   it("ninguna prueba lee del disco un .md de docs/ (si lo hiciera, omitir suites ocultaría su rotura)", () => {
-    const root = path.resolve(__dirname, "..");
+    const root = path.resolve(__dirname, "../..");
     let hits: string[] = [];
     try {
       hits = execFileSync("git", ["grep", "-lE", "docs/[A-Za-z0-9_./-]*\\.md", "--", "server/*.test.ts", "scripts"], { cwd: root, encoding: "utf8" }).split("\n").filter(Boolean);

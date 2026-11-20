@@ -262,7 +262,7 @@ jobs:
       # PR que modifica EXCLUSIVAMENTE documentación no ejecutable (docs/**/*.md): se omiten las suites pesadas, pero el job (y su
       # check obligatorio) termina en verde y «Secretos y ficheros sensibles» se ejecuta siempre. Cualquier duda (error de la
       # API, lista vacía o truncada, otro tipo de fichero, evento que no sea PR) deja el CI completo: solo la salida explícita
-      # `docs_only=true` omite algo. Lógica y ejemplos: scripts/ci/docsOnly.mjs y server/ciDocsOnly.test.ts.
+      # `docs_only=true` omite algo. Lógica y ejemplos: scripts/ci/docsOnly.mjs y server/ops/ciDocsOnly.test.ts.
       - name: Detectar PR solo de documentación
         id: docs
         if: github.event_name == 'pull_request' && steps.arbol.outputs.probado != 'true'
