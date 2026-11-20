@@ -9,7 +9,7 @@ import fs from "node:fs";
 import path from "node:path";
 import mysql from "mysql2/promise";
 import { loadMigrations, splitStatements } from "../scripts/db/migrationLib";
-import { ACCEPTANCE_EXEMPT_COMPANY_IDS, PURGE_COMPANIES_WITHOUT_TENANT, PURGE_TARGETS, applyPurge, planHashOf, planPurge, verifyPurge } from "./_core/ops/purgeTestCompanies";
+import { ACCEPTANCE_EXEMPT_COMPANY_IDS, APPROVED_PURGE_PLAN_HASH, PURGE_COMPANIES_WITHOUT_TENANT, PURGE_TARGETS, applyPurge, planHashOf, planPurge, verifyPurge } from "./_core/ops/purgeTestCompanies";
 
 const URL_ = process.env.REGISTRY_TEST_DATABASE_URL;
 const T = Date.UTC(2026, 9, 28, 9);
@@ -128,7 +128,7 @@ describe.skipIf(!URL_)("purga de las empresas de prueba (MySQL real)", () => {
     await crm.query("SET FOREIGN_KEY_CHECKS = 1");
     const plan = await planPurge({ crm, registry: reg, tenantDbName: dbName, expectedDbName: (t) => `es_${t.replace(/-/g, "_")}` });
     expect(plan.problems.join()).toMatch(/invoices/);
-    await expect(applyPurge({ crm, registry: reg }, plan)).rejects.toThrow(/No se purga nada/);
+    await expect(applyPurge({ crm, registry: reg }, plan, plan.planHash)).rejects.toThrow(/No se purga nada/);
     await crm.query("DELETE FROM invoices WHERE id = ?", [inv]);
   });
 
@@ -156,7 +156,7 @@ describe.skipIf(!URL_)("purga de las empresas de prueba (MySQL real)", () => {
     const blocked = await planPurge({ crm, registry: reg, tenantDbName: dbName, expectedDbName: (t) => `es_${t.replace(/-/g, "_")}`, resources: resources() });
     expect(blocked.problems.join()).toMatch(/crm_contract_acceptances/);
     expect(blocked.planHash).not.toBe(plan0.planHash);
-    await expect(applyPurge({ crm, registry: reg }, blocked)).rejects.toThrow(/No se purga nada/);
+    await expect(applyPurge({ crm, registry: reg }, blocked, blocked.planHash)).rejects.toThrow(/No se purga nada/);
     await crm.query("DELETE FROM crm_contract_acceptances WHERE id = ?", [extra]);
   });
 
@@ -169,6 +169,37 @@ describe.skipIf(!URL_)("purga de las empresas de prueba (MySQL real)", () => {
     const b = await planPurge({ crm, registry: reg, tenantDbName: dbName, expectedDbName: (t) => `es_${t.replace(/-/g, "_")}`, resources: resources() });
     expect(b.problems.join()).toMatch(/no coincide exactamente/);
     await crm.query("UPDATE crm_companies SET name = 'PRUEBA TÉCNICA Otra' WHERE id = 32");
+  });
+
+  it("HUELLA INCORRECTA: con un planHash distinto del autorizado (o sin él, o con el plan manipulado) no se borra NADA, ni una fila ni una base ni un fichero", async () => {
+    const dropped: string[] = [];
+    const deletedFiles: string[] = [];
+    const deps = { crm, registry: reg, dropDatabase: async (t: string) => void dropped.push(t), servers: resources().servers, deleteMedia: async (k: string) => void deletedFiles.push(k) };
+    const snapshot = async () => {
+      const [[c]] = await crm.query<mysql.RowDataPacket[]>("SELECT (SELECT COUNT(*) FROM crm_companies) companies, (SELECT COUNT(*) FROM crm_contacts) contacts, (SELECT COUNT(*) FROM crm_contracts) contracts, (SELECT COUNT(*) FROM crm_contract_acceptances) acceptances, (SELECT COUNT(*) FROM subscriptions) subs");
+      const [[r]] = await reg.query<mysql.RowDataPacket[]>("SELECT (SELECT COUNT(*) FROM tenants WHERE status <> 'deleted') live, (SELECT COUNT(*) FROM tenant_domains) domains, (SELECT COUNT(*) FROM tenant_events WHERE action = 'purged') purged");
+      return JSON.stringify([c, r, Array.from(bucket).sort()]);
+    };
+    const plan = await planPurge({ crm, registry: reg, tenantDbName: dbName, expectedDbName: (t) => `es_${t.replace(/-/g, "_")}`, resources: resources() });
+    expect(plan.problems).toEqual([]);
+    const before = await snapshot();
+    const wrong = "0".repeat(64);
+    await expect(applyPurge(deps, plan, wrong)).rejects.toThrow(/no coincide con el autorizado/);
+    await expect(applyPurge(deps, plan, null)).rejects.toThrow(/Sin huella de plan autorizada/);
+    await expect(applyPurge(deps, plan, "no-es-una-huella")).rejects.toThrow(/Sin huella de plan autorizada/);
+    // Plan manipulado (una fila más a borrar) con la huella autorizada original: tampoco
+    const tampered = { ...plan, steps: plan.steps.map((s, i) => (i === 0 ? { ...s, rows: s.rows + 1 } : s)) };
+    await expect(applyPurge(deps, tampered, plan.planHash)).rejects.toThrow(/no coincide con su propia huella/);
+    // La huella autorizada en el código no es la de esta base de pruebas: la purga real de production no se lanzaría con estos datos
+    expect(plan.planHash).not.toBe(APPROVED_PURGE_PLAN_HASH);
+    await expect(applyPurge(deps, plan, APPROVED_PURGE_PLAN_HASH)).rejects.toThrow(/no coincide con el autorizado/);
+    expect(dropped).toEqual([]);
+    expect(deletedFiles).toEqual([]);
+    expect(await snapshot()).toBe(before);
+  });
+
+  it("la huella autorizada tiene el formato esperado", () => {
+    expect(APPROVED_PURGE_PLAN_HASH).toMatch(/^[0-9a-f]{64}$/);
   });
 
   it("sin poder mirar el bucket de medios no se purga nada (quedarían ficheros huérfanos)", async () => {
@@ -204,6 +235,7 @@ describe.skipIf(!URL_)("purga de las empresas de prueba (MySQL real)", () => {
     const done = await applyPurge(
       { crm, registry: reg, dropDatabase: async (t) => void dropped.push(t), dropRestoredDatabase: async (_t, db) => void restored.push(db), servers: resources().servers, deleteMedia: async (k) => void bucket.delete(k) },
       plan,
+      plan.planHash,
     );
     expect(done.deletedFiles).toBe(2);
     expect(Array.from(bucket)).toEqual(["t/t9-empresa-real/logo.png"]);
