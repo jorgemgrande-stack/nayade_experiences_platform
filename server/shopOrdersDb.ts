@@ -113,13 +113,16 @@ export function invoiceLinesFor(rows: Pick<Row, "productId" | "productName" | "p
  * Pedido pagado: cliente vinculado y una factura cobrada para todo el pedido. Idempotente: con factura en alguna
  * línea solo completa el vínculo del cliente.
  */
-export async function finalizePaidShopOrder(merchantOrder: string): Promise<FinalizeResult> {
+export async function finalizePaidShopOrder(merchantOrder: string, paymentMethod: "tarjeta_redsys" | "otro" = "tarjeta_redsys"): Promise<FinalizeResult> {
   const db = await getDb();
   if (!db) return { clientId: null, invoiceId: null, invoiceNumber: null, created: false };
   const rows = (await db.select().from(reservations).where(and(eq(reservations.merchantOrder, merchantOrder), onlineShop()))).filter((r) => r.status === "paid");
   if (!rows.length) return { clientId: null, invoiceId: null, invoiceNumber: null, created: false };
   const billing = rows.map((r) => billingFromLog(r.changesLog)).find(Boolean) ?? null;
   const clientId = await linkClient(rows, billing);
+  // LMS: con el pago confirmado, las reglas de catálogo matriculan en lo contratado. Idempotente y nunca lanza: se ejecuta
+  // también en las pasadas de recuperación (reintento del cobro, aviso repetido), así un fallo parcial se repara solo.
+  await (await import("./learningFlow")).grantLearningFromOrder(merchantOrder);
   const existing = rows.find((r) => r.invoiceId);
   if (existing) return { clientId, invoiceId: existing.invoiceId, invoiceNumber: existing.invoiceNumber, created: false };
 
@@ -149,7 +152,7 @@ export async function finalizePaidShopOrder(merchantOrder: string): Promise<Fina
     taxBreakdown: a.taxBreakdown.length ? a.taxBreakdown : undefined,
     total: a.total.toFixed(2),
     status: "cobrada",
-    paymentMethod: "tarjeta_redsys",
+    paymentMethod,
     issuedAt: now,
     createdAt: now,
     updatedAt: now,

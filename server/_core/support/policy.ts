@@ -30,7 +30,7 @@ const FORBIDDEN_PROCEDURES = new Set<string>([
   "voiceSetup.saveKey", "voiceSetup.connect", "voiceSetup.disconnect",
   "postmarkTenant.save", "postmarkTenant.generateWebhookToken", "postmarkTenant.disconnect",
   // Cobros con la cuenta Stripe de la empresa: vincular, releer e interruptor son de la propia empresa
-  "cobros.connect", "cobros.refresh", "cobros.setOnline",
+  "cobros.connect", "cobros.connectLive", "cobros.completeLive", "cobros.refresh", "cobros.setOnline",
   "multichannel.rotateInboundToken", "multichannel.revokeInboundToken",
   "emailAccounts.create", "emailAccounts.update", "emailAccounts.delete", "emailAccounts.testImap", "emailAccounts.testSmtp",
   "financeSync.setup", "financeSync.saveMailbox", "financeSync.testMailbox",

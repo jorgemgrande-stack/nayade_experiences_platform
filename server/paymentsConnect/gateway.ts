@@ -24,6 +24,8 @@ export interface CheckoutParams {
   customerEmail?: string | null;
   successUrl: string;
   cancelUrl: string;
+  /** Caducidad de la sesión (segundos desde 1970; Stripe admite de 30 min a 24 h). Sin valor, la de Stripe (24 h). */
+  expiresAtSeconds?: number;
   /** Metadatos NUESTROS (empresa y presupuesto); el webhook los contrasta con la base de la empresa. */
   metadata: Record<string, string>;
 }
@@ -34,6 +36,8 @@ export interface ConnectGateway {
   /** Enlace de alta/continuación (Account Link): en esa URL la empresa autoriza la conexión en Stripe. */
   createAccountLink(p: { accountId: string; returnUrl: string; refreshUrl: string }): Promise<{ url: string; expiresAt: number }>;
   retrieveAccount(accountId: string): Promise<StripeAccountFacts>;
+  /** OAuth (modo Real): cambia el código de autorización de un solo uso por la cuenta que la empresa ha autorizado. */
+  exchangeOAuthCode(code: string): Promise<{ accountId: string; livemode: boolean }>;
   createCheckoutSession(p: CheckoutParams): Promise<{ id: string; url: string }>;
 }
 
@@ -54,19 +58,22 @@ function wrap(e: unknown): never {
   throw new ConnectGatewayError("Stripe rechazó la operación", code);
 }
 
-export function stripeConnectGateway(config: ConnectConfig): ConnectGateway {
-  const stripe = new Stripe(config.apiKey, { maxNetworkRetries: 2, timeout: 20_000 });
+export function stripeConnectGateway(config: ConnectConfig, sdkOptions: Partial<Stripe.StripeConfig> = {}): ConnectGateway {
+  const stripe = new Stripe(config.apiKey, { maxNetworkRetries: 2, timeout: 20_000, ...sdkOptions });
   return {
     async createAccount(p) {
       try {
-        const a = await stripe.accounts.create(
+        // Accounts v2 (Stripe rechaza `POST /v1/accounts` en integraciones Connect nuevas). Equivale a los antiguos
+        // `controller`: panel completo (dashboard: full), la empresa paga las comisiones (fees_collector: stripe) y Stripe
+        // responde de las pérdidas y recoge sus datos (losses_collector: stripe → requirements_collector: stripe).
+        // Cobro directo: solo configuración de comercio con tarjetas; no hay transferencias de la plataforma.
+        const a = await stripe.v2.core.accounts.create(
           {
-            country: p.country,
-            email: p.email ?? undefined,
-            // La empresa conserva su panel de Stripe completo, paga las comisiones y responde de reembolsos y
-            // disputas; Stripe recoge sus datos y verifica la identidad.
-            controller: { stripe_dashboard: { type: "full" }, fees: { payer: "account" }, losses: { payments: "stripe" }, requirement_collection: "stripe" },
-            capabilities: { card_payments: { requested: true }, transfers: { requested: true } },
+            contact_email: p.email ?? undefined,
+            identity: { country: p.country.toLowerCase() },
+            dashboard: "full",
+            defaults: { responsibilities: { fees_collector: "stripe", losses_collector: "stripe" } },
+            configuration: { merchant: { capabilities: { card_payments: { requested: true } } } },
             metadata: { tenant_id: p.tenantId },
           },
           { idempotencyKey: p.idempotencyKey },
@@ -78,8 +85,11 @@ export function stripeConnectGateway(config: ConnectConfig): ConnectGateway {
     },
     async createAccountLink(p) {
       try {
-        const l = await stripe.accountLinks.create({ account: p.accountId, type: "account_onboarding", return_url: p.returnUrl, refresh_url: p.refreshUrl });
-        return { url: l.url, expiresAt: l.expires_at * 1000 };
+        const l = await stripe.v2.core.accountLinks.create({
+          account: p.accountId,
+          use_case: { type: "account_onboarding", account_onboarding: { return_url: p.returnUrl, refresh_url: p.refreshUrl } },
+        });
+        return { url: l.url, expiresAt: new Date(l.expires_at).getTime() };
       } catch (e) {
         return wrap(e);
       }
@@ -87,6 +97,15 @@ export function stripeConnectGateway(config: ConnectConfig): ConnectGateway {
     async retrieveAccount(accountId) {
       try {
         return factsFromStripeAccount(await stripe.accounts.retrieve(accountId));
+      } catch (e) {
+        return wrap(e);
+      }
+    },
+    async exchangeOAuthCode(code) {
+      try {
+        const t = await stripe.oauth.token({ grant_type: "authorization_code", code });
+        if (!t.stripe_user_id) throw new ConnectGatewayError("Stripe no devolvió la cuenta autorizada", "no_account");
+        return { accountId: t.stripe_user_id, livemode: !!t.livemode };
       } catch (e) {
         return wrap(e);
       }
@@ -100,7 +119,8 @@ export function stripeConnectGateway(config: ConnectConfig): ConnectGateway {
             customer_email: p.customerEmail || undefined,
             success_url: p.successUrl,
             cancel_url: p.cancelUrl,
-            client_reference_id: p.metadata.quote_id,
+            client_reference_id: p.metadata.quote_id ?? p.metadata.merchant_order,
+            ...(p.expiresAtSeconds ? { expires_at: p.expiresAtSeconds } : {}),
             metadata: p.metadata,
             payment_intent_data: { metadata: p.metadata },
           },

@@ -618,7 +618,8 @@ function LeadDetailModal({
           )}
           {lead.message && (
             <div className="pt-2 border-t border-foreground/[0.12]">
-              <p className="text-sm text-foreground/65 italic">"{lead.message}"</p>
+              <p className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-foreground/45">Mensaje</p>
+              <p className="text-sm text-foreground/80 whitespace-pre-line break-words" data-testid="lead-message">{lead.message}</p>
             </div>
           )}
         </div>

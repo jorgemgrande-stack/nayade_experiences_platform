@@ -1,9 +1,10 @@
 /**
  * cobros.ts — Ajustes › Cobros: la cuenta Stripe PROPIA de cada empresa (Stripe Connect).
  *
- * Solo multiempresa. Todas las operaciones exigen administrador (`settings.manage`). Los cobros reales (modo Real) no
- * están activados en esta entrega: solo existe la conexión de Prueba. Nada aquí toca el Stripe corporativo de Big
- * Elephant (`server/stripe/*`). El pago público de un presupuesto va por `crm.quotes.payWithToken` (ver publicApi.ts).
+ * Solo multiempresa. Todas las operaciones exigen administrador (`settings.manage`). Prueba: se crea una cuenta de
+ * Sandbox. Real: SOLO para las empresas autorizadas expresamente (CONNECT_STRIPE_LIVE_TENANTS) y SIN crear cuentas: la
+ * empresa autoriza en Stripe (OAuth) la cuenta que ya tiene. Nada aquí toca el Stripe corporativo de Big Elephant
+ * (`server/stripe/*`). El pago público de un presupuesto va por `crm.quotes.payWithToken` (ver publicApi.ts).
  */
 import { z } from "zod";
 import { TRPCError } from "@trpc/server";
@@ -11,10 +12,11 @@ import { adminProcedure, router } from "../_core/trpc";
 import { getTenantIdOrDefault, isMultiTenant } from "../_core/tenant";
 import { getTrustedBaseUrl } from "../_core/publicUrl";
 import { MODE_LABEL, STATUS_LABEL, type PaymentMode } from "../../shared/paymentAccounts";
-import { connectConfigState } from "../paymentsConnect/config";
+import { connectConfigState, liveAllowedFor } from "../paymentsConnect/config";
+import { oauthAuthorizeUrl, signOAuthState, verifyOAuthState } from "../paymentsConnect/oauthState";
 import { translatePaymentsError as translate } from "../paymentsConnect/publicApi";
 import { realPaymentsDeps } from "../paymentsConnect/runtime";
-import { connectAccount, refreshAccount, setOnlineEnabled } from "../paymentsConnect/service";
+import { connectAccount, linkExistingAccount, refreshAccount, setOnlineEnabled } from "../paymentsConnect/service";
 import { mysqlPaymentStore, type PaymentAccountRow } from "../paymentsConnect/store";
 
 function requireMulti() {
@@ -27,6 +29,18 @@ function depsOrThrow() {
   if (!config) throw new TRPCError({ code: "PRECONDITION_FAILED", message: problem ?? "Los cobros con Stripe no están configurados en esta plataforma" });
   return realPaymentsDeps(getTenantIdOrDefault(), config);
 }
+
+const LIVE_OFF = "Los cobros reales no están activados para esta empresa";
+
+/** Dependencias del modo Real: solo si la plataforma lo tiene configurado Y esta empresa está autorizada expresamente. */
+function liveDepsOrThrow() {
+  requireMulti();
+  const live = liveAllowedFor(getTenantIdOrDefault());
+  if (!live) throw new TRPCError({ code: "PRECONDITION_FAILED", message: LIVE_OFF });
+  return { deps: realPaymentsDeps(getTenantIdOrDefault(), live), live };
+}
+
+const stateSecret = () => process.env.JWT_SECRET ?? "";
 
 const view = (a: PaymentAccountRow | null, mode: PaymentMode, connectable: boolean) => ({
   mode,
@@ -53,8 +67,11 @@ export const cobrosRouter = router({
     requireMulti();
     const { config, problem } = connectConfigState();
     let test: PaymentAccountRow | null = null;
+    let real: PaymentAccountRow | null = null;
+    const liveReady = !!liveAllowedFor(getTenantIdOrDefault());
     try {
       test = await mysqlPaymentStore().getAccount("test");
+      if (liveReady) real = await mysqlPaymentStore().getAccount("live");
     } catch (e) {
       translate(e);
     }
@@ -63,8 +80,8 @@ export const cobrosRouter = router({
       platformProblem: config ? null : problem,
       // Alta y verificación de eventos las gestiona Big Elephant de forma central: no hay URL ni secreto que configurar
       webhookManagedCentrally: true,
-      modes: [view(test, "test", !!config), view(null, "live", false)],
-      liveDisabledReason: "Los cobros reales todavía no están activados. Se activarán de forma explícita tras validar la conexión de Prueba.",
+      modes: [view(test, "test", !!config), view(real, "live", liveReady)],
+      liveDisabledReason: liveReady ? null : "Los cobros reales no están activados para esta empresa. Se activan de forma explícita.",
     };
   }),
 
@@ -86,8 +103,8 @@ export const cobrosRouter = router({
   }),
 
   /** Relee el estado de la cuenta en Stripe (lo que diga el navegador no cuenta). */
-  refresh: adminProcedure.mutation(async ({ ctx }) => {
-    const d = depsOrThrow();
+  refresh: adminProcedure.input(z.object({ mode: z.enum(["test", "live"]).default("test") }).optional()).mutation(async ({ input, ctx }) => {
+    const d = input?.mode === "live" ? liveDepsOrThrow().deps : depsOrThrow();
     try {
       const a = await refreshAccount(d, ctx.user.name ?? String(ctx.user.id));
       return view(a, d.config.mode, true);
@@ -96,13 +113,39 @@ export const cobrosRouter = router({
     }
   }),
 
+  /**
+   * Modo Real: dirección de Stripe donde la empresa elige y autoriza la cuenta que YA tiene (no se crea ninguna cuenta).
+   * Solo empresas autorizadas expresamente en la plataforma.
+   */
+  connectLive: adminProcedure.mutation(async ({ ctx }) => {
+    const { live } = liveDepsOrThrow();
+    const secret = stateSecret();
+    if (!secret) throw new TRPCError({ code: "PRECONDITION_FAILED", message: "Falta la clave de firma del servidor" });
+    const state = signOAuthState({ tenantId: getTenantIdOrDefault(), userId: String(ctx.user.id) }, secret);
+    return { url: oauthAuthorizeUrl({ clientId: live.clientId, redirectUri: `${getTrustedBaseUrl()}/admin/configuracion/cobros`, state }) };
+  }),
+
+  /** Modo Real: cierra el vínculo con el código que Stripe entrega tras la autorización (de un solo uso, con `state` firmado). */
+  completeLive: adminProcedure.input(z.object({ code: z.string().min(8).max(512), state: z.string().min(8).max(1024) })).mutation(async ({ input, ctx }) => {
+    const { deps } = liveDepsOrThrow();
+    if (!verifyOAuthState(input.state, stateSecret(), { tenantId: getTenantIdOrDefault(), userId: String(ctx.user.id) })) {
+      throw new TRPCError({ code: "BAD_REQUEST", message: "El enlace de autorización ha caducado o no es de esta sesión. Vuelve a pulsar «Vincular mi cuenta de Stripe»." });
+    }
+    try {
+      const a = await linkExistingAccount(deps, { code: input.code, by: ctx.user.name ?? String(ctx.user.id) });
+      return view(a, "live", true);
+    } catch (e) {
+      return translate(e);
+    }
+  }),
+
   /** Interruptor de cobros en línea: apagado por defecto; solo se enciende con la cuenta verificada de ese modo. */
   setOnline: adminProcedure.input(z.object({ mode: z.enum(["test", "live"]), enabled: z.boolean() })).mutation(async ({ input, ctx }) => {
     requireMulti();
-    if (input.mode === "live" && input.enabled) throw new TRPCError({ code: "PRECONDITION_FAILED", message: "Los cobros reales todavía no están activados" });
+    if (input.mode === "live" && input.enabled && !liveAllowedFor(getTenantIdOrDefault())) throw new TRPCError({ code: "PRECONDITION_FAILED", message: LIVE_OFF });
     try {
       const a = await setOnlineEnabled({ store: mysqlPaymentStore() }, input.mode, input.enabled, ctx.user.name ?? String(ctx.user.id));
-      return view(a, input.mode, input.mode === "test");
+      return view(a, input.mode, input.mode === "test" || !!liveAllowedFor(getTenantIdOrDefault()));
     } catch (e) {
       return translate(e);
     }

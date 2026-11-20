@@ -2,7 +2,7 @@
 import type { StripeAccountFacts } from "../../shared/paymentAccounts";
 import type { CheckoutParams, ConnectGateway } from "./gateway";
 import type { AccountUpdate, CheckoutRow, PaymentAccountRow, PaymentStore } from "./store";
-import type { QuoteInfo, QuotePort } from "./service";
+import type { QuoteInfo, QuotePort, ShopPort } from "./service";
 import type { AccountIndexReader, AccountIndexWriter, ClaimResult } from "./accountIndex";
 
 export class MemoryPaymentStore implements PaymentStore {
@@ -99,6 +99,11 @@ export class FakeConnectGateway implements ConnectGateway {
     this.calls.push("retrieveAccount");
     return this.accountFacts;
   }
+  oauthResult: { accountId: string; livemode: boolean } = { accountId: "acct_1LiveAsociacion01", livemode: true };
+  async exchangeOAuthCode(code: string) {
+    this.calls.push(`exchangeOAuthCode:${code}`);
+    return this.oauthResult;
+  }
   async createCheckoutSession(p: CheckoutParams) {
     this.calls.push("createCheckoutSession");
     this.sessions.push(p);
@@ -135,5 +140,21 @@ export class MemoryAccountIndex implements AccountIndexWriter, AccountIndexReade
   }
   async tenantOf(accountId: string) {
     return this.rows.get(accountId)?.tenantId ?? null;
+  }
+}
+
+export class FakeShop implements ShopPort {
+  paid: Array<{ merchantOrder: string; amountCents: number; paymentIntent: string | null }> = [];
+  failed: string[] = [];
+  failNext = false;
+  async applyPaid(merchantOrder: string, p: { amountCents: number; paymentIntent: string | null }) {
+    if (this.failNext) {
+      this.failNext = false;
+      throw new Error("fallo al aplicar");
+    }
+    this.paid.push({ merchantOrder, amountCents: p.amountCents, paymentIntent: p.paymentIntent });
+  }
+  async applyFailed(merchantOrder: string) {
+    this.failed.push(merchantOrder);
   }
 }

@@ -40,11 +40,18 @@ export interface QuotePort {
   markPaid(quoteId: number, reference: string): Promise<void>;
 }
 
+/** Pedidos de la tienda web: aplica el resultado de un pago con EL MISMO tratamiento que Redsys (reservas, factura, stock…). */
+export interface ShopPort {
+  applyPaid(merchantOrder: string, p: { amountCents: number; sessionId: string; paymentIntent: string | null }): Promise<void>;
+  applyFailed(merchantOrder: string, p: { sessionId: string }): Promise<void>;
+}
+
 export interface PaymentsDeps {
   store: PaymentStore;
   gateway: ConnectGateway;
   config: ConnectConfig;
   quotes: QuotePort;
+  shop: ShopPort;
   /** Reserva global de la cuenta (una cuenta, una empresa). */
   index: AccountIndexWriter;
   tenantId: string;
@@ -53,9 +60,11 @@ export interface PaymentsDeps {
 
 export async function connectAccount(d: PaymentsDeps, p: { email?: string | null; returnUrl: string; refreshUrl: string; by: string | null }): Promise<{ url: string; account: PaymentAccountRow }> {
   const now = (d.now ?? Date.now)();
+  // En modo Real NUNCA se crea una cuenta: se vincula la que la empresa ya tiene (linkExistingAccount)
+  if (d.config.mode !== "test") throw new PaymentsError("not_configured", "En modo Real se vincula la cuenta de Stripe que la empresa ya tiene");
   let account = await d.store.getAccount(d.config.mode);
   if (!account) {
-    const created = await d.gateway.createAccount({ tenantId: d.tenantId, email: p.email, country: "ES", idempotencyKey: `connect-acct-${d.tenantId}-${d.config.mode}` });
+    const created = await d.gateway.createAccount({ tenantId: d.tenantId, email: p.email, country: "ES", idempotencyKey: `connect-acct-v2-${d.tenantId}-${d.config.mode}` });
     // Antes de guardarla, la cuenta se reserva para ESTA empresa en el índice global: si ya es de otra, no se vincula
     const claim = await d.index.claim(d.tenantId, d.config.mode, created.accountId);
     if (!claim.ok) throw new PaymentsError("account_conflict", "Esa cuenta de Stripe ya está vinculada a otra empresa");
@@ -63,6 +72,28 @@ export async function connectAccount(d: PaymentsDeps, p: { email?: string | null
   }
   const link = await d.gateway.createAccountLink({ accountId: account.accountId, returnUrl: p.returnUrl, refreshUrl: p.refreshUrl });
   return { url: link.url, account };
+}
+
+/**
+ * Modo Real: vincula la cuenta de Stripe que la empresa YA tiene. La empresa la autoriza en Stripe (OAuth) y vuelve con un
+ * código de un solo uso; aquí se cambia por el identificador de la cuenta, se reserva en el índice global (una cuenta, una
+ * empresa) y se lee su estado real. Nunca sustituye una cuenta ya vinculada por otra distinta.
+ */
+export async function linkExistingAccount(d: PaymentsDeps, p: { code: string; by: string | null }): Promise<PaymentAccountRow> {
+  if (d.config.mode !== "live") throw new PaymentsError("not_configured", "El vínculo de una cuenta existente solo existe en modo Real");
+  const now = (d.now ?? Date.now)();
+  const authorized = await d.gateway.exchangeOAuthCode(p.code);
+  if (!authorized.livemode) throw new PaymentsError("account_conflict", "La cuenta autorizada no es una cuenta real de Stripe");
+  const existing = await d.store.getAccount("live");
+  if (existing && existing.accountId !== authorized.accountId) throw new PaymentsError("account_conflict", "Esta empresa ya tiene otra cuenta real vinculada");
+  if (!existing) {
+    const claim = await d.index.claim(d.tenantId, "live", authorized.accountId);
+    if (!claim.ok) throw new PaymentsError("account_conflict", "Esa cuenta de Stripe ya está vinculada a otra empresa");
+    await d.store.insertAccount("live", authorized.accountId, now, p.by);
+  }
+  const refreshed = await refreshAccount(d, p.by);
+  if (!refreshed) throw new PaymentsError("not_connected", "No se pudo leer la cuenta vinculada");
+  return refreshed;
 }
 
 function applyFacts(d: PaymentsDeps, facts: StripeAccountFacts, by: string | null) {
@@ -119,7 +150,45 @@ export async function startQuoteCheckout(
     metadata: { tenant_id: d.tenantId, quote_id: String(quote.id) },
   });
   if (!(await d.store.getCheckout(session.id))) {
-    await d.store.insertCheckout({ sessionId: session.id, mode: d.config.mode, accountId: account.accountId, quoteId: quote.id, amountCents, currency, createdAt: now });
+    await d.store.insertCheckout({ sessionId: session.id, mode: d.config.mode, accountId: account.accountId, kind: "quote", quoteId: quote.id, merchantOrder: null, amountCents, currency, createdAt: now });
+  }
+  return { url: session.url, sessionId: session.id };
+}
+
+/** Mínimo de Stripe para cobrar con tarjeta en euros. */
+export const STRIPE_MIN_AMOUNT_CENTS = 50;
+
+/**
+ * Sesión de pago de un pedido de la tienda (carrito). El importe lo calcula el servidor al crear el pedido (con sus
+ * descuentos); aquí solo se cobra ese importe en la cuenta de la empresa. El pedido sigue pendiente (reservas en
+ * `pending_payment`) hasta el evento firmado.
+ */
+export async function startShopCheckout(
+  d: PaymentsDeps,
+  p: { merchantOrder: string; amountCents: number; description: string; email?: string | null; successUrl: string; cancelUrl: string },
+): Promise<{ url: string; sessionId: string }> {
+  const account = await d.store.getAccount(d.config.mode);
+  if (!account) throw new PaymentsError("not_connected", "Esta empresa aún no tiene cobros en línea");
+  if (account.status !== "verificada") throw new PaymentsError("not_verified", "La cuenta de cobros de la empresa no está verificada");
+  if (!account.onlineEnabled) throw new PaymentsError("online_disabled", "Los cobros en línea no están activados");
+  if (!Number.isInteger(p.amountCents) || p.amountCents < STRIPE_MIN_AMOUNT_CENTS) throw new PaymentsError("bad_amount", "El importe del pedido no es válido para pagar con tarjeta");
+  if (!/^[A-Za-z0-9_-]{4,32}$/.test(p.merchantOrder)) throw new PaymentsError("bad_amount", "Pedido no válido");
+  const now = (d.now ?? Date.now)();
+  const session = await d.gateway.createCheckoutSession({
+    accountId: account.accountId,
+    idempotencyKey: `shop-${d.tenantId}-${p.merchantOrder}-${p.amountCents}`,
+    amountCents: p.amountCents,
+    currency: "eur",
+    description: p.description,
+    customerEmail: p.email ?? null,
+    successUrl: p.successUrl,
+    cancelUrl: p.cancelUrl,
+    // Mínimo de Stripe: 30 minutos. Pasado ese tiempo la sesión caduca y el pedido lo cancela la limpieza de siempre
+    expiresAtSeconds: Math.floor(now / 1000) + 31 * 60,
+    metadata: { tenant_id: d.tenantId, merchant_order: p.merchantOrder },
+  });
+  if (!(await d.store.getCheckout(session.id))) {
+    await d.store.insertCheckout({ sessionId: session.id, mode: d.config.mode, accountId: account.accountId, kind: "shop_order", quoteId: null, merchantOrder: p.merchantOrder, amountCents: p.amountCents, currency: "eur", createdAt: now });
   }
   return { url: session.url, sessionId: session.id };
 }
@@ -146,7 +215,7 @@ export function claimedTenantId(ev: ConnectEvent): string | null {
   return typeof t === "string" && /^[a-z0-9][a-z0-9_-]{0,62}$/.test(t) ? t : null;
 }
 
-const HANDLED = new Set(["account.updated", "checkout.session.completed", "checkout.session.async_payment_succeeded", "checkout.session.expired", "checkout.session.async_payment_failed"]);
+const HANDLED = new Set(["account.updated", "account.application.deauthorized", "checkout.session.completed", "checkout.session.async_payment_succeeded", "checkout.session.expired", "checkout.session.async_payment_failed"]);
 
 export function factsFromEventAccount(o: Record<string, any>): StripeAccountFacts {
   const r = o.requirements ?? {};
@@ -190,6 +259,11 @@ export async function handleConnectEvent(d: PaymentsDeps, ev: ConnectEvent): Pro
 
 async function applyEvent(d: PaymentsDeps, ev: ConnectEvent, now: number): Promise<EventOutcome> {
   const o = ev.data.object;
+  if (ev.type === "account.application.deauthorized") {
+    // La empresa (o Stripe) ha retirado el acceso de la plataforma: deja de cobrar de inmediato (el interruptor se apaga)
+    await applyFacts(d, { chargesEnabled: false, payoutsEnabled: false, detailsSubmitted: true, requirementsDue: [], disabledReason: "deauthorized" }, "Stripe");
+    return "applied";
+  }
   if (ev.type === "account.updated") {
     await applyFacts(d, factsFromEventAccount(o), "Stripe");
     return "applied";
@@ -204,6 +278,7 @@ async function applyEvent(d: PaymentsDeps, ev: ConnectEvent, now: number): Promi
   }
   if (ev.type === "checkout.session.async_payment_failed") {
     await d.store.setCheckoutStatus(sessionId, "failed");
+    if (checkout.kind === "shop_order" && checkout.merchantOrder) await d.shop.applyFailed(checkout.merchantOrder, { sessionId });
     return "applied";
   }
   // checkout.session.completed / async_payment_succeeded: solo cuenta con el pago realmente cobrado
@@ -216,7 +291,12 @@ async function applyEvent(d: PaymentsDeps, ev: ConnectEvent, now: number): Promi
   const won = await d.store.markCheckoutPaid(sessionId, pi, now);
   if (!won) return "duplicate";
   try {
-    await d.quotes.markPaid(checkout.quoteId, `stripe:${pi ?? sessionId}`);
+    if (checkout.kind === "shop_order") {
+      if (!checkout.merchantOrder) throw new PaymentsError("quote_unavailable", "Sesión de pedido sin referencia");
+      await d.shop.applyPaid(checkout.merchantOrder, { amountCents: checkout.amountCents, sessionId, paymentIntent: pi });
+    } else {
+      await d.quotes.markPaid(checkout.quoteId!, `stripe:${pi ?? sessionId}`);
+    }
   } catch (e) {
     await d.store.revertCheckoutPaid(sessionId).catch(() => undefined);
     throw e;
