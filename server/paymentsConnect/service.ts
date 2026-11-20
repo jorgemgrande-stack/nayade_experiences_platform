@@ -60,6 +60,8 @@ export interface PaymentsDeps {
 
 export async function connectAccount(d: PaymentsDeps, p: { email?: string | null; returnUrl: string; refreshUrl: string; by: string | null }): Promise<{ url: string; account: PaymentAccountRow }> {
   const now = (d.now ?? Date.now)();
+  // En modo Real NUNCA se crea una cuenta: se vincula la que la empresa ya tiene (linkExistingAccount)
+  if (d.config.mode !== "test") throw new PaymentsError("not_configured", "En modo Real se vincula la cuenta de Stripe que la empresa ya tiene");
   let account = await d.store.getAccount(d.config.mode);
   if (!account) {
     const created = await d.gateway.createAccount({ tenantId: d.tenantId, email: p.email, country: "ES", idempotencyKey: `connect-acct-v2-${d.tenantId}-${d.config.mode}` });
@@ -70,6 +72,28 @@ export async function connectAccount(d: PaymentsDeps, p: { email?: string | null
   }
   const link = await d.gateway.createAccountLink({ accountId: account.accountId, returnUrl: p.returnUrl, refreshUrl: p.refreshUrl });
   return { url: link.url, account };
+}
+
+/**
+ * Modo Real: vincula la cuenta de Stripe que la empresa YA tiene. La empresa la autoriza en Stripe (OAuth) y vuelve con un
+ * código de un solo uso; aquí se cambia por el identificador de la cuenta, se reserva en el índice global (una cuenta, una
+ * empresa) y se lee su estado real. Nunca sustituye una cuenta ya vinculada por otra distinta.
+ */
+export async function linkExistingAccount(d: PaymentsDeps, p: { code: string; by: string | null }): Promise<PaymentAccountRow> {
+  if (d.config.mode !== "live") throw new PaymentsError("not_configured", "El vínculo de una cuenta existente solo existe en modo Real");
+  const now = (d.now ?? Date.now)();
+  const authorized = await d.gateway.exchangeOAuthCode(p.code);
+  if (!authorized.livemode) throw new PaymentsError("account_conflict", "La cuenta autorizada no es una cuenta real de Stripe");
+  const existing = await d.store.getAccount("live");
+  if (existing && existing.accountId !== authorized.accountId) throw new PaymentsError("account_conflict", "Esta empresa ya tiene otra cuenta real vinculada");
+  if (!existing) {
+    const claim = await d.index.claim(d.tenantId, "live", authorized.accountId);
+    if (!claim.ok) throw new PaymentsError("account_conflict", "Esa cuenta de Stripe ya está vinculada a otra empresa");
+    await d.store.insertAccount("live", authorized.accountId, now, p.by);
+  }
+  const refreshed = await refreshAccount(d, p.by);
+  if (!refreshed) throw new PaymentsError("not_connected", "No se pudo leer la cuenta vinculada");
+  return refreshed;
 }
 
 function applyFacts(d: PaymentsDeps, facts: StripeAccountFacts, by: string | null) {
@@ -191,7 +215,7 @@ export function claimedTenantId(ev: ConnectEvent): string | null {
   return typeof t === "string" && /^[a-z0-9][a-z0-9_-]{0,62}$/.test(t) ? t : null;
 }
 
-const HANDLED = new Set(["account.updated", "checkout.session.completed", "checkout.session.async_payment_succeeded", "checkout.session.expired", "checkout.session.async_payment_failed"]);
+const HANDLED = new Set(["account.updated", "account.application.deauthorized", "checkout.session.completed", "checkout.session.async_payment_succeeded", "checkout.session.expired", "checkout.session.async_payment_failed"]);
 
 export function factsFromEventAccount(o: Record<string, any>): StripeAccountFacts {
   const r = o.requirements ?? {};
@@ -235,6 +259,11 @@ export async function handleConnectEvent(d: PaymentsDeps, ev: ConnectEvent): Pro
 
 async function applyEvent(d: PaymentsDeps, ev: ConnectEvent, now: number): Promise<EventOutcome> {
   const o = ev.data.object;
+  if (ev.type === "account.application.deauthorized") {
+    // La empresa (o Stripe) ha retirado el acceso de la plataforma: deja de cobrar de inmediato (el interruptor se apaga)
+    await applyFacts(d, { chargesEnabled: false, payoutsEnabled: false, detailsSubmitted: true, requirementsDue: [], disabledReason: "deauthorized" }, "Stripe");
+    return "applied";
+  }
   if (ev.type === "account.updated") {
     await applyFacts(d, factsFromEventAccount(o), "Stripe");
     return "applied";

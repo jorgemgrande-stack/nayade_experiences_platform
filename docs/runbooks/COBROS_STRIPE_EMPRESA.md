@@ -223,3 +223,37 @@ tienda con Stripe ofrecido (`public.getTheme` → `storefront.payments.stripe = 
 - Reembolsos y disputas (`charge.refunded`, `charge.dispute.*`) y comisión de plataforma: no incluidos.
 - Visibilidad para operadores (Ficha 360) de la cuenta de cada empresa: el índice del registro lo hace posible; pendiente de pantalla.
 - El número de la migración 0080 puede cambiar al fusionarse (cola serie de `db/migrations`).
+
+## 9. Modo Real para empresas autorizadas (vínculo OAuth de la cuenta existente)
+
+**Estado:** apagado por defecto. Solo se activa para las empresas listadas en `CONNECT_STRIPE_LIVE_TENANTS` y solo si existen las cuatro
+variables siguientes (nombres; los valores los carga Dirección en Railway, servicio `core`, nunca por chat). **No se crea ninguna cuenta:** la
+empresa autoriza en Stripe la cuenta que YA tiene.
+
+| Variable | Contenido |
+|---|---|
+| `CONNECT_STRIPE_LIVE_API_KEY` | Clave RESTRINGIDA real (`rk_live_…`) de la plataforma Connect DEDICADA. Permisos: Connect OAuth (escritura), Checkout Sessions (escritura), Cuentas conectadas (lectura). Nunca la del Stripe corporativo (`CP_STRIPE_*`): el arranque la rechaza si coincide. |
+| `CONNECT_STRIPE_LIVE_WEBHOOK_SECRET` | `whsec_…` del destino real «cuentas conectadas» (misma URL central que Prueba). |
+| `CONNECT_STRIPE_LIVE_CLIENT_ID` | `ca_…` real de la plataforma (Ajustes › Connect › OAuth). |
+| `CONNECT_STRIPE_LIVE_TENANTS` | Identificadores exactos, separados por comas (p. ej. `t12-quantum-soulrise`). Sin comodines. |
+
+**Pasos humanos en el panel de Stripe (plataforma dedicada, modo real):**
+1. Activar Connect en la cuenta de plataforma y habilitar **OAuth** (Ajustes › Connect › Opciones de incorporación › OAuth).
+2. Registrar la dirección de retorno EXACTA: `https://<host de la empresa>/admin/configuracion/cobros` (para Quantum:
+   `https://t12-quantum-soulrise.app.bigelephant.es/admin/configuracion/cobros`).
+3. Crear la clave restringida con los permisos de la tabla y el destino de webhook de «cuentas conectadas» en modo real hacia
+   `https://app.bigelephant.es/api/stripe/connect/webhook` con los eventos `account.updated`, `account.application.deauthorized`,
+   `checkout.session.completed`, `checkout.session.expired`, `checkout.session.async_payment_succeeded` y `checkout.session.async_payment_failed`.
+4. Cargar las cuatro variables en Railway (`core`) y redesplegar.
+
+**Flujo de la empresa:** Ajustes › Cobros con Stripe › Real › «Vincular mi cuenta de Stripe» → Stripe (inicia sesión, elige su cuenta,
+autoriza) → vuelve con `?code=&state=` → el servidor comprueba el `state` firmado (empresa + administrador + 15 min), cambia el código por la
+cuenta, la reserva en el índice global (una cuenta, una empresa), lee su estado y, si está verificada, se puede encender «Cobrar en línea (Real)».
+
+**Garantías:** en modo Real nunca se llama a `createAccount`; una cuenta ya vinculada no se sustituye por otra; si la empresa desautoriza la
+plataforma (`account.application.deauthorized`) los cobros en línea se apagan al instante; el webhook identifica el modo por el secreto que
+verifica la firma y un evento real solo se aplica con la configuración real. La empresa cobra en Real solo si el modo está configurado, está
+autorizada y su cuenta real está verificada con el interruptor encendido; en cualquier otro caso se usa Prueba.
+
+**Reversión inmediata:** vaciar `CONNECT_STRIPE_LIVE_TENANTS` (o quitar las variables) apaga el modo Real sin tocar datos; el interruptor de la
+empresa también se puede apagar desde Ajustes. Los `.down.sql` no cambian: no hay migración nueva.

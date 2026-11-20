@@ -99,6 +99,11 @@ export class FakeConnectGateway implements ConnectGateway {
     this.calls.push("retrieveAccount");
     return this.accountFacts;
   }
+  oauthResult: { accountId: string; livemode: boolean } = { accountId: "acct_1LiveAsociacion01", livemode: true };
+  async exchangeOAuthCode(code: string) {
+    this.calls.push(`exchangeOAuthCode:${code}`);
+    return this.oauthResult;
+  }
   async createCheckoutSession(p: CheckoutParams) {
     this.calls.push("createCheckoutSession");
     this.sessions.push(p);

@@ -36,6 +36,8 @@ export interface ConnectGateway {
   /** Enlace de alta/continuación (Account Link): en esa URL la empresa autoriza la conexión en Stripe. */
   createAccountLink(p: { accountId: string; returnUrl: string; refreshUrl: string }): Promise<{ url: string; expiresAt: number }>;
   retrieveAccount(accountId: string): Promise<StripeAccountFacts>;
+  /** OAuth (modo Real): cambia el código de autorización de un solo uso por la cuenta que la empresa ha autorizado. */
+  exchangeOAuthCode(code: string): Promise<{ accountId: string; livemode: boolean }>;
   createCheckoutSession(p: CheckoutParams): Promise<{ id: string; url: string }>;
 }
 
@@ -95,6 +97,15 @@ export function stripeConnectGateway(config: ConnectConfig, sdkOptions: Partial<
     async retrieveAccount(accountId) {
       try {
         return factsFromStripeAccount(await stripe.accounts.retrieve(accountId));
+      } catch (e) {
+        return wrap(e);
+      }
+    },
+    async exchangeOAuthCode(code) {
+      try {
+        const t = await stripe.oauth.token({ grant_type: "authorization_code", code });
+        if (!t.stripe_user_id) throw new ConnectGatewayError("Stripe no devolvió la cuenta autorizada", "no_account");
+        return { accountId: t.stripe_user_id, livemode: !!t.livemode };
       } catch (e) {
         return wrap(e);
       }

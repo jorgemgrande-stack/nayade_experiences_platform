@@ -9,7 +9,7 @@ import { warmConfigCache } from "../config";
 import { warmEmailVocabulary } from "../emailVocabulary";
 import type { TenantRegistryReader } from "../_core/tenantRegistry/store";
 import { accessPolicy } from "../_core/tenantRegistry/lifecycle";
-import { connectConfigState, type ConnectConfig } from "./config";
+import { connectConfigState, connectLiveConfigState, type ConnectConfig } from "./config";
 import { stripeConnectGateway, type ConnectGateway } from "./gateway";
 import { realQuotePort } from "./quotePort";
 import { realShopPort } from "./shopPort";
@@ -33,7 +33,7 @@ export function realPaymentsDeps(tenantId: string, config: ConnectConfig): Payme
 /** Webhook central de cuentas conectadas: empresa servible según el registro, ejecución en su contexto y con sus ajustes. */
 export function createRealConnectWebhookRouter(reader: Pick<TenantRegistryReader, "getTenant">, index: AccountIndexReader) {
   return createConnectWebhookRouter({
-    config: () => connectConfigState().config,
+    configs: () => [connectConfigState().config, connectLiveConfigState().config].filter((c): c is ConnectConfig => !!c),
     tenantOfAccount: (accountId) => index.tenantOf(accountId),
     tenantAllowed: async (id) => {
       const t = await reader.getTenant(id);

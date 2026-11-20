@@ -33,7 +33,15 @@ const STATUS_STYLE: Record<string, { icon: typeof CheckCircle2; className: strin
 const fmt = (ms: number | null) => (ms ? new Date(ms).toLocaleString("es-ES", { dateStyle: "medium", timeStyle: "short" }) : "—");
 
 function ModeCard({ m, platformReady, onChanged }: { m: Mode; platformReady: boolean; onChanged: () => void }) {
+  const isLive = m.mode === "live";
   const connect = trpc.cobros.connect.useMutation({
+    onSuccess: (r) => {
+      window.location.href = r.url;
+    },
+    onError: (e) => toast.error(e.message),
+  });
+  // Modo Real: se vincula la cuenta de Stripe que la empresa YA tiene (no se crea ninguna)
+  const connectLive = trpc.cobros.connectLive.useMutation({
     onSuccess: (r) => {
       window.location.href = r.url;
     },
@@ -52,7 +60,6 @@ function ModeCard({ m, platformReady, onChanged }: { m: Mode; platformReady: boo
   });
   const s = STATUS_STYLE[m.status] ?? STATUS_STYLE.no_conectada;
   const Icon = s.icon;
-  const isLive = m.mode === "live";
 
   return (
     <section className="bg-card border border-border/50 rounded-2xl p-5 space-y-4" aria-labelledby={`cobros-${m.mode}`}>
@@ -70,14 +77,20 @@ function ModeCard({ m, platformReady, onChanged }: { m: Mode; platformReady: boo
         </span>
       </div>
 
-      {isLive ? (
+      {isLive && !m.connectable ? (
         <div className="flex items-start gap-2 text-sm text-muted-foreground">
           <Lock className="w-4 h-4 mt-0.5 shrink-0" aria-hidden />
-          <span>Desactivado. Los cobros reales no están activados todavía; se activarán de forma explícita tras validar la conexión de Prueba.</span>
+          <span>Desactivado. Los cobros reales no están activados para esta empresa; se activan de forma explícita.</span>
         </div>
       ) : (
         <>
           <p className="text-sm text-muted-foreground">{s.help}</p>
+          {isLive && !m.accountHint && (
+            <p className="text-sm text-muted-foreground">
+              Se vincula la cuenta de Stripe que ya tienes: inicia sesión en Stripe, elígela y autoriza la conexión. No se crea ninguna cuenta nueva
+              y tus datos bancarios no pasan por Big Elephant.
+            </p>
+          )}
           {m.accountHint && (
             <dl className="grid grid-cols-2 gap-2 text-sm">
               <dt className="text-muted-foreground">Cuenta vinculada</dt>
@@ -105,12 +118,19 @@ function ModeCard({ m, platformReady, onChanged }: { m: Mode; platformReady: boo
           )}
 
           <div className="flex flex-wrap gap-2">
-            <Button onClick={() => connect.mutate()} disabled={!platformReady || connect.isPending} variant={m.status === "verificada" ? "outline" : "default"}>
-              {connect.isPending && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
-              {m.accountHint ? "Continuar o revisar en Stripe" : "Conectar mi cuenta de Stripe"}
-            </Button>
+            {isLive ? (
+              <Button onClick={() => connectLive.mutate()} disabled={connectLive.isPending} variant={m.status === "verificada" ? "outline" : "default"}>
+                {connectLive.isPending && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
+                {m.accountHint ? "Volver a autorizar en Stripe" : "Vincular mi cuenta de Stripe"}
+              </Button>
+            ) : (
+              <Button onClick={() => connect.mutate()} disabled={!platformReady || connect.isPending} variant={m.status === "verificada" ? "outline" : "default"}>
+                {connect.isPending && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
+                {m.accountHint ? "Continuar o revisar en Stripe" : "Conectar mi cuenta de Stripe"}
+              </Button>
+            )}
             {m.accountHint && (
-              <Button variant="outline" onClick={() => refresh.mutate()} disabled={refresh.isPending}>
+              <Button variant="outline" onClick={() => refresh.mutate({ mode: m.mode })} disabled={refresh.isPending}>
                 {refresh.isPending && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
                 Comprobar estado
               </Button>
@@ -127,11 +147,13 @@ function ModeCard({ m, platformReady, onChanged }: { m: Mode; platformReady: boo
                 onChange={(e) => setOnline.mutate({ mode: m.mode, enabled: e.target.checked })}
               />
               <span>
-                <strong>Cobrar en línea con esta cuenta (Prueba)</strong>
+                <strong>Cobrar en línea con esta cuenta ({m.label})</strong>
                 <br />
                 <span className="text-muted-foreground">
                   {m.status === "verificada"
-                    ? "Los presupuestos de pago único mostrarán el pago con tarjeta en Stripe, sin mover dinero real."
+                    ? isLive
+                      ? "Los presupuestos de pago único y la compra de la tienda cobrarán con tarjeta, con dinero real, en tu cuenta de Stripe."
+                      : "Los presupuestos de pago único mostrarán el pago con tarjeta en Stripe, sin mover dinero real."
                     : "Se podrá activar cuando la cuenta esté verificada."}
                 </span>
               </span>
@@ -149,12 +171,34 @@ export default function Cobros() {
   const params = typeof window !== "undefined" ? new URLSearchParams(window.location.search) : null;
   const back = params?.get("stripe");
   const refresh = trpc.cobros.refresh.useMutation({ onSettled: () => utils.cobros.status.invalidate() });
+  const code = params?.get("code") ?? null;
+  const oauthState = params?.get("state") ?? null;
+  const oauthError = params?.get("error") ?? null;
+  const completeLive = trpc.cobros.completeLive.useMutation({
+    onSuccess: () => toast.success("Cuenta de Stripe vinculada"),
+    onError: (e) => toast.error(e.message),
+    onSettled: () => {
+      window.history.replaceState(null, "", window.location.pathname);
+      utils.cobros.status.invalidate();
+    },
+  });
 
   // Al volver de Stripe se relee el estado real de la cuenta (la vuelta del navegador no prueba nada por sí sola)
   useEffect(() => {
     if (back === "volver" && status.data?.platformReady) refresh.mutate();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [back, status.data?.platformReady]);
+
+  // Vuelta de la autorización de Stripe (modo Real): el código es de un solo uso y el servidor comprueba el state firmado
+  useEffect(() => {
+    if (oauthError) {
+      toast.error("Stripe no ha completado la autorización. Puedes volver a intentarlo.");
+      window.history.replaceState(null, "", window.location.pathname);
+    } else if (code && oauthState && !completeLive.isPending && !completeLive.isSuccess && !completeLive.isError) {
+      completeLive.mutate({ code, state: oauthState });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [code, oauthState, oauthError]);
 
   return (
     <AdminLayout>
