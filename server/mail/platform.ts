@@ -124,6 +124,10 @@ export class PlatformMailer {
         const r = await this.send(PLATFORM_TENANT, key, "contract_invitation", to, extraTemplates.termsInvitation(i));
         return { status: r.status, reason: r.reason, duplicate: r.duplicate, id: r.id };
       },
+      paymentLink: async (to, key, i) => {
+        const r = await this.send(PLATFORM_TENANT, key, "contract_invitation", to, extraTemplates.termsPaymentLink(i));
+        return { status: r.status, reason: r.reason, duplicate: r.duplicate, id: r.id };
+      },
       status: (id) => this.service.status(id),
     };
   }
