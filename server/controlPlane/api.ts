@@ -2164,6 +2164,11 @@ export function createControlPlaneApp(d: ControlPlaneDeps): Express {
         crmStore: d.crm.store as unknown as PlatformActivationDeps["crmStore"],
         platform: createContractActivation({ provisioning: d.provisioning, platformDomain: d.platformDomain, actor: { type: "crm", id: "terms-payment" }, notifyWelcome: d.mail?.platform?.assistedWelcome() }),
         afterChange: async (sid, actor) => termsLicences?.afterChange(sid, actor),
+        // Primer cobro verificado: contratación vinculada en Stripe con una factura pagada (nunca por la sola aceptación)
+        paymentVerified: async (sid) => {
+          const row = await d.subscriptions?.termsBilling?.store?.bySubscription(sid);
+          return !!row && !!row.linkedAt && !!row.lastPaidInvoiceId && ["active", "past_due", "suspended", "cancel_scheduled"].includes(row.status);
+        },
         now: d.subscriptions.now,
       };
       router.use(createPlatformActivationRouter(platformAfterPayment));

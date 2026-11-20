@@ -27,6 +27,7 @@ export interface PlatformActivationDeps {
   };
   terms: {
     get(id: number): Promise<TermsRecord | null>;
+    events(f: { termsId: number }): Promise<Array<{ kind: string; createdAt: number; id: number }>>;
     list(f: { subscriptionId?: number; companyId?: number; status?: TermsRecord["status"][] }): Promise<TermsRecord[]>;
     log(id: number, e: Row, now: number): Promise<unknown>;
   };
@@ -39,6 +40,8 @@ export interface PlatformActivationDeps {
   platform: { activate(i: { contract: any; company: any; contact: any }): Promise<{ tenantId: string }> }; // eslint-disable-line @typescript-eslint/no-explicit-any
   /** Licencias y límites del acuerdo sobre la suscripción (`TermsLicences.afterChange`). */
   afterChange?: (subscriptionId: number, actor: string) => Promise<unknown>;
+  /** ¿Consta un primer cobro verificado de Stripe para esa suscripción? Sin él (o falso) no se aprovisiona nada. */
+  paymentVerified?: (subscriptionId: number) => Promise<boolean>;
   now?: () => number;
 }
 
@@ -62,6 +65,8 @@ export async function activatePlatformAfterPayment(d: PlatformActivationDeps, su
   try {
     const sub = await d.subscriptions.get(subscriptionId);
     if (!sub || sub.status === "canceled") return { status: "skipped", reason: "La suscripción no existe o está cancelada" };
+    // Solo tras un primer cobro verificado (también el botón de reintento del operador)
+    if (!d.paymentVerified || !(await d.paymentVerified(subscriptionId))) return { status: "skipped", reason: "Todavía no consta un primer cobro verificado en Stripe: no se da de alta ninguna plataforma" };
     const accepted = (await d.terms.list({ subscriptionId, status: LIVE })).filter((t) => t.acceptanceStatus === "accepted" && t.lines.some(isPlanLine));
     const t = accepted.sort((a, b) => b.id - a.id)[0];
     if (!t) return { status: "skipped", reason: "El acuerdo no lleva un plan Core aceptado: no hay plataforma que dar de alta" };
@@ -74,7 +79,13 @@ export async function activatePlatformAfterPayment(d: PlatformActivationDeps, su
     if (existing) {
       if (!sub.tenantId) await d.subscriptions.linkTenant(subscriptionId, { tenantId: existing, reason: "Plataforma de la empresa" }, actor);
       if (!company.tenantId) await d.crmStore.update("companies", company.id, { tenantId: existing, updatedAt: now() });
-      return { status: "already", tenantId: existing };
+      // Un alta anterior pudo cortarse DESPUÉS de crear la plataforma (p. ej. al aplicar los límites): si el último resultado
+      // registrado no es el correcto, se completa ahora sin crear otra plataforma. Con el alta ya completa no se repite nada
+      const last = (await d.terms.events({ termsId: t.id })).filter((e) => e.kind === "platform_activated" || e.kind === "platform_activation_failed").sort((a, b) => b.createdAt - a.createdAt || b.id - a.id)[0];
+      if (last?.kind === "platform_activated") return { status: "already", tenantId: existing };
+      if (d.afterChange) await d.afterChange(subscriptionId, actor);
+      await note("platform_activated", `Plataforma ${existing} completada: licencias y límites aplicados`, { subscriptionId, tenantId: existing }, "applied");
+      return { status: "activated", tenantId: existing };
     }
 
     // El administrador de la plataforma: contacto activo con correo (preferente el principal)
@@ -112,7 +123,7 @@ export function createPlatformActivationRouter(d: PlatformActivationDeps): Route
       if (!t || t.subscriptionId === null) return void res.status(409).json({ error: "invalid_state", message: "Estas condiciones todavía no tienen suscripción: el cliente debe aceptar y pagar primero" });
       const a = getAuth(req)!;
       const out = await activatePlatformAfterPayment(d, t.subscriptionId, `${a.actor.type}:${a.actor.id}`);
-      res.status(out.status === "failed" ? 409 : 200).json(out);
+      res.status(out.status === "failed" || out.status === "skipped" ? 409 : 200).json(out);
     })().catch(() => res.status(500).json({ error: "internal_error", message: "Error interno" }));
   });
   return r;
