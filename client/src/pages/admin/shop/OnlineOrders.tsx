@@ -247,7 +247,7 @@ export function OnlineOrderDetail({ merchantOrder }: { merchantOrder: string }) 
                 <h2 className="mb-3 font-semibold text-foreground">{t("shopOrders.detail.history")}</h2>
                 <ol className="space-y-1 text-muted-foreground">
                   {o.history.map((h, i) => (
-                    <li key={i}>{fmtDate(h.ts, true)} · {h.actor}: {h.from in STAGE_TONE ? t(`shopOrders.stage.${h.from as OrderStage}`) : h.from} → <span className="text-foreground">{h.to in STAGE_TONE ? t(`shopOrders.stage.${h.to as OrderStage}`) : h.to}</span></li>
+                    <li key={i}>{fmtDate(h.ts, true)} · {h.actor}: {h.from && h.from in STAGE_TONE ? t(`shopOrders.stage.${h.from as OrderStage}`) : h.from} → <span className="text-foreground">{h.to && h.to in STAGE_TONE ? t(`shopOrders.stage.${h.to as OrderStage}`) : h.to}</span></li>
                   ))}
                 </ol>
               </section>
