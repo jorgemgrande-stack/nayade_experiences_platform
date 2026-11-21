@@ -23,7 +23,7 @@ function Learners({ courseId }: { courseId: number }) {
         const pct = lessonsTotal ? Math.round((l.completed / lessonsTotal) * 100) : 0;
         return (
           <li key={l.userId} className="grid gap-2 p-3 md:grid-cols-[1.4fr_1fr_1fr] md:items-center">
-            <div className="min-w-0"><p className="truncate font-medium">{l.name ?? l.email ?? t("learningManage.progress.person", { id: l.userId })}</p>{l.name && l.email && <p className="truncate text-xs text-muted-foreground">{l.email}</p>}</div>
+            <div className="min-w-0"><p className="font-medium truncate">{l.name ?? l.email ?? t("learningManage.progress.person", { id: l.userId })}</p>{l.name && l.email && <p className="text-xs text-muted-foreground truncate">{l.email}</p>}</div>
             <div className="space-y-1" aria-label={t("learningManage.progress.progressOf", { name: l.name ?? l.email ?? l.userId })}>
               <Progress value={pct} className="h-2" />
               <p className="text-xs text-muted-foreground">{t("learningManage.progress.summary", { done: l.completed, total: lessonsTotal, inProgress: l.inProgress ? t("learningManage.progress.inProgress", { n: l.inProgress }) : "", pct })}</p>
