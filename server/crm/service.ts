@@ -246,6 +246,21 @@ export function addInterval(ms: number, interval: BillingInterval): number {
   return d.getTime();
 }
 
+export interface LeadDependencies {
+  leadId: number;
+  name: string;
+  archived: boolean;
+  requests: { total: number; pending: number };
+  activities: { total: number; manual: number; openTasks: number };
+  convertedCompanyId: number | null;
+  convertedOpportunityId: number | null;
+  linkedCompanyId: number | null;
+  canDelete: boolean;
+  deleteBlockers: string[];
+  canArchive: boolean;
+  archiveBlockers: string[];
+}
+
 export class CrmService {
   private now: () => number;
   private store: CrmStore;
@@ -490,7 +505,7 @@ export class CrmService {
       const dup = (await this.store.list("leads", {}, { limit: SCAN_LIMIT })).find(
         (l) => l.email?.toLowerCase() === email && l.status !== "converted" && l.status !== "disqualified",
       );
-      if (dup) throw new CrmError("conflict", `Ya existe un lead abierto con ese correo (#${dup.id})`);
+      if (dup) throw new CrmError("conflict", dup.archivedAt ? `Ya existe un lead archivado con ese correo (#${dup.id}): recupéralo desde Leads → Archivados` : `Ya existe un lead abierto con ese correo (#${dup.id})`);
     }
     if (input.companyId) await this.must("companies", input.companyId);
     const lead = await this.store.insert("leads", {
@@ -508,6 +523,9 @@ export class CrmService {
       convertedOpportunityId: null,
       createdAt: this.now(),
       updatedAt: null,
+      archivedAt: null,
+      archivedBy: null,
+      archiveReason: null,
     });
     await this.log("lead", lead.id, "note", "Lead creado", author);
     return lead;
@@ -558,13 +576,17 @@ export class CrmService {
   }
 
   async listLeads(
-    f: { q?: string; status?: LeadStatus; priority?: LeadPriority; owner?: string } & PageOpts & SortOpts<LeadSortKey> = {},
+    f: { q?: string; status?: LeadStatus; priority?: LeadPriority; owner?: string; archived?: "exclude" | "only" | "all" } & PageOpts & SortOpts<LeadSortKey> = {},
   ): Promise<Page<Lead>> {
     const filter: Partial<Lead> = {};
     if (f.status) filter.status = f.status;
     if (f.priority) filter.priority = f.priority;
     let rows = await this.store.list("leads", filter, { desc: true, limit: SCAN_LIMIT });
     if (f.owner) rows = rows.filter((l) => l.owner === f.owner);
+    // Por defecto los archivados no aparecen: solo con archived=only (o all)
+    const arch = f.archived ?? "exclude";
+    if (arch === "exclude") rows = rows.filter((l) => !l.archivedAt);
+    else if (arch === "only") rows = rows.filter((l) => !!l.archivedAt);
     const q = normalizeText(f.q);
     if (q) {
       const qp = normalizePhone(f.q);
@@ -573,6 +595,81 @@ export class CrmService {
       );
     }
     return paginate(applySort(rows, LEAD_SORT, f), f);
+  }
+
+  /**
+   * Qué cuelga de un lead y qué se puede hacer con él. El borrado físico solo se permite cuando el lead no tiene
+   * ninguna relación que deba conservarse; en cualquier otro caso se explica por qué y se ofrece archivarlo.
+   * Las notas automáticas del historial no impiden eliminar (el historial se conserva como constancia).
+   */
+  async leadDependencies(id: number): Promise<LeadDependencies> {
+    const lead = await this.must("leads", id);
+    const [requests, acts] = await Promise.all([this.store.list("leadRequests", { leadId: id }, { limit: 500 }), this.store.list("activities", { entityType: "lead", entityId: id })]);
+    const pendingRequests = requests.filter((r) => r.status === "pending").length;
+    const manual = acts.filter((a) => a.kind !== "note");
+    const openTasks = manual.filter((a) => a.kind === "task" && !a.doneAt).length;
+    const blockers: string[] = [];
+    if (requests.length) blockers.push(`Tiene ${requests.length} ${requests.length === 1 ? "solicitud web" : "solicitudes web"} (y los pedidos o contratos que de ellas dependan).`);
+    if (lead.convertedCompanyId || lead.status === "converted") blockers.push("Está convertido en empresa: el cliente y su historial deben conservarse.");
+    if (lead.convertedOpportunityId) blockers.push("Dio lugar a una oportunidad.");
+    if (lead.companyId) blockers.push("Está vinculado a una empresa existente.");
+    if (manual.length) blockers.push(`Tiene ${manual.length} ${manual.length === 1 ? "actividad registrada" : "actividades registradas"} (llamadas, correos, reuniones o tareas).`);
+    const archiveBlockers: string[] = [];
+    if (pendingRequests) archiveBlockers.push(`Tiene ${pendingRequests} ${pendingRequests === 1 ? "solicitud web pendiente" : "solicitudes web pendientes"}: atiéndelas antes de archivar.`);
+    if (openTasks) archiveBlockers.push(`Tiene ${openTasks} ${openTasks === 1 ? "tarea abierta" : "tareas abiertas"}: ciérralas antes de archivar.`);
+    return {
+      leadId: id,
+      name: lead.name,
+      archived: !!lead.archivedAt,
+      requests: { total: requests.length, pending: pendingRequests },
+      activities: { total: acts.length, manual: manual.length, openTasks },
+      convertedCompanyId: lead.convertedCompanyId,
+      convertedOpportunityId: lead.convertedOpportunityId,
+      linkedCompanyId: lead.companyId,
+      canDelete: blockers.length === 0,
+      deleteBlockers: blockers,
+      canArchive: !lead.archivedAt && archiveBlockers.length === 0,
+      archiveBlockers: lead.archivedAt ? ["Ya está archivado."] : archiveBlockers,
+    };
+  }
+
+  /** Archiva: sale de listados activos, indicadores e informes; el historial queda intacto y es recuperable. Idempotente. */
+  async archiveLead(id: number, reason: string | null | undefined, author: string): Promise<Lead> {
+    const lead = await this.must("leads", id);
+    if (lead.archivedAt) return lead;
+    const dep = await this.leadDependencies(id);
+    if (!dep.canArchive) throw new CrmError("invalid_state", dep.archiveBlockers.join(" "));
+    const why = clean(reason, 300);
+    const upd = await this.store.update("leads", id, { archivedAt: this.now(), archivedBy: author, archiveReason: why, updatedAt: this.now() });
+    await this.log("lead", id, "note", `Lead archivado${why ? `: ${why}` : ""}`, author);
+    return upd;
+  }
+
+  /** Recupera un lead archivado. Idempotente. */
+  async restoreLead(id: number, author: string, note = "Lead recuperado del archivo"): Promise<Lead> {
+    const lead = await this.must("leads", id);
+    if (!lead.archivedAt) return lead;
+    const upd = await this.store.update("leads", id, { archivedAt: null, archivedBy: null, archiveReason: null, updatedAt: this.now() });
+    await this.log("lead", id, "note", note, author);
+    return upd;
+  }
+
+  /**
+   * Eliminación física: solo si no hay relaciones que conservar (se vuelve a comprobar aquí, nunca se fía de la
+   * pantalla). Las notas del historial se conservan como constancia, con una anotación de quién lo eliminó y cuándo.
+   */
+  async deleteLead(id: number, author: string): Promise<{ id: number; name: string }> {
+    const lead = await this.must("leads", id);
+    const dep = await this.leadDependencies(id);
+    if (!dep.canDelete) throw new CrmError("invalid_state", `No se puede eliminar: ${dep.deleteBlockers.join(" ")} Archívalo en su lugar.`);
+    try {
+      await this.store.remove("leads", id);
+    } catch {
+      // Una restricción de integridad (p. ej. una solicitud creada entre la comprobación y el borrado) lo impide
+      throw new CrmError("conflict", "El lead ha cambiado mientras se eliminaba: vuelve a comprobarlo. No se ha borrado nada.");
+    }
+    await this.log("lead", id, "note", `Lead eliminado: «${lead.name}» (#${id})`, author);
+    return { id, name: lead.name };
   }
 
   /** Posibles duplicados de un lead/contacto/empresa por correo, teléfono, nombre de empresa o NIF. */
@@ -1105,7 +1202,7 @@ export class CrmService {
   }
 
   async dashboard() {
-    const leads = await this.store.list("leads", {}, { limit: SCAN_LIMIT });
+    const leads = (await this.store.list("leads", {}, { limit: SCAN_LIMIT })).filter((l) => !l.archivedAt);
     const byStatus: Record<string, number> = {};
     for (const l of leads) byStatus[l.status] = (byStatus[l.status] ?? 0) + 1;
     const now = this.now();

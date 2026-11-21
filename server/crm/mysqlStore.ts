@@ -25,7 +25,7 @@ const DEFS: Record<keyof Tables, { table: string; cols: Col[] }> = {
   },
   leads: {
     table: "crm_leads",
-    cols: [t("source"), t("name"), t("email"), t("phone"), t("companyName"), t("status"), t("priority"), t("owner"), t("notes"), t("companyId"), t("convertedCompanyId"), t("convertedOpportunityId"), t("createdAt"), t("updatedAt")],
+    cols: [t("source"), t("name"), t("email"), t("phone"), t("companyName"), t("status"), t("priority"), t("owner"), t("notes"), t("companyId"), t("convertedCompanyId"), t("convertedOpportunityId"), t("createdAt"), t("updatedAt"), t("archivedAt"), t("archivedBy"), t("archiveReason")],
   },
   opportunities: {
     table: "crm_opportunities",
@@ -64,7 +64,7 @@ const DEFS: Record<keyof Tables, { table: string; cols: Col[] }> = {
 
 /** Claves ajenas numéricas (taxId, tenantId o planId son texto). */
 const NUMERIC_IDS = new Set(["leadId", "companyId", "contactId", "opportunityId", "entityId", "convertedCompanyId", "convertedOpportunityId", "contractId", "previousContractId"]);
-const NUMERIC = new Set(["createdAt", "updatedAt", "dueAt", "doneAt", "closedAt", "expectedClose", "startDate", "endDate", "signedAt", "amountCents", "nextActionAt", "renewalDate", "noticeDays", "version", "privacyAcceptedAt", "attendedAt"]);
+const NUMERIC = new Set(["createdAt", "updatedAt", "dueAt", "doneAt", "closedAt", "expectedClose", "startDate", "endDate", "signedAt", "amountCents", "nextActionAt", "renewalDate", "noticeDays", "version", "privacyAcceptedAt", "attendedAt", "archivedAt"]);
 
 function fromRow(table: keyof Tables, r: Record<string, unknown>): any {
   const out: Record<string, unknown> = { id: Number(r.id) };

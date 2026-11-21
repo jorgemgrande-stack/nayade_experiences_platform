@@ -91,6 +91,10 @@ export interface Lead {
   convertedOpportunityId: number | null;
   createdAt: number;
   updatedAt: number | null;
+  /** Archivado: fuera de listados activos, indicadores e informes, con su historial intacto. null = activo. */
+  archivedAt?: number | null;
+  archivedBy?: string | null;
+  archiveReason?: string | null;
 }
 
 export interface Opportunity {

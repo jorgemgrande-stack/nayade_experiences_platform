@@ -61,6 +61,7 @@ export const leadsListQuery = page.extend({
   status: z.enum(LEAD_STATUSES as [string, ...string[]]).optional(),
   priority: z.enum(LEAD_PRIORITIES as [string, ...string[]]).optional(),
   owner: optStr(100),
+  archived: z.enum(["exclude", "only", "all"]).optional(),
   ...sortQuery(sortKeys(LEAD_SORT)),
 });
 export const companiesListQuery = page.extend({
@@ -187,7 +188,8 @@ export function createCrmRouter(
   };
   const reportData = async () => {
     const [leads, opportunities, companies, contacts, activities] = await Promise.all([
-      store.list("leads", {}, { limit: REPORT_SCAN }),
+      // Los leads archivados no entran en informes ni exportaciones
+      store.list("leads", {}, { limit: REPORT_SCAN }).then((l) => l.filter((x) => !x.archivedAt)),
       store.list("opportunities", {}, { limit: REPORT_SCAN }),
       store.list("companies", {}, { limit: REPORT_SCAN }),
       store.list("contacts", {}, { limit: REPORT_SCAN }),
@@ -317,6 +319,23 @@ export function createCrmRouter(
   r.patch("/leads/:id", requireScope("crm:write"), wrap(async (req, res) => {
     const b = z.object(leadBody).partial().strict().parse(req.body);
     res.json({ lead: await crm.updateLead(id.parse(req.params.id), b as Parameters<CrmService["updateLead"]>[1], who(req)) });
+  }));
+  r.get("/leads/:id/dependencies", requireScope("crm:read"), wrap(async (req, res) => {
+    res.json({ dependencies: await crm.leadDependencies(id.parse(req.params.id)) });
+  }));
+  r.post("/leads/:id/archive", requireScope("crm:write"), wrap(async (req, res) => {
+    const b = z.object({ reason: optStr(300) }).strict().parse(req.body ?? {});
+    res.json({ lead: await crm.archiveLead(id.parse(req.params.id), b.reason ?? null, who(req)) });
+  }));
+  r.post("/leads/:id/restore", requireScope("crm:write"), wrap(async (req, res) => {
+    res.json({ lead: await crm.restoreLead(id.parse(req.params.id), who(req)) });
+  }));
+  // Eliminación física: solo administración (operators:write) y solo si el servidor confirma que no hay nada que conservar
+  r.delete("/leads/:id", requireScope("crm:write"), wrap(async (req, res) => {
+    if (!getAuth(req)!.scopes.has("operators:write")) {
+      return void res.status(403).json({ error: "forbidden", message: "Solo administración puede eliminar leads. Puedes archivarlo." });
+    }
+    res.json({ deleted: await crm.deleteLead(id.parse(req.params.id), who(req)) });
   }));
   r.post("/leads/:id/status", requireScope("crm:write"), wrap(async (req, res) => {
     const b = z.object({ status: z.enum(["new", "contacted", "qualified", "disqualified"]) }).parse(req.body);
