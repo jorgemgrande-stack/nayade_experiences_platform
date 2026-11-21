@@ -10,14 +10,13 @@ import { Link } from "wouter";
 import { ArrowRight, Layers, Package, Plug, SquareCheckBig } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import { useI18n } from "@/i18n/I18nProvider";
 import { ProductCard, RequestDialog, StateBadge, type ConnectView, type RequestKind } from "@/components/connect/ConnectParts";
 import { fichaPath } from "@/components/connect/LockedFeature";
 import { Rail } from "@/components/connect/Rail";
 import { useConnectCatalog, type ConnectCatalogItem } from "@/components/connect/useConnect";
 import { brandHeaders, brandOf, categoryOf } from "@shared/connectMarketplace";
 import { OWNED_MODULE_STATES, relatedRecommendations } from "@shared/subscriptionPlans";
-
-const count = (n: number, one: string, many: string) => (n === 1 ? `1 ${one}` : `${n} ${many}`);
 
 /** Acceso a una línea del marketplace: mismos degradados que sus accesos en /admin/ampliar (`cx-access-*`). */
 function Access({ href, icon, title, detail, tone }: { href: string; icon: ReactNode; title: string; detail: string | null; tone: string }) {
@@ -44,6 +43,7 @@ function Access({ href, icon, title, detail, tone }: { href: string; icon: React
 }
 
 export function GrowSection() {
+  const { t } = useI18n();
   const catalog = useConnectCatalog();
   const data = catalog.data;
   const items = catalog.items;
@@ -59,7 +59,7 @@ export function GrowSection() {
     if (!data?.available) return null;
     const all = items.filter(filter);
     const mine = all.filter((i) => OWNED_MODULE_STATES.includes(i.state)).length;
-    return mine > 0 ? `${count(mine, "contratado", "contratados")} · ${count(all.length, "producto", "productos")}` : count(all.length, "producto", "productos");
+    return mine > 0 ? `${t("subscription.grow.countContracted", { n: mine })} · ${t("subscription.grow.countProducts", { n: all.length })}` : t("subscription.grow.countProducts", { n: all.length });
   };
 
   return (
@@ -70,23 +70,23 @@ export function GrowSection() {
         </span>
         <div className="min-w-[12rem] flex-1">
           <h2 id="sub-grow" className="text-2xl font-extrabold tracking-tight text-foreground sm:text-3xl">
-            Amplía tu plataforma
+            {t("subscription.grow.title")}
           </h2>
-          <p className="text-sm text-muted-foreground sm:text-base">Módulos, soluciones sectoriales y ampliaciones del marketplace, con su estado para tu empresa.</p>
+          <p className="text-sm text-muted-foreground sm:text-base">{t("subscription.grow.text")}</p>
         </div>
         <Button asChild variant="outline" className="ml-auto h-11 rounded-xl">
           <Link href="/admin/ampliar">
-            Ir al marketplace <ArrowRight className="h-4 w-4" aria-hidden="true" />
+            {t("subscription.grow.toMarketplace")} <ArrowRight className="h-4 w-4" aria-hidden="true" />
           </Link>
         </Button>
       </div>
 
-      <nav aria-label="Marketplace de Elephant Source">
+      <nav aria-label={t("subscription.grow.navLabel")}>
         <ul className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
           <Access href="/admin/ampliar#cx-brand-connect" icon={<Plug />} title={brands.connect.title} detail={detail((i) => brandOf(i) === "connect")} tone="electric-violet" />
           <Access href="/admin/ampliar#cx-brand-net" icon={<Layers />} title={brands.net.title} detail={detail((i) => brandOf(i) === "net")} tone="electric-turquoise" />
-          <Access href="/admin/ampliar#cx-bundles" icon={<Package />} title="Paquetes" detail={detail((i) => categoryOf(i) === "bundles")} tone="magenta-violet" />
-          <Access href="/admin/ampliar#cx-mine" icon={<SquareCheckBig />} title="Mis módulos" detail={data?.available ? count(owned.length, "contratado", "contratados") : null} tone="turquoise-emerald" />
+          <Access href="/admin/ampliar#cx-bundles" icon={<Package />} title={t("subscription.grow.bundles")} detail={detail((i) => categoryOf(i) === "bundles")} tone="magenta-violet" />
+          <Access href="/admin/ampliar#cx-mine" icon={<SquareCheckBig />} title={t("subscription.grow.myModules")} detail={data?.available ? t("subscription.grow.countContracted", { n: owned.length }) : null} tone="turquoise-emerald" />
         </ul>
       </nav>
 
@@ -94,13 +94,13 @@ export function GrowSection() {
         <section className="space-y-3" aria-labelledby="sub-grow-available">
           <div className="flex flex-wrap items-end justify-between gap-2">
             <h3 id="sub-grow-available" className="text-lg font-bold text-foreground sm:text-xl">
-              Disponibles para tu plan
+              {t("subscription.grow.available")}
             </h3>
             <Link href="/admin/ampliar" className="text-sm font-medium text-muted-foreground underline-offset-4 hover:text-foreground hover:underline">
-              Ver todo el catálogo
+              {t("subscription.grow.seeCatalog")}
             </Link>
           </div>
-          <Rail label="Disponibles para tu plan">
+          <Rail label={t("subscription.grow.available")}>
             {available.map((i) => (
               <ProductCard key={i.key} item={i} view={view} onAction={(it, kind) => setDialog({ item: it, kind })} headingLevel={4} />
             ))}
@@ -111,7 +111,7 @@ export function GrowSection() {
       {recs.length > 0 && (
         <section className="space-y-3" aria-labelledby="sub-grow-related">
           <h3 id="sub-grow-related" className="text-lg font-bold text-foreground sm:text-xl">
-            Relacionado con lo que ya tienes
+            {t("subscription.grow.related")}
           </h3>
           <ul className="grid gap-3 md:grid-cols-3">
             {recs.map(({ item, because }) => (
@@ -119,9 +119,9 @@ export function GrowSection() {
                 <StateBadge state={item.state} />
                 <p className="break-words font-semibold text-foreground">{item.name}</p>
                 {item.tagline && <p className="text-sm text-muted-foreground">{item.tagline}</p>}
-                <p className="text-xs text-muted-foreground">Relacionado con {because}, que ya tienes.</p>
+                <p className="text-xs text-muted-foreground">{t("subscription.grow.relatedWith", { because })}</p>
                 <Link href={fichaPath(item.key)} className="mt-auto inline-flex items-center gap-1 text-sm font-medium text-foreground underline-offset-4 hover:underline">
-                  Ver ficha <ArrowRight className="h-3.5 w-3.5" aria-hidden="true" />
+                  {t("subscription.grow.seeCard")} <ArrowRight className="h-3.5 w-3.5" aria-hidden="true" />
                 </Link>
               </li>
             ))}
@@ -130,13 +130,13 @@ export function GrowSection() {
       )}
 
       <p className="text-xs text-muted-foreground">
-        ¿Más usuarios, sedes o almacenamiento?{" "}
+        {t("subscription.grow.moreQ")}{" "}
         <Link href="/admin/suscripcion/modulos" className="font-medium text-foreground underline underline-offset-4">
-          Módulos y ampliaciones
+          {t("subscription.grow.modulesLink")}
         </Link>
-        . Los usuarios de tu equipo se gestionan en{" "}
+        {t("subscription.grow.usersPre")}{" "}
         <Link href="/admin/usuarios" className="font-medium text-foreground underline underline-offset-4">
-          Usuarios y permisos
+          {t("subscription.grow.usersLink")}
         </Link>
         .
       </p>
@@ -149,13 +149,14 @@ export function GrowSection() {
 
 /** Módulos adicionales contratados (pestaña): los del marketplace con su estado y acceso a su ficha. */
 export function OwnedModules() {
+  const { t } = useI18n();
   const catalog = useConnectCatalog();
   const owned = catalog.items.filter((i) => OWNED_MODULE_STATES.includes(i.state));
   return (
     <div className="space-y-4">
-      {catalog.isLoading && <p className="text-sm text-muted-foreground">Cargando tus módulos…</p>}
-      {catalog.isError && <p className="text-sm text-muted-foreground">No se han podido cargar tus módulos ahora mismo. Inténtalo de nuevo en unos minutos.</p>}
-      {catalog.isSuccess && owned.length === 0 && <p className="text-sm text-muted-foreground">No tienes módulos adicionales contratados. Todo lo que incluye tu plan aparece en «Funcionalidades».</p>}
+      {catalog.isLoading && <p className="text-sm text-muted-foreground">{t("subscription.grow.ownedLoading")}</p>}
+      {catalog.isError && <p className="text-sm text-muted-foreground">{t("subscription.grow.ownedError")}</p>}
+      {catalog.isSuccess && owned.length === 0 && <p className="text-sm text-muted-foreground">{t("subscription.grow.ownedNone")}</p>}
       {owned.length > 0 && (
         <ul className="grid gap-3 sm:grid-cols-2">
           {owned.map((i) => (
@@ -172,10 +173,10 @@ export function OwnedModules() {
       )}
       <div className="flex flex-wrap gap-2">
         <Button asChild variant="outline">
-          <Link href="/admin/suscripcion/modulos">Ver módulos y ampliaciones</Link>
+          <Link href="/admin/suscripcion/modulos">{t("subscription.grow.seeModules")}</Link>
         </Button>
         <Button asChild variant="outline">
-          <Link href="/admin/ampliar#cx-mine">Mis módulos en el marketplace</Link>
+          <Link href="/admin/ampliar#cx-mine">{t("subscription.grow.myInMarketplace")}</Link>
         </Button>
       </div>
     </div>

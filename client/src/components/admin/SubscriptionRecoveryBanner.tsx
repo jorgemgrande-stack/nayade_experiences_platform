@@ -13,12 +13,14 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { trpc } from "@/lib/trpc";
 import { cn } from "@/lib/utils";
+import { useI18n } from "@/i18n/I18nProvider";
 import { TONE_SURFACE, TONE_TEXT } from "@/lib/panelTones";
 import { setRecoveryView } from "@/lib/readOnlyBlock";
 import { usePanelSubscription } from "@/hooks/usePanelSubscription";
 import { SUBSCRIPTION_PATH, isPanelReadOnlyState, resolveRecovery } from "@shared/subscriptionRecovery";
 
 export function SubscriptionRecoveryBanner({ role }: { role: string }) {
+  const { t } = useI18n();
   const sub = usePanelSubscription();
   const [location] = useLocation();
   const data = sub.data;
@@ -70,7 +72,7 @@ export function SubscriptionRecoveryBanner({ role }: { role: string }) {
         <div className="shrink-0 sm:pl-2">
           {cta.action.type === "portal" ? (
             <Button type="button" className="w-full sm:w-auto" disabled={openPortal.isPending} onClick={() => openPortal.mutate()}>
-              {openPortal.isPending ? "Abriendo…" : cta.label}
+              {openPortal.isPending ? t("subscription.common.opening") : cta.label}
               <ArrowRight className="ml-1.5 h-4 w-4" aria-hidden="true" />
             </Button>
           ) : (

@@ -19,9 +19,10 @@ import {
   Landmark, Loader2, Mail, Package, Palette, PartyPopper, ShoppingCart, SkipForward, Star, UserPlus, Users,
 } from "lucide-react";
 import { BrandIdentityEditor } from "@/components/brand/BrandIdentityEditor";
-import { STEP_LABELS, activityInfo, configurationStepNumber, configurationSteps, nextOpenStep, type SetupStep } from "@shared/setupWizard";
+import { useI18n } from "@/i18n/I18nProvider";
+import { activityInfo, configurationStepNumber, configurationSteps, nextOpenStep, type SetupStep } from "@shared/setupWizard";
 import {
-  ActivityStep, ClientStep, CommsStep, DocumentStep, FinishStep, FiscalStep, IdentityStep, ProductStep, SaleStep, SectorStep, WebStep, WelcomeStep, errMsg,
+  ActivityStep, ClientStep, CommsStep, DocumentStep, FinishStep, FiscalStep, IdentityStep, ProductStep, SaleStep, SectorStep, WebStep, WelcomeStep, errMsg, useStepLabels,
 } from "./PrimerosPasosSteps";
 
 const ICONS: Record<SetupStep, React.ComponentType<{ className?: string; "aria-hidden"?: boolean }>> = {
@@ -41,27 +42,27 @@ const ICONS: Record<SetupStep, React.ComponentType<{ className?: string; "aria-h
   users: UserPlus,
 };
 
-const HELP: Record<SetupStep, string> = {
-  welcome: "El asistente solo te pide lo que aún no consta y se adapta a lo que tienes contratado.",
-  company: "Es el nombre con el que te ven tus clientes y la base de fechas e importes del panel. Lo puedes cambiar más tarde en Organización › Datos de la empresa.",
-  fiscal: "Estos datos aparecen en tus presupuestos y facturas. Sin ellos no se pueden emitir facturas válidas.",
-  brand: "Tu logotipo y tus colores se aplican a la vez en tu web, en tus documentos y en la pantalla de acceso de tu equipo. El paso se marca en cuanto subas tu logotipo. Los puedes cambiar cuando quieras en Web › Marca y tema.",
-  activity: "Solo destaca los pasos más útiles para tu negocio y adapta los textos y ejemplos. No activa módulos ni contrata nada.",
-  client: "Tus clientes quedan en el CRM con su historial de presupuestos, pedidos y facturas.",
-  // Misma convención que el gestor de productos: el precio guardado es el precio final, con el impuesto incluido
-  product: "El precio se indica con impuestos incluidos (precio final); el impuesto se desglosa en presupuestos y facturas.",
-  web: "Tu web se publica con tu dominio y tu marca. Puedes empezar con las páginas iniciales y mejorarlas poco a poco.",
-  operation: "Un pedido es una venta confirmada (de tu tienda online o registrada a mano); la caja registra las ventas en mostrador. El paso se marca solo con tu primera venta.",
-  document: "Un presupuesto se envía al cliente para que lo acepte; la factura es el documento fiscal, con tu numeración y tus datos fiscales. El paso se marca solo con el primero.",
-  comms: "Los correos salen siempre con el nombre de tu empresa. Las respuestas de tus clientes llegan a la dirección que indiques.",
-  sector: "Los módulos sectoriales tienen su propia configuración. Aquí tienes el acceso directo a cada uno.",
-  finish: "Puedes volver a este asistente cuando quieras desde el Inicio.",
-  users: "Cada persona entra con su propio usuario. El número de usuarios depende de tu plan.",
-};
-
 const PLAN_NAMES: Record<string, string> = { essential: "Essential", business: "Business", enterprise: "Enterprise" };
 
 export default function PrimerosPasos() {
+  const { t } = useI18n();
+  const labels = useStepLabels();
+  const HELP: Record<SetupStep, string> = {
+    welcome: t("setup.help.welcome"),
+    company: t("setup.help.company"),
+    fiscal: t("setup.help.fiscal"),
+    brand: t("setup.help.brand"),
+    activity: t("setup.help.activity"),
+    client: t("setup.help.client"),
+    product: t("setup.help.product"),
+    web: t("setup.help.web"),
+    operation: t("setup.help.operation"),
+    document: t("setup.help.document"),
+    comms: t("setup.help.comms"),
+    sector: t("setup.help.sector"),
+    finish: t("setup.help.finish"),
+    users: t("setup.help.users"),
+  };
   const utils = trpc.useUtils();
   const sub = usePanelSubscription();
   const status = trpc.setupWizard.status.useQuery(undefined, { retry: false });
@@ -80,23 +81,23 @@ export default function PrimerosPasos() {
 
   const setStep = trpc.setupWizard.setStep.useMutation({
     onSuccess: () => utils.setupWizard.status.invalidate(),
-    onError: (e) => toast.error(errMsg(e)),
+    onError: (e) => toast.error(errMsg(e, t("setup.saveFail"))),
   });
 
   if (status.isLoading || (!current && !status.error)) {
     return (
-      <AdminLayout title="Primeros pasos">
+      <AdminLayout title={t("setup.title")}>
         <div className="flex items-center gap-2 p-8 text-muted-foreground" role="status">
-          <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> Cargando…
+          <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> {t("setup.loading")}
         </div>
       </AdminLayout>
     );
   }
   if (status.error || !status.data || !current) {
     return (
-      <AdminLayout title="Primeros pasos">
+      <AdminLayout title={t("setup.title")}>
         <div role="alert" className="m-6 rounded-xl border border-destructive/30 bg-destructive/5 p-4 text-sm">
-          No se pudo cargar el asistente: {status.error?.message ?? "inténtalo de nuevo"}.
+          {t("setup.loadError", { message: status.error?.message ?? t("setup.retryHint") })}
         </div>
       </AdminLayout>
     );
@@ -143,43 +144,43 @@ export default function PrimerosPasos() {
   const stepNumber = configurationStepNumber(steps, shown);
 
   return (
-    <AdminLayout title="Primeros pasos">
+    <AdminLayout title={t("setup.title")}>
       <div className="mx-auto max-w-5xl space-y-5 px-4 py-6 sm:px-6">
         <header className="space-y-3">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
-              <h1 className="text-xl font-semibold text-foreground sm:text-2xl">Configura tu empresa</h1>
+              <h1 className="text-xl font-semibold text-foreground sm:text-2xl">{t("setup.heading")}</h1>
               <p className="text-sm text-muted-foreground">
-                {configCount} pasos en orden, adaptados a lo que tienes contratado. Cada uno se marca solo cuando lo haces. Puedes omitir cualquiera y retomarlo más tarde: el progreso se guarda en tu cuenta.
+                {t("setup.intro", { count: configCount })}
               </p>
             </div>
             <div className="flex flex-wrap items-center gap-2">
               {planName && (
                 <p className="rounded-full border border-border bg-card px-3 py-1 text-xs text-muted-foreground">
-                  Plan <strong className="text-foreground">{planName}</strong>
-                  {d.licence.daysLeft !== null && !readOnly && <> · prueba: {d.licence.daysLeft === 1 ? "queda 1 día" : `quedan ${d.licence.daysLeft} días`}</>}
+                  {t("setup.planLabel")} <strong className="text-foreground">{planName}</strong>
+                  {d.licence.daysLeft !== null && !readOnly && <> · {t("setup.trial", { days: d.licence.daysLeft })}</>}
                 </p>
               )}
               <Link href="/admin" className="rounded-full border border-border px-3 py-1 text-xs text-foreground hover:bg-muted focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary">
-                Continuar más tarde
+                {t("setup.later")}
               </Link>
             </div>
           </div>
           <div className="flex items-center gap-3">
-            <Progress value={d.plan.percent} className="h-2" aria-label="Avance de Primeros pasos" aria-valuetext={`${d.plan.percent}% completado`} />
+            <Progress value={d.plan.percent} className="h-2" aria-label={t("setup.progressAria")} aria-valuetext={t("setup.percentDone", { percent: d.plan.percent })} />
             <span className="w-12 text-right text-sm tabular-nums text-muted-foreground">{d.plan.percent}%</span>
           </div>
           {readOnly && (
             <div role="alert" className="flex gap-3 rounded-xl border border-warning/50 bg-warning/10 p-4 text-sm text-foreground">
               <AlertTriangle className="h-4 w-4 shrink-0" aria-hidden="true" />
-              <p>Tu periodo de prueba ha terminado: la cuenta está en solo lectura. Tus datos se conservan; contrata un plan para seguir trabajando.</p>
+              <p>{t("setup.readOnlyBanner")}</p>
             </div>
           )}
         </header>
 
         {/* minmax(0,1fr): en móvil el índice de pasos (desplazable) no puede ensanchar la columna ni la página */}
         <div className="grid grid-cols-1 gap-5 lg:grid-cols-[240px_minmax(0,1fr)]">
-          <nav aria-label="Pasos de Primeros pasos" className="min-w-0">
+          <nav aria-label={t("setup.stepsNav")} className="min-w-0">
             {/* relative: los textos solo para lectores de pantalla (sr-only, absolutos) quedan dentro de la franja desplazable */}
             <ol className="relative flex gap-2 overflow-x-auto pb-1 lg:flex-col lg:overflow-visible">
               {steps.map((s) => {
@@ -205,11 +206,11 @@ export default function PrimerosPasos() {
                         {s.status === "done" ? <Check className="h-3.5 w-3.5" /> : s.status === "skipped" ? <SkipForward className="h-3 w-3" /> : n ?? <StepIcon className="h-3 w-3" />}
                       </span>
                       <span className="flex items-center gap-1.5">
-                        {STEP_LABELS[s.id].title}
+                        {labels[s.id].title}
                         {s.recommended && s.status !== "done" && <Star className="h-3 w-3 text-warning" aria-hidden="true" />}
                         <span className="sr-only">
-                          {s.status === "done" ? " (hecho)" : s.status === "skipped" ? " (omitido)" : " (pendiente)"}
-                          {s.recommended ? ", recomendado para tu actividad" : ""}
+                          {" "}{s.status === "done" ? t("setup.statusDone") : s.status === "skipped" ? t("setup.statusSkipped") : t("setup.statusPending")}
+                          {s.recommended ? ", " + t("setup.recommendedSr") : ""}
                         </span>
                       </span>
                     </button>
@@ -226,19 +227,19 @@ export default function PrimerosPasos() {
               </div>
               <div className="min-w-0">
                 <p className="text-xs text-muted-foreground">
-                  {stepNumber !== null ? `Paso ${stepNumber} de ${configCount}` : shown === "welcome" ? "Antes de empezar" : "Para terminar"}
-                  {step?.recommended && <> · recomendado para tu actividad</>}
+                  {stepNumber !== null ? t("setup.stepOf", { n: stepNumber, total: configCount }) : shown === "welcome" ? t("setup.beforeStart") : t("setup.toFinish")}
+                  {step?.recommended && <> {t("setup.recommendedDot")}</>}
                 </p>
                 <h2 id="paso-actual" ref={headingRef} tabIndex={-1} className="text-lg font-semibold text-foreground outline-none">
-                  {shown === "welcome" ? "Te damos la bienvenida a Elephant Core" : STEP_LABELS[shown].title}
+                  {shown === "welcome" ? t("setup.welcomeTitle") : labels[shown].title}
                 </h2>
-                <p className="text-sm text-muted-foreground">{STEP_LABELS[shown].summary}</p>
+                <p className="text-sm text-muted-foreground">{labels[shown].summary}</p>
               </div>
             </div>
 
             <details className="mb-5 rounded-lg border border-border/60 bg-muted/30 p-3 text-sm">
               <summary className="flex cursor-pointer items-center gap-2 font-medium text-foreground focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary">
-                <HelpCircle className="h-4 w-4" aria-hidden="true" /> ¿Para qué sirve este paso?
+                <HelpCircle className="h-4 w-4" aria-hidden="true" /> {t("setup.whyTitle")}
               </summary>
               <p className="mt-2 text-muted-foreground">{HELP[shown]}</p>
             </details>
@@ -250,10 +251,10 @@ export default function PrimerosPasos() {
               {shown === "fiscal" && <FiscalStep initial={d.company} country={d.company.country} done={step?.status === "done"} fiscalFromRegistry={d.fiscalFromRegistry} disabled={readOnly} onSaved={() => void goNext()} />}
               {shown === "brand" &&
                 (readOnly ? (
-                  <p className="text-sm text-muted-foreground">La cuenta está en solo lectura: la marca no se puede cambiar.</p>
+                  <p className="text-sm text-muted-foreground">{t("setup.brandReadOnly")}</p>
                 ) : (
                   <>
-                    {step?.status !== "done" && <p className="mb-4 text-sm text-muted-foreground">Sube tu logotipo para completar este paso. Si sigues sin él, el paso queda pendiente para más adelante.</p>}
+                    {step?.status !== "done" && <p className="mb-4 text-sm text-muted-foreground">{t("setup.brandHint")}</p>}
                     <BrandIdentityEditor variant="onboarding" onSaved={() => void afterBrand()} />
                   </>
                 ))}
@@ -272,22 +273,22 @@ export default function PrimerosPasos() {
 
             <div className="mt-6 flex flex-wrap items-center justify-between gap-3 border-t border-border pt-4">
               <Button type="button" variant="ghost" onClick={goPrev} disabled={idx === 0}>
-                <ChevronLeft className="mr-1 h-4 w-4" aria-hidden="true" /> Anterior
+                <ChevronLeft className="mr-1 h-4 w-4" aria-hidden="true" /> {t("setup.back")}
               </Button>
               <div className="flex flex-wrap gap-2">
                 {shown !== "finish" && shown !== "welcome" && step?.status !== "done" && (
                   <Button type="button" variant="outline" disabled={setStep.isPending || readOnly} onClick={() => void mark(shown, "skipped")}>
-                    Omitir por ahora
+                    {t("setup.skip")}
                   </Button>
                 )}
                 {shown !== "finish" && step?.status === "done" && (
                   <Button type="button" variant="outline" onClick={() => void goNext()}>
-                    Siguiente <ChevronRight className="ml-1 h-4 w-4" aria-hidden="true" />
+                    {t("setup.next")} <ChevronRight className="ml-1 h-4 w-4" aria-hidden="true" />
                   </Button>
                 )}
                 {shown === "finish" && !d.progress.completedAt && (
-                  <Button type="button" disabled={setStep.isPending || readOnly} onClick={() => void mark("finish", "done").then(() => toast.success("¡Listo! Tu empresa está en marcha."))}>
-                    <CheckCircle2 className="mr-1 h-4 w-4" aria-hidden="true" /> Poner en marcha
+                  <Button type="button" disabled={setStep.isPending || readOnly} onClick={() => void mark("finish", "done").then(() => toast.success(t("setup.launched")))}>
+                    <CheckCircle2 className="mr-1 h-4 w-4" aria-hidden="true" /> {t("setup.launch")}
                   </Button>
                 )}
               </div>

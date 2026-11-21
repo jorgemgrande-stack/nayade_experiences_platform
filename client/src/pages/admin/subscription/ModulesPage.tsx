@@ -20,6 +20,8 @@ import { PanelError, PanelLoading } from "@/components/admin/PanelStates";
 import { trpc } from "@/lib/trpc";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
+import { useI18n } from "@/i18n/I18nProvider";
+import type { Translate } from "@shared/i18n/core";
 
 type ModuleState = "active" | "read_only" | "available" | "on_request" | "in_preparation" | "coming_soon";
 interface PanelModule {
@@ -53,43 +55,44 @@ interface PurchaseResult {
   paymentUrl: string | null;
 }
 
-const FAMILY_LABELS: Record<string, string> = {
-  net_module: "Módulos sectoriales",
-  industry_module: "Módulos sectoriales",
-  net_bundle: "Paquetes sectoriales",
-  connect: "Conectores y herramientas",
-  extension: "Conectores y herramientas",
-  connect_bundle: "Paquetes de conectores",
-  addon: "Ampliaciones",
-  extra: "Ampliaciones",
-};
+const familyLabels = (t: Translate): Record<string, string> => ({
+  net_module: t("subscription.modules.family.sector"),
+  industry_module: t("subscription.modules.family.sector"),
+  net_bundle: t("subscription.modules.family.sectorBundles"),
+  connect: t("subscription.modules.family.connect"),
+  extension: t("subscription.modules.family.connect"),
+  connect_bundle: t("subscription.modules.family.connectBundles"),
+  addon: t("subscription.modules.family.addons"),
+  extra: t("subscription.modules.family.addons"),
+});
 
-const STATE_META: Record<ModuleState, { label: string; icon: typeof CheckCircle2; tone: string }> = {
-  active: { label: "Incluido", icon: CheckCircle2, tone: "bg-emerald-100 text-emerald-900 dark:bg-emerald-500/15 dark:text-emerald-200" },
-  read_only: { label: "Solo lectura", icon: Eye, tone: "bg-amber-100 text-amber-900 dark:bg-amber-500/15 dark:text-amber-200" },
-  available: { label: "Disponible", icon: Sparkles, tone: "bg-sky-100 text-sky-900 dark:bg-sky-500/15 dark:text-sky-200" },
-  on_request: { label: "Implantación acompañada", icon: PackagePlus, tone: "bg-muted text-foreground" },
-  in_preparation: { label: "En preparación", icon: Clock, tone: "bg-muted text-muted-foreground" },
-  coming_soon: { label: "Próximamente", icon: Clock, tone: "bg-muted text-muted-foreground" },
-};
+const stateMeta = (t: Translate): Record<ModuleState, { label: string; icon: typeof CheckCircle2; tone: string }> => ({
+  active: { label: t("subscription.modules.state.active"), icon: CheckCircle2, tone: "bg-emerald-100 text-emerald-900 dark:bg-emerald-500/15 dark:text-emerald-200" },
+  read_only: { label: t("subscription.modules.state.readOnly"), icon: Eye, tone: "bg-amber-100 text-amber-900 dark:bg-amber-500/15 dark:text-amber-200" },
+  available: { label: t("subscription.modules.state.available"), icon: Sparkles, tone: "bg-sky-100 text-sky-900 dark:bg-sky-500/15 dark:text-sky-200" },
+  on_request: { label: t("subscription.modules.state.onRequest"), icon: PackagePlus, tone: "bg-muted text-foreground" },
+  in_preparation: { label: t("subscription.modules.state.inPreparation"), icon: Clock, tone: "bg-muted text-muted-foreground" },
+  coming_soon: { label: t("subscription.modules.state.comingSoon"), icon: Clock, tone: "bg-muted text-muted-foreground" },
+});
 
-const money = (cents: number, currency: string) => new Intl.NumberFormat("es-ES", { style: "currency", currency }).format(cents / 100);
 const newKey = () => randomId().replace(/[^A-Za-z0-9_-]/g, "").slice(0, 64).padEnd(16, "0");
 
 function Price({ m }: { m: PanelModule }) {
+  const { t, format: f } = useI18n();
+  const money = (cents: number, currency: string) => f.currency(cents / 100, currency);
   if (!m.monthly) return null;
   return (
     <p className="text-sm text-foreground">
       {money(m.monthly.amountCents, m.monthly.currency)}
       <span className="text-muted-foreground">
-        {" "}/ mes{m.monthly.unit ? ` por ${m.monthly.unit}` : ""}
-        {m.monthly.taxIncluded ? " (IVA incluido)" : " + IVA"}
+        {t("subscription.modules.priceMonth")}{m.monthly.unit ? t("subscription.modules.priceUnit", { unit: m.monthly.unit }) : ""}
+        {m.monthly.taxIncluded ? t("subscription.modules.vatIncluded") : t("subscription.modules.vatExcluded")}
       </span>
     </p>
   );
 }
 
-const METRIC_LABEL: Record<string, string> = { users: "usuarios", sites: "sedes", storage_gb: "GB de almacenamiento" };
+const metricLabel = (t: Translate): Record<string, string> => ({ users: t("subscription.modules.metric.users"), sites: t("subscription.modules.metric.sites"), storage_gb: t("subscription.modules.metric.storage") });
 const METRIC_FIELD: Record<string, "users" | "sites" | "storageGb"> = { users: "users", sites: "sites", storage_gb: "storageGb" };
 
 /**
@@ -97,6 +100,8 @@ const METRIC_FIELD: Record<string, "users" | "sites" | "storageGb"> = { users: "
  * (usuarios, sedes, almacenamiento) a partir del total contratado hoy.
  */
 function PurchaseDialog({ module, current, onClose }: { module: PanelModule; current: number | null; onClose: () => void }) {
+  const { t, format: f } = useI18n();
+  const money = (cents: number, currency: string) => f.currency(cents / 100, currency);
   const utils = trpc.useUtils();
   const [key] = useState(newKey);
   const quantity = module.kind === "quantity" && module.metric !== null && current !== null;
@@ -110,7 +115,7 @@ function PurchaseDialog({ module, current, onClose }: { module: PanelModule; cur
       const res = r as PurchaseResult;
       setResult(res);
       if (res.status === "applied") {
-        toast.success(quantity ? "Ampliación aplicada" : `${module.name} ya está activo`);
+        toast.success(quantity ? t("subscription.modules.toastExpanded") : t("subscription.modules.toastActive", { name: module.name }));
         void utils.subscription.catalog.invalidate();
         void utils.subscription.overview.invalidate();
         void utils.panel.navigation.invalidate();
@@ -130,18 +135,18 @@ function PurchaseDialog({ module, current, onClose }: { module: PanelModule; cur
     <Dialog open onOpenChange={(o) => !o && onClose()}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>{quantity ? `Ampliar ${METRIC_LABEL[module.metric!] ?? module.name}` : `Añadir ${module.name}`}</DialogTitle>
-          <DialogDescription>El importe lo calcula nuestro sistema de cobros según los días que quedan de tu periodo actual.</DialogDescription>
+          <DialogTitle>{quantity ? t("subscription.modules.expandTitle", { what: metricLabel(t)[module.metric!] ?? module.name }) : t("subscription.modules.addTitle", { name: module.name })}</DialogTitle>
+          <DialogDescription>{t("subscription.modules.dialogDesc")}</DialogDescription>
         </DialogHeader>
 
         {quantity && !result && (
           <div className="space-y-2 text-sm">
             <p className="text-muted-foreground">
-              Ahora tienes {current} {METRIC_LABEL[module.metric!]} contratados. Indica el nuevo total.
+              {t("subscription.modules.nowHave", { current, what: metricLabel(t)[module.metric!] })}
             </p>
             <div className="flex items-end gap-2">
               <label className="flex-1 space-y-1">
-                <span className="text-foreground">Nuevo total</span>
+                <span className="text-foreground">{t("subscription.modules.newTotal")}</span>
                 <input
                   type="number"
                   inputMode="numeric"
@@ -156,18 +161,18 @@ function PurchaseDialog({ module, current, onClose }: { module: PanelModule; cur
                 />
               </label>
               <Button type="button" variant="outline" disabled={!valid || preview.isPending} onClick={() => requestPreview(what)}>
-                Calcular importe
+                {t("subscription.modules.calcAmount")}
               </Button>
             </div>
             {!valid && (
               <p className="text-xs text-red-700 dark:text-red-400">
-                El total debe ser mayor que el actual{step > 1 ? ` y en múltiplos de ${step}` : ""}. Para reducir, usa «Reducir».
+                {t("subscription.modules.totalHigher", { mult: step > 1 ? t("subscription.modules.multiples", { step }) : "" })}
               </p>
             )}
           </div>
         )}
 
-        {preview.isPending && <PanelLoading label="Calculando el importe…" />}
+        {preview.isPending && <PanelLoading label={t("subscription.change.calculating")} />}
         {preview.isError && <p className="text-sm text-red-700 dark:text-red-400">{preview.error.message}</p>}
 
         {p && !result && (
@@ -181,19 +186,18 @@ function PurchaseDialog({ module, current, onClose }: { module: PanelModule; cur
                       {l.fromQuantity} → {l.toQuantity}
                     </span>
                   )}
-                  {l.kind === "module" && l.toQuantity === 0 && <span className="text-muted-foreground">Deja de cobrarse aparte (lo incluye el paquete)</span>}
+                  {l.kind === "module" && l.toQuantity === 0 && <span className="text-muted-foreground">{t("subscription.modules.stopsSeparate")}</span>}
                 </li>
               ))}
             </ul>
             <div className="rounded-xl bg-muted/50 p-3 space-y-1">
               <p className="flex justify-between gap-3">
-                <span>A pagar ahora (parte proporcional)</span>
+                <span>{t("subscription.modules.dueNow")}</span>
                 <strong>{money(p.amountDueCents, p.currency)}</strong>
               </p>
-              {p.taxCents !== null && <p className="text-xs text-muted-foreground">Incluye {money(p.taxCents, p.currency)} de impuestos.</p>}
+              {p.taxCents !== null && <p className="text-xs text-muted-foreground">{t("subscription.change.includesTax", { amount: money(p.taxCents, p.currency) })}</p>}
               <p className="text-xs text-muted-foreground">
-                Después, {money(Math.abs(p.recurringDeltaCents), p.currency)} {p.recurringDeltaCents < 0 ? "menos" : "más"} por {p.interval === "year" ? "año" : "mes"} en cada renovación
-                {p.taxCents === null ? " (impuestos aparte)" : ""}.
+                {p.recurringDeltaCents < 0 ? t("subscription.modules.afterLess", { amount: money(Math.abs(p.recurringDeltaCents), p.currency), per: p.interval === "year" ? t("subscription.plans.intervalYear") : t("subscription.plans.intervalMonth"), tax: p.taxCents === null ? t("subscription.change.taxAside") : "" }) : t("subscription.modules.afterMore", { amount: money(Math.abs(p.recurringDeltaCents), p.currency), per: p.interval === "year" ? t("subscription.plans.intervalYear") : t("subscription.plans.intervalMonth"), tax: p.taxCents === null ? t("subscription.change.taxAside") : "" })}
               </p>
             </div>
           </div>
@@ -201,31 +205,31 @@ function PurchaseDialog({ module, current, onClose }: { module: PanelModule; cur
 
         {result?.status === "applied" && (
           <p className="text-sm text-emerald-800 dark:text-emerald-300">
-            {quantity ? "Listo: la ampliación ya está aplicada." : `Listo: ${module.name} ya está activo en tu plataforma.`}
+            {quantity ? t("subscription.modules.doneExpanded") : t("subscription.modules.doneActive", { name: module.name })}
           </p>
         )}
-        {result?.status === "processing" && <p className="text-sm text-foreground">Estamos confirmando el pago. El cambio se aplicará en cuanto se complete; te avisaremos.</p>}
+        {result?.status === "processing" && <p className="text-sm text-foreground">{t("subscription.modules.processing")}</p>}
         {result?.status === "payment_pending" && (
-          <p className="text-sm text-foreground">Falta completar el pago con tu banco. Hasta entonces no se activa nada ni se hace ningún cargo.</p>
+          <p className="text-sm text-foreground">{t("subscription.modules.paymentPending")}</p>
         )}
         {(result?.status === "failed" || result?.status === "expired") && (
-          <p className="text-sm text-red-700 dark:text-red-400">No se ha podido completar la compra. No se ha hecho ningún cargo.</p>
+          <p className="text-sm text-red-700 dark:text-red-400">{t("subscription.modules.purchaseFailed")}</p>
         )}
 
         <DialogFooter>
           {!result && (
             <>
               <Button type="button" variant="outline" onClick={onClose}>
-                Cancelar
+                {t("subscription.common.cancel")}
               </Button>
               <Button type="button" disabled={!p || !valid || buy.isPending} onClick={() => buy.mutate({ ...what, idempotencyKey: key })}>
-                {buy.isPending ? "Procesando…" : "Confirmar y pagar"}
+                {buy.isPending ? t("subscription.change.processing") : t("subscription.change.confirmPay")}
               </Button>
             </>
           )}
           {result?.status === "payment_pending" && result.paymentUrl && (
             <Button type="button" onClick={() => window.location.assign(result.paymentUrl!)}>
-              Completar el pago
+              {t("subscription.change.completePayment")}
               <ArrowUpRight className="w-4 h-4 ml-1.5" aria-hidden="true" />
             </Button>
           )}
@@ -246,13 +250,15 @@ interface ReductionPreview {
   effectiveAt: number | null;
   interval: "month" | "year";
 }
-const fmtDate = (ms: number) => new Date(ms).toLocaleDateString("es-ES", { day: "numeric", month: "long", year: "numeric" });
 
 /**
  * Vista previa y confirmación de una baja de módulo o de una reducción de ampliación (nuevo total menor que el
  * actual). Se aplica al final del periodo pagado, sin abonos; hasta entonces todo sigue disponible.
  */
 function ReductionDialog({ module, current, onClose }: { module: PanelModule; current: number | null; onClose: () => void }) {
+  const { t, format: f } = useI18n();
+  const money = (cents: number, currency: string) => f.currency(cents / 100, currency);
+  const fmtDate = (ms: number) => f.date(ms, { day: "numeric", month: "long", year: "numeric" });
   const utils = trpc.useUtils();
   const [key] = useState(newKey);
   const quantity = module.kind === "quantity" && module.metric !== null && current !== null;
@@ -266,7 +272,7 @@ function ReductionDialog({ module, current, onClose }: { module: PanelModule; cu
       const res = r as PurchaseResult;
       setResult(res);
       if (res.status === "applied" || res.status === "processing") {
-        toast.success(quantity ? "Reducción programada" : `Baja de ${module.name} programada`);
+        toast.success(quantity ? t("subscription.modules.removeToastQty") : t("subscription.modules.removeToast", { name: module.name }));
         void utils.subscription.catalog.invalidate();
         void utils.subscription.plan.invalidate();
       }
@@ -279,24 +285,24 @@ function ReductionDialog({ module, current, onClose }: { module: PanelModule; cu
   }, [requestPreview, module.key, quantity]);
   const p = preview.data as ReductionPreview | undefined;
   const valid = !quantity || (Number.isInteger(total) && total >= 0 && total <= current! - step && (current! - total) % step === 0);
-  const per = p?.interval === "year" ? "año" : "mes";
+  const per = p?.interval === "year" ? t("subscription.plans.intervalYear") : t("subscription.plans.intervalMonth");
 
   return (
     <Dialog open onOpenChange={(o) => !o && onClose()}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>{quantity ? `Reducir ${METRIC_LABEL[module.metric!] ?? module.name}` : `Dar de baja ${module.name}`}</DialogTitle>
-          <DialogDescription>El cambio se aplica al final del periodo ya pagado: hasta entonces todo sigue disponible y no hay abonos por la parte pagada. Tus datos se conservan.</DialogDescription>
+          <DialogTitle>{quantity ? t("subscription.modules.removeTitleQty", { what: metricLabel(t)[module.metric!] ?? module.name }) : t("subscription.modules.removeTitle", { name: module.name })}</DialogTitle>
+          <DialogDescription>{t("subscription.modules.removeDesc")}</DialogDescription>
         </DialogHeader>
 
         {quantity && !result && (
           <div className="space-y-2 text-sm">
             <p className="text-muted-foreground">
-              Ahora tienes {current} {METRIC_LABEL[module.metric!]} contratados. Indica el nuevo total (nunca por debajo de lo que ya usas).
+              {t("subscription.modules.nowHaveReduce", { current, what: metricLabel(t)[module.metric!] })}
             </p>
             <div className="flex items-end gap-2">
               <label className="flex-1 space-y-1">
-                <span className="text-foreground">Nuevo total</span>
+                <span className="text-foreground">{t("subscription.modules.newTotal")}</span>
                 <input
                   type="number"
                   inputMode="numeric"
@@ -312,14 +318,14 @@ function ReductionDialog({ module, current, onClose }: { module: PanelModule; cu
                 />
               </label>
               <Button type="button" variant="outline" disabled={!valid || preview.isPending} onClick={() => requestPreview(what)}>
-                Ver el cambio
+                {t("subscription.modules.seeChange")}
               </Button>
             </div>
-            {!valid && <p className="text-xs text-red-700 dark:text-red-400">El total debe ser menor que el actual{step > 1 ? ` y en múltiplos de ${step}` : ""}.</p>}
+            {!valid && <p className="text-xs text-red-700 dark:text-red-400">{t("subscription.modules.totalLower", { mult: step > 1 ? t("subscription.modules.multiples", { step }) : "" })}</p>}
           </div>
         )}
 
-        {preview.isPending && <PanelLoading label="Comprobando…" />}
+        {preview.isPending && <PanelLoading label={t("subscription.modules.checking")} />}
         {preview.isError && <p className="text-sm text-red-700 dark:text-red-400">{preview.error.message}</p>}
 
         {p && !result && (
@@ -328,17 +334,17 @@ function ReductionDialog({ module, current, onClose }: { module: PanelModule; cu
               {p.lines.map((l) => (
                 <li key={l.productKey} className="flex justify-between gap-3">
                   <span className="text-foreground">{l.name}</span>
-                  <span className="text-muted-foreground">{l.kind === "quantity" ? `${l.fromQuantity} → ${l.toQuantity}` : "Baja"}</span>
+                  <span className="text-muted-foreground">{l.kind === "quantity" ? `${l.fromQuantity} → ${l.toQuantity}` : t("subscription.modules.lineCancel")}</span>
                 </li>
               ))}
             </ul>
             <div className="rounded-xl bg-muted/50 p-3 space-y-1">
               <p>
-                Se aplica el <strong>{p.effectiveAt ? fmtDate(p.effectiveAt) : "final del periodo pagado"}</strong>. Hoy no se cobra ni se abona nada.
+                {t("subscription.modules.appliesOn")} <strong>{p.effectiveAt ? fmtDate(p.effectiveAt) : t("subscription.cancel.endFallback")}</strong>{t("subscription.modules.appliesTail")}
               </p>
               {p.recurringDeltaCents !== 0 && (
                 <p className="text-xs text-muted-foreground">
-                  Desde entonces pagarás {money(Math.abs(p.recurringDeltaCents), "EUR")} menos por {per} (impuestos aparte).
+                  {t("subscription.modules.afterThat", { amount: money(Math.abs(p.recurringDeltaCents), "EUR"), per })}
                 </p>
               )}
             </div>
@@ -347,19 +353,19 @@ function ReductionDialog({ module, current, onClose }: { module: PanelModule; cu
 
         {(result?.status === "applied" || result?.status === "processing") && (
           <p className="text-sm text-emerald-800 dark:text-emerald-300">
-            Listo: el cambio queda programado{p?.effectiveAt ? ` para el ${fmtDate(p.effectiveAt)}` : " para el final del periodo"}. Hasta entonces sigue todo disponible.
+            {t("subscription.modules.scheduled", { when: p?.effectiveAt ? t("subscription.modules.whenDate", { date: fmtDate(p.effectiveAt) }) : t("subscription.modules.whenEnd") })}
           </p>
         )}
-        {(result?.status === "failed" || result?.status === "expired") && <p className="text-sm text-red-700 dark:text-red-400">No se ha podido programar el cambio. No se ha modificado nada.</p>}
+        {(result?.status === "failed" || result?.status === "expired") && <p className="text-sm text-red-700 dark:text-red-400">{t("subscription.modules.scheduleFailed")}</p>}
 
         <DialogFooter>
           {!result && (
             <>
               <Button type="button" variant="outline" onClick={onClose}>
-                Volver
+                {t("subscription.change.back")}
               </Button>
               <Button type="button" disabled={!p || !valid || reduce.isPending} onClick={() => reduce.mutate({ ...what, idempotencyKey: key })}>
-                {reduce.isPending ? "Procesando…" : quantity ? "Confirmar la reducción" : "Confirmar la baja"}
+                {reduce.isPending ? t("subscription.change.processing") : quantity ? t("subscription.modules.confirmReduce") : t("subscription.modules.confirmRemove")}
               </Button>
             </>
           )}
@@ -375,6 +381,8 @@ function ReductionDialog({ module, current, onClose }: { module: PanelModule; cu
 }
 
 export default function ModulesPage() {
+  const { t } = useI18n();
+  const STATE_META = stateMeta(t);
   const catalog = trpc.subscription.catalog.useQuery(undefined, { retry: false, staleTime: 60_000 });
   const overview = trpc.subscription.overview.useQuery(undefined, { retry: false, staleTime: 120_000 });
   const [buying, setBuying] = useState<PanelModule | null>(null);
@@ -392,23 +400,23 @@ export default function ModulesPage() {
   const groups = useMemo(() => {
     const out = new Map<string, PanelModule[]>();
     for (const m of data?.modules ?? []) {
-      const g = m.kind === "quantity" ? "Ampliaciones" : (FAMILY_LABELS[m.family] ?? "Otros módulos");
+      const g = m.kind === "quantity" ? t("subscription.modules.family.addons") : (familyLabels(t)[m.family] ?? t("subscription.modules.family.other"));
       (out.get(g) ?? out.set(g, []).get(g)!).push(m);
     }
     return Array.from(out.entries());
-  }, [data]);
+  }, [data, t]);
 
   const ask = (m: PanelModule) =>
     upgradeUrl ? (
       <Button asChild variant="outline" size="sm">
         <a href={upgradeUrl} target="_blank" rel="noopener noreferrer">
-          {m.kind === "quantity" ? "Ampliar" : "Solicitar"}
+          {m.kind === "quantity" ? t("subscription.modules.expand") : t("subscription.modules.request")}
           <ArrowUpRight className="w-4 h-4 ml-1.5" aria-hidden="true" />
-          <span className="sr-only"> (se abre en otra pestaña)</span>
+          <span className="sr-only">{t("subscription.page.newTab")}</span>
         </a>
       </Button>
     ) : (
-      <span className="text-xs text-muted-foreground">Pídelo a tu contacto comercial</span>
+      <span className="text-xs text-muted-foreground">{t("subscription.modules.askCommercial")}</span>
     );
 
   return (
@@ -416,22 +424,22 @@ export default function ModulesPage() {
       <div className="max-w-5xl space-y-6">
         <div>
           <Link href="/admin/suscripcion" className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground">
-            <ArrowLeft className="w-4 h-4" aria-hidden="true" /> Suscripción
+            <ArrowLeft className="w-4 h-4" aria-hidden="true" /> {t("subscription.hero.title")}
           </Link>
-          <h1 className="text-2xl font-bold text-foreground mt-1">Módulos y ampliaciones</h1>
-          <p className="text-sm text-muted-foreground">Lo que ya tienes y lo que puedes añadir a tu plataforma.</p>
+          <h1 className="text-2xl font-bold text-foreground mt-1">{t("subscription.modules.pageTitle")}</h1>
+          <p className="text-sm text-muted-foreground">{t("subscription.modules.pageText")}</p>
         </div>
 
-        {catalog.isLoading && <PanelLoading label="Cargando los módulos…" />}
-        {catalog.isError && <PanelError error={catalog.error} onRetry={() => catalog.refetch()} title="No se han podido cargar los módulos" />}
+        {catalog.isLoading && <PanelLoading label={t("subscription.modules.loading")} />}
+        {catalog.isError && <PanelError error={catalog.error} onRetry={() => catalog.refetch()} title={t("subscription.modules.loadError")} />}
 
         {catalog.isSuccess && !data && (
           <section className="rounded-2xl border border-border bg-card p-6 space-y-2">
-            <p className="text-sm text-muted-foreground">El catálogo de módulos no está disponible en esta instalación. Para añadir funcionalidades, contacta con tu responsable de cuenta.</p>
+            <p className="text-sm text-muted-foreground">{t("subscription.modules.noCatalog")}</p>
           </section>
         )}
 
-        {data && data.modules.length === 0 && <p className="text-sm text-muted-foreground">Todavía no hay módulos publicados.</p>}
+        {data && data.modules.length === 0 && <p className="text-sm text-muted-foreground">{t("subscription.modules.none")}</p>}
 
         {groups.map(([group, mods]) => (
           <section key={group} className="space-y-3" aria-labelledby={`mod-${group}`}>
@@ -453,21 +461,21 @@ export default function ModulesPage() {
                       </Badge>
                     </div>
                     <div className="flex items-center gap-2">
-                      {m.state === "active" && <span className="text-xs text-muted-foreground">Ya forma parte de tu plataforma.</span>}
-                      {m.state === "read_only" && <span className="text-xs text-muted-foreground">Puedes consultarlo; para seguir usándolo, reactiva tu suscripción.</span>}
-                      {(m.state === "coming_soon" || m.state === "in_preparation") && <span className="text-xs text-muted-foreground">Te avisaremos cuando esté disponible.</span>}
-                      {m.state === "on_request" && <span className="text-xs text-muted-foreground">Lo implanta nuestro equipo contigo.</span>}
+                      {m.state === "active" && <span className="text-xs text-muted-foreground">{t("subscription.modules.partOf")}</span>}
+                      {m.state === "read_only" && <span className="text-xs text-muted-foreground">{t("subscription.modules.readOnlyHint")}</span>}
+                      {(m.state === "coming_soon" || m.state === "in_preparation") && <span className="text-xs text-muted-foreground">{t("subscription.modules.notifyHint")}</span>}
+                      {m.state === "on_request" && <span className="text-xs text-muted-foreground">{t("subscription.modules.teamHint")}</span>}
                       {buyable(m) && (
                         <Button type="button" size="sm" onClick={() => setBuying(m)}>
-                          <PackagePlus className="w-4 h-4 mr-1.5" aria-hidden="true" /> {m.kind === "quantity" ? "Ampliar" : "Añadir"}
+                          <PackagePlus className="w-4 h-4 mr-1.5" aria-hidden="true" /> {m.kind === "quantity" ? t("subscription.modules.expand") : t("subscription.modules.add")}
                         </Button>
                       )}
                       {reducible(m) && (
                         <Button type="button" size="sm" variant="ghost" onClick={() => setReducing(m)}>
-                          <PackageMinus className="w-4 h-4 mr-1.5" aria-hidden="true" /> {m.kind === "quantity" ? "Reducir" : "Dar de baja"}
+                          <PackageMinus className="w-4 h-4 mr-1.5" aria-hidden="true" /> {m.kind === "quantity" ? t("subscription.modules.reduce") : t("subscription.modules.cancelModule")}
                         </Button>
                       )}
-                      {m.kind === "quantity" && currentOf(m) !== null && <span className="text-xs text-muted-foreground">Tienes {currentOf(m)} contratados.</span>}
+                      {m.kind === "quantity" && currentOf(m) !== null && <span className="text-xs text-muted-foreground">{t("subscription.modules.youHave", { n: currentOf(m) })}</span>}
                       {((m.state === "available" && !buyable(m)) || m.state === "on_request") && ask(m)}
                     </div>
                   </li>
@@ -478,7 +486,7 @@ export default function ModulesPage() {
         ))}
 
         {data && !data.canPurchase && data.modules.some((m) => m.purchasable) && (
-          <p className="text-xs text-muted-foreground">Solo la administración de la empresa puede añadir módulos.</p>
+          <p className="text-xs text-muted-foreground">{t("subscription.modules.adminOnly")}</p>
         )}
       </div>
       {buying && <PurchaseDialog module={buying} current={currentOf(buying)} onClose={() => setBuying(null)} />}

@@ -20,6 +20,8 @@ import { PanelError, PanelLoading } from "@/components/admin/PanelStates";
 import { usePanelSubscription } from "@/hooks/usePanelSubscription";
 import { useAuth } from "@/_core/hooks/useAuth";
 import { cn } from "@/lib/utils";
+import type { Translate } from "@shared/i18n/core";
+import { useI18n } from "@/i18n/I18nProvider";
 import { WithdrawalSection } from "./WithdrawalSection";
 import { PlanContractSection } from "./PlanContractSection";
 import { ConversionSection, type ConversionRequest } from "./ConversionSection";
@@ -50,51 +52,52 @@ function useBillingPortal() {
 
 /** Facturas de la suscripción en el portal de Stripe (pestaña de facturación). */
 function BillingPortalSection() {
+  const { t } = useI18n();
   const portal = useBillingPortal();
   if (!portal.enabled) return null;
   return (
     <section className="space-y-3 rounded-2xl border border-border bg-card p-5 sm:p-6" aria-labelledby="sub-invoices">
       <h3 id="sub-invoices" className="font-semibold text-foreground">
-        Facturas de la suscripción
+        {t("subscription.page.invoicesTitle")}
       </h3>
-      <p className="text-sm text-muted-foreground">Consulta y descarga tus facturas y actualiza el método de pago en el portal seguro de nuestro proveedor de cobros. Desde allí no se cambia ni se cancela el plan.</p>
+      <p className="text-sm text-muted-foreground">{t("subscription.page.invoicesText")}</p>
       <Button type="button" variant="outline" disabled={portal.open.isPending} onClick={() => portal.open.mutate()}>
-        {portal.open.isPending ? "Abriendo…" : "Ver facturas y método de pago"}
+        {portal.open.isPending ? t("subscription.common.opening") : t("subscription.page.invoicesBtn")}
         <ArrowUpRight className="ml-1.5 h-4 w-4" aria-hidden="true" />
       </Button>
     </section>
   );
 }
 
-const GROUP_LABELS: Record<string, string> = {
-  crm: "Clientes y ventas",
-  ecommerce: "Catálogo y comercio",
-  cms: "Web",
-  billing: "Facturación",
-  admin: "Organización",
-  comms: "Comunicaciones",
-  automation: "Automatizaciones",
-  business: "Negocio",
-  enterprise: "Empresa",
-  finance: "Finanzas",
-  ai: "Inteligencia artificial",
-  marketing: "Marketing",
-  operations: "Operaciones",
-  net: "Módulos sectoriales",
-};
+const groupLabels = (t: Translate): Record<string, string> => ({
+  crm: t("subscription.page.groups.crm"),
+  ecommerce: t("subscription.page.groups.ecommerce"),
+  cms: t("subscription.page.groups.cms"),
+  billing: t("subscription.page.groups.billing"),
+  admin: t("subscription.page.groups.admin"),
+  comms: t("subscription.page.groups.comms"),
+  automation: t("subscription.page.groups.automation"),
+  business: t("subscription.page.groups.business"),
+  enterprise: t("subscription.page.groups.enterprise"),
+  finance: t("subscription.page.groups.finance"),
+  ai: t("subscription.page.groups.ai"),
+  marketing: t("subscription.page.groups.marketing"),
+  operations: t("subscription.page.groups.operations"),
+  net: t("subscription.page.groups.net"),
+});
 
-const CAP_STATUS: Record<string, { label: string; icon: typeof CheckCircle2; tone: string }> = {
-  active: { label: "Activa", icon: CheckCircle2, tone: "text-success" },
-  read_only: { label: "Solo lectura", icon: Eye, tone: "text-warning" },
-  expired: { label: "Caducada (solo lectura)", icon: Eye, tone: "text-warning" },
-  contracted: { label: "Contratada, pendiente de activar", icon: Clock, tone: "text-muted-foreground" },
-  pending_setup: { label: "Pendiente de configuración", icon: Clock, tone: "text-muted-foreground" },
-  suspended: { label: "Suspendida", icon: ShieldAlert, tone: "text-danger" },
-  cancelled: { label: "Cancelada", icon: ShieldAlert, tone: "text-muted-foreground" },
-};
+const capStatus = (t: Translate): Record<string, { label: string; icon: typeof CheckCircle2; tone: string }> => ({
+  active: { label: t("subscription.page.cap.active"), icon: CheckCircle2, tone: "text-success" },
+  read_only: { label: t("subscription.page.cap.readOnly"), icon: Eye, tone: "text-warning" },
+  expired: { label: t("subscription.page.cap.expired"), icon: Eye, tone: "text-warning" },
+  contracted: { label: t("subscription.page.cap.contracted"), icon: Clock, tone: "text-muted-foreground" },
+  pending_setup: { label: t("subscription.page.cap.pendingSetup"), icon: Clock, tone: "text-muted-foreground" },
+  suspended: { label: t("subscription.page.cap.suspended"), icon: ShieldAlert, tone: "text-danger" },
+  cancelled: { label: t("subscription.page.cap.cancelled"), icon: ShieldAlert, tone: "text-muted-foreground" },
+});
 
 /** Capacidad caducada sin consulta (p. ej. el plazo de solo lectura vencido: decide() tampoco deja leer). */
-const EXPIRED_NO_READ = { label: "Caducada", icon: Clock, tone: "text-muted-foreground" };
+const expiredNoRead = (t: Translate) => ({ label: t("subscription.page.cap.expiredNoRead"), icon: Clock, tone: "text-muted-foreground" });
 
 const reduceMotion = () => window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
 const scrollTo = (id: string) => requestAnimationFrame(() => document.getElementById(id)?.scrollIntoView({ behavior: reduceMotion() ? "auto" : "smooth", block: "start" }));
@@ -103,6 +106,9 @@ const TABS = ["features", "limits", "modules", "billing", "data"] as const;
 type DetailTab = (typeof TABS)[number];
 
 export default function SubscriptionPage() {
+  const { t } = useI18n();
+  const GROUP_LABELS = groupLabels(t);
+  const CAP_STATUS = capStatus(t);
   const sub = usePanelSubscription();
   const data = sub.data;
   const { user } = useAuth();
@@ -192,18 +198,18 @@ export default function SubscriptionPage() {
         <div className="mx-auto max-w-7xl space-y-10">
           <SubscriptionHero model={header} planKey={data?.plan?.key ?? null} onAction={onHeader} busy={portal.open.isPending ? "portal" : null} />
 
-          {sub.isLoading && <PanelLoading label="Cargando tu suscripción…" />}
-          {sub.isError && <PanelError error={sub.error} onRetry={() => sub.refetch()} title="No se ha podido cargar tu suscripción" />}
+          {sub.isLoading && <PanelLoading label={t("subscription.page.loading")} />}
+          {sub.isError && <PanelError error={sub.error} onRetry={() => sub.refetch()} title={t("subscription.page.loadError")} />}
 
           {data && data.licensing === "legacy" && (
             <section className="flex gap-3 rounded-2xl border border-border bg-card p-6" aria-labelledby="sub-legacy">
               <Info className="mt-0.5 h-5 w-5 shrink-0 text-muted-foreground" aria-hidden="true" />
               <div>
                 <h2 id="sub-legacy" className="font-semibold text-foreground">
-                  Instalación con licencia propia
+                  {t("subscription.page.legacyTitle")}
                 </h2>
                 <p className="mt-1 text-sm text-muted-foreground">
-                  Esta plataforma funciona con una instalación dedicada y no depende de un plan de suscripción por funcionalidades. Para cambios en lo contratado, contacta con tu responsable de cuenta.
+                  {t("subscription.page.legacyText")}
                 </p>
               </div>
             </section>
@@ -216,28 +222,28 @@ export default function SubscriptionPage() {
                 <div className="flex flex-wrap items-end justify-between gap-4">
                   <div className="min-w-0 max-w-3xl space-y-1">
                     <p className="cx-red-text inline-flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider">
-                      <Sparkles className="h-3.5 w-3.5" aria-hidden="true" /> Planes de Elephant Core
+                      <Sparkles className="h-3.5 w-3.5" aria-hidden="true" /> {t("subscription.page.plansEyebrow")}
                     </p>
                     <h2 id="sub-plans" className="text-balance text-2xl font-extrabold tracking-tight text-foreground sm:text-3xl">
-                      {trial ? "Elige el plan con el que quieres seguir" : "Compara los planes"}
+                      {trial ? t("subscription.page.plansTitleTrial") : t("subscription.page.plansTitle")}
                     </h2>
                     <p className="text-pretty text-sm text-muted-foreground sm:text-base">
-                      {trial ? "Compara y contrata el plan para tu negocio. Todo lo que has preparado durante la prueba se conserva." : "Compara tu plan con el resto. Tus datos, usuarios y configuración se conservan con cualquier plan."}
+                      {trial ? t("subscription.page.plansIntroTrial") : t("subscription.page.plansIntro")}
                     </p>
                   </div>
                   <PlanAssurances trial={trial} />
                 </div>
-                {catalog.isLoading && <PanelLoading label="Cargando los planes…" />}
-                {catalog.isError && <PanelError error={catalog.error} onRetry={() => catalog.refetch()} title="No se han podido cargar los planes" />}
+                {catalog.isLoading && <PanelLoading label={t("subscription.page.plansLoading")} />}
+                {catalog.isError && <PanelError error={catalog.error} onRetry={() => catalog.refetch()} title={t("subscription.page.plansLoadError")} />}
                 {catalog.isSuccess && cards.length === 0 && (
                   <p className="rounded-2xl border border-border bg-card p-5 text-sm text-muted-foreground">
-                    La comparativa de planes no está disponible ahora mismo.{" "}
+                    {t("subscription.page.comparisonUnavailable")}{" "}
                     {data.upgradeUrl ? (
                       <a href={data.upgradeUrl} target="_blank" rel="noopener noreferrer" className="underline underline-offset-4 hover:text-foreground">
-                        Consulta los planes en nuestra web
+                        {t("subscription.page.plansOnWeb")}
                       </a>
                     ) : (
-                      "Escribe a tu contacto comercial y te ayudamos a elegir."
+                      t("subscription.page.askCommercial")
                     )}
                   </p>
                 )}
@@ -245,7 +251,7 @@ export default function SubscriptionPage() {
                   <>
                     <PlanComparison cards={cards} currentKey={data.plan?.key ?? null} requests={planRequests.data} current={pc?.current ?? null} onConvert={onConvert} />
                     <PlanRequestList requests={planRequests.data ?? []} />
-                    <p className="text-xs text-muted-foreground">Precios publicados en el catálogo oficial de Elephant Source. El importe de cada alta o cambio se calcula en el servidor y se muestra antes de confirmar.</p>
+                    <p className="text-xs text-muted-foreground">{t("subscription.page.pricesNote")}</p>
                   </>
                 )}
               </section>
@@ -263,36 +269,36 @@ export default function SubscriptionPage() {
                   </span>
                   <div className="min-w-0">
                     <h2 id="sub-detail" className="text-2xl font-extrabold tracking-tight text-foreground sm:text-3xl">
-                      Detalle de tu suscripción
+                      {t("subscription.page.detailTitle")}
                     </h2>
-                    <p className="text-sm text-muted-foreground">Funcionalidades, límites y consumo, módulos, facturación y tus datos.</p>
+                    <p className="text-sm text-muted-foreground">{t("subscription.page.detailText")}</p>
                   </div>
                 </div>
                 <span id="facturacion" className="block scroll-mt-4" aria-hidden="true" />
                 <Tabs value={tab} onValueChange={(v) => setTab(v as DetailTab)} className="gap-4">
                   <TabsList className="flex h-auto w-full flex-wrap justify-start gap-1 rounded-2xl p-1">
                     <TabsTrigger value="features" className="flex-none rounded-xl px-3 py-1.5">
-                      Funcionalidades
+                      {t("subscription.page.tabs.features")}
                     </TabsTrigger>
                     <TabsTrigger value="limits" className="flex-none rounded-xl px-3 py-1.5">
-                      Límites y consumo
+                      {t("subscription.page.tabs.limits")}
                     </TabsTrigger>
                     <TabsTrigger value="modules" className="flex-none rounded-xl px-3 py-1.5">
-                      Módulos contratados
+                      {t("subscription.page.tabs.modules")}
                     </TabsTrigger>
                     <TabsTrigger value="billing" className="flex-none rounded-xl px-3 py-1.5">
-                      Facturación y contrato
+                      {t("subscription.page.tabs.billing")}
                     </TabsTrigger>
                     <TabsTrigger value="data" className="flex-none rounded-xl px-3 py-1.5">
-                      Tus datos
+                      {t("subscription.page.tabs.data")}
                     </TabsTrigger>
                   </TabsList>
 
                   <TabsContent value="features" className="rounded-2xl border border-border bg-card p-5 sm:p-6">
-                    <h3 className="mb-1 font-semibold text-foreground">Funcionalidades incluidas</h3>
-                    <p className="mb-4 text-sm text-muted-foreground">Lo que tu empresa tiene contratado o en prueba, y su estado.</p>
+                    <h3 className="mb-1 font-semibold text-foreground">{t("subscription.page.featuresTitle")}</h3>
+                    <p className="mb-4 text-sm text-muted-foreground">{t("subscription.page.featuresText")}</p>
                     {data.capabilities.length === 0 ? (
-                      <p className="text-sm text-muted-foreground">Todavía no hay funcionalidades asignadas a tu empresa.</p>
+                      <p className="text-sm text-muted-foreground">{t("subscription.page.featuresEmpty")}</p>
                     ) : (
                       <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-3">
                         {Object.entries(
@@ -306,7 +312,7 @@ export default function SubscriptionPage() {
                             <ul className="space-y-1.5">
                               {caps.map((cap) => {
                                 // «Caducada (solo lectura)» solo si hoy se puede consultar (subscription.overview.consultation)
-                                const meta = cap.status === "expired" && !expiredCanConsult(data.consultation) ? EXPIRED_NO_READ : (CAP_STATUS[cap.status] ?? CAP_STATUS.contracted);
+                                const meta = cap.status === "expired" && !expiredCanConsult(data.consultation) ? expiredNoRead(t) : (CAP_STATUS[cap.status] ?? CAP_STATUS.contracted);
                                 const Icon = meta.icon;
                                 return (
                                   <li key={cap.id} className="flex flex-wrap items-start gap-2 text-sm">
@@ -317,7 +323,7 @@ export default function SubscriptionPage() {
                                         {meta.label}
                                       </Badge>
                                     )}
-                                    {cap.status === "active" && <span className="sr-only">Activa</span>}
+                                    {cap.status === "active" && <span className="sr-only">{t("subscription.page.cap.active")}</span>}
                                   </li>
                                 );
                               })}
@@ -331,23 +337,23 @@ export default function SubscriptionPage() {
                   <TabsContent value="limits" className="space-y-4">
                     {data.limits.length > 0 && (
                       <div className="rounded-2xl border border-border bg-card p-5 sm:p-6">
-                        <h3 className="mb-1 font-semibold text-foreground">Límites del plan</h3>
+                        <h3 className="mb-1 font-semibold text-foreground">{t("subscription.page.limitsTitle")}</h3>
                         <p className="mb-4 text-sm text-muted-foreground">
-                          Incluidos en {data.plan?.name ?? "tu plan"}. Las ampliaciones contratadas (por ejemplo, usuarios adicionales) se suman a estos valores.
+                          {t("subscription.page.limitsIntro", { plan: data.plan?.name ?? t("subscription.common.yourPlan") })}
                         </p>
                         <div className="overflow-x-auto">
                           <table className="w-full text-sm">
-                            <caption className="sr-only">Límites incluidos en el plan y uso actual</caption>
+                            <caption className="sr-only">{t("subscription.page.limitsCaption")}</caption>
                             <thead>
                               <tr className="border-b border-border text-left text-muted-foreground">
                                 <th scope="col" className="py-2 pr-4 font-medium">
-                                  Recurso
+                                  {t("subscription.page.limitsResource")}
                                 </th>
                                 <th scope="col" className="py-2 pr-4 font-medium">
-                                  Incluido
+                                  {t("subscription.page.limitsIncluded")}
                                 </th>
                                 <th scope="col" className="py-2 font-medium">
-                                  En uso
+                                  {t("subscription.page.limitsUsed")}
                                 </th>
                               </tr>
                             </thead>
@@ -359,10 +365,10 @@ export default function SubscriptionPage() {
                                     <th scope="row" className="py-2.5 pr-4 text-left font-medium text-foreground">
                                       {l.label}
                                     </th>
-                                    <td className="py-2.5 pr-4 text-foreground">{l.included === null ? "Según contrato" : l.included}</td>
+                                    <td className="py-2.5 pr-4 text-foreground">{l.included === null ? t("subscription.page.limitsByContract") : l.included}</td>
                                     <td className={cn("py-2.5", over ? "font-medium text-warning" : "text-foreground")}>
-                                      {l.used === null ? <span className="text-muted-foreground">No disponible aquí</span> : l.used}
-                                      {over && " · por encima de lo incluido"}
+                                      {l.used === null ? <span className="text-muted-foreground">{t("subscription.page.limitsUnavailable")}</span> : l.used}
+                                      {over && t("subscription.page.limitsOver")}
                                     </td>
                                   </tr>
                                 );
@@ -373,16 +379,16 @@ export default function SubscriptionPage() {
                       </div>
                     )}
                     <div className="space-y-4">
-                      <h3 className="font-semibold text-foreground">Consumo actual</h3>
+                      <h3 className="font-semibold text-foreground">{t("subscription.page.usageTitle")}</h3>
                       <UsageSection />
                       <Button asChild variant="outline">
-                        <Link href="/admin/suscripcion/consumo">Ver consumo</Link>
+                        <Link href="/admin/suscripcion/consumo">{t("subscription.page.usageBtn")}</Link>
                       </Button>
                     </div>
                   </TabsContent>
 
                   <TabsContent value="modules" className="space-y-3 rounded-2xl border border-border bg-card p-5 sm:p-6">
-                    <h3 className="font-semibold text-foreground">Módulos adicionales contratados</h3>
+                    <h3 className="font-semibold text-foreground">{t("subscription.page.modulesTitle")}</h3>
                     <OwnedModules />
                   </TabsContent>
 
@@ -397,21 +403,21 @@ export default function SubscriptionPage() {
                       <p className="rounded-2xl border border-border bg-card p-5 text-sm text-muted-foreground">
                         {isAdmin
                           ? trial
-                            ? "Estás en la prueba gratuita: no hay ningún cobro ni contrato todavía."
-                            : "Tu plan lo gestiona directamente el equipo de Elephant Source. Para cambios, escribe a tu contacto comercial."
-                          : "El contrato y las facturas de la suscripción solo los ve la administración de tu empresa."}
+                            ? t("subscription.page.billingTrial")
+                            : t("subscription.page.billingManaged")
+                          : t("subscription.page.billingNotAdmin")}
                       </p>
                     )}
                   </TabsContent>
 
                   <TabsContent value="data" className="space-y-3 rounded-2xl border border-border bg-card p-5 sm:p-6">
                     {/* Exportación: también en solo lectura y suspendida */}
-                    <h3 className="font-semibold text-foreground">Tus datos</h3>
+                    <h3 className="font-semibold text-foreground">{t("subscription.page.dataTitle")}</h3>
                     <p className="text-sm text-muted-foreground">
-                      Descarga una copia de los datos y ficheros de tu empresa (ZIP con CSV y JSON). Disponible durante la prueba, con la suscripción activa y también en solo lectura.
+                      {t("subscription.page.dataText")}
                     </p>
                     <Button asChild variant="outline">
-                      <Link href="/admin/suscripcion/exportar">Exportar mis datos</Link>
+                      <Link href="/admin/suscripcion/exportar">{t("subscription.page.dataBtn")}</Link>
                     </Button>
                   </TabsContent>
                 </Tabs>
@@ -420,8 +426,8 @@ export default function SubscriptionPage() {
               {data.upgradeUrl && (
                 <p className="text-sm text-muted-foreground">
                   <a href={data.upgradeUrl} target="_blank" rel="noopener noreferrer" className="underline underline-offset-4 hover:text-foreground">
-                    Ver todos los planes en nuestra web
-                    <span className="sr-only"> (se abre en otra pestaña)</span>
+                    {t("subscription.page.allPlansOnWeb")}
+                    <span className="sr-only">{t("subscription.page.newTab")}</span>
                   </a>
                 </p>
               )}
