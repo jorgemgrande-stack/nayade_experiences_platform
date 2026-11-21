@@ -180,6 +180,8 @@ export class WebRequestService {
     const same = leads.filter((l) => l.email?.toLowerCase() === email);
     const open = same.find((l) => l.status !== "converted" && l.status !== "disqualified");
     if (open) {
+      // Una solicitud nueva nunca puede quedar oculta: si el lead estaba archivado, se recupera
+      if (open.archivedAt) await this.d.crm.restoreLead(open.id, WEB_AUTHOR, "Lead recuperado automáticamente por una nueva solicitud web");
       const fill: Partial<Lead> = {};
       const filled: string[] = [];
       if (!open.phone && input.phone) {
