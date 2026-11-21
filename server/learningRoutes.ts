@@ -26,6 +26,11 @@ import { fileService, objectStorageEnabled, StorageUnavailableError } from "./_c
 import { FileValidationError } from "./_core/files/service";
 import { safeDisplayName } from "./_core/files/contentType";
 import { CATEGORIES } from "./_core/files/categories";
+import { learningStorageLimit } from "./_core/files/limits";
+import { checkUpload } from "../shared/learningMaterials";
+import { previewFile, stageFile } from "./learningMaterials";
+import { getDb } from "./db";
+import { sql } from "drizzle-orm";
 import { LearningError, attachResourceFile, authorizePreviewResource, authorizeResource, isMissingLearningSchema, logPreviewAccess, logResourceOpened } from "./learningDb";
 
 const router = Router();
@@ -186,6 +191,78 @@ router.post("/api/learning/upload/:id", (req: Request, res: Response, next) => {
       });
     })
     .catch(() => deny(res, 401, "No autenticado."));
+});
+
+// ── Materiales (lote 2): subir un fichero NUEVO sin tocar el vigente ─────────────────────────────────────────────────
+
+/** Tipo del recurso, para validar antes de almacenar. */
+async function resourceKind(id: number): Promise<string | null> {
+  const d = await getDb();
+  if (!d) return null;
+  const [r] = (await d.execute(sql`SELECT kind FROM learning_resources WHERE id = ${id}`)) as unknown as [Array<{ kind: string }>];
+  return r?.[0]?.kind ?? null;
+}
+
+/**
+ * POST /api/learning/materials/:id/stage — administrador. Guarda el fichero como «pendiente de publicar» (no cambia lo que ven
+ * los alumnos). Valida tipo, tamaño y cuota ANTES de almacenar y responde con un código estable para que la pantalla explique el fallo.
+ */
+router.post("/api/learning/materials/:id/stage", (req: Request, res: Response, next) => {
+  if (!objectStorageEnabled()) return next();
+  privateHeaders(res);
+  const idText = String(req.params.id ?? "");
+  if (!ID_RE.test(idText) || !tenantReady()) return deny(res, 404, "Recurso no encontrado.");
+  resolveSessionUser(req)
+    .then((user) => {
+      if (!user || user.isActive === false) return deny(res, 401, "No autenticado.");
+      if (String(user.role) !== "admin") return deny(res, 403, "Solo la administración puede subir materiales.");
+      upload.single("file")(req, res, async (err?: unknown) => {
+        const file = (req as Request & { file?: Express.Multer.File }).file;
+        const cleanup = async () => { if (file?.destination) await rm(file.destination, { recursive: true, force: true }).catch(() => undefined); };
+        try {
+          if (err) return deny(res, err instanceof multer.MulterError && err.code === "LIMIT_FILE_SIZE" ? 413 : 400, err instanceof multer.MulterError && err.code === "LIMIT_FILE_SIZE" ? "El fichero supera el tamaño máximo permitido." : "Archivo no válido.");
+          if (!file) return deny(res, 400, "No se recibió ningún archivo.");
+          const kind = await resourceKind(Number(idText));
+          if (!kind) return deny(res, 404, "Recurso no encontrado.");
+          const sizeBytes = (await stat(file.path)).size;
+          const [used, limit] = await Promise.all([fileService().meta.usedBytes?.("learning") ?? Promise.resolve(0), learningStorageLimit()]);
+          const check = checkUpload({ kind, mimeType: file.mimetype, sizeBytes, maxBytes: MAX, usedBytes: Number(used ?? 0), limitGb: limit?.limitGb ?? null });
+          if (!check.ok) return res.status(check.problem === "TOO_LARGE" ? 413 : check.problem === "WRONG_TYPE" || check.problem === "EMPTY" ? 400 : 409).json({ ok: false, problem: check.problem, error: check.message });
+          const sha256 = await sha256File(file.path);
+          const stored = await fileService().putFile({ category: "learning-content", filePath: file.path, sizeBytes, sha256, detectType: true, declaredType: file.mimetype, originalName: file.originalname, uploadedBy: Number(user.id) });
+          const staged = await stageFile(Number(idText), { objectId: stored.objectId, sha256, sizeBytes, mimeType: stored.contentType, originalName: file.originalname ? safeDisplayName(file.originalname) : null }, Number(user.id));
+          res.json({ ok: true, fileId: staged.fileId, contentType: stored.contentType, sizeBytes, sha256, duplicateOf: staged.duplicateOf });
+        } catch (e) {
+          if (e instanceof FileValidationError) return res.status(400).json({ ok: false, problem: "WRONG_TYPE", error: e.message });
+          if (e instanceof LearningError) return deny(res, e.code === "NOT_FOUND" ? 404 : 400, e.message);
+          if (e instanceof StorageUnavailableError) return deny(res, 503, "El almacenamiento no está disponible. Inténtalo más tarde.");
+          if (isMissingLearningSchema(e)) return deny(res, 404, "La formación digital no está activada.");
+          console.error(JSON.stringify({ ctx: "Learning", event: "stage_error", error: e instanceof Error ? e.name : "error" }));
+          if (!res.headersSent) deny(res, 500, "No se pudo subir el fichero.");
+        } finally {
+          await cleanup();
+        }
+      });
+    })
+    .catch(() => deny(res, 401, "No autenticado."));
+});
+
+/** GET /api/learning/preview/file/:fileId — administrador: reproduce un fichero pendiente o sustituido antes de publicarlo/recuperarlo. Auditado. */
+router.get("/api/learning/preview/file/:fileId", async (req: Request, res: Response, next) => {
+  if (!objectStorageEnabled()) return next();
+  privateHeaders(res);
+  const idText = String(req.params.fileId ?? "");
+  if (!ID_RE.test(idText) || !tenantReady()) return deny(res, 404, "Fichero no encontrado.");
+  try {
+    const user = await resolveSessionUser(req);
+    if (!user || user.isActive === false) return deny(res, 401, "No autenticado.");
+    if (String(user.role) !== "admin") return deny(res, 403, "Solo la administración puede usar la vista previa.");
+    const f = await previewFile(Number(idText));
+    if (!f) return deny(res, 404, "Fichero no encontrado.");
+    await sendResource(req, res, { resourceId: Number(idText), objectId: f.objectId, kind: f.kind, originalName: f.originalName }, (via) => logPreviewAccess(Number(user.id), "resource", { fileId: Number(idText), kind: f.kind, via }));
+  } catch (err) {
+    failure(res, err);
+  }
 });
 
 export default router;

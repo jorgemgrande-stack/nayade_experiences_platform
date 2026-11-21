@@ -23,6 +23,9 @@ import { ensureAccount } from "../communitiesDb";
 import { InventoryError, planInventory } from "../../shared/learningImport";
 import { applyImportPlan, courseCoverage } from "../learningImport";
 import { sql } from "drizzle-orm";
+import { describeRule } from "../../shared/learningRules";
+import { discardStaged, listMaterials, publishStaged, restoreFile } from "../learningMaterials";
+import { discardDraft, getEditorState, publishDraft, restoreVersion, saveDraft } from "../learningEditor";
 
 const id = z.number().int().positive();
 const reason = z.string().min(1).max(600);
@@ -101,7 +104,21 @@ const my = router({
 const admin = router({
   enrollments: adminProcedure.input(z.object({ userId: id.optional(), courseId: id.optional() }).optional()).query(({ input }) => guard(() => listEnrollments(input ?? {}))),
   events: adminProcedure.input(z.object({ enrollmentId: id })).query(({ input }) => guard(() => enrollmentEvents(input.enrollmentId))),
-  rules: adminProcedure.query(() => guard(() => listRules())),
+  /** Reglas con nombres comerciales (producto, modalidad, módulos) además de los ids: la pantalla muestra nombres, no números. */
+  rules: adminProcedure.query(() => guard(async () => {
+    const rules = await listRules();
+    const exp = await rowsOf(sql`SELECT id, title FROM experiences`).catch(() => []);
+    const vars = await rowsOf(sql`SELECT id, name FROM experience_variants`).catch(() => []);
+    const mods = await rowsOf(sql`SELECT m.id, m.title, c.title AS course_title FROM learning_modules m JOIN learning_courses c ON c.id = m.course_id`).catch(() => []);
+    return rules.map((r) => describeRule(r, { experiences: exp, variants: vars, modules: mods }));
+  })),
+  /** Materiales (lote 2): biblioteca de recursos, ficheros pendientes de publicar, sustitución segura y recuperación. */
+  materials: router({
+    list: adminProcedure.query(() => guard(() => listMaterials())),
+    publish: adminProcedure.input(z.object({ resourceId: id, fileId: id })).mutation(({ ctx, input }) => guard(() => publishStaged(input.resourceId, input.fileId, ctx.user.id))),
+    discard: adminProcedure.input(z.object({ resourceId: id })).mutation(({ ctx, input }) => guard(() => discardStaged(input.resourceId, ctx.user.id))),
+    restore: adminProcedure.input(z.object({ resourceId: id, fileId: id })).mutation(({ ctx, input }) => guard(() => restoreFile(input.resourceId, input.fileId, ctx.user.id))),
+  }),
   saveRule: adminProcedure
     .input(z.object({ id: id.optional(), experienceId: id, variantId: id.nullable(), courseId: id, moduleIds: z.array(id).min(1).max(50), durationDays: z.number().int().min(1).max(3650).nullable(), startMode: z.enum(START_MODES), fixedStart: z.number().int().nullable(), active: z.boolean() }))
     .mutation(({ input }) => guard(async () => ({ id: await saveRule({ ...input }, input.id) }))),
@@ -234,6 +251,33 @@ const admin = router({
   addModules: adminProcedure.input(z.object({ enrollmentId: id, moduleIds: z.array(id).min(1).max(50), reason, paymentRef: z.string().max(190).nullable().optional() }))
     .mutation(({ ctx, input }) => guard(() => addModules(input.enrollmentId, input.moduleIds, input.reason, ctx.user.id, { paymentRef: input.paymentRef ?? null }))),
   get: adminProcedure.input(z.object({ enrollmentId: id })).query(({ input }) => guard(async () => (await getEnrollment(input.enrollmentId)) ?? (() => { throw new LearningError("NOT_FOUND", "La matrícula no existe."); })())),
+  /**
+   * Editor de formación (lote 1): borrador, publicación y versiones de la estructura y los textos. Editar NO cambia lo que ven los
+   * alumnos; solo «publish» lo hace, conservando los ids (progreso, matrículas y accesos intactos). Ver server/learningEditor.ts.
+   */
+  editor: router({
+    state: adminProcedure.input(z.object({ courseId: id })).query(({ input }) => guard(() => getEditorState(input.courseId))),
+    saveDraft: adminProcedure
+      .input(z.object({
+        courseId: id,
+        expectedUpdatedAt: z.number().int().nullable().optional(),
+        tree: z.object({
+          course: z.object({ title: z.string().max(2000), description: z.string().max(20000).nullable() }),
+          modules: z.array(z.object({
+            id, title: z.string().max(2000),
+            lessons: z.array(z.object({
+              id, title: z.string().max(2000),
+              blocks: z.array(z.object({ id, title: z.string().max(2000), body: z.string().max(400000).nullable(), attribution: z.string().max(2000).nullable() })).max(500),
+            })).max(500),
+          })).max(200),
+        }),
+      }))
+      .mutation(({ ctx, input }) => guard(() => saveDraft(input.courseId, input.tree, ctx.user.id, input.expectedUpdatedAt ?? null))),
+    discardDraft: adminProcedure.input(z.object({ courseId: id })).mutation(({ input }) => guard(() => discardDraft(input.courseId))),
+    publish: adminProcedure.input(z.object({ courseId: id, note: z.string().max(300).nullable().optional() })).mutation(({ ctx, input }) => guard(() => publishDraft(input.courseId, ctx.user.id, input.note ?? null))),
+    restoreVersion: adminProcedure.input(z.object({ courseId: id, versionId: id, replace: z.boolean().default(false) })).mutation(({ ctx, input }) => guard(() => restoreVersion(input.courseId, input.versionId, ctx.user.id, input.replace))),
+  }),
+
 });
 
 export const learningRouter = router({ my, admin });

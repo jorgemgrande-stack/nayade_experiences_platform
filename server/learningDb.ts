@@ -592,6 +592,11 @@ export async function logPreviewAccess(actorUserId: number, what: "course" | "le
   await event(d, PREVIEW_AUDIT_ENROLLMENT, "admin_preview_" + what, actorUserId, detail, now);
 }
 
+/** Auditoría de acciones de administración sobre materiales (registro de la «matrícula 0»; no es una matrícula). */
+export async function auditAdmin(exec: Exec, actorUserId: number, type: string, detail: Record<string, unknown>, now = Date.now()) {
+  await event(exec, PREVIEW_AUDIT_ENROLLMENT, type, actorUserId, detail, now);
+}
+
 export async function listPreviewAccess(limit = 100): Promise<Array<{ id: number; type: string; actorUserId: number | null; detail: unknown; createdAt: number }>> {
   const d = await db();
   const list = await rows(d, sql`SELECT * FROM learning_access_events WHERE enrollment_id = ${PREVIEW_AUDIT_ENROLLMENT} ORDER BY id DESC LIMIT ${Math.min(Math.max(limit, 1), 500)}`);
