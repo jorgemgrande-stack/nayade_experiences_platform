@@ -159,12 +159,33 @@ async function foreignKeys(q: Q): Promise<Array<{ child: string; parent: string;
 }
 const ids = async (q: Q, sql: string, p: unknown[]) => (await rows(q, sql, p)).map((r) => Number(r.id));
 
+/**
+ * Tabla a la que apunta cada clave genérica. Una columna con el MISMO NOMBRE pero con clave ajena hacia otra tabla no es esa clave:
+ * `implementation_events.order_id` apunta a `implementation_orders`, no a `commercial_orders`; filtrarla con los ids de los pedidos
+ * comerciales borraría filas de otras empresas y dejaría las propias (fallo de clave ajena al aplicar). Esas tablas entran por su clave ajena.
+ */
+const KEY_PARENT: Record<(typeof NUMERIC_KEYS)[number], string> = {
+  company_id: "crm_companies",
+  order_id: "commercial_orders",
+  subscription_id: "subscriptions",
+  contract_id: "crm_contracts",
+  contact_id: "crm_contacts",
+  trial_id: "trial_requests",
+  lead_id: "crm_leads",
+};
+
 /** Filtro de una tabla por las claves de las empresas (columnas enteras para ids; texto para tenant_id). */
-function filterFor(cols: Map<string, string>, k: Keys, opportunityIds: number[] = []): { where: string; params: unknown[] } | null {
+function filterFor(table: string, cols: Map<string, string>, k: Keys, opportunityIds: number[], fkParent: Map<string, string>): { where: string; params: unknown[] } | null {
   const parts: string[] = [];
   const params: unknown[] = [];
   const isInt = (c: string) => /int/i.test(cols.get(c) ?? "");
-  for (const key of NUMERIC_KEYS) if (cols.has(key) && isInt(key) && k[key].length) (parts.push(`\`${key}\` IN (?)`), params.push(k[key]));
+  for (const key of NUMERIC_KEYS) {
+    if (!cols.has(key) || !isInt(key) || !k[key].length) continue;
+    const parent = fkParent.get(`${table}.${key}`);
+    if (parent && parent !== KEY_PARENT[key]) continue; // clave ajena hacia otra tabla: lo resuelve el paso por clave ajena
+    parts.push(`\`${key}\` IN (?)`);
+    params.push(k[key]);
+  }
   if (cols.has("tenant_id") && !isInt("tenant_id") && k.tenant_id.length) (parts.push("`tenant_id` IN (?)"), params.push(k.tenant_id));
   // Historial genérico del CRM (entity_type + entity_id)
   if (cols.has("entity_type") && cols.has("entity_id")) {
@@ -250,10 +271,11 @@ export async function planPurge(d: { crm: Q; registry: Q; tenantDbName?: (tenant
 
   // 3. Pasos del CRM
   const crmFks = await foreignKeys(d.crm);
+  const fkParent = new Map(crmFks.map((f) => [`${f.child}.${f.column}`, f.parent] as const));
   const crmSteps: PurgeStep[] = [];
   const acceptanceEvidenceRows: PurgeAcceptanceEvidence[] = [];
   for (const [table, cols] of Array.from(crmCols.entries())) {
-    const f = filterFor(cols, k, opportunityIds);
+    const f = filterFor(table, cols, k, opportunityIds, fkParent);
     const root = rootIds[table]?.length ? { where: "`id` IN (?)", params: [rootIds[table]] } : null;
     const where = [f?.where, root?.where].filter(Boolean).join(" OR ");
     if (!where) continue;
@@ -315,7 +337,18 @@ export async function planPurge(d: { crm: Q; registry: Q; tenantDbName?: (tenant
   for (const s of crmSteps) {
     for (const f of crmFks.filter((x) => x.parent === s.table && x.child !== s.table)) {
       const [{ n }] = await rows(d.crm, `SELECT COUNT(*) n FROM \`${f.child}\` WHERE \`${f.column}\` IN (SELECT \`${f.parentColumn}\` FROM \`${s.table}\` WHERE ${s.where})`, s.params);
-      if (Number(n) && !crmSteps.some((x) => x.table === f.child)) problems.push(`${f.child}.${f.column} referencia ${s.table} y no está en el plan: no se purga nada`);
+      const childStep = crmSteps.find((x) => x.table === f.child);
+      if (Number(n) && !childStep) problems.push(`${f.child}.${f.column} referencia ${s.table} y no está en el plan: no se purga nada`);
+      // El hijo SÍ está en el plan, pero su filtro no alcanza todas las filas que apuntan a lo que se borra (p. ej. una columna con el
+      // mismo nombre que una clave genérica y otra tabla padre): al aplicar fallaría la clave ajena. Se detecta aquí, antes de borrar nada
+      else if (Number(n) && childStep) {
+        const [{ n: uncovered }] = await rows(
+          d.crm,
+          `SELECT COUNT(*) n FROM \`${f.child}\` WHERE \`${f.column}\` IN (SELECT \`${f.parentColumn}\` FROM \`${s.table}\` WHERE ${s.where}) AND NOT COALESCE((${childStep.where}), 0)`,
+          [...s.params, ...childStep.params],
+        );
+        if (Number(uncovered)) problems.push(`${f.child}.${f.column}: ${uncovered} fila(s) apuntan a ${s.table} y el plan no las borra (fallaría la clave ajena): no se purga nada`);
+      }
     }
   }
 
