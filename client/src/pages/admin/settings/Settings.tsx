@@ -15,14 +15,15 @@ import {
 } from "lucide-react";
 import CompanyData from "./CompanyData";
 import SearchIndexingToggle from "./SearchIndexingToggle";
+import { useI18n } from "@/i18n/I18nProvider";
 
 // ─── Sidebar tab definitions ──────────────────────────────────────────────────
 const TABS = [
-  { id: "business",      label: "Negocio",         icon: Globe },
-  { id: "schedule",      label: "Horarios",         icon: Clock },
-  { id: "payments",      label: "Pagos",            icon: CreditCard },
-  { id: "legalCompany",  label: "Empresa legal",    icon: Building2 },
-  { id: "notifications", label: "Notificaciones",   icon: Mail },
+  { id: "business",      label: "settingsGeneral.tabs.business",      icon: Globe },
+  { id: "schedule",      label: "settingsGeneral.tabs.schedule",      icon: Clock },
+  { id: "payments",      label: "settingsGeneral.tabs.payments",      icon: CreditCard },
+  { id: "legalCompany",  label: "settingsGeneral.tabs.legalCompany",  icon: Building2 },
+  { id: "notifications", label: "settingsGeneral.tabs.notifications", icon: Mail },
 ] as const;
 
 type Tab = typeof TABS[number]["id"];
@@ -55,11 +56,12 @@ function Field({ label, hint, error, children, col2 = false }: {
 
 // ─── Auto-save indicator ──────────────────────────────────────────────────────
 function AutoSaveStatus({ saving }: { saving: boolean }) {
+  const { t } = useI18n();
   return (
     <div className="flex items-center gap-1.5 pt-4 border-t border-border/20 text-xs text-muted-foreground">
       {saving
-        ? <><Loader2 className="w-3 h-3 animate-spin" /> Guardando…</>
-        : <><Check className="w-3 h-3 text-success" /> Los cambios se guardan automáticamente</>
+        ? <><Loader2 className="w-3 h-3 animate-spin" /> {t("settingsGeneral.autoSave.saving")}</>
+        : <><Check className="w-3 h-3 text-success" /> {t("settingsGeneral.autoSave.saved")}</>
       }
     </div>
   );
@@ -67,6 +69,7 @@ function AutoSaveStatus({ saving }: { saving: boolean }) {
 
 // ─── Página principal ─────────────────────────────────────────────────────────
 export default function Settings() {
+  const { t } = useI18n();
   // Empresas con licencias por capacidad: una sola pantalla «Datos de la empresa» con los mismos
   // datos que el asistente «Primeros pasos» (ver CompanyData). En single, la pantalla de siempre.
   const sub = usePanelSubscription();
@@ -77,8 +80,8 @@ export default function Settings() {
   // caso (multiempresa o estado desconocido) lo no guardado empieza vacío.
   const blankDefaults = sub.data?.mode !== "single";
   const updateMutation = trpc.cms.updateSiteSettings.useMutation({
-    onSuccess: () => toast.success("Configuración guardada correctamente"),
-    onError: (e) => toast.error("Error al guardar: " + e.message),
+    onSuccess: () => toast.success(t("settingsGeneral.saved")),
+    onError: (e) => toast.error(t("settingsGeneral.saveError", { message: e.message })),
   });
 
   const [activeTab, setActiveTab] = useState<Tab>("business");
@@ -211,18 +214,18 @@ export default function Settings() {
   useEffect(() => { if (notifValid) scheduleAutoSave("notifications", { notifEmailBooking: notifications.notifEmailBooking, notifEmailRestaurant: notifications.notifEmailRestaurant }); }, [notifications]);
 
   // Pestañas visibles: a una empresa nueva no se le muestran horarios de temporada ni el depósito de restaurante
-  const visibleTabs = TABS.filter((t) => !(isNewCompany && t.id === "schedule"));
+  const visibleTabs = TABS.filter((tab) => !(isNewCompany && tab.id === "schedule"));
   const blockedNotice = (valid: boolean) =>
-    !valid && <p role="status" className="text-xs text-destructive pt-2">Corrige los campos marcados para que se guarden los cambios.</p>;
+    !valid && <p role="status" className="text-xs text-destructive pt-2">{t("settingsGeneral.blocked")}</p>;
 
   if (sub.mode === "tasks") {
     return (
-      <AdminLayout title="Datos de la empresa">
+      <AdminLayout title={t("settingsGeneral.companyTitle")}>
         <div className="max-w-3xl mx-auto px-4 py-8">
           <div className="mb-6">
-            <h1 className="text-2xl font-heading font-bold text-foreground">Datos de la empresa</h1>
+            <h1 className="text-2xl font-heading font-bold text-foreground">{t("settingsGeneral.companyTitle")}</h1>
             <p className="text-sm text-muted-foreground font-display mt-1">
-              Nombre, datos fiscales y contacto de tu empresa.
+              {t("settingsGeneral.companyIntro")}
             </p>
           </div>
           <CompanyData />
@@ -233,9 +236,9 @@ export default function Settings() {
 
   if (isError) {
     return (
-      <AdminLayout title="Datos del negocio">
+      <AdminLayout title={t("settingsGeneral.businessTitle")}>
         <div className="max-w-5xl mx-auto px-4 py-8">
-          <PanelError error={loadError} onRetry={() => refetch()} title="No se han podido cargar los datos del negocio" />
+          <PanelError error={loadError} onRetry={() => refetch()} title={t("settingsGeneral.businessLoadError")} />
         </div>
       </AdminLayout>
     );
@@ -243,7 +246,7 @@ export default function Settings() {
 
   if (isLoading || sub.mode === "loading") {
     return (
-      <AdminLayout title="Datos del negocio">
+      <AdminLayout title={t("settingsGeneral.businessTitle")}>
         <div className="flex items-center justify-center h-64">
           <Loader2 className="w-6 h-6 animate-spin text-accent" />
         </div>
@@ -252,14 +255,14 @@ export default function Settings() {
   }
 
   return (
-    <AdminLayout title="Datos del negocio">
+    <AdminLayout title={t("settingsGeneral.businessTitle")}>
       <div className="max-w-5xl mx-auto px-4 py-8">
 
         {/* Header */}
         <div className="mb-6">
-          <h1 className="text-2xl font-heading font-bold text-foreground">Datos del negocio</h1>
+          <h1 className="text-2xl font-heading font-bold text-foreground">{t("settingsGeneral.businessTitle")}</h1>
           <p className="text-sm text-muted-foreground font-display mt-1">
-            Información del establecimiento, horarios, condiciones comerciales, empresa facturadora y notificaciones.
+            {t("settingsGeneral.businessIntro")}
           </p>
         </div>
 
@@ -267,7 +270,7 @@ export default function Settings() {
         <div className="mb-5 flex items-start gap-3 bg-muted border border-border rounded-xl p-4">
           <Info className="w-4 h-4 text-muted-foreground mt-0.5 shrink-0" />
           <p className="text-sm font-display text-foreground/70">
-            Las credenciales sensibles (Redsys, SMTP, JWT, GoHighLevel) se gestionan en <strong>Configuración → Ajustes del sistema</strong> o en las variables de entorno del proyecto.
+            {t("settingsGeneral.banner.a")}<strong>{t("settingsGeneral.banner.b")}</strong>{t("settingsGeneral.banner.c")}
           </p>
         </div>
 
@@ -275,7 +278,7 @@ export default function Settings() {
         <div className="flex flex-col md:flex-row gap-0 bg-card border border-border/50 rounded-2xl overflow-hidden">
 
           {/* Sidebar */}
-          <nav aria-label="Secciones de datos del negocio" className="md:w-52 shrink-0 border-b md:border-b-0 md:border-r border-border/50 py-2 md:py-3 flex md:block overflow-x-auto">
+          <nav aria-label={t("settingsGeneral.tabs.nav")} className="md:w-52 shrink-0 border-b md:border-b-0 md:border-r border-border/50 py-2 md:py-3 flex md:block overflow-x-auto">
             {visibleTabs.map(({ id, label, icon: Icon }) => (
               <button
                 key={id}
@@ -289,7 +292,7 @@ export default function Settings() {
                 }`}
               >
                 <Icon className="w-4 h-4 shrink-0" aria-hidden="true" />
-                <span className="text-sm flex-1 overflow-hidden text-ellipsis whitespace-nowrap font-display">{label}</span>
+                <span className="text-sm flex-1 overflow-hidden text-ellipsis whitespace-nowrap font-display">{t(label)}</span>
               </button>
             ))}
           </nav>
@@ -300,24 +303,24 @@ export default function Settings() {
             {/* ── Negocio ── */}
             {activeTab === "business" && (
               <div className="space-y-5">
-                <p className="text-sm text-muted-foreground font-display">Datos de contacto y descripción que aparecen en el sitio web y en los emails automáticos.</p>
+                <p className="text-sm text-muted-foreground font-display">{t("settingsGeneral.business.intro")}</p>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <Field label={isNewCompany ? "Nombre comercial" : "Nombre del establecimiento"} col2>
+                  <Field label={isNewCompany ? t("settingsGeneral.business.nameNew") : t("settingsGeneral.business.nameOld")} col2>
                     <Input value={business.businessName} onChange={e => setBusiness(p => ({ ...p, businessName: e.target.value }))} autoComplete="organization" />
                   </Field>
-                  <Field label="Teléfono" error={businessErrors.businessPhone}>
+                  <Field label={t("settingsGeneral.business.phone")} error={businessErrors.businessPhone}>
                     <Input type="tel" value={business.businessPhone} onChange={e => setBusiness(p => ({ ...p, businessPhone: e.target.value }))} placeholder="+34 600 000 000" autoComplete="tel" />
                   </Field>
-                  <Field label="Email de contacto" error={businessErrors.businessEmail}>
+                  <Field label={t("settingsGeneral.business.email")} error={businessErrors.businessEmail}>
                     <Input type="email" value={business.businessEmail} onChange={e => setBusiness(p => ({ ...p, businessEmail: e.target.value }))} placeholder="hola@tuempresa.com" autoComplete="email" />
                   </Field>
-                  <Field label="Dirección" col2>
+                  <Field label={t("settingsGeneral.business.address")} col2>
                     <Input value={business.businessAddress} onChange={e => setBusiness(p => ({ ...p, businessAddress: e.target.value }))} autoComplete="street-address" />
                   </Field>
-                  <Field label="Web corporativa" col2 error={businessErrors.businessWebsite}>
+                  <Field label={t("settingsGeneral.business.website")} col2 error={businessErrors.businessWebsite}>
                     <Input type="url" value={business.businessWebsite} onChange={e => setBusiness(p => ({ ...p, businessWebsite: e.target.value }))} placeholder="https://www.tuempresa.com" />
                   </Field>
-                  <Field label="Descripción breve (SEO / emails)" col2>
+                  <Field label={t("settingsGeneral.business.description")} col2>
                     <Textarea value={business.businessDescription} onChange={e => setBusiness(p => ({ ...p, businessDescription: e.target.value }))} rows={3} className="resize-none" />
                   </Field>
                 </div>
@@ -330,23 +333,23 @@ export default function Settings() {
             {/* ── Horarios ── */}
             {activeTab === "schedule" && (
               <div className="space-y-5">
-                <p className="text-sm text-muted-foreground font-display">Horarios que se muestran en la web y se usan en los emails de confirmación.</p>
+                <p className="text-sm text-muted-foreground font-display">{t("settingsGeneral.schedule.intro")}</p>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <Field label="Temporada alta — apertura">
+                  <Field label={t("settingsGeneral.schedule.highOpen")}>
                     <Input type="time" value={schedule.scheduleHighOpen} onChange={e => setSchedule(p => ({ ...p, scheduleHighOpen: e.target.value }))} />
                   </Field>
-                  <Field label="Temporada alta — cierre">
+                  <Field label={t("settingsGeneral.schedule.highClose")}>
                     <Input type="time" value={schedule.scheduleHighClose} onChange={e => setSchedule(p => ({ ...p, scheduleHighClose: e.target.value }))} />
                   </Field>
-                  <Field label="Temporada baja — apertura">
+                  <Field label={t("settingsGeneral.schedule.lowOpen")}>
                     <Input type="time" value={schedule.scheduleLowOpen} onChange={e => setSchedule(p => ({ ...p, scheduleLowOpen: e.target.value }))} />
                   </Field>
-                  <Field label="Temporada baja — cierre">
+                  <Field label={t("settingsGeneral.schedule.lowClose")}>
                     <Input type="time" value={schedule.scheduleLowClose} onChange={e => setSchedule(p => ({ ...p, scheduleLowClose: e.target.value }))} />
                   </Field>
                   <div className="sm:col-span-2">
-                    <Field label="Días de apertura">
-                      <Input value={schedule.scheduleDays} onChange={e => setSchedule(p => ({ ...p, scheduleDays: e.target.value }))} placeholder="Lunes a Domingo (Abril - Octubre)" />
+                    <Field label={t("settingsGeneral.schedule.days")}>
+                      <Input value={schedule.scheduleDays} onChange={e => setSchedule(p => ({ ...p, scheduleDays: e.target.value }))} placeholder={t("settingsGeneral.schedule.daysPlaceholder")} />
                     </Field>
                   </div>
                 </div>
@@ -357,13 +360,13 @@ export default function Settings() {
             {/* ── Pagos ── */}
             {activeTab === "payments" && (
               <div className="space-y-5">
-                <p className="text-sm text-muted-foreground font-display">Parámetros financieros usados en reservas y cálculos de depósito. El IVA y la validez de presupuestos se configuran en <strong>Configuración → Ajustes del sistema</strong>.</p>
+                <p className="text-sm text-muted-foreground font-display">{t("settingsGeneral.payments.intro.a")}<strong>{t("settingsGeneral.payments.intro.b")}</strong>{t("settingsGeneral.payments.intro.c")}</p>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <Field label="Moneda">
+                  <Field label={t("settingsGeneral.payments.currency")}>
                     <Input value={payments.paymentCurrency} onChange={e => setPayments(p => ({ ...p, paymentCurrency: e.target.value }))} placeholder="EUR" />
                   </Field>
                   {hasRestaurants && (
-                    <Field label="Depósito por comensal en restaurante (€)" hint="Importe del depósito en reservas de restaurante">
+                    <Field label={t("settingsGeneral.payments.deposit")} hint={t("settingsGeneral.payments.depositHint")}>
                       <Input type="number" min="0" step="0.5" value={payments.paymentDepositRestaurant} onChange={e => setPayments(p => ({ ...p, paymentDepositRestaurant: e.target.value }))} />
                     </Field>
                   )}
@@ -378,35 +381,35 @@ export default function Settings() {
                 <div className="flex items-start gap-2 bg-warning/10 border border-warning/30 rounded-xl p-3">
                   <Info className="w-4 h-4 text-warning mt-0.5 shrink-0" />
                   <p className="text-xs text-warning font-display">
-                    Estos datos aparecen como <strong>emisor</strong> en todas las facturas y presupuestos generados por la plataforma, y en la cabecera de los tickets del TPV. Asegúrate de que coinciden exactamente con los datos registrados en la Agencia Tributaria.
+                    {t("settingsGeneral.legal.notice.a")}<strong>{t("settingsGeneral.legal.notice.b")}</strong>{t("settingsGeneral.legal.notice.c")}
                   </p>
                 </div>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <Field label="Razón social" col2 error={legalErrors.legalCompanyName}>
-                    <Input value={legalCompany.legalCompanyName} onChange={e => setLegalCompany(p => ({ ...p, legalCompanyName: e.target.value }))} placeholder="Tu Empresa, S.L." autoComplete="organization" />
+                  <Field label={t("settingsGeneral.legal.name")} col2 error={legalErrors.legalCompanyName}>
+                    <Input value={legalCompany.legalCompanyName} onChange={e => setLegalCompany(p => ({ ...p, legalCompanyName: e.target.value }))} placeholder={t("settingsGeneral.legal.namePlaceholder")} autoComplete="organization" />
                   </Field>
-                  <Field label="CIF / NIF" error={legalErrors.legalCompanyCif}>
+                  <Field label={t("settingsGeneral.legal.cif")} error={legalErrors.legalCompanyCif}>
                     <Input value={legalCompany.legalCompanyCif} onChange={e => setLegalCompany(p => ({ ...p, legalCompanyCif: e.target.value }))} placeholder="B12345674" autoCapitalize="characters" spellCheck={false} />
                   </Field>
-                  <Field label="Teléfono fiscal" error={legalErrors.legalCompanyPhone}>
+                  <Field label={t("settingsGeneral.legal.phone")} error={legalErrors.legalCompanyPhone}>
                     <Input type="tel" value={legalCompany.legalCompanyPhone} onChange={e => setLegalCompany(p => ({ ...p, legalCompanyPhone: e.target.value }))} placeholder="+34 900 000 000" autoComplete="tel" />
                   </Field>
-                  <Field label="Domicilio fiscal" col2>
-                    <Input value={legalCompany.legalCompanyAddress} onChange={e => setLegalCompany(p => ({ ...p, legalCompanyAddress: e.target.value }))} placeholder="Calle, número, piso" autoComplete="street-address" />
+                  <Field label={t("settingsGeneral.legal.address")} col2>
+                    <Input value={legalCompany.legalCompanyAddress} onChange={e => setLegalCompany(p => ({ ...p, legalCompanyAddress: e.target.value }))} placeholder={t("settingsGeneral.legal.addressPlaceholder")} autoComplete="street-address" />
                   </Field>
-                  <Field label="Código postal" error={legalErrors.legalCompanyZip}>
+                  <Field label={t("settingsGeneral.legal.zip")} error={legalErrors.legalCompanyZip}>
                     <Input inputMode="numeric" value={legalCompany.legalCompanyZip} onChange={e => setLegalCompany(p => ({ ...p, legalCompanyZip: e.target.value }))} placeholder="28001" autoComplete="postal-code" />
                   </Field>
-                  <Field label="Municipio">
+                  <Field label={t("settingsGeneral.legal.city")}>
                     <Input value={legalCompany.legalCompanyCity} onChange={e => setLegalCompany(p => ({ ...p, legalCompanyCity: e.target.value }))} placeholder="Madrid" autoComplete="address-level2" />
                   </Field>
-                  <Field label="Provincia" col2>
+                  <Field label={t("settingsGeneral.legal.province")} col2>
                     <Input value={legalCompany.legalCompanyProvince} onChange={e => setLegalCompany(p => ({ ...p, legalCompanyProvince: e.target.value }))} placeholder="Madrid" autoComplete="address-level1" />
                   </Field>
-                  <Field label="Email fiscal" col2 error={legalErrors.legalCompanyEmail}>
+                  <Field label={t("settingsGeneral.legal.email")} col2 error={legalErrors.legalCompanyEmail}>
                     <Input type="email" value={legalCompany.legalCompanyEmail} onChange={e => setLegalCompany(p => ({ ...p, legalCompanyEmail: e.target.value }))} placeholder="administracion@tuempresa.com" autoComplete="email" />
                   </Field>
-                  <Field label="IBAN (para liquidaciones)" col2 error={legalErrors.legalCompanyIban} hint="Número de cuenta bancaria que aparece en los documentos de liquidación a proveedores">
+                  <Field label={t("settingsGeneral.legal.iban")} col2 error={legalErrors.legalCompanyIban} hint={t("settingsGeneral.legal.ibanHint")}>
                     <Input value={legalCompany.legalCompanyIban} onChange={e => setLegalCompany(p => ({ ...p, legalCompanyIban: e.target.value }))} placeholder="ES00 0000 0000 0000 0000 0000" spellCheck={false} />
                   </Field>
                 </div>
@@ -418,13 +421,13 @@ export default function Settings() {
             {/* ── Notificaciones ── */}
             {activeTab === "notifications" && (
               <div className="space-y-5">
-                <p className="text-sm text-muted-foreground font-display">Emails que reciben las alertas operativas del sistema (nuevas reservas, pagos, etc.).</p>
+                <p className="text-sm text-muted-foreground font-display">{t("settingsGeneral.notifications.intro")}</p>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <Field label={isNewCompany ? "Email de alertas de pedidos" : "Email de alertas de reservas de experiencias"} col2 error={notifErrors.notifEmailBooking}>
+                  <Field label={isNewCompany ? t("settingsGeneral.notifications.bookingNew") : t("settingsGeneral.notifications.bookingOld")} col2 error={notifErrors.notifEmailBooking}>
                     <Input type="email" value={notifications.notifEmailBooking} onChange={e => setNotifications(p => ({ ...p, notifEmailBooking: e.target.value }))} />
                   </Field>
                   {hasRestaurants && (
-                    <Field label="Email de alertas de reservas de restaurante" col2 error={notifErrors.notifEmailRestaurant}>
+                    <Field label={t("settingsGeneral.notifications.restaurant")} col2 error={notifErrors.notifEmailRestaurant}>
                       <Input type="email" value={notifications.notifEmailRestaurant} onChange={e => setNotifications(p => ({ ...p, notifEmailRestaurant: e.target.value }))} />
                     </Field>
                   )}
@@ -433,7 +436,7 @@ export default function Settings() {
                 <div className="flex items-center gap-3 p-3 bg-muted/50 rounded-xl">
                   <Phone className="w-4 h-4 text-muted-foreground shrink-0" />
                   <p className="text-xs text-muted-foreground font-display">
-                    Las notificaciones SMS se configuran a través del conector de GoHighLevel (GHL). Activa la integración en la pestaña GoHighLevel.
+                    {t("settingsGeneral.notifications.sms")}
                   </p>
                 </div>
                 <AutoSaveStatus saving={updateMutation.isPending} />

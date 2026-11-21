@@ -15,24 +15,17 @@ import { Input } from "@/components/ui/input";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { PanelError, PanelLoading } from "@/components/admin/PanelStates";
 import { toastError } from "@/lib/errorMessage";
+import { useI18n } from "@/i18n/I18nProvider";
+import type { Translate } from "@shared/i18n/core";
 
-const STAT_LABEL: Record<string, string> = {
-  accepted: "Aceptados",
-  delivered: "Entregados",
-  soft_bounced: "Rebotes temporales",
-  bounced: "Rebotados",
-  blocked: "Bloqueados",
-  complained: "Quejas",
-  failed: "Con error",
-  pending: "En cola",
-};
+const STAT_KEYS = ["accepted", "delivered", "soft_bounced", "bounced", "blocked", "complained", "failed", "pending"];
 
-async function copy(text: string, what: string) {
+async function copy(t: Translate, text: string, what: string) {
   try {
     await navigator.clipboard.writeText(text);
-    toast.success(`${what} copiado`);
+    toast.success(t("settingsPostmark.copied", { what }));
   } catch {
-    toast.error("No se ha podido copiar: selecciónalo y cópialo a mano");
+    toast.error(t("settingsPostmark.copyFailed"));
   }
 }
 
@@ -49,6 +42,7 @@ function Step({ n, title, done, children }: { n: number; title: string; done?: b
 }
 
 export default function PostmarkSettings() {
+  const { t, format } = useI18n();
   const utils = trpc.useUtils();
   const status = trpc.postmarkTenant.status.useQuery(undefined, { retry: false });
   const [token, setToken] = useState("");
@@ -57,7 +51,7 @@ export default function PostmarkSettings() {
   const [newWebhookToken, setNewWebhookToken] = useState<string | null>(null);
   const [confirmOff, setConfirmOff] = useState(false);
   const refresh = () => utils.postmarkTenant.status.invalidate();
-  const save = trpc.postmarkTenant.save.useMutation({ onSuccess: () => (toast.success("Datos guardados"), setToken(""), refresh()), onError: (e) => toastError(e) });
+  const save = trpc.postmarkTenant.save.useMutation({ onSuccess: () => (toast.success(t("settingsPostmark.saved")), setToken(""), refresh()), onError: (e) => toastError(e) });
   const verify = trpc.postmarkTenant.verify.useMutation({
     onSuccess: (r) => {
       if (r.ok) toast.success(r.message);
@@ -67,41 +61,41 @@ export default function PostmarkSettings() {
     onError: (e) => toastError(e),
   });
   const gen = trpc.postmarkTenant.generateWebhookToken.useMutation({ onSuccess: (r) => (setNewWebhookToken(r.token), refresh()), onError: (e) => toastError(e) });
-  const off = trpc.postmarkTenant.disconnect.useMutation({ onSuccess: () => (toast.success("Postmark desconectado: los correos vuelven al servicio de Elephant Source"), setNewWebhookToken(null), refresh()), onError: (e) => toastError(e) });
+  const off = trpc.postmarkTenant.disconnect.useMutation({ onSuccess: () => (toast.success(t("settingsPostmark.disconnected")), setNewWebhookToken(null), refresh()), onError: (e) => toastError(e) });
 
   const s = status.data;
   return (
     <AdminLayout>
       <div className="mx-auto max-w-4xl space-y-6 px-4 py-6 sm:px-6">
         <header className="space-y-1">
-          <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Ajustes · Correo</p>
-          <h1 className="text-2xl font-bold text-foreground">Correo transaccional con Postmark</h1>
+          <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{t("settingsPostmark.eyebrow")}</p>
+          <h1 className="text-2xl font-bold text-foreground">{t("settingsPostmark.title")}</h1>
           <p className="max-w-3xl text-sm text-muted-foreground">
-            Opcional. Tus confirmaciones, facturas y avisos salen por tu propia cuenta de Postmark, con tu dominio, y en la ficha de cada cliente ves si le han llegado. Mientras no
-            lo actives, se envían igualmente desde el servicio de correo de Elephant Source. Las campañas comerciales no pasan por Postmark: se envían con{" "}
-            <Link href="/admin/marketing/brevo" className="text-primary underline-offset-4 hover:underline">Brevo marketing</Link>.
+            {t("settingsPostmark.introBefore")}
+            <Link href="/admin/marketing/brevo" className="text-primary underline-offset-4 hover:underline">{t("settingsPostmark.introLink")}</Link>.
           </p>
         </header>
 
         <section aria-labelledby="vias-correo" className="space-y-2 rounded-xl border border-border p-4 text-sm">
-          <h2 id="vias-correo" className="font-semibold text-foreground">Cómo salen tus correos</h2>
-          <p className="text-muted-foreground">Está incluido en tu plan (Essential, Business y Enterprise), sin coste adicional en Elephant Source. Puedes usar una de estas tres vías:</p>
+          <h2 id="vias-correo" className="font-semibold text-foreground">{t("settingsPostmark.routes.title")}</h2>
+          <p className="text-muted-foreground">{t("settingsPostmark.routes.included")}</p>
           <ul className="list-disc space-y-1 pl-5 text-muted-foreground">
             <li>
-              <span className="font-medium text-foreground">Tu cuenta de Postmark</span> (esta pantalla), solo para los correos transaccionales. Postmark te factura
-              directamente a ti.
+              <span className="font-medium text-foreground">{t("settingsPostmark.routes.postmarkLead")}</span>
+              {t("settingsPostmark.routes.postmarkText")}
             </li>
             <li>
-              <span className="font-medium text-foreground">Tu propio servidor SMTP</span>, en{" "}
-              <Link href="/admin/configuracion/integraciones" className="text-primary underline-offset-4 hover:underline">Integraciones</Link>. Lo paga quien lo contrata.
+              <span className="font-medium text-foreground">{t("settingsPostmark.routes.smtpLead")}</span>
+              {t("settingsPostmark.routes.smtpMid")}
+              <Link href="/admin/configuracion/integraciones" className="text-primary underline-offset-4 hover:underline">{t("settingsPostmark.routes.smtpLink")}</Link>
+              {t("settingsPostmark.routes.smtpAfter")}
             </li>
             <li>
-              <span className="font-medium text-foreground">El servicio de correo de Elephant Source</span>, si no configuras ninguna de las anteriores (o para los correos no transaccionales si solo tienes Postmark). También si
-              Postmark rechaza tu cuenta (token revocado, cuenta pendiente…) y no tienes SMTP propio: ese correo sale por este servicio para que no se pierda. Elephant Source
-              mide este consumo y le aplica los límites del servicio.
+              <span className="font-medium text-foreground">{t("settingsPostmark.routes.elephantLead")}</span>
+              {t("settingsPostmark.routes.elephantText")}
             </li>
           </ul>
-          <p className="text-muted-foreground">Lo que sale por tu propia cuenta (Postmark o SMTP) no cuenta para esos límites: Elephant Source solo lo registra. Con Postmark, además, en la ficha de cada cliente ves si le ha llegado.</p>
+          <p className="text-muted-foreground">{t("settingsPostmark.routes.own")}</p>
         </section>
 
         {status.isLoading && <PanelLoading />}
@@ -111,19 +105,19 @@ export default function PostmarkSettings() {
             <div role="status" className={`flex items-start gap-2 rounded-xl border p-4 text-sm ${s.active ? "border-primary/40 bg-primary/5 text-foreground" : "border-border bg-muted/40 text-foreground"}`}>
               {s.active ? <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-primary" aria-hidden="true" /> : <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-600 dark:text-amber-400" aria-hidden="true" />}
               <div className="min-w-0 space-y-1">
-                <p className="font-medium">{s.active ? `Activo: tus correos transaccionales salen por Postmark desde ${s.fromEmail}.` : "Inactivo: tus correos salen por el servicio de Elephant Source."}</p>
+                <p className="font-medium">{s.active ? t("settingsPostmark.active", { email: s.fromEmail }) : t("settingsPostmark.inactive")}</p>
                 {s.problemText && s.configured && <p className="text-muted-foreground">{s.problemText}</p>}
                 {s.lastCheck && (
                   <p className="text-muted-foreground">
-                    Última comprobación ({new Date(s.lastCheck.at).toLocaleString("es-ES")}): {s.lastCheck.message}
+                    {t("settingsPostmark.lastCheck", { date: format.dateTime(s.lastCheck.at, { dateStyle: "short", timeStyle: "medium" }), message: s.lastCheck.message })}
                   </p>
                 )}
               </div>
             </div>
 
-            <Step n={1} title="Pega el token de tu servidor de Postmark" done={s.serverToken.set && !!s.fromEmail}>
+            <Step n={1} title={t("settingsPostmark.step1.title")} done={s.serverToken.set && !!s.fromEmail}>
               <p className="text-sm text-muted-foreground">
-                En Postmark, crea un servidor para tu empresa, entra en <strong>API Tokens</strong> y copia el <strong>Server API token</strong> (no el de la cuenta). Se guarda cifrado y no se vuelve a mostrar.
+                {t("settingsPostmark.step1.helpBefore")}<strong>API Tokens</strong>{t("settingsPostmark.step1.helpMid")}<strong>Server API token</strong>{t("settingsPostmark.step1.helpAfter")}
               </p>
               <form
                 className="grid gap-3 sm:grid-cols-2"
@@ -134,120 +128,118 @@ export default function PostmarkSettings() {
               >
                 <label className="space-y-1.5 text-sm font-medium text-foreground sm:col-span-2">
                   <span className="flex items-center gap-1.5">
-                    Token del servidor <ShieldCheck className="h-3.5 w-3.5 text-muted-foreground" aria-label="Se guarda cifrado" />
-                    {s.serverToken.set && <span className="text-xs font-normal text-muted-foreground">Guardado: {s.serverToken.display}</span>}
+                    {t("settingsPostmark.step1.token")} <ShieldCheck className="h-3.5 w-3.5 text-muted-foreground" aria-label={t("settingsPostmark.step1.encrypted")} />
+                    {s.serverToken.set && <span className="text-xs font-normal text-muted-foreground">{t("settingsPostmark.step1.stored", { display: s.serverToken.display })}</span>}
                   </span>
-                  <Input type="password" autoComplete="off" value={token} onChange={(e) => setToken(e.target.value)} placeholder={s.serverToken.set ? "Déjalo vacío para conservar el actual" : "Pega aquí el Server API token"} />
+                  <Input type="password" autoComplete="off" value={token} onChange={(e) => setToken(e.target.value)} placeholder={s.serverToken.set ? t("settingsPostmark.step1.keepPlaceholder") : t("settingsPostmark.step1.pastePlaceholder")} />
                 </label>
                 <label className="space-y-1.5 text-sm font-medium text-foreground">
-                  <span>Dirección del remitente</span>
+                  <span>{t("settingsPostmark.step1.sender")}</span>
                   <Input type="email" value={from} onChange={(e) => setFrom(e.target.value)} placeholder={s.fromEmail ?? "reservas@tuempresa.es"} />
-                  <span className="block text-xs font-normal text-muted-foreground">De un dominio propio verificado y firmado (DKIM y Return-Path) en Postmark.</span>
+                  <span className="block text-xs font-normal text-muted-foreground">{t("settingsPostmark.step1.senderHelp")}</span>
                 </label>
                 <label className="space-y-1.5 text-sm font-medium text-foreground">
-                  <span>Flujo transaccional</span>
+                  <span>{t("settingsPostmark.step1.stream")}</span>
                   <Input value={stream} onChange={(e) => setStream(e.target.value)} placeholder={s.messageStream} />
-                  <span className="block text-xs font-normal text-muted-foreground">Normalmente «outbound». Nunca uno de difusión (broadcast).</span>
+                  <span className="block text-xs font-normal text-muted-foreground">{t("settingsPostmark.step1.streamHelp")}</span>
                 </label>
                 <div className="sm:col-span-2">
-                  <Button type="submit" disabled={save.isPending || (!token && !stream && !from)}>Guardar</Button>
+                  <Button type="submit" disabled={save.isPending || (!token && !stream && !from)}>{t("settingsPostmark.step1.save")}</Button>
                 </div>
               </form>
             </Step>
 
-            <Step n={2} title="Comprueba la conexión y tu dominio" done={s.connection === "connected" && s.sender.verified}>
-              <p className="text-sm text-muted-foreground">Solo consulta tu servidor y el flujo en Postmark: no envía nada.</p>
+            <Step n={2} title={t("settingsPostmark.step2.title")} done={s.connection === "connected" && s.sender.verified}>
+              <p className="text-sm text-muted-foreground">{t("settingsPostmark.step2.help")}</p>
               <dl className="grid gap-1 text-sm sm:grid-cols-[12rem_1fr]">
-                <dt className="text-muted-foreground">Dominio del remitente</dt>
+                <dt className="text-muted-foreground">{t("settingsPostmark.step2.senderDomain")}</dt>
                 <dd className="break-words text-foreground">
-                  {s.sender.domain ?? "—"} {s.sender.domain && (s.sender.verified ? <span className="text-primary">(verificado en tu empresa)</span> : <span className="text-amber-700 dark:text-amber-300">(no verificado)</span>)}
+                  {s.sender.domain ?? "—"} {s.sender.domain && (s.sender.verified ? <span className="text-primary">{t("settingsPostmark.step2.verified")}</span> : <span className="text-amber-700 dark:text-amber-300">{t("settingsPostmark.step2.notVerified")}</span>)}
                 </dd>
-                <dt className="text-muted-foreground">Dominios verificados</dt>
-                <dd className="break-words text-foreground">{s.sender.verifiedDomains.length ? s.sender.verifiedDomains.join(", ") : "Ninguno"}</dd>
+                <dt className="text-muted-foreground">{t("settingsPostmark.step2.verifiedDomains")}</dt>
+                <dd className="break-words text-foreground">{s.sender.verifiedDomains.length ? s.sender.verifiedDomains.join(", ") : t("settingsPostmark.step2.none")}</dd>
               </dl>
               <p className="text-xs text-muted-foreground">
-                La firma del dominio (DKIM y Return-Path) se confirma en Postmark, en <strong>Sender Signatures</strong>: si falta, Postmark rechaza el envío y lo verás en la ficha del cliente. Tus dominios se
-                verifican en <Link href="/admin/configuracion/dominios" className="text-primary underline-offset-4 hover:underline">Dominios</Link>.
+                {t("settingsPostmark.step2.signBefore")}<strong>Sender Signatures</strong>{t("settingsPostmark.step2.signAfter")}<Link href="/admin/configuracion/dominios" className="text-primary underline-offset-4 hover:underline">{t("settingsPostmark.step2.signLink")}</Link>.
               </p>
               <Button variant="outline" disabled={!s.serverToken.set || verify.isPending} onClick={() => verify.mutate()}>
-                Probar conexión
+                {t("settingsPostmark.step2.test")}
               </Button>
               {verify.data && (
                 <div className="space-y-1 rounded-lg border border-border p-3 text-sm">
                   <p className={verify.data.ok ? "text-foreground" : "text-destructive"}>{verify.data.message}</p>
-                  {verify.data.serverName && <p className="text-muted-foreground">Servidor: {verify.data.serverName} · {verify.data.deliveryType ?? "—"}</p>}
-                  {verify.data.stream.found && <p className="text-muted-foreground">Flujo «{verify.data.stream.id}»: {verify.data.stream.type}</p>}
+                  {verify.data.serverName && <p className="text-muted-foreground">{t("settingsPostmark.step2.server", { name: verify.data.serverName, type: verify.data.deliveryType ?? "—" })}</p>}
+                  {verify.data.stream.found && <p className="text-muted-foreground">{t("settingsPostmark.step2.stream", { id: verify.data.stream.id, type: verify.data.stream.type })}</p>}
                   {verify.data.sender.problemText && <p className="text-amber-700 dark:text-amber-300">{verify.data.sender.problemText}</p>}
                 </div>
               )}
             </Step>
 
-            <Step n={3} title="Conecta el webhook de entregas en Postmark" done={s.webhook.configured}>
+            <Step n={3} title={t("settingsPostmark.step3.title")} done={s.webhook.configured}>
               <p className="text-sm text-muted-foreground">
-                En Postmark: tu servidor → flujo «{s.messageStream}» → <strong>Webhooks</strong> → <strong>Add webhook</strong>. Pega la URL, añade una cabecera personalizada con el nombre y el token de abajo y marca
-                los eventos {s.webhook.events.join(", ")}. No actives aperturas ni clics.
+                {t("settingsPostmark.step3.helpBefore", { stream: s.messageStream })}<strong>Webhooks</strong>{t("settingsPostmark.step3.helpMid")}<strong>Add webhook</strong>{t("settingsPostmark.step3.helpAfter", { events: s.webhook.events.join(", ") })}
               </p>
               <dl className="grid gap-2 text-sm">
-                <dt className="text-muted-foreground">URL del webhook</dt>
+                <dt className="text-muted-foreground">{t("settingsPostmark.step3.url")}</dt>
                 <dd className="flex flex-wrap items-center gap-2">
-                  <code className="break-all rounded bg-muted px-2 py-1 text-xs text-foreground">{s.webhook.url ?? "Tu empresa aún no tiene dirección pública"}</code>
+                  <code className="break-all rounded bg-muted px-2 py-1 text-xs text-foreground">{s.webhook.url ?? t("settingsPostmark.step3.noPublicUrl")}</code>
                   {s.webhook.url && (
-                    <Button size="sm" variant="ghost" onClick={() => copy(s.webhook.url!, "URL")} aria-label="Copiar la URL del webhook">
+                    <Button size="sm" variant="ghost" onClick={() => copy(t, s.webhook.url!, t("settingsPostmark.copyWhatUrl"))} aria-label={t("settingsPostmark.step3.copyUrl")}>
                       <Copy className="h-4 w-4" aria-hidden="true" />
                     </Button>
                   )}
                 </dd>
-                <dt className="text-muted-foreground">Nombre de la cabecera</dt>
+                <dt className="text-muted-foreground">{t("settingsPostmark.step3.headerName")}</dt>
                 <dd className="flex flex-wrap items-center gap-2">
                   <code className="rounded bg-muted px-2 py-1 text-xs text-foreground">{s.webhook.header}</code>
-                  <Button size="sm" variant="ghost" onClick={() => copy(s.webhook.header, "Nombre de la cabecera")} aria-label="Copiar el nombre de la cabecera">
+                  <Button size="sm" variant="ghost" onClick={() => copy(t, s.webhook.header, t("settingsPostmark.copyWhatHeader"))} aria-label={t("settingsPostmark.step3.copyHeader")}>
                     <Copy className="h-4 w-4" aria-hidden="true" />
                   </Button>
                 </dd>
-                <dt className="text-muted-foreground">Valor de la cabecera (token)</dt>
+                <dt className="text-muted-foreground">{t("settingsPostmark.step3.headerValue")}</dt>
                 <dd className="space-y-2">
                   {newWebhookToken ? (
                     <div className="space-y-1">
                       <div className="flex flex-wrap items-center gap-2">
                         <code className="break-all rounded bg-muted px-2 py-1 text-xs text-foreground">{newWebhookToken}</code>
-                        <Button size="sm" variant="ghost" onClick={() => copy(newWebhookToken, "Token")} aria-label="Copiar el token">
+                        <Button size="sm" variant="ghost" onClick={() => copy(t, newWebhookToken, t("settingsPostmark.copyWhatToken"))} aria-label={t("settingsPostmark.step3.copyToken")}>
                           <Copy className="h-4 w-4" aria-hidden="true" />
                         </Button>
                       </div>
-                      <p className="text-xs text-amber-700 dark:text-amber-300">Cópialo ahora: no se volverá a mostrar. Si lo pierdes, genera otro y cámbialo en Postmark.</p>
+                      <p className="text-xs text-amber-700 dark:text-amber-300">{t("settingsPostmark.step3.copyNow")}</p>
                     </div>
                   ) : (
-                    <p className="text-xs text-muted-foreground">{s.webhook.configured ? "Generado y guardado cifrado." : "Aún no lo has generado."}</p>
+                    <p className="text-xs text-muted-foreground">{s.webhook.configured ? t("settingsPostmark.step3.generated") : t("settingsPostmark.step3.notGenerated")}</p>
                   )}
                   <Button size="sm" variant="outline" disabled={gen.isPending} onClick={() => gen.mutate()}>
                     <KeyRound className="mr-1.5 h-4 w-4" aria-hidden="true" />
-                    {s.webhook.configured ? "Generar otro token" : "Generar token"}
+                    {s.webhook.configured ? t("settingsPostmark.step3.genAnother") : t("settingsPostmark.step3.gen")}
                   </Button>
                 </dd>
               </dl>
             </Step>
 
-            <Step n={4} title="Estado de los envíos (últimos 30 días)">
+            <Step n={4} title={t("settingsPostmark.step4.title")}>
               {s.stats30d && Object.keys(s.stats30d).length ? (
                 <ul className="flex flex-wrap gap-2 text-sm">
                   {Object.entries(s.stats30d).map(([k, n]) => (
                     <li key={k} className="rounded-full border border-border px-3 py-1 text-foreground">
-                      {STAT_LABEL[k] ?? k}: <strong>{n}</strong>
+                      {STAT_KEYS.includes(k) ? t(`settingsPostmark.stat.${k}`) : k}: <strong>{n}</strong>
                     </li>
                   ))}
                 </ul>
               ) : (
                 <p className="flex items-center gap-1.5 text-sm text-muted-foreground">
-                  <Mail className="h-4 w-4" aria-hidden="true" /> Aún no ha salido ningún correo por tu Postmark.
+                  <Mail className="h-4 w-4" aria-hidden="true" /> {t("settingsPostmark.step4.empty")}
                 </p>
               )}
-              <p className="text-xs text-muted-foreground">El detalle de cada envío (entregado, rebotado…) y el aviso de direcciones suprimidas está en la ficha de cada cliente.</p>
+              <p className="text-xs text-muted-foreground">{t("settingsPostmark.step4.detail")}</p>
             </Step>
 
             {s.configured && (
               <div className="flex justify-end">
                 <Button variant="ghost" className="text-destructive" onClick={() => setConfirmOff(true)}>
-                  <Unplug className="mr-1.5 h-4 w-4" aria-hidden="true" /> Desconectar Postmark
+                  <Unplug className="mr-1.5 h-4 w-4" aria-hidden="true" /> {t("settingsPostmark.disconnect")}
                 </Button>
               </div>
             )}
@@ -256,12 +248,12 @@ export default function PostmarkSettings() {
         <AlertDialog open={confirmOff} onOpenChange={setConfirmOff}>
           <AlertDialogContent>
             <AlertDialogHeader>
-              <AlertDialogTitle>¿Desconectar tu cuenta de Postmark?</AlertDialogTitle>
-              <AlertDialogDescription>Se borran el token, el remitente y el token del webhook. Tus correos vuelven a salir por el servicio de Elephant Source. El historial de entregas se conserva.</AlertDialogDescription>
+              <AlertDialogTitle>{t("settingsPostmark.confirm.title")}</AlertDialogTitle>
+              <AlertDialogDescription>{t("settingsPostmark.confirm.text")}</AlertDialogDescription>
             </AlertDialogHeader>
             <AlertDialogFooter>
-              <AlertDialogCancel>Cancelar</AlertDialogCancel>
-              <AlertDialogAction onClick={() => off.mutate()}>Desconectar</AlertDialogAction>
+              <AlertDialogCancel>{t("settingsPostmark.confirm.cancel")}</AlertDialogCancel>
+              <AlertDialogAction onClick={() => off.mutate()}>{t("settingsPostmark.confirm.action")}</AlertDialogAction>
             </AlertDialogFooter>
           </AlertDialogContent>
         </AlertDialog>
