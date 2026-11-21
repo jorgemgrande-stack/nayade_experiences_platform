@@ -8,25 +8,27 @@ import { toast } from "sonner";
 import { Search, CalendarDays, Users, CheckCircle, XCircle, Clock, PlayCircle, CreditCard, ArrowUpDown, Banknote, HelpCircle, ExternalLink } from "lucide-react";
 import { Link } from "wouter";
 import { toastError } from "@/lib/errorMessage";
+import { useI18n } from "@/i18n/I18nProvider";
 
 const statusConfig: Record<string, { label: string; color: string; icon: React.ReactNode }> = {
-  pendiente:  { label: "Pendiente",  color: "bg-amber-100 text-amber-700",  icon: <Clock className="w-3 h-3" /> },
-  confirmado: { label: "Confirmado", color: "bg-blue-100 text-blue-700",    icon: <CheckCircle className="w-3 h-3" /> },
-  en_curso:   { label: "En Curso",   color: "bg-green-100 text-green-700",  icon: <PlayCircle className="w-3 h-3" /> },
-  completado: { label: "Completado", color: "bg-gray-100 text-gray-700",    icon: <CheckCircle className="w-3 h-3" /> },
-  cancelado:  { label: "Cancelado",  color: "bg-red-100 text-red-700",      icon: <XCircle className="w-3 h-3" /> },
+  pendiente:  { label: "opsBookings.status.pendiente",  color: "bg-amber-100 text-amber-700",  icon: <Clock className="w-3 h-3" /> },
+  confirmado: { label: "opsBookings.status.confirmado", color: "bg-blue-100 text-blue-700",    icon: <CheckCircle className="w-3 h-3" /> },
+  en_curso:   { label: "opsBookings.status.en_curso",   color: "bg-green-100 text-green-700",  icon: <PlayCircle className="w-3 h-3" /> },
+  completado: { label: "opsBookings.status.completado", color: "bg-gray-100 text-gray-700",    icon: <CheckCircle className="w-3 h-3" /> },
+  cancelado:  { label: "opsBookings.status.cancelado",  color: "bg-red-100 text-red-700",      icon: <XCircle className="w-3 h-3" /> },
 };
 
 const sourceConfig: Record<string, { label: string; color: string; icon: React.ReactNode; crmTab: string }> = {
-  tarjeta_fisica: { label: "Tarjeta Física",   color: "bg-violet-100 text-violet-700", icon: <CreditCard className="w-3 h-3" />,  crmTab: "reservations" },
-  tarjeta_redsys: { label: "Tarjeta Redsys",   color: "bg-violet-100 text-violet-700", icon: <CreditCard className="w-3 h-3" />,  crmTab: "reservations" },
-  redsys:         { label: "Tarjeta Redsys",   color: "bg-violet-100 text-violet-700", icon: <CreditCard className="w-3 h-3" />,  crmTab: "reservations" },
-  transferencia:  { label: "Transferencia",     color: "bg-sky-100 text-sky-700",       icon: <ArrowUpDown className="w-3 h-3" />, crmTab: "reservations" },
-  efectivo:       { label: "Efectivo",          color: "bg-emerald-100 text-emerald-700", icon: <Banknote className="w-3 h-3" />,  crmTab: "reservations" },
-  otro:           { label: "Otro",              color: "bg-gray-100 text-gray-600",     icon: <HelpCircle className="w-3 h-3" />, crmTab: "reservations" },
+  tarjeta_fisica: { label: "opsBookings.source.tarjeta_fisica",   color: "bg-violet-100 text-violet-700", icon: <CreditCard className="w-3 h-3" />,  crmTab: "reservations" },
+  tarjeta_redsys: { label: "opsBookings.source.tarjeta_redsys",   color: "bg-violet-100 text-violet-700", icon: <CreditCard className="w-3 h-3" />,  crmTab: "reservations" },
+  redsys:         { label: "opsBookings.source.tarjeta_redsys",   color: "bg-violet-100 text-violet-700", icon: <CreditCard className="w-3 h-3" />,  crmTab: "reservations" },
+  transferencia:  { label: "opsBookings.source.transferencia",     color: "bg-sky-100 text-sky-700",       icon: <ArrowUpDown className="w-3 h-3" />, crmTab: "reservations" },
+  efectivo:       { label: "opsBookings.source.efectivo",          color: "bg-emerald-100 text-emerald-700", icon: <Banknote className="w-3 h-3" />,  crmTab: "reservations" },
+  otro:           { label: "opsBookings.source.otro",              color: "bg-gray-100 text-gray-600",     icon: <HelpCircle className="w-3 h-3" />, crmTab: "reservations" },
 };
 
 export default function BookingsList() {
+  const { t, format: f } = useI18n();
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const utils = trpc.useUtils();
@@ -38,7 +40,7 @@ export default function BookingsList() {
   });
 
   const updateStatus = trpc.bookings.updateStatus.useMutation({
-    onSuccess: () => { utils.bookings.getAll.invalidate(); toast.success("Estado actualizado"); },
+    onSuccess: () => { utils.bookings.getAll.invalidate(); toast.success(t("opsBookings.statusUpdated")); },
     onError: (e) => toastError(e),
   });
 
@@ -49,12 +51,12 @@ export default function BookingsList() {
   ) ?? [];
 
   return (
-    <AdminLayout title="Actividades">
+    <AdminLayout title={t("opsBookings.title")}>
       <div className="flex items-center justify-between mb-6">
         <div>
-          <h2 className="text-xl font-semibold text-foreground">Actividades programadas</h2>
+          <h2 className="text-xl font-semibold text-foreground">{t("opsBookings.heading")}</h2>
           <p className="text-sm text-muted-foreground mt-1">
-            {filtered.length} actividad{filtered.length !== 1 ? "es" : ""} — generadas automáticamente al confirmar el pago
+            {t("opsBookings.count", { n: filtered.length })}
           </p>
         </div>
       </div>
@@ -62,19 +64,19 @@ export default function BookingsList() {
       <div className="flex gap-3 mb-5">
         <div className="relative flex-1 max-w-xs">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-          <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Buscar actividad..." className="pl-9" />
+          <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder={t("opsBookings.searchPlaceholder")} className="pl-9" />
         </div>
         <Select value={statusFilter} onValueChange={setStatusFilter}>
           <SelectTrigger className="w-44">
-            <SelectValue placeholder="Estado" />
+            <SelectValue placeholder={t("opsBookings.statusPlaceholder")} />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="all">Todos</SelectItem>
-            <SelectItem value="pendiente">Pendiente</SelectItem>
-            <SelectItem value="confirmado">Confirmado</SelectItem>
-            <SelectItem value="en_curso">En Curso</SelectItem>
-            <SelectItem value="completado">Completado</SelectItem>
-            <SelectItem value="cancelado">Cancelado</SelectItem>
+            <SelectItem value="all">{t("opsBookings.all")}</SelectItem>
+            <SelectItem value="pendiente">{t("opsBookings.status.pendiente")}</SelectItem>
+            <SelectItem value="confirmado">{t("opsBookings.status.confirmado")}</SelectItem>
+            <SelectItem value="en_curso">{t("opsBookings.status.en_curso")}</SelectItem>
+            <SelectItem value="completado">{t("opsBookings.status.completado")}</SelectItem>
+            <SelectItem value="cancelado">{t("opsBookings.status.cancelado")}</SelectItem>
           </SelectContent>
         </Select>
       </div>
@@ -86,9 +88,9 @@ export default function BookingsList() {
       ) : filtered.length === 0 ? (
         <div className="flex flex-col items-center justify-center py-20 text-center">
           <CalendarDays className="w-12 h-12 text-muted-foreground/30 mb-4" />
-          <p className="text-muted-foreground font-medium">No hay actividades programadas</p>
+          <p className="text-muted-foreground font-medium">{t("opsBookings.emptyTitle")}</p>
           <p className="text-sm text-muted-foreground mt-1">
-            Las actividades se crean automáticamente cuando se confirma un pago (Redsys, transferencia o efectivo)
+            {t("opsBookings.emptyText")}
           </p>
         </div>
       ) : (
@@ -96,13 +98,13 @@ export default function BookingsList() {
           <table className="w-full">
             <thead>
               <tr className="border-b border-border bg-muted/30">
-                <th className="text-left px-5 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wide">Nº Actividad</th>
-                <th className="text-left px-5 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wide">Cliente</th>
-                <th className="text-left px-5 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wide">Fecha</th>
-                <th className="text-left px-5 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wide">Personas</th>
-                <th className="text-left px-5 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wide">Total</th>
-                <th className="text-left px-5 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wide">Origen</th>
-                <th className="text-left px-5 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wide">Estado</th>
+                <th className="text-left px-5 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wide">{t("opsBookings.col.number")}</th>
+                <th className="text-left px-5 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wide">{t("opsBookings.col.client")}</th>
+                <th className="text-left px-5 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wide">{t("opsBookings.col.date")}</th>
+                <th className="text-left px-5 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wide">{t("opsBookings.col.persons")}</th>
+                <th className="text-left px-5 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wide">{t("opsBookings.col.total")}</th>
+                <th className="text-left px-5 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wide">{t("opsBookings.col.origin")}</th>
+                <th className="text-left px-5 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wide">{t("opsBookings.col.state")}</th>
                 <th className="px-5 py-3"></th>
               </tr>
             </thead>
@@ -127,7 +129,7 @@ export default function BookingsList() {
                     <td className="px-5 py-3.5">
                       <div className="flex items-center gap-1.5 text-sm text-foreground">
                         <CalendarDays className="w-3.5 h-3.5 text-primary" />
-                        {new Date(b.scheduledDate).toLocaleDateString("es-ES", { day: "2-digit", month: "short", year: "numeric" })}
+                        {f.date(b.scheduledDate, { day: "2-digit", month: "short", year: "numeric" })}
                       </div>
                     </td>
                     <td className="px-5 py-3.5">
@@ -137,20 +139,20 @@ export default function BookingsList() {
                       </div>
                     </td>
                     <td className="px-5 py-3.5 text-sm font-semibold text-foreground">
-                      €{parseFloat(b.totalAmount).toFixed(2)}
+                      {f.currency(parseFloat(b.totalAmount))}
                     </td>
                     <td className="px-5 py-3.5">
                       {src ? (
                         <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium ${src.color}`}>
-                          {src.icon} {src.label}
+                          {src.icon} {t(src.label)}
                         </span>
                       ) : (
-                        <span className="text-xs text-muted-foreground">Manual</span>
+                        <span className="text-xs text-muted-foreground">{t("opsBookings.manual")}</span>
                       )}
                     </td>
                     <td className="px-5 py-3.5">
                       <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium ${st.color}`}>
-                        {st.icon} {st.label}
+                        {st.icon} {t(st.label)}
                       </span>
                     </td>
                     <td className="px-5 py-3.5">
@@ -165,19 +167,19 @@ export default function BookingsList() {
                         {b.status === "pendiente" && (
                           <Button size="sm" variant="outline" className="h-7 text-xs"
                             onClick={() => updateStatus.mutate({ id: b.id, status: "confirmado" })}>
-                            Confirmar
+                            {t("opsBookings.confirm")}
                           </Button>
                         )}
                         {b.status === "confirmado" && (
                           <Button size="sm" variant="outline" className="h-7 text-xs text-green-700 border-green-200 hover:bg-green-50"
                             onClick={() => updateStatus.mutate({ id: b.id, status: "completado" })}>
-                            Completar
+                            {t("opsBookings.complete")}
                           </Button>
                         )}
                         {(b.status === "pendiente" || b.status === "confirmado") && (
                           <Button size="sm" variant="ghost" className="h-7 text-xs text-destructive hover:bg-destructive/10"
-                            onClick={() => { if (confirm("¿Cancelar esta actividad?")) updateStatus.mutate({ id: b.id, status: "cancelado" }); }}>
-                            Cancelar
+                            onClick={() => { if (confirm(t("opsBookings.cancelConfirm"))) updateStatus.mutate({ id: b.id, status: "cancelado" }); }}>
+                            {t("opsBookings.cancel")}
                           </Button>
                         )}
                       </div>
