@@ -15,6 +15,7 @@ import type { CrmService } from "./service";
 import type { CrmStore, Tables } from "./store";
 import type { BillingStore } from "../_core/billing/ports";
 import { billingSummary } from "./dashboard";
+import { COMPANY_FOCUS, CONTRACT_FOCUS, LEAD_FOCUS, OPPORTUNITY_FOCUS } from "./focus";
 import { crmReports, madridMonth, toCsv, madridDayRange } from "./reports";
 import type { CrmOnboarding } from "./onboarding";
 import type { ContractConfiguration } from "./types";
@@ -62,12 +63,15 @@ export const leadsListQuery = page.extend({
   priority: z.enum(LEAD_PRIORITIES as [string, ...string[]]).optional(),
   owner: optStr(100),
   archived: z.enum(["exclude", "only", "all"]).optional(),
+  // Indicadores del panel: mismo criterio que el recuento (server/crm/focus.ts)
+  focus: z.enum(LEAD_FOCUS).optional(),
   ...sortQuery(sortKeys(LEAD_SORT)),
 });
 export const companiesListQuery = page.extend({
   status: z.enum(COMPANY_STATUSES as [string, ...string[]]).optional(),
   lifecycle: z.enum(["prospect", "customer", "tenant"]).optional(),
   owner: optStr(100),
+  focus: z.enum(COMPANY_FOCUS).optional(),
   ...sortQuery(sortKeys(COMPANY_SORT)),
 });
 export const contactsListQuery = page.extend({
@@ -80,6 +84,7 @@ export const contractsListQuery = page.extend({
   companyId: id.optional(),
   // Renovaciones próximas: contratos activos cuya renovación vence antes de esta fecha (ms)
   renewalBefore: z.coerce.number().int().min(0).optional(),
+  focus: z.enum(CONTRACT_FOCUS).optional(),
   ...sortQuery(sortKeys(CONTRACT_SORT)),
 });
 
@@ -417,6 +422,7 @@ export function createCrmRouter(
         owner: optStr(100),
         companyId: id.optional(),
         open: z.enum(["1", "0"]).optional(),
+        focus: z.enum(OPPORTUNITY_FOCUS).optional(),
       })
       .parse(req.query);
     const p = await crm.listOpportunities({ ...(f as Parameters<CrmService["listOpportunities"]>[0]), open: f.open === "1" });
