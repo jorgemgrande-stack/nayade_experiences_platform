@@ -50,12 +50,12 @@ function sendCsv(res: Response, name: string, csv: string) {
 
 /**
  * Métricas comerciales que puede ver quien pide: MRR/ARR exige además billing:read (como /revenue/metrics; la ruta solo
- * exige finance:read); la rentabilidad por empresa exige además usage:read (como /resources/profitability).
+ * exige finance:read); la rentabilidad por empresa exige además usage:read y margins:read (como /resources/profitability).
  */
 function commercialFor(req: Request, c: CommercialSources | null | undefined): CommercialSources | null {
   if (!c) return null;
   const scopes = getAuth(req)?.scopes;
-  return { metrics: scopes?.has("billing:read") ? (c.metrics ?? null) : null, profitability: scopes?.has("usage:read") ? (c.profitability ?? null) : null };
+  return { metrics: scopes?.has("billing:read") ? (c.metrics ?? null) : null, profitability: scopes?.has("usage:read") && scopes?.has("margins:read") ? (c.profitability ?? null) : null };
 }
 
 export function mountFinanceAnalysisRoutes(r: Router, svc: FinanceAnalysisService, commercial?: CommercialSources | null, fiscal = false) {

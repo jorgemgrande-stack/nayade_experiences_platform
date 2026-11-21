@@ -88,6 +88,8 @@ describe("API de costes", () => {
   let port2: number;
   const FULL = "costes-full-token-aaaaaaaaaaaaaaaaaaaa";
   const USAGE_ONLY = "costes-usage-token-bbbbbbbbbbbbbbbbbbb";
+  /** Perfil comercial: ve facturación y uso, pero no costes internos ni márgenes (sin margins:read). */
+  const COMERCIAL = "costes-comercial-token-ccccccccccccccc";
   const OP: Actor = { type: "operator", id: "test" };
 
   beforeAll(async () => {
@@ -104,8 +106,9 @@ describe("API de costes", () => {
     ]);
     const base = {
       tokens: [
-        { id: "full", sha256: hashToken(FULL), scopes: ["usage:read", "billing:read", "tenants:read"] },
+        { id: "full", sha256: hashToken(FULL), scopes: ["usage:read", "billing:read", "margins:read", "tenants:read"] },
         { id: "usage", sha256: hashToken(USAGE_ONLY), scopes: ["usage:read"] },
+        { id: "comercial", sha256: hashToken(COMERCIAL), scopes: ["usage:read", "billing:read", "tenants:read"] },
       ] as Array<{ id: string; sha256: string; scopes: any[] }>,
       registry,
       reader: reg,
@@ -158,6 +161,17 @@ describe("API de costes", () => {
     expect(r.json.tenants[0]).toMatchObject({ tenantId: "pequena", sharedCents: 300 });
     expect((await call("/resources/costs?tenant=no-existe", FULL)).status).toBe(404);
     expect((await call("/resources/costs?tenant=NO%20VALIDO", FULL)).status).toBe(400);
+  });
+
+  it("margins:read: sin él (perfil comercial) ni costes, ni rentabilidad, ni tarifas; lo no económico sigue disponible", async () => {
+    for (const path of ["/resources/costs", "/resources/costs?tenant=grande", "/resources/profitability", "/resources/rates"]) {
+      expect((await call(path, COMERCIAL)).status, path).toBe(403);
+      expect((await call(path, FULL)).status, path).toBe(200);
+    }
+    // Lo que el equipo comercial necesita para gestionar clientes sigue abierto: uso frente a cuota y facturación/ingresos
+    expect((await call("/resources/overview", COMERCIAL)).status).toBe(200);
+    expect((await call("/revenue/metrics", COMERCIAL)).status).not.toBe(403);
+    expect((await call("/revenue/at-risk", COMERCIAL)).status).not.toBe(403);
   });
 
   it("exige usage:read y billing:read; sin medición, «no configurada»", async () => {

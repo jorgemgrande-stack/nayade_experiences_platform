@@ -17,7 +17,7 @@ const WRITE = "ci-only-placeholder-not-a-secret-ana-w";
 const READ = "ci-only-placeholder-not-a-secret-ana-r";
 const CSRF = "csrf-de-prueba-0987654321";
 const SESSIONS: Record<string, { role: string; scopes: Scope[] }> = {
-  "sesion-admin-000000000000": { role: "admin", scopes: ["finance:read", "finance:expenses", "finance:suppliers", "finance:post", "finance:tax", "finance:config", "finance:export", "finance:sensitive", "billing:read", "usage:read"] },
+  "sesion-admin-000000000000": { role: "admin", scopes: ["finance:read", "finance:expenses", "finance:suppliers", "finance:post", "finance:tax", "finance:config", "finance:export", "finance:sensitive", "billing:read", "usage:read", "margins:read"] },
   "sesion-lector-00000000000": { role: "sales", scopes: ["finance:read", "finance:export", "billing:read"] },
   "sesion-contable-000000000": { role: "sales", scopes: ["finance:read", "finance:expenses", "finance:suppliers", "finance:post", "finance:tax", "finance:export"] },
 };

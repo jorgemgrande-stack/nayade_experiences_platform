@@ -36,6 +36,8 @@ export const SCOPES = [
   "billing:read",
   "billing:write",
   "usage:read",
+  // Costes internos, tarifas, rentabilidad y márgenes por cliente: solo administración (el rol Comercial no lo tiene)
+  "margins:read",
   "support:write",
   "crm:read",
   "crm:write",

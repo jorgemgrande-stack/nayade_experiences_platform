@@ -334,7 +334,7 @@ describe("API de rentabilidad", () => {
     server = http.createServer(
       createControlPlaneApp({
         tokens: [
-          { id: "full", sha256: hashToken(FULL), scopes: ["usage:read", "billing:read", "tenants:read"] },
+          { id: "full", sha256: hashToken(FULL), scopes: ["usage:read", "billing:read", "margins:read", "tenants:read"] },
           { id: "usage", sha256: hashToken(USAGE_ONLY), scopes: ["usage:read"] },
           { id: "billing", sha256: hashToken(BILLING_ONLY), scopes: ["billing:read"] },
         ] as Array<{ id: string; sha256: string; scopes: any[] }>,
