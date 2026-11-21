@@ -12,18 +12,12 @@ import { Download, Upload, RefreshCw, CheckCircle2, AlertCircle } from "lucide-r
 import { StatusBadge, type Tone } from "@/components/admin/PanelUi";
 import { TONE_TEXT } from "@/lib/panelTones";
 import { cn } from "@/lib/utils";
+import { useI18n } from "@/i18n/I18nProvider";
 import { CLIENT_CSV_MAX_BYTES, CLIENT_CSV_MAX_ROWS, clientCsvTemplate } from "@shared/clientImportCsv";
 import { importButtonLabel, importDoneToast, importPreviewSummary, importResultSentence } from "@shared/clientImportTexts";
 
 type Action = "create" | "update" | "unchanged" | "review" | "error";
 
-const ACTION_LABEL: Record<Action, string> = {
-  create: "Alta nueva",
-  update: "Completar datos",
-  unchanged: "Sin cambios",
-  review: "Revisar a mano",
-  error: "No se importa",
-};
 const ACTION_TONE: Record<Action, Tone> = {
   create: "success",
   update: "info",
@@ -31,10 +25,7 @@ const ACTION_TONE: Record<Action, Tone> = {
   review: "warning",
   error: "danger",
 };
-const FIELD_LABEL: Record<string, string> = {
-  name: "nombre", phone: "teléfono", company: "empresa", nif: "NIF", address: "dirección", city: "ciudad",
-  postalCode: "código postal", country: "país", notes: "notas",
-};
+const FIELD_KEYS = ["name", "phone", "company", "nif", "address", "city", "postalCode", "country", "notes"];
 
 /** Descarga un texto como fichero (sin pasar por el servidor). */
 export function downloadTextFile(name: string, text: string, type = "text/csv;charset=utf-8") {
@@ -49,6 +40,7 @@ export function downloadTextFile(name: string, text: string, type = "text/csv;ch
 }
 
 export default function ClientImportDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
+  const { t, format: f } = useI18n();
   const [step, setStep] = useState<1 | 2 | 3>(1);
   const [fileName, setFileName] = useState("");
   const [csv, setCsv] = useState("");
@@ -83,7 +75,7 @@ export default function ClientImportDialog({ open, onClose }: { open: boolean; o
   const onFile = async (f: File | undefined) => {
     if (!f) return;
     if (f.size > CLIENT_CSV_MAX_BYTES) {
-      toast.error(`El fichero supera ${CLIENT_CSV_MAX_BYTES / 1024 / 1024} MB. Divídelo en varios y súbelos por partes.`);
+      toast.error(t("crmForm.import.tooBig", { mb: CLIENT_CSV_MAX_BYTES / 1024 / 1024 }));
       return;
     }
     const text = await f.text();
@@ -103,28 +95,25 @@ export default function ClientImportDialog({ open, onClose }: { open: boolean; o
       <DialogContent className="max-w-3xl">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
-            <Upload className="w-5 h-5 text-primary" aria-hidden="true" /> Importar clientes
+            <Upload className="w-5 h-5 text-primary" aria-hidden="true" /> {t("crmForm.import.title")}
           </DialogTitle>
           <DialogDescription>
-            Paso {step} de 3 · {step === 1 ? "Sube el fichero" : step === 2 ? "Revisa qué se hará con cada fila" : "Listo"}
+            {t("crmForm.import.step", { step, label: step === 1 ? t("crmForm.import.step1") : step === 2 ? t("crmForm.import.step2") : t("crmForm.import.step3") })}
           </DialogDescription>
         </DialogHeader>
 
         {step === 1 && (
           <div className="space-y-4 text-sm">
             <p className="text-foreground">
-              Sube un fichero CSV (por ejemplo, guardado desde Excel) con una fila por cliente. Columnas reconocidas:
-              nombre, email, teléfono, empresa, NIF, dirección, ciudad, código postal, país y notas. El email es
-              obligatorio para dar de alta un cliente nuevo. Hasta {CLIENT_CSV_MAX_ROWS.toLocaleString("es-ES")} filas.
+              {t("crmForm.import.intro", { max: f.number(CLIENT_CSV_MAX_ROWS) })}
             </p>
             <p className="text-muted-foreground">
-              Si un cliente ya existe (mismo email, o mismo teléfono y nombre), solo se completan los datos que tenga
-              vacíos: nunca se cambia lo que ya tiene. Antes de importar verás qué pasará con cada fila.
+              {t("crmForm.import.existing")}
             </p>
             <div className="flex flex-wrap gap-2">
               <label className={cn(buttonVariants(), "cursor-pointer has-[:focus-visible]:ring-[3px] has-[:focus-visible]:ring-ring/50")}>
                 {preview.isPending ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}
-                {preview.isPending ? "Leyendo…" : "Elegir fichero CSV"}
+                {preview.isPending ? t("crmForm.import.reading") : t("crmForm.import.chooseFile")}
                 <input
                   type="file"
                   accept=".csv,text/csv,text/plain"
@@ -133,8 +122,8 @@ export default function ClientImportDialog({ open, onClose }: { open: boolean; o
                   onChange={(e) => { void onFile(e.target.files?.[0]); e.target.value = ""; }}
                 />
               </label>
-              <Button variant="outline" onClick={() => downloadTextFile("plantilla-clientes.csv", clientCsvTemplate())}>
-                <Download className="w-4 h-4 mr-2" /> Descargar plantilla
+              <Button variant="outline" onClick={() => downloadTextFile(t("crmForm.import.templateFile"), clientCsvTemplate())}>
+                <Download className="w-4 h-4 mr-2" /> {t("crmForm.import.template")}
               </Button>
             </div>
           </div>
@@ -146,16 +135,16 @@ export default function ClientImportDialog({ open, onClose }: { open: boolean; o
               <strong>{fileName}</strong>: {importPreviewSummary(plan.totals)}
             </p>
             {plan.ignoredColumns.length > 0 && (
-              <p className="text-muted-foreground text-xs">Columnas que no se usan: {plan.ignoredColumns.join(", ")}</p>
+              <p className="text-muted-foreground text-xs">{t("crmForm.import.ignoredColumns", { list: plan.ignoredColumns.join(", ") })}</p>
             )}
             <div className="max-h-[50vh] overflow-y-auto rounded-lg border border-border">
               <table className="w-full text-xs">
                 <thead className="sticky top-0 bg-muted text-muted-foreground">
                   <tr>
-                    <th className="p-2 text-left w-8"><span className="sr-only">Importar</span></th>
-                    <th className="p-2 text-left">Fila</th>
-                    <th className="p-2 text-left">Cliente</th>
-                    <th className="p-2 text-left">Qué se hará</th>
+                    <th className="p-2 text-left w-8"><span className="sr-only">{t("crmForm.import.colImport")}</span></th>
+                    <th className="p-2 text-left">{t("crmForm.import.colRow")}</th>
+                    <th className="p-2 text-left">{t("crmForm.import.colClient")}</th>
+                    <th className="p-2 text-left">{t("crmForm.import.colAction")}</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -165,7 +154,7 @@ export default function ClientImportDialog({ open, onClose }: { open: boolean; o
                       <tr key={r.line} className="border-t border-border align-top">
                         <td className="p-2">
                           {canApply && (
-                            <input type="checkbox" aria-label={`Importar la fila ${r.line}`} checked={!excluded.has(r.line)} onChange={() => toggle(r.line)} />
+                            <input type="checkbox" aria-label={t("crmForm.import.importRow", { line: r.line })} checked={!excluded.has(r.line)} onChange={() => toggle(r.line)} />
                           )}
                         </td>
                         <td className="p-2 text-muted-foreground">{r.line}</td>
@@ -174,9 +163,9 @@ export default function ClientImportDialog({ open, onClose }: { open: boolean; o
                           <div className="text-muted-foreground">{[r.values.email, r.values.phone].filter(Boolean).join(" · ")}</div>
                         </td>
                         <td className="p-2">
-                          <StatusBadge tone={ACTION_TONE[r.action as Action]}>{ACTION_LABEL[r.action as Action]}</StatusBadge>
+                          <StatusBadge tone={ACTION_TONE[r.action as Action]}>{t(`crmForm.import.action.${r.action as Action}`)}</StatusBadge>
                           {r.action === "update" && r.fill && (
-                            <div className="text-muted-foreground mt-1">Se añade: {Object.keys(r.fill).map((f) => FIELD_LABEL[f] ?? f).join(", ")}</div>
+                            <div className="text-muted-foreground mt-1">{t("crmForm.import.willAdd", { list: Object.keys(r.fill).map((k) => (FIELD_KEYS.includes(k) ? t(`crmForm.import.field.${k}`) : k)).join(", ") })}</div>
                           )}
                           {r.reason && <div className="text-muted-foreground mt-1">{r.reason}</div>}
                         </td>
@@ -194,7 +183,7 @@ export default function ClientImportDialog({ open, onClose }: { open: boolean; o
             <CheckCircle2 className={cn("w-5 h-5 shrink-0", TONE_TEXT.success)} aria-hidden="true" />
             <p className="text-foreground">
               {importResultSentence(result.created, result.updated)}
-              Las filas para revisar a mano no se han tocado: corrígelas en el fichero o en la ficha del cliente.
+              {t("crmForm.import.doneNote")}
             </p>
           </div>
         )}
@@ -202,7 +191,7 @@ export default function ClientImportDialog({ open, onClose }: { open: boolean; o
         <DialogFooter>
           {step === 2 && (
             <>
-              <Button variant="outline" onClick={reset}>Elegir otro fichero</Button>
+              <Button variant="outline" onClick={reset}>{t("crmForm.import.chooseOther")}</Button>
               <Button
                 onClick={() => plan && apply.mutate({ csv, fingerprint: plan.fingerprint, excludeLines: Array.from(excluded) })}
                 disabled={apply.isPending || chosen.length === 0}
@@ -213,7 +202,7 @@ export default function ClientImportDialog({ open, onClose }: { open: boolean; o
             </>
           )}
           {step !== 2 && (
-            <Button variant="outline" onClick={close}>{step === 3 ? "Cerrar" : "Cancelar"}</Button>
+            <Button variant="outline" onClick={close}>{step === 3 ? t("crmForm.import.close") : t("crmForm.import.cancel")}</Button>
           )}
         </DialogFooter>
       </DialogContent>

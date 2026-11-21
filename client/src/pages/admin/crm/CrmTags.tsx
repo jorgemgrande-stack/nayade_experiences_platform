@@ -13,12 +13,14 @@ import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { PanelEmpty, PanelError, PanelLoading } from "@/components/admin/PanelStates";
 import { FormField, TagChip, describedBy, selectClass, useCrmCanWrite } from "@/components/admin/crm/CrmParts";
-import { TAG_COLORS, TAG_COLOR_LABELS, TAG_NAME_MAX, validateTagForm } from "@shared/crmTagsTasks";
+import { TAG_COLORS, TAG_NAME_MAX, validateTagForm } from "@shared/crmTagsTasks";
 import { toastError } from "@/lib/errorMessage";
+import { useI18n } from "@/i18n/I18nProvider";
 
 type TagRow = { id: number; name: string; color: string | null; usage: number };
 
 function TagForm({ tag, existing, onClose }: { tag: TagRow | null; existing: TagRow[]; onClose: () => void }) {
+  const { t } = useI18n();
   const utils = trpc.useUtils();
   const [name, setName] = useState(tag?.name ?? "");
   const [color, setColor] = useState(tag?.color ?? "");
@@ -29,8 +31,8 @@ function TagForm({ tag, existing, onClose }: { tag: TagRow | null; existing: Tag
     utils.crmTags.forEntities.invalidate();
     onClose();
   };
-  const create = trpc.crmTags.create.useMutation({ onSuccess: () => done("Etiqueta creada"), onError: (e) => setErrors({ name: e.message }) });
-  const update = trpc.crmTags.update.useMutation({ onSuccess: () => done("Etiqueta guardada"), onError: (e) => setErrors({ name: e.message }) });
+  const create = trpc.crmTags.create.useMutation({ onSuccess: () => done(t("crmTags.form.created")), onError: (e) => setErrors({ name: e.message }) });
+  const update = trpc.crmTags.update.useMutation({ onSuccess: () => done(t("crmTags.form.saved")), onError: (e) => setErrors({ name: e.message }) });
   const pending = create.isPending || update.isPending;
 
   const submit = (e: React.FormEvent) => {
@@ -45,27 +47,28 @@ function TagForm({ tag, existing, onClose }: { tag: TagRow | null; existing: Tag
 
   return (
     <form onSubmit={submit} noValidate className="space-y-4">
-      <FormField id="tag-name" label="Nombre" error={errors.name} hint={`Hasta ${TAG_NAME_MAX} caracteres. No puede repetirse.`} required>
+      <FormField id="tag-name" label={t("crmTags.form.name")} error={errors.name} hint={t("crmTags.form.nameHint", { max: TAG_NAME_MAX })} required>
         <Input id="tag-name" value={name} maxLength={TAG_NAME_MAX} onChange={(e) => setName(e.target.value)} aria-invalid={!!errors.name} aria-required aria-describedby={describedBy("tag-name", errors.name) ?? "tag-name-hint"} autoFocus />
       </FormField>
-      <FormField id="tag-color" label="Color" error={errors.color}>
+      <FormField id="tag-color" label={t("crmTags.form.color")} error={errors.color}>
         <select id="tag-color" className={selectClass} value={color} onChange={(e) => setColor(e.target.value)} aria-invalid={!!errors.color} aria-describedby={describedBy("tag-color", errors.color)}>
-          <option value="">Sin color</option>
-          {TAG_COLORS.map((c) => <option key={c} value={c}>{TAG_COLOR_LABELS[c]}</option>)}
+          <option value="">{t("crmTags.form.noColor")}</option>
+          {TAG_COLORS.map((c) => <option key={c} value={c}>{t(`crmTags.color.${c}`)}</option>)}
         </select>
       </FormField>
       <div className="flex items-center gap-2 text-sm text-muted-foreground">
-        Vista previa: <TagChip name={name.trim() || "Etiqueta"} color={color || null} />
+        {t("crmTags.form.preview")} <TagChip name={name.trim() || t("crmTags.form.sample")} color={color || null} />
       </div>
       <DialogFooter>
-        <Button type="button" variant="outline" onClick={onClose}>Cancelar</Button>
-        <Button type="submit" disabled={pending}>{tag ? "Guardar cambios" : "Crear etiqueta"}</Button>
+        <Button type="button" variant="outline" onClick={onClose}>{t("crmTags.form.cancel")}</Button>
+        <Button type="submit" disabled={pending}>{tag ? t("crmTags.form.saveChanges") : t("crmTags.form.create")}</Button>
       </DialogFooter>
     </form>
   );
 }
 
 export default function CrmTags() {
+  const { t } = useI18n();
   const canWrite = useCrmCanWrite("crm-tags");
   const utils = trpc.useUtils();
   const tags = trpc.crmTags.list.useQuery();
@@ -73,7 +76,7 @@ export default function CrmTags() {
   const [deleting, setDeleting] = useState<TagRow | null>(null);
   const del = trpc.crmTags.delete.useMutation({
     onSuccess: () => {
-      toast.success("Etiqueta eliminada");
+      toast.success(t("crmTags.page.deleted"));
       utils.crmTags.list.invalidate();
       utils.crmTags.forEntities.invalidate();
       setDeleting(null);
@@ -87,41 +90,41 @@ export default function CrmTags() {
       <div className="max-w-4xl space-y-6">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
-            <h1 className="text-2xl font-bold text-foreground">Etiquetas</h1>
-            <p className="text-sm text-muted-foreground">Clasifica a tus clientes y oportunidades (por ejemplo, «VIP» o «Mayorista») y filtra por ellas en el listado de clientes.</p>
+            <h1 className="text-2xl font-bold text-foreground">{t("crmTags.page.title")}</h1>
+            <p className="text-sm text-muted-foreground">{t("crmTags.page.description")}</p>
           </div>
           {canWrite && (
             <Button onClick={() => setEditing(null)}>
-              <Plus className="mr-1.5 h-4 w-4" aria-hidden="true" /> Nueva etiqueta
+              <Plus className="mr-1.5 h-4 w-4" aria-hidden="true" /> {t("crmTags.page.newTag")}
             </Button>
           )}
         </div>
 
         {tags.isLoading ? (
-          <PanelLoading label="Cargando etiquetas…" />
+          <PanelLoading label={t("crmTags.page.loading")} />
         ) : tags.isError ? (
-          <PanelError error={tags.error} onRetry={() => tags.refetch()} title="No se han podido cargar las etiquetas" />
+          <PanelError error={tags.error} onRetry={() => tags.refetch()} title={t("crmTags.page.loadError")} />
         ) : list.length === 0 ? (
-          <PanelEmpty icon={<Tag className="h-6 w-6" />} title="Todavía no tienes etiquetas" description="Crea etiquetas para agrupar clientes y encontrarlos rápido.">
-            {canWrite && <Button onClick={() => setEditing(null)}><Plus className="mr-1.5 h-4 w-4" aria-hidden="true" /> Crear la primera etiqueta</Button>}
+          <PanelEmpty icon={<Tag className="h-6 w-6" />} title={t("crmTags.page.emptyTitle")} description={t("crmTags.page.emptyDesc")}>
+            {canWrite && <Button onClick={() => setEditing(null)}><Plus className="mr-1.5 h-4 w-4" aria-hidden="true" /> {t("crmTags.page.createFirst")}</Button>}
           </PanelEmpty>
         ) : (
-          <ul className="divide-y divide-border rounded-2xl border border-border bg-card" aria-label="Etiquetas de la empresa">
-            {list.map((t) => (
-              <li key={t.id} className="flex flex-wrap items-center gap-3 px-4 py-3">
-                <TagChip name={t.name} color={t.color} />
+          <ul className="divide-y divide-border rounded-2xl border border-border bg-card" aria-label={t("crmTags.page.listAria")}>
+            {list.map((tg) => (
+              <li key={tg.id} className="flex flex-wrap items-center gap-3 px-4 py-3">
+                <TagChip name={tg.name} color={tg.color} />
                 <span className="flex-1 text-sm text-muted-foreground">
-                  {t.usage === 0 ? "Sin asignar" : `${t.usage} ${t.usage === 1 ? "asignación" : "asignaciones"}`}
+                  {tg.usage === 0 ? t("crmTags.page.unassigned") : t("crmTags.page.usage", { n: tg.usage })}
                 </span>
-                <Link href={`/admin/crm/clientes?etiqueta=${t.id}`} className="inline-flex items-center gap-1 rounded text-sm text-primary underline-offset-4 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
-                  <Users className="h-4 w-4" aria-hidden="true" /> Ver clientes
+                <Link href={`/admin/crm/clientes?etiqueta=${tg.id}`} className="inline-flex items-center gap-1 rounded text-sm text-primary underline-offset-4 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                  <Users className="h-4 w-4" aria-hidden="true" /> {t("crmTags.page.seeClients")}
                 </Link>
                 {canWrite && (
                   <>
-                    <Button size="sm" variant="ghost" onClick={() => setEditing(t)} aria-label={`Editar la etiqueta ${t.name}`}>
+                    <Button size="sm" variant="ghost" onClick={() => setEditing(tg)} aria-label={t("crmTags.page.editAria", { name: tg.name })}>
                       <Pencil className="h-4 w-4" aria-hidden="true" />
                     </Button>
-                    <Button size="sm" variant="ghost" onClick={() => setDeleting(t)} aria-label={`Eliminar la etiqueta ${t.name}`} className="text-destructive hover:text-destructive">
+                    <Button size="sm" variant="ghost" onClick={() => setDeleting(tg)} aria-label={t("crmTags.page.deleteAria", { name: tg.name })} className="text-destructive hover:text-destructive">
                       <Trash2 className="h-4 w-4" aria-hidden="true" />
                     </Button>
                   </>
@@ -135,8 +138,8 @@ export default function CrmTags() {
       <Dialog open={editing !== undefined} onOpenChange={(o) => !o && setEditing(undefined)}>
         <DialogContent className="max-w-md">
           <DialogHeader>
-            <DialogTitle>{editing ? "Editar etiqueta" : "Nueva etiqueta"}</DialogTitle>
-            <DialogDescription>El nombre es único en tu empresa (no distingue mayúsculas ni acentos).</DialogDescription>
+            <DialogTitle>{editing ? t("crmTags.page.editTitle") : t("crmTags.page.newTitle")}</DialogTitle>
+            <DialogDescription>{t("crmTags.page.unique")}</DialogDescription>
           </DialogHeader>
           {editing !== undefined && <TagForm tag={editing} existing={list} onClose={() => setEditing(undefined)} />}
         </DialogContent>
@@ -145,16 +148,16 @@ export default function CrmTags() {
       <Dialog open={deleting !== null} onOpenChange={(o) => !o && setDeleting(null)}>
         <DialogContent className="max-w-sm">
           <DialogHeader>
-            <DialogTitle>¿Eliminar la etiqueta?</DialogTitle>
+            <DialogTitle>{t("crmTags.page.deleteTitle")}</DialogTitle>
             <DialogDescription>
               {deleting && deleting.usage > 0
-                ? `«${deleting.name}» se quitará de ${deleting.usage} ${deleting.usage === 1 ? "cliente u oportunidad" : "clientes u oportunidades"}. No se borra ningún cliente.`
-                : "Esta acción no se puede deshacer."}
+                ? t("crmTags.page.deleteInUse", { name: deleting.name, n: deleting.usage })
+                : t("crmTags.page.deleteIrreversible")}
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
-            <Button type="button" variant="outline" onClick={() => setDeleting(null)}>Cancelar</Button>
-            <Button type="button" variant="destructive" disabled={del.isPending} onClick={() => deleting && del.mutate({ id: deleting.id })}>Eliminar</Button>
+            <Button type="button" variant="outline" onClick={() => setDeleting(null)}>{t("crmTags.page.cancel")}</Button>
+            <Button type="button" variant="destructive" disabled={del.isPending} onClick={() => deleting && del.mutate({ id: deleting.id })}>{t("crmTags.page.delete")}</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

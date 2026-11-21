@@ -20,20 +20,16 @@ import { errorMessage } from "@/components/admin/PanelStates";
 import { toastError } from "@/lib/errorMessage";
 import { usePanelSubscription } from "@/hooks/usePanelSubscription";
 import { useVocabulary } from "@/lib/vocabulary";
+import { useI18n } from "@/i18n/I18nProvider";
 import { EntityTagsDialog, TagChip, useCrmCanWrite } from "@/components/admin/crm/CrmParts";
 import { ClientFormDialog } from "@/components/admin/crm/ClientFormDialog";
 import { CustomerEmailDeliveryList, CustomerEmailDeliveryWarning } from "@/components/admin/crm/CustomerEmailDelivery";
 import {
-  ACTIVITY_FILTERS, CLIENT_KIND_LABELS, NOTE_MAX, buildClientActivity, clientDisplayName, clientKind, invoicedTotal,
+  ACTIVITY_FILTERS, NOTE_MAX, buildClientActivity, clientDisplayName, clientKind, invoicedTotal,
   type ActivityItem, type ActivityKind,
 } from "@shared/clientProfile";
 
-const fmtDate = (ms: number | string | Date | null | undefined) => {
-  if (!ms) return "—";
-  const d = ms instanceof Date ? ms : new Date(ms);
-  return Number.isFinite(d.getTime()) ? d.toLocaleDateString("es-ES", { day: "2-digit", month: "short", year: "numeric" }) : "—";
-};
-const fmtEuros = (n: number) => new Intl.NumberFormat("es-ES", { style: "currency", currency: "EUR" }).format(n);
+const DATE_OPTS: Intl.DateTimeFormatOptions = { day: "2-digit", month: "short", year: "numeric" };
 
 const KIND_ICON: Record<ActivityKind, typeof FileText> = {
   quote: FileText, order: ShoppingBag, invoice: Receipt, payment: Wallet, email: Mail, note: StickyNote,
@@ -54,18 +50,22 @@ function Card({ title, icon: Icon, action, children, className = "" }: { title: 
 }
 
 function Row({ label, value, href }: { label: string; value?: string | null; href?: string }) {
+  const { t } = useI18n();
   const v = (value ?? "").trim();
   return (
     <div className="grid grid-cols-[7.5rem_1fr] gap-2 py-1 text-sm">
       <dt className="text-muted-foreground">{label}</dt>
       <dd className="min-w-0 break-words text-foreground">
-        {!v ? <span className="text-muted-foreground">Sin indicar</span> : href ? <a href={href} className="text-primary underline-offset-4 hover:underline">{v}</a> : v}
+        {!v ? <span className="text-muted-foreground">{t("crmClientDetail.unspecified")}</span> : href ? <a href={href} className="text-primary underline-offset-4 hover:underline">{v}</a> : v}
       </dd>
     </div>
   );
 }
 
 export default function ClientDetail({ id }: { id: number }) {
+  const { t, format } = useI18n();
+  const fmtDate = (ms: number | string | Date | null | undefined) => (ms ? format.date(ms, DATE_OPTS) : "—");
+  const fmtEuros = (n: number) => format.currency(n);
   const [, setLocation] = useLocation();
   const voc = useVocabulary();
   const sub = usePanelSubscription();
@@ -94,15 +94,15 @@ export default function ClientDetail({ id }: { id: number }) {
   const [filter, setFilter] = useState<ActivityKind | "all">("all");
 
   const addNote = trpc.crm.clients.addNote.useMutation({
-    onSuccess: () => { setNoteText(""); toast.success("Nota guardada"); utils.crm.clients.notes.invalidate({ clientId: id }); },
+    onSuccess: () => { setNoteText(""); toast.success(t("crmClientDetail.noteSaved")); utils.crm.clients.notes.invalidate({ clientId: id }); },
     onError: (e) => toastError(e),
   });
   const deleteNote = trpc.crm.clients.deleteNote.useMutation({
-    onSuccess: () => { toast.success("Nota eliminada"); utils.crm.clients.notes.invalidate({ clientId: id }); },
+    onSuccess: () => { toast.success(t("crmClientDetail.noteDeleted")); utils.crm.clients.notes.invalidate({ clientId: id }); },
     onError: (e) => toastError(e),
   });
   const createTask = trpc.crmTasks.create.useMutation({
-    onSuccess: () => { setTaskTitle(""); setTaskDue(""); toast.success("Tarea creada"); utils.crmTasks.list.invalidate(); utils.crmTasks.summary.invalidate(); },
+    onSuccess: () => { setTaskTitle(""); setTaskDue(""); toast.success(t("crmClientDetail.taskCreated")); utils.crmTasks.list.invalidate(); utils.crmTasks.summary.invalidate(); },
     onError: (e) => toastError(e),
   });
   const setTaskStatus = trpc.crmTasks.setStatus.useMutation({
@@ -110,7 +110,7 @@ export default function ClientDetail({ id }: { id: number }) {
     onError: (e) => toastError(e),
   });
   const removeClient = trpc.crm.clients.delete.useMutation({
-    onSuccess: () => { toast.success("Cliente eliminado"); utils.crm.clients.list.invalidate(); utils.crm.clients.stats.invalidate(); setLocation("/admin/crm/clientes"); },
+    onSuccess: () => { toast.success(t("crmClientDetail.deleted")); utils.crm.clients.list.invalidate(); utils.crm.clients.stats.invalidate(); setLocation("/admin/crm/clientes"); },
     onError: (e) => toastError(e),
   });
 
@@ -142,7 +142,7 @@ export default function ClientDetail({ id }: { id: number }) {
     return (
       <AdminLayout>
         <div className="flex items-center justify-center gap-2 px-4 py-20 text-muted-foreground" role="status">
-          <Loader2 className="h-5 w-5 animate-spin" aria-hidden="true" /> Cargando la ficha del cliente…
+          <Loader2 className="h-5 w-5 animate-spin" aria-hidden="true" /> {t("crmClientDetail.loading")}
         </div>
       </AdminLayout>
     );
@@ -153,10 +153,10 @@ export default function ClientDetail({ id }: { id: number }) {
       <AdminLayout>
         <div className="mx-auto flex max-w-md flex-col items-center gap-3 px-4 py-20 text-center" role="alert">
           <AlertCircle className="h-8 w-8 text-destructive" aria-hidden="true" />
-          <p className="text-foreground">{notFound ? "Este cliente no existe o se ha eliminado." : errorMessage(history.error, "No se ha podido cargar la ficha del cliente.")}</p>
+          <p className="text-foreground">{notFound ? t("crmClientDetail.notFound") : errorMessage(history.error, t("crmClientDetail.loadError"))}</p>
           <div className="flex gap-2">
-            {!notFound && <Button variant="outline" onClick={() => history.refetch()}>Reintentar</Button>}
-            <Button asChild><Link href="/admin/crm/clientes">Volver a clientes</Link></Button>
+            {!notFound && <Button variant="outline" onClick={() => history.refetch()}>{t("crmClientDetail.retry")}</Button>}
+            <Button asChild><Link href="/admin/crm/clientes">{t("crmClientDetail.backToClients")}</Link></Button>
           </div>
         </div>
       </AdminLayout>
@@ -168,8 +168,8 @@ export default function ClientDetail({ id }: { id: number }) {
   const clientTags = tags.data?.[id] ?? [];
   const address = [client.address, [client.postalCode, client.city].filter(Boolean).join(" ")].filter((s) => (s ?? "").trim()).join(", ");
   const total = invoicedTotal(data.invoices);
-  const openTasks = (tasks.data?.rows ?? []).filter((t) => t.status === "pendiente");
-  const doneTasks = (tasks.data?.rows ?? []).filter((t) => t.status === "hecha");
+  const openTasks = (tasks.data?.rows ?? []).filter((tk) => tk.status === "pendiente");
+  const doneTasks = (tasks.data?.rows ?? []).filter((tk) => tk.status === "hecha");
   const visibleFilters = ACTIVITY_FILTERS.filter((f) =>
     f.id === "all" || (f.id === "quote" ? canQuotes : f.id === "order" ? canOrders : f.id === "invoice" ? canInvoices : f.id === "payment" ? canOrders || canInvoices : true),
   );
@@ -177,9 +177,9 @@ export default function ClientDetail({ id }: { id: number }) {
   return (
     <AdminLayout>
       <div className="mx-auto w-full max-w-6xl px-4 py-6 sm:px-6">
-        <nav aria-label="Ruta" className="mb-4 text-sm">
+        <nav aria-label={t("crmClientDetail.breadcrumb")} className="mb-4 text-sm">
           <Link href="/admin/crm/clientes" className="inline-flex items-center gap-1 text-muted-foreground hover:text-foreground">
-            <ArrowLeft className="h-4 w-4" aria-hidden="true" /> Clientes
+            <ArrowLeft className="h-4 w-4" aria-hidden="true" /> {t("crmClientDetail.clients")}
           </Link>
         </nav>
 
@@ -194,14 +194,14 @@ export default function ClientDetail({ id }: { id: number }) {
               <div className="mt-1 flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
                 <span className="inline-flex items-center gap-1 rounded-full border border-border px-2 py-0.5 text-xs font-medium text-foreground">
                   {kind === "empresa" ? <Building2 className="h-3 w-3" aria-hidden="true" /> : <User className="h-3 w-3" aria-hidden="true" />}
-                  {CLIENT_KIND_LABELS[kind]}
+                  {t(`crmForm.kind.${kind}`)}
                 </span>
-                {kind === "empresa" && client.name && client.name !== client.company && <span>Contacto: {client.name}</span>}
-                <span>Cliente desde {fmtDate(client.createdAt as unknown as string)}</span>
+                {kind === "empresa" && client.name && client.name !== client.company && <span>{t("crmClientDetail.contactPrefix", { name: client.name })}</span>}
+                <span>{t("crmClientDetail.since", { date: fmtDate(client.createdAt as unknown as string) })}</span>
               </div>
               {canTags && clientTags.length > 0 && (
                 <div className="mt-2 flex flex-wrap gap-1">
-                  {clientTags.map((t) => <TagChip key={t.id} name={t.name} color={t.color} />)}
+                  {clientTags.map((tg) => <TagChip key={tg.id} name={tg.name} color={tg.color} />)}
                 </div>
               )}
             </div>
@@ -209,17 +209,17 @@ export default function ClientDetail({ id }: { id: number }) {
           <div className="flex flex-wrap gap-2">
             {canEdit && (
               <Button variant="outline" size="sm" onClick={() => setEditing(true)}>
-                <Pencil className="mr-1.5 h-4 w-4" aria-hidden="true" /> Editar datos
+                <Pencil className="mr-1.5 h-4 w-4" aria-hidden="true" /> {t("crmClientDetail.editData")}
               </Button>
             )}
             {canTags && (
               <Button variant="outline" size="sm" onClick={() => setTagsOpen(true)}>
-                <Tag className="mr-1.5 h-4 w-4" aria-hidden="true" /> Etiquetas
+                <Tag className="mr-1.5 h-4 w-4" aria-hidden="true" /> {t("crmClientDetail.tags")}
               </Button>
             )}
             {canEdit && (
               <Button variant="outline" size="sm" onClick={() => setConfirmDelete(true)} className="text-destructive hover:text-destructive">
-                <Trash2 className="mr-1.5 h-4 w-4" aria-hidden="true" /> Eliminar
+                <Trash2 className="mr-1.5 h-4 w-4" aria-hidden="true" /> {t("crmClientDetail.delete")}
               </Button>
             )}
           </div>
@@ -229,93 +229,93 @@ export default function ClientDetail({ id }: { id: number }) {
 
         {/* Resumen */}
         <div className="mb-6 grid grid-cols-2 gap-3 md:grid-cols-4">
-          {canQuotes && <Stat label="Presupuestos" value={String(data.quotes.length)} />}
+          {canQuotes && <Stat label={t("crmClientDetail.stat.quotes")} value={String(data.quotes.length)} />}
           {canOrders && <Stat label={voc.orders} value={String(data.reservations.length)} />}
-          {canInvoices && <Stat label="Facturas" value={String(data.invoices.length)} />}
-          {canInvoices && <Stat label="Total facturado" value={fmtEuros(total)} />}
+          {canInvoices && <Stat label={t("crmClientDetail.stat.invoices")} value={String(data.invoices.length)} />}
+          {canInvoices && <Stat label={t("crmClientDetail.stat.invoiced")} value={fmtEuros(total)} />}
         </div>
 
         <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
           {/* Datos */}
           <div className="min-w-0 space-y-6">
-            <Card title="Contacto" icon={Phone}>
+            <Card title={t("crmClientDetail.contact")} icon={Phone}>
               <dl>
-                {kind === "empresa" && <Row label="Razón social" value={client.company} />}
-                <Row label={kind === "empresa" ? "Contacto" : "Nombre"} value={client.name} />
-                <Row label="Correo" value={client.email} href={client.email ? `mailto:${client.email}` : undefined} />
-                <Row label="Teléfono" value={client.phone} href={client.phone ? `tel:${client.phone.replace(/\s/g, "")}` : undefined} />
+                {kind === "empresa" && <Row label={t("crmClientDetail.companyName")} value={client.company} />}
+                <Row label={kind === "empresa" ? t("crmClientDetail.contact") : t("crmClientDetail.name")} value={client.name} />
+                <Row label={t("crmClientDetail.email")} value={client.email} href={client.email ? `mailto:${client.email}` : undefined} />
+                <Row label={t("crmClientDetail.phone")} value={client.phone} href={client.phone ? `tel:${client.phone.replace(/\s/g, "")}` : undefined} />
               </dl>
             </Card>
-            <Card title="Datos fiscales y dirección" icon={MapPin}>
+            <Card title={t("crmClientDetail.taxAddress")} icon={MapPin}>
               <dl>
-                <Row label={kind === "empresa" ? "CIF / NIF" : "NIF / NIE"} value={client.nif} />
-                <Row label="Dirección" value={address} />
-                <Row label="País" value={client.country === "ES" ? "España" : client.country} />
+                <Row label={kind === "empresa" ? t("crmClientDetail.nifCompany") : t("crmClientDetail.nifPerson")} value={client.nif} />
+                <Row label={t("crmClientDetail.address")} value={address} />
+                <Row label={t("crmClientDetail.country")} value={client.country === "ES" ? t("crmClientDetail.countryES") : client.country} />
               </dl>
-              {!client.nif && canInvoices && <p className="mt-2 text-xs text-muted-foreground">Añade el NIF para emitirle facturas completas.</p>}
+              {!client.nif && canInvoices && <p className="mt-2 text-xs text-muted-foreground">{t("crmClientDetail.addNif")}</p>}
             </Card>
-            <Card title="Entrega de correos" icon={Mail}>
+            <Card title={t("crmClientDetail.mailDelivery")} icon={Mail}>
               <CustomerEmailDeliveryList clientId={id} email={client.email} />
             </Card>
             {data.lead && client.leadId && canLeads && (
               <Card title={voc.leadOrigin} icon={User}>
                 <p className="text-sm text-foreground">{data.lead.name} ·{fmtDate(data.lead.createdAt as unknown as string)}</p>
                 <Link href={`/admin/crm?tab=leads&search=${encodeURIComponent(data.lead.email ?? data.lead.name)}`} className="mt-1 inline-block text-xs font-medium text-primary underline-offset-4 hover:underline">
-                  Ver en {voc.leads}
+                  {t("crmClientDetail.viewIn", { what: voc.leads })}
                 </Link>
               </Card>
             )}
             {(client.notes ?? "").trim() && (
-              <Card title="Observaciones" icon={MessageSquare}>
+              <Card title={t("crmClientDetail.notes")} icon={MessageSquare}>
                 <p className="whitespace-pre-wrap break-words text-sm text-foreground">{client.notes}</p>
               </Card>
             )}
             {canTasks && (
               <Card
-                title="Tareas"
+                title={t("crmClientDetail.tasks")}
                 icon={ClipboardList}
-                action={<Link href={`/admin/crm/tareas?vinculo=client&id=${id}&nombre=${encodeURIComponent(display)}`} className="text-xs font-medium text-primary underline-offset-4 hover:underline">Ver todas</Link>}
+                action={<Link href={`/admin/crm/tareas?vinculo=client&id=${id}&nombre=${encodeURIComponent(display)}`} className="text-xs font-medium text-primary underline-offset-4 hover:underline">{t("crmClientDetail.seeAll")}</Link>}
               >
                 {canWriteTasks && (
                   <form
                     className="mb-3 space-y-2"
                     onSubmit={(e) => {
                       e.preventDefault();
-                      if (!taskTitle.trim()) { toast.error("Escribe qué hay que hacer"); return; }
+                      if (!taskTitle.trim()) { toast.error(t("crmClientDetail.taskTypeSomething")); return; }
                       createTask.mutate({ title: taskTitle.trim(), dueDate: taskDue || null, entityType: "client", entityId: id });
                     }}
                   >
-                    <label htmlFor="client-task-title" className="sr-only">Nueva tarea</label>
-                    <Input id="client-task-title" value={taskTitle} maxLength={200} onChange={(e) => setTaskTitle(e.target.value)} placeholder="Nueva tarea (por ejemplo, llamar para renovar)" />
+                    <label htmlFor="client-task-title" className="sr-only">{t("crmClientDetail.newTask")}</label>
+                    <Input id="client-task-title" value={taskTitle} maxLength={200} onChange={(e) => setTaskTitle(e.target.value)} placeholder={t("crmClientDetail.newTaskPlaceholder")} />
                     <div className="flex gap-2">
-                      <label htmlFor="client-task-due" className="sr-only">Fecha límite</label>
+                      <label htmlFor="client-task-due" className="sr-only">{t("crmClientDetail.dueDate")}</label>
                       <Input id="client-task-due" type="date" value={taskDue} onChange={(e) => setTaskDue(e.target.value)} className="flex-1" />
                       <Button type="submit" size="sm" disabled={createTask.isPending}>
-                        <Plus className="mr-1 h-4 w-4" aria-hidden="true" /> Añadir tarea
+                        <Plus className="mr-1 h-4 w-4" aria-hidden="true" /> {t("crmClientDetail.addTask")}
                       </Button>
                     </div>
                   </form>
                 )}
                 {tasks.isLoading ? (
-                  <p className="text-sm text-muted-foreground" role="status">Cargando tareas…</p>
+                  <p className="text-sm text-muted-foreground" role="status">{t("crmClientDetail.tasksLoading")}</p>
                 ) : openTasks.length + doneTasks.length === 0 ? (
-                  <p className="text-sm text-muted-foreground">No hay tareas para este cliente.</p>
+                  <p className="text-sm text-muted-foreground">{t("crmClientDetail.tasksNone")}</p>
                 ) : (
                   <ul className="space-y-1">
-                    {[...openTasks, ...doneTasks].map((t) => (
-                      <li key={t.id} className="flex items-start gap-2 text-sm">
+                    {[...openTasks, ...doneTasks].map((tk) => (
+                      <li key={tk.id} className="flex items-start gap-2 text-sm">
                         <button
                           type="button"
                           disabled={!canWriteTasks || setTaskStatus.isPending}
-                          onClick={() => setTaskStatus.mutate({ id: t.id, status: t.status === "hecha" ? "pendiente" : "hecha" })}
+                          onClick={() => setTaskStatus.mutate({ id: tk.id, status: tk.status === "hecha" ? "pendiente" : "hecha" })}
                           className="mt-0.5 text-muted-foreground hover:text-foreground disabled:cursor-default"
-                          aria-label={t.status === "hecha" ? `Marcar «${t.title}» como pendiente` : `Marcar «${t.title}» como hecha`}
+                          aria-label={tk.status === "hecha" ? t("crmClientDetail.markPending", { title: tk.title }) : t("crmClientDetail.markDone", { title: tk.title })}
                         >
-                          {t.status === "hecha" ? <CheckCircle2 className="h-4 w-4 text-success" aria-hidden="true" /> : <Circle className="h-4 w-4" aria-hidden="true" />}
+                          {tk.status === "hecha" ? <CheckCircle2 className="h-4 w-4 text-success" aria-hidden="true" /> : <Circle className="h-4 w-4" aria-hidden="true" />}
                         </button>
-                        <span className={`min-w-0 flex-1 break-words ${t.status === "hecha" ? "text-muted-foreground line-through" : "text-foreground"}`}>
-                          {t.title}
-                          {t.dueDate && <span className="ml-1 text-xs text-muted-foreground">· {fmtDate(t.dueDate)}</span>}
+                        <span className={`min-w-0 flex-1 break-words ${tk.status === "hecha" ? "text-muted-foreground line-through" : "text-foreground"}`}>
+                          {tk.title}
+                          {tk.dueDate && <span className="ml-1 text-xs text-muted-foreground">· {fmtDate(tk.dueDate)}</span>}
                         </span>
                       </li>
                     ))}
@@ -327,9 +327,9 @@ export default function ClientDetail({ id }: { id: number }) {
 
           {/* Notas e historial */}
           <div className="min-w-0 space-y-6 lg:col-span-2">
-            <Card title="Notas" icon={StickyNote}>
+            <Card title={t("crmClientDetail.notesTitle")} icon={StickyNote}>
               {notes.data && !notes.data.available ? (
-                <p className="text-sm text-muted-foreground">Las notas todavía no están disponibles en tu cuenta.</p>
+                <p className="text-sm text-muted-foreground">{t("crmClientDetail.notesUnavailable")}</p>
               ) : (
                 <>
                   {canEdit && (
@@ -337,33 +337,33 @@ export default function ClientDetail({ id }: { id: number }) {
                       className="mb-3 space-y-2"
                       onSubmit={(e) => {
                         e.preventDefault();
-                        if (!noteText.trim()) { toast.error("Escribe el texto de la nota"); return; }
+                        if (!noteText.trim()) { toast.error(t("crmClientDetail.noteTypeSomething")); return; }
                         addNote.mutate({ clientId: id, body: noteText });
                       }}
                     >
-                      <label htmlFor="client-note" className="sr-only">Nueva nota</label>
-                      <Textarea id="client-note" rows={2} maxLength={NOTE_MAX} value={noteText} onChange={(e) => setNoteText(e.target.value)} placeholder="Escribe una nota interna sobre este cliente…" />
+                      <label htmlFor="client-note" className="sr-only">{t("crmClientDetail.newNote")}</label>
+                      <Textarea id="client-note" rows={2} maxLength={NOTE_MAX} value={noteText} onChange={(e) => setNoteText(e.target.value)} placeholder={t("crmClientDetail.notePlaceholder")} />
                       <div className="flex justify-end">
                         <Button type="submit" size="sm" disabled={addNote.isPending}>
-                          {addNote.isPending && <Loader2 className="mr-1 h-4 w-4 animate-spin" aria-hidden="true" />} Guardar nota
+                          {addNote.isPending && <Loader2 className="mr-1 h-4 w-4 animate-spin" aria-hidden="true" />} {t("crmClientDetail.saveNote")}
                         </Button>
                       </div>
                     </form>
                   )}
                   {notes.isLoading ? (
-                    <p className="text-sm text-muted-foreground" role="status">Cargando notas…</p>
+                    <p className="text-sm text-muted-foreground" role="status">{t("crmClientDetail.notesLoading")}</p>
                   ) : !notes.data?.items.length ? (
-                    <p className="text-sm text-muted-foreground">Todavía no hay notas.</p>
+                    <p className="text-sm text-muted-foreground">{t("crmClientDetail.notesNone")}</p>
                   ) : (
                     <ul className="space-y-2">
                       {notes.data.items.map((n) => (
                         <li key={n.id} className="rounded-lg border border-border bg-muted/30 p-3">
                           <p className="whitespace-pre-wrap break-words text-sm text-foreground">{n.body}</p>
                           <div className="mt-1 flex items-center justify-between gap-2 text-xs text-muted-foreground">
-                            <span>{n.authorName ?? "Equipo"} · {fmtDate(n.createdAt as unknown as string)}</span>
+                            <span>{n.authorName ?? t("crmClientDetail.team")} · {fmtDate(n.createdAt as unknown as string)}</span>
                             {canEdit && (
                               <button type="button" onClick={() => deleteNote.mutate({ clientId: id, noteId: n.id })} disabled={deleteNote.isPending} className="font-medium text-destructive hover:underline">
-                                Eliminar nota
+                                {t("crmClientDetail.deleteNote")}
                               </button>
                             )}
                           </div>
@@ -375,8 +375,8 @@ export default function ClientDetail({ id }: { id: number }) {
               )}
             </Card>
 
-            <Card title="Historial" icon={FileText}>
-              <div className="mb-3 flex flex-wrap gap-1.5" role="group" aria-label="Filtrar el historial">
+            <Card title={t("crmClientDetail.history")} icon={FileText}>
+              <div className="mb-3 flex flex-wrap gap-1.5" role="group" aria-label={t("crmClientDetail.filterHistory")}>
                 {visibleFilters.map((f) => (
                   <button
                     key={f.id}
@@ -385,13 +385,13 @@ export default function ClientDetail({ id }: { id: number }) {
                     aria-pressed={filter === f.id}
                     className={`rounded-full border px-2.5 py-1 text-xs font-medium ${filter === f.id ? "border-primary bg-primary text-primary-foreground" : "border-border text-muted-foreground hover:text-foreground"}`}
                   >
-                    {f.id === "order" ? voc.orders : f.label} ({filterCounts[f.id] ?? 0})
+                    {f.id === "order" ? voc.orders : t(`crmClientDetail.filter.${f.id}`)} ({filterCounts[f.id] ?? 0})
                   </button>
                 ))}
               </div>
               {filtered.length === 0 ? (
                 <p className="py-6 text-center text-sm text-muted-foreground">
-                  {activity.length === 0 ? "Este cliente todavía no tiene presupuestos, ventas ni facturas." : "No hay nada de este tipo."}
+                  {activity.length === 0 ? t("crmClientDetail.historyEmpty") : t("crmClientDetail.historyNothing")}
                 </p>
               ) : (
                 <ol className="divide-y divide-border">
@@ -408,10 +408,10 @@ export default function ClientDetail({ id }: { id: number }) {
                           {a.detail && <p className={`break-words text-xs text-muted-foreground ${a.kind === "note" ? "whitespace-pre-wrap" : "line-clamp-2"}`}>{a.detail}</p>}
                           <div className="mt-1 flex flex-wrap items-center gap-3 text-xs">
                             <span className="text-muted-foreground">{fmtDate(a.date)}</span>
-                            {a.href && <Link href={a.href} className="font-medium text-primary underline-offset-4 hover:underline">Ver</Link>}
+                            {a.href && <Link href={a.href} className="font-medium text-primary underline-offset-4 hover:underline">{t("crmClientDetail.view")}</Link>}
                             {a.externalHref && (
                               <a href={a.externalHref} target="_blank" rel="noreferrer" className="inline-flex items-center gap-0.5 font-medium text-primary underline-offset-4 hover:underline">
-                                Ver PDF <ExternalLink className="h-3 w-3" aria-hidden="true" />
+                                {t("crmClientDetail.viewPdf")} <ExternalLink className="h-3 w-3" aria-hidden="true" />
                               </a>
                             )}
                           </div>
@@ -437,22 +437,22 @@ export default function ClientDetail({ id }: { id: number }) {
           entityType="client"
           entityId={id}
           entityName={display}
-          current={clientTags.map((t) => t.id)}
+          current={clientTags.map((tg) => tg.id)}
           readOnly={!canWriteTags}
         />
       )}
       <Dialog open={confirmDelete} onOpenChange={(o) => !o && setConfirmDelete(false)}>
         <DialogContent className="max-w-sm">
           <DialogHeader>
-            <DialogTitle>Eliminar cliente</DialogTitle>
+            <DialogTitle>{t("crmClientDetail.deleteTitle")}</DialogTitle>
             <DialogDescription>
-              Se eliminará la ficha de {display} y sus notas. Sus facturas y presupuestos se conservan. Esta acción no se puede deshacer.
+              {t("crmClientDetail.deleteConfirm", { name: display })}
             </DialogDescription>
           </DialogHeader>
           <DialogFooter className="gap-2">
-            <Button variant="outline" onClick={() => setConfirmDelete(false)}>Cancelar</Button>
+            <Button variant="outline" onClick={() => setConfirmDelete(false)}>{t("crmClientDetail.cancel")}</Button>
             <Button variant="destructive" onClick={() => removeClient.mutate({ id })} disabled={removeClient.isPending}>
-              {removeClient.isPending && <Loader2 className="mr-1 h-4 w-4 animate-spin" aria-hidden="true" />} Eliminar
+              {removeClient.isPending && <Loader2 className="mr-1 h-4 w-4 animate-spin" aria-hidden="true" />} {t("crmClientDetail.delete")}
             </Button>
           </DialogFooter>
         </DialogContent>
