@@ -16,13 +16,14 @@ import { PanelEmpty, PanelError, PanelLoading } from "@/components/admin/PanelSt
 import { toastError } from "@/lib/errorMessage";
 import { effectiveStatus } from "@shared/learning";
 import { experienceLabel, variantLabel, modulesLabel } from "@shared/learningRules";
-import { Film, FolderOpen, GraduationCap, PenSquare, PlayCircle, ShieldCheck, Users, Wrench, type LucideIcon } from "lucide-react";
+import { BookPlus, Film, FolderOpen, GraduationCap, PenSquare, PlayCircle, ShieldCheck, Users, Wrench, type LucideIcon } from "lucide-react";
 import CourseEditor from "./CourseEditor";
 import Materials from "./Materials";
+import Authoring from "./Authoring";
 
 const fmt = (ms: number | null) => (ms ? new Intl.DateTimeFormat("es-ES", { dateStyle: "medium", timeStyle: "short", timeZone: "Europe/Madrid" }).format(new Date(ms)) : "Sin caducidad");
 const STATUS_LABEL: Record<string, string> = { active: "Activa", scheduled: "Programada", expired: "Caducada", suspended: "Suspendida", revoked: "Revocada" };
-type Tab = "matriculas" | "cursos" | "materiales" | "editor" | "reglas" | "demo" | "tecnica";
+type Tab = "matriculas" | "cursos" | "crear" | "materiales" | "editor" | "reglas" | "demo" | "tecnica";
 
 function ReasonDialog({ title, withDate, onClose, onSubmit }: { title: string; withDate?: boolean; onClose: () => void; onSubmit: (v: { reason: string; date: string }) => void }) {
   const [reason, setReason] = useState("");
@@ -261,7 +262,7 @@ function Tecnica() {
 export default function LearningAdmin() {
   const [tab, setTab] = useState<Tab>("matriculas");
   // Uso diario a la izquierda; las herramientas técnicas (pruebas y auditoría) quedan aparte, a la derecha
-  const tabs: Array<[Tab, string, LucideIcon]> = [["matriculas", "Matrículas", Users], ["editor", "Editor de cursos", PenSquare], ["cursos", "Cursos", FolderOpen], ["materiales", "Materiales", Film], ["reglas", "Reglas de acceso", ShieldCheck], ["demo", "Demostraciones", PlayCircle]];
+  const tabs: Array<[Tab, string, LucideIcon]> = [["matriculas", "Matrículas", Users], ["editor", "Editor de cursos", PenSquare], ["cursos", "Cursos", FolderOpen], ["crear", "Crear", BookPlus], ["materiales", "Materiales", Film], ["reglas", "Reglas de acceso", ShieldCheck], ["demo", "Demostraciones", PlayCircle]];
   const tech: [Tab, string, LucideIcon] = ["tecnica", "Herramientas técnicas", Wrench];
   const tabButton = ([k, label, Icon]: [Tab, string, LucideIcon]) => (
     <button key={k} role="tab" aria-selected={tab === k} onClick={() => setTab(k)} className={`inline-flex items-center gap-1.5 px-3 py-2 text-sm ${tab === k ? "border-b-2 border-primary font-semibold text-foreground" : "text-muted-foreground hover:text-foreground"}`}><Icon className="h-4 w-4" aria-hidden />{label}</button>
@@ -277,6 +278,7 @@ export default function LearningAdmin() {
         {tab === "matriculas" && <Enrollments />}
         {tab === "cursos" && <Courses />}
         {tab === "editor" && <CourseEditor />}
+        {tab === "crear" && <Authoring />}
         {tab === "materiales" && <Materials />}
         {tab === "reglas" && <Rules />}
         {tab === "demo" && <Demo />}

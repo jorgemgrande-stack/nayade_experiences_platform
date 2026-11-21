@@ -24,6 +24,8 @@ import { InventoryError, planInventory } from "../../shared/learningImport";
 import { applyImportPlan, courseCoverage } from "../learningImport";
 import { sql } from "drizzle-orm";
 import { describeRule } from "../../shared/learningRules";
+import { addBlock, addLesson, addModule, archiveCourse, courseOutline, createCourse, duplicateCourse } from "../learningAuthoring";
+import { BLOCK_KINDS } from "../../shared/learningAuthoring";
 import { discardStaged, listMaterials, publishStaged, restoreFile } from "../learningMaterials";
 import { discardDraft, getEditorState, publishDraft, restoreVersion, saveDraft } from "../learningEditor";
 
@@ -118,6 +120,16 @@ const admin = router({
     publish: adminProcedure.input(z.object({ resourceId: id, fileId: id })).mutation(({ ctx, input }) => guard(() => publishStaged(input.resourceId, input.fileId, ctx.user.id))),
     discard: adminProcedure.input(z.object({ resourceId: id })).mutation(({ ctx, input }) => guard(() => discardStaged(input.resourceId, ctx.user.id))),
     restore: adminProcedure.input(z.object({ resourceId: id, fileId: id })).mutation(({ ctx, input }) => guard(() => restoreFile(input.resourceId, input.fileId, ctx.user.id))),
+  }),
+  /** Creación de formaciones (lote 3): cursos nuevos en borrador, estructura, duplicado y archivado. */
+  authoring: router({
+    outline: adminProcedure.input(z.object({ courseId: id })).query(({ input }) => guard(() => courseOutline(input.courseId))),
+    createCourse: adminProcedure.input(z.object({ title: z.string().max(300), description: z.string().max(5000).nullish(), language: z.string().min(2).max(8).optional() })).mutation(({ ctx, input }) => guard(() => createCourse(input, ctx.user.id))),
+    addModule: adminProcedure.input(z.object({ courseId: id, title: z.string().max(300) })).mutation(({ ctx, input }) => guard(() => addModule(input.courseId, input.title, ctx.user.id))),
+    addLesson: adminProcedure.input(z.object({ moduleId: id, title: z.string().max(300) })).mutation(({ ctx, input }) => guard(() => addLesson(input.moduleId, input.title, ctx.user.id))),
+    addBlock: adminProcedure.input(z.object({ lessonId: id, kind: z.enum(BLOCK_KINDS), title: z.string().max(300), body: z.string().max(100000).nullish(), externalUrl: z.string().max(600).nullish(), resourceId: id.nullish() })).mutation(({ ctx, input }) => guard(() => addBlock(input.lessonId, input, ctx.user.id))),
+    duplicateCourse: adminProcedure.input(z.object({ courseId: id })).mutation(({ ctx, input }) => guard(() => duplicateCourse(input.courseId, ctx.user.id))),
+    archiveCourse: adminProcedure.input(z.object({ courseId: id, archive: z.boolean() })).mutation(({ ctx, input }) => guard(() => archiveCourse(input.courseId, input.archive, ctx.user.id))),
   }),
   saveRule: adminProcedure
     .input(z.object({ id: id.optional(), experienceId: id, variantId: id.nullable(), courseId: id, moduleIds: z.array(id).min(1).max(50), durationDays: z.number().int().min(1).max(3650).nullable(), startMode: z.enum(START_MODES), fixedStart: z.number().int().nullable(), active: z.boolean() }))
