@@ -1579,9 +1579,9 @@ async function main() {
       }
       out = end.out;
       endCode = end.code;
-      const chk = checkVerifyFilesOutput(out);
-      console.log(`verify-files: ${chk.ok ? "COMPROBADO" : "NO COMPROBADO"} · objetos=${chk.files} bytes=${chk.bytes} fallos=${chk.failures} digest=${chk.digest}${chk.problems.length ? ` · ${chk.problems.join("; ")}` : ""}`);
-      if (!chk.ok) out += "\nOrden fallida: la comprobación de la salida no es íntegra";
+      const chk = /backup-job\.js verify-files /.test(command) ? checkVerifyFilesOutput(out) : null;
+      if (chk) console.log(`verify-files: ${chk.ok ? "COMPROBADO" : "NO COMPROBADO"} · objetos=${chk.files} bytes=${chk.bytes} fallos=${chk.failures} digest=${chk.digest}${chk.problems.length ? ` · ${chk.problems.join("; ")}` : ""}`);
+      if (chk && !chk.ok) out += "\nOrden fallida: la comprobación de la salida no es íntegra";
     } else {
       // El registro tarda en estar completo tras terminar la orden: se espera un poco antes de leerlo
       await new Promise((r) => setTimeout(r, 20_000));

@@ -132,8 +132,11 @@ describe("checkVerifyFilesOutput", () => {
 
 describe("integración en el flujo y en la orden", () => {
   const read = (p: string) => fs.readFileSync(path.resolve(__dirname, "..", p), "utf8").replace(/\r\n/g, "\n");
-  it("solo verify-files espera la marca; el resto de órdenes del drill no cambia", () => {
+  it("verify-files y la purga esperan la marca (pueden tardar más que la espera fija); el resto de órdenes del drill no cambia", () => {
     expect(DRILL_WAITS_FOR_END.test("node dist-cp/backup-job.js verify-files t12-quantum-soulrise")).toBe(true);
+    expect(DRILL_WAITS_FOR_END.test("node dist-cp/backup-job.js purge-test-companies")).toBe(true);
+    expect(DRILL_WAITS_FOR_END.test("node dist-cp/backup-job.js purge-test-companies --apply --expected-plan-hash=" + "a".repeat(64) + " --audit-ref=1:x")).toBe(true);
+    expect(DRILL_WAITS_FOR_END.test("node dist-cp/backup-job.js purge-test-companiesX")).toBe(false);
     expect(DRILL_WAITS_FOR_END.test("node dist-cp/backup-job.js list")).toBe(false);
     expect(isAllowedDrill("node dist-cp/backup-job.js verify-files t12-quantum-soulrise")).toBe(true);
   });
