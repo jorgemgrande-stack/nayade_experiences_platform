@@ -8,6 +8,7 @@ import AdminLayout from "@/components/AdminLayout";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
 import { useVocabulary } from "@/lib/vocabulary";
+import { useStudioText } from "@/components/admin/studio/useStudioText";
 
 type SlideForm = {
   imageUrl: string;
@@ -36,11 +37,12 @@ const emptyForm: SlideForm = {
 };
 
 export default function SlideshowManager() {
+  const tx = useStudioText();
   // Ejemplos de los campos: genéricos para una pyme; los de siempre en la instalación propia
   const { licensed } = useVocabulary();
   const ex = licensed
-    ? { badge: "Ej: Novedad", title: "Ej: Nuestros servicios", subtitle: "Ej: Para empresas y particulares", description: "Ej: Te ayudamos a elegir la opción que mejor se adapta a tu negocio.", ctaText: "Ej: Pedir información", ctaUrl: "Ej: /contacto", reserveUrl: "Ej: /pagina/servicios" }
-    : { badge: "Ej: Actividad Estrella", title: "Ej: Cableski & Wakeboard", subtitle: "Ej: Para todos los niveles", description: "Ej: Practica wakeboard y esquí acuático en nuestro sistema de cable aéreo.", ctaText: "Ej: Reservar Ahora", ctaUrl: "Ej: /experiencias/cableski-wakeboard", reserveUrl: "Ej: /experiencias/cableski-wakeboard" };
+    ? { badge: tx("Ej: Novedad"), title: tx("Ej: Nuestros servicios"), subtitle: tx("Ej: Para empresas y particulares"), description: tx("Ej: Te ayudamos a elegir la opción que mejor se adapta a tu negocio."), ctaText: tx("Ej: Pedir información"), ctaUrl: tx("Ej: /contacto"), reserveUrl: tx("Ej: /pagina/servicios") }
+    : { badge: tx("Ej: Actividad Estrella"), title: tx("Ej: Cableski & Wakeboard"), subtitle: tx("Ej: Para todos los niveles"), description: tx("Ej: Practica wakeboard y esquí acuático en nuestro sistema de cable aéreo."), ctaText: tx("Ej: Reservar Ahora"), ctaUrl: tx("Ej: /experiencias/cableski-wakeboard"), reserveUrl: tx("Ej: /experiencias/cableski-wakeboard") };
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [showModal, setShowModal] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
@@ -54,23 +56,23 @@ export default function SlideshowManager() {
   const { data: slides, isLoading } = trpc.cms.getSlideshowItems.useQuery();
 
   const createMutation = trpc.cms.createSlideshowItem.useMutation({
-    onSuccess: () => { toast.success("Diapositiva creada correctamente"); utils.cms.getSlideshowItems.invalidate(); closeModal(); },
-    onError: (e) => toast.error(`Error: ${e.message}`),
+    onSuccess: () => { toast.success(tx("Diapositiva creada correctamente")); utils.cms.getSlideshowItems.invalidate(); closeModal(); },
+    onError: (e) => toast.error(tx("Error: {message}", { message: e.message })),
   });
 
   const updateMutation = trpc.cms.updateSlideshowItem.useMutation({
-    onSuccess: () => { toast.success("Diapositiva actualizada"); utils.cms.getSlideshowItems.invalidate(); closeModal(); },
-    onError: (e) => toast.error(`Error: ${e.message}`),
+    onSuccess: () => { toast.success(tx("Diapositiva actualizada")); utils.cms.getSlideshowItems.invalidate(); closeModal(); },
+    onError: (e) => toast.error(tx("Error: {message}", { message: e.message })),
   });
 
   const reorderMutation = trpc.cms.reorderSlideshowItems.useMutation({
     onSuccess: () => { utils.cms.getSlideshowItems.invalidate(); },
-    onError: () => toast.error("Error al guardar el orden"),
+    onError: () => toast.error(tx("Error al guardar el orden")),
   });
 
   const deleteMutation = trpc.cms.deleteSlideshowItem.useMutation({
-    onSuccess: () => { toast.success("Diapositiva eliminada"); utils.cms.getSlideshowItems.invalidate(); setConfirmDeleteId(null); },
-    onError: () => toast.error("Error al eliminar"),
+    onSuccess: () => { toast.success(tx("Diapositiva eliminada")); utils.cms.getSlideshowItems.invalidate(); setConfirmDeleteId(null); },
+    onError: () => toast.error(tx("Error al eliminar")),
   });
 
   const openCreate = () => {
@@ -114,13 +116,13 @@ export default function SlideshowManager() {
       const fd = new FormData();
       fd.append("image", file);
       const res = await fetch("/api/upload/image", { method: "POST", body: fd, credentials: "include" });
-      if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || "Error al subir");
+      if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || tx("Error al subir"));
       const { url } = await res.json();
       setForm((p) => ({ ...p, imageUrl: url }));
       setPreviewUrl(url);
-      toast.success("Imagen subida correctamente");
+      toast.success(tx("Imagen subida correctamente"));
     } catch (err: unknown) {
-      toast.error(err instanceof Error ? err.message : "Error al subir");
+      toast.error(err instanceof Error ? err.message : tx("Error al subir"));
       setPreviewUrl("");
       setForm((p) => ({ ...p, imageUrl: "" }));
     } finally {
@@ -131,7 +133,7 @@ export default function SlideshowManager() {
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!form.imageUrl) { toast.error("Debes subir una imagen"); return; }
+    if (!form.imageUrl) { toast.error(tx("Debes subir una imagen")); return; }
     const payload = {
       imageUrl: form.imageUrl,
       badge: form.badge || undefined,
@@ -167,7 +169,7 @@ export default function SlideshowManager() {
   );
 
   return (
-    <AdminLayout title="Carrusel de portada">
+    <AdminLayout title={tx("Carrusel de portada")}>
       <div className="px-6 py-6">
         {/* Page header */}
         <div className="flex items-center justify-between mb-6">
@@ -177,8 +179,7 @@ export default function SlideshowManager() {
             style={{ background: "linear-gradient(135deg,#f97316,#f59e0b)", color: "#fff", border: "none", borderRadius: "10px", fontWeight: 600 }}
             className="flex items-center gap-2 px-4 py-2 text-sm"
           >
-            <Plus className="w-4 h-4" /> Nueva diapositiva
-          </button>
+            <Plus className="w-4 h-4" />{" "}{tx("Nueva diapositiva")}</button>
         </div>
 
         {/* Lista */}
@@ -189,11 +190,10 @@ export default function SlideshowManager() {
         ) : !slides || slides.length === 0 ? (
           <div className="border-2 border-dashed border-border rounded-xl p-12 text-center">
             <ImageIcon className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
-            <p className="font-semibold text-foreground mb-1">No hay diapositivas configuradas</p>
-            <p className="text-muted-foreground text-sm mb-6">Añade la primera diapositiva al carrusel de la portada.</p>
+            <p className="font-semibold text-foreground mb-1">{tx("No hay diapositivas configuradas")}</p>
+            <p className="text-muted-foreground text-sm mb-6">{tx("Añade la primera diapositiva al carrusel de la portada.")}</p>
             <button onClick={openCreate} style={{ background: "linear-gradient(135deg,#f97316,#f59e0b)", color: "#fff", border: "none", borderRadius: "8px", fontWeight: 600 }} className="flex items-center gap-2 px-4 py-2 text-sm mx-auto">
-              <Plus className="w-4 h-4" /> Añadir la primera diapositiva
-            </button>
+              <Plus className="w-4 h-4" />{" "}{tx("Añadir la primera diapositiva")}</button>
           </div>
         ) : (
           <div className="bg-card rounded-2xl border border-border/50 overflow-hidden">
@@ -231,11 +231,11 @@ export default function SlideshowManager() {
                         <span className="text-[10px] bg-amber-100 text-amber-700 rounded-full px-2 py-0.5">{(slide as any).badge}</span>
                       )}
                       <span className={`text-[10px] rounded-full px-2 py-0.5 font-medium ${slide.isActive ? "bg-emerald-100 text-emerald-700" : "bg-gray-100 text-gray-600"}`}>
-                        {slide.isActive ? "Activo" : "Inactivo"}
+                        {slide.isActive ? tx("Activo") : tx("Inactivo")}
                       </span>
                     </div>
                     <p className="font-medium text-sm text-foreground truncate">
-                      {slide.title || <span className="text-muted-foreground italic">Sin título</span>}
+                      {slide.title || <span className="text-muted-foreground italic">{tx("Sin título")}</span>}
                     </p>
                     {slide.subtitle && <p className="text-xs text-muted-foreground truncate">{slide.subtitle}</p>}
                   </div>
@@ -249,10 +249,10 @@ export default function SlideshowManager() {
                         <ChevronDown className="w-3.5 h-3.5" />
                       </button>
                     </div>
-                    <button onClick={() => openEdit(slide)} className="p-2 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted transition-colors" title="Editar">
+                    <button onClick={() => openEdit(slide)} className="p-2 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted transition-colors" title={tx("Editar")}>
                       <Pencil className="w-4 h-4" />
                     </button>
-                    <button onClick={() => setConfirmDeleteId(slide.id)} className="p-2 rounded-lg text-red-500/60 hover:text-red-600 hover:bg-red-50 transition-colors" title="Eliminar">
+                    <button onClick={() => setConfirmDeleteId(slide.id)} className="p-2 rounded-lg text-red-500/60 hover:text-red-600 hover:bg-red-50 transition-colors" title={tx("Eliminar")}>
                       <Trash2 className="w-4 h-4" />
                     </button>
                   </div>
@@ -266,13 +266,13 @@ export default function SlideshowManager() {
         <Dialog open={showModal} onOpenChange={(open) => !open && closeModal()}>
           <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
             <DialogHeader>
-              <DialogTitle>{editingId !== null ? "Editar diapositiva" : "Nueva diapositiva"}</DialogTitle>
+              <DialogTitle>{editingId !== null ? tx("Editar diapositiva") : tx("Nueva diapositiva")}</DialogTitle>
             </DialogHeader>
 
             <form onSubmit={handleSubmit} className="flex flex-col gap-4 pt-2">
               {/* Upload imagen */}
               <div>
-                <label className="block text-sm font-medium text-muted-foreground mb-1">Imagen de la diapositiva *</label>
+                <label className="block text-sm font-medium text-muted-foreground mb-1">{tx("Imagen de la diapositiva *")}</label>
                 <div
                   onClick={() => !uploading && fileInputRef.current?.click()}
                   className="border-2 border-dashed border-border rounded-xl overflow-hidden cursor-pointer min-h-[150px] flex items-center justify-center bg-muted/30 relative hover:border-primary/40 transition-colors"
@@ -289,28 +289,28 @@ export default function SlideshowManager() {
                       {uploading && (
                         <div className="absolute inset-0 bg-black/60 flex items-center justify-center gap-2">
                           <Loader2 className="w-6 h-6 text-white animate-spin" />
-                          <span className="text-white text-sm">Subiendo...</span>
+                          <span className="text-white text-sm">{tx("Subiendo...")}</span>
                         </div>
                       )}
                     </>
                   ) : (
                     <div className="text-center p-6 text-muted-foreground">
                       <Upload className="w-8 h-8 mx-auto mb-2 opacity-40" />
-                      <p className="font-medium text-sm">Haz clic para subir una imagen</p>
-                      <p className="text-xs mt-1">JPEG, PNG, WebP — Máx. 10 MB</p>
+                      <p className="font-medium text-sm">{tx("Haz clic para subir una imagen")}</p>
+                      <p className="text-xs mt-1">{tx("JPEG, PNG, WebP — Máx. 10 MB")}</p>
                     </div>
                   )}
                 </div>
                 <input ref={fileInputRef} type="file" accept="image/jpeg,image/png,image/webp,image/gif" className="hidden" onChange={handleFileChange} />
               </div>
 
-              {field("badge", "Etiqueta destacada", ex.badge, "Texto pequeño que aparece encima del título en la cabecera")}
-              {field("title", "Título principal", ex.title)}
-              {field("subtitle", "Subtítulo", ex.subtitle)}
+              {field("badge", tx("Etiqueta destacada"), ex.badge, tx("Texto pequeño que aparece encima del título en la cabecera"))}
+              {field("title", tx("Título principal"), ex.title)}
+              {field("subtitle", tx("Subtítulo"), ex.subtitle)}
 
               <div>
-                <label htmlFor="description" className="block text-sm font-medium text-muted-foreground mb-1">Descripción</label>
-                <p className="text-xs text-muted-foreground/70 mb-1">Texto descriptivo que aparece bajo el subtítulo</p>
+                <label htmlFor="description" className="block text-sm font-medium text-muted-foreground mb-1">{tx("Descripción")}</label>
+                <p className="text-xs text-muted-foreground/70 mb-1">{tx("Texto descriptivo que aparece bajo el subtítulo")}</p>
                 <textarea
                   id="description"
                   placeholder={ex.description}
@@ -322,15 +322,15 @@ export default function SlideshowManager() {
               </div>
 
               <div className="grid grid-cols-2 gap-3">
-                {field("ctaText", "Texto del botón principal", ex.ctaText)}
-                {field("ctaUrl", "Enlace del botón principal", ex.ctaUrl)}
+                {field("ctaText", tx("Texto del botón principal"), ex.ctaText)}
+                {field("ctaUrl", tx("Enlace del botón principal"), ex.ctaUrl)}
               </div>
 
-              {field("reserveUrl", licensed ? "Enlace de compra o reserva directa (botón secundario)" : "URL de reserva directa (botón secundario)", ex.reserveUrl, "Si se rellena, aparece el botón 'Reservar Ahora'. Si se deja vacío, solo aparece 'Solicitar Presupuesto'.")}
+              {field("reserveUrl", licensed ? tx("Enlace de compra o reserva directa (botón secundario)") : tx("URL de reserva directa (botón secundario)"), ex.reserveUrl, tx("Si se rellena, aparece el botón 'Reservar Ahora'. Si se deja vacío, solo aparece 'Solicitar Presupuesto'."))}
 
               <div className="grid grid-cols-2 gap-3">
               <div>
-                <label htmlFor="sortOrder" className="block text-sm font-medium text-muted-foreground mb-1">Orden de aparición</label>
+                <label htmlFor="sortOrder" className="block text-sm font-medium text-muted-foreground mb-1">{tx("Orden de aparición")}</label>
                     <Input
                     id="sortOrder"
                     type="number"
@@ -341,19 +341,17 @@ export default function SlideshowManager() {
                 </div>
                 <div className="flex items-center gap-3 pt-6">
                   <Switch id="isActive" checked={form.isActive} onCheckedChange={(v) => setForm((p) => ({ ...p, isActive: v }))} />
-                  <Label htmlFor="isActive" className="cursor-pointer text-muted-foreground">{form.isActive ? "Diapositiva activa" : "Diapositiva inactiva"}</Label>
+                  <Label htmlFor="isActive" className="cursor-pointer text-muted-foreground">{form.isActive ? tx("Diapositiva activa") : tx("Diapositiva inactiva")}</Label>
                 </div>
               </div>
 
               <div className="flex gap-3 justify-end pt-3 border-t border-border">
                 <button type="button" onClick={closeModal} disabled={isSaving}
-                  className="px-4 py-2 rounded-lg border border-border text-muted-foreground hover:text-foreground hover:border-border/80 text-sm font-medium transition-colors">
-                  Cancelar
-                </button>
+                  className="px-4 py-2 rounded-lg border border-border text-muted-foreground hover:text-foreground hover:border-border/80 text-sm font-medium transition-colors">{tx("Cancelar")}</button>
                 <button type="submit" disabled={isSaving || uploading}
                   style={{ background: "linear-gradient(135deg,#f97316,#f59e0b)", color: "#fff", border: "none", borderRadius: "8px", fontWeight: 600 }}
                   className="flex items-center gap-2 px-4 py-2 text-sm disabled:opacity-60 disabled:cursor-not-allowed transition-all">
-                  {isSaving ? <><Loader2 className="w-4 h-4 animate-spin" /> Guardando...</> : editingId !== null ? "Guardar cambios" : "Crear diapositiva"}
+                  {isSaving ? <><Loader2 className="w-4 h-4 animate-spin" />{" "}{tx("Guardando...")}</> : editingId !== null ? tx("Guardar cambios") : tx("Crear diapositiva")}
                 </button>
               </div>
             </form>
@@ -364,17 +362,13 @@ export default function SlideshowManager() {
         {confirmDeleteId !== null && (
           <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[9999]" onClick={() => setConfirmDeleteId(null)}>
             <div className="bg-card border border-border rounded-xl p-6 max-w-sm w-[90%] shadow-2xl" onClick={(e) => e.stopPropagation()}>
-              <h3 className="font-bold text-lg text-foreground mb-2">¿Eliminar esta diapositiva?</h3>
-              <p className="text-muted-foreground text-sm mb-5">Esta acción no se puede deshacer.</p>
+              <h3 className="font-bold text-lg text-foreground mb-2">{tx("¿Eliminar esta diapositiva?")}</h3>
+              <p className="text-muted-foreground text-sm mb-5">{tx("Esta acción no se puede deshacer.")}</p>
               <div className="flex gap-3 justify-end">
                 <button onClick={() => setConfirmDeleteId(null)}
-                  className="px-4 py-2 rounded-lg border border-border text-muted-foreground hover:text-foreground text-sm font-medium transition-colors">
-                  Cancelar
-                </button>
+                  className="px-4 py-2 rounded-lg border border-border text-muted-foreground hover:text-foreground text-sm font-medium transition-colors">{tx("Cancelar")}</button>
                 <button onClick={() => deleteMutation.mutate({ id: confirmDeleteId })}
-                  className="px-4 py-2 rounded-lg bg-red-500 hover:bg-red-600 text-white font-semibold text-sm transition-colors">
-                  Eliminar
-                </button>
+                  className="px-4 py-2 rounded-lg bg-red-500 hover:bg-red-600 text-white font-semibold text-sm transition-colors">{tx("Eliminar")}</button>
               </div>
             </div>
           </div>
