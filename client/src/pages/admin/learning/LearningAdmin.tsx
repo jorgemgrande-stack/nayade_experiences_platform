@@ -15,14 +15,16 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { PanelEmpty, PanelError, PanelLoading } from "@/components/admin/PanelStates";
 import { toastError } from "@/lib/errorMessage";
 import { effectiveStatus } from "@shared/learning";
-import { experienceLabel, variantLabel, modulesLabel } from "@shared/learningRules";
-import { Film, FolderOpen, GraduationCap, PenSquare, PlayCircle, ShieldCheck, Users, Wrench, type LucideIcon } from "lucide-react";
+import { BarChart3, BookPlus, Film, FolderOpen, GraduationCap, PenSquare, PlayCircle, ShieldCheck, Users, Wrench, type LucideIcon } from "lucide-react";
 import CourseEditor from "./CourseEditor";
 import Materials from "./Materials";
+import Authoring from "./Authoring";
+import Rules from "./Rules";
+import StudentProgress from "./StudentProgress";
 
 const fmt = (ms: number | null) => (ms ? new Intl.DateTimeFormat("es-ES", { dateStyle: "medium", timeStyle: "short", timeZone: "Europe/Madrid" }).format(new Date(ms)) : "Sin caducidad");
 const STATUS_LABEL: Record<string, string> = { active: "Activa", scheduled: "Programada", expired: "Caducada", suspended: "Suspendida", revoked: "Revocada" };
-type Tab = "matriculas" | "cursos" | "materiales" | "editor" | "reglas" | "demo" | "tecnica";
+type Tab = "matriculas" | "progreso" | "cursos" | "crear" | "materiales" | "editor" | "reglas" | "demo" | "tecnica";
 
 function ReasonDialog({ title, withDate, onClose, onSubmit }: { title: string; withDate?: boolean; onClose: () => void; onSubmit: (v: { reason: string; date: string }) => void }) {
   const [reason, setReason] = useState("");
@@ -170,35 +172,6 @@ function Courses() {
   );
 }
 
-function Rules() {
-  const q = trpc.learning.admin.rules.useQuery();
-  if (q.isLoading) return <PanelLoading />;
-  if (q.isError) return <PanelError error={q.error} onRetry={() => q.refetch()} />;
-  return !q.data!.length ? <PanelEmpty title="Sin reglas" description="Una regla une una modalidad del catálogo con los módulos que abre y su duración. Sin regla no hay acceso." /> : (
-    <div className="space-y-3">
-      <p className="text-sm text-muted-foreground">Cada regla dice qué módulos abre una modalidad de compra y durante cuánto tiempo. Solo se aplican cuando están activas; aquí se consultan, sin cambiar nada.</p>
-      <ul className="grid gap-3 md:grid-cols-2">
-        {q.data!.map((r) => (
-          <li key={r.id} className="rounded-xl border bg-card p-4">
-            <div className="flex items-start justify-between gap-2">
-              <div className="min-w-0">
-                <h3 className="flex items-center gap-1.5 font-semibold"><ShieldCheck className="h-4 w-4 shrink-0 text-primary" aria-hidden /><span className="truncate">{experienceLabel(r)}</span></h3>
-                <p className="text-sm text-muted-foreground">{variantLabel(r)}</p>
-              </div>
-              <Badge variant={r.active ? "default" : "secondary"}>{r.active ? "Activa" : "Inactiva"}</Badge>
-            </div>
-            <dl className="mt-3 space-y-1 text-sm">
-              <div className="flex gap-2"><dt className="w-20 shrink-0 text-muted-foreground">Abre</dt><dd>{modulesLabel(r)}</dd></div>
-              <div className="flex gap-2"><dt className="w-20 shrink-0 text-muted-foreground">Duración</dt><dd>{r.durationDays ? `${r.durationDays} días` : "Sin límite"}</dd></div>
-              <div className="flex gap-2"><dt className="w-20 shrink-0 text-muted-foreground">Inicio</dt><dd>{r.startMode === "fixed_date" ? fmt(r.fixedStart) : "Al conceder el acceso"}</dd></div>
-            </dl>
-          </li>
-        ))}
-      </ul>
-    </div>
-  );
-}
-
 function Demo() {
   const courses = trpc.learning.admin.courses.useQuery();
   const [email, setEmail] = useState("");
@@ -261,7 +234,7 @@ function Tecnica() {
 export default function LearningAdmin() {
   const [tab, setTab] = useState<Tab>("matriculas");
   // Uso diario a la izquierda; las herramientas técnicas (pruebas y auditoría) quedan aparte, a la derecha
-  const tabs: Array<[Tab, string, LucideIcon]> = [["matriculas", "Matrículas", Users], ["editor", "Editor de cursos", PenSquare], ["cursos", "Cursos", FolderOpen], ["materiales", "Materiales", Film], ["reglas", "Reglas de acceso", ShieldCheck], ["demo", "Demostraciones", PlayCircle]];
+  const tabs: Array<[Tab, string, LucideIcon]> = [["matriculas", "Matrículas", Users], ["progreso", "Progreso", BarChart3], ["editor", "Editor de cursos", PenSquare], ["cursos", "Cursos", FolderOpen], ["crear", "Crear", BookPlus], ["materiales", "Materiales", Film], ["reglas", "Reglas de acceso", ShieldCheck], ["demo", "Demostraciones", PlayCircle]];
   const tech: [Tab, string, LucideIcon] = ["tecnica", "Herramientas técnicas", Wrench];
   const tabButton = ([k, label, Icon]: [Tab, string, LucideIcon]) => (
     <button key={k} role="tab" aria-selected={tab === k} onClick={() => setTab(k)} className={`inline-flex items-center gap-1.5 px-3 py-2 text-sm ${tab === k ? "border-b-2 border-primary font-semibold text-foreground" : "text-muted-foreground hover:text-foreground"}`}><Icon className="h-4 w-4" aria-hidden />{label}</button>
@@ -277,6 +250,8 @@ export default function LearningAdmin() {
         {tab === "matriculas" && <Enrollments />}
         {tab === "cursos" && <Courses />}
         {tab === "editor" && <CourseEditor />}
+        {tab === "progreso" && <StudentProgress />}
+        {tab === "crear" && <Authoring />}
         {tab === "materiales" && <Materials />}
         {tab === "reglas" && <Rules />}
         {tab === "demo" && <Demo />}

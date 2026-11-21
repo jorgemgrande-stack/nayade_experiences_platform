@@ -24,6 +24,8 @@ import { InventoryError, planInventory } from "../../shared/learningImport";
 import { applyImportPlan, courseCoverage } from "../learningImport";
 import { sql } from "drizzle-orm";
 import { describeRule } from "../../shared/learningRules";
+import { addBlock, addLesson, addModule, archiveCourse, courseOutline, createCourse, duplicateCourse } from "../learningAuthoring";
+import { BLOCK_KINDS } from "../../shared/learningAuthoring";
 import { discardStaged, listMaterials, publishStaged, restoreFile } from "../learningMaterials";
 import { discardDraft, getEditorState, publishDraft, restoreVersion, saveDraft } from "../learningEditor";
 
@@ -119,6 +121,43 @@ const admin = router({
     discard: adminProcedure.input(z.object({ resourceId: id })).mutation(({ ctx, input }) => guard(() => discardStaged(input.resourceId, ctx.user.id))),
     restore: adminProcedure.input(z.object({ resourceId: id, fileId: id })).mutation(({ ctx, input }) => guard(() => restoreFile(input.resourceId, input.fileId, ctx.user.id))),
   }),
+  /** Creación de formaciones (lote 3): cursos nuevos en borrador, estructura, duplicado y archivado. */
+  authoring: router({
+    outline: adminProcedure.input(z.object({ courseId: id })).query(({ input }) => guard(() => courseOutline(input.courseId))),
+    createCourse: adminProcedure.input(z.object({ title: z.string().max(300), description: z.string().max(5000).nullish(), language: z.string().min(2).max(8).optional() })).mutation(({ ctx, input }) => guard(() => createCourse(input, ctx.user.id))),
+    addModule: adminProcedure.input(z.object({ courseId: id, title: z.string().max(300) })).mutation(({ ctx, input }) => guard(() => addModule(input.courseId, input.title, ctx.user.id))),
+    addLesson: adminProcedure.input(z.object({ moduleId: id, title: z.string().max(300) })).mutation(({ ctx, input }) => guard(() => addLesson(input.moduleId, input.title, ctx.user.id))),
+    addBlock: adminProcedure.input(z.object({ lessonId: id, kind: z.enum(BLOCK_KINDS), title: z.string().max(300), body: z.string().max(100000).nullish(), externalUrl: z.string().max(600).nullish(), resourceId: id.nullish() })).mutation(({ ctx, input }) => guard(() => addBlock(input.lessonId, input, ctx.user.id))),
+    duplicateCourse: adminProcedure.input(z.object({ courseId: id })).mutation(({ ctx, input }) => guard(() => duplicateCourse(input.courseId, ctx.user.id))),
+    archiveCourse: adminProcedure.input(z.object({ courseId: id, archive: z.boolean() })).mutation(({ ctx, input }) => guard(() => archiveCourse(input.courseId, input.archive, ctx.user.id))),
+  }),
+  /** Opciones con nombres comerciales para configurar reglas: productos con sus modalidades, y cursos con sus módulos. Solo lectura. */
+  catalog: adminProcedure.query(() => guard(async () => {
+    const exp = await rowsOf(sql`SELECT id, title FROM experiences ORDER BY title`).catch(() => []);
+    const vars = await rowsOf(sql`SELECT id, experienceId, name FROM experience_variants ORDER BY name`).catch(() => []);
+    const mods = await rowsOf(sql`SELECT m.id, m.course_id, m.title FROM learning_modules m ORDER BY m.course_id, m.position`);
+    const courses = await rowsOf(sql`SELECT id, title, status FROM learning_courses ORDER BY title`);
+    return {
+      experiences: exp.map((e) => ({ id: Number(e.id), title: String(e.title), variants: vars.filter((v) => Number(v.experienceId) === Number(e.id)).map((v) => ({ id: Number(v.id), name: String(v.name) })) })),
+      courses: courses.map((c) => ({ id: Number(c.id), title: String(c.title), status: String(c.status), modules: mods.filter((m) => Number(m.course_id) === Number(c.id)).map((m) => ({ id: Number(m.id), title: String(m.title) })) })),
+    };
+  })),
+  /** Progreso de las personas matriculadas en un curso: lecciones completadas y última actividad. Solo lectura. */
+  progress: adminProcedure.input(z.object({ courseId: id })).query(({ input }) => guard(async () => {
+    const total = Number((await rowsOf(sql`SELECT COUNT(*) AS c FROM learning_lessons l JOIN learning_modules m ON m.id = l.module_id WHERE m.course_id = ${input.courseId}`))[0]?.c ?? 0);
+    const list = await rowsOf(sql`SELECT e.user_id, u.name AS user_name, u.email AS user_email,
+        MAX(e.id) AS enrollment_id,
+        SUBSTRING_INDEX(GROUP_CONCAT(e.status ORDER BY e.id DESC), ',', 1) AS status,
+        MAX(e.ends_at) AS ends_at,
+        (SELECT COUNT(*) FROM learning_progress p JOIN learning_lessons l ON l.id = p.lesson_id JOIN learning_modules m ON m.id = l.module_id WHERE p.user_id = e.user_id AND m.course_id = ${input.courseId} AND p.status = 'completed') AS completed,
+        (SELECT COUNT(*) FROM learning_progress p JOIN learning_lessons l ON l.id = p.lesson_id JOIN learning_modules m ON m.id = l.module_id WHERE p.user_id = e.user_id AND m.course_id = ${input.courseId} AND p.status = 'in_progress') AS in_progress,
+        (SELECT MAX(p.updated_at) FROM learning_progress p JOIN learning_lessons l ON l.id = p.lesson_id JOIN learning_modules m ON m.id = l.module_id WHERE p.user_id = e.user_id AND m.course_id = ${input.courseId}) AS last_activity
+      FROM learning_enrollments e LEFT JOIN users u ON u.id = e.user_id WHERE e.course_id = ${input.courseId} GROUP BY e.user_id, u.name, u.email ORDER BY last_activity DESC, e.user_id LIMIT 500`);
+    return {
+      lessonsTotal: total,
+      learners: list.map((r) => ({ userId: Number(r.user_id), name: r.user_name ?? null, email: r.user_email ?? null, enrollmentId: Number(r.enrollment_id), status: String(r.status ?? ""), endsAt: r.ends_at == null ? null : Number(r.ends_at), completed: Number(r.completed ?? 0), inProgress: Number(r.in_progress ?? 0), lastActivity: r.last_activity == null ? null : Number(r.last_activity) })),
+    };
+  })),
   saveRule: adminProcedure
     .input(z.object({ id: id.optional(), experienceId: id, variantId: id.nullable(), courseId: id, moduleIds: z.array(id).min(1).max(50), durationDays: z.number().int().min(1).max(3650).nullable(), startMode: z.enum(START_MODES), fixedStart: z.number().int().nullable(), active: z.boolean() }))
     .mutation(({ input }) => guard(async () => ({ id: await saveRule({ ...input }, input.id) }))),
