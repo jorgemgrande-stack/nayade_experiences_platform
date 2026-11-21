@@ -29,7 +29,19 @@ contenedor. Por eso se preparó una orden de **solo comprobación**: `verify-fil
 **Qué hace:** lee el índice cifrado `files/<empresa>/index.json.enc`; para cada objeto de la réplica lo descarga, lo descifra EN
 MEMORIA y compara su SHA-256 y tamaño con el índice. No escribe ningún fichero (ni disco ni bucket de medios), no toca los originales
 ni la base de production. Un fallo no detiene el resto: informa de todos. Anota la comprobación en `backup_restores` (registro de
-copias). Salida: una línea JSON con `ficheros`, `bytes`, `fallos`, `digest` y `entradas` [clave, bytes, sha256, ok]. Código de salida 1 si hay fallos.
+copias). Salida en LÍNEAS CORTAS (desde 21/11): `VERIFY-FICHEROS RESUMEN empresa= origen= ficheros= bytes= fallos= digest=`, una línea
+`VERIFY-FICHEROS ENTRADA<TAB>ok|fallo<TAB>bytes<TAB>sha256<TAB>clave` por objeto y, si procede, `VERIFY-FICHEROS MOTIVO`. Al terminar el proceso
+imprime `FIN-ORDEN codigo=N` (código real de salida, también tras un fallo). Código 1 si hay fallos.
+
+**Incidencia del primer intento (21/11/2026, ejecución 44915427713) y corrección.** El paso terminó en SUCCESS sin resultado: Railway da el
+despliegue por SUCCESS al *arrancar* el contenedor (reinicio NEVER), no al terminar la orden; el flujo esperaba 20 s fijos, leía el
+registro y devolvía el reposo (`list`) con un redespliegue, que mató la verificación a los ~54 s (despliegue `854087b2`: solo «Starting
+Container» y «Stopping Container»). Ni se verificó ni se detectó ningún fallo: ese intento NO cuenta como verificación. Corrección:
+- `verify-files` se espera hasta ver `FIN-ORDEN codigo=N` al principio de línea (consulta cada 15 s; máximo 45 min).
+- Código distinto de 0: el paso falla y se conserva el registro impreso.
+- Sin marca en 45 min: el paso falla y NO se redespliega el reposo (la orden podría seguir ejecutándose; revisar el despliegue en Railway).
+- El flujo recalcula la salida (recuento de objetos, suma de bytes, fallos, digest = sha256 de las líneas `clave:sha256` ordenadas) y
+  no da el resultado por bueno si algo no cuadra: imprime `verify-files: COMPROBADO|NO COMPROBADO · objetos= bytes= fallos= digest=`.
 
 **Operación exacta (cuando el propietario la autorice):**
 1. Fusionar el PR de la herramienta y publicarlo (cambia `scripts/deploy/`, el flujo y el backup-job: es un cambio protegido).
