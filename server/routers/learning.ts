@@ -24,6 +24,7 @@ import { InventoryError, planInventory } from "../../shared/learningImport";
 import { applyImportPlan, courseCoverage } from "../learningImport";
 import { sql } from "drizzle-orm";
 import { describeRule } from "../../shared/learningRules";
+import { discardStaged, listMaterials, publishStaged, restoreFile } from "../learningMaterials";
 import { discardDraft, getEditorState, publishDraft, restoreVersion, saveDraft } from "../learningEditor";
 
 const id = z.number().int().positive();
@@ -111,6 +112,13 @@ const admin = router({
     const mods = await rowsOf(sql`SELECT m.id, m.title, c.title AS course_title FROM learning_modules m JOIN learning_courses c ON c.id = m.course_id`).catch(() => []);
     return rules.map((r) => describeRule(r, { experiences: exp, variants: vars, modules: mods }));
   })),
+  /** Materiales (lote 2): biblioteca de recursos, ficheros pendientes de publicar, sustitución segura y recuperación. */
+  materials: router({
+    list: adminProcedure.query(() => guard(() => listMaterials())),
+    publish: adminProcedure.input(z.object({ resourceId: id, fileId: id })).mutation(({ ctx, input }) => guard(() => publishStaged(input.resourceId, input.fileId, ctx.user.id))),
+    discard: adminProcedure.input(z.object({ resourceId: id })).mutation(({ ctx, input }) => guard(() => discardStaged(input.resourceId, ctx.user.id))),
+    restore: adminProcedure.input(z.object({ resourceId: id, fileId: id })).mutation(({ ctx, input }) => guard(() => restoreFile(input.resourceId, input.fileId, ctx.user.id))),
+  }),
   saveRule: adminProcedure
     .input(z.object({ id: id.optional(), experienceId: id, variantId: id.nullable(), courseId: id, moduleIds: z.array(id).min(1).max(50), durationDays: z.number().int().min(1).max(3650).nullable(), startMode: z.enum(START_MODES), fixedStart: z.number().int().nullable(), active: z.boolean() }))
     .mutation(({ input }) => guard(async () => ({ id: await saveRule({ ...input }, input.id) }))),
