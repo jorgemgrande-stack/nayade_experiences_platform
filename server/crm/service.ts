@@ -8,6 +8,7 @@
  * activo) y tenant (aprovisionada en la plataforma). Registrar leads o empresas no crea tenants.
  */
 import type { CrmStore } from "./store";
+import { companyMatches, contractMatches, leadMatches, opportunityMatches, type CompanyFocus, type ContractFocus, type LeadFocus, type OpportunityFocus } from "./focus";
 import { applySort, COMPANY_SORT, CONTACT_SORT, CONTRACT_SORT, LEAD_SORT, type CompanySortKey, type ContactSortKey, type ContractSortKey, type LeadSortKey, type SortOpts } from "./sorting";
 import {
   CONTRACT_TRANSITIONS,
@@ -61,7 +62,8 @@ export interface PageOpts {
   offset?: number;
 }
 
-export type CompanyView = Company & { lifecycle: CompanyLifecycle };
+/** `contracted`: derivado (no persistido) de contratos firmados/activos u oportunidades ganadas; con o sin plataforma. */
+export type CompanyView = Company & { lifecycle: CompanyLifecycle; contracted: boolean };
 
 export interface DuplicateMatch {
   type: "lead" | "contact" | "company";
@@ -322,7 +324,7 @@ export class CrmService {
   }
 
   async listCompanies(
-    f: { q?: string; status?: CompanyStatus; lifecycle?: CompanyLifecycle; owner?: string } & PageOpts & SortOpts<CompanySortKey> = {},
+    f: { q?: string; status?: CompanyStatus; lifecycle?: CompanyLifecycle; owner?: string; focus?: CompanyFocus } & PageOpts & SortOpts<CompanySortKey> = {},
   ): Promise<Page<CompanyView>> {
     let rows = await this.withLifecycle(await this.store.list("companies", f.status ? { status: f.status } : {}, { desc: true, limit: SCAN_LIMIT }));
     const q = normalizeText(f.q);
@@ -333,6 +335,7 @@ export class CrmService {
     }
     if (f.lifecycle) rows = rows.filter((c) => c.lifecycle === f.lifecycle);
     if (f.owner) rows = rows.filter((c) => c.owner === f.owner);
+    if (f.focus) rows = rows.filter((c) => companyMatches(f.focus!, c));
     return paginate(applySort(rows, COMPANY_SORT, f), f);
   }
 
@@ -349,6 +352,7 @@ export class CrmService {
     return companies.map((c) => ({
       ...c,
       lifecycle: c.tenantId ? "tenant" : customers.has(c.id) ? "customer" : "prospect",
+      contracted: customers.has(c.id),
     }));
   }
 
@@ -576,7 +580,7 @@ export class CrmService {
   }
 
   async listLeads(
-    f: { q?: string; status?: LeadStatus; priority?: LeadPriority; owner?: string; archived?: "exclude" | "only" | "all" } & PageOpts & SortOpts<LeadSortKey> = {},
+    f: { q?: string; status?: LeadStatus; priority?: LeadPriority; owner?: string; archived?: "exclude" | "only" | "all"; focus?: LeadFocus } & PageOpts & SortOpts<LeadSortKey> = {},
   ): Promise<Page<Lead>> {
     const filter: Partial<Lead> = {};
     if (f.status) filter.status = f.status;
@@ -587,6 +591,7 @@ export class CrmService {
     const arch = f.archived ?? "exclude";
     if (arch === "exclude") rows = rows.filter((l) => !l.archivedAt);
     else if (arch === "only") rows = rows.filter((l) => !!l.archivedAt);
+    if (f.focus) rows = rows.filter((l) => leadMatches(f.focus!, l, this.now()));
     const q = normalizeText(f.q);
     if (q) {
       const qp = normalizePhone(f.q);
@@ -821,7 +826,7 @@ export class CrmService {
   }
 
   async listOpportunities(
-    f: { q?: string; stage?: OpportunityStage; owner?: string; companyId?: number; open?: boolean } & PageOpts = {},
+    f: { q?: string; stage?: OpportunityStage; owner?: string; companyId?: number; open?: boolean; focus?: OpportunityFocus } & PageOpts = {},
   ): Promise<Page<Opportunity>> {
     const filter: Partial<Opportunity> = {};
     if (f.stage) filter.stage = f.stage;
@@ -829,6 +834,10 @@ export class CrmService {
     let rows = await this.store.list("opportunities", filter, { desc: true, limit: SCAN_LIMIT });
     if (f.owner) rows = rows.filter((o) => o.owner === f.owner);
     if (f.open) rows = rows.filter((o) => OPEN_STAGES.includes(o.stage));
+    if (f.focus) {
+      const now = this.now();
+      rows = rows.filter((o) => opportunityMatches(f.focus!, o, now));
+    }
     const q = normalizeText(f.q);
     if (q) rows = rows.filter((o) => normalizeText(o.title).includes(q) || normalizeText(o.planId).includes(q));
     return paginate(rows, f);
@@ -1041,7 +1050,7 @@ export class CrmService {
   }
 
   async listContracts(
-    f: { q?: string; status?: ContractStatus; companyId?: number; renewalBefore?: number } & PageOpts & SortOpts<ContractSortKey> = {},
+    f: { q?: string; status?: ContractStatus; companyId?: number; renewalBefore?: number; focus?: ContractFocus } & PageOpts & SortOpts<ContractSortKey> = {},
   ): Promise<Page<Contract>> {
     const filter: Partial<Contract> = {};
     if (f.status) filter.status = f.status;
@@ -1051,6 +1060,11 @@ export class CrmService {
       rows = rows
         .filter((c) => c.status === "active" && c.renewalDate !== null && c.renewalDate <= f.renewalBefore!)
         .sort((a, b) => a.renewalDate! - b.renewalDate!);
+    }
+    if (f.focus) {
+      const now = this.now();
+      rows = rows.filter((c) => contractMatches(f.focus!, c, now));
+      if (f.focus === "renewals") rows.sort((a, b) => a.renewalDate! - b.renewalDate!);
     }
     const q = normalizeText(f.q);
     if (q) rows = rows.filter((c) => normalizeText(c.reference).includes(q) || normalizeText(c.planId).includes(q));
@@ -1211,28 +1225,30 @@ export class CrmService {
     const mrrCents = contracts.filter((c) => c.status === "active").reduce((a, c) => a + (c.amountCents ?? 0), 0);
     const pipeline = await this.pipeline();
     const opps = await this.store.list("opportunities", {}, { limit: SCAN_LIMIT });
-    const open = opps.filter((o) => OPEN_STAGES.includes(o.stage));
+    const open = opps.filter((o) => opportunityMatches("open", o, now));
     const monthStart = Date.UTC(new Date(now).getUTCFullYear(), new Date(now).getUTCMonth(), 1);
     const wonMonth = opps.filter((o) => o.stage === "won" && (o.closedAt ?? 0) >= monthStart);
     const companies = await this.withLifecycle(await this.store.list("companies", {}, { limit: SCAN_LIMIT }));
-    const renewalHorizon = now + 30 * 86_400_000;
     const metrics = {
-      activeLeads: leads.filter((l) => l.status === "new" || l.status === "contacted" || l.status === "qualified").length,
+      activeLeads: leads.filter((l) => leadMatches("active", l)).length,
+      unownedLeads: leads.filter((l) => leadMatches("unowned", l)).length,
       openOpportunities: open.length,
       pipelineOpenCents: open.reduce((a, o) => a + (o.amountCents ?? 0), 0),
       pipelineWeightedCents: open.reduce((a, o) => a + Math.round(((o.amountCents ?? 0) * o.probability) / 100), 0),
-      overdueNextActions: open.filter((o) => o.nextActionAt !== null && o.nextActionAt < now).length,
+      overdueNextActions: opps.filter((o) => opportunityMatches("overdue-next-action", o, now)).length,
+      opportunitiesWithoutNextAction: opps.filter((o) => opportunityMatches("no-next-action", o, now)).length,
       wonThisMonth: { count: wonMonth.length, amountCents: wonMonth.reduce((a, o) => a + (o.amountCents ?? 0), 0) },
       pendingContracts: {
         draft: contracts.filter((c) => c.status === "draft").length,
         sent: contracts.filter((c) => c.status === "sent").length,
-        signed: contracts.filter((c) => c.status === "signed").length,
+        signed: contracts.filter((c) => contractMatches("signed", c, now)).length,
       },
-      renewalsNext30Days: contracts.filter((c) => c.status === "active" && c.renewalDate !== null && c.renewalDate <= renewalHorizon).length,
+      renewalsNext30Days: contracts.filter((c) => contractMatches("renewals", c, now)).length,
       overdueTasks: overdue,
-      activeCustomers: companies.filter((c) => c.status === "active" && c.lifecycle !== "prospect").length,
+      activeCustomers: companies.filter((c) => companyMatches("customers", c)).length,
       customersWithPlatform: companies.filter((c) => c.status === "active" && c.lifecycle === "tenant").length,
-      prospects: companies.filter((c) => c.status === "active" && c.lifecycle === "prospect").length,
+      platformWithoutContract: companies.filter((c) => companyMatches("platform-only", c)).length,
+      prospects: companies.filter((c) => companyMatches("prospects", c)).length,
     };
     return {
       leadsByStatus: byStatus,
