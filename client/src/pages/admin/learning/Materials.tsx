@@ -162,7 +162,7 @@ function MaterialCard({ m, space }: { m: Material; space: { usedBytes: number; l
         <div className="flex min-w-0 items-start gap-3">
           <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary"><Icon className="h-6 w-6" aria-hidden /></div>
           <div className="min-w-0">
-            <h3 className="truncate font-semibold">{m.originalName ?? t("learningManage.materials.unnamed", { kind: kindEs(m.kind) })}</h3>
+            <h3 className="font-semibold truncate">{m.originalName ?? t("learningManage.materials.unnamed", { kind: kindEs(m.kind) })}</h3>
             <p className="text-sm text-muted-foreground">
               {kindEs(m.kind)}{m.sizeBytes ? ` · ${formatBytes(m.sizeBytes)}` : ""}{use ? ` · ${use.courseTitle} › ${use.moduleTitle} › ${use.lessonTitle}` : t("learningManage.materials.unusedNote")}
             </p>
