@@ -67,7 +67,7 @@ describe("paridad panel ↔ listado (mismo criterio)", () => {
     expect((await crm.listContracts({ focus: "signed" })).total).toBe(m.pendingContracts.signed);
     expect((await crm.listContracts({ focus: "renewals" })).total).toBe(m.renewalsNext30Days);
     expect((await crm.listCompanies({ focus: "customers" })).total).toBe(m.activeCustomers);
-    expect((await crm.listCompanies({ focus: "platform" })).total).toBe(m.customersWithPlatform);
+    expect((await crm.listCompanies({ focus: "platform-only" })).total).toBe(m.platformWithoutContract);
     expect((await crm.listCompanies({ focus: "prospects" })).total).toBe(m.prospects);
   });
 
@@ -149,5 +149,23 @@ describe("indicadores de los informes: mismo criterio que sus listados", () => {
     );
     expect(rep.followUps.untouchedLeads).toBe(stale.length);
     expect(rep.quality.openOpportunitiesWithoutOwner).toBe(opps.total);
+  });
+});
+
+describe("estados de empresa: grupos exclusivos que suman", () => {
+  it("una plataforma sin contrato (prueba) no cuenta como cliente contratado", async () => {
+    await seed();
+    // Empresa con plataforma pero sin contrato ni venta: caso de una prueba gratuita
+    const trial = await crm.createCompany({ name: "Selena" }, "ana");
+    await store.update("companies", trial.id, { tenantId: "t15-selena" });
+    const { metrics: m } = await crm.dashboard();
+    const all = (await crm.listCompanies({ status: "active" })).total;
+    expect(m.activeCustomers + m.platformWithoutContract + m.prospects).toBe(all);
+    expect(m.platformWithoutContract).toBe(1);
+    const names = (await crm.listCompanies({ focus: "platform-only" })).items.map((c) => c.name);
+    expect(names).toEqual(["Selena"]);
+    expect((await crm.listCompanies({ focus: "customers" })).items.map((c) => c.name)).not.toContain("Selena");
+    const sel = (await crm.listCompanies({ q: "Selena" })).items[0];
+    expect(sel).toMatchObject({ lifecycle: "tenant", contracted: false });
   });
 });

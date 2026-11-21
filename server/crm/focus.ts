@@ -16,7 +16,7 @@ export const OPPORTUNITY_FOCUS = ["open", "overdue-next-action", "no-next-action
 export type OpportunityFocus = (typeof OPPORTUNITY_FOCUS)[number];
 export const CONTRACT_FOCUS = ["active", "to-sign", "signed", "renewals"] as const;
 export type ContractFocus = (typeof CONTRACT_FOCUS)[number];
-export const COMPANY_FOCUS = ["customers", "platform", "prospects"] as const;
+export const COMPANY_FOCUS = ["customers", "platform-only", "prospects"] as const;
 export type CompanyFocus = (typeof COMPANY_FOCUS)[number];
 
 const ACTIVE_LEAD = (l: Lead) => !l.archivedAt && (l.status === "new" || l.status === "contacted" || l.status === "qualified");
@@ -46,10 +46,14 @@ export const contractMatches = (f: ContractFocus, c: Contract, now: number): boo
 };
 
 /** Empresas activas por situación comercial (la fase la calcula `withLifecycle`: prospecto, cliente o con plataforma). */
-export const companyMatches = (f: CompanyFocus, c: Company & { lifecycle: CompanyLifecycle }): boolean => {
+export const companyMatches = (f: CompanyFocus, c: Company & { lifecycle: CompanyLifecycle; contracted: boolean }): boolean => {
   if (c.status !== "active") return false;
-  if (f === "customers") return c.lifecycle !== "prospect";
-  if (f === "platform") return c.lifecycle === "tenant";
+  // Grupos exclusivos que suman las empresas activas:
+  //  - customers: con contrato firmado/activo o venta ganada (tenga o no plataforma);
+  //  - platform-only: con plataforma pero sin contrato ni venta (pruebas gratuitas incluidas);
+  //  - prospects: sin plataforma ni contrato.
+  if (f === "customers") return c.contracted;
+  if (f === "platform-only") return c.lifecycle === "tenant" && !c.contracted;
   return c.lifecycle === "prospect";
 };
 

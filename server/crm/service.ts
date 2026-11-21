@@ -62,7 +62,8 @@ export interface PageOpts {
   offset?: number;
 }
 
-export type CompanyView = Company & { lifecycle: CompanyLifecycle };
+/** `contracted`: derivado (no persistido) de contratos firmados/activos u oportunidades ganadas; con o sin plataforma. */
+export type CompanyView = Company & { lifecycle: CompanyLifecycle; contracted: boolean };
 
 export interface DuplicateMatch {
   type: "lead" | "contact" | "company";
@@ -351,6 +352,7 @@ export class CrmService {
     return companies.map((c) => ({
       ...c,
       lifecycle: c.tenantId ? "tenant" : customers.has(c.id) ? "customer" : "prospect",
+      contracted: customers.has(c.id),
     }));
   }
 
@@ -1244,7 +1246,8 @@ export class CrmService {
       renewalsNext30Days: contracts.filter((c) => contractMatches("renewals", c, now)).length,
       overdueTasks: overdue,
       activeCustomers: companies.filter((c) => companyMatches("customers", c)).length,
-      customersWithPlatform: companies.filter((c) => companyMatches("platform", c)).length,
+      customersWithPlatform: companies.filter((c) => c.status === "active" && c.lifecycle === "tenant").length,
+      platformWithoutContract: companies.filter((c) => companyMatches("platform-only", c)).length,
       prospects: companies.filter((c) => companyMatches("prospects", c)).length,
     };
     return {
