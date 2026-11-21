@@ -57,6 +57,13 @@ La regla «la documentación contractual no se toca» protege la relación con c
   cobros, suscripción externa ni cliente real asociado; la propia purga lo comprueba). La identidad de quien pulsó «aceptar» en un
   enlace público no queda registrada más allá de la huella de IP y del nombre introducido; no debe presuponerse.
 - **Numeración:** borrar contratos técnicos deja huecos en la serie `CT-AAAA-nnnnnn` (no es una serie fiscal).
+- **Decisión de Dirección (21/11/2026):** las cuatro aceptaciones de la empresa 12 (contratos CT-2026-000005 a 000008) se clasifican como
+  operaciones técnicas de prueba, sin atribuirlas a ninguna persona concreta. La evidencia (hashes y metadatos) queda en la auditoría
+  inmutable y las filas completas en las copias de seguridad hasta su rotación; no se destruye documentación de clientes reales.
+- **Leads técnicos:** la purga incluye además una lista cerrada de leads de prueba (`PURGE_TEST_LEADS`: ids 1, 2, 4, 11 y 12, con nombre y
+  correo exactos), junto con sus solicitudes web y su historial. Los leads enlazados solo por `converted_company_id` (sin clave ajena) ya no
+  pueden quedar con una referencia rota: el plan aborta si un lead fuera de la lista apunta a una empresa u oportunidad que se purga, y
+  `verifyPurge` comprueba después que no queda ninguna referencia colgante (leads → empresa/oportunidad, historial → entidad).
 
 
 ## 3. Reglas de operación

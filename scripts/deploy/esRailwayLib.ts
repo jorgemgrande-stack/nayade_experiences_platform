@@ -1144,7 +1144,7 @@ export function ownDeployState(nodes: ReadonlyArray<{ id: string; status: string
 // verificación de 16 GB se mató a los 54 s al devolver el reposo. Las órdenes largas imprimen «FIN-ORDEN codigo=N» al final.
 
 /** Órdenes del drill que pueden tardar minutos y por tanto se esperan hasta su marca de fin. */
-export const DRILL_WAITS_FOR_END = /^node dist-cp\/backup-job\.js verify-files /;
+export const DRILL_WAITS_FOR_END = /^node dist-cp\/backup-job\.js (?:verify-files|purge-test-companies)\b/;
 export const DRILL_END_TIMEOUT_MS = 45 * 60_000;
 
 /** Código de salida de la ÚLTIMA marca «FIN-ORDEN codigo=N» (solo al principio de línea); null si aún no hay. */

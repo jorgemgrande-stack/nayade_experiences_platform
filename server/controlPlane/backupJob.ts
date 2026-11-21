@@ -468,6 +468,8 @@ async function main() {
             empresas: plan.companies,
             yaNoEstan: plan.missing,
             yaNoEstanEmpresas: plan.missingCompanies,
+            leadsTecnicos: plan.leads.map((l) => ({ id: l.id, name: l.name, convertedCompanyId: l.convertedCompanyId })),
+            yaNoEstanLeads: plan.missingLeads,
             planHash: plan.planHash,
             planHashEsperado: expectedPlanHash ?? null,
             coincideConEsperado: expectedPlanHash ? plan.planHash === expectedPlanHash : null,

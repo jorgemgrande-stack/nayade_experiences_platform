@@ -7,9 +7,10 @@
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import fs from "node:fs";
 import path from "node:path";
+import crypto from "node:crypto";
 import mysql from "mysql2/promise";
 import { loadMigrations, splitStatements } from "../scripts/db/migrationLib";
-import { ACCEPTANCE_EXEMPT_COMPANY_IDS, PURGE_COMPANIES_WITHOUT_TENANT, PURGE_TARGETS, applyPurge, planHashOf, planPurge, verifyPurge } from "./_core/ops/purgeTestCompanies";
+import { ACCEPTANCE_EXEMPT_COMPANY_IDS, PURGE_COMPANIES_WITHOUT_TENANT, PURGE_TARGETS, PURGE_TEST_LEADS, applyPurge, planHashOf, planPurge, verifyPurge } from "./_core/ops/purgeTestCompanies";
 
 const URL_ = process.env.REGISTRY_TEST_DATABASE_URL;
 const T = Date.UTC(2026, 9, 28, 9);
@@ -94,6 +95,21 @@ describe.skipIf(!URL_)("purga de las empresas de prueba (MySQL real)", () => {
         await seed(reg, "backup_inventory", { target_kind: "tenant", target_id: c.tenantId });
       }
     }
+    // Leads: los técnicos de la lista cerrada (solo enlazados por converted_company_id o sin empresa), uno de una empresa técnica por
+    // company_id, y los reales (uno convertido en una empresa real). Cada lead, con su solicitud web; algunos, con oportunidad e historial.
+    const lead = (id: number, name: string, email: string | null, extra: Record<string, unknown> = {}) => seed(crm, "crm_leads", { id, name, email, status: "converted", created_at: T, ...extra });
+    await seed(crm, "crm_opportunities", { id: 101, company_id: 12, title: "Oportunidad técnica", created_at: T, updated_at: T });
+    await seed(crm, "crm_opportunities", { id: 102, company_id: 30, title: "Oportunidad real", created_at: T, updated_at: T });
+    await lead(1, "Prueba controlada lanzamiento", "prueba.lanzamiento@bigelephant.es", { status: "new" });
+    await lead(2, "Prueba Implantación Sintética", "implantacion-202610311012@example.com", { converted_company_id: 8 });
+    await lead(3, "Administrador", "jgrande@skicenter.es", { converted_company_id: 30, converted_opportunity_id: 102 });
+    await lead(4, "Jorge Grande (prueba técnica)", "jorgemgrande@gmail.com", { converted_company_id: 12, converted_opportunity_id: 101 });
+    await lead(5, "Jorge Grande (prueba técnica)", "jorgemgrande@gmail.com", { company_id: 12, converted_company_id: 12 });
+    await lead(11, "Prueba Técnica Captación", "jgrande@bigelephant.es", { status: "new" });
+    await lead(12, "PRUEBA TÉCNICA Condiciones 129", "prueba-connect@bigelephant.es", { converted_company_id: 12 });
+    await lead(13, "Felipe Ramos", "real@example.org", { status: "new" });
+    for (const id of [1, 2, 3, 4, 5, 11, 12, 13]) await seed(crm, "crm_lead_requests", { lead_id: id, reference: `SOL-T${id}`, idempotency_key: crypto.randomUUID(), created_at: T });
+    for (const [type, id] of [["lead", 1], ["lead", 3], ["opportunity", 101], ["opportunity", 102]] as const) await seed(crm, "crm_activities", { entity_type: type, entity_id: id, kind: "note", summary: `nota ${type} ${id}`, created_at: T });
     await crm.query("SET FOREIGN_KEY_CHECKS = 1");
     await reg.query("SET FOREIGN_KEY_CHECKS = 1");
     // Servidor de bases: una restauración sobrante de Elephant Demo, otra de la empresa real y la medición de ambas
@@ -207,6 +223,55 @@ describe.skipIf(!URL_)("purga de las empresas de prueba (MySQL real)", () => {
   });
 
   const tablesOf = (plan: Awaited<ReturnType<typeof planPurge>>) => plan.steps.map((s) => `${s.db}.${s.table}`);
+  const planNow = () => planPurge({ crm, registry: reg, tenantDbName: dbName, expectedDbName: (t) => `es_${t.replace(/-/g, "_")}`, resources: resources() });
+
+  it("los leads técnicos son una lista cerrada (1, 2, 4, 11, 12): entran con sus solicitudes e historial; los reales y las oportunidades reales, no", async () => {
+    expect(PURGE_TEST_LEADS.map((l) => l.id)).toEqual([1, 2, 4, 11, 12]);
+    const plan = await planNow();
+    expect(plan.problems).toEqual([]);
+    expect(plan.leads.map((l) => l.id)).toEqual([1, 2, 4, 11, 12]);
+    expect(plan.missingLeads).toEqual([]);
+    const rowsOf = (t: string) => plan.steps.find((x) => x.table === t)?.rows;
+    expect(rowsOf("crm_leads")).toBe(6); // los 5 de la lista + el lead 5, de la empresa 12 por company_id
+    expect(rowsOf("crm_lead_requests")).toBe(6);
+    expect(rowsOf("crm_activities")).toBe(2); // historial del lead 1 y de la oportunidad técnica; no el del lead 3 ni el de la oportunidad real
+    expect(plan.steps.find((x) => x.table === "crm_leads")!.params.flat(2)).not.toContain(3);
+  });
+
+  it("integridad referencial: un lead fuera de la lista que apunta a una empresa que se purga, o uno de la lista que apunta a una real, aborta el plan", async () => {
+    const base = await planNow();
+    // 1) Un lead real (13) convertido en la empresa técnica 12 → quedaría una referencia rota
+    await crm.query("UPDATE crm_leads SET converted_company_id = 12 WHERE id = 13");
+    const a = await planNow();
+    expect(a.problems.join()).toMatch(/leads 13 no están en la lista pero apuntan/);
+    expect(a.planHash).not.toBe(base.planHash);
+    await expect(applyPurge({ crm, registry: reg }, a, a.planHash)).rejects.toThrow(/No se purga nada/);
+    await crm.query("UPDATE crm_leads SET converted_company_id = NULL WHERE id = 13");
+    // 2) Un lead real (3) con la oportunidad de una empresa técnica
+    await crm.query("UPDATE crm_leads SET converted_opportunity_id = 101 WHERE id = 3");
+    expect((await planNow()).problems.join()).toMatch(/leads 3 no están en la lista pero apuntan/);
+    await crm.query("UPDATE crm_leads SET converted_opportunity_id = 102 WHERE id = 3");
+    // 3) Un lead de la lista convertido en una empresa real → no se toca nada
+    await crm.query("UPDATE crm_leads SET converted_company_id = 30 WHERE id = 1");
+    expect((await planNow()).problems.join()).toMatch(/lead técnico 1 está convertido en la empresa 30, que no se purga/);
+    await crm.query("UPDATE crm_leads SET converted_company_id = NULL WHERE id = 1");
+    // 4) Un lead de la lista con otro nombre o correo → no se toca nada
+    await crm.query("UPDATE crm_leads SET email = 'otra@persona.es' WHERE id = 11");
+    expect((await planNow()).problems.join()).toMatch(/lead 11 .* no coincide exactamente/);
+    await crm.query("UPDATE crm_leads SET email = 'jgrande@bigelephant.es' WHERE id = 11");
+    expect((await planNow()).problems).toEqual([]);
+  });
+
+  it("verifyPurge detecta una referencia colgante sin clave ajena (lead → empresa inexistente, historial → entidad inexistente)", async () => {
+    await crm.query("UPDATE crm_leads SET converted_company_id = 9999 WHERE id = 13");
+    await seed(crm, "crm_activities", { entity_type: "opportunity", entity_id: 9999, kind: "note", summary: "huérfana", created_at: T });
+    const v = await verifyPurge({ crm, registry: reg, resources: resources() });
+    expect(v.ok).toBe(false);
+    expect(v.remaining.join()).toMatch(/converted_company_id sin empresa/);
+    expect(v.remaining.join()).toMatch(/crm_activities \(opportunity\) sin entidad/);
+    await crm.query("UPDATE crm_leads SET converted_company_id = NULL WHERE id = 13");
+    await crm.query("DELETE FROM crm_activities WHERE entity_id = 9999");
+  });
 
   it("purga solo la lista cerrada, de hijos a padres, conserva las copias y deja la empresa real y Nextair intactas", async () => {
     const plan = await planPurge({ crm, registry: reg, tenantDbName: dbName, expectedDbName: (t) => `es_${t.replace(/-/g, "_")}`, resources: resources() });
@@ -250,6 +315,17 @@ describe.skipIf(!URL_)("purga de las empresas de prueba (MySQL real)", () => {
     expect(done.deleted.find((d) => d.table === "crm_companies")?.rows).toBe(4);
     expect(done.deleted.find((d) => d.table === "crm_contract_acceptances")?.rows).toBe(1);
     expect(await verifyPurge({ crm, registry: reg, resources: resources() })).toEqual({ ok: true, remaining: [] });
+    // Leads: solo quedan los reales (3 y 13), con sus solicitudes, su historial y sus oportunidades; ninguna referencia colgante
+    const [leadsLeft] = await crm.query<mysql.RowDataPacket[]>("SELECT id FROM crm_leads ORDER BY id");
+    expect(leadsLeft.map((r) => r.id)).toEqual([3, 13]);
+    const [reqLeft] = await crm.query<mysql.RowDataPacket[]>("SELECT lead_id FROM crm_lead_requests ORDER BY lead_id");
+    expect(reqLeft.map((r) => r.lead_id)).toEqual([3, 13]);
+    const [actLeft] = await crm.query<mysql.RowDataPacket[]>("SELECT entity_type, entity_id FROM crm_activities WHERE entity_type IN ('lead','opportunity') ORDER BY entity_id");
+    expect(actLeft.map((r) => `${r.entity_type}:${r.entity_id}`)).toEqual(["lead:3", "opportunity:102"]);
+    const [oppLeft] = await crm.query<mysql.RowDataPacket[]>("SELECT id FROM crm_opportunities ORDER BY id");
+    expect(oppLeft.map((r) => r.id)).toEqual([102]);
+    expect(done.deleted.find((x) => x.table === "crm_leads")?.rows).toBe(6);
+    expect(done.deleted.find((x) => x.table === "crm_lead_requests")?.rows).toBe(6);
     const [left] = await crm.query<mysql.RowDataPacket[]>("SELECT name FROM crm_companies ORDER BY name");
     expect(left.map((r) => r.name)).toEqual(["Empresa Real", "Nextair", "PRUEBA TÉCNICA Otra"]);
     const [[accLeft]] = await crm.query<mysql.RowDataPacket[]>("SELECT COUNT(*) n FROM crm_contract_acceptances");
@@ -282,5 +358,6 @@ describe.skipIf(!URL_)("purga de las empresas de prueba (MySQL real)", () => {
     expect(again.retire).toEqual([]);
     expect(again.missing.length).toBe(PURGE_TARGETS.length);
     expect(again.missingCompanies).toEqual([8, 13]);
+    expect(again.missingLeads).toEqual([1, 2, 4, 11, 12]);
   });
 });

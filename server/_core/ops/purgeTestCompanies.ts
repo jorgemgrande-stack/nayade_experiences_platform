@@ -36,6 +36,19 @@ export const PURGE_COMPANIES_WITHOUT_TENANT = [
   { companyId: 13, companyName: "PRUEBA TÉCNICA Ampliaciones" },
 ] as const;
 /**
+ * Leads técnicos de prueba (autorizados por Dirección el 21/11/2026), identificados a la vez por su id, su nombre y su correo exactos. Los
+ * leads con `company_id` de una empresa de la lista ya entran por la empresa; estos solo están enlazados por `converted_company_id`
+ * (sin clave ajena) o no tienen empresa: sin esta lista quedarían tras la purga con una referencia rota. Un lead de esta lista que apunte
+ * a una empresa que NO se purga, o que no coincida exactamente, aborta el plan sin tocar nada.
+ */
+export const PURGE_TEST_LEADS = [
+  { id: 1, name: "Prueba controlada lanzamiento", email: "prueba.lanzamiento@bigelephant.es" },
+  { id: 2, name: "Prueba Implantación Sintética", email: "implantacion-202610311012@example.com" },
+  { id: 4, name: "Jorge Grande (prueba técnica)", email: "jorgemgrande@gmail.com" },
+  { id: 11, name: "Prueba Técnica Captación", email: "jgrande@bigelephant.es" },
+  { id: 12, name: "PRUEBA TÉCNICA Condiciones 129", email: "prueba-connect@bigelephant.es" },
+] as const;
+/**
  * Excepción ESTRICTA a la protección de las aceptaciones contractuales: solo las de los contratos de estas empresas técnicas
  * (id de empresa exacto, y que además estén en el plan). Cualquier aceptación de otra empresa sigue abortando la purga. Sus
  * identificaciones, versiones, fechas y huellas quedan en el manifiesto del plan y, al aplicar, en la auditoría del registro.
@@ -67,8 +80,10 @@ interface Keys {
   contract_id: number[];
   contact_id: number[];
   trial_id: number[];
+  /** Leads del plan (los de la lista cerrada y los de las empresas por `company_id`): sus solicitudes y su historial. */
+  lead_id: number[];
 }
-const NUMERIC_KEYS = ["company_id", "order_id", "subscription_id", "contract_id", "contact_id", "trial_id"] as const;
+const NUMERIC_KEYS = ["company_id", "order_id", "subscription_id", "contract_id", "contact_id", "trial_id", "lead_id"] as const;
 
 export interface PurgeStep {
   db: "crm" | "registry";
@@ -97,6 +112,10 @@ export interface PurgePlan {
   missing: string[];
   /** Empresas sin plataforma de la lista que ya no existen (ids). */
   missingCompanies: number[];
+  /** Leads técnicos de la lista cerrada que existen (y coinciden exactamente). */
+  leads: Array<{ id: number; name: string; email: string | null; convertedCompanyId: number | null }>;
+  /** Leads de la lista cerrada que ya no existen (ids). */
+  missingLeads: number[];
   /** Aceptaciones contractuales incluidas por la excepción estricta, con su evidencia. */
   acceptanceEvidence: PurgeAcceptanceEvidence[];
   /** Huella (sha256) del contenido del plan: si cambia algo, cambia la huella. */
@@ -141,7 +160,7 @@ async function foreignKeys(q: Q): Promise<Array<{ child: string; parent: string;
 const ids = async (q: Q, sql: string, p: unknown[]) => (await rows(q, sql, p)).map((r) => Number(r.id));
 
 /** Filtro de una tabla por las claves de las empresas (columnas enteras para ids; texto para tenant_id). */
-function filterFor(cols: Map<string, string>, k: Keys): { where: string; params: unknown[] } | null {
+function filterFor(cols: Map<string, string>, k: Keys, opportunityIds: number[] = []): { where: string; params: unknown[] } | null {
   const parts: string[] = [];
   const params: unknown[] = [];
   const isInt = (c: string) => /int/i.test(cols.get(c) ?? "");
@@ -149,7 +168,7 @@ function filterFor(cols: Map<string, string>, k: Keys): { where: string; params:
   if (cols.has("tenant_id") && !isInt("tenant_id") && k.tenant_id.length) (parts.push("`tenant_id` IN (?)"), params.push(k.tenant_id));
   // Historial genérico del CRM (entity_type + entity_id)
   if (cols.has("entity_type") && cols.has("entity_id")) {
-    for (const [type, vals] of [["company", k.company_id], ["contract", k.contract_id], ["contact", k.contact_id]] as const) if (vals.length) (parts.push("(`entity_type` = ? AND `entity_id` IN (?))"), params.push(type, vals));
+    for (const [type, vals] of [["company", k.company_id], ["contract", k.contract_id], ["contact", k.contact_id], ["lead", k.lead_id], ["opportunity", opportunityIds]] as const) if (vals.length) (parts.push("(`entity_type` = ? AND `entity_id` IN (?))"), params.push(type, vals));
   }
   return parts.length ? { where: parts.join(" OR "), params } : null;
 }
@@ -197,7 +216,9 @@ export async function planPurge(d: { crm: Q; registry: Q; tenantDbName?: (tenant
 
   // 2. Claves derivadas
   const companyIds = companies.map((c) => c.id);
-  const k: Keys = { company_id: companyIds, tenant_id: tenants, order_id: [], subscription_id: [], contract_id: [], contact_id: [], trial_id: [] };
+  const k: Keys = { company_id: companyIds, tenant_id: tenants, order_id: [], subscription_id: [], contract_id: [], contact_id: [], trial_id: [], lead_id: [] };
+  let opportunityIds: number[] = [];
+  const leads: PurgePlan["leads"] = [];
   const crmCols = await columns(d.crm);
   const has = (t: string) => crmCols.has(t);
   if (companyIds.length) {
@@ -207,15 +228,32 @@ export async function planPurge(d: { crm: Q; registry: Q; tenantDbName?: (tenant
     if (has("crm_contacts")) k.contact_id = await ids(d.crm, "SELECT id FROM crm_contacts WHERE company_id IN (?)", [companyIds]);
   }
   if (has("trial_requests")) k.trial_id = await ids(d.crm, "SELECT id FROM trial_requests WHERE tenant_id IN (?)", [tenants]);
+  if (companyIds.length && has("crm_opportunities")) opportunityIds = await ids(d.crm, "SELECT id FROM crm_opportunities WHERE company_id IN (?)", [companyIds]);
+  // Leads técnicos: la lista cerrada (id + nombre + correo exactos) y los que cuelgan de las empresas por `company_id`
+  const listedLeadIds: number[] = PURGE_TEST_LEADS.map((l) => l.id);
+  const foundLeadIds = new Set<number>();
+  if (has("crm_leads")) {
+    for (const r of await rows(d.crm, "SELECT id, name, email, converted_company_id FROM crm_leads WHERE id IN (?)", [listedLeadIds])) {
+      foundLeadIds.add(Number(r.id));
+      const want = PURGE_TEST_LEADS.find((l) => l.id === Number(r.id));
+      const conv = r.converted_company_id == null ? null : Number(r.converted_company_id);
+      if (!want || want.name !== r.name || want.email !== (r.email ?? null)) problems.push(`el lead ${r.id} («${r.name}») no coincide exactamente con la lista de leads técnicos: no se toca nada`);
+      else if (conv !== null && !companyIds.includes(conv)) problems.push(`el lead técnico ${r.id} está convertido en la empresa ${conv}, que no se purga: no se toca nada`);
+      else leads.push({ id: Number(r.id), name: String(r.name), email: r.email == null ? null : String(r.email), convertedCompanyId: conv });
+    }
+    const byCompany = companyIds.length ? await ids(d.crm, "SELECT id FROM crm_leads WHERE company_id IN (?)", [companyIds]) : [];
+    k.lead_id = Array.from(new Set([...leads.map((l) => l.id), ...byCompany])).sort((a, b) => a - b);
+  }
+  const missingLeads = has("crm_leads") ? listedLeadIds.filter((id) => !foundLeadIds.has(id)) : [];
   // Las claves de las tablas raíz también por id
-  const rootIds: Record<string, number[]> = { crm_companies: k.company_id, commercial_orders: k.order_id, subscriptions: k.subscription_id, crm_contracts: k.contract_id, crm_contacts: k.contact_id, trial_requests: k.trial_id };
+  const rootIds: Record<string, number[]> = { crm_leads: k.lead_id, crm_companies: k.company_id, commercial_orders: k.order_id, subscriptions: k.subscription_id, crm_contracts: k.contract_id, crm_contacts: k.contact_id, trial_requests: k.trial_id };
 
   // 3. Pasos del CRM
   const crmFks = await foreignKeys(d.crm);
   const crmSteps: PurgeStep[] = [];
   const acceptanceEvidenceRows: PurgeAcceptanceEvidence[] = [];
   for (const [table, cols] of Array.from(crmCols.entries())) {
-    const f = filterFor(cols, k);
+    const f = filterFor(cols, k, opportunityIds);
     const root = rootIds[table]?.length ? { where: "`id` IN (?)", params: [rootIds[table]] } : null;
     const where = [f?.where, root?.where].filter(Boolean).join(" OR ");
     if (!where) continue;
@@ -259,6 +297,17 @@ export async function planPurge(d: { crm: Q; registry: Q; tenantDbName?: (tenant
         added = true;
       }
     }
+  }
+  // Integridad referencial SIN clave ajena: un lead que no se borra no puede quedar apuntando a una empresa o a una oportunidad que sí
+  if (has("crm_leads") && (companyIds.length || opportunityIds.length)) {
+    const leadStep = crmSteps.find((x) => x.table === "crm_leads");
+    const notInPlan = leadStep ? `NOT COALESCE((${leadStep.where}), 0)` : "1 = 1";
+    const refs: string[] = [];
+    const prm: unknown[] = [];
+    if (companyIds.length) (refs.push("converted_company_id IN (?)"), prm.push(companyIds));
+    if (opportunityIds.length) (refs.push("converted_opportunity_id IN (?)"), prm.push(opportunityIds));
+    const dangling = await ids(d.crm, `SELECT id FROM crm_leads WHERE (${refs.join(" OR ")}) AND ${notInPlan}`, [...prm, ...(leadStep?.params ?? [])]);
+    if (dangling.length) problems.push(`los leads ${dangling.join(", ")} no están en la lista pero apuntan a una empresa u oportunidad que se purga (quedaría una referencia rota): no se purga nada`);
   }
   const crmOrder = deleteOrder(crmSteps.map((s) => s.table), crmFks);
   crmSteps.sort((a, b) => crmOrder.indexOf(a.table) - crmOrder.indexOf(b.table));
@@ -347,6 +396,8 @@ export async function planPurge(d: { crm: Q; registry: Q; tenantDbName?: (tenant
     companies,
     missing,
     missingCompanies,
+    leads,
+    missingLeads,
     acceptanceEvidence: acceptanceEvidenceRows,
     planHash: "",
     steps: [...crmSteps, ...regSteps],
@@ -355,7 +406,7 @@ export async function planPurge(d: { crm: Q; registry: Q; tenantDbName?: (tenant
     extraDatabases,
     measurement,
     files,
-    kept: [...REGISTRY_KEPT.map((t) => `registro.${t} (${t === "tenant_events" ? "auditoría inmutable" : "copias de seguridad"})`), "registro.tenants (lápida en estado deleted)", "copias cifradas en los destinos de copia (hasta su retención)", ...CRM_PROTECTED.map((t) => `crm.${t}`), "cliente de Stripe de pruebas (se elimina en el Dashboard de Stripe en modo test)"],
+    kept: [...REGISTRY_KEPT.map((t) => `registro.${t} (${t === "tenant_events" ? "auditoría inmutable" : "copias de seguridad"})`), "registro.tenants (lápida en estado deleted)", "copias cifradas en los destinos de copia (hasta su retención)", ...CRM_PROTECTED.map((t) => (t === "crm_contract_acceptances" ? `crm.${t} (salvo las de las empresas técnicas exentas, listadas en aceptacionesPurgadas: su evidencia queda en tenant_events)` : `crm.${t}`)), "cliente de Stripe de pruebas (se elimina en el Dashboard de Stripe en modo test)"],
     problems,
   };
   plan.planHash = planHashOf(plan);
@@ -398,6 +449,8 @@ export function planHashOf(plan: Omit<PurgePlan, "planHash"> | PurgePlan): strin
     measurement: plan.measurement.map((m) => ({ server: m.server, table: m.table })),
     files: plan.files.byTenant.map((f) => ({ tenantId: f.tenantId, keys: [...f.keys].sort() })),
     acceptances: plan.acceptanceEvidence,
+    leads: [...plan.leads].sort((a, b) => a.id - b.id),
+    missingLeads: [...plan.missingLeads].sort((a, b) => a - b),
     problems: plan.problems,
   };
   return createHash("sha256").update(JSON.stringify(canon)).digest("hex");
@@ -544,6 +597,23 @@ export async function verifyPurge(d: { crm: Q; registry: Q; resources?: PurgeRes
     for (const f of await foreignKeys(q)) {
       const [{ n }] = await rows(q, `SELECT COUNT(*) n FROM \`${f.child}\` c LEFT JOIN \`${f.parent}\` p ON p.\`${f.parentColumn}\` = c.\`${f.column}\` WHERE c.\`${f.column}\` IS NOT NULL AND p.\`${f.parentColumn}\` IS NULL`);
       if (Number(n)) remaining.push(`${name}.${f.child}.${f.column}: ${n} referencia(s) huérfana(s)`);
+    }
+  }
+  // Referencias SIN clave ajena (lead → empresa/oportunidad; historial → entidad): ninguna puede quedar apuntando a algo borrado
+  const soft: Array<[string, string]> = [
+    ["crm_leads.converted_company_id sin empresa", "SELECT COUNT(*) n FROM crm_leads l LEFT JOIN crm_companies c ON c.id = l.converted_company_id WHERE l.converted_company_id IS NOT NULL AND c.id IS NULL"],
+    ["crm_leads.company_id sin empresa", "SELECT COUNT(*) n FROM crm_leads l LEFT JOIN crm_companies c ON c.id = l.company_id WHERE l.company_id IS NOT NULL AND c.id IS NULL"],
+    ["crm_leads.converted_opportunity_id sin oportunidad", "SELECT COUNT(*) n FROM crm_leads l LEFT JOIN crm_opportunities o ON o.id = l.converted_opportunity_id WHERE l.converted_opportunity_id IS NOT NULL AND o.id IS NULL"],
+  ];
+  for (const [type, table] of [["company", "crm_companies"], ["contact", "crm_contacts"], ["contract", "crm_contracts"], ["lead", "crm_leads"], ["opportunity", "crm_opportunities"]] as const) {
+    soft.push([`crm_activities (${type}) sin entidad`, `SELECT COUNT(*) n FROM crm_activities a LEFT JOIN \`${table}\` t ON t.id = a.entity_id WHERE a.entity_type = '${type}' AND t.id IS NULL`]);
+  }
+  for (const [label, sql] of soft) {
+    try {
+      const [{ n }] = await rows(d.crm, sql);
+      if (Number(n)) remaining.push(`crm: ${n} referencia(s) huérfana(s) — ${label}`);
+    } catch {
+      /* tabla o columna inexistente en esta versión del esquema: no hay nada que comprobar */
     }
   }
   return { ok: remaining.length === 0, remaining };
