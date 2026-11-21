@@ -107,8 +107,8 @@ describe("API del Resource Manager", () => {
     server = http.createServer(
       createControlPlaneApp({
         tokens: [
-          { id: "full", sha256: hashToken(FULL), scopes: ["usage:read", "billing:read", "billing:write", "tenants:read"] },
-          { id: "read", sha256: hashToken(READ), scopes: ["usage:read", "billing:read", "tenants:read"] },
+          { id: "full", sha256: hashToken(FULL), scopes: ["usage:read", "billing:read", "margins:read", "billing:write", "tenants:read"] },
+          { id: "read", sha256: hashToken(READ), scopes: ["usage:read", "billing:read", "margins:read", "tenants:read"] },
         ] as never,
         registry,
         reader: reg,
