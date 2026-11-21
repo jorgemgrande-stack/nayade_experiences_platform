@@ -9,12 +9,14 @@ import { ArrowRight, Building2, Compass, Loader2, Rocket, ShieldCheck } from "lu
 import { trpc } from "@/lib/trpc";
 import { Button } from "@/components/ui/button";
 import { SETUP_WIZARD_PATH } from "@/components/SetupWizardLink";
+import { useI18n } from "@/i18n/I18nProvider";
 
 export function WelcomeScreen({ firstName, tradeName, steps }: { firstName: string; tradeName: string; steps: number }) {
+  const { t } = useI18n();
   const [, navigate] = useLocation();
   const utils = trpc.useUtils();
   const setStep = trpc.setupWizard.setStep.useMutation({
-    onError: (e) => toast.error(e.message || "No se pudo guardar"),
+    onError: (e) => toast.error(e.message || t("onboardingShared.welcome.saveError")),
   });
   const choose = async (status: "done" | "skipped") => {
     await setStep.mutateAsync({ step: "welcome", status });
@@ -29,19 +31,19 @@ export function WelcomeScreen({ firstName, tradeName, steps }: { firstName: stri
             <Rocket className="h-7 w-7" />
           </span>
           <h1 className="text-2xl font-bold text-foreground sm:text-3xl">
-            {firstName ? `Hola, ${firstName}. ` : ""}Te damos la bienvenida a Elephant Core
+            {firstName ? t("onboardingShared.welcome.hello", { name: firstName }) : ""}{t("onboardingShared.welcome.title")}
           </h1>
           <p className="text-muted-foreground">
-            {tradeName ? <>Tu espacio para gestionar <strong className="text-foreground">{tradeName}</strong> ya está listo.</> : <>Tu espacio de gestión ya está listo.</>}{" "}
-            Te proponemos dejarlo configurado en unos minutos.
+            {tradeName ? t("onboardingShared.welcome.readyNamed", { name: tradeName }) : t("onboardingShared.welcome.ready")}{" "}
+            {t("onboardingShared.welcome.proposal")}
           </p>
         </div>
 
         <ul className="grid gap-3 sm:grid-cols-3">
           {[
-            { icon: Building2, title: "Solo lo necesario", text: `${steps} pasos cortos adaptados a tu negocio y a lo que tienes contratado.` },
-            { icon: ShieldCheck, title: "Sin perder nada", text: "El progreso se guarda solo: puedes dejarlo y continuar cuando quieras." },
-            { icon: Compass, title: "Sin bloqueos", text: "Ningún paso es obligatorio para empezar a usar el sistema." },
+            { icon: Building2, title: t("onboardingShared.welcome.onlyNeeded.title"), text: t("onboardingShared.welcome.onlyNeeded.text", { steps }) },
+            { icon: ShieldCheck, title: t("onboardingShared.welcome.nothingLost.title"), text: t("onboardingShared.welcome.nothingLost.text") },
+            { icon: Compass, title: t("onboardingShared.welcome.noBlocks.title"), text: t("onboardingShared.welcome.noBlocks.text") },
           ].map((x) => (
             <li key={x.title} className="rounded-2xl border border-border bg-card p-4">
               <x.icon className="h-5 w-5 text-primary" aria-hidden="true" />
@@ -54,13 +56,13 @@ export function WelcomeScreen({ firstName, tradeName, steps }: { firstName: stri
         <div className="flex flex-col items-stretch gap-3 sm:flex-row sm:justify-center">
           <Button type="button" size="lg" disabled={setStep.isPending} onClick={() => void choose("done")}>
             {setStep.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" aria-hidden="true" /> : null}
-            Configurar mi empresa <ArrowRight className="ml-2 h-4 w-4" aria-hidden="true" />
+            {t("onboardingShared.welcome.configure")} <ArrowRight className="ml-2 h-4 w-4" aria-hidden="true" />
           </Button>
           <Button type="button" size="lg" variant="outline" disabled={setStep.isPending} onClick={() => void choose("skipped")}>
-            Explorar primero
+            {t("onboardingShared.welcome.explore")}
           </Button>
         </div>
-        <p className="text-center text-xs text-muted-foreground">Podrás abrir el asistente en cualquier momento desde el Inicio.</p>
+        <p className="text-center text-xs text-muted-foreground">{t("onboardingShared.welcome.footer")}</p>
       </div>
     </main>
   );
