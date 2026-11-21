@@ -63,7 +63,7 @@ describe("caja en lugar de TPV en el panel y en las plantillas", () => {
     const back = code("client/src/pages/admin/tpv/TpvBackoffice.tsx");
     expect(back).not.toMatch(/TPV — Cajas|Abrir TPV|en el TPV/);
     expect(code("client/src/pages/admin/tpv/TpvReports.tsx")).toContain("Ventas en caja");
-    expect(code("client/src/pages/admin/EmailTemplatesManager.tsx")).toContain('tpv: "Caja"');
-    expect(code("client/src/pages/admin/PdfTemplatesManager.tsx")).toContain('tpv: "Caja"');
+    expect(code("shared/i18n/locales/es/emailTemplates.ts")).toContain('tpv: "Caja"');
+    expect(code("shared/i18n/locales/es/pdfTemplates.ts")).toContain('tpv: "Caja"');
   });
 });
